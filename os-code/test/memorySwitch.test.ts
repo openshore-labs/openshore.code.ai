@@ -158,3 +158,41 @@ describe('memory off removes the tool and the prompt block', () => {
     expect(existsSync(join(project, 'OpenShore Project Atlas MDs', 'Current State.md'))).toBe(true);
   });
 });
+
+// Vault M4 (4.4, CTO I8, F6): the context pack rides the same switch. The
+// loop-level cases (the prompt, the card) are in loopVaultContext.test.ts;
+// here the real bootstrap threads a source through and the switch closes it.
+describe('memory off removes the vault context pack', () => {
+  const source = {
+    prepare: async () => {
+      throw new Error('not reached in this test');
+    },
+  };
+  const packOn = (options: Partial<BootstrapOptions>) =>
+    (bootSession({ vaultContext: source, ...options }).agent as unknown as { packEnabled: boolean })
+      .packEnabled;
+
+  function bootSession(options: Partial<BootstrapOptions>) {
+    return bootstrapSession({
+      cwd: project,
+      profile: 'local-interactive',
+      persist: false,
+      projectName: 'Atlas',
+      ...options,
+    });
+  }
+
+  it('memory on, a source given: the pack is on', () => {
+    expect(packOn({ config: configWith({}) })).toBe(true);
+  });
+
+  it('no source: no pack', () => {
+    expect(packOn({ config: configWith({}), vaultContext: undefined })).toBe(false);
+  });
+
+  it("the app's override off, config off, and vault.context off each remove it", () => {
+    expect(packOn({ config: configWith({}), memory: false })).toBe(false);
+    expect(packOn({ config: configWith({ memory: { enabled: false } }) })).toBe(false);
+    expect(packOn({ config: configWith({ vault: { context: 'off' } }) })).toBe(false);
+  });
+});

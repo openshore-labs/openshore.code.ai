@@ -97,3 +97,15 @@ describe('trimOldObservations (ENG-13)', () => {
     expect(String(out[0]!.content)).toContain('trimmed');
   });
 });
+
+describe('the class sets when compaction runs (Vault M4, CTO I2)', () => {
+  it('compacts at the given fraction of the window, 0.7 when none is given', async () => {
+    // About 670 tokens of history against a 1000-token window.
+    const messages = [
+      { role: 'user' as const, content: 'x'.repeat(2640) },
+      { role: 'assistant' as const, content: 'ok' },
+    ];
+    expect((await compactHistory(messages, 1000, async () => 's')).compacted).toBe(false);
+    expect((await compactHistory(messages, 1000, async () => 's', 0.6)).compacted).toBe(true);
+  });
+});

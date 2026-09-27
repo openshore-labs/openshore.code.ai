@@ -22,7 +22,14 @@ import {
   reasonsNatively,
   splitThinkTags,
 } from './chainOfThought.js';
-import { PROJECT_MEMORY_WRITE_TOOL, memorySegment, projectMemoryPrompt } from './projectMemory.js';
+import {
+  CURRENT_STATE_FILE,
+  PROJECT_MEMORY_WRITE_TOOL,
+  isMemoryFilePath,
+  memorySegment,
+  projectMemoryPrompt,
+} from './projectMemory.js';
+import { HARNESS_LINE_MARK, appendLandedLine } from '../tools/projectMemory.js';
 import {
   extractTextCalls,
   repairPrompt,
@@ -51,6 +58,15 @@ import { instructionsPrompt, type RepoInstructions } from './instructions.js';
 import { verifyRetryPrompt } from '../../harness/verify.js';
 import { runVerify } from './verifyRun.js';
 import { deriveProfile, classBlurb, type ModelClassProfile } from '../../harness/profile.js';
+import { withholdLocalOnly } from '../../harness/vault/privacy.js';
+import {
+  buildContextPack,
+  packBudgetTokens,
+  packModeFor,
+  type ContextPack,
+  type PreparedVaultContext,
+  type VaultContextSource,
+} from '../../harness/vaultContext.js';
 import { JevAdvisor, type FetchLike } from '../../harness/jev.js';
 import type { HarnessCurrentsHandle } from '../../currents/model.js';
 import type { ToolSpec } from '../../providers/types.js';
@@ -94,6 +110,13 @@ export interface AgentDeps {
   /** Injectable fetch for the Jev advisor, so tests drive it with no network.
    *  Defaults to the global fetch. */
   jevFetch?: FetchLike;
+  /** Where this session's vault context pack comes from (Vault M4, CTO I8):
+   *  prepared once per task, rendered per turn for the seat that answers.
+   *  The engine's source is core/vault/contextSource.ts; undefined leaves the
+   *  pack out. Memory off or `vault.context: 'off'` leaves it out too. */
+  vaultContext?: VaultContextSource;
+  /** The clock for the dated Current State line (tests pin it). */
+  now?: () => Date;
 }
 
 /** Whether an absolute path lies inside the vault folder (or is it), with
@@ -141,6 +164,17 @@ export interface ProjectRule {
 /** Tools a plan may use: nothing that changes the workspace or runs a shell. */
 const PLAN_SAFE_RISKS = new Set(['read', 'network']);
 
+/** The one merged vault read (search, read, links) a lean seat is offered in
+ *  place of the separate reads, per the class's `mergedVaultTool` (CTO I11). */
+const MERGED_VAULT_TOOL = 'vaultLookup';
+const SEPARATE_VAULT_READS = new Set(['vaultRead', 'vaultList', 'vaultSearch', 'vaultBacklinks']);
+
+/** The local calendar date, YYYY-MM-DD, for a dated Current State line. */
+function localDate(d: Date): string {
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 /** The classes the harness runs a lean prompt for: a small seat gets the few
  *  tools the step calls for and a compact standards digest instead of the full
  *  multi-KB text, so its context goes to the task, not to instructions it cannot
@@ -157,6 +191,7 @@ const SMALL_MODEL_TOOL_PRIORITY = [
   'grep',
   'glob',
   'searchRepo',
+  'vaultLookup',
   'runShell',
   'todoWrite',
   'gitDiff',
@@ -233,6 +268,26 @@ export class AgentSession {
   /** The active Harness Current's Jev advisor, built lazily from the handle,
    *  or undefined when no harness current is on. Cached across a task. */
   private jev: JevAdvisor | undefined | null = null;
+  /** This task's vault context, prepared once per `run()` (CTO I8). */
+  private prepared?: PreparedVaultContext;
+  /** The task's own words, the pack's retrieval query. */
+  private taskQuery = '';
+  /** The last rendered pack and the seat it was rendered for, so a turn on
+   *  the same seat reuses it byte for byte (the KV cache keeps its prefix). */
+  private packCache?: { key: string; pack: ContextPack | undefined };
+  /** The pack this turn's system prompt carries, when it has any text. */
+  private currentPack?: ContextPack;
+  /** What the last context-pack card said, so it is shown again only when
+   *  the pack changed (an escalation re-renders for the cloud seat). */
+  private packCardShown?: string;
+  /** A write this task landed in the vault (vaultWrite, or a file tool inside
+   *  the vault). A note is not code: it never triggers verify or the judge. */
+  private vaultWroteThisTask = false;
+  /** The seat wrote Current State itself this task, so the harness does not
+   *  add its own line on top (CTO I12). */
+  private seatWroteCurrentState = false;
+  /** The harness's Current State line is written at most once per task. */
+  private landedNoted = false;
 
   constructor(private readonly deps: AgentDeps) {
     const orchestrator = deps.router.orchestrator();
@@ -253,6 +308,10 @@ export class AgentSession {
     this.instructions = deps.instructions;
     // A tool that runs a model of its own (a delegated subtask) reports its
     // usage here, so its tokens hit the rails and its dollars are visible.
+    // A vault tool asks whether the seat answering now leaves this network, so
+    // a local-only note is read only by a seat that stays (CTO I5). Judged by
+    // address, live, since an escalation switches the seat mid-task.
+    deps.toolContext.seatLeavesNetwork = () => leavesThisNetwork(this.active.provider);
     deps.toolContext.noteUsage = (usage: DelegatedUsage) => {
       this.recordUsage(usage.model, usage.kind, usage.promptTokens, usage.completionTokens);
     };
@@ -439,6 +498,176 @@ export class AgentSession {
   }
 
   // -------------------------------------------------------------------------
+  // The vault context pack (Vault M4, 4.4, CTO I8 to I10)
+  // -------------------------------------------------------------------------
+
+  /** Whether this session carries a pack at all: a source, Memory on (F6),
+   *  and `vault.context` not off. */
+  private get packEnabled(): boolean {
+    return (
+      this.deps.vaultContext !== undefined &&
+      this.deps.config.memory?.enabled !== false &&
+      this.deps.config.vault?.context !== 'off'
+    );
+  }
+
+  /** Prepare this task's vault context once, before the first turn. A source
+   *  that fails leaves the task without a pack, never without an answer. */
+  private async prepareVaultContext(task: string, signal: AbortSignal): Promise<void> {
+    if (!this.packEnabled) return;
+    try {
+      this.prepared = await this.deps.vaultContext!.prepare(task, signal);
+    } catch (err) {
+      log.warn('vault context unavailable for this task', { err: String(err) });
+    }
+  }
+
+  /**
+   * Render the pack for this turn's seat: its class's mode (`packModeFor`,
+   * Current State only until the eval, I9), its budget (a fraction of the
+   * served window, I2), and its network side, so a leaving seat gets no
+   * local-only note. The same seat reuses the same bytes; an escalation
+   * renders again. The card is emitted on the first render and again only
+   * when what the pack used changed (I10).
+   */
+  private renderPack(
+    caps: { contextTokens: number; supportsGrammar: boolean },
+    leaves: boolean,
+  ): void {
+    this.currentPack = undefined;
+    const prepared = this.prepared;
+    if (!prepared || !this.packEnabled) return;
+    // The class decides the mode even with harness profiles off, so the pack
+    // follows the same table on every seat.
+    const profile =
+      this.modelProfile ??
+      deriveProfile({
+        model: this.active.model,
+        kind: this.active.provider.kind,
+        caps: { contextTokens: caps.contextTokens, supportsGrammar: caps.supportsGrammar },
+      });
+    let mode = packModeFor(this.deps.config.vault?.context ?? 'auto', profile.modelClass);
+    if (!mode) return;
+    // Vault layers need a vault; without one the pack is Current State only.
+    const hasVault = Boolean(this.deps.toolContext.vaultRoot);
+    if (!hasVault) mode = 'current-state';
+    const budgetTokens = packBudgetTokens(profile, caps.contextTokens);
+    const secrets = Boolean(this.deps.projectSecrets?.trim());
+    const key = JSON.stringify([mode, budgetTokens, profile.modelClass, leaves]);
+    if (this.packCache?.key !== key) {
+      let pack: ContextPack | undefined;
+      try {
+        pack = buildContextPack({
+          mode,
+          index: hasVault ? prepared.index : null,
+          query: this.taskQuery,
+          currentState: prepared.currentState,
+          pins: prepared.pins,
+          handoff: prepared.handoff,
+          budgetTokens,
+          privacy: prepared.privacy,
+          seat: { modelClass: profile.modelClass, leavesNetwork: leaves },
+          // A secrets session runs under egress lockdown (gateProjectSecrets),
+          // so the two travel together here.
+          lockdown: { egress: secrets, secrets },
+          bodies: prepared.bodies,
+        });
+      } catch (err) {
+        log.warn('vault context pack failed to render', { err: String(err) });
+      }
+      this.packCache = { key, pack };
+    }
+    const pack = this.packCache.pack;
+    if (!pack) return;
+    if (pack.text) this.currentPack = pack;
+    if (!pack.text && !pack.withheld) return;
+    const seat = leaves ? 'cloud' : 'local';
+    const card = JSON.stringify([seat, pack.used, pack.withheld]);
+    if (card === this.packCardShown) return;
+    this.packCardShown = card;
+    this.emit({
+      type: 'context-pack',
+      seat,
+      mode,
+      tokens: pack.tokens,
+      budgetTokens,
+      sources: pack.used,
+      withheld: pack.withheld,
+      cold: pack.cold,
+    });
+  }
+
+  /** The code map cut to its class's share of the served window (I2), at a
+   *  line boundary. No profile, or a map that fits, is left whole. */
+  private fitCodeMap(codeMap: string): string {
+    const fraction = this.modelProfile?.codeMapContextFraction;
+    if (!fraction || !this.contextTokens) return codeMap;
+    const maxChars = Math.floor(this.contextTokens * fraction * 4);
+    if (codeMap.length <= maxChars) return codeMap;
+    const cut = codeMap.lastIndexOf('\n', maxChars);
+    return `${cut > 0 ? codeMap.slice(0, cut) : ''}\n(the map stops here to fit this model's window)`;
+  }
+
+  // -------------------------------------------------------------------------
+  // Current State kept current for lean seats (Vault M4, 4.7, CTO I12)
+  // -------------------------------------------------------------------------
+
+  /**
+   * After a change verifies on a lean seat, the harness records one dated
+   * line in the project's Current State itself (tenet 3), built from the
+   * files this task changed and the check that passed, never from model text.
+   * Only with Memory on and a memory folder, outside plan mode, once per
+   * task, and not when the seat already wrote Current State itself. Written
+   * directly, never through a tool call, so it cannot count as a write, rerun
+   * verify, or ask.
+   */
+  private maybeNoteLanded(): void {
+    if (this.landedNoted || !this.leanSeat || this.mode === 'plan') return;
+    if (this.seatWroteCurrentState || this.deps.config.memory?.enabled === false) return;
+    const { toolContext } = this.deps;
+    if (!memorySegment(toolContext.projectName, toolContext.cwd)) return;
+    const command = this.deps.config.harness?.verify?.command;
+    if (!command) return;
+    this.landedNoted = true;
+    const changed = this.changedFiles();
+    const what =
+      changed.length === 0
+        ? 'a change landed'
+        : changed.length === 1
+          ? `changed ${changed[0]}`
+          : `changed ${changed[0]} and ${changed.length - 1} more`;
+    const check = command.replace(/\s+/g, ' ').replace(/`/g, "'").trim().slice(0, 80);
+    const date = localDate(this.deps.now?.() ?? new Date());
+    const line = `- ${date}: ${what}, \`${check}\` passed ${HARNESS_LINE_MARK}`;
+    try {
+      const { written, path } = appendLandedLine(toolContext, line);
+      if (written) this.emit({ type: 'note', message: `Noted in ${path}: ${line.slice(2)}` });
+    } catch (err) {
+      log.warn('could not note the change in Current State', { err: String(err) });
+    }
+  }
+
+  /** The workspace files this task left changed, repo-relative and sorted:
+   *  every file a write touched whose content now differs from before, less
+   *  the memory notes themselves. */
+  private changedFiles(): string[] {
+    const { cwd } = this.deps.toolContext;
+    const out: string[] = [];
+    for (const [abs, original] of this.touched) {
+      const rel = relative(cwd, abs).split('\\').join('/');
+      if (isMemoryFilePath(rel)) continue;
+      let now: string | null;
+      try {
+        now = existsSync(abs) ? readFileSync(abs, 'utf8') : null;
+      } catch {
+        continue;
+      }
+      if (now !== original) out.push(rel);
+    }
+    return out.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  }
+
+  // -------------------------------------------------------------------------
   // The discipline seam (harness profiles)
   // -------------------------------------------------------------------------
 
@@ -532,9 +761,18 @@ export class AgentSession {
           'When you correct something the person told you twice, or learn a durable fact about how they work, propose one line for their standing instructions rather than silently adapting.',
         ];
     if (this.mode === 'plan') {
+      // The vault reads this seat is offered are plan-safe too, so the plan
+      // names them (Vault M4, 4.5); a note is often where the plan starts.
+      const vaultReads = [...offered].filter(
+        (name) =>
+          name.startsWith('vault') && PLAN_SAFE_RISKS.has(this.deps.tools.get(name)?.risk ?? ''),
+      );
+      const readable = `readFile, grep, glob, gitStatus, gitDiff, searchRepo, webSearch, webFetch, todoWrite${
+        vaultReads.length ? `, and the vault reads ${vaultReads.join(', ')}` : ''
+      }`;
       parts.push(
         [
-          'PLAN MODE. You may only read: readFile, grep, glob, gitStatus, gitDiff, searchRepo, webSearch, webFetch, todoWrite. Every editing, writing, and shell tool is unavailable until the person approves your plan.',
+          `PLAN MODE. You may only read: ${readable}. Every editing, writing, and shell tool is unavailable until the person approves your plan.`,
           'Investigate as much as you need, then answer with a plan: a short numbered list of the concrete changes you would make, each naming the files it touches, plus what you would verify and any risk. End with one question only if a decision is genuinely theirs.',
           'Do not start building. The person will say when.',
         ].join(' '),
@@ -550,9 +788,21 @@ export class AgentSession {
     // drops it is still pointed at the top sheet, never told to use the tool.
     // The Memory switch off (config memory.enabled, the app's override folded
     // in at bootstrap) leaves the whole block out.
+    // With the top sheet inlined by the context pack, the seat is told it
+    // already has it instead of being sent to readFile for it (CTO I8).
     const memorySeg = memorySegment(toolContext.projectName, toolContext.cwd);
-    if (memorySeg && offered.has('readFile') && this.deps.config.memory?.enabled !== false) {
-      parts.push(projectMemoryPrompt(memorySeg, { write: offered.has(PROJECT_MEMORY_WRITE_TOOL) }));
+    const inlined = this.currentPack?.used.some((s) => s.layer === 'current-state') ?? false;
+    if (
+      memorySeg &&
+      (offered.has('readFile') || inlined) &&
+      this.deps.config.memory?.enabled !== false
+    ) {
+      parts.push(
+        projectMemoryPrompt(memorySeg, {
+          write: offered.has(PROJECT_MEMORY_WRITE_TOOL),
+          inlined,
+        }),
+      );
     }
     // Project secrets, present only for a local orchestrator (bootstrap drops
     // them for a cloud one). They ride in so the model can use the project's
@@ -602,8 +852,12 @@ export class AgentSession {
       parts.push(chainOfThoughtPrompt());
     }
     if (codeMap) {
-      parts.push(`Repository map (files and symbols):\n${codeMap}`);
+      parts.push(`Repository map (files and symbols):\n${this.fitCodeMap(codeMap)}`);
     }
+    // The vault context pack, after the code map and before the tool protocol:
+    // stable to volatile, so the multi-KB standards above keep their KV reuse
+    // across tasks, and the protocol keeps its recency for a small seat (I8).
+    if (this.currentPack) parts.push(this.currentPack.text);
     if (toolMode === 'text') {
       parts.push(textProtocolInstructions(this.deps.tools));
     }
@@ -632,6 +886,14 @@ export class AgentSession {
     this.touched.clear();
     this.attempt = 1;
     this.transientRetries = 0;
+    this.vaultWroteThisTask = false;
+    this.seatWroteCurrentState = false;
+    this.landedNoted = false;
+    this.prepared = undefined;
+    this.packCache = undefined;
+    this.currentPack = undefined;
+    this.packCardShown = undefined;
+    this.taskQuery = input;
     this.abortController = new AbortController();
     // Tools see the task's signal, so Stop reaches a delegated generation or
     // a long fetch as well as the orchestrator's own stream (DAE-4).
@@ -654,6 +916,7 @@ export class AgentSession {
       : modelText;
     this.taskMessage = { role: 'user', content };
     this.history.push(this.taskMessage);
+    await this.prepareVaultContext(input, this.abortController.signal);
 
     let parseFailStreak = 0;
     let repairAttempts = 0;
@@ -689,6 +952,10 @@ export class AgentSession {
       }
 
       turn += 1;
+      // Whether this turn's seat sends its requests off this network (judged
+      // by address). A leaving turn never sees a local-only note's text: the
+      // pack withholds it and the history it is sent carries a stub (CTO I5).
+      const leaves = leavesThisNetwork(this.active.provider);
       const caps = await this.active.provider.capabilities(this.active.model);
       this.contextTokens = caps.contextTokens;
       const toolMode: 'native' | 'text' =
@@ -700,6 +967,7 @@ export class AgentSession {
       // moves to the large class, which gets the full prompt back).
       this.modelProfile = this.deriveModelProfile(caps);
       this.announceLeanSeat();
+      this.renderPack(caps, leaves);
 
       // Refresh the system prompt each turn (tool mode and model can change).
       // An answer-only turn carries no tools and no text protocol, so the
@@ -712,8 +980,14 @@ export class AgentSession {
       // Compaction keeps small local windows honest. Mid-task, the summary
       // rides the task's signal so Stop cancels it too; the idle paths
       // (compactNow, generateTitle) deliberately pass none (ENG-7).
-      const compacted = await compactHistory(this.history, caps.contextTokens, (text) =>
-        this.summarize(text, this.abortController?.signal),
+      // The class sets how full the window gets before this runs (I2). On a
+      // leaving seat the summary itself is a request off this network, so it
+      // is built from the stubbed history, never from a local-only note.
+      const compacted = await compactHistory(
+        leaves ? withholdLocalOnly(this.history) : this.history,
+        caps.contextTokens,
+        (text) => this.summarize(text, this.abortController?.signal),
+        this.modelProfile?.compactAtContextFraction,
       );
       if (compacted.compacted) {
         this.history = compacted.messages;
@@ -756,7 +1030,7 @@ export class AgentSession {
         const stream = this.active.provider.chat(
           {
             model: this.active.model,
-            messages: this.history,
+            messages: leaves ? withholdLocalOnly(this.history) : this.history,
             tools: toolMode === 'native' && !this.answerOnly ? this.toolSpecs() : undefined,
             temperature: this.active.adapter.temperature(),
             maxTokens: 8192,
@@ -931,6 +1205,7 @@ export class AgentSession {
           this.leanSeat &&
           this.mode !== 'plan' &&
           !this.wroteThisTask &&
+          !this.vaultWroteThisTask &&
           !this.noWriteNudged &&
           !this.answerOnly &&
           (hasCode || this.attemptedWriteThisTask)
@@ -964,6 +1239,7 @@ export class AgentSession {
           verifyRounds = 0;
           continue;
         }
+        if (verdict === 'passed') this.maybeNoteLanded();
         await this.maybeJevJudge(verdict);
         this.emit({ type: 'task-done', reason: 'complete' });
         return;
@@ -1121,12 +1397,15 @@ export class AgentSession {
     // vaultWrite does: a picked vault can sit inside a project, and the coding
     // tools must not edit its notes quietly (review M1-4). Judged by the
     // jailed absolute path against the vault root, symlinks resolved.
-    const alwaysAsk =
-      tool.alwaysAsk === true ||
-      (tool.risk === 'write' &&
-        tool.pathJail !== 'own' &&
-        rawPath !== undefined &&
-        insideVault(toolContext.jail.resolve(rawPath), toolContext.vaultRoot));
+    const writesInsideVault =
+      tool.risk === 'write' &&
+      tool.pathJail !== 'own' &&
+      rawPath !== undefined &&
+      insideVault(toolContext.jail.resolve(rawPath), toolContext.vaultRoot);
+    const alwaysAsk = tool.alwaysAsk === true || writesInsideVault;
+    // A write to a note (vaultWrite, or a file tool aimed inside the vault) is
+    // not a code change: it never counts toward verify or the Jev judge (4.5).
+    const writesVault = tool.risk === 'write' && (tool.pathJail === 'own' || writesInsideVault);
     const command = tool.commandOf?.(call.args);
     let decision = permissions.decide({
       toolName: call.name,
@@ -1240,7 +1519,7 @@ export class AgentSession {
       }
     }
 
-    if (tool.risk === 'write') {
+    if (tool.risk === 'write' && !writesVault) {
       this.attemptedWriteThisTask = true;
       if (rawPath !== undefined && tool.pathJail !== 'own') this.recordOriginal(rawPath);
     }
@@ -1263,7 +1542,15 @@ export class AgentSession {
     // there is something to verify. Any successful call that is not a read may
     // have changed the workspace (a write, a shell command), so a repeat of an
     // earlier call after it is a fresh question, not a stale one.
-    if (result.ok && tool.risk === 'write') this.wroteThisTask = true;
+    if (result.ok && writesVault) this.vaultWroteThisTask = true;
+    else if (result.ok && tool.risk === 'write') this.wroteThisTask = true;
+    if (
+      result.ok &&
+      call.name === PROJECT_MEMORY_WRITE_TOOL &&
+      call.args.file === CURRENT_STATE_FILE
+    ) {
+      this.seatWroteCurrentState = true;
+    }
     if (result.ok && tool.risk !== 'read' && tool.risk !== 'network') {
       this.lastChangeStep = this.callStep;
     }
@@ -1273,7 +1560,7 @@ export class AgentSession {
       this.emit({ type: 'todos', items: this.todos });
     }
     if (result.citations?.length) this.emit({ type: 'citations', citations: result.citations });
-    this.pushObservation(call, redactSecrets(result.content), toolMode);
+    this.pushObservation(call, redactSecrets(result.content), toolMode, result.localOnly);
     return result.ok ? 'ok' : 'failed';
   }
 
@@ -1399,15 +1686,20 @@ export class AgentSession {
     return count >= 3 ? 'answer-only' : 'stale';
   }
 
+  /** Record a tool's observation. `localOnly` (a local-only vault note's
+   *  text) rides onto the message, so a later leaving turn sends a stub in
+   *  its place while the kept history holds the note (CTO I5). */
   private pushObservation(
     call: ParsedToolCall,
     content: string,
     toolMode: 'native' | 'text',
+    localOnly?: boolean,
   ): void {
+    const mark = localOnly ? { localOnly: true as const } : {};
     if (toolMode === 'native') {
-      this.history.push({ role: 'tool', content, toolCallId: call.id, name: call.name });
+      this.history.push({ role: 'tool', content, toolCallId: call.id, name: call.name, ...mark });
     } else {
-      this.history.push({ role: 'user', content: `[${call.name} result]\n${content}` });
+      this.history.push({ role: 'user', content: `[${call.name} result]\n${content}`, ...mark });
     }
   }
 
@@ -1552,7 +1844,7 @@ export class AgentSession {
    *  is simply not offered; the registry still executes it if a call arrives, so
    *  nothing breaks, the model just sees a shorter, cheaper menu. */
   private toolSpecs(): ToolSpec[] {
-    let specs = this.deps.tools.specs();
+    let specs = this.vaultMenu(this.deps.tools.specs());
     if (this.mode === 'plan') {
       specs = specs.filter((spec) => {
         const tool = this.deps.tools.get(spec.name);
@@ -1568,7 +1860,21 @@ export class AgentSession {
    *  tells the model the write tools wait for an approved plan. */
   private offeredToolNames(toolMode: 'native' | 'text'): Set<string> {
     const specs = this.deps.tools.specs();
-    return new Set((toolMode === 'text' ? specs : this.limitToolSpecs(specs)).map((s) => s.name));
+    return new Set(
+      (toolMode === 'text' ? specs : this.limitToolSpecs(this.vaultMenu(specs))).map((s) => s.name),
+    );
+  }
+
+  /** One way into the vault per seat (CTO I11): a class with
+   *  `mergedVaultTool` sees the merged vault read and not the separate reads,
+   *  any other seat the separate reads and not the merged one. With no merged
+   *  tool registered the menu is left as it is. */
+  private vaultMenu(specs: ToolSpec[]): ToolSpec[] {
+    if (!specs.some((s) => s.name === MERGED_VAULT_TOOL)) return specs;
+    const merged = this.modelProfile?.mergedVaultTool ?? false;
+    return specs.filter((s) =>
+      merged ? !SEPARATE_VAULT_READS.has(s.name) : s.name !== MERGED_VAULT_TOOL,
+    );
   }
 
   /** Keep at most `maxToolsShown` specs for the active profile, most useful

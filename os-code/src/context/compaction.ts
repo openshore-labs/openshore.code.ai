@@ -56,14 +56,17 @@ export interface CompactionResult {
 /**
  * Bring the transcript under budget. `summarize` runs the model; when it
  * fails (offline, mid-restart) the fallback is dropping oldest turns with a
- * marker, which is honest and cheap.
+ * marker, which is honest and cheap. `fraction` is the share of the window the
+ * history may fill before it is compacted: the seat's class sets it
+ * (`compactAtContextFraction`, CTO I2), 0.7 when no class is known.
  */
 export async function compactHistory(
   messages: ChatMessage[],
   contextTokens: number,
   summarize: (text: string) => Promise<string>,
+  fraction = 0.7,
 ): Promise<CompactionResult> {
-  const budget = Math.floor(contextTokens * 0.7);
+  const budget = Math.floor(contextTokens * fraction);
   if (estimateMessages(messages) <= budget) return { messages, compacted: false };
 
   let out = trimOldObservations(messages);

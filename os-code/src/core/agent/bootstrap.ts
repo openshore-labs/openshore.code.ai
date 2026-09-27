@@ -33,6 +33,7 @@ import { nextActionFor } from '../ethics/classify.js';
 import { configureStreamIdle } from '../../providers/streamIdle.js';
 import type { AgentEvent, PermissionMode } from './types.js';
 import type { CurrentsHandles, HarnessCurrentsHandle } from '../../currents/model.js';
+import type { VaultContextSource } from '../../harness/vaultContext.js';
 import { logger } from '../../util/log.js';
 
 const log = logger('bootstrap');
@@ -114,6 +115,13 @@ export interface BootstrapOptions {
    *  has a root of their own. (The daemon also keeps a member's workspace off
    *  the vault, so the file tools cannot reach it.) Undefined means on. */
   vault?: boolean;
+  /** Where this session's vault context pack comes from (Vault M4, CTO I7,
+   *  I8): the engine's source prepares Current State, the index and the
+   *  planned note bodies once per task, and the loop renders the pack per
+   *  turn for the seat that answers. Undefined leaves the pack out. The loop
+   *  also leaves it out with Memory off (the switch folded in above) or
+   *  `vault.context: 'off'`, so a caller need not gate it. */
+  vaultContext?: VaultContextSource;
 }
 
 export interface BootstrapResult {
@@ -348,6 +356,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     // egress lockdown exactly like cloud escalation and the currents tools.
     harnessCurrents: egressLockdown ? undefined : options.harnessCurrents,
     permissionMode: options.permissionMode,
+    vaultContext: options.vaultContext,
     persistRule: (rule) => {
       try {
         addProjectPermissionRule(options.cwd, rule);
