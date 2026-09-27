@@ -1364,6 +1364,289 @@ export function vaultMentionsOnDemand(n: number): { hint: string; button: string
 // Update links and the partial report, delete, Undo, the Trash view, a refused
 // tick (CX X5 to X10, X13; CTO R1 to R3).
 
+/** How a folder reads in a line: "Work / Plans", or nothing at the root. */
+export function vaultFolderLabel(folder: string): string {
+  return folder.split('/').filter(Boolean).join(' / ');
+}
+
+/** "1 note" or "12 notes", and the same for links and other files. */
+function count(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+/** A note count with its attachments, the way every folder sheet states it
+ *  before it acts (CTO K5): "12 notes and 3 other files". */
+export function vaultNotesAndFiles(notes: number, files: number): string {
+  return files ? `${count(notes, 'note')} and ${count(files, 'other file')}` : count(notes, 'note');
+}
+
+// Rename or move (6.2, CX X5).
+export const VAULT_RENAME_ROW = 'Rename or move';
+export const VAULT_RENAME_TITLE = 'Rename or move';
+export const VAULT_RENAME_NAME = 'Name';
+export const VAULT_RENAME_FOLDER = 'Folder';
+export const VAULT_RENAME_ROOT = 'Top of the vault';
+export const VAULT_RENAME_HERE = 'Here now';
+export const VAULT_RENAME_SAVE = 'Rename';
+export const VAULT_RENAME_MOVE = 'Move here';
+export const VAULT_RENAME_BAD_CHARS = 'Note names cannot use [ ] # ^ | \\ : * ? " < or >.';
+
+/** The name is taken where it would go (X5). */
+export function vaultRenameTaken(name: string, folder: string): string {
+  const where = folder ? vaultFolderLabel(folder) : 'your vault';
+  return `"${name}" is already in ${where}. Pick another name.`;
+}
+
+/** The rename itself failed, so nothing changed (X5). */
+export function vaultRenameFailed(old: string): string {
+  return `Could not rename "${old}", so nothing changed. Try again in a moment.`;
+}
+
+/** The note changed somewhere else before the rename ran. */
+export function vaultRenameChanged(old: string): string {
+  return `"${old}" changed somewhere else, so it was not renamed. The newer version is open now.`;
+}
+
+/** The note is open with a choice waiting (R1: never renamed under it). */
+export const VAULT_RENAME_CHOICE_OPEN = 'Choose what to keep in this note first, then rename it.';
+
+// "Update links?" (X6).
+export interface VaultUpdateLinksCopy {
+  title: string;
+  sub: string;
+  primary: string;
+  quiet: string;
+  quietSub: string;
+}
+
+export function vaultUpdateLinksCopy(o: {
+  kind: 'note' | 'folder';
+  old: string;
+  next: string;
+  links: number;
+  notes: number;
+  /** Notes moving with a folder. */
+  moving?: number;
+}): VaultUpdateLinksCopy {
+  const links = count(o.links, 'link');
+  const inNotes = count(o.notes, 'note');
+  const sub =
+    o.kind === 'folder'
+      ? `${count(o.moving ?? 0, 'note')} move to "${o.next}", and ${links} in ${inNotes} point into it. Update them?`
+      : `${links} in ${inNotes} ${o.links === 1 ? 'points' : 'point'} to "${o.old}". Update ${o.links === 1 ? 'it' : 'them'} to "${o.next}"?`;
+  return {
+    title: 'Update links?',
+    sub,
+    primary: 'Update links',
+    quiet: 'Rename only',
+    quietSub: `Links to "${o.old}" will not open "${o.next}" until you change them.`,
+  };
+}
+
+/** While a long pass runs (over 20 notes). */
+export function vaultUpdatingLinks(i: number, m: number): string {
+  return `Updating links, ${i} of ${m}`;
+}
+
+/** A pass over this many notes shows its progress on the primary (X6). */
+export const VAULT_UPDATING_SHOWN_OVER = 20;
+
+/** The toast after a rename or move lands (X6, X7). A skipped note is named,
+ *  and a partial pass never reads as a plain success. */
+export function vaultRenameToast(o: {
+  old: string;
+  next: string;
+  /** Undefined for Rename only. */
+  rewrite?: {
+    updated: number;
+    total: number;
+    skipped: readonly string[];
+    notUpdated: readonly string[];
+    stopped: boolean;
+  };
+}): string {
+  const head = `Renamed to "${o.next}".`;
+  const r = o.rewrite;
+  if (!r) return head;
+  if (r.stopped && r.updated === 0) {
+    return `Renamed to "${o.next}", but its links could not be updated. Update the rest tries again.`;
+  }
+  const left = [...r.skipped, ...r.notUpdated];
+  if (!left.length) return `${head} ${count(r.updated, 'link')} updated.`;
+  if (left.length === 1 && !r.notUpdated.length) {
+    return `${head} "${left[0]}" changed while this ran, so its link still points to "${o.old}".`;
+  }
+  if (r.stopped) {
+    return `${head} ${r.updated} of ${count(r.total, 'link')} updated. ${count(left.length, 'note')} could not be reached, so their links still point to "${o.old}".`;
+  }
+  return `${head} ${r.updated} of ${count(r.total, 'link')} updated. ${count(left.length, 'note')} changed while this ran, so their links still point to "${o.old}".`;
+}
+
+/** The standing card on the renamed note, since toasts fade (X7). */
+export function vaultLinksLeftCard(old: string): { title: string; button: string } {
+  return { title: `Some links still point to "${old}"`, button: 'Update the rest' };
+}
+
+// Folders (X5, X8).
+export const VAULT_FOLDER_OPTIONS = 'Folder options';
+export const VAULT_FOLDER_RENAME = 'Rename folder';
+export const VAULT_FOLDER_MOVE = 'Move folder';
+export const VAULT_FOLDER_DELETE = 'Delete folder';
+export const VAULT_FOLDER_NEW = 'New folder';
+export const VAULT_FOLDER_NAME = 'Folder name';
+export const VAULT_FOLDER_CREATE = 'Create folder';
+export const VAULT_FOLDER_BAD_NAME = 'Folder names cannot use [ ] # ^ | \\ : * ? " < or >.';
+
+/** The folder options button's label (X18). */
+export function vaultFolderOptionsLabel(folder: string): string {
+  return `Options for ${vaultFolderLabel(folder)}`;
+}
+
+/** The folder name is taken. */
+export function vaultFolderTaken(name: string): string {
+  return `A folder named "${name}" is already here. Pick another name.`;
+}
+
+/** The armed second tap on Delete folder (X8). */
+export function vaultFolderDeleteArmed(notes: number, files: number): string {
+  return `Really move ${vaultNotesAndFiles(notes, files)} to Trash? Tap to confirm.`;
+}
+
+/** What a folder holds, said before anything acts on it (K5). */
+export function vaultFolderHolds(notes: number, files: number): string {
+  return `This folder holds ${vaultNotesAndFiles(notes, files)}.`;
+}
+
+// Delete (6.3, X8 with R2). One tap where Trash is real; two taps, worded as
+// permanent, everywhere else.
+export const VAULT_DELETE_ROW = 'Delete this note';
+
+/** The armed second tap where a delete is for good (R2). */
+export function vaultDeleteForGood(title?: string): string {
+  return title
+    ? `Really delete "${title}" for good? Tap to confirm.`
+    : 'Really delete this note for good? Tap to confirm.';
+}
+
+/** A trash move that did not happen (X8). */
+export function vaultTrashFailed(title: string): string {
+  return `Not deleted. Could not move "${title}" to Trash. Try again in a moment.`;
+}
+
+// Undo (X9).
+export const VAULT_UNDO = 'Undo';
+export const VAULT_UNDO_ALSO_IN_TRASH = 'Also in Trash.';
+/** A delete with no Trash behind it (K6, R2). */
+export const VAULT_DELETED = 'Deleted.';
+
+/** The Undo toast's text. */
+export function vaultUndoText(o: { trashed: boolean; folder: boolean; notes: number }): string {
+  if (!o.trashed) return VAULT_DELETED;
+  return o.folder ? `Moved ${count(o.notes, 'note')} to Trash.` : 'Moved to Trash.';
+}
+
+/** The Undo button's accessible label (X9). */
+export function vaultUndoLabel(title: string): string {
+  return `Undo, restore ${title}`;
+}
+
+/** Undo or Restore landed (X9, X10). `folder` names where it went back to;
+ *  `renamed` is the "(restored)" beside rule (R3). */
+export function vaultRestoredToast(o: {
+  title: string;
+  folder?: string;
+  renamed?: boolean;
+  /** The Trash view names the folder; Undo does not need to. */
+  sayFolder?: boolean;
+}): string {
+  const where = o.folder ? vaultFolderLabel(o.folder) : 'your vault';
+  if (o.renamed) {
+    return `"${o.title}" was already in ${where}, so the restored one is "${o.title} (restored)".`;
+  }
+  return o.sayFolder ? `Restored "${o.title}" to ${where}.` : `Restored "${o.title}".`;
+}
+
+/** Undo or Restore could not put it back. */
+export function vaultRestoreFailed(title: string): string {
+  return `Could not restore "${title}". It is still in Trash. Try again in a moment.`;
+}
+
+/** The courtesy Undo (no Trash) found the name taken twice. */
+export function vaultUndoFailed(title: string): string {
+  return `Could not bring back "${title}", since its name is taken. Try again in a moment.`;
+}
+
+// The Trash view (X10, R3).
+export const VAULT_TRASH = 'Trash';
+export const VAULT_TRASH_BACK = 'Vault';
+export const VAULT_TRASH_RESTORE = 'Restore';
+export const VAULT_TRASH_EMPTY = 'Empty Trash';
+export const VAULT_TRASH_IS_EMPTY = 'Trash is empty.';
+export const VAULT_TRASH_TEAM_LINE = "Team notes are kept in your organization's history.";
+
+/** The lead line, per kind of storage (X10; never "stay in the vault"). */
+export function vaultTrashLead(kind: 'folder' | 'local' | 'team'): string {
+  if (kind === 'folder') {
+    return 'Deleted notes wait here, in the .trash folder, until you empty it.';
+  }
+  if (kind === 'team') return 'Deleted team notes can be restored from here.';
+  return 'Deleted notes wait here until you empty Trash.';
+}
+
+/** When a note was deleted, in the `vaultResolveWhen` style: "today at 2:14
+ *  PM", else "Sep 27". Undefined when the storage does not say. */
+export function vaultTrashWhen(
+  trashedAt: string | undefined,
+  now = Date.now(),
+): string | undefined {
+  if (!trashedAt) return undefined;
+  const t = new Date(trashedAt);
+  if (Number.isNaN(t.getTime())) return undefined;
+  if (new Date(now).toDateString() === t.toDateString()) {
+    return `today at ${t.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+  }
+  return t.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+/** A Trash row's sub-label: "From Work / Plans · Deleted today at 2:14 PM",
+ *  plus " · by {name}" on a team row. */
+export function vaultTrashRowSub(o: { folder: string; when?: string; by?: string }): string {
+  const parts = [`From ${o.folder ? vaultFolderLabel(o.folder) : 'the top of the vault'}`];
+  if (o.when) parts.push(`Deleted ${o.when}`);
+  if (o.by) parts.push(`by ${o.by}`);
+  return parts.join(' · ');
+}
+
+/** The Restore button's accessible label. */
+export function vaultTrashRestoreLabel(title: string): string {
+  return `Restore ${title}`;
+}
+
+/** The armed second tap on Empty Trash (X10). */
+export function vaultTrashEmptyArmed(n: number): string {
+  return `Really delete ${count(n, 'note')} for good? Tap to confirm.`;
+}
+
+/** Empty Trash landed, whole or in part (X10). */
+export function vaultTrashEmptied(removed: number, asked: number): string {
+  if (removed >= asked) return `Trash emptied. ${count(removed, 'note')} deleted for good.`;
+  const stayed = asked - removed;
+  return `${count(removed, 'note')} deleted for good. ${stayed} could not be removed and ${stayed === 1 ? 'is' : 'are'} still in Trash.`;
+}
+
+/** Empty Trash did not run. */
+export const VAULT_TRASH_EMPTY_FAILED =
+  'Could not empty Trash, so nothing was deleted. Try again in a moment.';
+
+/** Trash could not be read. */
+export const VAULT_TRASH_LIST_FAILED = 'Could not open Trash. Try again in a moment.';
+
+// A refused tick (X13).
+export function vaultTickChanged(title: string): string {
+  return `"${title}" changed somewhere else, so that box was not ticked. The newer version is open now.`;
+}
+export const VAULT_TICK_FAILED = 'Could not save that tick. Try again.';
+
 // ---- M6 stream G end ----
 
 // ---- M6 stream H begin ----
