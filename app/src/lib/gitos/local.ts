@@ -6,8 +6,18 @@
 //
 // Layout in the store:
 //   oscode.gitos.index.<resourceId>            -> { files: StoredFileMeta[] }
-//   oscode.gitos.file.<resourceId>.<path>      -> { text, updatedAt }
+//   oscode.gitos.file.<resourceId>.<path>      -> { text, updatedAt, v? }
 //   oscode.gitos.lease.<resourceId>            -> Lease
+//
+// Compare-and-swap (Vault M2 2.1, CTO G1). A note's version is `v`, a random
+// token made fresh on every write and kept in the body. It is compared with
+// === only. Not updatedAt, since two writes can land in one millisecond; not
+// a counter, since a delete and a re-create would start it over and an old
+// draft would match a different note. A body written before M2 has no `v`,
+// and its version is its updatedAt, exactly what versionOf answered in M1, so
+// every draft stashed or open then stays valid. The body is the truth; the
+// index is a list hint, written after the body, so it can never claim a
+// version the body does not have.
 import { storeDelete, storeGetJson, storeKeys, storeSetJson } from '../platform.js';
 import {
   isNotePath,
@@ -15,6 +25,7 @@ import {
   type RemoveGuard,
   type RemoveResult,
   type StorageProvider,
+  type StoredFile,
   type StoredFileMeta,
   type WriteGuard,
   type WriteResult,
@@ -36,11 +47,43 @@ async function readIndex(resourceId: string): Promise<IndexDoc> {
 interface Body {
   text: string;
   updatedAt: string;
+  /** The version token; absent on a body written before M2. */
+  v?: string;
+}
+
+/** A body's version: its token, or its updatedAt when written before M2. */
+const verOf = (b: Body): string => b.v ?? b.updatedAt;
+
+/** Body size in bytes, as the seam says, not UTF-16 code units. */
+const byteSize = (text: string): number => new TextEncoder().encode(text).length;
+
+/** A fresh version token. The fallback keeps it random where randomUUID is
+ *  missing (an insecure context), never a clock or a counter. */
+function newVersion(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return [...crypto.getRandomValues(new Uint8Array(16))]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 async function readBody(resourceId: string, path: string): Promise<Body | undefined> {
-  return storeGetJson<Body>(fileKey(resourceId, path));
+  const body = await storeGetJson<Body>(fileKey(resourceId, path));
+  return typeof body?.text === 'string' ? body : undefined;
 }
+
+const metaOf = (path: string, b: Body): StoredFileMeta => ({
+  path,
+  updatedAt: b.updatedAt,
+  size: byteSize(b.text),
+  version: verOf(b),
+});
+
+const fileOf = (path: string, b: Body): StoredFile => ({
+  path,
+  text: b.text,
+  updatedAt: b.updatedAt,
+  version: verOf(b),
+});
 
 const byPath = (files: StoredFileMeta[]) => files.sort((a, b) => a.path.localeCompare(b.path));
 
@@ -88,7 +131,7 @@ async function recoveredIndex(resourceId: string): Promise<IndexDoc> {
     if (known.has(path) || !isNotePath(path)) continue;
     const body = await storeGetJson<Body>(key).catch(() => undefined);
     if (typeof body?.text !== 'string') continue;
-    orphans.push({ path, updatedAt: body.updatedAt, size: body.text.length });
+    orphans.push(metaOf(path, body));
   }
   if (!orphans.length) return index;
   const files = byPath([...index.files, ...orphans]);
@@ -105,6 +148,7 @@ export const localProvider: StorageProvider = {
   label: 'This device',
   blurb: 'Stored here, sealed at rest. Private by construction.',
   ready: true,
+  compareAndSwap: true,
 
   async list(resourceId) {
     const { files } = await chained(resourceId, () => recoveredIndex(resourceId));
@@ -119,34 +163,65 @@ export const localProvider: StorageProvider = {
   // store cannot make it throw.
   async stat(resourceId, path) {
     const body = await readBody(resourceId, path);
-    return typeof body?.text === 'string'
-      ? { path, updatedAt: body.updatedAt, size: body.text.length }
-      : undefined;
+    return body ? metaOf(path, body) : undefined;
   },
 
   async read(resourceId, path) {
     const body = await readBody(resourceId, path);
-    return body ? { path, text: body.text, updatedAt: body.updatedAt } : undefined;
+    return body ? fileOf(path, body) : undefined;
   },
 
-  // The guard is accepted and not yet enforced (Vault M1 F4; M2 adds the
-  // check), so this provider does not declare compareAndSwap.
-  async write(resourceId, path, text, _guard?: WriteGuard): Promise<WriteResult> {
+  // The guard is checked against the BODY, inside the per-resource chain, so
+  // nothing can land between the check and the write: Electron holds a single
+  // instance lock and Capacitor runs one WebView, so this chain really does
+  // serialize every writer. Body first, then the index entry. A crash between
+  // the two leaves a stale list version, and the recheck corrects it because
+  // it reads the body through stat.
+  async write(resourceId, path, text, guard?: WriteGuard): Promise<WriteResult> {
     return chained(resourceId, async () => {
-      const updatedAt = new Date().toISOString();
-      await storeSetJson(fileKey(resourceId, path), { text, updatedAt });
+      if (guard) {
+        const current = await readBody(resourceId, path);
+        if ('ifAbsent' in guard) {
+          if (current) {
+            return {
+              ok: false as const,
+              conflict: 'exists' as const,
+              theirs: fileOf(path, current),
+            };
+          }
+        } else if (!current) {
+          return { ok: false as const, conflict: 'missing' as const };
+        } else if (verOf(current) !== guard.ifMatch) {
+          return {
+            ok: false as const,
+            conflict: 'changed' as const,
+            theirs: fileOf(path, current),
+          };
+        }
+      }
+      const body: Body = { text, updatedAt: new Date().toISOString(), v: newVersion() };
+      await storeSetJson(fileKey(resourceId, path), body);
       const index = await readIndex(resourceId);
-      const meta: StoredFileMeta = { path, updatedAt, size: text.length };
-      const files = byPath([...index.files.filter((f) => f.path !== path), meta]);
+      const files = byPath([...index.files.filter((f) => f.path !== path), metaOf(path, body)]);
       await storeSetJson(indexKey(resourceId), { files });
-      return { ok: true as const, file: { path, text, updatedAt } };
+      return { ok: true as const, file: fileOf(path, body) };
     });
   },
 
-  // The guard is accepted and not yet enforced (M2 2.1 adds the check, CTO
-  // G1), so a stale remove still removes here.
-  async remove(resourceId, path, _guard?: RemoveGuard): Promise<RemoveResult> {
+  // Same chain and order as write: read the body, compare, delete the body,
+  // then fix the index. A note already gone is ok; the person wanted it gone.
+  async remove(resourceId, path, guard?: RemoveGuard): Promise<RemoveResult> {
     return chained(resourceId, async () => {
+      if (guard) {
+        const current = await readBody(resourceId, path);
+        if (current && verOf(current) !== guard.ifMatch) {
+          return {
+            ok: false as const,
+            conflict: 'changed' as const,
+            theirs: fileOf(path, current),
+          };
+        }
+      }
       await storeDelete(fileKey(resourceId, path));
       const index = await readIndex(resourceId);
       await storeSetJson(indexKey(resourceId), {

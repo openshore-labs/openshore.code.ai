@@ -5,7 +5,7 @@
 // the other's entry: the note's bytes stay, but it never lists again. These
 // cases pin the chain that orders every index mutation per resource, the
 // key-prefix scan that lists an orphaned body again, and the note filter.
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 const secure = new Map<string, string>();
 const fakeBridge = {
@@ -124,6 +124,7 @@ describe('Local provider rebuilds orphaned notes (0.8)', () => {
       path: 'ideas/Lost.md',
       updatedAt: '2026-09-01T00:00:00.000Z',
       size: 'still here'.length,
+      version: '2026-09-01T00:00:00.000Z',
     });
     // The rebuild is written back, so the entry holds without another scan.
     const index = await platform.storeGetJson<{ files: Array<{ path: string }> }>(
@@ -226,6 +227,155 @@ describe('a dot-typed note name never truncates the note (0.2, 0.6)', () => {
     });
     expect(await localProvider.stat(r, '.env notes.md')).toMatchObject({ size: 6 });
     expect(await listed(r)).toEqual([]);
+  });
+});
+
+// Compare-and-swap on Local (Vault M2 2.1, CTO G1). The version is a random
+// token made fresh on every write and stored in the body; a body written
+// before M2 has none, and its version is its updatedAt, which is what
+// versionOf answered in M1, so a draft stashed then still replays.
+describe('Local provider compare-and-swap (M2 2.1)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const versionOfWrite = (r: Awaited<ReturnType<typeof localProvider.write>>) =>
+    r.ok ? r.file.version : undefined;
+
+  it('declares compareAndSwap', () => {
+    expect(localProvider.compareAndSwap).toBe(true);
+  });
+
+  it('two writes in the same millisecond get different versions', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-27T12:00:00.000Z'));
+    const r = 'vault.samems';
+    const a = await localProvider.write(r, 'n.md', 'one');
+    const b = await localProvider.write(r, 'n.md', 'two');
+    expect(a.ok && b.ok && a.file.updatedAt === b.file.updatedAt).toBe(true);
+    expect(versionOfWrite(a)).toBeTruthy();
+    expect(versionOfWrite(a)).not.toBe(versionOfWrite(b));
+    // The first version is stale now: a draft typed against it conflicts.
+    const stale = await localProvider.write(r, 'n.md', 'mine', { ifMatch: versionOfWrite(a)! });
+    expect(stale).toMatchObject({ ok: false, conflict: 'changed', theirs: { text: 'two' } });
+    expect((await localProvider.read(r, 'n.md'))?.text).toBe('two');
+  });
+
+  it('a delete and re-create never matches the old version', async () => {
+    const r = 'vault.aba';
+    const first = await localProvider.write(r, 'n.md', 'first', { ifAbsent: true });
+    const old = versionOfWrite(first)!;
+    expect(await localProvider.remove(r, 'n.md', { ifMatch: old })).toEqual({ ok: true });
+    const again = await localProvider.write(r, 'n.md', 'second', { ifAbsent: true });
+    expect(again.ok).toBe(true);
+    expect(versionOfWrite(again)).not.toBe(old);
+    const stale = await localProvider.write(r, 'n.md', 'typed against first', { ifMatch: old });
+    expect(stale).toMatchObject({ ok: false, conflict: 'changed', theirs: { text: 'second' } });
+    expect(await localProvider.remove(r, 'n.md', { ifMatch: old })).toMatchObject({
+      ok: false,
+      conflict: 'changed',
+    });
+    expect((await localProvider.read(r, 'n.md'))?.text).toBe('second');
+  });
+
+  it('a pre-M2 body (no v) accepts ifMatch: updatedAt, and the write mints a token', async () => {
+    const r = 'vault.prem2';
+    const updatedAt = '2026-09-01T00:00:00.000Z';
+    await platform.storeSetJson(`oscode.gitos.file.${r}.Old.md`, { text: 'old', updatedAt });
+    await platform.storeSetJson(`oscode.gitos.index.${r}`, {
+      files: [{ path: 'Old.md', updatedAt, size: 3 }],
+    });
+    expect((await localProvider.read(r, 'Old.md'))?.version).toBe(updatedAt);
+    expect((await localProvider.stat(r, 'Old.md'))?.version).toBe(updatedAt);
+    const w = await localProvider.write(r, 'Old.md', 'new', { ifMatch: updatedAt });
+    expect(w.ok).toBe(true);
+    expect(versionOfWrite(w)).not.toBe(updatedAt);
+    expect((await localProvider.read(r, 'Old.md'))?.text).toBe('new');
+    // The old base is spent once the note is written again.
+    expect(await localProvider.write(r, 'Old.md', 'x', { ifMatch: updatedAt })).toMatchObject({
+      ok: false,
+      conflict: 'changed',
+    });
+  });
+
+  it('20 concurrent guarded creates to 20 paths all list', async () => {
+    const r = 'vault.guardedcreates';
+    const paths = Array.from({ length: 20 }, (_, i) => `Note ${String(i).padStart(2, '0')}.md`);
+    const results = await Promise.all(
+      paths.map((p) => localProvider.write(r, p, `body of ${p}`, { ifAbsent: true })),
+    );
+    expect(results.every((x) => x.ok)).toBe(true);
+    expect(await listed(r)).toEqual(paths);
+    const list = await localProvider.list(r);
+    for (const [i, p] of paths.entries()) {
+      expect(list.find((f) => f.path === p)?.version).toBe(versionOfWrite(results[i]!));
+    }
+  });
+
+  it('two concurrent ifMatch writes to one path: exactly one lands', async () => {
+    const r = 'vault.race';
+    const base = versionOfWrite(await localProvider.write(r, 'n.md', 'base', { ifAbsent: true }))!;
+    const [a, b] = await Promise.all([
+      localProvider.write(r, 'n.md', 'from a', { ifMatch: base }),
+      localProvider.write(r, 'n.md', 'from b', { ifMatch: base }),
+    ]);
+    expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
+    const winner = a.ok ? a : b;
+    const loser = a.ok ? b : a;
+    expect(loser).toMatchObject({ ok: false, conflict: 'changed' });
+    expect(!loser.ok && loser.theirs?.version).toBe(versionOfWrite(winner));
+    expect((await localProvider.read(r, 'n.md'))?.text).toBe(winner.ok ? winner.file.text : '');
+  });
+
+  it('two concurrent ifAbsent creates to one path: exactly one lands', async () => {
+    const r = 'vault.racecreate';
+    const [a, b] = await Promise.all([
+      localProvider.write(r, 'n.md', 'from a', { ifAbsent: true }),
+      localProvider.write(r, 'n.md', 'from b', { ifAbsent: true }),
+    ]);
+    expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
+    expect(a.ok ? b : a).toMatchObject({ ok: false, conflict: 'exists' });
+  });
+
+  it('a guarded remove racing a write to the same note never removes the new text', async () => {
+    const r = 'vault.removerace';
+    const base = versionOfWrite(await localProvider.write(r, 'n.md', 'base', { ifAbsent: true }))!;
+    const [w, rm] = await Promise.all([
+      localProvider.write(r, 'n.md', 'newer', { ifMatch: base }),
+      localProvider.remove(r, 'n.md', { ifMatch: base }),
+    ]);
+    // The chain runs the write first, so the remove sees a moved version.
+    expect(w.ok).toBe(true);
+    expect(rm).toMatchObject({ ok: false, conflict: 'changed', theirs: { text: 'newer' } });
+    expect(await listed(r)).toEqual(['n.md']);
+  });
+
+  it('ifMatch on a missing note is missing and writes nothing', async () => {
+    const r = 'vault.missing';
+    expect(await localProvider.write(r, 'n.md', 'mine', { ifMatch: 'anything' })).toEqual({
+      ok: false,
+      conflict: 'missing',
+    });
+    expect(await localProvider.read(r, 'n.md')).toBeUndefined();
+    expect(await listed(r)).toEqual([]);
+  });
+
+  it('sizes are bytes, not UTF-16 units, in the write, list, and stat', async () => {
+    const r = 'vault.bytes';
+    const text = 'caf\u00e9 \u{1F30A}';
+    const bytes = new TextEncoder().encode(text).length;
+    expect(bytes).not.toBe(text.length);
+    await localProvider.write(r, 'n.md', text);
+    expect((await localProvider.list(r))[0]?.size).toBe(bytes);
+    expect((await localProvider.stat(r, 'n.md'))?.size).toBe(bytes);
+  });
+
+  it('a rebuilt orphan carries the version its body holds', async () => {
+    const r = 'vault.orphanversion';
+    const w = await localProvider.write(r, 'n.md', 'body', { ifAbsent: true });
+    await platform.storeSetJson(`oscode.gitos.index.${r}`, { files: [] });
+    const [entry] = await localProvider.list(r);
+    expect(entry).toMatchObject({ path: 'n.md', version: versionOfWrite(w), size: 4 });
   });
 });
 
