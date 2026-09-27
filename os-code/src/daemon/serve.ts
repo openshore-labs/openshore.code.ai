@@ -82,7 +82,11 @@ import {
 import { SEARCH_PROTOCOL_NOTE } from '../harness/localSearch.js';
 import { EgressPolicy } from '../core/security/egress.js';
 import { trustSessionFolder } from '../core/agent/projectTrust.js';
-import { vaultPrivacyConfig, vaultPrivacyHolder } from '../core/agent/registry.js';
+import {
+  machineVaultWire,
+  vaultPrivacyConfig,
+  vaultPrivacyHolder,
+} from '../core/agent/registry.js';
 import { currentStateReader } from '../core/vault/contextSource.js';
 import {
   ensureVaultRootAt,
@@ -161,14 +165,11 @@ const MEMBER_VAULT_REFUSAL =
 /** The most project pins a session create carries (Project.vaultPins). */
 const SESSION_VAULT_PINS_MAX = 8;
 
-/** The machine's own privacy keys, as the phone compiles them. Machine config
- *  only: projectPolicy never lets a project file set these. */
+/** The machine's own privacy keys, as the phone compiles them, and its
+ *  `vault.packSize` (Vault M8). Machine config only: projectPolicy never lets
+ *  a project file set these. */
 function machineVaultPrivacy(): VaultPrivacyWire {
-  const cfg = vaultPrivacyConfig(loadConfig().config);
-  return {
-    exclude: [...cfg.exclude],
-    localOnly: { paths: [...cfg.localOnly.paths], tags: [...cfg.localOnly.tags] },
-  };
+  return machineVaultWire(loadConfig().config);
 }
 
 /** A session create's project pins: note paths only, at most eight. */

@@ -153,6 +153,11 @@ describe('online', () => {
   it('fetches the privacy rules, and the index with its ETag', async () => {
     const { d, p } = make();
     expect(await p.fetchPrivacy()).toEqual(d.privacy);
+    // Vault M8: the computer's Room for notes passes through, a bad one never.
+    d.privacy = { ...d.privacy, packSize: 'large' } as typeof d.privacy;
+    expect((await p.fetchPrivacy()).packSize).toBe('large');
+    d.privacy = { ...d.privacy, packSize: 'huge' } as unknown as typeof d.privacy;
+    expect(await p.fetchPrivacy()).not.toHaveProperty('packSize');
     d.index = { text: '{"x":1}', etag: '"e1"' };
     expect(await p.fetchIndex()).toBe('{"x":1}');
     // Unchanged since: 304, nothing to load again.

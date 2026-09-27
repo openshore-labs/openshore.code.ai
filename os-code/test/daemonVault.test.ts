@@ -449,12 +449,40 @@ describe('the daemon vault routes, on the caller own root', () => {
     expect(readFileSync(join(oneRoot, 'Mine.md'), 'utf8')).toBe('one');
   });
 
+  it("reports the machine's Room for notes with its privacy rules, read fresh each time", async () => {
+    writeFileSync(
+      join(home, 'config.json'),
+      JSON.stringify({
+        stack: { orchestrator: { provider: 'ollama', model: 'qwen' } },
+        vault: { packSize: 'small' },
+      }),
+    );
+    const small = (await (await get(admin, VAULT_PRIVACY_ROUTE)).json()) as VaultPrivacyWire;
+    expect(small.packSize).toBe('small');
+    // A member's seat runs on the same machine config, so it reads the same.
+    const theirs = (await (
+      await get(member('u_one'), VAULT_PRIVACY_ROUTE)
+    ).json()) as VaultPrivacyWire;
+    expect(theirs.packSize).toBe('small');
+    writeFileSync(
+      join(home, 'config.json'),
+      JSON.stringify({
+        stack: { orchestrator: { provider: 'ollama', model: 'qwen' } },
+        vault: { packSize: 'large' },
+      }),
+    );
+    const large = (await (await get(admin, VAULT_PRIVACY_ROUTE)).json()) as VaultPrivacyWire;
+    expect(large.packSize).toBe('large');
+  });
+
   it('serves the machine privacy rules, a config file, and the saved index with an ETag', async () => {
     const privacy = (await (await get(admin, VAULT_PRIVACY_ROUTE)).json()) as VaultPrivacyWire;
     const defaults = vaultPrivacyConfig(defaultConfig());
     expect(privacy).toEqual({
       exclude: [...defaults.exclude],
       localOnly: { paths: [...defaults.localOnly.paths], tags: [...defaults.localOnly.tags] },
+      // Vault M8: the machine's Room for notes rides along, Normal unset.
+      packSize: 'normal',
     });
 
     const vault = join(home, 'OSCode', 'Vault');

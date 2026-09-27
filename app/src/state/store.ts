@@ -320,7 +320,13 @@ import {
   type RepoReader,
 } from '../lib/projectMemoryRead.js';
 import { CURRENT_STATE_FILE, memoryFilePath, sanitizeFolderSegment } from '../lib/projectMemory.js';
-import { appVaultPrivacy, hubPrivacyCache, hubPrivacySource } from '../lib/vaultPrivacy.js';
+import {
+  appVaultPrivacy,
+  hubMachinePackSize,
+  hubPrivacyCache,
+  hubPrivacySource,
+  readMachinePackSize,
+} from '../lib/vaultPrivacy.js';
 import {
   agentRecentNotes,
   excerptForSeat,
@@ -410,7 +416,12 @@ import {
   type VaultSettingSave,
 } from '../lib/vaultSettings.js';
 import { applyVaultStarter, vaultStarterOffered } from '../lib/vaultStarter.js';
-import { appHandoffOn, appPackSize, appVaultOverrides } from '../lib/vaultDevice.js';
+import {
+  appHandoffOn,
+  appPackSize,
+  appVaultOverrides,
+  type VaultEngineRoomSource,
+} from '../lib/vaultDevice.js';
 import {
   dropVaultRecent,
   pushVaultRecent,
@@ -1990,6 +2001,12 @@ interface AppState {
    *  loader's 60 second cache; `force` reads now (the room became visible,
    *  a watcher hint). Undefined when no vault is reachable. */
   vaultLoadSettings(opts?: { force?: boolean }): Promise<ResolvedVaultSettings | undefined>;
+  /** Where this device's engine sessions run and that computer's own Room
+   *  for notes (Vault M8), for the settings sheet's honest line: the
+   *  desktop's own machine config through the bridge, or a paired computer's
+   *  `GET /vault/privacy`. Undefined with no engine in reach (an unpaired
+   *  phone); `machine` undefined when the computer did not say. */
+  vaultEngineRoomSource(): Promise<VaultEngineRoomSource | undefined>;
   /** The person's one changed field, written to `.oscode/vault.json` by
    *  compare-and-swap (CTO L7, CX Y5). Only the settings sheet calls it. */
   vaultSaveSetting(patch: VaultSettingsPatch): Promise<VaultSettingSave>;
@@ -10441,6 +10458,26 @@ export const useApp = create<AppState>((set, get, api) => {
         ...(attachmentFolder ? { attachmentFolder } : {}),
         readBytes: (path, opts) => provider.readBytes!(resourceId, path, opts),
       };
+    },
+
+    async vaultEngineRoomSource() {
+      // The same order as the privacy source (privacyDeps): the desktop's
+      // own engine unless it runs sessions on a remote hub, then the paired
+      // computer, else no engine at all.
+      const st = get().settings;
+      const b = isDesktop() ? bridge() : undefined;
+      if (b?.vaultPrivacy && !st.preferRemoteHub) {
+        try {
+          const machine = readMachinePackSize(await b.vaultPrivacy());
+          return { where: 'this' as const, ...(machine ? { machine } : {}) };
+        } catch {
+          return { where: 'this' as const };
+        }
+      }
+      const daemon = st.daemon;
+      if (!daemon?.token) return undefined;
+      const machine = await hubMachinePackSize({ baseUrl: daemon.baseUrl, token: daemon.token });
+      return { where: 'your' as const, ...(machine ? { machine } : {}) };
     },
 
     async vaultLoadSettings(opts) {

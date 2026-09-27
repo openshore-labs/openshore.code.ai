@@ -1282,6 +1282,62 @@ describe('the device switches ride into sessions (wave 2, CTO L13)', () => {
     expect(off.cloudSeat).toBe(true);
   });
 
+  it("says when the computer's sessions use another Room for notes (M8)", async () => {
+    const { vaultEngineRoom, vaultDeviceView } = await import('../src/lib/vaultDevice.js');
+    const { vaultPackEngineLine } = await import('../src/lib/vaultCopy.js');
+    // No engine in reach (an unpaired phone): app seats use the choice.
+    expect(vaultEngineRoom({ vaultPackSize: 'large' }, undefined)).toBeUndefined();
+    // Large chosen, the computer unset (Normal): the choice does nothing there.
+    expect(
+      vaultEngineRoom({ vaultPackSize: 'large' }, { where: 'this', machine: 'normal' }),
+    ).toEqual({ where: 'this', size: 'normal' });
+    // A computer at Large honors Large, and lower choices always hold.
+    expect(vaultEngineRoom({ vaultPackSize: 'large' }, { where: 'this', machine: 'large' })).toBe(
+      undefined,
+    );
+    expect(vaultEngineRoom({ vaultPackSize: 'small' }, { where: 'your', machine: 'large' })).toBe(
+      undefined,
+    );
+    // Nothing chosen shows Normal, so a computer set otherwise is named.
+    expect(vaultEngineRoom({}, { where: 'your', machine: 'large' })).toEqual({
+      where: 'your',
+      size: 'large',
+    });
+    expect(vaultEngineRoom({}, { where: 'your', machine: 'normal' })).toBeUndefined();
+    // Not knowing the computer's: the careful line, except at Small.
+    expect(vaultEngineRoom({ vaultPackSize: 'normal' }, { where: 'your' })).toEqual({
+      where: 'your',
+    });
+    expect(vaultEngineRoom({ vaultPackSize: 'small' }, { where: 'your' })).toBeUndefined();
+    expect(
+      vaultDeviceView(
+        { vaultPackSize: 'large' },
+        { memoryOn: true, cloudSeat: false, engine: { where: 'this', machine: 'normal' } },
+      ).engine,
+    ).toEqual({ where: 'this', size: 'normal' });
+    expect(vaultDeviceView({}, { memoryOn: true, cloudSeat: false })).not.toHaveProperty('engine');
+    expect(vaultPackEngineLine('this', 'normal')).toBe(
+      'Sessions on this computer use its own setting, Normal.',
+    );
+    expect(vaultPackEngineLine('your')).toBe(
+      'Sessions on your computer can use its own setting instead.',
+    );
+  });
+
+  it("reads the computer's Room for notes from its privacy answer, never a guess (M8)", async () => {
+    const { readMachinePackSize } = await import('../src/lib/vaultPrivacy.js');
+    const base = { exclude: [], localOnly: { paths: [], tags: [] } };
+    expect(readMachinePackSize({ ...base, packSize: 'large' })).toBe('large');
+    expect(readMachinePackSize(base)).toBeUndefined();
+    expect(readMachinePackSize({ ...base, packSize: 'huge' })).toBeUndefined();
+    expect(readMachinePackSize(null)).toBeUndefined();
+    // The desktop's main answers through the daemon's one builder.
+    const main = readFileSync(join(ROOT, 'electron/main.ts'), 'utf8');
+    expect(main).toMatch(
+      /guarded\('osc:vaultPrivacy', \(\) => machineVaultWire\(loadConfig\(\)\.config\)\)/,
+    );
+  });
+
   it('the store passes them on both session paths and the /chat pack', () => {
     const store = readFileSync(join(SRC, 'state/store.ts'), 'utf8');
     expect(store).toMatch(/vaultOverrides: appVaultOverrides\(settings\)/);

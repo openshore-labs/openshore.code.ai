@@ -2456,3 +2456,33 @@ export function vaultProposalRecords(p: {
 }
 
 // ---- M7 wave 2 end ----
+
+// ---- M8 begin ----
+// The ship gate's copy (Vault M8).
+
+/** 8.4 and D12: claims beyond "your models can read your notes" wait on the
+ *  number. False until the 4.8 context pack eval (a with-and-without number
+ *  per model class on the reference box) and the 5.4 handoff eval (the
+ *  handoff task passing on each class) are recorded in DECISIONS with the
+ *  founder's thresholds. While false, `vaultCopy.test.ts` refuses "faster",
+ *  "smarter", "remembers" and the rest of its claim list across this whole
+ *  file and the Vault's components. Flip it only with those results in hand,
+ *  and only for the claim and the class they cover. */
+export const VAULT_EVAL_CLAIMS_UNLOCKED = false;
+
+/** Room for notes on the computer's sessions (CX Y8, M8): the computer's own
+ *  `vault.packSize` is the most room an engine session there gives notes,
+ *  and this device's choice may only lower it. Shown under the row when the
+ *  size those sessions use differs from the one selected here; with the
+ *  computer's size unknown (it did not answer, or is older), the careful
+ *  line. Neutral, never amber: it is the system working. */
+export function vaultPackEngineLine(
+  where: 'this' | 'your',
+  size?: keyof typeof VAULT_SETTINGS_CHOICES.packSize,
+): string {
+  return size
+    ? `Sessions on ${where} computer use its own setting, ${VAULT_SETTINGS_CHOICES.packSize[size]}.`
+    : `Sessions on ${where} computer can use its own setting instead.`;
+}
+
+// ---- M8 end ----

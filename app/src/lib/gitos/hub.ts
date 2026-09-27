@@ -970,9 +970,15 @@ export function createHubProvider(opts: HubProviderOptions): HubProvider {
       const body = (await res.json()) as Partial<VaultPrivacyWire>;
       const strings = (v: unknown): string[] =>
         Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : [];
+      // The machine's Room for notes (Vault M8), when this computer sends it.
+      const packSize =
+        body.packSize === 'small' || body.packSize === 'normal' || body.packSize === 'large'
+          ? body.packSize
+          : undefined;
       return {
         exclude: strings(body.exclude),
         localOnly: { paths: strings(body.localOnly?.paths), tags: strings(body.localOnly?.tags) },
+        ...(packSize ? { packSize } : {}),
       };
     },
 

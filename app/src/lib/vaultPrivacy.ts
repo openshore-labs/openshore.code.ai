@@ -21,6 +21,7 @@ import {
   type VaultPrivacy,
   type VaultPrivacyConfig,
   type VaultPrivacyNarrowing,
+  type VaultPackSize,
 } from 'os-code/protocol';
 import { VAULT_PRIVACY_DEFAULTS, type VaultPrivacySetting } from '../state/types.js';
 import { nativeFetch } from './nativeFetch.js';
@@ -170,6 +171,31 @@ export function hubPrivacySource(target: {
       return got;
     },
   };
+}
+
+/** The machine's Room for notes in a privacy answer (Vault M8), or
+ *  undefined when the answer carries none (an older computer). */
+export function readMachinePackSize(raw: unknown): VaultPackSize | undefined {
+  const v = raw && typeof raw === 'object' ? (raw as { packSize?: unknown }).packSize : undefined;
+  return v === 'small' || v === 'normal' || v === 'large' ? v : undefined;
+}
+
+/** A paired hub's Room for notes, from the same `GET /vault/privacy` answer
+ *  (Vault M8). Undefined when the hub does not say or cannot be reached, so
+ *  the sheet says it conservatively; never a guess. */
+export async function hubMachinePackSize(target: {
+  baseUrl: string;
+  token: string;
+}): Promise<VaultPackSize | undefined> {
+  try {
+    const res = await nativeFetch(`${target.baseUrl.replace(/\/+$/, '')}${VAULT_PRIVACY_ROUTE}`, {
+      headers: { authorization: `Bearer ${target.token}` },
+      responseType: 'json',
+    });
+    return res.ok ? readMachinePackSize(await res.json()) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** The sealed device store for one hub's last privacy answer, keyed by the

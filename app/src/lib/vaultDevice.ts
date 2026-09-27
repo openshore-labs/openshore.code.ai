@@ -8,7 +8,8 @@
 // - Room for notes lowers the machine's `vault.packSize` on the engine
 //   (`vaultPackSize(machine, app)`, the daemon and bootstrap enforce it). An
 //   app seat has no machine config in reach, so there the device's choice is
-//   the size.
+//   the size. When the computer reports its own size and its sessions use a
+//   different one, the row says so (`vaultEngineRoom`, Vault M8).
 // - Memory off turns both switches off for new chats (it gates the vault
 //   already, `vaultInChats`), and the rows say so.
 // Pure, so the store, the settings sheet and Settings read one rule.
@@ -53,6 +54,31 @@ export function appHandoffOn(s: VaultDeviceSettings, memoryOn: boolean): boolean
   return memoryOn && s.vaultHandoff !== 'off';
 }
 
+/** Where this device's engine sessions run, and that computer's own
+ *  `vault.packSize` (Vault M8): `this` is the desktop's own engine, `your`
+ *  a paired computer. `machine` undefined means the computer did not say
+ *  (away, or an older build). */
+export interface VaultEngineRoomSource {
+  where: 'this' | 'your';
+  machine?: VaultPackSize;
+}
+
+/** What the Room for notes row says about the computer's sessions (Vault
+ *  M8): nothing when they use the size shown here; the size they use when it
+ *  differs (the computer's is smaller than the choice, or no choice was made
+ *  and the computer's differs from Normal); and, not knowing the computer's,
+ *  the careful line unless Small is chosen (nothing can go below it). No
+ *  engine in reach, nothing: app seats use the device's choice. */
+export function vaultEngineRoom(
+  s: VaultDeviceSettings,
+  engine: VaultEngineRoomSource | undefined,
+): { where: 'this' | 'your'; size?: VaultPackSize } | undefined {
+  if (!engine) return undefined;
+  if (!engine.machine) return s.vaultPackSize === 'small' ? undefined : { where: engine.where };
+  const used = vaultPackSize(engine.machine, s.vaultPackSize);
+  return used === appPackSize(s) ? undefined : { where: engine.where, size: used };
+}
+
 /** A switch as the rows show it: Memory off holds it off, disabled. */
 function deviceSwitch(on: boolean, memoryOn: boolean): VaultDeviceSwitch {
   return memoryOn ? { on } : { on: false, lock: 'memory' };
@@ -61,13 +87,15 @@ function deviceSwitch(on: boolean, memoryOn: boolean): VaultDeviceSwitch {
 /** "On this device" for the settings sheet (CX Y7, Y8). */
 export function vaultDeviceView(
   s: VaultDeviceSettings,
-  o: { memoryOn: boolean; cloudSeat: boolean },
+  o: { memoryOn: boolean; cloudSeat: boolean; engine?: VaultEngineRoomSource },
 ): VaultSettingsDevice {
+  const engine = vaultEngineRoom(s, o.engine);
   return {
     context: deviceSwitch(s.vaultContext !== 'off', o.memoryOn),
     handoff: deviceSwitch(s.vaultHandoff !== 'off', o.memoryOn),
     packSize: appPackSize(s),
     cloudSeat: o.cloudSeat,
+    ...(engine ? { engine } : {}),
   };
 }
 
