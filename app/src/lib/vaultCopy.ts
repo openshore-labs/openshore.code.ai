@@ -2440,4 +2440,19 @@ export function vaultSettingsTeamFooter(o: { admin: boolean; org?: string }): st
   return o.org ? `These apply to everyone in ${o.org}.` : 'These apply to everyone in your team.';
 }
 
+/** The approval card's line for the property change a model's write also
+ *  makes (CTO L9): the person approves the note's properties with its text.
+ *  In the chip's own words (CX Y11), so the card and the chip agree. */
+export function vaultProposalRecords(p: {
+  model?: string;
+  where: 'local' | 'cloud';
+  edit?: boolean;
+  clearsReview?: boolean;
+}): string {
+  const who = p.model
+    ? vaultProvChipText({ model: p.model, where: p.where, ...(p.edit ? { edit: true } : {}) })
+    : `${p.edit ? 'Edited' : 'Written'} · ${VAULT_PROV_WHERE[p.where]}`;
+  return `Also records in its properties: ${who}.${p.clearsReview ? ' Its review mark is cleared.' : ''}`;
+}
+
 // ---- M7 wave 2 end ----

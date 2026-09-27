@@ -221,14 +221,41 @@ function stamped(text: string, fields: ProvenanceFields | undefined): string {
 /** A new note's creation time rides on the approval's basis, so execute
  *  writes the very bytes the preview showed. */
 const CREATED_MARK = '#created=';
+/** The hash of the exact bytes the preview showed (the note's text with its
+ *  provenance lines), so execute writes those bytes or nothing (CTO L9: the
+ *  person approves exactly what lands). */
+const AFTER_MARK = '#after=';
 
-function splitBasis(basis: string | undefined): { hash?: string; created?: string } {
-  if (basis === undefined) return {};
-  const at = basis.indexOf(CREATED_MARK);
-  return at === -1
-    ? { hash: basis }
-    : { hash: basis.slice(0, at), created: basis.slice(at + CREATED_MARK.length) };
+function hashText(text: string): string {
+  return `sha256:${createHash('sha256').update(text, 'utf8').digest('hex')}`;
 }
+
+function splitBasis(basis: string | undefined): {
+  hash?: string;
+  created?: string;
+  after?: string;
+} {
+  if (basis === undefined) return {};
+  let rest = basis;
+  let after: string | undefined;
+  const a = rest.indexOf(AFTER_MARK);
+  if (a !== -1) {
+    after = rest.slice(a + AFTER_MARK.length);
+    rest = rest.slice(0, a);
+  }
+  const at = rest.indexOf(CREATED_MARK);
+  const out =
+    at === -1
+      ? { hash: rest }
+      : { hash: rest.slice(0, at), created: rest.slice(at + CREATED_MARK.length) };
+  return after === undefined ? out : { ...out, after };
+}
+
+/** The refusal when the bytes execute would write differ from the ones the
+ *  person approved (the seat changed under the card, so its provenance lines
+ *  would too): nothing is written, and the model proposes again. */
+const NOT_WHAT_WAS_APPROVED =
+  'The note would not be written exactly as you approved it, so nothing was written. Propose the write again.';
 
 /** The refusal when the note moved under an approval: the model reads it
  *  again and proposes a fresh write, which the person sees as a fresh diff. */
@@ -265,7 +292,7 @@ export const vaultWriteTool: ToolDef<typeof writeSchema> = {
     return {
       summary: `Vault: ${verb} ${rel} (+${stats.additions} -${stats.deletions})`,
       detail: text || '(no textual change)',
-      basis: `${basisOf(current?.bytes)}${fields?.['oscode-created'] ? `${CREATED_MARK}${created}` : ''}`,
+      basis: `${basisOf(current?.bytes)}${fields?.['oscode-created'] ? `${CREATED_MARK}${created}` : ''}${AFTER_MARK}${hashText(after)}`,
     };
   },
   async execute(args, ctx, approved) {
@@ -300,6 +327,10 @@ export const vaultWriteTool: ToolDef<typeof writeSchema> = {
     const created = basis.created ?? new Date().toISOString();
     const fields = provenanceFields(ctx, current ? before : undefined, created);
     const after = stamped(applied(before, args.content, args.mode), fields);
+    // Exactly the bytes the diff showed, provenance lines included, or none.
+    if (basis.after !== undefined && basis.after !== hashText(after)) {
+      return { ok: false, content: NOT_WHAT_WAS_APPROVED };
+    }
     // The write carries the version read above, so an edit landing between
     // that read and the save is refused too, never overwritten; a new note is
     // created only while the name is still free.

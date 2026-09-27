@@ -413,10 +413,14 @@ describe('a vault write lands exactly as approved', () => {
   const note = () => join(root, 'log.md');
 
   it('the preview names the bytes it was built against', async () => {
-    expect((await vaultWriteTool.preview!(args('x'), ctx())).basis).toBe('absent');
+    // Then the hash of the exact bytes it showed (Vault M7, CTO L9).
+    const after = (t: string) => `#after=sha256:${createHash('sha256').update(t).digest('hex')}`;
+    expect((await vaultWriteTool.preview!(args('x'), ctx())).basis).toBe(`absent${after('x')}`);
     writeFileSync(note(), 'v1\n');
     const sha = createHash('sha256').update('v1\n').digest('hex');
-    expect((await vaultWriteTool.preview!(args('x'), ctx())).basis).toBe(`sha256:${sha}`);
+    expect((await vaultWriteTool.preview!(args('x'), ctx())).basis).toBe(
+      `sha256:${sha}${after('x')}`,
+    );
   });
 
   it('an edit between preview and execute is refused, and the file is byte-identical', async () => {
@@ -451,7 +455,7 @@ describe('a vault write lands exactly as approved', () => {
 
   it('a note created under the same name after the preview is refused, never replaced', async () => {
     const { basis } = await vaultWriteTool.preview!(args('mine'), ctx());
-    expect(basis).toBe('absent');
+    expect(basis?.startsWith('absent#after=')).toBe(true);
     writeFileSync(note(), 'theirs');
     expect(await vaultWriteTool.execute(args('mine'), ctx(), { basis })).toEqual({
       ok: false,

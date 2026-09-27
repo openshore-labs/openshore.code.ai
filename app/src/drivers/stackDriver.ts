@@ -100,6 +100,7 @@ import {
   type StepResult,
 } from '../lib/play.js';
 import { effortDirective } from '../lib/effort.js';
+import { vaultProposalRecords } from '../lib/vaultCopy.js';
 import type { SeedTurn } from '../state/types.js';
 import { byomSecretKey } from '../lib/byom.js';
 import { isCurrentBenchId } from '../lib/currents.js';
@@ -525,8 +526,6 @@ export class StackDriver implements ChatDriver {
   // The vault writes this send proposed, shown on one card at its end (D4),
   // and the privacy rules, loaded once per send.
   private proposals: VaultProposal[] = [];
-  /** An append's provenance lines, by path, merged at its write. */
-  private appendProvenance = new Map<string, ProvenanceFields>();
   private sendPrivacy?: Promise<VaultPrivacy | undefined>;
   // Seats whose server refused a request with tools on it (an Ollama model
   // with no tool template answers 400): they get the plain path afterwards.
@@ -921,10 +920,14 @@ export class StackDriver implements ChatDriver {
     }
   }
 
-  /** The provenance a proposal carries (Vault M7, CTO L9, L10). A new note's
-   *  lines are merged into its text NOW, before the card, so the person
-   *  approves the exact bytes that land; an append's lines are kept for the
-   *  write, which merges them into the note as it is then. */
+  /** The provenance a proposal carries (Vault M7, CTO L9, L10), merged NOW,
+   *  before the card, so the person approves the exact bytes that land: a
+   *  new note's text carries its lines; an addition's final text (the note as
+   *  the model read it, the addition, and the property change) is computed
+   *  here and written only while the note is still that version. The card
+   *  names the property change in words (`records`). An addition to a note
+   *  the model could not see has no known base, so it carries no lines and
+   *  the card shows exactly what it adds. */
   private stampProposal(
     tools: StackVaultTools,
     ref: StackModelRef,
@@ -937,24 +940,53 @@ export class StackDriver implements ChatDriver {
     } catch {
       on = true;
     }
-    if (!on) {
-      this.appendProvenance.delete(p.path);
-      return p;
-    }
     const fields = seatProvenance(ref, seat);
+    const where = fields['oscode-where'] === 'cloud' ? 'cloud' : 'local';
+    const model = fields['oscode-model'] ?? undefined;
     if (p.mode === 'create') {
-      this.appendProvenance.delete(p.path);
+      if (!on) return p;
+      const text = withProvenance(p.text, {
+        'oscode-source': 'agent',
+        ...fields,
+        'oscode-created': new Date().toISOString(),
+      });
       return {
         ...p,
-        text: withProvenance(p.text, {
-          'oscode-source': 'agent',
-          ...fields,
-          'oscode-created': new Date().toISOString(),
-        }),
+        text,
+        ...(text !== p.text ? { records: vaultProposalRecords({ model, where }) } : {}),
       };
     }
-    this.appendProvenance.set(p.path, fields);
-    return p;
+    if (p.baseText === undefined || p.baseVersion === undefined) return p;
+    const plain = appendedText(p.baseText, p.text);
+    if (!on) return { ...p, final: plain };
+    // A model's addition to a note it did not create reads "Edited by"
+    // (L9), and a review mark no longer holds for the new text.
+    let prior: { source?: string; reviewed?: string } = {};
+    try {
+      prior = readProvenance(readFrontmatter(p.baseText));
+    } catch {
+      prior = {};
+    }
+    const edit = prior.source !== 'agent';
+    const final = withProvenance(plain, {
+      'oscode-source': edit ? 'agent-edit' : 'agent',
+      ...fields,
+      'oscode-reviewed': null,
+    });
+    return {
+      ...p,
+      final,
+      ...(final !== plain
+        ? {
+            records: vaultProposalRecords({
+              model,
+              where,
+              edit,
+              clearsReview: prior.reviewed !== undefined,
+            }),
+          }
+        : {}),
+    };
   }
 
   /** Queue a write for the end-of-send card; a later proposal for the same
@@ -1018,7 +1050,7 @@ export class StackDriver implements ChatDriver {
       detail: [
         ...queued.map(
           (p) =>
-            `${p.mode === 'create' ? 'New note' : 'Add to'} ${p.path}\n${proposalPreview(p.text)}`,
+            `${p.mode === 'create' ? 'New note' : 'Add to'} ${p.path}\n${proposalPreview(p.text)}${p.records ? `\n${p.records}` : ''}`,
         ),
         'Nothing is written until you approve.',
       ].join('\n\n'),
@@ -1045,7 +1077,6 @@ export class StackDriver implements ChatDriver {
       const ok = await this.writeProposal(tools, p).catch(() => false);
       (ok ? saved : notSaved).push(p.path);
     }
-    this.appendProvenance.clear();
     for (const line of refused) this.emit({ type: 'status', message: line });
     if (saved.length) {
       this.emit({
@@ -1069,32 +1100,20 @@ export class StackDriver implements ChatDriver {
     }
   }
 
-  /** One approved write: create only while the name is free, append only
-   *  while the note is still the version the model saw. */
+  /** One approved write: create only while the name is free; an addition
+   *  writes the exact text the card was built from, and only while the note
+   *  is still the version the model read (compare and swap: a changed note
+   *  is refused, never merged). */
   private async writeProposal(tools: StackVaultTools, p: VaultProposal): Promise<boolean> {
     if (p.mode === 'create') {
       return (await tools.write(p.path, p.text, { ifAbsent: true })).ok;
     }
+    if (p.final !== undefined && p.baseVersion !== undefined) {
+      return (await tools.write(p.path, p.final, { ifMatch: p.baseVersion })).ok;
+    }
     const cur = await tools.read(p.path);
     if (!cur || (p.baseVersion !== undefined && cur.version !== p.baseVersion)) return false;
-    let next = appendedText(cur.text, p.text);
-    const fields = this.appendProvenance.get(p.path);
-    if (fields) {
-      // A model's addition to a note it did not create reads "Edited by"
-      // (L9), and a review mark no longer holds for the new text.
-      let prior: string | undefined;
-      try {
-        prior = readProvenance(readFrontmatter(cur.text)).source;
-      } catch {
-        prior = undefined;
-      }
-      next = withProvenance(next, {
-        'oscode-source': prior === 'agent' ? 'agent' : 'agent-edit',
-        ...fields,
-        'oscode-reviewed': null,
-      });
-    }
-    return (await tools.write(p.path, next, { ifMatch: cur.version })).ok;
+    return (await tools.write(p.path, appendedText(cur.text, p.text), { ifMatch: cur.version })).ok;
   }
 
   /** Claude's `system` for these parts (CTO J16): the one app builder,

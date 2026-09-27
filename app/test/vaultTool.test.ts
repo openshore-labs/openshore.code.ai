@@ -285,9 +285,16 @@ describe('proposals', () => {
       { name: 'vaultPropose', input: { path: 'Decisions/Auth.md', text: 'x', mode: 'append' } },
       ctx,
     );
-    expect(proposals).toEqual([
-      { path: 'Decisions/Auth.md', text: 'x', mode: 'append', baseVersion: 'v-Decisions/Auth.md' },
-    ]);
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]).toMatchObject({
+      path: 'Decisions/Auth.md',
+      text: 'x',
+      mode: 'append',
+      baseVersion: 'v-Decisions/Auth.md',
+    });
+    // The note's text at that version rides along, so the exact bytes an
+    // approval writes are known before the card (Vault M7, CTO L9).
+    expect(typeof proposals[0]!.baseText).toBe('string');
   });
 });
 
@@ -420,6 +427,66 @@ describe('the Stack batches every proposal into one approval card', () => {
     expect(auth).toContain('oscode-source: "agent-edit"');
     expect(auth.endsWith('---\n# Auth\nSessions.\n\nRevisit in Q3.\n')).toBe(true);
     expect(written).toEqual([['Ideas/Launch.md', 'Decisions/Auth.md']]);
+    driver.dispose();
+  });
+
+  it('the card shows the property change, and the approved bytes are the written bytes', async () => {
+    const { driver, events, write, store } = setup();
+    driver.send('save a launch note');
+    await settle();
+    const detail = cards(events)[0]!.request.detail!;
+    // Vault M7, CTO L9: the person approves the properties with the text.
+    expect(detail).toContain(
+      'Also records in its properties: Edited by claude-sonnet-4-5 · Cloud.',
+    );
+    expect(detail).toContain(
+      'Also records in its properties: Written by claude-sonnet-4-5 · Cloud.',
+    );
+    // What the card was built from, captured before the approve.
+    const createdPreview = /New note Ideas\/Launch\.md\n([\s\S]*?)\nAlso records/.exec(detail)![1]!;
+    driver.answerApproval(cards(events)[0]!.request.id, { approve: true });
+    await settle();
+    const created = write.mock.calls[0]![1] as string;
+    expect(created.trim()).toBe(createdPreview);
+    const appended = write.mock.calls[1]![1] as string;
+    expect(store.get('Decisions/Auth.md')!.text).toBe(appended);
+    expect(appended).toBe(
+      [
+        '---',
+        'oscode-source: "agent-edit"',
+        'oscode-model: "claude-sonnet-4-5"',
+        'oscode-where: "cloud"',
+        'oscode-size: "large"',
+        'oscode-provider: "anthropic"',
+        '---',
+        '# Auth',
+        'Sessions.',
+        '',
+        'Revisit in Q3.',
+        '',
+      ].join('\n'),
+    );
+    driver.dispose();
+  });
+
+  it('a note changed after the proposal is refused, never merged', async () => {
+    const { driver, events, write, store } = setup();
+    driver.send('save a launch note');
+    await settle();
+    store.set('Decisions/Auth.md', { text: '# Auth\nSomeone else wrote this.', version: 'v9' });
+    driver.answerApproval(cards(events)[0]!.request.id, { approve: true });
+    await settle();
+    expect(write).toHaveBeenCalledTimes(2);
+    expect(write.mock.calls[1]![2]).toEqual({ ifMatch: 'v1' });
+    expect(store.get('Decisions/Auth.md')!.text).toBe('# Auth\nSomeone else wrote this.');
+    expect(
+      events.some(
+        (e) =>
+          e.type === 'status' &&
+          e.message ===
+            'Not written, because the note changed or already exists: Decisions/Auth.md.',
+      ),
+    ).toBe(true);
     driver.dispose();
   });
 

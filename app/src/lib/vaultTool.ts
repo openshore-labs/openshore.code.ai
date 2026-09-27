@@ -73,6 +73,16 @@ export type VaultToolInput =
 export interface VaultProposal extends VaultProposeInput {
   /** The note's version when the proposal was made (append only). */
   baseVersion?: string;
+  /** The note's text at `baseVersion` (append only, and only when the note
+   *  was not hidden), so the exact bytes an approval writes are known before
+   *  the card (Vault M7, CTO L9). */
+  baseText?: string;
+  /** The exact text an approved append writes, provenance lines included,
+   *  computed before the card; the write lands it only while the note is
+   *  still `baseVersion` (compare and swap), else nothing. */
+  final?: string;
+  /** The card's line naming the property change this write also makes. */
+  records?: string;
 }
 
 /** What the runner reads and where proposals go. */
@@ -644,6 +654,7 @@ async function runPropose(
   // model's to learn. The approve step's guard settles it either way.
   const hidden = visibilityOf(ctx, rel) === 'hidden';
   let baseVersion: string | undefined;
+  let baseText: string | undefined;
   if (!hidden) {
     const cur = await ctx.read(rel).catch(() => undefined);
     const curHidden = cur !== undefined && visibilityOf(ctx, rel, cur.text) === 'hidden';
@@ -661,6 +672,7 @@ async function runPropose(
         };
       }
       baseVersion = cur.version;
+      baseText = cur.text;
     }
   }
   ctx.propose({
@@ -668,6 +680,7 @@ async function runPropose(
     text: input.text,
     mode: input.mode,
     ...(baseVersion ? { baseVersion } : {}),
+    ...(baseText !== undefined ? { baseText } : {}),
   });
   const what = input.mode === 'create' ? `create ${rel}` : `append to ${rel}`;
   return {
