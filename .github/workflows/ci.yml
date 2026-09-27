@@ -1,5 +1,6 @@
 # Continuous integration: lint, typecheck, and test the whole workspace on
-# every push to main and every PR that targets it. Before this workflow existed
+# every push to main and every PR that targets it, and (the `sql` job) run the
+# pgTAP suite against every Supabase migration. Before this workflow existed
 # the only gate was Codemagic, which ships each main push straight to TestFlight
 # WITHOUT running the suite, so the em-dash guard, redaction tests, RBAC/crypto
 # tests, and the security tests only ever ran on a developer's machine. This is
@@ -100,3 +101,38 @@ jobs:
 
       - name: Test the edge-function shared modules
         run: deno test supabase/functions/_shared
+
+  # The pgTAP suite (supabase/tests/*.test.sql) against every migration,
+  # applied in order from an empty database (Vault v1 plan item 2.4, CTO
+  # ruling G4). It runs beside `check`, not after it. It uses the Supabase CLI,
+  # never a bare postgres image or a stubbed auth schema: the migrations and
+  # tests lean on the real auth.users (email_confirmed_at), auth.uid(), and
+  # the anon/authenticated/service_role roles, and a stub would drift from
+  # production without anyone noticing. This is exactly what the founder runs
+  # locally.
+  sql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # v1.7.3 is the last v1 release, a plain node20 action with its bundle
+      # checked in (v2 and v3 install Bun and their dependencies at run time).
+      # The CLI itself is pinned to an exact version below.
+      - name: Set up the Supabase CLI
+        uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb # v1.7.3
+        with:
+          version: 2.118.0
+
+      # `supabase db start` on 2.118.0 starts Postgres 15 (config.toml
+      # major_version) with the auth schema and roles, then applies
+      # supabase/migrations in order. Only the database container starts; the
+      # `supabase start -x ...` fallback is not needed on this version.
+      - name: Start the database and apply every migration
+        run: supabase db start
+
+      # Runs every supabase/tests/*.test.sql through pg_prove. Any failed
+      # assertion, plan mismatch, or SQL error fails the job.
+      - name: Run the pgTAP suite
+        run: supabase test db

@@ -80,10 +80,59 @@ What 0015 does, by finding:
   editor if the migration ran before the extension was on. Check with
   `select * from cron.job`.
 
-Tests: `supabase test db` runs `tests/rls.test.sql` (pgTAP, 32 assertions
-over the cases above). `deno test functions/_shared/entitlement.test.ts` covers
+Tests: `supabase test db` runs every `tests/*.test.sql` file, each its own
+rolled-back transaction with its own plan: `tests/rls.test.sql` (32
+assertions over the cases above) and `tests/org_vault.test.sql` (56 assertions
+over 0019, below). CI runs the same command in the `sql` job of
+`.github/workflows/ci.yml`. `deno test functions/_shared/entitlement.test.ts` covers
 the pure decisions (cross-rail guard, checkout routing, Apple product and
 freshness checks, ignored prices).
+
+## Migration 0019 (Org Vault v1): what changed and how to ship it
+
+`migrations/0019_org_vault_v1.sql` gives the team vault compare-and-swap and
+a history (Vault v1 plan item 2.3, CTO ruling G3):
+
+- New RPCs for the v1 client: `org_vault_write(org, path, body, if_match,
+  if_absent)` and `org_vault_remove(org, path, if_match)`. A clash comes back
+  as a result (`exists`, `missing`, `changed` with `theirs`), never as a copy
+  made by the server.
+- `org_vault_put` and the two-argument `org_vault_delete` keep working for
+  builds in the field (last write wins plus a server copy), now under a lock
+  with unique conflict names. Remove them after M8.
+- Revs come from one sequence starting at 1,000,000,000, so they never repeat.
+- `org_vault_revisions` keeps the displaced version on a teammate's
+  overwrite, on an overwrite of anything older than ten minutes, and on every
+  delete and rename. It is append-only and members read it through RLS.
+- Paths are unique per org under `lower(path)` among live notes, and `size`
+  now counts bytes.
+- `org_vault_purge()` deletes tombstones and revision rows older than 30
+  days, weekly (`oscode_vault_purge`, Sundays 03:29 UTC) in the same guarded
+  pg_cron block as 0015.
+
+**Order (founder gate):** push 0019 to production BEFORE the team-client
+change (M2 stream D, `orgVault.ts` calling `org_vault_write`) merges to main,
+because Codemagic ships every push to main to TestFlight. Run the preflight
+below first.
+
+**Preflight: case duplicates.** The unique index needs live paths in one org
+to differ by more than letter case. 0019 renames any that do not (the most
+recently updated note keeps its path; each other one moves to a free
+"(conflict YYYY-MM-DD HHMM)" name and leaves a revision row), so nothing is
+lost, but look first. In the SQL editor, before `supabase db push`:
+
+```sql
+select org_id, lower(path) as folded, count(*) as notes,
+       array_agg(path order by updated_at desc) as paths
+from public.org_vault_notes
+where not deleted
+group by org_id, lower(path)
+having count(*) > 1
+order by org_id, folded;
+```
+
+No rows means 0019 changes no data. Each row lists the paths that will be
+renamed after the first one; tell the teammates who own them.
 
 ### Warning: `supabase config push` and email confirmations (P0-4)
 
