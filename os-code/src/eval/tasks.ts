@@ -9,6 +9,7 @@
 // agent's final text). The loop that produces the result is injected by the
 // runner, so this module never imports a provider or the agent.
 import { execFileSync } from 'node:child_process';
+import { buildVaultFixture, VAULT_CONVENTION, VAULT_DECISION } from './vaultFixture.js';
 
 /** What a task checker sees: the workspace after the agent ran, and the
  *  agent's final answer text. */
@@ -37,6 +38,10 @@ export interface EvalTask {
    *  so a failing check goes back to the model as something to fix. Scoring
    *  still uses `check` alone. Absent on a task with nothing to run. */
   verifyScript?: string;
+  /** Notes written into the eval's own vault folder (a sibling of the
+   *  workspace, never inside it) before the agent runs, as a map of
+   *  vault-relative path to markdown. Absent on a task that needs no vault. */
+  vault?: Record<string, string>;
 }
 
 /** Where a task's verify script lands inside the workspace. */
@@ -198,5 +203,112 @@ export const EVAL_TASKS: EvalTask[] = [
         return { score: 0.5, detail: `answer present but not alone: ${trimmed.slice(0, 40)}` };
       return { score: 0, detail: `wrong or missing: ${trimmed.slice(0, 40) || '(empty)'}` };
     },
+  },
+];
+
+// Vault tasks (Vault M4, 4.8, CTO I14). Both run against the generated
+// fixture in `vaultFixture.ts`: about two hundred notes, one convention, one
+// decision reached by a link from a hub, and an older crew-run note that
+// contradicts both. The graders reject the stale note's answer even when the
+// right one sits beside it, so hedging between the two scores nothing.
+
+const SYNC_START = [
+  `export const MAX_RETRIES = ${VAULT_DECISION.start};`,
+  '',
+  'export function nextDelay(attempt) {',
+  '  return 250 * 2 ** attempt;',
+  '}',
+  '',
+].join('\n');
+
+/** Strip the wrapping a model tends to put around a one-word answer: code
+ *  ticks, quotes, a trailing period. */
+function bareAnswer(text: string): string {
+  return text
+    .trim()
+    .replace(/^[`'"]+|[`'".]+$/g, '')
+    .trim();
+}
+
+/** Grade a recalled convention: exact scores 1, present among other words
+ *  scores 0.5, and the stale value anywhere in the answer scores 0. */
+export function gradeConventionAnswer(finalText: string): EvalTaskScore {
+  const bare = bareAnswer(finalText);
+  const shown = bare.slice(0, 60) || '(empty)';
+  if (finalText.includes(VAULT_CONVENTION.stale)) {
+    return { score: 0, detail: `gave the stale crew-run note's prefix: ${shown}` };
+  }
+  if (bare === VAULT_CONVENTION.right) return { score: 1, detail: 'exact convention recalled' };
+  if (finalText.includes(VAULT_CONVENTION.right)) {
+    return { score: 0.5, detail: `convention present but not alone: ${shown}` };
+  }
+  return { score: 0, detail: `wrong or missing: ${shown}` };
+}
+
+/** Where the checker reads the workspace's retry limit. Exits 0 only on the
+ *  decision's value with the rest of the module intact; exit code 3 marks the
+ *  stale note's value so the detail can say which wrong answer it was. */
+const SYNC_CHECK = [
+  "const m = await import('./sync.mjs');",
+  `if (m.MAX_RETRIES === ${VAULT_DECISION.stale}) process.exit(3);`,
+  `if (m.MAX_RETRIES === ${VAULT_DECISION.right} && m.nextDelay(2) === 1000) process.exit(0);`,
+  'process.exit(1);',
+].join(' ');
+
+function syncExitCode(cwd: string): number {
+  try {
+    execFileSync('node', ['--input-type=module', '-e', SYNC_CHECK], {
+      cwd,
+      stdio: 'ignore',
+      timeout: 10_000,
+    });
+    return 0;
+  } catch (err) {
+    const status = (err as { status?: number | null }).status;
+    return typeof status === 'number' ? status : 1;
+  }
+}
+
+export const EVAL_VAULT_TASKS: EvalTask[] = [
+  {
+    id: 'vault-recall-convention',
+    title: 'Recall a convention from the vault',
+    category: 'answer',
+    files: {},
+    vault: buildVaultFixture(),
+    prompt:
+      'This project keeps its conventions in the vault. What prefix do release branch names start with? Reply with ONLY the prefix, no words.',
+    async check({ finalText }) {
+      return gradeConventionAnswer(finalText);
+    },
+  },
+  {
+    id: 'vault-follow-link',
+    title: 'Follow a vault link to a decision',
+    category: 'edit',
+    files: { 'sync.mjs': SYNC_START },
+    vault: buildVaultFixture(),
+    prompt:
+      'The Atlas hub note in the vault links to the decision on how many times the sync client retries. Set MAX_RETRIES in sync.mjs to the value that decision sets. Change nothing else.',
+    async check({ cwd }) {
+      const code = syncExitCode(cwd);
+      if (code === 0) return { score: 1, detail: 'MAX_RETRIES matches the linked decision' };
+      if (code === 3) {
+        return { score: 0, detail: "took the stale crew-run note's value, not the decision's" };
+      }
+      return { score: 0, detail: 'MAX_RETRIES wrong, or sync.mjs broken' };
+    },
+    // Checks the shape only, never the value: a check that printed the
+    // expected number would hand the model the answer the vault is there for.
+    verifyScript: [
+      'let ok = true;',
+      'let m;',
+      "try { m = await import('./sync.mjs'); } catch (err) { console.error('FAIL: sync.mjs does not run: ' + err.message); process.exit(1); }",
+      "if (!Number.isInteger(m.MAX_RETRIES)) { console.error('FAIL: sync.mjs must export MAX_RETRIES as a whole number'); ok = false; }",
+      "if (typeof m.nextDelay !== 'function' || m.nextDelay(2) !== 1000) { console.error('FAIL: nextDelay must be left as it was'); ok = false; }",
+      "if (ok) console.log('PASS');",
+      'process.exit(ok ? 0 : 1);',
+      '',
+    ].join('\n'),
   },
 ];
