@@ -29,6 +29,7 @@
 // never share either.
 import {
   VAULT_ATTACHMENTS_ROUTE,
+  VAULT_CONFIG_MAX_BYTES,
   VAULT_CONFIG_ROUTE,
   VAULT_FOLDERS_RENAME_ROUTE,
   VAULT_FOLDERS_ROUTE,
@@ -48,7 +49,10 @@ import {
   type BytesRead,
   type ConfigRead,
   type HubNoteMeta,
+  type VaultConfigConflictResponse,
   type VaultConfigName,
+  type VaultConfigPutBody,
+  type VaultConfigPutResponse,
   type VaultFolderConflictResponse,
   type VaultFolderRenameBody,
   type VaultFolderRenameResponse,
@@ -71,14 +75,19 @@ import {
   HUB_AWAY_READ_ONLY,
   HUB_PAIR_LINE,
   HUB_PAIRING_REFUSED,
+  HUB_SETTINGS_NO_VERSION,
   HUB_UPDATE_LINE,
   VAULT_FOLDER_INTO_ITSELF,
+  VAULT_SETTINGS_NAME_REFUSED,
+  VAULT_SETTINGS_TOO_LARGE,
+  VAULT_SETTINGS_WRITE_REFUSED,
   hubTooLargeLine,
   vaultNotAttachmentLine,
   vaultNotFolderLine,
 } from '../vaultCopy.js';
 import { registerVaultIndexSeed, type VaultIndexTarget } from '../vaultIndexHost.js';
 import { asConfigRead } from './config.js';
+import { VAULT_SETTINGS_PATH } from './local.js';
 import {
   ATTACHMENT_MIMES,
   asAttachmentList,
@@ -912,6 +921,49 @@ export function createHubProvider(opts: HubProviderOptions): HubProvider {
       }
     },
 
+    // The settings sheet's write (Vault M7, CTO L7): `PUT
+    // /vault/config/oscode/vault` with exactly one guard, on the caller's own
+    // root there, so a member writes only their own. A 409 carries the file
+    // there now (or it is read once more), an old computer answers 404, and
+    // away throws the away line: the sheet is read-only then anyway.
+    async writeConfig(_resourceId, name, text, guard): Promise<WriteResult> {
+      if (name !== 'oscode/vault') throw new HubRefusal(VAULT_SETTINGS_NAME_REFUSED);
+      if (utf8Bytes(text) > VAULT_CONFIG_MAX_BYTES) {
+        throw new HubRefusal(VAULT_SETTINGS_TOO_LARGE);
+      }
+      const body: VaultConfigPutBody =
+        'ifAbsent' in guard ? { text, ifAbsent: true } : { text, ifMatch: guard.ifMatch };
+      const res = await call('PUT', `${VAULT_CONFIG_ROUTE}/oscode/vault`, { body });
+      const file = (t: string, version: string): StoredFile => ({
+        path: VAULT_SETTINGS_PATH,
+        text: t,
+        updatedAt: new Date().toISOString(),
+        version,
+      });
+      if (res.status === 409) {
+        const c = (await res.json().catch(() => ({}))) as Partial<VaultConfigConflictResponse>;
+        if (c.conflict === 'missing') return { ok: false, conflict: 'missing' };
+        const conflict = c.conflict === 'exists' ? 'exists' : 'changed';
+        let theirs: StoredFile | undefined;
+        if (typeof c.current?.text === 'string' && typeof c.current.version === 'string') {
+          theirs = file(c.current.text, c.current.version);
+        } else {
+          const now = await provider.readConfig!(_resourceId, 'oscode/vault');
+          if (now.ok) theirs = file(now.text, now.version);
+        }
+        return theirs ? { ok: false, conflict, theirs } : { ok: false, conflict };
+      }
+      if (res.status === 404) throw new HubRefusal(HUB_UPDATE_LINE);
+      if (res.status === 413) throw new HubRefusal(VAULT_SETTINGS_TOO_LARGE);
+      if (res.status === 403) throw new HubRefusal(VAULT_SETTINGS_WRITE_REFUSED);
+      if (!res.ok) throw await errorOf(res);
+      const answer = (await res.json().catch(() => ({}))) as Partial<VaultConfigPutResponse>;
+      if (typeof answer.version !== 'string' || !answer.version) {
+        throw new Error(HUB_SETTINGS_NO_VERSION);
+      }
+      return { ok: true, file: file(text, answer.version) };
+    },
+
     async fetchPrivacy(): Promise<VaultPrivacyWire> {
       const res = await call('GET', VAULT_PRIVACY_ROUTE);
       if (!res.ok) throw await errorOf(res);
@@ -1035,6 +1087,7 @@ export const hubProvider: StorageProvider = {
   emptyTrash: async (r, ids) => linked().emptyTrash!(r, ids),
   listAttachments: async (r) => linked().listAttachments!(r),
   readBytes: async (r, p, o) => linked().readBytes!(r, p, o),
+  writeConfig: async (r, name, text, g) => linked().writeConfig!(r, name, text, g),
 };
 
 // The index's head start for a hub vault on first open: the engine's own

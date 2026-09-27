@@ -160,6 +160,47 @@ describe('vaultCaps', () => {
   });
 });
 
+describe('vaultCaps, Vault M7 (CTO L7, L11)', () => {
+  const full = fake({ compareAndSwap: true, ...ALL_M6, writeConfig: noop });
+
+  it('settingsWrite needs writeConfig and compare-and-swap together', () => {
+    expect(vaultCaps(full, WRITABLE).settingsWrite).toBe(true);
+    expect(vaultCaps(fake({ compareAndSwap: true, ...ALL_M6 }), WRITABLE).settingsWrite).toBe(
+      false,
+    );
+    expect(vaultCaps(fake({ ...ALL_M6, writeConfig: noop }), WRITABLE).settingsWrite).toBe(false);
+  });
+
+  it('read-only and away keep the settings sheet from saving', () => {
+    expect(vaultCaps(full, { readOnly: true }).settingsWrite).toBe(false);
+    expect(vaultCaps(full, { readOnly: false, reach: 'away' }).settingsWrite).toBe(false);
+    expect(vaultCaps(full, { readOnly: false, reach: 'unknown' }).settingsWrite).toBe(true);
+    expect(vaultCaps(full, { readOnly: false, reach: 'reachable' }).settingsWrite).toBe(true);
+  });
+
+  it("the vault's delete: permanent turns one-tap Trash off, and nothing else", () => {
+    const base = vaultCaps(full, WRITABLE);
+    const permanent = vaultCaps(full, WRITABLE, { delete: 'permanent' });
+    expect(permanent).toEqual({ ...base, trash: false, emptyTrash: false });
+    expect(vaultCaps(full, WRITABLE, { delete: 'trash' })).toEqual(base);
+    expect(vaultCaps(full, WRITABLE, {})).toEqual(base);
+  });
+
+  it('every provider on main with writeConfig declares compare-and-swap', () => {
+    for (const id of VAULT_COPY_PROVIDERS) {
+      const p = providerFor(id)!;
+      if (typeof p.writeConfig === 'function') expect(p.compareAndSwap, id).toBe(true);
+    }
+  });
+
+  it('the team vault on main has no writeConfig, so its settings read as defaults', () => {
+    expect(providerFor('org')!.writeConfig).toBeUndefined();
+    expect(vaultCapLine('org', 'settingsWrite')).toBe(
+      'Team vault settings cannot change here yet.',
+    );
+  });
+});
+
 // The providers on main, writable. A held branch that adds members updates
 // its row here and nothing else.
 const MAIN: Record<string, Record<string, boolean>> = {
@@ -173,8 +214,8 @@ const MAIN: Record<string, Record<string, boolean>> = {
     taskWriteBack: true,
     linkRewrite: true,
     today: true,
-    // Stream E lights local, files and hub once writeConfig lands (L7).
-    settingsWrite: false,
+    // writeConfig under compare-and-swap (Vault M7, CTO L7).
+    settingsWrite: true,
   },
   files: {
     rename: true,
@@ -186,8 +227,8 @@ const MAIN: Record<string, Record<string, boolean>> = {
     taskWriteBack: true,
     linkRewrite: true,
     today: true,
-    // Stream E lights local, files and hub once writeConfig lands (L7).
-    settingsWrite: false,
+    // writeConfig under compare-and-swap (Vault M7, CTO L7).
+    settingsWrite: true,
   },
   hub: {
     rename: true,
@@ -199,8 +240,8 @@ const MAIN: Record<string, Record<string, boolean>> = {
     taskWriteBack: true,
     linkRewrite: true,
     today: true,
-    // Stream E lights local, files and hub once writeConfig lands (L7).
-    settingsWrite: false,
+    // writeConfig under compare-and-swap (Vault M7, CTO L7).
+    settingsWrite: true,
   },
   icloud: {
     rename: false,

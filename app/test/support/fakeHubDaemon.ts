@@ -6,6 +6,8 @@
 // error), so the hub provider's away path runs as it would on a phone.
 import type {
   AttachmentMime,
+  VaultConfigConflictResponse,
+  VaultConfigPutBody,
   HubNoteMeta,
   VaultNoteConflictResponse,
   VaultNotePutBody,
@@ -35,6 +37,12 @@ export interface FakeHubDaemon {
   remove(path: string): void;
   bytes(path: string): string | undefined;
   config: Map<string, string>;
+  /** A config file's version, when it was written through the fake (Vault
+   *  M7); otherwise it reads as `c-<length>`, as before. */
+  configVersions: Map<string, string>;
+  /** Another writer of a config file (Obsidian, a hand edit on the
+   *  computer): new text with a fresh version. */
+  replaceConfig(name: string, text: string): void;
   privacy: VaultPrivacyWire;
   /** The engine's saved index file, and its ETag. */
   index?: { text: string; etag: string };
@@ -82,6 +90,11 @@ export function fakeHubDaemon(baseUrl = 'http://mac.tail1234.ts.net:4816'): Fake
     token: 'pair-token',
     calls: [],
     config: new Map(),
+    configVersions: new Map(),
+    replaceConfig(name, text) {
+      d.config.set(name, text);
+      d.configVersions.set(name, fresh());
+    },
     privacy: { exclude: ['Private/**'], localOnly: { paths: ['Journal/**'], tags: ['private'] } },
     replace(path, text) {
       d.notes.set(path, { text, version: fresh(), mtime: clock() });
@@ -97,6 +110,8 @@ export function fakeHubDaemon(baseUrl = 'http://mac.tail1234.ts.net:4816'): Fake
     attachments: new Map(),
     reset() {
       d.notes.clear();
+      d.config.clear();
+      d.configVersions.clear();
       d.folders.clear();
       d.trash.clear();
       d.attachments.clear();
@@ -172,7 +187,33 @@ export function fakeHubDaemon(baseUrl = 'http://mac.tail1234.ts.net:4816'): Fake
           .join('/');
         const text = d.config.get(name);
         if (text === undefined) return json(404, { error: 'absent' });
-        return json(200, { name, text, version: `c-${text.length}` });
+        return json(200, { name, text, version: configVersion(name, text) });
+      }
+      // Vault M7 (CTO L7): the one config write, the note PUT's guard rules.
+      if (url.pathname.startsWith('/vault/config/') && method === 'PUT') {
+        if (d.old) return json(404, { error: 'not found' });
+        const name = url.pathname.slice('/vault/config/'.length);
+        if (name !== 'oscode/vault') return json(403, { error: 'refused' });
+        const body = JSON.parse(String(init?.body ?? '{}')) as VaultConfigPutBody;
+        if (typeof body.text !== 'string') return json(400, { error: 'bad body' });
+        if ((body.ifMatch === undefined) === (body.ifAbsent !== true)) {
+          return json(400, { error: 'exactly one guard' });
+        }
+        if (new TextEncoder().encode(body.text).length > 256 * 1024) {
+          return json(413, { error: 'too large' });
+        }
+        const text = d.config.get(name);
+        const current =
+          text === undefined ? undefined : { name, text, version: configVersion(name, text) };
+        const conflict = (c: VaultConfigConflictResponse['conflict']) =>
+          json(409, { conflict: c, ...(current ? { current } : {}) });
+        if (body.ifAbsent && current) return conflict('exists');
+        if (body.ifMatch !== undefined) {
+          if (!current) return conflict('missing');
+          if (current.version !== body.ifMatch) return conflict('changed');
+        }
+        d.replaceConfig(name, body.text);
+        return json(200, { name, version: d.configVersions.get(name)! });
       }
       if (url.pathname === '/vault/privacy' && method === 'GET') return json(200, d.privacy);
       if (url.pathname === '/vault/index' && method === 'GET') {
@@ -186,6 +227,8 @@ export function fakeHubDaemon(baseUrl = 'http://mac.tail1234.ts.net:4816'): Fake
       return json(404, { error: 'not found' });
     }) as typeof fetch,
   };
+  const configVersion = (name: string, text: string): string =>
+    d.configVersions.get(name) ?? `c-${text.length}`;
   const noteMeta = (path: string): HubNoteMeta | undefined => {
     const note = d.notes.get(path);
     return note

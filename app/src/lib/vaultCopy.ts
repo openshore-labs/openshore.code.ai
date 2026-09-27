@@ -1359,7 +1359,10 @@ export type VaultCapLineName =
   | 'attachments'
   | 'taskWriteBack'
   | 'linkRewrite'
-  | 'today';
+  | 'today'
+  // Vault M7 (CTO L7): the settings sheet; its lines are in the M7 stream E
+  // fence (`vaultSettingsCapLine`).
+  | 'settingsWrite';
 
 export const VAULT_CAP_LINE_NAMES: readonly VaultCapLineName[] = [
   'rename',
@@ -1370,11 +1373,15 @@ export const VAULT_CAP_LINE_NAMES: readonly VaultCapLineName[] = [
   'taskWriteBack',
   'linkRewrite',
   'today',
+  'settingsWrite',
 ];
+
+/** The M6 caps, whose lines are in the tables below. */
+type M6CapLineName = Exclude<VaultCapLineName, 'settingsWrite'>;
 
 const DRIVE_READ_ONLY = 'Google Drive vaults are read-only here';
 
-const CAP_LINES: Record<VaultCapLineName, Partial<Record<VaultCopyProvider, string>>> = {
+const CAP_LINES: Record<M6CapLineName, Partial<Record<VaultCopyProvider, string>>> = {
   rename: {
     icloud: 'Notes in iCloud Drive cannot be renamed here yet. The Files app can rename them.',
     org: 'Team notes cannot be renamed here yet.',
@@ -1417,7 +1424,7 @@ const CAP_LINES: Record<VaultCapLineName, Partial<Record<VaultCopyProvider, stri
   },
 };
 
-const CAP_FALLBACK: Record<VaultCapLineName, string> = {
+const CAP_FALLBACK: Record<M6CapLineName, string> = {
   rename: 'This storage cannot rename notes here yet.',
   folders: 'This storage cannot make or rename folders here yet.',
   trash: 'This storage has no Trash here, so a delete is for good and asks twice.',
@@ -1433,6 +1440,7 @@ const CAP_FALLBACK: Record<VaultCapLineName, string> = {
  *  where `vaultCaps(...)[cap]` is false for the storage itself (read-only
  *  and away keep their own standing lines). */
 export function vaultCapLine(provider: VaultCopyProvider, cap: VaultCapLineName): string {
+  if (cap === 'settingsWrite') return vaultSettingsCapLine(provider);
   return CAP_LINES[cap][provider] ?? CAP_FALLBACK[cap];
 }
 
@@ -1988,6 +1996,46 @@ export const VAULT_TODAY_FAILED = "Could not open today's note. Try again in a m
 // Providers (L7, L16): the line that says why this storage's settings cannot
 // change here (`vaultCaps().settingsWrite` false for the storage itself), per
 // provider, in the `vaultCapLine` style.
+
+const SETTINGS_CAP_LINES: Partial<Record<VaultCopyProvider, string>> = {
+  icloud: 'Vault settings in iCloud Drive cannot change here yet.',
+  org: 'Team vault settings cannot change here yet.',
+  gdrive: 'Google Drive vaults are read-only here, so vault settings cannot change.',
+};
+
+const SETTINGS_CAP_FALLBACK = 'Vault settings on this storage cannot change here yet.';
+
+/** Why the Vault settings sheet cannot save on `provider` (read through
+ *  `vaultCapLine(provider, 'settingsWrite')`). Read-only and away keep the
+ *  room's own standing lines. */
+export function vaultSettingsCapLine(provider: VaultCopyProvider): string {
+  return SETTINGS_CAP_LINES[provider] ?? SETTINGS_CAP_FALLBACK;
+}
+
+/** A settings write named something other than the vault's own file. Only
+ *  `.oscode/vault.json` is written here; Obsidian's files are read, never
+ *  written. */
+export const VAULT_SETTINGS_NAME_REFUSED =
+  "Only this vault's own settings file can change here, so nothing changed.";
+
+/** A settings file over the 256 KB cap. */
+export const VAULT_SETTINGS_TOO_LARGE = 'That settings file is over 256 KB, so nothing changed.';
+
+/** The storage would not write the settings file (`.oscode` is not a real
+ *  folder there, or the computer refused it). */
+export const VAULT_SETTINGS_WRITE_REFUSED =
+  'The vault folder would not take the settings file, so nothing changed.';
+
+/** Your computer took the settings file but its answer named no version, so
+ *  the next change could not be guarded. */
+export const HUB_SETTINGS_NO_VERSION =
+  'Your computer took the settings but did not say which version they are.';
+
+/** Local's write refuses a name under a dot folder (CTO L8): nothing lands
+ *  under `.oscode` or `.obsidian`, and a dot name is never a note here. */
+export function vaultDotPathLine(path: string): string {
+  return `"${path}" is not a note name the vault can use, so nothing changed.`;
+}
 
 // ---- M7 stream E end ----
 
