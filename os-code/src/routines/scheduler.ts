@@ -50,6 +50,7 @@ import {
 } from './model.js';
 import { acquireSchedulerLock, releaseSchedulerLock, type SchedulerLock } from './lock.js';
 import * as store from './store.js';
+import { runNoteFrontmatter } from './runNote.js';
 
 const log = logger('routines');
 
@@ -74,6 +75,8 @@ export interface RoutineDriver {
 export interface OpenedSession {
   driver: RoutineDriver;
   warnings: string[];
+  /** The orchestrator's model name, for the run note's frontmatter. */
+  model?: string;
 }
 
 /** A run refused before it started, for a reason the person can act on. The
@@ -121,14 +124,23 @@ export function routineInstructions(routine: Routine): string {
     routine.access === 'read-only'
       ? 'This routine is read-only: you can read files, search, and inspect the repository, but you cannot change anything. Do not try.'
       : 'This routine may edit files inside this workspace. Any shell command will ask for approval; if nobody answers within a few minutes the step is declined and you should carry on without it, or stop and say what is blocked.',
+    `Your earlier runs of this routine are notes in the vault under ${routineFolder(routine)}/ (newest last by name, each linking the one before it as "previous"); read the latest with vaultList and vaultRead when it helps you build on what was found before.`,
     `You have about ${routine.maxMinutes} minutes. Work efficiently. When you finish, end with a short plain-language report the person will read first thing: what you found or did, anything risky, and a checklist of what needs them. Lead with the one thing that matters most. The report is saved to their vault as this run's note on its own, so do not try to write a note yourself. Never use em dashes.`,
   ].join('\n');
+}
+
+/** The routine's notes folder, vault-relative: the vault's one new-name rule
+ *  (Vault M3, H4) applied to the routine's name. */
+function routineFolder(routine: Pick<Routine, 'name'>): string {
+  return `Crew/${safeNoteName(routine.name, 'Routine')}`;
 }
 
 interface ActiveRun {
   run: RoutineRun;
   routine: Routine;
   driver: RoutineDriver;
+  /** The orchestrator's model, when the session said. */
+  model?: string;
   off: () => void;
   finalText: string;
   steps: string[];
@@ -452,7 +464,7 @@ export class RoutineScheduler {
       void this.pump();
       return;
     }
-    const { driver } = opened;
+    const { driver, model } = opened;
     if (routine.ownerUserId) driver.setOwner?.(routine.ownerUserId);
     const run = store.appendRun({
       routineId: routine.id,
@@ -466,6 +478,7 @@ export class RoutineScheduler {
       run,
       routine,
       driver,
+      model,
       off: () => {},
       finalText: '',
       steps: [],
@@ -611,7 +624,23 @@ export class RoutineScheduler {
     const hh = two(started.getHours());
     const mm = two(started.getMinutes());
     const minutes = Math.max(1, Math.round((Date.parse(finishedAt) - started.getTime()) / 60_000));
+    // The routine's previous run note (the newest earlier run that left one),
+    // linked by full path so the model and the person can walk back.
+    const previousPath = store
+      .listRuns(50, active.routine.id)
+      .find((r) => r.id !== active.run.id && r.notePath)?.notePath;
+    const folder = routineFolder(active.routine);
     const lines = [
+      runNoteFrontmatter({
+        routine: active.routine.name,
+        project: basename(active.routine.cwd),
+        model: active.model || 'unknown',
+        session: active.driver.id,
+        started: active.run.startedAt,
+        state,
+        folder: folder.slice('Crew/'.length),
+        previousPath,
+      }),
       `# ${active.routine.name}: ${date} at ${hh}:${mm}`,
       '',
       `Crew: ${active.routine.agentName} · Workspace: ${basename(active.routine.cwd)} · ${stateWord(state)} · ${minutes} min · session ${active.driver.id}`,
@@ -638,7 +667,6 @@ export class RoutineScheduler {
     // H4): no character Obsidian's links or a file system refuse, no dot-led
     // or dot-ended segment, no reserved name. Old runs keep the absolute path
     // their record already holds, so nothing is moved.
-    const folder = join('Crew', safeNoteName(active.routine.name, 'Routine'));
     for (let n = 1; ; n++) {
       const name = `${date} ${hh}-${mm}${n === 1 ? '' : ` (${n})`}.md`;
       const rel = join(folder, name).split('\\').join('/');
@@ -737,7 +765,13 @@ export function defaultOpenSession(
     driver,
     warnings,
     orchestratorKind,
-  }: { driver: LocalDriver; warnings: string[]; orchestratorKind: 'local' | 'cloud' } = boot({
+    router,
+  }: {
+    driver: LocalDriver;
+    warnings: string[];
+    orchestratorKind: 'local' | 'cloud';
+    router?: { orchestrator(): { ref: { model: string } } };
+  } = boot({
     cwd: routine.cwd,
     profile: 'headless',
     instructions: routineInstructions(routine),
@@ -753,7 +787,13 @@ export function defaultOpenSession(
     }
     throw new RoutineRefused(ROUTINE_NEEDS_LOCAL_MODEL);
   }
-  return { driver, warnings };
+  let model: string | undefined;
+  try {
+    model = router?.orchestrator().ref.model;
+  } catch {
+    // The note says "unknown" rather than fail the run over a label.
+  }
+  return { driver, warnings, ...(model ? { model } : {}) };
 }
 
 // ---- the process singleton ---------------------------------------------------
