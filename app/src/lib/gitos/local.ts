@@ -32,14 +32,32 @@
 // provider has no listFolders, createFolder or renameFolder (K5 keeps an empty
 // folder in device settings and renames a folder note by note), and it keeps
 // notes only, so no attachments.
+//
+// Vault settings (Vault M7, CTO L7, L16). The vault's own settings are one
+// sealed key (`oscode.gitos.config.<resourceId>.vault`), a body like a
+// note's, with its own fresh `v` on every write. `writeConfig` is the
+// settings sheet's compare-and-swap write, in the same chain as the notes.
+// No note path reaches it: a write under any dot folder (`.oscode/`,
+// `.obsidian/`) is refused (L8), so a model's write can never pose as the
+// settings file.
 import {
+  VAULT_CONFIG_FILES,
+  VAULT_CONFIG_MAX_BYTES,
   foldPath,
+  isAgentWritablePath,
   isVaultConfigName,
+  utf8Length,
   type ConfigRead,
   type VaultConfigName,
+  type VaultSettingsConfigName,
 } from 'os-code/protocol';
 import { storeDelete, storeGetJson, storeKeys, storeSetJson } from '../platform.js';
-import { vaultNotFolderLine } from '../vaultCopy.js';
+import {
+  VAULT_SETTINGS_NAME_REFUSED,
+  VAULT_SETTINGS_TOO_LARGE,
+  vaultDotPathLine,
+  vaultNotFolderLine,
+} from '../vaultCopy.js';
 import { asConfigRead } from './config.js';
 import { isVaultFolderPath } from './folderClient.js';
 import {
@@ -64,8 +82,8 @@ const indexKey = (resourceId: string) => `oscode.gitos.index.${resourceId}`;
 const filePrefix = (resourceId: string) => `oscode.gitos.file.${resourceId}.`;
 const fileKey = (resourceId: string, path: string) => `${filePrefix(resourceId)}${path}`;
 const leaseKey = (resourceId: string) => `oscode.gitos.lease.${resourceId}`;
-/** The vault's own config (`oscode/vault`), sealed like a note body. Nothing
- *  writes it before M7, so today it reads as absent. */
+/** The vault's own config (`oscode/vault`), sealed like a note body; only
+ *  `writeConfig` writes it (Vault M7). */
 const configKey = (resourceId: string) => `oscode.gitos.config.${resourceId}.vault`;
 const trashPrefix = (resourceId: string) => `oscode.gitos.trash.${resourceId}.`;
 const trashKey = (resourceId: string, id: string) => `${trashPrefix(resourceId)}${id}`;
@@ -331,6 +349,7 @@ export const localProvider: StorageProvider = {
   // the two leaves a stale list version, and the recheck corrects it because
   // it reads the body through stat.
   async write(resourceId, path, text, guard?: WriteGuard): Promise<WriteResult> {
+    if (!isAgentWritablePath(path)) throw new Error(vaultDotPathLine(path));
     return chained(resourceId, async () => {
       if (guard) {
         const current = await readBody(resourceId, path);
@@ -556,8 +575,49 @@ export const localProvider: StorageProvider = {
   async readConfig(resourceId, name: VaultConfigName): Promise<ConfigRead> {
     if (!isVaultConfigName(name)) return { ok: false, reason: 'refused' };
     if (name !== 'oscode/vault') return { ok: false, reason: 'absent' };
-    const body = await storeGetJson<Body>(configKey(resourceId));
-    if (!body || typeof body.text !== 'string') return { ok: false, reason: 'absent' };
+    const body = await readConfigBody(resourceId);
+    if (!body) return { ok: false, reason: 'absent' };
     return asConfigRead({ ok: true, text: body.text, version: verOf(body) });
   },
+
+  // ---- Vault M7 (CTO L7, L16) ------------------------------------------------
+
+  // The settings sheet's write, the note write's contract on the sealed key:
+  // the guard is checked against the stored body inside the chain, a conflict
+  // hands back theirs and leaves it, and every write makes a fresh `v`.
+  async writeConfig(
+    resourceId,
+    name: VaultSettingsConfigName,
+    text: string,
+    guard: WriteGuard,
+  ): Promise<WriteResult> {
+    if (name !== 'oscode/vault') throw new Error(VAULT_SETTINGS_NAME_REFUSED);
+    if (utf8Length(text) > VAULT_CONFIG_MAX_BYTES) throw new Error(VAULT_SETTINGS_TOO_LARGE);
+    return chained(resourceId, async (): Promise<WriteResult> => {
+      const current = await readConfigBody(resourceId);
+      if ('ifAbsent' in guard) {
+        if (current) return { ok: false, conflict: 'exists', theirs: configFileOf(current) };
+      } else if (!current) {
+        return { ok: false, conflict: 'missing' };
+      } else if (verOf(current) !== guard.ifMatch) {
+        return { ok: false, conflict: 'changed', theirs: configFileOf(current) };
+      }
+      const body: Body = { text, updatedAt: new Date().toISOString(), v: newVersion() };
+      await storeSetJson(configKey(resourceId), body);
+      return { ok: true, file: configFileOf(body) };
+    });
+  },
 };
+
+/** The settings body, or undefined when there is none (or it is not one). */
+async function readConfigBody(resourceId: string): Promise<Body | undefined> {
+  const body = await storeGetJson<Body>(configKey(resourceId));
+  return typeof body?.text === 'string' ? body : undefined;
+}
+
+/** Where the settings file sits in a folder (`.oscode/vault.json`): the
+ *  path every provider's `writeConfig` answers with, so the sheet names one
+ *  file whatever the storage. */
+export const VAULT_SETTINGS_PATH = `.${VAULT_CONFIG_FILES['oscode/vault'].dir}/${VAULT_CONFIG_FILES['oscode/vault'].file}`;
+
+const configFileOf = (b: Body): StoredFile => fileOf(VAULT_SETTINGS_PATH, b);
