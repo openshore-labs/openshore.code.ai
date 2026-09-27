@@ -263,11 +263,39 @@ export function wikilinkContext(text: string, caret: number): WikilinkContext | 
   return { start: open, end, query, embed: open > 0 && text[open - 1] === '!' };
 }
 
-/** The range a link pick replaces (Vault M6, CTO K14): from `ctx.start`
- *  through the target already written after the caret, through an existing
- *  `]]`, or up to an existing `|` so the alias is kept.
+/** Whether a `]]` closes the link on this line from `i`, past any subpath
+ *  or alias (a table's `|` with no `]]` after it is not an alias). */
+function closesAfter(text: string, i: number): boolean {
+  let j = i;
+  while (j < text.length && !/[[\]\n\r]/.test(text[j]!)) j++;
+  return text.startsWith(']]', j);
+}
+
+/** The range a link pick replaces (Vault M6, CTO K14): from `ctx.start` (the
+ *  first `[`, so an embed's `!` stays) through the target already written
+ *  after the caret, when the link closes on the same line:
  *
- *  Wave 0 stub: the signature is the contract; stream A2 builds the body. */
-export function wikilinkReplaceRange(_text: string, _ctx: WikilinkContext): TextRange {
-  throw new Error('not built: wikilinkReplaceRange (Vault M6, stream A2)');
+ *  - through an existing `]]`, so the pick writes the whole `[[Name]]`;
+ *  - up to an existing `|`, so the alias is kept (the pick writes `[[Name`);
+ *  - up to an existing `#subpath` when the query has no `#` yet, so a heading
+ *    or block reference is kept too.
+ *
+ *  A link that does not close on the line (a `[`, a lone `]`, a line break,
+ *  or the end first) replaces only up to the caret, so the words after it are
+ *  never swallowed. The caller checks `text[end]` to know whether it stops
+ *  before a `|` or a `#`. */
+export function wikilinkReplaceRange(text: string, ctx: WikilinkContext): TextRange {
+  const start = ctx.start;
+  const caret = Math.max(start, Math.min(ctx.end, text.length));
+  const stopAtHash = !ctx.query.includes('#');
+  let i = caret;
+  while (i < text.length) {
+    const c = text[i]!;
+    if (c === '\n' || c === '\r' || c === '[' || c === ']' || c === '|') break;
+    if (c === '#' && stopAtHash) break;
+    i++;
+  }
+  if (text.startsWith(']]', i)) return { start, end: i + 2 };
+  if ((text[i] === '|' || text[i] === '#') && closesAfter(text, i + 1)) return { start, end: i };
+  return { start, end: caret };
 }
