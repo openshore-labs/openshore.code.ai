@@ -293,7 +293,10 @@ aborts the move and the resource still points at the source.
 
 **0.6 Only notes are notes.** One `isNote` filter at the seam (`*.md`, dot
 segments skipped, so `.obsidian/` and `.trash/` never list); the Swift
-`list()` skips hidden paths; `.md` is never appended to a known non-markdown
+`list()` prunes dot folders and non-notes but keeps mapping the
+`.Name.md.icloud` placeholders to their real names first (never
+`.skipsHiddenFiles`, which would hide a note still in iCloud and bring back a
+create over it); `.md` is never appended to a known non-markdown
 extension; `vaultMoveTo` copies only filtered entries. Closes [obs-9]
 [data-15] (listing half) [obs-12] (junk `.pdf.md` files). Where:
 `app/src/lib/gitos/providers.ts`, `icloud.ts:27`, `OscodeIcloudPlugin.swift:78`.
@@ -425,7 +428,11 @@ target. A debounced `fs.watch` pushes changes over the bridge, and the store
 re-checks the open note on focus. A clean draft reloads in place; a dirty one
 pauses autosave and opens a resolve sheet on `Sheet.tsx` (Keep mine, Use
 theirs, Keep both). Other providers return the new shape now and gain the
-check in M2. Closes [data-3] [ui-1] [obs-5] [truth-15] [data-20]. Where:
+check in M2. Files carry an opaque `version` (compared for equality only;
+sizes documented as bytes), the folder client is built as one shared
+`folderClient.ts` over a transport so the iPhone folder (2.10a) reuses it, and
+the temp-and-rename keeps the note's creation date, which Obsidian shows.
+Closes [data-3] [ui-1] [obs-5] [truth-15] [data-20]. Where:
 `app/src/lib/gitos/providers.ts:70-73`, `deviceFolder.ts`,
 `app/electron/main.ts:916-973`, `store.ts` (vaultSave, vaultRefresh),
 `VaultScreen.tsx`. Test: a new `app/test/providerContract.test.ts` that every
@@ -557,24 +564,101 @@ desktop team member can open the team vault in Obsidian. Closes
 touches the personal export; the desktop IPC writes real files in a temp
 folder.
 
-**2.9 iCloud conflict versions (M, the first cut if M2 slips).** Unresolved
-`NSFileVersion` versions feed the resolve sheet and are then marked resolved.
-Closes [data-15]. Where: `OscodeIcloudPlugin.swift`, `icloud.ts`. Test: a
-device checklist line (8.1); the repo has no Swift unit harness.
+**2.9 iCloud conflict versions (M).** Unresolved `NSFileVersion` versions
+feed the resolve sheet and are then marked resolved. No longer "the first cut
+if M2 slips": hidden conflict versions in a person's Obsidian iCloud vault
+(2.10) would break ship gate 1. Closes [data-15]. Where:
+`OscodeIcloudPlugin.swift`, `icloud.ts`. Test: a device checklist line (8.1)
+and the Swift test target from 2.10a.
 
-**2.10 The iPhone opens an existing Obsidian vault in place (L; founder
-ruling 2026-09-27; needs 0.6 and 2.1).** Draft, being refined. A storage
-sheet row, "Use your Obsidian vault", opens the iOS folder picker on the
-person's vault (`On My iPhone/Obsidian/<vault>` or `iCloud Drive/Obsidian/<vault>`);
-the app keeps a security-scoped bookmark, reads and writes under file
-coordination, downloads evicted items before a read, and checks the
-modification date before every write, so Obsidian and OpenShore can both
-edit the same notes without either overwriting the other. `.obsidian/` and
-`.trash/` never list. Closes [obs-10] [obs-3] (iPhone half). Where:
-`app/plugins/oscode-icloud/ios/Sources/OscodeIcloudPlugin/OscodeIcloudPlugin.swift`,
-a provider in `app/src/lib/gitos/`, `VaultScreen.tsx`. Test: the provider
-enrolled in `providerContract.test.ts` with a mocked plugin; device checklist
-lines (8.1).
+**2.10a The iPhone opens an existing Obsidian vault in place (L, about 2.5
+weeks; founder ruling 2026-09-27; needs 0.5, 0.6, 0.19, 1.1, and 2.1; behind
+`settings.vaultFolderPicker`, on in TestFlight, on by default once 3.2
+lands).** Designed, then checked against iOS behavior and Apple's developer
+forums (the check's corrections are folded in).
+
+- **Pick.** A storage sheet row, "Your Obsidian vault" ("Open it where it
+  already is, on this iPhone or in iCloud Drive."), opens the iOS folder picker
+  in place, not as a copy, from a second plugin class, `OscodeFolderPlugin`, in
+  the existing `oscode-icloud` package. No new entitlement.
+- **Keeping access.** A plain bookmark of the folder, made while access is
+  started and kept natively in Application Support, never in JS (iOS has no
+  security-scoped bookmark option; a regular bookmark carries the access).
+  Resolved off the main thread on each foreground; the old scope is stopped only
+  when the resolved folder changes, so scopes never pile up.
+- **States.** ok, stale (re-bookmarked silently), moved (judged by the path the
+  person sees, never the app container path, which changes on an update or a
+  restore), in Recently Deleted, gone, denied, and unreachable while iCloud is
+  signed out. Denied and signed out are decided only after a failed read.
+- **What was picked.** Obsidian's iCloud folder (confirmed by the container's
+  display name); an Obsidian vault on this iPhone (an app's `Documents/<vault>`
+  whose dot config folder holds `workspace-mobile.json`; that folder, `.obsidian`
+  or a per-device override, is kept for 3.4); Obsidian's parent folder (the
+  person chooses a vault, kept with the vault's file id so a rename in Files is
+  followed); a folder inside a vault (the person is asked for the vault
+  itself); OpenShore's own folders (refused, pointing to the iCloud Drive row);
+  any other folder (neutral copy, no Obsidian claim).
+- **Reading and writing** (`CoordinatedTree`, shared with 2.1 and 2.9): a
+  bounded queue with a cancel watchdog on every coordinated call; lists use
+  metadata already on the device and prune dot folders without hiding iCloud
+  placeholders; never coordinates a read of a note that is not current (a
+  coordinated read would wait on the download); the jail compares real paths
+  of the parent. Versions are opaque tokens (file id, nanosecond modification
+  time, bytes). A write with `ifMatch` conflicts when the note is missing,
+  evicted, has a newer version waiting in iCloud (iOS 18.4 and later can keep a
+  stale local copy), or its token moved; otherwise it writes a temp file that
+  carries the note's creation date, swaps it in, and checks the displaced
+  file, swapping back on a change. A create checks case- and NFC-insensitively,
+  placeholders included. Remove takes `ifMatch`. Writes run inside a
+  background task. Only the note the person opens is downloaded.
+- **Provider.** `folder`, the 1.1 `folderClient.ts` over an iOS transport. It
+  writes no lease file; Obsidian does not honor leases, so compare-and-swap is
+  the protection.
+- **Moving.** Opening in place and leaving the folder only repoint; nothing is
+  copied either way. "Bring my notes" copies OpenShore's notes in with
+  `ifAbsent`, and a same-name note lands beside Obsidian's, never over it.
+  Caches and stash entries carry the provider and folder, so they never cross.
+
+Closes [obs-10] [obs-3] (iPhone half). Where: `app/plugins/oscode-icloud/ios/Sources/OscodeIcloudPlugin/`
+(`CoordinatedTree.swift`, `FolderBookmarks.swift`, `OscodeFolderPlugin.swift`),
+`app/src/lib/gitos/` (`folderPlugin.ts`, `iosFolder.ts`, `providers.ts`,
+`index.ts`), `store.ts` (vault target, `vaultMoveTo`, new
+`vaultChooseFolder`, `vaultUseFolder`, `vaultForgetFolder`), `VaultScreen.tsx`
+(the storage sheet). Test: a new `app/test/folderProvider.test.ts` with a
+mocked plugin (dot paths, `.canvas`, and images never list; a placeholder
+lists as evicted under its real name; `ifMatch` sends the version read
+returned; a conflict maps to `{conflict, theirs}`; each state refuses writes;
+no lease file; not ready on web or desktop); the folder row in
+`providerContract.test.ts` over a fake tree; `vaultStore.test.ts` (opening in
+place writes nothing, leaving copies nothing, bring notes keeps a same-name
+Obsidian note byte for byte, caches never cross folders); `vaultCopy.test.ts`
+("Obsidian opens" only for the two Obsidian locations); a static
+`app/test/nativePlugins.test.ts` (each plugin class is the first `@objc(` in
+its own file, and `CoordinatedTree.swift` never uses `.skipsHiddenFiles`); a
+Swift XCTest target for the `CoordinatedTree` decision table, run with
+`xcodebuild` on the Mac that builds the iOS app and recorded in PROGRESS; the
+device checklist lines in 8.1.
+
+**2.10b The folder stays current and shows every copy (M; needs 2.10a and
+2.9).** A file presenter while the Vault is on screen, removed on background,
+turns iCloud's coordinated changes into hints; Obsidian does not coordinate,
+so the re-check when OpenShore comes to the front is the real backstop. A
+status poll finishes an open that is waiting on a download. Unresolved
+`NSFileVersion` conflicts reach the resolve sheet. A "Note 2.md" beside
+"Note.md" wears a "Maybe a sync copy" badge with Compare, and nothing is ever
+deleted automatically. "Download all 86" asks iCloud for every evicted note
+by count (iOS cannot report an evicted note's size). Closes [data-15] (folder
+half). Test: `vaultStore.test.ts` (a folder change reloads a clean note and
+pauses a dirty one); a `looksLikeSyncCopy` table in `vaultCore.test.ts`
+("Chapter 2.md" alone is not flagged); device checklist lines.
+
+**What the founder should know about 2.10.** OpenShore opens the vault where
+it lives and keeps no copy, so a vault kept "On My iPhone" goes if Obsidian is
+deleted, and the copy says so. Obsidian does not take part in iOS file
+coordination, so protection comes from the check at the moment of saving and
+the re-check when OpenShore comes to the front, not from live updates. No
+Swift runs in CI; the device checklist and a recorded Xcode test run are the
+gate. It stays TestFlight-only until the M3 index lands.
 
 ### M3. One vault core and one index
 
@@ -630,7 +714,8 @@ verbatim.
 the seam for a short allow-list (`.obsidian/app.json`,
 `.obsidian/daily-notes.json`, `.obsidian/templates.json`, `.oscode/vault.json`),
 since the note filter in 0.6 and the `.md` rule in the normalizer keep these
-out of the note path. Needed by 6.4 and 7.1. Test: `providerContract.test.ts`,
+out of the note path. `.obsidian/` maps to the vault's detected config folder
+(Obsidian allows a per-device override, found by 2.10a). Needed by 6.4 and 7.1. Test: `providerContract.test.ts`,
 each provider reads an allowed file and refuses any other.
 
 ### M4. Context layer I: the engine and the floor
@@ -845,7 +930,8 @@ headings; a rename stops and reports if a referring note changed; a pgTAP
 move case.
 
 **6.3 Trash with Undo (M; team restore needs 2.3).** Delete moves the note to
-`.trash/` (Obsidian's convention, already hidden by 0.6); an Undo toast rides
+`.trash/` (the folder Obsidian uses for its own trash, already hidden by 0.6);
+an Undo toast rides
 `useExitPresence` with a haptic on commit; a Trash view offers Restore and
 Empty; team deletes restore from revisions. Closes [ui-12] [data-17]
 [orgvault-4]. Test: `vaultStore.test.ts`, delete then Undo restores the bytes
@@ -947,7 +1033,23 @@ devices (lease, evicted notes, a move, a conflict version); a two-member team
 vault (conflict toast, a stale delete refused, restore); iOS export; a paired
 phone browsing "Your computer"; a switch from cloud to Harbor to the desktop
 agent with a handoff; a real Obsidian fixture vault, since the review could
-not reach Obsidian's docs. Closes [truth-22] [truth-23].
+not reach Obsidian's docs. For the iPhone folder (2.10): a vault On My iPhone
+lists notes and not `.obsidian/`, edits save and show in Obsidian, and a save
+leaves Obsidian's "Created time" unchanged; an iCloud vault with half its
+notes evicted shows them, opens by downloading, and a same-name create opens
+the existing note; a Mac edit opened on the phone before iCloud delivers it
+never forks the note; picking Obsidian's parent folder, renaming the vault in
+Files, relaunching, and rebooting still opens it; a folder inside a vault asks
+for the vault; a config folder override is found; an Obsidian edit reloads a
+clean note and opens the resolve sheet on a dirty one; two devices offline
+then online reach the resolve sheet and badge "Note 2.md"; a deleted then
+restored folder shows and clears its state; iCloud sign-out and sign-in, a
+restore to a new phone, and offloading then deleting Obsidian are each
+recorded; 5,000 notes stay responsive with progress; a Mac pointing `vault.dir`
+at the same iCloud vault delivers an approved agent note to the phone; a save
+survives backgrounding; a dismissed picker cancels cleanly; and App Review's
+steps pass with a plain folder and no Obsidian installed. Closes [truth-22]
+[truth-23].
 
 **8.2 Docs and claims sweep.** Correct the "never lost" claims now that
 revisions exist, "on a branch" in `docs/vault-page-redesign.md`, and the stale
@@ -1032,7 +1134,8 @@ except D14, where the iPhone half moves into v1** (recorded in
    this device, with honest copy, when unpaired. Offer iCloud on a Mac (point
    `vault.dir` at the iCloud container) in the folder picker, never as the
    default. On iPhone the person may instead pick their own Obsidian vault
-   (2.10); that is their choice, never a default.
+   (2.10); that is their choice, never a default, and pairing never moves a
+   person off a folder they chose.
 3. **D3. Handoff notes in the vault.** A one-tap save by the person in v1,
    which needs no carve-out. Revisit a harness-written carve-out, like the
    routine note, once there is usage.
@@ -1104,7 +1207,7 @@ Engineer-weeks for one person, estimates only.
 | ------------------------------------ | ------------------- |
 | M0 Stop silent loss and false claims | 2                   |
 | M1 One vault on the desktop          | 2.5                 |
-| M2 Safe with more than one writer    | 3.5                 |
+| M2 Safe with more than one writer    | 6 (2.10 is 2.5)     |
 | M3 One core and one index            | 3                   |
 | M4 Context layer I                   | 4                   |
 | M5 Context layer II                  | 5                   |
@@ -1112,7 +1215,7 @@ Engineer-weeks for one person, estimates only.
 | M7 Customization                     | 2.5                 |
 | M8 Ship gate                         | 1, plus device time |
 
-About 28.5 in all. Two tracks in parallel bring the calendar to roughly half,
+About 31 in all, with the iPhone folder in v1. Two tracks in parallel bring the calendar to roughly half,
 with the critical path running through M5. M0 is worth shipping on its own the
 moment it is done: it closes every known silent-loss path and every false
 claim without waiting for the rest.
