@@ -7,6 +7,7 @@ import { icloudProvider, isIcloudAvailable } from './icloud.js';
 import { gdriveProvider } from './gdrive.js';
 import { orgVaultProvider, isOrgVaultAvailable } from './orgVault.js';
 import { deviceFolderProvider, isDeviceFolderAvailable } from './deviceFolder.js';
+import { hubProvider, isHubAvailable } from './hub.js';
 import { PROVIDER_ROSTER, type StorageProvider, type StorageProviderId } from './providers.js';
 
 export * from './providers.js';
@@ -24,6 +25,26 @@ export {
   seedOrgVaultBaseRev,
 } from './orgVault.js';
 export {
+  HUB_VAULT_RESOURCE_ID,
+  HubAwayError,
+  HubRefusal,
+  createHubProvider,
+  forgetHubStash,
+  hubIndexTarget,
+  hubPairPlan,
+  hubPersonKey,
+  hubReach,
+  hubUnpairTarget,
+  hubVaultLink,
+  isHubAvailable,
+  setHubVaultLink,
+  subscribeHubReach,
+  type HubPairPlan,
+  type HubProvider,
+  type HubProviderOptions,
+  type HubReach,
+} from './hub.js';
+export {
   isDeviceFolderAvailable,
   onDeviceFolderChanged,
   watchDeviceFolder,
@@ -35,6 +56,7 @@ const PROVIDERS_BY_ID: Partial<Record<StorageProviderId, StorageProvider>> = {
   icloud: icloudProvider,
   gdrive: gdriveProvider,
   org: orgVaultProvider,
+  hub: hubProvider,
 };
 
 /** The provider for an id, or undefined while its wiring is not landed.
@@ -44,8 +66,8 @@ export function providerFor(id: StorageProviderId): StorageProvider | undefined 
 }
 
 /** Whether a provider can take a vault right now. Local always can; iCloud
- *  is decided at runtime by the device (signed in and provisioned); the rest
- *  are not wired yet. Google Drive is held back for v1 (D1, 0.18): its
+ *  is decided at runtime by the device (signed in and provisioned); Your
+ *  computer only while one is paired; the rest are not wired yet. Google Drive is held back for v1 (D1, 0.18): its
  *  conflict copy is undone by the next autosave, so it is never ready for a
  *  new vault, connected or not. A vault already there still lists and reads
  *  through providerFor and moves off through vaultMoveTo. Never reports a
@@ -56,6 +78,10 @@ export async function probeReady(id: StorageProviderId): Promise<boolean> {
   if (id === 'icloud') return isIcloudAvailable();
   if (id === 'gdrive') return false;
   if (id === 'org') return isOrgVaultAvailable();
+  // Your computer: ready only while one is paired (setHubVaultLink). Away,
+  // it is still usable from what was kept, read-only, so reach does not
+  // decide.
+  if (id === 'hub') return isHubAvailable();
   return false;
 }
 

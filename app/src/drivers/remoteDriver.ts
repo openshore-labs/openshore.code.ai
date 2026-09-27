@@ -9,7 +9,11 @@ import type {
   DriverEvent,
   HarnessCurrentsHandle,
   PermissionMode,
+  SessionCreateVaultFields,
 } from 'os-code/protocol';
+import { HANDOFF_MAX_BYTES } from 'os-code/protocol';
+import { isNotePath } from '../lib/gitos/providers.js';
+import { PROJECT_VAULT_PINS_MAX } from '../state/types.js';
 import type {
   ChatDriver,
   DriverEventSink,
@@ -206,6 +210,22 @@ export async function redeemPairClaim(
   }
 }
 
+/** The longest prefix of `text` that fits `maxBytes` of UTF-8, cut on a
+ *  code point, never inside one. */
+export function capUtf8(text: string, maxBytes: number): string {
+  const enc = new TextEncoder();
+  if (enc.encode(text).length <= maxBytes) return text;
+  let bytes = 0;
+  let out = '';
+  for (const ch of text) {
+    const n = enc.encode(ch).length;
+    if (bytes + n > maxBytes) break;
+    bytes += n;
+    out += ch;
+  }
+  return out;
+}
+
 export async function daemonCreateSession(
   target: DaemonTarget,
   cwd?: string,
@@ -227,8 +247,20 @@ export async function daemonCreateSession(
     currents?: CurrentsHandles;
     /** The Harness Current that is on (Jev), as its per-session handle. */
     harnessCurrents?: HarnessCurrentsHandle;
+    /** A model switch's handoff (Vault M5, CTO J12), prepended to the first
+     *  task's preamble only. Cut to `HANDOFF_MAX_BYTES` of UTF-8 before it
+     *  goes on the wire, so the daemon never refuses the create over it. */
+    handoff?: string;
+    /** The project's own pins (`Project.vaultPins`, CTO J14): note paths in
+     *  the person's vault, at most `PROJECT_VAULT_PINS_MAX`. Only paths that
+     *  name a note go on the wire. */
+    vaultPins?: string[];
   } = {},
 ): Promise<string> {
+  const handoff = opts.handoff ? capUtf8(opts.handoff, HANDOFF_MAX_BYTES) : '';
+  const vaultPins = (opts.vaultPins ?? [])
+    .filter((p) => typeof p === 'string' && isNotePath(p))
+    .slice(0, PROJECT_VAULT_PINS_MAX);
   const res = await fetch(`${target.baseUrl}/sessions`, {
     method: 'POST',
     headers: { ...headers(target), 'content-type': 'application/json' },
@@ -242,7 +274,9 @@ export async function daemonCreateSession(
       ...(opts.memory === false ? { memory: false } : {}),
       ...(opts.currents ? { currents: opts.currents } : {}),
       ...(opts.harnessCurrents ? { harnessCurrents: opts.harnessCurrents } : {}),
-    }),
+      ...(handoff ? { handoff } : {}),
+      ...(vaultPins.length ? { vaultPins } : {}),
+    } satisfies SessionCreateVaultFields & Record<string, unknown>),
     signal: AbortSignal.timeout(10_000),
   });
   const body = (await res.json().catch(() => ({}))) as { id?: string; error?: string };

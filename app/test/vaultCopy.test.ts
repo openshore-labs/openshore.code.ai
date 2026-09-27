@@ -76,6 +76,16 @@ import {
   vaultOnboard,
   vaultSheetLine,
   vaultWelcomeNote,
+  HUB_AGENT_LINE,
+  HUB_AWAY_LINE,
+  HUB_AWAY_NOT_KEPT,
+  HUB_AWAY_READ_ONLY,
+  HUB_PAIR_LINE,
+  HUB_PAIRING_REFUSED,
+  HUB_REPOINT_TOAST,
+  HUB_UPDATE_LINE,
+  hubMoveOffer,
+  hubTooLargeLine,
   type VaultCopyOpts,
   type VaultCopyProvider,
 } from '../src/lib/vaultCopy.js';
@@ -117,8 +127,12 @@ function rendered(p: Pair): string[] {
   ];
 }
 
-// The one pair where the agent's folder IS the vault on screen.
-const agentsFolder = (p: Pair) => p.on === 'electron' && p.id === 'files';
+// The pairs where the agent's folder IS the vault on screen: This folder on
+// the desktop, and Your computer on a phone paired to its own computer (the
+// hub serves the owner the same folder; Vault M5, CTO J9).
+const agentsFolder = (p: Pair) =>
+  (p.on === 'electron' && p.id === 'files') ||
+  (p.on !== 'electron' && p.id === 'hub' && p.device === 'paired');
 // Neutral headings that name the agent without claiming anything about it.
 const NEUTRAL_AGENT_TITLES = ['Where your agent keeps notes'];
 
@@ -138,11 +152,12 @@ const OBSIDIAN_SAID: Record<VaultCopyProvider, string[]> = {
   local: [],
   gdrive: [],
   org: ['It is not an Obsidian folder.'],
+  hub: [],
 };
 
 describe('the Vault copy map (0.19)', () => {
   it('covers every platform, storage, and device', () => {
-    expect(PAIRS).toHaveLength(3 * 5 * 3);
+    expect(PAIRS).toHaveLength(3 * 6 * 3);
     for (const p of PAIRS) {
       const c = vaultCopy(p.on, p.id, optsOf(p));
       expect(c.storage.length, nameOf(p)).toBeGreaterThan(10);
@@ -180,11 +195,13 @@ describe('the Vault copy map (0.19)', () => {
       if (p.on === 'electron') continue;
       const c = vaultCopy(p.on, p.id, optsOf(p));
       const where = nameOf(p);
-      const says = p.device === 'paired' && p.id !== 'org';
+      // Your computer, paired, says the agent line itself, not a pointer.
+      const says = p.device === 'paired' && p.id !== 'org' && p.id !== 'hub';
       expect(c.agentElsewhere, where).toBe(says ? PHONE_AGENT_LINE : undefined);
       // An unpaired phone or the web gets one pointer, in the empty-vault ramp
       // only: never in the lead or the storage sheet.
       const pairs = p.device === 'unpaired' && p.id !== 'org';
+      if (agentsFolder(p)) continue;
       expect(c.agentPair, where).toBe(pairs ? PHONE_PAIR_LINE : undefined);
       if (pairs) {
         expect(vaultLead(c), where).not.toMatch(/agent/i);
@@ -323,6 +340,70 @@ describe('the Vault copy map (0.19)', () => {
     const card = GUIDE_CARDS.find((c) => c.id === 'wayfinding');
     expect(card?.text).toMatch(/repository/);
     expect(card?.text).not.toMatch(/Memory keeps what it has learned in your Vault/);
+  });
+});
+
+// Your computer (Vault M5, CTO J8, J9): the paired computer's vault. Every
+// line says it holds only while the computer is on, a member is told whose
+// computer holds their notes and nothing more, and the desktop, where the
+// same folder is This folder, is never offered it.
+describe('Your computer (the hub vault)', () => {
+  const allHubLines = () => [
+    ...PAIRS.filter((p) => p.id === 'hub').flatMap(rendered),
+    HUB_AWAY_LINE,
+    HUB_AWAY_READ_ONLY,
+    HUB_AWAY_NOT_KEPT,
+    HUB_PAIR_LINE,
+    HUB_PAIRING_REFUSED,
+    HUB_REPOINT_TOAST,
+    HUB_UPDATE_LINE,
+    hubMoveOffer(1),
+    hubMoveOffer(12),
+    hubTooLargeLine(5 * 1024 * 1024),
+  ];
+
+  it('says "while it is on" wherever it says where the notes are', () => {
+    for (const on of ['ios', 'web'] as const) {
+      for (const opts of [{}, { paired: true }]) {
+        expect(vaultCopy(on, 'hub', opts).storage).toBe(
+          'Your computer, while it is on. Plain .md files in the vault folder there.',
+        );
+      }
+    }
+    expect(HUB_REPOINT_TOAST).toMatch(/while it is on/);
+    expect(hubMoveOffer(3)).toMatch(/while your computer is on/);
+  });
+
+  it('never promises the computer is always there', () => {
+    for (const line of allHubLines()) expect(line).not.toMatch(/always on|always available|24\/7/i);
+  });
+
+  it('the owner on a paired phone gets the agent line This folder says on the desktop', () => {
+    const c = vaultCopy('ios', 'hub', { paired: true });
+    expect(c.agent).toBe(HUB_AGENT_LINE);
+    expect(HUB_AGENT_LINE).toBe(vaultCopy('electron', 'files').agent);
+    expect(c.routines).toBe('Routines leave their notes here.');
+    expect(c.agentElsewhere).toBeUndefined();
+  });
+
+  it('a member reads one line naming the computer, and nothing more', () => {
+    const named = vaultCopy('ios', 'hub', { paired: true, hubMember: true, hubName: 'Studio Mac' });
+    expect(named).toEqual({ storage: 'Your notes on Studio Mac.' });
+    const unnamed = vaultCopy('ios', 'hub', { paired: true, hubMember: true });
+    expect(unnamed).toEqual({ storage: 'Your notes on the computer you paired.' });
+  });
+
+  it('is offered on the phone and never on the desktop, and says nothing of Obsidian', () => {
+    expect(vaultOffersProvider('ios', 'hub')).toBe(true);
+    expect(vaultOffersProvider('electron', 'hub')).toBe(false);
+    for (const line of allHubLines()) expect(line).not.toMatch(/Obsidian/);
+  });
+
+  it('the away line is the one the memo fixed, and the roster row agrees on pairing', () => {
+    expect(HUB_AWAY_LINE).toBe('Your computer is off. Changes wait here and save when it is back.');
+    const row = PROVIDER_ROSTER.find((p) => p.id === 'hub')!;
+    expect(row.label).toBe('Your computer');
+    expect(row.pending).toBe(HUB_PAIR_LINE);
   });
 });
 
