@@ -5,10 +5,15 @@
 // vault's Trash restores only: its tombstones and revisions are the
 // organization's record, so there is no Empty (R3).
 //
+// The page renders inside the room's own `.vault-screen` (a BackBar and the
+// page root, no screen of its own), so the room's view ghost has a parent
+// that outlives the swap: leaving Trash fades out, like tree and note (motion
+// rule 3). The room binds `rootRef` to `pageGhost('trash')`.
+//
 // Prop-driven: the room lists Trash (`listTrash` in state/vaultOps.ts), and
 // owns the restore, the empty, and their toasts. Rows arrive one after
 // another on the stagger; a restored row leaves when the list comes back.
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useState, type CSSProperties, type Ref } from 'react';
 import { noteFolder, noteTitle } from 'os-code/protocol';
 import { BackBar } from '../BackBar.js';
 import type { TrashEntry } from '../../lib/gitos/providers.js';
@@ -42,6 +47,8 @@ export interface VaultTrashViewProps {
   onBack: () => void;
   onRestore: (entry: TrashEntry) => Promise<void>;
   onEmpty: () => Promise<void>;
+  /** The page root's ref: the room's view ghost (`pageGhost('trash')`). */
+  rootRef?: Ref<HTMLDivElement>;
 }
 
 function titleOf(entry: TrashEntry): string {
@@ -59,6 +66,7 @@ export function VaultTrashView({
   onBack,
   onRestore,
   onEmpty,
+  rootRef,
 }: VaultTrashViewProps) {
   const [armed, setArmed] = useState(false);
   const [busy, setBusy] = useState<string>();
@@ -83,9 +91,9 @@ export function VaultTrashView({
   };
 
   return (
-    <div className="screen">
+    <>
       <BackBar title={VAULT_TRASH} back={{ to: VAULT_TRASH_BACK, onBack }} />
-      <div className="screen-inner vault-trash">
+      <div key="trash" ref={rootRef} className="screen-inner vault-trash">
         <p className="hint vault-trash-lead">{vaultTrashLead(kind)}</p>
         {kind === 'team' ? <p className="hint vault-trash-team">{VAULT_TRASH_TEAM_LINE}</p> : null}
         {error ? (
@@ -146,7 +154,7 @@ export function VaultTrashView({
           </div>
         ) : null}
       </div>
-    </div>
+    </>
   );
 }
 
