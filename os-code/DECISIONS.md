@@ -2371,7 +2371,9 @@ execution contract. Newest at the bottom.
   Current State, a session with no vault root included; a reply seeded from
   the journal after a local-only read comes back marked, so a daemon
   restart keeps the note off a leaving seat (the tool results themselves
-  are not seeded); the deep eval builds each task's vault index before the
+  are not seeded), and live history holds the same rule: once a task has
+  read a local-only note, every assistant turn it records is marked too,
+  since a reply may quote the note; the deep eval builds each task's vault index before the
   run (a person's vault is indexed long before a task), closes it and
   removes its saved file after, and a variant run with no task vault gets no
   vault, so the person's notes never enter a benchmark. Founder gate, open:

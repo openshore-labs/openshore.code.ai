@@ -10,7 +10,8 @@
 // - a seat that leaves this network gets neither the private nor the excluded
 //   text, in the system prompt or in a vaultRead or vaultSearch result, and
 //   the context-pack card counts the private note as withheld;
-// - an escalation after a local private read sends the cloud seat the stub;
+// - an escalation after a local private read sends the cloud seat the stub,
+//   and a local reply that quoted the note goes as the stub too;
 // - with Memory off there is no pack at all.
 import { afterEach, describe, expect, it } from 'vitest';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
@@ -177,6 +178,30 @@ describe('the vault context layer end to end (Vault M4)', () => {
     expect(sent).not.toContain('EXCLUDED-MARK');
     expect(sent).toContain(LOCAL_ONLY_STUB);
     expect(packEvents(s.events).map((c) => c.seat)).toEqual(['local', 'cloud']);
+  });
+
+  it('a local reply that quotes a private note reaches a later cloud seat as the stub', async () => {
+    const local = new MockProvider('mock', [
+      toolTurn('vaultRead', { path: PRIVATE }, 'q1'),
+      textTurn('Your diary says PRIVATE-MARK, the budget is tight.'),
+      toolTurn('readFile', { path: 'missing-1.txt' }, 'q2'),
+      toolTurn('readFile', { path: 'missing-2.txt' }, 'q3'),
+    ]);
+    const cloud = new MockProvider('anthropic', [textTurn('Cloud finished.')], { kind: 'cloud' });
+    const s = await session(local, {
+      escalation: cloud,
+      extra: {
+        providers: { anthropic: { kind: 'anthropic' } },
+        routing: { escalation: { enabled: true, afterToolFailures: 2 } },
+      },
+    });
+    await s.agent.run(TASK);
+    await s.agent.run('Now check the two files.');
+    expect(s.events.some((e) => e.type === 'model-switch')).toBe(true);
+    expect(cloud.requests.length).toBeGreaterThan(0);
+    const sent = JSON.stringify(cloud.requests);
+    expect(sent).not.toContain('PRIVATE-MARK');
+    expect(sent).toContain(LOCAL_ONLY_STUB);
   });
 
   it('with Memory off there is no pack', async () => {

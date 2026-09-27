@@ -225,6 +225,10 @@ export class AgentSession {
   /** Set when a write-risk tool succeeded this task, so verify runs only when
    *  there is something to verify. */
   private wroteThisTask = false;
+  /** This task has read a local-only vault note, so what the model says next
+   *  may quote it: its replies are marked `localOnly` too (CTO I5), the same
+   *  rule seed.ts applies to a journaled reply. */
+  private readLocalOnlyThisTask = false;
   /** The active model's window, from the last turn's capabilities; 0 until then. */
   private contextTokens = 0;
   /** The model-class profile for the active model this turn (the discipline
@@ -879,6 +883,7 @@ export class AgentSession {
     guardrails.startTask();
     this.cloudApprovedForTask = false;
     this.wroteThisTask = false;
+    this.readLocalOnlyThisTask = false;
     this.noWriteNudged = false;
     this.attemptedWriteThisTask = false;
     this.repeatLog.clear();
@@ -1156,7 +1161,7 @@ export class AgentSession {
         // Malformed call: bounded repair, then escalation, then stop.
         parseFailStreak += 1;
         repairAttempts += 1;
-        this.history.push({ role: 'assistant', content: streamedText });
+        this.history.push({ role: 'assistant', content: streamedText, ...this.localOnlyMark() });
         this.history.push({ role: 'user', content: repairPrompt(problems) });
         if (repairAttempts <= 2) {
           this.emit({
@@ -1188,7 +1193,7 @@ export class AgentSession {
         // A plain text answer: the task is done. In plan mode the answer IS the
         // plan, so it is also raised as a proposal the person can approve.
         const finalText = displayText.trim();
-        this.history.push({ role: 'assistant', content: streamedText });
+        this.history.push({ role: 'assistant', content: streamedText, ...this.localOnlyMark() });
         this.emit({ type: 'text-final', text: finalText });
         if (this.mode === 'plan' && finalText)
           this.emit({ type: 'plan-proposed', text: finalText });
@@ -1258,6 +1263,7 @@ export class AgentSession {
           role: 'assistant',
           content: streamedText,
           ...(thinkingBlocks?.length ? { thinkingBlocks } : {}),
+          ...this.localOnlyMark(),
           toolCalls: [
             ...calls.map((c) => ({
               id: c.id,
@@ -1277,7 +1283,7 @@ export class AgentSession {
           );
         }
       } else {
-        this.history.push({ role: 'assistant', content: streamedText });
+        this.history.push({ role: 'assistant', content: streamedText, ...this.localOnlyMark() });
         if (displayText.trim()) this.emit({ type: 'text-final', text: displayText.trim() });
         if (problems.length) {
           this.history.push({
@@ -1688,6 +1694,12 @@ export class AgentSession {
     return count >= 3 ? 'answer-only' : 'stale';
   }
 
+  /** The mark an assistant turn carries once this task has read a
+   *  local-only note (CTO I5). */
+  private localOnlyMark(): { localOnly?: true } {
+    return this.readLocalOnlyThisTask ? { localOnly: true } : {};
+  }
+
   /** Record a tool's observation. `localOnly` (a local-only vault note's
    *  text) rides onto the message, so a later leaving turn sends a stub in
    *  its place while the kept history holds the note (CTO I5). */
@@ -1697,6 +1709,7 @@ export class AgentSession {
     toolMode: 'native' | 'text',
     localOnly?: boolean,
   ): void {
+    if (localOnly) this.readLocalOnlyThisTask = true;
     const mark = localOnly ? { localOnly: true as const } : {};
     if (toolMode === 'native') {
       this.history.push({ role: 'tool', content, toolCallId: call.id, name: call.name, ...mark });
