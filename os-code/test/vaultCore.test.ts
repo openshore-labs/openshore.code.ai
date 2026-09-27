@@ -773,7 +773,9 @@ describe('nothing in the vault core serializes YAML (H2)', () => {
     expect(files).toContain('frontmatter.ts');
     for (const f of files) {
       const src = readFileSync(join(dir, f), 'utf8');
-      expect(src, f).not.toMatch(/\bdump\s*\(|safeDump|\bstringify\s*\(/);
+      // YAML is never written back. The index's own file format is JSON, so
+      // JSON.stringify is allowed; any other stringify (a YAML one) is not.
+      expect(src, f).not.toMatch(/\bdump\s*\(|safeDump|(?<!JSON\.)\bstringify\s*\(/);
     }
   });
 });
