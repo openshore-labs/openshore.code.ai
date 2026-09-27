@@ -2737,6 +2737,451 @@ button.vault-tag {
    provenance chip (teal --local, amber --cloud, outline once reviewed),
    About this note, the starter preview sheet (CTO L15; CX Y1 to Y13). */
 
+/* The note's face and size (7.1, Editor). The room spreads
+   `vaultTypeAttrs(settings.editor)` on the note; Default sets no attribute,
+   so today's look holds with no file. `--vault-font` is the face; the size
+   is a step on the type scale (the editor) or on the inherited base (reading,
+   in em), never a pixel value, and `--vault-size-step` names the step taken
+   (-1, 0, 1) for anything that reads it. */
+[data-vault-font='serif'] {
+  --vault-font: var(--font-display);
+}
+[data-vault-font='mono'] {
+  --vault-font: var(--font-mono);
+}
+[data-vault-size='smaller'] {
+  --vault-size-step: -1;
+}
+[data-vault-size='larger'] {
+  --vault-size-step: 1;
+}
+.vault-editor {
+  font-family: var(--vault-font, var(--font-mono));
+}
+.vault-read {
+  font-family: var(--vault-font, var(--font));
+}
+[data-vault-size='smaller'] .vault-editor,
+.vault-settings-sample[data-vault-size='smaller'] {
+  font-size: var(--text-3);
+}
+[data-vault-size='larger'] .vault-editor,
+.vault-settings-sample[data-vault-size='larger'] {
+  font-size: var(--text-5);
+}
+[data-vault-size='smaller'] .vault-read {
+  font-size: 0.93em;
+}
+[data-vault-size='larger'] .vault-read {
+  font-size: 1.07em;
+}
+
+/* Vault settings (Y1): full height on the phone, a centered card on the
+   desktop. Height is fixed, never tweened. */
+.sheet.vault-settings {
+  max-height: calc(100dvh - var(--safe-top, 0px) - 12px);
+  min-height: calc(100dvh - var(--safe-top, 0px) - 12px);
+}
+@media (min-width: 900px) {
+  .sheet-scrim:has(> .sheet.vault-settings) {
+    align-items: center;
+  }
+  .sheet.vault-settings {
+    min-height: 0;
+    max-height: 86vh;
+    border-radius: var(--radius-lg);
+  }
+}
+/* The save status: one line under the title, held open so it never jumps,
+   each new state fading in on --dur-3 (Y5, R5). */
+.vault-settings-status {
+  min-height: 1.4em;
+  margin: -8px 0 10px;
+  font-size: var(--text-2);
+  color: var(--ink-soft);
+}
+.vault-settings-status-text {
+  display: inline-block;
+  animation: vault-settings-fade var(--dur-3) var(--ease-standard) backwards;
+}
+@keyframes vault-settings-fade {
+  from {
+    opacity: 0;
+  }
+}
+.vault-settings-note {
+  margin: 0 0 12px;
+}
+.vault-settings-conflict {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: var(--text-3);
+  color: var(--ink);
+}
+.vault-settings-conflict p {
+  margin: 0;
+}
+.vault-settings-section {
+  margin: 0 0 18px;
+}
+.vault-settings-head {
+  margin: 0 0 8px;
+  font-family: var(--font-display);
+  font-size: var(--text-5);
+  font-weight: var(--weight-medium);
+  color: var(--ink-soft);
+}
+.vault-settings-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.vault-settings-item + .vault-settings-item,
+.vault-settings-asides + .vault-settings-item {
+  border-top: 1px solid var(--border);
+}
+.vault-settings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 14px;
+  text-align: left;
+  color: var(--ink);
+}
+.vault-settings-row-stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+.vault-settings-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.vault-settings-label {
+  font-size: var(--text-4);
+}
+.vault-settings-sub {
+  font-size: var(--text-2);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.vault-settings-value {
+  flex-shrink: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-4);
+  color: var(--ink-soft);
+}
+/* Read-only rows (From Obsidian, a locked file): neutral, never a fault. */
+.vault-settings-locked .vault-settings-label {
+  color: var(--ink-soft);
+}
+/* Y2's one line: it appears with a fade, never a height tween. */
+.vault-settings-expand {
+  margin: 0;
+  padding: 0 14px 11px;
+  font-size: var(--text-2);
+  color: var(--ink-soft);
+  animation: vault-settings-fade var(--dur-3) var(--ease-standard) backwards;
+}
+.vault-settings-seg {
+  align-self: flex-start;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.vault-settings-seg[aria-disabled='true'] {
+  opacity: 0.45;
+}
+.vault-settings-asides {
+  padding: 11px 14px 0;
+}
+.vault-settings-aside {
+  margin: 0 0 10px;
+  font-size: var(--text-2);
+  color: var(--ink-soft);
+}
+.vault-settings-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vault-settings-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 4px 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  font-size: var(--text-3);
+  color: var(--ink);
+}
+.vault-settings-chip:not(:has(.vault-settings-chip-remove)) {
+  padding-right: 12px;
+}
+.vault-settings-chip-name {
+  overflow-wrap: anywhere;
+}
+.vault-settings-chip-remove {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin: -4px 0;
+  border-radius: 999px;
+  color: var(--ink-soft);
+}
+/* A drawn cross, never a typed one (SheetGlyphs' reason). */
+.vault-settings-chip-x {
+  position: relative;
+  width: 12px;
+  height: 12px;
+}
+.vault-settings-chip-x::before,
+.vault-settings-chip-x::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 1.5px;
+  height: 100%;
+  background: currentColor;
+  border-radius: 999px;
+}
+.vault-settings-chip-x::before {
+  transform: translateX(-50%) rotate(45deg);
+}
+.vault-settings-chip-x::after {
+  transform: translateX(-50%) rotate(-45deg);
+}
+.vault-settings-fixed {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.vault-settings-caption {
+  margin: 0;
+  font-size: var(--text-2);
+  color: var(--muted);
+}
+.vault-settings-adds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.vault-settings-add {
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px dashed var(--border-strong);
+  font-size: var(--text-3);
+  color: var(--ink);
+}
+.vault-settings-input {
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  font-family: var(--font-mono);
+  font-size: var(--text-4);
+  color: var(--ink);
+  transition: border-color var(--dur-2) var(--ease-standard);
+}
+.vault-settings-input:focus {
+  border-color: var(--accent);
+}
+/* Y8: the one amber line in M7's settings, a spend fact under Room for
+   notes, with its word doing the work beside the dot. */
+.vault-settings-spend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--text-2);
+  color: var(--ink-soft);
+}
+.vault-settings-spend-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--cloud);
+}
+.vault-settings-sample {
+  margin: 0;
+  padding: 12px 14px;
+  border-top: 1px solid var(--border);
+  font-family: var(--vault-font, var(--font));
+  font-size: var(--text-4);
+  color: var(--ink);
+}
+.vault-settings-foot {
+  margin: 6px 2px 0;
+  font-size: var(--text-2);
+  color: var(--muted);
+}
+
+/* The provenance chip (Y11, R4): teal for a seat on this computer, amber for
+   a cloud seat, a fill until reviewed and an outline after. The word Local or
+   Cloud is always in the label beside the tint. */
+.vault-prov-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: var(--text-2);
+  font-weight: var(--weight-medium);
+}
+.vault-prov-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+.vault-prov-chip.vault-prov-local {
+  background: var(--local-soft);
+  color: var(--local);
+}
+.vault-prov-chip.vault-prov-cloud {
+  background: var(--cloud-soft);
+  color: var(--cloud);
+}
+.vault-prov-chip.vault-prov-local.vault-prov-reviewed {
+  background: transparent;
+  border-color: var(--local);
+}
+.vault-prov-chip.vault-prov-cloud.vault-prov-reviewed {
+  background: transparent;
+  border-color: var(--cloud);
+}
+
+/* About this note (Y12). */
+.vault-about {
+  max-height: 86vh;
+}
+.vault-about-rows {
+  margin: 0 0 12px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.vault-about-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+  font-size: var(--text-4);
+}
+.vault-about-row + .vault-about-row {
+  border-top: 1px solid var(--border);
+}
+.vault-about-row dt {
+  color: var(--ink-soft);
+}
+.vault-about-row dd {
+  margin: 0;
+  text-align: right;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.vault-about-row dd.vault-about-ran-local {
+  color: var(--local);
+}
+.vault-about-row dd.vault-about-ran-cloud {
+  color: var(--cloud);
+}
+.vault-about-foot {
+  margin: 0 0 14px;
+}
+.vault-about-line {
+  margin: 0 0 12px;
+  font-size: var(--text-3);
+  color: var(--ink);
+}
+.vault-about-sub {
+  margin: 0;
+  text-align: center;
+}
+
+/* The starter layout's preview (Y13): everything it adds, shown first. */
+.vault-starter-sub {
+  margin: 0 0 12px;
+}
+.vault-starter-rows {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  background: var(--surface);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.vault-starter-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+}
+.vault-starter-row + .vault-starter-row {
+  border-top: 1px solid var(--border);
+}
+.vault-starter-glyph {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--ink-soft);
+}
+.vault-starter-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.vault-starter-name {
+  font-size: var(--text-4);
+  font-weight: var(--weight-medium);
+  color: var(--ink);
+}
+.vault-starter-line {
+  font-size: var(--text-2);
+  color: var(--muted);
+}
+.vault-starter-settings {
+  margin: 0 0 14px;
+}
+.vault-starter-partial {
+  margin: 0 0 12px;
+  font-size: var(--text-3);
+  color: var(--ink);
+}
+.vault-starter {
+  max-height: 86vh;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vault-settings-status-text,
+  .vault-settings-expand {
+    animation: none;
+  }
+}
+
 /* ---- M7 stream G end ---- */
 
 /* ---- M7 stream W2 begin ----
