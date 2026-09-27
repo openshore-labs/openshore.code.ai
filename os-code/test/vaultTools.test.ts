@@ -78,6 +78,28 @@ describe('vault write/read/list', () => {
     expect(existsSync(join(root, '..', 'escape.md'))).toBe(false);
   });
 
+  // The app and the engine hold one rule: the vault and Obsidian hide dot
+  // names, so a note named with one would land where no surface lists it.
+  it('refuses a dot-led note name, and no file appears', async () => {
+    await expect(
+      vaultWriteTool.execute({ path: '.NET migration.md', content: 'x', mode: 'replace' }, ctx()),
+    ).rejects.toThrow(
+      'Note names cannot start with a dot; the vault and Obsidian hide them. Use "NET migration.md".',
+    );
+    expect(existsSync(join(root, '.NET migration.md'))).toBe(false);
+    expect(existsSync(join(root, 'NET migration.md'))).toBe(false);
+    await expect(
+      vaultWriteTool.execute({ path: 'plans/.draft', content: 'x', mode: 'replace' }, ctx()),
+    ).rejects.toThrow(/Use "plans\/draft\.md"/);
+    expect(existsSync(join(root, 'plans'))).toBe(false);
+    // vaultRead shares the rule, so the agent stays out of .obsidian/ (0.6).
+    mkdirSync(join(root, '.obsidian'));
+    writeFileSync(join(root, '.obsidian', 'app.md'), 'settings');
+    await expect(vaultReadTool.execute({ path: '.obsidian/app.md' }, ctx())).rejects.toThrow(
+      /cannot start with a dot/,
+    );
+  });
+
   it('previews a create as a diff for the approval prompt', async () => {
     const preview = await vaultWriteTool.preview!(
       { path: 'note.md', content: 'body', mode: 'replace' },

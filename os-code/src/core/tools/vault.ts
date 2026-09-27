@@ -21,16 +21,27 @@ function vaultJail(ctx: ToolContext): Jail {
 }
 
 /** Normalize a note name into a vault-relative .md path, the same shape the app
- *  uses: trim, collapse separators, append .md when absent. */
+ *  uses: trim, collapse separators, append .md when absent. A segment that
+ *  starts with a dot is refused, the app's rule too: the vault and Obsidian
+ *  hide dot names, so a ".NET migration.md" would land where no surface lists
+ *  it, and vaultRead, sharing this helper, stays out of .obsidian/ (0.6). */
 function normalizeNotePath(raw: string): string {
-  const cleaned = raw
+  const segments = raw
     .trim()
     .replace(/\\/g, '/')
     .split('/')
     .map((s) => s.trim())
-    .filter(Boolean)
-    .join('/');
+    .filter(Boolean);
+  const cleaned = segments.join('/');
   if (!cleaned) throw new Error('Give the note a name.');
+  if (segments.some((s) => s.startsWith('.'))) {
+    const undotted = segments
+      .map((s) => s.replace(/^[\s.]+/, ''))
+      .filter(Boolean)
+      .join('/');
+    const use = undotted ? ` Use "${/\.md$/i.test(undotted) ? undotted : `${undotted}.md`}".` : '';
+    throw new Error(`Note names cannot start with a dot; the vault and Obsidian hide them.${use}`);
+  }
   return /\.md$/i.test(cleaned) ? cleaned : `${cleaned}.md`;
 }
 
