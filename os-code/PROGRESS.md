@@ -426,6 +426,7 @@ extended that day by the graduated enforcement ladder (migration
 
 ## What remains (known follow-ups, none blocking)
 
+- [ ] **Founder gate, Vault M2 (0019):** before the team client (stream D) merges, run the case-duplicate preflight in `supabase/README.md` on production, then `supabase db push` for `0019_org_vault_v1.sql`; confirm `oscode_vault_purge` in `cron.job`. Also record one `xcodebuild test` run of the iCloud Swift tests once stream C lands.
 - [ ] **v1 direction: Phase 0 underway (reviewed 2026-09-25).**
       `docs/v1-direction-review.md` (memos in
       `docs/v1-direction-advisory-memos.md`; the Zed analysis behind it in
