@@ -43,6 +43,16 @@ export interface StoredFileMeta {
   evicted?: boolean;
 }
 
+/** Whether a path in a vault is a note the Vault shows and edits: a `.md`
+ *  file with no dot-folder or dot-file segment. So Obsidian's `.obsidian/`,
+ *  its `.trash/`, our own `.oscode/`, and a `.git/` never list as notes, and
+ *  attachments (images, PDFs, `.canvas`, `.base`) never open as text. One
+ *  rule at the seam, shared by every provider and by a vault move. */
+export function isNotePath(path: string): boolean {
+  if (!/\.md$/i.test(path)) return false;
+  return !path.split('/').some((segment) => segment.startsWith('.'));
+}
+
 /** A lease marks one writer per resource. Cloud folder syncs have no
  *  Git-aware locking, so the seam carries single-writer semantics from day
  *  one (CTO ruling): a holder id plus TTL, renewed by heartbeat. The Local
