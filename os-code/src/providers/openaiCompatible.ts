@@ -23,6 +23,8 @@ import type { CapabilityCategory } from '../router/roles.js';
 import { logger } from '../util/log.js';
 import { isLocalUrl } from '../core/security/egress.js';
 import { idleError, idleGuard, type IdleGuard } from './streamIdle.js';
+import { deriveModelClass, servedContextTokens } from '../harness/profile.js';
+import { hostRamGB } from './hostMemory.js';
 
 const log = logger('openai-compatible');
 
@@ -34,11 +36,23 @@ interface ShowInfo {
   thinking?: boolean;
 }
 
+/** Construction options. Everything here has a production default; tests
+ *  inject to pin a value. */
+export interface OpenAICompatibleOptions {
+  /** This computer's memory in GB, for the served window's ceiling (CTO I1).
+   *  Defaults to `hostRamGB`, read once per process. */
+  ramGB?: () => number;
+}
+
 export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
   readonly kind = 'local' as const;
   /** Off this computer's network, by address (see Provider.remote). */
   readonly remote: boolean;
   private showCache = new Map<string, ShowInfo>();
+  /** The served window per model, fixed for the process once computed: a
+   *  changed `num_ctx` reloads the model in Ollama (CTO I1). */
+  private servedCache = new Map<string, number>();
+  private readonly ramGB: () => number;
   /** Models observed to reject native tools; the bridge falls back to JSON-in-text. */
   private toolRejects = new Set<string>();
 
@@ -47,8 +61,10 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
     private readonly endpoint: OpenAICompatibleEndpoint,
     /** Optional category tags from the stack config / catalog. */
     private readonly categoriesByModel: Record<string, CapabilityCategory[]> = {},
+    options: OpenAICompatibleOptions = {},
   ) {
     this.remote = !isLocalUrl(endpoint.baseUrl);
+    this.ramGB = options.ramGB ?? hostRamGB;
   }
 
   get label(): string {
@@ -151,15 +167,42 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
     return info;
   }
 
+  /** The window to serve `model` at, or undefined when this endpoint does not
+   *  set one: `numCtx` unset or 'off', or a backend other than Ollama (llama.cpp
+   *  and vLLM fix the window at start). The lower of the model's own window and
+   *  the per-class ceiling for this computer's memory. The class comes from the
+   *  name and size only, so the window never feeds back into its own class.
+   *  Memoized per model: the same model is always asked for the same window. */
+  private async servedWindow(model: string, backend: BackendProfile): Promise<number | undefined> {
+    if (this.endpoint.numCtx !== 'auto' || backend.flavor !== 'ollama') return undefined;
+    const cached = this.servedCache.get(model);
+    if (cached !== undefined) return cached;
+    const native = await this.nativeWindow(model);
+    const served = servedContextTokens(
+      native,
+      deriveModelClass({ model, kind: 'local' }),
+      this.ramGB(),
+    );
+    this.servedCache.set(model, served);
+    return served;
+  }
+
+  private async nativeWindow(model: string): Promise<number> {
+    return (await this.showInfo(model)).contextTokens ?? defaultContextTokens(model);
+  }
+
   async capabilities(model: string): Promise<ProviderCapabilities> {
     const backend = await this.backend();
     const show = await this.showInfo(model);
+    const native = await this.nativeWindow(model);
+    const served = await this.servedWindow(model, backend);
     return {
       supportsTools:
         !this.toolRejects.has(model) && backend.nativeTools && show.toolCapable !== false,
       supportsVision: show.vision ?? looksVisionCapable(model),
       supportsGrammar: backend.grammar,
-      contextTokens: show.contextTokens ?? defaultContextTokens(model),
+      contextTokens: served ?? native,
+      ...(served !== undefined ? { nativeContextTokens: native } : {}),
       costTier: 'free',
       latencyTier: 'standard',
       categories: this.categoriesByModel[model] ?? ['reasoning', 'coding'],
@@ -175,7 +218,7 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
     const backend = await this.backend();
     try {
       if (backend.flavor === 'ollama') {
-        yield* this.chatOllama(request, signal);
+        yield* this.chatOllama(request, backend, signal);
       } else {
         yield* this.chatOpenAI(request, backend, signal);
       }
@@ -195,6 +238,7 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
 
   private async *chatOllama(
     request: ChatRequest,
+    backend: BackendProfile,
     signal?: AbortSignal,
   ): AsyncGenerator<ChatEvent, void, void> {
     const body: Record<string, unknown> = {
@@ -220,6 +264,10 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
     if (request.temperature !== undefined) options.temperature = request.temperature;
     if (request.maxTokens !== undefined) options.num_predict = request.maxTokens;
     if (request.stop?.length) options.stop = request.stop;
+    // The served window (CTO I1). Only with `numCtx: 'auto'`; off leaves the
+    // body exactly as it was, so Ollama keeps its own default.
+    const numCtx = await this.servedWindow(request.model, backend);
+    if (numCtx !== undefined) options.num_ctx = numCtx;
     if (Object.keys(options).length) body.options = options;
 
     const guard = idleGuard(signal);
