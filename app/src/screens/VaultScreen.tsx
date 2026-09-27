@@ -885,13 +885,18 @@ export function VaultScreen() {
                     return;
                   }
                   setMoving(true);
-                  const ok = await vaultMoveTo(p.id).catch(() => false);
+                  const moved = await vaultMoveTo(p.id).catch(() => undefined);
                   setMoving(false);
                   setStorageOpen(false);
+                  // A refused move names why: notes still downloading (or
+                  // unreadable) keep the vault where it is, so nothing drops.
+                  const waiting = moved?.reason === 'unreadable' ? moved.skipped.length : 0;
                   showToast(
-                    ok
+                    moved?.ok
                       ? `Your vault lives on ${p.label} now. It syncs from here.`
-                      : `Could not move to ${p.label}. ${p.pending ?? 'Try again in a moment.'}`,
+                      : waiting
+                        ? `Did not move: ${waiting === 1 ? '1 note is' : `${waiting} notes are`} still downloading or could not be read. Your vault stays where it is.`
+                        : `Could not move to ${p.label}. ${p.pending ?? 'Try again in a moment.'}`,
                   );
                 };
                 const disconnect = async () => {
