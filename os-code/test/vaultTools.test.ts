@@ -614,3 +614,109 @@ describe('vault permissions mean what they say', () => {
     expect('alwaysAsk' in session.approvals[0]!).toBe(false);
   });
 });
+
+// Review M1-1: a configured vault folder that went missing (renamed, or on a
+// drive that is not connected) is never recreated by the agent's tools, so a
+// note never lands in a fresh empty folder beside the real vault.
+describe('a vault folder that is not there', () => {
+  it('vaultWrite, its preview, and vaultRead refuse and never recreate it', async () => {
+    const gone = join(root, 'Drive', 'Brain');
+    const at = { vaultRoot: gone } as unknown as ToolContext;
+    const args = { path: 'a', content: 'x', mode: 'replace' as const };
+    await expect(vaultWriteTool.preview!(args, at)).rejects.toThrow(
+      'The vault folder is not there right now.',
+    );
+    await expect(vaultWriteTool.execute(args, at)).rejects.toThrow(
+      'The vault folder is not there right now.',
+    );
+    await expect(vaultReadTool.execute({ path: 'a' }, at)).rejects.toThrow(
+      'The vault folder is not there right now.',
+    );
+    expect(existsSync(gone)).toBe(false);
+    expect(existsSync(join(root, 'Drive'))).toBe(false);
+  });
+});
+
+// Review M1-4: a picked vault can sit inside a project workspace, where the
+// coding tools could otherwise edit notes with no prompt. A write-risk tool
+// whose jailed path lands inside the vault asks every time, as vaultWrite
+// does: Accept edits, a trusted repo, and a session grant cannot quiet it.
+describe('a vault inside the workspace', () => {
+  const askWrites = { permissions: { defaults: { write: 'ask', shell: 'ask' } } };
+
+  function workspaceWithVault(): { cwd: string; vault: string } {
+    const cwd = mkdtempSync(join(tmpdir(), 'osc-ws-vault-'));
+    const vault = join(cwd, 'notes');
+    mkdirSync(vault);
+    writeFileSync(join(vault, 'plan.md'), 'the plan\n');
+    return { cwd, vault };
+  }
+
+  it('Accept edits still asks before writeFile touches a note, and lets other files flow', async () => {
+    const { cwd, vault } = workspaceWithVault();
+    try {
+      const provider = new MockProvider('mock', [
+        toolTurn('writeFile', { path: 'src/a.ts', content: 'x' }, 'c1'),
+        toolTurn('writeFile', { path: 'notes/plan.md', content: 'edited\n' }, 'c2'),
+        toolTurn('writeFile', { path: './notes/../notes/new.md', content: 'new\n' }, 'c3'),
+        textTurn('done'),
+      ]);
+      const session = makeTestSession(provider, {
+        cwd,
+        vaultRoot: vault,
+        configOverrides: askWrites,
+      });
+      session.agent.setMode('acceptEdits');
+      await session.agent.run('edit');
+      expect(session.approvals.map((a) => a.toolName)).toEqual(['writeFile', 'writeFile']);
+      // Only the choices that take effect: an always-ask write offers no grant.
+      expect(session.approvals.every((a) => a.alwaysAsk === true)).toBe(true);
+      expect(readFileSync(join(cwd, 'src', 'a.ts'), 'utf8')).toBe('x');
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('a trusted repo and a session grant still ask for a note, and a deny still wins', async () => {
+    const { cwd, vault } = workspaceWithVault();
+    try {
+      const provider = new MockProvider('mock', [
+        toolTurn('writeFile', { path: 'notes/plan.md', content: 'one\n' }, 'c1'),
+        toolTurn('writeFile', { path: 'notes/plan.md', content: 'two\n' }, 'c2'),
+        toolTurn('writeFile', { path: 'README.md', content: 'readme\n' }, 'c3'),
+        textTurn('done'),
+      ]);
+      const session = makeTestSession(provider, {
+        cwd,
+        vaultRoot: vault,
+        configOverrides: { permissions: { defaults: { write: 'ask' }, trustedRepos: [cwd] } },
+        approve: () => ({ approve: true, alwaysThisSession: true }),
+      });
+      await session.agent.run('edit');
+      // Both note writes asked; the trusted repo let README through quietly.
+      expect(session.approvals.map((a) => a.toolName)).toEqual(['writeFile', 'writeFile']);
+      expect(readFileSync(join(vault, 'plan.md'), 'utf8')).toBe('two\n');
+      expect(readFileSync(join(cwd, 'README.md'), 'utf8')).toBe('readme\n');
+
+      const denied = new MockProvider('mock', [
+        toolTurn('writeFile', { path: 'notes/plan.md', content: 'three\n' }, 'c1'),
+        textTurn('done'),
+      ]);
+      const fenced = makeTestSession(denied, {
+        cwd,
+        vaultRoot: vault,
+        configOverrides: {
+          permissions: {
+            defaults: { write: 'allow' },
+            rules: [{ tool: 'writeFile', pathGlob: 'notes/**', decision: 'deny' }],
+          },
+        },
+      });
+      await fenced.agent.run('edit');
+      expect(fenced.approvals).toEqual([]);
+      expect(readFileSync(join(vault, 'plan.md'), 'utf8')).toBe('two\n');
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+});

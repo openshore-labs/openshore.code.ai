@@ -421,7 +421,10 @@ export function writeNewNoteSync(
 
 /** Remove temp files a crash left in one folder (not its subfolders), once
  *  they are over an hour old, so a save in flight is never touched. Returns
- *  how many went. Main's list walk calls it for each folder it visits. */
+ *  how many went. Main's list walk calls it for each folder it visits. Age is
+ *  judged by ctime, never mtime: a macOS save sets its temp's mtime back to
+ *  the note's creation date (writeTemp), and the utimes call that does it
+ *  moves the ctime to now. */
 export function sweepNoteTemps(dir: string, now = Date.now()): number {
   let names: string[];
   try {
@@ -435,7 +438,7 @@ export function sweepNoteTemps(dir: string, now = Date.now()): number {
     const abs = join(dir, name);
     try {
       const st = lstatSync(abs);
-      if (!st.isFile() || now - st.mtimeMs <= STALE_TEMP_MS) continue;
+      if (!st.isFile() || now - st.ctimeMs <= STALE_TEMP_MS) continue;
       unlinkSync(abs);
       removed += 1;
     } catch {

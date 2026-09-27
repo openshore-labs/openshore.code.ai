@@ -61,6 +61,7 @@ import {
   vaultMoveResolveCopy,
   vaultPickRefusal,
   vaultPickResultCopy,
+  vaultBringLine,
   vaultPickerRow,
   vaultRepointToast,
   vaultRevealLabel,
@@ -868,6 +869,97 @@ describe('the desktop move card and the folder picker (1.3, 1.4)', () => {
     expect(r.move?.label).toBe('Move 3 notes here');
     expect(r.large).toBe('In a vault this size, Linked mentions load when you ask for them.');
     expect(vaultPickResultCopy({ display: '~/B', large: false }).back).toBeUndefined();
+  });
+
+  it('Bring offers the notes of the folder before, in the CX words', () => {
+    const three = vaultPickResultCopy({
+      display: '~/Brain',
+      previous: { display: '~/OSCode/Vault', notes: 3 },
+      large: false,
+    });
+    expect(three.bring).toEqual({
+      label: 'Bring 3 notes from ~/OSCode/Vault',
+      sub: 'Copies them here. Nothing here is replaced, and the originals stay where they are.',
+      busy: 'Bringing your notes',
+    });
+    expect(
+      vaultPickResultCopy({
+        display: '~/Brain',
+        previous: { display: '~/OSCode/Vault', notes: 1 },
+        large: false,
+      }).bring?.label,
+    ).toBe('Bring 1 note from ~/OSCode/Vault');
+    for (const notes of [0, undefined]) {
+      expect(
+        vaultPickResultCopy({
+          display: '~/Brain',
+          previous: { display: '~/OSCode/Vault', ...(notes === undefined ? {} : { notes }) },
+          large: false,
+        }).bring,
+      ).toBeUndefined();
+    }
+  });
+
+  it('what Bring did, said plainly', () => {
+    const prev = '~/OSCode/Vault';
+    const ok = { ok: true, moved: ['a.md'], skipped: [], forked: [] };
+    expect(vaultBringLine(ok, prev)).toBe(
+      'Your notes from ~/OSCode/Vault are here now. The originals stay there.',
+    );
+    expect(
+      vaultBringLine(
+        { ...ok, forked: [{ from: 'b.md', to: 'b (conflict 2026-09-27 1405).md' }] },
+        prev,
+      ),
+    ).toBe(
+      'Your notes from ~/OSCode/Vault are here now. The originals stay there. "b" was already there with different text, so the one you moved is beside it as "b (conflict 2026-09-27 1405)".',
+    );
+    expect(
+      vaultBringLine(
+        { ok: false, moved: ['a.md'], skipped: ['b.md'], forked: [], reason: 'copy-failed' },
+        prev,
+      ),
+    ).toBe(
+      'Your notes from ~/OSCode/Vault are here now, except one that could not be copied and is still only there. The originals stay there. Try again to bring it.',
+    );
+    expect(
+      vaultBringLine(
+        { ok: false, moved: [], skipped: ['a.md', 'b.md'], forked: [], reason: 'copy-failed' },
+        prev,
+      ),
+    ).toBe(
+      'Could not copy your notes from ~/OSCode/Vault, so nothing was brought. Try again in a moment.',
+    );
+    expect(
+      vaultBringLine(
+        {
+          ok: false,
+          moved: ['a.md', 'b.md'],
+          skipped: [],
+          forked: [],
+          capped: true,
+          reason: 'capped',
+        },
+        prev,
+      ),
+    ).toBe(
+      'The first 2 notes from ~/OSCode/Vault are here now. The rest are still only there, since Bring stops at 10,000 notes. The originals stay there.',
+    );
+    expect(
+      vaultBringLine({ ok: false, moved: [], skipped: [], forked: [], reason: 'nested' }, prev),
+    ).toBe('One of these folders is inside the other, so nothing was brought.');
+    expect(
+      vaultBringLine({ ok: false, moved: [], skipped: [], forked: [], reason: 'same' }, prev),
+    ).toBe('Your vault already uses ~/OSCode/Vault, so there is nothing to bring.');
+    expect(
+      vaultBringLine(
+        { ok: false, moved: [], skipped: [], forked: [], reason: 'unavailable' },
+        prev,
+      ),
+    ).toBe('~/OSCode/Vault or your vault folder is not there right now, so nothing was brought.');
+    expect(vaultBringLine(undefined, prev)).toBe(
+      'Could not bring your notes from ~/OSCode/Vault. Try again in a moment.',
+    );
   });
 
   it("Harbor Lite's guide says where the picker is", () => {

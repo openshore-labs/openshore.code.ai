@@ -54,6 +54,9 @@ describe('main-process IPC guard (UI-6)', () => {
       'osc:vaultReveal',
       'osc:vaultOpenObsidian',
       'osc:openPrivacySettings',
+      // Bring (CTO ruling): copies from main's own previous folder into the
+      // current one; any argument the renderer sends is ignored.
+      'osc:vaultBringPrevious',
     ]) {
       expect(main, ch).toMatch(new RegExp(`guarded\\('${ch}', (async )?\\(\\) =>`));
     }

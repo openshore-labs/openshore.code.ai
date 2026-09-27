@@ -41,6 +41,13 @@ export interface RoutineRun {
   summary?: string;
   /** Vault-relative path of the result note, once written. */
   notePath?: string;
+  /** Where the note was written, absolute, so a later folder pick still
+   *  opens it. Absent on records from before it was kept; the reader then
+   *  looks in the folder the vault uses now. */
+  noteAbsPath?: string;
+  /** Why no note was written (the vault folder was not there), recorded on
+   *  the run instead of writing it anywhere else. */
+  noteError?: string;
   trigger: 'schedule' | 'manual';
   /** Tool steps the run took. */
   steps?: number;

@@ -35,6 +35,7 @@ import {
 } from 'os-code/dist/src/currents/model.js';
 import {
   defaultVaultDir,
+  ensureVaultRoot,
   loadVaultDir,
   oscHome,
   saveGlobalConfig,
@@ -946,14 +947,11 @@ guarded('osc:hardware', () => host.hardware());
 // (compare-and-swap, Vault M1 1.1). The root is read again on every call.
 // The default folder is made on first use; a configured folder that has gone
 // missing (renamed, or on a drive that is not connected) is never recreated
-// here, so notes are never scattered between two places (CX 1.3, 1.4).
+// here, so notes are never scattered between two places (CX 1.3, 1.4). The
+// engine's one helper, the same the agent's vault tools and the routine
+// scheduler go through (review M1-1).
 function vaultDir(): string {
-  const dir = loadVaultDir().dir;
-  if (!vaultDirExists(dir)) {
-    if (dir !== defaultVaultDir()) throw new Error('The vault folder is not there right now.');
-    mkdirSync(dir, { recursive: true });
-  }
-  return dir;
+  return ensureVaultRoot(loadVaultDir().dir);
 }
 
 guarded('osc:vaultList', () => listVaultFolder(vaultDir()));
@@ -1037,6 +1035,10 @@ guarded('osc:vaultRefineDir', (choice: unknown) => {
   afterVaultRepoint(result);
   return result;
 });
+// Bring the previous folder's notes into this one (the CTO's ruling): no
+// argument, and any the renderer sends is ignored. Main copies from the
+// folder its own last pick left, creates only, and never removes.
+guarded('osc:vaultBringPrevious', () => vaultDirs.bringPrevious());
 guarded('osc:vaultReveal', async () => {
   const error = await shell.openPath(loadVaultDir().dir);
   return error ? { ok: false } : { ok: true };

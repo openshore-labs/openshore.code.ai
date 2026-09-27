@@ -9,7 +9,7 @@
 // here: it must be a note (`.md`, no dot segment, so `.obsidian/` plugin data
 // and attachments never cross; CTO F7.4) and it must resolve inside the vault
 // folder (the Jail, symlink-safe). A write's guard is validated the same way.
-import { existsSync, lstatSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, rmSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { Jail } from 'os-code/dist/src/core/security/jail.js';
 import {
@@ -46,8 +46,17 @@ export type VaultWriteResult =
 /** The seam's note rule (app/src/lib/gitos/providers.ts isNotePath), held
  *  again here because main cannot import renderer code. A test keeps the two
  *  in step. */
-export function isVaultNotePath(path: string): boolean {
+export function isVaultNotePath(
+  path: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
   if (!/\.md$/i.test(path)) return false;
+  // A backslash is a separator on Windows and a leading "/" is rooted, so
+  // neither is ever a note (review M1-5); the seam holds the same rule. On
+  // Windows a colon names a drive or an NTFS stream, so it is refused there
+  // too; elsewhere it is an ordinary character an agent's note may carry.
+  if (path.includes('\\') || path.startsWith('/')) return false;
+  if (platform === 'win32' && path.includes(':')) return false;
   return !path.split('/').some((segment) => segment.startsWith('.'));
 }
 
@@ -78,26 +87,38 @@ export function parseVaultGuard(v: unknown): NoteGuard | undefined {
 }
 
 /** The absolute path of a note in the vault folder, refusing anything that is
- *  not a note or would leave the folder. Makes the folder when it is missing,
- *  so a first write has somewhere to land. */
+ *  not a note or would leave the folder. The folder itself is never made
+ *  here: main's vaultDir() makes only the default one (ensureVaultRoot), and
+ *  a folder that went missing stays missing. */
 export function vaultNoteAbs(root: string, path: string): string {
   if (typeof path !== 'string' || !isVaultNotePath(path)) {
     throw new Error('blocked: only notes (.md, outside dot folders) cross the vault bridge');
   }
-  mkdirSync(root, { recursive: true });
   return new Jail(root).resolve(path);
+}
+
+/** How a list walks: `sweep` (default true) removes temp files a crash left
+ *  behind; Bring reads a folder it must leave byte for byte, so it walks
+ *  without. `limit` stops the walk once that many notes are found. */
+export interface VaultListOptions {
+  sweep?: boolean;
+  limit?: number;
 }
 
 /** Every note in the folder, with its version from one bigint lstat, sorted
  *  by path. Dot entries (`.obsidian/`, `.trash/`, our temp files) and
- *  non-notes are skipped. Temp files a crash left behind are swept as the walk
- *  passes their folder. */
-export function listVaultFolder(root: string): VaultFileMeta[] {
+ *  non-notes are skipped, and a link is never followed (a Dirent reports the
+ *  link itself). Temp files a crash left behind are swept as the walk passes
+ *  their folder, unless `sweep` is false. */
+export function listVaultFolder(root: string, options: VaultListOptions = {}): VaultFileMeta[] {
   if (!existsSync(root)) return [];
+  const sweep = options.sweep !== false;
+  const limit = options.limit ?? Infinity;
   const out: VaultFileMeta[] = [];
   const walk = (dir: string): void => {
-    sweepNoteTemps(dir);
+    if (sweep) sweepNoteTemps(dir);
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (out.length >= limit) return;
       if (entry.name.startsWith('.')) continue;
       const abs = join(dir, entry.name);
       if (entry.isDirectory()) walk(abs);

@@ -64,6 +64,7 @@ import {
   vaultLead,
   vaultMentionsOnDemand,
   vaultMissingFolderCard,
+  vaultBringLine,
   vaultMoveLine,
   vaultMovingLine,
   vaultOffersProvider,
@@ -173,6 +174,7 @@ export function VaultScreen() {
     vaultReadForkPair,
     vaultSettleFork,
     vaultDesktopChatOpen,
+    vaultBringPrevious,
   } = useApp();
 
   const team = vaultScope === 'team';
@@ -263,6 +265,9 @@ export function VaultScreen() {
   // card offers a move that can work (0.18). Undefined while unknown.
   const [driveLink, setDriveLink] = useState<VaultDriveLink | undefined>();
   const [moving, setMoving] = useState(false);
+  // Bring from the previous folder: running, and the pick it went through for.
+  const [bringing, setBringing] = useState(false);
+  const [brought, setBrought] = useState<string | undefined>();
   // The desktop folder picker (1.4): the dialog is up, the last pick's result
   // (the storage sheet shows it), whether its one question was answered, and
   // the line a refusal or a same-folder pick leaves under the picker row.
@@ -706,19 +711,50 @@ export function VaultScreen() {
     setStorageOpen(false);
     closePick();
     const forked = result?.ok ? result.forked : [];
-    // Forked pairs open the move-mode sheet once the storage sheet has left,
-    // so sheets never stack; its toast leaves the forked sentence to the
-    // sheet (Creative Studio 1d).
-    showToast(
+    const line = (withForks: boolean) =>
       vaultMoveLine(
-        result && forked.length ? { ...result, forked: [] } : result,
+        result && !withForks ? { ...result, forked: [] } : result,
         labelOf(id),
         result?.ok ? copyOf(id)?.obsidian : undefined,
-      ),
-    );
-    if (forked.length) {
-      setTimeout(() => void openForks(forked), from === 'sheet' ? sheetExitMs() : 0);
+      );
+    if (!forked.length) {
+      showToast(line(true));
+      return;
     }
+    // Forked pairs open the move-mode sheet once the storage sheet has left,
+    // so sheets never stack. The toast leaves the forked sentence to the
+    // sheet only when the sheet actually opened (Creative Studio 1d, M1-2).
+    setTimeout(
+      () => void openForks(forked).then((opened) => showToast(line(!opened))),
+      from === 'sheet' ? sheetExitMs() : 0,
+    );
+  };
+
+  // Bring the previous folder's notes into this one (the CTO's ruling): the
+  // result reads like a move's, and forked pairs open the same move-mode
+  // sheet, both files in the current folder.
+  const bringNotes = async (prevDisplay: string) => {
+    if (bringing) return;
+    flushSave();
+    hapticCommit();
+    setBringing(true);
+    const result = await vaultBringPrevious().catch(() => undefined);
+    setBringing(false);
+    // A Bring that went through is offered no more this session.
+    if (result?.ok) setBrought(pick?.info.dir);
+    const forked = result && result.reason !== 'same' ? result.forked : [];
+    if (!forked.length) {
+      showToast(vaultBringLine(result, prevDisplay));
+      return;
+    }
+    setStorageOpen(false);
+    setTimeout(
+      () =>
+        void openForks(forked).then((opened) =>
+          showToast(vaultBringLine(opened ? { ...result!, forked: [] } : result, prevDisplay)),
+        ),
+      sheetExitMs(),
+    );
   };
 
   // ---- a move's forked pairs (Creative Studio 1d) -------------------------
@@ -732,12 +768,15 @@ export function VaultScreen() {
     }
     return undefined;
   };
-  const openForks = async (pairs: Array<{ from: string; to: string }>) => {
+  // True only when the sheet opened: a pair that cannot be read (both files
+  // not there any more) leaves the toast to name the forks.
+  const openForks = async (pairs: Array<{ from: string; to: string }>): Promise<boolean> => {
     const first = await loadFork({ pairs, i: 0, busy: false }, 0);
-    if (!first) return;
+    if (!first) return false;
     setForks(first);
     setForksOpen(true);
     hapticApproval();
+    return true;
   };
   const closeForks = () => {
     setForksOpen(false);
@@ -1773,9 +1812,12 @@ export function VaultScreen() {
                       copy={pickCopy}
                       answered={pickAnswered}
                       chatsOpen={vaultDesktopChatOpen()}
-                      busy={moving}
+                      busy={moving || bringing}
+                      bringing={bringing}
+                      brought={brought === pick.info.dir}
                       onChoose={(choice) => void refinePick(choice)}
                       onMove={() => void moveVault('files')}
+                      onBring={() => void bringNotes(pick.previous?.display ?? '')}
                     />
                   ) : null}
                 </div>
@@ -2265,16 +2307,23 @@ function PickResult({
   answered,
   chatsOpen,
   busy,
+  bringing,
+  brought,
   onChoose,
   onMove,
+  onBring,
 }: {
   pick: Extract<VaultPickResult, { ok: true }>;
   copy: ReturnType<typeof vaultPickResultCopy>;
   answered: boolean;
   chatsOpen: boolean;
   busy: boolean;
+  bringing: boolean;
+  /** A Bring from this pick went through: the offer goes. */
+  brought: boolean;
   onChoose: (choice: VaultRefineChoice | { to: 'stay' }) => void;
   onMove: () => void;
+  onBring: () => void;
 }) {
   const picked = pick.info.display.split(/[\\/]/).filter(Boolean).pop() ?? pick.info.display;
   const question = answered ? undefined : vaultFolderQuestion(picked, pick.survey);
@@ -2326,6 +2375,22 @@ function PickResult({
             {copy.move.label}
             <span className="sub" style={{ display: 'block', fontWeight: 400 }}>
               {copy.move.sub}
+            </span>
+          </span>
+        </button>
+      ) : null}
+      {copy.bring && !brought ? (
+        <button
+          type="button"
+          className={`btn ${copy.move ? 'ghost' : 'primary'} vault-provider press-fb`}
+          disabled={busy}
+          aria-busy={bringing || undefined}
+          onClick={onBring}
+        >
+          <span className="grow" style={{ textAlign: 'left' }}>
+            {bringing ? copy.bring.busy : copy.bring.label}
+            <span className="sub" style={{ display: 'block', fontWeight: 400 }}>
+              {copy.bring.sub}
             </span>
           </span>
         </button>

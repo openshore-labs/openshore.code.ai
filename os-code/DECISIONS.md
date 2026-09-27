@@ -2133,3 +2133,27 @@ execution contract. Newest at the bottom.
   a write there fails into the 0.4 stash. `saveGlobalConfig`'s writer now
   keeps the file's mode (0o600 for a new file) and fsyncs before the rename;
   `vault.dir` is an existing machine key, so no new key is classified.
+- **CTO, Vault M1 Bring (2026-09-27):** "Bring N notes from" the previous
+  folder is one argument-free IPC, `osc:vaultBringPrevious`, that copies with
+  ifAbsent only: main copies from the folder its own last successful pick or
+  refinement left (never a path from the renderer, extra arguments ignored)
+  into the folder `loadVaultDir()` names now; both must be folders and pass
+  `refusePick`, the same folder and one inside the other are refused (`same`,
+  `nested`), one runs at a time, the walk does not sweep temps, prunes dot
+  entries, takes only `.md`, follows no link, and stops at 10,000 notes
+  (`capped`); a note already here with the same text is left, different text
+  lands under `vaultConflictCopyPath` (now one pure helper in os-code on the
+  protocol, shared by main and the store) with up to 20 tries, nothing is
+  ever removed, nothing is written into the previous folder, and the result
+  is the move's shape (`ok` only when nothing was skipped). The button shows
+  only after a pick whose previous folder held notes, this session only, with
+  CX's copy; forks open the move-mode sheet. New run records keep the note's
+  absolute path, with the vault-relative path read from the current folder as
+  the fallback, so an earlier Crew run's note opens again after Bring.
+- **CTO, Vault M1 review fix M1-4 (2026-09-27):** a write-risk tool whose
+  jailed absolute path lies inside `ctx.vaultRoot` (symlinks resolved through
+  the vault's own jail) gets always-ask semantics in the loop, the same as
+  vaultWrite: Accept edits, Bypass, a trusted repo, a session grant, and an
+  "always in this project" rule cannot quiet it, and a deny still wins. The
+  optional pick-time line for a folder inside a trusted repo is not built;
+  the prompt itself carries the protection.

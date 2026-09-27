@@ -18,6 +18,8 @@ import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   addProjectPermissionRule,
+  defaultVaultDir,
+  ensureVaultRoot,
   globalConfigPath,
   loadConfig,
   loadDaemonConfig,
@@ -184,6 +186,32 @@ describe('the vault folder is machine config', () => {
     const abs = join(home, 'Vault', '..', 'Notes');
     writeFileSync(join(home, 'config.json'), JSON.stringify({ vault: { dir: abs } }));
     expect(loadVaultDir()).toEqual({ dir: join(home, 'Notes') });
+  });
+});
+
+// Review M1-1: the engine and the routine scheduler never recreate a vault
+// folder that went missing (renamed, or on a drive that is not connected), so
+// notes are never scattered between two places. Only the default is made.
+describe('ensureVaultRoot', () => {
+  it('makes the default folder on first use', () => {
+    const prev = process.env.HOME;
+    process.env.HOME = home;
+    try {
+      expect(defaultVaultDir()).toBe(join(home, 'OSCode', 'Vault'));
+      expect(ensureVaultRoot(defaultVaultDir())).toBe(defaultVaultDir());
+      expect(statSync(defaultVaultDir()).isDirectory()).toBe(true);
+    } finally {
+      process.env.HOME = prev;
+    }
+  });
+
+  it('never recreates a configured folder that is not there, and says so', () => {
+    const gone = join(home, 'Drive', 'Brain');
+    expect(() => ensureVaultRoot(gone)).toThrow('The vault folder is not there right now.');
+    expect(existsSync(gone)).toBe(false);
+    expect(existsSync(join(home, 'Drive'))).toBe(false);
+    mkdirSync(gone, { recursive: true });
+    expect(ensureVaultRoot(gone)).toBe(gone);
   });
 });
 

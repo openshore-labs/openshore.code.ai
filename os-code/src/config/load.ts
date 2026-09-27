@@ -250,6 +250,32 @@ export function loadVaultDir(): VaultDir {
   return resolveVaultDir(typeof vault.dir === 'string' ? vault.dir : undefined);
 }
 
+/** The one line every process says when the vault folder is missing. */
+export const VAULT_FOLDER_MISSING = 'The vault folder is not there right now.';
+
+/**
+ * The vault folder, ready to use: the default (~/OSCode/Vault) is made on
+ * first use; any other folder must already be there. A configured folder that
+ * has gone missing (renamed, moved, or on a drive that is not connected) is
+ * never recreated, since a fresh empty folder would scatter notes between two
+ * places. Throws VAULT_FOLDER_MISSING instead. The engine's vault tools, the
+ * routine scheduler, and the desktop app's main process all go through this.
+ */
+export function ensureVaultRoot(dir: string): string {
+  let there = false;
+  try {
+    there = statSync(dir).isDirectory();
+  } catch {
+    there = false;
+  }
+  if (there) return dir;
+  if (resolve(dir) === defaultVaultDir()) {
+    mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+  throw new Error(VAULT_FOLDER_MISSING);
+}
+
 /** Write the global config, creating ~/.os-code on first run. The read-modify-
  *  write is guarded on both ends: an unparsable existing file is preserved and
  *  refused (never silently treated as `{}`, which would discard providers,

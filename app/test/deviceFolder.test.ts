@@ -3,11 +3,15 @@ import {
   chmodSync,
   mkdirSync,
   mkdtempSync,
+  existsSync,
+  readdirSync,
+  readlinkSync,
   realpathSync,
   readFileSync,
   renameSync,
   rmSync,
   statSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs';
@@ -31,6 +35,7 @@ vi.mock('../src/lib/platform.js', () => ({ platform: h.platform }));
 
 import { deviceFolderProvider, isDeviceFolderAvailable } from '../src/lib/gitos/deviceFolder.js';
 import { isNotePath } from '../src/lib/gitos/providers.js';
+import { normalizeNotePath } from '../src/lib/vault.js';
 import {
   isVaultNotePath,
   listVaultFolder,
@@ -48,6 +53,9 @@ import {
   type VaultDirEnv,
 } from '../electron/vaultDir.js';
 import { loadVaultDir, saveGlobalConfig } from 'os-code/dist/src/config/load.js';
+import { vaultConflictCopyPath } from 'os-code/protocol';
+import { RoutineScheduler } from 'os-code/dist/src/routines/scheduler.js';
+import * as routineStore from 'os-code/dist/src/routines/store.js';
 
 beforeEach(() => {
   for (const fn of Object.values(h.b)) fn.mockReset();
@@ -257,9 +265,58 @@ describe("main's vault handlers on a real folder (CTO F1, F7.4)", () => {
       'a.txt',
       'a.md.png',
       'folder/.hidden.md',
+      '.obsidian\\plugins\\x\\data.md',
+      'x\\a.md',
+      'C:\\Vault\\a.md',
+      'a.md:hidden.md',
+      '/etc/a.md',
     ]) {
       expect(isVaultNotePath(p)).toBe(isNotePath(p));
     }
+  });
+
+  // The keep-both name is one pure helper in the engine, imported by the
+  // store and by main's Bring; its typed-name rule is the app's own.
+  it("the conflict name keeps the app's typed-name rule, and the store and main share it", () => {
+    const when = new Date(2026, 8, 27, 14, 5);
+    for (const p of ['a.md', 'x/Why #1?.md', 'Caf\u0065\u0301.md', ' spaced .md', 'q/[x].md']) {
+      const base = p.replace(/\.md$/i, '');
+      for (const n of [1, 2]) {
+        const stamp = `2026-09-27 1405${n > 1 ? ` ${n}` : ''}`;
+        expect(vaultConflictCopyPath(p, when, n)).toBe(
+          normalizeNotePath(`${base} (conflict ${stamp})`),
+        );
+      }
+    }
+    const store = readFileSync(join(process.cwd(), 'src', 'state', 'store.ts'), 'utf8');
+    const dirs = readFileSync(join(process.cwd(), 'electron', 'vaultDir.ts'), 'utf8');
+    expect(store).toMatch(/vaultConflictCopyPath,[\s\S]*?from 'os-code\/protocol'/);
+    expect(store).not.toMatch(/function vaultConflictCopyPath/);
+    expect(dirs).toMatch(
+      /import \{ vaultConflictCopyPath \} from 'os-code\/dist\/src\/core\/vault\/conflictName\.js'/,
+    );
+  });
+
+  // Review M1-5: on Windows a backslash is a separator, so a dot folder
+  // spelled with one slipped past a rule that split on "/" only. A path with
+  // a backslash or a leading "/" is never a note, and on Windows neither is
+  // one with a colon (a drive, an NTFS stream).
+  it('refuses backslash, rooted, and (on Windows) colon spellings of a note path', async () => {
+    for (const p of ['.obsidian\\plugins\\x\\data.md', 'x\\a.md', 'C:\\Vault\\a.md', '/etc/a.md']) {
+      expect(isVaultNotePath(p, 'linux'), p).toBe(false);
+      expect(isVaultNotePath(p, 'win32'), p).toBe(false);
+      expect(isNotePath(p), p).toBe(false);
+    }
+    for (const p of ['C:a.md', 'a.md:hidden.md']) {
+      expect(isVaultNotePath(p, 'win32'), p).toBe(false);
+    }
+    // An agent's "Decision: auth?.md" is still a note off Windows.
+    expect(isVaultNotePath('Decision: auth?.md', 'darwin')).toBe(true);
+    expect(isNotePath('Decision: auth?.md')).toBe(true);
+    mkdirSync(join(root, '.obsidian', 'plugins', 'x'), { recursive: true });
+    writeFileSync(join(root, '.obsidian', 'plugins', 'x', 'data.md'), 'plugin data');
+    await expect(readVaultFile(root, '.obsidian\\plugins\\x\\data.md')).rejects.toThrow(/blocked/);
+    await expect(writeVaultFile(root, 'x\\a.md', 'x')).rejects.toThrow(/blocked/);
   });
 });
 
@@ -438,6 +495,206 @@ describe('picking the vault folder (Vault M1 1.4)', () => {
     const back = chooser.refine({ to: 'previous' });
     expect(back.ok && back.info.dir).toBe(env.defaultVaultDir);
     expect(listVaultFolder(notes)).toEqual([]);
+  });
+
+  // ---- Bring N notes from the previous folder (CTO ruling on Bring) -------
+  // One argument-free call that copies the folder the vault used before the
+  // last pick into the one it uses now, with ifAbsent only: never a
+  // replacement, never a removal, never a write into the previous folder.
+
+  /** Every file under a folder, dot files and temps included, with its bytes,
+   *  so a test can say the folder is byte for byte what it was. */
+  function snapshot(dir: string): Record<string, string> {
+    const out: Record<string, string> = {};
+    const walk = (d: string, rel: string) => {
+      for (const e of readdirSync(d, { withFileTypes: true })) {
+        const abs = join(d, e.name);
+        const r = rel ? `${rel}/${e.name}` : e.name;
+        if (e.isSymbolicLink()) out[r] = `-> ${readlinkSync(abs)}`;
+        else if (e.isDirectory()) walk(abs, r);
+        else out[r] = readFileSync(abs).toString('base64');
+      }
+    };
+    walk(dir, '');
+    return out;
+  }
+
+  it('Bring copies what is missing, never replaces a note, and forks different text', async () => {
+    const old = env.defaultVaultDir;
+    writeFileSync(join(old, 'same.md'), 'same text');
+    writeFileSync(join(old, 'b.md'), 'the one in the old folder');
+    mkdirSync(join(old, 'Crew', 'Morning review'), { recursive: true });
+    writeFileSync(join(old, 'Crew', 'Morning review', '2026-09-01 06-00.md'), '# Run');
+    mkdirSync(join(old, '.obsidian'));
+    writeFileSync(join(old, '.obsidian', 'Hidden.md'), 'plugin');
+    writeFileSync(join(old, 'pic.png'), 'png');
+    // A save in flight in the old folder: its temp must survive the walk.
+    writeFileSync(join(old, '.b.md.oscode-0123abcd.tmp'), 'in flight');
+    const notes = join(home, 'Notes');
+    mkdirSync(notes);
+    writeFileSync(join(notes, 'same.md'), 'same text');
+    writeFileSync(join(notes, 'b.md'), 'the one already here');
+    const r = chooser.pick(notes);
+    expect(r.ok && r.previous?.notes).toBe(3);
+    const before = snapshot(old);
+    // Hours later by the clock, so a sweeping walk would take the temp.
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 3 * 60 * 60 * 1000 });
+    const when = new Date();
+    let res;
+    try {
+      // Extra arguments, as a hostile renderer might send, are ignored.
+      res = await (
+        chooser.bringPrevious as (...a: unknown[]) => ReturnType<typeof chooser.bringPrevious>
+      )('/etc', { to: '/etc' });
+    } finally {
+      vi.useRealTimers();
+    }
+    const copy = vaultConflictCopyPath('b.md', when);
+    expect(copy).toMatch(/^b \(conflict \d{4}-\d{2}-\d{2} \d{4}\)\.md$/);
+    expect(res).toEqual({
+      ok: true,
+      moved: ['Crew/Morning review/2026-09-01 06-00.md', 'same.md'],
+      skipped: [],
+      forked: [{ from: 'b.md', to: copy }],
+    });
+    expect(readFileSync(join(notes, 'b.md'), 'utf8')).toBe('the one already here');
+    expect(readFileSync(join(notes, copy), 'utf8')).toBe('the one in the old folder');
+    expect(readFileSync(join(notes, 'same.md'), 'utf8')).toBe('same text');
+    expect(
+      listVaultFolder(notes)
+        .map((f) => f.path)
+        .sort(),
+    ).toEqual([copy, 'b.md', 'Crew/Morning review/2026-09-01 06-00.md', 'same.md'].sort());
+    // Nothing but notes crossed, and the old folder is exactly as it was.
+    expect(existsSync(join(notes, '.obsidian'))).toBe(false);
+    expect(existsSync(join(notes, 'pic.png'))).toBe(false);
+    expect(snapshot(old)).toEqual(before);
+    expect(readFileSync(join(old, '.b.md.oscode-0123abcd.tmp'), 'utf8')).toBe('in flight');
+    // The new folder holds no temp of its own either.
+    expect(readdirSync(notes).filter((n) => n.includes('.oscode-'))).toEqual([]);
+  });
+
+  it('Bring names a fork exactly as the store does, trying the next name when one is taken', async () => {
+    const old = env.defaultVaultDir;
+    writeFileSync(join(old, 'b.md'), 'old text');
+    const notes = join(home, 'Notes');
+    mkdirSync(notes);
+    writeFileSync(join(notes, 'b.md'), 'new text');
+    chooser.pick(notes);
+    const now = new Date(2026, 8, 27, 14, 5);
+    writeFileSync(join(notes, vaultConflictCopyPath('b.md', now)), 'someone else');
+    vi.useFakeTimers({ toFake: ['Date'], now });
+    let res;
+    try {
+      res = await chooser.bringPrevious();
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(res?.forked).toEqual([{ from: 'b.md', to: 'b (conflict 2026-09-27 1405 2).md' }]);
+    expect(readFileSync(join(notes, 'b (conflict 2026-09-27 1405).md'), 'utf8')).toBe(
+      'someone else',
+    );
+    expect(readFileSync(join(notes, 'b (conflict 2026-09-27 1405 2).md'), 'utf8')).toBe('old text');
+  });
+
+  it('Bring is blocked with no earlier folder, and runs one at a time', async () => {
+    await expect(chooser.bringPrevious()).rejects.toThrow(/blocked/);
+    writeFileSync(join(env.defaultVaultDir, 'a.md'), 'a');
+    const notes = join(home, 'Notes');
+    mkdirSync(notes);
+    chooser.pick(notes);
+    const first = chooser.bringPrevious();
+    await expect(chooser.bringPrevious()).rejects.toThrow(/blocked/);
+    expect((await first).ok).toBe(true);
+    expect(readFileSync(join(notes, 'a.md'), 'utf8')).toBe('a');
+  });
+
+  it('Bring refuses the same folder and a folder inside the other, writing nothing', async () => {
+    const brain = join(home, 'Brain');
+    const inner = join(brain, 'Inner');
+    mkdirSync(inner, { recursive: true });
+    writeFileSync(join(brain, 'a.md'), 'a');
+    chooser.pick(brain);
+    chooser.pick(inner);
+    const nested = await chooser.bringPrevious();
+    expect(nested).toEqual({ ok: false, moved: [], skipped: [], forked: [], reason: 'nested' });
+    expect(readdirSync(inner)).toEqual([]);
+    // The config moved back to the earlier folder behind the chooser's back.
+    saveGlobalConfig({ vault: { dir: brain } });
+    const same = await chooser.bringPrevious();
+    expect(same).toMatchObject({ ok: false, reason: 'same' });
+    // A previous folder that went away is not there to bring from.
+    saveGlobalConfig({ vault: { dir: inner } });
+    rmSync(join(brain, 'a.md'));
+    renameSync(brain, join(home, 'Gone'));
+    const gone = await chooser.bringPrevious();
+    expect(gone).toMatchObject({ ok: false, reason: 'unavailable' });
+    expect(existsSync(brain)).toBe(false);
+  });
+
+  it('Bring does not follow a link in the previous folder', async () => {
+    const old = env.defaultVaultDir;
+    const outside = join(home, 'Outside');
+    mkdirSync(join(outside, 'dir'), { recursive: true });
+    writeFileSync(join(outside, 'secret.md'), 'secret');
+    writeFileSync(join(outside, 'dir', 'n.md'), 'n');
+    symlinkSync(join(outside, 'secret.md'), join(old, 'link.md'));
+    symlinkSync(join(outside, 'dir'), join(old, 'linkdir'));
+    writeFileSync(join(old, 'real.md'), 'real');
+    const notes = join(home, 'Notes');
+    mkdirSync(notes);
+    chooser.pick(notes);
+    const res = await chooser.bringPrevious();
+    expect(res).toMatchObject({ ok: true, moved: ['real.md'], skipped: [] });
+    expect(readdirSync(notes)).toEqual(['real.md']);
+  });
+
+  it('Bring stops at the note limit and says so', async () => {
+    const capped = new VaultDirChooser({
+      env: () => env,
+      current: () => (saves.length ? loadVaultDir() : { dir: env.defaultVaultDir }),
+      save: (dir) => {
+        saveGlobalConfig({ vault: { dir } });
+        saves.push(dir);
+      },
+      obsidianApp: () => true,
+      bringLimit: 2,
+    });
+    for (const n of ['a', 'b', 'c']) writeFileSync(join(env.defaultVaultDir, `${n}.md`), n);
+    const notes = join(home, 'Notes');
+    mkdirSync(notes);
+    capped.pick(notes);
+    const res = await capped.bringPrevious();
+    expect(res).toMatchObject({ ok: false, capped: true, reason: 'capped', skipped: [] });
+    expect(res.moved).toHaveLength(2);
+  });
+
+  it("an earlier Crew run's note opens again after Bring (M1-3)", async () => {
+    const rel = 'Crew/Morning review/2026-09-01 06-00.md';
+    mkdirSync(join(env.defaultVaultDir, 'Crew', 'Morning review'), { recursive: true });
+    writeFileSync(join(env.defaultVaultDir, rel), '# Morning review\n\nTwo commits landed.');
+    // A run recorded before the absolute path was kept: only the relative one.
+    const run = routineStore.appendRun({
+      routineId: 'r1',
+      startedAt: new Date().toISOString(),
+      state: 'done',
+      trigger: 'schedule',
+      notePath: rel,
+    });
+    const scheduler = new RoutineScheduler({
+      autostart: false,
+      vaultRoot: () => (saves.length ? loadVaultDir().dir : env.defaultVaultDir),
+      lock: { acquire: () => ({ pid: process.pid, startedAt: '' }), release: () => {} },
+    });
+    expect(scheduler.readNote(run.id)?.markdown).toContain('Two commits landed.');
+    const notes = join(home, 'Notes');
+    mkdirSync(notes);
+    chooser.pick(notes);
+    // The pick hid it: the vault's folder no longer holds it.
+    expect(scheduler.readNote(run.id)).toBeUndefined();
+    await chooser.bringPrevious();
+    expect(scheduler.readNote(run.id)?.markdown).toContain('Two commits landed.');
+    routineStore.invalidateRoutineStore();
   });
 
   it('a huge folder stops the walk at its limits and says so', () => {

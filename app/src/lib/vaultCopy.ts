@@ -951,7 +951,7 @@ export function vaultFolderQuestion(
 /** The result block's other lines (CX 1.4). */
 export function vaultPickResultCopy(opts: {
   display: string;
-  previous?: { display: string };
+  previous?: { display: string; notes?: number };
   fromLocal?: { notes: number };
   large: boolean;
 }): {
@@ -959,6 +959,7 @@ export function vaultPickResultCopy(opts: {
   large?: string;
   back?: { label: string; toast: string };
   move?: { label: string; sub: string };
+  bring?: { label: string; sub: string; busy: string };
 } {
   const out: ReturnType<typeof vaultPickResultCopy> = {
     heading: `Your vault is now ${opts.display}.`,
@@ -969,6 +970,15 @@ export function vaultPickResultCopy(opts: {
       label: `Go back to ${opts.previous.display}`,
       toast: `Your vault is back in ${opts.previous.display}.`,
     };
+    // Bring (CX 1.4, the CTO's ruling): only when the folder before held notes.
+    const n = opts.previous.notes ?? 0;
+    if (n > 0) {
+      out.bring = {
+        label: `Bring ${n === 1 ? '1 note' : `${n} notes`} from ${opts.previous.display}`,
+        sub: 'Copies them here. Nothing here is replaced, and the originals stay where they are.',
+        busy: 'Bringing your notes',
+      };
+    }
   }
   if (opts.fromLocal && opts.fromLocal.notes > 0) {
     const n = opts.fromLocal.notes;
@@ -978,6 +988,60 @@ export function vaultPickResultCopy(opts: {
     };
   }
   return out;
+}
+
+/** What Bring did, said plainly (CX 1.4). A clean Bring says where the notes
+ *  came from and that the originals stay; a note that landed beside one
+ *  already here is named with the move's own forked line. Pass `forked: []`
+ *  when the move-mode sheet shows the pairs instead. Nothing is claimed that
+ *  did not happen: a partial Bring names what stayed behind. */
+export function vaultBringLine(
+  result:
+    | {
+        ok: boolean;
+        moved: string[];
+        skipped: string[];
+        forked: Array<{ from: string; to: string }>;
+        capped?: boolean;
+        reason?: string;
+      }
+    | undefined,
+  prevDisplay: string,
+): string {
+  const originals = 'The originals stay there.';
+  const forks = result ? forkedLine(result.forked) : undefined;
+  const join = (...parts: Array<string | undefined>) => parts.filter(Boolean).join(' ');
+  if (!result) return `Could not bring your notes from ${prevDisplay}. Try again in a moment.`;
+  if (result.ok) {
+    return join(`Your notes from ${prevDisplay} are here now.`, originals, forks);
+  }
+  const brought = result.moved.length + result.forked.length;
+  switch (result.reason) {
+    case 'same':
+      return `Your vault already uses ${prevDisplay}, so there is nothing to bring.`;
+    case 'nested':
+      return 'One of these folders is inside the other, so nothing was brought.';
+    case 'unavailable':
+      return `${prevDisplay} or your vault folder is not there right now, so nothing was brought.`;
+    case 'capped':
+      return join(
+        `The first ${brought} notes from ${prevDisplay} are here now. The rest are still only there, since Bring stops at 10,000 notes.`,
+        originals,
+        forks,
+      );
+    default: {
+      const n = result.skipped.length;
+      if (!brought) {
+        return `Could not copy your notes from ${prevDisplay}, so nothing was brought. Try again in a moment.`;
+      }
+      return join(
+        `Your notes from ${prevDisplay} are here now, except ${n === 1 ? 'one that could not be copied and is' : `${n} that could not be copied and are`} still only there.`,
+        originals,
+        forks,
+        `Try again to bring ${n === 1 ? 'it' : 'them'}.`,
+      );
+    }
+  }
 }
 
 /** The vault folder is missing (CX 1.4): the room says so and writes nothing. */

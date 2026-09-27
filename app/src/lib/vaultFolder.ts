@@ -5,6 +5,7 @@
 // no-op off the desktop.
 import {
   bridge,
+  type VaultBringResult,
   type VaultDirInfo,
   type VaultPickResult,
   type VaultRefineChoice,
@@ -41,6 +42,12 @@ export async function refineVaultFolder(
   choice: VaultRefineChoice,
 ): Promise<VaultPickResult | undefined> {
   return folderBridge()?.vaultRefineDir(choice);
+}
+
+/** Bring the previous folder's notes into this one (main copies, creating
+ *  only). Undefined off the desktop. */
+export async function bringPreviousVaultFolder(): Promise<VaultBringResult | undefined> {
+  return folderBridge()?.vaultBringPrevious();
 }
 
 /** Open the folder in Finder, File Explorer, or the file manager. */

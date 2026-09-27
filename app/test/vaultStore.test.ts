@@ -38,12 +38,18 @@ const desk = vi.hoisted(() => ({
   on: false,
   info: undefined as Record<string, unknown> | undefined,
   pick: undefined as unknown,
+  bring: undefined as unknown,
+  onBring: undefined as (() => void) | undefined,
 }));
 vi.mock('../src/lib/vaultFolder.js', () => ({
   canPickVaultFolder: () => desk.on,
   vaultFolderInfo: async () => (desk.on ? desk.info : undefined),
   chooseVaultFolder: async () => desk.pick,
   refineVaultFolder: async () => desk.pick,
+  bringPreviousVaultFolder: async () => {
+    desk.onBring?.();
+    return desk.bring;
+  },
   revealVaultFolder: async () => true,
   openVaultInObsidian: async () => {},
   openPrivacySettings: async () => {},
@@ -365,6 +371,8 @@ const conflictCopy = (base: string) =>
   );
 
 function reset() {
+  desk.bring = undefined;
+  desk.onBring = undefined;
   mem.clear();
   failKeys.clear();
   lockedKeys.clear();
@@ -2033,6 +2041,22 @@ describe('picking another folder (1.4)', () => {
     });
   });
 
+  it('Bring holds the room still while it copies, then re-lists the folder', async () => {
+    await useApp.getState().vaultRefresh();
+    const result = { ok: true, moved: ['Brought.md'], skipped: [], forked: [] };
+    desk.bring = result;
+    let during: boolean | undefined;
+    desk.onBring = () => {
+      during = useApp.getState().vaultMoving;
+      folder.files.set('Brought.md', 'from the earlier folder');
+    };
+    expect(await useApp.getState().vaultBringPrevious()).toEqual(result);
+    expect(during).toBe(true);
+    expect(useApp.getState().vaultMoving).toBe(false);
+    expect(useApp.getState().vaultFiles.map((f) => f.path)).toContain('Brought.md');
+    desk.onBring = undefined;
+  });
+
   it('a refused pick changes nothing', async () => {
     await useApp.getState().vaultRefresh();
     desk.pick = { ok: false, refused: 'home' };
@@ -2087,6 +2111,22 @@ describe("settling a move's forked pairs (1d)", () => {
       changed: true,
     });
     expect(folder.files.get(pair.to)).toBe('edited copy');
+  });
+
+  it('reads and settles the pair on the storage the vault is on now (review M1-2)', async () => {
+    // A move back to This device forks there, never in the folder.
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('local') },
+    });
+    local.files.set(pair.from, 'already on this device');
+    local.files.set(pair.to, 'moved back');
+    const shown = (await useApp.getState().vaultReadForkPair(pair))!;
+    expect(shown?.there.text).toBe('already on this device');
+    expect(shown?.moved.text).toBe('moved back');
+    expect(await useApp.getState().vaultSettleFork(pair, 'theirs', shown)).toEqual({ ok: true });
+    expect([...local.files.keys()]).toEqual([pair.from]);
+    // The folder's own pair is left alone.
+    expect(folder.files.get(pair.to)).toBe('the one you moved');
   });
 
   it('a copy that cannot be removed after the rename says so, in part', async () => {

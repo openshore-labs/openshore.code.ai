@@ -58,6 +58,10 @@ export interface StoredFileMeta {
  *  rule at the seam, shared by every provider and by a vault move. */
 export function isNotePath(path: string): boolean {
   if (!/\.md$/i.test(path)) return false;
+  // A backslash (a Windows separator) or a leading "/" never names a note, so
+  // no spelling slips past the dot rule (review M1-5). Main also refuses a
+  // colon on Windows, where it names a drive or an NTFS stream.
+  if (path.includes('\\') || path.startsWith('/')) return false;
   return !path.split('/').some((segment) => segment.startsWith('.'));
 }
 

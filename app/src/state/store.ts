@@ -264,6 +264,7 @@ import {
 import {
   normalizeHermesBaseUrl,
   normalizeJevBaseUrl,
+  vaultConflictCopyPath,
   type CurrentsHostProbe,
 } from 'os-code/protocol';
 import {
@@ -320,11 +321,17 @@ import {
   bridge,
   type DesktopStatus,
   type PendingUpdate,
+  type VaultBringResult,
   type VaultDirInfo,
   type VaultPickResult,
   type VaultRefineChoice,
 } from '../lib/electronBridge.js';
-import { chooseVaultFolder, refineVaultFolder, vaultFolderInfo } from '../lib/vaultFolder.js';
+import {
+  bringPreviousVaultFolder,
+  chooseVaultFolder,
+  refineVaultFolder,
+  vaultFolderInfo,
+} from '../lib/vaultFolder.js';
 import {
   declineFolderMove,
   shouldOfferFolderMove,
@@ -721,19 +728,9 @@ function vaultReadOnlyReason(providerId: StorageProviderId): string | undefined 
   return providerId === 'gdrive' ? DRIVE_READ_ONLY : undefined;
 }
 
-/** The keep-both name for a stashed draft that came back after its note
- *  changed elsewhere: "Note (conflict 2026-09-27 1405).md" beside the note,
- *  in this device's local time. The name goes through the typed-name rule, so
- *  the app can open, link, and delete it, and n above 1 adds a counter so a
- *  second copy in the same minute never lands on the first. */
-function vaultConflictCopyPath(path: string, when: Date, n = 1): string {
-  const pad = (v: number) => String(v).padStart(2, '0');
-  const stamp =
-    `${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())} ` +
-    `${pad(when.getHours())}${pad(when.getMinutes())}${n > 1 ? ` ${n}` : ''}`;
-  const base = path.replace(/\.md$/i, '');
-  return normalizeNotePath(`${base} (conflict ${stamp})`) ?? `Note (conflict ${stamp}).md`;
-}
+// The keep-both name ("Note (conflict 2026-09-27 1405).md") is the engine's
+// vaultConflictCopyPath (os-code/protocol), the one main's Bring uses too, so
+// the store and the desktop name the same note the same way.
 
 /** The reason a vault write failed for good, or undefined when a retry may
  *  work. A provider marks what it knows is permanent (`permanent: true`, the
@@ -1513,6 +1510,11 @@ interface AppState {
   vaultChooseFolder(): Promise<VaultPickResult | undefined>;
   /** One of the choices a pick's result offered (CX 1.4), then the same. */
   vaultRefineFolder(choice: VaultRefineChoice): Promise<VaultPickResult | undefined>;
+  /** Bring the notes of the folder before the last pick into this one (the
+   *  CTO's ruling): main copies with nothing replaced and nothing removed.
+   *  The room holds still meanwhile (vaultMoving), then re-lists. Undefined
+   *  off the desktop. */
+  vaultBringPrevious(): Promise<VaultBringResult | undefined>;
   /** Whether a chat on this computer's engine is open now, so the storage
    *  sheet says open chats keep their old folder only when one is (CX 1.4). */
   vaultDesktopChatOpen(): boolean;
@@ -1520,8 +1522,9 @@ interface AppState {
   vaultFolderOfferShown(): boolean;
   /** The card's quiet button: keep the vault on this device. */
   vaultDeclineFolderMove(): Promise<void>;
-  /** Both notes of a move's forked pair, read from the folder: the one
-   *  already there (`from`) and the one moved beside it (`to`). */
+  /** Both notes of a move's forked pair, read from the storage the vault is
+   *  on now: the one already there (`from`) and the one moved beside it
+   *  (`to`). */
   vaultReadForkPair(pair: {
     from: string;
     to: string;
@@ -8162,6 +8165,23 @@ export const useApp = create<AppState>((set, get, api) => {
       return result;
     },
 
+    async vaultBringPrevious() {
+      // The room holds still while notes arrive, as for a move (CX 1.3).
+      set({ vaultMoving: true });
+      let result: VaultBringResult | undefined;
+      try {
+        result = await bringPreviousVaultFolder();
+      } finally {
+        set({ vaultMoving: false });
+      }
+      if (result) {
+        logEvent('vault_folder_bring', { forked: result.forked.length, ok: result.ok });
+        await refreshFolderList();
+        await get().vaultLoadFolder();
+      }
+      return result;
+    },
+
     vaultDesktopChatOpen() {
       return Object.entries(get().conversations).some(
         ([id, c]) => c.source.kind === 'desktop' && hasLiveDriver(id),
@@ -8193,7 +8213,9 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async vaultReadForkPair(pair) {
-      const folder = providerFor('files');
+      // Through the storage the vault is on now: a move forks on its target,
+      // which may be This device or iCloud, not only the folder (M1-2).
+      const folder = providerFor(vaultProviderId(get().settings));
       if (!folder) return undefined;
       try {
         const [there, moved] = await Promise.all([
@@ -8207,8 +8229,12 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async vaultSettleFork(pair, choice, shown) {
-      const folder = providerFor('files');
+      const on = vaultProviderId(get().settings);
+      const folder = providerFor(on);
       if (!folder) return { ok: false };
+      // The list catches up with the settle: the folder re-lists itself, any
+      // other storage through the room's refresh.
+      const relist = () => (on === 'files' ? refreshFolderList() : get().vaultRefresh());
       const at = { provider: folder, resourceId: VAULT_RESOURCE_ID };
       // The moved copy is removed only while it still holds exactly the text
       // that was moved, so nothing written to it since is ever deleted.
@@ -8239,11 +8265,11 @@ export const useApp = create<AppState>((set, get, api) => {
         if (!written.ok) return { ok: false, changed: true };
         const r = await removeMovedCopy();
         if (r !== 'gone') {
-          await refreshFolderList();
+          await relist();
           return { ok: true, partial: true };
         }
       }
-      await refreshFolderList();
+      await relist();
       logEvent('vault_fork_settled', { choice });
       return { ok: true };
     },

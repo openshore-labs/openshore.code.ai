@@ -122,6 +122,7 @@ const app = vi.hoisted(() => {
       return { ok: true };
     },
     vaultDesktopChatOpen: () => false,
+    vaultBringPrevious: async () => ({ ok: true, moved: [], skipped: [], forked: [] }),
   };
   return { state, listeners, views, toasts, created, opened, drive, folderIo };
 });
@@ -621,6 +622,54 @@ describe('the desktop move card (1.3)', () => {
   });
 });
 
+describe('a move whose forked pair cannot be shown (review M1-2)', () => {
+  let dom: TestDom;
+  beforeEach(async () => {
+    onDesk.on = true;
+    app.state.vaultNote = undefined;
+    app.state.vaultFiles = [{ path: 'a.md', updatedAt: 'x', size: 1 }];
+    app.state.vaultFolder = {
+      dir: '/home/me/OSCode/Vault',
+      display: '~/OSCode/Vault',
+      exists: true,
+      os: 'linux',
+      obsidian: 'none',
+      count: 1,
+    };
+    app.state.settings = {};
+    app.toasts.length = 0;
+    app.folderIo.offer = true;
+    app.folderIo.pairs = {};
+    dom = await mountDom();
+  });
+  afterEach(async () => {
+    await dom.unmount();
+    onDesk.on = false;
+    app.folderIo.offer = false;
+    app.state.vaultFolder = undefined;
+    app.state.vaultFiles = [];
+    app.state.vaultMoveTo = async () => ({ ok: false, skipped: [] });
+  });
+
+  it('keeps the forked sentence in the toast when the sheet could not open', async () => {
+    app.state.vaultMoveTo = async () => ({
+      ok: true,
+      moved: ['a.md'],
+      skipped: [],
+      forked: [{ from: 'a.md', to: 'a (conflict 2026-09-27 1405).md' }],
+    });
+    await dom.render(<VaultRoom />);
+    await dom.click('Move to This folder');
+    await dom.settle();
+    await new Promise((r) => setTimeout(r, 10));
+    await dom.settle();
+    expect(dom.container.querySelector('.vault-resolve')).toBeNull();
+    expect(app.toasts).toEqual([
+      'Your vault moved to This folder. "a" was already there with different text, so the one you moved is beside it as "a (conflict 2026-09-27 1405)". Obsidian opens this folder as a vault.',
+    ]);
+  });
+});
+
 // Vault M1 1.4 (Creative Studio 3a): the desktop folder rows.
 describe('the desktop folder rows in Where it lives (1.4)', () => {
   let dom: TestDom;
@@ -739,5 +788,92 @@ describe('the desktop folder rows in Where it lives (1.4)', () => {
     await dom.settle();
     expect(dom.text()).toContain('That is your whole home folder. Pick a folder inside it.');
     expect(app.toasts).toEqual([]);
+  });
+
+  // The CTO's Bring: after a pick, the notes of the folder before can be
+  // copied in, nothing replaced, and the originals left where they are.
+  const pickFrom = (notes: number | undefined) => {
+    app.state.vaultFolder = { ...FOLDER };
+    app.folderIo.pick = {
+      ok: true,
+      info: { ...FOLDER, dir: '/home/me/Notes', display: '~/Notes', obsidian: 'installed' },
+      survey: { notes: 1, capped: false, otherFiles: 0, obsidian: false },
+      previous: { display: '~/OSCode/Vault', ...(notes === undefined ? {} : { notes }) },
+    };
+  };
+  const PICK_ROW =
+    'Use a folder…Pick another folder, an existing Obsidian vault included. Notes are not copied.';
+  const BRING_SUB =
+    'Copies them here. Nothing here is replaced, and the originals stay where they are.';
+
+  it('Bring shows only when the folder before held notes', async () => {
+    pickFrom(0);
+    await openSheet();
+    await dom.click(PICK_ROW);
+    await dom.settle();
+    expect(dom.text()).not.toContain('Bring');
+    pickFrom(undefined);
+    await dom.click(PICK_ROW);
+    await dom.settle();
+    expect(dom.text()).not.toContain('Bring');
+    pickFrom(1);
+    await dom.click(PICK_ROW);
+    await dom.settle();
+    expect(dom.buttons()).toContain(`Bring 1 note from ~/OSCode/Vault${BRING_SUB}`);
+  });
+
+  it('Bring copies the notes in, says so, and goes', async () => {
+    pickFrom(3);
+    let finish: (v: unknown) => void = () => {};
+    app.state.vaultBringPrevious = () => new Promise((r) => (finish = r));
+    await openSheet();
+    await dom.click(PICK_ROW);
+    await dom.settle();
+    await dom.click(`Bring 3 notes from ~/OSCode/Vault${BRING_SUB}`);
+    await dom.settle();
+    expect(dom.text()).toContain('Bringing your notes');
+    finish({ ok: true, moved: ['a.md', 'b.md', 'c.md'], skipped: [], forked: [] });
+    await dom.settle();
+    expect(app.toasts).toEqual([
+      'Your notes from ~/OSCode/Vault are here now. The originals stay there.',
+    ]);
+    expect(dom.text()).not.toContain('Bring 3 notes');
+    app.state.vaultBringPrevious = async () => ({ ok: true, moved: [], skipped: [], forked: [] });
+  });
+
+  it('Bring with forks opens the move sheet and leaves the forked sentence to it', async () => {
+    pickFrom(2);
+    app.folderIo.pairs = {
+      'b.md': {
+        there: { path: 'b.md', text: 'already here', updatedAt: 'x', version: 'v1' },
+        moved: {
+          path: 'b (conflict 2026-09-27 1405).md',
+          text: 'from the old folder',
+          updatedAt: 'x',
+          version: 'v2',
+        },
+      },
+    };
+    app.state.vaultBringPrevious = async () => ({
+      ok: true,
+      moved: ['a.md'],
+      skipped: [],
+      forked: [{ from: 'b.md', to: 'b (conflict 2026-09-27 1405).md' }],
+    });
+    await openSheet();
+    await dom.click(PICK_ROW);
+    await dom.settle();
+    await dom.click(`Bring 2 notes from ~/OSCode/Vault${BRING_SUB}`);
+    await dom.settle();
+    await new Promise((r) => setTimeout(r, 900));
+    await dom.settle();
+    expect(dom.container.querySelector('.vault-resolve')?.textContent).toContain(
+      'Two versions of a note',
+    );
+    expect(app.toasts).toEqual([
+      'Your notes from ~/OSCode/Vault are here now. The originals stay there.',
+    ]);
+    app.state.vaultBringPrevious = async () => ({ ok: true, moved: [], skipped: [], forked: [] });
+    app.folderIo.pairs = {};
   });
 });

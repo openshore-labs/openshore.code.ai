@@ -25,7 +25,12 @@ import { basename, join } from 'node:path';
 import { bootstrapSession } from '../core/agent/bootstrap.js';
 import { writeNewNoteSync } from '../core/vault/noteFile.js';
 import type { DriverEvent, PermissionMode } from '../core/agent/types.js';
-import { loadDaemonConfig, loadVaultDir, saveGlobalConfig } from '../config/load.js';
+import {
+  ensureVaultRoot,
+  loadDaemonConfig,
+  loadVaultDir,
+  saveGlobalConfig,
+} from '../config/load.js';
 import type { LocalDriver } from '../daemon/session.js';
 import { profileFor } from '../core/security/profiles.js';
 import { isOutboxAllowedPath, realOrResolve } from '../core/security/workspaces.js';
@@ -315,12 +320,19 @@ export class RoutineScheduler {
   readNote(runId: string): { path: string; markdown: string } | undefined {
     const run = store.getRun(runId);
     if (!run?.notePath) return undefined;
-    const abs = join(this.vaultRoot(), run.notePath);
-    try {
-      return { path: run.notePath, markdown: readNoteFile(abs) };
-    } catch {
-      return undefined;
+    // Where the note landed, then the same path in the folder the vault uses
+    // now: a record from before the absolute path was kept, or a note whose
+    // folder moved on (a pick, then Bring from the previous folder).
+    const tries = [run.noteAbsPath, join(this.vaultRoot(), run.notePath)];
+    for (const abs of tries) {
+      if (!abs) continue;
+      try {
+        return { path: run.notePath, markdown: readNoteFile(abs) };
+      } catch {
+        // Not there; try the next place.
+      }
     }
+    return undefined;
   }
 
   // ---- running -------------------------------------------------------------
@@ -561,17 +573,22 @@ export class RoutineScheduler {
           : 'failed';
     const endNote = active.endNote ?? message;
     const summary = summarize(state, active.finalText, endNote);
-    let notePath: string | undefined;
+    let note: { rel: string; abs: string } | undefined;
+    let noteError: string | undefined;
     try {
-      notePath = this.writeNote(active, state, finishedAt, endNote);
+      note = this.writeNote(active, state, finishedAt, endNote);
     } catch (err) {
+      // Recorded on the run, never written somewhere else: a vault folder
+      // that went missing is not recreated (ensureVaultRoot).
+      noteError = (err as Error).message;
       log.warn('could not write routine note', { err: String(err) });
     }
     store.updateRun(active.run.id, {
       state,
       finishedAt,
       summary,
-      notePath,
+      ...(note ? { notePath: note.rel, noteAbsPath: note.abs } : {}),
+      ...(noteError ? { noteError } : {}),
       steps: active.steps.length,
     });
     log.info('routine run finished', { id: active.routine.id, run: active.run.id, state });
@@ -584,8 +601,10 @@ export class RoutineScheduler {
     state: RoutineRun['state'],
     finishedAt: string,
     endNote?: string,
-  ): string {
-    const root = this.vaultRoot();
+  ): { rel: string; abs: string } {
+    // The default folder is made on first use; a configured one that went
+    // missing throws here, before anything is written.
+    const root = ensureVaultRoot(this.vaultRoot());
     const started = new Date(active.run.startedAt);
     const date = `${started.getFullYear()}-${two(started.getMonth() + 1)}-${two(started.getDate())}`;
     const hh = two(started.getHours());
@@ -618,7 +637,8 @@ export class RoutineScheduler {
     for (let n = 1; ; n++) {
       const name = `${date} ${hh}-${mm}${n === 1 ? '' : ` (${n})`}.md`;
       const rel = join(folder, name).split('\\').join('/');
-      if (writeNewNoteSync(join(root, rel), lines.join('\n')).ok) return rel;
+      const abs = join(root, rel);
+      if (writeNewNoteSync(abs, lines.join('\n')).ok) return { rel, abs };
       if (n >= 100) throw new Error(`Every note name for ${date} ${hh}-${mm} is taken.`);
     }
   }

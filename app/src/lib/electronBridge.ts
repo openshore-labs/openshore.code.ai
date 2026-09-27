@@ -93,6 +93,17 @@ export type VaultPickResult =
       managedDisplay?: string;
     };
 
+/** What Bring did (electron/vaultDir.ts VaultBringResult): the store's
+ *  VaultMoveResult shape, so the forked line reads the same. */
+export interface VaultBringResult {
+  ok: boolean;
+  moved: string[];
+  skipped: string[];
+  forked: Array<{ from: string; to: string }>;
+  capped?: boolean;
+  reason?: 'unavailable' | 'same' | 'nested' | 'copy-failed' | 'capped';
+}
+
 /** A refinement main offered in the result block; never a path. */
 export type VaultRefineChoice =
   { to: 'enclosing' } | { to: 'child'; name: string } | { to: 'previous' };
@@ -409,6 +420,9 @@ export interface OscodeBridge {
   /** One of the choices the result block offered (a vault around or inside
    *  the pick, or the folder before it); never a path. */
   vaultRefineDir(choice: VaultRefineChoice): Promise<VaultPickResult>;
+  /** Copy the notes of the folder before the last pick into this one, with
+   *  nothing replaced and nothing removed; takes no path. */
+  vaultBringPrevious(): Promise<VaultBringResult>;
   /** Open the vault folder in Finder, File Explorer, or the file manager. */
   vaultReveal(): Promise<{ ok: boolean }>;
   /** Open the vault folder in Obsidian (obsidian://open, built in main). */

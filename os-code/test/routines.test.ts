@@ -56,6 +56,9 @@ beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), 'oschome-'));
   process.env.OSC_HOME = home;
   vault = join(home, 'Vault');
+  // The vault folder is there, as a configured one is; a missing one is never
+  // recreated (review M1-1).
+  mkdirSync(vault);
   workspace = mkdtempSync(join(tmpdir(), 'osc-ws-'));
   _resetRoutineScheduler();
 });
@@ -127,6 +130,7 @@ function makeScheduler(
     openSession?: () => { driver: FakeDriver; warnings: string[] };
     lock?: { acquire: () => { pid: number; startedAt: string }; release: () => void };
     allowed?: Set<string>;
+    vaultRoot?: () => string;
   } = {},
 ) {
   const opened: FakeDriver[] = [];
@@ -136,7 +140,7 @@ function makeScheduler(
     autostart: false,
     graceMs: 10 * 60_000,
     approvalTimeoutMs: opts.approvalTimeoutMs ?? 1000,
-    vaultRoot: () => vault,
+    vaultRoot: opts.vaultRoot ?? (() => vault),
     allowedWorkspace: (cwd) => cwd.startsWith(workspace) || allowed.has(cwd),
     persistAllowedRoot: (cwd) => allowed.add(cwd),
     lock: opts.lock ?? { acquire: () => ({ pid: process.pid, startedAt: '' }), release: () => {} },
@@ -559,6 +563,46 @@ describe('routine scheduler', () => {
       `${date} 06-00 (2).md`,
       `${date} 06-00.md`,
     ]);
+  });
+
+  it('records a vault folder that is not there on the run, and never recreates it (M1-1)', () => {
+    const routine = store.createRoutine(input());
+    const gone = join(home, 'Drive', 'Brain');
+    const { scheduler, opened } = makeScheduler({ now: at(0, 6, 0, 5) }, { vaultRoot: () => gone });
+    scheduler.runNow(routine.id);
+    opened[0]!.emit({ type: 'text-final', text: 'Run result.' });
+    opened[0]!.emit({ type: 'task-done', reason: 'complete' });
+    const run = scheduler.get(routine.id)!.lastRun!;
+    expect(run.state).toBe('done');
+    expect(run.notePath).toBeUndefined();
+    expect(run.noteError).toBe('The vault folder is not there right now.');
+    expect(existsSync(gone)).toBe(false);
+    expect(existsSync(join(home, 'Drive'))).toBe(false);
+  });
+
+  it('keeps where a run note landed, so a later folder pick still opens it (M1-3)', () => {
+    const routine = store.createRoutine(input());
+    let root = vault;
+    const { scheduler, opened } = makeScheduler({ now: at(0, 6, 0, 5) }, { vaultRoot: () => root });
+    scheduler.runNow(routine.id);
+    opened[0]!.emit({ type: 'text-final', text: 'Run result.' });
+    opened[0]!.emit({ type: 'task-done', reason: 'complete' });
+    const run = scheduler.get(routine.id)!.lastRun!;
+    expect(run.noteAbsPath).toBe(join(vault, run.notePath!));
+    // The person picks another folder: the note is read where it landed.
+    root = join(home, 'Picked');
+    mkdirSync(root);
+    expect(scheduler.readNote(run.id)?.markdown).toContain('Run result.');
+    // An older record carries only the vault-relative path: it is read from
+    // the folder the vault uses now (after Bring copied it there).
+    store.updateRun(run.id, { noteAbsPath: undefined });
+    expect(scheduler.readNote(run.id)).toBeUndefined();
+    mkdirSync(join(root, 'Crew', 'Morning review'), { recursive: true });
+    writeFileSync(join(root, run.notePath!), 'brought along');
+    expect(scheduler.readNote(run.id)?.markdown).toBe('brought along');
+    // A record whose own file went away falls back the same way.
+    store.updateRun(run.id, { noteAbsPath: join(home, 'elsewhere', 'x.md') });
+    expect(scheduler.readNote(run.id)?.markdown).toBe('brought along');
   });
 
   it('covers Friday in the Monday morning review', () => {

@@ -8,21 +8,22 @@
 // showed, and saves through the same writeNote the app uses on this folder
 // (core/vault/noteFile.ts), atomic and guarded by the note's version.
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { z } from 'zod';
 import { Jail } from '../security/jail.js';
+import { ensureVaultRoot } from '../../config/load.js';
 import { unifiedDiff } from '../edit/diff.js';
 import { NotANoteError, readNoteBytes, writeNote } from '../vault/noteFile.js';
 import { capContent, type ToolContext, type ToolDef } from './index.js';
 
-/** The vault root for this session, ensured to exist, as a jail so a note path
- *  can never escape it (symlinks included). */
+/** The vault root for this session, as a jail so a note path can never escape
+ *  it (symlinks included). The default folder is made on first use; a
+ *  configured one that went missing is never recreated (ensureVaultRoot). */
 function vaultJail(ctx: ToolContext): Jail {
   if (!ctx.vaultRoot) throw new Error('The vault is not configured for this session.');
-  mkdirSync(ctx.vaultRoot, { recursive: true });
-  return new Jail(ctx.vaultRoot);
+  return new Jail(ensureVaultRoot(ctx.vaultRoot));
 }
 
 /** Normalize a note name into a vault-relative .md path, the same shape the app

@@ -67,6 +67,10 @@ export { memoryEnabled } from './core/agent/memorySwitch.js';
 // import-free.
 export { unifiedDiff } from './core/edit/diff.js';
 export type { DiffStats } from './core/edit/diff.js';
+// The keep-both name for a note's second version, shared so the app's store
+// and the desktop's main process (Bring) name the same note the same way.
+// Pure and import-free.
+export { vaultConflictCopyPath } from './core/vault/conflictName.js';
 export type { CapabilityCategory, SpecialistRole } from './router/roles.js';
 
 // The always-on ethics layer. Pure modules only: the tier logic, the

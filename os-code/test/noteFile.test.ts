@@ -258,6 +258,17 @@ describe('writeNote with ifMatch', () => {
     expect(readFileSync(note).equals(before)).toBe(true);
   });
 
+  it('a save in flight whose temp carries an old mtime is never swept (M1-6)', () => {
+    // macOS saves set the temp's mtime back to the note's creation date to
+    // keep it; staleness is judged by ctime, which a utimes call sets to now.
+    const tmp = join(root, '.a.md.oscode-0123abcd.tmp');
+    writeFileSync(tmp, 'in flight');
+    utimesSync(tmp, 1_600_000_000, 1_600_000_000);
+    expect(sweepNoteTemps(root)).toBe(0);
+    expect(readFileSync(tmp, 'utf8')).toBe('in flight');
+    expect(sweepNoteTemps(root, Date.now() + 2 * 60 * 60 * 1000)).toBe(1);
+  });
+
   it('a failed rename takes its temp back and leaves the note alone', async () => {
     const note = join(root, 'a.md');
     writeFileSync(note, 'keep');

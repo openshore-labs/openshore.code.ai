@@ -33,7 +33,7 @@ import {
 } from '../tools/parser.js';
 import { PermissionEngine, SHELL_WRAPPERS } from '../permissions/index.js';
 import { Guardrails } from '../guardrails/index.js';
-import { JailViolation } from '../security/jail.js';
+import { Jail, JailViolation } from '../security/jail.js';
 import type { SecurityProfile } from '../security/profiles.js';
 import { redactSecrets } from '../security/redaction.js';
 import { compactHistory, estimateMessages, estimateTokens } from '../../context/compaction.js';
@@ -93,6 +93,19 @@ export interface AgentDeps {
   /** Injectable fetch for the Jev advisor, so tests drive it with no network.
    *  Defaults to the global fetch. */
   jevFetch?: FetchLike;
+}
+
+/** Whether an absolute path lies inside the vault folder (or is it), with
+ *  symlinks resolved through the vault's own jail. False with no vault. */
+function insideVault(abs: string, vaultRoot: string | undefined): boolean {
+  if (!vaultRoot) return false;
+  try {
+    new Jail(vaultRoot).resolve(abs);
+    return true;
+  } catch (err) {
+    if (err instanceof JailViolation) return false;
+    throw err;
+  }
 }
 
 /** Capitalize a model-class name for a sentence ("small" -> "Small"). */
@@ -1103,6 +1116,16 @@ export class AgentSession {
         }
       }
     }
+    // A workspace write that lands inside the vault asks every time, the way
+    // vaultWrite does: a picked vault can sit inside a project, and the coding
+    // tools must not edit its notes quietly (review M1-4). Judged by the
+    // jailed absolute path against the vault root, symlinks resolved.
+    const alwaysAsk =
+      tool.alwaysAsk === true ||
+      (tool.risk === 'write' &&
+        tool.pathJail !== 'own' &&
+        rawPath !== undefined &&
+        insideVault(toolContext.jail.resolve(rawPath), toolContext.vaultRoot));
     const command = tool.commandOf?.(call.args);
     let decision = permissions.decide({
       toolName: call.name,
@@ -1110,7 +1133,7 @@ export class AgentSession {
       path,
       command,
       cwd: toolContext.cwd,
-      alwaysAsk: tool.alwaysAsk,
+      alwaysAsk,
     });
 
     // The permission mode sits on top of the policy, the way Claude Code's
@@ -1133,7 +1156,7 @@ export class AgentSession {
     if (
       decision.decision === 'ask' &&
       !decision.sticky &&
-      !tool.alwaysAsk &&
+      !alwaysAsk &&
       tool.risk !== 'cloud-spend'
     ) {
       const shellStaysLoud = tool.risk === 'shell' && !profile.allowShellAutoApprove;
@@ -1179,13 +1202,13 @@ export class AgentSession {
         detail,
         // An always-ask tool can never be allowed for the session or the
         // project, so the sheet shows only the choices that take effect.
-        ...(tool.alwaysAsk ? { alwaysAsk: true } : {}),
+        ...(alwaysAsk ? { alwaysAsk: true } : {}),
       });
       // C1: the session was aborted while this approval was pending. Do not run
       // the tool; report an abort so run() settles instead of wedging.
       if (answer === 'aborted') return 'aborted';
       if (answer.alwaysThisSession && answer.approve) {
-        if (tool.alwaysAsk) {
+        if (alwaysAsk) {
           // An always-ask tool cannot be granted for the session, by design.
           this.emit({
             type: 'note',
@@ -1198,7 +1221,7 @@ export class AgentSession {
           });
         }
       }
-      if (answer.alwaysInProject && answer.approve && !tool.alwaysAsk) {
+      if (answer.alwaysInProject && answer.approve && !alwaysAsk) {
         this.persistProjectAllow(call, tool, path, command);
       }
       if (!answer.approve) {

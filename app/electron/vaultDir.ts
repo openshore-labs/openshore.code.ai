@@ -4,12 +4,17 @@
 // comes from the system dialog, a refinement names a choice main itself
 // offered). The folder is stored as an absolute realpath through the engine's
 // config writer, which keeps the file's mode. A pick only repoints: nothing is
-// copied in or out, and the old folder is left as it was.
+// copied in or out, and the old folder is left as it was. Bring, a separate
+// tap after a pick, copies the old folder's notes in (creates only) and still
+// leaves the old folder as it was.
 //
 // Plain Node with the dialog and the config writer injected, so
 // test/deviceFolder.test.ts drives it exactly as main does.
 import { accessSync, constants, existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
+import { readNote, writeNote } from 'os-code/dist/src/core/vault/noteFile.js';
+import { vaultConflictCopyPath } from 'os-code/dist/src/core/vault/conflictName.js';
+import { listVaultFolder, vaultNoteAbs } from './vaultFs.js';
 
 /** Why a folder cannot be the vault. The words live in the renderer's copy map
  *  (vaultCopy.ts vaultPickRefusal), so one test reads them all. */
@@ -100,6 +105,28 @@ export type VaultPickResult =
       defaultDisplay?: string;
       managedDisplay?: string;
     };
+
+/** What Bring did: the renderer's VaultMoveResult shape, so the move's
+ *  forked line reads the same. `moved` holds the notes now in the current
+ *  folder (copied, or already there with the same text); `skipped` the ones
+ *  that could not be copied; `forked` a note whose name the current folder
+ *  held with different text, and the conflict name it landed under. `ok` only
+ *  when nothing was skipped and the walk did not stop at the note limit. */
+export interface VaultBringResult {
+  ok: boolean;
+  moved: string[];
+  skipped: string[];
+  forked: Array<{ from: string; to: string }>;
+  /** The walk stopped at the note limit, so later notes stayed behind. */
+  capped?: boolean;
+  /** Why it was refused or fell short: a folder is not there or not
+   *  usable, the two are the same folder, one lies inside the other, some
+   *  notes could not be copied, or the note limit was reached. */
+  reason?: 'unavailable' | 'same' | 'nested' | 'copy-failed' | 'capped';
+}
+
+/** Conflict names Bring tries for one note before it gives up on it. */
+const BRING_FORK_TRIES = 20;
 
 /** A refinement the result block offers, and nothing else. */
 export type VaultRefineChoice =
@@ -355,13 +382,17 @@ export interface VaultDirDeps {
   save: (dir: string) => void;
   obsidianApp: () => boolean;
   log?: (message: string) => void;
+  /** Notes one Bring copies before it stops (tests use a small one). */
+  bringLimit?: number;
 }
 
 /** The pick and its refinements. Holds the folder the vault used before the
  *  last change, in memory for the life of the process, so Go back can repoint
  *  without the renderer ever naming a path. */
 export class VaultDirChooser {
+  /** Set only by a successful pick or refinement in this process. */
   private previous: string | undefined;
+  private bringing = false;
 
   constructor(private readonly deps: VaultDirDeps) {}
 
@@ -394,6 +425,94 @@ export class VaultDirChooser {
       childVaults(cur).includes(c.name) || (c.name === 'vault.personal' && isIcloudRoot(cur, env));
     if (!allowed) throw new Error('blocked: not a folder main offered');
     return this.repoint(realOr(join(cur, c.name)));
+  }
+
+  /**
+   * Bring the notes of the folder the vault used before the last pick into
+   * the one it uses now (the CTO's ruling on Bring). Takes no argument; any
+   * the renderer sends is ignored. Every write is a create (ifAbsent): a note
+   * already here is never replaced; the same text is left as it is, and
+   * different text lands beside it under the conflict name. Nothing is ever
+   * removed, and nothing is written into the previous folder, whose walk
+   * does not sweep and follows no link. One Bring at a time.
+   */
+  async bringPrevious(): Promise<VaultBringResult> {
+    const previous = this.previous;
+    if (!previous) throw new Error('blocked: there is no earlier folder');
+    if (this.bringing) throw new Error('blocked: a bring is already running');
+    this.bringing = true;
+    try {
+      return await this.bring(previous);
+    } finally {
+      this.bringing = false;
+    }
+  }
+
+  private async bring(previousDir: string): Promise<VaultBringResult> {
+    const env = this.deps.env();
+    const p = env.platform;
+    const refused = (reason: VaultBringResult['reason']): VaultBringResult => ({
+      ok: false,
+      moved: [],
+      skipped: [],
+      forked: [],
+      reason,
+    });
+    const from = realOr(previousDir);
+    const to = realOr(this.deps.current().dir);
+    if (!vaultDirExists(from) || !vaultDirExists(to)) return refused('unavailable');
+    if (refusePick(from, env) || refusePick(to, env)) return refused('unavailable');
+    if (samePath(from, to, p)) return refused('same');
+    if (within(from, to, p) || within(to, from, p)) return refused('nested');
+    const limit = this.deps.bringLimit ?? VAULT_SURVEY_LIMITS.notes;
+    let listed;
+    try {
+      listed = listVaultFolder(from, { sweep: false, limit: limit + 1 });
+    } catch (err) {
+      this.deps.log?.(`bring could not list the previous folder: ${(err as Error).message}`);
+      return refused('unavailable');
+    }
+    const capped = listed.length > limit;
+    const when = new Date();
+    const moved: string[] = [];
+    const skipped: string[] = [];
+    const forked: VaultBringResult['forked'] = [];
+    for (const { path: rel } of listed.slice(0, limit)) {
+      try {
+        const note = await readNote(vaultNoteAbs(from, rel));
+        if (!note) {
+          skipped.push(rel);
+          continue;
+        }
+        const first = await writeNote(vaultNoteAbs(to, rel), note.text, { ifAbsent: true });
+        if (first.ok || first.theirs?.text === note.text) {
+          moved.push(rel);
+          continue;
+        }
+        if (first.conflict !== 'exists') {
+          skipped.push(rel);
+          continue;
+        }
+        let landed: string | undefined;
+        for (let n = 1; n <= BRING_FORK_TRIES && !landed; n++) {
+          const copy = vaultConflictCopyPath(rel, when, n);
+          const r = await writeNote(vaultNoteAbs(to, copy), note.text, { ifAbsent: true });
+          if (r.ok || r.theirs?.text === note.text) landed = copy;
+          else if (r.conflict !== 'exists') break;
+        }
+        if (landed) forked.push({ from: rel, to: landed });
+        else skipped.push(rel);
+      } catch (err) {
+        // One note that fails never stops the rest; it stays in the old folder.
+        this.deps.log?.(`bring skipped a note: ${(err as Error).message}`);
+        skipped.push(rel);
+      }
+    }
+    const result: VaultBringResult = { ok: !skipped.length && !capped, moved, skipped, forked };
+    if (capped) result.capped = true;
+    if (skipped.length) result.reason = 'copy-failed';
+    else if (capped) result.reason = 'capped';
+    return result;
   }
 
   private repoint(real: string): VaultPickResult {
