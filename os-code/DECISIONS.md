@@ -2269,3 +2269,39 @@ execution contract. Newest at the bottom.
   "Export as plain files" link in the team vault's lead line, shown on the
   iPhone and the desktop once the team vault holds a note; the personal
   export and its row are unchanged.
+- **CTO, Vault M3 H1 to H6 (2026-09-27):** the rulings the M3 streams build
+  to, recorded once here.
+  - **3.0 (plan change):** the purity guard could not be green on the tree as
+    it stood, since `harness/verify.ts` imported `node:child_process`.
+    `runVerify` moved to `core/agent/verifyRun.ts`; `harness/verify.ts` keeps
+    the types and `verifyRetryPrompt`. `test/harnessPurity.test.ts` walks
+    every `src/harness/**` file plus `src/protocol.ts` through relative
+    imports and fails on a Node built-in, a package outside {zod, js-yaml},
+    `require(`, `__dirname`, `Buffer`, or `process.env`; type-only imports are
+    erased at build, so they are not followed. The walk also caught `Buffer`
+    in `core/ethics/guardedProvider.ts` (reached from protocol), now plain
+    `atob`/`btoa`.
+  - **H1:** a hand-rolled scanner in the core (`harness/vault/scan.ts`), not
+    remark: speed on the reference box, no wikilink grammar in remark, weight,
+    and exact offsets. Indented code is not skipped and `---` setext
+    underlines are ignored, both documented divergences.
+  - **H2 (plan change):** frontmatter parses with `js-yaml` 4.3.1 (exact pin,
+    `CORE_SCHEMA`, read-only; nothing serializes YAML). No
+    `remark-frontmatter`: the renderer shows `text.slice(fm.end)`, so the core
+    and the renderer never disagree on where frontmatter ends.
+  - **H3 (plan change):** the index persists outside the sealed store, which
+    cannot hold a multi-MB blob: `oscHome()/vault-index/<key>.json` on the
+    desktop folder provider, a device-key-sealed file in `Directory.Cache` on
+    the iPhone, memory only for other desktop providers. Reconcile compares
+    `versionOf` only.
+  - **H4:** one shared core surface in `harness/vault/` (paths, scan,
+    frontmatter, resolve, rewrite, excerpt, types) through `os-code/protocol`,
+    one new-name rule for engine and app, and a pinned five-step resolution
+    order; `scheduler.ts safeName` becomes `safeNoteName` with no folder
+    migration.
+  - **H5:** `readConfig` is an optional provider member over logical names
+    only (`VaultConfigName`), answering `ConfigRead`, capped at 256 KB; plugin
+    folders and `workspace*.json` are never readable.
+  - **H6:** wave 0 (this: the guard, `harness/vault/types.ts`, js-yaml), then
+    wave 1 streams A to D split by file ownership, then wave 2 with one owner
+    of `store.ts` and `VaultScreen.tsx`.

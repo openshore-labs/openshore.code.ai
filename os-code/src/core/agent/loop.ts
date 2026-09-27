@@ -48,7 +48,8 @@ import type {
   TodoItem,
 } from './types.js';
 import { instructionsPrompt, type RepoInstructions } from './instructions.js';
-import { runVerify, verifyRetryPrompt } from '../../harness/verify.js';
+import { verifyRetryPrompt } from '../../harness/verify.js';
+import { runVerify } from './verifyRun.js';
 import { deriveProfile, classBlurb, type ModelClassProfile } from '../../harness/profile.js';
 import { JevAdvisor, type FetchLike } from '../../harness/jev.js';
 import type { HarnessCurrentsHandle } from '../../currents/model.js';

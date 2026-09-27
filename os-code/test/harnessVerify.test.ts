@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { runVerify, verifyRetryPrompt } from '../src/harness/verify.js';
+import { verifyRetryPrompt } from '../src/harness/verify.js';
+import { runVerify } from '../src/core/agent/verifyRun.js';
 import { MockProvider, toolTurn, textTurn } from './helpers/mockProvider.js';
 import { makeTestSession } from './helpers/session.js';
 import type { AgentEvent } from '../src/core/agent/types.js';

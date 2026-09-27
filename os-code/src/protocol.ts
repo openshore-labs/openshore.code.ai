@@ -71,6 +71,47 @@ export type { DiffStats } from './core/edit/diff.js';
 // and the desktop's main process (Bring) name the same note the same way.
 // Pure and import-free.
 export { vaultConflictCopyPath } from './core/vault/conflictName.js';
+// The Vault's shared core contract (Vault M3, CTO H1 to H5): the types the
+// scanner, frontmatter reader, resolver, index and readConfig seam agree on.
+// Types only, so nothing reaches the bundle.
+export type {
+  BlockIdToken,
+  ConfigRead,
+  ConfigReadRefusal,
+  Eol,
+  FmProp,
+  FmState,
+  FmValue,
+  Frontmatter,
+  FrontmatterRange,
+  HeadingToken,
+  IndexHeading,
+  IndexLink,
+  IndexPhase,
+  IndexProgress,
+  IsNotePathOptions,
+  LinkKind,
+  LinkToken,
+  LinkWhere,
+  NewNoteNameCheck,
+  NoteScan,
+  ReconcilePlan,
+  RewriteResult,
+  SkippedKind,
+  SkippedRange,
+  TagToken,
+  TextRange,
+  VaultBacklink,
+  VaultConfigName,
+  VaultExcerpt,
+  VaultIndexEntry,
+  VaultIndexFile,
+  VaultIndexState,
+  VaultListedNote,
+  VaultPathIndex,
+  VaultSearchHit,
+  WikilinkContext,
+} from './harness/vault/types.js';
 export type { CapabilityCategory, SpecialistRole } from './router/roles.js';
 
 // The always-on ethics layer. Pure modules only: the tier logic, the
