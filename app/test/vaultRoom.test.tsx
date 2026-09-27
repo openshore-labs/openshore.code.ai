@@ -168,6 +168,13 @@ const app = vi.hoisted(() => {
     vaultLoadTrash: async () => [],
     vaultRestoreTrash: async () => ({ ok: false, reason: 'unsupported' }),
     vaultEmptyTrash: async () => ({ ok: false, reason: 'unsupported' }),
+    vaultDeleteFolder: async () => undefined,
+    vaultPrepareMove: async () => undefined,
+    vaultApplyMove: async () => undefined,
+    vaultUpdateRest: async () => undefined,
+    vaultCreateFolder: async () => ({ ok: false, reason: 'unsupported' }),
+    vaultFolderCounts: async () => ({ notes: 0, attachments: 0 }),
+    vaultFolders: undefined,
   };
   return { state, listeners, views, toasts, created, opened, drive, folderIo, leases, polls };
 });

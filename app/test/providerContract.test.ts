@@ -345,6 +345,23 @@ for (const p of enforcing) {
       expect(p.bytes('mine.md')).toBe('mine');
     });
 
+    it('folds Unicode normalization like case, and keeps accents distinct (one foldPath)', async () => {
+      const w = await p.provider.write(R, 'mine.md', 'mine', { ifAbsent: true });
+      // A name another app wrote decomposed (the macOS habit) is the same
+      // name as its composed spelling.
+      p.replace('cafe\u0301.md', 'accented');
+      const nfc = await p.provider.rename!(R, 'mine.md', 'caf\u00e9.md', {
+        ifMatch: versionOfWrite(w),
+      });
+      expect(nfc).toMatchObject({ ok: false, conflict: 'exists' });
+      // The same letters without the accent are another name.
+      const plain = await p.provider.rename!(R, 'mine.md', 'cafe.md', {
+        ifMatch: versionOfWrite(w),
+      });
+      expect(plain).toMatchObject({ ok: true, file: { path: 'cafe.md' } });
+      expect(p.bytes('cafe\u0301.md')).toBe('accented');
+    });
+
     it('a case-only rename of the same note is allowed', async () => {
       const w = await p.provider.write(R, 'plans.md', 'body', { ifAbsent: true });
       const r = await p.provider.rename!(R, 'plans.md', 'Plans.md', {

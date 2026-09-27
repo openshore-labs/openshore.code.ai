@@ -281,6 +281,7 @@ import {
   normalizeHermesBaseUrl,
   normalizeJevBaseUrl,
   vaultConflictCopyPath,
+  foldPath,
   type CurrentsHostProbe,
   type VaultPrivacy,
   type VaultVisibility,
@@ -391,12 +392,21 @@ import {
 import { vaultCaps, type VaultCaps } from '../lib/vaultCaps.js';
 import type { VaultAutosave } from '../lib/vaultAutosave.js';
 import {
+  applyMove as opsApplyMove,
+  createFolder as opsCreateFolder,
   deleteFolder as opsDeleteFolder,
   deleteNote as opsDeleteNote,
   emptyTrash as opsEmptyTrash,
+  folderCounts as opsFolderCounts,
   listTrash as opsListTrash,
+  prepareFolderMove as opsPrepareFolderMove,
+  prepareNoteMove as opsPrepareNoteMove,
   restoreEntry as opsRestoreEntry,
   undoDelete as opsUndoDelete,
+  updateTheRest as opsUpdateTheRest,
+  type VaultMovePreview,
+  type VaultMoveResult as VaultOpsMoveResult,
+  type VaultRewriteReport,
   type VaultOpsDeps,
   type VaultOpsOpenNote,
   type VaultRestoreResult,
@@ -690,6 +700,10 @@ export interface AppSettings {
   /** Paths the agent's approved vault writes named on this device, newest
    *  first, at most 20 (J15, "Recently from your agent"). Device local. */
   vaultAgentWrites?: string[];
+  /** Empty folders made on a storage without real folders (Local, Vault M6
+   *  6.2, CTO K5), per vault (`providerId::resourceId`), kept until a note
+   *  lands in them. Device local, never project data (K17). */
+  vaultEmptyFolders?: Record<string, string[]>;
 }
 
 /** What a hub says this device's pairing credential may do. */
@@ -1278,6 +1292,10 @@ interface AppState {
    *  M6 6.3): the tree's last row shows while it holds something. Undefined
    *  before the first listing and on a storage without Trash. */
   vaultTrash?: TrashEntry[];
+  /** Folders of the vault on screen beyond the ones its notes imply: real
+   *  folders the storage lists (empty ones too) and the remembered empty
+   *  ones (Vault M6 6.2, K5). */
+  vaultFolders?: string[];
   /** When true, the Marketplace intro walkthrough is showing over the library. */
   libraryIntro?: boolean;
   /** When true, a brand-new account was just created on a device that never
@@ -1842,6 +1860,35 @@ interface AppState {
   vaultEmptyTrash(): Promise<
     { ok: true; removed: number; asked: number } | { ok: false; reason: string }
   >;
+  /** Plan a rename or move (6.2): the new path checked by the storage later,
+   *  the referring notes read, the links counted. Nothing is written. */
+  vaultPrepareMove(
+    kind: 'note' | 'folder',
+    from: string,
+    to: string,
+  ): Promise<VaultMovePreview | undefined>;
+  /** Run a planned rename or move, with the link pass when asked (R1). The
+   *  moved notes are adopted at the paths the storage answered with. */
+  vaultApplyMove(
+    preview: VaultMovePreview,
+    updateLinks: boolean,
+    onProgress?: (i: number, m: number) => void,
+  ): Promise<VaultOpsMoveResult | undefined>;
+  /** "Update the rest" on the standing card (CX X7). */
+  vaultUpdateRest(
+    preview: VaultMovePreview,
+    report: VaultRewriteReport,
+    onProgress?: (i: number, m: number) => void,
+  ): Promise<VaultRewriteReport | undefined>;
+  /** Make a folder (a real one, or a remembered empty one on Local). */
+  vaultCreateFolder(
+    path: string,
+  ): Promise<
+    | { ok: true; path: string }
+    | { ok: false; reason: 'bad-name' | 'exists' | 'storage' | 'unsupported' }
+  >;
+  /** What a folder holds, for the sheet's counts before it acts (K5). */
+  vaultFolderCounts(folder: string): Promise<{ notes: number; attachments: number }>;
   /** The switch note's "Save to Vault" (J12, D3): the person's own one-tap
    *  write to `Handoffs/<date> <project>.md`, `ifAbsent`, " 2" on a clash. */
   saveHandoffToVault(conversationId: string, itemId: string): Promise<string | undefined>;
@@ -4942,6 +4989,7 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       set({ vaultNote: undefined, vaultListed: false, vaultFiles: [] });
     }
+    set({ vaultTrash: undefined, vaultFolders: undefined });
   }
 
   /** The J9 rule after a pairing (D2): an empty vault on This device by
@@ -5348,6 +5396,51 @@ export const useApp = create<AppState>((set, get, api) => {
     if (!r.ok) return undefined;
     if (isActiveVault(t)) set({ vaultTrash: r.entries });
     return r.entries;
+  }
+
+  /** The key a vault's remembered empty folders sit under. */
+  const foldersKey = (t: VaultTargetRef) => `${t.providerId}::${t.resourceId}`;
+
+  /** Rewrite one vault's remembered empty folders. */
+  async function editEmptyFolders(
+    t: VaultTargetRef,
+    edit: (list: string[]) => string[],
+  ): Promise<void> {
+    const all = get().settings.vaultEmptyFolders ?? {};
+    const before = all[foldersKey(t)] ?? [];
+    const after = [...new Set(edit(before))].sort();
+    if (JSON.stringify(after) === JSON.stringify(before)) return;
+    const next = { ...all };
+    if (after.length) next[foldersKey(t)] = after;
+    else delete next[foldersKey(t)];
+    await get().saveSettings({ vaultEmptyFolders: next });
+  }
+
+  /** Folders beyond what the notes imply: the storage's real ones (empty
+   *  ones too) and this device's remembered ones, a remembered folder
+   *  forgotten once a note lands in it (K5). */
+  async function refreshVaultFolders(t: VaultTarget): Promise<void> {
+    let real: string[] = [];
+    if (t.provider.listFolders) {
+      real = await t.provider.listFolders(t.resourceId).catch(() => []);
+    }
+    const notes = isActiveVault(t) ? get().vaultFiles.map((f) => foldPath(f.path)) : [];
+    const holds = (folder: string) => notes.some((p) => p.startsWith(`${foldPath(folder)}/`));
+    await editEmptyFolders(t, (list) => list.filter((f) => !holds(f))).catch(() => {});
+    const kept = get().settings.vaultEmptyFolders?.[foldersKey(t)] ?? [];
+    if (isActiveVault(t)) set({ vaultFolders: [...new Set([...real, ...kept])].sort() });
+  }
+
+  /** A folder moved or went to Trash: its remembered empty folders follow. */
+  async function moveEmptyFolders(t: VaultTarget, from: string, to?: string): Promise<void> {
+    const f = foldPath(from);
+    await editEmptyFolders(t, (list) =>
+      list.flatMap((p) => {
+        const fp = foldPath(p);
+        if (fp !== f && !fp.startsWith(`${f}/`)) return [p];
+        return to === undefined ? [] : [`${to}${p.slice(from.length)}`];
+      }),
+    ).catch(() => {});
   }
 
   // Put text beside a note as a keep-both copy under the first free conflict
@@ -9168,6 +9261,8 @@ export const useApp = create<AppState>((set, get, api) => {
         vaultFiles: [],
         vaultListed: false,
         vaultTeamExpired: undefined,
+        vaultTrash: undefined,
+        vaultFolders: undefined,
       });
       logEvent('vault_scope', { scope });
       await get().vaultRefresh();
@@ -9252,6 +9347,10 @@ export const useApp = create<AppState>((set, get, api) => {
       set({ vaultFiles: files, vaultError: undefined, vaultListed: true });
       // The index reads only notes whose version moved (M3 3.2).
       void openVaultIndex(target).reconcile(files);
+      // Empty folders and the Trash row (Vault M6), each only where the
+      // storage has them.
+      void refreshVaultFolders(target);
+      void refreshVaultTrash(target);
       // An empty default Local vault on the desktop has nothing to move, so
       // it simply points at the folder (CX 1.3 b).
       if (await repointEmptyLocal(target, files)) return;
@@ -9858,6 +9957,8 @@ export const useApp = create<AppState>((set, get, api) => {
       if (!r.ok) return { ok: false, reason: r.reason === 'changed' ? 'storage' : r.reason };
       const open = get().vaultNote;
       if (open && open.path.startsWith(`${folder}/`)) await afterNoteGone(t, open.path);
+      await moveEmptyFolders(t, folder);
+      await refreshVaultFolders(t);
       logEvent('vault_folder_trash');
       await relistActive(t);
       void refreshVaultTrash(t);
@@ -9894,6 +9995,66 @@ export const useApp = create<AppState>((set, get, api) => {
       const r = await opsEmptyTrash(opsDeps(t));
       await refreshVaultTrash(t);
       return r;
+    },
+
+    async vaultPrepareMove(kind, from, to) {
+      const t = vaultTarget();
+      if (!t || !capsOf(t).rename) return undefined;
+      const r =
+        kind === 'note'
+          ? await opsPrepareNoteMove(opsDeps(t), from, to)
+          : await opsPrepareFolderMove(opsDeps(t), from, to);
+      return r.ok ? r.preview : undefined;
+    },
+
+    async vaultApplyMove(preview, updateLinks, onProgress) {
+      const t = vaultTarget();
+      if (!t || !capsOf(t).rename) return undefined;
+      if (await leaseRefuses(t)) return undefined;
+      const r = await opsApplyMove(opsDeps(t), preview, {
+        updateLinks: updateLinks && capsOf(t).linkRewrite,
+        ...(onProgress ? { onProgress } : {}),
+      });
+      if (preview.kind === 'folder' && (r.ok || r.reason === 'partial')) {
+        // The folder's remembered empty folders follow it, and the list is
+        // read again for the spelling the storage gave every moved path.
+        if (r.ok) await moveEmptyFolders(t, preview.from, preview.to);
+        await relistActive(t);
+        await refreshVaultFolders(t);
+      }
+      if (!r.ok && r.reason === 'changed' && get().vaultNote?.path === preview.from) {
+        // Changed somewhere else before the rename ran: the open note takes
+        // the M1 path (a clean one reloads, a dirty one asks).
+        await inSaveChain(t, preview.from, () => recheckOpenNote(t, preview.from));
+      }
+      if (r.ok) logEvent('vault_rename', { kind: preview.kind, links: preview.links > 0 });
+      return r;
+    },
+
+    async vaultUpdateRest(preview, report, onProgress) {
+      const t = vaultTarget();
+      if (!t || !capsOf(t).linkRewrite) return undefined;
+      return opsUpdateTheRest(opsDeps(t), preview, report, onProgress);
+    },
+
+    async vaultCreateFolder(path) {
+      const t = vaultTarget();
+      if (!t || !capsOf(t).folders) return { ok: false, reason: 'unsupported' };
+      const clean = path.trim().replace(/^\/+|\/+$/g, '');
+      const known = [...(get().vaultFolders ?? [])];
+      if (known.some((f) => foldPath(f) === foldPath(clean)))
+        return { ok: false, reason: 'exists' };
+      const r = await opsCreateFolder(opsDeps(t), clean);
+      if (!r.ok) return { ok: false, reason: r.reason };
+      if (r.remembered) await editEmptyFolders(t, (list) => [...list, clean]).catch(() => {});
+      await refreshVaultFolders(t);
+      return { ok: true, path: clean };
+    },
+
+    async vaultFolderCounts(folder) {
+      const t = vaultTarget();
+      if (!t) return { notes: 0, attachments: 0 };
+      return opsFolderCounts(opsDeps(t), folder);
     },
 
     async vaultAcquireLease() {

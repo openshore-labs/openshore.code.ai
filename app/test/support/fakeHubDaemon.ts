@@ -13,6 +13,7 @@ import type {
   VaultTrashBody,
   VaultTrashEntry,
 } from 'os-code/protocol';
+import { foldPath } from 'os-code/protocol';
 
 export interface FakeHubNote {
   text: string;
@@ -68,7 +69,8 @@ export interface FakeHubAttachment {
   mtime: string;
 }
 
-const fold = (p: string) => p.normalize('NFC').toLowerCase();
+// The one fold the engine and every provider use (case and NFC, accents kept).
+const fold = foldPath;
 
 export function fakeHubDaemon(baseUrl = 'http://mac.tail1234.ts.net:4816'): FakeHubDaemon {
   let n = 0;

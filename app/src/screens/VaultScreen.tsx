@@ -19,11 +19,12 @@ import {
   type VaultHeldDraft,
   type VaultTargetRef,
 } from '../state/store.js';
-import type { VaultUndo } from '../state/vaultOps.js';
+import type { VaultMovePreview, VaultRewriteReport, VaultUndo } from '../state/vaultOps.js';
 import { BackBar } from '../components/BackBar.js';
 import { ErrorBoundary } from '../components/ErrorBoundary.js';
 import { VaultMarkdown } from '../components/VaultMarkdown.js';
 import {
+  allFolders,
   isConflictCopy,
   noteFolder,
   noteTitle,
@@ -107,6 +108,17 @@ import {
   vaultUndoText,
   VAULT_TRASH_EMPTY_FAILED,
   VAULT_TRASH_LIST_FAILED,
+  VAULT_FOLDER_BAD_NAME,
+  VAULT_FOLDER_CREATE_FAILED,
+  VAULT_RENAME_CHOICE_OPEN,
+  vaultFolderMovePartial,
+  vaultFolderLabel,
+  vaultFolderOptionsLabel,
+  vaultFolderTaken,
+  vaultRenameChanged,
+  vaultRenameFailed,
+  vaultRenameTaken,
+  vaultRenameToast,
   type VaultDriveLink,
   type VaultOnboard,
   type VaultSaveStatus,
@@ -141,6 +153,8 @@ import { VaultBacklinks } from '../components/vault/VaultBacklinks.js';
 import { VaultLinkSuggest } from '../components/vault/VaultLinkSuggest.js';
 import { VaultNoteOptions } from '../components/vault/VaultNoteOptions.js';
 import { VaultTrashRow, VaultTrashView } from '../components/vault/VaultTrashView.js';
+import { VaultFolderSheet } from '../components/vault/VaultFolderSheet.js';
+import { VaultLinksLeftCard, VaultRenameSheet } from '../components/vault/VaultRenameSheet.js';
 import { VaultUndoToast, type VaultUndoToastItem } from '../components/vault/VaultUndoToast.js';
 import { hubReach, subscribeHubReach } from '../lib/gitos/hub.js';
 import { PROJECT_VAULT_PINS_MAX } from '../state/types.js';
@@ -246,6 +260,13 @@ export function VaultScreen() {
     vaultLoadTrash,
     vaultRestoreTrash,
     vaultEmptyTrash,
+    vaultDeleteFolder,
+    vaultPrepareMove,
+    vaultApplyMove,
+    vaultUpdateRest,
+    vaultCreateFolder,
+    vaultFolderCounts,
+    vaultFolders,
   } = useApp();
 
   const team = vaultScope === 'team';
@@ -409,6 +430,27 @@ export function VaultScreen() {
   // The Trash view, a page inside the room (CX X10).
   const [trashOpen, setTrashOpen] = useState(false);
   const [trashError, setTrashError] = useState<string | undefined>();
+  // Rename or move (6.2, CX X5 to X7): what the sheet moves, whether it is
+  // up, the folder options sheet and its counts, and the standing card on a
+  // renamed note whose links were not all updated.
+  const [renaming, setRenaming] = useState<
+    { kind: 'note' | 'folder'; from: string; startAt?: 'name' | 'folders' } | undefined
+  >();
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [folderMenuOpen, setFolderMenuOpen] = useState(false);
+  const [folderCounts, setFolderCounts] = useState<
+    { notes: number; attachments: number } | undefined
+  >();
+  const [linksLeft, setLinksLeft] = useState<
+    | {
+        path: string;
+        old: string;
+        preview: VaultMovePreview;
+        report: VaultRewriteReport;
+        busy?: boolean;
+      }
+    | undefined
+  >();
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
   // Compare-and-swap (1.1): when the person last typed, whether the resolve
   // sheet is up, what a choice is doing, and whether the meta line carries
@@ -919,6 +961,156 @@ export function VaultScreen() {
       ? 'folder'
       : 'local';
 
+  // ---- rename, move and folders (6.2; CTO K3 to K5, R1; CX X5 to X8) ------
+  // Every folder there is to move into: each note's parents, the storage's
+  // own empty folders and the ones remembered here.
+  const folderPaths = useMemo(
+    () => allFolders(vaultFiles, vaultFolders ?? []),
+    [vaultFiles, vaultFolders],
+  );
+  const lastSegment = (path: string) => path.slice(path.lastIndexOf('/') + 1);
+  const openRename = (kind: 'note' | 'folder', from: string, startAt?: 'name' | 'folders') => {
+    setRenaming({ kind, from, ...(startAt ? { startAt } : {}) });
+    setRenameOpen(true);
+  };
+  // The notes a pass left pointing at the old name, never the ones that were
+  // gone (they lost nothing).
+  const notesLeft = (report: VaultRewriteReport) => [
+    ...report.skipped.filter((x) => x.reason !== 'missing').map((x) => x.path),
+    ...report.notUpdated,
+  ];
+  const rewriteLine = (old: string, next: string, report: VaultRewriteReport) =>
+    vaultRenameToast({
+      old,
+      next,
+      rewrite: {
+        updated: report.updated,
+        total: report.total,
+        skipped: report.skipped.filter((x) => x.reason !== 'missing').map((x) => noteTitle(x.path)),
+        notUpdated: report.notUpdated.map((x) => noteTitle(x)),
+        stopped: report.stopped,
+      },
+    });
+  const applyRename = async (
+    preview: VaultMovePreview,
+    updateLinks: boolean,
+    onProgress: (i: number, m: number) => void,
+  ) => {
+    const note = preview.kind === 'note';
+    const old = note ? noteTitle(preview.from) : lastSegment(preview.from);
+    const next = note ? noteTitle(preview.to) : lastSegment(preview.to);
+    const r = await vaultApplyMove(preview, updateLinks, onProgress);
+    setRenameOpen(false);
+    if (!r) return;
+    if (!r.ok) {
+      showToast(
+        r.reason === 'choice-open'
+          ? VAULT_RENAME_CHOICE_OPEN
+          : r.reason === 'changed'
+            ? vaultRenameChanged(old)
+            : r.reason === 'exists'
+              ? vaultRenameTaken(next, noteFolder(preview.to))
+              : r.reason === 'partial'
+                ? vaultFolderMovePartial(old, r.moved?.length ?? 0, preview.notes)
+                : vaultRenameFailed(old),
+      );
+      if (r.reason === 'partial') setFolder('');
+      return;
+    }
+    const report = r.rewrite;
+    showToast(report ? rewriteLine(old, next, report) : vaultRenameToast({ old, next }));
+    if (report && report.updated > 0) hapticCommit();
+    // Adopt what the storage answered: it may have matched a parent to its
+    // spelling on disk (work/x.md landed as Work/x.md).
+    const landed = r.moved[0]?.path;
+    if (note) {
+      const left = report ? notesLeft(report) : [];
+      setLinksLeft(
+        report && left.length ? { path: landed ?? preview.to, old, preview, report } : undefined,
+      );
+      return;
+    }
+    const depth = preview.to.split('/').length;
+    const moved = landed ? landed.split('/').slice(0, depth).join('/') : preview.to;
+    if (folder === preview.from || folder.startsWith(`${preview.from}/`)) {
+      setFolder(moved + folder.slice(preview.from.length));
+    }
+  };
+  const updateRest = async () => {
+    if (!linksLeft || linksLeft.busy) return;
+    const card = linksLeft;
+    setLinksLeft({ ...card, busy: true });
+    const report = await vaultUpdateRest(card.preview, card.report);
+    if (!report) {
+      setLinksLeft({ ...card, busy: false });
+      return;
+    }
+    showToast(rewriteLine(card.old, noteTitle(card.path), report));
+    if (report.updated > 0) hapticCommit();
+    setLinksLeft(notesLeft(report).length ? { ...card, report, busy: false } : undefined);
+  };
+  const renameSheet = renaming ? (
+    <VaultRenameSheet
+      open={renameOpen}
+      kind={renaming.kind}
+      from={renaming.from}
+      folders={folderPaths}
+      known={paths}
+      {...(renaming.startAt ? { startAt: renaming.startAt } : {})}
+      prepare={(to) => vaultPrepareMove(renaming.kind, renaming.from, to)}
+      apply={applyRename}
+      onClose={() => setRenameOpen(false)}
+    />
+  ) : null;
+
+  // A folder's own options: counted before anything acts (K5).
+  const openFolderMenu = () => {
+    setFolderCounts(undefined);
+    setFolderMenuOpen(true);
+    void vaultFolderCounts(folder).then(setFolderCounts);
+  };
+  // Sheets never stack: the folder sheet leaves before the rename sheet rises.
+  const afterFolderMenu = (run: () => void) => {
+    setFolderMenuOpen(false);
+    setTimeout(run, sheetExitMs());
+  };
+  const createFolderIn = async (name: string): Promise<string | undefined> => {
+    const r = await vaultCreateFolder(folder ? `${folder}/${name}` : name);
+    if (r.ok) {
+      setFolderMenuOpen(false);
+      setFolder(r.path);
+      return undefined;
+    }
+    return r.reason === 'bad-name'
+      ? VAULT_FOLDER_BAD_NAME
+      : r.reason === 'exists'
+        ? vaultFolderTaken(name)
+        : VAULT_FOLDER_CREATE_FAILED;
+  };
+  // The second tap on Delete folder: to Trash with whatever is in it, then
+  // back to the folder above, with Undo.
+  const deleteFolderHere = () => {
+    const target = folder;
+    const at = vaultTargetRef();
+    const name = lastSegment(target);
+    setFolderMenuOpen(false);
+    void vaultDeleteFolder(target).then((r) => {
+      if (!r) return;
+      if (!r.ok) {
+        showToast(vaultTrashFailed(name));
+        return;
+      }
+      setFolder(target.includes('/') ? target.slice(0, target.lastIndexOf('/')) : '');
+      if (r.undo && r.notes + r.attachments > 0) {
+        offerUndo(r.undo, at, vaultFolderLabel(target), {
+          trashed: true,
+          folder: true,
+          notes: r.notes,
+        });
+      }
+    });
+  };
+
   // Move the personal vault, and say plainly what happened: where it is now,
   // any note that landed beside one already there, and on a refusal whether
   // any copy was left behind. The pending draft goes first, to the vault it
@@ -1279,7 +1471,7 @@ export function VaultScreen() {
   const driveExplains =
     Boolean(driveReadOnly) && (driveLink === 'disconnected' || driveLink === 'unconfigured');
 
-  const entries = treeAt(folder, vaultFiles);
+  const entries = treeAt(folder, vaultFiles, vaultFolders ?? []);
   const crumbs = folder ? folder.split('/') : [];
 
   // ---- note view ----------------------------------------------------------
@@ -1471,6 +1663,16 @@ export function VaultScreen() {
             </div>
           )}
 
+          {linksLeft && linksLeft.path === vaultNote.path ? (
+            <VaultLinksLeftCard
+              old={linksLeft.old}
+              notes={notesLeft(linksLeft.report)}
+              busy={linksLeft.busy}
+              onOpen={openNote}
+              onUpdateRest={() => void updateRest()}
+            />
+          ) : null}
+
           {!editing ? (
             <VaultBacklinks mentions={backlinks} error={mentionsError} onOpen={openNote} />
           ) : null}
@@ -1497,6 +1699,14 @@ export function VaultScreen() {
           confirmDelete={confirmDelete}
           canAsk={!team}
           canPin={Boolean(!team && pinProjectId && canEditProjectPins(pinProjectId))}
+          canRename={caps.rename}
+          onRename={() => {
+            const path = vaultNote.path;
+            setMenuOpen(false);
+            setConfirmDelete(false);
+            flushSave();
+            setTimeout(() => openRename('note', path), sheetExitMs());
+          }}
           deleteDisabled={Boolean(driveReadOnly) || hubAway}
           onClose={() => {
             setMenuOpen(false);
@@ -1523,6 +1733,7 @@ export function VaultScreen() {
           // landed says so (orgvault-m1).
           onDelete={() => deleteNote(vaultNote.path)}
         />
+        {renameSheet}
         {undoToast}
       </div>
     );
@@ -1806,22 +2017,35 @@ export function VaultScreen() {
         ) : null}
 
         {crumbs.length ? (
-          <p className="hint vault-crumbs">
-            <button className="linklike" onClick={() => setFolder('')}>
-              Vault
-            </button>
-            {crumbs.map((c, i) => (
-              <span key={i}>
-                {' / '}
-                <button
-                  className="linklike"
-                  onClick={() => setFolder(crumbs.slice(0, i + 1).join('/'))}
-                >
-                  {c}
-                </button>
-              </span>
-            ))}
-          </p>
+          <div className="vault-crumbs-row">
+            <p className="hint vault-crumbs">
+              <button className="linklike" onClick={() => setFolder('')}>
+                Vault
+              </button>
+              {crumbs.map((c, i) => (
+                <span key={i}>
+                  {' / '}
+                  <button
+                    className="linklike"
+                    onClick={() => setFolder(crumbs.slice(0, i + 1).join('/'))}
+                  >
+                    {c}
+                  </button>
+                </span>
+              ))}
+            </p>
+            {caps.rename || caps.folders || caps.trash ? (
+              <button
+                type="button"
+                className="icon-btn press-fb vault-folder-options"
+                aria-label={vaultFolderOptionsLabel(folder)}
+                title={vaultFolderOptionsLabel(folder)}
+                onClick={openFolderMenu}
+              >
+                {'⋯'}
+              </button>
+            ) : null}
+          </div>
         ) : null}
 
         {vaultFiles.length === 0 && (driveExplains || folderGone) ? null : vaultFiles.length ===
@@ -1927,6 +2151,20 @@ export function VaultScreen() {
         onChoose={(choice) => void chooseFork(choice)}
         onClose={closeForks}
       />
+      <VaultFolderSheet
+        open={folderMenuOpen}
+        folder={folder}
+        counts={folderCounts}
+        canRename={caps.rename}
+        canCreate={caps.folders}
+        canTrash={caps.trash}
+        onClose={() => setFolderMenuOpen(false)}
+        onRename={() => afterFolderMenu(() => openRename('folder', folder))}
+        onMove={() => afterFolderMenu(() => openRename('folder', folder, 'folders'))}
+        onCreate={createFolderIn}
+        onDelete={deleteFolderHere}
+      />
+      {renameSheet}
       {undoToast}
 
       <Sheet open={Boolean(newOpen)} onClose={() => setNewOpen(false)}>

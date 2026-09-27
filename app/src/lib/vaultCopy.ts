@@ -1958,3 +1958,17 @@ export function vaultTodayNameRefused(error: string): string {
 }
 
 // ---- M6 stream H end ----
+
+// ---- M6 wave 2 begin ----
+// The integrator's few lines (Vault M6 wave 2): what the room says where no
+// stream's fence had a line for it.
+
+/** A folder could not be made, for a reason other than its name. */
+export const VAULT_FOLDER_CREATE_FAILED = 'Could not make that folder. Try again in a moment.';
+
+/** A folder moved note by note (Local) stopped part way (K5): what moved is
+ *  said, never a plain success and never "nothing changed". */
+export function vaultFolderMovePartial(old: string, moved: number, total: number): string {
+  return `Moved ${moved} of ${total} ${total === 1 ? 'note' : 'notes'} from "${old}". The rest could not be moved, so they are still there. Try again in a moment.`;
+}
+// ---- M6 wave 2 end ----

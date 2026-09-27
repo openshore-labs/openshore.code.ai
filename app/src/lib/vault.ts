@@ -9,6 +9,7 @@ import {
   buildPathIndex,
   eolOf,
   excerptAt,
+  noteFolder as folderOf,
   noteTitle,
   resolveWikilink as resolveInIndex,
   scanNote,
@@ -169,10 +170,20 @@ export function restoreEol(loaded: string, edited: string): string {
 /** The folder tree, computed from flat paths: top-level entries first
  *  (folders sorted before notes, both alphabetical), one level at a time so
  *  the UI can lazily disclose. */
-export function treeAt(folder: string, files: StoredFileMeta[]): TreeEntry[] {
+export function treeAt(
+  folder: string,
+  files: StoredFileMeta[],
+  extraFolders: readonly string[] = [],
+): TreeEntry[] {
   const prefix = folder ? `${folder}/` : '';
   const folders = new Set<string>();
   const notes: TreeEntry[] = [];
+  // Folders no note implies (an empty one on the storage, or remembered
+  // here, Vault M6 K5) still show at their level.
+  for (const f of extraFolders) {
+    if (!f.startsWith(prefix) || f.length <= prefix.length) continue;
+    folders.add(f.slice(prefix.length).split('/')[0]!);
+  }
   for (const f of files) {
     if (!f.path.startsWith(prefix)) continue;
     const rest = f.path.slice(prefix.length);
@@ -188,6 +199,22 @@ export function treeAt(folder: string, files: StoredFileMeta[]): TreeEntry[] {
     .map((name) => ({ kind: 'folder', path: prefix + name, name }));
   notes.sort((a, b) => a.name.localeCompare(b.name));
   return [...folderEntries, ...notes];
+}
+
+/** Every folder in the vault: each note's parents and the extra folders
+ *  (empty or remembered), sorted, the root left out. */
+export function allFolders(
+  files: readonly StoredFileMeta[],
+  extra: readonly string[] = [],
+): string[] {
+  const out = new Set<string>();
+  const add = (path: string) => {
+    const parts = path.split('/').filter(Boolean);
+    for (let i = 1; i <= parts.length; i++) out.add(parts.slice(0, i).join('/'));
+  };
+  for (const f of files) add(folderOf(f.path));
+  for (const f of extra) add(f);
+  return [...out].sort((a, b) => a.localeCompare(b));
 }
 
 /** How many notes of one vault wait on this device to be saved (the save

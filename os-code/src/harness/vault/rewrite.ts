@@ -25,9 +25,11 @@ function relativePath(fromFolder: string, to: string): string {
 }
 
 /** A markdown destination written the way Obsidian writes one: spaces and
- *  the characters that would end the link percent-encoded. */
+ *  the characters that would end the link percent-encoded, `#` too, since a
+ *  bare one starts a heading (`C# notes.md` is `C%23%20notes.md`), as
+ *  move.ts writes it. */
 function encodeDestination(path: string): string {
-  return encodeURI(path).replace(/[()]/g, (c) => (c === '(' ? '%28' : '%29'));
+  return encodeURI(path).replace(/[()#]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
 }
 
 /** The new target text for one link, or undefined to leave it alone. */

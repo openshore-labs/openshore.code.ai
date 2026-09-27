@@ -3257,6 +3257,76 @@ describe('Vault M6 operations through the store', () => {
     await vi.waitFor(() => expect(useApp.getState().vaultTrash).toEqual([]));
   });
 
+  it('a rename re-keys pins, the stash and the open note, at the path the storage answered', async () => {
+    // The storage matches a parent to its spelling on disk: asked for
+    // work/Roadmap.md, it lands at Work/Roadmap.md (stream B).
+    give('rename', async (_r: string, from: string, to: string, guard: { ifMatch: string }) => {
+      if (!F.has(from)) return { ok: false, conflict: 'missing' };
+      if (folder.version(from) !== guard.ifMatch) return { ok: false, conflict: 'changed' };
+      const landed = to.replace(/^work\//, 'Work/');
+      if (F.has(landed)) return { ok: false, conflict: 'exists' };
+      F.set(landed, F.get(from)!);
+      F.delete(from);
+      return { ok: true, file: metaAt(landed) };
+    });
+    F.set('Work/Other.md', 'another');
+    F.set('Home.md', 'See [[Plan]].');
+    await openOnFolder('Plan.md', 'the plan, from [home](Home.md)');
+    const st = useApp.getState();
+    useApp.setState({
+      settings: {
+        ...st.settings,
+        projects: [{ id: 'p1', name: 'P', vaultPins: ['Plan.md', 'Home.md'] }],
+      } as never,
+    });
+    mem.set(
+      PENDING,
+      JSON.stringify({
+        'files::vault.personal::Plan.md': {
+          providerId: 'files',
+          resourceId: 'vault.personal',
+          path: 'Plan.md',
+          text: 'typed offline',
+          at: 'x',
+        },
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(
+        currentVaultIndex()
+          ?.index.backlinks('Plan.md')
+          .map((b) => b.source),
+      ).toEqual(['Home.md']),
+    );
+
+    const preview = await useApp.getState().vaultPrepareMove('note', 'Plan.md', 'work/Roadmap.md');
+    expect(preview).toMatchObject({ links: 1, linkNotes: 1 });
+    const r = await useApp.getState().vaultApplyMove(preview!, true);
+    expect(r).toMatchObject({ ok: true, moved: [{ path: 'Work/Roadmap.md' }] });
+    expect(r!.ok && r!.rewrite).toMatchObject({ updated: 1, skipped: [], notUpdated: [] });
+
+    // The open note, the list and the index follow to where it landed.
+    const open = useApp.getState().vaultNote!;
+    expect(open.path).toBe('Work/Roadmap.md');
+    expect(open.version).toBe(folder.version('Work/Roadmap.md'));
+    const listed = useApp.getState().vaultFiles.map((f) => f.path);
+    expect(listed).toContain('Work/Roadmap.md');
+    expect(listed).not.toContain('Plan.md');
+    expect(listed).not.toContain('work/Roadmap.md');
+    expect(currentVaultIndex()?.index.has('Work/Roadmap.md')).toBe(true);
+    // Links follow; the moved note's own link still resolves, so it stays.
+    expect(F.get('Home.md')).toBe('See [[Roadmap]].');
+    expect(F.get('Work/Roadmap.md')).toBe('the plan, from [home](Home.md)');
+    expect(F.has('work/Roadmap.md')).toBe(false);
+    // Pins and the stash re-key.
+    expect(useApp.getState().settings.projects?.[0]?.vaultPins).toEqual([
+      'Work/Roadmap.md',
+      'Home.md',
+    ]);
+    expect(Object.keys(pending())).toEqual(['files::vault.personal::Work/Roadmap.md']);
+    expect(pending()['files::vault.personal::Work/Roadmap.md']?.path).toBe('Work/Roadmap.md');
+  });
+
   it('without a real Trash a delete is for good, and Undo comes back beside a taken name', async () => {
     await openOnFolder('x.md', 'first words');
     expect(useApp.getState().vaultCapsNow().trash).toBe(false);

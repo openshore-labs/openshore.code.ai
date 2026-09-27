@@ -478,7 +478,10 @@ export async function applyMove(
  *  the path indexes a re-plan resolves against. */
 function pathsAfter(deps: VaultOpsDeps, moves: ReadonlyMap<string, string>): string[] {
   const out = new Set(indexedPaths(deps).map((p) => moves.get(p) ?? p));
-  for (const to of moves.values()) out.add(to);
+  // A moved path the index already holds (at the spelling the storage gave
+  // it) is not added again under the spelling asked for.
+  const folded = new Set([...out].map(foldPath));
+  for (const to of moves.values()) if (!folded.has(foldPath(to))) out.add(to);
   return [...out];
 }
 
@@ -524,18 +527,23 @@ async function rewritePass(
   // assumed to equal the old one (K3).
   const movedVersion = new Map<string, string>();
   for (const m of moved) if (m.version) movedVersion.set(foldPath(m.path), m.version);
+  // A moved note is written where the storage put it, which may differ from
+  // the path asked for in case (a parent matched to its spelling on disk).
+  const landedAt = new Map<string, string>();
+  for (const m of moved) landedAt.set(foldPath(m.path), m.path);
+  const at = (path: string) => landedAt.get(foldPath(path)) ?? path;
   const beforeOf = new Map<string, string>();
   for (const s of preview.sources) beforeOf.set(s.after, s.before);
   const known = pathsAfter(deps, preview.moves);
   const reverse = new Map<string, string>();
-  for (const [from, to] of preview.moves) reverse.set(to, from);
-  const beforeIdx = buildPathIndex(known.map((p) => reverse.get(p) ?? p));
+  for (const [from, to] of preview.moves) reverse.set(foldPath(to), from);
+  const beforeIdx = buildPathIndex(known.map((p) => reverse.get(foldPath(p)) ?? p));
   const afterIdx = buildPathIndex(known);
 
   const edits = preview.plan.edits.filter((e) => !only || only.has(e.path));
   for (const e of edits) report.total += e.count;
   const replan = (edit: LinkRewriteEdit, fresh: StoredFile): LinkRewriteEdit | undefined => {
-    const before = beforeOf.get(edit.path) ?? reverse.get(edit.path) ?? edit.path;
+    const before = beforeOf.get(edit.path) ?? reverse.get(foldPath(edit.path)) ?? edit.path;
     const p = planLinkRewrites(preview.moves, beforeIdx, afterIdx, [
       { path: before, text: fresh.text, version: versionOf(fresh) },
     ]);
@@ -545,20 +553,21 @@ async function rewritePass(
   for (let i = 0; i < edits.length; i++) {
     const edit = edits[i]!;
     if (report.stopped) {
-      report.notUpdated.push(edit.path);
+      report.notUpdated.push(at(edit.path));
       continue;
     }
     onProgress?.(i + 1, edits.length);
+    const path = at(edit.path);
     const open = deps.openNote();
-    if (open && open.path === edit.path && (open.dirty || open.choiceOpen)) {
-      report.skipped.push({ path: edit.path, reason: 'open' });
+    if (open && open.path === path && (open.dirty || open.choiceOpen)) {
+      report.skipped.push({ path, reason: 'open' });
       continue;
     }
     const base = movedVersion.get(foldPath(edit.path)) ?? edit.base;
-    const first = await attempt(() => deps.putVaultNote(edit.path, edit.text, { ifMatch: base }));
+    const first = await attempt(() => deps.putVaultNote(path, edit.text, { ifMatch: base }));
     if (!first.ok) {
       report.stopped = true;
-      report.notUpdated.push(edit.path);
+      report.notUpdated.push(path);
       continue;
     }
     let result: WriteResult = first.value;
@@ -566,23 +575,23 @@ async function rewritePass(
     if (!result.ok && result.conflict === 'changed') {
       // Once, silently: read what is there now and plan against it.
       const again = await attempt(async () => {
-        const fresh = await deps.provider.read(deps.target.resourceId, edit.path);
+        const fresh = await deps.provider.read(deps.target.resourceId, path);
         if (!fresh) return { kind: 'missing' as const };
         const next = replan(edit, fresh);
         if (!next) return { kind: 'nothing' as const };
         count = next.count;
         return {
           kind: 'wrote' as const,
-          result: await deps.putVaultNote(edit.path, next.text, { ifMatch: versionOf(fresh) }),
+          result: await deps.putVaultNote(path, next.text, { ifMatch: versionOf(fresh) }),
         };
       });
       if (!again.ok) {
         report.stopped = true;
-        report.notUpdated.push(edit.path);
+        report.notUpdated.push(path);
         continue;
       }
       if (again.value.kind === 'missing') {
-        report.skipped.push({ path: edit.path, reason: 'missing' });
+        report.skipped.push({ path, reason: 'missing' });
         continue;
       }
       // Someone else already fixed the links: nothing left to write.
@@ -598,7 +607,7 @@ async function rewritePass(
       continue;
     }
     report.skipped.push({
-      path: edit.path,
+      path,
       reason:
         result.conflict === 'missing'
           ? 'missing'
@@ -625,9 +634,9 @@ export async function updateTheRest(
   ]);
   if (!rest.size) return { ...report, skipped: [], notUpdated: [], stopped: false };
   const reverse = new Map<string, string>();
-  for (const [from, to] of preview.moves) reverse.set(to, from);
+  for (const [from, to] of preview.moves) reverse.set(foldPath(to), from);
   const known = pathsAfter(deps, preview.moves);
-  const beforeIdx = buildPathIndex(known.map((p) => reverse.get(p) ?? p));
+  const beforeIdx = buildPathIndex(known.map((p) => reverse.get(foldPath(p)) ?? p));
   const afterIdx = buildPathIndex(known);
   const reads: LinkRewriteSource[] = [];
   const sources: RewriteSource[] = [];
@@ -635,7 +644,7 @@ export async function updateTheRest(
     for (const after of rest) {
       const file = await deps.provider.read(deps.target.resourceId, after);
       if (!file) continue;
-      const before = reverse.get(after) ?? after;
+      const before = reverse.get(foldPath(after)) ?? after;
       reads.push({ path: before, text: file.text, version: versionOf(file) });
       sources.push({ before, after });
     }

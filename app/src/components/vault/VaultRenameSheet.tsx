@@ -13,7 +13,7 @@
 // Also here: the standing card on the renamed note that names each note whose
 // links still point at the old name, with "Update the rest" (CX X7).
 import { useEffect, useState } from 'react';
-import { noteFolder, noteTitle } from 'os-code/protocol';
+import { foldPath, noteFolder, noteTitle } from 'os-code/protocol';
 import { Sheet } from '../Sheet.js';
 import { SheetHead } from '../SheetHead.js';
 import {
@@ -114,12 +114,11 @@ export function VaultRenameSheet(props: VaultRenameSheetProps) {
     if (!checkFolderName(to) || typed.includes('/')) return { problem: VAULT_FOLDER_BAD_NAME };
     if (to === from) return { problem: '' };
     // A folder never moves into itself.
-    if (to.toLowerCase().startsWith(`${from.toLowerCase()}/`))
-      return { problem: VAULT_FOLDER_BAD_NAME };
-    const folded = to.normalize('NFC').toLowerCase();
-    const taken =
-      folders.some((f) => f.normalize('NFC').toLowerCase() === folded) &&
-      folded !== from.normalize('NFC').toLowerCase();
+    if (foldPath(to).startsWith(`${foldPath(from)}/`)) return { problem: VAULT_FOLDER_BAD_NAME };
+    // The one fold every storage judges a taken name by (case and NFC,
+    // accents kept distinct).
+    const folded = foldPath(to);
+    const taken = folders.some((f) => foldPath(f) === folded) && folded !== foldPath(from);
     if (taken) return { problem: vaultFolderTaken(typed) };
     return { to };
   };

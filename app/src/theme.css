@@ -2602,6 +2602,22 @@ textarea {
    Wave 2 integrator (6.9): the tree and note, and read and edit, crossfades
    on --dur-3 and --ease-standard, and the house + button (CTO K18). */
 
+/* A folder's crumbs, with its own options button at the end (CX X5). */
+.vault-crumbs-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.vault-crumbs-row .vault-crumbs {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+.vault-folder-options {
+  flex: none;
+}
+
 /* ---- M6 stream W2 end ---- */
 
 /* ------------------------------------------------------------------ chat */

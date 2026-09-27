@@ -710,6 +710,19 @@ describe('rewriteLinks (H4)', () => {
     );
   });
 
+  it('percent-encodes a # in a markdown destination, so it never reads as a heading', () => {
+    const r = rewriteLinks(
+      'A [link](Plan.md#Goals) to it.',
+      'Home.md',
+      'Plan.md',
+      'Work/C# notes.md',
+      before,
+      ['Work/C# notes.md', 'Home.md', 'Other.md'],
+    );
+    expect(r.count).toBe(1);
+    expect(r.text).toBe('A [link](Work/C%23%20notes.md#Goals) to it.');
+  });
+
   it('never touches a link inside code, or a link to another note', () => {
     const text = '```\n[[Plan]]\n```\n`[[Plan]]` %%[[Plan]]%% [[Other]]';
     const after = ['Renamed.md', 'Home.md', 'Other.md'];
