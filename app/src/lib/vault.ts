@@ -60,11 +60,21 @@ export function noteFolder(path: string): string {
   return i === -1 ? '' : path.slice(0, i);
 }
 
+/** File types that sit beside notes in an Obsidian vault (images, audio,
+ *  video, PDF, canvas, base) plus config, office, and archive files. A name
+ *  that already ends in one names a file, not a note (obs-12). */
+const NON_NOTE_EXTENSION =
+  /\.(?:png|jpe?g|gif|webp|svg|bmp|avif|heic|tiff?|ico|pdf|canvas|base|mp3|wav|m4a|ogg|flac|3gp|mp4|webm|mov|mkv|ogv|json|csv|zip|docx?|xlsx?|pptx?)$/i;
+
 /** Normalize a user-typed note name or path into a vault-relative .md path:
  *  strips leading/trailing slashes and whitespace, collapses separators, and
- *  appends .md when absent. Returns undefined for an empty result. Dot and
- *  dot-dot segments are dropped so a typed name or a wikilink can never climb
- *  out of the vault root and clobber a sibling resource (SEC: path jail). */
+ *  appends .md when absent. Returns undefined for an empty result, and for a
+ *  name that already ends in a known non-markdown extension: `diagram.png` is
+ *  an attachment, so a link to it never becomes an empty `diagram.png.md`
+ *  (and nothing is written under the attachment's own name). A name with any
+ *  other dot, like `v1.2 plan`, is still a note. Dot and dot-dot segments are
+ *  dropped so a typed name or a wikilink can never climb out of the vault
+ *  root and clobber a sibling resource (SEC: path jail). */
 export function normalizeNotePath(raw: string): string | undefined {
   const cleaned = raw
     // Normalize to NFC so a name typed on one device matches the same name an
@@ -79,7 +89,8 @@ export function normalizeNotePath(raw: string): string | undefined {
     .filter((s) => s && s !== '.' && s !== '..')
     .join('/');
   if (!cleaned) return undefined;
-  return /\.md$/i.test(cleaned) ? cleaned : `${cleaned}.md`;
+  if (/\.md$/i.test(cleaned)) return cleaned;
+  return NON_NOTE_EXTENSION.test(cleaned) ? undefined : `${cleaned}.md`;
 }
 
 /** Resolve a wikilink target against the vault's file list, the way Obsidian

@@ -58,6 +58,14 @@ public class OscodeIcloudPlugin: CAPPlugin, CAPBridgedPlugin {
         return candidate
     }
 
+    /// Only notes are notes, the same rule as isNotePath in providers.ts: a
+    /// .md file with no hidden segment. So Obsidian's .obsidian config, its
+    /// .trash, our own .oscode lease, images, and canvases never list.
+    private func isNotePath(_ path: String) -> Bool {
+        guard path.lowercased().hasSuffix(".md") else { return false }
+        return !path.split(separator: "/").contains(where: { $0.hasPrefix(".") })
+    }
+
     @objc func available(_ call: CAPPluginCall) {
         call.resolve(["available": documentsRoot() != nil])
     }
@@ -74,10 +82,20 @@ public class OscodeIcloudPlugin: CAPPlugin, CAPBridgedPlugin {
         coordinatorQueue.async {
             let fm = FileManager.default
             var files: [[String: Any]] = []
-            let keys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey]
+            let keys: [URLResourceKey] = [
+                .contentModificationDateKey, .fileSizeKey, .isRegularFileKey, .isDirectoryKey
+            ]
             if let e = fm.enumerator(at: root, includingPropertiesForKeys: keys) {
                 for case let url as URL in e {
                     let vals = try? url.resourceValues(forKeys: Set(keys))
+                    let name = url.lastPathComponent
+                    // A hidden folder (.obsidian, .trash, .oscode, .git) holds
+                    // no notes: skip it whole. Not .skipsHiddenFiles, which
+                    // would also hide the ".<name>.icloud" placeholders below.
+                    if name.hasPrefix(".") && vals?.isDirectory == true {
+                        e.skipDescendants()
+                        continue
+                    }
                     guard vals?.isRegularFile == true else { continue }
                     let rel = url.path.replacingOccurrences(of: root.path + "/", with: "")
                     let mtime = (vals?.contentModificationDate ?? Date()).iso8601
@@ -87,10 +105,11 @@ public class OscodeIcloudPlugin: CAPPlugin, CAPBridgedPlugin {
                     // create opens it instead of writing over the cloud copy
                     // (UI-2). read() materializes it on demand. The size is 0
                     // because the bytes are not here, not the placeholder's.
-                    let name = url.lastPathComponent
+                    // It is judged by that real name, like any other file.
                     if name.hasPrefix(".") && name.hasSuffix(".icloud") {
                         let real = String(name.dropFirst().dropLast(".icloud".count))
                         let dir = String(rel.dropLast(name.count))
+                        guard self.isNotePath(dir + real) else { continue }
                         files.append([
                             "path": dir + real,
                             "updatedAt": mtime,
@@ -99,6 +118,9 @@ public class OscodeIcloudPlugin: CAPPlugin, CAPBridgedPlugin {
                         ])
                         continue
                     }
+                    // Hidden files and non-.md files (an image, a .canvas)
+                    // are not notes.
+                    guard self.isNotePath(rel) else { continue }
                     files.append([
                         "path": rel,
                         "updatedAt": mtime,

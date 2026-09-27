@@ -11,7 +11,13 @@
 // machine, and the files are the single source of truth.
 import { bridge } from '../electronBridge.js';
 import { platform } from '../platform.js';
-import type { Lease, StorageProvider, StoredFile, StoredFileMeta } from './providers.js';
+import {
+  isNotePath,
+  type Lease,
+  type StorageProvider,
+  type StoredFile,
+  type StoredFileMeta,
+} from './providers.js';
 
 /** Whether the on-disk folder vault is usable right now: the Electron file
  *  bridge is present (so, the desktop app, not the phone or a browser). */
@@ -35,8 +41,10 @@ export const deviceFolderProvider: StorageProvider = {
   ready: false,
   pending: 'Open OpenShore on your computer to keep the vault as a folder.',
 
+  // The main process already skips dot-entries and non-.md files; the seam
+  // filter holds the same rule here too (0.6), so only notes ever list.
   async list(): Promise<StoredFileMeta[]> {
-    return fs().vaultList();
+    return (await fs().vaultList()).filter((f) => isNotePath(f.path));
   },
 
   async stat(_resourceId, path): Promise<StoredFileMeta | undefined> {
