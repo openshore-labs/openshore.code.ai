@@ -15,10 +15,11 @@ import { VAULT_PACK_MAX_TOKENS } from './profile.js';
 import type { IndexedNote, VaultIndex } from './vault/index.js';
 import { compareCodePoints } from './vault/index.js';
 import { noteTitle } from './vault/paths.js';
-import { visibleToSeat } from './vault/privacy.js';
+import { readFrontmatter } from './vault/frontmatter.js';
+import { oscodeMarks, visibleToSeat } from './vault/privacy.js';
 import { scanNote } from './vault/scan.js';
 import { queryTerms, tokenize } from './vault/tokenize.js';
-import type { VaultPrivacy } from './vault/types.js';
+import type { VaultPrivacy, VaultVisibility } from './vault/types.js';
 
 /** How much of the vault a pack carries. `current-state`: this project's
  *  Current State alone. `full`: every layer. */
@@ -35,6 +36,12 @@ export interface PackSource {
   layer: PackLayer;
   path: string;
   title: string;
+  /** A pin the person placed on the project (CTO J14), not a frontmatter
+   *  pin. Set only on those. */
+  project?: true;
+  /** The note was cut to fit this seat's budget (its block ends with a
+   *  "continues in" line), so the card can say so. Set only when cut. */
+  trimmed?: true;
 }
 
 /** Everything a pack is built from, apart from the bodies. */
@@ -53,8 +60,10 @@ export interface PackInput {
    * on the project (`Project.vaultPins`, at most 8), never a config key. They
    * ride in BOTH modes, in the pin layer, at most `PACK_PINS_MAX` and half the
    * budget, with privacy applied (hidden never, local-only withheld from a
-   * leaving seat and counted in `withheld`). Absent reads as none. Planned
-   * and rendered by stream A; until then the builder ignores it.
+   * leaving seat and counted in `withheld`). They come first in the pin
+   * layer, ahead of frontmatter pins, and need no index: with the index cold
+   * or missing the note, privacy is judged from the note's own frontmatter
+   * and tags when its body is read. Absent reads as none.
    */
   projectPins?: readonly string[];
   /** The latest handoff (empty until 5.4). */
@@ -121,6 +130,14 @@ export function packBudgetTokens(
   );
 }
 
+/** A note's visibility from its own text (frontmatter tags and `oscode:`
+ *  marks, and inline tags), for a project pin the index does not hold. */
+function bodyVisibility(privacy: VaultPrivacy, path: string, body: string): VaultVisibility {
+  const fm = readFrontmatter(body);
+  const tags = [...fm.tags, ...scanNote(body).tags.map((t) => t.tag)];
+  return privacy.visibility({ path, tags, oscode: oscodeMarks(fm) });
+}
+
 /** The pack mode for a seat under a setting: `'off'` gives none, `'full'`
  *  forces every layer, `'auto'` reads `PACK_BY_CLASS`. */
 export function packModeFor(setting: VaultContextSetting, modelClass: ModelClass): PackMode | null {
@@ -129,8 +146,8 @@ export function packModeFor(setting: VaultContextSetting, modelClass: ModelClass
   return PACK_BY_CLASS[modelClass];
 }
 
-/** Frontmatter pins a pack carries at most, and the share of the budget
- *  they may take. */
+/** Pins (the project's, then frontmatter ones) a pack carries at most; the
+ *  pin layer takes half the budget at most. */
 export const PACK_PINS_MAX = 3;
 /** Search hits a pack carries at most, the floor a hit's score must reach as
  *  a fraction of the top score, and the search layer's share of the budget. */
@@ -161,9 +178,17 @@ interface Candidate {
   note: IndexedNote;
 }
 
+/** One pin the selection picked. A project pin may have no index entry (the
+ *  index is cold, or has not caught up with the note yet). */
+interface PinCandidate {
+  path: string;
+  note?: IndexedNote;
+  project: boolean;
+}
+
 /** What one seat may carry, and what it had to leave out. */
 interface Selection {
-  pins: Candidate[];
+  pins: PinCandidate[];
   search: Candidate[];
   links: Candidate[];
   withheld: number;
@@ -185,69 +210,89 @@ function lockedOut(input: PackInput): boolean {
  * weighted up), so an egress lockdown changes nothing here: no embedder, no
  * call, can slip in through this input.
  */
-function select(input: PackInput): Selection {
+function select(input: PackInput, bodies?: ReadonlyMap<string, string>): Selection {
   const empty: Selection = { pins: [], search: [], links: [], withheld: 0 };
+  if (lockedOut(input)) return empty;
   const index = input.index;
-  if (input.mode !== 'full' || !index || lockedOut(input)) return empty;
   const privacy = input.privacy;
   const vis = (n: IndexedNote) =>
     privacy.visibility({ path: n.path, tags: n.tags, oscode: n.oscode });
   const usable = (n: IndexedNote | undefined): n is IndexedNote =>
     !!n && !n.evicted && vis(n) !== 'hidden';
 
+  // A pin's visibility: from the index when it has the note, else from the
+  // note's own body once read, else (planning, nothing read yet) its path.
+  const pinVis = (path: string, note: IndexedNote | undefined): VaultVisibility => {
+    if (note) return vis(note);
+    const body = bodies?.get(path);
+    return body === undefined ? privacy.visibility({ path }) : bodyVisibility(privacy, path, body);
+  };
+
   const taken = new Set<string>();
-  // Pins: the person's list first, then notes marked `oscode: pin` by path.
-  const pinPaths = [
-    ...input.pins,
-    ...index
-      .paths()
-      .filter((p) => index.entry(p)?.oscode?.includes('pin'))
-      .sort(compareCodePoints),
-  ];
-  const pins: Candidate[] = [];
-  for (const path of pinPaths) {
-    if (pins.length >= PACK_PINS_MAX) break;
-    const note = index.entry(path);
-    if (taken.has(path) || !usable(note)) continue;
+  const pins: PinCandidate[] = [];
+  const pinVisOf = new Map<string, VaultVisibility>();
+  const takePin = (path: string, project: boolean): void => {
+    if (pins.length >= PACK_PINS_MAX || taken.has(path)) return;
+    const note = index?.entry(path);
+    if (note?.evicted) return;
+    if (!note && !project) return;
+    const v = pinVis(path, note);
+    if (v === 'hidden') return;
     taken.add(path);
-    pins.push({ layer: 'pin', path, note });
-  }
+    pinVisOf.set(path, v);
+    pins.push(note ? { path, note, project } : { path, project });
+  };
+  // The project's pins ride in both modes: the person placed them (tenet 4).
+  for (const path of input.projectPins ?? []) takePin(path, true);
 
-  // Search: exclusions first, then the score floor against the best left.
-  const hits = index
-    .search(input.query.slice(0, PACK_QUERY_CHARS), Math.max(1, index.size))
-    .filter((h) => usable(index.entry(h.path)));
-  const top = hits[0]?.score ?? 0;
+  const full = input.mode === 'full' && index !== null;
   const search: Candidate[] = [];
-  for (const h of hits) {
-    if (search.length >= PACK_SEARCH_MAX || h.score < top * PACK_SEARCH_MIN_RATIO) break;
-    if (taken.has(h.path)) continue;
-    taken.add(h.path);
-    search.push({ layer: 'search', path: h.path, note: index.entry(h.path)! });
-  }
-
-  // One hop from the top hits: each hit's own links in written order, then
-  // its backlinks by source. `from` keeps every top hit that reached a note.
   const links: Candidate[] = [];
   const from = new Map<string, string[]>();
-  for (const src of search.slice(0, PACK_LINK_FROM)) {
-    const next = [
-      ...index.outlinks(src.path).map((l) => l.resolved),
-      ...index.backlinks(src.path).map((b) => b.source),
+  if (full) {
+    // Frontmatter pins, full mode only: the person's list first, then notes
+    // marked `oscode: pin` by path.
+    const pinPaths = [
+      ...input.pins,
+      ...index
+        .paths()
+        .filter((p) => index.entry(p)?.oscode?.includes('pin'))
+        .sort(compareCodePoints),
     ];
-    for (const path of next) {
-      if (path === null || path === src.path) continue;
-      const seen = from.get(path);
-      if (seen) {
-        if (!seen.includes(src.path)) seen.push(src.path);
-        continue;
+    for (const path of pinPaths) takePin(path, false);
+    // Search: exclusions first, then the score floor against the best left.
+    const hits = index
+      .search(input.query.slice(0, PACK_QUERY_CHARS), Math.max(1, index.size))
+      .filter((h) => usable(index.entry(h.path)));
+    const top = hits[0]?.score ?? 0;
+    for (const h of hits) {
+      if (search.length >= PACK_SEARCH_MAX || h.score < top * PACK_SEARCH_MIN_RATIO) break;
+      if (taken.has(h.path)) continue;
+      taken.add(h.path);
+      search.push({ layer: 'search', path: h.path, note: index.entry(h.path)! });
+    }
+
+    // One hop from the top hits: each hit's own links in written order, then
+    // its backlinks by source. `from` keeps every top hit that reached a note.
+    for (const src of search.slice(0, PACK_LINK_FROM)) {
+      const next = [
+        ...index.outlinks(src.path).map((l) => l.resolved),
+        ...index.backlinks(src.path).map((b) => b.source),
+      ];
+      for (const path of next) {
+        if (path === null || path === src.path) continue;
+        const seen = from.get(path);
+        if (seen) {
+          if (!seen.includes(src.path)) seen.push(src.path);
+          continue;
+        }
+        if (taken.has(path) || links.length >= PACK_LINKS_MAX) continue;
+        const note = index.entry(path);
+        if (!usable(note)) continue;
+        taken.add(path);
+        from.set(path, [src.path]);
+        links.push({ layer: 'link', path, note });
       }
-      if (taken.has(path) || links.length >= PACK_LINKS_MAX) continue;
-      const note = index.entry(path);
-      if (!usable(note)) continue;
-      taken.add(path);
-      from.set(path, [src.path]);
-      links.push({ layer: 'link', path, note });
     }
   }
 
@@ -261,7 +306,11 @@ function select(input: PackInput): Selection {
     withheld.add(c.path);
     return false;
   };
-  const pinsOut = pins.filter(keep);
+  const pinsOut = pins.filter((c) => {
+    if (visibleToSeat(pinVisOf.get(c.path)!, true)) return true;
+    withheld.add(c.path);
+    return false;
+  });
   const searchOut = search.filter(keep);
   const linksOut = links.filter(
     (c) => keep(c) && (from.get(c.path) ?? []).some((s) => !withheld.has(s)),
@@ -283,7 +332,8 @@ export function planContextPack(input: PackInput): { read: string[] } {
 
 /**
  * Phase two: render the pack for one seat. Layers fill in order, each on what
- * is left of the budget: pins (full only, at most 3 and half the budget),
+ * is left of the budget: pins (the project's in both modes, then frontmatter
+ * pins in full mode only; at most 3 and half the budget),
  * Current State (cut at a `##` with a "continues in" line), handoff, search
  * (the best section of each hit, a third of the budget at most), one link
  * hop, a vault map. Hidden notes never enter; local-only notes on a leaving
@@ -296,14 +346,20 @@ export function planContextPack(input: PackInput): { read: string[] } {
 export function buildContextPack(input: PackBuildInput): ContextPack {
   const cold = input.mode === 'full' && input.index === null;
   if (lockedOut(input)) return { text: '', tokens: 0, used: [], withheld: 0, cold: false };
-  const sel = select(input);
+  const sel = select(input, input.bodies);
   const cap = Math.floor(Math.max(0, input.budgetTokens) * 4 * PACK_FILL);
   const out = new Packer(cap);
   const used: PackSource[] = [];
-  const add = (layer: PackLayer, path: string, title: string, block: string | null): boolean => {
+  const add = (
+    layer: PackLayer,
+    path: string,
+    title: string,
+    block: string | null,
+    extra: Pick<PackSource, 'project' | 'trimmed'> = {},
+  ): boolean => {
     if (block === null || !out.fits(block)) return false;
     out.push(block);
-    used.push({ layer, path, title });
+    used.push({ layer, path, title, ...extra });
     return true;
   };
   const bodyOf = (path: string): string | null => {
@@ -311,14 +367,22 @@ export function buildContextPack(input: PackBuildInput): ContextPack {
     return raw === undefined ? null : stripNote(raw);
   };
 
-  // Pins: half the budget at most, split evenly among them.
+  // Pins, in both modes (the project's first, then frontmatter pins in full
+  // mode): half the budget at most, split evenly among them.
   let pinRoom = Math.floor(cap / 2);
   sel.pins.forEach((c, i) => {
     const body = bodyOf(c.path);
     if (body === null) return;
     const share = Math.min(out.room(), Math.floor(pinRoom / (sel.pins.length - i)));
-    const block = noteBlock(c.path, updatedOf(c.note), 'pin', body, share);
-    if (block && add('pin', c.path, c.note.title, block)) pinRoom -= block.length + SEP.length;
+    const info = { cut: false };
+    const updated = c.note ? updatedOf(c.note) : undefined;
+    const block = noteBlock(c.path, updated, 'pin', body, share, cutAtLine, info);
+    const title = c.note?.title ?? noteTitle(c.path);
+    const extra: Pick<PackSource, 'project' | 'trimmed'> = {
+      ...(c.project ? { project: true as const } : {}),
+      ...(info.cut ? { trimmed: true as const } : {}),
+    };
+    if (block && add('pin', c.path, title, block, extra)) pinRoom -= block.length + SEP.length;
   });
 
   // Current State: this project's, from the repo, on what is left.
@@ -424,6 +488,7 @@ function noteBlock(
   body: string,
   max: number,
   cut: Cutter = cutAtLine,
+  info?: { cut: boolean },
 ): string | null {
   const attrs = [
     path ? ` path="${attr(path)}"` : '',
@@ -437,6 +502,7 @@ function noteBlock(
   if (safe.trim() === '' || room < Math.min(MIN_NOTE_BODY, safe.length)) return null;
   const fitted = safe.length <= room ? safe : cut(safe, room, path);
   if (fitted.trim() === '') return null;
+  if (info) info.cut = fitted !== safe;
   return `${open}${fitted}${close}`;
 }
 

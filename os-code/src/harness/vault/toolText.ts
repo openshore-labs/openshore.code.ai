@@ -4,8 +4,9 @@
 //
 // WAVE 0 CONTRACT. The read tools' text is the engine's current wording,
 // verbatim, so switching vaultFind.ts to import it changes nothing a model
-// sees; stream A owns any rewording. `vaultPropose` is the app's always-ask
-// write (J10, D4).
+// sees (a rewording is a model-visible change and waits for eval, tenet 2).
+// `vaultPropose` is the app's always-ask write (J10, D4): it never writes,
+// it queues, and one approval at the end of the reply covers the batch.
 
 /** The vault tools whose text is shared across hosts. */
 export type VaultToolName =
@@ -22,7 +23,7 @@ export const VAULT_TOOL_TEXT: Readonly<Record<VaultToolName, string>> = {
   vaultLookup:
     "Find and read the user's vault notes. First search with query to get ranked notes and snippets; then read one with path (add section for one part). A note's header lists its links: read a link's target the same way.",
   vaultPropose:
-    "Propose a note for the user's vault: create a new note at path, or append to an existing one. Nothing is written yet: every proposal is queued and shown to the user, who approves or declines them together at the end of your reply. Search first, so you add to a note rather than duplicate it.",
+    "Propose a note for the user's vault: mode create makes a new note at path, mode append adds text to the end of an existing note. Nothing is written yet: each proposal is queued, and the user approves or declines every queued proposal together at the end of your reply. Search first, so you add to a note rather than duplicate it.",
 };
 
 /** One shared tool's description. */

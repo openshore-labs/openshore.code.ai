@@ -102,8 +102,11 @@ export function hostIsLocal(hostname: string, options: HostIsLocalOptions = {}):
     return true;
   }
   if (host.endsWith('.ts.net')) {
-    const own = options.ownTailnetSuffix?.toLowerCase().replace(/^\./, '');
-    return Boolean(own) && host.endsWith(`.${own}`);
+    const own = options.ownTailnetSuffix?.toLowerCase().replace(/^\./, '').replace(/\.$/, '');
+    // Only a real tailnet ("tail1234.ts.net") counts: a bare "ts.net" (a
+    // misread or a mistyped override) would pass every Funnel host.
+    if (!own || !own.endsWith('.ts.net') || own === '.ts.net') return false;
+    return host.endsWith(`.${own}`);
   }
   if (isIPv4Literal(host)) return PRIVATE_V4.some((re) => re.test(host));
   const v6 = normalizeIpLiteral(host);
