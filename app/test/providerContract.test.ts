@@ -15,6 +15,11 @@
 // and ignore it until their M2 stream lands; they are held to the result
 // shape here and must not claim compareAndSwap.
 //
+// The team vault (Vault M2 2.1 and 2.3, CTO G3) is enrolled through a fake of
+// its server half (test/fixtures/fakeOrgVaultServer.ts), which answers the
+// two guarded RPCs of migration 0019 by their decision table; another writer
+// is a teammate's save with a fresh rev.
+//
 // Remove joined the contract in Vault M2 wave 0 (CTO G7): it answers with a
 // RemoveResult, a stale ifMatch is 'changed' and leaves the file, and a file
 // already gone is ok.
@@ -23,9 +28,11 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { StorageProvider } from '../src/lib/gitos/providers.js';
+import type { FakeOrgVaultServer } from './fixtures/fakeOrgVaultServer.js';
 
 const h = vi.hoisted(() => ({
   root: '',
+  team: undefined as FakeOrgVaultServer | undefined,
   store: new Map<string, string>(),
   Icloud: {
     available: async () => true,
@@ -51,6 +58,12 @@ vi.mock('../src/lib/platform.js', () => ({
   storeKeys: async () => [...h.store.keys()],
 }));
 vi.mock('../src/lib/gitos/icloudPlugin.js', () => ({ Icloud: h.Icloud }));
+// The team vault's Supabase seam, answered by the fake server.
+vi.mock('../src/lib/supabase.js', () => ({
+  isConfigured: () => true,
+  select: (table: string, token: string, query: string) => h.team!.select(table, token, query),
+  rpc: (fn: string, token: string, args: Record<string, unknown>) => h.team!.rpc(fn, token, args),
+}));
 // The Electron bridge, answered by main's own handlers over the temp folder.
 vi.mock('../src/lib/electronBridge.js', async () => {
   const fs = await import('../electron/vaultFs.js');
@@ -69,6 +82,13 @@ vi.mock('../src/lib/electronBridge.js', async () => {
 const { deviceFolderProvider } = await import('../src/lib/gitos/deviceFolder.js');
 const { localProvider } = await import('../src/lib/gitos/local.js');
 const { icloudProvider } = await import('../src/lib/gitos/icloud.js');
+const { orgVaultProvider, setOrgVaultAuth, resetOrgVault } =
+  await import('../src/lib/gitos/orgVault.js');
+const { createFakeOrgVaultServer } = await import('./fixtures/fakeOrgVaultServer.js');
+setOrgVaultAuth(
+  async () => 'tok',
+  () => true,
+);
 
 /** Providers that enforce the guard, and how to reach their bytes directly. */
 const enforcing: Array<{
@@ -108,6 +128,16 @@ const enforcing: Array<{
       ),
     remove: (p) => h.store.delete(`oscode.gitos.file.${R}.${p}`),
   },
+  {
+    name: 'Team vault',
+    provider: orgVaultProvider,
+    bytes: (p) => h.team!.bytes(p),
+    // Another writer: a teammate's save, with a fresh rev from the sequence.
+    replace: (p, t) => {
+      h.team!.put(p, t);
+    },
+    remove: (p) => h.team!.drop(p),
+  },
 ];
 
 beforeAll(() => {
@@ -119,6 +149,9 @@ afterAll(() => {
 beforeEach(() => {
   for (const name of readdirSync(h.root)) rmSync(join(h.root, name), { recursive: true });
   h.store.clear();
+  // The resource id is the org's id for the team vault.
+  h.team = createFakeOrgVaultServer(R);
+  resetOrgVault();
 });
 
 const R = 'vault.personal';

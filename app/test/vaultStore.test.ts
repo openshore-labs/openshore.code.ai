@@ -254,9 +254,9 @@ const fail = local.fail;
 
 // The team vault: the real provider, over a fake Supabase that keeps one org's
 // rows in memory. `teamNet.fail` makes every request throw; `beforePut` runs
-// ahead of each org_vault_put (hold it, or throw); `puts` records what each
-// one sent. Like org_vault_put, a write whose base is not the note's rev sets
-// the existing body aside as a conflict copy first.
+// ahead of each org_vault_write (hold it, or throw); `puts` records what each
+// one sent (base is its if_match, 0 for a create). Like org_vault_write
+// (0019), a stale if_match answers `changed` with theirs and writes nothing.
 const ORG = 'org-1';
 const team = new Map<string, { body: string; rev: number }>();
 const teamNet = {
@@ -308,20 +308,36 @@ vi.mock('../src/lib/supabase.js', async (importOriginal) => {
       if (!fn.startsWith('org_vault_')) return null;
       if (teamNet.fail) throw teamNet.fail;
       const path = args.p_path as string;
-      if (fn === 'org_vault_delete') {
+      const theirs = (p: string) => {
+        const r = row(p);
+        return { path: p, body: r.body, rev: r.rev, updated_at: r.updated_at, updated_by: null };
+      };
+      // Revs never repeat, as with the server's sequence (0019).
+      const nextRev = () => Math.max(0, ...[...team.values()].map((r) => r.rev)) + 1;
+      if (fn === 'org_vault_remove') {
+        const prev = team.get(path);
+        if (!prev) return { ok: true, path };
+        if (prev.rev !== args.p_if_match)
+          return { ok: false, conflict: 'changed', theirs: theirs(path) };
         team.delete(path);
-        return null;
+        return { ok: true, path, rev: nextRev() };
       }
+      if (fn !== 'org_vault_write') return null;
       await teamNet.beforePut?.(args);
       const body = args.p_body as string;
-      const base = args.p_base_rev as number;
+      const base = (args.p_if_match as number | undefined) ?? 0;
       teamNet.puts.push({ token, path, body, base });
       const prev = team.get(path);
-      if (prev && prev.rev !== base && prev.body !== body) {
-        team.set(path.replace(/\.md$/, ' (conflict server).md'), { body: prev.body, rev: 1 });
+      if (args.p_if_absent) {
+        const taken = [...team.keys()].find((k) => k.toLowerCase() === path.toLowerCase());
+        if (taken) return { ok: false, conflict: 'exists', theirs: theirs(taken) };
+      } else {
+        if (!prev) return { ok: false, conflict: 'missing' };
+        if (prev.rev !== base) return { ok: false, conflict: 'changed', theirs: theirs(path) };
       }
-      team.set(path, { body, rev: (prev?.rev ?? 0) + 1 });
-      return row(path);
+      team.set(path, { body, rev: nextRev() });
+      const r = row(path);
+      return { ok: true, path, rev: r.rev, updated_at: r.updated_at, size: r.size };
     },
     refreshSession: async (refreshToken: string) => {
       if (auth.refresh) throw auth.refresh;
@@ -697,7 +713,7 @@ describe('a stale draft never replays over a newer save (0.1)', () => {
     a.resolve();
     await Promise.all([saveA, saveB]);
     // B's words wait for a retry, typed against the version A left.
-    expect(pending()[`org::${ORG}::plan.md`]).toMatchObject({ text: 'start A then B', base: 'r2' });
+    expect(pending()[`org::${ORG}::plan.md`]).toMatchObject({ text: 'start A then B', base: '2' });
     expect(useApp.getState().vaultError).toBe('save');
     teamNet.beforePut = undefined;
     await useApp.getState().vaultRefresh();
@@ -755,7 +771,10 @@ describe('a stale draft never replays over a newer save (0.1)', () => {
     expect([...team.keys()]).toEqual(['plan.md']);
   });
 
-  it('a team draft stashed with no rev reads the note first, so it still sends the right base', async () => {
+  // CTO G3: a team entry stashed before M2 without a rev keeps its old base,
+  // which can never equal a rev string, so it resolves as keep both: the note
+  // is untouched and the draft lands beside it. Nothing is lost.
+  it('a team draft stashed with no rev keeps both, and never writes over the note', async () => {
     teamScope();
     team.set('plan.md', { body: 'five revisions in', rev: 5 });
     mem.set(
@@ -774,9 +793,11 @@ describe('a stale draft never replays over a newer save (0.1)', () => {
     );
     wiring.org!.resetOrgVault();
     await useApp.getState().vaultRefresh();
-    expect(teamNet.puts.at(-1)).toMatchObject({ path: 'plan.md', base: 5 });
-    expect([...team.keys()]).toEqual(['plan.md']);
-    expect(team.get('plan.md')?.body).toBe('typed offline');
+    expect(team.get('plan.md')).toEqual({ body: 'five revisions in', rev: 5 });
+    const copy = [...team.keys()].find((k) => k.startsWith('plan (conflict '));
+    expect(copy && team.get(copy)?.body).toBe('typed offline');
+    expect(teamNet.puts.every((p) => p.path !== 'plan.md')).toBe(true);
+    expect(pending()).toEqual({});
   });
 
   it('a stash from before this update is held for the person, never replayed', async () => {
