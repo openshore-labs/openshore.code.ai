@@ -1876,7 +1876,7 @@ interface AppState {
   vaultBindAutosave(handle: VaultAutosave<VaultTargetRef> | undefined): void;
   /** What the Vault may offer on the storage on screen right now (CTO K1):
    *  every M6 action's visibility follows this one answer. */
-  vaultCapsNow(): VaultCaps;
+  vaultCapsNow(opts?: { storageOnly?: boolean }): VaultCaps;
   /** Delete a note: to Trash where it is real (one tap), else for good with
    *  a courtesy Undo (R2). Closes it when it was open. */
   vaultDeleteNote(path: string, at?: VaultTargetRef): Promise<VaultDeleteOutcome | undefined>;
@@ -10001,9 +10001,12 @@ export const useApp = create<AppState>((set, get, api) => {
       vaultAutosaveHandle = handle;
     },
 
-    vaultCapsNow() {
+    vaultCapsNow(opts) {
       const t = vaultTarget();
-      return t ? capsOf(t) : vaultCaps({} as StorageProvider, { readOnly: true });
+      if (!t) return vaultCaps({} as StorageProvider, { readOnly: true });
+      // The storage alone, for the lines that say why it lacks an action
+      // (read-only and away keep their own standing lines).
+      return opts?.storageOnly ? vaultCaps(t.provider, { readOnly: false }) : capsOf(t);
     },
 
     async vaultDeleteNote(path, at) {

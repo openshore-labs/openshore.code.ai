@@ -31,6 +31,9 @@ export interface VaultNoteOptionsProps {
   trashReal?: boolean;
   /** Delete is shown but cannot run (a Drive vault, the computer away). */
   deleteDisabled: boolean;
+  /** Why a row is not offered on this storage (`vaultCapLine`), one line
+   *  each, shown under the title (wave 2). */
+  notes?: readonly string[];
   /** Close without choosing (also disarms delete). */
   onClose: () => void;
   onAsk: () => void;
@@ -53,6 +56,7 @@ export function VaultNoteOptions({
   canOutline,
   trashReal = false,
   deleteDisabled,
+  notes,
   onClose,
   onAsk,
   onPin,
@@ -68,6 +72,11 @@ export function VaultNoteOptions({
       {open ? (
         <>
           <SheetHead title="Options" onClose={onClose} />
+          {notes?.map((line) => (
+            <p key={line} className="hint vault-options-note">
+              {line}
+            </p>
+          ))}
           <div className="sheet-actions">
             {canOutline && onOutline ? (
               <button className="btn quiet press-fb" onClick={onOutline}>

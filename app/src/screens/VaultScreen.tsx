@@ -73,6 +73,7 @@ import {
   VAULT_CONFLICT_BADGE_LABEL,
   VAULT_DELETED,
   copyProviderOf,
+  vaultCapLine,
   vaultCloudLine,
   vaultConflictCard,
   vaultCopy,
@@ -416,6 +417,21 @@ export function VaultScreen() {
   // What this storage may do now (CTO K1): every M6 action's visibility
   // follows this one answer.
   const caps = vaultCapsNow();
+  // What the storage itself lacks, said once in Options (CTO K1): rename, and
+  // a Trash, where a delete is then for good.
+  const storageCaps = vaultCapsNow({ storageOnly: true });
+  const capKey = team
+    ? 'org'
+    : copyProviderOf(
+        ((settings.gitosResources as GitosResource[] | undefined)?.find(
+          (r) => r.id === VAULT_RESOURCE_ID,
+        )?.providerId ?? 'local') as StorageProviderId,
+      );
+  const capNotes = capKey
+    ? (['rename', 'trash'] as const)
+        .filter((cap) => !storageCaps[cap])
+        .map((cap) => vaultCapLine(capKey, cap))
+    : [];
   const teamAvailable = teamVaultAvailable();
   // The project a note's "Pin to project context" pins to: the active one.
   const pinProjectId = settings.activeProjectId ?? settings.projects?.[0]?.id;
@@ -2063,6 +2079,7 @@ export function VaultScreen() {
             setConfirmDelete(false);
             setTimeout(() => setOutlineOpen(true), sheetExitMs());
           }}
+          notes={capNotes}
           canRename={caps.rename}
           onRename={() => {
             const path = vaultNote.path;

@@ -2668,6 +2668,11 @@ button.vault-tag {
   }
 }
 
+/* Why an Options row is not offered on this storage (vaultCapLine). */
+.vault-options-note {
+  margin: -4px 0 10px;
+}
+
 /* Structural hooks the M6 components style their insides through. */
 .vault-context {
   overflow-wrap: anywhere;
