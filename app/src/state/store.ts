@@ -237,6 +237,7 @@ import {
   currentInfo,
   currentSecretKey,
   currentsHandles,
+  memoryOverride,
   nextActiveCurrent,
   projectCurrentsSettings,
   type AgenticCurrentId,
@@ -2697,6 +2698,10 @@ export const useApp = create<AppState>((set, get, api) => {
           // session: on asks its models to think and streams the thinking,
           // off asks them not to. Off by default.
           chainOfThought: settings.chainOfThought === true,
+          // The Wayfinding Memory switch, as an override that can only turn
+          // project memory off (false) and is absent otherwise, so a
+          // project's own config stays in charge while it is on.
+          ...(memoryOverride(settings) === false ? { memory: false } : {}),
           codemagicToken,
           codemagicTarget,
           currents,
@@ -2752,6 +2757,7 @@ export const useApp = create<AppState>((set, get, api) => {
             permissionMode: sessionOpts.permissionMode,
             humanize: sessionOpts.humanize,
             chainOfThought: sessionOpts.chainOfThought,
+            memory: sessionOpts.memory,
             currents: sessionOpts.currents,
             harnessCurrents: sessionOpts.harnessCurrents,
           });
@@ -2866,6 +2872,9 @@ export const useApp = create<AppState>((set, get, api) => {
                 .join('\n\n') || undefined,
             crew,
             humanize: s.settings.humanizeWriting !== false,
+            // A play's engine step opens its own session on the paired
+            // computer; the Memory switch rides there the same way.
+            memory: memoryOverride(s.settings),
             researchOn: s.settings.perplexityResearch === true,
             // Codemagic Access on and connected: offer the codemagic tool so the
             // model can drive App Launch builds on the phone (Anthropic path).

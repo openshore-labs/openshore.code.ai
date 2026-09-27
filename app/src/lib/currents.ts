@@ -39,9 +39,10 @@ export const WAYFINDING: Record<WayfindingId, WayfindingInfo> = {
   memory: {
     id: 'memory',
     label: 'Memory',
-    // Where the notes really are: the project's repo, not the vault. The
-    // switch itself is wired in M1; until then the line claims no more.
-    sub: "The agent keeps notes on each coding project inside that project's own repository.",
+    // Where the notes really are: the project's repo, not the vault. Off
+    // rides into each engine session as it opens (memoryOverride), so a chat
+    // already open keeps what it started with.
+    sub: "The agent keeps notes on each coding project inside that project's own repository. Off applies to new chats.",
   },
   skills: {
     id: 'skills',
@@ -63,6 +64,15 @@ export function wayfindingOn(
   id: WayfindingId,
 ): boolean {
   return settings.wayfinding?.[id] !== false;
+}
+
+/** The Memory switch as the engine session override (plan 1.5, CTO F6):
+ *  `false` when the person turned Memory off, otherwise undefined, never
+ *  `true`. The engine's memoryEnabled lets the override only turn memory off,
+ *  so a project whose config turns it off stays off; sending nothing when the
+ *  switch is on leaves the project's config in charge. */
+export function memoryOverride(settings: { wayfinding?: WayfindingSettings }): false | undefined {
+  return wayfindingOn(settings, 'memory') ? undefined : false;
 }
 
 // ------------------------------------------------------------ the roster

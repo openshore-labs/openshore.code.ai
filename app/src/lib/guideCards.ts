@@ -205,7 +205,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'approvals',
     title: 'Approvals',
-    text: 'When the agent wants to edit, run a command, or spend on a cloud model, a sheet asks first, with a diff when there is one: Approve once, Always allow this in the project, Approve for this session, or No, skip it. Spend always asks.',
+    text: 'When the agent wants to edit, run a command, or spend on a cloud model, a sheet asks first, with a diff when there is one: Approve once, Always allow this in the project, Approve for this session, or No, skip it. Spend and writes to your vault always ask, so neither offers a standing allow.',
     keywords: ['approve', 'approval', 'allow', 'deny', 'confirm', 'asks first', 'diff', 'spend'],
   },
   {

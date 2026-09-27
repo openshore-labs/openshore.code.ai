@@ -739,6 +739,8 @@ function sessionOpts(v: unknown) {
     projectSecrets: optStr(o.projectSecrets, 'projectSecrets'),
     humanize: optBool(o.humanize, 'humanize'),
     chainOfThought: optBool(o.chainOfThought, 'chainOfThought'),
+    // The Wayfinding Memory switch: the engine lets it only turn memory off.
+    memory: optBool(o.memory, 'memory'),
     codemagicToken: optStr(o.codemagicToken, 'codemagicToken'),
     codemagicTarget,
     // The Agentic Current's handle: the shared parser drops anything malformed,
