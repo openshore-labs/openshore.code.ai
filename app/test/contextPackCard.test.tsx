@@ -124,4 +124,41 @@ describe('the context pack card', () => {
     const copy = contextPackCopy(card({ sources: [cs, note('Ideas')] }), { remote: false });
     expect(copy?.notes).toEqual([{ path: 'Notes/Ideas.md', title: 'Ideas' }]);
   });
+
+  // Wave 2: the engine's full pack also lists the Vault map and the handoff
+  // (layer 'map' and 'handoff', path ''), and Current State as a note-shaped
+  // source. None of them is a Vault note, so none is counted or listed.
+  it('counts only real Vault notes: never the map, the handoff, or Current State', () => {
+    const full = card({
+      sources: [
+        {
+          layer: 'current-state',
+          path: 'OpenShore Project Atlas MDs/Current State.md',
+          title: 'Current State',
+        },
+        { layer: 'handoff', path: '', title: 'Handoff' },
+        note('Ideas'),
+        note('Launch', 'link'),
+        note('Ideas'),
+        { layer: 'map', path: '', title: 'Vault map' },
+      ],
+    });
+    const copy = contextPackCopy(full, { remote: false });
+    expect(copy?.headline).toBe("Used this project's Current State and 2 notes from your Vault");
+    expect(copy?.notes.map((n) => n.title)).toEqual(['Ideas', 'Launch']);
+    const out = text(render(full));
+    expect(out).not.toContain('Vault map');
+    expect(out).not.toContain('Handoff');
+    expect(out).not.toContain('4 notes');
+    // A pack that sent only the outline says so, and claims no note.
+    const mapOnly = contextPackCopy(
+      card({ sources: [{ layer: 'map', path: '', title: 'Vault map' }] }),
+      {
+        remote: true,
+      },
+    );
+    expect(mapOnly?.headline).toBe('Used an outline of your Vault, no notes');
+    expect(mapOnly?.notes).toEqual([]);
+    expect(mapOnly?.remote).toBeUndefined();
+  });
 });

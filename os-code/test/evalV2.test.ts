@@ -27,7 +27,10 @@ import {
   VAULT_FIXTURE_NOTE_COUNT,
   VAULT_FIXTURE_PATHS,
 } from '../src/eval/vaultFixture.js';
-import { traceFrom } from '../src/commands/eval.js';
+import { costLine, deepDrive, traceFrom } from '../src/commands/eval.js';
+import { ConfigSchema } from '../src/config/schema.js';
+import { ProviderRegistry } from '../src/providers/registry.js';
+import { VAULT_NOTES_FRAMING } from '../src/harness/vaultContext.js';
 import { MockProvider, toolTurn, textTurn, type ScriptedTurn } from './helpers/mockProvider.js';
 import { makeTestSession } from './helpers/session.js';
 import type { AgentEvent } from '../src/core/agent/types.js';
@@ -442,5 +445,105 @@ describe('eval v2 variants and trace fields (Vault M4, CTO I14)', () => {
       promptTokens: 2700,
     });
     expect(vaultTraceFields([])).toEqual({});
+  });
+});
+
+// Wave 2: the CLI's own drive (commands/eval.ts deepDrive), the path
+// `osc eval --deep --vault-pack on|off` runs, through a mock provider. The
+// task's vault is the session's vault for the pack and the tools; on puts the
+// convention note into the prompt, off keeps every note out.
+describe('the deep drive and the vault-pack variant', () => {
+  const systemText = (provider: MockProvider): string => {
+    const sys = provider.requests[0]?.messages.find((m) => m.role === 'system');
+    return typeof sys?.content === 'string' ? sys.content : JSON.stringify(sys?.content ?? '');
+  };
+
+  async function runVariant(vaultPack: 'on' | 'off') {
+    const provider = new MockProvider('mock', [textTurn('rel-kestrel/')]);
+    const config = ConfigSchema.parse({
+      stack: { orchestrator: { provider: 'mock', model: 'mock-model' } },
+    });
+    const drive = deepDrive({
+      config,
+      providers: (() => {
+        const r = new ProviderRegistry(config, () => undefined);
+        r.register('mock', provider);
+        return r;
+      })(),
+      providerId: 'mock',
+      cloudApproved: () => false,
+    });
+    const report = await runEvalV2(drive, {
+      tasks: [task('vault-recall-convention')],
+      vaultPack,
+    });
+    return { provider, report };
+  }
+
+  it('on: the pack, framed as quoted notes, carries the convention note', async () => {
+    const { provider, report } = await runVariant('on');
+    const system = systemText(provider);
+    expect(system).toContain(VAULT_NOTES_FRAMING);
+    expect(system).toContain(`path="${VAULT_FIXTURE_PATHS.convention}"`);
+    const trace = report.scores[0]!.trace!;
+    expect(trace.variant).toEqual({ vaultPack: 'on' });
+    expect(trace.packTokens).toBeGreaterThan(0);
+    expect(trace.packNotes).toContain(VAULT_FIXTURE_PATHS.convention);
+    expect(trace.wallMs).toBeGreaterThanOrEqual(0);
+    expect(report.scores[0]!.score).toBe(1);
+  });
+
+  it('off: no pack and no note text in the prompt', async () => {
+    const { provider, report } = await runVariant('off');
+    const system = systemText(provider);
+    expect(system).not.toContain(VAULT_NOTES_FRAMING);
+    expect(system).not.toContain(VAULT_FIXTURE_PATHS.convention);
+    const trace = report.scores[0]!.trace!;
+    expect(trace.variant).toEqual({ vaultPack: 'off' });
+    expect(trace.packTokens).toBeUndefined();
+  });
+
+  it('num-ctx sets the endpoint on one fresh registry per value', async () => {
+    const seen: Array<string | undefined> = [];
+    const config = ConfigSchema.parse({
+      stack: { orchestrator: { provider: 'ollama', model: 'mock-model' } },
+    });
+    const base = new ProviderRegistry(config, () => undefined);
+    base.register('ollama', new MockProvider('ollama', [textTurn('unused')]));
+    const drive = deepDrive({
+      config,
+      providers: base,
+      providerId: 'ollama',
+      cloudApproved: () => false,
+      makeProviders: (cfg) => {
+        const endpoint = cfg.providers.ollama;
+        seen.push(endpoint?.kind === 'openai-compatible' ? endpoint.numCtx : 'wrong kind');
+        const r = new ProviderRegistry(cfg, () => undefined);
+        r.register('ollama', new MockProvider('ollama', [textTurn('42'), textTurn('42')]));
+        return r;
+      },
+    });
+    const report = await runEvalV2(drive, {
+      tasks: [task('answer-from-code')],
+      numCtx: 'auto',
+      attempts: 2,
+    });
+    expect(seen).toEqual(['auto']);
+    expect(report.variant).toEqual({ numCtx: 'auto' });
+  });
+
+  it('the cost line names input tokens, the pack, and wall time', () => {
+    expect(
+      costLine({
+        turns: 1,
+        toolCalls: [],
+        wrote: false,
+        promptTokens: 900,
+        packTokens: 120,
+        packNotes: ['a.md', 'b.md'],
+        wallMs: 2500,
+      }),
+    ).toBe('900 input tokens, pack 120 tokens, 2 notes, 2.5s');
+    expect(costLine({ turns: 1, toolCalls: [], wrote: false })).toBe('');
   });
 });

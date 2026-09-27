@@ -369,3 +369,13 @@ export async function closeEngineVaultIndexes(): Promise<void> {
   handles.clear();
   await Promise.all(all.map((h) => h.close()));
 }
+
+/** Close and forget one root's index, when one is open (the deep eval, whose
+ *  temp vault is gone after each run). */
+export async function closeEngineVaultIndex(root: string): Promise<void> {
+  const key = await vaultIndexKey(root);
+  const handle = handles.get(key);
+  if (!handle) return;
+  handles.delete(key);
+  await handle.close();
+}

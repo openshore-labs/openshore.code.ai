@@ -90,7 +90,7 @@ const SMALL = {
 };
 
 describe('the pack in the prompt (4.4, I8 to I10)', () => {
-  it('a small seat gets Current State inline with no vault tool', async () => {
+  it('a small seat gets Current State inline and only the merged vault read', async () => {
     builds.length = 0;
     const provider = new MockProvider('mock', [textTurn('done')]);
     const source = fakeSource();
@@ -102,7 +102,7 @@ describe('the pack in the prompt (4.4, I8 to I10)', () => {
     await session.agent.run('what landed last?');
     const req = provider.requests[0]!;
     const tools = req.tools!.map((t) => t.name);
-    expect(tools.filter((n) => n.startsWith('vault'))).toEqual([]);
+    expect(tools.filter((n) => n.startsWith('vault'))).toEqual(['vaultLookup']);
     const system = systemOf(req);
     expect(system).toContain('MARKER-CS');
     // The seat is told it already has the top sheet, not sent to readFile it.

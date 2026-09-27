@@ -186,8 +186,12 @@ describe('memory off removes the vault context pack', () => {
     expect(packOn({ config: configWith({}) })).toBe(true);
   });
 
-  it('no source: no pack', () => {
-    expect(packOn({ config: configWith({}), vaultContext: undefined })).toBe(false);
+  it('no source given: bootstrap builds the engine source, even with no vault', () => {
+    // Every host (CLI, daemon, routines, desktop) opens through bootstrap, so
+    // each gets Current State; a session without a vault root still does.
+    expect(packOn({ config: configWith({}), vaultContext: undefined })).toBe(true);
+    expect(packOn({ config: configWith({}), vaultContext: undefined, vault: false })).toBe(true);
+    expect(packOn({ config: configWith({}), vaultContext: undefined, memory: false })).toBe(false);
   });
 
   it("the app's override off, config off, and vault.context off each remove it", () => {

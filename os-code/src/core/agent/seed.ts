@@ -6,24 +6,41 @@
 // transcript to keep the thread, and reconstructing it faithfully is not worth
 // the risk of a malformed history. The system prompt is injected fresh on each
 // run, so it is not seeded here.
+//
+// Privacy survives the restart (Vault M4, CTO I5): the tool results are not
+// seeded, but a reply written after a tool read a local-only vault note (its
+// journaled tool-end carries `localOnly`) may quote that note, so the reply
+// comes back marked `localOnly` and a later turn on a seat that leaves this
+// network gets the stub in its place, the same as the tool result would.
 import type { ChatMessage } from '../../providers/types.js';
 import type { DriverEvent } from './types.js';
 
 export function seedHistoryFromEvents(events: DriverEvent[]): ChatMessage[] {
   const history: ChatMessage[] = [];
   let pendingUser: string | undefined;
+  // This task has read a local-only note, so what it says next may quote one.
+  let readLocalOnly = false;
   for (const event of events) {
     if (event.type === 'task-start') {
       // A new user turn. If a prior user turn never got a final answer (an
       // aborted or errored run), keep it: the user still said it.
       if (pendingUser !== undefined) history.push({ role: 'user', content: pendingUser });
       pendingUser = event.input;
+      readLocalOnly = false;
+    } else if (event.type === 'tool-end') {
+      if (event.result.localOnly) readLocalOnly = true;
     } else if (event.type === 'text-final') {
       if (pendingUser !== undefined) {
         history.push({ role: 'user', content: pendingUser });
         pendingUser = undefined;
       }
-      if (event.text.trim()) history.push({ role: 'assistant', content: event.text });
+      if (event.text.trim()) {
+        history.push({
+          role: 'assistant',
+          content: event.text,
+          ...(readLocalOnly ? { localOnly: true as const } : {}),
+        });
+      }
     }
   }
   if (pendingUser !== undefined) history.push({ role: 'user', content: pendingUser });

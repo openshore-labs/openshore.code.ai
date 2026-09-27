@@ -333,7 +333,7 @@ describe('the class budgets and vault menu in the loop', () => {
     const plan = systemOf(provider.requests[0]!)
       .split('\n\n')
       .find((p) => p.startsWith('PLAN MODE.'))!;
-    expect(plan).toContain('the vault reads vaultRead, vaultList');
+    expect(plan).toContain('the vault reads vaultSearch, vaultRead, vaultBacklinks, vaultList');
     expect(plan).not.toContain('vaultWrite');
   });
 });

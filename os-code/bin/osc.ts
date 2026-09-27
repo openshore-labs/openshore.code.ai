@@ -199,6 +199,11 @@ program
   .option('--deep', 'run the deeper eval v2: the real agent loop against fixtures')
   .option('--attempts <n>', 'deep only: independent tries per task (shows 1 try and best of n)')
   .option('--yes', 'deep only: skip the spend confirmation on a frontier reference run')
+  .option(
+    '--vault-pack <on|off>',
+    'deep only: run the vault tasks with the full context pack, or none',
+  )
+  .option('--num-ctx <auto|off>', "deep only: send Ollama's num_ctx (the served window), or not")
   .action(evalCommand);
 
 program

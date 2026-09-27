@@ -70,6 +70,8 @@ import {
 import { JevAdvisor, type FetchLike } from '../../harness/jev.js';
 import type { HarnessCurrentsHandle } from '../../currents/model.js';
 import type { ToolSpec } from '../../providers/types.js';
+import { MERGED_VAULT_TOOL, seatOffersVaultTool, withVaultLookupPriority } from './registry.js';
+import { DEFAULT_VAULT_READ_CAP_CHARS } from '../tools/vaultFind.js';
 import { logger } from '../../util/log.js';
 
 const log = logger('agent');
@@ -164,11 +166,6 @@ export interface ProjectRule {
 /** Tools a plan may use: nothing that changes the workspace or runs a shell. */
 const PLAN_SAFE_RISKS = new Set(['read', 'network']);
 
-/** The one merged vault read (search, read, links) a lean seat is offered in
- *  place of the separate reads, per the class's `mergedVaultTool` (CTO I11). */
-const MERGED_VAULT_TOOL = 'vaultLookup';
-const SEPARATE_VAULT_READS = new Set(['vaultRead', 'vaultList', 'vaultSearch', 'vaultBacklinks']);
-
 /** The local calendar date, YYYY-MM-DD, for a dated Current State line. */
 function localDate(d: Date): string {
   const pad = (n: number): string => String(n).padStart(2, '0');
@@ -183,15 +180,16 @@ const LEAN_CLASSES = new Set<string>(['tiny', 'small']);
 
 /** When a small seat can see only a handful of tools, these are the ones worth
  *  showing, most useful first: read, edit, search, then the rest. Tools not
- *  listed keep their registration order after these. */
-const SMALL_MODEL_TOOL_PRIORITY = [
+ *  listed keep their registration order after these. The merged vault read
+ *  slots in right after searchRepo (withVaultLookupPriority, CTO I11), so a
+ *  small seat's ten see it and a tiny seat's six do not. */
+const SMALL_MODEL_TOOL_PRIORITY = withVaultLookupPriority([
   'readFile',
   'editFile',
   'writeFile',
   'grep',
   'glob',
   'searchRepo',
-  'vaultLookup',
   'runShell',
   'todoWrite',
   'gitDiff',
@@ -199,7 +197,7 @@ const SMALL_MODEL_TOOL_PRIORITY = [
   'webFetch',
   'webSearch',
   'readTerminal',
-];
+]);
 
 /** Transient provider failures worth a bounded retry. */
 const TRANSIENT =
@@ -312,6 +310,10 @@ export class AgentSession {
     // a local-only note is read only by a seat that stays (CTO I5). Judged by
     // address, live, since an escalation switches the seat mid-task.
     deps.toolContext.seatLeavesNetwork = () => leavesThisNetwork(this.active.provider);
+    // A vault read is capped per class (the seat answering now), past which it
+    // returns the outline and asks for a section (CTO I11).
+    deps.toolContext.vaultReadCapChars = () =>
+      this.modelProfile?.vaultReadCapChars ?? DEFAULT_VAULT_READ_CAP_CHARS;
     deps.toolContext.noteUsage = (usage: DelegatedUsage) => {
       this.recordUsage(usage.model, usage.kind, usage.promptTokens, usage.completionTokens);
     };
@@ -1867,14 +1869,14 @@ export class AgentSession {
 
   /** One way into the vault per seat (CTO I11): a class with
    *  `mergedVaultTool` sees the merged vault read and not the separate reads,
-   *  any other seat the separate reads and not the merged one. With no merged
-   *  tool registered the menu is left as it is. */
+   *  any other seat the separate reads and not the merged one. The rule is the
+   *  registry's seatOffersVaultTool, read per turn since an escalation changes
+   *  the seat. With no merged tool registered the menu is left as it is, so a
+   *  seat never loses its only way in. */
   private vaultMenu(specs: ToolSpec[]): ToolSpec[] {
     if (!specs.some((s) => s.name === MERGED_VAULT_TOOL)) return specs;
     const merged = this.modelProfile?.mergedVaultTool ?? false;
-    return specs.filter((s) =>
-      merged ? !SEPARATE_VAULT_READS.has(s.name) : s.name !== MERGED_VAULT_TOOL,
-    );
+    return specs.filter((s) => seatOffersVaultTool(s.name, merged));
   }
 
   /** Keep at most `maxToolsShown` specs for the active profile, most useful

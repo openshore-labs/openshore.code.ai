@@ -14,7 +14,13 @@ import { leavesThisNetwork } from '../../providers/types.js';
 import { getAnthropicKey } from '../../auth/claude.js';
 import { resolveStack } from '../../router/stack.js';
 import { Router } from '../../router/router.js';
-import { buildToolContext, buildToolRegistry } from './registry.js';
+import {
+  buildToolContext,
+  buildToolRegistry,
+  lazyVaultPrivacy,
+  vaultPrivacyConfig,
+} from './registry.js';
+import { createVaultContextSource, currentStateReader } from '../vault/contextSource.js';
 import { AgentSession } from './loop.js';
 import { seedHistoryFromEvents, unresolvedApprovalIds } from './seed.js';
 import { PermissionEngine, type PermissionConfig } from '../permissions/index.js';
@@ -118,8 +124,10 @@ export interface BootstrapOptions {
   /** Where this session's vault context pack comes from (Vault M4, CTO I7,
    *  I8): the engine's source prepares Current State, the index and the
    *  planned note bodies once per task, and the loop renders the pack per
-   *  turn for the seat that answers. Undefined leaves the pack out. The loop
-   *  also leaves it out with Memory off (the switch folded in above) or
+   *  turn for the seat that answers. Undefined builds the engine's own
+   *  (createVaultContextSource over this session's vault root, privacy and
+   *  lockdown), so the CLI, the daemon, routines and the desktop all get it.
+   *  The loop leaves it out with Memory off (the switch folded in above) or
    *  `vault.context: 'off'`, so a caller need not gate it. */
   vaultContext?: VaultContextSource;
 }
@@ -337,6 +345,19 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   if (options.currents) toolContext.currents = options.currents;
   toolContext.sessionId = driver.id;
 
+  // The vault context pack's source (Vault M4, CTO I7, I8). A session with no
+  // vault root (a member's on a shared hub) still gets this project's Current
+  // State; the privacy rules are the tools' own compiled machine config, so the
+  // pack and the tools judge a note the same way.
+  const vaultContext =
+    options.vaultContext ??
+    createVaultContextSource({
+      vaultRoot: toolContext.vaultRoot,
+      privacy: toolContext.vaultPrivacy ?? lazyVaultPrivacy(vaultPrivacyConfig(config)),
+      currentState: currentStateReader(options.cwd, projectName),
+      lockdown: { egress: egressLockdown, secrets: Boolean(projectSecrets?.trim()) },
+    });
+
   const agent = new AgentSession({
     config,
     router,
@@ -356,7 +377,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     // egress lockdown exactly like cloud escalation and the currents tools.
     harnessCurrents: egressLockdown ? undefined : options.harnessCurrents,
     permissionMode: options.permissionMode,
-    vaultContext: options.vaultContext,
+    vaultContext,
     persistRule: (rule) => {
       try {
         addProjectPermissionRule(options.cwd, rule);

@@ -1194,6 +1194,9 @@ export interface ContextPackCopy {
 
 const notesWord = (n: number) => `${n} ${n === 1 ? 'note' : 'notes'}`;
 
+/** The pack layers that carry a Vault note (the engine's PackLayer). */
+const PACK_NOTE_LAYERS: ReadonlySet<string> = new Set(['pin', 'search', 'link']);
+
 /** The context-pack card, in words that match the event exactly. Undefined
  *  when the pack used nothing and held nothing back: no card then. `remote`
  *  is true on any device that is not the computer running the session (a
@@ -1203,11 +1206,18 @@ export function contextPackCopy(
   opts: { remote: boolean },
 ): ContextPackCopy | undefined {
   const currentState = pack.sources.some((s) => s.layer === 'current-state');
-  const notes = pack.sources
-    .filter((s) => s.layer !== 'current-state')
-    .map((s) => ({ path: s.path, title: s.title }));
+  // Only a real Vault note counts as one: a pin, a search hit, or a linked
+  // note, each with its path. The Vault map (folders and newest titles) and
+  // the handoff carry no path, and Current State is the repo's own file.
+  const notes: Array<{ path: string; title: string }> = [];
+  for (const s of pack.sources) {
+    if (!PACK_NOTE_LAYERS.has(s.layer) || !s.path) continue;
+    if (notes.some((n) => n.path === s.path)) continue;
+    notes.push({ path: s.path, title: s.title });
+  }
+  const map = pack.sources.some((s) => s.layer === 'map');
   const withheld = Math.max(0, Math.floor(pack.withheld));
-  if (!currentState && !notes.length && !withheld) return undefined;
+  if (!currentState && !notes.length && !map && !withheld) return undefined;
   const headline =
     currentState && notes.length
       ? `Used this project's Current State and ${notesWord(notes.length)} from your Vault`
@@ -1215,7 +1225,9 @@ export function contextPackCopy(
         ? "Used this project's Current State"
         : notes.length
           ? `Used ${notesWord(notes.length)} from your Vault`
-          : 'No notes from your Vault went to this model';
+          : map
+            ? 'Used an outline of your Vault, no notes'
+            : 'No notes from your Vault went to this model';
   const where = opts.remote ? 'your computer' : 'this computer';
   return {
     headline,

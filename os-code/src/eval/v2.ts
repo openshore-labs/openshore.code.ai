@@ -64,7 +64,8 @@ export interface DriveTrace {
   /** Tokens the context pack took, summed over its `context-pack` events.
    *  0 when the pack ran and was empty; absent when no pack event came. */
   packTokens?: number;
-  /** The vault notes the pack used, by path, deduplicated, in first-use order. */
+  /** The vault notes the pack used, by path, deduplicated, in first-use order
+   *  (pins, search hits and links; never the map, handoff or Current State). */
   packNotes?: string[];
   /** Wall-clock milliseconds for the drive, measured by the runner. */
   wallMs?: number;
@@ -298,6 +299,9 @@ export function variantSuffix(variant: EvalVariant): string {
   return out;
 }
 
+/** The pack layers that name a vault note. */
+const VAULT_NOTE_LAYERS: ReadonlySet<string> = new Set(['pin', 'search', 'link']);
+
 /** The vault trace fields read off a run's events, for a drive to merge into
  *  its trace: every input token sent (summed over `usage` events), the pack's
  *  tokens (summed over `context-pack` events) and the notes it used. Pure, so
@@ -318,6 +322,9 @@ export function vaultTraceFields(
       sawPack = true;
       packTokens += e.tokens;
       for (const source of e.sources) {
+        // Vault notes only: the map and the handoff carry no path, and Current
+        // State is the project's own file in the repo, not a vault note.
+        if (!VAULT_NOTE_LAYERS.has(source.layer) || !source.path) continue;
         if (!notes.includes(source.path)) notes.push(source.path);
       }
     }
