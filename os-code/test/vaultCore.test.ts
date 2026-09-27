@@ -17,12 +17,14 @@ import {
   eolOf,
   excerptAt,
   foldPath,
+  highlightRanges,
   isConflictCopy,
   isNotePath,
   linkTextFor,
   nonNoteExtension,
   normalizeNotePath,
   noteFolder,
+  parseVaultQuery,
   noteTitle,
   resolveMarkdownLink,
   resolveWikilink,
@@ -34,6 +36,7 @@ import {
   wikilinkContext,
 } from '../src/protocol.js';
 import { vaultConflictCopyPath as fromCoreVault } from '../src/core/vault/conflictName.js';
+import { phrasesMatch } from '../src/harness/vault/query.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -777,5 +780,123 @@ describe('nothing in the vault core serializes YAML (H2)', () => {
       // JSON.stringify is allowed; any other stringify (a YAML one) is not.
       expect(src, f).not.toMatch(/\bdump\s*\(|safeDump|(?<!JSON\.)\bstringify\s*\(/);
     }
+  });
+});
+
+describe('the search grammar (K8, CX X1 and X2)', () => {
+  const clause = (kind: string, value: string, negated = false) => ({ kind, value, negated });
+  const marked = (text: string, q: string) =>
+    highlightRanges(text, parseVaultQuery(q)).map((r) => text.slice(r.start, r.end));
+
+  it('reads bare words as terms, folded, and the last open word as the prefix', () => {
+    expect(parseVaultQuery('Budget  PLAN ')).toEqual({
+      clauses: [clause('term', 'budget'), clause('term', 'plan')],
+      filtersOnly: false,
+    });
+    expect(parseVaultQuery('budget pla')).toEqual({
+      clauses: [clause('term', 'budget')],
+      prefix: 'pla',
+      filtersOnly: false,
+    });
+    expect(parseVaultQuery('Ｆｕｌｌ').prefix).toBe('full');
+  });
+
+  it('reads tag:, tag:#, and #x as one tag clause, without the #', () => {
+    expect(parseVaultQuery('tag:Idea ').clauses).toEqual([clause('tag', 'idea')]);
+    expect(parseVaultQuery('tag:#idea/sub').clauses).toEqual([clause('tag', 'idea/sub')]);
+    expect(parseVaultQuery('#idea').clauses).toEqual([clause('tag', 'idea')]);
+    expect(parseVaultQuery('#idea').prefix).toBeUndefined();
+  });
+
+  it('reads path: and file:, a quoted value, and an operator in any case', () => {
+    expect(parseVaultQuery('path:Work/Plans FILE:budget.md').clauses).toEqual([
+      clause('path', 'work/plans'),
+      clause('file', 'budget.md'),
+    ]);
+    expect(parseVaultQuery('path:"My  Notes/Q3" x').clauses).toEqual([
+      clause('path', 'my notes/q3'),
+    ]);
+  });
+
+  it('reads a quoted phrase, whitespace folded, and an unclosed one to the end', () => {
+    expect(parseVaultQuery('"Exact   Phrase" more ').clauses).toEqual([
+      clause('phrase', 'exact phrase'),
+      clause('term', 'more'),
+    ]);
+    expect(parseVaultQuery('"still typ').clauses).toEqual([clause('phrase', 'still typ')]);
+    expect(parseVaultQuery('"still typ').prefix).toBeUndefined();
+  });
+
+  it('negates any clause with a leading -, and a negated word is never the prefix', () => {
+    expect(parseVaultQuery('-draft -tag:old -path:Archive -file:tmp -"not this"').clauses).toEqual([
+      clause('term', 'draft', true),
+      clause('tag', 'old', true),
+      clause('path', 'archive', true),
+      clause('file', 'tmp', true),
+      clause('phrase', 'not this', true),
+    ]);
+    expect(parseVaultQuery('plan -draft').prefix).toBeUndefined();
+    // A lone dash is a plain word.
+    expect(parseVaultQuery('a - b ').clauses.map((c) => c.value)).toEqual(['a', '-', 'b']);
+  });
+
+  it('reads anything else, foo:bar and v1 non-operators included, as plain terms', () => {
+    for (const q of ['foo:bar ', 'line:3 ', 'section:x ', 'task:todo ', 'a OR b ', '(x) ']) {
+      expect(
+        parseVaultQuery(q).clauses.every((c) => c.kind === 'term'),
+        q,
+      ).toBe(true);
+    }
+  });
+
+  it('marks a query with no positive word or phrase as filters only', () => {
+    expect(parseVaultQuery('tag:idea -draft').filtersOnly).toBe(true);
+    expect(parseVaultQuery('tag:idea plan').filtersOnly).toBe(false);
+    expect(parseVaultQuery('tag:idea "a b"').filtersOnly).toBe(false);
+    expect(parseVaultQuery('').filtersOnly).toBe(false);
+    expect(parseVaultQuery('   ').clauses).toEqual([]);
+    // An operator with no value yet (typing) is dropped.
+    expect(parseVaultQuery('tag:').clauses).toEqual([]);
+  });
+
+  it('never throws on hostile input', () => {
+    for (const q of [
+      '"',
+      '-',
+      '--',
+      '-"',
+      'tag:"',
+      '#',
+      '##',
+      '\u0000',
+      '🚀'.repeat(9),
+      'x'.repeat(10_000),
+    ]) {
+      expect(() => parseVaultQuery(q), q).not.toThrow();
+    }
+  });
+
+  it('highlights whole words, the prefix at a word start, and phrases', () => {
+    expect(marked('The Plan, planning and a plan.', 'plan ')).toEqual(['Plan', 'plan']);
+    expect(marked('The Plan, planning and a plan.', 'pla')).toEqual(['Plan', 'planning', 'plan']);
+    expect(marked('see an exact   Phrase here', '"exact phrase"')).toEqual(['exact   Phrase']);
+    expect(marked('no marks here', '-no tag:marks')).toEqual([]);
+  });
+
+  it('returns ranges in order, merged where they overlap, on the original offsets', () => {
+    const text = 'Ｆｕｌｌ width café budget';
+    const got = highlightRanges(text, parseVaultQuery('"full width" café'));
+    expect(got.map((r) => text.slice(r.start, r.end))).toEqual(['Ｆｕｌｌ width', 'café']);
+    const overlap = highlightRanges('big plan here', parseVaultQuery('"big plan" plan '));
+    expect(overlap).toEqual([{ start: 0, end: 8 }]);
+    expect(marked('東京都に行く', '京都 ')).toEqual(['京都']);
+  });
+
+  it('verifies phrases on a body, the check the index leaves to the host', () => {
+    const body = 'We agreed on the Exact\nphrase yesterday.';
+    expect(phrasesMatch(body, parseVaultQuery('"exact phrase"'))).toBe(true);
+    expect(phrasesMatch(body, parseVaultQuery('"phrase exact"'))).toBe(false);
+    expect(phrasesMatch(body, parseVaultQuery('-"exact phrase"'))).toBe(false);
+    expect(phrasesMatch(body, parseVaultQuery('plan'))).toBe(true);
   });
 });

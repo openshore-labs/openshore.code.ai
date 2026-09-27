@@ -13,6 +13,7 @@ import {
   BM25_K1,
   CORE_VERSION,
   INDEX_MAX_BODY_TERMS,
+  PREFIX_EXPANSIONS,
   VaultIndex,
   compareCodePoints,
   loadIndex,
@@ -24,6 +25,7 @@ import { BODY_STOPWORDS, queryTerms, tokenize } from '../src/harness/vault/token
 import type { VaultListedNote } from '../src/harness/vault/types.js';
 import { vaultCorpus } from './fixtures/vaultCorpus.js';
 import { loadVaultIndexCore } from './helpers/vaultIndexCore.js';
+import type { VaultIndexCore } from '../src/harness/vault/index.js';
 
 const { core, coreKind } = await loadVaultIndexCore();
 
@@ -416,5 +418,313 @@ describe(`the seeded 5,000-note corpus (${coreKind})`, () => {
     idx.applyWrite({ ...corpus[7]!, version: 'edited' }, `${corpus[7]!.text}\nmore words`);
     idx.resolve();
     expect(idx.counters.entriesBuilt - built).toBe(1);
+  }, 60_000);
+});
+
+describe('VaultIndex search with the K8 grammar (Vault M6)', () => {
+  const paths = (hits: Array<{ path: string }>) => hits.map((h) => h.path);
+  const notes = () =>
+    indexOf({
+      'Work/Plans/Budget.md':
+        '---\ntags: [finance/q3]\n---\nThe budget plan for the quarter. #draft',
+      'Work/Roadmap.md': 'A roadmap and a plan, no money talk. #idea',
+      'Home/Garden.md': 'Planting tomatoes and a budget for seeds. #idea/garden',
+      'Journal/2026-09-01.md': 'Today I planned the garden. Exact phrase here.',
+      'Archive/Old Budget.md': 'The old budget, retired. #draft',
+    });
+
+  it('keeps the M3 any-word search when called with a number', () => {
+    const idx = notes();
+    expect(paths(idx.search('roadmap tomatoes', 10))).toEqual(
+      expect.arrayContaining(['Work/Roadmap.md', 'Home/Garden.md']),
+    );
+  });
+
+  it('needs every term in the note', () => {
+    const idx = notes();
+    expect(paths(idx.search('budget seeds ', {}))).toEqual(['Home/Garden.md']);
+    expect(paths(idx.search('roadmap tomatoes ', {}))).toEqual([]);
+    expect(paths(idx.search('nosuchword budget ', {}))).toEqual([]);
+  });
+
+  it('matches the last open word as a prefix, the best expansion scoring', () => {
+    const idx = notes();
+    expect(paths(idx.search('garden plan', {})).sort()).toEqual([
+      'Home/Garden.md',
+      'Journal/2026-09-01.md',
+    ]);
+    // With a trailing space the word is whole again.
+    expect(paths(idx.search('garden plan ', {}))).toEqual([]);
+    expect(idx.search('zzq', {})).toEqual([]);
+  });
+
+  it('expands a prefix to at most 50 terms, the most common first', () => {
+    const body = Array.from({ length: 80 }, (_, i) => `pre${i.toString(36).padStart(2, '0')}`);
+    const idx = indexOf({ 'A.md': body.join(' '), 'B.md': 'pre00 pre01', 'C.md': 'pre01' });
+    const got = idx.expandPrefix('PRE');
+    expect(got).toHaveLength(PREFIX_EXPANSIONS);
+    expect(got.slice(0, 2)).toEqual(['pre01', 'pre00']);
+    expect(idx.expandPrefix('pre', 3)).toEqual(['pre01', 'pre00', 'pre02']);
+    expect(idx.expandPrefix('')).toEqual([]);
+    expect(idx.expandPrefix('nope')).toEqual([]);
+  });
+
+  it('narrows by tag:, matching a tag and anything under it, case-insensitive', () => {
+    const idx = notes();
+    expect(paths(idx.search('#IDEA', {})).sort()).toEqual(['Home/Garden.md', 'Work/Roadmap.md']);
+    expect(paths(idx.search('tag:idea/garden', {}))).toEqual(['Home/Garden.md']);
+    expect(paths(idx.search('tag:finance budget ', {}))).toEqual(['Work/Plans/Budget.md']);
+    // A tag never matches a longer sibling name.
+    expect(paths(idx.search('tag:ide', {}))).toEqual([]);
+  });
+
+  it('narrows by path: and file:, with .md optional', () => {
+    const idx = notes();
+    expect(paths(idx.search('budget path:work ', {}))).toEqual(['Work/Plans/Budget.md']);
+    expect(paths(idx.search('file:budget.md', {})).sort()).toEqual([
+      'Archive/Old Budget.md',
+      'Work/Plans/Budget.md',
+    ]);
+    expect(paths(idx.search('file:"old budget"', {}))).toEqual(['Archive/Old Budget.md']);
+  });
+
+  it('excludes with -, on terms, tags, paths and files', () => {
+    const idx = notes();
+    const all = paths(idx.search('budget ', {})).sort();
+    expect(all).toEqual(['Archive/Old Budget.md', 'Home/Garden.md', 'Work/Plans/Budget.md']);
+    expect(paths(idx.search('budget -seeds ', {})).sort()).toEqual([
+      'Archive/Old Budget.md',
+      'Work/Plans/Budget.md',
+    ]);
+    expect(paths(idx.search('budget -tag:draft ', {}))).toEqual(['Home/Garden.md']);
+    expect(paths(idx.search('budget -path:archive -file:budget ', {}))).toEqual(['Home/Garden.md']);
+  });
+
+  it('lists a filters-only query newest first', () => {
+    const idx = notes();
+    // indexOf feeds notes in order, each a second newer than the last.
+    const got = idx.search('tag:draft', {});
+    expect(paths(got)).toEqual(['Archive/Old Budget.md', 'Work/Plans/Budget.md']);
+    expect(got.every((h) => h.score === 0)).toBe(true);
+    expect(paths(idx.search('-tag:draft -tag:idea', {}))).toEqual(['Journal/2026-09-01.md']);
+    expect(idx.search('', {})).toEqual([]);
+  });
+
+  it('adds filter clauses from the options to the typed query', () => {
+    const idx = notes();
+    const filter = [{ kind: 'path' as const, value: 'home', negated: false }];
+    expect(paths(idx.search('budget ', { filter }))).toEqual(['Home/Garden.md']);
+    expect(paths(idx.search('', { filter }))).toEqual(['Home/Garden.md']);
+    expect(idx.search('budget ', { limit: 1 })).toHaveLength(1);
+  });
+
+  it('uses a phrase as a candidate filter by its words; the host checks the phrase', () => {
+    const idx = notes();
+    expect(paths(idx.search('"exact phrase"', {}))).toEqual(['Journal/2026-09-01.md']);
+    expect(paths(idx.search('"phrase exact"', {}))).toEqual(['Journal/2026-09-01.md']);
+    expect(idx.search('"missing words"', {})).toEqual([]);
+    // A phrase of stopwords alone cannot be ranked, so every note is a
+    // candidate, newest first.
+    expect(idx.search('"of the"', {})).toHaveLength(5);
+  });
+});
+
+describe('VaultIndex.titleMatches (Vault M6, the switcher)', () => {
+  const idx = () => {
+    const i = new VaultIndex(core);
+    i.applyWrite(meta('Projects/Budget.md'), 'x');
+    i.applyWrite(meta('Budget Review.md'), 'x');
+    i.applyWrite(meta('Old/My Budget 2025.md'), 'x');
+    i.applyWrite(meta('Recipes.md'), '---\naliases: [Cookbook]\ntags: [food]\n---\nbody');
+    i.applyWrite(meta('Nobudgetword.md'), 'x');
+    return i;
+  };
+
+  it('ranks the exact name, then a name that starts with it, then a word start', () => {
+    const hits = idx().titleMatches('budget');
+    expect(hits.map((h) => h.path)).toEqual([
+      'Projects/Budget.md',
+      'Budget Review.md',
+      'Old/My Budget 2025.md',
+      'Nobudgetword.md',
+    ]);
+    expect(hits[0]!.field).toBe('title');
+    expect(hits[0]!.ranges).toEqual([{ start: 0, end: 6 }]);
+    expect(hits[2]!.ranges).toEqual([{ start: 3, end: 9 }]);
+  });
+
+  it('needs every word, marks each, and takes the filters and negations', () => {
+    const i = idx();
+    const hits = i.titleMatches('rev bud');
+    expect(hits.map((h) => h.path)).toEqual(['Budget Review.md']);
+    expect(hits[0]!.ranges).toEqual([
+      { start: 0, end: 3 },
+      { start: 7, end: 10 },
+    ]);
+    expect(i.titleMatches('budget path:old').map((h) => h.path)).toEqual(['Old/My Budget 2025.md']);
+    expect(i.titleMatches('budget -review').map((h) => h.path)).not.toContain('Budget Review.md');
+    expect(i.titleMatches('tag:food')).toEqual([]);
+    expect(i.titleMatches('')).toEqual([]);
+    expect(i.titleMatches('budget', 2)).toHaveLength(2);
+  });
+
+  it('matches an alias, marked on the alias text', () => {
+    const hits = idx().titleMatches('COOK');
+    expect(hits).toEqual([
+      {
+        path: 'Recipes.md',
+        field: 'alias',
+        text: 'Cookbook',
+        score: expect.any(Number),
+        ranges: [{ start: 0, end: 4 }],
+      },
+    ]);
+  });
+});
+
+describe('VaultIndex.applyRename (Vault M6)', () => {
+  it('moves the entry with no text read, and re-titles its terms', () => {
+    const idx = indexOf({ 'Old Name.md': 'body words [[Other]]', 'Other.md': 'x' });
+    const built = idx.counters.entriesBuilt;
+    const moved = idx.applyRename('Old Name.md', {
+      path: 'Folder/Fresh Title.md',
+      updatedAt: '2026-09-27T00:00:00.000Z',
+      size: 20,
+      version: 'v-new',
+    })!;
+    expect(idx.counters.entriesBuilt).toBe(built);
+    expect(idx.counters.renames).toBe(1);
+    expect(moved.title).toBe('Fresh Title');
+    expect(moved.version).toBe('v-new');
+    expect(idx.has('Old Name.md')).toBe(false);
+    expect(idx.entry('Folder/Fresh Title.md')!.links.map((l) => l.target)).toEqual(['Other']);
+    expect(idx.search('fresh').map((h) => h.path)).toEqual(['Folder/Fresh Title.md']);
+    expect(idx.search('old')).toEqual([]);
+    expect(idx.search('words').map((h) => h.path)).toEqual(['Folder/Fresh Title.md']);
+    expect(idx.titleMatches('fresh').map((h) => h.path)).toEqual(['Folder/Fresh Title.md']);
+    expect(idx.backlinks('Other.md').map((b) => b.source)).toEqual(['Folder/Fresh Title.md']);
+    // The file matches one built from the same text at the new path.
+    const fresh = indexOf({ 'Folder/Fresh Title.md': 'body words [[Other]]', 'Other.md': 'x' });
+    expect(idx.search('fresh body words')[0]!.score).toBeCloseTo(
+      fresh.search('fresh body words')[0]!.score,
+      10,
+    );
+  });
+
+  it('keeps the version given only a path, and resolves only what the move touches', () => {
+    const notes: Record<string, string> = { 'Target.md': 'x', 'Linker.md': '[[Target]]' };
+    for (let i = 0; i < 50; i++) notes[`Bystander ${i}.md`] = `[[Elsewhere ${i}]]`;
+    notes['Waiting.md'] = '[[Renamed]]';
+    const idx = indexOf(notes);
+    idx.resolve();
+    const version = idx.entry('Target.md')!.version;
+    const before = idx.counters.sourcesResolved;
+    idx.applyRename('Target.md', 'Renamed.md');
+    expect(idx.entry('Renamed.md')!.version).toBe(version);
+    // The old link no longer reaches the note; the waiting link now does.
+    expect(idx.backlinks('Renamed.md').map((b) => b.source)).toEqual(['Waiting.md']);
+    expect(idx.backlinks('Target.md')).toEqual([]);
+    // Linker, Waiting and the note itself; never the 50 bystanders.
+    expect(idx.counters.sourcesResolved - before).toBeLessThanOrEqual(3);
+  });
+
+  it('answers undefined for an unknown note, and a non-note target removes it', () => {
+    const idx = indexOf({ 'A.md': 'x' });
+    expect(idx.applyRename('Nope.md', 'B.md')).toBeUndefined();
+    expect(idx.applyRename('A.md', 'A.txt')).toBeUndefined();
+    expect(idx.has('A.md')).toBe(false);
+  });
+
+  it('survives a serialize and load after a rename', () => {
+    const idx = indexOf({ 'A.md': 'alpha words', 'B.md': 'beta' });
+    idx.applyRename('A.md', 'Gamma.md');
+    const { index } = loadIndex(serializeIndex(idx).json, core);
+    expect(index.search('gamma alpha ', {})).toEqual(idx.search('gamma alpha ', {}));
+  });
+});
+
+describe(`the K16 search budget on 5,000 notes (${coreKind})`, () => {
+  it('answers titles, prefixes and filtered BM25 with no read and no core call, in budget', () => {
+    const corpus = vaultCorpus();
+    // Count every call into the core: search must make none.
+    const calls = { n: 0 };
+    const counted = Object.fromEntries(
+      Object.entries(core).map(([k, fn]) => [
+        k,
+        (...args: unknown[]) => {
+          calls.n++;
+          return (fn as (...a: unknown[]) => unknown)(...args);
+        },
+      ]),
+    ) as unknown as VaultIndexCore;
+    // The host's reads: the index is fed text in hand, so a search reads none.
+    let reads = 0;
+    const bodies = new Map(corpus.map((n) => [n.path, n.text]));
+    const read = (path: string) => {
+      reads++;
+      return bodies.get(path)!;
+    };
+    const idx = new VaultIndex(counted);
+    for (const n of corpus) idx.applyWrite(n, read(n.path));
+    const agent = {
+      path: 'Inbox/Agent run note.md',
+      updatedAt: '2027-01-01T00:00:00.000Z',
+      size: 60,
+      version: 'agent',
+    };
+    idx.applyWrite(agent, '---\ntags: [crew/run]\n---\nThe quarterly zzyzx reconciliation.');
+    idx.resolve();
+    const warm = idx.search('warmup ', {});
+    expect(Array.isArray(warm)).toBe(true);
+    const readsBefore = reads;
+    const callsBefore = calls.n;
+    const counters = { ...idx.counters };
+
+    // Title hits: one keystroke at a time, each under 4x 16 ms.
+    const typed = 'agent run';
+    let worstTitle = 0;
+    for (let k = 1; k <= typed.length; k++) {
+      const t0 = performance.now();
+      const hits = idx.titleMatches(typed.slice(0, k));
+      worstTitle = Math.max(worstTitle, performance.now() - t0);
+      if (k === typed.length) expect(hits[0]!.path).toBe(agent.path);
+    }
+    expect(worstTitle).toBeLessThan(16 * 4);
+
+    // Body BM25 with filters and a prefix, warm: under 4x 50 ms.
+    const queries = [
+      'quarterly zzy',
+      'zzyzx tag:crew',
+      'quarterly reconciliation path:inbox -tag:draft',
+      'tag:topic',
+      `${corpus[3]!.text.split(/\s+/)[12]!.replace(/[^\p{L}]/gu, '')} ka`,
+    ];
+    let worstBody = 0;
+    for (const q of queries) {
+      const t0 = performance.now();
+      const hits = idx.search(q, { limit: 50 });
+      worstBody = Math.max(worstBody, performance.now() - t0);
+      expect(hits.length).toBeLessThanOrEqual(50);
+    }
+    expect(worstBody).toBeLessThan(50 * 4);
+    expect(idx.search('quarterly zzy', {}).map((h) => h.path)).toEqual([agent.path]);
+    expect(idx.search('tag:crew', {})[0]!.path).toBe(agent.path);
+    expect(idx.expandPrefix('k').length).toBeLessThanOrEqual(PREFIX_EXPANSIONS);
+
+    // No read, no core call, nothing rebuilt or resolved.
+    expect(reads).toBe(readsBefore);
+    expect(calls.n).toBe(callsBefore);
+    expect(idx.counters).toEqual(counters);
+
+    // A rename reads nothing and resolves only what it touches.
+    const target = corpus[42]!;
+    const back = idx.backlinks(target.path).length;
+    const r0 = performance.now();
+    idx.applyRename(target.path, 'Inbox/Renamed 42.md');
+    idx.resolve();
+    expect(performance.now() - r0).toBeLessThan(300);
+    expect(reads).toBe(readsBefore);
+    expect(idx.counters.entriesBuilt).toBe(counters.entriesBuilt);
+    expect(idx.counters.sourcesResolved - counters.sourcesResolved).toBeLessThanOrEqual(back + 60);
   }, 60_000);
 });

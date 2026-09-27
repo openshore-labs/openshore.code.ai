@@ -36,10 +36,14 @@ import type {
   VaultIndexState,
   VaultListedNote,
   VaultPathIndex,
+  VaultQueryClause,
   VaultSearchHit,
+  VaultSearchOptions,
+  VaultTitleHit,
 } from './types.js';
 import { oscodeMarks } from './privacy.js';
-import { BODY_STOPWORDS, eachTerm, queryTerms } from './tokenize.js';
+import { foldQueryText, foldWithMap, mergeRanges, parseVaultQuery, prefixParts } from './query.js';
+import { BODY_STOPWORDS, eachTerm, queryTerms, tokenize } from './tokenize.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -60,6 +64,11 @@ export const INDEX_MAX_BODY_TERMS = 20_000;
 /** The persisted index's cap per host. Over it, the file is saved without
  *  term vectors (`terms: 'memory'`). */
 export const INDEX_FILE_MAX_BYTES = { desktop: 32 * 1024 * 1024, phone: 16 * 1024 * 1024 };
+
+/** Search results kept by default (CX X2's cap). */
+export const SEARCH_LIMIT = 50;
+/** Dictionary terms a typed prefix expands to at most (K8). */
+export const PREFIX_EXPANSIONS = 50;
 
 /** BM25 parameters and the field weights of a note's term counts. */
 export const BM25_K1 = 1.2;
@@ -268,6 +277,8 @@ interface Doc {
   resolved: (string | null)[];
   /** The basename keys this note's links are filed under. */
   bases: string[];
+  /** The folded title and aliases, cached on the first title search. */
+  names?: string[];
 }
 
 export interface VaultIndexOptions {
@@ -282,6 +293,8 @@ export interface VaultIndexCounters {
   sourcesResolved: number;
   /** Times the path index was rebuilt. */
   pathIndexBuilds: number;
+  /** Entries moved by applyRename, with no text read. */
+  renames: number;
 }
 
 export class VaultIndex {
@@ -291,6 +304,7 @@ export class VaultIndex {
     entriesBuilt: 0,
     sourcesResolved: 0,
     pathIndexBuilds: 0,
+    renames: 0,
   };
 
   private readonly docs = new Map<string, Doc>();
@@ -409,6 +423,58 @@ export class VaultIndex {
     return note;
   }
 
+  /** A note moved from `from` to `to` (a path, or the listing the rename
+   *  answered with, whose version and dates it takes). Nothing is read: the
+   *  entry keeps its links, tags and body terms, only the title's terms change,
+   *  and resolution touches only the sources filed under the old and new
+   *  basenames, the notes that resolved to `from`, and the note itself (its
+   *  relative links now start from another folder). A `to` that is not a
+   *  note removes the entry. Returns the moved entry, or undefined when
+   *  `from` was not indexed. */
+  applyRename(from: string, to: string | VaultListedNote): IndexedNote | undefined {
+    const doc = this.docs.get(from);
+    if (!doc) return undefined;
+    const meta = typeof to === 'string' ? undefined : to;
+    const toPath = typeof to === 'string' ? to : to.path;
+    if (!isIndexable(toPath)) {
+      this.applyRemove(from);
+      return undefined;
+    }
+    const note: IndexedNote = { ...doc.note, path: toPath, title: titleOf(toPath) };
+    if (meta) {
+      note.version = listedVersion(meta);
+      note.updatedAt = meta.updatedAt;
+      note.size = meta.size;
+    }
+    let vec = doc.vec;
+    if (vec && note.title !== doc.note.title) {
+      const counts = new Map<number, number>();
+      for (let i = 0; i < vec.ids.length; i++) counts.set(vec.ids[i]!, vec.tfs[i]!);
+      eachTerm(doc.note.title, (t) => {
+        const id = this.dictIds.get(t);
+        if (id === undefined) return;
+        const left = (counts.get(id) ?? 0) - TERM_WEIGHTS.title;
+        if (left > 0) counts.set(id, left);
+        else counts.delete(id);
+      });
+      this.addTerms(counts, note.title, TERM_WEIGHTS.title, false);
+      vec = this.vectorOf(counts);
+    }
+    // Everything that resolved to the old path looks again.
+    const into = this.reverse.get(from);
+    const referrers = into ? [...into.keys()] : [];
+    if (from !== toPath) this.applyRemove(from);
+    const isNew = !this.docs.has(toPath);
+    this.put(toPath, note, vec, isNew);
+    if (!isNew) {
+      this.pathIndex = null;
+      this.dirtyBase(pathBaseKey(toPath));
+    }
+    for (const src of referrers) if (this.docs.has(src)) this.dirty.add(src);
+    this.counters.renames++;
+    return note;
+  }
+
   applyRemove(path: string): boolean {
     const doc = this.docs.get(path);
     if (!doc) return false;
@@ -444,8 +510,107 @@ export class VaultIndex {
     return doc.note.links.map((link, i) => ({ link, resolved: doc.resolved[i] ?? null }));
   }
 
-  /** BM25 over the weighted term counts. Ties break by path. */
-  search(query: string, limit = 50): VaultSearchHit[] {
+  /** BM25 over the weighted term counts. Ties break by path.
+   *
+   *  With a number (or nothing) for the second argument, this is the M3
+   *  search the engine's tools use: plain words, any of them may match.
+   *
+   *  With options, `query` is what the person typed, in the K8 grammar
+   *  (`parseVaultQuery`), and `filter` adds clauses to it (a tapped tag, a
+   *  folder). Every positive term must be in the note; the last bare term
+   *  matches as a prefix (at most 50 dictionary expansions, the best one
+   *  scoring); `tag:`, `path:` and `file:` narrow; `-` excludes. A phrase
+   *  needs each of its words in the note here, and the host verifies the
+   *  phrase itself on the body (`phrasesMatch`), since the index keeps no
+   *  bodies. A query with no positive words lists its matches newest first,
+   *  score 0. All in memory: no read, no resolve. */
+  search(query: string, opts?: number | VaultSearchOptions): VaultSearchHit[] {
+    if (typeof opts === 'object' && opts !== null) return this.searchQuery(query, opts);
+    return this.searchAny(query, opts ?? SEARCH_LIMIT);
+  }
+
+  /** The dictionary terms that start with `prefix` (folded) and are in some
+   *  note, most common first, then in code-point order. */
+  expandPrefix(prefix: string, max = PREFIX_EXPANSIONS): string[] {
+    const p = foldQueryText(prefix).trim();
+    if (!p || max <= 0) return [];
+    const found: number[] = [];
+    for (let id = 0; id < this.dict.length; id++) {
+      if (this.df[id]! > 0 && this.dict[id]!.startsWith(p)) found.push(id);
+    }
+    found.sort(
+      (a, b) => this.df[b]! - this.df[a]! || compareCodePoints(this.dict[a]!, this.dict[b]!),
+    );
+    return found.slice(0, max).map((id) => this.dict[id]!);
+  }
+
+  /** Titles and aliases that hold every word of `query` (the K8 grammar:
+   *  its terms, prefix and phrases are the words, matched as substrings of
+   *  the folded name; its filters and negations apply). One hit per note, its
+   *  best name; an exact name first, then a name that starts with the query,
+   *  then words that start a word, shorter names first. Synchronous, no read,
+   *  so the switcher can answer on every keystroke. A query with no words
+   *  matches nothing here. */
+  titleMatches(query: string, limit = SEARCH_LIMIT): VaultTitleHit[] {
+    const parsed = parseVaultQuery(query);
+    const words: string[] = [];
+    const not: string[] = [];
+    for (const c of parsed.clauses) {
+      if (c.kind !== 'term' && c.kind !== 'phrase') continue;
+      (c.negated ? not : words).push(c.value);
+    }
+    if (parsed.prefix !== undefined) words.push(parsed.prefix);
+    if (words.length === 0 || limit <= 0) return [];
+    const whole = foldQueryText(query).replace(/\s+/gu, ' ').trim();
+    const filters = parsed.clauses.filter((c) => c.kind !== 'term' && c.kind !== 'phrase');
+
+    const hits: Array<VaultTitleHit & { at: number[] }> = [];
+    for (const [path, d] of this.docs) {
+      if (filters.length && !passesFilters(d.note, filters)) continue;
+      const names = (d.names ??= [d.note.title, ...d.note.aliases].map((s) =>
+        foldQueryText(s).replace(/\s+/gu, ' '),
+      ));
+      let best: (VaultTitleHit & { at: number[] }) | null = null;
+      for (let k = 0; k < names.length; k++) {
+        const name = names[k]!;
+        if (not.some((w) => name.includes(w))) {
+          best = null;
+          break;
+        }
+        const scored = scoreName(name, words, whole);
+        if (!scored) continue;
+        const score = k === 0 ? scored.score : scored.score * 0.9;
+        if (!best || score > best.score) {
+          best = {
+            path,
+            score,
+            field: k === 0 ? 'title' : 'alias',
+            text: k === 0 ? d.note.title : d.note.aliases[k - 1]!,
+            ranges: [],
+            at: scored.at,
+          };
+        }
+      }
+      if (best) hits.push(best);
+    }
+    hits.sort(
+      (a, b) =>
+        b.score - a.score || a.text.length - b.text.length || compareCodePoints(a.path, b.path),
+    );
+    return hits.slice(0, limit).map(({ at, ...hit }) => {
+      // Offsets were found on the folded name; map them to the name as shown.
+      const f = foldWithMap(hit.text);
+      const raw: Array<[number, number]> = [];
+      for (let w = 0; w < words.length; w++) {
+        const i = findIn(f.text, words[w]!, at[w]!);
+        const end = i + words[w]!.length;
+        if (i >= 0 && end <= f.text.length && end > i) raw.push([f.from[i]!, f.to[end - 1]!]);
+      }
+      return { ...hit, ranges: mergeRanges(raw) };
+    });
+  }
+
+  private searchAny(query: string, limit: number): VaultSearchHit[] {
     if (this.vecCount === 0) return [];
     const ids: number[] = [];
     for (const t of queryTerms(query)) {
@@ -470,6 +635,137 @@ export class VaultIndex {
         if (tf > 0) score += (idf[q]! * (tf * (BM25_K1 + 1))) / (tf + norm);
       }
       if (score > 0) hits.push({ path, score });
+    }
+    hits.sort((a, b) => b.score - a.score || compareCodePoints(a.path, b.path));
+    return hits.slice(0, limit);
+  }
+
+  private searchQuery(query: string, opts: VaultSearchOptions): VaultSearchHit[] {
+    const limit = opts.limit ?? SEARCH_LIMIT;
+    if (limit <= 0) return [];
+    const parsed = parseVaultQuery(query);
+    const seen = new Set<string>();
+    const clauses: VaultQueryClause[] = [];
+    for (const c of [...parsed.clauses, ...(opts.filter ?? [])]) {
+      const key = `${c.negated ? '-' : '+'}${c.kind}:${c.value}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      clauses.push(c);
+    }
+
+    // Positive words: every term's, and every phrase's (stopwords are not in
+    // bodies, so a phrase's are left to the host's check).
+    const termWords: string[] = [];
+    const phraseWords: string[] = [];
+    let positivePhrase = false;
+    const excluded: number[][] = [];
+    const filters: VaultQueryClause[] = [];
+    for (const c of clauses) {
+      if (c.kind === 'term' || c.kind === 'phrase') {
+        const words = [...new Set(tokenize(c.value))];
+        if (!c.negated) {
+          if (c.kind === 'term') termWords.push(...words);
+          else {
+            positivePhrase = true;
+            phraseWords.push(...words.filter((w) => !BODY_STOPWORDS.has(w)));
+          }
+          continue;
+        }
+        // A negated term, or a one-word phrase: out if the note holds every
+        // word. A longer negated phrase is the host's check.
+        if (c.kind === 'phrase' && words.length !== 1) continue;
+        if (words.length === 0) continue;
+        const ids = words.map((w) => this.dictIds.get(w) ?? -1);
+        if (ids.every((id) => id >= 0)) excluded.push(ids);
+        continue;
+      }
+      filters.push(c);
+    }
+    let prefixStem = '';
+    if (parsed.prefix !== undefined) {
+      const p = prefixParts(parsed.prefix);
+      termWords.push(...p.terms);
+      prefixStem = p.stem;
+    }
+    const keptTerms = termWords.filter((w) => !BODY_STOPWORDS.has(w));
+    const required = [...new Set([...(keptTerms.length ? keptTerms : termWords), ...phraseWords])];
+
+    const requiredIds: number[] = [];
+    for (const w of required) {
+      const id = this.dictIds.get(w);
+      if (id === undefined || this.df[id]! <= 0) return [];
+      requiredIds.push(id);
+    }
+    let prefixIds: number[] = [];
+    if (prefixStem) {
+      prefixIds = this.expandPrefix(prefixStem).map((t) => this.dictIds.get(t)!);
+      if (prefixIds.length === 0) return [];
+    }
+
+    const passes = (d: Doc): boolean => {
+      if (filters.length && !passesFilters(d.note, filters)) return false;
+      if (excluded.length && d.vec) {
+        const v = d.vec;
+        if (excluded.some((ids) => ids.every((id) => tfOf(v, id) > 0))) return false;
+      }
+      return true;
+    };
+
+    // Nothing to rank: a filters-only query, or phrases made of stopwords
+    // (the host checks those on bodies). A lone word too short to index
+    // matches nothing.
+    if (requiredIds.length === 0 && prefixIds.length === 0) {
+      const listing =
+        positivePhrase ||
+        clauses.some((c) => c.negated || (c.kind !== 'term' && c.kind !== 'phrase'));
+      if (!listing) return [];
+      const out: Array<VaultSearchHit & { updatedAt: string }> = [];
+      for (const [path, d] of this.docs) {
+        if (passes(d)) out.push({ path, score: 0, updatedAt: d.note.updatedAt });
+      }
+      out.sort(
+        (a, b) =>
+          (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0) ||
+          compareCodePoints(a.path, b.path),
+      );
+      return out.slice(0, limit).map(({ path, score }) => ({ path, score }));
+    }
+
+    const n = this.vecCount || 1;
+    const avgdl = this.totalLen / n || 1;
+    const idfOf = (id: number) => {
+      const df = this.df[id]!;
+      return Math.log(1 + (n - df + 0.5) / (df + 0.5));
+    };
+    const idf = requiredIds.map(idfOf);
+    const prefixIdf = prefixIds.map(idfOf);
+    const hits: VaultSearchHit[] = [];
+    for (const [path, d] of this.docs) {
+      const v = d.vec;
+      if (!v) continue;
+      const norm = BM25_K1 * (1 - BM25_B + (BM25_B * v.len) / avgdl);
+      let score = 0;
+      let ok = true;
+      for (let q = 0; q < requiredIds.length; q++) {
+        const tf = tfOf(v, requiredIds[q]!);
+        if (tf === 0) {
+          ok = false;
+          break;
+        }
+        score += (idf[q]! * (tf * (BM25_K1 + 1))) / (tf + norm);
+      }
+      if (!ok) continue;
+      if (prefixIds.length) {
+        let best = 0;
+        for (let q = 0; q < prefixIds.length; q++) {
+          const tf = tfOf(v, prefixIds[q]!);
+          if (tf > 0) best = Math.max(best, (prefixIdf[q]! * (tf * (BM25_K1 + 1))) / (tf + norm));
+        }
+        if (best === 0) continue;
+        score += best;
+      }
+      if (!passes(d)) continue;
+      hits.push({ path, score });
     }
     hits.sort((a, b) => b.score - a.score || compareCodePoints(a.path, b.path));
     return hits.slice(0, limit);
@@ -777,6 +1073,69 @@ function decodeTerms(terms: string, local: readonly number[]): TermVec {
   }
   if (terms.length > 0) flush();
   return unpack(Float64Array.from(out));
+}
+
+/** A note against `tag:`, `path:` and `file:` clauses (terms and phrases
+ *  are ignored here). A tag matches itself and anything under it. */
+function passesFilters(note: IndexedNote, filters: readonly VaultQueryClause[]): boolean {
+  let path: string | undefined;
+  let file: string | undefined;
+  let tags: string[] | undefined;
+  for (const c of filters) {
+    let hit: boolean;
+    if (c.kind === 'tag') {
+      tags ??= note.tags.map((t) => foldQueryText(t).replace(/^#+/, ''));
+      hit = tags.some((t) => t === c.value || t.startsWith(`${c.value}/`));
+    } else if (c.kind === 'path') {
+      path ??= foldQueryText(note.path);
+      hit = path.includes(c.value);
+    } else if (c.kind === 'file') {
+      file ??= foldQueryText(lastSegment(note.path));
+      hit = file.includes(c.value);
+    } else continue;
+    if (hit === c.negated) return false;
+  }
+  return true;
+}
+
+/** Score a folded name against the folded words (each must be a substring),
+ *  with where each word was found. */
+function scoreName(
+  name: string,
+  words: readonly string[],
+  whole: string,
+): { score: number; at: number[] } | null {
+  const at: number[] = [];
+  let score = 0;
+  for (const w of words) {
+    let i = name.indexOf(w);
+    if (i < 0) return null;
+    // Prefer an occurrence that starts a word.
+    let j = i;
+    while (j > 0 && !isWordStart(name, j)) {
+      j = name.indexOf(w, j + 1);
+      if (j < 0) break;
+    }
+    if (j >= 0 && isWordStart(name, j)) {
+      i = j;
+      score += 10;
+    } else score += 1;
+    at.push(i);
+  }
+  const trimmed = name.trim();
+  if (trimmed === whole) score += 100;
+  else if (trimmed.startsWith(whole)) score += 50;
+  return { score, at };
+}
+
+const WORD_CHAR = /[\p{L}\p{N}]/u;
+
+function isWordStart(s: string, i: number): boolean {
+  return i === 0 || !WORD_CHAR.test(s[i - 1]!);
+}
+
+function findIn(text: string, word: string, hint: number): number {
+  return text.startsWith(word, hint) ? hint : text.indexOf(word);
 }
 
 function tfOf(v: TermVec, id: number): number {
