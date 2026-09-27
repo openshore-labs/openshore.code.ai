@@ -1936,6 +1936,10 @@ interface AppState {
    *  back by compare-and-swap; false when it did not land (the box then shows
    *  the file's truth, and a note that changed takes the resolve path). */
   vaultToggleTask(path: string, line: number, checked: boolean): Promise<boolean>;
+  /** The person's own one-note edit (6.8, Link on an unlinked mention; CX
+   *  X16): the note read now, `edit` applied, and written back only while it
+   *  is still that version. False when it did not land or `edit` declined. */
+  vaultRewriteNote(path: string, edit: (text: string) => string | undefined): Promise<boolean>;
   /** What images and PDFs read from on this storage (6.6): its attachments,
    *  Obsidian's attachment folder, and the byte reader. Undefined where the
    *  storage has none. */
@@ -10263,6 +10267,26 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       get().showToast(VAULT_TICK_FAILED);
       return false;
+    },
+
+    async vaultRewriteNote(path, edit) {
+      const t = vaultTarget();
+      if (!t || !capsOf(t).linkRewrite) return false;
+      if (await leaseRefuses(t)) return false;
+      await flushOpenSave(t).catch(() => {});
+      const open = openNoteOf(t);
+      // Never under the person: a note open here with a choice waiting.
+      if (open?.path === path && open.choiceOpen) return false;
+      try {
+        const file = await t.provider.read(t.resourceId, path);
+        if (!file) return false;
+        const next = edit(file.text);
+        if (next === undefined || next === file.text) return false;
+        const r = await opsDeps(t).putVaultNote(path, next, { ifMatch: versionOf(file) });
+        return r.ok;
+      } catch {
+        return false;
+      }
     },
 
     async vaultMediaNow() {

@@ -122,6 +122,8 @@ import {
   vaultRecentAgentLabel,
   vaultTodayAria,
   vaultReaderCopy,
+  vaultLinkedIn,
+  vaultLinkMentionFailed,
   VAULT_TODAY_TITLE,
   type VaultDriveLink,
   type VaultOnboard,
@@ -152,7 +154,10 @@ import { useExitPresence } from '../hooks/useExitPresence.js';
 import { durationMs, sheetExitMs } from '../lib/motion.js';
 import {
   datePartsOf,
+  buildPathIndex,
   isAttachmentPath,
+  linkTextFor,
+  scanNote,
   type WikilinkContext,
   type HermesNote,
   type HermesNoteMeta,
@@ -162,7 +167,16 @@ import { openDeviceAttachment } from '../lib/gitos/deviceFolder.js';
 import type { VaultMedia } from '../components/vault/VaultAttachment.js';
 import { Icon } from '../components/Icon.js';
 import { VaultAgentRecent } from '../components/VaultAgentRecent.js';
-import { VaultBacklinks } from '../components/vault/VaultBacklinks.js';
+import {
+  VaultBacklinks,
+  findUnlinkedRows,
+  linkMentionText,
+  outgoingLinks,
+  type VaultUnlinkedRow,
+  type VaultUnlinkedState,
+} from '../components/vault/VaultBacklinks.js';
+import { VaultOutlineSheet, outlineOffered } from '../components/vault/VaultOutlineSheet.js';
+import { prefersReducedMotion } from '../lib/motion.js';
 import { VaultLinkSuggest } from '../components/vault/VaultLinkSuggest.js';
 import { VaultAccessoryBar } from '../components/vault/VaultAccessoryBar.js';
 import { VaultNoteOptions } from '../components/vault/VaultNoteOptions.js';
@@ -290,6 +304,7 @@ export function VaultScreen() {
     vaultToday,
     vaultToggleTask,
     vaultMediaNow,
+    vaultRewriteNote,
   } = useApp();
 
   const team = vaultScope === 'team';
@@ -419,6 +434,18 @@ export function VaultScreen() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [backlinks, setBacklinks] = useState<Array<{ path: string; excerpt: string }>>([]);
+  // Linked mentions are being read: three skeleton rows (CX X17).
+  const [mentionsLoading, setMentionsLoading] = useState(true);
+  // Unlinked mentions, on request only (CTO K15), and the rows whose Link is
+  // writing (CX X16).
+  const [unlinked, setUnlinked] = useState<VaultUnlinkedState>({ status: 'idle' });
+  const [linking, setLinking] = useState<ReadonlySet<string>>(new Set());
+  // The outline sheet (CX X16), and where the reader sits for its scroll.
+  const [outlineOpen, setOutlineOpen] = useState(false);
+  const readerRef = useRef<HTMLDivElement | null>(null);
+  // The note on screen now, for a late answer that must not land on another.
+  const vaultNoteRef = useRef<string | undefined>(undefined);
+  vaultNoteRef.current = vaultNote?.path;
   // Why Linked mentions may be incomplete, or undefined when every note read.
   const [mentionsError, setMentionsError] = useState<string | undefined>();
   const [ready, setReady] = useState<Partial<Record<StorageProviderId, boolean>>>({});
@@ -711,6 +738,9 @@ export function VaultScreen() {
     lastReload.current = vaultNote.reloaded;
     setBacklinks([]);
     setMentionsError(undefined);
+    setMentionsLoading(true);
+    setUnlinked({ status: 'idle' });
+    setLinking(new Set());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vaultNote?.path]);
   // Today's new note: the caret goes to the end, where the day's writing
@@ -733,12 +763,18 @@ export function VaultScreen() {
   const mentionsFor = vaultNote?.path;
   useEffect(() => {
     const index = currentVaultIndex();
-    if (!mentionsFor || !index || indexStatus.state === 'building') return;
+    if (!mentionsFor) return;
+    if (!index) {
+      setMentionsLoading(false);
+      return;
+    }
+    if (indexStatus.state === 'building') return;
     let live = true;
     index.linkedMentions(mentionsFor, vaultReadBody).then(
       ({ mentions, failed, more }) => {
         if (!live) return;
         setBacklinks(mentions);
+        setMentionsLoading(false);
         const missed = failed.filter((p) => p !== mentionsFor).length;
         setMentionsError(
           missed
@@ -749,7 +785,9 @@ export function VaultScreen() {
         );
       },
       () => {
-        if (live) setMentionsError('Linked mentions could not be read right now.');
+        if (!live) return;
+        setMentionsLoading(false);
+        setMentionsError('Linked mentions could not be read right now.');
       },
     );
     return () => {
@@ -1092,6 +1130,83 @@ export function VaultScreen() {
       void vaultCreate(p);
     } else if (p !== vaultNote?.path) openNote(p);
   };
+  // ---- outgoing, unlinked, outline (6.8; CTO K15; CX X16) -----------------
+  // The note's links out, from the index (no read).
+  const outgoing = useMemo(() => {
+    const path = vaultNote?.path;
+    const host = currentVaultIndex();
+    return path && host ? outgoingLinks(host.index.outlinks(path), path) : [];
+    // The index answers again when a build settles or the list moves.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vaultNote?.path, indexStatus.state, vaultFiles]);
+  // Unlinked mentions, on request: candidates from search, at most 50 notes
+  // read through the body cache.
+  const findUnlinked = () => {
+    const path = vaultNote?.path;
+    const host = currentVaultIndex();
+    if (!path || !host) return;
+    setUnlinked({ status: 'busy', reading: 0 });
+    void findUnlinkedRows({
+      path,
+      aliases: host.index.entry(path)?.aliases ?? [],
+      search: (q) => host.search(q, 50),
+      readBody: vaultReadBody,
+      onReading: (n) => setUnlinked({ status: 'busy', reading: n }),
+    }).then(
+      (rows) => {
+        if (vaultNoteRef.current === path) setUnlinked({ status: 'done', rows });
+      },
+      () => {
+        if (vaultNoteRef.current === path) {
+          setUnlinked({
+            status: 'done',
+            rows: [],
+            error: 'Unlinked mentions could not be read right now.',
+          });
+        }
+      },
+    );
+  };
+  // Link one mention: the person's own write, compare-and-swap (CX X16).
+  const linkMention = (row: VaultUnlinkedRow) => {
+    const path = vaultNote?.path;
+    if (!path) return;
+    const other = noteTitle(row.path);
+    setLinking((now) => new Set([...now, row.path]));
+    const target = linkTextFor(path, row.path, buildPathIndex(paths)) ?? noteTitle(path);
+    void vaultRewriteNote(row.path, (text) => linkMentionText(text, row.mention, target)).then(
+      (ok) => {
+        setLinking((now) => new Set([...now].filter((p) => p !== row.path)));
+        showToast(ok ? vaultLinkedIn(other) : vaultLinkMentionFailed(other));
+        if (ok) {
+          setUnlinked((u) =>
+            u.status === 'done' ? { ...u, rows: u.rows.filter((r) => r.path !== row.path) } : u,
+          );
+        }
+      },
+    );
+  };
+  // An outline pick lands on its heading in reading view, by the reader's
+  // data-heading-index (never an id built from note text).
+  const scrollToHeading = (i: number) => {
+    const land = () => {
+      const root = readerRef.current;
+      if (!root) return;
+      const el = [...root.querySelectorAll<HTMLElement>('[data-heading-index]')].find(
+        (h) => h.closest('.vault-embed') === null && h.dataset.headingIndex === String(i),
+      );
+      if (!el) return;
+      el.scrollIntoView?.({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
+      if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+      el.focus?.({ preventScroll: true });
+    };
+    if (editing) {
+      flushSave();
+      setEditing(false);
+      requestAnimationFrame(() => requestAnimationFrame(land));
+    } else land();
+  };
+
   // A tapped #tag searches tag:x in the tree (CX X2).
   const searchTag = (tag: string) => {
     flushSave();
@@ -1691,6 +1806,10 @@ export function VaultScreen() {
     const title = noteTitle(vaultNote.path);
     const parent = noteFolder(vaultNote.path);
     const words = draft.trim() ? draft.trim().split(/\s+/).length : 0;
+    // The outline is the draft's own headings (CX X16), first in Options
+    // when there are two or more.
+    // Scanned only while Options or the outline is up, never per keystroke.
+    const outlineHeadings = menuOpen || outlineOpen ? scanNote(draft).headings : [];
     // Who last saved this team note (2.7): nobody for the person's own save.
     const editedLine = team
       ? vaultEditedByLine(vaultNote.editedBy, vaultNote.updatedAt, uid)
@@ -1858,6 +1977,7 @@ export function VaultScreen() {
             // A calm reload settles the page in (opacity only); re-keyed so
             // each reload plays it once.
             <div
+              ref={readerRef}
               key={`${vaultNote.reloaded ?? 0}:${blobEpoch}`}
               className={
                 vaultNote.reloaded && vaultNote.reloadedFrom === 'elsewhere'
@@ -1894,7 +2014,19 @@ export function VaultScreen() {
           ) : null}
 
           {!editing ? (
-            <VaultBacklinks mentions={backlinks} error={mentionsError} onOpen={openNote} />
+            <VaultBacklinks
+              mentions={backlinks}
+              error={mentionsError}
+              onOpen={openNote}
+              loading={mentionsLoading}
+              outgoing={outgoing}
+              onCreate={(name) => followLink(name, true)}
+              title={title}
+              unlinked={unlinked}
+              onFindUnlinked={findUnlinked}
+              {...(caps.linkRewrite ? { onLink: linkMention } : {})}
+              linking={linking}
+            />
           ) : null}
         </div>
 
@@ -1919,6 +2051,12 @@ export function VaultScreen() {
           confirmDelete={confirmDelete}
           canAsk={!team}
           canPin={Boolean(!team && pinProjectId && canEditProjectPins(pinProjectId))}
+          canOutline={outlineOffered(outlineHeadings)}
+          onOutline={() => {
+            setMenuOpen(false);
+            setConfirmDelete(false);
+            setTimeout(() => setOutlineOpen(true), sheetExitMs());
+          }}
           canRename={caps.rename}
           onRename={() => {
             const path = vaultNote.path;
@@ -1952,6 +2090,12 @@ export function VaultScreen() {
           // so a stale save can never recreate the note; only a delete that
           // landed says so (orgvault-m1).
           onDelete={() => deleteNote(vaultNote.path)}
+        />
+        <VaultOutlineSheet
+          open={outlineOpen}
+          headings={outlineHeadings}
+          onClose={() => setOutlineOpen(false)}
+          onPick={(_h, i) => scrollToHeading(i)}
         />
         {renameSheet}
         {switcher}
