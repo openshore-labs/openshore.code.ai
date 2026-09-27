@@ -204,6 +204,11 @@ program
     'deep only: run the vault tasks with the full context pack, or none',
   )
   .option('--num-ctx <auto|off>', "deep only: send Ollama's num_ctx (the served window), or not")
+  .option('--prompt-cache <on|off>', 'deep only: Anthropic prompt caching on or off for the run')
+  .option(
+    '--handoff <on|off>',
+    'deep only: run the handoff task with its handoff layer, or without',
+  )
   .action(evalCommand);
 
 program

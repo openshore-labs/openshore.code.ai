@@ -125,7 +125,19 @@ export class AnthropicProvider implements Provider {
       stream: true,
       messages,
     };
-    if (system) body.system = system;
+    // Prompt caching (Vault M5, CTO J17), off unless this endpoint says
+    // 'auto'. Off sends `system` as the one string it always was. On splits it
+    // where the stable head ends (`ChatMessage.cacheAt`), marks the head, and
+    // turns on automatic caching so the tool loop's growing history is
+    // cached too. A prefix under the model's minimum simply does not cache.
+    const cache = promptCacheOn(this.endpoint);
+    if (cache) {
+      const blocks = anthropicSystemBlocks(request.messages);
+      if (blocks.length) body.system = blocks;
+      body.cache_control = { type: 'ephemeral' };
+    } else if (system) {
+      body.system = system;
+    }
     // Chain of Thought on: ask Claude to think, with room for it in max_tokens.
     // Thinking does not take a custom temperature, so none is sent. Off (or
     // unset) sends no thinking parameter, the model's own default, and a
@@ -224,6 +236,7 @@ export class AnthropicProvider implements Provider {
                   type: 'usage',
                   promptTokens: Number(evt.message.usage.input_tokens ?? 0),
                   completionTokens: Number(evt.message.usage.output_tokens ?? 0),
+                  ...cacheUsage(evt.message.usage),
                 };
               }
               break;
@@ -341,6 +354,91 @@ export function claudeAcceptsTemperature(model: string): boolean {
     /(opus|sonnet)-4-[0156](-|$)/.test(m) ||
     /(opus|sonnet)-4-\d{8}/.test(m)
   );
+}
+
+/** Whether an endpoint asks for prompt caching. Unset reads off, like
+ *  `numCtx`; the default flips only on the eval record (CTO J19). */
+export function promptCacheOn(endpoint: Pick<AnthropicEndpoint, 'promptCache'>): boolean {
+  return endpoint.promptCache === 'auto';
+}
+
+/** The most system blocks one request marks. The API allows four cache
+ *  breakpoints per request; automatic caching takes one for the history,
+ *  so the system prompt keeps to two and one stays spare. */
+export const SYSTEM_CACHE_MARKS_MAX = 2;
+
+/** A system text block as the Messages API takes it. */
+export interface AnthropicSystemBlock {
+  type: 'text';
+  text: string;
+  cache_control?: { type: 'ephemeral' };
+}
+
+/**
+ * The system prompt as cacheable text blocks (CTO J17). The system messages
+ * join exactly as `toAnthropicMessages` joins them, so the text the model
+ * reads is byte-identical to the string form; the only difference is where
+ * the blocks break. Each message's `cacheAt` offsets (relative to that
+ * message's own text) mark where a stable head ends: the text splits there,
+ * and every block but the last carries `cache_control`, at most
+ * `SYSTEM_CACHE_MARKS_MAX` of them. An offset at either end, out of range, or
+ * one that would leave a block of only whitespace (the API refuses an empty
+ * text block) is skipped. No offset at all gives one marked block: the whole
+ * prompt is the stable head. Empty when there is no system text.
+ */
+export function anthropicSystemBlocks(messages: ChatMessage[]): AnthropicSystemBlock[] {
+  let text = '';
+  const cuts: number[] = [];
+  for (const m of messages) {
+    if (m.role !== 'system') continue;
+    const part =
+      typeof m.content === 'string'
+        ? m.content
+        : (m.content.find((p) => p.type === 'text')?.text ?? '');
+    const base = text ? text.length + 2 : 0;
+    text = text ? `${text}\n\n${part}` : part;
+    for (const at of m.cacheAt ?? []) {
+      if (Number.isInteger(at) && at > 0 && at < part.length) cuts.push(base + at);
+    }
+  }
+  if (!text) return [];
+  const sorted = [...new Set(cuts)].sort((a, b) => a - b);
+  const kept: number[] = [];
+  let from = 0;
+  for (const at of sorted) {
+    if (kept.length >= SYSTEM_CACHE_MARKS_MAX) break;
+    if (!text.slice(from, at).trim() || !text.slice(at).trim()) continue;
+    kept.push(at);
+    from = at;
+  }
+  if (!kept.length) return [{ type: 'text', text, cache_control: { type: 'ephemeral' } }];
+  const blocks: AnthropicSystemBlock[] = [];
+  let start = 0;
+  for (const at of kept) {
+    blocks.push({
+      type: 'text',
+      text: text.slice(start, at),
+      cache_control: { type: 'ephemeral' },
+    });
+    start = at;
+  }
+  blocks.push({ type: 'text', text: text.slice(start) });
+  return blocks;
+}
+
+/** The cache fields of an Anthropic usage object, read back when present
+ *  (reads are `cache_read_input_tokens`, writes `cache_creation_input_tokens`;
+ *  both sit beside `input_tokens`, which counts only the uncached rest). */
+export function cacheUsage(usage: Record<string, unknown>): {
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+} {
+  const out: { cacheReadTokens?: number; cacheWriteTokens?: number } = {};
+  const read = usage.cache_read_input_tokens;
+  const write = usage.cache_creation_input_tokens;
+  if (typeof read === 'number' && Number.isFinite(read)) out.cacheReadTokens = read;
+  if (typeof write === 'number' && Number.isFinite(write)) out.cacheWriteTokens = write;
+  return out;
 }
 
 /** The hint for an error delivered inside the SSE stream, keyed on its type.

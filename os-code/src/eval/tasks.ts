@@ -10,6 +10,7 @@
 // runner, so this module never imports a provider or the agent.
 import { execFileSync } from 'node:child_process';
 import { buildVaultFixture, VAULT_CONVENTION, VAULT_DECISION } from './vaultFixture.js';
+import type { HandoffTurn } from '../harness/handoff.js';
 
 /** What a task checker sees: the workspace after the agent ran, and the
  *  agent's final answer text. */
@@ -42,6 +43,23 @@ export interface EvalTask {
    *  workspace, never inside it) before the agent runs, as a map of
    *  vault-relative path to markdown. Absent on a task that needs no vault. */
   vault?: Record<string, string>;
+  /** A scripted earlier chat (Vault M5, CTO J13): the drive builds a handoff
+   *  from it with the harness's own `buildHandoff` and hands it to the pack's
+   *  handoff layer on the first send, the way the next day reads the one the
+   *  last session wrote. It never reaches the workspace, the vault, or the
+   *  prompt, so the handoff is the only place its decision lives. Absent on
+   *  a task with no earlier chat. */
+  handoff?: EvalHandoff;
+}
+
+/** The earlier chat a handoff task continues from. */
+export interface EvalHandoff {
+  turns: readonly HandoffTurn[];
+  /** The model that held the earlier chat, as the HANDOFF line names it. */
+  from: string;
+  /** The date the handoff was written (YYYY-MM-DD). Fixed, so the bytes are
+   *  the same on every run. */
+  date: string;
 }
 
 /** Where a task's verify script lands inside the workspace. */
@@ -269,7 +287,7 @@ function syncExitCode(cwd: string): number {
   }
 }
 
-export const EVAL_VAULT_TASKS: EvalTask[] = [
+const VAULT_NOTE_TASKS: EvalTask[] = [
   {
     id: 'vault-recall-convention',
     title: 'Recall a convention from the vault',
@@ -312,3 +330,112 @@ export const EVAL_VAULT_TASKS: EvalTask[] = [
     ].join('\n'),
   },
 ];
+
+// The handoff task (Vault M5, CTO J13 and J19). An earlier chat settled a
+// value, and the only record of it the next session sees is the handoff built
+// from that chat: the workspace holds the old value, the prompt names no
+// number, the vault is empty, and the check prints no value. So a run with the
+// handoff layer can finish the job and a run without it can only guess, which
+// is the with and without pair behind "picks up where you left off" (D12).
+// Sandbox only: the handoff is built in the drive, never read from or written
+// to the person's own handoff store.
+
+/** The values the handoff task turns on: the workspace's `start`, the one
+ *  the earlier chat settled on (`right`), and the option it weighed and
+ *  passed over (`other`), which the grader names when a run takes it. */
+export const HANDOFF_DECISION = { start: 60, right: 5400, other: 3600 } as const;
+
+const CACHE_START = [
+  `export const CACHE_TTL_SECONDS = ${HANDOFF_DECISION.start};`,
+  '',
+  'export function expiresAt(now) {',
+  '  return now + CACHE_TTL_SECONDS * 1000;',
+  '}',
+  '',
+].join('\n');
+
+/** The earlier chat, scripted. Its decision line and its closing line both
+ *  carry the settled value, the lines the handoff's Decisions and Next step
+ *  extract; the passed-over option sits only in a line that is neither. */
+export const HANDOFF_HISTORY: readonly HandoffTurn[] = [
+  {
+    role: 'user',
+    text: 'The session cache in cache.mjs expires too fast. Work out a better TTL with me before we change anything.',
+    paths: ['cache.mjs'],
+  },
+  {
+    role: 'assistant',
+    text: `The sessions in the traffic numbers you shared run up to about an hour and a half. Two options fit: ${HANDOFF_DECISION.other} or ${HANDOFF_DECISION.right} seconds.`,
+  },
+  { role: 'user', text: 'Ninety minutes matches the longest sessions. Go with that.' },
+  {
+    role: 'assistant',
+    text: [
+      `Decided: CACHE_TTL_SECONDS goes to ${HANDOFF_DECISION.right} (ninety minutes). We will change only that constant; expiresAt stays as it is.`,
+      `Next step: set CACHE_TTL_SECONDS to ${HANDOFF_DECISION.right} in cache.mjs.`,
+    ].join('\n'),
+    paths: ['cache.mjs'],
+  },
+];
+
+const CACHE_CHECK = [
+  "const m = await import('./cache.mjs');",
+  `if (m.CACHE_TTL_SECONDS === ${HANDOFF_DECISION.other}) process.exit(3);`,
+  `if (m.CACHE_TTL_SECONDS === ${HANDOFF_DECISION.right} && m.expiresAt(0) === ${HANDOFF_DECISION.right * 1000}) process.exit(0);`,
+  'process.exit(1);',
+].join(' ');
+
+function cacheExitCode(cwd: string): number {
+  try {
+    execFileSync('node', ['--input-type=module', '-e', CACHE_CHECK], {
+      cwd,
+      stdio: 'ignore',
+      timeout: 10_000,
+    });
+    return 0;
+  } catch (err) {
+    const status = (err as { status?: number | null }).status;
+    return typeof status === 'number' ? status : 1;
+  }
+}
+
+export const EVAL_HANDOFF_TASKS: EvalTask[] = [
+  {
+    id: 'vault-continue-handoff',
+    title: 'Continue from a handoff',
+    category: 'edit',
+    files: { 'cache.mjs': CACHE_START },
+    // An empty vault, not none: the engine renders the pack's full layers,
+    // the handoff among them, only for a session with a vault root.
+    vault: {},
+    handoff: { turns: HANDOFF_HISTORY, from: 'an earlier model', date: '2026-09-26' },
+    prompt:
+      'Pick up where we left off yesterday: set CACHE_TTL_SECONDS in cache.mjs to the value we settled on. Change nothing else.',
+    async check({ cwd }) {
+      const code = cacheExitCode(cwd);
+      if (code === 0)
+        return { score: 1, detail: 'CACHE_TTL_SECONDS matches the handed-over decision' };
+      if (code === 3) {
+        return { score: 0, detail: 'took the option the earlier chat passed over' };
+      }
+      return { score: 0, detail: 'CACHE_TTL_SECONDS wrong, or cache.mjs broken' };
+    },
+    // The shape only, never the value, as with follow-link.
+    verifyScript: [
+      'let ok = true;',
+      'let m;',
+      "try { m = await import('./cache.mjs'); } catch (err) { console.error('FAIL: cache.mjs does not run: ' + err.message); process.exit(1); }",
+      "if (!Number.isInteger(m.CACHE_TTL_SECONDS)) { console.error('FAIL: cache.mjs must export CACHE_TTL_SECONDS as a whole number'); ok = false; }",
+      "else if (typeof m.expiresAt !== 'function' || m.expiresAt(0) !== m.CACHE_TTL_SECONDS * 1000) { console.error('FAIL: expiresAt must be left as it was'); ok = false; }",
+      "if (ok) console.log('PASS');",
+      'process.exit(ok ? 0 : 1);',
+      '',
+    ].join('\n'),
+  },
+];
+
+/** The vault suite (4.8): the two note tasks and the handoff task. A
+ *  vault-pack run measures all three with the whole pack or none; a handoff
+ *  run measures the handoff task with the pack and with or without its
+ *  handoff layer. */
+export const EVAL_VAULT_TASKS: EvalTask[] = [...VAULT_NOTE_TASKS, ...EVAL_HANDOFF_TASKS];
