@@ -7,11 +7,20 @@
 // or the paired hub over `GET /vault/privacy`. An unpaired phone uses the D5
 // defaults. The device setting only ever narrows, and nothing loaded means the
 // D5 defaults, never no rules at all (fail closed).
+//
+// The vault's own `.oscode/vault.json` (Vault M7, CTO L4) narrows too: its
+// lists join the device setting's through the core's `unionNarrowing`, so
+// the rules are `compileVaultPrivacy(source, unionNarrowing(device, file))`.
+// Union only: an empty list in the file can never drop a D5, machine or
+// device entry. The loader (lib/vaultSettings.ts) hands the last good
+// narrowing when the file cannot be read, never none.
 import {
   VAULT_PRIVACY_ROUTE,
   compileVaultPrivacy,
+  unionNarrowing,
   type VaultPrivacy,
   type VaultPrivacyConfig,
+  type VaultPrivacyNarrowing,
 } from 'os-code/protocol';
 import { VAULT_PRIVACY_DEFAULTS, type VaultPrivacySetting } from '../state/types.js';
 import { nativeFetch } from './nativeFetch.js';
@@ -31,6 +40,11 @@ export interface AppVaultPrivacyDeps {
   /** Where the hub's last answer is kept, sealed (default: none, so a failed
    *  fetch reads D5 alone). `hubPrivacyCache` is the device store. */
   cache?: PrivacyCache;
+  /** The in-vault file's narrowing (`ResolvedVaultSettings.narrowing` from
+   *  `loadVaultSettings`), union-only on top of everything else. */
+  vault?: VaultPrivacyNarrowing;
+  /** The core's union (tests pass their own); default os-code/protocol's. */
+  union?: (...parts: Array<VaultPrivacyNarrowing | undefined>) => VaultPrivacyNarrowing;
 }
 
 /** The last privacy answer a hub gave, kept for when it is out of reach. */
@@ -121,8 +135,21 @@ async function sourceRules(deps: AppVaultPrivacyDeps): Promise<VaultPrivacyConfi
  */
 export async function appVaultPrivacy(deps: AppVaultPrivacyDeps = {}): Promise<VaultPrivacy> {
   const source = await sourceRules(deps);
-  const device = readPrivacyConfig(deps.device);
-  return compileVaultPrivacy(source, device ?? undefined);
+  const device = readPrivacyConfig(deps.device) ?? undefined;
+  if (!hasEntries(deps.vault)) return compileVaultPrivacy(source, device);
+  const union = deps.union ?? unionNarrowing;
+  return compileVaultPrivacy(source, union(device, deps.vault));
+}
+
+/** Whether a narrowing adds anything (an empty one changes no rule, so the
+ *  compile stays exactly as it was before M7). */
+function hasEntries(n: VaultPrivacyNarrowing | undefined): n is VaultPrivacyNarrowing {
+  return Boolean(
+    n &&
+    ((n.exclude?.length ?? 0) > 0 ||
+      (n.localOnly?.paths?.length ?? 0) > 0 ||
+      (n.localOnly?.tags?.length ?? 0) > 0),
+  );
 }
 
 /** A paired hub's privacy source: `GET /vault/privacy` with the pairing's

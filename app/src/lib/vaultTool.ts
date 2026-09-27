@@ -10,9 +10,18 @@
 // `LOCAL_ONLY_STUB` (I5). A write is never made here: `vaultPropose` queues a
 // proposal and the driver shows every queued write on one card at the end of
 // the send (D4).
+//
+// Vault M7 (CTO L2, L8): a model never writes under `.oscode/` (the vault's
+// settings are the person's), refused at propose on the typed path and again
+// at approve on the path the write would really land on
+// (`vaultApproveRefusal`); and where the vault's settings name an agent
+// folder, a proposal outside it is refused and the tool's description names
+// the folder.
 import {
   VAULT_TOOL_TEXT,
   deriveProfile,
+  foldPath,
+  isAgentWritablePath,
   isNotePath,
   normalizeNotePath,
   oscodeMarks,
@@ -21,6 +30,7 @@ import {
 } from 'os-code/protocol';
 import type { ModelClass, OscodeMark, VaultPrivacy, VaultVisibility } from 'os-code/protocol';
 import type { PackSeat } from '../drivers/types.js';
+import { VAULT_SETTINGS_AGENT_DENY } from './vaultCopy.js';
 
 /** The vault tools an app seat may be offered. */
 export type AppVaultToolName = 'vaultSearch' | 'vaultRead' | 'vaultLookup' | 'vaultPropose';
@@ -80,6 +90,9 @@ export interface VaultToolContext {
    *  [[wikilink]] would (the index's resolver). Absent, only exact paths
    *  read and a miss offers search suggestions. */
   resolve?: (name: string) => Promise<string | undefined>;
+  /** The vault's `agent.folder` (Vault M7, CTO L2): a proposal outside it is
+   *  refused. Absent: anywhere in the vault. */
+  agentFolder?: string;
 }
 
 /** A tool result. `localOnly` marks a local-only read on a local seat, so
@@ -136,27 +149,46 @@ const SCHEMAS: Record<AppVaultToolName, Record<string, unknown>> = {
   },
 };
 
+/** A tool's description; `vaultPropose` names the agent folder when the
+ *  vault's settings set one (CTO L2). */
+export function vaultToolDescription(name: AppVaultToolName, agentFolder?: string): string {
+  const base = VAULT_TOOL_TEXT[name];
+  const folder = agentFolder ? cleanFolder(agentFolder) : undefined;
+  if (name !== 'vaultPropose' || !folder) return base;
+  return `${base} This vault's settings let you write only inside the folder "${folder}/", so propose paths there.`;
+}
+
 /** A tool as offered to an Anthropic model. */
-export function vaultAnthropicTool(name: AppVaultToolName): {
+export function vaultAnthropicTool(
+  name: AppVaultToolName,
+  agentFolder?: string,
+): {
   name: AppVaultToolName;
   description: string;
   input_schema: { type: 'object' } & Record<string, unknown>;
 } {
   return {
     name,
-    description: VAULT_TOOL_TEXT[name],
+    description: vaultToolDescription(name, agentFolder),
     input_schema: SCHEMAS[name] as { type: 'object' } & Record<string, unknown>,
   };
 }
 
 /** The same tool in OpenAI / BYOM function-calling shape. */
-export function vaultOpenAiTool(name: AppVaultToolName): {
+export function vaultOpenAiTool(
+  name: AppVaultToolName,
+  agentFolder?: string,
+): {
   type: 'function';
   function: { name: AppVaultToolName; description: string; parameters: Record<string, unknown> };
 } {
   return {
     type: 'function',
-    function: { name, description: VAULT_TOOL_TEXT[name], parameters: SCHEMAS[name] },
+    function: {
+      name,
+      description: vaultToolDescription(name, agentFolder),
+      parameters: SCHEMAS[name],
+    },
   };
 }
 
@@ -306,6 +338,62 @@ function flag(content: string, local: boolean): VaultToolResult {
 
 // ---------------------------------------------------------------------------
 // Paths
+
+/** A folder setting in its plain spelling: `/` separated, no empty, `.` or
+ *  surrounding slash segments. */
+function cleanFolder(folder: string): string {
+  return folder
+    .replace(/\\/g, '/')
+    .split('/')
+    .map((s) => s.trim())
+    .filter((s) => s && s !== '.')
+    .join('/');
+}
+
+/** Whether a typed or resolved path names the settings folder (any case,
+ *  any segment), so the refusal can say why in the person's words. */
+function namesSettingsFolder(path: string): boolean {
+  return path
+    .replace(/\\/g, '/')
+    .split('/')
+    .some((seg) => seg.trim().normalize('NFC').toLowerCase() === '.oscode');
+}
+
+/** Why a model may not write at this path, or undefined when it may (CTO
+ *  L2, L8): anything under `.oscode/` (or any dot folder, or a rooted or
+ *  empty path) is refused with the tool card's reason, and a path outside
+ *  the vault's agent folder is refused by name. */
+export function vaultAgentWriteRefusal(path: string, agentFolder?: string): string | undefined {
+  if (namesSettingsFolder(path)) return VAULT_SETTINGS_AGENT_DENY;
+  if (!isAgentWritablePath(path)) {
+    return 'Note paths cannot start with a slash or name a dot folder. Propose a plain path inside the vault.';
+  }
+  const folder = agentFolder ? cleanFolder(agentFolder) : '';
+  if (folder) {
+    const want = `${foldPath(folder)}/`;
+    const got = foldPath(cleanFolder(path));
+    if (!got.startsWith(want)) {
+      return `This vault's settings let a model write only inside "${folder}/", so ${path} was not proposed. Propose a path inside that folder.`;
+    }
+  }
+  return undefined;
+}
+
+/** The approve step's check (CTO L8), run again right before each approved
+ *  write: on the proposal's path and, when the storage can say where the
+ *  write would really land (a symlink, a case fold), on that path too. A
+ *  refusal writes nothing for that proposal. */
+export function vaultApproveRefusal(
+  proposal: Pick<VaultProposal, 'path'>,
+  opts: { realPath?: string; agentFolder?: string } = {},
+): string | undefined {
+  return (
+    vaultAgentWriteRefusal(proposal.path, opts.agentFolder) ??
+    (opts.realPath !== undefined
+      ? vaultAgentWriteRefusal(opts.realPath, opts.agentFolder)
+      : undefined)
+  );
+}
 
 /** A typed note name in its plain spelling: trimmed, separators collapsed,
  *  .md appended when absent. Throws a plain error for a dot-led segment. */
@@ -533,12 +621,19 @@ async function runPropose(
   ctx: VaultToolContext,
   input: VaultProposeInput,
 ): Promise<VaultToolResult> {
+  // The settings folder first, in the person's words, before the note-name
+  // rule below would call it a dot name.
+  if (namesSettingsFolder(input.path)) {
+    return { content: VAULT_SETTINGS_AGENT_DENY, isError: true };
+  }
   let rel: string;
   try {
     rel = plainNotePath(input.path);
   } catch (err) {
     return { content: err instanceof Error ? err.message : String(err), isError: true };
   }
+  const refused = vaultAgentWriteRefusal(rel, ctx.agentFolder);
+  if (refused) return { content: refused, isError: true };
   if (input.text.length > VAULT_PROPOSAL_MAX_CHARS) {
     return {
       content: `That text is ${input.text.length} characters, more than one proposal takes (${VAULT_PROPOSAL_MAX_CHARS}). Propose a shorter note.`,

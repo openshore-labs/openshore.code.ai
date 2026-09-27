@@ -2001,6 +2001,254 @@ export const VAULT_TODAY_FAILED = "Could not open today's note. Try again in a m
 // Delete choice, excluded and local-only folders, Your agent writes in, the
 // Wayfinding rows and toasts, and the starter layout's notes and lines.
 
+/** The sheet's title, and the Wayfinding and Options rows that open it. */
+export const VAULT_SETTINGS_TITLE = 'Vault settings';
+
+/** The seven sections, in CX Y1's order (what people change most and what
+ *  models see first; where it lives last). */
+export const VAULT_SETTINGS_SECTIONS = Object.freeze({
+  notes: 'Notes',
+  models: 'Models and your notes',
+  device: 'On this device',
+  today: "Today's note",
+  links: 'Links and files',
+  editor: 'Editor',
+  where: 'Where it lives',
+} as const);
+
+/** Row labels, section by section (CX Y1, Y7 to Y10). */
+export const VAULT_SETTINGS_ROWS = Object.freeze({
+  newNotes: 'New notes go in',
+  openMode: 'Open notes in',
+  sort: 'Sort notes by',
+  delete: 'Delete',
+  exclude: 'Notes models never see',
+  localOnly: 'Notes that stay on this computer',
+  agentFolder: 'Your agent writes in',
+  context: 'Notes in chats',
+  packSize: 'Room for notes',
+  handoff: 'Handoff',
+  dailyFolder: 'Folder',
+  dateFormat: 'Date format',
+  template: 'Template',
+  templatesFolder: 'Templates folder',
+  linkStyle: 'New links use',
+  linkFormat: 'Link paths',
+  attachments: 'Attachments folder',
+  font: 'Font',
+  size: 'Text size',
+  where: 'Where it lives',
+} as const);
+
+/** Each choice a segmented row or a picker offers, by the schema's value. */
+export const VAULT_SETTINGS_CHOICES = Object.freeze({
+  newNotes: { root: 'Top of this vault', current: 'Same folder as the open note' },
+  openMode: { read: 'Reading', edit: 'Editing' },
+  sort: { name: 'Name', modified: 'Last edited', created: 'Created' },
+  delete: { trash: 'To Trash', permanent: 'For good' },
+  packSize: { small: 'Small', normal: 'Normal', large: 'Large' },
+  linkStyle: { wiki: 'Wikilinks', markdown: 'Markdown links' },
+  linkFormat: { shortest: 'Shortest', relative: 'Relative', absolute: 'From the top' },
+  font: { default: 'Default', serif: 'Serif', mono: 'Mono' },
+  size: { smaller: 'Smaller', default: 'Default', larger: 'Larger' },
+} as const);
+
+/** A field's name in the conflict line ("{Field} changed somewhere else"),
+ *  keyed like `VAULT_SETTINGS_FIELDS`. The four rows the sheet calls only
+ *  "Folder", "Template" and the like say which note they belong to here. */
+export const VAULT_SETTINGS_FIELD_LABELS = Object.freeze({
+  'newNotes.location': 'New notes go in',
+  'newNotes.folder': 'New notes go in',
+  'editor.openMode': 'Open notes in',
+  'tree.sort': 'Sort notes by',
+  delete: 'Delete',
+  exclude: 'Notes models never see',
+  'localOnly.paths': 'Notes that stay on this computer',
+  'localOnly.tags': 'Notes that stay on this computer',
+  'agent.folder': 'Your agent writes in',
+  'daily.folder': "Today's note folder",
+  'daily.format': 'Date format',
+  'daily.template': "Today's note template",
+  'templates.folder': 'Templates folder',
+  'templates.dateFormat': 'Templates date format',
+  'templates.timeFormat': 'Templates time format',
+  'links.style': 'New links use',
+  'links.format': 'Link paths',
+  'links.updateOnRename': 'Links on rename',
+  'attachments.folder': 'Attachments folder',
+  'editor.font': 'Font',
+  'editor.size': 'Text size',
+} as const);
+
+/** `Date format`'s live line under the field. */
+export function vaultSettingsTodayIs(formatted: string): string {
+  return `Today: ${formatted}`;
+}
+
+// Y1 footers, one per storage (Team is Y14's).
+/** A folder, iCloud or Your computer: the file travels with the notes. */
+export const VAULT_SETTINGS_FOOTER_FILE =
+  'These settings are kept in .oscode/vault.json, so they travel with your notes.';
+/** Local: the sealed store. */
+export const VAULT_SETTINGS_FOOTER_LOCAL =
+  'These settings are kept on this device with your notes.';
+
+// Y2: what Obsidian sets is read here and changed there.
+export const VAULT_SETTINGS_FROM_OBSIDIAN = 'From Obsidian';
+export const VAULT_SETTINGS_FROM_OBSIDIAN_MORE =
+  'Set in Obsidian. Change it there, and OpenShore follows.';
+/** A field Obsidian leaves unset, in a vault that has `.obsidian/`. */
+export const VAULT_SETTINGS_OBSIDIAN_OWN = 'Obsidian keeps its own setting for this.';
+export const VAULT_SETTINGS_OBSIDIAN_EXCLUDED = 'Excluded in Obsidian';
+export const VAULT_SETTINGS_OBSIDIAN_EXCLUDED_SUB =
+  'Left out of search and link suggestions here too.';
+
+// Y3: what the vault file cannot widen.
+export const VAULT_SETTINGS_FROM_MACHINE = "From your computer's config";
+export const VAULT_SETTINGS_BUILT_IN = "Built in. Only your computer's config can change these.";
+/** Section 3's own footer. */
+export const VAULT_SETTINGS_DEVICE_FOOTER =
+  'These stay on this device and never travel with your notes, so a shared folder cannot change them.';
+
+/** One quiet line per ask the file may not make, around the schema's
+ *  `plain` fragment (CTO L1). No warn color: a set-aside is the system
+ *  working. */
+export function vaultSettingsSetAside(plain: string): string {
+  return `This vault's settings file also asks to ${plain}. A settings file can only narrow what models see, so that part is set aside.`;
+}
+
+/** The tool card's reason for a write under `.oscode/` (CTO L8). */
+export const VAULT_SETTINGS_AGENT_DENY =
+  'Vault settings are yours to change, so a model cannot write under .oscode.';
+
+// Y5: saving on commit, and a conflict.
+export const VAULT_SETTINGS_SAVING = 'Saving';
+export const VAULT_SETTINGS_SAVED = 'Saved';
+/** Once, on the first change in a folder vault with no file yet. */
+export const VAULT_SETTINGS_FIRST_CHANGE =
+  'The first change adds a small .oscode folder beside your notes to keep these settings.';
+/** A different field changed elsewhere: this one was re-applied and saved. */
+export const VAULT_SETTINGS_MERGED =
+  'Saved. Some other settings changed somewhere else and show here now.';
+
+/** The same field changed elsewhere: nothing was written. */
+export function vaultSettingsSameField(field: string, value: string): string {
+  return `${field} changed somewhere else while this was open, so yours was not saved. It is ${value} now.`;
+}
+
+/** The one quiet button under a same-field conflict. */
+export function vaultSettingsUseYours(yours: string): string {
+  return `Use ${yours}`;
+}
+
+export const VAULT_SETTINGS_FAILED =
+  'Could not save that setting, so nothing changed. Try again in a moment.';
+export const VAULT_SETTINGS_UNREADABLE =
+  '.oscode/vault.json could not be read, so these show the defaults and cannot change here. Fix or delete that file to change them.';
+export const VAULT_SETTINGS_AWAY =
+  'Your computer is off, so these settings cannot change right now.';
+
+// Y6: the Delete choice.
+export const VAULT_SETTINGS_DELETE_FOR_GOOD = 'Deletes skip Trash and ask twice.';
+
+// Y7: Notes in chats and Handoff.
+/** The words the Notes in chats sub is built from, so the sub can never
+ *  outrun the eval: it names matching notes only when some class's pack
+ *  retrieves (`full` in PACK_BY_CLASS). Pass the core's table. */
+export function vaultNotesInChatsSub(byClass: Readonly<Record<string, string>>): string {
+  const modes = Object.values(byClass);
+  const all = modes.length > 0 && modes.every((m) => m === 'full');
+  const some = modes.some((m) => m === 'full');
+  const what = all
+    ? "Each chat starts with this project's Current State, any notes you pinned, and notes that match the task."
+    : some
+      ? "Each chat starts with this project's Current State and any notes you pinned, and on some models notes that match the task."
+      : "Each chat starts with this project's Current State and any notes you pinned.";
+  return `${what} A card shows what went. Off applies to new chats.`;
+}
+export const VAULT_HANDOFF_SUB =
+  'When you switch models in a chat, the next one starts with a short summary of the work so far. Off applies to new chats.';
+/** A project's config turns the row off: the switch shows off, disabled. */
+export const VAULT_SWITCH_PROJECT_OFF = "This project's settings turn this off.";
+/** Memory off: both rows disabled. */
+export const VAULT_SWITCH_MEMORY_OFF = 'Memory is off, so chats carry no notes.';
+/** Memory's own sub, now that it gates the vault too (CX Y7; the
+ *  integrator places it on the Memory row). */
+export const VAULT_MEMORY_SUB =
+  "The agent keeps notes on each coding project in that project's own repository, and chats can carry your vault. Off stops both, for new chats.";
+
+/** The Wayfinding toasts, in the Memory row's pattern. */
+export function vaultNotesInChatsToast(on: boolean): string {
+  return on ? 'Notes in chats on.' : 'Notes in chats off.';
+}
+export function vaultHandoffToast(on: boolean): string {
+  return on ? 'Handoff on.' : 'Handoff off.';
+}
+
+// Y8: Room for notes. No numbers and no speed or quality claim (D12).
+/** Adapted from CX's "so a smaller model always gets less": M7_BANNED bars
+ *  "always", and the sentence holds without it. */
+export const VAULT_PACK_SIZE_SUB =
+  "How much of each model's room your notes may take. It scales with the model, so a smaller model gets less.";
+/** Amber dot, only while a cloud seat is connected: a spend fact. */
+export const VAULT_PACK_SIZE_CLOUD = 'On a cloud model, Large sends more text on your account.';
+export const VAULT_PACK_SIZE_NEEDS_CONTEXT = 'Turn on Notes in chats to choose this.';
+export const VAULT_PACK_SIZE_MACHINE_ABOVE =
+  "Your computer's config gives notes more room than Large.";
+
+// Y9: excluded and local-only folders.
+export const VAULT_EXCLUDE_SUB = 'Models never see these, in any chat.';
+export const VAULT_LOCAL_ONLY_SUB =
+  'A local model may read these. Nothing here goes to a cloud model.';
+export const VAULT_ADD_FOLDER = 'Add a folder';
+export const VAULT_ADD_TAG = 'Add a tag';
+export function vaultRemoveEntry(entry: string): string {
+  return `Remove ${entry}`;
+}
+
+// Y10: Your agent writes in (only where `vaultCopy(...).agent` is defined).
+export const VAULT_AGENT_FOLDER_ANYWHERE = 'Anywhere in this vault';
+export const VAULT_AGENT_FOLDER_SUB = 'Your agent writes only here, and still asks first.';
+
+// Y13: the starter layout (the preview sheet's rows are stream G's).
+/** The ramp's second button, where the layout is offered. */
+export const VAULT_STARTER_OFFER = 'Start with a simple layout';
+/** The preview's one line on settings, shown only when the settings file
+ *  will be written. */
+export const VAULT_STARTER_SETTINGS_LINE =
+  "New notes go in Inbox, and today's note uses Templates/Daily.";
+export const VAULT_STARTER_ADDED = 'Added a simple layout.';
+export function vaultStarterPartial(added: number, total: number): string {
+  return `Added ${added} of ${total}. Try again to add the rest.`;
+}
+
+/** `Templates/Daily.md`: no `{{date}}` heading, since the file name is the
+ *  date. */
+export function vaultStarterDailyTemplate(): string {
+  return ['## Plan', '', '- [ ] ', '', '## Notes', ''].join('\n');
+}
+
+/** `Vault conventions.md`. It travels, so like the welcome note it names no
+ *  storage, no Obsidian and no agent. The Private and Journal line is here
+ *  only when the vault's own settings file landed with those globs (CTO
+ *  reconciliation 3): machine config can replace the D5 defaults, but it
+ *  cannot remove the vault file's union. */
+export function vaultStarterConventions(settingsLanded: boolean): string {
+  return [
+    '# Vault conventions',
+    '',
+    'New notes start in Inbox. Move them into a folder when they find a home.',
+    '',
+    "Today's note uses Templates/Daily. Edit that note to change what every new day starts with.",
+    '',
+    'Link notes with [[two square brackets]].',
+    ...(settingsLanded
+      ? ['', "This vault's settings keep anything in Private or Journal off cloud models."]
+      : []),
+    '',
+  ].join('\n');
+}
+
 // ---- M7 stream F end ----
 
 // ---- M7 stream G begin ----

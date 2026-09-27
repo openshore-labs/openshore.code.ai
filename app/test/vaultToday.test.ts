@@ -6,9 +6,22 @@
 // refused by name, and the config is read at most once a minute.
 //
 // The date core (harness/vault/dates.ts) is stream A2's; a small fake stands
-// in for it here, injected through `dates`.
+// in for it here, injected through `dates`. Since Vault M7 the config comes
+// through the settings loader (lib/vaultSettings.ts); its resolver is M7
+// stream A's, so a fake with L3's precedence for the daily fields (Obsidian,
+// then the vault's own file, then the defaults) is injected through
+// `settingsCore`.
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { DailyNoteConfig, DateParts, TemplateFill } from 'os-code/protocol';
+import type {
+  ConfigRead,
+  DailyNoteConfig,
+  DateParts,
+  ResolvedVaultSettings,
+  TemplateFill,
+  VaultSettingsReads,
+} from 'os-code/protocol';
+import { readDailyNotesConfig, readTemplatesConfig } from '../src/lib/gitos/config.js';
+import type { VaultSettingsCore } from '../src/lib/vaultSettings.js';
 import {
   VAULT_TODAY_CONFIG_TTL_MS,
   clearVaultTodayCache,
@@ -18,6 +31,7 @@ import {
   type VaultTodayDeps,
 } from '../src/lib/vaultToday.js';
 import { vaultTodayAria } from '../src/lib/vaultCopy.js';
+import { clearVaultSettingsCache, resetVaultSettingsForTests } from '../src/lib/vaultSettings.js';
 
 const SUNDAY: DateParts = {
   year: 2026,
@@ -68,6 +82,40 @@ const dates: VaultTodayDates = {
       ),
 };
 
+function fileJson(read: ConfigRead): Record<string, Record<string, string>> {
+  if (!read.ok) return {};
+  try {
+    return JSON.parse(read.text) as Record<string, Record<string, string>>;
+  } catch {
+    return {};
+  }
+}
+
+/** L3 for the daily fields only: Obsidian, then the vault file, then the
+ *  defaults. */
+const settingsCore: VaultSettingsCore = {
+  resolve(reads: VaultSettingsReads) {
+    const od = readDailyNotesConfig(reads.daily);
+    const ot = readTemplatesConfig(reads.templates);
+    const f = fileJson(reads.file);
+    const template = od.template ?? f.daily?.template;
+    return {
+      daily: {
+        folder: od.folder ?? f.daily?.folder ?? '',
+        format: od.format ?? f.daily?.format ?? 'YYYY-MM-DD',
+        ...(template ? { template } : {}),
+      },
+      templates: {
+        dateFormat: ot.dateFormat ?? f.templates?.dateFormat ?? 'YYYY-MM-DD',
+        timeFormat: ot.timeFormat ?? f.templates?.timeFormat ?? 'HH:mm',
+      },
+      narrowing: {},
+      fileState: reads.file.ok ? 'ok' : 'absent',
+    } as unknown as ResolvedVaultSettings;
+  },
+  patch: () => undefined,
+};
+
 function vault(config: Record<string, unknown>, bodies: Record<string, string> = {}) {
   const calls = { config: [] as string[], reads: [] as string[] };
   let clock = Date.UTC(2026, 8, 27, 9, 5);
@@ -89,11 +137,12 @@ function vault(config: Record<string, unknown>, bodies: Record<string, string> =
     },
     now: () => new Date(clock),
     dates,
+    settingsCore,
   };
   return { deps, calls, advance: (ms: number) => (clock += ms) };
 }
 
-beforeEach(() => clearVaultTodayCache());
+beforeEach(() => resetVaultSettingsForTests());
 
 describe("today's note path", () => {
   it('uses the vault root and YYYY-MM-DD when Obsidian says nothing', async () => {
@@ -188,26 +237,79 @@ describe("today's template", () => {
 });
 
 describe("today's budget", () => {
-  it('reads the config at most once a minute, three provider calls at most', async () => {
+  it('reads the config at most once a minute, five provider calls at most', async () => {
     const { deps, calls, advance } = vault(
       { 'obsidian/daily-notes': { template: 'Templates/Day' } },
       { 'Templates/Day.md': 't' },
     );
     await resolveVaultToday(deps);
-    expect(calls.config.length + calls.reads.length).toBeLessThanOrEqual(3);
+    // The settings loader's four config reads (Vault M7, CTO L5) and the
+    // template.
+    expect(calls.config.length + calls.reads.length).toBeLessThanOrEqual(5);
     advance(VAULT_TODAY_CONFIG_TTL_MS - 1000);
     await resolveVaultToday(deps);
-    expect(calls.config).toHaveLength(2);
+    expect(calls.config).toHaveLength(4);
     advance(2000);
     await resolveVaultToday(deps);
-    expect(calls.config).toHaveLength(4);
+    expect(calls.config).toHaveLength(8);
   });
 
   it('keys the cache by vault, so a repoint reads again', async () => {
     const { deps, calls } = vault({});
     await resolveVaultToday({ ...deps, cacheKey: 'a' });
     await resolveVaultToday({ ...deps, cacheKey: 'b' });
-    expect(calls.config).toHaveLength(4);
+    expect(calls.config).toHaveLength(8);
+  });
+
+  it('clearVaultTodayCache is the settings cache: one clear reads both again', async () => {
+    expect(clearVaultTodayCache).toBe(clearVaultSettingsCache);
+    const { deps, calls } = vault({});
+    await resolveVaultToday(deps);
+    clearVaultTodayCache();
+    await resolveVaultToday(deps);
+    expect(calls.config).toHaveLength(8);
+  });
+});
+
+describe("today's note from the vault's own settings (Vault M7, CTO L3)", () => {
+  it("uses the vault file's daily folder, format and template when Obsidian sets none", async () => {
+    const { deps } = vault(
+      {
+        'oscode/vault': {
+          version: 1,
+          daily: { folder: 'Journal/Days', format: 'YYYY/MM-DD', template: 'Templates/Daily' },
+        },
+      },
+      { 'Templates/Daily.md': '## Plan {{date}}' },
+    );
+    const plan = await resolveVaultToday(deps);
+    expect(plan).toMatchObject({
+      ok: true,
+      path: 'Journal/Days/2026/09-27.md',
+      text: '## Plan 2026-09-27',
+      template: { path: 'Templates/Daily.md', found: true },
+    });
+  });
+
+  it("a resolver that throws still opens today's note by Obsidian's own files", async () => {
+    const { deps } = vault({ 'obsidian/daily-notes': { folder: 'Daily' } });
+    const throwing: VaultSettingsCore = {
+      resolve: () => {
+        throw new Error('not built');
+      },
+      patch: () => undefined,
+    };
+    const plan = await resolveVaultToday({ ...deps, settingsCore: throwing });
+    expect(plan).toMatchObject({ ok: true, path: 'Daily/2026-09-27.md' });
+  });
+
+  it('Obsidian wins where it sets a field, so the two apps never make the day twice', async () => {
+    const { deps } = vault({
+      'obsidian/daily-notes': { folder: 'Daily' },
+      'oscode/vault': { version: 1, daily: { folder: 'Elsewhere' } },
+    });
+    const plan = await resolveVaultToday(deps);
+    expect(plan).toMatchObject({ ok: true, path: 'Daily/2026-09-27.md' });
   });
 });
 
