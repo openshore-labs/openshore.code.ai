@@ -141,6 +141,14 @@ const app = vi.hoisted(() => {
     },
     vaultDesktopChatOpen: () => false,
     vaultBringPrevious: async () => ({ ok: true, moved: [], skipped: [], forked: [] }),
+    // Vault M5: a note to a model, pins, the hub card, what the agent wrote.
+    askAboutVaultNote: async () => {},
+    pinVaultNoteToProject: async () => 'pinned' as const,
+    canEditProjectPins: () => true,
+    vaultHubOfferShown: () => false,
+    vaultAcceptHubMove: async () => ({ ok: true, moved: [], skipped: [], forked: [] }),
+    vaultDeclineHubMove: async () => {},
+    vaultAgentRecent: async () => [],
   };
   return { state, listeners, views, toasts, created, opened, drive, folderIo, leases, polls };
 });
@@ -1248,8 +1256,13 @@ describe('Linked mentions come from the index (M3 3.2)', () => {
     expect(dom.buttons().some((b) => b.startsWith('Code'))).toBe(false);
     expect(bodies).toEqual(['Idea.md']);
     expect(readAll).toBe(0);
-    // Leaving the Vault closes its index.
+    // Leaving the Vault keeps the personal index warm for a chat's pack
+    // (Vault M5, CTO J1); the store closes it on a move, a sign-out, or a
+    // pairing change.
     await dom.unmount();
+    expect(currentVaultIndex()).toBeDefined();
+    const { closeVaultIndex } = await import('../src/lib/vaultIndexHost.js');
+    await closeVaultIndex();
     expect(currentVaultIndex()).toBeUndefined();
     dom = await mountDom();
   });

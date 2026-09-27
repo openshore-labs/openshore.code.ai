@@ -35,6 +35,10 @@ export type ThreadItem =
       /** A scripted guide line that writes itself on its first showing
        *  (lib/introWalk.ts). A settled item never replays it. */
       paced?: 'greeting' | 'walk';
+      /** The reply drew on a note that stays on this computer (Vault M5, CTO
+       *  J10): it never rides a handoff, and a seat that leaves the network
+       *  gets the stub in its place. */
+      localOnly?: true;
     }
   // The model's reasoning, collapsed to "Thought for Ns" and expandable.
   | {
@@ -70,7 +74,14 @@ export type ThreadItem =
       detailKind?: 'diff' | 'output';
     }
   | { kind: 'status'; id: string; text: string }
-  | { kind: 'note'; id: string; text: string }
+  | {
+      kind: 'note';
+      id: string;
+      text: string;
+      /** A model switch's handoff (Vault M5, CTO J12), kept on the note so its
+       *  card can offer "Save to Vault", the person's own one-tap write. */
+      handoff?: NoteHandoff;
+    }
   // Project trust: this folder's own os-code.config.json asks for settings
   // that stay off until the person trusts the folder on that computer. One
   // decision, "Use them" or "Not now"; trusting applies from the next chat.
@@ -120,6 +131,18 @@ export type ThreadItem =
       durationMs?: number;
       truncated?: boolean;
     };
+
+/** The handoff a switch note carries (CTO J12). */
+export interface NoteHandoff {
+  /** The extractive handoff text, never thinking. */
+  text: string;
+  /** YYYY-MM-DD on this device when the switch happened. */
+  date: string;
+  /** The project the chat belongs to, for the note's name. */
+  project?: string;
+  /** Where "Save to Vault" put it, once saved. */
+  savedPath?: string;
+}
 
 export interface CitationItem {
   title: string;
@@ -529,32 +552,53 @@ function isProbablyPhone(): boolean {
 export interface SeedTurn {
   role: 'user' | 'assistant';
   text: string;
+  /** The turn drew on a local-only note (CTO J10), so a seat that leaves the
+   *  network gets the stub, never the text. Absent for most turns. */
+  localOnly?: true;
+}
+
+/** A seed turn with the index of the transcript item it came from, so a
+ *  switch can say which items a handoff covers (CTO J12). */
+export interface SeedEntry extends SeedTurn {
+  at: number;
 }
 
 export function seedFromTranscript(items: ThreadItem[]): SeedTurn[] {
-  const out: SeedTurn[] = [];
+  return seedEntries(items).map(({ at: _at, ...turn }) => turn);
+}
+
+export function seedEntries(items: ThreadItem[]): SeedEntry[] {
+  const out: SeedEntry[] = [];
   // A message the ethics layer withheld never reached a model; it (and the
   // refusal answering it) stays out, so a switch cannot deliver it after all.
   let withheld = false;
-  for (const it of items) {
+  items.forEach((it, at) => {
     if (it.kind === 'user') {
       withheld = Boolean(it.withheld);
-      if (!withheld) out.push({ role: 'user', text: it.text });
-      continue;
+      if (!withheld) out.push({ role: 'user', text: it.text, at });
+      return;
     }
-    if (withheld) continue;
-    if (it.kind === 'assistant' && it.text.trim()) out.push({ role: 'assistant', text: it.text });
+    if (withheld) return;
+    if (it.kind === 'assistant' && it.text.trim()) {
+      out.push({
+        role: 'assistant',
+        text: it.text,
+        at,
+        ...(it.localOnly ? { localOnly: true } : {}),
+      });
+    }
     // A plan card is the model's own proposal, and a clarify card its
     // questions: both are what the person's next message answers, so a new
     // model needs them to make sense of "go ahead" or a picked option.
-    else if (it.kind === 'plan' && it.text.trim()) out.push({ role: 'assistant', text: it.text });
-    else if (it.kind === 'clarify') out.push({ role: 'assistant', text: clarifyText(it) });
-  }
+    else if (it.kind === 'plan' && it.text.trim())
+      out.push({ role: 'assistant', text: it.text, at });
+    else if (it.kind === 'clarify') out.push({ role: 'assistant', text: clarifyText(it), at });
+  });
   return out;
 }
 
 /** A clarify card as the words the model asked, for a new model's history. */
-function clarifyText(item: Extract<ThreadItem, { kind: 'clarify' }>): string {
+export function clarifyText(item: Extract<ThreadItem, { kind: 'clarify' }>): string {
   const questions = item.questions.map((q, i) => {
     const options = q.options?.length ? ` (${q.options.join(' / ')})` : '';
     return `${i + 1}. ${q.question}${options}`;

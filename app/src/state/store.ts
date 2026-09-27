@@ -26,6 +26,8 @@ import {
   type ProjectAccess,
   type AppVaultContextSetting,
   type VaultPrivacySetting,
+  PROJECT_VAULT_PINS_MAX,
+  VAULT_PRIVACY_DEFAULTS,
 } from './types.js';
 import { tierForSeats, type AccountType } from '../lib/plans.js';
 import {
@@ -264,11 +266,53 @@ import {
   type HarnessCurrentsSettings,
 } from '../lib/harnessCurrents.js';
 import {
+  HANDOFF_MAX_BYTES,
+  HANDOFF_MIN_TURNS,
+  compileVaultPrivacy,
   normalizeHermesBaseUrl,
   normalizeJevBaseUrl,
   vaultConflictCopyPath,
   type CurrentsHostProbe,
+  type VaultPrivacy,
 } from 'os-code/protocol';
+import {
+  clearHandoffs,
+  desktopHandoffNote,
+  handoffNotePath,
+  handoffNoteText,
+  localDate,
+  planSwitchSeed,
+  readHandoff,
+  spokenTurns,
+  switchNoteText,
+  wholeHandoff,
+  writeHandoff,
+  type StoredHandoff,
+  type SwitchSeedPlan,
+} from './handoffs.js';
+import { packSeatFor, hubTailnetSuffix } from '../lib/vaultSeat.js';
+import { appVaultPrivacy } from '../lib/vaultPrivacy.js';
+import {
+  agentRecentNotes,
+  excerptForSeat,
+  noteFactsFromText,
+  pickerNotes,
+  pushAgentRecent,
+  type ComposerExcerptResult,
+  type ComposerSeat,
+  type VaultNoteFacts,
+  type VaultPickerNote,
+} from '../lib/vaultExcerpt.js';
+import {
+  HUB_REPOINT_TOAST,
+  HUB_UNPAIR_TOAST,
+  hubPairingPlan,
+  type HubPairingPlan,
+  type VaultBeforeHub,
+  type VaultHubOffer,
+} from '../lib/vaultHubOffer.js';
+import { DEVICE_CONTEXT_TOKENS } from '../drivers/deviceModel.js';
+import { canEdit, projectPermissionFor } from '../lib/projectAccess.js';
 import {
   createOrgProject,
   deleteOrgProject,
@@ -305,6 +349,7 @@ import {
 } from '../lib/gitos/repoOAuth.js';
 import { normalizeNotePath, noteFolder, noteTitle, restoreEol } from '../lib/vault.js';
 import {
+  closeVaultIndex,
   currentVaultIndex,
   dropVaultIndex,
   vaultIndexFor,
@@ -596,6 +641,14 @@ export interface AppSettings {
    *  (undefined means off), no UI in M5; flips only on the J19 number.
    *  Device local. */
   promptCache?: boolean;
+  /** Where the personal vault was before pairing pointed it at the computer
+   *  (Vault M5, CTO J9), so unpairing returns it. Device local. */
+  vaultBeforeHub?: VaultBeforeHub;
+  /** The one-time "keep one vault on your computer" card (J9). Device local. */
+  vaultHubOffer?: VaultHubOffer;
+  /** Paths the agent's approved vault writes named on this device, newest
+   *  first, at most 20 (J15, "Recently from your agent"). Device local. */
+  vaultAgentWrites?: string[];
 }
 
 /** What a hub says this device's pairing credential may do. */
@@ -625,6 +678,22 @@ const ANTHROPIC_KEY_KEY = 'oscode.secret.anthropic';
 // until the user moves it to iCloud (or another provider) from the vault's
 // storage sheet.
 const VAULT_RESOURCE_ID = 'vault.personal';
+
+/** What a driver build takes besides the chat and its seed. */
+interface BuildExtra {
+  /** A handoff for a desktop agent's first task (CTO J12). */
+  handoff?: string;
+}
+
+/** A handoff cut to the create-body cap (`HANDOFF_MAX_BYTES`, UTF-8), on a
+ *  character boundary. */
+function capHandoffBytes(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  if (bytes.length <= HANDOFF_MAX_BYTES) return text;
+  return new TextDecoder('utf-8', { fatal: false })
+    .decode(bytes.slice(0, HANDOFF_MAX_BYTES))
+    .replace(/\uFFFD+$/, '');
+}
 
 /** Which storage provider holds the personal vault right now. */
 function vaultProviderId(settings: AppSettings): StorageProviderId {
@@ -1233,6 +1302,10 @@ interface AppState {
       /** The first message, parked on the chat before the driver exists so
        *  the bubble is on screen at once and nothing waits on the hub. */
       firstMessage?: { text: string; attachments?: Attachment[] };
+      /** A handoff for a desktop agent's first task (Vault M5, CTO J12): a
+       *  chat carried to the computer's agent, which takes no message history,
+       *  starts from this summary. Capped at `HANDOFF_MAX_BYTES`. */
+      handoff?: string;
     },
   ): Promise<string>;
   /** Replace the repositories a chat works with (the header picker). */
@@ -1623,6 +1696,74 @@ interface AppState {
     choice: 'mine' | 'theirs',
     shown: { there: StoredFile; moved: StoredFile },
   ): Promise<{ ok: boolean; changed?: boolean; partial?: boolean }>;
+  /** Whether the one-time "keep one vault on your computer" card shows now
+   *  (Vault M5, CTO J9): paired, the vault on This device by default, notes
+   *  in it, and not declined for this computer. */
+  vaultHubOfferShown(): boolean;
+  /** The card's move: the existing move to the computer (every copy
+   *  `ifAbsent`), remembering where the vault was so unpairing returns it. */
+  vaultAcceptHubMove(): Promise<VaultMoveResult>;
+  /** The card's quiet button: keep the notes on this device. */
+  vaultDeclineHubMove(): Promise<void>;
+  /** Run the J9 pairing rule now (the store runs it after a pairing and on
+   *  the Vault's first list); resolves to what it did. */
+  vaultAfterPairing(): Promise<HubPairingPlan>;
+
+  // ---- Vault M5: pins, notes to a model, the switch handoff (CTO J12 to J15)
+
+  /** Pin notes to a project's context (J14): editors only (a local project,
+   *  or `myLevel === 'edit'`), at most `PROJECT_VAULT_PINS_MAX`, deduped.
+   *  Device local: never sent to the org server. False when refused. */
+  setProjectVaultPins(projectId: string, paths: string[]): Promise<boolean>;
+  /** "Pin to project context" from a note's options: the active project's
+   *  unless one is named. */
+  pinVaultNoteToProject(
+    path: string,
+    projectId?: string,
+  ): Promise<'pinned' | 'already' | 'full' | 'refused'>;
+  /** Take one pin off a project. */
+  unpinVaultNote(projectId: string, path: string): Promise<void>;
+  /** A note was renamed: every project's pin follows it (J14). */
+  vaultRenamePins(from: string, to: string): Promise<void>;
+  /** Whether the person may change this project's pins (an editor). */
+  canEditProjectPins(projectId: string): boolean;
+  /** Which of these pinned paths the personal vault still holds: 'missing'
+   *  shows "Pinned note not found"; 'unknown' when the vault cannot be read. */
+  vaultPinStatus(paths: string[]): Promise<Record<string, 'ok' | 'missing' | 'unknown'>>;
+  /** The personal vault's notes as the picker may show them (J15): hidden
+   *  notes never, local-only ones with the lock. Never the team vault. */
+  vaultPickerNotes(): Promise<VaultPickerNote[]>;
+  /** The seat the next send in this chat goes to, for an excerpt's budget
+   *  and the local-only refusal. Fails closed (leaves the network) when the
+   *  seat cannot be judged. */
+  composerSeat(conversationId?: string): ComposerSeat;
+  /** A note's excerpt for the composer, sized for the chat's seat, with its
+   *  cost line, or the refusal. Never sends anything. */
+  composerVaultExcerpt(path: string, conversationId?: string): Promise<ComposerExcerptResult>;
+  /** Text waiting to go into a chat's composer ("Ask about this note"),
+   *  never auto-sent. The composer takes it once with `takeComposerInsert`. */
+  composerInsert?: { id: string; conversationId?: string; text: string };
+  takeComposerInsert(id: string): void;
+  /** "Ask about this note": open the active project's chat (a new one when
+   *  none is open) with the excerpt in the composer. */
+  askAboutVaultNote(path: string): Promise<void>;
+  /** "Recently from your agent" (J15): the newest `crew` notes and the paths
+   *  the agent's approved vault writes named on this device. */
+  vaultAgentRecent(): Promise<VaultPickerNote[]>;
+  /** Remember a path an approved `vaultWrite` or `vaultPropose` wrote (the
+   *  device ring of 20). */
+  noteAgentVaultWrite(path: string): Promise<void>;
+  /** The context pack card's tap on a note title, when this device's vault
+   *  can open that note: an app chat's pack (read from this device's vault),
+   *  or an engine pack while this device's vault is the computer's (the hub,
+   *  or the desktop's own folder). Undefined keeps the titles plain. */
+  vaultPackOpener(conversationId: string): ((path: string) => void) | undefined;
+  /** The switch note's "Save to Vault" (J12, D3): the person's own one-tap
+   *  write to `Handoffs/<date> <project>.md`, `ifAbsent`, " 2" on a clash. */
+  saveHandoffToVault(conversationId: string, itemId: string): Promise<string | undefined>;
+  /** A project's latest handoff at most seven days old (J13), for the pack's
+   *  handoff layer on a conversation's first send. Memory off reads none. */
+  projectHandoff(projectId: string): Promise<StoredHandoff | undefined>;
   /** Run the Google Drive OAuth connect flow. Never throws. */
   connectGdriveAccount(): Promise<{ ok: boolean; error?: string }>;
   /** Revoke and forget the connected Google account. */
@@ -2838,8 +2979,12 @@ export const useApp = create<AppState>((set, get, api) => {
    * guardDriver, so no chat surface in the app can reach a model without
    * screening on the way in and on the way out. See drivers/guardedDriver.ts.
    */
-  async function buildDriver(conv: Conversation, seed?: SeedTurn[]): Promise<ChatDriver> {
-    return guardDriver(await buildUnguardedDriver(conv, seed));
+  async function buildDriver(
+    conv: Conversation,
+    seed?: SeedTurn[],
+    extra?: BuildExtra,
+  ): Promise<ChatDriver> {
+    return guardDriver(await buildUnguardedDriver(conv, seed, extra));
   }
 
   /** The project's standing instructions and the chat's repo context, as one
@@ -2869,7 +3014,11 @@ export const useApp = create<AppState>((set, get, api) => {
         .join('\n\n') || undefined;
   }
 
-  async function buildUnguardedDriver(conv: Conversation, seed?: SeedTurn[]): Promise<ChatDriver> {
+  async function buildUnguardedDriver(
+    conv: Conversation,
+    seed?: SeedTurn[],
+    extra?: BuildExtra,
+  ): Promise<ChatDriver> {
     const { settings } = get();
     switch (conv.source.kind) {
       case 'desktop': {
@@ -2960,6 +3109,10 @@ export const useApp = create<AppState>((set, get, api) => {
           codemagicTarget,
           currents,
           harnessCurrents,
+          // A chat carried to the computer's agent (Vault M5, CTO J12): the
+          // handoff opens its first task, since the agent takes no history.
+          // Conversation content, so it rides even with Memory off.
+          ...(extra?.handoff ? { handoff: capHandoffBytes(extra.handoff) } : {}),
         };
         const cwd = conv.source.cwd ?? firstWorkspace(conv.repoIds ?? []);
         // A desktop is its own engine, unless the person has pointed it at a
@@ -3014,6 +3167,8 @@ export const useApp = create<AppState>((set, get, api) => {
             memory: sessionOpts.memory,
             currents: sessionOpts.currents,
             harnessCurrents: sessionOpts.harnessCurrents,
+            // Wave 2 glue (CTO J12): once daemonCreateSession carries
+            // `handoff` (SessionCreateVaultFields), pass sessionOpts.handoff.
           });
           await bindSessionId(conv.id, sessionId, cwd);
         }
@@ -3347,6 +3502,9 @@ export const useApp = create<AppState>((set, get, api) => {
       const orgId = get().settings.account?.org?.serverId;
       if (orgId && uid) await dropVaultIndex({ providerId: 'org', resourceId: orgId, owner: uid });
     }
+    // Whatever index is still warm (the personal one a chat's pack reads)
+    // closes with the sign-in (Vault M5, CTO J1), its last write saved first.
+    await closeVaultIndex().catch(() => {});
     const s = get().settings;
     const patch: Partial<AppSettings> = {};
     // Drop the org's shared projects from this device so the next person to
@@ -4184,6 +4342,325 @@ export const useApp = create<AppState>((set, get, api) => {
   // check), so their M0 stat-before-write guards stay around the calls.
   // A write to a vault the caller names (a providerId) patches the list and
   // the body cache from its result (patchVaultFiles).
+  // ---- Vault M5: seats, privacy, pins, handoffs, the hub (CTO J9, J12 to J15)
+
+  /** The device store the handoffs live in (J13), sealed like the rest. */
+  const handoffStorage = {
+    get: (k: string) => storeGetJson<unknown>(k),
+    set: (k: string, v: unknown) => storeSetJson(k, v),
+    remove: (k: string) => storeDelete(k),
+  };
+
+  /** The personal vault, whatever scope is on screen (the team vault is
+   *  never in context, D15). */
+  function personalVault(): VaultTarget | undefined {
+    const providerId = vaultProviderId(get().settings);
+    const provider = providerFor(providerId);
+    return provider ? { provider, providerId, resourceId: VAULT_RESOURCE_ID } : undefined;
+  }
+
+  /** The seat a source answers from, as the composer and a switch size it
+   *  (CTO J2, J4), judged by `packSeatFor` so the pill, the pack and the
+   *  excerpt never disagree. Fails closed: a seat that cannot be judged
+   *  leaves the network. A Stack is as private as its least private seat and
+   *  as roomy as its smallest, since any of them may answer. */
+  function composerSeatFor(
+    source: ConversationSource | undefined,
+    opts: { anchorOnly?: boolean } = {},
+  ): ComposerSeat {
+    const s = get().settings;
+    const closed: ComposerSeat = { servedTokens: 8192, device: false, leavesNetwork: true };
+    const device: ComposerSeat = {
+      servedTokens: DEVICE_CONTEXT_TOKENS,
+      device: true,
+      leavesNetwork: false,
+    };
+    const ctx = {
+      ownTailnetSuffix: hubTailnetSuffix(s.daemon?.baseUrl),
+      cloudContextTokens: (provider: string, model: string) =>
+        providerInfo(provider)?.models.find((m) => m.id === model)?.contextTokens,
+      byomContextTokens: (id: string) => s.byomModels?.find((b) => b.id === id)?.contextTokens,
+    };
+    const judge = (ref: StackModelRef): ComposerSeat => {
+      try {
+        const seat = packSeatFor(ref, ctx);
+        if (!seat) return ref.kind === 'device' ? device : closed;
+        return {
+          servedTokens: seat.servedTokens,
+          device: ref.kind === 'device',
+          leavesNetwork: seat.leavesNetwork,
+        };
+      } catch {
+        return ref.kind === 'device' ? device : closed;
+      }
+    };
+    switch (source?.kind) {
+      case 'device':
+        return judge({ kind: 'device', modelId: source.modelId, modelName: source.modelName });
+      case 'cloud':
+        return judge({
+          kind: 'cloud',
+          provider: source.provider,
+          model: source.model,
+          label: source.model,
+        });
+      case 'desktop-chat':
+        // The daemon pins /chat to a local orchestrator (J2); its window is
+        // the computer's, which the app cannot see, so size it modestly.
+        return { servedTokens: 8192, device: false, leavesNetwork: false };
+      case 'stack': {
+        const profile = effectiveProfile(autoProfile(get().connectivity), s.profileOverride);
+        const stack = stackForProfile(s.stacks, profile);
+        // A switch seeds the history the reasoning anchor reads (a pocket
+        // specialist fits its own turns), so it sizes by the anchor alone.
+        const members = opts.anchorOnly ? [] : stack.active.map((a) => a.ref);
+        const refs = [stack.reasoning, ...members].filter((r): r is StackModelRef => Boolean(r));
+        if (!refs.length) return closed;
+        const seats = refs.map(judge);
+        return {
+          servedTokens: Math.min(...seats.map((x) => x.servedTokens)),
+          device: seats.every((x) => x.device),
+          leavesNetwork: seats.some((x) => x.leavesNetwork),
+        };
+      }
+      default:
+        // The computer's agent picks its own seat; the phone cannot judge it.
+        return closed;
+    }
+  }
+
+  /** This device's vault privacy judge (J3), cached briefly. Fail closed:
+   *  while it loads, or when it cannot, the D5 defaults with the device's
+   *  own narrowing apply, never no rules. */
+  let privacyCache: { at: number; privacy: VaultPrivacy } | undefined;
+  async function vaultPrivacyNow(): Promise<VaultPrivacy> {
+    if (privacyCache && Date.now() - privacyCache.at < 60_000) return privacyCache.privacy;
+    const device = get().settings.vaultPrivacy;
+    let privacy: VaultPrivacy;
+    try {
+      privacy = await appVaultPrivacy({ ...(device ? { device } : {}) });
+    } catch {
+      privacy = compileVaultPrivacy(
+        {
+          exclude: [...VAULT_PRIVACY_DEFAULTS.exclude],
+          localOnly: {
+            paths: [...VAULT_PRIVACY_DEFAULTS.localOnly.paths],
+            tags: [...VAULT_PRIVACY_DEFAULTS.localOnly.tags],
+          },
+        },
+        device,
+      );
+      return privacy;
+    }
+    privacyCache = { at: Date.now(), privacy };
+    return privacy;
+  }
+
+  /** What is known about the personal vault's notes: the warm index when it
+   *  is the personal vault's, else a listing. Undefined when neither reads. */
+  async function personalNoteFacts(): Promise<VaultNoteFacts[] | undefined> {
+    const t = personalVault();
+    if (!t) return undefined;
+    const host = currentVaultIndex();
+    if (host && host.target.providerId === t.providerId && host.index.size > 0) {
+      return host.index.entries().map((e) => ({
+        path: e.path,
+        title: e.title,
+        updatedAt: e.updatedAt,
+        tags: e.tags,
+        ...(e.oscode ? { oscode: e.oscode } : {}),
+      }));
+    }
+    try {
+      return (await listVaultNotes(t)).map((f) => ({
+        path: f.path,
+        title: noteTitle(f.path),
+        updatedAt: f.updatedAt,
+      }));
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Point every project's pins at a note's new path (a rename). */
+  async function rewriteVaultPins(from: string, to: string): Promise<void> {
+    const projects = get().settings.projects ?? [];
+    if (!projects.some((p) => p.vaultPins?.includes(from))) return;
+    await get().saveSettings({
+      projects: projects.map((p) =>
+        p.vaultPins?.includes(from)
+          ? { ...p, vaultPins: [...new Set(p.vaultPins.map((x) => (x === from ? to : x)))] }
+          : p,
+      ),
+    });
+  }
+
+  /** A chat of four or more turns that is left writes the project's handoff
+   *  (J13), once per state of the chat. Memory off writes none. */
+  const handoffWrittenAt = new Map<string, string>();
+  function writeLeftHandoff(id: string): void {
+    const conv = get().conversations[id];
+    if (!conv?.projectId || conv.thread.busy || conv.source.kind === 'mock') return;
+    if (memoryOverride(get().settings) === false) return;
+    if (handoffWrittenAt.get(id) === conv.updatedAt) return;
+    if (spokenTurns(conv.thread.items) < HANDOFF_MIN_TURNS) return;
+    const model = conv.thread.model?.name ?? sourceLabel(conv.source);
+    let text: string;
+    let turns: number;
+    try {
+      ({ text, turns } = wholeHandoff(conv.thread.items, { from: model, date: localDate() }));
+    } catch {
+      return;
+    }
+    handoffWrittenAt.set(id, conv.updatedAt);
+    void writeHandoff(handoffStorage, conv.projectId, {
+      text,
+      at: new Date().toISOString(),
+      model,
+      turns,
+      conversationId: id,
+    }).catch(() => {});
+  }
+  api.subscribe((state, prev) => {
+    if (prev.activeId && prev.activeId !== state.activeId) writeLeftHandoff(prev.activeId);
+  });
+
+  /** Whether any stashed or held text belongs to the vault on `providerId`. */
+  async function vaultTextWaiting(providerId: StorageProviderId): Promise<boolean> {
+    const mine = (e: { providerId: string; resourceId: string }) =>
+      e.providerId === providerId && e.resourceId === VAULT_RESOURCE_ID;
+    if (get().vaultHeld.some(mine)) return true;
+    return editVaultPending((p) => Object.values(p).some(mine)).catch(() => true);
+  }
+
+  /** The personal resource row with a new provider, keeping the rest. */
+  function withVaultProvider(
+    providerId: StorageProviderId,
+    chosenAt: string | undefined,
+  ): GitosResource[] {
+    const current = get().settings.gitosResources ?? [];
+    const row = (r: GitosResource): GitosResource => {
+      const { chosenAt: _old, ...rest } = r;
+      return { ...rest, providerId, ...(chosenAt ? { chosenAt } : {}) };
+    };
+    return current.some((r) => r.id === VAULT_RESOURCE_ID)
+      ? current.map((r) => (r.id === VAULT_RESOURCE_ID ? row(r) : r))
+      : [
+          ...current,
+          {
+            id: VAULT_RESOURCE_ID,
+            name: 'Vault',
+            kind: 'vault' as const,
+            providerId,
+            createdAt: new Date().toISOString(),
+            ...(chosenAt ? { chosenAt } : {}),
+          },
+        ];
+  }
+
+  /** The vault on screen now points somewhere else: its warm index, list and
+   *  open note belonged to the old home (J1 closes the index here, on a
+   *  storage change or a pairing change, never on leaving the room). */
+  async function afterVaultRepoint(): Promise<void> {
+    await closeVaultIndex().catch(() => {});
+    if (get().vaultScope === 'personal') {
+      if (get().vaultNote) {
+        await leaveVaultConflict();
+        vaultLiveDraft = undefined;
+      }
+      set({ vaultNote: undefined, vaultListed: false, vaultFiles: [] });
+    }
+  }
+
+  /** The J9 rule after a pairing (D2): an empty vault on This device by
+   *  default points at the computer with one toast; one with notes gets the
+   *  one-time move card; a storage the person chose is never repointed. The
+   *  phone's rule: a desktop keeps its own folder. */
+  async function hubPairingStep(): Promise<HubPairingPlan> {
+    const s = get();
+    const hub = s.settings.daemon?.baseUrl;
+    if (!hub || isDesktop()) return 'none';
+    const resource = s.settings.gitosResources?.find((r) => r.id === VAULT_RESOURCE_ID);
+    const hubReady = Boolean(providerFor('hub')) && (await probeReady('hub').catch(() => false));
+    let notes: number | undefined;
+    if (hubReady && (resource?.providerId ?? 'local') === 'local' && !resource?.chosenAt) {
+      const local = providerFor('local');
+      notes = local
+        ? await listVaultNotes({
+            provider: local,
+            providerId: 'local',
+            resourceId: VAULT_RESOURCE_ID,
+          })
+            .then((f) => f.length)
+            .catch(() => undefined)
+        : undefined;
+    }
+    const waiting = notes === 0 ? await vaultTextWaiting('local') : false;
+    const plan = hubPairingPlan({
+      resource,
+      hubReady,
+      notes,
+      waiting,
+      offer: s.settings.vaultHubOffer,
+      hub,
+    });
+    if (plan === 'repoint') {
+      const before: VaultBeforeHub = {
+        providerId: resource?.providerId ?? 'local',
+        ...(resource?.chosenAt ? { chosenAt: resource.chosenAt } : {}),
+        hub,
+      };
+      await get().saveSettings({
+        gitosResources: withVaultProvider('hub', undefined),
+        vaultBeforeHub: before,
+        vaultHubOffer: undefined,
+      });
+      await afterVaultRepoint();
+      logEvent('vault_repointed_hub');
+      get().showToast(HUB_REPOINT_TOAST);
+      if (get().view === 'vault') void get().vaultRefresh();
+    } else if (plan === 'offer') {
+      if (s.settings.vaultHubOffer?.hub !== hub || s.settings.vaultHubOffer.state !== 'offered') {
+        await get().saveSettings({ vaultHubOffer: { hub, state: 'offered' } });
+      }
+    }
+    return plan;
+  }
+
+  /** Unpairing, or pairing another computer: a vault that points at a hub
+   *  that is no longer the paired one returns to where it was before, and
+   *  nothing moves back (J9). */
+  async function hubUnpairStep(): Promise<void> {
+    const s = get().settings;
+    const before = s.vaultBeforeHub;
+    const offer = s.vaultHubOffer;
+    const paired = s.daemon?.baseUrl;
+    if (offer && offer.hub !== paired) await get().saveSettings({ vaultHubOffer: undefined });
+    if (vaultProviderId(get().settings) !== 'hub') {
+      if (before && before.hub !== paired) await get().saveSettings({ vaultBeforeHub: undefined });
+      return;
+    }
+    if (before && before.hub === paired) return;
+    await get().saveSettings({
+      gitosResources: withVaultProvider(before?.providerId ?? 'local', before?.chosenAt),
+      vaultBeforeHub: undefined,
+    });
+    await afterVaultRepoint();
+    logEvent('vault_unpaired_hub');
+    get().showToast(HUB_UNPAIR_TOAST);
+    if (get().view === 'vault') void get().vaultRefresh();
+  }
+
+  /** Unpair first, then pair: one pass per hub change, never throwing. */
+  async function settleVaultForHub(): Promise<void> {
+    try {
+      await hubUnpairStep();
+      await hubPairingStep();
+    } catch {
+      // A vault that cannot be settled now stays where it is.
+    }
+  }
+
   async function putVaultNote(
     t: { provider: StorageProvider; resourceId: string; providerId?: StorageProviderId },
     path: string,
@@ -5893,6 +6370,7 @@ export const useApp = create<AppState>((set, get, api) => {
         const driver = await buildDriver(
           built,
           seedItems.length ? seedFromTranscript(seedItems) : undefined,
+          opts?.handoff ? { handoff: opts.handoff } : undefined,
         );
         attachDriver(id, driver);
       } catch (err) {
@@ -5915,6 +6393,42 @@ export const useApp = create<AppState>((set, get, api) => {
         source.kind === 'cloud' ||
         source.kind === 'device' ||
         source.kind === 'desktop-chat';
+      // The computer's agent takes no message history (CTO J12): a chat
+      // carried to it opens a new agent chat whose first task starts from the
+      // handoff, and a note there says what came along.
+      if (
+        source.kind === 'desktop' &&
+        activeId &&
+        conv &&
+        conv.source.kind !== 'desktop' &&
+        seedFromTranscript(conv.thread.items).length > 0
+      ) {
+        if (conv.thread.busy) {
+          get().showToast('Let the current reply finish, then switch.');
+          return;
+        }
+        let handoff: { text: string; turns: number } | undefined;
+        try {
+          handoff = wholeHandoff(conv.thread.items, {
+            from: conv.thread.model?.name ?? sourceLabel(conv.source),
+            date: localDate(),
+          });
+        } catch {
+          handoff = undefined;
+        }
+        const label = sourceLabel(source);
+        const note: ThreadItem = {
+          kind: 'note',
+          id: newId(),
+          text: handoff ? desktopHandoffNote(label, handoff.turns) : `Now using ${label}.`,
+        };
+        await get().newConversation(source, {
+          seedItems: [note],
+          repoIds: conv.repoIds,
+          ...(handoff ? { handoff: handoff.text } : {}),
+        });
+        return;
+      }
       if (!activeId || !conv || conv.thread.items.length === 0 || !seedable) {
         await get().newConversation(source);
         return;
@@ -5935,9 +6449,26 @@ export const useApp = create<AppState>((set, get, api) => {
       const lastUserAt = conv.thread.items.map((i) => i.kind).lastIndexOf('user');
       const resendItem =
         opts?.resend && lastUserAt >= 0 ? conv.thread.items[lastUserAt] : undefined;
-      const seed = seedFromTranscript(
-        resendItem ? conv.thread.items.slice(0, lastUserAt) : conv.thread.items,
-      );
+      const carried = resendItem ? conv.thread.items.slice(0, lastUserAt) : conv.thread.items;
+      // The handoff (CTO J12): the whole chat when it fits the new seat's
+      // window, else a summary of what drops plus the newest turns that fit.
+      // Conversation content, so it rides even with Memory off. A core that
+      // cannot build one leaves the switch as it was: the whole transcript.
+      const date = localDate();
+      const from = conv.thread.model?.name ?? sourceLabel(conv.source);
+      let plan: SwitchSeedPlan | undefined;
+      try {
+        plan = planSwitchSeed({
+          items: carried,
+          servedTokens: composerSeatFor(source, { anchorOnly: true }).servedTokens,
+          system: standingContext(conv),
+          from,
+          date,
+        });
+      } catch {
+        plan = undefined;
+      }
+      const seed = plan?.seed ?? seedFromTranscript(carried);
       // The spoken turns on screen when the switch began, so anything the walk
       // writes while the driver builds can be handed over after (below).
       const turnsAtStart = seedFromTranscript(conv.thread.items).length;
@@ -5990,17 +6521,53 @@ export const useApp = create<AppState>((set, get, api) => {
       // network brain, and when earlier images will not carry over. No request
       // fires until the next send, so these notes land before anything leaves.
       const crossedToNetwork = conv.source.kind === 'device' && source.kind !== 'device';
-      let text = `Now using ${sourceLabel(source)}.`;
+      let text = switchNoteText(sourceLabel(source), plan);
       if (crossedToNetwork) {
         text += " Your next message sends this chat's history to it for context.";
       }
       if (conv.hadVisionInput) {
         text += ' Images from earlier in this chat are not carried across the switch.';
       }
+      // The note carries a handoff for "Save to Vault": the seed's, or one of
+      // the whole chat. It is also the project's latest in the device store,
+      // read the next day (J13), unless Memory is off.
+      const project = conv.projectId
+        ? get().settings.projects?.find((p) => p.id === conv.projectId)
+        : undefined;
+      let kept = plan?.handoff;
+      if (!kept && plan) {
+        try {
+          kept = wholeHandoff(carried, { from, date });
+        } catch {
+          kept = undefined;
+        }
+      }
+      if (kept && conv.projectId && memoryOverride(get().settings) !== false) {
+        void writeHandoff(handoffStorage, conv.projectId, {
+          text: kept.text,
+          at: new Date().toISOString(),
+          model: from,
+          turns: kept.turns,
+          conversationId: activeId,
+        }).catch(() => {});
+      }
       set((s) => {
         const c = s.conversations[activeId];
         if (!c) return s;
-        const note: ThreadItem = { kind: 'note', id: newId(), text };
+        const note: ThreadItem = {
+          kind: 'note',
+          id: newId(),
+          text,
+          ...(kept
+            ? {
+                handoff: {
+                  text: kept.text,
+                  date,
+                  ...(project?.name ? { project: project.name } : {}),
+                },
+              }
+            : {}),
+        };
         return {
           conversations: {
             ...s.conversations,
@@ -6546,6 +7113,8 @@ export const useApp = create<AppState>((set, get, api) => {
       // Wipe the project's sealed tokens and secrets so nothing lingers in the
       // device store after the project is gone.
       await writeProjectSecrets(id, '');
+      // And its handoff (CTO J13): nothing of the project lingers here.
+      await clearHandoffs(handoffStorage, { projectId: id }).catch(() => {});
       // Chats that lived in the project stay, but drop their now-dead link. Mark
       // them `unfiled` so the init orphan-migration does not re-adopt them into
       // another project on the next launch (P2-13).
@@ -8657,7 +9226,11 @@ export const useApp = create<AppState>((set, get, api) => {
       // The room holds still while notes move (CX 1.3): nothing that writes.
       set({ vaultMoving: true });
       try {
-        return await moveVaultInner(providerId);
+        const result = await moveVaultInner(providerId);
+        // The vault lives somewhere else now: the warm index belonged to the
+        // old home (Vault M5, CTO J1 closes it on a storage move).
+        if (result.ok) await closeVaultIndex().catch(() => {});
+        return result;
       } finally {
         set({ vaultMoving: false });
       }
@@ -8795,6 +9368,290 @@ export const useApp = create<AppState>((set, get, api) => {
       return { ok: true };
     },
 
+    vaultHubOfferShown() {
+      const s = get();
+      const hub = s.settings.daemon?.baseUrl;
+      if (!hub || isDesktop() || s.vaultScope !== 'personal' || s.vaultMoving) return false;
+      const offer = s.settings.vaultHubOffer;
+      if (offer?.hub !== hub || offer.state !== 'offered') return false;
+      const row = s.settings.gitosResources?.find((r) => r.id === VAULT_RESOURCE_ID);
+      if ((row?.providerId ?? 'local') !== 'local' || row?.chosenAt) return false;
+      return Boolean(s.vaultListed) && s.vaultError !== 'load' && s.vaultFiles.length > 0;
+    },
+
+    async vaultAcceptHubMove() {
+      const s = get();
+      const hub = s.settings.daemon?.baseUrl;
+      const row = s.settings.gitosResources?.find((r) => r.id === VAULT_RESOURCE_ID);
+      const before: VaultBeforeHub | undefined = hub
+        ? {
+            providerId: row?.providerId ?? 'local',
+            ...(row?.chosenAt ? { chosenAt: row.chosenAt } : {}),
+            hub,
+          }
+        : undefined;
+      const result = await get().vaultMoveTo('hub');
+      if (result.ok) {
+        await get().saveSettings({ vaultHubOffer: undefined, vaultBeforeHub: before });
+        await closeVaultIndex().catch(() => {});
+        logEvent('vault_hub_offer', { action: 'move', forked: result.forked.length });
+        if (get().view === 'vault') void get().vaultRefresh();
+      }
+      return result;
+    },
+
+    async vaultDeclineHubMove() {
+      const hub = get().settings.daemon?.baseUrl;
+      if (!hub) return;
+      await get().saveSettings({ vaultHubOffer: { hub, state: 'declined' } });
+      logEvent('vault_hub_offer', { action: 'not_now' });
+    },
+
+    vaultAfterPairing() {
+      return hubPairingStep().catch(() => 'none' as const);
+    },
+
+    canEditProjectPins(projectId) {
+      const project = get().settings.projects?.find((p) => p.id === projectId);
+      return Boolean(project) && canEdit(projectPermissionFor(project!));
+    },
+
+    async setProjectVaultPins(projectId, paths) {
+      if (!get().canEditProjectPins(projectId)) return false;
+      const clean = [
+        ...new Set(paths.map((p) => normalizeNotePath(p)).filter((p): p is string => Boolean(p))),
+      ].slice(0, PROJECT_VAULT_PINS_MAX);
+      // Local only, always: pins name the person's own notes, so they never
+      // ride updateProject's server write (orgProjects.ts syncs name,
+      // instructions and repoIds), whatever the project's sharing.
+      await patchProjectLocal(projectId, { vaultPins: clean.length ? clean : undefined });
+      logEvent('project_vault_pins', { count: clean.length });
+      return true;
+    },
+
+    async pinVaultNoteToProject(path, projectId) {
+      const s = get().settings;
+      const id = projectId ?? s.activeProjectId ?? s.projects?.[0]?.id;
+      const project = id ? s.projects?.find((p) => p.id === id) : undefined;
+      if (!project || !get().canEditProjectPins(project.id)) return 'refused';
+      const note = normalizeNotePath(path);
+      if (!note) return 'refused';
+      const pins = project.vaultPins ?? [];
+      if (pins.includes(note)) return 'already';
+      if (pins.length >= PROJECT_VAULT_PINS_MAX) return 'full';
+      const ok = await get().setProjectVaultPins(project.id, [...pins, note]);
+      return ok ? 'pinned' : 'refused';
+    },
+
+    async unpinVaultNote(projectId, path) {
+      const project = get().settings.projects?.find((p) => p.id === projectId);
+      if (!project?.vaultPins?.includes(path)) return;
+      await get().setProjectVaultPins(
+        projectId,
+        project.vaultPins.filter((p) => p !== path),
+      );
+    },
+
+    async vaultRenamePins(from, to) {
+      const a = normalizeNotePath(from);
+      const b = normalizeNotePath(to);
+      if (a && b) await rewriteVaultPins(a, b);
+    },
+
+    async vaultPinStatus(paths) {
+      const out: Record<string, 'ok' | 'missing' | 'unknown'> = {};
+      const t = personalVault();
+      await Promise.all(
+        paths.map(async (p) => {
+          if (!t) {
+            out[p] = 'unknown';
+            return;
+          }
+          try {
+            out[p] = (await t.provider.stat(t.resourceId, p)) ? 'ok' : 'missing';
+          } catch {
+            out[p] = 'unknown';
+          }
+        }),
+      );
+      return out;
+    },
+
+    async vaultPickerNotes() {
+      const facts = await personalNoteFacts();
+      if (!facts) return [];
+      return pickerNotes(facts, await vaultPrivacyNow());
+    },
+
+    composerSeat(conversationId) {
+      const id = conversationId ?? get().activeId;
+      return composerSeatFor(id ? get().conversations[id]?.source : undefined);
+    },
+
+    async composerVaultExcerpt(path, conversationId) {
+      const t = personalVault();
+      if (!t) return { ok: false, reason: 'Your Vault is not ready on this device yet.' };
+      let file: StoredFile | undefined;
+      try {
+        file = await t.provider.read(t.resourceId, path);
+      } catch {
+        return { ok: false, reason: 'That note could not be read right now.' };
+      }
+      if (!file) return { ok: false, reason: 'That note is not in your Vault any more.' };
+      // Judged on the note's own text (its tags and marks), so a note the
+      // index has not read yet is never taken for open.
+      const visibility = (await vaultPrivacyNow()).visibility(
+        noteFactsFromText(path, file.text, file.updatedAt),
+      );
+      if (visibility === 'hidden') {
+        return { ok: false, reason: 'This note is kept out of every model.' };
+      }
+      return excerptForSeat(
+        {
+          path,
+          title: noteTitle(path),
+          text: file.text,
+          updatedAt: file.updatedAt,
+          localOnly: visibility === 'local-only',
+        },
+        get().composerSeat(conversationId),
+      );
+    },
+
+    takeComposerInsert(id) {
+      if (get().composerInsert?.id === id) set({ composerInsert: undefined });
+    },
+
+    async askAboutVaultNote(path) {
+      const s = get();
+      const projectId = s.settings.activeProjectId ?? s.settings.projects?.[0]?.id;
+      const open = s.activeId ? s.conversations[s.activeId] : undefined;
+      // The chat open now when it is the active project's; otherwise a new
+      // chat there, whose composer takes the excerpt.
+      const conversationId =
+        open && (!projectId || open.projectId === projectId) ? open.id : undefined;
+      const result = await get().composerVaultExcerpt(path, conversationId);
+      if (!result.ok) {
+        get().showToast(result.reason);
+        return;
+      }
+      if (conversationId) get().openConversation(conversationId);
+      else get().startNewChat();
+      set({
+        view: 'chat',
+        composerInsert: {
+          id: newId(),
+          ...(conversationId ? { conversationId } : {}),
+          text: result.excerpt.text,
+        },
+      });
+      logEvent('vault_ask_about_note', { trimmed: result.excerpt.trimmed });
+    },
+
+    async vaultAgentRecent() {
+      const facts = await personalNoteFacts();
+      if (!facts) return [];
+      return agentRecentNotes(
+        facts,
+        get().settings.vaultAgentWrites ?? [],
+        await vaultPrivacyNow(),
+      );
+    },
+
+    async noteAgentVaultWrite(path) {
+      const note = normalizeNotePath(path);
+      if (!note) return;
+      const ring = get().settings.vaultAgentWrites ?? [];
+      await get().saveSettings({ vaultAgentWrites: pushAgentRecent(ring, note) });
+    },
+
+    vaultPackOpener(conversationId) {
+      const conv = get().conversations[conversationId];
+      const t = personalVault();
+      if (!conv || !t) return undefined;
+      // An app chat's pack reads this device's own vault. An engine pack reads
+      // the computer's vault root: this device opens it only when its vault
+      // is that same vault (the hub, or the desktop's own folder).
+      const engine = conv.source.kind === 'desktop' || conv.source.kind === 'desktop-chat';
+      const same =
+        !engine ||
+        t.providerId === 'hub' ||
+        (isDesktop() && t.providerId === 'files' && !get().settings.preferRemoteHub);
+      if (!same) return undefined;
+      return (path: string) => {
+        void (async () => {
+          if (get().vaultScope !== 'personal') await get().setVaultScope('personal');
+          get().setView('vault');
+          await get().vaultOpen(path);
+        })();
+      };
+    },
+
+    async saveHandoffToVault(conversationId, itemId) {
+      const conv = get().conversations[conversationId];
+      const item = conv?.thread.items.find((i) => i.id === itemId);
+      if (!item || item.kind !== 'note' || !item.handoff) return undefined;
+      if (item.handoff.savedPath) return item.handoff.savedPath;
+      const t = personalVault();
+      if (!t) {
+        get().showToast('Your Vault is not ready on this device yet.');
+        return undefined;
+      }
+      const readOnly = vaultReadOnlyReason(t.providerId);
+      if (readOnly) {
+        get().showToast(readOnly);
+        return undefined;
+      }
+      const handoff = item.handoff;
+      const text = handoffNoteText(handoff);
+      for (let attempt = 1; attempt <= 50; attempt++) {
+        const path = handoffNotePath(handoff.date, handoff.project, attempt);
+        let saved: StoredFile | undefined;
+        try {
+          // A storage that does not enforce the guard is asked first, so a
+          // note already there is never replaced.
+          if (!t.provider.compareAndSwap && (await t.provider.stat(t.resourceId, path))) continue;
+          const r = await putVaultNote(t, path, text, { ifAbsent: true });
+          if (!r.ok) {
+            if (r.conflict === 'exists') continue;
+            throw new Error(r.conflict);
+          }
+          saved = r.file;
+        } catch {
+          get().showToast('Could not save to your Vault right now. Try again in a moment.');
+          return undefined;
+        }
+        set((s) => {
+          const c = s.conversations[conversationId];
+          if (!c) return s;
+          const items = c.thread.items.map((i) =>
+            i.id === itemId && i.kind === 'note' && i.handoff
+              ? { ...i, handoff: { ...i.handoff, savedPath: saved!.path } }
+              : i,
+          );
+          return {
+            conversations: {
+              ...s.conversations,
+              [conversationId]: { ...c, thread: { ...c.thread, items } },
+            },
+          };
+        });
+        void persistConversations(get());
+        get().showToast(`Saved as ${saved.path}.`);
+        logEvent('vault_handoff_saved');
+        return saved.path;
+      }
+      get().showToast(
+        'Could not find a free name in Handoffs. Rename an older handoff note first.',
+      );
+      return undefined;
+    },
+
+    async projectHandoff(projectId) {
+      if (memoryOverride(get().settings) === false) return undefined;
+      return readHandoff(handoffStorage, projectId);
+    },
+
     async connectGdriveAccount() {
       const result = await connectGdrive();
       logEvent(result.ok ? 'gdrive_connected' : 'gdrive_connect_failed');
@@ -8856,6 +9713,9 @@ export const useApp = create<AppState>((set, get, api) => {
         };
       });
       void persistConversations(get());
+      // A handoff this chat wrote goes with it (CTO J13).
+      handoffWrittenAt.delete(id);
+      void clearHandoffs(handoffStorage, { conversationId: id }).catch(() => {});
     },
 
     send(text, attachments) {
@@ -9509,7 +10369,11 @@ export const useApp = create<AppState>((set, get, api) => {
       const hubRoles = { ...(get().settings.hubRoles ?? {}) };
       if (role) hubRoles[target.baseUrl] = role;
       else delete hubRoles[target.baseUrl];
+      const hubBefore = get().settings.daemon?.baseUrl;
       await get().saveSettings({ daemon: merged, daemons: [...others, merged], hubRoles });
+      // A pairing (or a pairing to another computer) settles where the
+      // personal vault lives (CTO J9). Never blocks the pairing itself.
+      if (hubBefore !== merged.baseUrl) void settleVaultForHub();
     },
 
     async setHubRole(baseUrl, role) {
@@ -9521,7 +10385,9 @@ export const useApp = create<AppState>((set, get, api) => {
 
     async selectHub(baseUrl) {
       const hub = hubList(get().settings).find((d) => d.baseUrl === baseUrl);
+      const hubBefore = get().settings.daemon?.baseUrl;
       if (hub) await get().saveSettings({ daemon: hub });
+      if (hub && hubBefore !== hub.baseUrl) void settleVaultForHub();
     },
 
     async removeHub(baseUrl) {
@@ -9533,6 +10399,8 @@ export const useApp = create<AppState>((set, get, api) => {
       await get().saveSettings({ daemons, daemon, hubRoles });
       // The credential leaves with the hub.
       await secretDelete(hubSecretKey(baseUrl));
+      // The vault returns from the computer it pointed at (CTO J9).
+      if (s.daemon?.baseUrl === baseUrl) void settleVaultForHub();
     },
 
     async renameHub(baseUrl, name) {

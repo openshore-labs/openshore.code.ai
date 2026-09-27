@@ -6,6 +6,12 @@
 //
 // Every RPC is enforced server-side by project_level(): the client can ask, but
 // the server decides, so a member who edits the JSON gains nothing.
+//
+// What syncs is name, instructions and repoIds, nothing else. A project's
+// Vault pins (`Project.vaultPins`, Vault M5 CTO J14) name the person's own
+// notes, so they never leave this device: no RPC here carries them, a pulled
+// row never sets them, and a merge keeps the device's own. `test/vaultPins`
+// holds that.
 import { rpc } from './supabase.js';
 import type { Project, ProjectAccess, ProjectPermission } from '../state/types.js';
 
@@ -68,7 +74,9 @@ export function mergeSharedProjects(local: Project[], rows: ServerProjectRow[]):
     const row = p.serverId ? byServerId.get(p.serverId) : undefined;
     if (!row) continue; // no longer visible to this person: drop it locally
     seen.add(row.id);
-    // Keep the local id (and so its chats); refresh everything the server owns.
+    // Keep the local id (and so its chats); refresh everything the server
+    // owns. The device-local Vault pins stay as they
+    // were, since the row never carries them.
     merged.push({ ...p, ...serverRowToProject(row), id: p.id });
   }
   for (const row of rows) {

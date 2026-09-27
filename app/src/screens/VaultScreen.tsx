@@ -115,6 +115,9 @@ import { useExitPresence } from '../hooks/useExitPresence.js';
 import { durationMs, sheetExitMs } from '../lib/motion.js';
 import type { HermesNote, HermesNoteMeta } from 'os-code/protocol';
 import { Icon } from '../components/Icon.js';
+import { VaultAgentRecent } from '../components/VaultAgentRecent.js';
+import { HUB_OFFER_COPY } from '../lib/vaultHubOffer.js';
+import { PROJECT_VAULT_PINS_MAX } from '../state/types.js';
 
 const VAULT_RESOURCE_ID = 'vault.personal';
 
@@ -203,6 +206,13 @@ export function VaultScreen() {
     vaultSettleFork,
     vaultDesktopChatOpen,
     vaultBringPrevious,
+    askAboutVaultNote,
+    pinVaultNoteToProject,
+    canEditProjectPins,
+    vaultHubOfferShown,
+    vaultAcceptHubMove,
+    vaultDeclineHubMove,
+    vaultAgentRecent,
   } = useApp();
 
   const team = vaultScope === 'team';
@@ -298,6 +308,13 @@ export function VaultScreen() {
   const locked =
     readOnly || Boolean(driveReadOnly) || Boolean(vaultMoving) || folderGone || teamExpired;
   const teamAvailable = teamVaultAvailable();
+  // The project a note's "Pin to project context" pins to: the active one.
+  const pinProjectId = settings.activeProjectId ?? settings.projects?.[0]?.id;
+  const pinProjectName = settings.projects?.find((p) => p.id === pinProjectId)?.name;
+  // The one-time "keep one vault on your computer" card after pairing (J9).
+  const [hubMoving, setHubMoving] = useState(false);
+  const [hubFailed, setHubFailed] = useState(false);
+  const hubOfferShown = !team && vaultHubOfferShown();
 
   const [folder, setFolder] = useState('');
   const [editing, setEditing] = useState(false);
@@ -396,8 +413,13 @@ export function VaultScreen() {
 
   useEffect(() => {
     void vaultRefresh();
-    // Leaving the Vault closes its index; its last write is saved first.
-    return () => void closeVaultIndex();
+    // Leaving the Vault keeps the personal index warm, so a chat's pack finds
+    // it (Vault M5, CTO J1); the store closes it on a storage move, a
+    // sign-out, or a pairing change. The team vault is never in context, so
+    // its index closes here, its last write saved first.
+    return () => {
+      if (currentVaultIndex()?.target.providerId === 'org') void closeVaultIndex();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // The index's progress line, only once a build has run 1.5 s (M3 3.2).
@@ -1418,6 +1440,36 @@ export function VaultScreen() {
                 }}
               />
               <div className="sheet-actions">
+                {/* Take the note to a model (Vault M5, CTO J15): personal
+                    notes only, since the team vault is never in context. */}
+                {!team ? (
+                  <button
+                    className="btn quiet press-fb"
+                    onClick={() => {
+                      const path = vaultNote.path;
+                      setMenuOpen(false);
+                      setConfirmDelete(false);
+                      void askAboutVaultNote(path);
+                    }}
+                  >
+                    Ask about this note
+                  </button>
+                ) : null}
+                {!team && pinProjectId && canEditProjectPins(pinProjectId) ? (
+                  <button
+                    className="btn quiet press-fb"
+                    onClick={() => {
+                      const path = vaultNote.path;
+                      setMenuOpen(false);
+                      setConfirmDelete(false);
+                      void pinVaultNoteToProject(path, pinProjectId).then((r) =>
+                        showToast(pinToast(r, pinProjectName)),
+                      );
+                    }}
+                  >
+                    Pin to project context
+                  </button>
+                ) : null}
                 <button
                   className={`btn press-fb ${confirmDelete ? 'danger' : 'quiet'}`}
                   // Unreachable (Options is left out on a Drive vault), kept
@@ -1574,6 +1626,23 @@ export function VaultScreen() {
           onDecline={() => void vaultDeclineFolderMove()}
           onOtherFolder={() => void runPick('card')}
         />
+        <HubMoveCard
+          shown={hubOfferShown && !folder}
+          busy={hubMoving || Boolean(vaultMoving)}
+          failed={hubFailed}
+          onMove={() => {
+            hapticCommit();
+            setHubMoving(true);
+            setHubFailed(false);
+            void vaultAcceptHubMove()
+              .then((r) => {
+                setHubFailed(!r.ok);
+                if (r.ok) showToast('Your notes are on your computer now.');
+              })
+              .finally(() => setHubMoving(false));
+          }}
+          onDecline={() => void vaultDeclineHubMove()}
+        />
         <VaultMissingCard
           shown={Boolean(folderGone)}
           title={missingCard.title}
@@ -1585,6 +1654,14 @@ export function VaultScreen() {
           }}
           onChoose={() => void runPick('card')}
         />
+
+        {!team && !folder ? (
+          <VaultAgentRecent
+            load={vaultAgentRecent}
+            onOpen={(path) => void vaultOpen(path)}
+            refreshKey={vaultFiles.length}
+          />
+        ) : null}
 
         {!team && !folder && (settings.projects?.length ?? 0) > 0 ? (
           <div className="card" style={{ marginBottom: 14 }}>
@@ -2184,6 +2261,71 @@ function startsWithDot(typed: string): boolean {
     .replace(/\\/g, '/')
     .split('/')
     .some((segment) => segment.trim().startsWith('.'));
+}
+
+/** The toast after "Pin to project context". */
+function pinToast(
+  r: 'pinned' | 'already' | 'full' | 'refused',
+  project: string | undefined,
+): string {
+  const name = project ?? 'this project';
+  switch (r) {
+    case 'pinned':
+      return `Pinned to ${name}. Its chats start with this note.`;
+    case 'already':
+      return `Already pinned to ${name}.`;
+    case 'full':
+      return `${name} has ${PROJECT_VAULT_PINS_MAX} pinned notes. Unpin one in the project first.`;
+    case 'refused':
+      return 'Only an editor of this project can pin notes to it.';
+  }
+}
+
+// The one-time card after pairing (Vault M5, CTO J9): the notes are on this
+// device, and one tap moves them to the computer with the existing move
+// (nothing there is replaced). It folds out like the desktop move card.
+function HubMoveCard({
+  shown,
+  busy,
+  failed,
+  onMove,
+  onDecline,
+}: {
+  shown: boolean;
+  busy: boolean;
+  failed: boolean;
+  onMove: () => void;
+  onDecline: () => void;
+}) {
+  const presence = useExitPresence(shown, driveCardExitMs());
+  if (!presence.mounted) return null;
+  const off = busy || presence.closing;
+  return (
+    <div
+      className={`card vault-move-card${presence.closing ? ' closing' : ''}`}
+      style={{ margin: '0 0 14px' }}
+    >
+      <h3 style={{ marginBottom: 4 }}>{HUB_OFFER_COPY.title}</h3>
+      <p className="sub" style={{ marginTop: 0 }}>
+        {HUB_OFFER_COPY.body}
+      </p>
+      {failed ? (
+        <p className="hint" style={{ margin: '6px 0 0', color: 'var(--warn)' }}>
+          Nothing moved. Your computer did not take every note, so your Vault stays here.
+        </p>
+      ) : null}
+      <div className="vault-move-actions">
+        <button type="button" className="btn primary press-fb" disabled={off} onClick={onMove}>
+          {busy ? 'Moving your notes' : HUB_OFFER_COPY.move}
+        </button>
+        {!busy ? (
+          <button type="button" className="btn quiet press-fb" disabled={off} onClick={onDecline}>
+            {HUB_OFFER_COPY.later}
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 /** How long the Drive card takes to fold out: its exit (--dur-4) plus a

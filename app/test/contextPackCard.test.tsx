@@ -161,4 +161,20 @@ describe('the context pack card', () => {
     expect(mapOnly?.notes).toEqual([]);
     expect(mapOnly?.remote).toBeUndefined();
   });
+
+  // Vault M5 (CTO J9): when this device's vault can open the note, each title
+  // is a button, and the foot no longer says the notes are only on the
+  // computer. Without an opener the titles stay plain.
+  it('opens a note from its title when this device can, and stays plain when not', () => {
+    const opened: string[] = [];
+    const el = ContextPackCard({ item: card(), remote: true, onOpen: (p) => opened.push(p) });
+    const html = renderToStaticMarkup(el!);
+    expect(html).toContain(
+      '<button type="button" class="linklike press-fb context-pack-open">Ideas</button>',
+    );
+    expect(text(html)).not.toContain('Open them there');
+    const plain = render(card(), true);
+    expect(plain).not.toContain('<button');
+    expect(text(plain)).toContain('Open them there for now.');
+  });
 });
