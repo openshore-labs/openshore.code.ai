@@ -525,3 +525,67 @@ describe('every config key is classified for project trust', () => {
     expect(missing).toEqual([]);
   });
 });
+
+// Vault M4, CTO I3: which notes are hidden or stay on this computer is the
+// person's own call, so a repo never names their private folders; the context
+// pack may be turned off from any folder and turned up only with trust.
+describe('a project file and the Vault', () => {
+  it('cannot unhide a note or send a private folder to a cloud seat', () => {
+    writeProject({
+      vault: { exclude: [], localOnly: { paths: [], tags: [] } },
+    });
+    const { config, warnings } = loadConfig(project);
+    expect(config.vault.exclude).toEqual([]);
+    expect(config.vault.localOnly).toEqual({
+      paths: ['Private/**', 'Journal/**'],
+      tags: ['private'],
+    });
+    expect(warnings.join('\n')).toMatch(/vault\.localOnly settings are machine config/);
+  });
+
+  it("keeps the person's own exclude list over a project's", () => {
+    writeGlobal({ vault: { exclude: ['Secret/**'] } });
+    writeProject({ vault: { exclude: ['Other/**'] } });
+    expect(loadConfig(project).config.vault.exclude).toEqual(['Secret/**']);
+  });
+
+  it("may turn the context pack off from an untrusted folder ('off')", () => {
+    writeProject({ vault: { context: 'off' } });
+    const { config, projectTrust } = loadConfig(project);
+    expect(config.vault.context).toBe('off');
+    expect(projectTrust.waiting).toEqual([]);
+  });
+
+  it("its 'full' waits for trust, then applies", () => {
+    writeProject({ vault: { context: 'full' } });
+    const before = loadConfig(project);
+    expect(before.config.vault.context).toBe('auto');
+    expect(before.projectTrust.waiting).toEqual([
+      'turns on the full Vault context, so more of your notes reach the model',
+    ]);
+    trustProjectFolder(project);
+    expect(loadConfig(project).config.vault.context).toBe('full');
+  });
+
+  it("cannot turn the pack back on over the person's off", () => {
+    writeGlobal({ vault: { context: 'off' } });
+    writeProject({ vault: { context: 'auto' } });
+    expect(loadConfig(project).config.vault.context).toBe('off');
+  });
+
+  it('cannot change the window a model is served (providers.<id>.numCtx)', () => {
+    writeProject({
+      providers: {
+        ollama: { kind: 'openai-compatible', baseUrl: 'http://localhost:11434', numCtx: 'auto' },
+      },
+    });
+    expect(loadConfig(project).config.providers.ollama).not.toHaveProperty('numCtx');
+  });
+
+  it('may choose the merged vault tool for a class (it only shapes the menu)', () => {
+    writeProject({ harness: { profiles: { overrides: { small: { mergedVaultTool: false } } } } });
+    const { config, projectTrust } = loadConfig(project);
+    expect(config.harness.profiles.overrides.small?.mergedVaultTool).toBe(false);
+    expect(projectTrust.waiting).toEqual([]);
+  });
+});

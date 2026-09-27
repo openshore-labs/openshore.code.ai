@@ -217,6 +217,9 @@ export interface VaultIndexEntry {
   fmState: FmState;
   /** Estimate: ceil(UTF-8 bytes / 4). */
   tokens: number;
+  /** The note's own `oscode:` frontmatter marks (`oscodeMarks`, Vault M4, CTO
+   *  I4), set only when it carries at least one. */
+  oscode?: OscodeMark[];
   /** Weighted term counts as "id:tf,..." in base36 against the file's shared
    *  dictionary, or `'memory'` when the file went over its size cap and the
    *  vectors are rebuilt in memory on the first search. */
@@ -293,3 +296,43 @@ export type ConfigReadRefusal = 'absent' | 'too-large' | 'downloading' | 'unsupp
 /** `readConfig(resourceId, name)`, capped at 256 KB of UTF-8. */
 export type ConfigRead =
   { ok: true; text: string; version: string } | { ok: false; reason: ConfigReadRefusal };
+
+// ---------------------------------------------------------------------------
+// privacy.ts (Vault M4, CTO I3 to I5)
+
+/** A note's own say over how OpenShore treats it, from frontmatter
+ *  `oscode: pin | exclude | local-only` (a string or a list, any case). */
+export type OscodeMark = 'pin' | 'exclude' | 'local-only';
+
+/** `hidden`: absent for every vault tool and the pack. `local-only`: its text
+ *  reaches only a seat whose requests stay on this network. `open`: no rule
+ *  applies. A pin never lifts either restriction. */
+export type VaultVisibility = 'hidden' | 'local-only' | 'open';
+
+/** The machine's vault privacy config, as `vault.exclude` and
+ *  `vault.localOnly` in the config schema hold it. */
+export interface VaultPrivacyConfig {
+  exclude: readonly string[];
+  localOnly: { paths: readonly string[]; tags: readonly string[] };
+}
+
+/** In-vault narrowing (D8, M7): union only, so it can hide more or keep more
+ *  on this computer, never less. Optional now so the compiler's shape is set. */
+export interface VaultPrivacyNarrowing {
+  exclude?: readonly string[];
+  localOnly?: { paths?: readonly string[]; tags?: readonly string[] };
+}
+
+/** What `visibility` is asked about: a note path (vault-relative, `/`
+ *  separated), its tags, and its marks. Tags and marks are unknown for a note
+ *  the index has not seen, so `vaultList` can judge by glob alone. */
+export interface VaultVisibilityInput {
+  path: string;
+  tags?: readonly string[];
+  oscode?: readonly OscodeMark[];
+}
+
+/** The compiled rules, from `compileVaultPrivacy(cfg, narrowing?)`. */
+export interface VaultPrivacy {
+  visibility(note: VaultVisibilityInput): VaultVisibility;
+}

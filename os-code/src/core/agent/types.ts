@@ -4,6 +4,7 @@
 import type { ToolRisk } from '../permissions/index.js';
 import type { Citation, ToolOutput } from '../tools/index.js';
 import type { ParsedToolCall } from '../tools/parser.js';
+import type { PackMode, PackSource } from '../../harness/vaultContext.js';
 
 export interface ApprovalRequest {
   id: string;
@@ -163,6 +164,23 @@ export type AgentEvent =
       job: 'gate' | 'classify' | 'judge';
       line: string;
       spend: boolean;
+    }
+  // The vault context pack this task's seat was given (Vault M4, CTO I10).
+  // Emitted at the task's first render and again only when the sources change
+  // (an escalation re-renders for the new seat). `seat` is 'cloud' when the
+  // seat's requests leave this network (amber), else 'local' (teal).
+  // `withheld` counts local-only notes left out for a leaving seat; `cold` is
+  // true when the index was not ready, so the pack is Current State only.
+  // Additive: an older client ignores it.
+  | {
+      type: 'context-pack';
+      seat: 'local' | 'cloud';
+      mode: PackMode;
+      tokens: number;
+      budgetTokens: number;
+      sources: PackSource[];
+      withheld: number;
+      cold: boolean;
     };
 
 export type EventSink = (event: AgentEvent) => void;

@@ -34,6 +34,14 @@ export interface ChatMessage {
    * the Anthropic provider; other providers ignore it.
    */
   thinkingBlocks?: unknown[];
+  /**
+   * Set on a tool message whose content came from a local-only vault note
+   * (Vault M4, CTO I5). The loop swaps its content for a one-line stub
+   * (`withholdLocalOnly` in harness/vault/privacy.ts) in what it sends on any
+   * turn whose seat leaves this network, never in the kept history. Providers
+   * ignore it.
+   */
+  localOnly?: true;
 }
 
 /** JSON Schema for a tool, produced from the zod definitions at the boundary. */
@@ -84,7 +92,15 @@ export interface ProviderCapabilities {
   supportsVision: boolean;
   /** Grammar / structured-output constrained decoding. */
   supportsGrammar: boolean;
+  /** The window this model is served. With a provider's `numCtx: 'auto'`
+   *  (Vault M4, CTO I1) it is the served window, the lower of the model's own
+   *  and the per-class ceiling; otherwise the model's own. */
   contextTokens: number;
+  /** The model's own window as the server reports it, set when
+   *  `contextTokens` holds a smaller served window. Class derivation reads
+   *  `nativeContextTokens ?? contextTokens`, so serving less never drops a
+   *  seat a class. */
+  nativeContextTokens?: number;
   costTier: CostTier;
   latencyTier: LatencyTier;
   /** Standard capability categories this model is strong in (see router/roles). */

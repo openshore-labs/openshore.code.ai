@@ -54,7 +54,10 @@ export const PROJECT_POLICY: Record<keyof OscConfig, KeyPolicy> = {
   catalog: 'machine',
   license: 'machine',
   ui: 'project',
-  vault: 'machine',
+  // The vault folder and which notes are hidden or stay on this computer are
+  // the person's own (a repo never names their private folders); the context
+  // pack may only be turned off from a project (Vault M4, CTO I3).
+  vault: { dir: 'machine', exclude: 'machine', localOnly: 'machine', context: 'off-only' },
   ux: 'project',
   humanizer: 'project',
   chainOfThought: { enabled: 'off-only' },
@@ -151,6 +154,10 @@ function describe(path: string, value: unknown): string {
       return 'pushes commits on its own';
     case 'chainOfThought.enabled':
       return 'turns on Chain of Thought';
+    case 'vault.context':
+      return value === 'full'
+        ? 'turns on the full Vault context, so more of your notes reach the model'
+        : 'turns the Vault context back on';
     case 'memory.enabled':
       return 'turns on project memory, so the agent saves notes into this repo without asking';
     case 'guardrails.maxDollars':
@@ -333,7 +340,10 @@ function applyPolicy(
       walk.setAside.push({ path, plain: machinePlain(path), trustable: false });
       return base;
     case 'off-only':
-      if (walk.trusted || project === false || project === base) return project;
+      // Off is `false` for a switch and `'off'` for a mode (vault.context).
+      if (walk.trusted || project === false || project === 'off' || project === base) {
+        return project;
+      }
       walk.setAside.push({ path, plain: describe(path, project), trustable: true });
       return base;
     case 'lower-only':

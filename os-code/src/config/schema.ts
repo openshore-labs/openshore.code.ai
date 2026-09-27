@@ -14,6 +14,17 @@ export const OpenAICompatibleEndpointSchema = z.object({
   /** Name of an environment variable holding an API key, if the server wants one. */
   apiKeyEnv: z.string().optional(),
   label: z.string().optional(),
+  /**
+   * The context window this server is asked to serve (Vault M4, CTO I1).
+   * 'auto' sends Ollama's `num_ctx` on every request: the lower of the model's
+   * own window and a per-class ceiling from this computer's memory
+   * (`servedContextTokens` in harness/profile.ts). 'off' (the default while it
+   * is unset) sends no `num_ctx`, so the request body is unchanged. Only an
+   * Ollama backend reads it; llama.cpp and vLLM fix the window at start.
+   * Machine config, as the whole providers tree is. The default flips to
+   * 'auto' only on the eval record (I14).
+   */
+  numCtx: z.enum(['auto', 'off']).optional(),
 });
 
 export const AnthropicEndpointSchema = z.object({
@@ -218,6 +229,25 @@ export const VaultSchema = z.object({
   // must be absolute; unset means ~/OSCode/Vault. The agent reads and writes it
   // through the vault tools; every write asks first.
   dir: z.string().optional(),
+  // Vault M4, CTO I3. Globs (`*`, `**`, `?`, a trailing `/`) matched on the
+  // folded note path. An excluded note is invisible to every vault tool and to
+  // the context pack. Machine config: a repo never names the person's folders.
+  exclude: z.array(z.string()).default([]),
+  // Notes that never leave this computer (D5): a local seat may read them, a
+  // seat whose requests leave this network never sees their text. A tag
+  // matches itself and anything under it (`private`, `private/x`). A person's
+  // list replaces the default, per field. Machine config.
+  localOnly: z
+    .object({
+      paths: z.array(z.string()).default(['Private/**', 'Journal/**']),
+      tags: z.array(z.string()).default(['private']),
+    })
+    .prefault({}),
+  // The context pack (Vault M4, I8 and I9). 'auto' follows the per-class
+  // table (PACK_BY_CLASS in harness/vaultContext.ts); 'full' forces retrieval
+  // (eval, or a person on their own machine); 'off' removes the pack. A
+  // project may only turn it off (projectPolicy.ts).
+  context: z.enum(['auto', 'full', 'off']).default('auto'),
 });
 
 // ---------------------------------------------------------------------------
@@ -291,6 +321,11 @@ const HarnessProfileOverrideSchema = z.object({
   compactAtContextFraction: z.number().min(0).max(1).optional(),
   verifyRetries: z.number().int().min(0).max(10).optional(),
   bestOfAttempts: z.number().int().min(1).max(5).optional(),
+  // Vault M4, CTO I2: lean seats get one merged vault tool (vaultLookup) in
+  // place of the separate reads. It only shapes the tool menu, so a project may
+  // set it. The pack and read budgets stay out on purpose: a repo raising them
+  // would widen how much of the person's notes reaches a seat.
+  mergedVaultTool: z.boolean().optional(),
 });
 
 const HarnessSchema = z.object({

@@ -28,6 +28,7 @@ import type {
   IndexLink,
   LinkToken,
   NoteScan,
+  OscodeMark,
   ReconcilePlan,
   VaultBacklink,
   VaultIndexEntry,
@@ -37,6 +38,7 @@ import type {
   VaultPathIndex,
   VaultSearchHit,
 } from './types.js';
+import { oscodeMarks } from './privacy.js';
 import { BODY_STOPWORDS, eachTerm, queryTerms } from './tokenize.js';
 
 // ---------------------------------------------------------------------------
@@ -44,8 +46,9 @@ import { BODY_STOPWORDS, eachTerm, queryTerms } from './tokenize.js';
 
 /** Bump on any change to what an entry holds or how it is derived (the index,
  *  the tokenizer, or the scanner it is fed). A persisted file with another
- *  version is thrown away and the vault is rebuilt. */
-export const CORE_VERSION = 1;
+ *  version is thrown away and the vault is rebuilt. 2: entries carry the
+ *  note's `oscode` marks (Vault M4, CTO I4). */
+export const CORE_VERSION = 2;
 
 /** Notes indexed at most; above it the first ones in path order are indexed
  *  and the state is `partial` (the same cap as the M1 walk). */
@@ -567,6 +570,8 @@ export class VaultIndex {
       fmState: fm.state,
       tokens: Math.ceil(utf8Bytes(text) / 4),
     };
+    const marks = oscodeMarks(fm);
+    if (marks.length) note.oscode = marks;
 
     const counts = new Map<number, number>();
     this.addTerms(counts, note.title, TERM_WEIGHTS.title, false);
@@ -945,6 +950,7 @@ function strArr(v: unknown): string[] | null {
 }
 
 const FM_STATES: ReadonlySet<string> = new Set(['none', 'ok', 'invalid', 'too-large']);
+const OSCODE_MARKS: ReadonlySet<string> = new Set(['pin', 'exclude', 'local-only']);
 
 /** Copy an untrusted entry into a fresh object, or refuse it. */
 function cleanEntry(e: unknown): VaultIndexEntry | null {
@@ -1000,5 +1006,11 @@ function cleanEntry(e: unknown): VaultIndexEntry | null {
     terms,
   };
   if (e.evicted === true) out.evicted = true;
+  if (e.oscode !== undefined) {
+    const marks = strArr(e.oscode);
+    if (!marks) return null;
+    const known = marks.filter((m): m is OscodeMark => OSCODE_MARKS.has(m));
+    if (known.length) out.oscode = [...new Set(known)];
+  }
   return out;
 }

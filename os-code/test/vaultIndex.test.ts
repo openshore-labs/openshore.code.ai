@@ -329,6 +329,17 @@ describe('serializeIndex and loadIndex', () => {
     expect(loadIndex('[]', core).index.size).toBe(0);
   });
 
+  it("keeps a note's oscode marks through a save and a load (CORE_VERSION 2)", () => {
+    const idx = indexOf({
+      ...notes,
+      'Pinned.md': '---\noscode: [Pin, local-only, nonsense]\n---\nkept close',
+    });
+    expect(idx.entry('Pinned.md')?.oscode).toEqual(['pin', 'local-only']);
+    expect(idx.entry('A.md')).not.toHaveProperty('oscode');
+    const { index } = loadIndex(serializeIndex(idx).json, core);
+    expect(index.entry('Pinned.md')?.oscode).toEqual(['pin', 'local-only']);
+  });
+
   it('drops malformed entries one by one', () => {
     const ser = JSON.parse(serializeIndex(indexOf(notes)).json);
     ser.entries.push({ path: 'bad.md' }, { ...ser.entries[0], path: '../x.txt' }, 7);

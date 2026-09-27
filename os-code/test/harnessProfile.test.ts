@@ -6,7 +6,11 @@ import {
   useConstrainedDecoding,
   classBlurb,
   MODEL_CLASSES,
+  numCtxCeiling,
+  servedContextTokens,
+  VAULT_PACK_MAX_TOKENS,
 } from '../src/harness/profile.js';
+import { packBudgetTokens, packModeFor } from '../src/harness/vaultContext.js';
 
 describe('paramsBFromModelId', () => {
   it('reads a billions hint from the model id', () => {
@@ -126,5 +130,47 @@ describe('classBlurb', () => {
       expect(classBlurb(c).length).toBeGreaterThan(0);
     }
     expect(classBlurb('tiny').toLowerCase()).toContain('single steps');
+  });
+});
+
+// Vault M4, CTO I1 and I2: the served window and the pack budget. The numbers
+// are placeholders until the eval; these pin the shape, not the values' worth.
+describe('the served window', () => {
+  it('reads the class ceiling by memory band', () => {
+    expect(numCtxCeiling('small', 8)).toBe(8192);
+    expect(numCtxCeiling('small', 16)).toBe(16384);
+    expect(numCtxCeiling('mid', 32)).toBe(16384);
+    expect(numCtxCeiling('large', 64)).toBe(16384);
+    expect(numCtxCeiling('tiny', 12)).toBe(16384);
+  });
+  it('serves the lower of the native window and the ceiling', () => {
+    expect(servedContextTokens(131_072, 'small', 16)).toBe(16384);
+    expect(servedContextTokens(4096, 'small', 64)).toBe(4096);
+  });
+  it('a served window below 100k never drops a seat a class', () => {
+    const caps = { contextTokens: 16384, nativeContextTokens: 131_072, supportsGrammar: false };
+    expect(deriveModelClass({ model: 'mystery', kind: 'local', caps })).toBe('mid');
+  });
+});
+
+describe('the pack budget', () => {
+  it('is the class fraction of the served window, capped for every class', () => {
+    const small = deriveProfile({ model: 'x:7b', kind: 'local' });
+    expect(packBudgetTokens(small, 16384)).toBe(Math.floor(16384 * small.vaultPackFraction));
+    expect(packBudgetTokens(small, 1_000_000)).toBe(VAULT_PACK_MAX_TOKENS);
+  });
+  it('every class is Current State under auto in M4', () => {
+    for (const c of MODEL_CLASSES) {
+      expect(packModeFor('auto', c)).toBe('current-state');
+      expect(packModeFor('full', c)).toBe('full');
+      expect(packModeFor('off', c)).toBeNull();
+    }
+  });
+  it('a project may override the merged vault tool only', () => {
+    const p = deriveProfile(
+      { model: 'x:7b', kind: 'local' },
+      { small: { mergedVaultTool: false } },
+    );
+    expect(p.mergedVaultTool).toBe(false);
   });
 });

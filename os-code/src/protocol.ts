@@ -144,7 +144,53 @@ export type {
   VaultPathIndex,
   VaultSearchHit,
   WikilinkContext,
+  OscodeMark,
+  VaultPrivacy,
+  VaultPrivacyConfig,
+  VaultPrivacyNarrowing,
+  VaultVisibility,
+  VaultVisibilityInput,
 } from './harness/vault/types.js';
+// Vault privacy (Vault M4, CTO I4, I5): one judge of which notes are hidden and
+// which stay on this computer, and the stub a leaving seat sees in their place.
+export {
+  LOCAL_ONLY_STUB,
+  compileVaultPrivacy,
+  oscodeMarks,
+  withholdLocalOnly,
+} from './harness/vault/privacy.js';
+// The vault context pack (Vault M4, CTO I6 to I10), pure, so the app's drivers
+// (M5) render the exact pack the engine does.
+export {
+  PACK_BY_CLASS,
+  PACK_PLAN_MAX_READS,
+  VAULT_NOTES_FRAMING,
+  buildContextPack,
+  packBudgetTokens,
+  packModeFor,
+  planContextPack,
+} from './harness/vaultContext.js';
+export type {
+  ContextPack,
+  PackBuildInput,
+  PackInput,
+  PackLayer,
+  PackMode,
+  PackSource,
+  PreparedVaultContext,
+  VaultContextSetting,
+  VaultContextSource,
+} from './harness/vaultContext.js';
+// The served window (Vault M4, CTO I1, I2): the app computes the same number
+// the engine sends (M5).
+export {
+  NUM_CTX_CEILING,
+  NUM_CTX_RAM_BANDS_GB,
+  VAULT_PACK_MAX_TOKENS,
+  numCtxCeiling,
+  servedContextTokens,
+} from './harness/profile.js';
+export type { ModelClass } from './harness/profile.js';
 export type { CapabilityCategory, SpecialistRole } from './router/roles.js';
 
 // The always-on ethics layer. Pure modules only: the tier logic, the
