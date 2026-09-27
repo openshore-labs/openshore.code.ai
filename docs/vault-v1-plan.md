@@ -1071,6 +1071,16 @@ list includes agent-written notes. Closes [ui-10] [obs-6] [custom-12]
 [truth-9]. Test: a store test that finds an agent-written note in a
 5,000-note vault within budget; operator cases in `vaultCore.test.ts`.
 
+Shipped 2026-09-27 (K8, K9, K16): the K8 grammar in `harness/vault/query.ts`
+over the index's `search`, `expandPrefix` and `titleMatches`; the field sits in
+the tree at every level and crossfades to results (titles first, then text,
+with `<mark>` excerpts); Cmd or Ctrl+O opens `VaultSwitcher` on the desktop
+(the phone's switcher is the field, CX X3); Recent is a device ring per vault
+merged with the agent's notes. `vaultSearch.test.ts` finds an agent-written
+note in a synthetic 5,000-note vault within budget. The reference box numbers
+(K16, with the bare two-letter prefix search against 50 ms) are a founder
+gate.
+
 **6.2 Rename and move, with links following (L; needs 2.1 and 2.3).** An
 optional `rename()` on the seam, native per provider (a file rename, a
 coordinated iCloud move, a key move in Local, an `org_vault_move` RPC with a
@@ -1082,6 +1092,16 @@ write. Folders can be created, renamed, and deleted, with counts. Closes
 headings; a rename stops and reports if a referring note changed; a pgTAP
 move case.
 
+Shipped 2026-09-27 (K3 to K5, R1): `rename` natively on the folder, the hub
+(`folderFs.renameVaultFile`, a hard link that cannot replace) and Local (a key
+move that keeps `v`), with the create-if-absent fallback only on a
+compare-and-swap storage; the rename adopts the path the storage returns. The
+pure `planLinkRewrites` and the host apply in `vaultOps.ts` ask "Update links?"
+only when links point in, skip a note that changed twice and carry on, and
+leave a standing card with "Update the rest". Folders are created, renamed and
+trashed with counts; Local remembers an empty folder on the device. The team
+`org_vault_move` (0020, pgTAP) is on the held team branch.
+
 **6.3 Trash with Undo (M; team restore needs 2.3).** Delete moves the note to
 `.trash/` (the folder Obsidian uses for its own trash, already hidden by 0.6);
 an Undo toast rides
@@ -1089,6 +1109,14 @@ an Undo toast rides
 Empty; team deletes restore from revisions. Closes [ui-12] [data-17]
 [orgvault-4]. Test: `vaultStore.test.ts`, delete then Undo restores the bytes
 and `.trash` stays out of the tree.
+
+Shipped 2026-09-27 (K6, R2, R3): `.trash/<path>` on a folder and Your
+computer, sealed trash keys on Local; Delete is one tap only where Trash is
+real, else two taps worded "for good" with a courtesy in-memory Undo. The Undo
+toast (`VaultUndoToast`, 6 s, pauses under a hand, "Also in Trash.") and the
+Trash page (the last row at the root, Restore per row, Empty on a second tap)
+restore beside a taken name as "{title} (restored)". Team Trash (Restore only)
+waits for the held team branch.
 
 **6.4 Today's note (M).** A Today action whose folder, format, and template
 come from `.obsidian/daily-notes.json` (through 3.4), else Obsidian's defaults
@@ -1098,6 +1126,12 @@ it; Crew notes link to the day's note and never append to it. Closes [obs-16]
 [custom-11]. Test: date formats in `vaultCore.test.ts`; Today opens an
 existing note unchanged.
 
+Shipped 2026-09-27 (K7): the pure `dates.ts` with moment tokens, refusing an
+unknown one by name; config from `obsidian/daily-notes` and `obsidian/templates`
+cached 60 s; `write(path, text, { ifAbsent: true })`, and an existing note opens
+byte for byte with no toast. The Today button sits beside the house +; Crew run
+notes gain `day: "[[...]]"` and never append.
+
 **6.5 Obsidian markdown in reading view (M; checkbox write-back needs 2.1).**
 Callouts, `==highlight==`, hidden `%%comments%%`, block anchors, scroll to
 `[[Note#Heading]]`, task checkboxes that tick and write back through
@@ -1105,12 +1139,26 @@ compare-and-swap, the chat's code block with Copy, and `![[Note]]` embedded
 one level deep. Closes [ui-8] [obs-16]. Test: one case per syntax in
 `vaultMarkdown.test.tsx`.
 
+Shipped 2026-09-27 (K10, K11): hand-written remark plugins in
+`remarkObsidian.ts` (callouts in four token families, highlights, masked
+comments, block anchors, heading scroll, a `#tag` that searches `tag:x`), no
+raw HTML and no `id` from note text; checkboxes write back by compare-and-swap
+where `taskWriteBack` is lit; the chat's `CodeBlock` with Copy only; `![[Note]]`
+one level deep.
+
 **6.6 Images and PDFs, read-only (M; "Your computer" needs 5.2).** `readBytes`
 on the folder, iCloud, and hub providers, resolved through the attachments
 folder; `![[img.png]]` and `![](img.png)` render from blob URLs; PDFs show as
 chips that open; moves count non-note files. Closes [data-17] [obs-12]
 (read half). Test: an embed case in `vaultMarkdown.test.tsx`; a move report
 that counts attachments.
+
+Shipped 2026-09-27 (K11, K13): `readBytes` and `listAttachments` on the folder
+and the hub (`GET /vault/files/<path>`, allow-listed types, 20 MB), images from
+refcounted blob URLs (`vaultBlobs.ts`, revoked on a storage change, leaving the
+room and iOS backgrounding), remote images as link chips, PDFs as chips that
+open on the desktop. iCloud and the iPhone folder wait for their held
+branches.
 
 **6.7 Linking that feels native (M).** Up, Down, Enter or Tab, and Esc in the
 suggestions; `role=option` and `aria-activedescendant`; a pick replaces
@@ -1121,9 +1169,20 @@ insertion through `setRangeText` so undo keeps working. Closes [ui-15]
 [obs-17]. Test: a component test for a keyboard pick and an ambiguous
 insert; `polish-standards.test.ts` stays green.
 
+Shipped 2026-09-27 (K14): `VaultLinkSuggest` as a listbox with the keys, a
+pick through an existing `]]` or `|`, headings after `[[Note#`, a folder
+sub-label on colliding titles, and `VaultAccessoryBar` on the phone lifted by
+transform. Insertion tries `execCommand('insertText')` (native undo) and falls
+back to `setRangeText`; its undo on a device is a founder gate.
+
 **6.8 Outgoing links, unlinked mentions, an outline (S).** Under Linked
 mentions, plus an outline sheet from the headings. Closes [obs-16]. Test: an
 unlinked-mentions case in `vaultCore.test.ts`.
+
+Shipped 2026-09-27 (K15): outgoing links from the index, unlinked mentions on
+request (at most 50 reads) with a guarded Link button (CX X16, the person's own
+compare-and-swap write), and the outline sheet first in Options when a note has
+two or more headings.
 
 **6.9 The house bar (S).** The house icon button for + (44 px, `press-fb`),
 press feedback on chips, mentions, and the segmented control, crossfades
@@ -1131,6 +1190,24 @@ between tree and note and between read and edit on the motion tokens, and a
 backlinks skeleton. Closes [ui-18]. Test: `polish-standards.test.ts` and
 `motion-tokens.test.ts` green, plus a guard that every Vault class name has a
 rule.
+
+Shipped 2026-09-27 (K18): the 44 px house +, press feedback on every new
+tappable, the backlinks skeleton, and a guard that every `vault-` class has a
+rule. Tree and note, and read and edit, are true crossfades: the leaving view's
+inert snapshot (`hooks/useViewGhost.ts`) fades out while the arriving view
+fades in, guarded by `vaultViewGhost.test.tsx`; `vaultRoomM6.test.tsx` mounts
+the room over a Local storage with every cap lit.
+
+What waits for the held branches (K19), each landing by adding seam members so
+its `providerContract` rows enroll themselves: `vault-m2-icloud` (coordinated
+rename, Trash, attachments and `readBytes`; until then an iCloud delete is
+permanent with the in-memory Undo, and no Rename, images or checkbox
+write-back); `vault-m2-team` with 0019 then 0020 in production (rename over
+`org_vault_move`, Trash and Restore over tombstones and revisions, checkbox
+write-back and link rewrites; until then the team room keeps M2's delete); and
+`vault-m2-native` for the iPhone folder (the same members over its transport,
+`readBytes` and `readConfig` conformed to main's shapes, daily notes and
+attachments from its detected config folder).
 
 ### M7. The customization surface
 

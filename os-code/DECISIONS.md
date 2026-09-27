@@ -2486,3 +2486,78 @@ execution contract. Newest at the bottom.
   before M5 (the pre-M5 piece order too, on every Stack seat), the pack
   appended last; blocks, the stable-to-volatile order and `cache_control`
   only with caching on.
+- **Vault M6, Obsidian day one (2026-09-27):** the CTO's rulings K1 to K19
+  are built in waves (0 contracts, stubs and mechanical moves; 1 streams A1,
+  A2, B to H; 2 one app integrator). In brief: K1 one pure `vaultCaps`
+  lights every M6 action by capability, never by provider id, and every
+  write-shaped cap needs `compareAndSwap`; K2 the seam's optional members
+  (`rename`, folders, Trash, attachments, `readBytes`); K3 rename by
+  compare-and-swap that never replaces (`exists`, `missing`, `changed`,
+  `downloading`), with a create-if-absent then remove fallback only on a
+  compare-and-swap storage; K4 a pure link-rewrite plan (`move.ts`) and a
+  host apply in `vaultOps.ts`; K5 folders as derived paths plus
+  `listFolders`, Local's empty folders remembered on the device; K6 Trash
+  per provider (`.trash/<path>` on a folder, sealed keys on Local); K7 a
+  pure Today core with moment tokens, refusing an unknown token by name;
+  K8 the search grammar (`tag:`, `path:`, `file:`, phrases, `-`); K9 the
+  switcher and Recent; K10 remark plugins, sanitized, no `id` from note
+  text; K11 embeds one level deep, checkbox write-back, attachments and
+  refcounted blob URLs; K12 `0020_org_vault_move.sql`; K13 the engine,
+  main and daemon routes; K14 linking by keyboard with the accessory bar;
+  K15 outgoing links, unlinked mentions, the outline; K16 the 5,000-note
+  budgets; K17 no new `OscConfig` key; K18 motion and honest copy; K19 what
+  waits for the held branches. Reconciled with CX, final: a rewrite
+  conflict skips that note and the pass continues (a re-read and re-plan
+  once, a standing card with "Update the rest"; only a storage-level failure
+  stops it); one-tap delete only where Trash is real, and any permanent
+  delete keeps two taps worded "for good" with a courtesy in-memory Undo;
+  team Trash is Restore only, no Empty; a restore beside a taken name is
+  "{title} (restored)" on every provider. The CX memo's key calls: search
+  lives in the tree on every platform and the phone gets no switcher (its
+  field is one, over K9); titles first, then text, with `<mark>`; Recent
+  merges the agent's notes, labelled only where the agent is real; rename is
+  one sheet with Name and Folder; "Update links?" only when links point in;
+  a partial pass names the notes it skipped; Undo is a 6 s toast that pauses
+  under a hand and says "Also in Trash."; Trash is the last row at the root,
+  shown only when it holds something; Today sits beside the house +, opens
+  an existing note with no write and no toast; callouts use four token
+  families, never teal or amber; the only haptics are a commit when a
+  destructive or multi-note change lands and a tick on a checkbox. Stream
+  deviations: B keeps accents distinct while it folds case and Unicode
+  normalization (a filesystem's truth and 0019's `lower(path)`; K3 had said
+  accent-insensitive), and Local, the hub and the rename sheet use the same
+  `foldPath`; unlinked mentions carry a guarded Link button (CX X16) though
+  K15 said read-only, the person's own compare-and-swap write, refused while
+  a choice is open on that note; K14's insert tries `execCommand('insertText')`
+  first and falls back to `setRangeText` with an `input` event, unverified on
+  a device; a rename adopts the path the storage returned, never the one
+  asked (B re-cases parents to the disk's spelling); 0020 lives on the held
+  team branch, and that branch's `listTrash` lists a tombstone only when its
+  newest revision of any reason is `deleted` (a moved-away path's newest is
+  `renamed`). The app integrator's calls: the store binds the screen's
+  autosave (`vaultBindAutosave`, `take()`) so a stale save never recreates a
+  trashed note; a permanent delete stays M2's guarded `vaultDelete` plus the
+  bytes for the courtesy Undo, a Trash-real one goes through
+  `vaultOps.deleteNote`; an operation's write to the open note reloads it in
+  place; the rewrite pass writes a moved note at its landed path; one fold
+  rule for a taken name (`foldPath`, pinned for every provider in
+  `providerContract`); remembered empty folders (`vaultEmptyFolders`) and
+  Recent (`vaultRecent`) are device settings keyed `providerId::resourceId`,
+  Recent cleared on a repoint and with the chats; search uses the host's
+  `search(q, opts)` memoized on list, index state and scope; Today's
+  refusals say the storage's own line; a `#tag` in reading view is a small
+  button that searches `tag:x`; blob URLs are revoked with `shutVaultIndex`,
+  on leaving the room and on iOS backgrounding, the reader re-keyed on
+  return; the outline scroll finds `[data-heading-index]` outside embeds;
+  Options says why a row is missing where the storage itself lacks it
+  (`vaultCapLine`); the class-name guard reads `className` values only; new
+  strings sit in an "M6 wave 2" section of `vaultCopy.ts`; folder options
+  show in a folder view only. The tree to note and read to edit swaps began
+  as arrival fades and are now true crossfades: `hooks/useViewGhost.ts`
+  clones the leaving view's root in React's commit (typed text copied, ids
+  dropped) into an inert, aria-hidden snapshot inside the room's scroller
+  that fades out on `--dur-3` and `--ease-standard` while the arriving view
+  fades in; a re-key of the same view leaves none, and reduced motion (or a
+  host with no `matchMedia`) leaves none. `vaultViewGhost.test.tsx` fails a
+  Vault view root rendered without its ghost binding. The Trash page still
+  only arrives with a fade, since it replaces the whole screen.
