@@ -32,6 +32,7 @@ import {
   LocalDriver,
   listSessions,
   sealSessionsAtRest,
+  storedSessionProject,
   _setMigrationRenameHook,
   type DriverEvent,
 } from '../src/daemon/session.js';
@@ -221,6 +222,26 @@ describe('the migration', () => {
 
     // Second pass changes nothing.
     expect(sealSessionsAtRest().sealedLines).toBe(0);
+  });
+
+  it("reseals a session's project kept in plain text, and it still opens", () => {
+    writeLegacySession('mig2', 't');
+    const infoPath = join(home, 'sessions', 'mig2', 'info.json');
+    const legacy = JSON.parse(readFileSync(infoPath, 'utf8'));
+    writeFileSync(
+      infoPath,
+      JSON.stringify({ ...legacy, projectName: 'My App', instructions: 'Keep it calm.' }),
+    );
+    sealSessionsAtRest();
+    const info = JSON.parse(readFileSync(infoPath, 'utf8'));
+    expect(isSealed(info.projectName)).toBe(true);
+    expect(isSealed(info.instructions)).toBe(true);
+    expect(storedSessionProject('mig2')).toEqual({
+      projectName: 'My App',
+      instructions: 'Keep it calm.',
+    });
+    // A listing never carries the project.
+    expect(listSessions().find((s) => s.id === 'mig2')).not.toHaveProperty('instructions');
   });
 });
 

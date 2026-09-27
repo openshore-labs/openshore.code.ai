@@ -7,8 +7,29 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { DriverEvent } from 'os-code/protocol';
+
+// Every session the host boots, with the project it carries, so a test can
+// check what a resume kept. The real bootstrap runs untouched.
+const booted = vi.hoisted(
+  () => [] as Array<{ id: string; projectName?: string; instructions?: string }>,
+);
+vi.mock('os-code/dist/src/core/agent/bootstrap.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('os-code/dist/src/core/agent/bootstrap.js')>();
+  return {
+    ...real,
+    bootstrapSession: (options: Parameters<typeof real.bootstrapSession>[0]) => {
+      const result = real.bootstrapSession(options);
+      booted.push({
+        id: result.driver.id,
+        projectName: result.toolContext.projectName,
+        instructions: (result.agent as unknown as { instructions?: string }).instructions,
+      });
+      return result;
+    },
+  };
+});
 
 // Two engine homes: one empty (fresh install), one with a model configured that
 // points at a dead port (a machine whose Ollama is not running). OSC_HOME is
@@ -99,4 +120,31 @@ describe('EngineHost (desktop coding path, hermetic)', () => {
     expect(String((done as { message?: string }).message ?? '')).not.toContain('(demo)');
     host.disposeAll();
   }, 30_000);
+
+  // A conversation reopened after the app restarts resumes its stored session.
+  // The resume used to boot it with no project, so its memory notes fell back
+  // to the folder's name and the project's standing instructions dropped.
+  it('a resumed session keeps its project name and instructions', async () => {
+    process.env.OSC_HOME = configuredHome;
+    const cwd = join(mkdtempSync(join(tmpdir(), 'osc-repo-')), 'my-app');
+    mkdirSync(cwd);
+    const first = makeHost([]);
+    const { id } = await first.createSession(cwd, {
+      projectName: 'My App',
+      instructions: 'Keep every screen calm.',
+    });
+    first.disposeAll();
+
+    // A new host is the app after a restart: nothing is live, so it rehydrates.
+    const second = makeHost([]);
+    const resumed = await second.resumeSession(id);
+    expect(resumed).toMatchObject({ id, cwd });
+    const boots = booted.filter((b) => b.id === id);
+    expect(boots).toHaveLength(2);
+    expect(boots[1]).toMatchObject({
+      projectName: 'My App',
+      instructions: 'Keep every screen calm.',
+    });
+    second.disposeAll();
+  });
 });

@@ -70,6 +70,14 @@ describe('projectMemoryPrompt', () => {
     expect(prompt).toContain(PROJECT_MEMORY_WRITE_TOOL);
     expect(prompt).toContain('commit');
   });
+
+  it('without the write tool keeps the read half and names no write tool', () => {
+    const prompt = projectMemoryPrompt('My App', { write: false });
+    expect(prompt).toContain('OpenShore Project My App MDs/Current State.md');
+    expect(prompt).toContain('top sheet');
+    expect(prompt).not.toContain(PROJECT_MEMORY_WRITE_TOOL);
+    expect(prompt).not.toContain('Keep them current');
+  });
 });
 
 describe('isMemoryFilePath', () => {

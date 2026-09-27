@@ -22,7 +22,11 @@ import {
 import { oscHome, loadConfig, loadDaemonConfig, saveGlobalConfig } from '../config/load.js';
 import type { OscConfig } from '../config/schema.js';
 import { profileFor } from '../core/security/profiles.js';
-import { isAdminProvisionedWorkspace, isOutboxAllowedPath } from '../core/security/workspaces.js';
+import {
+  isAdminProvisionedWorkspace,
+  isOutboxAllowedPath,
+  overlapsVault,
+} from '../core/security/workspaces.js';
 import { getRoutineScheduler } from '../routines/scheduler.js';
 import { validateRoutineInput, type RoutineInput } from '../routines/model.js';
 import { parseCurrentsHandles, parseHarnessCurrentsHandle } from '../currents/model.js';
@@ -125,6 +129,10 @@ const MAX_OUTBOX_BODY_BYTES = 64 * 1024 * 1024;
 // is on disk; the next touch rehydrates it.
 const DEFAULT_IDLE_EVICT_AFTER_MS = 30 * 60_000;
 const DEFAULT_IDLE_EVICT_EVERY_MS = 60_000;
+
+// Why a member's session may not open (or be revived) where the vault is.
+const MEMBER_VAULT_REFUSAL =
+  "A member session cannot open in the vault or in a folder that holds it, since the vault holds the computer owner's own notes. Pick a project folder.";
 
 export interface DaemonOptions {
   config: OscConfig;
@@ -960,6 +968,14 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         });
         return;
       }
+      // The vault is the machine owner's one folder. A member session opened
+      // in it, or in a folder that holds it (~/OSCode itself, by default),
+      // would read the owner's notes with readFile and grep, which never ask,
+      // even with the vault tools withheld below.
+      if (!hasRole(auth, 'admin') && overlapsVault(cwd)) {
+        sendJson(res, 403, { error: MEMBER_VAULT_REFUSAL });
+        return;
+      }
       try {
         const { driver, warnings } = bootstrapSession({
           cwd,
@@ -1246,7 +1262,16 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
             sendJson(res, 403, { error: `Session ${id} belongs to another user.` });
             return;
           }
-          // Rehydrate a stored session: the journal replays, a fresh agent continues.
+          // A member's session stored in the vault (opened before the gate on
+          // POST /sessions existed) is never revived: its agent would read the
+          // owner's notes. Decided by the owner, like the vault tools below.
+          if (!ownerHoldsAdmin(stored.ownerUserId) && overlapsVault(stored.cwd)) {
+            sendJson(res, 403, { error: MEMBER_VAULT_REFUSAL });
+            return;
+          }
+          // Rehydrate a stored session: the journal replays, a fresh agent
+          // continues, and the project it was opened for (its name and standing
+          // instructions, kept in info.json) comes back with it.
           try {
             const { driver: revived } = bootstrapSession({
               cwd: stored.cwd,

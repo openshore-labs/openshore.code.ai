@@ -212,14 +212,22 @@ export function isProjectMemoryFolder(folder: string): boolean {
 
 /** The system-prompt block that teaches the agent to use the project memory:
  *  read the top sheet first, dig deeper only as needed, and keep the five notes
- *  current through projectMemoryWrite. Injected when a memory segment exists. */
-export function projectMemoryPrompt(segment: string): string {
+ *  current through projectMemoryWrite. Injected when a memory segment exists.
+ *  The read half needs only readFile; the write half is sent only when the seat
+ *  was given projectMemoryWrite (`write: false` leaves it out), so a lean seat
+ *  is still pointed at the top sheet without being told to use a tool it
+ *  cannot see. */
+export function projectMemoryPrompt(segment: string, options: { write?: boolean } = {}): string {
   const folder = memoryFolder(segment);
   const titles = MEMORY_FILES.map((f) => f.title).join(', ');
-  return [
+  const read = [
     `PROJECT MEMORY (this project's durable knowledge, in this repo under "${folder}/"):`,
     `Five notes carry everything worth remembering across sessions: ${titles}. Reach for them for planning, for debugging, and to recall how something worked when it was healthy. They are committed with the repo, so they travel with the code.`,
     `Read the top sheet first. Open "${folder}/${CURRENT_STATE_FILE}.md" (a 2 to 5 minute catch up) before you start; it names what last landed, the key outstanding build and test actions, the immediate blockers, and the suggested next steps. Only open Progress, Decisions, Action Items, or Skills when you need the deeper record behind a line on the top sheet. Do not read all five up front.`,
+  ];
+  if (options.write === false) return read.join('\n');
+  return [
+    ...read,
     `Keep them current as work lands, using the ${PROJECT_MEMORY_WRITE_TOOL} tool (these writes save without interrupting you; every other write still asks first):`,
     '- Current State: after a meaningful change lands, refresh all five sections and keep it short (a 2 to 5 minute read). It is a summary, not a log.',
     '- Progress: add one dated entry at the top per meaningful landing or deploy (what changed, why, how it was verified).',

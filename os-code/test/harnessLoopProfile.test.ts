@@ -209,7 +209,12 @@ describe('no prompt names a tool the seat was not given', () => {
       expect(named.length).toBeGreaterThan(0);
       expect(named.filter((name) => !given.has(name))).toEqual([]);
       expect(given.has('projectMemoryWrite')).toBe(false);
-      expect(system).not.toContain('PROJECT MEMORY');
+      // Only the write half is cut. Reading the top sheet needs readFile,
+      // which every lean cut keeps, so the seat is still pointed at it.
+      expect(given.has('readFile')).toBe(true);
+      expect(system).toContain('PROJECT MEMORY');
+      expect(system).toContain('OpenShore Project Demo MDs/Current State.md');
+      expect(system).not.toContain('Keep them current');
     });
   }
 
@@ -225,7 +230,8 @@ describe('no prompt names a tool the seat was not given', () => {
     const system = systemOf(request);
     expect(system).toContain('PROJECT MEMORY');
     expect(system).toContain('projectMemoryWrite');
-    expect(system).toContain('OpenShore Project Demo MDs/');
+    expect(system).toContain('OpenShore Project Demo MDs/Current State.md');
+    expect(system).toContain('Keep them current');
   });
 
   it('a small seat keeps the runShell line it can act on', async () => {

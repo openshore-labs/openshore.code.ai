@@ -14,7 +14,7 @@ import { PermissionEngine, type PermissionConfig } from '../permissions/index.js
 import { Guardrails } from '../guardrails/index.js';
 import { profileFor, type SecurityProfileName } from '../security/profiles.js';
 import { UsageTracker } from '../../auth/usage.js';
-import { LocalDriver } from '../../daemon/session.js';
+import { LocalDriver, storedSessionProject } from '../../daemon/session.js';
 import { buildCodeMap } from '../../context/codeMap.js';
 import { readRepoInstructions } from './instructions.js';
 import { gateProjectSecrets } from './secretsGate.js';
@@ -96,8 +96,9 @@ export interface BootstrapOptions {
   caps?: { wallClockSeconds?: number; maxSteps?: number };
   /** Whether this session gets the vault tools. The daemon turns it off for a
    *  member's session on a shared hub: the vault is the machine owner's one
-   *  folder, so a member's agent neither reads it nor proposes writes into it
-   *  until each member has a root of their own. Undefined means on. */
+   *  folder, so a member's agent gets no tool aimed at it until each member
+   *  has a root of their own. (The daemon also keeps a member's workspace off
+   *  the vault, so the file tools cannot reach it.) Undefined means on. */
   vault?: boolean;
 }
 
@@ -118,6 +119,13 @@ export interface BootstrapResult {
 
 export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   const warnings: string[] = [];
+  // A revived session (the daemon's rehydrate, the desktop's resume) works to
+  // the project it was opened for, kept in its info.json: without the name the
+  // memory notes fall back to the workspace's folder, a second folder for the
+  // same project, and the standing instructions drop. A caller's own wins.
+  const stored = options.sessionId ? storedSessionProject(options.sessionId) : {};
+  const projectName = options.projectName ?? stored.projectName;
+  const instructions = options.instructions ?? stored.instructions;
   let config = options.config;
   if (!config) {
     const loaded = loadConfig(options.cwd);
@@ -202,7 +210,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     config,
     router,
     providers,
-    projectName: options.projectName,
+    projectName,
     egressLockdown,
     vault: options.vault,
   });
@@ -237,7 +245,11 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     log.info('repo instructions loaded', { file: repoInstructions.file });
   }
 
-  const driver = new LocalDriver(options.cwd, { id: options.sessionId, persist: options.persist });
+  const driver = new LocalDriver(options.cwd, {
+    id: options.sessionId,
+    persist: options.persist,
+    project: { projectName, instructions },
+  });
   // From here on, an ethics block shows up in the transcript of this session.
   ethicsSink.emit = (event) => driver.emit(event);
 
@@ -273,7 +285,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     onEvent: (event) => driver.emit(event),
     codeMap,
     repoInstructions,
-    instructions: options.instructions,
+    instructions,
     projectSecrets,
     // A Harness Current makes a cloud decision call, so it is dropped under
     // egress lockdown exactly like cloud escalation and the currents tools.

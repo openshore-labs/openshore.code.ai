@@ -517,12 +517,12 @@ export class AgentSession {
     // Project memory: read the Current State top sheet first, dig page by page
     // only as needed, and keep the five notes current as work lands
     // (projectMemory.ts). Engages whenever the session has a memory folder,
-    // which is any real workspace, and the seat is offered the write tool the
-    // block teaches: a lean seat whose cut drops projectMemoryWrite is not told
-    // to use it.
+    // which is any real workspace, and the seat can read files. The write half
+    // goes only to a seat offered projectMemoryWrite: a lean seat whose cut
+    // drops it is still pointed at the top sheet, never told to use the tool.
     const memorySeg = memorySegment(toolContext.projectName, toolContext.cwd);
-    if (memorySeg && offered.has(PROJECT_MEMORY_WRITE_TOOL)) {
-      parts.push(projectMemoryPrompt(memorySeg));
+    if (memorySeg && offered.has('readFile')) {
+      parts.push(projectMemoryPrompt(memorySeg, { write: offered.has(PROJECT_MEMORY_WRITE_TOOL) }));
     }
     // Project secrets, present only for a local orchestrator (bootstrap drops
     // them for a cloud one). They ride in so the model can use the project's
