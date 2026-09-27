@@ -2644,3 +2644,63 @@ execution contract. Newest at the bottom.
   the exact bytes its diff showed, and execute writes those bytes or nothing
   (a seat that changed under the card is refused). Tests:
   `os-code/test/vaultApprovedBytes.test.ts`, `app/test/vaultTool.test.ts`.
+- **Vault M8, the ship gate (2026-09-27, plan 8.2):** the standing record
+  of what Vault v1 settled, gathered in one place; each ruling's own entry
+  above stays the detail. (1) **The base revision lives in the editor.** The
+  version a save is typed against is carried by the open note and by its
+  stash entry, never by a provider or a device clock; a provider answers a
+  guarded write with `ok`, `changed` (with theirs), `missing`, `exists`, or
+  `downloading`, and never overwrites on a mismatch (M1 F4, M2 G3, 2.1). On
+  `main` the team provider still remembers the revs it read (0.9 stopped
+  `list()` and `stat()` from moving them) until `vault-m2-team` lands its
+  client on 0019's `org_vault_write` and `org_vault_remove`. (2) **The lease,
+  revised (2.5, supersedes the CTO's "single-writer lease from day one").**
+  `leaseEnforced = writable && !compareAndSwap`: on a compare-and-swap
+  storage the lease is advisory ("also open on X"), and only iCloud writes a
+  lease file, taken on a keystroke, renewed at most every 60 s, TTL 150 s;
+  a storage without compare-and-swap enforces it (create and delete refused,
+  Take over editing). (3) **The trash convention (6.3, K6).** A delete goes
+  to `.trash/<path>` on a folder and on Your computer (the folder Obsidian
+  uses, already hidden by the 0.6 note rule), to sealed trash keys on Local,
+  and on the team vault to its tombstones and revisions (Restore only, no
+  Empty; held branch). Delete is one tap only where Trash is real; any
+  permanent delete takes two taps worded "for good" with an in-memory
+  courtesy Undo; a restore beside a taken name lands as "{title} (restored)";
+  `delete: permanent` in `.oscode/vault.json` turns Trash off. (4) **The pack
+  budgets are placeholders until 4.8.** `PACK_BY_CLASS` is Current State only
+  for every class; `vaultPackFraction` 0.08 (tiny, small, mid) and 0.04
+  (large) of the served window, capped at `VAULT_PACK_MAX_TOKENS` 4000;
+  `vaultReadCapChars` 6,000, 12,000, 32,000, 64,000 by class; the merged
+  `vaultLookup` for tiny and small; a 250 ms cold budget; pins at most 3 in
+  half the budget; the composer excerpt min(2,000, 25% of the window), 1,024
+  on a device seat; a device seat's 4,096 window gives 327 tokens; the
+  handoff to the desktop agent at most 16 KB; `numCtx`, the handoff layer,
+  and `promptCache` off. Each changes only in its own commit citing the
+  reference box numbers recorded here. (5) **The team vault's permission
+  model.** Reads are RLS-scoped to active members (a removed member reads 0
+  notes and 0 revisions); writes only through SECURITY DEFINER RPCs
+  (`org_vault_write`, `org_vault_remove`, `org_vault_move`, with the legacy
+  put and delete kept for builds in the field); revisions are append-only
+  and no member writes them directly; bodies cap at 1 MB; paths are unique
+  on `lower(path)`; tombstones and revisions purge past a window. On the held
+  0021: `delete_role` (admins or members) set by an admin through a
+  compare-and-swap `org_vault_settings_put`, `OV403` for a member's delete
+  under admins-only, a move never gated by the delete role, `OV402` on every
+  write when not entitled, a lapsed org reading and exporting everything, and
+  an org with no entitlement row writing until `no_entitlement_vault_until()`
+  (null in the beta). The team vault is for people only in v1: no pack, no
+  vault tool, no agent line (D15); project pins stay device-local and never
+  sync. (6) **Founder decisions still open:** push 0019, then 0020, then
+  0021 to production, after the case-duplicate preflight, and confirm the
+  purge cron; merge `vault-m2-team`, `vault-m2-icloud`, and `vault-m2-native`
+  (in that dependency order: icloud before native); the date in
+  `no_entitlement_vault_until()` when pay gates return (at least 30 days
+  out); one recorded `xcodebuild test` run of the Swift tests on the Mac that
+  builds the iOS app; the reference box evals (M4 `--vault-pack` and
+  `--num-ctx`, M5 `--handoff` and `--prompt-cache`, M6's K16 timings), with
+  the thresholds D12 leaves to the founder; the device checklist
+  (`docs/vault-v1-device-checklist.md`); and the CFO's seat-ceiling dissent
+  (2026-09-05 entry: the Micro band for an org with no entitlement row),
+  which the founder decides beside pricing, a Board gate. The must-fix map is
+  `docs/vault-v1-test-map.md` (101 findings: 96 covered on `main`, 2 on the
+  held team branch, 2 device-only, 1 missing, orgvault-19).
