@@ -117,16 +117,21 @@ export {
   formatVaultDate,
 } from './harness/vault/dates.js';
 export {
+  UNLINKED_MENTION_CAP,
   blockAnchorAt,
+  findHighlights,
   findUnlinkedMentions,
   listTasks,
   maskComments,
+  outlineOf,
   parseCallout,
   sectionOf,
   toggleTaskAt,
 } from './harness/vault/markdown.js';
+export type { VaultOutlineItem } from './harness/vault/markdown.js';
 export {
   VAULT_ATTACHMENT_MAX_BYTES,
+  attachmentLinkText,
   attachmentMime,
   bytesMatchMime,
   isAttachmentPath,
