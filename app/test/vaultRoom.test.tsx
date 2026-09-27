@@ -37,6 +37,8 @@ const app = vi.hoisted(() => {
   const drive = { readOnly: undefined as string | undefined, connected: true, configured: true };
   // What the editor asked of the lease: keystrokes, and Take over editing.
   const leases = { touches: 0, takeOvers: 0 };
+  // The team poll's start and stop calls, in order.
+  const polls: string[] = [];
   // What the folder controls answer: a pick's result, whether the move card
   // is offered, and the two texts of each forked pair.
   const folderIo = {
@@ -103,7 +105,13 @@ const app = vi.hoisted(() => {
     repoSyncConflicts: undefined,
     vaultConflict: undefined,
     vaultReturnFolder: undefined,
-    vaultRecheck: async () => {},
+    vaultRecheck: async () => 'skipped',
+    vaultStartPoll: (opts?: { now?: boolean }) => {
+      polls.push(opts?.now ? 'start-now' : 'start');
+    },
+    vaultStopPoll: () => {
+      polls.push('stop');
+    },
     vaultResolve: async () => ({ ok: true }),
     vaultDeferConflict: (deferred: boolean) => {
       if (state.vaultConflict) state.vaultConflict = { ...state.vaultConflict, deferred };
@@ -133,7 +141,7 @@ const app = vi.hoisted(() => {
     vaultDesktopChatOpen: () => false,
     vaultBringPrevious: async () => ({ ok: true, moved: [], skipped: [], forked: [] }),
   };
-  return { state, listeners, views, toasts, created, opened, drive, folderIo, leases };
+  return { state, listeners, views, toasts, created, opened, drive, folderIo, leases, polls };
 });
 vi.mock('../src/state/store.js', async () => {
   const { useSyncExternalStore } = await import('react');
@@ -1059,5 +1067,62 @@ describe('the lease on the Vault screen (M2 2.5)', () => {
     await dom.render(<VaultRoom />);
     expect(dom.container.querySelector('[aria-label="New note"]')).toBeNull();
     expect(dom.text()).toContain('Being edited on another of your devices.');
+  });
+});
+
+// Vault M2 2.7: the screen only starts and stops the store's poll.
+describe('the team poll and who last saved (M2 2.7)', () => {
+  let dom: TestDom;
+  beforeEach(async () => {
+    globalThis.requestAnimationFrame ??= (cb: FrameRequestCallback) =>
+      setTimeout(() => cb(Date.now()), 0) as unknown as number;
+    app.polls.length = 0;
+    app.state.vaultScope = 'team';
+    app.state.teamVaultAvailable = () => true;
+    app.state.authSession = { user: { id: 'u1' } };
+    dom = await mountDom();
+  });
+  afterEach(async () => {
+    await dom.unmount();
+    app.state.vaultScope = 'personal';
+    app.state.teamVaultAvailable = () => false;
+    app.state.authSession = undefined;
+    app.state.vaultNote = undefined;
+  });
+
+  it('starts with a team note open, and stops when the room goes', async () => {
+    app.state.vaultNote = { path: 'Plan.md', text: 'the team plan', updatedAt: 'x' };
+    await dom.render(<VaultRoom />);
+    expect(app.polls).toContain('start');
+    await dom.unmount();
+    expect(app.polls.at(-1)).toBe('stop');
+    dom = await mountDom();
+  });
+
+  it('never starts in the list', async () => {
+    await dom.render(<VaultRoom />);
+    expect(app.polls).not.toContain('start');
+  });
+
+  it("names a teammate's save on the meta line, and not the person's own", async () => {
+    const at = new Date(Date.now() - 2 * 60_000 - 5_000).toISOString();
+    app.state.vaultNote = {
+      path: 'Plan.md',
+      text: 'the team plan',
+      updatedAt: at,
+      editedBy: { id: 'u2', label: 'sam' },
+    } as typeof app.state.vaultNote;
+    await dom.render(<VaultRoom />);
+    expect(dom.text()).toContain('Edited by sam, 2 min ago');
+    await dom.unmount();
+    dom = await mountDom();
+    app.state.vaultNote = {
+      path: 'Plan.md',
+      text: 'the team plan',
+      updatedAt: at,
+      editedBy: { id: 'u1', label: 'me' },
+    } as typeof app.state.vaultNote;
+    await dom.render(<VaultRoom />);
+    expect(dom.text()).not.toContain('Edited by');
   });
 });

@@ -130,6 +130,9 @@ function makeProvider(id: string, cas = false) {
   const hideFromList = new Set<string>();
   const fail = { list: false, read: false, write: false, stat: false, remove: false };
   const limits = { writesLeft: undefined as number | undefined };
+  // `editor.by` is who the storage says last saved every file (the team
+  // vault's editedBy, G6).
+  const editor = { by: undefined as { id: string; label?: string } | undefined };
   // `stamp.fixed` gives every file one updatedAt, as two saves inside one
   // millisecond would: only the version tells them apart (Vault M2 G1).
   const stamp = { fixed: undefined as string | undefined };
@@ -150,6 +153,7 @@ function makeProvider(id: string, cas = false) {
           updatedAt: stamp.fixed ?? version(path),
           size: files.get(path)!.length,
           ...(cas ? { version: version(path) } : {}),
+          ...(editor.by ? { editedBy: editor.by } : {}),
         };
   const file = (path: string): StoredFile => ({
     path,
@@ -231,6 +235,7 @@ function makeProvider(id: string, cas = false) {
     Object.assign(fail, { list: false, read: false, write: false, stat: false, remove: false });
     limits.writesLeft = undefined;
     stamp.fixed = undefined;
+    editor.by = undefined;
     counts.lists = 0;
     counts.leases = [];
     counts.reads = 0;
@@ -246,6 +251,7 @@ function makeProvider(id: string, cas = false) {
     fail,
     limits,
     stamp,
+    editor,
     counts,
     version,
     reset,
@@ -284,6 +290,8 @@ const teamNet = {
   fail: undefined as Error | undefined,
   beforePut: undefined as ((args: Record<string, unknown>) => Promise<void>) | undefined,
   puts: [] as Array<{ token: string; path: string; body: string; base: number }>,
+  // How many one-note reads (stat or read, a `path=eq.` select) were asked.
+  heads: 0,
 };
 let teamToken: string | undefined = 'tok';
 // The account the fake auth server hands out: refreshSession answers with
@@ -315,6 +323,7 @@ vi.mock('../src/lib/supabase.js', async (importOriginal) => {
     ...actual,
     isConfigured: () => true,
     select: async (table: string, _token: string, query: string) => {
+      if (table === 'org_vault_notes' && /path=eq\./.test(query)) teamNet.heads++;
       if (teamNet.fail) throw teamNet.fail;
       // An active member of ORG; no org to pull, no projects, no entitlement.
       if (table === 'org_members' && query.startsWith('select=role')) {
@@ -412,6 +421,7 @@ function reset() {
   teamNet.fail = undefined;
   teamNet.beforePut = undefined;
   teamNet.puts = [];
+  teamNet.heads = 0;
   teamToken = 'tok';
   auth.refresh = undefined;
   auth.nextUser = { id: 'u1', email: 'me@example.com' };
@@ -2753,5 +2763,142 @@ describe('the lease is advisory with compare-and-swap, enforced without it (M2 2
     const src = readFileSync(new URL('../src/screens/VaultScreen.tsx', import.meta.url), 'utf8');
     expect(src).not.toMatch(/setInterval\([^)]*Lease/);
     expect(src).not.toMatch(/vaultAcquireLease/);
+  });
+});
+
+describe('team live refresh by polling (M2 2.7)', () => {
+  const org = () => wiring.org!.orgVaultProvider as { compareAndSwap?: true };
+  let had: true | undefined;
+  beforeEach(async () => {
+    reset();
+    useApp.setState({ vaultConflict: undefined });
+    // The poll looks only on a storage with compare-and-swap; the team
+    // client gains it with 0019 (stream D), so it is switched on here.
+    had = org().compareAndSwap;
+    org().compareAndSwap = true;
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    teamScope();
+    useApp.setState({ serverRole: 'member' } as never);
+    team.set('plan.md', { body: 'the team plan', rev: 1 });
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen('plan.md');
+    teamNet.heads = 0;
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  });
+  afterEach(() => {
+    useApp.getState().vaultStopPoll();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    if (had) org().compareAndSwap = had;
+    else delete org().compareAndSwap;
+    delete (globalThis as { document?: unknown }).document;
+  });
+
+  it('the schedule: 30 s within 10%, backing off 30, 60, 120, 240, then 300 s', async () => {
+    const { vaultPollDelayMs } = await import('../src/lib/vaultPoll.js');
+    expect(vaultPollDelayMs(0, 0)).toBe(27_000);
+    expect(vaultPollDelayMs(0, 1)).toBe(33_000);
+    expect([0, 1, 2, 3, 4, 5, 9].map((n) => vaultPollDelayMs(n, 0.5))).toEqual([
+      30_000, 60_000, 120_000, 240_000, 300_000, 300_000, 300_000,
+    ]);
+  });
+
+  it("a teammate's save reloads a clean open note within one tick", async () => {
+    useApp.getState().vaultStartPoll();
+    team.set('plan.md', { body: 'the plan, edited by a teammate', rev: 2 });
+    await vi.advanceTimersByTimeAsync(29_000);
+    expect(useApp.getState().vaultNote?.text).toBe('the team plan');
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(useApp.getState().vaultNote?.text).toBe('the plan, edited by a teammate');
+    expect(useApp.getState().vaultNote?.reloadedFrom).toBe('elsewhere');
+    expect(useApp.getState().toast).toBeUndefined();
+  });
+
+  it('a dirty draft raises the resolve sheet instead', async () => {
+    useApp.getState().vaultStartPoll();
+    useApp.getState().vaultNoteDraft('plan.md', 'the team plan, and mine');
+    team.set('plan.md', { body: 'the plan, edited by a teammate', rev: 2 });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(useApp.getState().vaultConflict).toMatchObject({ path: 'plan.md', kind: 'changed' });
+  });
+
+  it('no tick while hidden', async () => {
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: { visibilityState: 'hidden' },
+    });
+    useApp.getState().vaultStartPoll();
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(teamNet.heads).toBe(0);
+  });
+
+  it('errors back off to 300 s and stay there, and a success resets it', async () => {
+    teamNet.fail = new TypeError('Failed to fetch');
+    useApp.getState().vaultStartPoll();
+    const at = async (ms: number) => {
+      await vi.advanceTimersByTimeAsync(ms);
+      return teamNet.heads;
+    };
+    expect(await at(30_000)).toBe(1); // t = 30 s
+    expect(await at(59_000)).toBe(1);
+    expect(await at(1_000)).toBe(2); // t = 90 s
+    expect(await at(120_000)).toBe(3); // t = 210 s
+    expect(await at(240_000)).toBe(4); // t = 450 s
+    expect(await at(299_000)).toBe(4);
+    expect(await at(1_000)).toBe(5); // t = 750 s
+    expect(await at(300_000)).toBe(6); // t = 1050 s, still 300 s
+    teamNet.fail = undefined;
+    expect(await at(300_000)).toBe(7); // answers: back to 30 s
+    expect(await at(30_000)).toBe(8);
+  });
+
+  it('a scope change stops the poll', async () => {
+    useApp.getState().vaultStartPoll();
+    await useApp.getState().setVaultScope('personal');
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(teamNet.heads).toBe(0);
+  });
+
+  it('visible again checks at once', async () => {
+    useApp.getState().vaultStartPoll({ now: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(teamNet.heads).toBe(1);
+  });
+});
+
+describe('who last saved a note (M2 2.7)', () => {
+  beforeEach(() => {
+    reset();
+    useApp.setState({ vaultConflict: undefined });
+  });
+
+  it("comes from the storage, and the person's own save clears it", async () => {
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('icloud') },
+    });
+    cloud.files.set('n.md', 'loaded');
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen('n.md');
+    cloud.editor.by = { id: 'u2', label: 'sam' };
+    cloud.files.set('n.md', 'written by sam');
+    await useApp.getState().vaultRecheck({ reason: 'focus' });
+    expect(useApp.getState().vaultNote?.editedBy).toEqual({ id: 'u2', label: 'sam' });
+    await useApp.getState().vaultSave('n.md', 'written by me');
+    expect(useApp.getState().vaultNote?.editedBy).toBeUndefined();
+  });
+
+  it('reads "Edited by sam, 2 min ago", a teammate when unnamed, and nothing for your own', async () => {
+    const { vaultEditedByLine } = await import('../src/lib/vaultCopy.js');
+    const now = Date.parse('2026-09-27T10:02:30Z');
+    const at = '2026-09-27T10:00:00Z';
+    expect(vaultEditedByLine({ id: 'u2', label: 'sam' }, at, 'u1', now)).toBe(
+      ' · Edited by sam, 2 min ago',
+    );
+    expect(vaultEditedByLine({ id: 'u2' }, at, 'u1', now)).toBe(
+      ' · Edited by a teammate, 2 min ago',
+    );
+    expect(vaultEditedByLine({ id: 'u1', label: 'me' }, at, 'u1', now)).toBeUndefined();
+    expect(vaultEditedByLine(undefined, at, 'u1', now)).toBeUndefined();
+    expect(vaultEditedByLine({ id: 'u2' }, 'r3', 'u1', now)).toBe(' · Edited by a teammate');
   });
 });

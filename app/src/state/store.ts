@@ -308,6 +308,7 @@ import {
   type WriteGuard,
   type WriteResult,
 } from '../lib/gitos/providers.js';
+import { vaultPollDelayMs } from '../lib/vaultPoll.js';
 import {
   VAULT_LEASE_RENEW_MS,
   VAULT_LEASE_TTL_MS,
@@ -705,6 +706,11 @@ export interface VaultConflict {
   again?: boolean;
 }
 
+/** What one re-check of the open note did: looked ('checked'), could not
+ *  reach the storage ('failed', which backs the poll off), or had nothing
+ *  to look at ('skipped'). */
+export type VaultRecheckResult = 'checked' | 'failed' | 'skipped';
+
 /** What one choice in the resolve sheet did. `ok` false with `failed` means
  *  the storage refused or did not answer, so nothing changed; without it, the
  *  note changed again and the sheet shows the newest version. */
@@ -1073,6 +1079,9 @@ interface AppState {
      *  the new text; `reloadedFrom` says which. */
     reloaded?: number;
     reloadedFrom?: 'elsewhere' | 'resolve';
+    /** Who last saved `text`, when the storage says (the team vault only,
+     *  StoredFileMeta.editedBy, CTO G6). Cleared by this device's own save. */
+    editedBy?: { id: string; label?: string };
   };
   /** A note that changed somewhere else under unsaved edits, waiting for the
    *  person's choice (the resolve sheet). At most one at a time. */
@@ -1489,10 +1498,17 @@ interface AppState {
    *  a clean note, or ask about a dirty one. Runs in the note's save chain, so
    *  it never sees this device's own save half done. */
   vaultRecheck(opts: {
-    reason: 'watch' | 'focus';
+    reason: 'watch' | 'focus' | 'poll';
     paths?: string[];
     tree?: boolean;
-  }): Promise<void>;
+  }): Promise<VaultRecheckResult>;
+  /** Start the team vault's live refresh (Vault M2 2.7): the open note's
+   *  head every 30 s (jittered), backing off to 300 s on errors, only while
+   *  the team vault is on screen with a note open, the page is visible, and
+   *  the device is online. `now` checks once at once (becoming visible). */
+  vaultStartPoll(opts?: { now?: boolean }): void;
+  /** Stop it (the page is hidden, or the room left). */
+  vaultStopPoll(): void;
   /** The person's choice in the resolve sheet: 'both' (their text beside the
    *  note as a conflict copy, the note shows the other version), 'mine' (their
    *  text replaces it, or for a gone note is saved again), 'theirs' (the other
@@ -3295,6 +3311,7 @@ export const useApp = create<AppState>((set, get, api) => {
     // (R-19). An expiry keeps it, sealed and hidden, for its own account.
     resetOrgVault();
     forgetTeamBodies();
+    stopVaultPoll();
     let kept = 0;
     if (expired && uid) {
       keptTeamOwner = uid;
@@ -4274,6 +4291,7 @@ export const useApp = create<AppState>((set, get, api) => {
         updatedAt: saved.updatedAt,
         version: saved.version,
         fresh: undefined,
+        editedBy: undefined,
       },
     });
   }
@@ -4501,7 +4519,11 @@ export const useApp = create<AppState>((set, get, api) => {
   // Replace the open note's text in place, keeping it open: a calm reload of
   // a clean note, or a resolve choice that shows the other version. The
   // editor takes the new text when `reloaded` moves.
-  function reloadOpenNote(file: StoredFile, from: 'elsewhere' | 'resolve'): void {
+  function reloadOpenNote(
+    file: StoredFile,
+    from: 'elsewhere' | 'resolve',
+    editedBy?: { id: string; label?: string },
+  ): void {
     const open = get().vaultNote;
     if (!open || open.path !== file.path) return;
     vaultLiveDraft = { path: file.path, text: file.text };
@@ -4511,6 +4533,7 @@ export const useApp = create<AppState>((set, get, api) => {
         text: file.text,
         updatedAt: file.updatedAt,
         version: file.version,
+        editedBy,
         fresh: undefined,
         loadedAt: Date.now(),
         reloaded: (open.reloaded ?? 0) + 1,
@@ -4525,15 +4548,15 @@ export const useApp = create<AppState>((set, get, api) => {
   // an identical rewrite) or what the person already typed; reload a clean
   // draft in place; ask about a dirty one. While a choice is open, a newer
   // other version updates it in place.
-  async function recheckOpenNote(target: VaultTarget, path: string): Promise<void> {
+  async function recheckOpenNote(target: VaultTarget, path: string): Promise<VaultRecheckResult> {
     const open = get().vaultNote;
-    if (!open || open.path !== path || !isActiveVault(target)) return;
+    if (!open || open.path !== path || !isActiveVault(target)) return 'skipped';
     const base = vaultBaseOf(target, path);
     let meta: StoredFileMeta | undefined;
     try {
       meta = await target.provider.stat(target.resourceId, path);
     } catch {
-      return; // Not answering now; the next event or focus looks again.
+      return 'failed'; // Not answering now; the next event, focus, or poll looks again.
     }
     const conflict = get().vaultConflict;
     const pending = conflict?.path === path ? conflict : undefined;
@@ -4542,10 +4565,10 @@ export const useApp = create<AppState>((set, get, api) => {
         if (pending.kind !== 'missing') {
           set({ vaultConflict: { ...pending, kind: 'missing', theirs: undefined, again: true } });
         }
-        return;
+        return 'checked';
       }
       // A note this storage never held (an offline create) is not gone.
-      if (!base) return;
+      if (!base) return 'checked';
       const draft = draftOf(path) ?? open.text;
       if (draft === open.text) {
         vaultLiveDraft = undefined;
@@ -4554,26 +4577,28 @@ export const useApp = create<AppState>((set, get, api) => {
         if (listing && isActiveVault(target)) set({ vaultFiles: listing });
         get().showToast(vaultGoneToast(noteTitle(path)));
         logEvent('vault_note_gone', { dirty: false });
-        return;
+        return 'checked';
       }
       raiseVaultConflict(target, path, 'missing', undefined, base);
       await stashConflictText(target, path, draft, base);
-      return;
+      return 'checked';
     }
     const seen = pending?.theirs ? versionOf(pending.theirs) : base;
-    if (seen && versionOf(meta) === seen) return;
-    if (meta.evicted) return;
+    if (seen && versionOf(meta) === seen) return 'checked';
+    if (meta.evicted) return 'checked';
+    // Who saved this version, when the storage says (the team vault, G6).
+    const editedBy = meta.editedBy;
     let theirs: StoredFile | undefined;
     try {
       theirs = await target.provider.read(target.resourceId, path);
     } catch {
-      return;
+      return 'failed';
     }
-    if (!theirs || get().vaultNote?.path !== path) return;
+    if (!theirs || get().vaultNote?.path !== path) return 'checked';
     if (pending) {
       // Still undecided: the sheet shows this newest version, and says so.
       set({ vaultConflict: { ...pending, kind: 'changed', theirs, again: true } });
-      return;
+      return 'checked';
     }
     const now = get().vaultNote!;
     const draft = draftOf(path) ?? now.text;
@@ -4586,17 +4611,66 @@ export const useApp = create<AppState>((set, get, api) => {
           text: theirs.text,
           updatedAt: theirs.updatedAt,
           version: theirs.version,
+          editedBy,
         },
       });
-      return;
+      return 'checked';
     }
     if (draft === now.text) {
-      reloadOpenNote(theirs, 'elsewhere');
+      reloadOpenNote(theirs, 'elsewhere', editedBy);
       logEvent('vault_note_reloaded');
-      return;
+      return 'checked';
     }
     raiseVaultConflict(target, path, 'changed', theirs, base);
     await stashConflictText(target, path, draft, base);
+    return 'checked';
+  }
+
+  // The team vault's live refresh (Vault M2 2.7, CTO G6; lib/vaultPoll.ts):
+  // one timer, and only while the team vault is on screen with a note open,
+  // the page is visible, and the device is online. Hidden, there is no
+  // timer at all; the screen starts it again, checking at once, on return.
+  let pollTimer: ReturnType<typeof setTimeout> | undefined;
+  let pollActive = false;
+  let pollFailures = 0;
+  // 'run' checks now; 'wait' (offline) waits a normal round and looks again
+  // without a request; 'stop' ends the poll until the screen starts it.
+  function pollGate(): 'run' | 'wait' | 'stop' {
+    const st = get();
+    if (st.vaultScope !== 'team' || !st.vaultNote || st.vaultTeamExpired) return 'stop';
+    if (!st.teamVaultAvailable()) return 'stop';
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return 'stop';
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'wait';
+    return 'run';
+  }
+  function schedulePoll(delayMs: number): void {
+    if (pollTimer) clearTimeout(pollTimer);
+    pollTimer = setTimeout(() => void pollTick(), delayMs);
+  }
+  function stopVaultPoll(): void {
+    pollActive = false;
+    if (pollTimer) clearTimeout(pollTimer);
+    pollTimer = undefined;
+  }
+  async function pollTick(): Promise<void> {
+    pollTimer = undefined;
+    const gate = pollGate();
+    if (gate === 'stop') {
+      stopVaultPoll();
+      return;
+    }
+    let result: VaultRecheckResult = 'skipped';
+    if (gate === 'run') {
+      try {
+        result = await get().vaultRecheck({ reason: 'poll' });
+      } catch {
+        result = 'failed';
+      }
+    }
+    // Back off on errors, 30 s up to 300 s; reset on a check that answered.
+    if (result === 'failed') pollFailures++;
+    else if (result === 'checked') pollFailures = 0;
+    if (pollActive && !pollTimer) schedulePoll(vaultPollDelayMs(pollFailures));
   }
 
   // Re-list the tree, coalesced, when the watcher saw a change it cannot
@@ -4709,6 +4783,7 @@ export const useApp = create<AppState>((set, get, api) => {
                 updatedAt: saved.updatedAt,
                 version: saved.version,
                 fresh: undefined,
+                editedBy: undefined,
               }
             : get().vaultNote,
         vaultError: undefined,
@@ -7842,6 +7917,7 @@ export const useApp = create<AppState>((set, get, api) => {
       // Leaving the note with a choice open keeps both (CS 1c).
       await leaveVaultConflict();
       vaultLiveDraft = undefined;
+      stopVaultPoll();
       set({
         vaultScope: scope,
         vaultNote: undefined,
@@ -8008,6 +8084,11 @@ export const useApp = create<AppState>((set, get, api) => {
         vaultNote: {
           ...(existing ?? { path: openPath, text: '', updatedAt: '' }),
           loadedAt: Date.now(),
+          // Who saved it last, when the list said and it is still that
+          // version (the team vault, G6).
+          ...(listed?.editedBy && existing && versionOf(listed) === versionOf(existing)
+            ? { editedBy: listed.editedBy }
+            : {}),
         },
       });
       logEvent('vault_note_open', { fresh: !existing });
@@ -8150,19 +8231,41 @@ export const useApp = create<AppState>((set, get, api) => {
 
     async vaultRecheck({ reason, paths, tree }) {
       const target = vaultTarget();
-      if (!target) return;
+      if (!target) return 'skipped';
       const open = get().vaultNote;
-      // Only a guarded provider can see and settle a change under the
-      // editor (the desktop folder, in M1); the others keep M0's behavior.
+      let result: VaultRecheckResult = 'skipped';
+      // Every provider with compare-and-swap can see and settle a change
+      // under the editor, and only those; the others keep M0's behavior.
       if (
         open &&
         target.provider.compareAndSwap &&
-        (reason === 'focus' || tree || paths?.includes(open.path))
+        (reason === 'focus' || reason === 'poll' || tree || paths?.includes(open.path))
       ) {
-        await inSaveChain(target, open.path, () => recheckOpenNote(target, open.path));
+        // A poll never runs while a save for the note is still settling; it
+        // looks again on the next tick (CTO G6).
+        if (reason === 'poll' && vaultSaveChains.has(vaultKey(target, open.path))) {
+          return 'skipped';
+        }
+        result = await inSaveChain(target, open.path, () => recheckOpenNote(target, open.path));
       }
+      // The poll looks at the open note only; the tree refreshes on focus.
+      if (reason === 'poll') return result;
       const listed = new Set(get().vaultFiles.map((f) => f.path));
       if (reason === 'focus' || tree || paths?.some((p) => !listed.has(p))) scheduleRelist();
+      return result;
+    },
+
+    vaultStartPoll(opts) {
+      if (pollGate() === 'stop') {
+        stopVaultPoll();
+        return;
+      }
+      pollActive = true;
+      schedulePoll(opts?.now ? 0 : vaultPollDelayMs(pollFailures));
+    },
+
+    vaultStopPoll() {
+      stopVaultPoll();
     },
 
     async vaultResolve(choice, draft) {
@@ -8234,6 +8337,7 @@ export const useApp = create<AppState>((set, get, api) => {
                   text: saved.text,
                   updatedAt: saved.updatedAt,
                   version: saved.version,
+                  editedBy: undefined,
                 },
               });
             }

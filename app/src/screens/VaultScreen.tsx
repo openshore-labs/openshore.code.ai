@@ -52,6 +52,7 @@ import {
   VAULT_UPDATED_SUFFIX,
   VAULT_TEAM_SIGN_IN_LINE,
   VAULT_CONFLICT_BADGE,
+  vaultEditedByLine,
   vaultLeaseAlsoOpen,
   vaultLeaseEnforced,
   VAULT_CONFLICT_BADGE_LABEL,
@@ -171,6 +172,8 @@ export function VaultScreen() {
     repoSyncConflicts,
     vaultConflict,
     vaultRecheck,
+    vaultStartPoll,
+    vaultStopPoll,
     vaultResolve,
     vaultDeferConflict,
     vaultLeaveConflict,
@@ -404,6 +407,28 @@ export function VaultScreen() {
       watchDeviceFolder(false);
     };
   }, [onFolder, vaultRecheck, vaultLoadFolder]);
+  // The team vault's live refresh (2.7): while a team note is open and the
+  // page is visible, the store checks its head every 30 s. Hidden, there is
+  // no timer; visible again (or back online), it checks at once.
+  useEffect(() => {
+    if (!team || !vaultNote?.path) {
+      vaultStopPoll();
+      return;
+    }
+    vaultStartPoll();
+    const onVisible = () => {
+      if (document.visibilityState === 'hidden') vaultStopPoll();
+      else vaultStartPoll({ now: true });
+    };
+    const onOnline = () => vaultStartPoll({ now: true });
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('online', onOnline);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('online', onOnline);
+      vaultStopPoll();
+    };
+  }, [team, vaultNote?.path, vaultStartPoll, vaultStopPoll]);
   // Every return to the window re-checks the open note, on every storage
   // that can see a change under the editor (compare-and-swap; the store
   // decides), and re-lists the tree (Vault M2 2.2).
@@ -1076,6 +1101,10 @@ export function VaultScreen() {
     const title = noteTitle(vaultNote.path);
     const parent = noteFolder(vaultNote.path);
     const words = draft.trim() ? draft.trim().split(/\s+/).length : 0;
+    // Who last saved this team note (2.7): nobody for the person's own save.
+    const editedLine = team
+      ? vaultEditedByLine(vaultNote.editedBy, vaultNote.updatedAt, uid)
+      : undefined;
 
     // Autocomplete candidates for the open "[[": notes whose title or path
     // matches, best-prefix first. A non-matching, non-empty query also offers
@@ -1190,6 +1219,11 @@ export function VaultScreen() {
           <p className="hint" style={{ marginTop: 2 }}>
             {(parent || 'Vault') + ' · ' + words + (words === 1 ? ' word' : ' words')}
             {updatedShown ? <span className="vault-updated">{VAULT_UPDATED_SUFFIX}</span> : null}
+            {editedLine ? (
+              <span key={vaultNote.version ?? vaultNote.updatedAt} className="vault-updated">
+                {editedLine}
+              </span>
+            ) : null}
           </p>
 
           {renderLeaseLine()}

@@ -2245,3 +2245,15 @@ execution contract. Newest at the bottom.
   releases the other holder through the seam before acquiring; today's team
   vault (no compare-and-swap until its client lands) falls under the enforced
   rule but its lease grants trivially and writes nothing.
+- **Vault M2 wave 2 item 2.7 (2026-09-27):** the poll's timer lives in the
+  store (`vaultStartPoll`, `vaultStopPoll`, one timer, stopped on a scope
+  change and on any end of the session) and the screen only starts it with a
+  team note open, stops it when hidden, and starts it checking at once when
+  visible or back online; "available" is the store's `teamVaultAvailable()`,
+  the same predicate `isOrgVaultAvailable()` defers to; offline waits a
+  normal round without a request; `vaultRecheck` now answers
+  checked/failed/skipped so the poll can back off, a poll skips a tick while
+  a save for the note is settling, and a poll never re-lists the tree; the
+  open note carries `editedBy` from the list at open and from the re-check's
+  `stat`, cleared by this device's own save, shown as " · Edited by sam,
+  2 min ago" on the meta line (the time from the note's `updatedAt`).

@@ -683,6 +683,35 @@ export function vaultLeaseEnforced(label: string | undefined): {
   };
 }
 
+// ---- Who changed a team note (2.7) ---------------------------------------------
+// The team vault says who last saved a note. Nothing shows for the person's
+// own save; a teammate the vault cannot name is "a teammate", never a guess.
+
+/** The meta line's suffix: " · Edited by sam, 2 min ago", or undefined when
+ *  there is nothing to say (no editor known, or the person's own edit). */
+export function vaultEditedByLine(
+  editedBy: { id: string; label?: string } | undefined,
+  updatedAt: string | undefined,
+  uid: string | undefined,
+  now = Date.now(),
+): string | undefined {
+  if (!editedBy || (uid !== undefined && editedBy.id === uid)) return undefined;
+  const who = editedBy.label || 'a teammate';
+  const at = updatedAt ? Date.parse(updatedAt) : NaN;
+  if (!Number.isFinite(at) || at > now + 60_000) return ` · Edited by ${who}`;
+  const s = Math.max(0, Math.round((now - at) / 1000));
+  const hours = Math.floor(s / 3600);
+  const ago =
+    s < 60
+      ? 'just now'
+      : s < 3600
+        ? `${Math.floor(s / 60)} min ago`
+        : s < 86_400
+          ? `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`
+          : `on ${new Date(at).toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
+  return ` · Edited by ${who}, ${ago}`;
+}
+
 /** The badge a conflict copy (lib/vault.ts isConflictCopy) wears in the tree. */
 export const VAULT_CONFLICT_BADGE = 'Conflict';
 /** What the badge means, for a screen reader. */
