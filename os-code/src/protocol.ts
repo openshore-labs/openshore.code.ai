@@ -343,3 +343,51 @@ export interface DaemonStackInfo {
   orchestrator?: { model: string; provider: string; kind: 'local' | 'cloud' };
   specialists: Array<{ role: string; model: string }>;
 }
+
+// The Vault index (Vault M3, CTO H3) and the readConfig folder rule (H5).
+// Pure: the index takes the shared core's grammar and resolution as an
+// injected VaultIndexCore; hosts own every read, write and file.
+export {
+  BM25_B,
+  BM25_K1,
+  CORE_VERSION,
+  INDEX_BODY_MAX_BYTES,
+  INDEX_CHECKPOINT_MS,
+  INDEX_CHECKPOINT_NOTES,
+  INDEX_FILE_MAX_BYTES,
+  INDEX_MAX_BODY_TERMS,
+  INDEX_MAX_NOTES,
+  INDEX_PROGRESS_EVERY_MS,
+  INDEX_PROGRESS_SHOW_AFTER_MS,
+  INDEX_READ_CONCURRENCY,
+  INDEX_SLICE_MS,
+  TERM_WEIGHTS,
+  VaultIndex,
+  compareCodePoints,
+  listedVersion,
+  loadIndex,
+  pathBaseKey,
+  planReconcile,
+  serializeIndex,
+  utf8Bytes,
+} from './harness/vault/index.js';
+export type {
+  IndexedNote,
+  LoadedIndex,
+  VaultReconcilePlan,
+  ResolvedLink,
+  SerializedIndex,
+  VaultIndexCore,
+  VaultIndexCounters,
+  VaultIndexOptions,
+} from './harness/vault/index.js';
+export { BODY_STOPWORDS, eachTerm, queryTerms, tokenize } from './harness/vault/tokenize.js';
+export {
+  CONFIG_DIR_NAME,
+  VAULT_CONFIG_FILES,
+  VAULT_CONFIG_MAX_BYTES,
+  detectConfigDir,
+  isConfigDirCandidate,
+  isVaultConfigName,
+} from './harness/vault/configDir.js';
+export type { ConfigDirCandidate, ConfigDirPlatform } from './harness/vault/configDir.js';
