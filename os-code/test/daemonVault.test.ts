@@ -10,6 +10,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   symlinkSync,
   unlinkSync,
   writeFileSync,
@@ -26,6 +27,28 @@ import { listVaultNotes } from '../src/core/vault/listNotes.js';
 import { statNote } from '../src/core/vault/noteFile.js';
 import { vaultSearchTool } from '../src/core/tools/vaultFind.js';
 import type { ToolContext } from '../src/core/tools/index.js';
+import { startDaemon, type RunningDaemon } from '../src/daemon/serve.js';
+import { TerminalManager, TerminalUnavailable } from '../src/daemon/terminal.js';
+import { defaultConfig } from '../src/config/load.js';
+import { mintCredential } from '../src/core/security/credentials.js';
+import { overlapsVault } from '../src/core/security/workspaces.js';
+import { memberVaultsDir, vaultRootFor, vaultRootForOwner } from '../src/core/vault/memberRoots.js';
+import { vaultPrivacyConfig } from '../src/core/agent/registry.js';
+import { HANDOFF_MAX_BYTES } from '../src/harness/handoff.js';
+import { _resetRoutineScheduler } from '../src/routines/scheduler.js';
+import {
+  VAULT_CONFIG_ROUTE,
+  VAULT_INDEX_ROUTE,
+  VAULT_NOTES_ROUTE,
+  VAULT_PRIVACY_ROUTE,
+  VAULT_WIRE_NOTE_MAX_BYTES,
+  vaultNoteRoute,
+  type HubNoteMeta,
+  type VaultNoteConflictResponse,
+  type VaultNoteReadResponse,
+  type VaultNotesListResponse,
+  type VaultPrivacyWire,
+} from '../src/daemon/vaultWire.js';
 
 let a: string;
 let b: string;
@@ -144,5 +167,323 @@ describe('the engine index is per vault root', () => {
     expect(listed[0]!.version).toBe((await statNote(join(a, 'Keep/note.md')))!.version);
     expect(await listVaultNotes(join(a, 'missing'))).toEqual([]);
     expect(existsSync(join(a, '.obsidian/app.md'))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The daemon's vault routes (Vault M5, CTO J7, J8): every route on the
+// caller's own root, jailed, compare-and-swap on every write.
+
+describe('the daemon vault routes, on the caller own root', () => {
+  let home: string;
+  let daemon: RunningDaemon;
+  let base: string;
+  let admin: string;
+  let realHome: string | undefined;
+
+  async function startOnFreePort(): Promise<RunningDaemon> {
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const port = 40000 + Math.floor(Math.random() * 20000);
+      try {
+        return await startDaemon({
+          config: defaultConfig(),
+          bind: 'loopback',
+          port,
+          terminals: new TerminalManager({
+            spawn: async () => {
+              throw new TerminalUnavailable();
+            },
+          }),
+        });
+      } catch (err) {
+        if (String(err).includes('EADDRINUSE')) continue;
+        throw err;
+      }
+    }
+    throw new Error('could not find a free port for the test daemon');
+  }
+
+  beforeEach(async () => {
+    home = mkdtempSync(join(tmpdir(), 'oschome-'));
+    process.env.OSC_HOME = home;
+    realHome = process.env.HOME;
+    process.env.HOME = home;
+    writeFileSync(
+      join(home, 'config.json'),
+      JSON.stringify({ stack: { orchestrator: { provider: 'ollama', model: 'qwen' } } }),
+    );
+    mkdirSync(join(home, 'OSCode', 'repo'), { recursive: true });
+    _resetRoutineScheduler();
+    daemon = await startOnFreePort();
+    base = `http://127.0.0.1:${daemon.port}`;
+    admin = readFileSync(join(home, 'daemon.token'), 'utf8').trim();
+  });
+
+  afterEach(() => {
+    daemon.close();
+    _resetRoutineScheduler();
+    process.env.HOME = realHome;
+    delete process.env.OSC_HOME;
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  const hdr = (token: string): Record<string, string> => ({
+    authorization: `Bearer ${token}`,
+    'content-type': 'application/json',
+  });
+  const put = (token: string, path: string, body: Record<string, unknown>) =>
+    fetch(`${base}${vaultNoteRoute(path)}`, {
+      method: 'PUT',
+      headers: hdr(token),
+      body: JSON.stringify(body),
+    });
+  const get = (token: string, route: string) => fetch(`${base}${route}`, { headers: hdr(token) });
+  const member = (userId: string) =>
+    mintCredential({ role: 'member', label: 'Phone', userId }).token;
+
+  it('picks one root per caller: the owner vault, or a member root outside ~/OSCode', () => {
+    const owner = vaultRootFor({ userId: 'legacy', role: 'admin' });
+    expect(owner).toBe(join(home, 'OSCode', 'Vault'));
+    const m1 = vaultRootFor({ userId: 'u_one', role: 'member' });
+    const m2 = vaultRootFor({ userId: 'u_two', role: 'member' });
+    expect(m1).toBe(join(home, 'vaults', 'members', m1.split('/').pop()!));
+    expect(m1.split('/').pop()).toMatch(/^[0-9a-f]{16}$/);
+    expect(m1).not.toBe(m2);
+    expect(m1.startsWith(join(home, 'OSCode'))).toBe(false);
+    expect(vaultRootForOwner('u_one', false)).toBe(m1);
+    expect(vaultRootForOwner(undefined)).toBe(owner);
+    expect(vaultRootForOwner('legacy')).toBe(owner);
+    // A member workspace can reach neither the owner's vault nor a member root.
+    expect(overlapsVault(join(home, 'OSCode', 'repo'))).toBe(false);
+    expect(overlapsVault(join(home, 'OSCode'))).toBe(true);
+    expect(overlapsVault(memberVaultsDir())).toBe(true);
+    expect(overlapsVault(m1)).toBe(true);
+    expect(overlapsVault(home)).toBe(true);
+  });
+
+  it('creates, reads, lists, and guards every write with the version read', async () => {
+    const created = await put(admin, 'Plans/Launch.md', { text: 'first', ifAbsent: true });
+    expect(created.status).toBe(200);
+    const { meta } = (await created.json()) as { meta: HubNoteMeta };
+    expect(meta).toMatchObject({ path: 'Plans/Launch.md', size: 5 });
+    expect(readFileSync(join(home, 'OSCode', 'Vault', 'Plans', 'Launch.md'), 'utf8')).toBe('first');
+
+    const listed = (await (await get(admin, VAULT_NOTES_ROUTE)).json()) as VaultNotesListResponse;
+    expect(listed).toEqual({ notes: [meta], truncated: false });
+    const read = (await (
+      await get(admin, vaultNoteRoute('Plans/Launch.md'))
+    ).json()) as VaultNoteReadResponse;
+    expect(read).toEqual({
+      path: 'Plans/Launch.md',
+      text: 'first',
+      version: meta.version,
+      mtime: meta.mtime,
+    });
+    expect((await get(admin, vaultNoteRoute('Plans/None.md'))).status).toBe(404);
+
+    // ifAbsent on a note that is there: 409 exists, the note untouched.
+    const again = await put(admin, 'Plans/Launch.md', { text: 'second', ifAbsent: true });
+    expect(again.status).toBe(409);
+    const exists = (await again.json()) as VaultNoteConflictResponse;
+    expect(exists.conflict).toBe('exists');
+    expect(exists.current?.version).toBe(meta.version);
+
+    // A good ifMatch saves; the stale one after it is 409 changed.
+    const saved = await put(admin, 'Plans/Launch.md', { text: 'second', ifMatch: meta.version });
+    expect(saved.status).toBe(200);
+    const next = ((await saved.json()) as { meta: HubNoteMeta }).meta;
+    expect(next.version).not.toBe(meta.version);
+    const stale = await put(admin, 'Plans/Launch.md', { text: 'third', ifMatch: meta.version });
+    expect(stale.status).toBe(409);
+    const changed = (await stale.json()) as VaultNoteConflictResponse;
+    expect(changed).toEqual({ conflict: 'changed', current: next });
+    expect(readFileSync(join(home, 'OSCode', 'Vault', 'Plans', 'Launch.md'), 'utf8')).toBe(
+      'second',
+    );
+    // ifMatch on a note that is gone: 409 missing, never recreated.
+    const missing = await put(admin, 'Plans/Gone.md', { text: 'x', ifMatch: meta.version });
+    expect(((await missing.json()) as VaultNoteConflictResponse).conflict).toBe('missing');
+    expect(existsSync(join(home, 'OSCode', 'Vault', 'Plans', 'Gone.md'))).toBe(false);
+    // Both guards at once is refused.
+    const both = await put(admin, 'Plans/Launch.md', {
+      text: 'x',
+      ifMatch: next.version,
+      ifAbsent: true,
+    });
+    expect(both.status).toBe(400);
+
+    // Delete: the version is required, a stale one is 409, the right one removes.
+    const del = (q: string) =>
+      fetch(`${base}${vaultNoteRoute('Plans/Launch.md')}${q}`, {
+        method: 'DELETE',
+        headers: hdr(admin),
+      });
+    expect((await del('')).status).toBe(400);
+    expect((await del(`?ifMatch=${encodeURIComponent(meta.version)}`)).status).toBe(409);
+    expect((await del(`?ifMatch=${encodeURIComponent(next.version)}`)).status).toBe(200);
+    expect(existsSync(join(home, 'OSCode', 'Vault', 'Plans', 'Launch.md'))).toBe(false);
+  });
+
+  it('caps a note PUT', async () => {
+    const big = 'x'.repeat(VAULT_WIRE_NOTE_MAX_BYTES + 1);
+    expect((await put(admin, 'Big.md', { text: big })).status).toBe(413);
+    expect(existsSync(join(home, 'OSCode', 'Vault', 'Big.md'))).toBe(false);
+  });
+
+  it('never leaves the root: .., dot segments, backslashes, non-notes, and links', async () => {
+    const vault = join(home, 'OSCode', 'Vault');
+    mkdirSync(vault, { recursive: true });
+    const outside = join(home, 'outside');
+    mkdirSync(outside);
+    writeFileSync(join(outside, 'secret.md'), 'secret');
+    symlinkSync(outside, join(vault, 'Linked'));
+    const raw = (route: string, init: RequestInit = {}) =>
+      fetch(`${base}${route}`, { ...init, headers: hdr(admin) });
+    for (const route of [
+      '/vault/notes/..%2Foutside%2Fsecret.md',
+      '/vault/notes/a%2F..%2F..%2Fsecret.md',
+      '/vault/notes/.obsidian/app.md',
+      '/vault/notes/a/.hidden/x.md',
+      '/vault/notes/a%5Cb.md',
+      '/vault/notes/notes.txt',
+      '/vault/notes/%E0%A4%A.md',
+      '/vault/notes/Linked/secret.md',
+    ]) {
+      const res = await raw(route);
+      expect(res.status, route).toBe(400);
+      const body = await res.text();
+      expect(body, route).not.toContain('secret"');
+    }
+    // A dot segment the URL itself resolves never reaches a note route.
+    const dots = await raw('/vault/notes/%2E%2E/%2E%2E/%2E%2E/outside/secret.md');
+    expect(dots.status).toBe(404);
+    const write = await raw('/vault/notes/Linked/new.md', {
+      method: 'PUT',
+      body: JSON.stringify({ text: 'x', ifAbsent: true }),
+    });
+    expect(write.status).toBe(400);
+    expect(existsSync(join(outside, 'new.md'))).toBe(false);
+  });
+
+  it('a member reaches only their own root, and never the owner vault', async () => {
+    const one = member('u_one');
+    const two = member('u_two');
+    expect((await put(admin, 'Owner.md', { text: 'owner only', ifAbsent: true })).status).toBe(200);
+    expect((await put(one, 'Mine.md', { text: 'one', ifAbsent: true })).status).toBe(200);
+    const oneRoot = vaultRootFor({ userId: 'u_one', role: 'member' });
+    expect(readFileSync(join(oneRoot, 'Mine.md'), 'utf8')).toBe('one');
+    if (process.platform !== 'win32') {
+      expect(statSync(oneRoot).mode & 0o777).toBe(0o700);
+      expect(statSync(memberVaultsDir()).mode & 0o777).toBe(0o700);
+    }
+    expect(existsSync(join(home, 'OSCode', 'Vault', 'Mine.md'))).toBe(false);
+
+    const paths = async (token: string) =>
+      ((await (await get(token, VAULT_NOTES_ROUTE)).json()) as VaultNotesListResponse).notes.map(
+        (n) => n.path,
+      );
+    expect(await paths(admin)).toEqual(['Owner.md']);
+    expect(await paths(one)).toEqual(['Mine.md']);
+    expect(await paths(two)).toEqual([]);
+    expect((await get(one, vaultNoteRoute('Owner.md'))).status).toBe(404);
+    expect((await get(two, vaultNoteRoute('Mine.md'))).status).toBe(404);
+    expect((await get(admin, vaultNoteRoute('Mine.md'))).status).toBe(404);
+    // Another member's ifAbsent on the same name lands in their own root.
+    expect((await put(two, 'Mine.md', { text: 'two', ifAbsent: true })).status).toBe(200);
+    expect(readFileSync(join(oneRoot, 'Mine.md'), 'utf8')).toBe('one');
+  });
+
+  it('serves the machine privacy rules, a config file, and the saved index with an ETag', async () => {
+    const privacy = (await (await get(admin, VAULT_PRIVACY_ROUTE)).json()) as VaultPrivacyWire;
+    const defaults = vaultPrivacyConfig(defaultConfig());
+    expect(privacy).toEqual({
+      exclude: [...defaults.exclude],
+      localOnly: { paths: [...defaults.localOnly.paths], tags: [...defaults.localOnly.tags] },
+    });
+
+    const vault = join(home, 'OSCode', 'Vault');
+    mkdirSync(join(vault, '.oscode'), { recursive: true });
+    writeFileSync(join(vault, '.oscode', 'vault.json'), '{"a":1}');
+    const cfg = await get(admin, `${VAULT_CONFIG_ROUTE}/${encodeURIComponent('oscode/vault')}`);
+    expect(cfg.status).toBe(200);
+    expect(((await cfg.json()) as { text: string }).text).toBe('{"a":1}');
+    expect((await get(admin, `${VAULT_CONFIG_ROUTE}/nope`)).status).toBe(400);
+    const oneCfg = await get(
+      member('u_one'),
+      `${VAULT_CONFIG_ROUTE}/${encodeURIComponent('oscode/vault')}`,
+    );
+    expect(oneCfg.status).toBe(404);
+
+    expect((await get(admin, VAULT_INDEX_ROUTE)).status).toBe(404);
+    writeFileSync(join(vault, 'Indexed.md'), 'an indexed note');
+    const handle = await engineVaultIndex(vault);
+    await handle.whenReconciled(5000);
+    await handle.save();
+    const first = await get(admin, VAULT_INDEX_ROUTE);
+    expect(first.status).toBe(200);
+    const etag = first.headers.get('etag')!;
+    expect(etag).toMatch(/^"[0-9a-f]{32}"$/);
+    expect(await first.text()).toContain('Indexed.md');
+    const again = await fetch(`${base}${VAULT_INDEX_ROUTE}`, {
+      headers: { ...hdr(admin), 'if-none-match': etag },
+    });
+    expect(again.status).toBe(304);
+    // A member's index is their root's own: none yet.
+    expect((await get(member('u_one'), VAULT_INDEX_ROUTE)).status).toBe(404);
+  });
+
+  it('a phone write reaches the engine index the pack reads', async () => {
+    const vault = join(home, 'OSCode', 'Vault');
+    mkdirSync(vault, { recursive: true });
+    const handle = await engineVaultIndex(vault);
+    await handle.whenReconciled(5000);
+    expect((await put(admin, 'Fresh.md', { text: 'a zeppelin plan', ifAbsent: true })).status).toBe(
+      200,
+    );
+    expect(handle.index.search('zeppelin').map((h) => h.path)).toEqual(['Fresh.md']);
+  });
+
+  it('lets the WebView send a PUT and read the ETag', async () => {
+    const pre = await fetch(`${base}${vaultNoteRoute('Plans/Launch.md')}`, {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'capacitor://localhost',
+        'access-control-request-method': 'PUT',
+        'access-control-request-headers': 'authorization, content-type, if-none-match',
+      },
+    });
+    expect(pre.status).toBe(204);
+    expect(pre.headers.get('access-control-allow-methods')).toContain('PUT');
+    expect(pre.headers.get('access-control-allow-headers')).toContain('if-none-match');
+    expect(pre.headers.get('access-control-expose-headers')).toContain('etag');
+  });
+
+  it("a member session gets its own root's folder, made 0700 on first use", async () => {
+    const one = member('u_one');
+    const res = await fetch(`${base}/sessions`, {
+      method: 'POST',
+      headers: hdr(one),
+      body: JSON.stringify({ cwd: join(home, 'OSCode', 'repo') }),
+    });
+    expect(res.status).toBe(201);
+    const root = vaultRootFor({ userId: 'u_one', role: 'member' });
+    expect(existsSync(root)).toBe(true);
+    // A member cwd inside the member roots is refused outright.
+    const inRoots = await fetch(`${base}/sessions`, {
+      method: 'POST',
+      headers: hdr(one),
+      body: JSON.stringify({ cwd: root }),
+    });
+    expect(inRoots.status).toBe(403);
+    // An oversized handoff is refused, never cut.
+    const long = await fetch(`${base}/sessions`, {
+      method: 'POST',
+      headers: hdr(admin),
+      body: JSON.stringify({
+        cwd: join(home, 'OSCode', 'repo'),
+        handoff: 'x'.repeat(HANDOFF_MAX_BYTES + 1),
+      }),
+    });
+    expect(long.status).toBe(400);
   });
 });

@@ -102,6 +102,7 @@ contextBridge.exposeInMainWorld('oscode', {
   vaultIndexLoad: invoke('osc:vaultIndexLoad'),
   vaultIndexSave: invoke('osc:vaultIndexSave'),
   vaultReadConfig: invoke('osc:vaultReadConfig'),
+  vaultPrivacy: invoke('osc:vaultPrivacy'),
   onVaultChanged: listen('osc:vault-changed'),
   vaultDirInfo: invoke('osc:vaultDirInfo'),
   vaultChooseDir: invoke('osc:vaultChooseDir'),

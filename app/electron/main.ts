@@ -36,10 +36,13 @@ import {
 import {
   defaultVaultDir,
   ensureVaultRoot,
+  loadConfig,
   loadVaultDir,
   oscHome,
   saveGlobalConfig,
 } from 'os-code/dist/src/config/load.js';
+import { vaultPrivacyConfig } from 'os-code/dist/src/core/agent/registry.js';
+import { VAULT_WIRE_NOTE_MAX_BYTES } from 'os-code/dist/src/daemon/vaultWire.js';
 import { managedRoot } from 'os-code/dist/src/core/security/workspaces.js';
 import {
   VAULT_INDEX_FILE_MAX_BYTES,
@@ -48,7 +51,9 @@ import {
 } from 'os-code/dist/src/core/vault/indexFile.js';
 import { readVaultConfigFile } from 'os-code/dist/src/core/vault/configFile.js';
 import { isVaultConfigName } from 'os-code/dist/src/harness/vault/configDir.js';
+import { HANDOFF_MAX_BYTES } from 'os-code/dist/src/harness/handoff.js';
 import {
+  isVaultNotePath,
   listVaultFolder,
   parseVaultGuard,
   parseVaultRemoveGuard,
@@ -746,6 +751,26 @@ function deepLinkFromArgv(argv: string[]): string | undefined {
 // Keep in lockstep with src/lib/electronBridge.ts and electron/preload.cjs.
 // Every argument arrives as `unknown` and is validated before use.
 
+/** A handoff from the renderer: a string within the engine's cap. */
+function optHandoff(v: unknown): string | undefined {
+  const text = optStr(v, 'handoff');
+  if (text === undefined || !text.trim()) return undefined;
+  if (Buffer.byteLength(text, 'utf8') > HANDOFF_MAX_BYTES) {
+    throw new Error('blocked: the handoff is too long to carry into a session');
+  }
+  return text;
+}
+
+/** Project pins from the renderer: note paths only, at most eight. */
+function optVaultPins(v: unknown): string[] | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (!Array.isArray(v)) throw new Error('blocked: vaultPins must be a list');
+  const pins = v
+    .filter((p): p is string => typeof p === 'string' && isVaultNotePath(p))
+    .slice(0, 8);
+  return pins.length ? pins : undefined;
+}
+
 function sessionOpts(v: unknown) {
   if (v === undefined || v === null) return undefined;
   const o = obj(v, 'opts');
@@ -777,6 +802,10 @@ function sessionOpts(v: unknown) {
     currents: parseCurrentsHandles(o.currents),
     // The Harness Current's handle (Jev), parsed the same way.
     harnessCurrents: parseHarnessCurrentsHandle(o.harnessCurrents),
+    // Vault M5 (CTO J12, J14): a handoff for the first task, capped, and the
+    // project's own pins, note paths only, at most eight.
+    handoff: optHandoff(o.handoff),
+    vaultPins: optVaultPins(o.vaultPins),
   };
 }
 
@@ -966,9 +995,15 @@ function vaultDir(): string {
 guarded('osc:vaultList', () => listVaultFolder(vaultDir()));
 guarded('osc:vaultStat', (p: unknown) => statVaultFile(vaultDir(), str(p, 'path')));
 guarded('osc:vaultRead', (p: unknown) => readVaultFile(vaultDir(), str(p, 'path')));
-guarded('osc:vaultWrite', (p: unknown, t: unknown, g: unknown) =>
-  writeVaultFile(vaultDir(), str(p, 'path'), str(t, 'text'), parseVaultGuard(g)),
-);
+// One cap for every writer of a note from outside the engine (Vault M5, CTO
+// J7): the renderer here and a paired phone on the daemon's PUT route.
+guarded('osc:vaultWrite', (p: unknown, t: unknown, g: unknown) => {
+  const text = str(t, 'text');
+  if (Buffer.byteLength(text, 'utf8') > VAULT_WIRE_NOTE_MAX_BYTES) {
+    throw new Error('blocked: that note is too large to save');
+  }
+  return writeVaultFile(vaultDir(), str(p, 'path'), text, parseVaultGuard(g));
+});
 guarded('osc:vaultRemove', (p: unknown, g: unknown) =>
   removeVaultFile(vaultDir(), str(p, 'path'), parseVaultRemoveGuard(g)),
 );
@@ -989,6 +1024,19 @@ guarded('osc:vaultIndexSave', (blob: unknown) => {
     return { ok: false as const, reason: 'too-large' as const };
   }
   return saveVaultIndexFile(vaultDir(), text);
+});
+
+// The machine's own privacy rules for the vault (Vault M5, CTO J3): which
+// notes are hidden from every model and which stay on this computer. Read
+// from this machine's config on every call (projectPolicy never lets a
+// project file set these keys); the renderer compiles them with the core's
+// compileVaultPrivacy, so the app's pack and the engine's judge alike.
+guarded('osc:vaultPrivacy', () => {
+  const cfg = vaultPrivacyConfig(loadConfig().config);
+  return {
+    exclude: [...cfg.exclude],
+    localOnly: { paths: [...cfg.localOnly.paths], tags: [...cfg.localOnly.tags] },
+  };
 });
 
 // readConfig for the folder vault (Vault M3, CTO H5): the renderer sends a
