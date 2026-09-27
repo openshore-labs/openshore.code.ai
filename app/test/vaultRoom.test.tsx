@@ -958,3 +958,39 @@ describe('the save chip and conflict badges (M2 2.2)', () => {
     expect(badges[0]!.closest('button')!.textContent).toContain('Plan (conflict 2026-09-27 1405)');
   });
 });
+
+// Vault M2 2.6: an expired team sign-in keeps the note, read-only.
+describe('a team note kept after the sign-in expired (M2 2.6)', () => {
+  let dom: TestDom;
+  beforeEach(async () => {
+    globalThis.requestAnimationFrame ??= (cb: FrameRequestCallback) =>
+      setTimeout(() => cb(Date.now()), 0) as unknown as number;
+    app.state.vaultScope = 'team';
+    app.state.vaultTeamExpired = true;
+    app.state.vaultNote = { path: 'Plan.md', text: 'the team plan', updatedAt: '1' };
+    app.state.vaultFiles = [{ path: 'Plan.md', updatedAt: '1', size: 13 }];
+    dom = await mountDom();
+  });
+  afterEach(async () => {
+    await dom.unmount();
+    app.state.vaultScope = 'personal';
+    app.state.vaultTeamExpired = undefined;
+    app.state.vaultNote = undefined;
+  });
+
+  it('stays open, read-only, and says how to save again', async () => {
+    let switched = 0;
+    app.state.setVaultScope = async () => {
+      switched++;
+    };
+    await dom.render(<VaultRoom />);
+    expect(dom.text()).toContain('the team plan');
+    expect(dom.text()).toContain('Sign in again to save to your team.');
+    expect(dom.container.querySelector('[aria-label="Edit"]')).toBeNull();
+    expect(dom.container.querySelector('textarea')).toBeNull();
+    expect(dom.container.querySelector('.vault-save-chip')).toBeNull();
+    // The team vault is not available, and the note is still not thrown away.
+    expect(switched).toBe(0);
+    app.state.setVaultScope = async () => {};
+  });
+});

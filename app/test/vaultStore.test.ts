@@ -430,6 +430,7 @@ function reset() {
     vaultError: undefined,
     vaultHeld: [],
     vaultLeaseHeldByOther: undefined,
+    vaultTeamExpired: undefined,
     vaultFolder: undefined,
     vaultListed: undefined,
     vaultMoving: undefined,
@@ -1347,6 +1348,85 @@ describe('the save target is fixed when the save is scheduled (0.7)', () => {
     expect(team.get('plan.md')?.body).toBe('unsent team words');
     expect(team.get('late.md')?.body).toBe('typed as it expired');
     expect(pending()).toEqual({});
+  });
+
+  // Vault M2 2.6: an expiry with a team note open keeps the note.
+  async function expireOnTeamNote() {
+    teamScope();
+    useStoreToken();
+    team.set('plan.md', { body: 'the team plan', rev: 1 });
+    team.set('other.md', { body: 'another team note', rev: 1 });
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen('plan.md');
+    const at = useApp.getState().vaultTargetRef();
+    useApp.setState({ authSession: session(auth.nextUser, -1000) });
+    auth.refresh = new SupabaseRequestError('invalid grant', 400);
+    await useApp.getState().refreshOrgRole();
+    auth.refresh = undefined;
+    return at;
+  }
+
+  it('an expired sign-in keeps the open team note, read-only, and nothing else of the team', async () => {
+    const at = await expireOnTeamNote();
+    const st = useApp.getState();
+    expect(st.authSession).toBeUndefined();
+    expect(st.vaultTeamExpired).toBe(true);
+    expect(st.vaultScope).toBe('team');
+    expect(st.vaultNote).toMatchObject({ path: 'plan.md', text: 'the team plan' });
+    expect(st.vaultFiles.map((f) => f.path)).toEqual(['plan.md']);
+    // A refresh (a focus return) lists nothing and blames no connection.
+    const puts = teamNet.puts.length;
+    await useApp.getState().vaultRefresh();
+    expect(useApp.getState().vaultError).toBeUndefined();
+    expect(useApp.getState().vaultFiles.map((f) => f.path)).toEqual(['plan.md']);
+    // Text typed as it expired waits for the same person, sealed.
+    await useApp.getState().vaultSave('plan.md', 'typed as it expired', at);
+    expect(teamNet.puts.length).toBe(puts);
+    expect(pending()[`org::${ORG}::plan.md`]).toMatchObject({ text: 'typed as it expired' });
+  });
+
+  it('signing back in as the same person goes on with the kept note and sends its text', async () => {
+    const at = await expireOnTeamNote();
+    await useApp.getState().vaultSave('plan.md', 'typed as it expired', at);
+    await useApp.getState().signIn('me@example.com', 'pw');
+    await tick();
+    await tick();
+    const st = useApp.getState();
+    expect(st.vaultTeamExpired).toBeUndefined();
+    expect(st.vaultScope).toBe('team');
+    expect(st.vaultNote?.path).toBe('plan.md');
+    await useApp.getState().vaultRefresh();
+    expect(team.get('plan.md')?.body).toBe('typed as it expired');
+  });
+
+  it('another account signing in after an expiry never sees the kept team note', async () => {
+    await expireOnTeamNote();
+    auth.nextUser = { id: 'u2', email: 'b@example.com' };
+    await useApp.getState().signIn('b@example.com', 'pw');
+    const st = useApp.getState();
+    expect(st.vaultTeamExpired).toBeUndefined();
+    expect(st.vaultScope).toBe('personal');
+    expect(st.vaultNote).toBeUndefined();
+  });
+
+  it('leaving the kept team note goes back to the personal vault', async () => {
+    await expireOnTeamNote();
+    useApp.getState().vaultCloseNote();
+    const st = useApp.getState();
+    expect(st.vaultTeamExpired).toBeUndefined();
+    expect(st.vaultScope).toBe('personal');
+    expect(st.vaultFiles.some((f) => f.path === 'other.md')).toBe(false);
+  });
+
+  it('a sign-out never keeps the team note', async () => {
+    teamScope();
+    team.set('plan.md', { body: 'the team plan', rev: 1 });
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen('plan.md');
+    await useApp.getState().signOutAccount();
+    expect(useApp.getState().vaultNote).toBeUndefined();
+    expect(useApp.getState().vaultScope).toBe('personal');
+    expect(useApp.getState().vaultTeamExpired).toBeUndefined();
   });
 
   it("another account signing in after an expiry drops the previous account's team text", async () => {

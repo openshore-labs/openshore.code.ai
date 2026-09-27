@@ -651,6 +651,10 @@ export function vaultSaveChip(
   };
 }
 
+/** A team note kept open after the sign-in expired (2.6): read-only, and
+ *  what to do to save again. */
+export const VAULT_TEAM_SIGN_IN_LINE = 'Sign in again to save to your team.';
+
 /** The badge a conflict copy (lib/vault.ts isConflictCopy) wears in the tree. */
 export const VAULT_CONFLICT_BADGE = 'Conflict';
 /** What the badge means, for a screen reader. */

@@ -1104,6 +1104,11 @@ interface AppState {
    *  Drive) have no Git-aware locking, so the lease bounds the concurrent-edit
    *  clobber window (the conflict-copy write is the durable backstop). */
   vaultLeaseHeldByOther?: boolean;
+  /** The team sign-in expired while a team note was open (Vault M2 2.6): the
+   *  note stays on screen, read-only, with "Sign in again to save to your
+   *  team", until the person leaves it or the same account signs back in.
+   *  Nothing else of the team vault shows meanwhile. */
+  vaultTeamExpired?: boolean;
   /** Which vault the Vault screen is showing: the personal one (on the chosen
    *  storage provider) or the shared team vault (org tier, Supabase-backed).
    *  Team is only reachable when signed in as an active member of an org. */
@@ -3292,6 +3297,11 @@ export const useApp = create<AppState>((set, get, api) => {
     }
     if (s.declinedOrgIds?.length) patch.declinedOrgIds = undefined;
     if (Object.keys(patch).length) await get().saveSettings(patch);
+    // An expiry with a team note open keeps that note on screen, read-only,
+    // for the same person to sign back in to (Vault M2 2.6); the rest of the
+    // team vault's titles leave with the session. A sign-out never keeps it.
+    const open = get().vaultNote;
+    const keepNote = expired && Boolean(uid) && get().vaultScope === 'team' && Boolean(open);
     set({
       authSession: undefined,
       serverRole: undefined,
@@ -3300,9 +3310,17 @@ export const useApp = create<AppState>((set, get, api) => {
       passwordRecovery: undefined,
       authConfirm: undefined,
       orgJoin: undefined,
-      vaultScope: 'personal',
-      vaultFiles: [],
-      vaultNote: undefined,
+      ...(keepNote
+        ? {
+            vaultTeamExpired: true,
+            vaultFiles: get().vaultFiles.filter((f) => f.path === open!.path),
+          }
+        : {
+            vaultTeamExpired: undefined,
+            vaultScope: 'personal' as const,
+            vaultFiles: [],
+            vaultNote: undefined,
+          }),
     });
     return kept;
   }
@@ -4795,9 +4813,26 @@ export const useApp = create<AppState>((set, get, api) => {
     // Unsent team text stays only for the account that typed it.
     resetOrgVault();
     forgetTeamBodies();
+    // The same person signing back in after an expiry that kept a team note
+    // open goes on with that note, now able to save (Vault M2 2.6).
+    const resume =
+      Boolean(get().vaultTeamExpired) &&
+      keptTeamOwner === session.user.id &&
+      get().vaultScope === 'team' &&
+      Boolean(get().vaultNote);
     keptTeamOwner = undefined;
     await settleTeamVaultDrafts(session.user.id);
-    set({ authSession: session, vaultScope: 'personal', vaultFiles: [], vaultNote: undefined });
+    if (resume) {
+      set({ authSession: session, vaultTeamExpired: undefined });
+    } else {
+      set({
+        authSession: session,
+        vaultScope: 'personal',
+        vaultFiles: [],
+        vaultNote: undefined,
+        vaultTeamExpired: undefined,
+      });
+    }
     const account = get().settings.account;
     if (account && session.user.email && account.selfEmail !== session.user.email) {
       await get().saveSettings({ account: { ...account, selfEmail: session.user.email } });
@@ -4811,6 +4846,9 @@ export const useApp = create<AppState>((set, get, api) => {
     await get().refreshOrgRole();
     void get().refreshEntitlement();
     void get().syncOrgProjects();
+    // Back on the team note: list the team vault again and replay what was
+    // kept for this account while it was signed out.
+    if (resume && get().vaultScope === 'team') void get().vaultRefresh();
     logEvent('auth_sign_in');
   }
 
@@ -7703,7 +7741,13 @@ export const useApp = create<AppState>((set, get, api) => {
       // Leaving the note with a choice open keeps both (CS 1c).
       await leaveVaultConflict();
       vaultLiveDraft = undefined;
-      set({ vaultScope: scope, vaultNote: undefined, vaultFiles: [], vaultListed: false });
+      set({
+        vaultScope: scope,
+        vaultNote: undefined,
+        vaultFiles: [],
+        vaultListed: false,
+        vaultTeamExpired: undefined,
+      });
       logEvent('vault_scope', { scope });
       await get().vaultRefresh();
     },
@@ -7730,6 +7774,10 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async vaultRefresh() {
+      // A team note kept open after an expiry is all that shows of the team
+      // vault until the person signs back in or leaves it: nothing is listed,
+      // since the storage would only refuse (Vault M2 2.6).
+      if (get().vaultTeamExpired && get().vaultScope === 'team') return;
       // The personal vault is one gitOS resource, auto-registered on first
       // open, on the Local provider. The team vault is server-side and needs no
       // local resource row. More vaults and providers arrive through the same
@@ -7981,6 +8029,17 @@ export const useApp = create<AppState>((set, get, api) => {
       void leaveVaultConflict();
       vaultLiveDraft = undefined;
       set({ vaultNote: undefined });
+      // Leaving a team note kept after an expiry leaves the team vault too:
+      // there is nothing of it to show until the person signs back in.
+      if (get().vaultTeamExpired) {
+        set({
+          vaultTeamExpired: undefined,
+          vaultScope: 'personal',
+          vaultFiles: [],
+          vaultListed: false,
+        });
+        void get().vaultRefresh();
+      }
     },
 
     vaultNoteDraft(path, text) {

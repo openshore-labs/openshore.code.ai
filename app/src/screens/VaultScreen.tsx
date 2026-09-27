@@ -50,6 +50,7 @@ import {
   VAULT_PRIVACY_BUTTON,
   VAULT_SAME_FOLDER_LINE,
   VAULT_UPDATED_SUFFIX,
+  VAULT_TEAM_SIGN_IN_LINE,
   VAULT_CONFLICT_BADGE,
   VAULT_CONFLICT_BADGE_LABEL,
   copyProviderOf,
@@ -149,6 +150,7 @@ export function VaultScreen() {
     vaultHeld,
     vaultPending,
     vaultSaving,
+    vaultTeamExpired,
     vaultTargetRef,
     vaultReadOnly,
     vaultDiscardHeld,
@@ -251,7 +253,11 @@ export function VaultScreen() {
   const folderGone = personalOnFolder && vaultFolder?.exists === false;
   // A move is running: the room holds still, so nothing typed can miss the
   // copy (CX 1.3).
-  const locked = readOnly || Boolean(driveReadOnly) || Boolean(vaultMoving) || folderGone;
+  // The team sign-in expired with a team note open: the note stays, read-only,
+  // until the person signs back in or leaves it (2.6).
+  const teamExpired = team && Boolean(vaultTeamExpired);
+  const locked =
+    readOnly || Boolean(driveReadOnly) || Boolean(vaultMoving) || folderGone || teamExpired;
   const teamAvailable = teamVaultAvailable();
 
   const [folder, setFolder] = useState('');
@@ -581,9 +587,11 @@ export function VaultScreen() {
   );
   // If the team vault stops being available while it is open (sign-out), drop
   // back to the personal vault so the screen never shows an empty dead end.
+  // A team note kept open after an expiry stays until the person leaves it
+  // (the store then goes back to the personal vault itself).
   useEffect(() => {
-    if (team && !teamAvailable) switchScope('personal');
-  }, [team, teamAvailable, switchScope]);
+    if (team && !teamAvailable && !vaultTeamExpired) switchScope('personal');
+  }, [team, teamAvailable, vaultTeamExpired, switchScope]);
   // Drop the pending draft without writing it (used when deleting the note it
   // belongs to, so a stale timer cannot recreate what was just deleted).
   const cancelSave = autosave.cancel;
@@ -1174,6 +1182,11 @@ export function VaultScreen() {
           {vaultMoving ? (
             <p className="hint" role="status" style={{ marginTop: 8 }}>
               {vaultMovingLine(vaultFolder?.display ?? labelOf('files'))}
+            </p>
+          ) : null}
+          {teamExpired ? (
+            <p className="hint" role="status" style={{ marginTop: 8, color: 'var(--warn)' }}>
+              {VAULT_TEAM_SIGN_IN_LINE}
             </p>
           ) : null}
           {renderDriveCard(true)}

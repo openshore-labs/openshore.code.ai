@@ -2220,3 +2220,10 @@ execution contract. Newest at the bottom.
   separate refresh on becoming visible is folded into that re-check's relist;
   the team RPC's `conflict_path` toast is superseded by G3 (the resolve
   sheet instead).
+- **Vault M2 wave 2 item 2.6 (2026-09-27):** an expiry with a team note open
+  keeps team scope and that one note (the list is cut to it, so no other team
+  title stays on screen), read-only, with "Sign in again to save to your
+  team."; the room lists nothing meanwhile; leaving the note returns to the
+  personal vault; the same account signing back in goes on with the note and
+  replays what was kept for it, and any other account, or a sign-out, drops
+  it as before.
