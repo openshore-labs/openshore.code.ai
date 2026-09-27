@@ -25,6 +25,7 @@ import {
   type RunningDaemon,
 } from '../src/daemon/serve.js';
 import { SEARCH_PROTOCOL_NOTE } from '../src/harness/localSearch.js';
+import { memorySegment } from '../src/core/agent/projectMemory.js';
 import {
   TerminalManager,
   TerminalUnavailable,
@@ -46,11 +47,20 @@ function noPtyTerminals(): TerminalManager {
 import { defaultConfig } from '../src/config/load.js';
 import { mintCredential } from '../src/core/security/credentials.js';
 
-// Every session the daemon boots, with the tools it registered and its vault
-// root, so a test can check what a member's agent was handed. The real
-// bootstrap runs untouched; this only records its result.
+// Every session the daemon boots, with the tools it registered, its vault
+// root, its workspace, and the project it carries, so a test can check what a
+// member's agent was handed and what a rehydrate kept. The real bootstrap runs
+// untouched; this only records its result.
 const booted = vi.hoisted(
-  () => [] as Array<{ id: string; tools: string[]; vaultRoot: string | undefined }>,
+  () =>
+    [] as Array<{
+      id: string;
+      tools: string[];
+      vaultRoot: string | undefined;
+      cwd: string;
+      projectName: string | undefined;
+      instructions: string | undefined;
+    }>,
 );
 vi.mock('../src/core/agent/bootstrap.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('../src/core/agent/bootstrap.js')>();
@@ -62,6 +72,10 @@ vi.mock('../src/core/agent/bootstrap.js', async (importOriginal) => {
         id: result.driver.id,
         tools: result.tools.specs().map((spec) => spec.name),
         vaultRoot: result.toolContext.vaultRoot,
+        cwd: result.toolContext.cwd,
+        projectName: result.toolContext.projectName,
+        // The standing instructions the agent will send (a private field).
+        instructions: (result.agent as unknown as { instructions?: string }).instructions,
       });
       return result;
     },
@@ -270,6 +284,155 @@ describe('a member session gets no vault tools on a shared hub', () => {
     expect(bootOf(memberId).tools.filter((name) => name.startsWith('vault'))).toEqual([]);
     expect(bootOf(memberId).vaultRoot).toBeUndefined();
     expect(bootOf(ownerId).tools).toEqual(expect.arrayContaining(VAULT_TOOLS));
+  });
+
+  // Taking the vault tools away is not enough on its own: a member session
+  // whose workspace IS the vault (or holds it) reads the owner's notes with
+  // readFile and grep, which never ask. So a member cannot open one there.
+  it('a member cannot open a session in the vault or in a folder that holds it', async () => {
+    process.env.HOME = home;
+    const managed = join(home, 'OSCode');
+    const vault = join(managed, 'Vault');
+    mkdirSync(join(vault, 'Private'), { recursive: true });
+    writeFileSync(join(vault, 'Private', 'Diary.md'), 'owner secret diary');
+    mkdirSync(join(managed, 'repo'), { recursive: true });
+    // A link under ~/OSCode that points at the vault is the vault.
+    symlinkSync(vault, join(managed, 'notes-link'));
+    const member = mintCredential({ role: 'member', label: 'Phone', userId: 'u_vault3' });
+    const before = booted.length;
+    for (const cwd of [vault, join(vault, 'Private'), managed, join(managed, 'notes-link')]) {
+      const res = await createSessionAs(member.token, cwd);
+      expect(res.status).toBe(403);
+      expect(((await res.json()) as { error: string }).error).toMatch(/vault/);
+    }
+    // Nothing booted for the refused member, so no tool ever held the path.
+    expect(booted.length).toBe(before);
+    // A provisioned repo beside the vault still opens for the member.
+    expect((await createSessionAs(member.token, join(managed, 'repo'))).status).toBe(201);
+    // The owner is unrestricted, as before.
+    for (const cwd of [vault, managed]) {
+      expect((await createSessionAs(adminToken, cwd)).status).toBe(201);
+    }
+  });
+
+  it('a vault configured inside a provisioned repo keeps members out of that repo', async () => {
+    process.env.HOME = home;
+    const repo = join(home, 'OSCode', 'repo');
+    const other = join(home, 'OSCode', 'other');
+    mkdirSync(join(repo, 'notes'), { recursive: true });
+    mkdirSync(other, { recursive: true });
+    const config = JSON.parse(readFileSync(join(home, 'config.json'), 'utf8')) as object;
+    writeFileSync(
+      join(home, 'config.json'),
+      JSON.stringify({ ...config, vault: { dir: '~/OSCode/repo/notes' } }),
+    );
+    const member = mintCredential({ role: 'member', label: 'Phone', userId: 'u_vault4' });
+    expect((await createSessionAs(member.token, repo)).status).toBe(403);
+    expect((await createSessionAs(member.token, other)).status).toBe(201);
+  });
+
+  it("a member's stored session in the vault is not revived", async () => {
+    process.env.HOME = home;
+    const vault = join(home, 'OSCode', 'Vault');
+    mkdirSync(vault, { recursive: true });
+    // A session a member opened in the vault before the gate existed.
+    const id = 'oldvault1';
+    mkdirSync(join(home, 'sessions', id), { recursive: true });
+    const stamp = new Date().toISOString();
+    writeFileSync(
+      join(home, 'sessions', id, 'info.json'),
+      JSON.stringify({
+        id,
+        cwd: vault,
+        title: 'Old',
+        createdAt: stamp,
+        updatedAt: stamp,
+        ownerUserId: 'u_vault5',
+      }),
+    );
+    const member = mintCredential({ role: 'member', label: 'Phone', userId: 'u_vault5' });
+    const res = await fetch(`${base}/sessions/${id}/files?q=Diary`, {
+      headers: auth(member.token),
+    });
+    expect(res.status).toBe(403);
+    expect(booted.some((b) => b.id === id)).toBe(false);
+  });
+});
+
+// A session outlives a daemon restart. The rehydrate used to boot it with no
+// project, so its memory notes fell back to the workspace's folder name (the
+// split 0.16 set out to end) and the project's standing instructions dropped.
+describe('a revived session keeps its project', () => {
+  const realHome = process.env.HOME;
+  afterEach(() => {
+    process.env.HOME = realHome;
+  });
+
+  it('keeps the project name and instructions across a restart', async () => {
+    process.env.HOME = home;
+    const cwd = join(home, 'OSCode', 'my-app');
+    mkdirSync(cwd, { recursive: true });
+    const created = await fetch(`${base}/sessions`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ cwd, projectName: 'My App', instructions: 'Keep every screen calm.' }),
+    });
+    expect(created.status).toBe(201);
+    const { id } = (await created.json()) as { id: string };
+    const first = booted.filter((b) => b.id === id).at(-1)!;
+    expect(first.projectName).toBe('My App');
+
+    // The project rides in info.json sealed, like the title: never plain text.
+    const info = readFileSync(join(home, 'sessions', id, 'info.json'), 'utf8');
+    expect(info).not.toContain('Keep every screen calm.');
+    expect(info).not.toContain('My App');
+
+    daemon.close();
+    daemon = await startOnFreePort();
+    base = `http://127.0.0.1:${daemon.port}`;
+    expect(
+      (await fetch(`${base}/sessions/${id}/files?q=`, { headers: auth(adminToken) })).status,
+    ).toBe(200);
+    const revived = booted.filter((b) => b.id === id);
+    expect(revived).toHaveLength(2);
+    expect(revived[1]!.projectName).toBe('My App');
+    expect(memorySegment(revived[1]!.projectName, revived[1]!.cwd)).toBe(
+      memorySegment(first.projectName, first.cwd),
+    );
+    expect(revived[1]!.instructions).toBe('Keep every screen calm.');
+    // The listing stays as it was: no project or instructions on the wire.
+    const listing = (await (
+      await fetch(`${base}/sessions`, { headers: auth(adminToken) })
+    ).json()) as {
+      stored: Array<Record<string, unknown>>;
+    };
+    const row = listing.stored.find((s) => s.id === id)!;
+    expect(row).not.toHaveProperty('instructions');
+    expect(row).not.toHaveProperty('projectName');
+  });
+
+  it('keeps instructions the person changed mid-session', async () => {
+    process.env.HOME = home;
+    const cwd = join(home, 'OSCode', 'my-app');
+    mkdirSync(cwd, { recursive: true });
+    const created = await fetch(`${base}/sessions`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ cwd, projectName: 'My App', instructions: 'Old rule.' }),
+    });
+    const { id } = (await created.json()) as { id: string };
+    const set = await fetch(`${base}/sessions/${id}/instructions`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ text: 'New rule.' }),
+    });
+    expect(set.status).toBe(200);
+
+    daemon.close();
+    daemon = await startOnFreePort();
+    base = `http://127.0.0.1:${daemon.port}`;
+    await fetch(`${base}/sessions/${id}/files?q=`, { headers: auth(adminToken) });
+    expect(booted.filter((b) => b.id === id).at(-1)!.instructions).toBe('New rule.');
   });
 });
 

@@ -62,18 +62,39 @@ export interface SessionInfo {
   ownerUserId?: string;
 }
 
-// The session title is derived from the user's first prompt, so it is user
-// content and seals like the journal. Timestamps, ids, and cwd stay plain:
-// they order and locate sessions and carry no content.
-function openTitle(title: string): string {
-  if (!isSealed(title)) return title;
-  const dk = loadOrCreateDataKey();
-  return (dk && openString(dk.key, title)) || 'Sealed session';
+/**
+ * The project a session was opened for: its name, which places the project's
+ * memory notes ("OpenShore Project <name> MDs/"), and the person's standing
+ * instructions. Kept in info.json so a session revived after a restart works to
+ * the same project instead of falling back to the workspace's folder name. Read
+ * only when a session is revived (storedSessionProject); the listings never
+ * carry them.
+ */
+export interface SessionProject {
+  projectName?: string;
+  instructions?: string;
 }
 
-function sealTitle(title: string): string {
+/** info.json as it sits on disk: the listing fields plus the sealed project. */
+type SessionInfoFile = SessionInfo & SessionProject;
+
+// The session title is derived from the user's first prompt, so it is user
+// content and seals like the journal; so do the project's name and standing
+// instructions. Timestamps, ids, and cwd stay plain: they order and locate
+// sessions and carry no content.
+function openField(value: string): string | undefined {
+  if (!isSealed(value)) return value;
   const dk = loadOrCreateDataKey();
-  return dk ? sealString(dk.key, title) : title;
+  return (dk && openString(dk.key, value)) ?? undefined;
+}
+
+function openTitle(title: string): string {
+  return openField(title) || 'Sealed session';
+}
+
+function sealField(value: string): string {
+  const dk = loadOrCreateDataKey();
+  return dk ? sealString(dk.key, value) : value;
 }
 
 /**
@@ -148,12 +169,32 @@ export function listSessions(): SessionInfo[] {
 
 function readSessionInfo(dir: string, id: string): SessionInfo | undefined {
   try {
-    const info = JSON.parse(readFileSync(join(dir, id, 'info.json'), 'utf8')) as SessionInfo;
-    if (!info || typeof info.cwd !== 'string') return repairSessionInfo(dir, id);
+    const file = JSON.parse(readFileSync(join(dir, id, 'info.json'), 'utf8')) as SessionInfoFile;
+    if (!file || typeof file.cwd !== 'string') return repairSessionInfo(dir, id);
+    // The project stays on disk: a listing neither carries nor opens it.
+    const { projectName: _name, instructions: _instructions, ...info } = file;
     info.title = openTitle(info.title);
     return info;
   } catch {
     return repairSessionInfo(dir, id);
+  }
+}
+
+/** The project a stored session was opened for, opened from its info.json.
+ *  Empty when none was recorded (a project-less chat, or a session stored
+ *  before the project was kept) or the file cannot be read. */
+export function storedSessionProject(id: string): SessionProject {
+  if (!SAFE_SESSION_ID.test(id)) return {};
+  try {
+    const file = JSON.parse(
+      readFileSync(join(sessionsDir(), id, 'info.json'), 'utf8'),
+    ) as SessionInfoFile;
+    const project: SessionProject = {};
+    if (typeof file.projectName === 'string') project.projectName = openField(file.projectName);
+    if (typeof file.instructions === 'string') project.instructions = openField(file.instructions);
+    return project;
+  } catch {
+    return {};
   }
 }
 
@@ -197,7 +238,7 @@ function repairSessionInfo(dir: string, id: string): SessionInfo | undefined {
       createdAt: new Date(st.birthtimeMs || st.mtimeMs).toISOString(),
       updatedAt: new Date(st.mtimeMs).toISOString(),
     };
-    writeInfoAtomic(join(dir, id, 'info.json'), { ...info, title: sealTitle(info.title) });
+    writeInfoAtomic(join(dir, id, 'info.json'), { ...info, title: sealField(info.title) });
     return info;
   } catch {
     return undefined;
@@ -248,7 +289,7 @@ export class LocalDriver implements SessionDriver {
 
   constructor(
     readonly cwd: string,
-    options: { id?: string; persist?: boolean } = {},
+    options: { id?: string; persist?: boolean; project?: SessionProject } = {},
   ) {
     this.id = options.id ?? randomUUID().slice(0, 8);
     this.persist = options.persist ?? true;
@@ -256,13 +297,17 @@ export class LocalDriver implements SessionDriver {
       const dir = this.dir();
       mkdirSync(dir, { recursive: true });
       const infoPath = join(dir, 'info.json');
-      const info: SessionInfo = {
+      const info: SessionInfoFile = {
         id: this.id,
         cwd,
         title: `Session ${this.id}`,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
+      // The project it was opened for, so a revived session keeps it.
+      const { projectName, instructions } = options.project ?? {};
+      if (projectName) info.projectName = sealField(projectName);
+      if (instructions?.trim()) info.instructions = sealField(instructions);
       if (!existsSync(infoPath)) {
         writeInfoAtomic(infoPath, info);
       } else {
@@ -438,11 +483,11 @@ export class LocalDriver implements SessionDriver {
           if (event.type === 'task-start' && !this.titled) {
             // The title is the user's own words until a generated one lands;
             // it seals like the journal.
-            info.title = sealTitle(event.input.slice(0, 60));
+            info.title = sealField(event.input.slice(0, 60));
           }
           if (event.type === 'title') {
             this.titled = true;
-            info.title = sealTitle(event.title);
+            info.title = sealField(event.title);
           }
           writeInfoAtomic(infoPath, info);
         }
@@ -550,6 +595,15 @@ export class LocalDriver implements SessionDriver {
 
   setInstructions(text: string | undefined): void {
     this.agent?.setInstructions(text);
+    // Kept with the session, so a revive after a restart uses the new ones.
+    if (!this.persist) return;
+    try {
+      const infoPath = join(this.dir(), 'info.json');
+      const info = JSON.parse(readFileSync(infoPath, 'utf8')) as SessionInfoFile;
+      if (text?.trim()) info.instructions = sealField(text);
+      else delete info.instructions;
+      writeInfoAtomic(infoPath, info);
+    } catch {}
   }
 
   /** Manual compaction (/compact). Refused mid-task; the loop compacts itself. */
@@ -803,9 +857,16 @@ export function sealSessionsAtRest(options: { skipNewerThanMs?: number } = {}): 
       }
       const infoPath = join(dir, id, 'info.json');
       if (existsSync(infoPath) && !tooRecent(infoPath)) {
-        const info = JSON.parse(readFileSync(infoPath, 'utf8')) as SessionInfo;
-        if (typeof info.title === 'string' && !isSealed(info.title)) {
-          info.title = sealString(dk.key, info.title);
+        const info = JSON.parse(readFileSync(infoPath, 'utf8')) as SessionInfoFile;
+        let plain = false;
+        for (const field of ['title', 'projectName', 'instructions'] as const) {
+          const value = info[field];
+          if (typeof value === 'string' && !isSealed(value)) {
+            info[field] = sealString(dk.key, value);
+            plain = true;
+          }
+        }
+        if (plain) {
           const tmp = `${infoPath}.tmp`;
           writeFileSync(tmp, JSON.stringify(info, null, 2), { mode: 0o600 });
           renameSync(tmp, infoPath);

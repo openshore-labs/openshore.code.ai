@@ -50,8 +50,10 @@ export function buildToolRegistry(options: {
   currents?: CurrentsHandles;
   // Off leaves the three vault tools out. A member's session on a shared hub
   // runs without them: the vault is the machine owner's one folder, so until
-  // each member has a root of their own, a member's agent cannot read it or
-  // propose writes into it. Undefined means on.
+  // each member has a root of their own, a member's agent gets no tool aimed
+  // at it. The daemon also refuses a member a workspace that is the vault or
+  // holds it (overlapsVault), so the file tools cannot reach it either.
+  // Undefined means on.
   vault?: boolean;
 }): ToolRegistry {
   const registry = new ToolRegistry();

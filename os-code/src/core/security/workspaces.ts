@@ -11,7 +11,7 @@
 import { join, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { realpathSync } from 'node:fs';
-import { loadDaemonConfig, type DaemonConfig } from '../../config/load.js';
+import { loadDaemonConfig, loadVaultDir, type DaemonConfig } from '../../config/load.js';
 import type { OscConfig } from '../../config/schema.js';
 
 /** Resolve a path to its real location when it exists (symlinks followed),
@@ -41,6 +41,22 @@ export function managedRoot(): string {
  */
 export function isAdminProvisionedWorkspace(cwd: string): boolean {
   return within(realOrResolve(cwd), managedRoot());
+}
+
+/**
+ * Whether a workspace and the vault overlap: the workspace is the vault, lies
+ * inside it, or holds it. The default vault sits under ~/OSCode, so ~/OSCode
+ * itself holds it. A member's session must never open in such a workspace on
+ * a shared hub: withholding the vault tools is not enough while readFile, grep,
+ * and glob (which never ask) reach the owner's notes through the workspace.
+ * Real paths on both sides, like the jail the file tools resolve through, so a
+ * link to the vault counts as the vault, and a workspace that only holds a
+ * link to it does not overlap (the jail refuses to follow that link out).
+ */
+export function overlapsVault(cwd: string, vaultDir: string = loadVaultDir().dir): boolean {
+  const workspace = realOrResolve(cwd);
+  const vault = realOrResolve(vaultDir);
+  return within(workspace, vault) || within(vault, workspace);
 }
 
 /**
