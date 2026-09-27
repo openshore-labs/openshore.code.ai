@@ -407,9 +407,18 @@ describe('the Stack batches every proposal into one approval card', () => {
     driver.answerApproval(cards(events)[0]!.request.id, { approve: true });
     await settle();
     expect(write).toHaveBeenCalledTimes(2);
-    expect(write.mock.calls[0]).toEqual(['Ideas/Launch.md', 'Launch plan.', { ifAbsent: true }]);
+    // Each note carries who wrote it (Vault M7, CTO L9), merged before the
+    // card for a new note and at the write for an addition.
+    expect(write.mock.calls[0]![0]).toBe('Ideas/Launch.md');
+    expect(write.mock.calls[0]![2]).toEqual({ ifAbsent: true });
+    const created = write.mock.calls[0]![1] as string;
+    expect(created).toMatch(/^---\noscode-source: "agent"\n/);
+    expect(created).toContain('oscode-where: "cloud"');
+    expect(created.endsWith('---\nLaunch plan.')).toBe(true);
     expect(write.mock.calls[1]![2]).toEqual({ ifMatch: 'v1' });
-    expect(store.get('Decisions/Auth.md')!.text).toBe('# Auth\nSessions.\n\nRevisit in Q3.\n');
+    const auth = store.get('Decisions/Auth.md')!.text;
+    expect(auth).toContain('oscode-source: "agent-edit"');
+    expect(auth.endsWith('---\n# Auth\nSessions.\n\nRevisit in Q3.\n')).toBe(true);
     expect(written).toEqual([['Ideas/Launch.md', 'Decisions/Auth.md']]);
     driver.dispose();
   });

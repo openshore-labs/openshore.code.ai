@@ -15,7 +15,7 @@
 // ticks on its own (UI-7).
 import type { ReactNode, RefObject } from 'react';
 import { Keyboard } from '@capacitor/keyboard';
-import type { TextRange } from 'os-code/protocol';
+import type { TextRange, VaultLinkStyle } from 'os-code/protocol';
 import { useExitPresence } from '../../hooks/useExitPresence.js';
 import { Icon } from '../Icon.js';
 import { durationMs } from '../../lib/motion.js';
@@ -29,10 +29,22 @@ export interface AccessoryEdit {
   caret: number;
 }
 
-/** Insert link: `[[]]` with the caret inside, or the selection wrapped. */
-export function linkEdit(text: string, start: number, end: number): AccessoryEdit {
+/** Insert link: `[[]]` with the caret inside, or the selection wrapped.
+ *  With the vault's `links.style` on markdown (Vault M7, CTO L2) a selection
+ *  becomes `[words]()` with the caret in the parentheses; with nothing
+ *  selected `[[` still opens the suggestions, whose pick writes markdown. */
+export function linkEdit(
+  text: string,
+  start: number,
+  end: number,
+  linkStyle: VaultLinkStyle = 'wiki',
+): AccessoryEdit {
   const selected = text.slice(start, end);
   if (selected && !/[\n[\]|]/.test(selected)) {
+    if (linkStyle === 'markdown') {
+      const insert = `[${selected}]()`;
+      return { range: { start, end }, insert, caret: start + insert.length - 1 };
+    }
     const insert = `[[${selected}]]`;
     return { range: { start, end }, insert, caret: start + insert.length };
   }
@@ -86,9 +98,18 @@ export interface VaultAccessoryBarProps {
   suggest?: ReactNode;
   /** The caret moved by a tool: the screen recomputes its link context. */
   onCaret?: (value: string, caret: number) => void;
+  /** The vault's `links.style` (Vault M7): how Insert link wraps a
+   *  selection. Default wikilinks. */
+  linkStyle?: VaultLinkStyle;
 }
 
-export function VaultAccessoryBar({ shown, editor, suggest, onCaret }: VaultAccessoryBarProps) {
+export function VaultAccessoryBar({
+  shown,
+  editor,
+  suggest,
+  onCaret,
+  linkStyle = 'wiki',
+}: VaultAccessoryBarProps) {
   const { mounted, closing } = useExitPresence(shown, durationMs('--dur-4', 280));
   if (!mounted) return null;
   const keep = (e: { preventDefault(): void }) => e.preventDefault();
@@ -116,7 +137,7 @@ export function VaultAccessoryBar({ shown, editor, suggest, onCaret }: VaultAcce
             onMouseDown={keep}
             onClick={() => {
               const s = sel();
-              if (s) apply(s.el, linkEdit(s.el.value, s.start, s.end), onCaret);
+              if (s) apply(s.el, linkEdit(s.el.value, s.start, s.end, linkStyle), onCaret);
             }}
           >
             <span className="vault-accessory-glyph" aria-hidden="true">

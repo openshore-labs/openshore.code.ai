@@ -2412,4 +2412,32 @@ export const VAULT_EDITOR_SAMPLE = 'A line of your notes looks like this.';
 // The integrator's few lines: what the room and Settings say where no
 // stream's fence had a line for it (the team read-only footer, Y4's rows).
 
+/** A list or a note field with nothing set. */
+export const VAULT_SETTINGS_NONE = 'None';
+/** The Add a tag field's hint. */
+export const VAULT_SETTINGS_TAG_PLACEHOLDER = 'Tag name';
+
+/** Obsidian's attachment folder form (`/`, `./`, `./sub`, a folder) in
+ *  words, for the Attachments folder row. */
+export function vaultAttachmentsValue(setting: string | undefined): string {
+  const v = (setting ?? '').trim();
+  if (!v || v === '/') return 'Top of this vault';
+  if (v === './' || v === '.') return 'Same folder as the note';
+  if (v.startsWith('./')) return `"${v.slice(2).replace(/\/+$/, '')}", beside the note`;
+  return v.replace(/^\/+|\/+$/g, '');
+}
+
+/** The starter layout found the vault no longer empty right before it
+ *  wrote (CTO L12), so nothing was added. */
+export const VAULT_STARTER_NOT_EMPTY =
+  'This vault has something in it now, so the layout was not added.';
+
+/** The team vault's footer (CX Y14): an admin reads who the settings reach,
+ *  a member reads who sets them. On main no one edits them here yet, so the
+ *  rows read-only with the storage's own line. */
+export function vaultSettingsTeamFooter(o: { admin: boolean; org?: string }): string {
+  if (!o.admin) return 'Your admins set these.';
+  return o.org ? `These apply to everyone in ${o.org}.` : 'These apply to everyone in your team.';
+}
+
 // ---- M7 wave 2 end ----

@@ -226,6 +226,7 @@ export function vaultBodyFields(vault: ChatVaultFields): ChatVaultFields {
     vaultPack: {
       ...(pack.cwd ? { cwd: pack.cwd } : {}),
       ...(pack.projectName ? { projectName: pack.projectName } : {}),
+      ...(pack.packSize ? { packSize: pack.packSize } : {}),
     },
   };
 }

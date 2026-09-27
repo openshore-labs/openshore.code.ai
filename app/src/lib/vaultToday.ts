@@ -38,7 +38,6 @@ import {
   vaultTodayStartedFrom,
   vaultTodayTemplateMissing,
 } from './vaultCopy.js';
-import { readDailyNotesConfig, readTemplatesConfig, readVaultConfig } from './gitos/config.js';
 import {
   VAULT_SETTINGS_TTL_MS,
   clearVaultSettingsCache,
@@ -125,38 +124,13 @@ export async function vaultTodayConfig(
   deps: Pick<VaultTodayDeps, 'provider' | 'resourceId' | 'cacheKey' | 'now' | 'settingsCore'>,
 ): Promise<VaultTodayConfig> {
   const key = deps.cacheKey ?? deps.resourceId;
-  try {
-    const settings = await loadVaultSettings(deps.provider, deps.resourceId, key, {
-      ...(deps.now ? { now: () => deps.now!().getTime() } : {}),
-      ...(deps.settingsCore ? { core: deps.settingsCore } : {}),
-    });
-    return todayConfigOf(settings);
-  } catch {
-    // The resolver never throws once built; if it ever does, Today still
-    // opens by Obsidian's own files, exactly as before M7 (they win over the
-    // vault's file anyway, L3). Conventions only, so nothing widens here.
-    return obsidianTodayConfig(deps.provider, deps.resourceId);
-  }
-}
-
-/** Today's config from Obsidian's two files alone (the M6 read). */
-async function obsidianTodayConfig(
-  provider: VaultTodayDeps['provider'],
-  resourceId: string,
-): Promise<VaultTodayConfig> {
-  const [daily, templates] = await Promise.all([
-    readVaultConfig(provider, resourceId, 'obsidian/daily-notes'),
-    readVaultConfig(provider, resourceId, 'obsidian/templates'),
-  ]);
-  const d = readDailyNotesConfig(daily);
-  const t = readTemplatesConfig(templates);
-  return {
-    folder: d.folder ?? VAULT_DAILY_DEFAULTS.folder,
-    format: d.format ?? VAULT_DAILY_DEFAULTS.format,
-    ...(d.template ? { template: d.template } : {}),
-    dateFormat: t.dateFormat ?? VAULT_DAILY_DEFAULTS.format,
-    timeFormat: t.timeFormat ?? VAULT_DAILY_DEFAULTS.timeFormat,
-  };
+  // The resolver never throws, and a config read that fails reads as
+  // unavailable (the defaults, Obsidian's files winning where they answer).
+  const settings = await loadVaultSettings(deps.provider, deps.resourceId, key, {
+    ...(deps.now ? { now: () => deps.now!().getTime() } : {}),
+    ...(deps.settingsCore ? { core: deps.settingsCore } : {}),
+  });
+  return todayConfigOf(settings);
 }
 
 function pathList(paths: readonly string[] | VaultPathIndex): readonly string[] {

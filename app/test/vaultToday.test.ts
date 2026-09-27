@@ -291,18 +291,6 @@ describe("today's note from the vault's own settings (Vault M7, CTO L3)", () => 
     });
   });
 
-  it("a resolver that throws still opens today's note by Obsidian's own files", async () => {
-    const { deps } = vault({ 'obsidian/daily-notes': { folder: 'Daily' } });
-    const throwing: VaultSettingsCore = {
-      resolve: () => {
-        throw new Error('not built');
-      },
-      patch: () => undefined,
-    };
-    const plan = await resolveVaultToday({ ...deps, settingsCore: throwing });
-    expect(plan).toMatchObject({ ok: true, path: 'Daily/2026-09-27.md' });
-  });
-
   it('Obsidian wins where it sets a field, so the two apps never make the day twice', async () => {
     const { deps } = vault({
       'obsidian/daily-notes': { folder: 'Daily' },

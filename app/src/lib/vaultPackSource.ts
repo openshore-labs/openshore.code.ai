@@ -23,11 +23,13 @@ import {
   packBudgetTokens,
   packModeFor,
   planContextPack,
+  retrievalSkipped,
   type ContextPack,
   type DriverEvent,
   type ModelClass,
   type ModelClassProfile,
   type PackMode,
+  type ResolvedVaultSettings,
   type VaultIndex,
   type VaultPackSize,
   type VaultPrivacy,
@@ -73,6 +75,11 @@ export interface AppVaultPackDeps {
    *  project and the machine in charge (the store asks `handoff` only when
    *  they allow it). */
   handoffSetting?: () => 'off' | undefined;
+  /** The personal vault's resolved settings (Vault M7, CTO L2): notes under
+   *  its `templates.folder`, and those Obsidian's ignore filters name, are
+   *  no retrieval candidate. The person's own pins still ride. Unset leaves
+   *  every note a candidate. */
+  settings?: () => Pick<ResolvedVaultSettings, 'templates' | 'ignore'> | undefined;
   /** The core's budget (tests pass their own); default `packBudgetTokens`. */
   budget?: PackBudget;
   /** The cold budget in ms (default `VAULT_PACK_COLD_MS`). */
@@ -89,17 +96,10 @@ export type PackBudget = (
   size?: VaultPackSize,
 ) => number;
 
-/** The core's budget with a size. Stream A widens `packBudgetTokens` to take
- *  it (factors 0.5, 1, 1.5, capped by `vault.packMaxTokens`); with no size
- *  the call is exactly the one before M7. */
+/** The core's budget with a size (factors 0.5, 1, 1.5, capped); unset is
+ *  Normal, exactly the budget before M7. */
 const coreBudget: PackBudget = (profile, served, size) =>
-  size === undefined || size === 'normal'
-    ? packBudgetTokens(profile, served)
-    : (packBudgetTokens as (p: ModelClassProfile, s: number, z?: VaultPackSize) => number)(
-        profile,
-        served,
-        size,
-      );
+  packBudgetTokens(profile, served, size ?? 'normal');
 
 /** The pack Current State is cached for, per project (J1). */
 export const CURRENT_STATE_CACHE_MS = 10 * 60 * 1000;
@@ -304,8 +304,16 @@ export function createAppVaultPack(deps: AppVaultPackDeps): AppVaultPack {
       const wanted = [...new Set([...planned, ...projectPins.slice(0, PACK_PINS_MAX)])];
       // Belt and braces: a hidden note is never read, whatever the plan says,
       // and a note the index does not hold (or holds evicted) is not fetched.
+      let skip: Pick<ResolvedVaultSettings, 'templates' | 'ignore'> | undefined;
+      try {
+        skip = deps.settings?.();
+      } catch {
+        skip = undefined;
+      }
+      const pinned = new Set(projectPins);
       const reads = wanted
         .filter((path) => {
+          if (!pinned.has(path) && retrievalSkipped(path, skip)) return false;
           const e = index.entry(path);
           if (!e || e.evicted) return false;
           return privacy.visibility({ path, tags: e.tags, oscode: e.oscode }) !== 'hidden';

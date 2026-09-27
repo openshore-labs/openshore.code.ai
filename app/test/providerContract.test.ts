@@ -92,9 +92,8 @@ vi.mock('../src/lib/electronBridge.js', async () => {
  *  runs end to end with no stand-in. */
 async function configBridge(): Promise<Record<string, unknown>> {
   const { readVaultConfigFile } = await import('os-code/dist/src/core/vault/configFile.js');
-  const { putVaultSettingsFile, parseConfigWriteGuard } = await import(
-    'os-code/dist/src/daemon/vaultRoutes.js'
-  );
+  const { putVaultSettingsFile, parseConfigWriteGuard } =
+    await import('os-code/dist/src/daemon/vaultRoutes.js');
   return {
     vaultReadConfig: (name: unknown) =>
       readVaultConfigFile(h.root, name as Parameters<typeof readVaultConfigFile>[1]),

@@ -10,6 +10,7 @@ import type {
   HarnessCurrentsHandle,
   PermissionMode,
   SessionCreateVaultFields,
+  VaultOverrides,
 } from 'os-code/protocol';
 import { HANDOFF_MAX_BYTES } from 'os-code/protocol';
 import { isNotePath } from '../lib/gitos/providers.js';
@@ -255,6 +256,10 @@ export async function daemonCreateSession(
      *  the person's vault, at most `PROJECT_VAULT_PINS_MAX`. Only paths that
      *  name a note go on the wire. */
     vaultPins?: string[];
+    /** The app's vault switches (Vault M7, CTO L13): off-only for context and
+     *  the handoff, lower-only for the pack size. The daemon parses each
+     *  value and drops anything else. */
+    vaultOverrides?: VaultOverrides;
   } = {},
 ): Promise<string> {
   const handoff = opts.handoff ? capUtf8(opts.handoff, HANDOFF_MAX_BYTES) : '';
@@ -276,6 +281,9 @@ export async function daemonCreateSession(
       ...(opts.harnessCurrents ? { harnessCurrents: opts.harnessCurrents } : {}),
       ...(handoff ? { handoff } : {}),
       ...(vaultPins.length ? { vaultPins } : {}),
+      ...(opts.vaultOverrides && Object.keys(opts.vaultOverrides).length
+        ? { vaultOverrides: opts.vaultOverrides }
+        : {}),
     } satisfies SessionCreateVaultFields & Record<string, unknown>),
     signal: AbortSignal.timeout(10_000),
   });

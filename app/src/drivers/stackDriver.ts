@@ -25,6 +25,7 @@ import type {
   ApprovalRequest,
   FetchLike,
   HarnessCurrentsHandle,
+  ProvenanceFields,
   VaultPrivacy,
 } from 'os-code/protocol';
 import {
@@ -37,6 +38,9 @@ import {
   SearchLineFilter,
   ThinkTagSplitter,
   splitThinkTags,
+  mergeProvenance,
+  readFrontmatter,
+  readProvenance,
   type ThoughtPiece,
 } from 'os-code/protocol';
 import {
@@ -120,6 +124,7 @@ import {
   parseVaultToolArgs,
   runVaultTool,
   vaultAnthropicTool,
+  vaultApproveRefusal,
   vaultArgsHelp,
   vaultOpenAiTool,
   vaultPolicyFor,
@@ -202,6 +207,12 @@ export interface StackVaultTools {
   teamVault?: () => boolean;
   /** The paths an approved card wrote, for "Recently from your agent". */
   onWritten?: (paths: string[]) => void;
+  /** The personal vault's `agent.folder` (Vault M7, CTO L2), read at each
+   *  offer and again at approve; undefined is anywhere in the vault. */
+  agentFolder?: () => string | undefined;
+  /** Whether a note a model writes carries its provenance lines (CTO L9).
+   *  Absent is on. */
+  provenance?: () => boolean;
 }
 
 /** The Stack driver's trailing options (CTO J1, J5, J10). */
@@ -354,6 +365,31 @@ function appendedText(current: string, addition: string): string {
   return head ? `${head}\n\n${body}` : body;
 }
 
+/** The seat's provenance lines for a note a model writes (Vault M7, CTO L9):
+ *  its model, where it ran (judged by address, the pack seat's
+ *  `leavesNetwork`), its class and, off this network, its provider. */
+export function seatProvenance(ref: StackModelRef, seat: PackSeat): ProvenanceFields {
+  const model = ref.kind === 'device' ? ref.modelName : ref.model;
+  const provider = ref.kind === 'cloud' ? ref.provider : ref.kind === 'byom' ? ref.label : '';
+  return {
+    ...(model ? { 'oscode-model': model } : {}),
+    'oscode-where': seat.leavesNetwork ? 'cloud' : 'local',
+    'oscode-size': seat.modelClass,
+    'oscode-provider': seat.leavesNetwork && provider ? provider : null,
+  };
+}
+
+/** `text` with provenance merged byte for byte (L10), or `text` as it is
+ *  when the merge skips (invalid or large frontmatter, a failed verify). */
+export function withProvenance(text: string, fields: ProvenanceFields): string {
+  try {
+    const merged = mergeProvenance(text, fields);
+    return 'text' in merged ? merged.text : text;
+  } catch {
+    return text;
+  }
+}
+
 /** Build the OpenAI-compatible content array for a user turn that carries
  *  images. Video frames are labeled and led by a context header, the same
  *  shape the Anthropic path uses, so a stack routed to an OpenAI-style vision
@@ -489,6 +525,8 @@ export class StackDriver implements ChatDriver {
   // The vault writes this send proposed, shown on one card at its end (D4),
   // and the privacy rules, loaded once per send.
   private proposals: VaultProposal[] = [];
+  /** An append's provenance lines, by path, merged at its write. */
+  private appendProvenance = new Map<string, ProvenanceFields>();
   private sendPrivacy?: Promise<VaultPrivacy | undefined>;
   // Seats whose server refused a request with tools on it (an Ollama model
   // with no tool template answers 400): they get the plain path afterwards.
@@ -869,8 +907,54 @@ export class StackDriver implements ChatDriver {
       read: tools.read,
       ...(tools.resolve ? { resolve: tools.resolve } : {}),
       readCapChars: vaultPolicyFor(seat.modelClass).readCapChars,
-      propose: (p) => this.queueProposal(p),
+      propose: (p) => this.queueProposal(this.stampProposal(tools, ref, seat, p)),
+      ...(this.agentFolder(tools) ? { agentFolder: this.agentFolder(tools)! } : {}),
     };
+  }
+
+  /** The vault's agent folder now, or undefined (anywhere). */
+  private agentFolder(tools: StackVaultTools | undefined): string | undefined {
+    try {
+      return tools?.agentFolder?.() || undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** The provenance a proposal carries (Vault M7, CTO L9, L10). A new note's
+   *  lines are merged into its text NOW, before the card, so the person
+   *  approves the exact bytes that land; an append's lines are kept for the
+   *  write, which merges them into the note as it is then. */
+  private stampProposal(
+    tools: StackVaultTools,
+    ref: StackModelRef,
+    seat: PackSeat,
+    p: VaultProposal,
+  ): VaultProposal {
+    let on = true;
+    try {
+      on = tools.provenance?.() ?? true;
+    } catch {
+      on = true;
+    }
+    if (!on) {
+      this.appendProvenance.delete(p.path);
+      return p;
+    }
+    const fields = seatProvenance(ref, seat);
+    if (p.mode === 'create') {
+      this.appendProvenance.delete(p.path);
+      return {
+        ...p,
+        text: withProvenance(p.text, {
+          'oscode-source': 'agent',
+          ...fields,
+          'oscode-created': new Date().toISOString(),
+        }),
+      };
+    }
+    this.appendProvenance.set(p.path, fields);
+    return p;
   }
 
   /** Queue a write for the end-of-send card; a later proposal for the same
@@ -949,10 +1033,20 @@ export class StackDriver implements ChatDriver {
     }
     const saved: string[] = [];
     const notSaved: string[] = [];
+    const refused: string[] = [];
     for (const p of queued) {
+      // Checked again right before the write (CTO L8): the settings folder,
+      // and the vault's agent folder as it is now.
+      const refusal = vaultApproveRefusal(p, { agentFolder: this.agentFolder(tools) });
+      if (refusal) {
+        refused.push(refusal);
+        continue;
+      }
       const ok = await this.writeProposal(tools, p).catch(() => false);
       (ok ? saved : notSaved).push(p.path);
     }
+    this.appendProvenance.clear();
+    for (const line of refused) this.emit({ type: 'status', message: line });
     if (saved.length) {
       this.emit({
         type: 'status',
@@ -983,7 +1077,24 @@ export class StackDriver implements ChatDriver {
     }
     const cur = await tools.read(p.path);
     if (!cur || (p.baseVersion !== undefined && cur.version !== p.baseVersion)) return false;
-    return (await tools.write(p.path, appendedText(cur.text, p.text), { ifMatch: cur.version })).ok;
+    let next = appendedText(cur.text, p.text);
+    const fields = this.appendProvenance.get(p.path);
+    if (fields) {
+      // A model's addition to a note it did not create reads "Edited by"
+      // (L9), and a review mark no longer holds for the new text.
+      let prior: string | undefined;
+      try {
+        prior = readProvenance(readFrontmatter(cur.text)).source;
+      } catch {
+        prior = undefined;
+      }
+      next = withProvenance(next, {
+        'oscode-source': prior === 'agent' ? 'agent' : 'agent-edit',
+        ...fields,
+        'oscode-reviewed': null,
+      });
+    }
+    return (await tools.write(p.path, next, { ifMatch: cur.version })).ok;
   }
 
   /** Claude's `system` for these parts (CTO J16): the one app builder,
@@ -2129,7 +2240,13 @@ export class StackDriver implements ChatDriver {
     );
     const offered: Anthropic.Tool[] = [
       ...(tools.codemagic ? [codemagicToolSpec as unknown as Anthropic.Tool] : []),
-      ...tools.vault.map((n) => vaultAnthropicTool(n) as unknown as Anthropic.Tool),
+      ...tools.vault.map(
+        (n) =>
+          vaultAnthropicTool(
+            n,
+            this.agentFolder(this.opts.vaultTools),
+          ) as unknown as Anthropic.Tool,
+      ),
     ];
     const MAX_ROUNDS = 16;
     for (let round = 0; round < MAX_ROUNDS; round++) {
@@ -2394,7 +2511,7 @@ export class StackDriver implements ChatDriver {
     ];
     const offered = [
       ...(o.tools.codemagic ? [codemagicOpenAiTool] : []),
-      ...o.tools.vault.map((n) => vaultOpenAiTool(n)),
+      ...o.tools.vault.map((n) => vaultOpenAiTool(n, this.agentFolder(this.opts.vaultTools))),
     ];
     // Your own model may still ask for one web search with a SEARCH: line.
     const filter = new SearchLineFilter(o.searchable === true && !this.searchedThisTurn);
