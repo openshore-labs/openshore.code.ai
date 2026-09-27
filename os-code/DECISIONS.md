@@ -2473,7 +2473,10 @@ execution contract. Newest at the bottom.
   Pre-ship fixes: (1) a Stack play tracks local-only taint per step output
   (its pack carried a local-only note, or a tainted output reached its local
   seat whole), and every step, replan and synthesis prompt for a leaving seat
-  gets `LOCAL_ONLY_STUB` in a tainted output's place (`resultsForSeat`);
+  gets `LOCAL_ONLY_STUB` in a tainted output's place (`resultsForSeat`); a
+  step run on the paired computer's engine is tainted too when its session
+  read a local-only note (a `tool-end` or reply carrying the mark, which
+  `PackLocalOnlyMarker` now also takes from a local-only `tool-end`);
   (2) `ContextPack.localOnly` and the `context-pack` event's additive
   `localOnly` say a local seat's pack carried a local-only note (judged in
   `buildContextPack`, which the app's pack now reads too), and the desktop

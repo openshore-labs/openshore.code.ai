@@ -32,7 +32,35 @@ const h = vi.hoisted(() => ({
   claudeScript: [] as string[],
   claudeParams: [] as Array<Record<string, unknown>>,
   jev: undefined as undefined | { steer: (i: unknown) => Promise<unknown> },
+  // The paired computer's engine session a play's tool step runs on: each
+  // send replays these events to the subscriber.
+  engineEvents: [] as unknown[],
+  enginePrompts: [] as string[],
 }));
+
+vi.mock('../src/drivers/remoteDriver.js', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  class FakeRemoteDriver {
+    private sinks: Array<(e: unknown, seq: number) => void> = [];
+    subscribe(sink: (e: unknown, seq: number) => void) {
+      this.sinks.push(sink);
+      return () => undefined;
+    }
+    send(prompt: string) {
+      h.enginePrompts.push(prompt);
+      setTimeout(() => {
+        for (const e of h.engineEvents) for (const s of this.sinks) s(e, 0);
+      }, 0);
+    }
+    abort() {}
+    dispose() {}
+  }
+  return {
+    ...actual,
+    RemoteDriver: FakeRemoteDriver,
+    daemonCreateSession: async () => 'engine-session',
+  };
+});
 
 vi.mock('os-code/protocol', async (importOriginal) => {
   const real = await importOriginal<typeof import('os-code/protocol')>();
@@ -106,7 +134,7 @@ vi.mock('../src/lib/nativeFetch.js', () => ({
   },
 }));
 
-const { isLocalOnlyFinal } = await import('../src/drivers/types.js');
+const { isLocalOnlyFinal, PackLocalOnlyMarker } = await import('../src/drivers/types.js');
 const { StackDriver, historyForSeat } = await import('../src/drivers/stackDriver.js');
 import type { AppVaultPack, PackSeat } from '../src/drivers/types.js';
 import type { AppStack, StackModelRef } from '../src/lib/stack.js';
@@ -551,6 +579,71 @@ describe('a reply after a local-only read (I5 in the app)', () => {
     // The reply is marked, so a later leaving seat gets the stub for it too.
     expect(isLocalOnlyFinal(events.filter((e) => e.type === 'text-final').at(-1)!)).toBe(true);
     driver.dispose();
+  });
+
+  it('an engine step that read a local-only note reaches a leaving seat as the stub', async () => {
+    const note = 'The secret is teal.';
+    h.engineEvents.length = 0;
+    h.enginePrompts.length = 0;
+    h.engineEvents.push(
+      {
+        type: 'tool-end',
+        call: { id: 't1', name: 'vaultRead', args: { path: 'Private/diary.md' } },
+        result: { content: note, localOnly: true },
+        durationMs: 1,
+      },
+      { type: 'text-final', text: `Edited, quoting the note: ${note}` },
+      { type: 'task-done', reason: 'complete' },
+    );
+    const driver = new StackDriver(
+      { reasoning: gpt, active: [], saved: {} },
+      'docked',
+      { daemon: { baseUrl: 'http://127.0.0.1:7777', token: 't' }, repoCwd: '/work/repo' },
+      undefined,
+      { packSeat: seatOf },
+    );
+    const events: DriverEvent[] = [];
+    driver.subscribe((e) => events.push(e));
+    const plan = JSON.stringify({
+      clear: true,
+      summary: 'Edit and check',
+      steps: [
+        { id: 'a', title: 'Edit', category: 'coding', brief: 'Edit it.', needsTools: true },
+        { id: 'b', title: 'Check', category: 'reasoning', brief: 'Check it.', dependsOn: ['a'] },
+      ],
+    });
+    h.nativeReplies.push(plan, 'no replan', 'checked', 'Final.');
+    driver.send('edit the file from my diary and check it');
+    await settle(40);
+    // Step a ran on the engine, whose tool read the local-only note.
+    expect(h.enginePrompts).toHaveLength(1);
+    // Everything after it ran on the leaving anchor and got the stub.
+    const leaving = h.nativeBodies.slice(1);
+    expect(leaving.length).toBeGreaterThanOrEqual(2);
+    for (const body of leaving) {
+      const sent = JSON.stringify(body);
+      expect(sent).not.toContain('teal');
+      expect(sent).not.toContain('quoting the note');
+      expect(sent).toContain(LOCAL_ONLY_STUB.slice(0, 40));
+    }
+    expect(isLocalOnlyFinal(events.filter((e) => e.type === 'text-final').at(-1)!)).toBe(true);
+    driver.dispose();
+  });
+
+  it('an engine session reply after a local-only tool read is marked, until the next task', () => {
+    const marker = new PackLocalOnlyMarker();
+    const final = { type: 'text-final', text: 'quoting it' } as DriverEvent;
+    marker.mark({ type: 'task-start', input: 'q' } as DriverEvent);
+    expect(isLocalOnlyFinal(marker.mark(final))).toBe(false);
+    marker.mark({
+      type: 'tool-end',
+      call: { id: 't', name: 'vaultRead', args: {} },
+      result: { content: 'x', localOnly: true },
+      durationMs: 1,
+    } as DriverEvent);
+    expect(isLocalOnlyFinal(marker.mark(final))).toBe(true);
+    marker.mark({ type: 'task-start', input: 'next' } as DriverEvent);
+    expect(isLocalOnlyFinal(marker.mark(final))).toBe(false);
   });
 
   it('historyForSeat swaps only marked entries, and only for a leaving seat', () => {

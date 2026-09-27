@@ -213,6 +213,9 @@ export class PackLocalOnlyMarker {
     if (event.type === 'task-start') this.carried = false;
     else if (event.type === 'context-pack' && (event as LocalOnlyMark).localOnly === true)
       this.carried = true;
+    // A tool on the engine read a local-only note: what the model says next
+    // may quote it, the engine's own I5 rule (loop.ts, seed.ts).
+    else if (event.type === 'tool-end' && event.result.localOnly === true) this.carried = true;
     else if (event.type === 'text-final' && this.carried && !isLocalOnlyFinal(event))
       return { ...event, localOnly: true } as DriverEvent;
     return event;

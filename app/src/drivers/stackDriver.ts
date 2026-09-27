@@ -131,7 +131,7 @@ import {
   type VaultToolInput,
 } from '../lib/vaultTool.js';
 import type { ChatDriver, DriverEventSink, DriverVaultOptions, PackSeat } from './types.js';
-import { DriverEmitter, textFinal } from './types.js';
+import { DriverEmitter, isLocalOnlyFinal, textFinal } from './types.js';
 import { RemoteDriver, daemonCreateSession, type DaemonTarget } from './remoteDriver.js';
 import type { DriverEvent } from 'os-code/protocol';
 
@@ -446,6 +446,8 @@ export class StackDriver implements ChatDriver {
   // task-done or on abort, so a stop never leaves the play awaiting a turn that
   // will not report back.
   private engineTurnText = '';
+  /** The engine's turn read a local-only note (I5). */
+  private engineTurnLocalOnly = false;
   private engineTurnSettle?: () => void;
   private listenersReady: Promise<void>;
   private deviceListeners: PluginListenerHandle[] = [];
@@ -1406,6 +1408,12 @@ export class StackDriver implements ChatDriver {
             : null;
           if (onEngine !== null) {
             out = onEngine;
+            // The engine is on the person's own computer: it read tainted
+            // earlier outputs whole, and it may have read a local-only note
+            // itself (its tool-end or pack card said so), so its text is
+            // tainted in either case (I5).
+            tainted = this.engineTurnLocalOnly || results.some((r) => r.localOnly === true);
+            if (this.engineTurnLocalOnly) this.sendLocalOnly = true;
           } else {
             const pack = await this.packRender(ref);
             // A seat that stays here reads tainted earlier outputs whole, so
@@ -1598,6 +1606,7 @@ export class StackDriver implements ChatDriver {
     switch (event.type) {
       case 'text-final':
         this.engineTurnText = event.text;
+        if (isLocalOnlyFinal(event)) this.engineTurnLocalOnly = true;
         break;
       case 'task-done':
         if (!this.engineTurnText && event.reason === 'error') {
@@ -1605,8 +1614,11 @@ export class StackDriver implements ChatDriver {
         }
         this.engineTurnSettle?.();
         break;
-      case 'tool-start':
       case 'tool-end':
+        if (event.result.localOnly === true) this.engineTurnLocalOnly = true;
+        this.emit(event);
+        break;
+      case 'tool-start':
       case 'tool-denied':
       case 'approval-request':
       case 'approval-resolved':
@@ -1626,6 +1638,7 @@ export class StackDriver implements ChatDriver {
    *  turn also settles on abort (see abort()), so a stopped play never hangs. */
   private runEngineTurn(driver: RemoteDriver, prompt: string): Promise<string> {
     this.engineTurnText = '';
+    this.engineTurnLocalOnly = false;
     return new Promise<string>((resolve) => {
       this.engineTurnSettle = () => {
         this.engineTurnSettle = undefined;
