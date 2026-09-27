@@ -453,6 +453,8 @@ import {
   vaultStaleDeleteToast,
 } from '../lib/vaultCopy.js';
 import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
+import { SAMPLE_PROMPT, SAMPLE_REPO_NAME } from '../lib/sampleProject.js';
+import { V1_FOCUS, hiddenInFocus } from '../lib/focus.js';
 import { readProjectSecrets, writeProjectSecrets } from '../lib/projectSecrets.js';
 import {
   bridge,
@@ -739,6 +741,77 @@ export interface HarborDownload {
   label: string;
   indeterminate?: boolean;
   failed?: boolean;
+  /** A plain line under the card while it waits on something the person does
+   *  (finishing the Ollama installer), so the button can stay short. */
+  note?: string;
+}
+
+/** How long the First Seat waits for Ollama to finish installing before it
+ *  says so (the installer is the person's to click through). */
+export const OLLAMA_INSTALL_WAIT_MS = 15 * 60_000;
+/** How often it asks whether Ollama is answering yet. */
+export const OLLAMA_POLL_MS = 2_000;
+
+/** The parts of the desktop bridge that bring Ollama up. */
+export type OllamaBridge = Pick<
+  NonNullable<ReturnType<typeof bridge>>,
+  'ollamaStatus' | 'ollamaStart' | 'ollamaInstall'
+>;
+
+/**
+ * Get Ollama answering for the First Seat, or say plainly why not: start it
+ * when it is installed, install it when it is not (the official installer on
+ * macOS and Windows, the one command on Linux), and wait for it. Reports each
+ * step through `report`; true once Ollama answers. Exported for its test.
+ */
+export async function bringUpOllama(
+  b: OllamaBridge,
+  report: (d: HarborDownload) => void,
+  opts: { waitMs?: number; pollMs?: number; platform?: string; detail?: string } = {},
+): Promise<boolean> {
+  const fail = (label: string) => {
+    report({ percent: 0, label, failed: true });
+    return false;
+  };
+  if (!b.ollamaStatus) {
+    // An older shell: the engine's own line says what is wrong.
+    return fail(opts.detail ?? 'Ollama is not running on this computer. Start it, then try again.');
+  }
+  const wait = async (label: string, note: string): Promise<boolean> => {
+    report({ percent: 0, label, indeterminate: true, note });
+    const deadline = Date.now() + (opts.waitMs ?? OLLAMA_INSTALL_WAIT_MS);
+    while (Date.now() < deadline) {
+      const st = await b.ollamaStatus!().catch(() => undefined);
+      if (st?.running) return true;
+      if (st?.installed && b.ollamaStart && (await b.ollamaStart().catch(() => false))) return true;
+      await new Promise((r) => setTimeout(r, opts.pollMs ?? OLLAMA_POLL_MS));
+    }
+    return false;
+  };
+  const status = await b.ollamaStatus().catch(() => undefined);
+  if (status?.running) return true;
+  if (status?.installed) {
+    report({ percent: 0, label: 'Starting Ollama', indeterminate: true });
+    if (b.ollamaStart && (await b.ollamaStart().catch(() => false))) return true;
+    return fail('Ollama is installed but did not start. Open the Ollama app, then try again.');
+  }
+  const platform = opts.platform ?? (typeof navigator !== 'undefined' ? navigator.platform : '');
+  if (/linux/i.test(platform) || !b.ollamaInstall) {
+    const ok = await wait(
+      'Waiting for Ollama',
+      'Ollama is not installed yet. In a terminal, run: curl -fsSL https://ollama.com/install.sh | sh. This carries on by itself once it is running.',
+    );
+    return ok || fail('Ollama is not running yet. Once it is installed, try again.');
+  }
+  report({ percent: 0, label: 'Getting Ollama', indeterminate: true });
+  const plan = await b.ollamaInstall().catch(() => undefined);
+  const ok = await wait(
+    'Waiting for Ollama',
+    plan?.installerOpened
+      ? "Ollama's installer is open. Click through it, and this carries on by itself."
+      : 'The Ollama download page is open. Install it from there, and this carries on by itself.',
+  );
+  return ok || fail('Ollama is not running yet. Once it is installed, try again.');
 }
 
 // Web billing lives on the marketing site (purchase never happens in-app, per
@@ -1998,6 +2071,14 @@ interface AppState {
   trustProjectFolder(itemId: string): Promise<void>;
   /** The trust card's "Not now": leave the folder's settings off. */
   dismissProjectTrust(itemId: string): void;
+  /** The first try (v1 Phase 1): write the sample page on this computer,
+   *  open a chat in it, and ask for the fix, so the whole loop shows on
+   *  something that cannot hurt the person's own work. */
+  trySampleProject(): Promise<void>;
+  /** The changed-files card's undo: put back every file the task changed,
+   *  or one (`path`), or redo them. Runs on the computer the session runs on;
+   *  the engine echoes it, so every device folds the card. */
+  restoreChangedFiles(itemId: string, direction: 'undo' | 'redo', path?: string): Promise<void>;
   /** Set the permission mode for new sessions and the live one. */
   /** `source` names where the change came from, for the opt-in activity
    *  log's regret signal (a walk choice changed soon after). */
@@ -2175,12 +2256,18 @@ export function activeProjectOf(settings: AppSettings): Project | undefined {
 
 /** The Agentic Currents view for the active project: its selection plus the
  *  device-local connections. The rooms render currents through this. */
-export function agenticView(settings: AppSettings): CurrentsSettings {
+export function agenticView(settings: AppSettings, focus: boolean = V1_FOCUS): CurrentsSettings {
+  // The v1 focus flag hides both Currents groups: no current is on anywhere.
+  if (focus) return projectCurrentsSettings(undefined, settings.currentConnections);
   return projectCurrentsSettings(activeProjectOf(settings), settings.currentConnections);
 }
 
 /** The Harness Currents view for the active project. */
-export function harnessView(settings: AppSettings): HarnessCurrentsSettings {
+export function harnessView(
+  settings: AppSettings,
+  focus: boolean = V1_FOCUS,
+): HarnessCurrentsSettings {
+  if (focus) return projectHarnessSettings(undefined, settings.harnessCurrentConnections);
   return projectHarnessSettings(activeProjectOf(settings), settings.harnessCurrentConnections);
 }
 
@@ -6904,6 +6991,12 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     setView(view, opts) {
+      // The v1 focus flag: a hidden room has no door, whoever calls. Off by
+      // default, so this never fires unless a build turns focus on.
+      if (hiddenInFocus(view)) {
+        set({ drawerOpen: false });
+        return;
+      }
       // Free is chat only: the Marketplace needs Personal. Intercept the
       // navigation and show the upgrade sheet instead of the locked screen.
       if (view === 'marketplace' && !get().personalUnlockedNow()) {
@@ -9029,8 +9122,20 @@ export const useApp = create<AppState>((set, get, api) => {
         status = get().desktopStatus;
       }
       if (status && !status.ollama.up) {
-        set({ harborMasterDownload: { percent: 0, label: status.ollama.detail, failed: true } });
-        return false;
+        // v1 Phase 1, desktop first run: no terminal. Installed but stopped,
+        // start it; not installed, fetch and open the official installer
+        // (the download page on failure), then carry on by itself the moment
+        // Ollama answers. Linux has no one-click installer, so it names the
+        // one command and waits the same way.
+        const up = await bringUpOllama(b, (d) => set({ harborMasterDownload: d }), {
+          detail: status.ollama.detail,
+        });
+        if (!up) return false;
+        try {
+          status = await b.status();
+        } catch {
+          status = undefined;
+        }
       }
       const hw = status
         ? (status.hardware ?? hardwareFromSummary(status.hardwareSummary))
@@ -11091,6 +11196,60 @@ export const useApp = create<AppState>((set, get, api) => {
       const result = await driver.trustFolder();
       if ('error' in result) setTrustItem({ error: result.error });
       else setTrustItem({ state: 'trusted', error: undefined });
+    },
+
+    async trySampleProject() {
+      const b = isDesktop() ? bridge() : undefined;
+      if (!b?.createSample) {
+        get().showToast('The sample needs the desktop app.');
+        return;
+      }
+      if (!get().sourceReady({ kind: 'desktop' })) {
+        get().showToast('Pick a model for this computer first, then try the sample.');
+        get().setView('stack');
+        return;
+      }
+      const made = await b.createSample();
+      if ('error' in made) {
+        get().showToast(made.error);
+        return;
+      }
+      await get().newConversation({ kind: 'desktop', cwd: made.path, repoName: SAMPLE_REPO_NAME });
+      get().send(SAMPLE_PROMPT);
+    },
+
+    async restoreChangedFiles(itemId, direction, path) {
+      const { activeId } = get();
+      if (!activeId) return;
+      const patchCard = (patch: { restoring?: boolean; error?: string }) =>
+        set((s) => {
+          const c = s.conversations[activeId];
+          if (!c) return s;
+          const items = c.thread.items.map((i) =>
+            i.kind === 'changed' && i.id === itemId ? { ...i, ...patch } : i,
+          );
+          return {
+            conversations: {
+              ...s.conversations,
+              [activeId]: { ...c, thread: { ...c.thread, items } },
+            },
+          };
+        });
+      const card = get().conversations[activeId]?.thread.items.find(
+        (i): i is Extract<ThreadItem, { kind: 'changed' }> =>
+          i.kind === 'changed' && i.id === itemId,
+      );
+      const driver = drivers.get(activeId);
+      if (!card?.checkpointId || !driver?.restoreCheckpoint) {
+        patchCard({
+          error: 'This chat is not running on your computer, so there is nothing to undo here.',
+        });
+        return;
+      }
+      patchCard({ restoring: true, error: undefined });
+      const result = await driver.restoreCheckpoint(card.checkpointId, direction, path);
+      // Success folds through the engine's echo; a refusal says why here.
+      if ('error' in result) patchCard({ restoring: false, error: result.error });
     },
 
     dismissProjectTrust(itemId) {

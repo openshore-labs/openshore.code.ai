@@ -28,6 +28,7 @@ import { PlanCard } from './PlanCard.js';
 import { TrustCard } from './TrustCard.js';
 import { ClarifyCard } from './ClarifyCard.js';
 import { ChangedFilesCard } from './ChangedFilesCard.js';
+import { VerifyPill } from './VerifyPill.js';
 import { ContextPackCard } from './ContextPackCard.js';
 import { Icon } from './Icon.js';
 import { Keyboard } from '@capacitor/keyboard';
@@ -206,6 +207,7 @@ export function MessageList({
   onRevisePlan,
   onClarifyPick,
   onTrustFolder,
+  onRestoreChanged,
   onDismissTrust,
   onUnqueue,
   onOpenPackNote,
@@ -229,6 +231,8 @@ export function MessageList({
   onRevisePlan?: () => void;
   /** The trust card's two answers, by item id. */
   onTrustFolder?: (itemId: string) => void;
+  /** Undo or redo a task's changes (every file, or one). */
+  onRestoreChanged?: (itemId: string, direction: 'undo' | 'redo', path?: string) => void;
   onDismissTrust?: (itemId: string) => void;
   /** Answer a clarifying question (the plan-first picker): sends the reply. */
   onClarifyPick?: (text: string) => void;
@@ -458,8 +462,34 @@ export function MessageList({
                   onDismiss={() => onDismissTrust?.(item.id)}
                 />
               );
+            case 'verify':
+              return (
+                <VerifyPill
+                  key={item.id}
+                  passed={item.passed}
+                  check={item.check}
+                  summary={item.summary}
+                  detail={item.detail}
+                  retrying={item.retrying}
+                />
+              );
             case 'changed':
-              return <ChangedFilesCard key={item.id} files={item.files} />;
+              return (
+                <ChangedFilesCard
+                  key={item.id}
+                  files={item.files}
+                  checkpointId={item.checkpointId}
+                  undone={item.undone}
+                  restoring={item.restoring}
+                  error={item.error}
+                  ranCommands={item.ranCommands}
+                  onRestore={
+                    onRestoreChanged
+                      ? (direction, path) => onRestoreChanged(item.id, direction, path)
+                      : undefined
+                  }
+                />
+              );
             case 'context-pack':
               return <ContextPackCard key={item.id} item={item} onOpen={onOpenPackNote} />;
             case 'tool':

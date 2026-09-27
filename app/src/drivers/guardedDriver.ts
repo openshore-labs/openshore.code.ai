@@ -316,6 +316,9 @@ export function guardDriver(inner: ChatDriver): ChatDriver {
   if (inner.compact) out.compact = (focus) => inner.compact!(focus);
   if (inner.listFiles) out.listFiles = (query) => inner.listFiles!(query);
   if (inner.trustFolder) out.trustFolder = () => inner.trustFolder!();
+  if (inner.restoreCheckpoint) {
+    out.restoreCheckpoint = (id, direction, path) => inner.restoreCheckpoint!(id, direction, path);
+  }
   if (inner.runCommand) out.runCommand = (command) => inner.runCommand!(command);
   if (inner.sendStdin) out.sendStdin = (runId, data) => inner.sendStdin!(runId, data);
   if (inner.killCommand) out.killCommand = (runId) => inner.killCommand!(runId);

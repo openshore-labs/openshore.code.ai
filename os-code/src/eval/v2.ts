@@ -21,6 +21,13 @@ import {
   EVAL_CHECK_FILE,
   type EvalTask,
 } from './tasks.js';
+import { EVAL_EVERYDAY_TASKS } from './everydayTasks.js';
+
+/** Which task set a run measures when none is named: the code suite (the
+ *  default, so the code average stays comparable run to run) or the everyday
+ *  suite, the jobs a person who is not a developer brings (a page, photos, a
+ *  chart, a broken button). */
+export type EvalSuite = 'code' | 'everyday';
 
 /** The with-pack and without-pack variant (Vault M4, 4.8, CTO I14). 'on' asks
  *  the drive to run the context pack in full (`vault.context: 'full'`), 'off'
@@ -41,6 +48,11 @@ export type EvalPromptCache = 'on' | 'off';
  *  with that layer empty, so the two runs differ by the handoff alone. */
 export type EvalHandoffLayer = 'on' | 'off';
 
+/** The page check variant (v1 Phase 1): 'on' sets
+ *  `harness.verify.pageCheck: 'on'` for the run, 'off' leaves it off, so the
+ *  everyday suite measures the check that needs no test suite. */
+export type EvalPageCheck = 'on' | 'off';
+
 /** The variant a run was made under, recorded on the report and on every
  *  trace so a with and a without number can never be mixed up. Absent keys
  *  mean the drive's own default. */
@@ -49,6 +61,7 @@ export interface EvalVariant {
   numCtx?: EvalNumCtx;
   promptCache?: EvalPromptCache;
   handoff?: EvalHandoffLayer;
+  pageCheck?: EvalPageCheck;
 }
 
 /** What the loop did on one run, so a zero is a diagnosis and not just a
@@ -111,6 +124,7 @@ export interface DriveContext {
   numCtx?: EvalNumCtx;
   promptCache?: EvalPromptCache;
   handoff?: EvalHandoffLayer;
+  pageCheck?: EvalPageCheck;
 }
 
 /** A drive may return just the final text, or the text plus a trace of what
@@ -164,6 +178,11 @@ export interface EvalV2Report {
   byCategory: Record<string, number>;
   /** The variant the whole run was made under. */
   variant: EvalVariant;
+  /** The suite, when it was not the code suite. */
+  suite?: EvalSuite;
+  /** Who drove the loop, when it was not OpenShore's own engine (the
+   *  head-to-head baseline: the same model through another agent). */
+  driver?: string;
 }
 
 export interface EvalV2Options {
@@ -180,6 +199,13 @@ export interface EvalV2Options {
   promptCache?: EvalPromptCache;
   /** Run the handoff task with its handoff layer ('on') or without ('off'). */
   handoff?: EvalHandoffLayer;
+  /** Run with the page check on or off. */
+  pageCheck?: EvalPageCheck;
+  /** The suite to run when `tasks` is not given. */
+  suite?: EvalSuite;
+  /** Who drives the loop, recorded on the report and in its file name when
+   *  it is not the engine (the baseline). */
+  driver?: string;
   model?: string;
   provider?: string;
   /** Independent tries per task (default 1). Each try gets a fresh fixture
@@ -264,7 +290,8 @@ export async function runEvalV2(
   if (options.numCtx) variant.numCtx = options.numCtx;
   if (options.promptCache) variant.promptCache = options.promptCache;
   if (options.handoff) variant.handoff = options.handoff;
-  const tasks = options.tasks ?? defaultTasks(variant);
+  if (options.pageCheck) variant.pageCheck = options.pageCheck;
+  const tasks = options.tasks ?? defaultTasks(variant, options.suite);
   const attempts = Math.max(1, Math.floor(options.attempts ?? 1));
   const scores: EvalV2TaskScore[] = [];
 
@@ -307,6 +334,8 @@ export async function runEvalV2(
     byCategory,
     variant,
   };
+  if (options.suite && options.suite !== 'code') report.suite = options.suite;
+  if (options.driver) report.driver = options.driver;
 
   if (options.write && options.model) {
     const dir = join(oscHome(), 'eval');
@@ -314,7 +343,7 @@ export async function runEvalV2(
     writeFileSync(
       join(
         dir,
-        `v2-${options.model.replace(/[^A-Za-z0-9._-]/g, '_')}${variantSuffix(variant)}.json`,
+        `v2-${options.model.replace(/[^A-Za-z0-9._-]/g, '_')}${variantSuffix(variant)}${runSuffix(report)}.json`,
       ),
       JSON.stringify(report, null, 2),
     );
@@ -323,10 +352,12 @@ export async function runEvalV2(
   return report;
 }
 
-/** The suite a variant measures when no tasks are named: the handoff task
- *  for a handoff run, the vault suite for a vault-pack run, the code suite
- *  otherwise (a prompt cache or served-window run measures the code suite). */
-export function defaultTasks(variant: EvalVariant): EvalTask[] {
+/** The suite a variant measures when no tasks are named: the everyday suite
+ *  when asked for, the handoff task for a handoff run, the vault suite for a
+ *  vault-pack run, the code suite otherwise (a prompt cache or served-window
+ *  run measures the code suite, or the everyday suite when asked). */
+export function defaultTasks(variant: EvalVariant, suite?: EvalSuite): EvalTask[] {
+  if (suite === 'everyday') return EVAL_EVERYDAY_TASKS;
   if (variant.vaultPack) return EVAL_VAULT_TASKS;
   if (variant.handoff) return EVAL_HANDOFF_TASKS;
   return EVAL_TASKS;
@@ -337,7 +368,8 @@ function hasVariant(variant: EvalVariant): boolean {
     variant.vaultPack !== undefined ||
     variant.numCtx !== undefined ||
     variant.promptCache !== undefined ||
-    variant.handoff !== undefined
+    variant.handoff !== undefined ||
+    variant.pageCheck !== undefined
   );
 }
 
@@ -350,6 +382,17 @@ export function variantSuffix(variant: EvalVariant): string {
   if (variant.numCtx) out += `-numctx-${variant.numCtx}`;
   if (variant.promptCache) out += `-cache-${variant.promptCache}`;
   if (variant.handoff) out += `-handoff-${variant.handoff}`;
+  if (variant.pageCheck) out += `-page-${variant.pageCheck}`;
+  return out;
+}
+
+/** The suite and the driver in a report's file name, so an everyday run and
+ *  a baseline run never overwrite the engine's code-suite report. Empty for a
+ *  plain run. */
+export function runSuffix(report: Pick<EvalV2Report, 'suite' | 'driver'>): string {
+  let out = '';
+  if (report.suite && report.suite !== 'code') out += `-${report.suite}`;
+  if (report.driver) out += `-${report.driver.replace(/[^A-Za-z0-9._-]/g, '_')}`;
   return out;
 }
 

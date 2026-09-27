@@ -128,3 +128,29 @@ zip into that release with your own `gh` login. Offline, or with
 later. The desktop updater takes the zip when a release has one and the dmg
 when that is all there is: it mounts the image quietly, copies the app out, and
 swaps it in the same way.
+
+## Signing, when it is time (optional, v1 Phase 1)
+
+Unsigned stays the default: nothing above changes until the founder adds
+secrets. The `mac-desktop` job signs with a Developer ID certificate and
+notarizes only when both of these are in the Codemagic `Harbor-os-code`
+group:
+
+- the certificate: `CSC_LINK` (the Developer ID Application .p12, base64 or a
+  URL) and `CSC_KEY_PASSWORD`;
+- notarization credentials, one set: `APPLE_API_KEY`, `APPLE_API_KEY_ID` and
+  `APPLE_API_ISSUER` (preferred), or `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`
+  and `APPLE_TEAM_ID`.
+
+With both, the hardened runtime applies with `app/build/entitlements.mac.plist`
+(JIT and writable executable memory for Electron, library validation off for
+the bundled node-pty) and electron-builder notarizes on its own. A certificate
+without notarization credentials is ignored, since a signed but unnotarized
+app still meets the same Gatekeeper warning. Once signed, the right-click copy
+above can go, and a first-time person opens OpenShore with a plain
+double-click, which is the point: the people OpenShore is for do not know the
+right-click trick.
+
+Windows works the same way: the `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD`
+repository secrets, when present, sign the NSIS installer in `release.yml`;
+absent, it stays unsigned and SmartScreen warns as today.

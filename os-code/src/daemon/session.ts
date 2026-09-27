@@ -26,6 +26,11 @@ import { walkFiles } from '../core/tools/walk.js';
 import { relative } from 'node:path';
 import { simpleGit } from 'simple-git';
 import type { PermissionMode } from '../core/agent/types.js';
+import {
+  ShadowCheckpoints,
+  type RestoreDirection,
+  type RestoreResult,
+} from '../core/checkpoints/shadowGit.js';
 
 // DriverEvent lives in core/agent/types.ts (pure, browser-safe) so the app's
 // remote driver can share the exact protocol type; re-exported here so
@@ -289,13 +294,24 @@ export class LocalDriver implements SessionDriver {
   // A handoff from the chat this session continues (Vault M5, CTO J12): it
   // rides the first task's preamble, then it is gone.
   private handoff?: string;
+  // Undo (v1 Phase 1): a snapshot before and after each task in a shadow git
+  // folder on this machine. On for stored sessions; off for throwaway ones
+  // (tests, one-shot runs) unless asked for.
+  private checkpoints?: ShadowCheckpoints;
 
   constructor(
     readonly cwd: string,
-    options: { id?: string; persist?: boolean; project?: SessionProject; handoff?: string } = {},
+    options: {
+      id?: string;
+      persist?: boolean;
+      project?: SessionProject;
+      handoff?: string;
+      checkpoints?: boolean;
+    } = {},
   ) {
     this.id = options.id ?? randomUUID().slice(0, 8);
     this.persist = options.persist ?? true;
+    if (options.checkpoints ?? this.persist) this.checkpoints = new ShadowCheckpoints(cwd);
     if (this.persist) {
       const dir = this.dir();
       mkdirSync(dir, { recursive: true });
@@ -547,8 +563,10 @@ export class LocalDriver implements SessionDriver {
     const terminal = this.drainTerminalContext();
     const preamble = [handoff, terminal].filter((p) => p?.trim()).join('\n\n') || undefined;
     let completed = false;
+    let before: string | undefined;
     try {
       await this.emitRepoInfo();
+      before = await this.checkpoints?.snapshot(`before task in session ${this.id}`);
       await this.agent.run(next.text, next.images, preamble);
       completed = this.lastTaskCompleted();
     } catch (err) {
@@ -558,6 +576,9 @@ export class LocalDriver implements SessionDriver {
         message: err instanceof Error ? err.message : String(err),
       });
     } finally {
+      // The checkpoint lands before the session reads as idle, so an undo
+      // can never race the snapshot it restores from.
+      if (before) await this.recordCheckpoint(before);
       this.running = false;
       // The bookend: the branch may have moved and files may now be dirty.
       void this.emitRepoInfo();
@@ -570,6 +591,44 @@ export class LocalDriver implements SessionDriver {
       }
       if (this.queue.length) void this.pump();
     }
+  }
+
+  /** Snapshot after a task and, when it changed files, tell the chat. */
+  private async recordCheckpoint(before: string): Promise<void> {
+    try {
+      const shadow = this.checkpoints;
+      if (!shadow) return;
+      const after = await shadow.snapshot(`after task in session ${this.id}`);
+      if (!after) return;
+      const record = await shadow.record(this.id, before, after);
+      if (record) this.emit({ type: 'checkpoint', id: record.id, files: record.files });
+    } catch {
+      // Best effort: a missed checkpoint never fails the task.
+    }
+  }
+
+  /**
+   * Undo or redo a task's changes (all its files, or one). Refused while a
+   * task runs, so a restore never lands under the agent's feet. The result is
+   * journaled as an event, so the desktop and a paired phone fold the same
+   * card.
+   */
+  async restoreCheckpoint(
+    id: string,
+    direction: RestoreDirection,
+    path?: string,
+  ): Promise<RestoreResult> {
+    this.lastActivityAt = Date.now();
+    if (!this.checkpoints) return { error: 'Undo is not on for this session.' };
+    if (this.running || this.queue.length) {
+      return { error: 'Wait for the current step to finish, then undo.' };
+    }
+    const result = await this.checkpoints.restore(id, direction, { path, sessionId: this.id });
+    if ('ok' in result) {
+      this.emit({ type: 'checkpoint-restored', id, direction, paths: result.paths });
+      void this.emitRepoInfo();
+    }
+    return result;
   }
 
   private lastTaskCompleted(): boolean {

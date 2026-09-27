@@ -1112,6 +1112,9 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           // Each agent works on its caller's own root (CTO J8): a member's
           // own folder, never the owner's.
           vaultRoot,
+          // Only the computer's owner decides which check command may run
+          // after changes; a member's session never grants one (v1 Phase 1).
+          canGrantVerify: hasRole(auth, 'admin'),
           ...(handoff ? { handoff } : {}),
           ...(vaultPins ? { vaultPins } : {}),
         });
@@ -1411,6 +1414,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
               sessionId: id,
               terminalReader,
               vaultRoot: ownerRoot,
+              canGrantVerify: ownerAdmin,
             });
             trackDriver(revived);
             driver = revived;
@@ -1457,6 +1461,30 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           return;
         }
         const result = trustSessionFolder(driver);
+        sendJson(res, 'error' in result ? 409 : 200, result);
+        return;
+      }
+      // ---- undo: put back the files a task changed, or redo them ----
+      // The session's own owner (or an admin), like every control here: a
+      // restore only ever touches files this session's task changed, in its
+      // own folder. Refused while a task runs; journaled, so every attached
+      // device folds the same card.
+      if (req.method === 'POST' && parts[2] === 'checkpoints' && parts[4] === 'restore') {
+        const body = await readJson(req);
+        const direction = body.direction;
+        if ((direction !== 'undo' && direction !== 'redo') || typeof parts[3] !== 'string') {
+          sendJson(res, 400, { error: 'Send {"direction": "undo" | "redo", "path"?: "file"}.' });
+          return;
+        }
+        if (body.path !== undefined && typeof body.path !== 'string') {
+          sendJson(res, 400, { error: '"path" must be a file path from the change.' });
+          return;
+        }
+        const result = await driver.restoreCheckpoint(
+          decodeURIComponent(parts[3]),
+          direction,
+          body.path as string | undefined,
+        );
         sendJson(res, 'error' in result ? 409 : 200, result);
         return;
       }

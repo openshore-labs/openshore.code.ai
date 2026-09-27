@@ -274,12 +274,17 @@ jobs:
       - name: Rebuild native modules for Electron
         run: pnpm --filter oscode-app rebuild:native
 
-      # No code signing (see the file header): electron-builder produces a
-      # working but unsigned NSIS installer. Windows SmartScreen will warn on
-      # first run until this is signed; that is a founder call for later, not
-      # a blocker for the package existing. Still writes latest.yml locally
-      # (electron-updater's Windows feed file) even under --publish never.
+      # Unsigned by default (see the file header): electron-builder produces a
+      # working but unsigned NSIS installer, and Windows SmartScreen warns on
+      # first run. Signed only when the founder adds the WIN_CSC_LINK and
+      # WIN_CSC_KEY_PASSWORD repository secrets (a code-signing certificate);
+      # unset, they arrive empty and electron-builder signs nothing, exactly
+      # as before. Still writes latest.yml locally (electron-updater's Windows
+      # feed file) even under --publish never.
       - name: Package the Windows installer
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: pnpm --filter oscode-app exec electron-builder --win --publish never
 
       # The same proof as Linux, reused as-is: launch the packaged app headless

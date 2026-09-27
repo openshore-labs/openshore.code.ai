@@ -162,6 +162,9 @@ export interface OllamaInstallResult {
   downloadUrl?: string;
   termId?: string;
   detail?: string;
+  /** macOS and Windows: the official installer was fetched and opened (else
+   *  the download page opened instead). */
+  installerOpened?: boolean;
 }
 
 /** A newer desktop version the main process found (electron/main.ts). Every
@@ -286,6 +289,17 @@ export interface OscodeBridge {
   /** Trust this session's folder on this computer (the trust card's tap): its
    *  own os-code.config.json applies from the next session there. */
   trustFolder(sessionId: string): Promise<{ ok: true; folder: string } | { error: string }>;
+  /** The sample page for a first try (v1 Phase 1): written to ~/OSCode/Try
+   *  OpenShore, kept as it is when already there. Absent on an older shell. */
+  createSample?(): Promise<{ path: string; created: boolean } | { error: string }>;
+  /** Undo or redo a task's changes, every file or one (the changed-files
+   *  card's tap). */
+  restoreCheckpoint(
+    sessionId: string,
+    id: string,
+    direction: 'undo' | 'redo',
+    path?: string,
+  ): Promise<{ ok: true; paths: string[] } | { error: string }>;
   /** Resume a session and return its journal so the renderer can replay it AFTER
    *  subscribing (IPC is not buffered, so a pushed replay would be lost). */
   resumeSession(

@@ -6,6 +6,8 @@
 // dead room until a hub exists (review 6, blocker A), so it moves to the
 // second-session group where the room's own "Connect your hub" card still
 // explains the way in. Nothing else moves.
+import { V1_FOCUS, visibleRooms } from './focus.js';
+
 export type NavRoom =
   | 'chats'
   | 'projects'
@@ -66,15 +68,24 @@ export function terminalIsDayOne(input: { desktop: boolean; hubPaired: boolean }
 
 /** The two nav groups for a device. Terminal sits third in the day-one set
  *  where it belongs there, and leads the second-session group otherwise. */
-export function navRooms(input: { desktop: boolean; hubPaired: boolean }): {
+export function navRooms(
+  input: { desktop: boolean; hubPaired: boolean },
+  focus: boolean = V1_FOCUS,
+): {
   primary: NavEntry[];
   explore: NavEntry[];
 } {
   if (terminalIsDayOne(input)) {
     return {
-      primary: [...PRIMARY_BASE.slice(0, 2), TERMINAL, ...PRIMARY_BASE.slice(2)],
-      explore: [...EXPLORE_BASE],
+      primary: visibleRooms(
+        [...PRIMARY_BASE.slice(0, 2), TERMINAL, ...PRIMARY_BASE.slice(2)],
+        focus,
+      ),
+      explore: visibleRooms([...EXPLORE_BASE], focus),
     };
   }
-  return { primary: [...PRIMARY_BASE], explore: [TERMINAL, ...EXPLORE_BASE] };
+  return {
+    primary: visibleRooms([...PRIMARY_BASE], focus),
+    explore: visibleRooms([TERMINAL, ...EXPLORE_BASE], focus),
+  };
 }

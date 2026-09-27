@@ -142,6 +142,10 @@ export interface BootstrapOptions {
   /** The project's own pins (`Project.vaultPins`, CTO J14), at most 8 note
    *  paths, read first by the pack's prepare. Never a config key. */
   vaultPins?: string[];
+  /** May this session's person let a check command run after changes (v1
+   *  Phase 1)? The daemon passes false for a member's session on a shared
+   *  hub; undefined (the desktop, the CLI) reads as yes. */
+  canGrantVerify?: boolean;
 }
 
 export interface BootstrapResult {
@@ -429,6 +433,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     // egress lockdown exactly like cloud escalation and the currents tools.
     harnessCurrents: egressLockdown ? undefined : options.harnessCurrents,
     permissionMode: options.permissionMode,
+    ...(options.canGrantVerify === false ? { canGrantVerify: false } : {}),
     vaultContext,
     ...(handoffOn ? { onHandoff: (record) => void writeHandoff(handoffScope(), record) } : {}),
     persistRule: (rule) => {

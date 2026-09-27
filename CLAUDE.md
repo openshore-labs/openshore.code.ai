@@ -150,6 +150,16 @@ in this project" grants live on the machine (`~/.os-code/trust.json`), never
 in the repo. "Local" is judged by address (`isLocalHost`, `leavesThisNetwork`),
 never by a provider's config label.
 
+## What leaves this device is a list, not a claim (standing rule, 2026-09-27)
+
+Everything OpenShore sends off a device is written down once, in plain words,
+in `app/src/lib/egressManifest.ts`, and shown under Settings, Privacy, "What
+leaves this device". `app/test/egressManifest.test.ts` fails on any host in
+`app/src`, `app/electron`, or `os-code/src` that is neither on that list nor
+marked link-only with a reason. A new call to a new service is not done until
+its entry says what it sends and when. Copy never claims more privacy than the
+list shows.
+
 ## Em dash policy is TOTAL here (standing rule)
 
 No em dash anywhere in tracked source, comments included, encoded spellings

@@ -27,6 +27,8 @@ contextBridge.exposeInMainWorld('oscode', {
   compact: invoke('osc:compact'),
   listFiles: invoke('osc:listFiles'),
   trustFolder: invoke('osc:trustFolder'),
+  restoreCheckpoint: invoke('osc:restoreCheckpoint'),
+  createSample: invoke('osc:createSample'),
   answerApproval: invoke('osc:answerApproval'),
   onEvent: listen('osc:event'),
 

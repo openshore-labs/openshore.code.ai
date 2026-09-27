@@ -12,6 +12,7 @@
 // configure who WILL have access once a project is shared with the team (a
 // server-backed capability on the roadmap). They never lock the local owner
 // out of their own project. Same posture as the Account/Org model.
+import { V1_FOCUS } from '../lib/focus.js';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useApp, stackAdmin } from '../state/store.js';
 import type { Conversation, Project, ProjectAccess, ProjectPermission } from '../state/types.js';
@@ -351,7 +352,7 @@ export function ProjectDetailScreen() {
             method (Harness) and its agent modality (Agentic). Per project so
             different projects run different currents at once. Connecting one is
             device-local, reached from its row. Editors only. */}
-        {mayEdit ? <ProjectCurrents projectId={project.id} index={2} /> : null}
+        {mayEdit && !V1_FOCUS ? <ProjectCurrents projectId={project.id} index={2} /> : null}
 
         {/* Vault notes pinned to this project's context (Vault M5): placed by
             the person, so they ride every chat here. Device local. Editors

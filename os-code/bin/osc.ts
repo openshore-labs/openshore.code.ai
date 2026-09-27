@@ -209,6 +209,19 @@ program
     '--handoff <on|off>',
     'deep only: run the handoff task with its handoff layer, or without',
   )
+  .option('--page-check <on|off>', 'deep only: the page check (no test suite needed) on or off')
+  .option(
+    '--suite <code|everyday>',
+    'deep only: the code tasks, or the everyday ones (a page, photos, a chart, a button)',
+  )
+  .option(
+    '--baseline <claude-code>',
+    'deep only: run the same tasks through Claude Code on the same local model, to compare',
+  )
+  .option(
+    '--floor',
+    'the floor run: both floor models, both suites, num_ctx off and auto, and the baseline, one table at the end',
+  )
   .action(evalCommand);
 
 program

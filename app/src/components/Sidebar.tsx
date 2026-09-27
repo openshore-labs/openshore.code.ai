@@ -1,6 +1,7 @@
 // The sidebar is the app's main navigation (founder, 2026-09-02): the day-one
 // rooms at the top, the second-session rooms at the bottom, nothing else. New
 // chat and the project switcher live in the Chats and Projects rooms. Persistent on desktop, a slide-over drawer on the phone.
+import { hiddenInFocus, visibleRooms } from '../lib/focus.js';
 import type { CSSProperties } from 'react';
 import { isOrgAdmin, useApp, type ViewName } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
@@ -32,13 +33,17 @@ type NavIconName = Exclude<
 // closes it.
 const nav = (view: NavIconName & NavRoom) => ({ view, label: ROOM_LABELS[view] });
 
-const PRIMARY_NAV: Array<{ view: NavIconName; label: string }> = (
-  ['chats', 'projects', 'terminalroom', 'repos', 'stack', 'vault'] as const
-).map(nav);
+// The v1 focus flag takes the extras out here, at the one door (it ships
+// off, so both lists are whole unless a build turns it on).
+const PRIMARY_NAV: Array<{ view: NavIconName; label: string }> = visibleRooms(
+  (['chats', 'projects', 'terminalroom', 'repos', 'stack', 'vault'] as const).map(nav),
+);
 
-const EXPLORE_NAV: Array<{ view: NavIconName; label: string }> = (
-  ['crew', 'marketplace', 'stackhealth', 'launch', 'connections', 'pair', 'settings'] as const
-).map(nav);
+const EXPLORE_NAV: Array<{ view: NavIconName; label: string }> = visibleRooms(
+  (
+    ['crew', 'marketplace', 'stackhealth', 'launch', 'connections', 'pair', 'settings'] as const
+  ).map(nav),
+);
 
 // Hand-drawn line icons for the nav, in the same language as PairScreen's
 // download tiles: a 24-unit grid, 2px round-cap / round-join strokes, and
@@ -296,7 +301,9 @@ export function Sidebar({
       {/* The second-session rooms stay at the bottom, Settings last. Admin,
           when the account carries it, leads the group. */}
       <nav className="sidebar-nav">
-        {isOrgAdmin(settings.account) && settings.account?.type === 'commercial'
+        {isOrgAdmin(settings.account) &&
+        settings.account?.type === 'commercial' &&
+        !hiddenInFocus('admin')
           ? item({ view: 'admin', label: 'Admin' }, PRIMARY_NAV.length + 1)
           : null}
         {EXPLORE_NAV.map((entry, i) => item(entry, PRIMARY_NAV.length + 2 + i))}

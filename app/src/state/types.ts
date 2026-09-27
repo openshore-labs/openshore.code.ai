@@ -51,8 +51,35 @@ export type ThreadItem =
     }
   // Plan mode's proposal, with the buttons that approve it or ask for changes.
   | { kind: 'plan'; id: string; text: string; status: 'proposed' | 'approved' | 'revising' }
-  // The end-of-turn record of what changed, one row per file.
-  | { kind: 'changed'; id: string; files: ChangedFile[] }
+  // The harness checked the task's work (v1 Phase 1): the project's own
+  // tests, or the page check that runs nothing. One pill a person who is not
+  // a developer can read; `retrying` means the failure went back to the
+  // model, so the last verify pill of a task is its verdict.
+  | {
+      kind: 'verify';
+      id: string;
+      passed: boolean;
+      check: 'tests' | 'page';
+      summary: string;
+      detail?: string;
+      retrying: boolean;
+    }
+  // The end-of-turn record of what changed, one row per file. With a
+  // checkpoint from the engine it carries undo: `checkpointId` names the
+  // snapshot, `undone` lists the files put back so far, `restoring` is a tap
+  // in flight, and `error` says why the last one did not land.
+  | {
+      kind: 'changed';
+      id: string;
+      files: ChangedFile[];
+      checkpointId?: string;
+      undone?: string[];
+      restoring?: boolean;
+      error?: string;
+      /** The task ran a shell command, so undo says what it cannot take back
+       *  (an install stays installed). */
+      ranCommands?: boolean;
+    }
   | {
       kind: 'tool';
       id: string;
@@ -153,6 +180,8 @@ export interface ChangedFile {
   path: string;
   added: number;
   removed: number;
+  /** What the task did to the file, when the engine's checkpoint says. */
+  status?: 'added' | 'modified' | 'deleted';
   /** The tool card that holds the diff, for a tap-through. */
   toolItemId?: string;
 }

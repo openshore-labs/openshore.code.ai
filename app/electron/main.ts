@@ -842,6 +842,17 @@ guarded('osc:listFiles', (sessionId: unknown, query: unknown) =>
   host.listFiles(str(sessionId, 'sessionId'), str(query, 'query')),
 );
 guarded('osc:trustFolder', (sessionId: unknown) => host.trustFolder(str(sessionId, 'sessionId')));
+guarded('osc:createSample', () => host.createSample());
+guarded('osc:restoreCheckpoint', (sessionId: unknown, id: unknown, how: unknown, path: unknown) => {
+  const way = str(how, 'direction');
+  if (way !== 'undo' && way !== 'redo') throw new Error('direction must be undo or redo');
+  return host.restoreCheckpoint(
+    str(sessionId, 'sessionId'),
+    str(id, 'id'),
+    way,
+    optStr(path, 'path'),
+  );
+});
 guarded('osc:resumeSession', (id: unknown) => host.resumeSession(str(id, 'id')));
 guarded('osc:listSessions', () => host.listStoredSessions());
 guarded('osc:send', (sessionId: unknown, text: unknown) =>
@@ -986,7 +997,14 @@ guarded('osc:ollamaStatus', () => host.ollamaStatus());
 guarded('osc:ollamaStart', () => host.ollamaStart());
 guarded('osc:ollamaInstall', async () => {
   const plan = await host.ollamaInstall();
-  if (plan.mode === 'download' && plan.downloadUrl) void shell.openExternal(plan.downloadUrl);
+  if (plan.mode === 'download') {
+    // The fetched installer opens (Ollama's own signed installer, checked by
+    // the system as a download); if it could not be fetched, or does not
+    // open, the download page does, as before.
+    const opened = plan.installerPath ? (await shell.openPath(plan.installerPath)) === '' : false;
+    if (!opened && plan.downloadUrl) void shell.openExternal(plan.downloadUrl);
+    return { ...plan, installerOpened: opened };
+  }
   return plan;
 });
 guarded('osc:hardware', () => host.hardware());

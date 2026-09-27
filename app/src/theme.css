@@ -9574,6 +9574,140 @@ button.vault-tag {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: opacity var(--dur-3) var(--ease-standard);
+}
+
+/* What leaves this device (v1 Phase 2): one list, grouped by who receives
+   it. A thin amber rule marks what leaves (amber means cloud and spend), a
+   teal rule what stays (teal means local). No motion of its own; the sheet
+   brings it in. */
+.egress-group {
+  margin-top: 14px;
+}
+.egress-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.egress-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0 2px 10px;
+  border-left: 2px solid var(--border);
+  font-size: var(--text-3);
+}
+.egress-item.cloud {
+  border-left-color: var(--cloud);
+}
+.egress-item.local {
+  border-left-color: var(--local);
+}
+.egress-when {
+  color: var(--muted);
+  font-size: var(--text-2);
+}
+
+/* The verify pill (v1 Phase 1): the verdict on a task's work in plain
+   words. Green for a pass, the warning ink for a miss; teal and amber stay
+   reserved for local and cloud. Arrives on msg-in like its neighbours. */
+.verify-pill {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-3);
+  animation: msg-in var(--dur-3) var(--ease-standard) backwards;
+}
+.verify-pill.pass {
+  background: var(--ok-soft);
+}
+.verify-pill.miss {
+  background: var(--warn-soft);
+}
+.verify-pill-label {
+  font-weight: var(--weight-semibold);
+}
+.verify-pill.pass .verify-pill-label {
+  color: var(--ok);
+}
+.verify-pill.miss .verify-pill-label {
+  color: var(--warn);
+}
+.verify-pill-line {
+  color: var(--muted);
+  min-width: 0;
+}
+.verify-pill-detail {
+  flex-basis: 100%;
+  margin: 4px 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-2);
+  white-space: pre-wrap;
+  color: var(--ink);
+}
+
+/* Undo (v1 Phase 1). Neutral ink, never red: undo is itself reversible. The
+   head's button and each row's are quiet text buttons; a file put back dims
+   and strikes through, and the card's own "Undone" line fades in. Opacity
+   only, never layout. */
+.changed-head-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.changed-undo,
+.changed-row-undo {
+  font-size: var(--text-3);
+  font-weight: var(--weight-semibold);
+  color: var(--ink);
+  padding: 4px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  min-height: 32px;
+}
+.changed-row-undo {
+  font-weight: var(--weight-medium);
+  color: var(--muted);
+  border-color: var(--border);
+  margin-right: 8px;
+}
+.changed-undo:disabled,
+.changed-row-undo:disabled {
+  opacity: 0.5;
+}
+.changed-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.changed-item .changed-row {
+  flex: 1;
+  min-width: 0;
+}
+.changed-item.undone .changed-path {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+.changed-status {
+  color: var(--muted);
+  font-family: var(--font);
+}
+.changed-sub {
+  margin: 0;
+  padding: 8px 12px 0;
+  font-size: var(--text-3);
+  color: var(--muted);
+  animation: fade-in var(--dur-3) var(--ease-standard) backwards;
+}
+.changed-error {
+  margin: 8px 12px 0;
 }
 .tool-card-flash {
   box-shadow: 0 0 0 2px var(--accent);

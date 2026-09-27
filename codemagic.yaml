@@ -327,15 +327,34 @@ workflows:
       - name: Package the macOS app
         script: |
           set -euo pipefail
-          # No CSC_LINK is set, so electron-builder finds no Developer ID
-          # certificate and signs ad-hoc on its own (the identity Apple Silicon
-          # requires just to launch a binary at all). No notarization step: the
-          # app is genuinely unsigned in Apple's eyes, hence the one-time
-          # Gatekeeper right-click the top-of-file comment describes. --publish
-          # never keeps electron-builder from touching GitHub; the artifacts
-          # are collected below.
+          # Unsigned by default (the founder's call): with no Developer ID
+          # secrets, electron-builder signs ad-hoc on its own (the identity
+          # Apple Silicon requires just to launch a binary at all) and there is
+          # no notarization, hence the one-time Gatekeeper right-click the
+          # top-of-file comment describes. --publish never keeps
+          # electron-builder from touching GitHub; the artifacts are collected
+          # below.
+          #
+          # Signed and notarized only when the founder adds the secrets (v1
+          # Phase 1, docs/MAC-DESKTOP.md "Signing, when it is time"): CSC_LINK
+          # and CSC_KEY_PASSWORD (the Developer ID Application certificate),
+          # plus either APPLE_API_KEY, APPLE_API_KEY_ID and APPLE_API_ISSUER, or
+          # APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID. Then the
+          # hardened runtime and its entitlements apply and electron-builder
+          # notarizes on its own. A certificate without notarization
+          # credentials would still warn, so it is ignored and the build stays
+          # the unsigned default.
           cd app
-          pnpm exec electron-builder --mac --publish never
+          if [ -n "${CSC_LINK:-}" ] && { [ -n "${APPLE_API_KEY:-}" ] || [ -n "${APPLE_ID:-}" ]; }; then
+            echo "Signing with the Developer ID certificate and notarizing."
+            pnpm exec electron-builder --mac --publish never \
+              -c.mac.hardenedRuntime=true \
+              -c.mac.entitlements=build/entitlements.mac.plist \
+              -c.mac.entitlementsInherit=build/entitlements.mac.plist
+          else
+            env -u CSC_LINK -u CSC_KEY_PASSWORD CSC_IDENTITY_AUTO_DISCOVERY=false \
+              pnpm exec electron-builder --mac --publish never
+          fi
       - name: Publish to the GitHub Release
         script: |
           set -euo pipefail

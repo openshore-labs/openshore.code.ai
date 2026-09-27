@@ -41,6 +41,7 @@ import { DEFAULT_PERMISSION_MODE, permissionModeLabel } from '../lib/permissionM
 import { BackBar } from '../components/BackBar.js';
 import { SignInCard } from '../components/SignInCard.js';
 import { InfoSheet } from '../components/InfoSheet.js';
+import { WhatLeavesSheet } from '../components/WhatLeavesSheet.js';
 import { Sheet } from '../components/Sheet.js';
 import { Switch } from '../components/Switch.js';
 import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
@@ -413,6 +414,7 @@ export function SettingsScreen() {
         </SettingsGroup>
 
         <SettingsGroup title="Privacy" index={group++}>
+          <WhatLeavesSheet />
           <InfoSheet
             title="Privacy and Conditions"
             renderTrigger={(open) => (
@@ -426,12 +428,13 @@ export function SettingsScreen() {
           >
             <h3 className="settings-sheet-head">Privacy, plainly</h3>
             <p>
-              Local models run on your hardware and nothing leaves it. Cloud models run on your own
-              keys and only with your approval. Web search leaves your computer when the agent uses
-              it. No telemetry, no analytics, no advertising, no IP address, ever. There is one
-              exception, stated plainly under Ethical boundaries below: when the guardrail blocks a
-              request and you are signed in, a record of that block reaches your account. It carries
-              a category, a time, and a one-way hash, never your prompt.
+              What you send a local model stays on this computer, and so does its answer. Cloud
+              models run on your own keys, and only on a turn you send to one. A few things do leave
+              this device, and every one is listed under What leaves this device, above: the words
+              of a web search a model makes, update checks, the model list, and, while you are
+              signed in, a record of any request the guardrail blocks. That record carries a
+              category, a time, and a one-way hash, and for a request about a real person, that
+              person's name; never your prompt. No telemetry, no analytics, no advertising.
             </p>
             <h3 className="settings-sheet-head">Encrypted on this device</h3>
             <p>

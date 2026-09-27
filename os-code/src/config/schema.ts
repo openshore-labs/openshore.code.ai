@@ -373,6 +373,17 @@ const HarnessSchema = z.object({
       // most, before the task reports not verified. Zero means one shot: report
       // the result, never retry. The step and dollar rails still apply.
       maxRetries: z.number().int().min(0).max(10).default(2),
+      // Zero-setup verify (v1 Phase 1). With no command set, 'on' finds the
+      // project's own test script (package.json, a Makefile test target,
+      // pytest) and asks once before running it; "always" becomes a grant on
+      // this machine. Unset reads 'off' until the floor run measures it.
+      detect: z.enum(['on', 'off']).optional(),
+      // The page check: with no command to run, look at the pages and scripts
+      // the task changed the way a browser would (missing files, scripts that
+      // do not parse, ids a script looks for that no page has) and hand any
+      // problem back to the model. Runs nothing the project wrote. Unset reads
+      // 'off' until the floor run's with and without pair (tenet 2).
+      pageCheck: z.enum(['on', 'off']).optional(),
     })
     .prefault({}),
 });

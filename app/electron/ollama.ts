@@ -2,8 +2,11 @@
 // without a terminal: is Ollama installed, is it running, and what does it
 // take to fix either. Every probe is injectable so the states are pinned by
 // tests on a machine with no Ollama at all. Nothing here touches Electron.
-import { spawn as nodeSpawn, spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { execFile, spawn as nodeSpawn, spawnSync } from 'node:child_process';
+import { createWriteStream, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 
 export interface OllamaStatus {
   installed: boolean;
@@ -104,4 +107,94 @@ export function ollamaInstallPlan(platform: NodeJS.Platform = process.platform):
     return { mode: 'download', command: `start ${downloadUrl}`, downloadUrl };
   }
   return { mode: 'terminal', command: OLLAMA_INSTALL_COMMAND };
+}
+
+// Installing on macOS and Windows from inside the app (v1 Phase 1, desktop
+// first run). The official installer is fetched straight from ollama.com into
+// the person's Downloads folder and opened, so they click through Ollama's
+// own signed installer without hunting for a download page; the app then
+// polls ollamaStatus and carries on by itself once Ollama answers. On macOS
+// the file is marked as downloaded from the internet, so Gatekeeper checks
+// Ollama's signature exactly as it would for a browser download. Anything
+// that fails falls back to opening the download page, the old behavior.
+
+export interface OllamaInstaller {
+  url: string;
+  file: string;
+}
+
+/** The official installers, in the order to try them. */
+export function ollamaInstallers(platform: NodeJS.Platform): OllamaInstaller[] {
+  if (platform === 'darwin') {
+    return [
+      { url: 'https://ollama.com/download/Ollama.dmg', file: 'Ollama.dmg' },
+      { url: 'https://ollama.com/download/Ollama-darwin.zip', file: 'Ollama-darwin.zip' },
+    ];
+  }
+  if (platform === 'win32') {
+    return [{ url: 'https://ollama.com/download/OllamaSetup.exe', file: 'OllamaSetup.exe' }];
+  }
+  return [];
+}
+
+type DownloadFetch = (url: string) => Promise<Response>;
+type Runner = (cmd: string, args: string[]) => Promise<void>;
+
+const defaultRunner: Runner = (cmd, args) =>
+  new Promise((resolve, reject) => {
+    execFile(cmd, args, { timeout: 120_000 }, (err) => (err ? reject(err) : resolve()));
+  });
+
+/**
+ * Fetch the official installer into `downloadsDir` and return the path to
+ * open: the dmg, the installer exe, or (for the macOS zip) the extracted
+ * Ollama.app. Undefined when nothing could be fetched, so the caller falls
+ * back to the download page. Never throws.
+ */
+export async function downloadOllamaInstaller(opts: {
+  platform: NodeJS.Platform;
+  downloadsDir: string;
+  fetch?: DownloadFetch;
+  run?: Runner;
+}): Promise<string | undefined> {
+  const fetchImpl = opts.fetch ?? ((url: string) => fetch(url, { redirect: 'follow' }));
+  const run = opts.run ?? defaultRunner;
+  for (const installer of ollamaInstallers(opts.platform)) {
+    const target = join(opts.downloadsDir, installer.file);
+    const partial = `${target}.part`;
+    try {
+      const res = await fetchImpl(installer.url);
+      if (!res.ok || !res.body) continue;
+      mkdirSync(opts.downloadsDir, { recursive: true });
+      await pipeline(
+        Readable.fromWeb(res.body as Parameters<typeof Readable.fromWeb>[0]),
+        createWriteStream(partial),
+      );
+      renameSync(partial, target);
+      if (opts.platform === 'darwin') {
+        // Marked as downloaded, so Gatekeeper verifies Ollama's signature on
+        // first open, as it would for a file the browser saved.
+        const stamp = Math.floor(Date.now() / 1000).toString(16);
+        await run('xattr', [
+          '-w',
+          'com.apple.quarantine',
+          `0081;${stamp};OpenShore;`,
+          target,
+        ]).catch(() => undefined);
+        if (installer.file.endsWith('.zip')) {
+          await run('ditto', ['-x', '-k', target, opts.downloadsDir]);
+          const app = join(opts.downloadsDir, 'Ollama.app');
+          if (!existsSync(app)) continue;
+          await run('xattr', ['-w', 'com.apple.quarantine', `0081;${stamp};OpenShore;`, app]).catch(
+            () => undefined,
+          );
+          return app;
+        }
+      }
+      return target;
+    } catch {
+      rmSync(partial, { force: true });
+    }
+  }
+  return undefined;
 }

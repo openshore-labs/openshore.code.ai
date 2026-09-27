@@ -2561,3 +2561,43 @@ execution contract. Newest at the bottom.
   host with no `matchMedia`) leaves none. `vaultViewGhost.test.tsx` fails a
   Vault view root rendered without its ghost binding. The Trash page still
   only arrives with a fade, since it replaces the whole screen.
+- **v1 for the first-time person (founder "build all of your recommendations",
+  2026-09-27; the customer is a non-developer using Claude Code today; the
+  founder asked that the core design and feature set not change):** everything
+  new is additive, and anything that would change a default for the person
+  ships behind config or a build flag until a number or the founder says
+  otherwise. Undo: a checkpoint per task in a shadow git folder under
+  `~/.os-code/checkpoints` (not the project's git, so it works in a folder
+  with none and never touches its index or history), taken by `LocalDriver`
+  so every host has it; restore refused while a task runs, journaled so every
+  device folds; the route is the session owner's like every control (it only
+  ever touches files that session's task changed); a folder past 20,000
+  files, files over 20 MB, dependency folders and OpenShore's own state are
+  left out. Verify: a configured check now runs on a paired phone with a
+  verify grant on this machine keyed by folder, command and a digest of what
+  it runs (members never grant, routines never run an ungranted one, bypass
+  mode counts as a yes); a found test script always asks first, desktop
+  included, being the repository's own code; the page check runs nothing the
+  project wrote (compiles scripts, never runs them); `detect` and `pageCheck`
+  read off until `osc eval --floor` measures them (tenet 2), and the floor
+  plan measures each change against the same plain run. First run: the First
+  Seat fetches Ollama's own installer and opens it (marked as a download so
+  Gatekeeper checks it; the page opens on any failure) rather than
+  installing silently, and on Linux names the command instead of running a
+  sudo installer in a hidden terminal; the sample page's tap sends its ask at
+  once, since that tap is the request. Signing: unsigned stays the default;
+  a Mac certificate without notarization credentials is ignored, since it
+  would still warn. Focus flag: build time, off; it hides the review's 8/8
+  and 7/8 rooms and both Currents groups; the Crew scheduler still runs if a
+  routine exists (the engine does not read the app's build flag; a
+  follow-up). What leaves this device: disclosure first; the review's
+  changes that would alter what a feature does (web search asking first,
+  updates asking before downloading, the guardrail record's named person,
+  the repo sign-in exchange) are listed as they stand and left to the
+  founder; the privacy paragraph's false claim ("nothing leaves", "no IP
+  address, ever") is corrected; a test fails on any host not on the list.
+  Eval: the everyday suite has no test scripts on purpose (a person's folder
+  has none); the Claude Code baseline is internal, never copy, runs hermetic
+  (a scratch config, the same doors as the engine's eval approver), and the
+  eval approver gained a file-move door (mv, cp, mkdir, ls inside the
+  workspace, no chaining, nothing outside).
