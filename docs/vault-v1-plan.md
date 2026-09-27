@@ -918,6 +918,23 @@ each driver kind carries the pack within its seat budget; Memory off leaves
 it out; a Jev-routed turn is budgeted for the routed seat; no current tool
 receives it.
 
+Shipped 2026-09-27 (CTO J1 to J6): `app/src/lib/vaultPackSource.ts`
+(`createAppVaultPack`) renders the engine's own `buildContextPack` from
+protocol, prepared once per send inside the 250 ms cold budget and rendered
+per seat after the seat is known (after `route()` and the Jev steer in the
+Stack); it reads only bodies a seat can render, never a hidden note, and with
+no index reads none, so the team vault never enters a pack. `lib/vaultSeat.ts`
+judges a seat by address through `harness/locality.ts hostIsLocal` (BYOM
+included; `byomReach` now agrees, so another tailnet's `*.ts.net`,
+`0.0.0.0`, `169.254/16` and `fc*` read cloud). `lib/vaultPrivacy.ts` reads the
+desktop bridge, the paired hub, or D5, and the device only narrows. Desktop
+chat builds its pack on the daemon (`/chat` `vaultPack`, `memory: false`).
+Still being wired by the app integrator (M5 wave 2): the store call sites in
+`buildUnguardedDriver` (one pack per conversation, `{ vaultPack }` to each
+driver, the Stack's `packSeat` and `vaultTools`, Memory off withholding
+both), `settings.promptCache` into the context, and `fitDeviceHistory` as a
+wrapper over `fitSeed`.
+
 **5.2 The phone reaches the one vault; the hub is per owner (L).** Daemon
 routes `GET /vault/notes` and `GET/PUT/DELETE /vault/notes/<path>` with
 `ifMatch`, jailed and scoped to the owner on the Hermes notes pattern, with
@@ -934,6 +951,25 @@ Interim member isolation (0.13) keeps the agent's no-ask tools off the owner's v
 `daemonRoutines.test.ts`, a member cannot list the owner's notes or another
 member's Crew notes; the hub provider enrolled in `providerContract.test.ts`.
 
+Shipped 2026-09-27 (J7 to J9): `os-code/src/daemon/vaultRoutes.ts` serves
+`/vault/notes` (list, read, `PUT` with `ifMatch` or `ifAbsent`, `DELETE`
+only with `ifMatch`), `/vault/config`, `/vault/privacy`, and `/vault/index`
+(ETag, 304), every path through the Jail and the note rule, a phone edit fed
+to the engine's index. `core/vault/memberRoots.ts`: the owner on the machine
+vault, each member on `oscHome()/vaults/members/<hash>` (0700, made on first
+use); a session gets `BootstrapOptions.vaultRoot` at create and its stored
+owner's root at rehydrate (the old `vault` flag is gone), a member cwd that
+overlaps any root is refused, and Crew notes land in the routine owner's
+vault. `daemon.test.ts` proves the owner and two members on one hub each see
+only their own root, by route and by session. App: `lib/gitos/hub.ts`, "Your
+computer, while it is on", a sealed stash (200 notes or 8 MB), read-only out
+of reach, compare-and-swap saves replayed on return, the D2 repoint and move
+card. Still being wired by the app integrator: `setHubVaultLink` on pairing
+changes, one index lifetime rule and one pairing rule, the away line on the
+Vault screen, and passing `handoff` and `vaultPins` through the phone and
+desktop session creates (the daemon, Electron main, and `engineHost` already
+accept both).
+
 **5.3 Vault tools on app seats that call tools (M).** A new
 `app/src/lib/vaultTool.ts`, on the `codemagicTool.ts` pattern, puts search and
 read into the Stack driver's Anthropic and OpenAI loops; a write is an
@@ -941,6 +977,15 @@ always-ask proposal through the approval sheet. Pocket seats get the pack
 only. Closes [keyask-1] (tool half). Test: `app/test/vaultContext.test.ts`,
 the tool slice is present for cloud and BYOM seats and absent for pocket
 seats; a write reaches the approval sheet.
+
+Shipped 2026-09-27 (J10): `app/src/lib/vaultTool.ts` (`vaultSearch`,
+`vaultRead`, `vaultLookup` for a merged class, `vaultPropose`) on cloud and
+BYOM single turns in the Stack driver, descriptions shared with the engine
+through `harness/vault/toolText.ts`; proposals queue into one always-ask card
+at the end of the send, nothing written on decline. A local-only read marks
+the reply (`Msg.localOnly`) and a leaving seat gets the stub. The store-side
+`vaultTools` wiring and carrying `localOnly` onto the transcript are the app
+integrator's.
 
 **5.4 Handoff: on a switch, a compaction, and the end of a session (L).** A
 pure, offline, extractive `buildHandoff(items, budget)` in
@@ -961,6 +1006,23 @@ Closes [keyask-4]. Where: `store.ts:3900-3990`, `deviceModel.ts:35-81`,
 the handoff; no thinking text in any handoff); an engine case that a
 compaction writes one.
 
+Shipped 2026-09-27 (J11 to J13): pure `harness/handoff.ts` (`buildHandoff`,
+`fitSeed`, `handoffBudgetTokens`), extractive and deterministic, never
+thinking, a tool's output, or a local-only turn. `switchModel` seeds through
+`fitSeed` (the whole chat when it fits, else a handoff for exactly the
+dropped turns) with an honest note and "Save to Vault"; a chat carried to the
+desktop opens a new agent chat whose session create carries the handoff
+(`BootstrapOptions.handoff`, 16 KB, first task only; Electron main and
+`engineHost.createSession` forward it). The engine writes the latest handoff
+per owner, workspace and project after a compaction, each completed task and
+dispose (`core/agent/handoffStore.ts`, redacted, sealed), read on a fresh
+session's first task at most 7 days old as a full-mode layer; a Crew run
+neither writes nor reads one. Clearing: `DELETE /sessions/:id` takes its
+handoff, and `DELETE /handoffs` (the owner only) and the desktop IPC
+`osc:clearHandoffs` take them all; the app integrator wires "Clear
+conversations" to them. Eval: `vault-continue-handoff` and `--handoff on|off`
+(sandbox only). "Picks up where you left off" waits on its J19 number.
+
 **5.5 Take a note to a model (M).** The note's options gain "Ask about this
 note" and "Pin to project context". Pins live on the project
 (`Project.vaultPins`, editors only, read through the active project like
@@ -970,11 +1032,32 @@ line. A "Recently from your agent" row. Closes [ui-5]. Where:
 `ProjectDetailScreen.tsx`. Test: `vaultContext.test.ts`, a pin reaches only
 its own project's pack; the composer excerpt stays within budget.
 
+Shipped 2026-09-27 (J14, J15): `Project.vaultPins` (at most 8, editors,
+device-local, never synced), `ProjectVaultPins` in `ProjectDetailScreen`, pins
+in both pack modes (at most 3 and half the budget, privacy applied), carried
+to engine sessions as `BootstrapOptions.vaultPins`. The `[[` picker
+(`VaultNotePicker`), budgeted excerpts with a cost line, "Ask about this
+note", "Pin to project context", and "Recently from your agent". Still being
+wired by the app integrator: one `ComposerVault` shape wired from
+`ChatScreen`, `onOpenPackNote` through `MessageList`, and the note item's
+"Save to Vault" button.
+
 **5.6 A stable prefix that caches (S).** System prompts run stable to
 volatile; `cache_control` on the stable block in the app's Claude driver and
 the engine's Anthropic provider; the pack is rebuilt only when its inputs
 change. Closes [keyask-11]. Where: `cloudClaudeDriver.ts:150`, the engine
 provider. Test: unchanged inputs give a byte-identical prefix.
+
+Shipped 2026-09-27 (J16, J17): the app's `systemFor` runs stable then
+volatile and `lib/claudeCache.ts` marks the head and caches the history
+(`settings.promptCache`, off, no UI). The engine: `providers.<id>.promptCache:
+'auto' | 'off'` (unset reads off, machine class) splits `system` at the
+loop's `ChatMessage.cacheAt` (where the pack begins); the loop forwards the
+API's cache reads and writes onto the `usage` event, and
+`promptCacheLoop.test.ts` proves 'auto' marks the pack boundary while 'off'
+is byte-identical to a request with no offset. Both stay off until the J19
+`--prompt-cache on|off` number; the dollar rail does not yet price cache
+reads and writes. The app integrator keeps one Claude system builder.
 
 ### M6. Obsidian day one
 

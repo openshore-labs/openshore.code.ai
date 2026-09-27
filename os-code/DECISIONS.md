@@ -2382,3 +2382,74 @@ execution contract. Newest at the bottom.
   an approved reference run), with the numbers recorded here and in
   PROGRESS before any class flips to the full pack or `numCtx` defaults to
   auto (tenet 2).
+- **Vault M5, context layer II (2026-09-27):** the CTO's rulings J1 to J21
+  are built as written, in waves (0 contracts and stubs, 1 nine parallel
+  streams A to I, 2 two integrators: the engine in `os-code/**` and
+  `app/electron/**`, the app in `app/src/**`). J1: one pack core in the app,
+  `createAppVaultPack` over `planContextPack` and `buildContextPack` from
+  protocol, prepared once per send inside `VAULT_PACK_COLD_MS` (250),
+  rendered per seat with the loop's render key and card dedupe, no project
+  secrets ever. J2: one Node-free judge, `harness/locality.ts hostIsLocal`,
+  that `egress.ts isLocalHost` delegates to and the app's `packSeatFor` and
+  `byomReach` call with the paired hub's tailnet suffix. J3: app privacy
+  from the desktop bridge, the paired hub's `GET /vault/privacy` (cached
+  sealed), or D5 defaults; the device setting only narrows, and no rules
+  loaded means D5, never none. J4: class by `deriveModelClass`, windows per
+  seat kind (device 4096, BYOM `contextTokens` else 8192). J5, J6: every app
+  driver emits the card after `turn-start` and places the pack last; desktop
+  chat builds its pack on the daemon (`/chat` `vaultPack`, `memory: false`).
+  J7: the daemon's `/vault` routes (notes, config, privacy, index with an
+  ETag), every path through the Jail and the note rule, every write a
+  compare-and-swap. J8: `vaultRootFor(auth)` and `vaultRootForOwner`: the
+  owner on the machine vault, each member on
+  `oscHome()/vaults/members/<sha256 16 hex>` (0700); sessions get
+  `BootstrapOptions.vaultRoot` at create and the stored OWNER's root at
+  rehydrate, and the old `BootstrapOptions.vault` flag is gone. J9: the
+  `hub` provider "Your computer" with a sealed stash, read-only out of
+  reach, and the D2 repoint rules. J10: `vaultTool.ts` on cloud and BYOM
+  single turns, writes batched into one always-ask card. J11: pure
+  extractive `buildHandoff` and `fitSeed`. J12: the switch seeds with
+  `fitSeed`, a handoff only when turns drop; the desktop agent takes
+  `BootstrapOptions.handoff` (16 KB) on its first task. J13: the engine
+  writes the latest handoff per owner, real cwd and project after a
+  compaction, each completed task and dispose (`core/agent/handoffStore.ts`,
+  redacted and sealed), the app per project; both cleared with the chats;
+  read on a first send at most 7 days old as a full-mode layer. J14:
+  `Project.vaultPins` (at most 8, editors, device-local), in both pack
+  modes. J15: the `[[` picker, "Ask about this note", "Pin to project
+  context", "Recently from your agent". J16: the app's stable-then-volatile
+  prefix and `claudeCache.ts`. J17: `providers.<id>.promptCache` on the
+  engine's Anthropic provider, split at `ChatMessage.cacheAt`; the loop
+  forwards `cacheReadTokens` and `cacheWriteTokens` onto the `usage` event.
+  J18: `vault.handoff` off-only, `promptCache` machine. J19 to J21: the gates
+  below, no held native branch needed, the stream split. Deviations worth
+  knowing: E reads only bodies some seat can render (a hidden note is never
+  read, and no index means no read, so the team vault never enters a pack);
+  C refuses an unguarded `DELETE` (it must carry `ifMatch`), and makes a
+  member root on first use, not at pairing; A gives `HandoffTurn` a
+  `localOnly` flag (such a turn is left out) and `hostIsLocal` ignores an
+  own-tailnet suffix that is not a real tailnet, so a bare `ts.net` cannot
+  make every Funnel host local; D's handoff eval task runs on an empty vault,
+  so only the handoff can carry its decision, and the person's own handoffs
+  are never read; B drops a handoff over the cap whole with a warning, never
+  cut mid-line; H's switch to the desktop opens a new agent chat whose
+  session create carries the handoff, rather than reseeding the open chat;
+  the BYOM locality change: `byomReach` now judges by `hostIsLocal`, so
+  another tailnet's `*.ts.net`, `0.0.0.0`, `169.254/16`, `fc00::/8` (only
+  `fd*` stays local) and IPv4-mapped IPv6 spellings read cloud (amber) where
+  they read local before. Engine integrator calls: a Crew (headless) run
+  neither writes nor reads a handoff, the safer of the two options, since a
+  scripted run's summary must never become the person's "where you left
+  off"; clearing is `DELETE /handoffs` (the owner of the computer only, since
+  the store is keyed by a hash and holds every owner's) and the desktop IPC
+  `osc:clearHandoffs`, and `DELETE /sessions/:id` also removes that session's
+  handoff; the engine's cache-token dollars are not yet priced (cache reads and
+  writes ride the event and the eval's trace; the dollar rail still prices
+  `input_tokens` only, which with the cache on undercounts, so `promptCache`
+  stays off until J19). Founder gates, open (J19): on the reference box per
+  class, the open M4 runs, `vault-continue-handoff` with and without the
+  handoff layer, and `--prompt-cache on|off` on an approved large reference
+  run (input tokens, cache reads and writes, dollars per completed task),
+  recorded here and in PROGRESS before `PACK_BY_CLASS`, `numCtx`, the
+  handoff layer or `promptCache` flip; and the device checks in the plan's
+  8.1 list for M5.
