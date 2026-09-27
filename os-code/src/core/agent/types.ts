@@ -14,6 +14,10 @@ export interface ApprovalRequest {
   summary: string;
   /** Diff or detail block. */
   detail?: string;
+  /** True for a tool that asks every time (vaultWrite): an allow for the
+   *  session or the project never takes effect on it, so a client offers
+   *  only approve and decline. Absent for every other tool. */
+  alwaysAsk?: boolean;
 }
 
 export interface ApprovalAnswer {

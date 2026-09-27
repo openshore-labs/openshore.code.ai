@@ -20,9 +20,10 @@
 //   - The result lands as a dated markdown note in the vault (plain files,
 //     Obsidian-compatible) with the session id, so the transcript is one tap
 //     away; the run record carries a one-line summary for the inbox.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { bootstrapSession } from '../core/agent/bootstrap.js';
+import { writeNewNoteSync } from '../core/vault/noteFile.js';
 import type { DriverEvent, PermissionMode } from '../core/agent/types.js';
 import { loadDaemonConfig, loadVaultDir, saveGlobalConfig } from '../config/load.js';
 import type { LocalDriver } from '../daemon/session.js';
@@ -114,7 +115,7 @@ export function routineInstructions(routine: Routine): string {
     routine.access === 'read-only'
       ? 'This routine is read-only: you can read files, search, and inspect the repository, but you cannot change anything. Do not try.'
       : 'This routine may edit files inside this workspace. Any shell command will ask for approval; if nobody answers within a few minutes the step is declined and you should carry on without it, or stop and say what is blocked.',
-    `You have about ${routine.maxMinutes} minutes. Work efficiently. When you finish, end with a short plain-language report the person will read first thing: what you found or did, anything risky, and a checklist of what needs them. Lead with the one thing that matters most. Never use em dashes.`,
+    `You have about ${routine.maxMinutes} minutes. Work efficiently. When you finish, end with a short plain-language report the person will read first thing: what you found or did, anything risky, and a checklist of what needs them. Lead with the one thing that matters most. The report is saved to their vault as this run's note on its own, so do not try to write a note yourself. Never use em dashes.`,
   ].join('\n');
 }
 
@@ -610,18 +611,15 @@ export class RoutineScheduler {
     // The file is named for the minute the run started (a colon is not safe in
     // a file name on every system, so the time reads 06-00 there). A second run
     // in the same minute gets its own file, "06-00 (2)", never the first's: the
-    // exclusive create refuses to open a name that is already taken.
+    // note is published whole with link() and never replaces a name that is
+    // taken (the ifAbsent path of the vault's one writeNote, in its
+    // synchronous form, since a run's end is recorded in one tick).
     const folder = join('Crew', safeName(active.routine.name));
-    mkdirSync(join(root, folder), { recursive: true });
     for (let n = 1; ; n++) {
       const name = `${date} ${hh}-${mm}${n === 1 ? '' : ` (${n})`}.md`;
       const rel = join(folder, name).split('\\').join('/');
-      try {
-        writeFileSync(join(root, rel), lines.join('\n'), { flag: 'wx' });
-        return rel;
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== 'EEXIST' || n >= 100) throw err;
-      }
+      if (writeNewNoteSync(join(root, rel), lines.join('\n')).ok) return rel;
+      if (n >= 100) throw new Error(`Every note name for ${date} ${hh}-${mm} is taken.`);
     }
   }
 

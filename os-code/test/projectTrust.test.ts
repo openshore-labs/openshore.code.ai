@@ -409,6 +409,38 @@ describe('trusting a folder, on this machine', () => {
   });
 });
 
+// The Memory switch (Vault v1, 1.5; CTO F6). On, projectMemoryWrite saves into
+// the repo without asking, so a project turning memory on is a loosening that
+// waits for trust; turning it off tightens and applies from any folder.
+describe('a project file and the Memory switch', () => {
+  it("an untrusted folder cannot turn memory on over the person's off", () => {
+    writeGlobal({ memory: { enabled: false } });
+    writeProject({ memory: { enabled: true } });
+    const { config, projectTrust } = loadConfig(project);
+    expect(config.memory.enabled).toBe(false);
+    expect(projectTrust.state).toBe('untrusted');
+    expect(projectTrust.waiting).toEqual([
+      'turns on project memory, so the agent saves notes into this repo without asking',
+    ]);
+  });
+
+  it('an untrusted folder may turn memory off', () => {
+    writeProject({ memory: { enabled: false } });
+    const { config, projectTrust } = loadConfig(project);
+    expect(config.memory.enabled).toBe(false);
+    expect(projectTrust.waiting).toEqual([]);
+  });
+
+  it("a trusted folder's on applies", () => {
+    writeGlobal({ memory: { enabled: false } });
+    writeProject({ memory: { enabled: true } });
+    trustProjectFolder(project);
+    const { config, projectTrust } = loadConfig(project);
+    expect(projectTrust.state).toBe('trusted');
+    expect(config.memory.enabled).toBe(true);
+  });
+});
+
 describe('a new session in an untrusted folder says what is waiting', () => {
   it('emits one project-trust event, in plain words', () => {
     writeProject({

@@ -440,6 +440,7 @@ extended that day by the graduated enforcement ladder (migration
       Use them folds it, and the next chat there runs the check; on a paired
       phone the same card trusts through the computer; a member phone on a
       shared hub is refused.
+- [ ] **Vault M1, engine known limits (CTO F2, F6; 2026-09-27).** A note save through `writeNote` does not carry Finder tags or other xattrs (Node has no xattr API); a write landing between its guard check and its rename is overwritten (no lock is shared with Obsidian, so the check runs as late as it can); on Linux the created date resets on each save. Routines follow config `memory.enabled`, not the app's Memory switch (a headless run has no app options). A daemon session revived after a restart does not keep the app's `memory: false` (nor `humanize` or Chain of Thought); keeping them in its info.json is open.
 - [ ] **Repositories: reconnect GitHub, then a device pass (2026-09-25).**
       iPhone, Repositories: tap Reconnect GitHub on the GitHub card; the picker
       then lists private repositories (openshore-hq). Clone it from the picker

@@ -251,6 +251,17 @@ const ChainOfThoughtSchema = z.object({
   enabled: z.boolean().default(false),
 });
 
+// Project memory (Vault v1, 1.5): on by default, the agent reads this repo's
+// five memory notes and keeps them current through projectMemoryWrite, whose
+// writes land without asking. Off removes the prompt block and the tool, not
+// just the prompt, since the permission engine allows the tool by name. A
+// project may turn it off from any folder; turning it on over a machine that
+// has it off waits for trust (projectPolicy.ts). The app's Memory switch can
+// only turn it off (memoryEnabled in core/agent/memorySwitch.ts).
+const MemorySchema = z.object({
+  enabled: z.boolean().default(true),
+});
+
 // Offline reconcile: the app pushes this repo's unpushed commits (the project's
 // memory notes ride with the code) to its tracking upstream on app open and on
 // reconnect, so nothing important lingers only on the device. A project that
@@ -337,6 +348,7 @@ export const ConfigSchema = z.object({
   ux: UxSchema.prefault({}),
   humanizer: HumanizerSchema.prefault({}),
   chainOfThought: ChainOfThoughtSchema.prefault({}),
+  memory: MemorySchema.prefault({}),
   sync: SyncSchema.prefault({}),
   harness: HarnessSchema.prefault({}),
 });

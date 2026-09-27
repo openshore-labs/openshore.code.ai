@@ -1,10 +1,24 @@
 // The agent's on-device vault tools: reads/lists flow, writes are always-ask,
 // and note paths can never escape the vault directory.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { z } from 'zod';
 import { vaultWriteTool, vaultReadTool, vaultListTool } from '../src/core/tools/vault.js';
+import { NOTE_TEMP_PATTERN, noteFileHooksForTests } from '../src/core/vault/noteFile.js';
+import { MockProvider, textTurn, toolTurn } from './helpers/mockProvider.js';
+import { makeTestSession } from './helpers/session.js';
 
 // A folder the walk cannot read. Tests run as root in CI, where a chmod does
 // not lock anything, so readdir is made to refuse the folders named here.
@@ -34,6 +48,7 @@ beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'osc-vault-'));
 });
 afterEach(() => {
+  noteFileHooksForTests.afterTemp = undefined;
   rmSync(root, { recursive: true, force: true });
 });
 
@@ -292,5 +307,310 @@ describe('vault writes are never silent', () => {
     const cwd = '/repo';
     const engine = new PermissionEngine({ ...DEFAULT_PERMISSIONS, trustedRepos: [cwd] });
     expect(engine.decide({ toolName: 'writeFile', risk: 'write', cwd }).decision).toBe('allow');
+  });
+});
+
+// Vault v1, 1.2 (CTO F5): the diff the person approved is what lands, or
+// nothing does. The preview names the bytes it was built against, the loop
+// hands that basis to execute, and execute refuses when the note moved.
+describe('a vault write lands exactly as approved', () => {
+  const CHANGED =
+    'The note changed since you approved it. Read it again with vaultRead, then propose the write again.';
+  const args = (content: string, mode: 'replace' | 'append' = 'replace') => ({
+    path: 'log.md',
+    content,
+    mode,
+  });
+  const note = () => join(root, 'log.md');
+
+  it('the preview names the bytes it was built against', async () => {
+    expect((await vaultWriteTool.preview!(args('x'), ctx())).basis).toBe('absent');
+    writeFileSync(note(), 'v1\n');
+    const sha = createHash('sha256').update('v1\n').digest('hex');
+    expect((await vaultWriteTool.preview!(args('x'), ctx())).basis).toBe(`sha256:${sha}`);
+  });
+
+  it('an edit between preview and execute is refused, and the file is byte-identical', async () => {
+    writeFileSync(note(), 'v1 line\n');
+    const { basis } = await vaultWriteTool.preview!(args('agent rewrite\n'), ctx());
+    writeFileSync(note(), 'v1 line\nperson added this while approval was pending\n');
+    const before = readFileSync(note());
+    const out = await vaultWriteTool.execute(args('agent rewrite\n'), ctx(), { basis });
+    expect(out).toEqual({ ok: false, content: CHANGED });
+    expect(readFileSync(note()).equals(before)).toBe(true);
+  });
+
+  it('a touch that changes only the time still writes', async () => {
+    writeFileSync(note(), 'v1\n');
+    const { basis } = await vaultWriteTool.preview!(args('v2\n'), ctx());
+    utimesSync(note(), 1_900_000_000, 1_900_000_000);
+    const out = await vaultWriteTool.execute(args('v2\n'), ctx(), { basis });
+    expect(out.ok).toBe(true);
+    expect(readFileSync(note(), 'utf8')).toBe('v2\n');
+  });
+
+  it('an append lands exactly the approved diff', async () => {
+    writeFileSync(note(), '# Log\nfirst');
+    const preview = await vaultWriteTool.preview!(args('second', 'append'), ctx());
+    const out = await vaultWriteTool.execute(args('second', 'append'), ctx(), {
+      basis: preview.basis,
+    });
+    expect(out.ok).toBe(true);
+    expect(readFileSync(note(), 'utf8')).toBe('# Log\nfirst\nsecond');
+    expect(out.diffText).toBe(preview.detail);
+  });
+
+  it('a note created under the same name after the preview is refused, never replaced', async () => {
+    const { basis } = await vaultWriteTool.preview!(args('mine'), ctx());
+    expect(basis).toBe('absent');
+    writeFileSync(note(), 'theirs');
+    expect(await vaultWriteTool.execute(args('mine'), ctx(), { basis })).toEqual({
+      ok: false,
+      content: CHANGED,
+    });
+    expect(readFileSync(note(), 'utf8')).toBe('theirs');
+  });
+
+  it('an edit landing during the save itself is refused, with or without a basis', async () => {
+    // A new note: someone takes the name while the save is under way.
+    noteFileHooksForTests.afterTemp = () => writeFileSync(note(), 'theirs');
+    expect(await vaultWriteTool.execute(args('mine'), ctx())).toEqual({
+      ok: false,
+      content: CHANGED,
+    });
+    expect(readFileSync(note(), 'utf8')).toBe('theirs');
+    // An existing note: Obsidian saves in place while the save is under way.
+    const { basis } = await vaultWriteTool.preview!(args('mine'), ctx());
+    noteFileHooksForTests.afterTemp = () => {
+      writeFileSync(note(), 'theirs, edited');
+      utimesSync(note(), 1_900_000_000, 1_900_000_000);
+    };
+    expect(await vaultWriteTool.execute(args('mine'), ctx(), { basis })).toEqual({
+      ok: false,
+      content: CHANGED,
+    });
+    expect(readFileSync(note(), 'utf8')).toBe('theirs, edited');
+    const leftovers = readdirSync(root).filter((name) => NOTE_TEMP_PATTERN.test(name));
+    expect(leftovers).toEqual([]);
+  });
+
+  it('leaves no temp file behind', async () => {
+    await vaultWriteTool.execute({ path: 'a/b/c', content: '1', mode: 'replace' }, ctx());
+    await vaultWriteTool.execute({ path: 'a/b/c', content: '2', mode: 'append' }, ctx());
+    await vaultWriteTool.execute({ path: 'top', content: 'x', mode: 'replace' }, ctx());
+    await vaultWriteTool.execute({ path: 'top', content: 'y', mode: 'replace' }, ctx());
+    expect(readFileSync(join(root, 'a/b/c.md'), 'utf8')).toBe('1\n2');
+    const all = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? all(join(dir, e.name)) : [e.name],
+      );
+    expect(all(root).sort()).toEqual(['c.md', 'top.md']);
+  });
+
+  it('a folder named like the note gets a plain refusal, and the folder stays', async () => {
+    mkdirSync(join(root, 'x.md', 'inside'), { recursive: true });
+    const out = await vaultWriteTool.execute({ path: 'x', content: 'y', mode: 'replace' }, ctx());
+    expect(out).toEqual({ ok: false, content: 'x.md is a folder, not a note.' });
+    expect(existsSync(join(root, 'x.md', 'inside'))).toBe(true);
+  });
+});
+
+describe('the loop hands execute what the person approved', () => {
+  it('execute receives the basis the preview returned, and only after an ask', async () => {
+    const calls: unknown[][] = [];
+    const provider = new MockProvider('mock', [
+      toolTurn('probe', {}, 'c1'),
+      toolTurn('plain', {}, 'c2'),
+      textTurn('done'),
+    ]);
+    const session = makeTestSession(provider);
+    session.tools.register({
+      name: 'probe',
+      description: 'A write that always asks.',
+      schema: z.object({}),
+      risk: 'write',
+      alwaysAsk: true,
+      preview: async () => ({ summary: 'probe', basis: 'basis-123' }),
+      execute: async (...received: unknown[]) => {
+        calls.push(received);
+        return { ok: true, content: 'ok' };
+      },
+    });
+    // A write the session's defaults allow: no ask, so no approval passes.
+    session.tools.register({
+      name: 'plain',
+      description: 'A write that flows.',
+      schema: z.object({}),
+      risk: 'write',
+      preview: async () => ({ summary: 'plain', basis: 'never-sent' }),
+      execute: async (...received: unknown[]) => {
+        calls.push(received);
+        return { ok: true, content: 'ok' };
+      },
+    });
+    await session.agent.run('go');
+    expect(calls).toHaveLength(2);
+    expect(calls[0]![2]).toEqual({ basis: 'basis-123' });
+    expect(calls[1]).toHaveLength(2);
+  });
+
+  it('a person editing the note while the approval is open keeps the edit', async () => {
+    writeFileSync(join(root, 'plan.md'), 'v1\n');
+    const provider = new MockProvider('mock', [
+      toolTurn('vaultWrite', { path: 'plan.md', content: 'agent rewrite\n', mode: 'replace' }),
+      textTurn('done'),
+    ]);
+    const session = makeTestSession(provider, {
+      vaultRoot: root,
+      approve: () => {
+        writeFileSync(join(root, 'plan.md'), 'v1\nmine\n');
+        return { approve: true };
+      },
+    });
+    await session.agent.run('go');
+    expect(readFileSync(join(root, 'plan.md'), 'utf8')).toBe('v1\nmine\n');
+    const end = session.events.find((e) => e.type === 'tool-end');
+    expect(end?.type === 'tool-end' && end.result.content).toMatch(/changed since you approved/);
+  });
+});
+
+// Vault v1, 1.6: a deny means deny, a listing never shows what a deny closes,
+// and the approval sheet is told which choices take effect.
+describe('vault permissions mean what they say', () => {
+  it('a deny rule on vaultWrite wins over always-ask; an allow still only asks', () => {
+    const deny = new PermissionEngine({
+      ...DEFAULT_PERMISSIONS,
+      rules: [{ tool: 'vaultWrite', decision: 'deny' }],
+    });
+    expect(
+      deny.decide({ toolName: 'vaultWrite', risk: 'write', path: 'a.md', alwaysAsk: true })
+        .decision,
+    ).toBe('deny');
+    // A session grant (never offered for it) cannot hide the deny either.
+    deny.allowForSession('vaultWrite');
+    expect(deny.decide({ toolName: 'vaultWrite', risk: 'write', alwaysAsk: true }).decision).toBe(
+      'deny',
+    );
+    const allow = new PermissionEngine({
+      ...DEFAULT_PERMISSIONS,
+      rules: [{ tool: 'vaultWrite', decision: 'allow' }],
+    });
+    expect(allow.decide({ toolName: 'vaultWrite', risk: 'write', alwaysAsk: true }).decision).toBe(
+      'ask',
+    );
+  });
+
+  it('a scoped deny fences a folder, and a deny default switches vault writes off', () => {
+    const fenced = new PermissionEngine({
+      ...DEFAULT_PERMISSIONS,
+      rules: [{ tool: 'vaultWrite', decision: 'deny', pathGlob: 'Journal/**' }],
+    });
+    const decide = (path: string) =>
+      fenced.decide({ toolName: 'vaultWrite', risk: 'write', path, alwaysAsk: true }).decision;
+    expect(decide('Journal/2026-09-27.md')).toBe('deny');
+    expect(decide('Work/plan.md')).toBe('ask');
+    const off = new PermissionEngine({
+      ...DEFAULT_PERMISSIONS,
+      defaults: { ...DEFAULT_PERMISSIONS.defaults, write: 'deny' },
+    });
+    expect(off.decide({ toolName: 'vaultWrite', risk: 'write', alwaysAsk: true }).decision).toBe(
+      'deny',
+    );
+  });
+
+  it('in the loop, a denied vaultWrite never asks and never writes', async () => {
+    const provider = new MockProvider('mock', [
+      toolTurn('vaultWrite', { path: 'a.md', content: 'x', mode: 'replace' }),
+      textTurn('done'),
+    ]);
+    const session = makeTestSession(provider, {
+      vaultRoot: root,
+      configOverrides: {
+        permissions: {
+          defaults: { write: 'allow', shell: 'ask' },
+          rules: [{ tool: 'vaultWrite', decision: 'deny' }],
+        },
+      },
+    });
+    await session.agent.run('go');
+    expect(session.approvals).toEqual([]);
+    expect(session.events.some((e) => e.type === 'tool-denied')).toBe(true);
+    expect(existsSync(join(root, 'a.md'))).toBe(false);
+  });
+
+  function seedFenced(): void {
+    writeFileSync(join(root, 'Home.md'), '# Home');
+    mkdirSync(join(root, 'Private'), { recursive: true });
+    writeFileSync(join(root, 'Private', 'diary.md'), 'x');
+    writeFileSync(join(root, 'Private', 'secret plan.md'), 'x');
+    mkdirSync(join(root, 'Work'), { recursive: true });
+    writeFileSync(join(root, 'Work', 'a.md'), 'x');
+  }
+
+  it('vaultList hides the notes a deny rule closes, and the folder itself', async () => {
+    seedFenced();
+    const engine = new PermissionEngine({
+      ...DEFAULT_PERMISSIONS,
+      rules: [{ tool: 'vaultRead', decision: 'deny', pathGlob: 'Private/**' }],
+    });
+    const fenced = {
+      vaultRoot: root,
+      denies: (toolName: string, path: string) =>
+        engine.decide({ toolName, risk: 'read', path }).decision === 'deny',
+    } as unknown as ToolContext;
+    const list = (await vaultListTool.execute({}, fenced)).content;
+    expect(list).not.toContain('Private');
+    expect(list.split('\n')).toEqual([
+      "2 notes. Showing 1 to 2. 2 more are hidden by the person's permission rules.",
+      'Home.md (6b)',
+      'Work/a.md (1b)',
+    ]);
+    expect(await vaultListTool.execute({ folder: 'Private' }, fenced)).toEqual({
+      ok: false,
+      content: "Private is closed to the agent by the person's permission rules.",
+    });
+    const typo = await vaultListTool.execute({ folder: 'Wrk' }, fenced);
+    expect(typo.content).toBe(
+      'There is no folder named "Wrk" in the vault. Its top folders: "Work".',
+    );
+    // Unfenced, nothing is hidden.
+    expect((await vaultListTool.execute({}, ctx())).content).toContain('Private/diary.md');
+  });
+
+  it("in the loop, vaultList answers from the session's own rules", async () => {
+    seedFenced();
+    const provider = new MockProvider('mock', [toolTurn('vaultList', {}), textTurn('done')]);
+    const session = makeTestSession(provider, {
+      vaultRoot: root,
+      configOverrides: {
+        permissions: {
+          defaults: { write: 'allow', shell: 'ask' },
+          rules: [{ tool: 'vaultList', decision: 'deny', pathGlob: 'Private/**' }],
+        },
+      },
+    });
+    await session.agent.run('go');
+    const end = session.events.find((e) => e.type === 'tool-end');
+    const content = end?.type === 'tool-end' ? end.result.content : '';
+    expect(content).toContain('Work/a.md');
+    expect(content).not.toContain('Private');
+  });
+
+  it('the approval request carries alwaysAsk for vaultWrite and not for other writes', async () => {
+    const provider = new MockProvider('mock', [
+      toolTurn('writeFile', { path: 'a.txt', content: 'x' }, 'c1'),
+      toolTurn('vaultWrite', { path: 'a.md', content: 'x', mode: 'replace' }, 'c2'),
+      textTurn('done'),
+    ]);
+    const session = makeTestSession(provider, {
+      vaultRoot: root,
+      configOverrides: { permissions: { defaults: { write: 'ask', shell: 'ask' } } },
+    });
+    await session.agent.run('go');
+    expect(session.approvals.map((a) => [a.toolName, a.alwaysAsk])).toEqual([
+      ['writeFile', undefined],
+      ['vaultWrite', true],
+    ]);
+    expect('alwaysAsk' in session.approvals[0]!).toBe(false);
   });
 });

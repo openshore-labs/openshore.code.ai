@@ -46,6 +46,7 @@ import {
 } from '../src/routines/lock.js';
 import { spawn, type ChildProcess } from 'node:child_process';
 import * as store from '../src/routines/store.js';
+import { bootstrapSession } from '../src/core/agent/bootstrap.js';
 
 let home: string;
 let vault: string;
@@ -509,6 +510,55 @@ describe('routine scheduler', () => {
     );
     expect(opened.driver.id).toBe('d2');
     expect(routineCaps({ maxMinutes: 20 })).toEqual({ wallClockSeconds: 1200, maxSteps: 40 });
+  });
+
+  // Vault v1, 1.6: nobody is at the desk to approve an always-ask vault write
+  // during a routine, and the scheduler's own note already records the run.
+  it('a headless run keeps the vault reads and has no vaultWrite', () => {
+    writeFileSync(
+      join(home, 'config.json'),
+      JSON.stringify({ stack: { orchestrator: { provider: 'ollama', model: 'qwen' } } }),
+    );
+    const routine = store.createRoutine(input({ access: 'edit' }));
+    let tools: string[] = [];
+    const opened = defaultOpenSession(routine, 'default', (options) => {
+      const result = bootstrapSession({ ...options, persist: false });
+      tools = result.tools.names();
+      return result;
+    });
+    (opened.driver as unknown as { dispose(): void }).dispose();
+    expect(tools).toEqual(expect.arrayContaining(['vaultRead', 'vaultList']));
+    expect(tools).not.toContain('vaultWrite');
+    // A session at the desk keeps it.
+    const desk = bootstrapSession({ cwd: workspace, profile: 'local-interactive', persist: false });
+    expect(desk.tools.names()).toContain('vaultWrite');
+    desk.driver.dispose();
+    // And the run is told its report becomes the note on its own.
+    expect(routineInstructions(routine)).toContain("saved to their vault as this run's note");
+  });
+
+  it('never replaces a note already at the run note name, and leaves no temp file', () => {
+    const routine = store.createRoutine(input());
+    const clock = { now: at(0, 6, 0, 5) };
+    const { scheduler, opened } = makeScheduler(clock);
+    const d = clock.now;
+    const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    // The person already has a note at that name (Obsidian, a sync client).
+    mkdirSync(join(vault, 'Crew', 'Morning review'), { recursive: true });
+    writeFileSync(join(vault, 'Crew', 'Morning review', `${date} 06-00.md`), 'mine');
+    scheduler.runNow(routine.id);
+    opened[0]!.emit({ type: 'text-final', text: 'Run result.' });
+    opened[0]!.emit({ type: 'task-done', reason: 'complete' });
+    const notePath = scheduler.get(routine.id)!.lastRun!.notePath!;
+    expect(notePath).toBe(`Crew/Morning review/${date} 06-00 (2).md`);
+    expect(readFileSync(join(vault, 'Crew', 'Morning review', `${date} 06-00.md`), 'utf8')).toBe(
+      'mine',
+    );
+    expect(readFileSync(join(vault, notePath), 'utf8')).toContain('Run result.');
+    expect(readdirSync(join(vault, 'Crew', 'Morning review')).sort()).toEqual([
+      `${date} 06-00 (2).md`,
+      `${date} 06-00.md`,
+    ]);
   });
 
   it('covers Friday in the Monday morning review', () => {

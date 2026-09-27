@@ -12,7 +12,7 @@ import type { ChatMessage, ContentPart, Provider, ToolCallRequest } from '../../
 import { leavesThisNetwork, ProviderError } from '../../providers/types.js';
 import { adapterFor, type ModelAdapter } from '../../providers/adapters/index.js';
 import type { DelegatedUsage, Router } from '../../router/router.js';
-import type { ToolContext, ToolDef, ToolRegistry } from '../tools/index.js';
+import type { ApprovedPreview, ToolContext, ToolDef, ToolRegistry } from '../tools/index.js';
 import { effectiveMode } from './modes.js';
 import { uxStandardPrompt } from './uxStandard.js';
 import { humanizerStandardPrompt } from './humanizerStandard.js';
@@ -241,6 +241,20 @@ export class AgentSession {
     // usage here, so its tokens hit the rails and its dollars are visible.
     deps.toolContext.noteUsage = (usage: DelegatedUsage) => {
       this.recordUsage(usage.model, usage.kind, usage.promptTokens, usage.completionTokens);
+    };
+    // A tool that lists (vaultList) hides what the person's policy denies, so
+    // the model never sees the names inside a fenced-off folder.
+    deps.toolContext.denies = (toolName: string, path: string) => {
+      const tool = deps.tools.get(toolName);
+      return (
+        deps.permissions.decide({
+          toolName,
+          risk: tool?.risk ?? 'read',
+          path,
+          cwd: deps.toolContext.cwd,
+          alwaysAsk: tool?.alwaysAsk,
+        }).decision === 'deny'
+      );
     };
   }
 
@@ -520,8 +534,10 @@ export class AgentSession {
     // which is any real workspace, and the seat can read files. The write half
     // goes only to a seat offered projectMemoryWrite: a lean seat whose cut
     // drops it is still pointed at the top sheet, never told to use the tool.
+    // The Memory switch off (config memory.enabled, the app's override folded
+    // in at bootstrap) leaves the whole block out.
     const memorySeg = memorySegment(toolContext.projectName, toolContext.cwd);
-    if (memorySeg && offered.has('readFile')) {
+    if (memorySeg && offered.has('readFile') && this.deps.config.memory?.enabled !== false) {
       parts.push(projectMemoryPrompt(memorySeg, { write: offered.has(PROJECT_MEMORY_WRITE_TOOL) }));
     }
     // Project secrets, present only for a local orchestrator (bootstrap drops
@@ -1135,6 +1151,10 @@ export class AgentSession {
       return 'failed';
     }
 
+    // What the person approves, kept for execute: a tool whose preview names
+    // its basis (vaultWrite, the note's bytes) refuses when that changed while
+    // the approval sat. Set only after an ask whose preview succeeded.
+    let approved: ApprovedPreview | undefined;
     if (decision.decision === 'ask') {
       let summary = `${call.name}`;
       let detail: string | undefined;
@@ -1143,6 +1163,7 @@ export class AgentSession {
           const preview = await tool.preview(call.args, toolContext);
           summary = preview.summary;
           detail = preview.detail;
+          approved = { basis: preview.basis };
         } else {
           summary = `${call.name} ${JSON.stringify(call.args).slice(0, 120)}`;
         }
@@ -1156,6 +1177,9 @@ export class AgentSession {
         risk: tool.risk,
         summary,
         detail,
+        // An always-ask tool can never be allowed for the session or the
+        // project, so the sheet shows only the choices that take effect.
+        ...(tool.alwaysAsk ? { alwaysAsk: true } : {}),
       });
       // C1: the session was aborted while this approval was pending. Do not run
       // the tool; report an abort so run() settles instead of wedging.
@@ -1200,7 +1224,9 @@ export class AgentSession {
     const startedAt = Date.now();
     let result;
     try {
-      result = await tool.execute(call.args, toolContext);
+      result = approved
+        ? await tool.execute(call.args, toolContext, approved)
+        : await tool.execute(call.args, toolContext);
     } catch (err) {
       result = {
         ok: false,

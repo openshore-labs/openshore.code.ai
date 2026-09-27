@@ -55,6 +55,15 @@ export function buildToolRegistry(options: {
   // holds it (overlapsVault), so the file tools cannot reach it either.
   // Undefined means on.
   vault?: boolean;
+  // Off leaves vaultWrite out while the vault reads stay: a headless routine
+  // run has nobody to approve an always-ask write, and the scheduler's own
+  // note already records the run. Undefined means on.
+  vaultWrite?: boolean;
+  // Off leaves projectMemoryWrite out (the Memory switch, config
+  // memory.enabled). It must be unregistered, not merely left out of the
+  // prompt, because the permission engine allows it by name. Undefined means
+  // on.
+  memory?: boolean;
 }): ToolRegistry {
   const registry = new ToolRegistry();
   registry.register(readFileTool);
@@ -92,12 +101,12 @@ export function buildToolRegistry(options: {
   if (options.vault !== false) {
     registry.register(vaultReadTool);
     registry.register(vaultListTool);
-    registry.register(vaultWriteTool);
+    if (options.vaultWrite !== false) registry.register(vaultWriteTool);
   }
   // The project-memory notes are the exception: hard-scoped to five files in
   // the project's repo ("OpenShore Project <name> MDs/"), so these writes land
   // without asking (the engine auto-allows this tool by name).
-  registry.register(projectMemoryWriteTool);
+  if (options.memory !== false) registry.register(projectMemoryWriteTool);
   // Specialist-facing tools appear only when the stack can serve them, so a
   // single-model setup never tempts the model with tools that cannot work. They
   // delegate to other models (some of which may be cloud), so egress lockdown

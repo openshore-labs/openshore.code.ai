@@ -3,13 +3,18 @@
 // any editor and matches the app's Vault. The agent reads and lists freely, but
 // every WRITE is always-ask: it prompts the user with a diff and never lands a
 // byte without approval (the founder's ruling, enforced by alwaysAsk here plus
-// the permission engine honoring it before any auto-allow path).
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+// the permission engine honoring it before any auto-allow path). A write lands
+// exactly as approved or not at all: execute re-checks the bytes the preview
+// showed, and saves through the same writeNote the app uses on this folder
+// (core/vault/noteFile.ts), atomic and guarded by the note's version.
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
-import { dirname, join, relative, sep } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { z } from 'zod';
 import { Jail } from '../security/jail.js';
 import { unifiedDiff } from '../edit/diff.js';
+import { NotANoteError, readNoteBytes, writeNote } from '../vault/noteFile.js';
 import { capContent, type ToolContext, type ToolDef } from './index.js';
 
 /** The vault root for this session, ensured to exist, as a jail so a note path
@@ -85,6 +90,19 @@ const writeSchema = z.object({
     .describe('replace the whole note, or append to the end of an existing one'),
 });
 
+/** What an approval was given against: a hash of the note's raw bytes, or
+ *  "absent" when there was no note. Byte equality is the question an approval
+ *  asks, so a touch or a sync client's identical rewrite never refuses a write
+ *  the person approved, and any real edit does. */
+function basisOf(bytes: Buffer | undefined): string {
+  return bytes ? `sha256:${createHash('sha256').update(bytes).digest('hex')}` : 'absent';
+}
+
+/** The refusal when the note moved under an approval: the model reads it
+ *  again and proposes a fresh write, which the person sees as a fresh diff. */
+const CHANGED_SINCE_APPROVAL =
+  'The note changed since you approved it. Read it again with vaultRead, then propose the write again.';
+
 export const vaultWriteTool: ToolDef<typeof writeSchema> = {
   name: 'vaultWrite',
   description:
@@ -100,23 +118,47 @@ export const vaultWriteTool: ToolDef<typeof writeSchema> = {
     const jail = vaultJail(ctx);
     const rel = normalizeNotePath(args.path);
     const abs = jail.resolve(rel);
-    const before = existsSync(abs) ? readFileSync(abs, 'utf8') : '';
+    // One read of the raw bytes: the diff is built from them, and their hash
+    // travels to execute as the basis the person approved against.
+    const current = await readNoteBytes(abs);
+    const before = current ? current.bytes.toString('utf8') : '';
     const after = applied(before, args.content, args.mode);
     const { text, stats } = unifiedDiff(before, after, rel);
     const verb = before ? (args.mode === 'append' ? 'Append to' : 'Update') : 'Create';
     return {
       summary: `Vault: ${verb} ${rel} (+${stats.additions} -${stats.deletions})`,
       detail: text || '(no textual change)',
+      basis: basisOf(current?.bytes),
     };
   },
-  async execute(args, ctx) {
+  async execute(args, ctx, approved) {
     const jail = vaultJail(ctx);
     const rel = normalizeNotePath(args.path);
     const abs = jail.resolve(rel);
-    const before = existsSync(abs) ? readFileSync(abs, 'utf8') : '';
+    let current;
+    try {
+      // The bytes and the version token of exactly those bytes, together.
+      current = await readNoteBytes(abs);
+    } catch (err) {
+      if (err instanceof NotANoteError) return { ok: false, content: err.message };
+      throw err;
+    }
+    // The note must still be what the person saw the diff against. Without a
+    // basis (the preview failed) the execute-time guard below still holds.
+    if (approved?.basis !== undefined && approved.basis !== basisOf(current?.bytes)) {
+      return { ok: false, content: CHANGED_SINCE_APPROVAL };
+    }
+    const before = current ? current.bytes.toString('utf8') : '';
     const after = applied(before, args.content, args.mode);
-    mkdirSync(dirname(abs), { recursive: true });
-    writeFileSync(abs, after);
+    // The write carries the version read above, so an edit landing between
+    // that read and the save is refused too, never overwritten; a new note is
+    // created only while the name is still free.
+    const saved = await writeNote(
+      abs,
+      after,
+      current ? { ifMatch: current.version } : { ifAbsent: true },
+    );
+    if (!saved.ok) return { ok: false, content: CHANGED_SINCE_APPROVAL };
     const { text, stats } = unifiedDiff(before, after, rel);
     return {
       ok: true,
@@ -280,11 +322,18 @@ function folderHints(notes: string[], base: string): string {
   return hints.join(', ');
 }
 
+/** Whether the person's permission rules close a vault path to the agent: a
+ *  deny on reading it or on listing it. A folder is asked as "folder/", so a
+ *  "Private/**" rule covers the folder itself (Vault v1, 1.6). */
+function closed(ctx: ToolContext, path: string): boolean {
+  return Boolean(ctx.denies?.('vaultRead', path) || ctx.denies?.('vaultList', path));
+}
+
 /** The folders at the top of the vault, for a folder name that missed. */
-async function topFolders(root: string): Promise<string> {
+async function topFolders(root: string, ctx: ToolContext): Promise<string> {
   try {
     const names = (await readdir(root, { withFileTypes: true }))
-      .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+      .filter((e) => e.isDirectory() && !e.name.startsWith('.') && !closed(ctx, `${e.name}/`))
       .map((e) => e.name)
       .sort();
     const shown = names.slice(0, FOLDER_HINTS).map((name) => `"${name}"`);
@@ -304,13 +353,21 @@ export const vaultListTool: ToolDef<typeof listSchema> = {
     const root = ctx.vaultRoot;
     if (!root || !existsSync(root)) return { ok: true, content: 'The vault is empty.' };
     const base = args.folder ? normalizeFolder(args.folder) : '';
+    // A folder the person fenced off is said to be closed, before anything
+    // about what is inside it (or whether it exists) is looked at.
+    if (base && closed(ctx, `${base}/`)) {
+      return {
+        ok: false,
+        content: `${base} is closed to the agent by the person's permission rules.`,
+      };
+    }
     const start = base ? new Jail(root).resolve(base) : root;
     if (base) {
       // A slip in the folder name, or a note passed as a folder, is not an
       // empty vault: saying so would invite notes that duplicate real ones.
       const info = await stat(start).catch(() => undefined);
       if (!info) {
-        const top = await topFolders(root);
+        const top = await topFolders(root, ctx);
         return {
           ok: false,
           content: `There is no folder named "${base}" in the vault.${top ? ` Its top folders: ${top}.` : ''}`,
@@ -325,9 +382,23 @@ export const vaultListTool: ToolDef<typeof listSchema> = {
         };
       }
     }
-    const { notes, stopped, unreadable } = await walkNotes(start, base, WALK_CEILING);
+    const walked = await walkNotes(start, base, WALK_CEILING);
+    const { stopped, unreadable } = walked;
     if (unreadable) {
       return { ok: false, content: `Could not read ${base || 'the vault'} (${unreadable}).` };
+    }
+    // Notes a deny rule closes stay out of the list, its count, and the folder
+    // hints, so the model never sees names it may not read.
+    const notes = walked.notes.filter((rel) => !closed(ctx, rel));
+    const hidden = walked.notes.length - notes.length;
+    const hiddenLine = hidden
+      ? ` ${hidden} more ${hidden === 1 ? 'is' : 'are'} hidden by the person's permission rules.`
+      : '';
+    if (!notes.length && hidden) {
+      return {
+        ok: true,
+        content: `No notes${base ? ` under ${base}` : ''} are open to the agent; the person's permission rules hide ${hidden}.`,
+      };
     }
     if (!notes.length) {
       return {
@@ -366,9 +437,9 @@ export const vaultListTool: ToolDef<typeof listSchema> = {
     const render = (): string => {
       const shown = rows.length;
       const lines = [
-        shown
+        (shown
           ? `${total} note${plural}${where}. Showing ${offset + 1} to ${offset + shown}.`
-          : `${total} note${plural}${where}; none after offset ${offset}.`,
+          : `${total} note${plural}${where}; none after offset ${offset}.`) + hiddenLine,
         ...rows,
       ];
       const after = notes.length - offset - shown;

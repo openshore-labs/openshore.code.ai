@@ -20,6 +20,7 @@ import {
   PermissionEngine,
   DEFAULT_PERMISSIONS,
   commandMatchesPrefix,
+  type PermissionRule,
 } from '../src/core/permissions/index.js';
 import { minimatch } from '../src/core/util/minimatch.js';
 
@@ -230,6 +231,29 @@ describe('profiles and permissions', () => {
     engine.allowForSession('runShell');
     const decision = engine.decide({ toolName: 'runShell', risk: 'shell' });
     expect(decision.decision).toBe('ask');
+  });
+
+  // Vault v1, 1.6: always-ask is the floor for loudness, never a ceiling on
+  // strictness. It turns every allow into an ask and leaves every deny a deny.
+  it('always-ask only upgrades an allow to an ask; a deny rule or a deny default wins', () => {
+    const q = { toolName: 'vaultWrite', risk: 'write' as const, path: 'a.md', alwaysAsk: true };
+    const withRules = (rules: PermissionRule[]) =>
+      new PermissionEngine({ ...DEFAULT_PERMISSIONS, rules }).decide(q).decision;
+    expect(withRules([])).toBe('ask');
+    expect(withRules([{ tool: 'vaultWrite', decision: 'allow' }])).toBe('ask');
+    expect(withRules([{ tool: '*', decision: 'allow' }])).toBe('ask');
+    expect(withRules([{ tool: 'vaultWrite', decision: 'deny' }])).toBe('deny');
+    expect(withRules([{ tool: '*', decision: 'deny', pathGlob: '*.md' }])).toBe('deny');
+    const trusted = new PermissionEngine(
+      { ...DEFAULT_PERMISSIONS, trustedRepos: ['/repo'] },
+      PROFILES['local-interactive'],
+    );
+    expect(trusted.decide({ ...q, cwd: '/repo' }).decision).toBe('ask');
+    const writesOff = new PermissionEngine({
+      ...DEFAULT_PERMISSIONS,
+      defaults: { ...DEFAULT_PERMISSIONS.defaults, write: 'deny' },
+    });
+    expect(writesOff.decide(q).decision).toBe('deny');
   });
 
   it('glob-scoped rules match writes precisely', () => {

@@ -170,6 +170,7 @@ async function runDeep(
     stackHasVision: false,
     stackHasImageGen: false,
     stackHasSpecialists: false,
+    memory: evalConfig.memory?.enabled !== false,
   });
   const profile = profileFor('local-interactive');
   const permConfig = {
