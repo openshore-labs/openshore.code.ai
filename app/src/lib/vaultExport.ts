@@ -137,5 +137,7 @@ export function vaultExportLine(r: VaultExportResult): string {
     return `${r.written} of ${r.total} notes exported ${where}. The rest could not be read right now; export again to bring them.`;
   }
   const noun = r.written === 1 ? 'note' : 'notes';
-  return `${r.written} ${noun} exported ${where}. It is a copy: edits made there stay there.`;
+  // A one-way copy: the next export writes every note again, so an edit made
+  // to one of these files elsewhere does not survive it (copy-3).
+  return `${r.written} ${noun} exported ${where}. It is a one-way copy: exporting again replaces these files.`;
 }

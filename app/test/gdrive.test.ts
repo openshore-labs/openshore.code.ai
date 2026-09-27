@@ -7,10 +7,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Connected, so the held-back check below proves Drive stays unpickable even
-// with an account on the device.
+// with an account on the device. A case can take the account away (a
+// sign-out or an expired grant deletes the tokens).
+const auth = vi.hoisted(() => ({ token: 'test-token' as string | undefined }));
 vi.mock('../src/lib/gitos/gdriveAuth.js', () => ({
-  gdriveAccessToken: async () => 'test-token',
-  isGdriveConnected: async () => true,
+  gdriveAccessToken: async () => auth.token,
+  isGdriveConnected: async () => auth.token !== undefined,
   isGdriveConfigured: () => true,
   connectGdrive: async () => ({ ok: true }),
   disconnectGdrive: async () => {},
@@ -155,6 +157,7 @@ beforeEach(() => {
   drive.clear();
   idSeq = 0;
   timeTick = 0;
+  auth.token = 'test-token';
   vi.stubGlobal('fetch', fakeFetch as unknown as typeof fetch);
 });
 
@@ -298,5 +301,33 @@ describe('Google Drive cannot be picked for a new vault (0.18)', () => {
       expect(c.agent).toBeUndefined();
       expect(c.obsidian).toBeUndefined();
     }
+  });
+});
+
+// 0.18: the read-only card's one-tap way off reads every note first, and a
+// Drive read needs the Google account, which every sign-out and any expired
+// grant takes away. Without it the move can never read the vault, so the
+// card and the toast say to reconnect, never to try again in a moment.
+describe('a Drive vault whose Google account is gone (0.18)', () => {
+  it('cannot be read to move, and the card and the toast say reconnect', async () => {
+    const r = res();
+    await gdriveProvider.write(r, 'a.md', 'kept on Drive');
+    auth.token = undefined;
+    await expect(gdriveProvider.read(r, 'a.md')).rejects.toThrow('Google Drive is not connected.');
+    const { isGdriveConnected } = await import('../src/lib/gitos/index.js');
+    expect(await isGdriveConnected()).toBe(false);
+    const { vaultDriveCard, vaultDriveMoveRefusal, vaultMoveLine } =
+      await import('../src/lib/vaultCopy.js');
+    // What the store's refusal alone would say: a retry that cannot work.
+    expect(
+      vaultMoveLine({ ok: false, skipped: [], forked: [], reason: 'unreadable' }, 'This device'),
+    ).toMatch(/Try again in a moment/);
+    // What the screen says instead, once it knows the account is gone.
+    expect(vaultDriveMoveRefusal('disconnected')).toMatch(/Reconnect Google Drive/);
+    expect(vaultDriveMoveRefusal('disconnected')).not.toMatch(/in a moment/);
+    expect(vaultDriveCard('disconnected', 'This device').action?.kind).toBe('reconnect');
+    // The notes themselves are untouched on Drive.
+    auth.token = 'test-token';
+    expect((await gdriveProvider.read(r, 'a.md'))?.text).toBe('kept on Drive');
   });
 });

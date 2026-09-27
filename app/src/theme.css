@@ -1254,6 +1254,19 @@ textarea {
   margin-bottom: 10px;
 }
 
+/* A control a read-only vault turns off (New note, Edit) reads as off, the
+   way .btn:disabled does, so it never looks live while a tap does nothing.
+   The card beside it says why. The global button reset cancels the
+   browser's own graying, so it is said here. */
+.stack-add-btn:disabled,
+.vault-note-bar .icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.vault-note-bar .icon-btn:disabled:hover {
+  background: none;
+}
+
 .vault-title {
   font-family: var(--font-display);
   font-weight: var(--weight-medium);

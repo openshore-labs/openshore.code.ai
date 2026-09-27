@@ -11,7 +11,7 @@ import type { GuideCard } from './guideHarness.js';
 import { guideStepsCompact } from './setupGuides.js';
 import { AGENTIC_CURRENTS, AGENTIC_CURRENTS_TITLE } from './currents.js';
 import { HARNESS_CURRENTS, HARNESS_CURRENTS_TITLE } from './harnessCurrents.js';
-import { vaultGuideText } from './vaultCopy.js';
+import { ROUTINE_NOTES_PLACE, vaultGuideText } from './vaultCopy.js';
 
 function listOf(names: readonly string[]): string {
   return names.length > 1
@@ -587,7 +587,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     id: 'routines',
     title: 'Routines',
     where: 'Menu, Crew, Crew command',
-    text: 'A routine gives a crew member a task, a workspace, days, and a time. It runs on your own computer while your computer is on, and leaves a dated note in the Vault. Access is Read-only or May edit files, and commands still wait for your approval. There is a Morning review preset and Run now.',
+    text: `A routine gives a crew member a task, a workspace, days, and a time. It runs on your own computer while your computer is on, and leaves a dated note in ${ROUTINE_NOTES_PLACE}. Access is Read-only or May edit files, and commands still wait for your approval. There is a Morning review preset and Run now.`,
     keywords: [
       'routine',
       'routines',

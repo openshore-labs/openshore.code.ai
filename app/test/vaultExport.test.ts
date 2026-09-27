@@ -148,9 +148,22 @@ describe('exportVaultToFiles', () => {
     expect(disk.has('Vault/b.md')).toBe(false);
   });
 
+  // copy-3: the next export writes every note again, so an edit made to an
+  // exported file in Files does not stay there. The line says so, instead of
+  // promising the edit keeps.
+  it('an edit made in Files is replaced by the next export, and the line says so', async () => {
+    const first = await exportVaultToFiles([{ path: 'Ideas.md', text: 'vault text' }]);
+    disk.set('Vault/Ideas.md', 'my edit made in Files');
+    await exportVaultToFiles([{ path: 'Ideas.md', text: 'vault text' }]);
+    expect(disk.get('Vault/Ideas.md')).toBe('vault text');
+    const line = vaultExportLine(first!);
+    expect(line).not.toMatch(/stay there/);
+    expect(line).toMatch(/exporting again replaces these files/);
+  });
+
   it('says a whole export plainly, as a one-way copy', () => {
     expect(vaultExportLine({ written: 3, total: 3, removed: 0 })).toBe(
-      '3 notes exported to Files, under OpenShore / Vault. It is a copy: edits made there stay there.',
+      '3 notes exported to Files, under OpenShore / Vault. It is a one-way copy: exporting again replaces these files.',
     );
     expect(vaultExportLine({ written: 0, total: 2, removed: 0 })).toMatch(/nothing was exported/);
     for (const r of [
