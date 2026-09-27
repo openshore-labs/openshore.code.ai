@@ -68,6 +68,12 @@ import {
   type VaultContextSource,
 } from '../../harness/vaultContext.js';
 import { JevAdvisor, type FetchLike } from '../../harness/jev.js';
+import {
+  HANDOFF_MAX_TOKENS,
+  buildHandoff as coreBuildHandoff,
+  handoffBudgetTokens,
+} from '../../harness/handoff.js';
+import { handoffTurnsFromHistory, type HandoffRecord } from './handoffStore.js';
 import type { HarnessCurrentsHandle } from '../../currents/model.js';
 import type { ToolSpec } from '../../providers/types.js';
 import { MERGED_VAULT_TOOL, seatOffersVaultTool, withVaultLookupPriority } from './registry.js';
@@ -119,6 +125,15 @@ export interface AgentDeps {
   vaultContext?: VaultContextSource;
   /** The clock for the dated Current State line (tests pin it). */
   now?: () => Date;
+  /** Where a handoff goes (Vault M5, CTO J13): called after a compaction,
+   *  after each task that ends complete, and when the session is disposed,
+   *  with a short extractive summary of the chat. Bootstrap wires the
+   *  engine's store (core/agent/handoffStore.ts). Undefined, Memory off, or
+   *  `vault.handoff: 'off'` writes none. */
+  onHandoff?: (record: HandoffRecord) => void;
+  /** The handoff builder (harness/handoff.ts `buildHandoff`), a seam so a
+   *  test can stand it in. */
+  buildHandoff?: typeof coreBuildHandoff;
 }
 
 /** Whether an absolute path lies inside the vault folder (or is it), with
@@ -290,6 +305,9 @@ export class AgentSession {
   private seatWroteCurrentState = false;
   /** The harness's Current State line is written at most once per task. */
   private landedNoted = false;
+  /** What the last handoff was built from, so an unchanged chat (a dispose
+   *  right after a completed task) is not written again. */
+  private handoffSignature?: string;
 
   constructor(private readonly deps: AgentDeps) {
     const orchestrator = deps.router.orchestrator();
@@ -377,10 +395,14 @@ export class AgentSession {
   async compactNow(focus?: string): Promise<{ before: number; after: number }> {
     const before = this.history.length;
     const budget = Math.max(1, Math.floor(estimateMessages(this.history) * 0.5));
+    const full = this.history;
     const result = await compactHistory(this.history, budget, (text) =>
       this.summarize(focus ? `${text}\n\nWhen summarizing, keep everything about: ${focus}` : text),
     );
-    if (result.compacted) this.history = result.messages;
+    if (result.compacted) {
+      this.history = result.messages;
+      this.writeHandoff(full);
+    }
     const after = this.history.length;
     this.emit({
       type: 'status',
@@ -569,6 +591,9 @@ export class AgentSession {
           query: this.taskQuery,
           currentState: prepared.currentState,
           pins: prepared.pins,
+          ...(hasVault && prepared.projectPins?.length
+            ? { projectPins: prepared.projectPins }
+            : {}),
           handoff: prepared.handoff,
           budgetTokens,
           privacy: prepared.privacy,
@@ -601,6 +626,58 @@ export class AgentSession {
       withheld: pack.withheld,
       cold: pack.cold,
     });
+  }
+
+  // -------------------------------------------------------------------------
+  // The handoff (Vault M5, 5.4, CTO J13)
+  // -------------------------------------------------------------------------
+
+  /** A handoff is written when a sink is wired, Memory is on (F6), and
+   *  `vault.handoff` is not off. */
+  private get handoffEnabled(): boolean {
+    return (
+      this.deps.onHandoff !== undefined &&
+      this.deps.config.memory?.enabled !== false &&
+      this.deps.config.vault?.handoff !== 'off'
+    );
+  }
+
+  /**
+   * Build a handoff from `source` (the history as it stood, before a
+   * compaction folded it) and hand it to the sink. Extractive and offline;
+   * never thinking, never a local-only message (the adapter drops both).
+   * Sized for the seat that held the chat, capped at HANDOFF_MAX_TOKENS.
+   * Best effort: a failure costs the summary, never the task.
+   */
+  private writeHandoff(source: readonly ChatMessage[]): void {
+    if (!this.handoffEnabled) return;
+    try {
+      const turns = handoffTurnsFromHistory(source);
+      if (!turns.some((t) => t.role === 'user')) return;
+      const last = turns[turns.length - 1]!;
+      const signature = JSON.stringify([turns.length, last.role, last.text, last.tool]);
+      if (signature === this.handoffSignature) return;
+      const budget = handoffBudgetTokens(this.contextTokens) || HANDOFF_MAX_TOKENS;
+      const now = this.deps.now?.() ?? new Date();
+      const build = this.deps.buildHandoff ?? coreBuildHandoff;
+      const handoff = build(turns, budget, { from: this.active.model, date: localDate(now) });
+      if (!handoff.text.trim()) return;
+      this.handoffSignature = signature;
+      this.deps.onHandoff!({
+        text: handoff.text,
+        at: now.toISOString(),
+        model: this.active.model,
+        turns: handoff.turns,
+      });
+    } catch (err) {
+      log.warn('could not write a handoff', { err: String(err) });
+    }
+  }
+
+  /** The session is ending (the daemon evicts or disposes it): write the
+   *  latest handoff unless nothing changed since the last one. */
+  flushHandoff(): void {
+    this.writeHandoff(this.history);
   }
 
   /** The code map cut to its class's share of the served window (I2), at a
@@ -725,7 +802,14 @@ export class AgentSession {
   // System prompt
   // -------------------------------------------------------------------------
 
-  private systemPrompt(toolMode: 'native' | 'text'): string {
+  /**
+   * The system prompt, with the offset where the vault pack begins (CTO
+   * J17): everything before it is stable across turns of one seat, so the
+   * Anthropic provider can cache that head when prompt caching is on. The
+   * adapters only append to the prompt, so the offset holds after them. No
+   * pack, no offset.
+   */
+  private systemPrompt(toolMode: 'native' | 'text'): { content: string; cacheAt?: number[] } {
     const { toolContext, codeMap } = this.deps;
     // The prompt names only tools this seat is offered, so a lean seat is never
     // told to reach for one it cannot see.
@@ -863,11 +947,18 @@ export class AgentSession {
     // The vault context pack, after the code map and before the tool protocol:
     // stable to volatile, so the multi-KB standards above keep their KV reuse
     // across tasks, and the protocol keeps its recency for a small seat (I8).
-    if (this.currentPack) parts.push(this.currentPack.text);
+    let packAt: number | undefined;
+    if (this.currentPack) {
+      packAt = parts.length ? parts.join('\n\n').length + 2 : 0;
+      parts.push(this.currentPack.text);
+    }
     if (toolMode === 'text') {
       parts.push(textProtocolInstructions(this.deps.tools));
     }
-    return this.active.adapter.systemPreamble(parts.join('\n\n'));
+    const content = this.active.adapter.systemPreamble(parts.join('\n\n'));
+    return packAt !== undefined && packAt > 0 && packAt < content.length
+      ? { content, cacheAt: [packAt] }
+      : { content };
   }
 
   // -------------------------------------------------------------------------
@@ -979,8 +1070,9 @@ export class AgentSession {
       // Refresh the system prompt each turn (tool mode and model can change).
       // An answer-only turn carries no tools and no text protocol, so the
       // model's only move is to answer.
+      const system = this.systemPrompt(this.answerOnly ? 'native' : toolMode);
       this.history = [
-        { role: 'system', content: this.systemPrompt(this.answerOnly ? 'native' : toolMode) },
+        { role: 'system', ...system },
         ...this.history.filter((m) => m.role !== 'system'),
       ];
 
@@ -990,6 +1082,7 @@ export class AgentSession {
       // The class sets how full the window gets before this runs (I2). On a
       // leaving seat the summary itself is a request off this network, so it
       // is built from the stubbed history, never from a local-only note.
+      const beforeCompaction = this.history;
       const compacted = await compactHistory(
         leaves ? withholdLocalOnly(this.history) : this.history,
         caps.contextTokens,
@@ -999,6 +1092,9 @@ export class AgentSession {
       if (compacted.compacted) {
         this.history = compacted.messages;
         this.emit({ type: 'status', message: 'Compacted older turns to fit the context window.' });
+        // What was folded is kept as a handoff (J13), built from the history
+        // as it stood, so the summary the model reads never has to carry it.
+        this.writeHandoff(beforeCompaction);
       }
 
       this.emit({
@@ -1248,6 +1344,9 @@ export class AgentSession {
         }
         if (verdict === 'passed') this.maybeNoteLanded();
         await this.maybeJevJudge(verdict);
+        // A clean session end is rare, so each completed task leaves the
+        // latest handoff; the last one standing is the session's (J13).
+        this.writeHandoff(this.history);
         this.emit({ type: 'task-done', reason: 'complete' });
         return;
       }

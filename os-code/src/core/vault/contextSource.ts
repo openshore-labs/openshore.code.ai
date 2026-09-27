@@ -12,6 +12,12 @@
 // index is null, the pack is Current State only (the builder marks it cold),
 // and the build goes on in the background for the next task.
 //
+// Vault M5 adds two inputs the person placed, not the index: the project's own
+// pins (CTO J14), read first, in both modes, with privacy judged from the
+// note itself; and the latest handoff (J13), read on the session's first
+// prepare only. The handoff stays a full-mode layer, so by default it reaches
+// no seat until the 4.8 eval says it should.
+//
 // A thin adapter on purpose: the planning and rendering are the pure
 // planContextPack and buildContextPack in harness/vaultContext.ts, injected
 // here so a test can stand them in.
@@ -24,7 +30,11 @@ import {
   type VaultContextSource,
 } from '../../harness/vaultContext.js';
 import { compareCodePoints, type VaultIndex } from '../../harness/vault/index.js';
-import type { VaultPrivacy } from '../../harness/vault/types.js';
+import { readFrontmatter } from '../../harness/vault/frontmatter.js';
+import { isNotePath } from '../../harness/vault/paths.js';
+import { oscodeMarks } from '../../harness/vault/privacy.js';
+import { scanNote } from '../../harness/vault/scan.js';
+import type { VaultPrivacy, VaultVisibility } from '../../harness/vault/types.js';
 import { readFile } from 'node:fs/promises';
 import { CURRENT_STATE_FILE, memoryFilePath, memorySegment } from '../agent/projectMemory.js';
 import { Jail } from '../security/jail.js';
@@ -38,6 +48,9 @@ export { VAULT_PACK_COLD_MS } from '../../harness/vaultContext.js';
 
 /** Frontmatter pins a prepare hands on at most (the builder takes at most 3). */
 export const PREPARED_PINS_MAX = 8;
+
+/** Project pins a prepare reads at most (`Project.vaultPins` holds 8). */
+export const PROJECT_PINS_MAX = 8;
 
 export interface VaultContextSourceOptions {
   /** The session's own vault root; unset leaves every vault layer out (the
@@ -53,6 +66,13 @@ export interface VaultContextSourceOptions {
     | Promise<{ path: string; text: string } | undefined>;
   /** The session's lockdown, carried into the host's plan. */
   lockdown?: { egress: boolean; secrets: boolean };
+  /** The project's own pins (`BootstrapOptions.vaultPins`, CTO J14), note
+   *  paths in the person's order. Read first by every prepare. */
+  projectPins?: readonly string[];
+  /** The latest stored handoff (CTO J13), asked once, on the first prepare
+   *  only; undefined or a throw means none. The caller gates it (the
+   *  `vault.handoff` key, Memory, a fresh session). */
+  handoff?: () => string | undefined | Promise<string | undefined>;
   /** The cold budget in ms (default VAULT_PACK_COLD_MS). */
   coldMs?: number;
   /** Test seams. */
@@ -110,6 +130,37 @@ export function frontmatterPins(index: VaultIndex, privacy: VaultPrivacy): strin
   return out.sort(compareCodePoints).slice(0, PREPARED_PINS_MAX);
 }
 
+/** A note's privacy judged from its own text (its frontmatter tags, inline
+ *  tags and `oscode` marks), the way the index would judge it, for a note
+ *  read before, or without, the index. The index's own entry, when there is
+ *  one, adds its tags too, so the stricter reading wins. */
+export function visibilityOfText(
+  privacy: VaultPrivacy,
+  path: string,
+  text: string,
+  index?: VaultIndex | null,
+): VaultVisibility {
+  const fm = readFrontmatter(text);
+  const entry = index?.entry(path);
+  const tags = [...fm.tags, ...scanNote(text).tags.map((t) => t.tag), ...(entry?.tags ?? [])];
+  const oscode = [...oscodeMarks(fm), ...(entry?.oscode ?? [])];
+  return privacy.visibility({ path, tags, oscode });
+}
+
+/** The project pins worth offering: note paths, deduped, at most
+ *  PROJECT_PINS_MAX, in the person's order. */
+export function cleanProjectPins(pins: readonly string[] | undefined): string[] {
+  const out: string[] = [];
+  for (const raw of pins ?? []) {
+    if (typeof raw !== 'string') continue;
+    const path = raw.trim();
+    if (!path || out.includes(path) || !isNotePath(path)) continue;
+    out.push(path);
+    if (out.length >= PROJECT_PINS_MAX) break;
+  }
+  return out;
+}
+
 /** Build the engine's VaultContextSource for one session. */
 export function createVaultContextSource(options: VaultContextSourceOptions): VaultContextSource {
   const plan = options.plan ?? corePlan;
@@ -117,8 +168,22 @@ export function createVaultContextSource(options: VaultContextSourceOptions): Va
   const readBody = options.readBody ?? readBodyFromDisk;
   const coldMs = options.coldMs ?? VAULT_PACK_COLD_MS;
   const { privacy } = options;
+  const wantedPins = cleanProjectPins(options.projectPins);
+  let handoffAsked = false;
   return {
     async prepare(task: string, signal?: AbortSignal): Promise<PreparedVaultContext> {
+      // The handoff is the session's first prepare's alone, asked even when
+      // this prepare fails further down, so a later task never picks it up.
+      let handoff: string | undefined;
+      if (!handoffAsked) {
+        handoffAsked = true;
+        try {
+          const text = await options.handoff?.();
+          if (typeof text === 'string' && text.trim()) handoff = text;
+        } catch {
+          handoff = undefined;
+        }
+      }
       let currentState: { path: string; text: string } | undefined;
       try {
         currentState = (await options.currentState?.()) ?? undefined;
@@ -139,6 +204,41 @@ export function createVaultContextSource(options: VaultContextSourceOptions): Va
       }
       const pins = index ? frontmatterPins(index, privacy) : [];
       const bodies = new Map<string, string>();
+      // The project's pins first (J14): the person placed them, so they ride
+      // in both modes. Each is judged from its own text: a hidden one is never
+      // handed on, and a local-only one the index has no entry for (a cold
+      // index, a note not indexed yet) is left out too, since the render
+      // judges by the index and could not withhold it from a leaving seat
+      // (fail closed).
+      const projectPins: string[] = [];
+      if (root && wantedPins.length && !signal?.aborted) {
+        // A note the rules hide by path (or by what the index knows of it) is
+        // never read at all; one hidden by its own frontmatter is dropped
+        // once read.
+        const readable = wantedPins.filter((path) => {
+          const e = index?.entry(path);
+          return privacy.visibility({ path, tags: e?.tags, oscode: e?.oscode }) !== 'hidden';
+        });
+        const read = new Map<string, string>();
+        await eachLimited(
+          readable,
+          LIST_CONCURRENCY,
+          async (path) => {
+            const text = await readBody(root, path);
+            if (text !== undefined) read.set(path, text);
+          },
+          () => !signal?.aborted,
+        );
+        for (const path of wantedPins) {
+          const text = read.get(path);
+          if (text === undefined) continue;
+          const seen = visibilityOfText(privacy, path, text, index);
+          if (seen === 'hidden') continue;
+          if (seen === 'local-only' && !index?.entry(path)) continue;
+          projectPins.push(path);
+          bodies.set(path, text);
+        }
+      }
       if (index && root && !signal?.aborted) {
         // The widest plan: every layer, the largest budget, a seat that stays
         // on this network. Each turn's render narrows it for its own seat.
@@ -148,6 +248,7 @@ export function createVaultContextSource(options: VaultContextSourceOptions): Va
           query: task,
           ...(currentState ? { currentState } : {}),
           pins,
+          ...(projectPins.length ? { projectPins } : {}),
           budgetTokens: VAULT_PACK_MAX_TOKENS,
           privacy,
           seat: { modelClass: 'large', leavesNetwork: false },
@@ -155,6 +256,7 @@ export function createVaultContextSource(options: VaultContextSourceOptions): Va
         }).read;
         // Belt and braces: a hidden note is never read, whatever the plan says.
         const reads = wanted.filter((path) => {
+          if (bodies.has(path)) return false;
           const e = index!.entry(path);
           return privacy.visibility({ path, tags: e?.tags, oscode: e?.oscode }) !== 'hidden';
         });
@@ -173,6 +275,8 @@ export function createVaultContextSource(options: VaultContextSourceOptions): Va
         bodies,
         ...(currentState ? { currentState } : {}),
         pins,
+        ...(projectPins.length ? { projectPins } : {}),
+        ...(handoff ? { handoff } : {}),
         privacy,
       };
     },
