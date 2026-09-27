@@ -2304,6 +2304,111 @@ export function vaultStarterConventions(settingsLanded: boolean): string {
 // label, "About this note" and Mark as reviewed, the starter preview sheet's
 // rows, the editor sample line.
 
+/** Where the writing seat ran, in words: the chip is never color alone (R4). */
+export const VAULT_PROV_WHERE: Readonly<Record<'local' | 'cloud', string>> = {
+  local: 'Local',
+  cloud: 'Cloud',
+};
+
+/** What the provenance chip says (CX Y11). `edit` is a model's edit to a note
+ *  it did not create. Reviewed keeps the Local or Cloud word beside the model
+ *  (Y17: the chip always says it in words). */
+export function vaultProvChipText(p: {
+  model: string;
+  where: 'local' | 'cloud';
+  edit?: boolean;
+  reviewed?: boolean;
+}): string {
+  const where = VAULT_PROV_WHERE[p.where];
+  if (p.reviewed) return `${p.model} · ${where} · Reviewed`;
+  return `${p.edit ? 'Edited' : 'Written'} by ${p.model} · ${where}`;
+}
+
+/** The chip's accessible name (CX Y16). */
+export function vaultProvChipLabel(p: {
+  model: string;
+  where: 'local' | 'cloud';
+  edit?: boolean;
+  reviewed?: boolean;
+}): string {
+  const on = p.where === 'local' ? 'this computer' : 'a cloud model';
+  const verb = p.edit ? 'Edited' : 'Written';
+  return `${verb} by ${p.model}, on ${on}.${p.reviewed ? ' Reviewed.' : ''} Open details.`;
+}
+
+// "About this note" (CX Y12).
+export const VAULT_ABOUT_TITLE = 'About this note';
+export const VAULT_ABOUT_WRITTEN_BY = 'Written by';
+export const VAULT_ABOUT_EDITED_BY = 'Edited by';
+export const VAULT_ABOUT_RAN = 'Ran';
+export const VAULT_ABOUT_RAN_LOCAL = 'On this computer';
+/** The cloud row names the provider when the note carries one. */
+export function vaultAboutRanCloud(provider?: string): string {
+  return provider ? `On a cloud model, ${provider}` : 'On a cloud model';
+}
+export const VAULT_ABOUT_SIZE = 'Model size';
+export const VAULT_ABOUT_SIZES: Readonly<Record<'tiny' | 'small' | 'mid' | 'large', string>> = {
+  tiny: 'Tiny',
+  small: 'Small',
+  mid: 'Mid',
+  large: 'Large',
+};
+export const VAULT_ABOUT_HOW = 'How';
+export const VAULT_ABOUT_HOWS: Readonly<
+  Record<'agent' | 'agent-edit' | 'crew' | 'handoff', string>
+> = {
+  agent: 'In a chat, with your approval',
+  'agent-edit': 'In a chat, with your approval',
+  crew: 'By a Crew routine',
+  handoff: 'A handoff you saved',
+};
+export const VAULT_ABOUT_CREATED = 'Created';
+export const VAULT_ABOUT_REVIEWED = 'Reviewed';
+export const VAULT_ABOUT_NOT_YET = 'Not yet';
+export const VAULT_ABOUT_FOOT =
+  "This comes from the note's own properties, which anyone who can edit the note can change.";
+export const VAULT_MARK_REVIEWED = 'Mark as reviewed';
+export const VAULT_MARK_REVIEWED_SUB =
+  'Reviewed means you read it. It changes nothing a model sees.';
+export const VAULT_MARK_NOT_REVIEWED = 'Mark as not reviewed';
+export const VAULT_MARKED_REVIEWED = 'Marked as reviewed.';
+export const VAULT_MARKED_NOT_REVIEWED = 'Marked as not reviewed.';
+export function vaultMarkRefused(title: string): string {
+  return `"${title}" changed somewhere else, so it was not marked. The newer version is open now.`;
+}
+export function vaultMarkFailed(title: string): string {
+  return `Could not mark "${title}", so nothing changed. Try again in a moment.`;
+}
+
+// The starter layout's preview sheet (CX Y13). The notes it writes, the ramp
+// button and the toasts are stream F's.
+export const VAULT_STARTER_TITLE = 'A simple layout';
+export const VAULT_STARTER_SUB =
+  'These are added to your empty vault. Change or delete any of them later.';
+export const VAULT_STARTER_ROWS: ReadonlyArray<{
+  glyph: 'note' | 'folder' | 'template';
+  name: string;
+  line: string;
+}> = [
+  { glyph: 'note', name: 'Welcome to your Vault', line: 'A note on how links and folders work.' },
+  { glyph: 'folder', name: 'Inbox', line: 'A folder where new notes go.' },
+  { glyph: 'template', name: 'Templates/Daily', line: "A template for today's note." },
+  {
+    glyph: 'note',
+    name: 'Vault conventions',
+    line: 'A note that says how this vault is laid out. Pin it to a project so its chats start with it.',
+  },
+];
+export const VAULT_STARTER_SETTINGS_LINE =
+  "New notes go in Inbox, and today's note uses Templates/Daily.";
+export const VAULT_STARTER_ADD = 'Add these';
+export function vaultStarterPartial(added: number, total: number): string {
+  return `Added ${added} of ${total}. Try again to add the rest.`;
+}
+
+/** The Editor section's one sample line, drawn in the chosen font and size. */
+export const VAULT_EDITOR_SAMPLE = 'A line of your notes looks like this.';
+
 // ---- M7 stream G end ----
 
 // ---- M7 wave 2 begin ----
