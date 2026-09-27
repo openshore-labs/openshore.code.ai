@@ -1,20 +1,12 @@
 // A small DOM for the few tests that must mount React for real. An error
 // boundary only catches a fault thrown inside a real client render, which
 // server rendering (renderToStaticMarkup) never runs, so a boundary test
-// without one proves only the static hooks. linkedom is the engine's own HTML
-// parser, a dependency of os-code (the app's workspace package), so it is
-// resolved from there and no new package comes in for it.
+// without one proves only the static hooks. linkedom is an app devDependency
+// pinned to the engine's version.
 //
 // Call mountDom() before anything imports react-dom/client: React DOM decides
 // whether it has a DOM when that module first loads.
-import { createRequire } from 'node:module';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { ReactNode } from 'react';
-
-const fromEngine = createRequire(
-  resolve(fileURLToPath(import.meta.url), '../../../../os-code/package.json'),
-);
 
 export interface TestDom {
   container: HTMLElement;
@@ -29,9 +21,7 @@ export interface TestDom {
 }
 
 export async function mountDom(): Promise<TestDom> {
-  const { parseHTML } = fromEngine('linkedom') as {
-    parseHTML: (html: string) => { window: Window & typeof globalThis; document: Document };
-  };
+  const { parseHTML } = await import('linkedom');
   const { window, document } = parseHTML(
     '<!doctype html><html><body><div id="root"></div></body></html>',
   );

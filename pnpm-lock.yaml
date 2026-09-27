@@ -140,6 +140,9 @@ importers:
       eslint-plugin-react-hooks:
         specifier: 4.6.2
         version: 4.6.2(eslint@8.57.0)
+      linkedom:
+        specifier: 0.18.13
+        version: 0.18.13
       prettier:
         specifier: 3.9.6
         version: 3.9.6
