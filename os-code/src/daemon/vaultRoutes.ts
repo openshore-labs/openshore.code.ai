@@ -20,11 +20,26 @@ import { readVaultConfigFile } from '../core/vault/configFile.js';
 import { createVaultContextSource } from '../core/vault/contextSource.js';
 import { openEngineVaultIndex } from '../core/vault/engineIndex.js';
 import {
+  createVaultFolder,
+  emptyVaultTrash,
   isVaultNotePath,
+  listVaultAttachments,
+  listVaultFolders,
+  listVaultTrash,
   parseVaultGuard,
+  parseVaultRenameGuard,
+  parseVaultTrashIds,
+  parseVaultTrashTarget,
+  readVaultBytes,
   readVaultFile,
   removeVaultFile,
+  renameVaultFile,
+  restoreVaultTrash,
+  renameVaultFolder,
+  trashVaultPath,
   writeVaultFile,
+  type VaultFile,
+  type VaultFileMeta,
 } from '../core/vault/folderFs.js';
 import { loadVaultIndexFile } from '../core/vault/indexFile.js';
 import { listVaultNotes } from '../core/vault/listNotes.js';
@@ -40,23 +55,36 @@ import {
   type VaultContextSource,
 } from '../harness/vaultContext.js';
 import type { VaultPrivacy } from '../harness/vault/types.js';
+import { attachmentMime, isAttachmentPath } from '../harness/vault/attachments.js';
 import {
   VAULT_WIRE_LIST_MAX,
   VAULT_WIRE_NOTE_MAX_BYTES,
   type ChatContextPackEvent,
   type HubNoteMeta,
+  type VaultAttachmentsListResponse,
   type VaultConfigResponse,
+  type VaultFolderConflictResponse,
+  type VaultFolderRenameResponse,
+  type VaultFoldersListResponse,
   type VaultNoteConflictResponse,
   type VaultNoteReadResponse,
   type VaultNotesListResponse,
   type VaultPrivacyWire,
+  type VaultRenameConflictResponse,
+  type VaultRenameResponse,
+  type VaultTrashConflictResponse,
+  type VaultTrashEmptyResponse,
+  type VaultTrashListResponse,
+  type VaultTrashResponse,
+  type VaultTrashRestoreResponse,
 } from './vaultWire.js';
 
-/** What a vault route answers: a JSON body, or raw text with its headers
- *  (the saved index, which the phone parses itself, and a 304). */
+/** What a vault route answers: a JSON body, or raw text or bytes with its
+ *  headers (the saved index, which the phone parses itself, a 304, and an
+ *  attachment's bytes). */
 export type VaultRouteAnswer =
   | { status: number; json: unknown }
-  | { status: number; raw: string; headers: Record<string, string> };
+  | { status: number; raw: string | Uint8Array; headers: Record<string, string> };
 
 export interface VaultRouteRequest {
   method: string;
@@ -136,10 +164,243 @@ function isFolder(dir: string): boolean {
   }
 }
 
+/** A folder-level change (a folder moved, something went to Trash or came
+ *  back): the engine's open index reconciles from the folder rather than
+ *  reading every moved note here. */
+async function refreshIndex(root: string): Promise<void> {
+  const handle = await openEngineVaultIndex(root).catch(() => undefined);
+  if (handle) void handle.reconcile().catch(() => undefined);
+}
+
+function wireMeta(m: VaultFileMeta): HubNoteMeta {
+  return { path: m.path, version: m.version, size: m.size, mtime: m.updatedAt };
+}
+
+function wireTheirs(f: VaultFile | undefined): { current?: HubNoteMeta } {
+  return f ? { current: metaOf(f.path, f) } : {};
+}
+
+/** A `blocked:` refusal from folderFs, the Jail, or a folder where a note
+ *  should be: the caller's mistake, a 400 that names it. Anything else is
+ *  thrown on. */
+function refusal(e: unknown): VaultRouteAnswer {
+  if (e instanceof JailViolation) return err(400, 'That path leaves the vault.');
+  if (e instanceof NotANoteError) return err(400, e.message);
+  const message = (e as Error | undefined)?.message ?? '';
+  if (message.startsWith('blocked: ')) return err(400, message.slice('blocked: '.length));
+  throw e;
+}
+
+function str(v: unknown): string | undefined {
+  return typeof v === 'string' ? v : undefined;
+}
+
+/** A root that is not there makes no folder, trash or rename; the default
+ *  one is made (as a PUT makes it), a configured one gone missing is 503. */
+function readyRoot(root: string): VaultRouteAnswer | undefined {
+  try {
+    ensureVaultRootAt(root);
+    return undefined;
+  } catch (e) {
+    if ((e as Error).message === VAULT_FOLDER_MISSING) return err(503, VAULT_FOLDER_MISSING);
+    throw e;
+  }
+}
+
+/** The M6 routes (CTO K13): rename, folders, Trash, attachments and their
+ *  bytes. Undefined when the request is none of them. */
+async function vaultM6Route(req: VaultRouteRequest): Promise<VaultRouteAnswer | undefined> {
+  const [area, ...rest] = req.parts;
+  const { method, root } = req;
+  const sub = rest.join('/');
+
+  if (area === 'rename' && !sub) {
+    if (method !== 'POST') return err(405, 'Rename with POST.');
+    const input = await req.readBody();
+    const from = str(input.from);
+    const to = str(input.to);
+    if (!from || !to) return err(400, 'Send {"from", "to", "ifMatch"}.');
+    try {
+      const guard = parseVaultRenameGuard({ ifMatch: input.ifMatch });
+      if (!isFolder(root)) return { status: 409, json: { conflict: 'missing' } };
+      const r = await renameVaultFile(root, from, to, guard);
+      if (!r.ok) {
+        const body: VaultRenameConflictResponse = { conflict: r.conflict, ...wireTheirs(r.theirs) };
+        return { status: 409, json: body };
+      }
+      await tellIndex(root, from, null);
+      const moved = await readVaultFile(root, r.file.path).catch(() => null);
+      if (moved) await tellIndex(root, r.file.path, moved);
+      const body: VaultRenameResponse = { meta: wireMeta(r.file) };
+      return { status: 200, json: body };
+    } catch (e) {
+      return refusal(e);
+    }
+  }
+
+  if (area === 'folders' && !sub) {
+    if (method === 'GET') {
+      const body: VaultFoldersListResponse = {
+        folders: isFolder(root) ? await listVaultFolders(root) : [],
+      };
+      return { status: 200, json: body };
+    }
+    if (method !== 'POST') return err(405, 'List folders with GET, make one with POST.');
+    const input = await req.readBody();
+    const path = str(input.path);
+    if (!path) return err(400, 'Send {"path": "..."}.');
+    try {
+      const away = readyRoot(root);
+      if (away) return away;
+      const r = await createVaultFolder(root, path);
+      if (!r.ok) {
+        const body: VaultFolderConflictResponse = { conflict: r.conflict };
+        return { status: 409, json: body };
+      }
+      return { status: 200, json: { ok: true } };
+    } catch (e) {
+      return refusal(e);
+    }
+  }
+
+  if (area === 'folders' && sub === 'rename') {
+    if (method !== 'POST') return err(405, 'Rename a folder with POST.');
+    const input = await req.readBody();
+    const from = str(input.from);
+    const to = str(input.to);
+    if (!from || !to) return err(400, 'Send {"from", "to"}.');
+    try {
+      if (!isFolder(root)) return { status: 409, json: { conflict: 'missing' } };
+      const r = await renameVaultFolder(root, from, to);
+      if (!r.ok) {
+        const body: VaultFolderConflictResponse = { conflict: r.conflict };
+        return { status: 409, json: body };
+      }
+      await refreshIndex(root);
+      const body: VaultFolderRenameResponse = { moved: r.moved, attachments: r.attachments };
+      return { status: 200, json: body };
+    } catch (e) {
+      return refusal(e);
+    }
+  }
+
+  if (area === 'trash' && !sub) {
+    try {
+      if (method === 'GET') {
+        const body: VaultTrashListResponse = { entries: await listVaultTrash(root) };
+        return { status: 200, json: body };
+      }
+      if (method === 'POST') {
+        const target = parseVaultTrashTarget(await req.readBody());
+        if (!isFolder(root)) return { status: 409, json: { conflict: 'changed' } };
+        const r = await trashVaultPath(root, target);
+        if (!r.ok) {
+          const body: VaultTrashConflictResponse = {
+            conflict: r.conflict,
+            ...wireTheirs(r.theirs),
+          };
+          return { status: 409, json: body };
+        }
+        if (target.kind === 'note') await tellIndex(root, target.path, null);
+        else await refreshIndex(root);
+        const body: VaultTrashResponse = {
+          entry: r.entry,
+          notes: r.notes,
+          attachments: r.attachments,
+        };
+        return { status: 200, json: body };
+      }
+      if (method === 'DELETE') {
+        const input = await req.readBody();
+        const ids = parseVaultTrashIds(input.ids);
+        const body: VaultTrashEmptyResponse = await emptyVaultTrash(root, ids);
+        return { status: 200, json: body };
+      }
+    } catch (e) {
+      return refusal(e);
+    }
+    return err(405, 'List Trash with GET, add with POST, empty with DELETE.');
+  }
+
+  if (area === 'trash' && sub === 'restore') {
+    if (method !== 'POST') return err(405, 'Restore with POST.');
+    const input = await req.readBody();
+    const id = str(input.id);
+    if (!id) return err(400, 'Send {"id": "..."}.');
+    try {
+      const r = await restoreVaultTrash(root, id);
+      if (!r.ok) return { status: 409, json: { conflict: r.conflict } };
+      if (r.file.version) {
+        const note = await readVaultFile(root, r.file.path).catch(() => null);
+        if (note) await tellIndex(root, r.file.path, note);
+      } else await refreshIndex(root);
+      const body: VaultTrashRestoreResponse = { meta: wireMeta(r.file), renamed: r.renamed };
+      return { status: 200, json: body };
+    } catch (e) {
+      return refusal(e);
+    }
+  }
+
+  if (area === 'attachments' && !sub) {
+    if (method !== 'GET') return err(405, 'List attachments with GET.');
+    const all = isFolder(root) ? await listVaultAttachments(root) : [];
+    const body: VaultAttachmentsListResponse = {
+      attachments: all.slice(0, VAULT_WIRE_LIST_MAX),
+      truncated: all.length > VAULT_WIRE_LIST_MAX,
+    };
+    return { status: 200, json: body };
+  }
+
+  if (area === 'files' && rest.length) {
+    if (method !== 'GET') return err(405, 'Read an attachment with GET.');
+    let path: string;
+    try {
+      path = rest.map((s) => decodeURIComponent(s)).join('/');
+    } catch {
+      return err(400, 'That is not an attachment path.');
+    }
+    // 415 for a type outside the list, before the disk is touched.
+    if (!attachmentMime(path)) return err(415, 'That file type does not open in the Vault.');
+    if (!isAttachmentPath(path)) return err(400, 'That is not an attachment path.');
+    const read = isFolder(root)
+      ? await readVaultBytes(root, path)
+      : ({ ok: false, reason: 'absent' } as const);
+    if (!read.ok) {
+      if (read.reason === 'absent') return err(404, 'No such attachment.');
+      if (read.reason === 'too-large') return err(413, 'That attachment is over 20 MB.');
+      if (read.reason === 'unsupported')
+        return err(415, 'That file is not the type its name says.');
+      return err(400, 'That attachment is not one the Vault reads.');
+    }
+    const etag = `"${read.version}"`;
+    if (etagMatches(req.headers['if-none-match'], etag)) {
+      return { status: 304, raw: '', headers: { etag } };
+    }
+    const name = path.split('/').pop() ?? 'attachment';
+    return {
+      status: 200,
+      raw: read.bytes,
+      headers: {
+        'content-type': read.mime,
+        'content-length': String(read.bytes.length),
+        'x-content-type-options': 'nosniff',
+        'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}`,
+        'cache-control': 'private, no-cache',
+        etag,
+      },
+    };
+  }
+
+  return undefined;
+}
+
 /** One vault route. `parts` starts after `vault`. */
 export async function vaultRoute(req: VaultRouteRequest): Promise<VaultRouteAnswer> {
   const [area, ...rest] = req.parts;
   const { method, root } = req;
+
+  const m6 = await vaultM6Route(req);
+  if (m6) return m6;
 
   if (area === 'notes' && rest.length === 0) {
     if (method !== 'GET') return err(405, 'List notes with GET.');

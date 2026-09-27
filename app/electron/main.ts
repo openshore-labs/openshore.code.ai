@@ -20,6 +20,7 @@ import { homedir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -54,13 +55,28 @@ import { isVaultConfigName } from 'os-code/dist/src/harness/vault/configDir.js';
 import { HANDOFF_MAX_BYTES } from 'os-code/dist/src/harness/handoff.js';
 import { clearHandoffs } from 'os-code/dist/src/core/agent/handoffStore.js';
 import {
+  createVaultFolder,
+  emptyVaultTrash,
   isVaultNotePath,
+  listVaultAttachments,
   listVaultFolder,
+  listVaultFolders,
+  listVaultTrash,
+  parseReadBytesOptions,
   parseVaultGuard,
   parseVaultRemoveGuard,
+  parseVaultRenameGuard,
+  parseVaultTrashIds,
+  parseVaultTrashTarget,
+  readVaultBytes,
   readVaultFile,
   removeVaultFile,
+  renameVaultFile,
+  renameVaultFolder,
+  restoreVaultTrash,
   statVaultFile,
+  trashVaultPath,
+  vaultAttachmentAbs,
   vaultNoteAbs,
   writeVaultFile,
 } from './vaultFs.js';
@@ -1056,6 +1072,45 @@ guarded('osc:vaultPrivacy', () => {
 guarded('osc:vaultReadConfig', (name: unknown) => {
   if (!isVaultConfigName(name)) return { ok: false as const, reason: 'refused' as const };
   return readVaultConfigFile(vaultDir(), name);
+});
+
+// Vault M6 (CTO K3, K5, K6, K11, K13): rename, folders, Trash and
+// attachments on the folder, through the engine's folderFs (the same code the
+// daemon's routes run). The renderer names vault-relative paths only; every
+// one is checked by the note, folder or attachment rule and the Jail there,
+// and every guard like parseVaultGuard. A rename never replaces; Trash is
+// `<vault>/.trash/<original path>`; Empty is the one destructive act, and the
+// app asks first.
+guarded('osc:vaultRename', (from: unknown, to: unknown, g: unknown) =>
+  renameVaultFile(vaultDir(), str(from, 'from'), str(to, 'to'), parseVaultRenameGuard(g)),
+);
+guarded('osc:vaultFolders', () => listVaultFolders(vaultDir()));
+guarded('osc:vaultFolderCreate', (p: unknown) => createVaultFolder(vaultDir(), str(p, 'path')));
+guarded('osc:vaultFolderRename', (from: unknown, to: unknown) =>
+  renameVaultFolder(vaultDir(), str(from, 'from'), str(to, 'to')),
+);
+guarded('osc:vaultTrash', (t: unknown) => trashVaultPath(vaultDir(), parseVaultTrashTarget(t)));
+guarded('osc:vaultTrashList', () => listVaultTrash(vaultDir()));
+guarded('osc:vaultTrashRestore', (id: unknown) => restoreVaultTrash(vaultDir(), str(id, 'id')));
+guarded('osc:vaultTrashEmpty', (ids: unknown) =>
+  emptyVaultTrash(vaultDir(), parseVaultTrashIds(ids)),
+);
+guarded('osc:vaultAttachments', () => listVaultAttachments(vaultDir()));
+guarded('osc:vaultReadBytes', (p: unknown, o: unknown) =>
+  readVaultBytes(vaultDir(), str(p, 'path'), parseReadBytesOptions(o)),
+);
+// A PDF or an image opens in the system viewer: jailed, the attachment
+// extensions only (isAttachmentPath), a real file, never a link.
+guarded('osc:vaultOpenAttachment', async (p: unknown) => {
+  const abs = vaultAttachmentAbs(vaultDir(), str(p, 'path'));
+  let st;
+  try {
+    st = lstatSync(abs);
+  } catch {
+    return { ok: false };
+  }
+  if (!st.isFile()) return { ok: false };
+  return { ok: (await shell.openPath(abs)) === '' };
 });
 
 // The folder watcher (CTO F3), on while the Vault room is open. The open

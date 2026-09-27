@@ -737,7 +737,9 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     // ---- The vault, scoped to the caller's own root (Vault M5, CTO J7). ----
     // Not owner-only (D9): the owner and the legacy token reach the machine's
     // vault, a member reaches their own root. The handler lives in
-    // vaultRoutes.ts; no route takes a root.
+    // vaultRoutes.ts; no route takes a root. M6 (CTO K13) adds rename,
+    // folders, Trash and attachments there; an attachment answers raw bytes
+    // with its own headers, written as they come.
     if (parts[0] === 'vault') {
       const answer = await vaultRoute({
         method: req.method ?? 'GET',

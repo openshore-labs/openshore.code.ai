@@ -37,12 +37,18 @@ import { deviceFolderProvider, isDeviceFolderAvailable } from '../src/lib/gitos/
 import { isNotePath } from '../src/lib/gitos/providers.js';
 import { normalizeNotePath } from '../src/lib/vault.js';
 import {
+  createVaultFolder,
   isVaultNotePath,
   listVaultFolder,
+  listVaultFolders,
+  listVaultTrash,
   parseVaultGuard,
   parseVaultRemoveGuard,
   readVaultFile,
+  renameVaultFile,
+  restoreVaultTrash,
   statVaultFile,
+  trashVaultPath,
   writeVaultFile,
 } from '../electron/vaultFs.js';
 import {
@@ -304,7 +310,10 @@ describe("main's vault handlers on a real folder (CTO F1, F7.4)", () => {
       join(process.cwd(), '..', 'os-code', 'src', 'core', 'vault', 'folderFs.ts'),
       'utf8',
     );
-    expect(src).toMatch(/import \{ isNotePath \} from '\.\.\/\.\.\/harness\/vault\/paths\.js'/);
+    // M6 imports the new-name rule and the fold from the same module.
+    expect(src).toMatch(
+      /import \{[^}]*\bisNotePath\b[^}]*\} from '\.\.\/\.\.\/harness\/vault\/paths\.js'/,
+    );
     expect(src).toMatch(/isNotePath\(path, \{ windows: platform === 'win32' \}\)/);
   });
 
@@ -380,6 +389,56 @@ describe("main's vault handlers on a real folder (CTO F1, F7.4)", () => {
     writeFileSync(join(root, '.obsidian', 'plugins', 'x', 'data.md'), 'plugin data');
     await expect(readVaultFile(root, '.obsidian\\plugins\\x\\data.md')).rejects.toThrow(/blocked/);
     await expect(writeVaultFile(root, 'x\\a.md', 'x')).rejects.toThrow(/blocked/);
+  });
+});
+
+// Vault M6 (CTO K3, K6, K13) through main's own import (electron/vaultFs.ts
+// re-exports the engine's folderFs), so osc:vaultRename, osc:vaultTrash and
+// the rest run the code the daemon runs. The full matrix is
+// os-code/test/vaultFolderOps.test.ts.
+describe("main's M6 vault handlers on a real folder", () => {
+  let root: string;
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'osc-vaultfs-m6-'));
+  });
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('renames guarded by the version, never over a taken name, and keeps the version', async () => {
+    writeFileSync(join(root, 'a.md'), 'mine');
+    writeFileSync(join(root, 'Taken.md'), 'theirs');
+    const v = (await statVaultFile(root, 'a.md'))!.version;
+    expect(await renameVaultFile(root, 'a.md', 'taken.md', { ifMatch: v })).toMatchObject({
+      ok: false,
+      conflict: 'exists',
+      theirs: { path: 'Taken.md', text: 'theirs' },
+    });
+    expect(await renameVaultFile(root, 'a.md', 'b.md', { ifMatch: 'stale' })).toMatchObject({
+      ok: false,
+      conflict: 'changed',
+    });
+    const r = await renameVaultFile(root, 'a.md', 'Notes/b.md', { ifMatch: v });
+    expect(r).toMatchObject({ ok: true, file: { path: 'Notes/b.md', version: v } });
+    expect(readFileSync(join(root, 'Notes', 'b.md'), 'utf8')).toBe('mine');
+    expect(readFileSync(join(root, 'Taken.md'), 'utf8')).toBe('theirs');
+  });
+
+  it('a note in Trash is out of the list and the tree, and Restore brings it back', async () => {
+    writeFileSync(join(root, 'Plan.md'), 'plan');
+    expect(await createVaultFolder(root, 'Empty')).toEqual({ ok: true });
+    const v = (await statVaultFile(root, 'Plan.md'))!.version;
+    const t = await trashVaultPath(root, { kind: 'note', path: 'Plan.md', ifMatch: v });
+    expect(t).toMatchObject({ ok: true, entry: { path: 'Plan.md', kind: 'note' } });
+    expect(await listVaultFolder(root)).toEqual([]);
+    expect(await listVaultFolders(root)).toEqual(['Empty']);
+    expect(existsSync(join(root, '.trash', 'Plan.md'))).toBe(true);
+    const [entry] = await listVaultTrash(root);
+    writeFileSync(join(root, 'Plan.md'), 'a new one');
+    const back = await restoreVaultTrash(root, entry!.id);
+    expect(back).toMatchObject({ ok: true, renamed: true, file: { path: 'Plan (restored).md' } });
+    expect(readFileSync(join(root, 'Plan (restored).md'), 'utf8')).toBe('plan');
+    expect(readFileSync(join(root, 'Plan.md'), 'utf8')).toBe('a new one');
   });
 });
 

@@ -2,7 +2,7 @@
 // root under the engine state folder, keyed by vaultIndexKey, loaded in the
 // background, reconciled by version, saved whole by atomic rename. Two roots
 // are two indexes, two files, and no crossover in search.
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   existsSync,
   mkdirSync,
@@ -17,6 +17,35 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
+// The attachment rules are stream A2's (Vault M6); until they land in this
+// tree the stub throws "not built", so a small stand-in answers for it. Once
+// the real module is here it answers and the stand-in is never asked.
+vi.mock('../src/harness/vault/attachments.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../src/harness/vault/attachments.js')>();
+  const EXT: Record<string, string> = { png: 'image/png', pdf: 'application/pdf' };
+  const mime = (p: string) => EXT[/\.([a-z]+)$/i.exec(p)?.[1]?.toLowerCase() ?? ''];
+  const is = (p: string) =>
+    !!mime(p) && !p.includes('\\') && p.split('/').every((s) => s && !s.startsWith('.'));
+  const match = (b: Uint8Array, m: string) =>
+    m === 'image/png' ? b[0] === 0x89 && b[1] === 0x50 : true;
+  const orFake =
+    <A extends unknown[], R>(f: (...a: A) => R, fake: (...a: A) => R) =>
+    (...a: A): R => {
+      try {
+        return f(...a);
+      } catch (e) {
+        if (String(e).includes('not built')) return fake(...a);
+        throw e;
+      }
+    };
+  return {
+    ...real,
+    isAttachmentPath: orFake(real.isAttachmentPath, is),
+    attachmentMime: orFake(real.attachmentMime, mime as typeof real.attachmentMime),
+    bytesMatchMime: orFake(real.bytesMatchMime, match as typeof real.bytesMatchMime),
+  };
+});
 import {
   closeEngineVaultIndexes,
   engineVaultIndex,
@@ -37,13 +66,28 @@ import { vaultPrivacyConfig } from '../src/core/agent/registry.js';
 import { HANDOFF_MAX_BYTES } from '../src/harness/handoff.js';
 import { _resetRoutineScheduler } from '../src/routines/scheduler.js';
 import {
+  VAULT_ATTACHMENTS_ROUTE,
   VAULT_CONFIG_ROUTE,
+  VAULT_FOLDERS_RENAME_ROUTE,
+  VAULT_FOLDERS_ROUTE,
   VAULT_INDEX_ROUTE,
   VAULT_NOTES_ROUTE,
   VAULT_PRIVACY_ROUTE,
+  VAULT_RENAME_ROUTE,
+  VAULT_TRASH_RESTORE_ROUTE,
+  VAULT_TRASH_ROUTE,
   VAULT_WIRE_NOTE_MAX_BYTES,
+  vaultFileRoute,
   vaultNoteRoute,
   type HubNoteMeta,
+  type VaultAttachmentsListResponse,
+  type VaultFolderRenameResponse,
+  type VaultFoldersListResponse,
+  type VaultRenameConflictResponse,
+  type VaultRenameResponse,
+  type VaultTrashListResponse,
+  type VaultTrashResponse,
+  type VaultTrashRestoreResponse,
   type VaultNoteConflictResponse,
   type VaultNoteReadResponse,
   type VaultNotesListResponse,
@@ -485,5 +529,189 @@ describe('the daemon vault routes, on the caller own root', () => {
       }),
     });
     expect(long.status).toBe(400);
+  });
+
+  // Vault M6 (CTO K13): rename, folders, Trash and attachments, on the
+  // caller's own root, every path through the rules and the Jail.
+  describe('M6 routes', () => {
+    const vault = () => join(home, 'OSCode', 'Vault');
+    const send = (method: string, route: string, body?: unknown, token = admin) =>
+      fetch(`${base}${route}`, {
+        method,
+        headers: hdr(token),
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+
+    it('renames a note guarded by its version, never replacing', async () => {
+      const made = (await (
+        await put(admin, 'Plans/Launch.md', { text: 'launch', ifAbsent: true })
+      ).json()) as { meta: HubNoteMeta };
+      await put(admin, 'Other.md', { text: 'other', ifAbsent: true });
+      const taken = await send('POST', VAULT_RENAME_ROUTE, {
+        from: 'Plans/Launch.md',
+        to: 'other.md',
+        ifMatch: made.meta.version,
+      });
+      expect(taken.status).toBe(409);
+      const exists = (await taken.json()) as VaultRenameConflictResponse;
+      expect(exists.conflict).toBe('exists');
+      expect(exists.current?.path).toBe('Other.md');
+
+      const stale = await send('POST', VAULT_RENAME_ROUTE, {
+        from: 'Plans/Launch.md',
+        to: 'Done/Launch.md',
+        ifMatch: '1:2:3',
+      });
+      expect(stale.status).toBe(409);
+      expect(((await stale.json()) as VaultRenameConflictResponse).conflict).toBe('changed');
+
+      const ok = await send('POST', VAULT_RENAME_ROUTE, {
+        from: 'Plans/Launch.md',
+        to: 'Done/Launch.md',
+        ifMatch: made.meta.version,
+      });
+      expect(ok.status).toBe(200);
+      const { meta } = (await ok.json()) as VaultRenameResponse;
+      expect(meta).toMatchObject({ path: 'Done/Launch.md', size: 6 });
+      expect(readFileSync(join(vault(), 'Done', 'Launch.md'), 'utf8')).toBe('launch');
+      expect(existsSync(join(vault(), 'Plans', 'Launch.md'))).toBe(false);
+
+      for (const body of [
+        { from: 'Done/Launch.md', to: '../out.md', ifMatch: meta.version },
+        { from: 'Done/Launch.md', to: '.trash/x.md', ifMatch: meta.version },
+        { from: 'Done/Launch.md', to: 'x.md' },
+      ]) {
+        expect((await send('POST', VAULT_RENAME_ROUTE, body)).status).toBe(400);
+      }
+    });
+
+    it('lists, creates and renames folders with what moved', async () => {
+      await put(admin, 'Work/a.md', { text: 'a', ifAbsent: true });
+      mkdirSync(join(vault(), 'Empty'));
+      mkdirSync(join(vault(), '.obsidian'));
+      const listed = (await (
+        await get(admin, VAULT_FOLDERS_ROUTE)
+      ).json()) as VaultFoldersListResponse;
+      expect(listed.folders).toEqual(['Empty', 'Work']);
+      expect((await send('POST', VAULT_FOLDERS_ROUTE, { path: 'New/Inner' })).status).toBe(200);
+      const again = await send('POST', VAULT_FOLDERS_ROUTE, { path: 'new/inner' });
+      expect(again.status).toBe(409);
+      expect(await again.json()).toEqual({ conflict: 'exists' });
+      expect((await send('POST', VAULT_FOLDERS_ROUTE, { path: '.hidden' })).status).toBe(400);
+
+      const moved = await send('POST', VAULT_FOLDERS_RENAME_ROUTE, {
+        from: 'Work',
+        to: 'Archive/Work',
+      });
+      expect(moved.status).toBe(200);
+      const body = (await moved.json()) as VaultFolderRenameResponse;
+      expect(body.moved.map((m) => m.to)).toEqual(['Archive/Work/a.md']);
+      expect(body.attachments).toBe(0);
+      const missing = await send('POST', VAULT_FOLDERS_RENAME_ROUTE, { from: 'Work', to: 'X' });
+      expect(missing.status).toBe(409);
+      expect(await missing.json()).toEqual({ conflict: 'missing' });
+    });
+
+    it('moves to Trash, lists it, restores beside a taken name, and empties', async () => {
+      const made = (await (
+        await put(admin, 'Plan.md', { text: 'the plan', ifAbsent: true })
+      ).json()) as { meta: HubNoteMeta };
+      const stale = await send('POST', VAULT_TRASH_ROUTE, {
+        kind: 'note',
+        path: 'Plan.md',
+        ifMatch: '1:2:3',
+      });
+      expect(stale.status).toBe(409);
+      const trashed = await send('POST', VAULT_TRASH_ROUTE, {
+        kind: 'note',
+        path: 'Plan.md',
+        ifMatch: made.meta.version,
+      });
+      expect(trashed.status).toBe(200);
+      const t = (await trashed.json()) as VaultTrashResponse;
+      expect(t).toMatchObject({
+        notes: 1,
+        attachments: 0,
+        entry: { path: 'Plan.md', kind: 'note' },
+      });
+      expect(readFileSync(join(vault(), '.trash', 'Plan.md'), 'utf8')).toBe('the plan');
+      // .trash never reaches the note list or a note read.
+      const notes = (await (await get(admin, VAULT_NOTES_ROUTE)).json()) as VaultNotesListResponse;
+      expect(notes.notes).toEqual([]);
+      expect((await get(admin, '/vault/notes/.trash/Plan.md')).status).toBe(400);
+
+      const list = (await (await get(admin, VAULT_TRASH_ROUTE)).json()) as VaultTrashListResponse;
+      expect(list.entries.map((e) => e.id)).toEqual([t.entry.id]);
+
+      await put(admin, 'Plan.md', { text: 'a new plan', ifAbsent: true });
+      const back = await send('POST', VAULT_TRASH_RESTORE_ROUTE, { id: t.entry.id });
+      expect(back.status).toBe(200);
+      const r = (await back.json()) as VaultTrashRestoreResponse;
+      expect(r).toMatchObject({ renamed: true, meta: { path: 'Plan (restored).md' } });
+      const gone = await send('POST', VAULT_TRASH_RESTORE_ROUTE, { id: t.entry.id });
+      expect(gone.status).toBe(409);
+      expect(await gone.json()).toEqual({ conflict: 'missing' });
+
+      await put(admin, 'B.md', { text: 'b', ifAbsent: true });
+      await send('POST', VAULT_TRASH_ROUTE, { kind: 'folder', path: 'Nope' });
+      const bMeta = (await (await get(admin, vaultNoteRoute('B.md'))).json()) as {
+        version: string;
+      };
+      await send('POST', VAULT_TRASH_ROUTE, { kind: 'note', path: 'B.md', ifMatch: bMeta.version });
+      const emptied = await send('DELETE', VAULT_TRASH_ROUTE, {});
+      expect(emptied.status).toBe(200);
+      expect(await emptied.json()).toEqual({ removed: 1 });
+      expect((await send('DELETE', VAULT_TRASH_ROUTE, { ids: ['../x'] })).status).toBe(400);
+    });
+
+    it('lists attachments and answers bytes with the allow-listed type, nosniff and an ETag', async () => {
+      const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 9, 9]);
+      mkdirSync(join(vault(), 'img'), { recursive: true });
+      writeFileSync(join(vault(), 'img', 'a b.png'), png);
+      writeFileSync(join(vault(), 'img', 'fake.png'), 'nope');
+      writeFileSync(join(vault(), 'img', 'x.exe'), 'MZ');
+      const list = (await (
+        await get(admin, VAULT_ATTACHMENTS_ROUTE)
+      ).json()) as VaultAttachmentsListResponse;
+      expect(list.truncated).toBe(false);
+      expect(list.attachments.map((a) => a.path)).toEqual(['img/a b.png', 'img/fake.png']);
+
+      const res = await get(admin, vaultFileRoute('img/a b.png'));
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toBe('image/png');
+      expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+      expect(res.headers.get('content-disposition')).toMatch(/^attachment;/);
+      const etag = res.headers.get('etag')!;
+      expect(etag).toBe(`"${list.attachments[0]!.version}"`);
+      expect(Buffer.from(await res.arrayBuffer()).equals(png)).toBe(true);
+      const cached = await fetch(`${base}${vaultFileRoute('img/a b.png')}`, {
+        headers: { ...hdr(admin), 'if-none-match': etag },
+      });
+      expect(cached.status).toBe(304);
+
+      expect((await get(admin, vaultFileRoute('img/none.png'))).status).toBe(404);
+      expect((await get(admin, vaultFileRoute('img/fake.png'))).status).toBe(415);
+      expect((await get(admin, vaultFileRoute('img/x.exe'))).status).toBe(415);
+      expect((await get(admin, '/vault/files/..%2F..%2Fx.png')).status).toBe(400);
+      expect((await get(admin, '/vault/files/.obsidian/icon.png')).status).toBe(400);
+    });
+
+    it('keeps a member on their own root', async () => {
+      const one = member('u_one');
+      await put(admin, 'Owner.md', { text: 'owner only', ifAbsent: true });
+      const list = (await (
+        await send('GET', VAULT_TRASH_ROUTE, undefined, one)
+      ).json()) as VaultTrashListResponse;
+      expect(list.entries).toEqual([]);
+      const rename = await send(
+        'POST',
+        VAULT_RENAME_ROUTE,
+        { from: 'Owner.md', to: 'Mine.md', ifMatch: '1:2:3' },
+        one,
+      );
+      expect(rename.status).toBe(409);
+      expect(((await rename.json()) as VaultRenameConflictResponse).conflict).toBe('missing');
+      expect(readFileSync(join(vault(), 'Owner.md'), 'utf8')).toBe('owner only');
+    });
   });
 });
