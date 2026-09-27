@@ -54,7 +54,7 @@ import {
   type VaultDirEnv,
 } from '../electron/vaultDir.js';
 import { loadVaultDir, saveGlobalConfig } from 'os-code/dist/src/config/load.js';
-import { vaultConflictCopyPath } from 'os-code/protocol';
+import { cleanNotePath, isConflictCopy, vaultConflictCopyPath } from 'os-code/protocol';
 import { RoutineScheduler } from 'os-code/dist/src/routines/scheduler.js';
 import * as routineStore from 'os-code/dist/src/routines/store.js';
 
@@ -291,17 +291,21 @@ describe("main's vault handlers on a real folder (CTO F1, F7.4)", () => {
     }
   });
 
-  // The keep-both name is one pure helper in the engine, imported by the
-  // store and by main's Bring; its typed-name rule is the app's own.
+  // The keep-both name is one pure helper in the shared core, imported by the
+  // store and by main's Bring, and the app's typed-name rule is now that same
+  // core's (Vault M3 H4). The copy's base is cleaned before the suffix goes
+  // on, so " spaced " loses its trailing space rather than keeping it inside
+  // the name; the copy is always a clean note name and a conflict copy.
   it("the conflict name keeps the app's typed-name rule, and the store and main share it", () => {
     const when = new Date(2026, 8, 27, 14, 5);
     for (const p of ['a.md', 'x/Why #1?.md', 'Caf\u0065\u0301.md', ' spaced .md', 'q/[x].md']) {
-      const base = p.replace(/\.md$/i, '');
+      const base = cleanNotePath(p.replace(/\.md$/i, ''));
       for (const n of [1, 2]) {
         const stamp = `2026-09-27 1405${n > 1 ? ` ${n}` : ''}`;
-        expect(vaultConflictCopyPath(p, when, n)).toBe(
-          normalizeNotePath(`${base} (conflict ${stamp})`),
-        );
+        const copy = vaultConflictCopyPath(p, when, n);
+        expect(copy).toBe(normalizeNotePath(`${base} (conflict ${stamp})`));
+        expect(normalizeNotePath(copy)).toBe(copy);
+        expect(isConflictCopy(copy)).toBe(true);
       }
     }
     const store = readFileSync(join(process.cwd(), 'src', 'state', 'store.ts'), 'utf8');

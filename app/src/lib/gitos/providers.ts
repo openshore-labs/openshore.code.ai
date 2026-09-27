@@ -11,6 +11,8 @@
 // real and visible, but marked not ready until their OAuth wiring lands. They
 // are never faked.
 
+import type { ConfigRead, VaultConfigName } from 'os-code/protocol';
+
 // 'files' is the on-disk folder provider (desktop only): plain .md files under
 // the agent's vault directory (~/OSCode/Vault), so the app and the agent share
 // one folder that Obsidian opens directly. It IS a roster entry (a real place
@@ -153,6 +155,14 @@ export interface StorageProvider {
    *  (Vault M2, CTO G5); a provider that keeps no lease file ignores it. */
   acquireLease(resourceId: string, holder: string, ttlMs: number, label?: string): Promise<Lease>;
   releaseLease(resourceId: string, holder: string): Promise<void>;
+  /** Read one of the vault's config files by its logical name (Vault M3, CTO
+   *  H5): Obsidian's app, daily-notes and templates settings, or the vault's
+   *  own `.oscode/vault.json`. No path crosses the seam; each provider maps a
+   *  name through its own allow-list, and anything else answers `refused`
+   *  (never a plugin folder, never `workspace*.json`). Optional, so a
+   *  provider that has not gained it yet answers `unsupported` through
+   *  readVaultConfig (lib/gitos/config.ts). Capped at 256 KB of UTF-8. */
+  readConfig?(resourceId: string, name: VaultConfigName): Promise<ConfigRead>;
 }
 
 /** A gitOS resource: metadata for one repo or vault. The bytes live behind

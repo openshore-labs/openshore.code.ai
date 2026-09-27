@@ -11,16 +11,23 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { VaultMarkdown, vaultHrefPath } from '../src/components/VaultMarkdown.js';
 import { ErrorBoundary } from '../src/components/ErrorBoundary.js';
 import { mountDom, type TestDom } from './support/dom.js';
+import { readFrontmatter } from 'os-code/protocol';
+import { restoreEol } from '../src/lib/vault.js';
+import { vaultAutosave } from '../src/lib/vaultAutosave.js';
 
 // One body that trips the renderer, the way a malformed note could: the
-// wikilink pass throws for it, and only for it.
-vi.mock('../src/lib/vault.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/lib/vault.js')>();
+// wikilink pass throws for it, and only for it. The pass is the remark plugin
+// now (Vault M3 3.3), so the fault is raised inside the real render.
+vi.mock('../src/lib/remarkWikilinks.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/lib/remarkWikilinks.js')>();
   return {
     ...actual,
-    wikilinksToMarkdown: (text: string, paths: string[]) => {
-      if (text.includes('TRIPS THE RENDERER')) throw new Error('render fault');
-      return actual.wikilinksToMarkdown(text, paths);
+    remarkWikilinks: (opts: Parameters<typeof actual.remarkWikilinks>[0]) => {
+      const run = actual.remarkWikilinks(opts);
+      return (tree: object) => {
+        if (JSON.stringify(tree).includes('TRIPS THE RENDERER')) throw new Error('render fault');
+        run(tree);
+      };
     },
   };
 });
@@ -156,5 +163,105 @@ describe('ErrorBoundary in a real render', () => {
     expect(dom.text()).toContain('Plan');
     expect(dom.text()).toContain('could not be shown formatted');
     expect(dom.container.querySelector('pre.vault-raw')?.textContent).toBe(body);
+  });
+});
+
+// Vault M3 3.3 (CTO H2): the core finds the frontmatter and the renderer shows
+// only `text.slice(fm.end)`, so YAML is never read as markdown; properties sit
+// in a quiet strip above; and nothing on the read path ever writes the note.
+describe('frontmatter in the reader (Vault M3 H2)', () => {
+  const note = (eol: string, bom = '') =>
+    `${bom}---${eol}title: Plan${eol}tags: [work, q3]${eol}up: "[[Roadmap]]"${eol}---${eol}# Goals${eol}${eol}Ship it.${eol}`;
+
+  it('YAML is not an H2, and never shows as a rule or text in the body', () => {
+    for (const eol of ['\n', '\r\n']) {
+      for (const bom of ['', '\uFEFF']) {
+        const html = render(note(eol, bom), ['Roadmap.md']);
+        expect(html).not.toContain('<h2');
+        expect(html).not.toContain('<hr');
+        expect(html).not.toContain('title: Plan');
+        expect(html).toContain('<h1>Goals</h1>');
+        expect(html).toContain('Ship it.');
+        // The strip is there, closed: a count, no values until it opens.
+        expect(html).toContain('3 properties');
+        expect(html).toContain('aria-expanded="false"');
+      }
+    }
+  });
+
+  it('a note with no frontmatter, or an empty block, shows no strip', () => {
+    expect(render('# Just a note')).not.toContain('vault-props');
+    expect(render('---\n---\nBody')).not.toContain('vault-props');
+    // A lone "---" rule mid-note is a rule, not frontmatter.
+    expect(render('Intro\n\n---\n\nMore')).toContain('<hr/>');
+  });
+
+  it('a block that cannot be read says so, and still keeps YAML out of the body', () => {
+    const html = render('---\na: 1\na: 2\n---\nBody text');
+    expect(html).toContain('Properties could not be read');
+    expect(html).not.toContain('<h2');
+    expect(html).toContain('Body text');
+  });
+
+  it('opening and saving with no edit writes nothing', () => {
+    const saves: string[] = [];
+    const autosave = vaultAutosave({
+      target: () => ({ providerId: 'local', resourceId: 'vault' }),
+      save: (_path, text) => saves.push(text),
+    });
+    for (const text of [note('\n'), note('\r\n'), note('\r\n', '\uFEFF')]) {
+      // Open: the reader renders it (and reads its YAML); nothing schedules.
+      render(text, ['Roadmap.md']);
+      // Leave the note: the flush sends only text that was typed.
+      autosave.flush();
+      // The textarea hands back CRLF as LF; untouched, the save wrap gives
+      // the exact loaded bytes back, so even a stray save changes nothing.
+      expect(restoreEol(text, text.replace(/\r\n/g, '\n'))).toBe(text);
+    }
+    expect(saves).toEqual([]);
+  });
+
+  it('a body-only edit keeps the frontmatter bytes identical, for LF, CRLF and a BOM', () => {
+    for (const [eol, bom] of [
+      ['\n', ''],
+      ['\r\n', ''],
+      ['\n', '\uFEFF'],
+      ['\r\n', '\uFEFF'],
+    ] as const) {
+      const loaded = note(eol, bom);
+      const fm = readFrontmatter(loaded);
+      expect(fm.state).toBe('ok');
+      // What the textarea shows (CRLF folded to LF), with the body edited.
+      const typed = `${loaded.replace(/\r\n/g, '\n')}More.\n`;
+      const saved = restoreEol(loaded, typed);
+      expect(saved.slice(0, fm.end)).toBe(loaded.slice(0, fm.end));
+      expect(saved.startsWith(loaded)).toBe(true);
+      expect(readFrontmatter(saved).raw).toBe(fm.raw);
+    }
+  });
+
+  it('a code fence renders verbatim: no wikilink, no tag, no emphasis inside', () => {
+    const body = '```\n[[Roadmap]] and #tag and **bold** and ![[Art]]\n```\n\nOut: [[Roadmap]]';
+    const html = render(body, ['Roadmap.md']);
+    expect(html).toContain('[[Roadmap]] and #tag and **bold** and ![[Art]]');
+    // The only link is the one outside the fence.
+    expect(html.match(/class="wikilink/g)).toHaveLength(1);
+    expect(html).not.toContain('<strong>');
+    // A code span holds its link as text too.
+    expect(render('Use `[[Roadmap]]` to link.', ['Roadmap.md'])).not.toContain('wikilink');
+  });
+
+  it('resolves links from the note being read, and opens a markdown link to a note', () => {
+    const html = renderToStaticMarkup(
+      <VaultMarkdown
+        text={'[[Plan]] and [the list](Tasks.md) and [[#Goals]]'}
+        paths={['a/Plan.md', 'b/Plan.md', 'b/Tasks.md']}
+        sourcePath="b/Index.md"
+        onOpenNote={() => {}}
+      />,
+    );
+    expect(html).toContain('href="vault:b%2FPlan.md"');
+    expect(html).toContain('<a href="Tasks.md" class="wikilink">the list</a>');
+    expect(html).toContain('href="vault:b%2FIndex.md"');
   });
 });

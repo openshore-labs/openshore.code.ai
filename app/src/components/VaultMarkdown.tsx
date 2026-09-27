@@ -1,13 +1,22 @@
 // Vault reading mode: the chat renderer's exact markdown treatment, plus
-// Obsidian wikilinks. Bodies are pre-processed so [[Target]] becomes a real
-// anchor carrying a vault: href, then the anchor override below intercepts
-// the tap and navigates inside the vault instead of leaving the app. External
-// http(s) links keep their normal behavior.
-import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
+// Obsidian wikilinks and properties (Vault M3, CTO H2). The frontmatter is
+// found by the shared core and shown by VaultProperties; the renderer only
+// ever sees `text.slice(fm.end)`, so the core and the renderer can never
+// disagree about where frontmatter ends (no remark-frontmatter, and YAML is
+// never read as a heading). Wikilinks are made by a remark plugin that splits
+// text nodes (lib/remarkWikilinks.ts), so code is never touched; the anchor
+// override below intercepts the tap and navigates inside the vault instead of
+// leaving the app. A markdown link to a note ([Plan](Plan.md)) opens the note
+// too. External http(s) links keep their normal behavior.
+import { useMemo } from 'react';
+import ReactMarkdown, { defaultUrlTransform, type Options } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
-import { wikilinksToMarkdown } from '../lib/vault.js';
+import { readFrontmatter, resolveMarkdownLink } from 'os-code/protocol';
+import { remarkWikilinks } from '../lib/remarkWikilinks.js';
+import { pathIndexOf } from '../lib/vault.js';
 import { ErrorBoundary } from './ErrorBoundary.js';
+import { VaultProperties } from './VaultProperties.js';
 
 // react-markdown 10 strips any href whose protocol is not in its allowlist,
 // which drops our vault: wikilinks (they would render with an empty href and
@@ -31,7 +40,10 @@ export function vaultHrefPath(href: string): string {
 
 type Props = {
   text: string;
-  paths: string[];
+  paths: readonly string[];
+  /** The note being read, so relative links and `[[#Heading]]` resolve from
+   *  it. Optional: without it, links resolve from the vault root. */
+  sourcePath?: string;
   onOpenNote: (path: string, isNew: boolean) => void;
 };
 
@@ -55,11 +67,19 @@ export function VaultMarkdown(props: Props) {
   );
 }
 
-function VaultMarkdownBody({ text, paths, onOpenNote }: Props) {
+function VaultMarkdownBody({ text, paths, sourcePath, onOpenNote }: Props) {
+  const fm = useMemo(() => readFrontmatter(text), [text]);
+  const body = fm.end > 0 ? text.slice(fm.end) : text;
+  const plugins = useMemo<Options['remarkPlugins']>(
+    () => [remarkGfm, [remarkWikilinks, { paths, sourcePath }]],
+    [paths, sourcePath],
+  );
+  const open = (path: string, isNew: boolean) => onOpenNote(path, isNew);
   return (
     <div className="md vault-md">
+      <VaultProperties fm={fm} paths={paths} sourcePath={sourcePath} onOpenNote={open} />
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={plugins}
         rehypePlugins={[rehypeHighlight]}
         urlTransform={vaultUrlTransform}
         components={{
@@ -73,7 +93,25 @@ function VaultMarkdownBody({ text, paths, onOpenNote }: Props) {
                   className={`wikilink${isNew ? ' unresolved' : ''}`}
                   onClick={(e) => {
                     e.preventDefault();
-                    onOpenNote(path, isNew);
+                    open(path, isNew);
+                  }}
+                >
+                  {children}
+                </a>
+              );
+            }
+            // A markdown link to a note in this vault opens it here.
+            const note = href
+              ? resolveMarkdownLink(href, sourcePath ?? '', pathIndexOf(paths))
+              : undefined;
+            if (note) {
+              return (
+                <a
+                  href={href}
+                  className="wikilink"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    open(note, false);
                   }}
                 >
                   {children}
@@ -88,7 +126,7 @@ function VaultMarkdownBody({ text, paths, onOpenNote }: Props) {
           },
         }}
       >
-        {wikilinksToMarkdown(text, paths)}
+        {body}
       </ReactMarkdown>
     </div>
   );
