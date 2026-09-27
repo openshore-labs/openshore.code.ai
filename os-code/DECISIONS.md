@@ -1999,3 +1999,58 @@ execution contract. Newest at the bottom.
   allow in this project" (it wrote into the repo's tracked file; now the
   machine), and board call 5's project opt-in for pushing the default branch
   (still the project's switch, but only once the folder is trusted).
+- **Vault M0 build calls (2026-09-27, builders, confirmed by the CTO):** a
+  relative `vault.dir` falls back to `~/OSCode/Vault` with a warning instead
+  of failing config loading; on a shared hub the session owner's role decides
+  the vault gate and an owner missing from the credential store gets no vault
+  tools, and a member is refused a session whose workspace is the vault, is
+  inside it, or holds it (this isolates the agent's no-ask tools, not a
+  member's own approved shell, so no copy claims more until 5.2); team text
+  follows its account: an expired sign-in keeps it sealed for the same
+  account only, text arriving after sign-out stays in memory, and a
+  voluntary sign-out asks before it deletes unsent team text; a move never
+  overwrites a note at the target, which keeps its name while the moved copy
+  lands beside it as a conflict copy and the result names it (who keeps the
+  name is the person's choice in M1's resolve sheet, never a cross-provider
+  clock); dot-led note names are cleaned for links and paths, but the create
+  field refills with the cleaned name instead of renaming silently, and the
+  engine refuses a dot-led `vaultWrite`; saves run one at a time per note.
+- **Vault M0 advisor rulings (2026-09-27):** CTO: linkedom is an app
+  devDependency pinned to the engine's version, never reached through
+  os-code; the iOS export skips a file edited in Files since the last export
+  and says so, instead of overwriting it. CMO: the iCloud storage line names
+  Obsidian nowhere until a real Mac opens the folder (8.1) and iCloud writes
+  are safe for a second writer (2.1, 2.9); an unpaired phone gets one neutral
+  pointer in the empty-vault ramp only ("Your agent works on a computer you
+  pair, with its own vault there."); a forked move line keeps "the one you
+  moved". CX: the Vault list's fault fallback reads "Back to Chat"; a Drive
+  vault on a build that cannot reach Google gets "Open Google Drive" and
+  names the `vault.personal` folder. Creative Studio: on a read-only vault
+  every control that writes is hidden, not dimmed, and the card is the one
+  action at every folder level; the + is an `icon-btn press-fb`; the storage
+  sheet's three states clarify the 2026-08-25 not-ready ruling: coming to
+  this device later wears the Arriving pill, possible here but switched off
+  wears a pill naming the state (iCloud: "Turned off"), and impossible on
+  this device is left out.
+- **Vault M1, the CTO's rulings before the build (2026-09-27):** (F1) a
+  folder note's version is the bigint lstat token `ino:mtimeNs:size`, made by
+  one function (`noteVersion`), carried as an opaque `version` on the seam
+  and compared with === only; a token that moves while the bytes stay the
+  same is adopted silently by the store. (F2) every save to an existing note
+  is a temp file in the same folder then a rename (never in place, so no torn
+  write), a new note is published with link() so nothing is replaced, and
+  the note's creation date is carried on macOS and Windows; on Linux the file
+  system cannot keep it and no copy claims it. (F3) change detection is a
+  hint, never the protection: one recursive `fs.watch` on macOS and Windows,
+  the root plus the open note's folder on Linux, debounced to 300 ms, with
+  one `vaultRecheck` on every event, focus, and visibility; no chokidar, no
+  polling timer. (F4) `write` itself changes on every provider in one commit,
+  with an optional guard and a discriminated result; a conflict is a result,
+  never a throw. (F5) the engine's `vaultWrite` writes through the same
+  `writeNote` as the app and checks a content hash of the bytes the person
+  approved at execute time. (F6) `memory.enabled` is off-only in project
+  policy: a project may turn memory off from any folder, turning it on waits
+  for trust, and the app override can only turn it off. (F7) only the
+  Electron main process picks, validates, and writes `vault.dir` (an
+  absolute realpath, file mode kept); the renderer never passes a vault path,
+  no daemon route sets it in M1, and open engine sessions keep their root.

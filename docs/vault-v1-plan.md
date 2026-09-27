@@ -431,7 +431,7 @@ theirs, Keep both). Other providers return the new shape now and gain the
 check in M2. Files carry an opaque `version` (compared for equality only;
 sizes documented as bytes), the folder client is built as one shared
 `folderClient.ts` over a transport so the iPhone folder (2.10a) reuses it, and
-the temp-and-rename keeps the note's creation date, which Obsidian shows.
+the temp-and-rename carries the note's creation date, which Obsidian shows, on macOS and Windows (on Linux the file system cannot keep it, and no copy claims it; CTO F2). The resolve sheet also takes a move's forked pairs (`VaultMoveResult.forked`), so the person can pick which copy keeps the name.
 Closes [data-3] [ui-1] [obs-5] [truth-15] [data-20]. Where:
 `app/src/lib/gitos/providers.ts:70-73`, `deviceFolder.ts`,
 `app/electron/main.ts:916-973`, `store.ts` (vaultSave, vaultRefresh),
@@ -858,7 +858,7 @@ index read-only and stashes writes with their base. A shared hub gives each
 member their own root (D9), and Crew notes go to the routine owner's vault.
 Writes from the phone are the person's own and need no approval. Closes
 [custom-9] [keyask-2] [engine-1] (phone half) [ui-4] [engine-2] [custom-10].
-Where: `os-code/src/daemon/serve.ts` (the pattern at 890-905), `bootstrap.ts:192`,
+Interim member isolation (0.13) keeps the agent's no-ask tools off the owner's vault, but a member's own approved shell can still read it, so no copy says members cannot see the owner's notes until this item and a shell boundary land; when the JWT AuthContext source lands, `ownerHoldsAdmin` (serve.ts) must resolve roles through it. Where: `os-code/src/daemon/serve.ts` (the pattern at 890-905), `bootstrap.ts:192`,
 `scheduler.ts`, a new `app/src/lib/gitos/hub.ts`. Test: a new
 `os-code/test/daemonVault.test.ts` (jail, owner scope, conflicts);
 `daemonRoutines.test.ts`, a member cannot list the owner's notes or another
@@ -1033,7 +1033,7 @@ devices (lease, evicted notes, a move, a conflict version); a two-member team
 vault (conflict toast, a stale delete refused, restore); iOS export; a paired
 phone browsing "Your computer"; a switch from cloud to Harbor to the desktop
 agent with a handoff; a real Obsidian fixture vault, since the review could
-not reach Obsidian's docs. For the iPhone folder (2.10): a vault On My iPhone
+not reach Obsidian's docs. iCloud from a Mac: with the same Apple ID, iCloud Drive shows OpenShore's vault folder, desktop Obsidian opens it as a vault, an edit on each side reaches the other, and the phone lists no `.obsidian/`; the iCloud Obsidian line returns to `vaultCopy.ts` only after this passes and 2.1 and 2.9 land (CMO). For the iPhone folder (2.10): a vault On My iPhone
 lists notes and not `.obsidian/`, edits save and show in Obsidian, and a save
 leaves Obsidian's "Created time" unchanged; an iCloud vault with half its
 notes evicted shows them, opens by downloading, and a same-name create opens
