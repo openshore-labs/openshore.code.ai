@@ -128,6 +128,9 @@ type Props = {
   onToggleTask?: (line: number, checked: boolean) => void | boolean | Promise<void | boolean>;
   /** Boxes are shown `aria-disabled` (a lease, Your computer away, Drive). */
   tasksReadOnly?: boolean;
+  /** A tap on a `#tag`: the room searches `tag:x` (CX X2). Without it a tag
+   *  shows as plain styled text. */
+  onTag?: (tag: string) => void;
   /** How deep inside note embeds this reader sits (0 for the note). */
   depth?: number;
 };
@@ -164,6 +167,7 @@ interface Reader {
   media?: VaultMedia;
   onToggleTask?: Props['onToggleTask'];
   tasksReadOnly?: boolean;
+  onTag?: (tag: string) => void;
   zoom?: (image: ZoomedImage) => void;
 }
 
@@ -304,6 +308,21 @@ function TaskLine(props: ElementProps) {
   );
 }
 
+// --------------------------------------------------------------------- tags
+
+/** A `#tag` in the text: a small tap that searches `tag:x` (CX X2). */
+function Tag(props: ElementProps) {
+  const reader = useContext(ReaderContext);
+  const tag = str(props['data-tag']) ?? '';
+  if (!reader.onTag || !tag) return <span className="vault-tag">{props.children}</span>;
+  const onTag = reader.onTag;
+  return (
+    <button type="button" className="vault-tag press-fb" onClick={() => onTag(tag)}>
+      {props.children}
+    </button>
+  );
+}
+
 // ------------------------------------------------------------------- embeds
 
 function Embed(props: ElementProps) {
@@ -333,6 +352,7 @@ function Embed(props: ElementProps) {
               onOpenNote={reader.open}
               onNotice={reader.onNotice}
               media={reader.media}
+              onTag={reader.onTag}
               depth={reader.depth + 1}
             />
           )}
@@ -456,6 +476,7 @@ const COMPONENTS = {
   'vault-callout-body': CalloutBody,
   'vault-task': TaskLine,
   'vault-embed': Embed,
+  'vault-tag': Tag,
 } as Components;
 
 // --------------------------------------------------------------- scroll-to
@@ -496,6 +517,7 @@ function VaultMarkdownBody({
   media,
   onToggleTask,
   tasksReadOnly,
+  onTag,
   depth = 0,
 }: Props) {
   // An embedded body (depth 1) is already cut below its frontmatter.
@@ -541,8 +563,20 @@ function VaultMarkdownBody({
       media,
       onToggleTask,
       tasksReadOnly,
+      onTag,
     }),
-    [paths, sourcePath, depth, onOpenNote, onNotice, readEmbed, media, onToggleTask, tasksReadOnly],
+    [
+      paths,
+      sourcePath,
+      depth,
+      onOpenNote,
+      onNotice,
+      readEmbed,
+      media,
+      onToggleTask,
+      tasksReadOnly,
+      onTag,
+    ],
   );
 
   const root = useRef<HTMLDivElement>(null);

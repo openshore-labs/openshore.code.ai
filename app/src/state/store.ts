@@ -282,6 +282,10 @@ import {
   normalizeJevBaseUrl,
   vaultConflictCopyPath,
   foldPath,
+  listTasks,
+  type AttachmentMeta,
+  type BytesRead,
+  type ReadBytesOptions,
   type CurrentsHostProbe,
   type VaultPrivacy,
   type VaultVisibility,
@@ -390,6 +394,7 @@ import {
   type WriteResult,
 } from '../lib/gitos/providers.js';
 import { vaultCaps, type VaultCaps } from '../lib/vaultCaps.js';
+import { readObsidianAppConfig, readVaultConfig } from '../lib/gitos/config.js';
 import { clearVaultTodayCache, resolveVaultToday, vaultTodayLine } from '../lib/vaultToday.js';
 import {
   dropVaultRecent,
@@ -406,6 +411,7 @@ import {
   deleteNote as opsDeleteNote,
   emptyTrash as opsEmptyTrash,
   openToday as opsOpenToday,
+  toggleTask as opsToggleTask,
   folderCounts as opsFolderCounts,
   listTrash as opsListTrash,
   prepareFolderMove as opsPrepareFolderMove,
@@ -433,6 +439,8 @@ import {
   vaultLeaseEnforced,
   HUB_AWAY_READ_ONLY,
   VAULT_TODAY_FAILED,
+  VAULT_TICK_FAILED,
+  vaultTickChanged,
   VAULT_GONE_REASON,
   VAULT_NO_COPY_NAME_REASON,
   vaultEarlierFolderHeld,
@@ -1923,6 +1931,23 @@ interface AppState {
    *  one starts with; vaultOps.openToday writes it only while nothing has
    *  the name (one Today implementation). */
   vaultToday(): Promise<VaultTodayOutcome | undefined>;
+  /** A tick in reading view (6.6; CTO K11, CX X13): `line` is the task's
+   *  zero-based line in the whole note, frontmatter counted. Writes the box
+   *  back by compare-and-swap; false when it did not land (the box then shows
+   *  the file's truth, and a note that changed takes the resolve path). */
+  vaultToggleTask(path: string, line: number, checked: boolean): Promise<boolean>;
+  /** What images and PDFs read from on this storage (6.6): its attachments,
+   *  Obsidian's attachment folder, and the byte reader. Undefined where the
+   *  storage has none. */
+  vaultMediaNow(): Promise<
+    | {
+        scope: string;
+        attachments: AttachmentMeta[];
+        attachmentFolder?: string;
+        readBytes: (path: string, opts?: ReadBytesOptions) => Promise<BytesRead>;
+      }
+    | undefined
+  >;
   /** The switch note's "Save to Vault" (J12, D3): the person's own one-tap
    *  write to `Handoffs/<date> <project>.md`, `ifAbsent`, " 2" on a clash. */
   saveHandoffToVault(conversationId: string, itemId: string): Promise<string | undefined>;
@@ -10206,6 +10231,57 @@ export const useApp = create<AppState>((set, get, api) => {
       logEvent('vault_today', { template: Boolean(plan.template?.found) });
       const line = vaultTodayLine(plan);
       return { kind: 'created', path: r.file.path, ...(line ? { line } : {}) };
+    },
+
+    async vaultToggleTask(path, line, checked) {
+      const t = vaultTarget();
+      if (!t || !capsOf(t).taskWriteBack) return false;
+      if (await leaseRefuses(t)) return false;
+      const title = noteTitle(path);
+      // The tick acts on what the person last typed, saved first.
+      await flushOpenSave(t).catch(() => {});
+      const text = await readBodyOf(t, path).catch(() => undefined);
+      if (text === undefined) {
+        get().showToast(VAULT_TICK_FAILED);
+        return false;
+      }
+      // The reader counts lines in the whole note, frontmatter included,
+      // the same basis as the core's listTasks.
+      const task = listTasks(text).find((x) => x.line === line);
+      if (!task || task.custom) return false;
+      if (task.checked === checked) return true;
+      const r = await opsToggleTask(opsDeps(t), path, task.at, task.status);
+      if (r.ok) return true;
+      if (r.reason === 'changed' || r.reason === 'missing') {
+        // Changed somewhere else: the open note takes M1's path (a clean
+        // one reloads the newer version, which the box then shows).
+        if (isActiveVault(t) && get().vaultNote?.path === path) {
+          await inSaveChain(t, path, () => recheckOpenNote(t, path)).catch(() => undefined);
+        }
+        get().showToast(vaultTickChanged(title));
+        return false;
+      }
+      get().showToast(VAULT_TICK_FAILED);
+      return false;
+    },
+
+    async vaultMediaNow() {
+      const t = vaultTarget();
+      if (!t || !capsOf(t).attachments) return undefined;
+      const [attachments, app] = await Promise.all([
+        t.provider.listAttachments!(t.resourceId).catch(() => [] as AttachmentMeta[]),
+        readVaultConfig(t.provider, t.resourceId, 'obsidian/app')
+          .then(readObsidianAppConfig)
+          .catch(() => ({}) as ReturnType<typeof readObsidianAppConfig>),
+      ]);
+      const provider = t.provider;
+      const resourceId = t.resourceId;
+      return {
+        scope: `${t.providerId}:${t.resourceId}`,
+        attachments,
+        ...(app.attachmentFolderPath ? { attachmentFolder: app.attachmentFolderPath } : {}),
+        readBytes: (path, opts) => provider.readBytes!(resourceId, path, opts),
+      };
     },
 
     vaultRecentRing() {

@@ -15,6 +15,9 @@
 //   code stays as written.
 // - Headings carry `data-heading-index`. No `id` attribute is ever built from
 //   note text (DOM clobbering); scroll-to walks these attributes instead.
+// - A `#tag` in the text becomes a `vault-tag` element carrying the tag, so
+//   the reader can make it a tap that searches `tag:x` (CX X2). Not inside a
+//   link, and a tag of digits alone (`#1`) is not a tag, as in Obsidian.
 // - GFM task items become a `vault-task` line carrying the task's line in the
 //   whole note (frontmatter lines counted), so a tick can find its marker.
 //
@@ -44,6 +47,10 @@ const HEAD = /^\[![^\]\n]*\][+-]?[ \t]*/;
 
 /** `==text==` inside one text node. */
 const MARK = /==(?![\s=])([^\n]*?[^\s=])==/g;
+
+/** `#tag` at the start of the text or after a space or an opening bracket:
+ *  letters, digits, `_`, `-` and `/`, at least one of them not a digit. */
+const TAG = /(^|[\s([{])#([\p{L}\p{N}_/-]*[\p{L}_/-][\p{L}\p{N}_/-]*)/gu;
 
 /** A callout title from its type when the line gives none: `Note`,
  *  `Warning`, `Faq` (CX X12). */
@@ -151,6 +158,42 @@ function splitMarks(value: string): MdNode[] | null {
   return out;
 }
 
+/** Split `#tag`s out of a text node, or null when it holds none. */
+function splitTags(value: string): MdNode[] | null {
+  TAG.lastIndex = 0;
+  const out: MdNode[] = [];
+  let at = 0;
+  for (let m = TAG.exec(value); m; m = TAG.exec(value)) {
+    const start = m.index + m[1]!.length;
+    const tag = m[2]!.replace(/\/+$/, '');
+    if (!tag) continue;
+    if (start > at) out.push({ type: 'text', value: value.slice(at, start) });
+    out.push(el('vaultTag', 'vault-tag', { dataTag: tag }, [{ type: 'text', value: `#${tag}` }]));
+    at = start + 1 + tag.length;
+    TAG.lastIndex = at;
+  }
+  if (!out.length) return null;
+  if (at < value.length) out.push({ type: 'text', value: value.slice(at) });
+  return out;
+}
+
+/** Highlights first, then tags in what is still plain text. */
+function splitText(value: string, tags: boolean): MdNode[] | null {
+  const marked = splitMarks(value);
+  if (!tags) return marked;
+  const pieces = marked ?? [{ type: 'text', value }];
+  let changed = Boolean(marked);
+  const out: MdNode[] = [];
+  for (const p of pieces) {
+    const split = p.type === 'text' && typeof p.value === 'string' ? splitTags(p.value) : null;
+    if (split) {
+      changed = true;
+      out.push(...split);
+    } else out.push(p);
+  }
+  return changed ? out : null;
+}
+
 // ----------------------------------------------------------- block anchors
 
 /** Take a trailing `^id` off a block; true when the block had it. */
@@ -179,6 +222,8 @@ interface State {
   opts: RemarkObsidianOptions;
   anchors: Map<number, string>;
   headings: number;
+  /** Inside a link: a `#` there is part of its text, never a tag. */
+  inLink?: boolean;
 }
 
 function walk(node: MdNode, st: State): void {
@@ -191,9 +236,14 @@ function walk(node: MdNode, st: State): void {
       continue;
     }
     if (child.type === 'text' && typeof child.value === 'string') {
-      const split = splitMarks(child.value);
+      const split = splitText(child.value, !st.inLink);
       if (split) next.push(...split);
       else next.push(child);
+      continue;
+    }
+    if (child.type === 'link' || child.type === 'linkReference') {
+      walk(child, { ...st, inLink: true });
+      next.push(child);
       continue;
     }
     if (child.type === 'blockquote') child = callout(child) ?? child;

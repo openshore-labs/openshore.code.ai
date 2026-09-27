@@ -11,7 +11,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { VaultMarkdown, vaultHrefPath } from '../src/components/VaultMarkdown.js';
 import { ErrorBoundary } from '../src/components/ErrorBoundary.js';
 import { mountDom, type TestDom } from './support/dom.js';
-import { readFrontmatter } from 'os-code/protocol';
+import { listTasks, readFrontmatter } from 'os-code/protocol';
 import { restoreEol } from '../src/lib/vault.js';
 import { vaultAutosave } from '../src/lib/vaultAutosave.js';
 import { readFileSync } from 'node:fs';
@@ -38,71 +38,9 @@ vi.mock('../src/lib/remarkWikilinks.js', async (importOriginal) => {
   };
 });
 
-// The pure Obsidian helpers are stream A2's (os-code/src/harness/vault
-// markdown.ts and attachments.ts). The reader codes against their contract;
-// here small faithful fakes stand in, so these cases test the reader, not the
-// parser.
-vi.mock('os-code/protocol', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('os-code/protocol')>();
-  const FAMILY: Record<string, 'neutral' | 'positive' | 'caution' | 'danger'> = {
-    tip: 'positive',
-    success: 'positive',
-    question: 'caution',
-    warning: 'caution',
-    failure: 'danger',
-    danger: 'danger',
-    bug: 'danger',
-  };
-  const MIME: Record<string, string> = {
-    png: 'image/png',
-    jpg: 'image/jpeg',
-    gif: 'image/gif',
-    svg: 'image/svg+xml',
-    pdf: 'application/pdf',
-  };
-  return {
-    ...actual,
-    parseCallout: (line: string) => {
-      const m = /^(?:>\s*)?\[!([A-Za-z-]{1,24})\]([+-])?\s*(.*)$/.exec(line);
-      if (!m) return null;
-      const type = m[1]!.toLowerCase();
-      return {
-        type,
-        family: FAMILY[type] ?? 'neutral',
-        fold: (m[2] as '+' | '-' | undefined) ?? undefined,
-        title: m[3] || undefined,
-      };
-    },
-    maskComments: (text: string) => text.replace(/%%[\s\S]*?%%/g, (c) => c.replace(/[^\n]/g, ' ')),
-    sectionOf: (text: string, heading: string) => {
-      const lines = text.split('\n');
-      let at = 0;
-      let start = -1;
-      let level = 0;
-      for (const line of lines) {
-        const h = /^(#{1,6})\s+(.*)$/.exec(line);
-        if (start >= 0 && h && h[1]!.length <= level) return { start, end: at };
-        if (start < 0 && h && h[2]!.trim() === heading) {
-          start = at;
-          level = h[1]!.length;
-        }
-        at += line.length + 1;
-      }
-      return start >= 0 ? { start, end: text.length } : null;
-    },
-    blockAnchorAt: (text: string, id: string) => {
-      const at = text.indexOf(` ^${id}`);
-      if (at < 0) return null;
-      return { start: text.lastIndexOf('\n', at) + 1, end: at + id.length + 2 };
-    },
-    attachmentMime: (path: string) => MIME[/\.([a-z]+)$/i.exec(path)?.[1]?.toLowerCase() ?? ''],
-    isAttachmentPath: (path: string) => /\.(png|jpg|gif|svg|pdf)$/i.test(path),
-    resolveAttachment: (target: string, _source: string, list: readonly string[]) =>
-      list.find((p) => p === target) ?? list.find((p) => p.split('/').pop() === target),
-    bytesMatchMime: (bytes: Uint8Array, mime: string) =>
-      mime !== 'image/png' || (bytes[0] === 0x89 && bytes[1] === 0x50),
-  };
-});
+// The pure Obsidian helpers are stream A2's real ones (os-code/src/harness
+// vault markdown.ts and attachments.ts), so these cases test the reader over
+// the parser it ships with.
 
 const render = (text: string, paths: string[] = []) =>
   renderToStaticMarkup(<VaultMarkdown text={text} paths={paths} onOpenNote={() => {}} />);
@@ -548,8 +486,10 @@ describe('task checkboxes (X13)', () => {
       });
     expect(boxes().map((b) => b.checked)).toEqual([false, true]);
     await tick(boxes()[0]!);
-    // Line 3 of the whole note: the frontmatter's three lines come first.
+    // Line 3 of the whole note: the frontmatter's three lines come first,
+    // the same basis as the core's listTasks, which the store matches on.
     expect(calls).toEqual([[3, true]]);
+    expect(listTasks(note).map((t) => t.line)).toEqual([3, 4, 5]);
     expect(boxes()[0]!.checked).toBe(true);
     // Refused: the box shows the file's truth again.
     answer = false;
@@ -938,5 +878,41 @@ describe('blob URL lifetime (K11)', () => {
     expect(revoked).toEqual([]);
     reg.revokeAll();
     expect(revoked).toEqual(['blob:test/1']);
+  });
+});
+
+// Vault M6 wave 2: a #tag is a tap that searches tag:x (CX X2), and headings
+// carry the index the outline scrolls by (K10).
+describe('tags and heading indexes in reading view', () => {
+  let dom: TestDom;
+  beforeEach(async () => {
+    dom = await mountDom();
+  });
+  afterEach(async () => {
+    await dom.unmount();
+  });
+
+  it('a #tag is a button that hands its tag up; a link, code and #1 are not tags', async () => {
+    const tapped: string[] = [];
+    await dom.render(
+      <VaultMarkdown
+        text={'Filed under #work/q4 and (#idea).\n\n[see #notatag](https://example.com) `#code` #1'}
+        paths={[]}
+        onOpenNote={() => {}}
+        onTag={(t) => tapped.push(t)}
+      />,
+    );
+    expect(dom.buttons()).toEqual(expect.arrayContaining(['#work/q4', '#idea']));
+    expect(dom.buttons()).not.toContain('#notatag');
+    expect(dom.buttons()).not.toContain('#code');
+    expect(dom.buttons()).not.toContain('#1');
+    await dom.click('#work/q4');
+    expect(tapped).toEqual(['work/q4']);
+  });
+
+  it('without onTag a tag is styled text, and headings carry data-heading-index in order', () => {
+    const html = render('# One\n\n#plain\n\n```\n# not a heading\n```\n\n## Two\n');
+    expect(html).toContain('<span class="vault-tag">#plain</span>');
+    expect([...html.matchAll(/data-heading-index="(\d+)"/g)].map((m) => m[1])).toEqual(['0', '1']);
   });
 });

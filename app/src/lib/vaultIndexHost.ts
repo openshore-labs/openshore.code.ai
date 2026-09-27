@@ -51,6 +51,7 @@ import {
 } from 'os-code/protocol';
 import { openBlob, platform, sealBlob } from './platform.js';
 import { vaultM3Bridge } from './gitos/deviceFolder.js';
+import { vaultBlobs } from './vaultBlobs.js';
 import {
   versionOf,
   type StorageProvider,
@@ -934,6 +935,9 @@ export async function closeVaultIndex(): Promise<void> {
 /** Close every index, the warm one too: a storage move, a sign-out, or a
  *  pairing change (Vault M5, CTO J1). */
 export async function shutVaultIndex(): Promise<void> {
+  // The images a vault showed go with it (CTO K11): no blob URL outlives
+  // the vault it was made from.
+  vaultBlobs.revokeAll();
   const hosts = [current, parked];
   current = undefined;
   parked = undefined;

@@ -3375,6 +3375,27 @@ describe('Vault M6 operations through the store', () => {
     expect(useApp.getState().vaultNote).toMatchObject({ path, fresh: true });
   });
 
+  it('a checkbox tick with frontmatter present writes the right line', async () => {
+    const text = ['---', 'tags: [a]', '---', '# Tasks', '', '- [ ] first', '- [ ] second', ''].join(
+      '\n',
+    );
+    await openOnFolder('t.md', text);
+    const base = folder.version('t.md');
+    // Line 6 of the whole note, frontmatter counted, is "- [ ] second".
+    expect(await useApp.getState().vaultToggleTask('t.md', 6, true)).toBe(true);
+    expect(F.get('t.md')).toBe(text.replace('- [ ] second', '- [x] second'));
+    expect(folder.counts.writes.at(-1)).toEqual({ path: 't.md', guard: { ifMatch: base } });
+    // The open note shows what landed, at its new version.
+    expect(useApp.getState().vaultNote?.text).toBe(F.get('t.md'));
+    expect(useApp.getState().vaultNote?.version).toBe(folder.version('t.md'));
+    // Changed somewhere else: nothing is written over it.
+    F.set('t.md', `${F.get('t.md')}more from elsewhere\n`);
+    const writes = folder.counts.writes.length;
+    expect(await useApp.getState().vaultToggleTask('t.md', 5, true)).toBe(false);
+    expect(folder.counts.writes.length).toBe(writes + 1);
+    expect(F.get('t.md')).toContain('- [ ] first');
+  });
+
   it('without a real Trash a delete is for good, and Undo comes back beside a taken name', async () => {
     await openOnFolder('x.md', 'first words');
     expect(useApp.getState().vaultCapsNow().trash).toBe(false);

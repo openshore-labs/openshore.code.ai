@@ -121,6 +121,7 @@ import {
   vaultRenameToast,
   vaultRecentAgentLabel,
   vaultTodayAria,
+  vaultReaderCopy,
   VAULT_TODAY_TITLE,
   type VaultDriveLink,
   type VaultOnboard,
@@ -149,7 +150,15 @@ import { hermesNoteRead, hermesNotesList } from '../lib/currentsProbe.js';
 import { isDesktop, openExternal, platform } from '../lib/platform.js';
 import { useExitPresence } from '../hooks/useExitPresence.js';
 import { durationMs, sheetExitMs } from '../lib/motion.js';
-import { datePartsOf, type HermesNote, type HermesNoteMeta } from 'os-code/protocol';
+import {
+  datePartsOf,
+  isAttachmentPath,
+  type HermesNote,
+  type HermesNoteMeta,
+} from 'os-code/protocol';
+import { vaultBlobs } from '../lib/vaultBlobs.js';
+import { openDeviceAttachment } from '../lib/gitos/deviceFolder.js';
+import type { VaultMedia } from '../components/vault/VaultAttachment.js';
 import { Icon } from '../components/Icon.js';
 import { VaultAgentRecent } from '../components/VaultAgentRecent.js';
 import { VaultBacklinks } from '../components/vault/VaultBacklinks.js';
@@ -277,6 +286,8 @@ export function VaultScreen() {
     vaultSearchSource,
     vaultRecentRing,
     vaultToday,
+    vaultToggleTask,
+    vaultMediaNow,
   } = useApp();
 
   const team = vaultScope === 'team';
@@ -459,6 +470,15 @@ export function VaultScreen() {
   // A note Today just started opens in the editor with the caret at the end
   // (CX X11).
   const caretToEnd = useRef(false);
+  // A link's #Heading or #^block to land on once its note shows (CX X12),
+  // tied to that note so another note's reader never tries it.
+  const [pendingAnchor, setPendingAnchor] = useState<
+    { path: string; subpath: string; key: number } | undefined
+  >();
+  // What images and PDFs read from on this storage (6.6), and a count that
+  // re-mounts the reader after iOS took the blob URLs back (K11).
+  const [mediaBase, setMediaBase] = useState<Omit<VaultMedia, 'away' | 'openAttachment'>>();
+  const [blobEpoch, setBlobEpoch] = useState(0);
   const [linksLeft, setLinksLeft] = useState<
     | {
         path: string;
@@ -863,7 +883,14 @@ export function VaultScreen() {
     void import('@capacitor/app')
       .then(({ App }) =>
         App.addListener('appStateChange', ({ isActive }) => {
-          if (!isActive) flushSave();
+          if (isActive) {
+            // Back from the background: the reader asks for its images again.
+            setBlobEpoch((n) => n + 1);
+            return;
+          }
+          flushSave();
+          // iOS may reclaim the page: no image bytes stay behind (K11).
+          vaultBlobs.revokeAll();
         }),
       )
       .then((handle) => {
@@ -878,6 +905,38 @@ export function VaultScreen() {
       flushSave();
     };
   }, [flushSave]);
+  // Leaving the room takes every image's blob URL with it (K11).
+  useEffect(() => () => vaultBlobs.revokeAll(), []);
+
+  // Attachments of the vault on screen, read again when the vault or its
+  // list changes (a new image lands with a note).
+  useEffect(() => {
+    let live = true;
+    void vaultMediaNow()
+      .then((m) => {
+        if (live) setMediaBase(m);
+      })
+      .catch(() => {
+        if (live) setMediaBase(undefined);
+      });
+    return () => {
+      live = false;
+    };
+  }, [vaultMediaNow, currentProviderId, vaultScope, vaultFiles.length, caps.attachments]);
+  const media = useMemo<VaultMedia | undefined>(
+    () =>
+      mediaBase
+        ? {
+            ...mediaBase,
+            away: hubAway,
+            // The desktop opens a PDF in the system viewer (osc:vaultOpenAttachment).
+            ...(!team && currentProviderId === 'files' && isDesktop()
+              ? { openAttachment: openDeviceAttachment }
+              : {}),
+          }
+        : undefined,
+    [mediaBase, hubAway, team, currentProviderId],
+  );
 
   const openNote = (path: string) => {
     // Persist any in-flight edit to the current note before switching away.
@@ -994,18 +1053,38 @@ export function VaultScreen() {
   // A tapped link: a note opens, a dashed one is created. An attachment
   // ([[diagram.png]]) is not a note and does not open here yet, so it says so
   // rather than doing nothing.
-  const followLink = (p: string, isNew: boolean) => {
+  const followLink = (p: string, isNew: boolean, subpath?: string) => {
     if (nonNoteExtension(p)) {
       const name = p.slice(p.lastIndexOf('/') + 1);
-      showToast(`"${name}" is an attachment. Attachments do not open in the Vault yet.`);
+      // An image or a PDF opens in the system viewer on the desktop's own
+      // folder; elsewhere it says so. Other files keep M3's line (CX X14).
+      if (isAttachmentPath(p)) {
+        if (media?.openAttachment) {
+          void media.openAttachment(p).then((r) => {
+            if (!r.ok) showToast(vaultReaderCopy.couldNotOpen(name));
+          });
+        } else {
+          showToast(vaultReaderCopy.couldNotOpen(name));
+        }
+        return;
+      }
+      showToast(`"${name}" is an attachment. ${vaultReaderCopy.otherFile}`);
       return;
     }
+    if (subpath) setPendingAnchor({ path: p, subpath, key: Date.now() });
     if (isNew) {
       flushSave();
       // Leaving the note: a choice still open on it keeps both.
       void vaultLeaveConflict();
       void vaultCreate(p);
-    } else openNote(p);
+    } else if (p !== vaultNote?.path) openNote(p);
+  };
+  // A tapped #tag searches tag:x in the tree (CX X2).
+  const searchTag = (tag: string) => {
+    flushSave();
+    setSearchQ(`tag:${tag}`);
+    setFolder('');
+    vaultCloseNote();
   };
 
   // ---- delete, Undo and Trash (6.3; CTO K6, R2; CX X8 to X10) -------------
@@ -1767,7 +1846,7 @@ export function VaultScreen() {
             // A calm reload settles the page in (opacity only); re-keyed so
             // each reload plays it once.
             <div
-              key={vaultNote.reloaded ?? 0}
+              key={`${vaultNote.reloaded ?? 0}:${blobEpoch}`}
               className={
                 vaultNote.reloaded && vaultNote.reloadedFrom === 'elsewhere'
                   ? 'vault-reloaded'
@@ -1779,6 +1858,15 @@ export function VaultScreen() {
                 paths={paths}
                 sourcePath={vaultNote.path}
                 onOpenNote={followLink}
+                {...(pendingAnchor && pendingAnchor.path === vaultNote.path
+                  ? { anchor: { subpath: pendingAnchor.subpath, key: pendingAnchor.key } }
+                  : {})}
+                onNotice={showToast}
+                readEmbed={vaultReadBody}
+                {...(media ? { media } : {})}
+                onToggleTask={(line, checked) => vaultToggleTask(vaultNote.path, line, checked)}
+                tasksReadOnly={!caps.taskWriteBack || locked}
+                onTag={searchTag}
               />
             </div>
           )}

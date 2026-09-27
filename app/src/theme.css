@@ -2625,6 +2625,22 @@ textarea {
   gap: 4px;
 }
 
+/* A #tag in reading view: a small tap that searches tag:x (CX X2). */
+.vault-tag {
+  display: inline;
+  padding: 0 5px;
+  margin: 0;
+  border: 0;
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink-soft);
+  font: inherit;
+  line-height: inherit;
+}
+button.vault-tag {
+  cursor: pointer;
+}
+
 /* ---- M6 stream W2 end ---- */
 
 /* ------------------------------------------------------------------ chat */

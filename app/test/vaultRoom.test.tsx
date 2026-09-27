@@ -178,6 +178,8 @@ const app = vi.hoisted(() => {
     vaultSearchSource: () => undefined,
     vaultRecentRing: () => [],
     vaultToday: async () => undefined,
+    vaultToggleTask: async () => false,
+    vaultMediaNow: async () => undefined,
   };
   return { state, listeners, views, toasts, created, opened, drive, folderIo, leases, polls };
 });
