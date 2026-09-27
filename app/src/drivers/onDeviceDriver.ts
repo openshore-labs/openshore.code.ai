@@ -25,8 +25,15 @@ import { buildHarborSystemPrompt, isHarbor } from '../lib/harbor.js';
 import { buildHarborMiniSystemPrompt, guidedSetupLine, isHarborMini } from '../lib/harborMini.js';
 import { sanitizeGuideText } from '../lib/guideHarness.js';
 import { prepareGuideTurn, searchForModel } from '../lib/localSearch.js';
-import type { ChatDriver, DriverEventSink } from './types.js';
-import { DriverEmitter } from './types.js';
+import type {
+  AppVaultPack,
+  ChatContext,
+  ChatDriver,
+  DriverEventSink,
+  DriverVaultOptions,
+} from './types.js';
+import { DriverEmitter, readChatContext } from './types.js';
+import { packSeatFor } from '../lib/vaultSeat.js';
 import { chainOfThoughtLine, chainOfThoughtOn } from '../lib/chainOfThought.js';
 import type { SeedTurn } from '../state/types.js';
 
@@ -87,6 +94,12 @@ export class OnDeviceDriver implements ChatDriver {
   private afterNote?: string;
   /** This chat's model is Harbor Lite, so the guide harness shapes its turns. */
   private readonly guideTurn: boolean;
+  /** The conversation's vault pack (CTO J1), and the text this reply's
+   *  system prompt carries from it, the prompt's last part. */
+  private readonly vaultPack?: AppVaultPack;
+  private packText?: string;
+  /** The send in flight, so Stop also reaches a pack still preparing. */
+  private sendController?: AbortController;
 
   constructor(
     private readonly modelId: string,
@@ -97,12 +110,16 @@ export class OnDeviceDriver implements ChatDriver {
      *  configured backend (Brave/Tavily) or DuckDuckGo. */
     private readonly researchOn = false,
     /** The project's standing instructions and the chat's repo context, so
-     *  the pocket model works from the same brief as every other brain. */
-    private readonly extraSystem?: string,
+     *  the pocket model works from the same brief as every other brain; read
+     *  on every reply. */
+    private readonly extraSystem?: ChatContext,
     /** The chat this driver answers for, so the guided setup's line reaches
      *  only the walk's own chat, whichever chat is on screen. */
     private readonly conversationId?: string,
+    /** The conversation's vault pack (CTO J1); none with Memory off. */
+    opts: DriverVaultOptions = {},
   ) {
+    this.vaultPack = opts.vaultPack;
     this.searchable = !isHarborMini(modelId);
     this.guide = isHarborMini(modelId) || isHarbor(modelId);
     this.guideTurn = isHarborMini(modelId);
@@ -124,7 +141,11 @@ export class OnDeviceDriver implements ChatDriver {
     // 512-token reply and a card harness cannot carry a thought); any other
     // pocket model is asked to think in tags while the setting is on.
     const cot = this.guideTurn ? undefined : chainOfThoughtLine(this.modelId, this.cot);
-    return [base, this.extraSystem?.trim(), walk, cot].filter(Boolean).join('\n\n');
+    // The vault pack is a separate, last part, so fitDeviceHistory counts it
+    // against the 4,096-token window with the rest of the prompt.
+    return [base, readChatContext(this.extraSystem), walk, cot, this.packText]
+      .filter(Boolean)
+      .join('\n\n');
   }
 
   /** Send the answer part of a reply on, and its thinking to the thinking
@@ -211,7 +232,12 @@ export class OnDeviceDriver implements ChatDriver {
     this.turn = 1;
     this.searchedThisTurn = false;
     this.aborted = false;
+    this.packText = undefined;
+    const send = new AbortController();
+    this.sendController = send;
     this.emit({ type: 'task-start', input: text });
+    // The pack gathers once per send, while the model loads.
+    const preparing = this.vaultPack?.prepare(text, send.signal);
     this.emit({
       type: 'turn-start',
       turn: this.turn,
@@ -244,6 +270,8 @@ export class OnDeviceDriver implements ChatDriver {
       if (isHarborMini(this.modelId)) await this.prepareGuideTurn(text);
       this.history.push({ role: 'user', content: text });
       if (this.aborted) return; // stopped during the guide's web search
+      await preparing;
+      if (this.aborted) return; // stopped while the pack gathered
       await this.generate();
     } catch (err) {
       this.clearWatchdog();
@@ -277,6 +305,7 @@ export class OnDeviceDriver implements ChatDriver {
     this.searchFilter = new SearchLineFilter(this.searchable && !this.searchedThisTurn);
     this.cot = chainOfThoughtOn();
     this.thinkSplitter = new ThinkTagSplitter();
+    this.renderVaultPack();
     const requestId = `req_${requestSeq++}`;
     this.activeRequestId = requestId;
     const system = this.systemPrompt();
@@ -296,6 +325,19 @@ export class OnDeviceDriver implements ChatDriver {
     // needs the watchdog.
     if (res?.started === false) return;
     this.armWatchdog(requestId);
+  }
+
+  /** Render this send's pack for this seat (on this device, its 4,096-token
+   *  window) and show its card after the turn's start, once per change. */
+  private renderVaultPack(): void {
+    if (!this.vaultPack) return;
+    const seat = packSeatFor(
+      { kind: 'device', modelId: this.modelId, modelName: this.modelName },
+      { ownTailnetSuffix: null },
+    );
+    const pack = seat ? this.vaultPack.render(seat) : {};
+    this.packText = pack.text;
+    if (pack.event) this.emit(pack.event);
   }
 
   private async handleDone(
@@ -375,6 +417,7 @@ export class OnDeviceDriver implements ChatDriver {
 
   abort(): void {
     this.aborted = true;
+    this.sendController?.abort();
     const requestId = this.activeRequestId;
     if (requestId) {
       void Llama.stop({ requestId }).catch(() => {});

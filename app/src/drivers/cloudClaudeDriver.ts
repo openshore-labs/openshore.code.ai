@@ -3,9 +3,17 @@
 // for us); streaming rides the WebView's native fetch. Chat-only from the
 // phone: repo tools need the desktop connection, and the UI says so.
 import Anthropic from '@anthropic-ai/sdk';
-import type { ApprovalAnswer } from 'os-code/protocol';
-import type { ChatContext, ChatDriver, DriverEventSink } from './types.js';
+import type { ApprovalAnswer, DriverEvent } from 'os-code/protocol';
+import type {
+  AppVaultPack,
+  ChatContext,
+  ChatDriver,
+  DriverEventSink,
+  DriverVaultOptions,
+} from './types.js';
 import { DriverEmitter, readChatContext } from './types.js';
+import { claudeHistoryCache, claudeSystem, promptCacheOn } from '../lib/claudeCache.js';
+import { claudeContextTokens, packSeatFor } from '../lib/vaultSeat.js';
 import { effortDirective } from '../lib/effort.js';
 import { chainOfThoughtOn, claudeRequestThinking } from '../lib/chainOfThought.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
@@ -21,12 +29,11 @@ import type { SeedTurn } from '../state/types.js';
 import { CLAUDE_MODELS, DEFAULT_CLAUDE_MODEL } from '../lib/claudeModels.js';
 export { CLAUDE_MODELS, DEFAULT_CLAUDE_MODEL };
 
-/** Fallback context window when a model id is not in the catalog. */
-const DEFAULT_CONTEXT_WINDOW = 200_000;
-
-/** The model's real context window (P2-14: not a flat 1M, which read ~5x low). */
+/** The model's real context window (P2-14: not a flat 1M, which read ~5x low),
+ *  from the catalog, else 200k. The vault pack sizes itself from the same
+ *  number (lib/vaultSeat.ts). */
 export function contextWindowFor(model: string): number {
-  return CLAUDE_MODELS.find((m) => m.id === model)?.contextWindow ?? DEFAULT_CONTEXT_WINDOW;
+  return claudeContextTokens(model);
 }
 
 /** The context meter reading: input tokens as a percent of the real window. */
@@ -79,6 +86,24 @@ const SYSTEM_PROMPT = [
   'Never use em dashes. Use a period or a comma instead.',
 ].join('\n');
 
+/**
+ * The system blocks for one request, stable to volatile (CTO J16): the head
+ * (the base prompt and the chat's own context, its project and repositories)
+ * stays byte-identical from send to send; the effort line, the
+ * frame-reading note and the vault pack ride the tail, the pack last. With
+ * caching on, the head carries the one cache marker.
+ */
+export function claudeRequestSystem(
+  head: string,
+  tail: { effort?: string; hasFrames?: boolean; pack?: string; cache: boolean },
+): Anthropic.TextBlockParam[] {
+  return claudeSystem(
+    head,
+    [tail.effort, tail.hasFrames ? VIDEO_FRAMES_SYSTEM_NOTE : undefined, tail.pack],
+    tail.cache,
+  );
+}
+
 /** The user turn a Claude request opens with when the chat itself opened on
  *  the app's own words (the guided setup's greeting). */
 export const CHAT_OPENER = '(This chat began with the message below.)';
@@ -98,6 +123,9 @@ export class CloudClaudeDriver implements ChatDriver {
   private history: Anthropic.MessageParam[] = [];
   private client: Anthropic;
   private activeStream?: { abort(): void };
+  /** The send in flight, so Stop also reaches a pack still preparing. */
+  private sendController?: AbortController;
+  private readonly vaultPack?: AppVaultPack;
 
   constructor(
     apiKey: string,
@@ -108,7 +136,10 @@ export class CloudClaudeDriver implements ChatDriver {
     /** Extra system context for this chat (the repositories it works with,
      *  the guided setup's step), read on every reply. */
     private readonly extraSystem?: ChatContext,
+    /** The conversation's vault pack (CTO J1); none with Memory off. */
+    opts: DriverVaultOptions = {},
   ) {
+    this.vaultPack = opts.vaultPack;
     const ws = workspaceId?.trim();
     this.client = new Anthropic({
       apiKey,
@@ -129,7 +160,11 @@ export class CloudClaudeDriver implements ChatDriver {
   }
 
   private async run(text: string, attachments?: Attachment[]): Promise<void> {
+    const controller = new AbortController();
+    this.sendController = controller;
     this.emitter.emit({ type: 'task-start', input: text });
+    // The pack gathers once per send, beside the turn's own setup.
+    const preparing = this.vaultPack?.prepare(text, controller.signal);
     this.emitter.emit({ type: 'turn-start', turn: 1, model: this.model, providerKind: 'cloud' });
     // Vision: fold image attachments (and video frames) into the user turn. See
     // buildVisionContent for the frame labeling and header.
@@ -143,18 +178,25 @@ export class CloudClaudeDriver implements ChatDriver {
     // streams into the thinking block. Read once per turn, so a flip mid-reply
     // cannot half-apply.
     const cot = chainOfThoughtOn();
+    // Prompt caching, pinned for this send like Chain of Thought.
+    const cache = promptCacheOn();
     try {
+      await preparing;
+      if (controller.signal.aborted) {
+        this.emitter.emit({ type: 'text-final', text: '' });
+        this.emitter.emit({ type: 'task-done', reason: 'aborted', message: 'Stopped.' });
+        return;
+      }
+      const pack = this.vaultPackFor();
+      if (pack.event) this.emitter.emit(pack.event);
       const stream = this.client.messages.stream({
         model: this.model,
         ...claudeRequestThinking(this.model, 16000, cot),
-        system: [
-          SYSTEM_PROMPT,
-          effortDirective(),
-          hasFrames ? VIDEO_FRAMES_SYSTEM_NOTE : undefined,
-          readChatContext(this.extraSystem),
-        ]
-          .filter(Boolean)
-          .join('\n'),
+        system: claudeRequestSystem(
+          [SYSTEM_PROMPT, readChatContext(this.extraSystem)].filter(Boolean).join('\n'),
+          { effort: effortDirective(), hasFrames, pack: pack.text, cache },
+        ),
+        ...claudeHistoryCache(cache),
         messages: opensOnUser(this.history),
       });
       this.activeStream = stream;
@@ -208,10 +250,23 @@ export class CloudClaudeDriver implements ChatDriver {
       });
     } finally {
       this.activeStream = undefined;
+      if (this.sendController === controller) this.sendController = undefined;
     }
   }
 
+  /** This send's pack, rendered for this seat: Claude on the person's key,
+   *  a cloud seat, served the model's own window. */
+  private vaultPackFor(): { text?: string; event?: DriverEvent } {
+    if (!this.vaultPack) return {};
+    const seat = packSeatFor(
+      { kind: 'cloud', provider: 'anthropic', model: this.model, label: this.model },
+      { ownTailnetSuffix: null },
+    );
+    return seat ? this.vaultPack.render(seat) : {};
+  }
+
   abort(): void {
+    this.sendController?.abort();
     this.activeStream?.abort();
   }
 
@@ -224,6 +279,7 @@ export class CloudClaudeDriver implements ChatDriver {
   }
 
   dispose(): void {
+    this.sendController?.abort();
     this.activeStream?.abort();
     this.emitter.clear();
   }

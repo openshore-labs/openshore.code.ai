@@ -18,6 +18,7 @@ import { PROVIDERS, type ProviderInfo } from '../lib/providers.js';
 import { CLAUDE_MODELS } from '../lib/claudeModels.js';
 import { isPinned } from '../lib/pins.js';
 import { byomReach, byomRef, normalizeBaseUrl } from '../lib/byom.js';
+import { hubTailnetSuffix } from '../lib/vaultSeat.js';
 import {
   activeContribution,
   currentBenchRefs,
@@ -68,10 +69,13 @@ function byomHost(baseUrl: string): string {
  *  machine, the home network, or a tailnet), amber for cloud (spend and
  *  off-device, including a BYOM pointed at a hosted API). The same language
  *  the rest of the app uses. */
-function kindMeta(ref: StackModelRef): { cls: 'local' | 'cloud'; label: string } {
+function kindMeta(
+  ref: StackModelRef,
+  ownTailnetSuffix: string | null,
+): { cls: 'local' | 'cloud'; label: string } {
   if (ref.kind === 'cloud') return { cls: 'cloud', label: 'cloud' };
   if (ref.kind === 'byom') {
-    return byomReach(ref.baseUrl) === 'local'
+    return byomReach(ref.baseUrl, ownTailnetSuffix) === 'local'
       ? { cls: 'local', label: 'your server' }
       : { cls: 'cloud', label: 'cloud' };
   }
@@ -80,7 +84,10 @@ function kindMeta(ref: StackModelRef): { cls: 'local' | 'cloud'; label: string }
 
 /** The teal/amber chip for a model's location. */
 function KindChip({ refModel }: { refModel: StackModelRef }) {
-  const { cls, label } = kindMeta(refModel);
+  // This device's own tailnet is the paired hub's (CTO J2), so another
+  // tailnet's server reads cloud, exactly as the vault pack judges it.
+  const hubUrl = useApp((s) => s.settings.daemon?.baseUrl);
+  const { cls, label } = kindMeta(refModel, hubTailnetSuffix(hubUrl));
   return <span className={`kind-chip ${cls}`}>{label}</span>;
 }
 
