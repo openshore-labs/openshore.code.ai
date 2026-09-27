@@ -564,6 +564,16 @@ export class VaultIndexHost {
     if (this.indexValue.applyRemove(path)) this.scheduleSave();
   }
 
+  /** A note this device renamed or moved (Vault M6): the entry moves with its
+   *  links, tags and terms, taking the version the rename answered with, and
+   *  nothing is read. */
+  applyRename(from: string, to: StoredFileMeta): void {
+    if (this.closed) return;
+    this.touched.add(from);
+    this.touched.add(to.path);
+    if (this.indexValue.applyRename(from, to)) this.scheduleSave();
+  }
+
   /** A note that was just read to open it (or reloaded by the poll): indexed
    *  only when its version moved. Reads nothing else. */
   noteRead(file: StoredFile): void {

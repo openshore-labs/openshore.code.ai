@@ -19,6 +19,7 @@ import {
   type VaultHeldDraft,
   type VaultTargetRef,
 } from '../state/store.js';
+import type { VaultUndo } from '../state/vaultOps.js';
 import { BackBar } from '../components/BackBar.js';
 import { ErrorBoundary } from '../components/ErrorBoundary.js';
 import { VaultMarkdown } from '../components/VaultMarkdown.js';
@@ -69,6 +70,7 @@ import {
   vaultLeaseAlsoOpen,
   vaultLeaseEnforced,
   VAULT_CONFLICT_BADGE_LABEL,
+  VAULT_DELETED,
   copyProviderOf,
   vaultCloudLine,
   vaultConflictCard,
@@ -97,6 +99,14 @@ import {
   vaultSheetLine,
   vaultWarningLine,
   vaultWelcomeNote,
+  vaultRestoreFailed,
+  vaultRestoredToast,
+  vaultTrashEmptied,
+  vaultTrashFailed,
+  vaultUndoFailed,
+  vaultUndoText,
+  VAULT_TRASH_EMPTY_FAILED,
+  VAULT_TRASH_LIST_FAILED,
   type VaultDriveLink,
   type VaultOnboard,
   type VaultSaveStatus,
@@ -130,6 +140,8 @@ import { VaultAgentRecent } from '../components/VaultAgentRecent.js';
 import { VaultBacklinks } from '../components/vault/VaultBacklinks.js';
 import { VaultLinkSuggest } from '../components/vault/VaultLinkSuggest.js';
 import { VaultNoteOptions } from '../components/vault/VaultNoteOptions.js';
+import { VaultTrashRow, VaultTrashView } from '../components/vault/VaultTrashView.js';
+import { VaultUndoToast, type VaultUndoToastItem } from '../components/vault/VaultUndoToast.js';
 import { hubReach, subscribeHubReach } from '../lib/gitos/hub.js';
 import { PROJECT_VAULT_PINS_MAX } from '../state/types.js';
 
@@ -173,7 +185,6 @@ export function VaultScreen() {
     vaultCreate,
     vaultCloseNote,
     vaultSave,
-    vaultDelete,
     vaultReadAll,
     vaultReadBody,
     vaultMoveTo,
@@ -227,6 +238,14 @@ export function VaultScreen() {
     vaultAcceptHubMove,
     vaultDeclineHubMove,
     vaultAgentRecent,
+    vaultBindAutosave,
+    vaultCapsNow,
+    vaultDeleteNote,
+    vaultUndoDelete,
+    vaultTrash,
+    vaultLoadTrash,
+    vaultRestoreTrash,
+    vaultEmptyTrash,
   } = useApp();
 
   const team = vaultScope === 'team';
@@ -335,6 +354,9 @@ export function VaultScreen() {
   const hubAway = personalOnHub && reach === 'away';
   const locked =
     readOnly || Boolean(driveReadOnly) || Boolean(vaultMoving) || folderGone || teamExpired;
+  // What this storage may do now (CTO K1): every M6 action's visibility
+  // follows this one answer.
+  const caps = vaultCapsNow();
   const teamAvailable = teamVaultAvailable();
   // The project a note's "Pin to project context" pins to: the active one.
   const pinProjectId = settings.activeProjectId ?? settings.projects?.[0]?.id;
@@ -380,6 +402,13 @@ export function VaultScreen() {
   // A move's forked pairs, one at a time in the move-mode resolve sheet (1d).
   const [forks, setForks] = useState<ForkSteps | undefined>();
   const [forksOpen, setForksOpen] = useState(false);
+  // The Undo toast after a delete (CX X9): one at a time, each with the vault
+  // it was deleted from, so an Undo never lands in another one.
+  const [undoItem, setUndoItem] = useState<VaultUndoToastItem | undefined>();
+  const undoFor = useRef(new Map<string, { undo: VaultUndo; at?: VaultTargetRef }>());
+  // The Trash view, a page inside the room (CX X10).
+  const [trashOpen, setTrashOpen] = useState(false);
+  const [trashError, setTrashError] = useState<string | undefined>();
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
   // Compare-and-swap (1.1): when the person last typed, whether the resolve
   // sheet is up, what a choice is doing, and whether the meta line carries
@@ -602,6 +631,12 @@ export function VaultScreen() {
     [vaultSave, vaultTargetRef],
   );
   const scheduleSave = autosave.schedule;
+  // An M6 operation flushes this first, and its timer with it (a stale save
+  // must never recreate a trashed note).
+  useEffect(() => {
+    vaultBindAutosave(autosave);
+    return () => vaultBindAutosave(undefined);
+  }, [autosave, vaultBindAutosave]);
 
   // The store replaced the open note's text in place (a calm reload of a
   // clean note, or a resolve choice that shows the other version): the editor
@@ -705,9 +740,6 @@ export function VaultScreen() {
   useEffect(() => {
     if (team && !teamAvailable && !vaultTeamExpired) switchScope('personal');
   }, [team, teamAvailable, vaultTeamExpired, switchScope]);
-  // Drop the pending draft without writing it (used when deleting the note it
-  // belongs to, so a stale timer cannot recreate what was just deleted).
-  const cancelSave = autosave.cancel;
   // Flush on background (iOS may suspend or jetsam the app) and on unmount.
   // The return to the foreground is the focus re-check above, which also
   // re-lists, so edits synced from another device (or the desktop agent)
@@ -813,6 +845,79 @@ export function VaultScreen() {
       void vaultCreate(p);
     } else openNote(p);
   };
+
+  // ---- delete, Undo and Trash (6.3; CTO K6, R2; CX X8 to X10) -------------
+  const offerUndo = (
+    undo: VaultUndo,
+    at: VaultTargetRef | undefined,
+    title: string,
+    o: { trashed: boolean; folder: boolean; notes: number },
+  ) => {
+    const id = `${Date.now()}:${undo.path}`;
+    undoFor.current.set(id, { undo, ...(at ? { at } : {}) });
+    setUndoItem({ id, text: vaultUndoText(o), title, trashed: o.trashed });
+  };
+  const runUndo = (item: VaultUndoToastItem) => {
+    const entry = undoFor.current.get(item.id);
+    if (!entry) return;
+    void vaultUndoDelete(entry.undo, entry.at).then((r) => {
+      if (!r) return;
+      if (r.ok) {
+        showToast(
+          vaultRestoredToast({
+            title: item.title,
+            folder: noteFolder(r.path),
+            renamed: r.renamed,
+          }),
+        );
+        return;
+      }
+      showToast(
+        entry.undo.kind === 'bytes' ? vaultUndoFailed(item.title) : vaultRestoreFailed(item.title),
+      );
+    });
+  };
+  const undoDone = useCallback((item: VaultUndoToastItem) => {
+    undoFor.current.delete(item.id);
+    setUndoItem((now) => (now?.id === item.id ? undefined : now));
+  }, []);
+  const undoToast = <VaultUndoToast item={undoItem} onUndo={runUndo} onDone={undoDone} />;
+
+  // One note: one tap where Trash is real, else the Options sheet's second
+  // tap (R2). The toast shows only once the delete landed (ui-12).
+  const deleteNote = (path: string) => {
+    const at = vaultTargetRef();
+    const title = noteTitle(path);
+    setMenuOpen(false);
+    setConfirmDelete(false);
+    void vaultDeleteNote(path, at).then((r) => {
+      if (!r) return;
+      if (!r.ok) {
+        showToast(vaultTrashFailed(title));
+        return;
+      }
+      if (!r.undo) {
+        hapticCommit();
+        showToast(VAULT_DELETED);
+        return;
+      }
+      offerUndo(r.undo, at, title, { trashed: r.trashed, folder: false, notes: 1 });
+    });
+  };
+
+  const openTrash = () => {
+    flushSave();
+    setTrashError(undefined);
+    setTrashOpen(true);
+    void vaultLoadTrash().then((entries) => {
+      if (!entries) setTrashError(VAULT_TRASH_LIST_FAILED);
+    });
+  };
+  const trashKind: 'folder' | 'local' | 'team' = team
+    ? 'team'
+    : currentProviderId === 'files' || currentProviderId === 'hub'
+      ? 'folder'
+      : 'local';
 
   // Move the personal vault, and say plainly what happened: where it is now,
   // any note that landed beside one already there, and on a refusal whether
@@ -1387,6 +1492,8 @@ export function VaultScreen() {
 
         <VaultNoteOptions
           open={menuOpen}
+          title={title}
+          trashReal={caps.trash}
           confirmDelete={confirmDelete}
           canAsk={!team}
           canPin={Boolean(!team && pinProjectId && canEditProjectPins(pinProjectId))}
@@ -1411,22 +1518,54 @@ export function VaultScreen() {
             );
           }}
           onArmDelete={() => setConfirmDelete(true)}
-          onDelete={() => {
-            const path = vaultNote.path;
-            const at = vaultTargetRef();
-            // Drop any pending debounced save first, or its stale timer
-            // would recreate the note we are deleting.
-            cancelSave();
-            setMenuOpen(false);
-            setConfirmDelete(false);
-            // Only a delete that happened says so; a failed one shows
-            // the store's own line and the note stays (orgvault-m1).
-            void vaultDelete(path, at).then((deleted) => {
-              if (deleted) showToast('Note deleted.');
-            });
+          // The store flushes the pending save and cancels its timer first,
+          // so a stale save can never recreate the note; only a delete that
+          // landed says so (orgvault-m1).
+          onDelete={() => deleteNote(vaultNote.path)}
+        />
+        {undoToast}
+      </div>
+    );
+  }
+
+  // ---- Trash (6.3, CX X10): a page inside the room -------------------------
+  if (trashOpen) {
+    return (
+      <>
+        <VaultTrashView
+          kind={trashKind}
+          entries={vaultTrash}
+          error={trashError}
+          onBack={() => setTrashOpen(false)}
+          onRestore={async (entry) => {
+            const title =
+              entry.kind === 'folder'
+                ? (entry.path.split('/').pop() ?? entry.path)
+                : noteTitle(entry.path);
+            const r = await vaultRestoreTrash(entry.id);
+            showToast(
+              r.ok
+                ? vaultRestoredToast({
+                    title,
+                    folder: noteFolder(r.path),
+                    renamed: r.renamed,
+                    sayFolder: true,
+                  })
+                : vaultRestoreFailed(title),
+            );
+          }}
+          onEmpty={async () => {
+            const r = await vaultEmptyTrash();
+            if (!r.ok) {
+              showToast(VAULT_TRASH_EMPTY_FAILED);
+              return;
+            }
+            hapticCommit();
+            showToast(vaultTrashEmptied(r.removed, r.asked));
           }}
         />
-      </div>
+        {undoToast}
+      </>
     );
   }
 
@@ -1756,6 +1895,11 @@ export function VaultScreen() {
                 </button>
               ),
             )}
+            {/* Trash is the last row at the root, only while it holds
+                something (CX X10). */}
+            {!folder && caps.trash ? (
+              <VaultTrashRow count={vaultTrash?.length ?? 0} onOpen={openTrash} />
+            ) : null}
           </div>
         )}
       </div>
@@ -1783,6 +1927,7 @@ export function VaultScreen() {
         onChoose={(choice) => void chooseFork(choice)}
         onClose={closeForks}
       />
+      {undoToast}
 
       <Sheet open={Boolean(newOpen)} onClose={() => setNewOpen(false)}>
         {newOpen ? (

@@ -328,6 +328,7 @@ import {
   hubPairPlan,
   hubPersonKey,
   hubUnpairTarget,
+  hubReach,
   hubVaultLink,
   setHubVaultLink,
   type HubPairPlan,
@@ -383,9 +384,24 @@ import {
 import {
   versionOf,
   type RemoveResult,
+  type TrashEntry,
   type WriteGuard,
   type WriteResult,
 } from '../lib/gitos/providers.js';
+import { vaultCaps, type VaultCaps } from '../lib/vaultCaps.js';
+import type { VaultAutosave } from '../lib/vaultAutosave.js';
+import {
+  deleteFolder as opsDeleteFolder,
+  deleteNote as opsDeleteNote,
+  emptyTrash as opsEmptyTrash,
+  listTrash as opsListTrash,
+  restoreEntry as opsRestoreEntry,
+  undoDelete as opsUndoDelete,
+  type VaultOpsDeps,
+  type VaultOpsOpenNote,
+  type VaultRestoreResult,
+  type VaultUndo,
+} from './vaultOps.js';
 import { vaultPollDelayMs } from '../lib/vaultPoll.js';
 import {
   VAULT_LEASE_RENEW_MS,
@@ -858,6 +874,15 @@ export interface VaultMoveResult {
 /** Every note body vaultReadAll could read, plus the paths it could not (a
  *  read that failed, or a note still downloading). Still an array, so a
  *  caller that only wants the bodies uses it as one. */
+/** A note or folder delete from the Vault room (Vault M6 6.3; CTO K6, R2):
+ *  moved to Trash where it is real, else deleted for good with the bytes
+ *  held in memory for a courtesy Undo (absent when they could not be read).
+ *  A refusal the store already said (a toast, the resolve path) is
+ *  `undefined`. */
+export type VaultDeleteOutcome =
+  | { ok: true; trashed: boolean; undo?: VaultUndo; notes: number; attachments: number }
+  | { ok: false; reason: 'storage' | 'unsupported' | 'missing' | 'changed' | 'downloading' };
+
 export type VaultReadAllResult = Array<{ path: string; text: string }> & { failed: string[] };
 
 // D1 (0.18): Google Drive is held back for v1. Its conflict copy is undone by
@@ -1249,6 +1274,10 @@ interface AppState {
    *  storage provider) or the shared team vault (org tier, Supabase-backed).
    *  Team is only reachable when signed in as an active member of an org. */
   vaultScope: 'personal' | 'team';
+  /** Trash of the vault on screen, where its storage has a real one (Vault
+   *  M6 6.3): the tree's last row shows while it holds something. Undefined
+   *  before the first listing and on a storage without Trash. */
+  vaultTrash?: TrashEntry[];
   /** When true, the Marketplace intro walkthrough is showing over the library. */
   libraryIntro?: boolean;
   /** When true, a brand-new account was just created on a device that never
@@ -1790,6 +1819,29 @@ interface AppState {
    *  or an engine pack while this device's vault is the computer's (the hub,
    *  or the desktop's own folder). Undefined keeps the titles plain. */
   vaultPackOpener(conversationId: string): ((path: string) => void) | undefined;
+  // ---- Vault M6 (state/vaultOps.ts does the work; these are its call sites)
+  /** The Vault screen's autosave, bound while the room is mounted, so an
+   *  operation writes the pending text first and cancels its timer (a stale
+   *  save must never recreate a trashed note). */
+  vaultBindAutosave(handle: VaultAutosave<VaultTargetRef> | undefined): void;
+  /** What the Vault may offer on the storage on screen right now (CTO K1):
+   *  every M6 action's visibility follows this one answer. */
+  vaultCapsNow(): VaultCaps;
+  /** Delete a note: to Trash where it is real (one tap), else for good with
+   *  a courtesy Undo (R2). Closes it when it was open. */
+  vaultDeleteNote(path: string, at?: VaultTargetRef): Promise<VaultDeleteOutcome | undefined>;
+  /** Move a folder, whatever is in it, to Trash (only where Trash is real). */
+  vaultDeleteFolder(folder: string): Promise<VaultDeleteOutcome | undefined>;
+  /** Undo a delete, in the vault it was deleted from. */
+  vaultUndoDelete(undo: VaultUndo, at?: VaultTargetRef): Promise<VaultRestoreResult | undefined>;
+  /** Read Trash again (the Trash view and the tree's Trash row). */
+  vaultLoadTrash(): Promise<TrashEntry[] | undefined>;
+  /** Restore one Trash entry where it came from, never overwriting. */
+  vaultRestoreTrash(id: string): Promise<VaultRestoreResult>;
+  /** Empty Trash (not a team vault's, R3). */
+  vaultEmptyTrash(): Promise<
+    { ok: true; removed: number; asked: number } | { ok: false; reason: string }
+  >;
   /** The switch note's "Save to Vault" (J12, D3): the person's own one-tap
    *  write to `Handoffs/<date> <project>.md`, `ifAbsent`, " 2" on a clash. */
   saveHandoffToVault(conversationId: string, itemId: string): Promise<string | undefined>;
@@ -5113,6 +5165,189 @@ export const useApp = create<AppState>((set, get, api) => {
         ? 'Still downloading this note from your vault storage.'
         : 'The note changed while it was being saved.',
     );
+  }
+
+  // ---- Vault M6: the operations' call sites (state/vaultOps.ts) ------------
+  // The store builds one VaultOpsDeps per operation, fixed to the vault the
+  // operation started on (the 0.7 rule), and vaultOps does the work. Every
+  // write goes through putVaultNote; every rename, restore or folder result
+  // is adopted by the path the storage answered with, never the one asked for
+  // (the desktop matches parents to their spelling on disk).
+
+  /** The Vault screen's autosave while the room is mounted. */
+  let vaultAutosaveHandle: VaultAutosave<VaultTargetRef> | undefined;
+
+  const refOf = (t: VaultTargetRef): VaultTargetRef =>
+    t.owner
+      ? { providerId: t.providerId, resourceId: t.resourceId, owner: t.owner }
+      : { providerId: t.providerId, resourceId: t.resourceId };
+
+  /** What the Vault may offer on a storage now (CTO K1). Read-only covers a
+   *  lease held elsewhere, Drive, an expired team sign-in, a move in flight
+   *  and a folder that is gone; Your computer's reach counts only for it. */
+  function capsOf(t: VaultTarget): VaultCaps {
+    const st = get();
+    const active = isActiveVault(t);
+    const readOnly =
+      Boolean(vaultReadOnlyReason(t.providerId)) ||
+      (active &&
+        (Boolean(st.vaultLeaseHeldByOther) ||
+          Boolean(st.vaultMoving) ||
+          (t.providerId === 'org' && Boolean(st.vaultTeamExpired)) ||
+          (t.providerId === 'files' && st.vaultFolder?.exists === false)));
+    return vaultCaps(t.provider, {
+      readOnly,
+      ...(t.providerId === 'hub' ? { reach: hubReach() } : {}),
+    });
+  }
+
+  /** A note's text in one vault, through the body cache. */
+  async function readBodyOf(t: VaultTarget, path: string): Promise<string | undefined> {
+    const key = vaultKey(t, path);
+    const listed = isActiveVault(t) ? get().vaultFiles.find((f) => f.path === path) : undefined;
+    const cached = vaultBodyCache.get(key);
+    if (cached && listed && cached.version === versionOf(listed)) return cached.text;
+    const note = await t.provider.read(t.resourceId, path);
+    if (!note) return undefined;
+    vaultBodyCache.set(key, { version: versionOf(note), text: note.text });
+    return note.text;
+  }
+
+  /** Write the open note's pending text now and wait for it, with the
+   *  debounce timer cancelled, so nothing typed lands after the operation
+   *  (a stale save recreating a trashed note). */
+  async function flushOpenSave(t: VaultTargetRef): Promise<void> {
+    const pending = vaultAutosaveHandle?.take();
+    if (pending) await get().vaultSave(pending.path, pending.text, pending.at);
+    if (!isActiveVault(t)) return;
+    const open = get().vaultNote;
+    const chain = open ? vaultSaveChains.get(vaultKey(t, open.path)) : undefined;
+    if (chain) await chain;
+  }
+
+  /** The note on screen as an operation sees it. */
+  function openNoteOf(t: VaultTargetRef): VaultOpsOpenNote | undefined {
+    if (!isActiveVault(t)) return undefined;
+    const open = get().vaultNote;
+    if (!open) return undefined;
+    return {
+      path: open.path,
+      version: vaultBaseOf(t, open.path) ?? '',
+      dirty:
+        Boolean(vaultAutosaveHandle?.isPending()) || vaultSaveChains.has(vaultKey(t, open.path)),
+      choiceOpen: get().vaultConflict?.path === open.path,
+    };
+  }
+
+  /** A rename landed: the list, the body cache and the index move with it,
+   *  at the path and version the storage answered with. */
+  function patchVaultRename(t: VaultTargetRef, from: string, to: StoredFileMeta): void {
+    const oldKey = vaultKey(t, from);
+    const cached = vaultBodyCache.get(oldKey);
+    vaultBodyCache.delete(oldKey);
+    if (cached && to.version) {
+      vaultBodyCache.set(vaultKey(t, to.path), { version: to.version, text: cached.text });
+    }
+    if (!isActiveVault(t)) return;
+    vaultIndexOf(t)?.applyRename(from, to);
+    if (!isNotePath(to.path)) return;
+    const files = get().vaultFiles.filter((f) => f.path !== from && f.path !== to.path);
+    const meta: StoredFileMeta = {
+      path: to.path,
+      updatedAt: to.updatedAt,
+      size: to.size || (cached ? new TextEncoder().encode(cached.text).length : 0),
+      ...(to.version ? { version: to.version } : {}),
+    };
+    set({ vaultFiles: [...files, meta].sort((a, b) => a.path.localeCompare(b.path)) });
+  }
+
+  /** Everything this device keys by a note's path follows a rename: project
+   *  pins, the stash, and the open note (at the version the storage gave). */
+  async function rekeyVaultPath(t: VaultTargetRef, from: string, to: string): Promise<void> {
+    await rewriteVaultPins(from, to).catch(() => {});
+    await editVaultPending((p) => {
+      const e = p[vaultKey(t, from)];
+      if (!e) return;
+      delete p[vaultKey(t, from)];
+      p[vaultKey(t, to)] = { ...e, path: to };
+    }).catch(() => {});
+    if (!isActiveVault(t)) return;
+    const open = get().vaultNote;
+    if (open?.path === from) {
+      const listed = get().vaultFiles.find((f) => f.path === to);
+      if (vaultLiveDraft?.path === from) vaultLiveDraft = { ...vaultLiveDraft, path: to };
+      set({
+        vaultNote: {
+          ...open,
+          path: to,
+          ...(listed?.version ? { version: listed.version } : {}),
+          ...(listed ? { updatedAt: listed.updatedAt } : {}),
+        },
+      });
+    }
+  }
+
+  /** The one VaultOpsDeps for an operation on vault `t`. */
+  function opsDeps(t: VaultTarget): VaultOpsDeps {
+    return {
+      target: refOf(t),
+      provider: t.provider,
+      index: () => vaultIndexOf(t),
+      putVaultNote: async (path, text, guard) => {
+        const r = await putVaultNote(t, path, text, guard);
+        // The open note written by an operation (a link rewrite, a tick)
+        // shows the text and version that landed.
+        if (r.ok && isActiveVault(t) && get().vaultNote?.path === r.file.path) {
+          reloadOpenNote(r.file, 'resolve');
+        }
+        return r;
+      },
+      readBody: (path) => readBodyOf(t, path),
+      patch: {
+        saved: (file) => patchVaultFiles(t, { saved: file }),
+        removed: (path) => patchVaultFiles(t, { removed: path }),
+        renamed: (from, to) => patchVaultRename(t, from, to),
+      },
+      rekey: (from, to) => rekeyVaultPath(t, from, to),
+      flushOpenSave: () => flushOpenSave(t),
+      openNote: () => openNoteOf(t),
+    };
+  }
+
+  /** A note this device deleted is gone from everything it keyed here: its
+   *  stash (so no replay resurrects it) and the editor. */
+  async function afterNoteGone(t: VaultTargetRef, path: string): Promise<void> {
+    await editVaultPending((p) => {
+      delete p[vaultKey(t, path)];
+    }).catch(() => {});
+    if (!isActiveVault(t)) return;
+    if (get().vaultNote?.path === path) {
+      vaultLiveDraft = undefined;
+      set({ vaultNote: undefined, vaultReturnFolder: noteFolder(path) });
+    }
+  }
+
+  /** List the vault on screen again after an operation that moved more than
+   *  it could patch (a restored folder), and let the index reconcile. */
+  async function relistActive(t: VaultTarget): Promise<void> {
+    if (!isActiveVault(t)) return;
+    const listing = await listVaultNotes(t).catch(() => undefined);
+    if (!listing || !isActiveVault(t)) return;
+    set({ vaultFiles: listing });
+    void vaultIndexOf(t)?.reconcile(listing);
+  }
+
+  /** Trash of the vault on screen, for the tree's row (a storage with a real
+   *  Trash only). A failed read leaves the last one. */
+  async function refreshVaultTrash(t: VaultTarget): Promise<TrashEntry[] | undefined> {
+    if (!capsOf(t).trash) {
+      if (isActiveVault(t)) set({ vaultTrash: undefined });
+      return undefined;
+    }
+    const r = await opsListTrash(opsDeps(t));
+    if (!r.ok) return undefined;
+    if (isActiveVault(t)) set({ vaultTrash: r.entries });
+    return r.entries;
   }
 
   // Put text beside a note as a keep-both copy under the first free conflict
@@ -9556,6 +9791,109 @@ export const useApp = create<AppState>((set, get, api) => {
       if (isActiveVault(target))
         vaultBodyCache.set(key, { version: versionOf(note), text: note.text });
       return note.text;
+    },
+
+    vaultBindAutosave(handle) {
+      vaultAutosaveHandle = handle;
+    },
+
+    vaultCapsNow() {
+      const t = vaultTarget();
+      return t ? capsOf(t) : vaultCaps({} as StorageProvider, { readOnly: true });
+    },
+
+    async vaultDeleteNote(path, at) {
+      const t = vaultTargetFrom(at);
+      if (!t) return undefined;
+      const readOnly = vaultReadOnlyReason(t.providerId);
+      if (readOnly) {
+        get().showToast(readOnly);
+        return undefined;
+      }
+      if (await leaseRefuses(t)) return undefined;
+      if (!capsOf(t).trash) {
+        // No real Trash here: the delete is for good (two taps on screen),
+        // and the bytes are kept in memory for a courtesy Undo (R2). The
+        // pending text is written first, so the Undo brings back what was
+        // last typed; M2's guarded delete does the rest.
+        await flushOpenSave(t).catch(() => {});
+        const text = await readBodyOf(t, path).catch(() => undefined);
+        if (!(await get().vaultDelete(path, at))) return undefined;
+        return {
+          ok: true,
+          trashed: false,
+          ...(text !== undefined ? { undo: { kind: 'bytes' as const, path, text } } : {}),
+          notes: 1,
+          attachments: 0,
+        };
+      }
+      const base = vaultBaseOf(t, path);
+      const r = await opsDeleteNote(opsDeps(t), path);
+      if (!r.ok) {
+        // The note moved on, or is gone, or is still downloading: M2's stale
+        // delete path says so and reloads it; nothing went to Trash.
+        if (r.reason === 'changed' || r.reason === 'downloading') {
+          await settleStaleDelete(
+            t,
+            path,
+            { ok: false, conflict: r.reason, theirs: r.theirs },
+            base,
+          );
+          return undefined;
+        }
+        return { ok: false, reason: r.reason };
+      }
+      await afterNoteGone(t, path);
+      logEvent('vault_note_trash');
+      void refreshVaultTrash(t);
+      return r;
+    },
+
+    async vaultDeleteFolder(folder) {
+      const t = vaultTarget();
+      if (!t) return undefined;
+      if (!capsOf(t).trash) return { ok: false, reason: 'unsupported' };
+      if (await leaseRefuses(t)) return undefined;
+      const r = await opsDeleteFolder(opsDeps(t), folder);
+      if (!r.ok) return { ok: false, reason: r.reason === 'changed' ? 'storage' : r.reason };
+      const open = get().vaultNote;
+      if (open && open.path.startsWith(`${folder}/`)) await afterNoteGone(t, open.path);
+      logEvent('vault_folder_trash');
+      await relistActive(t);
+      void refreshVaultTrash(t);
+      return r;
+    },
+
+    async vaultUndoDelete(undo, at) {
+      const t = vaultTargetFrom(at);
+      if (!t) return undefined;
+      const r = await opsUndoDelete(opsDeps(t), undo);
+      if (r.ok && undo.kind === 'trash' && undo.folder) await relistActive(t);
+      void refreshVaultTrash(t);
+      return r;
+    },
+
+    async vaultLoadTrash() {
+      const t = vaultTarget();
+      return t ? refreshVaultTrash(t) : undefined;
+    },
+
+    async vaultRestoreTrash(id) {
+      const t = vaultTarget();
+      if (!t) return { ok: false, reason: 'unsupported' };
+      const entry = get().vaultTrash?.find((e) => e.id === id);
+      const r = await opsRestoreEntry(opsDeps(t), id);
+      if (r.ok && entry?.kind === 'folder') await relistActive(t);
+      void refreshVaultTrash(t);
+      return r;
+    },
+
+    async vaultEmptyTrash() {
+      const t = vaultTarget();
+      if (!t || !capsOf(t).emptyTrash) return { ok: false, reason: 'unsupported' };
+      const r = await opsEmptyTrash(opsDeps(t));
+      await refreshVaultTrash(t);
+      return r;
     },
 
     async vaultAcquireLease() {

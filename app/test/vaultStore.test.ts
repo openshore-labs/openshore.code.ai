@@ -3156,3 +3156,122 @@ describe('pairing and the vault on your computer', () => {
     expect(providerNow()?.providerId ?? 'local').toBe('local');
   });
 });
+
+// ---- Vault M6 (the wave 2 call sites; state/vaultOps.ts does the work) ------
+// The folder fake gains the M6 members a case needs: Trash under `.trash/`
+// in the same file map (so the provider lists it and the store must leave it
+// out), rename, and the rest, each removed again after the case.
+describe('Vault M6 operations through the store', () => {
+  const F = folder.files;
+  const p = folder.provider as unknown as Record<string, unknown>;
+  const added: string[] = [];
+  const give = (name: string, fn: unknown) => {
+    p[name] = fn;
+    added.push(name);
+  };
+  const metaAt = (path: string): StoredFileMeta => ({
+    path,
+    updatedAt: folder.version(path),
+    size: F.get(path)!.length,
+    version: folder.version(path),
+  });
+  function withTrash() {
+    give('trash', async (_r: string, t: { kind: string; path: string; ifMatch?: string }) => {
+      if (!F.has(t.path)) return { ok: false, conflict: 'changed' };
+      if (t.ifMatch !== folder.version(t.path)) {
+        return { ok: false, conflict: 'changed', theirs: { path: t.path, text: F.get(t.path) } };
+      }
+      F.set(`.trash/${t.path}`, F.get(t.path)!);
+      F.delete(t.path);
+      const entry = { id: `.trash/${t.path}`, path: t.path, kind: 'note', size: 1 };
+      return { ok: true, entry, notes: 1, attachments: 0 };
+    });
+    give('listTrash', async () =>
+      [...F.keys()]
+        .filter((k) => k.startsWith('.trash/'))
+        .map((k) => ({ id: k, path: k.slice(7), kind: 'note', size: F.get(k)!.length })),
+    );
+    give('restore', async (_r: string, id: string) => {
+      if (!F.has(id)) return { ok: false, conflict: 'missing' };
+      const path = id.slice(7);
+      F.set(path, F.get(id)!);
+      F.delete(id);
+      return { ok: true, file: metaAt(path), renamed: false };
+    });
+    give('emptyTrash', async () => {
+      const gone = [...F.keys()].filter((k) => k.startsWith('.trash/'));
+      for (const k of gone) F.delete(k);
+      return { removed: gone.length };
+    });
+  }
+  async function openOnFolder(path: string, text: string) {
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('files') },
+    });
+    F.set(path, text);
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen(path);
+  }
+  beforeEach(() => {
+    reset();
+    useApp.setState({
+      vaultConflict: undefined,
+      vaultReturnFolder: undefined,
+      vaultTrash: undefined,
+    });
+  });
+  afterEach(() => {
+    for (const name of added.splice(0)) delete p[name];
+    useApp.getState().vaultBindAutosave(undefined);
+  });
+
+  it('delete then Undo restores the bytes, and .trash stays out of the tree', async () => {
+    withTrash();
+    const { vaultAutosave } = await import('../src/lib/vaultAutosave.js');
+    await openOnFolder('Ideas/x.md', 'the words');
+    expect(useApp.getState().vaultCapsNow().trash).toBe(true);
+    // Typed and still waiting for the debounce: the delete writes it first,
+    // and cancels the timer, so nothing lands after the note went to Trash.
+    const autosave = vaultAutosave({
+      target: () => useApp.getState().vaultTargetRef(),
+      save: (path, text, at) => void useApp.getState().vaultSave(path, text, at),
+      delayMs: 30,
+    });
+    useApp.getState().vaultBindAutosave(autosave);
+    autosave.schedule('Ideas/x.md', 'typed last');
+    const r = await useApp.getState().vaultDeleteNote('Ideas/x.md');
+    expect(r).toMatchObject({ ok: true, trashed: true });
+    await new Promise((res) => setTimeout(res, 60));
+    expect(F.has('Ideas/x.md')).toBe(false);
+    expect(F.get('.trash/Ideas/x.md')).toBe('typed last');
+    expect(useApp.getState().vaultNote).toBeUndefined();
+    await vi.waitFor(() => expect(useApp.getState().vaultTrash).toHaveLength(1));
+    await useApp.getState().vaultRefresh();
+    expect(useApp.getState().vaultFiles.map((f) => f.path)).toEqual([]);
+    expect(currentVaultIndex()?.index.paths() ?? []).not.toContain('.trash/Ideas/x.md');
+
+    const back = await useApp.getState().vaultUndoDelete(r!.ok ? r!.undo! : (undefined as never));
+    expect(back).toMatchObject({ ok: true, path: 'Ideas/x.md', renamed: false });
+    expect(F.get('Ideas/x.md')).toBe('typed last');
+    expect(useApp.getState().vaultFiles.map((f) => f.path)).toEqual(['Ideas/x.md']);
+    await vi.waitFor(() => expect(useApp.getState().vaultTrash).toEqual([]));
+  });
+
+  it('without a real Trash a delete is for good, and Undo comes back beside a taken name', async () => {
+    await openOnFolder('x.md', 'first words');
+    expect(useApp.getState().vaultCapsNow().trash).toBe(false);
+    const r = await useApp.getState().vaultDeleteNote('x.md');
+    expect(r).toMatchObject({
+      ok: true,
+      trashed: false,
+      undo: { kind: 'bytes', text: 'first words' },
+    });
+    expect(F.has('x.md')).toBe(false);
+    // Someone else takes the name meanwhile: the Undo never overwrites it.
+    F.set('x.md', 'someone else');
+    const back = await useApp.getState().vaultUndoDelete(r!.ok ? r!.undo! : (undefined as never));
+    expect(back).toMatchObject({ ok: true, path: 'x (restored).md', renamed: true });
+    expect(F.get('x.md')).toBe('someone else');
+    expect(F.get('x (restored).md')).toBe('first words');
+  });
+});

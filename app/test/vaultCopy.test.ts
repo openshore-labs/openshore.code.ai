@@ -634,6 +634,28 @@ describe('retired Vault claims', () => {
   });
 });
 
+// Vault M6 retired lines (CX X8, X14): with Trash real, a delete no longer
+// reads "Note deleted." and never asks the old two-tap question; a permanent
+// delete says "for good". The reader shows embeds, so "not supported" goes.
+const M6_RETIRED = [
+  /Note deleted\./,
+  /Really delete\? Tap to confirm\./,
+  /embed not supported yet/,
+];
+
+describe('retired Vault M6 lines', () => {
+  it('none survives anywhere in the app', () => {
+    const hits: string[] = [];
+    for (const file of walk(SRC)) {
+      const text = stripComments(readFileSync(file, 'utf8'));
+      for (const re of M6_RETIRED) {
+        if (re.test(text)) hits.push(`${relative(ROOT, file)}: ${re}`);
+      }
+    }
+    expect(hits).toEqual([]);
+  });
+});
+
 // The room shows held text only to the account that typed it (R-19,
 // orgvault-15): raw vaultHeld also holds team text of accounts not signed in
 // now, so the screen reads the visible list (vaultHeldFor) at every spot.

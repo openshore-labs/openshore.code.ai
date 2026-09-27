@@ -149,6 +149,25 @@ const app = vi.hoisted(() => {
     vaultAcceptHubMove: async () => ({ ok: true, moved: [], skipped: [], forked: [] }),
     vaultDeclineHubMove: async () => {},
     vaultAgentRecent: async () => [],
+    // Vault M6: the operations' call sites and what the storage may do.
+    vaultBindAutosave: () => {},
+    vaultCapsNow: () => ({
+      rename: false,
+      renameNative: false,
+      folders: false,
+      trash: false,
+      emptyTrash: false,
+      attachments: false,
+      taskWriteBack: false,
+      linkRewrite: false,
+      today: false,
+    }),
+    vaultDeleteNote: async () => undefined,
+    vaultUndoDelete: async () => undefined,
+    vaultTrash: undefined,
+    vaultLoadTrash: async () => [],
+    vaultRestoreTrash: async () => ({ ok: false, reason: 'unsupported' }),
+    vaultEmptyTrash: async () => ({ ok: false, reason: 'unsupported' }),
   };
   return { state, listeners, views, toasts, created, opened, drive, folderIo, leases, polls };
 });
