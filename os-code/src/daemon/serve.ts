@@ -93,7 +93,7 @@ import {
 import { isVaultNotePath } from '../core/vault/folderFs.js';
 import { compileVaultPrivacy } from '../harness/vault/privacy.js';
 import { HANDOFF_MAX_BYTES } from '../harness/handoff.js';
-import { buildChatPack, vaultRoute } from './vaultRoutes.js';
+import { buildChatPack, parseVaultOverrides, vaultRoute } from './vaultRoutes.js';
 import type { VaultPrivacyWire } from './vaultWire.js';
 import { logger } from '../util/log.js';
 
@@ -747,7 +747,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         url,
         headers: req.headers,
         root: vaultRootFor(auth),
-        readBody: () => readJson(req),
+        readBody: (maxBytes?: number) => readJson(req, maxBytes),
         privacy: machineVaultPrivacy,
       });
       if ('json' in answer) {
@@ -1077,6 +1077,9 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         return;
       }
       const vaultPins = parseVaultPins(body.vaultPins);
+      // The app's vault switches (Vault M7, CTO L13): off-only and one of the
+      // three sizes, anything else dropped; the engine keeps size lower-only.
+      const vaultOverrides = parseVaultOverrides(body.vaultOverrides);
       if (!hasRole(auth, 'admin') && !isAdminProvisionedWorkspace(cwd)) {
         sendJson(res, 403, {
           error:
@@ -1114,6 +1117,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           vaultRoot,
           ...(handoff ? { handoff } : {}),
           ...(vaultPins ? { vaultPins } : {}),
+          ...(vaultOverrides ? { vaultOverrides } : {}),
         });
         trackDriver(driver);
         driver.setOwner(auth.userId);
