@@ -279,7 +279,14 @@ describe('a member session gets no vault tools on a shared hub', () => {
   afterEach(() => {
     process.env.HOME = realHome;
   });
-  const VAULT_TOOLS = ['vaultRead', 'vaultList', 'vaultWrite'];
+  const VAULT_TOOLS = [
+    'vaultSearch',
+    'vaultRead',
+    'vaultBacklinks',
+    'vaultList',
+    'vaultLookup',
+    'vaultWrite',
+  ];
   const bootOf = (id: string) => booted.filter((b) => b.id === id).at(-1)!;
 
   it("a member's tool list has no vault tool, and the owner's is unchanged", async () => {

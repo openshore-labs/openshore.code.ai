@@ -1,6 +1,6 @@
 // Wires the standard tool set into a registry and builds the ToolContext for
 // a session. One place decides what the agent can touch.
-import type { OscConfig } from '../../config/schema.js';
+import { VaultSchema, type OscConfig } from '../../config/schema.js';
 import { EgressPolicy } from '../security/egress.js';
 import { Jail } from '../security/jail.js';
 import { ToolRegistry, type ToolContext } from '../tools/index.js';
@@ -22,6 +22,14 @@ import { webFetchTool } from '../tools/webFetch.js';
 import { generateImageTool } from '../tools/generateImage.js';
 import { analyzeImageTool, delegateTool, searchRepoTool } from '../tools/specialist.js';
 import { vaultWriteTool, vaultReadTool, vaultListTool } from '../tools/vault.js';
+import {
+  SEPARATE_VAULT_READ_TOOLS,
+  vaultBacklinksTool,
+  vaultLookupTool,
+  vaultSearchTool,
+} from '../tools/vaultFind.js';
+import { compileVaultPrivacy } from '../../harness/vault/privacy.js';
+import type { VaultPrivacy, VaultPrivacyConfig } from '../../harness/vault/types.js';
 import { projectMemoryWriteTool } from '../tools/projectMemory.js';
 import { todoWriteTool } from '../tools/todoWrite.js';
 import { loadVaultDir } from '../../config/load.js';
@@ -97,10 +105,16 @@ export function buildToolRegistry(options: {
   }
   registry.register(searchRepoTool);
   // The agent's durable, on-device knowledge vault. Reads/lists flow; writes
-  // always ask (vaultWriteTool.alwaysAsk).
+  // always ask (vaultWriteTool.alwaysAsk). The reads teach search first, then
+  // a section, then links (CTO I11). Both the separate reads and the merged
+  // vaultLookup are registered; the loop offers one set per seat each turn
+  // (seatOffersVaultTool), since an escalation changes the seat mid-task.
   if (options.vault !== false) {
+    registry.register(vaultSearchTool);
     registry.register(vaultReadTool);
+    registry.register(vaultBacklinksTool);
     registry.register(vaultListTool);
+    registry.register(vaultLookupTool);
     if (options.vaultWrite !== false) registry.register(vaultWriteTool);
   }
   // The project-memory notes are the exception: hard-scoped to five files in
@@ -117,6 +131,59 @@ export function buildToolRegistry(options: {
     if (options.stackHasSpecialists) registry.register(delegateTool);
   }
   return registry;
+}
+
+/** The merged vault tool a lean seat sees in place of the separate reads. */
+export const MERGED_VAULT_TOOL = vaultLookupTool.name;
+
+/**
+ * Whether a seat is offered a vault tool, by the class policy's
+ * `mergedVaultTool` (CTO I11): a merged seat sees vaultLookup and not the four
+ * separate reads; any other seat sees the separate reads and not vaultLookup.
+ * Every other tool passes. The loop applies it before the small-seat cut.
+ */
+export function seatOffersVaultTool(name: string, mergedVaultTool: boolean): boolean {
+  if (name === MERGED_VAULT_TOOL) return mergedVaultTool;
+  if (SEPARATE_VAULT_READ_TOOLS.includes(name)) return !mergedVaultTool;
+  return true;
+}
+
+/**
+ * The small-seat tool priority with vaultLookup placed right after
+ * searchRepo (CTO I11): a small seat's ten see it, a tiny seat's six do not
+ * (tiny leans on the pack). Without searchRepo in the list it goes last.
+ */
+export function withVaultLookupPriority(priority: readonly string[]): string[] {
+  const out = priority.filter((n) => n !== MERGED_VAULT_TOOL);
+  const at = out.indexOf('searchRepo');
+  out.splice(at === -1 ? out.length : at + 1, 0, MERGED_VAULT_TOOL);
+  return out;
+}
+
+/**
+ * The vault's privacy rules, compiled on first use and kept (CTO I4). Lazy so
+ * a session that never touches a note never pays for it, and so a config the
+ * compiler refuses fails the vault tools that need it, loudly, never by
+ * opening every note.
+ */
+export function lazyVaultPrivacy(cfg: VaultPrivacyConfig): VaultPrivacy {
+  let compiled: VaultPrivacy | undefined;
+  return {
+    visibility(note) {
+      compiled ??= compileVaultPrivacy(cfg);
+      return compiled.visibility(note);
+    },
+  };
+}
+
+/** The machine's vault privacy config, schema defaults filling what a bare
+ *  config leaves out. */
+export function vaultPrivacyConfig(config: OscConfig): VaultPrivacyConfig {
+  const vault = config.vault ?? VaultSchema.parse({});
+  return {
+    exclude: vault.exclude ?? [],
+    localOnly: vault.localOnly ?? VaultSchema.parse({}).localOnly,
+  };
 }
 
 export function buildToolContext(options: {
@@ -165,6 +232,9 @@ export function buildToolContext(options: {
   // unset means ~/OSCode/Vault, alongside the OSCode clones the daemon makes. A
   // session without the vault (a member's, on a shared hub) gets no root.
   const vaultRoot = options.vault === false ? undefined : loadVaultDir().dir;
+  // Which notes are hidden and which stay on this computer, from the machine's
+  // vault config only (projectPolicy classes these keys machine).
+  const vaultPrivacy = vaultRoot ? lazyVaultPrivacy(vaultPrivacyConfig(config)) : undefined;
 
   return {
     cwd,
@@ -175,6 +245,7 @@ export function buildToolContext(options: {
     delegate: (role, task, images, options) => router.delegate(role, task, images, options),
     searchRepo,
     vaultRoot,
+    ...(vaultPrivacy ? { vaultPrivacy } : {}),
     projectName,
   };
 }

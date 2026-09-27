@@ -8,97 +8,30 @@
 // showed, and saves through the same writeNote the app uses on this folder
 // (core/vault/noteFile.ts), atomic and guarded by the note's version.
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { lstat, readdir, stat } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { z } from 'zod';
 import { Jail } from '../security/jail.js';
-import { ensureVaultRoot } from '../../config/load.js';
-import {
-  checkNewNoteName,
-  foldPath,
-  isNotePath,
-  normalizeNotePath,
-} from '../../harness/vault/paths.js';
+import { checkNewNoteName } from '../../harness/vault/paths.js';
 import { unifiedDiff } from '../edit/diff.js';
+import { engineVaultIndex, openEngineVaultIndex } from '../vault/engineIndex.js';
 import { NotANoteError, readNoteBytes, writeNote } from '../vault/noteFile.js';
-import { capContent, type ToolContext, type ToolDef } from './index.js';
+import type { ToolContext, ToolDef } from './index.js';
+import {
+  closed,
+  foldTwin,
+  knownFromText,
+  notePathOrUndefined,
+  plainNotePath,
+  vaultJail,
+  visibilityOf,
+} from './vaultFind.js';
 
-/** The vault root for this session, as a jail so a note path can never escape
- *  it (symlinks included). The default folder is made on first use; a
- *  configured one that went missing is never recreated (ensureVaultRoot). */
-function vaultJail(ctx: ToolContext): Jail {
-  if (!ctx.vaultRoot) throw new Error('The vault is not configured for this session.');
-  return new Jail(ensureVaultRoot(ctx.vaultRoot));
-}
-
-/** A typed note name in its plain spelling: trimmed, backslashes and runs of
- *  "/" collapsed to one separator, .md appended when absent. Nothing is
- *  stripped, so an existing note keeps any name the file system gave it
- *  ("Decision: auth?.md" still reads and updates). A dot-led segment is
- *  refused, the seam's own note rule (isNotePath): the vault and Obsidian hide
- *  dot names, so a ".NET migration.md" would land where no surface lists it,
- *  and vaultRead, sharing this helper, stays out of .obsidian/ (0.6). */
-function plainNotePath(raw: string): string {
-  const cleaned = raw
-    .trim()
-    .replace(/\\/g, '/')
-    .split('/')
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .join('/');
-  if (!cleaned) throw new Error('Give the note a name.');
-  const rel = /\.md$/i.test(cleaned) ? cleaned : `${cleaned}.md`;
-  if (!isNotePath(rel)) {
-    const use = normalizeNotePath(rel);
-    throw new Error(
-      `Note names cannot start with a dot; the vault and Obsidian hide them.${use ? ` Use "${use}".` : ''}`,
-    );
-  }
-  return rel;
-}
-
-/** The normalized note path for permission matching; a bad name is undefined
- *  (pathOf never throws), and execute reports the real error. */
-function notePathOrUndefined(raw: string): string | undefined {
-  try {
-    return plainNotePath(raw);
-  } catch {
-    return undefined;
-  }
-}
-
-/** The note in the vault that `rel` names by fold (NFC, then lowercase) but
- *  not byte for byte, walking segment by segment, or undefined. A case-
- *  sensitive disk would otherwise hold "plan.md" beside "Plan.md", two files
- *  the app and Obsidian treat as one note. It is only ever named back to the
- *  model, never written or read in the typed path's place, so a permission
- *  rule on the typed path cannot be stepped around. */
-async function foldTwin(root: string, rel: string): Promise<string | undefined> {
-  const out: string[] = [];
-  let dir = root;
-  for (const want of rel.split('/')) {
-    let names: string[];
-    try {
-      names = await readdir(dir);
-    } catch {
-      return undefined;
-    }
-    const folded = foldPath(want);
-    const hit = names.includes(want)
-      ? want
-      : names
-          .filter((n) => !n.startsWith('.') && foldPath(n) === folded)
-          .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))[0];
-    if (hit === undefined) return undefined;
-    out.push(hit);
-    dir = join(dir, hit);
-  }
-  const twin = out.join('/');
-  if (twin === rel) return undefined;
-  const info = await stat(dir).catch(() => undefined);
-  return info?.isFile() ? twin : undefined;
-}
+// vaultRead lives with the tools that find (vaultFind.ts), since it resolves
+// names the way search and backlinks do; it is exported here too so every
+// caller keeps one import for the vault's tools.
+export { vaultReadTool } from './vaultFind.js';
 
 /** The path a vaultWrite lands on. An existing exact path always updates,
  *  whatever its name holds. A new note must pass the vault's one new-name
@@ -136,6 +69,24 @@ function normalizeFolder(raw: string): string {
     .join('/');
 }
 
+/** The refusal for a note the person's vault settings exclude (CTO I5): the
+ *  agent may not write where it may not read. */
+function hiddenRefusal(rel: string): string {
+  const slash = rel.lastIndexOf('/');
+  const where = slash === -1 ? rel : `${rel.slice(0, slash)}/`;
+  return `${where} is closed to the agent by the person's vault settings. Write somewhere else.`;
+}
+
+/** Whether the person's privacy rules hide this note, judged by its path and,
+ *  when it exists, by its own tags and marks. */
+function hiddenNote(ctx: ToolContext, rel: string, current: Buffer | undefined): boolean {
+  if (visibilityOf(ctx, rel) === 'hidden') return true;
+  return (
+    current !== undefined &&
+    visibilityOf(ctx, rel, knownFromText(current.toString('utf8'))) === 'hidden'
+  );
+}
+
 /** The body after applying the write mode. */
 function applied(before: string, content: string, mode: 'replace' | 'append'): string {
   if (mode === 'append' && before) {
@@ -171,7 +122,7 @@ const CHANGED_SINCE_APPROVAL =
 export const vaultWriteTool: ToolDef<typeof writeSchema> = {
   name: 'vaultWrite',
   description:
-    "Save a note into the user's on-device knowledge vault (plain markdown files). Use it to record decisions, findings, plans, and reference notes that you or the user will want later, and to build on notes you saved before. Connect notes with [[wikilinks]]. Every write is shown to the user as a diff and requires their approval; it never happens silently.",
+    "Save a note into the user's on-device knowledge vault (plain markdown files). Use it to record decisions, findings, plans, and reference notes that you or the user will want later, and to build on notes you saved before (search first, so you update a note rather than duplicate it). Connect notes with [[wikilinks]]. Every write is shown to the user as a diff and requires their approval; it never happens silently.",
   schema: writeSchema,
   risk: 'write',
   // Never silent: always prompt with a diff, before any auto-allow path.
@@ -186,6 +137,7 @@ export const vaultWriteTool: ToolDef<typeof writeSchema> = {
     // One read of the raw bytes: the diff is built from them, and their hash
     // travels to execute as the basis the person approved against.
     const current = await readNoteBytes(abs);
+    if (hiddenNote(ctx, rel, current?.bytes)) throw new Error(hiddenRefusal(rel));
     const before = current ? current.bytes.toString('utf8') : '';
     const after = applied(before, args.content, args.mode);
     const { text, stats } = unifiedDiff(before, after, rel);
@@ -208,6 +160,7 @@ export const vaultWriteTool: ToolDef<typeof writeSchema> = {
       if (err instanceof NotANoteError) return { ok: false, content: err.message };
       throw err;
     }
+    if (hiddenNote(ctx, rel, current?.bytes)) return { ok: false, content: hiddenRefusal(rel) };
     // The note must still be what the person saw the diff against. Without a
     // basis (the preview failed) the execute-time guard below still holds.
     if (approved?.basis !== undefined && approved.basis !== basisOf(current?.bytes)) {
@@ -224,66 +177,24 @@ export const vaultWriteTool: ToolDef<typeof writeSchema> = {
       current ? { ifMatch: current.version } : { ifAbsent: true },
     );
     if (!saved.ok) return { ok: false, content: CHANGED_SINCE_APPROVAL };
+    // The engine's index takes the text in hand (CTO I7), so a search right
+    // after the write finds it without a read.
+    const handle = await openEngineVaultIndex(jail.root).catch(() => undefined);
+    handle?.noteWrite(
+      {
+        path: rel,
+        version: saved.version,
+        updatedAt: saved.updatedAt,
+        size: Buffer.byteLength(after, 'utf8'),
+      },
+      after,
+    );
     const { text, stats } = unifiedDiff(before, after, rel);
     return {
       ok: true,
       content: `Saved ${rel} to the vault (+${stats.additions} -${stats.deletions}).`,
       diffText: text,
     };
-  },
-};
-
-const readSchema = z.object({
-  path: z.string().describe('Note path under the vault, e.g. "decisions/auth.md".'),
-});
-
-/** The largest note vaultRead takes whole, the same bound readFile holds. */
-const MAX_NOTE_BYTES = 2_000_000;
-
-export const vaultReadTool: ToolDef<typeof readSchema> = {
-  name: 'vaultRead',
-  description:
-    "Read a note from the user's vault by path. Returns its markdown, or a note that it does not exist yet (you may then propose creating it with vaultWrite).",
-  schema: readSchema,
-  risk: 'read',
-  pathJail: 'own',
-  pathOf: (args) => notePathOrUndefined(args.path),
-  async execute(args, ctx) {
-    const jail = vaultJail(ctx);
-    const rel = plainNotePath(args.path);
-    const abs = jail.resolve(rel);
-    if (!existsSync(abs)) {
-      // A note spelled another way (case, or NFD against NFC) is named back,
-      // never read in its place, so a rule on the typed path still holds.
-      const twin = await foldTwin(jail.root, rel);
-      return {
-        ok: true,
-        content: twin
-          ? `No vault note at ${rel}. The vault has "${twin}"; read that path.`
-          : `No vault note at ${rel} yet.`,
-      };
-    }
-    // Look before reading: a folder named like a note, a note too large to
-    // take whole, or a binary file each get a plain answer the model can act
-    // on, never a raw error, and nothing large is read into memory first.
-    const info = statSync(abs);
-    if (!info.isFile()) {
-      return {
-        ok: false,
-        content: `${rel} is a folder, not a note. List what is inside it with vaultList and folder "${rel}".`,
-      };
-    }
-    if (info.size > MAX_NOTE_BYTES) {
-      return {
-        ok: false,
-        content: `${rel} is ${(info.size / 1_000_000).toFixed(1)} MB, too large to read whole. Ask the person which part of it matters.`,
-      };
-    }
-    const bytes = readFileSync(abs);
-    if (bytes.includes(0)) {
-      return { ok: false, content: `${rel} looks binary; not printing it.` };
-    }
-    return { ok: true, content: capContent(bytes.toString('utf8')) };
   },
 };
 
@@ -397,18 +308,17 @@ function folderHints(notes: string[], base: string): string {
   return hints.join(', ');
 }
 
-/** Whether the person's permission rules close a vault path to the agent: a
- *  deny on reading it or on listing it. A folder is asked as "folder/", so a
- *  "Private/**" rule covers the folder itself (Vault v1, 1.6). */
-function closed(ctx: ToolContext, path: string): boolean {
-  return Boolean(ctx.denies?.('vaultRead', path) || ctx.denies?.('vaultList', path));
-}
-
 /** The folders at the top of the vault, for a folder name that missed. */
 async function topFolders(root: string, ctx: ToolContext): Promise<string> {
   try {
     const names = (await readdir(root, { withFileTypes: true }))
-      .filter((e) => e.isDirectory() && !e.name.startsWith('.') && !closed(ctx, `${e.name}/`))
+      .filter(
+        (e) =>
+          e.isDirectory() &&
+          !e.name.startsWith('.') &&
+          !closed(ctx, `${e.name}/`) &&
+          visibilityOf(ctx, `${e.name}/`) !== 'hidden',
+      )
       .map((e) => e.name)
       .sort();
     const shown = names.slice(0, FOLDER_HINTS).map((name) => `"${name}"`);
@@ -421,7 +331,7 @@ async function topFolders(root: string, ctx: ToolContext): Promise<string> {
 
 export const vaultListTool: ToolDef<typeof listSchema> = {
   name: 'vaultList',
-  description: `List the notes in the user's vault (paths and sizes), so you can find and build on existing notes before writing new ones. Returns up to ${LIST_PAGE} notes with a count; narrow with folder, or page on with offset.`,
+  description: `List the notes in the user's vault (paths and sizes), so you can find and build on existing notes before writing new ones. Returns up to ${LIST_PAGE} notes with a count; narrow with folder, or page on with offset. To find notes by what they say, use vaultSearch instead.`,
   schema: listSchema,
   risk: 'read',
   async execute(args, ctx) {
@@ -462,6 +372,15 @@ export const vaultListTool: ToolDef<typeof listSchema> = {
     if (unreadable) {
       return { ok: false, content: `Could not read ${base || 'the vault'} (${unreadable}).` };
     }
+    // Notes the person's vault settings exclude are absent, not counted and
+    // not named (CTO I5): by glob always, and by a note's own tags and marks
+    // once the engine's index has loaded. Asking opens the index in the
+    // background, so later searches find it warm.
+    const handle = await engineVaultIndex(new Jail(root).root).catch(() => undefined);
+    const index = handle?.isLoaded ? handle.index : undefined;
+    walked.notes = walked.notes.filter(
+      (rel) => visibilityOf(ctx, rel, index?.entry(rel)) !== 'hidden',
+    );
     // Notes a deny rule closes stay out of the list, its count, and the folder
     // hints, so the model never sees names it may not read.
     const notes = walked.notes.filter((rel) => !closed(ctx, rel));

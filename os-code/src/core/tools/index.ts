@@ -127,6 +127,11 @@ export interface ToolContext {
    *  backlinks leave such notes out. Unset reads as a seat that leaves (the
    *  safe reading); the loop always sets it. */
   seatLeavesNetwork?: () => boolean;
+  /** The most characters one vault read returns for the seat answering now
+   *  (the class policy's `vaultReadCapChars`, CTO I11). Set by the loop each
+   *  turn, like `seatLeavesNetwork`; past it a read returns the note's outline
+   *  and asks for a section. Unset uses capContent's own cap. */
+  vaultReadCapChars?: () => number;
 }
 
 export interface ToolDef<S extends z.ZodType = z.ZodType> {
