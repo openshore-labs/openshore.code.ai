@@ -58,7 +58,10 @@ export function ProjectDetailScreen() {
   const project = settings.projects?.find((p) => p.id === viewProjectId);
   const account = settings.account;
   const isActive = (settings.activeProjectId ?? settings.projects?.[0]?.id) === project?.id;
-  const isCommercial = account?.type === 'commercial';
+  // Teams are v4 (docs/release-tiers.md): a Personal build shows no roster,
+  // no sharing, and no team counts, whatever account an earlier build saved.
+  const teams = featureOn('teams');
+  const isCommercial = teams && account?.type === 'commercial';
   // The signed-in person's level on this project. A local project is fully the
   // owner's ('edit'); a shared project trusts the server-resolved level, so a
   // read/write teammate sees it but cannot change its content or roster.
@@ -169,7 +172,7 @@ export function ProjectDetailScreen() {
                   Make active
                 </button>
               )}
-              {project.shared ? <span className="pill muted">Shared</span> : null}
+              {teams && project.shared ? <span className="pill muted">Shared</span> : null}
               {project.shared && !mayEdit && myLevel ? (
                 <span className="pill muted">You {permissionLabel(myLevel).toLowerCase()}</span>
               ) : null}
@@ -428,7 +431,7 @@ export function ProjectDetailScreen() {
               Share with team
             </button>
           ) : null}
-          {project.shared && mayEdit ? (
+          {teams && project.shared && mayEdit ? (
             <button className="suggestion" onClick={() => void unshareProject(project.id)}>
               Stop sharing
             </button>

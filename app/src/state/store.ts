@@ -247,6 +247,7 @@ import {
 import { byomSecretKey, type ByomConnection } from '../lib/byom.js';
 import {
   currentBenchId,
+  isCurrentBenchId,
   currentInfo,
   currentSecretKey,
   currentsHandles,
@@ -2299,6 +2300,22 @@ function purgeBenchId(
   return out;
 }
 
+/** A stack as a build without Currents runs it (docs/release-tiers.md): a
+ *  Current placed by an earlier build is left out of the turn (the anchor
+ *  falls back to Harbor), without touching what is saved, so a build that has
+ *  Currents finds the placement as it was. Exported for its test. */
+export function stackForTier(stack: AppStack, tier: ReleaseTier = RELEASE_TIER): AppStack {
+  if (featureOn('currents', tier)) return stack;
+  const isCurrent = (ref: StackModelRef | undefined) =>
+    ref?.kind === 'byom' && isCurrentBenchId(ref.id);
+  if (!isCurrent(stack.reasoning) && !stack.active.some((m) => isCurrent(m.ref))) return stack;
+  return {
+    ...stack,
+    reasoning: isCurrent(stack.reasoning) ? harborRef() : stack.reasoning,
+    active: stack.active.filter((m) => !isCurrent(m.ref)),
+  };
+}
+
 /** The project the person is currently in (activeProjectId, else the first), so
  *  the global rooms read its per-project current selections. */
 export function activeProjectOf(settings: AppSettings): Project | undefined {
@@ -3607,7 +3624,9 @@ export const useApp = create<AppState>((set, get, api) => {
         let codemagicToken: string | undefined;
         let codemagicTarget:
           { appId: string; workflowId: string; branch: string; platform?: string } | undefined;
-        if (settings.codemagicAccess) {
+        // Launch is v2 (docs/release-tiers.md): an earlier build never hands
+        // the token to a session, whatever a setting left from before says.
+        if (settings.codemagicAccess && featureOn('launch')) {
           const tok = await secretGet(CODEMAGIC_SECRET_KEY);
           if (tok) {
             codemagicToken = tok;
@@ -3627,12 +3646,17 @@ export const useApp = create<AppState>((set, get, api) => {
         // Codemagic token they ride to a remote hub too: a current names a box
         // or a service the person chose to reach FROM the hub, and the key is
         // that service's own key, not a secret bound to this device.
-        const currents = currentsHandles(
-          projectCurrentsSettings(project, settings.currentConnections),
-          (await currentSecretFor(project?.agenticCurrent ?? null)) ?? undefined,
-          get().currentsHost,
-        );
-        const harnessId = project?.harnessCurrent ?? null;
+        // Currents are v2: an earlier build sends no current to any session,
+        // whatever a project saved in a build that had them.
+        const currentsOn = featureOn('currents');
+        const currents = currentsOn
+          ? currentsHandles(
+              projectCurrentsSettings(project, settings.currentConnections),
+              (await currentSecretFor(project?.agenticCurrent ?? null)) ?? undefined,
+              get().currentsHost,
+            )
+          : undefined;
+        const harnessId = currentsOn ? (project?.harnessCurrent ?? null) : null;
         const harnessCurrents = harnessId
           ? harnessCurrentsHandle(
               projectHarnessSettings(project, settings.harnessCurrentConnections),
@@ -3856,7 +3880,7 @@ export const useApp = create<AppState>((set, get, api) => {
         // The Harness Current (Jev) for THIS conversation's project, with its
         // resolved key, so the stack can let it steer a paid-seat turn. Absent
         // leaves routing exactly as it was.
-        const harnessId = project?.harnessCurrent ?? null;
+        const harnessId = featureOn('currents') ? (project?.harnessCurrent ?? null) : null;
         const harnessCurrents = harnessId
           ? harnessCurrentsHandle(
               projectHarnessSettings(project, s.settings.harnessCurrentConnections),
@@ -3864,7 +3888,7 @@ export const useApp = create<AppState>((set, get, api) => {
             )
           : undefined;
         return new StackDriver(
-          stackForProfile(s.settings.stacks, profile),
+          stackForTier(stackForProfile(s.settings.stacks, profile)),
           profile,
           {
             projectName: project?.name,
@@ -3881,7 +3905,8 @@ export const useApp = create<AppState>((set, get, api) => {
             researchOn: s.settings.perplexityResearch === true,
             // Codemagic Access on and connected: offer the codemagic tool so the
             // model can drive App Launch builds on the phone (Anthropic path).
-            codemagicAccess: s.settings.codemagicAccess === true && s.codemagicConnected,
+            codemagicAccess:
+              featureOn('launch') && s.settings.codemagicAccess === true && s.codemagicConnected,
             // Docked to a computer with a local workspace connected to this chat:
             // a play's repo/tool step runs on the engine there. Absent (not
             // docked, or a GitHub-only / repo-less chat) means such a step is
@@ -6572,15 +6597,19 @@ export const useApp = create<AppState>((set, get, api) => {
     if (account && session.user.email && account.selfEmail !== session.user.email) {
       await get().saveSettings({ account: { ...account, selfEmail: session.user.email } });
     }
-    try {
-      await supabaseRpc('claim_membership', session.accessToken);
-    } catch {
-      // No invited seat, or offline: role stays whatever the server says next.
+    // Teams are v4 (docs/release-tiers.md): a Personal build claims no seat,
+    // syncs no organization and no team projects; it reads the entitlement.
+    if (featureOn('teams')) {
+      try {
+        await supabaseRpc('claim_membership', session.accessToken);
+      } catch {
+        // No invited seat, or offline: role stays whatever the server says next.
+      }
+      await reconcileOrg();
+      await get().refreshOrgRole();
     }
-    await reconcileOrg();
-    await get().refreshOrgRole();
     void get().refreshEntitlement();
-    void get().syncOrgProjects();
+    if (featureOn('teams')) void get().syncOrgProjects();
     // Back on the team note: list the team vault again and replay what was
     // kept for this account while it was signed out.
     if (resume && get().vaultScope === 'team') void get().vaultRefresh();
@@ -6963,9 +6992,11 @@ export const useApp = create<AppState>((set, get, api) => {
               fresh = undefined;
             }
             if (!fresh) return;
-            await reconcileOrg();
-            await get().refreshOrgRole();
-            void get().syncOrgProjects();
+            if (featureOn('teams')) {
+              await reconcileOrg();
+              await get().refreshOrgRole();
+              void get().syncOrgProjects();
+            }
             // A pure-web buyer returns from checkout on this origin with
             // ?checkout=success (no deep link to fire); reconcile the
             // entitlement right away instead of waiting for a refocus.
@@ -8178,7 +8209,7 @@ export const useApp = create<AppState>((set, get, api) => {
 
     async setupAccount(input) {
       set({ accountChoice: undefined });
-      if (input.type === 'personal') {
+      if (input.type === 'personal' || !featureOn('teams')) {
         await get().saveSettings({ account: { type: 'personal' } });
         logEvent('account_setup', { type: 'personal' });
         return;
@@ -8349,7 +8380,12 @@ export const useApp = create<AppState>((set, get, api) => {
       const session = await supabaseSignUp(email.trim(), password, authRedirectTo());
       // A new account is the moment to ask Personal or Business, and only when
       // this device never answered (a company already set up stays as it is).
-      if (!get().settings.account) set({ accountChoice: true });
+      // Business is v4: a Personal build makes it a Personal account, no
+      // question asked.
+      if (!get().settings.account) {
+        if (featureOn('teams')) set({ accountChoice: true });
+        else await get().saveSettings({ account: { type: 'personal' } });
+      }
       if (session) {
         await onSignedIn(session);
         return { needsConfirmation: false };
@@ -9311,12 +9347,16 @@ export const useApp = create<AppState>((set, get, api) => {
       // Kick the download in the background, then walk the Library intro over
       // the marketplace. ensureHarborMini manages harborMiniDownload / harborMiniReady.
       void get().ensureHarborMini();
+      // The Library intro walks over the Marketplace, a v3 room: an earlier
+      // build downloads in place and the row shows the progress.
+      if (!roomOpen('marketplace')) return;
       set({ libraryIntro: true, view: 'marketplace', viewTrail: [], drawerOpen: false });
     },
 
     beginHarborWithIntro() {
       logEvent('library_intro_open', { model: HARBOR_MODEL_ID });
       void get().ensureHarbor();
+      if (!roomOpen('marketplace')) return;
       set({ libraryIntro: true, view: 'marketplace', viewTrail: [], drawerOpen: false });
     },
 
@@ -9578,6 +9618,8 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     teamVaultAvailable() {
+      // The team vault is v4: a Personal build keeps every note personal.
+      if (!featureOn('teams')) return false;
       const st = get();
       return Boolean(
         authConfigured() && st.authSession && st.serverRole && st.settings.account?.org?.serverId,
@@ -11851,6 +11893,8 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async refreshCurrents() {
+      // Currents are v2: an earlier build probes nothing at all.
+      if (!featureOn('currents')) return;
       const s = get();
       // Nothing here may throw: a probe that fails reads as "did not answer".
       const host = await currentsHost(s.settings.daemon).catch(() => undefined);

@@ -12,6 +12,7 @@ import { Sidebar } from './components/Sidebar.js';
 import { Paywall } from './components/Paywall.js';
 import { AuthConfirmSheet } from './components/AuthConfirmSheet.js';
 import { OrgJoinSheet } from './components/OrgJoinSheet.js';
+import { featureOn } from './lib/focus.js';
 import { CurrentArrival, CurrentWaterline } from './components/CurrentArrival.js';
 import { UpdateBanner } from './components/UpdateBanner.js';
 import { ChatScreen } from './screens/ChatScreen.js';
@@ -200,10 +201,13 @@ export function App() {
   // The setup page (reached from Harbor Lite's greeting) and the Personal or
   // Business choice (asked once, right after a new account is created) are
   // full-screen, over the rest of the app.
-  if (view === 'onboarding' || accountChoice) {
+  // The Personal or Business choice is v4 (teams): a Personal build never
+  // shows it (signUpAccount makes the account Personal instead).
+  const choosingAccount = Boolean(accountChoice) && featureOn('teams');
+  if (view === 'onboarding' || choosingAccount) {
     return (
       <div className="shell">
-        {accountChoice ? <AccountSetup /> : <OnboardingScreen />}
+        {choosingAccount ? <AccountSetup /> : <OnboardingScreen />}
         {toastPresence.mounted ? (
           <div
             className={`toast${toastPresence.closing ? ' closing' : ''}`}
@@ -296,7 +300,7 @@ export function App() {
         ) : null}
         <Paywall />
         <AuthConfirmSheet />
-        <OrgJoinSheet />
+        {featureOn('teams') ? <OrgJoinSheet /> : null}
         {/* Agentic Currents: the arrival that flows from the switch to the
           edges, and the faint water-line that frames every screen while a
           current is on. Both render nothing when none is on. */}

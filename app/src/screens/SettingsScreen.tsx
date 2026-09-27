@@ -3,6 +3,7 @@
 // everything deeper in a sheet. What this app keeps, where it lives, and a
 // few careful switches. No telemetry to toggle because there is none. Built
 // with the Creative Studio (2026-09-02, "The Ledger" direction).
+import { featureOn } from '../lib/focus.js';
 import { Fragment, useEffect, useState } from 'react';
 import { PAY_GATES_ENABLED, isOrgAdmin, useApp, type HarborDownload } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
@@ -399,7 +400,9 @@ export function SettingsScreen() {
   // Stack Health visibility lives on the hub (admin-owned, server-enforced), so
   // it only appears when a hub is paired. Read the current value from the hub;
   // an admin can change it, everyone else sees it read-only.
-  const shHub = settings.daemon;
+  // Stack Health is v2 (docs/release-tiers.md): a Personal build neither
+  // shows the row nor asks the hub for it.
+  const shHub = featureOn('stackhealth') ? settings.daemon : undefined;
   const [shVisibility, setShVisibility] = useState<StackHealthVisibility | undefined>();
   useEffect(() => {
     if (!shHub) {
@@ -683,7 +686,7 @@ export function SettingsScreen() {
           </SettingsGroup>
         ) : null}
 
-        {codemagicConnected ? (
+        {codemagicConnected && featureOn('launch') ? (
           <SettingsGroup title="Launch with Codemagic" index={group++}>
             <SettingsRow
               label="Codemagic Access"
@@ -1135,7 +1138,7 @@ export function SettingsScreen() {
           </p>
         ) : null}
         <SignInCard />
-        {signedIn && account?.type === 'commercial' && isOrgAdmin(account) ? (
+        {signedIn && account?.type === 'commercial' && isOrgAdmin(account) && featureOn('admin') ? (
           <button
             className="btn ghost"
             style={{ width: '100%' }}

@@ -12,6 +12,17 @@ import { guideStepsCompact } from './setupGuides.js';
 import { AGENTIC_CURRENTS, AGENTIC_CURRENTS_TITLE } from './currents.js';
 import { HARNESS_CURRENTS, HARNESS_CURRENTS_TITLE } from './harnessCurrents.js';
 import { ROUTINE_NOTES_PLACE, vaultGuideText } from './vaultCopy.js';
+import { featureOn } from './focus.js';
+
+// Release tiers (docs/release-tiers.md): a card about a later tier's feature
+// carries `feature` and is left out of a build without it, and the cards that
+// list rooms or settings name only what this build has.
+const launchOn = featureOn('launch');
+const currentsOn = featureOn('currents');
+const stackHealthOn = featureOn('stackhealth');
+const marketplaceOn = featureOn('marketplace');
+const adminOn = featureOn('admin');
+const teamsOn = featureOn('teams');
 
 function listOf(names: readonly string[]): string {
   return names.length > 1
@@ -22,7 +33,7 @@ function listOf(names: readonly string[]): string {
 const agenticNames = AGENTIC_CURRENTS.map((c) => c.label);
 const harnessNames = HARNESS_CURRENTS.map((c) => c.label);
 
-export const GUIDE_CARDS: readonly GuideCard[] = [
+const ALL_GUIDE_CARDS: readonly GuideCard[] = [
   // ---------------------------------------------------------- the big picture
   {
     id: 'overview',
@@ -66,7 +77,17 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'walk-me-through',
     title: 'Walk me through it',
-    text: "Screens that set something up carry a Walk me through it (or Guide me) button that opens a chat with a step-by-step guide: the goal, a numbered plan, then one step at a time, with questions welcome between steps. It is on Cloud Connections, Desktop + phone on the phone, Repositories before you connect, Terminal, Crew command, Launch with Codemagic, and each current's connect sheet.",
+    text: `Screens that set something up carry a Walk me through it (or Guide me) button that opens a chat with a step-by-step guide: the goal, a numbered plan, then one step at a time, with questions welcome between steps. It is on ${listOf(
+      [
+        'Cloud Connections',
+        'Desktop + phone on the phone',
+        'Repositories before you connect',
+        'Terminal',
+        'Crew command',
+        ...(launchOn ? ['Launch with Codemagic'] : []),
+        ...(currentsOn ? ["each current's connect sheet"] : []),
+      ],
+    )}.`,
     keywords: [
       'walk me through',
       'guide me',
@@ -81,7 +102,16 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     id: 'menu',
     title: 'The Menu',
     where: 'Phone: the Menu button at top left, or swipe from the edge. Computer: the sidebar',
-    text: 'Top: Chats, Projects, Terminal, Repositories, Stack, Vault. Bottom: Admin (company admins), Crew, Marketplace (Coming soon), Stack Health, Launch with Codemagic, Cloud Connections, Desktop + phone, Settings. A Sign in row shows when you are signed out.',
+    text: `Top: Chats, Projects, Terminal, Repositories, Stack, Vault. Bottom: ${[
+      ...(adminOn ? ['Admin (company admins)'] : []),
+      'Crew',
+      ...(marketplaceOn ? ['Marketplace (Coming soon)'] : []),
+      ...(stackHealthOn ? ['Stack Health'] : []),
+      ...(launchOn ? ['Launch with Codemagic'] : []),
+      'Cloud Connections',
+      'Desktop + phone',
+      'Settings',
+    ].join(', ')}. A Sign in row shows when you are signed out.`,
     keywords: ['menu', 'sidebar', 'navigation', 'drawer', 'where is', 'find', 'rooms', 'hamburger'],
   },
 
@@ -375,6 +405,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
   },
   {
     id: 'marketplace',
+    feature: 'marketplace',
     title: 'Marketplace',
     where: 'Menu, Marketplace (grayed, Coming soon)',
     text: 'A catalog of more models rated against your hardware, downloaded straight from their source. It is marked Coming soon in the Menu; today you grow the stack with the three built-in models, a cloud model on your own API key, or your own model (BYOM), all from Stack and Settings, Harbor.',
@@ -392,6 +423,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
   },
   {
     id: 'stack-health',
+    feature: 'stackhealth',
     title: 'Stack Health',
     where: 'Menu, Stack Health',
     text: 'An honest read of how your stack is used, worked out on your own computer, by day, week, or month: how much ran locally versus in the cloud, what the cloud cost, energy and carbon estimates, and leaner swaps.',
@@ -493,6 +525,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
   },
   {
     id: 'launch',
+    feature: 'launch',
     title: 'Launch with Codemagic',
     where: 'Menu, Launch with Codemagic',
     text: `Ships your app to the App Store or Google Play through Codemagic on your own account: add a Codemagic API key and a launch target, then build. On a failed build the model can read the log. How:\n${guideStepsCompact('connect-codemagic')}`,
@@ -514,7 +547,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     id: 'projects',
     title: 'Projects',
     where: 'Menu, Projects',
-    text: 'A project keeps its chats, repositories, and standing instructions together, so the agent has the same context in every chat for it. Its room has New chat, Resume last chat, Standing instructions, Repositories and files, what the agent has learned there, and its currents.',
+    text: `A project keeps its chats, repositories, and standing instructions together, so the agent has the same context in every chat for it. Its room has New chat, Resume last chat, Standing instructions, Repositories and files, ${currentsOn ? 'what the agent has learned there, and its currents' : 'and what the agent has learned there'}.`,
     keywords: ['project', 'projects', 'standing instructions', 'organize', 'folder', 'new project'],
   },
   {
@@ -603,6 +636,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
   },
   {
     id: 'agentic-currents',
+    feature: 'currents',
     title: AGENTIC_CURRENTS_TITLE,
     where: 'Menu, Projects, a project (editors only)',
     text: `${AGENTIC_CURRENTS_TITLE} (beta) hand agent work in a project to an outside agent: ${listOf(agenticNames)}. They are off by default and one is on at a time per project. Turn one on and the rooms you already use gain rows for it; turn it off and every trace is gone. Connecting one is done once per device from its Set up link.`,
@@ -619,6 +653,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
   },
   {
     id: 'harness-currents',
+    feature: 'currents',
     title: HARNESS_CURRENTS_TITLE,
     where: 'Menu, Projects, a project (editors only)',
     text: `${HARNESS_CURRENTS_TITLE} (beta) layer a cheap decision method into how answers are made in a project. ${listOf(harnessNames)} picks which of your models answers a turn, skips steps that need no model, and checks results, each decision shown as an amber card. It only spends on a paid or cloud seat. One on at a time per project.`,
@@ -637,7 +672,21 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     id: 'settings',
     title: 'Settings',
     where: 'Menu, Settings',
-    text: 'Groups: Account, Privacy, Ethical boundaries, This device, Terminal, Launch with Codemagic, Stack Health, Harbor, Writing, Voice, Notifications (iPhone), Wayfinding, and Clear conversations. Set up steps are not here; they are on the Set up OpenShore page.',
+    text: `Groups: ${listOf([
+      'Account',
+      'Privacy',
+      'Ethical boundaries',
+      'This device',
+      'Terminal',
+      ...(launchOn ? ['Launch with Codemagic'] : []),
+      ...(stackHealthOn ? ['Stack Health'] : []),
+      'Harbor',
+      'Writing',
+      'Voice',
+      'Notifications (iPhone)',
+      'Wayfinding',
+      'Clear conversations',
+    ])}. Set up steps are not here; they are on the Set up OpenShore page.`,
     keywords: ['settings', 'preferences', 'options', 'configure', 'toggles'],
   },
   {
@@ -724,7 +773,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     id: 'account',
     title: 'Account',
     where: 'Menu, Settings, Account, or the Sign in row',
-    text: 'Personal use needs no account. Signing in syncs your chats across devices. After creating one you choose personal or business; a business adds a company, admins, and a shared stack managed from Admin.',
+    text: `Personal use needs no account: chatting and building work signed out. Signing in lets you buy or restore Personal and get notifications from your computer on your phone. Chats are not synced between devices; your phone reaches your computer's chats by pairing.${teamsOn ? ' After creating one you choose personal or business; a business adds a company, admins, and a shared stack managed from Admin.' : ''}`,
     keywords: [
       'account',
       'sign in',
@@ -777,3 +826,9 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     keywords: ['clear', 'delete all', 'wipe', 'reset', 'erase history'],
   },
 ];
+
+/** The cards this build's guide may use: a later tier's cards stay out of an
+ *  earlier build (docs/release-tiers.md). */
+export const GUIDE_CARDS: readonly GuideCard[] = ALL_GUIDE_CARDS.filter(
+  (card) => !card.feature || featureOn(card.feature),
+);

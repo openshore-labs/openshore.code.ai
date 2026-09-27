@@ -18,6 +18,7 @@
 //
 // Pure: no platform, no network, no Node built-ins. The driver runs the search
 // the plan asks for and builds the prompt with `buildGuidePrompt`.
+import type { TieredFeature } from './focus.js';
 import { resolveHarborMaster, harborMasterSizeLine } from './harborMaster.js';
 import type { HardwareRead } from './firstSeat.js';
 import type { FitLabel } from '../components/marketplace.js';
@@ -33,6 +34,10 @@ export interface GuideCard {
   text: string;
   /** Lowercase words and phrases a person might use asking about it. */
   keywords: string[];
+  /** The later-tier feature the card describes (docs/release-tiers.md); a
+   *  build without it leaves the card out, so the guide never sends a
+   *  person to a room the build does not have. */
+  feature?: TieredFeature;
 }
 
 export type GuideRoute = 'chat' | 'app' | 'setup' | 'web' | 'stretch';
