@@ -299,3 +299,81 @@ describe('transcript reducer', () => {
     expect(state.stepNote).toBeUndefined();
   });
 });
+
+describe('the Vault context pack', () => {
+  const pack = (
+    over: Partial<Extract<DriverEvent, { type: 'context-pack' }>> = {},
+  ): DriverEvent => ({
+    type: 'context-pack',
+    seat: 'local',
+    mode: 'full',
+    tokens: 900,
+    budgetTokens: 4000,
+    sources: [
+      { layer: 'pin', path: 'Roadmap.md', title: 'Roadmap' },
+      { layer: 'search', path: 'Notes/Ideas.md', title: 'Ideas' },
+    ],
+    withheld: 0,
+    cold: false,
+    ...over,
+  });
+
+  it('maps the event to one card after the task bubble', () => {
+    const state = feed([{ type: 'task-start', input: 'plan the launch' }, pack()]);
+    const card = state.items[1]!;
+    expect(card.kind).toBe('context-pack');
+    if (card.kind !== 'context-pack') return;
+    expect(card.seat).toBe('local');
+    expect(card.mode).toBe('full');
+    expect(card.withheld).toBe(0);
+    expect(card.cold).toBe(false);
+    expect(card.sources.map((s) => s.title)).toEqual(['Roadmap', 'Ideas']);
+  });
+
+  it('updates the task card in place when the seat changes', () => {
+    const state = feed([
+      { type: 'task-start', input: 'plan the launch' },
+      pack(),
+      { type: 'turn-start', turn: 1, model: 'qwen', providerKind: 'local' },
+      pack({
+        seat: 'cloud',
+        withheld: 2,
+        sources: [{ layer: 'pin', path: 'Roadmap.md', title: 'Roadmap' }],
+      }),
+    ]);
+    const cards = state.items.filter((i) => i.kind === 'context-pack');
+    expect(cards).toHaveLength(1);
+    const card = cards[0]!;
+    if (card.kind !== 'context-pack') return;
+    expect(card.seat).toBe('cloud');
+    expect(card.withheld).toBe(2);
+    expect(card.sources).toHaveLength(1);
+  });
+
+  it('gives a new task its own card', () => {
+    const state = feed([
+      { type: 'task-start', input: 'one' },
+      pack(),
+      { type: 'task-done', reason: 'complete' },
+      { type: 'task-start', input: 'two' },
+      pack({ seat: 'cloud' }),
+    ]);
+    expect(state.items.filter((i) => i.kind === 'context-pack')).toHaveLength(2);
+  });
+
+  it('leaves an empty pack out of the transcript', () => {
+    const state = feed([
+      { type: 'task-start', input: 'hello' },
+      pack({ sources: [], withheld: 0 }),
+    ]);
+    expect(state.items.map((i) => i.kind)).toEqual(['user']);
+  });
+
+  it('keeps a pack that only held private notes back', () => {
+    const state = feed([
+      { type: 'task-start', input: 'hello' },
+      pack({ seat: 'cloud', sources: [], withheld: 3 }),
+    ]);
+    expect(state.items.map((i) => i.kind)).toEqual(['user', 'context-pack']);
+  });
+});

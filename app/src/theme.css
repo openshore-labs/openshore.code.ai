@@ -8590,6 +8590,69 @@ textarea {
   box-shadow: 0 0 0 2px var(--accent);
 }
 
+/* Vault M4 (4.4): what the Vault gave this task's seat. The changed files
+   card's frame with a faint place wash: teal when the seat is local, amber
+   when it leaves this network. Arrives on msg-in like its neighbours;
+   opacity and transform only. */
+.context-pack-card {
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  border-radius: var(--radius);
+  overflow: hidden;
+  animation: msg-in var(--dur-3) var(--ease-standard) backwards;
+}
+.context-pack-card.local {
+  background: var(--local-soft);
+  border-color: color-mix(in srgb, var(--local) 30%, transparent);
+}
+.context-pack-card.cloud {
+  background: var(--cloud-soft);
+  border-color: color-mix(in srgb, var(--cloud) 30%, transparent);
+}
+.context-pack-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 10px;
+  padding: 9px 12px;
+}
+.context-pack-title {
+  font-size: var(--text-4);
+  font-weight: var(--weight-semibold);
+  min-width: 0;
+}
+.context-pack-seat {
+  font-size: var(--text-2);
+  white-space: nowrap;
+}
+.context-pack-card.local .context-pack-seat {
+  color: var(--local);
+}
+.context-pack-card.cloud .context-pack-seat {
+  color: var(--cloud);
+}
+.context-pack-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 6px;
+}
+.context-pack-note {
+  padding: 3px 12px;
+  font-size: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.context-pack-foot {
+  padding: 0 12px 9px;
+  font-size: var(--text-2);
+  color: var(--ink-soft);
+}
+.context-pack-foot p {
+  margin: 2px 0 0;
+}
+
 .tool-state.running {
   display: inline-flex;
   align-items: center;
