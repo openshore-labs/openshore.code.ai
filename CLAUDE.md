@@ -64,8 +64,10 @@ Standing rules, each pinned by tests:
   the vault. Agent writes stay always-ask, and the person approves the exact
   bytes (provenance included). `.oscode/vault.json` travels with the vault and
   can only narrow reach; the agent never writes under `.oscode/`.
-- **Privacy is judged by address**: `Private/`, `Journal/`, `#private`, and
-  `local-only` notes never reach a seat that leaves this network (D5).
+- **Privacy is judged by address**: notes the privacy rules mark local-only
+  (by default `Private/`, `Journal/`, `#private`, and `oscode: local-only`;
+  machine config can change the defaults, a vault's own file can only add)
+  never reach a seat that leaves this network (D5).
 - **Google Drive is held out of v1** (D1), and the team vault stays out of
   model context until v1.1 (D15).
 
