@@ -10,10 +10,15 @@
 // against a manifest of what it wrote last time: it never removes the folder,
 // never touches a file it did not write (so Obsidian's .obsidian/ and anything
 // added by hand survive), removes only its own files for notes deleted or
-// renamed since, and reports "N of M" when some notes could not be read.
+// renamed since, and reports "N of M" when some notes could not be read. A
+// file edited in Files since the last export, or one added by hand under a
+// note's name, is someone's work: the export leaves it as it is, stops
+// counting it as its own, and names it (`kept`), so an export never
+// overwrites anything but the copy it wrote.
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import { platform, storeGetJson, storeSetJson, type Platform } from './platform.js';
 import type { StorageProviderId } from './gitos/providers.js';
+import { noteTitle } from './vault.js';
 
 const EXPORT_ROOT = 'Vault';
 // Path to the fingerprint of the text this device last exported there.
@@ -52,6 +57,11 @@ export interface VaultExportResult {
   total: number;
   /** This device's own files, for notes gone since, that were removed. */
   removed: number;
+  /** Notes that could not be read this time (never mixed with `kept`). */
+  unread: number;
+  /** Notes whose file there is not the copy this device last wrote (edited in
+   *  Files, or added by hand), so it was left as it is. */
+  kept: string[];
 }
 
 // A cheap fingerprint of exported text (FNV-1a, plus the length), so a file
@@ -80,12 +90,19 @@ export async function exportVaultToFiles(
   // A note that could not be read is still in the vault: its old file stays.
   for (const path of failed) if (before[path]) next[path] = before[path];
   const current = new Set([...notes.map((n) => n.path), ...failed]);
+  const kept: string[] = [];
   let written = 0;
   let removed = 0;
   let done = false;
   try {
     for (const note of notes) {
       if (!isSafeExportPath(note.path)) continue;
+      // Someone's work there is left as it is, and is no longer ours, so the
+      // removal below never takes it either.
+      if (!(await mayWrite(`${EXPORT_ROOT}/${note.path}`, note.text, before[note.path]))) {
+        kept.push(note.path);
+        continue;
+      }
       await Filesystem.writeFile({
         path: `${EXPORT_ROOT}/${note.path}`,
         data: note.text,
@@ -120,24 +137,78 @@ export async function exportVaultToFiles(
     done = true;
   } finally {
     // A write that failed partway still records what landed, and keeps the
-    // earlier entries it did not reach, so no file of ours is forgotten.
-    await storeSetJson(MANIFEST_KEY, done ? next : { ...before, ...next }).catch(() => {});
+    // earlier entries it did not reach, so no file of ours is forgotten. A
+    // kept file is dropped either way: it is not ours any more.
+    const manifest = done ? next : { ...before, ...next };
+    for (const path of kept) delete manifest[path];
+    await storeSetJson(MANIFEST_KEY, manifest).catch(() => {});
   }
-  return { written, total: notes.length + failed.length, removed };
+  return {
+    written,
+    total: notes.length + failed.length,
+    removed,
+    unread: failed.length,
+    kept,
+  };
 }
 
-/** The toast after an export, "N of M" when some notes did not make it. */
+/** Whether the export may write a note's file: it is absent, it still holds
+ *  exactly what this device last wrote there (the manifest's fingerprint), or
+ *  it already holds the note's exact text. A file the manifest lists is read
+ *  and fingerprinted; one it does not list is stat'ed first, since most are
+ *  simply not there yet. A file that is there but cannot be read is left
+ *  alone, as someone's. */
+async function mayWrite(file: string, text: string, print: string | undefined): Promise<boolean> {
+  if (print === undefined) {
+    try {
+      await Filesystem.stat({ path: file, directory: Directory.Documents });
+    } catch {
+      return true;
+    }
+  }
+  let data: unknown;
+  try {
+    ({ data } = await Filesystem.readFile({
+      path: file,
+      directory: Directory.Documents,
+      encoding: Encoding.UTF8,
+    }));
+  } catch {
+    // Ours and gone (removed by hand, or the folder was cleared): write it
+    // again. Not ours and unreadable: leave it.
+    return print !== undefined;
+  }
+  if (typeof data !== 'string') return false;
+  return data === text || (print !== undefined && fingerprint(data) === print);
+}
+
+/** The toast after an export: "N of M" when some notes could not be read,
+ *  and a line for files there that were left as they are. The two counts are
+ *  said apart, so a kept file never reads as an unread note or the reverse. */
 export function vaultExportLine(r: VaultExportResult): string {
   const where = 'to Files, under OpenShore / Vault';
   if (r.total === 0) return 'Nothing to export yet. Write a note first.';
-  if (r.written === 0) {
+  if (r.unread >= r.total) {
     return 'None of your notes could be read right now, so nothing was exported. Try again shortly.';
   }
-  if (r.written < r.total) {
-    return `${r.written} of ${r.total} notes exported ${where}. The rest could not be read right now; export again to bring them.`;
-  }
   const noun = r.written === 1 ? 'note' : 'notes';
-  // A one-way copy: the next export writes every note again, so an edit made
-  // to one of these files elsewhere does not survive it (copy-3).
-  return `${r.written} ${noun} exported ${where}. It is a one-way copy: exporting again replaces these files.`;
+  // A one-way copy: an edit made to one of these files in Files stays there
+  // (the next export leaves it as it is) but never comes back (copy-3).
+  const head =
+    r.unread > 0
+      ? `${r.written} of ${r.total} notes exported ${where}. ${
+          r.unread === 1 ? 'One note' : `${r.unread} notes`
+        } could not be read right now; export again to bring ${r.unread === 1 ? 'it' : 'them'}.`
+      : `${r.written || 'No'} ${noun} exported ${where}. It is a one-way copy: edits made there do not come back into the vault.`;
+  return [head, keptLine(r.kept)].filter(Boolean).join(' ');
+}
+
+// The files there that were not the copies OpenShore last wrote, left as
+// they are, and how to get fresh copies instead.
+function keptLine(kept: string[]): string | undefined {
+  if (!kept.length) return undefined;
+  if (kept.length === 1) {
+    return `"${noteTitle(kept[0]!)}" there is not the copy OpenShore last wrote, so it was left as it is. Delete it in Files to export a fresh copy.`;
+  }
+  return `${kept.length} files there are not the copies OpenShore last wrote, so they were left as they are. Delete them in Files to export fresh copies.`;
 }
