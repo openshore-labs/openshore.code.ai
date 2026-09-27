@@ -16,7 +16,7 @@ import {
 } from '../lib/streamSmoothing.js';
 import { PACES, inkPlan, type PacedKind } from '../lib/introWalk.js';
 import { restampForSkip, type InkStamp } from '../lib/inkSwell.js';
-import { hapticTick } from '../lib/haptics.js';
+import { hapticCommit, hapticTick } from '../lib/haptics.js';
 import { offersLocalFallback } from '../lib/usageFallback.js';
 import { isFailedStop, isSetupFailure, pointsAtConnections } from '../lib/chatRescue.js';
 import { Markdown } from './Markdown.js';
@@ -154,6 +154,46 @@ const FLAT_MS = 220;
  *  person's own stop or a declined step. */
 const retryable = isFailedStop;
 
+/** A switch's note with its handoff (Vault M5, CTO J12): "Save to Vault"
+ *  under it writes the handoff as a note in Handoffs, once; saved, the row
+ *  says where it went. */
+function HandoffNote({
+  text,
+  savedPath,
+  onSave,
+}: {
+  text: string;
+  savedPath?: string;
+  onSave: () => Promise<string | undefined>;
+}) {
+  const [saving, setSaving] = useState(false);
+  return (
+    <div className="msg-note">
+      {text}
+      <div className="msg-note-actions">
+        {savedPath ? (
+          <span className="msg-note-saved" role="status">
+            Saved to Vault as {savedPath}
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="linklike press-fb"
+            disabled={saving}
+            onClick={() => {
+              hapticCommit();
+              setSaving(true);
+              void onSave().finally(() => setSaving(false));
+            }}
+          >
+            {saving ? 'Saving to Vault' : 'Save to Vault'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function MessageList({
   thread,
   rescueLabel,
@@ -168,6 +208,8 @@ export function MessageList({
   onTrustFolder,
   onDismissTrust,
   onUnqueue,
+  onOpenPackNote,
+  onSaveHandoff,
   afterItem,
 }: {
   thread: ThreadState;
@@ -192,6 +234,12 @@ export function MessageList({
   onClarifyPick?: (text: string) => void;
   /** Drop a queued message (tap on its bubble). */
   onUnqueue?: (index: number) => void;
+  /** Open a note the vault context card names, when this device's vault
+   *  holds it (the store's `vaultPackOpener`). Absent keeps titles plain. */
+  onOpenPackNote?: (path: string) => void;
+  /** "Save to Vault" under a switch's handoff note (J12): the person's own
+   *  one-tap write, resolving to the note's path once saved. */
+  onSaveHandoff?: (itemId: string) => Promise<string | undefined>;
   /** Extra content rendered right under one assistant message, keyed by its
    *  id: Harbor Lite's greeting carries the setup button this way. */
   afterItem?: (id: string) => ReactNode;
@@ -413,7 +461,7 @@ export function MessageList({
             case 'changed':
               return <ChangedFilesCard key={item.id} files={item.files} />;
             case 'context-pack':
-              return <ContextPackCard key={item.id} item={item} />;
+              return <ContextPackCard key={item.id} item={item} onOpen={onOpenPackNote} />;
             case 'tool':
               return <ToolCard key={item.id} item={item} />;
             case 'command':
@@ -425,7 +473,14 @@ export function MessageList({
                 </div>
               );
             case 'note':
-              return (
+              return item.handoff && onSaveHandoff ? (
+                <HandoffNote
+                  key={item.id}
+                  text={item.text}
+                  savedPath={item.handoff.savedPath}
+                  onSave={() => onSaveHandoff(item.id)}
+                />
+              ) : (
                 <div key={item.id} className="msg-note">
                   {item.text}
                 </div>

@@ -284,6 +284,21 @@ export async function daemonCreateSession(
   return body.id;
 }
 
+/** Forget every handoff the computer keeps (Clear conversations, CTO J13).
+ *  Owner only on the hub; an older hub without the route answers 404, which
+ *  is nothing to clear. Resolves false when the computer did not do it. */
+export async function daemonClearHandoffs(target: DaemonTarget): Promise<boolean> {
+  try {
+    const res = await fetch(`${target.baseUrl}/handoffs`, {
+      method: 'DELETE',
+      headers: headers(target),
+    });
+    return res.ok || res.status === 404;
+  } catch {
+    return false;
+  }
+}
+
 export async function daemonListSessions(target: DaemonTarget): Promise<DaemonSessionInfo[]> {
   const res = await fetch(`${target.baseUrl}/sessions`, {
     headers: headers(target),

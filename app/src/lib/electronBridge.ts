@@ -446,6 +446,9 @@ export interface OscodeBridge {
    *  and the local-only paths and tags, from the machine config only, for
    *  the core's compileVaultPrivacy. */
   vaultPrivacy(): Promise<VaultPrivacyWire>;
+  /** Forget every handoff the engine on this computer keeps (Clear
+   *  conversations, CTO J13). Optional: an older desktop build has none. */
+  clearHandoffs?(): Promise<void>;
   /** Changes the watcher saw, debounced in main. Returns an unsubscribe. */
   onVaultChanged(cb: (change: VaultChange) => void): () => void;
   /** Where the vault folder is, whether it is there, and whether Obsidian

@@ -3,7 +3,15 @@
 // edit/read toggle, and Linked mentions, all rendered in OS Code's own paper
 // and ink rather than anyone else's dark theme. Design: the studio's "Paper
 // Study" direction.
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
 import {
   agenticView,
   useApp,
@@ -92,6 +100,9 @@ import {
   type VaultDriveLink,
   type VaultOnboard,
   type VaultSaveStatus,
+  HUB_AWAY_LINE,
+  HUB_OFFER_COPY,
+  hubMoveOffer,
 } from '../lib/vaultCopy.js';
 import { copyText } from '../lib/clipboard.js';
 import { openPrivacySettings, openVaultInObsidian, revealVaultFolder } from '../lib/vaultFolder.js';
@@ -116,7 +127,7 @@ import { durationMs, sheetExitMs } from '../lib/motion.js';
 import type { HermesNote, HermesNoteMeta } from 'os-code/protocol';
 import { Icon } from '../components/Icon.js';
 import { VaultAgentRecent } from '../components/VaultAgentRecent.js';
-import { HUB_OFFER_COPY } from '../lib/vaultHubOffer.js';
+import { hubReach, subscribeHubReach } from '../lib/gitos/hub.js';
 import { PROJECT_VAULT_PINS_MAX } from '../state/types.js';
 
 const VAULT_RESOURCE_ID = 'vault.personal';
@@ -222,7 +233,11 @@ export function VaultScreen() {
   // has no agent to point at, and a member's sessions have no vault (0.13).
   const on = platform();
   const hubMember = hubRole === 'member';
-  const copyOpts = { hubMember, paired: Boolean(settings.daemon) };
+  const copyOpts = {
+    hubMember,
+    hubName: settings.daemon?.name,
+    paired: Boolean(settings.daemon),
+  };
   // The held text this account may see: every personal entry, and team text
   // only under the account that typed it (R-19). Raw vaultHeld also holds
   // other accounts' team text, so nothing here renders it.
@@ -305,6 +320,16 @@ export function VaultScreen() {
   // The team sign-in expired with a team note open: the note stays, read-only,
   // until the person signs back in or leaves it (2.6).
   const teamExpired = team && Boolean(vaultTeamExpired);
+  // The personal vault is on the paired computer and it did not answer (CTO
+  // J9): the list is the last one seen, an open note still saves (its change
+  // waits here), and the tree holds still, so New note and Delete leave.
+  const reach = useSyncExternalStore(subscribeHubReach, hubReach, hubReach);
+  const personalOnHub =
+    !team &&
+    (settings.gitosResources as GitosResource[] | undefined)?.find(
+      (r) => r.id === VAULT_RESOURCE_ID,
+    )?.providerId === 'hub';
+  const hubAway = personalOnHub && reach === 'away';
   const locked =
     readOnly || Boolean(driveReadOnly) || Boolean(vaultMoving) || folderGone || teamExpired;
   const teamAvailable = teamVaultAvailable();
@@ -1472,9 +1497,9 @@ export function VaultScreen() {
                 ) : null}
                 <button
                   className={`btn press-fb ${confirmDelete ? 'danger' : 'quiet'}`}
-                  // Unreachable (Options is left out on a Drive vault), kept
-                  // as a safety.
-                  disabled={Boolean(driveReadOnly)}
+                  // Unreachable on a Drive vault (Options is left out there),
+                  // kept as a safety; the computer away holds the tree still.
+                  disabled={Boolean(driveReadOnly) || hubAway}
                   onClick={() => {
                     // Two taps to delete: a single tap is too easy to hit by
                     // accident, and a local or iCloud delete is unrecoverable.
@@ -1538,7 +1563,7 @@ export function VaultScreen() {
           <h1>Vault</h1>
           {/* A read-only Drive vault leaves New note out; its card says why.
               So does a moving vault, and a folder that is not there. */}
-          {!driveReadOnly && !vaultMoving && !folderGone && !readOnly ? (
+          {!driveReadOnly && !vaultMoving && !folderGone && !readOnly && !hubAway ? (
             <button
               type="button"
               className="icon-btn press-fb"
@@ -1626,8 +1651,14 @@ export function VaultScreen() {
           onDecline={() => void vaultDeclineFolderMove()}
           onOtherFolder={() => void runPick('card')}
         />
+        {hubAway ? (
+          <p className="hint" role="status" style={{ margin: '0 0 10px', color: 'var(--warn)' }}>
+            {HUB_AWAY_LINE}
+          </p>
+        ) : null}
         <HubMoveCard
           shown={hubOfferShown && !folder}
+          count={vaultFiles.length}
           busy={hubMoving || Boolean(vaultMoving)}
           failed={hubFailed}
           onMove={() => {
@@ -2286,12 +2317,15 @@ function pinToast(
 // (nothing there is replaced). It folds out like the desktop move card.
 function HubMoveCard({
   shown,
+  count,
   busy,
   failed,
   onMove,
   onDecline,
 }: {
   shown: boolean;
+  /** How many notes would move, for the card's line. */
+  count: number;
   busy: boolean;
   failed: boolean;
   onMove: () => void;
@@ -2307,7 +2341,7 @@ function HubMoveCard({
     >
       <h3 style={{ marginBottom: 4 }}>{HUB_OFFER_COPY.title}</h3>
       <p className="sub" style={{ marginTop: 0 }}>
-        {HUB_OFFER_COPY.body}
+        {hubMoveOffer(count)}
       </p>
       {failed ? (
         <p className="hint" style={{ margin: '6px 0 0', color: 'var(--warn)' }}>

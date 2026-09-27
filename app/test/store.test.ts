@@ -57,6 +57,7 @@ class FakeRemote {
 vi.mock('../src/drivers/remoteDriver.js', () => ({
   RemoteDriver: FakeRemote,
   daemonCreateSession: vi.fn(async () => 'sess_1'),
+  daemonClearHandoffs: vi.fn(async () => true),
   daemonHealth: vi.fn(async () => ({ ok: false, detail: 'off' })),
   daemonApplyOutbox: vi.fn(),
   daemonVerifyCommit: vi.fn(),
@@ -107,6 +108,15 @@ const SETTINGS_KEY = 'oscode.settings.v1';
 const HUB = { baseUrl: 'http://127.0.0.1:1', token: 'tok-1' };
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
+const PLACED_VAULT = {
+  id: 'vault.personal',
+  name: 'Vault',
+  kind: 'vault' as const,
+  providerId: 'local' as const,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  chosenAt: '2026-01-01T00:00:00.000Z',
+};
+
 function resetStore() {
   mem.clear();
   secrets.clear();
@@ -118,7 +128,14 @@ function resetStore() {
     activeId: undefined,
     toast: undefined,
     hubRole: undefined,
-    settings: { onboarded: true, claudeModel: 'x', deviceModels: {} },
+    settings: {
+      onboarded: true,
+      claudeModel: 'x',
+      deviceModels: {},
+      // A vault the person placed, so pairing a hub here never repoints it
+      // (CTO J9, pinned in vaultStore.test.ts) with a toast of its own.
+      gitosResources: [PLACED_VAULT],
+    },
   });
 }
 
@@ -877,5 +894,38 @@ describe('an evicted vault note is an existing note (UI-2)', () => {
     expect(useApp.getState().vaultNote).toBeUndefined();
     expect(useApp.getState().vaultFiles).toHaveLength(1);
     expect(useApp.getState().toast).toMatch(/Still downloading/);
+  });
+});
+
+// Clear conversations takes every handoff with the chats (Vault M5, CTO J13):
+// this device's own store, and the paired computer's when this device owns it.
+// A member's device has none to clear there.
+describe('Clear conversations clears handoffs', () => {
+  beforeEach(resetStore);
+  const HANDOFFS_KEY = 'oscode.handoffs.v1';
+
+  it('clears the device store and asks the computer as its owner', async () => {
+    const { daemonClearHandoffs } = await import('../src/drivers/remoteDriver.js');
+    const clear = vi.mocked(daemonClearHandoffs);
+    clear.mockClear();
+    await useApp.getState().saveHub(HUB, { role: 'admin' });
+    mem.set(
+      HANDOFFS_KEY,
+      JSON.stringify({
+        p1: { text: 'h', at: new Date().toISOString(), turns: 4, conversationId: 'c1' },
+      }),
+    );
+    await useApp.getState().clearConversations();
+    expect(JSON.parse(mem.get(HANDOFFS_KEY) ?? '{}')).toEqual({});
+    expect(clear).toHaveBeenCalledWith(expect.objectContaining({ baseUrl: HUB.baseUrl }));
+  });
+
+  it('a member never asks the computer', async () => {
+    const { daemonClearHandoffs } = await import('../src/drivers/remoteDriver.js');
+    const clear = vi.mocked(daemonClearHandoffs);
+    clear.mockClear();
+    await useApp.getState().saveHub(HUB, { role: 'member' });
+    await useApp.getState().clearConversations();
+    expect(clear).not.toHaveBeenCalled();
   });
 });

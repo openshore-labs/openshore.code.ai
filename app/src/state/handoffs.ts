@@ -291,15 +291,19 @@ export function writeHandoff(
   });
 }
 
-/** Forget handoffs: a project's, or every one a chat wrote. */
+/** Forget handoffs: a project's, every one a chat wrote, or all of them
+ *  (Clear conversations, J13). */
 export function clearHandoffs(
   storage: Storage,
-  by: { projectId: string } | { conversationId: string },
+  by: { projectId: string } | { conversationId: string } | { all: true },
 ): Promise<void> {
   return edit(storage, (s) => {
     let changed = false;
     for (const [k, v] of Object.entries(s)) {
-      if ('projectId' in by ? k === by.projectId : v.conversationId === by.conversationId) {
+      if (
+        'all' in by ||
+        ('projectId' in by ? k === by.projectId : v.conversationId === by.conversationId)
+      ) {
         delete s[k];
         changed = true;
       }

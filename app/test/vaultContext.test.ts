@@ -100,6 +100,7 @@ import {
   resolveMarkdownLink,
   resolveWikilink,
   scanNote,
+  LOCAL_ONLY_STUB,
   type DriverEvent,
   type VaultIndexCore,
   type VaultPrivacy,
@@ -124,7 +125,9 @@ import { contextWindowFor, CloudClaudeDriver } from '../src/drivers/cloudClaudeD
 import { CloudOpenAiDriver } from '../src/drivers/cloudOpenAiDriver.js';
 import { OnDeviceDriver } from '../src/drivers/onDeviceDriver.js';
 import { DesktopChatDriver, readPackCard } from '../src/drivers/desktopChatDriver.js';
-import { VAULT_PRIVACY_DEFAULTS } from '../src/state/types.js';
+import { VAULT_PRIVACY_DEFAULTS, emptyThread, seedFromTranscript } from '../src/state/types.js';
+import { reduceEvent } from '../src/state/transcript.js';
+import { isLocalOnlyFinal } from '../src/drivers/types.js';
 import { currentBenchId } from '../src/lib/currents.js';
 
 const CORE: VaultIndexCore = {
@@ -180,29 +183,6 @@ const deviceSeat: PackSeat = {
   leavesNetwork: false,
 };
 const cloudSeat: PackSeat = { modelClass: 'large', servedTokens: 200_000, leavesNetwork: true };
-
-/** Does the builder place project pins yet (stream A, J14)? The pin rows
- *  below that need it run once it does; the privacy half runs always. */
-const PINS_BUILT = (() => {
-  const index = new VaultIndex(CORE);
-  index.applyWrite(
-    { path: 'P.md', updatedAt: '2026-09-20T00:00:00.000Z', size: 20 },
-    'x'.repeat(200),
-  );
-  const pack = buildContextPack({
-    mode: 'current-state',
-    index,
-    query: 'q',
-    pins: [],
-    projectPins: ['P.md'],
-    budgetTokens: 400,
-    privacy: compileVaultPrivacy({ exclude: [], localOnly: { paths: [], tags: [] } }),
-    seat: { modelClass: 'small', leavesNetwork: false },
-    lockdown: { egress: false, secrets: false },
-    bodies: new Map([['P.md', 'x'.repeat(200)]]),
-  });
-  return pack.used.some((u) => u.path === 'P.md');
-})();
 
 beforeEach(() => {
   clearCurrentStateCache();
@@ -485,7 +465,7 @@ describe('createAppVaultPack (J1)', () => {
     expect(pack.render(cloudSeat).text ?? '').not.toContain('Blood pressure');
   });
 
-  it.runIf(PINS_BUILT)('a local-only pinned note reaches a device seat', async () => {
+  it('a local-only pinned note reaches a device seat', async () => {
     const body = 'Blood pressure log. '.repeat(20);
     const host = fakeHost({ 'Private/health.md': body });
     const pack = createAppVaultPack(
@@ -496,8 +476,13 @@ describe('createAppVaultPack (J1)', () => {
       }),
     );
     await pack.prepare('health');
-    expect(pack.render(deviceSeat).text).toContain('Blood pressure');
-    expect(pack.render(cloudSeat).event).toMatchObject({ withheld: 1 });
+    const onDevice = pack.render(deviceSeat);
+    expect(onDevice.text).toContain('Blood pressure');
+    // The reply it grounds is marked, so a later leaving seat gets the stub.
+    expect(onDevice.localOnly).toBe(true);
+    const onCloud = pack.render(cloudSeat);
+    expect(onCloud.event).toMatchObject({ withheld: 1 });
+    expect(onCloud.localOnly).toBeUndefined();
   });
 
   it('a slow index is cold, never waited on past the budget', async () => {
@@ -772,5 +757,85 @@ describe('desktop chat asks the computer for the pack (J6)', () => {
   it('drops a malformed card line', () => {
     expect(readPackCard({ type: 'context-pack', seat: 'moon' })).toBeUndefined();
     expect(readPackCard(card)).toEqual(card);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// I5 in the transcript: a reply after a local-only read keeps its mark
+
+describe('a reply after a local-only read, then a switch (I5, J10)', () => {
+  const SECRET = 'The diary says the launch slips a week.';
+
+  /** A device seat's pack that carried a local-only note, then a reply. */
+  async function localOnlyReply(): Promise<DriverEvent[]> {
+    const pack: AppVaultPack = {
+      prepare: async () => {},
+      render: () => ({
+        text: 'VAULT NOTES. <note path="Private/Diary.md">x</note>',
+        localOnly: true,
+      }),
+    };
+    const driver = new OnDeviceDriver(
+      'qwen2.5-1.5b-instruct',
+      'Qwen',
+      undefined,
+      false,
+      undefined,
+      'c-lo',
+      { vaultPack: pack },
+    );
+    const events = collect(driver);
+    driver.send('what does my diary say');
+    await done(events);
+    driver.dispose();
+    return events;
+  }
+
+  it('the device marks the reply, and the transcript keeps the mark', async () => {
+    const events = await localOnlyReply();
+    const final = events.find((e) => e.type === 'text-final')!;
+    expect(isLocalOnlyFinal(final)).toBe(true);
+    let thread = emptyThread();
+    for (const e of events) thread = reduceEvent(thread, e);
+    const reply = thread.items.find((i) => i.kind === 'assistant');
+    expect(reply).toMatchObject({ kind: 'assistant', localOnly: true });
+    expect(seedFromTranscript(thread.items).find((t) => t.role === 'assistant')).toMatchObject({
+      localOnly: true,
+    });
+  });
+
+  it('a switch to a cloud seat gives the stub, never the text', async () => {
+    let thread = emptyThread();
+    thread = reduceEvent(thread, { type: 'task-start', input: 'what does my diary say' });
+    thread = reduceEvent(thread, {
+      type: 'text-final',
+      text: SECRET,
+      localOnly: true,
+    } as DriverEvent);
+    const seed = seedFromTranscript(thread.items);
+    expect(seed.at(-1)).toMatchObject({ role: 'assistant', localOnly: true });
+
+    const claude = new CloudClaudeDriver('k', 'claude-opus-5', seed);
+    const cEvents = collect(claude);
+    claude.send('and then?');
+    await done(cEvents);
+    const sent = JSON.stringify(h.claudeCalls.at(-1)!.messages);
+    expect(sent).toContain(LOCAL_ONLY_STUB);
+    expect(sent).not.toContain(SECRET);
+
+    const gpt = new CloudOpenAiDriver('https://x/v1', 'sk', 'm', 'X', seed);
+    const gEvents = collect(gpt);
+    gpt.send('and then?');
+    await done(gEvents);
+    const body = JSON.stringify(h.oaiCalls.at(-1)!.body.messages);
+    expect(body).toContain(LOCAL_ONLY_STUB);
+    expect(body).not.toContain(SECRET);
+  });
+
+  it('a reply with no local-only read carries no mark', async () => {
+    let thread = emptyThread();
+    thread = reduceEvent(thread, { type: 'task-start', input: 'hi' });
+    thread = reduceEvent(thread, { type: 'text-final', text: 'Hello.' });
+    expect(thread.items.find((i) => i.kind === 'assistant')).not.toHaveProperty('localOnly');
   });
 });

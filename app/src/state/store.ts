@@ -59,11 +59,17 @@ import {
   snapshotThread,
   titleFrom,
 } from './transcript.js';
-import { HUB_NO_ANSWER, type ChatDriver, type HubLinkState } from '../drivers/types.js';
+import {
+  HUB_NO_ANSWER,
+  type AppVaultPack,
+  type ChatDriver,
+  type HubLinkState,
+} from '../drivers/types.js';
 import { ElectronDriver } from '../drivers/electronDriver.js';
 import {
   RemoteDriver,
   daemonApplyOutbox,
+  daemonClearHandoffs,
   daemonCreateSession,
   daemonHealth,
   daemonVerifyCommit,
@@ -140,6 +146,7 @@ import { CloudClaudeDriver, DEFAULT_CLAUDE_MODEL } from '../drivers/cloudClaudeD
 import { CloudOpenAiDriver } from '../drivers/cloudOpenAiDriver.js';
 import { DEFAULT_EFFORT, setActiveEffort, type Effort } from '../lib/effort.js';
 import { chainOfThoughtOn, setChainOfThought } from '../lib/chainOfThought.js';
+import { setPromptCache } from '../lib/claudeCache.js';
 import {
   DEFAULT_PERMISSION_MODE,
   normalizePermissionMode,
@@ -158,7 +165,7 @@ import { hapticSuccess } from '../lib/haptics.js';
 import type { Attachment } from '../lib/attachments.js';
 import { OnDeviceDriver } from '../drivers/onDeviceDriver.js';
 import { MockDriver } from '../drivers/mockDriver.js';
-import { StackDriver } from '../drivers/stackDriver.js';
+import { StackDriver, type StackVaultTools } from '../drivers/stackDriver.js';
 import { DesktopChatDriver } from '../drivers/desktopChatDriver.js';
 import { guardDriver } from '../drivers/guardedDriver.js';
 import {
@@ -269,11 +276,14 @@ import {
   HANDOFF_MAX_BYTES,
   HANDOFF_MIN_TURNS,
   compileVaultPrivacy,
+  excerptAt,
+  resolveWikilink,
   normalizeHermesBaseUrl,
   normalizeJevBaseUrl,
   vaultConflictCopyPath,
   type CurrentsHostProbe,
   type VaultPrivacy,
+  type VaultVisibility,
 } from 'os-code/protocol';
 import {
   clearHandoffs,
@@ -290,8 +300,16 @@ import {
   type StoredHandoff,
   type SwitchSeedPlan,
 } from './handoffs.js';
-import { packSeatFor, hubTailnetSuffix } from '../lib/vaultSeat.js';
-import { appVaultPrivacy } from '../lib/vaultPrivacy.js';
+import { packSeatFor, hubTailnetSuffix, type PackSeatContext } from '../lib/vaultSeat.js';
+import { clearCurrentStateCache, createAppVaultPack } from '../lib/vaultPackSource.js';
+import {
+  githubRepoReader,
+  localRepoReader,
+  primaryRepoSource,
+  type RepoReader,
+} from '../lib/projectMemoryRead.js';
+import { CURRENT_STATE_FILE, memoryFilePath, sanitizeFolderSegment } from '../lib/projectMemory.js';
+import { appVaultPrivacy, hubPrivacyCache, hubPrivacySource } from '../lib/vaultPrivacy.js';
 import {
   agentRecentNotes,
   excerptForSeat,
@@ -303,14 +321,19 @@ import {
   type VaultNoteFacts,
   type VaultPickerNote,
 } from '../lib/vaultExcerpt.js';
+import { HUB_REPOINT_TOAST, HUB_UNPAIR_TOAST } from '../lib/vaultCopy.js';
+// The hub vault's link and pairing rule, from the module itself (not the
+// gitos barrel), so a test that fakes the storage roster still gets them.
 import {
-  HUB_REPOINT_TOAST,
-  HUB_UNPAIR_TOAST,
-  hubPairingPlan,
-  type HubPairingPlan,
+  hubPairPlan,
+  hubPersonKey,
+  hubUnpairTarget,
+  hubVaultLink,
+  setHubVaultLink,
+  type HubPairPlan,
   type VaultBeforeHub,
   type VaultHubOffer,
-} from '../lib/vaultHubOffer.js';
+} from '../lib/gitos/hub.js';
 import { DEVICE_CONTEXT_TOKENS } from '../drivers/deviceModel.js';
 import { canEdit, projectPermissionFor } from '../lib/projectAccess.js';
 import {
@@ -349,11 +372,13 @@ import {
 } from '../lib/gitos/repoOAuth.js';
 import { normalizeNotePath, noteFolder, noteTitle, restoreEol } from '../lib/vault.js';
 import {
-  closeVaultIndex,
   currentVaultIndex,
   dropVaultIndex,
+  shutVaultIndex,
   vaultIndexFor,
+  warmVaultIndex,
   type VaultIndexHost,
+  type VaultIndexTarget,
 } from '../lib/vaultIndexHost.js';
 import {
   versionOf,
@@ -1707,7 +1732,7 @@ interface AppState {
   vaultDeclineHubMove(): Promise<void>;
   /** Run the J9 pairing rule now (the store runs it after a pairing and on
    *  the Vault's first list); resolves to what it did. */
-  vaultAfterPairing(): Promise<HubPairingPlan>;
+  vaultAfterPairing(): Promise<HubPairPlan>;
 
   // ---- Vault M5: pins, notes to a model, the switch handoff (CTO J12 to J15)
 
@@ -1736,14 +1761,21 @@ interface AppState {
   /** The seat the next send in this chat goes to, for an excerpt's budget
    *  and the local-only refusal. Fails closed (leaves the network) when the
    *  seat cannot be judged. */
-  composerSeat(conversationId?: string): ComposerSeat;
+  composerSeat(conversationId?: string, fallback?: ConversationSource): ComposerSeat;
   /** A note's excerpt for the composer, sized for the chat's seat, with its
    *  cost line, or the refusal. Never sends anything. */
   composerVaultExcerpt(path: string, conversationId?: string): Promise<ComposerExcerptResult>;
-  /** Text waiting to go into a chat's composer ("Ask about this note"),
-   *  never auto-sent. The composer takes it once with `takeComposerInsert`. */
-  composerInsert?: { id: string; conversationId?: string; text: string };
+  /** A note waiting to go into a chat's composer ("Ask about this note"),
+   *  never auto-sent. The composer takes it once (its `take`), through the
+   *  same budget and privacy check as a `[[` pick, and calls
+   *  `takeComposerInsert`. */
+  composerInsert?: { id: string; conversationId?: string; path: string };
   takeComposerInsert(id: string): void;
+  /** A personal note's body for the composer's `[[` pick, with the verdict
+   *  its own text gives (J3); null when it is gone or cannot be read. */
+  composerVaultRead(
+    path: string,
+  ): Promise<{ text: string; updatedAt: string; visibility: VaultVisibility } | null>;
   /** "Ask about this note": open the active project's chat (a new one when
    *  none is open) with the excerpt in the composer. */
   askAboutVaultNote(path: string): Promise<void>;
@@ -1772,6 +1804,11 @@ interface AppState {
   clearSearchBackend(): Promise<void>;
   openConversation(id: string): void;
   deleteConversation(id: string): void;
+  /** Clear conversations (Settings): every chat on this device, and every
+   *  handoff with them (J13), on this device, on this desktop's engine, and
+   *  on the paired computer when this device owns it (a member has none to
+   *  clear there). Journals on the computer stay. */
+  clearConversations(): Promise<void>;
   /** Send to the active chat. While the agent is busy the message queues and
    *  goes out the moment the current task ends, the way Claude Code takes a
    *  message typed mid-run. */
@@ -3014,6 +3051,202 @@ export const useApp = create<AppState>((set, get, api) => {
         .join('\n\n') || undefined;
   }
 
+  // ---- The vault in a chat (Vault M5, CTO J1 to J10) -----------------------
+
+  /** One pack per conversation (J1), so a switch keeps its render cache and a
+   *  handoff is read on the conversation's first send only. */
+  const vaultPacks = new Map<string, AppVaultPack>();
+  /** Personal indexes a chat opened, reconciled once each so a chat that
+   *  never visits the Vault room still finds its notes. */
+  const packReconciled = new WeakSet<VaultIndexHost>();
+
+  /** Forget every chat's vault context: packs, cached Current State, and the
+   *  privacy answer (a sign-out, a pairing change). */
+  function forgetVaultContext(): void {
+    vaultPacks.clear();
+    clearCurrentStateCache();
+    privacyCache = undefined;
+  }
+
+  /** What `packSeatFor` reads besides the ref: this device's own tailnet
+   *  (from the paired hub) and the windows the app knows (J2, J4). */
+  function seatContext(): PackSeatContext {
+    const s = get().settings;
+    return {
+      ownTailnetSuffix: hubTailnetSuffix(s.daemon?.baseUrl),
+      cloudContextTokens: (provider, model) =>
+        providerInfo(provider)?.models.find((m) => m.id === model)?.contextTokens,
+      byomContextTokens: (id) => s.byomModels?.find((b) => b.id === id)?.contextTokens,
+    };
+  }
+
+  /** The personal vault's index for a chat's pack and tools, opened through
+   *  `vaultIndexFor` when none is warm. Never the team vault's (D15): while
+   *  the team index is on screen, a chat gets none, and it never switches one. */
+  function packIndex(): VaultIndexHost | undefined {
+    const t = personalVault();
+    if (!t) return undefined;
+    const now = currentVaultIndex();
+    if (now && now.target.providerId === 'org') return undefined;
+    const want = indexTargetOf(t);
+    const same = (h: VaultIndexHost | undefined) =>
+      Boolean(
+        h &&
+        h.target.providerId === want.providerId &&
+        h.target.resourceId === want.resourceId &&
+        (h.target.owner ?? '') === (want.owner ?? ''),
+      );
+    let host = warmVaultIndex();
+    if (!same(host) && !now) {
+      try {
+        host = openVaultIndex(t);
+      } catch {
+        return undefined;
+      }
+    }
+    if (!host || !same(host)) return undefined;
+    if (!packReconciled.has(host)) {
+      packReconciled.add(host);
+      const opened = host;
+      void listVaultNotes(t)
+        .then((files) => opened.reconcile(files))
+        .catch(() => {});
+    }
+    return host;
+  }
+
+  /** A note body from the personal vault, whatever scope is on screen. */
+  async function personalRead(path: string): Promise<StoredFile | undefined> {
+    const t = personalVault();
+    return t ? t.provider.read(t.resourceId, path) : undefined;
+  }
+
+  /** This project's Current State from its repo (J1): the working tree on a
+   *  desktop with the clone, else the primary GitHub repo. */
+  async function projectCurrentState(
+    projectId: string | undefined,
+  ): Promise<{ path: string; text: string } | undefined> {
+    const project = projectId
+      ? get().settings.projects?.find((p) => p.id === projectId)
+      : undefined;
+    if (!project?.name.trim()) return undefined;
+    const b = isDesktop() ? bridge() : undefined;
+    const source = primaryRepoSource(project.repoIds ?? [], { canReadLocal: Boolean(b) });
+    if (!source) return undefined;
+    let reader: RepoReader | undefined;
+    if (source.kind === 'local') {
+      reader = b ? localRepoReader(source.root, b) : undefined;
+    } else {
+      const token = await repoToken('github').catch(() => undefined);
+      reader = token ? githubRepoReader(source.owner, source.repo, token) : undefined;
+    }
+    if (!reader) return undefined;
+    const path = memoryFilePath(sanitizeFolderSegment(project.name), CURRENT_STATE_FILE);
+    const text = await reader.readFile(path);
+    return text === undefined ? undefined : { path, text };
+  }
+
+  /** Whether a chat carries the vault at all: the Memory switch (Wayfinding)
+   *  off means no vault in context, no pack and no vault tools. */
+  function vaultInChats(): boolean {
+    return memoryOverride(get().settings) !== false;
+  }
+
+  /** This conversation's pack (J1), or none with Memory off or
+   *  `settings.vaultContext === 'off'`. */
+  function conversationPack(conv: Conversation): AppVaultPack | undefined {
+    const settings = get().settings;
+    if (!vaultInChats() || settings.vaultContext === 'off') return undefined;
+    const kept = vaultPacks.get(conv.id);
+    if (kept) return kept;
+    // A handoff opens a conversation's first send only (J13), at most seven
+    // days old; a chat that already spoke has its own history. Read from the
+    // device store now, while the driver builds (synchronously, so a reopened
+    // chat is never parked on it); the first send finds it there.
+    let handoff: string | undefined;
+    if (conv.projectId && spokenTurns(conv.thread.items) === 0) {
+      void get()
+        .projectHandoff(conv.projectId)
+        .then((h) => {
+          handoff = h?.text;
+        })
+        .catch(() => {});
+    }
+    const projectId = conv.projectId;
+    const pack = createAppVaultPack({
+      setting: settings.vaultContext ?? 'auto',
+      ...(projectId ? { projectKey: projectId } : {}),
+      index: packIndex,
+      read: async (path) => (await personalRead(path))?.text,
+      privacy: vaultPrivacyNow,
+      currentState: () => projectCurrentState(projectId),
+      projectPins: () =>
+        (projectId
+          ? get().settings.projects?.find((p) => p.id === projectId)?.vaultPins
+          : undefined) ?? [],
+      handoff: () => handoff,
+    });
+    vaultPacks.set(conv.id, pack);
+    return pack;
+  }
+
+  /** The personal vault as the Stack's tools see it (J10), or none with
+   *  Memory off. Reads are kept for a moment, so a search that judges each
+   *  hit and the read that follows it cost one trip. */
+  function stackVaultTools(): StackVaultTools | undefined {
+    if (!vaultInChats()) return undefined;
+    const reads = new Map<string, { at: number; file: Promise<StoredFile | undefined> }>();
+    const read = (path: string): Promise<StoredFile | undefined> => {
+      const hit = reads.get(path);
+      if (hit && Date.now() - hit.at < 30_000) return hit.file;
+      const file = personalRead(path);
+      reads.set(path, { at: Date.now(), file });
+      file.catch(() => reads.delete(path));
+      return file;
+    };
+    return {
+      privacy: vaultPrivacyNow,
+      async search(query) {
+        const host = packIndex();
+        if (!host) return [];
+        const hits = await host.search(query, 16);
+        const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+        return Promise.all(
+          hits.map(async (h) => {
+            const text = (await read(h.path).catch(() => undefined))?.text ?? '';
+            const lower = text.toLowerCase();
+            const at = words.map((w) => lower.indexOf(w)).find((i) => i >= 0) ?? 0;
+            return { path: h.path, snippet: text ? excerptAt(text, at).text : '' };
+          }),
+        );
+      },
+      async read(path) {
+        const file = await read(path);
+        return file ? { text: file.text, version: versionOf(file) } : undefined;
+      },
+      async resolve(name) {
+        const host = packIndex();
+        return host ? resolveWikilink(name, host.index.paths()) : undefined;
+      },
+      async write(path, text, guard) {
+        const t = personalVault();
+        if (!t) throw new Error('Your Vault is not ready on this device yet.');
+        const readOnly = vaultReadOnlyReason(t.providerId);
+        if (readOnly) throw new Error(readOnly);
+        reads.delete(path);
+        const r = await putVaultNote(t, path, text, guard);
+        if (r.ok) packIndex()?.applyWrite(r.file);
+        return r;
+      },
+      teamVault: () => get().vaultScope === 'team',
+      onWritten: (paths) => {
+        void (async () => {
+          for (const p of paths) await get().noteAgentVaultWrite(p);
+        })();
+      },
+    };
+  }
+
   async function buildUnguardedDriver(
     conv: Conversation,
     seed?: SeedTurn[],
@@ -3113,6 +3346,11 @@ export const useApp = create<AppState>((set, get, api) => {
           // handoff opens its first task, since the agent takes no history.
           // Conversation content, so it rides even with Memory off.
           ...(extra?.handoff ? { handoff: capHandoffBytes(extra.handoff) } : {}),
+          // The project's own pinned notes (J14), read first by the engine's
+          // pack. The vault's, so they stay home with Memory off.
+          ...(project?.vaultPins?.length && memoryOverride(settings) !== false
+            ? { vaultPins: [...project.vaultPins] }
+            : {}),
         };
         const cwd = conv.source.cwd ?? firstWorkspace(conv.repoIds ?? []);
         // A desktop is its own engine, unless the person has pointed it at a
@@ -3167,8 +3405,10 @@ export const useApp = create<AppState>((set, get, api) => {
             memory: sessionOpts.memory,
             currents: sessionOpts.currents,
             harnessCurrents: sessionOpts.harnessCurrents,
-            // Wave 2 glue (CTO J12): once daemonCreateSession carries
-            // `handoff` (SessionCreateVaultFields), pass sessionOpts.handoff.
+            // A switch's handoff (J12) and the project's pins (J14), both
+            // capped by the client before they go on the wire.
+            handoff: sessionOpts.handoff,
+            vaultPins: sessionOpts.vaultPins,
           });
           await bindSessionId(conv.id, sessionId, cwd);
         }
@@ -3193,15 +3433,35 @@ export const useApp = create<AppState>((set, get, api) => {
         if (!settings.daemon) {
           throw new Error('Connect to your computer first (Menu, then Desktop + phone).');
         }
+        // The computer builds this chat's pack itself (J6): the phone names
+        // the project and never ships note bodies there and back. Memory off
+        // says so; the pack setting off sends neither, so none is built.
+        const chatProject = conv.projectId
+          ? settings.projects?.find((p) => p.id === conv.projectId)
+          : undefined;
+        const chatCwd = firstWorkspace(
+          (conv.repoIds?.length ? conv.repoIds : chatProject?.repoIds) ?? [],
+        );
         return new DesktopChatDriver(
           settings.daemon,
           conv.source.model,
           seed,
           chatContext(conv),
           settings.perplexityResearch === true,
+          !vaultInChats()
+            ? { memory: false }
+            : settings.vaultContext === 'off'
+              ? {}
+              : {
+                  vaultPack: {
+                    ...(chatCwd ? { cwd: chatCwd } : {}),
+                    ...(chatProject?.name ? { projectName: chatProject.name } : {}),
+                  },
+                },
         );
       }
-      case 'device':
+      case 'device': {
+        const vaultPack = conversationPack(conv);
         return new OnDeviceDriver(
           conv.source.modelId,
           conv.source.modelName,
@@ -3209,7 +3469,9 @@ export const useApp = create<AppState>((set, get, api) => {
           settings.perplexityResearch === true,
           standingContext(conv),
           conv.id,
+          { vaultPack },
         );
+      }
       case 'cloud': {
         // Claude runs on the Anthropic SDK; every other connected provider runs
         // on the shared OpenAI-compatible chat driver, so a user can chat with
@@ -3225,6 +3487,7 @@ export const useApp = create<AppState>((set, get, api) => {
             seed,
             settings.anthropicWorkspaceId,
             chatContext(conv),
+            { vaultPack: conversationPack(conv) },
           );
         }
         const info = providerInfo(source.provider);
@@ -3242,6 +3505,7 @@ export const useApp = create<AppState>((set, get, api) => {
           seed,
           chatContext(conv),
           contextWindow,
+          { vaultPack: conversationPack(conv) },
         );
       }
       case 'stack': {
@@ -3295,8 +3559,16 @@ export const useApp = create<AppState>((set, get, api) => {
             daemon: s.settings.daemon,
             repoCwd: firstWorkspace(conv.repoIds ?? []),
             conversationId: conv.id,
+            // Prompt caching on Claude, off by default (J16, J19).
+            promptCache: s.settings.promptCache === true,
           },
           seed,
+          {
+            vaultPack: conversationPack(conv),
+            // The seat a ref answers as (J2, J4): by address, never by label.
+            packSeat: (ref) => packSeatFor(ref, seatContext()),
+            vaultTools: stackVaultTools(),
+          },
         );
       }
       case 'mock':
@@ -3503,8 +3775,13 @@ export const useApp = create<AppState>((set, get, api) => {
       if (orgId && uid) await dropVaultIndex({ providerId: 'org', resourceId: orgId, owner: uid });
     }
     // Whatever index is still warm (the personal one a chat's pack reads)
-    // closes with the sign-in (Vault M5, CTO J1), its last write saved first.
-    await closeVaultIndex().catch(() => {});
+    // closes with the sign-in (Vault M5, CTO J1), its last write saved first,
+    // and the chats' packs, their Current State, and the notes kept from the
+    // computer go with it. The pairing itself is not the account's, so the
+    // hub link comes back fresh, holding nothing of the last person's.
+    await shutVaultIndex().catch(() => {});
+    forgetVaultContext();
+    await syncHubLink(get().settings.daemon, { forget: true });
     const s = get().settings;
     const patch: Partial<AppSettings> = {};
     // Drop the org's shared projects from this device so the next person to
@@ -3669,19 +3946,29 @@ export const useApp = create<AppState>((set, get, api) => {
   // The Vault index (M3 3.2, lib/vaultIndexHost.ts) for the vault on screen:
   // opened when its list lands, fed by every write and remove, and asked only
   // for the vault on screen, so a write to any other vault never touches it.
-  function openVaultIndex(t: VaultTarget): VaultIndexHost {
+  // A hub vault's index is one per computer and per person on it
+  // (`hubIndexTarget`, the link's own target), so two hubs or two members
+  // never share one; every other vault is keyed by its own target.
+  function indexTargetOf(t: VaultTargetRef): VaultIndexTarget {
+    if (t.providerId === 'hub') {
+      const link = hubVaultLink();
+      if (link) return link.target;
+    }
     const { providerId, resourceId, owner } = t;
-    const target = owner ? { providerId, resourceId, owner } : { providerId, resourceId };
-    return vaultIndexFor(target, t.provider);
+    return owner ? { providerId, resourceId, owner } : { providerId, resourceId };
+  }
+  function openVaultIndex(t: VaultTarget): VaultIndexHost {
+    return vaultIndexFor(indexTargetOf(t), t.provider);
   }
   function vaultIndexOf(t: VaultTargetRef): VaultIndexHost | undefined {
     const host = currentVaultIndex();
     const now = vaultTarget();
     if (!host || !now || !isActiveVault(t)) return undefined;
+    const want = indexTargetOf(now);
     const { providerId, resourceId, owner } = host.target;
-    return providerId === now.providerId &&
-      resourceId === now.resourceId &&
-      (owner ?? '') === (now.owner ?? '')
+    return providerId === want.providerId &&
+      resourceId === want.resourceId &&
+      (owner ?? '') === (want.owner ?? '')
       ? host
       : undefined;
   }
@@ -4375,12 +4662,7 @@ export const useApp = create<AppState>((set, get, api) => {
       device: true,
       leavesNetwork: false,
     };
-    const ctx = {
-      ownTailnetSuffix: hubTailnetSuffix(s.daemon?.baseUrl),
-      cloudContextTokens: (provider: string, model: string) =>
-        providerInfo(provider)?.models.find((m) => m.id === model)?.contextTokens,
-      byomContextTokens: (id: string) => s.byomModels?.find((b) => b.id === id)?.contextTokens,
-    };
+    const ctx = seatContext();
     const judge = (ref: StackModelRef): ComposerSeat => {
       try {
         const seat = packSeatFor(ref, ctx);
@@ -4429,28 +4711,66 @@ export const useApp = create<AppState>((set, get, api) => {
     }
   }
 
+  /** Where this device's vault privacy rules come from (J3): the desktop's
+   *  own machine config through the bridge; on a paired phone the computer
+   *  (the hub link's `GET /vault/privacy`, its last answer kept sealed per
+   *  hub); on an unpaired phone the device setting alone. The device setting
+   *  only ever narrows. */
+  function privacyDeps(): Parameters<typeof appVaultPrivacy>[0] {
+    const st = get().settings;
+    const device = st.vaultPrivacy ? { device: st.vaultPrivacy } : {};
+    const b = isDesktop() ? bridge() : undefined;
+    if (b?.vaultPrivacy && !st.preferRemoteHub) {
+      return { bridge: { vaultPrivacy: () => b.vaultPrivacy() }, ...device };
+    }
+    const daemon = st.daemon;
+    if (daemon?.token) {
+      const link = hubVaultLink();
+      const hub =
+        link && link.target.owner?.startsWith(`${daemon.baseUrl.replace(/\/+$/, '')}#`)
+          ? { fetchPrivacy: () => link.fetchPrivacy() }
+          : hubPrivacySource({ baseUrl: daemon.baseUrl, token: daemon.token });
+      return { hub, cache: hubPrivacyCache(daemon.baseUrl), ...device };
+    }
+    return device;
+  }
+
+  /** The D5 defaults with the device's own narrowing: the rules when no
+   *  source answers (fail closed, never no rules). */
+  function fallbackPrivacy(): VaultPrivacy {
+    return compileVaultPrivacy(
+      {
+        exclude: [...VAULT_PRIVACY_DEFAULTS.exclude],
+        localOnly: {
+          paths: [...VAULT_PRIVACY_DEFAULTS.localOnly.paths],
+          tags: [...VAULT_PRIVACY_DEFAULTS.localOnly.tags],
+        },
+      },
+      get().settings.vaultPrivacy,
+    );
+  }
+
+  /** How long a privacy source may take before the kept or default rules
+   *  stand in, so a computer that does not answer never holds a send. */
+  const PRIVACY_WAIT_MS = 2000;
+
   /** This device's vault privacy judge (J3), cached briefly. Fail closed:
    *  while it loads, or when it cannot, the D5 defaults with the device's
    *  own narrowing apply, never no rules. */
   let privacyCache: { at: number; privacy: VaultPrivacy } | undefined;
   async function vaultPrivacyNow(): Promise<VaultPrivacy> {
     if (privacyCache && Date.now() - privacyCache.at < 60_000) return privacyCache.privacy;
-    const device = get().settings.vaultPrivacy;
     let privacy: VaultPrivacy;
     try {
-      privacy = await appVaultPrivacy({ ...(device ? { device } : {}) });
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      privacy = await Promise.race([
+        appVaultPrivacy(privacyDeps()),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('slow')), PRIVACY_WAIT_MS);
+        }),
+      ]).finally(() => clearTimeout(timer));
     } catch {
-      privacy = compileVaultPrivacy(
-        {
-          exclude: [...VAULT_PRIVACY_DEFAULTS.exclude],
-          localOnly: {
-            paths: [...VAULT_PRIVACY_DEFAULTS.localOnly.paths],
-            tags: [...VAULT_PRIVACY_DEFAULTS.localOnly.tags],
-          },
-        },
-        device,
-      );
-      return privacy;
+      return fallbackPrivacy();
     }
     privacyCache = { at: Date.now(), privacy };
     return privacy;
@@ -4562,7 +4882,7 @@ export const useApp = create<AppState>((set, get, api) => {
    *  open note belonged to the old home (J1 closes the index here, on a
    *  storage change or a pairing change, never on leaving the room). */
   async function afterVaultRepoint(): Promise<void> {
-    await closeVaultIndex().catch(() => {});
+    await shutVaultIndex().catch(() => {});
     if (get().vaultScope === 'personal') {
       if (get().vaultNote) {
         await leaveVaultConflict();
@@ -4576,14 +4896,21 @@ export const useApp = create<AppState>((set, get, api) => {
    *  default points at the computer with one toast; one with notes gets the
    *  one-time move card; a storage the person chose is never repointed. The
    *  phone's rule: a desktop keeps its own folder. */
-  async function hubPairingStep(): Promise<HubPairingPlan> {
+  async function hubPairingStep(): Promise<HubPairPlan> {
     const s = get();
     const hub = s.settings.daemon?.baseUrl;
-    if (!hub || isDesktop()) return 'none';
+    if (!hub || isDesktop()) return 'stay';
     const resource = s.settings.gitosResources?.find((r) => r.id === VAULT_RESOURCE_ID);
     const hubReady = Boolean(providerFor('hub')) && (await probeReady('hub').catch(() => false));
+    // Not ready yet (the link lands a beat after the pairing): nothing moves
+    // now, and the link's arrival runs this again (syncHubLink).
+    if (!hubReady) {
+      pairingWaitsForLink = true;
+      return 'stay';
+    }
+    pairingWaitsForLink = false;
     let notes: number | undefined;
-    if (hubReady && (resource?.providerId ?? 'local') === 'local' && !resource?.chosenAt) {
+    if ((resource?.providerId ?? 'local') === 'local' && !resource?.chosenAt) {
       const local = providerFor('local');
       notes = local
         ? await listVaultNotes({
@@ -4596,13 +4923,10 @@ export const useApp = create<AppState>((set, get, api) => {
         : undefined;
     }
     const waiting = notes === 0 ? await vaultTextWaiting('local') : false;
-    const plan = hubPairingPlan({
-      resource,
-      hubReady,
-      notes,
+    const offer = s.settings.vaultHubOffer;
+    const plan = hubPairPlan(resource, notes, {
       waiting,
-      offer: s.settings.vaultHubOffer,
-      hub,
+      declined: offer?.hub === hub && offer.state === 'declined',
     });
     if (plan === 'repoint') {
       const before: VaultBeforeHub = {
@@ -4619,8 +4943,8 @@ export const useApp = create<AppState>((set, get, api) => {
       logEvent('vault_repointed_hub');
       get().showToast(HUB_REPOINT_TOAST);
       if (get().view === 'vault') void get().vaultRefresh();
-    } else if (plan === 'offer') {
-      if (s.settings.vaultHubOffer?.hub !== hub || s.settings.vaultHubOffer.state !== 'offered') {
+    } else if (plan === 'offer-move') {
+      if (offer?.hub !== hub || offer.state !== 'offered') {
         await get().saveSettings({ vaultHubOffer: { hub, state: 'offered' } });
       }
     }
@@ -4641,14 +4965,72 @@ export const useApp = create<AppState>((set, get, api) => {
       return;
     }
     if (before && before.hub === paired) return;
+    const row = get().settings.gitosResources?.find((r) => r.id === VAULT_RESOURCE_ID);
+    const back = hubUnpairTarget(row, before?.providerId) ?? 'local';
     await get().saveSettings({
-      gitosResources: withVaultProvider(before?.providerId ?? 'local', before?.chosenAt),
+      gitosResources: withVaultProvider(back, before?.chosenAt),
       vaultBeforeHub: undefined,
     });
     await afterVaultRepoint();
     logEvent('vault_unpaired_hub');
     get().showToast(HUB_UNPAIR_TOAST);
     if (get().view === 'vault') void get().vaultRefresh();
+  }
+
+  /** The pairing the hub vault is linked to now (base URL and credential),
+   *  so a relink happens only when the pairing changes. */
+  let hubLinkKey: string | undefined;
+  /** A pairing found the hub vault not linked yet; the link's arrival runs
+   *  the pairing rule once (CTO J9). */
+  let pairingWaitsForLink = false;
+
+  /** Point the hub vault at the paired computer, or at none (CTO J9). Called
+   *  whenever `settings.daemon` changes, on load, and on sign-out. A pairing
+   *  change (another computer, another credential, or none) closes every
+   *  index, the warm one too (J1), and forgets what the old link kept on this
+   *  device. Resolves true when the link changed. */
+  async function syncHubLink(
+    daemon: DaemonTarget | undefined,
+    opts: { forget?: boolean; initial?: boolean } = {},
+  ): Promise<boolean> {
+    const key = daemon?.token ? `${daemon.baseUrl}\n${daemon.token}` : undefined;
+    if (key === hubLinkKey && !opts.forget) return false;
+    hubLinkKey = key;
+    const prev = hubVaultLink();
+    // The first link at launch changes nothing that is open; every later
+    // change (a pairing, another computer, an unpairing) does.
+    if (!opts.initial) {
+      await prev?.forget().catch(() => {});
+      await shutVaultIndex().catch(() => {});
+      forgetVaultContext();
+    }
+    if (!daemon || !key) {
+      setHubVaultLink(undefined);
+      return true;
+    }
+    let hubUserId: string;
+    try {
+      hubUserId = await hubPersonKey(daemon.token);
+    } catch {
+      setHubVaultLink(undefined);
+      return true;
+    }
+    // A newer pairing landed while this one was hashed: it links itself.
+    if (hubLinkKey !== key) return false;
+    const baseUrl = daemon.baseUrl;
+    setHubVaultLink({
+      baseUrl,
+      hubUserId,
+      token: async () => {
+        const now = get().settings.daemon;
+        return now?.baseUrl === baseUrl ? now.token : undefined;
+      },
+    });
+    if (pairingWaitsForLink) {
+      pairingWaitsForLink = false;
+      void get().vaultAfterPairing();
+    }
+    return true;
   }
 
   /** Unpair first, then pair: one pass per hub change, never throwing. */
@@ -5822,6 +6204,10 @@ export const useApp = create<AppState>((set, get, api) => {
       setActiveEffort(settings.effort ?? DEFAULT_EFFORT);
       // And Chain of Thought (off on a fresh device).
       setChainOfThought(settings.chainOfThought === true);
+      // And prompt caching (off until the eval says otherwise, CTO J19).
+      setPromptCache(settings.promptCache === true);
+      // The hub vault links to the paired computer before anything lists it.
+      await syncHubLink(settings.daemon, { initial: true }).catch(() => false);
 
       // A stored session is a local, encrypted-at-rest read (no network round
       // trip), so it is cheap to check before deciding the first view: a
@@ -9229,7 +9615,7 @@ export const useApp = create<AppState>((set, get, api) => {
         const result = await moveVaultInner(providerId);
         // The vault lives somewhere else now: the warm index belonged to the
         // old home (Vault M5, CTO J1 closes it on a storage move).
-        if (result.ok) await closeVaultIndex().catch(() => {});
+        if (result.ok) await shutVaultIndex().catch(() => {});
         return result;
       } finally {
         set({ vaultMoving: false });
@@ -9393,7 +9779,7 @@ export const useApp = create<AppState>((set, get, api) => {
       const result = await get().vaultMoveTo('hub');
       if (result.ok) {
         await get().saveSettings({ vaultHubOffer: undefined, vaultBeforeHub: before });
-        await closeVaultIndex().catch(() => {});
+        await shutVaultIndex().catch(() => {});
         logEvent('vault_hub_offer', { action: 'move', forked: result.forked.length });
         if (get().view === 'vault') void get().vaultRefresh();
       }
@@ -9408,7 +9794,7 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     vaultAfterPairing() {
-      return hubPairingStep().catch(() => 'none' as const);
+      return hubPairingStep().catch(() => 'stay' as const);
     },
 
     canEditProjectPins(projectId) {
@@ -9483,9 +9869,9 @@ export const useApp = create<AppState>((set, get, api) => {
       return pickerNotes(facts, await vaultPrivacyNow());
     },
 
-    composerSeat(conversationId) {
+    composerSeat(conversationId, fallback) {
       const id = conversationId ?? get().activeId;
-      return composerSeatFor(id ? get().conversations[id]?.source : undefined);
+      return composerSeatFor((id ? get().conversations[id]?.source : undefined) ?? fallback);
     },
 
     async composerVaultExcerpt(path, conversationId) {
@@ -9518,6 +9904,20 @@ export const useApp = create<AppState>((set, get, api) => {
       );
     },
 
+    async composerVaultRead(path) {
+      let file: StoredFile | undefined;
+      try {
+        file = await personalRead(path);
+      } catch {
+        return null;
+      }
+      if (!file) return null;
+      const visibility = (await vaultPrivacyNow()).visibility(
+        noteFactsFromText(path, file.text, file.updatedAt),
+      );
+      return { text: file.text, updatedAt: file.updatedAt, visibility };
+    },
+
     takeComposerInsert(id) {
       if (get().composerInsert?.id === id) set({ composerInsert: undefined });
     },
@@ -9542,7 +9942,7 @@ export const useApp = create<AppState>((set, get, api) => {
         composerInsert: {
           id: newId(),
           ...(conversationId ? { conversationId } : {}),
-          text: result.excerpt.text,
+          path,
         },
       });
       logEvent('vault_ask_about_note', { trimmed: result.excerpt.trimmed });
@@ -9716,6 +10116,20 @@ export const useApp = create<AppState>((set, get, api) => {
       // A handoff this chat wrote goes with it (CTO J13).
       handoffWrittenAt.delete(id);
       void clearHandoffs(handoffStorage, { conversationId: id }).catch(() => {});
+    },
+
+    async clearConversations() {
+      for (const id of [...get().order]) get().deleteConversation(id);
+      await clearHandoffs(handoffStorage, { all: true }).catch(() => {});
+      const s = get();
+      const b = isDesktop() ? bridge() : undefined;
+      if (b?.clearHandoffs) await b.clearHandoffs().catch(() => {});
+      if (s.settings.daemon && s.hubRole !== 'member') {
+        await Promise.resolve()
+          .then(() => daemonClearHandoffs(s.settings.daemon!))
+          .catch(() => false);
+      }
+      logEvent('conversations_cleared');
     },
 
     send(text, attachments) {
@@ -10437,6 +10851,11 @@ export const useApp = create<AppState>((set, get, api) => {
       setInsightsEnabled(settings.insightsOptIn ?? false);
       setActiveEffort(settings.effort ?? DEFAULT_EFFORT);
       setChainOfThought(settings.chainOfThought === true);
+      setPromptCache(settings.promptCache === true);
+      // New privacy rules apply to the next read, not a minute later.
+      if ('vaultPrivacy' in patch) privacyCache = undefined;
+      // A pairing change relinks the hub vault before anything settles it.
+      if ('daemon' in patch) await syncHubLink(settings.daemon).catch(() => false);
       await persistSettings(settings);
     },
 

@@ -11,7 +11,7 @@ import type {
   DriverEventSink,
   DriverVaultOptions,
 } from './types.js';
-import { DriverEmitter, readChatContext } from './types.js';
+import { DriverEmitter, readChatContext, seedText } from './types.js';
 import { claudeHistoryCache, claudeSystem, promptCacheOn } from '../lib/claudeCache.js';
 import { claudeContextTokens, packSeatFor } from '../lib/vaultSeat.js';
 import { effortDirective } from '../lib/effort.js';
@@ -148,7 +148,9 @@ export class CloudClaudeDriver implements ChatDriver {
       ...(ws ? { defaultHeaders: { 'anthropic-workspace-id': ws } } : {}),
     });
     // A mid-chat switch seeds the prior turns so this model continues the thread.
-    if (seed) this.history = seed.map((t) => ({ role: t.role, content: t.text }));
+    // A turn that drew on a local-only note reaches this cloud seat as the
+    // stub, never the text (I5).
+    if (seed) this.history = seed.map((t) => ({ role: t.role, content: seedText(t, true) }));
   }
 
   subscribe(sink: DriverEventSink): () => void {

@@ -5,6 +5,7 @@
 import type { DriverEvent } from 'os-code/protocol';
 import type { ChangedFile, ConversationSource, ThreadItem, ThreadState } from './types.js';
 import { providerInfo } from '../lib/providers.js';
+import { isLocalOnlyFinal } from '../drivers/types.js';
 
 /** The go-ahead the app sends when a plan is approved. The reducer reads it
  *  back on replay: a task that starts with this line means the plan before
@@ -161,6 +162,9 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
       // cleaned tool-call JSON out of it).
       const settled = settleThinking(next);
       const idx = currentStreaming(settled);
+      // The reply followed a local-only read (I5): the bubble keeps the mark,
+      // so a switch seeds the stub to a leaving seat and a handoff drops it.
+      const mark = isLocalOnlyFinal(event) ? { localOnly: true as const } : {};
       if (idx === -1) {
         return event.text
           ? push(settled, {
@@ -168,13 +172,14 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
               text: event.text,
               streaming: false,
               model: settled.model?.name,
+              ...mark,
             })
           : settled;
       }
       const items = [...settled.items];
       const bubble = items[idx] as Extract<ThreadItem, { kind: 'assistant' }>;
       if (event.text) {
-        items[idx] = { ...bubble, text: event.text, streaming: false };
+        items[idx] = { ...bubble, text: event.text, streaming: false, ...mark };
       } else {
         items.splice(idx, 1);
       }

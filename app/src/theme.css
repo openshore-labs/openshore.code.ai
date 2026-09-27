@@ -9309,6 +9309,15 @@ textarea {
 .msg-note {
   white-space: pre-wrap;
 }
+/* A switch's handoff note: "Save to Vault" under the line (Vault M5, J12). */
+.msg-note-actions {
+  margin-top: 6px;
+  white-space: normal;
+}
+.msg-note-saved {
+  color: var(--muted);
+  animation: msg-in var(--dur-3) var(--ease-arrive) backwards;
+}
 .mode-hint {
   margin: 12px 4px 0;
   font-size: var(--text-2);

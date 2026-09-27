@@ -233,9 +233,8 @@ type SheetName = 'account' | 'log' | 'search' | 'clear';
 
 export function SettingsScreen() {
   const {
-    order,
+    clearConversations,
     settings,
-    deleteConversation,
     showToast,
     saveSettings,
     setView,
@@ -1155,7 +1154,7 @@ export function SettingsScreen() {
           <button
             className="btn danger"
             onClick={() => {
-              for (const id of [...order]) deleteConversation(id);
+              void clearConversations();
               close();
               showToast('Conversations cleared.');
             }}

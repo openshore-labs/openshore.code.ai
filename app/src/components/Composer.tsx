@@ -11,6 +11,7 @@
 // repo files, "#" saves a line to the project's instructions, and a message
 // typed mid-run queues for the moment the agent is free. A long paste folds
 // into a chip so the field stays readable.
+import type { VaultVisibility } from 'os-code/protocol';
 import { isIntroPlaying } from '../lib/introWalk.js';
 import { skipReveals } from '../lib/streamSmoothing.js';
 import {
@@ -80,8 +81,12 @@ export interface ComposerVault {
   /** The notes `[[` may offer, each already judged by the privacy rules.
    *  Hidden ones may be passed; they never list. */
   notes: readonly PickerNote[];
-  /** The note's body (frontmatter and all), or null when it is gone. */
-  read: (path: string) => Promise<{ text: string; updatedAt?: string } | null>;
+  /** The note's body (frontmatter and all), or null when it is gone. A
+   *  `visibility` judged on the body itself (its tags and marks, which a
+   *  listing may not know yet) can only tighten the listed one. */
+  read: (
+    path: string,
+  ) => Promise<{ text: string; updatedAt?: string; visibility?: VaultVisibility } | null>;
   /** The chat's current seat: the window it is served, whether it runs on
    *  this device (the 1024-token cap), and whether it leaves this network
    *  (a private note is refused). */
@@ -92,6 +97,12 @@ export interface ComposerVault {
   /** "Ask about this note": a new `seq` takes this note into the composer
    *  through the same budget and privacy check as a `[[` pick. Never sent. */
   take?: { seq: number; path: string };
+}
+
+/** The tighter of two privacy verdicts (hidden, then local-only, then open). */
+function stricterVisibility(a: VaultVisibility, b: VaultVisibility | undefined): VaultVisibility {
+  const rank: Record<VaultVisibility, number> = { open: 0, 'local-only': 1, hidden: 2 };
+  return b !== undefined && rank[b] > rank[a] ? b : a;
 }
 
 // The iOS keyboard dictation microphone, the same outline Claude uses.
@@ -596,7 +607,7 @@ export function Composer({
       showToast(PRIVATE_NOTE_REFUSED);
       return;
     }
-    let body: { text: string; updatedAt?: string } | null = null;
+    let body: Awaited<ReturnType<ComposerVault['read']>> = null;
     try {
       body = await v.read(path);
     } catch {
@@ -606,8 +617,15 @@ export function Composer({
       showToast(`Could not open ${listed.title}.`);
       return;
     }
+    // The body has the last word: a tag the listing did not know can hide
+    // the note or keep it on this computer, never open it up.
+    const visibility = stricterVisibility(listed.visibility, body.visibility);
+    if (visibility === 'hidden') {
+      showToast('That note is not one a model can read.');
+      return;
+    }
     const now = vaultRef.current;
-    if (!now || noteRefused(listed, now.seat.leavesNetwork)) {
+    if (!now || noteRefused({ visibility }, now.seat.leavesNetwork)) {
       showToast(PRIVATE_NOTE_REFUSED);
       return;
     }
@@ -648,7 +666,7 @@ export function Composer({
         note: {
           title: listed.title,
           cost: excerpt.trimmed ? `${cost}. Trimmed to fit.` : cost,
-          localOnly: listed.visibility === 'local-only',
+          localOnly: visibility === 'local-only',
         },
       },
     ]);

@@ -40,6 +40,8 @@ export {
   setHubVaultLink,
   subscribeHubReach,
   type HubPairPlan,
+  type VaultBeforeHub,
+  type VaultHubOffer,
   type HubProvider,
   type HubProviderOptions,
   type HubReach,

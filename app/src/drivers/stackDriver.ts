@@ -75,6 +75,7 @@ import {
   claudeRequestThinking,
   reasoningOf,
 } from '../lib/chainOfThought.js';
+import { claudeHistoryCache, claudeSystem, promptCacheOn } from '../lib/claudeCache.js';
 import { PROVIDERS, providerInfo, providerSecretKey } from '../lib/providers.js';
 import { imageBlockParts, type Attachment } from '../lib/attachments.js';
 import { DEFAULT_CLAUDE_MODEL } from '../lib/claudeModels.js';
@@ -130,7 +131,7 @@ import {
   type VaultToolInput,
 } from '../lib/vaultTool.js';
 import type { ChatDriver, DriverEventSink, DriverVaultOptions, PackSeat } from './types.js';
-import { DriverEmitter } from './types.js';
+import { DriverEmitter, textFinal } from './types.js';
 import { RemoteDriver, daemonCreateSession, type DaemonTarget } from './remoteDriver.js';
 import type { DriverEvent } from 'os-code/protocol';
 
@@ -179,7 +180,8 @@ export interface StackContext {
   /** Prompt caching on Claude (`settings.promptCache`, default off, CTO J16,
    *  J17): on, the stable head of the system prompt goes as its own block
    *  marked for caching and the request asks for automatic caching of the
-   *  growing history. Off sends one plain system string. */
+   *  growing history. Off sends the same blocks with no marker. Unset reads
+   *  the live setting (`promptCacheOn`). */
   promptCache?: boolean;
 }
 
@@ -315,23 +317,6 @@ interface SystemParts {
 
 function joinSystem(parts: SystemParts, extraTail: string[] = []): string {
   return [parts.stable, ...parts.tail, ...extraTail].filter(Boolean).join('\n\n');
-}
-
-/** Claude's `system`: one plain string with caching off; with it on, the
- *  stable head as its own block marked for caching, then the tail. A head
- *  under the model's minimum simply does not cache. */
-export function stackClaudeSystem(
-  stable: string,
-  tail: string[],
-  cache: boolean,
-): string | Anthropic.TextBlockParam[] {
-  const rest = tail.filter(Boolean);
-  if (!cache) return [stable, ...rest].filter(Boolean).join('\n\n');
-  const blocks: Anthropic.TextBlockParam[] = [
-    { type: 'text', text: stable, cache_control: { type: 'ephemeral' } },
-  ];
-  if (rest.length) blocks.push({ type: 'text', text: rest.join('\n\n') });
-  return blocks;
 }
 
 /** A proposal's first lines, for the approval card. */
@@ -782,6 +767,9 @@ export class StackDriver implements ChatDriver {
       return undefined;
     }
     if (rendered.event) this.emit(rendered.event);
+    // A local seat's pack that carried a local-only note marks the reply,
+    // the same as a local-only tool read (I5).
+    if (rendered.localOnly) this.sendLocalOnly = true;
     return rendered.text?.trim() || undefined;
   }
 
@@ -946,21 +934,21 @@ export class StackDriver implements ChatDriver {
     return (await tools.write(p.path, appendedText(cur.text, p.text), { ifMatch: cur.version })).ok;
   }
 
-  /** Claude's `system` for these parts, cached or plain (CTO J16). */
-  private claudeSystem(
-    parts: SystemParts,
-    extraTail: string[] = [],
-  ): string | Anthropic.TextBlockParam[] {
-    return stackClaudeSystem(
-      parts.stable,
-      [...parts.tail, ...extraTail],
-      this.context.promptCache === true,
-    );
+  /** Claude's `system` for these parts (CTO J16): the one app builder,
+   *  `claudeSystem`, so the Stack and the Claude driver send the same shape. */
+  private claudeSystem(parts: SystemParts, extraTail: string[] = []): Anthropic.TextBlockParam[] {
+    return claudeSystem(parts.stable, [...parts.tail, ...extraTail], this.promptCache());
+  }
+
+  /** Prompt caching for this request: the store's value for this chat, else
+   *  the live setting. Off by default (no claim without the eval). */
+  private promptCache(): boolean {
+    return this.context.promptCache ?? promptCacheOn();
   }
 
   /** Top-level automatic caching for the growing history, with caching on. */
   private claudeCacheParam(): { cache_control?: Anthropic.CacheControlEphemeral } {
-    return this.context.promptCache === true ? { cache_control: { type: 'ephemeral' } } : {};
+    return claudeHistoryCache(this.promptCache());
   }
 
   /** Describe the crew this chat can draw on. "auto" members may be consulted
@@ -1712,7 +1700,7 @@ export class StackDriver implements ChatDriver {
         ...(this.sendLocalOnly ? { localOnly: true as const } : {}),
       });
     }
-    this.emit({ type: 'text-final', text });
+    this.emit(textFinal(text, this.sendLocalOnly));
     this.emit({ type: 'task-done', reason, message });
   }
 

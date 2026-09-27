@@ -1615,21 +1615,32 @@ describe('Sign out asks before it deletes unsent team text (T5)', () => {
     await card.click('Sign out');
     await card.settle();
     await card.click('Sign out and delete');
-    await card.settle();
-    expect(useApp.getState().authSession).toBeUndefined();
+    await signedOut(card);
     expect(pending()).toEqual({});
     // The card turns to Sign in, and the ask plays its exit, never a cut.
     expect(card.text()).toContain('Sign in');
     expect(card.container.querySelector('.confirm-card.closing')).not.toBeNull();
   });
 
+  // Sign out runs a chain with real asynchronous work in it, not only
+  // promise ticks: the team index's storage key is a SHA-256 digest
+  // (crypto.subtle, answered from the platform's thread pool), and the sealed
+  // store is read and written on the way. One macrotask (`card.settle()`) is
+  // usually enough and, on a loaded machine, sometimes not, which is how this
+  // row failed now and then. So it waits for the sign-out's own outcome, and
+  // then for the card to render it.
+  async function signedOut(card: import('./support/dom.js').TestDom): Promise<void> {
+    await vi.waitFor(() => expect(useApp.getState().authSession).toBeUndefined());
+    await card.settle();
+  }
+
   it('with nothing unsent, Sign out signs out without asking', async () => {
     teamScope();
     const card = await mountCard();
     await card.click('Sign out');
-    await card.settle();
+    await signedOut(card);
     expect(card.text()).not.toContain('Team text not sent yet');
-    expect(useApp.getState().authSession).toBeUndefined();
+    expect(card.text()).toContain('Sign in');
   });
 });
 
@@ -3079,12 +3090,31 @@ describe('pairing and the vault on your computer', () => {
     expect(files.get('Mine.md')).toBe('my note');
   });
 
+  it('the hub link follows the pairing, and a pairing change closes the warm index', async () => {
+    const { hubVaultLink } = await import('../src/lib/gitos/hub.js');
+    files.set('Mine.md', 'my note');
+    await useApp.getState().vaultRefresh();
+    await vi.waitFor(() => expect(currentVaultIndex()?.target.providerId).toBe('local'));
+    // Pairing: the link names this computer and this person on it, and the
+    // personal index that belonged to the old arrangement closes (CTO J1).
+    await useApp.getState().saveHub(box, { role: 'admin' });
+    expect(hubVaultLink()?.target).toMatchObject({
+      providerId: 'hub',
+      resourceId: 'vault',
+      owner: expect.stringMatching(/^http:\/\/box\.tail1\.ts\.net:4820#[0-9a-f]{16}$/),
+    });
+    expect(currentVaultIndex()).toBeUndefined();
+    // Unpairing: no link, so the hub vault refuses in plain words.
+    await useApp.getState().removeHub(box.baseUrl);
+    expect(hubVaultLink()).toBeUndefined();
+  });
+
   it('a declined card stays declined for that computer', async () => {
     files.set('Mine.md', 'my note');
     await useApp.getState().saveHub(box, { role: 'admin' });
     await vi.waitFor(() => expect(useApp.getState().settings.vaultHubOffer?.state).toBe('offered'));
     await useApp.getState().vaultDeclineHubMove();
-    expect(await useApp.getState().vaultAfterPairing()).toBe('none');
+    expect(await useApp.getState().vaultAfterPairing()).toBe('stay');
     expect(useApp.getState().settings.vaultHubOffer?.state).toBe('declined');
     expect(useApp.getState().vaultHubOfferShown()).toBe(false);
   });
@@ -3114,15 +3144,15 @@ describe('pairing and the vault on your computer', () => {
         gitosResources: [{ ...personalOn('local')[0]!, chosenAt: '2026-09-01T00:00:00Z' }],
       },
     });
-    expect(await useApp.getState().vaultAfterPairing()).toBe('none');
+    expect(await useApp.getState().vaultAfterPairing()).toBe('stay');
     await useApp.getState().saveHub(box, { role: 'admin' });
-    expect(await useApp.getState().vaultAfterPairing()).toBe('none');
+    expect(await useApp.getState().vaultAfterPairing()).toBe('stay');
     expect(providerNow()?.providerId).toBe('local');
     expect(useApp.getState().settings.vaultHubOffer).toBeUndefined();
     reset();
     desk.on = true;
     await useApp.getState().saveHub(box, { role: 'admin' });
-    expect(await useApp.getState().vaultAfterPairing()).toBe('none');
+    expect(await useApp.getState().vaultAfterPairing()).toBe('stay');
     expect(providerNow()?.providerId ?? 'local').toBe('local');
   });
 });
