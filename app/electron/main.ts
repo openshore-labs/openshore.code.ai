@@ -15,7 +15,7 @@ import {
   Tray,
   type IpcMainInvokeEvent,
 } from 'electron';
-import { dirname, join, relative, sep } from 'node:path';
+import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
@@ -25,6 +25,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  watch as fsWatch,
   writeFileSync,
 } from 'node:fs';
 import { Jail } from 'os-code/dist/src/core/security/jail.js';
@@ -33,6 +34,16 @@ import {
   parseHarnessCurrentsHandle,
 } from 'os-code/dist/src/currents/model.js';
 import { loadVaultDir } from 'os-code/dist/src/config/load.js';
+import {
+  listVaultFolder,
+  parseVaultGuard,
+  readVaultFile,
+  removeVaultFile,
+  statVaultFile,
+  vaultNoteAbs,
+  writeVaultFile,
+} from './vaultFs.js';
+import { VaultWatcher } from './vaultWatch.js';
 import { lookup } from 'node:dns/promises';
 import type { LookupAddress, LookupOptions } from 'node:dns';
 import { request as httpsRequest } from 'node:https';
@@ -666,6 +677,7 @@ function createWindow(): void {
     }
   });
   win.on('closed', () => {
+    vaultWatcher.stop();
     win = undefined;
   });
 
@@ -919,58 +931,42 @@ guarded('osc:hardware', () => host.hardware());
 // On-disk vault: the SAME markdown folder the agent's daemon tools write
 // (~/OSCode/Vault, or the machine config's vault.dir), resolved through the
 // engine's one helper, so the app's Vault, the agent, and the routines share
-// one folder whatever each process's working directory. Every note path is
-// jailed to that directory (symlink-safe), so a path from the renderer can
-// never touch a file outside the vault.
+// one folder whatever each process's working directory. The file work lives in
+// vaultFs.ts: every path must be a note (.md, no dot segment) and is jailed to
+// that directory (symlink-safe), every note carries its version (the bigint
+// lstat token), and every write goes through the engine's writeNote (temp file
+// then rename) with the renderer's guard checked before it publishes
+// (compare-and-swap, Vault M1 1.1). The root is read again on every call.
 function vaultDir(): string {
   return loadVaultDir().dir;
 }
-function vaultJail(): Jail {
-  const dir = vaultDir();
-  mkdirSync(dir, { recursive: true });
-  return new Jail(dir);
-}
 
-guarded('osc:vaultList', () => {
+guarded('osc:vaultList', () => listVaultFolder(vaultDir()));
+guarded('osc:vaultStat', (p: unknown) => statVaultFile(vaultDir(), str(p, 'path')));
+guarded('osc:vaultRead', (p: unknown) => readVaultFile(vaultDir(), str(p, 'path')));
+guarded('osc:vaultWrite', (p: unknown, t: unknown, g: unknown) =>
+  writeVaultFile(vaultDir(), str(p, 'path'), str(t, 'text'), parseVaultGuard(g)),
+);
+guarded('osc:vaultRemove', (p: unknown) => removeVaultFile(vaultDir(), str(p, 'path')));
+
+// The folder watcher (CTO F3), on while the Vault room is open. The open
+// note's path is checked like any other (a note, inside the folder) before
+// Linux watches its folder. Changes go out debounced on osc:vault-changed.
+const vaultWatcher = new VaultWatcher({
+  watch: (path, options, listener) => fsWatch(path, options, listener),
+  platform: process.platform,
+  send: (change) => win?.webContents.send('osc:vault-changed', change),
+});
+guarded('osc:vaultWatch', (on: unknown, openPath: unknown) => {
+  if (!bool(on)) {
+    vaultWatcher.stop();
+    return;
+  }
   const root = vaultDir();
-  if (!existsSync(root)) return [];
-  const out: Array<{ path: string; updatedAt: string; size: number }> = [];
-  const walk = (dir: string): void => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (entry.name.startsWith('.')) continue;
-      const abs = join(dir, entry.name);
-      if (entry.isDirectory()) walk(abs);
-      else if (entry.isFile() && /\.md$/i.test(entry.name)) {
-        const st = statSync(abs);
-        out.push({
-          path: relative(root, abs).split(sep).join('/'),
-          updatedAt: st.mtime.toISOString(),
-          size: st.size,
-        });
-      }
-    }
-  };
-  walk(root);
-  out.sort((a, b) => a.path.localeCompare(b.path));
-  return out;
-});
-guarded('osc:vaultRead', (p: unknown) => {
-  const path = str(p, 'path');
-  const abs = vaultJail().resolve(path);
-  if (!existsSync(abs)) return null;
-  return { path, text: readFileSync(abs, 'utf8'), updatedAt: statSync(abs).mtime.toISOString() };
-});
-guarded('osc:vaultWrite', (p: unknown, t: unknown) => {
-  const path = str(p, 'path');
-  const text = str(t, 'text');
-  const abs = vaultJail().resolve(path);
-  mkdirSync(dirname(abs), { recursive: true });
-  writeFileSync(abs, text);
-  return { path, text, updatedAt: statSync(abs).mtime.toISOString() };
-});
-guarded('osc:vaultRemove', (p: unknown) => {
-  const abs = vaultJail().resolve(str(p, 'path'));
-  if (existsSync(abs)) rmSync(abs);
+  const open = optStr(openPath, 'openPath');
+  if (open !== undefined) vaultNoteAbs(root, open);
+  else mkdirSync(root, { recursive: true });
+  vaultWatcher.start(root, open);
 });
 
 // Read-only access to a repo working tree, for the project-memory viewer. Two

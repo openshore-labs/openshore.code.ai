@@ -8,7 +8,13 @@
 // not a real locking service, so this is best-effort coordination for v1, the
 // honest limit the CTO flagged for cloud-drive backends.
 import { Icloud } from './icloudPlugin.js';
-import { isNotePath, type Lease, type StorageProvider, type StoredFile } from './providers.js';
+import {
+  isNotePath,
+  type Lease,
+  type StorageProvider,
+  type WriteGuard,
+  type WriteResult,
+} from './providers.js';
 
 const LEASE_PATH = '.oscode/lease.json';
 
@@ -41,9 +47,11 @@ export const icloudProvider: StorageProvider = {
       : undefined;
   },
 
-  async write(resourceId, path, text): Promise<StoredFile> {
+  // The guard is accepted and not yet enforced (Vault M1 F4; plan 2.1 adds
+  // the check), so this provider does not declare compareAndSwap.
+  async write(resourceId, path, text, _guard?: WriteGuard): Promise<WriteResult> {
     const { updatedAt } = await Icloud.write({ resourceId, path, text });
-    return { path, text, updatedAt };
+    return { ok: true, file: { path, text, updatedAt } };
   },
 
   async remove(resourceId, path) {

@@ -11,6 +11,7 @@
 // the top with asymptotic damping, and springs back on a short release.
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -35,6 +36,7 @@ export function Sheet({
   children,
   variant = 'sheet',
   className,
+  initialFocus,
 }: {
   open: boolean;
   onClose: () => void;
@@ -43,6 +45,11 @@ export function Sheet({
    *  from the top edge (and drags up to dismiss). */
   variant?: 'sheet' | 'confirm' | 'top';
   className?: string;
+  /** 'dialog': focus goes to the sheet itself when it opens, never to a
+   *  button, so a stray Space or Enter from the last keystroke cannot choose
+   *  for the person (the Vault's resolve sheet, CX 1.1). By default the focus
+   *  trap moves focus to the first control. */
+  initialFocus?: 'dialog';
 }) {
   // Which way a dismissing drag travels: down for a bottom sheet, up for a top
   // sheet. The math below runs in dismiss-positive "travel" space so one code
@@ -85,6 +92,12 @@ export function Sheet({
     },
     [],
   );
+
+  // In the commit itself, so the focus trap (which runs just after) finds
+  // focus already inside the dialog and leaves it there.
+  useLayoutEffect(() => {
+    if (open && initialFocus === 'dialog') cardRef.current?.focus({ preventScroll: true });
+  }, [open, initialFocus]);
 
   // Pulled the wrong way (past its rest edge), the sheet gives a little and no
   // more. Runs in travel space, so the same asymptotic damping serves both a
@@ -190,6 +203,7 @@ export function Sheet({
         ref={cardRef}
         role="dialog"
         aria-modal="true"
+        tabIndex={initialFocus === 'dialog' ? -1 : undefined}
         className={`${card}${className ? ` ${className}` : ''}${closing ? ' closing' : ''}${dragging ? ' dragging' : ''}${settling ? ' settling' : ''}`}
         style={!closing && dragY !== 0 ? { transform: `translateY(${dragY}px)` } : undefined}
         onClick={(e) => e.stopPropagation()}

@@ -28,15 +28,19 @@ import {
   probeReady,
   isGdriveConfigured,
   isGdriveConnected,
+  onDeviceFolderChanged,
+  watchDeviceFolder,
   type GitosResource,
   type StorageProviderId,
 } from '../lib/gitos/index.js';
 import { exportVaultToFiles, vaultExportLine, vaultWayOut } from '../lib/vaultExport.js';
-import { vaultAutosave } from '../lib/vaultAutosave.js';
+import { VAULT_AUTOSAVE_MS, vaultAutosave } from '../lib/vaultAutosave.js';
 import {
   DRIVE_RECONNECT_FAILED_LINE,
   DRIVE_WEB_URL,
+  VAULT_UPDATED_SUFFIX,
   copyProviderOf,
+  vaultConflictCard,
   vaultCopy,
   vaultDriveCard,
   vaultDriveMoveRefusal,
@@ -55,16 +59,24 @@ import {
 } from '../lib/vaultCopy.js';
 import { copyText } from '../lib/clipboard.js';
 import { Sheet } from '../components/Sheet.js';
+import { VaultResolveSheet } from '../components/VaultResolveSheet.js';
+import { hapticApproval, hapticCommit } from '../lib/haptics.js';
 import { SheetHead } from '../components/SheetHead.js';
 import { activeContribution, slotNone } from '../lib/currents.js';
 import { hermesNoteRead, hermesNotesList } from '../lib/currentsProbe.js';
 import { isDesktop, openExternal, platform } from '../lib/platform.js';
 import { useExitPresence } from '../hooks/useExitPresence.js';
-import { durationMs } from '../lib/motion.js';
+import { durationMs, sheetExitMs } from '../lib/motion.js';
 import type { HermesNote, HermesNoteMeta } from 'os-code/protocol';
 import { Icon } from '../components/Icon.js';
 
 const VAULT_RESOURCE_ID = 'vault.personal';
+
+/** How long the editor must be quiet before the resolve sheet rises over it
+ *  (Creative Studio 1c): never mid-keystroke, so the text the person is
+ *  typing into never jumps. A behavior timer, not motion: twice the autosave
+ *  debounce. */
+const VAULT_RESOLVE_IDLE_MS = 2 * VAULT_AUTOSAVE_MS;
 
 /** Whether this device can still reach the Google account a Drive vault
  *  needs: connected, signed out of it, or a build that cannot connect. */
@@ -104,6 +116,14 @@ export function VaultScreen() {
     showToast,
     openProjectMemory,
     repoSyncConflicts,
+    vaultConflict,
+    vaultRecheck,
+    vaultResolve,
+    vaultDeferConflict,
+    vaultLeaveConflict,
+    vaultNoteDraft,
+    vaultReturnFolder,
+    vaultTakeReturnFolder,
   } = useApp();
 
   const team = vaultScope === 'team';
@@ -184,6 +204,15 @@ export function VaultScreen() {
   const [driveLink, setDriveLink] = useState<VaultDriveLink | undefined>();
   const [moving, setMoving] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
+  // Compare-and-swap (1.1): when the person last typed, whether the resolve
+  // sheet is up, what a choice is doing, and whether the meta line carries
+  // the quiet "Updated from elsewhere" after a calm reload.
+  const lastInputAt = useRef(0);
+  const [resolveOpen, setResolveOpen] = useState(false);
+  const [resolveBusy, setResolveBusy] = useState(false);
+  const [resolveFailed, setResolveFailed] = useState(false);
+  const [updatedShown, setUpdatedShown] = useState(false);
+  const lastReload = useRef<number | undefined>(undefined);
   // Live [[wikilink]] autocomplete. When the caret sits inside an unclosed
   // "[[ ...", linkQuery is what has been typed since the brackets and linkStart
   // is the index of the "[[", so a pick replaces exactly that span.
@@ -237,6 +266,41 @@ export function VaultScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // The desktop folder is shared with the agent, routines, and Obsidian, so
+  // while this room is open main watches it (CTO F3) and every change it saw,
+  // and every return to the window, re-checks the open note. The watcher is a
+  // hint; compare-and-swap on the write is the protection.
+  const onFolder = !team && currentProviderId === 'files';
+  useEffect(() => {
+    if (!onFolder) return;
+    const off = onDeviceFolderChanged(
+      (change) => void vaultRecheck({ reason: 'watch', paths: change.paths, tree: change.tree }),
+    );
+    const onFocus = () => void vaultRecheck({ reason: 'focus' });
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') onFocus();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      off();
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisible);
+      watchDeviceFolder(false);
+    };
+  }, [onFolder, vaultRecheck]);
+  useEffect(() => {
+    if (onFolder) watchDeviceFolder(true, vaultNote?.path);
+  }, [onFolder, vaultNote?.path]);
+
+  // A note the store closed on its own (moved or deleted somewhere else)
+  // lands the list in its folder.
+  useEffect(() => {
+    if (vaultReturnFolder === undefined) return;
+    const next = vaultTakeReturnFolder();
+    if (next !== undefined) setFolder(next);
+  }, [vaultReturnFolder, vaultTakeReturnFolder]);
+
   // A read-only Drive vault moves off through its Google account, which a
   // sign-out or an expired grant takes away. Ask once it shows, so the card
   // offers the move only while it can work, and a reconnect when it cannot.
@@ -273,6 +337,8 @@ export function VaultScreen() {
     if (!vaultNote) return;
     setDraft(vaultNote.text);
     setEditing(vaultNote.fresh === true);
+    setUpdatedShown(false);
+    lastReload.current = vaultNote.reloaded;
     setBacklinks([]);
     setMentionsError(undefined);
     const path = vaultNote.path;
@@ -315,6 +381,92 @@ export function VaultScreen() {
     [vaultSave, vaultTargetRef],
   );
   const scheduleSave = autosave.schedule;
+
+  // The store replaced the open note's text in place (a calm reload of a
+  // clean note, or a resolve choice that shows the other version): the editor
+  // takes it, keeping the caret (clamped) and the scroll. Editing mode is
+  // left alone (CS 1f). A pending save of the old text is dropped: the draft
+  // was clean, or the person chose, so nothing is lost.
+  useEffect(() => {
+    if (!vaultNote || vaultNote.reloaded === undefined) return;
+    if (vaultNote.reloaded === lastReload.current) return;
+    lastReload.current = vaultNote.reloaded;
+    autosave.cancel();
+    const el = editorRef.current;
+    const caret = el ? { start: el.selectionStart, end: el.selectionEnd, top: el.scrollTop } : null;
+    const text = vaultNote.text;
+    setDraft(text);
+    setUpdatedShown(vaultNote.reloadedFrom === 'elsewhere');
+    if (el && caret) {
+      requestAnimationFrame(() => {
+        el.setSelectionRange?.(
+          Math.min(caret.start, text.length),
+          Math.min(caret.end, text.length),
+        );
+        el.scrollTop = caret.top;
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vaultNote?.reloaded]);
+
+  // The resolve sheet rises when the store found a conflict on this note, but
+  // never mid-keystroke: while the editor has focus and had input in the last
+  // VAULT_RESOLVE_IDLE_MS it waits, then rises. Sheets never stack: the
+  // Options sheet leaves first. A deferred conflict ('not now') stays a card.
+  const conflictHere =
+    vaultConflict && vaultNote && vaultConflict.path === vaultNote.path ? vaultConflict : undefined;
+  const conflictWaiting = Boolean(conflictHere && !conflictHere.deferred);
+  useEffect(() => {
+    if (!conflictWaiting) {
+      setResolveOpen(false);
+      return;
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tryOpen = () => {
+      const el = editorRef.current;
+      const quiet = Date.now() - lastInputAt.current;
+      if (el && document.activeElement === el && quiet < VAULT_RESOLVE_IDLE_MS) {
+        timer = setTimeout(tryOpen, VAULT_RESOLVE_IDLE_MS - quiet);
+        return;
+      }
+      const rise = () => {
+        setResolveFailed(false);
+        setResolveOpen(true);
+        hapticApproval();
+      };
+      if (menuOpen) {
+        setMenuOpen(false);
+        setConfirmDelete(false);
+        timer = setTimeout(rise, sheetExitMs());
+        return;
+      }
+      rise();
+    };
+    tryOpen();
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conflictWaiting, conflictHere?.path, conflictHere?.foundAt]);
+  // Leaving the room is not leaving the note: an open choice waits as the
+  // card, never the sheet, when the person comes back (CX 1.1).
+  const conflictRef = useRef(vaultConflict);
+  conflictRef.current = vaultConflict;
+  useEffect(
+    () => () => {
+      if (conflictRef.current && !conflictRef.current.deferred) vaultDeferConflict(true);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  // Close the sheet without choosing: the card stands in for it, the editor
+  // stays editable, and focus goes back to the text at its caret.
+  const deferResolve = useCallback(() => {
+    setResolveOpen(false);
+    vaultDeferConflict(true);
+    requestAnimationFrame(() => editorRef.current?.focus({ preventScroll: true }));
+  }, [vaultDeferConflict]);
+
   // Write the pending draft now, to the vault it was typed into.
   const flushSave = autosave.flush;
   // Switch vaults only once the pending draft is on its way to its own.
@@ -364,8 +516,27 @@ export function VaultScreen() {
 
   const openNote = (path: string) => {
     // Persist any in-flight edit to the current note before switching away.
+    // A choice still open on it is settled by the store (keep both).
     flushSave();
     void vaultOpen(path);
+  };
+
+  // One choice in the resolve sheet. The sheet stays up, every row waiting,
+  // until the store says it landed; a failure keeps it open and says so.
+  const chooseResolve = async (choice: 'both' | 'mine' | 'theirs' | 'discard') => {
+    if (!conflictHere || resolveBusy) return;
+    hapticCommit();
+    // The text this choice acts on is the draft on screen now; a pending
+    // save of it would only reach the stash.
+    autosave.cancel();
+    setResolveBusy(true);
+    setResolveFailed(false);
+    const result = await vaultResolve(choice, draft).catch(() => ({ ok: false, failed: true }));
+    setResolveBusy(false);
+    if (result.failed) setResolveFailed(true);
+    if (result.ok && choice !== 'discard') {
+      requestAnimationFrame(() => editorRef.current?.focus({ preventScroll: true }));
+    }
   };
 
   const createNote = () => {
@@ -414,6 +585,8 @@ export function VaultScreen() {
     }
     if (isNew) {
       flushSave();
+      // Leaving the note: a choice still open on it keeps both.
+      void vaultLeaveConflict();
       void vaultCreate(p);
     } else openNote(p);
   };
@@ -612,6 +785,9 @@ export function VaultScreen() {
       const inserted = `[[${targetName}]]`;
       const next = before + inserted + after;
       setDraft(next);
+      vaultNoteDraft(vaultNote.path, next);
+      lastInputAt.current = Date.now();
+      setUpdatedShown(false);
       scheduleSave(vaultNote.path, next);
       setLinkQuery(null);
       const pos = before.length + inserted.length;
@@ -658,8 +834,9 @@ export function VaultScreen() {
                 )}
               </button>
             ) : null}
-            {/* Its sheet holds nothing but Delete, which a Drive vault refuses. */}
-            {!driveReadOnly ? (
+            {/* Its sheet holds nothing but Delete, which a Drive vault refuses,
+                and it is left out while a choice about this note is open. */}
+            {!driveReadOnly && !conflictHere ? (
               <button className="icon-btn" aria-label="Options" onClick={() => setMenuOpen(true)}>
                 {'⋯'}
               </button>
@@ -669,6 +846,7 @@ export function VaultScreen() {
           <h1 className="vault-title">{title}</h1>
           <p className="hint" style={{ marginTop: 2 }}>
             {(parent || 'Vault') + ' · ' + words + (words === 1 ? ' word' : ' words')}
+            {updatedShown ? <span className="vault-updated">{VAULT_UPDATED_SUFFIX}</span> : null}
           </p>
 
           {readOnly ? (
@@ -679,6 +857,11 @@ export function VaultScreen() {
           ) : null}
           {renderDriveCard(true)}
           {renderError('note')}
+          <ConflictCard
+            shown={Boolean(conflictHere?.deferred)}
+            mode={conflictHere?.kind === 'missing' ? 'missing' : 'edit'}
+            onChoose={() => vaultDeferConflict(false)}
+          />
           <NotSaved held={heldHere} discard={(id) => void vaultDiscardHeld(id)} />
 
           {editing && !locked ? (
@@ -691,6 +874,9 @@ export function VaultScreen() {
                 placeholder="Write. Plain markdown, and [[wikilinks]] to connect notes."
                 onChange={(e) => {
                   setDraft(e.target.value);
+                  vaultNoteDraft(vaultNote.path, e.target.value);
+                  lastInputAt.current = Date.now();
+                  setUpdatedShown(false);
                   scheduleSave(vaultNote.path, e.target.value);
                   refreshLinkContext(
                     e.target.value,
@@ -736,7 +922,18 @@ export function VaultScreen() {
               ) : null}
             </div>
           ) : (
-            <VaultMarkdown text={draft} paths={paths} onOpenNote={followLink} />
+            // A calm reload settles the page in (opacity only); re-keyed so
+            // each reload plays it once.
+            <div
+              key={vaultNote.reloaded ?? 0}
+              className={
+                vaultNote.reloaded && vaultNote.reloadedFrom === 'elsewhere'
+                  ? 'vault-reloaded'
+                  : undefined
+              }
+            >
+              <VaultMarkdown text={draft} paths={paths} onOpenNote={followLink} />
+            </div>
           )}
 
           {!editing && (backlinks.length > 0 || mentionsError) ? (
@@ -765,6 +962,20 @@ export function VaultScreen() {
             </div>
           ) : null}
         </div>
+
+        <VaultResolveSheet
+          open={resolveOpen && Boolean(conflictHere)}
+          mode={conflictHere?.kind === 'missing' ? 'missing' : 'edit'}
+          title={title}
+          mine={draft}
+          theirs={conflictHere?.theirs}
+          loadedAt={vaultNote.loadedAt}
+          again={conflictHere?.again}
+          busy={resolveBusy}
+          failed={resolveFailed}
+          onChoose={(choice) => void chooseResolve(choice)}
+          onClose={deferResolve}
+        />
 
         <Sheet
           open={menuOpen}
@@ -1428,6 +1639,45 @@ function DriveCard({
           {text.action}
         </button>
       ) : null}
+    </div>
+  );
+}
+
+// The standing card while a choice about this note waits (the resolve sheet
+// was closed: 'not now'). It rides useExitPresence like the Drive card, so it
+// folds out with its last words when the choice is made, never a cut.
+function ConflictCard({
+  shown,
+  mode,
+  onChoose,
+}: {
+  shown: boolean;
+  mode: 'edit' | 'missing';
+  onChoose: () => void;
+}) {
+  const presence = useExitPresence(shown, driveCardExitMs());
+  const last = useRef(mode);
+  if (shown) last.current = mode;
+  if (!presence.mounted) return null;
+  const card = vaultConflictCard(last.current);
+  return (
+    <div
+      className={`card vault-conflict-card${presence.closing ? ' closing' : ''}`}
+      role="status"
+      style={{ margin: '12px 0 0' }}
+    >
+      <h3 style={{ marginBottom: 4 }}>{card.title}</h3>
+      <p className="sub" style={{ marginTop: 0 }}>
+        {card.sub}
+      </p>
+      <button
+        type="button"
+        className="btn primary press-fb"
+        disabled={presence.closing}
+        onClick={onChoose}
+      >
+        {card.action}
+      </button>
     </div>
   );
 }

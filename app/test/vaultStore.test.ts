@@ -15,7 +15,12 @@
 // fake Supabase, and the auth cases run the store's own token getter.
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { StoredFile, StoredFileMeta } from '../src/lib/gitos/providers.js';
+import type {
+  StoredFile,
+  StoredFileMeta,
+  WriteGuard,
+  WriteResult,
+} from '../src/lib/gitos/providers.js';
 import { isNotePath } from '../src/lib/gitos/providers.js';
 import { backlinksTo, normalizeNotePath } from '../src/lib/vault.js';
 
@@ -91,21 +96,36 @@ class VersionedFiles extends Map<string, string> {
     super.clear();
   }
 }
-function makeProvider(id: string) {
+// `cas` makes the fake enforce the write guard the way the desktop folder
+// does (compare-and-swap): a stale ifMatch, a missing note, or a taken name
+// comes back as a conflict and nothing is written.
+function makeProvider(id: string, cas = false) {
   const files = new VersionedFiles();
   const evicted = new Set<string>();
   const failPaths = new Set<string>();
   const hideFromList = new Set<string>();
   const fail = { list: false, read: false, write: false, stat: false, remove: false };
   const limits = { writesLeft: undefined as number | undefined };
-  const counts = { reads: 0 };
+  const counts = { reads: 0, writes: [] as Array<{ path: string; guard?: WriteGuard }> };
   const version = (path: string) => files.versions.get(path)!;
   // updatedAt changes with every write, so the body cache invalidates on edit.
   const meta = (path: string): StoredFileMeta =>
     evicted.has(path)
       ? { path, updatedAt: 'cloud', size: 10, evicted: true }
-      : { path, updatedAt: version(path), size: files.get(path)!.length };
+      : {
+          path,
+          updatedAt: version(path),
+          size: files.get(path)!.length,
+          ...(cas ? { version: version(path) } : {}),
+        };
+  const file = (path: string): StoredFile => ({
+    path,
+    text: files.get(path)!,
+    updatedAt: version(path),
+    ...(cas ? { version: version(path) } : {}),
+  });
   const provider = {
+    ...(cas ? { compareAndSwap: true as const } : {}),
     id,
     label: id,
     blurb: '',
@@ -124,14 +144,23 @@ function makeProvider(id: string) {
       if (fail.read || failPaths.has(path)) throw new Error('offline');
       counts.reads++;
       if (evicted.has(path)) return undefined;
-      const text = files.get(path);
-      return text === undefined ? undefined : { path, text, updatedAt: version(path) };
+      return files.has(path) ? file(path) : undefined;
     },
-    async write(_r: string, path: string, text: string): Promise<StoredFile> {
+    async write(_r: string, path: string, text: string, guard?: WriteGuard): Promise<WriteResult> {
       if (fail.write) throw new Error('offline');
       if (limits.writesLeft !== undefined && limits.writesLeft-- <= 0) throw new Error('disk full');
+      counts.writes.push({ path, guard });
+      if (cas && guard) {
+        if ('ifAbsent' in guard) {
+          if (files.has(path)) return { ok: false, conflict: 'exists', theirs: file(path) };
+        } else if (!files.has(path)) {
+          return { ok: false, conflict: 'missing' };
+        } else if (version(path) !== guard.ifMatch) {
+          return { ok: false, conflict: 'changed', theirs: file(path) };
+        }
+      }
       files.set(path, text);
-      return { path, text, updatedAt: version(path) };
+      return { ok: true, file: file(path) };
     },
     async remove(_r: string, path: string): Promise<void> {
       if (fail.remove) throw new Error('offline');
@@ -157,6 +186,7 @@ function makeProvider(id: string) {
     Object.assign(fail, { list: false, read: false, write: false, stat: false, remove: false });
     limits.writesLeft = undefined;
     counts.reads = 0;
+    counts.writes = [];
   };
   return {
     provider,
@@ -176,7 +206,7 @@ let leaseHolder = 'me';
 // Whether this device holds a Google account for Drive.
 let driveConnected = true;
 const local = makeProvider('local');
-const folder = makeProvider('files');
+const folder = makeProvider('files', true);
 const drive = makeProvider('gdrive');
 const byId: Record<string, ReturnType<typeof makeProvider>> = {
   local,
@@ -565,7 +595,7 @@ describe('a stale draft never replays over a newer save (0.1)', () => {
     expect(normalizeNotePath(copy!)).toBe(copy);
     expect(isNotePath(copy!)).toBe(true);
     expect(useApp.getState().vaultFiles.some((f) => f.path === copy)).toBe(true);
-    expect(useApp.getState().toast).toMatch(/both are kept/);
+    expect(useApp.getState().toast).toMatch(/is kept as ".*", since the note changed elsewhere/);
     expect(pending()).toEqual({});
   });
 
@@ -1433,5 +1463,339 @@ describe('Sign out asks before it deletes unsent team text (T5)', () => {
     await card.settle();
     expect(card.text()).not.toContain('Team text not sent yet');
     expect(useApp.getState().authSession).toBeUndefined();
+  });
+});
+
+// Vault M1, 1.1: on a provider that enforces compare-and-swap (the desktop
+// folder; here the in-memory fake with `cas`), a change made somewhere else is
+// never overwritten. A clean note reloads in place, a dirty one pauses and
+// asks, and nothing the person typed is lost on any path.
+describe('compare-and-swap on the folder (1.1)', () => {
+  const F = folder.files;
+  // Open a note on the folder, as the Vault room does.
+  async function openOnFolder(path = 'n.md', text = 'loaded') {
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('files') },
+    });
+    F.set(path, text);
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen(path);
+    expect(useApp.getState().vaultNote?.version).toBe(folder.version(path));
+  }
+  beforeEach(() => {
+    reset();
+    useApp.setState({ vaultConflict: undefined, vaultReturnFolder: undefined });
+  });
+
+  it('store.ts writes to a provider in exactly one place, with a required guard', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(new URL('../src/state/store.ts', import.meta.url), 'utf8');
+    const writes = [...src.matchAll(/\.write\(/g)];
+    expect(writes).toHaveLength(1);
+    const helper = src.indexOf('function putVaultNote(');
+    expect(helper).toBeGreaterThan(-1);
+    expect(writes[0]!.index).toBeGreaterThan(helper);
+    expect(src.slice(helper, writes[0]!.index)).toMatch(/guard: WriteGuard,/);
+  });
+
+  it('every save carries the version it was typed against', async () => {
+    await openOnFolder();
+    const base = folder.version('n.md');
+    await useApp.getState().vaultSave('n.md', 'mine');
+    expect(folder.counts.writes.at(-1)).toEqual({ path: 'n.md', guard: { ifMatch: base } });
+    expect(F.get('n.md')).toBe('mine');
+    expect(useApp.getState().vaultNote?.version).toBe(folder.version('n.md'));
+  });
+
+  it('an external change reloads a clean draft and pauses a dirty one', async () => {
+    await openOnFolder();
+    // Clean: the editor holds what was loaded, so the note reloads in place.
+    useApp.getState().vaultNoteDraft('n.md', 'loaded');
+    F.set('n.md', 'written by the agent');
+    await useApp.getState().vaultRecheck({ reason: 'watch', paths: ['n.md'] });
+    let st = useApp.getState();
+    expect(st.vaultNote?.text).toBe('written by the agent');
+    expect(st.vaultNote?.reloadedFrom).toBe('elsewhere');
+    expect(st.vaultNote?.reloaded).toBe(1);
+    expect(st.vaultConflict).toBeUndefined();
+    expect(st.toast).toBeUndefined();
+
+    // Dirty: the person has typed; the note changes again; nothing is
+    // written over it, and the choice waits.
+    useApp.getState().vaultNoteDraft('n.md', 'my unsaved words');
+    F.set('n.md', 'written by Obsidian');
+    await useApp.getState().vaultRecheck({ reason: 'focus' });
+    st = useApp.getState();
+    expect(st.vaultNote?.text).toBe('written by the agent');
+    expect(st.vaultConflict).toMatchObject({
+      path: 'n.md',
+      kind: 'changed',
+      base: 'written by the agent',
+      theirs: { text: 'written by Obsidian' },
+      deferred: false,
+    });
+    expect(st.vaultConflict?.copyPath).toMatch(conflictCopy('n'));
+    // Autosave is paused: what they type goes to the stash, never the note.
+    await useApp.getState().vaultSave('n.md', 'my unsaved words, more');
+    expect(F.get('n.md')).toBe('written by Obsidian');
+    expect(Object.values(pending())).toMatchObject([
+      { path: 'n.md', text: 'my unsaved words, more' },
+    ]);
+  });
+
+  it('a conflict whose theirs equals the loaded text saves silently (a touch)', async () => {
+    await openOnFolder();
+    // A sync client rewrites the same bytes: a new version, the same text.
+    F.set('n.md', 'loaded');
+    await useApp.getState().vaultSave('n.md', 'mine');
+    const st = useApp.getState();
+    expect(F.get('n.md')).toBe('mine');
+    expect(st.vaultConflict).toBeUndefined();
+    expect(st.toast).toBeUndefined();
+    expect(st.vaultNote?.version).toBe(folder.version('n.md'));
+  });
+
+  it('theirs equal to the draft adopts the version, with no sheet and no write', async () => {
+    await openOnFolder();
+    useApp.getState().vaultNoteDraft('n.md', 'same change');
+    F.set('n.md', 'same change');
+    const writes = folder.counts.writes.length;
+    await useApp.getState().vaultRecheck({ reason: 'watch', paths: ['n.md'] });
+    const st = useApp.getState();
+    expect(st.vaultConflict).toBeUndefined();
+    expect(st.vaultNote).toMatchObject({ text: 'same change', version: folder.version('n.md') });
+    expect(folder.counts.writes.length).toBe(writes);
+  });
+
+  it("our own save's watch event changes nothing", async () => {
+    await openOnFolder();
+    useApp.getState().vaultNoteDraft('n.md', 'mine');
+    await useApp.getState().vaultSave('n.md', 'mine');
+    const before = useApp.getState().vaultNote;
+    await useApp.getState().vaultRecheck({ reason: 'watch', paths: ['n.md'] });
+    expect(useApp.getState().vaultNote).toBe(before);
+    expect(useApp.getState().vaultConflict).toBeUndefined();
+  });
+
+  it('a recheck during an in-flight save raises no conflict', async () => {
+    await openOnFolder();
+    useApp.getState().vaultNoteDraft('n.md', 'mine');
+    const save = useApp.getState().vaultSave('n.md', 'mine');
+    // The watch event for our own write lands while the save is running.
+    const recheck = useApp.getState().vaultRecheck({ reason: 'watch', paths: ['n.md'] });
+    await Promise.all([save, recheck]);
+    expect(useApp.getState().vaultConflict).toBeUndefined();
+    expect(F.get('n.md')).toBe('mine');
+  });
+
+  it('a save typed against an older version pauses and asks, and writes nothing', async () => {
+    await openOnFolder();
+    F.set('n.md', 'theirs');
+    await useApp.getState().vaultSave('n.md', 'mine');
+    expect(F.get('n.md')).toBe('theirs');
+    expect(useApp.getState().vaultConflict).toMatchObject({
+      kind: 'changed',
+      theirs: { text: 'theirs' },
+    });
+    expect(Object.values(pending())).toMatchObject([{ path: 'n.md', text: 'mine' }]);
+  });
+
+  it('a second change while open updates the conflict in place', async () => {
+    await openOnFolder();
+    useApp.getState().vaultNoteDraft('n.md', 'mine');
+    F.set('n.md', 'theirs 1');
+    await useApp.getState().vaultRecheck({ reason: 'focus' });
+    const copyPath = useApp.getState().vaultConflict?.copyPath;
+    F.set('n.md', 'theirs 2');
+    await useApp.getState().vaultRecheck({ reason: 'watch', paths: ['n.md'] });
+    expect(useApp.getState().vaultConflict).toMatchObject({
+      theirs: { text: 'theirs 2' },
+      again: true,
+      copyPath,
+    });
+  });
+
+  it('replay skips a note with an open conflict', async () => {
+    await openOnFolder();
+    useApp.getState().vaultNoteDraft('n.md', 'mine');
+    F.set('n.md', 'theirs');
+    await useApp.getState().vaultRecheck({ reason: 'focus' });
+    await useApp.getState().vaultRefresh();
+    expect(F.get('n.md')).toBe('theirs');
+    expect([...F.keys()]).toEqual(['n.md']);
+    expect(Object.keys(pending())).toHaveLength(1);
+  });
+
+  it('Keep both writes the copy with ifAbsent under the name shown, then shows theirs', async () => {
+    await openOnFolder();
+    useApp.getState().vaultNoteDraft('n.md', 'mine');
+    F.set('n.md', 'theirs');
+    await useApp.getState().vaultRecheck({ reason: 'focus' });
+    const shown = useApp.getState().vaultConflict!.copyPath;
+    const r = await useApp.getState().vaultResolve('both', 'mine');
+    expect(r.ok).toBe(true);
+    expect(F.get(shown)).toBe('mine');
+    expect(folder.counts.writes.at(-1)).toEqual({ path: shown, guard: { ifAbsent: true } });
+    const st = useApp.getState();
+    expect(F.get('n.md')).toBe('theirs');
+    expect(st.vaultNote).toMatchObject({ path: 'n.md', text: 'theirs', reloadedFrom: 'resolve' });
+    expect(st.vaultConflict).toBeUndefined();
+    expect(st.toast).toBe(`Kept both. Yours is "${shown.replace(/\.md$/, '')}".`);
+    expect(pending()).toEqual({});
+    expect(st.vaultHeld).toEqual([]);
+  });
+
+  it('a taken copy name gets the counter, never an overwrite', async () => {
+    await openOnFolder();
+    useApp.getState().vaultNoteDraft('n.md', 'mine');
+    F.set('n.md', 'theirs');
+    await useApp.getState().vaultRecheck({ reason: 'focus' });
+    const shown = useApp.getState().vaultConflict!.copyPath;
+    F.set(shown, 'someone got there first');
+    await useApp.getState().vaultResolve('both', 'mine');
+    expect(F.get(shown)).toBe('someone got there first');
+    const second = [...F.keys()].find((p) => p !== shown && p !== 'n.md')!;
+    expect(second).toMatch(/ 2\)\.md$/);
+    expect(F.get(second)).toBe('mine');
+  });
+
+  it('Keep yours writes with ifMatch on the other version', async () => {
+    await openOnFolder();
+    useApp.getState().vaultNoteDraft('n.md', 'mine');
+    F.set('n.md', 'theirs');
+    await useApp.getState().vaultRecheck({ reason: 'focus' });
+    const theirsVersion = folder.version('n.md');
+    const r = await useApp.getState().vaultResolve('mine', 'mine');
+    expect(r.ok).toBe(true);
+    expect(folder.counts.writes.at(-1)).toEqual({
+      path: 'n.md',
+      guard: { ifMatch: theirsVersion },
+    });
+    expect(F.get('n.md')).toBe('mine');
+    expect(useApp.getState().vaultConflict).toBeUndefined();
+    expect(useApp.getState().toast).toBe('Kept yours.');
+  });
+
+  it('Keep yours that meets yet another change updates the sheet and writes nothing', async () => {
+    await openOnFolder();
+    useApp.getState().vaultNoteDraft('n.md', 'mine');
+    F.set('n.md', 'theirs 1');
+    await useApp.getState().vaultRecheck({ reason: 'focus' });
+    F.set('n.md', 'theirs 2');
+    const r = await useApp.getState().vaultResolve('mine', 'mine');
+    expect(r).toEqual({ ok: false });
+    expect(F.get('n.md')).toBe('theirs 2');
+    expect(useApp.getState().vaultConflict).toMatchObject({
+      theirs: { text: 'theirs 2' },
+      again: true,
+    });
+  });
+
+  it('Keep the other version loads theirs and writes nothing', async () => {
+    await openOnFolder();
+    useApp.getState().vaultNoteDraft('n.md', 'mine');
+    F.set('n.md', 'theirs');
+    await useApp.getState().vaultRecheck({ reason: 'focus' });
+    const writes = folder.counts.writes.length;
+    await useApp.getState().vaultResolve('theirs', 'mine');
+    expect(folder.counts.writes.length).toBe(writes);
+    expect(useApp.getState().vaultNote?.text).toBe('theirs');
+    expect(pending()).toEqual({});
+    expect(useApp.getState().vaultHeld).toEqual([]);
+  });
+
+  it('leaving a changed note keeps both: the copy is written with ifAbsent and named', async () => {
+    await openOnFolder();
+    useApp.getState().vaultNoteDraft('n.md', 'mine');
+    F.set('n.md', 'theirs');
+    await useApp.getState().vaultRecheck({ reason: 'focus' });
+    const shown = useApp.getState().vaultConflict!.copyPath;
+    await useApp.getState().vaultLeaveConflict();
+    expect(F.get(shown)).toBe('mine');
+    expect(F.get('n.md')).toBe('theirs');
+    expect(useApp.getState().toast).toBe(
+      `You left before choosing, so both are kept. Yours is "${shown.replace(/\.md$/, '')}".`,
+    );
+    expect(pending()).toEqual({});
+  });
+
+  it('a clean note deleted elsewhere closes to its folder with one toast', async () => {
+    await openOnFolder('ideas/n.md');
+    useApp.getState().vaultNoteDraft('ideas/n.md', 'loaded');
+    F.delete('ideas/n.md');
+    await useApp.getState().vaultRecheck({ reason: 'watch', paths: ['ideas/n.md'] });
+    const st = useApp.getState();
+    expect(st.vaultNote).toBeUndefined();
+    expect(st.vaultTakeReturnFolder()).toBe('ideas');
+    expect(st.toast).toBe(
+      '"n" is no longer in your vault. It was moved or deleted somewhere else.',
+    );
+  });
+
+  it('a deleted note with a dirty draft asks; leaving puts the text under Not saved and creates no file', async () => {
+    await openOnFolder();
+    useApp.getState().vaultNoteDraft('n.md', 'mine');
+    F.delete('n.md');
+    await useApp.getState().vaultRecheck({ reason: 'focus' });
+    expect(useApp.getState().vaultConflict).toMatchObject({ kind: 'missing' });
+    await useApp.getState().vaultLeaveConflict();
+    expect(F.has('n.md')).toBe(false);
+    expect([...F.keys()]).toEqual([]);
+    expect(useApp.getState().vaultHeld).toMatchObject([
+      {
+        path: 'n.md',
+        text: 'mine',
+        reason: 'The note was moved or deleted somewhere else before this text was saved.',
+      },
+    ]);
+  });
+
+  it('Save it again on a gone note creates it with ifAbsent', async () => {
+    await openOnFolder();
+    useApp.getState().vaultNoteDraft('n.md', 'mine');
+    F.delete('n.md');
+    await useApp.getState().vaultRecheck({ reason: 'focus' });
+    const r = await useApp.getState().vaultResolve('mine', 'mine');
+    expect(r.ok).toBe(true);
+    expect(folder.counts.writes.at(-1)).toEqual({ path: 'n.md', guard: { ifAbsent: true } });
+    expect(F.get('n.md')).toBe('mine');
+    expect(useApp.getState().toast).toBe('Saved "n" again.');
+  });
+
+  it('a quit with an open conflict replays as a conflict copy on the next launch', async () => {
+    await openOnFolder();
+    useApp.getState().vaultNoteDraft('n.md', 'mine');
+    F.set('n.md', 'theirs');
+    await useApp.getState().vaultRecheck({ reason: 'focus' });
+    // The app quits: the conflict was only in memory; the stash is sealed.
+    useApp.setState({ vaultConflict: undefined, vaultNote: undefined });
+    await useApp.getState().vaultRefresh();
+    expect(F.get('n.md')).toBe('theirs');
+    const copy = [...F.keys()].find((p) => conflictCopy('n').test(p))!;
+    expect(F.get(copy)).toBe('mine');
+    expect(pending()).toEqual({});
+  });
+
+  it('a create meets a name taken since the list loaded and opens theirs', async () => {
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('files') },
+    });
+    await useApp.getState().vaultRefresh();
+    // Written by the agent between the create's stat and its write: the stat
+    // is made to miss it, the guarded write does not.
+    F.set('late.md', 'the agent wrote this');
+    const stat = folder.provider.stat;
+    folder.provider.stat = async () => undefined;
+    try {
+      await useApp.getState().vaultCreate('late');
+    } finally {
+      folder.provider.stat = stat;
+    }
+    expect(F.get('late.md')).toBe('the agent wrote this');
+    expect(folder.counts.writes.at(-1)).toEqual({ path: 'late.md', guard: { ifAbsent: true } });
+    expect(useApp.getState().vaultNote).toMatchObject({
+      path: 'late.md',
+      text: 'the agent wrote this',
+    });
   });
 });

@@ -75,7 +75,7 @@ describe('org vault provider', () => {
       p_body: 'bye',
       p_base_rev: 4,
     });
-    expect(saved).toEqual({ path: 'a.md', text: 'bye', updatedAt: 't2' });
+    expect(saved).toEqual({ ok: true, file: { path: 'a.md', text: 'bye', updatedAt: 't2' } });
 
     // A second write with no intervening read uses the adopted rev 5 as the base.
     mockRpc.mockResolvedValue({ path: 'a.md', body: 'again', updated_at: 't3', rev: 6, size: 5 });
@@ -170,7 +170,7 @@ describe('org vault provider', () => {
   it('accepts a single-object or array RPC return', async () => {
     mockRpc.mockResolvedValue([{ path: 'z.md', body: 'q', updated_at: 't9', rev: 2, size: 1 }]);
     const saved = await orgVaultProvider.write(ORG, 'z.md', 'q');
-    expect(saved).toEqual({ path: 'z.md', text: 'q', updatedAt: 't9' });
+    expect(saved).toEqual({ ok: true, file: { path: 'z.md', text: 'q', updatedAt: 't9' } });
   });
 
   it('deletes through the tombstone RPC', async () => {

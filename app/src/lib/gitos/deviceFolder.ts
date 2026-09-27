@@ -3,21 +3,17 @@
 // daemon tools write (~/OSCode/Vault, or config vault.dir), so a note the agent
 // saves shows up here and a note you write here is one the agent can read. The
 // actual filesystem work happens in the Electron main process behind the
-// bridge; this provider is a thin client over those IPC calls.
+// bridge; this provider is the shared folder client (folderClient.ts) over an
+// Electron transport.
 //
 // There is one on-disk vault per machine, so this provider ignores resourceId
-// and always addresses that folder. Concurrency is last-write-wins at the file
-// level (you, the agent, and Obsidian can all touch it); fine for one person's
-// machine, and the files are the single source of truth.
-import { bridge } from '../electronBridge.js';
+// and always addresses that folder. You, the agent, and Obsidian can all touch
+// it, so every write carries a guard that main checks against the note's
+// version (compare-and-swap, Vault M1 1.1): a save typed against an older
+// version comes back as a conflict, never a silent overwrite.
+import { bridge, type VaultChange } from '../electronBridge.js';
 import { platform } from '../platform.js';
-import {
-  isNotePath,
-  type Lease,
-  type StorageProvider,
-  type StoredFile,
-  type StoredFileMeta,
-} from './providers.js';
+import { makeFolderProvider, type FolderTransport } from './folderClient.js';
 
 /** Whether the on-disk folder vault is usable right now: the Electron file
  *  bridge is present (so, the desktop app, not the phone or a browser). */
@@ -33,43 +29,40 @@ function fs() {
   return b;
 }
 
-export const deviceFolderProvider: StorageProvider = {
+/** The Electron transport: each call is one guarded IPC to main, which jails
+ *  the path to the vault folder and applies the note rule again. The guard
+ *  travels as the third argument of osc:vaultWrite. */
+export const electronFolderTransport: FolderTransport = {
+  list: () => fs().vaultList(),
+  stat: (path) => fs().vaultStat(path),
+  read: (path) => fs().vaultRead(path),
+  write: (path, text, guard) =>
+    guard ? fs().vaultWrite(path, text, guard) : fs().vaultWrite(path, text),
+  remove: (path) => fs().vaultRemove(path),
+};
+
+export const deviceFolderProvider = makeFolderProvider(electronFolderTransport, {
   id: 'files',
   label: 'This folder',
   blurb:
     'Plain .md files on this computer. Your agent writes here too, and Obsidian opens the folder.',
   ready: false,
   pending: 'Open OpenShore on your computer to keep the vault as a folder.',
+});
 
-  // The main process already skips dot-entries and non-.md files; the seam
-  // filter holds the same rule here too (0.6), so only notes ever list.
-  async list(): Promise<StoredFileMeta[]> {
-    return (await fs().vaultList()).filter((f) => isNotePath(f.path));
-  },
+/** Turn the vault folder watcher on (with the open note's path, which Linux
+ *  also watches the folder of) or off. A no-op off the desktop. Best effort:
+ *  the watcher is a hint, and the room re-checks on focus anyway. */
+export function watchDeviceFolder(on: boolean, openPath?: string): void {
+  const b = bridge();
+  if (!isDeviceFolderAvailable() || typeof b?.vaultWatch !== 'function') return;
+  void b.vaultWatch(on, openPath).catch(() => {});
+}
 
-  async stat(_resourceId, path): Promise<StoredFileMeta | undefined> {
-    return (await fs().vaultList()).find((f) => f.path === path);
-  },
-
-  async read(_resourceId, path): Promise<StoredFile | undefined> {
-    return (await fs().vaultRead(path)) ?? undefined;
-  },
-
-  async write(_resourceId, path, text): Promise<StoredFile> {
-    return fs().vaultWrite(path, text);
-  },
-
-  async remove(_resourceId, path): Promise<void> {
-    await fs().vaultRemove(path);
-  },
-
-  // The folder is shared with the agent and Obsidian, so there is no exclusive
-  // lease to take: grant it and let the filesystem settle writes.
-  async acquireLease(_resourceId, holder, ttlMs): Promise<Lease> {
-    return { holder, expiresAt: new Date(Date.now() + ttlMs).toISOString() };
-  },
-
-  async releaseLease(): Promise<void> {
-    // Nothing held.
-  },
-};
+/** Listen for the changes the watcher saw. Returns an unsubscribe; a no-op
+ *  off the desktop. */
+export function onDeviceFolderChanged(cb: (change: VaultChange) => void): () => void {
+  const b = bridge();
+  if (!isDeviceFolderAvailable() || typeof b?.onVaultChanged !== 'function') return () => {};
+  return b.onVaultChanged(cb);
+}

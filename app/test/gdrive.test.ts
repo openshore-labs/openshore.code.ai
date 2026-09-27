@@ -189,7 +189,7 @@ describe('gdrive provider (H-1)', () => {
     node.modifiedTime = nextTime();
     // Our next write must not clobber it; it lands as a conflict copy.
     const saved = await gdriveProvider.write(r, 'note.md', 'my edit');
-    expect(saved.path).toMatch(/note \(conflict .*\)\.md/);
+    expect(saved.ok && saved.file.path).toMatch(/note \(conflict .*\)\.md/);
     // The other device's content survives on the original path.
     const original = await gdriveProvider.read(r, 'note.md');
     expect(original?.text).toBe('from other device');

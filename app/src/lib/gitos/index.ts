@@ -23,7 +23,11 @@ export {
   orgVaultBaseRev,
   seedOrgVaultBaseRev,
 } from './orgVault.js';
-export { isDeviceFolderAvailable } from './deviceFolder.js';
+export {
+  isDeviceFolderAvailable,
+  onDeviceFolderChanged,
+  watchDeviceFolder,
+} from './deviceFolder.js';
 
 const PROVIDERS_BY_ID: Partial<Record<StorageProviderId, StorageProvider>> = {
   local: localProvider,

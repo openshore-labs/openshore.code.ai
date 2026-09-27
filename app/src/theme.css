@@ -1258,7 +1258,8 @@ textarea {
    its last words while it goes (VaultScreen DriveCard, useExitPresence), so
    the controls coming back read as the card leaving, never a cut. Opacity
    and transform only. */
-.vault-drive-card.closing {
+.vault-drive-card.closing,
+.vault-conflict-card.closing {
   animation: vault-drive-card-out var(--dur-4) var(--ease-standard) forwards;
 }
 @keyframes vault-drive-card-out {
@@ -1266,6 +1267,117 @@ textarea {
     opacity: 0;
     transform: translateY(-6px) scale(0.98);
   }
+}
+
+/* Vault M1 (1.1): a note that changed somewhere else under unsaved edits.
+   The standing card waits on the note after the resolve sheet is closed
+   ("not now"), in plum, the "needs you" color; it arrives on fade-rise and
+   leaves on the Drive card's fold-out. Opacity and transform only. */
+.vault-conflict-card {
+  border-color: color-mix(in srgb, var(--attention) 40%, transparent);
+  animation: fade-rise var(--dur-4) var(--ease-arrive) backwards;
+}
+
+/* The resolve sheet. The compare is neutral, never red and green: lines only
+   in yours wear the accent wash, lines only in the other version the surface
+   wash. The pane is capped by max-height, never animated on it; a new tab or
+   a newer other version re-keys the pane, which settles in on fade-rise. */
+.vault-resolve-sub,
+.vault-resolve-again,
+.vault-compare-pane {
+  animation: fade-rise var(--dur-4) var(--ease-arrive) backwards;
+}
+.vault-resolve-tabs {
+  margin: 4px 0 10px;
+}
+.vault-resolve-failed {
+  color: var(--warn);
+  margin: 0 0 8px;
+}
+.vault-cmp-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: var(--text-2);
+  color: var(--ink-soft);
+  margin: 0 0 6px;
+}
+.vault-cmp-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-xs);
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+.vault-cmp-swatch.mine,
+.vault-cmp-line.mine {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.vault-cmp-swatch.other,
+.vault-cmp-line.other {
+  background: var(--surface);
+  box-shadow: inset 2px 0 0 var(--border-strong);
+}
+.vault-compare {
+  max-height: min(38vh, 300px);
+  overflow: auto;
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  font-size: var(--text-3);
+  margin: 0 0 12px;
+}
+.vault-cmp-line,
+.vault-cmp-gap,
+.vault-compare-full {
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.vault-cmp-line {
+  padding: 1px 10px;
+}
+.vault-cmp-line.other {
+  color: var(--ink-soft);
+}
+.vault-cmp-line.ctx,
+.vault-cmp-gap {
+  color: var(--muted);
+}
+.vault-cmp-gap {
+  padding: 1px 10px;
+  text-align: center;
+}
+.vault-compare-full {
+  margin: 0;
+  padding: 10px;
+}
+.vault-resolve .vault-provider .sub {
+  display: block;
+  font-weight: var(--weight-regular);
+}
+.vault-resolve .btn.primary .sub {
+  color: inherit;
+  opacity: 0.82;
+}
+
+/* A clean note that changed somewhere else reloads in place. In read mode the
+   body settles in with a soft opacity rise, so it reads as the page
+   refreshing, never a cut; the editor never animates (a dip on the field the
+   person is looking at would read as a flicker). The meta line's quiet
+   suffix arrives on fade-rise. */
+.vault-reloaded {
+  animation: vault-reload-in var(--dur-5) var(--ease-arrive) backwards;
+}
+@keyframes vault-reload-in {
+  from {
+    opacity: 0.55;
+  }
+}
+.vault-updated {
+  display: inline-block;
+  animation: fade-rise var(--dur-4) var(--ease-arrive) backwards;
 }
 
 .vault-title {

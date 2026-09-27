@@ -30,13 +30,21 @@ export interface StoredFile {
   /** Body as UTF-8 text. v1 carries text (markdown, code, config). */
   text: string;
   updatedAt: string;
+  /** Opaque. Compare with === only; never parse, order, or carry across
+   *  providers. Set by providers that version their files natively (the
+   *  desktop folder's lstat token); the rest leave it out, and versionOf
+   *  falls back to updatedAt. */
+  version?: string;
 }
 
 export interface StoredFileMeta {
   path: string;
   updatedAt: string;
-  /** Body length in UTF-16 code units; a cheap size signal for lists. */
+  /** Body size in bytes; a cheap size signal for lists. */
   size: number;
+  /** Opaque. Compare with === only; never parse, order, or carry across
+   *  providers. Same token as StoredFile.version for the same bytes. */
+  version?: string;
   /** True when the provider knows the file exists but its bytes are not on
    *  this device yet (an iCloud placeholder). Opening it waits; creating a
    *  file of the same name must never overwrite it. */
@@ -53,6 +61,27 @@ export function isNotePath(path: string): boolean {
   return !path.split('/').some((segment) => segment.startsWith('.'));
 }
 
+/** The version a write's guard compares against: the provider's own opaque
+ *  version where it has one, else its updatedAt. The only way the store
+ *  derives a base (Vault M1, CTO F1). */
+export function versionOf(f: { version?: string; updatedAt: string }): string {
+  return f.version ?? f.updatedAt;
+}
+
+/** A write's precondition. `ifMatch` replaces the file only while its version
+ *  (versionOf) is still this one; `ifAbsent` creates it only while nothing has
+ *  the name. */
+export type WriteGuard = { ifMatch: string } | { ifAbsent: true };
+
+/** What a write did. A conflict is a result, never a throw, and leaves the
+ *  file as it was: 'changed' (the version moved; theirs is what is there now),
+ *  'missing' (an ifMatch found nothing; nothing is recreated), 'exists' (an
+ *  ifAbsent found the name taken; theirs is what has it), 'downloading'
+ *  (reserved for iCloud and the iPhone folder: the bytes are not here yet). */
+export type WriteResult =
+  | { ok: true; file: StoredFile }
+  | { ok: false; conflict: 'changed' | 'missing' | 'exists' | 'downloading'; theirs?: StoredFile };
+
 /** A lease marks one writer per resource. Cloud folder syncs have no
  *  Git-aware locking, so the seam carries single-writer semantics from day
  *  one (CTO ruling): a holder id plus TTL, renewed by heartbeat. The Local
@@ -66,7 +95,11 @@ export interface Lease {
  *  and lease operations, scoped to a resource id (one repo or vault). Nothing
  *  above it may pass note objects or provider-specific ideas through here.
  *  Writes are atomic per path: a reader sees the old body or the new one,
- *  never a torn write. */
+ *  never a torn write. A write may carry a guard (compare-and-swap, Vault
+ *  M1 1.1) and answers with a result, never a throw, on a conflict. Only a
+ *  provider with `compareAndSwap` enforces the guard; the others accept it and
+ *  ignore it until they gain the check (M2), so an `{ ok: true }` from them is
+ *  never proof that nobody else wrote. */
 export interface StorageProvider {
   id: StorageProviderId;
   label: string;
@@ -80,7 +113,10 @@ export interface StorageProvider {
   list(resourceId: string): Promise<StoredFileMeta[]>;
   stat(resourceId: string, path: string): Promise<StoredFileMeta | undefined>;
   read(resourceId: string, path: string): Promise<StoredFile | undefined>;
-  write(resourceId: string, path: string, text: string): Promise<StoredFile>;
+  write(resourceId: string, path: string, text: string, guard?: WriteGuard): Promise<WriteResult>;
+  /** Set only by providers that enforce the write guard; the contract test
+   *  (test/providerContract.test.ts) enrolls only these. */
+  readonly compareAndSwap?: true;
   remove(resourceId: string, path: string): Promise<void>;
   /** Take or renew the single-writer lease. Returns the current lease either
    *  way; callers compare holder to know if they won. */

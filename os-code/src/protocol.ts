@@ -62,6 +62,11 @@ export type { ThoughtPiece } from './core/agent/chainOfThought.js';
 // The Memory switch's precedence: the app's switch can only turn project
 // memory off, and a project's config off always wins.
 export { memoryEnabled } from './core/agent/memorySwitch.js';
+// The line diff approvals show, shared so the Vault's resolve sheet compares
+// two versions of a note with the exact same lines (Vault M1, 1.1). Pure and
+// import-free.
+export { unifiedDiff } from './core/edit/diff.js';
+export type { DiffStats } from './core/edit/diff.js';
 export type { CapabilityCategory, SpecialistRole } from './router/roles.js';
 
 // The always-on ethics layer. Pure modules only: the tier logic, the

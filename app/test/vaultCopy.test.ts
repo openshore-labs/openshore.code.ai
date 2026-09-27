@@ -23,6 +23,19 @@ import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
+  VAULT_GONE_REASON,
+  VAULT_NO_COPY_NAME_REASON,
+  VAULT_RESOLVE_AGAIN,
+  VAULT_RESOLVE_FAILED,
+  VAULT_RESOLVE_SAME,
+  VAULT_UPDATED_SUFFIX,
+  vaultConflictCard,
+  vaultGoneToast,
+  vaultLeaveToast,
+  vaultReplayCopiesLine,
+  vaultResolveCopy,
+  vaultResolveToast,
+  vaultResolveWhen,
   DESKTOP_AGENT_LINE,
   DRIVE_NOT_CONNECTED_MOVE_LINE,
   DRIVE_RECONNECT_FAILED_LINE,
@@ -532,5 +545,95 @@ describe('the Vault screen shows only the held text of the account signed in now
     expect(screen).toMatch(/vaultHeldFor\(vaultHeld, /);
     expect(screen).not.toMatch(/held=\{vaultHeld\}/);
     expect(screen).not.toMatch(/\bvaultHeld\.(?:filter|length|map|some|every)\b/);
+  });
+});
+
+// The resolve sheet (Vault M1, 1.1; Creative Studio 1a): the two sides are
+// "yours" and "the other version", and no resolve line names a writer it
+// cannot prove, calls a version newer or older, or says "disk".
+describe('the resolve sheet says only what it knows (1.1)', () => {
+  const BANNED = /\b(agent|obsidian|device|icloud|drive|sync|disk|newer|older|theirs)\b/i;
+
+  // Every resolve line, in every mode and variant.
+  function everyResolveLine(): string[] {
+    const lines: string[] = [];
+    for (const mode of ['edit', 'missing'] as const) {
+      for (const when of [undefined, 'at 2:14 PM', 'on Sep 27, 2:14 PM']) {
+        const c = vaultResolveCopy(mode, { title: 'Ideas', when });
+        lines.push(c.title, c.sub, c.failure);
+        if (c.tabs) lines.push(...Object.values(c.tabs));
+        if (c.legend) lines.push(...Object.values(c.legend));
+        if (c.srPrefix) lines.push(...Object.values(c.srPrefix));
+        for (const r of c.rows) lines.push(r.label, r.sub, ...(r.armed ? [r.armed] : []));
+      }
+      const card = vaultConflictCard(mode);
+      lines.push(card.title, card.sub, card.action);
+      lines.push(vaultLeaveToast(mode, { title: 'Ideas', copyTitle: 'Ideas (conflict)' }));
+    }
+    for (const choice of ['both', 'mine', 'theirs', 'discard'] as const) {
+      for (const missing of [false, true]) {
+        lines.push(vaultResolveToast(choice, { title: 'Ideas', copyTitle: 'X', missing }));
+      }
+    }
+    lines.push(
+      VAULT_RESOLVE_AGAIN,
+      VAULT_RESOLVE_SAME,
+      VAULT_RESOLVE_FAILED,
+      VAULT_GONE_REASON,
+      VAULT_NO_COPY_NAME_REASON,
+      VAULT_UPDATED_SUFFIX,
+      vaultGoneToast('Ideas'),
+      vaultReplayCopiesLine(['Ideas (conflict 2026-09-27 1405).md']),
+      vaultReplayCopiesLine(['a (conflict 2026-09-27 1405).md', 'b (conflict 2026-09-27 1405).md']),
+    );
+    return lines;
+  }
+
+  it('no resolve line, in any mode or variant, names a writer or a disk', () => {
+    const offenders = everyResolveLine().filter((l) => BANNED.test(l));
+    expect(offenders).toEqual([]);
+  });
+
+  it('the rows read as one question, what do you keep, with Keep both first', () => {
+    const edit = vaultResolveCopy('edit', { title: 'Ideas' });
+    expect(edit.rows.map((r) => r.label)).toEqual([
+      'Keep both',
+      'Keep yours',
+      'Keep the other version',
+    ]);
+    expect(edit.rows.map((r) => Boolean(r.primary))).toEqual([true, false, false]);
+    // The two that drop a side take a second tap; Keep both never does.
+    expect(edit.rows.map((r) => Boolean(r.armed))).toEqual([false, true, true]);
+    const gone = vaultResolveCopy('missing', { title: 'Ideas' });
+    expect(gone.rows.map((r) => r.label)).toEqual(['Save it again', 'Discard your edits']);
+    expect(gone.rows.map((r) => Boolean(r.armed))).toEqual([false, true]);
+    expect(gone.tabs).toBeUndefined();
+  });
+
+  it('the sub carries the time only when there is one', () => {
+    expect(vaultResolveCopy('edit', { title: 'Ideas', when: 'at 2:14 PM' }).sub).toBe(
+      '"Ideas" was changed somewhere else at 2:14 PM while you had unsaved edits. Nothing is lost until you choose.',
+    );
+    expect(vaultResolveCopy('edit', { title: 'Ideas' }).sub).toBe(
+      '"Ideas" was changed somewhere else while you had unsaved edits. Nothing is lost until you choose.',
+    );
+  });
+
+  it("the other version's time shows only when it is after the load and not in the future", () => {
+    const loadedAt = Date.parse('2026-09-27T10:00:00Z');
+    const now = Date.parse('2026-09-27T10:05:00Z');
+    expect(vaultResolveWhen('2026-09-27T09:59:00Z', loadedAt, now)).toBeUndefined();
+    expect(vaultResolveWhen('2026-09-27T10:00:00Z', loadedAt, now)).toBeUndefined();
+    expect(vaultResolveWhen('2026-09-27T11:00:00Z', loadedAt, now)).toBeUndefined();
+    expect(vaultResolveWhen('not a date', loadedAt, now)).toBeUndefined();
+    expect(vaultResolveWhen('2026-09-27T10:03:00Z', loadedAt, now)).toMatch(/^(at|on) /);
+  });
+
+  it('the replay toast never says offline, and names the note and the copy', () => {
+    const one = vaultReplayCopiesLine(['notes/Ideas (conflict 2026-09-27 1405).md']);
+    expect(one).toBe(
+      'Text you had not saved in "Ideas" is kept as "Ideas (conflict 2026-09-27 1405)", since the note changed elsewhere.',
+    );
+    expect(one).not.toMatch(/offline/i);
   });
 });

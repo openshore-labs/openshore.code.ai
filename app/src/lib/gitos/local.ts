@@ -9,7 +9,14 @@
 //   oscode.gitos.file.<resourceId>.<path>      -> { text, updatedAt }
 //   oscode.gitos.lease.<resourceId>            -> Lease
 import { storeDelete, storeGetJson, storeKeys, storeSetJson } from '../platform.js';
-import { isNotePath, type Lease, type StorageProvider, type StoredFileMeta } from './providers.js';
+import {
+  isNotePath,
+  type Lease,
+  type StorageProvider,
+  type StoredFileMeta,
+  type WriteGuard,
+  type WriteResult,
+} from './providers.js';
 
 const indexKey = (resourceId: string) => `oscode.gitos.index.${resourceId}`;
 const filePrefix = (resourceId: string) => `oscode.gitos.file.${resourceId}.`;
@@ -120,7 +127,9 @@ export const localProvider: StorageProvider = {
     return body ? { path, text: body.text, updatedAt: body.updatedAt } : undefined;
   },
 
-  async write(resourceId, path, text) {
+  // The guard is accepted and not yet enforced (Vault M1 F4; M2 adds the
+  // check), so this provider does not declare compareAndSwap.
+  async write(resourceId, path, text, _guard?: WriteGuard): Promise<WriteResult> {
     return chained(resourceId, async () => {
       const updatedAt = new Date().toISOString();
       await storeSetJson(fileKey(resourceId, path), { text, updatedAt });
@@ -128,7 +137,7 @@ export const localProvider: StorageProvider = {
       const meta: StoredFileMeta = { path, updatedAt, size: text.length };
       const files = byPath([...index.files.filter((f) => f.path !== path), meta]);
       await storeSetJson(indexKey(resourceId), { files });
-      return { path, text, updatedAt };
+      return { ok: true as const, file: { path, text, updatedAt } };
     });
   },
 

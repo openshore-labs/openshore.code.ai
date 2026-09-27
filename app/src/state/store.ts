@@ -301,7 +301,16 @@ import {
   disconnectRepoOAuth,
   resumeRepoOAuthFromLink,
 } from '../lib/gitos/repoOAuth.js';
-import { normalizeNotePath, noteTitle } from '../lib/vault.js';
+import { normalizeNotePath, noteFolder, noteTitle } from '../lib/vault.js';
+import { versionOf, type WriteGuard, type WriteResult } from '../lib/gitos/providers.js';
+import {
+  VAULT_GONE_REASON,
+  VAULT_NO_COPY_NAME_REASON,
+  vaultGoneToast,
+  vaultLeaveToast,
+  vaultReplayCopiesLine,
+  vaultResolveToast,
+} from '../lib/vaultCopy.js';
 import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
 import { readProjectSecrets, writeProjectSecrets } from '../lib/projectSecrets.js';
 import { bridge, type DesktopStatus, type PendingUpdate } from '../lib/electronBridge.js';
@@ -611,6 +620,45 @@ export function vaultHeldFor(held: VaultHeldDraft[], userId: string | undefined)
   return held.filter(
     (h) => h.providerId !== 'org' || (h.owner !== undefined && h.owner === userId),
   );
+}
+
+/** A vault note that changed somewhere else while this device had unsaved
+ *  edits in it (Vault M1, 1.1), waiting for the person to choose what to keep.
+ *  Only a provider that enforces compare-and-swap (the desktop folder, in M1)
+ *  raises one. While it is set, typing goes to the durable stash, never the
+ *  note, and the stash replay leaves that note alone. */
+export interface VaultConflict {
+  path: string;
+  target: VaultTargetRef;
+  /** 'changed': another version is there now (theirs). 'missing': the note
+   *  was moved or deleted somewhere else. */
+  kind: 'changed' | 'missing';
+  /** The text the editor loaded or last saved. */
+  base: string;
+  /** The version that text was (versionOf), the stash base while this is
+   *  open. Absent for a note the storage never held. */
+  baseVersion?: string;
+  /** What is in the note now ('changed' only). */
+  theirs?: StoredFile;
+  /** Keep both's name for the person's text, worked out once when the
+   *  conflict was found, so the name the sheet shows is the name written. */
+  copyPath: string;
+  /** When it was found, on this device's clock: the stamp in copyPath, and
+   *  the clock the next free copy name counts from. */
+  foundAt: number;
+  /** The person closed the sheet ("not now"): the card on the note stands in
+   *  for it until they reopen it or leave the note. */
+  deferred: boolean;
+  /** The other version changed again while this was open. */
+  again?: boolean;
+}
+
+/** What one choice in the resolve sheet did. `ok` false with `failed` means
+ *  the storage refused or did not answer, so nothing changed; without it, the
+ *  note changed again and the sheet shows the newest version. */
+export interface VaultResolveResult {
+  ok: boolean;
+  failed?: boolean;
 }
 
 /** What vaultMoveTo did. `ok` is true only when the vault now lives on the
@@ -965,7 +1013,30 @@ interface AppState {
    *  loaded from or last saved as, and '' while the provider does not hold the
    *  note yet: never this device's clock, since an offline draft records it as
    *  the version it was typed against. */
-  vaultNote?: { path: string; text: string; updatedAt: string; fresh?: boolean };
+  vaultNote?: {
+    path: string;
+    text: string;
+    updatedAt: string;
+    /** The provider's opaque version of `text` (StoredFile.version), when it
+     *  has one. versionOf(vaultNote) is the base a save is guarded with. */
+    version?: string;
+    fresh?: boolean;
+    /** When `text` was read or reloaded on this device (Date.now()), so the
+     *  resolve sheet shows the other version's time only when it is later. */
+    loadedAt?: number;
+    /** Bumped each time the store replaces `text` in place while the note
+     *  stays open (a calm reload, or a resolve choice), so the editor takes
+     *  the new text; `reloadedFrom` says which. */
+    reloaded?: number;
+    reloadedFrom?: 'elsewhere' | 'resolve';
+  };
+  /** A note that changed somewhere else under unsaved edits, waiting for the
+   *  person's choice (the resolve sheet). At most one at a time. */
+  vaultConflict?: VaultConflict;
+  /** A folder the Vault list should show next, set when the store closes a
+   *  note on its own (it was moved or deleted somewhere else). The screen
+   *  takes it once and clears it. */
+  vaultReturnFolder?: string;
   /** The last vault storage failure, cleared on any success. 'load' means the
    *  file list could not be read (show an offline state, not the first-run
    *  empty state); 'save' means a write failed and the draft was stashed for
@@ -1336,8 +1407,41 @@ interface AppState {
    *  in write mode. If it already exists, listed or not, just opens it. `at`
    *  pins the vault it lands in. */
   vaultCreate(path: string, content?: string, at?: VaultTargetRef): Promise<void>;
-  /** Close the open note (back to the tree). */
+  /** Close the open note (back to the tree). A conflict still open on it is
+   *  settled the lossless way first (vaultLeaveConflict). */
   vaultCloseNote(): void;
+  /** The editor's live text for the open note, so a re-check can tell a
+   *  clean draft (reload it in place) from a dirty one (ask). Not state:
+   *  nothing renders from it. */
+  vaultNoteDraft(path: string, text: string): void;
+  /** Look at the open note again after the folder watcher saw a change
+   *  (`paths`, or `tree` when it cannot say which), or when the window comes
+   *  back (focus). Same version: nothing. Changed with a clean draft: reload
+   *  in place. Changed under unsaved edits: raise vaultConflict. Gone: close
+   *  a clean note, or ask about a dirty one. Runs in the note's save chain, so
+   *  it never sees this device's own save half done. */
+  vaultRecheck(opts: {
+    reason: 'watch' | 'focus';
+    paths?: string[];
+    tree?: boolean;
+  }): Promise<void>;
+  /** The person's choice in the resolve sheet: 'both' (their text beside the
+   *  note as a conflict copy, the note shows the other version), 'mine' (their
+   *  text replaces it, or for a gone note is saved again), 'theirs' (the other
+   *  version, their edits dropped), 'discard' (a gone note's edits dropped).
+   *  `draft` is the editor's text now. */
+  vaultResolve(
+    choice: 'both' | 'mine' | 'theirs' | 'discard',
+    draft: string,
+  ): Promise<VaultResolveResult>;
+  /** Close the resolve sheet without choosing ('not now'), or bring it back. */
+  vaultDeferConflict(deferred: boolean): void;
+  /** Leaving a note with a choice still open: a changed note keeps both
+   *  (their text as the conflict copy), a gone note's text goes under Not
+   *  saved. Never recreates a note someone else moved or deleted. */
+  vaultLeaveConflict(): Promise<void>;
+  /** Take the folder the store asked the list to show (vaultReturnFolder). */
+  vaultTakeReturnFolder(): string | undefined;
   /** Write a note body and refresh the file list. `at` is the vault captured
    *  when the save was scheduled (vaultTargetRef); without it the save goes to
    *  the vault on screen now. */
@@ -3547,46 +3651,105 @@ export const useApp = create<AppState>((set, get, api) => {
     logEvent('vault_note_save_failed');
   }
 
+  // The one place a provider write happens (Vault M1, CTO F4): every save,
+  // replay, conflict copy, create, and move comes through here, and the guard
+  // is required. A provider with compareAndSwap enforces it and answers a
+  // conflict as a result; the others accept it and write (M2 adds their
+  // check), so their M0 stat-before-write guards stay around the calls.
+  function putVaultNote(
+    t: { provider: StorageProvider; resourceId: string },
+    path: string,
+    text: string,
+    guard: WriteGuard,
+  ): Promise<WriteResult> {
+    return t.provider.write(t.resourceId, path, text, guard);
+  }
+  // The guard for text typed against a version: replace only that version,
+  // or, when the storage never held the note, create it only while nothing
+  // has the name.
+  const guardFor = (base: string | undefined): WriteGuard =>
+    base ? { ifMatch: base } : { ifAbsent: true };
+  // A write that must land: a conflict from a provider that does not enforce
+  // the guard cannot happen, and one that does is handled before this.
+  function mustLand(r: WriteResult): StoredFile {
+    if (r.ok) return r.file;
+    throw new Error(
+      r.conflict === 'downloading'
+        ? 'Still downloading this note from your vault storage.'
+        : 'The note changed while it was being saved.',
+    );
+  }
+
+  // Put text beside a note as a keep-both copy under the first free conflict
+  // name ("Note (conflict 2026-09-27 1405).md", then " 2", " 3"), never over
+  // anything: a guarded provider refuses a taken name itself (ifAbsent), the
+  // others are asked first. Returns the copy's path, or undefined when no
+  // name was free after 20 tries.
+  async function writeConflictCopy(
+    t: VaultTarget,
+    path: string,
+    text: string,
+    when: Date,
+    first = vaultConflictCopyPath(path, when),
+  ): Promise<string | undefined> {
+    for (let n = 1; n <= 20; n++) {
+      const copy = n === 1 ? first : vaultConflictCopyPath(path, when, n);
+      if (!t.provider.compareAndSwap && (await t.provider.stat(t.resourceId, copy))) continue;
+      const r = await putVaultNote(t, copy, text, { ifAbsent: true });
+      if (r.ok) return r.file.path;
+      if (r.conflict !== 'exists') mustLand(r);
+    }
+    return undefined;
+  }
+
   // Put one stashed draft back, never over newer work. It returns to its own
   // path only while the provider still holds the version it was typed
   // against, or no file at all. When the note changed elsewhere since, both
   // are kept: the draft lands beside it as a conflict copy (its path is
-  // returned), and a body that already matches is simply done.
+  // returned), and a body that already matches is simply done. A guarded
+  // provider checks the version itself as it writes (compare-and-swap); the
+  // others are asked first, as in M0.
   async function replayVaultDraft(
     t: VaultTarget,
     e: VaultPendingEntry,
   ): Promise<string | undefined> {
-    const now = await t.provider.stat(t.resourceId, e.path);
-    let unchanged = e.base !== undefined && now?.updatedAt === e.base && !now.evicted;
     let current: StoredFile | undefined;
-    if (unchanged && t.providerId === 'org') {
-      // The team server compares revs, not times. Send the rev this text was
-      // typed against: after a relaunch the provider has forgotten it, and
-      // base 0 would set the unchanged note aside as a conflict copy. A draft
-      // stashed without one reads the note first, which teaches the provider
-      // its rev, and still writes only if it is the same version.
-      if (e.rev !== undefined) seedOrgVaultBaseRev(t.resourceId, e.path, e.rev);
-      else {
-        current = await t.provider.read(t.resourceId, e.path);
-        unchanged = current?.updatedAt === e.base;
+    if (t.provider.compareAndSwap) {
+      let r = await putVaultNote(t, e.path, e.text, guardFor(e.base));
+      // Gone since it was typed: the draft is the only copy of these words,
+      // so it comes back under its name, still never over anything.
+      if (!r.ok && r.conflict === 'missing')
+        r = await putVaultNote(t, e.path, e.text, guardFor(undefined));
+      if (r.ok) return undefined;
+      if (r.conflict === 'downloading') mustLand(r);
+      current = r.theirs;
+    } else {
+      const now = await t.provider.stat(t.resourceId, e.path);
+      let unchanged = e.base !== undefined && now?.updatedAt === e.base && !now.evicted;
+      if (unchanged && t.providerId === 'org') {
+        // The team server compares revs, not times. Send the rev this text was
+        // typed against: after a relaunch the provider has forgotten it, and
+        // base 0 would set the unchanged note aside as a conflict copy. A draft
+        // stashed without one reads the note first, which teaches the provider
+        // its rev, and still writes only if it is the same version.
+        if (e.rev !== undefined) seedOrgVaultBaseRev(t.resourceId, e.path, e.rev);
+        else {
+          current = await t.provider.read(t.resourceId, e.path);
+          unchanged = current?.updatedAt === e.base;
+        }
       }
-    }
-    if (!now || unchanged) {
-      await t.provider.write(t.resourceId, e.path, e.text);
-      return undefined;
+      if (!now || unchanged) {
+        mustLand(await putVaultNote(t, e.path, e.text, guardFor(e.base)));
+        return undefined;
+      }
+      current ??= now.evicted ? undefined : await t.provider.read(t.resourceId, e.path);
     }
     // An offline create nobody typed into is satisfied by the note existing.
     if (e.base === undefined && e.text === '') return undefined;
-    current ??= now.evicted ? undefined : await t.provider.read(t.resourceId, e.path);
     if (current?.text === e.text) return undefined;
-    const when = new Date();
-    for (let n = 1; n <= 20; n++) {
-      const copy = vaultConflictCopyPath(e.path, when, n);
-      if (await t.provider.stat(t.resourceId, copy)) continue;
-      await t.provider.write(t.resourceId, copy, e.text);
-      return copy;
-    }
-    throw new Error('No free name for the conflict copy.');
+    const copy = await writeConflictCopy(t, e.path, e.text, new Date());
+    if (!copy) throw new Error('No free name for the conflict copy.');
+    return copy;
   }
 
   // Replay the drafts stashed against this provider and resource, and for the
@@ -3597,9 +3760,21 @@ export const useApp = create<AppState>((set, get, api) => {
   async function replayVaultPending(t: VaultTarget): Promise<void> {
     let mine: VaultPendingEntry[];
     try {
+      // A note with a choice open is the person's to settle: its stashed
+      // text never replays under them (CX 1.1).
+      const open = get().vaultConflict;
       mine = await editVaultPending((p) =>
         Object.values(p).filter(
-          (e) => e.providerId === t.providerId && e.resourceId === t.resourceId && speaksNow(e),
+          (e) =>
+            e.providerId === t.providerId &&
+            e.resourceId === t.resourceId &&
+            speaksNow(e) &&
+            !(
+              open &&
+              open.path === e.path &&
+              open.target.providerId === e.providerId &&
+              open.target.resourceId === e.resourceId
+            ),
         ),
       );
     } catch {
@@ -3643,11 +3818,7 @@ export const useApp = create<AppState>((set, get, api) => {
         const files = await listVaultNotes(t).catch(() => undefined);
         if (files) set({ vaultFiles: files });
       }
-      get().showToast(
-        copies.length === 1
-          ? `An offline edit came back after its note changed elsewhere, so both are kept. Yours is "${noteTitle(copies[0]!)}".`
-          : `${copies.length} offline edits came back after their notes changed elsewhere, so both versions are kept. Yours are marked (conflict).`,
-      );
+      get().showToast(vaultReplayCopiesLine(copies));
       logEvent('vault_draft_kept_both', { count: copies.length });
     }
     if (held) {
@@ -3665,12 +3836,14 @@ export const useApp = create<AppState>((set, get, api) => {
   }
 
   // The version of a note an edit is typed against: the open note's provider
-  // updatedAt, or none while the provider does not hold the note yet. A
+  // version (versionOf: its opaque version, else its updatedAt), or none while
+  // the provider does not hold the note yet. A save is guarded with it, and a
   // stashed draft carries it so its replay can tell whether the note changed
-  // elsewhere since (data-1).
+  // elsewhere since (data-1, Vault M1 F1).
   function vaultBaseOf(t: VaultTargetRef, path: string): string | undefined {
     const open = get().vaultNote;
-    return isActiveVault(t) && open?.path === path && open.updatedAt ? open.updatedAt : undefined;
+    if (!isActiveVault(t) || open?.path !== path) return undefined;
+    return versionOf(open) || undefined;
   }
 
   // Saves run one at a time per note (provider, resource, and path), each
@@ -3682,6 +3855,195 @@ export const useApp = create<AppState>((set, get, api) => {
   // resolves to the version the note is at when it is done, as far as this
   // device knows, for the next link when the note has closed meanwhile.
   const vaultSaveChains = new Map<string, Promise<string | undefined>>();
+
+  // Run one step as the next link of a note's save chain, so it never sees
+  // this device's own save half done (a re-check, a resolve choice).
+  async function inSaveChain<T>(
+    t: VaultTargetRef,
+    path: string,
+    step: () => Promise<T>,
+  ): Promise<T> {
+    const key = vaultKey(t, path);
+    const before = vaultSaveChains.get(key);
+    const run = (async () => {
+      const carried = before ? await before : undefined;
+      const out = await step();
+      return { out, version: vaultBaseOf(t, path) ?? carried };
+    })();
+    const link = run.then(
+      (r) => r.version,
+      () => undefined,
+    );
+    vaultSaveChains.set(key, link);
+    try {
+      return (await run).out;
+    } finally {
+      if (vaultSaveChains.get(key) === link) vaultSaveChains.delete(key);
+    }
+  }
+
+  // The editor's live text for the open note (vaultNoteDraft), so a re-check
+  // can tell a clean draft from a dirty one. Not state: nothing renders it.
+  let vaultLiveDraft: { path: string; text: string } | undefined;
+  function draftOf(path: string): string | undefined {
+    if (vaultLiveDraft?.path === path) return vaultLiveDraft.text;
+    const open = get().vaultNote;
+    return open?.path === path ? open.text : undefined;
+  }
+
+  // Replace the open note's text in place, keeping it open: a calm reload of
+  // a clean note, or a resolve choice that shows the other version. The
+  // editor takes the new text when `reloaded` moves.
+  function reloadOpenNote(file: StoredFile, from: 'elsewhere' | 'resolve'): void {
+    const open = get().vaultNote;
+    if (!open || open.path !== file.path) return;
+    vaultLiveDraft = { path: file.path, text: file.text };
+    set({
+      vaultNote: {
+        ...open,
+        text: file.text,
+        updatedAt: file.updatedAt,
+        version: file.version,
+        fresh: undefined,
+        loadedAt: Date.now(),
+        reloaded: (open.reloaded ?? 0) + 1,
+        reloadedFrom: from,
+      },
+    });
+  }
+
+  // CTO F3: look at the open note once. Same version: nothing. Gone: close a
+  // clean note back to its folder, or ask about a dirty one. Changed: adopt
+  // the version silently when the text is what this device loaded (a touch,
+  // an identical rewrite) or what the person already typed; reload a clean
+  // draft in place; ask about a dirty one. While a choice is open, a newer
+  // other version updates it in place.
+  async function recheckOpenNote(target: VaultTarget, path: string): Promise<void> {
+    const open = get().vaultNote;
+    if (!open || open.path !== path || !isActiveVault(target)) return;
+    const base = vaultBaseOf(target, path);
+    let meta: StoredFileMeta | undefined;
+    try {
+      meta = await target.provider.stat(target.resourceId, path);
+    } catch {
+      return; // Not answering now; the next event or focus looks again.
+    }
+    const conflict = get().vaultConflict;
+    const pending = conflict?.path === path ? conflict : undefined;
+    if (!meta) {
+      if (pending) {
+        if (pending.kind !== 'missing') {
+          set({ vaultConflict: { ...pending, kind: 'missing', theirs: undefined, again: true } });
+        }
+        return;
+      }
+      // A note this storage never held (an offline create) is not gone.
+      if (!base) return;
+      const draft = draftOf(path) ?? open.text;
+      if (draft === open.text) {
+        vaultLiveDraft = undefined;
+        set({ vaultNote: undefined, vaultReturnFolder: noteFolder(path) });
+        const listing = await listVaultNotes(target).catch(() => undefined);
+        if (listing && isActiveVault(target)) set({ vaultFiles: listing });
+        get().showToast(vaultGoneToast(noteTitle(path)));
+        logEvent('vault_note_gone', { dirty: false });
+        return;
+      }
+      raiseVaultConflict(target, path, 'missing', undefined, base);
+      await stashConflictText(target, path, draft, base);
+      return;
+    }
+    const seen = pending?.theirs ? versionOf(pending.theirs) : base;
+    if (seen && versionOf(meta) === seen) return;
+    if (meta.evicted) return;
+    let theirs: StoredFile | undefined;
+    try {
+      theirs = await target.provider.read(target.resourceId, path);
+    } catch {
+      return;
+    }
+    if (!theirs || get().vaultNote?.path !== path) return;
+    if (pending) {
+      // Still undecided: the sheet shows this newest version, and says so.
+      set({ vaultConflict: { ...pending, kind: 'changed', theirs, again: true } });
+      return;
+    }
+    const now = get().vaultNote!;
+    const draft = draftOf(path) ?? now.text;
+    if (theirs.text === now.text || theirs.text === draft) {
+      // Nothing to ask: the bytes are what this device loaded, or what the
+      // person typed. Adopt the version (and a draft that matches reads clean).
+      set({
+        vaultNote: {
+          ...now,
+          text: theirs.text,
+          updatedAt: theirs.updatedAt,
+          version: theirs.version,
+        },
+      });
+      return;
+    }
+    if (draft === now.text) {
+      reloadOpenNote(theirs, 'elsewhere');
+      logEvent('vault_note_reloaded');
+      return;
+    }
+    raiseVaultConflict(target, path, 'changed', theirs, base);
+    await stashConflictText(target, path, draft, base);
+  }
+
+  // Re-list the tree, coalesced, when the watcher saw a change it cannot
+  // name, a note the list does not have, or the window came back.
+  let relistTimer: ReturnType<typeof setTimeout> | undefined;
+  function scheduleRelist(): void {
+    if (relistTimer) clearTimeout(relistTimer);
+    relistTimer = setTimeout(() => {
+      relistTimer = undefined;
+      void get().vaultRefresh();
+    }, 250);
+  }
+
+  // Settle a choice still open on the note being left, the lossless way: a
+  // changed note keeps both (the text as the conflict copy named when it was
+  // found), a gone note's text goes under Not saved. Clears the conflict at
+  // once, so the leaving itself is never blocked; the write follows.
+  async function leaveVaultConflict(): Promise<void> {
+    const c = get().vaultConflict;
+    if (!c) return;
+    const text = draftOf(c.path) ?? c.base;
+    set({ vaultConflict: undefined });
+    const target = vaultTargetFrom(c.target);
+    const title = noteTitle(c.path);
+    logEvent('vault_conflict_choice', { choice: 'left', kind: c.kind });
+    if (!target) return;
+    if (c.kind === 'missing') {
+      await holdVaultDraft(c.target, c.path, text, VAULT_GONE_REASON);
+      await dropStash(c.target, c.path);
+      set({ vaultError: 'held' });
+      get().showToast(vaultLeaveToast('missing', { title, copyTitle: title }));
+      return;
+    }
+    let copy: string | undefined;
+    try {
+      copy = await writeConflictCopy(target, c.path, text, new Date(c.foundAt), c.copyPath);
+    } catch (err) {
+      // The stash still holds the text; the replay makes the same copy later.
+      await rescueVaultDraft(target, c.path, text, c.baseVersion, undefined, err);
+      return;
+    }
+    if (!copy) {
+      await holdVaultDraft(c.target, c.path, text, VAULT_NO_COPY_NAME_REASON);
+      await dropStash(c.target, c.path);
+      set({ vaultError: 'held' });
+      return;
+    }
+    await dropStash(c.target, c.path);
+    if (isActiveVault(target)) {
+      const listing = await listVaultNotes(target).catch(() => undefined);
+      if (listing) set({ vaultFiles: listing });
+    }
+    get().showToast(vaultLeaveToast('edit', { title, copyTitle: noteTitle(copy) }));
+  }
 
   async function saveVaultNote(
     target: VaultTarget,
@@ -3704,13 +4066,27 @@ export const useApp = create<AppState>((set, get, api) => {
       await keepUnsentTeamText(target, path, text, base, rev);
       return base;
     }
-    let saved: StoredFile;
+    let result: WriteResult;
     try {
-      saved = await target.provider.write(target.resourceId, path, text);
+      result = await putVaultNote(target, path, text, guardFor(base));
+      // The note moved on under this save, but only in its metadata (a touch,
+      // a sync client rewriting the same bytes): theirs is the text this
+      // device loaded or last saved, so adopt its version and save again,
+      // with nothing to ask (F1). Bounded, so a busy writer cannot spin it.
+      for (let tries = 0; tries < 3 && !result.ok && result.theirs; tries++) {
+        const theirs = result.theirs;
+        const open = get().vaultNote;
+        const loaded = isActiveVault(target) && open?.path === path ? open.text : undefined;
+        if (result.conflict !== 'changed' || theirs.text !== loaded) break;
+        result = await putVaultNote(target, path, text, { ifMatch: versionOf(theirs) });
+      }
+      if (!result.ok && result.conflict === 'downloading') mustLand(result);
     } catch (err) {
       await rescueVaultDraft(target, path, text, base, rev, err);
       return base;
     }
+    if (!result.ok) return settleSaveConflict(target, path, text, base, result);
+    const saved = result.file;
     // This save supersedes any older draft stashed for the same note, so
     // drop it before the replay below: replaying it now would put the older
     // words back over these (data-1). Saves to one note run one at a time,
@@ -3731,7 +4107,14 @@ export const useApp = create<AppState>((set, get, api) => {
         vaultFiles: listing ?? get().vaultFiles,
         vaultNote:
           get().vaultNote?.path === path
-            ? { path, text: saved.text, updatedAt: saved.updatedAt }
+            ? {
+                ...get().vaultNote!,
+                path,
+                text: saved.text,
+                updatedAt: saved.updatedAt,
+                version: saved.version,
+                fresh: undefined,
+              }
             : get().vaultNote,
         vaultError: undefined,
       });
@@ -3739,7 +4122,124 @@ export const useApp = create<AppState>((set, get, api) => {
     // A successful write means the provider is back; flush the backlog.
     await replayVaultPending(target);
     logEvent('vault_note_save');
-    return saved.updatedAt;
+    return versionOf(saved);
+  }
+
+  // Stash text for a note while a choice about it is open, stamped with the
+  // version it was typed against, so a crash or a quit loses nothing (the
+  // next launch's replay turns it into a keep-both copy). Never the note.
+  async function stashConflictText(
+    t: VaultTargetRef,
+    path: string,
+    text: string,
+    base: string | undefined,
+  ): Promise<void> {
+    await editVaultPending((p) => {
+      p[vaultKey(t, path)] = pendingEntry(t, path, text, base, undefined);
+    }).catch(() => {});
+  }
+  async function dropStash(t: VaultTargetRef, path: string): Promise<void> {
+    await editVaultPending((p) => {
+      delete p[vaultKey(t, path)];
+    }).catch(() => {});
+  }
+
+  // Raise the choice for the open note: theirs is what is there now (or
+  // nothing, when it is gone). The person's text goes to the stash, and the
+  // screen opens the sheet at their next pause.
+  function raiseVaultConflict(
+    t: VaultTargetRef,
+    path: string,
+    kind: VaultConflict['kind'],
+    theirs: StoredFile | undefined,
+    baseVersion: string | undefined,
+  ): void {
+    const open = get().vaultNote;
+    const now = Date.now();
+    const { providerId, resourceId, owner } = t;
+    set({
+      vaultConflict: {
+        path,
+        target: owner ? { providerId, resourceId, owner } : { providerId, resourceId },
+        kind,
+        base: open?.path === path ? open.text : '',
+        ...(baseVersion ? { baseVersion } : {}),
+        ...(theirs ? { theirs } : {}),
+        copyPath: vaultConflictCopyPath(path, new Date(now)),
+        foundAt: now,
+        deferred: false,
+      },
+    });
+    logEvent('vault_conflict_found', { kind });
+  }
+
+  // A guarded save that found the note moved on. The version this device
+  // loaded or saved is not there any more, so nothing was written. When
+  // theirs is exactly this text there is nothing to ask: adopt its version.
+  // On the open note, the person chooses (the resolve sheet). On a note
+  // that has closed meanwhile nobody is there to ask, so the lossless way
+  // settles it: the text lands beside the note as a conflict copy, or, for a
+  // note that is gone, under Not saved (never recreated, since nobody chose
+  // that write).
+  async function settleSaveConflict(
+    target: VaultTarget,
+    path: string,
+    text: string,
+    base: string | undefined,
+    result: Extract<WriteResult, { ok: false }>,
+  ): Promise<string | undefined> {
+    const theirs = result.theirs;
+    const isOpen = isActiveVault(target) && get().vaultNote?.path === path;
+    if (theirs && theirs.text === text) {
+      await dropStash(target, path);
+      if (isOpen) {
+        set({
+          vaultNote: {
+            ...get().vaultNote!,
+            text: theirs.text,
+            updatedAt: theirs.updatedAt,
+            version: theirs.version,
+          },
+        });
+      }
+      return versionOf(theirs);
+    }
+    if (isOpen) {
+      const open = get().vaultConflict;
+      if (!open || open.path !== path) {
+        raiseVaultConflict(
+          target,
+          path,
+          result.conflict === 'missing' ? 'missing' : 'changed',
+          theirs,
+          base,
+        );
+      }
+      await stashConflictText(target, path, text, base);
+      return base;
+    }
+    if (result.conflict === 'missing' || !theirs) {
+      await dropStash(target, path);
+      const kept = await holdVaultDraft(target, path, text, VAULT_GONE_REASON);
+      set({ vaultError: 'held' });
+      get().showToast(`${vaultGoneToast(noteTitle(path))} ${heldLine(kept)}`);
+      return base;
+    }
+    const copy = await writeConflictCopy(target, path, text, new Date());
+    await dropStash(target, path);
+    if (!copy) {
+      const kept = await holdVaultDraft(target, path, text, VAULT_NO_COPY_NAME_REASON);
+      set({ vaultError: 'held' });
+      get().showToast(`Not saved. ${heldLine(kept)}`);
+      return versionOf(theirs);
+    }
+    if (isActiveVault(target)) {
+      const listing = await listVaultNotes(target).catch(() => undefined);
+      if (listing) set({ vaultFiles: listing });
+    }
+    get().showToast(vaultReplayCopiesLine([copy]));
+    logEvent('vault_draft_kept_both', { count: 1 });
+    return versionOf(theirs);
   }
 
   // Team note bodies cached for backlinks belong to the session that read
@@ -6697,6 +7197,9 @@ export const useApp = create<AppState>((set, get, api) => {
     async setVaultScope(scope) {
       if (scope === get().vaultScope) return;
       if (scope === 'team' && !get().teamVaultAvailable()) return;
+      // Leaving the note with a choice open keeps both (CS 1c).
+      await leaveVaultConflict();
+      vaultLiveDraft = undefined;
       set({ vaultScope: scope, vaultNote: undefined, vaultFiles: [] });
       logEvent('vault_scope', { scope });
       await get().vaultRefresh();
@@ -6829,7 +7332,18 @@ export const useApp = create<AppState>((set, get, api) => {
         }
       }
       if (!isActiveVault(target)) return;
-      set({ vaultNote: existing ?? { path: openPath, text: '', updatedAt: '' } });
+      // Opening another note leaves this one: a choice still open on it keeps
+      // both (CS 1c).
+      if (get().vaultConflict && get().vaultConflict?.path !== openPath) {
+        await leaveVaultConflict();
+      }
+      vaultLiveDraft = undefined;
+      set({
+        vaultNote: {
+          ...(existing ?? { path: openPath, text: '', updatedAt: '' }),
+          loadedAt: Date.now(),
+        },
+      });
       logEvent('vault_note_open', { fresh: !existing });
     },
 
@@ -6886,17 +7400,27 @@ export const useApp = create<AppState>((set, get, api) => {
       // fresh and opens in the editor.
       if (reachable) {
         try {
-          const saved = await target.provider.write(target.resourceId, normalized, content);
+          // Never over anything: a note that appeared under this name since
+          // the stat above is opened, not replaced (ifAbsent, CTO F4).
+          const result = await putVaultNote(target, normalized, content, { ifAbsent: true });
+          if (!result.ok && result.conflict === 'exists') {
+            if (isActiveVault(target)) await get().vaultOpen(normalized);
+            return;
+          }
+          const saved = mustLand(result);
           logEvent('vault_note_create');
           if (!isActiveVault(target)) return;
           const listing = await listVaultNotes(target).catch(() => undefined);
+          vaultLiveDraft = undefined;
           set({
             vaultFiles: listing ?? get().vaultFiles,
             vaultNote: {
               path: normalized,
               text: saved.text,
               updatedAt: saved.updatedAt,
+              version: saved.version,
               fresh: !seeded,
+              loadedAt: Date.now(),
             },
             vaultError: undefined,
           });
@@ -6943,12 +7467,150 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     vaultCloseNote() {
+      // Leaving the note with a choice open keeps both (CS 1c); the conflict
+      // clears at once and the copy is written after.
+      void leaveVaultConflict();
+      vaultLiveDraft = undefined;
       set({ vaultNote: undefined });
+    },
+
+    vaultNoteDraft(path, text) {
+      vaultLiveDraft = { path, text };
+    },
+
+    async vaultRecheck({ reason, paths, tree }) {
+      const target = vaultTarget();
+      if (!target) return;
+      const open = get().vaultNote;
+      // Only a guarded provider can see and settle a change under the
+      // editor (the desktop folder, in M1); the others keep M0's behavior.
+      if (
+        open &&
+        target.provider.compareAndSwap &&
+        (reason === 'focus' || tree || paths?.includes(open.path))
+      ) {
+        await inSaveChain(target, open.path, () => recheckOpenNote(target, open.path));
+      }
+      const listed = new Set(get().vaultFiles.map((f) => f.path));
+      if (reason === 'focus' || tree || paths?.some((p) => !listed.has(p))) scheduleRelist();
+    },
+
+    async vaultResolve(choice, draft) {
+      const c = get().vaultConflict;
+      if (!c) return { ok: false };
+      const target = vaultTargetFrom(c.target);
+      if (!target) return { ok: false, failed: true };
+      const title = noteTitle(c.path);
+      const done = async (toast: string) => {
+        set({ vaultConflict: undefined });
+        await dropStash(c.target, c.path);
+        get().showToast(toast);
+        logEvent('vault_conflict_choice', { choice, kind: c.kind });
+        return { ok: true };
+      };
+      return inSaveChain(target, c.path, async (): Promise<VaultResolveResult> => {
+        try {
+          if (choice === 'theirs' && c.theirs) {
+            reloadOpenNote(c.theirs, 'resolve');
+            return done(vaultResolveToast('theirs', { title }));
+          }
+          if (choice === 'discard') {
+            vaultLiveDraft = undefined;
+            set({ vaultNote: undefined, vaultReturnFolder: noteFolder(c.path) });
+            return done(vaultResolveToast('discard', { title }));
+          }
+          if (choice === 'both' && c.theirs) {
+            const copy = await writeConflictCopy(
+              target,
+              c.path,
+              draft,
+              new Date(c.foundAt),
+              c.copyPath,
+            );
+            if (!copy) {
+              await holdVaultDraft(c.target, c.path, draft, VAULT_NO_COPY_NAME_REASON);
+              set({ vaultError: 'held' });
+            }
+            reloadOpenNote(c.theirs, 'resolve');
+            const listing = await listVaultNotes(target).catch(() => undefined);
+            if (listing) set({ vaultFiles: listing });
+            return done(
+              copy
+                ? vaultResolveToast('both', { title, copyTitle: noteTitle(copy) })
+                : `Not saved. ${heldLine(true)}`,
+            );
+          }
+          if (choice === 'mine') {
+            const guard: WriteGuard = c.theirs
+              ? { ifMatch: versionOf(c.theirs) }
+              : { ifAbsent: true };
+            const r = await putVaultNote(target, c.path, draft, guard);
+            if (!r.ok) {
+              if (r.conflict === 'downloading') return { ok: false, failed: true };
+              // It changed again (or came back): the sheet shows what is
+              // there now, and the person chooses again.
+              const theirs = r.theirs ?? (await target.provider.read(target.resourceId, c.path));
+              set({
+                vaultConflict: theirs
+                  ? { ...c, kind: 'changed', theirs, again: true }
+                  : { ...c, kind: 'missing', theirs: undefined, again: true },
+              });
+              return { ok: false };
+            }
+            const saved = r.file;
+            const open = get().vaultNote;
+            if (open?.path === c.path) {
+              set({
+                vaultNote: {
+                  ...open,
+                  text: saved.text,
+                  updatedAt: saved.updatedAt,
+                  version: saved.version,
+                },
+              });
+            }
+            const listing = await listVaultNotes(target).catch(() => undefined);
+            if (listing) set({ vaultFiles: listing });
+            return done(vaultResolveToast('mine', { title, missing: c.kind === 'missing' }));
+          }
+          return { ok: false };
+        } catch {
+          return { ok: false, failed: true };
+        }
+      });
+    },
+
+    vaultDeferConflict(deferred) {
+      const c = get().vaultConflict;
+      if (c && c.deferred !== deferred) set({ vaultConflict: { ...c, deferred } });
+    },
+
+    async vaultLeaveConflict() {
+      await leaveVaultConflict();
+    },
+
+    vaultTakeReturnFolder() {
+      const folder = get().vaultReturnFolder;
+      if (folder !== undefined) set({ vaultReturnFolder: undefined });
+      return folder;
     },
 
     async vaultSave(path, text, at) {
       const target = vaultTargetFrom(at);
       if (!target) return;
+      // While a choice about this note is open, nothing typed is written to
+      // it: the text goes to the durable stash, stamped with the version it
+      // was typed against (CX 1.1).
+      const c = get().vaultConflict;
+      if (
+        c &&
+        c.path === path &&
+        c.target.providerId === target.providerId &&
+        c.target.resourceId === target.resourceId
+      ) {
+        await stashConflictText(target, path, text, c.baseVersion);
+        return;
+      }
       const key = vaultKey(target, path);
       // The version at call time, used only when the note has closed and no
       // earlier save for it says more.
@@ -7174,7 +7836,16 @@ export const useApp = create<AppState>((set, get, api) => {
           (await target.list(VAULT_RESOURCE_ID)).map((f) => f.path.toLowerCase()),
         );
         const when = new Date();
+        const at = { provider: target, resourceId: VAULT_RESOURCE_ID };
         for (const note of notes) {
+          let n = 0;
+          // The next conflict name the target has not shown.
+          const nextFree = (): string => {
+            let dest: string;
+            do dest = vaultConflictCopyPath(note.path, when, ++n);
+            while (taken.has(dest.toLowerCase()));
+            return dest;
+          };
           let dest = note.path;
           if (taken.has(note.path.toLowerCase())) {
             const theirs = await target.read(VAULT_RESOURCE_ID, note.path);
@@ -7182,12 +7853,32 @@ export const useApp = create<AppState>((set, get, api) => {
               landed.push(note.path);
               continue;
             }
-            let n = 1;
-            dest = vaultConflictCopyPath(note.path, when);
-            while (taken.has(dest.toLowerCase()))
-              dest = vaultConflictCopyPath(note.path, when, ++n);
+            dest = nextFree();
           }
-          const saved = await target.write(VAULT_RESOURCE_ID, dest, note.text);
+          // Every copy is a create (ifAbsent): a name the listing did not
+          // show but the target holds (a writer landing mid-move) is never
+          // replaced; the same text there is done, different text forks.
+          let saved: StoredFile | undefined;
+          let same = false;
+          for (let tries = 0; tries < 20; tries++) {
+            const r = await putVaultNote(at, dest, note.text, { ifAbsent: true });
+            if (r.ok) {
+              saved = r.file;
+              break;
+            }
+            if (r.conflict !== 'exists') mustLand(r);
+            taken.add(dest.toLowerCase());
+            if (r.theirs?.text === note.text) {
+              same = true;
+              break;
+            }
+            dest = nextFree();
+          }
+          if (same) {
+            landed.push(dest);
+            continue;
+          }
+          if (!saved) throw new Error('No free name for the moved copy.');
           created.push(saved.path);
           taken.add(saved.path.toLowerCase());
           landed.push(saved.path);

@@ -411,3 +411,202 @@ export function vaultDriveCard(
   }
   return { action: { kind: 'move', label: `Move to ${exit}` } };
 }
+
+// ---- Resolve (1.1) ----------------------------------------------------------
+// A note that changed somewhere else while the person had unsaved edits in it
+// (Creative Studio 1a to 1f). The two sides are "yours" and "the other
+// version"; the sheet never names a writer it cannot prove (not the agent,
+// not Obsidian, not another device), never calls either version newer or
+// older, and never says "disk". "Somewhere else" is the source phrase. The
+// words it must never use are pinned in test/vaultCopy.test.ts.
+
+/** Which question the resolve sheet asks: two versions of a note ('edit'), or
+ *  a note that is gone while it held unsaved edits ('missing'). */
+export type VaultResolveMode = 'edit' | 'missing';
+
+/** One choice in the resolve sheet. `armed` is the label a destructive row
+ *  wears after its first tap; a second tap commits. */
+export interface VaultResolveRow {
+  choice: 'both' | 'mine' | 'theirs' | 'discard';
+  label: string;
+  sub: string;
+  armed?: string;
+  primary?: boolean;
+}
+
+export interface VaultResolveCopy {
+  title: string;
+  sub: string;
+  /** The compare tabs and legend, in edit mode only. */
+  tabs?: { changes: string; mine: string; theirs: string };
+  legend?: { mine: string; theirs: string };
+  /** Screen-reader prefixes on a changed compare line. */
+  srPrefix?: { mine: string; theirs: string };
+  rows: VaultResolveRow[];
+  failure: string;
+}
+
+/** The other version's own time, as the sheet may show it: only when it is
+ *  later than the moment this note was loaded here, and not in the future (a
+ *  sync app can stamp an older time). Today "at 2:14 PM", another day "on
+ *  Sep 27, 2:14 PM"; undefined otherwise. */
+export function vaultResolveWhen(
+  updatedAt: string,
+  loadedAt: number,
+  now = Date.now(),
+): string | undefined {
+  const t = new Date(updatedAt);
+  const ms = t.getTime();
+  if (Number.isNaN(ms) || ms <= loadedAt || ms > now + 60_000) return undefined;
+  const today = new Date(now).toDateString() === t.toDateString();
+  return today
+    ? `at ${t.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+    : `on ${t.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`;
+}
+
+/** Every line of the resolve sheet for one note. `when` comes from
+ *  vaultResolveWhen and is left out when it is undefined. */
+export function vaultResolveCopy(
+  mode: VaultResolveMode,
+  opts: { title: string; when?: string },
+): VaultResolveCopy {
+  const { title, when } = opts;
+  if (mode === 'missing') {
+    return {
+      title: 'This note is gone',
+      sub: `"${title}" was moved or deleted somewhere else while you had unsaved edits. Your text is still here.`,
+      rows: [
+        {
+          choice: 'mine',
+          label: 'Save it again',
+          sub: `Puts your text back as "${title}".`,
+          primary: true,
+        },
+        {
+          choice: 'discard',
+          label: 'Discard your edits',
+          sub: 'Closes the note without saving.',
+          armed: 'Really discard your edits? Tap to confirm.',
+        },
+      ],
+      failure: VAULT_RESOLVE_FAILED,
+    };
+  }
+  return {
+    title: 'Two versions of this note',
+    sub: `"${title}" was changed somewhere else${when ? ` ${when}` : ''} while you had unsaved edits. Nothing is lost until you choose.`,
+    tabs: { changes: 'Changes', mine: 'Yours', theirs: 'Other version' },
+    legend: { mine: 'Only in yours', theirs: 'Only in the other version' },
+    srPrefix: { mine: 'Yours: ', theirs: 'Other version: ' },
+    rows: [
+      {
+        choice: 'both',
+        label: 'Keep both',
+        sub: 'Yours is saved beside it, with "conflict" and the time in its name.',
+        primary: true,
+      },
+      {
+        choice: 'mine',
+        label: 'Keep yours',
+        sub: 'Yours replaces the other version.',
+        armed: 'Really replace it? Tap to confirm.',
+      },
+      {
+        choice: 'theirs',
+        label: 'Keep the other version',
+        sub: 'Your unsaved edits are discarded.',
+        armed: 'Really discard your edits? Tap to confirm.',
+      },
+    ],
+    failure: VAULT_RESOLVE_FAILED,
+  };
+}
+
+/** The sheet's line when a choice did not go through. */
+export const VAULT_RESOLVE_FAILED =
+  'Your vault storage did not take that, so nothing changed. Try again.';
+
+/** Under the sub, when the other version changed again while the sheet was up. */
+export const VAULT_RESOLVE_AGAIN = 'It changed again while this was open.';
+
+/** The compare pane when the two versions differ only in whitespace. */
+export const VAULT_RESOLVE_SAME = 'The two versions differ only in spacing or line endings.';
+
+/** The toast after a choice lands. */
+export function vaultResolveToast(
+  choice: 'both' | 'mine' | 'theirs' | 'discard',
+  opts: { title: string; copyTitle?: string; missing?: boolean },
+): string {
+  switch (choice) {
+    case 'both':
+      return `Kept both. Yours is "${opts.copyTitle ?? opts.title}".`;
+    case 'mine':
+      return opts.missing ? `Saved "${opts.title}" again.` : 'Kept yours.';
+    case 'theirs':
+      return 'Kept the other version.';
+    case 'discard':
+      return 'Edits discarded.';
+  }
+}
+
+/** The standing card on the note while a choice waits (the sheet was closed). */
+export function vaultConflictCard(mode: VaultResolveMode): {
+  title: string;
+  sub: string;
+  action: string;
+} {
+  return mode === 'missing'
+    ? {
+        title: 'This note is gone',
+        sub: 'Your text stays here, unsaved, until you choose.',
+        action: 'Choose what to do',
+      }
+    : {
+        title: 'Two versions of this note',
+        sub: 'Your edits stay here, unsaved, until you choose.',
+        action: 'Choose a version',
+      };
+}
+
+/** The toast when the person leaves the note before choosing. */
+export function vaultLeaveToast(
+  mode: VaultResolveMode,
+  opts: { title: string; copyTitle: string },
+): string {
+  return mode === 'missing'
+    ? `"${opts.title}" was gone, so your text is kept under Not saved.`
+    : `You left before choosing, so both are kept. Yours is "${opts.copyTitle}".`;
+}
+
+/** The Not saved reason for text whose note was moved or deleted. */
+export const VAULT_GONE_REASON =
+  'The note was moved or deleted somewhere else before this text was saved.';
+
+/** The Not saved reason when no conflict-copy name was free after 20 tries. */
+export const VAULT_NO_COPY_NAME_REASON =
+  'No free name was left for your copy, so the text is kept here.';
+
+/** The toast when a note with no unsaved edits is moved or deleted somewhere
+ *  else: it closes back to its folder. */
+export function vaultGoneToast(title: string): string {
+  return `"${title}" is no longer in your vault. It was moved or deleted somewhere else.`;
+}
+
+/** The quiet suffix on a note's meta line after a clean reload in place. No
+ *  toast: the person did nothing, and nothing failed. */
+export const VAULT_UPDATED_SUFFIX = ' · Updated from elsewhere';
+
+/** The toast after stashed text came back to a note that changed elsewhere
+ *  and was kept beside it (the M0 replay, CX 1.1: never "offline", since the
+ *  text may never have been offline). */
+export function vaultReplayCopiesLine(copies: string[]): string {
+  return copies.length === 1
+    ? `Text you had not saved in "${noteTitle(copyOrigin(copies[0]!))}" is kept as "${noteTitle(copies[0]!)}", since the note changed elsewhere.`
+    : `Text you had not saved in ${copies.length} notes is kept beside them, each marked (conflict), since those notes changed elsewhere.`;
+}
+
+// The note a conflict copy stands beside: "Ideas (conflict 2026-09-27 1405).md"
+// comes from "Ideas.md".
+function copyOrigin(copy: string): string {
+  return copy.replace(/ \(conflict \d{4}-\d{2}-\d{2} \d{4}( \d+)?\)(\.md)$/i, '$2');
+}

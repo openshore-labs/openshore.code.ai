@@ -16,7 +16,13 @@
 // design; when there is no session it fails with a clear message rather than
 // pretending to hold bytes it cannot reach.
 import { isConfigured, rpc, select } from '../supabase.js';
-import type { Lease, StorageProvider, StoredFile, StoredFileMeta } from './providers.js';
+import type {
+  Lease,
+  StorageProvider,
+  StoredFileMeta,
+  WriteGuard,
+  WriteResult,
+} from './providers.js';
 
 interface NoteRow {
   path: string;
@@ -182,7 +188,9 @@ export const orgVaultProvider: StorageProvider = {
     return { path: r.path, text: r.body, updatedAt: r.updated_at };
   },
 
-  async write(resourceId, path, text) {
+  // The guard is accepted and not yet enforced (Vault M1 F4): the server
+  // resolves concurrency with its own rev, and M2 maps that to the guard.
+  async write(resourceId, path, text, _guard?: WriteGuard): Promise<WriteResult> {
     // Checked here, before the send, so an oversized paste is refused at once
     // in plain words rather than after a round trip.
     const bytes = new TextEncoder().encode(text).length;
@@ -203,7 +211,7 @@ export const orgVaultProvider: StorageProvider = {
     );
     const saved = Array.isArray(row) ? row[0]! : row;
     baseRev.set(revKey(resourceId, path), saved.rev);
-    return { path: saved.path, text, updatedAt: saved.updated_at } satisfies StoredFile;
+    return { ok: true, file: { path: saved.path, text, updatedAt: saved.updated_at } };
   },
 
   async remove(resourceId, path) {

@@ -17,7 +17,14 @@
 // missing cache entry could otherwise fork one logical path into two file
 // ids (CTO must-fix, os-code/DECISIONS.md).
 import { gdriveAccessToken } from './gdriveAuth.js';
-import { isNotePath, type Lease, type StorageProvider, type StoredFile } from './providers.js';
+import {
+  isNotePath,
+  type Lease,
+  type StorageProvider,
+  type StoredFile,
+  type WriteGuard,
+  type WriteResult,
+} from './providers.js';
 
 const API = 'https://www.googleapis.com/drive/v3';
 const UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3';
@@ -518,7 +525,11 @@ export const gdriveProvider: StorageProvider = {
   list: listFiles,
   stat: statFile,
   read: readFile,
-  write: writeFile,
+  // The guard is accepted and not enforced: Drive is read-only in v1 (0.18),
+  // so the store never writes here.
+  async write(resourceId, path, text, _guard?: WriteGuard): Promise<WriteResult> {
+    return { ok: true, file: await writeFile(resourceId, path, text) };
+  },
   remove: removeFile,
   acquireLease,
   releaseLease,

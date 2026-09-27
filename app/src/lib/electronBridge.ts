@@ -18,7 +18,18 @@ import type {
   StackHealth,
   StackHealthRange,
 } from 'os-code/protocol';
-import type { StoredFile, StoredFileMeta } from './gitos/providers.js';
+import type { StoredFile, StoredFileMeta, WriteGuard, WriteResult } from './gitos/providers.js';
+
+/** A change the vault folder watcher saw (Vault M1, CTO F3): the note paths
+ *  that changed, or `tree` when it cannot say which (a folder changed, too
+ *  many paths, an event with no name). `rootGone` says the vault folder
+ *  itself went away (renamed, deleted, or on a drive that left). A hint only:
+ *  compare-and-swap is the protection. */
+export interface VaultChange {
+  paths: string[];
+  tree: boolean;
+  rootGone?: boolean;
+}
 
 /** The machine in numbers, from the engine's own resource budget (the same
  *  one osc init and doctor use), so a fit verdict never parses prose. `gpu` is
@@ -310,11 +321,20 @@ export interface OscodeBridge {
 
   // On-disk vault: plain .md files under the agent's vault dir (~/OSCode/Vault),
   // so the app's Vault and the agent share one folder. Paths are jailed to that
-  // directory in the main process. Keep in lockstep with electron/main.ts.
+  // directory in the main process, and only notes (.md, no dot segment) cross.
+  // Every file carries its opaque version (the lstat token), and a write may
+  // carry a guard, which main checks before it publishes (compare-and-swap).
+  // Keep in lockstep with electron/main.ts.
   vaultList(): Promise<StoredFileMeta[]>;
+  vaultStat(path: string): Promise<StoredFileMeta | null>;
   vaultRead(path: string): Promise<StoredFile | null>;
-  vaultWrite(path: string, text: string): Promise<StoredFile>;
+  vaultWrite(path: string, text: string, guard?: WriteGuard): Promise<WriteResult>;
   vaultRemove(path: string): Promise<void>;
+  /** Watch the vault folder while the Vault room is open: on with the open
+   *  note's path (Linux watches that note's folder too), off when it leaves. */
+  vaultWatch(on: boolean, openPath?: string): Promise<void>;
+  /** Changes the watcher saw, debounced in main. Returns an unsubscribe. */
+  onVaultChanged(cb: (change: VaultChange) => void): () => void;
 
   // Read-only access to a repo working tree, for the project-memory viewer. The
   // notes live in the repo under "OpenShore Project <name> MDs/"; these list a

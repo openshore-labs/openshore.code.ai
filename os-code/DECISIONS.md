@@ -2067,3 +2067,22 @@ execution contract. Newest at the bottom.
   deny closes reading or listing it (through a `ToolContext.denies` accessor
   the loop sets from the session's permission engine), names a fenced folder
   as closed instead of listing it, and says how many notes it hid.
+- **Vault M1 1.1 build calls (2026-09-27):** where Creative Studio's and CX's
+  resolve-sheet rulings differ, Creative Studio's hold for the sheet's copy
+  and layout (Keep both, Keep yours, Keep the other version; the Changes,
+  Yours, Other version compare; two taps for the rows that drop a side; no
+  writer named, since the banned-word guard forbids "agent" and "theirs"),
+  and CX's hold for behavior (typing while a choice is open goes to the
+  stash, the replay skips that note, leaving a changed note keeps both and a
+  gone one goes under Not saved, leaving the room is not leaving the note,
+  focus goes to the dialog rather than to Keep both). Not built in this
+  phase: CX's "Add theirs to mine" append row, the Undo after Keep yours or
+  Use theirs, crediting the agent by name, and the move-mode sheet for a
+  move's forked pairs (it ships with 1.3's move card). The sheet waits for
+  1.2 s of quiet in a focused editor (twice the autosave debounce). Main's
+  vault file work lives in `app/electron/vaultFs.ts` and the watcher in
+  `app/electron/vaultWatch.ts`, both plain Node so tests call them as main
+  does. A replayed stash whose note was deleted since comes back under its
+  name with `ifAbsent` (the M0 rule), while a live save that finds its note
+  gone on a closed note holds the text under Not saved. The compare ignores
+  line endings and trailing spaces, so a spacing-only difference says so.

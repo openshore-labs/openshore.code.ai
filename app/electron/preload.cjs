@@ -94,9 +94,12 @@ contextBridge.exposeInMainWorld('oscode', {
   hermesNote: invoke('osc:hermesNote'),
 
   vaultList: invoke('osc:vaultList'),
+  vaultStat: invoke('osc:vaultStat'),
   vaultRead: invoke('osc:vaultRead'),
   vaultWrite: invoke('osc:vaultWrite'),
   vaultRemove: invoke('osc:vaultRemove'),
+  vaultWatch: invoke('osc:vaultWatch'),
+  onVaultChanged: listen('osc:vault-changed'),
 
   secureHas: invoke('osc:secureHas'),
   secureGet: invoke('osc:secureGet'),

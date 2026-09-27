@@ -17,7 +17,15 @@ import { mountDom, type TestDom } from './support/dom.js';
 // closing it, moving to another room, and the vault's own state and actions.
 const app = vi.hoisted(() => {
   type State = Record<string, unknown> & {
-    vaultNote?: { path: string; text?: string };
+    vaultNote?: {
+      path: string;
+      text?: string;
+      updatedAt?: string;
+      fresh?: boolean;
+      reloaded?: number;
+      reloadedFrom?: 'elsewhere' | 'resolve';
+    };
+    vaultConflict?: Record<string, unknown> & { deferred: boolean };
     vaultCloseNote: () => void;
     setView: (view: string) => void;
   };
@@ -69,6 +77,17 @@ const app = vi.hoisted(() => {
     },
     openProjectMemory: () => {},
     repoSyncConflicts: undefined,
+    vaultConflict: undefined,
+    vaultReturnFolder: undefined,
+    vaultRecheck: async () => {},
+    vaultResolve: async () => ({ ok: true }),
+    vaultDeferConflict: (deferred: boolean) => {
+      if (state.vaultConflict) state.vaultConflict = { ...state.vaultConflict, deferred };
+      listeners.forEach((l) => l());
+    },
+    vaultLeaveConflict: async () => {},
+    vaultNoteDraft: () => {},
+    vaultTakeReturnFolder: () => undefined,
   };
   return { state, listeners, views, toasts, created, opened, drive };
 });
@@ -290,5 +309,109 @@ describe('the Vault screen', () => {
     } finally {
       app.state.vaultError = undefined;
     }
+  });
+});
+
+// Vault M1, 1.1: a note that changed somewhere else under unsaved edits.
+describe('the Vault screen with a choice open (1.1)', () => {
+  let dom: TestDom;
+  const EDITOR = 'Write. Plain markdown, and [[wikilinks]] to connect notes.';
+  const conflict = (over: Record<string, unknown> = {}) => ({
+    path: 'Plan.md',
+    target: { providerId: 'files', resourceId: 'vault.personal' },
+    kind: 'changed',
+    base: 'loaded',
+    theirs: { path: 'Plan.md', text: 'theirs', updatedAt: 'x', version: 'v2' },
+    copyPath: 'Plan (conflict 2026-09-27 1405).md',
+    foundAt: 0,
+    deferred: false,
+    ...over,
+  });
+  // The mock store hands the screen one mutable object, so a change is shown
+  // by rendering again, as the Drive card cases do.
+  const notify = () => dom.render(<VaultRoom />);
+  beforeEach(async () => {
+    // The small DOM has no frame clock; the screen restores the caret on one.
+    globalThis.requestAnimationFrame ??= (cb: FrameRequestCallback) =>
+      setTimeout(() => cb(Date.now()), 0) as unknown as number;
+    app.state.vaultNote = { path: 'Plan.md', text: 'loaded', updatedAt: 'v1', fresh: true };
+    app.state.vaultConflict = undefined;
+    app.state.vaultFiles = [{ path: 'Plan.md', updatedAt: 'v1', size: 6 }];
+    app.toasts.length = 0;
+    Object.assign(app.drive, { readOnly: undefined, connected: true, configured: true });
+    dom = await mountDom();
+  });
+  afterEach(async () => {
+    await dom.unmount();
+    app.state.vaultNote = undefined;
+    app.state.vaultConflict = undefined;
+  });
+  const sheet = () => dom.container.querySelector('.vault-resolve');
+
+  it('rises at once when the editor is not in use; closing it shows the card, and the editor stays editable', async () => {
+    await dom.render(<VaultRoom />);
+    app.state.vaultConflict = conflict();
+    await notify();
+    await dom.settle();
+    expect(sheet()).not.toBeNull();
+    expect(dom.text()).toContain('Two versions of this note');
+    // Options (Delete) is left out while a choice is open.
+    expect(dom.container.querySelector('[aria-label="Options"]')).toBeNull();
+    const close = sheet()!.querySelector<HTMLButtonElement>('.mode-close')!;
+    const { act } = await import('react');
+    await act(async () => {
+      const w = globalThis.window as unknown as { Event: typeof Event };
+      close.dispatchEvent(new w.Event('click', { bubbles: true }));
+    });
+    expect(app.state.vaultConflict?.deferred).toBe(true);
+    await notify();
+    expect(dom.text()).toContain('Your edits stay here, unsaved, until you choose.');
+    expect(dom.buttons()).toContain('Choose a version');
+    const editor = dom.container.querySelector('textarea')!;
+    expect(editor.disabled).toBe(false);
+    // Its button brings the sheet back.
+    await dom.click('Choose a version');
+    expect(app.state.vaultConflict?.deferred).toBe(false);
+  });
+
+  it('does not rise while the person is typing, only once the editor has been quiet', async () => {
+    await dom.render(<VaultRoom />);
+    const editor = dom.container.querySelector('textarea')!;
+    // linkedom keeps no focus: stand in for a focused editor.
+    Object.defineProperty(document, 'activeElement', { configurable: true, get: () => editor });
+    try {
+      await dom.type(EDITOR, 'loaded, and more');
+      app.state.vaultConflict = conflict();
+      await notify();
+      await dom.settle();
+      expect(sheet()).toBeNull();
+      // Nothing is inserted above the editor while it waits.
+      expect(dom.container.querySelector('.vault-conflict-card')).toBeNull();
+      const { act } = await import('react');
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 1300));
+      });
+      expect(sheet()).not.toBeNull();
+    } finally {
+      delete (document as unknown as { activeElement?: unknown }).activeElement;
+    }
+  });
+
+  it('a calm reload says Updated from elsewhere, with no toast, until the next edit', async () => {
+    await dom.render(<VaultRoom />);
+    app.state.vaultNote = {
+      path: 'Plan.md',
+      text: 'written elsewhere',
+      updatedAt: 'v2',
+      reloaded: 1,
+      reloadedFrom: 'elsewhere',
+    };
+    await notify();
+    await dom.settle();
+    expect(dom.text()).toContain('Updated from elsewhere');
+    expect(dom.container.querySelector('textarea')!.value).toBe('written elsewhere');
+    expect(app.toasts).toEqual([]);
+    await dom.type(EDITOR, 'written elsewhere, and mine');
+    expect(dom.text()).not.toContain('Updated from elsewhere');
   });
 });
