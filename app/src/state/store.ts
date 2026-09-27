@@ -3784,6 +3784,9 @@ export const useApp = create<AppState>((set, get, api) => {
             // A play's engine step opens its own session on the paired
             // computer; the Memory switch rides there the same way.
             memory: memoryOverride(s.settings),
+            // So do Notes in chats, Handoff and Room for notes (CTO L13):
+            // off-only and lower-only, the same object a chat's session takes.
+            vaultOverrides: appVaultOverrides(s.settings),
             researchOn: s.settings.perplexityResearch === true,
             // Codemagic Access on and connected: offer the codemagic tool so the
             // model can drive App Launch builds on the phone (Anthropic path).
