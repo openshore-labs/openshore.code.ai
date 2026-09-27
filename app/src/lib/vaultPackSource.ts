@@ -170,7 +170,7 @@ export function createAppVaultPack(deps: AppVaultPackDeps): AppVaultPack {
   let prepared: Prepared | undefined;
   let stamp = 0;
   let asked = false;
-  let renderCache: { key: string; pack: ContextPack | undefined } | undefined;
+  let renderCache: { key: string; pack: ContextPack | undefined; localOnly: boolean } | undefined;
   let cardShown: string | undefined;
   let lastPrivacy: VaultPrivacy | undefined;
 
@@ -348,15 +348,18 @@ export function createAppVaultPack(deps: AppVaultPackDeps): AppVaultPack {
         } catch {
           pack = undefined;
         }
-        renderCache = { key, pack };
+        renderCache = { key, pack, localOnly: !leaves && carriesLocalOnly(pack, p) };
       }
       const pack = renderCache.pack;
       if (!pack) return {};
       const text = pack.text || undefined;
       if (!pack.text && !pack.withheld) return {};
+      // A local seat's pack may carry a note that stays on this computer; the
+      // reply it grounds is marked, so a later leaving seat gets the stub.
+      const mark = text && renderCache.localOnly ? { localOnly: true as const } : {};
       const where = leaves ? 'cloud' : 'local';
       const card = JSON.stringify([where, pack.used, pack.withheld]);
-      if (card === cardShown) return text ? { text } : {};
+      if (card === cardShown) return text ? { text, ...mark } : {};
       cardShown = card;
       const event: DriverEvent = {
         type: 'context-pack',
@@ -368,7 +371,23 @@ export function createAppVaultPack(deps: AppVaultPackDeps): AppVaultPack {
         withheld: pack.withheld,
         cold: pack.cold,
       };
-      return text ? { text, event } : { event };
+      return text ? { text, event, ...mark } : { event };
     },
   };
+}
+
+/** Whether a rendered pack carries a local-only note, judged the way the
+ *  plan judged it: by path, and by the index's tags and marks when it holds
+ *  the note (a project pin the index has not read is judged by path). */
+function carriesLocalOnly(pack: ContextPack | undefined, p: Prepared): boolean {
+  if (!pack) return false;
+  return pack.used.some((src) => {
+    // Current State and the handoff are the project's and the chat's own
+    // words, not vault notes.
+    if (src.layer === 'current-state' || src.layer === 'handoff') return false;
+    const e = p.index?.entry(src.path);
+    return (
+      p.privacy.visibility({ path: src.path, tags: e?.tags, oscode: e?.oscode }) === 'local-only'
+    );
+  });
 }

@@ -22,7 +22,7 @@ import type {
   DriverVaultOptions,
 } from './types.js';
 import { packSeatFor } from '../lib/vaultSeat.js';
-import { DriverEmitter, readChatContext } from './types.js';
+import { DriverEmitter, readChatContext, seedText } from './types.js';
 import { effortDirective } from '../lib/effort.js';
 import { chainOfThoughtLine, chainOfThoughtOn, reasoningOf } from '../lib/chainOfThought.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
@@ -133,7 +133,9 @@ export class CloudOpenAiDriver implements ChatDriver {
     this.contextWindow = contextWindow ?? DEFAULT_CONTEXT_WINDOW;
     this.vaultPack = opts.vaultPack;
     // A mid-chat switch seeds the prior turns so this model continues the thread.
-    if (seed) this.history = seed.map((t) => ({ role: t.role, content: t.text }));
+    // A turn that drew on a local-only note reaches this cloud seat as the
+    // stub, never the text (I5).
+    if (seed) this.history = seed.map((t) => ({ role: t.role, content: seedText(t, true) }));
   }
 
   subscribe(sink: DriverEventSink): () => void {

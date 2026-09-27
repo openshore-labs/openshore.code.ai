@@ -10,7 +10,14 @@ import { useApp, driverFor } from '../state/store.js';
 import type { HubRole } from '../drivers/types.js';
 import { sourceSupportsVision, type ConversationSource } from '../state/types.js';
 import { MessageList } from '../components/MessageList.js';
-import { Composer, SLASH_COMMANDS, type SlashCommand } from '../components/Composer.js';
+import {
+  Composer,
+  SLASH_COMMANDS,
+  type ComposerVault,
+  type SlashCommand,
+} from '../components/Composer.js';
+import type { PickerNote } from '../components/VaultNotePicker.js';
+import { memoryOverride } from '../lib/currents.js';
 import { HELD_MESSAGE_KEPT, restoreFromHeld, type ComposerRestore } from '../lib/heldMessage.js';
 import { ApprovalSheet } from '../components/ApprovalSheet.js';
 import { ModelSheet } from '../components/ModelSheet.js';
@@ -405,6 +412,66 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   // the pending selection for the next new chat.
   const composerSource = conv ? conv.source : selectedSource;
 
+  // The vault behind `[[` (Vault M5, CTO J15): the notes the privacy rules
+  // let a model see, a body reader, the seat the next send goes to, and a
+  // note "Ask about this note" is taking in. With Memory off there is no vault
+  // in a chat, so the composer gets none and `[[` is plain text.
+  const vaultOn = memoryOverride(settings) !== false;
+  const vaultPickerNotes = useApp((s) => s.vaultPickerNotes);
+  const composerVaultRead = useApp((s) => s.composerVaultRead);
+  const composerSeat = useApp((s) => s.composerSeat);
+  const composerInsert = useApp((s) => s.composerInsert);
+  const takeComposerInsert = useApp((s) => s.takeComposerInsert);
+  const [vaultNotes, setVaultNotes] = useState<PickerNote[] | undefined>(undefined);
+  useEffect(() => {
+    if (!vaultOn) {
+      setVaultNotes(undefined);
+      return;
+    }
+    let live = true;
+    void vaultPickerNotes()
+      .then((notes) => {
+        if (!live) return;
+        setVaultNotes(
+          notes.map((n) => ({
+            path: n.path,
+            title: n.title,
+            updatedAt: n.updatedAt,
+            visibility: n.localOnly ? 'local-only' : 'open',
+          })),
+        );
+      })
+      .catch(() => {
+        if (live) setVaultNotes([]);
+      });
+    return () => {
+      live = false;
+    };
+    // A new chat, a new ask, or the switch turning on reads the list again.
+  }, [vaultOn, activeId, composerInsert?.id, vaultPickerNotes]);
+  const [vaultTake, setVaultTake] = useState<{ seq: number; path: string } | undefined>();
+  useEffect(() => {
+    if (!composerInsert || !vaultNotes) return;
+    if (composerInsert.conversationId && composerInsert.conversationId !== activeId) return;
+    const path = composerInsert.path;
+    setVaultTake((t) => ({ seq: (t?.seq ?? 0) + 1, path }));
+    takeComposerInsert(composerInsert.id);
+  }, [composerInsert, vaultNotes, activeId, takeComposerInsert]);
+  const composerVault: ComposerVault | undefined =
+    vaultOn && vaultNotes
+      ? {
+          notes: vaultNotes,
+          read: composerVaultRead,
+          seat: composerSeat(conv?.id, composerSource),
+          ...(vaultTake ? { take: vaultTake } : {}),
+        }
+      : undefined;
+  // The pack card's note titles open the note when this device's vault holds
+  // it (J9); a handoff note offers "Save to Vault" (J12).
+  const vaultPackOpener = useApp((s) => s.vaultPackOpener);
+  const saveHandoffToVault = useApp((s) => s.saveHandoffToVault);
+  const openPackNote = conv ? vaultPackOpener(conv.id) : undefined;
+
   // A "My Stack" chat can read images when a capable model is placed in it, or
   // a connected cloud provider reads them; this lights the attach button there,
   // the same way it lights for a vision-capable cloud model.
@@ -590,6 +657,8 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             onClarifyPick={(text) => send(text)}
             onTrustFolder={(itemId) => void trustProjectFolder(itemId)}
             onDismissTrust={dismissProjectTrust}
+            onOpenPackNote={openPackNote}
+            onSaveHandoff={(itemId) => saveHandoffToVault(conv.id, itemId)}
             afterItem={(itemId) => {
               if (!conv) return null;
               // The guided setup's chat: the current step's buttons follow the
@@ -784,6 +853,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             send(text, attachments);
           }}
           onStop={abort}
+          vault={composerVault}
         />
       </div>
 

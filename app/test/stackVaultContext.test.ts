@@ -100,8 +100,8 @@ vi.mock('../src/lib/nativeFetch.js', () => ({
   },
 }));
 
-const { StackDriver, historyForSeat, stackClaudeSystem } =
-  await import('../src/drivers/stackDriver.js');
+const { isLocalOnlyFinal } = await import('../src/drivers/types.js');
+const { StackDriver, historyForSeat } = await import('../src/drivers/stackDriver.js');
 import type { AppVaultPack, PackSeat } from '../src/drivers/types.js';
 import type { AppStack, StackModelRef } from '../src/lib/stack.js';
 
@@ -390,7 +390,7 @@ describe('the prompt order and the cache (J16)', () => {
     driver.dispose();
   });
 
-  it('sends one plain system string with caching off, stable first, pack last', async () => {
+  it('sends unmarked blocks with caching off, stable first, pack last', async () => {
     const { pack } = fakePack();
     const { driver } = chat(
       { reasoning: claude, active: [], saved: {} },
@@ -401,23 +401,18 @@ describe('the prompt order and the cache (J16)', () => {
     driver.send('first');
     await settle();
     const params = h.claudeParams[1]!;
-    expect(typeof params.system).toBe('string');
+    // One builder for every Claude request in the app (lib/claudeCache.ts).
+    const blocks = params.system as Array<{ text: string; cache_control?: unknown }>;
+    expect(Array.isArray(blocks)).toBe(true);
+    expect(blocks.every((b) => b.cache_control === undefined)).toBe(true);
     expect(params.cache_control).toBeUndefined();
-    const system = params.system as string;
+    const system = blocks.map((b) => b.text).join('\n');
     const at = (s: string) => system.indexOf(s);
     expect(at('You are OpenShore')).toBe(0);
     expect(at('Harbor')).toBeGreaterThan(at('You are OpenShore'));
     expect(at('Reasoning effort')).toBeGreaterThan(at('Use tabs.'));
     expect(system.endsWith('VAULT PACK large 128000')).toBe(true);
     driver.dispose();
-  });
-
-  it('stackClaudeSystem gives a string off and two blocks with one marker on', () => {
-    expect(stackClaudeSystem('HEAD', ['a', 'b'], false)).toBe('HEAD\n\na\n\nb');
-    expect(stackClaudeSystem('HEAD', ['a', ''], true)).toEqual([
-      { type: 'text', text: 'HEAD', cache_control: { type: 'ephemeral' } },
-      { type: 'text', text: 'a' },
-    ]);
   });
 });
 
@@ -437,7 +432,7 @@ describe('a reply after a local-only read (I5 in the app)', () => {
   };
 
   it('is marked, reaches a later local seat whole, and a leaving seat gets the stub', async () => {
-    const { driver } = chat(
+    const { driver, events } = chat(
       {
         reasoning: boxMid,
         active: [{ ref: gpt, placement: { category: 'coding' } }],
@@ -463,10 +458,15 @@ describe('a reply after a local-only read (I5 in the app)', () => {
     // The local seat was offered the read tools and read the note whole.
     expect(JSON.stringify(h.nativeBodies[1]!.tools)).toContain('vaultRead');
     expect(JSON.stringify(h.nativeBodies[2]!.messages)).toContain('The secret is teal.');
+    // The reply's text-final carries the mark to the transcript (I5).
+    const finals = events.filter((e) => e.type === 'text-final');
+    expect(isLocalOnlyFinal(finals.at(-1)!)).toBe(true);
 
     h.nativeReplies.push('not a plan', 'Here is the fix.');
     driver.send('please debug this typescript function');
     await settle(20);
+    // A reply with no local-only read is not marked.
+    expect(isLocalOnlyFinal(events.filter((e) => e.type === 'text-final').at(-1)!)).toBe(false);
     // The planning call ran on your own box: the reply came along whole.
     expect(JSON.stringify(h.nativeBodies[3]!.messages)).toContain(
       'The diary says the secret is teal.',

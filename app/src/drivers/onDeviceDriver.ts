@@ -32,7 +32,7 @@ import type {
   DriverEventSink,
   DriverVaultOptions,
 } from './types.js';
-import { DriverEmitter, readChatContext } from './types.js';
+import { DriverEmitter, readChatContext, textFinal } from './types.js';
 import { packSeatFor } from '../lib/vaultSeat.js';
 import { chainOfThoughtLine, chainOfThoughtOn } from '../lib/chainOfThought.js';
 import type { SeedTurn } from '../state/types.js';
@@ -98,6 +98,9 @@ export class OnDeviceDriver implements ChatDriver {
    *  system prompt carries from it, the prompt's last part. */
   private readonly vaultPack?: AppVaultPack;
   private packText?: string;
+  /** This send's pack carried a note that stays on this computer, so the
+   *  reply is marked local-only (I5). */
+  private packLocalOnly = false;
   /** The send in flight, so Stop also reaches a pack still preparing. */
   private sendController?: AbortController;
 
@@ -233,6 +236,7 @@ export class OnDeviceDriver implements ChatDriver {
     this.searchedThisTurn = false;
     this.aborted = false;
     this.packText = undefined;
+    this.packLocalOnly = false;
     const send = new AbortController();
     this.sendController = send;
     this.emit({ type: 'task-start', input: text });
@@ -337,6 +341,7 @@ export class OnDeviceDriver implements ChatDriver {
     );
     const pack = seat ? this.vaultPack.render(seat) : {};
     this.packText = pack.text;
+    if (pack.localOnly) this.packLocalOnly = true;
     if (pack.event) this.emit(pack.event);
   }
 
@@ -351,7 +356,7 @@ export class OnDeviceDriver implements ChatDriver {
       // Whatever the slot holds after an error is suspect; reload next time.
       forgetDeviceModel();
       if (text) this.history.push({ role: 'assistant', content: text });
-      this.emit({ type: 'text-final', text });
+      this.emit(textFinal(text, this.packLocalOnly));
       this.emit({
         type: 'task-done',
         reason: 'error',
@@ -393,7 +398,7 @@ export class OnDeviceDriver implements ChatDriver {
 
     if (flush) this.emit({ type: 'text-delta', text: flush });
     if (text) this.history.push({ role: 'assistant', content: text });
-    this.emit({ type: 'text-final', text });
+    this.emit(textFinal(text, this.packLocalOnly));
     const after = this.afterNote;
     this.afterNote = undefined;
     if (after && text && stopReason === 'end') {

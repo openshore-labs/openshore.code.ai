@@ -2,6 +2,7 @@
 // engine over IPC, the desktop daemon over SSE from the phone, a model running
 // on the phone itself, cloud Claude, and the demo. They all emit the engine's
 // DriverEvent protocol, so the chat UI has exactly one rendering path.
+import { LOCAL_ONLY_STUB } from 'os-code/protocol';
 import type { ApprovalAnswer, DriverEvent, ModelClass, PermissionMode } from 'os-code/protocol';
 import type { Attachment } from '../lib/attachments.js';
 import type { SeedTurn } from '../state/types.js';
@@ -161,8 +162,45 @@ export interface AppVaultPack {
   prepare(task: string, signal?: AbortSignal): Promise<void>;
   /** Render for one seat, cached on `[mode, budget, class, leaves,
    *  preparedStamp]`. `text` is absent for no pack; `event` is the
-   *  `context-pack` card, absent when it would repeat the last one. */
-  render(seat: PackSeat): { text?: string; event?: DriverEvent };
+   *  `context-pack` card, absent when it would repeat the last one.
+   *  `localOnly` is set when the text carries a note that stays on this
+   *  computer (only ever on a seat that does not leave the network), so the
+   *  reply it grounds is marked like one after a local-only read (I5). */
+  render(seat: PackSeat): { text?: string; event?: DriverEvent; localOnly?: true };
+}
+
+/**
+ * The local-only mark on a reply (Vault M5, CTO J10, I5 in the transcript):
+ * an additive field on `text-final`, set by an app driver when the reply
+ * followed a local-only read (a vault tool read, or a pack that carried a
+ * local-only note). The store copies it onto the assistant item, and a switch
+ * seeds it on, so a seat that leaves the network gets `LOCAL_ONLY_STUB` in
+ * its place and a handoff drops the turn. The engine's own event type does
+ * not name it; old readers ignore it.
+ */
+export interface LocalOnlyMark {
+  localOnly?: true;
+}
+
+/** A `text-final` event, marked when the reply followed a local-only read. */
+export function textFinal(text: string, localOnly?: boolean): DriverEvent {
+  const event: Extract<DriverEvent, { type: 'text-final' }> & LocalOnlyMark = {
+    type: 'text-final',
+    text,
+    ...(localOnly ? { localOnly: true as const } : {}),
+  };
+  return event;
+}
+
+/** Whether a `text-final` event carries the local-only mark. */
+export function isLocalOnlyFinal(event: DriverEvent): boolean {
+  return event.type === 'text-final' && (event as LocalOnlyMark).localOnly === true;
+}
+
+/** A seed turn's text as a seat sees it: a local-only turn is the stub on a
+ *  seat that leaves the network, whole on one that does not (I5). */
+export function seedText(turn: SeedTurn, leavesNetwork: boolean): string {
+  return turn.localOnly && leavesNetwork ? LOCAL_ONLY_STUB : turn.text;
 }
 
 /** The trailing options every chat driver constructor takes (CTO J1). The

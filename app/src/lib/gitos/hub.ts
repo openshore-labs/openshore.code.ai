@@ -62,6 +62,7 @@ import {
   type RemoveGuard,
   type RemoveResult,
   type StorageProvider,
+  type StorageProviderId,
   type StoredFile,
   type StoredFileMeta,
   type WriteGuard,
@@ -711,24 +712,46 @@ registerVaultIndexSeed('hub', (t) =>
 );
 
 // ---------------------------------------------------------------------------
-// D2: where the personal vault goes on pairing (pure, for the store)
+// D2: where the personal vault goes on pairing (pure, for the store). The
+// one pairing rule: the store runs it, and its words are in vaultCopy.ts.
 
-/** What pairing does to the personal vault: an empty Local vault repoints to
- *  the computer with one toast; a Local vault with notes gets the one-time
- *  move card (the existing move, writing `ifAbsent`); a vault the person
- *  placed themselves (`chosenAt`: a folder, iCloud, the iPhone folder) or one
- *  already on the computer stays where it is. */
+/** Where the vault was before it pointed at the computer, so unpairing can
+ *  return it. Device local, never synced. */
+export interface VaultBeforeHub {
+  providerId: StorageProviderId;
+  chosenAt?: string;
+  /** The hub it pointed at (its base URL). */
+  hub: string;
+}
+
+/** The one-time move card after pairing, per hub. Device local. */
+export interface VaultHubOffer {
+  /** The hub it is for (its base URL). */
+  hub: string;
+  state: 'offered' | 'declined';
+}
+
+/** What pairing does to the personal vault: an empty Local vault (no notes
+ *  and no text waiting to save) repoints to the computer with one toast; a
+ *  Local vault with notes gets the one-time move card (the existing move,
+ *  writing `ifAbsent`), unless the person already declined it for this hub;
+ *  a vault the person placed themselves (`chosenAt`: a folder, iCloud, the
+ *  iPhone folder) or one already on the computer stays where it is. A count
+ *  of `undefined` is a listing that failed, which never counts as empty. */
 export type HubPairPlan = 'repoint' | 'offer-move' | 'stay';
 
 export function hubPairPlan(
   resource: Pick<GitosResource, 'providerId' | 'chosenAt'> | undefined,
-  noteCount: number,
+  noteCount: number | undefined,
+  opts: { waiting?: boolean; declined?: boolean } = {},
 ): HubPairPlan {
   const providerId = resource?.providerId ?? 'local';
   if (providerId === 'hub') return 'stay';
   if (resource?.chosenAt) return 'stay';
   if (providerId !== 'local') return 'stay';
-  return noteCount === 0 ? 'repoint' : 'offer-move';
+  if (noteCount === undefined) return 'stay';
+  if (noteCount === 0 && !opts.waiting) return 'repoint';
+  return opts.declined ? 'stay' : 'offer-move';
 }
 
 /** Where the personal vault goes on unpairing: back to the resource it was

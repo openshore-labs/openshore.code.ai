@@ -29,6 +29,7 @@ import {
 import type { Attachment } from '../lib/attachments.js';
 import { appGuard, knownConsents, screenPrompt } from '../lib/ethics.js';
 import type { ChatDriver, DriverEventSink } from './types.js';
+import { isLocalOnlyFinal, textFinal } from './types.js';
 
 /** What a driver talks to, for the record: on-device is local, the rest cloud. */
 export function pathOfDriver(kind: ChatDriver['kind']): ModelPath {
@@ -161,7 +162,7 @@ class GuardedDriver {
       // Some drivers deliver the whole answer as a final with no deltas. Feed
       // it in so the screen covers it either way.
       if (event.text && !this.screener!.text) this.screener!.offer(event.text);
-      return this.finalize(event.text);
+      return this.finalize(event.text, isLocalOnlyFinal(event));
     }
     this.emit(event);
     return undefined;
@@ -195,7 +196,7 @@ class GuardedDriver {
   }
 
   /** Screen the complete answer, then close the turn out. */
-  private async finalize(finalText: string): Promise<void> {
+  private async finalize(finalText: string, localOnly = false): Promise<void> {
     const last = await this.screener!.finish();
     if (last.kind === 'blocked') {
       this.stopWith(last.result);
@@ -205,7 +206,8 @@ class GuardedDriver {
       this.released += last.text;
       this.emit({ type: 'text-delta', text: last.text });
     }
-    this.emit({ type: 'text-final', text: this.released || finalText });
+    // The local-only mark (I5) rides through the screen untouched.
+    this.emit(textFinal(this.released || finalText, localOnly));
   }
 
   /** End the answer here: say what happened, keep what was already cleared. */

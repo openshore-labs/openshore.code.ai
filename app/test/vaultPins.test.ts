@@ -406,7 +406,7 @@ describe('the store answers the composer', () => {
     await useApp.getState().askAboutVaultNote('Ideas.md');
     const s = useApp.getState();
     expect(s.view).toBe('chat');
-    expect(s.composerInsert?.text).toContain('From my note [[Ideas]]');
+    expect(s.composerInsert?.path).toBe('Ideas.md');
     expect(s.composerInsert?.conversationId).toBeUndefined();
     expect(Object.keys(s.conversations)).toHaveLength(0);
     s.takeComposerInsert(s.composerInsert!.id);

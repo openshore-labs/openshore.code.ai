@@ -181,6 +181,16 @@ export function hubTooLargeLine(bytes: number): string {
 /** The one toast when an empty Local vault moves to the paired computer on
  *  pairing (D2). */
 export const HUB_REPOINT_TOAST = 'Your vault now lives on your computer, while it is on.';
+/** The one-time move card after pairing: its title and its two answers. The
+ *  body is `hubMoveOffer(n)`. */
+export const HUB_OFFER_COPY = {
+  title: 'Keep one vault on your computer',
+  move: 'Move my notes',
+  later: 'Keep them here',
+} as const;
+/** The toast after unpairing returned the vault to where it was. */
+export const HUB_UNPAIR_TOAST =
+  'Your vault is back on this device. Notes saved on your computer stay there.';
 /** The move card's line when a Local vault with notes could move there. */
 export function hubMoveOffer(n: number): string {
   return n === 1
