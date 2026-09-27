@@ -46,13 +46,13 @@ import {
 } from './model.js';
 import { acquireSchedulerLock, releaseSchedulerLock, type SchedulerLock } from './lock.js';
 import * as store from './store.js';
-import { runNoteDayPath, runNoteFrontmatter } from './runNote.js';
+import { dailyNoteConfigOf, runNoteDayPath, runNoteFrontmatter } from './runNote.js';
+import type { RunNoteProvenance } from './runNote.js';
 import { readVaultConfigFile } from '../core/vault/configFile.js';
 import { resolvedAgentWritable } from '../core/vault/folderFs.js';
 import { vaultSettingsFor } from '../core/vault/settingsFile.js';
 import { dailyNotePath, datePartsOf } from '../harness/vault/dates.js';
-import { mergeProvenance } from '../harness/vault/provenance.js';
-import type { ProvenanceFields } from '../harness/vault/types.js';
+import { deriveModelClass } from '../harness/profile.js';
 import { loadConfig } from '../config/load.js';
 
 const log = logger('routines');
@@ -83,6 +83,8 @@ export interface OpenedSession {
   /** Where the orchestrator runs, judged by address, for the note's
    *  `oscode-where` line (Vault M7, CTO L9). Left out when unknown. */
   where?: 'local' | 'cloud';
+  /** The orchestrator's provider, for a cloud seat's `oscode-provider`. */
+  provider?: string;
 }
 
 /** A run refused before it started, for a reason the person can act on. The
@@ -156,6 +158,8 @@ interface ActiveRun {
   model?: string;
   /** Where the orchestrator runs, when the session said. */
   where?: 'local' | 'cloud';
+  /** The orchestrator's provider, when the session said. */
+  provider?: string;
   off: () => void;
   finalText: string;
   steps: string[];
@@ -486,7 +490,7 @@ export class RoutineScheduler {
       void this.pump();
       return;
     }
-    const { driver, model, where } = opened;
+    const { driver, model, where, provider } = opened;
     if (routine.ownerUserId) driver.setOwner?.(routine.ownerUserId);
     const run = store.appendRun({
       routineId: routine.id,
@@ -502,6 +506,7 @@ export class RoutineScheduler {
       driver,
       model,
       ...(where ? { where } : {}),
+      ...(provider ? { provider } : {}),
       off: () => {},
       finalText: '',
       steps: [],
@@ -641,6 +646,14 @@ export class RoutineScheduler {
     const root = this.vaultRoot(active.routine.ownerUserId);
     const started = new Date(active.run.startedAt);
     try {
+      // Obsidian's daily-notes file present but unreadable: no link, since
+      // the resolver would fall back to the default format and guess a name
+      // that could fork the day's note (K7). Absent or readable goes on.
+      const obsidianDaily = await readVaultConfigFile(root, 'obsidian/daily-notes');
+      if (dailyNoteConfigOf(obsidianDaily) === undefined) {
+        active.dayPath = undefined;
+        return;
+      }
       // The vault's resolved settings (Vault M7, CTO L5): Obsidian's daily
       // notes where it sets them, else the vault's own file, else the default.
       const settings = await vaultSettingsFor(root, { force: true });
@@ -660,28 +673,26 @@ export class RoutineScheduler {
     }
   }
 
-  /** The run note's provenance lines (Vault M7, CTO L9), merged byte for
-   *  byte (L10) when `vault.provenance` is on. A merge that skips or fails
-   *  leaves the note as it was built: the run is recorded either way. */
-  private stampNote(active: ActiveRun, text: string): string {
+  /** What the run note's provenance lines carry (Vault M7, CTO L9), or
+   *  'off' when `vault.provenance` is off. `runNoteFrontmatter` merges them
+   *  byte for byte (L10) through the one `mergeProvenance`; a merge that
+   *  skips leaves the block as built, so the run is recorded either way. */
+  private provenanceFor(active: ActiveRun): RunNoteProvenance | 'off' {
     let on = false;
     try {
       on = this.provenance(active.routine);
     } catch {
       on = false;
     }
-    if (!on) return text;
-    const fields: ProvenanceFields = { 'oscode-source': 'crew' };
-    if (active.model) fields['oscode-model'] = active.model;
-    if (active.where) fields['oscode-where'] = active.where;
-    fields['oscode-created'] = active.run.startedAt;
-    try {
-      const merged = mergeProvenance(text, fields);
-      return 'text' in merged ? merged.text : text;
-    } catch (err) {
-      log.warn('run note provenance skipped', { err: String(err) });
-      return text;
-    }
+    if (!on) return 'off';
+    const where = active.where;
+    return {
+      ...(where ? { where } : {}),
+      ...(where && active.model
+        ? { size: deriveModelClass({ model: active.model, kind: where }) }
+        : {}),
+      ...(where === 'cloud' && active.provider ? { provider: active.provider } : {}),
+    };
   }
 
   private writeNote(
@@ -715,6 +726,7 @@ export class RoutineScheduler {
         folder: folder.slice('Crew/'.length),
         previousPath,
         ...(active.dayPath ? { dayPath: active.dayPath } : {}),
+        provenance: this.provenanceFor(active),
       }),
       `# ${active.routine.name}: ${date} at ${hh}:${mm}`,
       '',
@@ -742,7 +754,7 @@ export class RoutineScheduler {
     // H4): no character Obsidian's links or a file system refuse, no dot-led
     // or dot-ended segment, no reserved name. Old runs keep the absolute path
     // their record already holds, so nothing is moved.
-    const text = this.stampNote(active, lines.join('\n'));
+    const text = lines.join('\n');
     for (let n = 1; ; n++) {
       const name = `${date} ${hh}-${mm}${n === 1 ? '' : ` (${n})`}.md`;
       const rel = join(folder, name).split('\\').join('/');
@@ -849,7 +861,7 @@ export function defaultOpenSession(
     driver: LocalDriver;
     warnings: string[];
     orchestratorKind: 'local' | 'cloud';
-    router?: { orchestrator(): { ref: { model: string } } };
+    router?: { orchestrator(): { ref: { model: string; provider?: string } } };
   } = boot({
     cwd: routine.cwd,
     profile: 'headless',
@@ -869,12 +881,21 @@ export function defaultOpenSession(
     throw new RoutineRefused(ROUTINE_NEEDS_LOCAL_MODEL);
   }
   let model: string | undefined;
+  let provider: string | undefined;
   try {
-    model = router?.orchestrator().ref.model;
+    const ref = router?.orchestrator().ref;
+    model = ref?.model;
+    provider = ref?.provider;
   } catch {
     // The note says "unknown" rather than fail the run over a label.
   }
-  return { driver, warnings, ...(model ? { model } : {}), where: orchestratorKind };
+  return {
+    driver,
+    warnings,
+    ...(model ? { model } : {}),
+    ...(provider ? { provider } : {}),
+    where: orchestratorKind,
+  };
 }
 
 /** `vault.provenance` from the config the run's workspace loads; the key is

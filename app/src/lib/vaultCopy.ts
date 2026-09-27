@@ -2399,12 +2399,9 @@ export const VAULT_STARTER_ROWS: ReadonlyArray<{
     line: 'A note that says how this vault is laid out. Pin it to a project so its chats start with it.',
   },
 ];
-export const VAULT_STARTER_SETTINGS_LINE =
-  "New notes go in Inbox, and today's note uses Templates/Daily.";
+// The settings line and the partial result are stream F's (one source per
+// string); the sheet imports them from F's section above.
 export const VAULT_STARTER_ADD = 'Add these';
-export function vaultStarterPartial(added: number, total: number): string {
-  return `Added ${added} of ${total}. Try again to add the rest.`;
-}
 
 /** The Editor section's one sample line, drawn in the chosen font and size. */
 export const VAULT_EDITOR_SAMPLE = 'A line of your notes looks like this.';

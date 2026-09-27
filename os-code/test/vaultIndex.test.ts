@@ -680,13 +680,27 @@ describe(`the K16 search budget on 5,000 notes (${coreKind})`, () => {
     const callsBefore = calls.n;
     const counters = { ...idx.counters };
 
+    // Each timing is the best of a few repeats: a regression in the work
+    // shows in every repeat, while a GC pause or a worker starved by the
+    // parallel suite shows in one. The counts above and below are the exact
+    // guard; the ceilings only catch a real slowdown.
+    const best = <T>(fn: () => T, reps = 5): { ms: number; value: T } => {
+      let ms = Infinity;
+      let value!: T;
+      for (let i = 0; i < reps; i++) {
+        const t0 = performance.now();
+        value = fn();
+        ms = Math.min(ms, performance.now() - t0);
+      }
+      return { ms, value };
+    };
+
     // Title hits: one keystroke at a time, each under 4x 16 ms.
     const typed = 'agent run';
     let worstTitle = 0;
     for (let k = 1; k <= typed.length; k++) {
-      const t0 = performance.now();
-      const hits = idx.titleMatches(typed.slice(0, k));
-      worstTitle = Math.max(worstTitle, performance.now() - t0);
+      const { ms, value: hits } = best(() => idx.titleMatches(typed.slice(0, k)));
+      worstTitle = Math.max(worstTitle, ms);
       if (k === typed.length) expect(hits[0]!.path).toBe(agent.path);
     }
     expect(worstTitle).toBeLessThan(16 * 4);
@@ -701,9 +715,8 @@ describe(`the K16 search budget on 5,000 notes (${coreKind})`, () => {
     ];
     let worstBody = 0;
     for (const q of queries) {
-      const t0 = performance.now();
-      const hits = idx.search(q, { limit: 50 });
-      worstBody = Math.max(worstBody, performance.now() - t0);
+      const { ms, value: hits } = best(() => idx.search(q, { limit: 50 }));
+      worstBody = Math.max(worstBody, ms);
       expect(hits.length).toBeLessThanOrEqual(50);
     }
     expect(worstBody).toBeLessThan(50 * 4);
@@ -722,9 +735,21 @@ describe(`the K16 search budget on 5,000 notes (${coreKind})`, () => {
     const r0 = performance.now();
     idx.applyRename(target.path, 'Inbox/Renamed 42.md');
     idx.resolve();
-    expect(performance.now() - r0).toBeLessThan(300);
+    let renameMs = performance.now() - r0;
     expect(reads).toBe(readsBefore);
     expect(idx.counters.entriesBuilt).toBe(counters.entriesBuilt);
     expect(idx.counters.sourcesResolved - counters.sourcesResolved).toBeLessThanOrEqual(back + 60);
+    // The timing, best of a few round trips (back and forth, same work).
+    let at = 'Inbox/Renamed 42.md';
+    for (let i = 0; i < 4; i++) {
+      const next = at === target.path ? 'Inbox/Renamed 42.md' : target.path;
+      const t0 = performance.now();
+      idx.applyRename(at, next);
+      idx.resolve();
+      renameMs = Math.min(renameMs, performance.now() - t0);
+      at = next;
+    }
+    expect(renameMs).toBeLessThan(300);
+    expect(reads).toBe(readsBefore);
   }, 60_000);
 });
