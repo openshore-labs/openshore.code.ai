@@ -155,6 +155,10 @@ import { useExitPresence } from '../hooks/useExitPresence.js';
 import { useViewGhost } from '../hooks/useViewGhost.js';
 import { durationMs, sheetExitMs } from '../lib/motion.js';
 import {
+  VAULT_SETTINGS_DEFAULTS,
+  type ResolvedVaultSettings,
+  readFrontmatter,
+  readProvenance,
   datePartsOf,
   buildPathIndex,
   isAttachmentPath,
@@ -189,6 +193,13 @@ import { VaultSwitcher, useVaultSwitcherShortcut } from '../components/vault/Vau
 import { vaultRecentRows, vaultSearchIndexState } from '../lib/vaultSearch.js';
 import type { VaultPickerNote } from '../lib/vaultExcerpt.js';
 import { VaultLinksLeftCard, VaultRenameSheet } from '../components/vault/VaultRenameSheet.js';
+import { VaultSettingsHost } from '../components/vault/VaultSettingsHost.js';
+import { vaultTypeAttrs } from '../components/vault/VaultSettingsSheet.js';
+import { VaultProvenanceChip } from '../components/vault/VaultProvenanceChip.js';
+import { VaultAboutNote } from '../components/vault/VaultAboutNote.js';
+import { VaultStarterSheet } from '../components/vault/VaultStarterSheet.js';
+import { vaultTreeSortOffered } from '../lib/vault.js';
+import { VAULT_SETTINGS_TITLE, VAULT_STARTER_OFFER } from '../lib/vaultCopy.js';
 import { VaultUndoToast, type VaultUndoToastItem } from '../components/vault/VaultUndoToast.js';
 import { hubReach, subscribeHubReach } from '../lib/gitos/hub.js';
 import { PROJECT_VAULT_PINS_MAX } from '../state/types.js';
@@ -223,6 +234,13 @@ async function probeDriveLink(): Promise<VaultDriveLink> {
 
 export function VaultScreen() {
   const {
+    vaultSettings,
+    vaultLoadSettings,
+    vaultMarkReviewed,
+    vaultStarterOffered,
+    vaultApplyStarter,
+    vaultSheetRequest,
+    vaultRequestSheet,
     vaultFiles,
     vaultNote,
     vaultScope,
@@ -448,6 +466,11 @@ export function VaultScreen() {
   const [newOpen, setNewOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [storageOpen, setStorageOpen] = useState(false);
+  // Vault M7: the settings sheet, "About this note", and the starter layout.
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const [starterOpen, setStarterOpen] = useState(false);
+  const [starterOffered, setStarterOffered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [backlinks, setBacklinks] = useState<Array<{ path: string; excerpt: string }>>([]);
@@ -594,6 +617,45 @@ export function VaultScreen() {
   const personalKey = copyProviderOf(currentProviderId) ?? 'local';
   const personalCopy = vaultCopy(on, personalKey, copyOpts);
   const labelOf = (id: StorageProviderId) => PROVIDER_ROSTER.find((r) => r.id === id)?.label ?? id;
+
+  // The vault's settings (Vault M7, CTO L3 to L6): read fresh when the room
+  // shows and when the vault on screen changes. A team vault on main reads
+  // the defaults (L16).
+  useEffect(() => {
+    void vaultLoadSettings({ force: true });
+  }, [vaultLoadSettings, currentProviderId, vaultScope]);
+  const vs = (!team && vaultSettings) || VAULT_SETTINGS_DEFAULTS;
+  // The open note's provenance (CTO L9), from the text as loaded or saved.
+  const noteText = vaultNote?.text;
+  const noteProvenance = useMemo(() => {
+    if (noteText === undefined) return undefined;
+    try {
+      return readProvenance(readFrontmatter(noteText));
+    } catch {
+      return undefined;
+    }
+  }, [noteText]);
+  // The starter layout is offered only on an empty personal vault (L12).
+  useEffect(() => {
+    if (team || !vaultListed || vaultFiles.length > 0) {
+      setStarterOffered(false);
+      return;
+    }
+    let live = true;
+    void vaultStarterOffered().then((ok) => {
+      if (live) setStarterOffered(ok);
+    });
+    return () => {
+      live = false;
+    };
+  }, [
+    team,
+    vaultListed,
+    vaultFiles.length,
+    vaultFolders?.length,
+    currentProviderId,
+    vaultStarterOffered,
+  ]);
 
   // Probe live readiness when the storage sheet opens, so iCloud shows as
   // usable only on a device that can actually reach it.
@@ -762,7 +824,9 @@ export function VaultScreen() {
   useEffect(() => {
     if (!vaultNote) return;
     setDraft(vaultNote.text);
-    setEditing(vaultNote.fresh === true);
+    // A fresh note edits; otherwise the vault's "Open notes in" (Vault M7,
+    // `editor.openMode`, Reading unless it says Editing).
+    setEditing(vaultNote.fresh === true || vs.editor.openMode === 'edit');
     setUpdatedShown(false);
     lastReload.current = vaultNote.reloaded;
     setBacklinks([]);
@@ -935,6 +999,34 @@ export function VaultScreen() {
 
   // Write the pending draft now, to the vault it was typed into.
   const flushSave = autosave.flush;
+  // Another room asked for the storage sheet (Settings' "Where it lives"):
+  // it lives in the tree, so an open note is saved and closed first.
+  useEffect(() => {
+    if (vaultSheetRequest !== 'storage') return;
+    vaultRequestSheet(undefined);
+    if (vaultNote) {
+      flushSave();
+      vaultCloseNote();
+    }
+    setStorageOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vaultSheetRequest]);
+  // Vault settings (Vault M7, CX Y4): one host for Options and the storage
+  // sheet's end. "Where it lives" opens the storage sheet, which lives in
+  // the tree, so an open note is saved and closed first.
+  const settingsHost = (
+    <VaultSettingsHost
+      open={settingsOpen}
+      setOpen={setSettingsOpen}
+      onOpenStorage={() => {
+        if (vaultNote) {
+          flushSave();
+          vaultCloseNote();
+        }
+        setStorageOpen(true);
+      }}
+    />
+  );
   // Switch vaults only once the pending draft is on its way to its own.
   const switchScope = useCallback(
     (scope: 'personal' | 'team') => {
@@ -1099,7 +1191,8 @@ export function VaultScreen() {
     // The typed name must make a note on its own, so a name the rule empties
     // ("...") never falls back to the folder's own name.
     const own = normalizeNotePath(newName);
-    const path = own && normalizeNotePath(folder ? `${folder}/${newName}` : newName);
+    const base = newNoteBase(vs, folder);
+    const path = own && normalizeNotePath(base ? `${base}/${newName}` : newName);
     if (!path) {
       // "report.pdf" names a file type, so it can never become a note; say so
       // rather than asking for a name the person already gave.
@@ -1415,6 +1508,7 @@ export function VaultScreen() {
       {...(renaming.startAt ? { startAt: renaming.startAt } : {})}
       prepare={(to) => vaultPrepareMove(renaming.kind, renaming.from, to)}
       apply={applyRename}
+      updateOnRename={vs.links.updateOnRename}
       onClose={() => setRenameOpen(false)}
     />
   ) : null;
@@ -1827,7 +1921,10 @@ export function VaultScreen() {
   const driveExplains =
     Boolean(driveReadOnly) && (driveLink === 'disconnected' || driveLink === 'unconfigured');
 
-  const entries = treeAt(folder, vaultFiles, vaultFolders ?? []);
+  // The vault's "Sort notes by" (Vault M7, `tree.sort`); Created only where
+  // the listing carries a creation time, never faked.
+  const sortBy = vaultTreeSortOffered(vaultFiles).includes(vs.tree.sort) ? vs.tree.sort : 'name';
+  const entries = treeAt(folder, vaultFiles, vaultFolders ?? [], sortBy);
   const crumbs = folder ? folder.split('/') : [];
 
   // ---- note view ----------------------------------------------------------
@@ -1843,6 +1940,9 @@ export function VaultScreen() {
     const editedLine = team
       ? vaultEditedByLine(vaultNote.editedBy, vaultNote.updatedAt, uid)
       : undefined;
+    // Who wrote the note and where it ran (Vault M7, CX Y11), from its own
+    // properties as last loaded; nothing shows unless it says both.
+    const provenance = noteProvenance;
 
     // One suggestion list: under the editor on the desktop, as chips inside
     // the accessory bar on the phone (CX X15). A pick inserts into the
@@ -1857,6 +1957,10 @@ export function VaultScreen() {
         headingsOf={headingsOf}
         onDismiss={() => setLinkCtx(null)}
         layout={layout}
+        // The vault's link style everywhere; the path format on the desktop
+        // only (CX Y1: the phone has no Link paths row).
+        linkStyle={vs.links.style}
+        linkFormat={phone ? 'shortest' : vs.links.format}
       />
     );
 
@@ -1942,6 +2046,9 @@ export function VaultScreen() {
                 {editedLine}
               </span>
             ) : null}
+            <span className="vault-meta-chip">
+              <VaultProvenanceChip provenance={provenance} onOpen={() => setAboutOpen(true)} />
+            </span>
           </p>
 
           {renderLeaseLine()}
@@ -1969,74 +2076,79 @@ export function VaultScreen() {
           />
           <NotSaved held={heldHere} discard={(id) => void vaultDiscardHeld(id)} />
 
-          {editing && !locked ? (
-            <div ref={modeGhost('edit')} className="vault-editor-wrap">
-              <textarea
-                ref={editorRef}
-                className="vault-editor"
-                autoFocus
-                value={draft}
-                placeholder="Write. Plain markdown, and [[wikilinks]] to connect notes."
-                onChange={(e) => {
-                  setDraft(e.target.value);
-                  vaultNoteDraft(vaultNote.path, e.target.value);
-                  void vaultLeaseTouch();
-                  lastInputAt.current = Date.now();
-                  setUpdatedShown(false);
-                  scheduleSave(vaultNote.path, e.target.value);
-                  refreshLinkContext(
-                    e.target.value,
-                    e.target.selectionStart ?? e.target.value.length,
-                  );
-                }}
-                onKeyUp={(e) =>
-                  refreshLinkContext(e.currentTarget.value, e.currentTarget.selectionStart ?? 0)
-                }
-                onSelect={(e) =>
-                  refreshLinkContext(e.currentTarget.value, e.currentTarget.selectionStart ?? 0)
-                }
-                onBlur={() => setLinkCtx(null)}
-              />
-              {phone ? null : suggest('list')}
-            </div>
-          ) : null}
-          {/* The phone's bar on the keyboard, lifted by transform only: the
+          {/* The vault's font and text size (Vault M7, Editor) on both
+              surfaces; Default sets nothing, so today's look holds. */}
+          <div className="vault-type" {...vaultTypeAttrs(vs.editor)}>
+            {editing && !locked ? (
+              <div ref={modeGhost('edit')} className="vault-editor-wrap">
+                <textarea
+                  ref={editorRef}
+                  className="vault-editor"
+                  autoFocus
+                  value={draft}
+                  placeholder="Write. Plain markdown, and [[wikilinks]] to connect notes."
+                  onChange={(e) => {
+                    setDraft(e.target.value);
+                    vaultNoteDraft(vaultNote.path, e.target.value);
+                    void vaultLeaseTouch();
+                    lastInputAt.current = Date.now();
+                    setUpdatedShown(false);
+                    scheduleSave(vaultNote.path, e.target.value);
+                    refreshLinkContext(
+                      e.target.value,
+                      e.target.selectionStart ?? e.target.value.length,
+                    );
+                  }}
+                  onKeyUp={(e) =>
+                    refreshLinkContext(e.currentTarget.value, e.currentTarget.selectionStart ?? 0)
+                  }
+                  onSelect={(e) =>
+                    refreshLinkContext(e.currentTarget.value, e.currentTarget.selectionStart ?? 0)
+                  }
+                  onBlur={() => setLinkCtx(null)}
+                />
+                {phone ? null : suggest('list')}
+              </div>
+            ) : null}
+            {/* The phone's bar on the keyboard, lifted by transform only: the
               link suggestions live inside it there (CX X15). */}
-          <VaultAccessoryBar
-            shown={editing && !locked && phone}
-            editor={editorRef}
-            onCaret={refreshLinkContext}
-            suggest={suggest('chips')}
-          />
-          {editing && !locked ? null : (
-            // A calm reload settles the page in (opacity only); re-keyed so
-            // each reload plays it once.
-            <div
-              ref={bindReader}
-              key={`${vaultNote.reloaded ?? 0}:${blobEpoch}`}
-              className={
-                vaultNote.reloaded && vaultNote.reloadedFrom === 'elsewhere'
-                  ? 'vault-read vault-reloaded'
-                  : 'vault-read'
-              }
-            >
-              <VaultMarkdown
-                text={draft}
-                paths={paths}
-                sourcePath={vaultNote.path}
-                onOpenNote={followLink}
-                {...(pendingAnchor && pendingAnchor.path === vaultNote.path
-                  ? { anchor: { subpath: pendingAnchor.subpath, key: pendingAnchor.key } }
-                  : {})}
-                onNotice={showToast}
-                readEmbed={vaultReadBody}
-                {...(media ? { media } : {})}
-                onToggleTask={(line, checked) => vaultToggleTask(vaultNote.path, line, checked)}
-                tasksReadOnly={!caps.taskWriteBack || locked}
-                onTag={searchTag}
-              />
-            </div>
-          )}
+            <VaultAccessoryBar
+              shown={editing && !locked && phone}
+              editor={editorRef}
+              onCaret={refreshLinkContext}
+              suggest={suggest('chips')}
+              linkStyle={vs.links.style}
+            />
+            {editing && !locked ? null : (
+              // A calm reload settles the page in (opacity only); re-keyed so
+              // each reload plays it once.
+              <div
+                ref={bindReader}
+                key={`${vaultNote.reloaded ?? 0}:${blobEpoch}`}
+                className={
+                  vaultNote.reloaded && vaultNote.reloadedFrom === 'elsewhere'
+                    ? 'vault-read vault-reloaded'
+                    : 'vault-read'
+                }
+              >
+                <VaultMarkdown
+                  text={draft}
+                  paths={paths}
+                  sourcePath={vaultNote.path}
+                  onOpenNote={followLink}
+                  {...(pendingAnchor && pendingAnchor.path === vaultNote.path
+                    ? { anchor: { subpath: pendingAnchor.subpath, key: pendingAnchor.key } }
+                    : {})}
+                  onNotice={showToast}
+                  readEmbed={vaultReadBody}
+                  {...(media ? { media } : {})}
+                  onToggleTask={(line, checked) => vaultToggleTask(vaultNote.path, line, checked)}
+                  tasksReadOnly={!caps.taskWriteBack || locked}
+                  onTag={searchTag}
+                />
+              </div>
+            )}
+          </div>
 
           {linksLeft && linksLeft.path === vaultNote.path ? (
             <VaultLinksLeftCard
@@ -2121,6 +2233,11 @@ export function VaultScreen() {
               showToast(pinToast(r, pinProjectName)),
             );
           }}
+          onSettings={() => {
+            setMenuOpen(false);
+            setConfirmDelete(false);
+            setTimeout(() => setSettingsOpen(true), sheetExitMs());
+          }}
           onArmDelete={() => setConfirmDelete(true)}
           // The store flushes the pending save and cancels its timer first,
           // so a stale save can never recreate the note; only a delete that
@@ -2133,6 +2250,15 @@ export function VaultScreen() {
           onClose={() => setOutlineOpen(false)}
           onPick={(_h, i) => scrollToHeading(i)}
         />
+        <VaultAboutNote
+          open={aboutOpen}
+          title={title}
+          provenance={provenance}
+          canMark={caps.taskWriteBack && !locked}
+          onClose={() => setAboutOpen(false)}
+          onMark={(reviewed) => vaultMarkReviewed(vaultNote.path, reviewed)}
+        />
+        {settingsHost}
         {renameSheet}
         {switcher}
         {undoToast}
@@ -2490,6 +2616,9 @@ export function VaultScreen() {
             readOnly={Boolean(driveReadOnly)}
             onWrite={() => setNewOpen(true)}
             onWelcome={() => void addStarterNote()}
+            // An empty personal vault with folders and no Obsidian config
+            // offers the simple layout instead (Vault M7, CX Y13).
+            {...(starterOffered ? { onStarter: () => setStarterOpen(true) } : {})}
           />
         ) : (
           <VaultSearch
@@ -2774,10 +2903,31 @@ export function VaultScreen() {
                   Export as plain files
                 </button>
               ) : null}
+              {/* Vault settings at the end (Vault M7, CX Y4), so a vault with
+                  no notes yet can reach them; they open once this sheet has
+                  left. */}
+              <button
+                type="button"
+                className="conv-item vault-row vault-storage-settings press-fb press-fb--row"
+                onClick={() => {
+                  closeStorage();
+                  setTimeout(() => setSettingsOpen(true), sheetExitMs());
+                }}
+              >
+                <span className="vault-rename-label">{VAULT_SETTINGS_TITLE}</span>
+                <span className="vault-row-chevron" aria-hidden="true" />
+              </button>
             </div>
           </>
         ) : null}
       </Sheet>
+      {settingsHost}
+      <VaultStarterSheet
+        open={starterOpen}
+        writesSettings={caps.settingsWrite}
+        onClose={() => setStarterOpen(false)}
+        onAdd={vaultApplyStarter}
+      />
     </div>
   );
 }
@@ -2928,12 +3078,16 @@ function VaultRamp({
   readOnly,
   onWrite,
   onWelcome,
+  onStarter,
 }: {
   onboard: VaultOnboard;
   /** A read-only vault: the ways in that write are left out, not dimmed. */
   readOnly: boolean;
   onWrite: () => void;
   onWelcome: () => void;
+  /** The starter layout is offered (CTO L12): the second way in opens its
+   *  preview instead of adding the welcome note. */
+  onStarter?: () => void;
 }) {
   const glyphs = { doc: DocGlyph, agent: AgentGlyph, link: LinkGlyph };
   return (
@@ -2949,9 +3103,15 @@ function VaultRamp({
               <button className="btn primary" onClick={onWrite}>
                 Write your first note
               </button>
-              <button className="btn ghost" onClick={onWelcome}>
-                Add a welcome note
-              </button>
+              {onStarter ? (
+                <button className="btn ghost" onClick={onStarter}>
+                  {VAULT_STARTER_OFFER}
+                </button>
+              ) : (
+                <button className="btn ghost" onClick={onWelcome}>
+                  Add a welcome note
+                </button>
+              )}
             </div>
           ) : null}
         </div>
@@ -2975,6 +3135,22 @@ function VaultRamp({
       </div>
     </section>
   );
+}
+
+/** The folder a new note goes in (Vault M7, `newNotes.location` and
+ *  `newNotes.folder`): with no setting anywhere, the folder on screen, as
+ *  before M7; else the top of the vault, the folder on screen, or the
+ *  vault's chosen folder. */
+function newNoteBase(s: ResolvedVaultSettings, here: string): string {
+  if (s.source['newNotes.location'] === 'default') return here;
+  switch (s.newNotes.location) {
+    case 'root':
+      return '';
+    case 'current':
+      return here;
+    case 'folder':
+      return s.newNotes.folder ?? here;
+  }
 }
 
 /** Whether any segment of a typed note name starts with a dot, which the

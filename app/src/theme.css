@@ -3188,6 +3188,47 @@ button.vault-tag {
    Wave 2 integrator: the Y4 entry rows (note Options, the storage sheet's
    end, the Settings mirror) and the chip's place on the note's meta line. */
 
+/* The settings sheet's folder and note list: one quiet row each. */
+.vault-settings-pick {
+  display: flex;
+  flex-direction: column;
+  max-height: 60vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.vault-settings-pick-row {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 14px;
+  text-align: left;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.vault-settings-pick-row + .vault-settings-pick-row {
+  border-top: 1px solid var(--border);
+}
+
+/* The storage sheet's last row, Vault settings, set apart from the moves. */
+.vault-storage-settings {
+  margin-top: 12px;
+}
+
+/* The provenance chip sits on the note's meta line, after its words. */
+.vault-meta-chip {
+  display: inline-flex;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+/* The note's reading and editing surfaces take the vault's font and size
+   (vaultTypeAttrs); the wrapper itself adds no box. */
+.vault-type {
+  display: contents;
+}
+
 /* ---- M7 stream W2 end ---- */
 
 /* ------------------------------------------------------------------ chat */

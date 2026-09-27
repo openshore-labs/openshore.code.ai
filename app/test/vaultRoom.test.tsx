@@ -181,6 +181,15 @@ const app = vi.hoisted(() => {
     vaultToggleTask: async () => false,
     vaultMediaNow: async () => undefined,
     vaultRewriteNote: async () => false,
+    // Vault M7 wave 2: the settings, provenance and starter actions.
+    vaultSettings: undefined,
+    vaultLoadSettings: async () => undefined,
+    vaultSaveSetting: async () => ({ kind: 'read-only' }),
+    vaultMarkReviewed: async () => 'ok',
+    vaultStarterOffered: async () => false,
+    vaultApplyStarter: async () => ({ added: 0, total: 0 }),
+    vaultSheetRequest: undefined,
+    vaultRequestSheet: () => {},
   };
   return { state, listeners, views, toasts, created, opened, drive, folderIo, leases, polls };
 });
@@ -195,6 +204,7 @@ vi.mock('../src/state/store.js', async () => {
       useSyncExternalStore(subscribe, () => (select ? select(app.state) : app.state)),
     agenticView: () => ({}),
     vaultHeldFor: () => [],
+    isOrgAdmin: () => true,
   };
 });
 // Whether this device reaches the Google account behind a Drive vault.

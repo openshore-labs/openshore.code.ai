@@ -311,7 +311,6 @@ import {
   compileVaultPrivacy,
   type ConfigRead,
   type ModelClassProfile,
-  type ResolvedVaultSettings,
   type VaultPrivacyNarrowing,
   type VaultSettingsField,
   type VaultSettingsPatch,
@@ -1209,6 +1208,226 @@ describe('Notes in chats says only what the pack does (CX Y7)', () => {
 // The room (Y4, Y7): the entry points, the Wayfinding rows, the overrides
 // into vaultOverrides, the team read-only footer.
 
-describe.todo('vault settings in the room (wave 2)');
+describe('the settings sheet copy (wave 2)', () => {
+  it('fills every key of the sheet copy from vaultCopy.ts, strings and lines alike', async () => {
+    const { vaultSettingsSheetCopy } = await import('../src/lib/vaultSettingsSheetCopy.js');
+    const c = vaultSettingsSheetCopy();
+    const empty: string[] = [];
+    const walk = (o: Record<string, unknown>, at: string) => {
+      for (const [k, v] of Object.entries(o)) {
+        const key = at ? `${at}.${k}` : k;
+        if (typeof v === 'string') {
+          if (!v.trim()) empty.push(key);
+        } else if (typeof v === 'function') {
+          const out = (v as (...a: string[]) => unknown)('x', 'y');
+          if (typeof out !== 'string' || !out.trim()) empty.push(key);
+        } else if (v && typeof v === 'object') {
+          walk(v as Record<string, unknown>, key);
+        } else {
+          empty.push(key);
+        }
+      }
+    };
+    walk(c as unknown as Record<string, unknown>, '');
+    expect(empty).toEqual([]);
+    // Every key the sheet's copy type names is present (a compile-time
+    // shape, checked here at run time too).
+    const src = readFileSync(join(SRC, 'components/vault/VaultSettingsSheet.tsx'), 'utf8');
+    const block = src.slice(
+      src.indexOf('export interface VaultSettingsSheetCopy {'),
+      src.indexOf('/** The fields a folder list'),
+    );
+    const keys = [...block.matchAll(/^ {2}(\w+)[?]?:/gm)].map((m) => m[1]!);
+    expect(keys.length).toBeGreaterThan(80);
+    for (const k of keys) expect(Object.keys(c), k).toContain(k);
+  });
+
+  it('Notes in chats follows the pack table, and attachments read as words', async () => {
+    const { vaultSettingsSheetCopy } = await import('../src/lib/vaultSettingsSheetCopy.js');
+    expect(vaultSettingsSheetCopy({ small: 'current-state' }).notesInChatsSub).not.toMatch(
+      /match the task/,
+    );
+    expect(vaultSettingsSheetCopy({ small: 'full' }).notesInChatsSub).toMatch(/match the task/);
+    const { vaultAttachmentsValue } = await import('../src/lib/vaultCopy.js');
+    expect(vaultAttachmentsValue(undefined)).toBe('Top of this vault');
+    expect(vaultAttachmentsValue('/')).toBe('Top of this vault');
+    expect(vaultAttachmentsValue('./')).toBe('Same folder as the note');
+    expect(vaultAttachmentsValue('./files')).toBe('"files", beside the note');
+    expect(vaultAttachmentsValue('Assets/')).toBe('Assets');
+  });
+});
+
+describe('the device switches ride into sessions (wave 2, CTO L13)', () => {
+  it('sends only what turns something off or lowers it', async () => {
+    const { appVaultOverrides, appPackSize, appHandoffOn, vaultDevicePatch, vaultDeviceView } =
+      await import('../src/lib/vaultDevice.js');
+    expect(appVaultOverrides({})).toEqual({});
+    expect(
+      appVaultOverrides({ vaultContext: 'off', vaultHandoff: 'off', vaultPackSize: 'small' }),
+    ).toEqual({ context: 'off', handoff: 'off', packSize: 'small' });
+    expect(appVaultOverrides({ vaultContext: 'auto' })).toEqual({});
+    expect(appPackSize({})).toBe('normal');
+    expect(appPackSize({ vaultPackSize: 'large' })).toBe('large');
+    expect(appHandoffOn({}, true)).toBe(true);
+    expect(appHandoffOn({ vaultHandoff: 'off' }, true)).toBe(false);
+    expect(appHandoffOn({}, false)).toBe(false);
+    // Turning a switch on clears the override; a size is stored as chosen.
+    expect(vaultDevicePatch({ context: true })).toEqual({ vaultContext: undefined });
+    expect(vaultDevicePatch({ handoff: false })).toEqual({ vaultHandoff: 'off' });
+    expect(vaultDevicePatch({ packSize: 'normal' })).toEqual({ vaultPackSize: 'normal' });
+    // Memory off holds both switches off, disabled.
+    const off = vaultDeviceView({}, { memoryOn: false, cloudSeat: true });
+    expect(off.context).toEqual({ on: false, lock: 'memory' });
+    expect(off.handoff).toEqual({ on: false, lock: 'memory' });
+    expect(off.cloudSeat).toBe(true);
+  });
+
+  it('the store passes them on both session paths and the /chat pack', () => {
+    const store = readFileSync(join(SRC, 'state/store.ts'), 'utf8');
+    expect(store).toMatch(/vaultOverrides: appVaultOverrides\(settings\)/);
+    expect(store).toMatch(/vaultOverrides: sessionOpts\.vaultOverrides/);
+    expect(store).toMatch(/packSize: settings\.vaultPackSize/);
+    expect(store).toMatch(/packSize: \(\) => appPackSize\(get\(\)\.settings\)/);
+    expect(store).toMatch(/handoffSetting: \(\) => get\(\)\.settings\.vaultHandoff/);
+    const remote = readFileSync(join(SRC, 'drivers/remoteDriver.ts'), 'utf8');
+    expect(remote).toMatch(/vaultOverrides: opts\.vaultOverrides/);
+    const chat = readFileSync(join(SRC, 'drivers/desktopChatDriver.ts'), 'utf8');
+    expect(chat).toMatch(/packSize: pack\.packSize/);
+  });
+});
+
+describe('the sheet picks (wave 2, CX Y1, Y9)', () => {
+  it('a New notes folder also says new notes go to a folder; lists add a glob', async () => {
+    const { vaultPickPatches, vaultFolderChoices } =
+      await import('../src/lib/vaultSettingsPick.js');
+    const { VAULT_SETTINGS_DEFAULTS } = await import('os-code/protocol');
+    const s = {
+      ...VAULT_SETTINGS_DEFAULTS,
+      narrowing: { exclude: ['Old/**'], localOnly: { paths: [], tags: [] } },
+    };
+    expect(vaultPickPatches('newNotes.folder', { kind: 'value', value: 'Inbox' }, s)).toEqual([
+      { field: 'newNotes.folder', value: 'Inbox' },
+      { field: 'newNotes.location', value: 'folder' },
+    ]);
+    expect(vaultPickPatches('newNotes.folder', { kind: 'current' }, s)).toEqual([
+      { field: 'newNotes.location', value: 'current' },
+    ]);
+    expect(vaultPickPatches('exclude', { kind: 'value', value: 'Drafts' }, s)).toEqual([
+      { field: 'exclude', value: ['Old/**', 'Drafts/**'] },
+    ]);
+    expect(vaultPickPatches('exclude', { kind: 'value', value: 'Old' }, s)).toEqual([]);
+    expect(
+      vaultPickPatches('daily.template', { kind: 'value', value: 'Templates/Daily.md' }, s),
+    ).toEqual([{ field: 'daily.template', value: 'Templates/Daily' }]);
+    expect(vaultPickPatches('agent.folder', { kind: 'default' }, s)).toEqual([
+      { field: 'agent.folder', value: null },
+    ]);
+    expect(
+      vaultFolderChoices(['A/B/n.md', 'top.md', '.obsidian/x.md'], ['C', 'A/.hidden']),
+    ).toEqual(['A', 'A/B', 'C']);
+  });
+});
+
+describe('links follow the vault (wave 2, CTO L2)', () => {
+  it('a markdown pick writes a markdown link, and the format picks the path', async () => {
+    const { markdownLinkFor, wikiTargetFor, relativeNotePath } =
+      await import('../src/components/vault/VaultLinkSuggest.js');
+    const { linkEdit } = await import('../src/components/vault/VaultAccessoryBar.js');
+    const { buildPathIndex } = await import('os-code/protocol');
+    const paths = ['Plan.md', 'A/B/Note one.md', 'A/C/Other.md', 'Work/Plan (v2).md'];
+    const idx = buildPathIndex(paths);
+    const from = 'A/B/Note one.md';
+    expect(relativeNotePath('A/B', 'A/C/Other.md')).toBe('../C/Other.md');
+    expect(wikiTargetFor('A/C/Other.md', from, idx)).toBe('Other');
+    expect(wikiTargetFor('A/C/Other.md', from, idx, 'absolute')).toBe('A/C/Other');
+    expect(wikiTargetFor('A/C/Other.md', from, idx, 'relative')).toBe('../C/Other');
+    expect(markdownLinkFor({ path: 'A/C/Other.md', target: 'Other' }, from, idx)).toBe(
+      '[Other](Other.md)',
+    );
+    expect(markdownLinkFor({ path: 'A/C/Other.md', target: 'Other' }, from, idx, 'relative')).toBe(
+      '[Other](../C/Other.md)',
+    );
+    expect(markdownLinkFor({ path: 'Work/Plan (v2).md', target: 'x' }, from, idx, 'absolute')).toBe(
+      '[Plan (v2)](Work/Plan%20%28v2%29.md)',
+    );
+    expect(
+      markdownLinkFor({ path: 'Plan.md', target: 'Plan#Goals', heading: 'Goals' }, from, idx),
+    ).toBe('[Goals](Plan.md#Goals)');
+    // Insert link on a selection, markdown style: the caret waits in ().
+    expect(linkEdit('see Plan', 4, 8, 'markdown')).toEqual({
+      range: { start: 4, end: 8 },
+      insert: '[Plan]()',
+      caret: 11,
+    });
+  });
+});
+
+describe("a model's note carries its provenance (wave 2, CTO L9, L10)", () => {
+  it('the seat names its model, where it ran, its class, and a cloud provider only', async () => {
+    const { seatProvenance, withProvenance } = await import('../src/drivers/stackDriver.js');
+    const local = seatProvenance(
+      { kind: 'byom', id: 'b', label: 'Home box', baseUrl: 'http://127.0.0.1', model: 'qwen' },
+      { modelClass: 'small', servedTokens: 8192, leavesNetwork: false },
+    );
+    expect(local).toEqual({
+      'oscode-model': 'qwen',
+      'oscode-where': 'local',
+      'oscode-size': 'small',
+      'oscode-provider': null,
+    });
+    const cloud = seatProvenance(
+      { kind: 'cloud', provider: 'anthropic', model: 'claude-x', label: 'Claude' },
+      { modelClass: 'large', servedTokens: 200000, leavesNetwork: true },
+    );
+    expect(cloud['oscode-provider']).toBe('anthropic');
+    const text = withProvenance('---\ntitle: "A"\n---\nBody\n', {
+      'oscode-source': 'agent',
+      ...cloud,
+    });
+    expect(text).toContain('title: "A"');
+    expect(text).toContain('oscode-where: "cloud"');
+    expect(text.endsWith('Body\n')).toBe(true);
+  });
+
+  it('the Stack merges it before the card, and checks the agent folder again at approve', () => {
+    const src = readFileSync(join(SRC, 'drivers/stackDriver.ts'), 'utf8');
+    expect(src).toMatch(/this\.queueProposal\(this\.stampProposal\(/);
+    expect(src).toMatch(/vaultApproveRefusal\(p, \{ agentFolder: this\.agentFolder\(tools\) \}\)/);
+    expect(src).toMatch(/vaultAnthropicTool\(\s*n,\s*this\.agentFolder\(/);
+    expect(src).toMatch(/vaultOpenAiTool\(\s*n,\s*this\.agentFolder\(/);
+  });
+});
+
+describe('the room places the entry points (wave 2, CX Y4, Y7)', () => {
+  it('Options, the storage sheet and Settings open the one sheet', () => {
+    const room = readFileSync(join(SRC, 'screens/VaultScreen.tsx'), 'utf8');
+    expect(room).toMatch(/onSettings=\{/);
+    expect(room).toMatch(/vault-storage-settings/);
+    expect(room.match(/\{settingsHost\}/g)?.length).toBe(2);
+    expect(room).toMatch(/vaultTypeAttrs\(vs\.editor\)/);
+    expect(room).toMatch(/<VaultProvenanceChip/);
+    expect(room).toMatch(/<VaultAboutNote/);
+    expect(room).toMatch(/<VaultStarterSheet/);
+    const settings = readFileSync(join(SRC, 'screens/SettingsScreen.tsx'), 'utf8');
+    // Directly after Memory, as rows of the Wayfinding group, no new group.
+    expect(settings).toMatch(/id === 'memory' \? VAULT_MEMORY_SUB/);
+    expect(settings).toMatch(/VAULT_SETTINGS_ROWS\.context/);
+    expect(settings).toMatch(/VAULT_SETTINGS_ROWS\.handoff/);
+    expect(settings).toMatch(/<VaultSettingsHost/);
+    expect(settings).not.toMatch(/SettingsGroup title="Vault/);
+  });
+
+  it('the team vault on main reads the defaults, read-only, with its footer', async () => {
+    const { vaultSettingsTeamFooter, vaultCapLine } = await import('../src/lib/vaultCopy.js');
+    expect(vaultSettingsTeamFooter({ admin: false })).toBe('Your admins set these.');
+    expect(vaultSettingsTeamFooter({ admin: true, org: 'Acme' })).toBe(
+      'These apply to everyone in Acme.',
+    );
+    expect(vaultCapLine('org', 'settingsWrite')).toMatch(/cannot change here/);
+    const host = readFileSync(join(SRC, 'components/vault/VaultSettingsHost.tsx'), 'utf8');
+    expect(host).toMatch(/\(!team && vaultSettings\) \|\| VAULT_SETTINGS_DEFAULTS/);
+    expect(host).toMatch(/\? vaultCapLine\('org', 'settingsWrite'\)/);
+  });
+});
 
 // ---- M7 wave 2 end ----

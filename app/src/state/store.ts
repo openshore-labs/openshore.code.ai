@@ -285,11 +285,15 @@ import {
   vaultConflictCopyPath,
   foldPath,
   listTasks,
+  mergeProvenance,
+  unionNarrowing,
   type AttachmentMeta,
   type BytesRead,
   type ReadBytesOptions,
   type CurrentsHostProbe,
+  type ResolvedVaultSettings,
   type VaultPrivacy,
+  type VaultSettingsPatch,
   type VaultVisibility,
 } from 'os-code/protocol';
 import {
@@ -396,8 +400,17 @@ import {
   type WriteResult,
 } from '../lib/gitos/providers.js';
 import { vaultCaps, type VaultCaps } from '../lib/vaultCaps.js';
-import { readObsidianAppConfig, readVaultConfig } from '../lib/gitos/config.js';
 import { clearVaultTodayCache, resolveVaultToday, vaultTodayLine } from '../lib/vaultToday.js';
+import {
+  cachedVaultSettings,
+  loadVaultSettings,
+  saveVaultSetting,
+  vaultNarrowingStamp,
+  vaultSettingsHint,
+  type VaultSettingSave,
+} from '../lib/vaultSettings.js';
+import { applyVaultStarter, vaultStarterOffered } from '../lib/vaultStarter.js';
+import { appHandoffOn, appPackSize, appVaultOverrides } from '../lib/vaultDevice.js';
 import {
   dropVaultRecent,
   pushVaultRecent,
@@ -453,6 +466,9 @@ import {
   vaultReplayCopiesLine,
   vaultResolveToast,
   vaultStaleDeleteToast,
+  VAULT_MARKED_NOT_REVIEWED,
+  VAULT_MARKED_REVIEWED,
+  VAULT_STARTER_NOT_EMPTY,
 } from '../lib/vaultCopy.js';
 import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
 import { readProjectSecrets, writeProjectSecrets } from '../lib/projectSecrets.js';
@@ -1339,6 +1355,13 @@ interface AppState {
    *  folders the storage lists (empty ones too) and the remembered empty
    *  ones (Vault M6 6.2, K5). */
   vaultFolders?: string[];
+  /** The vault on screen's resolved settings (Vault M7, CTO L3 to L6):
+   *  Obsidian's conventions, then `.oscode/vault.json`, then the defaults.
+   *  Undefined before the first read after a repoint. */
+  vaultSettings?: ResolvedVaultSettings;
+  /** A sheet another room asked the Vault room to open when it shows
+   *  (Settings' "Where it lives"). The room takes it once and clears it. */
+  vaultSheetRequest?: 'storage';
   /** When true, the Marketplace intro walkthrough is showing over the library. */
   libraryIntro?: boolean;
   /** When true, a brand-new account was just created on a device that never
@@ -1963,6 +1986,24 @@ interface AppState {
       }
     | undefined
   >;
+  /** The vault on screen's settings (Vault M7, CTO L5, L6), through the
+   *  loader's 60 second cache; `force` reads now (the room became visible,
+   *  a watcher hint). Undefined when no vault is reachable. */
+  vaultLoadSettings(opts?: { force?: boolean }): Promise<ResolvedVaultSettings | undefined>;
+  /** The person's one changed field, written to `.oscode/vault.json` by
+   *  compare-and-swap (CTO L7, CX Y5). Only the settings sheet calls it. */
+  vaultSaveSetting(patch: VaultSettingsPatch): Promise<VaultSettingSave>;
+  /** Mark a note reviewed, or not (CX Y12): the person's own compare-and-
+   *  swap write of `oscode-reviewed` through `mergeProvenance`, every other
+   *  byte kept. `changed`: the note moved on and the newer version is open. */
+  vaultMarkReviewed(path: string, reviewed: boolean): Promise<'ok' | 'changed' | 'failed'>;
+  /** Whether the empty vault's ramp offers the starter layout (CTO L12). */
+  vaultStarterOffered(): Promise<boolean>;
+  /** Add the starter layout (CX Y13's "Add these"): emptiness re-checked,
+   *  every write `ifAbsent`. The whole layout toasts here. */
+  vaultApplyStarter(): Promise<{ added: number; total: number }>;
+  /** Ask the Vault room to open a sheet when it next shows, or clear it. */
+  vaultRequestSheet(sheet: 'storage' | undefined): void;
   /** The switch note's "Save to Vault" (J12, D3): the person's own one-tap
    *  write to `Handoffs/<date> <project>.md`, `ifAbsent`, " 2" on a clash. */
   saveHandoffToVault(conversationId: string, itemId: string): Promise<string | undefined>;
@@ -3337,7 +3378,12 @@ export const useApp = create<AppState>((set, get, api) => {
     // device store now, while the driver builds (synchronously, so a reopened
     // chat is never parked on it); the first send finds it there.
     let handoff: string | undefined;
-    if (conv.projectId && spokenTurns(conv.thread.items) === 0) {
+    // The device's Handoff switch (Vault M7, CTO L13): off asks for none.
+    if (
+      conv.projectId &&
+      spokenTurns(conv.thread.items) === 0 &&
+      appHandoffOn(settings, vaultInChats())
+    ) {
       void get()
         .projectHandoff(conv.projectId)
         .then((h) => {
@@ -3358,6 +3404,11 @@ export const useApp = create<AppState>((set, get, api) => {
           ? get().settings.projects?.find((p) => p.id === projectId)?.vaultPins
           : undefined) ?? [],
       handoff: () => handoff,
+      // Room for notes and the Handoff switch (Vault M7, CTO L13), read at
+      // each send; the vault's own settings name what retrieval skips.
+      packSize: () => appPackSize(get().settings),
+      handoffSetting: () => get().settings.vaultHandoff,
+      settings: personalSettings,
     });
     vaultPacks.set(conv.id, pack);
     return pack;
@@ -3412,6 +3463,9 @@ export const useApp = create<AppState>((set, get, api) => {
         return r;
       },
       teamVault: () => get().vaultScope === 'team',
+      // The vault's agent folder (Vault M7, CTO L2), at the offer and again
+      // at approve.
+      agentFolder: () => personalSettings()?.agent.folder,
       onWritten: (paths) => {
         void (async () => {
           for (const p of paths) await get().noteAgentVaultWrite(p);
@@ -3524,6 +3578,12 @@ export const useApp = create<AppState>((set, get, api) => {
           ...(project?.vaultPins?.length && memoryOverride(settings) !== false
             ? { vaultPins: [...project.vaultPins] }
             : {}),
+          // Notes in chats, Handoff and Room for notes (Vault M7, CTO L13):
+          // off-only and lower-only, taken at open, so a change applies to
+          // new chats.
+          ...(Object.keys(appVaultOverrides(settings)).length
+            ? { vaultOverrides: appVaultOverrides(settings) }
+            : {}),
         };
         const cwd = conv.source.cwd ?? firstWorkspace(conv.repoIds ?? []);
         // A desktop is its own engine, unless the person has pointed it at a
@@ -3582,6 +3642,7 @@ export const useApp = create<AppState>((set, get, api) => {
             // capped by the client before they go on the wire.
             handoff: sessionOpts.handoff,
             vaultPins: sessionOpts.vaultPins,
+            ...(sessionOpts.vaultOverrides ? { vaultOverrides: sessionOpts.vaultOverrides } : {}),
           });
           await bindSessionId(conv.id, sessionId, cwd);
         }
@@ -3629,6 +3690,8 @@ export const useApp = create<AppState>((set, get, api) => {
                   vaultPack: {
                     ...(chatCwd ? { cwd: chatCwd } : {}),
                     ...(chatProject?.name ? { projectName: chatProject.name } : {}),
+                    // Room for notes (L13): the computer lowers-only.
+                    ...(settings.vaultPackSize ? { packSize: settings.vaultPackSize } : {}),
                   },
                 },
         );
@@ -3953,7 +4016,7 @@ export const useApp = create<AppState>((set, get, api) => {
     // computer go with it. The pairing itself is not the account's, so the
     // hub link comes back fresh, holding nothing of the last person's.
     await shutVaultIndex().catch(() => {});
-    clearVaultTodayCache();
+    forgetVaultSettings();
     forgetVaultContext();
     await syncHubLink(get().settings.daemon, { forget: true });
     const s = get().settings;
@@ -4820,6 +4883,34 @@ export const useApp = create<AppState>((set, get, api) => {
     return provider ? { provider, providerId, resourceId: VAULT_RESOURCE_ID } : undefined;
   }
 
+  /** The personal vault's settings as last read (Vault M7), or undefined
+   *  before the first read. Sync, for the tools' agent folder and the
+   *  pack's skip list. */
+  function personalSettings(): ResolvedVaultSettings | undefined {
+    const t = personalVault();
+    return t ? cachedVaultSettings(foldersKey(t)) : undefined;
+  }
+
+  /** The personal vault's settings now, through the loader's cache. */
+  async function personalSettingsNow(): Promise<ResolvedVaultSettings | undefined> {
+    const t = personalVault();
+    if (!t) return undefined;
+    try {
+      return await loadVaultSettings(t.provider, t.resourceId, foldersKey(t));
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** The vault moved, was repointed or picked, the pairing changed or the
+   *  account signed out (CTO L6): every vault's settings are read again, and
+   *  the one on screen shows none until they are. */
+  function forgetVaultSettings(): void {
+    clearVaultTodayCache();
+    privacyCache = undefined;
+    if (get().vaultSettings) set({ vaultSettings: undefined });
+  }
+
   /** The seat a source answers from, as the composer and a switch size it
    *  (CTO J2, J4), judged by `packSeatFor` so the pill, the pack and the
    *  excerpt never disagree. Fails closed: a seat that cannot be judged
@@ -4920,7 +5011,8 @@ export const useApp = create<AppState>((set, get, api) => {
           tags: [...VAULT_PRIVACY_DEFAULTS.localOnly.tags],
         },
       },
-      get().settings.vaultPrivacy,
+      // The vault's own file narrows too (L4): its last read, kept.
+      unionNarrowing(get().settings.vaultPrivacy, personalSettings()?.narrowing),
     );
   }
 
@@ -4931,14 +5023,26 @@ export const useApp = create<AppState>((set, get, api) => {
   /** This device's vault privacy judge (J3), cached briefly. Fail closed:
    *  while it loads, or when it cannot, the D5 defaults with the device's
    *  own narrowing apply, never no rules. */
-  let privacyCache: { at: number; privacy: VaultPrivacy } | undefined;
+  let privacyCache: { at: number; stamp: string; privacy: VaultPrivacy } | undefined;
   async function vaultPrivacyNow(): Promise<VaultPrivacy> {
-    if (privacyCache && Date.now() - privacyCache.at < 60_000) return privacyCache.privacy;
+    // The vault's own file's version is part of the key (CTO L6): a new
+    // narrowing compiles the rules again.
+    const stamp = vaultNarrowingStamp(personalSettings());
+    if (privacyCache && privacyCache.stamp === stamp && Date.now() - privacyCache.at < 60_000) {
+      return privacyCache.privacy;
+    }
     let privacy: VaultPrivacy;
+    let settings: ResolvedVaultSettings | undefined;
     try {
       let timer: ReturnType<typeof setTimeout> | undefined;
       privacy = await Promise.race([
-        appVaultPrivacy(privacyDeps()),
+        (async () => {
+          settings = await personalSettingsNow();
+          return appVaultPrivacy({
+            ...privacyDeps(),
+            ...(settings ? { vault: settings.narrowing } : {}),
+          });
+        })(),
         new Promise<never>((_, reject) => {
           timer = setTimeout(() => reject(new Error('slow')), PRIVACY_WAIT_MS);
         }),
@@ -4946,7 +5050,7 @@ export const useApp = create<AppState>((set, get, api) => {
     } catch {
       return fallbackPrivacy();
     }
-    privacyCache = { at: Date.now(), privacy };
+    privacyCache = { at: Date.now(), stamp: vaultNarrowingStamp(settings), privacy };
     return privacy;
   }
 
@@ -5057,7 +5161,7 @@ export const useApp = create<AppState>((set, get, api) => {
    *  storage change or a pairing change, never on leaving the room). */
   async function afterVaultRepoint(): Promise<void> {
     await shutVaultIndex().catch(() => {});
-    clearVaultTodayCache();
+    forgetVaultSettings();
     if (get().vaultScope === 'personal') {
       if (get().vaultNote) {
         await leaveVaultConflict();
@@ -5188,7 +5292,7 @@ export const useApp = create<AppState>((set, get, api) => {
     if (!opts.initial) {
       await prev?.forget().catch(() => {});
       await shutVaultIndex().catch(() => {});
-      clearVaultTodayCache();
+      forgetVaultSettings();
       forgetVaultContext();
     }
     if (!daemon || !key) {
@@ -5330,10 +5434,16 @@ export const useApp = create<AppState>((set, get, api) => {
           Boolean(st.vaultMoving) ||
           (t.providerId === 'org' && Boolean(st.vaultTeamExpired)) ||
           (t.providerId === 'files' && st.vaultFolder?.exists === false)));
-    return vaultCaps(t.provider, {
-      readOnly,
-      ...(t.providerId === 'hub' ? { reach: hubReach() } : {}),
-    });
+    // The vault's Delete choice (L11): For good turns Trash off here.
+    const settings = cachedVaultSettings(foldersKey(t));
+    return vaultCaps(
+      t.provider,
+      {
+        readOnly,
+        ...(t.providerId === 'hub' ? { reach: hubReach() } : {}),
+      },
+      settings ? { delete: settings.delete } : undefined,
+    );
   }
 
   /** A note's text in one vault, through the body cache. */
@@ -9464,6 +9574,8 @@ export const useApp = create<AppState>((set, get, api) => {
       // Empty folders and the Trash row (Vault M6), each only where the
       // storage has them.
       void refreshVaultFolders(target);
+      // The vault's settings (Vault M7, CTO L5), through the 60 s cache.
+      void get().vaultLoadSettings();
       void refreshVaultTrash(target);
       // An empty default Local vault on the desktop has nothing to move, so
       // it simply points at the folder (CX 1.3 b).
@@ -9715,6 +9827,11 @@ export const useApp = create<AppState>((set, get, api) => {
       // change reaches it through the relist below (M3 3.2).
       if (reason === 'watch' && !tree && paths?.length) {
         void vaultIndexOf(target)?.watched({ paths, tree: false }, () => listVaultNotes(target));
+      }
+      // A change under `.oscode/` or the Obsidian config folder reads the
+      // vault's settings again (CTO L6).
+      if (reason === 'watch' && paths?.length && vaultSettingsHint(foldersKey(target), paths)) {
+        void get().vaultLoadSettings({ force: true });
       }
       const listed = new Set(get().vaultFiles.map((f) => f.path));
       if (reason === 'focus' || tree || paths?.some((p) => !listed.has(p))) scheduleRelist();
@@ -10306,20 +10423,160 @@ export const useApp = create<AppState>((set, get, api) => {
     async vaultMediaNow() {
       const t = vaultTarget();
       if (!t || !capsOf(t).attachments) return undefined;
-      const [attachments, app] = await Promise.all([
+      // The attachments folder is the vault's resolved setting (Vault M7,
+      // CTO L2): Obsidian's where it sets one, else `.oscode/vault.json`.
+      const [attachments, settings] = await Promise.all([
         t.provider.listAttachments!(t.resourceId).catch(() => [] as AttachmentMeta[]),
-        readVaultConfig(t.provider, t.resourceId, 'obsidian/app')
-          .then(readObsidianAppConfig)
-          .catch(() => ({}) as ReturnType<typeof readObsidianAppConfig>),
+        loadVaultSettings(t.provider, t.resourceId, foldersKey(t)).catch(() => undefined),
       ]);
+      const attachmentFolder = settings?.attachments.folder;
       const provider = t.provider;
       const resourceId = t.resourceId;
       return {
         scope: `${t.providerId}:${t.resourceId}`,
         attachments,
-        ...(app.attachmentFolderPath ? { attachmentFolder: app.attachmentFolderPath } : {}),
+        ...(attachmentFolder ? { attachmentFolder } : {}),
         readBytes: (path, opts) => provider.readBytes!(resourceId, path, opts),
       };
+    },
+
+    async vaultLoadSettings(opts) {
+      const t = vaultTarget();
+      if (!t) return undefined;
+      let settings: ResolvedVaultSettings;
+      try {
+        settings = await loadVaultSettings(
+          t.provider,
+          t.resourceId,
+          foldersKey(t),
+          opts?.force ? { force: true } : {},
+        );
+      } catch {
+        return undefined;
+      }
+      // A late read never paints another vault's settings.
+      if (isActiveVault(t) && get().vaultSettings !== settings) set({ vaultSettings: settings });
+      return settings;
+    },
+
+    async vaultSaveSetting(patch) {
+      const t = vaultTarget();
+      if (!t || !capsOf(t).settingsWrite || typeof t.provider.writeConfig !== 'function') {
+        return { kind: 'read-only' };
+      }
+      let r: VaultSettingSave;
+      try {
+        r = await saveVaultSetting(
+          { provider: t.provider, resourceId: t.resourceId, key: foldersKey(t) },
+          patch,
+        );
+      } catch {
+        r = { kind: 'failed' };
+      }
+      if ((r.kind === 'saved' || r.kind === 'same-field') && isActiveVault(t)) {
+        set({ vaultSettings: r.settings });
+      }
+      // A new narrowing compiles the privacy rules again on the next read.
+      if (r.kind === 'saved') {
+        privacyCache = undefined;
+        logEvent('vault_setting_saved', { merged: r.merged });
+      }
+      if (r.kind === 'unreadable' || r.kind === 'failed') {
+        void get().vaultLoadSettings({ force: true });
+      }
+      return r;
+    },
+
+    async vaultMarkReviewed(path, reviewed) {
+      const t = vaultTarget();
+      if (!t || !capsOf(t).taskWriteBack) return 'failed';
+      if (await leaseRefuses(t)) return 'failed';
+      // What the person last typed is saved first, so the mark lands on it.
+      await flushOpenSave(t).catch(() => {});
+      let file: StoredFile | undefined;
+      try {
+        file = await t.provider.read(t.resourceId, path);
+      } catch {
+        return 'failed';
+      }
+      if (!file) return 'failed';
+      // The person's own write (CX Y12): one line, every other byte kept.
+      let next: string;
+      try {
+        const merged = mergeProvenance(file.text, {
+          'oscode-reviewed': reviewed ? new Date().toISOString() : null,
+        });
+        if (!('text' in merged)) return 'failed';
+        next = merged.text;
+      } catch {
+        return 'failed';
+      }
+      const done = (): 'ok' => {
+        get().showToast(reviewed ? VAULT_MARKED_REVIEWED : VAULT_MARKED_NOT_REVIEWED);
+        logEvent('vault_mark_reviewed', { reviewed });
+        return 'ok';
+      };
+      if (next === file.text) return done();
+      let r: WriteResult;
+      try {
+        r = await opsDeps(t).putVaultNote(path, next, { ifMatch: versionOf(file) });
+      } catch {
+        return 'failed';
+      }
+      if (r.ok) return done();
+      if (r.conflict === 'changed' || r.conflict === 'missing') {
+        // The note moved on somewhere else: the newer version opens here.
+        if (isActiveVault(t) && get().vaultNote?.path === path) {
+          await inSaveChain(t, path, () => recheckOpenNote(t, path)).catch(() => undefined);
+        }
+        return 'changed';
+      }
+      return 'failed';
+    },
+
+    async vaultStarterOffered() {
+      const t = vaultTarget();
+      if (!t || get().vaultScope !== 'personal') return false;
+      try {
+        return await vaultStarterOffered({
+          personal: true,
+          caps: capsOf(t),
+          provider: t.provider,
+          resourceId: t.resourceId,
+          obsidianFolder: t.providerId === 'files' && get().vaultFolder?.obsidian === 'vault',
+        });
+      } catch {
+        return false;
+      }
+    },
+
+    async vaultApplyStarter() {
+      const t = vaultTarget();
+      if (!t || get().vaultScope !== 'personal') return { added: 0, total: 0 };
+      if (await leaseRefuses(t)) return { added: 0, total: 0 };
+      const r = await applyVaultStarter({
+        personal: true,
+        caps: capsOf(t),
+        provider: t.provider,
+        resourceId: t.resourceId,
+        obsidianFolder: t.providerId === 'files' && get().vaultFolder?.obsidian === 'vault',
+      }).catch(() => undefined);
+      if (!r || !r.ok) {
+        get().showToast(VAULT_STARTER_NOT_EMPTY);
+        return { added: 0, total: 0 };
+      }
+      // The new notes and the settings file show at once.
+      clearVaultTodayCache(foldersKey(t));
+      await get().vaultRefresh();
+      void get().vaultLoadSettings({ force: true });
+      // The whole layout toasts here; a partial result says so in the sheet.
+      if (r.added === r.total) get().showToast(r.line);
+      logEvent('vault_starter', { added: r.added, total: r.total });
+      return { added: r.added, total: r.total };
+    },
+
+    vaultRequestSheet(sheet) {
+      set({ vaultSheetRequest: sheet });
     },
 
     vaultRecentRing() {
@@ -10392,7 +10649,7 @@ export const useApp = create<AppState>((set, get, api) => {
         // old home (Vault M5, CTO J1 closes it on a storage move).
         if (result.ok) {
           await shutVaultIndex().catch(() => {});
-          clearVaultTodayCache();
+          forgetVaultSettings();
         }
         return result;
       } finally {
@@ -10558,7 +10815,7 @@ export const useApp = create<AppState>((set, get, api) => {
       if (result.ok) {
         await get().saveSettings({ vaultHubOffer: undefined, vaultBeforeHub: before });
         await shutVaultIndex().catch(() => {});
-        clearVaultTodayCache();
+        forgetVaultSettings();
         logEvent('vault_hub_offer', { action: 'move', forked: result.forked.length });
         if (get().view === 'vault') void get().vaultRefresh();
       }

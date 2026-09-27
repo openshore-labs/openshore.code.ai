@@ -763,9 +763,8 @@ describe('every field has a runtime consumer (L18)', () => {
     }
   });
 
-  // Emergency door, targeted: the consumers are wired by streams C and F and
-  // the wave 2 integrator, which unskips this once they land.
-  it.skip('each consumer reads its field (unskip in wave 2, when the consumers are wired)', () => {
+  // The consumers are wired (streams C and F and the wave 2 integrator).
+  it('each consumer reads its field', () => {
     const missing: string[] = [];
     for (const [field, rows] of Object.entries(CONSUMERS)) {
       for (const row of rows) {
