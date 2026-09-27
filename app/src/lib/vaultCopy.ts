@@ -1826,4 +1826,109 @@ export const VAULT_TICK_FAILED = 'Could not save that tick. Try again.';
 // accessory bar, outline, outgoing and unlinked mentions, the backlinks
 // skeleton, Today's note (CX X11, X15 to X17).
 
+/** The link suggestions (CX X15). */
+export const VAULT_LINK_LIST_LABEL = 'Link a note';
+export function vaultLinkChipAria(title: string, folder: string): string {
+  return folder ? `${title}, in ${folder}` : title;
+}
+export function vaultLinkNew(q: string): string {
+  return `New: ${q}`;
+}
+export function vaultLinkNewAria(q: string): string {
+  return `Link to a new note named ${q}`;
+}
+export function vaultLinkHeading(heading: string): string {
+  return `# ${heading}`;
+}
+export function vaultLinkHeadingAria(heading: string): string {
+  return `Heading ${heading}`;
+}
+
+/** The phone's accessory bar above the keyboard (CX X15). */
+export const VAULT_ACCESSORY = {
+  label: 'Note tools',
+  link: 'Insert link',
+  tag: 'Insert tag',
+  task: 'Make this line a task',
+  hide: 'Hide keyboard',
+} as const;
+
+/** The outline sheet (CX X16). */
+export const VAULT_OUTLINE_TITLE = 'Outline';
+export function vaultOutlineRowAria(level: number, text: string): string {
+  return `Heading level ${level}, ${text}`;
+}
+
+/** The card under a note: three quiet sections (CX X16, X17). */
+export const VAULT_LINKED_MENTIONS = 'Linked mentions';
+export const VAULT_OUTGOING_LINKS = 'Links from this note';
+export const VAULT_UNLINKED_MENTIONS = 'Unlinked mentions';
+export const VAULT_BACKLINKS_LOADING = 'Finding linked mentions';
+export const VAULT_OUTGOING_MISSING = 'Not created yet. Tap to create it.';
+export const VAULT_FIND_UNLINKED = 'Find unlinked mentions';
+export const VAULT_LINK_BUTTON = 'Link';
+export function vaultUnlinkedBusy(n: number): string {
+  return `Reading ${n} ${n === 1 ? 'note' : 'notes'}`;
+}
+export function vaultUnlinkedNone(title: string): string {
+  return `No other note names "${title}" without linking it.`;
+}
+export function vaultLinkMentionAria(title: string, other: string): string {
+  return `Link "${title}" in ${other}`;
+}
+export function vaultLinkedIn(other: string): string {
+  return `Linked in "${other}".`;
+}
+export function vaultLinkMentionFailed(other: string): string {
+  return `Could not link it in "${other}", so nothing changed. Try again in a moment.`;
+}
+
+/** Today's note (CX X11). English names only, as the date tokens are (K7). */
+const TODAY_WEEKDAYS = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+];
+const TODAY_MONTHS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+export const VAULT_TODAY_TITLE = "Today's note";
+export function vaultTodayAria(day: { weekday: number; month: number; day: number }): string {
+  const weekday = TODAY_WEEKDAYS[day.weekday] ?? '';
+  const month = TODAY_MONTHS[day.month - 1] ?? '';
+  return `Today's note, ${weekday}, ${month} ${day.day}`;
+}
+export const VAULT_TODAY_STARTED = "Started today's note.";
+export function vaultTodayStartedFrom(template: string): string {
+  return `Started today's note from ${noteTitle(template)}.`;
+}
+export function vaultTodayTemplateMissing(path: string): string {
+  return `Started today's note. The template ${path} was not found, so it is blank.`;
+}
+/** The daily notes format names a token this app cannot read, so no note
+ *  was made rather than one under a guessed name (K7). */
+export function vaultTodayFormatRefused(format: string, token: string): string {
+  return `Your daily notes format "${format}" uses "${token}", which OpenShore cannot read yet, so no note was made.`;
+}
+/** The day's name is not a note name (a format with a character notes
+ *  cannot use). */
+export function vaultTodayNameRefused(error: string): string {
+  return `Today's note could not be named, so no note was made. ${error}`;
+}
+
 // ---- M6 stream H end ----
