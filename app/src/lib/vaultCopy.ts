@@ -1357,6 +1357,71 @@ export function vaultMentionsOnDemand(n: number): { hint: string; button: string
 // Search (6.1): the search field, results, counts, index states, the switcher,
 // Recent (CX X1 to X4).
 
+/** The tree's search field (X1): the placeholder matches VaultNotePicker's. */
+export const VAULT_SEARCH_PLACEHOLDER = 'Search notes';
+export const VAULT_SEARCH_LABEL = 'Search your vault';
+/** Under the field while it is focused and empty. */
+export const VAULT_SEARCH_HINT = 'Try tag:, path:, file:, or "an exact phrase".';
+/** The two result groups (X2): titles are instant, text follows. */
+export const VAULT_SEARCH_TITLES = 'Titles';
+export const VAULT_SEARCH_IN_NOTES = 'In notes';
+/** Past the row cap. */
+export const VAULT_SEARCH_CAPPED = 'Showing the first 50. Add a word to narrow it.';
+/** While the index is still reading bodies, a no-match is not final. */
+export const VAULT_SEARCH_MORE_LOADING = 'More may appear as notes finish loading.';
+/** The index could not read bodies: titles still match. */
+export const VAULT_SEARCH_FAILED =
+  'Could not read note text for search, so only titles match. Try again.';
+export const VAULT_SEARCH_TRY_AGAIN = 'Try again';
+/** Your computer is off: the search runs over what this device last saw. */
+export const VAULT_SEARCH_AWAY = 'Your computer is off, so this searches the notes last seen here.';
+
+/** The count line under the field, `role="status"`. */
+export function vaultSearchCount(n: number): string {
+  return n === 1 ? '1 note' : `${n} notes`;
+}
+
+/** No row matched what was typed. */
+export function vaultSearchNoMatch(q: string): string {
+  return `No notes match "${q.trim()}".`;
+}
+
+/** The M3 index is still building: titles answer now, text follows. */
+export function vaultSearchIndexing(done: number, total: number): string {
+  return `Titles are ready. Reading note text, ${done} of ${total}.`;
+}
+
+/** A result row's folder as a muted sub-label: `Work / Plans`, nothing at the
+ *  root. */
+export function vaultSearchFolder(folder: string): string {
+  return folder ? folder.split('/').join(' / ') : '';
+}
+
+/** A row's spoken label (X2): `{title}, in {folder}. {excerpt}`. The marks
+ *  add nothing spoken. */
+export function vaultSearchRowLabel(title: string, folder: string, excerpt?: string): string {
+  const where = folder ? `${title}, in ${vaultSearchFolder(folder)}.` : `${title}.`;
+  return excerpt ? `${where} ${excerpt}` : where;
+}
+
+/** The quick switcher (X3), a desktop overlay. */
+export const VAULT_SWITCHER_TITLE = 'Open a note';
+export const VAULT_SWITCHER_PLACEHOLDER = 'Type a note name';
+export const VAULT_SWITCHER_TODAY = "Today's note";
+export const VAULT_RECENT_TITLE = 'Recent';
+
+/** The switcher's last row when no title matches exactly. */
+export function vaultSwitcherNew(q: string): string {
+  return `New note "${q.trim()}"`;
+}
+
+/** The sub-label on an agent-written Recent row (X4), shown ONLY where
+ *  `vaultCopy(platform, provider).agent` is defined: desktop This folder and a
+ *  paired phone on Your computer. Everywhere else the row is plain. */
+export function vaultRecentAgentLabel(copy: Pick<VaultCopy, 'agent'>): string | undefined {
+  return copy.agent ? 'From your agent' : undefined;
+}
+
 // ---- M6 stream F end ----
 
 // ---- M6 stream G begin ----
