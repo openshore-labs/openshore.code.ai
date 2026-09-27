@@ -5,6 +5,14 @@
 // misread as a map, a number, or a date. The block is what lets a later run
 // (or the person, in Obsidian) find this run by type, routine, and tag, and
 // follow `previous` back through the routine's history.
+//
+// Vault M6 (6.4, CTO K7): a run note links TO the day's note (`day`), read
+// from the vault's own daily-notes settings, and never creates or appends to
+// it; the day's Linked mentions then show the run. The link is written only
+// when the date format is one the vault core supports, so a guessed name can
+// never fork the day's note.
+import { VAULT_DAILY_DEFAULTS, dailyNotePath, datePartsOf } from '../harness/vault/dates.js';
+import type { ConfigRead, DailyNoteConfig } from '../harness/vault/types.js';
 
 /** A YAML double-quoted scalar holding exactly `value`. JSON escapes the
  *  quote, the backslash, and the C0 controls; the characters YAML refuses
@@ -50,6 +58,47 @@ export interface RunNoteFields {
   folder: string;
   /** The previous run note's vault path, when there is one. */
   previousPath?: string;
+  /** The day's note's vault path (`runNoteDayPath`), when there is one. */
+  dayPath?: string;
+}
+
+/** The daily-notes settings from `obsidian/daily-notes` (Obsidian's
+ *  `daily-notes.json`: `folder`, `format`, `template`, an empty one meaning
+ *  the default). Absent is Obsidian's defaults; a file that cannot be read or
+ *  parsed is undefined, so no link is guessed. */
+export function dailyNoteConfigOf(read: ConfigRead): DailyNoteConfig | undefined {
+  if (!read.ok) {
+    return read.reason === 'absent'
+      ? { folder: VAULT_DAILY_DEFAULTS.folder, format: VAULT_DAILY_DEFAULTS.format }
+      : undefined;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(read.text);
+  } catch {
+    return undefined;
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+  const o = parsed as Record<string, unknown>;
+  const text = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
+  const folder = text(o.folder).replace(/^\/+|\/+$/g, '');
+  const format = text(o.format) || VAULT_DAILY_DEFAULTS.format;
+  const template = text(o.template);
+  return { folder, format, ...(template ? { template } : {}) };
+}
+
+/** The day's note path for a run that started at `started` (the host's local
+ *  clock), or undefined when the settings cannot be read or the format holds
+ *  a token the vault core does not support. */
+export function runNoteDayPath(started: Date, read: ConfigRead): string | undefined {
+  const cfg = dailyNoteConfigOf(read);
+  if (!cfg) return undefined;
+  try {
+    const path = dailyNotePath(datePartsOf(started), cfg);
+    return path.ok ? path.path : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** The note's frontmatter block, closing newline included. */
@@ -57,6 +106,7 @@ export function runNoteFrontmatter(f: RunNoteFields): string {
   const tag = crewTag(f.folder);
   const tags = ['crew', ...(tag ? [tag] : [])].map(yamlString).join(', ');
   const previous = f.previousPath ? runNoteLink(f.previousPath) : undefined;
+  const day = f.dayPath ? runNoteLink(f.dayPath) : undefined;
   const lines = [
     '---',
     `type: ${yamlString('crew-run')}`,
@@ -68,6 +118,7 @@ export function runNoteFrontmatter(f: RunNoteFields): string {
     `state: ${yamlString(f.state)}`,
     `tags: [${tags}]`,
     ...(previous ? [`previous: ${yamlString(previous)}`] : []),
+    ...(day ? [`day: ${yamlString(day)}`] : []),
     '---',
   ];
   return `${lines.join('\n')}\n`;

@@ -84,6 +84,40 @@ describe('main-process IPC guard (UI-6)', () => {
     }
   });
 
+  // Vault M6 (CTO K13): every new vault channel is guarded, takes only
+  // vault-relative paths main checks through the engine's folderFs, and
+  // validates each guard, target and option like parseVaultGuard.
+  it('the M6 vault IPCs are guarded, root-free, and validate every argument', () => {
+    const m6 = [
+      'vaultRename',
+      'vaultFolders',
+      'vaultFolderCreate',
+      'vaultFolderRename',
+      'vaultTrash',
+      'vaultTrashList',
+      'vaultTrashRestore',
+      'vaultTrashEmpty',
+      'vaultAttachments',
+      'vaultReadBytes',
+      'vaultOpenAttachment',
+    ];
+    for (const ch of m6) {
+      expect(preload).toContain(`${ch}: invoke('osc:${ch}')`);
+      expect(main).toMatch(new RegExp(`guarded\\('osc:${ch}'`));
+    }
+    expect(main).toMatch(
+      /renameVaultFile\(vaultDir\(\), str\(from, 'from'\), str\(to, 'to'\), parseVaultRenameGuard\(g\)\)/,
+    );
+    expect(main).toMatch(/trashVaultPath\(vaultDir\(\), parseVaultTrashTarget\(t\)\)/);
+    expect(main).toMatch(/emptyVaultTrash\(vaultDir\(\), parseVaultTrashIds\(ids\)\)/);
+    expect(main).toMatch(
+      /readVaultBytes\(vaultDir\(\), str\(p, 'path'\), parseReadBytesOptions\(o\)\)/,
+    );
+    // Opening an attachment is jailed to the attachment rule and a real file.
+    expect(main).toMatch(/vaultAttachmentAbs\(vaultDir\(\), str\(p, 'path'\)\)/);
+    expect(main).toMatch(/if \(!st\.isFile\(\)\) return \{ ok: false \}/);
+  });
+
   it('exposes secureHas so the renderer can tell absent from unreadable (P0-3)', () => {
     expect(preload).toContain("secureHas: invoke('osc:secureHas')");
     expect(main).toMatch(/guarded\('osc:secureHas'/);

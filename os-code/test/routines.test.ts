@@ -51,6 +51,42 @@ import { readFrontmatter } from '../src/harness/vault/frontmatter.js';
 import { resolveWikilink } from '../src/harness/vault/resolve.js';
 import { crewTag, yamlString } from '../src/routines/runNote.js';
 
+// The date core is stream A2's (Vault M6); until it lands in this tree its
+// stub throws "not built", so a small stand-in (YYYY, MM, DD and separators
+// only) answers for it. Once the real module is here it answers instead.
+vi.mock('../src/harness/vault/dates.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../src/harness/vault/dates.js')>();
+  type Parts = ReturnType<typeof real.datePartsOf>;
+  const two = (n: number) => String(n).padStart(2, '0');
+  const partsOf = (d: Date) =>
+    ({ year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() }) as Parts;
+  const pathOf = (p: Parts, cfg: { folder: string; format: string }) => {
+    if (/[^YMD\-/ ]/.test(cfg.format.replace(/YYYY|MM|DD/g, ''))) {
+      return { ok: false as const, error: 'unsupported' };
+    }
+    const text = cfg.format
+      .replace('YYYY', String(p.year))
+      .replace('MM', two(p.month))
+      .replace('DD', two(p.day));
+    return { ok: true as const, path: `${cfg.folder ? `${cfg.folder}/` : ''}${text}.md` };
+  };
+  const orFake =
+    <A extends unknown[], R>(f: (...a: A) => R, fake: (...a: A) => R) =>
+    (...a: A): R => {
+      try {
+        return f(...a);
+      } catch (e) {
+        if (String(e).includes('not built')) return fake(...a);
+        throw e;
+      }
+    };
+  return {
+    ...real,
+    datePartsOf: orFake(real.datePartsOf, partsOf),
+    dailyNotePath: orFake(real.dailyNotePath, pathOf),
+  };
+});
+
 let home: string;
 let vault: string;
 let workspace: string;
@@ -460,6 +496,84 @@ describe('routine scheduler', () => {
       const fm = readFrontmatter(readFileSync(join(vault, notePath), 'utf8'));
       expect(prop(fm, 'model')).toBe('unknown');
       scheduler.stop();
+    });
+
+    // Vault M6 (6.4, CTO K7): a run note links TO the day's note, from the
+    // vault's own daily-notes settings, and never creates or appends to it.
+    describe("the day's note link", () => {
+      async function runAndSettle(
+        routineId: string,
+        clock: { now: Date },
+        opened: FakeDriver[],
+        scheduler: RoutineScheduler,
+      ): Promise<string> {
+        scheduler.runNow(routineId);
+        // The settings are read while the run works.
+        await new Promise((r) => setTimeout(r, 100));
+        opened[opened.length - 1]!.emit({ type: 'text-final', text: 'Done.' });
+        clock.now = new Date(clock.now.getTime() + 30_000);
+        opened[opened.length - 1]!.emit({ type: 'task-done', reason: 'complete' });
+        return scheduler.get(routineId)!.lastRun!.notePath!;
+      }
+      const ymd = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+      it("links the day's note at Obsidian's defaults when the vault sets none", async () => {
+        const routine = store.createRoutine(input());
+        const clock = { now: at(0, 6, 0, 5) };
+        const { scheduler, opened } = makeScheduler(clock);
+        const notePath = await runAndSettle(routine.id, clock, opened, scheduler);
+        const fm = readFrontmatter(readFileSync(join(vault, notePath), 'utf8'));
+        const day = ymd(at(0, 6, 0, 5));
+        expect(prop(fm, 'day')).toBe(`[[${day}]]`);
+        expect(fm.links.map((l) => l.target)).toContain(day);
+        // Linked only: the day's note is never made from here.
+        expect(existsSync(join(vault, `${day}.md`))).toBe(false);
+        scheduler.stop();
+      });
+
+      it('follows the folder and format in .obsidian/daily-notes.json', async () => {
+        mkdirSync(join(vault, '.obsidian'), { recursive: true });
+        writeFileSync(join(vault, '.obsidian', 'app.json'), '{}');
+        writeFileSync(
+          join(vault, '.obsidian', 'daily-notes.json'),
+          JSON.stringify({ folder: '/Journal/', format: 'YYYY/MM/DD', template: '' }),
+        );
+        const dayFile = join(vault, 'Journal', 'kept.md');
+        mkdirSync(join(vault, 'Journal'), { recursive: true });
+        writeFileSync(dayFile, 'the day, untouched');
+        const routine = store.createRoutine(input());
+        const clock = { now: at(0, 6, 0, 5) };
+        const { scheduler, opened } = makeScheduler(clock);
+        const notePath = await runAndSettle(routine.id, clock, opened, scheduler);
+        const fm = readFrontmatter(readFileSync(join(vault, notePath), 'utf8'));
+        const d = at(0, 6, 0, 5);
+        const day = `Journal/${ymd(d).replace(/-/g, '/')}`;
+        expect(prop(fm, 'day')).toBe(`[[${day}]]`);
+        expect(existsSync(join(vault, `${day}.md`))).toBe(false);
+        expect(readFileSync(dayFile, 'utf8')).toBe('the day, untouched');
+        scheduler.stop();
+      });
+
+      it('writes no link for a format the core does not support, or settings it cannot read', async () => {
+        mkdirSync(join(vault, '.obsidian'), { recursive: true });
+        writeFileSync(join(vault, '.obsidian', 'app.json'), '{}');
+        const settings = join(vault, '.obsidian', 'daily-notes.json');
+        writeFileSync(settings, JSON.stringify({ format: 'YYYY-MM-DD L' }));
+        const routine = store.createRoutine(input());
+        const clock = { now: at(0, 6, 0, 5) };
+        const { scheduler, opened } = makeScheduler(clock);
+        const first = await runAndSettle(routine.id, clock, opened, scheduler);
+        expect(
+          prop(readFrontmatter(readFileSync(join(vault, first), 'utf8')), 'day'),
+        ).toBeUndefined();
+        writeFileSync(settings, '{ not json');
+        const second = await runAndSettle(routine.id, clock, opened, scheduler);
+        expect(
+          prop(readFrontmatter(readFileSync(join(vault, second), 'utf8')), 'day'),
+        ).toBeUndefined();
+        scheduler.stop();
+      });
     });
 
     it('escapes what YAML would misread, and keeps a tag Obsidian accepts', () => {

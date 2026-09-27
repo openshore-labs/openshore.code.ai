@@ -46,7 +46,8 @@ import {
 } from './model.js';
 import { acquireSchedulerLock, releaseSchedulerLock, type SchedulerLock } from './lock.js';
 import * as store from './store.js';
-import { runNoteFrontmatter } from './runNote.js';
+import { runNoteDayPath, runNoteFrontmatter } from './runNote.js';
+import { readVaultConfigFile } from '../core/vault/configFile.js';
 
 const log = logger('routines');
 
@@ -148,6 +149,10 @@ interface ActiveRun {
   plan: string[];
   /** Why the scheduler itself ended the run (the wall-clock cap), if it did. */
   endNote?: string;
+  /** The day's note the run note links to (Vault M6, 6.4), once the vault's
+   *  daily-notes settings are read at the start. Left out when they are not
+   *  read yet or name a format the vault core does not support. */
+  dayPath?: string;
   approvalTimer?: ReturnType<typeof setTimeout>;
   wallTimer?: ReturnType<typeof setTimeout>;
   finished: boolean;
@@ -486,6 +491,7 @@ export class RoutineScheduler {
       finished: false,
     };
     this.active = active;
+    void this.loadDayPath(active);
     this.live.set(driver.id, driver);
     for (const hook of this.driverHooks) {
       try {
@@ -610,6 +616,19 @@ export class RoutineScheduler {
     void this.pump();
   }
 
+  /** Read the vault's daily-notes settings while the run works, so its note
+   *  can link to the day's note (Vault M6, 6.4, CTO K7). The note is never
+   *  created or appended to from here. */
+  private async loadDayPath(active: ActiveRun): Promise<void> {
+    try {
+      const root = this.vaultRoot(active.routine.ownerUserId);
+      const read = await readVaultConfigFile(root, 'obsidian/daily-notes');
+      active.dayPath = runNoteDayPath(new Date(active.run.startedAt), read);
+    } catch (err) {
+      log.warn('could not read the daily notes settings', { err: String(err) });
+    }
+  }
+
   private writeNote(
     active: ActiveRun,
     state: RoutineRun['state'],
@@ -640,6 +659,7 @@ export class RoutineScheduler {
         state,
         folder: folder.slice('Crew/'.length),
         previousPath,
+        ...(active.dayPath ? { dayPath: active.dayPath } : {}),
       }),
       `# ${active.routine.name}: ${date} at ${hh}:${mm}`,
       '',
