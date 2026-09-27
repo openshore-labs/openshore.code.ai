@@ -1351,6 +1351,32 @@ export function vaultMentionsOnDemand(n: number): { hint: string; button: string
 // ---- M6 stream E begin ----
 // Reader (6.5, 6.6): callout titles, embeds, images and PDFs (CX X12, X14).
 
+/** The reading view's lines: scroll-to, note embeds, images, PDFs. */
+export const vaultReaderCopy = {
+  /** `[[Note#Heading]]` or `[[Note#^id]]` opened, and the target is gone. */
+  anchorMissing: (heading: string, note: string): string =>
+    `No heading "${heading}" in "${note}", so it opened at the top.`,
+  /** The quiet header over a note embed; a tap opens the note. */
+  embedFrom: (title: string): string => `From "${title}"`,
+  /** A second level of embed, or one past the per-note cap. */
+  embedNested: (title: string): string => `"${title}" is embedded here. Open it to read it.`,
+  embedMissing: (title: string): string => `No note named "${title}" yet.`,
+  /** Visually hidden while an embed or an image reads. */
+  loading: (name: string): string => `Loading ${name}`,
+  imageMissing: (name: string): string => `Image not found: ${name}`,
+  imageDownloading: (name: string): string => `Downloading ${name}`,
+  imageAway: 'Your computer is off, so this image cannot load.',
+  imageTooLarge: (name: string): string => `${name} is too large to show here.`,
+  /** A PDF that would not open, and an image whose bytes are not an image. */
+  couldNotOpen: (name: string): string => `${name} could not be opened here.`,
+  pdfSub: 'PDF',
+  /** The phone, until a native preview lands (CTO K11). */
+  pdfElsewhere: 'Open it on your computer.',
+  fileMissing: (name: string): string => `File not found: ${name}`,
+  /** Other file types keep M3's line (CX X14). */
+  otherFile: 'Attachments do not open in the Vault yet.',
+} as const;
+
 // ---- M6 stream E end ----
 
 // ---- M6 stream F begin ----

@@ -1745,6 +1745,309 @@ textarea {
    --accent), ==highlight== marks, embeds, image skeletons and chips, PDF
    chips, task lines (CTO K10, K11; CX X12 to X14). */
 
+/* Callouts: a rounded block, a 3px left rule, a tinted fill, a small glyph and
+   the title. Four families from the status tokens only; teal and amber mean
+   local and cloud here, so a callout never borrows them. */
+.vault-callout {
+  margin: 0 0 0.9em;
+  padding: 10px 12px;
+  border-left: 3px solid var(--ink-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+}
+.vault-callout--positive {
+  border-left-color: var(--ok);
+  background: var(--ok-soft);
+}
+.vault-callout--caution {
+  border-left-color: var(--warn);
+  background: var(--warn-soft);
+}
+.vault-callout--danger {
+  border-left-color: var(--danger);
+  background: var(--danger-soft);
+}
+.vault-callout-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-4);
+  line-height: 1.4;
+  color: var(--ink-soft);
+  text-align: left;
+}
+.vault-callout--positive .vault-callout-title {
+  color: var(--ok);
+}
+.vault-callout--caution .vault-callout-title {
+  color: var(--warn);
+}
+.vault-callout--danger .vault-callout-title {
+  color: var(--danger);
+}
+.vault-callout-title-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vault-callout-glyph {
+  flex: none;
+  margin-top: 2px;
+}
+.vault-callout-toggle {
+  min-height: 44px;
+  margin: -10px 0;
+  padding: 12px 0;
+  background: none;
+  border: none;
+  font: inherit;
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+.vault-callout-chevron {
+  flex: none;
+  margin-top: 3px;
+  transition: transform var(--dur-3) var(--ease-standard);
+}
+.vault-callout-toggle[aria-expanded='true'] .vault-callout-chevron {
+  transform: rotate(90deg);
+}
+.vault-callout-body {
+  margin-top: 6px;
+}
+.vault-callout-body > :last-child {
+  margin-bottom: 0;
+}
+/* A fold reopens by fading its body in; the layout change is not tweened. */
+.vault-callout-toggle + .vault-callout-body:not([hidden]) {
+  animation: fade-rise var(--dur-3) var(--ease-standard) backwards;
+}
+
+/* ==highlight==: a token tint that holds AA with the ink in both themes. */
+.vault-mark {
+  background: color-mix(in srgb, var(--warn) 24%, transparent);
+  color: var(--ink);
+  border-radius: var(--radius-xs);
+  padding: 0 2px;
+}
+
+/* A scroll-to target lands with a one-shot fade. */
+.vault-landed {
+  animation: vault-landed var(--dur-6) var(--ease-standard) backwards;
+  border-radius: var(--radius-xs);
+}
+.vault-landed:focus {
+  outline: none;
+}
+@keyframes vault-landed {
+  from {
+    background-color: var(--surface-hover);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+/* Task lines: the whole line is the hit target, at least 44px tall. Done
+   reads muted, never struck through, so VoiceOver's "checked" carries it. */
+.md li.vault-task-item {
+  list-style: none;
+  margin-left: -1.4em;
+  margin-bottom: 0;
+}
+.vault-task {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.vault-task-box {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--ink-soft);
+}
+.vault-task-box[aria-disabled='true'] {
+  opacity: 0.55;
+}
+.vault-task-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vault-task--done .vault-task-text {
+  color: var(--muted);
+}
+
+/* Note embeds: a quiet card, its header opens the note. */
+.vault-embed {
+  margin: 0 0 0.9em;
+  padding: 4px 12px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+}
+.vault-embed-head {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 12px 0 8px;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: var(--text-2);
+  color: var(--muted);
+  text-align: left;
+  cursor: pointer;
+}
+.vault-embed-body .vault-md {
+  margin-top: 0;
+}
+.vault-embed-body .vault-md > :last-child {
+  margin-bottom: 0;
+}
+.vault-embed-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0;
+}
+.vault-embed-skeleton-line,
+.vault-image-skeleton {
+  display: block;
+  border-radius: var(--radius-xs);
+  background: linear-gradient(
+    90deg,
+    var(--surface) 20%,
+    var(--surface-hover) 50%,
+    var(--surface) 80%
+  );
+  background-size: 200% 100%;
+  animation: shimmer var(--loop-3) linear infinite;
+}
+.vault-embed-skeleton-line {
+  height: 12px;
+}
+.vault-embed-skeleton-line + .vault-embed-skeleton-line {
+  width: 62%;
+}
+
+/* Chips: a missing note, a nested embed, a PDF, a file, a remote image. */
+.vault-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  margin: 2px 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: var(--text-3);
+  line-height: 1.35;
+  text-align: left;
+  vertical-align: middle;
+}
+.vault-chip--button {
+  min-height: 44px;
+  cursor: pointer;
+}
+.md a.vault-chip--link {
+  color: var(--link);
+}
+.vault-chip--missing {
+  border-style: dashed;
+}
+.vault-chip-glyph {
+  flex: none;
+}
+.vault-chip-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.vault-chip-name {
+  overflow-wrap: anywhere;
+}
+.vault-chip-sub {
+  font-size: var(--text-2);
+  color: var(--muted);
+}
+
+/* Images: full column width, a 4:3 skeleton while the bytes read, then the
+   image fades in over it. Nothing tweens layout. */
+.vault-image-frame {
+  position: relative;
+  display: block;
+  width: 100%;
+  margin: 0.4em 0 0.9em;
+}
+.vault-image-skeleton {
+  aspect-ratio: 4 / 3;
+  width: 100%;
+  border-radius: var(--radius-sm);
+}
+.vault-image {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  opacity: 0;
+  cursor: zoom-in;
+}
+.vault-image.loaded {
+  position: static;
+  opacity: 1;
+  animation: fade-in var(--dur-3) var(--ease-standard) backwards;
+}
+.vault-image img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+}
+.sheet.vault-image-sheet {
+  max-width: none;
+  height: 100dvh;
+  max-height: 100dvh;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+}
+.vault-image-zoom {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  touch-action: pinch-zoom pan-x pan-y;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.vault-image-zoom img {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vault-embed-skeleton-line,
+  .vault-image-skeleton,
+  .vault-landed,
+  .vault-image.loaded,
+  .vault-callout-toggle + .vault-callout-body:not([hidden]) {
+    animation: none;
+  }
+}
+
 /* ---- M6 stream E end ---- */
 
 /* ---- M6 stream F begin ----

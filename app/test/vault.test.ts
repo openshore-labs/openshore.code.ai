@@ -255,10 +255,13 @@ describe('wikilink resolution', () => {
     expect(nonNoteExtension('diagram.png')).toBe('.png');
   });
 
-  it('renders an embed as a chip, not a broken image or a linked target', () => {
+  it('renders an embed with no way to read it as a chip, never a broken image (M6 X14)', () => {
     const md = rendered('Look: ![[Roadmap]] and ![[Art|the art]].', paths);
-    expect(md).toContain('<code>embed not supported yet: Roadmap</code>');
-    expect(md).toContain('<code>embed not supported yet: the art</code>');
+    // No reader for bodies here, so the note embed is a link chip that opens
+    // the note; a missing one says so. The M3 placeholder is retired.
+    expect(md).toContain('&quot;Roadmap&quot; is embedded here. Open it to read it.');
+    expect(md).toContain('No note named &quot;Art&quot; yet.');
+    expect(md).not.toContain('embed not supported yet');
     // The embed's inner target is not turned into a vault link or an image.
     expect(md).not.toContain('<img');
     expect(md).not.toContain('vault:projects%2FRoadmap.md');
