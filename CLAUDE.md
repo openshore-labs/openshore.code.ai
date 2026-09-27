@@ -226,6 +226,24 @@ marked link-only with a reason. A new call to a new service is not done until
 its entry says what it sends and when. Copy never claims more privacy than the
 list shows.
 
+## Accounts: chatting is free, the rest is a free sign-in (standing rule, founder + CX 2026-09-27)
+
+No account for chatting (Harbor Lite and Harbor, the Stack, a model you
+connect); everything else (the coding agent, Projects, Terminal, Repositories,
+Vault, Crew, Cloud Connections, pairing) opens a sign-in sheet instead, and
+signing in carries on. A build with no account backend stays open. Nothing
+resets for a signed-out person (CX advised against the founder's reset; the
+founder deferred to CX): the benefit of signing in is additive, eight plain
+preferences that follow the person to every device, riding the account's own
+user record, never the settings blob. Two classifications are the rule, each a
+type error until complete: every room in `app/src/lib/accountGate.ts`
+(`ROOM_ACCOUNT`), every AppSettings key in `app/src/lib/settingsReach.ts`
+(`SETTINGS_REACH`). A new room or settings key is not done until it is
+classified there; prompts, work, addresses, keys and consents never follow.
+`app/test/accounts.test.ts` holds it; `docs/accounts-cx-memo.md` is the why.
+In-app account deletion is a ship blocker before the App Store build carries
+the gate (PROGRESS, What remains).
+
 ## Em dash policy is TOTAL here (standing rule)
 
 No em dash anywhere in tracked source, comments included, encoded spellings

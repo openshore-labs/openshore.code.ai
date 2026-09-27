@@ -174,10 +174,11 @@ export interface OllamaInstallResult {
 /** A newer desktop version the main process found (electron/main.ts). Every
  *  push to main publishes one, and the bar across the top of the window
  *  (UpdateBanner) shows it until the app updates. `phase`:
- *  - downloading: Windows and Linux, fetching in the background; a click
+ *  - downloading: an older shell fetching in the background; a click
  *    installs the moment it lands.
  *  - ready: downloaded; a click restarts onto it.
- *  - available: macOS, found; a click downloads, swaps, and relaunches.
+ *  - available: found, nothing downloaded yet (every platform now asks
+ *    first); a click downloads, installs, and restarts.
  *  - installing: the person clicked; `percent` tracks it until the restart.
  *  - failed: it did not finish; a click tries again. */
 export interface PendingUpdate {
@@ -258,6 +259,8 @@ export interface OscodeBridge {
       humanize?: boolean;
       /** Chain of Thought for this session (off unless true). */
       chainOfThought?: boolean;
+      /** False until the person allows web search on this device. */
+      webSearch?: boolean;
       /** The Wayfinding Memory switch: false turns project memory off for
        *  this session; absent leaves the project's config in charge. */
       memory?: boolean;

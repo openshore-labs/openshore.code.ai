@@ -5,11 +5,10 @@
 // (app/test/egressManifest.test.ts) reads the same list and fails on any host
 // in the source that is not on it, so the list cannot fall behind the code.
 //
-// Every entry is true of the code today. Where the v1 review recommends a
-// change (web search that asks first, updates that ask before downloading,
-// the guardrail record's named person, the repository sign-in exchange), the
-// entry says what happens now; the change is a founder decision recorded in
-// DECISIONS, not something this list pretends is done.
+// Every entry is true of the code today. The v1 review's four privacy calls
+// are made (founder, 2026-09-27, DECISIONS): web search asks once, desktop
+// updates ask before downloading, the guardrail record never uploads a named
+// person, and the repository sign-in exchange keeps no copy of the token.
 
 import { featureOn, type ReleaseTier, type TieredFeature, RELEASE_TIER } from './focus.js';
 
@@ -47,14 +46,22 @@ export const EGRESS: EgressEntry[] = [
     id: 'account',
     recipient: 'OpenShore (us)',
     what: 'Your email and password to sign in, then your plan, your organization, and team projects.',
-    when: 'Only when you sign in. Chatting and building need no account; buying Personal does.',
+    when: 'Only when you sign in. Chatting needs no account; building, Projects, Vault, Crew, Terminal, pairing, and buying Personal do.',
     start: 'tap',
+    hosts: ['env:VITE_SUPABASE_URL'],
+  },
+  {
+    id: 'preferences',
+    recipient: 'OpenShore (us)',
+    what: 'Your app preferences, so they follow you to your other devices: theme, effort, reasoning, humanized writing, notices, and voice. Never your chats, prompts, projects, keys, or addresses.',
+    when: 'Only while you are signed in: when you change one, and when the app opens.',
+    start: 'on',
     hosts: ['env:VITE_SUPABASE_URL'],
   },
   {
     id: 'guardrail',
     recipient: 'OpenShore (us)',
-    what: "When the guardrail blocks a request: its category, the time, a one-way hash of the request, which model path it took, and, for a request about a real person, that person's name. Never your prompt.",
+    what: 'When the guardrail blocks a request: its category, the time, a one-way hash of the request, and which model path it took. Never your prompt, and never the name of a person the request was about; that stays in the copy on this device.',
     when: 'Only while you are signed in. Signed out, the record stays on this device.',
     start: 'on',
     hosts: ['env:VITE_SUPABASE_URL'],
@@ -79,7 +86,7 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'repo-signin',
     recipient: 'OpenShore (us)',
-    what: 'Connecting GitHub, GitLab, or Bitbucket: the sign-in exchange passes through our server, so the access token passes through it once on its way to you.',
+    what: 'Connecting GitHub, GitLab, or Bitbucket: the sign-in exchange passes through our server, so the access token passes through it once on its way to you. Our server keeps no copy and writes none of it to a log.',
     when: 'Only when you connect one.',
     start: 'tap',
     hosts: ['env:VITE_SUPABASE_URL', 'github.com', 'gitlab.com', 'bitbucket.org'],
@@ -103,7 +110,7 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'updates',
     recipient: 'GitHub',
-    what: 'A check for a newer version (your version and network address). On Windows and Linux a newer version downloads in the background; on a Mac it waits for your click.',
+    what: 'A check for a newer version (your version and network address). Nothing downloads until you click Update in the bar that says a new version is out.',
     when: 'At launch, then every 30 minutes, on the desktop app.',
     start: 'on',
     hosts: ['api.github.com', 'github.com'],
@@ -120,8 +127,8 @@ export const EGRESS: EgressEntry[] = [
     id: 'search',
     recipient: 'Web search',
     what: 'The words of a web search, which a model writes from your chat. DuckDuckGo by default, with no key and no account.',
-    when: 'Whenever a model decides to search the web. It does not ask first today.',
-    start: 'on',
+    when: 'When a model decides to search the web, after you allow it once. A chat asks the first time; the coding agent searches only once you allow it. You can turn it off in Settings.',
+    start: 'off',
     hosts: ['html.duckduckgo.com', 'duckduckgo.com'],
   },
   {

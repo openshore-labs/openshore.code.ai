@@ -93,6 +93,8 @@ import {
   isConfigured as authConfigured,
   parseAuthCallback,
   authCallbackType,
+  readUserPrefs,
+  writeUserPrefs,
   rpc as supabaseRpc,
   select as supabaseSelect,
   sendPasswordReset as supabaseSendPasswordReset,
@@ -485,7 +487,20 @@ import {
 } from '../lib/vaultCopy.js';
 import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
 import { SAMPLE_PROMPT, SAMPLE_REPO_NAME } from '../lib/sampleProject.js';
+import { setSearchConsent } from '../lib/localSearch.js';
 import { RELEASE_TIER, featureOn, roomOpen, type ReleaseTier } from '../lib/focus.js';
+import {
+  ACCOUNT_NOTICE,
+  needsAccount,
+  roomAccountFeature,
+  type AccountFeature,
+} from '../lib/accountGate.js';
+import {
+  pickPreferences,
+  preferencesChanged,
+  readPreferencesRecord,
+  syncDirection,
+} from '../lib/settingsReach.js';
 import { readProjectSecrets, writeProjectSecrets } from '../lib/projectSecrets.js';
 import {
   bridge,
@@ -597,6 +612,10 @@ export interface AppSettings {
    *  is minted once per daemon rather than on every desktop session. Device-local
    *  bookkeeping, not synced. */
   pushRegisteredDaemons?: string[];
+  /** Web search asks once on this device (the search words go to a search
+   *  service, DuckDuckGo unless a key is set): 'allowed' after the person says
+   *  yes, 'declined' after they turn it off in Settings; unset until asked. */
+  webSearchConsent?: 'allowed' | 'declined';
   /** The user's stack: Reasoning LLM anchor, active specialists, bench metadata.
    *  Legacy single stack; kept as the migration seed and fallback. The live
    *  configuration is `stacks`, one per connectivity status. */
@@ -623,8 +642,8 @@ export interface AppSettings {
   profileOverride?: ProfileId;
   /** Opt-in, on-device, manual-export activity log for the test run. */
   insightsOptIn?: boolean;
-  /** Appearance: follow the system (default), or pin light or dark. Device
-   *  local by nature (a per-device viewing preference). */
+  /** Appearance: follow the system (default), or pin light or dark. Follows a
+   *  signed-in person to their other devices (lib/settingsReach.ts). */
   theme?: 'system' | 'light' | 'dark';
   /** Reasoning effort for new turns, the same idea Claude exposes. Defaults to
    *  'high'. Chosen from the top of the model sheet. */
@@ -666,25 +685,27 @@ export interface AppSettings {
    *  think out loud and keeps any reasoning a model sends out of the chat. */
   chainOfThought?: boolean;
   /** Notices (lib/notices.ts): a banner when a model download finishes while
-   *  you are away. On by default; undefined means on. Device local. */
+   *  you are away. On by default; undefined means on. Follows a signed-in
+   *  person (lib/settingsReach.ts). */
   noticeDownloads?: boolean;
   /** Notices: a banner when a reply lands, or a chat stops for your approval,
-   *  while you are away. On by default; undefined means on. Device local. */
+   *  while you are away. On by default; undefined means on. Follows a
+   *  signed-in person (lib/settingsReach.ts). */
   noticeReplies?: boolean;
   /** Guided setup (lib/guidedSetup.ts): Harbor Lite walking a new person
    *  through setup in its first chat. Device local. */
   guidedSetup?: GuidedSetupProgress;
   /** Voice mode: speak replies aloud during a spoken conversation. On by default
    *  (undefined means on); off keeps voice mode as listen-and-send, with replies
-   *  read on screen. Device local (a per-device output preference). */
+   *  read on screen. Follows a signed-in person (lib/settingsReach.ts). */
   voiceReplies?: boolean;
   /** The chosen text-to-speech voice id, from the device's installed system
    *  voices (lib/voice/tts.ts). Undefined uses the best default voice for the
    *  language. Device local: voices differ per device. */
   voiceId?: string;
   /** Speaking speed for voice mode, normalized 0..1 where 0.5 is the natural
-   *  default, so one slider reads the same on iOS and the web backend. Device
-   *  local. */
+   *  default, so one slider reads the same on iOS and the web backend, which
+   *  is why it can follow a signed-in person (lib/settingsReach.ts). */
   voiceRate?: number;
   /** Codemagic Access: whether the model may drive Codemagic builds on its own
    *  (trigger, read the failure, fix, rebuild until green) using this device's
@@ -729,6 +750,13 @@ export interface AppSettings {
    *  their return. Text only; attachments live in memory for the session.
    *  Device local. */
   heldFirstMessage?: { text: string; at: string };
+  /** When this device last changed a preference that follows a signed-in
+   *  person (lib/settingsReach.ts), so a sync knows which side is newer.
+   *  Device local. */
+  prefsUpdatedAt?: string;
+  /** The one-time line to someone who used OpenShore before the account gate,
+   *  signed out, has been shown. Device local. */
+  accountNoticeSeen?: boolean;
   /** When each paired hub last answered this device, keyed by base URL, so a
    *  chat banner can say "Last seen 2h ago" rather than nothing. Device local. */
   hubLastSeen?: Record<string, string>;
@@ -1506,6 +1534,9 @@ interface AppState {
   /** When set, the Personal upgrade sheet is showing, and which locked surface
    *  triggered it. Free is chat only; coding and the Marketplace need Personal. */
   paywall?: PaywallReason;
+  /** When set, the sign-in sheet is showing for a feature that needs an
+   *  account (lib/accountGate.ts). */
+  accountGate?: AccountFeature;
   /** A desktop chat whose journal is still being replayed after reopen, so
    *  the screen shows a skeleton (or the saved snapshot) instead of the
    *  empty-state greeting. Cleared by the first journal frame or a timeout. */
@@ -1534,6 +1565,13 @@ interface AppState {
   /** Show the Personal upgrade sheet for a locked surface. */
   openPaywall(reason: PaywallReason): void;
   closePaywall(): void;
+  /** Whether account features need a sign-in right now: this build has
+   *  accounts and nobody is signed in (lib/accountGate.ts). */
+  needsAccountNow(): boolean;
+  /** Show the sign-in sheet for a feature; signing in carries on to `returnTo`
+   *  when a room was asked for. */
+  openAccountGate(feature: AccountFeature, returnTo?: ViewName): void;
+  closeAccountGate(): void;
   /** Whether the signed-in person has the Personal unlock, by EITHER rail (an
    *  individual Personal subscription OR an entitled commercial org). Free
    *  (signed out or no entitlement) is chat only. */
@@ -2184,6 +2222,14 @@ interface AppState {
   trustProjectFolder(itemId: string): Promise<void>;
   /** The trust card's "Not now": leave the folder's settings off. */
   dismissProjectTrust(itemId: string): void;
+  /** A model asked to search the web and the person has not answered yet
+   *  (web search asks once; What leaves this device). The sheet shows it. */
+  webSearchAsk?: { query: string };
+  /** The web search question's answer: allow (remembered on this device) or
+   *  not now (asked again after the next launch). */
+  answerWebSearch(allow: boolean): void;
+  /** The Settings switch for web search. */
+  setWebSearchAllowed(allowed: boolean): Promise<void>;
   /** The first try (v1 Phase 1): write the sample page on this computer,
    *  open a chat in it, and ask for the fix, so the whole loop shows on
    *  something that cannot hurt the person's own work. */
@@ -3378,6 +3424,24 @@ export const useApp = create<AppState>((set, get, api) => {
     }
   }
 
+  // Web search asks once (What leaves this device). A yes is remembered on
+  // this device; a "not now" holds until the next launch, so a chat never
+  // asks twice in a row. Concurrent searches share one question.
+  let webSearchDeclinedThisRun = false;
+  let webSearchPending: Promise<boolean> | undefined;
+  let webSearchResolve: ((allow: boolean) => void) | undefined;
+  function askWebSearch(query: string): Promise<boolean> {
+    const consent = get().settings.webSearchConsent;
+    if (consent === 'allowed') return Promise.resolve(true);
+    if (consent === 'declined' || webSearchDeclinedThisRun) return Promise.resolve(false);
+    if (webSearchPending) return webSearchPending;
+    webSearchPending = new Promise<boolean>((resolve) => {
+      webSearchResolve = resolve;
+      set({ webSearchAsk: { query } });
+    });
+    return webSearchPending;
+  }
+
   // Register this device for completion push with the connected daemon, once per
   // daemon. iOS-only and best-effort (see registerPushForDaemon); a failure just
   // means no push until the next desktop session opens.
@@ -3743,6 +3807,10 @@ export const useApp = create<AppState>((set, get, api) => {
           // project memory off (false) and is absent otherwise, so a
           // project's own config stays in charge while it is on.
           ...(memoryOverride(settings) === false ? { memory: false } : {}),
+          // Web search asks once on this device (the search words go to a
+          // search service): until the person allows it, the engine session
+          // has no webSearch tool.
+          ...(settings.webSearchConsent === 'allowed' ? {} : { webSearch: false }),
           codemagicToken,
           codemagicTarget,
           currents,
@@ -3813,6 +3881,7 @@ export const useApp = create<AppState>((set, get, api) => {
             permissionMode: sessionOpts.permissionMode,
             humanize: sessionOpts.humanize,
             chainOfThought: sessionOpts.chainOfThought,
+            ...(sessionOpts.webSearch === false ? { webSearch: false } : {}),
             memory: sessionOpts.memory,
             currents: sessionOpts.currents,
             harnessCurrents: sessionOpts.harnessCurrents,
@@ -4153,6 +4222,58 @@ export const useApp = create<AppState>((set, get, api) => {
 
   async function accessToken(): Promise<string | undefined> {
     return (await freshAuth())?.accessToken;
+  }
+
+  // Accounts (lib/accountGate.ts): the room the sign-in sheet was opened for,
+  // so signing in carries on to it.
+  let accountReturn: ViewName | undefined;
+
+  // Preferences that follow a signed-in person (lib/settingsReach.ts). A local
+  // change is sent a moment after the last one; the account's copy is read at
+  // launch and at sign-in, and the newer side wins. Every failure is quiet:
+  // the preference is already saved on this device, and the next change or
+  // launch tries again.
+  let prefsPushTimer: ReturnType<typeof setTimeout> | undefined;
+  function schedulePrefsPush(): void {
+    if (!get().authSession) return;
+    if (prefsPushTimer) clearTimeout(prefsPushTimer);
+    prefsPushTimer = setTimeout(() => {
+      prefsPushTimer = undefined;
+      void pushPreferences();
+    }, 1500);
+  }
+  async function pushPreferences(): Promise<void> {
+    try {
+      const session = await freshAuth();
+      if (!session) return;
+      let st = get().settings;
+      if (!st.prefsUpdatedAt) {
+        st = { ...st, prefsUpdatedAt: new Date().toISOString() };
+        await get().saveSettings({ prefsUpdatedAt: st.prefsUpdatedAt });
+      }
+      await writeUserPrefs(session.accessToken, {
+        v: 1,
+        at: st.prefsUpdatedAt,
+        prefs: pickPreferences(st),
+      });
+    } catch {
+      // Offline or refused: kept here, sent on the next change or launch.
+    }
+  }
+  async function syncPreferences(): Promise<void> {
+    try {
+      const session = await freshAuth();
+      if (!session) return;
+      const remote = readPreferencesRecord(await readUserPrefs(session.accessToken));
+      const direction = syncDirection(get().settings, remote);
+      if (direction === 'pull' && remote) {
+        await get().saveSettings({ ...remote.prefs, prefsUpdatedAt: remote.at });
+      } else if (direction === 'push') {
+        await pushPreferences();
+      }
+    } catch {
+      // Offline: this device's preferences stand until the next launch.
+    }
   }
 
   // Forget the session on this device: the stored copy, the pending auth
@@ -6675,6 +6796,15 @@ export const useApp = create<AppState>((set, get, api) => {
     }
     void get().refreshEntitlement();
     if (featureOn('teams')) void get().syncOrgProjects();
+    // Preferences that follow the person arrive (or leave) now.
+    void syncPreferences();
+    // Signed in from the account sheet: carry on to the room it was opened
+    // for, or back to where the person was.
+    if (get().accountGate) {
+      const to = accountReturn;
+      get().closeAccountGate();
+      if (to) get().setView(to);
+    }
     // Back on the team note: list the team vault again and replay what was
     // kept for this account while it was signed out.
     if (resume && get().vaultScope === 'team') void get().vaultRefresh();
@@ -6713,6 +6843,9 @@ export const useApp = create<AppState>((set, get, api) => {
       // auth-callback handling. Run exactly once per store lifetime.
       if (get().initStarted) return;
       set({ initStarted: true });
+
+      // Every app-side web search asks the person first, once (lib/localSearch).
+      setSearchConsent(askWebSearch);
 
       // What the person paid for holds on a launch with no network: the last
       // server-verified entitlement first, then (iPhone) StoreKit's own
@@ -6992,6 +7125,22 @@ export const useApp = create<AppState>((set, get, api) => {
         view: 'chat',
       });
       logEvent('app_open', { onboarded: settings.onboarded });
+      // Signed in: the account's preferences, if newer, arrive now.
+      if (stored) void syncPreferences();
+      // Someone who used OpenShore before the account gate, signed out, hears
+      // once that their work is still here and what signing in opens.
+      if (
+        authConfigured() &&
+        !stored &&
+        settings.onboarded &&
+        !settings.accountNoticeSeen &&
+        (Boolean(settings.daemon) ||
+          Boolean(settings.crew?.length) ||
+          Boolean(settings.projects?.some((p) => p.repoIds?.length)))
+      ) {
+        void get().saveSettings({ accountNoticeSeen: true });
+        get().showToast(ACCOUNT_NOTICE);
+      }
       // First open: no Personal-or-Business question (no account means
       // personal) and no setup wall. On the phone, open the built-in guide's
       // chat with its seeded hello; the desktop's empty chat is the First Seat.
@@ -7228,6 +7377,14 @@ export const useApp = create<AppState>((set, get, api) => {
         set({ drawerOpen: false });
         return;
       }
+      // Accounts: every room but chat, the Stack, and Settings is behind a
+      // free sign-in (lib/accountGate.ts). The sheet opens instead, and
+      // signing in carries on to this room.
+      const accountFeature = roomAccountFeature(view);
+      if (accountFeature && get().needsAccountNow()) {
+        get().openAccountGate(accountFeature, view);
+        return;
+      }
       // Free is chat only: the Marketplace needs Personal. Intercept the
       // navigation and show the upgrade sheet instead of the locked screen.
       if (view === 'marketplace' && !get().personalUnlockedNow()) {
@@ -7267,6 +7424,19 @@ export const useApp = create<AppState>((set, get, api) => {
     },
     closePaywall() {
       set({ paywall: undefined });
+    },
+
+    needsAccountNow() {
+      return needsAccount(authConfigured(), Boolean(get().authSession));
+    },
+    openAccountGate(feature, returnTo) {
+      accountReturn = returnTo;
+      logEvent('account_gate_shown', { feature });
+      set({ accountGate: feature, drawerOpen: false });
+    },
+    closeAccountGate() {
+      accountReturn = undefined;
+      set({ accountGate: undefined });
     },
 
     personalUnlockedNow() {
@@ -7477,6 +7647,12 @@ export const useApp = create<AppState>((set, get, api) => {
       // Launch) is gated one way. Returns the current conversation id (or empty)
       // so callers that navigate on the result do not dead-end.
       const coding = source.kind === 'desktop';
+      // The coding agent needs a free sign-in (lib/accountGate.ts); chat does
+      // not. The caller hands a typed first message back to the composer.
+      if (coding && get().needsAccountNow()) {
+        get().openAccountGate('coding');
+        return get().activeId ?? '';
+      }
       if (coding && !get().personalUnlockedNow()) {
         get().openPaywall('coding');
         return get().activeId ?? '';
@@ -11649,6 +11825,21 @@ export const useApp = create<AppState>((set, get, api) => {
       else setTrustItem({ state: 'trusted', error: undefined });
     },
 
+    answerWebSearch(allow) {
+      const resolve = webSearchResolve;
+      webSearchResolve = undefined;
+      webSearchPending = undefined;
+      set({ webSearchAsk: undefined });
+      if (allow) void get().saveSettings({ webSearchConsent: 'allowed' });
+      else webSearchDeclinedThisRun = true;
+      resolve?.(allow);
+    },
+
+    async setWebSearchAllowed(allowed) {
+      webSearchDeclinedThisRun = false;
+      await get().saveSettings({ webSearchConsent: allowed ? 'allowed' : 'declined' });
+    },
+
     async trySampleProject() {
       const b = isDesktop() ? bridge() : undefined;
       if (!b?.createSample) {
@@ -12232,7 +12423,13 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async saveSettings(patch) {
-      const settings = { ...get().settings, ...patch };
+      const before = get().settings;
+      let settings = { ...before, ...patch };
+      // A preference that follows a signed-in person changed here (not a sync
+      // applying the account's copy, which names its own time): stamp it, and
+      // send it on once the person stops changing things.
+      const ownPrefChange = !('prefsUpdatedAt' in patch) && preferencesChanged(before, settings);
+      if (ownPrefChange) settings = { ...settings, prefsUpdatedAt: new Date().toISOString() };
       set({ settings, hubRole: activeHubRole(settings) });
       setInsightsEnabled(settings.insightsOptIn ?? false);
       setActiveEffort(settings.effort ?? DEFAULT_EFFORT);
@@ -12243,6 +12440,7 @@ export const useApp = create<AppState>((set, get, api) => {
       // A pairing change relinks the hub vault before anything settles it.
       if ('daemon' in patch) await syncHubLink(settings.daemon).catch(() => false);
       await persistSettings(settings);
+      if (ownPrefChange) schedulePrefsPush();
     },
 
     async addDeviceModel(id, name) {

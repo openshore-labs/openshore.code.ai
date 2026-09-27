@@ -241,6 +241,8 @@ export class EngineHost {
       projectSecrets?: string;
       humanize?: boolean;
       chainOfThought?: boolean;
+      /** False until the person allows web search on this device. */
+      webSearch?: boolean;
       /** The Wayfinding Memory switch: false turns project memory off for
        *  this session; undefined leaves the project's config in charge. */
       memory?: boolean;
@@ -281,6 +283,7 @@ export class EngineHost {
       humanize: opts.humanize,
       chainOfThought: opts.chainOfThought,
       memory: opts.memory,
+      ...(opts.webSearch === false ? { webSearch: false } : {}),
       codemagicToken: opts.codemagicToken,
       codemagicTarget: opts.codemagicTarget,
       currents,

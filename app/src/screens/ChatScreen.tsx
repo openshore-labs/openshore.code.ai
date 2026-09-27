@@ -200,8 +200,14 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   // it defaults to the engine on this machine (the model the founder set up
   // through Ollama or a cloud key), so a first message just works; the phone
   // defaults to the stack, which is what "My Stack" selects.
+  // Signed out, the coding agent is behind a free sign-in (lib/accountGate.ts),
+  // so a desktop whose Stack can answer opens on the Stack instead: the first
+  // message goes somewhere that works without an account.
   const [selectedSource, setSelectedSource] = useState<ConversationSource>(() =>
-    isDesktop() ? { kind: 'desktop' } : { kind: 'stack' },
+    isDesktop() &&
+    !(useApp.getState().needsAccountNow() && useApp.getState().sourceReady({ kind: 'stack' }))
+      ? { kind: 'desktop' }
+      : { kind: 'stack' },
   );
   // A first message typed before any brain can answer (no model downloaded, no
   // computer paired, no cloud key) is held here while the model sheet opens as a

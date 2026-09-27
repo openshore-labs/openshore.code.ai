@@ -81,6 +81,11 @@ export function buildToolRegistry(options: {
   // prompt, because the permission engine allows it by name. Undefined means
   // on.
   memory?: boolean;
+  // Off leaves webSearch out: the person has not allowed web search on this
+  // device yet (the app asks once, since the search words go to a search
+  // service). webFetch stays, since it fetches a page the person or the task
+  // names. Undefined means on (the CLI, routines, config's own egress rules).
+  webSearch?: boolean;
 }): ToolRegistry {
   const registry = new ToolRegistry();
   registry.register(readFileTool);
@@ -103,7 +108,7 @@ export function buildToolRegistry(options: {
   // Web tools reach the internet, so they are the one outbound path a secret
   // could leak through. Under egress lockdown they are not registered at all.
   if (!options.egressLockdown) {
-    registry.register(webSearchTool);
+    if (options.webSearch !== false) registry.register(webSearchTool);
     registry.register(webFetchTool);
     // Codemagic reaches the network too, so it rides with the web tools under
     // the egress gate. Present only when a token was delivered (Access on).

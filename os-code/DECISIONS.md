@@ -2807,3 +2807,59 @@ execution contract. Newest at the bottom.
   (info.json `switches`). Undo's snapshots are held by per-record refs and
   collected after 20 records age out, never objects younger than two days, so
   a running task's starting point is never taken.
+- **The four privacy calls (founder "take care of the privacy calls based on
+  your recommendations", 2026-09-27):** each held by
+  `app/test/privacyCalls.test.ts`. Web search asks once: nothing reaches a
+  search service until the person allows it in one sheet (`WebSearchAsk`),
+  saved as `webSearchConsent: 'allowed'`; "Not now" holds for this run only,
+  so it asks again next launch rather than never; the model is told plainly it
+  did not search; Settings, Harbor, "Let models search the web" switches it.
+  Every app search runs through `localSearch.ts`'s one gate, and the desktop
+  engine is built without the `webSearch` tool (the registry's
+  `webSearch: false`, through the bridge and the daemon) until allowed; `webFetch`
+  stays, since it fetches a page the person or the task names, and the CLI,
+  routines and config keep searching (undefined is on). Desktop updates ask
+  before downloading on every platform: `autoDownload = false`, the bar says a
+  version is out, the Update click downloads, installs and restarts; the
+  check stays and is listed. The guardrail record never uploads the name of a
+  person a request was about (`subject: null` on the account; the device copy
+  keeps it; consents were already device-only). The repository sign-in
+  exchange was verified to keep nothing (no database, no storage, no token in
+  a log line) and says so. CX's further point, keeping the guardrail record
+  off the account entirely, is not taken: enforcement has to survive a
+  reinstall; it is the founder's call if wanted.
+- **Accounts (founder + CX, 2026-09-27; `docs/accounts-cx-memo.md`):**
+  chatting needs no account (Harbor Lite and Harbor, the Stack, a model you
+  connect); everything else is behind a free sign-in: the coding agent,
+  Projects, Terminal, Repositories, Vault, Crew, Cloud Connections, pairing
+  (and the later tiers' rooms). One pure gate, `app/src/lib/accountGate.ts`,
+  classifies every room with a `Record<ViewName, ...>` so a new room is a type
+  error until it is; `setView` and `newConversation` open the sign-in sheet
+  (`AccountGateSheet`, the sign-in card inside it) instead, a typed first
+  message goes back to the composer, and signing in carries on to the room. A
+  build with no account backend stays open (`needsAccount`). No account at the
+  free gate, per CX (Apple 5.1.1(v), Baymard's 18%, and Harbor Lite's promise
+  of answers with no signal). The founder asked for a signed-out reset to
+  defaults at each launch and deferred to CX; CX advised against it (iOS ends
+  a suspended app without notice, an update relaunches the desktop app, a
+  blanket reset reruns onboarding and re-offers a downloaded model), so it is
+  NOT built: settings stay on the device for everyone. The benefit of signing
+  in is additive instead: eight plain preferences (theme, effort, Humanize,
+  Chain of Thought, both notice switches, voice replies, voice speed) follow
+  the person to every device they sign in on. Every AppSettings key is
+  classified in `app/src/lib/settingsReach.ts` (a Record over the AppSettings
+  keys); prompts, work, addresses, keys and consents never follow (web search
+  consent and insights included: a consent is made on the device it applies
+  to). The copy rides on the account's own user record (`oscode_prefs` in
+  `user_metadata`, as `{ v, at, prefs }`), so no table and no migration: pulled at
+  launch and at sign-in, pushed 1.5 s after a change, the newer side wins, a
+  device that never set one takes the account's, values of the wrong shape are
+  dropped. Listed in What leaves this device. A signed-out desktop whose Stack
+  can answer opens its composer on the Stack. Someone who used OpenShore
+  before the gate, signed out, hears once that their work is still here.
+  Offline with an expired token already stays signed in (only a refused
+  refresh signs out); sign-out keeps everything on the device. If the founder
+  overrules and wants the reset: reset only the 'follows' keys, never a
+  'device' one, and say so when the change is made (the memo's copy). Open
+  (What remains): in-app account deletion before the App Store build carries
+  the gate; a free desktop chat with no Stack set up.

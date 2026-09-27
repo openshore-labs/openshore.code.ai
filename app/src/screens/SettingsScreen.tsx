@@ -276,6 +276,7 @@ export function SettingsScreen() {
     vaultRequestSheet,
   } = useApp();
   const restorePurchases = useApp((s) => s.restorePurchases);
+  const setWebSearchAllowed = useApp((s) => s.setWebSearchAllowed);
   const personalUnlockedNow = useApp((s) => s.personalUnlockedNow);
   const userEntitlement = useApp((s) => s.userEntitlement);
   // Vault settings over Settings (Vault M7, CX Y4): the personal vault's.
@@ -797,6 +798,30 @@ export function SettingsScreen() {
         ) : null}
 
         <SettingsGroup title="Harbor" index={group++}>
+          <SettingsRow
+            label="Let models search the web"
+            subWrap
+            sub={
+              settings.webSearchConsent === 'allowed'
+                ? 'On. A model sends its search words to the search service below, and nothing else from your chat.'
+                : settings.webSearchConsent === 'declined'
+                  ? 'Off. Models answer from what they know.'
+                  : isDesktop()
+                    ? 'Asks the first time a chat model wants to search. The coding agent searches only once this is on.'
+                    : 'Asks the first time a model wants to search.'
+            }
+            trailing={
+              <Switch
+                checked={settings.webSearchConsent === 'allowed'}
+                label="Let models search the web"
+                onChange={(next) => {
+                  if (next) hapticCommit();
+                  void setWebSearchAllowed(next);
+                  showToast(next ? 'Web search on.' : 'Web search off.');
+                }}
+              />
+            }
+          />
           <SettingsRow
             label="Web search"
             sub="When Harbor needs the web"

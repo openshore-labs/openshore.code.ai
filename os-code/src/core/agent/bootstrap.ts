@@ -144,6 +144,11 @@ export interface BootstrapOptions {
   /** The project's own pins (`Project.vaultPins`, CTO J14), at most 8 note
    *  paths, read first by the pack's prepare. Never a config key. */
   vaultPins?: string[];
+  /** Whether the person allowed web search on the device that opened this
+   *  session (the app asks once: the search words go to a search service).
+   *  False leaves the webSearch tool out. Undefined (the CLI, routines) keeps
+   *  it, under the config's own egress rules. */
+  webSearch?: boolean;
   /** May this session's person let a check command run after changes (v1
    *  Phase 1)? The daemon passes false for a member's session on a shared
    *  hub; undefined (the desktop, the CLI) reads as yes. */
@@ -314,6 +319,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     egressLockdown,
     hasCodemagic: Boolean(options.codemagicToken),
     currents: options.currents,
+    ...(options.webSearch === false ? { webSearch: false } : {}),
     vault: vaultRoot !== null,
     // A headless run (a Crew routine) has nobody at the desk to approve an
     // always-ask vault write, and the scheduler's own note already records

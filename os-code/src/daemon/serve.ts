@@ -1058,6 +1058,8 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       // The app's Chain of Thought setting for this session (on or off).
       const chainOfThought =
         typeof body.chainOfThought === 'boolean' ? body.chainOfThought : undefined;
+      // The phone's web search answer (it asks once): false leaves the tool out.
+      const webSearch = body.webSearch === false ? false : undefined;
       // The Agentic Current the person turned on, as the handle its tool needs.
       // A malformed handle is dropped, never a refused session. A CLI handle is
       // honored only when that CLI is really on this hub's PATH, so the tool
@@ -1111,6 +1113,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           humanize,
           memory,
           chainOfThought,
+          ...(webSearch === false ? { webSearch } : {}),
           currents,
           harnessCurrents,
           // Each agent works on its caller's own root (CTO J8): a member's

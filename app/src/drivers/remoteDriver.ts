@@ -240,6 +240,8 @@ export async function daemonCreateSession(
     humanize?: boolean;
     /** Chain of Thought for this session (off unless true). */
     chainOfThought?: boolean;
+    /** False until the person allows web search on this device. */
+    webSearch?: boolean;
     /** The Wayfinding Memory switch (memoryOverride): false turns project
      *  memory off for this session. Only false goes on the wire, never true,
      *  so a project's own config stays in charge while the switch is on. */
@@ -277,6 +279,7 @@ export async function daemonCreateSession(
       ...(typeof opts.humanize === 'boolean' ? { humanize: opts.humanize } : {}),
       ...(typeof opts.chainOfThought === 'boolean' ? { chainOfThought: opts.chainOfThought } : {}),
       ...(opts.memory === false ? { memory: false } : {}),
+      ...(opts.webSearch === false ? { webSearch: false } : {}),
       ...(opts.currents ? { currents: opts.currents } : {}),
       ...(opts.harnessCurrents ? { harnessCurrents: opts.harnessCurrents } : {}),
       ...(handoff ? { handoff } : {}),

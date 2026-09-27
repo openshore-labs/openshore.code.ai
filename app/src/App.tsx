@@ -12,6 +12,8 @@ import { Sidebar } from './components/Sidebar.js';
 import { Paywall } from './components/Paywall.js';
 import { AuthConfirmSheet } from './components/AuthConfirmSheet.js';
 import { OrgJoinSheet } from './components/OrgJoinSheet.js';
+import { WebSearchAsk } from './components/WebSearchAsk.js';
+import { AccountGateSheet } from './components/AccountGateSheet.js';
 import { featureOn } from './lib/focus.js';
 import { CurrentArrival, CurrentWaterline } from './components/CurrentArrival.js';
 import { UpdateBanner } from './components/UpdateBanner.js';
@@ -301,6 +303,8 @@ export function App() {
         <Paywall />
         <AuthConfirmSheet />
         {featureOn('teams') ? <OrgJoinSheet /> : null}
+        <WebSearchAsk />
+        <AccountGateSheet />
         {/* Agentic Currents: the arrival that flows from the switch to the
           edges, and the faint water-line that frames every screen while a
           current is on. Both render nothing when none is on. */}

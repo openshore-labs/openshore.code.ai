@@ -13,11 +13,27 @@ import {
   type WebSearchResult,
 } from './webSearch.js';
 
+/** Web search asks once (What leaves this device): the search words go to a
+ *  search service, so nothing is sent until the person allows it. The store
+ *  registers the real question at launch; a host with no screen to ask on (a
+ *  test, a script) searches as before. */
+export type SearchConsent = (query: string) => Promise<boolean>;
+let consent: SearchConsent = async () => true;
+
+export function setSearchConsent(gate: SearchConsent): void {
+  consent = gate;
+}
+
+/** What the model reads when the person has not allowed web search. */
+export const SEARCH_NOT_ALLOWED =
+  'Web search is off on this device: the person has not allowed it. Answer from what you already know, and say plainly that you did not search the web.';
+
 export async function searchForModel(
   query: string,
   researchOn: boolean,
   emit: (event: DriverEvent) => void,
 ): Promise<string> {
+  if (!(await consent(query))) return SEARCH_NOT_ALLOWED;
   emit({ type: 'status', message: `Searching the web for "${query}".` });
   try {
     const key = await resolveSearchKey(researchOn);
@@ -52,6 +68,7 @@ export async function prepareGuideTurn(
   let sources: WebSearchResult[] | undefined;
   let searchFailed = false;
   if (query && !online) searchFailed = true;
+  else if (query && !(await consent(query))) searchFailed = true;
   else if (query) {
     emit({ type: 'status', message: `Searching the web for "${query}".` });
     try {

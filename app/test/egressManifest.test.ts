@@ -75,14 +75,14 @@ describe('what leaves this device', () => {
     expect(STAYS_ON_DEVICE.length).toBeGreaterThan(2);
   });
 
-  it('keeps the uncomfortable entries honest rather than pretending they are fixed', () => {
+  it('says what the four privacy calls changed, and still names what leaves', () => {
     const by = (id: string) => EGRESS.find((e) => e.id === id)!;
-    expect(by('search').when).toMatch(/does not ask first/);
-    expect(by('guardrail').what).toMatch(/that person.s name/);
-    expect(by('updates').what).toMatch(
-      /downloads it in the background|downloads in the background/,
-    );
+    expect(by('search').when).toMatch(/after you allow it once/);
+    expect(by('search').start).toBe('off');
+    expect(by('guardrail').what).toMatch(/never the name of a person/);
+    expect(by('updates').what).toMatch(/Nothing downloads until you click Update/);
     expect(by('repo-signin').what).toMatch(/passes through our server/);
+    expect(by('repo-signin').what).toMatch(/keeps no copy/);
   });
 
   it('is the list Settings shows, first under Privacy', () => {
