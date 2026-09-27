@@ -12,10 +12,17 @@
 --      org_vault_settings_put is admins only, entitled only, and a
 --      compare-and-swap on `rev`. A stale rev is a `changed` result with
 --      theirs, never a raise, the same as every other vault write.
---   3. org_vault_entitled(org) is `_shared/entitlement.ts isEntitled`'s rule:
---      status `active` or `trialing`, and valid_until null or in the future.
---      No entitlement row is not entitled. It runs as the caller, so the
---      org_entitlements RLS answers false to a non-member.
+--   3. org_vault_entitled(org) (CFO + CTO ruling, 2026-09-27): an
+--      org_entitlements row decides when there is one, by `_shared/
+--      entitlement.ts isEntitled`'s rule (status `active` or `trialing`, and
+--      valid_until null or in the future); any other row is read-only with
+--      export. The webhook never deletes a row, so NO row means "never
+--      bought": such an org's members write until
+--      no_entitlement_vault_until(), a constant shaped like 0015's
+--      no_entitlement_max_seats(). It is null in the beta (no deadline). When
+--      pay gates return, a one-line migration sets it at least 30 days out,
+--      and that date is the notice (settings_get returns it). It runs as the
+--      caller, so a non-member gets false either way.
 --   4. Every write-shaped RPC (org_vault_write, org_vault_remove,
 --      org_vault_move, the legacy org_vault_put and org_vault_delete, and
 --      org_vault_settings_put) raises SQLSTATE OV402 when the org is not
@@ -86,21 +93,38 @@ revoke select on public.org_vault_settings from anon;
 grant select on public.org_vault_settings to authenticated;
 
 -- ---------------------------------------------------------------- 2. gates
--- isEntitled, in SQL. SECURITY INVOKER on purpose: called from a SECURITY
--- DEFINER RPC it reads the row as the owner; called by a client it reads
--- through org_entitlements' RLS, so a non-member learns nothing (false).
+-- Writes stay open for a never-paid org until this moment. Null = no deadline
+-- (the beta); when pay gates return, one migration sets a date 30+ days out.
+create or replace function public.no_entitlement_vault_until()
+returns timestamptz
+language sql
+immutable
+as $$
+  select null::timestamptz;
+$$;
+
+-- A row decides by isEntitled; no row writes until the deadline above.
+-- SECURITY INVOKER on purpose: called from a SECURITY DEFINER RPC it reads the
+-- row as the owner; called by a client it reads through org_entitlements'
+-- RLS, and the no-row branch asks is_org_member, so a non-member learns
+-- nothing (false).
 create or replace function public.org_vault_entitled(p_org uuid)
 returns boolean
 language sql
 stable
 set search_path = public
 as $$
-  select exists (
-    select 1 from public.org_entitlements e
-    where e.org_id = p_org
-      and e.status in ('active', 'trialing')
-      and (e.valid_until is null or e.valid_until > now())
-  );
+  select case
+    when exists (select 1 from public.org_entitlements e where e.org_id = p_org)
+      then exists (
+        select 1 from public.org_entitlements e
+        where e.org_id = p_org
+          and e.status in ('active', 'trialing')
+          and (e.valid_until is null or e.valid_until > now()))
+    else public.is_org_member(p_org)
+      and (public.no_entitlement_vault_until() is null
+           or public.no_entitlement_vault_until() > now())
+  end;
 $$;
 
 -- The refusal every write RPC makes. OV402 is the client's cue for CX Y15's
@@ -149,9 +173,10 @@ $$;
 
 -- ---------------------------------------------------------------- 3. read
 -- The org's settings for the app's org provider, defaults when there is no
--- row, plus the two facts the sheet needs up front: whether the org is
--- entitled (Y15) and whether this caller may edit (Y14). Members only.
--- Readable when lapsed.
+-- row, plus what the sheet needs up front: whether the org is entitled (Y15),
+-- until when a never-paid org stays editable (`entitled_until`, the deadline
+-- when there is no entitlement row, else null), and whether this caller may
+-- edit (Y14). Members only. Readable when lapsed.
 create or replace function public.org_vault_settings_get(p_org uuid)
 returns jsonb
 language plpgsql
@@ -177,6 +202,11 @@ begin
     'updated_at', cur.updated_at,
     'updated_by', cur.updated_by,
     'entitled', public.org_vault_entitled(p_org),
+    'entitled_until', case
+      when exists (select 1 from public.org_entitlements e where e.org_id = p_org)
+        then null
+      else public.no_entitlement_vault_until()
+    end,
     'is_admin', public.org_vault_is_admin(p_org));
 end;
 $$;

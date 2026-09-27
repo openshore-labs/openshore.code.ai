@@ -16,7 +16,7 @@
 -- and OV403 its admins-only delete.
 
 begin;
-select plan(120);
+select plan(125);
 
 -- ------------------------------------------------------------ fixtures
 --   f1 = author (confirmed, active)
@@ -642,7 +642,7 @@ set local role authenticated;
 
 select is(
   public.org_vault_settings_get('0f000000-0000-0000-0000-00000000000f')
-    - 'updated_at' - 'updated_by' - 'context_folder',
+    - 'updated_at' - 'updated_by' - 'context_folder' - 'entitled_until',
   '{"settings": {}, "delete_role": "member", "rev": 0, "entitled": true, "is_admin": false}'::jsonb,
   'no settings row reads the defaults');
 
@@ -863,12 +863,59 @@ select is(
   'a trialing plan inside its window writes again');
 reset role;
 
-delete from public.org_entitlements where org_id = '0f000000-0000-0000-0000-00000000000f';
+-- A canceled paid row never falls back to the no-row rule, even with no
+-- deadline (the beta).
+update public.org_entitlements set status = 'canceled', valid_until = null
+  where org_id = '0f000000-0000-0000-0000-00000000000f';
 set local role authenticated;
 select throws_ok(
   $$ select public.org_vault_write('0f000000-0000-0000-0000-00000000000f', 'lapsed.md', 'x', null, true) $$,
   'OV402', null::text,
-  'an org with no entitlement row raises OV402');
+  'a lapsed paid plan never falls back to the no-row rule');
+reset role;
+
+-- No row: never bought. Writes are open until no_entitlement_vault_until(),
+-- null in the beta.
+delete from public.org_entitlements where org_id = '0f000000-0000-0000-0000-00000000000f';
+set local role authenticated;
+select is(
+  public.org_vault_write('0f000000-0000-0000-0000-00000000000f', 'beta.md', 'x', null, true)->>'ok',
+  'true',
+  'an org with no entitlement row writes (beta, no deadline)');
+reset role;
+
+-- Past the deadline, a no-row org is read-only, and still reads its settings.
+create or replace function public.no_entitlement_vault_until()
+returns timestamptz language sql immutable as $$ select now() - interval '1 day' $$;
+-- The write RPCs cache their answer for this transaction; a real deadline
+-- change is its own migration, so every later transaction reads it fresh.
+discard plans;
+set local role authenticated;
+select throws_ok(
+  $$ select public.org_vault_write('0f000000-0000-0000-0000-00000000000f', 'late.md', 'x', null, true) $$,
+  'OV402', null::text,
+  'past the deadline, a no-row org''s write raises OV402');
+select is(
+  public.org_vault_settings_get('0f000000-0000-0000-0000-00000000000f')->>'entitled',
+  'false',
+  'past the deadline, a no-row org still reads its settings, not entitled');
+reset role;
+
+-- Inside the notice period, writes pass and settings_get names the date.
+create or replace function public.no_entitlement_vault_until()
+returns timestamptz language sql immutable as $$ select now() + interval '30 days' $$;
+-- The write RPCs cache their answer for this transaction; a real deadline
+-- change is its own migration, so every later transaction reads it fresh.
+discard plans;
+set local role authenticated;
+select is(
+  public.org_vault_write('0f000000-0000-0000-0000-00000000000f', 'notice.md', 'x', null, true)->>'ok',
+  'true',
+  'inside the notice period, a no-row org writes');
+select ok(
+  (public.org_vault_settings_get('0f000000-0000-0000-0000-00000000000f')->>'entitled_until')::timestamptz
+    > now() + interval '29 days',
+  'inside the notice period, settings_get returns entitled_until');
 reset role;
 
 select * from finish();

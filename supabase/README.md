@@ -82,7 +82,7 @@ What 0015 does, by finding:
 
 Tests: `supabase test db` runs every `tests/*.test.sql` file, each its own
 rolled-back transaction with its own plan: `tests/rls.test.sql` (32
-assertions over the cases above) and `tests/org_vault.test.sql` (120 assertions
+assertions over the cases above) and `tests/org_vault.test.sql` (125 assertions
 over 0019, 0020 and 0021, below). CI runs the same command in the `sql` job of
 `.github/workflows/ci.yml`. `deno test functions/_shared/entitlement.test.ts` covers
 the pure decisions (cross-rail guard, checkout routing, Apple product and
@@ -170,13 +170,18 @@ its plan gate (Vault v1 plan item 7.4, CTO ruling L17, CX Y14 and Y15):
   (column only until v1.1, D15) and `rev`. Members read it through RLS; no
   client writes it directly. No row means the defaults.
 - `org_vault_settings_get(org)` answers the row or the defaults, plus
-  `entitled` and `is_admin`, for members, lapsed or not.
+  `entitled`, `entitled_until` and `is_admin`, for members, lapsed or not.
   `org_vault_settings_put(org, settings, delete_role, context_folder,
   base_rev)` is admins (or the owner) only and a compare-and-swap on `rev`
   (0 when there is no row); a stale base answers `changed` with `theirs`.
-- `org_vault_entitled(org)` is `isEntitled` in SQL: status `active` or
-  `trialing` and `valid_until` null or in the future. No entitlement row is
-  not entitled.
+- `org_vault_entitled(org)`: an `org_entitlements` row decides when there is
+  one, by `isEntitled` (status `active` or `trialing` and `valid_until` null
+  or in the future); any other row is read-only with export, beta or not. The
+  webhook never deletes a row, so no row means never bought: that org's
+  members write until `no_entitlement_vault_until()`, a constant function
+  shaped like 0015's `no_entitlement_max_seats()`. It returns null in the
+  beta, meaning no deadline, so beta teams keep editing. `settings_get`
+  returns the deadline as `entitled_until` (null when a row exists).
 - Every write RPC (`org_vault_write`, `org_vault_remove`, `org_vault_move`,
   the legacy `org_vault_put` and `org_vault_delete`, and the settings put)
   raises SQLSTATE `OV402` when the org is not entitled. Reads, lists,
@@ -190,23 +195,14 @@ its plan gate (Vault v1 plan item 7.4, CTO ruling L17, CX Y14 and Y15):
 re-creates their write RPCs), and before the team client that reads settings
 or maps `OV402` merges to main. `supabase db push` applies them in order.
 
-**Preflight: orgs that would go read-only.** From 0021 on, a team vault in an
-org with no active or trialing entitlement is read-only. Beta teams without an
-entitlement row are in that set. In the SQL editor, before `supabase db push`:
-
-```sql
-select n.org_id, count(*) as live_notes, e.status, e.valid_until
-from public.org_vault_notes n
-left join public.org_entitlements e on e.org_id = n.org_id
-where not n.deleted
-  and not (coalesce(e.status, '') in ('active', 'trialing')
-           and (e.valid_until is null or e.valid_until > now()))
-group by n.org_id, e.status, e.valid_until
-order by live_notes desc;
-```
-
-No rows means no team loses editing. Each row is an org whose notes become
-read-only (still readable and exportable) when 0021 lands.
+**When pay gates come back (founder gate).** Ship a one-line migration that
+replaces the body of `no_entitlement_vault_until()` with a date at least 30
+days after that migration reaches production, for example
+`select timestamptz '2027-01-31 00:00+00';`. That date is the notice: the app
+shows "Team notes stay editable until <date>" from `entitled_until`. After
+it, an org with no entitlement row reads and exports every note, and buying a
+plan unlocks editing. Never ship a date inside 30 days: that is the cliff this
+function exists to avoid.
 
 ### Warning: `supabase config push` and email confirmations (P0-4)
 
