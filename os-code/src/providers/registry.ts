@@ -19,6 +19,7 @@
 import type { OscConfig } from '../config/schema.js';
 import type { EmbeddingProvider, ImageProvider, Provider } from './types.js';
 import { OpenAICompatibleProvider } from './openaiCompatible.js';
+import { hostRamGB } from './hostMemory.js';
 import { AnthropicProvider } from './anthropic.js';
 import { ImageGenProvider } from './imageGen.js';
 import {
@@ -42,7 +43,9 @@ export class ProviderRegistry {
   ) {
     for (const [id, endpoint] of Object.entries(config.providers)) {
       if (endpoint.kind === 'openai-compatible') {
-        this.add(id, new OpenAICompatibleProvider(id, endpoint));
+        // One memory reading for every endpoint, so every seat on this
+        // computer is served from the same ceiling (CTO I1).
+        this.add(id, new OpenAICompatibleProvider(id, endpoint, {}, { ramGB: hostRamGB }));
       } else if (endpoint.kind === 'anthropic') {
         this.add(id, new AnthropicProvider(id, endpoint, getAnthropicKey));
       }
