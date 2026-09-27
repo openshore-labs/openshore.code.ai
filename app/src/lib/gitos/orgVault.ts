@@ -33,8 +33,9 @@ let getToken: (() => Promise<string | undefined>) | undefined;
 let readyPredicate: (() => boolean) | undefined;
 
 /** Wire the team vault to the signed-in session. `token` returns a fresh access
- *  token (or undefined when signed out); `ready` is true when the user is an
- *  active member of an org that has a server id. */
+ *  token, undefined when there is no session, and throws when a refresh could
+ *  not reach the server; `ready` is true when the user is an active member of
+ *  an org that has a server id. */
 export function setOrgVaultAuth(
   token: () => Promise<string | undefined>,
   ready: () => boolean,
@@ -102,6 +103,24 @@ export function resetOrgVault(): void {
   baseRev.clear();
 }
 
+/** The rev this device last read or wrote for a note, or undefined. The store
+ *  keeps it with an offline draft, because this cache is memory only: after a
+ *  relaunch a replay would otherwise send base 0, and the server would set the
+ *  unchanged note aside as a conflict copy for nothing. */
+export function orgVaultBaseRev(resourceId: string, path: string): number | undefined {
+  return baseRev.get(revKey(resourceId, path));
+}
+
+/** Put back the rev an offline draft was typed against, just before its
+ *  replay writes it. The store calls this only after stat() showed the note
+ *  still at that version, so the rev is the server's current one. */
+export function seedOrgVaultBaseRev(resourceId: string, path: string, rev: number): void {
+  baseRev.set(revKey(resourceId, path), rev);
+}
+
+// No token means no session: a refusal, since retrying cannot sign anyone in.
+// A getter that throws (a token refresh that could not reach the server) is
+// passed through as it is, so the store stashes the text and retries it.
 async function token(): Promise<string> {
   const t = await getToken?.();
   if (!t) throw new OrgVaultRefusal('Sign in to your team to use the team vault.');

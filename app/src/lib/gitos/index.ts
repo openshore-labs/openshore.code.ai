@@ -16,7 +16,13 @@ export {
   connectGdrive,
   disconnectGdrive,
 } from './gdriveAuth.js';
-export { setOrgVaultAuth, isOrgVaultAvailable, resetOrgVault } from './orgVault.js';
+export {
+  setOrgVaultAuth,
+  isOrgVaultAvailable,
+  resetOrgVault,
+  orgVaultBaseRev,
+  seedOrgVaultBaseRev,
+} from './orgVault.js';
 export { isDeviceFolderAvailable } from './deviceFolder.js';
 
 const PROVIDERS_BY_ID: Partial<Record<StorageProviderId, StorageProvider>> = {

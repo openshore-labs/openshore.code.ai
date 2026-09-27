@@ -16,6 +16,8 @@ import {
   isOrgVaultAvailable,
   resetOrgVault,
   OrgVaultRefusal,
+  orgVaultBaseRev,
+  seedOrgVaultBaseRev,
 } from '../src/lib/gitos/orgVault.js';
 
 const ORG = 'org-123';
@@ -187,6 +189,35 @@ describe('org vault provider', () => {
     // A save with no team session cannot succeed by retrying, so it is a
     // permanent refusal: never stashed to replay under the next sign-in.
     await expect(orgVaultProvider.write(ORG, 'a.md', 'hi')).rejects.toBeInstanceOf(OrgVaultRefusal);
+  });
+
+  it('passes a token refresh that could not reach the server through as retryable', async () => {
+    setOrgVaultAuth(
+      async () => {
+        throw new TypeError('Failed to fetch');
+      },
+      () => true,
+    );
+    const err = await orgVaultProvider.write(ORG, 'a.md', 'hi').catch((e: unknown) => e);
+    // Offline is not "signed out": the store stashes this and retries it.
+    expect(err).toBeInstanceOf(TypeError);
+    expect(err).not.toBeInstanceOf(OrgVaultRefusal);
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  it('exposes the base rev it holds, and takes one back for a replay after a relaunch', async () => {
+    mockSelect.mockResolvedValue([{ path: 'a.md', body: 'hi', updated_at: 't1', rev: 3 }]);
+    await orgVaultProvider.read(ORG, 'a.md');
+    expect(orgVaultBaseRev(ORG, 'a.md')).toBe(3);
+    expect(orgVaultBaseRev(ORG, 'b.md')).toBeUndefined();
+
+    resetOrgVault(); // the relaunch
+    expect(orgVaultBaseRev(ORG, 'a.md')).toBeUndefined();
+    seedOrgVaultBaseRev(ORG, 'a.md', 3);
+    mockRpc.mockResolvedValue({ path: 'a.md', body: 'z', updated_at: 't2', rev: 4, size: 1 });
+    await orgVaultProvider.write(ORG, 'a.md', 'z');
+    expect(mockRpc.mock.calls[0]![2]).toMatchObject({ p_base_rev: 3 });
+    expect(orgVaultBaseRev(ORG, 'a.md')).toBe(4);
   });
 
   it('forgets base revs on reset, so one account cannot leak into the next', async () => {
