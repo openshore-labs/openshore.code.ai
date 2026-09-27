@@ -174,3 +174,40 @@ describe('the pack budget', () => {
     expect(p.mergedVaultTool).toBe(false);
   });
 });
+
+// Vault M4, 4.1 (CTO I2): the loop now reads these, so the tighter class
+// must spend less of its window on the map and compact sooner, and every
+// budget must scale with the served window.
+describe('the budgets the loop reads, by class', () => {
+  const profileOf = (model: string) => deriveProfile({ model, kind: 'local' });
+  const byClass = {
+    tiny: profileOf('qwen2.5-coder:1.5b'),
+    small: profileOf('qwen2.5-coder:7b'),
+    mid: profileOf('qwen2.5-coder:14b'),
+    large: deriveProfile({ model: 'claude', kind: 'cloud' }),
+  };
+
+  it('a tighter class spends less on the code map and compacts sooner', () => {
+    const order = MODEL_CLASSES.map((c) => byClass[c]);
+    for (let i = 1; i < order.length; i++) {
+      expect(order[i]!.codeMapContextFraction).toBeGreaterThanOrEqual(
+        order[i - 1]!.codeMapContextFraction,
+      );
+      expect(order[i]!.compactAtContextFraction).toBeGreaterThanOrEqual(
+        order[i - 1]!.compactAtContextFraction,
+      );
+    }
+    expect(byClass.tiny.compactAtContextFraction).toBeLessThan(0.7);
+  });
+
+  it('the pack budget scales with the served window, never past the cap', () => {
+    for (const c of MODEL_CLASSES) {
+      const p = byClass[c];
+      const at8k = packBudgetTokens(p, servedContextTokens(131072, c, 8));
+      const at64 = packBudgetTokens(p, servedContextTokens(131072, c, 64));
+      expect(at8k).toBeLessThanOrEqual(at64);
+      expect(at64).toBeLessThanOrEqual(VAULT_PACK_MAX_TOKENS);
+    }
+    expect(packBudgetTokens(byClass.small, 8192)).toBe(Math.floor(8192 * 0.08));
+  });
+});

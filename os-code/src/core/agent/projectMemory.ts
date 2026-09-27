@@ -220,14 +220,22 @@ export function isProjectMemoryFolder(folder: string): boolean {
  *  The read half needs only readFile; the write half is sent only when the seat
  *  was given projectMemoryWrite (`write: false` leaves it out), so a lean seat
  *  is still pointed at the top sheet without being told to use a tool it
- *  cannot see. */
-export function projectMemoryPrompt(segment: string, options: { write?: boolean } = {}): string {
+ *  cannot see. With `inlined: true` the harness already put the top sheet in
+ *  the prompt (the vault context pack, CTO I8), so the seat is told it has it
+ *  rather than sent to open it. */
+export function projectMemoryPrompt(
+  segment: string,
+  options: { write?: boolean; inlined?: boolean } = {},
+): string {
   const folder = memoryFolder(segment);
   const titles = MEMORY_FILES.map((f) => f.title).join(', ');
+  const topSheet = options.inlined
+    ? `The top sheet, "${folder}/${CURRENT_STATE_FILE}.md" (a 2 to 5 minute catch up), is already included below; do not open it again. It names what last landed, the key outstanding build and test actions, the immediate blockers, and the suggested next steps. Only open Progress, Decisions, Action Items, or Skills when you need the deeper record behind a line on it.`
+    : `Read the top sheet first. Open "${folder}/${CURRENT_STATE_FILE}.md" (a 2 to 5 minute catch up) before you start; it names what last landed, the key outstanding build and test actions, the immediate blockers, and the suggested next steps. Only open Progress, Decisions, Action Items, or Skills when you need the deeper record behind a line on the top sheet. Do not read all five up front.`;
   const read = [
     `PROJECT MEMORY (this project's durable knowledge, in this repo under "${folder}/"):`,
     `Five notes carry everything worth remembering across sessions: ${titles}. Reach for them for planning, for debugging, and to recall how something worked when it was healthy. They are committed with the repo, so they travel with the code.`,
-    `Read the top sheet first. Open "${folder}/${CURRENT_STATE_FILE}.md" (a 2 to 5 minute catch up) before you start; it names what last landed, the key outstanding build and test actions, the immediate blockers, and the suggested next steps. Only open Progress, Decisions, Action Items, or Skills when you need the deeper record behind a line on the top sheet. Do not read all five up front.`,
+    topSheet,
   ];
   if (options.write === false) return read.join('\n');
   return [

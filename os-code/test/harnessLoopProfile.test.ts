@@ -5,6 +5,7 @@
 // the multi-KB text, and a one-time note. mid and large seats, and the off
 // switch, keep the full prompt and every tool.
 import { describe, it, expect } from 'vitest';
+import { z } from 'zod';
 import { MockProvider, textTurn, toolTurn, type ScriptedTurn } from './helpers/mockProvider.js';
 import { makeTestSession } from './helpers/session.js';
 import type { AgentEvent } from '../src/core/agent/types.js';
@@ -240,5 +241,99 @@ describe('no prompt names a tool the seat was not given', () => {
     });
     expect(requests[0]!.tools!.map((t) => t.name)).toContain('runShell');
     expect(systemOf(requests[0]!)).toMatch(/run it with runShell/);
+  });
+});
+
+// Vault M4, 4.1 and 4.5 (CTO I2, I11): the class's budgets reach the loop,
+// and each seat gets one way into the vault.
+describe('the class budgets and vault menu in the loop', () => {
+  const bigMap = Array.from({ length: 4000 }, (_, i) => `src/file${i}.ts: fn${i}`).join('\n');
+  const mapIn = (system: string): string =>
+    system.slice(
+      system.indexOf('Repository map'),
+      system.indexOf('\n\n', system.indexOf('Repository map')),
+    );
+
+  it('cuts the code map to the class share of the served window, on a line boundary', async () => {
+    const run = async (profiles: boolean, contextTokens: number) => {
+      const provider = new MockProvider('mock', [textTurn('done')], { caps: { contextTokens } });
+      const session = makeTestSession(provider, {
+        codeMap: bigMap,
+        configOverrides: { harness: { profiles: { enabled: profiles } } },
+      });
+      await session.agent.run('go');
+      return mapIn(systemOf(provider.requests[0]!));
+    };
+    // small: 20% of a 32k window, 4 chars a token.
+    const small = await run(true, 32768);
+    expect(small.length).toBeLessThan(Math.floor(32768 * 0.2 * 4) + 120);
+    expect(small).toContain("the map stops here to fit this model's window");
+    expect(small).toMatch(/src\/file\d+\.ts: fn\d+\n\(the map stops here/);
+    // A smaller window cuts harder: the budget scales with the window.
+    const smaller = await run(true, 8192);
+    expect(smaller.length).toBeLessThan(small.length);
+    // mid (a big window) and profiles off keep the whole map.
+    expect(await run(true, 200_000)).toContain('src/file3999.ts');
+    expect(await run(false, 32768)).toContain('src/file3999.ts');
+  });
+
+  const lookup = {
+    name: 'vaultLookup',
+    description: 'Search and read the vault.',
+    schema: z.object({ query: z.string().optional() }),
+    risk: 'read' as const,
+    pathJail: 'own' as const,
+    async execute() {
+      return { ok: true, content: 'nothing' };
+    },
+  };
+
+  const menu = async (model: string, profiles: boolean) => {
+    const provider = new MockProvider('mock', [textTurn('done')]);
+    const session = makeTestSession(provider, {
+      configOverrides: {
+        stack: { orchestrator: { provider: 'mock', model } },
+        harness: { profiles: { enabled: profiles } },
+      },
+    });
+    session.tools.register(lookup);
+    await session.agent.run('go');
+    return provider.requests[0]!.tools!.map((t) => t.name);
+  };
+
+  it('a small seat sees the merged vault tool and not the separate reads', async () => {
+    const names = await menu('qwen2.5-coder:7b', true);
+    expect(names).toContain('vaultLookup');
+    expect(names).not.toContain('vaultRead');
+    expect(names).not.toContain('vaultList');
+    expect(names).toHaveLength(10);
+  });
+
+  it('a tiny seat leans on the pack: its six tools hold no vault tool', async () => {
+    const names = await menu('qwen2.5-coder:1.5b', true);
+    expect(names).toHaveLength(6);
+    expect(names.filter((n) => n.startsWith('vault'))).toEqual([]);
+  });
+
+  it('a full seat sees the separate reads and not the merged tool', async () => {
+    for (const names of [await menu('qwen2.5-coder:32b', true), await menu('mock-model', false)]) {
+      expect(names).toContain('vaultRead');
+      expect(names).toContain('vaultList');
+      expect(names).not.toContain('vaultLookup');
+    }
+  });
+
+  it('plan mode names the vault reads the seat is offered, never the write', async () => {
+    const provider = new MockProvider('mock', [textTurn('1. do it')]);
+    const session = makeTestSession(provider, {
+      configOverrides: { harness: { profiles: { enabled: false } } },
+    });
+    session.agent.setMode('plan');
+    await session.agent.run('plan it');
+    const plan = systemOf(provider.requests[0]!)
+      .split('\n\n')
+      .find((p) => p.startsWith('PLAN MODE.'))!;
+    expect(plan).toContain('the vault reads vaultRead, vaultList');
+    expect(plan).not.toContain('vaultWrite');
   });
 });
