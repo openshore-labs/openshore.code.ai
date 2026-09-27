@@ -24,7 +24,7 @@ import type {
   TerminalOpen,
   TerminalWrite,
 } from './types.js';
-import { HUB_NO_ANSWER } from './types.js';
+import { HUB_NO_ANSWER, PackLocalOnlyMarker } from './types.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
 
 export { HUB_NO_ANSWER };
@@ -439,6 +439,8 @@ export function parseSseFrame(frame: string): { seq: number; event: DriverEvent 
 export class RemoteDriver implements ChatDriver {
   readonly kind = 'desktop' as const;
   private sinks = new Set<DriverEventSink>();
+  /** Marks a reply grounded in a local-only pack note (I5). */
+  private packMarker = new PackLocalOnlyMarker();
   private lastSeq: number;
   private closed = false;
   private abortStream?: AbortController;
@@ -559,7 +561,9 @@ export class RemoteDriver implements ChatDriver {
             // so the next genuine outage steps up from the start again.
             backoffMs = 600;
             this.lastSeq = Math.max(this.lastSeq, parsed.seq);
-            for (const sink of [...this.sinks]) sink(parsed.event, parsed.seq);
+            // A pack that carried a local-only note marks the reply (I5).
+            const event = this.packMarker.mark(parsed.event);
+            for (const sink of [...this.sinks]) sink(event, parsed.seq);
           }
         }
       } catch {

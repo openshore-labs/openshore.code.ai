@@ -348,7 +348,9 @@ export function createAppVaultPack(deps: AppVaultPackDeps): AppVaultPack {
         } catch {
           pack = undefined;
         }
-        renderCache = { key, pack, localOnly: !leaves && carriesLocalOnly(pack, p) };
+        // The builder judges each note it placed (a project pin the index has
+        // not read, by its own body), the same rule the engine's card uses.
+        renderCache = { key, pack, localOnly: !leaves && pack?.localOnly === true };
       }
       const pack = renderCache.pack;
       if (!pack) return {};
@@ -374,20 +376,4 @@ export function createAppVaultPack(deps: AppVaultPackDeps): AppVaultPack {
       return text ? { text, event, ...mark } : { event };
     },
   };
-}
-
-/** Whether a rendered pack carries a local-only note, judged the way the
- *  plan judged it: by path, and by the index's tags and marks when it holds
- *  the note (a project pin the index has not read is judged by path). */
-function carriesLocalOnly(pack: ContextPack | undefined, p: Prepared): boolean {
-  if (!pack) return false;
-  return pack.used.some((src) => {
-    // Current State and the handoff are the project's and the chat's own
-    // words, not vault notes.
-    if (src.layer === 'current-state' || src.layer === 'handoff') return false;
-    const e = p.index?.entry(src.path);
-    return (
-      p.privacy.visibility({ path: src.path, tags: e?.tags, oscode: e?.oscode }) === 'local-only'
-    );
-  });
 }

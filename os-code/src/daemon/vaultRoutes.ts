@@ -351,6 +351,7 @@ export async function buildChatPack(
     sources: pack.used,
     withheld: pack.withheld,
     cold: pack.cold,
+    ...(pack.localOnly ? { localOnly: true as const } : {}),
   };
   return { ...(pack.text ? { text: pack.text } : {}), event };
 }

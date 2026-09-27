@@ -5,6 +5,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { DriverEvent } from 'os-code/protocol';
 import { ElectronDriver } from '../src/drivers/electronDriver.js';
+import { isLocalOnlyFinal } from '../src/drivers/types.js';
 
 type EventPayload = { sessionId: string; seq: number; event: DriverEvent };
 
@@ -236,6 +237,44 @@ describe('ElectronDriver interactive terminal (Phase 2)', () => {
     expect(bridge.calls.find((c) => c.method === 'terminalStdin')?.args).toEqual(['tm1', 'ls\n']);
     expect(bridge.calls.find((c) => c.method === 'terminalResize')?.args).toEqual(['tm1', 120, 40]);
     expect(bridge.calls.find((c) => c.method === 'terminalKill')?.args).toEqual(['tm1']);
+    driver.dispose();
+  });
+});
+
+describe('ElectronDriver marks a reply grounded in a local-only pack note (I5)', () => {
+  afterEach(() => {
+    delete (globalThis as unknown as { window?: unknown }).window;
+  });
+
+  it('marks the journal and the live text-final after a localOnly card', () => {
+    const bridge = installBridge();
+    const card = {
+      type: 'context-pack',
+      seat: 'local',
+      mode: 'current-state',
+      tokens: 20,
+      budgetTokens: 327,
+      sources: [],
+      withheld: 0,
+      cold: false,
+      localOnly: true,
+    } as unknown as DriverEvent;
+    const journal = [
+      { seq: 1, event: { type: 'task-start', input: 'diary?' } as DriverEvent },
+      { seq: 2, event: card },
+      { seq: 3, event: { type: 'text-final', text: 'teal' } as DriverEvent },
+    ];
+    const driver = new ElectronDriver('s1', journal);
+    const finals: boolean[] = [];
+    driver.subscribe((event) => {
+      if (event.type === 'text-final') finals.push(isLocalOnlyFinal(event));
+    });
+    bridge.emitLive({ sessionId: 's1', seq: 4, event: { type: 'task-start', input: 'more' } });
+    bridge.emitLive({ sessionId: 's1', seq: 5, event: card });
+    bridge.emitLive({ sessionId: 's1', seq: 6, event: { type: 'text-final', text: 'still teal' } });
+    bridge.emitLive({ sessionId: 's1', seq: 7, event: { type: 'task-start', input: 'plain' } });
+    bridge.emitLive({ sessionId: 's1', seq: 8, event: { type: 'text-final', text: 'plain' } });
+    expect(finals).toEqual([true, true, false]);
     driver.dispose();
   });
 });

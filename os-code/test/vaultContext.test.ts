@@ -183,6 +183,23 @@ describe('buildContextPack', () => {
     expect(cloud.text.startsWith(VAULT_NOTES_FRAMING)).toBe(true);
   });
 
+  it('says when it carries a local-only note, so the reply it grounds is marked', () => {
+    expect(build({ pins: ['Private/Deploy secrets.md'] }).localOnly).toBe(true);
+    // A project pin the index has not read is judged by its own body.
+    const cold = build({ mode: 'current-state', index: null, projectPins: ['Work/Marked.md'] });
+    expect(cold.localOnly).toBe(true);
+    // Current State alone, a plain note, or a leaving seat: no mark.
+    expect(build({ mode: 'current-state' }).localOnly).toBeUndefined();
+    const plain = build({ mode: 'current-state', projectPins: ['Work/Runbook.md'] });
+    expect(plain.used.some((u) => u.path === 'Work/Runbook.md')).toBe(true);
+    expect(plain.localOnly).toBeUndefined();
+    const cloud = build({
+      pins: ['Private/Deploy secrets.md'],
+      seat: { modelClass: 'large', leavesNetwork: true },
+    });
+    expect(cloud.localOnly).toBeUndefined();
+  });
+
   it('under a secrets lockdown gives a leaving seat nothing, and a local seat its pack', () => {
     const lock = { egress: false, secrets: true };
     const cloud = build({ lockdown: lock, seat: { modelClass: 'large', leavesNetwork: true } });

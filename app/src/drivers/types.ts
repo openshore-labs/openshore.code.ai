@@ -197,6 +197,28 @@ export function isLocalOnlyFinal(event: DriverEvent): boolean {
   return event.type === 'text-final' && (event as LocalOnlyMark).localOnly === true;
 }
 
+/**
+ * The local-only mark for an engine session's replies (Vault M5, I5). The
+ * engine builds the pack on the computer and says on its `context-pack` card
+ * (`localOnly`) when the pack carried a note that stays there. This marks
+ * every `text-final` after such a card, until the next `task-start`, so the
+ * transcript and a later switch treat the reply like one after a local-only
+ * read. A later card in the same task never clears it (an escalation's cloud
+ * card follows turns the local seat already wrote). One per event stream.
+ */
+export class PackLocalOnlyMarker {
+  private carried = false;
+
+  mark(event: DriverEvent): DriverEvent {
+    if (event.type === 'task-start') this.carried = false;
+    else if (event.type === 'context-pack' && (event as LocalOnlyMark).localOnly === true)
+      this.carried = true;
+    else if (event.type === 'text-final' && this.carried && !isLocalOnlyFinal(event))
+      return { ...event, localOnly: true } as DriverEvent;
+    return event;
+  }
+}
+
 /** A seed turn's text as a seat sees it: a local-only turn is the stub on a
  *  seat that leaves the network, whole on one that does not (I5). */
 export function seedText(turn: SeedTurn, leavesNetwork: boolean): string {

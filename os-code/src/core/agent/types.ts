@@ -176,7 +176,9 @@ export type AgentEvent =
   // seat's requests leave this network (amber), else 'local' (teal).
   // `withheld` counts local-only notes left out for a leaving seat; `cold` is
   // true when the index was not ready, so the pack is Current State only.
-  // Additive: an older client ignores it.
+  // `localOnly` (Vault M5) is set when the pack carries a note that stays on
+  // this computer (only ever on a 'local' seat), so a client marks the reply
+  // it grounds local-only (I5). Additive: an older client ignores it.
   | {
       type: 'context-pack';
       seat: 'local' | 'cloud';
@@ -186,6 +188,7 @@ export type AgentEvent =
       sources: PackSource[];
       withheld: number;
       cold: boolean;
+      localOnly?: true;
     };
 
 export type EventSink = (event: AgentEvent) => void;

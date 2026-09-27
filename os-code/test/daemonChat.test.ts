@@ -231,6 +231,28 @@ describe('/chat builds its pack on the daemon', () => {
         source: { prepare: async () => prepared },
       });
       expect(none).toEqual({});
+      // Plain Current State: the line does not say local-only.
+      expect(out.event?.localOnly).toBeUndefined();
+      // A project pin from a local-only folder rides (this seat stays here),
+      // and the line says so, so the phone marks the reply (I5).
+      const pinned = await buildChatPack({
+        root,
+        privacy,
+        task: 'What ships?',
+        model: 'qwen2.5:7b',
+        kind: 'local',
+        caps: { contextTokens: 4096, supportsGrammar: false },
+        setting: 'auto',
+        source: {
+          prepare: async () => ({
+            ...prepared,
+            projectPins: ['Private/Plan.md'],
+            bodies: new Map([['Private/Plan.md', '# Plan\nThe launch word is marmot.']]),
+          }),
+        },
+      });
+      expect(pinned.text).toContain('marmot');
+      expect(pinned.event?.localOnly).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

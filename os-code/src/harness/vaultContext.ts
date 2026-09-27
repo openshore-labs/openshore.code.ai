@@ -92,6 +92,10 @@ export interface ContextPack {
   withheld: number;
   /** The index was not ready in time, so the pack is Current State only. */
   cold: boolean;
+  /** The text carries a note that stays on this computer (only ever on a
+   *  seat that does not leave the network), so the reply it grounds is
+   *  marked local-only (I5). Absent otherwise. */
+  localOnly?: true;
 }
 
 /** The most a task waits for a vault's saved index before it goes on with
@@ -192,6 +196,9 @@ interface Selection {
   search: Candidate[];
   links: Candidate[];
   withheld: number;
+  /** The selected notes judged local-only (empty for a leaving seat, which
+   *  never carries one). */
+  localOnly: ReadonlySet<string>;
 }
 
 /** A seat that leaves this network under a secrets lockdown gets nothing. */
@@ -211,7 +218,7 @@ function lockedOut(input: PackInput): boolean {
  * call, can slip in through this input.
  */
 function select(input: PackInput, bodies?: ReadonlyMap<string, string>): Selection {
-  const empty: Selection = { pins: [], search: [], links: [], withheld: 0 };
+  const empty: Selection = { pins: [], search: [], links: [], withheld: 0, localOnly: new Set() };
   if (lockedOut(input)) return empty;
   const index = input.index;
   const privacy = input.privacy;
@@ -296,7 +303,12 @@ function select(input: PackInput, bodies?: ReadonlyMap<string, string>): Selecti
     }
   }
 
-  if (!input.seat.leavesNetwork) return { pins, search, links, withheld: 0 };
+  if (!input.seat.leavesNetwork) {
+    const localOnly = new Set<string>();
+    for (const c of pins) if (pinVisOf.get(c.path) === 'local-only') localOnly.add(c.path);
+    for (const c of [...search, ...links]) if (vis(c.note) === 'local-only') localOnly.add(c.path);
+    return { pins, search, links, withheld: 0, localOnly };
+  }
 
   // A leaving seat: the same selection, local-only notes withheld, and a hop
   // kept only when a top hit it may see reached it.
@@ -315,7 +327,13 @@ function select(input: PackInput, bodies?: ReadonlyMap<string, string>): Selecti
   const linksOut = links.filter(
     (c) => keep(c) && (from.get(c.path) ?? []).some((s) => !withheld.has(s)),
   );
-  return { pins: pinsOut, search: searchOut, links: linksOut, withheld: withheld.size };
+  return {
+    pins: pinsOut,
+    search: searchOut,
+    links: linksOut,
+    withheld: withheld.size,
+    localOnly: new Set(),
+  };
 }
 
 /**
@@ -350,6 +368,7 @@ export function buildContextPack(input: PackBuildInput): ContextPack {
   const cap = Math.floor(Math.max(0, input.budgetTokens) * 4 * PACK_FILL);
   const out = new Packer(cap);
   const used: PackSource[] = [];
+  let carriesLocalOnly = false;
   const add = (
     layer: PackLayer,
     path: string,
@@ -360,6 +379,7 @@ export function buildContextPack(input: PackBuildInput): ContextPack {
     if (block === null || !out.fits(block)) return false;
     out.push(block);
     used.push({ layer, path, title, ...extra });
+    if (sel.localOnly.has(path)) carriesLocalOnly = true;
     return true;
   };
   const bodyOf = (path: string): string | null => {
@@ -437,6 +457,7 @@ export function buildContextPack(input: PackBuildInput): ContextPack {
     used: text ? used : [],
     withheld: sel.withheld,
     cold,
+    ...(text && carriesLocalOnly ? { localOnly: true as const } : {}),
   };
 }
 

@@ -2453,3 +2453,33 @@ execution contract. Newest at the bottom.
   recorded here and in PROGRESS before `PACK_BY_CLASS`, `numCtx`, the
   handoff layer or `promptCache` flip; and the device checks in the plan's
   8.1 list for M5.
+  App integrator calls: a reply after a local-only read is marked by an
+  additive `localOnly` on `text-final` (`textFinal`, `isLocalOnlyFinal`),
+  carried onto the assistant item and the seed, so a leaving seat gets
+  `LOCAL_ONLY_STUB` and a handoff drops the turn. Memory off withholds the
+  pack and the Stack's vault tools and sends `/chat` `memory: false`;
+  `vaultContext: 'off'` drops only the pack. One index lifetime rule:
+  `closeVaultIndex` is leaving the Vault room (personal parked warm, team
+  closed), `shutVaultIndex` is a storage move, a sign-out or a pairing change.
+  One pairing rule, `hubPairPlan` ('repoint' | 'offer-move' | 'stay'). Privacy
+  source order: the desktop bridge, then the paired hub, then the device
+  setting, each within 2 s, else D5 unioned with the device setting (fail
+  closed), cached 60 s. The composer keeps stream I's `ComposerVault` shape
+  and takes the stricter of the listed and the note's own visibility.
+  `clearConversations()` clears every chat and every handoff store (local,
+  the desktop bridge, the hub's `DELETE /handoffs` unless a member). The
+  flaky `vaultStore` sign-out row was real async work (`crypto.subtle`, the
+  sealed store) outlasting one `setTimeout(0)`; it now waits on the outcome.
+  Pre-ship fixes: (1) a Stack play tracks local-only taint per step output
+  (its pack carried a local-only note, or a tainted output reached its local
+  seat whole), and every step, replan and synthesis prompt for a leaving seat
+  gets `LOCAL_ONLY_STUB` in a tainted output's place (`resultsForSeat`);
+  (2) `ContextPack.localOnly` and the `context-pack` event's additive
+  `localOnly` say a local seat's pack carried a local-only note (judged in
+  `buildContextPack`, which the app's pack now reads too), and the desktop
+  chat, remote and Electron drivers mark the reply's `text-final` after such
+  a card until the next `task-start`; (3) with prompt caching off, the Stack
+  and the Claude driver send `system` as one plain string byte-identical to
+  before M5 (the pre-M5 piece order too, on every Stack seat), the pack
+  appended last; blocks, the stable-to-volatile order and `cache_control`
+  only with caching on.

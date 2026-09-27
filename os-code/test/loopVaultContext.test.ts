@@ -44,12 +44,15 @@ vi.mock('../src/harness/vaultContext.js', async (importOriginal) => {
         input.seat.leavesNetwork && input.privacy.visibility({ path: cs.path }) === 'local-only';
       if (hidden) return { text: '', tokens: 0, used: [], withheld: 1, cold: input.index === null };
       const text = `${real.VAULT_NOTES_FRAMING}\n<note path="${cs.path}" updated="2026-09-27" why="current-state">\n${cs.text}\n</note>`;
+      // A local seat carrying a local-only note says so, as the real one does.
+      const localOnly = input.privacy.visibility({ path: cs.path }) === 'local-only';
       return {
         text,
         tokens: Math.ceil(text.length / 4),
         used: [{ layer: 'current-state', path: cs.path, title: 'Current State' }],
         withheld: 0,
         cold: input.index === null,
+        ...(localOnly ? { localOnly: true as const } : {}),
       };
     },
   };
@@ -241,6 +244,10 @@ describe('local-only text never leaves on an escalation (I5)', () => {
     const cards = packEvents(session.events);
     expect(cards.map((c) => c.seat)).toEqual(['local', 'cloud']);
     expect(cards[1]!.withheld).toBe(1);
+    // The local card says its pack carried a local-only note; the cloud one
+    // never does (the note was withheld).
+    expect(cards[0]!.localOnly).toBe(true);
+    expect(cards[1]!.localOnly).toBeUndefined();
     expect(systemOf(cloud.requests[0]!)).not.toContain('MARKER-CS');
     expect(builds.some((b) => b.seat.leavesNetwork)).toBe(true);
   });

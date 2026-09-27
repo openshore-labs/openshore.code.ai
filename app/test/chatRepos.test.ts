@@ -540,7 +540,7 @@ describe('the wiring', () => {
       (store.match(/repoContextLine\(conv\.repoIds \?\? \[\]\)/g) ?? []).length,
     ).toBeGreaterThanOrEqual(3);
     expect(read('drivers/cloudClaudeDriver.ts')).toMatch(
-      /readChatContext\(this\.extraSystem\),?[\s\S]{0,40}\.filter\(Boolean\)/,
+      /context: readChatContext\(this\.extraSystem\)/,
     );
   });
 

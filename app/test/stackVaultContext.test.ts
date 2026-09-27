@@ -8,7 +8,13 @@
 // after a local-only read is marked, and a later leaving seat gets the stub.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DriverEvent } from 'os-code/protocol';
-import { LOCAL_ONLY_STUB, compileVaultPrivacy } from 'os-code/protocol';
+import {
+  LOCAL_ONLY_STUB,
+  compileVaultPrivacy,
+  humanizerStandardPrompt,
+  uxStandardPrompt,
+} from 'os-code/protocol';
+import { effortDirective } from '../src/lib/effort.js';
 
 type NativeReply =
   | string
@@ -390,29 +396,47 @@ describe('the prompt order and the cache (J16)', () => {
     driver.dispose();
   });
 
-  it('sends unmarked blocks with caching off, stable first, pack last', async () => {
+  it('with caching off sends system as one plain string, the pre-M5 prompt with the pack last', async () => {
     const { pack } = fakePack();
-    const { driver } = chat(
-      { reasoning: claude, active: [], saved: {} },
-      { projectName: 'Harbor', projectInstructions: 'Use tabs.' },
-      { vaultPack: pack, packSeat: seatOf },
-    );
+    const context = { projectName: 'Harbor', projectInstructions: 'Use tabs.' };
+    const { driver } = chat({ reasoning: claude, active: [], saved: {} }, context, {
+      vaultPack: pack,
+      packSeat: seatOf,
+    });
     h.claudeScript.push('not a plan', 'one');
     driver.send('first');
     await settle();
     const params = h.claudeParams[1]!;
-    // One builder for every Claude request in the app (lib/claudeCache.ts).
-    const blocks = params.system as Array<{ text: string; cache_control?: unknown }>;
-    expect(Array.isArray(blocks)).toBe(true);
-    expect(blocks.every((b) => b.cache_control === undefined)).toBe(true);
-    expect(params.cache_control).toBeUndefined();
-    const system = blocks.map((b) => b.text).join('\n');
-    const at = (s: string) => system.indexOf(s);
-    expect(at('You are OpenShore')).toBe(0);
-    expect(at('Harbor')).toBeGreaterThan(at('You are OpenShore'));
-    expect(at('Reasoning effort')).toBeGreaterThan(at('Use tabs.'));
-    expect(system.endsWith('VAULT PACK large 128000')).toBe(true);
+    // Caching off is byte-identical to before M5: one string, no marker.
+    expect(typeof params.system).toBe('string');
+    expect(JSON.stringify(params)).not.toContain('cache_control');
+    const system = params.system as string;
+    // The joined prompt in the pre-M5 order (base, effort, project, then the
+    // standards), with the M5 pack as the one addition, last.
+    const base = system.slice(0, system.indexOf('\n\n'));
+    expect(base.startsWith('You are OpenShore')).toBe(true);
+    expect(system).toBe(
+      [
+        base,
+        effortDirective(),
+        'You are working in the project "Harbor".\nUse tabs.',
+        uxStandardPrompt(),
+        humanizerStandardPrompt(),
+        'VAULT PACK large 128000',
+      ].join('\n\n'),
+    );
     driver.dispose();
+
+    // An OpenAI-compatible seat reads the very same bytes.
+    const other = chat({ reasoning: gpt, active: [], saved: {} }, context, {
+      vaultPack: fakePack().pack,
+      packSeat: seatOf,
+    });
+    h.nativeReplies.push('not a plan', 'one');
+    other.driver.send('first');
+    await settle();
+    expect(systemOf(h.nativeBodies[1]!)).toBe(system);
+    other.driver.dispose();
   });
 });
 
@@ -476,6 +500,56 @@ describe('a reply after a local-only read (I5 in the app)', () => {
     const cloud = JSON.stringify(h.nativeBodies[4]!.messages);
     expect(cloud).not.toContain('the secret is teal');
     expect(cloud).toContain(LOCAL_ONLY_STUB.slice(0, 40));
+    driver.dispose();
+  });
+
+  it('a play step grounded in a local-only pack note reaches a leaving seat as the stub', async () => {
+    const note = 'The secret is teal.';
+    const pack: AppVaultPack = {
+      prepare: async () => {},
+      // The local seat's pack carries the local-only note; a leaving seat's
+      // pack withholds it, as buildContextPack does.
+      render: (seat) =>
+        seat.leavesNetwork
+          ? { text: 'VAULT PACK cloud' }
+          : { text: `VAULT PACK ${note}`, localOnly: true },
+    };
+    const { driver, events } = chat(
+      {
+        reasoning: gpt,
+        active: [{ ref: boxMid, placement: { category: 'writing' } }],
+        saved: {},
+      },
+      {},
+      { vaultPack: pack, packSeat: seatOf },
+    );
+    const plan = JSON.stringify({
+      clear: true,
+      summary: 'Draft and check',
+      steps: [
+        { id: 'a', title: 'Draft', category: 'writing', brief: 'Write it.' },
+        { id: 'b', title: 'Check', category: 'reasoning', brief: 'Check it.', dependsOn: ['a'] },
+      ],
+    });
+    h.nativeReplies.push(plan, `Draft quoting the note: ${note}`, 'no replan', 'checked', 'Final.');
+    driver.send('draft from my diary and check it');
+    await settle(30);
+    // Step a ran on your own box with the note in its pack.
+    expect((h.nativeBodies[1] as { model?: string }).model).toBe('qwen2.5:14b');
+    expect(JSON.stringify(h.nativeBodies[1])).toContain(note);
+    // The replan, step b and the synthesis all ran on the leaving anchor:
+    // each carries the stub for step a's output, never the note or the quote.
+    const leaving = h.nativeBodies.slice(2);
+    expect(leaving).toHaveLength(3);
+    for (const body of leaving) {
+      expect((body as { model?: string }).model).toBe('gpt-big');
+      const sent = JSON.stringify(body);
+      expect(sent).not.toContain('teal');
+      expect(sent).not.toContain('Draft quoting');
+      expect(sent).toContain(LOCAL_ONLY_STUB.slice(0, 40));
+    }
+    // The reply is marked, so a later leaving seat gets the stub for it too.
+    expect(isLocalOnlyFinal(events.filter((e) => e.type === 'text-final').at(-1)!)).toBe(true);
     driver.dispose();
   });
 

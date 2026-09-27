@@ -43,7 +43,7 @@ import {
   setPromptCache,
 } from '../src/lib/claudeCache.js';
 import { CloudClaudeDriver, claudeRequestSystem } from '../src/drivers/cloudClaudeDriver.js';
-import { DEFAULT_EFFORT, setActiveEffort } from '../src/lib/effort.js';
+import { DEFAULT_EFFORT, effortDirective, setActiveEffort } from '../src/lib/effort.js';
 import type { AppVaultPack } from '../src/drivers/types.js';
 
 afterEach(() => {
@@ -95,7 +95,7 @@ describe('the Claude driver runs stable to volatile (J16)', () => {
       effort: 'Reasoning effort: high.',
       pack: 'VAULT PACK',
       cache: true,
-    });
+    }) as Array<{ text: string }>;
     expect(blocks[0]!.text).toContain('Project: Demo');
     expect(blocks[0]!.text).not.toContain('Reasoning effort');
     expect(blocks[1]!.text.endsWith('VAULT PACK')).toBe(true);
@@ -133,5 +133,27 @@ describe('the Claude driver runs stable to volatile (J16)', () => {
     const driver = new CloudClaudeDriver('k', 'claude-opus-5');
     await send(driver, 'hi');
     expect(JSON.stringify(h.calls[0])).not.toContain('cache_control');
+  });
+
+  it('with caching off sends system as one string, byte-identical to before M5', async () => {
+    const driver = new CloudClaudeDriver('k', 'claude-opus-5', undefined, undefined, 'Demo');
+    await send(driver, 'hi');
+    const system = h.calls[0]!.system;
+    expect(typeof system).toBe('string');
+    // The pre-M5 join: the base prompt, the effort line, then the chat's context.
+    const text = system as string;
+    const effort = effortDirective();
+    expect(text.endsWith(`\n${effort}\nDemo`)).toBe(true);
+    expect(text.startsWith('You are ')).toBe(true);
+  });
+
+  it('with caching off puts the pack last in the string', async () => {
+    const driver = new CloudClaudeDriver('k', 'claude-opus-5', undefined, undefined, 'Demo', {
+      vaultPack: packWith(['VAULT PACK']),
+    });
+    await send(driver, 'hi');
+    const system = h.calls[0]!.system as string;
+    expect(typeof system).toBe('string');
+    expect(system.endsWith(`\n${effortDirective()}\nDemo\nVAULT PACK`)).toBe(true);
   });
 });

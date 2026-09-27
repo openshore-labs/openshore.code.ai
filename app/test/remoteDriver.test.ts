@@ -17,7 +17,9 @@ import {
 } from '../src/drivers/remoteDriver.js';
 import { emptyThread } from '../src/state/types.js';
 import { reduceEvents } from '../src/state/transcript.js';
-import { HANDOFF_MAX_BYTES, type DriverEvent } from 'os-code/protocol';
+import { HANDOFF_MAX_BYTES, LOCAL_ONLY_STUB, type DriverEvent } from 'os-code/protocol';
+import { isLocalOnlyFinal, seedText } from '../src/drivers/types.js';
+import { seedFromTranscript } from '../src/state/types.js';
 
 /** A Response whose body streams the given SSE text once, then closes. */
 function sseResponse(text: string, status = 200): Response {
@@ -186,6 +188,55 @@ describe('RemoteDriver reconnect (G5, B4)', () => {
     expect((done[0]!.event as { message?: string }).message).toMatch(/no longer exists/);
     const thread = reduceEvents(emptyThread(), events);
     expect(thread.busy).toBe(false);
+  });
+});
+
+describe('RemoteDriver marks a reply grounded in a local-only pack note (I5)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('marks text-final after a localOnly card until the next task, and a cloud seed gets the stub', async () => {
+    const frames = [
+      { type: 'task-start', input: 'what is the launch word?' },
+      {
+        type: 'context-pack',
+        seat: 'local',
+        mode: 'current-state',
+        tokens: 20,
+        budgetTokens: 327,
+        sources: [{ layer: 'pin', path: 'Private/Plan.md', title: 'Plan', project: true }],
+        withheld: 0,
+        cold: false,
+        localOnly: true,
+      },
+      { type: 'text-final', text: 'The launch word is marmot.' },
+      { type: 'task-done', reason: 'complete' },
+      { type: 'task-start', input: 'and the weather?' },
+      { type: 'text-final', text: 'Sunny.' },
+      { type: 'task-done', reason: 'complete' },
+    ];
+    const sse = frames.map((f, i) => `id: ${i + 1}\ndata: ${JSON.stringify(f)}\n\n`).join('');
+    let streams = 0;
+    globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
+      if (!String(url).includes('/events')) {
+        return { ok: true, status: 200, json: async () => ({}) } as unknown as Response;
+      }
+      streams++;
+      return streams === 1 ? sseResponse(sse) : sseResponse(':ka\n\n');
+    }) as unknown as typeof fetch;
+    const events: Array<{ event: DriverEvent; seq: number }> = [];
+    const driver = new RemoteDriver('s1', { baseUrl: 'http://desktop', token: 't' }, 0);
+    driver.subscribe((event, seq) => events.push({ event, seq }));
+    await vi.waitFor(() =>
+      expect(events.filter((e) => e.event.type === 'task-done')).toHaveLength(2),
+    );
+    driver.dispose();
+    const finals = events.filter((e) => e.event.type === 'text-final').map((e) => e.event);
+    expect(finals.map(isLocalOnlyFinal)).toEqual([true, false]);
+    const seed = seedFromTranscript(reduceEvents(emptyThread(), events).items);
+    const reply = seed.find((t) => t.text.includes('marmot'))!;
+    expect(seedText(reply, true)).toBe(LOCAL_ONLY_STUB);
   });
 });
 

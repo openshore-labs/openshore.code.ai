@@ -14,7 +14,10 @@
 // body names the project (`vaultPack`) or says Memory is off (`memory: false`),
 // the daemon renders the pack over its own vault for the model it serves, and
 // streams the card before the first text. No note text ever leaves the phone
-// for this chat, and none comes back but the card.
+// for this chat, and none comes back but the card. When the card says its pack
+// carried a local-only note (`localOnly`, the computer judged it), the reply
+// is marked local-only, so a later switch to a seat that leaves the network
+// gets `LOCAL_ONLY_STUB` in its place (I5).
 import {
   SearchLineFilter,
   type ApprovalAnswer,
@@ -22,7 +25,7 @@ import {
   type ChatVaultFields,
 } from 'os-code/protocol';
 import type { ChatContext, ChatDriver, DriverEventSink } from './types.js';
-import { DriverEmitter, readChatContext } from './types.js';
+import { DriverEmitter, readChatContext, textFinal } from './types.js';
 import type { DaemonTarget } from './remoteDriver.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
 import { searchForModel } from '../lib/localSearch.js';
@@ -40,6 +43,8 @@ export class DesktopChatDriver implements ChatDriver {
   /** What the last context-pack card said this send, so a search's second
    *  pass does not show the same card twice. */
   private packCardShown?: string;
+  /** This send's pack carried a local-only note (the card said so). */
+  private sendLocalOnly = false;
 
   constructor(
     private readonly target: DaemonTarget,
@@ -70,6 +75,7 @@ export class DesktopChatDriver implements ChatDriver {
     this.aborted = false;
     this.abortController = new AbortController();
     this.packCardShown = undefined;
+    this.sendLocalOnly = false;
     this.emitter.emit({ type: 'task-start', input: text });
     this.history.push({ role: 'user', content: text });
     await this.turn(1, true);
@@ -144,6 +150,7 @@ export class DesktopChatDriver implements ChatDriver {
             this.emitter.emit({ type: 'thinking-delta', text: ev.delta });
           } else if (ev.type === 'context-pack') {
             const card = readPackCard(ev);
+            if (card?.localOnly) this.sendLocalOnly = true;
             const key = card && JSON.stringify([card.seat, card.sources, card.withheld]);
             if (card && key !== this.packCardShown) {
               this.packCardShown = key;
@@ -159,7 +166,7 @@ export class DesktopChatDriver implements ChatDriver {
       if (this.aborted) {
         const kept = query ? '' : answer;
         if (kept.trim()) this.history.push({ role: 'assistant', content: kept });
-        this.emitter.emit({ type: 'text-final', text: kept });
+        this.emitter.emit(textFinal(kept, this.sendLocalOnly && Boolean(kept)));
         this.emitter.emit({ type: 'task-done', reason: 'aborted', message: 'Stopped.' });
         return;
       }
@@ -175,7 +182,7 @@ export class DesktopChatDriver implements ChatDriver {
       }
       if (flush) this.emitter.emit({ type: 'text-delta', text: flush });
       this.history.push({ role: 'assistant', content: answer });
-      this.emitter.emit({ type: 'text-final', text: answer });
+      this.emitter.emit(textFinal(answer, this.sendLocalOnly));
       this.emitter.emit({ type: 'task-done', reason: 'complete' });
     } catch (err) {
       if (this.aborted) {
@@ -254,5 +261,6 @@ export function readPackCard(raw: Record<string, unknown>): ChatContextPackEvent
     sources,
     withheld,
     cold: raw.cold === true,
+    ...(raw.localOnly === true ? { localOnly: true as const } : {}),
   };
 }

@@ -308,15 +308,37 @@ export function historyForSeat<M extends { content: string; localOnly?: true }>(
     : history.slice();
 }
 
+/** One play step's output, marked when it was written after a local-only
+ *  read (I5): its seat's pack carried a local-only note, or a marked earlier
+ *  output reached that seat whole. */
+type PlayStepResult = StepResult & { localOnly?: true };
+
+/** The step outputs as a seat sees them: a marked output is
+ *  `LOCAL_ONLY_STUB` on a seat that leaves this network, whole on one that
+ *  does not (the same rule as `historyForSeat`). */
+export function resultsForSeat<R extends StepResult & { localOnly?: true }>(
+  results: readonly R[],
+  leaves: boolean,
+): R[] {
+  return leaves
+    ? results.map((r) => (r.localOnly ? { ...r, text: LOCAL_ONLY_STUB } : r))
+    : results.slice();
+}
+
 /** A system prompt in two parts (CTO J16): the stable head (static, then per
- *  chat) and the volatile tail (per task), so the head can be cached. */
+ *  chat) and the volatile tail (per task), so the head can be cached. With
+ *  prompt caching off, every seat gets `legacy` instead: the same pieces in
+ *  the order the app sent before M5, byte for byte, the pack appended last. */
 interface SystemParts {
   stable: string;
   tail: string[];
+  legacy: string;
 }
 
-function joinSystem(parts: SystemParts, extraTail: string[] = []): string {
-  return [parts.stable, ...parts.tail, ...extraTail].filter(Boolean).join('\n\n');
+/** The system prompt as one string: stable to volatile with caching on, the
+ *  pre-M5 prompt with it off (off is byte-identical to before M5). */
+function joinSystem(parts: SystemParts, cache: boolean): string {
+  return cache ? [parts.stable, ...parts.tail].filter(Boolean).join('\n\n') : parts.legacy;
 }
 
 /** A proposal's first lines, for the approval card. */
@@ -647,7 +669,7 @@ export class StackDriver implements ChatDriver {
     search?: boolean,
     pack?: string,
   ): string {
-    return joinSystem(this.systemParts(ref, placement, search, pack));
+    return joinSystem(this.systemParts(ref, placement, search, pack), this.promptCache());
   }
 
   /** The system prompt, stable to volatile (CTO J16): the base or guide, the
@@ -673,49 +695,69 @@ export class StackDriver implements ChatDriver {
     if (!guideSystem && search !== undefined) {
       stable.push(search ? SEARCH_PROTOCOL_NOTE : NO_SEARCH_NOTE);
     }
+    // The pre-M5 order (caching off): the head, the effort line, the project,
+    // the walk, the crew and the persona, then the standards and the notes.
+    const legacyHead = stable.slice();
+    const standards: string[] = [];
     // Premium UX out of the box for whatever writes code in this chat: the
     // coding specialist, and a cloud or BYOM reasoning anchor. On-device
     // pocket models skip it to protect their small context (the engine's
     // agent on the desktop always carries it).
     const buildsCode = placement?.category === 'coding' || (!placement && ref.kind !== 'device');
-    if (buildsCode) stable.push(uxStandardPrompt());
+    if (buildsCode) standards.push(uxStandardPrompt());
     // Humanize Writing out of the box: any written output (not just code) reads
     // plain, specific, and honest, avoiding AI writing tells, unless the person
     // turned the setting off (humanizerStandard.ts, config in Settings).
-    if (humanizerApplies(ref, this.context.humanize)) stable.push(humanizerStandardPrompt());
+    if (humanizerApplies(ref, this.context.humanize)) standards.push(humanizerStandardPrompt());
     // Codemagic Access is on: tell the model it can drive App Launch builds. The
     // tool is offered on every network model (Anthropic native tool use, and
     // OpenAI-compatible + BYOM function calling), so the note earns its place on
     // any non-device model. On-device pocket models are too small for reliable
     // tool use and stay guidance only.
     if (this.context.codemagicAccess && ref.kind !== 'device') {
-      stable.push(codemagicSystemNote());
+      standards.push(codemagicSystemNote());
     }
+    stable.push(...standards);
     // Project context: name + standing instructions, injected into every turn.
     const proj = this.context.projectInstructions?.trim();
+    let project: string | undefined;
     if (this.context.projectName || proj) {
       const head = this.context.projectName
         ? `You are working in the project "${this.context.projectName}".`
         : '';
-      stable.push([head, proj].filter(Boolean).join('\n'));
+      project = [head, proj].filter(Boolean).join('\n');
+      stable.push(project);
     }
+    const perChat: string[] = [];
     const crewNote = this.crewGuidance();
-    if (crewNote) stable.push(crewNote);
+    if (crewNote) perChat.push(crewNote);
     if (placement?.persona && placement.persona.trim()) {
-      stable.push(`Persona for this specialist: ${placement.persona.trim()}`);
+      perChat.push(`Persona for this specialist: ${placement.persona.trim()}`);
     }
+    stable.push(...perChat);
     // The volatile tail. Reasoning effort: a specialist's own effort when it
     // was placed with one (the Vision position sets this), otherwise the
     // composer choice, read once for this send.
-    const tail = [placement?.effort ? effortDirective(placement.effort) : this.sendEffort];
+    const effort = placement?.effort ? effortDirective(placement.effort) : this.sendEffort;
+    const tail = [effort];
     // Mid-walk, whatever seat answers still needs to know where setup stands
     // (Harbor Lite already reads it inside its own prompt).
+    let walk: string | undefined;
     if (!(ref.kind === 'device' && isHarborMini(ref.modelId))) {
-      const walk = guidedSetupLine(this.context.conversationId);
+      walk = guidedSetupLine(this.context.conversationId);
       if (walk) tail.push(walk);
     }
     if (pack) tail.push(pack);
-    return { stable: stable.filter(Boolean).join('\n\n'), tail: tail.filter(Boolean) };
+    const legacy = [
+      ...legacyHead,
+      effort,
+      ...(project !== undefined ? [project] : []),
+      ...(walk ? [walk] : []),
+      ...perChat,
+      ...standards,
+      ...(pack ? [pack] : []),
+    ].join('\n\n');
+    return { stable: stable.filter(Boolean).join('\n\n'), tail: tail.filter(Boolean), legacy };
   }
 
   /** The pack rendered for the single-turn seat in flight, when `ref` is it. */
@@ -754,23 +796,31 @@ export class StackDriver implements ChatDriver {
   /** Render this send's pack for the seat that answers, emitting its card.
    *  Never throws: a pack that cannot render leaves the seat without one. */
   private async packFor(ref: StackModelRef): Promise<string | undefined> {
+    return (await this.packRender(ref)).text;
+  }
+
+  /** `packFor`, also saying whether the text carries a local-only note, so a
+   *  play step's output can be tainted by it (I5). */
+  private async packRender(ref: StackModelRef): Promise<{ text?: string; localOnly: boolean }> {
     const pack = this.opts.vaultPack;
-    if (!pack) return undefined;
+    if (!pack) return { localOnly: false };
     const seat = this.seatFor(ref);
-    if (!seat) return undefined;
+    if (!seat) return { localOnly: false };
     await this.packPrepared;
-    if (this.aborted) return undefined;
+    if (this.aborted) return { localOnly: false };
     let rendered: ReturnType<typeof pack.render>;
     try {
       rendered = pack.render(seat);
     } catch {
-      return undefined;
+      return { localOnly: false };
     }
     if (rendered.event) this.emit(rendered.event);
+    const text = rendered.text?.trim() || undefined;
     // A local seat's pack that carried a local-only note marks the reply,
     // the same as a local-only tool read (I5).
-    if (rendered.localOnly) this.sendLocalOnly = true;
-    return rendered.text?.trim() || undefined;
+    const localOnly = Boolean(text && rendered.localOnly);
+    if (localOnly) this.sendLocalOnly = true;
+    return { text, localOnly };
   }
 
   /** The vault tools `ref` is offered on the single-turn path (CTO J10). */
@@ -936,8 +986,12 @@ export class StackDriver implements ChatDriver {
 
   /** Claude's `system` for these parts (CTO J16): the one app builder,
    *  `claudeSystem`, so the Stack and the Claude driver send the same shape. */
-  private claudeSystem(parts: SystemParts, extraTail: string[] = []): Anthropic.TextBlockParam[] {
-    return claudeSystem(parts.stable, [...parts.tail, ...extraTail], this.promptCache());
+  private claudeSystem(
+    parts: SystemParts,
+    extraTail: string[] = [],
+  ): string | Anthropic.TextBlockParam[] {
+    if (!this.promptCache()) return [parts.legacy, ...extraTail].join('\n');
+    return claudeSystem(parts.stable, [...parts.tail, ...extraTail], true);
   }
 
   /** Prompt caching for this request: the store's value for this chat, else
@@ -1301,7 +1355,11 @@ export class StackDriver implements ChatDriver {
   private async executePlay(initial: Play, userText: string): Promise<void> {
     const reasoning = this.stack.reasoning ?? harborRef();
     let play = initial;
-    const results: StepResult[] = [];
+    // Each step's output, tainted (`localOnly`) when it was written on a seat
+    // that read a local-only note: its pack carried one, or a tainted earlier
+    // output reached it whole. A prompt for a seat that leaves this network
+    // gets `LOCAL_ONLY_STUB` in a tainted output's place (I5, as history).
+    const results: PlayStepResult[] = [];
     const done = new Set<string>();
     const status = new Map<string, 'pending' | 'in_progress' | 'completed'>();
     const showTodos = () =>
@@ -1338,6 +1396,7 @@ export class StackDriver implements ChatDriver {
           placement = undefined;
         }
         let out = '';
+        let tainted = false;
         try {
           // A repo/tool step runs on the paired computer's engine when docked
           // (real tools, real approvals). When that is not available it returns
@@ -1345,15 +1404,30 @@ export class StackDriver implements ChatDriver {
           const onEngine = step.needsTools
             ? await this.runToolStepOnEngine(step, play, results)
             : null;
-          out =
-            onEngine ??
-            (await this.completeOnce(ref, placement, this.stepPrompt(step, play, results, ref), {
-              pack: await this.packFor(ref),
-            }));
+          if (onEngine !== null) {
+            out = onEngine;
+          } else {
+            const pack = await this.packRender(ref);
+            // A seat that stays here reads tainted earlier outputs whole, so
+            // what it writes is tainted too.
+            tainted =
+              pack.localOnly || (!this.leaves(ref) && results.some((r) => r.localOnly === true));
+            out = await this.completeOnce(
+              ref,
+              placement,
+              this.stepPrompt(step, play, results, ref),
+              { pack: pack.text },
+            );
+          }
         } catch (err) {
           out = `(this step could not run: ${err instanceof Error ? err.message : String(err)})`;
         }
-        results.push({ id: step.id, title: step.title, text: out });
+        results.push({
+          id: step.id,
+          title: step.title,
+          text: out,
+          ...(tainted ? { localOnly: true as const } : {}),
+        });
         done.add(step.id);
         status.set(step.id, 'completed');
         showTodos();
@@ -1369,7 +1443,11 @@ export class StackDriver implements ChatDriver {
         replans++;
         try {
           const revised = parseReplan(
-            await this.completeOnce(reasoning, undefined, replanPrompt(play, results)),
+            await this.completeOnce(
+              reasoning,
+              undefined,
+              replanPrompt(play, resultsForSeat(results, this.leaves(reasoning))),
+            ),
           );
           if (revised && revised.length) {
             play = mergeReplan(play, done, revised);
@@ -1426,14 +1504,16 @@ export class StackDriver implements ChatDriver {
   private stepPrompt(
     step: PlayStep,
     play: Play,
-    results: StepResult[],
+    results: PlayStepResult[],
     ref?: StackModelRef,
   ): string {
-    const priorLines = results.length
-      ? ['Work done so far by the team:', ...results.map((r) => `- ${r.title}: ${r.text}`), '']
-      : [];
     // No ref is the paired computer's engine, whose model may be a cloud one.
-    const conversation = this.conversationDigest(ref ? this.leaves(ref) : true);
+    const leaves = ref ? this.leaves(ref) : true;
+    const prior = resultsForSeat(results, leaves);
+    const priorLines = prior.length
+      ? ['Work done so far by the team:', ...prior.map((r) => `- ${r.title}: ${r.text}`), '']
+      : [];
+    const conversation = this.conversationDigest(leaves);
     return [
       conversation ? `The conversation so far, for context:\n${conversation}\n` : '',
       `Overall goal: ${play.summary}`,
@@ -1450,15 +1530,17 @@ export class StackDriver implements ChatDriver {
   }
 
   /** The final synthesis: compose the answer to the user from the team's work. */
-  private synthesisPrompt(userText: string, play: Play, results: StepResult[]): string {
-    const conversation = this.conversationDigest(this.leaves(this.stack.reasoning ?? harborRef()));
+  private synthesisPrompt(userText: string, play: Play, results: PlayStepResult[]): string {
+    const leaves = this.leaves(this.stack.reasoning ?? harborRef());
+    const conversation = this.conversationDigest(leaves);
+    const work = resultsForSeat(results, leaves);
     return [
       "Compose the final answer to the user, using the team's work below. Do not mention the internal steps or handoffs; just give the finished result.",
       ...(conversation ? [`The conversation so far, for context:\n${conversation}`] : []),
       `User request: ${userText}`,
       `Goal: ${play.summary}`,
       'Team work:',
-      ...results.map((r) => `- ${r.title}: ${r.text}`),
+      ...work.map((r) => `- ${r.title}: ${r.text}`),
     ].join('\n');
   }
 
@@ -1474,7 +1556,7 @@ export class StackDriver implements ChatDriver {
   private async runToolStepOnEngine(
     step: PlayStep,
     play: Play,
-    results: StepResult[],
+    results: PlayStepResult[],
   ): Promise<string | null> {
     // The engine lives on your home system (the hub), which is reachable only
     // in the docked profile. Offshore and offline never reach for it, so a tool
@@ -1563,7 +1645,7 @@ export class StackDriver implements ChatDriver {
     opts?: { images?: Attachment[]; onDelta?: (delta: string) => void; pack?: string },
   ): Promise<string> {
     const parts = this.systemParts(ref, placement, undefined, opts?.pack);
-    const system = joinSystem(parts);
+    const system = joinSystem(parts, this.promptCache());
     if (ref.kind === 'device') {
       throw new RouteUnavailable('A local model cannot run this step.');
     }
@@ -1888,7 +1970,7 @@ export class StackDriver implements ChatDriver {
       throw new RouteUnavailable(`Connect ${ref.provider} under Cloud Connections first.`);
     }
     const parts = this.systemParts(ref, placement, undefined, this.turnPackFor(ref));
-    const system = joinSystem(parts);
+    const system = joinSystem(parts, this.promptCache());
     // An image turn takes the plain vision path (it needs no tools); otherwise
     // a turn with tools on it (Codemagic Access, or the vault slice) runs the
     // tool-use loop, and one with none keeps the original single-turn path.

@@ -87,20 +87,32 @@ const SYSTEM_PROMPT = [
 ].join('\n');
 
 /**
- * The system blocks for one request, stable to volatile (CTO J16): the head
- * (the base prompt and the chat's own context, its project and repositories)
- * stays byte-identical from send to send; the effort line, the
- * frame-reading note and the vault pack ride the tail, the pack last. With
- * caching on, the head carries the one cache marker.
+ * Claude's `system` for one request (CTO J16). With caching on: blocks,
+ * stable to volatile, the head (the base prompt and the chat's own context,
+ * its project and repositories) byte-identical from send to send and carrying
+ * the one cache marker; the effort line, the frame-reading note and the vault
+ * pack ride the tail, the pack last. With caching off: one plain string,
+ * byte-identical to the request before M5 (the base, the effort line, the
+ * frame note, the context, joined by newlines), the pack appended last.
  */
 export function claudeRequestSystem(
-  head: string,
-  tail: { effort?: string; hasFrames?: boolean; pack?: string; cache: boolean },
-): Anthropic.TextBlockParam[] {
+  base: string,
+  tail: {
+    context?: string;
+    effort?: string;
+    hasFrames?: boolean;
+    pack?: string;
+    cache: boolean;
+  },
+): string | Anthropic.TextBlockParam[] {
+  const frames = tail.hasFrames ? VIDEO_FRAMES_SYSTEM_NOTE : undefined;
+  if (!tail.cache) {
+    return [base, tail.effort, frames, tail.context, tail.pack].filter(Boolean).join('\n');
+  }
   return claudeSystem(
-    head,
-    [tail.effort, tail.hasFrames ? VIDEO_FRAMES_SYSTEM_NOTE : undefined, tail.pack],
-    tail.cache,
+    [base, tail.context].filter(Boolean).join('\n'),
+    [tail.effort, frames, tail.pack],
+    true,
   );
 }
 
@@ -194,10 +206,13 @@ export class CloudClaudeDriver implements ChatDriver {
       const stream = this.client.messages.stream({
         model: this.model,
         ...claudeRequestThinking(this.model, 16000, cot),
-        system: claudeRequestSystem(
-          [SYSTEM_PROMPT, readChatContext(this.extraSystem)].filter(Boolean).join('\n'),
-          { effort: effortDirective(), hasFrames, pack: pack.text, cache },
-        ),
+        system: claudeRequestSystem(SYSTEM_PROMPT, {
+          context: readChatContext(this.extraSystem),
+          effort: effortDirective(),
+          hasFrames,
+          pack: pack.text,
+          cache,
+        }),
         ...claudeHistoryCache(cache),
         messages: opensOnUser(this.history),
       });

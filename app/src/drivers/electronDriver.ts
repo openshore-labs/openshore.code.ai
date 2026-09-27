@@ -3,6 +3,7 @@
 import type { ApprovalAnswer, DriverEvent, PermissionMode } from 'os-code/protocol';
 import { requireBridge } from '../lib/electronBridge.js';
 import type { ChatDriver, DriverEventSink, RunCommandResult, TerminalOpen } from './types.js';
+import { PackLocalOnlyMarker } from './types.js';
 
 /** Base64 -> raw bytes, for a terminal output chunk arriving over IPC. */
 function b64ToBytes(b64: string): Uint8Array {
@@ -21,14 +22,21 @@ export class ElectronDriver implements ChatDriver {
   // G1: on resume the main process returns the session journal instead of
   // pushing it (the renderer's IPC listener is not attached yet), so we hold it
   // and replay it into each sink on subscribe, ahead of any live event.
+  private readonly journal: Array<{ seq: number; event: DriverEvent }>;
+  /** Marks a reply grounded in a local-only pack note (I5), across the
+   *  journal and then the live events, in order. */
+  private readonly packMarker = new PackLocalOnlyMarker();
+
   constructor(
     readonly sessionId: string,
-    private readonly journal: Array<{ seq: number; event: DriverEvent }> = [],
+    journal: Array<{ seq: number; event: DriverEvent }> = [],
   ) {
+    this.journal = journal.map(({ seq, event }) => ({ seq, event: this.packMarker.mark(event) }));
     const bridgeApi = requireBridge();
     this.offEvents = bridgeApi.onEvent(({ sessionId, seq, event }) => {
       if (sessionId !== this.sessionId) return;
-      for (const sink of [...this.sinks]) sink(event, seq);
+      const marked = this.packMarker.mark(event);
+      for (const sink of [...this.sinks]) sink(marked, seq);
     });
   }
 

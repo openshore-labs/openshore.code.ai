@@ -625,6 +625,7 @@ export class AgentSession {
       sources: pack.used,
       withheld: pack.withheld,
       cold: pack.cold,
+      ...(pack.localOnly ? { localOnly: true as const } : {}),
     });
   }
 

@@ -571,9 +571,11 @@ describe('cloud Claude carries the pack (J5)', () => {
       { modelClass: 'large', servedTokens: contextWindowFor('claude-opus-5'), leavesNetwork: true },
     ]);
     expectCardAfterTurnStart(events);
-    const system = h.claudeCalls[0]!.system as Array<{ text: string }>;
-    expect(system.at(-1)!.text.endsWith(rec.text)).toBe(true);
-    expect(system[0]!.text).toContain('Project: Demo');
+    // Caching off (the default): one plain string, the pack last.
+    const system = h.claudeCalls[0]!.system as string;
+    expect(typeof system).toBe('string');
+    expect(system.endsWith(`\n${rec.text}`)).toBe(true);
+    expect(system).toContain('Project: Demo');
   });
 
   it('with Memory off (no pack) carries none', async () => {
