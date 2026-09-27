@@ -1,8 +1,10 @@
 -- pgTAP coverage for the Org Vault v1 migration (0019, Vault M2 item 2.3, CTO
 -- ruling G3) and the move migration (0020, Vault M6 item 6.2, CTO ruling K12),
--- plus team Restore over 0019's RPCs (K6). Run with `supabase test db` against a database that has every
--- migration applied. Its own transaction and its own plan(), so its count
--- never collides with rls.test.sql's.
+-- plus team Restore over 0019's RPCs (K6), and the settings and entitlement
+-- migration (0021, Vault M7 item 7.4, CTO ruling L17). Run with `supabase
+-- test db` against a database that has every migration applied. Its own
+-- transaction and its own plan(), so its count never collides with
+-- rls.test.sql's.
 --
 -- Shape follows rls.test.sql: users are seeded straight into auth.users, a
 -- caller is impersonated by setting request.jwt.claims and switching to the
@@ -10,10 +12,11 @@
 -- run is rolled back. Revs a later step needs are kept in a temp table.
 --
 -- Error codes: P0001 is a plpgsql `raise exception`; 42501 is a missing
--- privilege; 23505 is a unique_violation.
+-- privilege; 23505 is a unique_violation; OV402 is 0021's lapsed-plan refusal
+-- and OV403 its admins-only delete.
 
 begin;
-select plan(89);
+select plan(120);
 
 -- ------------------------------------------------------------ fixtures
 --   f1 = author (confirmed, active)
@@ -35,6 +38,10 @@ values
   ('0f000000-0000-0000-0000-00000000000f', 'f1000000-0000-0000-0000-000000000001', 'author@example.com', 'admin',  'active'),
   ('0f000000-0000-0000-0000-00000000000f', 'f2000000-0000-0000-0000-000000000002', 'mate@example.com',   'member', 'active'),
   ('0f000000-0000-0000-0000-00000000000f', 'f3000000-0000-0000-0000-000000000003', 'leaver@example.com', 'member', 'active');
+
+-- An active plan, so the writes pass 0021's OV402 gate until the lapse below.
+insert into public.org_entitlements (org_id, tier_id, seats, status)
+values ('0f000000-0000-0000-0000-00000000000f', 'commercial_small', 3, 'active');
 
 create temp table saved (k text primary key, v bigint) on commit drop;
 grant all on saved to authenticated;
@@ -626,6 +633,243 @@ select throws_ok(
   $$ select public.org_vault_purge(interval '1 hour') $$,
   'P0001', null::text,
   'a purge window under a day is refused');
+
+-- ------------------------------------------------------------ settings (0021)
+-- f1 is the org's admin (and owner); f2 a member; f4 a stranger.
+select set_config('request.jwt.claims',
+  '{"sub":"f2000000-0000-0000-0000-000000000002","email":"mate@example.com","role":"authenticated"}', true);
+set local role authenticated;
+
+select is(
+  public.org_vault_settings_get('0f000000-0000-0000-0000-00000000000f')
+    - 'updated_at' - 'updated_by' - 'context_folder',
+  '{"settings": {}, "delete_role": "member", "rev": 0, "entitled": true, "is_admin": false}'::jsonb,
+  'no settings row reads the defaults');
+
+select throws_ok(
+  $$ select public.org_vault_settings_put('0f000000-0000-0000-0000-00000000000f',
+       '{"links": {"style": "markdown"}}', 'member', null, 0) $$,
+  'P0001', null::text,
+  'a member cannot update the team vault settings');
+
+select throws_ok(
+  $$ insert into public.org_vault_settings (org_id, settings, delete_role, rev)
+     values ('0f000000-0000-0000-0000-00000000000f', '{}', 'member', 1) $$,
+  '42501', null::text,
+  'a member cannot write the settings table directly');
+reset role;
+
+select set_config('request.jwt.claims',
+  '{"sub":"f1000000-0000-0000-0000-000000000001","email":"author@example.com","role":"authenticated"}', true);
+set local role authenticated;
+
+select is(
+  public.org_vault_settings_put('0f000000-0000-0000-0000-00000000000f',
+    '{"version": 1, "links": {"style": "markdown"}}', 'admin', 'Team/Context', 0)->>'rev',
+  '1',
+  'an admin updates the settings from no row at base rev 0');
+
+select is(
+  public.org_vault_settings_put('0f000000-0000-0000-0000-00000000000f',
+    '{"links": {"style": "wiki"}}', 'member', null, 0)->>'conflict',
+  'changed',
+  'a stale settings rev is refused as changed');
+
+select is(
+  public.org_vault_settings_put('0f000000-0000-0000-0000-00000000000f',
+    '{"links": {"style": "wiki"}}', 'member', null, 0)#>>'{theirs,rev}',
+  '1',
+  'changed carries theirs at the current rev');
+
+select throws_ok(
+  $$ select public.org_vault_settings_put('0f000000-0000-0000-0000-00000000000f',
+       '{"localOnly": {"paths": []}}', 'admin', null, 1) $$,
+  'P0001', null::text,
+  'a key outside the team conventions is refused');
+
+select throws_ok(
+  $$ select public.org_vault_settings_put('0f000000-0000-0000-0000-00000000000f',
+       '{}', 'admin', '../outside', 1) $$,
+  'P0001', null::text,
+  'a context folder that climbs is refused');
+reset role;
+
+select set_config('request.jwt.claims',
+  '{"sub":"f2000000-0000-0000-0000-000000000002","email":"mate@example.com","role":"authenticated"}', true);
+set local role authenticated;
+
+select is(
+  (select settings->'links'->>'style' || ' ' || delete_role || ' ' || context_folder || ' ' || rev
+   from public.org_vault_settings where org_id = '0f000000-0000-0000-0000-00000000000f'),
+  'markdown admin Team/Context 1',
+  'a member reads the admin''s settings, and the stale put changed nothing');
+reset role;
+
+select set_config('request.jwt.claims',
+  '{"sub":"f4000000-0000-0000-0000-000000000004","email":"stranger@example.com","role":"authenticated"}', true);
+set local role authenticated;
+select throws_ok(
+  $$ select public.org_vault_settings_get('0f000000-0000-0000-0000-00000000000f') $$,
+  'P0001', null::text,
+  'a stranger cannot read the settings');
+select is(
+  (select count(*) from public.org_vault_settings),
+  0::bigint,
+  'a stranger sees no settings rows');
+select is(
+  public.org_vault_entitled('0f000000-0000-0000-0000-00000000000f'),
+  false,
+  'org_vault_entitled tells a stranger nothing');
+reset role;
+
+-- ------------------------------------------------------------ who may delete
+-- delete_role is now 'admin'.
+select set_config('request.jwt.claims',
+  '{"sub":"f2000000-0000-0000-0000-000000000002","email":"mate@example.com","role":"authenticated"}', true);
+set local role authenticated;
+
+select is(
+  public.org_vault_write('0f000000-0000-0000-0000-00000000000f', 'team/keep.md', 'keep', null, true)->>'ok',
+  'true',
+  'a member still writes under admins-only delete');
+
+select throws_ok(
+  $$ select public.org_vault_remove('0f000000-0000-0000-0000-00000000000f', 'team/keep.md',
+       (select rev from public.org_vault_notes
+        where org_id = '0f000000-0000-0000-0000-00000000000f' and path = 'team/keep.md')) $$,
+  'OV403', null::text,
+  'a member''s org_vault_remove is refused when only admins may delete');
+
+select throws_ok(
+  $$ select public.org_vault_delete('0f000000-0000-0000-0000-00000000000f', 'team/keep.md') $$,
+  'OV403', null::text,
+  'a member''s legacy org_vault_delete is refused when only admins may delete');
+
+select is(
+  (select deleted from public.org_vault_notes
+   where org_id = '0f000000-0000-0000-0000-00000000000f' and path = 'team/keep.md'),
+  false,
+  'and the note stays live');
+
+select is(
+  public.org_vault_move('0f000000-0000-0000-0000-00000000000f', 'team/keep.md', 'team/kept.md',
+    (select rev from public.org_vault_notes
+     where org_id = '0f000000-0000-0000-0000-00000000000f' and path = 'team/keep.md'))->>'ok',
+  'true',
+  'a member may still rename: a move keeps the note');
+reset role;
+
+select set_config('request.jwt.claims',
+  '{"sub":"f1000000-0000-0000-0000-000000000001","email":"author@example.com","role":"authenticated"}', true);
+set local role authenticated;
+select is(
+  public.org_vault_remove('0f000000-0000-0000-0000-00000000000f', 'team/kept.md',
+    (select rev from public.org_vault_notes
+     where org_id = '0f000000-0000-0000-0000-00000000000f' and path = 'team/kept.md'))->>'ok',
+  'true',
+  'an admin deletes under admins-only delete');
+reset role;
+
+-- ------------------------------------------------------------ lapsed plan
+-- What a member sees before the lapse is what they must still see after it.
+create temp table export_want (k text primary key, v text) on commit drop;
+grant all on export_want to authenticated;
+insert into export_want
+  select 'notes', string_agg(path || '=' || body, E'\n' order by path)
+  from public.org_vault_notes
+  where org_id = '0f000000-0000-0000-0000-00000000000f' and not deleted;
+insert into export_want
+  select 'revisions', count(*)::text
+  from public.org_vault_revisions
+  where org_id = '0f000000-0000-0000-0000-00000000000f';
+
+update public.org_entitlements set status = 'canceled'
+  where org_id = '0f000000-0000-0000-0000-00000000000f';
+
+select set_config('request.jwt.claims',
+  '{"sub":"f2000000-0000-0000-0000-000000000002","email":"mate@example.com","role":"authenticated"}', true);
+set local role authenticated;
+
+select is(
+  public.org_vault_entitled('0f000000-0000-0000-0000-00000000000f'),
+  false,
+  'a canceled plan is not entitled');
+
+select throws_ok(
+  $$ select public.org_vault_write('0f000000-0000-0000-0000-00000000000f', 'lapsed.md', 'x', null, true) $$,
+  'OV402', null::text,
+  'a lapsed org''s org_vault_write raises OV402');
+select throws_ok(
+  $$ select public.org_vault_remove('0f000000-0000-0000-0000-00000000000f', 'old.md', 1) $$,
+  'OV402', null::text,
+  'a lapsed org''s org_vault_remove raises OV402');
+select throws_ok(
+  $$ select public.org_vault_move('0f000000-0000-0000-0000-00000000000f', 'old.md', 'older.md', 1) $$,
+  'OV402', null::text,
+  'a lapsed org''s org_vault_move raises OV402');
+select throws_ok(
+  $$ select public.org_vault_put('0f000000-0000-0000-0000-00000000000f', 'lapsed.md', 'x', null) $$,
+  'OV402', null::text,
+  'a lapsed org''s legacy org_vault_put raises OV402');
+select throws_ok(
+  $$ select public.org_vault_delete('0f000000-0000-0000-0000-00000000000f', 'old.md') $$,
+  'OV402', null::text,
+  'a lapsed org''s legacy org_vault_delete raises OV402');
+
+select is(
+  (select string_agg(path || '=' || body, E'\n' order by path)
+   from public.org_vault_notes
+   where org_id = '0f000000-0000-0000-0000-00000000000f' and not deleted),
+  (select v from export_want where k = 'notes'),
+  'a lapsed org still lists and reads every note (the export path)');
+select is(
+  (select count(*)::text from public.org_vault_revisions
+   where org_id = '0f000000-0000-0000-0000-00000000000f'),
+  (select v from export_want where k = 'revisions'),
+  'a lapsed org still reads every revision row');
+select is(
+  public.org_vault_settings_get('0f000000-0000-0000-0000-00000000000f')->>'entitled',
+  'false',
+  'a lapsed org still reads its settings, which say it is not entitled');
+reset role;
+
+select set_config('request.jwt.claims',
+  '{"sub":"f1000000-0000-0000-0000-000000000001","email":"author@example.com","role":"authenticated"}', true);
+set local role authenticated;
+select throws_ok(
+  $$ select public.org_vault_settings_put('0f000000-0000-0000-0000-00000000000f', '{}', 'member', null, 1) $$,
+  'OV402', null::text,
+  'a lapsed org''s settings put raises OV402, even for an admin');
+reset role;
+
+-- An active status past valid_until is lapsed; no entitlement row is lapsed.
+update public.org_entitlements set status = 'active', valid_until = now() - interval '1 day'
+  where org_id = '0f000000-0000-0000-0000-00000000000f';
+select set_config('request.jwt.claims',
+  '{"sub":"f2000000-0000-0000-0000-000000000002","email":"mate@example.com","role":"authenticated"}', true);
+set local role authenticated;
+select throws_ok(
+  $$ select public.org_vault_write('0f000000-0000-0000-0000-00000000000f', 'lapsed.md', 'x', null, true) $$,
+  'OV402', null::text,
+  'an active plan past valid_until raises OV402');
+reset role;
+
+update public.org_entitlements set status = 'trialing', valid_until = now() + interval '1 day'
+  where org_id = '0f000000-0000-0000-0000-00000000000f';
+set local role authenticated;
+select is(
+  public.org_vault_write('0f000000-0000-0000-0000-00000000000f', 'back.md', 'x', null, true)->>'ok',
+  'true',
+  'a trialing plan inside its window writes again');
+reset role;
+
+delete from public.org_entitlements where org_id = '0f000000-0000-0000-0000-00000000000f';
+set local role authenticated;
+select throws_ok(
+  $$ select public.org_vault_write('0f000000-0000-0000-0000-00000000000f', 'lapsed.md', 'x', null, true) $$,
+  'OV402', null::text,
+  'an org with no entitlement row raises OV402');
+reset role;
 
 select * from finish();
 rollback;

@@ -82,8 +82,8 @@ What 0015 does, by finding:
 
 Tests: `supabase test db` runs every `tests/*.test.sql` file, each its own
 rolled-back transaction with its own plan: `tests/rls.test.sql` (32
-assertions over the cases above) and `tests/org_vault.test.sql` (89 assertions
-over 0019 and 0020, below). CI runs the same command in the `sql` job of
+assertions over the cases above) and `tests/org_vault.test.sql` (120 assertions
+over 0019, 0020 and 0021, below). CI runs the same command in the `sql` job of
 `.github/workflows/ci.yml`. `deno test functions/_shared/entitlement.test.ts` covers
 the pure decisions (cross-rail guard, checkout routing, Apple product and
 freshness checks, ignored prices).
@@ -157,6 +157,56 @@ drops tombstones and revision rows after 30 days.
 **Order (founder gate):** 0020 goes to production AFTER 0019 (it calls 0019's
 lock, snapshot, and sequence), and before the team client that calls
 `org_vault_move` merges to main. `supabase db push` applies them in order.
+
+## Migration 0021 (Org Vault settings and entitlement): what changed and how to ship it
+
+`migrations/0021_org_vault_settings.sql` adds the team vault's settings and
+its plan gate (Vault v1 plan item 7.4, CTO ruling L17, CX Y14 and Y15):
+
+- `org_vault_settings`, one row per org: `settings` (the vault conventions as
+  jsonb, top-level keys `version`, `newNotes`, `daily`, `templates`,
+  `attachments`, `links`, `editor`, `tree`, `delete` only, 64 KB cap),
+  `delete_role` (`admin` or `member`, default `member`), `context_folder`
+  (column only until v1.1, D15) and `rev`. Members read it through RLS; no
+  client writes it directly. No row means the defaults.
+- `org_vault_settings_get(org)` answers the row or the defaults, plus
+  `entitled` and `is_admin`, for members, lapsed or not.
+  `org_vault_settings_put(org, settings, delete_role, context_folder,
+  base_rev)` is admins (or the owner) only and a compare-and-swap on `rev`
+  (0 when there is no row); a stale base answers `changed` with `theirs`.
+- `org_vault_entitled(org)` is `isEntitled` in SQL: status `active` or
+  `trialing` and `valid_until` null or in the future. No entitlement row is
+  not entitled.
+- Every write RPC (`org_vault_write`, `org_vault_remove`, `org_vault_move`,
+  the legacy `org_vault_put` and `org_vault_delete`, and the settings put)
+  raises SQLSTATE `OV402` when the org is not entitled. Reads, lists,
+  revisions and the purge are untouched, so a lapsed org still reads and
+  exports every note.
+- With `delete_role = 'admin'`, `org_vault_remove` and `org_vault_delete`
+  refuse a non-admin with SQLSTATE `OV403`. A move is not gated by it (a
+  rename keeps the note).
+
+**Order (founder gate):** 0021 goes to production AFTER 0019 and 0020 (it
+re-creates their write RPCs), and before the team client that reads settings
+or maps `OV402` merges to main. `supabase db push` applies them in order.
+
+**Preflight: orgs that would go read-only.** From 0021 on, a team vault in an
+org with no active or trialing entitlement is read-only. Beta teams without an
+entitlement row are in that set. In the SQL editor, before `supabase db push`:
+
+```sql
+select n.org_id, count(*) as live_notes, e.status, e.valid_until
+from public.org_vault_notes n
+left join public.org_entitlements e on e.org_id = n.org_id
+where not n.deleted
+  and not (coalesce(e.status, '') in ('active', 'trialing')
+           and (e.valid_until is null or e.valid_until > now()))
+group by n.org_id, e.status, e.valid_until
+order by live_notes desc;
+```
+
+No rows means no team loses editing. Each row is an org whose notes become
+read-only (still readable and exportable) when 0021 lands.
 
 ### Warning: `supabase config push` and email confirmations (P0-4)
 
