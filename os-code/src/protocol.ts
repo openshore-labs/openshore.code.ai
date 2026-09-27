@@ -143,17 +143,29 @@ export {
 // vault settings core, provenance, and the hand-written YAML scalar. Stubs
 // until each stream lands (settings.ts stream A, provenance.ts stream B).
 export {
+  VAULT_SETTINGS_DEFAULTS,
   VAULT_SETTINGS_FIELDS,
   VAULT_SETTINGS_LIST_MAX,
   VAULT_SETTINGS_STRING_MAX,
   WIDENING_KEYS,
+  WIDENING_PLAIN,
+  configJson,
+  obsidianIgnoreFilters,
   parseVaultSettingsFile,
   patchVaultSettingsFile,
+  readDailyNotesConfig,
+  readObsidianAppConfig,
+  readTemplatesConfig,
   resolveVaultSettings,
   unionNarrowing,
   vaultContextOn,
   vaultHandoffOn,
   vaultPackSize,
+} from './harness/vault/settings.js';
+export type {
+  DailyNotesConfig,
+  ObsidianAppConfig,
+  TemplatesConfig,
 } from './harness/vault/settings.js';
 export { PROV_KEYS, mergeProvenance, readProvenance } from './harness/vault/provenance.js';
 export { yamlString } from './harness/vault/yamlScalar.js';
@@ -278,6 +290,7 @@ export {
   PACK_BY_CLASS,
   PACK_PINS_MAX,
   PACK_PLAN_MAX_READS,
+  PACK_SIZE_FACTOR,
   VAULT_NOTES_FRAMING,
   VAULT_PACK_COLD_MS,
   buildContextPack,
