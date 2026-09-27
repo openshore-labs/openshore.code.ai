@@ -2198,3 +2198,12 @@ execution contract. Newest at the bottom.
   sheet) and toasts "Not deleted", and a metadata-only change still deletes.
   A move's take-back and a fork's settle remove only the version they wrote or
   read. `nativePlugins.test.ts` covers every plugin, not only iCloud.
+- **Vault M2 wave 2 item 2.1, store (2026-09-27):** every provider write
+  patches the list and the body cache from its own result inside
+  `putVaultNote` (only for a caller that names its vault, so a move's copies
+  never touch the list on screen); the body cache is keyed by `versionOf`; the
+  store keeps no team rev at all, and a replay against a team vault without
+  compare-and-swap reads the note first (which teaches that provider its rev)
+  instead of seeding one; the one-time stash conversion to `base = String(rev)`
+  runs only once the team provider reports `compareAndSwap`, so today's
+  provider keeps its old entries as they were.

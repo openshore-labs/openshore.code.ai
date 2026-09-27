@@ -130,7 +130,11 @@ function makeProvider(id: string, cas = false) {
   const hideFromList = new Set<string>();
   const fail = { list: false, read: false, write: false, stat: false, remove: false };
   const limits = { writesLeft: undefined as number | undefined };
+  // `stamp.fixed` gives every file one updatedAt, as two saves inside one
+  // millisecond would: only the version tells them apart (Vault M2 G1).
+  const stamp = { fixed: undefined as string | undefined };
   const counts = {
+    lists: 0,
     reads: 0,
     writes: [] as Array<{ path: string; guard?: WriteGuard }>,
     removes: [] as Array<{ path: string; guard?: { ifMatch: string } }>,
@@ -142,14 +146,14 @@ function makeProvider(id: string, cas = false) {
       ? { path, updatedAt: 'cloud', size: 10, evicted: true }
       : {
           path,
-          updatedAt: version(path),
+          updatedAt: stamp.fixed ?? version(path),
           size: files.get(path)!.length,
           ...(cas ? { version: version(path) } : {}),
         };
   const file = (path: string): StoredFile => ({
     path,
     text: files.get(path)!,
-    updatedAt: version(path),
+    updatedAt: stamp.fixed ?? version(path),
     ...(cas ? { version: version(path) } : {}),
   });
   const provider = {
@@ -160,6 +164,7 @@ function makeProvider(id: string, cas = false) {
     ready: true,
     async list(): Promise<StoredFileMeta[]> {
       if (fail.list) throw new Error('offline');
+      counts.lists++;
       return [...new Set([...files.keys(), ...evicted])]
         .filter((p) => !hideFromList.has(p))
         .map(meta);
@@ -219,6 +224,8 @@ function makeProvider(id: string, cas = false) {
     hideFromList.clear();
     Object.assign(fail, { list: false, read: false, write: false, stat: false, remove: false });
     limits.writesLeft = undefined;
+    stamp.fixed = undefined;
+    counts.lists = 0;
     counts.reads = 0;
     counts.writes = [];
     counts.removes = [];
@@ -231,6 +238,7 @@ function makeProvider(id: string, cas = false) {
     hideFromList,
     fail,
     limits,
+    stamp,
     counts,
     version,
     reset,
@@ -356,8 +364,6 @@ vi.mock('../src/lib/gitos/index.js', async () => {
       wiring.storeToken = token;
     },
     resetOrgVault: org.resetOrgVault,
-    orgVaultBaseRev: org.orgVaultBaseRev,
-    seedOrgVaultBaseRev: org.seedOrgVaultBaseRev,
   };
 });
 
@@ -536,7 +542,13 @@ describe('vault data safety', () => {
     await useApp.getState().vaultRefresh();
     local.counts.reads = 0;
     await useApp.getState().vaultReadAll();
-    expect(local.counts.reads).toBe(2); // cold: both bodies read
+    // The creates primed the cache from their write results (Vault M2 2.1).
+    expect(local.counts.reads).toBe(0);
+    // Another writer changes one: only that one is read again.
+    files.set('b.md', 'written elsewhere');
+    local.counts.reads = 0;
+    await useApp.getState().vaultReadAll();
+    expect(local.counts.reads).toBe(1);
     local.counts.reads = 0;
     await useApp.getState().vaultReadAll();
     expect(local.counts.reads).toBe(0); // warm: nothing changed, no re-reads
@@ -2261,5 +2273,143 @@ describe("settling a move's forked pairs (1d)", () => {
       partial: true,
     });
     expect(folder.files.get(pair.from)).toBe('the one you moved');
+  });
+});
+
+describe('Vault M2 2.1 in the store', () => {
+  const F = folder.files;
+  async function onFolder(path = 'n.md', text = 'loaded') {
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('files') },
+    });
+    F.set(path, text);
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen(path);
+  }
+  beforeEach(() => {
+    reset();
+    useApp.setState({ vaultConflict: undefined, vaultReturnFolder: undefined });
+  });
+
+  it('a save patches the file list from the write result, never re-lists', async () => {
+    await onFolder();
+    folder.counts.lists = 0;
+    await useApp.getState().vaultSave('n.md', 'a longer body');
+    expect(folder.counts.lists).toBe(0);
+    const row = useApp.getState().vaultFiles.find((f) => f.path === 'n.md');
+    expect(row).toMatchObject({ version: folder.version('n.md'), size: 13 });
+    expect(row?.editedBy).toBeUndefined();
+  });
+
+  it('a create adds the note to the list in path order without a re-list', async () => {
+    await onFolder('m.md');
+    folder.counts.lists = 0;
+    await useApp.getState().vaultCreate('a note');
+    expect(folder.counts.lists).toBe(0);
+    expect(useApp.getState().vaultFiles.map((f) => f.path)).toEqual(['a note.md', 'm.md']);
+  });
+
+  it('a delete takes the note off the list without a re-list', async () => {
+    await onFolder();
+    folder.counts.lists = 0;
+    expect(await useApp.getState().vaultDelete('n.md')).toBe(true);
+    expect(folder.counts.lists).toBe(0);
+    expect(useApp.getState().vaultFiles).toEqual([]);
+  });
+
+  it('the size in the patched list is bytes, not characters', async () => {
+    await onFolder();
+    await useApp.getState().vaultSave('n.md', 'café');
+    expect(useApp.getState().vaultFiles.find((f) => f.path === 'n.md')?.size).toBe(5);
+  });
+
+  it('two saves in one millisecond differ only by version, and the body cache sees it', async () => {
+    folder.stamp.fixed = '2026-09-27T10:00:00.000Z';
+    await onFolder('n.md', 'first');
+    F.set('other.md', 'links to [[n]]');
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultReadAll();
+    // Another writer changes it inside the same millisecond.
+    F.set('other.md', 'rewritten, same stamp');
+    folder.counts.reads = 0;
+    const all = await useApp.getState().vaultReadAll();
+    expect(folder.counts.reads).toBe(1);
+    expect(all.find((n) => n.path === 'other.md')?.text).toBe('rewritten, same stamp');
+  });
+
+  it('opening a note still downloading asks for its bytes and opens nothing', async () => {
+    local.evicted.add('far.md');
+    await useApp.getState().vaultRefresh();
+    local.counts.reads = 0;
+    await useApp.getState().vaultOpen('far.md');
+    expect(local.counts.reads).toBe(1);
+    expect(useApp.getState().vaultNote).toBeUndefined();
+    expect(useApp.getState().toast).toMatch(/Still downloading/);
+  });
+
+  it('a team stash with a rev becomes base = String(rev) once the team compares revs', async () => {
+    const org = wiring.org!.orgVaultProvider as { compareAndSwap?: true };
+    const had = org.compareAndSwap;
+    org.compareAndSwap = true;
+    try {
+      teamScope();
+      mem.set(
+        PENDING,
+        JSON.stringify({
+          [`org::${ORG}::plan.md`]: {
+            providerId: 'org',
+            resourceId: ORG,
+            owner: 'u1',
+            path: 'plan.md',
+            text: 'typed offline',
+            base: '2026-09-01T00:00:00.000Z',
+            rev: 7,
+            at: '2026-09-27T00:00:00.000Z',
+          },
+          [`org::${ORG}::old.md`]: {
+            providerId: 'org',
+            resourceId: ORG,
+            owner: 'u1',
+            path: 'old.md',
+            text: 'no rev on this one',
+            base: '2026-09-01T00:00:00.000Z',
+            at: '2026-09-27T00:00:00.000Z',
+          },
+        }),
+      );
+      // Any read of the stash converts it, once, and stores it converted.
+      await useApp.getState().unsentTeamTextCount();
+      const p = JSON.parse(mem.get(PENDING)!) as Record<string, Record<string, unknown>>;
+      expect(p[`org::${ORG}::plan.md`]).toMatchObject({ base: '7' });
+      expect(p[`org::${ORG}::plan.md`]).not.toHaveProperty('rev');
+      // No rev: the ISO base stays, which never equals a rev, so it keeps both.
+      expect(p[`org::${ORG}::old.md`]).toMatchObject({ base: '2026-09-01T00:00:00.000Z' });
+    } finally {
+      if (had) org.compareAndSwap = had;
+      else delete org.compareAndSwap;
+    }
+  });
+
+  it('before the team compares revs, a stash with a rev is left as it was', async () => {
+    const entry = {
+      providerId: 'org',
+      resourceId: ORG,
+      owner: 'u1',
+      path: 'plan.md',
+      text: 'typed offline',
+      base: '2026-09-01T00:00:00.000Z',
+      rev: 7,
+      at: '2026-09-27T00:00:00.000Z',
+    };
+    teamScope();
+    mem.set(PENDING, JSON.stringify({ [`org::${ORG}::plan.md`]: entry }));
+    expect(await useApp.getState().unsentTeamTextCount()).toBe(1);
+    expect(JSON.parse(mem.get(PENDING)!)[`org::${ORG}::plan.md`]).toEqual(entry);
+  });
+
+  it('the store keeps no team rev of its own', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(new URL('../src/state/store.ts', import.meta.url), 'utf8');
+    expect(src).not.toMatch(/orgVaultBaseRev|seedOrgVaultBaseRev/);
   });
 });

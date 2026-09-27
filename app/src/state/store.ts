@@ -287,8 +287,6 @@ import {
   isGdriveConnected,
   setOrgVaultAuth,
   resetOrgVault,
-  orgVaultBaseRev,
-  seedOrgVaultBaseRev,
   isNotePath,
   type GitosResource,
   type StorageProvider,
@@ -888,10 +886,12 @@ let reconcilingRepos = false;
 const repoContextStale = new Set<string>();
 // Note bodies keyed by `${providerId}::${resourceId}::${path}`, so backlink
 // derivation (vaultReadAll on every note open) re-reads only files whose
-// updatedAt moved. Self-invalidating: a mismatched updatedAt misses; a distinct
-// provider or resource (the personal vault before and after a move, or a
-// specific org vault) never collides.
-const vaultBodyCache = new Map<string, { updatedAt: string; text: string }>();
+// version (versionOf) moved. Keyed by version, not updatedAt: two saves in one
+// millisecond share an updatedAt and differ only by version (Vault M2 G1.6).
+// Self-invalidating: a mismatched version misses; a distinct provider or
+// resource (the personal vault before and after a move, or a specific org
+// vault) never collides.
+const vaultBodyCache = new Map<string, { version: string; text: string }>();
 
 export function driverFor(conversationId: string): ChatDriver | undefined {
   return drivers.get(conversationId);
@@ -3249,7 +3249,7 @@ export const useApp = create<AppState>((set, get, api) => {
     // never block sign-out itself.
     await disconnectGdrive().catch(() => {});
     // Sever the team vault too: drop its on-screen state and the provider's
-    // base-rev cache, and fall back to the personal scope, so a handed-off
+    // memory caches, and fall back to the personal scope, so a handed-off
     // device never shows the previous org's note titles or open note to the
     // next person who signs in. A sign-out also wipes the team's unsent text
     // (R-19). An expiry keeps it, sealed and hidden, for its own account.
@@ -3425,11 +3425,13 @@ export const useApp = create<AppState>((set, get, api) => {
   type VaultPendingEntry = VaultTargetRef & {
     path: string;
     text: string;
-    /** The provider's updatedAt of the version this text was typed against;
-     *  absent when the provider did not hold the note yet (a new note). */
+    /** The version (versionOf) this text was typed against; absent when the
+     *  provider did not hold the note yet (a new note). For the team vault
+     *  that is its rev as a string, once the team provider versions by rev. */
     base?: string;
-    /** Team vault only: the server rev of that same version, so a replay
-     *  after a relaunch still sends the honest base. */
+    /** Legacy, read only: the team server rev an entry stashed before Vault
+     *  M2 carried beside an ISO base. The loader turns it into the base once
+     *  the team provider compares revs (CTO G3); nothing writes it now. */
     rev?: number;
     /** When it was stashed, on this device's clock (ordering only). */
     at: string;
@@ -3452,12 +3454,26 @@ export const useApp = create<AppState>((set, get, api) => {
     const personal: VaultHeldDraft[] = [];
     const team: VaultHeldDraft[] = [];
     let dropped = false;
+    let converted = false;
     const st = get();
     const uid = st.authSession?.user.id;
+    // Once the team provider compares revs (compare-and-swap, CTO G3), a team
+    // entry stashed with a numeric rev is converted, once and for good, to
+    // base = String(rev), the version that provider reports. One without a
+    // rev keeps its ISO base, which never equals a rev, so its replay keeps
+    // both and loses nothing. Before then, the entry is left as it was.
+    const orgRevs = Boolean(providerFor('org')?.compareAndSwap);
     for (const [key, e] of Object.entries(raw)) {
       if (typeof e?.path !== 'string' || typeof e.text !== 'string') continue;
       if (typeof e.resourceId !== 'string') continue;
       if (e.providerId && (e.providerId !== 'org' || e.owner)) {
+        if (orgRevs && e.providerId === 'org' && 'rev' in e) {
+          const { rev, ...rest } = e;
+          const base = typeof rev === 'number' && e.base ? String(rev) : e.base;
+          p[key] = { ...(rest as VaultPendingEntry), ...(base ? { base } : {}) };
+          converted = true;
+          continue;
+        }
         p[key] = e as VaultPendingEntry;
         continue;
       }
@@ -3483,8 +3499,8 @@ export const useApp = create<AppState>((set, get, api) => {
       for (const h of team) {
         await holdVaultDraft(h, h.path, h.text, h.reason, { at: h.at, memoryOnly: true });
       }
-      await saveVaultPending(p);
     }
+    if (dropped || converted) await saveVaultPending(p);
     return p;
   }
   async function saveVaultPending(p: VaultPending): Promise<void> {
@@ -3633,12 +3649,11 @@ export const useApp = create<AppState>((set, get, api) => {
     path: string,
     text: string,
     base: string | undefined,
-    rev: number | undefined,
   ): Promise<void> {
     if (t.owner && t.owner === keptTeamOwner) {
       try {
         await editVaultPending((p) => {
-          p[vaultKey(t, path)] = pendingEntry(t, path, text, base, rev);
+          p[vaultKey(t, path)] = pendingEntry(t, path, text, base);
         });
         get().showToast(
           'Your sign-in expired, so this team vault text is kept on this device for when you sign in again.',
@@ -3944,7 +3959,6 @@ export const useApp = create<AppState>((set, get, api) => {
     path: string,
     text: string,
     base: string | undefined,
-    rev: number | undefined,
   ): VaultPendingEntry {
     const { providerId, resourceId } = t;
     const owner = providerId === 'org' ? t.owner : undefined;
@@ -3956,7 +3970,6 @@ export const useApp = create<AppState>((set, get, api) => {
       path,
       text,
       ...(base ? { base } : {}),
-      ...(base && rev !== undefined ? { rev } : {}),
       at: new Date().toISOString(),
       ...(folder ? { folder: folder.dir, folderDisplay: folder.display } : {}),
     };
@@ -3999,11 +4012,10 @@ export const useApp = create<AppState>((set, get, api) => {
     path: string,
     text: string,
     base: string | undefined,
-    rev: number | undefined,
     err: unknown,
   ): Promise<void> {
     if (!speaksNow(t)) {
-      await keepUnsentTeamText(t, path, text, base, rev);
+      await keepUnsentTeamText(t, path, text, base);
       return;
     }
     const key = vaultKey(t, path);
@@ -4022,7 +4034,7 @@ export const useApp = create<AppState>((set, get, api) => {
     }
     try {
       await editVaultPending((p) => {
-        p[key] = pendingEntry(t, path, text, base, rev);
+        p[key] = pendingEntry(t, path, text, base);
       });
     } catch {
       const reason = 'This device could not keep a copy to retry. Copy it somewhere safe.';
@@ -4046,13 +4058,59 @@ export const useApp = create<AppState>((set, get, api) => {
   // is required. A provider with compareAndSwap enforces it and answers a
   // conflict as a result; the others accept it and write (M2 adds their
   // check), so their M0 stat-before-write guards stay around the calls.
-  function putVaultNote(
-    t: { provider: StorageProvider; resourceId: string },
+  // A write to a vault the caller names (a providerId) patches the list and
+  // the body cache from its result (patchVaultFiles).
+  async function putVaultNote(
+    t: { provider: StorageProvider; resourceId: string; providerId?: StorageProviderId },
     path: string,
     text: string,
     guard: WriteGuard,
   ): Promise<WriteResult> {
-    return t.provider.write(t.resourceId, path, text, guard);
+    const r = await t.provider.write(t.resourceId, path, text, guard);
+    if (r.ok && t.providerId) {
+      patchVaultFiles({ providerId: t.providerId, resourceId: t.resourceId }, { saved: r.file });
+    }
+    return r;
+  }
+
+  // After a write or a remove, the file list of the vault on screen is
+  // patched from the result instead of re-listed (Vault M2 2.1): one round
+  // trip fewer on every save, and a list a slow provider has not caught up
+  // with never hides the note just written. The body cache takes the text
+  // under its new version. This device's own write names no editor (G6).
+  function patchVaultFiles(
+    t: VaultTargetRef,
+    change: { saved: StoredFile } | { removed: string },
+  ): void {
+    const key = vaultKey(t, 'saved' in change ? change.saved.path : change.removed);
+    if ('saved' in change) {
+      vaultBodyCache.set(key, { version: versionOf(change.saved), text: change.saved.text });
+    } else {
+      vaultBodyCache.delete(key);
+    }
+    if (!isActiveVault(t)) return;
+    const files = get().vaultFiles;
+    if ('removed' in change) {
+      if (files.some((f) => f.path === change.removed)) {
+        set({ vaultFiles: files.filter((f) => f.path !== change.removed) });
+      }
+      return;
+    }
+    const f = change.saved;
+    if (!isNotePath(f.path)) return;
+    const meta: StoredFileMeta = {
+      path: f.path,
+      updatedAt: f.updatedAt,
+      size: new TextEncoder().encode(f.text).length,
+      ...(f.version !== undefined ? { version: f.version } : {}),
+    };
+    const at = files.findIndex((x) => x.path === f.path);
+    set({
+      vaultFiles:
+        at === -1
+          ? [...files, meta].sort((a, b) => a.path.localeCompare(b.path))
+          : files.map((x, i) => (i === at ? meta : x)),
+    });
   }
   // The guard for text typed against a version: replace only that version,
   // or, when the storage never held the note, create it only while nothing
@@ -4115,18 +4173,15 @@ export const useApp = create<AppState>((set, get, api) => {
       current = r.theirs;
     } else {
       const now = await t.provider.stat(t.resourceId, e.path);
-      let unchanged = e.base !== undefined && now?.updatedAt === e.base && !now.evicted;
+      let unchanged = e.base !== undefined && now !== undefined && versionOf(now) === e.base;
+      if (now?.evicted) unchanged = false;
       if (unchanged && t.providerId === 'org') {
-        // The team server compares revs, not times. Send the rev this text was
-        // typed against: after a relaunch the provider has forgotten it, and
-        // base 0 would set the unchanged note aside as a conflict copy. A draft
-        // stashed without one reads the note first, which teaches the provider
-        // its rev, and still writes only if it is the same version.
-        if (e.rev !== undefined) seedOrgVaultBaseRev(t.resourceId, e.path, e.rev);
-        else {
-          current = await t.provider.read(t.resourceId, e.path);
-          unchanged = current?.updatedAt === e.base;
-        }
+        // A team vault from before compare-and-swap compares revs it learns
+        // from a read, and after a relaunch it has forgotten them, so read the
+        // note first (which teaches it the rev) and still write only while it
+        // is the same version. The store keeps no rev of its own (CTO G3).
+        current = await t.provider.read(t.resourceId, e.path);
+        unchanged = current !== undefined && versionOf(current) === e.base;
       }
       if (!now || unchanged) {
         mustLand(await putVaultNote(t, e.path, e.text, guardFor(e.base)));
@@ -4206,10 +4261,6 @@ export const useApp = create<AppState>((set, get, api) => {
       }).catch(() => {});
     }
     if (copies.length) {
-      if (isActiveVault(t)) {
-        const files = await listVaultNotes(t).catch(() => undefined);
-        if (files) set({ vaultFiles: files });
-      }
       get().showToast(vaultReplayCopiesLine(copies));
       logEvent('vault_draft_kept_both', { count: copies.length });
     }
@@ -4420,7 +4471,7 @@ export const useApp = create<AppState>((set, get, api) => {
       copy = await writeConflictCopy(target, c.path, text, new Date(c.foundAt), c.copyPath);
     } catch (err) {
       // The stash still holds the text; the replay makes the same copy later.
-      await rescueVaultDraft(target, c.path, text, c.baseVersion, undefined, err);
+      await rescueVaultDraft(target, c.path, text, c.baseVersion, err);
       return;
     }
     if (!copy) {
@@ -4430,10 +4481,6 @@ export const useApp = create<AppState>((set, get, api) => {
       return;
     }
     await dropStash(c.target, c.path);
-    if (isActiveVault(target)) {
-      const listing = await listVaultNotes(target).catch(() => undefined);
-      if (listing) set({ vaultFiles: listing });
-    }
     get().showToast(vaultLeaveToast('edit', { title, copyTitle: noteTitle(copy) }));
   }
 
@@ -4451,11 +4498,9 @@ export const useApp = create<AppState>((set, get, api) => {
       get().showToast(`${readOnly} ${heldLine(landed)}`);
       return base;
     }
-    // The team server's rev for that same version, kept with a stash.
-    const rev = target.providerId === 'org' ? orgVaultBaseRev(target.resourceId, path) : undefined;
     // Team text is sent only under the account that typed it.
     if (!speaksNow(target)) {
-      await keepUnsentTeamText(target, path, text, base, rev);
+      await keepUnsentTeamText(target, path, text, base);
       return base;
     }
     let result: WriteResult;
@@ -4474,7 +4519,7 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       if (!result.ok && result.conflict === 'downloading') mustLand(result);
     } catch (err) {
-      await rescueVaultDraft(target, path, text, base, rev, err);
+      await rescueVaultDraft(target, path, text, base, err);
       return base;
     }
     if (!result.ok) return settleSaveConflict(target, path, text, base, result);
@@ -4487,16 +4532,10 @@ export const useApp = create<AppState>((set, get, api) => {
     await editVaultPending((p) => {
       delete p[key];
     }).catch(() => {});
-    // Keep the body cache current so the next backlink pass does not re-read
-    // the note we just wrote.
-    vaultBodyCache.set(vaultKey(target, saved.path), {
-      updatedAt: saved.updatedAt,
-      text: saved.text,
-    });
+    // The list and the body cache were patched from the write's result
+    // (putVaultNote), so nothing is re-listed here.
     if (isActiveVault(target)) {
-      const listing = await listVaultNotes(target).catch(() => undefined);
       set({
-        vaultFiles: listing ?? get().vaultFiles,
         vaultNote:
           get().vaultNote?.path === path
             ? {
@@ -4527,7 +4566,7 @@ export const useApp = create<AppState>((set, get, api) => {
     base: string | undefined,
   ): Promise<void> {
     await editVaultPending((p) => {
-      p[vaultKey(t, path)] = pendingEntry(t, path, text, base, undefined);
+      p[vaultKey(t, path)] = pendingEntry(t, path, text, base);
     }).catch(() => {});
   }
   async function dropStash(t: VaultTargetRef, path: string): Promise<void> {
@@ -4655,10 +4694,6 @@ export const useApp = create<AppState>((set, get, api) => {
       get().showToast(`Not saved. ${heldLine(kept)}`);
       return versionOf(theirs);
     }
-    if (isActiveVault(target)) {
-      const listing = await listVaultNotes(target).catch(() => undefined);
-      if (listing) set({ vaultFiles: listing });
-    }
     get().showToast(vaultReplayCopiesLine([copy]));
     logEvent('vault_draft_kept_both', { count: 1 });
     return versionOf(theirs);
@@ -4711,7 +4746,7 @@ export const useApp = create<AppState>((set, get, api) => {
   async function onSignedIn(session: Session): Promise<void> {
     await saveSession(session);
     // A fresh session always starts on the personal vault, with no team-vault
-    // state or base-rev cache carried over from a prior account on this device.
+    // state or provider cache carried over from a prior account on this device.
     // Unsent team text stays only for the account that typed it.
     resetOrgVault();
     forgetTeamBodies();
@@ -7735,6 +7770,10 @@ export const useApp = create<AppState>((set, get, api) => {
       // placeholder) is still a note. Never open an empty editor over it,
       // which a keystroke would then save back as empty over the cloud copy.
       if (listed?.evicted) {
+        // Ask for the bytes, so the download is on its way when the person
+        // taps again: a read of an evicted note starts it and answers at once
+        // (CTO G2). Its answer is not awaited and opens nothing here.
+        void target.provider.read(target.resourceId, openPath).catch(() => undefined);
         downloading();
         return;
       }
@@ -7792,7 +7831,7 @@ export const useApp = create<AppState>((set, get, api) => {
       // A team create goes out only under the account it was asked for.
       const seeded = content.length > 0;
       if (!speaksNow(target)) {
-        if (seeded) await keepUnsentTeamText(target, normalized, content, undefined, undefined);
+        if (seeded) await keepUnsentTeamText(target, normalized, content, undefined);
         else get().showToast('Sign in to your team to use the team vault.');
         return;
       }
@@ -7842,10 +7881,8 @@ export const useApp = create<AppState>((set, get, api) => {
           const saved = mustLand(result);
           logEvent('vault_note_create');
           if (!isActiveVault(target)) return;
-          const listing = await listVaultNotes(target).catch(() => undefined);
           vaultLiveDraft = undefined;
           set({
-            vaultFiles: listing ?? get().vaultFiles,
             vaultNote: {
               path: normalized,
               text: saved.text,
@@ -7876,13 +7913,7 @@ export const useApp = create<AppState>((set, get, api) => {
       // replay that finds a note already there keeps both, never overwrites.
       try {
         await editVaultPending((p) => {
-          p[vaultKey(target, normalized)] = pendingEntry(
-            target,
-            normalized,
-            content,
-            undefined,
-            undefined,
-          );
+          p[vaultKey(target, normalized)] = pendingEntry(target, normalized, content, undefined);
         });
       } catch {
         if (seeded) {
@@ -7964,8 +7995,6 @@ export const useApp = create<AppState>((set, get, api) => {
               set({ vaultError: 'held' });
             }
             reloadOpenNote(c.theirs, 'resolve');
-            const listing = await listVaultNotes(target).catch(() => undefined);
-            if (listing) set({ vaultFiles: listing });
             return done(
               copy
                 ? vaultResolveToast('both', { title, copyTitle: noteTitle(copy) })
@@ -8001,8 +8030,6 @@ export const useApp = create<AppState>((set, get, api) => {
                 },
               });
             }
-            const listing = await listVaultNotes(target).catch(() => undefined);
-            if (listing) set({ vaultFiles: listing });
             return done(vaultResolveToast('mine', { title, missing: c.kind === 'missing' }));
           }
           return { ok: false };
@@ -8109,16 +8136,14 @@ export const useApp = create<AppState>((set, get, api) => {
         return false;
       }
       const key = vaultKey(target, path);
-      vaultBodyCache.delete(key);
+      patchVaultFiles(target, { removed: path });
       // Drop any stashed draft for a note the user just deleted, so it cannot
       // resurrect on the next replay.
       await editVaultPending((p) => {
         delete p[key];
       }).catch(() => {});
       if (isActiveVault(target)) {
-        const listing = await listVaultNotes(target).catch(() => undefined);
         set({
-          vaultFiles: listing ?? get().vaultFiles.filter((f) => f.path !== path),
           vaultNote: get().vaultNote?.path === path ? undefined : get().vaultNote,
           vaultError: undefined,
         });
@@ -8137,12 +8162,12 @@ export const useApp = create<AppState>((set, get, api) => {
       // re-run this on every note open, so without a cache a 300-note Drive
       // vault was 300+ serial reads per open (R-8). The cache key carries the
       // provider and resource, and the read is skipped when the file's
-      // updatedAt matches. One unreadable file is reported in `failed` and
+      // version (versionOf) matches. One unreadable file is reported in `failed` and
       // never costs the rest (data-16).
       for (const f of files) {
         const key = vaultKey(target, f.path);
         const cached = vaultBodyCache.get(key);
-        if (cached && cached.updatedAt === f.updatedAt) {
+        if (cached && cached.version === versionOf(f)) {
           notes.push({ path: f.path, text: cached.text });
           continue;
         }
@@ -8152,7 +8177,7 @@ export const useApp = create<AppState>((set, get, api) => {
             failed.push(f.path);
             continue;
           }
-          vaultBodyCache.set(key, { updatedAt: note.updatedAt, text: note.text });
+          vaultBodyCache.set(key, { version: versionOf(note), text: note.text });
           notes.push({ path: note.path, text: note.text });
         } catch {
           failed.push(f.path);
