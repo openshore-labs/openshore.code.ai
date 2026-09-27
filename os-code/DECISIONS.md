@@ -2704,3 +2704,27 @@ execution contract. Newest at the bottom.
   which the founder decides beside pricing, a Board gate. The must-fix map is
   `docs/vault-v1-test-map.md` (101 findings: 96 covered on `main`, 2 on the
   held team branch, 2 device-only, 1 missing, orgvault-19).
+
+- **Vault M8 code pass (2026-09-27, plan 8.4 and the M6 and M7 follow-ups):**
+  (1) the copy gate covers the whole vault copy map and the Vault's UI
+  strings: `VAULT_EVAL_CLAIMS_UNLOCKED = false` in `vaultCopy.ts` waits on
+  the 4.8 pack and 5.4 handoff results, and until then `vaultCopy.test.ts`
+  refuses faster, slower, cheaper, better, smarter, remembers, learns, and
+  "picks up where you left off"; "always" stays refused after the flag,
+  since it is not a measurement. (2) The computer's own Room for notes rides
+  read only on the privacy answer both hosts already give
+  (`VaultPrivacyWire.packSize`, one `machineVaultWire` helper); the sheet
+  says "Sessions on this computer use its own setting, Normal." whenever
+  those sessions use another size, and "can use its own setting instead."
+  when the computer does not answer; `packMaxTokens` is not sent (nothing
+  reads it). (3) Play-step engine sessions carry the device's
+  `vaultOverrides`. (4) The Trash page renders inside the room's screen, so
+  it crossfades in and out on the view ghost, under the M6 guard. (5)
+  orgvault-19: `os-code/test/vaultClaims.test.ts` keeps the team vault's
+  "never lost" claim out of source, docs, and migration comments;
+  `0010_org_vault.sql` is exempt by name because an applied migration is
+  never edited, and 0019's revisions supersede its header. (6) Not built:
+  the "This project's settings turn this off." line, because an honest one
+  needs the active project's config read on demand (a session's report goes
+  stale, and a project can span several repos); the engine still enforces
+  a project's off.

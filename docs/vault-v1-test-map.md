@@ -20,8 +20,8 @@ Status:
   `docs/vault-v1-device-checklist.md` (plan 8.1).
 - **MISSING**: no test holds it yet; listed at the end for a code pass.
 
-Counts: 101 must-fix; 96 covered; 2 covered on a held branch (orgvault-4,
-orgvault-7); 2 device-only (truth-22, truth-23); 1 missing (orgvault-19).
+Counts: 101 must-fix; 97 covered; 2 covered on a held branch (orgvault-4,
+orgvault-7); 2 device-only (truth-22, truth-23); none missing.
 
 Notes on the reading:
 
@@ -92,7 +92,7 @@ Notes on the reading:
 | orgvault-9 | medium | Permanent server refusals (1 MB cap, bad path, not a member) are reported as a connection problem and retried forever | 0.4 | `app/test/orgVault.test.ts`: "marks a server 4xx as permanent with the server's own line"; `app/test/vaultStore.test.ts`: "a team server refusal keeps the server's own line and is never retried" | covered |
 | orgvault-10 | medium | The team vault cannot be exported or opened in Obsidian, and a team export would wipe the personal export | 2.8 | `app/test/vaultExport.test.ts`: "on the iPhone writes Vault Team/<org>, never the personal export or its manifest", "writes the notes into Vault Team/<org>, keeps what it did not write, and removes only its own" | covered |
 | orgvault-13 | medium | The LWW and conflict-copy rule is never tested against Postgres, and the pgTAP file is not run in CI | 2.4 | `.github/workflows/ci.yml` job `sql`, step "Run the pgTAP suite" (`supabase test db`) over `supabase/tests/org_vault.test.sql` and `rls.test.sql` | covered |
-| orgvault-19 | low | Docs and migration comments say a concurrent overwrite is 'never lost', which the repros disprove | 0.20, 8.2 | Docs corrected in the M8 sweep (`os-code/docs/parked-ideas.md`); no test keeps the unqualified "never lost" claim out of docs, and the `0010_org_vault.sql` header comment still says it | MISSING |
+| orgvault-19 | low | Docs and migration comments say a concurrent overwrite is 'never lost', which the repros disprove | 0.20, 8.2 | `os-code/test/vaultClaims.test.ts`: the team vault's "never lost" claim stays out of source, docs, and migration comments (0010, an applied migration, exempt by name; 0019's revisions supersede its header) | covered |
 | keyask-1 | critical | No phone, cloud, pocket, BYOM or desktop-chat seat can read or write the vault; only desktop engine sessions can | 4.4, 5.1, 5.3 | `app/test/vaultContext.test.ts`: "renders for its cloud seat and places the pack in the last system block", "a real pack reaches the pocket seat within its 327-token budget, last in the prompt"; `app/test/vaultWiring.test.ts`: "the plain drivers get a pack, the Stack its pack, seat and tools"; `app/test/vaultTool.test.ts`: "is present for cloud and BYOM seats, merged for a small class" | covered |
 | keyask-2 | high | The Vault the person sees and the vault the agent uses are different stores by default, on every device | 1.3, 5.2 | `app/test/vaultStore.test.ts`: "a fresh desktop lands on the folder with no card and no toast", "an empty Local vault repoints to the computer, and unpairing returns it" | covered |
 | keyask-3 | high | Vault and Wayfinding copy promise agent read-back and link-following that does not happen; the Memory switch is dead | 0.19, 1.5 | `app/test/currents.test.ts`: "the line says off applies to new chats, and where the notes live"; `app/test/vaultCopy.test.ts`: "none survives anywhere in the app" (retired Vault claims) | covered |
@@ -145,15 +145,6 @@ Notes on the reading:
 
 ## Missing
 
-- **orgvault-19** (low, claim-mismatch): docs and migration comments said a
-  concurrent team overwrite is "never lost". The M8 sweep corrected
-  `os-code/docs/parked-ideas.md`, but the header comment in
-  `supabase/migrations/0010_org_vault.sql` (lines 11 to 13) still says "a
-  concurrent overwrite never silently loses a member's" work, and nothing
-  keeps the claim from coming back. Suggested test: a claims guard (for
-  example `os-code/test/vaultClaims.test.ts`) that reads the tracked
-  `docs/**/*.md`, `os-code/docs/**/*.md`, and `supabase/migrations/*.sql`
-  comments and fails on an unqualified "never (silently) lost" or "never
-  loses" about the team vault, with the archive (`progress-archive.md`) and
-  the review record itself exempt by name; plus a one-line comment fix in
-  0010's header pointing at 0019's revisions.
+None. orgvault-19, the last one, is held by `os-code/test/vaultClaims.test.ts`
+(M8 code pass); `0010_org_vault.sql`'s header comment stays stale because an
+applied migration is never edited, and 0019's revisions supersede it.
