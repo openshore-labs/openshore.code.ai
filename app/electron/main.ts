@@ -52,6 +52,11 @@ import {
 } from 'os-code/dist/src/core/vault/indexFile.js';
 import { readVaultConfigFile } from 'os-code/dist/src/core/vault/configFile.js';
 import { isVaultConfigName } from 'os-code/dist/src/harness/vault/configDir.js';
+import {
+  parseConfigWriteGuard,
+  parseVaultOverrides,
+  putVaultSettingsFile,
+} from 'os-code/dist/src/daemon/vaultRoutes.js';
 import { HANDOFF_MAX_BYTES } from 'os-code/dist/src/harness/handoff.js';
 import { clearHandoffs } from 'os-code/dist/src/core/agent/handoffStore.js';
 import {
@@ -823,6 +828,9 @@ function sessionOpts(v: unknown) {
     // project's own pins, note paths only, at most eight.
     handoff: optHandoff(o.handoff),
     vaultPins: optVaultPins(o.vaultPins),
+    // Vault M7 (CTO L13): the app's vault switches, off-only and one of the
+    // three sizes; the daemon's parser, so a bad value is dropped the same way.
+    vaultOverrides: parseVaultOverrides(o.vaultOverrides),
   };
 }
 
@@ -1073,6 +1081,16 @@ guarded('osc:vaultReadConfig', (name: unknown) => {
   if (!isVaultConfigName(name)) return { ok: false as const, reason: 'refused' as const };
   return readVaultConfigFile(vaultDir(), name);
 });
+
+// The settings sheet's one write (Vault M7, CTO L7): `.oscode/vault.json`
+// under the vault root main reads itself, never a path from the renderer.
+// The daemon's PUT runs the same putVaultSettingsFile: only `oscode/vault`
+// (every obsidian/* name refused), capped at 256 KB, text the parser can
+// read, exactly one guard (compare-and-swap), and `.oscode` and the file each
+// a real directory and a regular file, never a link. No agent path names it.
+guarded('osc:vaultWriteConfig', (name: unknown, text: unknown, guard: unknown) =>
+  putVaultSettingsFile(vaultDir(), name, str(text, 'text'), parseConfigWriteGuard(guard)),
+);
 
 // Vault M6 (CTO K3, K5, K6, K11, K13): rename, folders, Trash and
 // attachments on the folder, through the engine's folderFs (the same code the

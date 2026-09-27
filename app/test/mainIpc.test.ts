@@ -118,6 +118,22 @@ describe('main-process IPC guard (UI-6)', () => {
     expect(main).toMatch(/if \(!st\.isFile\(\)\) return \{ ok: false \}/);
   });
 
+  // Vault M7 (CTO L7, L13): the settings write takes a logical name, the
+  // text and a guard, never a path; it runs the daemon's own write
+  // (putVaultSettingsFile: oscode/vault only, capped, parsed, link-safe) on
+  // the root main reads itself, and every guard is parsed first. The session
+  // overrides go through the daemon's parser, so a bad value is dropped.
+  it('the M7 settings write is guarded, root-free, and guard-checked', () => {
+    expect(preload).toContain("vaultWriteConfig: invoke('osc:vaultWriteConfig')");
+    expect(main).toMatch(
+      /guarded\('osc:vaultWriteConfig', \(name: unknown, text: unknown, guard: unknown\) =>/,
+    );
+    expect(main).toMatch(
+      /putVaultSettingsFile\(vaultDir\(\), name, str\(text, 'text'\), parseConfigWriteGuard\(guard\)\)/,
+    );
+    expect(main).toMatch(/vaultOverrides: parseVaultOverrides\(o\.vaultOverrides\)/);
+  });
+
   it('exposes secureHas so the renderer can tell absent from unreadable (P0-3)', () => {
     expect(preload).toContain("secureHas: invoke('osc:secureHas')");
     expect(main).toMatch(/guarded\('osc:secureHas'/);
