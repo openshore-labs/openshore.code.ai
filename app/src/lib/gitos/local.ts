@@ -18,7 +18,9 @@
 // every draft stashed or open then stays valid. The body is the truth; the
 // index is a list hint, written after the body, so it can never claim a
 // version the body does not have.
+import { isVaultConfigName, type ConfigRead, type VaultConfigName } from 'os-code/protocol';
 import { storeDelete, storeGetJson, storeKeys, storeSetJson } from '../platform.js';
+import { asConfigRead } from './config.js';
 import {
   isNotePath,
   type Lease,
@@ -35,6 +37,9 @@ const indexKey = (resourceId: string) => `oscode.gitos.index.${resourceId}`;
 const filePrefix = (resourceId: string) => `oscode.gitos.file.${resourceId}.`;
 const fileKey = (resourceId: string, path: string) => `${filePrefix(resourceId)}${path}`;
 const leaseKey = (resourceId: string) => `oscode.gitos.lease.${resourceId}`;
+/** The vault's own config (`oscode/vault`), sealed like a note body. Nothing
+ *  writes it before M7, so today it reads as absent. */
+const configKey = (resourceId: string) => `oscode.gitos.config.${resourceId}.vault`;
 
 interface IndexDoc {
   files: StoredFileMeta[];
@@ -248,5 +253,16 @@ export const localProvider: StorageProvider = {
   async releaseLease(resourceId, holder) {
     const current = await storeGetJson<Lease>(leaseKey(resourceId));
     if (current?.holder === holder) await storeDelete(leaseKey(resourceId));
+  },
+
+  // This device holds no Obsidian folder, so every obsidian/* name is absent
+  // by design. The vault's own config is one sealed key, stored like a note
+  // body (text and a version).
+  async readConfig(resourceId, name: VaultConfigName): Promise<ConfigRead> {
+    if (!isVaultConfigName(name)) return { ok: false, reason: 'refused' };
+    if (name !== 'oscode/vault') return { ok: false, reason: 'absent' };
+    const body = await storeGetJson<Body>(configKey(resourceId));
+    if (!body || typeof body.text !== 'string') return { ok: false, reason: 'absent' };
+    return asConfigRead({ ok: true, text: body.text, version: verOf(body) });
   },
 };

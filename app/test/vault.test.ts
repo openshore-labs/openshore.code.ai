@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import {
   backlinksTo,
   isConflictCopy,
@@ -11,10 +13,15 @@ import {
   resolveWikilink,
   treeAt,
   wikilinkContext,
-  wikilinksToMarkdown,
 } from '../src/lib/vault.js';
-import { vaultUrlTransform } from '../src/components/VaultMarkdown.js';
+import { VaultMarkdown, vaultUrlTransform } from '../src/components/VaultMarkdown.js';
 import { isNotePath } from '../src/lib/gitos/providers.js';
+
+// The reader, as HTML. wikilinksToMarkdown (a string pass over the raw
+// markdown) was deleted in Vault M3 3.3: links are now made by a remark
+// plugin over text nodes, so these rows check what the reader renders.
+const rendered = (text: string, paths: string[]) =>
+  renderToStaticMarkup(createElement(VaultMarkdown, { text, paths, onOpenNote: () => {} }));
 
 describe('wikilink parsing (Obsidian grammar)', () => {
   it('parses plain, aliased, and heading-suffixed links', () => {
@@ -104,8 +111,8 @@ describe('note paths', () => {
   it('a link to a dot-typed name finds the note that name created', () => {
     const created = normalizeNotePath('.NET migration')!;
     expect(resolveWikilink('.NET migration', [created])).toBe(created);
-    expect(wikilinksToMarkdown('[[.NET migration]]', [created])).toBe(
-      '[.NET migration](vault:NET%20migration.md)',
+    expect(rendered('[[.NET migration]]', [created])).toContain(
+      '<a href="vault:NET%20migration.md" class="wikilink">.NET migration</a>',
     );
   });
 
@@ -179,12 +186,14 @@ describe('.md is never appended to a known non-markdown name (0.6, obs-12)', () 
   });
 
   it('a wikilink to diagram.png no longer creates diagram.png.md', () => {
-    const md = wikilinksToMarkdown('See [[diagram.png]] and [[spec.pdf|the spec]].', []);
+    const md = rendered('See [[diagram.png]] and [[spec.pdf|the spec]].', []);
     expect(md).not.toContain('.png.md');
     expect(md).not.toContain('.pdf.md');
     // The link still renders (dashed), but a tap hands vaultCreate a name
     // that normalizes to nothing, so no note is written.
-    expect(md).toContain('[diagram.png](vault:diagram.png?new)');
+    expect(md).toContain(
+      '<a href="vault:diagram.png?new" class="wikilink unresolved">diagram.png</a>',
+    );
     expect(normalizeNotePath('diagram.png')).toBeUndefined();
   });
 });
@@ -199,10 +208,10 @@ describe('wikilink resolution', () => {
     expect(resolveWikilink('Missing', paths)).toBeUndefined();
   });
 
-  it('rewrites links to anchors, flagging unresolved targets', () => {
-    const md = wikilinksToMarkdown('Go to [[Roadmap|the plan]] then [[Missing]].', paths);
-    expect(md).toContain('[the plan](vault:projects%2FRoadmap.md)');
-    expect(md).toContain('[Missing](vault:Missing.md?new)');
+  it('renders links as anchors, flagging unresolved targets', () => {
+    const md = rendered('Go to [[Roadmap|the plan]] then [[Missing]].', paths);
+    expect(md).toContain('<a href="vault:projects%2FRoadmap.md" class="wikilink">the plan</a>');
+    expect(md).toContain('<a href="vault:Missing.md?new" class="wikilink unresolved">Missing</a>');
   });
 
   it('resolves an existing note whose name looks like a file', () => {
@@ -217,9 +226,9 @@ describe('wikilink resolution', () => {
     expect(resolveWikilink('docs/report.pdf', named)).toBe('docs/report.pdf.md');
     expect(resolveWikilink('v1.0 plan', named)).toBe('v1.0 plan.md');
     expect(resolveWikilink('package.json.md', named)).toBe('package.json.md');
-    const md = wikilinksToMarkdown('See [[package.json]] and [[report.pdf|the report]].', named);
-    expect(md).toContain('[package.json](vault:package.json.md)');
-    expect(md).toContain('[the report](vault:docs%2Freport.pdf.md)');
+    const md = rendered('See [[package.json]] and [[report.pdf|the report]].', named);
+    expect(md).toContain('<a href="vault:package.json.md" class="wikilink">package.json</a>');
+    expect(md).toContain('<a href="vault:docs%2Freport.pdf.md" class="wikilink">the report</a>');
     expect(md).not.toContain('?new');
     // The resolved destination is a note, so a tap opens it rather than
     // calling it an attachment.
@@ -240,19 +249,19 @@ describe('wikilink resolution', () => {
     const named = ['package.json.md'];
     expect(resolveWikilink('diagram.png', named)).toBeUndefined();
     expect(resolveWikilink('settings.json', named)).toBeUndefined();
-    expect(wikilinksToMarkdown('[[diagram.png]]', named)).toBe(
-      '[diagram.png](vault:diagram.png?new)',
+    expect(rendered('[[diagram.png]]', named)).toContain(
+      '<a href="vault:diagram.png?new" class="wikilink unresolved">diagram.png</a>',
     );
     expect(nonNoteExtension('diagram.png')).toBe('.png');
   });
 
   it('renders an embed as a chip, not a broken image or a linked target', () => {
-    const md = wikilinksToMarkdown('Look: ![[Roadmap]] and ![[Art|the art]].', paths);
-    expect(md).toContain('`embed not supported yet: Roadmap`');
-    expect(md).toContain('`embed not supported yet: the art`');
+    const md = rendered('Look: ![[Roadmap]] and ![[Art|the art]].', paths);
+    expect(md).toContain('<code>embed not supported yet: Roadmap</code>');
+    expect(md).toContain('<code>embed not supported yet: the art</code>');
     // The embed's inner target is not turned into a vault link or an image.
-    expect(md).not.toContain('![');
-    expect(md).not.toContain('vault:projects%2FRoadmap.md)');
+    expect(md).not.toContain('<img');
+    expect(md).not.toContain('vault:projects%2FRoadmap.md');
   });
 });
 
@@ -304,13 +313,20 @@ describe('folder tree', () => {
 describe('wikilinkContext (editor [[ autocomplete)', () => {
   it('opens a query at the caret right after "[["', () => {
     const text = 'see [[Ide';
-    expect(wikilinkContext(text, text.length)).toEqual({ start: 4, query: 'Ide' });
+    // The core's context also carries the caret (`end`) and whether a `!`
+    // makes it an embed (Vault M3 H4); callers read start and query.
+    expect(wikilinkContext(text, text.length)).toEqual({
+      start: 4,
+      end: text.length,
+      query: 'Ide',
+      embed: false,
+    });
   });
 
   it('reads from the caret, not the end of text', () => {
     const text = 'a [[One and later [[Two';
     // Caret right after the first "[[One" (index 7), before the second brackets.
-    expect(wikilinkContext(text, 7)).toEqual({ start: 2, query: 'One' });
+    expect(wikilinkContext(text, 7)).toEqual({ start: 2, end: 7, query: 'One', embed: false });
   });
 
   it('is null when the pair is already closed', () => {
@@ -334,7 +350,12 @@ describe('wikilinkContext (editor [[ autocomplete)', () => {
 
   it('offers an empty query the instant "[[" is typed', () => {
     const text = 'x [[';
-    expect(wikilinkContext(text, text.length)).toEqual({ start: 2, query: '' });
+    expect(wikilinkContext(text, text.length)).toEqual({
+      start: 2,
+      end: text.length,
+      query: '',
+      embed: false,
+    });
   });
 });
 

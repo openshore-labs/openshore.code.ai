@@ -2,9 +2,32 @@
 // consumer of the gitOS storage seam. Notes are plain .md files addressed by
 // real relative paths, so the same tree opens unchanged in Obsidian the day a
 // file-backed provider holds it. Wikilinks use Obsidian's own [[target]] and
-// [[target|alias]] grammar; backlinks are derived by scanning, never stored,
-// so the files stay the single source of truth.
+// [[target|alias]] grammar; backlinks are derived from the files (scanned
+// here for a small vault, or kept by the index in vaultIndexHost.ts, which is
+// rebuilt from them), so the files stay the single source of truth.
+import {
+  buildPathIndex,
+  eolOf,
+  excerptAt,
+  noteTitle,
+  resolveWikilink as resolveInIndex,
+  scanNote,
+  type VaultPathIndex,
+} from 'os-code/protocol';
 import type { StoredFileMeta } from './gitos/providers.js';
+
+// The pure path and link rules are the shared core's (Vault M3, CTO H4), so
+// the app, the engine's vault tools and the desktop's main process can never
+// disagree about what a note name is or where a link lands. Every name this
+// module exported before stays exported.
+export {
+  isConflictCopy,
+  nonNoteExtension,
+  normalizeNotePath,
+  noteFolder,
+  noteTitle,
+  wikilinkContext,
+} from 'os-code/protocol';
 
 export interface WikiLink {
   /** The link target as written, before .md resolution (e.g. "Ideas/Vault"). */
@@ -13,201 +36,75 @@ export interface WikiLink {
   alias?: string;
 }
 
-/** Obsidian's wikilink grammar: [[target]] or [[target|alias]]. Embeds
- *  (![[...]]) and heading/block refs (#, ^) are tolerated by stripping the
- *  suffix so a link to [[Note#Heading]] still resolves to the note. */
-const WIKILINK = /\[\[([^\][|#^\n]+)(?:[#^][^\][|\n]*)?(?:\|([^\][\n]+))?\]\]/g;
-
+/** Every wikilink in a note, in the order written: body links and the ones
+ *  inside frontmatter values, as Obsidian counts them. Built on the core's
+ *  scanner, so a link inside a code fence, a code span, math or a comment is
+ *  not a link. A link to the note itself (`[[#Heading]]`) has no target and
+ *  is left out. */
 export function parseWikilinks(text: string): WikiLink[] {
   const links: WikiLink[] = [];
-  for (const m of text.matchAll(WIKILINK)) {
-    const target = m[1]!.trim();
+  for (const l of scanNote(text).links) {
+    if (l.kind !== 'wiki') continue;
+    const target = l.target.trim();
     if (!target) continue;
-    links.push({ target, alias: m[2]?.trim() || undefined });
+    const alias = l.alias?.trim();
+    links.push(alias ? { target, alias } : { target });
   }
   return links;
 }
 
-/** Autocomplete context for a "[[" being typed: given the editor text and the
- *  caret offset, return the index of the "[[" and the raw query typed since it,
- *  or null when the caret is not inside an open, single-line, pre-alias
- *  wikilink. The editor offers note matches for the query and, on a pick,
- *  replaces from `start`. Cancels once the pair is closed (]]), a new line
- *  starts, or the alias half begins (|), matching Obsidian, which suggests the
- *  target and leaves the alias alone. */
-export function wikilinkContext(
-  text: string,
-  caret: number,
-): { start: number; query: string } | null {
-  const before = text.slice(0, Math.max(0, caret));
-  const open = before.lastIndexOf('[[');
-  if (open === -1) return null;
-  const between = before.slice(open + 2);
-  if (/[\]\n|]/.test(between)) return null;
-  return { start: open, query: between };
+/** One path index per path array, so a render that resolves every link in a
+ *  note against the same list builds the lookup once. Keyed by the array
+ *  itself (a WeakMap), so a new list is a new index and an old one is let
+ *  go with its array. */
+const PATH_INDEXES = new WeakMap<readonly string[], VaultPathIndex>();
+
+export function pathIndexOf(paths: readonly string[]): VaultPathIndex {
+  let idx = PATH_INDEXES.get(paths);
+  if (!idx) {
+    idx = buildPathIndex(paths);
+    PATH_INDEXES.set(paths, idx);
+  }
+  return idx;
 }
 
-/** A note's display title: its filename without the .md extension, exactly
- *  how Obsidian titles a note. */
-export function noteTitle(path: string): string {
-  const base = path.split('/').pop() ?? path;
-  return base.replace(/\.md$/i, '');
+/** Resolve a wikilink target against the vault's file list, in the core's
+ *  pinned order: an exact path, then relative to `sourcePath`'s folder, then
+ *  a whole-segment suffix match, then the cleaned name. Undefined when the
+ *  note does not exist yet (an unresolved link, shown dashed and created on
+ *  tap). The attachment rule is for creating only: [[package.json]] still
+ *  resolves to an existing "package.json.md". */
+export function resolveWikilink(
+  target: string,
+  paths: readonly string[],
+  sourcePath?: string,
+): string | undefined {
+  return resolveInIndex(target, pathIndexOf(paths), sourcePath) ?? undefined;
 }
 
-/** The folder a note lives in, '' at the vault root. */
-export function noteFolder(path: string): string {
-  const i = path.lastIndexOf('/');
-  return i === -1 ? '' : path.slice(0, i);
-}
-
-/** File types that sit beside notes in an Obsidian vault (images, audio,
- *  video, PDF, canvas, base) plus config, office, and archive files. A name
- *  that already ends in one names a file, not a note (obs-12). */
-const NON_NOTE_EXTENSION =
-  /\.(?:png|jpe?g|gif|webp|svg|bmp|avif|heic|tiff?|ico|pdf|canvas|base|mp3|wav|m4a|ogg|flac|3gp|mp4|webm|mov|mkv|ogv|json|csv|zip|docx?|xlsx?|pptx?)$/i;
-
-/** The extension of a name that names a file rather than a note (".pdf" for
- *  "report.pdf", ".png" for an attachment link), or undefined for a note
- *  name. The screen uses it to say why such a name never becomes a note. */
-export function nonNoteExtension(raw: string): string | undefined {
-  return NON_NOTE_EXTENSION.exec(raw.trim())?.[0].toLowerCase();
-}
-
-/** A typed name or link target cleaned into a vault-relative path, before any
- *  extension rule: NFC, forward slashes, no forbidden characters, and no
- *  leading dots on any segment. A dot segment is hidden (isNotePath, and
- *  Obsidian hides it too), so ".NET migration" becomes "NET migration": kept
- *  as typed, the note would never list, and the next create or link tap would
- *  write an empty body over it. Stripping the dots also drops dot and dot-dot
- *  segments, so a typed name or a wikilink can never climb out of the vault
- *  root and clobber a sibling resource (SEC: path jail). '' when nothing is
- *  left. */
-function cleanNotePath(raw: string): string {
-  return (
-    raw
-      // Normalize to NFC so a name typed on one device matches the same name
-      // an NFD filesystem (iCloud/APFS) stored, instead of forking two notes.
-      .normalize('NFC')
-      .trim()
-      .replace(/\\/g, '/')
-      .split('/')
-      // Strip characters forbidden on common filesystems and Obsidian's own
-      // link syntax (a note containing these could never be wikilinked).
-      .map((s) =>
-        s
-          .trim()
-          .replace(/[<>:"|?*#^[\]]/g, '')
-          .replace(/^[\s.]+/, ''),
-      )
-      .filter(Boolean)
-      .join('/')
-  );
-}
-
-/** Normalize a user-typed note name or path into a vault-relative .md path:
- *  strips leading/trailing slashes, whitespace, and leading dots, collapses
- *  separators, and appends .md when absent. Every path it returns is one
- *  isNotePath accepts, so a note it names always lists. Returns undefined
- *  for an empty result, and for a name that already ends in a known
- *  non-markdown extension: `diagram.png` is an attachment, so a new note is
- *  never an empty `diagram.png.md` (and nothing is written under the
- *  attachment's own name). A name with any other dot, like `v1.2 plan`, is
- *  still a note. */
-export function normalizeNotePath(raw: string): string | undefined {
-  const cleaned = cleanNotePath(raw);
-  if (!cleaned) return undefined;
-  if (/\.md$/i.test(cleaned)) return cleaned;
-  return NON_NOTE_EXTENSION.test(cleaned) ? undefined : `${cleaned}.md`;
-}
-
-/** Resolve a wikilink target against the vault's file list, the way Obsidian
- *  does: an exact path match first, then a unique filename match anywhere in
- *  the vault. Returns the matched path, or undefined when the note does not
- *  exist yet (an unresolved link, shown dashed and created on tap). The
- *  attachment rule is for creating only: [[package.json]] still resolves to
- *  an existing "package.json.md", and only a target that matches no note and
- *  ends in an attachment extension is left as an attachment. */
-export function resolveWikilink(target: string, paths: string[]): string | undefined {
-  const cleaned = cleanNotePath(target);
-  if (!cleaned) return undefined;
-  const want = /\.md$/i.test(cleaned) ? cleaned : `${cleaned}.md`;
-  const lower = want.toLowerCase();
-  const exact = paths.find((p) => p.toLowerCase() === lower);
-  if (exact) return exact;
-  // Obsidian resolves a bare name to the note of that name anywhere in the
-  // vault; on ambiguity it prefers the shortest path, so we do too.
-  const base = lower.split('/').pop()!;
-  const byName = paths
-    .filter((p) => p.toLowerCase().split('/').pop() === base)
-    .sort((a, b) => a.length - b.length);
-  return byName[0];
-}
-
-/** Backlinks: every note whose body links to `path`, with a one-line excerpt
- *  around the first mention. Derived on demand from bodies; nothing stored. */
+/** Backlinks: every note whose text links to `path`, with a short excerpt
+ *  around the first link that lands there. Derived on demand from bodies,
+ *  nothing stored. The small-vault fallback and Project Memory's path: a
+ *  vault with an index asks the index instead. Links are found by the core's
+ *  scanner, so one inside code never counts, and each resolves from its own
+ *  note, so a relative link is credited to the right note. */
 export function backlinksTo(
   path: string,
   notes: Array<{ path: string; text: string }>,
 ): Array<{ path: string; excerpt: string }> {
   const paths = notes.map((n) => n.path);
+  const idx = buildPathIndex(paths);
   const out: Array<{ path: string; excerpt: string }> = [];
   for (const note of notes) {
     if (note.path === path) continue;
-    // Find the wikilink that actually resolves to this note (resolved against
-    // the real path list, so [[x/B]] is credited to x/B.md, not to root B.md),
-    // and excerpt around THAT link, not merely the note's first "[[".
-    let hitIndex = -1;
-    for (const m of note.text.matchAll(WIKILINK)) {
-      const resolved = resolveWikilink(m[1]!.trim(), paths);
-      if (resolved === path) {
-        hitIndex = m.index ?? -1;
-        break;
-      }
-    }
-    if (hitIndex === -1) continue;
-    const start = Math.max(0, hitIndex - 40);
-    const excerpt = note.text
-      .slice(start, hitIndex + 80)
-      .replace(/\n+/g, ' ')
-      .trim();
-    out.push({ path: note.path, excerpt });
+    const hit = scanNote(note.text).links.find((l) => {
+      if (l.kind !== 'wiki' || !l.target.trim()) return false;
+      return resolveInIndex(l.target, idx, note.path) === path;
+    });
+    if (!hit) continue;
+    out.push({ path: note.path, excerpt: excerptAt(note.text, hit.start).text });
   }
   return out;
-}
-
-/** Obsidian embeds: ![[Target]]. Not rendered inline yet, so they are turned
- *  into an explicit chip rather than a broken image (the vault: src would be
- *  stripped by the markdown renderer and show a broken-image glyph). */
-const EMBED = /!\[\[([^\][|#^\n]+)(?:[#^][^\][|\n]*)?(?:\|([^\][\n]+))?\]\]/g;
-
-/** Rewrite wikilinks into standard markdown links carrying a vault: scheme,
- *  so the existing react-markdown renderer emits real anchors the Vault
- *  screen intercepts. Unresolved targets still get a link (they open as a
- *  fresh note), flagged with a query so the UI can style them dashed. Embeds
- *  are handled first so their inner [[...]] is not also linked. */
-export function wikilinksToMarkdown(text: string, paths: string[]): string {
-  const withoutEmbeds = text.replace(EMBED, (_m, rawTarget: string, rawAlias?: string) => {
-    const name = rawAlias?.trim() || rawTarget.trim();
-    return `\`embed not supported yet: ${name}\``;
-  });
-  return withoutEmbeds.replace(WIKILINK, (_m, rawTarget: string, rawAlias?: string) => {
-    const target = rawTarget.trim();
-    const alias = rawAlias?.trim();
-    const resolved = resolveWikilink(target, paths);
-    const dest = resolved ?? normalizeNotePath(target) ?? target;
-    const flag = resolved ? '' : '?new';
-    return `[${alias || target}](vault:${encodeURIComponent(dest)}${flag})`;
-  });
-}
-
-/** The folder tree, computed from flat paths: top-level entries first
- *  (folders sorted before notes, both alphabetical), one level at a time so
- *  the UI can lazily disclose. */
-/** A team-vault conflict copy, as the server names it when two writers
- *  collide: "name (conflict 2026-01-01 1200).md" (0010_org_vault.sql). The
- *  original keeps the plain name; the copy is the other writer's version. */
-export function isConflictCopy(path: string): boolean {
-  return /\(conflict [^)]*\)\.md$/i.test(path);
 }
 
 export interface NoteHit {
@@ -258,6 +155,20 @@ export interface TreeEntry {
   name: string;
 }
 
+/** The text to save for a note loaded as `loaded` and edited into `edited`,
+ *  with its line endings as they were (Vault M3, CTO H2). A textarea turns
+ *  every CRLF into LF, so a note that was all CRLF would otherwise come back
+ *  with every line changed, frontmatter included. Only an all-CRLF note has
+ *  them put back; an LF or mixed note saves as edited. The store's save path
+ *  wraps its text in this (one line, wave 2). */
+export function restoreEol(loaded: string, edited: string): string {
+  if (eolOf(loaded) !== 'crlf' || eolOf(edited) === 'crlf') return edited;
+  return edited.replace(/\r?\n/g, '\r\n');
+}
+
+/** The folder tree, computed from flat paths: top-level entries first
+ *  (folders sorted before notes, both alphabetical), one level at a time so
+ *  the UI can lazily disclose. */
 export function treeAt(folder: string, files: StoredFileMeta[]): TreeEntry[] {
   const prefix = folder ? `${folder}/` : '';
   const folders = new Set<string>();

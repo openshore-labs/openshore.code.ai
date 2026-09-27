@@ -1565,6 +1565,73 @@ textarea {
   line-height: 1.55;
 }
 
+/* A note's properties (its frontmatter, Vault M3 H2): a quiet strip above the
+   body, closed by default, opened on the shared grid-row reveal so it grows
+   and folds both ways. Read-only; nothing here writes YAML. */
+.vault-props {
+  margin: 0 0 12px;
+  border-left: 2px solid var(--border);
+  padding-left: 10px;
+}
+.vault-props-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  font-size: var(--text-3);
+  color: var(--muted);
+  padding: 2px 0;
+  text-align: left;
+}
+.vault-props-chevron {
+  margin-left: auto;
+  font-size: var(--text-1);
+}
+.vault-props-list {
+  margin: 4px 0 2px;
+  display: grid;
+  gap: 4px;
+}
+.vault-props-row {
+  display: grid;
+  grid-template-columns: minmax(72px, 30%) 1fr;
+  gap: 10px;
+  font-size: var(--text-3);
+  line-height: 1.5;
+}
+.vault-props-key {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.vault-props-value {
+  margin: 0;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+.vault-props-subkey,
+.vault-props-empty {
+  color: var(--muted);
+}
+.vault-props-chip {
+  display: inline-block;
+  margin: 0 6px 4px 0;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--text-2);
+  line-height: 1.7;
+}
+.vault-props-raw {
+  margin: 4px 0 2px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: var(--text-2);
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
 /* The "Not saved" list (0.4): text no vault took, one row per note, each
    with Copy and Discard. */
 .vault-held-item {

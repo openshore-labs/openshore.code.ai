@@ -202,7 +202,11 @@ describe('a dot-typed note name never truncates the note (0.2, 0.6)', () => {
     const r = 'vault.dotlink';
     const path = await createTyped(r, 'Ideas/.env setup');
     await localProvider.write(r, path, 'PORT and the API key');
-    const resolved = resolveWikilink('.env setup', await listed(r));
+    // The link names the note by its path, as typed. A bare [[.env setup]]
+    // from the root no longer finds "Ideas/env setup.md": the core's cleaned
+    // name fallback is a whole path, not a basename anywhere (Vault M3 H4,
+    // step 5), so it lands only on the note that same name would create.
+    const resolved = resolveWikilink('Ideas/.env setup', await listed(r));
     expect(resolved).toBe(path);
     // A tap on a resolved link opens it; even the create path finds it.
     expect(await createTyped(r, 'Ideas/.env setup')).toBe(path);
