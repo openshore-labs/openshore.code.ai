@@ -10,13 +10,14 @@
 // `buildContextPack` renders the pack for one seat. The loop renders per turn,
 // so an escalation to a cloud seat re-renders under that seat's rules. Pure
 // and deterministic: no clock, no Node, ties by `compareCodePoints`.
-//
-// WAVE 0: the contracts. The types, `PACK_BY_CLASS`, the framing line,
-// `packBudgetTokens` and `packModeFor` are built; `planContextPack` and
-// `buildContextPack` are typed stubs that stream A builds.
 import type { ModelClass, ModelClassPolicy } from './profile.js';
 import { VAULT_PACK_MAX_TOKENS } from './profile.js';
-import type { VaultIndex } from './vault/index.js';
+import type { IndexedNote, VaultIndex } from './vault/index.js';
+import { compareCodePoints } from './vault/index.js';
+import { noteTitle } from './vault/paths.js';
+import { visibleToSeat } from './vault/privacy.js';
+import { scanNote } from './vault/scan.js';
+import { queryTerms, tokenize } from './vault/tokenize.js';
 import type { VaultPrivacy } from './vault/types.js';
 
 /** How much of the vault a pack carries. `current-state`: this project's
@@ -115,30 +116,463 @@ export function packModeFor(setting: VaultContextSetting, modelClass: ModelClass
   return PACK_BY_CLASS[modelClass];
 }
 
+/** Frontmatter pins a pack carries at most, and the share of the budget
+ *  they may take. */
+export const PACK_PINS_MAX = 3;
+/** Search hits a pack carries at most, the floor a hit's score must reach as
+ *  a fraction of the top score, and the search layer's share of the budget. */
+export const PACK_SEARCH_MAX = 8;
+export const PACK_SEARCH_MIN_RATIO = 0.2;
+/** One-hop notes (links and backlinks of the top search hits) at most, and
+ *  how many top hits they hop from. */
+export const PACK_LINKS_MAX = 5;
+export const PACK_LINK_FROM = 3;
+/** Retrieval reads this much of the task text. */
+export const PACK_QUERY_CHARS = 2000;
+/** The pack fills its character budget (tokens times 4) only this far, the
+ *  slack for text that tokenizes denser than 4 characters a token (CJK). */
+export const PACK_FILL = 0.9;
+/** A note gets a block only when at least this much of its text fits. */
+const MIN_NOTE_BODY = 64;
+/** The map lists this many of the newest notes, and at most this many
+ *  folders. */
+const MAP_NEWEST = 10;
+const MAP_FOLDERS = 24;
+/** A one-hop note shows at most this much of its opening. */
+const LINK_NOTE_MAX_CHARS = 1200;
+
+/** One note the selection picked, before rendering. */
+interface Candidate {
+  layer: 'pin' | 'search' | 'link';
+  path: string;
+  note: IndexedNote;
+}
+
+/** What one seat may carry, and what it had to leave out. */
+interface Selection {
+  pins: Candidate[];
+  search: Candidate[];
+  links: Candidate[];
+  withheld: number;
+}
+
+/** A seat that leaves this network under a secrets lockdown gets nothing. */
+function lockedOut(input: PackInput): boolean {
+  return input.lockdown.secrets && input.seat.leavesNetwork;
+}
+
+/**
+ * The selection a pack is built from, for one seat. The local selection is
+ * computed first, hidden notes removed before ranking; a seat that leaves
+ * this network then carries that same selection minus its local-only notes,
+ * which count in `withheld`. So a cloud pack is always a subset of the local
+ * one, and the plan (made for the local seat) covers every body it needs.
+ *
+ * Retrieval is keyword only (the index's BM25, title, alias and tag fields
+ * weighted up), so an egress lockdown changes nothing here: no embedder, no
+ * call, can slip in through this input.
+ */
+function select(input: PackInput): Selection {
+  const empty: Selection = { pins: [], search: [], links: [], withheld: 0 };
+  const index = input.index;
+  if (input.mode !== 'full' || !index || lockedOut(input)) return empty;
+  const privacy = input.privacy;
+  const vis = (n: IndexedNote) =>
+    privacy.visibility({ path: n.path, tags: n.tags, oscode: n.oscode });
+  const usable = (n: IndexedNote | undefined): n is IndexedNote =>
+    !!n && !n.evicted && vis(n) !== 'hidden';
+
+  const taken = new Set<string>();
+  // Pins: the person's list first, then notes marked `oscode: pin` by path.
+  const pinPaths = [
+    ...input.pins,
+    ...index
+      .paths()
+      .filter((p) => index.entry(p)?.oscode?.includes('pin'))
+      .sort(compareCodePoints),
+  ];
+  const pins: Candidate[] = [];
+  for (const path of pinPaths) {
+    if (pins.length >= PACK_PINS_MAX) break;
+    const note = index.entry(path);
+    if (taken.has(path) || !usable(note)) continue;
+    taken.add(path);
+    pins.push({ layer: 'pin', path, note });
+  }
+
+  // Search: exclusions first, then the score floor against the best left.
+  const hits = index
+    .search(input.query.slice(0, PACK_QUERY_CHARS), Math.max(1, index.size))
+    .filter((h) => usable(index.entry(h.path)));
+  const top = hits[0]?.score ?? 0;
+  const search: Candidate[] = [];
+  for (const h of hits) {
+    if (search.length >= PACK_SEARCH_MAX || h.score < top * PACK_SEARCH_MIN_RATIO) break;
+    if (taken.has(h.path)) continue;
+    taken.add(h.path);
+    search.push({ layer: 'search', path: h.path, note: index.entry(h.path)! });
+  }
+
+  // One hop from the top hits: each hit's own links in written order, then
+  // its backlinks by source. `from` keeps every top hit that reached a note.
+  const links: Candidate[] = [];
+  const from = new Map<string, string[]>();
+  for (const src of search.slice(0, PACK_LINK_FROM)) {
+    const next = [
+      ...index.outlinks(src.path).map((l) => l.resolved),
+      ...index.backlinks(src.path).map((b) => b.source),
+    ];
+    for (const path of next) {
+      if (path === null || path === src.path) continue;
+      const seen = from.get(path);
+      if (seen) {
+        if (!seen.includes(src.path)) seen.push(src.path);
+        continue;
+      }
+      if (taken.has(path) || links.length >= PACK_LINKS_MAX) continue;
+      const note = index.entry(path);
+      if (!usable(note)) continue;
+      taken.add(path);
+      from.set(path, [src.path]);
+      links.push({ layer: 'link', path, note });
+    }
+  }
+
+  if (!input.seat.leavesNetwork) return { pins, search, links, withheld: 0 };
+
+  // A leaving seat: the same selection, local-only notes withheld, and a hop
+  // kept only when a top hit it may see reached it.
+  const withheld = new Set<string>();
+  const keep = (c: Candidate): boolean => {
+    if (visibleToSeat(vis(c.note), true)) return true;
+    withheld.add(c.path);
+    return false;
+  };
+  const pinsOut = pins.filter(keep);
+  const searchOut = search.filter(keep);
+  const linksOut = links.filter(
+    (c) => keep(c) && (from.get(c.path) ?? []).some((s) => !withheld.has(s)),
+  );
+  return { pins: pinsOut, search: searchOut, links: linksOut, withheld: withheld.size };
+}
+
 /**
  * Phase one: the note bodies the host should read for this pack, at most
- * `PACK_PLAN_MAX_READS`, in a deterministic order.
- *
- * NOT BUILT (wave 0 stub; stream A builds it). Throws.
+ * `PACK_PLAN_MAX_READS`, in a deterministic order (pins, search hits, one-hop
+ * notes). Hidden notes are never named. A host plans for a seat that stays on
+ * this network, the widest plan; any leaving seat's pack is a subset of it.
  */
 export function planContextPack(input: PackInput): { read: string[] } {
-  void input;
-  throw new Error('planContextPack: not built');
+  const sel = select(input);
+  const read = [...sel.pins, ...sel.search, ...sel.links].map((c) => c.path);
+  return { read: read.slice(0, PACK_PLAN_MAX_READS) };
 }
 
 /**
  * Phase two: render the pack for one seat. Layers fill in order, each on what
- * is left of the budget: pins (full only), Current State, handoff, search,
- * one link hop, a vault map. Hidden notes never enter; local-only notes on a
- * leaving seat count in `withheld`. Each note is
+ * is left of the budget: pins (full only, at most 3 and half the budget),
+ * Current State (cut at a `##` with a "continues in" line), handoff, search
+ * (the best section of each hit, a third of the budget at most), one link
+ * hop, a vault map. Hidden notes never enter; local-only notes on a leaving
+ * seat count in `withheld`; a secrets lockdown on a leaving seat gives an
+ * empty pack. Each note is
  * `<note path="..." updated="YYYY-MM-DD" why="...">...</note>` under
- * `VAULT_NOTES_FRAMING`.
- *
- * NOT BUILT (wave 0 stub; stream A builds it). Throws.
+ * `VAULT_NOTES_FRAMING`, frontmatter and `%%comments%%` stripped. The same
+ * input gives the same bytes: no clock, ties by `compareCodePoints`.
  */
 export function buildContextPack(input: PackBuildInput): ContextPack {
-  void input;
-  throw new Error('buildContextPack: not built');
+  const cold = input.mode === 'full' && input.index === null;
+  if (lockedOut(input)) return { text: '', tokens: 0, used: [], withheld: 0, cold: false };
+  const sel = select(input);
+  const cap = Math.floor(Math.max(0, input.budgetTokens) * 4 * PACK_FILL);
+  const out = new Packer(cap);
+  const used: PackSource[] = [];
+  const add = (layer: PackLayer, path: string, title: string, block: string | null): boolean => {
+    if (block === null || !out.fits(block)) return false;
+    out.push(block);
+    used.push({ layer, path, title });
+    return true;
+  };
+  const bodyOf = (path: string): string | null => {
+    const raw = input.bodies.get(path);
+    return raw === undefined ? null : stripNote(raw);
+  };
+
+  // Pins: half the budget at most, split evenly among them.
+  let pinRoom = Math.floor(cap / 2);
+  sel.pins.forEach((c, i) => {
+    const body = bodyOf(c.path);
+    if (body === null) return;
+    const share = Math.min(out.room(), Math.floor(pinRoom / (sel.pins.length - i)));
+    const block = noteBlock(c.path, updatedOf(c.note), 'pin', body, share);
+    if (block && add('pin', c.path, c.note.title, block)) pinRoom -= block.length + SEP.length;
+  });
+
+  // Current State: this project's, from the repo, on what is left.
+  if (input.currentState) {
+    const { path, text } = input.currentState;
+    const block = noteBlock(path, undefined, 'current-state', stripNote(text), out.room(), cutAtH2);
+    add('current-state', path, noteTitle(path), block);
+  }
+
+  if (input.mode === 'full') {
+    // Handoff (empty until 5.4).
+    if (input.handoff) {
+      const block = noteBlock('', undefined, 'handoff', stripNote(input.handoff), out.room());
+      add('handoff', '', 'Handoff', block);
+    }
+
+    // Search: the best section of each hit, a third of the budget at most.
+    const terms = new Set(queryTerms(input.query.slice(0, PACK_QUERY_CHARS)));
+    let searchRoom = Math.min(out.room(), Math.floor(cap / 3));
+    sel.search.forEach((c, i) => {
+      const body = bodyOf(c.path);
+      if (body === null) return;
+      const share = Math.floor(searchRoom / (sel.search.length - i));
+      const block = noteBlock(c.path, updatedOf(c.note), 'search', bestSection(body, terms), share);
+      if (block && add('search', c.path, c.note.title, block)) {
+        searchRoom -= block.length + SEP.length;
+      }
+    });
+
+    // One hop: each note's opening, a third of the budget at most, so the
+    // map keeps its room.
+    let linkRoom = Math.min(out.room(), Math.floor(cap / 3));
+    sel.links.forEach((c, i) => {
+      const body = bodyOf(c.path);
+      if (body === null) return;
+      const share = Math.min(LINK_NOTE_MAX_CHARS, Math.floor(linkRoom / (sel.links.length - i)));
+      const block = noteBlock(c.path, updatedOf(c.note), 'link', body, share);
+      if (block && add('link', c.path, c.note.title, block)) linkRoom -= block.length + SEP.length;
+    });
+
+    // The map: what this seat may know is there.
+    if (input.index) {
+      const block = vaultMap(input, out.room());
+      add('map', '', 'Vault map', block);
+    }
+  }
+
+  const text = out.text();
+  return {
+    text,
+    tokens: Math.ceil(text.length / 4),
+    used: text ? used : [],
+    withheld: sel.withheld,
+    cold,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Rendering
+
+const SEP = '\n\n';
+
+/** Blocks under the framing line, within a character cap. */
+class Packer {
+  private readonly blocks: string[] = [];
+  private length = 0;
+
+  constructor(private readonly cap: number) {}
+
+  /** Characters a new block may still take, its separator paid. */
+  room(): number {
+    const head = this.blocks.length === 0 ? VAULT_NOTES_FRAMING.length + SEP.length : SEP.length;
+    return Math.max(0, this.cap - this.length - head);
+  }
+
+  fits(block: string): boolean {
+    return block.length <= this.room();
+  }
+
+  push(block: string): void {
+    const head = this.blocks.length === 0 ? VAULT_NOTES_FRAMING.length + SEP.length : SEP.length;
+    this.length += head + block.length;
+    this.blocks.push(block);
+  }
+
+  text(): string {
+    return this.blocks.length === 0 ? '' : [VAULT_NOTES_FRAMING, ...this.blocks].join(SEP);
+  }
+}
+
+type Cutter = (body: string, max: number, path: string) => string;
+
+/**
+ * One note block, at most `max` characters, or null when too little of the
+ * note would fit to be worth it. The body is quoted data: any `</note` or
+ * `</vault-map` inside is written with a space, so a note cannot close its own
+ * frame.
+ */
+function noteBlock(
+  path: string,
+  updated: string | undefined,
+  why: PackLayer,
+  body: string,
+  max: number,
+  cut: Cutter = cutAtLine,
+): string | null {
+  const attrs = [
+    path ? ` path="${attr(path)}"` : '',
+    updated ? ` updated="${updated}"` : '',
+    ` why="${why}"`,
+  ].join('');
+  const open = `<note${attrs}>\n`;
+  const close = '\n</note>';
+  const room = max - open.length - close.length;
+  const safe = defuse(body);
+  if (safe.trim() === '' || room < Math.min(MIN_NOTE_BODY, safe.length)) return null;
+  const fitted = safe.length <= room ? safe : cut(safe, room, path);
+  if (fitted.trim() === '') return null;
+  return `${open}${fitted}${close}`;
+}
+
+/** Cut on a line boundary, with a line saying where the rest is. */
+function cutAtLine(body: string, max: number, path: string): string {
+  const tail = continues(path);
+  const room = max - tail.length;
+  if (room < MIN_NOTE_BODY) return '';
+  let head = safeSlice(body, room);
+  const nl = head.lastIndexOf('\n');
+  if (nl >= room / 2) head = head.slice(0, nl);
+  return `${head.trimEnd()}${tail}`;
+}
+
+/** Current State: cut before a `##` heading when one fits, else on a line. */
+function cutAtH2(body: string, max: number, path: string): string {
+  const tail = continues(path);
+  const room = max - tail.length;
+  if (room < MIN_NOTE_BODY) return '';
+  let best = -1;
+  const re = /\n(?=##[ \t])/g;
+  for (let m = re.exec(body); m && m.index <= room; m = re.exec(body)) best = m.index;
+  if (best > 0) return `${body.slice(0, best).trimEnd()}${tail}`;
+  return cutAtLine(body, max, path);
+}
+
+function continues(path: string): string {
+  return path ? `\n(continues in ${defuse(path)})` : '\n(continues)';
+}
+
+/** At most `n` code units, never half a surrogate pair. */
+function safeSlice(s: string, n: number): string {
+  if (s.length <= n) return s;
+  const c = s.charCodeAt(n - 1);
+  return s.slice(0, c >= 0xd800 && c <= 0xdbff ? n - 1 : n);
+}
+
+/** Quoted text cannot close the frame it sits in. */
+function defuse(text: string): string {
+  return text.replace(/<\/(note|vault-map)/gi, '</ $1');
+}
+
+/** An attribute value, escaped, on one line. */
+function attr(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/[\r\n\t]+/g, ' ');
+}
+
+/** The note's date, from the index, so a stale note reads as older. */
+function updatedOf(note: IndexedNote): string | undefined {
+  const day = note.updatedAt.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : undefined;
+}
+
+/** A note's text as the pack quotes it: frontmatter and `%%comments%%` gone,
+ *  outer blank lines trimmed. */
+export function stripNote(text: string): string {
+  const scan = scanNote(text);
+  const from = scan.frontmatter?.end ?? 0;
+  const cuts = scan.skipped
+    .filter((s) => s.kind === 'comment' && s.end > from)
+    .sort((a, b) => a.start - b.start);
+  let out = '';
+  let at = from;
+  for (const c of cuts) {
+    const start = Math.max(c.start, at);
+    out += text.slice(at, start);
+    at = Math.max(at, c.end);
+  }
+  out += text.slice(at);
+  return out.replace(/^(?:[ \t]*\r?\n)+/, '').trimEnd();
+}
+
+/** The section (a heading to the next, or the text above the first) that
+ *  holds the most query terms; the first on a tie; the whole body when none
+ *  holds any. */
+function bestSection(body: string, terms: ReadonlySet<string>): string {
+  const lines = body.split('\n');
+  const starts = scanNote(body)
+    .headings.map((h) => h.line)
+    .filter((l, i, a) => l > 0 && a.indexOf(l) === i)
+    .sort((a, b) => a - b);
+  const bounds = [0, ...starts, lines.length];
+  let best = body;
+  let bestScore = 0;
+  for (let i = 0; i + 1 < bounds.length; i++) {
+    const section = lines
+      .slice(bounds[i], bounds[i + 1])
+      .join('\n')
+      .trim();
+    if (!section) continue;
+    let score = 0;
+    for (const t of tokenize(section)) if (terms.has(t)) score++;
+    if (score > bestScore) {
+      best = section;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+/** The compact map: folders (top level) with note counts and the newest
+ *  titles, only of notes this seat may see. Shrinks to fit, or null. */
+function vaultMap(input: PackInput, max: number): string | null {
+  const index = input.index;
+  if (!index) return null;
+  const notes = index.entries().filter((n) => {
+    const v = input.privacy.visibility({ path: n.path, tags: n.tags, oscode: n.oscode });
+    return visibleToSeat(v, input.seat.leavesNetwork);
+  });
+  if (notes.length === 0) return null;
+  const folders = new Map<string, number>();
+  for (const n of notes) {
+    const slash = n.path.indexOf('/');
+    const key = slash === -1 ? '' : n.path.slice(0, slash);
+    folders.set(key, (folders.get(key) ?? 0) + 1);
+  }
+  const folderLine =
+    'Folders: ' +
+    [...folders.keys()]
+      .sort(compareCodePoints)
+      .slice(0, MAP_FOLDERS)
+      .map((f) => `${f === '' ? '(top level)' : oneLine(f)} ${folders.get(f)}`)
+      .join(', ');
+  const newest = [...notes]
+    .sort(
+      (a, b) => compareCodePoints(b.updatedAt, a.updatedAt) || compareCodePoints(a.path, b.path),
+    )
+    .slice(0, MAP_NEWEST)
+    .map((n) => `- ${oneLine(n.title)} (${oneLine(n.path)}${dateSuffix(n)})`);
+  for (let k = newest.length; k >= 0; k--) {
+    const body = k > 0 ? `${folderLine}\nNewest:\n${newest.slice(0, k).join('\n')}` : folderLine;
+    const block = `<vault-map notes="${notes.length}">\n${defuse(body)}\n</vault-map>`;
+    if (block.length <= max) return block;
+  }
+  return null;
+}
+
+function dateSuffix(n: IndexedNote): string {
+  const d = updatedOf(n);
+  return d ? `, ${d}` : '';
+}
+
+function oneLine(s: string): string {
+  return s.replace(/[\r\n\t]+/g, ' ');
 }
 
 /** What a host prepares once per task (CTO I7, I8): everything a render
