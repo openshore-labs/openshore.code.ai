@@ -1236,16 +1236,57 @@ configures the vault by itself; every field has a runtime consumer; a field
 that would widen reach is rejected from the in-vault file; a `vaultWrite`
 under `.oscode/` is denied).
 
+Shipped 2026-09-27 (CTO L1 to L8, L11, L13 to L16, L18, L19): one pure core
+(`harness/vault/settings.ts`: parse, resolve, union, patch, defaults) through
+`os-code/protocol`; the file `.oscode/vault.json` read on every host
+(`core/vault/settingsFile.ts` on the engine and daemon, `lib/vaultSettings.ts`
+in the app) and written only by the sheet through the seam's `writeConfig` by
+compare-and-swap (desktop folder, Your computer, Local's sealed key); Obsidian
+wins where it sets a convention and the row reads "From Obsidian"; the file
+only narrows (widening keys set aside with a plain line, lists union only); a
+hard deny under `.oscode/` on every write path, including a symlinked note
+and `writeFile`/`editFile` under an always-allow grant (`runShell` stays under
+its ask rule); one sheet in seven sections from note Options, the storage
+sheet and Settings, with "Notes in chats", "Handoff" and "Vault settings"
+after Memory in Wayfinding; Notes in chats, Handoff (off-only) and Room for
+notes (lower-only against the machine) ride engine sessions as
+`vaultOverrides`. The team vault on main shows the defaults read-only. Not
+shown yet: "This project's settings turn this off." (the app cannot read a
+project's config) and the machine's pack size above Large.
+
 **7.2 Provenance (M).** An `oscode:` frontmatter namespace on agent-written
 notes (source, model, seat class, created, reviewed), merged without touching
 the person's own keys, and a teal or amber chip in the note view. Closes
 [obs-15]. Test: `vaultCore.test.ts`, the merge keeps the rest of the YAML byte
 for byte.
 
+Shipped 2026-09-27 (L9, L10, plan change): flat top-level `oscode-*` keys
+(`source`, `model`, `where`, `size`, `provider`, `created`, `reviewed`), since
+a nested `oscode:` map would collide with the privacy marks and drop them; the
+pure `mergeProvenance` in `harness/vault/provenance.ts`, byte for byte, which
+skips rather than touch bad frontmatter. It runs before the approval on both
+paths, so the person approves the exact bytes: the engine's `vaultWrite` diff
+carries the property lines and execute writes the hashed bytes or nothing; the
+app computes an addition's final text before the card, names the change ("Also
+records in its properties: Edited by {model} · Local."), and writes it by
+compare-and-swap on the version read. Crew run notes use the same merge. The
+chip, "About this note" and Mark as reviewed (the person's compare-and-swap
+write) are in the note view. Tests: `vaultCore.test.ts`,
+`vaultApprovedBytes.test.ts`, `vaultProvenanceEngine.test.ts`, the app's
+`vaultTool.test.ts`.
+
 **7.3 A starter layout for an empty vault only (S).** `Inbox/`,
 `Templates/Daily.md`, and a "Vault conventions" note the person can pin. An
 existing vault is never touched. Closes [custom-11]. Test:
 `vaultStore.test.ts`, a non-empty vault is unchanged.
+
+Shipped 2026-09-27 (L12): `lib/vaultStarter.ts`, offered only on an empty
+personal vault with folders and no config at all, opt-in through a preview
+sheet, emptiness re-checked before writing, every write `ifAbsent`, a partial
+result said so. The line that Private and Journal stay off cloud models shows
+only when the starter's `.oscode/vault.json` actually landed (a machine
+`vault.localOnly` replaces the built-in default, so the file's union is what
+makes it true).
 
 **7.4 Team vault settings and entitlement (M).** An `org_vault_settings` row
 (who may delete: admins or members; the team context folder) and an
@@ -1254,6 +1295,17 @@ team vault is part of the commercial tiers. The check gates writes only; an
 org that lapses can still read and export every note it has. Pricing stays a
 Board gate. Closes [orgvault-14] [orgvault-17]. Test: pgTAP cases, including
 a lapsed org reading and exporting.
+
+Built 2026-09-27, held (L17): `0021_org_vault_settings.sql` and its pgTAP on
+`vault-m2-team`, waiting with 0019 and 0020 (pushed in that order):
+`org_vault_settings`, admin-only compare-and-swap `org_vault_settings_put`,
+`org_vault_entitled`, `OV402` on every write RPC when not entitled, `OV403`
+for a member's delete when only admins may (a move is not gated by the delete
+role). The founder's rule for an org with no entitlement row: writes stay
+open until `no_entitlement_vault_until()` (null in the beta), which one
+migration sets at least 30 days out when pay gates return; a lapsed paid row
+is read-only with export regardless. Team settings in the app land with that
+branch; on main the team vault shows the defaults read-only.
 
 ### M8. Ship gate
 

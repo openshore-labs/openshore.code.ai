@@ -562,3 +562,264 @@ export interface UnlinkedMention extends TextRange {
   name: string;
   line: number;
 }
+
+// ===========================================================================
+// Vault M7, "The customization surface" (CTO L1 to L14, CX Y1 to Y17). Wave 0
+// contracts: the shapes the M7 streams code against. The functions that
+// produce them live in settings.ts (stream A), provenance.ts (stream B) and
+// yamlScalar.ts; the hosts read and write through them (streams C to F).
+
+// ---------------------------------------------------------------------------
+// settings.ts (L1 to L4; stream A)
+
+/** Where a new note goes (Obsidian's `newFileLocation`). */
+export type VaultNewNoteLocation = 'root' | 'current' | 'folder';
+/** The link a `[[` pick or the accessory bar inserts. */
+export type VaultLinkStyle = 'wiki' | 'markdown';
+/** The path a new link carries (Obsidian's `newLinkFormat`; desktop row only,
+ *  CX Y1). */
+export type VaultLinkFormat = 'shortest' | 'relative' | 'absolute';
+/** What a rename does to links (Obsidian's `alwaysUpdateLinks`). */
+export type VaultLinkUpdateRule = 'ask' | 'always';
+/** How a note opens (Obsidian's `defaultViewMode`; a fresh note still edits). */
+export type VaultOpenMode = 'read' | 'edit';
+/** The editor's face: tokens, never a font name (`--vault-font`). */
+export type VaultEditorFont = 'default' | 'serif' | 'mono';
+/** A step on the platform's base size, never pixels (`--vault-size-step`),
+ *  so iOS Dynamic Type still wins. */
+export type VaultEditorSize = 'smaller' | 'default' | 'larger';
+/** The tree's order. `created` is offered only where the listing carries a
+ *  creation time; it is never faked. */
+export type VaultTreeSort = 'name' | 'modified' | 'created';
+/** Delete to Trash (one tap where Trash is real), or for good (K6's two taps
+ *  every time, L11). */
+export type VaultDeleteMode = 'trash' | 'permanent';
+/** Room for notes (L13): a factor on the class's budget (0.5, 1, 1.5), always
+ *  capped by `vault.packMaxTokens`. Machine config and the app only; never
+ *  the in-vault file. */
+export type VaultPackSize = 'small' | 'normal' | 'large';
+
+/** `.oscode/vault.json` as parsed (L2): every field optional, `version: 1`.
+ *  Conventions and narrowing only; a key that would widen reach is never a
+ *  field here (it lands in `setAside`). Folder values are vault-relative, no
+ *  `..`, no dot segment, no leading slash; lists hold at most 200 entries and
+ *  each string at most 512 characters. */
+export interface VaultSettingsFile {
+  version?: 1;
+  newNotes?: { location?: VaultNewNoteLocation; folder?: string };
+  daily?: { folder?: string; format?: string; template?: string };
+  templates?: { folder?: string; dateFormat?: string; timeFormat?: string };
+  /** Obsidian's form: `/`, `./`, `./sub`, or a vault folder. */
+  attachments?: { folder?: AttachmentFolderSetting };
+  links?: {
+    style?: VaultLinkStyle;
+    format?: VaultLinkFormat;
+    updateOnRename?: VaultLinkUpdateRule;
+  };
+  editor?: { openMode?: VaultOpenMode; font?: VaultEditorFont; size?: VaultEditorSize };
+  tree?: { sort?: VaultTreeSort };
+  delete?: VaultDeleteMode;
+  /** The one folder the agent may write in (engine `vaultWrite`, app
+   *  `vaultPropose`). Absent: anywhere in the vault. */
+  agent?: { folder?: string };
+  /** Union only (L4): joins the machine's and the device's lists. */
+  exclude?: string[];
+  localOnly?: { paths?: string[]; tags?: string[] };
+}
+
+/** Every field of the in-vault file, dotted, in CX Y1's sheet order. The
+ *  value list is `VAULT_SETTINGS_FIELDS` (settings.ts); L18's table test fails
+ *  a field without a runtime consumer. */
+export type VaultSettingsField =
+  | 'newNotes.location'
+  | 'newNotes.folder'
+  | 'editor.openMode'
+  | 'tree.sort'
+  | 'delete'
+  | 'exclude'
+  | 'localOnly.paths'
+  | 'localOnly.tags'
+  | 'agent.folder'
+  | 'daily.folder'
+  | 'daily.format'
+  | 'daily.template'
+  | 'templates.folder'
+  | 'templates.dateFormat'
+  | 'templates.timeFormat'
+  | 'links.style'
+  | 'links.format'
+  | 'links.updateOnRename'
+  | 'attachments.folder'
+  | 'editor.font'
+  | 'editor.size';
+
+/** Why a key of the in-vault file was not applied (L4): `widens` (a key on
+ *  `WIDENING_KEYS`, a `!` glob, an agent folder that climbs or names a dot
+ *  folder), `unknown` (any other key), `invalid` (a known key of the wrong
+ *  type or value; the rest still applies). */
+export type VaultSettingsSetAsideReason = 'widens' | 'unknown' | 'invalid';
+
+/** One key set aside. `key` is dotted (`pack`, `localOnly.paths[0]`); `plain`
+ *  is the CTO-owned fragment CX Y3 wraps ("This vault's settings file also
+ *  asks to {plain}. ..."), e.g. `give notes more room in each chat`. */
+export interface VaultSettingsSetAside {
+  key: string;
+  reason: VaultSettingsSetAsideReason;
+  plain: string;
+}
+
+/** `parseVaultSettingsFile(text)`: the allow-listed fields and what was set
+ *  aside, or `unreadable` for bad JSON or a top level that is not an object
+ *  (CX Y5: every row read-only, the last good narrowing kept, never
+ *  overwritten). */
+export type VaultSettingsParse =
+  { file: VaultSettingsFile; setAside: VaultSettingsSetAside[] } | { unreadable: true };
+
+/** Where a resolved field's value came from (L3): a convention Obsidian sets
+ *  wins and its row reads "From Obsidian"; else the in-vault file; else the
+ *  default. */
+export type VaultSettingsSource = 'obsidian' | 'vault' | 'default';
+
+/** How the in-vault file read: `absent` (no file), `ok`, `unreadable` (bad
+ *  JSON; rows read-only), `unavailable` (`downloading`, `unsupported`,
+ *  `refused`, `too-large` or a throw: the host keeps the last good narrowing,
+ *  L4). */
+export type VaultSettingsFileState = 'absent' | 'ok' | 'unreadable' | 'unavailable';
+
+/** Obsidian's `userIgnoreFilters`, read and never stored in the in-vault
+ *  file (L2). Plain paths leave notes out of search, `[[` suggestions,
+ *  unlinked mentions and retrieval candidates. NOT privacy: no copy says a
+ *  model does not see them (CX Y2). A `/regex/` entry is skipped and counted. */
+export interface VaultIgnoreFilters {
+  paths: string[];
+  regexSkipped: number;
+}
+
+/** The vault's settings, resolved per field (L3). `VAULT_SETTINGS_DEFAULTS`
+ *  is exactly today's behavior with no file anywhere (L18). */
+export interface ResolvedVaultSettings {
+  newNotes: { location: VaultNewNoteLocation; folder?: string };
+  daily: DailyNoteConfig;
+  templates: { folder?: string; dateFormat: string; timeFormat: string };
+  attachments: { folder?: AttachmentFolderSetting };
+  links: { style: VaultLinkStyle; format: VaultLinkFormat; updateOnRename: VaultLinkUpdateRule };
+  editor: { openMode: VaultOpenMode; font: VaultEditorFont; size: VaultEditorSize };
+  tree: { sort: VaultTreeSort };
+  delete: VaultDeleteMode;
+  agent: { folder?: string };
+  /** The in-vault file's narrowing alone; each host unions it with its own
+   *  (`unionNarrowing`) before `compileVaultPrivacy`. */
+  narrowing: VaultPrivacyNarrowing;
+  ignore: VaultIgnoreFilters;
+  source: Record<VaultSettingsField, VaultSettingsSource>;
+  setAside: VaultSettingsSetAside[];
+  fileState: VaultSettingsFileState;
+  /** The in-vault file's version when it read `ok`: the `ifMatch` of the next
+   *  write, and part of the compiled privacy cache key (L6). */
+  fileVersion?: string;
+  /** Any Obsidian config file read `ok` (CX Y2's "Obsidian keeps its own
+   *  setting for this." sub). */
+  obsidian: boolean;
+}
+
+/** The four reads `resolveVaultSettings` takes, by role. */
+export interface VaultSettingsReads {
+  /** `oscode/vault` */
+  file: ConfigRead;
+  /** `obsidian/app` */
+  app: ConfigRead;
+  /** `obsidian/daily-notes` */
+  daily: ConfigRead;
+  /** `obsidian/templates` */
+  templates: ConfigRead;
+}
+
+/** One change the sheet commits (L7): a field and its new value, or `null`
+ *  for "Default", which removes the key. Only the changed field is written;
+ *  every other key, unknown and set-aside ones too, is kept as found. */
+export interface VaultSettingsPatch {
+  field: VaultSettingsField;
+  value: string | readonly string[] | null;
+}
+
+/** The in-vault file's logical config name, the one name `writeConfig`
+ *  accepts (L7). Every `obsidian/*` name is refused on every host. */
+export type VaultSettingsConfigName = Extract<VaultConfigName, 'oscode/vault'>;
+
+/** A config write's precondition, the note write's shape (L7). */
+export type ConfigWriteGuard = { ifMatch: string } | { ifAbsent: true };
+
+/** What a config write did on the Node side (the desktop folder's
+ *  `writeVaultConfigFile`, main's `osc:vaultWriteConfig`, the hub's PUT). A
+ *  conflict is a result, never a throw, and leaves the file as it was;
+ *  `current` is the file there now, when there is one. `refused`: a name
+ *  other than `oscode/vault`, or `.oscode` is not a real directory; `too-large`:
+ *  over `VAULT_CONFIG_MAX_BYTES`. */
+export type ConfigWriteResult =
+  | { ok: true; version: string }
+  | {
+      ok: false;
+      conflict: 'changed' | 'missing' | 'exists' | 'downloading';
+      current?: { text: string; version: string };
+    }
+  | { ok: false; reason: 'refused' | 'too-large' };
+
+/** The app's per-session overrides into an engine session (L13), each the
+ *  `humanizerEnabled` shape: off-only for the switches, lower-only for the
+ *  size. `BootstrapOptions.handoff` is already the handoff TEXT, so the
+ *  switch rides here. */
+export interface VaultOverrides {
+  context?: 'off';
+  handoff?: 'off';
+  packSize?: VaultPackSize;
+}
+
+// ---------------------------------------------------------------------------
+// provenance.ts, yamlScalar.ts (L9, L10; stream B)
+
+/** The flat provenance keys (L9), top-level frontmatter, one line each, so
+ *  Obsidian shows each as a plain property and a merge is a line replace.
+ *  `oscode:` stays the M4 marks; `oscodeMarks` never reads an `oscode-*` key
+ *  and `readProvenance` never reads `oscode:`. */
+export type ProvKey =
+  | 'oscode-source'
+  | 'oscode-model'
+  | 'oscode-where'
+  | 'oscode-size'
+  | 'oscode-provider'
+  | 'oscode-created'
+  | 'oscode-reviewed';
+
+/** Who wrote the note: an agent's new note, an agent's edit to a note it did
+ *  not create (CX "Edited by"), a Crew routine, a saved handoff. */
+export type ProvSource = 'agent' | 'agent-edit' | 'crew' | 'handoff';
+/** Where the writing seat ran, judged by address at write time
+ *  (`leavesThisNetwork`), never by a provider label. */
+export type ProvWhere = 'local' | 'cloud';
+/** The writing seat's class (the same four as `ModelClass`). */
+export type ProvSize = 'tiny' | 'small' | 'mid' | 'large';
+
+/** A note's provenance as read back (`readProvenance`). A key absent or of
+ *  the wrong shape is left out; nothing is inferred. */
+export interface NoteProvenance {
+  source?: ProvSource;
+  model?: string;
+  where?: ProvWhere;
+  size?: ProvSize;
+  /** Cloud only. */
+  provider?: string;
+  /** ISO 8601. */
+  created?: string;
+  /** ISO 8601; absent until the person marks it. */
+  reviewed?: string;
+}
+
+/** The fields one merge sets: a string sets the line, `null` removes it
+ *  ("Mark as not reviewed"). */
+export type ProvenanceFields = Partial<Record<ProvKey, string | null>>;
+
+/** `mergeProvenance(text, fields)` (L10): the new text, or why the note was
+ *  left as it was (`invalid` or `too-large` frontmatter: never made worse;
+ *  `verify`: the re-parse did not prove every other byte identical). A skip
+ *  still lets the approved text land, without provenance. */
+export type ProvenanceMerge = { text: string } | { skipped: 'invalid' | 'too-large' | 'verify' };

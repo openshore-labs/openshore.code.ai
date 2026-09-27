@@ -264,4 +264,22 @@ describe('project pins and the stored handoff (M5)', () => {
     });
     expect((await failing.prepare('one')).handoff).toBeUndefined();
   });
+
+  it("leaves the templates folder and Obsidian's ignored paths out of the reads (Vault M7, L2)", async () => {
+    write(root, 'Notes/a.md', 'body a');
+    write(root, 'Templates/Daily.md', '## Plan');
+    write(root, 'Archive/old.md', 'old');
+    await (await engineVaultIndex(root)).whenReconciled(5000);
+    const source = createVaultContextSource({
+      vaultRoot: root,
+      privacy,
+      settings: () => ({
+        templates: { folder: 'templates', dateFormat: 'YYYY-MM-DD', timeFormat: 'HH:mm' },
+        ignore: { paths: ['Archive/'], regexSkipped: 0 },
+      }),
+      plan: () => ({ read: ['Notes/a.md', 'Templates/Daily.md', 'Archive/old.md'] }),
+    });
+    const prepared = await source.prepare('plan the day');
+    expect([...prepared.bodies.keys()]).toEqual(['Notes/a.md']);
+  });
 });

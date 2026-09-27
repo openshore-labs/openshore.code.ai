@@ -10,7 +10,13 @@
 // their own. Every field is additive; an old daemon ignores them and an old
 // app sends none.
 import type { AgentEvent } from '../core/agent/types.js';
-import type { AttachmentMeta, VaultTrashEntry } from '../harness/vault/types.js';
+import type {
+  AttachmentMeta,
+  ConfigWriteResult,
+  VaultOverrides,
+  VaultPackSize,
+  VaultTrashEntry,
+} from '../harness/vault/types.js';
 
 /** The route prefix every vault route shares. */
 export const VAULT_ROUTE_PREFIX = '/vault';
@@ -119,7 +125,9 @@ export interface VaultWireError {
  *  the caller's root; `cwd` gives Current State only when it passes the same
  *  checks a session create does. The phone never ships note bodies. */
 export interface ChatVaultFields {
-  vaultPack?: { cwd?: string; projectName?: string };
+  /** `packSize` is the app's Room for notes (Vault M7, CTO L13): it may
+   *  only lower the machine's `vault.packSize`, never raise it. */
+  vaultPack?: { cwd?: string; projectName?: string; packSize?: VaultPackSize };
   /** Memory off: no pack, no handoff read. */
   memory?: false;
 }
@@ -138,6 +146,9 @@ export interface SessionCreateVaultFields {
   handoff?: string;
   /** The project's own pins (`Project.vaultPins`), at most 8 paths. */
   vaultPins?: string[];
+  /** The app's vault switches (Vault M7, CTO L13), off-only and lower-only;
+   *  the daemon validates each value and drops anything else. */
+  vaultOverrides?: VaultOverrides;
 }
 
 // ---------------------------------------------------------------------------
@@ -273,3 +284,41 @@ export interface VaultAttachmentsListResponse {
   attachments: AttachmentMeta[];
   truncated: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// Vault M7 (CTO L5, L7): the vault settings file over the hub. `GET
+// /vault/config/<name>` (above) already reads it; the one write is `PUT
+// /vault/config/oscode/vault`, on the caller's own root (`vaultRootFor(auth)`,
+// so a member writes only their own), with a compare-and-swap guard. Every
+// `obsidian/*` name is refused (403). `/vault/privacy` stays machine-only.
+// Wave 0 contracts; stream D serves them and stream E calls them.
+
+/** The one config name a PUT may write. */
+export const VAULT_SETTINGS_CONFIG_NAME = 'oscode/vault';
+
+/** `PUT /vault/config/oscode/vault` body. Exactly one guard: `ifMatch`
+ *  replaces the file only while its version is still this one; `ifAbsent`
+ *  creates it (and `.oscode/`) only while there is none. Never unguarded.
+ *  `text` is at most `VAULT_CONFIG_MAX_BYTES` of UTF-8 (413 over it). */
+export interface VaultConfigPutBody {
+  text: string;
+  ifMatch?: string;
+  ifAbsent?: true;
+}
+
+/** `PUT` 200: the file's new version. */
+export interface VaultConfigPutResponse {
+  name: string;
+  version: string;
+}
+
+/** `PUT` 409. `current` is the file there now, when there is one, so the
+ *  sheet re-reads without a second round trip. */
+export interface VaultConfigConflictResponse {
+  conflict: 'changed' | 'missing' | 'exists';
+  current?: VaultConfigResponse;
+}
+
+/** What the daemon's handler hands back from `writeVaultConfigFile`, before
+ *  it maps it to a status: the same result main's IPC answers with. */
+export type VaultConfigWriteResult = ConfigWriteResult;

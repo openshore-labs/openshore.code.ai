@@ -60,7 +60,13 @@ import { runVerifyAsync } from './verifyRun.js';
 import { pageCheck } from './pageCheck.js';
 import { commandDigest, detectCheckCommand } from './checkDetect.js';
 import { addVerifyGrant, hasVerifyGrant } from '../../config/trust.js';
-import { deriveProfile, classBlurb, type ModelClassProfile } from '../../harness/profile.js';
+import {
+  deriveProfile,
+  deriveModelClass,
+  classBlurb,
+  type ModelClassProfile,
+} from '../../harness/profile.js';
+import { vaultPackSize } from '../../harness/vault/settings.js';
 import { withholdLocalOnly } from '../../harness/vault/privacy.js';
 import {
   buildContextPack,
@@ -339,6 +345,16 @@ export class AgentSession {
     // a local-only note is read only by a seat that stays (CTO I5). Judged by
     // address, live, since an escalation switches the seat mid-task.
     deps.toolContext.seatLeavesNetwork = () => leavesThisNetwork(this.active.provider);
+    // The seat answering now, for the provenance lines on a note the agent
+    // writes (Vault M7, CTO L9): its model, its class, and a cloud seat's
+    // provider. Where it ran is `seatLeavesNetwork`, judged by address.
+    deps.toolContext.vaultSeat = () => ({
+      model: this.active.model,
+      size:
+        this.modelProfile?.modelClass ??
+        deriveModelClass({ model: this.active.model, kind: this.active.provider.kind }),
+      ...(leavesThisNetwork(this.active.provider) ? { provider: this.active.provider.label } : {}),
+    });
     // A vault read is capped per class (the seat answering now), past which it
     // returns the outline and asks for a section (CTO I11).
     deps.toolContext.vaultReadCapChars = () =>
@@ -641,7 +657,17 @@ export class AgentSession {
   /** Prepare this task's vault context once, before the first turn. A source
    *  that fails leaves the task without a pack, never without an answer. */
   private async prepareVaultContext(task: string, signal: AbortSignal): Promise<void> {
-    if (!this.packEnabled) return;
+    if (!this.packEnabled) {
+      // No pack, but the vault tools still judge notes by the vault's own
+      // settings: read them fresh at the task start (the pack's prepare
+      // does this when it runs), so a change is in force from this task.
+      try {
+        await this.deps.toolContext.vaultRefresh?.({ force: true });
+      } catch {
+        // The holder keeps its last good settings.
+      }
+      return;
+    }
     try {
       this.prepared = await this.deps.vaultContext!.prepare(task, signal);
     } catch (err) {
@@ -678,7 +704,16 @@ export class AgentSession {
     // Vault layers need a vault; without one the pack is Current State only.
     const hasVault = Boolean(this.deps.toolContext.vaultRoot);
     if (!hasVault) mode = 'current-state';
-    const budgetTokens = packBudgetTokens(profile, caps.contextTokens);
+    // Room for notes (Vault M7, CTO L13): the machine's size, lowered by
+    // the app's switch (folded into this config at open), always capped by
+    // the machine's `packMaxTokens`.
+    const vaultCfg = this.deps.config.vault;
+    const budgetTokens = packBudgetTokens(
+      profile,
+      caps.contextTokens,
+      vaultPackSize(vaultCfg?.packSize, undefined),
+      vaultCfg?.packMaxTokens,
+    );
     const secrets = Boolean(this.deps.projectSecrets?.trim());
     const key = JSON.stringify([mode, budgetTokens, profile.modelClass, leaves]);
     if (this.packCache?.key !== key) {

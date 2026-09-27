@@ -90,6 +90,7 @@ describe('vaultCaps', () => {
       taskWriteBack: true,
       linkRewrite: true,
       today: true,
+      settingsWrite: false,
     });
   });
 
@@ -106,6 +107,7 @@ describe('vaultCaps', () => {
       taskWriteBack: false,
       linkRewrite: false,
       today: false,
+      settingsWrite: false,
     });
   });
 
@@ -150,10 +152,52 @@ describe('vaultCaps', () => {
         taskWriteBack: false,
         linkRewrite: false,
         today: true,
+        settingsWrite: false,
       });
     }
     expect(vaultCaps(p, { readOnly: false, reach: 'unknown' }).rename).toBe(true);
     expect(vaultCaps(p, { readOnly: false, reach: 'reachable' }).trash).toBe(true);
+  });
+});
+
+describe('vaultCaps, Vault M7 (CTO L7, L11)', () => {
+  const full = fake({ compareAndSwap: true, ...ALL_M6, writeConfig: noop });
+
+  it('settingsWrite needs writeConfig and compare-and-swap together', () => {
+    expect(vaultCaps(full, WRITABLE).settingsWrite).toBe(true);
+    expect(vaultCaps(fake({ compareAndSwap: true, ...ALL_M6 }), WRITABLE).settingsWrite).toBe(
+      false,
+    );
+    expect(vaultCaps(fake({ ...ALL_M6, writeConfig: noop }), WRITABLE).settingsWrite).toBe(false);
+  });
+
+  it('read-only and away keep the settings sheet from saving', () => {
+    expect(vaultCaps(full, { readOnly: true }).settingsWrite).toBe(false);
+    expect(vaultCaps(full, { readOnly: false, reach: 'away' }).settingsWrite).toBe(false);
+    expect(vaultCaps(full, { readOnly: false, reach: 'unknown' }).settingsWrite).toBe(true);
+    expect(vaultCaps(full, { readOnly: false, reach: 'reachable' }).settingsWrite).toBe(true);
+  });
+
+  it("the vault's delete: permanent turns one-tap Trash off, and nothing else", () => {
+    const base = vaultCaps(full, WRITABLE);
+    const permanent = vaultCaps(full, WRITABLE, { delete: 'permanent' });
+    expect(permanent).toEqual({ ...base, trash: false, emptyTrash: false });
+    expect(vaultCaps(full, WRITABLE, { delete: 'trash' })).toEqual(base);
+    expect(vaultCaps(full, WRITABLE, {})).toEqual(base);
+  });
+
+  it('every provider on main with writeConfig declares compare-and-swap', () => {
+    for (const id of VAULT_COPY_PROVIDERS) {
+      const p = providerFor(id)!;
+      if (typeof p.writeConfig === 'function') expect(p.compareAndSwap, id).toBe(true);
+    }
+  });
+
+  it('the team vault on main has no writeConfig, so its settings read as defaults', () => {
+    expect(providerFor('org')!.writeConfig).toBeUndefined();
+    expect(vaultCapLine('org', 'settingsWrite')).toBe(
+      'Team vault settings cannot change here yet.',
+    );
   });
 });
 
@@ -170,6 +214,8 @@ const MAIN: Record<string, Record<string, boolean>> = {
     taskWriteBack: true,
     linkRewrite: true,
     today: true,
+    // writeConfig under compare-and-swap (Vault M7, CTO L7).
+    settingsWrite: true,
   },
   files: {
     rename: true,
@@ -181,6 +227,8 @@ const MAIN: Record<string, Record<string, boolean>> = {
     taskWriteBack: true,
     linkRewrite: true,
     today: true,
+    // writeConfig under compare-and-swap (Vault M7, CTO L7).
+    settingsWrite: true,
   },
   hub: {
     rename: true,
@@ -192,6 +240,8 @@ const MAIN: Record<string, Record<string, boolean>> = {
     taskWriteBack: true,
     linkRewrite: true,
     today: true,
+    // writeConfig under compare-and-swap (Vault M7, CTO L7).
+    settingsWrite: true,
   },
   icloud: {
     rename: false,
@@ -203,6 +253,7 @@ const MAIN: Record<string, Record<string, boolean>> = {
     taskWriteBack: false,
     linkRewrite: false,
     today: false,
+    settingsWrite: false,
   },
   gdrive: {
     rename: false,
@@ -214,6 +265,7 @@ const MAIN: Record<string, Record<string, boolean>> = {
     taskWriteBack: false,
     linkRewrite: false,
     today: false,
+    settingsWrite: false,
   },
   org: {
     rename: false,
@@ -225,6 +277,7 @@ const MAIN: Record<string, Record<string, boolean>> = {
     taskWriteBack: false,
     linkRewrite: false,
     today: false,
+    settingsWrite: false,
   },
 };
 

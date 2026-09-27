@@ -82,7 +82,7 @@ import {
 import { SEARCH_PROTOCOL_NOTE } from '../harness/localSearch.js';
 import { EgressPolicy } from '../core/security/egress.js';
 import { trustSessionFolder } from '../core/agent/projectTrust.js';
-import { vaultPrivacyConfig } from '../core/agent/registry.js';
+import { vaultPrivacyConfig, vaultPrivacyHolder } from '../core/agent/registry.js';
 import { currentStateReader } from '../core/vault/contextSource.js';
 import {
   ensureVaultRootAt,
@@ -91,9 +91,9 @@ import {
   vaultRootForOwner,
 } from '../core/vault/memberRoots.js';
 import { isVaultNotePath } from '../core/vault/folderFs.js';
-import { compileVaultPrivacy } from '../harness/vault/privacy.js';
+import { vaultPackSize } from '../harness/vault/settings.js';
 import { HANDOFF_MAX_BYTES } from '../harness/handoff.js';
-import { buildChatPack, vaultRoute } from './vaultRoutes.js';
+import { buildChatPack, parseVaultOverrides, vaultRoute } from './vaultRoutes.js';
 import type { VaultPrivacyWire } from './vaultWire.js';
 import { logger } from '../util/log.js';
 
@@ -747,7 +747,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         url,
         headers: req.headers,
         root: vaultRootFor(auth),
-        readBody: () => readJson(req),
+        readBody: (maxBytes?: number) => readJson(req, maxBytes),
         privacy: machineVaultPrivacy,
       });
       if ('json' in answer) {
@@ -1077,6 +1077,9 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         return;
       }
       const vaultPins = parseVaultPins(body.vaultPins);
+      // The app's vault switches (Vault M7, CTO L13): off-only and one of the
+      // three sizes, anything else dropped; the engine keeps size lower-only.
+      const vaultOverrides = parseVaultOverrides(body.vaultOverrides);
       if (!hasRole(auth, 'admin') && !isAdminProvisionedWorkspace(cwd)) {
         sendJson(res, 403, {
           error:
@@ -1117,6 +1120,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           canGrantVerify: hasRole(auth, 'admin'),
           ...(handoff ? { handoff } : {}),
           ...(vaultPins ? { vaultPins } : {}),
+          ...(vaultOverrides ? { vaultOverrides } : {}),
         });
         trackDriver(driver);
         driver.setOwner(auth.userId);
@@ -1778,11 +1782,31 @@ async function desktopChatPack(
       cwdOk = isAdminProvisionedWorkspace(cwd) && !overlapsVault(cwd);
     }
   }
+  const { packSize: askedSize } = ask as Record<string, unknown>;
   try {
     const caps = await o.provider.capabilities(o.model);
+    const root = vaultRootFor(o.auth);
+    // The machine's rules unioned with the vault's own file (Vault M7, CTO
+    // L4), the same holder a session's tools judge by, read fresh now.
+    const holder = vaultPrivacyHolder(vaultPrivacyConfig(o.config), root);
+    try {
+      await holder.refresh({ force: true });
+    } catch {
+      // The machine's rules alone; the file can only narrow them.
+    }
     return await buildChatPack({
-      root: vaultRootFor(o.auth),
-      privacy: compileVaultPrivacy(vaultPrivacyConfig(o.config)),
+      root,
+      privacy: holder,
+      settings: () => holder.settings(),
+      packSize: vaultPackSize(
+        o.config.vault?.packSize,
+        askedSize === 'small' || askedSize === 'normal' || askedSize === 'large'
+          ? askedSize
+          : undefined,
+      ),
+      ...(o.config.vault?.packMaxTokens !== undefined
+        ? { packMaxTokens: o.config.vault.packMaxTokens }
+        : {}),
       ...(cwd && cwdOk ? { currentState: currentStateReader(cwd, projectName) } : {}),
       task,
       model: o.model,

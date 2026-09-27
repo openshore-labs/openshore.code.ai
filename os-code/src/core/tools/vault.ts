@@ -13,10 +13,15 @@ import { lstat, readdir, stat } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { z } from 'zod';
 import { Jail } from '../security/jail.js';
-import { checkNewNoteName } from '../../harness/vault/paths.js';
+import { checkNewNoteName, foldPath, isAgentWritablePath } from '../../harness/vault/paths.js';
+import { readFrontmatter } from '../../harness/vault/frontmatter.js';
+import { mergeProvenance, readProvenance } from '../../harness/vault/provenance.js';
+import type { ProvenanceFields } from '../../harness/vault/types.js';
 import { unifiedDiff } from '../edit/diff.js';
 import { engineVaultIndex, openEngineVaultIndex } from '../vault/engineIndex.js';
+import { resolvedAgentWritable } from '../vault/folderFs.js';
 import { NotANoteError, readNoteBytes, writeNote } from '../vault/noteFile.js';
+import { VAULT_SETTINGS_DENY } from '../vault/settingsFile.js';
 import type { ToolContext, ToolDef } from './index.js';
 import {
   closed,
@@ -24,6 +29,8 @@ import {
   knownFromText,
   notePathOrUndefined,
   plainNotePath,
+  refreshVault,
+  seatLeaves,
   vaultJail,
   visibilityOf,
 } from './vaultFind.js';
@@ -38,7 +45,56 @@ export { vaultReadTool } from './vaultFind.js';
  *  rule (Vault M3, H4), and is refused with the clean name to use instead; a
  *  new name that folds onto an existing note is refused with that note's
  *  name, so the model updates it rather than making a twin. */
-async function writeTarget(jail: Jail, raw: string): Promise<string> {
+async function writeTarget(jail: Jail, raw: string, ctx?: ToolContext): Promise<string> {
+  // The vault's settings folder is the person's alone (Vault M7, CTO L8),
+  // said plainly before any note-name rule speaks.
+  if (namesSettingsDir(raw)) throw new WriteRefused(VAULT_SETTINGS_DENY);
+  const rel = await noteTarget(jail, raw);
+  if (!isAgentWritablePath(rel)) throw new WriteRefused(VAULT_SETTINGS_DENY);
+  const folder = ctx ? agentFolder(ctx) : undefined;
+  if (folder && !underFolder(rel, folder)) {
+    throw new WriteRefused(
+      `This vault's settings keep the agent's notes in "${folder}". Write under "${folder}/" instead.`,
+    );
+  }
+  return rel;
+}
+
+/** A write the vault's rules refuse (L8, the agent folder): execute answers
+ *  it as a plain refusal, the preview throws it as the card's reason. */
+class WriteRefused extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'WriteRefused';
+  }
+}
+
+/** Whether a typed path names `.oscode` as any of its segments. */
+function namesSettingsDir(raw: string): boolean {
+  return raw
+    .replace(/\\/g, '/')
+    .split('/')
+    .some((seg) => foldPath(seg).trim() === '.oscode');
+}
+
+/** The one folder the vault's settings let the agent write in (L2), or
+ *  undefined for anywhere. */
+function agentFolder(ctx: ToolContext): string | undefined {
+  const folder = ctx.vaultSettings?.()?.agent.folder?.replace(/^\/+|\/+$/g, '');
+  return folder ? folder : undefined;
+}
+
+function underFolder(rel: string, folder: string): boolean {
+  return foldPath(rel).startsWith(`${foldPath(folder)}/`);
+}
+
+/** The written path, checked once more on where it RESOLVES (L8): a note that
+ *  is a link into `.oscode/` (or any dot folder) is never written through. */
+function assertResolvedWritable(jail: Jail, abs: string): void {
+  if (!resolvedAgentWritable(jail.root, abs)) throw new WriteRefused(VAULT_SETTINGS_DENY);
+}
+
+async function noteTarget(jail: Jail, raw: string): Promise<string> {
   const plain = plainNotePath(raw);
   if (await exists(jail, plain)) return plain;
   const check = checkNewNoteName(plain);
@@ -114,6 +170,93 @@ function basisOf(bytes: Buffer | undefined): string {
   return bytes ? `sha256:${createHash('sha256').update(bytes).digest('hex')}` : 'absent';
 }
 
+/** The provenance lines for this write (Vault M7, CTO L9), or undefined when
+ *  `vault.provenance` is off (or the context carries no config). A new note
+ *  is the agent's (`agent`, created now); a note the agent made keeps
+ *  `agent`; any other note it changes is `agent-edit`, and an edit clears
+ *  `oscode-reviewed`, since the person has not read these words yet. Where
+ *  the seat runs is judged by address (`seatLeavesNetwork`). */
+function provenanceFields(
+  ctx: ToolContext,
+  before: string | undefined,
+  created: string,
+): ProvenanceFields | undefined {
+  if (ctx.config?.vault?.provenance !== 'on') return undefined;
+  const seat = ctx.vaultSeat?.() ?? {};
+  const where = seatLeaves(ctx) ? 'cloud' : 'local';
+  const fields: ProvenanceFields = {};
+  if (before === undefined) {
+    fields['oscode-source'] = 'agent';
+  } else {
+    let prior: string | undefined;
+    try {
+      prior = readProvenance(readFrontmatter(before)).source;
+    } catch {
+      prior = undefined;
+    }
+    fields['oscode-source'] = prior === 'agent' ? 'agent' : 'agent-edit';
+    fields['oscode-reviewed'] = null;
+  }
+  if (seat.model) fields['oscode-model'] = seat.model;
+  fields['oscode-where'] = where;
+  if (seat.size) fields['oscode-size'] = seat.size;
+  fields['oscode-provider'] = where === 'cloud' && seat.provider ? seat.provider : null;
+  if (before === undefined) fields['oscode-created'] = created;
+  return fields;
+}
+
+/** The text with its provenance merged in, byte for byte (L10), BEFORE the
+ *  diff, so the person approves exactly what lands. A merge that skips (or
+ *  fails) leaves the text as the model wrote it. */
+function stamped(text: string, fields: ProvenanceFields | undefined): string {
+  if (!fields) return text;
+  try {
+    const merged = mergeProvenance(text, fields);
+    return 'text' in merged ? merged.text : text;
+  } catch {
+    return text;
+  }
+}
+
+/** A new note's creation time rides on the approval's basis, so execute
+ *  writes the very bytes the preview showed. */
+const CREATED_MARK = '#created=';
+/** The hash of the exact bytes the preview showed (the note's text with its
+ *  provenance lines), so execute writes those bytes or nothing (CTO L9: the
+ *  person approves exactly what lands). */
+const AFTER_MARK = '#after=';
+
+function hashText(text: string): string {
+  return `sha256:${createHash('sha256').update(text, 'utf8').digest('hex')}`;
+}
+
+function splitBasis(basis: string | undefined): {
+  hash?: string;
+  created?: string;
+  after?: string;
+} {
+  if (basis === undefined) return {};
+  let rest = basis;
+  let after: string | undefined;
+  const a = rest.indexOf(AFTER_MARK);
+  if (a !== -1) {
+    after = rest.slice(a + AFTER_MARK.length);
+    rest = rest.slice(0, a);
+  }
+  const at = rest.indexOf(CREATED_MARK);
+  const out =
+    at === -1
+      ? { hash: rest }
+      : { hash: rest.slice(0, at), created: rest.slice(at + CREATED_MARK.length) };
+  return after === undefined ? out : { ...out, after };
+}
+
+/** The refusal when the bytes execute would write differ from the ones the
+ *  person approved (the seat changed under the card, so its provenance lines
+ *  would too): nothing is written, and the model proposes again. */
+const NOT_WHAT_WAS_APPROVED =
+  'The note would not be written exactly as you approved it, so nothing was written. Propose the write again.';
+
 /** The refusal when the note moved under an approval: the model reads it
  *  again and proposes a fresh write, which the person sees as a fresh diff. */
 const CHANGED_SINCE_APPROVAL =
@@ -131,27 +274,40 @@ export const vaultWriteTool: ToolDef<typeof writeSchema> = {
   pathJail: 'own',
   pathOf: (args) => notePathOrUndefined(args.path),
   async preview(args, ctx) {
+    await refreshVault(ctx);
     const jail = vaultJail(ctx);
-    const rel = await writeTarget(jail, args.path);
+    const rel = await writeTarget(jail, args.path, ctx);
     const abs = jail.resolve(rel);
+    assertResolvedWritable(jail, abs);
     // One read of the raw bytes: the diff is built from them, and their hash
     // travels to execute as the basis the person approved against.
     const current = await readNoteBytes(abs);
     if (hiddenNote(ctx, rel, current?.bytes)) throw new Error(hiddenRefusal(rel));
     const before = current ? current.bytes.toString('utf8') : '';
-    const after = applied(before, args.content, args.mode);
+    const created = new Date().toISOString();
+    const fields = provenanceFields(ctx, current ? before : undefined, created);
+    const after = stamped(applied(before, args.content, args.mode), fields);
     const { text, stats } = unifiedDiff(before, after, rel);
     const verb = before ? (args.mode === 'append' ? 'Append to' : 'Update') : 'Create';
     return {
       summary: `Vault: ${verb} ${rel} (+${stats.additions} -${stats.deletions})`,
       detail: text || '(no textual change)',
-      basis: basisOf(current?.bytes),
+      basis: `${basisOf(current?.bytes)}${fields?.['oscode-created'] ? `${CREATED_MARK}${created}` : ''}${AFTER_MARK}${hashText(after)}`,
     };
   },
   async execute(args, ctx, approved) {
+    await refreshVault(ctx);
     const jail = vaultJail(ctx);
-    const rel = await writeTarget(jail, args.path);
-    const abs = jail.resolve(rel);
+    let rel: string;
+    let abs: string;
+    try {
+      rel = await writeTarget(jail, args.path, ctx);
+      abs = jail.resolve(rel);
+      assertResolvedWritable(jail, abs);
+    } catch (err) {
+      if (err instanceof WriteRefused) return { ok: false, content: err.message };
+      throw err;
+    }
     let current;
     try {
       // The bytes and the version token of exactly those bytes, together.
@@ -163,11 +319,18 @@ export const vaultWriteTool: ToolDef<typeof writeSchema> = {
     if (hiddenNote(ctx, rel, current?.bytes)) return { ok: false, content: hiddenRefusal(rel) };
     // The note must still be what the person saw the diff against. Without a
     // basis (the preview failed) the execute-time guard below still holds.
-    if (approved?.basis !== undefined && approved.basis !== basisOf(current?.bytes)) {
+    const basis = splitBasis(approved?.basis);
+    if (basis.hash !== undefined && basis.hash !== basisOf(current?.bytes)) {
       return { ok: false, content: CHANGED_SINCE_APPROVAL };
     }
     const before = current ? current.bytes.toString('utf8') : '';
-    const after = applied(before, args.content, args.mode);
+    const created = basis.created ?? new Date().toISOString();
+    const fields = provenanceFields(ctx, current ? before : undefined, created);
+    const after = stamped(applied(before, args.content, args.mode), fields);
+    // Exactly the bytes the diff showed, provenance lines included, or none.
+    if (basis.after !== undefined && basis.after !== hashText(after)) {
+      return { ok: false, content: NOT_WHAT_WAS_APPROVED };
+    }
     // The write carries the version read above, so an edit landing between
     // that read and the save is refused too, never overwritten; a new note is
     // created only while the name is still free.
@@ -335,6 +498,7 @@ export const vaultListTool: ToolDef<typeof listSchema> = {
   schema: listSchema,
   risk: 'read',
   async execute(args, ctx) {
+    await refreshVault(ctx);
     const root = ctx.vaultRoot;
     if (!root || !existsSync(root)) return { ok: true, content: 'The vault is empty.' };
     const base = args.folder ? normalizeFolder(args.folder) : '';

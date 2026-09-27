@@ -433,6 +433,10 @@ describe('routine scheduler', () => {
         'started',
         'state',
         'tags',
+        // Vault M7 (L9): the run note's provenance, through mergeProvenance.
+        'oscode-source',
+        'oscode-model',
+        'oscode-created',
       ]);
       expect(prop(fm, 'type')).toBe('crew-run');
       expect(prop(fm, 'routine')).toBe('Morning review');

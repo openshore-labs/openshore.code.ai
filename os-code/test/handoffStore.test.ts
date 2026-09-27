@@ -217,4 +217,43 @@ describe('the desktop agent is seedable (J12)', () => {
       'function',
     );
   });
+
+  it("handoff off means no handoff at all: the switch's passed text is dropped too", async () => {
+    const { ConfigSchema } = await import('../src/config/schema.js');
+    const handoffOf = (r: ReturnType<typeof bootstrapSession>) =>
+      (r.driver as unknown as { handoff?: string }).handoff;
+    const onHandoffOf = (r: ReturnType<typeof bootstrapSession>) =>
+      (r.agent as unknown as { deps: { onHandoff?: unknown } }).deps.onHandoff;
+    const base = { stack: { orchestrator: { provider: 'ollama', model: 'qwen' } } };
+    // The app's switch (Vault M7, vaultOverrides.handoff 'off').
+    const app = bootstrapSession({
+      cwd,
+      profile: 'local-interactive',
+      persist: false,
+      config: ConfigSchema.parse(base),
+      handoff: 'HANDOFF from Claude.',
+      vaultOverrides: { handoff: 'off' },
+    });
+    expect(handoffOf(app)).toBeUndefined();
+    expect(onHandoffOf(app)).toBeUndefined();
+    // The machine's `vault.handoff: off` holds the same rule.
+    const machine = bootstrapSession({
+      cwd,
+      profile: 'local-interactive',
+      persist: false,
+      config: ConfigSchema.parse({ ...base, vault: { handoff: 'off' } }),
+      handoff: 'HANDOFF from Claude.',
+    });
+    expect(handoffOf(machine)).toBeUndefined();
+    // Any other override leaves the passed text in place.
+    const packOnly = bootstrapSession({
+      cwd,
+      profile: 'local-interactive',
+      persist: false,
+      config: ConfigSchema.parse(base),
+      handoff: 'HANDOFF from Claude.',
+      vaultOverrides: { packSize: 'small', context: 'off' },
+    });
+    expect(handoffOf(packOnly)).toBe('HANDOFF from Claude.');
+  });
 });

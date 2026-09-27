@@ -23,12 +23,15 @@ import {
   packBudgetTokens,
   packModeFor,
   planContextPack,
+  retrievalSkipped,
   type ContextPack,
   type DriverEvent,
   type ModelClass,
   type ModelClassProfile,
   type PackMode,
+  type ResolvedVaultSettings,
   type VaultIndex,
+  type VaultPackSize,
   type VaultPrivacy,
 } from 'os-code/protocol';
 import type { AppVaultPack, PackSeat } from '../drivers/types.js';
@@ -62,11 +65,41 @@ export interface AppVaultPackDeps {
    *  `HANDOFF_MAX_AGE_DAYS` old (J13); undefined for none. Asked on the
    *  first prepare only. */
   handoff?: () => string | undefined;
+  /** Room for notes in force (Vault M7, CTO L13; CX Y8): the store folds
+   *  the machine's `vault.packSize` and `settings.vaultPackSize` through
+   *  `vaultPackSize(machine, app)`, so the app may only lower it. Unset is
+   *  Normal, and the budget is byte for byte what it was before M7. */
+  packSize?: () => VaultPackSize | undefined;
+  /** The Handoff switch on this device (`settings.vaultHandoff`). Off-only:
+   *  `'off'` carries no handoff whatever `handoff` returns; unset leaves the
+   *  project and the machine in charge (the store asks `handoff` only when
+   *  they allow it). */
+  handoffSetting?: () => 'off' | undefined;
+  /** The personal vault's resolved settings (Vault M7, CTO L2): notes under
+   *  its `templates.folder`, and those Obsidian's ignore filters name, are
+   *  no retrieval candidate. The person's own pins still ride. Unset leaves
+   *  every note a candidate. */
+  settings?: () => Pick<ResolvedVaultSettings, 'templates' | 'ignore'> | undefined;
+  /** The core's budget (tests pass their own); default `packBudgetTokens`. */
+  budget?: PackBudget;
   /** The cold budget in ms (default `VAULT_PACK_COLD_MS`). */
   coldMs?: number;
   /** Test seam: the clock for the Current State cache. */
   now?: () => number;
 }
+
+/** The pack's budget for a seat (`packBudgetTokens(profile, served, size)`,
+ *  CTO L13): a factor on the class's budget, always capped. */
+export type PackBudget = (
+  profile: ModelClassProfile,
+  served: number,
+  size?: VaultPackSize,
+) => number;
+
+/** The core's budget with a size (factors 0.5, 1, 1.5, capped); unset is
+ *  Normal, exactly the budget before M7. */
+const coreBudget: PackBudget = (profile, served, size) =>
+  packBudgetTokens(profile, served, size ?? 'normal');
 
 /** The pack Current State is cached for, per project (J1). */
 export const CURRENT_STATE_CACHE_MS = 10 * 60 * 1000;
@@ -245,7 +278,10 @@ export function createAppVaultPack(deps: AppVaultPackDeps): AppVaultPack {
       warmIndex(host, signal).catch(() => null),
       within(currentState(), coldMs, signal),
     ]);
-    const handoff = asked ? undefined : deps.handoff?.();
+    // The device's Handoff switch only ever turns it off (L13); the first
+    // prepare still counts as asked, so turning it back on mid-chat never
+    // seeds a later send.
+    const handoff = asked || deps.handoffSetting?.() === 'off' ? undefined : deps.handoff?.();
     asked = true;
     const projectPins = (deps.projectPins?.() ?? []).slice(0, PROJECT_VAULT_PINS_MAX);
     const pins = index ? frontmatterPins(index, privacy) : [];
@@ -268,8 +304,16 @@ export function createAppVaultPack(deps: AppVaultPackDeps): AppVaultPack {
       const wanted = [...new Set([...planned, ...projectPins.slice(0, PACK_PINS_MAX)])];
       // Belt and braces: a hidden note is never read, whatever the plan says,
       // and a note the index does not hold (or holds evicted) is not fetched.
+      let skip: Pick<ResolvedVaultSettings, 'templates' | 'ignore'> | undefined;
+      try {
+        skip = deps.settings?.();
+      } catch {
+        skip = undefined;
+      }
+      const pinned = new Set(projectPins);
       const reads = wanted
         .filter((path) => {
+          if (!pinned.has(path) && retrievalSkipped(path, skip)) return false;
           const e = index.entry(path);
           if (!e || e.evicted) return false;
           return privacy.visibility({ path, tags: e.tags, oscode: e.oscode }) !== 'hidden';
@@ -324,7 +368,11 @@ export function createAppVaultPack(deps: AppVaultPackDeps): AppVaultPack {
       let mode = packModeFor(deps.setting, seat.modelClass);
       if (!mode) return {};
       if (!p.hasVault) mode = 'current-state';
-      const budgetTokens = packBudgetTokens(classProfile(seat.modelClass), seat.servedTokens);
+      const budgetTokens = (deps.budget ?? coreBudget)(
+        classProfile(seat.modelClass),
+        seat.servedTokens,
+        deps.packSize?.(),
+      );
       const leaves = seat.leavesNetwork;
       const key = JSON.stringify([mode, budgetTokens, seat.modelClass, leaves, p.stamp]);
       if (renderCache?.key !== key) {

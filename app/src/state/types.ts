@@ -358,6 +358,16 @@ export const PROJECT_VAULT_PINS_MAX = 8;
  *  eval and is never an app value. */
 export type AppVaultContextSetting = 'auto' | 'off';
 
+/** Room for notes on this device (Vault M7, CTO L13, L14; CX Y8): the app may
+ *  only LOWER the machine's `vault.packSize` (`vaultPackSize(machine, app)`).
+ *  Unset reads as the machine's size. Device local, never in the vault. */
+export type AppVaultPackSize = 'small' | 'normal' | 'large';
+
+/** The Handoff switch on this device (Vault M7, CTO L13, L14; CX Y7): only
+ *  ever `'off'`; unset leaves machine config and the project in charge
+ *  (`vaultHandoffOn`). Device local, never in the vault. */
+export type AppVaultHandoffSetting = 'off';
+
 /** An unpaired phone's own privacy rules (CTO J3), with no UI until M7. They
  *  may only narrow: the effective rules are the union of the source's rules
  *  and these. Absent reads as the D5 defaults. */

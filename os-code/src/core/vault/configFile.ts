@@ -8,8 +8,14 @@
 // what they claim (a directory, a regular file), never a symlink, so a link
 // planted in the vault cannot read outside it. The version is the same lstat
 // token a note carries (noteVersion).
-import { constants } from 'node:fs';
-import { lstat, open, readdir, realpath } from 'node:fs/promises';
+//
+// The one writer (Vault M7, CTO L7) is writeVaultConfigFile, for the person's
+// settings sheet only: main's `osc:vaultWriteConfig` and the hub's PUT. No
+// agent tool imports it (a grep test holds that), and every agent write path
+// refuses `.oscode/` on its own (L8).
+import { constants, type BigIntStats } from 'node:fs';
+import { link, lstat, mkdir, open, readdir, realpath, rename, unlink } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { Jail, JailViolation } from '../security/jail.js';
 import {
@@ -19,7 +25,7 @@ import {
   isVaultConfigName,
   type ConfigDirCandidate,
 } from '../../harness/vault/configDir.js';
-import type { ConfigRead } from '../../harness/vault/types.js';
+import type { ConfigRead, ConfigWriteGuard, ConfigWriteResult } from '../../harness/vault/types.js';
 import { noteVersion } from './noteFile.js';
 
 const NOFOLLOW = constants.O_NOFOLLOW ?? 0;
@@ -110,5 +116,175 @@ export async function readVaultConfigFile(vaultDir: string, name: unknown): Prom
     if (code === 'ENOENT' || code === 'ENOTDIR') return { ok: false, reason: 'absent' };
     if (code === 'ELOOP') return { ok: false, reason: 'refused' };
     throw err;
+  }
+}
+
+/** Volumes with no hard links (exFAT, SMB, some FUSE mounts): a new file is
+ *  created with O_EXCL there instead, which still never replaces. */
+const LINK_UNSUPPORTED = new Set(['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'EXDEV', 'ENOSYS']);
+
+/** A new settings file on a volume with no hard links. */
+async function createExclusive(
+  abs: string,
+  bytes: Buffer,
+  conflict: (kind: 'exists') => Promise<ConfigWriteResult>,
+): Promise<ConfigWriteResult> {
+  let fh;
+  try {
+    fh = await open(
+      abs,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | NOFOLLOW,
+      0o644,
+    );
+  } catch (err) {
+    if (codeOf(err) === 'EEXIST') return conflict('exists');
+    throw err;
+  }
+  try {
+    await fh.writeFile(bytes);
+    await fh.sync();
+    const version = noteVersion(await fh.stat({ bigint: true }));
+    await fh.close();
+    return { ok: true, version };
+  } catch (err) {
+    await fh.close().catch(() => undefined);
+    await unlink(abs).catch(() => undefined);
+    throw err;
+  }
+}
+
+/** The one config name the writer accepts (L7). */
+const WRITABLE_CONFIG = 'oscode/vault';
+
+/** What sits in the file now, for a conflict's `current`. */
+async function currentOf(root: string): Promise<{ text: string; version: string } | undefined> {
+  const read = await readVaultConfigFile(root, WRITABLE_CONFIG).catch(() => undefined);
+  return read?.ok ? { text: read.text, version: read.version } : undefined;
+}
+
+/** Write a guard parsed from untrusted input, or undefined when it is not
+ *  exactly `{ ifMatch: string }` or `{ ifAbsent: true }`. */
+function checkedGuard(guard: unknown): ConfigWriteGuard | undefined {
+  if (!guard || typeof guard !== 'object' || Array.isArray(guard)) return undefined;
+  const g = guard as Record<string, unknown>;
+  const match = g.ifMatch !== undefined;
+  const absent = g.ifAbsent !== undefined;
+  if (match === absent) return undefined;
+  if (match) {
+    return typeof g.ifMatch === 'string' && g.ifMatch.length <= 200
+      ? { ifMatch: g.ifMatch }
+      : undefined;
+  }
+  return g.ifAbsent === true ? { ifAbsent: true } : undefined;
+}
+
+/**
+ * Write the vault's own settings file, `.oscode/vault.json` (Vault M7, CTO
+ * L7), for the person's settings sheet. Every other name (each `obsidian/*`)
+ * is `refused`: Obsidian's config is read, never written. `.oscode` is made
+ * when missing and must lstat as a real directory (a link is `refused`); the
+ * file, when there, must be a regular file. The text goes to a temp file in
+ * `.oscode` opened O_EXCL and O_NOFOLLOW, synced, and then, with the guard
+ * checked as late as it can be, renamed over the file (`ifMatch`) or linked
+ * to a name that must still be free (`ifAbsent`, never replacing). A
+ * conflict is a result that leaves the file as it was, with what is there
+ * now. The version is the lstat token a note carries (noteVersion).
+ */
+export async function writeVaultConfigFile(
+  vaultDir: string,
+  name: unknown,
+  text: unknown,
+  guardIn: unknown,
+): Promise<ConfigWriteResult> {
+  if (name !== WRITABLE_CONFIG || typeof text !== 'string') return { ok: false, reason: 'refused' };
+  const guard = checkedGuard(guardIn);
+  if (!guard) return { ok: false, reason: 'refused' };
+  const bytes = Buffer.from(text, 'utf8');
+  if (bytes.length > VAULT_CONFIG_MAX_BYTES) return { ok: false, reason: 'too-large' };
+  let root: string;
+  try {
+    root = await realpath(vaultDir);
+  } catch {
+    return { ok: false, reason: 'refused' };
+  }
+  const spec = VAULT_CONFIG_FILES[WRITABLE_CONFIG];
+  const jail = new Jail(root);
+  let dirAbs: string;
+  let abs: string;
+  try {
+    dirAbs = jail.resolve('.oscode');
+    abs = jail.resolve(join('.oscode', spec.file));
+  } catch (err) {
+    if (err instanceof JailViolation) return { ok: false, reason: 'refused' };
+    throw err;
+  }
+  await mkdir(dirAbs).catch((err: unknown) => {
+    if (codeOf(err) !== 'EEXIST') throw err;
+  });
+  const dirSt = await lstat(dirAbs);
+  if (!dirSt.isDirectory()) return { ok: false, reason: 'refused' };
+
+  const there = async (): Promise<BigIntStats | null> => {
+    try {
+      return await lstat(abs, { bigint: true });
+    } catch (err) {
+      if (codeOf(err) === 'ENOENT') return null;
+      throw err;
+    }
+  };
+  const before = await there();
+  if (before && !before.isFile()) return { ok: false, reason: 'refused' };
+  const conflict = async (kind: 'changed' | 'missing' | 'exists'): Promise<ConfigWriteResult> => {
+    const current = kind === 'missing' ? undefined : await currentOf(root);
+    return current ? { ok: false, conflict: kind, current } : { ok: false, conflict: kind };
+  };
+  if ('ifAbsent' in guard && before) return conflict('exists');
+  if ('ifMatch' in guard) {
+    if (!before) return conflict('missing');
+    if (noteVersion(before) !== guard.ifMatch) {
+      return conflict('changed');
+    }
+  }
+
+  const tmp = join(dirAbs, `.${spec.file}.oscode-${randomBytes(4).toString('hex')}.tmp`);
+  const fh = await open(
+    tmp,
+    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | NOFOLLOW,
+    before ? Number(before.mode) & 0o7777 : 0o644,
+  );
+  let version: string;
+  try {
+    await fh.writeFile(bytes);
+    await fh.sync();
+    version = noteVersion(await fh.stat({ bigint: true }));
+  } catch (err) {
+    await fh.close().catch(() => undefined);
+    await unlink(tmp).catch(() => undefined);
+    throw err;
+  }
+  await fh.close();
+  try {
+    if ('ifAbsent' in guard) {
+      try {
+        await link(tmp, abs);
+      } catch (err) {
+        if (codeOf(err) === 'EEXIST') return await conflict('exists');
+        if (!LINK_UNSUPPORTED.has(codeOf(err) ?? '')) throw err;
+        return await createExclusive(abs, bytes, conflict);
+      }
+      return { ok: true, version };
+    }
+    // The guard once more, as late as it can be: the file must still be the
+    // regular file the person saw.
+    const now = await there();
+    if (!now) return await conflict('missing');
+    if (!now.isFile()) return { ok: false, reason: 'refused' };
+    if (noteVersion(now) !== guard.ifMatch) {
+      return await conflict('changed');
+    }
+    await rename(tmp, abs);
+    return { ok: true, version };
+  } finally {
+    await unlink(tmp).catch(() => undefined);
   }
 }

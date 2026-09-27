@@ -10,7 +10,7 @@ import type { ImageProvider } from '../../providers/types.js';
 import type { ToolSpec } from '../../providers/types.js';
 import type { DelegatedUsage, DelegateOptions } from '../../router/router.js';
 import type { CurrentsHandles } from '../../currents/model.js';
-import type { VaultPrivacy } from '../../harness/vault/types.js';
+import type { ProvSize, ResolvedVaultSettings, VaultPrivacy } from '../../harness/vault/types.js';
 
 export interface Citation {
   title: string;
@@ -121,6 +121,20 @@ export interface ToolContext {
    *  (`compileVaultPrivacy`). Every vault tool consults it. Unset (a bare test
    *  context) leaves every note open. */
   vaultPrivacy?: VaultPrivacy;
+  /** Read the vault's own settings again (Vault M7, CTO L5, L6), so the sync
+   *  `vaultPrivacy` holds the union with the vault's file. Kept 2 s; `force`
+   *  reads now (a task start, a pack prepare). Every vault tool awaits it at
+   *  entry. Never throws: a read that fails keeps the last good settings.
+   *  Unset (a bare test context) reads nothing. */
+  vaultRefresh?: (options?: { force?: boolean }) => Promise<void>;
+  /** The vault's resolved settings as last refreshed (the agent folder, L2),
+   *  or undefined before the first refresh or with no vault. */
+  vaultSettings?: () => ResolvedVaultSettings | undefined;
+  /** The seat answering now, for the provenance lines on a note the agent
+   *  writes (Vault M7, CTO L9): its model, class and, for a cloud seat, the
+   *  provider. Where it runs is `seatLeavesNetwork`. Set by the loop each
+   *  turn; unset writes the lines it can without them. */
+  vaultSeat?: () => { model?: string; size?: ProvSize; provider?: string };
   /** Whether the seat answering right now sends its requests off this network
    *  (`leavesThisNetwork`, judged by address). Set by the loop each turn, so a
    *  read of a local-only note says it stays on this computer, and search and

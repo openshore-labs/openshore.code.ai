@@ -184,6 +184,44 @@ describe('/chat builds its pack on the daemon', () => {
     expect(adminLoose.system).toContain(CURRENT_STATE);
   });
 
+  it('scales the budget by Room for notes, capped by the machine (Vault M7, L13)', async () => {
+    const privacy = compileVaultPrivacy({ exclude: [], localOnly: { paths: [], tags: [] } });
+    const prepared: PreparedVaultContext = {
+      index: null,
+      bodies: new Map(),
+      currentState: { path: 'cs.md', text: CURRENT_STATE },
+      pins: [],
+      privacy,
+    };
+    const root = mkdtempSync(join(tmpdir(), 'osc-chatpack-size-'));
+    try {
+      const budget = async (o: {
+        packSize?: 'small' | 'normal' | 'large';
+        packMaxTokens?: number;
+      }) =>
+        (
+          await buildChatPack({
+            root,
+            privacy,
+            task: 'What ships?',
+            model: 'qwen2.5:7b',
+            kind: 'local',
+            caps: { contextTokens: 32768, supportsGrammar: false },
+            setting: 'auto',
+            ...o,
+            source: { prepare: async () => prepared },
+          })
+        ).event!.budgetTokens;
+      const normal = await budget({});
+      expect(await budget({ packSize: 'normal' })).toBe(normal);
+      expect(await budget({ packSize: 'small' })).toBeLessThan(normal);
+      expect(await budget({ packSize: 'large' })).toBeGreaterThanOrEqual(normal);
+      expect(await budget({ packSize: 'large', packMaxTokens: 500 })).toBeLessThanOrEqual(500);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('renders once per prepare for the served window, and not at all when off', async () => {
     const privacy = compileVaultPrivacy({
       exclude: [],

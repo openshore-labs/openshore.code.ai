@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { ToolDef } from './index.js';
 import { unifiedDiff } from '../edit/diff.js';
 import { structuralCheck, verifyWritten } from '../edit/verify.js';
+import { VAULT_SETTINGS_DENY, workspaceWriteHitsVaultSettings } from '../vault/settingsFile.js';
 
 const schema = z.object({
   path: z.string().describe('File path, relative to the workspace root'),
@@ -19,6 +20,8 @@ export const writeFileTool: ToolDef<typeof schema> = {
   pathOf: (args) => args.path,
   async preview(args, ctx) {
     const abs = ctx.jail.resolve(args.path);
+    // A vault's settings folder is the person's alone (Vault M7, CTO L8).
+    if (workspaceWriteHitsVaultSettings(abs, ctx.vaultRoot)) throw new Error(VAULT_SETTINGS_DENY);
     const before = existsSync(abs) ? readFileSync(abs, 'utf8') : '';
     const { text, stats } = unifiedDiff(before, args.content, args.path);
     const verb = before ? 'Replace' : 'Create';
@@ -29,6 +32,11 @@ export const writeFileTool: ToolDef<typeof schema> = {
   },
   async execute(args, ctx) {
     const abs = ctx.jail.resolve(args.path);
+    // Checked here too, since an "always allow" grant runs execute with no
+    // preview: whatever the grant, no model writes under a vault's .oscode/.
+    if (workspaceWriteHitsVaultSettings(abs, ctx.vaultRoot)) {
+      return { ok: false, content: VAULT_SETTINGS_DENY };
+    }
     const before = existsSync(abs) ? readFileSync(abs, 'utf8') : '';
     mkdirSync(dirname(abs), { recursive: true });
     // The same structural gate editFile has: a JS or JSON file that does not

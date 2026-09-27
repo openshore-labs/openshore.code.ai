@@ -1359,7 +1359,10 @@ export type VaultCapLineName =
   | 'attachments'
   | 'taskWriteBack'
   | 'linkRewrite'
-  | 'today';
+  | 'today'
+  // Vault M7 (CTO L7): the settings sheet; its lines are in the M7 stream E
+  // fence (`vaultSettingsCapLine`).
+  | 'settingsWrite';
 
 export const VAULT_CAP_LINE_NAMES: readonly VaultCapLineName[] = [
   'rename',
@@ -1370,11 +1373,15 @@ export const VAULT_CAP_LINE_NAMES: readonly VaultCapLineName[] = [
   'taskWriteBack',
   'linkRewrite',
   'today',
+  'settingsWrite',
 ];
+
+/** The M6 caps, whose lines are in the tables below. */
+type M6CapLineName = Exclude<VaultCapLineName, 'settingsWrite'>;
 
 const DRIVE_READ_ONLY = 'Google Drive vaults are read-only here';
 
-const CAP_LINES: Record<VaultCapLineName, Partial<Record<VaultCopyProvider, string>>> = {
+const CAP_LINES: Record<M6CapLineName, Partial<Record<VaultCopyProvider, string>>> = {
   rename: {
     icloud: 'Notes in iCloud Drive cannot be renamed here yet. The Files app can rename them.',
     org: 'Team notes cannot be renamed here yet.',
@@ -1417,7 +1424,7 @@ const CAP_LINES: Record<VaultCapLineName, Partial<Record<VaultCopyProvider, stri
   },
 };
 
-const CAP_FALLBACK: Record<VaultCapLineName, string> = {
+const CAP_FALLBACK: Record<M6CapLineName, string> = {
   rename: 'This storage cannot rename notes here yet.',
   folders: 'This storage cannot make or rename folders here yet.',
   trash: 'This storage has no Trash here, so a delete is for good and asks twice.',
@@ -1433,6 +1440,7 @@ const CAP_FALLBACK: Record<VaultCapLineName, string> = {
  *  where `vaultCaps(...)[cap]` is false for the storage itself (read-only
  *  and away keep their own standing lines). */
 export function vaultCapLine(provider: VaultCopyProvider, cap: VaultCapLineName): string {
+  if (cap === 'settingsWrite') return vaultSettingsCapLine(provider);
   return CAP_LINES[cap][provider] ?? CAP_FALLBACK[cap];
 }
 
@@ -1975,3 +1983,476 @@ export function vaultFolderMovePartial(old: string, moved: number, total: number
  *  not name. */
 export const VAULT_TODAY_FAILED = "Could not open today's note. Try again in a moment.";
 // ---- M6 wave 2 end ----
+
+// ============================================================================
+// Vault M7 wave 0: one fenced section per build stream. A stream writes only
+// inside its own fence. Every string passes the RETIRED list, M6_RETIRED,
+// M7_BANNED (no faster, better, remembers, always, and no "picks up where you
+// left off" until D12's handoff eval), copy-glossary and both em-dash guards
+// (CX R1, R2). Settings copy says "this vault", "beside your notes" or names
+// `.oscode/vault.json`, never "saved in your vault".
+
+// ---- M7 stream E begin ----
+// Providers (L7, L16): the line that says why this storage's settings cannot
+// change here (`vaultCaps().settingsWrite` false for the storage itself), per
+// provider, in the `vaultCapLine` style.
+
+const SETTINGS_CAP_LINES: Partial<Record<VaultCopyProvider, string>> = {
+  icloud: 'Vault settings in iCloud Drive cannot change here yet.',
+  org: 'Team vault settings cannot change here yet.',
+  gdrive: 'Google Drive vaults are read-only here, so vault settings cannot change.',
+};
+
+const SETTINGS_CAP_FALLBACK = 'Vault settings on this storage cannot change here yet.';
+
+/** Why the Vault settings sheet cannot save on `provider` (read through
+ *  `vaultCapLine(provider, 'settingsWrite')`). Read-only and away keep the
+ *  room's own standing lines. */
+export function vaultSettingsCapLine(provider: VaultCopyProvider): string {
+  return SETTINGS_CAP_LINES[provider] ?? SETTINGS_CAP_FALLBACK;
+}
+
+/** A settings write named something other than the vault's own file. Only
+ *  `.oscode/vault.json` is written here; Obsidian's files are read, never
+ *  written. */
+export const VAULT_SETTINGS_NAME_REFUSED =
+  "Only this vault's own settings file can change here, so nothing changed.";
+
+/** A settings file over the 256 KB cap. */
+export const VAULT_SETTINGS_TOO_LARGE = 'That settings file is over 256 KB, so nothing changed.';
+
+/** The storage would not write the settings file (`.oscode` is not a real
+ *  folder there, or the computer refused it). */
+export const VAULT_SETTINGS_WRITE_REFUSED =
+  'The vault folder would not take the settings file, so nothing changed.';
+
+/** Your computer took the settings file but its answer named no version, so
+ *  the next change could not be guarded. */
+export const HUB_SETTINGS_NO_VERSION =
+  'Your computer took the settings but did not say which version they are.';
+
+/** Local's write refuses a name under a dot folder (CTO L8): nothing lands
+ *  under `.oscode` or `.obsidian`, and a dot name is never a note here. */
+export function vaultDotPathLine(path: string): string {
+  return `"${path}" is not a note name the vault can use, so nothing changed.`;
+}
+
+// ---- M7 stream E end ----
+
+// ---- M7 stream F begin ----
+// The settings sheet and its switches (CX Y1 to Y10, Y13; CTO L1 to L4, L7,
+// L11 to L13, reconciliation 3 and 4): the title and seven section labels,
+// row labels and subs, "From Obsidian" and "From your computer's config",
+// the set-aside line around the schema's `plain` fragments, the save status
+// and conflict lines, the storage footers, Notes in chats (built from
+// PACK_BY_CLASS), Handoff, Room for notes and its amber spend line, the
+// Delete choice, excluded and local-only folders, Your agent writes in, the
+// Wayfinding rows and toasts, and the starter layout's notes and lines.
+
+/** The sheet's title, and the Wayfinding and Options rows that open it. */
+export const VAULT_SETTINGS_TITLE = 'Vault settings';
+
+/** The seven sections, in CX Y1's order (what people change most and what
+ *  models see first; where it lives last). */
+export const VAULT_SETTINGS_SECTIONS = Object.freeze({
+  notes: 'Notes',
+  models: 'Models and your notes',
+  device: 'On this device',
+  today: "Today's note",
+  links: 'Links and files',
+  editor: 'Editor',
+  where: 'Where it lives',
+} as const);
+
+/** Row labels, section by section (CX Y1, Y7 to Y10). */
+export const VAULT_SETTINGS_ROWS = Object.freeze({
+  newNotes: 'New notes go in',
+  openMode: 'Open notes in',
+  sort: 'Sort notes by',
+  delete: 'Delete',
+  exclude: 'Notes models never see',
+  localOnly: 'Notes that stay on this computer',
+  agentFolder: 'Your agent writes in',
+  context: 'Notes in chats',
+  packSize: 'Room for notes',
+  handoff: 'Handoff',
+  dailyFolder: 'Folder',
+  dateFormat: 'Date format',
+  template: 'Template',
+  templatesFolder: 'Templates folder',
+  linkStyle: 'New links use',
+  linkFormat: 'Link paths',
+  attachments: 'Attachments folder',
+  font: 'Font',
+  size: 'Text size',
+  where: 'Where it lives',
+} as const);
+
+/** Each choice a segmented row or a picker offers, by the schema's value. */
+export const VAULT_SETTINGS_CHOICES = Object.freeze({
+  newNotes: { root: 'Top of this vault', current: 'Same folder as the open note' },
+  openMode: { read: 'Reading', edit: 'Editing' },
+  sort: { name: 'Name', modified: 'Last edited', created: 'Created' },
+  delete: { trash: 'To Trash', permanent: 'For good' },
+  packSize: { small: 'Small', normal: 'Normal', large: 'Large' },
+  linkStyle: { wiki: 'Wikilinks', markdown: 'Markdown links' },
+  linkFormat: { shortest: 'Shortest', relative: 'Relative', absolute: 'From the top' },
+  font: { default: 'Default', serif: 'Serif', mono: 'Mono' },
+  size: { smaller: 'Smaller', default: 'Default', larger: 'Larger' },
+} as const);
+
+/** A field's name in the conflict line ("{Field} changed somewhere else"),
+ *  keyed like `VAULT_SETTINGS_FIELDS`. The four rows the sheet calls only
+ *  "Folder", "Template" and the like say which note they belong to here. */
+export const VAULT_SETTINGS_FIELD_LABELS = Object.freeze({
+  'newNotes.location': 'New notes go in',
+  'newNotes.folder': 'New notes go in',
+  'editor.openMode': 'Open notes in',
+  'tree.sort': 'Sort notes by',
+  delete: 'Delete',
+  exclude: 'Notes models never see',
+  'localOnly.paths': 'Notes that stay on this computer',
+  'localOnly.tags': 'Notes that stay on this computer',
+  'agent.folder': 'Your agent writes in',
+  'daily.folder': "Today's note folder",
+  'daily.format': 'Date format',
+  'daily.template': "Today's note template",
+  'templates.folder': 'Templates folder',
+  'templates.dateFormat': 'Templates date format',
+  'templates.timeFormat': 'Templates time format',
+  'links.style': 'New links use',
+  'links.format': 'Link paths',
+  'links.updateOnRename': 'Links on rename',
+  'attachments.folder': 'Attachments folder',
+  'editor.font': 'Font',
+  'editor.size': 'Text size',
+} as const);
+
+/** `Date format`'s live line under the field. */
+export function vaultSettingsTodayIs(formatted: string): string {
+  return `Today: ${formatted}`;
+}
+
+// Y1 footers, one per storage (Team is Y14's).
+/** A folder, iCloud or Your computer: the file travels with the notes. */
+export const VAULT_SETTINGS_FOOTER_FILE =
+  'These settings are kept in .oscode/vault.json, so they travel with your notes.';
+/** Local: the sealed store. */
+export const VAULT_SETTINGS_FOOTER_LOCAL =
+  'These settings are kept on this device with your notes.';
+
+// Y2: what Obsidian sets is read here and changed there.
+export const VAULT_SETTINGS_FROM_OBSIDIAN = 'From Obsidian';
+export const VAULT_SETTINGS_FROM_OBSIDIAN_MORE =
+  'Set in Obsidian. Change it there, and OpenShore follows.';
+/** A field Obsidian leaves unset, in a vault that has `.obsidian/`. */
+export const VAULT_SETTINGS_OBSIDIAN_OWN = 'Obsidian keeps its own setting for this.';
+export const VAULT_SETTINGS_OBSIDIAN_EXCLUDED = 'Excluded in Obsidian';
+export const VAULT_SETTINGS_OBSIDIAN_EXCLUDED_SUB =
+  'Left out of search and link suggestions here too.';
+
+// Y3: what the vault file cannot widen.
+export const VAULT_SETTINGS_FROM_MACHINE = "From your computer's config";
+export const VAULT_SETTINGS_BUILT_IN = "Built in. Only your computer's config can change these.";
+/** Section 3's own footer. */
+export const VAULT_SETTINGS_DEVICE_FOOTER =
+  'These stay on this device and never travel with your notes, so a shared folder cannot change them.';
+
+/** One quiet line per ask the file may not make, around the schema's
+ *  `plain` fragment (CTO L1). No warn color: a set-aside is the system
+ *  working. */
+export function vaultSettingsSetAside(plain: string): string {
+  return `This vault's settings file also asks to ${plain}. A settings file can only narrow what models see, so that part is set aside.`;
+}
+
+/** The tool card's reason for a write under `.oscode/` (CTO L8). */
+export const VAULT_SETTINGS_AGENT_DENY =
+  'Vault settings are yours to change, so a model cannot write under .oscode.';
+
+// Y5: saving on commit, and a conflict.
+export const VAULT_SETTINGS_SAVING = 'Saving';
+export const VAULT_SETTINGS_SAVED = 'Saved';
+/** Once, on the first change in a folder vault with no file yet. */
+export const VAULT_SETTINGS_FIRST_CHANGE =
+  'The first change adds a small .oscode folder beside your notes to keep these settings.';
+/** A different field changed elsewhere: this one was re-applied and saved. */
+export const VAULT_SETTINGS_MERGED =
+  'Saved. Some other settings changed somewhere else and show here now.';
+
+/** The same field changed elsewhere: nothing was written. */
+export function vaultSettingsSameField(field: string, value: string): string {
+  return `${field} changed somewhere else while this was open, so yours was not saved. It is ${value} now.`;
+}
+
+/** The one quiet button under a same-field conflict. */
+export function vaultSettingsUseYours(yours: string): string {
+  return `Use ${yours}`;
+}
+
+export const VAULT_SETTINGS_FAILED =
+  'Could not save that setting, so nothing changed. Try again in a moment.';
+export const VAULT_SETTINGS_UNREADABLE =
+  '.oscode/vault.json could not be read, so these show the defaults and cannot change here. Fix or delete that file to change them.';
+export const VAULT_SETTINGS_AWAY =
+  'Your computer is off, so these settings cannot change right now.';
+
+// Y6: the Delete choice.
+export const VAULT_SETTINGS_DELETE_FOR_GOOD = 'Deletes skip Trash and ask twice.';
+
+// Y7: Notes in chats and Handoff.
+/** The words the Notes in chats sub is built from, so the sub can never
+ *  outrun the eval: it names matching notes only when some class's pack
+ *  retrieves (`full` in PACK_BY_CLASS). Pass the core's table. */
+export function vaultNotesInChatsSub(byClass: Readonly<Record<string, string>>): string {
+  const modes = Object.values(byClass);
+  const all = modes.length > 0 && modes.every((m) => m === 'full');
+  const some = modes.some((m) => m === 'full');
+  const what = all
+    ? "Each chat starts with this project's Current State, any notes you pinned, and notes that match the task."
+    : some
+      ? "Each chat starts with this project's Current State and any notes you pinned, and on some models notes that match the task."
+      : "Each chat starts with this project's Current State and any notes you pinned.";
+  return `${what} A card shows what went. Off applies to new chats.`;
+}
+export const VAULT_HANDOFF_SUB =
+  'When you switch models in a chat, the next one starts with a short summary of the work so far. Off applies to new chats.';
+/** A project's config turns the row off: the switch shows off, disabled. */
+export const VAULT_SWITCH_PROJECT_OFF = "This project's settings turn this off.";
+/** Memory off: both rows disabled. */
+export const VAULT_SWITCH_MEMORY_OFF = 'Memory is off, so chats carry no notes.';
+/** Memory's own sub, now that it gates the vault too (CX Y7; the
+ *  integrator places it on the Memory row). */
+export const VAULT_MEMORY_SUB =
+  "The agent keeps notes on each coding project in that project's own repository, and chats can carry your vault. Off stops both, for new chats.";
+
+/** The Wayfinding toasts, in the Memory row's pattern. */
+export function vaultNotesInChatsToast(on: boolean): string {
+  return on ? 'Notes in chats on.' : 'Notes in chats off.';
+}
+export function vaultHandoffToast(on: boolean): string {
+  return on ? 'Handoff on.' : 'Handoff off.';
+}
+
+// Y8: Room for notes. No numbers and no speed or quality claim (D12).
+/** Adapted from CX's "so a smaller model always gets less": M7_BANNED bars
+ *  "always", and the sentence holds without it. */
+export const VAULT_PACK_SIZE_SUB =
+  "How much of each model's room your notes may take. It scales with the model, so a smaller model gets less.";
+/** Amber dot, only while a cloud seat is connected: a spend fact. */
+export const VAULT_PACK_SIZE_CLOUD = 'On a cloud model, Large sends more text on your account.';
+export const VAULT_PACK_SIZE_NEEDS_CONTEXT = 'Turn on Notes in chats to choose this.';
+export const VAULT_PACK_SIZE_MACHINE_ABOVE =
+  "Your computer's config gives notes more room than Large.";
+
+// Y9: excluded and local-only folders.
+export const VAULT_EXCLUDE_SUB = 'Models never see these, in any chat.';
+export const VAULT_LOCAL_ONLY_SUB =
+  'A local model may read these. Nothing here goes to a cloud model.';
+export const VAULT_ADD_FOLDER = 'Add a folder';
+export const VAULT_ADD_TAG = 'Add a tag';
+export function vaultRemoveEntry(entry: string): string {
+  return `Remove ${entry}`;
+}
+
+// Y10: Your agent writes in (only where `vaultCopy(...).agent` is defined).
+export const VAULT_AGENT_FOLDER_ANYWHERE = 'Anywhere in this vault';
+export const VAULT_AGENT_FOLDER_SUB = 'Your agent writes only here, and still asks first.';
+
+// Y13: the starter layout (the preview sheet's rows are stream G's).
+/** The ramp's second button, where the layout is offered. */
+export const VAULT_STARTER_OFFER = 'Start with a simple layout';
+/** The preview's one line on settings, shown only when the settings file
+ *  will be written. */
+export const VAULT_STARTER_SETTINGS_LINE =
+  "New notes go in Inbox, and today's note uses Templates/Daily.";
+export const VAULT_STARTER_ADDED = 'Added a simple layout.';
+export function vaultStarterPartial(added: number, total: number): string {
+  return `Added ${added} of ${total}. Try again to add the rest.`;
+}
+
+/** `Templates/Daily.md`: no `{{date}}` heading, since the file name is the
+ *  date. */
+export function vaultStarterDailyTemplate(): string {
+  return ['## Plan', '', '- [ ] ', '', '## Notes', ''].join('\n');
+}
+
+/** `Vault conventions.md`. It travels, so like the welcome note it names no
+ *  storage, no Obsidian and no agent. The Private and Journal line is here
+ *  only when the vault's own settings file landed with those globs (CTO
+ *  reconciliation 3): machine config can replace the D5 defaults, but it
+ *  cannot remove the vault file's union. */
+export function vaultStarterConventions(settingsLanded: boolean): string {
+  return [
+    '# Vault conventions',
+    '',
+    'New notes start in Inbox. Move them into a folder when they find a home.',
+    '',
+    "Today's note uses Templates/Daily. Edit that note to change what every new day starts with.",
+    '',
+    'Link notes with [[two square brackets]].',
+    ...(settingsLanded
+      ? ['', "This vault's settings keep anything in Private or Journal off cloud models."]
+      : []),
+    '',
+  ].join('\n');
+}
+
+// ---- M7 stream F end ----
+
+// ---- M7 stream G begin ----
+// Components (CX Y11, Y12, Y13, Y16): the provenance chip and its accessible
+// label, "About this note" and Mark as reviewed, the starter preview sheet's
+// rows, the editor sample line.
+
+/** Where the writing seat ran, in words: the chip is never color alone (R4). */
+export const VAULT_PROV_WHERE: Readonly<Record<'local' | 'cloud', string>> = {
+  local: 'Local',
+  cloud: 'Cloud',
+};
+
+/** What the provenance chip says (CX Y11). `edit` is a model's edit to a note
+ *  it did not create. Reviewed keeps the Local or Cloud word beside the model
+ *  (Y17: the chip always says it in words). */
+export function vaultProvChipText(p: {
+  model: string;
+  where: 'local' | 'cloud';
+  edit?: boolean;
+  reviewed?: boolean;
+}): string {
+  const where = VAULT_PROV_WHERE[p.where];
+  if (p.reviewed) return `${p.model} · ${where} · Reviewed`;
+  return `${p.edit ? 'Edited' : 'Written'} by ${p.model} · ${where}`;
+}
+
+/** The chip's accessible name (CX Y16). */
+export function vaultProvChipLabel(p: {
+  model: string;
+  where: 'local' | 'cloud';
+  edit?: boolean;
+  reviewed?: boolean;
+}): string {
+  const on = p.where === 'local' ? 'this computer' : 'a cloud model';
+  const verb = p.edit ? 'Edited' : 'Written';
+  return `${verb} by ${p.model}, on ${on}.${p.reviewed ? ' Reviewed.' : ''} Open details.`;
+}
+
+// "About this note" (CX Y12).
+export const VAULT_ABOUT_TITLE = 'About this note';
+export const VAULT_ABOUT_WRITTEN_BY = 'Written by';
+export const VAULT_ABOUT_EDITED_BY = 'Edited by';
+export const VAULT_ABOUT_RAN = 'Ran';
+export const VAULT_ABOUT_RAN_LOCAL = 'On this computer';
+/** The cloud row names the provider when the note carries one. */
+export function vaultAboutRanCloud(provider?: string): string {
+  return provider ? `On a cloud model, ${provider}` : 'On a cloud model';
+}
+export const VAULT_ABOUT_SIZE = 'Model size';
+export const VAULT_ABOUT_SIZES: Readonly<Record<'tiny' | 'small' | 'mid' | 'large', string>> = {
+  tiny: 'Tiny',
+  small: 'Small',
+  mid: 'Mid',
+  large: 'Large',
+};
+export const VAULT_ABOUT_HOW = 'How';
+export const VAULT_ABOUT_HOWS: Readonly<
+  Record<'agent' | 'agent-edit' | 'crew' | 'handoff', string>
+> = {
+  agent: 'In a chat, with your approval',
+  'agent-edit': 'In a chat, with your approval',
+  crew: 'By a Crew routine',
+  handoff: 'A handoff you saved',
+};
+export const VAULT_ABOUT_CREATED = 'Created';
+export const VAULT_ABOUT_REVIEWED = 'Reviewed';
+export const VAULT_ABOUT_NOT_YET = 'Not yet';
+export const VAULT_ABOUT_FOOT =
+  "This comes from the note's own properties, which anyone who can edit the note can change.";
+export const VAULT_MARK_REVIEWED = 'Mark as reviewed';
+export const VAULT_MARK_REVIEWED_SUB =
+  'Reviewed means you read it. It changes nothing a model sees.';
+export const VAULT_MARK_NOT_REVIEWED = 'Mark as not reviewed';
+export const VAULT_MARKED_REVIEWED = 'Marked as reviewed.';
+export const VAULT_MARKED_NOT_REVIEWED = 'Marked as not reviewed.';
+export function vaultMarkRefused(title: string): string {
+  return `"${title}" changed somewhere else, so it was not marked. The newer version is open now.`;
+}
+export function vaultMarkFailed(title: string): string {
+  return `Could not mark "${title}", so nothing changed. Try again in a moment.`;
+}
+
+// The starter layout's preview sheet (CX Y13). The notes it writes, the ramp
+// button and the toasts are stream F's.
+export const VAULT_STARTER_TITLE = 'A simple layout';
+export const VAULT_STARTER_SUB =
+  'These are added to your empty vault. Change or delete any of them later.';
+export const VAULT_STARTER_ROWS: ReadonlyArray<{
+  glyph: 'note' | 'folder' | 'template';
+  name: string;
+  line: string;
+}> = [
+  { glyph: 'note', name: 'Welcome to your Vault', line: 'A note on how links and folders work.' },
+  { glyph: 'folder', name: 'Inbox', line: 'A folder where new notes go.' },
+  { glyph: 'template', name: 'Templates/Daily', line: "A template for today's note." },
+  {
+    glyph: 'note',
+    name: 'Vault conventions',
+    line: 'A note that says how this vault is laid out. Pin it to a project so its chats start with it.',
+  },
+];
+// The settings line and the partial result are stream F's (one source per
+// string); the sheet imports them from F's section above.
+export const VAULT_STARTER_ADD = 'Add these';
+
+/** The Editor section's one sample line, drawn in the chosen font and size. */
+export const VAULT_EDITOR_SAMPLE = 'A line of your notes looks like this.';
+
+// ---- M7 stream G end ----
+
+// ---- M7 wave 2 begin ----
+// The integrator's few lines: what the room and Settings say where no
+// stream's fence had a line for it (the team read-only footer, Y4's rows).
+
+/** A list or a note field with nothing set. */
+export const VAULT_SETTINGS_NONE = 'None';
+/** The Add a tag field's hint. */
+export const VAULT_SETTINGS_TAG_PLACEHOLDER = 'Tag name';
+
+/** Obsidian's attachment folder form (`/`, `./`, `./sub`, a folder) in
+ *  words, for the Attachments folder row. */
+export function vaultAttachmentsValue(setting: string | undefined): string {
+  const v = (setting ?? '').trim();
+  if (!v || v === '/') return 'Top of this vault';
+  if (v === './' || v === '.') return 'Same folder as the note';
+  if (v.startsWith('./')) return `"${v.slice(2).replace(/\/+$/, '')}", beside the note`;
+  return v.replace(/^\/+|\/+$/g, '');
+}
+
+/** The starter layout found the vault no longer empty right before it
+ *  wrote (CTO L12), so nothing was added. */
+export const VAULT_STARTER_NOT_EMPTY =
+  'This vault has something in it now, so the layout was not added.';
+
+/** The team vault's footer (CX Y14): an admin reads who the settings reach,
+ *  a member reads who sets them. On main no one edits them here yet, so the
+ *  rows read-only with the storage's own line. */
+export function vaultSettingsTeamFooter(o: { admin: boolean; org?: string }): string {
+  if (!o.admin) return 'Your admins set these.';
+  return o.org ? `These apply to everyone in ${o.org}.` : 'These apply to everyone in your team.';
+}
+
+/** The approval card's line for the property change a model's write also
+ *  makes (CTO L9): the person approves the note's properties with its text.
+ *  In the chip's own words (CX Y11), so the card and the chip agree. */
+export function vaultProposalRecords(p: {
+  model?: string;
+  where: 'local' | 'cloud';
+  edit?: boolean;
+  clearsReview?: boolean;
+}): string {
+  const who = p.model
+    ? vaultProvChipText({ model: p.model, where: p.where, ...(p.edit ? { edit: true } : {}) })
+    : `${p.edit ? 'Edited' : 'Written'} · ${VAULT_PROV_WHERE[p.where]}`;
+  return `Also records in its properties: ${who}.${p.clearsReview ? ' Its review mark is cleared.' : ''}`;
+}
+
+// ---- M7 wave 2 end ----

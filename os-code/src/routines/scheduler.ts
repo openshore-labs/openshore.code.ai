@@ -46,8 +46,14 @@ import {
 } from './model.js';
 import { acquireSchedulerLock, releaseSchedulerLock, type SchedulerLock } from './lock.js';
 import * as store from './store.js';
-import { runNoteDayPath, runNoteFrontmatter } from './runNote.js';
+import { dailyNoteConfigOf, runNoteDayPath, runNoteFrontmatter } from './runNote.js';
+import type { RunNoteProvenance } from './runNote.js';
 import { readVaultConfigFile } from '../core/vault/configFile.js';
+import { resolvedAgentWritable } from '../core/vault/folderFs.js';
+import { vaultSettingsFor } from '../core/vault/settingsFile.js';
+import { dailyNotePath, datePartsOf } from '../harness/vault/dates.js';
+import { deriveModelClass } from '../harness/profile.js';
+import { loadConfig } from '../config/load.js';
 
 const log = logger('routines');
 
@@ -74,6 +80,11 @@ export interface OpenedSession {
   warnings: string[];
   /** The orchestrator's model name, for the run note's frontmatter. */
   model?: string;
+  /** Where the orchestrator runs, judged by address, for the note's
+   *  `oscode-where` line (Vault M7, CTO L9). Left out when unknown. */
+  where?: 'local' | 'cloud';
+  /** The orchestrator's provider, for a cloud seat's `oscode-provider`. */
+  provider?: string;
 }
 
 /** A run refused before it started, for a reason the person can act on. The
@@ -113,6 +124,10 @@ export interface SchedulerDeps {
   /** Persist a folder as allowed for routines. Defaults to the global config's
    *  daemon.outboxAllowedRoots; a test hands in its own. */
   persistAllowedRoot?: (cwd: string) => void;
+  /** Whether a run note carries the provenance lines (`vault.provenance`,
+   *  machine config, Vault M7, CTO L9). Defaults to the config the run's
+   *  workspace loads (the key is machine-only, so a project cannot move it). */
+  provenance?: (routine: Routine) => boolean;
 }
 
 /** The framing every run receives as its standing instructions, ahead of the
@@ -141,6 +156,10 @@ interface ActiveRun {
   driver: RoutineDriver;
   /** The orchestrator's model, when the session said. */
   model?: string;
+  /** Where the orchestrator runs, when the session said. */
+  where?: 'local' | 'cloud';
+  /** The orchestrator's provider, when the session said. */
+  provider?: string;
   off: () => void;
   finalText: string;
   steps: string[];
@@ -174,6 +193,7 @@ export class RoutineScheduler {
   private readonly allowedWorkspace: (cwd: string) => boolean;
   private readonly lock: { acquire: () => SchedulerLock; release: () => void };
   private readonly persistAllowedRoot: (cwd: string) => void;
+  private readonly provenance: (routine: Routine) => boolean;
   /** The pid of the other process whose clock is live, when ours is not. */
   private clockHeldBy?: number;
   private timer?: ReturnType<typeof setInterval>;
@@ -197,6 +217,7 @@ export class RoutineScheduler {
       release: () => releaseSchedulerLock(),
     };
     this.persistAllowedRoot = deps.persistAllowedRoot ?? persistOutboxRoot;
+    this.provenance = deps.provenance ?? provenanceOn;
     // A run the previous process left open can never finish now; say so
     // rather than show "working" forever. The journal is still on disk.
     for (const run of store.listRuns(MAX_ORPHANS)) {
@@ -469,7 +490,7 @@ export class RoutineScheduler {
       void this.pump();
       return;
     }
-    const { driver, model } = opened;
+    const { driver, model, where, provider } = opened;
     if (routine.ownerUserId) driver.setOwner?.(routine.ownerUserId);
     const run = store.appendRun({
       routineId: routine.id,
@@ -484,6 +505,8 @@ export class RoutineScheduler {
       routine,
       driver,
       model,
+      ...(where ? { where } : {}),
+      ...(provider ? { provider } : {}),
       off: () => {},
       finalText: '',
       steps: [],
@@ -620,13 +643,56 @@ export class RoutineScheduler {
    *  can link to the day's note (Vault M6, 6.4, CTO K7). The note is never
    *  created or appended to from here. */
   private async loadDayPath(active: ActiveRun): Promise<void> {
+    const root = this.vaultRoot(active.routine.ownerUserId);
+    const started = new Date(active.run.startedAt);
     try {
-      const root = this.vaultRoot(active.routine.ownerUserId);
+      // Obsidian's daily-notes file present but unreadable: no link, since
+      // the resolver would fall back to the default format and guess a name
+      // that could fork the day's note (K7). Absent or readable goes on.
+      const obsidianDaily = await readVaultConfigFile(root, 'obsidian/daily-notes');
+      if (dailyNoteConfigOf(obsidianDaily) === undefined) {
+        active.dayPath = undefined;
+        return;
+      }
+      // The vault's resolved settings (Vault M7, CTO L5): Obsidian's daily
+      // notes where it sets them, else the vault's own file, else the default.
+      const settings = await vaultSettingsFor(root, { force: true });
+      const path = dailyNotePath(datePartsOf(started), settings.daily);
+      active.dayPath = path.ok ? path.path : undefined;
+      return;
+    } catch (err) {
+      log.warn('vault settings unavailable; reading the daily notes settings alone', {
+        err: String(err),
+      });
+    }
+    try {
       const read = await readVaultConfigFile(root, 'obsidian/daily-notes');
-      active.dayPath = runNoteDayPath(new Date(active.run.startedAt), read);
+      active.dayPath = runNoteDayPath(started, read);
     } catch (err) {
       log.warn('could not read the daily notes settings', { err: String(err) });
     }
+  }
+
+  /** What the run note's provenance lines carry (Vault M7, CTO L9), or
+   *  'off' when `vault.provenance` is off. `runNoteFrontmatter` merges them
+   *  byte for byte (L10) through the one `mergeProvenance`; a merge that
+   *  skips leaves the block as built, so the run is recorded either way. */
+  private provenanceFor(active: ActiveRun): RunNoteProvenance | 'off' {
+    let on = false;
+    try {
+      on = this.provenance(active.routine);
+    } catch {
+      on = false;
+    }
+    if (!on) return 'off';
+    const where = active.where;
+    return {
+      ...(where ? { where } : {}),
+      ...(where && active.model
+        ? { size: deriveModelClass({ model: active.model, kind: where }) }
+        : {}),
+      ...(where === 'cloud' && active.provider ? { provider: active.provider } : {}),
+    };
   }
 
   private writeNote(
@@ -660,6 +726,7 @@ export class RoutineScheduler {
         folder: folder.slice('Crew/'.length),
         previousPath,
         ...(active.dayPath ? { dayPath: active.dayPath } : {}),
+        provenance: this.provenanceFor(active),
       }),
       `# ${active.routine.name}: ${date} at ${hh}:${mm}`,
       '',
@@ -687,11 +754,19 @@ export class RoutineScheduler {
     // H4): no character Obsidian's links or a file system refuse, no dot-led
     // or dot-ended segment, no reserved name. Old runs keep the absolute path
     // their record already holds, so nothing is moved.
+    const text = lines.join('\n');
     for (let n = 1; ; n++) {
       const name = `${date} ${hh}-${mm}${n === 1 ? '' : ` (${n})`}.md`;
       const rel = join(folder, name).split('\\').join('/');
       const abs = join(root, rel);
-      if (writeNewNoteSync(abs, lines.join('\n')).ok) return { rel, abs };
+      // Never into a settings folder (Vault M7, CTO L8), judged on where the
+      // path resolves: a Crew folder linked into .oscode/ is refused.
+      if (!resolvedAgentWritable(root, abs)) {
+        throw new Error(
+          'The routine folder leads into a vault settings folder, so no note was written.',
+        );
+      }
+      if (writeNewNoteSync(abs, text).ok) return { rel, abs };
       if (n >= 100) throw new Error(`Every note name for ${date} ${hh}-${mm} is taken.`);
     }
   }
@@ -786,7 +861,7 @@ export function defaultOpenSession(
     driver: LocalDriver;
     warnings: string[];
     orchestratorKind: 'local' | 'cloud';
-    router?: { orchestrator(): { ref: { model: string } } };
+    router?: { orchestrator(): { ref: { model: string; provider?: string } } };
   } = boot({
     cwd: routine.cwd,
     profile: 'headless',
@@ -806,12 +881,31 @@ export function defaultOpenSession(
     throw new RoutineRefused(ROUTINE_NEEDS_LOCAL_MODEL);
   }
   let model: string | undefined;
+  let provider: string | undefined;
   try {
-    model = router?.orchestrator().ref.model;
+    const ref = router?.orchestrator().ref;
+    model = ref?.model;
+    provider = ref?.provider;
   } catch {
     // The note says "unknown" rather than fail the run over a label.
   }
-  return { driver, warnings, ...(model ? { model } : {}) };
+  return {
+    driver,
+    warnings,
+    ...(model ? { model } : {}),
+    ...(provider ? { provider } : {}),
+    where: orchestratorKind,
+  };
+}
+
+/** `vault.provenance` from the config the run's workspace loads; the key is
+ *  machine-only, so this is the machine's value. On unless it says off. */
+function provenanceOn(routine: Routine): boolean {
+  try {
+    return loadConfig(routine.cwd).config.vault?.provenance !== 'off';
+  } catch {
+    return true;
+  }
 }
 
 // ---- the process singleton ---------------------------------------------------

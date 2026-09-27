@@ -2561,6 +2561,89 @@ execution contract. Newest at the bottom.
   host with no `matchMedia`) leaves none. `vaultViewGhost.test.tsx` fails a
   Vault view root rendered without its ghost binding. The Trash page still
   only arrives with a fade, since it replaces the whole screen.
+- **Vault M7, the customization surface (2026-09-27):** the CTO's rulings L1
+  to L20, built in waves (0 contracts; 1 streams A to G, H on the held team
+  branch; 2 one app integrator). In brief: L1 one pure settings core
+  (`harness/vault/settings.ts`, Node-free, through `os-code/protocol`) with
+  the tolerant Obsidian readers moved into it; L2 the in-vault file
+  `.oscode/vault.json` (new notes, daily, templates, attachments, links,
+  editor, tree sort, delete, agent folder, exclude and local-only), each
+  field with a runtime consumer pinned by a table test; L3 plan change: a
+  convention Obsidian sets wins and its row reads "From Obsidian", then the
+  in-vault field, then the default; L4 the file only narrows (an allow-list
+  parse, widening keys set aside with a plain line, the lists union only),
+  and the honest limit: it binds every model and the agent, not a person who
+  can edit the folder, so the durable floor is machine config and the device
+  setting; L5 who reads it per host (`vaultSettingsFor`, a refreshed privacy
+  holder per root); L6 caching (2 s engine memo, 60 s app map keyed
+  `providerId::resourceId`); L7 the sheet writes the file through a seam
+  `writeConfig`, compare-and-swap, the agent never may; L8 a hard deny under
+  `.oscode/` on every write path; L9 plan change: provenance as flat
+  top-level `oscode-*` keys (`source`, `model`, `where`, `size`, `provider`,
+  `created`, `reviewed`), `oscode:` stays the privacy marks, and the merge
+  runs before the approval so the person approves exact bytes; L10 the pure
+  textual merge, byte for byte, skipping rather than making bad frontmatter
+  worse; L11 `delete: permanent` turns Trash caps off; L12 the starter
+  layout, empty personal vaults only, opt-in, every write `ifAbsent`; L13
+  reach switches stay out of the vault (`vaultContextOn`, `vaultHandoffOn`,
+  `vaultPackSize`, the app may only lower, riding
+  `BootstrapOptions.vaultOverrides`); L14 new keys classified (`vault.packSize`,
+  `vault.packMaxTokens`, `vault.provenance` machine; the device settings);
+  L15 one sheet, seven sections, three Wayfinding rows after Memory; L16
+  Local on its sealed key, the team vault read-only defaults on main; L17
+  team settings and entitlement on the held branch; L18 no-config parity;
+  L19 purity; L20 this entry. Three holes closed on the way: a symlinked
+  note pointing into `.oscode/` (the resolved path is checked, not only the
+  typed one), `writeFile` and `editFile` reaching `.oscode/` under an
+  always-allow grant (refused for the machine vault and every member root,
+  whatever the grant), and a nested `oscode:` provenance map that would have
+  made a duplicate key and dropped every privacy mark (hence flat keys).
+  `runShell` is not covered: it stays under its ask rule and nothing claims
+  otherwise. Reconciled with CX: flat `oscode-*` keys; Memory's sub says it
+  gates the vault too, and "Off applies to new chats" is the floor (an
+  engine session takes its options at open); the line "This vault's
+  settings keep anything in Private or Journal off cloud models" shows only
+  when the starter's settings file actually landed (a machine
+  `vault.localOnly` replaces the D5 default, so without the file the line
+  would not be true); Handoff is an off-only override that takes effect at
+  the next model switch on app seats and for engine sessions opened after,
+  and off means no handoff at all (the passed switch text is dropped too).
+  Entitlement (CFO + CTO; founder sets the date): 2026-09-27: Team vault
+  writes for an org with no entitlement row are open until
+  no_entitlement_vault_until() (null in the beta); when pay gates return,
+  one migration sets it at least 30 days out as the notice; a lapsed paid row
+  is read-only with export regardless. The SQL is on the held team branch as
+  `0021_org_vault_settings.sql` (after 0019 and 0020): `org_vault_settings`
+  (conventions only, `delete_role`, a `context_folder` column with no row
+  until v1.1), admin-only compare-and-swap `org_vault_settings_put`,
+  `org_vault_entitled`; every write RPC raises `OV402` when not entitled,
+  `OV403` refuses a member's delete when only admins may, and a move is not
+  gated by the delete role (a rename keeps the note and its history). The
+  integrator's key calls: run note provenance has one owner
+  (`runNoteFrontmatter`), and an unreadable `daily-notes.json` writes no day
+  link; K16 timings are best of five while counts stay exact; one override
+  rule (A's three helpers); vaultWrite's description stays static (a
+  per-session description would break the prompt cache prefix for no
+  measured gain); the settings writer is a direct import, proven end to end
+  through the daemon and the desktop bridge; a retrieval skip for the
+  templates folder and Obsidian's plain ignore filters (not privacy, and no
+  copy says so); the settings live in the store keyed like Today's cache;
+  room for notes on an app seat is the device's choice, lower-only against
+  the machine elsewhere; the project lock line is not shown (the app cannot
+  read a project's config; the engine still enforces its off); links write
+  markdown or wikilinks by the vault's style and format only when the
+  resolver reaches exactly that note; Mark as reviewed is the person's
+  compare-and-swap write. Approval honesty, fixed after integration: an
+  addition to an existing note had its provenance merged at write time
+  while the card showed only the added text. Now the app computes the exact
+  final text before the card (the note as the model read it, the addition,
+  the property change), the card names the change ("Also records in its
+  properties: Edited by {model} · Local."), and the write lands exactly
+  those bytes by compare-and-swap on the version read, refusing a changed
+  note instead of merging; the engine's approval basis carries the hash of
+  the exact bytes its diff showed, and execute writes those bytes or nothing
+  (a seat that changed under the card is refused). Tests:
+  `os-code/test/vaultApprovedBytes.test.ts`, `app/test/vaultTool.test.ts`.
 - **v1 for the first-time person (founder "build all of your recommendations",
   2026-09-27; the customer is a non-developer using Claude Code today; the
   founder asked that the core design and feature set not change):** everything

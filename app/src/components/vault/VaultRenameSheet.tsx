@@ -65,6 +65,9 @@ export interface VaultRenameSheetProps {
   onClose: () => void;
   /** Open straight on the folder list (a folder's "Move folder"). */
   startAt?: 'name' | 'folders';
+  /** The vault's `links.updateOnRename` (Vault M7, CTO L2): `always`
+   *  updates the links without asking; `ask` (the default) asks. */
+  updateOnRename?: 'ask' | 'always';
 }
 
 function stemOf(kind: 'note' | 'folder', path: string): string {
@@ -73,6 +76,7 @@ function stemOf(kind: 'note' | 'folder', path: string): string {
 
 export function VaultRenameSheet(props: VaultRenameSheetProps) {
   const { open, kind, from, folders, known, prepare, apply, onClose, startAt } = props;
+  const updateOnRename = props.updateOnRename ?? 'ask';
   const [step, setStep] = useState<Step>('name');
   const [name, setName] = useState(() => stemOf(kind, from));
   const [folder, setFolder] = useState(() => noteFolder(from));
@@ -141,6 +145,14 @@ export function VaultRenameSheet(props: VaultRenameSheetProps) {
     }
     if (planned.links > 0) {
       setPreview(planned);
+      if (updateOnRename === 'always') {
+        // The vault's settings say to update links on every rename: no
+        // question, the same run the "Update links" button starts.
+        await apply(planned, true, (i, m) => setProgress({ i, m }));
+        setBusy(false);
+        setProgress(undefined);
+        return;
+      }
       setBusy(false);
       setStep('links');
       return;

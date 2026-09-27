@@ -24,7 +24,16 @@
 // RemoveResult, a stale ifMatch is 'changed' and leaves the file, and a file
 // already gone is ok.
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { StorageProvider } from '../src/lib/gitos/providers.js';
@@ -70,9 +79,28 @@ vi.mock('../src/lib/electronBridge.js', async () => {
     // Vault M6 (CTO K13): main's handlers over the same folderFs code, each
     // wired only once stream B's function exists, as `(root, ...args)`.
     ...m6Bridge(fs as unknown as Record<string, unknown>),
+    // Vault M3 and M7 (CTO H5, L7): main's config read, and its one config
+    // write, the real writer through main's own handler code.
+    ...(await configBridge()),
   };
   return { bridge: () => b };
 });
+
+/** osc:vaultReadConfig and osc:vaultWriteConfig over the temp folder, as
+ *  main answers them: its read, and its one write, `putVaultSettingsFile`
+ *  over the guard main parses, so the real engine writer (Vault M7, CTO L7)
+ *  runs end to end with no stand-in. */
+async function configBridge(): Promise<Record<string, unknown>> {
+  const { readVaultConfigFile } = await import('os-code/dist/src/core/vault/configFile.js');
+  const { putVaultSettingsFile, parseConfigWriteGuard } =
+    await import('os-code/dist/src/daemon/vaultRoutes.js');
+  return {
+    vaultReadConfig: (name: unknown) =>
+      readVaultConfigFile(h.root, name as Parameters<typeof readVaultConfigFile>[1]),
+    vaultWriteConfig: (name: unknown, text: string, guard: unknown) =>
+      putVaultSettingsFile(h.root, name, text, parseConfigWriteGuard(guard)),
+  };
+}
 
 /** The M6 bridge calls, routed to folderFs by the K13 names. A call whose
  *  function is not built in this tree is left out, as an old main would. */
@@ -475,6 +503,152 @@ for (const p of enforcing) {
       expect(await p.provider.emptyTrash(R)).toEqual({ removed: 1 });
       expect(await p.provider.listTrash!(R)).toEqual([]);
       expect(await p.provider.restore!(R, ids[1]!)).toEqual({ ok: false, conflict: 'missing' });
+    });
+  });
+}
+
+// ---- Vault M7 (CTO L7, L16): writeConfig, the settings sheet's write ------
+// Every provider with writeConfig holds the note write's contract on the
+// vault's own settings file: ifAbsent never replaces, a stale ifMatch is
+// `changed` with theirs (the file there now, as readConfig reads it) and
+// leaves the bytes, an ifMatch on a file gone is `missing` and makes nothing,
+// and a write's version is the one readConfig and the next ifMatch accept.
+// Every `obsidian/*` name is refused before anything is written.
+
+const settingsRows: Array<{
+  name: string;
+  provider: StorageProvider;
+  bytes: () => string | undefined;
+  replace: (text: string) => void;
+  remove: () => void;
+  obsidianUntouched: () => boolean;
+}> = [
+  {
+    name: 'This folder (desktop)',
+    provider: deviceFolderProvider,
+    bytes: () => {
+      try {
+        return readFileSync(join(h.root, '.oscode', 'vault.json'), 'utf8');
+      } catch {
+        return undefined;
+      }
+    },
+    // Another writer (a hand edit, a sync): a temp file renamed over it.
+    replace: (t) => {
+      mkdirSync(join(h.root, '.oscode'), { recursive: true });
+      const tmp = join(h.root, '.oscode', '.other');
+      writeFileSync(tmp, t);
+      renameSync(tmp, join(h.root, '.oscode', 'vault.json'));
+    },
+    remove: () => rmSync(join(h.root, '.oscode', 'vault.json')),
+    obsidianUntouched: () => !existsSync(join(h.root, '.obsidian')),
+  },
+  {
+    name: 'This device',
+    provider: localProvider,
+    bytes: () => {
+      const raw = h.store.get(`oscode.gitos.config.${R}.vault`);
+      return raw ? (JSON.parse(raw) as { text: string }).text : undefined;
+    },
+    replace: (t) =>
+      h.store.set(
+        `oscode.gitos.config.${R}.vault`,
+        JSON.stringify({ text: t, updatedAt: new Date().toISOString(), v: `other-${t}` }),
+      ),
+    remove: () => h.store.delete(`oscode.gitos.config.${R}.vault`),
+    obsidianUntouched: () => [...h.store.keys()].every((k) => !/obsidian/.test(k)),
+  },
+  {
+    name: 'Your computer (the hub)',
+    provider: hubProvider,
+    bytes: () => hub.config.get('oscode/vault'),
+    replace: (t) => hub.replaceConfig('oscode/vault', t),
+    remove: () => {
+      hub.config.delete('oscode/vault');
+      hub.configVersions.delete('oscode/vault');
+    },
+    obsidianUntouched: () => [...hub.config.keys()].every((k) => !k.startsWith('obsidian/')),
+  },
+];
+
+const V1 = '{\n  "version": 1\n}\n';
+const V2 = '{\n  "version": 1,\n  "delete": "permanent"\n}\n';
+
+for (const p of settingsRows) {
+  describe(`writeConfig contract: ${p.name}`, () => {
+    const write = (text: string, guard: { ifMatch: string } | { ifAbsent: true }) =>
+      p.provider.writeConfig!(R, 'oscode/vault', text, guard);
+
+    it('declares writeConfig beside compareAndSwap', () => {
+      expect(typeof p.provider.writeConfig).toBe('function');
+      expect(p.provider.compareAndSwap).toBe(true);
+    });
+
+    it('ifAbsent makes the file, and readConfig reads the same text and version', async () => {
+      const r = await write(V1, { ifAbsent: true });
+      expect(r).toMatchObject({ ok: true, file: { path: '.oscode/vault.json', text: V1 } });
+      expect(p.bytes()).toBe(V1);
+      const read = await p.provider.readConfig!(R, 'oscode/vault');
+      expect(read).toEqual({ ok: true, text: V1, version: r.ok ? r.file.version : '' });
+    });
+
+    it("a write's version is accepted by the next ifMatch, and each write is a new one", async () => {
+      const first = await write(V1, { ifAbsent: true });
+      const v1 = first.ok ? first.file.version! : '';
+      const second = await write(V2, { ifMatch: v1 });
+      expect(second).toMatchObject({ ok: true, file: { text: V2 } });
+      const v2 = second.ok ? second.file.version! : '';
+      expect(v2).toBeTruthy();
+      expect(v2).not.toBe(v1);
+      expect((await write(V1, { ifMatch: v2 })).ok).toBe(true);
+      expect(p.bytes()).toBe(V1);
+    });
+
+    it('a stale ifMatch is changed with theirs, and leaves their bytes', async () => {
+      const first = await write(V1, { ifAbsent: true });
+      p.replace('{"version":1,"tree":{"sort":"modified"}}');
+      const r = await write(V2, { ifMatch: first.ok ? first.file.version! : '' });
+      expect(r).toMatchObject({ ok: false, conflict: 'changed' });
+      expect(!r.ok && r.theirs?.text).toBe('{"version":1,"tree":{"sort":"modified"}}');
+      // Theirs carries the version the re-read gives, so one re-apply lands.
+      const now = await p.provider.readConfig!(R, 'oscode/vault');
+      expect(!r.ok && r.theirs?.version).toBe(now.ok ? now.version : 'no');
+      expect(p.bytes()).toBe('{"version":1,"tree":{"sort":"modified"}}');
+      const again = await write(V2, { ifMatch: !r.ok ? r.theirs!.version! : '' });
+      expect(again.ok).toBe(true);
+    });
+
+    it('ifAbsent on a file there is exists with theirs, and never replaces', async () => {
+      p.replace('{"version":1}');
+      const r = await write(V1, { ifAbsent: true });
+      expect(r).toMatchObject({ ok: false, conflict: 'exists' });
+      expect(!r.ok && r.theirs?.text).toBe('{"version":1}');
+      expect(p.bytes()).toBe('{"version":1}');
+    });
+
+    it('ifMatch on a file gone is missing, and makes nothing', async () => {
+      const first = await write(V1, { ifAbsent: true });
+      p.remove();
+      const r = await write(V2, { ifMatch: first.ok ? first.file.version! : '' });
+      expect(r).toEqual({ ok: false, conflict: 'missing' });
+      expect(p.bytes()).toBeUndefined();
+    });
+
+    it('refuses every obsidian/* name before anything is written', async () => {
+      for (const name of ['obsidian/app', 'obsidian/daily-notes', 'obsidian/templates']) {
+        await expect(
+          p.provider.writeConfig!(R, name as 'oscode/vault', '{}', { ifAbsent: true }),
+        ).rejects.toThrow();
+      }
+      expect(p.obsidianUntouched()).toBe(true);
+      expect(p.bytes()).toBeUndefined();
+    });
+
+    it('refuses a file over 256 KB before anything is written', async () => {
+      await expect(write('x'.repeat(256 * 1024 + 1), { ifAbsent: true })).rejects.toThrow(
+        /over 256 KB/,
+      );
+      expect(p.bytes()).toBeUndefined();
     });
   });
 }

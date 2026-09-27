@@ -19,6 +19,11 @@
 //   storage alone and the store refuses a create in the read-only words.
 // - Reading attachments is not a write, so read-only and away leave it on
 //   (the image says the computer is off, CX X14).
+// - The Vault settings sheet saves (Vault M7, CTO L7) only where the storage
+//   writes its settings file under compare-and-swap (`writeConfig`), and only
+//   while writable and not away. A vault's own `delete: permanent` (L11)
+//   turns one-tap Trash off, so every delete asks twice "for good".
+import type { VaultDeleteMode } from 'os-code/protocol';
 import type { StorageProvider } from './gitos/providers.js';
 
 /** What the Vault may offer on one storage right now. */
@@ -42,6 +47,10 @@ export interface VaultCaps {
   linkRewrite: boolean;
   /** Today's note can be started here. */
   today: boolean;
+  /** The Vault settings sheet can save (Vault M7, CTO L7): `writeConfig`,
+   *  compare-and-swap, writable, not away. Without it the sheet is read-only
+   *  with the storage's own line (`vaultCapLine(provider, 'settingsWrite')`). */
+  settingsWrite: boolean;
 }
 
 /** The room's state that narrows what the storage could do. */
@@ -54,13 +63,29 @@ export interface VaultCapsState {
   reach?: 'unknown' | 'reachable' | 'away';
 }
 
+/** The vault's own settings that narrow the caps (Vault M7, CTO L11): the
+ *  resolved `delete` mode. Absent before the settings load, which reads as
+ *  the default (`trash`). */
+export interface VaultCapsSettings {
+  delete?: VaultDeleteMode;
+}
+
 const has = (p: StorageProvider, member: keyof StorageProvider): boolean =>
   typeof p[member] === 'function';
 
-export function vaultCaps(p: StorageProvider, s: VaultCapsState): VaultCaps {
+export function vaultCaps(
+  p: StorageProvider,
+  s: VaultCapsState,
+  settings?: VaultCapsSettings,
+): VaultCaps {
   const cas = p.compareAndSwap === true;
   const writable = cas && !s.readOnly && s.reach !== 'away';
-  const trash = writable && has(p, 'trash') && has(p, 'listTrash') && has(p, 'restore');
+  const trash =
+    writable &&
+    settings?.delete !== 'permanent' &&
+    has(p, 'trash') &&
+    has(p, 'listTrash') &&
+    has(p, 'restore');
   return {
     rename: writable,
     renameNative: writable && has(p, 'rename'),
@@ -71,5 +96,6 @@ export function vaultCaps(p: StorageProvider, s: VaultCapsState): VaultCaps {
     taskWriteBack: writable,
     linkRewrite: writable,
     today: cas,
+    settingsWrite: writable && has(p, 'writeConfig'),
   };
 }

@@ -9,7 +9,12 @@
 // courtesy, never what makes one tap safe.
 import { Sheet } from '../Sheet.js';
 import { SheetHead } from '../SheetHead.js';
-import { VAULT_DELETE_ROW, VAULT_RENAME_ROW, vaultDeleteForGood } from '../../lib/vaultCopy.js';
+import {
+  VAULT_DELETE_ROW,
+  VAULT_RENAME_ROW,
+  VAULT_SETTINGS_TITLE,
+  vaultDeleteForGood,
+} from '../../lib/vaultCopy.js';
 
 export interface VaultNoteOptionsProps {
   open: boolean;
@@ -40,6 +45,10 @@ export interface VaultNoteOptionsProps {
   onPin: () => void;
   onRename?: () => void;
   onOutline?: () => void;
+  /** Open Vault settings (Vault M7, CX Y4): the row sits after Pin to
+   *  project context and before Delete; the settings sheet opens once this
+   *  one has left. Left out, no row. */
+  onSettings?: () => void;
   /** The first tap on a permanent Delete. */
   onArmDelete: () => void;
   /** The delete itself: the one tap with Trash, the second tap without. */
@@ -62,6 +71,7 @@ export function VaultNoteOptions({
   onPin,
   onRename,
   onOutline,
+  onSettings,
   onArmDelete,
   onDelete,
 }: VaultNoteOptionsProps) {
@@ -98,6 +108,11 @@ export function VaultNoteOptions({
             {canPin ? (
               <button className="btn quiet press-fb" onClick={onPin}>
                 Pin to project context
+              </button>
+            ) : null}
+            {onSettings ? (
+              <button className="btn quiet press-fb" onClick={onSettings}>
+                {VAULT_SETTINGS_TITLE}
               </button>
             ) : null}
             <button

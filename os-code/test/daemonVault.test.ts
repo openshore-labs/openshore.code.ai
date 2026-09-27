@@ -57,6 +57,14 @@ import { statNote } from '../src/core/vault/noteFile.js';
 import { vaultSearchTool } from '../src/core/tools/vaultFind.js';
 import type { ToolContext } from '../src/core/tools/index.js';
 import { startDaemon, type RunningDaemon } from '../src/daemon/serve.js';
+import {
+  VAULT_CONFIG_PUT_BODY_MAX_BYTES,
+  parseVaultOverrides,
+  vaultSettingsWriteSeam,
+} from '../src/daemon/vaultRoutes.js';
+import { writeVaultConfigFile } from '../src/core/vault/configFile.js';
+import { parseVaultSettingsFile } from '../src/harness/vault/settings.js';
+import { VAULT_CONFIG_MAX_BYTES } from '../src/harness/vault/configDir.js';
 import { TerminalManager, TerminalUnavailable } from '../src/daemon/terminal.js';
 import { defaultConfig } from '../src/config/load.js';
 import { mintCredential } from '../src/core/security/credentials.js';
@@ -74,6 +82,7 @@ import {
   VAULT_NOTES_ROUTE,
   VAULT_PRIVACY_ROUTE,
   VAULT_RENAME_ROUTE,
+  VAULT_SETTINGS_CONFIG_NAME,
   VAULT_TRASH_RESTORE_ROUTE,
   VAULT_TRASH_ROUTE,
   VAULT_WIRE_NOTE_MAX_BYTES,
@@ -81,6 +90,9 @@ import {
   vaultNoteRoute,
   type HubNoteMeta,
   type VaultAttachmentsListResponse,
+  type VaultConfigConflictResponse,
+  type VaultConfigPutResponse,
+  type VaultConfigResponse,
   type VaultFolderRenameResponse,
   type VaultFoldersListResponse,
   type VaultRenameConflictResponse,
@@ -712,6 +724,162 @@ describe('the daemon vault routes, on the caller own root', () => {
       expect(rename.status).toBe(409);
       expect(((await rename.json()) as VaultRenameConflictResponse).conflict).toBe('missing');
       expect(readFileSync(join(vault(), 'Owner.md'), 'utf8')).toBe('owner only');
+    });
+  });
+
+  // Vault M7 (CTO L7, L13): the settings file's one write, on the caller's
+  // own root, guarded, capped, parsed, never through a link under .oscode.
+  // The real writer (`writeVaultConfigFile`) and parser, end to end: no
+  // stand-in (Vault M7 wave 2).
+  describe('M7 settings write', () => {
+    const vault = () => join(home, 'OSCode', 'Vault');
+    const route = `${VAULT_CONFIG_ROUTE}/${VAULT_SETTINGS_CONFIG_NAME}`;
+    it('writes through the engine writer and the core parser themselves', () => {
+      expect(vaultSettingsWriteSeam.write).toBe(writeVaultConfigFile);
+      expect(vaultSettingsWriteSeam.parse).toBe(parseVaultSettingsFile);
+    });
+
+    const putCfg = (body: unknown, token = admin, path = route) =>
+      fetch(`${base}${path}`, { method: 'PUT', headers: hdr(token), body: JSON.stringify(body) });
+
+    it('creates with ifAbsent, replaces with the version read, and answers the new one', async () => {
+      const made = await putCfg({ text: '{"version":1}\n', ifAbsent: true });
+      expect(made.status).toBe(200);
+      const first = (await made.json()) as VaultConfigPutResponse;
+      expect(first.name).toBe('oscode/vault');
+      expect(readFileSync(join(vault(), '.oscode', 'vault.json'), 'utf8')).toBe('{"version":1}\n');
+      const read = (await (
+        await get(admin, `${VAULT_CONFIG_ROUTE}/${encodeURIComponent('oscode/vault')}`)
+      ).json()) as VaultConfigResponse;
+      expect(read.version).toBe(first.version);
+      // The one-segment spelling reaches the same file.
+      const next = await putCfg(
+        { text: '{"version":1,"tree":{"sort":"modified"}}\n', ifMatch: first.version },
+        admin,
+        `${VAULT_CONFIG_ROUTE}/${encodeURIComponent('oscode/vault')}`,
+      );
+      expect(next.status).toBe(200);
+      expect(((await next.json()) as VaultConfigPutResponse).version).not.toBe(first.version);
+      // Keys the parser sets aside are kept as sent (L7).
+      const aside = '{"version":1,"packSize":"large"}\n';
+      const cur = (await (await get(admin, route)).json()) as VaultConfigResponse;
+      expect((await putCfg({ text: aside, ifMatch: cur.version })).status).toBe(200);
+      expect(readFileSync(join(vault(), '.oscode', 'vault.json'), 'utf8')).toBe(aside);
+    });
+
+    it('a stale guard is a 409 with the file as it is now, and nothing is written', async () => {
+      const first = (await (
+        await putCfg({ text: '{"a":1}', ifAbsent: true })
+      ).json()) as VaultConfigPutResponse;
+      await new Promise((r) => setTimeout(r, 20));
+      writeFileSync(join(vault(), '.oscode', 'vault.json'), '{"theirs":true}');
+      const stale = await putCfg({ text: '{"mine":true}', ifMatch: first.version });
+      expect(stale.status).toBe(409);
+      const body = (await stale.json()) as VaultConfigConflictResponse;
+      expect(body.conflict).toBe('changed');
+      expect(body.current?.text).toBe('{"theirs":true}');
+      expect(body.current?.name).toBe('oscode/vault');
+      expect(readFileSync(join(vault(), '.oscode', 'vault.json'), 'utf8')).toBe('{"theirs":true}');
+      const exists = await putCfg({ text: '{"b":1}', ifAbsent: true });
+      expect(exists.status).toBe(409);
+      expect(((await exists.json()) as VaultConfigConflictResponse).conflict).toBe('exists');
+    });
+
+    it('a member writes only their own root', async () => {
+      const one = member('u_one');
+      expect((await putCfg({ text: '{"owner":1}', ifAbsent: true })).status).toBe(200);
+      const mine = await putCfg({ text: '{"one":1}', ifAbsent: true }, one);
+      expect(mine.status).toBe(200);
+      const oneRoot = vaultRootFor({ userId: 'u_one', role: 'member' });
+      expect(readFileSync(join(oneRoot, '.oscode', 'vault.json'), 'utf8')).toBe('{"one":1}');
+      expect(readFileSync(join(vault(), '.oscode', 'vault.json'), 'utf8')).toBe('{"owner":1}');
+      // The owner's version means nothing on the member's root.
+      const owner = (await (await get(admin, route)).json()) as VaultConfigResponse;
+      const cross = await putCfg({ text: '{"x":1}', ifMatch: owner.version }, one);
+      expect(cross.status).toBe(409);
+      expect(readFileSync(join(vault(), '.oscode', 'vault.json'), 'utf8')).toBe('{"owner":1}');
+      // A second member starts empty.
+      expect((await get(member('u_two'), route)).status).toBe(404);
+    });
+
+    it('refuses an oversized file, an oversized body, Obsidian names, bad guards and bad text', async () => {
+      const big = 'x'.repeat(VAULT_CONFIG_MAX_BYTES + 1);
+      expect((await putCfg({ text: `{"a":"${big}"}`, ifAbsent: true })).status).toBe(413);
+      const huge = await putCfg({ text: '\u0001'.repeat(VAULT_CONFIG_PUT_BODY_MAX_BYTES / 5) });
+      expect(huge.status).toBe(413);
+      for (const name of ['obsidian/app', 'obsidian/daily-notes', 'obsidian/templates']) {
+        const res = await putCfg(
+          { text: '{}', ifAbsent: true },
+          admin,
+          `${VAULT_CONFIG_ROUTE}/${name}`,
+        );
+        expect(res.status, name).toBe(403);
+      }
+      expect((await putCfg({ text: '{}' })).status).toBe(400);
+      expect((await putCfg({ text: '{}', ifAbsent: true, ifMatch: '1:2:3' })).status).toBe(400);
+      expect((await putCfg({ text: '{}', ifAbsent: 'yes' })).status).toBe(400);
+      expect((await putCfg({ text: '{}', ifMatch: '' })).status).toBe(400);
+      expect((await putCfg({ ifAbsent: true })).status).toBe(400);
+      expect((await putCfg({ text: 'not json', ifAbsent: true })).status).toBe(400);
+      expect(existsSync(join(vault(), '.oscode', 'vault.json'))).toBe(false);
+    });
+
+    it('never writes through a link under .oscode', async () => {
+      if (process.platform === 'win32') return;
+      const outside = mkdtempSync(join(tmpdir(), 'osc-outside-'));
+      try {
+        mkdirSync(vault(), { recursive: true });
+        symlinkSync(outside, join(vault(), '.oscode'));
+        expect((await putCfg({ text: '{}', ifAbsent: true })).status).toBe(403);
+        expect(readdirSync(outside)).toEqual([]);
+        unlinkSync(join(vault(), '.oscode'));
+        mkdirSync(join(vault(), '.oscode'));
+        writeFileSync(join(outside, 'target.json'), 'keep');
+        symlinkSync(join(outside, 'target.json'), join(vault(), '.oscode', 'vault.json'));
+        expect((await putCfg({ text: '{}', ifMatch: '1:2:3' })).status).toBe(403);
+        expect(readFileSync(join(outside, 'target.json'), 'utf8')).toBe('keep');
+      } finally {
+        rmSync(outside, { recursive: true, force: true });
+      }
+    });
+
+    it('lets the WebView preflight the settings PUT', async () => {
+      const pre = await fetch(`${base}${route}`, {
+        method: 'OPTIONS',
+        headers: {
+          origin: 'capacitor://localhost',
+          'access-control-request-method': 'PUT',
+          'access-control-request-headers': 'authorization, content-type',
+        },
+      });
+      expect(pre.status).toBe(204);
+      expect(pre.headers.get('access-control-allow-origin')).toBe('*');
+      expect(pre.headers.get('access-control-allow-methods')).toContain('PUT');
+      expect(pre.headers.get('access-control-allow-headers')).toContain('content-type');
+      expect(pre.headers.get('access-control-allow-credentials')).toBeNull();
+    });
+
+    it('a session create takes vaultOverrides, off-only, dropping anything else', async () => {
+      expect(parseVaultOverrides({ context: 'off', handoff: 'off', packSize: 'small' })).toEqual({
+        context: 'off',
+        handoff: 'off',
+        packSize: 'small',
+      });
+      expect(
+        parseVaultOverrides({ context: 'on', handoff: 'auto', packSize: 'huge', memory: true }),
+      ).toBeUndefined();
+      expect(parseVaultOverrides({ context: 'off', packSize: 9 })).toEqual({ context: 'off' });
+      for (const v of [undefined, null, 'off', ['off'], 3])
+        expect(parseVaultOverrides(v)).toBeUndefined();
+      const res = await fetch(`${base}/sessions`, {
+        method: 'POST',
+        headers: hdr(admin),
+        body: JSON.stringify({
+          cwd: join(home, 'OSCode', 'repo'),
+          vaultOverrides: { context: 'off', handoff: 'on', packSize: 'giant' },
+        }),
+      });
+      expect(res.status).toBe(201);
     });
   });
 });

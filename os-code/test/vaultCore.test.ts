@@ -21,11 +21,16 @@ import {
   isConflictCopy,
   isNotePath,
   linkTextFor,
+  mergeProvenance,
   nonNoteExtension,
   normalizeNotePath,
   noteFolder,
   parseVaultQuery,
   noteTitle,
+  oscodeMarks,
+  PROV_KEYS,
+  readFrontmatter,
+  readProvenance,
   resolveMarkdownLink,
   resolveWikilink,
   rewriteLinks,
@@ -37,6 +42,7 @@ import {
 } from '../src/protocol.js';
 import { vaultConflictCopyPath as fromCoreVault } from '../src/core/vault/conflictName.js';
 import { phrasesMatch } from '../src/harness/vault/query.js';
+import { runNoteFrontmatter, type RunNoteFields } from '../src/routines/runNote.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -911,5 +917,250 @@ describe('the search grammar (K8, CX X1 and X2)', () => {
     expect(phrasesMatch(body, parseVaultQuery('"phrase exact"'))).toBe(false);
     expect(phrasesMatch(body, parseVaultQuery('-"exact phrase"'))).toBe(false);
     expect(phrasesMatch(body, parseVaultQuery('plan'))).toBe(true);
+  });
+});
+
+// Vault M7, stream B (CTO L9, L10): provenance as flat `oscode-*` lines,
+// merged into the note's text byte for byte.
+describe('M7 stream B: provenance (L9, L10)', () => {
+  const SET = {
+    'oscode-source': 'agent',
+    'oscode-model': 'qwen2.5-coder:7b',
+    'oscode-where': 'local',
+    'oscode-size': 'small',
+    'oscode-created': '2026-09-27T10:00:00.000Z',
+  } as const;
+  const PROV_LINE =
+    /^oscode-(?:source|model|where|size|provider|created|reviewed): "[^"\r\n]*"\r?\n/gm;
+
+  function merged(text: string, fields: Parameters<typeof mergeProvenance>[1]): string {
+    const r = mergeProvenance(text, fields);
+    if (!('text' in r)) throw new Error(`skipped: ${r.skipped}`);
+    return r.text;
+  }
+
+  const others = (text: string) =>
+    readFrontmatter(text).props.filter((p) => !p.key.startsWith('oscode-'));
+
+  // Each fixture holds no provenance yet; the merge must add only its lines.
+  const FIXTURES: Record<string, string> = {
+    simple: '---\ntitle: Plan\n---\nbody\n',
+    comments:
+      '---\n# top comment\ntitle: Plan # trailing\n\n# another\ntags:\n  - a\n  - b\n# last\n---\n# Heading\n',
+    'compact lists': '---\ntags:\n- a\n- b\naliases: [x, y]\n---\nbody',
+    'quoted keys': '---\n"quoted key": 1\n\'single\': two\n"oscode-note": keep\n---\n',
+    crlf: '---\r\ntitle: Plan\r\ntags:\r\n  - a\r\n---\r\nbody\r\nmore\r\n',
+    bom: '\ufeff---\ntitle: Plan\n---\nbody\n',
+    'bom and crlf': '\ufeff---\r\ntitle: Plan\r\n---\r\nbody\r\n',
+    'flow maps': '---\nmeta: {a: 1, b: [2, 3]}\nlist: [ {x: 1}, {y: 2} ]\n---\n',
+    'block scalar': '---\nnote: |\n  line one\n\n  line two\nfolded: >-\n  a\n  b\n---\n',
+    'keep-chomped scalar last': '---\nnote: |+\n  kept\n\n---\nbody\n',
+    marks: '---\noscode: local-only\ntitle: T\n---\n',
+    'marks as a list': '---\noscode: [exclude, local-only]\n---\n',
+    'closing with trailing spaces': '---\ntitle: T\n---  \t\nbody\n',
+    'opening with trailing spaces': '--- \ntitle: T\n---\n',
+    empty: '---\n---\nbody\n',
+    'only a comment': '---\n# nothing here\n---\n',
+    'closing at end of text': '---\ntitle: T\n---',
+    'dates and numbers': '---\ndate: 2026-01-01\ncount: 007\nflag: yes\nnothing: ~\n---\n',
+    anchors: '---\nbase: &b {k: 1}\nref: *b\n---\n',
+    'unicode and tabs': '---\ntitle: "Café \\t ünïcode"\nemoji: "\u{1F30A}"\n---\n',
+    'body with a second block': '---\na: 1\n---\n---\nnot: frontmatter\n---\n',
+    'mixed case lookalike': '---\nOscode-Model: theirs\nOSCODE: exclude\n---\n',
+  };
+
+  for (const [name, text] of Object.entries(FIXTURES)) {
+    it(`keeps every other byte: ${name}`, () => {
+      const out = merged(text, SET);
+      // Taking the provenance lines back out gives the note exactly.
+      expect(out.replace(PROV_LINE, '')).toBe(text);
+      expect(others(out)).toEqual(others(text));
+      expect(oscodeMarks(readFrontmatter(out))).toEqual(oscodeMarks(readFrontmatter(text)));
+      const prov = readProvenance(readFrontmatter(out));
+      expect(prov).toEqual({
+        source: 'agent',
+        model: 'qwen2.5-coder:7b',
+        where: 'local',
+        size: 'small',
+        created: '2026-09-27T10:00:00.000Z',
+      });
+      // The block keeps the note's own line endings.
+      if (text.includes('\r\n')) expect(out.replace(/\r\n/g, '')).not.toContain('\n');
+      // A second merge with the same fields changes nothing.
+      expect(merged(out, SET)).toBe(out);
+    });
+  }
+
+  it('appends in the write order, before the closing line', () => {
+    expect(merged('---\ntitle: Plan\n---\nbody\n', SET)).toBe(
+      '---\ntitle: Plan\n' +
+        'oscode-source: "agent"\n' +
+        'oscode-model: "qwen2.5-coder:7b"\n' +
+        'oscode-where: "local"\n' +
+        'oscode-size: "small"\n' +
+        'oscode-created: "2026-09-27T10:00:00.000Z"\n' +
+        '---\nbody\n',
+    );
+    expect(PROV_KEYS).toEqual([
+      'oscode-source',
+      'oscode-model',
+      'oscode-where',
+      'oscode-size',
+      'oscode-provider',
+      'oscode-created',
+      'oscode-reviewed',
+    ]);
+  });
+
+  it('creates a block when there is none, after a BOM, in the note EOL', () => {
+    const f = { 'oscode-source': 'agent', 'oscode-model': 'm' } as const;
+    const lines = 'oscode-source: "agent"\noscode-model: "m"\n';
+    expect(merged('', f)).toBe(`---\n${lines}---\n`);
+    expect(merged('# Title\nbody\n', f)).toBe(`---\n${lines}---\n# Title\nbody\n`);
+    expect(merged('\ufeff# T\n', f)).toBe(`\ufeff---\n${lines}---\n# T\n`);
+    expect(merged('# T\r\nbody\r\n', f)).toBe(
+      `---\r\n${lines.replace(/\n/g, '\r\n')}---\r\n# T\r\nbody\r\n`,
+    );
+    // An unclosed opener is body, and stays body.
+    expect(merged('---\nnot closed\n', f)).toBe(`---\n${lines}---\n---\nnot closed\n`);
+    // Nothing to set: the note is left as it was.
+    expect(merged('# T\n', { 'oscode-reviewed': null })).toBe('# T\n');
+    expect(merged('# T\n', {})).toBe('# T\n');
+  });
+
+  it('updates a key in place, continuation lines and all, and leaves unnamed keys alone', () => {
+    const text =
+      '---\ntitle: T\noscode-model: old-model\noscode-where:\n  local\nzeta: 1\noscode-created: 2026-01-01\n---\nbody\n';
+    const out = merged(text, { 'oscode-model': 'new', 'oscode-where': 'cloud' });
+    expect(out).toBe(
+      '---\ntitle: T\noscode-model: "new"\noscode-where: "cloud"\nzeta: 1\noscode-created: 2026-01-01\n---\nbody\n',
+    );
+    expect(readProvenance(readFrontmatter(out))).toEqual({
+      model: 'new',
+      where: 'cloud',
+      created: '2026-01-01',
+    });
+    // CRLF in place.
+    const crlf = text.replace(/\n/g, '\r\n');
+    expect(merged(crlf, { 'oscode-model': 'new', 'oscode-where': 'cloud' })).toBe(
+      out.replace(/\n/g, '\r\n'),
+    );
+  });
+
+  it('marks as reviewed, and marks as not reviewed, byte for byte', () => {
+    const base = merged('---\n# mine\ntitle: T\n---\nbody\n', SET);
+    const reviewed = merged(base, { 'oscode-reviewed': '2026-09-28T09:00:00.000Z' });
+    expect(reviewed).toBe(
+      base.replace('---\nbody', 'oscode-reviewed: "2026-09-28T09:00:00.000Z"\n---\nbody'),
+    );
+    expect(readProvenance(readFrontmatter(reviewed)).reviewed).toBe('2026-09-28T09:00:00.000Z');
+    const again = merged(reviewed, { 'oscode-reviewed': '2026-09-29T09:00:00.000Z' });
+    expect(again).toBe(reviewed.replace('2026-09-28', '2026-09-29'));
+    expect(merged(reviewed, { 'oscode-reviewed': null })).toBe(base);
+  });
+
+  it('refuses malformed or oversized frontmatter, never making it worse', () => {
+    expect(mergeProvenance('---\ntitle: [unclosed\n---\n', SET)).toEqual({ skipped: 'invalid' });
+    expect(mergeProvenance('---\na: 1\na: 2\n---\n', SET)).toEqual({ skipped: 'invalid' });
+    expect(mergeProvenance('---\n- a list\n---\n', SET)).toEqual({ skipped: 'invalid' });
+    expect(mergeProvenance('---\njust a string\n---\n', SET)).toEqual({ skipped: 'invalid' });
+    const big = `---\nbig: "${'x'.repeat(64 * 1024)}"\n---\n`;
+    expect(mergeProvenance(big, SET)).toEqual({ skipped: 'too-large' });
+  });
+
+  it('skips on verify when a line edit would change another property', () => {
+    // A quoted spelling of a provenance key is the person's own: appending
+    // beside it would duplicate the key, so the merge proves nothing and skips.
+    expect(mergeProvenance('---\n"oscode-model": theirs\n---\n', { 'oscode-model': 'm' })).toEqual({
+      skipped: 'verify',
+    });
+    // A flow map continued onto a column-0 line that reads like a key.
+    const flow = '---\nmeta: {a: 1,\n  oscode-model: 2}\n---\n';
+    const r = mergeProvenance(flow, { 'oscode-model': 'm' });
+    if ('text' in r) {
+      expect(others(r.text)).toEqual(others(flow));
+      expect(r.text.replace(PROV_LINE, '')).toBe(flow);
+    }
+    // A merge that grows the block past the cap is refused, not written.
+    const edge = `---\nbig: "${'x'.repeat(64 * 1024 - 20)}"\n---\n`;
+    expect(readFrontmatter(edge).state).toBe('ok');
+    expect(mergeProvenance(edge, SET)).toEqual({ skipped: 'verify' });
+  });
+
+  it('never touches the oscode: marks, and the two readers never cross', () => {
+    const text = '---\noscode: local-only\n---\n';
+    const out = merged(text, { ...SET, 'oscode-reviewed': null });
+    expect(out.startsWith('---\noscode: local-only\n')).toBe(true);
+    expect(oscodeMarks(readFrontmatter(out))).toEqual(['local-only']);
+    // readProvenance never reads `oscode:`; oscodeMarks never reads `oscode-*`.
+    expect(readProvenance(readFrontmatter('---\noscode: agent\n---\n'))).toEqual({});
+    expect(
+      oscodeMarks(readFrontmatter('---\noscode-source: exclude\noscode-where: local-only\n---\n')),
+    ).toEqual([]);
+    // Removing every provenance key leaves the marks where they were.
+    const cleared = merged(
+      out,
+      Object.fromEntries(PROV_KEYS.map((k) => [k, null])) as Record<string, null>,
+    );
+    expect(cleared).toBe(text);
+  });
+
+  it('writes any value as one safe line, and reads back only the right shapes', () => {
+    const model = 'it\'s: {weird} - [model] # "quoted"\nsecond line\u2028';
+    const out = merged('', { 'oscode-model': model });
+    expect(out.split('\n')).toHaveLength(4);
+    expect(readProvenance(readFrontmatter(out)).model).toBe(model);
+    const fm = readFrontmatter(
+      '---\noscode-source: robot\noscode-where: moon\noscode-size: huge\noscode-model: 7\noscode-created: yesterday\noscode-reviewed: ""\noscode-provider: acme\n---\n',
+    );
+    expect(readProvenance(fm)).toEqual({ provider: 'acme' });
+  });
+
+  describe('Crew run notes carry provenance (runNote.ts)', () => {
+    const base: RunNoteFields = {
+      routine: 'Morning review',
+      project: 'app',
+      model: 'qwen2.5-coder:7b',
+      session: 's1',
+      started: '2026-09-27T06:00:05.000Z',
+      state: 'done',
+      folder: 'Morning review',
+    };
+
+    it('writes crew, the model and the start, through the one merge', () => {
+      const fm = readFrontmatter(runNoteFrontmatter(base));
+      expect(fm.state).toBe('ok');
+      expect(fm.keys.slice(-3)).toEqual(['oscode-source', 'oscode-model', 'oscode-created']);
+      expect(readProvenance(fm)).toEqual({
+        source: 'crew',
+        model: 'qwen2.5-coder:7b',
+        created: '2026-09-27T06:00:05.000Z',
+      });
+    });
+
+    it('adds where, size and a cloud provider when the scheduler judged them', () => {
+      const cloud = readFrontmatter(
+        runNoteFrontmatter({
+          ...base,
+          provenance: { where: 'cloud', size: 'large', provider: 'anthropic' },
+        }),
+      );
+      expect(readProvenance(cloud)).toMatchObject({
+        source: 'crew',
+        where: 'cloud',
+        size: 'large',
+        provider: 'anthropic',
+      });
+      const local = readFrontmatter(
+        runNoteFrontmatter({ ...base, provenance: { where: 'local', provider: 'ollama' } }),
+      );
+      expect(readProvenance(local).provider).toBeUndefined();
+      expect(readProvenance(local).where).toBe('local');
+    });
+
+    it("writes none when provenance is 'off'", () => {
+      const fm = readFrontmatter(runNoteFrontmatter({ ...base, provenance: 'off' }));
+      expect(fm.keys.some((k) => k.startsWith('oscode-'))).toBe(false);
+    });
   });
 });

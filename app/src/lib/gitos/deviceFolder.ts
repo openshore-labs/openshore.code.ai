@@ -11,13 +11,30 @@
 // it, so every write carries a guard that main checks against the note's
 // version (compare-and-swap, Vault M1 1.1): a save typed against an older
 // version comes back as a conflict, never a silent overwrite.
-import { isVaultConfigName, type ConfigRead, type VaultConfigName } from 'os-code/protocol';
+//
+// Vault settings (Vault M7, CTO L7): `writeConfig` is one guarded IPC,
+// osc:vaultWriteConfig, to main's `writeVaultConfigFile`, which makes
+// `.oscode` if it is missing and writes `vault.json` through the jail without
+// following a link. Only `oscode/vault` is ever sent.
+import {
+  VAULT_CONFIG_MAX_BYTES,
+  isVaultConfigName,
+  utf8Length,
+  type ConfigRead,
+  type VaultConfigName,
+} from 'os-code/protocol';
 import { bridge, type OscodeBridge, type VaultChange } from '../electronBridge.js';
 import { platform } from '../platform.js';
-import { VAULT_CAP_UPDATE_LINE } from '../vaultCopy.js';
+import {
+  VAULT_CAP_UPDATE_LINE,
+  VAULT_SETTINGS_NAME_REFUSED,
+  VAULT_SETTINGS_TOO_LARGE,
+  VAULT_SETTINGS_WRITE_REFUSED,
+} from '../vaultCopy.js';
 import { asConfigRead } from './config.js';
 import { makeFolderProvider, type FolderTransport } from './folderClient.js';
-import type { StorageProvider } from './providers.js';
+import { VAULT_SETTINGS_PATH } from './local.js';
+import type { StorageProvider, StoredFile, WriteResult } from './providers.js';
 
 /** Whether the on-disk folder vault is usable right now: the Electron file
  *  bridge is present (so, the desktop app, not the phone or a browser). */
@@ -139,7 +156,48 @@ export const deviceFolderProvider: StorageProvider = {
     if (typeof b?.vaultReadConfig !== 'function') return { ok: false, reason: 'unsupported' };
     return asConfigRead(await b.vaultReadConfig(name));
   },
+
+  // The settings sheet's write (L7). Main answers a ConfigWriteResult; a
+  // conflict comes back as theirs, a refusal or a malformed answer throws in
+  // plain words, and nothing is written twice.
+  async writeConfig(_resourceId, name, text, guard): Promise<WriteResult> {
+    if (name !== 'oscode/vault') throw new Error(VAULT_SETTINGS_NAME_REFUSED);
+    if (utf8Length(text) > VAULT_CONFIG_MAX_BYTES) throw new Error(VAULT_SETTINGS_TOO_LARGE);
+    const b = fs();
+    if (typeof b.vaultWriteConfig !== 'function') throw new Error(VAULT_CAP_UPDATE_LINE);
+    const exact = 'ifAbsent' in guard ? { ifAbsent: true as const } : { ifMatch: guard.ifMatch };
+    return configWriteAnswer(await b.vaultWriteConfig(name, text, exact), text);
+  },
 };
+
+/** The settings file as the seam carries it. */
+function settingsFile(text: string, version: string): StoredFile {
+  return { path: VAULT_SETTINGS_PATH, text, updatedAt: new Date().toISOString(), version };
+}
+
+/** Main's ConfigWriteResult as the seam's WriteResult, checked field by field
+ *  (main and this page ship together, but a wrong shape must never read as
+ *  saved). `text` is what was sent, the file's text on success. */
+export function configWriteAnswer(r: unknown, text: string): WriteResult {
+  const v = (typeof r === 'object' && r !== null ? r : {}) as Record<string, unknown>;
+  if (v.ok === true && typeof v.version === 'string' && v.version) {
+    return { ok: true, file: settingsFile(text, v.version) };
+  }
+  if (v.ok === false) {
+    const c = v.conflict;
+    if (c === 'changed' || c === 'missing' || c === 'exists' || c === 'downloading') {
+      const cur = v.current as { text?: unknown; version?: unknown } | undefined;
+      const theirs =
+        c !== 'missing' && typeof cur?.text === 'string' && typeof cur.version === 'string'
+          ? settingsFile(cur.text, cur.version)
+          : undefined;
+      return theirs ? { ok: false, conflict: c, theirs } : { ok: false, conflict: c };
+    }
+    if (v.reason === 'too-large') throw new Error(VAULT_SETTINGS_TOO_LARGE);
+    if (v.reason === 'refused') throw new Error(VAULT_SETTINGS_WRITE_REFUSED);
+  }
+  throw new Error(VAULT_CAP_UPDATE_LINE);
+}
 
 /** Turn the vault folder watcher on (with the open note's path, which Linux
  *  also watches the folder of) or off. A no-op off the desktop. Best effort:

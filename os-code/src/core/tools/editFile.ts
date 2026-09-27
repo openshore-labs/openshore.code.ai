@@ -24,6 +24,7 @@ import { applyEditBlocks } from '../edit/apply.js';
 import { structuralCheck, verifyWritten } from '../edit/verify.js';
 import { unifiedDiff } from '../edit/diff.js';
 import { parseJsonLoose } from './parser.js';
+import { VAULT_SETTINGS_DENY, workspaceWriteHitsVaultSettings } from '../vault/settingsFile.js';
 
 const pairSchema = z.looseObject({});
 
@@ -227,6 +228,8 @@ export const editFileTool: ToolDef<typeof schema> = {
   pathOf: (args) => args.path,
   async preview(args, ctx) {
     const abs = ctx.jail.resolve(args.path);
+    // A vault's settings folder is the person's alone (Vault M7, CTO L8).
+    if (workspaceWriteHitsVaultSettings(abs, ctx.vaultRoot)) throw new Error(VAULT_SETTINGS_DENY);
     if (!existsSync(abs)) return { summary: `Edit ${args.path}`, detail: 'File does not exist.' };
     const before = readFileSync(abs, 'utf8');
     const planned = plan(args, before);
@@ -236,6 +239,11 @@ export const editFileTool: ToolDef<typeof schema> = {
   },
   async execute(args, ctx) {
     const abs = ctx.jail.resolve(args.path);
+    // Checked here too, since an "always allow" grant runs execute with no
+    // preview: whatever the grant, no model writes under a vault's .oscode/.
+    if (workspaceWriteHitsVaultSettings(abs, ctx.vaultRoot)) {
+      return { ok: false, content: VAULT_SETTINGS_DENY };
+    }
     if (!existsSync(abs)) {
       return {
         ok: false,

@@ -6,6 +6,7 @@ import { homedir } from 'node:os';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { loadConfig, saveGlobalConfig } from 'os-code/dist/src/config/load.js';
 import { bootstrapSession } from 'os-code/dist/src/core/agent/bootstrap.js';
+import type { VaultOverrides } from 'os-code/dist/src/harness/vault/types.js';
 import { trustSessionFolder } from 'os-code/dist/src/core/agent/projectTrust.js';
 import {
   listSessions,
@@ -252,6 +253,9 @@ export class EngineHost {
       handoff?: string;
       /** The project's own pinned note paths (CTO J14), already capped. */
       vaultPins?: string[];
+      /** The app's vault switches (Vault M7, CTO L13), already parsed by
+       *  main: off-only, and a size the engine keeps lower-only. */
+      vaultOverrides?: VaultOverrides;
     } = {},
   ): Promise<{ id: string; cwd: string; warnings: string[] }> {
     const workDir = cwd ?? defaultWorkspace();
@@ -283,6 +287,7 @@ export class EngineHost {
       harnessCurrents: opts.harnessCurrents,
       ...(opts.handoff ? { handoff: opts.handoff } : {}),
       ...(opts.vaultPins?.length ? { vaultPins: opts.vaultPins } : {}),
+      ...(opts.vaultOverrides ? { vaultOverrides: opts.vaultOverrides } : {}),
     };
     const { driver, warnings } = bootstrapSession(bootOptions);
     this.attach(driver); // a fresh session has an empty journal; nothing to replay

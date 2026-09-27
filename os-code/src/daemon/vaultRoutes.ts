@@ -14,9 +14,13 @@
 // index takes the text in hand so the next pack sees the edit.
 import { createHash } from 'node:crypto';
 import { existsSync, statSync } from 'node:fs';
+import { lstat, realpath } from 'node:fs/promises';
 import type { IncomingHttpHeaders } from 'node:http';
+import { join } from 'node:path';
 import { VAULT_FOLDER_MISSING } from '../config/load.js';
-import { readVaultConfigFile } from '../core/vault/configFile.js';
+import { readVaultConfigFile, writeVaultConfigFile } from '../core/vault/configFile.js';
+import { VAULT_CONFIG_MAX_BYTES } from '../harness/vault/configDir.js';
+import { parseVaultSettingsFile } from '../harness/vault/settings.js';
 import { createVaultContextSource } from '../core/vault/contextSource.js';
 import { openEngineVaultIndex } from '../core/vault/engineIndex.js';
 import {
@@ -54,14 +58,26 @@ import {
   type VaultContextSetting,
   type VaultContextSource,
 } from '../harness/vaultContext.js';
-import type { VaultPrivacy } from '../harness/vault/types.js';
+import type {
+  ConfigWriteGuard,
+  ConfigWriteResult,
+  ResolvedVaultSettings,
+  VaultOverrides,
+  VaultPackSize,
+  VaultPrivacy,
+  VaultSettingsConfigName,
+  VaultSettingsParse,
+} from '../harness/vault/types.js';
 import { attachmentMime, isAttachmentPath } from '../harness/vault/attachments.js';
 import {
+  VAULT_SETTINGS_CONFIG_NAME,
   VAULT_WIRE_LIST_MAX,
   VAULT_WIRE_NOTE_MAX_BYTES,
   type ChatContextPackEvent,
   type HubNoteMeta,
   type VaultAttachmentsListResponse,
+  type VaultConfigConflictResponse,
+  type VaultConfigPutResponse,
   type VaultConfigResponse,
   type VaultFolderConflictResponse,
   type VaultFolderRenameResponse,
@@ -94,8 +110,9 @@ export interface VaultRouteRequest {
   headers: IncomingHttpHeaders;
   /** The caller's own root (`vaultRootFor(auth)`). */
   root: string;
-  /** The body as a JSON object (serve.ts's bounded reader). */
-  readBody(): Promise<Record<string, unknown>>;
+  /** The body as a JSON object (serve.ts's bounded reader); `maxBytes`
+   *  lowers the daemon's cap for a route with a smaller one (413 over it). */
+  readBody(maxBytes?: number): Promise<Record<string, unknown>>;
   /** The machine's privacy keys for this root (`vault.exclude`,
    *  `vault.localOnly`), never from a project file. */
   privacy(): VaultPrivacyWire;
@@ -394,6 +411,180 @@ async function vaultM6Route(req: VaultRouteRequest): Promise<VaultRouteAnswer | 
   return undefined;
 }
 
+// ---------------------------------------------------------------------------
+// Vault M7 (CTO L7, L13): the settings file write and the session overrides.
+// One write path for the two hosts that hold a folder: the hub's `PUT
+// /vault/config/oscode/vault` (the caller's own root) and main's
+// `osc:vaultWriteConfig` (the vault root main reads itself). Both call
+// `putVaultSettingsFile`, so the name rule, the cap, the parse and the
+// link checks are the same code. The person's own write from the sheet; no
+// agent tool reaches it (the L7 grep test).
+
+type ConfigWriter = (
+  root: string,
+  name: VaultSettingsConfigName,
+  text: string,
+  guard: ConfigWriteGuard,
+) => Promise<ConfigWriteResult>;
+
+/** The two calls the settings write makes past this file: the engine's
+ *  writer and stream A's parser. A seam so a test can wrap either. */
+export const vaultSettingsWriteSeam: {
+  write: ConfigWriter;
+  parse: (text: string) => VaultSettingsParse;
+} = {
+  write: writeVaultConfigFile,
+  parse: parseVaultSettingsFile,
+};
+
+/** A PUT body's byte cap: the file's cap with room for JSON escapes (a
+ *  control byte encodes as six) and the envelope. */
+export const VAULT_CONFIG_PUT_BODY_MAX_BYTES = VAULT_CONFIG_MAX_BYTES * 6 + 4096;
+/** The longest `ifMatch` accepted; a version token is far shorter. */
+const GUARD_MAX = 256;
+
+/** Exactly one guard, `ifMatch` (a version string) or `ifAbsent: true`.
+ *  Anything else throws a `blocked:` refusal: a settings write is never
+ *  unguarded. */
+export function parseConfigWriteGuard(v: unknown): ConfigWriteGuard {
+  const g = v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+  const hasMatch = g.ifMatch !== undefined;
+  const hasAbsent = g.ifAbsent !== undefined;
+  if (hasMatch === hasAbsent) {
+    throw new Error('blocked: send exactly one guard, ifMatch or ifAbsent');
+  }
+  if (hasAbsent) {
+    if (g.ifAbsent !== true) throw new Error('blocked: ifAbsent must be true');
+    return { ifAbsent: true };
+  }
+  if (typeof g.ifMatch !== 'string' || !g.ifMatch || g.ifMatch.length > GUARD_MAX) {
+    throw new Error('blocked: ifMatch must be the version you read');
+  }
+  return { ifMatch: g.ifMatch };
+}
+
+/** The app's vault switches for a session (L13): each value checked, the
+ *  switches off-only, the size one of the three; anything else is dropped,
+ *  never a refused session. Undefined when nothing valid is left. Lower-only
+ *  is the engine's `vaultPackSize`, against the machine's own size. */
+export function parseVaultOverrides(v: unknown): VaultOverrides | undefined {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined;
+  const o = v as Record<string, unknown>;
+  const out: VaultOverrides = {};
+  if (o.context === 'off') out.context = 'off';
+  if (o.handoff === 'off') out.handoff = 'off';
+  if (o.packSize === 'small' || o.packSize === 'normal' || o.packSize === 'large') {
+    out.packSize = o.packSize;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+function errnoOf(e: unknown): string | undefined {
+  return (e as NodeJS.ErrnoException | undefined)?.code;
+}
+
+/** The root's real path, when `.oscode` under it is absent or a real
+ *  directory whose real path is exactly `<real root>/.oscode`, and the
+ *  settings file is absent or a regular file. A link at either step (planted
+ *  by a sync client, a plugin or a teammate) is `refused`: the write never
+ *  lands outside the folder, and never through a link inside it. */
+export async function oscodeWriteRoot(root: string): Promise<string | 'refused'> {
+  let real: string;
+  try {
+    real = await realpath(root);
+  } catch {
+    return 'refused';
+  }
+  const dir = join(real, '.oscode');
+  try {
+    const st = await lstat(dir);
+    if (st.isSymbolicLink() || !st.isDirectory()) return 'refused';
+    if ((await realpath(dir)) !== dir) return 'refused';
+  } catch (e) {
+    if (errnoOf(e) === 'ENOENT') return real;
+    throw e;
+  }
+  try {
+    const st = await lstat(join(dir, 'vault.json'));
+    if (st.isSymbolicLink() || !st.isFile()) return 'refused';
+  } catch (e) {
+    if (errnoOf(e) !== 'ENOENT') throw e;
+  }
+  return real;
+}
+
+/**
+ * Write the vault's settings file under `root`, guarded. `refused` for any
+ * name but `oscode/vault` (every `obsidian/*` name included) or a link under
+ * `.oscode`; `too-large` over `VAULT_CONFIG_MAX_BYTES`; a `blocked:` throw
+ * for text the parser reads as `unreadable` (a write that would leave the
+ * sheet read-only). Keys the parser sets aside are kept as sent (L7).
+ */
+export async function putVaultSettingsFile(
+  root: string,
+  name: unknown,
+  text: string,
+  guard: ConfigWriteGuard,
+): Promise<ConfigWriteResult> {
+  if (name !== VAULT_SETTINGS_CONFIG_NAME) return { ok: false, reason: 'refused' };
+  if (Buffer.byteLength(text, 'utf8') > VAULT_CONFIG_MAX_BYTES) {
+    return { ok: false, reason: 'too-large' };
+  }
+  if ('unreadable' in vaultSettingsWriteSeam.parse(text)) {
+    throw new Error('blocked: that is not a settings file OpenShore can read');
+  }
+  const real = await oscodeWriteRoot(root);
+  if (real === 'refused') return { ok: false, reason: 'refused' };
+  return vaultSettingsWriteSeam.write(real, VAULT_SETTINGS_CONFIG_NAME, text, guard);
+}
+
+/** A config name from its URI-encoded segments (`oscode/vault` whole, or
+ *  `oscode%2Fvault` as one); null when a segment is not valid encoding. */
+function configNameOf(segments: readonly string[]): string | null {
+  try {
+    return segments.map((s) => decodeURIComponent(s)).join('/');
+  } catch {
+    return null;
+  }
+}
+
+/** `PUT /vault/config/<name>`: the settings write on the caller's root. */
+async function vaultConfigPut(req: VaultRouteRequest, name: string): Promise<VaultRouteAnswer> {
+  if (name !== VAULT_SETTINGS_CONFIG_NAME) {
+    return err(403, "Only the vault's own settings can be written from here.");
+  }
+  const input = await req.readBody(VAULT_CONFIG_PUT_BODY_MAX_BYTES);
+  if (typeof input.text !== 'string') return err(400, 'Send {"text": "..."}.');
+  let guard: ConfigWriteGuard;
+  try {
+    guard = parseConfigWriteGuard({ ifMatch: input.ifMatch, ifAbsent: input.ifAbsent });
+  } catch (e) {
+    return refusal(e);
+  }
+  const away = readyRoot(req.root);
+  if (away) return away;
+  let r: ConfigWriteResult;
+  try {
+    r = await putVaultSettingsFile(req.root, name, input.text, guard);
+  } catch (e) {
+    return refusal(e);
+  }
+  if (r.ok) {
+    const body: VaultConfigPutResponse = { name, version: r.version };
+    return { status: 200, json: body };
+  }
+  if ('reason' in r) {
+    if (r.reason === 'too-large') return err(413, 'Those settings are too large to save.');
+    return err(403, 'The settings folder in this vault is not one OpenShore writes.');
+  }
+  if (r.conflict === 'downloading') return err(503, 'The settings file is still downloading.');
+  const body: VaultConfigConflictResponse = {
+    conflict: r.conflict,
+    ...(r.current ? { current: { name, text: r.current.text, version: r.current.version } } : {}),
+  };
+  return { status: 409, json: body };
+}
+
 /** One vault route. `parts` starts after `vault`. */
 export async function vaultRoute(req: VaultRouteRequest): Promise<VaultRouteAnswer> {
   const [area, ...rest] = req.parts;
@@ -499,13 +690,11 @@ export async function vaultRoute(req: VaultRouteRequest): Promise<VaultRouteAnsw
     return err(405, `No route ${method} for a note.`);
   }
 
-  if (area === 'config' && rest.length === 1 && method === 'GET') {
-    let name: string;
-    try {
-      name = decodeURIComponent(rest[0]!);
-    } catch {
-      return err(400, 'That is not a config name.');
-    }
+  if (area === 'config' && rest.length >= 1 && rest.length <= 2) {
+    const name = configNameOf(rest);
+    if (name === null) return err(400, 'That is not a config name.');
+    if (method === 'PUT') return vaultConfigPut(req, name);
+    if (method !== 'GET') return err(405, 'Read a config file with GET, save settings with PUT.');
     const read = await readVaultConfigFile(root, name);
     if (read.ok) {
       const body: VaultConfigResponse = { name, text: read.text, version: read.version };
@@ -556,6 +745,13 @@ export interface ChatPackOptions {
   caps: { contextTokens: number; supportsGrammar: boolean; nativeContextTokens?: number };
   /** `vault.context` from the machine's config. */
   setting: VaultContextSetting;
+  /** Room for notes in force (`vaultPackSize(machine, app)`, Vault M7, CTO
+   *  L13) and the machine's cap; unset is Normal under the default cap. */
+  packSize?: VaultPackSize;
+  packMaxTokens?: number;
+  /** The vault's resolved settings (templates folder, Obsidian's ignore
+   *  filters), left out of retrieval. */
+  settings?: () => Pick<ResolvedVaultSettings, 'templates' | 'ignore'> | undefined;
   signal?: AbortSignal;
   /** Test seam: the source a prepare runs on. */
   source?: VaultContextSource;
@@ -584,10 +780,16 @@ export async function buildChatPack(
       privacy: o.privacy,
       ...(o.currentState ? { currentState: o.currentState } : {}),
       lockdown: { egress: false, secrets: false },
+      ...(o.settings ? { settings: o.settings } : {}),
     });
   const prepared = await source.prepare(o.task, o.signal);
   if (!root) mode = 'current-state';
-  const budgetTokens = packBudgetTokens(profile, o.caps.contextTokens);
+  const budgetTokens = packBudgetTokens(
+    profile,
+    o.caps.contextTokens,
+    o.packSize ?? 'normal',
+    o.packMaxTokens,
+  );
   const pack = buildContextPack({
     mode,
     index: root ? prepared.index : null,

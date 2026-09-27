@@ -24,9 +24,13 @@ import {
   linkTextFor,
   noteFolder,
   noteTitle,
+  resolveMarkdownPath,
   resolveWikilink,
   wikilinkReplaceRange,
   type TextRange,
+  type VaultLinkFormat,
+  type VaultLinkStyle,
+  type VaultPathIndex,
   type WikilinkContext,
 } from 'os-code/protocol';
 import {
@@ -52,6 +56,70 @@ export interface VaultLinkOption {
   aria: string;
   /** The link target written between the brackets. */
   target: string;
+  /** The note it reaches (a note or a heading row), for a markdown link. */
+  path?: string;
+  /** The heading, for a heading row. */
+  heading?: string;
+}
+
+/** The path from the folder `from` to `to`, `../` where it climbs. */
+export function relativeNotePath(from: string, to: string): string {
+  const a = from.split('/').filter(Boolean);
+  const b = to.split('/').filter(Boolean);
+  let i = 0;
+  while (i < a.length && i < b.length - 1 && a[i] === b[i]) i++;
+  return [...a.slice(i).map(() => '..'), ...b.slice(i)].join('/');
+}
+
+/** A wikilink target for a note in the vault's link format (Vault M7, CTO
+ *  L2, `links.format`): the shortest name that reaches it, its path from the
+ *  top, or its path from this note, each used only when it still reaches
+ *  exactly that note; otherwise the shortest. */
+export function wikiTargetFor(
+  path: string,
+  sourcePath: string,
+  index: VaultPathIndex,
+  format: VaultLinkFormat = 'shortest',
+): string | undefined {
+  const shortest = linkTextFor(path, sourcePath, index);
+  if (format === 'shortest') return shortest;
+  const stem = path.replace(/\.md$/i, '');
+  const want = format === 'absolute' ? stem : relativeNotePath(noteFolder(sourcePath), stem);
+  return resolveWikilink(want, index, sourcePath) === path ? want : shortest;
+}
+
+/** A markdown link destination, each segment encoded the way Obsidian
+ *  writes one (a space as %20, parentheses escaped so the link holds). */
+function hrefOf(path: string): string {
+  return path
+    .split('/')
+    .map((seg) =>
+      seg === '..' ? seg : encodeURIComponent(seg).replace(/\(/g, '%28').replace(/\)/g, '%29'),
+    )
+    .join('/');
+}
+
+/** A markdown link to a note (Vault M7, `links.style: markdown`), in the
+ *  vault's link format; a candidate is used only when markdown's own
+ *  resolver reaches exactly that note from here. */
+export function markdownLinkFor(
+  o: { path?: string; target: string; heading?: string },
+  sourcePath: string,
+  index: VaultPathIndex,
+  format: VaultLinkFormat = 'shortest',
+): string {
+  // The words: the heading, else the note's title, else the typed name.
+  const words = o.heading ?? (o.path ? noteTitle(o.path) : o.target);
+  const text = words.replace(/[[\]]/g, ' ').trim() || o.target;
+  const path = o.path ?? `${o.target.replace(/\.md$/i, '')}.md`;
+  const name = path.slice(path.lastIndexOf('/') + 1);
+  const rel = relativeNotePath(noteFolder(sourcePath), path);
+  const order =
+    format === 'relative' ? [rel, path] : format === 'absolute' ? [path, rel] : [name, rel, path];
+  const reaches = (c: string) => !o.path || resolveMarkdownPath(c, sourcePath, index) === o.path;
+  const chosen = order.find(reaches) ?? rel;
+  const hash = o.heading ? `#${encodeURIComponent(o.heading)}` : '';
+  return `[${text}](${hrefOf(chosen)}${hash})`;
 }
 
 /** Characters a heading link cannot carry; Obsidian writes a space. */
@@ -68,6 +136,7 @@ export function linkOptions(
   ctx: WikilinkContext | null,
   headingsOf?: (path: string) => readonly string[],
   max = LINK_SUGGEST_MAX,
+  format: VaultLinkFormat = 'shortest',
 ): VaultLinkOption[] {
   if (!ctx) return [];
   const index = buildPathIndex(paths);
@@ -97,6 +166,8 @@ export function linkOptions(
         label: vaultLinkHeading(h),
         aria: vaultLinkHeadingAria(h),
         target: `${notePart}#${h}`,
+        path,
+        heading: h,
       }));
   }
   const q = raw.trim().toLowerCase();
@@ -118,7 +189,7 @@ export function linkOptions(
     });
   for (const { p, t } of ranked) {
     if (notes.length >= max) break;
-    const target = linkTextFor(p, sourcePath, index);
+    const target = wikiTargetFor(p, sourcePath, index, format);
     if (target === undefined) continue;
     const collides = (titleCount.get(foldPath(t)) ?? 0) > 1;
     const sub = collides ? folderLabel(p) : '';
@@ -129,6 +200,7 @@ export function linkOptions(
       ...(sub ? { sub } : {}),
       aria: vaultLinkChipAria(t, sub),
       target,
+      path: p,
     });
   }
   const typed = raw.trim();
@@ -216,6 +288,11 @@ export interface VaultLinkSuggestProps {
   layout?: 'chips' | 'list';
   /** The replace range (tests inject; the core's by default). */
   replaceRange?: (text: string, ctx: WikilinkContext) => TextRange;
+  /** The vault's `links.style` (Vault M7, CTO L2): a markdown pick writes
+   *  `[Title](path)` over the typed `[[`. Default wikilinks. */
+  linkStyle?: VaultLinkStyle;
+  /** The vault's `links.format`: which path a link names. Default shortest. */
+  linkFormat?: VaultLinkFormat;
 }
 
 export function VaultLinkSuggest({
@@ -229,6 +306,8 @@ export function VaultLinkSuggest({
   onPick,
   layout = 'list',
   replaceRange = wikilinkReplaceRange,
+  linkStyle = 'wiki',
+  linkFormat = 'shortest',
 }: VaultLinkSuggestProps) {
   const context = useMemo<WikilinkContext | null>(
     () =>
@@ -240,8 +319,8 @@ export function VaultLinkSuggest({
     [contextProp, queryProp],
   );
   const options = useMemo(
-    () => linkOptions(paths, sourcePath, context, headingsOf),
-    [paths, sourcePath, context, headingsOf],
+    () => linkOptions(paths, sourcePath, context, headingsOf, LINK_SUGGEST_MAX, linkFormat),
+    [paths, sourcePath, context, headingsOf, linkFormat],
   );
   const [active, setActive] = useState(0);
   const base = useId();
@@ -262,7 +341,16 @@ export function VaultLinkSuggest({
     if (!el || !context) return;
     const text = el.value;
     const range = replaceRange(text, context);
-    insertAtCaret(el, range, linkInsertText(text, range, option.target));
+    // A markdown link has no alias half, so an alias already typed keeps
+    // the wikilink it belongs to.
+    const markdown = linkStyle === 'markdown' && text[range.end] !== '|';
+    insertAtCaret(
+      el,
+      range,
+      markdown
+        ? markdownLinkFor(option, sourcePath, buildPathIndex(paths), linkFormat)
+        : linkInsertText(text, range, option.target),
+    );
     onDismiss?.();
   };
 

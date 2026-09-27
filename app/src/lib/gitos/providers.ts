@@ -17,6 +17,7 @@ import type {
   ConfigRead,
   ReadBytesOptions,
   VaultConfigName,
+  VaultSettingsConfigName,
   VaultTrashEntry,
 } from 'os-code/protocol';
 
@@ -249,6 +250,23 @@ export interface StorageProvider {
   listAttachments?(resourceId: string): Promise<AttachmentMeta[]>;
   /** One attachment's bytes, capped at 20 MB (`VAULT_ATTACHMENT_MAX_BYTES`). */
   readBytes?(resourceId: string, path: string, opts?: ReadBytesOptions): Promise<BytesRead>;
+
+  // ---- Vault M7 (CTO L7). Optional, after the K2 members. Lit in the sheet
+  // only through `vaultCaps().settingsWrite` (compare-and-swap, writable,
+  // not away). No agent path may name it (a grep test in each package).
+
+  /** Write the vault's own settings file (`.oscode/vault.json` on a folder,
+   *  the sealed key on Local), guarded: `ifMatch` replaces it only while its
+   *  version is still that one, `ifAbsent` creates it only while there is
+   *  none. `name` is only ever `oscode/vault`; every `obsidian/*` name is
+   *  refused on every host (Obsidian's config is read, never written). A
+   *  conflict is a result, never a throw. `file.version` is the new version. */
+  writeConfig?(
+    resourceId: string,
+    name: VaultSettingsConfigName,
+    text: string,
+    guard: WriteGuard,
+  ): Promise<WriteResult>;
 }
 
 /** A gitOS resource: metadata for one repo or vault. The bytes live behind

@@ -172,7 +172,15 @@ describe('Local provider lists only notes (0.6)', () => {
     const r = 'vault.filter';
     await localProvider.write(r, 'Note.md', 'n');
     await localProvider.write(r, 'diagram.png', 'not a note');
-    await localProvider.write(r, '.obsidian/app.json', '{}');
+    // A dot path is refused on write (Vault M7, CTO L8), so a legacy body is
+    // planted straight into the store, as an older build would have left it.
+    await expect(localProvider.write(r, '.obsidian/app.json', '{}')).rejects.toThrow(
+      /not a note name/,
+    );
+    await platform.storeSetJson(`oscode.gitos.file.${r}..obsidian/app.json`, {
+      text: '{}',
+      updatedAt: '2026-09-01T00:00:00.000Z',
+    });
     expect(await listed(r)).toEqual(['Note.md']);
   });
 });
@@ -218,7 +226,10 @@ describe('a dot-typed note name never truncates the note (0.2, 0.6)', () => {
     // lists, but a create or a draft replay that asks stat must still learn
     // that bytes live there.
     const r = 'vault.legacydot';
-    await localProvider.write(r, '.NET migration.md', 'old body');
+    await platform.storeSetJson(`oscode.gitos.file.${r}..NET migration.md`, {
+      text: 'old body',
+      updatedAt: '2026-09-01T00:00:00.000Z',
+    });
     expect(await listed(r)).toEqual([]);
     expect(await localProvider.stat(r, '.NET migration.md')).toMatchObject({
       path: '.NET migration.md',

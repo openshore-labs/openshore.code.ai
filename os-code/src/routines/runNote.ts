@@ -11,18 +11,26 @@
 // it; the day's Linked mentions then show the run. The link is written only
 // when the date format is one the vault core supports, so a guessed name can
 // never fork the day's note.
+//
+// Vault M7 (CTO L9, L10): the block carries the note's provenance, the flat
+// `oscode-*` keys, written by the same `mergeProvenance` every agent write
+// goes through: `oscode-source: "crew"`, the model, when it started, and,
+// when the scheduler judged them, where the seat ran (by address), its class,
+// and a cloud seat's provider. Machine `vault.provenance: off` passes 'off'.
 import { VAULT_DAILY_DEFAULTS, dailyNotePath, datePartsOf } from '../harness/vault/dates.js';
-import type { ConfigRead, DailyNoteConfig } from '../harness/vault/types.js';
+import { mergeProvenance } from '../harness/vault/provenance.js';
+import type {
+  ConfigRead,
+  DailyNoteConfig,
+  ProvSize,
+  ProvWhere,
+  ProvenanceFields,
+} from '../harness/vault/types.js';
+import { yamlString } from '../harness/vault/yamlScalar.js';
 
-/** A YAML double-quoted scalar holding exactly `value`. JSON escapes the
- *  quote, the backslash, and the C0 controls; the characters YAML refuses
- *  unescaped, or reads as a line break, are escaped here too. */
-export function yamlString(value: string): string {
-  return JSON.stringify(value).replace(
-    /[\u007f-\u009f\u2028\u2029\ufeff\ufffe\uffff]/g,
-    (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`,
-  );
-}
+// Moved to harness/vault/yamlScalar.ts (Vault M7, CTO L10); re-exported for
+// the callers that name it here.
+export { yamlString };
 
 /** The routine's own tag, `crew/<slug>`: letters, digits, `_` and `-` only,
  *  the characters an Obsidian tag keeps. Undefined when nothing is left, or
@@ -60,6 +68,33 @@ export interface RunNoteFields {
   previousPath?: string;
   /** The day's note's vault path (`runNoteDayPath`), when there is one. */
   dayPath?: string;
+  /** What the scheduler knows of the seat, for the provenance lines; 'off'
+   *  (machine `vault.provenance: off`) writes none. Absent still writes the
+   *  source, the model, and the start. */
+  provenance?: RunNoteProvenance | 'off';
+}
+
+/** The seat a run used, as the scheduler judged it at open. */
+export interface RunNoteProvenance {
+  /** Judged by address (`leavesThisNetwork`), never by a provider label. */
+  where?: ProvWhere;
+  size?: ProvSize;
+  /** Cloud only; dropped for a local seat. */
+  provider?: string;
+}
+
+/** The provenance fields a Crew run note carries. */
+export function runNoteProvenance(f: RunNoteFields): ProvenanceFields {
+  if (f.provenance === 'off') return {};
+  const p = f.provenance ?? {};
+  return {
+    'oscode-source': 'crew',
+    'oscode-model': f.model,
+    ...(p.where ? { 'oscode-where': p.where } : {}),
+    ...(p.size ? { 'oscode-size': p.size } : {}),
+    ...(p.where === 'cloud' && p.provider ? { 'oscode-provider': p.provider } : {}),
+    'oscode-created': f.started,
+  };
 }
 
 /** The daily-notes settings from `obsidian/daily-notes` (Obsidian's
@@ -121,5 +156,9 @@ export function runNoteFrontmatter(f: RunNoteFields): string {
     ...(day ? [`day: ${yamlString(day)}`] : []),
     '---',
   ];
-  return `${lines.join('\n')}\n`;
+  const block = `${lines.join('\n')}\n`;
+  // The same merge every agent write goes through. It cannot skip on a block
+  // built here, but if it ever did, the run note still lands, without it.
+  const merged = mergeProvenance(block, runNoteProvenance(f));
+  return 'text' in merged ? merged.text : block;
 }
