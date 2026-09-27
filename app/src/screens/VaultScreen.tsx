@@ -35,6 +35,7 @@ import { exportVaultToFiles, vaultExportLine, vaultWayOut } from '../lib/vaultEx
 import { vaultAutosave } from '../lib/vaultAutosave.js';
 import {
   DRIVE_RECONNECT_FAILED_LINE,
+  DRIVE_WEB_URL,
   copyProviderOf,
   vaultCopy,
   vaultDriveCard,
@@ -57,7 +58,9 @@ import { Sheet } from '../components/Sheet.js';
 import { SheetHead } from '../components/SheetHead.js';
 import { activeContribution, slotNone } from '../lib/currents.js';
 import { hermesNoteRead, hermesNotesList } from '../lib/currentsProbe.js';
-import { isDesktop, platform } from '../lib/platform.js';
+import { isDesktop, openExternal, platform } from '../lib/platform.js';
+import { useExitPresence } from '../hooks/useExitPresence.js';
+import { durationMs } from '../lib/motion.js';
 import type { HermesNote, HermesNoteMeta } from 'os-code/protocol';
 import { Icon } from '../components/Icon.js';
 
@@ -155,7 +158,8 @@ export function VaultScreen() {
   // Another device holds the vault's write lease: show the note read-only.
   const readOnly = Boolean(vaultLeaseHeldByOther);
   // A personal vault on Google Drive is read-only in v1 (0.18): the reason
-  // shows as a card with a one-tap move, and edit, create, and delete are off.
+  // shows as a card with a one-tap way off, and the controls that edit,
+  // create, and delete are left out, not dimmed.
   const driveReadOnly = team ? undefined : vaultReadOnly();
   const locked = readOnly || Boolean(driveReadOnly);
   const teamAvailable = teamVaultAvailable();
@@ -365,7 +369,10 @@ export function VaultScreen() {
   };
 
   const createNote = () => {
-    const path = normalizeNotePath(folder ? `${folder}/${newName}` : newName);
+    // The typed name must make a note on its own, so a name the rule empties
+    // ("...") never falls back to the folder's own name.
+    const own = normalizeNotePath(newName);
+    const path = own && normalizeNotePath(folder ? `${folder}/${newName}` : newName);
     if (!path) {
       // "report.pdf" names a file type, so it can never become a note; say so
       // rather than asking for a name the person already gave.
@@ -375,6 +382,19 @@ export function VaultScreen() {
         ext
           ? `"${typed}" ends in ${ext}, a file type, not a note. Try the name without ${ext}.`
           : 'Give the note a name.',
+      );
+      return;
+    }
+    // A name that starts with a dot (".NET migration") loses the dot, since
+    // Obsidian and the vault hide dot names and it would never list. v1 has
+    // no rename, so the person sees the name before it is made: the field
+    // takes the cleaned name, nothing is created, and a second Create goes
+    // through.
+    if (startsWithDot(newName)) {
+      const shown = /\.md$/i.test(newName.trim()) ? own : own.replace(/\.md$/i, '');
+      setNewName(shown);
+      showToast(
+        `Note names cannot start with a dot, since Obsidian and your vault hide them. Tap Create to use "${shown}", or change it.`,
       );
       return;
     }
@@ -518,40 +538,41 @@ export function VaultScreen() {
 
   // The read-only Drive card: the store's reason, and the one-tap way off,
   // which reconnects the Google account first when this device has lost it.
-  const renderDriveCard = (fromNote: boolean) => {
-    if (!driveReadOnly) return null;
-    const card = vaultDriveCard(driveLink, labelOf(driveExit));
-    const action = card.action;
-    return (
-      <div className="card" role="status" style={{ margin: fromNote ? '12px 0 0' : '0 0 14px' }}>
-        <h3 style={{ marginBottom: 4 }}>This vault is read-only</h3>
-        <p className="sub" style={{ marginTop: 0 }}>
-          {driveReadOnly}
-        </p>
-        {card.line ? (
-          <p className="sub" style={{ marginTop: 0 }}>
-            {card.line}
-          </p>
-        ) : null}
-        {action ? (
-          <button
-            className="btn primary press-fb"
-            disabled={moving}
-            onClick={() => {
-              if (action.kind === 'reconnect') {
-                void reconnectDriveAndMove(fromNote);
-                return;
-              }
-              if (fromNote) vaultCloseNote();
-              void moveVault(driveExit);
-            }}
-          >
-            {action.label}
-          </button>
-        ) : null}
-      </div>
-    );
+  // A build that cannot connect to Google at all gets a button that opens
+  // Google Drive instead, where the notes still are.
+  const driveCard = vaultDriveCard(driveLink, labelOf(driveExit));
+  const onDriveAction = (fromNote: boolean) => {
+    const action = driveCard.action;
+    if (!action) return;
+    if (action.kind === 'open') {
+      openExternal(DRIVE_WEB_URL);
+      return;
+    }
+    if (action.kind === 'reconnect') {
+      void reconnectDriveAndMove(fromNote);
+      return;
+    }
+    if (fromNote) vaultCloseNote();
+    void moveVault(driveExit);
   };
+  const renderDriveCard = (fromNote: boolean) => (
+    <DriveCard
+      // With no move possible, the store's "Move this vault to keep editing"
+      // would sit above a card with no move, so only the card's line shows.
+      reason={driveLink === 'unconfigured' ? undefined : driveReadOnly}
+      shown={Boolean(driveReadOnly)}
+      line={driveCard.line}
+      action={driveCard.action?.label}
+      busy={moving}
+      fromNote={fromNote}
+      onAction={() => onDriveAction(fromNote)}
+    />
+  );
+  // Signed out of Google, or a build that cannot reach it: the list fails
+  // for want of the account, so the Drive card alone says why. The offline
+  // card's Try again could never work here, and the ramp is not this state.
+  const driveExplains =
+    Boolean(driveReadOnly) && (driveLink === 'disconnected' || driveLink === 'unconfigured');
 
   const entries = treeAt(folder, vaultFiles);
   const crumbs = folder ? folder.split('/') : [];
@@ -616,27 +637,33 @@ export function VaultScreen() {
               All notes
             </button>
             <div style={{ flex: 1 }} />
-            <button
-              className="icon-btn"
-              aria-label={editing ? 'Read' : 'Edit'}
-              aria-pressed={editing}
-              disabled={locked}
-              onClick={() => !locked && setEditing((e) => !e)}
-            >
-              {editing ? (
-                <Icon size={19}>
-                  <path d="M3 5a2 2 0 0 1 2-2h4a3 3 0 0 1 3 3v14a2.5 2.5 0 0 0-2.5-2.5H3V5Z" />
-                  <path d="M21 5a2 2 0 0 0-2-2h-4a3 3 0 0 0-3 3v14a2.5 2.5 0 0 1 2.5-2.5H21V5Z" />
-                </Icon>
-              ) : (
-                <Icon size={19}>
-                  <path d="M17 3.5 20.5 7 8.5 19l-4.5 1 1-4.5L17 3.5Z" />
-                </Icon>
-              )}
-            </button>
-            <button className="icon-btn" aria-label="Options" onClick={() => setMenuOpen(true)}>
-              {'⋯'}
-            </button>
+            {/* A read-only note leaves out the controls that write, instead of
+                dimming them: the card (or the lease line) says why. */}
+            {!locked ? (
+              <button
+                className="icon-btn"
+                aria-label={editing ? 'Read' : 'Edit'}
+                aria-pressed={editing}
+                onClick={() => setEditing((e) => !e)}
+              >
+                {editing ? (
+                  <Icon size={19}>
+                    <path d="M3 5a2 2 0 0 1 2-2h4a3 3 0 0 1 3 3v14a2.5 2.5 0 0 0-2.5-2.5H3V5Z" />
+                    <path d="M21 5a2 2 0 0 0-2-2h-4a3 3 0 0 0-3 3v14a2.5 2.5 0 0 1 2.5-2.5H21V5Z" />
+                  </Icon>
+                ) : (
+                  <Icon size={19}>
+                    <path d="M17 3.5 20.5 7 8.5 19l-4.5 1 1-4.5L17 3.5Z" />
+                  </Icon>
+                )}
+              </button>
+            ) : null}
+            {/* Its sheet holds nothing but Delete, which a Drive vault refuses. */}
+            {!driveReadOnly ? (
+              <button className="icon-btn" aria-label="Options" onClick={() => setMenuOpen(true)}>
+                {'⋯'}
+              </button>
+            ) : null}
           </div>
 
           <h1 className="vault-title">{title}</h1>
@@ -758,6 +785,8 @@ export function VaultScreen() {
               <div className="sheet-actions">
                 <button
                   className={`btn press-fb ${confirmDelete ? 'danger' : 'quiet'}`}
+                  // Unreachable (Options is left out on a Drive vault), kept
+                  // as a safety.
                   disabled={Boolean(driveReadOnly)}
                   onClick={() => {
                     // Two taps to delete: a single tap is too easy to hit by
@@ -806,17 +835,20 @@ export function VaultScreen() {
       <div className="screen-inner">
         <div className="stack-head">
           <h1>Vault</h1>
-          <button
-            className="stack-add-btn press-fb"
-            aria-label="New note"
-            title="New note"
-            disabled={Boolean(driveReadOnly)}
-            onClick={() => setNewOpen(true)}
-          >
-            <Icon size={20}>
-              <path d="M12 5v14M5 12h14" />
-            </Icon>
-          </button>
+          {/* A read-only Drive vault leaves New note out; its card says why. */}
+          {!driveReadOnly ? (
+            <button
+              type="button"
+              className="icon-btn press-fb"
+              aria-label="New note"
+              title="New note"
+              onClick={() => setNewOpen(true)}
+            >
+              <Icon size={20}>
+                <path d="M12 5v14M5 12h14" />
+              </Icon>
+            </button>
+          ) : null}
         </div>
         {teamAvailable ? (
           <div
@@ -856,7 +888,9 @@ export function VaultScreen() {
         </p>
 
         {renderError('tree')}
-        {!folder ? renderDriveCard(false) : null}
+        {/* At every folder level, like Not saved, so wherever a control is
+            left out the reason is on screen. */}
+        {renderDriveCard(false)}
         {/* Every vault's held text this account may see, near the top of the
             list at every folder level, so nothing typed is ever out of sight
             (0.4). */}
@@ -963,7 +997,8 @@ export function VaultScreen() {
           </p>
         ) : null}
 
-        {vaultFiles.length === 0 && vaultError === 'load' ? (
+        {vaultFiles.length === 0 && driveExplains ? null : vaultFiles.length === 0 &&
+          vaultError === 'load' ? (
           <div className="card empty-notice">
             <h3>Your vault storage is offline.</h3>
             <p className="sub">
@@ -990,7 +1025,7 @@ export function VaultScreen() {
           // way a fresh Obsidian vault opens on one).
           <VaultRamp
             onboard={vaultOnboard(on, personalKey, copyOpts)}
-            disabled={Boolean(driveReadOnly)}
+            readOnly={Boolean(driveReadOnly)}
             onWrite={() => setNewOpen(true)}
             onWelcome={() => void addStarterNote()}
           />
@@ -1076,8 +1111,9 @@ export function VaultScreen() {
                   const isReady = ready[p.id] ?? p.ready;
                   const move = async () => {
                     if (isCurrent) return;
-                    // Not usable here (Google Drive is held back, iCloud is
-                    // signed out): the Arriving pill and this honest line.
+                    // Not usable here, so the pill names the state and this
+                    // toast gives the step. (Google Drive is held back:
+                    // Arriving. iCloud is off on this iPhone: Turned off.)
                     if (!isReady) {
                       showToast(
                         p.pending ??
@@ -1115,7 +1151,7 @@ export function VaultScreen() {
                         ) : isReady ? (
                           <span className="pill local">Move here</span>
                         ) : (
-                          <span className="nav-lock-pill">Arriving</span>
+                          <span className="nav-lock-pill">{p.offPill ?? 'Arriving'}</span>
                         )}
                       </button>
                       {p.id === 'gdrive' && driveConnected && !isCurrent ? (
@@ -1272,12 +1308,13 @@ function heldWhen(at: string): string {
 // in, and the points that are true for this platform and storage.
 function VaultRamp({
   onboard,
-  disabled,
+  readOnly,
   onWrite,
   onWelcome,
 }: {
   onboard: VaultOnboard;
-  disabled: boolean;
+  /** A read-only vault: the ways in that write are left out, not dimmed. */
+  readOnly: boolean;
   onWrite: () => void;
   onWelcome: () => void;
 }) {
@@ -1290,14 +1327,16 @@ function VaultRamp({
           <span className="vault-kicker">Your vault</span>
           <h2 className="vault-onboard-title">{onboard.title}</h2>
           <p className="vault-onboard-lead">{onboard.lead}</p>
-          <div className="vault-onboard-actions">
-            <button className="btn primary" disabled={disabled} onClick={onWrite}>
-              Write your first note
-            </button>
-            <button className="btn ghost" disabled={disabled} onClick={onWelcome}>
-              Add a welcome note
-            </button>
-          </div>
+          {!readOnly ? (
+            <div className="vault-onboard-actions">
+              <button className="btn primary" onClick={onWrite}>
+                Write your first note
+              </button>
+              <button className="btn ghost" onClick={onWelcome}>
+                Add a welcome note
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -1318,6 +1357,78 @@ function VaultRamp({
         })}
       </div>
     </section>
+  );
+}
+
+/** Whether any segment of a typed note name starts with a dot, which the
+ *  typed-name rule strips (Obsidian and the vault hide dot names). */
+function startsWithDot(typed: string): boolean {
+  return typed
+    .replace(/\\/g, '/')
+    .split('/')
+    .some((segment) => segment.trim().startsWith('.'));
+}
+
+/** How long the Drive card takes to fold out: its exit (--dur-4) plus a
+ *  hair, so the tail is never clipped by the unmount. */
+function driveCardExitMs(): number {
+  return durationMs('--dur-4', 280) + 20;
+}
+
+// The read-only Drive card (0.18). It rides useExitPresence, the UpdateBanner
+// pattern: when a move off Drive lands it folds out (opacity and transform
+// only) with the last text it showed, rather than unmounting, so the controls
+// coming back read as the card leaving, never a cut.
+function DriveCard({
+  shown,
+  reason,
+  line,
+  action,
+  busy,
+  fromNote,
+  onAction,
+}: {
+  shown: boolean;
+  reason?: string;
+  line?: string;
+  action?: string;
+  busy: boolean;
+  fromNote: boolean;
+  onAction: () => void;
+}) {
+  const presence = useExitPresence(shown, driveCardExitMs());
+  const last = useRef({ reason, line, action });
+  if (shown) last.current = { reason, line, action };
+  if (!presence.mounted) return null;
+  const text = last.current;
+  return (
+    <div
+      className={`card vault-drive-card${presence.closing ? ' closing' : ''}`}
+      role="status"
+      style={{ margin: fromNote ? '12px 0 0' : '0 0 14px' }}
+    >
+      <h3 style={{ marginBottom: 4 }}>This vault is read-only</h3>
+      {text.reason ? (
+        <p className="sub" style={{ marginTop: 0 }}>
+          {text.reason}
+        </p>
+      ) : null}
+      {text.line ? (
+        <p className="sub" style={{ marginTop: 0 }}>
+          {text.line}
+        </p>
+      ) : null}
+      {text.action ? (
+        <button
+          type="button"
+          className="btn primary press-fb"
+          disabled={busy || presence.closing}
+          onClick={onAction}
+        >
+          {text.action}
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -1382,7 +1493,7 @@ export function VaultFault({
           ) : (
             <div className="sheet-actions">
               <button className="btn primary press-fb" onClick={onLeave}>
-                Leave the Vault
+                Back to Chat
               </button>
               <button className="btn quiet press-fb" onClick={onRetry}>
                 Try again

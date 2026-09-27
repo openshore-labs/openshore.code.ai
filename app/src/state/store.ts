@@ -282,6 +282,7 @@ import {
   probeReady,
   connectGdrive,
   disconnectGdrive,
+  isGdriveConnected,
   setOrgVaultAuth,
   resetOrgVault,
   orgVaultBaseRev,
@@ -1198,6 +1199,10 @@ interface AppState {
   declineOrg(): Promise<void>;
   /** Sign out and forget the session. */
   signOutAccount(): Promise<void>;
+  /** How many team vault entries the signed-in account has on this device
+   *  that have not reached the team (stashed or held), which a sign-out
+   *  deletes, so Sign out can ask first. 0 when nobody is signed in. */
+  unsentTeamTextCount(): Promise<number>;
   /** Re-read the signed-in user's server role into serverRole. */
   refreshOrgRole(): Promise<void>;
   /** Re-read the org's billing entitlement from the server. */
@@ -3762,7 +3767,7 @@ export const useApp = create<AppState>((set, get, api) => {
   }
 
   // How many unsent team drafts (stashed or held) an account has on this
-  // device, for the expiry line.
+  // device, for the expiry line and the sign-out ask.
   async function countTeamDrafts(uid: string): Promise<number> {
     const stashed = await editVaultPending(
       (p) => Object.values(p).filter((e) => e.providerId === 'org' && e.owner === uid).length,
@@ -5590,6 +5595,11 @@ export const useApp = create<AppState>((set, get, api) => {
       logEvent('auth_sign_out');
     },
 
+    async unsentTeamTextCount() {
+      const uid = get().authSession?.user.id;
+      return uid ? countTeamDrafts(uid) : 0;
+    },
+
     async refreshOrgRole() {
       const account = get().settings.account;
       try {
@@ -6737,7 +6747,14 @@ export const useApp = create<AppState>((set, get, api) => {
         // state rather than the first-run "empty vault" greeting over notes
         // that really exist.
         set({ vaultError: 'load' });
-        get().showToast('Could not reach your vault storage. Showing the last loaded notes.');
+        // A Drive vault with no Google account on this device fails for want
+        // of the account, not the connection: its read-only card says so, and
+        // this toast would blame the network.
+        const driveGone =
+          target.providerId === 'gdrive' && !(await isGdriveConnected().catch(() => false));
+        if (!driveGone) {
+          get().showToast('Could not reach your vault storage. Showing the last loaded notes.');
+        }
         return;
       }
       if (!isActiveVault(target)) return;

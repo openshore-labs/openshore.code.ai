@@ -1,7 +1,7 @@
 // The iCloud storage provider: the same seam the Local provider satisfies,
 // backed by the app's iCloud Drive ubiquity container through the native
 // OscodeIcloud plugin. Files are plain markdown under Documents/<resourceId>,
-// so Obsidian opens the same folder and every device syncs for free.
+// so every device syncs them for free.
 //
 // The lease is a file in the container (like the Local provider), so
 // single-writer semantics ride the same bytes iCloud already syncs. iCloud is
@@ -20,7 +20,7 @@ export const icloudProvider: StorageProvider = {
   // registry probes the device before offering iCloud, so a signed-out phone
   // or an unprovisioned build never shows it as selectable.
   ready: false,
-  pending: 'Sign in to iCloud on this iPhone to use it.',
+  pending: 'Sign in to iCloud and turn on iCloud Drive in Settings on this iPhone to use it.',
 
   // Only notes list (0.6): the plugin already skips hidden paths and non-.md
   // files, and this seam filter holds even if it did not, so our own lease,

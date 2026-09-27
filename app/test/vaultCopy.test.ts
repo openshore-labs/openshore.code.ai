@@ -6,13 +6,13 @@
 // claim:
 // - the agent reads and writes these notes only in This folder on the
 //   desktop, the one folder the agent's vault is; everywhere else the only
-//   agent line is the platform's own pointer to where its vault really is,
-//   and an unpaired phone or a member on someone else's computer is promised
-//   nothing;
+//   agent line is the platform's own pointer to where its vault really is
+//   (on an unpaired phone, one pointer in the empty-vault ramp only), and a
+//   member on someone else's computer is promised nothing;
 // - Obsidian is named only in the exact sentences each storage may say:
-//   This folder and, from a Mac, iCloud say Obsidian opens them; the team
-//   vault says it is not an Obsidian folder; Local and Google Drive say
-//   nothing about Obsidian at all;
+//   only This folder says Obsidian opens it; the team vault says it is not
+//   an Obsidian folder; Local, iCloud, and Google Drive say nothing about
+//   Obsidian at all;
 // - the welcome note, which travels with the vault, says nothing that only
 //   holds for the storage it was written on.
 // It also scans the app, guide cards included, for the retired false lines,
@@ -26,7 +26,9 @@ import {
   DESKTOP_AGENT_LINE,
   DRIVE_NOT_CONNECTED_MOVE_LINE,
   DRIVE_RECONNECT_FAILED_LINE,
+  DRIVE_WEB_URL,
   PHONE_AGENT_LINE,
+  PHONE_PAIR_LINE,
   ROUTINE_NOTES_PLACE,
   VAULT_COPY_PLATFORMS,
   VAULT_COPY_PROVIDERS,
@@ -48,6 +50,7 @@ import {
   type VaultCopyProvider,
 } from '../src/lib/vaultCopy.js';
 import { GUIDE_CARDS } from '../src/lib/guideCards.js';
+import { PROVIDER_ROSTER } from '../src/lib/gitos/providers.js';
 import { WAYFINDING } from '../src/lib/currents.js';
 import type { Platform } from '../src/lib/platform.js';
 
@@ -101,7 +104,7 @@ const sentences = (text: string) =>
 // Every sentence that may name Obsidian, per storage, exactly.
 const OBSIDIAN_SAID: Record<VaultCopyProvider, string[]> = {
   files: ['Obsidian opens this folder as a vault.'],
-  icloud: ['Obsidian on a Mac signed in to the same iCloud can open the folder.'],
+  icloud: [],
   local: [],
   gdrive: [],
   org: ['It is not an Obsidian folder.'],
@@ -128,12 +131,13 @@ describe('the Vault copy map (0.19)', () => {
       expect(c.agent, where).toBeUndefined();
       expect(c.routines, where).toBeUndefined();
       // The one pointer this platform may carry: the desktop's own, or the
-      // phone's, never the other's.
+      // phone's (paired, or the ramp's pairing pointer), never the other's.
       const pointer = p.on === 'electron' ? DESKTOP_AGENT_LINE : PHONE_AGENT_LINE;
+      const pointers = p.on === 'electron' ? [pointer] : [pointer, PHONE_PAIR_LINE];
       if (c.agentElsewhere) expect(c.agentElsewhere, where).toBe(pointer);
       for (const text of rendered(p)) {
         let rest = text.replace(/\s+/g, ' ');
-        for (const allowed of [pointer, ...NEUTRAL_AGENT_TITLES]) {
+        for (const allowed of [...pointers, ...NEUTRAL_AGENT_TITLES]) {
           rest = rest.split(allowed.replace(/\s+/g, ' ')).join(' ');
         }
         expect(rest, `${where}: ${text}`).not.toMatch(/\bagents?\b/i);
@@ -145,8 +149,28 @@ describe('the Vault copy map (0.19)', () => {
     for (const p of PAIRS) {
       if (p.on === 'electron') continue;
       const c = vaultCopy(p.on, p.id, optsOf(p));
+      const where = nameOf(p);
       const says = p.device === 'paired' && p.id !== 'org';
-      expect(c.agentElsewhere, nameOf(p)).toBe(says ? PHONE_AGENT_LINE : undefined);
+      expect(c.agentElsewhere, where).toBe(says ? PHONE_AGENT_LINE : undefined);
+      // An unpaired phone or the web gets one pointer, in the empty-vault ramp
+      // only: never in the lead or the storage sheet.
+      const pairs = p.device === 'unpaired' && p.id !== 'org';
+      expect(c.agentPair, where).toBe(pairs ? PHONE_PAIR_LINE : undefined);
+      if (pairs) {
+        expect(vaultLead(c), where).not.toMatch(/agent/i);
+        expect(vaultSheetLine(c), where).not.toMatch(/agent/i);
+        const ramp = vaultOnboard(p.on, p.id, optsOf(p));
+        expect(
+          ramp.points.find((pt) => pt.glyph === 'agent'),
+          where,
+        ).toEqual({
+          glyph: 'agent',
+          title: 'Where your agent keeps notes',
+          sub: PHONE_PAIR_LINE,
+        });
+        continue;
+      }
+      // A member, or the team vault: no agent word anywhere.
       if (!says) for (const text of rendered(p)) expect(text).not.toMatch(/\bagents?\b/i);
     }
   });
@@ -177,7 +201,6 @@ describe('the Vault copy map (0.19)', () => {
       const where = nameOf(p);
       if (p.id === 'files')
         expect(c.obsidian, where).toBe('Obsidian opens this folder as a vault.');
-      else if (p.id === 'icloud') expect(c.obsidian, where).toMatch(/Obsidian on a Mac/);
       else expect(c.obsidian, where).toBeUndefined();
       for (const text of rendered(p)) {
         for (const s of sentences(text)) {
@@ -234,6 +257,17 @@ describe('the Vault copy map (0.19)', () => {
     expect(vaultOffersProvider('ios', 'org')).toBe(false);
   });
 
+  it('iCloud switched off on the iPhone is not "Arriving": its pill names the state', () => {
+    const icloud = PROVIDER_ROSTER.find((p) => p.id === 'icloud')!;
+    expect(icloud.offPill).toBe('Turned off');
+    expect(icloud.offPill ?? 'Arriving').not.toBe('Arriving');
+    expect(icloud.pending).toBe(
+      'Sign in to iCloud and turn on iCloud Drive in Settings on this iPhone to use it.',
+    );
+    // Google Drive is held back, so it still arrives.
+    expect(PROVIDER_ROSTER.find((p) => p.id === 'gdrive')!.offPill).toBeUndefined();
+  });
+
   it("feeds Harbor Lite's Vault card, which keeps each claim with its own storage", () => {
     const card = GUIDE_CARDS.find((c) => c.id === 'vault');
     expect(card?.text).toBe(vaultGuideText());
@@ -246,6 +280,10 @@ describe('the Vault copy map (0.19)', () => {
     expect(text.indexOf('write here too')).toBeLessThan(text.indexOf('iCloud Drive'));
     // The phone's pointer is said only of a phone paired with a computer.
     expect(text).toContain(`paired with a computer, ${PHONE_AGENT_LINE.charAt(0).toLowerCase()}`);
+    // iCloud names no Obsidian until a Mac opens it on a real device (8.1),
+    // and no line it drops leaves a hole behind.
+    expect(text).not.toMatch(/undefined|Obsidian on a Mac/);
+    expect(text).toContain(`iCloud Drive, on the iPhone: ${vaultCopy('ios', 'icloud').storage}`);
   });
 
   it("puts the Wayfinding Memory notes where they are: the project's repository", () => {
@@ -297,7 +335,10 @@ describe('the move toast', () => {
       'This device',
     );
     expect(three).toMatch(/^Your vault moved to This device\. 3 notes were already there/);
-    expect(three).toMatch(/the ones you moved are beside them as conflict copies\.$/);
+    // The room has no search yet, so the line says how to find the copies.
+    expect(three).toMatch(
+      /the ones you moved sit beside them, each with "conflict" and the date in its name\.$/,
+    );
   });
 
   it('says "nothing moved" only when the refused move took its copies back', () => {
@@ -387,15 +428,20 @@ describe('the read-only Drive card', () => {
     expect(DRIVE_NOT_CONNECTED_MOVE_LINE).not.toMatch(/in a moment/);
   });
 
-  it('on a build that cannot connect, offers no button and says where the notes are', () => {
+  it('on a build that cannot connect, names the folder and opens Google Drive, never a move', () => {
     const card = vaultDriveCard('unconfigured', 'This device');
-    expect(card.action).toBeUndefined();
+    expect(card.action).toEqual({ kind: 'open', label: 'Open Google Drive' });
+    expect(card.action?.kind).not.toBe('move');
+    expect(card.action?.kind).not.toBe('reconnect');
     expect(card.line).toMatch(/still in your Google Drive/);
+    expect(card.line).toMatch(/vault\.personal/);
+    expect(DRIVE_WEB_URL).toBe('https://drive.google.com/drive/my-drive');
   });
 
   it('a move refused for want of the account says what will work, not "try again in a moment"', () => {
     expect(vaultDriveMoveRefusal('disconnected')).toBe(DRIVE_NOT_CONNECTED_MOVE_LINE);
     expect(vaultDriveMoveRefusal('unconfigured')).toMatch(/still in your Google Drive/);
+    expect(vaultDriveMoveRefusal('unconfigured')).toMatch(/vault\.personal/);
     expect(vaultDriveMoveRefusal('unconfigured')).not.toMatch(/Reconnect/);
     // Connected, the move's own line applies.
     expect(vaultDriveMoveRefusal('connected')).toBeUndefined();

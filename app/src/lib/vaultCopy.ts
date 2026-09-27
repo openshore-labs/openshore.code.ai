@@ -13,12 +13,15 @@
 //   only there do routines leave their notes.
 // - Everywhere else the notes on screen are not the agent's. A phone paired
 //   to its own computer says where the agent's vault is instead; an unpaired
-//   phone has no agent to point at, and a member on someone else's computer
-//   gets no vault in their sessions (0.13), so nothing is promised there.
-// - Obsidian opens a plain folder. "This folder" is one; the iCloud folder is
-//   one that Obsidian on a Mac can open (Obsidian on the iPhone opens vaults
-//   only in its own folders). Local is a sealed store, Google Drive is held
-//   back, and the team vault is a server, so none of them claims Obsidian.
+//   phone gets one pointer in the empty-vault ramp only (where the agent
+//   would be, never a claim about these notes); and a member on someone
+//   else's computer gets no vault in their sessions (0.13), so nothing is
+//   promised there.
+// - Obsidian opens a plain folder. Only This folder claims it today. The
+//   iCloud folder says nothing about Obsidian until a Mac opens it on a real
+//   device (8.1) and iCloud writes are safe for a second writer (2.1, 2.9).
+//   Local is a sealed store, Google Drive is held back, and the team vault is
+//   a server, so none of them claims Obsidian.
 import type { Platform } from './platform.js';
 import { noteTitle } from './vault.js';
 
@@ -48,6 +51,9 @@ export interface VaultCopy {
   /** Where the agent's vault is when it is not these notes. A pointer, never
    *  a claim about the notes on screen. */
   agentElsewhere?: string;
+  /** The ramp's pointer on a device with no computer paired: where the agent
+   *  would be, never a claim about these notes. */
+  agentPair?: string;
 }
 
 /** Who holds the device, as far as the agent lines are concerned. */
@@ -62,6 +68,9 @@ export interface VaultCopyOpts {
 
 /** A paired phone's line about the agent: its vault is the computer's folder. */
 export const PHONE_AGENT_LINE = 'Your agent uses the vault on your computer.';
+/** An unpaired phone's (or the web's) one pointer, in the empty-vault ramp
+ *  only: where the agent works, and that its vault is its own. */
+export const PHONE_PAIR_LINE = 'Your agent works on a computer you pair, with its own vault there.';
 /** The desktop's line when the vault is not the agent's folder. */
 export const DESKTOP_AGENT_LINE =
   'Your agent uses a folder on this computer, not these notes. Move the vault to This folder to share it.';
@@ -79,7 +88,6 @@ const STORAGE: Record<VaultCopyProvider, string> = {
 
 const OBSIDIAN: Partial<Record<VaultCopyProvider, string>> = {
   files: 'Obsidian opens this folder as a vault.',
-  icloud: 'Obsidian on a Mac signed in to the same iCloud can open the folder.',
 };
 
 /** The lines for one platform and one storage, on this device. */
@@ -106,6 +114,10 @@ export function vaultCopy(
     copy.agentElsewhere = DESKTOP_AGENT_LINE;
   } else if (opts.paired && !opts.hubMember) {
     copy.agentElsewhere = PHONE_AGENT_LINE;
+  } else if (!opts.hubMember) {
+    // Off the desktop with no computer paired (the team vault returned
+    // above): the ramp's one pointer. The lead and the sheet never read it.
+    copy.agentPair = PHONE_PAIR_LINE;
   }
   return copy;
 }
@@ -169,7 +181,9 @@ export function vaultOnboard(
   const points: VaultOnboard['points'] = [
     { glyph: 'doc', title: 'Plain markdown, yours', sub: `${wayOut} Nothing is locked in.` },
   ];
-  const agentLine = c.agent ? [c.agent, c.routines].filter(Boolean).join(' ') : c.agentElsewhere;
+  const agentLine = c.agent
+    ? [c.agent, c.routines].filter(Boolean).join(' ')
+    : (c.agentElsewhere ?? c.agentPair);
   if (agentLine) {
     points.push({
       glyph: 'agent',
@@ -226,7 +240,7 @@ export function vaultGuideText(): string {
     'Plain markdown notes with [[wikilinks]] and linked mentions. Where it lives picks the storage for your own vault.',
     `This device: ${vaultCopy('ios', 'local').storage}`,
     `This folder, in OpenShore on your computer: ${desk.storage} ${desk.obsidian} ${desk.agent} ${desk.routines}`,
-    `iCloud Drive, on the iPhone: ${icloud.storage} ${icloud.obsidian}`,
+    `iCloud Drive, on the iPhone: ${icloud.storage}`,
     `Google Drive: ${vaultCopy('ios', 'gdrive').storage} A vault already there is read-only, and its card moves it off.`,
     'On the iPhone, Export writes the notes out as plain .md files in Files.',
     `On a phone paired with a computer, ${lowerFirst(PHONE_AGENT_LINE)}`,
@@ -296,7 +310,7 @@ function forkedLine(forked: Array<{ from: string; to: string }>): string | undef
     const [f] = forked;
     return `"${noteTitle(f!.from)}" was already there with different text, so the one you moved is beside it as "${noteTitle(f!.to)}".`;
   }
-  return `${forked.length} notes were already there with different text, so the ones you moved are beside them as conflict copies.`;
+  return `${forked.length} notes were already there with different text, so the ones you moved sit beside them, each with "conflict" and the date in its name.`;
 }
 
 // The copies a refused move could not take back from the target.
@@ -359,24 +373,30 @@ export const DRIVE_NOT_CONNECTED_MOVE_LINE =
 export const DRIVE_RECONNECT_FAILED_LINE =
   'Google Drive did not reconnect, so nothing moved. Try again when you are ready.';
 
+/** Google Drive on the web, where a Drive vault's notes can still be opened
+ *  on a build that cannot connect to Google. A plain link, so no sign-in. */
+export const DRIVE_WEB_URL = 'https://drive.google.com/drive/my-drive';
+
 /** The toast for a move off Drive refused as unreadable, when the account is
  *  the reason: a retry cannot help, so it says what can. Undefined while the
  *  account is connected (the move's own line applies). */
 export function vaultDriveMoveRefusal(link: VaultDriveLink): string | undefined {
   if (link === 'disconnected') return DRIVE_NOT_CONNECTED_MOVE_LINE;
   if (link === 'unconfigured') {
-    return 'This build cannot connect to Google Drive, so the vault could not be read and nothing moved. Your notes are still in your Google Drive.';
+    return 'This version of OpenShore cannot connect to Google Drive, so nothing moved. Your notes are still in your Google Drive, in the folder vault.personal.';
   }
   return undefined;
 }
 
 /** What the read-only Drive card adds under the store's reason, and its one
  *  button. The move needs the account, so with it gone the button reconnects
- *  first; a build that cannot connect offers no button that cannot work. */
+ *  first; a build that cannot connect cannot move or reconnect, so its one
+ *  button opens Google Drive, where the notes still are (the folder is named
+ *  for the vault's resource id, at the top of My Drive). */
 export function vaultDriveCard(
   link: VaultDriveLink | undefined,
   exit: string,
-): { line?: string; action?: { kind: 'move' | 'reconnect'; label: string } } {
+): { line?: string; action?: { kind: 'move' | 'reconnect' | 'open'; label: string } } {
   if (link === 'disconnected') {
     return {
       line: `Your Google account is not connected on this device, so these notes cannot be read to move them. Reconnect it, and they move to ${exit}.`,
@@ -385,7 +405,8 @@ export function vaultDriveCard(
   }
   if (link === 'unconfigured') {
     return {
-      line: 'This build cannot connect to Google Drive, so it cannot move these notes. They are still in your Google Drive.',
+      line: 'This version of OpenShore cannot connect to Google Drive, so it cannot read or move these notes. They are still in your Google Drive, in the folder vault.personal, as plain text files you can open or download there.',
+      action: { kind: 'open', label: 'Open Google Drive' },
     };
   }
   return { action: { kind: 'move', label: `Move to ${exit}` } };

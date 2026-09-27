@@ -111,6 +111,11 @@ export const PROVIDER_ROSTER: Array<{
   // Distinct from icloud, wired and ready at runtime, and gdrive, wired but
   // held back, which each keep a row of their own.
   arriving?: boolean;
+  // The pill a not-ready row wears when it is possible on this device but
+  // switched off (iCloud signed out, or iCloud Drive off), instead of
+  // "Arriving", which promises the thing is coming here. The step to turn it
+  // on is `pending`, said in the toast.
+  offPill?: string;
 }> = [
   {
     id: 'local',
@@ -131,7 +136,8 @@ export const PROVIDER_ROSTER: Array<{
     // device, so ready stays false here and probeReady('icloud') is the truth.
     label: 'iCloud Drive',
     ready: false,
-    pending: 'Sign in to iCloud on this iPhone to use it.',
+    pending: 'Sign in to iCloud and turn on iCloud Drive in Settings on this iPhone to use it.',
+    offPill: 'Turned off',
   },
   {
     id: 'dropbox',

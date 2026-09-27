@@ -3,8 +3,8 @@ import Capacitor
 
 // iCloud Drive storage for the Vault. Files live under the app's ubiquity
 // container at Documents/<resourceId>/<path>, so they appear in the Files app
-// under iCloud Drive (Documents scope is public, see Info.plist), sync across
-// the user's devices for free, and open in Obsidian mobile unchanged.
+// under iCloud Drive (Documents scope is public, see Info.plist) and sync
+// across the user's devices for free.
 //
 // Every read and write goes through NSFileCoordinator so a concurrent iCloud
 // sync never hands us a torn file, and reads first ask iCloud to materialize a

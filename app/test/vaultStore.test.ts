@@ -8,11 +8,13 @@
 // the list has not caught up with, notes open and delete by their exact listed
 // path, a vault move never drops a note and names every fork, a scheduled save
 // keeps the vault it was scheduled for, team text belongs to the account that
-// typed it (a sign-out forgets it, an expiry keeps it for the same person), and
-// a Google Drive vault is read-only. The personal providers are in-memory fakes
+// typed it (a sign-out forgets it, an expiry keeps it for the same person, and
+// Sign out asks before it deletes any), and a Google Drive vault is
+// read-only. The personal providers are in-memory fakes
 // whose ops can be forced to fail; the team vault is the real provider over a
 // fake Supabase, and the auth cases run the store's own token getter.
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createElement } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StoredFile, StoredFileMeta } from '../src/lib/gitos/providers.js';
 import { isNotePath } from '../src/lib/gitos/providers.js';
 import { backlinksTo, normalizeNotePath } from '../src/lib/vault.js';
@@ -171,6 +173,8 @@ function makeProvider(id: string) {
 }
 
 let leaseHolder = 'me';
+// Whether this device holds a Google account for Drive.
+let driveConnected = true;
 const local = makeProvider('local');
 const folder = makeProvider('files');
 const drive = makeProvider('gdrive');
@@ -282,6 +286,7 @@ vi.mock('../src/lib/gitos/index.js', async () => {
     probeReady: async () => true,
     connectGdrive: async () => ({ ok: true }),
     disconnectGdrive: async () => {},
+    isGdriveConnected: async () => driveConnected,
     setOrgVaultAuth: (token: () => Promise<string | undefined>) => {
       wiring.storeToken = token;
     },
@@ -329,6 +334,7 @@ function reset() {
     () => true,
   );
   leaseHolder = 'me';
+  driveConnected = true;
   useApp.setState({
     settings: {
       onboarded: true,
@@ -1332,6 +1338,21 @@ describe('a Google Drive vault is read-only (0.18)', () => {
     expect(useApp.getState().toast).toMatch(/read-only/);
   });
 
+  // X2: with no Google account on this device the list fails for want of
+  // the account, and the read-only card says so; a toast blaming the
+  // connection would contradict it. With the account there, a failed list is
+  // the connection, and the toast says so.
+  it('a list that fails for want of the Google account shows no connection toast', async () => {
+    drive.fail.list = true;
+    driveConnected = false;
+    await useApp.getState().vaultRefresh();
+    expect(useApp.getState().vaultError).toBe('load');
+    expect(useApp.getState().toast).toBeUndefined();
+    driveConnected = true;
+    await useApp.getState().vaultRefresh();
+    expect(useApp.getState().toast).toMatch(/Could not reach your vault storage/);
+  });
+
   it('moves off Drive, and nothing moves onto it', async () => {
     const res = await useApp.getState().vaultMoveTo('local');
     expect(res).toEqual({ ok: true, moved: ['a.md'], skipped: [], forked: [] });
@@ -1339,5 +1360,78 @@ describe('a Google Drive vault is read-only (0.18)', () => {
     expect(useApp.getState().vaultReadOnly()).toBeUndefined();
     const back = await useApp.getState().vaultMoveTo('gdrive');
     expect(back).toMatchObject({ ok: false, reason: 'unavailable' });
+  });
+});
+
+// T5: a sign-out deletes the account's unsent team text from this device
+// (R-19), and text stashed offline does not show under Not saved, so Sign out
+// asks first. "Stay signed in" keeps every entry; only "Sign out and delete"
+// wipes. Mounted in a small real DOM over the real store.
+describe('Sign out asks before it deletes unsent team text (T5)', () => {
+  beforeEach(reset);
+  let dom: import('./support/dom.js').TestDom | undefined;
+  afterEach(async () => {
+    await dom?.unmount();
+    dom = undefined;
+  });
+
+  async function mountCard() {
+    const { mountDom } = await import('./support/dom.js');
+    dom = await mountDom();
+    const { SignInCard } = await import('../src/components/SignInCard.js');
+    await dom.render(createElement(SignInCard));
+    return dom;
+  }
+
+  it("counts only the signed-in account's unsent team text", async () => {
+    expect(await useApp.getState().unsentTeamTextCount()).toBe(0);
+    teamScope();
+    teamNet.fail = new TypeError('Failed to fetch');
+    await useApp.getState().vaultSave('plan.md', 'unsent team draft');
+    teamNet.fail = undefined;
+    expect(await useApp.getState().unsentTeamTextCount()).toBe(1);
+    useApp.setState({ authSession: session({ id: 'u2', email: 'b@example.com' }) });
+    expect(await useApp.getState().unsentTeamTextCount()).toBe(0);
+  });
+
+  it('with a stashed team entry, Sign out opens the ask, and Stay signed in keeps it', async () => {
+    teamScope();
+    teamNet.fail = new TypeError('Failed to fetch');
+    await useApp.getState().vaultSave('plan.md', 'unsent team draft');
+    teamNet.fail = undefined;
+    const key = `org::${ORG}::plan.md`;
+    expect(Object.keys(pending())).toEqual([key]);
+
+    const card = await mountCard();
+    await card.click('Sign out');
+    await card.settle();
+    expect(card.text()).toContain('Team text not sent yet');
+    expect(card.text()).toContain(
+      'One team vault note has text that has not reached your team yet. Signing out deletes it from this device.',
+    );
+    await card.click('Stay signed in');
+    await card.settle();
+    expect(useApp.getState().authSession?.user.id).toBe('u1');
+    expect(Object.keys(pending())).toEqual([key]);
+
+    // The only way to the wipe is its own button.
+    await card.click('Sign out');
+    await card.settle();
+    await card.click('Sign out and delete');
+    await card.settle();
+    expect(useApp.getState().authSession).toBeUndefined();
+    expect(pending()).toEqual({});
+    // The card turns to Sign in, and the ask plays its exit, never a cut.
+    expect(card.text()).toContain('Sign in');
+    expect(card.container.querySelector('.confirm-card.closing')).not.toBeNull();
+  });
+
+  it('with nothing unsent, Sign out signs out without asking', async () => {
+    teamScope();
+    const card = await mountCard();
+    await card.click('Sign out');
+    await card.settle();
+    expect(card.text()).not.toContain('Team text not sent yet');
+    expect(useApp.getState().authSession).toBeUndefined();
   });
 });

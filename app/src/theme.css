@@ -1254,17 +1254,18 @@ textarea {
   margin-bottom: 10px;
 }
 
-/* A control a read-only vault turns off (New note, Edit) reads as off, the
-   way .btn:disabled does, so it never looks live while a tap does nothing.
-   The card beside it says why. The global button reset cancels the
-   browser's own graying, so it is said here. */
-.stack-add-btn:disabled,
-.vault-note-bar .icon-btn:disabled {
-  opacity: 0.4;
-  cursor: default;
+/* The read-only Drive card folds out when a move off Drive lands, keeping
+   its last words while it goes (VaultScreen DriveCard, useExitPresence), so
+   the controls coming back read as the card leaving, never a cut. Opacity
+   and transform only. */
+.vault-drive-card.closing {
+  animation: vault-drive-card-out var(--dur-4) var(--ease-standard) forwards;
 }
-.vault-note-bar .icon-btn:disabled:hover {
-  background: none;
+@keyframes vault-drive-card-out {
+  to {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
 }
 
 .vault-title {

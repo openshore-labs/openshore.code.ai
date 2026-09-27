@@ -5,19 +5,28 @@
 // fault again, so the fallback leaves the room (the next visit mounts it
 // fresh) and offers a try again for a fault that has passed. Mounted in a real
 // (small) DOM, since a boundary only catches inside a real render.
+//
+// The real Vault screen is mounted too, for what only a real render shows:
+// the New note sheet refills a dot-led name instead of renaming it silently
+// (T6), and a read-only Drive vault leaves out the controls that write, with
+// its card at every folder level and its one button that works (C1a, X2).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mountDom, type TestDom } from './support/dom.js';
 
-// The store, as far as the room reads it: the open note, closing it, and
-// moving to another room.
+// The store, as far as the room and the screen read it: the open note,
+// closing it, moving to another room, and the vault's own state and actions.
 const app = vi.hoisted(() => {
-  type State = {
-    vaultNote?: { path: string };
+  type State = Record<string, unknown> & {
+    vaultNote?: { path: string; text?: string };
     vaultCloseNote: () => void;
     setView: (view: string) => void;
   };
   const listeners = new Set<() => void>();
   const views: string[] = [];
+  const toasts: string[] = [];
+  const created: string[] = [];
+  const opened: string[] = [];
+  const drive = { readOnly: undefined as string | undefined, connected: true, configured: true };
   const state: State = {
     vaultNote: undefined,
     vaultCloseNote: () => {
@@ -27,8 +36,41 @@ const app = vi.hoisted(() => {
     setView: (view) => {
       views.push(view);
     },
+    vaultFiles: [] as Array<{ path: string; updatedAt: string; size: number }>,
+    vaultScope: 'personal',
+    setVaultScope: async () => {},
+    teamVaultAvailable: () => false,
+    vaultRefresh: async () => {},
+    vaultOpen: async (path: string) => {
+      opened.push(path);
+    },
+    vaultCreate: async (path: string) => {
+      created.push(path);
+    },
+    vaultSave: async () => undefined,
+    vaultDelete: async () => false,
+    vaultReadAll: async () => Object.assign([], { failed: [] }),
+    vaultMoveTo: async () => ({ ok: false, skipped: [] }),
+    vaultError: undefined,
+    vaultHeld: [],
+    vaultTargetRef: () => ({ providerId: 'local', resourceId: 'vault.personal' }),
+    vaultReadOnly: () => drive.readOnly,
+    vaultDiscardHeld: async () => {},
+    vaultAcquireLease: async () => {},
+    vaultReleaseLease: async () => {},
+    vaultLeaseHeldByOther: undefined,
+    connectGdriveAccount: async () => ({ ok: false }),
+    disconnectGdriveAccount: async () => {},
+    authSession: undefined,
+    settings: {},
+    hubRole: undefined,
+    showToast: (text: string) => {
+      toasts.push(text);
+    },
+    openProjectMemory: () => {},
+    repoSyncConflicts: undefined,
   };
-  return { state, listeners, views };
+  return { state, listeners, views, toasts, created, opened, drive };
 });
 vi.mock('../src/state/store.js', async () => {
   const { useSyncExternalStore } = await import('react');
@@ -37,12 +79,26 @@ vi.mock('../src/state/store.js', async () => {
     return () => app.listeners.delete(l);
   };
   return {
-    useApp: <T,>(select: (s: typeof app.state) => T) =>
-      useSyncExternalStore(subscribe, () => select(app.state)),
+    useApp: <T,>(select?: (s: typeof app.state) => T) =>
+      useSyncExternalStore(subscribe, () => (select ? select(app.state) : app.state)),
     agenticView: () => ({}),
     vaultHeldFor: () => [],
   };
 });
+// Whether this device reaches the Google account behind a Drive vault.
+vi.mock('../src/lib/gitos/index.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/lib/gitos/index.js')>()),
+  isGdriveConnected: async () => app.drive.connected,
+  isGdriveConfigured: () => app.drive.configured,
+  probeReady: async () => false,
+}));
+const external = vi.hoisted(() => [] as string[]);
+vi.mock('../src/lib/platform.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/lib/platform.js')>()),
+  openExternal: (url: string) => {
+    external.push(url);
+  },
+}));
 // The top bar reads the rest of the store; the fallback is what is tested.
 vi.mock('../src/components/BackBar.js', () => ({
   BackBar: ({ title }: { title: string }) => <header>{title}</header>,
@@ -82,7 +138,7 @@ describe('the Vault room fallback', () => {
     );
     expect(dom.text()).toContain('This could not be shown.');
     expect(dom.buttons()).not.toContain('Back to your notes');
-    await dom.click('Leave the Vault');
+    await dom.click('Back to Chat');
     expect(app.views).toEqual(['chat']);
   });
 
@@ -121,6 +177,118 @@ describe('the Vault room fallback', () => {
       </VaultRoom>,
     );
     await dom.click('Back to your notes');
-    expect(dom.buttons()).toContain('Leave the Vault');
+    expect(dom.buttons()).toContain('Back to Chat');
+  });
+});
+
+describe('the Vault screen', () => {
+  let dom: TestDom;
+  beforeEach(async () => {
+    app.state.vaultNote = undefined;
+    app.state.vaultFiles = [];
+    app.views.length = 0;
+    app.toasts.length = 0;
+    app.created.length = 0;
+    app.opened.length = 0;
+    external.length = 0;
+    Object.assign(app.drive, { readOnly: undefined, connected: true, configured: true });
+    dom = await mountDom();
+  });
+  afterEach(async () => {
+    await dom.unmount();
+  });
+
+  // T6: v1 has no rename, so a dot the typed-name rule would strip is shown
+  // before the note is made, never lost silently.
+  it('refills a dot-led name and creates nothing on the first tap; the second tap creates it', async () => {
+    await dom.render(<VaultRoom />);
+    await dom.click('Write your first note');
+    await dom.type('Note name', '.NET migration');
+    await dom.click('Create');
+    expect(app.created).toEqual([]);
+    expect(dom.value('Note name')).toBe('NET migration');
+    expect(app.toasts).toEqual([
+      'Note names cannot start with a dot, since Obsidian and your vault hide them. Tap Create to use "NET migration", or change it.',
+    ]);
+    await dom.click('Create');
+    expect(app.created).toEqual(['NET migration.md']);
+  });
+
+  it('a plain name is created on the first tap', async () => {
+    await dom.render(<VaultRoom />);
+    await dom.click('Write your first note');
+    await dom.type('Note name', 'ideas/first');
+    await dom.click('Create');
+    expect(app.created).toEqual(['ideas/first.md']);
+    expect(app.toasts).toEqual([]);
+  });
+
+  // C1a: a read-only Drive vault leaves out every control that writes, and
+  // its card, the reason, shows at every folder level.
+  it('a read-only Drive vault leaves out New note, and its card shows in a subfolder', async () => {
+    app.drive.readOnly =
+      'Google Drive vaults are read-only for now. Move this vault to keep editing.';
+    app.state.vaultFiles = [{ path: 'ideas/a.md', updatedAt: 'x', size: 1 }];
+    await dom.render(<VaultRoom />);
+    await dom.settle();
+    expect(dom.container.querySelector('[aria-label="New note"]')).toBeNull();
+    expect(dom.text()).toContain('This vault is read-only');
+    await dom.click('ideas');
+    expect(dom.text()).toContain('This vault is read-only');
+    expect(dom.buttons()).toContain('Move to This device');
+    expect(dom.container.querySelector('button:disabled')).toBeNull();
+  });
+
+  // C1a: when a move off Drive lands, the card folds out keeping its last
+  // words, so the controls coming back read as the card leaving, never a cut.
+  it('when the vault stops being read-only, the card folds out and New note returns', async () => {
+    app.drive.readOnly =
+      'Google Drive vaults are read-only for now. Move this vault to keep editing.';
+    app.state.vaultFiles = [{ path: 'a.md', updatedAt: 'x', size: 1 }];
+    await dom.render(<VaultRoom />);
+    await dom.settle();
+    app.drive.readOnly = undefined;
+    await dom.render(<VaultRoom />);
+    const card = dom.container.querySelector('.vault-drive-card');
+    expect(card?.className).toContain('closing');
+    expect(card?.textContent).toContain('Move to This device');
+    expect(dom.container.querySelector('[aria-label="New note"]')).not.toBeNull();
+  });
+
+  it('an empty read-only Drive vault shows the ramp with no ways in that write', async () => {
+    app.drive.readOnly =
+      'Google Drive vaults are read-only for now. Move this vault to keep editing.';
+    await dom.render(<VaultRoom />);
+    await dom.settle();
+    expect(dom.text()).toContain('A home for what you know');
+    expect(dom.buttons()).not.toContain('Write your first note');
+    expect(dom.buttons()).not.toContain('Add a welcome note');
+  });
+
+  // X2: a build that cannot connect to Google cannot move or reconnect, so
+  // the card names the folder and opens Google Drive, and nothing on screen
+  // contradicts it.
+  it('on a build that cannot connect, the card alone explains, and opens Google Drive', async () => {
+    Object.assign(app.drive, {
+      readOnly: 'Google Drive vaults are read-only for now. Move this vault to keep editing.',
+      connected: false,
+      configured: false,
+    });
+    app.state.vaultError = 'load';
+    try {
+      await dom.render(<VaultRoom />);
+      await dom.settle();
+      const text = dom.text();
+      expect(text).toContain('in the folder vault.personal');
+      expect(text).not.toContain('Move this vault to keep editing');
+      expect(text).not.toContain('Your vault storage is offline.');
+      expect(text).not.toContain('A home for what you know');
+      expect(dom.buttons()).not.toContain('Try again');
+      await dom.click('Open Google Drive');
+      expect(external).toEqual(['https://drive.google.com/drive/my-drive']);
+      expect(app.opened).toEqual([]);
+    } finally {
+      app.state.vaultError = undefined;
+    }
   });
 });

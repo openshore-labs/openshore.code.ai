@@ -3,15 +3,27 @@
 // here. It follows the conventional pattern: one primary action whose label and
 // heading track a Sign in / Create account mode toggle, with a passwordless
 // magic link offered underneath.
+//
+// Sign out deletes the account's unsent team vault text from this device
+// (R-19: text typed under one account never replays under another's). Team
+// text stashed offline does not show under Not saved, so a sign-out with any
+// left asks first, and deleting it is its own button, never a silent wipe.
 import { useState } from 'react';
 import { useApp } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { plainError } from '../lib/plainError.js';
+import { Sheet } from './Sheet.js';
 
 type Mode = 'signin' | 'signup';
 
+/** The sign-out ask's body, for this many unsent team vault notes. */
+export function unsentTeamTextBody(n: number): string {
+  const which = n === 1 ? 'One team vault note has' : `${n} team vault notes have`;
+  return `${which} text that has not reached your team yet. Signing out deletes it from this device.`;
+}
+
 export function SignInCard() {
-  const { showToast } = useApp();
+  const { showToast, unsentTeamTextCount } = useApp();
   const {
     configured,
     signedIn,
@@ -31,8 +43,40 @@ export function SignInCard() {
   const [pw, setPw] = useState('');
   const [busy, setBusy] = useState(false);
   const [newPw, setNewPw] = useState('');
+  // Unsent team vault notes a sign-out would delete; above zero, the ask is open.
+  const [unsent, setUnsent] = useState(0);
 
   if (!configured) return null;
+
+  // The ask before a sign-out that would delete unsent team text. It sits in
+  // the same place whether signed in or not, so when "Sign out and delete"
+  // lands the sheet keeps playing its exit instead of vanishing with the
+  // signed-in card.
+  const signOutAsk = (
+    <Sheet open={unsent > 0} onClose={() => setUnsent(0)} variant="confirm">
+      {unsent > 0 ? (
+        <>
+          <h3>Team text not sent yet</h3>
+          <p>{unsentTeamTextBody(unsent)}</p>
+          <div className="confirm-row">
+            <button type="button" className="btn primary press-fb" onClick={() => setUnsent(0)}>
+              Stay signed in
+            </button>
+            <button
+              type="button"
+              className="btn danger press-fb"
+              onClick={() => {
+                setUnsent(0);
+                void signOut();
+              }}
+            >
+              Sign out and delete
+            </button>
+          </div>
+        </>
+      ) : null}
+    </Sheet>
+  );
 
   // A password-reset link signs the user in with a recovery session. Prompt for
   // a new password before anything else, so the reset actually completes.
@@ -81,25 +125,35 @@ export function SignInCard() {
   }
 
   if (signedIn) {
+    // With nothing unsent, Sign out signs out, as it always has.
+    const askSignOut = async () => {
+      const n = await unsentTeamTextCount().catch(() => 0);
+      if (n > 0) setUnsent(n);
+      else await signOut();
+    };
     return (
-      <div className="card">
-        <div className="card-row">
-          <div className="grow">
-            <h3>Signed in</h3>
-            <div className="sub">
-              {email}
-              {role ? ` · ${role}` : ''}
+      <>
+        <div className="card">
+          <div className="card-row">
+            <div className="grow">
+              <h3>Signed in</h3>
+              <div className="sub">
+                {email}
+                {role ? ` · ${role}` : ''}
+              </div>
             </div>
+            <button
+              type="button"
+              className="btn ghost press-fb"
+              style={{ padding: '8px 14px' }}
+              onClick={() => void askSignOut()}
+            >
+              Sign out
+            </button>
           </div>
-          <button
-            className="btn ghost"
-            style={{ padding: '8px 14px' }}
-            onClick={() => void signOut()}
-          >
-            Sign out
-          </button>
         </div>
-      </div>
+        {signOutAsk}
+      </>
     );
   }
 
@@ -152,99 +206,102 @@ export function SignInCard() {
   };
 
   return (
-    <div className="card">
-      <h3>{mode === 'signin' ? 'Sign in' : 'Create account'}</h3>
-      <div className="sub" style={{ marginBottom: 10 }}>
-        {mode === 'signin'
-          ? 'Sign in to sync your company account and role. Personal use needs no account.'
-          : 'Create an account to sync your company role across your devices. Personal use needs no account.'}
-      </div>
-      <div className="field">
-        <input
-          type="email"
-          placeholder="you@company.com"
-          autoCapitalize="none"
-          autoCorrect="off"
-          autoComplete="email"
-          value={addr}
-          onChange={(e) => setAddr(e.target.value)}
-        />
-      </div>
-      <div className="field">
-        <input
-          type="password"
-          placeholder="Password"
-          autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-          value={pw}
-          onChange={(e) => setPw(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && void submit()}
-        />
-      </div>
-      <button
-        className="btn primary"
-        style={{ width: '100%' }}
-        disabled={busy}
-        onClick={() => void submit()}
-      >
-        {busy ? 'Working...' : mode === 'signin' ? 'Sign in' : 'Create account'}
-      </button>
-      <div className="sub" style={{ marginTop: 10, textAlign: 'center' }}>
+    <>
+      <div className="card">
+        <h3>{mode === 'signin' ? 'Sign in' : 'Create account'}</h3>
+        <div className="sub" style={{ marginBottom: 10 }}>
+          {mode === 'signin'
+            ? 'Sign in to sync your company account and role. Personal use needs no account.'
+            : 'Create an account to sync your company role across your devices. Personal use needs no account.'}
+        </div>
+        <div className="field">
+          <input
+            type="email"
+            placeholder="you@company.com"
+            autoCapitalize="none"
+            autoCorrect="off"
+            autoComplete="email"
+            value={addr}
+            onChange={(e) => setAddr(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <input
+            type="password"
+            placeholder="Password"
+            autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+            value={pw}
+            onChange={(e) => setPw(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && void submit()}
+          />
+        </div>
+        <button
+          className="btn primary"
+          style={{ width: '100%' }}
+          disabled={busy}
+          onClick={() => void submit()}
+        >
+          {busy ? 'Working...' : mode === 'signin' ? 'Sign in' : 'Create account'}
+        </button>
+        <div className="sub" style={{ marginTop: 10, textAlign: 'center' }}>
+          {mode === 'signin' ? (
+            <>
+              New to OpenShore?{' '}
+              <button className="linklike" disabled={busy} onClick={() => setMode('signup')}>
+                Create an account
+              </button>
+            </>
+          ) : (
+            <>
+              Already have an account?{' '}
+              <button className="linklike" disabled={busy} onClick={() => setMode('signin')}>
+                Sign in
+              </button>
+            </>
+          )}
+        </div>
+        <div className="sub" style={{ marginTop: 6, textAlign: 'center' }}>
+          <button
+            className="linklike"
+            disabled={busy}
+            onClick={() =>
+              void run(false, () => sendMagicLink(addr), 'Check your email for a sign-in link.')
+            }
+          >
+            Email me a link instead
+          </button>
+        </div>
         {mode === 'signin' ? (
-          <>
-            New to OpenShore?{' '}
-            <button className="linklike" disabled={busy} onClick={() => setMode('signup')}>
-              Create an account
+          <div className="sub" style={{ marginTop: 6, textAlign: 'center' }}>
+            <button
+              className="linklike"
+              disabled={busy}
+              onClick={() =>
+                void run(false, () => sendPasswordReset(addr), 'Check your email for a reset link.')
+              }
+            >
+              Forgot your password?
             </button>
-          </>
+          </div>
         ) : (
-          <>
-            Already have an account?{' '}
-            <button className="linklike" disabled={busy} onClick={() => setMode('signin')}>
-              Sign in
+          <div className="sub" style={{ marginTop: 6, textAlign: 'center' }}>
+            <button
+              className="linklike"
+              disabled={busy}
+              onClick={() =>
+                void run(
+                  false,
+                  () => resendConfirmation(addr),
+                  'Confirmation email sent again. Check your inbox.',
+                )
+              }
+            >
+              Resend confirmation email
             </button>
-          </>
+          </div>
         )}
       </div>
-      <div className="sub" style={{ marginTop: 6, textAlign: 'center' }}>
-        <button
-          className="linklike"
-          disabled={busy}
-          onClick={() =>
-            void run(false, () => sendMagicLink(addr), 'Check your email for a sign-in link.')
-          }
-        >
-          Email me a link instead
-        </button>
-      </div>
-      {mode === 'signin' ? (
-        <div className="sub" style={{ marginTop: 6, textAlign: 'center' }}>
-          <button
-            className="linklike"
-            disabled={busy}
-            onClick={() =>
-              void run(false, () => sendPasswordReset(addr), 'Check your email for a reset link.')
-            }
-          >
-            Forgot your password?
-          </button>
-        </div>
-      ) : (
-        <div className="sub" style={{ marginTop: 6, textAlign: 'center' }}>
-          <button
-            className="linklike"
-            disabled={busy}
-            onClick={() =>
-              void run(
-                false,
-                () => resendConfirmation(addr),
-                'Confirmation email sent again. Check your inbox.',
-              )
-            }
-          >
-            Resend confirmation email
-          </button>
-        </div>
-      )}
-    </div>
+      {signOutAsk}
+    </>
   );
 }
