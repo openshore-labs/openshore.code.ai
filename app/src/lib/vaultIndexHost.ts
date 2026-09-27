@@ -47,6 +47,7 @@ import {
   type VaultIndexState,
   type VaultListedNote,
   type VaultSearchHit,
+  type VaultSearchOptions,
 } from 'os-code/protocol';
 import { openBlob, platform, sealBlob } from './platform.js';
 import { vaultM3Bridge } from './gitos/deviceFolder.js';
@@ -670,7 +671,7 @@ export class VaultIndexHost {
   /** BM25 search. When the saved index went over its cap and kept its term
    *  vectors in memory only, the first search reads those notes again to
    *  rebuild them. */
-  async search(query: string, limit?: number): Promise<VaultSearchHit[]> {
+  async search(query: string, opts?: number | VaultSearchOptions): Promise<VaultSearchHit[]> {
     const missing = this.indexValue.missingTerms();
     if (missing.length > 0) {
       const gen = this.generation;
@@ -691,7 +692,7 @@ export class VaultIndexHost {
         () => !this.closed && this.generation === gen,
       );
     }
-    return this.indexValue.search(query, limit);
+    return this.indexValue.search(query, opts);
   }
 
   // ---- lifecycle ----------------------------------------------------------

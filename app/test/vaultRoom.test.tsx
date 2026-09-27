@@ -175,6 +175,8 @@ const app = vi.hoisted(() => {
     vaultCreateFolder: async () => ({ ok: false, reason: 'unsupported' }),
     vaultFolderCounts: async () => ({ notes: 0, attachments: 0 }),
     vaultFolders: undefined,
+    vaultSearchSource: () => undefined,
+    vaultRecentRing: () => [],
   };
   return { state, listeners, views, toasts, created, opened, drive, folderIo, leases, polls };
 });

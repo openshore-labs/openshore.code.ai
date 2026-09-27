@@ -3257,7 +3257,7 @@ describe('Vault M6 operations through the store', () => {
     await vi.waitFor(() => expect(useApp.getState().vaultTrash).toEqual([]));
   });
 
-  it('a rename re-keys pins, the stash and the open note, at the path the storage answered', async () => {
+  it('a rename re-keys pins, the stash, Recent and the open note, at the path the storage answered', async () => {
     // The storage matches a parent to its spelling on disk: asked for
     // work/Roadmap.md, it lands at Work/Roadmap.md (stream B).
     give('rename', async (_r: string, from: string, to: string, guard: { ifMatch: string }) => {
@@ -3298,6 +3298,15 @@ describe('Vault M6 operations through the store', () => {
           .map((b) => b.source),
       ).toEqual(['Home.md']),
     );
+    // Opening it put it on this vault's Recent ring.
+    await vi.waitFor(() =>
+      expect(
+        useApp
+          .getState()
+          .vaultRecentRing()
+          .map((e) => e.path),
+      ).toEqual(['Plan.md']),
+    );
 
     const preview = await useApp.getState().vaultPrepareMove('note', 'Plan.md', 'work/Roadmap.md');
     expect(preview).toMatchObject({ links: 1, linkNotes: 1 });
@@ -3324,6 +3333,14 @@ describe('Vault M6 operations through the store', () => {
       'Home.md',
     ]);
     expect(Object.keys(pending())).toEqual(['files::vault.personal::Work/Roadmap.md']);
+    await vi.waitFor(() =>
+      expect(
+        useApp
+          .getState()
+          .vaultRecentRing()
+          .map((e) => e.path),
+      ).toEqual(['Work/Roadmap.md']),
+    );
     expect(pending()['files::vault.personal::Work/Roadmap.md']?.path).toBe('Work/Roadmap.md');
   });
 

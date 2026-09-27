@@ -12,8 +12,8 @@
 // - every Search copy line passes the house rules.
 //
 // The query core and the index's `titleMatches` and filtered `search` are
-// stream A1's; this file injects small fakes with the same contract over the
-// real M3 index, so the pipeline and its budgets are what is measured.
+// stream A1's real ones over the real M3 index, so the pipeline and its
+// budgets are what is measured.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,20 +22,18 @@ import {
   VaultIndex,
   buildPathIndex,
   normalizeNotePath,
+  parseVaultQuery,
   readFrontmatter,
   resolveMarkdownLink,
   resolveWikilink,
   scanNote,
-  type TextRange,
   type VaultIndexCore,
-  type VaultQuery,
-  type VaultQueryClause,
   type VaultSearchOptions,
   type VaultTitleHit,
 } from 'os-code/protocol';
-import { fakeParse, fakeRanges } from './support/vaultQueryFake.js';
 import { vaultCorpus } from '../../os-code/test/fixtures/vaultCorpus.js';
 import {
+  VAULT_QUERY_CORE,
   VAULT_RECENT_RING,
   VAULT_RECENT_ROWS,
   VAULT_SEARCH_EXCERPT_READS,
@@ -81,9 +79,8 @@ import {
   vaultSwitcherNew,
 } from '../src/lib/vaultCopy.js';
 
-const fold = (s: string) => s.normalize('NFC').toLowerCase();
-
-const CORE: VaultQueryCore = { parseVaultQuery: fakeParse, highlightRanges: fakeRanges };
+// The real query core (stream A1), as the room uses it.
+const CORE: VaultQueryCore = VAULT_QUERY_CORE;
 
 // ---- the vault: the M3 corpus plus one note the agent wrote -------------------
 
@@ -135,68 +132,14 @@ function buildVault(): Vault {
     AGENT_TEXT,
   );
   bodies.set(AGENT_PATH, AGENT_TEXT);
-  // Titles are in memory, folded once, like A1's title table.
-  const titles = index
-    .entries()
-    .map((e) => ({ path: e.path, title: e.title, folded: fold(e.title) }));
-
-  const passes = (path: string, filter: readonly VaultQueryClause[]) => {
-    const e = index.entry(path)!;
-    for (const c of filter) {
-      let hit: boolean;
-      if (c.kind === 'tag')
-        hit = e.tags.some((t) => fold(t) === c.value || fold(t).startsWith(`${c.value}/`));
-      else if (c.kind === 'path') hit = fold(path).includes(c.value);
-      else
-        hit = fold(path.split('/').pop()!.replace(/\.md$/i, '')).includes(
-          c.value.replace(/\.md$/, ''),
-        );
-      if (hit === c.negated) return false;
-    }
-    return true;
-  };
-
   return {
     index,
     bodies,
+    // The index's own members (stream A1): titles and aliases in memory, and
+    // BM25 with the filter clauses, no read of any body.
     source: (counters) => ({
-      titleMatches(q: string, limit: number): VaultTitleHit[] {
-        const terms = fakeParse(q).clauses.filter((c) => c.kind === 'term' && !c.negated);
-        if (!terms.length) return [];
-        const out: VaultTitleHit[] = [];
-        for (const t of titles) {
-          if (!terms.every((c) => t.folded.includes(c.value))) continue;
-          out.push({
-            path: t.path,
-            score: 1,
-            field: 'title',
-            text: t.title,
-            ranges: fakeRanges(t.title, fakeParse(q)),
-          });
-          if (out.length >= limit) break;
-        }
-        return out;
-      },
-      search(q: string, opts: VaultSearchOptions) {
-        const parsed = fakeParse(q);
-        const filter = opts.filter ?? [];
-        const limit = opts.limit ?? 50;
-        if (parsed.filtersOnly) {
-          return index
-            .paths()
-            .filter((p) => passes(p, filter))
-            .slice(0, limit)
-            .map((path) => ({ path, score: 1 }));
-        }
-        const words = parsed.clauses
-          .filter((c) => (c.kind === 'term' || c.kind === 'phrase') && !c.negated)
-          .map((c) => c.value)
-          .join(' ');
-        return index
-          .search(words, 5000)
-          .filter((h) => passes(h.path, filter))
-          .slice(0, limit);
-      },
+      titleMatches: (q: string, limit: number): VaultTitleHit[] => index.titleMatches(q, limit),
+      search: (q: string, opts: VaultSearchOptions) => index.search(q, opts),
       note(path: string) {
         const e = index.entry(path);
         return e ? { title: e.title, updatedAt: e.updatedAt } : undefined;
@@ -261,7 +204,10 @@ describe('a 5,000-note vault finds the note the agent wrote, within budget (K16)
     const counters = { reads: 0 };
     const src = vault.source(counters);
     const search = timed(() =>
-      src.search(q, { limit: 51, filter: fakeParse(q).clauses.filter((c) => c.kind === 'tag') }),
+      src.search(q, {
+        limit: 51,
+        filter: parseVaultQuery(q).clauses.filter((c) => c.kind === 'tag'),
+      }),
     );
     expect(search.ms).toBeLessThan(50 * CEILING);
     const { value, ms } = await timedAsync(() => vaultBodyRows(src, CORE, q));

@@ -108,7 +108,7 @@ export { excerptAt } from './harness/vault/excerpt.js';
 // Vault M6 "Obsidian day one" (CTO K4, K7, K8, K10, K11, K15): the pure core
 // the app and the engine share. Stubs until each stream lands.
 export { planLinkRewrites, rewriteForMoves } from './harness/vault/move.js';
-export { highlightRanges, parseVaultQuery } from './harness/vault/query.js';
+export { highlightRanges, parseVaultQuery, phrasesMatch } from './harness/vault/query.js';
 export {
   VAULT_DAILY_DEFAULTS,
   dailyNotePath,

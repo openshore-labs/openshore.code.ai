@@ -19,6 +19,7 @@ import {
   noteFolder,
   noteTitle,
   parseVaultQuery,
+  phrasesMatch,
   type TextRange,
   type VaultQuery,
   type VaultQueryClause,
@@ -156,14 +157,10 @@ export function foldForPhrase(text: string): string {
   return text.normalize('NFC').toLowerCase().replace(/\s+/g, ' ');
 }
 
-/** Does a body hold every positive phrase and none of the negated ones? */
+/** Does a body hold every positive phrase and none of the negated ones? The
+ *  core's own check (`phrasesMatch`), so the app and the grammar agree. */
 export function phrasesHold(body: string, phrases: readonly VaultQueryClause[]): boolean {
-  const folded = foldForPhrase(body);
-  for (const p of phrases) {
-    const has = folded.includes(foldForPhrase(p.value));
-    if (has === p.negated) return false;
-  }
-  return true;
+  return phrasesMatch(body, { clauses: [...phrases], filtersOnly: false });
 }
 
 // ---- titles, synchronous ---------------------------------------------------

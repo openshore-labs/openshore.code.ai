@@ -119,6 +119,7 @@ import {
   vaultRenameFailed,
   vaultRenameTaken,
   vaultRenameToast,
+  vaultRecentAgentLabel,
   type VaultDriveLink,
   type VaultOnboard,
   type VaultSaveStatus,
@@ -154,6 +155,10 @@ import { VaultLinkSuggest } from '../components/vault/VaultLinkSuggest.js';
 import { VaultNoteOptions } from '../components/vault/VaultNoteOptions.js';
 import { VaultTrashRow, VaultTrashView } from '../components/vault/VaultTrashView.js';
 import { VaultFolderSheet } from '../components/vault/VaultFolderSheet.js';
+import { VaultSearch } from '../components/vault/VaultSearch.js';
+import { VaultSwitcher, useVaultSwitcherShortcut } from '../components/vault/VaultSwitcher.js';
+import { vaultRecentRows, vaultSearchIndexState } from '../lib/vaultSearch.js';
+import type { VaultPickerNote } from '../lib/vaultExcerpt.js';
 import { VaultLinksLeftCard, VaultRenameSheet } from '../components/vault/VaultRenameSheet.js';
 import { VaultUndoToast, type VaultUndoToastItem } from '../components/vault/VaultUndoToast.js';
 import { hubReach, subscribeHubReach } from '../lib/gitos/hub.js';
@@ -267,6 +272,8 @@ export function VaultScreen() {
     vaultCreateFolder,
     vaultFolderCounts,
     vaultFolders,
+    vaultSearchSource,
+    vaultRecentRing,
   } = useApp();
 
   const team = vaultScope === 'team';
@@ -441,6 +448,11 @@ export function VaultScreen() {
   const [folderCounts, setFolderCounts] = useState<
     { notes: number; attachments: number } | undefined
   >();
+  // Search in the tree and the switcher (6.1; CX X1 to X4). The query lives
+  // here, so a tapped #tag can fill in tag:x.
+  const [searchQ, setSearchQ] = useState('');
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [agentNotes, setAgentNotes] = useState<VaultPickerNote[]>([]);
   const [linksLeft, setLinksLeft] = useState<
     | {
         path: string;
@@ -524,6 +536,20 @@ export function VaultScreen() {
   // The index's progress line, only once a build has run 1.5 s (M3 3.2).
   const indexStatus = useVaultIndexStatus();
   const indexLine = vaultIndexLine(indexStatus);
+  // What search reads: the index open for the vault on screen, asked again
+  // when the list, the index or the vault changes (never per render, so a
+  // body search in flight is not restarted by an unrelated update).
+  const searchSource = useMemo(
+    () => vaultSearchSource(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [vaultSearchSource, vaultFiles, indexStatus.state, vaultScope],
+  );
+  // A build that could read no note's text: search says only titles match.
+  const indexFailed = Boolean(
+    indexStatus.progress &&
+    indexStatus.progress.total > 0 &&
+    indexStatus.progress.failed >= indexStatus.progress.total,
+  );
 
   // The desktop folder is shared with the agent, routines, and Obsidian, so
   // while this room is open main watches it (CTO F3) and every change it saw,
@@ -611,6 +637,30 @@ export function VaultScreen() {
   useEffect(() => () => void vaultReleaseLease(), [vaultNote?.path, vaultScope, vaultReleaseLease]);
 
   const paths = useMemo(() => vaultFiles.map((f) => f.path), [vaultFiles]);
+
+  // Recent (X4): what this device opened, merged with the agent's notes,
+  // newest first. The agent's label shows only where the agent is this
+  // vault's (the copy map says).
+  useEffect(() => {
+    if (team) {
+      setAgentNotes([]);
+      return;
+    }
+    let live = true;
+    void vaultAgentRecent()
+      .then((n) => {
+        if (live) setAgentNotes(n);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [team, vaultFiles.length, vaultAgentRecent]);
+  const listedPaths = useMemo(() => new Set(paths), [paths]);
+  const recentRows = vaultRecentRows(vaultRecentRing(), agentNotes, (p) =>
+    listedPaths.has(p) ? { title: searchSource?.note(p)?.title } : undefined,
+  );
+  const agentLabel = vaultRecentAgentLabel(team ? vaultCopy(on, 'org') : personalCopy);
 
   // Load the draft whenever a note opens. The last note's mentions clear
   // first, so they never show under this one.
@@ -817,6 +867,26 @@ export function VaultScreen() {
     flushSave();
     void vaultOpen(path);
   };
+
+  // The quick switcher (6.1; CTO K9, CX X3): Cmd or Ctrl+O while the room is
+  // shown. Titles only; Today first and Recent while the field is empty.
+  useVaultSwitcherShortcut(true, () => setSwitcherOpen(true));
+  const switcher = (
+    <VaultSwitcher
+      open={switcherOpen}
+      onClose={() => setSwitcherOpen(false)}
+      source={searchSource}
+      recent={recentRows}
+      agentLabel={agentLabel}
+      onPick={openNote}
+      onCreate={(name) => {
+        const path = normalizeNotePath(name);
+        if (!path || locked || hubAway) return;
+        flushSave();
+        void vaultCreate(path);
+      }}
+    />
+  );
 
   // One choice in the resolve sheet. The sheet stays up, every row waiting,
   // until the store says it landed; a failure keeps it open and says so.
@@ -1734,6 +1804,7 @@ export function VaultScreen() {
           onDelete={() => deleteNote(vaultNote.path)}
         />
         {renameSheet}
+        {switcher}
         {undoToast}
       </div>
     );
@@ -1775,6 +1846,7 @@ export function VaultScreen() {
             showToast(vaultTrashEmptied(r.removed, r.asked));
           }}
         />
+        {switcher}
         {undoToast}
       </>
     );
@@ -2087,44 +2159,57 @@ export function VaultScreen() {
             onWelcome={() => void addStarterNote()}
           />
         ) : (
-          <div className="vault-tree">
-            {indexLine ? (
-              <p className="hint" role="status" style={{ margin: '0 0 8px' }}>
-                {indexLine}
-              </p>
-            ) : null}
-            {entries.map((e) =>
-              e.kind === 'folder' ? (
-                <button
-                  key={e.path}
-                  className="conv-item vault-row press-fb press-fb--row"
-                  onClick={() => setFolder(e.path)}
-                >
-                  <span className="vault-row-chevron" aria-hidden="true" />
-                  {e.name}
-                </button>
-              ) : (
-                <button
-                  key={e.path}
-                  className="conv-item vault-row press-fb press-fb--row"
-                  onClick={() => openNote(e.path)}
-                >
-                  {e.name}
-                  {isConflictCopy(e.path) ? (
-                    <span className="pill vault-conflict-badge">
-                      {VAULT_CONFLICT_BADGE}
-                      <span className="visually-hidden">. {VAULT_CONFLICT_BADGE_LABEL}</span>
-                    </span>
-                  ) : null}
-                </button>
-              ),
-            )}
-            {/* Trash is the last row at the root, only while it holds
+          <VaultSearch
+            query={searchQ}
+            onQuery={setSearchQ}
+            source={searchSource}
+            index={vaultSearchIndexState(indexStatus, indexFailed)}
+            away={hubAway}
+            onRetryIndex={() => void vaultRefresh()}
+            recent={recentRows}
+            agentLabel={agentLabel}
+            onOpen={openNote}
+            desktop={isDesktop()}
+          >
+            <div className="vault-tree">
+              {indexLine ? (
+                <p className="hint" role="status" style={{ margin: '0 0 8px' }}>
+                  {indexLine}
+                </p>
+              ) : null}
+              {entries.map((e) =>
+                e.kind === 'folder' ? (
+                  <button
+                    key={e.path}
+                    className="conv-item vault-row press-fb press-fb--row"
+                    onClick={() => setFolder(e.path)}
+                  >
+                    <span className="vault-row-chevron" aria-hidden="true" />
+                    {e.name}
+                  </button>
+                ) : (
+                  <button
+                    key={e.path}
+                    className="conv-item vault-row press-fb press-fb--row"
+                    onClick={() => openNote(e.path)}
+                  >
+                    {e.name}
+                    {isConflictCopy(e.path) ? (
+                      <span className="pill vault-conflict-badge">
+                        {VAULT_CONFLICT_BADGE}
+                        <span className="visually-hidden">. {VAULT_CONFLICT_BADGE_LABEL}</span>
+                      </span>
+                    ) : null}
+                  </button>
+                ),
+              )}
+              {/* Trash is the last row at the root, only while it holds
                 something (CX X10). */}
-            {!folder && caps.trash ? (
-              <VaultTrashRow count={vaultTrash?.length ?? 0} onOpen={openTrash} />
-            ) : null}
-          </div>
+              {!folder && caps.trash ? (
+                <VaultTrashRow count={vaultTrash?.length ?? 0} onOpen={openTrash} />
+              ) : null}
+            </div>
+          </VaultSearch>
         )}
       </div>
 
@@ -2165,6 +2250,7 @@ export function VaultScreen() {
         onDelete={deleteFolderHere}
       />
       {renameSheet}
+      {switcher}
       {undoToast}
 
       <Sheet open={Boolean(newOpen)} onClose={() => setNewOpen(false)}>

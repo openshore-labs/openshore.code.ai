@@ -390,6 +390,13 @@ import {
   type WriteResult,
 } from '../lib/gitos/providers.js';
 import { vaultCaps, type VaultCaps } from '../lib/vaultCaps.js';
+import {
+  dropVaultRecent,
+  pushVaultRecent,
+  renameVaultRecent,
+  type VaultRecentEntry,
+  type VaultSearchSource,
+} from '../lib/vaultSearch.js';
 import type { VaultAutosave } from '../lib/vaultAutosave.js';
 import {
   applyMove as opsApplyMove,
@@ -704,6 +711,11 @@ export interface AppSettings {
    *  6.2, CTO K5), per vault (`providerId::resourceId`), kept until a note
    *  lands in them. Device local, never project data (K17). */
   vaultEmptyFolders?: Record<string, string[]>;
+  /** The notes this device opened or saved, newest first, 20 per vault
+   *  (`providerId::resourceId`), for Recent in search and the switcher
+   *  (Vault M6 6.1, CTO K9). Cleared on a repoint and with the chats.
+   *  Device local. */
+  vaultRecent?: Record<string, VaultRecentEntry[]>;
 }
 
 /** What a hub says this device's pairing credential may do. */
@@ -1889,6 +1901,12 @@ interface AppState {
   >;
   /** What a folder holds, for the sheet's counts before it acts (K5). */
   vaultFolderCounts(folder: string): Promise<{ notes: number; attachments: number }>;
+  /** What search reads for the vault on screen (6.1): the index's titles and
+   *  filtered BM25, and bodies through the body cache. Undefined until the
+   *  index opens. */
+  vaultSearchSource(): VaultSearchSource | undefined;
+  /** The notes this device opened or saved in the vault on screen. */
+  vaultRecentRing(): VaultRecentEntry[];
   /** The switch note's "Save to Vault" (J12, D3): the person's own one-tap
    *  write to `Handoffs/<date> <project>.md`, `ifAbsent`, " 2" on a clash. */
   saveHandoffToVault(conversationId: string, itemId: string): Promise<string | undefined>;
@@ -4990,6 +5008,16 @@ export const useApp = create<AppState>((set, get, api) => {
       set({ vaultNote: undefined, vaultListed: false, vaultFiles: [] });
     }
     set({ vaultTrash: undefined, vaultFolders: undefined });
+    // Recent belonged to the old home (K9).
+    const rings = get().settings.vaultRecent;
+    if (rings && Object.keys(rings).some((k) => k.endsWith(`::${VAULT_RESOURCE_ID}`))) {
+      const kept = Object.fromEntries(
+        Object.entries(rings).filter(([k]) => !k.endsWith(`::${VAULT_RESOURCE_ID}`)),
+      );
+      await get()
+        .saveSettings({ vaultRecent: Object.keys(kept).length ? kept : undefined })
+        .catch(() => {});
+    }
   }
 
   /** The J9 rule after a pairing (D2): an empty vault on This device by
@@ -5313,6 +5341,7 @@ export const useApp = create<AppState>((set, get, api) => {
    *  pins, the stash, and the open note (at the version the storage gave). */
   async function rekeyVaultPath(t: VaultTargetRef, from: string, to: string): Promise<void> {
     await rewriteVaultPins(from, to).catch(() => {});
+    await editVaultRecent(t, (ring) => renameVaultRecent(ring, from, to)).catch(() => {});
     await editVaultPending((p) => {
       const e = p[vaultKey(t, from)];
       if (!e) return;
@@ -5368,6 +5397,7 @@ export const useApp = create<AppState>((set, get, api) => {
     await editVaultPending((p) => {
       delete p[vaultKey(t, path)];
     }).catch(() => {});
+    await editVaultRecent(t, (ring) => dropVaultRecent(ring, path)).catch(() => {});
     if (!isActiveVault(t)) return;
     if (get().vaultNote?.path === path) {
       vaultLiveDraft = undefined;
@@ -5441,6 +5471,31 @@ export const useApp = create<AppState>((set, get, api) => {
         return to === undefined ? [] : [`${to}${p.slice(from.length)}`];
       }),
     ).catch(() => {});
+  }
+
+  /** Edit one vault's Recent ring (6.1, K9). */
+  async function editVaultRecent(
+    t: VaultTargetRef,
+    edit: (ring: VaultRecentEntry[]) => VaultRecentEntry[],
+  ): Promise<void> {
+    const all = get().settings.vaultRecent ?? {};
+    const key = foldersKey(t);
+    const before = all[key] ?? [];
+    const after = edit(before);
+    if (JSON.stringify(after) === JSON.stringify(before)) return;
+    const next = { ...all };
+    if (after.length) next[key] = after;
+    else delete next[key];
+    await get().saveSettings({ vaultRecent: next });
+  }
+  /** A note opened or saved here goes to the top of Recent; a save of the
+   *  note already on top writes nothing. */
+  function noteVaultRecent(t: VaultTargetRef, path: string): void {
+    const ring = get().settings.vaultRecent?.[foldersKey(t)] ?? [];
+    if (ring[0]?.path === path) return;
+    void editVaultRecent(t, (r) => pushVaultRecent(r, path, new Date().toISOString())).catch(
+      () => {},
+    );
   }
 
   // Put text beside a note as a keep-both copy under the first free conflict
@@ -9438,6 +9493,7 @@ export const useApp = create<AppState>((set, get, api) => {
         },
       });
       logEvent('vault_note_open', { fresh: !existing });
+      if (existing) noteVaultRecent(target, openPath);
     },
 
     async vaultCreate(path, content = '', at) {
@@ -9772,6 +9828,7 @@ export const useApp = create<AppState>((set, get, api) => {
       if (!get().vaultSaving) set({ vaultSaving: true });
       try {
         await run;
+        noteVaultRecent(target, path);
       } finally {
         if (vaultSaveChains.get(key) === link) vaultSaveChains.delete(key);
         vaultSavesInFlight--;
@@ -10049,6 +10106,28 @@ export const useApp = create<AppState>((set, get, api) => {
       if (r.remembered) await editEmptyFolders(t, (list) => [...list, clean]).catch(() => {});
       await refreshVaultFolders(t);
       return { ok: true, path: clean };
+    },
+
+    vaultSearchSource() {
+      const t = vaultTarget();
+      const host = t ? vaultIndexOf(t) : undefined;
+      if (!t || !host) return undefined;
+      return {
+        titleMatches: (q, limit) => host.index.titleMatches(q, limit),
+        // The host's search rebuilds any term vectors kept in memory only
+        // first; the filter clauses ride along (A1 dedupes them in q).
+        search: (q, opts) => host.search(q, opts),
+        note: (path) => {
+          const e = host.index.entry(path);
+          return e ? { title: e.title, updatedAt: e.updatedAt } : undefined;
+        },
+        readBody: (path) => readBodyOf(t, path),
+      };
+    },
+
+    vaultRecentRing() {
+      const t = vaultTarget();
+      return t ? (get().settings.vaultRecent?.[foldersKey(t)] ?? []) : [];
     },
 
     async vaultFolderCounts(folder) {
@@ -10619,6 +10698,12 @@ export const useApp = create<AppState>((set, get, api) => {
 
     async clearConversations() {
       for (const id of [...get().order]) get().deleteConversation(id);
+      // Recent is cleared with the chats (CX X4).
+      if (get().settings.vaultRecent) {
+        await get()
+          .saveSettings({ vaultRecent: undefined })
+          .catch(() => {});
+      }
       await clearHandoffs(handoffStorage, { all: true }).catch(() => {});
       const s = get();
       const b = isDesktop() ? bridge() : undefined;
