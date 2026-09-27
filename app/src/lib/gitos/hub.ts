@@ -28,20 +28,41 @@
 // `hubIndexTarget(baseUrl, hubUserId).owner`, so two hubs or two members
 // never share either.
 import {
+  VAULT_ATTACHMENTS_ROUTE,
   VAULT_CONFIG_ROUTE,
+  VAULT_FOLDERS_RENAME_ROUTE,
+  VAULT_FOLDERS_ROUTE,
   VAULT_INDEX_ROUTE,
   VAULT_NOTES_ROUTE,
   VAULT_PRIVACY_ROUTE,
+  VAULT_RENAME_ROUTE,
+  VAULT_TRASH_RESTORE_ROUTE,
+  VAULT_TRASH_ROUTE,
   VAULT_WIRE_NOTE_MAX_BYTES,
   INDEX_FILE_MAX_BYTES,
   isVaultConfigName,
+  vaultFileRoute,
   vaultNoteRoute,
+  type AttachmentMeta,
+  type AttachmentMime,
+  type BytesRead,
   type ConfigRead,
   type HubNoteMeta,
   type VaultConfigName,
+  type VaultFolderConflictResponse,
+  type VaultFolderRenameBody,
+  type VaultFolderRenameResponse,
   type VaultNoteConflictResponse,
   type VaultNotePutBody,
   type VaultPrivacyWire,
+  type VaultRenameBody,
+  type VaultRenameConflictResponse,
+  type VaultTrashBody,
+  type VaultTrashConflictResponse,
+  type VaultTrashEmptyBody,
+  type VaultTrashEntry,
+  type VaultTrashResponse,
+  type VaultTrashRestoreResponse,
 } from 'os-code/protocol';
 import { storeDelete, storeGetJson, storeKeys, storeSetJson } from '../platform.js';
 import {
@@ -51,20 +72,40 @@ import {
   HUB_PAIR_LINE,
   HUB_PAIRING_REFUSED,
   HUB_UPDATE_LINE,
+  VAULT_FOLDER_INTO_ITSELF,
   hubTooLargeLine,
+  vaultNotAttachmentLine,
+  vaultNotFolderLine,
 } from '../vaultCopy.js';
 import { registerVaultIndexSeed, type VaultIndexTarget } from '../vaultIndexHost.js';
 import { asConfigRead } from './config.js';
 import {
+  ATTACHMENT_MIMES,
+  asAttachmentList,
+  bytesCap,
+  isFolderIntoItself,
+  isPlainAttachmentPath,
+  isVaultFolderPath,
+} from './folderClient.js';
+import {
   isNotePath,
+  type CreateFolderResult,
+  type EmptyTrashResult,
+  type FolderMoveResult,
   type GitosResource,
   type Lease,
   type RemoveGuard,
   type RemoveResult,
+  type RenameGuard,
+  type RenameResult,
+  type RestoreResult,
   type StorageProvider,
   type StorageProviderId,
   type StoredFile,
   type StoredFileMeta,
+  type TrashEntry,
+  type TrashResult,
+  type TrashTarget,
   type WriteGuard,
   type WriteResult,
 } from './providers.js';
@@ -184,6 +225,19 @@ function isHubNoteMeta(v: unknown): v is HubNoteMeta {
   );
 }
 
+function isTrashEntry(v: unknown): v is VaultTrashEntry {
+  const e = v as Partial<VaultTrashEntry> | null;
+  return (
+    typeof e === 'object' &&
+    e !== null &&
+    typeof e.id === 'string' &&
+    typeof e.path === 'string' &&
+    (e.kind === 'note' || e.kind === 'folder') &&
+    typeof e.size === 'number' &&
+    (e.trashedAt === undefined || typeof e.trashedAt === 'string')
+  );
+}
+
 /** The hub provider, with the few hub-only calls beside the seam. */
 export interface HubProvider extends StorageProvider {
   readonly compareAndSwap: true;
@@ -228,7 +282,7 @@ export function createHubProvider(opts: HubProviderOptions): HubProvider {
   // ---- the wire -----------------------------------------------------------
 
   async function call(
-    method: 'GET' | 'PUT' | 'DELETE',
+    method: 'GET' | 'PUT' | 'POST' | 'DELETE',
     route: string,
     init: { body?: unknown; headers?: Record<string, string> } = {},
   ): Promise<Response> {
@@ -376,6 +430,68 @@ export function createHubProvider(opts: HubProviderOptions): HubProvider {
     });
   }
 
+  /** Every kept note under a folder that went to Trash or moved. */
+  function forgetUnder(folder: string): Promise<void> {
+    return stashing(async () => {
+      const under = `${folder}/`;
+      const order = await keptOrder();
+      await dropBodies(order.filter((o) => o.path.startsWith(under)).map((o) => o.path));
+      const list = await keptList();
+      if (list) {
+        listCache = {
+          files: list.files.filter((f) => !f.path.startsWith(under)),
+          truncated: list.truncated,
+        };
+        await storeSetJson(`${await prefix()}list`, listCache).catch(() => {});
+      }
+    });
+  }
+
+  /** Notes that moved on the computer (M6): the kept listing follows each to
+   *  its new name with the version it has there. A kept body follows only
+   *  when it is the very text that moved (`bodyWas`, the rename's guard);
+   *  otherwise it is dropped, so an away read never shows older text under a
+   *  newer version. */
+  function rekeyKept(
+    moves: Array<{ from: string; to: string; version: string; bodyWas?: string }>,
+  ): Promise<void> {
+    return stashing(async () => {
+      const p = await prefix();
+      const list = await keptList();
+      const files = list ? [...list.files] : undefined;
+      let order = await keptOrder();
+      for (const m of moves) {
+        if (files) {
+          const i = files.findIndex((f) => f.path === m.from);
+          const was = i >= 0 ? files.splice(i, 1)[0]! : undefined;
+          const j = files.findIndex((f) => f.path === m.to);
+          if (j >= 0) files.splice(j, 1);
+          if (was) files.push({ ...was, path: m.to, version: m.version });
+        }
+        const kept = order.find((o) => o.path === m.from);
+        if (!kept) continue;
+        const body =
+          m.bodyWas !== undefined && kept.version === m.bodyWas
+            ? await storeGetJson<StoredFile>(`${p}body.${m.from}`).catch(() => undefined)
+            : undefined;
+        await storeDelete(`${p}body.${m.from}`).catch(() => {});
+        order = order.filter((o) => o.path !== m.from && o.path !== m.to);
+        if (body) {
+          const moved: StoredFile = { ...body, path: m.to, version: m.version };
+          await storeSetJson(`${p}body.${m.to}`, moved).catch(() => {});
+          order.push({ path: m.to, bytes: kept.bytes, version: m.version });
+        }
+      }
+      orderCache = order;
+      await storeSetJson(`${p}order`, order).catch(() => {});
+      if (files && list) {
+        files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+        listCache = { files, truncated: list.truncated };
+        await storeSetJson(`${p}list`, listCache).catch(() => {});
+      }
+    });
+  }
+
   // ---- reads --------------------------------------------------------------
 
   async function readLive(path: string): Promise<StoredFile | undefined> {
@@ -411,6 +527,28 @@ export function createHubProvider(opts: HubProviderOptions): HubProvider {
     } catch {
       return undefined;
     }
+  }
+
+  /** A tree change (M6): away, it is refused in plain words and marked
+   *  permanent, as a create or a delete is. */
+  async function treeCall(
+    method: 'POST' | 'DELETE',
+    route: string,
+    body: unknown,
+  ): Promise<Response> {
+    try {
+      return await call(method, route, { body });
+    } catch (err) {
+      if (err instanceof HubAwayError) throw new HubRefusal(HUB_AWAY_READ_ONLY);
+      throw err;
+    }
+  }
+
+  /** A computer from before M6 answers its routes 404; any other refusal
+   *  says what the computer said. */
+  async function refuseOld(res: Response): Promise<void> {
+    if (res.status === 404) throw new HubRefusal(HUB_UPDATE_LINE);
+    if (!res.ok) throw await errorOf(res);
   }
 
   function refuseNonNote(path: string): Error {
@@ -555,6 +693,190 @@ export function createHubProvider(opts: HubProviderOptions): HubProvider {
           : { ok: false, conflict: 'changed' };
       }
       throw await errorOf(res);
+    },
+
+    // ---- Vault M6 (CTO K2, K3, K5, K6, K13) ----------------------------------
+    // Each is one route on the caller's own root, with the same folderFs code
+    // that serves This folder on the desktop. A tree change while the
+    // computer is away is refused in plain words (HUB_AWAY_READ_ONLY), marked
+    // permanent, as a create or a delete is; a listing away throws
+    // HubAwayError so the room shows the away line; a computer from before M6
+    // answers 404, which reads as HUB_UPDATE_LINE.
+
+    async rename(_resourceId, from, to, guard: RenameGuard): Promise<RenameResult> {
+      if (!isNotePath(from)) throw refuseNonNote(from);
+      if (!isNotePath(to)) throw refuseNonNote(to);
+      const body: VaultRenameBody = { from, to, ifMatch: guard.ifMatch };
+      const res = await treeCall('POST', VAULT_RENAME_ROUTE, body);
+      if (res.status === 409) {
+        const c = (await res.json().catch(() => ({}))) as Partial<VaultRenameConflictResponse>;
+        if (c.conflict === 'missing') {
+          await forgetNote(from);
+          return { ok: false, conflict: 'missing' };
+        }
+        const conflict =
+          c.conflict === 'exists' || c.conflict === 'downloading' ? c.conflict : 'changed';
+        // `exists`: theirs is what has the new name; `changed`: the source now.
+        const theirsPath = conflict === 'exists' ? (c.current?.path ?? to) : from;
+        const theirs = isNotePath(theirsPath) ? await theirsOf(theirsPath) : undefined;
+        return theirs ? { ok: false, conflict, theirs } : { ok: false, conflict };
+      }
+      await refuseOld(res);
+      const answer = (await res.json().catch(() => ({}))) as { meta?: unknown };
+      if (!isHubNoteMeta(answer.meta)) {
+        throw new Error('Your computer moved the note but did not say which version it is.');
+      }
+      const file = metaOf(answer.meta);
+      await rekeyKept([{ from, to: file.path, version: file.version!, bodyWas: guard.ifMatch }]);
+      return { ok: true, file };
+    },
+
+    async listFolders(): Promise<string[]> {
+      const res = await call('GET', VAULT_FOLDERS_ROUTE);
+      await refuseOld(res);
+      const body = (await res.json().catch(() => ({}))) as { folders?: unknown };
+      return Array.isArray(body.folders)
+        ? body.folders.filter((f): f is string => typeof f === 'string' && isVaultFolderPath(f))
+        : [];
+    },
+
+    async createFolder(_resourceId, path): Promise<CreateFolderResult> {
+      if (!isVaultFolderPath(path)) throw new HubRefusal(vaultNotFolderLine(path));
+      const res = await treeCall('POST', VAULT_FOLDERS_ROUTE, { path });
+      if (res.status === 409) return { ok: false, conflict: 'exists' };
+      await refuseOld(res);
+      return { ok: true };
+    },
+
+    async renameFolder(_resourceId, from, to): Promise<FolderMoveResult> {
+      if (!isVaultFolderPath(from)) throw new HubRefusal(vaultNotFolderLine(from));
+      if (!isVaultFolderPath(to)) throw new HubRefusal(vaultNotFolderLine(to));
+      if (isFolderIntoItself(from, to)) throw new HubRefusal(VAULT_FOLDER_INTO_ITSELF);
+      const body: VaultFolderRenameBody = { from, to };
+      const res = await treeCall('POST', VAULT_FOLDERS_RENAME_ROUTE, body);
+      if (res.status === 409) {
+        const c = (await res.json().catch(() => ({}))) as Partial<VaultFolderConflictResponse>;
+        return { ok: false, conflict: c.conflict === 'missing' ? 'missing' : 'exists' };
+      }
+      await refuseOld(res);
+      const answer = (await res.json().catch(() => ({}))) as Partial<VaultFolderRenameResponse>;
+      const moved = Array.isArray(answer.moved)
+        ? answer.moved.filter(
+            (m): m is { from: string; to: string; version: string } =>
+              typeof m?.from === 'string' &&
+              typeof m.to === 'string' &&
+              typeof m.version === 'string',
+          )
+        : [];
+      await rekeyKept(moved);
+      // Whatever else was kept under the old folder is not there any more.
+      await forgetUnder(from);
+      return {
+        ok: true,
+        moved,
+        attachments: typeof answer.attachments === 'number' ? answer.attachments : 0,
+      };
+    },
+
+    async trash(_resourceId, target: TrashTarget): Promise<TrashResult> {
+      let body: VaultTrashBody;
+      if (target.kind === 'note') {
+        if (!isNotePath(target.path)) throw refuseNonNote(target.path);
+        body = { kind: 'note', path: target.path, ifMatch: target.ifMatch };
+      } else {
+        if (!isVaultFolderPath(target.path)) throw new HubRefusal(vaultNotFolderLine(target.path));
+        body = { kind: 'folder', path: target.path };
+      }
+      const res = await treeCall('POST', VAULT_TRASH_ROUTE, body);
+      if (res.status === 409) {
+        const c = (await res.json().catch(() => ({}))) as Partial<VaultTrashConflictResponse>;
+        const conflict = c.conflict === 'downloading' ? 'downloading' : 'changed';
+        const theirs = target.kind === 'note' ? await theirsOf(target.path) : undefined;
+        return theirs ? { ok: false, conflict, theirs } : { ok: false, conflict };
+      }
+      await refuseOld(res);
+      const answer = (await res.json().catch(() => ({}))) as Partial<VaultTrashResponse>;
+      if (!isTrashEntry(answer.entry)) {
+        throw new Error('Your computer moved it to Trash but did not say how to restore it.');
+      }
+      if (target.kind === 'note') await forgetNote(target.path);
+      else await forgetUnder(target.path);
+      return {
+        ok: true,
+        entry: { ...answer.entry },
+        notes: typeof answer.notes === 'number' ? answer.notes : 0,
+        attachments: typeof answer.attachments === 'number' ? answer.attachments : 0,
+      };
+    },
+
+    async listTrash(): Promise<TrashEntry[]> {
+      const res = await call('GET', VAULT_TRASH_ROUTE);
+      await refuseOld(res);
+      const body = (await res.json().catch(() => ({}))) as { entries?: unknown };
+      return Array.isArray(body.entries) ? body.entries.filter(isTrashEntry) : [];
+    },
+
+    async restore(_resourceId, id): Promise<RestoreResult> {
+      const res = await treeCall('POST', VAULT_TRASH_RESTORE_ROUTE, { id });
+      if (res.status === 409) return { ok: false, conflict: 'missing' };
+      await refuseOld(res);
+      const answer = (await res.json().catch(() => ({}))) as Partial<VaultTrashRestoreResponse>;
+      if (!isHubNoteMeta(answer.meta)) {
+        throw new Error('Your computer restored it but did not say where it is.');
+      }
+      const file = metaOf(answer.meta);
+      await stashing(async () => {
+        const list = await keptList();
+        if (!list) return;
+        const files = list.files.filter((f) => f.path !== file.path);
+        files.push(file);
+        files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+        listCache = { files, truncated: list.truncated };
+        await storeSetJson(`${await prefix()}list`, listCache).catch(() => {});
+      });
+      return { ok: true, file, renamed: answer.renamed === true };
+    },
+
+    async emptyTrash(_resourceId, ids?: string[]): Promise<EmptyTrashResult> {
+      const body: VaultTrashEmptyBody = ids ? { ids } : {};
+      const res = await treeCall('DELETE', VAULT_TRASH_ROUTE, body);
+      await refuseOld(res);
+      const answer = (await res.json().catch(() => ({}))) as { removed?: unknown };
+      return { removed: typeof answer.removed === 'number' ? answer.removed : 0 };
+    },
+
+    async listAttachments(): Promise<AttachmentMeta[]> {
+      const res = await call('GET', VAULT_ATTACHMENTS_ROUTE);
+      await refuseOld(res);
+      const body = (await res.json().catch(() => ({}))) as { attachments?: unknown };
+      return asAttachmentList(body.attachments);
+    },
+
+    // The bytes come as the route's body with its type and an ETag (the
+    // version). Away throws HubAwayError, so an image says the computer is
+    // off rather than that it is missing.
+    async readBytes(_resourceId, path, opts): Promise<BytesRead> {
+      if (!isPlainAttachmentPath(path)) throw new HubRefusal(vaultNotAttachmentLine(path));
+      const cap = bytesCap(opts);
+      const res = await call('GET', vaultFileRoute(path));
+      if (res.status === 404) return { ok: false, reason: 'absent' };
+      if (res.status === 413) return { ok: false, reason: 'too-large' };
+      if (res.status === 415) return { ok: false, reason: 'unsupported' };
+      if (res.status === 400 || res.status === 403) return { ok: false, reason: 'refused' };
+      if (!res.ok) throw await errorOf(res);
+      const declared = Number(res.headers?.get?.('content-length') ?? NaN);
+      if (Number.isFinite(declared) && declared > cap) {
+        await res.body?.cancel().catch(() => {});
+        return { ok: false, reason: 'too-large' };
+      }
+      const mime = (res.headers?.get?.('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
+      if (!ATTACHMENT_MIMES.has(mime)) return { ok: false, reason: 'unsupported' };
+      const etag = res.headers?.get?.('etag') ?? '';
+      const version = etag.replace(/^W\//, '').replace(/^"(.*)"$/, '$1');
+      if (!version) throw new Error('Your computer sent a file this app could not read.');
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      if (bytes.byteLength > cap) return { ok: false, reason: 'too-large' };
+      return { ok: true, bytes, mime: mime as AttachmentMime, version };
     },
 
     // Compare-and-swap settles every write where the bytes are, and the
@@ -703,6 +1025,16 @@ export const hubProvider: StorageProvider = {
   releaseLease: async (r, h) => linked().releaseLease(r, h),
   readConfig: async (r, name) =>
     link ? link.readConfig!(r, name) : { ok: false, reason: 'unsupported' },
+  rename: async (r, from, to, g) => linked().rename!(r, from, to, g),
+  listFolders: async (r) => linked().listFolders!(r),
+  createFolder: async (r, p) => linked().createFolder!(r, p),
+  renameFolder: async (r, from, to) => linked().renameFolder!(r, from, to),
+  trash: async (r, t) => linked().trash!(r, t),
+  listTrash: async (r) => linked().listTrash!(r),
+  restore: async (r, id) => linked().restore!(r, id),
+  emptyTrash: async (r, ids) => linked().emptyTrash!(r, ids),
+  listAttachments: async (r) => linked().listAttachments!(r),
+  readBytes: async (r, p, o) => linked().readBytes!(r, p, o),
 };
 
 // The index's head start for a hub vault on first open: the engine's own

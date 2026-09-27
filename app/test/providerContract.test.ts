@@ -67,9 +67,37 @@ vi.mock('../src/lib/electronBridge.js', async () => {
       fs.writeVaultFile(h.root, p, t, fs.parseVaultGuard(g)),
     vaultRemove: (p: string, g?: unknown) =>
       fs.removeVaultFile(h.root, p, fs.parseVaultRemoveGuard(g)),
+    // Vault M6 (CTO K13): main's handlers over the same folderFs code, each
+    // wired only once stream B's function exists, as `(root, ...args)`.
+    ...m6Bridge(fs as unknown as Record<string, unknown>),
   };
   return { bridge: () => b };
 });
+
+/** The M6 bridge calls, routed to folderFs by the K13 names. A call whose
+ *  function is not built in this tree is left out, as an old main would. */
+function m6Bridge(fs: Record<string, unknown>): Record<string, unknown> {
+  const pairs: Array<[string, string]> = [
+    ['vaultRename', 'renameVaultFile'],
+    ['vaultFolders', 'listVaultFolders'],
+    ['vaultFolderCreate', 'createVaultFolder'],
+    ['vaultFolderRename', 'renameVaultFolder'],
+    ['vaultTrash', 'trashVaultPath'],
+    ['vaultTrashList', 'listVaultTrash'],
+    ['vaultTrashRestore', 'restoreVaultTrash'],
+    ['vaultTrashEmpty', 'emptyVaultTrash'],
+    ['vaultAttachments', 'listVaultAttachments'],
+    ['vaultReadBytes', 'readVaultBytes'],
+  ];
+  const out: Record<string, unknown> = {};
+  for (const [call, fn] of pairs) {
+    const f = fs[fn];
+    if (typeof f === 'function') {
+      out[call] = (...args: unknown[]) => (f as (...a: unknown[]) => unknown)(h.root, ...args);
+    }
+  }
+  return out;
+}
 
 const { deviceFolderProvider } = await import('../src/lib/gitos/deviceFolder.js');
 const { localProvider } = await import('../src/lib/gitos/local.js');
@@ -141,7 +169,7 @@ afterAll(() => {
 beforeEach(() => {
   for (const name of readdirSync(h.root)) rmSync(join(h.root, name), { recursive: true });
   h.store.clear();
-  hub.notes.clear();
+  hub.reset();
 });
 
 const R = 'vault.personal';
@@ -241,6 +269,199 @@ for (const p of enforcing) {
   });
 }
 
+// ---- Vault M6 (CTO K2, K3, K6; R3) -----------------------------------------
+// Rows run for every enrolled provider that declares the member, so a held
+// branch enrolls itself by adding it. The desktop folder declares them all
+// through its transport; its rows run once main's folderFs functions exist
+// (stream B), and are skipped in a tree without them, never loosened.
+const { bridge: testBridge } = await import('../src/lib/electronBridge.js');
+const mainHas = (call: string) =>
+  typeof (testBridge() as unknown as Record<string, unknown>)?.[call] === 'function';
+const m6Ready = (name: string, calls: string[]) =>
+  name !== 'This folder (desktop)' || calls.every(mainHas);
+
+const listedPaths = async (p: StorageProvider) => (await p.list(R)).map((f) => f.path).sort();
+const versionOfWrite = (r: { ok: boolean; file?: { version?: string } }) =>
+  r.ok ? r.file!.version! : '';
+
+for (const p of enforcing) {
+  const renames = typeof p.provider.rename === 'function' && m6Ready(p.name, ['vaultRename']);
+  describe.skipIf(!renames)(`rename contract (M6): ${p.name}`, () => {
+    it('moves the note, never the text, and answers the version at the new name', async () => {
+      const w = await p.provider.write(R, 'Plans.md', 'the plan', { ifAbsent: true });
+      const r = await p.provider.rename!(R, 'Plans.md', 'Work/Q4/Plans.md', {
+        ifMatch: versionOfWrite(w),
+      });
+      expect(r).toMatchObject({ ok: true, file: { path: 'Work/Q4/Plans.md' } });
+      expect(p.bytes('Work/Q4/Plans.md')).toBe('the plan');
+      expect(p.bytes('Plans.md')).toBeUndefined();
+      expect(await listedPaths(p.provider)).toEqual(['Work/Q4/Plans.md']);
+      // The store adopts the version the rename answered; stat agrees on it.
+      const at = await p.provider.stat(R, 'Work/Q4/Plans.md');
+      expect(r.ok && r.file.version).toBe(at?.version);
+      const next = await p.provider.write(R, 'Work/Q4/Plans.md', 'more', {
+        ifMatch: r.ok ? r.file.version! : '',
+      });
+      expect(next.ok).toBe(true);
+    });
+
+    it('a stale ifMatch is changed with theirs, and nothing moves', async () => {
+      const w = await p.provider.write(R, 'a.md', 'one', { ifAbsent: true });
+      p.replace('a.md', 'someone else wrote this');
+      const r = await p.provider.rename!(R, 'a.md', 'b.md', { ifMatch: versionOfWrite(w) });
+      expect(r).toMatchObject({ ok: false, conflict: 'changed' });
+      expect(!r.ok && r.theirs?.text).toBe('someone else wrote this');
+      expect(p.bytes('a.md')).toBe('someone else wrote this');
+      expect(p.bytes('b.md')).toBeUndefined();
+    });
+
+    it('a source that is gone is missing, and nothing is made', async () => {
+      const w = await p.provider.write(R, 'gone.md', 'here', { ifAbsent: true });
+      p.remove('gone.md');
+      const r = await p.provider.rename!(R, 'gone.md', 'new.md', { ifMatch: versionOfWrite(w) });
+      expect(r).toMatchObject({ ok: false, conflict: 'missing' });
+      expect(p.bytes('new.md')).toBeUndefined();
+    });
+
+    it('never replaces: a taken name is exists with theirs, and both stay', async () => {
+      const w = await p.provider.write(R, 'mine.md', 'mine', { ifAbsent: true });
+      p.replace('taken.md', 'already here');
+      const r = await p.provider.rename!(R, 'mine.md', 'taken.md', {
+        ifMatch: versionOfWrite(w),
+      });
+      expect(r).toMatchObject({ ok: false, conflict: 'exists' });
+      expect(!r.ok && r.theirs?.text).toBe('already here');
+      expect(p.bytes('mine.md')).toBe('mine');
+      expect(p.bytes('taken.md')).toBe('already here');
+    });
+
+    it('a name taken in another case is taken too (folded)', async () => {
+      const w = await p.provider.write(R, 'mine.md', 'mine', { ifAbsent: true });
+      p.replace('Taken.md', 'already here');
+      const r = await p.provider.rename!(R, 'mine.md', 'taken.md', {
+        ifMatch: versionOfWrite(w),
+      });
+      expect(r).toMatchObject({ ok: false, conflict: 'exists' });
+      expect(p.bytes('mine.md')).toBe('mine');
+    });
+
+    it('a case-only rename of the same note is allowed', async () => {
+      const w = await p.provider.write(R, 'plans.md', 'body', { ifAbsent: true });
+      const r = await p.provider.rename!(R, 'plans.md', 'Plans.md', {
+        ifMatch: versionOfWrite(w),
+      });
+      expect(r).toMatchObject({ ok: true, file: { path: 'Plans.md' } });
+      expect(await listedPaths(p.provider)).toEqual(['Plans.md']);
+      expect((await p.provider.read(R, 'Plans.md'))?.text).toBe('body');
+    });
+
+    it('refuses a name that is not a note, before the storage sees it', async () => {
+      const w = await p.provider.write(R, 'n.md', 'body', { ifAbsent: true });
+      await expect(
+        p.provider.rename!(R, 'n.md', '.trash/n.md', { ifMatch: versionOfWrite(w) }),
+      ).rejects.toThrow();
+      expect(p.bytes('n.md')).toBe('body');
+    });
+  });
+
+  const trashes =
+    typeof p.provider.trash === 'function' &&
+    typeof p.provider.listTrash === 'function' &&
+    typeof p.provider.restore === 'function' &&
+    m6Ready(p.name, ['vaultTrash', 'vaultTrashList', 'vaultTrashRestore', 'vaultTrashEmpty']);
+  describe.skipIf(!trashes)(`Trash contract (M6): ${p.name}`, () => {
+    it('a note goes to Trash under its guard, out of the list, and back the same', async () => {
+      const w = await p.provider.write(R, 'Ideas/x.md', 'body', { ifAbsent: true });
+      const t = await p.provider.trash!(R, {
+        kind: 'note',
+        path: 'Ideas/x.md',
+        ifMatch: versionOfWrite(w),
+      });
+      expect(t).toMatchObject({
+        ok: true,
+        notes: 1,
+        entry: { kind: 'note', path: 'Ideas/x.md' },
+      });
+      expect(p.bytes('Ideas/x.md')).toBeUndefined();
+      expect(await listedPaths(p.provider)).toEqual([]);
+      const entries = await p.provider.listTrash!(R);
+      expect(entries.map((e) => e.path)).toEqual(['Ideas/x.md']);
+      const back = await p.provider.restore!(R, entries[0]!.id);
+      expect(back).toMatchObject({ ok: true, renamed: false, file: { path: 'Ideas/x.md' } });
+      expect(p.bytes('Ideas/x.md')).toBe('body');
+      expect(back.ok && back.file.version).toBe((await p.provider.stat(R, 'Ideas/x.md'))?.version);
+      expect(await p.provider.listTrash!(R)).toEqual([]);
+    });
+
+    it('a stale ifMatch is changed with theirs, and the note stays', async () => {
+      const w = await p.provider.write(R, 'r.md', 'one', { ifAbsent: true });
+      p.replace('r.md', 'someone else wrote this');
+      const t = await p.provider.trash!(R, {
+        kind: 'note',
+        path: 'r.md',
+        ifMatch: versionOfWrite(w),
+      });
+      expect(t).toMatchObject({ ok: false, conflict: 'changed' });
+      expect(!t.ok && t.theirs?.text).toBe('someone else wrote this');
+      expect(p.bytes('r.md')).toBe('someone else wrote this');
+      expect(await p.provider.listTrash!(R)).toEqual([]);
+    });
+
+    it('restore never overwrites: a taken name comes back as "{title} (restored)"', async () => {
+      const w = await p.provider.write(R, 'Plans.md', 'old plans', { ifAbsent: true });
+      const t = await p.provider.trash!(R, {
+        kind: 'note',
+        path: 'Plans.md',
+        ifMatch: versionOfWrite(w),
+      });
+      await p.provider.write(R, 'Plans.md', 'new plans', { ifAbsent: true });
+      const back = await p.provider.restore!(R, t.ok ? t.entry.id : '');
+      expect(back).toMatchObject({
+        ok: true,
+        renamed: true,
+        file: { path: 'Plans (restored).md' },
+      });
+      expect(p.bytes('Plans.md')).toBe('new plans');
+      expect(p.bytes('Plans (restored).md')).toBe('old plans');
+    });
+
+    it('a folder goes to Trash as it is, with its count, and comes back', async () => {
+      await p.provider.write(R, 'Work/a.md', 'a', { ifAbsent: true });
+      await p.provider.write(R, 'Work/Deep/b.md', 'b', { ifAbsent: true });
+      await p.provider.write(R, 'Other.md', 'o', { ifAbsent: true });
+      const t = await p.provider.trash!(R, { kind: 'folder', path: 'Work' });
+      expect(t).toMatchObject({ ok: true, notes: 2, entry: { kind: 'folder', path: 'Work' } });
+      expect(await listedPaths(p.provider)).toEqual(['Other.md']);
+      const back = await p.provider.restore!(R, t.ok ? t.entry.id : '');
+      expect(back).toMatchObject({ ok: true, renamed: false });
+      expect(await listedPaths(p.provider)).toEqual(['Other.md', 'Work/Deep/b.md', 'Work/a.md']);
+    });
+
+    it('an unknown entry is missing', async () => {
+      expect(await p.provider.restore!(R, 'no-such-entry')).toEqual({
+        ok: false,
+        conflict: 'missing',
+      });
+    });
+
+    it('Trash never lists as notes, and Empty Trash deletes for good', async () => {
+      const ids: string[] = [];
+      for (const path of ['a.md', 'b.md']) {
+        const w = await p.provider.write(R, path, path, { ifAbsent: true });
+        const t = await p.provider.trash!(R, { kind: 'note', path, ifMatch: versionOfWrite(w) });
+        ids.push(t.ok ? t.entry.id : '');
+      }
+      expect(await listedPaths(p.provider)).toEqual([]);
+      if (!p.provider.emptyTrash) return;
+      expect(await p.provider.emptyTrash(R, [ids[0]!])).toEqual({ removed: 1 });
+      expect((await p.provider.listTrash!(R)).map((e) => e.id)).toEqual([ids[1]]);
+      expect(await p.provider.emptyTrash(R)).toEqual({ removed: 1 });
+      expect(await p.provider.listTrash!(R)).toEqual([]);
+      expect(await p.provider.restore!(R, ids[1]!)).toEqual({ ok: false, conflict: 'missing' });
+    });
+  });
+}
+
 describe('providers that do not enforce the guard yet (M2) return the new shape', () => {
   const shaped: Array<[string, StorageProvider]> = [['iCloud Drive', icloudProvider]];
   for (const [name, provider] of shaped) {
@@ -256,4 +477,145 @@ describe('providers that do not enforce the guard yet (M2) return the new shape'
       expect(await provider.remove(R, 'b.md')).toEqual({ ok: true });
     });
   }
+});
+
+// The folder client's M6 half (CTO K2, K19): it declares a seam member only
+// when its transport has it, so the iPhone folder lights the same rows by
+// adding transport members; it checks every path on this side first; and it
+// holds a transport's answer to the seam's shapes (the byte cap, the allowed
+// types, well-formed listings).
+describe('folder client (M6)', async () => {
+  const { makeFolderProvider } = await import('../src/lib/gitos/folderClient.js');
+  const { VAULT_ATTACHMENT_MAX_BYTES } = await import('os-code/protocol');
+  const meta = { id: 'files' as const, label: 'Test folder', blurb: '', ready: true };
+  const base = {
+    list: async () => [],
+    stat: async () => null,
+    read: async () => null,
+    write: async () => ({ ok: false as const, conflict: 'missing' as const }),
+    remove: async () => ({ ok: true as const }),
+  };
+  const M6 = [
+    'rename',
+    'listFolders',
+    'createFolder',
+    'renameFolder',
+    'trash',
+    'listTrash',
+    'restore',
+    'emptyTrash',
+    'listAttachments',
+    'readBytes',
+  ] as const;
+
+  it('a transport without the M6 members declares none of them', () => {
+    const p = makeFolderProvider(base, meta);
+    for (const m of M6) expect(p[m], m).toBeUndefined();
+  });
+
+  it('a transport with them declares each one', () => {
+    const t = Object.fromEntries(M6.map((m) => [m, async () => undefined]));
+    const p = makeFolderProvider({ ...base, ...t }, meta);
+    for (const m of M6) expect(typeof p[m], m).toBe('function');
+  });
+
+  it('checks paths before the transport sees them', async () => {
+    const seen: string[] = [];
+    const spy =
+      (name: string) =>
+      async (...args: unknown[]) => {
+        seen.push(`${name} ${JSON.stringify(args)}`);
+        return undefined as never;
+      };
+    const p = makeFolderProvider(
+      {
+        ...base,
+        rename: spy('rename'),
+        createFolder: spy('createFolder'),
+        renameFolder: spy('renameFolder'),
+        trash: spy('trash'),
+        readBytes: spy('readBytes'),
+      },
+      meta,
+    );
+    await expect(p.rename!(R, 'a.md', '.trash/a.md', { ifMatch: 'v' })).rejects.toThrow();
+    await expect(p.rename!(R, 'img.png', 'b.md', { ifMatch: 'v' })).rejects.toThrow();
+    await expect(p.createFolder!(R, '.obsidian')).rejects.toThrow(/not a folder/);
+    await expect(p.createFolder!(R, '/abs')).rejects.toThrow(/not a folder/);
+    await expect(p.renameFolder!(R, 'Work', 'Work/Sub')).rejects.toThrow(/inside itself/);
+    await expect(p.renameFolder!(R, 'Work', 'Work')).rejects.toThrow(/inside itself/);
+    await expect(p.trash!(R, { kind: 'folder', path: '' })).rejects.toThrow(/not a folder/);
+    await expect(p.trash!(R, { kind: 'note', path: 'x.png', ifMatch: 'v' })).rejects.toThrow();
+    await expect(p.readBytes!(R, 'notes.md')).rejects.toThrow(/not an image/);
+    await expect(p.readBytes!(R, '.trash/x.png')).rejects.toThrow(/not an image/);
+    expect(seen).toEqual([]);
+    // A folder rename whose name only starts the same is not into itself.
+    await p.renameFolder!(R, 'Work', 'Workshop');
+    expect(seen).toEqual(['renameFolder ["Work","Workshop"]']);
+  });
+
+  it('holds bytes to the cap, the allowed types, and a plain view', async () => {
+    const asked: Array<number | undefined> = [];
+    let answer: unknown;
+    const p = makeFolderProvider(
+      {
+        ...base,
+        readBytes: async (_path, opts) => {
+          asked.push(opts?.max);
+          return answer as never;
+        },
+      },
+      meta,
+    );
+    answer = { ok: true, bytes: Buffer.from([1, 2, 3]), mime: 'image/png', version: 'v1' };
+    const r = await p.readBytes!(R, 'a.png', { max: 10 ** 12 });
+    expect(asked).toEqual([VAULT_ATTACHMENT_MAX_BYTES]);
+    expect(r.ok && Object.getPrototypeOf(r.bytes)).toBe(Uint8Array.prototype);
+    expect(await p.readBytes!(R, 'a.png', { max: 2 })).toEqual({ ok: false, reason: 'too-large' });
+    answer = { ok: true, bytes: new Uint8Array([1]), mime: 'text/html', version: 'v1' };
+    expect(await p.readBytes!(R, 'a.png')).toEqual({ ok: false, reason: 'unsupported' });
+    answer = { ok: false, reason: 'downloading' };
+    expect(await p.readBytes!(R, 'a.png')).toEqual({ ok: false, reason: 'downloading' });
+    answer = { ok: false, reason: 'something else' };
+    expect(await p.readBytes!(R, 'a.png')).toEqual({ ok: false, reason: 'refused' });
+  });
+
+  it('keeps only well-formed rows in the listings', async () => {
+    const good = {
+      path: 'Media/a.png',
+      size: 3,
+      updatedAt: '2026-09-27T00:00:00.000Z',
+      version: 'v',
+      mime: 'image/png',
+    };
+    const p = makeFolderProvider(
+      {
+        ...base,
+        listAttachments: async () =>
+          [
+            good,
+            { ...good, path: '.trash/a.png' },
+            { ...good, path: 'Notes.md' },
+            { ...good, mime: 'text/html' },
+            { ...good, size: '3' },
+          ] as never,
+        listFolders: async () => ['Work', '.trash', 'Work/.git', 'Work/Deep', ''],
+      },
+      meta,
+    );
+    expect(await p.listAttachments!(R)).toEqual([good]);
+    expect(await p.listFolders!(R)).toEqual(['Work', 'Work/Deep']);
+  });
+});
+
+describe('the desktop folder without main M6 calls', () => {
+  // Only in a tree whose main does not answer them yet (stream B lands them).
+  it.skipIf(mainHas('vaultRename'))('says to update rather than failing silently', async () => {
+    const { VAULT_CAP_UPDATE_LINE } = await import('../src/lib/vaultCopy.js');
+    writeFileSync(join(h.root, 'a.md'), 'a');
+    await expect(deviceFolderProvider.rename!(R, 'a.md', 'b.md', { ifMatch: 'v' })).rejects.toThrow(
+      VAULT_CAP_UPDATE_LINE,
+    );
+    expect(readFileSync(join(h.root, 'a.md'), 'utf8')).toBe('a');
+  });
 });
