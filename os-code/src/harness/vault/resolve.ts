@@ -19,7 +19,7 @@
 
 import { foldPath, normalizeNotePath, noteFolder } from './paths.js';
 import { isNoteDestination } from './scan.js';
-import type { VaultPathIndex, WikilinkContext } from './types.js';
+import type { TextRange, VaultPathIndex, WikilinkContext } from './types.js';
 
 interface IndexData {
   /** Folded path to every path with that fold, in code-point order. */
@@ -261,4 +261,13 @@ export function wikilinkContext(text: string, caret: number): WikilinkContext | 
   const query = before.slice(open + 2);
   if (/[\]\n|]/.test(query)) return null;
   return { start: open, end, query, embed: open > 0 && text[open - 1] === '!' };
+}
+
+/** The range a link pick replaces (Vault M6, CTO K14): from `ctx.start`
+ *  through the target already written after the caret, through an existing
+ *  `]]`, or up to an existing `|` so the alias is kept.
+ *
+ *  Wave 0 stub: the signature is the contract; stream A2 builds the body. */
+export function wikilinkReplaceRange(_text: string, _ctx: WikilinkContext): TextRange {
+  throw new Error('not built: wikilinkReplaceRange (Vault M6, stream A2)');
 }

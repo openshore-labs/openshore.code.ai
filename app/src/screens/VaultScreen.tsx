@@ -127,6 +127,9 @@ import { durationMs, sheetExitMs } from '../lib/motion.js';
 import type { HermesNote, HermesNoteMeta } from 'os-code/protocol';
 import { Icon } from '../components/Icon.js';
 import { VaultAgentRecent } from '../components/VaultAgentRecent.js';
+import { VaultBacklinks } from '../components/vault/VaultBacklinks.js';
+import { VaultLinkSuggest } from '../components/vault/VaultLinkSuggest.js';
+import { VaultNoteOptions } from '../components/vault/VaultNoteOptions.js';
 import { hubReach, subscribeHubReach } from '../lib/gitos/hub.js';
 import { PROJECT_VAULT_PINS_MAX } from '../state/types.js';
 
@@ -1184,27 +1187,6 @@ export function VaultScreen() {
       ? vaultEditedByLine(vaultNote.editedBy, vaultNote.updatedAt, uid)
       : undefined;
 
-    // Autocomplete candidates for the open "[[": notes whose title or path
-    // matches, best-prefix first. A non-matching, non-empty query also offers
-    // to link a brand new note of that name (created on first open, like a tap
-    // on a dashed link).
-    const q = (linkQuery ?? '').trim().toLowerCase();
-    const linkMatches =
-      linkQuery === null
-        ? []
-        : paths
-            .filter((p) => p !== vaultNote.path)
-            .map((p) => ({ p, t: noteTitle(p) }))
-            .filter(({ p, t }) => !q || t.toLowerCase().includes(q) || p.toLowerCase().includes(q))
-            .sort((a, b) => {
-              const ap = a.t.toLowerCase().startsWith(q) ? 0 : 1;
-              const bp = b.t.toLowerCase().startsWith(q) ? 0 : 1;
-              return ap - bp || a.t.length - b.t.length;
-            })
-            .slice(0, 6);
-    const canCreate =
-      linkQuery !== null && q.length > 0 && !paths.some((p) => noteTitle(p).toLowerCase() === q);
-
     const insertWikilink = (targetName: string) => {
       const el = editorRef.current;
       const caret = el?.selectionStart ?? draft.length;
@@ -1357,35 +1339,12 @@ export function VaultScreen() {
                 }
                 onBlur={() => setLinkQuery(null)}
               />
-              {linkQuery !== null && (linkMatches.length > 0 || canCreate) ? (
-                <div className="vault-link-suggest" role="listbox" aria-label="Link a note">
-                  {linkMatches.map(({ p, t }) => (
-                    <button
-                      key={p}
-                      className="vault-link-chip"
-                      // onMouseDown, not onClick, so the pick lands before the
-                      // textarea's blur clears the autocomplete context.
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        insertWikilink(t);
-                      }}
-                    >
-                      {t}
-                    </button>
-                  ))}
-                  {canCreate ? (
-                    <button
-                      className="vault-link-chip vault-link-new"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        insertWikilink((linkQuery ?? '').trim());
-                      }}
-                    >
-                      New: {(linkQuery ?? '').trim()}
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
+              <VaultLinkSuggest
+                paths={paths}
+                sourcePath={vaultNote.path}
+                query={linkQuery}
+                onPick={insertWikilink}
+              />
             </div>
           ) : (
             // A calm reload settles the page in (opacity only); re-keyed so
@@ -1407,30 +1366,8 @@ export function VaultScreen() {
             </div>
           )}
 
-          {!editing && (backlinks.length > 0 || mentionsError) ? (
-            <div className="card" style={{ marginTop: 18 }}>
-              <div className="card-row">
-                <h3 style={{ marginBottom: 0 }}>Linked mentions</h3>
-                {backlinks.length > 0 ? (
-                  <span className="pill local">{backlinks.length}</span>
-                ) : null}
-              </div>
-              {mentionsError ? (
-                <p
-                  className="hint"
-                  role="status"
-                  style={{ margin: '6px 0 0', color: 'var(--warn)' }}
-                >
-                  {mentionsError}
-                </p>
-              ) : null}
-              {backlinks.map((b) => (
-                <button key={b.path} className="vault-mention" onClick={() => openNote(b.path)}>
-                  <span className="vault-mention-title">{noteTitle(b.path)}</span>
-                  <span className="vault-mention-excerpt">{b.excerpt}</span>
-                </button>
-              ))}
-            </div>
+          {!editing ? (
+            <VaultBacklinks mentions={backlinks} error={mentionsError} onOpen={openNote} />
           ) : null}
         </div>
 
@@ -1448,94 +1385,47 @@ export function VaultScreen() {
           onClose={deferResolve}
         />
 
-        <Sheet
+        <VaultNoteOptions
           open={menuOpen}
+          confirmDelete={confirmDelete}
+          canAsk={!team}
+          canPin={Boolean(!team && pinProjectId && canEditProjectPins(pinProjectId))}
+          deleteDisabled={Boolean(driveReadOnly) || hubAway}
           onClose={() => {
             setMenuOpen(false);
             setConfirmDelete(false);
           }}
-        >
-          {menuOpen ? (
-            <>
-              <SheetHead
-                title="Options"
-                onClose={() => {
-                  setMenuOpen(false);
-                  setConfirmDelete(false);
-                }}
-              />
-              <div className="sheet-actions">
-                {/* Take the note to a model (Vault M5, CTO J15): personal
-                    notes only, since the team vault is never in context. */}
-                {!team ? (
-                  <button
-                    className="btn quiet press-fb"
-                    onClick={() => {
-                      const path = vaultNote.path;
-                      setMenuOpen(false);
-                      setConfirmDelete(false);
-                      void askAboutVaultNote(path);
-                    }}
-                  >
-                    Ask about this note
-                  </button>
-                ) : null}
-                {!team && pinProjectId && canEditProjectPins(pinProjectId) ? (
-                  <button
-                    className="btn quiet press-fb"
-                    onClick={() => {
-                      const path = vaultNote.path;
-                      setMenuOpen(false);
-                      setConfirmDelete(false);
-                      void pinVaultNoteToProject(path, pinProjectId).then((r) =>
-                        showToast(pinToast(r, pinProjectName)),
-                      );
-                    }}
-                  >
-                    Pin to project context
-                  </button>
-                ) : null}
-                <button
-                  className={`btn press-fb ${confirmDelete ? 'danger' : 'quiet'}`}
-                  // Unreachable on a Drive vault (Options is left out there),
-                  // kept as a safety; the computer away holds the tree still.
-                  disabled={Boolean(driveReadOnly) || hubAway}
-                  onClick={() => {
-                    // Two taps to delete: a single tap is too easy to hit by
-                    // accident, and a local or iCloud delete is unrecoverable.
-                    if (!confirmDelete) {
-                      setConfirmDelete(true);
-                      return;
-                    }
-                    const path = vaultNote.path;
-                    const at = vaultTargetRef();
-                    // Drop any pending debounced save first, or its stale timer
-                    // would recreate the note we are deleting.
-                    cancelSave();
-                    setMenuOpen(false);
-                    setConfirmDelete(false);
-                    // Only a delete that happened says so; a failed one shows
-                    // the store's own line and the note stays (orgvault-m1).
-                    void vaultDelete(path, at).then((deleted) => {
-                      if (deleted) showToast('Note deleted.');
-                    });
-                  }}
-                >
-                  {confirmDelete ? 'Really delete? Tap to confirm.' : 'Delete this note'}
-                </button>
-                <button
-                  className="btn quiet press-fb"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    setConfirmDelete(false);
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            </>
-          ) : null}
-        </Sheet>
+          onAsk={() => {
+            const path = vaultNote.path;
+            setMenuOpen(false);
+            setConfirmDelete(false);
+            void askAboutVaultNote(path);
+          }}
+          onPin={() => {
+            if (!pinProjectId) return;
+            const path = vaultNote.path;
+            setMenuOpen(false);
+            setConfirmDelete(false);
+            void pinVaultNoteToProject(path, pinProjectId).then((r) =>
+              showToast(pinToast(r, pinProjectName)),
+            );
+          }}
+          onArmDelete={() => setConfirmDelete(true)}
+          onDelete={() => {
+            const path = vaultNote.path;
+            const at = vaultTargetRef();
+            // Drop any pending debounced save first, or its stale timer
+            // would recreate the note we are deleting.
+            cancelSave();
+            setMenuOpen(false);
+            setConfirmDelete(false);
+            // Only a delete that happened says so; a failed one shows
+            // the store's own line and the note stays (orgvault-m1).
+            void vaultDelete(path, at).then((deleted) => {
+              if (deleted) showToast('Note deleted.');
+            });
+          }}
+        />
       </div>
     );
   }

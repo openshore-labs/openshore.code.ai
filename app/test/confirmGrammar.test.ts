@@ -51,7 +51,8 @@ describe('destructive confirms', () => {
   });
 
   it('the armed vault delete ends on btn danger', () => {
-    expect(read('../src/screens/VaultScreen.tsx')).toMatch(
+    // The Options sheet moved out of VaultScreen (Vault M6 wave 0).
+    expect(read('../src/components/vault/VaultNoteOptions.tsx')).toMatch(
       /className=\{`btn press-fb \$\{confirmDelete \? 'danger' : 'quiet'\}`\}/,
     );
   });

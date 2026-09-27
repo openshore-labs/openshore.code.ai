@@ -101,9 +101,37 @@ export {
   resolveMarkdownPath,
   resolveWikilink,
   wikilinkContext,
+  wikilinkReplaceRange,
 } from './harness/vault/resolve.js';
 export { rewriteLinks } from './harness/vault/rewrite.js';
 export { excerptAt } from './harness/vault/excerpt.js';
+// Vault M6 "Obsidian day one" (CTO K4, K7, K8, K10, K11, K15): the pure core
+// the app and the engine share. Stubs until each stream lands.
+export { planLinkRewrites, rewriteForMoves } from './harness/vault/move.js';
+export { highlightRanges, parseVaultQuery } from './harness/vault/query.js';
+export {
+  VAULT_DAILY_DEFAULTS,
+  dailyNotePath,
+  datePartsOf,
+  fillTemplate,
+  formatVaultDate,
+} from './harness/vault/dates.js';
+export {
+  blockAnchorAt,
+  findUnlinkedMentions,
+  listTasks,
+  maskComments,
+  parseCallout,
+  sectionOf,
+  toggleTaskAt,
+} from './harness/vault/markdown.js';
+export {
+  VAULT_ATTACHMENT_MAX_BYTES,
+  attachmentMime,
+  bytesMatchMime,
+  isAttachmentPath,
+  resolveAttachment,
+} from './harness/vault/attachments.js';
 // The Vault's shared core contract (Vault M3, CTO H1 to H5): the types the
 // scanner, frontmatter reader, resolver, index and readConfig seam agree on.
 // Types only, so nothing reaches the bundle.
@@ -150,6 +178,33 @@ export type {
   VaultPrivacyNarrowing,
   VaultVisibility,
   VaultVisibilityInput,
+  // Vault M6 (CTO K2, K4, K7, K8, K10, K11, K15)
+  AttachmentFolderSetting,
+  AttachmentMeta,
+  AttachmentMime,
+  BytesRead,
+  BytesReadRefusal,
+  CalloutFamily,
+  CalloutHead,
+  DailyNoteConfig,
+  DateParts,
+  LinkRewriteEdit,
+  LinkRewriteLeftReason,
+  LinkRewritePlan,
+  LinkRewriteSource,
+  MoveSourcePaths,
+  ReadBytesOptions,
+  TaskToggleResult,
+  TemplateFill,
+  UnlinkedMention,
+  VaultDateFormatResult,
+  VaultQuery,
+  VaultQueryClause,
+  VaultQueryClauseKind,
+  VaultSearchOptions,
+  VaultTask,
+  VaultTitleHit,
+  VaultTrashEntry,
 } from './harness/vault/types.js';
 // Vault privacy (Vault M4, CTO I4, I5): one judge of which notes are hidden and
 // which stay on this computer, and the stub a leaving seat sees in their place.
@@ -227,6 +282,15 @@ export {
   VAULT_WIRE_LIST_MAX,
   VAULT_WIRE_NOTE_MAX_BYTES,
   vaultNoteRoute,
+  // Vault M6 (CTO K13)
+  VAULT_ATTACHMENTS_ROUTE,
+  VAULT_FILES_ROUTE,
+  VAULT_FOLDERS_RENAME_ROUTE,
+  VAULT_FOLDERS_ROUTE,
+  VAULT_RENAME_ROUTE,
+  VAULT_TRASH_RESTORE_ROUTE,
+  VAULT_TRASH_ROUTE,
+  vaultFileRoute,
 } from './daemon/vaultWire.js';
 export type {
   ChatContextPackEvent,
@@ -242,6 +306,24 @@ export type {
   VaultNotesListResponse,
   VaultPrivacyWire,
   VaultWireError,
+  // Vault M6 (CTO K13)
+  VaultAttachmentsListResponse,
+  VaultFolderConflictResponse,
+  VaultFolderCreateBody,
+  VaultFolderRenameBody,
+  VaultFolderRenameResponse,
+  VaultFoldersListResponse,
+  VaultRenameBody,
+  VaultRenameConflictResponse,
+  VaultRenameResponse,
+  VaultTrashBody,
+  VaultTrashConflictResponse,
+  VaultTrashEmptyBody,
+  VaultTrashEmptyResponse,
+  VaultTrashListResponse,
+  VaultTrashRestoreBody,
+  VaultTrashRestoreResponse,
+  VaultTrashResponse,
 } from './daemon/vaultWire.js';
 export type { CapabilityCategory, SpecialistRole } from './router/roles.js';
 

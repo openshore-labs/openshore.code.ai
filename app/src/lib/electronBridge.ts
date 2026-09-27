@@ -3,6 +3,8 @@
 // touches Node directly. Keep this file in lockstep with electron/main.ts.
 import type {
   ApprovalAnswer,
+  AttachmentMeta,
+  BytesRead,
   Catalog,
   ConfigRead,
   CurrentsHandles,
@@ -18,14 +20,24 @@ import type {
   RoutineView,
   StackHealth,
   StackHealthRange,
+  ReadBytesOptions,
   VaultConfigName,
   VaultPrivacyWire,
 } from 'os-code/protocol';
 import type {
+  CreateFolderResult,
+  EmptyTrashResult,
+  FolderMoveResult,
   RemoveGuard,
   RemoveResult,
+  RenameGuard,
+  RenameResult,
+  RestoreResult,
   StoredFile,
   StoredFileMeta,
+  TrashEntry,
+  TrashResult,
+  TrashTarget,
   WriteGuard,
   WriteResult,
 } from './gitos/providers.js';
@@ -484,6 +496,35 @@ export interface OscodeBridge {
   }>;
   /** macOS: open Privacy & Security, Files and Folders. */
   openPrivacySettings(): Promise<void>;
+
+  // Vault M6 (CTO K13): one IPC each, validated in main like parseVaultGuard,
+  // every path through the note rule or isAttachmentPath and the Jail, and
+  // `.trash` reached only by the trash calls. Optional: a desktop build whose
+  // main does not answer them yet has none, and the provider checks before
+  // use. Keep in lockstep with electron/main.ts and preload.cjs (stream B).
+  /** osc:vaultRename. Never replaces (K3). */
+  vaultRename?(from: string, to: string, guard: RenameGuard): Promise<RenameResult>;
+  /** osc:vaultFolders. The real folders, empty ones too. */
+  vaultFolders?(): Promise<string[]>;
+  /** osc:vaultFolderCreate. */
+  vaultFolderCreate?(path: string): Promise<CreateFolderResult>;
+  /** osc:vaultFolderRename. One directory rename, the destination absent. */
+  vaultFolderRename?(from: string, to: string): Promise<FolderMoveResult>;
+  /** osc:vaultTrash. Into `<vault>/.trash/<original path>`. */
+  vaultTrash?(target: TrashTarget): Promise<TrashResult>;
+  /** osc:vaultTrashList. */
+  vaultTrashList?(): Promise<TrashEntry[]>;
+  /** osc:vaultTrashRestore. Never overwrites. */
+  vaultTrashRestore?(id: string): Promise<RestoreResult>;
+  /** osc:vaultTrashEmpty. The ids given, or all of Trash. */
+  vaultTrashEmpty?(ids?: string[]): Promise<EmptyTrashResult>;
+  /** osc:vaultAttachments. */
+  vaultAttachments?(): Promise<AttachmentMeta[]>;
+  /** osc:vaultReadBytes. Capped at 20 MB. */
+  vaultReadBytes?(path: string, opts?: ReadBytesOptions): Promise<BytesRead>;
+  /** osc:vaultOpenAttachment. Opens a PDF or an image in the system viewer
+   *  (jailed, pdf and image extensions only). */
+  vaultOpenAttachment?(path: string): Promise<{ ok: boolean }>;
 
   // Read-only access to a repo working tree, for the project-memory viewer. The
   // notes live in the repo under "OpenShore Project <name> MDs/"; these list a

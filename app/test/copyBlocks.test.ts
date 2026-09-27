@@ -29,9 +29,11 @@ describe('copy blocks for anything pasted', () => {
 
   it('the chat renderer gives every fenced block a Copy control', () => {
     const src = readFileSync(join(process.cwd(), 'src/components/Markdown.tsx'), 'utf8');
-    expect(src).toContain('copyText(');
-    expect(src).toContain("'Copy'");
-    expect(src).toContain("'Copy failed'");
+    // The block itself moved to components/CodeBlock.tsx (Vault M6 wave 0).
+    const block = readFileSync(join(process.cwd(), 'src/components/CodeBlock.tsx'), 'utf8');
+    expect(block).toContain('copyText(');
+    expect(block).toContain("'Copy'");
+    expect(block).toContain("'Copy failed'");
     expect(src).toMatch(/pre:\s*\(\{ children \}\) => <CodeBlock>/);
   });
 

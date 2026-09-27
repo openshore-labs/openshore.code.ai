@@ -1336,3 +1336,39 @@ export function vaultMentionsOnDemand(n: number): { hint: string; button: string
     busy: `Reading ${n} notes`,
   };
 }
+
+// ============================================================================
+// Vault M6 wave 0: one fenced section per build stream. A stream writes only
+// inside its own fence. Every string passes the RETIRED list, copy-glossary and
+// both em-dash guards (CX R1, R2).
+
+// ---- M6 stream C begin ----
+// Capabilities (K1): the line per provider and cap pair that says why an
+// action is not offered here. Covered by vaultCopy.test.ts for every pair.
+
+// ---- M6 stream C end ----
+
+// ---- M6 stream E begin ----
+// Reader (6.5, 6.6): callout titles, embeds, images and PDFs (CX X12, X14).
+
+// ---- M6 stream E end ----
+
+// ---- M6 stream F begin ----
+// Search (6.1): the search field, results, counts, index states, the switcher,
+// Recent (CX X1 to X4).
+
+// ---- M6 stream F end ----
+
+// ---- M6 stream G begin ----
+// Rename (6.2), Trash (6.3) and checkbox write-back: rename and move, folders,
+// Update links and the partial report, delete, Undo, the Trash view, a refused
+// tick (CX X5 to X10, X13; CTO R1 to R3).
+
+// ---- M6 stream G end ----
+
+// ---- M6 stream H begin ----
+// Linking and context (6.7, 6.8) and Today (6.4): link suggestions and the
+// accessory bar, outline, outgoing and unlinked mentions, the backlinks
+// skeleton, Today's note (CX X11, X15 to X17).
+
+// ---- M6 stream H end ----

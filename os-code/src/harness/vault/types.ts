@@ -336,3 +336,229 @@ export interface VaultVisibilityInput {
 export interface VaultPrivacy {
   visibility(note: VaultVisibilityInput): VaultVisibility;
 }
+
+// ===========================================================================
+// Vault M6, "Obsidian day one" (CTO K2, K4, K7, K8, K10, K11, K15). Wave 0
+// contracts: the shapes the M6 streams code against. The functions that
+// produce them live in attachments.ts, move.ts, query.ts, dates.ts and
+// markdown.ts (stubs until their stream lands).
+
+// ---------------------------------------------------------------------------
+// attachments.ts, readBytes (K2, K11; stream A2 for the core, B and C for the
+// hosts)
+
+/** The attachment types the Vault reads in M6: the rasters, SVG (shown only
+ *  inside `<img>`), and PDF (a chip that opens). Nothing else crosses. */
+export type AttachmentMime =
+  | 'image/png'
+  | 'image/jpeg'
+  | 'image/gif'
+  | 'image/webp'
+  | 'image/avif'
+  | 'image/svg+xml'
+  | 'application/pdf';
+
+/** One attachment in a listing (`listAttachments`). `version` is the
+ *  provider's own opaque token, compared with `===` only. */
+export interface AttachmentMeta {
+  path: string;
+  size: number;
+  updatedAt: string;
+  version: string;
+  mime: AttachmentMime;
+}
+
+/** Why `readBytes` read nothing: the same set `readConfig` answers with. */
+export type BytesReadRefusal = ConfigReadRefusal;
+
+/** `readBytes(resourceId, path, opts)`, in the `ConfigRead` style (K2). Images
+ *  are capped at `VAULT_ATTACHMENT_MAX_BYTES` (20 MB). */
+export type BytesRead =
+  | { ok: true; bytes: Uint8Array; mime: AttachmentMime; version: string }
+  | { ok: false; reason: BytesReadRefusal };
+
+/** `readBytes` options: `max` lowers the cap, never raises it. */
+export interface ReadBytesOptions {
+  max?: number;
+}
+
+/** Obsidian's `attachmentFolderPath` from `obsidian/app`: `/` is the vault
+ *  root, `./` the note's own folder, `./sub` a folder under it, anything else
+ *  a vault folder. Absent means the root. */
+export type AttachmentFolderSetting = string;
+
+// ---------------------------------------------------------------------------
+// Trash (K2, K6; the entry shape the seam and the daemon wire share)
+
+/** One thing in Trash. `id` is opaque to everyone but its provider. `path`
+ *  is where it came from, so Restore knows where to go. `trashedAt` is
+ *  absent where the storage cannot say, and then it is not shown. */
+export interface VaultTrashEntry {
+  id: string;
+  path: string;
+  kind: 'note' | 'folder';
+  size: number;
+  trashedAt?: string;
+}
+
+// ---------------------------------------------------------------------------
+// move.ts (K4, reconciled by R1; stream A2)
+
+/** A moved note's own path either side of the move, for its relative links. */
+export interface MoveSourcePaths {
+  before: string;
+  after: string;
+}
+
+/** A note the host read for a rewrite plan, with the version it read. */
+export interface LinkRewriteSource {
+  path: string;
+  text: string;
+  version: string;
+}
+
+/** One planned write: the note's path AFTER the moves (a moved note is at its
+ *  new path), `base` the version it was read at (the host re-bases a moved
+ *  note on the rename's version), the whole new text, and how many links in
+ *  it changed. */
+export interface LinkRewriteEdit {
+  path: string;
+  base: string;
+  text: string;
+  count: number;
+}
+
+/** Why a link was left as written: a new target would break a quoted
+ *  frontmatter value, or the resolution is ambiguous. */
+export type LinkRewriteLeftReason = 'frontmatter-quote' | 'ambiguous';
+
+/** `planLinkRewrites(...)`: every edit, the totals the "Update N links in M
+ *  notes?" sheet counts (`links`, `notes`), and what was left alone. */
+export interface LinkRewritePlan {
+  edits: LinkRewriteEdit[];
+  links: number;
+  notes: number;
+  left: Array<{ path: string; reason: LinkRewriteLeftReason }>;
+}
+
+// ---------------------------------------------------------------------------
+// query.ts (K8; stream A1)
+
+/** A search clause's kind: a bare term, a quoted phrase, or an operator. */
+export type VaultQueryClauseKind = 'term' | 'phrase' | 'tag' | 'path' | 'file';
+
+/** One clause of a parsed query. `value` is folded (lowercase) and without
+ *  its operator or quotes; `tag` values carry no leading `#`. */
+export interface VaultQueryClause {
+  kind: VaultQueryClauseKind;
+  value: string;
+  negated: boolean;
+}
+
+/** `parseVaultQuery(q)`. Clauses AND together. `prefix` is the last bare
+ *  term when the query does not end in whitespace (matched as a prefix while
+ *  typing). `filtersOnly`: no positive term or phrase, so matches list newest
+ *  first. */
+export interface VaultQuery {
+  clauses: VaultQueryClause[];
+  prefix?: string;
+  filtersOnly: boolean;
+}
+
+/** The index's `search(q, opts)` options (K8): `filter` holds the clauses
+ *  (tag, path, file, negated terms) every hit must pass. */
+export interface VaultSearchOptions {
+  limit?: number;
+  filter?: readonly VaultQueryClause[];
+}
+
+/** One `titleMatches(q, limit)` hit: the title or alias that matched, and
+ *  where in that text, for `<mark>`. */
+export interface VaultTitleHit {
+  path: string;
+  score: number;
+  field: 'title' | 'alias';
+  text: string;
+  ranges: TextRange[];
+}
+
+// ---------------------------------------------------------------------------
+// dates.ts (K7; stream A2)
+
+/** A moment on the host's local clock, split for formatting. `month` is 1
+ *  to 12; `weekday` is 0 (Sunday) to 6; `offsetMinutes` is the local offset
+ *  east of UTC. */
+export interface DateParts {
+  year: number;
+  month: number;
+  day: number;
+  weekday: number;
+  hour: number;
+  minute: number;
+  second: number;
+  millisecond: number;
+  epochMs: number;
+  offsetMinutes: number;
+}
+
+/** `formatVaultDate(parts, fmt)`: the text, or the first token it does not
+ *  support (Today then says so rather than guess a name). */
+export type VaultDateFormatResult = { ok: true; text: string } | { ok: false; token: string };
+
+/** The daily note settings, from `obsidian/daily-notes`, else the defaults
+ *  (root, `YYYY-MM-DD`, no template). `template` is a note path. */
+export interface DailyNoteConfig {
+  folder: string;
+  format: string;
+  template?: string;
+}
+
+/** `fillTemplate(text, fill)`: `{{date}}`, `{{time}}`, `{{title}}`,
+ *  `{{date:FMT}}`, `{{time:FMT}}`. */
+export interface TemplateFill {
+  parts: DateParts;
+  title: string;
+  dateFormat: string;
+  timeFormat: string;
+}
+
+// ---------------------------------------------------------------------------
+// markdown.ts (K10, K11, K15; stream A2)
+
+/** The four callout families (CX X12), each drawn from existing tokens and
+ *  never from `--local`, `--cloud` or `--accent`. Unknown types are neutral. */
+export type CalloutFamily = 'neutral' | 'positive' | 'caution' | 'danger';
+
+/** `parseCallout(line)`: a `> [!type][+-] Title` head. `type` is checked
+ *  against `[a-z-]{1,24}` (folded); `fold` is set only for a foldable one
+ *  (`-` starts closed). */
+export interface CalloutHead {
+  type: string;
+  family: CalloutFamily;
+  fold?: '+' | '-';
+  title?: string;
+}
+
+/** One GFM task. `at` is the offset of its status character (inside `[ ]`),
+ *  `line` its zero-based line in the full text. A status other than space,
+ *  `x` or `X` is custom: shown checked and never toggled. */
+export interface VaultTask {
+  at: number;
+  line: number;
+  status: string;
+  checked: boolean;
+  custom: boolean;
+}
+
+/** `toggleTaskAt(text, at, expected)`: the new text, or why nothing changed
+ *  (`moved`: the status at `at` is not `expected`; `custom`: not a box that
+ *  ticks; `none`: no task there). */
+export type TaskToggleResult =
+  { ok: true; text: string; status: string } | { ok: false; reason: 'moved' | 'custom' | 'none' };
+
+/** An unlinked mention (K15): a whole-word, case-insensitive match of one of
+ *  `names` outside links, code and frontmatter. */
+export interface UnlinkedMention extends TextRange {
+  name: string;
+  line: number;
+}
