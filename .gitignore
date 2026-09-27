@@ -11,3 +11,7 @@ app/ios/App/App/public/
 # Local state
 *.log
 .DS_Store
+
+# Supabase CLI working folders (supabase db start / test db)
+supabase/.temp/
+supabase/.branches/
