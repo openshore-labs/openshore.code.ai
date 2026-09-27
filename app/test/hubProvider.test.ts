@@ -425,3 +425,176 @@ describe('the index', () => {
     expect(elsewhere.index.size).toBe(0);
   });
 });
+
+// Vault M6 (CTO K2, K13): rename, folders, Trash and attachments over the
+// daemon's routes. The cross-provider cases are in providerContract; these
+// pin what is the hub's own: the wire it speaks, the stash following a move,
+// the away and old-computer answers, and the registered face.
+describe('M6 routes', () => {
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+
+  it('speaks the wire: POST for tree changes, DELETE for Empty Trash, GET for lists', async () => {
+    const { d, p } = make();
+    d.replace('a.md', 'a');
+    const v = (await p.stat(R, 'a.md'))!.version!;
+    d.calls.length = 0;
+    await p.rename!(R, 'a.md', 'b.md', { ifMatch: v });
+    await p.createFolder!(R, 'Work');
+    await p.renameFolder!(R, 'Work', 'Jobs');
+    await p.listFolders!(R);
+    const b = (await p.stat(R, 'b.md'))!.version!;
+    await p.trash!(R, { kind: 'note', path: 'b.md', ifMatch: b });
+    const [entry] = await p.listTrash!(R);
+    await p.restore!(R, entry!.id);
+    await p.emptyTrash!(R);
+    await p.listAttachments!(R);
+    expect(d.calls.filter((c) => !c.startsWith('GET /vault/notes/'))).toEqual([
+      'POST /vault/rename',
+      'POST /vault/folders',
+      'POST /vault/folders/rename',
+      'GET /vault/folders',
+      'POST /vault/trash',
+      'GET /vault/trash',
+      'POST /vault/trash/restore',
+      'DELETE /vault/trash',
+      'GET /vault/attachments',
+    ]);
+  });
+
+  it('a rename moves the kept body with it, so an away read finds it at the new name', async () => {
+    const { d, p } = make();
+    d.replace('Plan.md', 'the plan');
+    const file = (await p.read(R, 'Plan.md'))!;
+    await p.list(R);
+    const r = await p.rename!(R, 'Plan.md', 'Work/Plan.md', { ifMatch: file.version! });
+    expect(r.ok).toBe(true);
+    d.up = false;
+    expect(await p.read(R, 'Work/Plan.md')).toMatchObject({
+      text: 'the plan',
+      version: r.ok ? r.file.version : '',
+    });
+    expect((await p.list(R)).map((f) => f.path)).toEqual(['Work/Plan.md']);
+    await expect(p.read(R, 'Plan.md')).rejects.toMatchObject({ message: HUB_AWAY_NOT_KEPT });
+  });
+
+  it('a trash forgets what was kept, so away it never reads as there', async () => {
+    const { d, p } = make();
+    d.replace('Work/a.md', 'a');
+    d.replace('Work/b.md', 'b');
+    await p.read(R, 'Work/a.md');
+    await p.list(R);
+    const t = await p.trash!(R, { kind: 'folder', path: 'Work' });
+    expect(t).toMatchObject({ ok: true, notes: 2 });
+    d.up = false;
+    expect(await p.list(R)).toEqual([]);
+    await expect(p.read(R, 'Work/a.md')).rejects.toMatchObject({ message: HUB_AWAY_NOT_KEPT });
+  });
+
+  it('away, a tree change is refused in plain words, and a listing says it is away', async () => {
+    const { d, p } = make();
+    d.up = false;
+    const refused = { permanent: true, message: HUB_AWAY_READ_ONLY };
+    await expect(p.rename!(R, 'a.md', 'b.md', { ifMatch: 'v' })).rejects.toMatchObject(refused);
+    await expect(p.createFolder!(R, 'Work')).rejects.toMatchObject(refused);
+    await expect(p.renameFolder!(R, 'Work', 'Jobs')).rejects.toMatchObject(refused);
+    await expect(p.trash!(R, { kind: 'folder', path: 'Work' })).rejects.toMatchObject(refused);
+    await expect(p.restore!(R, 't1')).rejects.toMatchObject(refused);
+    await expect(p.emptyTrash!(R)).rejects.toMatchObject(refused);
+    await expect(p.listTrash!(R)).rejects.toBeInstanceOf(hub.HubAwayError);
+    await expect(p.listFolders!(R)).rejects.toBeInstanceOf(hub.HubAwayError);
+    await expect(p.readBytes!(R, 'img.png')).rejects.toBeInstanceOf(hub.HubAwayError);
+  });
+
+  it('a computer from before M6 says to update it', async () => {
+    const { d, p } = make();
+    d.beforeM6 = true;
+    d.replace('a.md', 'a');
+    const refused = { permanent: true, message: HUB_UPDATE_LINE };
+    await expect(p.rename!(R, 'a.md', 'b.md', { ifMatch: 'v' })).rejects.toMatchObject(refused);
+    await expect(p.listTrash!(R)).rejects.toMatchObject(refused);
+    await expect(p.listAttachments!(R)).rejects.toMatchObject(refused);
+  });
+
+  it('folder moves answer every note that moved, with its new version, and the count', async () => {
+    const { d, p } = make();
+    d.replace('Work/a.md', 'a');
+    d.replace('Work/Deep/b.md', 'b');
+    d.attachments.set('Work/img.png', {
+      bytes: png,
+      mime: 'image/png',
+      version: 'i1',
+      mtime: '2026-09-27T00:00:00.000Z',
+    });
+    expect(await p.createFolder!(R, 'work')).toEqual({ ok: false, conflict: 'exists' });
+    expect(await p.renameFolder!(R, 'Nope', 'Else')).toEqual({ ok: false, conflict: 'missing' });
+    const r = await p.renameFolder!(R, 'Work', 'Jobs 2');
+    expect(r).toMatchObject({ ok: true, attachments: 1 });
+    expect(r.ok && r.moved.map((m) => m.to).sort()).toEqual(['Jobs 2/Deep/b.md', 'Jobs 2/a.md']);
+    expect(r.ok && r.moved.every((m) => m.version === d.notes.get(m.to)?.version)).toBe(true);
+    expect(await p.listFolders!(R)).toEqual(['Jobs 2', 'Jobs 2/Deep']);
+  });
+
+  it('refuses a folder into itself and a dot folder before the computer sees it', async () => {
+    const { d, p } = make();
+    d.calls.length = 0;
+    await expect(p.renameFolder!(R, 'Work', 'Work/Sub')).rejects.toThrow(/inside itself/);
+    await expect(p.createFolder!(R, '.trash')).rejects.toThrow(/not a folder/);
+    await expect(p.trash!(R, { kind: 'folder', path: '' })).rejects.toThrow(/not a folder/);
+    await expect(p.readBytes!(R, '.obsidian/x.png')).rejects.toThrow(/not an image/);
+    expect(d.calls).toEqual([]);
+  });
+
+  it('reads attachment bytes with their type and version, capped', async () => {
+    const { d, p } = make();
+    d.attachments.set('Media/cat photo.png', {
+      bytes: png,
+      mime: 'image/png',
+      version: 'i7',
+      mtime: '2026-09-27T00:00:00.000Z',
+    });
+    expect(await p.listAttachments!(R)).toEqual([
+      {
+        path: 'Media/cat photo.png',
+        size: png.byteLength,
+        updatedAt: '2026-09-27T00:00:00.000Z',
+        version: 'i7',
+        mime: 'image/png',
+      },
+    ]);
+    const r = await p.readBytes!(R, 'Media/cat photo.png');
+    expect(r).toMatchObject({ ok: true, mime: 'image/png', version: 'i7' });
+    expect(r.ok && [...r.bytes]).toEqual([...png]);
+    expect(await p.readBytes!(R, 'Media/cat photo.png', { max: 4 })).toEqual({
+      ok: false,
+      reason: 'too-large',
+    });
+    expect(await p.readBytes!(R, 'Media/none.png')).toEqual({ ok: false, reason: 'absent' });
+    d.attachments.set('evil.png', {
+      bytes: png,
+      mime: 'text/html' as never,
+      version: 'x',
+      mtime: '2026-09-27T00:00:00.000Z',
+    });
+    expect(await p.readBytes!(R, 'evil.png')).toEqual({ ok: false, reason: 'unsupported' });
+  });
+
+  it('the registered face reaches every M6 member of the paired computer', async () => {
+    const d = fakeHubDaemon(BASE);
+    d.replace('a.md', 'a');
+    hub.setHubVaultLink({
+      baseUrl: BASE,
+      token: async () => d.token,
+      hubUserId: 'o',
+      fetch: d.fetch,
+    });
+    const face = gitos.providerFor('hub')!;
+    const v = (await face.stat(R, 'a.md'))!.version!;
+    expect(await face.rename!(R, 'a.md', 'b.md', { ifMatch: v })).toMatchObject({
+      ok: true,
+      file: { path: 'b.md' },
+    });
+    expect(await face.listTrash!(R)).toEqual([]);
+    hub.setHubVaultLink(undefined);
+    await expect(face.listTrash!(R)).rejects.toMatchObject({ message: HUB_PAIR_LINE });
+  });
+});

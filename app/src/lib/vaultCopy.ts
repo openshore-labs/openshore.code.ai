@@ -1344,7 +1344,114 @@ export function vaultMentionsOnDemand(n: number): { hint: string; button: string
 
 // ---- M6 stream C begin ----
 // Capabilities (K1): the line per provider and cap pair that says why an
-// action is not offered here. Covered by vaultCopy.test.ts for every pair.
+// action is not offered here. Covered for every pair by vaultCaps.test.ts
+// (kept apart from vaultCopy.test.ts so the wave 1 streams do not collide),
+// and swept by the RETIRED list, copy-glossary and both em-dash guards.
+
+/** The caps that can be missing for a reason a person should read. (The
+ *  eight in `VaultCaps` minus `renameNative`, which changes nothing a person
+ *  sees, plus `emptyTrash`.) */
+export type VaultCapLineName =
+  | 'rename'
+  | 'folders'
+  | 'trash'
+  | 'emptyTrash'
+  | 'attachments'
+  | 'taskWriteBack'
+  | 'linkRewrite'
+  | 'today';
+
+export const VAULT_CAP_LINE_NAMES: readonly VaultCapLineName[] = [
+  'rename',
+  'folders',
+  'trash',
+  'emptyTrash',
+  'attachments',
+  'taskWriteBack',
+  'linkRewrite',
+  'today',
+];
+
+const DRIVE_READ_ONLY = 'Google Drive vaults are read-only here';
+
+const CAP_LINES: Record<VaultCapLineName, Partial<Record<VaultCopyProvider, string>>> = {
+  rename: {
+    icloud: 'Notes in iCloud Drive cannot be renamed here yet. The Files app can rename them.',
+    org: 'Team notes cannot be renamed here yet.',
+    gdrive: `${DRIVE_READ_ONLY}, so notes cannot be renamed.`,
+  },
+  folders: {
+    icloud: 'Folders in iCloud Drive cannot be made or renamed here yet. The Files app can.',
+    org: 'Team folders cannot be made or renamed here yet.',
+    gdrive: `${DRIVE_READ_ONLY}, so folders cannot change.`,
+  },
+  trash: {
+    icloud: 'iCloud Drive has no Trash here yet, so a delete is for good and asks twice.',
+    org: 'Team notes have no Trash here yet, so a delete is for good and asks twice.',
+    gdrive: `${DRIVE_READ_ONLY}, so notes cannot be deleted.`,
+  },
+  emptyTrash: {
+    org: "Team notes are kept in your organization's history.",
+  },
+  attachments: {
+    local: 'This device keeps notes only, so images and PDFs do not show here.',
+    icloud: 'Images and PDFs in iCloud Drive do not show here yet.',
+    org: 'Team vaults hold notes only, so images and PDFs do not show here.',
+    gdrive: 'Images and PDFs in Google Drive do not show here.',
+  },
+  taskWriteBack: {
+    icloud: 'To tick a box in an iCloud Drive note, edit the note.',
+    org: 'To tick a box in a team note, edit the note.',
+    gdrive: `${DRIVE_READ_ONLY}, so boxes cannot be ticked.`,
+  },
+  linkRewrite: {
+    icloud: 'Links are not updated in iCloud Drive yet.',
+    org: 'Links are not updated in team notes yet.',
+    gdrive: `${DRIVE_READ_ONLY}, so links cannot be updated.`,
+  },
+  today: {
+    icloud:
+      "Today's note is not offered for iCloud Drive yet, so a note already there is never written over.",
+    org: "Today's note is not offered for team vaults yet, so no one's note is written over.",
+    gdrive: `${DRIVE_READ_ONLY}, so today's note cannot be started.`,
+  },
+};
+
+const CAP_FALLBACK: Record<VaultCapLineName, string> = {
+  rename: 'This storage cannot rename notes here yet.',
+  folders: 'This storage cannot make or rename folders here yet.',
+  trash: 'This storage has no Trash here, so a delete is for good and asks twice.',
+  emptyTrash: 'Trash here cannot be emptied from this app.',
+  attachments: 'Images and PDFs do not show from this storage yet.',
+  taskWriteBack: 'To tick a box here, edit the note.',
+  linkRewrite: 'Links to a renamed note are not updated on this storage.',
+  today: "Today's note is not offered for this storage yet.",
+};
+
+/** Why `cap` is not offered on `provider`. Total over every pair, so a held
+ *  branch that lights a cap needs no copy change; the room shows it only
+ *  where `vaultCaps(...)[cap]` is false for the storage itself (read-only
+ *  and away keep their own standing lines). */
+export function vaultCapLine(provider: VaultCopyProvider, cap: VaultCapLineName): string {
+  return CAP_LINES[cap][provider] ?? CAP_FALLBACK[cap];
+}
+
+/** A desktop build whose main process does not answer an M6 call. */
+export const VAULT_CAP_UPDATE_LINE = 'Update OpenShore on this computer to do that here.';
+
+/** A folder moved into itself, refused before anything moves. */
+export const VAULT_FOLDER_INTO_ITSELF = 'A folder cannot move inside itself, so nothing changed.';
+
+/** A path that is not a folder the vault can act on (rooted, a dot folder,
+ *  or empty), refused before it reaches the storage. */
+export function vaultNotFolderLine(path: string): string {
+  return `"${path}" is not a folder the vault can change.`;
+}
+
+/** A path that is not an attachment the vault reads. */
+export function vaultNotAttachmentLine(path: string): string {
+  return `"${path}" is not an image or a PDF the vault can open.`;
+}
 
 // ---- M6 stream C end ----
 

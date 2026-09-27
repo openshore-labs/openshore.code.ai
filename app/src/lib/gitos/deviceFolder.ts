@@ -12,8 +12,9 @@
 // version (compare-and-swap, Vault M1 1.1): a save typed against an older
 // version comes back as a conflict, never a silent overwrite.
 import { isVaultConfigName, type ConfigRead, type VaultConfigName } from 'os-code/protocol';
-import { bridge, type VaultChange } from '../electronBridge.js';
+import { bridge, type OscodeBridge, type VaultChange } from '../electronBridge.js';
 import { platform } from '../platform.js';
+import { VAULT_CAP_UPDATE_LINE } from '../vaultCopy.js';
 import { asConfigRead } from './config.js';
 import { makeFolderProvider, type FolderTransport } from './folderClient.js';
 import type { StorageProvider } from './providers.js';
@@ -32,9 +33,35 @@ function fs() {
   return b;
 }
 
+/** The Vault M6 bridge calls (CTO K13), one IPC each. */
+type M6Call =
+  | 'vaultRename'
+  | 'vaultFolders'
+  | 'vaultFolderCreate'
+  | 'vaultFolderRename'
+  | 'vaultTrash'
+  | 'vaultTrashList'
+  | 'vaultTrashRestore'
+  | 'vaultTrashEmpty'
+  | 'vaultAttachments'
+  | 'vaultReadBytes'
+  | 'vaultOpenAttachment';
+
+/** One M6 call, checked before use: main and this page ship together, so a
+ *  missing call means a build out of step, said in plain words. */
+function m6<K extends M6Call>(name: K): NonNullable<OscodeBridge[K]> {
+  const b = fs();
+  const f = b[name];
+  if (typeof f !== 'function') throw new Error(VAULT_CAP_UPDATE_LINE);
+  return (f as (...args: unknown[]) => unknown).bind(b) as NonNullable<OscodeBridge[K]>;
+}
+
 /** The Electron transport: each call is one guarded IPC to main, which jails
  *  the path to the vault folder and applies the note rule again. The guard
- *  travels as the third argument of osc:vaultWrite. */
+ *  travels as the third argument of osc:vaultWrite. The M6 members (rename,
+ *  folders, Trash in `<vault>/.trash/<original path>`, attachments) are
+ *  main's osc:vault* handlers over the same `folderFs` code the daemon
+ *  serves (stream B), so This folder and Your computer behave alike. */
 export const electronFolderTransport: FolderTransport = {
   list: () => fs().vaultList(),
   stat: (path) => fs().vaultStat(path),
@@ -42,7 +69,32 @@ export const electronFolderTransport: FolderTransport = {
   write: (path, text, guard) =>
     guard ? fs().vaultWrite(path, text, guard) : fs().vaultWrite(path, text),
   remove: (path, guard) => (guard ? fs().vaultRemove(path, guard) : fs().vaultRemove(path)),
+  rename: (from, to, guard) => m6('vaultRename')(from, to, guard),
+  listFolders: () => m6('vaultFolders')(),
+  createFolder: (path) => m6('vaultFolderCreate')(path),
+  renameFolder: (from, to) => m6('vaultFolderRename')(from, to),
+  trash: (target) => m6('vaultTrash')(target),
+  listTrash: () => m6('vaultTrashList')(),
+  restore: (id) => m6('vaultTrashRestore')(id),
+  emptyTrash: (ids) => (ids ? m6('vaultTrashEmpty')(ids) : m6('vaultTrashEmpty')()),
+  listAttachments: () => m6('vaultAttachments')(),
+  readBytes: (path, opts) => (opts ? m6('vaultReadBytes')(path, opts) : m6('vaultReadBytes')(path)),
 };
+
+/** Open an attachment of the desktop vault in the system viewer (a PDF, an
+ *  image): main jails the path and opens pdf and image extensions only.
+ *  `{ ok: false }` off the desktop or when main refuses. */
+export async function openDeviceAttachment(path: string): Promise<{ ok: boolean }> {
+  const b = bridge();
+  if (!isDeviceFolderAvailable() || typeof b?.vaultOpenAttachment !== 'function') {
+    return { ok: false };
+  }
+  try {
+    return { ok: (await b.vaultOpenAttachment(path))?.ok === true };
+  } catch {
+    return { ok: false };
+  }
+}
 
 /** What main answers when it saves the vault index (the engine's
  *  VaultIndexSaveResult): it refuses anything over 32 MB. */
