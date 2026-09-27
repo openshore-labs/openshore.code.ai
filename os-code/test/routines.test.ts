@@ -316,6 +316,30 @@ describe('routine scheduler', () => {
     expect(readFileSync(join(vault, second), 'utf8')).toContain('Second run.');
   });
 
+  // Vault M3 (H4): the routine's folder follows the vault's one new-name rule,
+  // so the note is one the app lists, opens, and can link to.
+  it("names the routine's folder by the vault's new-name rule", () => {
+    const cases: Array<[string, string]> = [
+      ['Q3: #auth [review]?', 'Q3 auth review'],
+      ['.hidden plan.', 'hidden plan'],
+      ['CON', 'CON_'],
+      ['???', 'Routine'],
+    ];
+    for (const [name, folder] of cases) {
+      const routine = store.createRoutine(input({ name }));
+      const clock = { now: at(0, 6, 0, 5) };
+      const { scheduler, opened } = makeScheduler(clock);
+      scheduler.runNow(routine.id);
+      opened[0]!.emit({ type: 'text-final', text: 'Done.' });
+      clock.now = at(0, 6, 1, 5);
+      opened[0]!.emit({ type: 'task-done', reason: 'complete' });
+      const notePath = scheduler.get(routine.id)!.lastRun!.notePath!;
+      expect(notePath.split('/').slice(0, 2)).toEqual(['Crew', folder]);
+      expect(readFileSync(join(vault, notePath), 'utf8')).toContain('Done.');
+      scheduler.stop();
+    }
+  });
+
   it('records a slot the computer slept through as skipped, once, and never replays it', async () => {
     const routine = store.createRoutine(input());
     const clock = { now: at(1, 6, 45) };

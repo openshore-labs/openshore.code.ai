@@ -2305,3 +2305,21 @@ execution contract. Newest at the bottom.
   - **H6:** wave 0 (this: the guard, `harness/vault/types.ts`, js-yaml), then
     wave 1 streams A to D split by file ownership, then wave 2 with one owner
     of `store.ts` and `VaultScreen.tsx`.
+- **Vault M3 wave 1 stream C, engine and main (2026-09-27):** the routine
+  scheduler names a routine's folder with the core's
+  `safeNoteName(name, 'Routine')` in place of its own `safeName`, so the
+  folder follows the vault's one new-name rule (no `# ^ [ ]` either, no
+  dot-led or dot-ended segment, reserved names made safe, 255 bytes at most).
+  A routine named "Q3: #auth [review]?" now writes under "Crew/Q3 auth
+  review/". There is no folder migration: old runs keep the absolute note
+  path their record holds (M1 Bring ruling), so when the new rule cleans a
+  name differently, new runs land in the new folder and older notes stay
+  where they are. `vaultWrite` checks
+  only NEW notes with `checkNewNoteName` and refuses with the clean name; an
+  existing exact path always updates, and a new name that folds (`foldPath`)
+  onto an existing note is refused naming that note, never redirected, so a
+  permission rule on the typed path cannot be stepped around. `vaultRead`
+  names a fold twin the same way and never reads it in the typed path's
+  place. Main's `listVaultFolder` is an async walk (same order, same limit,
+  8 lstats at a time per folder) and lists only paths the note rule accepts,
+  so on Windows a name NTFS cannot open never lists.

@@ -4,6 +4,7 @@
 import type {
   ApprovalAnswer,
   Catalog,
+  ConfigRead,
   CurrentsHandles,
   CurrentsHostProbe,
   DriverEvent,
@@ -17,6 +18,7 @@ import type {
   RoutineView,
   StackHealth,
   StackHealthRange,
+  VaultConfigName,
 } from 'os-code/protocol';
 import type {
   RemoveGuard,
@@ -419,6 +421,20 @@ export interface OscodeBridge {
   /** Watch the vault folder while the Vault room is open: on with the open
    *  note's path (Linux watches that note's folder too), off when it leaves. */
   vaultWatch(on: boolean, openPath?: string): Promise<void>;
+  /** The vault folder's saved index blob (serializeIndex's output), or null
+   *  when there is none or it is over the cap (Vault M3, CTO H3). Main keys it
+   *  by the vault root it reads itself; no path crosses. */
+  vaultIndexLoad(): Promise<string | null>;
+  /** Save the index blob for the current vault root: temp file then rename,
+   *  0600. A blob over 32 MB is refused ('too-large') and nothing is written. */
+  vaultIndexSave(
+    blob: string,
+  ): Promise<{ ok: true; bytes: number } | { ok: false; reason: 'too-large' }>;
+  /** Read one allowed config file by its logical name (Vault M3, CTO H5):
+   *  main maps the name to a file in the vault's config folder, reads it only
+   *  as a regular file inside the folder, capped at 256 KB. An unknown name
+   *  answers 'refused'. */
+  vaultReadConfig(name: VaultConfigName): Promise<ConfigRead>;
   /** Changes the watcher saw, debounced in main. Returns an unsubscribe. */
   onVaultChanged(cb: (change: VaultChange) => void): () => void;
   /** Where the vault folder is, whether it is there, and whether Obsidian

@@ -115,6 +115,73 @@ describe('vault write/read/list', () => {
     );
   });
 
+  // Vault M3 (H4): one new-name rule on the engine and the app. A new note
+  // must be clean, and is refused with the clean name; an existing exact path
+  // always updates, whatever its name holds.
+  it('refuses a new note name the rule forbids, with the clean name to use', async () => {
+    const cases: Array<[string, RegExp]> = [
+      ['Decision: auth?', /cannot contain : \?.*Use "Decision auth\.md"/],
+      ['C# notes', /cannot contain #.*Use "C notes\.md"/],
+      ['Plan [draft]', /cannot contain \[ \].*Use "Plan draft\.md"/],
+      ['CON', /Windows reserves.*Use "CON_\.md"/],
+      ['plans./today', /cannot end in a dot or a space.*Use "plans\/today\.md"/],
+    ];
+    for (const [path, error] of cases) {
+      await expect(
+        vaultWriteTool.execute({ path, content: 'x', mode: 'replace' }, ctx()),
+      ).rejects.toThrow(error);
+      await expect(
+        vaultWriteTool.preview!({ path, content: 'x', mode: 'replace' }, ctx()),
+      ).rejects.toThrow(error);
+    }
+    expect(readdirSync(root)).toEqual([]);
+  });
+
+  it('an existing note with a name the rule would refuse still updates and reads', async () => {
+    writeFileSync(join(root, 'Decision: auth?.md'), 'old');
+    const nfd = 'Café.md';
+    writeFileSync(join(root, nfd), 'cafe');
+    const out = await vaultWriteTool.execute(
+      { path: 'Decision: auth?.md', content: 'new', mode: 'replace' },
+      ctx(),
+    );
+    expect(out.ok).toBe(true);
+    expect(readFileSync(join(root, 'Decision: auth?.md'), 'utf8')).toBe('new');
+    expect((await vaultReadTool.execute({ path: 'Decision: auth?' }, ctx())).content).toBe('new');
+    await vaultWriteTool.execute({ path: nfd, content: 'more', mode: 'append' }, ctx());
+    expect(readFileSync(join(root, nfd), 'utf8')).toBe('cafe\nmore');
+    expect(readdirSync(root).sort()).toEqual(['Café.md', 'Decision: auth?.md'].sort());
+  });
+
+  it('a new name that folds onto an existing note is refused with that note, never a twin', async () => {
+    mkdirSync(join(root, 'Ideas'));
+    writeFileSync(join(root, 'Ideas', 'Plan.md'), 'plan');
+    writeFileSync(join(root, 'Café.md'), 'cafe');
+    const probe = join(root, 'ideas', 'plan.md');
+    // A case-insensitive disk already answers the other spelling as the note.
+    const caseInsensitive = existsSync(probe);
+    if (!caseInsensitive) {
+      await expect(
+        vaultWriteTool.execute({ path: 'ideas/plan', content: 'x', mode: 'replace' }, ctx()),
+      ).rejects.toThrow(
+        'The vault already has this note as "Ideas/Plan.md". Write to "Ideas/Plan.md" instead.',
+      );
+      expect(existsSync(join(root, 'ideas'))).toBe(false);
+      const read = await vaultReadTool.execute({ path: 'ideas/plan' }, ctx());
+      expect(read.content).toBe(
+        'No vault note at ideas/plan.md. The vault has "Ideas/Plan.md"; read that path.',
+      );
+    }
+    // NFC typed against an NFD name on disk is the same note by fold.
+    const nfc = 'Café';
+    if (!existsSync(join(root, `${nfc}.md`))) {
+      await expect(
+        vaultWriteTool.execute({ path: nfc, content: 'x', mode: 'replace' }, ctx()),
+      ).rejects.toThrow(/already has this note as "Café\.md"/);
+    }
+    expect(readFileSync(join(root, 'Ideas', 'Plan.md'), 'utf8')).toBe('plan');
+  });
+
   it('previews a create as a diff for the approval prompt', async () => {
     const preview = await vaultWriteTool.preview!(
       { path: 'note.md', content: 'body', mode: 'replace' },

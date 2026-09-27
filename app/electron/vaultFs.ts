@@ -9,10 +9,13 @@
 // here: it must be a note (`.md`, no dot segment, so `.obsidian/` plugin data
 // and attachments never cross; CTO F7.4) and it must resolve inside the vault
 // folder (the Jail, symlink-safe). A write's guard is validated the same way.
-import { existsSync, lstatSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
+import { lstat, readdir } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { Jail } from 'os-code/dist/src/core/security/jail.js';
+import { isNotePath } from 'os-code/dist/src/harness/vault/paths.js';
 import {
+  NOTE_TEMP_PATTERN,
   noteVersion,
   readNote,
   statNote,
@@ -47,21 +50,17 @@ export type VaultWriteResult =
 export type VaultRemoveResult =
   { ok: true } | { ok: false; conflict: 'changed'; theirs?: VaultFile };
 
-/** The seam's note rule (app/src/lib/gitos/providers.ts isNotePath), held
- *  again here because main cannot import renderer code. A test keeps the two
- *  in step. */
+/** The seam's note rule, the vault core's own isNotePath (Vault M3, CTO H4),
+ *  which the app's providers hold too: a `.md` path with no dot segment, no
+ *  backslash, not rooted. On Windows it also refuses what that file system
+ *  cannot hold (a colon, which names a drive or an NTFS stream, the other
+ *  forbidden characters, a reserved name, a segment ending in a dot or a
+ *  space); elsewhere an agent's "Decision: auth?.md" is an ordinary note. */
 export function isVaultNotePath(
   path: string,
   platform: NodeJS.Platform = process.platform,
 ): boolean {
-  if (!/\.md$/i.test(path)) return false;
-  // A backslash is a separator on Windows and a leading "/" is rooted, so
-  // neither is ever a note (review M1-5); the seam holds the same rule. On
-  // Windows a colon names a drive or an NTFS stream, so it is refused there
-  // too; elsewhere it is an ordinary character an agent's note may carry.
-  if (path.includes('\\') || path.startsWith('/')) return false;
-  if (platform === 'win32' && path.includes(':')) return false;
-  return !path.split('/').some((segment) => segment.startsWith('.'));
+  return isNotePath(path, { windows: platform === 'win32' });
 }
 
 /** The longest version token main accepts in a guard. A real one is three
@@ -117,40 +116,71 @@ export interface VaultListOptions {
   limit?: number;
 }
 
+/** How many lstats one folder runs at once during a list. */
+const LIST_STAT_BATCH = 8;
+
 /** Every note in the folder, with its version from one bigint lstat, sorted
  *  by path. Dot entries (`.obsidian/`, `.trash/`, our temp files) and
- *  non-notes are skipped, and a link is never followed (a Dirent reports the
- *  link itself). Temp files a crash left behind are swept as the walk passes
- *  their folder, unless `sweep` is false. */
-export function listVaultFolder(root: string, options: VaultListOptions = {}): VaultFileMeta[] {
+ *  non-notes are skipped, and so is any path the note rule refuses, so the
+ *  list holds only notes that open. A link is never followed (a Dirent
+ *  reports the link itself). Temp files a crash left behind are swept as the
+ *  walk passes their folder, unless `sweep` is false.
+ *
+ *  The walk is asynchronous (Vault M3, CTO H3 "Cold build"): a vault of
+ *  thousands of notes never holds main's event loop, so the window and every
+ *  other IPC keep answering while it lists. It visits folders in the same
+ *  order the synchronous walk did, and `limit` stops it at the same note. */
+export async function listVaultFolder(
+  root: string,
+  options: VaultListOptions = {},
+): Promise<VaultFileMeta[]> {
   if (!existsSync(root)) return [];
   const sweep = options.sweep !== false;
   const limit = options.limit ?? Infinity;
   const out: VaultFileMeta[] = [];
-  const walk = (dir: string): void => {
-    if (sweep) sweepNoteTemps(dir);
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (out.length >= limit) return;
-      if (entry.name.startsWith('.')) continue;
-      const abs = join(dir, entry.name);
-      if (entry.isDirectory()) walk(abs);
-      else if (entry.isFile() && /\.md$/i.test(entry.name)) {
-        let st;
-        try {
-          st = lstatSync(abs, { bigint: true });
-        } catch {
-          continue; // Gone between the listing and the stat.
-        }
-        out.push({
+  const walk = async (dir: string): Promise<void> => {
+    const entries = await readdir(dir, { withFileTypes: true });
+    // The sweep reads the folder again, so it runs only where a temp is.
+    if (sweep && entries.some((e) => NOTE_TEMP_PATTERN.test(e.name))) sweepNoteTemps(dir);
+    const statForList = async (abs: string): Promise<VaultFileMeta | undefined> => {
+      try {
+        const st = await lstat(abs, { bigint: true });
+        if (!st.isFile()) return undefined;
+        return {
           path: relative(root, abs).split(sep).join('/'),
           updatedAt: new Date(Number(st.mtimeMs)).toISOString(),
           size: Number(st.size),
           version: noteVersion(st),
-        });
+        };
+      } catch {
+        return undefined; // Gone between the listing and the stat.
+      }
+    };
+    let batch: string[] = [];
+    const flush = async (): Promise<void> => {
+      const metas = await Promise.all(batch.map(statForList));
+      batch = [];
+      for (const meta of metas) {
+        if (out.length >= limit) return;
+        if (meta) out.push(meta);
+      }
+    };
+    for (const entry of entries) {
+      if (out.length >= limit) break;
+      if (entry.name.startsWith('.')) continue;
+      const abs = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await flush();
+        if (out.length >= limit) return;
+        await walk(abs);
+      } else if (entry.isFile() && isVaultNotePath(relative(root, abs).split(sep).join('/'))) {
+        batch.push(abs);
+        if (batch.length >= LIST_STAT_BATCH) await flush();
       }
     }
+    await flush();
   };
-  walk(root);
+  await walk(root);
   out.sort((a, b) => a.path.localeCompare(b.path));
   return out;
 }

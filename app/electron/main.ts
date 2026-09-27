@@ -42,6 +42,13 @@ import {
 } from 'os-code/dist/src/config/load.js';
 import { managedRoot } from 'os-code/dist/src/core/security/workspaces.js';
 import {
+  VAULT_INDEX_FILE_MAX_BYTES,
+  loadVaultIndexFile,
+  saveVaultIndexFile,
+} from 'os-code/dist/src/core/vault/indexFile.js';
+import { readVaultConfigFile } from 'os-code/dist/src/core/vault/configFile.js';
+import { isVaultConfigName } from 'os-code/dist/src/harness/vault/configDir.js';
+import {
   listVaultFolder,
   parseVaultGuard,
   parseVaultRemoveGuard,
@@ -965,6 +972,35 @@ guarded('osc:vaultWrite', (p: unknown, t: unknown, g: unknown) =>
 guarded('osc:vaultRemove', (p: unknown, g: unknown) =>
   removeVaultFile(vaultDir(), str(p, 'path'), parseVaultRemoveGuard(g)),
 );
+
+// The folder vault's persisted index (Vault M3, CTO H3 "Persistence"). One
+// file per vault root under oscHome()/vault-index, named by a hash of the
+// root's real path, through the engine's indexFile module (0700 folder, 0600
+// file, temp then rename). The renderer passes only the blob, never a path
+// (CTO F7): main keys it by the vault root it reads itself on every call, so
+// a repoint loads and saves the new root's index. A blob over 32 MB is
+// refused before it is written; a file over the cap loads as null.
+guarded('osc:vaultIndexLoad', () => loadVaultIndexFile(vaultDir()));
+guarded('osc:vaultIndexSave', (blob: unknown) => {
+  const text = str(blob, 'blob');
+  // A string longer than the cap in UTF-16 units is over it in UTF-8 bytes
+  // too, so it is refused before any byte count.
+  if (text.length > VAULT_INDEX_FILE_MAX_BYTES) {
+    return { ok: false as const, reason: 'too-large' as const };
+  }
+  return saveVaultIndexFile(vaultDir(), text);
+});
+
+// readConfig for the folder vault (Vault M3, CTO H5): the renderer sends a
+// logical name, never a path. Main's allow-list maps it to one file in the
+// vault's config folder (anything else is refused before the disk is
+// touched), and the engine's configFile resolves it through the Jail and
+// reads it only when lstat shows a regular file, never a symlink, capped at
+// 256 KB. Plugin folders and workspace files are never on the list.
+guarded('osc:vaultReadConfig', (name: unknown) => {
+  if (!isVaultConfigName(name)) return { ok: false as const, reason: 'refused' as const };
+  return readVaultConfigFile(vaultDir(), name);
+});
 
 // The folder watcher (CTO F3), on while the Vault room is open. The open
 // note's path is checked like any other (a note, inside the folder) before
