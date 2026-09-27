@@ -2618,6 +2618,13 @@ textarea {
   flex: none;
 }
 
+/* The header's Today and New note buttons, side by side (CX X11). */
+.vault-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 /* ---- M6 stream W2 end ---- */
 
 /* ------------------------------------------------------------------ chat */

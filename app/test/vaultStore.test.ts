@@ -3344,6 +3344,37 @@ describe('Vault M6 operations through the store', () => {
     expect(pending()['files::vault.personal::Work/Roadmap.md']?.path).toBe('Work/Roadmap.md');
   });
 
+  it('Today opens an existing note unchanged, and starts a missing one only while the name is free', async () => {
+    const { datePartsOf, formatVaultDate } = await import('os-code/protocol');
+    const named = formatVaultDate(datePartsOf(new Date()), 'YYYY-MM-DD');
+    const path = `${named.ok ? named.text : 'x'}.md`;
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('files') },
+    });
+    F.set(path, 'already written\r\n');
+    await useApp.getState().vaultRefresh();
+    expect(useApp.getState().vaultCapsNow().today).toBe(true);
+    const writes = folder.counts.writes.length;
+    expect(await useApp.getState().vaultToday()).toEqual({ kind: 'opened', path });
+    expect(folder.counts.writes.length).toBe(writes);
+    expect(F.get(path)).toBe('already written\r\n');
+    expect(useApp.getState().vaultNote).toMatchObject({ path, text: 'already written\r\n' });
+
+    // Not there yet: one create, guarded ifAbsent, opened in the editor.
+    useApp.getState().vaultCloseNote();
+    F.delete(path);
+    await useApp.getState().vaultRefresh();
+    const { VAULT_TODAY_STARTED } = await import('../src/lib/vaultCopy.js');
+    expect(await useApp.getState().vaultToday()).toEqual({
+      kind: 'created',
+      path,
+      line: VAULT_TODAY_STARTED,
+    });
+    expect(folder.counts.writes.at(-1)).toEqual({ path, guard: { ifAbsent: true } });
+    expect(F.get(path)).toBe('');
+    expect(useApp.getState().vaultNote).toMatchObject({ path, fresh: true });
+  });
+
   it('without a real Trash a delete is for good, and Undo comes back beside a taken name', async () => {
     await openOnFolder('x.md', 'first words');
     expect(useApp.getState().vaultCapsNow().trash).toBe(false);

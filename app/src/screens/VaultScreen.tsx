@@ -120,6 +120,8 @@ import {
   vaultRenameTaken,
   vaultRenameToast,
   vaultRecentAgentLabel,
+  vaultTodayAria,
+  VAULT_TODAY_TITLE,
   type VaultDriveLink,
   type VaultOnboard,
   type VaultSaveStatus,
@@ -147,7 +149,7 @@ import { hermesNoteRead, hermesNotesList } from '../lib/currentsProbe.js';
 import { isDesktop, openExternal, platform } from '../lib/platform.js';
 import { useExitPresence } from '../hooks/useExitPresence.js';
 import { durationMs, sheetExitMs } from '../lib/motion.js';
-import type { HermesNote, HermesNoteMeta } from 'os-code/protocol';
+import { datePartsOf, type HermesNote, type HermesNoteMeta } from 'os-code/protocol';
 import { Icon } from '../components/Icon.js';
 import { VaultAgentRecent } from '../components/VaultAgentRecent.js';
 import { VaultBacklinks } from '../components/vault/VaultBacklinks.js';
@@ -274,6 +276,7 @@ export function VaultScreen() {
     vaultFolders,
     vaultSearchSource,
     vaultRecentRing,
+    vaultToday,
   } = useApp();
 
   const team = vaultScope === 'team';
@@ -453,6 +456,9 @@ export function VaultScreen() {
   const [searchQ, setSearchQ] = useState('');
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [agentNotes, setAgentNotes] = useState<VaultPickerNote[]>([]);
+  // A note Today just started opens in the editor with the caret at the end
+  // (CX X11).
+  const caretToEnd = useRef(false);
   const [linksLeft, setLinksLeft] = useState<
     | {
         path: string;
@@ -674,6 +680,18 @@ export function VaultScreen() {
     setMentionsError(undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vaultNote?.path]);
+  // Today's new note: the caret goes to the end, where the day's writing
+  // starts.
+  useEffect(() => {
+    if (!editing || !caretToEnd.current) return;
+    caretToEnd.current = false;
+    requestAnimationFrame(() => {
+      const el = editorRef.current;
+      if (!el) return;
+      el.focus({ preventScroll: true });
+      el.setSelectionRange?.(el.value.length, el.value.length);
+    });
+  }, [editing, vaultNote?.path]);
   // Linked mentions come from the index (M3 3.2): it names the notes that
   // link here, and only those are read (through the body cache) for their
   // excerpts, so opening a note never reads the whole vault. They ask again
@@ -868,6 +886,37 @@ export function VaultScreen() {
     void vaultOpen(path);
   };
 
+  // Today's note (6.4; CTO K7, CX X11): an existing one opens unchanged and
+  // says nothing; a new one opens in the editor, caret at the end, with its
+  // line; a vault that cannot start one says why.
+  const openToday = async () => {
+    flushSave();
+    const r = await vaultToday();
+    if (!r) return;
+    if (r.kind === 'refused') {
+      showToast(r.line);
+      return;
+    }
+    if (r.kind === 'created') {
+      caretToEnd.current = true;
+      if (r.line) showToast(r.line);
+    }
+  };
+  const todayButton = caps.today ? (
+    <button
+      type="button"
+      className="icon-btn vault-today-btn press-fb"
+      aria-label={vaultTodayAria(datePartsOf(new Date()))}
+      title={VAULT_TODAY_TITLE}
+      onClick={() => void openToday()}
+    >
+      <Icon size={20}>
+        <rect x="3.5" y="5" width="17" height="15.5" rx="2.5" />
+        <path d="M3.5 10h17M8 3v4M16 3v4" />
+      </Icon>
+    </button>
+  ) : null;
+
   // The quick switcher (6.1; CTO K9, CX X3): Cmd or Ctrl+O while the room is
   // shown. Titles only; Today first and Recent while the field is empty.
   useVaultSwitcherShortcut(true, () => setSwitcherOpen(true));
@@ -879,6 +928,7 @@ export function VaultScreen() {
       recent={recentRows}
       agentLabel={agentLabel}
       onPick={openNote}
+      {...(caps.today ? { onToday: () => void openToday() } : {})}
       onCreate={(name) => {
         const path = normalizeNotePath(name);
         if (!path || locked || hubAway) return;
@@ -1873,21 +1923,24 @@ export function VaultScreen() {
       <div className="screen-inner">
         <div className="stack-head">
           <h1>Vault</h1>
-          {/* A read-only Drive vault leaves New note out; its card says why.
-              So does a moving vault, and a folder that is not there. */}
-          {!driveReadOnly && !vaultMoving && !folderGone && !readOnly && !hubAway ? (
-            <button
-              type="button"
-              className="icon-btn press-fb"
-              aria-label="New note"
-              title="New note"
-              onClick={() => setNewOpen(true)}
-            >
-              <Icon size={20}>
-                <path d="M12 5v14M5 12h14" />
-              </Icon>
-            </button>
-          ) : null}
+          <div className="vault-head-actions">
+            {!vaultMoving && !folderGone ? todayButton : null}
+            {/* A read-only Drive vault leaves New note out; its card says why.
+                So does a moving vault, and a folder that is not there. */}
+            {!driveReadOnly && !vaultMoving && !folderGone && !readOnly && !hubAway ? (
+              <button
+                type="button"
+                className="icon-btn press-fb"
+                aria-label="New note"
+                title="New note"
+                onClick={() => setNewOpen(true)}
+              >
+                <Icon size={20}>
+                  <path d="M12 5v14M5 12h14" />
+                </Icon>
+              </button>
+            ) : null}
+          </div>
         </div>
         {teamAvailable ? (
           <div

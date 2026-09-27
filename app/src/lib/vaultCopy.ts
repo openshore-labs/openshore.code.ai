@@ -1971,4 +1971,7 @@ export const VAULT_FOLDER_CREATE_FAILED = 'Could not make that folder. Try again
 export function vaultFolderMovePartial(old: string, moved: number, total: number): string {
   return `Moved ${moved} of ${total} ${total === 1 ? 'note' : 'notes'} from "${old}". The rest could not be moved, so they are still there. Try again in a moment.`;
 }
+/** Today's note could not be read or started, for a reason the storage did
+ *  not name. */
+export const VAULT_TODAY_FAILED = "Could not open today's note. Try again in a moment.";
 // ---- M6 wave 2 end ----

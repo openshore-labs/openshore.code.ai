@@ -390,6 +390,7 @@ import {
   type WriteResult,
 } from '../lib/gitos/providers.js';
 import { vaultCaps, type VaultCaps } from '../lib/vaultCaps.js';
+import { clearVaultTodayCache, resolveVaultToday, vaultTodayLine } from '../lib/vaultToday.js';
 import {
   dropVaultRecent,
   pushVaultRecent,
@@ -404,6 +405,7 @@ import {
   deleteFolder as opsDeleteFolder,
   deleteNote as opsDeleteNote,
   emptyTrash as opsEmptyTrash,
+  openToday as opsOpenToday,
   folderCounts as opsFolderCounts,
   listTrash as opsListTrash,
   prepareFolderMove as opsPrepareFolderMove,
@@ -429,6 +431,8 @@ import {
 } from '../lib/vaultLease.js';
 import {
   vaultLeaseEnforced,
+  HUB_AWAY_READ_ONLY,
+  VAULT_TODAY_FAILED,
   VAULT_GONE_REASON,
   VAULT_NO_COPY_NAME_REASON,
   vaultEarlierFolderHeld,
@@ -908,6 +912,14 @@ export interface VaultMoveResult {
 export type VaultDeleteOutcome =
   | { ok: true; trashed: boolean; undo?: VaultUndo; notes: number; attachments: number }
   | { ok: false; reason: 'storage' | 'unsupported' | 'missing' | 'changed' | 'downloading' };
+
+/** Today's note from the room (Vault M6 6.4; CTO K7, CX X11): an existing
+ *  note opens as it is, a new one opens in the editor with its line, and a
+ *  vault that cannot start one says why. */
+export type VaultTodayOutcome =
+  | { kind: 'opened'; path: string }
+  | { kind: 'created'; path: string; line?: string }
+  | { kind: 'refused'; line: string };
 
 export type VaultReadAllResult = Array<{ path: string; text: string }> & { failed: string[] };
 
@@ -1907,6 +1919,10 @@ interface AppState {
   vaultSearchSource(): VaultSearchSource | undefined;
   /** The notes this device opened or saved in the vault on screen. */
   vaultRecentRing(): VaultRecentEntry[];
+  /** Today's note (6.4): lib/vaultToday resolves which note and what a new
+   *  one starts with; vaultOps.openToday writes it only while nothing has
+   *  the name (one Today implementation). */
+  vaultToday(): Promise<VaultTodayOutcome | undefined>;
   /** The switch note's "Save to Vault" (J12, D3): the person's own one-tap
    *  write to `Handoffs/<date> <project>.md`, `ifAbsent`, " 2" on a clash. */
   saveHandoffToVault(conversationId: string, itemId: string): Promise<string | undefined>;
@@ -3897,6 +3913,7 @@ export const useApp = create<AppState>((set, get, api) => {
     // computer go with it. The pairing itself is not the account's, so the
     // hub link comes back fresh, holding nothing of the last person's.
     await shutVaultIndex().catch(() => {});
+    clearVaultTodayCache();
     forgetVaultContext();
     await syncHubLink(get().settings.daemon, { forget: true });
     const s = get().settings;
@@ -5000,6 +5017,7 @@ export const useApp = create<AppState>((set, get, api) => {
    *  storage change or a pairing change, never on leaving the room). */
   async function afterVaultRepoint(): Promise<void> {
     await shutVaultIndex().catch(() => {});
+    clearVaultTodayCache();
     if (get().vaultScope === 'personal') {
       if (get().vaultNote) {
         await leaveVaultConflict();
@@ -5130,6 +5148,7 @@ export const useApp = create<AppState>((set, get, api) => {
     if (!opts.initial) {
       await prev?.forget().catch(() => {});
       await shutVaultIndex().catch(() => {});
+      clearVaultTodayCache();
       forgetVaultContext();
     }
     if (!daemon || !key) {
@@ -10125,6 +10144,70 @@ export const useApp = create<AppState>((set, get, api) => {
       };
     },
 
+    async vaultToday() {
+      const t = vaultTarget();
+      if (!t || !capsOf(t).today) return undefined;
+      const plan = await resolveVaultToday({
+        provider: t.provider,
+        resourceId: t.resourceId,
+        paths: get().vaultFiles.map((f) => f.path),
+        readBody: (path) => readBodyOf(t, path),
+        cacheKey: foldersKey(t),
+      }).catch(() => undefined);
+      if (!plan) return { kind: 'refused', line: VAULT_TODAY_FAILED };
+      if (!plan.ok) return { kind: 'refused', line: vaultTodayLine(plan)! };
+      // Already there: it opens as it is, with nothing written (K7).
+      if (plan.exists) {
+        await get().vaultOpen(plan.path);
+        return { kind: 'opened', path: plan.path };
+      }
+      // A start is a write: read-only or away says so in the room's words.
+      const caps = capsOf(t);
+      if (!caps.taskWriteBack) {
+        const why =
+          vaultReadOnlyReason(t.providerId) ??
+          (t.providerId === 'hub' && hubReach() === 'away' ? HUB_AWAY_READ_ONLY : undefined) ??
+          (get().vaultLeaseHeldByOther
+            ? vaultLeaseEnforced(get().vaultLeaseOther?.label).line
+            : undefined) ??
+          VAULT_TODAY_FAILED;
+        return { kind: 'refused', line: why };
+      }
+      if (await leaseRefuses(t)) return undefined;
+      const r = await opsOpenToday(opsDeps(t), { path: plan.path, text: plan.text });
+      if (!r.ok) {
+        return {
+          kind: 'refused',
+          line:
+            r.reason === 'downloading'
+              ? 'Still downloading this note from your vault storage. Try again shortly.'
+              : VAULT_TODAY_FAILED,
+        };
+      }
+      if (!r.created) {
+        // Another device made it a moment ago: open what is there, silently.
+        await get().vaultOpen(r.path);
+        return { kind: 'opened', path: r.path };
+      }
+      if (!isActiveVault(t)) return undefined;
+      vaultLiveDraft = undefined;
+      set({
+        vaultNote: {
+          path: r.file.path,
+          text: r.file.text,
+          updatedAt: r.file.updatedAt,
+          version: r.file.version,
+          fresh: true,
+          loadedAt: Date.now(),
+        },
+        vaultError: undefined,
+      });
+      noteVaultRecent(t, r.file.path);
+      logEvent('vault_today', { template: Boolean(plan.template?.found) });
+      const line = vaultTodayLine(plan);
+      return { kind: 'created', path: r.file.path, ...(line ? { line } : {}) };
+    },
+
     vaultRecentRing() {
       const t = vaultTarget();
       return t ? (get().settings.vaultRecent?.[foldersKey(t)] ?? []) : [];
@@ -10193,7 +10276,10 @@ export const useApp = create<AppState>((set, get, api) => {
         const result = await moveVaultInner(providerId);
         // The vault lives somewhere else now: the warm index belonged to the
         // old home (Vault M5, CTO J1 closes it on a storage move).
-        if (result.ok) await shutVaultIndex().catch(() => {});
+        if (result.ok) {
+          await shutVaultIndex().catch(() => {});
+          clearVaultTodayCache();
+        }
         return result;
       } finally {
         set({ vaultMoving: false });
@@ -10358,6 +10444,7 @@ export const useApp = create<AppState>((set, get, api) => {
       if (result.ok) {
         await get().saveSettings({ vaultHubOffer: undefined, vaultBeforeHub: before });
         await shutVaultIndex().catch(() => {});
+        clearVaultTodayCache();
         logEvent('vault_hub_offer', { action: 'move', forked: result.forked.length });
         if (get().view === 'vault') void get().vaultRefresh();
       }
