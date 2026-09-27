@@ -2631,7 +2631,7 @@ textarea {
   padding: 0 5px;
   margin: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   background: var(--surface);
   color: var(--ink-soft);
   font: inherit;
