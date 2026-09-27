@@ -67,10 +67,43 @@ export { memoryEnabled } from './core/agent/memorySwitch.js';
 // import-free.
 export { unifiedDiff } from './core/edit/diff.js';
 export type { DiffStats } from './core/edit/diff.js';
-// The keep-both name for a note's second version, shared so the app's store
-// and the desktop's main process (Bring) name the same note the same way.
-// Pure and import-free.
-export { vaultConflictCopyPath } from './core/vault/conflictName.js';
+// The Vault's shared core (Vault M3, CTO H1, H2 and H4): the one new-name
+// rule and the path helpers, the note scanner, the frontmatter reader, link
+// resolution, link rewriting and excerpts. The app, the engine's vault tools,
+// the scheduler and the desktop's main process all run this same code. Pure
+// (js-yaml is the one package), guarded by test/harnessPurity.test.ts.
+export {
+  checkNewNoteName,
+  cleanNotePath,
+  eolOf,
+  foldPath,
+  isConflictCopy,
+  isNotePath,
+  nonNoteExtension,
+  normalizeNotePath,
+  noteFolder,
+  noteTitle,
+  safeNoteName,
+  utf8Length,
+  vaultConflictCopyPath,
+} from './harness/vault/paths.js';
+export {
+  findFrontmatter,
+  isNoteDestination,
+  scanInlineLinks,
+  scanNote,
+} from './harness/vault/scan.js';
+export { readFrontmatter } from './harness/vault/frontmatter.js';
+export {
+  buildPathIndex,
+  linkTextFor,
+  resolveMarkdownLink,
+  resolveMarkdownPath,
+  resolveWikilink,
+  wikilinkContext,
+} from './harness/vault/resolve.js';
+export { rewriteLinks } from './harness/vault/rewrite.js';
+export { excerptAt } from './harness/vault/excerpt.js';
 // The Vault's shared core contract (Vault M3, CTO H1 to H5): the types the
 // scanner, frontmatter reader, resolver, index and readConfig seam agree on.
 // Types only, so nothing reaches the bundle.
