@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { byomRef, byomSecretKey, normalizeBaseUrl, type ByomConnection } from '../src/lib/byom.js';
+import {
+  BYOM_DEFAULT_CONTEXT_TOKENS,
+  byomHost,
+  byomRef,
+  byomSecretKey,
+  normalizeBaseUrl,
+  type ByomConnection,
+} from '../src/lib/byom.js';
 import { refKey, refName } from '../src/lib/stack.js';
 
 const conn: ByomConnection = {
@@ -25,5 +32,17 @@ describe('byom helpers', () => {
     expect(normalizeBaseUrl('  https://host/v1/  ')).toBe('https://host/v1');
     expect(normalizeBaseUrl('https://host/v1/chat/completions')).toBe('https://host/v1');
     expect(normalizeBaseUrl('http://127.0.0.1:8000/v1')).toBe('http://127.0.0.1:8000/v1');
+  });
+
+  it('reads the host a base URL points at, or none', () => {
+    expect(byomHost('https://gpu.tail1234.ts.net/v1')).toBe('gpu.tail1234.ts.net');
+    expect(byomHost('localhost:11434/v1')).toBe('localhost');
+    expect(byomHost('http://[::1]:8080/v1')).toBe('[::1]');
+    expect(byomHost('')).toBeUndefined();
+    expect(byomHost('http://')).toBeUndefined();
+  });
+
+  it('assumes an 8k window when the connection names none (CTO J4)', () => {
+    expect(BYOM_DEFAULT_CONTEXT_TOKENS).toBe(8192);
   });
 });

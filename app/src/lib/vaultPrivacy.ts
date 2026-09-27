@@ -2,10 +2,20 @@
 // which stay on this computer, compiled with the core's `compileVaultPrivacy`
 // so the app judges every note exactly as the engine does.
 //
-// WAVE 0 CONTRACT. Built by stream E; throws until then. Privacy must be real:
-// a silent default here could send a private note to a cloud seat.
-import type { VaultPrivacy, VaultPrivacyConfig } from 'os-code/protocol';
-import type { VaultPrivacySetting } from '../state/types.js';
+// The phone has no machine config of its own, so the rules come from the
+// machine that holds the vault: the desktop's main process through the bridge,
+// or the paired hub over `GET /vault/privacy`. An unpaired phone uses the D5
+// defaults. The device setting only ever narrows, and nothing loaded means the
+// D5 defaults, never no rules at all (fail closed).
+import {
+  VAULT_PRIVACY_ROUTE,
+  compileVaultPrivacy,
+  type VaultPrivacy,
+  type VaultPrivacyConfig,
+} from 'os-code/protocol';
+import { VAULT_PRIVACY_DEFAULTS, type VaultPrivacySetting } from '../state/types.js';
+import { nativeFetch } from './nativeFetch.js';
+import { storeGetJson, storeSetJson } from './platform.js';
 
 /** Where the rules come from, in order (J3). */
 export interface AppVaultPrivacyDeps {
@@ -18,6 +28,90 @@ export interface AppVaultPrivacyDeps {
   /** The device setting (`settings.vaultPrivacy`), union-only on top of the
    *  source's rules; the only source on an unpaired phone. */
   device?: VaultPrivacySetting;
+  /** Where the hub's last answer is kept, sealed (default: none, so a failed
+   *  fetch reads D5 alone). `hubPrivacyCache` is the device store. */
+  cache?: PrivacyCache;
+}
+
+/** The last privacy answer a hub gave, kept for when it is out of reach. */
+export interface PrivacyCache {
+  load(): Promise<VaultPrivacyConfig | undefined>;
+  save(config: VaultPrivacyConfig): Promise<void>;
+}
+
+/** The D5 defaults as a config. */
+function d5(): VaultPrivacyConfig {
+  return {
+    exclude: [...VAULT_PRIVACY_DEFAULTS.exclude],
+    localOnly: {
+      paths: [...VAULT_PRIVACY_DEFAULTS.localOnly.paths],
+      tags: [...VAULT_PRIVACY_DEFAULTS.localOnly.tags],
+    },
+  };
+}
+
+function strings(v: unknown): string[] | null {
+  return Array.isArray(v) && v.every((x) => typeof x === 'string') ? (v as string[]) : null;
+}
+
+/** A privacy config as a source sent it, or null when it is not one (a
+ *  malformed answer is no answer, so the caller falls back to D5). */
+export function readPrivacyConfig(raw: unknown): VaultPrivacyConfig | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as { exclude?: unknown; localOnly?: { paths?: unknown; tags?: unknown } };
+  const exclude = strings(o.exclude);
+  const paths = strings(o.localOnly?.paths);
+  const tags = strings(o.localOnly?.tags);
+  if (!exclude || !paths || !tags) return null;
+  return { exclude, localOnly: { paths, tags } };
+}
+
+/** Both configs at once: a union, so neither can lift the other's rule. */
+function union(a: VaultPrivacyConfig, b: VaultPrivacyConfig): VaultPrivacyConfig {
+  return {
+    exclude: [...a.exclude, ...b.exclude],
+    localOnly: {
+      paths: [...a.localOnly.paths, ...b.localOnly.paths],
+      tags: [...a.localOnly.tags, ...b.localOnly.tags],
+    },
+  };
+}
+
+/** The source's rules (J3's order), before the device setting narrows them. */
+async function sourceRules(deps: AppVaultPrivacyDeps): Promise<VaultPrivacyConfig> {
+  if (deps.bridge) {
+    // The machine's own keys. A bridge that cannot answer is no rules, so D5.
+    try {
+      return readPrivacyConfig(await deps.bridge.vaultPrivacy()) ?? d5();
+    } catch {
+      return d5();
+    }
+  }
+  if (deps.hub) {
+    try {
+      const got = readPrivacyConfig(await deps.hub.fetchPrivacy());
+      if (got) {
+        try {
+          await deps.cache?.save(got);
+        } catch {
+          // A cache that cannot be written only costs the offline fallback.
+        }
+        return got;
+      }
+    } catch {
+      // Out of reach: the last answer below, with D5 on top.
+    }
+    let cached: VaultPrivacyConfig | null = null;
+    try {
+      cached = readPrivacyConfig(await deps.cache?.load());
+    } catch {
+      cached = null;
+    }
+    return cached ? union(cached, d5()) : d5();
+  }
+  // Unpaired: there is no machine to ask, so D5 (it has no person override in
+  // v1, so the device setting below can add to it and never take it away).
+  return d5();
 }
 
 /**
@@ -25,7 +119,44 @@ export interface AppVaultPrivacyDeps {
  * means the D5 defaults (`VAULT_PRIVACY_DEFAULTS`), never none. The device
  * setting may only narrow (the compiler's union-only second argument).
  */
-export function appVaultPrivacy(deps?: AppVaultPrivacyDeps): Promise<VaultPrivacy> {
-  void deps;
-  return Promise.reject(new Error('appVaultPrivacy is not built yet (Vault M5, stream E).'));
+export async function appVaultPrivacy(deps: AppVaultPrivacyDeps = {}): Promise<VaultPrivacy> {
+  const source = await sourceRules(deps);
+  const device = readPrivacyConfig(deps.device);
+  return compileVaultPrivacy(source, device ?? undefined);
+}
+
+/** A paired hub's privacy source: `GET /vault/privacy` with the pairing's
+ *  bearer token, through the native shim (the hub sends no CORS headers). */
+export function hubPrivacySource(target: {
+  baseUrl: string;
+  token: string;
+}): NonNullable<AppVaultPrivacyDeps['hub']> {
+  return {
+    async fetchPrivacy() {
+      const res = await nativeFetch(`${target.baseUrl.replace(/\/+$/, '')}${VAULT_PRIVACY_ROUTE}`, {
+        headers: { authorization: `Bearer ${target.token}` },
+        responseType: 'json',
+      });
+      if (!res.ok) throw new Error(`Your computer answered ${res.status}.`);
+      const got = readPrivacyConfig(await res.json());
+      if (!got) throw new Error('Your computer sent privacy rules this app cannot read.');
+      return got;
+    },
+  };
+}
+
+/** The sealed device store for one hub's last privacy answer, keyed by the
+ *  hub's address so a second hub never reads the first one's rules. */
+export function hubPrivacyCache(baseUrl: string): PrivacyCache {
+  const key = 'oscode.vaultPrivacy.hub.v1';
+  return {
+    async load() {
+      const kept = await storeGetJson<{ baseUrl?: string; config?: unknown }>(key);
+      if (!kept || kept.baseUrl !== baseUrl) return undefined;
+      return readPrivacyConfig(kept.config) ?? undefined;
+    },
+    async save(config) {
+      await storeSetJson(key, { baseUrl, config });
+    },
+  };
 }
