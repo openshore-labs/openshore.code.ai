@@ -19,6 +19,7 @@ const h = vi.hoisted(() => ({
 vi.mock('../src/lib/gitos/icloudPlugin.js', () => ({ Icloud: h.Icloud }));
 
 import { icloudProvider } from '../src/lib/gitos/icloud.js';
+import { normalizeNotePath } from '../src/lib/vault.js';
 
 const at = '2026-09-01T00:00:00Z';
 const file = (path: string, extra: Record<string, unknown> = {}) => ({
@@ -64,6 +65,15 @@ describe('iCloud provider lists only notes (0.6)', () => {
   it('stat finds no non-note', async () => {
     expect(await icloudProvider.stat('vault.personal', '.obsidian/workspace.json')).toBeUndefined();
     expect(await icloudProvider.stat('vault.personal', 'attachments/pic.png')).toBeUndefined();
+  });
+
+  it('a dot-typed note name lands where list and stat see it', async () => {
+    // The plugin prunes dot segments too, so a typed ".NET migration" stored
+    // as ".NET migration.md" never listed and a second create wrote over it.
+    const path = normalizeNotePath('.NET migration')!;
+    h.Icloud.list.mockResolvedValue({ files: [file(path)] });
+    expect((await icloudProvider.list('vault.personal')).map((f) => f.path)).toEqual([path]);
+    expect(await icloudProvider.stat('vault.personal', path)).toMatchObject({ path });
   });
 
   it('the lease still rides its own file, though it never lists', async () => {

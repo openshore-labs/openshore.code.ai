@@ -43,8 +43,10 @@ vi.mock('../src/lib/llamaPlugin.js', () => ({
 }));
 
 // Browser storage with the enumeration surface (length and key) the recovery
-// scan walks.
+// scan walks. A key in `full` refuses writes the way a browser does when the
+// origin's quota is spent.
 const local = new Map<string, string>();
+const full = new Set<string>();
 const fakeLocalStorage = {
   get length() {
     return local.size;
@@ -52,6 +54,11 @@ const fakeLocalStorage = {
   key: (i: number) => [...local.keys()][i] ?? null,
   getItem: (k: string) => local.get(k) ?? null,
   setItem: (k: string, v: string) => {
+    if (full.has(k)) {
+      throw Object.assign(new Error('The quota has been exceeded.'), {
+        name: 'QuotaExceededError',
+      });
+    }
     local.set(k, v);
   },
   removeItem: (k: string) => {
@@ -74,6 +81,7 @@ beforeAll(() => {
 
 const { localProvider } = await import('../src/lib/gitos/local.js');
 const platform = await import('../src/lib/platform.js');
+const { normalizeNotePath, resolveWikilink } = await import('../src/lib/vault.js');
 
 const listed = async (resourceId: string) =>
   (await localProvider.list(resourceId)).map((f) => f.path);
@@ -124,6 +132,28 @@ describe('Local provider rebuilds orphaned notes (0.8)', () => {
     expect(index?.files.map((f) => f.path)).toContain('ideas/Lost.md');
   });
 
+  it('a failed write-back still lists the orphan, and a later list keeps it', async () => {
+    // The usual orphan: a body landed and its index write then threw because
+    // the store was full. Listing must not throw on every call after that, or
+    // the vault shows nothing and cannot be moved off to free the space.
+    const r = 'vault.quota';
+    const index = `oscode.gitos.index.${r}`;
+    await localProvider.write(r, 'a.md', 'a');
+    full.add(index);
+    try {
+      await expect(localProvider.write(r, 'b.md', 'b')).rejects.toThrow(/quota/);
+      expect(await listed(r)).toEqual(['a.md', 'b.md']);
+      expect(await localProvider.stat(r, 'a.md')).toMatchObject({ path: 'a.md' });
+      expect(await localProvider.stat(r, 'b.md')).toMatchObject({ path: 'b.md', size: 1 });
+    } finally {
+      full.delete(index);
+    }
+    // Space is back: the next list writes the rebuilt index.
+    expect(await listed(r)).toEqual(['a.md', 'b.md']);
+    const stored = await platform.storeGetJson<{ files: Array<{ path: string }> }>(index);
+    expect(stored?.files.map((f) => f.path)).toEqual(['a.md', 'b.md']);
+  });
+
   it('rebuilds only notes under this resource, never a copy aside or a non-note', async () => {
     const r = 'vault.scoped';
     const body = { text: 'x', updatedAt: '2026-09-01T00:00:00.000Z' };
@@ -143,6 +173,59 @@ describe('Local provider lists only notes (0.6)', () => {
     await localProvider.write(r, 'diagram.png', 'not a note');
     await localProvider.write(r, '.obsidian/app.json', '{}');
     expect(await listed(r)).toEqual(['Note.md']);
+  });
+});
+
+// What vaultCreate does with a typed name: normalize it, open it when the
+// list or stat knows it, and write an empty body only when neither does.
+async function createTyped(resourceId: string, typed: string): Promise<string> {
+  const path = normalizeNotePath(typed)!;
+  const files = await localProvider.list(resourceId);
+  if (files.some((f) => f.path === path)) return path;
+  if (await localProvider.stat(resourceId, path)) return path;
+  await localProvider.write(resourceId, path, '');
+  return path;
+}
+
+describe('a dot-typed note name never truncates the note (0.2, 0.6)', () => {
+  it('create, type, create again: the body stays and the note lists', async () => {
+    const r = 'vault.dotname';
+    const path = await createTyped(r, '.NET migration');
+    await localProvider.write(r, path, 'three pages of migration notes');
+    expect(await listed(r)).toContain(path);
+    expect(await createTyped(r, '.NET migration')).toBe(path);
+    expect((await localProvider.read(r, path))?.text).toBe('three pages of migration notes');
+  });
+
+  it('a link tap on [[.NET migration]] opens that note, never an empty one', async () => {
+    const r = 'vault.dotlink';
+    const path = await createTyped(r, 'Ideas/.env setup');
+    await localProvider.write(r, path, 'PORT and the API key');
+    const resolved = resolveWikilink('.env setup', await listed(r));
+    expect(resolved).toBe(path);
+    // A tap on a resolved link opens it; even the create path finds it.
+    expect(await createTyped(r, 'Ideas/.env setup')).toBe(path);
+    expect((await localProvider.read(r, path))?.text).toBe('PORT and the API key');
+  });
+
+  it('stat still sees a hidden legacy note, so nothing writes over it', async () => {
+    // Before 0.6 the app stored a typed ".NET migration" as is. It no longer
+    // lists, but a create or a draft replay that asks stat must still learn
+    // that bytes live there.
+    const r = 'vault.legacydot';
+    await localProvider.write(r, '.NET migration.md', 'old body');
+    expect(await listed(r)).toEqual([]);
+    expect(await localProvider.stat(r, '.NET migration.md')).toMatchObject({
+      path: '.NET migration.md',
+      size: 'old body'.length,
+    });
+    // An orphaned hidden body is seen too, though it never lists.
+    await platform.storeSetJson(`oscode.gitos.file.${r}..env notes.md`, {
+      text: 'orphan',
+      updatedAt: '2026-09-01T00:00:00.000Z',
+    });
+    expect(await localProvider.stat(r, '.env notes.md')).toMatchObject({ size: 6 });
+    expect(await listed(r)).toEqual([]);
   });
 });
 

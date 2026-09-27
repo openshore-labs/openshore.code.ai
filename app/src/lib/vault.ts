@@ -73,28 +73,48 @@ export function nonNoteExtension(raw: string): string | undefined {
   return NON_NOTE_EXTENSION.exec(raw.trim())?.[0].toLowerCase();
 }
 
+/** A typed name or link target cleaned into a vault-relative path, before any
+ *  extension rule: NFC, forward slashes, no forbidden characters, and no
+ *  leading dots on any segment. A dot segment is hidden (isNotePath, and
+ *  Obsidian hides it too), so ".NET migration" becomes "NET migration": kept
+ *  as typed, the note would never list, and the next create or link tap would
+ *  write an empty body over it. Stripping the dots also drops dot and dot-dot
+ *  segments, so a typed name or a wikilink can never climb out of the vault
+ *  root and clobber a sibling resource (SEC: path jail). '' when nothing is
+ *  left. */
+function cleanNotePath(raw: string): string {
+  return (
+    raw
+      // Normalize to NFC so a name typed on one device matches the same name
+      // an NFD filesystem (iCloud/APFS) stored, instead of forking two notes.
+      .normalize('NFC')
+      .trim()
+      .replace(/\\/g, '/')
+      .split('/')
+      // Strip characters forbidden on common filesystems and Obsidian's own
+      // link syntax (a note containing these could never be wikilinked).
+      .map((s) =>
+        s
+          .trim()
+          .replace(/[<>:"|?*#^[\]]/g, '')
+          .replace(/^[\s.]+/, ''),
+      )
+      .filter(Boolean)
+      .join('/')
+  );
+}
+
 /** Normalize a user-typed note name or path into a vault-relative .md path:
- *  strips leading/trailing slashes and whitespace, collapses separators, and
- *  appends .md when absent. Returns undefined for an empty result, and for a
- *  name that already ends in a known non-markdown extension: `diagram.png` is
- *  an attachment, so a link to it never becomes an empty `diagram.png.md`
- *  (and nothing is written under the attachment's own name). A name with any
- *  other dot, like `v1.2 plan`, is still a note. Dot and dot-dot segments are
- *  dropped so a typed name or a wikilink can never climb out of the vault
- *  root and clobber a sibling resource (SEC: path jail). */
+ *  strips leading/trailing slashes, whitespace, and leading dots, collapses
+ *  separators, and appends .md when absent. Every path it returns is one
+ *  isNotePath accepts, so a note it names always lists. Returns undefined
+ *  for an empty result, and for a name that already ends in a known
+ *  non-markdown extension: `diagram.png` is an attachment, so a new note is
+ *  never an empty `diagram.png.md` (and nothing is written under the
+ *  attachment's own name). A name with any other dot, like `v1.2 plan`, is
+ *  still a note. */
 export function normalizeNotePath(raw: string): string | undefined {
-  const cleaned = raw
-    // Normalize to NFC so a name typed on one device matches the same name an
-    // NFD filesystem (iCloud/APFS) stored, instead of forking into two notes.
-    .normalize('NFC')
-    .trim()
-    .replace(/\\/g, '/')
-    .split('/')
-    // Strip characters forbidden on common filesystems and Obsidian's own link
-    // syntax (a note containing these could never be wikilinked anyway).
-    .map((s) => s.trim().replace(/[<>:"|?*#^[\]]/g, ''))
-    .filter((s) => s && s !== '.' && s !== '..')
-    .join('/');
+  const cleaned = cleanNotePath(raw);
   if (!cleaned) return undefined;
   if (/\.md$/i.test(cleaned)) return cleaned;
   return NON_NOTE_EXTENSION.test(cleaned) ? undefined : `${cleaned}.md`;
@@ -103,10 +123,14 @@ export function normalizeNotePath(raw: string): string | undefined {
 /** Resolve a wikilink target against the vault's file list, the way Obsidian
  *  does: an exact path match first, then a unique filename match anywhere in
  *  the vault. Returns the matched path, or undefined when the note does not
- *  exist yet (an unresolved link, shown dashed and created on tap). */
+ *  exist yet (an unresolved link, shown dashed and created on tap). The
+ *  attachment rule is for creating only: [[package.json]] still resolves to
+ *  an existing "package.json.md", and only a target that matches no note and
+ *  ends in an attachment extension is left as an attachment. */
 export function resolveWikilink(target: string, paths: string[]): string | undefined {
-  const want = normalizeNotePath(target);
-  if (!want) return undefined;
+  const cleaned = cleanNotePath(target);
+  if (!cleaned) return undefined;
+  const want = /\.md$/i.test(cleaned) ? cleaned : `${cleaned}.md`;
   const lower = want.toLowerCase();
   const exact = paths.find((p) => p.toLowerCase() === lower);
   if (exact) return exact;
