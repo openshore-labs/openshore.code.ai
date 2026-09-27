@@ -2584,6 +2584,9 @@ export const useApp = create<AppState>((set, get, api) => {
           // them even by accident.
           sessionId = await daemonCreateSession(settings.daemon, cwd, {
             instructions: sessionOpts.instructions,
+            // The project's name too, so the hub files project memory in the
+            // same folder a desktop-created session does.
+            projectName: sessionOpts.projectName,
             permissionMode: sessionOpts.permissionMode,
             humanize: sessionOpts.humanize,
             chainOfThought: sessionOpts.chainOfThought,

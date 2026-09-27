@@ -45,9 +45,9 @@ export interface BootstrapOptions {
   /** The person's standing instructions for the project this chat belongs to. */
   instructions?: string;
   /** The name of the project this chat belongs to, when it belongs to one. Used
-   *  to place the project's memory notes under Projects/<project>/ in the vault.
-   *  Undefined for a project-less chat or the bare CLI (the memory folder then
-   *  falls back to the workspace basename). */
+   *  to place the project's memory notes in the repo, under "OpenShore Project
+   *  <name> MDs/". Undefined for a project-less chat or the bare CLI (the memory
+   *  folder then falls back to the workspace basename). */
   projectName?: string;
   /** The project's tokens and secrets markdown, decrypted, passed only when the
    *  person has turned the feature on. It reaches the model ONLY when the
@@ -94,6 +94,11 @@ export interface BootstrapOptions {
    *  the person set. Only tightening is honored: the profile's hard step
    *  ceiling still applies on top. */
   caps?: { wallClockSeconds?: number; maxSteps?: number };
+  /** Whether this session gets the vault tools. The daemon turns it off for a
+   *  member's session on a shared hub: the vault is the machine owner's one
+   *  folder, so a member's agent neither reads it nor proposes writes into it
+   *  until each member has a root of their own. Undefined means on. */
+  vault?: boolean;
 }
 
 export interface BootstrapResult {
@@ -102,6 +107,8 @@ export interface BootstrapResult {
   router: Router;
   config: OscConfig;
   toolContext: ReturnType<typeof buildToolContext>;
+  /** The tools this session registered, before any per-seat trim. */
+  tools: ReturnType<typeof buildToolRegistry>;
   warnings: string[];
   /** Where the orchestrator runs. An unattended host reads this before it
    *  sends a task: a cloud orchestrator under a profile that cannot auto-
@@ -188,6 +195,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     egressLockdown,
     hasCodemagic: Boolean(options.codemagicToken),
     currents: options.currents,
+    vault: options.vault,
   });
   const toolContext = buildToolContext({
     cwd: options.cwd,
@@ -196,6 +204,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     providers,
     projectName: options.projectName,
     egressLockdown,
+    vault: options.vault,
   });
 
   const profile = profileFor(options.profile);
@@ -300,5 +309,5 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     }
   }
 
-  return { driver, agent, router, config, toolContext, warnings, orchestratorKind };
+  return { driver, agent, router, config, toolContext, tools, warnings, orchestratorKind };
 }

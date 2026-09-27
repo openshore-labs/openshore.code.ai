@@ -211,6 +211,10 @@ export async function daemonCreateSession(
   cwd?: string,
   opts: {
     instructions?: string;
+    /** The project's name, so the engine files the project's memory notes in
+     *  the same "OpenShore Project <name> MDs/" folder a desktop session does
+     *  (without it the folder falls back to the workspace's basename). */
+    projectName?: string;
     permissionMode?: PermissionMode;
     humanize?: boolean;
     /** Chain of Thought for this session (off unless true). */
@@ -227,6 +231,7 @@ export async function daemonCreateSession(
     body: JSON.stringify({
       ...(cwd ? { cwd } : {}),
       ...(opts.instructions ? { instructions: opts.instructions } : {}),
+      ...(opts.projectName ? { projectName: opts.projectName } : {}),
       ...(opts.permissionMode ? { permissionMode: opts.permissionMode } : {}),
       ...(typeof opts.humanize === 'boolean' ? { humanize: opts.humanize } : {}),
       ...(typeof opts.chainOfThought === 'boolean' ? { chainOfThought: opts.chainOfThought } : {}),

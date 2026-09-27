@@ -2,6 +2,8 @@
 // names the missing links, and exits non-zero because the stack is not set
 // up yet. Network probes are mocked to fail fast.
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { doctorCommand } from '../src/commands/doctor.js';
 
 afterEach(() => {
@@ -30,9 +32,13 @@ describe('osc doctor', () => {
       'Web search',
       'Connectivity',
       'License',
+      'Vault',
     ]) {
       expect(output).toContain(section);
     }
+    // The folder the agent's notes land in, resolved the one way every
+    // surface resolves it.
+    expect(output).toContain(`The agent's vault: ${join(homedir(), 'OSCode', 'Vault')}`);
     // The one missing prerequisite is named with its one-line fix.
     expect(output).toContain('osc init');
     // No stack traces reach the user's face.

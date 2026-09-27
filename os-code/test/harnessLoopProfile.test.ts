@@ -176,3 +176,63 @@ describe('the discipline seam in the loop: a small seat gets a lean prompt', () 
     expect(ConfigSchema.parse({}).harness.profiles.enabled).toBe(true);
   });
 });
+
+// A lean seat sees only its class allowance of tools. Whatever the prompt tells
+// it to use must be on that menu, or it spends its small context on a tool it
+// cannot call. The reference box's 7B (small) was told to keep project memory
+// with projectMemoryWrite, which its cut never shows, and a tiny seat was told
+// to run code with runShell, which its six-tool menu leaves out.
+describe('no prompt names a tool the seat was not given', () => {
+  const seats: Array<[string, string, number]> = [
+    ['small (a 7B)', 'qwen2.5-coder:7b', 10],
+    ['tiny (a 1.5B)', 'qwen2.5-coder:1.5b', 6],
+  ];
+  for (const [label, model, allowance] of seats) {
+    it(`a ${label} seat is told only about tools it was given`, async () => {
+      const provider = new MockProvider('mock', [textTurn('done')]);
+      const session = makeTestSession(provider, {
+        projectName: 'Demo',
+        configOverrides: {
+          stack: { orchestrator: { provider: 'mock', model } },
+          harness: { profiles: { enabled: true } },
+        },
+      });
+      await session.agent.run('do the thing');
+      const request = provider.requests[0]!;
+      const given = new Set(request.tools!.map((t) => t.name));
+      expect(given.size).toBe(allowance);
+      const system = systemOf(request);
+      const named = session.tools
+        .specs()
+        .map((spec) => spec.name)
+        .filter((name) => new RegExp(`\\b${name}\\b`).test(system));
+      expect(named.length).toBeGreaterThan(0);
+      expect(named.filter((name) => !given.has(name))).toEqual([]);
+      expect(given.has('projectMemoryWrite')).toBe(false);
+      expect(system).not.toContain('PROJECT MEMORY');
+    });
+  }
+
+  it('a seat that is offered projectMemoryWrite still gets the project memory block', async () => {
+    const provider = new MockProvider('mock', [textTurn('done')]);
+    const session = makeTestSession(provider, {
+      projectName: 'Demo',
+      configOverrides: { harness: { profiles: { enabled: false } } },
+    });
+    await session.agent.run('do the thing');
+    const request = provider.requests[0]!;
+    expect(request.tools!.map((t) => t.name)).toContain('projectMemoryWrite');
+    const system = systemOf(request);
+    expect(system).toContain('PROJECT MEMORY');
+    expect(system).toContain('projectMemoryWrite');
+    expect(system).toContain('OpenShore Project Demo MDs/');
+  });
+
+  it('a small seat keeps the runShell line it can act on', async () => {
+    const { requests } = await runWith([textTurn('done')], {
+      harness: { profiles: { enabled: true } },
+    });
+    expect(requests[0]!.tools!.map((t) => t.name)).toContain('runShell');
+    expect(systemOf(requests[0]!)).toMatch(/run it with runShell/);
+  });
+});

@@ -24,8 +24,7 @@ import { analyzeImageTool, delegateTool, searchRepoTool } from '../tools/special
 import { vaultWriteTool, vaultReadTool, vaultListTool } from '../tools/vault.js';
 import { projectMemoryWriteTool } from '../tools/projectMemory.js';
 import { todoWriteTool } from '../tools/todoWrite.js';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { loadVaultDir } from '../../config/load.js';
 import type { Router } from '../../router/router.js';
 import type { ProviderRegistry } from '../../providers/registry.js';
 import { RepoIndex, keywordSearch } from '../../context/index.js';
@@ -49,6 +48,11 @@ export function buildToolRegistry(options: {
   // tools; the CLI one is a shell run and stays out under lockdown too, since
   // a CLI on the box can reach the network on its own.
   currents?: CurrentsHandles;
+  // Off leaves the three vault tools out. A member's session on a shared hub
+  // runs without them: the vault is the machine owner's one folder, so until
+  // each member has a root of their own, a member's agent cannot read it or
+  // propose writes into it. Undefined means on.
+  vault?: boolean;
 }): ToolRegistry {
   const registry = new ToolRegistry();
   registry.register(readFileTool);
@@ -83,12 +87,14 @@ export function buildToolRegistry(options: {
   registry.register(searchRepoTool);
   // The agent's durable, on-device knowledge vault. Reads/lists flow; writes
   // always ask (vaultWriteTool.alwaysAsk).
-  registry.register(vaultReadTool);
-  registry.register(vaultListTool);
-  registry.register(vaultWriteTool);
-  // The project-memory notes are the exception: hard-scoped to five files under
-  // Projects/<project>/, so these writes land without asking (the engine
-  // auto-allows this tool by name).
+  if (options.vault !== false) {
+    registry.register(vaultReadTool);
+    registry.register(vaultListTool);
+    registry.register(vaultWriteTool);
+  }
+  // The project-memory notes are the exception: hard-scoped to five files in
+  // the project's repo ("OpenShore Project <name> MDs/"), so these writes land
+  // without asking (the engine auto-allows this tool by name).
   registry.register(projectMemoryWriteTool);
   // Specialist-facing tools appear only when the stack can serve them, so a
   // single-model setup never tempts the model with tools that cannot work. They
@@ -114,6 +120,9 @@ export function buildToolContext(options: {
    *  keyword index, so a cloud embedder is never called (it would send repo
    *  chunks and the query, which could carry a secret, off the machine). */
   egressLockdown?: boolean;
+  /** Off leaves the vault root unset, so no vault tool can reach the folder
+   *  (a member's session on a shared hub). Undefined means on. */
+  vault?: boolean;
 }): ToolContext {
   const { cwd, config, router, providers, projectName, egressLockdown } = options;
   const egress = new EgressPolicy(config.egress);
@@ -140,9 +149,11 @@ export function buildToolContext(options: {
   }
 
   // The on-device vault lives outside the repo, so it is addressed by its own
-  // absolute root, not the workspace jail. Config can point it anywhere; unset
-  // means ~/OSCode/Vault (alongside the OSCode clones the daemon makes).
-  const vaultRoot = config.vault?.dir ?? join(homedir(), 'OSCode', 'Vault');
+  // absolute root, not the workspace jail. The machine config places it (never
+  // a project file, which could steer what the agent reads without a prompt);
+  // unset means ~/OSCode/Vault, alongside the OSCode clones the daemon makes. A
+  // session without the vault (a member's, on a shared hub) gets no root.
+  const vaultRoot = options.vault === false ? undefined : loadVaultDir().dir;
 
   return {
     cwd,

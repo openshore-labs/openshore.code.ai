@@ -61,9 +61,9 @@ export interface ToolContext {
    *  tools resolve note paths under here, jailed to it. */
   vaultRoot?: string;
   /** The name of the project this session belongs to, when it belongs to one.
-   *  The project-memory tool derives its Projects/<project>/ folder from this
-   *  (falling back to the workspace basename). Undefined for a project-less
-   *  chat or the bare CLI. */
+   *  The project-memory tool derives its folder in the repo, "OpenShore Project
+   *  <name> MDs/", from this (falling back to the workspace basename). Undefined
+   *  for a project-less chat or the bare CLI. */
   projectName?: string;
   /**
    * Read the recent raw output of this session's interactive terminal (Phase 2

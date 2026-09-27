@@ -21,11 +21,10 @@
 //     Obsidian-compatible) with the session id, so the transcript is one tap
 //     away; the run record carries a one-line summary for the inbox.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, join } from 'node:path';
 import { bootstrapSession } from '../core/agent/bootstrap.js';
 import type { DriverEvent, PermissionMode } from '../core/agent/types.js';
-import { loadConfig, loadDaemonConfig, saveGlobalConfig } from '../config/load.js';
+import { loadDaemonConfig, loadVaultDir, saveGlobalConfig } from '../config/load.js';
 import type { LocalDriver } from '../daemon/session.js';
 import { profileFor } from '../core/security/profiles.js';
 import { isOutboxAllowedPath, realOrResolve } from '../core/security/workspaces.js';
@@ -587,12 +586,12 @@ export class RoutineScheduler {
   ): string {
     const root = this.vaultRoot();
     const started = new Date(active.run.startedAt);
-    const stamp = `${started.getFullYear()}-${two(started.getMonth() + 1)}-${two(started.getDate())} ${two(started.getHours())}-${two(started.getMinutes())}`;
-    const rel = join('Crew', safeName(active.routine.name), `${stamp}.md`).split('\\').join('/');
-    const abs = join(root, rel);
+    const date = `${started.getFullYear()}-${two(started.getMonth() + 1)}-${two(started.getDate())}`;
+    const hh = two(started.getHours());
+    const mm = two(started.getMinutes());
     const minutes = Math.max(1, Math.round((Date.parse(finishedAt) - started.getTime()) / 60_000));
     const lines = [
-      `# ${active.routine.name}: ${stamp.replace(' ', ' at ').replace('-', ':')}`,
+      `# ${active.routine.name}: ${date} at ${hh}:${mm}`,
       '',
       `Crew: ${active.routine.agentName} · Workspace: ${basename(active.routine.cwd)} · ${stateWord(state)} · ${minutes} min · session ${active.driver.id}`,
       '',
@@ -608,9 +607,22 @@ export class RoutineScheduler {
       lines.push('', '## Steps', '', ...active.steps.map((s) => `- ${s}`));
     }
     lines.push('');
-    mkdirSync(dirname(abs), { recursive: true });
-    writeFileSync(abs, lines.join('\n'));
-    return rel;
+    // The file is named for the minute the run started (a colon is not safe in
+    // a file name on every system, so the time reads 06-00 there). A second run
+    // in the same minute gets its own file, "06-00 (2)", never the first's: the
+    // exclusive create refuses to open a name that is already taken.
+    const folder = join('Crew', safeName(active.routine.name));
+    mkdirSync(join(root, folder), { recursive: true });
+    for (let n = 1; ; n++) {
+      const name = `${date} ${hh}-${mm}${n === 1 ? '' : ` (${n})`}.md`;
+      const rel = join(folder, name).split('\\').join('/');
+      try {
+        writeFileSync(join(root, rel), lines.join('\n'), { flag: 'wx' });
+        return rel;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'EEXIST' || n >= 100) throw err;
+      }
+    }
   }
 
   private view(routine: Routine): RoutineView {
@@ -679,8 +691,7 @@ function readNoteFile(abs: string): string {
 }
 
 function defaultVaultRoot(): string {
-  const { config } = loadConfig();
-  return config.vault?.dir ?? join(homedir(), 'OSCode', 'Vault');
+  return loadVaultDir().dir;
 }
 
 /** Remember a folder in the global config's daemon.outboxAllowedRoots, the
