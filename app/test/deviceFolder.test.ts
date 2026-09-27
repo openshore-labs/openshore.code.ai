@@ -40,7 +40,20 @@ describe('device folder provider', () => {
   it('lists through the bridge', async () => {
     const files = [{ path: 'a.md', updatedAt: 't', size: 3 }];
     h.b.vaultList.mockResolvedValue(files);
-    expect(await deviceFolderProvider.list('vault.personal')).toBe(files);
+    expect(await deviceFolderProvider.list('vault.personal')).toEqual(files);
+  });
+
+  it('lists only notes, even if the bridge hands back more (0.6)', async () => {
+    h.b.vaultList.mockResolvedValue(
+      ['a.md', '.obsidian/app.json', '.trash/Old.md', 'pic.png', 'Board.canvas', 'x/b.md'].map(
+        (path) => ({ path, updatedAt: 't', size: 1 }),
+      ),
+    );
+    const paths = (await deviceFolderProvider.list('vault.personal')).map((f) => f.path);
+    expect(paths).toEqual(['a.md', 'x/b.md']);
+    expect(await deviceFolderProvider.stat('vault.personal', 'x/b.md')).toMatchObject({
+      path: 'x/b.md',
+    });
   });
 
   it('reads, mapping a missing note (null) to undefined', async () => {

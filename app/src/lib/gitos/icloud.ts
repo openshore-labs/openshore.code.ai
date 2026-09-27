@@ -8,7 +8,7 @@
 // not a real locking service, so this is best-effort coordination for v1, the
 // honest limit the CTO flagged for cloud-drive backends.
 import { Icloud } from './icloudPlugin.js';
-import type { Lease, StorageProvider, StoredFile } from './providers.js';
+import { isNotePath, type Lease, type StorageProvider, type StoredFile } from './providers.js';
 
 const LEASE_PATH = '.oscode/lease.json';
 
@@ -22,9 +22,12 @@ export const icloudProvider: StorageProvider = {
   ready: false,
   pending: 'Sign in to iCloud on this iPhone to use it.',
 
+  // Only notes list (0.6): the plugin already skips hidden paths and non-.md
+  // files, and this seam filter holds even if it did not, so our own lease,
+  // Obsidian's .obsidian/, and an image never open as a note.
   async list(resourceId) {
     const { files } = await Icloud.list({ resourceId });
-    return files.filter((f) => f.path !== LEASE_PATH).sort((a, b) => a.path.localeCompare(b.path));
+    return files.filter((f) => isNotePath(f.path)).sort((a, b) => a.path.localeCompare(b.path));
   },
 
   async stat(resourceId, path) {
