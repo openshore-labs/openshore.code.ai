@@ -6801,19 +6801,32 @@ export const useApp = create<AppState>((set, get, api) => {
       // safety copy; a later cleanup pass can reclaim them.
       const landed: string[] = [];
       try {
+        // A move never overwrites a note already at the target, whatever its
+        // age: the target may be a folder the agent, Obsidian, or another
+        // device already writes (COR-9, and the reason a desktop move to "This
+        // folder" is safe). The same text is already there, so nothing is
+        // written; different text lands beside it under a conflict name that
+        // is itself free on the target.
+        const taken = new Set(
+          (await target.list(VAULT_RESOURCE_ID)).map((f) => f.path.toLowerCase()),
+        );
+        const when = new Date();
         for (const note of notes) {
-          // Do not blindly overwrite a note already at the target path: another
-          // device may have written a newer version there. When the target's
-          // copy is newer, land the source copy under a conflict name instead,
-          // so the move cannot regress newer work (COR-9).
-          const targetMeta = await target.stat(VAULT_RESOURCE_ID, note.path).catch(() => undefined);
-          const targetIsNewer = targetMeta ? targetMeta.updatedAt > note.updatedAt : false;
           let dest = note.path;
-          if (targetIsNewer) {
-            const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-            dest = `${note.path.replace(/\.md$/i, '')} (from ${from} ${stamp}).md`;
+          if (taken.has(note.path.toLowerCase())) {
+            const theirs = await target.read(VAULT_RESOURCE_ID, note.path);
+            if (theirs?.text === note.text) {
+              landed.push(note.path);
+              continue;
+            }
+            let n = 1;
+            dest = vaultConflictCopyPath(note.path, when);
+            while (taken.has(dest.toLowerCase()))
+              dest = vaultConflictCopyPath(note.path, when, ++n);
           }
-          landed.push((await target.write(VAULT_RESOURCE_ID, dest, note.text)).path);
+          const saved = await target.write(VAULT_RESOURCE_ID, dest, note.text);
+          taken.add(saved.path.toLowerCase());
+          landed.push(saved.path);
         }
       } catch {
         return refused('copy-failed');

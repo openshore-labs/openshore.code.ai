@@ -737,6 +737,31 @@ describe('moving the vault never drops notes (0.5)', () => {
     expect(folder.files.get('note.md')).toBe('typed offline');
     expect(pending()).toEqual({});
   });
+
+  it('a note already at the target is never overwritten, whatever its age', async () => {
+    // The agent (or Obsidian) already wrote a.md into the folder; the move
+    // lands this device's a.md beside it, never over it.
+    folder.files.set('a.md', 'the agent wrote this');
+    files.set('a.md', 'typed on this device');
+    files.set('b.md', 'beta');
+    await useApp.getState().vaultRefresh();
+    const res = await useApp.getState().vaultMoveTo('files');
+    expect(res.ok).toBe(true);
+    expect(folder.files.get('a.md')).toBe('the agent wrote this');
+    const copies = [...folder.files.keys()].filter((p) => /^a \(conflict .+\)\.md$/.test(p));
+    expect(copies).toHaveLength(1);
+    expect(folder.files.get(copies[0]!)).toBe('typed on this device');
+    expect(folder.files.get('b.md')).toBe('beta');
+  });
+
+  it('the same text already at the target is not copied twice', async () => {
+    folder.files.set('a.md', 'same words');
+    files.set('a.md', 'same words');
+    await useApp.getState().vaultRefresh();
+    const res = await useApp.getState().vaultMoveTo('files');
+    expect(res.ok).toBe(true);
+    expect([...folder.files.keys()]).toEqual(['a.md']);
+  });
 });
 
 // 0.7: the vault a save goes to is fixed when the save is scheduled, and
