@@ -950,6 +950,8 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       const { mode: permissionMode, note: modeNote } = effectiveRemoteMode(requestedMode);
       // The app's Humanize Writing setting for this session (only ever an off).
       const humanize = typeof body.humanize === 'boolean' ? body.humanize : undefined;
+      // The app's Memory switch for this session (only ever an off).
+      const memory = typeof body.memory === 'boolean' ? body.memory : undefined;
       // The app's Chain of Thought setting for this session (on or off).
       const chainOfThought =
         typeof body.chainOfThought === 'boolean' ? body.chainOfThought : undefined;
@@ -987,6 +989,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           projectName,
           permissionMode,
           humanize,
+          memory,
           chainOfThought,
           currents,
           harnessCurrents,

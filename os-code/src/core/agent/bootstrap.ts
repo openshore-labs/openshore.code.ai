@@ -26,6 +26,7 @@ import { buildCodeMap } from '../../context/codeMap.js';
 import { readRepoInstructions } from './instructions.js';
 import { gateProjectSecrets } from './secretsGate.js';
 import { humanizerEnabled } from './humanizerStandard.js';
+import { memoryEnabled } from './memorySwitch.js';
 import { chainOfThoughtEnabled } from './chainOfThought.js';
 import { engineEthicsContext } from '../ethics/host.js';
 import { nextActionFor } from '../ethics/classify.js';
@@ -68,6 +69,12 @@ export interface BootstrapOptions {
    *  session (the override only ever turns it off, never on over a project that
    *  opted out). See humanizerEnabled in humanizerStandard.ts. */
   humanize?: boolean;
+  /** The app's Memory switch (Wayfinding) for this session. Undefined, or
+   *  true, leaves the config in charge; false turns project memory off for
+   *  this session (the override only ever turns it off, never on over a
+   *  project that turned it off). Off removes the memory prompt block and the
+   *  projectMemoryWrite tool. See memoryEnabled in memorySwitch.ts. */
+  memory?: boolean;
   /** The app's "Chain of Thought" setting for this session. Undefined leaves
    *  the project config in charge (off by default); a boolean wins in either
    *  direction, since it is the person's display choice, not a project policy.
@@ -158,6 +165,13 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     config = { ...config, humanizer: { ...config.humanizer, standard: 'off' } };
   }
 
+  // The app's Memory switch, the same way: it only ever turns project memory
+  // off, and folding it into config here means the registry, the loop, and
+  // (when they land) the pack and the handoff read one value.
+  if (!memoryEnabled(config.memory?.enabled, options.memory)) {
+    config = { ...config, memory: { ...config.memory, enabled: false } };
+  }
+
   // The app's Chain of Thought setting, the same way: applied here so loop.ts
   // reads config.chainOfThought as its single source.
   const cot = chainOfThoughtEnabled(config.chainOfThought?.enabled, options.chainOfThought);
@@ -217,6 +231,11 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     hasCodemagic: Boolean(options.codemagicToken),
     currents: options.currents,
     vault: options.vault,
+    // A headless run (a Crew routine) has nobody at the desk to approve an
+    // always-ask vault write, and the scheduler's own note already records
+    // the run, so it keeps the vault reads and drops the write.
+    vaultWrite: options.profile !== 'headless',
+    memory: config.memory?.enabled !== false,
   });
   const toolContext = buildToolContext({
     cwd: options.cwd,

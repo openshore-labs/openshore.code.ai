@@ -32,6 +32,17 @@ export interface ToolPreview {
   summary: string;
   /** Optional diff or detail block rendered under the summary. */
   detail?: string;
+  /** What the preview was built against (vaultWrite: a hash of the note's
+   *  bytes, or "absent"). The loop hands it to execute once the person
+   *  approves, so the tool can refuse when it changed while the approval sat.
+   *  Every other tool leaves it unset. */
+  basis?: string;
+}
+
+/** What the person approved, passed to execute after an ask. */
+export interface ApprovedPreview {
+  /** The preview's basis, when it returned one. */
+  basis?: string;
 }
 
 /** Everything a tool may touch. Built once per session. */
@@ -95,6 +106,11 @@ export interface ToolContext {
   /** This session's id, so a tool that keeps per-session state on another
    *  service (Hermes session continuity) can key it without a global. */
   sessionId?: string;
+  /** Whether the person's permission policy denies `toolName` at this path (a
+   *  deny rule's glob, a deny default). Set by the loop from the session's
+   *  permission engine, so a listing can hide what a read there would refuse.
+   *  Unset (a bare test context) denies nothing. */
+  denies?: (toolName: string, path: string) => boolean;
 }
 
 export interface ToolDef<S extends z.ZodType = z.ZodType> {
@@ -120,7 +136,9 @@ export interface ToolDef<S extends z.ZodType = z.ZodType> {
   commandOf?: (args: z.infer<S>) => string | undefined;
   /** Build the approval preview. Called only when the decision is 'ask'. */
   preview?: (args: z.infer<S>, ctx: ToolContext) => Promise<ToolPreview>;
-  execute: (args: z.infer<S>, ctx: ToolContext) => Promise<ToolOutput>;
+  /** Run the tool. `approved` is set only after an ask whose preview
+   *  succeeded, carrying that preview's basis; every other path omits it. */
+  execute: (args: z.infer<S>, ctx: ToolContext, approved?: ApprovedPreview) => Promise<ToolOutput>;
 }
 
 export class ToolRegistry {

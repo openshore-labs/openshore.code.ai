@@ -59,6 +59,9 @@ export {
   claudeThinking,
 } from './core/agent/chainOfThought.js';
 export type { ThoughtPiece } from './core/agent/chainOfThought.js';
+// The Memory switch's precedence: the app's switch can only turn project
+// memory off, and a project's config off always wins.
+export { memoryEnabled } from './core/agent/memorySwitch.js';
 export type { CapabilityCategory, SpecialistRole } from './router/roles.js';
 
 // The always-on ethics layer. Pure modules only: the tier logic, the

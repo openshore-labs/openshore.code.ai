@@ -2054,3 +2054,16 @@ execution contract. Newest at the bottom.
   Electron main process picks, validates, and writes `vault.dir` (an
   absolute realpath, file mode kept); the renderer never passes a vault path,
   no daemon route sets it in M1, and open engine sessions keep their root.
+- **Vault M1 engine build calls (2026-09-27):** `memoryEnabled` lives in a
+  pure `core/agent/memorySwitch.ts`, re-exported from `projectMemory.ts`,
+  because `projectMemory.ts` imports node:path and `os-code/protocol` must
+  stay free of Node built-ins. The routine scheduler's run note uses
+  `writeNewNoteSync`, the synchronous twin of `writeNote`'s `ifAbsent` path
+  (temp, sync, link, O_EXCL fallback), since a run's end, its note path
+  included, is recorded in one tick. Always-ask only turns an allow into an
+  ask: a deny rule and a deny default (`permissions.defaults.write: "deny"`)
+  both refuse `vaultWrite`, and a session grant is never consulted for an
+  always-ask tool, so it cannot hide a deny. `vaultList` hides a note when a
+  deny closes reading or listing it (through a `ToolContext.denies` accessor
+  the loop sets from the session's permission engine), names a fenced folder
+  as closed instead of listing it, and says how many notes it hid.

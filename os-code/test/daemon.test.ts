@@ -481,6 +481,29 @@ describe('a revived session keeps its project', () => {
   });
 });
 
+// Vault v1, 1.5: the app's Memory switch rides the session body. Only an
+// explicit false turns project memory off; anything else leaves config in
+// charge, and a malformed value never refuses the session.
+describe('POST /sessions carries the Memory switch', () => {
+  async function toolsFor(body: Record<string, unknown>): Promise<string[]> {
+    const res = await fetch(`${base}/sessions`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ cwd: home, ...body }),
+    });
+    expect(res.status).toBe(201);
+    const { id } = (await res.json()) as { id: string };
+    return booted.filter((b) => b.id === id).at(-1)!.tools;
+  }
+
+  it('memory false leaves projectMemoryWrite out; true, absent, or junk keep it', async () => {
+    expect(await toolsFor({ memory: false })).not.toContain('projectMemoryWrite');
+    expect(await toolsFor({ memory: true })).toContain('projectMemoryWrite');
+    expect(await toolsFor({})).toContain('projectMemoryWrite');
+    expect(await toolsFor({ memory: 'off' })).toContain('projectMemoryWrite');
+  });
+});
+
 describe('workspace predicates follow symlinks (P0-1 prep)', () => {
   const realHome = process.env.HOME;
   afterEach(() => {

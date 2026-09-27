@@ -104,6 +104,8 @@ export function makeTestSession(
     stackHasVision: false,
     stackHasImageGen: false,
     stackHasSpecialists: false,
+    // As bootstrap does: the Memory switch off leaves the tool out.
+    memory: config.memory.enabled,
   });
 
   // events and approvals are declared above, because the ethics onBlock closure

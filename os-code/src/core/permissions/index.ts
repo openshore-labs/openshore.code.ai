@@ -169,13 +169,19 @@ export class PermissionEngine {
   }
 
   decide(q: PermissionQuery): PermissionResult {
-    // An always-ask tool prompts every time, before any auto-allow path: no
-    // session grant, permission rule, or trusted repo can make it silent. This
-    // is the "never silent" guarantee for agent vault writes.
-    if (q.alwaysAsk) {
+    const result = this.evaluate(q);
+    // An always-ask tool prompts every time: no session grant, permission
+    // rule, or trusted repo can make it silent. This is the "never silent"
+    // guarantee for agent vault writes. It only ever turns an allow into an
+    // ask; a deny (a rule, a deny default) still wins, so a person can switch
+    // vault writes off or fence a folder (Vault v1, 1.6).
+    if (q.alwaysAsk && result.decision !== 'deny') {
       return { decision: 'ask', reason: 'this action always asks first' };
     }
+    return result;
+  }
 
+  private evaluate(q: PermissionQuery): PermissionResult {
     // Belt and braces under the loop's jail-based normalization (ENG-3): a
     // dotted spelling (`./secrets/k`, `src/../secrets/k`) must match the same
     // globs as the plain one, whoever built the query.
@@ -210,8 +216,10 @@ export class PermissionEngine {
       return { decision: 'allow', reason: 'project memory note, kept current by the agent' };
     }
 
-    // Session grants never apply to shell or cloud spend on restrictive profiles.
-    if (this.sessionAllows.has(q.toolName) && !this.autoAllowBlocked(q.risk)) {
+    // Session grants never apply to shell or cloud spend on restrictive
+    // profiles, and never to an always-ask tool, whose grant could only mean
+    // "ask" and must not hide a deny rule below it.
+    if (!q.alwaysAsk && this.sessionAllows.has(q.toolName) && !this.autoAllowBlocked(q.risk)) {
       return { decision: 'allow', reason: 'allowed for this session' };
     }
 

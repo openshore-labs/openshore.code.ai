@@ -15,6 +15,10 @@
 // included (repo policy is total here).
 import { basename } from 'node:path';
 
+// The Memory switch's precedence (config memory.enabled, the app's override
+// that can only turn it off). Kept in a pure module for os-code/protocol.
+export { memoryEnabled } from './memorySwitch.js';
+
 /** The memory folder is "OpenShore Project <name> MDs". The literal wrapper is
  *  deliberate: the fixed prefix and suffix mean the enclosed name can never be
  *  a bare ".." that climbs out of the repo, and the folder reads plainly in a

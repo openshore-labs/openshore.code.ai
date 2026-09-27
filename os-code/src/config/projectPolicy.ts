@@ -58,6 +58,9 @@ export const PROJECT_POLICY: Record<keyof OscConfig, KeyPolicy> = {
   ux: 'project',
   humanizer: 'project',
   chainOfThought: { enabled: 'off-only' },
+  // On, projectMemoryWrite saves into the repo without asking, so turning it
+  // on is a loosening; turning it off applies from any folder.
+  memory: { enabled: 'off-only' },
   sync: { autoPush: 'off-only', autoPushDefaultBranch: 'trusted' },
   harness: { profiles: 'project', decoding: 'project', verify: 'trusted' },
 };
@@ -148,6 +151,8 @@ function describe(path: string, value: unknown): string {
       return 'pushes commits on its own';
     case 'chainOfThought.enabled':
       return 'turns on Chain of Thought';
+    case 'memory.enabled':
+      return 'turns on project memory, so the agent saves notes into this repo without asking';
     case 'guardrails.maxDollars':
       return `raises the spending limit to $${String(value)}`;
     case 'guardrails.maxSteps':
