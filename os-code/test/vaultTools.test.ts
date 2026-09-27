@@ -17,6 +17,19 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { vaultWriteTool, vaultReadTool, vaultListTool } from '../src/core/tools/vault.js';
 import { NOTE_TEMP_PATTERN, noteFileHooksForTests } from '../src/core/vault/noteFile.js';
+import { closeEngineVaultIndexes, engineVaultIndex } from '../src/core/vault/engineIndex.js';
+import {
+  vaultBacklinksTool,
+  vaultLookupTool,
+  vaultSearchTool,
+} from '../src/core/tools/vaultFind.js';
+import {
+  buildToolRegistry,
+  seatOffersVaultTool,
+  withVaultLookupPriority,
+} from '../src/core/agent/registry.js';
+import { deriveProfile, type DeriveInput } from '../src/harness/profile.js';
+import type { VaultPrivacy } from '../src/harness/vault/types.js';
 import { MockProvider, textTurn, toolTurn } from './helpers/mockProvider.js';
 import { makeTestSession } from './helpers/session.js';
 
@@ -47,10 +60,17 @@ const ctx = () => ({ vaultRoot: root }) as unknown as ToolContext;
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'osc-vault-'));
 });
-afterEach(() => {
+afterEach(async () => {
   noteFileHooksForTests.afterTemp = undefined;
+  await closeEngineVaultIndexes();
   rmSync(root, { recursive: true, force: true });
 });
+
+/** A read's body: what follows the header's "---" line. */
+function bodyOf(content: string): string {
+  const at = content.indexOf('\n---\n');
+  return at === -1 ? content : content.slice(at + 5);
+}
 
 describe('vault write/read/list', () => {
   it('creates a note as a real .md file and reports a diff', async () => {
@@ -73,7 +93,7 @@ describe('vault write/read/list', () => {
 
   it('reads a note, and says so when it does not exist', async () => {
     await vaultWriteTool.execute({ path: 'a.md', content: 'hello', mode: 'replace' }, ctx());
-    expect((await vaultReadTool.execute({ path: 'a.md' }, ctx())).content).toBe('hello');
+    expect(bodyOf((await vaultReadTool.execute({ path: 'a.md' }, ctx())).content)).toBe('hello');
     const missing = await vaultReadTool.execute({ path: 'nope.md' }, ctx());
     expect(missing.content).toMatch(/no vault note/i);
   });
@@ -147,7 +167,9 @@ describe('vault write/read/list', () => {
     );
     expect(out.ok).toBe(true);
     expect(readFileSync(join(root, 'Decision: auth?.md'), 'utf8')).toBe('new');
-    expect((await vaultReadTool.execute({ path: 'Decision: auth?' }, ctx())).content).toBe('new');
+    expect(bodyOf((await vaultReadTool.execute({ path: 'Decision: auth?' }, ctx())).content)).toBe(
+      'new',
+    );
     await vaultWriteTool.execute({ path: nfd, content: 'more', mode: 'append' }, ctx());
     expect(readFileSync(join(root, nfd), 'utf8')).toBe('cafe\nmore');
     expect(readdirSync(root).sort()).toEqual(['Café.md', 'Decision: auth?.md'].sort());
@@ -784,6 +806,317 @@ describe('a vault inside the workspace', () => {
       expect(readFileSync(join(vault, 'plan.md'), 'utf8')).toBe('two\n');
     } finally {
       rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Vault M4 (4.5, CTO I11): tools that search first
+
+function seed(files: Record<string, string>): void {
+  for (const [rel, text] of Object.entries(files)) {
+    const abs = join(root, rel);
+    mkdirSync(join(abs, '..'), { recursive: true });
+    writeFileSync(abs, text);
+  }
+}
+
+describe('vault tools that search first', () => {
+  it('a bare [[Ideas]] resolves into a subfolder, for a read and for a link', async () => {
+    seed({ 'Projects/Ideas.md': '# Ideas\nShip the thing.', 'Hub.md': 'See [[Ideas]].' });
+    const out = await vaultReadTool.execute({ path: 'Ideas' }, ctx());
+    expect(out.content).toMatch(/^Note: Projects\/Ideas\.md \(about \d+ tokens, \d+ bytes\)/);
+    expect(bodyOf(out.content)).toBe('# Ideas\nShip the thing.');
+    const hub = await vaultReadTool.execute({ path: 'Hub.md' }, ctx());
+    expect(hub.content).toContain('Links: [[Ideas]] -> Projects/Ideas.md');
+  });
+
+  it('a unique alias resolves, and a miss offers the closest notes by search', async () => {
+    seed({
+      'Notes/Roadmap.md': '---\naliases: [North Star]\n---\n# Roadmap\nQ4 plan for kubernetes.',
+      'Other.md': 'unrelated',
+    });
+    const byAlias = await vaultReadTool.execute({ path: 'North Star' }, ctx());
+    expect(byAlias.content).toMatch(/^Note: Notes\/Roadmap\.md /);
+    const miss = await vaultReadTool.execute({ path: 'kubernetes' }, ctx());
+    expect(miss.content).toBe(
+      'No vault note at kubernetes.md yet. Closest by search: "Notes/Roadmap.md".',
+    );
+  });
+
+  it('reads one section by #heading, by section, or by ^block', async () => {
+    seed({
+      'Plan.md':
+        '# Plan\nintro\n## Goals\ngoal a\n### Sub\nsub text\n## Risks\nrisk b\n\npara one\npara two ^blk\n',
+    });
+    const goals = await vaultReadTool.execute({ path: 'Plan#Goals' }, ctx());
+    expect(goals.content).toContain('Section: Goals\n---\n## Goals\ngoal a\n### Sub\nsub text');
+    expect(goals.content).not.toContain('risk b');
+    const block = await vaultReadTool.execute({ path: 'Plan', section: '^blk' }, ctx());
+    expect(bodyOf(block.content)).toBe('para one\npara two ^blk');
+    const none = await vaultReadTool.execute({ path: 'Plan', section: 'Nope' }, ctx());
+    expect(none.content).toContain('No section "Nope" in Plan.md. Its outline:');
+    expect(none.content).toContain('  ## Risks');
+  });
+
+  it('the header names properties, tags and links, resolved or not', async () => {
+    seed({
+      'A.md': '---\nstatus: draft\ntags: [project]\n---\nBody #idea links [[B]] and [[Missing]].',
+      'B.md': 'b',
+    });
+    const out = (await vaultReadTool.execute({ path: 'A' }, ctx())).content;
+    expect(out).toContain('Properties: status, tags');
+    expect(out).toContain('Tags: #project, #idea');
+    expect(out).toContain('Links: [[B]] -> B.md; [[Missing]] (unresolved)');
+  });
+
+  it('past the seat cap a read returns the outline and asks for a section', async () => {
+    const long = 'x'.repeat(400);
+    seed({ 'Long.md': `# One\n${long}\n## Two\n${long}\n## Three\nshort part` });
+    const capped = { ...ctx(), vaultReadCapChars: () => 200 } as ToolContext;
+    const out = (await vaultReadTool.execute({ path: 'Long' }, capped)).content;
+    expect(out).toContain('more than this model reads at once (200). Its outline:');
+    expect(out).toContain('  ## Two');
+    expect(out).not.toContain(long);
+    const part = await vaultReadTool.execute({ path: 'Long', section: 'Three' }, capped);
+    expect(bodyOf(part.content)).toBe('## Three\nshort part');
+  });
+
+  it('search returns ranked snippets with the heading where the words fall', async () => {
+    seed({
+      'Infra/K8s.md':
+        '---\ntags: [infra]\n---\n# Infra\nIntro text.\n## Migration\nThe kubernetes migration moves every service to kubernetes, kubernetes first.',
+      'Notes/Misc.md': '# Misc\nWe once mentioned kubernetes in passing.',
+      'Other.md': 'nothing relevant here',
+    });
+    const out = (await vaultSearchTool.execute({ query: 'kubernetes migration' }, ctx())).content;
+    const lines = out.split('\n');
+    expect(lines[0]).toBe('2 notes match "kubernetes migration", best first:');
+    expect(lines[1]).toBe('1. Infra/K8s.md > Migration');
+    expect(lines[2]).toContain('kubernetes migration moves');
+    expect(lines[3]).toBe('2. Notes/Misc.md > Misc');
+    expect(lines[4]).toContain('mentioned kubernetes');
+    expect(out).not.toContain('Other.md');
+    expect(lines.at(-1)).toMatch(/^Read one with vaultRead/);
+    const inNotes = await vaultSearchTool.execute({ query: 'kubernetes', folder: 'notes' }, ctx());
+    expect(inNotes.content).toContain('Notes/Misc.md');
+    expect(inNotes.content).not.toContain('Infra/K8s.md');
+    const tagged = await vaultSearchTool.execute({ query: 'kubernetes', tag: '#infra' }, ctx());
+    expect(tagged.content).toContain('Infra/K8s.md');
+    expect(tagged.content).not.toContain('Notes/Misc.md');
+    const one = await vaultSearchTool.execute({ query: 'kubernetes', k: 1 }, ctx());
+    expect(one.content.split('\n')[0]).toBe('1 note match "kubernetes", best first:');
+  });
+
+  it('backlinks name each linking note with the passage around its link', async () => {
+    seed({
+      'Projects/Ideas.md': '# Ideas',
+      'Hub.md': 'The plan lives in [[Ideas]] for now.',
+      'Log.md': 'Nothing links here.',
+    });
+    const out = (await vaultBacklinksTool.execute({ path: 'Ideas' }, ctx())).content;
+    expect(out.split('\n')).toEqual([
+      '1 note link to Projects/Ideas.md:',
+      '- Hub.md: The plan lives in [[Ideas]] for now.',
+    ]);
+  });
+
+  it('vaultLookup takes exactly one of query or path, and does what each asks', async () => {
+    seed({ 'Projects/Ideas.md': '# Ideas\nShip kubernetes.' });
+    expect(vaultLookupTool.schema.safeParse({}).success).toBe(false);
+    expect(vaultLookupTool.schema.safeParse({ query: 'a', path: 'b' }).success).toBe(false);
+    const found = await vaultLookupTool.execute({ query: 'kubernetes' }, ctx());
+    expect(found.content).toContain('1. Projects/Ideas.md > Ideas');
+    const read = await vaultLookupTool.execute({ path: 'Ideas' }, ctx());
+    expect(bodyOf(read.content)).toBe('# Ideas\nShip kubernetes.');
+  });
+
+  it('a vaultWrite reaches the index, so search finds the note at once', async () => {
+    seed({ 'Old.md': 'old note' });
+    await vaultSearchTool.execute({ query: 'old' }, ctx());
+    await vaultWriteTool.execute(
+      { path: 'Fresh/Decision', content: 'We chose zeppelins.', mode: 'replace' },
+      ctx(),
+    );
+    const out = (await vaultSearchTool.execute({ query: 'zeppelins' }, ctx())).content;
+    expect(out).toContain('1. Fresh/Decision.md');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Vault M4 (4.2 tool half, CTO I5): privacy inside the tools
+
+/** A hand-built privacy judge standing in for compileVaultPrivacy: Secret/ and
+ *  an exclude mark hide, Private/, a private tag and a local-only mark keep a
+ *  note on this computer. */
+const privacy: VaultPrivacy = {
+  visibility({ path, tags, oscode }) {
+    const p = path.toLowerCase();
+    if (p.startsWith('secret/') || oscode?.includes('exclude')) return 'hidden';
+    const priv = tags?.some((t) => /^private(\/|$)/i.test(t));
+    if (p.startsWith('private/') || priv || oscode?.includes('local-only')) return 'local-only';
+    return 'open';
+  },
+};
+
+function pctx(leaves?: boolean): ToolContext {
+  return {
+    vaultRoot: root,
+    vaultPrivacy: privacy,
+    ...(leaves === undefined ? {} : { seatLeavesNetwork: () => leaves }),
+  } as unknown as ToolContext;
+}
+
+function seedPrivate(): void {
+  seed({
+    'Secret/plan.md': 'kubernetes secret plan, see [[k]]',
+    'Private/diary.md': 'kubernetes diary, see [[k]]',
+    'Open/k.md': 'kubernetes open [[plan]] [[diary]]',
+    'Marked.md': '---\noscode: exclude\n---\nkubernetes marked',
+    'Tagged.md': '---\ntags: [private]\n---\nkubernetes tagged',
+  });
+}
+
+describe('vault privacy in the tools', () => {
+  it('an excluded folder or mark is invisible to list, read, search and backlinks', async () => {
+    seedPrivate();
+    const handle = await engineVaultIndex(root);
+    expect(await handle.whenReconciled(5000)).toBe(true);
+    const list = (await vaultListTool.execute({}, pctx(false))).content;
+    expect(list).not.toContain('Secret');
+    expect(list).not.toContain('Marked.md');
+    expect(list).not.toMatch(/hidden/);
+    expect(list.split('\n')[0]).toBe('3 notes. Showing 1 to 3.');
+    const folderList = await vaultListTool.execute({ folder: 'Nope' }, pctx(false));
+    expect(folderList.content).not.toContain('"Secret"');
+
+    for (const path of ['Secret/plan.md', 'Marked.md']) {
+      const read = await vaultReadTool.execute({ path }, pctx(false));
+      expect(read.content).toBe(`No vault note at ${path} yet.`);
+    }
+    const bare = await vaultReadTool.execute({ path: 'plan' }, pctx(false));
+    expect(bare.content).toMatch(/^No vault note at plan\.md yet\./);
+    expect(bare.content).not.toContain('Secret');
+    const header = (await vaultReadTool.execute({ path: 'Open/k.md' }, pctx(false))).content;
+    expect(header).toContain('[[plan]] (unresolved)');
+
+    const search = (await vaultSearchTool.execute({ query: 'kubernetes' }, pctx(false))).content;
+    expect(search).toContain('Open/k.md');
+    expect(search).not.toContain('Secret/');
+    expect(search).not.toContain('Marked.md');
+
+    const back = await vaultBacklinksTool.execute({ path: 'Secret/plan.md' }, pctx(false));
+    expect(back.content).toBe('No vault note at Secret/plan.md.');
+    const intoOpen = (await vaultBacklinksTool.execute({ path: 'Open/k.md' }, pctx(false))).content;
+    expect(intoOpen).not.toContain('Secret/');
+
+    await expect(
+      vaultWriteTool.execute({ path: 'Secret/new', content: 'x', mode: 'replace' }, pctx(false)),
+    ).resolves.toEqual({
+      ok: false,
+      content:
+        "Secret/ is closed to the agent by the person's vault settings. Write somewhere else.",
+    });
+    expect(existsSync(join(root, 'Secret/new.md'))).toBe(false);
+    const marked = await vaultWriteTool.execute(
+      { path: 'Marked.md', content: 'y', mode: 'append' },
+      pctx(false),
+    );
+    expect(marked.ok).toBe(false);
+  });
+
+  it('a local-only note reaches only a local seat, and its output is flagged', async () => {
+    seedPrivate();
+    const local = await vaultReadTool.execute({ path: 'Private/diary.md' }, pctx(false));
+    expect(local.content).toContain('kubernetes diary');
+    expect(local.localOnly).toBe(true);
+    for (const seat of [pctx(true), pctx(undefined)]) {
+      const away = await vaultReadTool.execute({ path: 'Private/diary.md' }, seat);
+      expect(away.content).toMatch(/stays on this computer/);
+      expect(away.content).not.toContain('kubernetes diary');
+      expect(away.localOnly).toBeUndefined();
+      const byTag = await vaultReadTool.execute({ path: 'Tagged' }, seat);
+      expect(byTag.content).not.toContain('kubernetes tagged');
+    }
+    const openRead = await vaultReadTool.execute({ path: 'Open/k.md' }, pctx(false));
+    expect(openRead.localOnly).toBeUndefined();
+
+    const away = await vaultSearchTool.execute({ query: 'kubernetes' }, pctx(true));
+    expect(away.content).not.toContain('Private/diary.md');
+    expect(away.content).not.toContain('Tagged.md');
+    expect(away.localOnly).toBeUndefined();
+    const home = await vaultSearchTool.execute({ query: 'kubernetes' }, pctx(false));
+    expect(home.content).toContain('Private/diary.md');
+    expect(home.content).toContain('Tagged.md');
+    expect(home.localOnly).toBe(true);
+
+    const backAway = await vaultBacklinksTool.execute({ path: 'Open/k.md' }, pctx(true));
+    expect(backAway.content).toBe('No notes link to Open/k.md.');
+    const backHome = await vaultBacklinksTool.execute({ path: 'Open/k.md' }, pctx(false));
+    expect(backHome.content).toContain('- Private/diary.md: kubernetes diary, see [[k]]');
+    expect(backHome.localOnly).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Vault M4 (CTO I11): a lean seat sees the one merged vault tool
+
+/** The loop's small-seat priority list as it stands (core/agent/loop.ts),
+ *  with vaultLookup placed by the registry's helper. */
+const LOOP_PRIORITY = [
+  'readFile',
+  'editFile',
+  'writeFile',
+  'grep',
+  'glob',
+  'searchRepo',
+  'runShell',
+  'todoWrite',
+  'gitDiff',
+  'gitStatus',
+  'webFetch',
+  'webSearch',
+  'readTerminal',
+];
+
+/** What a seat is offered, the way the loop cuts it: the vault filter, then
+ *  the priority sort, then maxToolsShown. */
+function offered(input: DeriveInput): string[] {
+  const profile = deriveProfile(input);
+  const names = buildToolRegistry({
+    stackHasVision: false,
+    stackHasImageGen: false,
+    stackHasSpecialists: false,
+  })
+    .names()
+    .filter((n) => seatOffersVaultTool(n, profile.mergedVaultTool));
+  const priority = withVaultLookupPriority(LOOP_PRIORITY);
+  const rank = (n: string) => (priority.includes(n) ? priority.indexOf(n) : priority.length);
+  const sorted = [...names].sort((a, b) => rank(a) - rank(b));
+  return Number.isFinite(profile.maxToolsShown) ? sorted.slice(0, profile.maxToolsShown) : sorted;
+}
+
+describe('lean seats and the merged vault tool', () => {
+  it('vaultLookup sits right after searchRepo', () => {
+    const p = withVaultLookupPriority(LOOP_PRIORITY);
+    expect(p[p.indexOf('searchRepo') + 1]).toBe('vaultLookup');
+    expect(withVaultLookupPriority(['readFile'])).toEqual(['readFile', 'vaultLookup']);
+  });
+
+  it('a small seat sees the merged tool and none of the separate reads', () => {
+    const small = offered({ model: 'qwen2.5-coder:7b', kind: 'local' });
+    expect(small).toContain('vaultLookup');
+    for (const n of ['vaultRead', 'vaultSearch', 'vaultBacklinks', 'vaultList']) {
+      expect(small).not.toContain(n);
+    }
+  });
+
+  it('a tiny seat leans on the pack; a large seat sees the separate reads', () => {
+    expect(offered({ model: 'qwen2.5-coder:1.5b', kind: 'local' })).not.toContain('vaultLookup');
+    const large = offered({ model: 'claude', kind: 'cloud' });
+    expect(large).not.toContain('vaultLookup');
+    for (const n of ['vaultRead', 'vaultSearch', 'vaultBacklinks', 'vaultList', 'vaultWrite']) {
+      expect(large).toContain(n);
     }
   });
 });
