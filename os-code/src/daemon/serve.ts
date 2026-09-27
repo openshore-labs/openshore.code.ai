@@ -788,7 +788,12 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         admin || scheduler.get(routineId)?.ownerUserId === auth.userId;
       if (req.method === 'GET' && !parts[1]) {
         const routines = scheduler.list(admin ? undefined : auth.userId);
-        const runs = scheduler.runs(60).filter((r) => visible(r.routineId));
+        // The note's absolute path is this machine's own business (it names
+        // the home folder); the phone reads a note through the route below.
+        const runs = scheduler
+          .runs(60)
+          .filter((r) => visible(r.routineId))
+          .map(({ noteAbsPath: _abs, ...r }) => r);
         sendJson(res, 200, { routines, runs });
         return;
       }

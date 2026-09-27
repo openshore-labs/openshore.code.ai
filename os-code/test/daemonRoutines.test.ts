@@ -11,6 +11,7 @@ import { TerminalManager, TerminalUnavailable } from '../src/daemon/terminal.js'
 import { defaultConfig } from '../src/config/load.js';
 import { mintCredential } from '../src/core/security/credentials.js';
 import { _resetRoutineScheduler } from '../src/routines/scheduler.js';
+import { appendRun } from '../src/routines/store.js';
 
 let home: string;
 let daemon: RunningDaemon;
@@ -199,5 +200,26 @@ describe('daemon routine routes', () => {
     expect(await gone.json()).toEqual({ deleted: true });
     const listed = await fetch(`${base}/routines`, { headers: auth(adminToken) });
     expect(((await listed.json()) as { routines: unknown[] }).routines).toEqual([]);
+  });
+  it("never sends a run note's absolute path to the phone", async () => {
+    const created = await fetch(`${base}/routines`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify(routineBody()),
+    });
+    const { routine } = (await created.json()) as { routine: { id: string } };
+    appendRun({
+      routineId: routine.id,
+      startedAt: new Date().toISOString(),
+      state: 'done',
+      trigger: 'manual',
+      notePath: 'Crew/Morning review/2026-09-27 0600.md',
+      noteAbsPath: join(home, 'OSCode', 'Vault', 'Crew', 'Morning review', '2026-09-27 0600.md'),
+    });
+    const listed = await fetch(`${base}/routines`, { headers: auth(adminToken) });
+    const body = (await listed.json()) as { runs: Array<Record<string, unknown>> };
+    expect(body.runs).toHaveLength(1);
+    expect(body.runs[0]!.notePath).toBe('Crew/Morning review/2026-09-27 0600.md');
+    expect(body.runs[0]).not.toHaveProperty('noteAbsPath');
   });
 });
