@@ -4,7 +4,8 @@ Founder brief: "The vault page needs a ton of work. How do I know what this is
 or how to use it as a new user? Use Obsidian's new-user onboarding and ramp UX
 as a guide for how to make this a dynamic area of the app that draws people in
 to use it and understand how it's used by their models." Same three seats, same
-shape: the read, the direction, what shipped. It is on a branch, not `main`.
+shape: the read, the direction, what shipped. It shipped to `main`; Vault v1
+(`docs/vault-v1-plan.md`, M0 to M7) has since rebuilt most of the room.
 
 ## The diagnosis
 

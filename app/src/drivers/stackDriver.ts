@@ -139,7 +139,7 @@ import {
 import type { ChatDriver, DriverEventSink, DriverVaultOptions, PackSeat } from './types.js';
 import { DriverEmitter, isLocalOnlyFinal, textFinal } from './types.js';
 import { RemoteDriver, daemonCreateSession, type DaemonTarget } from './remoteDriver.js';
-import type { DriverEvent } from 'os-code/protocol';
+import type { DriverEvent, VaultOverrides } from 'os-code/protocol';
 
 /** Extra context a chat carries into the router: its project and its crew. */
 export interface StackContext {
@@ -156,6 +156,12 @@ export interface StackContext {
    *  memory off. Undefined leaves the project's config in charge. App-side
    *  chats keep no project memory, so nothing else here reads it. */
   memory?: false;
+  /** The device's vault switches (Vault M7, CTO L13): Notes in chats and
+   *  Handoff off, and Room for notes, off-only and lower-only
+   *  (`appVaultOverrides`). A play's engine step carries them the way a chat's
+   *  session does; empty or undefined leaves the computer's config in charge.
+   *  App-side seats read the device settings directly, not this. */
+  vaultOverrides?: VaultOverrides;
   /** Codemagic Access is on (and Codemagic is connected), so the model may drive
    *  App Launch builds. Offers the codemagic tool on the Anthropic path, where
    *  native tool use runs the trigger/status/logs loop on-device. Off leaves the
@@ -258,6 +264,9 @@ export function engineStepSessionOpts(
     projectName: context.projectName,
     instructions: context.projectInstructions,
     ...(context.memory === false ? { memory: false } : {}),
+    ...(context.vaultOverrides && Object.keys(context.vaultOverrides).length
+      ? { vaultOverrides: { ...context.vaultOverrides } }
+      : {}),
   };
 }
 

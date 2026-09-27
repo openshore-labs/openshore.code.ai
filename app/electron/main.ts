@@ -42,7 +42,7 @@ import {
   oscHome,
   saveGlobalConfig,
 } from 'os-code/dist/src/config/load.js';
-import { vaultPrivacyConfig } from 'os-code/dist/src/core/agent/registry.js';
+import { machineVaultWire } from 'os-code/dist/src/core/agent/registry.js';
 import { VAULT_WIRE_NOTE_MAX_BYTES } from 'os-code/dist/src/daemon/vaultWire.js';
 import { managedRoot } from 'os-code/dist/src/core/security/workspaces.js';
 import {
@@ -1081,13 +1081,10 @@ guarded('osc:clearHandoffs', () => {
   return { cleared: true };
 });
 
-guarded('osc:vaultPrivacy', () => {
-  const cfg = vaultPrivacyConfig(loadConfig().config);
-  return {
-    exclude: [...cfg.exclude],
-    localOnly: { paths: [...cfg.localOnly.paths], tags: [...cfg.localOnly.tags] },
-  };
-});
+// The same answer carries the machine's `vault.packSize` (Vault M8), read
+// only: the settings sheet says when this computer's sessions give notes
+// less room than the device's choice. One builder with the daemon's route.
+guarded('osc:vaultPrivacy', () => machineVaultWire(loadConfig().config));
 
 // readConfig for the folder vault (Vault M3, CTO H5): the renderer sends a
 // logical name, never a path. Main's allow-list maps it to one file in the

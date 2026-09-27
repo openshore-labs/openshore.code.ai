@@ -122,7 +122,14 @@ const CWD = '/work/my-app';
 
 /** Open one engine session each way (the phone's, the desktop's) and one
  *  Stack chat, with the Memory switch as given (undefined leaves it unset). */
-async function openEverySession(memory: boolean | undefined) {
+async function openEverySession(
+  memory: boolean | undefined,
+  vault: {
+    vaultContext?: 'off';
+    vaultHandoff?: 'off';
+    vaultPackSize?: 'small' | 'normal' | 'large';
+  } = {},
+) {
   useApp.setState({
     conversations: {},
     order: [],
@@ -132,6 +139,7 @@ async function openEverySession(memory: boolean | undefined) {
       claudeModel: 'x',
       deviceModels: {},
       ...(memory === undefined ? {} : { wayfinding: { memory } }),
+      ...vault,
     },
   });
   await useApp.getState().saveHub(HUB);
@@ -173,6 +181,34 @@ describe('the Memory switch reaches every engine session the app opens', () => {
       expect(stack.memory).toBeUndefined();
       expect(engineStepSessionOpts(stack)).not.toHaveProperty('memory');
     }
+  });
+});
+
+// Vault M8 (M7 follow-up 35): a play's engine step opens its session with the
+// device's vault switches, the same object a chat's session carries, so Notes
+// in chats off, Handoff off and a smaller Room for notes hold there too.
+describe('the vault switches reach a Stack engine step like every other session', () => {
+  afterEach(() => {
+    h.desktop = false;
+  });
+
+  it('off and a size ride to the phone, the desktop, and the play step alike', async () => {
+    const { phone, desktop, stack } = await openEverySession(undefined, {
+      vaultContext: 'off',
+      vaultHandoff: 'off',
+      vaultPackSize: 'small',
+    });
+    const want = { context: 'off', handoff: 'off', packSize: 'small' };
+    expect(phone.vaultOverrides).toEqual(want);
+    expect(desktop.vaultOverrides).toEqual(want);
+    expect(engineStepSessionOpts(stack).vaultOverrides).toEqual(want);
+  });
+
+  it('every switch on and no size sends nothing, so the computer stays in charge', async () => {
+    const { phone, desktop, stack } = await openEverySession(undefined);
+    expect(phone.vaultOverrides).toBeUndefined();
+    expect(desktop).not.toHaveProperty('vaultOverrides');
+    expect(engineStepSessionOpts(stack)).not.toHaveProperty('vaultOverrides');
   });
 });
 

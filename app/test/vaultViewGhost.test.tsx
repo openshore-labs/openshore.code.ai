@@ -1,5 +1,6 @@
 // The Vault's view swaps are true crossfades (motion standard, rule 3; CTO
-// K18, CX X17): tree and note, and read and edit. The arriving view fades in
+// K18, CX X17): tree and note, read and edit, and the Trash page each way
+// (Vault M8, the M6 follow-up: leaving Trash used to cut). The arriving view fades in
 // while a snapshot of the leaving one fades out, inert and aria-hidden, on the
 // tokens, and reduced motion leaves no snapshot at all. Pinned two ways: the
 // hook, mounted in a small real DOM, and a guard over VaultScreen.tsx that
@@ -13,13 +14,24 @@ import { mountDom, type TestDom } from './support/dom.js';
 const SRC = join(process.cwd(), 'src');
 const SCREEN = readFileSync(join(SRC, 'screens', 'VaultScreen.tsx'), 'utf8');
 const THEME = readFileSync(join(SRC, 'theme.css'), 'utf8');
+const TRASH = readFileSync(join(SRC, 'components', 'vault', 'VaultTrashView.tsx'), 'utf8');
 
-// The roots of the views that replace each other inside the room.
-const VIEW_ROOTS = ['vault-tree-view', 'vault-note', 'vault-editor-wrap', 'vault-read'];
+// The roots of the views that replace each other inside the room. The Trash
+// page's root lives in its own component and takes the room's ghost as
+// `rootRef`.
+const VIEW_ROOTS = [
+  'vault-tree-view',
+  'vault-note',
+  'vault-editor-wrap',
+  'vault-read',
+  'vault-trash',
+];
 
 describe('the guard: no Vault view swaps without an exit binding', () => {
   // Every opening <div> tag in the screen (an arrow's `=>` is not its end).
-  const tags = [...SCREEN.matchAll(/<div\b((?:=>|[^>])*)>/g)].map((m) => m[1]!);
+  const tags = [SCREEN, TRASH].flatMap((src) =>
+    [...src.matchAll(/<div\b((?:=>|[^>])*)>/g)].map((m) => m[1]!),
+  );
   const classesOf = (tag: string) =>
     [...tag.matchAll(/className=(?:"([^"]*)"|\{([^}]*)\})/g)]
       .map((m) => m[1] ?? m[2] ?? '')
@@ -34,7 +46,9 @@ describe('the guard: no Vault view swaps without an exit binding', () => {
       const roots = classesOf(tag).filter((c) => VIEW_ROOTS.includes(c));
       if (!roots.length) continue;
       roots.forEach((r) => seen.add(r));
-      if (!/ref=\{(?:pageGhost|modeGhost)\('[a-z]+'\)\}|ref=\{bindReader\}/.test(tag)) {
+      if (
+        !/ref=\{(?:pageGhost|modeGhost)\('[a-z]+'\)\}|ref=\{bindReader\}|ref=\{rootRef\}/.test(tag)
+      ) {
         offenders.push(`${roots.join(', ')}: ${tag.trim().slice(0, 90)}`);
       }
     }
@@ -49,6 +63,19 @@ describe('the guard: no Vault view swaps without an exit binding', () => {
     expect(SCREEN).toMatch(
       /const bindReader = useCallback\([\s\S]{0,200}modeGhost\('read'\)\(node\)/,
     );
+  });
+
+  it('binds the Trash page to the room ghost, inside the room screen that outlives the swap', () => {
+    expect(SCREEN).toMatch(/<VaultTrashView\s+rootRef=\{pageGhost\('trash'\)\}/);
+    // The snapshot is placed beside the leaving root, so that root's parent
+    // must survive the swap: the Trash branch renders in the same
+    // `.vault-screen` the tree and the note do, and the page has no screen
+    // of its own.
+    const branch = SCREEN.slice(SCREEN.indexOf('if (trashOpen) {'));
+    expect(branch).toMatch(
+      /^if \(trashOpen\) \{\s*return \(\s*<div className="screen vault-screen">/,
+    );
+    expect(TRASH).not.toMatch(/className="screen"/);
   });
 
   it('fades the snapshot out on the tokens, and reduced motion stills it', () => {
@@ -162,5 +189,75 @@ describe('useViewGhost', () => {
     const { act } = await import('react');
     await act(async () => flip('note'));
     expect(ghosts()).toEqual([]);
+  });
+});
+
+// The real Trash page in the room's shape: leaving it (Back) leaves a fading
+// snapshot of the page over the tree that arrives, and entering it leaves one
+// of the tree.
+describe('the Trash page crossfades each way', () => {
+  let dom: TestDom;
+  beforeEach(async () => {
+    dom = await mountDom();
+    Object.assign(window, { matchMedia: () => ({ matches: false }) });
+  });
+  afterEach(async () => {
+    await dom.unmount();
+  });
+
+  let open: (v: boolean) => void = () => {};
+  async function Room() {
+    const { useViewGhost } = await import('../src/hooks/useViewGhost.js');
+    const { VaultTrashView } = await import('../src/components/vault/VaultTrashView.js');
+    const noop = async () => {};
+    return function View() {
+      const [trashOpen, setTrashOpen] = useState(true);
+      open = setTrashOpen;
+      const pageGhost = useViewGhost(trashOpen ? 'trash' : 'tree');
+      if (trashOpen) {
+        return (
+          <div className="screen vault-screen">
+            <VaultTrashView
+              rootRef={pageGhost('trash')}
+              kind="folder"
+              entries={[]}
+              onBack={() => setTrashOpen(false)}
+              onRestore={noop}
+              onEmpty={noop}
+            />
+          </div>
+        );
+      }
+      return (
+        <div className="screen vault-screen">
+          <div key="tree" ref={pageGhost('tree')} className="screen-inner vault-tree-view">
+            the notes list
+          </div>
+        </div>
+      );
+    };
+  }
+
+  const ghosts = () => [...dom.container.querySelectorAll('.view-ghost')] as HTMLElement[];
+
+  it('leaving Trash fades the page out instead of cutting', async () => {
+    const View = await Room();
+    await dom.render(<View />);
+    const { act } = await import('react');
+    await act(async () => open(false));
+    const g = ghosts().find((el) => el.classList.contains('vault-trash'));
+    expect(g, 'a snapshot of the Trash page').toBeTruthy();
+    expect(g!.classList.contains('closing')).toBe(true);
+    expect(g!.getAttribute('aria-hidden')).toBe('true');
+    expect(dom.container.querySelector('.vault-tree-view:not(.view-ghost)')).toBeTruthy();
+  });
+
+  it('entering Trash fades the tree out', async () => {
+    const View = await Room();
+    await dom.render(<View />);
+    const { act } = await import('react');
+    await act(async () => open(false));
+    await act(async () => open(true));
+    expect(ghosts().some((el) => el.classList.contains('vault-tree-view'))).toBe(true);
   });
 });

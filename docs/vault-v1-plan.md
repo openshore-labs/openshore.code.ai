@@ -3,7 +3,9 @@
 Status: approved by the founder on 2026-09-27, every recommendation accepted
 (D1 to D15 below, recorded in `os-code/DECISIONS.md`), with one change: the
 iPhone opening an existing Obsidian vault in place moves into v1 (item 2.10).
-Nothing is built yet; M0 is next. The founder asked for a code review
+M0 to M7 are built (each milestone's shipped notes below; the held branches
+and founder gates are in `os-code/PROGRESS.md`), and M8, the ship gate, is
+open. The founder asked for a code review
 of Vault and a plan to get it ready to ship v1: fully functional, a key feature
 for moving between models and for giving them the right context, Obsidian as
 the baseline, great out of the box and fully customizable. Every verified
@@ -1343,6 +1345,13 @@ vault references remain.
 
 **8.3 Every must-fix id maps to a named test.** A table in PROGRESS; CI green,
 the pgTAP job included. Closes [data-22] [keyask-14].
+
+Shipped 2026-09-27 (docs): 8.1 is `docs/vault-v1-device-checklist.md`, the
+plan's list merged with the device checks M1, M4, M5 and M6 left in PROGRESS;
+8.2 swept the claims and recorded the M8 entry in DECISIONS; 8.3 is
+`docs/vault-v1-test-map.md` (101 must-fix findings: 96 covered, 2 on the held
+team branch, 2 device-only, 1 missing, orgvault-19). The table lives in its
+own doc with a pointer in PROGRESS, which the line cap would not hold.
 
 **8.4 Copy unlocked by the number.** Anything beyond "your models can read your
 notes" lands only with the 4.8 and 5.4 results recorded (D12).

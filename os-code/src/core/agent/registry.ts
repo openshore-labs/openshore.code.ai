@@ -38,6 +38,7 @@ import type {
 } from '../../harness/vault/types.js';
 import { vaultSettingsFor } from '../vault/settingsFile.js';
 import { logger } from '../../util/log.js';
+import type { VaultPrivacyWire } from '../../daemon/vaultWire.js';
 import { projectMemoryWriteTool } from '../tools/projectMemory.js';
 import { todoWriteTool } from '../tools/todoWrite.js';
 import { loadVaultDir } from '../../config/load.js';
@@ -268,6 +269,21 @@ export function vaultPrivacyConfig(config: OscConfig): VaultPrivacyConfig {
   return {
     exclude: vault.exclude ?? [],
     localOnly: vault.localOnly ?? VaultSchema.parse({}).localOnly,
+  };
+}
+
+/** What the machine tells the app about its vault (`GET /vault/privacy`, and
+ *  the desktop bridge's `vaultPrivacy`): the privacy keys above, plus the
+ *  machine's `vault.packSize` (Vault M8), so the settings sheet can say when
+ *  this computer's sessions give notes less room than the device's choice.
+ *  Read only, machine keys only (projectPolicy never lets a project file set
+ *  either). One builder, so the daemon and the desktop answer alike. */
+export function machineVaultWire(config: OscConfig): VaultPrivacyWire {
+  const cfg = vaultPrivacyConfig(config);
+  return {
+    exclude: [...cfg.exclude],
+    localOnly: { paths: [...cfg.localOnly.paths], tags: [...cfg.localOnly.tags] },
+    packSize: (config.vault ?? VaultSchema.parse({})).packSize,
   };
 }
 

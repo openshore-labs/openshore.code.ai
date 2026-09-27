@@ -139,6 +139,9 @@ export interface VaultSettingsSheetCopy {
   roomSpend: string;
   roomNeedsContext: string;
   roomAboveLarge: string;
+  /** The line under Room for notes when the computer's sessions use their
+   *  own size (Vault M8). */
+  roomEngine: (where: 'this' | 'your', size?: VaultPackSize) => string;
   deviceFooter: string;
   // 4. Today's note
   dailyFolder: string;
@@ -197,6 +200,10 @@ export interface VaultSettingsDevice {
   packSize: VaultPackSize | 'above-large';
   /** A cloud seat is connected: the one amber spend line shows. */
   cloudSeat: boolean;
+  /** The computer's sessions use a size other than the one shown (Vault
+   *  M8, `vaultEngineRoom`): `size` is theirs, absent when the computer did
+   *  not say. Absent, nothing to say. */
+  engine?: { where: 'this' | 'your'; size?: VaultPackSize };
 }
 
 export interface VaultSettingsConflict {
@@ -1023,6 +1030,11 @@ export function VaultSettingsSheet(props: VaultSettingsSheetProps) {
                       describedBy={`${uid}-room-sub`}
                       onPick={(v) => onDevice({ packSize: v })}
                     />
+                    {device.engine && device.context.on && !device.context.lock ? (
+                      <p className="hint vault-settings-engine" role="note">
+                        {c.roomEngine(device.engine.where, device.engine.size)}
+                      </p>
+                    ) : null}
                     {device.cloudSeat ? (
                       <p className="vault-settings-spend">
                         <span className="vault-settings-spend-dot" aria-hidden="true" />

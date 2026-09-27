@@ -38,7 +38,11 @@ import {
   vaultNotesInChatsToast,
   vaultSettingsTeamFooter,
 } from '../../lib/vaultCopy.js';
-import { vaultDevicePatch, vaultDeviceView } from '../../lib/vaultDevice.js';
+import {
+  vaultDevicePatch,
+  vaultDeviceView,
+  type VaultEngineRoomSource,
+} from '../../lib/vaultDevice.js';
 import { vaultSettingsSheetCopy } from '../../lib/vaultSettingsSheetCopy.js';
 import { vaultTreeSortOffered } from '../../lib/vault.js';
 import { vaultFolderChoices, vaultPickPatches } from '../../lib/vaultSettingsPick.js';
@@ -137,6 +141,7 @@ export function VaultSettingsHost({ open, setOpen, onOpenStorage }: VaultSetting
     vaultCapsNow,
     vaultReadOnly,
     vaultLoadSettings,
+    vaultEngineRoomSource,
     vaultSaveSetting,
     saveSettings,
     showToast,
@@ -199,6 +204,23 @@ export function VaultSettingsHost({ open, setOpen, onOpenStorage }: VaultSetting
       live = false;
     };
   }, [open, team]);
+
+  // Where this device's engine sessions run and that computer's own Room for
+  // notes (Vault M8): read at each open, so the row can say when those
+  // sessions use a size other than the one selected here.
+  const [engine, setEngine] = useState<VaultEngineRoomSource>();
+  useEffect(() => {
+    if (!open || team) return;
+    let live = true;
+    void vaultEngineRoomSource()
+      .then((got) => {
+        if (live) setEngine(got);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [open, team, vaultEngineRoomSource]);
 
   const commit = async (patches: readonly VaultSettingsPatch[]) => {
     if (!patches.length) return;
@@ -305,7 +327,11 @@ export function VaultSettingsHost({ open, setOpen, onOpenStorage }: VaultSetting
         {...(team
           ? {}
           : {
-              device: vaultDeviceView(settings, { memoryOn, cloudSeat }),
+              device: vaultDeviceView(settings, {
+                memoryOn,
+                cloudSeat,
+                ...(engine ? { engine } : {}),
+              }),
               ...(machine ? { machine } : {}),
             })}
         builtIns={VAULT_PRIVACY_DEFAULTS.localOnly}

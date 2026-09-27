@@ -111,6 +111,12 @@ export interface VaultConfigResponse {
 export interface VaultPrivacyWire {
   exclude: string[];
   localOnly: { paths: string[]; tags: string[] };
+  /** The machine's `vault.packSize` (Vault M8), read only: the most room an
+   *  engine session on this computer gives notes, since the app's Room for
+   *  notes may only lower it. The settings sheet says so when the device's
+   *  choice is larger. Additive: an old daemon sends none, and the app then
+   *  says it conservatively. */
+  packSize?: VaultPackSize;
 }
 
 /** An error body any vault route may answer with (400, 401, 403, 404, 413). */

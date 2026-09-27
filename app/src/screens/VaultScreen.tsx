@@ -2267,10 +2267,13 @@ export function VaultScreen() {
   }
 
   // ---- Trash (6.3, CX X10): a page inside the room -------------------------
+  // The page sits in the room's own screen, beside the tree's place, so the
+  // swap each way leaves a fading snapshot (pageGhost), never a cut.
   if (trashOpen) {
     return (
-      <>
+      <div className="screen vault-screen">
         <VaultTrashView
+          rootRef={pageGhost('trash')}
           kind={trashKind}
           entries={vaultTrash}
           error={trashError}
@@ -2304,7 +2307,7 @@ export function VaultScreen() {
         />
         {switcher}
         {undoToast}
-      </>
+      </div>
     );
   }
 

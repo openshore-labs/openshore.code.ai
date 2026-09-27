@@ -161,6 +161,10 @@ const COPY: VaultSettingsSheetCopy = {
   roomSpend: 'On a cloud model, Large sends more text on your account.',
   roomNeedsContext: 'Turn on Notes in chats to choose this.',
   roomAboveLarge: "Your computer's config gives notes more room than Large.",
+  roomEngine: (where, size) =>
+    size
+      ? `Sessions on ${where} computer use its own setting, ${size === 'small' ? 'Small' : size === 'normal' ? 'Normal' : 'Large'}.`
+      : `Sessions on ${where} computer can use its own setting instead.`,
   deviceFooter:
     'These stay on this device and never travel with your notes, so a shared folder cannot change them.',
   dailyFolder: 'Folder',
@@ -589,6 +593,46 @@ describe('Vault settings: lists, picks, and this device (Y7 to Y10)', () => {
       [],
     );
     expect(dom.text()).toContain(COPY.roomAboveLarge);
+  });
+
+  it("says when the computer's sessions use their own room, neutral, and only with Notes in chats on", async () => {
+    await sheet();
+    expect($('.vault-settings-engine')).toBeNull();
+    await sheet({
+      device: {
+        context: { on: true },
+        handoff: { on: true },
+        packSize: 'large',
+        cloudSeat: false,
+        engine: { where: 'this', size: 'normal' },
+      },
+    });
+    const line = $('.vault-settings-engine');
+    expect(line?.textContent).toBe('Sessions on this computer use its own setting, Normal.');
+    // The choice stays selected: app seats still use it.
+    expect(radio('Room for notes', 'Large')?.getAttribute('aria-checked')).toBe('true');
+    await sheet({
+      device: {
+        context: { on: true },
+        handoff: { on: true },
+        packSize: 'large',
+        cloudSeat: false,
+        engine: { where: 'your' },
+      },
+    });
+    expect($('.vault-settings-engine')?.textContent).toBe(
+      'Sessions on your computer can use its own setting instead.',
+    );
+    await sheet({
+      device: {
+        context: { on: false },
+        handoff: { on: true },
+        packSize: 'large',
+        cloudSeat: false,
+        engine: { where: 'this', size: 'normal' },
+      },
+    });
+    expect($('.vault-settings-engine')).toBeNull();
   });
 
   it('holds a switch off when the project or Memory does, and says which', async () => {

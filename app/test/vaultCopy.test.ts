@@ -86,6 +86,7 @@ import {
   HUB_UPDATE_LINE,
   hubMoveOffer,
   hubTooLargeLine,
+  VAULT_EVAL_CLAIMS_UNLOCKED,
   type VaultCopyOpts,
   type VaultCopyProvider,
 } from '../src/lib/vaultCopy.js';
@@ -1106,10 +1107,20 @@ describe('the save chip and conflict badges (M2 2.2)', () => {
 // where you left off" until its eval passes. Swept over every string literal
 // inside the M7 fences of vaultCopy.ts, so each stream's lines are covered the
 // moment they land.
-const M7_BANNED = [
-  /\b(faster|slower|quicker|cheaper|saves? (?:time|money)|better|smarter|remembers?|learns?|always)\b/i,
+//
+// Vault M8 (8.4, D12): the claims wait on the number. EVAL_CLAIMS are the
+// words only a recorded eval may unlock (the 4.8 pack and 5.4 handoff
+// results, gated by VAULT_EVAL_CLAIMS_UNLOCKED in the copy map); NEVER holds
+// whatever the evals say ("always" is not a measurement). M7_BANNED is both.
+const EVAL_CLAIMS = [
+  /\b(faster|slower|quicker|cheaper|saves? (?:time|money)|better|smarter|remembers?|learns?)\b/i,
   /picks? up where (?:you|it) left off/i,
 ];
+const NEVER = [/\balways\b/i];
+const M7_BANNED = [...EVAL_CLAIMS, ...NEVER];
+/** What the sweeps refuse today: everything until the eval flag is set, then
+ *  only NEVER. */
+const BANNED_NOW = VAULT_EVAL_CLAIMS_UNLOCKED ? NEVER : M7_BANNED;
 
 function m7Sections(src: string): Array<{ name: string; body: string }> {
   const out: Array<{ name: string; body: string }> = [];
@@ -1142,7 +1153,7 @@ describe('Vault M7 copy (M7_BANNED)', () => {
     const hits: string[] = [];
     for (const { name, body } of sections) {
       for (const s of stringLiterals(stripComments(body))) {
-        for (const re of M7_BANNED) if (re.test(s)) hits.push(`${name}: ${s}`);
+        for (const re of BANNED_NOW) if (re.test(s)) hits.push(`${name}: ${s}`);
       }
     }
     expect(hits).toEqual([]);
@@ -1153,5 +1164,91 @@ describe('Vault M7 copy (M7_BANNED)', () => {
       "// ---- M7 stream X begin ----\nconst A = 'Handoff picks up where you left off.';\n// ---- M7 stream X end ----";
     const found = m7Sections(fake).flatMap((s) => stringLiterals(s.body));
     expect(found.some((s) => M7_BANNED.some((re) => re.test(s)))).toBe(true);
+  });
+});
+
+// Vault M8 (8.4): the same refusal over the WHOLE copy map, every section and
+// not only the M7 fences, and over the literal strings of the Vault's own
+// screens and components (attributes, JSX text, and any literal a component
+// renders), so a claim cannot slip in beside the map either.
+const VAULT_UI_FILES = (): string[] => [
+  join(SRC, 'lib/vaultCopy.ts'),
+  join(SRC, 'lib/vaultSettingsSheetCopy.ts'),
+  join(SRC, 'screens/VaultScreen.tsx'),
+  ...walk(join(SRC, 'components/vault')),
+  ...readdirSync(join(SRC, 'components'))
+    .filter((f) => /^(?:Vault|ProjectVault)\w*\.tsx$/.test(f))
+    .map((f) => join(SRC, 'components', f)),
+];
+
+/** A literal a person could read: words (a space) or a capitalized word. A
+ *  lowercase single token (`'always'` as a setting's value, a class name) is
+ *  code, not copy. */
+const readable = (s: string) => /[A-Za-z]/.test(s) && (/\s/.test(s.trim()) || /^[A-Z]/.test(s));
+
+/** JSX text between tags, the copy a component writes inline. */
+function jsxText(code: string): string[] {
+  return [...code.matchAll(/>([^<>{}]*[A-Za-z][^<>{}]*)</g)].map((m) => m[1]!.trim());
+}
+
+function uiCopyOf(file: string): string[] {
+  const code = stripComments(readFileSync(file, 'utf8'));
+  return [...stringLiterals(code), ...jsxText(code)].filter(readable);
+}
+
+describe('Vault copy waits on the eval (M8 8.4, D12)', () => {
+  it('the flag lives in the copy map, off, naming the results it waits on', () => {
+    const src = readFileSync(join(SRC, 'lib/vaultCopy.ts'), 'utf8');
+    expect(src).toMatch(/^export const VAULT_EVAL_CLAIMS_UNLOCKED = (?:false|true);$/m);
+    const doc = src.slice(0, src.indexOf('export const VAULT_EVAL_CLAIMS_UNLOCKED'));
+    const comment = doc.slice(doc.lastIndexOf('/**'));
+    expect(comment).toMatch(/4\.8/);
+    expect(comment).toMatch(/5\.4/);
+    // Off today: no 4.8 or 5.4 result is recorded yet. Flipping it is a
+    // deliberate edit here too, made with the numbers in DECISIONS.
+    expect(VAULT_EVAL_CLAIMS_UNLOCKED).toBe(false);
+  });
+
+  it('sweeps the whole map and every Vault screen and component', () => {
+    const files = VAULT_UI_FILES().map((f) => relative(ROOT, f));
+    for (const f of [
+      'src/lib/vaultCopy.ts',
+      'src/screens/VaultScreen.tsx',
+      'src/components/vault/VaultSettingsSheet.tsx',
+      'src/components/vault/VaultTrashView.tsx',
+      'src/components/VaultMarkdown.tsx',
+      'src/components/ProjectVaultPins.tsx',
+    ]) {
+      expect(files).toContain(f);
+    }
+    // The map alone holds hundreds of lines; a reader that finds few has
+    // broken, and the sweep would pass on nothing.
+    expect(uiCopyOf(join(SRC, 'lib/vaultCopy.ts')).length).toBeGreaterThan(300);
+    expect(uiCopyOf(join(SRC, 'screens/VaultScreen.tsx')).length).toBeGreaterThan(20);
+  });
+
+  it('no Vault string claims a speed, a quality, a memory, or always, anywhere', () => {
+    const hits: string[] = [];
+    for (const file of VAULT_UI_FILES()) {
+      for (const s of uiCopyOf(file)) {
+        for (const re of BANNED_NOW) if (re.test(s)) hits.push(`${relative(ROOT, file)}: ${s}`);
+      }
+    }
+    expect(hits).toEqual([]);
+  });
+
+  it('refuses "faster", "smarter" and "remembers" outside the M7 fences, and passes a code value', () => {
+    const outside = [
+      "export const X = 'Notes make each chat faster.';",
+      '<p className="hint">A smarter vault</p>',
+      'const y = `It remembers what you wrote.`;',
+    ].join('\n');
+    const found = [...stringLiterals(outside), ...jsxText(outside)].filter(readable);
+    for (const word of [/faster/, /smarter/, /remembers/]) {
+      expect(found.some((s) => word.test(s) && M7_BANNED.some((re) => re.test(s)))).toBe(true);
+    }
+    // A setting's value is not copy.
+    expect(readable('always')).toBe(false);
+    expect(readable('Always on')).toBe(true);
   });
 });

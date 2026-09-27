@@ -3016,6 +3016,13 @@ button.vault-tag {
   font-size: var(--text-2);
   color: var(--ink-soft);
 }
+/* M8: the computer's sessions use their own Room for notes. Neutral, no
+   dot: the system working, not a spend or a fault. */
+.vault-settings-engine {
+  margin: 0;
+  font-size: var(--text-2);
+  color: var(--ink-soft);
+}
 .vault-settings-spend-dot {
   flex-shrink: 0;
   width: 7px;
