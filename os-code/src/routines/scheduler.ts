@@ -24,6 +24,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { bootstrapSession } from '../core/agent/bootstrap.js';
 import { writeNewNoteSync } from '../core/vault/noteFile.js';
+import { safeNoteName } from '../harness/vault/paths.js';
 import type { DriverEvent, PermissionMode } from '../core/agent/types.js';
 import {
   ensureVaultRoot,
@@ -633,7 +634,11 @@ export class RoutineScheduler {
     // note is published whole with link() and never replaces a name that is
     // taken (the ifAbsent path of the vault's one writeNote, in its
     // synchronous form, since a run's end is recorded in one tick).
-    const folder = join('Crew', safeName(active.routine.name));
+    // The routine's folder follows the vault's one new-name rule (Vault M3,
+    // H4): no character Obsidian's links or a file system refuse, no dot-led
+    // or dot-ended segment, no reserved name. Old runs keep the absolute path
+    // their record already holds, so nothing is moved.
+    const folder = join('Crew', safeNoteName(active.routine.name, 'Routine'));
     for (let n = 1; ; n++) {
       const name = `${date} ${hh}-${mm}${n === 1 ? '' : ` (${n})`}.md`;
       const rel = join(folder, name).split('\\').join('/');
@@ -660,14 +665,6 @@ function two(n: number): string {
 
 function slotLabel(slot: Date): string {
   return `${two(slot.getHours())}:${two(slot.getMinutes())}`;
-}
-
-function safeName(name: string): string {
-  const cleaned = name
-    .replace(/[\\/:*?"<>|]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return cleaned || 'Routine';
 }
 
 function stateWord(state: RoutineRun['state']): string {

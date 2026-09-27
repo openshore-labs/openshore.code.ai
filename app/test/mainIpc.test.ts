@@ -66,6 +66,24 @@ describe('main-process IPC guard (UI-6)', () => {
     expect(main).toMatch(/saveGlobalConfig\(\{ vault: \{ dir \} \}\)/);
   });
 
+  // Vault M3 (CTO H3, H5): the index and config IPCs take no path. The index
+  // is keyed by the vault root main reads itself and capped at 32 MB; a config
+  // read names a logical file main maps through its own allow-list.
+  it('the vault index and config IPCs take no path, and each holds its bound', () => {
+    expect(main).toMatch(
+      /guarded\('osc:vaultIndexLoad', \(\) => loadVaultIndexFile\(vaultDir\(\)\)\)/,
+    );
+    expect(main).toMatch(/guarded\('osc:vaultIndexSave', \(blob: unknown\) =>/);
+    expect(main).toMatch(/saveVaultIndexFile\(vaultDir\(\), text\)/);
+    expect(main).toMatch(/text\.length > VAULT_INDEX_FILE_MAX_BYTES/);
+    expect(main).toMatch(/guarded\('osc:vaultReadConfig', \(name: unknown\) =>/);
+    expect(main).toMatch(/if \(!isVaultConfigName\(name\)\)[^\n]*reason: 'refused'/);
+    expect(main).toMatch(/readVaultConfigFile\(vaultDir\(\), name\)/);
+    for (const ch of ['vaultIndexLoad', 'vaultIndexSave', 'vaultReadConfig']) {
+      expect(preload).toContain(`${ch}: invoke('osc:${ch}')`);
+    }
+  });
+
   it('exposes secureHas so the renderer can tell absent from unreadable (P0-3)', () => {
     expect(preload).toContain("secureHas: invoke('osc:secureHas')");
     expect(main).toMatch(/guarded\('osc:secureHas'/);

@@ -9,11 +9,17 @@
 // (core/vault/noteFile.ts), atomic and guarded by the note's version.
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { readdir, stat } from 'node:fs/promises';
+import { lstat, readdir, stat } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { z } from 'zod';
 import { Jail } from '../security/jail.js';
 import { ensureVaultRoot } from '../../config/load.js';
+import {
+  checkNewNoteName,
+  foldPath,
+  isNotePath,
+  normalizeNotePath,
+} from '../../harness/vault/paths.js';
 import { unifiedDiff } from '../edit/diff.js';
 import { NotANoteError, readNoteBytes, writeNote } from '../vault/noteFile.js';
 import { capContent, type ToolContext, type ToolDef } from './index.js';
@@ -26,39 +32,97 @@ function vaultJail(ctx: ToolContext): Jail {
   return new Jail(ensureVaultRoot(ctx.vaultRoot));
 }
 
-/** Normalize a note name into a vault-relative .md path, the same shape the app
- *  uses: trim, collapse separators, append .md when absent. A segment that
- *  starts with a dot is refused, the app's rule too: the vault and Obsidian
- *  hide dot names, so a ".NET migration.md" would land where no surface lists
- *  it, and vaultRead, sharing this helper, stays out of .obsidian/ (0.6). */
-function normalizeNotePath(raw: string): string {
-  const segments = raw
+/** A typed note name in its plain spelling: trimmed, backslashes and runs of
+ *  "/" collapsed to one separator, .md appended when absent. Nothing is
+ *  stripped, so an existing note keeps any name the file system gave it
+ *  ("Decision: auth?.md" still reads and updates). A dot-led segment is
+ *  refused, the seam's own note rule (isNotePath): the vault and Obsidian hide
+ *  dot names, so a ".NET migration.md" would land where no surface lists it,
+ *  and vaultRead, sharing this helper, stays out of .obsidian/ (0.6). */
+function plainNotePath(raw: string): string {
+  const cleaned = raw
     .trim()
     .replace(/\\/g, '/')
     .split('/')
     .map((s) => s.trim())
-    .filter(Boolean);
-  const cleaned = segments.join('/');
+    .filter(Boolean)
+    .join('/');
   if (!cleaned) throw new Error('Give the note a name.');
-  if (segments.some((s) => s.startsWith('.'))) {
-    const undotted = segments
-      .map((s) => s.replace(/^[\s.]+/, ''))
-      .filter(Boolean)
-      .join('/');
-    const use = undotted ? ` Use "${/\.md$/i.test(undotted) ? undotted : `${undotted}.md`}".` : '';
-    throw new Error(`Note names cannot start with a dot; the vault and Obsidian hide them.${use}`);
+  const rel = /\.md$/i.test(cleaned) ? cleaned : `${cleaned}.md`;
+  if (!isNotePath(rel)) {
+    const use = normalizeNotePath(rel);
+    throw new Error(
+      `Note names cannot start with a dot; the vault and Obsidian hide them.${use ? ` Use "${use}".` : ''}`,
+    );
   }
-  return /\.md$/i.test(cleaned) ? cleaned : `${cleaned}.md`;
+  return rel;
 }
 
 /** The normalized note path for permission matching; a bad name is undefined
  *  (pathOf never throws), and execute reports the real error. */
 function notePathOrUndefined(raw: string): string | undefined {
   try {
-    return normalizeNotePath(raw);
+    return plainNotePath(raw);
   } catch {
     return undefined;
   }
+}
+
+/** The note in the vault that `rel` names by fold (NFC, then lowercase) but
+ *  not byte for byte, walking segment by segment, or undefined. A case-
+ *  sensitive disk would otherwise hold "plan.md" beside "Plan.md", two files
+ *  the app and Obsidian treat as one note. It is only ever named back to the
+ *  model, never written or read in the typed path's place, so a permission
+ *  rule on the typed path cannot be stepped around. */
+async function foldTwin(root: string, rel: string): Promise<string | undefined> {
+  const out: string[] = [];
+  let dir = root;
+  for (const want of rel.split('/')) {
+    let names: string[];
+    try {
+      names = await readdir(dir);
+    } catch {
+      return undefined;
+    }
+    const folded = foldPath(want);
+    const hit = names.includes(want)
+      ? want
+      : names
+          .filter((n) => !n.startsWith('.') && foldPath(n) === folded)
+          .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))[0];
+    if (hit === undefined) return undefined;
+    out.push(hit);
+    dir = join(dir, hit);
+  }
+  const twin = out.join('/');
+  if (twin === rel) return undefined;
+  const info = await stat(dir).catch(() => undefined);
+  return info?.isFile() ? twin : undefined;
+}
+
+/** The path a vaultWrite lands on. An existing exact path always updates,
+ *  whatever its name holds. A new note must pass the vault's one new-name
+ *  rule (Vault M3, H4), and is refused with the clean name to use instead; a
+ *  new name that folds onto an existing note is refused with that note's
+ *  name, so the model updates it rather than making a twin. */
+async function writeTarget(jail: Jail, raw: string): Promise<string> {
+  const plain = plainNotePath(raw);
+  if (await exists(jail, plain)) return plain;
+  const check = checkNewNoteName(plain);
+  if (!check.ok) throw new Error(check.error);
+  const rel = check.path;
+  if (rel !== plain && (await exists(jail, rel))) return rel;
+  const twin = await foldTwin(jail.root, rel);
+  if (twin) {
+    throw new Error(`The vault already has this note as "${twin}". Write to "${twin}" instead.`);
+  }
+  return rel;
+}
+
+/** Whether anything sits at `rel` in the vault (a folder named like a note
+ *  counts, so the write reports it plainly). */
+async function exists(jail: Jail, rel: string): Promise<boolean> {
+  return (await lstat(jail.resolve(rel)).catch(() => undefined)) !== undefined;
 }
 
 /** Normalize a folder argument: same cleaning, no .md suffix. */
@@ -117,7 +181,7 @@ export const vaultWriteTool: ToolDef<typeof writeSchema> = {
   pathOf: (args) => notePathOrUndefined(args.path),
   async preview(args, ctx) {
     const jail = vaultJail(ctx);
-    const rel = normalizeNotePath(args.path);
+    const rel = await writeTarget(jail, args.path);
     const abs = jail.resolve(rel);
     // One read of the raw bytes: the diff is built from them, and their hash
     // travels to execute as the basis the person approved against.
@@ -134,7 +198,7 @@ export const vaultWriteTool: ToolDef<typeof writeSchema> = {
   },
   async execute(args, ctx, approved) {
     const jail = vaultJail(ctx);
-    const rel = normalizeNotePath(args.path);
+    const rel = await writeTarget(jail, args.path);
     const abs = jail.resolve(rel);
     let current;
     try {
@@ -186,9 +250,19 @@ export const vaultReadTool: ToolDef<typeof readSchema> = {
   pathOf: (args) => notePathOrUndefined(args.path),
   async execute(args, ctx) {
     const jail = vaultJail(ctx);
-    const rel = normalizeNotePath(args.path);
+    const rel = plainNotePath(args.path);
     const abs = jail.resolve(rel);
-    if (!existsSync(abs)) return { ok: true, content: `No vault note at ${rel} yet.` };
+    if (!existsSync(abs)) {
+      // A note spelled another way (case, or NFD against NFC) is named back,
+      // never read in its place, so a rule on the typed path still holds.
+      const twin = await foldTwin(jail.root, rel);
+      return {
+        ok: true,
+        content: twin
+          ? `No vault note at ${rel}. The vault has "${twin}"; read that path.`
+          : `No vault note at ${rel} yet.`,
+      };
+    }
     // Look before reading: a folder named like a note, a note too large to
     // take whole, or a binary file each get a plain answer the model can act
     // on, never a raw error, and nothing large is read into memory first.

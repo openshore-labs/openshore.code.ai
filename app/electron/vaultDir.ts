@@ -467,7 +467,7 @@ export class VaultDirChooser {
     const limit = this.deps.bringLimit ?? VAULT_SURVEY_LIMITS.notes;
     let listed;
     try {
-      listed = listVaultFolder(from, { sweep: false, limit: limit + 1 });
+      listed = await listVaultFolder(from, { sweep: false, limit: limit + 1 });
     } catch (err) {
       this.deps.log?.(`bring could not list the previous folder: ${(err as Error).message}`);
       return refused('unavailable');
