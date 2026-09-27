@@ -2726,6 +2726,25 @@ button.vault-tag {
 
 /* ---- M6 stream W2 end ---- */
 
+/* Vault M7 wave 0: one fenced section per build stream. A stream writes only
+   inside its own fence, so the streams never touch the same lines. */
+
+/* ---- M7 stream G begin ----
+   Customization surface (7.1 to 7.3): the --vault-font and --vault-size-step
+   tokens (a step on the platform base, never px, so Dynamic Type wins), the
+   Vault settings sheet's sections, segments and read-only rows, the Y2
+   expand line (a fade on --dur-3, no height tween), folder chips, the
+   provenance chip (teal --local, amber --cloud, outline once reviewed),
+   About this note, the starter preview sheet (CTO L15; CX Y1 to Y13). */
+
+/* ---- M7 stream G end ---- */
+
+/* ---- M7 stream W2 begin ----
+   Wave 2 integrator: the Y4 entry rows (note Options, the storage sheet's
+   end, the Settings mirror) and the chip's place on the note's meta line. */
+
+/* ---- M7 stream W2 end ---- */
+
 /* ------------------------------------------------------------------ chat */
 
 .thread {

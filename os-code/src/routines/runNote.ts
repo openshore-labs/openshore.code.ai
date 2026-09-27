@@ -13,16 +13,11 @@
 // never fork the day's note.
 import { VAULT_DAILY_DEFAULTS, dailyNotePath, datePartsOf } from '../harness/vault/dates.js';
 import type { ConfigRead, DailyNoteConfig } from '../harness/vault/types.js';
+import { yamlString } from '../harness/vault/yamlScalar.js';
 
-/** A YAML double-quoted scalar holding exactly `value`. JSON escapes the
- *  quote, the backslash, and the C0 controls; the characters YAML refuses
- *  unescaped, or reads as a line break, are escaped here too. */
-export function yamlString(value: string): string {
-  return JSON.stringify(value).replace(
-    /[\u007f-\u009f\u2028\u2029\ufeff\ufffe\uffff]/g,
-    (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`,
-  );
-}
+// Moved to harness/vault/yamlScalar.ts (Vault M7, CTO L10); re-exported for
+// the callers that name it here.
+export { yamlString };
 
 /** The routine's own tag, `crew/<slug>`: letters, digits, `_` and `-` only,
  *  the characters an Obsidian tag keeps. Undefined when nothing is left, or

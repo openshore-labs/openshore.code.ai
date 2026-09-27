@@ -90,6 +90,7 @@ describe('vaultCaps', () => {
       taskWriteBack: true,
       linkRewrite: true,
       today: true,
+      settingsWrite: false,
     });
   });
 
@@ -106,6 +107,7 @@ describe('vaultCaps', () => {
       taskWriteBack: false,
       linkRewrite: false,
       today: false,
+      settingsWrite: false,
     });
   });
 
@@ -150,6 +152,7 @@ describe('vaultCaps', () => {
         taskWriteBack: false,
         linkRewrite: false,
         today: true,
+        settingsWrite: false,
       });
     }
     expect(vaultCaps(p, { readOnly: false, reach: 'unknown' }).rename).toBe(true);
@@ -170,6 +173,8 @@ const MAIN: Record<string, Record<string, boolean>> = {
     taskWriteBack: true,
     linkRewrite: true,
     today: true,
+    // Stream E lights local, files and hub once writeConfig lands (L7).
+    settingsWrite: false,
   },
   files: {
     rename: true,
@@ -181,6 +186,8 @@ const MAIN: Record<string, Record<string, boolean>> = {
     taskWriteBack: true,
     linkRewrite: true,
     today: true,
+    // Stream E lights local, files and hub once writeConfig lands (L7).
+    settingsWrite: false,
   },
   hub: {
     rename: true,
@@ -192,6 +199,8 @@ const MAIN: Record<string, Record<string, boolean>> = {
     taskWriteBack: true,
     linkRewrite: true,
     today: true,
+    // Stream E lights local, files and hub once writeConfig lands (L7).
+    settingsWrite: false,
   },
   icloud: {
     rename: false,
@@ -203,6 +212,7 @@ const MAIN: Record<string, Record<string, boolean>> = {
     taskWriteBack: false,
     linkRewrite: false,
     today: false,
+    settingsWrite: false,
   },
   gdrive: {
     rename: false,
@@ -214,6 +224,7 @@ const MAIN: Record<string, Record<string, boolean>> = {
     taskWriteBack: false,
     linkRewrite: false,
     today: false,
+    settingsWrite: false,
   },
   org: {
     rename: false,
@@ -225,6 +236,7 @@ const MAIN: Record<string, Record<string, boolean>> = {
     taskWriteBack: false,
     linkRewrite: false,
     today: false,
+    settingsWrite: false,
   },
 };
 

@@ -1100,3 +1100,58 @@ describe('the save chip and conflict badges (M2 2.2)', () => {
     expect(isVaultConflictCopy('Plan (conflict).md')).toBe(false);
   });
 });
+
+// Vault M7 (CX R2, Y7, Y8, Y17; D12, tenet 2): nothing in the M7 copy claims a
+// speed, a quality, a memory, or "always", and the handoff never "picks up
+// where you left off" until its eval passes. Swept over every string literal
+// inside the M7 fences of vaultCopy.ts, so each stream's lines are covered the
+// moment they land.
+const M7_BANNED = [
+  /\b(faster|slower|quicker|cheaper|saves? (?:time|money)|better|smarter|remembers?|learns?|always)\b/i,
+  /picks? up where (?:you|it) left off/i,
+];
+
+function m7Sections(src: string): Array<{ name: string; body: string }> {
+  const out: Array<{ name: string; body: string }> = [];
+  const re = /\/\/ ---- (M7 [^\n]*?) begin ----\n([\s\S]*?)\/\/ ---- \1 end ----/g;
+  for (let m = re.exec(src); m; m = re.exec(src)) out.push({ name: m[1]!, body: m[2]! });
+  return out;
+}
+
+function stringLiterals(code: string): string[] {
+  const out: string[] = [];
+  const re = /'((?:\\.|[^'\\\n])*)'|"((?:\\.|[^"\\\n])*)"|`((?:\\.|[^`\\])*)`/g;
+  for (let m = re.exec(code); m; m = re.exec(code)) out.push(m[1] ?? m[2] ?? m[3] ?? '');
+  return out;
+}
+
+describe('Vault M7 copy (M7_BANNED)', () => {
+  const src = readFileSync(join(SRC, 'lib/vaultCopy.ts'), 'utf8');
+  const sections = m7Sections(src);
+
+  it('keeps one fence per stream, each opened and closed once', () => {
+    expect(sections.map((s) => s.name)).toEqual([
+      'M7 stream E',
+      'M7 stream F',
+      'M7 stream G',
+      'M7 wave 2',
+    ]);
+  });
+
+  it('no M7 string claims a speed, a quality, a memory, or always', () => {
+    const hits: string[] = [];
+    for (const { name, body } of sections) {
+      for (const s of stringLiterals(stripComments(body))) {
+        for (const re of M7_BANNED) if (re.test(s)) hits.push(`${name}: ${s}`);
+      }
+    }
+    expect(hits).toEqual([]);
+  });
+
+  it('the sweep can fail', () => {
+    const fake =
+      "// ---- M7 stream X begin ----\nconst A = 'Handoff picks up where you left off.';\n// ---- M7 stream X end ----";
+    const found = m7Sections(fake).flatMap((s) => stringLiterals(s.body));
+    expect(found.some((s) => M7_BANNED.some((re) => re.test(s)))).toBe(true);
+  });
+});

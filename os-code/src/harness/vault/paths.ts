@@ -233,6 +233,21 @@ export function isNotePath(path: string, options: IsNotePathOptions = {}): boole
   return true;
 }
 
+/** The agent's hard deny under any dot folder (Vault M7, CTO L8): false when
+ *  any folded segment, trimmed, starts with a dot (`.oscode/vault.json`,
+ *  `.obsidian/app.json`, `.trash/x.md`), and for an empty or rooted path. A
+ *  backslash splits like a slash, so no spelling slips past. Hosts check the
+ *  typed path and again the RESOLVED one (realpath of the target or its
+ *  nearest existing parent, relative to the real root), so a symlinked note
+ *  cannot reach `.oscode/` either. Not about notes: any file, any tool. */
+export function isAgentWritablePath(rel: string): boolean {
+  if (typeof rel !== 'string' || rel.trim() === '') return false;
+  if (rel.startsWith('/') || rel.startsWith('\\')) return false;
+  return !foldPath(rel)
+    .split(/[\\/]/)
+    .some((segment) => segment.trim().startsWith('.'));
+}
+
 /** A note's display title: its filename without the .md extension, exactly
  *  how Obsidian titles a note. */
 export function noteTitle(path: string): string {

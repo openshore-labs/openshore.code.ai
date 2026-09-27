@@ -1975,3 +1975,43 @@ export function vaultFolderMovePartial(old: string, moved: number, total: number
  *  not name. */
 export const VAULT_TODAY_FAILED = "Could not open today's note. Try again in a moment.";
 // ---- M6 wave 2 end ----
+
+// ============================================================================
+// Vault M7 wave 0: one fenced section per build stream. A stream writes only
+// inside its own fence. Every string passes the RETIRED list, M6_RETIRED,
+// M7_BANNED (no faster, better, remembers, always, and no "picks up where you
+// left off" until D12's handoff eval), copy-glossary and both em-dash guards
+// (CX R1, R2). Settings copy says "this vault", "beside your notes" or names
+// `.oscode/vault.json`, never "saved in your vault".
+
+// ---- M7 stream E begin ----
+// Providers (L7, L16): the line that says why this storage's settings cannot
+// change here (`vaultCaps().settingsWrite` false for the storage itself), per
+// provider, in the `vaultCapLine` style.
+
+// ---- M7 stream E end ----
+
+// ---- M7 stream F begin ----
+// The settings sheet and its switches (CX Y1 to Y10, Y13; CTO L1 to L4, L7,
+// L11 to L13, reconciliation 3 and 4): the title and seven section labels,
+// row labels and subs, "From Obsidian" and "From your computer's config",
+// the set-aside line around the schema's `plain` fragments, the save status
+// and conflict lines, the storage footers, Notes in chats (built from
+// PACK_BY_CLASS), Handoff, Room for notes and its amber spend line, the
+// Delete choice, excluded and local-only folders, Your agent writes in, the
+// Wayfinding rows and toasts, and the starter layout's notes and lines.
+
+// ---- M7 stream F end ----
+
+// ---- M7 stream G begin ----
+// Components (CX Y11, Y12, Y13, Y16): the provenance chip and its accessible
+// label, "About this note" and Mark as reviewed, the starter preview sheet's
+// rows, the editor sample line.
+
+// ---- M7 stream G end ----
+
+// ---- M7 wave 2 begin ----
+// The integrator's few lines: what the room and Settings say where no
+// stream's fence had a line for it (the team read-only footer, Y4's rows).
+
+// ---- M7 wave 2 end ----

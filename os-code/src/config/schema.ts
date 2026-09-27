@@ -262,6 +262,19 @@ export const VaultSchema = z.object({
   // first task reads one at most seven days old; 'off' writes and reads
   // none. Memory off stops both as well. A project may only turn it off.
   handoff: z.enum(['auto', 'off']).default('auto'),
+  // Room for notes (Vault M7, CTO L13, L14): a factor on each class's pack
+  // budget (small 0.5, normal 1, large 1.5), always capped by packMaxTokens.
+  // The app may only lower it (settings.vaultPackSize). Machine config: a repo
+  // and the in-vault file never widen what a model is sent.
+  packSize: z.enum(['small', 'normal', 'large']).default('normal'),
+  // The most tokens any pack may take, whatever the size and the served
+  // window (VAULT_PACK_MAX_TOKENS in harness/profile.ts is the default).
+  // Machine config.
+  packMaxTokens: z.number().int().min(500).max(32000).default(4000),
+  // Provenance on agent-written notes (Vault M7, CTO L9, L10): the flat
+  // `oscode-*` frontmatter lines. 'off' hides who wrote a note, so it is for
+  // eval only, and machine config.
+  provenance: z.enum(['on', 'off']).default('on'),
 });
 
 // ---------------------------------------------------------------------------

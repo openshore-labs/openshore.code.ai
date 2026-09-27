@@ -86,6 +86,8 @@ export {
   safeNoteName,
   utf8Length,
   vaultConflictCopyPath,
+  // Vault M7 (CTO L8): the agent's hard deny under any dot folder.
+  isAgentWritablePath,
 } from './harness/vault/paths.js';
 export {
   findFrontmatter,
@@ -137,6 +139,24 @@ export {
   isAttachmentPath,
   resolveAttachment,
 } from './harness/vault/attachments.js';
+// Vault M7 "The customization surface" (CTO L1 to L4, L9, L10, L13): the
+// vault settings core, provenance, and the hand-written YAML scalar. Stubs
+// until each stream lands (settings.ts stream A, provenance.ts stream B).
+export {
+  VAULT_SETTINGS_FIELDS,
+  VAULT_SETTINGS_LIST_MAX,
+  VAULT_SETTINGS_STRING_MAX,
+  WIDENING_KEYS,
+  parseVaultSettingsFile,
+  patchVaultSettingsFile,
+  resolveVaultSettings,
+  unionNarrowing,
+  vaultContextOn,
+  vaultHandoffOn,
+  vaultPackSize,
+} from './harness/vault/settings.js';
+export { PROV_KEYS, mergeProvenance, readProvenance } from './harness/vault/provenance.js';
+export { yamlString } from './harness/vault/yamlScalar.js';
 // The Vault's shared core contract (Vault M3, CTO H1 to H5): the types the
 // scanner, frontmatter reader, resolver, index and readConfig seam agree on.
 // Types only, so nothing reaches the bundle.
@@ -210,6 +230,39 @@ export type {
   VaultTask,
   VaultTitleHit,
   VaultTrashEntry,
+  // Vault M7 (CTO L1 to L14)
+  ConfigWriteGuard,
+  ConfigWriteResult,
+  NoteProvenance,
+  ProvKey,
+  ProvSize,
+  ProvSource,
+  ProvWhere,
+  ProvenanceFields,
+  ProvenanceMerge,
+  ResolvedVaultSettings,
+  VaultDeleteMode,
+  VaultEditorFont,
+  VaultEditorSize,
+  VaultIgnoreFilters,
+  VaultLinkFormat,
+  VaultLinkStyle,
+  VaultLinkUpdateRule,
+  VaultNewNoteLocation,
+  VaultOpenMode,
+  VaultOverrides,
+  VaultPackSize,
+  VaultSettingsConfigName,
+  VaultSettingsField,
+  VaultSettingsFile,
+  VaultSettingsFileState,
+  VaultSettingsParse,
+  VaultSettingsPatch,
+  VaultSettingsReads,
+  VaultSettingsSetAside,
+  VaultSettingsSetAsideReason,
+  VaultSettingsSource,
+  VaultTreeSort,
 } from './harness/vault/types.js';
 // Vault privacy (Vault M4, CTO I4, I5): one judge of which notes are hidden and
 // which stay on this computer, and the stub a leaving seat sees in their place.
@@ -296,6 +349,8 @@ export {
   VAULT_TRASH_RESTORE_ROUTE,
   VAULT_TRASH_ROUTE,
   vaultFileRoute,
+  // Vault M7 (CTO L7)
+  VAULT_SETTINGS_CONFIG_NAME,
 } from './daemon/vaultWire.js';
 export type {
   ChatContextPackEvent,
@@ -329,6 +384,11 @@ export type {
   VaultTrashRestoreBody,
   VaultTrashRestoreResponse,
   VaultTrashResponse,
+  // Vault M7 (CTO L7)
+  VaultConfigConflictResponse,
+  VaultConfigPutBody,
+  VaultConfigPutResponse,
+  VaultConfigWriteResult,
 } from './daemon/vaultWire.js';
 export type { CapabilityCategory, SpecialistRole } from './router/roles.js';
 

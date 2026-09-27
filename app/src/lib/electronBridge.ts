@@ -21,8 +21,12 @@ import type {
   StackHealth,
   StackHealthRange,
   ReadBytesOptions,
+  ConfigWriteGuard,
+  ConfigWriteResult,
   VaultConfigName,
+  VaultOverrides,
   VaultPrivacyWire,
+  VaultSettingsConfigName,
 } from 'os-code/protocol';
 import type {
   CreateFolderResult,
@@ -271,6 +275,9 @@ export interface OscodeBridge {
       /** The project's own pinned notes (`Project.vaultPins`, CTO J14), at
        *  most 8 vault paths, read first by the pack. */
       vaultPins?: string[];
+      /** The app's vault switches (Vault M7, CTO L13): off-only and
+       *  lower-only, into `BootstrapOptions.vaultOverrides`. */
+      vaultOverrides?: VaultOverrides;
     },
   ): Promise<{ id: string; cwd: string; warnings: string[] }>;
   /** The person's controls over a live session (Claude Code parity): the
@@ -525,6 +532,19 @@ export interface OscodeBridge {
   /** osc:vaultOpenAttachment. Opens a PDF or an image in the system viewer
    *  (jailed, pdf and image extensions only). */
   vaultOpenAttachment?(path: string): Promise<{ ok: boolean }>;
+
+  // Vault M7 (CTO L7): the settings sheet's one write. Optional, like the M6
+  // calls; keep in lockstep with electron/main.ts and preload.cjs (stream D).
+  /** osc:vaultWriteConfig. Main writes `.oscode/vault.json` under the vault
+   *  root it holds (`writeVaultConfigFile`): `.oscode` made if missing and
+   *  lstat'd as a real directory, temp and rename through the Jail, never
+   *  following a link. Only `oscode/vault`; anything else is `refused`. The
+   *  person's own write, from the sheet only; no agent path names it. */
+  vaultWriteConfig?(
+    name: VaultSettingsConfigName,
+    text: string,
+    guard: ConfigWriteGuard,
+  ): Promise<ConfigWriteResult>;
 
   // Read-only access to a repo working tree, for the project-memory viewer. The
   // notes live in the repo under "OpenShore Project <name> MDs/"; these list a

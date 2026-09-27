@@ -25,6 +25,8 @@ import {
   type Project,
   type ProjectAccess,
   type AppVaultContextSetting,
+  type AppVaultHandoffSetting,
+  type AppVaultPackSize,
   type VaultPrivacySetting,
   PROJECT_VAULT_PINS_MAX,
   VAULT_PRIVACY_DEFAULTS,
@@ -703,6 +705,15 @@ export interface AppSettings {
    *  reading while unset) follows the per-class table; 'off' gives no pack.
    *  Device local. */
   vaultContext?: AppVaultContextSetting;
+  /** Room for notes on app seats and, through `vaultOverrides`, engine
+   *  sessions (Vault M7, CTO L13): lower-only under the machine's
+   *  `vault.packSize`. Unset reads as the machine's. Device local. Wave 0:
+   *  declared, not yet read (wave 2 wires it). */
+  vaultPackSize?: AppVaultPackSize;
+  /** The Handoff switch (Vault M7, CTO L13, reconciliation 4): `'off'` stops
+   *  handoff writes and reads for new chats; unset leaves the machine and the
+   *  project in charge. Device local. Wave 0: declared, not yet read. */
+  vaultHandoff?: AppVaultHandoffSetting;
   /** An unpaired phone's own vault privacy rules (CTO J3): union-only over
    *  the source's rules, D5 defaults while unset. No UI until M7. Device
    *  local, never synced. */

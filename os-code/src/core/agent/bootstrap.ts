@@ -40,6 +40,7 @@ import { configureStreamIdle } from '../../providers/streamIdle.js';
 import type { AgentEvent, PermissionMode } from './types.js';
 import type { CurrentsHandles, HarnessCurrentsHandle } from '../../currents/model.js';
 import type { VaultContextSource } from '../../harness/vaultContext.js';
+import type { VaultOverrides } from '../../harness/vault/types.js';
 import { HANDOFF_MAX_BYTES } from '../../harness/handoff.js';
 import { readHandoff, writeHandoff, type HandoffScope } from './handoffStore.js';
 import { logger } from '../../util/log.js';
@@ -142,6 +143,14 @@ export interface BootstrapOptions {
   /** The project's own pins (`Project.vaultPins`, CTO J14), at most 8 note
    *  paths, read first by the pack's prepare. Never a config key. */
   vaultPins?: string[];
+  /** The app's vault switches for this session (Vault M7, CTO L13): each
+   *  only ever narrows, the `humanize` and `memory` shape. `context: 'off'`
+   *  gives no pack, `handoff: 'off'` writes and reads no handoff (the
+   *  `handoff` field above is the handoff TEXT, so the switch rides here),
+   *  `packSize` may only lower `vault.packSize`. Taken at open, so a change
+   *  applies to new chats. Undefined leaves the config in charge. Wave 0:
+   *  declared, not yet read (stream C). */
+  vaultOverrides?: VaultOverrides;
 }
 
 export interface BootstrapResult {

@@ -42,6 +42,11 @@ export interface VaultCaps {
   linkRewrite: boolean;
   /** Today's note can be started here. */
   today: boolean;
+  /** The Vault settings sheet can save (Vault M7, CTO L7): `writeConfig`,
+   *  compare-and-swap, writable, not away. Without it the sheet is read-only
+   *  with the storage's own line. Wave 0: false everywhere until stream E
+   *  lights it from the seam. */
+  settingsWrite: boolean;
 }
 
 /** The room's state that narrows what the storage could do. */
@@ -71,5 +76,8 @@ export function vaultCaps(p: StorageProvider, s: VaultCapsState): VaultCaps {
     taskWriteBack: writable,
     linkRewrite: writable,
     today: cas,
+    // Wave 0 (Vault M7): stream E makes this
+    // `writable && has(p, 'writeConfig')`.
+    settingsWrite: false,
   };
 }
