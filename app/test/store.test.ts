@@ -640,8 +640,8 @@ describe('vault (gitOS Local provider)', () => {
     await s.vaultRefresh();
     // iCloud probes unavailable off-device (the web mock), so the move is
     // refused and the vault stays on Local, its bytes untouched.
-    const ok = await s.vaultMoveTo('icloud');
-    expect(ok).toBe(false);
+    const result = await s.vaultMoveTo('icloud');
+    expect(result).toMatchObject({ ok: false, reason: 'unavailable' });
     const resource = (useApp.getState().settings.gitosResources ?? []).find(
       (r) => r.id === 'vault.personal',
     );

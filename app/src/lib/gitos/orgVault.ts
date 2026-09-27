@@ -49,12 +49,50 @@ export function isOrgVaultAvailable(): boolean {
   return isConfigured() && Boolean(readyPredicate?.());
 }
 
-// Per-note base revision, keyed by "<org>::<path>", set whenever we read a note
-// or its metadata and consumed on the next write. A missing entry means "new
-// note" and is sent as base 0, which never matches a real rev, so the server
-// treats a surprise existing note as a conflict and copies it aside.
+// Per-note base revision, keyed by "<org>::<path>", set only when we read a
+// note's body or write it, and consumed on the next write. A missing entry
+// means "new note" and is sent as base 0, which never matches a real rev, so
+// the server treats a surprise existing note as a conflict and copies it
+// aside. list() and stat() never touch it: they run on every foreground, every
+// save, and every backlink pass, and letting them advance the base under a
+// stale open draft sent the teammate's rev as ours, so the server saw no
+// conflict and made no copy (orgvault-1).
 const baseRev = new Map<string, number>();
 const revKey = (resourceId: string, path: string) => `${resourceId}::${path}`;
+
+/** The team vault's per-note cap, the same byte count the server enforces
+ *  (octet_length over 1048576 in org_vault_put). */
+export const ORG_VAULT_NOTE_LIMIT_BYTES = 1_048_576;
+
+/** A team vault refusal that retrying cannot fix: over the 1 MB cap, a path
+ *  the server does not allow, not a member, or no team session. `permanent`
+ *  is the seam's mark for it, so the store holds the text as "Not saved"
+ *  instead of stashing it for a replay that would fail forever (orgvault-9).
+ *  The message is the server's own line, or ours for a check made here. */
+export class OrgVaultRefusal extends Error {
+  readonly permanent = true;
+  constructor(message: string) {
+    super(message);
+    this.name = 'OrgVaultRefusal';
+  }
+}
+
+// A 4xx from PostgREST is the server saying no (a raised P0001 arrives as a
+// 400), except the three that say "try again": 401 (a token the next refresh
+// fixes), 408, and 429. Anything without a status (offline, a 5xx) is left
+// as it is, so the store stashes it and retries.
+const RETRYABLE_4XX = new Set([401, 408, 429]);
+async function refusing<T>(call: () => Promise<T>): Promise<T> {
+  try {
+    return await call();
+  } catch (err) {
+    const status = (err as { status?: unknown } | undefined)?.status;
+    if (typeof status === 'number' && status >= 400 && status < 500 && !RETRYABLE_4XX.has(status)) {
+      throw new OrgVaultRefusal(err instanceof Error ? err.message : `Request failed (${status}).`);
+    }
+    throw err;
+  }
+}
 
 /** Forget all cached base revisions. Call on sign-out / account switch so one
  *  account's team-vault state never carries into the next on a shared device.
@@ -66,7 +104,7 @@ export function resetOrgVault(): void {
 
 async function token(): Promise<string> {
   const t = await getToken?.();
-  if (!t) throw new Error('Sign in to your team to use the team vault.');
+  if (!t) throw new OrgVaultRefusal('Sign in to your team to use the team vault.');
   return t;
 }
 
@@ -99,7 +137,6 @@ export const orgVaultProvider: StorageProvider = {
       await token(),
       `select=path,updated_at,rev,size&org_id=eq.${eq(resourceId)}&deleted=is.false&order=path`,
     );
-    for (const r of rows) baseRev.set(revKey(resourceId, r.path), r.rev);
     return rows.map((r) => ({ path: r.path, updatedAt: r.updated_at, size: r.size }));
   },
 
@@ -111,7 +148,6 @@ export const orgVaultProvider: StorageProvider = {
     );
     const r = rows[0];
     if (!r) return undefined;
-    baseRev.set(revKey(resourceId, path), r.rev);
     return { path: r.path, updatedAt: r.updated_at, size: r.size };
   },
 
@@ -128,21 +164,32 @@ export const orgVaultProvider: StorageProvider = {
   },
 
   async write(resourceId, path, text) {
+    // Checked here, before the send, so an oversized paste is refused at once
+    // in plain words rather than after a round trip.
+    const bytes = new TextEncoder().encode(text).length;
+    if (bytes > ORG_VAULT_NOTE_LIMIT_BYTES) {
+      const mb = (bytes / ORG_VAULT_NOTE_LIMIT_BYTES).toFixed(1);
+      throw new OrgVaultRefusal(`A team note is limited to 1 MB, and this one is ${mb} MB.`);
+    }
     const base = baseRev.get(revKey(resourceId, path)) ?? 0;
+    const auth = await token();
     // PostgREST returns a single-row composite function as one object.
-    const row = await rpc<NoteRow | NoteRow[]>('org_vault_put', await token(), {
-      p_org: resourceId,
-      p_path: path,
-      p_body: text,
-      p_base_rev: base,
-    });
+    const row = await refusing(() =>
+      rpc<NoteRow | NoteRow[]>('org_vault_put', auth, {
+        p_org: resourceId,
+        p_path: path,
+        p_body: text,
+        p_base_rev: base,
+      }),
+    );
     const saved = Array.isArray(row) ? row[0]! : row;
     baseRev.set(revKey(resourceId, path), saved.rev);
     return { path: saved.path, text, updatedAt: saved.updated_at } satisfies StoredFile;
   },
 
   async remove(resourceId, path) {
-    await rpc('org_vault_delete', await token(), { p_org: resourceId, p_path: path });
+    const auth = await token();
+    await refusing(() => rpc('org_vault_delete', auth, { p_org: resourceId, p_path: path }));
     baseRev.delete(revKey(resourceId, path));
   },
 

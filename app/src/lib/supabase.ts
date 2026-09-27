@@ -226,7 +226,9 @@ export async function rpc<T>(
     headers: authHeaders(accessToken),
     body: JSON.stringify(args),
   });
-  if (!res.ok) throw new Error(await readError(res));
+  // The status rides along so a caller can tell a refusal (a raised P0001
+  // arrives as a 400) from a failure worth retrying.
+  if (!res.ok) throw new SupabaseRequestError(await readError(res), res.status);
   return (await res.json()) as T;
 }
 
@@ -235,7 +237,7 @@ export async function select<T>(table: string, accessToken: string, query: strin
   const res = await fetch(`${base()}/rest/v1/${table}?${query}`, {
     headers: authHeaders(accessToken),
   });
-  if (!res.ok) throw new Error(await readError(res));
+  if (!res.ok) throw new SupabaseRequestError(await readError(res), res.status);
   return (await res.json()) as T[];
 }
 
