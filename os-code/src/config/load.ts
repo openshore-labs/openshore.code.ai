@@ -1,5 +1,8 @@
-// Config loading: global (~/.os-code/config.json) then project
-// (os-code.config.json), project wins per key. A missing file is fine, a
+// Config loading: global (~/.os-code/config.json), then the project's
+// os-code.config.json applied under the project-trust policy
+// (projectPolicy.ts): a repo's file can tighten OpenShore from any folder, but
+// only loosens it once the person trusts that folder on this machine
+// (trust.ts), and never sets machine config at all. A missing file is fine, a
 // malformed file gets a precise, human error naming the file and the field.
 import {
   copyFileSync,
@@ -13,6 +16,20 @@ import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { ConfigSchema, DaemonSchema, type OscConfig } from './schema.js';
 import type { z } from 'zod';
+import { oscHome } from './home.js';
+import { applyProjectConfig } from './projectPolicy.js';
+import {
+  addFolderGrant,
+  folderGrants,
+  folderTrust,
+  forgetFolderTrust,
+  trustFolder,
+  trustStorePath,
+  type FolderTrust,
+  type TrustState,
+} from './trust.js';
+
+export { oscHome };
 
 export type DaemonConfig = z.infer<typeof DaemonSchema>;
 
@@ -22,11 +39,19 @@ export interface LoadedConfig {
   sources: string[];
   /** Non-fatal problems worth surfacing in doctor. */
   warnings: string[];
+  /** Where this folder stands on project trust, and what its own file asks
+   *  for that stays off until the person trusts it (plain words). */
+  projectTrust: ProjectTrust;
 }
 
-/** ~/.os-code (or OSC_HOME, which tests and multi-profile setups use). */
-export function oscHome(): string {
-  return process.env.OSC_HOME ?? join(homedir(), '.os-code');
+export interface ProjectTrust {
+  state: TrustState;
+  /** The folder's real path. */
+  folder: string;
+  /** What the folder's os-code.config.json asks for that is not applied
+   *  until the person trusts the folder, one plain phrase each. Empty when
+   *  trusted or when it asks for nothing. */
+  waiting: string[];
 }
 
 export function globalConfigPath(): string {
@@ -51,9 +76,6 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
-/** The config blocks read from the global file alone, never a project's. */
-const MACHINE_ONLY_KEYS = ['daemon', 'vault'] as const;
-
 /** Deep merge where `over` wins; arrays replace rather than concatenate. */
 export function deepMerge(base: unknown, over: unknown): unknown {
   if (isPlainObject(base) && isPlainObject(over)) {
@@ -69,44 +91,27 @@ export function deepMerge(base: unknown, over: unknown): unknown {
 export function loadConfig(cwd: string = process.cwd()): LoadedConfig {
   const sources: string[] = [];
   const warnings: string[] = [];
-  let merged: unknown = {};
 
   const projectPath = projectConfigPath(cwd);
+  let globalValue: unknown = {};
+  let projectValue: unknown;
   for (const path of [globalConfigPath(), projectPath]) {
     const { value, error } = readJson(path);
     if (error) {
       warnings.push(`Could not read ${error}. Using defaults for it.`);
       continue;
     }
-    if (value !== undefined) {
-      // The daemon block is machine config and never comes from a project file
-      // (DAE-9): a repo the daemon runs from can be written by a member through
-      // the outbox, so honoring daemon.* there would let a commit widen the
-      // outbox roots or move the bind. The vault block is machine config for
-      // the same reason: the vault tools read under vault.dir without a prompt,
-      // so a repo that could move it would choose what the agent reads, and
-      // would split the agent's notes from the app's and the routines' folder.
-      // Each is dropped with one warning, never merged.
-      let contribution = value;
-      if (path === projectPath && isPlainObject(value)) {
-        const rest: Record<string, unknown> = { ...value };
-        for (const key of MACHINE_ONLY_KEYS) {
-          if (!(key in rest)) continue;
-          delete rest[key];
-          warnings.push(
-            `${key} settings are machine config; ignored from os-code.config.json (${path}). Set them in ${globalConfigPath()}.`,
-          );
-        }
-        contribution = rest;
-      }
-      merged = deepMerge(merged, contribution);
-      sources.push(path);
-    }
+    if (value === undefined) continue;
+    sources.push(path);
+    if (path === projectPath) projectValue = value;
+    else globalValue = value;
   }
 
-  const parsed = ConfigSchema.safeParse(merged);
-  if (!parsed.success) {
-    const issue = parsed.error.issues[0];
+  // Validate the two files together first, so a malformed value in either one
+  // gets the same precise error it always did.
+  const combined = ConfigSchema.safeParse(deepMerge(globalValue, projectValue ?? {}));
+  if (!combined.success) {
+    const issue = combined.error.issues[0];
     const where = issue ? issue.path.join('.') : 'config';
     const detail = issue ? issue.message : 'invalid config';
     throw new Error(
@@ -114,12 +119,65 @@ export function loadConfig(cwd: string = process.cwd()): LoadedConfig {
     );
   }
 
+  // The person's own settings, then the project's file on top of them under
+  // the trust policy. The untrusted pass also says whether the folder asks for
+  // anything only trust would apply.
+  const base = ConfigSchema.parse(globalValue);
+  const grants = folderGrants(cwd);
+  const untrusted = applyProjectConfig(base, projectValue, false, grants);
+  const waiting = untrusted.setAside.filter((s) => s.trustable);
+  const trust = folderTrust(cwd, projectValue, waiting.length > 0);
+  const applied =
+    trust.state === 'trusted' ? applyProjectConfig(base, projectValue, true, grants) : untrusted;
+
+  // Machine config in a project file is dropped every time, trusted or not.
+  const machine = [...new Set(applied.setAside.filter((s) => !s.trustable).map((s) => s.path))];
+  for (const key of machine) {
+    warnings.push(
+      `${key} settings are machine config; ignored from os-code.config.json (${projectPath}). Set them in ${globalConfigPath()}.`,
+    );
+  }
+  const waitingPlain = trust.state === 'trusted' ? [] : [...new Set(waiting.map((s) => s.plain))];
+  if (waitingPlain.length) {
+    const changed = trust.state === 'changed' ? ' It changed since you trusted it.' : '';
+    warnings.push(
+      `This folder's os-code.config.json ${waitingPlain.join('; ')}. That stays off until you trust this folder.${changed} Trust it with "osc trust" here, or from the card in the app.`,
+    );
+  }
+
+  const parsed = ConfigSchema.parse(applied.config);
+
   // A vault folder that cannot be used (a relative path) falls back to the
   // default; say so here, so doctor and the session warnings carry it.
-  const vault = resolveVaultDir(parsed.data.vault?.dir);
+  const vault = resolveVaultDir(parsed.vault?.dir);
   if (vault.warning) warnings.push(vault.warning);
 
-  return { config: parsed.data, sources, warnings };
+  return {
+    config: parsed,
+    sources,
+    warnings,
+    projectTrust: { state: trust.state, folder: trust.folder, waiting: waitingPlain },
+  };
+}
+
+/** Trust this folder on this machine: its own os-code.config.json applies in
+ *  full from the next session (machine config aside), until it changes. */
+export function trustProjectFolder(cwd: string): FolderTrust {
+  const { value, error } = readJson(projectConfigPath(cwd));
+  if (error) throw new Error(`Cannot trust this folder yet: could not read ${error}`);
+  return trustFolder(cwd, value);
+}
+
+/** This folder's trust as the coding CLIs see it: only their own settings
+ *  folders (.claude, .codex) ask, since CLI Pairing runs them headless. */
+export function cliFolderTrust(cwd: string): FolderTrust {
+  const { value } = readJson(projectConfigPath(cwd));
+  return folderTrust(cwd, value, false);
+}
+
+/** Stop trusting this folder on this machine. */
+export function forgetProjectFolder(cwd: string): void {
+  forgetFolderTrust(cwd);
 }
 
 /**
@@ -175,7 +233,7 @@ export function resolveVaultDir(configured: string | undefined): VaultDir {
 
 /**
  * The vault folder, parsed from the GLOBAL file alone: vault.* is machine
- * config (see MACHINE_ONLY_KEYS), so no project file can move where the agent
+ * config (see PROJECT_POLICY in projectPolicy.ts), so no project file can move where the agent
  * reads without a prompt. The one helper the engine's vault tools, the routine
  * scheduler, and the desktop app all resolve the folder through. Never throws:
  * an unreadable global file falls back to the default.
@@ -230,11 +288,10 @@ function writeFileAtomic(path: string, data: string): void {
 }
 
 /**
- * Append an allow rule to the workspace's os-code.config.json ("don't ask
- * again for this in this project"). Rules are evaluated first match wins, so
- * the new rule goes on the end. Same guards as the global save: a corrupt
- * file is preserved and refused, the write is atomic, and the merged result
- * must validate. Returns the path written.
+ * Record an "always allow in this project" rule for this folder, on this
+ * machine (~/.os-code/trust.json), never in the repo: a rule written into a
+ * tracked os-code.config.json would ship to everyone who clones it. Identical
+ * rules are kept once. Returns the path written.
  */
 export function addProjectPermissionRule(
   cwd: string,
@@ -245,34 +302,17 @@ export function addProjectPermissionRule(
     decision?: 'allow' | 'ask' | 'deny';
   },
 ): string {
-  const path = projectConfigPath(cwd);
-  let current: Record<string, unknown> = {};
-  if (existsSync(path)) {
-    const { value, error } = readJson(path);
-    if (error) throw new Error(`Refusing to save: ${error}`);
-    if (isPlainObject(value)) current = value;
-  }
-  const permissions = isPlainObject(current.permissions) ? { ...current.permissions } : {};
-  const rules = Array.isArray(permissions.rules) ? [...permissions.rules] : [];
-  const entry: Record<string, unknown> = { tool: rule.tool, decision: rule.decision ?? 'allow' };
-  if (rule.pathGlob) entry.pathGlob = rule.pathGlob;
   // A shell rule is scoped to the command's first word (ENG-4); without the
   // prefix it would land as a blanket allow, so the field always travels.
-  if (rule.commandPrefix) entry.commandPrefix = rule.commandPrefix;
-  const duplicate = rules.some(
-    (r) =>
-      isPlainObject(r) &&
-      r.tool === entry.tool &&
-      r.decision === entry.decision &&
-      (r.pathGlob ?? undefined) === (entry.pathGlob ?? undefined) &&
-      (r.commandPrefix ?? undefined) === (entry.commandPrefix ?? undefined),
-  );
-  if (!duplicate) rules.push(entry);
-  const next = { ...current, permissions: { ...permissions, rules } };
-  ConfigSchema.parse(deepMerge(defaultConfig(), next));
-  writeFileAtomic(path, `${JSON.stringify(next, null, 2)}\n`);
-  return path;
+  return addFolderGrant(cwd, {
+    tool: rule.tool,
+    decision: rule.decision ?? 'allow',
+    ...(rule.pathGlob ? { pathGlob: rule.pathGlob } : {}),
+    ...(rule.commandPrefix ? { commandPrefix: rule.commandPrefix } : {}),
+  });
 }
+
+export { trustStorePath };
 
 /** Parse defaults only, used where config must never throw (doctor itself). */
 export function defaultConfig(): OscConfig {

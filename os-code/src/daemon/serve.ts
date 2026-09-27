@@ -60,7 +60,7 @@ import { computeStackHealth } from '../insights/stackHealth.js';
 import type { StackHealthRange } from '../insights/stackHealthTypes.js';
 import { getAnthropicKey } from '../auth/claude.js';
 import { engineEthicsContext } from '../core/ethics/host.js';
-import type { ChatMessage } from '../providers/types.js';
+import { leavesThisNetwork, type ChatMessage } from '../providers/types.js';
 import {
   ThinkTagSplitter,
   chainOfThoughtPrompt,
@@ -69,6 +69,7 @@ import {
 } from '../core/agent/chainOfThought.js';
 import { SEARCH_PROTOCOL_NOTE } from '../harness/localSearch.js';
 import { EgressPolicy } from '../core/security/egress.js';
+import { trustSessionFolder } from '../core/agent/projectTrust.js';
 import { logger } from '../util/log.js';
 
 // The phone app runs in a WebView, so the daemon must speak CORS: a
@@ -694,8 +695,9 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         });
         return;
       }
-      // Pin to local: a free surface never spends the user's cloud budget.
-      if (orchestrator.provider.kind !== 'local') {
+      // Pin to local: a free surface never spends the user's cloud budget, and
+      // "local" means on this computer's own network, by address.
+      if (leavesThisNetwork(orchestrator.provider)) {
         sendJson(res, 400, {
           error:
             'Free desktop chat runs your local models. Set a local orchestrator in your stack.',
@@ -1285,6 +1287,22 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       if (req.method === 'POST' && parts[2] === 'abort') {
         driver.abort();
         sendJson(res, 200, { aborted: true });
+        return;
+      }
+      // ---- project trust: the owner's tap trusts this session's folder ----
+      // Admin only: trusting a folder lets its own settings loosen OpenShore
+      // (its check command, its allow rules) on this computer, which on a
+      // shared hub is the owner's call, never a member's.
+      if (req.method === 'POST' && parts[2] === 'trust') {
+        if (!hasRole(auth, 'admin')) {
+          sendJson(res, 403, {
+            error: 'restricted',
+            message: "Only this computer's owner can trust a folder's own settings.",
+          });
+          return;
+        }
+        const result = trustSessionFolder(driver);
+        sendJson(res, 'error' in result ? 409 : 200, result);
         return;
       }
       // ---- the person's controls: mode, instructions, compaction, files ----

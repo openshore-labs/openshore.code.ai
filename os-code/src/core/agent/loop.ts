@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, relative } from 'node:path';
 import type { OscConfig } from '../../config/schema.js';
 import type { ChatMessage, ContentPart, Provider, ToolCallRequest } from '../../providers/types.js';
-import { ProviderError } from '../../providers/types.js';
+import { leavesThisNetwork, ProviderError } from '../../providers/types.js';
 import { adapterFor, type ModelAdapter } from '../../providers/adapters/index.js';
 import type { DelegatedUsage, Router } from '../../router/router.js';
 import type { ToolContext, ToolDef, ToolRegistry } from '../tools/index.js';
@@ -643,8 +643,10 @@ export class AgentSession {
       }
 
       // Cloud confirm-before-spend, once per session (or per profile rules).
-      if (this.active.provider.kind === 'cloud' && !this.cloudApprovedForSession) {
-        const approved = await this.confirmCloudSpend('This step runs on cloud Claude.');
+      // Anything off this computer's network asks, judged by address: an
+      // OpenAI-compatible server on the internet gets the same card as Claude.
+      if (leavesThisNetwork(this.active.provider) && !this.cloudApprovedForSession) {
+        const approved = await this.confirmCloudSpend(...this.offNetworkReason());
         if (!approved) {
           this.emit({
             type: 'task-done',
@@ -692,7 +694,8 @@ export class AgentSession {
         type: 'turn-start',
         turn,
         model: this.active.model,
-        providerKind: this.active.provider.kind,
+        // The pill's color: amber for anything off this computer's network.
+        providerKind: leavesThisNetwork(this.active.provider) ? 'cloud' : 'local',
       });
 
       // Grammar-constrained retry: only after a failed parse, and only where
@@ -1096,8 +1099,9 @@ export class AgentSession {
 
     // The permission mode sits on top of the policy, the way Claude Code's
     // does. Plan mode never mutates. Bypass and acceptEdits turn an "ask" into
-    // an allow for their class, but never for cloud spend and never for an
-    // always-ask tool (those two stay loud in every mode). Bypass also never
+    // an allow for their class, but never for cloud spend, never for an
+    // always-ask tool, and never for a sticky ask (a write to a file that
+    // decides what runs); those stay loud in every mode. Bypass also never
     // makes shell silent on a profile that forbids it (ENG-1, belt and braces
     // under the setMode downgrade).
     if (this.mode === 'plan' && !PLAN_SAFE_RISKS.has(tool.risk)) {
@@ -1110,7 +1114,12 @@ export class AgentSession {
       );
       return 'failed';
     }
-    if (decision.decision === 'ask' && !tool.alwaysAsk && tool.risk !== 'cloud-spend') {
+    if (
+      decision.decision === 'ask' &&
+      !decision.sticky &&
+      !tool.alwaysAsk &&
+      tool.risk !== 'cloud-spend'
+    ) {
       const shellStaysLoud = tool.risk === 'shell' && !profile.allowShellAutoApprove;
       if (this.mode === 'bypassPermissions' && !shellStaysLoud) {
         decision = { decision: 'allow', reason: 'bypass permissions mode' };
@@ -1442,7 +1451,27 @@ export class AgentSession {
     return true;
   }
 
-  private async confirmCloudSpend(reason: string): Promise<boolean> {
+  /** The card's words for the active seat when it is off this network: cloud
+   *  Claude is priced; a remote OpenAI-compatible server is named by host. */
+  private offNetworkReason(): [string, string?] {
+    const provider = this.active.provider;
+    if (provider.kind === 'cloud') return ['This step runs on cloud Claude.'];
+    const endpoint = this.deps.config.providers[provider.id];
+    let host = provider.label;
+    if (endpoint && 'baseUrl' in endpoint) {
+      try {
+        host = new URL(endpoint.baseUrl).host;
+      } catch {
+        // Keep the label.
+      }
+    }
+    return [
+      `This step runs on ${provider.label}, a model server off this computer's network.`,
+      `Your messages and the code the agent reads go to ${host}. Nothing is sent without this approval.`,
+    ];
+  }
+
+  private async confirmCloudSpend(reason: string, detailOverride?: string): Promise<boolean> {
     if (this.cloudApprovedForSession || this.cloudApprovedForTask) return true;
     const { usage, approver, permissions, profile } = this.deps;
     const model = this.deps.router.escalationTarget()?.model ?? this.active.model;
@@ -1455,7 +1484,9 @@ export class AgentSession {
       toolName: 'cloud',
       risk: 'cloud-spend',
       summary: reason,
-      detail: `Estimated cost: about $${estimate.toFixed(3)} per call on ${model}. Spent this session: $${spent.toFixed(2)}. Nothing is sent without this approval.`,
+      detail:
+        detailOverride ??
+        `Estimated cost: about $${estimate.toFixed(3)} per call on ${model}. Spent this session: $${spent.toFixed(2)}. Nothing is sent without this approval.`,
     });
     if (answer.approve) this.cloudApprovedForTask = true;
     if (answer.approve && answer.alwaysThisSession && profile.allowCloudAutoApprove) {

@@ -25,6 +25,7 @@ import { CommandCard } from './CommandCard.js';
 import { WorkingRow } from './WorkingRow.js';
 import { ThinkingBlock } from './ThinkingBlock.js';
 import { PlanCard } from './PlanCard.js';
+import { TrustCard } from './TrustCard.js';
 import { ClarifyCard } from './ClarifyCard.js';
 import { ChangedFilesCard } from './ChangedFilesCard.js';
 import { Icon } from './Icon.js';
@@ -163,6 +164,8 @@ export function MessageList({
   onApprovePlan,
   onRevisePlan,
   onClarifyPick,
+  onTrustFolder,
+  onDismissTrust,
   onUnqueue,
   afterItem,
 }: {
@@ -181,6 +184,9 @@ export function MessageList({
   onRetry?: () => void;
   onApprovePlan?: () => void;
   onRevisePlan?: () => void;
+  /** The trust card's two answers, by item id. */
+  onTrustFolder?: (itemId: string) => void;
+  onDismissTrust?: (itemId: string) => void;
   /** Answer a clarifying question (the plan-first picker): sends the reply. */
   onClarifyPick?: (text: string) => void;
   /** Drop a queued message (tap on its bubble). */
@@ -390,6 +396,17 @@ export function MessageList({
                   summary={item.summary}
                   questions={item.questions}
                   onPick={onClarifyPick}
+                />
+              );
+            case 'trust':
+              return (
+                <TrustCard
+                  key={item.id}
+                  waiting={item.waiting}
+                  state={item.state}
+                  error={item.error}
+                  onTrust={() => onTrustFolder?.(item.id)}
+                  onDismiss={() => onDismissTrust?.(item.id)}
                 />
               );
             case 'changed':

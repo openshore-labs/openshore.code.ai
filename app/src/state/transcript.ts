@@ -322,6 +322,28 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
         text: event.willRetry ? `${event.summary} Handing it back to the model.` : event.summary,
       });
 
+    case 'project-trust': {
+      if (event.state === 'trusted') {
+        const has = next.items.some((i) => i.kind === 'trust');
+        if (!has) {
+          return push(next, {
+            kind: 'note',
+            text: 'This folder is trusted on this computer. Its own settings apply from your next chat here.',
+          });
+        }
+        const items = next.items.map((i) =>
+          i.kind === 'trust' ? { ...i, state: 'trusted' as const, error: undefined } : i,
+        );
+        return { ...next, items };
+      }
+      return push(next, {
+        kind: 'trust',
+        folder: event.folder,
+        waiting: event.waiting,
+        state: event.state,
+      });
+    }
+
     case 'harness-current':
       // A Harness Current (Jev) made a cheap decision this turn. Shown as a
       // note carrying the honest line; a client may style it as spend when

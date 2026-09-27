@@ -21,6 +21,7 @@ import {
 } from './capabilities.js';
 import type { CapabilityCategory } from '../router/roles.js';
 import { logger } from '../util/log.js';
+import { isLocalUrl } from '../core/security/egress.js';
 import { idleError, idleGuard, type IdleGuard } from './streamIdle.js';
 
 const log = logger('openai-compatible');
@@ -35,6 +36,8 @@ interface ShowInfo {
 
 export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
   readonly kind = 'local' as const;
+  /** Off this computer's network, by address (see Provider.remote). */
+  readonly remote: boolean;
   private showCache = new Map<string, ShowInfo>();
   /** Models observed to reject native tools; the bridge falls back to JSON-in-text. */
   private toolRejects = new Set<string>();
@@ -44,7 +47,9 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
     private readonly endpoint: OpenAICompatibleEndpoint,
     /** Optional category tags from the stack config / catalog. */
     private readonly categoriesByModel: Record<string, CapabilityCategory[]> = {},
-  ) {}
+  ) {
+    this.remote = !isLocalUrl(endpoint.baseUrl);
+  }
 
   get label(): string {
     return this.endpoint.label ?? this.id;

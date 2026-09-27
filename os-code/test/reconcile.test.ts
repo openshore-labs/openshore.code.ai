@@ -6,6 +6,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { simpleGit } from 'simple-git';
+import { trustProjectFolder } from '../src/config/load.js';
 import {
   DEFAULT_BRANCH_HELD,
   defaultBranchOf,
@@ -231,7 +232,7 @@ describe('the default-branch policy (board call 5, 2026-09-16)', () => {
     expect(branches).toMatch(/feature\/notes/);
   });
 
-  it('reads the opt-in from the project config through reconcileRepos', async () => {
+  it('reads the opt-in from the project config, once the folder is trusted', async () => {
     const { clone } = await remoteAndClone();
     await commitFile(clone, 'note.md', 'hello\n', 'add note');
     const [held] = await reconcileRepos([clone]);
@@ -240,6 +241,11 @@ describe('the default-branch policy (board call 5, 2026-09-16)', () => {
       join(clone, 'os-code.config.json'),
       JSON.stringify({ sync: { autoPushDefaultBranch: true } }),
     );
+    // Project trust (2026-09-27): a repo's own file cannot opt itself into
+    // pushing main until the person trusts that folder on this machine.
+    const [stillHeld] = await reconcileRepos([clone]);
+    expect(stillHeld?.status).toBe('held');
+    trustProjectFolder(clone);
     const [pushed] = await reconcileRepos([clone]);
     expect(pushed?.status).toBe('pushed');
   });

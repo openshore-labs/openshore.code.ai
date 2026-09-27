@@ -209,6 +209,51 @@ describe('daemon RBAC (D1)', () => {
   // which applies to every caller, superseded an earlier role-based gate).
 });
 
+// Project trust from a paired phone: the owner's tap trusts the session's
+// folder on the computer; a member on a shared hub cannot, since trusting lets
+// a folder's own settings loosen OpenShore on that machine.
+describe('POST /sessions/:id/trust (project trust)', () => {
+  const realHome = process.env.HOME;
+  afterEach(() => {
+    process.env.HOME = realHome;
+  });
+
+  it("the owner trusts the session's folder; a member is refused", async () => {
+    process.env.HOME = home;
+    const provisioned = join(home, 'OSCode', 'repo');
+    mkdirSync(provisioned, { recursive: true });
+    writeFileSync(
+      join(provisioned, 'os-code.config.json'),
+      JSON.stringify({ harness: { verify: { command: 'npm test' } } }),
+    );
+
+    const member = mintCredential({ role: 'member', label: 'Phone', userId: 'u_trust' });
+    const memberRes = await createSessionAs(member.token, provisioned);
+    expect(memberRes.status).toBe(201);
+    const { id: memberId } = (await memberRes.json()) as { id: string };
+    const refused = await fetch(`${base}/sessions/${memberId}/trust`, {
+      method: 'POST',
+      headers: auth(member.token),
+      body: '{}',
+    });
+    expect(refused.status).toBe(403);
+    expect(existsSync(join(home, 'trust.json'))).toBe(false);
+
+    const ownerRes = await createSessionAs(adminToken, provisioned);
+    const { id: ownerId } = (await ownerRes.json()) as { id: string };
+    const trusted = await fetch(`${base}/sessions/${ownerId}/trust`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: '{}',
+    });
+    expect(trusted.status).toBe(200);
+    const store = JSON.parse(readFileSync(join(home, 'trust.json'), 'utf8')) as {
+      folders: Record<string, { trust?: unknown }>;
+    };
+    expect(Object.values(store.folders).some((f) => Boolean(f.trust))).toBe(true);
+  });
+});
+
 // The workspace predicates resolve BOTH sides through realpath, so a symlink
 // planted inside ~/OSCode that points outside it cannot pass as provisioned
 // (the P0-1 escape). HOME is pointed at the scratch dir so ~/OSCode is ours.

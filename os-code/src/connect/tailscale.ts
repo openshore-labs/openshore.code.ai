@@ -127,3 +127,32 @@ export function tailscaleIp(): string | undefined {
   }
   return interfaceCgnatIp();
 }
+
+// This machine's own tailnet, as a MagicDNS suffix ("tail1234.ts.net"). A
+// *.ts.net name is only "this network" when it sits in the person's own
+// tailnet: a stranger's Tailscale Funnel host is also *.ts.net, served on the
+// public internet. Worked out once per process, and only when a *.ts.net host
+// actually needs classifying, so nothing here runs on an ordinary call.
+let ownTailnetCache: string | null | undefined;
+let ownTailnetOverride: string | null | undefined;
+
+export function ownTailnetSuffix(): string | null {
+  if (ownTailnetOverride !== undefined) return ownTailnetOverride;
+  if (ownTailnetCache !== undefined) return ownTailnetCache;
+  const fromEnv = process.env.OSC_TAILNET_SUFFIX?.trim().toLowerCase();
+  if (fromEnv) {
+    ownTailnetCache = fromEnv.replace(/^\./, '');
+    return ownTailnetCache;
+  }
+  const dnsName = detectTailscale().dnsName?.toLowerCase();
+  const dot = dnsName ? dnsName.indexOf('.') : -1;
+  ownTailnetCache = dnsName && dot > 0 ? dnsName.slice(dot + 1) : null;
+  return ownTailnetCache;
+}
+
+/** Tests pin the suffix (a string, or null for "no tailnet"); undefined
+ *  restores detection. */
+export function setOwnTailnetSuffixForTests(suffix: string | null | undefined): void {
+  ownTailnetOverride = suffix;
+  ownTailnetCache = undefined;
+}
