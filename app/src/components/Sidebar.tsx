@@ -1,7 +1,7 @@
 // The sidebar is the app's main navigation (founder, 2026-09-02): the day-one
 // rooms at the top, the second-session rooms at the bottom, nothing else. New
 // chat and the project switcher live in the Chats and Projects rooms. Persistent on desktop, a slide-over drawer on the phone.
-import { hiddenInFocus, visibleRooms } from '../lib/focus.js';
+import { roomOpen, visibleRooms } from '../lib/focus.js';
 import type { CSSProperties } from 'react';
 import { isOrgAdmin, useApp, type ViewName } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
@@ -33,8 +33,8 @@ type NavIconName = Exclude<
 // closes it.
 const nav = (view: NavIconName & NavRoom) => ({ view, label: ROOM_LABELS[view] });
 
-// The v1 focus flag takes the extras out here, at the one door (it ships
-// off, so both lists are whole unless a build turns it on).
+// The release tier takes a later tier's rooms out here, at the one door (a
+// Personal build shows the v1 rooms only; see lib/focus.ts).
 const PRIMARY_NAV: Array<{ view: NavIconName; label: string }> = visibleRooms(
   (['chats', 'projects', 'terminalroom', 'repos', 'stack', 'vault'] as const).map(nav),
 );
@@ -303,7 +303,7 @@ export function Sidebar({
       <nav className="sidebar-nav">
         {isOrgAdmin(settings.account) &&
         settings.account?.type === 'commercial' &&
-        !hiddenInFocus('admin')
+        roomOpen('admin')
           ? item({ view: 'admin', label: 'Admin' }, PRIMARY_NAV.length + 1)
           : null}
         {EXPLORE_NAV.map((entry, i) => item(entry, PRIMARY_NAV.length + 2 + i))}

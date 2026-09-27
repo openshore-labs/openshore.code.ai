@@ -1,42 +1,80 @@
-// The v1 focus flag (docs/v1-direction-review.md, "Hide flag"; the hide list
-// and its votes are there). One build-time switch that hides the extras a
-// first-time person does not need yet, so the app opens as a chat on a folder
-// with a model beside it: Crew and its routines, the Marketplace, Stack
-// Health, Launch, the Terminal room, the Vault room, Admin, and both Currents
-// groups. Code stays intact; unhiding is a founder call.
+// Release tiers (founder, 2026-09-27; docs/release-tiers.md). One gate for
+// what a build carries, so a later tier's surfaces have no door in an
+// earlier one:
 //
-// It SHIPS OFF: with VITE_V1_FOCUS unset, nothing is hidden anywhere and the
-// app is exactly what it was. A build turns it on with VITE_V1_FOCUS=on. One
-// gate, read by the Sidebar, the room list, navigation, and the Currents
-// views, so a hidden room has no door left open (app/test/focus.test.ts).
+//   v1 Personal: one person, their desktop and their phone. Chats, Projects,
+//      Terminal, Repositories, Stack, Vault, Crew, Cloud Connections,
+//      Desktop + phone, Settings.
+//   v2: Agentic and Harness Currents, Stack Health, Launch with Codemagic.
+//   v3: the Marketplace.
+//   v4 Enterprise: Admin, teams (shared projects, the team vault, project
+//      permissions), and shared-hub members.
+//
+// A build is Personal unless it says otherwise: VITE_RELEASE_TIER=2, 3 or 4
+// carries that tier and every one before it. The code of a later tier stays
+// in the tree; the gate keeps its doors shut and its launch-time work from
+// running. Read by the Sidebar, the room list, navigation, the Currents
+// views, and every surface a later tier owns (app/test/focus.test.ts).
 
-/** Rooms the focus flag hides. */
-export const FOCUS_HIDDEN_ROOMS: ReadonlySet<string> = new Set([
-  'crew',
-  'marketplace',
-  'stackhealth',
-  'launch',
-  'terminalroom',
-  'vault',
-  'admin',
-]);
+export type ReleaseTier = 1 | 2 | 3 | 4;
 
-/** Whether a build asked for focus. */
-export function focusRequested(env: { VITE_V1_FOCUS?: string } | undefined): boolean {
-  return env?.VITE_V1_FOCUS === 'on';
+/** What each tier is called. */
+export const TIER_NAMES: Record<ReleaseTier, string> = {
+  1: 'Personal',
+  2: 'Currents',
+  3: 'Marketplace',
+  4: 'Enterprise',
+};
+
+/** The features a later tier owns. */
+export type TieredFeature =
+  'currents' | 'stackhealth' | 'launch' | 'marketplace' | 'admin' | 'teams' | 'hubMembers';
+
+/** The tier each feature ships in. */
+export const FEATURE_TIER: Record<TieredFeature, ReleaseTier> = {
+  currents: 2,
+  stackhealth: 2,
+  launch: 2,
+  marketplace: 3,
+  admin: 4,
+  teams: 4,
+  hubMembers: 4,
+};
+
+/** Rooms that belong to a later tier, by view name. Every other room is v1. */
+export const ROOM_FEATURE: Readonly<Record<string, TieredFeature>> = {
+  stackhealth: 'stackhealth',
+  launch: 'launch',
+  marketplace: 'marketplace',
+  admin: 'admin',
+};
+
+/** The tier a build asked for: 1 (Personal) unless VITE_RELEASE_TIER names
+ *  2, 3 or 4. Anything else reads as Personal, never as more. */
+export function tierFrom(env: { VITE_RELEASE_TIER?: string } | undefined): ReleaseTier {
+  const raw = env?.VITE_RELEASE_TIER?.trim();
+  return raw === '2' || raw === '3' || raw === '4' ? (Number(raw) as ReleaseTier) : 1;
 }
 
-/** The flag for this build. Off unless VITE_V1_FOCUS=on. */
-export const V1_FOCUS: boolean = focusRequested(
-  (import.meta as { env?: { VITE_V1_FOCUS?: string } }).env,
-);
+/** This build's tier. */
+// Written as `import.meta.env` literally: Vite replaces only that exact form.
+export const RELEASE_TIER: ReleaseTier = tierFrom(import.meta.env);
 
-/** Whether a room is hidden in this build. */
-export function hiddenInFocus(view: string, on: boolean = V1_FOCUS): boolean {
-  return on && FOCUS_HIDDEN_ROOMS.has(view);
+/** Whether this build carries a feature. */
+export function featureOn(feature: TieredFeature, tier: ReleaseTier = RELEASE_TIER): boolean {
+  return FEATURE_TIER[feature] <= tier;
 }
 
-/** A room list with the hidden rooms taken out (all of it when focus is off). */
-export function visibleRooms<T extends { view: string }>(rooms: T[], on: boolean = V1_FOCUS): T[] {
-  return on ? rooms.filter((r) => !FOCUS_HIDDEN_ROOMS.has(r.view)) : rooms;
+/** Whether a room has a door in this build. */
+export function roomOpen(view: string, tier: ReleaseTier = RELEASE_TIER): boolean {
+  const feature = ROOM_FEATURE[view];
+  return feature === undefined || featureOn(feature, tier);
+}
+
+/** A room list with the later tiers' rooms taken out. */
+export function visibleRooms<T extends { view: string }>(
+  rooms: T[],
+  tier: ReleaseTier = RELEASE_TIER,
+): T[] {
+  return rooms.filter((r) => roomOpen(r.view, tier));
 }

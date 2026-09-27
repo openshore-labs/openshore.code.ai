@@ -98,3 +98,17 @@ describe('what leaves this device', () => {
     expect(settings).not.toMatch(/nothing leaves it|no IP address, ever\. There is one/);
   });
 });
+
+describe('what leaves, by release tier', () => {
+  it('a Personal build lists only what it can do', () => {
+    const personal = egressByRecipient(1).flatMap((g) => g.entries.map((e) => e.id));
+    for (const later of ['team', 'decisions', 'codemagic', 'agents']) {
+      expect(personal, later).not.toContain(later);
+    }
+    for (const v1 of ['account', 'guardrail', 'catalog', 'updates', 'search', 'cloud-models']) {
+      expect(personal, v1).toContain(v1);
+    }
+    const all = egressByRecipient(4).flatMap((g) => g.entries.map((e) => e.id));
+    expect(all).toEqual(expect.arrayContaining(['team', 'decisions', 'codemagic', 'agents']));
+  });
+});

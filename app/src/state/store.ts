@@ -472,7 +472,7 @@ import {
 } from '../lib/vaultCopy.js';
 import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
 import { SAMPLE_PROMPT, SAMPLE_REPO_NAME } from '../lib/sampleProject.js';
-import { V1_FOCUS, hiddenInFocus } from '../lib/focus.js';
+import { RELEASE_TIER, featureOn, roomOpen, type ReleaseTier } from '../lib/focus.js';
 import { readProjectSecrets, writeProjectSecrets } from '../lib/projectSecrets.js';
 import {
   bridge,
@@ -2308,18 +2308,25 @@ export function activeProjectOf(settings: AppSettings): Project | undefined {
 
 /** The Agentic Currents view for the active project: its selection plus the
  *  device-local connections. The rooms render currents through this. */
-export function agenticView(settings: AppSettings, focus: boolean = V1_FOCUS): CurrentsSettings {
-  // The v1 focus flag hides both Currents groups: no current is on anywhere.
-  if (focus) return projectCurrentsSettings(undefined, settings.currentConnections);
+export function agenticView(
+  settings: AppSettings,
+  tier: ReleaseTier = RELEASE_TIER,
+): CurrentsSettings {
+  // Currents are v2: in an earlier build no current is on anywhere.
+  if (!featureOn('currents', tier)) {
+    return projectCurrentsSettings(undefined, settings.currentConnections);
+  }
   return projectCurrentsSettings(activeProjectOf(settings), settings.currentConnections);
 }
 
 /** The Harness Currents view for the active project. */
 export function harnessView(
   settings: AppSettings,
-  focus: boolean = V1_FOCUS,
+  tier: ReleaseTier = RELEASE_TIER,
 ): HarnessCurrentsSettings {
-  if (focus) return projectHarnessSettings(undefined, settings.harnessCurrentConnections);
+  if (!featureOn('currents', tier)) {
+    return projectHarnessSettings(undefined, settings.harnessCurrentConnections);
+  }
   return projectHarnessSettings(activeProjectOf(settings), settings.harnessCurrentConnections);
 }
 
@@ -7112,9 +7119,9 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     setView(view, opts) {
-      // The v1 focus flag: a hidden room has no door, whoever calls. Off by
-      // default, so this never fires unless a build turns focus on.
-      if (hiddenInFocus(view)) {
+      // Release tiers: a later tier's room has no door in this build, whoever
+      // calls (lib/focus.ts).
+      if (!roomOpen(view)) {
         set({ drawerOpen: false });
         return;
       }

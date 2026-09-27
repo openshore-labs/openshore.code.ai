@@ -11,6 +11,8 @@
 // entry says what happens now; the change is a founder decision recorded in
 // DECISIONS, not something this list pretends is done.
 
+import { featureOn, type ReleaseTier, type TieredFeature, RELEASE_TIER } from './focus.js';
+
 export interface EgressEntry {
   id: string;
   /** Who receives it. Entries render grouped by this, in RECIPIENT_ORDER. */
@@ -25,6 +27,9 @@ export interface EgressEntry {
   /** The hosts this entry covers, for the egress test. `env:NAME` names a
    *  host set at build time. */
   hosts: string[];
+  /** The later-tier feature this belongs to (docs/release-tiers.md); a build
+   *  without it leaves the entry off the list, since it cannot happen there. */
+  feature?: TieredFeature;
 }
 
 /** Recipients in the order the list shows them: OpenShore first. */
@@ -69,6 +74,7 @@ export const EGRESS: EgressEntry[] = [
     when: 'Only in a team vault or a team project.',
     start: 'off',
     hosts: ['env:VITE_SUPABASE_URL'],
+    feature: 'teams',
   },
   {
     id: 'repo-signin',
@@ -154,6 +160,7 @@ export const EGRESS: EgressEntry[] = [
     when: 'Only on a project where you turned one on, with a paid model.',
     start: 'off',
     hosts: ['api.typesafe.ai'],
+    feature: 'currents',
   },
   {
     id: 'gdrive',
@@ -175,6 +182,7 @@ export const EGRESS: EgressEntry[] = [
     when: 'Only when you launch a build.',
     start: 'tap',
     hosts: ['api.codemagic.io', 'codemagic.io'],
+    feature: 'launch',
   },
   {
     id: 'agents',
@@ -183,6 +191,7 @@ export const EGRESS: EgressEntry[] = [
     when: 'Only after you connect one.',
     start: 'off',
     hosts: [],
+    feature: 'currents',
   },
 ];
 
@@ -220,10 +229,14 @@ export const STAYS_ON_DEVICE: string[] = [
   'Which folders you trust and the commands you allow.',
 ];
 
-/** The entries grouped by recipient, OpenShore first. */
-export function egressByRecipient(): Array<{ recipient: string; entries: EgressEntry[] }> {
+/** The entries this build can do, grouped by recipient, OpenShore first. */
+export function egressByRecipient(
+  tier: ReleaseTier = RELEASE_TIER,
+): Array<{ recipient: string; entries: EgressEntry[] }> {
   return RECIPIENT_ORDER.map((recipient) => ({
     recipient,
-    entries: EGRESS.filter((e) => e.recipient === recipient),
+    entries: EGRESS.filter(
+      (e) => e.recipient === recipient && (!e.feature || featureOn(e.feature, tier)),
+    ),
   })).filter((g) => g.entries.length > 0);
 }
