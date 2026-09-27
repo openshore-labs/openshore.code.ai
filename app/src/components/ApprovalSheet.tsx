@@ -3,8 +3,10 @@
 // identity so spending money never looks like writing a file. When several
 // questions stack up the sheet counts them ("1 of 3") and offers to answer
 // them all; on an engine session a path-bearing tool can be allowed for the
-// whole project, the Claude Code "don't ask again". The keyboard answers too:
-// y approves, a allows for the session, n declines.
+// whole project, the Claude Code "don't ask again". An always-ask tool (a
+// vault write) asks every time whatever was allowed before, so it gets no
+// standing allow at all, only once or skip. The keyboard answers too: y
+// approves, a allows for the session, n declines.
 import { useEffect, useRef } from 'react';
 import type { ApprovalRequest, PermissionMode } from 'os-code/protocol';
 import { hapticApproval } from '../lib/haptics.js';
@@ -12,6 +14,11 @@ import { useSheetExit } from '../hooks/useSheetExit.js';
 import { permissionModeLabel } from '../lib/permissionMode.js';
 import { DiffBlock } from './ToolCard.js';
 import { toolActionLabel } from '../lib/toolVerbs.js';
+
+/** The request as the sheet reads it. `alwaysAsk` is the engine's additive
+ *  field (plan 1.6), named here as well so the sheet compiles against an
+ *  engine build that predates it; absent reads as a plain request. */
+type SheetRequest = ApprovalRequest & { alwaysAsk?: boolean };
 
 export function ApprovalSheet({
   request,
@@ -23,7 +30,7 @@ export function ApprovalSheet({
   onAnswerAll,
   onOpenMode,
 }: {
-  request: ApprovalRequest;
+  request: SheetRequest;
   /** This question's place in the pending stack, 0-based. */
   index: number;
   total: number;
@@ -35,6 +42,9 @@ export function ApprovalSheet({
   onOpenMode: () => void;
 }) {
   const isSpend = request.kind === 'cloud-spend';
+  // An always-ask tool prompts before every run, so an allow for the session
+  // or the project would never take effect. Only once or skip are honest.
+  const standingAllow = !isSpend && request.alwaysAsk !== true;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => hapticApproval(), [request.id]);
   // Play the exit before the answer propagates, so the sheet never snap-closes.
@@ -62,7 +72,7 @@ export function ApprovalSheet({
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       if (e.key === 'y' || e.key === 'Y') answer(true);
-      else if ((e.key === 'a' || e.key === 'A') && !isSpend) answer(true, true);
+      else if ((e.key === 'a' || e.key === 'A') && standingAllow) answer(true, true);
       else if (e.key === 'n' || e.key === 'N' || e.key === 'Escape') answer(false);
       else return;
       e.preventDefault();
@@ -70,13 +80,13 @@ export function ApprovalSheet({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [request.id, isSpend]);
+  }, [request.id, standingAllow]);
 
   // A tool that names a file or a command can be allowed for the project. The
   // engine scopes the rule (the path's directory, the command's first word).
   const projectAllowable =
     agent &&
-    !isSpend &&
+    standingAllow &&
     /^(editFile|writeFile|runShell|readFile|gitCommit)$/.test(request.toolName);
 
   return (
@@ -122,7 +132,7 @@ export function ApprovalSheet({
                 Always allow this in the project
               </button>
             ) : null}
-            {!isSpend ? (
+            {standingAllow ? (
               <button className="btn ghost press-fb" onClick={() => answer(true, true)}>
                 Approve for this session
                 <kbd className="approval-key">a</kbd>

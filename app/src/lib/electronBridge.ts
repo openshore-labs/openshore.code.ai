@@ -141,6 +141,9 @@ export interface OscodeBridge {
       humanize?: boolean;
       /** Chain of Thought for this session (off unless true). */
       chainOfThought?: boolean;
+      /** The Wayfinding Memory switch: false turns project memory off for
+       *  this session; absent leaves the project's config in charge. */
+      memory?: boolean;
       /** The person's Codemagic token, so the engine's codemagic tool can drive
        *  App Launch builds. Delivered only on this local engine and only when
        *  Codemagic Access is on; never sent to a remote daemon. */

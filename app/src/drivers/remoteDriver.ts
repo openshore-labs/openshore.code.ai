@@ -219,6 +219,10 @@ export async function daemonCreateSession(
     humanize?: boolean;
     /** Chain of Thought for this session (off unless true). */
     chainOfThought?: boolean;
+    /** The Wayfinding Memory switch (memoryOverride): false turns project
+     *  memory off for this session. Only false goes on the wire, never true,
+     *  so a project's own config stays in charge while the switch is on. */
+    memory?: boolean;
     /** The Agentic Current that is on, as the handle its engine tool needs. */
     currents?: CurrentsHandles;
     /** The Harness Current that is on (Jev), as its per-session handle. */
@@ -235,6 +239,7 @@ export async function daemonCreateSession(
       ...(opts.permissionMode ? { permissionMode: opts.permissionMode } : {}),
       ...(typeof opts.humanize === 'boolean' ? { humanize: opts.humanize } : {}),
       ...(typeof opts.chainOfThought === 'boolean' ? { chainOfThought: opts.chainOfThought } : {}),
+      ...(opts.memory === false ? { memory: false } : {}),
       ...(opts.currents ? { currents: opts.currents } : {}),
       ...(opts.harnessCurrents ? { harnessCurrents: opts.harnessCurrents } : {}),
     }),

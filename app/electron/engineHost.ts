@@ -238,6 +238,9 @@ export class EngineHost {
       projectSecrets?: string;
       humanize?: boolean;
       chainOfThought?: boolean;
+      /** The Wayfinding Memory switch: false turns project memory off for
+       *  this session; undefined leaves the project's config in charge. */
+      memory?: boolean;
       codemagicToken?: string;
       codemagicTarget?: { appId: string; workflowId: string; branch: string; platform?: string };
       currents?: CurrentsHandles;
@@ -253,7 +256,10 @@ export class EngineHost {
       const { cli: _dropped, ...rest } = currents;
       currents = Object.keys(rest).length ? rest : undefined;
     }
-    const { driver, warnings } = bootstrapSession({
+    // BootstrapOptions.memory is the engine half of plan 1.5 (memoryEnabled:
+    // the override only ever turns memory off). Named on the call-site type
+    // too, so this compiles against an engine build that predates the field.
+    const bootOptions: Parameters<typeof bootstrapSession>[0] & { memory?: boolean } = {
       cwd: workDir,
       profile: 'local-interactive',
       terminalReader: this.readTerminal,
@@ -263,11 +269,13 @@ export class EngineHost {
       projectSecrets: opts.projectSecrets,
       humanize: opts.humanize,
       chainOfThought: opts.chainOfThought,
+      memory: opts.memory,
       codemagicToken: opts.codemagicToken,
       codemagicTarget: opts.codemagicTarget,
       currents,
       harnessCurrents: opts.harnessCurrents,
-    });
+    };
+    const { driver, warnings } = bootstrapSession(bootOptions);
     this.attach(driver); // a fresh session has an empty journal; nothing to replay
     return { id: driver.id, cwd: workDir, warnings };
   }

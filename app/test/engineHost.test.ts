@@ -10,10 +10,11 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { DriverEvent } from 'os-code/protocol';
 
-// Every session the host boots, with the project it carries, so a test can
-// check what a resume kept. The real bootstrap runs untouched.
+// Every session the host boots, with the project it carries and the Memory
+// switch it was handed, so a test can check what a resume kept and what the
+// bridge passed on. The real bootstrap runs untouched.
 const booted = vi.hoisted(
-  () => [] as Array<{ id: string; projectName?: string; instructions?: string }>,
+  () => [] as Array<{ id: string; projectName?: string; instructions?: string; memory?: boolean }>,
 );
 vi.mock('os-code/dist/src/core/agent/bootstrap.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('os-code/dist/src/core/agent/bootstrap.js')>();
@@ -25,6 +26,7 @@ vi.mock('os-code/dist/src/core/agent/bootstrap.js', async (importOriginal) => {
         id: result.driver.id,
         projectName: result.toolContext.projectName,
         instructions: (result.agent as unknown as { instructions?: string }).instructions,
+        memory: (options as { memory?: boolean }).memory,
       });
       return result;
     },
@@ -146,5 +148,18 @@ describe('EngineHost (desktop coding path, hermetic)', () => {
       instructions: 'Keep every screen calm.',
     });
     second.disposeAll();
+  });
+
+  // The Wayfinding Memory switch (plan 1.5) reaches the engine's bootstrap as
+  // BootstrapOptions.memory, where memoryEnabled lets it only turn memory off.
+  it('hands the Memory switch to the engine as the session opens', async () => {
+    process.env.OSC_HOME = configuredHome;
+    const cwd = mkdtempSync(join(tmpdir(), 'osc-repo-'));
+    const host = makeHost([]);
+    const off = await host.createSession(cwd, { memory: false });
+    const untouched = await host.createSession(cwd);
+    expect(booted.find((b) => b.id === off.id)?.memory).toBe(false);
+    expect(booted.find((b) => b.id === untouched.id)?.memory).toBeUndefined();
+    host.disposeAll();
   });
 });

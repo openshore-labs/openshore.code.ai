@@ -24,6 +24,7 @@ import {
   currentStateLine,
   currentsHandles,
   isCurrentBenchId,
+  memoryOverride,
   nextActiveCurrent,
   projectCurrentsSettings,
   slotNone,
@@ -67,6 +68,36 @@ describe('wayfinding', () => {
       expect(wayfindingOn({ wayfinding: { [id]: false } }, id)).toBe(false);
       expect(WAYFINDING[id].label.length).toBeGreaterThan(0);
     }
+  });
+});
+
+// A switch only Settings reads is a dead setting (keyask-3, custom-3): the
+// Memory switch saved and toasted for months while the engine kept writing
+// project notes. Scoped to Memory, the one switch plan 1.5 wires; Skills and
+// Browser are known dead too and tracked in PROGRESS as their own items.
+describe('the memory switch has a runtime consumer', () => {
+  it('reads as an override that can only turn memory off, never on', () => {
+    expect(memoryOverride({})).toBeUndefined();
+    expect(memoryOverride({ wayfinding: { memory: true } })).toBeUndefined();
+    expect(memoryOverride({ wayfinding: { skills: false } })).toBeUndefined();
+    expect(memoryOverride({ wayfinding: { memory: false } })).toBe(false);
+  });
+
+  it('is read where engine sessions open, not only in Settings', () => {
+    const readsMemory = /memoryOverride\(|wayfindingOn\([^)]*'memory'\)/;
+    const readers = sourceFiles()
+      .map((file) => relative(SRC, file))
+      .filter((rel) => rel !== 'lib/currents.ts' && rel !== 'screens/SettingsScreen.tsx')
+      .filter((rel) => readsMemory.test(readFileSync(join(SRC, rel), 'utf8')));
+    // The store opens every engine session: the desktop's own, the phone's
+    // on a paired computer, and a Stack play's engine step (through its
+    // context). memorySwitch.test.ts proves what each one sends.
+    expect(readers).toContain('state/store.ts');
+  });
+
+  it('the line says off applies to new chats, and where the notes live', () => {
+    expect(WAYFINDING.memory.sub).toMatch(/repository/);
+    expect(WAYFINDING.memory.sub).toMatch(/new chats/i);
   });
 });
 

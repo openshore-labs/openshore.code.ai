@@ -125,6 +125,11 @@ export interface StackContext {
    *  to the plain, specific, honest voice that avoids AI writing tells. Off
    *  drops the standard from the prompt, so the model runs on a shorter prompt. */
   humanize?: boolean;
+  /** The Wayfinding Memory switch (memoryOverride): false when the person
+   *  turned Memory off, so a play's engine step opens its session with project
+   *  memory off. Undefined leaves the project's config in charge. App-side
+   *  chats keep no project memory, so nothing else here reads it. */
+  memory?: false;
   /** Codemagic Access is on (and Codemagic is connected), so the model may drive
    *  App Launch builds. Offers the codemagic tool on the Anthropic path, where
    *  native tool use runs the trigger/status/logs loop on-device. Off leaves the
@@ -171,8 +176,8 @@ export function benchExtraHeaders(
  *  push, and cloud spend still raise an approval into the chat. The project's
  *  name and standing instructions ride along the way a desktop-created session
  *  carries them, so the step works to the project's instructions and files
- *  project memory in the same folder. projectSecrets are deliberately never
- *  sent to the docked session. */
+ *  project memory in the same folder, or keeps none when the Memory switch is
+ *  off. projectSecrets are deliberately never sent to the docked session. */
 export function engineStepSessionOpts(
   context: StackContext,
 ): NonNullable<Parameters<typeof daemonCreateSession>[2]> {
@@ -181,6 +186,7 @@ export function engineStepSessionOpts(
     humanize: context.humanize,
     projectName: context.projectName,
     instructions: context.projectInstructions,
+    ...(context.memory === false ? { memory: false } : {}),
   };
 }
 
