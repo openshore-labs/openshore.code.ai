@@ -40,7 +40,7 @@ import { configureStreamIdle } from '../../providers/streamIdle.js';
 import type { AgentEvent, PermissionMode } from './types.js';
 import type { CurrentsHandles, HarnessCurrentsHandle } from '../../currents/model.js';
 import type { VaultContextSource } from '../../harness/vaultContext.js';
-import type { VaultOverrides } from '../../harness/vault/types.js';
+import type { VaultOverrides, VaultPackSize } from '../../harness/vault/types.js';
 import { HANDOFF_MAX_BYTES } from '../../harness/handoff.js';
 import { readHandoff, writeHandoff, type HandoffScope } from './handoffStore.js';
 import { logger } from '../../util/log.js';
@@ -148,9 +148,38 @@ export interface BootstrapOptions {
    *  gives no pack, `handoff: 'off'` writes and reads no handoff (the
    *  `handoff` field above is the handoff TEXT, so the switch rides here),
    *  `packSize` may only lower `vault.packSize`. Taken at open, so a change
-   *  applies to new chats. Undefined leaves the config in charge. Wave 0:
-   *  declared, not yet read (stream C). */
+   *  applies to new chats. Undefined leaves the config in charge. Folded
+   *  into the config by `applyVaultOverrides`. */
   vaultOverrides?: VaultOverrides;
+}
+
+const PACK_SIZE_RANK: Record<VaultPackSize, number> = { small: 0, normal: 1, large: 2 };
+
+/**
+ * Fold the app's vault switches into this session's config (Vault M7, CTO
+ * L13), the way `humanize` and `memory` fold, so the loop, the pack and the
+ * handoff read one value: `vault.context` and `vault.handoff` become `off`
+ * when the app turned them off, and `vault.packSize` takes the app's size
+ * only when it is smaller. The same rule as `vaultContextOn`,
+ * `vaultHandoffOn` and `vaultPackSize` (the loaded config already holds the
+ * machine and project values), written so it can only narrow: nothing here
+ * turns a switch on or raises the size. A fresh config, never the caller's.
+ */
+export function applyVaultOverrides(
+  config: OscConfig,
+  overrides: VaultOverrides | undefined,
+): OscConfig {
+  if (!overrides) return config;
+  const vault = config.vault;
+  let next = vault;
+  if (overrides.context === 'off' && vault.context !== 'off') next = { ...next, context: 'off' };
+  if (overrides.handoff === 'off' && vault.handoff !== 'off') next = { ...next, handoff: 'off' };
+  const asked = overrides.packSize;
+  const machine = vault.packSize ?? 'normal';
+  if (asked !== undefined && Object.hasOwn(PACK_SIZE_RANK, asked)) {
+    if (PACK_SIZE_RANK[asked] < PACK_SIZE_RANK[machine]) next = { ...next, packSize: asked };
+  }
+  return next === vault ? config : { ...config, vault: next };
 }
 
 export interface BootstrapResult {
@@ -215,6 +244,10 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   if (cot !== (config.chainOfThought?.enabled === true)) {
     config = { ...config, chainOfThought: { ...config.chainOfThought, enabled: cot } };
   }
+
+  // The app's vault switches (Vault M7, CTO L13), the same way: off-only for
+  // the pack and the handoff, lower-only for the pack size, taken at open.
+  config = applyVaultOverrides(config, options.vaultOverrides);
 
   // The ethics layer, wired before any provider exists. Every provider the
   // registry hands out is guarded by it, so the agent loop, the router's
@@ -287,10 +320,11 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     projectName,
     egressLockdown,
     vault: vaultRoot !== null,
+    // The caller's own root replaces the machine's. The privacy rules are the
+    // machine's (projectPolicy classes them machine) unioned with that root's
+    // own settings file, which only narrows (Vault M7, CTO L4).
+    ...(typeof vaultRoot === 'string' ? { vaultRoot } : {}),
   });
-  // The caller's own root replaces the machine's; the privacy rules are the
-  // machine's either way (projectPolicy classes them machine).
-  if (typeof vaultRoot === 'string') toolContext.vaultRoot = vaultRoot;
 
   // The switch's handoff (J12): refused whole when over the cap, so the model
   // never reads a summary cut off mid-sentence.
@@ -410,7 +444,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   const readStored = handoffOn && !options.sessionId && !handoff;
   const vaultContext =
     options.vaultContext ??
-    createVaultContextSource({
+    refreshedSource(toolContext, {
       vaultRoot: toolContext.vaultRoot,
       privacy: toolContext.vaultPrivacy ?? lazyVaultPrivacy(vaultPrivacyConfig(config)),
       currentState: currentStateReader(options.cwd, projectName),
@@ -471,4 +505,25 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   }
 
   return { driver, agent, router, config, toolContext, tools, warnings, orchestratorKind };
+}
+
+/** The engine's pack source, reading the vault's own settings again (forced)
+ *  before each task's prepare (Vault M7, CTO L5, L6), so the pack and the
+ *  tools judge a note by the same fresh union. A read that fails keeps the
+ *  last good settings; the prepare runs either way. */
+function refreshedSource(
+  toolContext: BootstrapResult['toolContext'],
+  input: Parameters<typeof createVaultContextSource>[0],
+): VaultContextSource {
+  const source = createVaultContextSource(input);
+  return {
+    async prepare(task, signal) {
+      try {
+        await toolContext.vaultRefresh?.({ force: true });
+      } catch {
+        // The holder keeps its last good settings.
+      }
+      return source.prepare(task, signal);
+    },
+  };
 }
