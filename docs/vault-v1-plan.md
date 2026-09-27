@@ -750,12 +750,23 @@ prefill cost per class. Closes [missed-1/ctx]. Where:
 Test: a provider test asserts `num_ctx` in the request body per class and its
 absence when off.
 
+Shipped 2026-09-27 (CTO I1): `providers.<id>.numCtx: 'auto' | 'off'`, unset
+reads as off (no schema default), Ollama only, the class ceiling from name and
+size and host memory read once per process (`providers/hostMemory.ts`),
+memoized per model; `capabilities()` reports the served window and keeps the
+native one as `nativeContextTokens`. `providerNumCtx.test.ts`. Default stays
+off until the founder gate in 4.8.
+
 **4.1 Wire the budgets (S).** Add `vaultPackFraction` and `vaultReadCapChars`
 to the class policy, and wire the dead `codeMapContextFraction` and
 `compactAtContextFraction` into the loop. The starting fractions are
 placeholders until 4.8. Closes [keyask-7] [keyask-10]. Where: `profile.ts:46`,
 `loop.ts`. Test: `harnessProfile.test.ts` and `harnessLoopProfile.test.ts`,
 the budget scales by class.
+
+Shipped 2026-09-27 (I2): the three vault fields on the class policy
+(placeholders), `VAULT_PACK_MAX_TOKENS` 4000, the code map cut to its share
+of the served window, compaction reading the class fraction.
 
 **4.2 Privacy controls before any pack (M).** Exclude globs and local-only
 folders, plus frontmatter `oscode: pin | exclude | local-only`, enforced
@@ -767,6 +778,12 @@ pack so no note reaches a cloud seat without it. Closes [engine-15]
 `vaultContext.test.ts`, a local-only note never reaches a cloud pack;
 `vaultTools.test.ts`, an excluded folder is invisible to list, read, and
 search.
+
+Shipped 2026-09-27 (I3 to I5): `vault.exclude`, `vault.localOnly` (machine),
+`vault.context` (off-only), one judge in `harness/vault/privacy.ts` (a plan
+change from `vaultContext.ts`), enforced in every vault tool and the pack; a
+local-only tool result is marked and a leaving turn sends a stub, and a
+journal-seeded reply after a local-only read keeps the mark across a restart.
 
 **4.3 The pack builder (L).** A pure `buildContextPack({index, bodies, query,
 project, pins, handoff, budgetTokens, seat, exclude})` returning `{text,
@@ -784,6 +801,11 @@ new `os-code/test/vaultContext.test.ts`, every class stays within budget, the
 same inputs give the same bytes, an excluded note never appears, a cold index
 returns within the time budget.
 
+Shipped 2026-09-27 (I6, I7): `planContextPack` and `buildContextPack` in
+`harness/vaultContext.ts`, deterministic, framed as quoted data; the engine's
+source (`core/vault/contextSource.ts`) waits 250 ms for a per-root index and
+otherwise sends Current State only, marked cold.
+
 **4.4 The engine injects the pack (M).** Built on the task text in `run()` and
 placed after the project memory block, ordered stable to volatile so Ollama
 and llama.cpp can reuse the KV cache. Behind machine config `vault.context:
@@ -796,6 +818,15 @@ computer until 5.2 lets the phone open them. Closes [engine-5] [keyask-1]
 575-601`, `bootstrap.ts`, protocol events. Test: `vaultContext.test.ts`, "a
 small seat gets Current State with no vault tool"; `memorySwitch.test.ts`,
 off removes the pack.
+
+Shipped 2026-09-27 (I8 to I10), with two plan changes: the pack sits after
+the code map and before the text protocol (not after the memory block, so
+the multi-KB standards keep their KV reuse), and every class gets Current
+State only (`PACK_BY_CLASS`) until 4.8 has numbers. Bootstrap builds the
+source for every host (CLI, daemon, routines, desktop); a session with no
+vault root still gets Current State. The card re-fires when an escalation
+changes the seat, and counts only real vault notes (never the map, the
+handoff, or Current State). `vaultContextE2E.test.ts` runs it end to end.
 
 **4.5 Tools that search first (M).** `vaultSearch(query, folder?, tag?, k)`
 returns path, heading, and snippet; `vaultRead` resolves names, aliases, and
@@ -811,10 +842,21 @@ writes stop triggering verify and the Jev judge. Closes [engine-6] [obs-4]
 returns ranked snippets; `harnessLoopProfile.test.ts`, a small seat sees the
 merged tool.
 
+Shipped 2026-09-27 (I11): `core/tools/vaultFind.ts` (`vaultSearch`,
+`vaultBacklinks`, merged `vaultLookup`, `vaultRead` with sections and a
+header, capped by class); one rule for which seat sees which
+(`seatOffersVaultTool`, `withVaultLookupPriority` in the registry, read by
+the loop per turn); small seats see `vaultLookup`, tiny seats lean on the
+pack.
+
 **4.6 Per-root index on the engine (S).** The engine's index lives under its
 state folder keyed by vault root, so a member's search on a shared hub can
 never read another root through it (this matters from 5.2 on). Test: a
 `daemonVault.test.ts` case, two roots, two indexes, no crossover.
+
+Shipped 2026-09-27: `core/vault/engineIndex.ts`, one index per root keyed by
+`vaultIndexKey`, saved under the engine's state folder;
+`daemonVault.test.ts`.
 
 **4.7 The harness keeps Current State current for lean seats (M).** Tenet 3:
 the harness does the mechanical work. After a change that verifies, the
@@ -826,6 +868,9 @@ project memory without needing the tool. Closes [keyask-6] [engine-4]
 a verified change on a small seat appends one line; a failed verify appends
 nothing.
 
+Shipped 2026-09-27 (I12): `appendLandedLine`, after a passing verify on a
+lean seat, never through a tool call, deduped, five harness lines at most.
+
 **4.8 Measure before claiming (M).** Vault fixtures of about 200 notes (a
 convention note, a decision behind a wikilink, a stale agent note that
 contradicts it) and two tasks: recall a convention, follow a link. Run `osc
@@ -835,12 +880,23 @@ default per class (D6). Closes [keyask-14]. Where: `os-code/src/eval/tasks.ts`,
 `v2.ts`. Test: `os-code/test/evalV2.test.ts` covers the fixtures through the
 mock provider; the numbers go into the PROGRESS log and DECISIONS.
 
+Shipped 2026-09-27 in the sandbox only (I14): the 200-note fixture, the two
+tasks, and `osc eval --deep --vault-pack on|off --num-ctx auto|off` (the task's
+vault is the session's vault; the report records input tokens, pack tokens,
+notes, and wall time per task, and files each variant separately). No number
+is claimed. The founder gate is open: run it per class on the reference box,
+then record the numbers in DECISIONS and PROGRESS before any class moves to
+the full pack or `numCtx` defaults to auto.
+
 **4.9 Crew notes models can build on (S).** Frontmatter (`type: crew-run`,
 routine, project, model, session, started, state, tags), a link to the
 previous run, and one line in the routine instructions pointing at
 `Crew/<routine>/`. Closes [engine-11] [truth-20]. Where:
 `scheduler.ts:581-617`. Test: `routines.test.ts` asserts the frontmatter and
 the link.
+
+Shipped 2026-09-27 (I13): frontmatter with JSON-quoted values, a full-path
+`previous` link, and the instructions line; `routines.test.ts`.
 
 ### M5. Context layer II: every seat, every switch
 

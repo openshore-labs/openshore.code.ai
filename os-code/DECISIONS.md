@@ -2336,3 +2336,47 @@ execution contract. Newest at the bottom.
   close the index yet: `afterVaultPick` is the held native branch's ground,
   and until it closes the index there, the next list's reconcile drops and
   re-reads what the new folder does not share.
+- **Vault M4, context layer I (2026-09-27):** the CTO's rulings I1 to I16
+  are built as written, in waves (0 contracts, 1 seven parallel streams, 2
+  one integrator). I1: `providers.<id>.numCtx: 'auto' | 'off'` in the
+  provider, so the engine, `/chat`, routines and eval send the same served
+  window; Ollama only; the class from name and size only; memoized per
+  model. I2: `vaultPackFraction`, `vaultReadCapChars`, `mergedVaultTool` on
+  the class policy (placeholders), only `mergedVaultTool` a project may
+  override; `VAULT_PACK_MAX_TOKENS` 4000. I3: `vault.exclude` and
+  `vault.localOnly` machine, `vault.context` off-only (a project's `'off'`
+  applies anywhere, its `'full'` waits for trust). I4: one judge,
+  `harness/vault/privacy.ts`, hand-rolled glob on the folded path, a pin
+  never lifts a restriction, local judged by address. I5: tools enforce it;
+  a local-only tool result is marked and a leaving turn sends a stub. I6:
+  the pure two-phase pack builder. I7: one engine index per root, a 250 ms
+  cold budget. I8: the pack rendered per turn for the answering seat. I9:
+  `PACK_BY_CLASS` is Current State only for every class, mid and large too,
+  until the eval. I10: the additive `context-pack` event and card. I11:
+  tools that search first, one merged read for merged classes. I12: the
+  harness's dated Current State line. I13: Crew notes with frontmatter.
+  I14: the eval fixture and variants in the sandbox, no number claimed.
+  I15, I16: the stream split and what waits for M5 and M7. Deviations worth
+  knowing: `numCtx` has no schema default (unset reads as off, so a config
+  file never gains a key it did not have); privacy lives in
+  `harness/vault/privacy.ts`, not `vaultContext.ts`, so tools use it without
+  the pack; the pack sits after the code map and before the text protocol,
+  not after the memory block (KV reuse for the multi-KB standards); the card
+  re-fires when an escalation changes the seat, and counts only real vault
+  notes (pins, search hits, links), never the map, the handoff, or Current
+  State; the loop's vault menu and the small-seat priority are the
+  registry's `seatOffersVaultTool` and `withVaultLookupPriority`, one
+  implementation; bootstrap builds the engine source whenever a caller
+  passes none, so the CLI, the daemon, routines and the desktop all carry
+  Current State, a session with no vault root included; a reply seeded from
+  the journal after a local-only read comes back marked, so a daemon
+  restart keeps the note off a leaving seat (the tool results themselves
+  are not seeded); the deep eval builds each task's vault index before the
+  run (a person's vault is indexed long before a task), closes it and
+  removes its saved file after, and a variant run with no task vault gets no
+  vault, so the person's notes never enter a benchmark. Founder gate, open:
+  `osc eval --deep` with `--vault-pack on` and `off`, and `--num-ctx auto`
+  and `off`, per class on the reference box (tiny and small local, large by
+  an approved reference run), with the numbers recorded here and in
+  PROGRESS before any class flips to the full pack or `numCtx` defaults to
+  auto (tenet 2).
