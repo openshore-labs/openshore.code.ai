@@ -1312,6 +1312,35 @@ textarea {
   margin-top: 14px;
 }
 
+/* A note the renderer could not format (0.10): its text, as written. */
+.vault-raw {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: var(--text-3);
+  line-height: 1.55;
+}
+
+/* The "Not saved" list (0.4): text no vault took, one row per note, each
+   with Copy and Discard. */
+.vault-held-item {
+  padding: 10px 2px 2px;
+  border-top: 1px solid var(--border);
+  margin-top: 10px;
+}
+.vault-held-title {
+  display: block;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-4);
+}
+.vault-held-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .vault-tree {
   display: flex;
   flex-direction: column;

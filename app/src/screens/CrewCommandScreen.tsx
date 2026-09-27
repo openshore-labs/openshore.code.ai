@@ -45,6 +45,7 @@ import { ROUTINE_LIMITS } from 'os-code/protocol';
 import { activeContribution, currentSecretKey, slotNone } from '../lib/currents.js';
 import { hermesJobsRead, type HermesJob } from '../lib/currentsProbe.js';
 import { secretGet } from '../lib/platform.js';
+import { ROUTINE_NOTES_PLACE } from '../lib/vaultCopy.js';
 
 /** How often the room re-asks the computer while it is open. */
 const REFRESH_MS = 5000;
@@ -462,7 +463,8 @@ export function CrewCommandScreen() {
                 <div>
                   <div className="cc-dormant-title">Results waiting for you</div>
                   <div className="cc-dormant-sub">
-                    Each run leaves a note in your vault, with the full transcript a tap away.
+                    Each run leaves a note in {ROUTINE_NOTES_PLACE}, with the full transcript a tap
+                    away.
                   </div>
                 </div>
               </div>
@@ -1040,7 +1042,9 @@ export function CrewCommandScreen() {
               </button>
             </div>
             {note?.path ? (
-              <p className="hint cc-note-path">Saved in your vault: {note.path}</p>
+              <p className="hint cc-note-path">
+                Saved in {ROUTINE_NOTES_PLACE}: {note.path}
+              </p>
             ) : null}
           </>
         ) : null}
@@ -1055,7 +1059,8 @@ export function CrewCommandScreen() {
           <>
             <h3>Delete {confirmDelete.name}?</h3>
             <p>
-              Its results stay in your vault. A run in flight is stopped. This cannot be undone.
+              Its results stay in {ROUTINE_NOTES_PLACE}. A run in flight is stopped. This cannot be
+              undone.
             </p>
             <div className="confirm-row">
               <button className="btn ghost" onClick={() => setConfirmDelete(undefined)}>

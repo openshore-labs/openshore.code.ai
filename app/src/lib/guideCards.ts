@@ -11,6 +11,7 @@ import type { GuideCard } from './guideHarness.js';
 import { guideStepsCompact } from './setupGuides.js';
 import { AGENTIC_CURRENTS, AGENTIC_CURRENTS_TITLE } from './currents.js';
 import { HARNESS_CURRENTS, HARNESS_CURRENTS_TITLE } from './harnessCurrents.js';
+import { vaultGuideText } from './vaultCopy.js';
 
 function listOf(names: readonly string[]): string {
   return names.length > 1
@@ -534,7 +535,9 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     id: 'vault',
     title: 'Vault',
     where: 'Menu, Vault',
-    text: 'A markdown knowledge base that works with Obsidian: plain .md files, [[wikilinks]], and linked mentions, written by you and your agent. Where it lives lets you keep it on this device, in a folder on your computer, in iCloud Drive, or in Google Drive, and Export writes it out as plain files. Routines leave their notes here.',
+    // From the Vault's one copy map, so the card says what each storage does
+    // and only that (0.19).
+    text: vaultGuideText(),
     keywords: [
       'vault',
       'notes',
@@ -656,7 +659,7 @@ export const GUIDE_CARDS: readonly GuideCard[] = [
     id: 'wayfinding',
     title: 'Wayfinding',
     where: 'Menu, Settings, Wayfinding',
-    text: 'How the agent finds its way, on by default. Memory keeps what it has learned in your Vault and reads it back. Skills are reusable markdown recipes. Browser drives a browser on your paired computer and asks before every action. Research (off by default) runs web research through Perplexity once a Perplexity API key is connected.',
+    text: "How the agent finds its way, on by default. Memory: the agent keeps notes on each coding project inside that project's own repository. Skills are reusable markdown recipes. Browser drives a browser on your paired computer and asks before every action. Research (off by default) runs web research through Perplexity once a Perplexity API key is connected.",
     keywords: [
       'wayfinding',
       'memory',

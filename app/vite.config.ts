@@ -12,7 +12,7 @@ export default defineConfig({
     target: 'es2022',
   },
   test: {
-    include: ['test/**/*.test.ts'],
+    include: ['test/**/*.test.ts', 'test/**/*.test.tsx'],
     environment: 'node',
   },
 });

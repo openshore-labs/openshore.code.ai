@@ -14,6 +14,7 @@ import { AuthConfirmSheet } from './components/AuthConfirmSheet.js';
 import { OrgJoinSheet } from './components/OrgJoinSheet.js';
 import { CurrentArrival, CurrentWaterline } from './components/CurrentArrival.js';
 import { UpdateBanner } from './components/UpdateBanner.js';
+import { ErrorBoundary } from './components/ErrorBoundary.js';
 import { ChatScreen } from './screens/ChatScreen.js';
 import { ChatsScreen } from './screens/ChatsScreen.js';
 import { MarketplaceScreen } from './screens/MarketplaceScreen.js';
@@ -21,7 +22,7 @@ import { StackScreen } from './screens/StackScreen.js';
 import { StackHealthScreen } from './screens/StackHealthScreen.js';
 import { ConnectionsScreen } from './screens/ConnectionsScreen.js';
 import { ReposScreen } from './screens/ReposScreen.js';
-import { VaultScreen } from './screens/VaultScreen.js';
+import { VaultFault, VaultScreen } from './screens/VaultScreen.js';
 import { ProjectsScreen } from './screens/ProjectsScreen.js';
 import { ProjectDetailScreen } from './screens/ProjectDetailScreen.js';
 import { ProjectMemoryScreen } from './screens/ProjectMemoryScreen.js';
@@ -47,6 +48,8 @@ export function App() {
   const { ready, view, drawerOpen, toast, init, reconcileEntitlementOnForeground, accountChoice } =
     useApp();
   const theme = useApp((s) => s.settings.theme);
+  const vaultNotePath = useApp((s) => s.vaultNote?.path);
+  const vaultCloseNote = useApp((s) => s.vaultCloseNote);
   const compact = useCompact();
   // The keyboard inset listener lives here, from boot, so no screen can
   // mount after the keyboard has already started to rise and miss it.
@@ -229,7 +232,21 @@ export function App() {
     ) : view === 'repos' ? (
       <ReposScreen />
     ) : view === 'vault' ? (
-      <VaultScreen />
+      // A note that trips the renderer fails inside the Vault with a way back,
+      // never a blank app (0.10); opening another note clears it.
+      <ErrorBoundary
+        resetKey={vaultNotePath}
+        fallback={(reset) => (
+          <VaultFault
+            onBack={() => {
+              vaultCloseNote();
+              reset();
+            }}
+          />
+        )}
+      >
+        <VaultScreen />
+      </ErrorBoundary>
     ) : view === 'projects' ? (
       <ProjectsScreen />
     ) : view === 'terminalroom' ? (

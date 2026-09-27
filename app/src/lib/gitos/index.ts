@@ -5,13 +5,17 @@
 import { localProvider } from './local.js';
 import { icloudProvider, isIcloudAvailable } from './icloud.js';
 import { gdriveProvider } from './gdrive.js';
-import { isGdriveConnected } from './gdriveAuth.js';
 import { orgVaultProvider, isOrgVaultAvailable } from './orgVault.js';
 import { deviceFolderProvider, isDeviceFolderAvailable } from './deviceFolder.js';
 import { PROVIDER_ROSTER, type StorageProvider, type StorageProviderId } from './providers.js';
 
 export * from './providers.js';
-export { isGdriveConfigured, connectGdrive, disconnectGdrive } from './gdriveAuth.js';
+export {
+  isGdriveConfigured,
+  isGdriveConnected,
+  connectGdrive,
+  disconnectGdrive,
+} from './gdriveAuth.js';
 export { setOrgVaultAuth, isOrgVaultAvailable, resetOrgVault } from './orgVault.js';
 export { isDeviceFolderAvailable } from './deviceFolder.js';
 
@@ -29,15 +33,18 @@ export function providerFor(id: StorageProviderId): StorageProvider | undefined 
   return PROVIDERS_BY_ID[id];
 }
 
-/** Whether a provider is usable right now. Local always is; iCloud is decided
- *  at runtime by the device (signed in and provisioned); Google Drive by
- *  whether an account is connected; the rest are not wired yet. Never
- *  reports a provider ready that would fail on use. */
+/** Whether a provider can take a vault right now. Local always can; iCloud
+ *  is decided at runtime by the device (signed in and provisioned); the rest
+ *  are not wired yet. Google Drive is held back for v1 (D1, 0.18): its
+ *  conflict copy is undone by the next autosave, so it is never ready for a
+ *  new vault, connected or not. A vault already there still lists and reads
+ *  through providerFor and moves off through vaultMoveTo. Never reports a
+ *  provider ready that would fail on use. */
 export async function probeReady(id: StorageProviderId): Promise<boolean> {
   if (id === 'local') return true;
   if (id === 'files') return isDeviceFolderAvailable();
   if (id === 'icloud') return isIcloudAvailable();
-  if (id === 'gdrive') return isGdriveConnected();
+  if (id === 'gdrive') return false;
   if (id === 'org') return isOrgVaultAvailable();
   return false;
 }

@@ -4,13 +4,14 @@
 // and ink rather than anyone else's dark theme. Design: the studio's "Paper
 // Study" direction.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { agenticView, useApp } from '../state/store.js';
+import { agenticView, useApp, type VaultHeldDraft, type VaultTargetRef } from '../state/store.js';
 import { BackBar } from '../components/BackBar.js';
 import { VaultMarkdown } from '../components/VaultMarkdown.js';
 import {
   backlinksTo,
   noteFolder,
   noteTitle,
+  nonNoteExtension,
   normalizeNotePath,
   treeAt,
   wikilinkContext,
@@ -18,16 +19,28 @@ import {
 import {
   PROVIDER_ROSTER,
   probeReady,
-  isGdriveConfigured,
+  isGdriveConnected,
   type GitosResource,
   type StorageProviderId,
 } from '../lib/gitos/index.js';
-import { exportVaultToFiles } from '../lib/vaultExport.js';
+import { exportVaultToFiles, vaultExportLine, vaultWayOut } from '../lib/vaultExport.js';
+import {
+  copyProviderOf,
+  vaultCopy,
+  vaultLead,
+  vaultMoveLine,
+  vaultOffersProvider,
+  vaultOnboard,
+  vaultSheetLine,
+  vaultWelcomeNote,
+  type VaultOnboard,
+} from '../lib/vaultCopy.js';
+import { copyText } from '../lib/clipboard.js';
 import { Sheet } from '../components/Sheet.js';
 import { SheetHead } from '../components/SheetHead.js';
 import { activeContribution, slotNone } from '../lib/currents.js';
 import { hermesNoteRead, hermesNotesList } from '../lib/currentsProbe.js';
-import { isDesktop } from '../lib/platform.js';
+import { isDesktop, platform } from '../lib/platform.js';
 import type { HermesNote, HermesNoteMeta } from 'os-code/protocol';
 import { Icon } from '../components/Icon.js';
 
@@ -49,18 +62,27 @@ export function VaultScreen() {
     vaultReadAll,
     vaultMoveTo,
     vaultError,
+    vaultHeld,
+    vaultTargetRef,
+    vaultReadOnly,
+    vaultDiscardHeld,
     vaultAcquireLease,
     vaultReleaseLease,
     vaultLeaseHeldByOther,
-    connectGdriveAccount,
     disconnectGdriveAccount,
     settings,
+    hubRole,
     showToast,
     openProjectMemory,
     repoSyncConflicts,
   } = useApp();
 
   const team = vaultScope === 'team';
+  // Which platform this is, and whether it is a member's device on someone
+  // else's computer: the copy map (lib/vaultCopy.ts) says only what holds for
+  // the pair, and a member's sessions have no vault (0.13).
+  const on = platform();
+  const hubMember = hubRole === 'member';
 
   // The Agentic Current's notes (a Hermes home's memory and skills), listed
   // once the current is on and read one at a time into a sheet. Undefined
@@ -99,6 +121,10 @@ export function VaultScreen() {
   };
   // Another device holds the vault's write lease: show the note read-only.
   const readOnly = Boolean(vaultLeaseHeldByOther);
+  // A personal vault on Google Drive is read-only in v1 (0.18): the reason
+  // shows as a card with a one-tap move, and edit, create, and delete are off.
+  const driveReadOnly = team ? undefined : vaultReadOnly();
+  const locked = readOnly || Boolean(driveReadOnly);
   const teamAvailable = teamVaultAvailable();
 
   const [folder, setFolder] = useState('');
@@ -110,7 +136,12 @@ export function VaultScreen() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [backlinks, setBacklinks] = useState<Array<{ path: string; excerpt: string }>>([]);
+  // Why Linked mentions may be incomplete, or undefined when every note read.
+  const [mentionsError, setMentionsError] = useState<string | undefined>();
   const [ready, setReady] = useState<Partial<Record<StorageProviderId, boolean>>>({});
+  // A Google account connected before Drive was held back, so it can still be
+  // disconnected from here.
+  const [driveConnected, setDriveConnected] = useState(false);
   const [moving, setMoving] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
@@ -119,12 +150,6 @@ export function VaultScreen() {
   // is the index of the "[[", so a pick replaces exactly that span.
   const [linkQuery, setLinkQuery] = useState<string | null>(null);
   const [linkStart, setLinkStart] = useState(0);
-
-  // If the team vault stops being available while it is open (sign-out), drop
-  // back to the personal vault so the screen never shows an empty dead end.
-  useEffect(() => {
-    if (team && !teamAvailable) void setVaultScope('personal');
-  }, [team, teamAvailable, setVaultScope]);
 
   // Recompute the autocomplete context from the editor value and caret.
   const refreshLinkContext = useCallback((value: string, caret: number) => {
@@ -138,6 +163,14 @@ export function VaultScreen() {
     (settings.gitosResources as GitosResource[] | undefined)?.find(
       (r) => r.id === VAULT_RESOURCE_ID,
     )?.providerId ?? 'local';
+  // The copy lines for a storage on this platform, from the one map.
+  const copyOf = (id: StorageProviderId) => {
+    const key = copyProviderOf(id);
+    return key ? vaultCopy(on, key, { hubMember }) : undefined;
+  };
+  const personalKey = copyProviderOf(currentProviderId) ?? 'local';
+  const personalCopy = vaultCopy(on, personalKey, { hubMember });
+  const labelOf = (id: StorageProviderId) => PROVIDER_ROSTER.find((r) => r.id === id)?.label ?? id;
 
   // Probe live readiness when the storage sheet opens, so iCloud shows as
   // usable only on a device that can actually reach it.
@@ -150,6 +183,11 @@ export function VaultScreen() {
       PROVIDER_ROSTER.forEach((p, i) => (map[p.id] = flags[i]));
       setReady(map);
     });
+    void isGdriveConnected()
+      .then((connected) => {
+        if (live) setDriveConnected(connected);
+      })
+      .catch(() => {});
     return () => {
       live = false;
     };
@@ -175,15 +213,32 @@ export function VaultScreen() {
 
   const paths = useMemo(() => vaultFiles.map((f) => f.path), [vaultFiles]);
 
-  // Load the draft and Linked mentions whenever a note opens.
+  // Load the draft and Linked mentions whenever a note opens. The last note's
+  // mentions clear first, so they never show under this one, and a vault with
+  // notes it could not read says so rather than looking complete (data-m2).
   useEffect(() => {
     if (!vaultNote) return;
     setDraft(vaultNote.text);
     setEditing(vaultNote.fresh === true);
+    setBacklinks([]);
+    setMentionsError(undefined);
+    const path = vaultNote.path;
     let live = true;
-    void vaultReadAll().then((notes) => {
-      if (live) setBacklinks(backlinksTo(vaultNote.path, notes));
-    });
+    vaultReadAll().then(
+      (notes) => {
+        if (!live) return;
+        setBacklinks(backlinksTo(path, notes));
+        const missed = notes.failed.filter((p) => p !== path).length;
+        setMentionsError(
+          missed
+            ? `${missed} ${missed === 1 ? 'note' : 'notes'} could not be read, so this list may be missing some.`
+            : undefined,
+        );
+      },
+      () => {
+        if (live) setMentionsError('Linked mentions could not be read right now.');
+      },
+    );
     return () => {
       live = false;
     };
@@ -195,21 +250,24 @@ export function VaultScreen() {
   // be flushed (not just cancelled) whenever the screen leaves: unmount, app
   // background, note switch, or scope change. Dropping the timer without
   // flushing is what lost the last keystrokes before the debounce elapsed.
-  const pendingSave = useRef<{ path: string; text: string } | null>(null);
+  // The vault the text was typed into is fixed when the save is scheduled,
+  // so a scope flip or a sign-out inside the debounce can never send one
+  // vault's text to the other (0.7).
+  const pendingSave = useRef<{ path: string; text: string; at?: VaultTargetRef } | null>(null);
   const scheduleSave = useCallback(
     (path: string, text: string) => {
-      pendingSave.current = { path, text };
+      const at = vaultTargetRef();
+      pendingSave.current = { path, text, at };
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
         saveTimer.current = undefined;
         pendingSave.current = null;
-        void vaultSave(path, text);
+        void vaultSave(path, text, at);
       }, 600);
     },
-    [vaultSave],
+    [vaultSave, vaultTargetRef],
   );
-  // Write the pending draft now. Runs vaultSave synchronously up to its first
-  // await, so the target vault is captured before any following scope change.
+  // Write the pending draft now, to the vault it was typed into.
   const flushSave = useCallback(() => {
     if (saveTimer.current) {
       clearTimeout(saveTimer.current);
@@ -217,8 +275,21 @@ export function VaultScreen() {
     }
     const p = pendingSave.current;
     pendingSave.current = null;
-    if (p) void vaultSave(p.path, p.text);
+    if (p) void vaultSave(p.path, p.text, p.at);
   }, [vaultSave]);
+  // Switch vaults only once the pending draft is on its way to its own.
+  const switchScope = useCallback(
+    (scope: 'personal' | 'team') => {
+      flushSave();
+      void setVaultScope(scope);
+    },
+    [flushSave, setVaultScope],
+  );
+  // If the team vault stops being available while it is open (sign-out), drop
+  // back to the personal vault so the screen never shows an empty dead end.
+  useEffect(() => {
+    if (team && !teamAvailable) switchScope('personal');
+  }, [team, teamAvailable, switchScope]);
   // Drop the pending draft without writing it (used when deleting the note it
   // belongs to, so a stale timer cannot recreate what was just deleted).
   const cancelSave = useCallback(() => {
@@ -266,7 +337,15 @@ export function VaultScreen() {
   const createNote = () => {
     const path = normalizeNotePath(folder ? `${folder}/${newName}` : newName);
     if (!path) {
-      showToast('Give the note a name.');
+      // "report.pdf" names a file type, so it can never become a note; say so
+      // rather than asking for a name the person already gave.
+      const typed = newName.trim();
+      const ext = nonNoteExtension(typed);
+      showToast(
+        ext
+          ? `"${typed}" ends in ${ext}, a file type, not a note. Try the name without ${ext}.`
+          : 'Give the note a name.',
+      );
       return;
     }
     setNewOpen(false);
@@ -274,35 +353,113 @@ export function VaultScreen() {
     void vaultCreate(path);
   };
 
+  // A tapped link: a note opens, a dashed one is created. An attachment
+  // ([[diagram.png]]) is not a note and does not open here yet, so it says so
+  // rather than doing nothing.
+  const followLink = (p: string, isNew: boolean) => {
+    if (nonNoteExtension(p)) {
+      const name = p.slice(p.lastIndexOf('/') + 1);
+      showToast(`"${name}" is an attachment. Attachments do not open in the Vault yet.`);
+      return;
+    }
+    if (isNew) {
+      flushSave();
+      void vaultCreate(p);
+    } else openNote(p);
+  };
+
+  // Move the personal vault, and say plainly what happened (never a count:
+  // a move is all or nothing). The pending draft goes first, to the vault it
+  // was typed into.
+  const moveVault = async (id: StorageProviderId) => {
+    flushSave();
+    setMoving(true);
+    const result = await vaultMoveTo(id).catch(() => undefined);
+    setMoving(false);
+    setStorageOpen(false);
+    showToast(vaultMoveLine(result, labelOf(id), result?.ok ? copyOf(id)?.obsidian : undefined));
+  };
+  // Where a read-only Drive vault goes in one tap: plain files on the
+  // computer, or this device on the phone.
+  const driveExit: StorageProviderId = isDesktop() ? 'files' : 'local';
+
   // A one-tap starter, the way a fresh Obsidian vault opens on a welcome note
   // rather than a blank void: seed a real, readable note that teaches the core
-  // moves (markdown, the shared read/write with the agent, a live wikilink).
+  // moves (markdown, where it lives, a live wikilink), in the map's words.
   const addStarterNote = async () => {
-    const body = [
-      '# Welcome to your Vault',
-      '',
-      'This is a note: a plain markdown file kept on this device, or on the',
-      'storage you pick under "Where it lives". Write anything you want here.',
-      '',
-      '## You and your agent share this',
-      '',
-      'As your agent works, it can save what it learns here and read your notes',
-      'back later. Anything you write becomes context it can use.',
-      '',
-      '## Link your notes',
-      '',
-      'Type two square brackets to link to another note, like [[Ideas]]. Your',
-      'agent follows those links to find what it needs.',
-      '',
-      '## Try it',
-      '',
-      'Tap the plus at the top to write your own note. Delete this one whenever',
-      'you like.',
-      '',
-    ].join('\n');
-    await vaultCreate('Welcome to your Vault', body);
+    await vaultCreate('Welcome to your Vault', vaultWelcomeNote(on, personalKey, { hubMember }));
     showToast('Welcome note added.');
   };
+
+  // Export on the iPhone: every note it could read, written against the
+  // manifest, and "N of M" when some could not be read (0.11).
+  const exportNotes = async () => {
+    setStorageOpen(false);
+    try {
+      const notes = await vaultReadAll();
+      if (!notes.length && !notes.failed.length) {
+        showToast('Nothing to export yet. Write a note first.');
+        return;
+      }
+      const result = await exportVaultToFiles(notes, notes.failed);
+      showToast(result ? vaultExportLine(result) : 'Export works in OpenShore on the iPhone.');
+    } catch {
+      showToast('Could not export your vault. Check device storage and try again.');
+    }
+  };
+
+  // The standing error, beside the toast that announced it, so it is still
+  // there after the toast fades (0.4).
+  const errorLine = (where: 'tree' | 'note'): string | undefined => {
+    if (vaultError === 'save') {
+      return 'Your vault storage did not take the last change. Any unsaved text is kept on this device and saves when the storage answers.';
+    }
+    if (vaultError === 'held' && vaultHeld.length > 0) {
+      return 'Some text could not be saved. It is kept under Not saved until you copy or discard it.';
+    }
+    if (vaultError === 'load' && where === 'tree' && vaultFiles.length > 0) {
+      return 'Your vault storage did not answer, so these are the notes last loaded.';
+    }
+    return undefined;
+  };
+  const renderError = (where: 'tree' | 'note') => {
+    const line = errorLine(where);
+    if (!line) return null;
+    return (
+      <p className="hint" role="status" style={{ marginTop: 8, color: 'var(--warn)' }}>
+        {line}
+        {vaultError !== 'held' ? (
+          <>
+            {' '}
+            <button className="linklike" onClick={() => void vaultRefresh()}>
+              Try again
+            </button>
+          </>
+        ) : null}
+      </p>
+    );
+  };
+
+  // The read-only Drive card: the store's reason, and the one-tap way off.
+  const renderDriveCard = (fromNote: boolean) =>
+    driveReadOnly ? (
+      <div className="card" role="status" style={{ margin: fromNote ? '12px 0 0' : '0 0 14px' }}>
+        <h3 style={{ marginBottom: 4 }}>This vault is read-only</h3>
+        <p className="sub" style={{ marginTop: 0 }}>
+          {driveReadOnly}
+        </p>
+        <button
+          className="btn primary press-fb"
+          disabled={moving}
+          onClick={() => {
+            if (fromNote) vaultCloseNote();
+            void moveVault(driveExit);
+          }}
+        >
+          Move to {labelOf(driveExit)}
+        </button>
+      </div>
+    ) : null;
 
   const entries = treeAt(folder, vaultFiles);
   const crumbs = folder ? folder.split('/') : [];
@@ -358,6 +515,16 @@ export function VaultScreen() {
       setFolder(parent);
       vaultCloseNote();
     };
+    // Held text for this very note, shown on it as well as in the room.
+    const here = vaultTargetRef();
+    const heldHere = here
+      ? vaultHeld.filter(
+          (h) =>
+            h.providerId === here.providerId &&
+            h.resourceId === here.resourceId &&
+            h.path === vaultNote.path,
+        )
+      : [];
     return (
       <div className="screen">
         <BackBar title={title} back={{ to: 'Vault', onBack: backToNotes }} />
@@ -371,8 +538,8 @@ export function VaultScreen() {
               className="icon-btn"
               aria-label={editing ? 'Read' : 'Edit'}
               aria-pressed={editing}
-              disabled={readOnly}
-              onClick={() => !readOnly && setEditing((e) => !e)}
+              disabled={locked}
+              onClick={() => !locked && setEditing((e) => !e)}
             >
               {editing ? (
                 <Icon size={19}>
@@ -401,8 +568,11 @@ export function VaultScreen() {
               edits do not collide.
             </p>
           ) : null}
+          {renderDriveCard(true)}
+          {renderError('note')}
+          <NotSaved held={heldHere} discard={(id) => void vaultDiscardHeld(id)} />
 
-          {editing && !readOnly ? (
+          {editing && !locked ? (
             <div className="vault-editor-wrap">
               <textarea
                 ref={editorRef}
@@ -457,24 +627,26 @@ export function VaultScreen() {
               ) : null}
             </div>
           ) : (
-            <VaultMarkdown
-              text={draft}
-              paths={paths}
-              onOpenNote={(p, isNew) => {
-                if (isNew) {
-                  flushSave();
-                  void vaultCreate(p);
-                } else openNote(p);
-              }}
-            />
+            <VaultMarkdown text={draft} paths={paths} onOpenNote={followLink} />
           )}
 
-          {!editing && backlinks.length > 0 ? (
+          {!editing && (backlinks.length > 0 || mentionsError) ? (
             <div className="card" style={{ marginTop: 18 }}>
               <div className="card-row">
                 <h3 style={{ marginBottom: 0 }}>Linked mentions</h3>
-                <span className="pill local">{backlinks.length}</span>
+                {backlinks.length > 0 ? (
+                  <span className="pill local">{backlinks.length}</span>
+                ) : null}
               </div>
+              {mentionsError ? (
+                <p
+                  className="hint"
+                  role="status"
+                  style={{ margin: '6px 0 0', color: 'var(--warn)' }}
+                >
+                  {mentionsError}
+                </p>
+              ) : null}
               {backlinks.map((b) => (
                 <button key={b.path} className="vault-mention" onClick={() => openNote(b.path)}>
                   <span className="vault-mention-title">{noteTitle(b.path)}</span>
@@ -504,6 +676,7 @@ export function VaultScreen() {
               <div className="sheet-actions">
                 <button
                   className={`btn press-fb ${confirmDelete ? 'danger' : 'quiet'}`}
+                  disabled={Boolean(driveReadOnly)}
                   onClick={() => {
                     // Two taps to delete: a single tap is too easy to hit by
                     // accident, and a local or iCloud delete is unrecoverable.
@@ -512,13 +685,17 @@ export function VaultScreen() {
                       return;
                     }
                     const path = vaultNote.path;
+                    const at = vaultTargetRef();
                     // Drop any pending debounced save first, or its stale timer
                     // would recreate the note we are deleting.
                     cancelSave();
                     setMenuOpen(false);
                     setConfirmDelete(false);
-                    void vaultDelete(path);
-                    showToast('Note deleted.');
+                    // Only a delete that happened says so; a failed one shows
+                    // the store's own line and the note stays (orgvault-m1).
+                    void vaultDelete(path, at).then((deleted) => {
+                      if (deleted) showToast('Note deleted.');
+                    });
                   }}
                 >
                   {confirmDelete ? 'Really delete? Tap to confirm.' : 'Delete this note'}
@@ -551,6 +728,7 @@ export function VaultScreen() {
             className="stack-add-btn"
             aria-label="New note"
             title="New note"
+            disabled={Boolean(driveReadOnly)}
             onClick={() => setNewOpen(true)}
           >
             <Icon size={20}>
@@ -569,7 +747,7 @@ export function VaultScreen() {
               role="tab"
               aria-selected={!team}
               className={`seg${!team ? ' active' : ''}`}
-              onClick={() => void setVaultScope('personal')}
+              onClick={() => switchScope('personal')}
             >
               Personal
             </button>
@@ -577,16 +755,14 @@ export function VaultScreen() {
               role="tab"
               aria-selected={team}
               className={`seg${team ? ' active' : ''}`}
-              onClick={() => void setVaultScope('team')}
+              onClick={() => switchScope('team')}
             >
               Team
             </button>
           </div>
         ) : null}
         <p className="lead">
-          {team
-            ? 'Shared markdown your whole team reads and writes. Saved to your organization.'
-            : 'Plain markdown files you own, that you and your agent both write.'}
+          {team ? vaultCopy(on, 'org').storage : vaultLead(personalCopy)}
           {!team ? (
             <>
               {' '}
@@ -596,6 +772,14 @@ export function VaultScreen() {
             </>
           ) : null}
         </p>
+
+        {renderError('tree')}
+        {!folder ? renderDriveCard(false) : null}
+        {/* Every vault's held text, near the top, so nothing typed is ever
+            out of sight (0.4). */}
+        {!folder ? (
+          <NotSaved held={vaultHeld} labelled discard={(id) => void vaultDiscardHeld(id)} />
+        ) : null}
 
         {!team && !folder && (settings.projects?.length ?? 0) > 0 ? (
           <div className="card" style={{ marginBottom: 14 }}>
@@ -719,69 +903,16 @@ export function VaultScreen() {
           </div>
         ) : vaultFiles.length === 0 ? (
           // New user, personal vault: an onboarding ramp, not a blank void. It
-          // teaches what the vault is and how the agent uses it, then gives two
-          // ways in (write your own, or seed a welcome note the way a fresh
-          // Obsidian vault opens on one).
-          <section className="vault-onboard">
-            <div className="vault-onboard-cover">
-              <div className="vault-onboard-wash" aria-hidden="true" />
-              <div className="vault-onboard-body">
-                <span className="vault-kicker">Your vault</span>
-                <h2 className="vault-onboard-title">A home for what you and your agent know</h2>
-                <p className="vault-onboard-lead">
-                  Plain markdown notes, yours on this device. You write in them, and so does your
-                  agent as it works, so what it learns stays with you.
-                </p>
-                <div className="vault-onboard-actions">
-                  <button className="btn primary" onClick={() => setNewOpen(true)}>
-                    Write your first note
-                  </button>
-                  <button className="btn ghost" onClick={() => void addStarterNote()}>
-                    Add a welcome note
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="vault-how">
-              <div className="vault-how-item">
-                <span className="vault-how-glyph">
-                  <DocGlyph />
-                </span>
-                <div>
-                  <h3>Plain markdown, yours</h3>
-                  <p className="sub">
-                    Notes are .md files kept on this device or your own storage. Export them any
-                    time; nothing is locked in.
-                  </p>
-                </div>
-              </div>
-              <div className="vault-how-item">
-                <span className="vault-how-glyph">
-                  <AgentGlyph />
-                </span>
-                <div>
-                  <h3>You and your agent both write here</h3>
-                  <p className="sub">
-                    The agent saves what it learns and reads your notes back when it works, so it
-                    remembers how you like things done.
-                  </p>
-                </div>
-              </div>
-              <div className="vault-how-item">
-                <span className="vault-how-glyph">
-                  <LinkGlyph />
-                </span>
-                <div>
-                  <h3>Link ideas with [[wikilinks]]</h3>
-                  <p className="sub">
-                    Type two square brackets to connect notes. The agent follows the links to find
-                    what it needs.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </section>
+          // teaches what the vault is, where it lives, and where the agent
+          // fits (in the map's words, true for this platform and storage),
+          // then gives two ways in (write your own, or seed a welcome note the
+          // way a fresh Obsidian vault opens on one).
+          <VaultRamp
+            onboard={vaultOnboard(on, personalKey, { hubMember })}
+            disabled={Boolean(driveReadOnly)}
+            onWrite={() => setNewOpen(true)}
+            onWelcome={() => void addStarterNote()}
+          />
         ) : (
           <div className="vault-tree">
             {entries.map((e) =>
@@ -854,86 +985,71 @@ export function VaultScreen() {
           <>
             <SheetHead title="Where your vault lives" onClose={() => setStorageOpen(false)} />
             <p className="sheet-sub">
-              Your notes are files, and you choose the storage that holds them. Point Obsidian at
-              the same files and it just opens.
+              You choose the storage that holds your notes. A move copies every note across first,
+              and leaves the old copy where it was.
             </p>
             <div className="sheet-actions">
-              {PROVIDER_ROSTER.filter((p) => !p.arriving).map((p) => {
-                const isCurrent = p.id === currentProviderId;
-                const isReady = ready[p.id] ?? p.ready;
-                const move = async () => {
-                  if (isCurrent) return;
-                  let usable = isReady;
-                  if (!usable && p.id === 'gdrive' && isGdriveConfigured()) {
-                    // Not connected yet, but this build has the OAuth client:
-                    // run the connect flow inline instead of just explaining
-                    // that it is coming.
-                    setMoving(true);
-                    const result = await connectGdriveAccount();
-                    if (!result.ok) {
-                      setMoving(false);
-                      showToast(result.error ?? 'Could not connect Google Drive.');
+              {PROVIDER_ROSTER.filter((p) => !p.arriving && vaultOffersProvider(on, p.id)).map(
+                (p) => {
+                  const isCurrent = p.id === currentProviderId;
+                  const isReady = ready[p.id] ?? p.ready;
+                  const move = async () => {
+                    if (isCurrent) return;
+                    // Not usable here (Google Drive is held back, iCloud is
+                    // signed out): the Arriving pill and this honest line.
+                    if (!isReady) {
+                      showToast(
+                        p.pending ??
+                          `${p.label} vaults are coming. Your vault can move there later.`,
+                      );
                       return;
                     }
-                    usable = true;
-                    setReady((r) => ({ ...r, gdrive: true }));
-                  }
-                  if (!usable) {
-                    showToast(
-                      p.pending ?? `${p.label} vaults are coming. Your vault can move there later.`,
-                    );
-                    return;
-                  }
-                  setMoving(true);
-                  const ok = await vaultMoveTo(p.id).catch(() => false);
-                  setMoving(false);
-                  setStorageOpen(false);
-                  showToast(
-                    ok
-                      ? `Your vault lives on ${p.label} now. It syncs from here.`
-                      : `Could not move to ${p.label}. ${p.pending ?? 'Try again in a moment.'}`,
-                  );
-                };
-                const disconnect = async () => {
-                  setMoving(true);
-                  await disconnectGdriveAccount();
-                  setMoving(false);
-                  setReady((r) => ({ ...r, gdrive: false }));
-                  showToast('Disconnected Google Drive.');
-                };
-                return (
-                  <div key={p.id} className="vault-provider-row">
-                    <button
-                      className="btn ghost vault-provider"
-                      disabled={moving}
-                      onClick={() => void move()}
-                    >
-                      <span className="grow" style={{ textAlign: 'left' }}>
-                        {p.label}
-                        <span className="sub" style={{ display: 'block', fontWeight: 400 }}>
-                          {p.blurb}
-                        </span>
-                      </span>
-                      {isCurrent ? (
-                        <span className="pill local">Here now</span>
-                      ) : isReady ? (
-                        <span className="pill local">Move here</span>
-                      ) : (
-                        <span className="nav-lock-pill">Arriving</span>
-                      )}
-                    </button>
-                    {p.id === 'gdrive' && isReady && !isCurrent ? (
+                    await moveVault(p.id);
+                  };
+                  const disconnect = async () => {
+                    setMoving(true);
+                    await disconnectGdriveAccount();
+                    setMoving(false);
+                    setDriveConnected(false);
+                    showToast('Disconnected Google Drive.');
+                  };
+                  const line = copyOf(p.id);
+                  return (
+                    <div key={p.id} className="vault-provider-row">
                       <button
-                        className="btn ghost vault-provider-disconnect"
+                        className="btn ghost vault-provider"
                         disabled={moving}
-                        onClick={() => void disconnect()}
+                        onClick={() => void move()}
                       >
-                        Disconnect Google Drive
+                        <span className="grow" style={{ textAlign: 'left' }}>
+                          {p.label}
+                          {line ? (
+                            <span className="sub" style={{ display: 'block', fontWeight: 400 }}>
+                              {vaultSheetLine(line)}
+                            </span>
+                          ) : null}
+                        </span>
+                        {isCurrent ? (
+                          <span className="pill local">Here now</span>
+                        ) : isReady ? (
+                          <span className="pill local">Move here</span>
+                        ) : (
+                          <span className="nav-lock-pill">Arriving</span>
+                        )}
                       </button>
-                    ) : null}
-                  </div>
-                );
-              })}
+                      {p.id === 'gdrive' && driveConnected && !isCurrent ? (
+                        <button
+                          className="btn ghost vault-provider-disconnect"
+                          disabled={moving}
+                          onClick={() => void disconnect()}
+                        >
+                          Disconnect Google Drive
+                        </button>
+                      ) : null}
+                    </div>
+                  );
+                },
+              )}
               {PROVIDER_ROSTER.some((p) => p.arriving) ? (
                 <p className="hint" style={{ margin: '4px 2px 0' }}>
                   More storage arriving:{' '}
@@ -943,33 +1059,194 @@ export function VaultScreen() {
                   .
                 </p>
               ) : null}
-              <button
-                className="btn ghost"
-                onClick={async () => {
-                  setStorageOpen(false);
-                  const notes = await vaultReadAll();
-                  if (!notes.length) {
-                    showToast('Nothing to export yet. Write a note first.');
-                    return;
-                  }
-                  try {
-                    const count = await exportVaultToFiles(notes);
-                    showToast(
-                      count === undefined
-                        ? 'Export needs the app on a device, not the browser.'
-                        : `${count} ${count === 1 ? 'note' : 'notes'} exported to Files, under OpenShore / Vault. Obsidian opens that folder as a vault.`,
-                    );
-                  } catch {
-                    showToast('Could not export your vault. Check device storage and try again.');
-                  }
-                }}
-              >
-                Export as plain files
-              </button>
+              {/* The way out (0.11): a real export on the iPhone; on the
+                  desktop, where an export could not reach the disk, the move
+                  to This folder, plain files Obsidian opens. */}
+              {vaultWayOut(on, currentProviderId) === 'export' ? (
+                <button className="btn ghost" onClick={() => void exportNotes()}>
+                  Export as plain files
+                </button>
+              ) : vaultWayOut(on, currentProviderId) === 'folder' ? (
+                <button
+                  className="btn ghost vault-provider"
+                  disabled={moving}
+                  onClick={() => void moveVault('files')}
+                >
+                  <span className="grow" style={{ textAlign: 'left' }}>
+                    Keep as plain files
+                    <span className="sub" style={{ display: 'block', fontWeight: 400 }}>
+                      {`Moves your vault to This folder. ${vaultCopy(on, 'files').storage} ${vaultCopy(on, 'files').obsidian}`}
+                    </span>
+                  </span>
+                </button>
+              ) : null}
             </div>
           </>
         ) : null}
       </Sheet>
+    </div>
+  );
+}
+
+// The "Not saved" list (0.4): text a vault did not take and nothing will
+// retry, kept until the person copies it somewhere safe and discards it. In
+// the room it lists every vault's, each labelled with its vault; on a note,
+// only that note's. Discard takes two taps, since it is the last copy.
+function NotSaved({
+  held,
+  labelled = false,
+  discard,
+}: {
+  held: VaultHeldDraft[];
+  labelled?: boolean;
+  discard: (id: string) => void;
+}) {
+  const showToast = useApp((s) => s.showToast);
+  const [confirm, setConfirm] = useState<string | undefined>();
+  if (!held.length) return null;
+  return (
+    <div className="card" style={{ margin: '12px 0 14px' }}>
+      <div className="card-row">
+        <h3 style={{ marginBottom: 0 }}>Not saved</h3>
+        <span className="pill muted">{held.length}</span>
+      </div>
+      <p className="hint" style={{ marginTop: 0 }}>
+        Text your vault did not take. It stays here until you copy it somewhere safe and discard it.
+      </p>
+      {held.map((h) => (
+        <div key={h.id} className="vault-held-item">
+          <span className="vault-held-title">{noteTitle(h.path)}</span>
+          <span className="hint">
+            {[labelled ? heldPlace(h) : undefined, heldWhen(h.at)].filter(Boolean).join(' · ')}
+          </span>
+          <p className="sub" style={{ margin: '4px 0 0' }}>
+            {h.reason}
+          </p>
+          <div className="vault-held-actions">
+            <button
+              className="btn ghost press-fb"
+              onClick={async () => {
+                const ok = await copyText(h.text);
+                showToast(
+                  ok
+                    ? 'Copied. Paste it back into the note, or anywhere safe.'
+                    : 'Could not copy on this device. Try again.',
+                );
+              }}
+            >
+              Copy
+            </button>
+            <button
+              className={`btn press-fb ${confirm === h.id ? 'danger' : 'quiet'}`}
+              onClick={() => {
+                if (confirm !== h.id) {
+                  setConfirm(h.id);
+                  return;
+                }
+                setConfirm(undefined);
+                discard(h.id);
+              }}
+            >
+              {confirm === h.id ? 'Really discard? Tap to confirm.' : 'Discard'}
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Which vault held text belongs to, in the room's words. */
+function heldPlace(h: VaultHeldDraft): string {
+  if (h.providerId === 'org') return 'Team vault';
+  const label = PROVIDER_ROSTER.find((r) => r.id === h.providerId)?.label ?? h.providerId;
+  return `Personal vault, ${label}`;
+}
+
+/** When it was set aside, on this device's clock. */
+function heldWhen(at: string): string {
+  const when = new Date(at);
+  return Number.isNaN(when.getTime())
+    ? ''
+    : when.toLocaleString([], {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
+}
+
+// The empty personal vault's ramp, from the copy map: a cover with two ways
+// in, and the points that are true for this platform and storage.
+function VaultRamp({
+  onboard,
+  disabled,
+  onWrite,
+  onWelcome,
+}: {
+  onboard: VaultOnboard;
+  disabled: boolean;
+  onWrite: () => void;
+  onWelcome: () => void;
+}) {
+  const glyphs = { doc: DocGlyph, agent: AgentGlyph, link: LinkGlyph };
+  return (
+    <section className="vault-onboard">
+      <div className="vault-onboard-cover">
+        <div className="vault-onboard-wash" aria-hidden="true" />
+        <div className="vault-onboard-body">
+          <span className="vault-kicker">Your vault</span>
+          <h2 className="vault-onboard-title">{onboard.title}</h2>
+          <p className="vault-onboard-lead">{onboard.lead}</p>
+          <div className="vault-onboard-actions">
+            <button className="btn primary" disabled={disabled} onClick={onWrite}>
+              Write your first note
+            </button>
+            <button className="btn ghost" disabled={disabled} onClick={onWelcome}>
+              Add a welcome note
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="vault-how">
+        {onboard.points.map((point) => {
+          const Glyph = glyphs[point.glyph];
+          return (
+            <div key={point.glyph} className="vault-how-item">
+              <span className="vault-how-glyph">
+                <Glyph />
+              </span>
+              <div>
+                <h3>{point.title}</h3>
+                <p className="sub">{point.sub}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/** The Vault room's fallback when something in it fails to render (0.10):
+ *  a way back to the notes, never a blank app. App.tsx mounts it through
+ *  the room's error boundary. */
+export function VaultFault({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="screen">
+      <BackBar title="Vault" />
+      <div className="screen-inner">
+        <div className="card empty-notice" role="alert">
+          <h3>This could not be shown.</h3>
+          <p className="sub">
+            Something in the Vault failed to display. Your notes are safe where they live.
+          </p>
+          <button className="btn primary" onClick={onBack}>
+            Back to your notes
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

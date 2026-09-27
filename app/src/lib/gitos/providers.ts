@@ -99,29 +99,27 @@ export interface GitosResource {
 }
 
 /** The backends a user can point a resource at, in picker order. Only
- *  entries whose provider is ready are selectable. */
+ *  entries whose provider is ready are selectable. What the Vault says about
+ *  each one, per platform, lives in one place: lib/vaultCopy.ts (0.19). */
 export const PROVIDER_ROSTER: Array<{
   id: StorageProviderId;
   label: string;
-  blurb: string;
   ready: boolean;
   pending?: string;
   // No wiring at all yet (no OAuth, no plugin): shown as a single quiet
   // "more storage arriving" line rather than a tappable row that only toasts.
-  // Distinct from icloud/gdrive, which are wired and become ready at runtime.
+  // Distinct from icloud, wired and ready at runtime, and gdrive, wired but
+  // held back, which each keep a row of their own.
   arriving?: boolean;
 }> = [
   {
     id: 'local',
     label: 'This device',
-    blurb: 'Stored here, sealed at rest. Private by construction.',
     ready: true,
   },
   {
     id: 'files',
     label: 'This folder',
-    blurb:
-      'Plain .md files on this computer. Your agent writes here too, and Obsidian opens the folder.',
     // Desktop only; probeReady('files') decides at runtime by whether the
     // Electron file bridge is present, so ready stays false here.
     ready: false,
@@ -132,32 +130,28 @@ export const PROVIDER_ROSTER: Array<{
     // Wired (oscode-icloud plugin); readiness is decided at runtime by the
     // device, so ready stays false here and probeReady('icloud') is the truth.
     label: 'iCloud Drive',
-    blurb: 'Your iCloud, synced by iOS across your devices.',
     ready: false,
     pending: 'Sign in to iCloud on this iPhone to use it.',
   },
   {
     id: 'dropbox',
     label: 'Dropbox',
-    blurb: 'Your Dropbox account, your bytes.',
     ready: false,
     pending: 'Arriving. Needs the Dropbox connection.',
     arriving: true,
   },
   {
     id: 'gdrive',
-    // Wired (Drive REST + OAuth PKCE); readiness is decided at runtime by
-    // whether an account is connected, so ready stays false here and
-    // probeReady('gdrive') is the truth.
+    // Wired (Drive REST + OAuth PKCE) but held back for v1 (D1, 0.18):
+    // probeReady('gdrive') is false, so it shows as Arriving and takes no new
+    // vault. A vault already there is read-only and moves off.
     label: 'Google Drive',
-    blurb: 'Your Drive, your bytes. Files added outside OpenShore may not show up here.',
     ready: false,
-    pending: 'Connect your Google account to use this.',
+    pending: 'Google Drive is held back for now while its sync is made safe.',
   },
   {
     id: 'proton',
     label: 'Proton Drive',
-    blurb: 'End-to-end encrypted storage you already trust.',
     ready: false,
     pending: 'Arriving. Needs the Proton connection.',
     arriving: true,

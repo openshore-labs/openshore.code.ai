@@ -66,6 +66,13 @@ export function noteFolder(path: string): string {
 const NON_NOTE_EXTENSION =
   /\.(?:png|jpe?g|gif|webp|svg|bmp|avif|heic|tiff?|ico|pdf|canvas|base|mp3|wav|m4a|ogg|flac|3gp|mp4|webm|mov|mkv|ogv|json|csv|zip|docx?|xlsx?|pptx?)$/i;
 
+/** The extension of a name that names a file rather than a note (".pdf" for
+ *  "report.pdf", ".png" for an attachment link), or undefined for a note
+ *  name. The screen uses it to say why such a name never becomes a note. */
+export function nonNoteExtension(raw: string): string | undefined {
+  return NON_NOTE_EXTENSION.exec(raw.trim())?.[0].toLowerCase();
+}
+
 /** Normalize a user-typed note name or path into a vault-relative .md path:
  *  strips leading/trailing slashes and whitespace, collapses separators, and
  *  appends .md when absent. Returns undefined for an empty result, and for a

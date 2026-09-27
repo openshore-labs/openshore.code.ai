@@ -39,7 +39,9 @@ export const WAYFINDING: Record<WayfindingId, WayfindingInfo> = {
   memory: {
     id: 'memory',
     label: 'Memory',
-    sub: 'The agent keeps project notes in your vault and reads them back into every session there.',
+    // Where the notes really are: the project's repo, not the vault. The
+    // switch itself is wired in M1; until then the line claims no more.
+    sub: "The agent keeps notes on each coding project inside that project's own repository.",
   },
   skills: {
     id: 'skills',

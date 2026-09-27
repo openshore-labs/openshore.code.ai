@@ -6,8 +6,14 @@
 // (R-2). H-1: this harness is the thing that made these testable at all.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// Connected, so the held-back check below proves Drive stays unpickable even
+// with an account on the device.
 vi.mock('../src/lib/gitos/gdriveAuth.js', () => ({
   gdriveAccessToken: async () => 'test-token',
+  isGdriveConnected: async () => true,
+  isGdriveConfigured: () => true,
+  connectGdrive: async () => ({ ok: true }),
+  disconnectGdrive: async () => {},
 }));
 
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
@@ -262,5 +268,35 @@ describe('mergeIndex (COR-6)', () => {
     const merged = mergeIndex(local, remote);
     expect(merged.files['a.md']?.id).toBe('1');
     expect(merged.tombstones?.['a.md']).toBeUndefined();
+  });
+});
+
+// 0.18 (D1): Google Drive is held back for v1. It takes no new vault, even
+// with an account connected: it is never ready, so the storage sheet shows it
+// with the Arriving pill and an honest line, and a move onto it is refused.
+// (An existing Drive vault listing, refusing a write, and moving off is held
+// in vaultStore.test.ts.)
+describe('Google Drive cannot be picked for a new vault (0.18)', () => {
+  it('is never ready, connected or not, so it is never offered as a place to move', async () => {
+    const { probeReady, readyProviderIds, PROVIDER_ROSTER } =
+      await import('../src/lib/gitos/index.js');
+    expect(await probeReady('gdrive')).toBe(false);
+    expect(await readyProviderIds()).not.toContain('gdrive');
+    const row = PROVIDER_ROSTER.find((p) => p.id === 'gdrive')!;
+    expect(row.ready).toBe(false);
+    // Its tap says why, and never offers to connect an account for it.
+    expect(row.pending).toMatch(/held back/i);
+    expect(row.pending).not.toMatch(/connect/i);
+  });
+
+  it('still shows as a row on every platform, with a line that promises nothing', async () => {
+    const { vaultCopy, vaultOffersProvider } = await import('../src/lib/vaultCopy.js');
+    for (const on of ['ios', 'electron', 'web'] as const) {
+      expect(vaultOffersProvider(on, 'gdrive')).toBe(true);
+      const c = vaultCopy(on, 'gdrive');
+      expect(c.storage).toMatch(/held back/i);
+      expect(c.agent).toBeUndefined();
+      expect(c.obsidian).toBeUndefined();
+    }
   });
 });

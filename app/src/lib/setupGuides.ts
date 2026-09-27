@@ -4,6 +4,8 @@
 // coding agent: a goal, the plan, one step at a time, ask anything in between.
 // The steps are written here, not model-generated, so they are right even on a
 // small model; the model's job is to answer questions and adapt. No em dashes.
+import { ROUTINE_NOTES_PLACE } from './vaultCopy.js';
+
 export type SetupGuideId =
   | 'get-harbor'
   | 'get-harbor-master'
@@ -153,7 +155,7 @@ export const SETUP_GUIDES: Record<SetupGuideId, SetupGuide> = {
       'Open Crew, then Crew command, and set up the Morning review routine. It reads what changed overnight and leaves a checklist, read-only, so it never needs an approval.',
       'Away from home you can always watch your crew and read its results here. To change or run a routine, reconnect to your computer over Tailscale first.',
     ],
-    done: 'A routine shows in Crew command with its next run time, and its first report lands in your vault.',
+    done: `A routine shows in Crew command with its next run time, and its first report lands as a note in ${ROUTINE_NOTES_PLACE}.`,
   },
   'connect-hermes': {
     id: 'connect-hermes',
