@@ -1855,7 +1855,7 @@ export function VaultScreen() {
     return (
       <div className="screen">
         <BackBar title={title} back={{ to: 'Vault', onBack: backToNotes }} />
-        <div className="screen-inner vault-note">
+        <div key="note" className="screen-inner vault-note">
           <div className="vault-note-bar">
             <button className="linklike" onClick={backToNotes}>
               All notes
@@ -1872,8 +1872,9 @@ export function VaultScreen() {
                 dimming them: the card (or the lease line) says why. */}
             {!locked ? (
               <button
-                className="icon-btn"
+                className="icon-btn press-fb"
                 aria-label={editing ? 'Read' : 'Edit'}
+                title={editing ? 'Read' : 'Edit'}
                 aria-pressed={editing}
                 onClick={() => setEditing((e) => !e)}
               >
@@ -1892,7 +1893,12 @@ export function VaultScreen() {
             {/* Its sheet holds nothing but Delete, which a Drive vault refuses,
                 and it is left out while a choice about this note is open. */}
             {!driveReadOnly && !conflictHere && !readOnly && !teamExpired ? (
-              <button className="icon-btn" aria-label="Options" onClick={() => setMenuOpen(true)}>
+              <button
+                className="icon-btn press-fb"
+                aria-label="Options"
+                title="Options"
+                onClick={() => setMenuOpen(true)}
+              >
                 {'⋯'}
               </button>
             ) : null}
@@ -1981,8 +1987,8 @@ export function VaultScreen() {
               key={`${vaultNote.reloaded ?? 0}:${blobEpoch}`}
               className={
                 vaultNote.reloaded && vaultNote.reloadedFrom === 'elsewhere'
-                  ? 'vault-reloaded'
-                  : undefined
+                  ? 'vault-read vault-reloaded'
+                  : 'vault-read'
               }
             >
               <VaultMarkdown
@@ -2164,7 +2170,7 @@ export function VaultScreen() {
   return (
     <div className="screen">
       <BackBar title="Vault" />
-      <div className="screen-inner">
+      <div key="tree" className="screen-inner vault-tree-view">
         <div className="stack-head">
           <h1>Vault</h1>
           <div className="vault-head-actions">
@@ -2174,7 +2180,7 @@ export function VaultScreen() {
             {!driveReadOnly && !vaultMoving && !folderGone && !readOnly && !hubAway ? (
               <button
                 type="button"
-                className="icon-btn press-fb"
+                className="icon-btn vault-new-btn press-fb"
                 aria-label="New note"
                 title="New note"
                 onClick={() => setNewOpen(true)}
@@ -2196,7 +2202,7 @@ export function VaultScreen() {
             <button
               role="tab"
               aria-selected={!team}
-              className={`seg${!team ? ' active' : ''}`}
+              className={`seg press-fb${!team ? ' active' : ''}`}
               onClick={() => switchScope('personal')}
             >
               Personal
@@ -2204,7 +2210,7 @@ export function VaultScreen() {
             <button
               role="tab"
               aria-selected={team}
-              className={`seg${team ? ' active' : ''}`}
+              className={`seg press-fb${team ? ' active' : ''}`}
               onClick={() => switchScope('team')}
             >
               Team

@@ -2641,6 +2641,55 @@ button.vault-tag {
   cursor: pointer;
 }
 
+/* The house + beside Today: 44 px like every icon button in the header. */
+.vault-new-btn {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* Tree and note, and read and edit, cross on the tokens (CTO K18, CX X17):
+   the view that arrives fades in over the one that left, opacity only, never
+   a hard cut. The Trash page arrives the same way. */
+.vault-note,
+.vault-tree-view,
+.vault-trash {
+  animation: vault-view-in var(--dur-3) var(--ease-standard) backwards;
+}
+.vault-editor-wrap,
+.vault-read:not(.vault-reloaded) {
+  animation: vault-view-in var(--dur-3) var(--ease-standard) backwards;
+}
+@keyframes vault-view-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Structural hooks the M6 components style their insides through. */
+.vault-context {
+  overflow-wrap: anywhere;
+}
+.vault-context-head {
+  margin-bottom: 2px;
+}
+.vault-search-results,
+.vault-switcher {
+  overscroll-behavior: contain;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vault-note,
+  .vault-tree-view,
+  .vault-trash,
+  .vault-editor-wrap,
+  .vault-read {
+    animation: none;
+  }
+}
+
 /* ---- M6 stream W2 end ---- */
 
 /* ------------------------------------------------------------------ chat */
