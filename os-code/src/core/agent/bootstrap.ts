@@ -40,6 +40,8 @@ import { configureStreamIdle } from '../../providers/streamIdle.js';
 import type { AgentEvent, PermissionMode } from './types.js';
 import type { CurrentsHandles, HarnessCurrentsHandle } from '../../currents/model.js';
 import type { VaultContextSource } from '../../harness/vaultContext.js';
+import { HANDOFF_MAX_BYTES } from '../../harness/handoff.js';
+import { readHandoff, writeHandoff, type HandoffScope } from './handoffStore.js';
 import { logger } from '../../util/log.js';
 
 const log = logger('bootstrap');
@@ -115,11 +117,10 @@ export interface BootstrapOptions {
    *  the person set. Only tightening is honored: the profile's hard step
    *  ceiling still applies on top. */
   caps?: { wallClockSeconds?: number; maxSteps?: number };
-  /** Whether this session gets the vault tools. The daemon turns it off for a
-   *  member's session on a shared hub: the vault is the machine owner's one
-   *  folder, so a member's agent gets no tool aimed at it until each member
-   *  has a root of their own. (The daemon also keeps a member's workspace off
-   *  the vault, so the file tools cannot reach it.) Undefined means on. */
+  /** Legacy (before Vault M5): whether this session gets the vault tools on
+   *  the machine's vault. Superseded by `vaultRoot`, which wins when set;
+   *  kept only until the daemon passes `vaultRoot` (then it goes). false
+   *  reads as `vaultRoot: null`. */
   vault?: boolean;
   /** Where this session's vault context pack comes from (Vault M4, CTO I7,
    *  I8): the engine's source prepares Current State, the index and the
@@ -135,15 +136,16 @@ export interface BootstrapOptions {
    *  `vaultRootFor(auth)` at create and `vaultRootForOwner(ownerUserId)` at
    *  rehydrate, so a member's agent works on its own root, never the
    *  owner's); null gives no vault tools. Undefined keeps today's behaviour
-   *  (the `vault` flag over the machine's vault). Wired by stream B. */
+   *  (the `vault` flag over the machine's vault). */
   vaultRoot?: string | null;
   /** A handoff from the chat this session continues (CTO J12), prepended to
-   *  the first task's preamble only. At most `HANDOFF_MAX_BYTES`; longer is
-   *  refused by the caller. Wired by stream B. */
+   *  the first task's preamble only (never on a revived session that already
+   *  ran one). Conversation content, so it rides even with Memory off. At
+   *  most `HANDOFF_MAX_BYTES`: a longer one is left out with a warning, never
+   *  cut mid-line. */
   handoff?: string;
   /** The project's own pins (`Project.vaultPins`, CTO J14), at most 8 note
-   *  paths, read first by the pack's prepare. Never a config key. Wired by
-   *  stream B. */
+   *  paths, read first by the pack's prepare. Never a config key. */
   vaultPins?: string[];
 }
 
@@ -253,6 +255,16 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     options.projectSecrets,
   );
 
+  // This session's vault root (J8): a path gives the tools and the pack on
+  // that root (a member's own on a shared hub), null gives none, undefined
+  // keeps the machine's vault. The legacy flag reads false as null.
+  const vaultRoot: string | null | undefined =
+    options.vaultRoot !== undefined
+      ? options.vaultRoot
+      : options.vault === false
+        ? null
+        : undefined;
+
   const tools = buildToolRegistry({
     stackHasVision:
       Boolean(stack.specialists.vision) || stack.orchestrator.provider.kind === 'cloud',
@@ -261,7 +273,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     egressLockdown,
     hasCodemagic: Boolean(options.codemagicToken),
     currents: options.currents,
-    vault: options.vault,
+    vault: vaultRoot !== null,
     // A headless run (a Crew routine) has nobody at the desk to approve an
     // always-ask vault write, and the scheduler's own note already records
     // the run, so it keeps the vault reads and drops the write.
@@ -275,8 +287,19 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     providers,
     projectName,
     egressLockdown,
-    vault: options.vault,
+    vault: vaultRoot !== null,
   });
+  // The caller's own root replaces the machine's; the privacy rules are the
+  // machine's either way (projectPolicy classes them machine).
+  if (typeof vaultRoot === 'string') toolContext.vaultRoot = vaultRoot;
+
+  // The switch's handoff (J12): refused whole when over the cap, so the model
+  // never reads a summary cut off mid-sentence.
+  let handoff = options.handoff?.trim() ? options.handoff : undefined;
+  if (handoff && Buffer.byteLength(handoff, 'utf8') > HANDOFF_MAX_BYTES) {
+    warnings.push('The handoff from the last model was too long to carry, so it was left out.');
+    handoff = undefined;
+  }
 
   const profile = profileFor(options.profile);
   const permissions = new PermissionEngine(config.permissions as PermissionConfig, profile);
@@ -312,6 +335,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     id: options.sessionId,
     persist: options.persist,
     project: { projectName, instructions },
+    handoff,
   });
   // From here on, an ethics block shows up in the transcript of this session.
   ethicsSink.emit = (event) => driver.emit(event);
@@ -360,10 +384,25 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   if (options.currents) toolContext.currents = options.currents;
   toolContext.sessionId = driver.id;
 
+  // The handoff store (J13), keyed by this session's owner, workspace and
+  // project. The owner is read when a handoff is written or read, since the
+  // daemon records it just after this returns. `vault.handoff: 'off'` and
+  // Memory off (folded into config above) stop both.
+  const handoffOn = config.vault?.handoff !== 'off' && config.memory?.enabled !== false;
+  const handoffScope = (): HandoffScope => ({
+    owner: driver.owner,
+    cwd: options.cwd,
+    projectName,
+  });
+
   // The vault context pack's source (Vault M4, CTO I7, I8). A session with no
   // vault root (a member's on a shared hub) still gets this project's Current
   // State; the privacy rules are the tools' own compiled machine config, so the
-  // pack and the tools judge a note the same way.
+  // pack and the tools judge a note the same way. The project's pins ride in
+  // (J14), and a fresh session with no switch handoff of its own reads the
+  // latest stored one on its first task (J13; a full-mode layer, so it
+  // reaches no seat by default until the eval says so).
+  const readStored = handoffOn && !options.sessionId && !handoff;
   const vaultContext =
     options.vaultContext ??
     createVaultContextSource({
@@ -371,6 +410,8 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
       privacy: toolContext.vaultPrivacy ?? lazyVaultPrivacy(vaultPrivacyConfig(config)),
       currentState: currentStateReader(options.cwd, projectName),
       lockdown: { egress: egressLockdown, secrets: Boolean(projectSecrets?.trim()) },
+      ...(options.vaultPins?.length ? { projectPins: options.vaultPins } : {}),
+      ...(readStored ? { handoff: () => readHandoff(handoffScope())?.text } : {}),
     });
 
   const agent = new AgentSession({
@@ -393,6 +434,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     harnessCurrents: egressLockdown ? undefined : options.harnessCurrents,
     permissionMode: options.permissionMode,
     vaultContext,
+    ...(handoffOn ? { onHandoff: (record) => void writeHandoff(handoffScope(), record) } : {}),
     persistRule: (rule) => {
       try {
         addProjectPermissionRule(options.cwd, rule);

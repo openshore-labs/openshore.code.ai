@@ -9,7 +9,8 @@
 // withheld from a leaving seat), so these tests pin the LOOP's wiring, not
 // the builder's rendering.
 import { describe, expect, it, vi } from 'vitest';
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { MockProvider, textTurn, toolTurn } from './helpers/mockProvider.js';
@@ -25,6 +26,9 @@ import type {
 import { LOCAL_ONLY_STUB } from '../src/harness/vault/privacy.js';
 import { HARNESS_LINE_MARK, withLandedLine } from '../src/core/tools/projectMemory.js';
 import { MEMORY_FILES } from '../src/core/agent/projectMemory.js';
+import { VAULT_NOTES_FRAMING } from '../src/harness/vaultContext.js';
+import type { HandoffTurn } from '../src/harness/handoff.js';
+import type { HandoffRecord } from '../src/core/agent/handoffStore.js';
 
 const builds: PackBuildInput[] = [];
 
@@ -400,5 +404,186 @@ describe('Current State kept current on a lean seat (4.7, I12)', () => {
     expect(withLandedLine('# Current State\n', '- l')).toBe(
       '# Current State\n\n## What last landed and launched\n- l\n',
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Vault M5: project pins reach the pack (J14), the pack's cache offset (J17),
+// and the handoff written after a compaction and a completed task (J13).
+// ---------------------------------------------------------------------------
+
+function pinnedSource(): VaultContextSource {
+  return {
+    async prepare(): Promise<PreparedVaultContext> {
+      return {
+        index: null,
+        bodies: new Map([['Plan.md', 'the plan']]),
+        currentState: { path: CS_PATH, text: CS_TEXT },
+        pins: [],
+        projectPins: ['Plan.md'],
+        privacy: { visibility: () => 'open' },
+      };
+    },
+  };
+}
+
+describe('project pins and the cache offset (M5, J14, J17)', () => {
+  it('passes the project pins to the pack when the session has a vault', async () => {
+    builds.length = 0;
+    const provider = new MockProvider('mock', [textTurn('done')]);
+    const session = makeTestSession(provider, {
+      projectName: 'Demo',
+      vaultContext: pinnedSource(),
+      vaultRoot: mkdtempSync(join(tmpdir(), 'osc-pins-vault-')),
+    });
+    await session.agent.run('go');
+    expect(builds[0]!.projectPins).toEqual(['Plan.md']);
+    expect(builds[0]!.bodies.get('Plan.md')).toBe('the plan');
+  });
+
+  it('with no vault root, no pins reach the pack', async () => {
+    builds.length = 0;
+    const provider = new MockProvider('mock', [textTurn('done')]);
+    const session = makeTestSession(provider, {
+      projectName: 'Demo',
+      vaultContext: pinnedSource(),
+    });
+    await session.agent.run('go');
+    expect(builds[0]!.projectPins).toBeUndefined();
+  });
+
+  it('the system message marks where the pack begins, and none without a pack', async () => {
+    const provider = new MockProvider('mock', [textTurn('done')]);
+    const session = makeTestSession(provider, { projectName: 'Demo', vaultContext: fakeSource() });
+    await session.agent.run('go');
+    const system = provider.requests[0]!.messages[0]!;
+    expect(system.role).toBe('system');
+    const content = system.content as string;
+    expect(system.cacheAt).toHaveLength(1);
+    const at = system.cacheAt![0]!;
+    expect(content.slice(at).startsWith(VAULT_NOTES_FRAMING)).toBe(true);
+    expect(content.slice(0, at)).not.toContain('MARKER-CS');
+
+    const bare = new MockProvider('mock', [textTurn('done')]);
+    await makeTestSession(bare, { projectName: 'Demo' }).agent.run('go');
+    expect(bare.requests[0]!.messages[0]!.cacheAt).toBeUndefined();
+  });
+});
+
+type Built = { turns: HandoffTurn[]; budget: number; meta: { from?: string; date: string } };
+
+function handoffRig(provider: MockProvider, configOverrides: Record<string, unknown> = {}) {
+  const built: Built[] = [];
+  const written: HandoffRecord[] = [];
+  const session = makeTestSession(provider, {
+    projectName: 'Demo',
+    now: () => new Date(2026, 8, 27, 12),
+    configOverrides,
+    buildHandoff: (turns, budget, meta) => {
+      built.push({ turns: [...turns], budget, meta });
+      return { text: `HANDOFF ${turns.length}`, tokens: 3, turns: turns.length };
+    },
+    onHandoff: (record) => written.push(record),
+  });
+  return { session, built, written };
+}
+
+describe('the handoff (M5, J13)', () => {
+  it('a completed task writes one, never with thinking or local-only text', async () => {
+    const provider = new MockProvider('mock', [textTurn('<think>SECRET-THOUGHT</think>All done.')]);
+    const { session, built, written } = handoffRig(provider);
+    session.agent.history = [
+      { role: 'user', content: 'FIRST-ASK: fix the parser' },
+      { role: 'assistant', content: '<think>OLD-THOUGHT</think>On it.' },
+      {
+        role: 'tool',
+        content: 'PRIVATE-TEXT',
+        toolCallId: 'x',
+        name: 'vaultRead',
+        localOnly: true,
+      },
+      { role: 'assistant', content: 'PRIVATE-QUOTE', localOnly: true },
+    ];
+    await session.agent.run('and the tests');
+    expect(written).toHaveLength(1);
+    expect(written[0]).toEqual({
+      text: 'HANDOFF 4',
+      at: new Date(2026, 8, 27, 12).toISOString(),
+      model: 'mock-model',
+      turns: 4,
+    });
+    expect(built[0]!.meta).toEqual({ from: 'mock-model', date: '2026-09-27' });
+    // Sized for the seat: 10% of the 32k window, under the 1,500 cap.
+    expect(built[0]!.budget).toBe(1500);
+    const all = JSON.stringify(built[0]!.turns);
+    expect(all).toContain('FIRST-ASK');
+    expect(all).toContain('All done.');
+    expect(all).not.toContain('THOUGHT');
+    expect(all).not.toContain('PRIVATE');
+    // A dispose right after writes nothing new.
+    session.agent.flushHandoff();
+    expect(written).toHaveLength(1);
+  });
+
+  it('a compaction writes one from the history as it stood before the fold', async () => {
+    const provider = new MockProvider(
+      'mock',
+      [textTurn('SUMMARY of the early work'), textTurn('done')],
+      { caps: { contextTokens: 4000 } },
+    );
+    const { session, built, written } = handoffRig(provider, {
+      ux: { standard: 'off' },
+      humanizer: { standard: 'off' },
+    });
+    const long = 'x'.repeat(2000);
+    session.agent.history = [{ role: 'user', content: 'FIRST-ASK: build the importer' }];
+    for (let i = 0; i < 12; i++) {
+      session.agent.history.push(
+        { role: 'assistant', content: `step ${i} ${long}` },
+        { role: 'user', content: `more ${i} ${long}` },
+      );
+    }
+    await session.agent.run('keep going');
+    expect(session.events.some((e) => e.type === 'status' && /Compacted/.test(e.message))).toBe(
+      true,
+    );
+    expect(written.length).toBeGreaterThanOrEqual(1);
+    // The first write is the compaction's, and it still has the first ask,
+    // which the compacted history folded into a summary.
+    expect(JSON.stringify(built[0]!.turns)).toContain('FIRST-ASK');
+    expect(JSON.stringify(session.agent.history)).not.toContain('FIRST-ASK');
+    // Sized for this seat's window: 10% of 4,000.
+    expect(built[0]!.budget).toBe(400);
+  });
+
+  it('Memory off, or vault.handoff off, writes none', async () => {
+    for (const overrides of [{ memory: { enabled: false } }, { vault: { handoff: 'off' } }]) {
+      const provider = new MockProvider('mock', [textTurn('done')]);
+      const { session, written } = handoffRig(provider, overrides);
+      await session.agent.run('go');
+      session.agent.flushHandoff();
+      expect(written).toEqual([]);
+    }
+  });
+
+  it('a task that does not complete writes none, and a builder that throws costs only the summary', async () => {
+    const provider = new MockProvider('mock', [textTurn('done')]);
+    const written: HandoffRecord[] = [];
+    const session = makeTestSession(provider, {
+      buildHandoff: () => {
+        throw new Error('not built');
+      },
+      onHandoff: (r) => written.push(r),
+    });
+    await session.agent.run('go');
+    expect(session.events.at(-1)).toMatchObject({ type: 'task-done', reason: 'complete' });
+    expect(written).toEqual([]);
+
+    const aborted = handoffRig(new MockProvider('mock', [textTurn('never')]));
+    const ctl = aborted.session.agent;
+    const run = ctl.run('go');
+    ctl.abort();
+    await run;
+    expect(aborted.written).toEqual([]);
   });
 });

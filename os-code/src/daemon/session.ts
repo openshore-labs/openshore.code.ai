@@ -286,10 +286,13 @@ export class LocalDriver implements SessionDriver {
   // Set once the first completed exchange has been titled, so the cheap title
   // call runs once per session, never per turn.
   private titled = false;
+  // A handoff from the chat this session continues (Vault M5, CTO J12): it
+  // rides the first task's preamble, then it is gone.
+  private handoff?: string;
 
   constructor(
     readonly cwd: string,
-    options: { id?: string; persist?: boolean; project?: SessionProject } = {},
+    options: { id?: string; persist?: boolean; project?: SessionProject; handoff?: string } = {},
   ) {
     this.id = options.id ?? randomUUID().slice(0, 8);
     this.persist = options.persist ?? true;
@@ -319,6 +322,11 @@ export class LocalDriver implements SessionDriver {
         } catch {}
       }
       this.loadJournal();
+    }
+    // Only a session that has not run a task yet is seeded: a revived one
+    // already carries its turns in the journal.
+    if (options.handoff?.trim() && !this.events.some((e) => e.event.type === 'task-start')) {
+      this.handoff = options.handoff;
     }
   }
 
@@ -361,8 +369,13 @@ export class LocalDriver implements SessionDriver {
   }
 
   /** Release what an evicted driver holds: its listeners and its in-memory
-   *  journal copy. The journal on disk is the source of truth from here. */
+   *  journal copy. The journal on disk is the source of truth from here.
+   *  The session is ending here, so its agent writes a last handoff first
+   *  (J13; a no-op when nothing changed since the last one). */
   dispose(): void {
+    try {
+      this.agent?.flushHandoff();
+    } catch {}
     this.sinks.clear();
     this.viewers.clear();
     this.events = [];
@@ -527,7 +540,12 @@ export class LocalDriver implements SessionDriver {
     const next = this.queue.shift();
     if (!next) return;
     this.running = true;
-    const preamble = this.drainTerminalContext();
+    // The first task's preamble opens with the handoff (J12), then any
+    // commands the person ran; the transcript shows only their own words.
+    const handoff = this.handoff;
+    this.handoff = undefined;
+    const terminal = this.drainTerminalContext();
+    const preamble = [handoff, terminal].filter((p) => p?.trim()).join('\n\n') || undefined;
     let completed = false;
     try {
       await this.emitRepoInfo();

@@ -9,6 +9,7 @@ import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ConfigSchema } from '../src/config/schema.js';
+import { loadVaultDir } from '../src/config/load.js';
 import { bootstrapSession, type BootstrapOptions } from '../src/core/agent/bootstrap.js';
 import { memoryEnabled } from '../src/core/agent/projectMemory.js';
 import { memoryEnabled as memoryEnabledForApps } from '../src/protocol.js';
@@ -48,8 +49,8 @@ function boot(options: Partial<BootstrapOptions> = {}) {
     ...options,
   });
   const prompt = (
-    result.agent as unknown as { systemPrompt(mode: 'native' | 'text'): string }
-  ).systemPrompt('text');
+    result.agent as unknown as { systemPrompt(mode: 'native' | 'text'): { content: string } }
+  ).systemPrompt('text').content;
   return { tools: result.tools.names(), prompt, enabled: result.config.memory.enabled };
 }
 
@@ -198,5 +199,44 @@ describe('memory off removes the vault context pack', () => {
     expect(packOn({ config: configWith({}), memory: false })).toBe(false);
     expect(packOn({ config: configWith({ memory: { enabled: false } }) })).toBe(false);
     expect(packOn({ config: configWith({ vault: { context: 'off' } }) })).toBe(false);
+  });
+});
+
+// Vault M5 (CTO J8): a session works on the caller's own vault root. A path
+// gives the tools and the pack on that root, null gives no vault tools, and
+// the legacy flag's false reads as null until the daemon stops passing it.
+describe("the session's own vault root", () => {
+  function bootRoot(options: Partial<BootstrapOptions>) {
+    const result = bootstrapSession({
+      cwd: project,
+      profile: 'local-interactive',
+      persist: false,
+      projectName: 'Atlas',
+      config: configWith({}),
+      ...options,
+    });
+    return { tools: result.tools.names(), root: result.toolContext.vaultRoot };
+  }
+
+  it('a path puts the tools and the root on it', () => {
+    const mine = join(home, 'vaults', 'members', 'abc');
+    const { tools, root } = bootRoot({ vaultRoot: mine });
+    expect(root).toBe(mine);
+    expect(tools).toContain('vaultSearch');
+    expect(tools).toContain('vaultRead');
+  });
+
+  it('null, or the legacy false, gives no vault tools and no root', () => {
+    for (const options of [{ vaultRoot: null }, { vault: false }] as const) {
+      const { tools, root } = bootRoot(options);
+      expect(root).toBeUndefined();
+      expect(tools.filter((n) => n.startsWith('vault'))).toEqual([]);
+    }
+  });
+
+  it("vaultRoot wins over the legacy flag, and unset keeps the machine's vault", () => {
+    const mine = join(home, 'mine');
+    expect(bootRoot({ vaultRoot: mine, vault: false }).root).toBe(mine);
+    expect(bootRoot({}).root).toBe(loadVaultDir().dir);
   });
 });

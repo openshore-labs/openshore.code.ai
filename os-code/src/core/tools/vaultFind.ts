@@ -7,6 +7,9 @@
 // reaches only a seat whose requests stay on this network, carrying the
 // `localOnly` flag so a later cloud turn sends a stub in its place.
 //
+// The descriptions come from the pure harness/vault/toolText.ts (Vault M5, CTO
+// J10), so the app's seats teach the same order: search, a section, links.
+//
 // This file also holds the note-path helpers vault.ts shares, so the two never
 // import each other.
 import { existsSync, statSync } from 'node:fs';
@@ -15,6 +18,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { ensureVaultRoot } from '../../config/load.js';
 import { excerptAt } from '../../harness/vault/excerpt.js';
+import { VAULT_TOOL_TEXT } from '../../harness/vault/toolText.js';
 import { readFrontmatter } from '../../harness/vault/frontmatter.js';
 import { compareCodePoints, type VaultIndex } from '../../harness/vault/index.js';
 import { foldPath, isNotePath, normalizeNotePath } from '../../harness/vault/paths.js';
@@ -529,8 +533,7 @@ const readSchema = z.object({
 
 export const vaultReadTool: ToolDef<typeof readSchema> = {
   name: 'vaultRead',
-  description:
-    "Read a note from the user's vault. Takes a path, a bare note name (resolved the way [[wikilinks]] are, into any folder), or an alias. Opens with a header (properties, tags, and the note's links, resolved or not), so you can follow a link by reading its target. A long note returns its outline; then read one section. If you do not know the name, use vaultSearch first.",
+  description: VAULT_TOOL_TEXT.vaultRead,
   schema: readSchema,
   risk: 'read',
   pathJail: 'own',
@@ -691,8 +694,7 @@ const searchSchema = z.object({
 
 export const vaultSearchTool: ToolDef<typeof searchSchema> = {
   name: 'vaultSearch',
-  description:
-    "Search the user's vault first, before reading or writing notes. Returns ranked notes, each with the heading where the words fall and a short snippet. Then read the best one with vaultRead, only the section you need, and follow its links.",
+  description: VAULT_TOOL_TEXT.vaultSearch,
   schema: searchSchema,
   risk: 'read',
   execute: (args, ctx) => searchVault(ctx, args),
@@ -756,8 +758,7 @@ const backlinksSchema = z.object({
 
 export const vaultBacklinksTool: ToolDef<typeof backlinksSchema> = {
   name: 'vaultBacklinks',
-  description:
-    "The notes in the user's vault that link to a note, each with the passage around its link. Use it to find what builds on a note, decisions that cite it, and older notes that disagree with it.",
+  description: VAULT_TOOL_TEXT.vaultBacklinks,
   schema: backlinksSchema,
   risk: 'read',
   pathJail: 'own',
@@ -783,8 +784,7 @@ const lookupSchema = z
 
 export const vaultLookupTool: ToolDef<typeof lookupSchema> = {
   name: 'vaultLookup',
-  description:
-    "Find and read the user's vault notes. First search with query to get ranked notes and snippets; then read one with path (add section for one part). A note's header lists its links: read a link's target the same way.",
+  description: VAULT_TOOL_TEXT.vaultLookup,
   schema: lookupSchema,
   risk: 'read',
   pathJail: 'own',

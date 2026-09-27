@@ -160,3 +160,108 @@ describe('the engine vault context source', () => {
     expect(prepared.bodies.size).toBe(0);
   });
 });
+
+// Vault M5 (CTO J13, J14): the project's own pins are read first and judged
+// from the note itself; the stored handoff is the first prepare's alone.
+describe('project pins and the stored handoff (M5)', () => {
+  const tagged: VaultPrivacy = {
+    visibility: ({ path, tags }) =>
+      path.startsWith('Secret/')
+        ? 'hidden'
+        : path.startsWith('Private/') || tags?.includes('private')
+          ? 'local-only'
+          : 'open',
+  };
+
+  it('reads the pins first, in order, never a hidden one, and never reads them twice', async () => {
+    write(root, 'Plan.md', 'the plan');
+    write(root, 'Secret/key.md', 'no');
+    write(root, 'Notes/a.md', 'body a');
+    await (await engineVaultIndex(root)).whenReconciled(5000);
+    const reads: string[] = [];
+    const seen: PackInput[] = [];
+    const source = createVaultContextSource({
+      vaultRoot: root,
+      privacy: tagged,
+      projectPins: ['Plan.md', 'Secret/key.md', 'Plan.md', '../escape.md', 'Gone.md'],
+      readBody: async (_root, path) => {
+        reads.push(path);
+        return path === 'Plan.md' ? 'the plan' : path === 'Notes/a.md' ? 'body a' : undefined;
+      },
+      plan: (input) => {
+        seen.push(input);
+        return { read: ['Plan.md', 'Notes/a.md'] };
+      },
+    });
+    const prepared = await source.prepare('t');
+    expect(prepared.projectPins).toEqual(['Plan.md']);
+    expect(seen[0]!.projectPins).toEqual(['Plan.md']);
+    expect(prepared.bodies.get('Plan.md')).toBe('the plan');
+    expect(prepared.bodies.get('Notes/a.md')).toBe('body a');
+    // The pins came first, a hidden one never read; Plan.md was not read
+    // again for the plan.
+    expect(reads.slice(0, 2).sort()).toEqual(['Gone.md', 'Plan.md']);
+    expect(reads).not.toContain('Secret/key.md');
+    expect(reads.filter((p) => p === 'Plan.md')).toHaveLength(1);
+    expect(reads).not.toContain('../escape.md');
+  });
+
+  it('a local-only pin rides with a warm index and is left out while it is cold', async () => {
+    write(root, 'Diary.md', '---\ntags: [private]\n---\ndear diary');
+    write(root, 'Open.md', 'open pin');
+    await (await engineVaultIndex(root)).whenReconciled(5000);
+    const warm = await createVaultContextSource({
+      vaultRoot: root,
+      privacy: tagged,
+      projectPins: ['Diary.md', 'Open.md'],
+      plan: () => ({ read: [] }),
+    }).prepare('t');
+    expect(warm.projectPins).toEqual(['Diary.md', 'Open.md']);
+
+    const never: Promise<void> = new Promise(() => undefined);
+    const cold = {
+      refresh: () => undefined,
+      whenLoaded: (ms: number, signal?: AbortSignal) => settlesWithin(never, ms, signal),
+    } as unknown as EngineVaultIndex;
+    const coldPrepared = await createVaultContextSource({
+      vaultRoot: root,
+      privacy: tagged,
+      coldMs: 10,
+      projectPins: ['Diary.md', 'Open.md'],
+      openIndex: async () => cold,
+    }).prepare('t');
+    expect(coldPrepared.index).toBeNull();
+    expect(coldPrepared.projectPins).toEqual(['Open.md']);
+    expect(coldPrepared.bodies.has('Diary.md')).toBe(false);
+  });
+
+  it('no vault root, no pins', async () => {
+    const prepared = await createVaultContextSource({
+      privacy: tagged,
+      projectPins: ['Plan.md'],
+    }).prepare('t');
+    expect(prepared.projectPins).toBeUndefined();
+  });
+
+  it('the handoff is asked once, on the first prepare, and a throw means none', async () => {
+    let asked = 0;
+    const source = createVaultContextSource({
+      privacy: tagged,
+      handoff: () => {
+        asked += 1;
+        return 'HANDOFF from m, 2026-09-26, covering 5 earlier turns.';
+      },
+    });
+    expect((await source.prepare('one')).handoff).toContain('HANDOFF from m');
+    expect((await source.prepare('two')).handoff).toBeUndefined();
+    expect(asked).toBe(1);
+
+    const failing = createVaultContextSource({
+      privacy: tagged,
+      handoff: () => {
+        throw new Error('store gone');
+      },
+    });
+    expect((await failing.prepare('one')).handoff).toBeUndefined();
+  });
+});
