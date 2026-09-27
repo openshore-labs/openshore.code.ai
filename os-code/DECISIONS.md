@@ -2157,3 +2157,44 @@ execution contract. Newest at the bottom.
   "always in this project" rule cannot quiet it, and a deny still wins. The
   optional pick-time line for a folder inside a trusted repo is not built;
   the prompt itself carries the protection.
+- **CTO, Vault M2 G1 (2026-09-27):** the Local version is a fresh
+  `crypto.randomUUID()` per write, kept in the body and the index and compared
+  with `===` only; a pre-M2 body's version is its `updatedAt`; the body is the
+  truth, the index a list hint; no per-key counter (it repeats after a delete).
+- **CTO, Vault M2 G2 (2026-09-27):** iCloud's version is one Swift `lstat`
+  token (the desktop's format); guarded writes swap and verify inside
+  coordination, a stale or not-yet-downloaded note is a conflict, and all of
+  it lives in a Foundation-only `CoordinatedTree.swift` with a static guard
+  (`nativePlugins.test.ts`, first version in M2 wave 0) and a Swift test target.
+- **CTO, Vault M2 G3 (2026-09-27), changes the plan:** the team version is
+  `String(rev)` and the base lives only in the open note and the stash; the
+  server gets new `org_vault_write` and `org_vault_remove` RPCs (migration
+  0019, never-repeating revs, a revisions table) instead of changing
+  `org_vault_put`/`org_vault_delete`, which stay for builds in the field.
+- **CTO, Vault M2 G4 (2026-09-27):** pgTAP runs in CI through the Supabase CLI
+  (`supabase db start`, `supabase test db`), never a bare postgres image or a
+  stubbed auth schema, pinned by SHA and CLI version.
+- **CTO, Vault M2 G5 (2026-09-27), changes the plan:** the single-writer lease
+  is advisory on every provider with compare-and-swap (in v1, every writable
+  one) and enforced only on one without it, by the rule
+  `leaseEnforced = writable && !compareAndSwap`; only iCloud writes a lease
+  file, held while typing, with a device-kind `label`; the enforced interim is
+  not built.
+- **CTO, Vault M2 G6 (2026-09-27):** the team vault polls the open note's head
+  every 30 s (jittered, visible and online only, backing off to 300 s) through
+  `vaultRecheck({ reason: 'poll' })`; `StoredFileMeta.editedBy` is set by the
+  team vault only, labelled with the email's local part.
+- **CTO, Vault M2 G7 (2026-09-27):** split by file ownership: wave 0 fixes the
+  seam (`remove` answers a `RemoveResult` and takes an `ifMatch` guard,
+  `editedBy`, `Lease.label`), wave 1 runs SQL, Local, iCloud, and the team
+  client in parallel, and wave 2 is one owner of `store.ts` and
+  `VaultScreen.tsx`, one item per commit.
+- **Vault M2 wave 0 build calls (2026-09-27):** the desktop folder already
+  honors a remove's `ifMatch` (main reads the note through the engine's
+  `readNote`, checks again with one `statNote`, then unlinks); the gap between
+  that last check and the unlink is left for wave 1. Every store delete is
+  guarded with the open note's version; a stale one takes the M1 recheck path
+  (a clean note reloads the newer version, one with edits raises the changed
+  sheet) and toasts "Not deleted", and a metadata-only change still deletes.
+  A move's take-back and a fork's settle remove only the version they wrote or
+  read. `nativePlugins.test.ts` covers every plugin, not only iCloud.

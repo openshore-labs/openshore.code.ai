@@ -18,7 +18,14 @@ import type {
   StackHealth,
   StackHealthRange,
 } from 'os-code/protocol';
-import type { StoredFile, StoredFileMeta, WriteGuard, WriteResult } from './gitos/providers.js';
+import type {
+  RemoveGuard,
+  RemoveResult,
+  StoredFile,
+  StoredFileMeta,
+  WriteGuard,
+  WriteResult,
+} from './gitos/providers.js';
 
 /** A change the vault folder watcher saw (Vault M1, CTO F3): the note paths
  *  that changed, or `tree` when it cannot say which (a folder changed, too
@@ -406,7 +413,9 @@ export interface OscodeBridge {
   vaultStat(path: string): Promise<StoredFileMeta | null>;
   vaultRead(path: string): Promise<StoredFile | null>;
   vaultWrite(path: string, text: string, guard?: WriteGuard): Promise<WriteResult>;
-  vaultRemove(path: string): Promise<void>;
+  /** Remove a note; with a guard, only while its version is still ifMatch
+   *  (a stale one answers 'changed' and the note stays). */
+  vaultRemove(path: string, guard?: RemoveGuard): Promise<RemoveResult>;
   /** Watch the vault folder while the Vault room is open: on with the open
    *  note's path (Linux watches that note's folder too), off when it leaves. */
   vaultWatch(on: boolean, openPath?: string): Promise<void>;

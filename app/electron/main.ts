@@ -44,6 +44,7 @@ import { managedRoot } from 'os-code/dist/src/core/security/workspaces.js';
 import {
   listVaultFolder,
   parseVaultGuard,
+  parseVaultRemoveGuard,
   readVaultFile,
   removeVaultFile,
   statVaultFile,
@@ -960,7 +961,9 @@ guarded('osc:vaultRead', (p: unknown) => readVaultFile(vaultDir(), str(p, 'path'
 guarded('osc:vaultWrite', (p: unknown, t: unknown, g: unknown) =>
   writeVaultFile(vaultDir(), str(p, 'path'), str(t, 'text'), parseVaultGuard(g)),
 );
-guarded('osc:vaultRemove', (p: unknown) => removeVaultFile(vaultDir(), str(p, 'path')));
+guarded('osc:vaultRemove', (p: unknown, g: unknown) =>
+  removeVaultFile(vaultDir(), str(p, 'path'), parseVaultRemoveGuard(g)),
+);
 
 // The folder watcher (CTO F3), on while the Vault room is open. The open
 // note's path is checked like any other (a note, inside the folder) before

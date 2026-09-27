@@ -12,6 +12,10 @@
 // file work exactly as it does in the app. The other providers accept the
 // guard and ignore it until M2; they are held to the result shape here and
 // must not claim compareAndSwap.
+//
+// Remove joined the contract in Vault M2 wave 0 (CTO G7): it answers with a
+// RemoveResult, a stale ifMatch is 'changed' and leaves the file, and a file
+// already gone is ok.
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -54,7 +58,8 @@ vi.mock('../src/lib/electronBridge.js', async () => {
     vaultRead: (p: string) => fs.readVaultFile(h.root, p),
     vaultWrite: (p: string, t: string, g?: unknown) =>
       fs.writeVaultFile(h.root, p, t, fs.parseVaultGuard(g)),
-    vaultRemove: async (p: string) => fs.removeVaultFile(h.root, p),
+    vaultRemove: (p: string, g?: unknown) =>
+      fs.removeVaultFile(h.root, p, fs.parseVaultRemoveGuard(g)),
   };
   return { bridge: () => b };
 });
@@ -157,6 +162,33 @@ for (const p of enforcing) {
       expect((await p.provider.read(R, 'v.md'))?.version).toBe(version);
     });
 
+    it('a stale ifMatch remove returns changed with theirs, and leaves the file', async () => {
+      const first = await p.provider.write(R, 'r.md', 'one', { ifAbsent: true });
+      const base = first.ok ? first.file.version! : '';
+      p.replace('r.md', 'someone else wrote this');
+      const r = await p.provider.remove(R, 'r.md', { ifMatch: base });
+      expect(r).toMatchObject({ ok: false, conflict: 'changed' });
+      expect(!r.ok && r.theirs?.text).toBe('someone else wrote this');
+      expect(p.bytes('r.md')).toBe('someone else wrote this');
+    });
+
+    it('a current ifMatch remove removes the file', async () => {
+      const first = await p.provider.write(R, 'r.md', 'one', { ifAbsent: true });
+      const r = await p.provider.remove(R, 'r.md', {
+        ifMatch: first.ok ? first.file.version! : '',
+      });
+      expect(r).toEqual({ ok: true });
+      expect(p.bytes('r.md')).toBeUndefined();
+      expect((await p.provider.list(R)).map((f) => f.path)).not.toContain('r.md');
+    });
+
+    it('removing a file already gone is ok, with or without a guard', async () => {
+      expect(await p.provider.remove(R, 'never.md', { ifMatch: 'anything' })).toEqual({
+        ok: true,
+      });
+      expect(await p.provider.remove(R, 'never.md')).toEqual({ ok: true });
+    });
+
     it('a conflict leaves no temp file behind in the folder', async () => {
       const first = await p.provider.write(R, 't.md', 'one', { ifAbsent: true });
       p.replace('t.md', 'other');
@@ -178,6 +210,12 @@ describe('providers that do not enforce the guard yet (M2) return the new shape'
       expect(provider.compareAndSwap).toBeUndefined();
       const r = await provider.write(R, 'a.md', 'body', { ifMatch: 'anything' });
       expect(r).toMatchObject({ ok: true, file: { path: 'a.md', text: 'body' } });
+    });
+
+    it(`${name}: accepts a remove guard and answers { ok: true }`, async () => {
+      await provider.write(R, 'b.md', 'body');
+      expect(await provider.remove(R, 'b.md', { ifMatch: 'anything' })).toEqual({ ok: true });
+      expect(await provider.remove(R, 'b.md')).toEqual({ ok: true });
     });
   }
 });

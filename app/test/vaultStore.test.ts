@@ -17,6 +17,7 @@ import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   StoredFile,
+  RemoveResult,
   StoredFileMeta,
   WriteGuard,
   WriteResult,
@@ -129,7 +130,11 @@ function makeProvider(id: string, cas = false) {
   const hideFromList = new Set<string>();
   const fail = { list: false, read: false, write: false, stat: false, remove: false };
   const limits = { writesLeft: undefined as number | undefined };
-  const counts = { reads: 0, writes: [] as Array<{ path: string; guard?: WriteGuard }> };
+  const counts = {
+    reads: 0,
+    writes: [] as Array<{ path: string; guard?: WriteGuard }>,
+    removes: [] as Array<{ path: string; guard?: { ifMatch: string } }>,
+  };
   const version = (path: string) => files.versions.get(path)!;
   // updatedAt changes with every write, so the body cache invalidates on edit.
   const meta = (path: string): StoredFileMeta =>
@@ -185,9 +190,15 @@ function makeProvider(id: string, cas = false) {
       files.set(path, text);
       return { ok: true, file: file(path) };
     },
-    async remove(_r: string, path: string): Promise<void> {
+    async remove(_r: string, path: string, guard?: { ifMatch: string }): Promise<RemoveResult> {
       if (fail.remove) throw new Error('offline');
+      counts.removes.push({ path, guard });
+      if (evicted.has(path) && cas && guard) return { ok: false, conflict: 'downloading' };
+      if (cas && guard && files.has(path) && version(path) !== guard.ifMatch) {
+        return { ok: false, conflict: 'changed', theirs: file(path) };
+      }
       files.delete(path);
+      return { ok: true };
     },
     async acquireLease(_r: string, holder: string) {
       // A foreign holder keeps its lease; otherwise the caller takes it.
@@ -210,6 +221,7 @@ function makeProvider(id: string, cas = false) {
     limits.writesLeft = undefined;
     counts.reads = 0;
     counts.writes = [];
+    counts.removes = [];
   };
   return {
     provider,
@@ -1835,6 +1847,118 @@ describe('compare-and-swap on the folder (1.1)', () => {
 // and Obsidian share. A new personal vault is made there; an empty default
 // Local one simply points there; a Local one holding notes gets the one-time
 // card and moves through vaultMoveTo, keeping the sealed copy (D7).
+// Vault M2 wave 0: a remove answers with a RemoveResult, and every delete
+// the store makes is guarded, so a delete typed against an older version
+// never removes the newer one. It takes the M1 recheck path instead.
+describe('a stale delete never removes a newer version (M2 wave 0)', () => {
+  const F = folder.files;
+  async function openOnFolder(path = 'n.md', text = 'loaded') {
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('files') },
+    });
+    F.set(path, text);
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen(path);
+    useApp.getState().vaultNoteDraft(path, text);
+  }
+  beforeEach(() => {
+    reset();
+    useApp.setState({ vaultConflict: undefined, vaultReturnFolder: undefined });
+  });
+
+  it('a delete carries the version the note was loaded at, and removes it', async () => {
+    await openOnFolder();
+    const base = folder.version('n.md');
+    expect(await useApp.getState().vaultDelete('n.md')).toBe(true);
+    expect(folder.counts.removes).toEqual([{ path: 'n.md', guard: { ifMatch: base } }]);
+    expect(F.has('n.md')).toBe(false);
+    expect(useApp.getState().vaultNote).toBeUndefined();
+  });
+
+  it('a clean note changed elsewhere is not deleted, and the newer version opens', async () => {
+    await openOnFolder();
+    F.set('n.md', 'written by the agent');
+    expect(await useApp.getState().vaultDelete('n.md')).toBe(false);
+    const st = useApp.getState();
+    expect(F.get('n.md')).toBe('written by the agent');
+    expect(st.vaultNote).toMatchObject({ path: 'n.md', text: 'written by the agent' });
+    expect(st.vaultNote?.version).toBe(folder.version('n.md'));
+    expect(st.vaultConflict).toBeUndefined();
+    expect(st.toast).toBe(
+      'Not deleted. "n" changed somewhere else since you opened it. The newer version is open now.',
+    );
+  });
+
+  it('a note with unsaved edits changed elsewhere raises the changed sheet and keeps the text', async () => {
+    await openOnFolder();
+    useApp.getState().vaultNoteDraft('n.md', 'my unsaved words');
+    F.set('n.md', 'written by Obsidian');
+    expect(await useApp.getState().vaultDelete('n.md')).toBe(false);
+    const st = useApp.getState();
+    expect(F.get('n.md')).toBe('written by Obsidian');
+    expect(st.vaultConflict).toMatchObject({
+      path: 'n.md',
+      kind: 'changed',
+      theirs: { text: 'written by Obsidian' },
+    });
+    expect(Object.values(pending())).toMatchObject([{ path: 'n.md', text: 'my unsaved words' }]);
+    expect(st.toast).toBe('Not deleted. "n" changed somewhere else since you opened it.');
+  });
+
+  it('a touch (same text, a new version) still deletes', async () => {
+    await openOnFolder();
+    F.set('n.md', 'loaded');
+    expect(await useApp.getState().vaultDelete('n.md')).toBe(true);
+    expect(F.has('n.md')).toBe(false);
+    expect(folder.counts.removes).toHaveLength(2);
+  });
+
+  it('a note still downloading is not deleted, and says so', async () => {
+    await openOnFolder();
+    folder.evicted.add('n.md');
+    expect(await useApp.getState().vaultDelete('n.md')).toBe(false);
+    expect(F.get('n.md')).toBe('loaded');
+    expect(useApp.getState().toast).toBe(
+      'Not deleted. "n" is still downloading to this device. Try again in a moment.',
+    );
+  });
+
+  it('settling a fork removes the moved copy only at the version it read', async () => {
+    const pair = { from: 'a.md', to: 'a (conflict 2026-09-27 1405).md' };
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('files') },
+    });
+    F.set(pair.from, 'already there');
+    F.set(pair.to, 'the one you moved');
+    const shown = (await useApp.getState().vaultReadForkPair(pair))!;
+    expect(await useApp.getState().vaultSettleFork(pair, 'theirs', shown)).toEqual({ ok: true });
+    expect(folder.counts.removes).toEqual([
+      { path: pair.to, guard: { ifMatch: shown.moved.version } },
+    ]);
+  });
+
+  it('a refused move never takes back a copy someone wrote over since', async () => {
+    local.files.set('a.md', 'alpha');
+    local.files.set('b.md', 'beta');
+    await useApp.getState().vaultRefresh();
+    folder.hideFromList.add('b.md');
+    const list = folder.provider.list;
+    // The agent writes over the moved a.md before the move checks the folder.
+    folder.provider.list = async () => {
+      if (F.get('a.md') === 'alpha') F.set('a.md', 'the agent wrote this');
+      return list();
+    };
+    try {
+      const res = await useApp.getState().vaultMoveTo('files');
+      expect(res).toMatchObject({ ok: false, reason: 'unverified', left: ['a.md'] });
+    } finally {
+      folder.provider.list = list;
+    }
+    expect(F.get('a.md')).toBe('the agent wrote this');
+    expect(F.has('b.md')).toBe(false);
+  });
+});
+
 describe('the desktop defaults to the folder (1.3)', () => {
   const FOLDER = {
     dir: '/home/me/OSCode/Vault',

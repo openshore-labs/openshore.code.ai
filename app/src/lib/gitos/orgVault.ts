@@ -18,6 +18,8 @@
 import { isConfigured, rpc, select } from '../supabase.js';
 import type {
   Lease,
+  RemoveGuard,
+  RemoveResult,
   StorageProvider,
   StoredFileMeta,
   WriteGuard,
@@ -214,10 +216,14 @@ export const orgVaultProvider: StorageProvider = {
     return { ok: true, file: { path: saved.path, text, updatedAt: saved.updated_at } };
   },
 
-  async remove(resourceId, path) {
+  // The guard is accepted and not yet enforced: the server check arrives as
+  // org_vault_remove with p_if_match (M2 2.3, CTO G3), so a stale remove
+  // still removes here.
+  async remove(resourceId, path, _guard?: RemoveGuard): Promise<RemoveResult> {
     const auth = await token();
     await refusing(() => rpc('org_vault_delete', auth, { p_org: resourceId, p_path: path }));
     baseRev.delete(revKey(resourceId, path));
+    return { ok: true };
   },
 
   // Multi-writer: there is no lease to contend for. Grant it so callers that

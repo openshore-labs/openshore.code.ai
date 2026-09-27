@@ -589,6 +589,23 @@ export function vaultGoneToast(title: string): string {
   return `"${title}" is no longer in your vault. It was moved or deleted somewhere else.`;
 }
 
+/** The toast when a delete did not happen because the note is not the one
+ *  this device loaded (Vault M2 wave 0). 'changed': it changed somewhere else
+ *  since, so nothing was deleted; `reloaded` when the newer version is open
+ *  now in place of a clean note (with unsaved edits, the resolve sheet opens
+ *  instead and says the rest). 'downloading': its bytes are not on this
+ *  device yet, so its version could not be checked. */
+export function vaultStaleDeleteToast(
+  kind: 'changed' | 'downloading',
+  title: string,
+  reloaded = false,
+): string {
+  if (kind === 'downloading') {
+    return `Not deleted. "${title}" is still downloading to this device. Try again in a moment.`;
+  }
+  return `Not deleted. "${title}" changed somewhere else since you opened it.${reloaded ? ' The newer version is open now.' : ''}`;
+}
+
 /** The quiet suffix on a note's meta line after a clean reload in place. No
  *  toast: the person did nothing, and nothing failed. */
 export const VAULT_UPDATED_SUFFIX = ' · Updated from elsewhere';

@@ -303,7 +303,12 @@ import {
   resumeRepoOAuthFromLink,
 } from '../lib/gitos/repoOAuth.js';
 import { normalizeNotePath, noteFolder, noteTitle } from '../lib/vault.js';
-import { versionOf, type WriteGuard, type WriteResult } from '../lib/gitos/providers.js';
+import {
+  versionOf,
+  type RemoveResult,
+  type WriteGuard,
+  type WriteResult,
+} from '../lib/gitos/providers.js';
 import {
   VAULT_GONE_REASON,
   VAULT_NO_COPY_NAME_REASON,
@@ -314,6 +319,7 @@ import {
   vaultLeaveToast,
   vaultReplayCopiesLine,
   vaultResolveToast,
+  vaultStaleDeleteToast,
 } from '../lib/vaultCopy.js';
 import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
 import { readProjectSecrets, writeProjectSecrets } from '../lib/projectSecrets.js';
@@ -3803,16 +3809,20 @@ export const useApp = create<AppState>((set, get, api) => {
     // The files this attempt wrote where the target held nothing. A refused
     // move takes them back (never a file that was there before), so its
     // "nothing moved" is true and a retry starts clean: a stale copy left
-    // here would otherwise keep the note's name on the retry (copy-1).
-    const created: string[] = [];
+    // here would otherwise keep the note's name on the retry (copy-1). Each
+    // carries the version this attempt wrote, and the take-back is guarded
+    // with it, so a note someone wrote there since is never taken back
+    // (Vault M2 wave 0): it stays, and is named among what is left.
+    const created: Array<{ path: string; version: string }> = [];
     const forked: VaultMoveResult['forked'] = [];
     const takeBack = async (): Promise<string[]> => {
       const left: string[] = [];
-      for (const p of created) {
+      for (const c of created) {
         try {
-          await target.remove(VAULT_RESOURCE_ID, p);
+          const r = await target.remove(VAULT_RESOURCE_ID, c.path, { ifMatch: c.version });
+          if (!r.ok) left.push(c.path);
         } catch {
-          left.push(p);
+          left.push(c.path);
         }
       }
       return left;
@@ -3871,7 +3881,7 @@ export const useApp = create<AppState>((set, get, api) => {
           continue;
         }
         if (!saved) throw new Error('No free name for the moved copy.');
-        created.push(saved.path);
+        created.push({ path: saved.path, version: versionOf(saved) });
         taken.add(saved.path.toLowerCase());
         landed.push(saved.path);
         if (saved.path !== note.path) forked.push({ from: note.path, to: saved.path });
@@ -4563,6 +4573,36 @@ export const useApp = create<AppState>((set, get, api) => {
   // settles it: the text lands beside the note as a conflict copy, or, for a
   // note that is gone, under Not saved (never recreated, since nobody chose
   // that write).
+  // A guarded delete that found the note is not the version this device
+  // loaded: nothing was deleted, and the note stays. The open note takes the
+  // M1 recheck path, so a clean one reloads the newer version in place and one
+  // with unsaved edits (or one that is gone) raises the resolve sheet, the
+  // same as a focus return would. A note that is still downloading is left as
+  // it is. The toast says the delete did not happen, never that it did.
+  async function settleStaleDelete(
+    target: VaultTarget,
+    path: string,
+    result: Extract<RemoveResult, { ok: false }>,
+    base: string | undefined,
+  ): Promise<void> {
+    const title = noteTitle(path);
+    logEvent('vault_delete_stale', { conflict: result.conflict });
+    if (result.conflict === 'downloading') {
+      get().showToast(vaultStaleDeleteToast('downloading', title));
+      return;
+    }
+    await recheckOpenNote(target, path);
+    const open = get().vaultNote;
+    const asking = get().vaultConflict?.path === path;
+    const reloaded =
+      !asking && isActiveVault(target) && open?.path === path && versionOf(open) !== base;
+    if (isActiveVault(target) && !asking) {
+      const listing = await listVaultNotes(target).catch(() => undefined);
+      if (listing) set({ vaultFiles: listing });
+    }
+    get().showToast(vaultStaleDeleteToast('changed', title, reloaded));
+  }
+
   async function settleSaveConflict(
     target: VaultTarget,
     path: string,
@@ -8029,8 +8069,29 @@ export const useApp = create<AppState>((set, get, api) => {
         get().showToast(readOnly);
         return false;
       }
+      // Guarded with the version the open note was loaded or saved at, so a
+      // delete never removes a version this device has not seen (Vault M2
+      // wave 0). A provider that does not check the guard yet removes anyway.
+      const base = vaultBaseOf(target, path);
+      let removed: RemoveResult;
       try {
-        await target.provider.remove(target.resourceId, path);
+        removed = await target.provider.remove(
+          target.resourceId,
+          path,
+          base ? { ifMatch: base } : undefined,
+        );
+        // The note moved on only in its metadata (a touch, a sync client
+        // rewriting the same bytes): theirs is the text this device loaded,
+        // so the delete still means what the person meant. Bounded, like the
+        // save's retry, so a busy writer cannot spin it.
+        for (let tries = 0; tries < 3 && !removed.ok && removed.theirs; tries++) {
+          const open = get().vaultNote;
+          const loaded = isActiveVault(target) && open?.path === path ? open.text : undefined;
+          if (removed.conflict !== 'changed' || removed.theirs.text !== loaded) break;
+          removed = await target.provider.remove(target.resourceId, path, {
+            ifMatch: versionOf(removed.theirs),
+          });
+        }
       } catch (err) {
         // The toast says it. The standing 'save' line promises that unsaved
         // text saves later, which is not about a delete, and nothing retries
@@ -8041,6 +8102,10 @@ export const useApp = create<AppState>((set, get, api) => {
             ? `Could not delete that note. ${asSentence(refusal)}`
             : 'Could not delete that note. Check your vault storage connection.',
         );
+        return false;
+      }
+      if (!removed.ok) {
+        await settleStaleDelete(target, path, removed, base);
         return false;
       }
       const key = vaultKey(target, path);
@@ -8237,13 +8302,16 @@ export const useApp = create<AppState>((set, get, api) => {
       const relist = () => (on === 'files' ? refreshFolderList() : get().vaultRefresh());
       const at = { provider: folder, resourceId: VAULT_RESOURCE_ID };
       // The moved copy is removed only while it still holds exactly the text
-      // that was moved, so nothing written to it since is ever deleted.
+      // that was moved, so nothing written to it since is ever deleted. The
+      // remove is guarded with the version just read, so a write landing
+      // between the read and the remove keeps the copy too (Vault M2 wave 0).
       const removeMovedCopy = async (): Promise<'gone' | 'changed' | 'failed'> => {
         try {
           const now = await folder.read(VAULT_RESOURCE_ID, pair.to);
           if (!now) return 'gone';
           if (now.text !== shown.moved.text) return 'changed';
-          await folder.remove(VAULT_RESOURCE_ID, pair.to);
+          const r = await folder.remove(VAULT_RESOURCE_ID, pair.to, { ifMatch: versionOf(now) });
+          if (!r.ok) return r.conflict === 'changed' ? 'changed' : 'failed';
           return 'gone';
         } catch {
           return 'failed';

@@ -14,6 +14,8 @@
 import {
   isNotePath,
   type Lease,
+  type RemoveGuard,
+  type RemoveResult,
   type StorageProvider,
   type StoredFile,
   type StoredFileMeta,
@@ -28,7 +30,7 @@ export interface FolderTransport {
   stat(path: string): Promise<StoredFileMeta | null>;
   read(path: string): Promise<StoredFile | null>;
   write(path: string, text: string, guard?: WriteGuard): Promise<WriteResult>;
-  remove(path: string): Promise<void>;
+  remove(path: string, guard?: RemoveGuard): Promise<RemoveResult>;
 }
 
 /** The fixed facts of a folder provider: its id, label, and copy lines. */
@@ -45,6 +47,15 @@ function refuseNonNote(path: string): Error {
  *  back: a success names the path it wrote and carries the text. */
 function asWriteResult(path: string, text: string, r: WriteResult): WriteResult {
   if (r.ok) return { ok: true, file: { ...r.file, path: r.file.path || path, text } };
+  return r.theirs
+    ? { ok: false, conflict: r.conflict, theirs: r.theirs }
+    : { ok: false, conflict: r.conflict };
+}
+
+/** A RemoveResult as the seam promises it: a conflict carries theirs only
+ *  when the transport sent one. */
+function asRemoveResult(r: RemoveResult): RemoveResult {
+  if (r.ok) return { ok: true };
   return r.theirs
     ? { ok: false, conflict: r.conflict, theirs: r.theirs }
     : { ok: false, conflict: r.conflict };
@@ -79,9 +90,11 @@ export function makeFolderProvider(
       return asWriteResult(path, text, await transport.write(path, text, guard));
     },
 
-    async remove(_resourceId, path): Promise<void> {
+    // The transport checks the guard where the bytes are (Vault M2 wave 0):
+    // a stale remove answers 'changed' and the note stays.
+    async remove(_resourceId, path, guard): Promise<RemoveResult> {
       if (!isNotePath(path)) throw refuseNonNote(path);
-      await transport.remove(path);
+      return asRemoveResult(await transport.remove(path, guard));
     },
 
     // The folder is shared with the agent and Obsidian, so there is no

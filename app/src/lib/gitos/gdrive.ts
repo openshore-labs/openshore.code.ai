@@ -20,6 +20,8 @@ import { gdriveAccessToken } from './gdriveAuth.js';
 import {
   isNotePath,
   type Lease,
+  type RemoveGuard,
+  type RemoveResult,
   type StorageProvider,
   type StoredFile,
   type WriteGuard,
@@ -530,7 +532,11 @@ export const gdriveProvider: StorageProvider = {
   async write(resourceId, path, text, _guard?: WriteGuard): Promise<WriteResult> {
     return { ok: true, file: await writeFile(resourceId, path, text) };
   },
-  remove: removeFile,
+  // Read-only in v1 too, so the guard is accepted and not enforced.
+  async remove(resourceId, path, _guard?: RemoveGuard): Promise<RemoveResult> {
+    await removeFile(resourceId, path);
+    return { ok: true };
+  },
   acquireLease,
   releaseLease,
 };

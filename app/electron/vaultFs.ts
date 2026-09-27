@@ -43,6 +43,10 @@ export type VaultWriteResult =
   | { ok: true; file: VaultFile }
   | { ok: false; conflict: 'changed' | 'missing' | 'exists'; theirs?: VaultFile };
 
+/** The seam's RemoveResult, as main answers osc:vaultRemove. */
+export type VaultRemoveResult =
+  { ok: true } | { ok: false; conflict: 'changed'; theirs?: VaultFile };
+
 /** The seam's note rule (app/src/lib/gitos/providers.ts isNotePath), held
  *  again here because main cannot import renderer code. A test keeps the two
  *  in step. */
@@ -84,6 +88,14 @@ export function parseVaultGuard(v: unknown): NoteGuard | undefined {
   }
   if (g.ifAbsent === true) return { ifAbsent: true };
   throw new Error('blocked: guard must be { ifMatch } or { ifAbsent: true }');
+}
+
+/** A remove guard from the renderer, checked: `{ ifMatch }` with a string of
+ *  at most 200 characters and nothing else. Undefined when none was sent. */
+export function parseVaultRemoveGuard(v: unknown): { ifMatch: string } | undefined {
+  const g = parseVaultGuard(v);
+  if (g && !('ifMatch' in g)) throw new Error('blocked: a remove guard takes ifMatch only');
+  return g;
 }
 
 /** The absolute path of a note in the vault folder, refusing anything that is
@@ -172,8 +184,42 @@ export async function writeVaultFile(
   return theirs ? { ok: false, conflict: r.conflict, theirs } : { ok: false, conflict: r.conflict };
 }
 
-/** Remove a note, when it is there. */
-export function removeVaultFile(root: string, path: string): void {
+function changedRemove(
+  path: string,
+  note: { text: string; updatedAt: string; version: string },
+): VaultRemoveResult {
+  return {
+    ok: false,
+    conflict: 'changed',
+    theirs: { path, text: note.text, updatedAt: note.updatedAt, version: note.version },
+  };
+}
+
+/** Remove a note, when it is there. A note already gone is ok. With a guard,
+ *  the note is removed only while its version is still `ifMatch`; otherwise
+ *  the answer is 'changed' with what is there now, and the note stays. The
+ *  version is read through the engine's readNote and checked again with one
+ *  lstat right before the unlink, so the window a writer can land in is the
+ *  gap between that lstat and the unlink, not the whole read. A write landing
+ *  in it is lost with the note; wave 1 may close it with a rename-aside
+ *  (Vault M2, CTO G7). */
+export async function removeVaultFile(
+  root: string,
+  path: string,
+  guard?: { ifMatch: string },
+): Promise<VaultRemoveResult> {
   const abs = vaultNoteAbs(root, path);
+  if (guard) {
+    const note = await readNote(abs);
+    if (!note) return { ok: true };
+    if (note.version !== guard.ifMatch) return changedRemove(path, note);
+    const now = await statNote(abs);
+    if (!now) return { ok: true };
+    if (now.version !== guard.ifMatch) {
+      const fresh = await readNote(abs);
+      return fresh ? changedRemove(path, fresh) : { ok: true };
+    }
+  }
   if (existsSync(abs)) rmSync(abs);
+  return { ok: true };
 }

@@ -40,6 +40,7 @@ import {
   isVaultNotePath,
   listVaultFolder,
   parseVaultGuard,
+  parseVaultRemoveGuard,
   readVaultFile,
   statVaultFile,
   writeVaultFile,
@@ -153,10 +154,18 @@ describe('device folder provider', () => {
     expect(h.b.vaultRemove).not.toHaveBeenCalled();
   });
 
-  it('removes through the bridge', async () => {
-    h.b.vaultRemove.mockResolvedValue(undefined);
-    await deviceFolderProvider.remove('vault.personal', 'a.md');
+  it('removes through the bridge, passing a guard only when there is one', async () => {
+    h.b.vaultRemove.mockResolvedValue({ ok: true });
+    expect(await deviceFolderProvider.remove('vault.personal', 'a.md')).toEqual({ ok: true });
     expect(h.b.vaultRemove).toHaveBeenCalledWith('a.md');
+    const theirs = { path: 'a.md', text: 'x', updatedAt: 't', version: 'v2' };
+    h.b.vaultRemove.mockResolvedValue({ ok: false, conflict: 'changed', theirs });
+    expect(await deviceFolderProvider.remove('vault.personal', 'a.md', { ifMatch: 'v1' })).toEqual({
+      ok: false,
+      conflict: 'changed',
+      theirs,
+    });
+    expect(h.b.vaultRemove).toHaveBeenLastCalledWith('a.md', { ifMatch: 'v1' });
   });
 
   it('throws a clear error when the desktop bridge is absent', async () => {
@@ -254,6 +263,13 @@ describe("main's vault handlers on a real folder (CTO F1, F7.4)", () => {
     expect(() => parseVaultGuard({ ifMatch: 3 })).toThrow(/blocked/);
     expect(() => parseVaultGuard({ ifAbsent: false })).toThrow(/blocked/);
     expect(() => parseVaultGuard('ifAbsent')).toThrow(/blocked/);
+  });
+
+  it('validates a remove guard: ifMatch only', () => {
+    expect(parseVaultRemoveGuard(undefined)).toBeUndefined();
+    expect(parseVaultRemoveGuard({ ifMatch: '1:2:3' })).toEqual({ ifMatch: '1:2:3' });
+    expect(() => parseVaultRemoveGuard({ ifAbsent: true })).toThrow(/ifMatch only/);
+    expect(() => parseVaultRemoveGuard({ ifMatch: 'x'.repeat(201) })).toThrow(/blocked/);
   });
 
   it("main's note rule is the seam's note rule", () => {

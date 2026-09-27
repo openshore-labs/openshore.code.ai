@@ -11,6 +11,8 @@ import { Icloud } from './icloudPlugin.js';
 import {
   isNotePath,
   type Lease,
+  type RemoveGuard,
+  type RemoveResult,
   type StorageProvider,
   type WriteGuard,
   type WriteResult,
@@ -54,8 +56,11 @@ export const icloudProvider: StorageProvider = {
     return { ok: true, file: { path, text, updatedAt } };
   },
 
-  async remove(resourceId, path) {
+  // The guard is accepted and not yet enforced (M2 2.1 moves the check into
+  // the native CoordinatedTree, CTO G2), so a stale remove still removes.
+  async remove(resourceId, path, _guard?: RemoveGuard): Promise<RemoveResult> {
     await Icloud.remove({ resourceId, path });
+    return { ok: true };
   },
 
   async acquireLease(resourceId, holder, ttlMs) {

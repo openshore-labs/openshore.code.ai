@@ -38,7 +38,7 @@ export const electronFolderTransport: FolderTransport = {
   read: (path) => fs().vaultRead(path),
   write: (path, text, guard) =>
     guard ? fs().vaultWrite(path, text, guard) : fs().vaultWrite(path, text),
-  remove: (path) => fs().vaultRemove(path),
+  remove: (path, guard) => (guard ? fs().vaultRemove(path, guard) : fs().vaultRemove(path)),
 };
 
 export const deviceFolderProvider = makeFolderProvider(electronFolderTransport, {

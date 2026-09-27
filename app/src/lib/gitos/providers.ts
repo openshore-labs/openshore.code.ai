@@ -49,6 +49,10 @@ export interface StoredFileMeta {
    *  this device yet (an iCloud placeholder). Opening it waits; creating a
    *  file of the same name must never overwrite it. */
   evicted?: boolean;
+  /** Who last changed this note, when the provider knows (the team vault
+   *  only; Vault M2, CTO G6). `label` is a short display name, never an
+   *  email address in full. Absent everywhere else. */
+  editedBy?: { id: string; label?: string };
 }
 
 /** Whether a path in a vault is a note the Vault shows and edits: a `.md`
@@ -86,6 +90,19 @@ export type WriteResult =
   | { ok: true; file: StoredFile }
   | { ok: false; conflict: 'changed' | 'missing' | 'exists' | 'downloading'; theirs?: StoredFile };
 
+/** A remove's precondition: remove the file only while its version
+ *  (versionOf) is still this one. */
+export type RemoveGuard = { ifMatch: string };
+
+/** What a remove did (Vault M2, CTO G7 wave 0). A file already gone is
+ *  `{ ok: true }`: the person wanted it gone, and it is. A conflict is a
+ *  result, never a throw, and leaves the file where it was: 'changed' (the
+ *  version moved since the guard was read; theirs is what is there now, when
+ *  the provider can say), 'downloading' (iCloud and the iPhone folder: the
+ *  bytes are not here yet, so the version cannot be checked). */
+export type RemoveResult =
+  { ok: true } | { ok: false; conflict: 'changed' | 'downloading'; theirs?: StoredFile };
+
 /** A lease marks one writer per resource. Cloud folder syncs have no
  *  Git-aware locking, so the seam carries single-writer semantics from day
  *  one (CTO ruling): a holder id plus TTL, renewed by heartbeat. The Local
@@ -93,6 +110,10 @@ export type WriteResult =
 export interface Lease {
   holder: string;
   expiresAt: string;
+  /** The holder's device kind ("iPhone", "iPad", "Mac"), for the quiet "Also
+   *  open on your iPad" line (Vault M2, CTO G5). Never a personal device
+   *  name. */
+  label?: string;
 }
 
 /** The seam. Path/bytes-shaped on purpose: list, stat, read, write, remove,
@@ -121,7 +142,11 @@ export interface StorageProvider {
   /** Set only by providers that enforce the write guard; the contract test
    *  (test/providerContract.test.ts) enrolls only these. */
   readonly compareAndSwap?: true;
-  remove(resourceId: string, path: string): Promise<void>;
+  /** Remove a file. A guard is enforced only by a provider that enforces it
+   *  (the desktop folder, in wave 0 of M2); the others accept it and answer
+   *  `{ ok: true }` until they gain the check, so their ok is never proof
+   *  that nobody else wrote. */
+  remove(resourceId: string, path: string, guard?: RemoveGuard): Promise<RemoveResult>;
   /** Take or renew the single-writer lease. Returns the current lease either
    *  way; callers compare holder to know if they won. */
   acquireLease(resourceId: string, holder: string, ttlMs: number): Promise<Lease>;

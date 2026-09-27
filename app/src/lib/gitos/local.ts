@@ -12,6 +12,8 @@ import { storeDelete, storeGetJson, storeKeys, storeSetJson } from '../platform.
 import {
   isNotePath,
   type Lease,
+  type RemoveGuard,
+  type RemoveResult,
   type StorageProvider,
   type StoredFileMeta,
   type WriteGuard,
@@ -141,13 +143,16 @@ export const localProvider: StorageProvider = {
     });
   },
 
-  async remove(resourceId, path) {
-    await chained(resourceId, async () => {
+  // The guard is accepted and not yet enforced (M2 2.1 adds the check, CTO
+  // G1), so a stale remove still removes here.
+  async remove(resourceId, path, _guard?: RemoveGuard): Promise<RemoveResult> {
+    return chained(resourceId, async () => {
       await storeDelete(fileKey(resourceId, path));
       const index = await readIndex(resourceId);
       await storeSetJson(indexKey(resourceId), {
         files: index.files.filter((f) => f.path !== path),
       });
+      return { ok: true as const };
     });
   },
 
