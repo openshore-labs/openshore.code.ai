@@ -14,6 +14,7 @@ import type {
   AttachmentMeta,
   ConfigWriteResult,
   VaultOverrides,
+  VaultPackSize,
   VaultTrashEntry,
 } from '../harness/vault/types.js';
 
@@ -124,7 +125,9 @@ export interface VaultWireError {
  *  the caller's root; `cwd` gives Current State only when it passes the same
  *  checks a session create does. The phone never ships note bodies. */
 export interface ChatVaultFields {
-  vaultPack?: { cwd?: string; projectName?: string };
+  /** `packSize` is the app's Room for notes (Vault M7, CTO L13): it may
+   *  only lower the machine's `vault.packSize`, never raise it. */
+  vaultPack?: { cwd?: string; projectName?: string; packSize?: VaultPackSize };
   /** Memory off: no pack, no handoff read. */
   memory?: false;
 }

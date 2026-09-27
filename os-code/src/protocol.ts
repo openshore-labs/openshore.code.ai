@@ -157,6 +157,7 @@ export {
   readObsidianAppConfig,
   readTemplatesConfig,
   resolveVaultSettings,
+  retrievalSkipped,
   unionNarrowing,
   vaultContextOn,
   vaultHandoffOn,

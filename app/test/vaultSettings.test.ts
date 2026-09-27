@@ -306,7 +306,6 @@ describe('writeConfig on each provider (stream E)', () => {
 // shows "Use {yours}"; the cache and its invalidations; delete mode; the
 // starter is refused on a non-empty vault and writes ifAbsent.
 
-import { beforeEach, vi } from 'vitest';
 import {
   PACK_BY_CLASS,
   compileVaultPrivacy,

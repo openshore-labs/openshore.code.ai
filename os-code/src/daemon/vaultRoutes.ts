@@ -18,8 +18,7 @@ import { lstat, realpath } from 'node:fs/promises';
 import type { IncomingHttpHeaders } from 'node:http';
 import { join } from 'node:path';
 import { VAULT_FOLDER_MISSING } from '../config/load.js';
-import * as configFile from '../core/vault/configFile.js';
-import { readVaultConfigFile } from '../core/vault/configFile.js';
+import { readVaultConfigFile, writeVaultConfigFile } from '../core/vault/configFile.js';
 import { VAULT_CONFIG_MAX_BYTES } from '../harness/vault/configDir.js';
 import { parseVaultSettingsFile } from '../harness/vault/settings.js';
 import { createVaultContextSource } from '../core/vault/contextSource.js';
@@ -62,7 +61,9 @@ import {
 import type {
   ConfigWriteGuard,
   ConfigWriteResult,
+  ResolvedVaultSettings,
   VaultOverrides,
+  VaultPackSize,
   VaultPrivacy,
   VaultSettingsConfigName,
   VaultSettingsParse,
@@ -426,23 +427,13 @@ type ConfigWriter = (
   guard: ConfigWriteGuard,
 ) => Promise<ConfigWriteResult>;
 
-/** The engine's settings writer (`writeVaultConfigFile`, stream C's
- *  configFile.ts), looked up on the module so this file builds before it
- *  lands; until then a write throws "not built", like every wave 0 stub. */
-const engineConfigWriter: ConfigWriter = (root, name, text, guard) => {
-  const write = (configFile as unknown as { writeVaultConfigFile?: ConfigWriter })
-    .writeVaultConfigFile;
-  if (!write) throw new Error('not built: writeVaultConfigFile (Vault M7, stream C)');
-  return write(root, name, text, guard);
-};
-
 /** The two calls the settings write makes past this file: the engine's
  *  writer and stream A's parser. A seam so a test can wrap either. */
 export const vaultSettingsWriteSeam: {
   write: ConfigWriter;
   parse: (text: string) => VaultSettingsParse;
 } = {
-  write: engineConfigWriter,
+  write: writeVaultConfigFile,
   parse: parseVaultSettingsFile,
 };
 
@@ -754,6 +745,13 @@ export interface ChatPackOptions {
   caps: { contextTokens: number; supportsGrammar: boolean; nativeContextTokens?: number };
   /** `vault.context` from the machine's config. */
   setting: VaultContextSetting;
+  /** Room for notes in force (`vaultPackSize(machine, app)`, Vault M7, CTO
+   *  L13) and the machine's cap; unset is Normal under the default cap. */
+  packSize?: VaultPackSize;
+  packMaxTokens?: number;
+  /** The vault's resolved settings (templates folder, Obsidian's ignore
+   *  filters), left out of retrieval. */
+  settings?: () => Pick<ResolvedVaultSettings, 'templates' | 'ignore'> | undefined;
   signal?: AbortSignal;
   /** Test seam: the source a prepare runs on. */
   source?: VaultContextSource;
@@ -782,10 +780,16 @@ export async function buildChatPack(
       privacy: o.privacy,
       ...(o.currentState ? { currentState: o.currentState } : {}),
       lockdown: { egress: false, secrets: false },
+      ...(o.settings ? { settings: o.settings } : {}),
     });
   const prepared = await source.prepare(o.task, o.signal);
   if (!root) mode = 'current-state';
-  const budgetTokens = packBudgetTokens(profile, o.caps.contextTokens);
+  const budgetTokens = packBudgetTokens(
+    profile,
+    o.caps.contextTokens,
+    o.packSize ?? 'normal',
+    o.packMaxTokens,
+  );
   const pack = buildContextPack({
     mode,
     index: root ? prepared.index : null,

@@ -29,6 +29,7 @@ import {
   vaultSearchTool,
 } from '../tools/vaultFind.js';
 import { compileVaultPrivacy } from '../../harness/vault/privacy.js';
+import { unionNarrowing } from '../../harness/vault/settings.js';
 import type {
   ResolvedVaultSettings,
   VaultPrivacy,
@@ -220,7 +221,9 @@ export function vaultPrivacyHolder(
   const rootNow = (): string | undefined => (typeof root === 'string' ? root : root());
   return {
     visibility(note) {
-      compiled ??= compileVaultPrivacy(cfg, narrowing);
+      // The machine's rules, unioned with the file's (L4): union only, so
+      // no entry the machine or the defaults hold can be removed here.
+      compiled ??= compileVaultPrivacy(cfg, unionNarrowing(narrowing));
       return compiled.visibility(note);
     },
     settings: () => settings,

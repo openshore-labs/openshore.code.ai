@@ -40,7 +40,8 @@ import { configureStreamIdle } from '../../providers/streamIdle.js';
 import type { AgentEvent, PermissionMode } from './types.js';
 import type { CurrentsHandles, HarnessCurrentsHandle } from '../../currents/model.js';
 import type { VaultContextSource } from '../../harness/vaultContext.js';
-import type { VaultOverrides, VaultPackSize } from '../../harness/vault/types.js';
+import type { VaultOverrides } from '../../harness/vault/types.js';
+import { vaultContextOn, vaultHandoffOn, vaultPackSize } from '../../harness/vault/settings.js';
 import { HANDOFF_MAX_BYTES } from '../../harness/handoff.js';
 import { readHandoff, writeHandoff, type HandoffScope } from './handoffStore.js';
 import { logger } from '../../util/log.js';
@@ -153,8 +154,6 @@ export interface BootstrapOptions {
   vaultOverrides?: VaultOverrides;
 }
 
-const PACK_SIZE_RANK: Record<VaultPackSize, number> = { small: 0, normal: 1, large: 2 };
-
 /**
  * Fold the app's vault switches into this session's config (Vault M7, CTO
  * L13), the way `humanize` and `memory` fold, so the loop, the pack and the
@@ -172,13 +171,14 @@ export function applyVaultOverrides(
   if (!overrides) return config;
   const vault = config.vault;
   let next = vault;
-  if (overrides.context === 'off' && vault.context !== 'off') next = { ...next, context: 'off' };
-  if (overrides.handoff === 'off' && vault.handoff !== 'off') next = { ...next, handoff: 'off' };
-  const asked = overrides.packSize;
-  const machine = vault.packSize ?? 'normal';
-  if (asked !== undefined && Object.hasOwn(PACK_SIZE_RANK, asked)) {
-    if (PACK_SIZE_RANK[asked] < PACK_SIZE_RANK[machine]) next = { ...next, packSize: asked };
-  }
+  // The loaded config already holds the machine and project values, so the
+  // project slot is empty here: one rule, A's helpers, never a second copy.
+  if (!vaultContextOn(vault.context, undefined, overrides.context) && vault.context !== 'off')
+    next = { ...next, context: 'off' };
+  if (!vaultHandoffOn(vault.handoff, undefined, overrides.handoff) && vault.handoff !== 'off')
+    next = { ...next, handoff: 'off' };
+  const size = vaultPackSize(vault.packSize, overrides.packSize);
+  if (size !== (vault.packSize ?? 'normal')) next = { ...next, packSize: size };
   return next === vault ? config : { ...config, vault: next };
 }
 
@@ -328,7 +328,11 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
 
   // The switch's handoff (J12): refused whole when over the cap, so the model
   // never reads a summary cut off mid-sentence.
-  let handoff = options.handoff?.trim() ? options.handoff : undefined;
+  // Handoff off (the machine, the project, or the app's switch folded in
+  // above) means no handoff at all: the text the switch passed is dropped
+  // too, not only the stored one (Vault M7, CTO reconciliation 4).
+  let handoff =
+    options.handoff?.trim() && config.vault?.handoff !== 'off' ? options.handoff : undefined;
   if (handoff && Buffer.byteLength(handoff, 'utf8') > HANDOFF_MAX_BYTES) {
     warnings.push('The handoff from the last model was too long to carry, so it was left out.');
     handoff = undefined;
@@ -451,6 +455,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
       lockdown: { egress: egressLockdown, secrets: Boolean(projectSecrets?.trim()) },
       ...(options.vaultPins?.length ? { projectPins: options.vaultPins } : {}),
       ...(readStored ? { handoff: () => readHandoff(handoffScope())?.text } : {}),
+      settings: () => toolContext.vaultSettings?.(),
     });
 
   const agent = new AgentSession({

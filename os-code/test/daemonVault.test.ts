@@ -9,7 +9,6 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
-  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -63,14 +62,9 @@ import {
   parseVaultOverrides,
   vaultSettingsWriteSeam,
 } from '../src/daemon/vaultRoutes.js';
-import { readVaultConfigFile } from '../src/core/vault/configFile.js';
+import { writeVaultConfigFile } from '../src/core/vault/configFile.js';
+import { parseVaultSettingsFile } from '../src/harness/vault/settings.js';
 import { VAULT_CONFIG_MAX_BYTES } from '../src/harness/vault/configDir.js';
-import type {
-  ConfigWriteGuard,
-  ConfigWriteResult,
-  VaultSettingsConfigName,
-  VaultSettingsParse,
-} from '../src/harness/vault/types.js';
 import { TerminalManager, TerminalUnavailable } from '../src/daemon/terminal.js';
 import { defaultConfig } from '../src/config/load.js';
 import { mintCredential } from '../src/core/security/credentials.js';
@@ -735,64 +729,14 @@ describe('the daemon vault routes, on the caller own root', () => {
 
   // Vault M7 (CTO L7, L13): the settings file's one write, on the caller's
   // own root, guarded, capped, parsed, never through a link under .oscode.
-  // The writer (stream C) and the parser (stream A) may still be wave 0
-  // stubs in this tree; a stand-in answers only while they throw "not built".
+  // The real writer (`writeVaultConfigFile`) and parser, end to end: no
+  // stand-in (Vault M7 wave 2).
   describe('M7 settings write', () => {
     const vault = () => join(home, 'OSCode', 'Vault');
     const route = `${VAULT_CONFIG_ROUTE}/${VAULT_SETTINGS_CONFIG_NAME}`;
-    const saved = { ...vaultSettingsWriteSeam };
-    const orFake =
-      <A extends unknown[], R>(f: (...a: A) => R, fake: (...a: A) => R) =>
-      (...a: A): R => {
-        try {
-          return f(...a);
-        } catch (e) {
-          if (String(e).includes('not built')) return fake(...a);
-          throw e;
-        }
-      };
-    const fakeParse = (text: string): VaultSettingsParse => {
-      try {
-        const v: unknown = JSON.parse(text);
-        if (v && typeof v === 'object' && !Array.isArray(v)) return { file: v, setAside: [] };
-      } catch {}
-      return { unreadable: true };
-    };
-    const fakeWrite = async (
-      root: string,
-      name: VaultSettingsConfigName,
-      text: string,
-      guard: ConfigWriteGuard,
-    ): Promise<ConfigWriteResult> => {
-      const now = await readVaultConfigFile(root, name);
-      const current = now.ok ? { text: now.text, version: now.version } : undefined;
-      if ('ifAbsent' in guard && current) return { ok: false, conflict: 'exists', current };
-      if ('ifMatch' in guard && !current) return { ok: false, conflict: 'missing' };
-      if ('ifMatch' in guard && current && current.version !== guard.ifMatch) {
-        return { ok: false, conflict: 'changed', current };
-      }
-      mkdirSync(join(root, '.oscode'), { recursive: true });
-      const file = join(root, '.oscode', 'vault.json');
-      writeFileSync(`${file}.tmp`, text);
-      renameSync(`${file}.tmp`, file);
-      const after = await readVaultConfigFile(root, name);
-      if (!after.ok) throw new Error('the stand-in writer lost its file');
-      return { ok: true, version: after.version };
-    };
-
-    beforeEach(() => {
-      vaultSettingsWriteSeam.parse = orFake(saved.parse, fakeParse);
-      vaultSettingsWriteSeam.write = (...a) => {
-        try {
-          return saved.write(...a);
-        } catch (e) {
-          if (String(e).includes('not built')) return fakeWrite(...a);
-          throw e;
-        }
-      };
-    });
-    afterEach(() => {
-      Object.assign(vaultSettingsWriteSeam, saved);
+    it('writes through the engine writer and the core parser themselves', () => {
+      expect(vaultSettingsWriteSeam.write).toBe(writeVaultConfigFile);
+      expect(vaultSettingsWriteSeam.parse).toBe(parseVaultSettingsFile);
     });
 
     const putCfg = (body: unknown, token = admin, path = route) =>

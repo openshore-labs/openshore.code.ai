@@ -36,7 +36,6 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ConfigRead, ConfigWriteGuard, ConfigWriteResult } from 'os-code/protocol';
 import type { StorageProvider } from '../src/lib/gitos/providers.js';
 
 const h = vi.hoisted(() => ({
@@ -81,58 +80,27 @@ vi.mock('../src/lib/electronBridge.js', async () => {
     // wired only once stream B's function exists, as `(root, ...args)`.
     ...m6Bridge(fs as unknown as Record<string, unknown>),
     // Vault M3 and M7 (CTO H5, L7): main's config read, and its one config
-    // write (stream C's writeVaultConfigFile once built; until then a stand-in
-    // below with its contract, over the same real reader).
+    // write, the real writer through main's own handler code.
     ...(await configBridge()),
   };
   return { bridge: () => b };
 });
 
-/** osc:vaultReadConfig and osc:vaultWriteConfig over the temp folder. */
+/** osc:vaultReadConfig and osc:vaultWriteConfig over the temp folder, as
+ *  main answers them: its read, and its one write, `putVaultSettingsFile`
+ *  over the guard main parses, so the real engine writer (Vault M7, CTO L7)
+ *  runs end to end with no stand-in. */
 async function configBridge(): Promise<Record<string, unknown>> {
-  const cfg = (await import('os-code/dist/src/core/vault/configFile.js')) as unknown as Record<
-    string,
-    unknown
-  >;
-  const read = cfg.readVaultConfigFile as (root: string, name: unknown) => Promise<ConfigRead>;
-  const real = cfg.writeVaultConfigFile as
-    | ((root: string, name: unknown, text: string, guard: unknown) => Promise<ConfigWriteResult>)
-    | undefined;
-  const write =
-    typeof real === 'function'
-      ? (name: unknown, text: string, guard: unknown) => real(h.root, name, text, guard)
-      : (name: unknown, text: string, guard: unknown) =>
-          standInConfigWrite(read, name, text, guard as ConfigWriteGuard);
-  return { vaultReadConfig: (name: unknown) => read(h.root, name), vaultWriteConfig: write };
-}
-
-/** The writer's contract (L7) until stream C's lands in this tree: only
- *  `oscode/vault`, the guard checked against the real reader's version,
- *  `.oscode` made if missing, temp then rename so every write is a new
- *  version. */
-async function standInConfigWrite(
-  read: (root: string, name: unknown) => Promise<ConfigRead>,
-  name: unknown,
-  text: string,
-  guard: ConfigWriteGuard,
-): Promise<ConfigWriteResult> {
-  if (name !== 'oscode/vault') return { ok: false, reason: 'refused' };
-  const now = await read(h.root, name);
-  const current = now.ok ? { text: now.text, version: now.version } : undefined;
-  if ('ifAbsent' in guard) {
-    if (current) return { ok: false, conflict: 'exists', current };
-  } else if (!current) {
-    return { ok: false, conflict: 'missing' };
-  } else if (current.version !== guard.ifMatch) {
-    return { ok: false, conflict: 'changed', current };
-  }
-  const dir = join(h.root, '.oscode');
-  mkdirSync(dir, { recursive: true });
-  const tmp = join(dir, `.vault.json.${Math.random().toString(36).slice(2)}`);
-  writeFileSync(tmp, text);
-  renameSync(tmp, join(dir, 'vault.json'));
-  const after = await read(h.root, name);
-  return after.ok ? { ok: true, version: after.version } : { ok: false, reason: 'refused' };
+  const { readVaultConfigFile } = await import('os-code/dist/src/core/vault/configFile.js');
+  const { putVaultSettingsFile, parseConfigWriteGuard } = await import(
+    'os-code/dist/src/daemon/vaultRoutes.js'
+  );
+  return {
+    vaultReadConfig: (name: unknown) =>
+      readVaultConfigFile(h.root, name as Parameters<typeof readVaultConfigFile>[1]),
+    vaultWriteConfig: (name: unknown, text: string, guard: unknown) =>
+      putVaultSettingsFile(h.root, name, text, parseConfigWriteGuard(guard)),
+  };
 }
 
 /** The M6 bridge calls, routed to folderFs by the K13 names. A call whose

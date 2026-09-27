@@ -34,7 +34,12 @@ import { readFrontmatter } from '../../harness/vault/frontmatter.js';
 import { isNotePath } from '../../harness/vault/paths.js';
 import { oscodeMarks } from '../../harness/vault/privacy.js';
 import { scanNote } from '../../harness/vault/scan.js';
-import type { VaultPrivacy, VaultVisibility } from '../../harness/vault/types.js';
+import { retrievalSkipped } from '../../harness/vault/settings.js';
+import type {
+  ResolvedVaultSettings,
+  VaultPrivacy,
+  VaultVisibility,
+} from '../../harness/vault/types.js';
 import { readFile } from 'node:fs/promises';
 import { CURRENT_STATE_FILE, memoryFilePath, memorySegment } from '../agent/projectMemory.js';
 import { Jail } from '../security/jail.js';
@@ -73,6 +78,10 @@ export interface VaultContextSourceOptions {
    *  only; undefined or a throw means none. The caller gates it (the
    *  `vault.handoff` key, Memory, a fresh session). */
   handoff?: () => string | undefined | Promise<string | undefined>;
+  /** The vault's resolved settings as last refreshed (Vault M7, CTO L2):
+   *  the templates folder and Obsidian's ignore filters are left out of the
+   *  retrieval reads. Unset leaves every note a candidate. */
+  settings?: () => Pick<ResolvedVaultSettings, 'templates' | 'ignore'> | undefined;
   /** The cold budget in ms (default VAULT_PACK_COLD_MS). */
   coldMs?: number;
   /** Test seams. */
@@ -255,8 +264,17 @@ export function createVaultContextSource(options: VaultContextSourceOptions): Va
           lockdown: options.lockdown ?? { egress: false, secrets: false },
         }).read;
         // Belt and braces: a hidden note is never read, whatever the plan says.
+        // A template or an Obsidian-ignored note is no retrieval candidate
+        // (L2); unread, the render skips it.
+        let settings: Pick<ResolvedVaultSettings, 'templates' | 'ignore'> | undefined;
+        try {
+          settings = options.settings?.();
+        } catch {
+          settings = undefined;
+        }
         const reads = wanted.filter((path) => {
           if (bodies.has(path)) return false;
+          if (retrievalSkipped(path, settings)) return false;
           const e = index!.entry(path);
           return privacy.visibility({ path, tags: e?.tags, oscode: e?.oscode }) !== 'hidden';
         });

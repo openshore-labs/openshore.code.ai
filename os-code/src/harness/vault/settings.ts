@@ -16,6 +16,7 @@
 // Pure and import-free past the vault core (harnessPurity).
 
 import { VAULT_DAILY_DEFAULTS } from './dates.js';
+import { foldPath } from './paths.js';
 import type {
   ConfigRead,
   ResolvedVaultSettings,
@@ -333,6 +334,30 @@ export function obsidianIgnoreFilters(app: ObsidianAppConfig): VaultIgnoreFilter
     else if (raw.length <= VAULT_SETTINGS_STRING_MAX) paths.push(raw.replace(/\\/g, '/'));
   }
   return { paths, regexSkipped };
+}
+
+/** Whether a note is left out of retrieval (L2): anything under the
+ *  templates folder (a template is scaffolding, not a note on the task),
+ *  and anything Obsidian's plain ignore filters name, matched as a path
+ *  prefix the way Obsidian matches them. Not privacy: a pinned note the
+ *  person placed still rides, and no copy says models do not see these.
+ *  Folded (NFC, lowercase) for the compare only. */
+export function retrievalSkipped(
+  path: string,
+  settings: Pick<ResolvedVaultSettings, 'templates' | 'ignore'> | undefined,
+): boolean {
+  if (!settings) return false;
+  const p = foldPath(path.replace(/\\/g, '/'));
+  const under = (folder: string | undefined): boolean => {
+    const f = foldPath((folder ?? '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''));
+    return f !== '' && (p === f || p.startsWith(`${f}/`));
+  };
+  if (under(settings.templates.folder)) return true;
+  for (const raw of settings.ignore.paths) {
+    const f = foldPath(raw.replace(/^\/+/, ''));
+    if (f && p.startsWith(f)) return true;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
