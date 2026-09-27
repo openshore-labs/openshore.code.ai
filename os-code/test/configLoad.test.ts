@@ -12,15 +12,20 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   addProjectPermissionRule,
   globalConfigPath,
   loadConfig,
   loadDaemonConfig,
+  loadVaultDir,
   saveGlobalConfig,
 } from '../src/config/load.js';
+import { ConfigSchema } from '../src/config/schema.js';
+import { buildToolContext } from '../src/core/agent/registry.js';
+import type { Router } from '../src/router/router.js';
+import type { ProviderRegistry } from '../src/providers/registry.js';
 
 let home: string;
 
@@ -97,6 +102,62 @@ describe('daemon settings are machine config (DAE-9)', () => {
       process.env.OSC_HOME = prev;
       rmSync(home, { recursive: true, force: true });
     }
+  });
+});
+
+// The vault folder is machine config too: the vault tools read under it
+// without a prompt, so a repo's os-code.config.json must not move it (the same
+// threat DAE-9 closed for daemon.*), and every process resolves it through one
+// helper so the agent, the routines, and the desktop app share one folder.
+describe('the vault folder is machine config', () => {
+  it('ignores a project vault.dir with a warning, and resolves ~ under home', () => {
+    writeFileSync(join(home, 'config.json'), JSON.stringify({ vault: { dir: '~/Obsidian' } }));
+    const project = mkdtempSync(join(tmpdir(), 'oscproj-vault-'));
+    try {
+      writeFileSync(
+        join(project, 'os-code.config.json'),
+        JSON.stringify({ vault: { dir: '/' }, ui: { plain: true } }),
+      );
+      const loaded = loadConfig(project);
+      expect(loaded.config.vault.dir).toBe('~/Obsidian');
+      expect(loaded.config.ui.plain).toBe(true);
+      expect(loaded.warnings.join('\n')).toMatch(/vault settings are machine config/);
+      expect(loadVaultDir()).toEqual({ dir: join(homedir(), 'Obsidian') });
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("the agent's vault root comes from the machine config, never the config it is handed", () => {
+    writeFileSync(join(home, 'config.json'), JSON.stringify({ vault: { dir: '~/Obsidian' } }));
+    const cwd = mkdtempSync(join(tmpdir(), 'osc-vault-ctx-'));
+    try {
+      const router = { embeddingRole: () => undefined } as unknown as Router;
+      const providers = { imageProvider: () => undefined } as unknown as ProviderRegistry;
+      const config = ConfigSchema.parse({ vault: { dir: '/' } });
+      const ctx = buildToolContext({ cwd, config, router, providers });
+      expect(ctx.vaultRoot).toBe(join(homedir(), 'Obsidian'));
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('unset means ~/OSCode/Vault, and a relative path is refused, never resolved against a cwd', () => {
+    expect(loadVaultDir()).toEqual({ dir: join(homedir(), 'OSCode', 'Vault') });
+    writeFileSync(join(home, 'config.json'), JSON.stringify({ vault: { dir: 'Notes/Vault' } }));
+    const vault = loadVaultDir();
+    expect(vault.dir).toBe(join(homedir(), 'OSCode', 'Vault'));
+    expect(vault.warning).toMatch(/not an absolute path/);
+    // doctor and the session warnings carry it.
+    expect(loadConfig(home).warnings.join('\n')).toMatch(
+      /vault\.dir "Notes\/Vault" is not an absolute path/,
+    );
+  });
+
+  it('keeps an absolute path, tidied', () => {
+    const abs = join(home, 'Vault', '..', 'Notes');
+    writeFileSync(join(home, 'config.json'), JSON.stringify({ vault: { dir: abs } }));
+    expect(loadVaultDir()).toEqual({ dir: join(home, 'Notes') });
   });
 });
 

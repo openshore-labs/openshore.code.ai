@@ -1,8 +1,9 @@
 // osc doctor: the whole rig on one page. Every line is a link in the chain
 // with a state, a plain sentence, and, when broken, the ONE action that
 // fixes it, runnable as printed.
+import { existsSync } from 'node:fs';
 import { banner, t } from '../brand/theme.js';
-import { loadConfig } from '../config/load.js';
+import { loadConfig, loadVaultDir } from '../config/load.js';
 import { ProviderRegistry } from '../providers/registry.js';
 import { getAnthropicKey } from '../auth/claude.js';
 import { isGithubConnected } from '../auth/github.js';
@@ -142,6 +143,13 @@ export async function doctorCommand(): Promise<void> {
     skipLine(
       'No license on this machine. Everything local works; the curated feed and updates come with one (openshore.ai).',
     );
+
+  // Vault. The folder every surface resolves to (machine config only), so a
+  // person can check where the agent's notes land. An unusable vault.dir is
+  // named under Config above.
+  header('Vault');
+  const vault = loadVaultDir();
+  okLine(`The agent's vault: ${vault.dir}${existsSync(vault.dir) ? '' : ' (not created yet)'}.`);
 
   // Sessions.
   const sessions = listSessions();

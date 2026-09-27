@@ -163,10 +163,10 @@ export class PermissionEngine {
 
     // Narrow, built-in exception (founder ruling): the coding agent keeps each
     // project's five memory notes current, and those writes land silently but
-    // visibly. Only this dedicated tool, and only a managed memory file under
-    // Projects/<project>/, is auto-allowed here; every general vault write stays
-    // always-ask above. The write tool is itself hard-scoped to those five
-    // files, so this is defense in depth, not the only guard.
+    // visibly. Only this dedicated tool, and only a managed memory file in the
+    // repo's "OpenShore Project <name> MDs/", is auto-allowed here; every general
+    // vault write stays always-ask above. The write tool is itself hard-scoped
+    // to those five files, so this is defense in depth, not the only guard.
     if (q.toolName === PROJECT_MEMORY_WRITE_TOOL && path !== undefined && isMemoryFilePath(path)) {
       return { decision: 'allow', reason: 'project memory note, kept current by the agent' };
     }

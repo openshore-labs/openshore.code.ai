@@ -4,7 +4,7 @@
 // under-specified request body must fail loudly rather than resolve as a silent
 // empty object (P2-7). These start a real loopback daemon and drive it over
 // HTTP, the way a paired phone would.
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   existsSync,
   mkdirSync,
@@ -45,6 +45,28 @@ function noPtyTerminals(): TerminalManager {
 }
 import { defaultConfig } from '../src/config/load.js';
 import { mintCredential } from '../src/core/security/credentials.js';
+
+// Every session the daemon boots, with the tools it registered and its vault
+// root, so a test can check what a member's agent was handed. The real
+// bootstrap runs untouched; this only records its result.
+const booted = vi.hoisted(
+  () => [] as Array<{ id: string; tools: string[]; vaultRoot: string | undefined }>,
+);
+vi.mock('../src/core/agent/bootstrap.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../src/core/agent/bootstrap.js')>();
+  return {
+    ...real,
+    bootstrapSession: (options: Parameters<typeof real.bootstrapSession>[0]) => {
+      const result = real.bootstrapSession(options);
+      booted.push({
+        id: result.driver.id,
+        tools: result.tools.specs().map((spec) => spec.name),
+        vaultRoot: result.toolContext.vaultRoot,
+      });
+      return result;
+    },
+  };
+});
 
 let home: string;
 let daemon: RunningDaemon;
@@ -190,6 +212,67 @@ describe('daemon RBAC (D1)', () => {
 // The workspace predicates resolve BOTH sides through realpath, so a symlink
 // planted inside ~/OSCode that points outside it cannot pass as provisioned
 // (the P0-1 escape). HOME is pointed at the scratch dir so ~/OSCode is ours.
+// Interim isolation on a shared hub: the vault is the machine owner's one
+// folder, so a member's agent gets no vault tool at all until each member has
+// a root of their own. The owner's sessions keep theirs.
+describe('a member session gets no vault tools on a shared hub', () => {
+  const realHome = process.env.HOME;
+  afterEach(() => {
+    process.env.HOME = realHome;
+  });
+  const VAULT_TOOLS = ['vaultRead', 'vaultList', 'vaultWrite'];
+  const bootOf = (id: string) => booted.filter((b) => b.id === id).at(-1)!;
+
+  it("a member's tool list has no vault tool, and the owner's is unchanged", async () => {
+    process.env.HOME = home;
+    const provisioned = join(home, 'OSCode', 'repo');
+    mkdirSync(provisioned, { recursive: true });
+    const ownerRes = await createSessionAs(adminToken, provisioned);
+    expect(ownerRes.status).toBe(201);
+    const { id: ownerId } = (await ownerRes.json()) as { id: string };
+    const member = mintCredential({ role: 'member', label: 'Phone', userId: 'u_vault' });
+    const memberRes = await createSessionAs(member.token, provisioned);
+    expect(memberRes.status).toBe(201);
+    const { id: memberId } = (await memberRes.json()) as { id: string };
+
+    const owner = bootOf(ownerId);
+    expect(owner.tools).toEqual(expect.arrayContaining(VAULT_TOOLS));
+    expect(owner.vaultRoot).toBe(join(home, 'OSCode', 'Vault'));
+    const mine = bootOf(memberId);
+    expect(mine.tools.filter((name) => name.startsWith('vault'))).toEqual([]);
+    expect(mine.vaultRoot).toBeUndefined();
+    // Nothing else moves: the member keeps every other tool the owner has.
+    expect(mine.tools).toEqual(owner.tools.filter((name) => !VAULT_TOOLS.includes(name)));
+  });
+
+  it('stays off when an admin reopens the member session after a restart', async () => {
+    process.env.HOME = home;
+    const provisioned = join(home, 'OSCode', 'repo');
+    mkdirSync(provisioned, { recursive: true });
+    const member = mintCredential({ role: 'member', label: 'Phone', userId: 'u_vault2' });
+    const { id: memberId } = (await (await createSessionAs(member.token, provisioned)).json()) as {
+      id: string;
+    };
+    const { id: ownerId } = (await (await createSessionAs(adminToken, provisioned)).json()) as {
+      id: string;
+    };
+
+    // A restart drops every live driver; the next touch rehydrates from disk.
+    daemon.close();
+    daemon = await startOnFreePort();
+    base = `http://127.0.0.1:${daemon.port}`;
+    for (const id of [memberId, ownerId]) {
+      const res = await fetch(`${base}/sessions/${id}/files?q=`, { headers: auth(adminToken) });
+      expect(res.status).toBe(200);
+    }
+    // Booted twice: at create, then the rehydrate the admin's touch caused.
+    expect(booted.filter((b) => b.id === memberId)).toHaveLength(2);
+    expect(bootOf(memberId).tools.filter((name) => name.startsWith('vault'))).toEqual([]);
+    expect(bootOf(memberId).vaultRoot).toBeUndefined();
+    expect(bootOf(ownerId).tools).toEqual(expect.arrayContaining(VAULT_TOOLS));
+  });
+});
+
 describe('workspace predicates follow symlinks (P0-1 prep)', () => {
   const realHome = process.env.HOME;
   afterEach(() => {

@@ -32,7 +32,7 @@ import {
   parseCurrentsHandles,
   parseHarnessCurrentsHandle,
 } from 'os-code/dist/src/currents/model.js';
-import { loadConfig } from 'os-code/dist/src/config/load.js';
+import { loadVaultDir } from 'os-code/dist/src/config/load.js';
 import { lookup } from 'node:dns/promises';
 import type { LookupAddress, LookupOptions } from 'node:dns';
 import { request as httpsRequest } from 'node:https';
@@ -914,15 +914,13 @@ guarded('osc:ollamaInstall', async () => {
 guarded('osc:hardware', () => host.hardware());
 
 // On-disk vault: the SAME markdown folder the agent's daemon tools write
-// (~/OSCode/Vault, or config vault.dir), so the app's Vault and the agent share
-// one folder. Every note path is jailed to that directory (symlink-safe), so a
-// path from the renderer can never touch a file outside the vault.
+// (~/OSCode/Vault, or the machine config's vault.dir), resolved through the
+// engine's one helper, so the app's Vault, the agent, and the routines share
+// one folder whatever each process's working directory. Every note path is
+// jailed to that directory (symlink-safe), so a path from the renderer can
+// never touch a file outside the vault.
 function vaultDir(): string {
-  try {
-    return loadConfig().config.vault?.dir ?? join(homedir(), 'OSCode', 'Vault');
-  } catch {
-    return join(homedir(), 'OSCode', 'Vault');
-  }
+  return loadVaultDir().dir;
 }
 function vaultJail(): Jail {
   const dir = vaultDir();
