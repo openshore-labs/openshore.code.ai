@@ -2323,3 +2323,16 @@ execution contract. Newest at the bottom.
   place. Main's `listVaultFolder` is an async walk (same order, same limit,
   8 lstats at a time per folder) and lists only paths the note rule accepts,
   so on Windows a name NTFS cannot open never lists.
+- **Vault M3 wave 2, the store and the Vault screen (2026-09-27):** H1 to H6
+  are done on this branch; the store gained call sites only. The index is fed
+  only for the vault on screen (a move's writes to another vault never touch
+  it). A watcher hint that names paths goes to `host.watched`; a tree change
+  reaches the index through the relist it already scheduled, so one change
+  never runs two reconciles. A save whose CRLF-restored text equals the open
+  note's text, with no save for it in flight and no standing save error,
+  writes nothing, so opening and leaving an all-CRLF note never rewrites it.
+  Linked mentions read excerpts through a new `vaultReadBody` (the body
+  cache) and say when more than 50 notes link in. A folder pick does not
+  close the index yet: `afterVaultPick` is the held native branch's ground,
+  and until it closes the index there, the next list's reconcile drops and
+  re-reads what the new folder does not share.

@@ -667,9 +667,11 @@ this release, backlinks are fast, links resolve the way Obsidian resolves
 them, code blocks stay intact, and properties render.
 
 **3.0 A purity guard (S).** A new `os-code/test/harnessPurity.test.ts` fails on
-any Node built-in import under `os-code/src/harness/`. Tenet 5 says the core
-stays Node-free "by test", and no test enforces it today. Test: the guard,
-green on the current tree.
+any Node built-in import reached from `os-code/src/harness/` or
+`os-code/src/protocol.ts`. Tenet 5 says the core stays Node-free "by test",
+and no test enforced it. `runVerify` moved out to `core/agent/verifyRun.ts`
+first, since `harness/verify.ts` imported `node:child_process` (CTO 3.0).
+Test: the guard, with a negative self-test.
 
 **3.1 The shared vault core (L).** A new Node-free `os-code/src/harness/vault/`
 exported through `os-code/protocol`, which `app/src/lib/vault.ts`, the engine
@@ -688,14 +690,22 @@ unresolved when only `Archive/Plan.md` exists; `[[ -f x ]]` in a code fence
 is neither a link nor a backlink.
 
 **3.2 A persisted, incremental index (L).** Per vault root, stored outside the
-vault: per note the path, title, aliases, tags, headings, links and their
+vault and outside the sealed store, which cannot hold a multi-MB blob (CTO
+H3): a file main owns under `oscHome()/vault-index/` for the desktop folder,
+a device-key-sealed file in the iPhone's Caches for every iPhone vault, and
+memory only for the other desktop providers. Per note the path, title, aliases, tags, headings, links and their
 resolutions, frontmatter keys, `updatedAt`, size, and a token estimate, plus a
 reverse-link map and BM25 term statistics. Updated from write results and
-watcher events, reconciled by mtime and size on open, with cold reads in
+watcher events, reconciled by `versionOf` alone on open (never mtime or
+size), with cold reads in
 bounded parallel and an async Electron walk. A first build on a large
 existing vault shows progress and never blocks the editor. Closes [data-18]
 [data-11] [ui-17] [truth-8] [orgvault-11]. Where:
-`os-code/src/harness/vault/index.ts`, `store.ts:6154-6187`, `VaultScreen.tsx:184`,
+`os-code/src/harness/vault/index.ts`, `app/src/lib/vaultIndexHost.ts`, call
+sites only in `store.ts` (every write and remove through `patchVaultFiles`,
+list results, the recheck and watcher paths, an opened note, and the team
+index dropped at sign-out), Linked mentions in `VaultScreen.tsx` (the
+on-request gate for large vaults is gone; `vaultReadAll` stays for export),
 `main.ts:933`. Test: a new `app/test/vaultIndex.test.ts`, 5,000 notes give warm
 backlinks under 100 ms; updating one note touches one entry; opening a note
 triggers no whole-vault read; a first build over 5,000 notes reports progress
@@ -704,19 +714,23 @@ and finishes within a recorded budget on the reference box.
 **3.3 The renderer runs on the core (M).** Wikilinks are handled on text
 nodes only; relative `.md` links navigate; frontmatter renders as a quiet,
 collapsible Properties strip (hidden when empty) and its bytes round-trip
-unchanged; excerpts skip frontmatter. Closes [ui-6] [obs-18] [ui-23] [obs-13]
-[ui-7] [obs-8] [custom-13] [truth-12]. Where: `VaultMarkdown.tsx:29-60`,
-`app/package.json` (remark-frontmatter). Test: `vaultMarkdown.test.tsx`, YAML
-is not an H2, the edit round trip is byte-equal, a code fence renders
-verbatim.
+unchanged; excerpts skip frontmatter. There is no `remark-frontmatter`
+(CTO H2): the renderer shows `text.slice(fm.end)` from the core's own
+frontmatter reader, so the two never disagree on where frontmatter ends, and
+the save path puts CRLF back on an all-CRLF note the textarea folded to LF
+(`restoreEol`). Closes [ui-6] [obs-18] [ui-23] [obs-13] [ui-7] [obs-8]
+[custom-13] [truth-12]. Where: `VaultMarkdown.tsx`, `VaultProperties.tsx`,
+`lib/remarkWikilinks.ts`. Test: `vaultMarkdown.test.tsx`, YAML is not an H2,
+the edit round trip is byte-equal, a code fence renders verbatim; and
+`vaultStore.test.ts`, an untouched CRLF note writes nothing.
 
 **3.4 Reading config files (S).** A jailed, read-only `readConfig(name)` on
 the seam for a short allow-list (`.obsidian/app.json`,
 `.obsidian/daily-notes.json`, `.obsidian/templates.json`, `.oscode/vault.json`),
 since the note filter in 0.6 and the `.md` rule in the normalizer keep these
 out of the note path. `.obsidian/` maps to the vault's detected config folder
-(Obsidian allows a per-device override, found by 2.10a). Needed by 6.4 and 7.1. Test: `providerContract.test.ts`,
-each provider reads an allowed file and refuses any other.
+(Obsidian allows a per-device override, found by 2.10a). Needed by 6.4 and 7.1. Test: `providerConfigContract.test.ts`
+(CTO H5), each provider reads an allowed file and refuses any other.
 
 ### M4. Context layer I: the engine and the floor
 
