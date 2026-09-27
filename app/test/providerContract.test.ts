@@ -15,6 +15,11 @@
 // and ignore it until their M2 stream lands; they are held to the result
 // shape here and must not claim compareAndSwap.
 //
+// Your computer (Vault M5, CTO J9) is enrolled too, through its real provider
+// against a fake of the daemon's /vault routes (test/support/fakeHubDaemon.ts),
+// where another writer is a note replaced on the computer with a fresh
+// version.
+//
 // Remove joined the contract in Vault M2 wave 0 (CTO G7): it answers with a
 // RemoveResult, a stale ifMatch is 'changed' and leaves the file, and a file
 // already gone is ok.
@@ -69,6 +74,16 @@ vi.mock('../src/lib/electronBridge.js', async () => {
 const { deviceFolderProvider } = await import('../src/lib/gitos/deviceFolder.js');
 const { localProvider } = await import('../src/lib/gitos/local.js');
 const { icloudProvider } = await import('../src/lib/gitos/icloud.js');
+const { createHubProvider } = await import('../src/lib/gitos/hub.js');
+const { fakeHubDaemon } = await import('./support/fakeHubDaemon.js');
+
+const hub = fakeHubDaemon();
+const hubProvider = createHubProvider({
+  baseUrl: 'http://mac.tail1234.ts.net:4816',
+  token: async () => hub.token,
+  hubUserId: 'owner',
+  fetch: hub.fetch,
+});
 
 /** Providers that enforce the guard, and how to reach their bytes directly. */
 const enforcing: Array<{
@@ -108,6 +123,13 @@ const enforcing: Array<{
       ),
     remove: (p) => h.store.delete(`oscode.gitos.file.${R}.${p}`),
   },
+  {
+    name: 'Your computer (the hub)',
+    provider: hubProvider,
+    bytes: (p) => hub.bytes(p),
+    replace: (p, t) => hub.replace(p, t),
+    remove: (p) => hub.remove(p),
+  },
 ];
 
 beforeAll(() => {
@@ -119,6 +141,7 @@ afterAll(() => {
 beforeEach(() => {
   for (const name of readdirSync(h.root)) rmSync(join(h.root, name), { recursive: true });
   h.store.clear();
+  hub.notes.clear();
 });
 
 const R = 'vault.personal';

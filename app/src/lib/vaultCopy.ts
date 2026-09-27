@@ -27,7 +27,7 @@ import { noteTitle } from './vault.js';
 
 /** The storage a vault can live on, as far as copy is concerned. `org` is the
  *  team vault. Dropbox and Proton are not wired, so they have no lines. */
-export type VaultCopyProvider = 'local' | 'files' | 'icloud' | 'gdrive' | 'org';
+export type VaultCopyProvider = 'local' | 'files' | 'icloud' | 'gdrive' | 'org' | 'hub';
 
 export const VAULT_COPY_PLATFORMS: readonly Platform[] = ['ios', 'electron', 'web'];
 export const VAULT_COPY_PROVIDERS: readonly VaultCopyProvider[] = [
@@ -36,6 +36,7 @@ export const VAULT_COPY_PROVIDERS: readonly VaultCopyProvider[] = [
   'icloud',
   'gdrive',
   'org',
+  'hub',
 ];
 
 export interface VaultCopy {
@@ -64,6 +65,9 @@ export interface VaultCopyOpts {
   /** This device is paired to a computer. Off the desktop, only then is
    *  there an agent whose vault the copy can point at. */
   paired?: boolean;
+  /** The paired computer's friendly name (`DaemonTarget.name`), for a
+   *  member's one line about a hub vault (Vault M5, CTO J8). */
+  hubName?: string;
 }
 
 /** A paired phone's line about the agent: its vault is the computer's folder. */
@@ -84,6 +88,7 @@ const STORAGE: Record<VaultCopyProvider, string> = {
   gdrive:
     'Your Google Drive. Held back for now while its sync is made safe, and files added outside OpenShore may not show up here.',
   org: 'Shared with your team and saved to your organization. It is not an Obsidian folder.',
+  hub: 'Your computer, while it is on. Plain .md files in the vault folder there.',
 };
 
 const OBSIDIAN: Partial<Record<VaultCopyProvider, string>> = {
@@ -107,6 +112,7 @@ export function vaultCopy(
   if (obsidian) copy.obsidian = obsidian;
   // The team vault is not in any agent's context yet, on any platform.
   if (provider === 'org') return copy;
+  if (provider === 'hub') return hubCopy(copy, desktop, opts);
   if (desktop && provider === 'files') {
     copy.agent = 'Your agent can read these notes and write here too, asking first.';
     copy.routines = 'Routines leave their notes here.';
@@ -122,12 +128,75 @@ export function vaultCopy(
   return copy;
 }
 
+// "Your computer" (Vault M5, CTO J8, J9): the paired computer's one vault,
+// reached over the hub. For the person who owns the computer it IS the
+// agent's folder, so the agent and routine lines hold there. A member on
+// someone else's computer gets one line naming whose computer holds their
+// notes and nothing more: a member's own approved shell can still read other
+// roots, so no line says who else can or cannot see them (0.13). The desktop
+// keeps its vault as This folder, so a hub vault there says only where it is.
+function hubCopy(copy: VaultCopy, desktop: boolean, opts: VaultCopyOpts): VaultCopy {
+  if (opts.hubMember) {
+    return { storage: `Your notes on ${opts.hubName?.trim() || 'the computer you paired'}.` };
+  }
+  if (desktop) return copy;
+  if (opts.paired) {
+    copy.agent = HUB_AGENT_LINE;
+    copy.routines = 'Routines leave their notes here.';
+  } else {
+    copy.agentPair = PHONE_PAIR_LINE;
+  }
+  return copy;
+}
+
+/** A paired phone's agent line for a vault on its own computer: the same
+ *  sentence This folder says on the desktop, since it is the same folder. */
+export const HUB_AGENT_LINE = 'Your agent can read these notes and write here too, asking first.';
+
+// ---- Your computer, out of reach (Vault M5, CTO J9) -------------------------
+
+/** The line while the paired computer does not answer: the list is the last
+ *  one seen, and an open note's changes wait with the version they were typed
+ *  against. */
+export const HUB_AWAY_LINE = 'Your computer is off. Changes wait here and save when it is back.';
+/** A create, rename, move, or delete tried while the computer is away. */
+export const HUB_AWAY_READ_ONLY =
+  'Your computer is off, so new notes, renames, and deletes wait until it is back.';
+/** A note that was never opened on this device, asked for while away. */
+export const HUB_AWAY_NOT_KEPT =
+  'Your computer is off, and this note was not kept on this device. Open it again when your computer is back.';
+/** The roster row's pending line, on a device with no computer paired. */
+export const HUB_PAIR_LINE = 'Pair with your computer to keep one vault there.';
+/** The computer answered but turned this device's pairing down. */
+export const HUB_PAIRING_REFUSED =
+  'Your computer turned down this device. Pair again from OpenShore on your computer.';
+/** A computer running an OpenShore from before the hub vault. */
+export const HUB_UPDATE_LINE =
+  'Your computer needs the latest OpenShore to keep your vault there. Update it, then try again.';
+/** A note over the wire's cap. */
+export function hubTooLargeLine(bytes: number): string {
+  const mb = (bytes / (1024 * 1024)).toFixed(1);
+  return `A note on your computer is limited to 4 MB, and this one is ${mb} MB.`;
+}
+/** The one toast when an empty Local vault moves to the paired computer on
+ *  pairing (D2). */
+export const HUB_REPOINT_TOAST = 'Your vault now lives on your computer, while it is on.';
+/** The move card's line when a Local vault with notes could move there. */
+export function hubMoveOffer(n: number): string {
+  return n === 1
+    ? 'Keep your note on your computer, with your agent? It saves there while your computer is on.'
+    : `Keep your ${n.toLocaleString()} notes on your computer, with your agent? They save there while your computer is on.`;
+}
+
 /** Whether the storage sheet offers a provider on this platform at all. This
  *  folder exists only in OpenShore on a computer and iCloud Drive only on the
  *  iPhone, so neither shows as "Arriving" where it never arrives. */
 export function vaultOffersProvider(platform: Platform, provider: string): boolean {
   if (provider === 'files') return platform === 'electron';
   if (provider === 'icloud') return platform === 'ios';
+  // Your computer is reached from the phone; on the desktop the same folder
+  // is This folder.
+  if (provider === 'hub') return platform !== 'electron';
   return provider === 'local' || provider === 'gdrive';
 }
 

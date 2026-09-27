@@ -120,6 +120,34 @@ export async function vaultIndexKey(target: VaultIndexTarget, rootKey?: string):
 }
 
 // ---------------------------------------------------------------------------
+// The seed hook (Vault M5, CTO J9)
+
+/** A head start for a vault this device has never indexed: the hub's copy of
+ *  the engine's own saved index (`GET /vault/index`). Null or a rejection is
+ *  a cold build, never an error. */
+export type VaultIndexSeed = (target: VaultIndexTarget) => Promise<string | null> | null;
+
+const seeds = new Map<StorageProviderId, VaultIndexSeed>();
+
+/** Register (or, with undefined, clear) the seed for one storage. The hub
+ *  provider registers itself (lib/gitos/hub.ts). */
+export function registerVaultIndexSeed(
+  providerId: StorageProviderId,
+  seed: VaultIndexSeed | undefined,
+): void {
+  if (seed) seeds.set(providerId, seed);
+  else seeds.delete(providerId);
+}
+
+async function seedFor(target: VaultIndexTarget): Promise<string | null> {
+  try {
+    return (await seeds.get(target.providerId)?.(target)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Persistence
 
 /** Where an index is kept between launches. */
@@ -435,7 +463,8 @@ export class VaultIndexHost {
     this.opening ??= (async () => {
       try {
         const store = await this.store();
-        const json = await store.load();
+        // Nothing kept here yet: the storage's own head start, if it has one.
+        const json = (await store.load()) ?? (await seedFor(this.target));
         if (json === null || this.closed) return;
         const loaded = loadIndex(json, VAULT_INDEX_CORE, { maxNotes: this.opts.maxNotes });
         // A write that landed while the file loaded wins over the file.
@@ -685,6 +714,19 @@ export class VaultIndexHost {
     }, INDEX_SAVE_DEBOUNCE_MS);
   }
 
+  /** Write a pending save now, and keep the index open: leaving the Vault
+   *  room keeps the personal index warm for the chats (Vault M5, CTO J1). */
+  async flush(): Promise<void> {
+    if (this.closed || this.saveTimer === undefined) return;
+    clearTimeout(this.saveTimer);
+    this.saveTimer = undefined;
+    await this.save();
+  }
+
+  get isClosed(): boolean {
+    return this.closed;
+  }
+
   /** Stop: any pass in flight stops at its next step. A pending save is
    *  written first, so a switch never loses the last write. */
   async close(): Promise<void> {
@@ -797,9 +839,20 @@ export class VaultIndexHost {
 }
 
 // ---------------------------------------------------------------------------
-// The one index on screen
+// The one index on screen, and the personal one kept warm
+//
+// The Vault room asks for the index of the vault on screen (vaultIndexFor)
+// and closes it when it is left (closeVaultIndex). Chats read the personal
+// vault's index for their context pack (Vault M5, CTO J1), so leaving the room
+// must not leave them a cold one: closing the PERSONAL index parks it, its
+// last write saved, and the next vaultIndexFor for the same target (the room
+// again, or the pack) takes it back warm. The team vault is never in a
+// chat's context (D15) and belongs to one account, so it closes for real.
+// A storage move, a sign-out, or a pairing change closes everything
+// (shutVaultIndex, or vaultIndexFor with another target).
 
 let current: VaultIndexHost | undefined;
+let parked: VaultIndexHost | undefined;
 
 function sameTarget(a: VaultIndexTarget, rootA: string, b: VaultIndexTarget): boolean {
   return (
@@ -810,16 +863,31 @@ function sameTarget(a: VaultIndexTarget, rootA: string, b: VaultIndexTarget): bo
   );
 }
 
+/** Whether an index may stay open while no room shows it: every vault but
+ *  the team vault. */
+function keepsWarm(target: VaultIndexTarget): boolean {
+  return target.providerId !== 'org';
+}
+
 /** The index for the vault on screen, opened on first use. A different
  *  target closes the old one (its last write saved) and opens the new one,
- *  whose saved index loads as a head start. */
+ *  whose saved index loads as a head start. The personal index parked by a
+ *  room that was left comes back warm. */
 export function vaultIndexFor(
   target: VaultIndexTarget,
   reader: VaultIndexReader,
   opts?: VaultIndexHostOptions,
 ): VaultIndexHost {
   if (current && sameTarget(current.target, current.rootKey, target)) return current;
+  if (parked && !parked.isClosed && sameTarget(parked.target, parked.rootKey, target)) {
+    void current?.close();
+    current = parked;
+    parked = undefined;
+    return current;
+  }
   void current?.close();
+  void parked?.close();
+  parked = undefined;
   current = new VaultIndexHost(target, reader, opts);
   void current.open();
   return current;
@@ -830,23 +898,50 @@ export function currentVaultIndex(): VaultIndexHost | undefined {
   return current;
 }
 
-/** Close the index on screen (the Vault left, or its storage moved). */
+/** The personal index, on screen or kept warm since the room was left: what
+ *  a chat's pack reads. Never the team vault's. */
+export function warmVaultIndex(): VaultIndexHost | undefined {
+  const host = current ?? parked;
+  return host && !host.isClosed && keepsWarm(host.target) ? host : undefined;
+}
+
+/** The Vault room was left. The personal index stays warm for the chats
+ *  (its last write saved now); the team index closes. */
 export async function closeVaultIndex(): Promise<void> {
   const host = current;
   current = undefined;
-  await host?.close();
+  if (host && keepsWarm(host.target) && !host.isClosed) {
+    if (parked && parked !== host) void parked.close();
+    parked = host;
+    await host.flush();
+  } else {
+    await host?.close();
+  }
+  publish(IDLE);
+}
+
+/** Close every index, the warm one too: a storage move, a sign-out, or a
+ *  pairing change (Vault M5, CTO J1). */
+export async function shutVaultIndex(): Promise<void> {
+  const hosts = [current, parked];
+  current = undefined;
+  parked = undefined;
+  for (const host of hosts) await host?.close();
   publish(IDLE);
 }
 
 /** Forget a vault's index here and where it was kept: the team index on
  *  sign-out, wherever team drafts are forgotten. */
 export async function dropVaultIndex(target: VaultIndexTarget): Promise<void> {
-  if (current && sameTarget(current.target, current.rootKey, target)) {
-    const host = current;
-    current = undefined;
-    await host.drop();
-    publish(IDLE);
-    return;
+  for (const which of ['current', 'parked'] as const) {
+    const host = which === 'current' ? current : parked;
+    if (host && sameTarget(host.target, host.rootKey, target)) {
+      if (which === 'current') current = undefined;
+      else parked = undefined;
+      await host.drop();
+      publish(IDLE);
+      return;
+    }
   }
   try {
     const key = await vaultIndexKey(target);
