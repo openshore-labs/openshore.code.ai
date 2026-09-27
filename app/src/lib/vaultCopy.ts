@@ -655,6 +655,34 @@ export function vaultSaveChip(
  *  what to do to save again. */
 export const VAULT_TEAM_SIGN_IN_LINE = 'Sign in again to save to your team.';
 
+// ---- The lease (2.5) ----------------------------------------------------------
+// Advisory on a storage with compare-and-swap: one quiet line, never read-only.
+// Enforced only on a storage without it, and honest that the storage itself
+// does not stop two devices: OpenShore does, by keeping this one read-only.
+
+/** The quiet line while another of the person's devices is editing too. */
+export function vaultLeaseAlsoOpen(label: string | undefined): string {
+  return label ? `Also open on your ${label}.` : 'Also open on another of your devices.';
+}
+
+/** The enforced lease's standing line, its button, and its toasts. */
+export function vaultLeaseEnforced(label: string | undefined): {
+  line: string;
+  takeOver: string;
+  tookOver: string;
+  refused: string;
+  displaced: string;
+} {
+  const other = label ? `your ${label}` : 'another of your devices';
+  return {
+    line: `Being edited on ${other}. This storage cannot stop two devices saving over each other, so this one stays read-only until the other stops.`,
+    takeOver: 'Take over editing',
+    tookOver: 'Editing here now. The other device stops saving within a minute.',
+    refused: `Nothing changed, because ${other} is editing this vault. Take over editing to write here.`,
+    displaced: `Editing moved to ${other}. What you typed here is kept on this device, and it never replaces a newer version.`,
+  };
+}
+
 /** The badge a conflict copy (lib/vault.ts isConflictCopy) wears in the tree. */
 export const VAULT_CONFLICT_BADGE = 'Conflict';
 /** What the badge means, for a screen reader. */

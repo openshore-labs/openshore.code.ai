@@ -52,6 +52,8 @@ import {
   VAULT_UPDATED_SUFFIX,
   VAULT_TEAM_SIGN_IN_LINE,
   VAULT_CONFLICT_BADGE,
+  vaultLeaseAlsoOpen,
+  vaultLeaseEnforced,
   VAULT_CONFLICT_BADGE_LABEL,
   copyProviderOf,
   vaultCloudLine,
@@ -154,9 +156,11 @@ export function VaultScreen() {
     vaultTargetRef,
     vaultReadOnly,
     vaultDiscardHeld,
-    vaultAcquireLease,
     vaultReleaseLease,
+    vaultLeaseTouch,
+    vaultTakeOverLease,
     vaultLeaseHeldByOther,
+    vaultLeaseOther,
     connectGdriveAccount,
     disconnectGdriveAccount,
     authSession,
@@ -236,8 +240,29 @@ export function VaultScreen() {
     if (note) setCurrentNote(note);
     else showToast('That note could not be read right now.');
   };
-  // Another device holds the vault's write lease: show the note read-only.
+  // Another device holds the enforced lease (a storage without
+  // compare-and-swap): the room writes nothing and says why, with Take over
+  // editing (2.5). On a storage with compare-and-swap the lease is only the
+  // quiet "Also open on your iPad" line.
   const readOnly = Boolean(vaultLeaseHeldByOther);
+  const leaseCopy = vaultLeaseEnforced(vaultLeaseOther?.label);
+  const alsoOpen =
+    vaultLeaseOther?.mode === 'advisory' ? vaultLeaseAlsoOpen(vaultLeaseOther.label) : undefined;
+  const takeOver = () => {
+    hapticCommit();
+    void vaultTakeOverLease();
+  };
+  const renderLeaseLine = () =>
+    readOnly ? (
+      <div className="vault-lease-line" role="status">
+        <p className="hint" style={{ margin: 0, color: 'var(--warn)' }}>
+          {leaseCopy.line}
+        </p>
+        <button type="button" className="btn ghost press-fb" onClick={takeOver}>
+          {leaseCopy.takeOver}
+        </button>
+      </div>
+    ) : null;
   // A personal vault on Google Drive is read-only in v1 (0.18): the reason
   // shows as a card with a one-tap way off, and the controls that edit,
   // create, and delete are left out, not dimmed.
@@ -420,18 +445,11 @@ export function VaultScreen() {
     };
   }, [driveReadOnly]);
 
-  // Hold the single-writer lease while the vault is open, renewed on a
-  // heartbeat (TTL is 90s, renew at 40s), and released on the way out. If
-  // another device holds it live, the screen goes read-only.
-  useEffect(() => {
-    void vaultAcquireLease();
-    const beat = setInterval(() => void vaultAcquireLease(), 40_000);
-    return () => {
-      clearInterval(beat);
-      void vaultReleaseLease();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vaultScope]);
+  // The lease is held only while the person types (2.5): the editor takes it
+  // on a keystroke (vaultLeaseTouch), and leaving the note, the vault, or the
+  // room lets it go. Nothing holds it at mount or on a timer, so a note that
+  // is only open never syncs a lease file.
+  useEffect(() => () => void vaultReleaseLease(), [vaultNote?.path, vaultScope, vaultReleaseLease]);
 
   const paths = useMemo(() => vaultFiles.map((f) => f.path), [vaultFiles]);
 
@@ -1089,6 +1107,7 @@ export function VaultScreen() {
       const next = before + inserted + after;
       setDraft(next);
       vaultNoteDraft(vaultNote.path, next);
+      void vaultLeaseTouch();
       lastInputAt.current = Date.now();
       setUpdatedShown(false);
       scheduleSave(vaultNote.path, next);
@@ -1160,7 +1179,7 @@ export function VaultScreen() {
             ) : null}
             {/* Its sheet holds nothing but Delete, which a Drive vault refuses,
                 and it is left out while a choice about this note is open. */}
-            {!driveReadOnly && !conflictHere ? (
+            {!driveReadOnly && !conflictHere && !readOnly && !teamExpired ? (
               <button className="icon-btn" aria-label="Options" onClick={() => setMenuOpen(true)}>
                 {'⋯'}
               </button>
@@ -1173,10 +1192,10 @@ export function VaultScreen() {
             {updatedShown ? <span className="vault-updated">{VAULT_UPDATED_SUFFIX}</span> : null}
           </p>
 
-          {readOnly ? (
-            <p className="hint" style={{ marginTop: 8, color: 'var(--warn)' }}>
-              This vault is open on another device. Read-only here until it closes there, so your
-              edits do not collide.
+          {renderLeaseLine()}
+          {alsoOpen && !readOnly ? (
+            <p className="hint vault-also-open" role="status" style={{ marginTop: 2 }}>
+              {alsoOpen}
             </p>
           ) : null}
           {vaultMoving ? (
@@ -1209,6 +1228,7 @@ export function VaultScreen() {
                 onChange={(e) => {
                   setDraft(e.target.value);
                   vaultNoteDraft(vaultNote.path, e.target.value);
+                  void vaultLeaseTouch();
                   lastInputAt.current = Date.now();
                   setUpdatedShown(false);
                   scheduleSave(vaultNote.path, e.target.value);
@@ -1416,7 +1436,7 @@ export function VaultScreen() {
           <h1>Vault</h1>
           {/* A read-only Drive vault leaves New note out; its card says why.
               So does a moving vault, and a folder that is not there. */}
-          {!driveReadOnly && !vaultMoving && !folderGone ? (
+          {!driveReadOnly && !vaultMoving && !folderGone && !readOnly ? (
             <button
               type="button"
               className="icon-btn press-fb"
@@ -1468,6 +1488,7 @@ export function VaultScreen() {
         </p>
 
         {renderError('tree')}
+        {renderLeaseLine()}
         {/* At every folder level, like Not saved, so wherever a control is
             left out the reason is on screen. */}
         {renderDriveCard(false)}

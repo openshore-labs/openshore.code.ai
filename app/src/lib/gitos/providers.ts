@@ -103,10 +103,10 @@ export type RemoveGuard = { ifMatch: string };
 export type RemoveResult =
   { ok: true } | { ok: false; conflict: 'changed' | 'downloading'; theirs?: StoredFile };
 
-/** A lease marks one writer per resource. Cloud folder syncs have no
- *  Git-aware locking, so the seam carries single-writer semantics from day
- *  one (CTO ruling): a holder id plus TTL, renewed by heartbeat. The Local
- *  provider grants trivially; cloud providers will contest for real. */
+/** A lease marks one writer per resource: a holder id plus TTL, taken while
+ *  the person types. On a storage with compare-and-swap it is advisory (the
+ *  "Also open on your iPad" line); only a storage without it has the lease
+ *  enforced (Vault M2, CTO G5; lib/vaultLease.ts). */
 export interface Lease {
   holder: string;
   expiresAt: string;
@@ -148,8 +148,10 @@ export interface StorageProvider {
    *  that nobody else wrote. */
   remove(resourceId: string, path: string, guard?: RemoveGuard): Promise<RemoveResult>;
   /** Take or renew the single-writer lease. Returns the current lease either
-   *  way; callers compare holder to know if they won. */
-  acquireLease(resourceId: string, holder: string, ttlMs: number): Promise<Lease>;
+   *  way; callers compare holder to know if they won. `label` is this
+   *  device's kind (Lease.label), kept with a lease the provider writes
+   *  (Vault M2, CTO G5); a provider that keeps no lease file ignores it. */
+  acquireLease(resourceId: string, holder: string, ttlMs: number, label?: string): Promise<Lease>;
   releaseLease(resourceId: string, holder: string): Promise<void>;
 }
 

@@ -35,6 +35,8 @@ const app = vi.hoisted(() => {
   const created: string[] = [];
   const opened: string[] = [];
   const drive = { readOnly: undefined as string | undefined, connected: true, configured: true };
+  // What the editor asked of the lease: keystrokes, and Take over editing.
+  const leases = { touches: 0, takeOvers: 0 };
   // What the folder controls answer: a pick's result, whether the move card
   // is offered, and the two texts of each forked pair.
   const folderIo = {
@@ -81,7 +83,14 @@ const app = vi.hoisted(() => {
     vaultDiscardHeld: async () => {},
     vaultAcquireLease: async () => {},
     vaultReleaseLease: async () => {},
-    vaultLeaseHeldByOther: undefined,
+    vaultLeaseTouch: async () => {
+      leases.touches++;
+    },
+    vaultTakeOverLease: async () => {
+      leases.takeOvers++;
+    },
+    vaultLeaseHeldByOther: undefined as boolean | undefined,
+    vaultLeaseOther: undefined as { mode: 'advisory' | 'enforced'; label?: string } | undefined,
     connectGdriveAccount: async () => ({ ok: false }),
     disconnectGdriveAccount: async () => {},
     authSession: undefined,
@@ -124,7 +133,7 @@ const app = vi.hoisted(() => {
     vaultDesktopChatOpen: () => false,
     vaultBringPrevious: async () => ({ ok: true, moved: [], skipped: [], forked: [] }),
   };
-  return { state, listeners, views, toasts, created, opened, drive, folderIo };
+  return { state, listeners, views, toasts, created, opened, drive, folderIo, leases };
 });
 vi.mock('../src/state/store.js', async () => {
   const { useSyncExternalStore } = await import('react');
@@ -992,5 +1001,63 @@ describe('a team note kept after the sign-in expired (M2 2.6)', () => {
     // The team vault is not available, and the note is still not thrown away.
     expect(switched).toBe(0);
     app.state.setVaultScope = async () => {};
+  });
+});
+
+// Vault M2 2.5: the lease is a quiet line where the storage checks every
+// write, and read-only with Take over editing only where it cannot.
+describe('the lease on the Vault screen (M2 2.5)', () => {
+  let dom: TestDom;
+  const EDITOR = 'Write. Plain markdown, and [[wikilinks]] to connect notes.';
+  beforeEach(async () => {
+    globalThis.requestAnimationFrame ??= (cb: FrameRequestCallback) =>
+      setTimeout(() => cb(Date.now()), 0) as unknown as number;
+    app.leases.touches = 0;
+    app.leases.takeOvers = 0;
+    app.state.vaultNote = { path: 'Plan.md', text: 'loaded', updatedAt: 'v1', fresh: true };
+    app.state.vaultFiles = [{ path: 'Plan.md', updatedAt: 'v1', size: 6 }];
+    dom = await mountDom();
+  });
+  afterEach(async () => {
+    await dom.unmount();
+    app.state.vaultNote = undefined;
+    app.state.vaultLeaseHeldByOther = undefined;
+    app.state.vaultLeaseOther = undefined;
+  });
+
+  it('a keystroke asks for the lease; opening the note does not', async () => {
+    await dom.render(<VaultRoom />);
+    expect(app.leases.touches).toBe(0);
+    await dom.type(EDITOR, 'loaded, and more');
+    expect(app.leases.touches).toBeGreaterThan(0);
+  });
+
+  it('advisory: one quiet line, and the editor stays', async () => {
+    app.state.vaultLeaseOther = { mode: 'advisory', label: 'iPad' };
+    await dom.render(<VaultRoom />);
+    expect(dom.text()).toContain('Also open on your iPad.');
+    expect(dom.container.querySelector('textarea')).not.toBeNull();
+    expect(dom.buttons()).not.toContain('Take over editing');
+  });
+
+  it('enforced: read-only, the controls that write are left out, and Take over editing works', async () => {
+    app.state.vaultLeaseHeldByOther = true;
+    app.state.vaultLeaseOther = { mode: 'enforced', label: 'Mac' };
+    await dom.render(<VaultRoom />);
+    expect(dom.text()).toContain('Being edited on your Mac.');
+    expect(dom.container.querySelector('textarea')).toBeNull();
+    expect(dom.container.querySelector('[aria-label="Edit"]')).toBeNull();
+    expect(dom.container.querySelector('[aria-label="Options"]')).toBeNull();
+    await dom.click('Take over editing');
+    expect(app.leases.takeOvers).toBe(1);
+  });
+
+  it('enforced in the list: New note is left out, and the line says why', async () => {
+    app.state.vaultNote = undefined;
+    app.state.vaultLeaseHeldByOther = true;
+    app.state.vaultLeaseOther = { mode: 'enforced' };
+    await dom.render(<VaultRoom />);
+    expect(dom.container.querySelector('[aria-label="New note"]')).toBeNull();
+    expect(dom.text()).toContain('Being edited on another of your devices.');
   });
 });

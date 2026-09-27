@@ -289,6 +289,7 @@ import {
   resetOrgVault,
   isNotePath,
   type GitosResource,
+  type Lease,
   type StorageProvider,
   type StorageProviderId,
   type StoredFile,
@@ -308,6 +309,14 @@ import {
   type WriteResult,
 } from '../lib/gitos/providers.js';
 import {
+  VAULT_LEASE_RENEW_MS,
+  VAULT_LEASE_TTL_MS,
+  vaultDeviceKind,
+  vaultLeaseMode,
+  type VaultLeaseMode,
+} from '../lib/vaultLease.js';
+import {
+  vaultLeaseEnforced,
   VAULT_GONE_REASON,
   VAULT_NO_COPY_NAME_REASON,
   vaultEarlierFolderHeld,
@@ -1099,11 +1108,15 @@ interface AppState {
   vaultPending: VaultPendingRef[];
   /** A save is on its way to the storage right now (the chip's Saving). */
   vaultSaving?: boolean;
-  /** True when a live single-writer lease on the personal vault is held by
-   *  another device, so this one shows read-only. Cloud folder syncs (iCloud,
-   *  Drive) have no Git-aware locking, so the lease bounds the concurrent-edit
-   *  clobber window (the conflict-copy write is the durable backstop). */
+  /** True when the lease is enforced on the vault on screen (a storage
+   *  without compare-and-swap) and another device holds it live, so this one
+   *  shows read-only and writes nothing to a note (Vault M2 2.5, CTO G5). */
   vaultLeaseHeldByOther?: boolean;
+  /** Another device holds the lease on the vault on screen: 'advisory' (a
+   *  storage with compare-and-swap, the quiet "Also open on your iPad") or
+   *  'enforced' (read-only here, with Take over editing), and its device
+   *  kind when it said. Undefined when no other device was seen. */
+  vaultLeaseOther?: { mode: 'advisory' | 'enforced'; label?: string };
   /** The team sign-in expired while a team note was open (Vault M2 2.6): the
    *  note stays on screen, read-only, with "Sign in again to save to your
    *  team", until the person leaves it or the same account signs back in.
@@ -1517,12 +1530,19 @@ interface AppState {
   /** The "Not saved" list the person signed in now may see: personal text,
    *  and team text typed under this same account (vaultHeldFor). */
   vaultHeldVisible(): VaultHeldDraft[];
-  /** Take or renew the personal vault's single-writer lease, and record whether
-   *  another device holds it live (which puts the screen read-only). No-op for
-   *  the team vault (the server resolves concurrency). */
+  /** Take or renew the lease on the vault on screen now, when its storage
+   *  keeps one (lib/vaultLease.ts), and record whether another device holds
+   *  it live. A storage that keeps none is left alone. */
   vaultAcquireLease(): Promise<void>;
-  /** Release the personal vault lease this device holds. */
+  /** A keystroke in the editor: take the lease on the first one after a
+   *  quiet spell, renew it at most every 60 s while typing continues (TTL
+   *  150 s). The only way a lease is held: never at mount, never on a timer. */
+  vaultLeaseTouch(): Promise<void>;
+  /** Release the lease this device holds (leaving the note or the Vault). */
   vaultReleaseLease(): Promise<void>;
+  /** Enforced lease only: make this device the holder, so the other stops
+   *  saving at its next renewal and keeps its text in its stash. */
+  vaultTakeOverLease(): Promise<void>;
   /** Move the personal vault to a different storage provider (e.g. iCloud):
    *  copy every note across, check the target holds them all, then repoint
    *  the resource. Refused (ok false, nothing repointed) when the target is
@@ -4264,6 +4284,9 @@ export const useApp = create<AppState>((set, get, api) => {
   // them all, and anything still failing stays for the next attempt. Never
   // throws: a replay is always a side trip after a success.
   async function replayVaultPending(t: VaultTarget): Promise<void> {
+    // While another device holds the enforced lease, nothing replays into
+    // its notes; the stash waits for the lease to come back (CTO G5).
+    if (leaseBlocks(t)) return;
     const folderNow = t.providerId === 'files' ? get().vaultFolder?.dir : undefined;
     if (folderNow) await holdOtherFolderDrafts(folderNow, false);
     let mine: VaultPendingEntry[];
@@ -4337,6 +4360,84 @@ export const useApp = create<AppState>((set, get, api) => {
           : `${lead} kept under Not saved.`,
       );
     }
+  }
+
+  // The lease (Vault M2 2.5, CTO G5; lib/vaultLease.ts). Held only while the
+  // person types: taken on the first keystroke after a quiet spell, renewed
+  // at most every VAULT_LEASE_RENEW_MS, expiring VAULT_LEASE_TTL_MS after the
+  // last renewal, released on leaving the note or the Vault. Advisory on a
+  // storage with compare-and-swap (only iCloud keeps a lease file), enforced
+  // only on one without it.
+  let leaseHeld: { key: string; provider: StorageProvider; resourceId: string } | undefined;
+  let leaseTried: { key: string; at: number } | undefined;
+  // The other device's holder id while it holds an enforced lease, so Take
+  // over editing can release it through the seam.
+  let leaseOtherHolder: string | undefined;
+  const leaseKeyOf = (t: VaultTargetRef) => `${t.providerId}::${t.resourceId}`;
+  const deviceHolder = () => get().settings.deviceId ?? 'dev_unknown';
+  function leaseModeOf(t: VaultTarget): VaultLeaseMode {
+    // A vault that takes no writes keeps no lease (a Drive vault, D1; team
+    // text of an account not signed in now).
+    const writable = !vaultReadOnlyReason(t.providerId) && speaksNow(t);
+    return vaultLeaseMode(t.provider, writable);
+  }
+  // Take or renew the lease on a vault, and record what it says: 'mine',
+  // 'other' (another device holds it live), or 'none' (this storage keeps no
+  // lease, or it did not answer, which never blocks editing).
+  async function takeVaultLease(t: VaultTarget): Promise<'mine' | 'other' | 'none'> {
+    const mode = leaseModeOf(t);
+    const key = leaseKeyOf(t);
+    if (mode === 'none') {
+      if (isActiveVault(t)) set({ vaultLeaseHeldByOther: false, vaultLeaseOther: undefined });
+      return 'none';
+    }
+    leaseTried = { key, at: Date.now() };
+    const me = deviceHolder();
+    const label = vaultDeviceKind(platform(), typeof navigator === 'undefined' ? {} : navigator);
+    let lease: Lease;
+    try {
+      lease = await t.provider.acquireLease(t.resourceId, me, VAULT_LEASE_TTL_MS, label);
+    } catch {
+      return 'none';
+    }
+    if (!isActiveVault(t)) return 'none';
+    const other = lease.holder !== me && new Date(lease.expiresAt).getTime() > Date.now();
+    if (!other) {
+      leaseHeld = { key, provider: t.provider, resourceId: t.resourceId };
+      leaseOtherHolder = undefined;
+      set({ vaultLeaseHeldByOther: false, vaultLeaseOther: undefined });
+      return 'mine';
+    }
+    // Another device holds it. On an enforced lease this device was editing
+    // until now (it held the lease), so it was displaced: it writes nothing
+    // more to the note, and what it types waits in its stash.
+    const displaced = mode === 'enforced' && leaseHeld?.key === key;
+    if (leaseHeld?.key === key) leaseHeld = undefined;
+    leaseOtherHolder = mode === 'enforced' ? lease.holder : undefined;
+    set({
+      vaultLeaseHeldByOther: mode === 'enforced',
+      vaultLeaseOther: { mode, ...(lease.label ? { label: lease.label } : {}) },
+    });
+    if (displaced) {
+      get().showToast(vaultLeaseEnforced(lease.label).displaced);
+      logEvent('vault_lease_displaced');
+    }
+    return 'other';
+  }
+  // Whether the enforced lease keeps this vault from writing now: another
+  // device holds it, as last seen. Only the vault on screen is tracked.
+  function leaseBlocks(t: VaultTargetRef): boolean {
+    return isActiveVault(t) && Boolean(get().vaultLeaseHeldByOther);
+  }
+  // Before a create or a delete on an enforced lease, ask again (taking it
+  // when free, since this device is about to write): true when refused, with
+  // the toast already shown.
+  async function leaseRefuses(t: VaultTarget): Promise<boolean> {
+    if (leaseModeOf(t) !== 'enforced') return false;
+    if ((await takeVaultLease(t)) !== 'other') return false;
+    get().showToast(vaultLeaseEnforced(get().vaultLeaseOther?.label).refused);
+    logEvent('vault_lease_refused');
+    return true;
   }
 
   // The version of a note an edit is typed against: the open note's provider
@@ -7929,6 +8030,7 @@ export const useApp = create<AppState>((set, get, api) => {
         else get().showToast('Sign in to your team to use the team vault.');
         return;
       }
+      if (await leaseRefuses(target)) return;
       const active = isActiveVault(target);
       // An existing note (evicted from this device or not, UI-2) opens; it is
       // never overwritten with an empty body.
@@ -8175,6 +8277,13 @@ export const useApp = create<AppState>((set, get, api) => {
         await stashConflictText(target, path, text, c.baseVersion);
         return;
       }
+      // Another device holds the enforced lease: nothing is written to the
+      // note. The text waits in the stash with the version it was typed
+      // against, and its replay keeps both if the note moved on (CTO G5).
+      if (leaseBlocks(target)) {
+        await stashConflictText(target, path, text, vaultBaseOf(target, path));
+        return;
+      }
       const key = vaultKey(target, path);
       // The version at call time, used only when the note has closed and no
       // earlier save for it says more.
@@ -8206,6 +8315,7 @@ export const useApp = create<AppState>((set, get, api) => {
         get().showToast(readOnly);
         return false;
       }
+      if (await leaseRefuses(target)) return false;
       // Guarded with the version the open note was loaded or saved at, so a
       // delete never removes a version this device has not seen (Vault M2
       // wave 0). A provider that does not check the guard yet removes anyway.
@@ -8297,42 +8407,53 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async vaultAcquireLease() {
-      // Only the personal vault leases; the team vault's server resolves
-      // concurrency, so acquiring there is unnecessary.
-      if (get().vaultScope !== 'personal') {
-        set({ vaultLeaseHeldByOther: false });
-        return;
-      }
-      const target = vaultTarget();
-      if (!target) return;
-      // A read-only vault takes no writes, its lease file included.
-      if (vaultReadOnlyReason(target.providerId)) {
-        set({ vaultLeaseHeldByOther: false });
-        return;
-      }
-      const deviceId = get().settings.deviceId ?? 'dev_unknown';
-      try {
-        const lease = await target.provider.acquireLease(target.resourceId, deviceId, 90_000);
-        const heldByOther =
-          lease.holder !== deviceId && new Date(lease.expiresAt).getTime() > Date.now();
-        set({ vaultLeaseHeldByOther: heldByOther });
-      } catch {
-        // A lease read/write failure must not block editing; leave state as is.
-      }
+      const t = vaultTarget();
+      if (t) await takeVaultLease(t);
+    },
+
+    async vaultLeaseTouch() {
+      const t = vaultTarget();
+      if (!t || leaseModeOf(t) === 'none') return;
+      const key = leaseKeyOf(t);
+      // Renewed at most every VAULT_LEASE_RENEW_MS while typing continues,
+      // and asked again no sooner while another device holds it.
+      if (leaseTried?.key === key && Date.now() - leaseTried.at < VAULT_LEASE_RENEW_MS) return;
+      await takeVaultLease(t);
     },
 
     async vaultReleaseLease() {
-      if (get().vaultScope !== 'personal') return;
-      const target = vaultTarget();
-      const deviceId = get().settings.deviceId ?? 'dev_unknown';
-      if (target && !vaultReadOnlyReason(target.providerId)) {
+      const held = leaseHeld;
+      leaseHeld = undefined;
+      leaseTried = undefined;
+      if (held) {
         try {
-          await target.provider.releaseLease(target.resourceId, deviceId);
+          await held.provider.releaseLease(held.resourceId, deviceHolder());
         } catch {
           // Best-effort; the lease's TTL reclaims it regardless.
         }
       }
-      set({ vaultLeaseHeldByOther: false });
+      set({ vaultLeaseHeldByOther: false, vaultLeaseOther: undefined });
+    },
+
+    async vaultTakeOverLease() {
+      const t = vaultTarget();
+      if (!t || leaseModeOf(t) !== 'enforced') return;
+      const other = leaseOtherHolder;
+      if (other) {
+        try {
+          await t.provider.releaseLease(t.resourceId, other);
+        } catch {
+          // The acquire below says whether it worked.
+        }
+      }
+      const won = await takeVaultLease(t);
+      const label = get().vaultLeaseOther?.label;
+      get().showToast(
+        won === 'mine'
+          ? vaultLeaseEnforced(undefined).tookOver
+          : 'Could not take over editing right now. Try again in a moment.',
+      );
+      logEvent('vault_lease_take_over', { ok: won === 'mine', labelled: Boolean(label) });
     },
 
     async vaultMoveTo(providerId) {

@@ -2227,3 +2227,21 @@ execution contract. Newest at the bottom.
   personal vault; the same account signing back in goes on with the note and
   replays what was kept for it, and any other account, or a sign-out, drops
   it as before.
+- **Vault M2 2.5, plan 8.2 (2026-09-27):** The single-writer lease is advisory
+  on every provider with compare-and-swap; it is enforced only on one without
+  it, and v1 has none that can be written.
+- **Vault M2 wave 2 item 2.5 build calls (2026-09-27):** the rule lives in a
+  pure `lib/vaultLease.ts` (`leaseEnforced = writable && !compareAndSwap`, and
+  with compare-and-swap only `icloud` keeps an advisory lease, keyed by
+  provider id since no seam flag names "a storage one person's devices share");
+  the seam's `acquireLease` gains an optional `label` so the device kind can
+  reach the lease file; the lease is taken on a keystroke and renewed at most
+  every 60 s (TTL 150 s), and released when the note, the scope, or the room
+  changes, with no mount heartbeat; the advisory line shows once this device
+  types (no peek, since reading the lease file without writing it is not in
+  the seam); on an enforced lease a create or delete asks for the lease first
+  and is refused while another device holds it, a save stashes with its base,
+  the stash does not replay into that vault meanwhile, and Take over editing
+  releases the other holder through the seam before acquiring; today's team
+  vault (no compare-and-swap until its client lands) falls under the enforced
+  rule but its lease grants trivially and writes nothing.

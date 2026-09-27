@@ -135,6 +135,7 @@ function makeProvider(id: string, cas = false) {
   const stamp = { fixed: undefined as string | undefined };
   const counts = {
     lists: 0,
+    leases: [] as Array<{ holder: string; ttlMs: number; label?: string }>,
     reads: 0,
     writes: [] as Array<{ path: string; guard?: WriteGuard }>,
     removes: [] as Array<{ path: string; guard?: { ifMatch: string } }>,
@@ -205,16 +206,21 @@ function makeProvider(id: string, cas = false) {
       files.delete(path);
       return { ok: true };
     },
-    async acquireLease(_r: string, holder: string) {
+    async acquireLease(_r: string, holder: string, ttlMs: number, label?: string) {
+      counts.leases.push({ holder, ttlMs, label });
       // A foreign holder keeps its lease; otherwise the caller takes it.
       if (leaseHolder !== 'me' && leaseHolder !== holder) {
-        return { holder: leaseHolder, expiresAt: new Date(Date.now() + 90_000).toISOString() };
+        return {
+          holder: leaseHolder,
+          expiresAt: new Date(Date.now() + 90_000).toISOString(),
+          ...(leaseLabel ? { label: leaseLabel } : {}),
+        };
       }
       leaseHolder = holder;
-      return { holder, expiresAt: new Date(Date.now() + 90_000).toISOString() };
+      return { holder, expiresAt: new Date(Date.now() + ttlMs).toISOString() };
     },
-    async releaseLease() {
-      leaseHolder = 'me';
+    async releaseLease(_r: string, holder: string) {
+      if (leaseHolder === holder) leaseHolder = 'me';
     },
   };
   const reset = () => {
@@ -226,6 +232,7 @@ function makeProvider(id: string, cas = false) {
     limits.writesLeft = undefined;
     stamp.fixed = undefined;
     counts.lists = 0;
+    counts.leases = [];
     counts.reads = 0;
     counts.writes = [];
     counts.removes = [];
@@ -246,6 +253,8 @@ function makeProvider(id: string, cas = false) {
 }
 
 let leaseHolder = 'me';
+// The device kind a foreign lease says it is (Lease.label).
+let leaseLabel: string | undefined;
 // Whether this device holds a Google account for Drive.
 let driveConnected = true;
 const local = makeProvider('local');
@@ -411,6 +420,7 @@ function reset() {
     () => true,
   );
   leaseHolder = 'me';
+  leaseLabel = undefined;
   driveConnected = true;
   desk.on = false;
   desk.info = undefined;
@@ -430,6 +440,7 @@ function reset() {
     vaultError: undefined,
     vaultHeld: [],
     vaultLeaseHeldByOther: undefined,
+    vaultLeaseOther: undefined,
     vaultTeamExpired: undefined,
     vaultFolder: undefined,
     vaultListed: undefined,
@@ -575,11 +586,12 @@ describe('vault data safety', () => {
     expect(useApp.getState().vaultLeaseHeldByOther).toBe(false);
   });
 
-  it('does not lease the team vault (server resolves concurrency)', async () => {
+  it('the team vault is never read-only for a lease, and writes none', async () => {
     leaseHolder = 'other-device';
-    useApp.setState({ vaultScope: 'team' });
+    teamScope();
     await useApp.getState().vaultAcquireLease();
     expect(useApp.getState().vaultLeaseHeldByOther).toBe(false);
+    expect(teamNet.puts).toEqual([]);
   });
 
   it('drops a stashed draft when its note is deleted (no resurrection)', async () => {
@@ -2584,5 +2596,162 @@ describe('conflicts and the save status on every compare-and-swap storage (M2 2.
     expect(vaultPendingCount(list, t, { uid: 'u1' })).toBe(2);
     expect(vaultPendingCount(list, t, { uid: 'u1', conflictPath: 'c.md' })).toBe(1);
     expect(vaultPendingCount(list, undefined)).toBe(0);
+  });
+});
+
+describe('the lease is advisory with compare-and-swap, enforced without it (M2 2.5)', () => {
+  const now = { t: Date.parse('2026-09-27T10:00:00Z') };
+  beforeEach(async () => {
+    reset();
+    // The store remembers the lease it holds across cases; let it go.
+    await useApp.getState().vaultReleaseLease();
+    for (const p of Object.values(byId)) p.counts.leases = [];
+    leaseHolder = 'me';
+    now.t = Date.parse('2026-09-27T10:00:00Z');
+    vi.spyOn(Date, 'now').mockImplementation(() => now.t);
+    useApp.setState({ vaultConflict: undefined, vaultLeaseOther: undefined });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+  const on = (providerId: string) =>
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn(providerId) },
+    });
+
+  it('the one rule: enforced only without compare-and-swap, advisory only on iCloud', async () => {
+    const { vaultLeaseMode } = await import('../src/lib/vaultLease.js');
+    expect(vaultLeaseMode({ id: 'local', compareAndSwap: true }, true)).toBe('none');
+    expect(vaultLeaseMode({ id: 'files', compareAndSwap: true }, true)).toBe('none');
+    expect(vaultLeaseMode({ id: 'org', compareAndSwap: true }, true)).toBe('none');
+    expect(vaultLeaseMode({ id: 'icloud', compareAndSwap: true }, true)).toBe('advisory');
+    expect(vaultLeaseMode({ id: 'icloud' }, true)).toBe('enforced');
+    expect(vaultLeaseMode({ id: 'dropbox' }, true)).toBe('enforced');
+    expect(vaultLeaseMode({ id: 'gdrive' }, false)).toBe('none');
+  });
+
+  it('the label is the device kind, never a name', async () => {
+    const { vaultDeviceKind } = await import('../src/lib/vaultLease.js');
+    expect(vaultDeviceKind('ios', { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0)' })).toBe(
+      'iPhone',
+    );
+    expect(vaultDeviceKind('ios', { userAgent: 'Mozilla/5.0 (iPad; CPU OS 18_0)' })).toBe('iPad');
+    expect(
+      vaultDeviceKind('ios', { userAgent: 'Mozilla/5.0 (Macintosh)', maxTouchPoints: 5 }),
+    ).toBe('iPad');
+    expect(vaultDeviceKind('electron', { platform: 'MacIntel' })).toBe('Mac');
+    expect(vaultDeviceKind('electron', { platform: 'Win32' })).toBe('Windows computer');
+    expect(vaultDeviceKind('web', { userAgent: 'anything' })).toBeUndefined();
+  });
+
+  it('no lease is ever written on the folder or the team vault', async () => {
+    on('files');
+    folder.files.set('n.md', 'loaded');
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen('n.md');
+    await useApp.getState().vaultAcquireLease();
+    await useApp.getState().vaultLeaseTouch();
+    await useApp.getState().vaultSave('n.md', 'typed');
+    expect(folder.counts.leases).toEqual([]);
+    teamScope();
+    await useApp.getState().vaultLeaseTouch();
+    expect(teamNet.puts).toEqual([]);
+  });
+
+  it('iCloud with compare-and-swap takes a lease only on typing, renewed at most every 60 s, TTL 150 s', async () => {
+    on('icloud');
+    cloud.files.set('n.md', 'loaded');
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen('n.md');
+    // Only open: no lease.
+    expect(cloud.counts.leases).toEqual([]);
+    await useApp.getState().vaultLeaseTouch();
+    now.t += 30_000;
+    await useApp.getState().vaultLeaseTouch();
+    expect(cloud.counts.leases).toHaveLength(1);
+    expect(cloud.counts.leases[0]).toMatchObject({ holder: 'this-device', ttlMs: 150_000 });
+    now.t += 31_000;
+    await useApp.getState().vaultLeaseTouch();
+    expect(cloud.counts.leases).toHaveLength(2);
+  });
+
+  it('advisory: another device editing is one quiet line, and saves still land', async () => {
+    on('icloud');
+    cloud.files.set('n.md', 'loaded');
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen('n.md');
+    leaseHolder = 'the-ipad';
+    leaseLabel = 'iPad';
+    await useApp.getState().vaultLeaseTouch();
+    expect(useApp.getState().vaultLeaseOther).toEqual({ mode: 'advisory', label: 'iPad' });
+    expect(useApp.getState().vaultLeaseHeldByOther).toBe(false);
+    await useApp.getState().vaultSave('n.md', 'typed here too');
+    expect(cloud.files.get('n.md')).toBe('typed here too');
+    const { vaultLeaseAlsoOpen } = await import('../src/lib/vaultCopy.js');
+    expect(vaultLeaseAlsoOpen('iPad')).toBe('Also open on your iPad.');
+  });
+
+  it('enforced: create and delete are refused while another device holds the lease', async () => {
+    // The fake This device here has no compare-and-swap.
+    files.set('keep.md', 'kept');
+    await useApp.getState().vaultRefresh();
+    leaseHolder = 'other-device';
+    await useApp.getState().vaultCreate('new note');
+    expect(files.has('new note.md')).toBe(false);
+    expect(useApp.getState().toast).toMatch(/Take over editing/);
+    expect(useApp.getState().vaultLeaseHeldByOther).toBe(true);
+    expect(await useApp.getState().vaultDelete('keep.md')).toBe(false);
+    expect(files.get('keep.md')).toBe('kept');
+  });
+
+  it("enforced: a take over sends the displaced device's text to its stash, never the note", async () => {
+    files.set('n.md', 'loaded');
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen('n.md');
+    const base = local.version('n.md');
+    // This device types, and holds the lease.
+    await useApp.getState().vaultLeaseTouch();
+    expect(leaseHolder).toBe('this-device');
+    // Another device takes over editing.
+    leaseHolder = 'other-device';
+    leaseLabel = 'Mac';
+    now.t += 61_000;
+    await useApp.getState().vaultLeaseTouch();
+    expect(useApp.getState().vaultLeaseHeldByOther).toBe(true);
+    expect(useApp.getState().toast).toMatch(/Editing moved to your Mac/);
+    // The autosave that was waiting lands in the stash, with its base.
+    await useApp.getState().vaultSave('n.md', 'typed before the take over');
+    expect(files.get('n.md')).toBe('loaded');
+    expect(pending()['local::vault.personal::n.md']).toMatchObject({
+      text: 'typed before the take over',
+      base,
+    });
+    // Nothing replays into the note while the other device holds it.
+    await useApp.getState().vaultRefresh();
+    expect(files.get('n.md')).toBe('loaded');
+  });
+
+  it('enforced: Take over editing makes this device the holder', async () => {
+    files.set('n.md', 'loaded');
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen('n.md');
+    leaseHolder = 'other-device';
+    await useApp.getState().vaultLeaseTouch();
+    expect(useApp.getState().vaultLeaseHeldByOther).toBe(true);
+    await useApp.getState().vaultTakeOverLease();
+    expect(leaseHolder).toBe('this-device');
+    expect(useApp.getState().vaultLeaseHeldByOther).toBe(false);
+    expect(useApp.getState().toast).toBe(
+      'Editing here now. The other device stops saving within a minute.',
+    );
+    await useApp.getState().vaultSave('n.md', 'mine now');
+    expect(files.get('n.md')).toBe('mine now');
+  });
+
+  it('the Vault screen holds no lease on a timer', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(new URL('../src/screens/VaultScreen.tsx', import.meta.url), 'utf8');
+    expect(src).not.toMatch(/setInterval\([^)]*Lease/);
+    expect(src).not.toMatch(/vaultAcquireLease/);
   });
 });

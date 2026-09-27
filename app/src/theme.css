@@ -1474,6 +1474,20 @@ textarea {
   color: var(--ink-soft);
 }
 
+/* The lease (Vault M2 2.5). Enforced (a storage without compare-and-swap):
+   the warn line and Take over editing, stacked. Advisory: one quiet line that
+   settles in on fade-rise and never moves the editor below it. */
+.vault-lease-line {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+}
+.vault-also-open {
+  animation: fade-rise var(--dur-4) var(--ease-arrive) backwards;
+}
+
 /* A conflict copy's badge in the tree: plum, the "needs you" color, at the
    trailing edge of its row so the name reads first. */
 .vault-conflict-badge {
