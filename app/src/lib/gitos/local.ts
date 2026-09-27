@@ -24,6 +24,15 @@ async function readIndex(resourceId: string): Promise<IndexDoc> {
   return (await storeGetJson<IndexDoc>(indexKey(resourceId))) ?? { files: [] };
 }
 
+interface Body {
+  text: string;
+  updatedAt: string;
+}
+
+async function readBody(resourceId: string, path: string): Promise<Body | undefined> {
+  return storeGetJson<Body>(fileKey(resourceId, path));
+}
+
 const byPath = (files: StoredFileMeta[]) => files.sort((a, b) => a.path.localeCompare(b.path));
 
 // One promise chain per resource (data-8). A write is a body write and then a
@@ -50,8 +59,10 @@ function chained<T>(resourceId: string, fn: () => Promise<T>): Promise<T> {
  *  resource's key prefix with no index entry (a write cut off between its two
  *  steps, or one an earlier unchained race dropped). The scan lists key names
  *  and reads only the orphans, then writes the rebuilt index back. Best
- *  effort: when the keys cannot be listed, the index stands as it is. Runs in
- *  the chain, since it may rewrite the index. */
+ *  effort: when the keys cannot be listed, the index stands as it is, and
+ *  when the write-back fails (the store is full, the usual way an orphan is
+ *  made) the orphans still list this time and the write is tried again on
+ *  the next list. Runs in the chain, since it may rewrite the index. */
 async function recoveredIndex(resourceId: string): Promise<IndexDoc> {
   const index = await readIndex(resourceId);
   const prefix = filePrefix(resourceId);
@@ -66,15 +77,17 @@ async function recoveredIndex(resourceId: string): Promise<IndexDoc> {
   for (const key of keys) {
     const path = key.slice(prefix.length);
     if (known.has(path) || !isNotePath(path)) continue;
-    const body = await storeGetJson<{ text: string; updatedAt: string }>(key).catch(
-      () => undefined,
-    );
+    const body = await storeGetJson<Body>(key).catch(() => undefined);
     if (typeof body?.text !== 'string') continue;
     orphans.push({ path, updatedAt: body.updatedAt, size: body.text.length });
   }
   if (!orphans.length) return index;
   const files = byPath([...index.files, ...orphans]);
-  await storeSetJson(indexKey(resourceId), { files });
+  try {
+    await storeSetJson(indexKey(resourceId), { files });
+  } catch {
+    // Retried on the next list; a full store must not stop the vault listing.
+  }
   return { files };
 }
 
@@ -89,12 +102,21 @@ export const localProvider: StorageProvider = {
     return files.filter((f) => isNotePath(f.path));
   },
 
+  // A create and a draft replay ask stat whether bytes live at a path before
+  // they write there, so it answers from the body itself, the source of
+  // truth, not the filtered list: a hidden legacy note (".NET migration.md",
+  // stored before 0.6) or an orphan the index lost must read as there, or the
+  // write that follows empties it. It never touches the index, so a full
+  // store cannot make it throw.
   async stat(resourceId, path) {
-    return (await localProvider.list(resourceId)).find((f) => f.path === path);
+    const body = await readBody(resourceId, path);
+    return typeof body?.text === 'string'
+      ? { path, updatedAt: body.updatedAt, size: body.text.length }
+      : undefined;
   },
 
   async read(resourceId, path) {
-    const body = await storeGetJson<{ text: string; updatedAt: string }>(fileKey(resourceId, path));
+    const body = await readBody(resourceId, path);
     return body ? { path, text: body.text, updatedAt: body.updatedAt } : undefined;
   },
 

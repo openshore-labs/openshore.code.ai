@@ -3,6 +3,7 @@ import {
   backlinksTo,
   isConflictCopy,
   searchNotes,
+  nonNoteExtension,
   normalizeNotePath,
   noteFolder,
   noteTitle,
@@ -59,6 +60,53 @@ describe('note paths', () => {
     expect(normalizeNotePath('a:b*c?.md')).toBe('abc.md');
     expect(normalizeNotePath('note#heading^block')).toBe('noteheadingblock.md');
     expect(normalizeNotePath('<>|"')).toBeUndefined();
+  });
+
+  it('strips leading dots so a typed name never lands on a path the list hides', () => {
+    // A dot segment is hidden (0.6), in Obsidian and here. A note typed as
+    // ".NET migration" once landed at ".NET migration.md": it never listed,
+    // stat missed it, and the next create or link tap wrote '' over it.
+    expect(normalizeNotePath('.NET migration')).toBe('NET migration.md');
+    expect(normalizeNotePath('...later')).toBe('later.md');
+    expect(normalizeNotePath('Ideas/.env setup')).toBe('Ideas/env setup.md');
+    expect(normalizeNotePath('. spaced')).toBe('spaced.md');
+    expect(normalizeNotePath('#.hash first')).toBe('hash first.md');
+    expect(normalizeNotePath('.obsidian/Note')).toBe('obsidian/Note.md');
+    expect(normalizeNotePath('...')).toBeUndefined();
+    expect(normalizeNotePath('.md')).toBe('md.md');
+  });
+
+  it('every name it accepts is a note the list shows (0.6 round trip)', () => {
+    for (const typed of [
+      'Note',
+      '.NET migration',
+      '...later',
+      'Ideas/.env setup',
+      '.hidden/.deeper/Plan',
+      './note',
+      '../x',
+      'a/../../b',
+      'v1.2 plan',
+      'Mr. Smith',
+      'photo.png.md',
+      'UPPER.MD',
+      '.md',
+      'pics.png/Note',
+      '  ideas / First Note ',
+      'café',
+    ]) {
+      const path = normalizeNotePath(typed);
+      expect(path, typed).toBeDefined();
+      expect(isNotePath(path!), `${typed} -> ${path}`).toBe(true);
+    }
+  });
+
+  it('a link to a dot-typed name finds the note that name created', () => {
+    const created = normalizeNotePath('.NET migration')!;
+    expect(resolveWikilink('.NET migration', [created])).toBe(created);
+    expect(wikilinksToMarkdown('[[.NET migration]]', [created])).toBe(
+      '[.NET migration](vault:NET%20migration.md)',
+    );
   });
 
   it('normalizes unicode to NFC so decomposed and composed names match (R-4)', () => {
@@ -155,6 +203,47 @@ describe('wikilink resolution', () => {
     const md = wikilinksToMarkdown('Go to [[Roadmap|the plan]] then [[Missing]].', paths);
     expect(md).toContain('[the plan](vault:projects%2FRoadmap.md)');
     expect(md).toContain('[Missing](vault:Missing.md?new)');
+  });
+
+  it('resolves an existing note whose name looks like a file', () => {
+    // Refusing an attachment extension is a create rule. A note that already
+    // exists under such a name ("package.json.md", a pre-0.6 "report.pdf.md")
+    // is a note: its links resolve and it keeps its backlinks.
+    const named = ['package.json.md', 'Data.csv.md', 'docs/report.pdf.md', 'v1.0 plan.md'];
+    expect(resolveWikilink('package.json', named)).toBe('package.json.md');
+    expect(resolveWikilink('PACKAGE.JSON', named)).toBe('package.json.md');
+    expect(resolveWikilink('Data.csv', named)).toBe('Data.csv.md');
+    expect(resolveWikilink('report.pdf', named)).toBe('docs/report.pdf.md');
+    expect(resolveWikilink('docs/report.pdf', named)).toBe('docs/report.pdf.md');
+    expect(resolveWikilink('v1.0 plan', named)).toBe('v1.0 plan.md');
+    expect(resolveWikilink('package.json.md', named)).toBe('package.json.md');
+    const md = wikilinksToMarkdown('See [[package.json]] and [[report.pdf|the report]].', named);
+    expect(md).toContain('[package.json](vault:package.json.md)');
+    expect(md).toContain('[the report](vault:docs%2Freport.pdf.md)');
+    expect(md).not.toContain('?new');
+    // The resolved destination is a note, so a tap opens it rather than
+    // calling it an attachment.
+    expect(nonNoteExtension('package.json.md')).toBeUndefined();
+    expect(nonNoteExtension('docs/report.pdf.md')).toBeUndefined();
+  });
+
+  it('keeps backlinks for a note whose name looks like a file', () => {
+    const notes = [
+      { path: 'package.json.md', text: 'deps notes' },
+      { path: 'Build.md', text: 'bump the version in [[package.json]] first' },
+      { path: 'Other.md', text: 'unrelated [[diagram.png]]' },
+    ];
+    expect(backlinksTo('package.json.md', notes).map((b) => b.path)).toEqual(['Build.md']);
+  });
+
+  it('an attachment name with no such note stays unresolved', () => {
+    const named = ['package.json.md'];
+    expect(resolveWikilink('diagram.png', named)).toBeUndefined();
+    expect(resolveWikilink('settings.json', named)).toBeUndefined();
+    expect(wikilinksToMarkdown('[[diagram.png]]', named)).toBe(
+      '[diagram.png](vault:diagram.png?new)',
+    );
+    expect(nonNoteExtension('diagram.png')).toBe('.png');
   });
 
   it('renders an embed as a chip, not a broken image or a linked target', () => {
