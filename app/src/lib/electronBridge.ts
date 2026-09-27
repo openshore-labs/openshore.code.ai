@@ -436,6 +436,22 @@ export interface OscodeBridge {
   vaultReveal(): Promise<{ ok: boolean }>;
   /** Open the vault folder in Obsidian (obsidian://open, built in main). */
   vaultOpenObsidian(): Promise<void>;
+  /** Export the team vault's notes as plain files under "Vault Team/<org>"
+   *  beside the default vault folder (Vault M2 2.8); main picks the folder,
+   *  checks every path, and follows the export manifest rule. */
+  vaultTeamExport(
+    org: string,
+    notes: Array<{ path: string; text: string }>,
+    failed: string[],
+  ): Promise<{
+    written: number;
+    total: number;
+    removed: number;
+    unread: number;
+    kept: string[];
+    dir: string;
+    display: string;
+  }>;
   /** macOS: open Privacy & Security, Files and Folders. */
   openPrivacySettings(): Promise<void>;
 

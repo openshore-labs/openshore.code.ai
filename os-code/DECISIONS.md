@@ -2257,3 +2257,15 @@ execution contract. Newest at the bottom.
   open note carries `editedBy` from the list at open and from the re-check's
   `stat`, cleared by this device's own save, shown as " · Edited by sam,
   2 min ago" on the meta line (the time from the note's `updatedAt`).
+- **Vault M2 wave 2 item 2.8 (2026-09-27):** the team vault exports to
+  "Vault Team/<org>" on both platforms: on the iPhone under Files beside
+  "Vault", with a manifest key of its own per org and folder; on the desktop
+  through `osc:vaultTeamExport` into `Vault Team/<org>` beside the default
+  personal vault folder (`~/OSCode/Vault Team/<org>`), main choosing the
+  folder and checking every path, with the same manifest rule kept in the
+  folder's `.oscode/export.json`, and a refusal if that folder is, holds, or
+  lies in the personal vault. The org's name becomes one plain folder name
+  by one rule held in the app and in main, tested for parity. The row is an
+  "Export as plain files" link in the team vault's lead line, shown on the
+  iPhone and the desktop once the team vault holds a note; the personal
+  export and its row are unchanged.

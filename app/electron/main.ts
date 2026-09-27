@@ -53,6 +53,7 @@ import {
 } from './vaultFs.js';
 import { VaultWatcher } from './vaultWatch.js';
 import { VaultDirChooser, realOr, vaultDirExists, type VaultDirEnv } from './vaultDir.js';
+import { exportTeamVault, parseTeamExport } from './vaultTeamExport.js';
 import { lookup } from 'node:dns/promises';
 import type { LookupAddress, LookupOptions } from 'node:dns';
 import { request as httpsRequest } from 'node:https';
@@ -1045,6 +1046,23 @@ guarded('osc:vaultBringPrevious', () => vaultDirs.bringPrevious());
 guarded('osc:vaultReveal', async () => {
   const error = await shell.openPath(loadVaultDir().dir);
   return error ? { ok: false } : { ok: true };
+});
+// The team vault's export (Vault M2 2.8): the team notes the renderer read,
+// written as plain files under "Vault Team/<org>" beside the default vault
+// folder, so Obsidian can open the team vault on this computer. Main picks
+// the folder; the renderer sends only the org's name and the notes, which
+// vaultTeamExport.ts checks (a note path, jailed to the team folder). It never
+// writes into the personal vault folder.
+guarded('osc:vaultTeamExport', (org: unknown, notes: unknown, failed: unknown) => {
+  const parsed = parseTeamExport(notes, failed);
+  return exportTeamVault({
+    base: join(dirname(realOr(defaultVaultDir())), 'Vault Team'),
+    org: str(org, 'org'),
+    personal: loadVaultDir().dir,
+    home: homedir(),
+    notes: parsed.notes,
+    failed: parsed.failed,
+  });
 });
 guarded('osc:vaultOpenObsidian', async () => {
   await shell.openExternal(`obsidian://open?path=${encodeURIComponent(loadVaultDir().dir)}`);

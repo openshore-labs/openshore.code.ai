@@ -3,7 +3,9 @@
 // iPhone / OpenShore / Vault"). It is a one-way copy you hold, the true-compat
 // escape hatch the CTO required for keeping the bytes in the sealed store.
 //
-// Only the iPhone exports (0.11). On the desktop the Filesystem plugin has no
+// Only the iPhone exports the personal vault (0.11); the team vault exports
+// on the iPhone and the desktop, to its own folder (2.8, below). On the
+// desktop the Filesystem plugin has no
 // native side, so a write lands in the renderer's IndexedDB, not on disk; the
 // desktop's way out is moving the vault to This folder, plain files Obsidian
 // opens, and it never reports a count. On the iPhone the export writes
@@ -16,6 +18,7 @@
 // counting it as its own, and names it (`kept`), so an export never
 // overwrites anything but the copy it wrote.
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
+import { bridge } from './electronBridge.js';
 import { platform, storeGetJson, storeSetJson, type Platform } from './platform.js';
 import type { StorageProviderId } from './gitos/providers.js';
 import { noteTitle } from './vault.js';
@@ -85,7 +88,82 @@ export async function exportVaultToFiles(
   failed: readonly string[] = [],
 ): Promise<VaultExportResult | undefined> {
   if (platform() !== 'ios') return undefined;
-  const before = (await storeGetJson<Manifest>(MANIFEST_KEY).catch(() => undefined)) ?? {};
+  return exportUnder(EXPORT_ROOT, MANIFEST_KEY, notes, failed);
+}
+
+// ---- The team vault's export (Vault M2 2.8) ---------------------------------
+// The team vault exports to its own folder, "Vault Team/<org>", on every
+// platform: through the Filesystem plugin on the iPhone (the same manifest
+// rule, under a manifest of its own), and through main on the desktop, so a
+// desktop team member can open the team vault in Obsidian. It never touches
+// the personal export: another folder, another manifest.
+
+/** An org's name as one folder name: no separators, no characters Windows or
+ *  macOS refuse, no leading dot, at most 80 characters, and "Team" when
+ *  nothing is left. Main holds the same rule (electron/vaultTeamExport.ts);
+ *  a test keeps the two in step. */
+export function teamFolderName(org: string): string {
+  const cleaned = [...String(org).normalize('NFC')]
+    .map((c) => (c.charCodeAt(0) < 32 || '/\\:*?"<>|'.includes(c) ? ' ' : c))
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^[.\s]+/, '')
+    .replace(/[. ]+$/, '')
+    .slice(0, 80)
+    .trim();
+  return cleaned || 'Team';
+}
+
+/** Whether the team vault can be exported here: the iPhone and the desktop. */
+export function vaultTeamExportable(on: Platform): boolean {
+  return on === 'ios' || on === 'electron';
+}
+
+/** Export the team vault's notes to their own folder. `where` is how the
+ *  toast names it. Undefined where there is no file system to write (the
+ *  browser). Throws on a real write failure. */
+export async function exportTeamVaultToFiles(
+  notes: Array<{ path: string; text: string }>,
+  failed: readonly string[],
+  org: { id: string; name: string },
+): Promise<(VaultExportResult & { where: string; folder: boolean }) | undefined> {
+  const on = platform();
+  const folder = teamFolderName(org.name);
+  if (on === 'ios') {
+    const r = await exportUnder(
+      `Vault Team/${folder}`,
+      `${MANIFEST_KEY}.team.${org.id}.${folder}`,
+      notes,
+      failed,
+    );
+    return { ...r, where: `to Files, under OpenShore / Vault Team / ${folder}`, folder: false };
+  }
+  const b = on === 'electron' ? bridge() : undefined;
+  if (!b?.vaultTeamExport) return undefined;
+  // Plain copies across the bridge: the caller's list may carry extra fields.
+  const plain = notes.map(({ path, text }) => ({ path, text }));
+  const r = await b.vaultTeamExport(org.name, plain, [...failed]);
+  return {
+    written: r.written,
+    total: r.total,
+    removed: r.removed,
+    unread: r.unread,
+    kept: r.kept,
+    where: `to ${r.display}`,
+    folder: true,
+  };
+}
+
+// Write every note to Documents/<root>/<path> against the manifest kept
+// under `manifestKey` (the rule at the top of this file).
+async function exportUnder(
+  root: string,
+  manifestKey: string,
+  notes: Array<{ path: string; text: string }>,
+  failed: readonly string[],
+): Promise<VaultExportResult> {
+  const before = (await storeGetJson<Manifest>(manifestKey).catch(() => undefined)) ?? {};
   const next: Manifest = {};
   // A note that could not be read is still in the vault: its old file stays.
   for (const path of failed) if (before[path]) next[path] = before[path];
@@ -99,12 +177,12 @@ export async function exportVaultToFiles(
       if (!isSafeExportPath(note.path)) continue;
       // Someone's work there is left as it is, and is no longer ours, so the
       // removal below never takes it either.
-      if (!(await mayWrite(`${EXPORT_ROOT}/${note.path}`, note.text, before[note.path]))) {
+      if (!(await mayWrite(`${root}/${note.path}`, note.text, before[note.path]))) {
         kept.push(note.path);
         continue;
       }
       await Filesystem.writeFile({
-        path: `${EXPORT_ROOT}/${note.path}`,
+        path: `${root}/${note.path}`,
         data: note.text,
         directory: Directory.Documents,
         encoding: Encoding.UTF8,
@@ -120,7 +198,7 @@ export async function exportVaultToFiles(
     for (const [path, print] of Object.entries(before)) {
       if (current.has(path) || !isSafeExportPath(path)) continue;
       if (path.split('/').some((segment) => segment.startsWith('.'))) continue;
-      const file = `${EXPORT_ROOT}/${path}`;
+      const file = `${root}/${path}`;
       try {
         const { data } = await Filesystem.readFile({
           path: file,
@@ -141,7 +219,7 @@ export async function exportVaultToFiles(
     // kept file is dropped either way: it is not ours any more.
     const manifest = done ? next : { ...before, ...next };
     for (const path of kept) delete manifest[path];
-    await storeSetJson(MANIFEST_KEY, manifest).catch(() => {});
+    await storeSetJson(manifestKey, manifest).catch(() => {});
   }
   return {
     written,
@@ -185,8 +263,11 @@ async function mayWrite(file: string, text: string, print: string | undefined): 
 /** The toast after an export: "N of M" when some notes could not be read,
  *  and a line for files there that were left as they are. The two counts are
  *  said apart, so a kept file never reads as an unread note or the reverse. */
-export function vaultExportLine(r: VaultExportResult): string {
-  const where = 'to Files, under OpenShore / Vault';
+export function vaultExportLine(
+  r: VaultExportResult,
+  opts: { where?: string; folder?: boolean } = {},
+): string {
+  const where = opts.where ?? 'to Files, under OpenShore / Vault';
   if (r.total === 0) return 'Nothing to export yet. Write a note first.';
   if (r.unread >= r.total) {
     return 'None of your notes could be read right now, so nothing was exported. Try again shortly.';
@@ -200,7 +281,9 @@ export function vaultExportLine(r: VaultExportResult): string {
           r.unread === 1 ? 'One note' : `${r.unread} notes`
         } could not be read right now; export again to bring ${r.unread === 1 ? 'it' : 'them'}.`
       : `${r.written || 'No'} ${noun} exported ${where}. It is a one-way copy: edits made there do not come back into the vault.`;
-  return [head, keptLine(r.kept)].filter(Boolean).join(' ');
+  // A desktop folder of plain notes is a vault Obsidian opens.
+  const obsidian = opts.folder && r.written > 0 ? 'Obsidian can open it as a vault.' : undefined;
+  return [head, obsidian, keptLine(r.kept)].filter(Boolean).join(' ');
 }
 
 // The files there that were not the copies OpenShore last wrote, left as

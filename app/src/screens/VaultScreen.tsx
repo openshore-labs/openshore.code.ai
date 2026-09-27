@@ -35,7 +35,13 @@ import {
   type GitosResource,
   type StorageProviderId,
 } from '../lib/gitos/index.js';
-import { exportVaultToFiles, vaultExportLine, vaultWayOut } from '../lib/vaultExport.js';
+import {
+  exportTeamVaultToFiles,
+  exportVaultToFiles,
+  vaultExportLine,
+  vaultTeamExportable,
+  vaultWayOut,
+} from '../lib/vaultExport.js';
 import { VAULT_AUTOSAVE_MS, vaultAutosave } from '../lib/vaultAutosave.js';
 import {
   DRIVE_RECONNECT_FAILED_LINE,
@@ -1006,6 +1012,36 @@ export function VaultScreen() {
     }
   };
 
+  // Export the team vault to its own folder (2.8): Files on the iPhone, a
+  // folder beside the vault on the computer that Obsidian opens. Never the
+  // personal export.
+  const [exportingTeam, setExportingTeam] = useState(false);
+  const teamOrg = settings.account?.org;
+  const exportTeam = async () => {
+    if (exportingTeam || !teamOrg?.serverId) return;
+    setExportingTeam(true);
+    try {
+      const notes = await vaultReadAll();
+      if (!notes.length && !notes.failed.length) {
+        showToast('Nothing to export yet. Write a note first.');
+        return;
+      }
+      const result = await exportTeamVaultToFiles(notes, notes.failed, {
+        id: teamOrg.serverId,
+        name: teamOrg.name,
+      });
+      showToast(
+        result
+          ? vaultExportLine(result, { where: result.where, folder: result.folder })
+          : 'The team vault exports in OpenShore on the iPhone and on your computer.',
+      );
+    } catch {
+      showToast('Could not export the team vault. Check storage on this device and try again.');
+    } finally {
+      setExportingTeam(false);
+    }
+  };
+
   // Held text for the open note, shown on it as well as in the room. The
   // target is compared by storage, resource, and path, never by account:
   // heldVisible already holds only this account's team text.
@@ -1511,6 +1547,19 @@ export function VaultScreen() {
         ) : null}
         <p className="lead">
           {team ? vaultCopy(on, 'org').storage : vaultLead(personalCopy, { offerShown })}
+          {team && vaultTeamExportable(on) && vaultFiles.length > 0 ? (
+            <>
+              {' '}
+              <button
+                type="button"
+                className="linklike press-fb"
+                disabled={exportingTeam}
+                onClick={() => void exportTeam()}
+              >
+                {exportingTeam ? 'Exporting…' : 'Export as plain files'}
+              </button>
+            </>
+          ) : null}
           {!team ? (
             <>
               {' '}

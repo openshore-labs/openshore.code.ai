@@ -106,6 +106,7 @@ contextBridge.exposeInMainWorld('oscode', {
   vaultBringPrevious: invoke('osc:vaultBringPrevious'),
   vaultReveal: invoke('osc:vaultReveal'),
   vaultOpenObsidian: invoke('osc:vaultOpenObsidian'),
+  vaultTeamExport: invoke('osc:vaultTeamExport'),
   openPrivacySettings: invoke('osc:openPrivacySettings'),
 
   secureHas: invoke('osc:secureHas'),

@@ -1126,3 +1126,61 @@ describe('the team poll and who last saved (M2 2.7)', () => {
     expect(dom.text()).not.toContain('Edited by');
   });
 });
+
+// Vault M2 2.8: the team vault exports to its own folder.
+describe('the team export row (M2 2.8)', () => {
+  let dom: TestDom;
+  const calls: unknown[][] = [];
+  beforeEach(async () => {
+    calls.length = 0;
+    app.toasts.length = 0;
+    onDesk.on = true;
+    app.state.vaultScope = 'team';
+    app.state.teamVaultAvailable = () => true;
+    app.state.settings = { account: { org: { name: 'Acme', serverId: 'org-1' } } };
+    app.state.vaultFiles = [{ path: 'plan.md', updatedAt: '1', size: 4 }];
+    app.state.vaultReadAll = async () =>
+      Object.assign([{ path: 'plan.md', text: 'plan' }], { failed: [] as string[] });
+    dom = await mountDom();
+    (window as unknown as { oscode: unknown }).oscode = {
+      platform: 'electron',
+      vaultTeamExport: async (...args: unknown[]) => {
+        calls.push(args);
+        return {
+          written: 1,
+          total: 1,
+          removed: 0,
+          unread: 0,
+          kept: [],
+          dir: '/x',
+          display: '~/OSCode/Vault Team/Acme',
+        };
+      },
+    };
+  });
+  afterEach(async () => {
+    delete (window as unknown as { oscode?: unknown }).oscode;
+    await dom.unmount();
+    onDesk.on = false;
+    app.state.vaultScope = 'personal';
+    app.state.teamVaultAvailable = () => false;
+    app.state.settings = {};
+    app.state.vaultFiles = [];
+    app.state.vaultReadAll = async () => Object.assign([], { failed: [] });
+  });
+
+  it('exports the team notes to their own folder and says where', async () => {
+    await dom.render(<VaultRoom />);
+    await dom.click('Export as plain files');
+    await dom.settle();
+    expect(calls).toEqual([['Acme', [{ path: 'plan.md', text: 'plan' }], []]]);
+    expect(app.toasts.at(-1)).toContain('~/OSCode/Vault Team/Acme');
+    expect(app.toasts.at(-1)).toContain('Obsidian can open it as a vault.');
+  });
+
+  it('is not offered in the personal vault on the desktop', async () => {
+    app.state.vaultScope = 'personal';
+    await dom.render(<VaultRoom />);
+    expect(dom.buttons()).not.toContain('Export as plain files');
+  });
+});

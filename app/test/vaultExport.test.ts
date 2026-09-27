@@ -241,3 +241,181 @@ describe('exportVaultToFiles', () => {
     }
   });
 });
+
+// Vault M2 2.8: the team vault exports to its own folder on every platform,
+// and never touches the personal export.
+describe('the team export (M2 2.8)', () => {
+  const org = { id: 'org-1', name: 'Acme' };
+
+  it('on the iPhone writes Vault Team/<org>, never the personal export or its manifest', async () => {
+    const { exportTeamVaultToFiles } = await import('../src/lib/vaultExport.js');
+    await exportVaultToFiles(notes('mine.md'));
+    const personalManifest = JSON.stringify([...sealed.entries()]);
+    const personalFiles = [...disk.entries()];
+    const r = await exportTeamVaultToFiles(notes('plan.md', 'ideas/next.md'), [], org);
+    expect(r).toMatchObject({
+      written: 2,
+      total: 2,
+      where: expect.stringContaining('Vault Team / Acme'),
+    });
+    expect(disk.get('Vault Team/Acme/plan.md')).toBe('# plan.md');
+    expect(disk.get('Vault Team/Acme/ideas/next.md')).toBe('# ideas/next.md');
+    for (const [path, text] of personalFiles) expect(disk.get(path)).toBe(text);
+    // A later team export with a note gone removes only the team's own file.
+    await exportTeamVaultToFiles(notes('plan.md'), [], org);
+    expect(disk.has('Vault Team/Acme/ideas/next.md')).toBe(false);
+    expect(disk.get('Vault/mine.md')).toBe('# mine.md');
+    // And the personal export's manifest is its own.
+    const personalKey = JSON.parse(personalManifest)[0][0] as string;
+    expect(sealed.get(personalKey)).toEqual(JSON.parse(personalManifest)[0][1]);
+    // A personal export after it never removes the team's files.
+    await exportVaultToFiles(notes('mine.md'));
+    expect(disk.get('Vault Team/Acme/plan.md')).toBe('# plan.md');
+  });
+
+  it('on the desktop goes through main, and says where and that Obsidian opens it', async () => {
+    const { exportTeamVaultToFiles } = await import('../src/lib/vaultExport.js');
+    on = 'electron';
+    const calls: unknown[][] = [];
+    (globalThis as { window?: unknown }).window = {
+      oscode: {
+        vaultTeamExport: async (...args: unknown[]) => {
+          calls.push(args);
+          return {
+            written: 1,
+            total: 1,
+            removed: 0,
+            unread: 0,
+            kept: [],
+            dir: '/home/me/OSCode/Vault Team/Acme',
+            display: '~/OSCode/Vault Team/Acme',
+          };
+        },
+      },
+    };
+    try {
+      const r = await exportTeamVaultToFiles(notes('plan.md'), [], org);
+      expect(calls).toEqual([['Acme', notes('plan.md'), []]]);
+      expect(writes).toEqual([]);
+      expect(vaultExportLine(r!, { where: r!.where, folder: r!.folder })).toBe(
+        '1 note exported to ~/OSCode/Vault Team/Acme. It is a one-way copy: edits made there do not come back into the vault. Obsidian can open it as a vault.',
+      );
+    } finally {
+      delete (globalThis as { window?: unknown }).window;
+    }
+  });
+
+  it('exports nowhere in a browser', async () => {
+    const { exportTeamVaultToFiles, vaultTeamExportable } =
+      await import('../src/lib/vaultExport.js');
+    on = 'web';
+    expect(vaultTeamExportable('web')).toBe(false);
+    expect(vaultTeamExportable('ios')).toBe(true);
+    expect(vaultTeamExportable('electron')).toBe(true);
+    expect(await exportTeamVaultToFiles(notes('plan.md'), [], org)).toBeUndefined();
+  });
+
+  it("the org's folder name is one plain folder, the same in the app and in main", async () => {
+    const { teamFolderName } = await import('../src/lib/vaultExport.js');
+    const main = await import('../electron/vaultTeamExport.js');
+    const cases: Array<[string, string]> = [
+      ['Acme', 'Acme'],
+      ['  Acme  Labs ', 'Acme Labs'],
+      ['../../etc', 'etc'],
+      ['a/b\\c:d*e?f"g<h>i|j', 'a b c d e f g h i j'],
+      ['.hidden', 'hidden'],
+      ['trailing. ', 'trailing'],
+      ['', 'Team'],
+      ['///', 'Team'],
+      ['x'.repeat(120), 'x'.repeat(80)],
+    ];
+    for (const [name, folder] of cases) {
+      expect(teamFolderName(name)).toBe(folder);
+      expect(main.teamFolderName(name)).toBe(folder);
+    }
+  });
+});
+
+describe('the desktop team export writes real files (M2 2.8)', () => {
+  it('writes the notes into Vault Team/<org>, keeps what it did not write, and removes only its own', async () => {
+    const { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync } =
+      await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { exportTeamVault } = await import('../electron/vaultTeamExport.js');
+    const home = mkdtempSync(join(tmpdir(), 'oscode-team-export-'));
+    const base = join(home, 'OSCode', 'Vault Team');
+    const personal = join(home, 'OSCode', 'Vault');
+    mkdirSync(personal, { recursive: true });
+    writeFileSync(join(personal, 'plan.md'), 'my own plan');
+    const run = (list: Array<{ path: string; text: string }>, failed: string[] = []) =>
+      exportTeamVault({
+        base,
+        org: 'Acme',
+        personal,
+        home,
+        notes: list,
+        failed,
+        platform: 'linux',
+      });
+
+    const first = run([
+      { path: 'plan.md', text: 'the team plan' },
+      { path: 'ideas/next.md', text: 'next' },
+      { path: '../escape.md', text: 'never' },
+      { path: '.obsidian/app.md', text: 'never' },
+    ]);
+    const root = join(base, 'Acme');
+    expect(first).toMatchObject({
+      written: 2,
+      total: 4,
+      dir: root,
+      display: '~/OSCode/Vault Team/Acme',
+    });
+    expect(readFileSync(join(root, 'plan.md'), 'utf8')).toBe('the team plan');
+    expect(readFileSync(join(root, 'ideas', 'next.md'), 'utf8')).toBe('next');
+    expect(existsSync(join(base, 'escape.md'))).toBe(false);
+    expect(existsSync(join(root, '.obsidian', 'app.md'))).toBe(false);
+    // The personal vault is untouched.
+    expect(readFileSync(join(personal, 'plan.md'), 'utf8')).toBe('my own plan');
+
+    // Someone edits one in Obsidian; Obsidian's own folder appears.
+    writeFileSync(join(root, 'ideas', 'next.md'), 'edited in Obsidian');
+    mkdirSync(join(root, '.obsidian'));
+    writeFileSync(join(root, '.obsidian', 'app.json'), '{}');
+    const second = run([
+      { path: 'plan.md', text: 'the team plan, v2' },
+      { path: 'ideas/next.md', text: 'next, v2' },
+    ]);
+    expect(second.kept).toEqual(['ideas/next.md']);
+    expect(readFileSync(join(root, 'ideas', 'next.md'), 'utf8')).toBe('edited in Obsidian');
+    expect(readFileSync(join(root, 'plan.md'), 'utf8')).toBe('the team plan, v2');
+
+    // plan.md is deleted from the team vault: its file goes, the rest stay.
+    const third = run([]);
+    expect(third.removed).toBe(1);
+    expect(existsSync(join(root, 'plan.md'))).toBe(false);
+    expect(readFileSync(join(root, 'ideas', 'next.md'), 'utf8')).toBe('edited in Obsidian');
+    expect(existsSync(join(root, '.obsidian', 'app.json'))).toBe(true);
+  });
+
+  it('never writes into the personal vault folder', async () => {
+    const { mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { exportTeamVault } = await import('../electron/vaultTeamExport.js');
+    const home = mkdtempSync(join(tmpdir(), 'oscode-team-export-'));
+    const personal = join(home, 'Vault');
+    expect(() =>
+      exportTeamVault({
+        base: personal,
+        org: 'Acme',
+        personal,
+        home,
+        notes: [{ path: 'a.md', text: 'a' }],
+        failed: [],
+        platform: 'linux',
+      }),
+    ).toThrow(/personal vault/);
+  });
+});
