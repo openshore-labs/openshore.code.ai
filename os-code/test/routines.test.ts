@@ -47,6 +47,9 @@ import {
 import { spawn, type ChildProcess } from 'node:child_process';
 import * as store from '../src/routines/store.js';
 import { bootstrapSession } from '../src/core/agent/bootstrap.js';
+import { readFrontmatter } from '../src/harness/vault/frontmatter.js';
+import { resolveWikilink } from '../src/harness/vault/resolve.js';
+import { crewTag, yamlString } from '../src/routines/runNote.js';
 
 let home: string;
 let vault: string;
@@ -127,7 +130,7 @@ function makeScheduler(
   clock: { now: Date },
   opts: {
     approvalTimeoutMs?: number;
-    openSession?: () => { driver: FakeDriver; warnings: string[] };
+    openSession?: () => { driver: FakeDriver; warnings: string[]; model?: string };
     lock?: { acquire: () => { pid: number; startedAt: string }; release: () => void };
     allowed?: Set<string>;
     vaultRoot?: () => string;
@@ -311,7 +314,10 @@ describe('routine scheduler', () => {
       `${date} 06-00.md`,
     ]);
     const firstNote = readFileSync(join(vault, first), 'utf8');
-    expect(firstNote.split('\n')[0]).toBe(`# Morning review: ${date} at 06:00`);
+    expect(firstNote.split('\n').find((l) => l.startsWith('# '))).toBe(
+      `# Morning review: ${date} at 06:00`,
+    );
+    expect(firstNote.startsWith('---\n')).toBe(true);
     expect(firstNote).toContain('First run.');
     expect(readFileSync(join(vault, second), 'utf8')).toContain('Second run.');
   });
@@ -338,6 +344,140 @@ describe('routine scheduler', () => {
       expect(readFileSync(join(vault, notePath), 'utf8')).toContain('Done.');
       scheduler.stop();
     }
+  });
+
+  // Vault M4 (4.9, CTO I13): a run note carries frontmatter a later run can
+  // build on, parsed by the vault core, and links the routine's previous run.
+  describe('the run note frontmatter', () => {
+    function runOnce(
+      routineId: string,
+      clock: { now: Date },
+      opened: FakeDriver[],
+      scheduler: RoutineScheduler,
+      text: string,
+    ): string {
+      scheduler.runNow(routineId);
+      opened[opened.length - 1]!.emit({ type: 'text-final', text });
+      clock.now = new Date(clock.now.getTime() + 30_000);
+      opened[opened.length - 1]!.emit({ type: 'task-done', reason: 'complete' });
+      return scheduler.get(routineId)!.lastRun!.notePath!;
+    }
+
+    function withModel(model: string) {
+      const opened: FakeDriver[] = [];
+      return {
+        opened,
+        openSession: () => {
+          const driver = new FakeDriver();
+          opened.push(driver);
+          return { driver, warnings: [], model };
+        },
+      };
+    }
+
+    function prop(fm: ReturnType<typeof readFrontmatter>, key: string): unknown {
+      return fm.props.find((p) => p.key === key)?.value;
+    }
+
+    it('writes every field, parsed by the vault core, and the first run has no previous', () => {
+      const routine = store.createRoutine(input());
+      const clock = { now: at(0, 6, 0, 5) };
+      const fake = withModel('qwen2.5-coder:7b');
+      const { scheduler } = makeScheduler(clock, { openSession: fake.openSession });
+      const notePath = runOnce(routine.id, clock, fake.opened, scheduler, 'All quiet.');
+      const run = scheduler.get(routine.id)!.lastRun!;
+      const fm = readFrontmatter(readFileSync(join(vault, notePath), 'utf8'));
+      expect(fm.state).toBe('ok');
+      expect(fm.keys).toEqual([
+        'type',
+        'routine',
+        'project',
+        'model',
+        'session',
+        'started',
+        'state',
+        'tags',
+      ]);
+      expect(prop(fm, 'type')).toBe('crew-run');
+      expect(prop(fm, 'routine')).toBe('Morning review');
+      expect(prop(fm, 'project')).toBe(workspace.split(/[\\/]/).pop());
+      expect(prop(fm, 'model')).toBe('qwen2.5-coder:7b');
+      expect(prop(fm, 'session')).toBe(fake.opened[0]!.id);
+      expect(prop(fm, 'started')).toBe(run.startedAt);
+      expect(prop(fm, 'state')).toBe('done');
+      expect(fm.tags).toEqual(['crew', 'crew/Morning-review']);
+      expect(fm.links).toEqual([]);
+      scheduler.stop();
+    });
+
+    it('links the previous run by full path, and the core resolver finds it', () => {
+      const routine = store.createRoutine(input());
+      // Another routine's note at the very same minute must not be the target.
+      const other = store.createRoutine(input({ name: 'Evening review' }));
+      const clock = { now: at(0, 6, 0, 5) };
+      const { scheduler, opened } = makeScheduler(clock);
+      const first = runOnce(routine.id, clock, opened, scheduler, 'Run one.');
+      const otherPath = runOnce(other.id, clock, opened, scheduler, 'Other.');
+      const second = runOnce(routine.id, clock, opened, scheduler, 'Run two.');
+      const third = runOnce(routine.id, clock, opened, scheduler, 'Run three.');
+
+      const read = (p: string) => readFrontmatter(readFileSync(join(vault, p), 'utf8'));
+      const fm2 = read(second);
+      expect(prop(fm2, 'previous')).toBe(`[[${first.replace(/\.md$/, '')}]]`);
+      expect(fm2.links).toHaveLength(1);
+      expect(fm2.links[0]!.where).toBe('frontmatter');
+      const paths = [first, otherPath, second, third];
+      expect(resolveWikilink(fm2.links[0]!.target, paths, second)).toBe(first);
+      // Each run links the one right before it, never the first by default.
+      expect(resolveWikilink(read(third).links[0]!.target, paths, third)).toBe(second);
+      expect(read(otherPath).links).toEqual([]);
+      expect(prop(read(first), 'previous')).toBeUndefined();
+      scheduler.stop();
+    });
+
+    it('stays valid YAML for a routine or model name with quotes, colons, and a hash', () => {
+      const name = 'Q3: "auth" review # nightly: yes';
+      const routine = store.createRoutine(input({ name }));
+      const clock = { now: at(0, 6, 0, 5) };
+      const fake = withModel("it's: {weird} - [model]");
+      const { scheduler } = makeScheduler(clock, { openSession: fake.openSession });
+      const first = runOnce(routine.id, clock, fake.opened, scheduler, 'One.');
+      const second = runOnce(routine.id, clock, fake.opened, scheduler, 'Two.');
+      const fm = readFrontmatter(readFileSync(join(vault, second), 'utf8'));
+      expect(fm.state).toBe('ok');
+      expect(prop(fm, 'routine')).toBe(name);
+      expect(prop(fm, 'model')).toBe("it's: {weird} - [model]");
+      expect(fm.tags).toEqual(['crew', 'crew/Q3-auth-review-nightly-yes']);
+      expect(resolveWikilink(fm.links[0]!.target, [first, second], second)).toBe(first);
+      scheduler.stop();
+    });
+
+    it('says unknown when the session did not name its model', () => {
+      const routine = store.createRoutine(input());
+      const clock = { now: at(0, 6, 0, 5) };
+      const { scheduler, opened } = makeScheduler(clock);
+      const notePath = runOnce(routine.id, clock, opened, scheduler, 'Done.');
+      const fm = readFrontmatter(readFileSync(join(vault, notePath), 'utf8'));
+      expect(prop(fm, 'model')).toBe('unknown');
+      scheduler.stop();
+    });
+
+    it('escapes what YAML would misread, and keeps a tag Obsidian accepts', () => {
+      for (const value of ['a: b', '"q"', 'x\ny', '\u0085', '\u2028', '123', 'yes', '~']) {
+        const fm = readFrontmatter(`---\nv: ${yamlString(value)}\n---\n`);
+        expect(fm.state).toBe('ok');
+        expect(fm.props[0]!.value).toBe(value);
+      }
+      expect(crewTag('2026')).toBeUndefined();
+      expect(crewTag('Morning review')).toBe('crew/Morning-review');
+    });
+
+    it('points the model at the routine folder for its earlier runs', () => {
+      const routine = store.createRoutine(input({ name: 'Q3: #auth [review]?' }));
+      const text = routineInstructions(routine);
+      expect(text).toContain('Your earlier runs of this routine are notes in the vault under');
+      expect(text).toContain('Crew/Q3 auth review/');
+    });
   });
 
   it('records a slot the computer slept through as skipped, once, and never replays it', async () => {
