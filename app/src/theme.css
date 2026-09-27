@@ -2648,8 +2648,9 @@ button.vault-tag {
 }
 
 /* Tree and note, and read and edit, cross on the tokens (CTO K18, CX X17):
-   the view that arrives fades in over the one that left, opacity only, never
-   a hard cut. The Trash page arrives the same way. */
+   the view that arrives fades in while the one that left fades out as a
+   snapshot (useViewGhost, below), opacity only, never a hard cut. The Trash
+   page arrives the same way. */
 .vault-note,
 .vault-tree-view,
 .vault-trash {
@@ -2665,6 +2666,33 @@ button.vault-tag {
   }
   to {
     opacity: 1;
+  }
+}
+
+/* The leaving view's snapshot (useViewGhost): lifted out of the flow over
+   the box the view held (the hook sets its offsets and size), clipped to what was on screen, inert, and fading out on the same clock the
+   arriving view fades in on. Whatever it inherited is stilled, so nothing in
+   it replays. Two classes, so it wins over the arrival rules above. */
+/* The room's scroller holds the snapshot, so it scrolls and clips with it. */
+.vault-screen {
+  position: relative;
+}
+.view-ghost.closing {
+  position: absolute;
+  overflow: hidden;
+  pointer-events: none;
+  animation: vault-view-out var(--dur-3) var(--ease-standard) forwards;
+}
+.view-ghost.closing * {
+  animation: none;
+  transition: none;
+}
+@keyframes vault-view-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
   }
 }
 
@@ -2690,7 +2718,8 @@ button.vault-tag {
   .vault-tree-view,
   .vault-trash,
   .vault-editor-wrap,
-  .vault-read {
+  .vault-read,
+  .view-ghost.closing {
     animation: none;
   }
 }

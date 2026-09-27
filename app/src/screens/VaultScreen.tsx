@@ -152,6 +152,7 @@ import { activeContribution, slotNone } from '../lib/currents.js';
 import { hermesNoteRead, hermesNotesList } from '../lib/currentsProbe.js';
 import { isDesktop, isPhone, openExternal, platform } from '../lib/platform.js';
 import { useExitPresence } from '../hooks/useExitPresence.js';
+import { useViewGhost } from '../hooks/useViewGhost.js';
 import { durationMs, sheetExitMs } from '../lib/motion.js';
 import {
   datePartsOf,
@@ -535,6 +536,18 @@ export function VaultScreen() {
     | undefined
   >();
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
+  // Tree and note, and read and edit, are true crossfades (CTO K18, CX X17):
+  // the leaving view's snapshot fades out on the tokens while the arriving
+  // view fades in, inert and aria-hidden until it is gone (useViewGhost).
+  const pageGhost = useViewGhost(vaultNote ? 'note' : trashOpen ? 'trash' : 'tree');
+  const modeGhost = useViewGhost(editing && !locked ? 'edit' : 'read');
+  const bindReader = useCallback(
+    (node: HTMLDivElement | null) => {
+      readerRef.current = node;
+      modeGhost('read')(node);
+    },
+    [modeGhost],
+  );
   // Compare-and-swap (1.1): when the person last typed, whether the resolve
   // sheet is up, what a choice is doing, and whether the meta line carries
   // the quiet "Updated from elsewhere" after a calm reload.
@@ -1869,9 +1882,9 @@ export function VaultScreen() {
           ? 'saving'
           : 'saved';
     return (
-      <div className="screen">
+      <div className="screen vault-screen">
         <BackBar title={title} back={{ to: 'Vault', onBack: backToNotes }} />
-        <div key="note" className="screen-inner vault-note">
+        <div key="note" ref={pageGhost('note')} className="screen-inner vault-note">
           <div className="vault-note-bar">
             <button className="linklike" onClick={backToNotes}>
               All notes
@@ -1957,7 +1970,7 @@ export function VaultScreen() {
           <NotSaved held={heldHere} discard={(id) => void vaultDiscardHeld(id)} />
 
           {editing && !locked ? (
-            <div className="vault-editor-wrap">
+            <div ref={modeGhost('edit')} className="vault-editor-wrap">
               <textarea
                 ref={editorRef}
                 className="vault-editor"
@@ -1999,7 +2012,7 @@ export function VaultScreen() {
             // A calm reload settles the page in (opacity only); re-keyed so
             // each reload plays it once.
             <div
-              ref={readerRef}
+              ref={bindReader}
               key={`${vaultNote.reloaded ?? 0}:${blobEpoch}`}
               className={
                 vaultNote.reloaded && vaultNote.reloadedFrom === 'elsewhere'
@@ -2185,9 +2198,9 @@ export function VaultScreen() {
     closePick();
   };
   return (
-    <div className="screen">
+    <div className="screen vault-screen">
       <BackBar title="Vault" />
-      <div key="tree" className="screen-inner vault-tree-view">
+      <div key="tree" ref={pageGhost('tree')} className="screen-inner vault-tree-view">
         <div className="stack-head">
           <h1>Vault</h1>
           <div className="vault-head-actions">
