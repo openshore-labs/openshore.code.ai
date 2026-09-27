@@ -9,9 +9,11 @@
 // Enrolled now: the desktop folder, through its real client and its real
 // Electron transport, with the bridge routed straight to main's handlers
 // (electron/vaultFs.ts) over a temp folder, so the engine's writeNote does the
-// file work exactly as it does in the app. The other providers accept the
-// guard and ignore it until M2; they are held to the result shape here and
-// must not claim compareAndSwap.
+// file work exactly as it does in the app; and This device (Vault M2 2.1, CTO
+// G1), over the mocked sealed store, where another writer is a body stored
+// with a fresh version token. The providers not yet enrolled accept the guard
+// and ignore it until their M2 stream lands; they are held to the result
+// shape here and must not claim compareAndSwap.
 //
 // Remove joined the contract in Vault M2 wave 0 (CTO G7): it answers with a
 // RemoveResult, a stale ifMatch is 'changed' and leaves the file, and a file
@@ -89,6 +91,22 @@ const enforcing: Array<{
     // Another writer (the agent, Obsidian): a plain in-place write.
     replace: (p, t) => writeFileSync(join(h.root, p), t),
     remove: (p) => rmSync(join(h.root, p)),
+  },
+  {
+    name: 'This device',
+    provider: localProvider,
+    bytes: (p) => {
+      const raw = h.store.get(`oscode.gitos.file.${R}.${p}`);
+      return raw ? (JSON.parse(raw) as { text: string }).text : undefined;
+    },
+    // Another writer: a body stored under the key with its own fresh token,
+    // the way a second write through the provider would leave it.
+    replace: (p, t) =>
+      h.store.set(
+        `oscode.gitos.file.${R}.${p}`,
+        JSON.stringify({ text: t, updatedAt: new Date().toISOString(), v: `other-${t}` }),
+      ),
+    remove: (p) => h.store.delete(`oscode.gitos.file.${R}.${p}`),
   },
 ];
 
@@ -201,10 +219,7 @@ for (const p of enforcing) {
 }
 
 describe('providers that do not enforce the guard yet (M2) return the new shape', () => {
-  const shaped: Array<[string, StorageProvider]> = [
-    ['This device', localProvider],
-    ['iCloud Drive', icloudProvider],
-  ];
+  const shaped: Array<[string, StorageProvider]> = [['iCloud Drive', icloudProvider]];
   for (const [name, provider] of shaped) {
     it(`${name}: accepts a guard, answers { ok: true, file }, and does not claim compareAndSwap`, async () => {
       expect(provider.compareAndSwap).toBeUndefined();
