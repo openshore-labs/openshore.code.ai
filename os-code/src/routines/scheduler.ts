@@ -26,12 +26,8 @@ import { bootstrapSession } from '../core/agent/bootstrap.js';
 import { writeNewNoteSync } from '../core/vault/noteFile.js';
 import { safeNoteName } from '../harness/vault/paths.js';
 import type { DriverEvent, PermissionMode } from '../core/agent/types.js';
-import {
-  ensureVaultRoot,
-  loadDaemonConfig,
-  loadVaultDir,
-  saveGlobalConfig,
-} from '../config/load.js';
+import { loadDaemonConfig, saveGlobalConfig } from '../config/load.js';
+import { ensureVaultRootAt, vaultRootForOwner } from '../core/vault/memberRoots.js';
 import type { LocalDriver } from '../daemon/session.js';
 import { profileFor } from '../core/security/profiles.js';
 import { isOutboxAllowedPath, realOrResolve } from '../core/security/workspaces.js';
@@ -101,8 +97,11 @@ export interface SchedulerDeps {
   approvalTimeoutMs?: number;
   /** Open the session a run lives in. Defaults to a real headless bootstrap. */
   openSession?: (routine: Routine, permissionMode: PermissionMode) => OpenedSession;
-  /** Where result notes go. Defaults to the configured vault dir. */
-  vaultRoot?: () => string;
+  /** Where a routine's result notes go, by the routine's owner (Vault M5,
+   *  CTO J8). Defaults to `vaultRootForOwner`: the machine's vault for an
+   *  admin, a member's own root for a member, so Crew notes land in the
+   *  routine owner's vault. */
+  vaultRoot?: (ownerUserId?: string) => string;
   /** The workspace gate. Defaults to the machine's allowed-roots predicate. */
   allowedWorkspace?: (cwd: string) => boolean;
   /** Scheduling only; a manual Run now never waits for the clock. */
@@ -166,7 +165,7 @@ export class RoutineScheduler {
   private readonly graceMs: number;
   private readonly approvalTimeoutMs: number;
   private readonly openSession: (routine: Routine, permissionMode: PermissionMode) => OpenedSession;
-  private readonly vaultRoot: () => string;
+  private readonly vaultRoot: (ownerUserId?: string) => string;
   private readonly allowedWorkspace: (cwd: string) => boolean;
   private readonly lock: { acquire: () => SchedulerLock; release: () => void };
   private readonly persistAllowedRoot: (cwd: string) => void;
@@ -186,7 +185,7 @@ export class RoutineScheduler {
     this.graceMs = deps.graceMs ?? DEFAULT_GRACE_MS;
     this.approvalTimeoutMs = deps.approvalTimeoutMs ?? DEFAULT_APPROVAL_TIMEOUT_MS;
     this.openSession = deps.openSession ?? defaultOpenSession;
-    this.vaultRoot = deps.vaultRoot ?? defaultVaultRoot;
+    this.vaultRoot = deps.vaultRoot ?? ((owner) => vaultRootForOwner(owner));
     this.allowedWorkspace = deps.allowedWorkspace ?? ((cwd) => isOutboxAllowedPath(cwd));
     this.lock = deps.lock ?? {
       acquire: () => acquireSchedulerLock(),
@@ -336,7 +335,8 @@ export class RoutineScheduler {
     // Where the note landed, then the same path in the folder the vault uses
     // now: a record from before the absolute path was kept, or a note whose
     // folder moved on (a pick, then Bring from the previous folder).
-    const tries = [run.noteAbsPath, join(this.vaultRoot(), run.notePath)];
+    const owner = store.getRoutine(run.routineId)?.ownerUserId;
+    const tries = [run.noteAbsPath, join(this.vaultRoot(owner), run.notePath)];
     for (const abs of tries) {
       if (!abs) continue;
       try {
@@ -618,7 +618,7 @@ export class RoutineScheduler {
   ): { rel: string; abs: string } {
     // The default folder is made on first use; a configured one that went
     // missing throws here, before anything is written.
-    const root = ensureVaultRoot(this.vaultRoot());
+    const root = ensureVaultRootAt(this.vaultRoot(active.routine.ownerUserId));
     const started = new Date(active.run.startedAt);
     const date = `${started.getFullYear()}-${two(started.getMonth() + 1)}-${two(started.getDate())}`;
     const hh = two(started.getHours());
@@ -733,10 +733,6 @@ function readNoteFile(abs: string): string {
   return readFileSync(abs, 'utf8');
 }
 
-function defaultVaultRoot(): string {
-  return loadVaultDir().dir;
-}
-
 /** Remember a folder in the global config's daemon.outboxAllowedRoots, the
  *  same list the daemon's outbox routes honor. Arrays replace on merge, so
  *  the whole list is written back. */
@@ -778,6 +774,8 @@ export function defaultOpenSession(
     projectName: routine.projectName,
     permissionMode,
     caps: routineCaps(routine),
+    // The run reads its earlier notes in its owner's vault (CTO J8).
+    vaultRoot: vaultRootForOwner(routine.ownerUserId),
   });
   if (orchestratorKind === 'cloud' && !profile.allowCloudAutoApprove) {
     try {

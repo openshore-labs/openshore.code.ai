@@ -19,6 +19,7 @@ import type {
   StackHealth,
   StackHealthRange,
   VaultConfigName,
+  VaultPrivacyWire,
 } from 'os-code/protocol';
 import type {
   RemoveGuard,
@@ -252,6 +253,12 @@ export interface OscodeBridge {
       /** The Harness Current the person turned on (Jev), as its per-session
        *  handle for the engine's verify judge. */
       harnessCurrents?: HarnessCurrentsHandle;
+      /** A handoff from the chat this session continues (Vault M5, CTO J12),
+       *  prepended to the first task only, at most `HANDOFF_MAX_BYTES`. */
+      handoff?: string;
+      /** The project's own pinned notes (`Project.vaultPins`, CTO J14), at
+       *  most 8 vault paths, read first by the pack. */
+      vaultPins?: string[];
     },
   ): Promise<{ id: string; cwd: string; warnings: string[] }>;
   /** The person's controls over a live session (Claude Code parity): the
@@ -435,6 +442,10 @@ export interface OscodeBridge {
    *  as a regular file inside the folder, capped at 256 KB. An unknown name
    *  answers 'refused'. */
   vaultReadConfig(name: VaultConfigName): Promise<ConfigRead>;
+  /** This machine's own vault privacy rules (Vault M5, CTO J3): hidden globs
+   *  and the local-only paths and tags, from the machine config only, for
+   *  the core's compileVaultPrivacy. */
+  vaultPrivacy(): Promise<VaultPrivacyWire>;
   /** Changes the watcher saw, debounced in main. Returns an unsubscribe. */
   onVaultChanged(cb: (change: VaultChange) => void): () => void;
   /** Where the vault folder is, whether it is there, and whether Obsidian

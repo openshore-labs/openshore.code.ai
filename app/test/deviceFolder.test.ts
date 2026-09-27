@@ -297,10 +297,14 @@ describe("main's vault handlers on a real folder (CTO F1, F7.4)", () => {
       expect(isVaultNotePath(p, 'linux'), p).toBe(coreIsNotePath(p));
       expect(isVaultNotePath(p, 'win32'), p).toBe(coreIsNotePath(p, { windows: true }));
     }
-    const src = readFileSync(join(process.cwd(), 'electron', 'vaultFs.ts'), 'utf8');
-    expect(src).toMatch(
-      /import \{ isNotePath \} from 'os-code\/dist\/src\/harness\/vault\/paths\.js'/,
+    // The walker moved into the engine (Vault M5, CTO J7); main re-exports it.
+    const shim = readFileSync(join(process.cwd(), 'electron', 'vaultFs.ts'), 'utf8');
+    expect(shim).toMatch(/export \* from 'os-code\/dist\/src\/core\/vault\/folderFs\.js'/);
+    const src = readFileSync(
+      join(process.cwd(), '..', 'os-code', 'src', 'core', 'vault', 'folderFs.ts'),
+      'utf8',
     );
+    expect(src).toMatch(/import \{ isNotePath \} from '\.\.\/\.\.\/harness\/vault\/paths\.js'/);
     expect(src).toMatch(/isNotePath\(path, \{ windows: platform === 'win32' \}\)/);
   });
 

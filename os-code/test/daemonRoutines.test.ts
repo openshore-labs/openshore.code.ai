@@ -10,8 +10,16 @@ import { startDaemon, type RunningDaemon } from '../src/daemon/serve.js';
 import { TerminalManager, TerminalUnavailable } from '../src/daemon/terminal.js';
 import { defaultConfig } from '../src/config/load.js';
 import { mintCredential } from '../src/core/security/credentials.js';
-import { _resetRoutineScheduler } from '../src/routines/scheduler.js';
-import { appendRun } from '../src/routines/store.js';
+import {
+  RoutineScheduler,
+  _resetRoutineScheduler,
+  type RoutineDriver,
+} from '../src/routines/scheduler.js';
+import { appendRun, createRoutine } from '../src/routines/store.js';
+import type { DriverEvent } from '../src/core/agent/types.js';
+import { validateRoutineInput } from '../src/routines/model.js';
+import { vaultRootFor } from '../src/core/vault/memberRoots.js';
+import { VAULT_NOTES_ROUTE, vaultNoteRoute } from '../src/daemon/vaultWire.js';
 
 let home: string;
 let daemon: RunningDaemon;
@@ -221,5 +229,87 @@ describe('daemon routine routes', () => {
     expect(body.runs).toHaveLength(1);
     expect(body.runs[0]!.notePath).toBe('Crew/Morning review/2026-09-27 0600.md');
     expect(body.runs[0]).not.toHaveProperty('noteAbsPath');
+  });
+
+  it("keeps each owner's Crew notes in that owner's vault, out of every other member's reach", async () => {
+    // A fake session per run, so the scheduler's own note writing is what
+    // runs: the default vault root is keyed by the routine's owner.
+    class FakeDriver implements RoutineDriver {
+      static seq = 0;
+      readonly id = `fake${++FakeDriver.seq}`;
+      private listeners = new Set<(e: DriverEvent, seq: number) => void>();
+      send(): void {}
+      abort(): void {}
+      onEvent(l: (e: DriverEvent, seq: number) => void): () => void {
+        this.listeners.add(l);
+        return () => this.listeners.delete(l);
+      }
+      answerApproval(): void {}
+      emit(event: DriverEvent): void {
+        for (const l of [...this.listeners]) l(event, 0);
+      }
+    }
+    const opened: FakeDriver[] = [];
+    const scheduler = new RoutineScheduler({
+      autostart: false,
+      allowedWorkspace: () => true,
+      persistAllowedRoot: () => {},
+      lock: { acquire: () => ({ pid: process.pid, startedAt: '' }), release: () => {} },
+      openSession: () => {
+        const driver = new FakeDriver();
+        opened.push(driver);
+        return { driver, warnings: [] };
+      },
+    });
+    const finish = (text: string): void => {
+      const driver = opened[opened.length - 1]!;
+      driver.emit({ type: 'text-final', text });
+      driver.emit({ type: 'task-done', reason: 'complete' });
+    };
+    const { token: one } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_one' });
+    const { token: two } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_two' });
+    const cwd = join(home, 'OSCode', 'repo');
+    const valid = (name: string) => {
+      const parsed = validateRoutineInput(routineBody({ name, cwd }));
+      if (!parsed.ok) throw new Error(parsed.error);
+      return parsed.value;
+    };
+    const ownerRoutine = createRoutine(valid('Owner review'));
+    const twoRoutine = createRoutine(valid('Two review'), 'u_two');
+    scheduler.runNow(ownerRoutine.id);
+    finish('The owner result.');
+    scheduler.runNow(twoRoutine.id);
+    finish('Member two result.');
+    scheduler.stop();
+
+    const ownerRun = scheduler.get(ownerRoutine.id)!.lastRun!;
+    const twoRun = scheduler.get(twoRoutine.id)!.lastRun!;
+    expect(ownerRun.noteAbsPath!.startsWith(join(home, 'OSCode', 'Vault'))).toBe(true);
+    const twoRoot = vaultRootFor({ userId: 'u_two', role: 'member' });
+    expect(twoRun.noteAbsPath!.startsWith(twoRoot)).toBe(true);
+    expect(readFileSync(twoRun.noteAbsPath!, 'utf8')).toContain('Member two result.');
+
+    const paths = async (token: string): Promise<string[]> => {
+      const res = await fetch(`${base}${VAULT_NOTES_ROUTE}`, { headers: auth(token) });
+      return ((await res.json()) as { notes: Array<{ path: string }> }).notes.map((n) => n.path);
+    };
+    // The owner sees their own Crew note and not member two's.
+    expect(await paths(adminToken)).toEqual([ownerRun.notePath]);
+    // Member two sees only theirs; member one sees neither.
+    expect(await paths(two)).toEqual([twoRun.notePath]);
+    expect(await paths(one)).toEqual([]);
+    for (const path of [ownerRun.notePath!, twoRun.notePath!]) {
+      const res = await fetch(`${base}${vaultNoteRoute(path)}`, { headers: auth(one) });
+      expect(res.status).toBe(404);
+    }
+    const ownerAsTwo = await fetch(`${base}${vaultNoteRoute(ownerRun.notePath!)}`, {
+      headers: auth(two),
+    });
+    expect(ownerAsTwo.status).toBe(404);
+    // And the run-note route stays scoped to what a member owns.
+    const viaRoutine = await fetch(`${base}/routines/runs/${twoRun.id}/note`, {
+      headers: auth(one),
+    });
+    expect(viaRoutine.status).toBe(404);
   });
 });

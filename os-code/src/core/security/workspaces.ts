@@ -13,6 +13,7 @@ import { homedir } from 'node:os';
 import { realpathSync } from 'node:fs';
 import { loadDaemonConfig, loadVaultDir, type DaemonConfig } from '../../config/load.js';
 import type { OscConfig } from '../../config/schema.js';
+import { memberVaultsDir } from '../vault/memberRoots.js';
 
 /** Resolve a path to its real location when it exists (symlinks followed),
  *  else to its lexical absolute form. */
@@ -52,11 +53,18 @@ export function isAdminProvisionedWorkspace(cwd: string): boolean {
  * Real paths on both sides, like the jail the file tools resolve through, so a
  * link to the vault counts as the vault, and a workspace that only holds a
  * link to it does not overlap (the jail refuses to follow that link out).
+ *
+ * With no `vaultDir`, every root on this machine counts (Vault M5, CTO J8):
+ * the owner's vault and the folder that holds each member's own root, so a
+ * member workspace can reach neither the owner's notes nor another member's.
  */
-export function overlapsVault(cwd: string, vaultDir: string = loadVaultDir().dir): boolean {
+export function overlapsVault(cwd: string, vaultDir?: string): boolean {
   const workspace = realOrResolve(cwd);
-  const vault = realOrResolve(vaultDir);
-  return within(workspace, vault) || within(vault, workspace);
+  const roots = vaultDir === undefined ? [loadVaultDir().dir, memberVaultsDir()] : [vaultDir];
+  return roots.some((dir) => {
+    const vault = realOrResolve(dir);
+    return within(workspace, vault) || within(vault, workspace);
+  });
 }
 
 /**
