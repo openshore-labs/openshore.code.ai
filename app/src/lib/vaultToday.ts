@@ -1,16 +1,18 @@
 // Today's note (Vault M6, 6.4; CTO K7, CX X11): which note is today's, and
 // what a new one starts with. The folder, the date format and the template
-// come from Obsidian's `daily-notes.json`, the template's own date and time
-// formats from `templates.json` (both through readVaultConfig), else
-// Obsidian's defaults: the vault root, `YYYY-MM-DD`, no template, `HH:mm`.
+// come from the vault's resolved settings (Vault M7, CTO L3, L5): Obsidian's
+// `daily-notes.json` and `templates.json` where they set a field, else the
+// vault's own `.oscode/vault.json`, else Obsidian's defaults: the vault root,
+// `YYYY-MM-DD`, no template, `HH:mm`.
 //
 // This file resolves; it never writes. The write is the Organize stream's
 // (`vaultOps.ts`): `write(path, text, { ifAbsent: true })`, and an `exists`
 // opens the note as it is, byte for byte. An existing note is known from the
 // list, so the template is not read for it.
 //
-// Budget (K16): at most three provider calls, the two config reads and the
-// template, with the config held for 60 seconds per vault.
+// Budget (K16, revised by M7 L5): at most five provider calls, the settings
+// loader's four config reads and the template, with the settings held for 60
+// seconds per vault.
 import {
   VAULT_DAILY_DEFAULTS,
   dailyNotePath,
@@ -25,9 +27,9 @@ import {
   type NewNoteNameCheck,
   type TemplateFill,
   type VaultDateFormatResult,
+  type ResolvedVaultSettings,
   type VaultPathIndex,
 } from 'os-code/protocol';
-import { readDailyNotesConfig, readTemplatesConfig, readVaultConfig } from './gitos/config.js';
 import type { StorageProvider } from './gitos/providers.js';
 import {
   VAULT_TODAY_STARTED,
@@ -36,6 +38,13 @@ import {
   vaultTodayStartedFrom,
   vaultTodayTemplateMissing,
 } from './vaultCopy.js';
+import { readDailyNotesConfig, readTemplatesConfig, readVaultConfig } from './gitos/config.js';
+import {
+  VAULT_SETTINGS_TTL_MS,
+  clearVaultSettingsCache,
+  loadVaultSettings,
+  type VaultSettingsCore,
+} from './vaultSettings.js';
 
 /** The date core Today uses (harness/vault/dates.ts); tests pass their own. */
 export interface VaultTodayDates {
@@ -59,6 +68,8 @@ export interface VaultTodayDeps {
   cacheKey?: string;
   now?: () => Date;
   dates?: VaultTodayDates;
+  /** The settings core (tests pass their own); default os-code/protocol's. */
+  settingsCore?: VaultSettingsCore;
 }
 
 /** Everything the config says about today's note, defaults filled in. */
@@ -85,39 +96,67 @@ export type VaultTodayPlan =
   | { ok: false; reason: 'format'; format: string; token: string }
   | { ok: false; reason: 'name'; error: string };
 
-/** How long a vault's daily config is trusted before it is read again. */
-export const VAULT_TODAY_CONFIG_TTL_MS = 60_000;
+/** How long a vault's daily config is trusted before it is read again: the
+ *  settings loader's (Vault M7, CTO L5, L6), which Today now reads. */
+export const VAULT_TODAY_CONFIG_TTL_MS = VAULT_SETTINGS_TTL_MS;
 
-const cache = new Map<string, { at: number; cfg: VaultTodayConfig }>();
+/** Forget every cached config (a repoint, a sign-out, tests). An alias of
+ *  `clearVaultSettingsCache` (L6), so every existing call site still drops
+ *  the one cache Today reads. */
+export const clearVaultTodayCache: (key?: string) => void = clearVaultSettingsCache;
 
-/** Forget every cached config (a repoint, a sign-out, tests). */
-export function clearVaultTodayCache(): void {
-  cache.clear();
+/** Today's config from a vault's resolved settings (L3): Obsidian's
+ *  daily-notes and templates files where they set a field, else the vault's
+ *  own `.oscode/vault.json`, else Obsidian's defaults. */
+export function todayConfigOf(settings: ResolvedVaultSettings): VaultTodayConfig {
+  const d = settings.daily;
+  return {
+    folder: d.folder ?? VAULT_DAILY_DEFAULTS.folder,
+    format: d.format || VAULT_DAILY_DEFAULTS.format,
+    ...(d.template ? { template: d.template } : {}),
+    dateFormat: settings.templates.dateFormat || VAULT_DAILY_DEFAULTS.format,
+    timeFormat: settings.templates.timeFormat || VAULT_DAILY_DEFAULTS.timeFormat,
+  };
 }
 
-/** The daily config of a vault: two config reads, cached for 60 seconds. */
+/** The daily config of a vault, through the settings loader (four config
+ *  reads, cached for 60 seconds per vault). */
 export async function vaultTodayConfig(
-  deps: Pick<VaultTodayDeps, 'provider' | 'resourceId' | 'cacheKey' | 'now'>,
+  deps: Pick<VaultTodayDeps, 'provider' | 'resourceId' | 'cacheKey' | 'now' | 'settingsCore'>,
 ): Promise<VaultTodayConfig> {
   const key = deps.cacheKey ?? deps.resourceId;
-  const at = (deps.now ?? (() => new Date()))().getTime();
-  const hit = cache.get(key);
-  if (hit && at - hit.at >= 0 && at - hit.at < VAULT_TODAY_CONFIG_TTL_MS) return hit.cfg;
+  try {
+    const settings = await loadVaultSettings(deps.provider, deps.resourceId, key, {
+      ...(deps.now ? { now: () => deps.now!().getTime() } : {}),
+      ...(deps.settingsCore ? { core: deps.settingsCore } : {}),
+    });
+    return todayConfigOf(settings);
+  } catch {
+    // The resolver never throws once built; if it ever does, Today still
+    // opens by Obsidian's own files, exactly as before M7 (they win over the
+    // vault's file anyway, L3). Conventions only, so nothing widens here.
+    return obsidianTodayConfig(deps.provider, deps.resourceId);
+  }
+}
+
+/** Today's config from Obsidian's two files alone (the M6 read). */
+async function obsidianTodayConfig(
+  provider: VaultTodayDeps['provider'],
+  resourceId: string,
+): Promise<VaultTodayConfig> {
   const [daily, templates] = await Promise.all([
-    readVaultConfig(deps.provider, deps.resourceId, 'obsidian/daily-notes'),
-    readVaultConfig(deps.provider, deps.resourceId, 'obsidian/templates'),
+    readVaultConfig(provider, resourceId, 'obsidian/daily-notes'),
+    readVaultConfig(provider, resourceId, 'obsidian/templates'),
   ]);
   const d = readDailyNotesConfig(daily);
   const t = readTemplatesConfig(templates);
-  const cfg: VaultTodayConfig = {
+  return {
     folder: d.folder ?? VAULT_DAILY_DEFAULTS.folder,
     format: d.format ?? VAULT_DAILY_DEFAULTS.format,
     ...(d.template ? { template: d.template } : {}),
     dateFormat: t.dateFormat ?? VAULT_DAILY_DEFAULTS.format,
     timeFormat: t.timeFormat ?? VAULT_DAILY_DEFAULTS.timeFormat,
   };
-  cache.set(key, { at, cfg });
-  return cfg;
 }
 
 function pathList(paths: readonly string[] | VaultPathIndex): readonly string[] {

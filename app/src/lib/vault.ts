@@ -14,6 +14,7 @@ import {
   resolveWikilink as resolveInIndex,
   scanNote,
   type VaultPathIndex,
+  type VaultTreeSort,
 } from 'os-code/protocol';
 import type { StoredFileMeta } from './gitos/providers.js';
 
@@ -167,17 +168,39 @@ export function restoreEol(loaded: string, edited: string): string {
   return edited.replace(/\r?\n/g, '\r\n');
 }
 
+/** A listed note with the creation time a storage may carry. No provider on
+ *  main lists one yet, so `created` is not offered there (never faked). */
+export type TreeFileMeta = StoredFileMeta & { createdAt?: string };
+
+/** Whether the tree can sort by creation time here: every listed note
+ *  carries one (Vault M7, CTO L2; an empty vault offers it only when the
+ *  storage says so, which none does yet). */
+export function vaultTreeSortOffered(files: readonly TreeFileMeta[]): VaultTreeSort[] {
+  const created = files.length > 0 && files.every((f) => Boolean(timeOf(f.createdAt)));
+  return created ? ['name', 'modified', 'created'] : ['name', 'modified'];
+}
+
+function timeOf(iso: string | undefined): number | undefined {
+  if (!iso) return undefined;
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : undefined;
+}
+
 /** The folder tree, computed from flat paths: top-level entries first
  *  (folders sorted before notes, both alphabetical), one level at a time so
- *  the UI can lazily disclose. */
+ *  the UI can lazily disclose. `sort` orders the notes (Vault M7, the
+ *  vault's `tree.sort`): `name` (the default, as before), `modified` or
+ *  `created`, newest first, a note without the time after those with it, by
+ *  name. Folders stay by name in every order, as Obsidian keeps them. */
 export function treeAt(
   folder: string,
-  files: StoredFileMeta[],
+  files: readonly TreeFileMeta[],
   extraFolders: readonly string[] = [],
+  sort: VaultTreeSort = 'name',
 ): TreeEntry[] {
   const prefix = folder ? `${folder}/` : '';
   const folders = new Set<string>();
-  const notes: TreeEntry[] = [];
+  const notes: Array<TreeEntry & { at?: number }> = [];
   // Folders no note implies (an empty one on the storage, or remembered
   // here, Vault M6 K5) still show at their level.
   for (const f of extraFolders) {
@@ -189,7 +212,18 @@ export function treeAt(
     const rest = f.path.slice(prefix.length);
     const slash = rest.indexOf('/');
     if (slash === -1) {
-      notes.push({ kind: 'note', path: f.path, name: noteTitle(f.path) });
+      const at =
+        sort === 'modified'
+          ? timeOf(f.updatedAt)
+          : sort === 'created'
+            ? timeOf(f.createdAt)
+            : undefined;
+      notes.push({
+        kind: 'note',
+        path: f.path,
+        name: noteTitle(f.path),
+        ...(at !== undefined ? { at } : {}),
+      });
     } else {
       folders.add(rest.slice(0, slash));
     }
@@ -197,8 +231,17 @@ export function treeAt(
   const folderEntries: TreeEntry[] = [...folders]
     .sort((a, b) => a.localeCompare(b))
     .map((name) => ({ kind: 'folder', path: prefix + name, name }));
-  notes.sort((a, b) => a.name.localeCompare(b.name));
-  return [...folderEntries, ...notes];
+  notes.sort((a, b) => {
+    if (sort !== 'name') {
+      if (a.at !== undefined && b.at !== undefined && a.at !== b.at) return b.at - a.at;
+      if ((a.at === undefined) !== (b.at === undefined)) return a.at === undefined ? 1 : -1;
+    }
+    return a.name.localeCompare(b.name);
+  });
+  return [
+    ...folderEntries,
+    ...notes.map(({ kind, path, name }): TreeEntry => ({ kind, path, name })),
+  ];
 }
 
 /** Every folder in the vault: each note's parents and the extra folders
