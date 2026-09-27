@@ -4,6 +4,8 @@ import type {
   AgenticCurrentId,
   ApprovalRequest,
   HarnessCurrentId,
+  PackMode,
+  PackSource,
   PermissionMode,
 } from 'os-code/protocol';
 import type { BuildStatus } from '../lib/codemagic.js';
@@ -83,6 +85,19 @@ export type ThreadItem =
       error?: string;
     }
   | { kind: 'stopped'; id: string; message: string }
+  // What the Vault gave this task's seat (Vault M4, 4.4): the notes the pack
+  // used, the private notes it left out for a seat that leaves this network,
+  // and whether the index was still cold. Teal for a local seat, amber for a
+  // cloud one. One card per task, updated in place when the seat changes.
+  | {
+      kind: 'context-pack';
+      id: string;
+      seat: 'local' | 'cloud';
+      mode: PackMode;
+      sources: PackSource[];
+      withheld: number;
+      cold: boolean;
+    }
   // The plan-first flow's clarifying questions, as a tappable picker. Tapping an
   // option (or typing) sends the answer, which is folded back into the framing.
   | {

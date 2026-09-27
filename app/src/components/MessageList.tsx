@@ -28,6 +28,7 @@ import { PlanCard } from './PlanCard.js';
 import { TrustCard } from './TrustCard.js';
 import { ClarifyCard } from './ClarifyCard.js';
 import { ChangedFilesCard } from './ChangedFilesCard.js';
+import { ContextPackCard } from './ContextPackCard.js';
 import { Icon } from './Icon.js';
 import { Keyboard } from '@capacitor/keyboard';
 import { isPhone } from '../lib/platform.js';
@@ -411,6 +412,8 @@ export function MessageList({
               );
             case 'changed':
               return <ChangedFilesCard key={item.id} files={item.files} />;
+            case 'context-pack':
+              return <ContextPackCard key={item.id} item={item} />;
             case 'tool':
               return <ToolCard key={item.id} item={item} />;
             case 'command':

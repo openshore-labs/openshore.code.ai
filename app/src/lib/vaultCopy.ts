@@ -1171,6 +1171,72 @@ export function vaultMissingFolderCard(display: string): {
 /** While a newly pointed folder is still listing: never the empty ramp. */
 export const VAULT_OPENING_LINE = 'Opening your vault.';
 
+/** What the context-pack card needs to know (Vault M4, 4.4). */
+export interface ContextPackCopyInput {
+  seat: 'local' | 'cloud';
+  sources: ReadonlyArray<{ layer: string; path: string; title: string }>;
+  withheld: number;
+  cold: boolean;
+}
+
+/** The context-pack card's lines. `notes` are the Vault notes to list;
+ *  this project's Current State is read from the repo, not the Vault, so it
+ *  is named in the headline and never counted as a Vault note. */
+export interface ContextPackCopy {
+  headline: string;
+  seat: string;
+  notes: Array<{ path: string; title: string }>;
+  withheld?: string;
+  cold?: string;
+  /** On a device that is not the computer: where the notes are. */
+  remote?: string;
+}
+
+const notesWord = (n: number) => `${n} ${n === 1 ? 'note' : 'notes'}`;
+
+/** The context-pack card, in words that match the event exactly. Undefined
+ *  when the pack used nothing and held nothing back: no card then. `remote`
+ *  is true on any device that is not the computer running the session (a
+ *  phone driving it), where the notes cannot be opened yet. */
+export function contextPackCopy(
+  pack: ContextPackCopyInput,
+  opts: { remote: boolean },
+): ContextPackCopy | undefined {
+  const currentState = pack.sources.some((s) => s.layer === 'current-state');
+  const notes = pack.sources
+    .filter((s) => s.layer !== 'current-state')
+    .map((s) => ({ path: s.path, title: s.title }));
+  const withheld = Math.max(0, Math.floor(pack.withheld));
+  if (!currentState && !notes.length && !withheld) return undefined;
+  const headline =
+    currentState && notes.length
+      ? `Used this project's Current State and ${notesWord(notes.length)} from your Vault`
+      : currentState
+        ? "Used this project's Current State"
+        : notes.length
+          ? `Used ${notesWord(notes.length)} from your Vault`
+          : 'No notes from your Vault went to this model';
+  const where = opts.remote ? 'your computer' : 'this computer';
+  return {
+    headline,
+    seat: pack.seat === 'cloud' ? 'Sent to a cloud model' : 'Stayed with a local model',
+    notes,
+    ...(withheld
+      ? {
+          withheld: `${withheld} private ${withheld === 1 ? 'note' : 'notes'} stayed on ${where}.`,
+        }
+      : {}),
+    ...(pack.cold && currentState
+      ? { cold: 'Your Vault was still loading, so this turn has Current State only.' }
+      : {}),
+    ...(opts.remote && notes.length
+      ? {
+          remote: `${notes.length === 1 ? 'This note is' : 'These notes are'} on your computer. Open ${notes.length === 1 ? 'it' : 'them'} there for now.`,
+        }
+      : {}),
+  };
+}
+
 /** Linked mentions in a vault over VAULT_LARGE_NOTES notes, on request. */
 export function vaultMentionsOnDemand(n: number): { hint: string; button: string; busy: string } {
   return {

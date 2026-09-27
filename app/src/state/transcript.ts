@@ -350,6 +350,33 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
       // `spend` is true. A dedicated card is a fast follow.
       return push(next, { kind: 'note', text: event.line });
 
+    case 'context-pack': {
+      // The Vault context this task's seat was given. The engine sends it at
+      // the task's first render and again only when the sources change (an
+      // escalation to another seat), so the task keeps one card: a repeat
+      // within the same task updates it in place.
+      const card = {
+        kind: 'context-pack' as const,
+        seat: event.seat,
+        mode: event.mode,
+        sources: event.sources.map((s) => ({ layer: s.layer, path: s.path, title: s.title })),
+        withheld: event.withheld,
+        cold: event.cold,
+      };
+      for (let i = next.items.length - 1; i >= 0; i--) {
+        const item = next.items[i]!;
+        if (item.kind === 'user') break;
+        if (item.kind === 'context-pack') {
+          const items = [...next.items];
+          items[i] = { ...card, id: item.id };
+          return { ...next, items };
+        }
+      }
+      // An empty pack (nothing used, nothing held back) has nothing to say.
+      if (!card.sources.length && !card.withheld) return next;
+      return push(settleAll(next), card);
+    }
+
     case 'clarify':
       return push(next, {
         kind: 'clarify',
