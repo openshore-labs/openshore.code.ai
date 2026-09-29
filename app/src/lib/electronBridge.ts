@@ -155,10 +155,11 @@ export interface OllamaStatus {
   version?: string;
 }
 
-/** What installing Ollama takes here. On Linux the official installer runs in
- *  the built-in terminal (`termId` names it, `started` says it began); on
- *  macOS and Windows the download page opens and the app polls ollamaStatus.
- *  `command` is always present so it can be shown as a copy block. */
+/** What installing Ollama takes here. On Linux nothing runs (`started` is
+ *  false): the official script is the person's to run in their own terminal;
+ *  on macOS and Windows the installer or the download page opens and the app
+ *  polls ollamaStatus. `command` is always present so it can be shown as a
+ *  copy block. */
 export interface OllamaInstallResult {
   started: boolean;
   command: string;
@@ -228,6 +229,10 @@ export interface DaemonInfo {
   /** 'loopback' means the tailnet bind failed and the daemon serves only this
    *  machine, so a pairing QR would be unreachable from the phone. */
   mode?: 'loopback' | 'tailscale';
+  /** Why the last bind failed: the tailnet (the hub fell back to loopback),
+   *  or every address (the hub is off and main retries on its poll). Absent
+   *  once a bind succeeds or the hub is paused. */
+  bindError?: string;
 }
 
 export interface SessionRow {

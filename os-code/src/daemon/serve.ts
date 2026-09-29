@@ -242,6 +242,9 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
   // readForSession backs the agent's readTerminal tool, wired into every
   // bootstrapped session below.
   const terminals = options.terminals ?? new TerminalManager();
+  // Shells this daemon started itself end with it (a caller that handed its
+  // own manager in keeps it, and ends them itself).
+  const ownsTerminals = !options.terminals;
   const terminalReader = (sessionId: string, lines: number, termId?: string): string | undefined =>
     terminals.readForSession(sessionId, lines, termId);
 
@@ -1168,11 +1171,14 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         const cols = typeof body.cols === 'number' ? body.cols : undefined;
         const rows = typeof body.rows === 'number' ? body.rows : undefined;
         try {
-          // The home shell reopens its running shell; a session opens a fresh one.
-          const termId = id === HOME_SHELL_ID ? terminals.liveTermId(id) : undefined;
+          // Every scope reopens the shell it left running (the home shell and
+          // a session alike), so leaving the terminal and coming back lands in
+          // the same shell instead of stacking a new one per visit.
+          const termId = terminals.liveTermId(id);
           const info = await terminals.ensure({ sessionId: id, termId, cwd, cols, rows });
-          // Content-free audit marker only (cwd allowed, never output/stdin).
-          emit?.({ type: 'terminal-opened', termId: info.termId, cwd });
+          // Content-free audit marker only (cwd allowed, never output/stdin),
+          // once per shell started, not per reattach.
+          if (!termId) emit?.({ type: 'terminal-opened', termId: info.termId, cwd });
           sendJson(res, 201, info);
         } catch (err) {
           if (err instanceof TerminalUnavailable) {
@@ -1681,6 +1687,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       // The scheduler outlives the daemon (the desktop shell may still be up);
       // only this daemon's tracking of its runs ends here.
       offRoutineDriver();
+      if (ownsTerminals) terminals.killAll();
       // close() alone leaves live SSE sockets open and the port busy until they
       // drain (DAE-11); drop them so a restart never hits EADDRINUSE.
       server.close();

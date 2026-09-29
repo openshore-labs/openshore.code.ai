@@ -25,6 +25,7 @@ import { isLocalUrl } from '../core/security/egress.js';
 import { idleError, idleGuard, type IdleGuard } from './streamIdle.js';
 import { deriveModelClass, servedContextTokens } from '../harness/profile.js';
 import { hostRamGB } from './hostMemory.js';
+import { getCredential } from '../auth/store.js';
 
 const log = logger('openai-compatible');
 
@@ -42,6 +43,30 @@ export interface OpenAICompatibleOptions {
   /** This computer's memory in GB, for the served window's ceiling (CTO I1).
    *  Defaults to `hostRamGB`, read once per process. */
   ramGB?: () => number;
+}
+
+/** The credential store entry that holds the key a config names by variable.
+ *  The desktop's Connect ChatGPT writes the key here and points the provider
+ *  at OPENAI_API_KEY; nothing puts it in this process's environment (a child
+ *  shell would inherit it), so after a relaunch the store is where it lives.
+ *  Named one by one, so a config naming some other variable never reads an
+ *  unrelated credential out of the store. */
+const CREDENTIAL_FOR_ENV: Readonly<Record<string, string>> = {
+  OPENAI_API_KEY: 'openai-api-key',
+};
+
+/** The key an endpoint sends: its variable from the environment when it is
+ *  set, else the credential store entry that stands in for that variable. */
+export function endpointApiKey(
+  apiKeyEnv: string | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+  readCredential: (name: string) => string | undefined = getCredential,
+): string | undefined {
+  if (!apiKeyEnv) return undefined;
+  const fromEnv = env[apiKeyEnv];
+  if (fromEnv) return fromEnv;
+  const name = CREDENTIAL_FOR_ENV[apiKeyEnv];
+  return name ? readCredential(name) : undefined;
 }
 
 export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
@@ -77,10 +102,8 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
 
   private headers(): Record<string, string> {
     const headers: Record<string, string> = { 'content-type': 'application/json' };
-    if (this.endpoint.apiKeyEnv) {
-      const key = process.env[this.endpoint.apiKeyEnv];
-      if (key) headers.authorization = `Bearer ${key}`;
-    }
+    const key = endpointApiKey(this.endpoint.apiKeyEnv);
+    if (key) headers.authorization = `Bearer ${key}`;
     return headers;
   }
 

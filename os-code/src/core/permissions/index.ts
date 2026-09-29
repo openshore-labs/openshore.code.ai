@@ -5,6 +5,7 @@ import { posix } from 'node:path';
 import { minimatch } from '../util/minimatch.js';
 import type { SecurityProfile } from '../security/profiles.js';
 import { PROJECT_MEMORY_WRITE_TOOL, isMemoryFilePath } from '../agent/projectMemory.js';
+import { shellForThisMachine, type ShellChoice } from '../exec/shell.js';
 
 /** What a tool can do to you, coarse-grained for policy. */
 export type ToolRisk = 'read' | 'write' | 'shell' | 'network' | 'push' | 'cloud-spend';
@@ -44,7 +45,25 @@ export const SHELL_WRAPPERS: ReadonlySet<string> = new Set([
   'nice',
   'doas',
   'su',
+  // Windows: PowerShell's own evaluators and the shells themselves.
+  'iex',
+  'Invoke-Expression',
+  'pwsh',
+  'powershell',
+  'cmd',
 ]);
+
+const FOLDED_WRAPPERS: ReadonlySet<string> = new Set(
+  [...SHELL_WRAPPERS].map((word) => word.toLowerCase()),
+);
+
+/** A shell wrapper by any spelling that still runs it: PowerShell and cmd
+ *  ignore case (`IEX`, `PowerShell.exe`), so does a Mac's disk (`Bash`), and
+ *  a path names the same program (`/bin/sh`, `C:\Windows\System32\cmd.exe`). */
+export function isShellWrapper(word: string): boolean {
+  const base = word.split(/[\\/]/).pop() ?? word;
+  return FOLDED_WRAPPERS.has(base.toLowerCase().replace(/\.exe$/, ''));
+}
 
 /** The boundaries between the simple commands of a shell line. */
 const SEGMENT_SPLIT = /\n|;|&&|\|\||\||&/;
@@ -54,9 +73,19 @@ const SEGMENT_SPLIT = /\n|;|&&|\|\||\||&/;
  * Segments are split on `;`, `&&`, `||`, `|`, `&`, and newlines. A segment
  * with command substitution (`$(` or a backtick) or a shell-wrapper first
  * word never matches, because its real command is something else.
+ *
+ * The split is bash's grammar. Under PowerShell (Windows without Git Bash)
+ * script blocks, the call operator and backtick escapes read differently, so
+ * a prefix could reach a command it never named: no prefix grant matches
+ * there, and every command asks. `shell` defaults to this computer's.
  */
-export function commandMatchesPrefix(command: string, prefix: string): boolean {
-  if (!prefix || SHELL_WRAPPERS.has(prefix)) return false;
+export function commandMatchesPrefix(
+  command: string,
+  prefix: string,
+  shell: ShellChoice['kind'] = shellForThisMachine().kind,
+): boolean {
+  if (shell === 'powershell') return false;
+  if (!prefix || isShellWrapper(prefix)) return false;
   const segments = command
     .split(SEGMENT_SPLIT)
     .map((s) => s.trim())
@@ -65,7 +94,7 @@ export function commandMatchesPrefix(command: string, prefix: string): boolean {
   return segments.every((segment) => {
     if (segment.includes('$(') || segment.includes('`')) return false;
     const first = segment.split(/\s+/)[0] ?? '';
-    return first === prefix && !SHELL_WRAPPERS.has(first);
+    return first === prefix && !isShellWrapper(first);
   });
 }
 

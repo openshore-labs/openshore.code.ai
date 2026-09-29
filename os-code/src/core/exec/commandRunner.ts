@@ -4,8 +4,14 @@
 // spawns `/bin/bash -c` in its own process group so a kill takes the whole
 // tree, streams stdout and stderr as they arrive (each chunk secret-redacted
 // before it leaves the runner), and resolves with the full redacted output.
+// The child starts with a scrubbed environment (childEnv.ts), so a command the
+// model wrote cannot read a provider key OpenShore's own process holds. On
+// Windows, where /bin/bash does not exist, the shell is resolved (shell.ts):
+// Git for Windows' bash when it is installed, else PowerShell.
 import { spawn, type ChildProcess } from 'node:child_process';
 import { redactSecrets } from '../security/redaction.js';
+import { scrubbedEnv } from './childEnv.js';
+import { killProcessTree, shellForThisMachine } from './shell.js';
 
 export interface CommandRunOptions {
   command: string;
@@ -23,6 +29,12 @@ export interface CommandRunOptions {
    * runShell uses 'ignore'; the user command lane uses 'pipe'.
    */
   stdin?: 'pipe' | 'ignore';
+  /**
+   * Variables the child keeps even though they look like secrets, matched by
+   * exact name. Only a paired coding CLI uses it, for its own key; every
+   * other command starts with the scrubbed environment.
+   */
+  keepEnv?: readonly string[];
 }
 
 export interface CommandResult {
@@ -73,9 +85,16 @@ export class CommandRun {
     this.done = new Promise<CommandResult>((resolve) => {
       let child: ChildProcess;
       try {
-        child = spawn('/bin/bash', ['-c', opts.command], {
+        const shell = shellForThisMachine();
+        const windows = process.platform === 'win32';
+        child = spawn(shell.file, shell.args(opts.command), {
           cwd: opts.cwd,
-          detached: true, // its own process group, so a kill reaches the tree
+          env: scrubbedEnv(process.env, opts.keepEnv),
+          // Its own process group on POSIX, so a kill reaches the tree. On
+          // Windows a detached child would open its own console window, and
+          // the tree kill (taskkill /T) does not need a group.
+          detached: !windows,
+          windowsHide: true,
           stdio: [opts.stdin ?? 'pipe', 'pipe', 'pipe'],
         });
       } catch (err) {
@@ -166,19 +185,15 @@ export class CommandRun {
     this.child?.stdin?.write(data);
   }
 
-  /** Ask the process group to stop: SIGTERM, then SIGKILL after the grace. */
+  /** Ask the process tree to stop: SIGTERM, then SIGKILL after the grace. */
   kill(): void {
     const pid = this.child?.pid;
     if (pid === undefined || this.settled) return;
-    try {
-      process.kill(-pid, 'SIGTERM');
-    } catch {}
+    killProcessTree(pid, 'SIGTERM');
     const grace = this.opts.killGraceMs ?? 3000;
     this.killTimer = setTimeout(() => {
       if (this.settled) return;
-      try {
-        process.kill(-pid, 'SIGKILL');
-      } catch {}
+      killProcessTree(pid, 'SIGKILL');
     }, grace);
   }
 }

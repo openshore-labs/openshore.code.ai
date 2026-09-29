@@ -83,6 +83,9 @@ export const cliAgentTool: ToolDef<typeof schema> = {
       cwd: ctx.cwd,
       stdin: 'ignore',
       timeoutMs: timeoutSeconds * 1000,
+      // The runner scrubs keys from every child; a paired CLI keeps only its
+      // own, for a person who signs it in with an exported key.
+      keepEnv: [cli === 'claude' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY'],
     });
     // Stop reaches the child: a `claude -p` that would otherwise keep running
     // for up to the timeout after the person tapped Stop is killed with it.

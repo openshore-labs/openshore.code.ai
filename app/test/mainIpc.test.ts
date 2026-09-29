@@ -134,6 +134,77 @@ describe('main-process IPC guard (UI-6)', () => {
     expect(main).toMatch(/vaultOverrides: parseVaultOverrides\(o\.vaultOverrides\)/);
   });
 
+  // The D2 shell package. A handler's block, from its registration to the
+  // next top-level statement, so a check is read inside the right handler.
+  const handler = (ch: string): string => {
+    const start = main.indexOf(`guarded('${ch}'`);
+    expect(start, ch).toBeGreaterThan(-1);
+    const end = main.indexOf('\n);\n', start);
+    const endBlock = main.indexOf('\n});\n', start);
+    const stop = [end, endBlock].filter((i) => i > -1).sort((a, b) => a - b)[0]!;
+    return main.slice(start, stop);
+  };
+
+  it('revoke takes only a whole token hash: never a prefix, a label, or an empty id', () => {
+    expect(handler('osc:revokeDeviceCredential')).toMatch(
+      /host\.revokeDeviceCredential\(deviceHash\(id, 'id'\)\)/,
+    );
+    const fn = main.slice(
+      main.indexOf('function deviceHash'),
+      main.indexOf('function deviceHash') + 300,
+    );
+    expect(fn).toMatch(/if \(!isTokenHash\(v\)\) throw/);
+  });
+
+  it('every irreversible or exec IPC asks main a second time, or needs the window in focus', () => {
+    for (const ch of ['osc:trustFolder', 'osc:cloneRepo', 'osc:setLaunchAtLogin']) {
+      expect(handler(ch), ch).toMatch(/await confirmInMain\(\{/);
+    }
+    for (const ch of ['osc:runCommand', 'osc:terminalStdin']) {
+      expect(handler(ch), ch).toMatch(/if \(!windowFocused\(\)\) return/);
+    }
+    // The second key is a native dialog whose default is Cancel, so a
+    // keystroke meant for the chat can never confirm it.
+    const confirm = main.slice(main.indexOf('async function confirmInMain'));
+    expect(confirm).toMatch(/dialog\.showMessageBox/);
+    expect(confirm).toMatch(/defaultId: 1,\s*cancelId: 1/);
+    expect(main).toMatch(/win\.isFocused\(\)/);
+    expect(main).toContain(
+      "OpenShore will follow the project's own settings in it, including the command it runs to check work.",
+    );
+  });
+
+  it('a session root is a realpath, and never the disk, home, or the settings folder', () => {
+    const fn = main.slice(main.indexOf('function dir('), main.indexOf('function deviceHash'));
+    expect(fn).toMatch(/realpathSync\(s\)/);
+    expect(fn).toMatch(/sessionRootRefusal\(real,/);
+    expect(fn).toMatch(/oscHome: realOr\(oscHome\(\)\)/);
+    expect(fn).toMatch(/return real;/);
+  });
+
+  it('the main window answers device permissions through the one check', () => {
+    expect(main).toMatch(
+      /setPermissionRequestHandler\([\s\S]*?callback\(appPermissionAllowed\(permission, details, appEntry\.href\)\)/,
+    );
+    expect(main).toMatch(
+      /setPermissionCheckHandler\([\s\S]*?appPermissionAllowed\(permission, details, appEntry\.href\)/,
+    );
+  });
+
+  it('the sign-in listener keeps listening past a stray request', () => {
+    const wait = handler('osc:gdriveOAuthWait');
+    expect(wait).toMatch(/readOAuthCallback\(req\.method, req\.url\)/);
+    expect(wait).toMatch(/server\.on\('request', onRequest\)/);
+    expect(wait).not.toMatch(/server\.once\('request'/);
+  });
+
+  it('the updater runs through the one state machine, with a not-available handler', () => {
+    expect(main).toMatch(/autoUpdater\.on\('update-not-available', \(\) => applyUpdate\(/);
+    expect(main).toMatch(/if \(!mayCheckForUpdate\(updater\)\) return;/);
+    expect(handler('osc:installUpdate')).toMatch(/applyUpdate\(\{ type: 'click' \}\)/);
+    expect(main).not.toMatch(/let pendingUpdate|let installWhenReady/);
+  });
+
   it('exposes secureHas so the renderer can tell absent from unreadable (P0-3)', () => {
     expect(preload).toContain("secureHas: invoke('osc:secureHas')");
     expect(main).toMatch(/guarded\('osc:secureHas'/);

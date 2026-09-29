@@ -24,6 +24,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   watch as fsWatch,
@@ -45,6 +46,7 @@ import {
 import { machineVaultWire } from 'os-code/dist/src/core/agent/registry.js';
 import { VAULT_WIRE_NOTE_MAX_BYTES } from 'os-code/dist/src/daemon/vaultWire.js';
 import { managedRoot } from 'os-code/dist/src/core/security/workspaces.js';
+import { isTokenHash } from 'os-code/dist/src/core/security/credentials.js';
 import {
   VAULT_INDEX_FILE_MAX_BYTES,
   loadVaultIndexFile,
@@ -92,7 +94,7 @@ import { lookup } from 'node:dns/promises';
 import type { LookupAddress, LookupOptions } from 'node:dns';
 import { request as httpsRequest } from 'node:https';
 import { createServer } from 'node:http';
-import type { IncomingMessage, Server } from 'node:http';
+import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { isIP } from 'node:net';
 // electron-updater ships CJS; Node's ESM/CJS interop cannot statically prove
 // `autoUpdater` as a named export from it, and a packaged app (real ESM, not
@@ -102,6 +104,15 @@ import { isIP } from 'node:net';
 import electronUpdaterPkg from 'electron-updater';
 const { autoUpdater } = electronUpdaterPkg;
 import { EngineHost } from './engineHost.js';
+import { appPermissionAllowed, readOAuthCallback, sessionRootRefusal } from './mainGuards.js';
+import {
+  IDLE_UPDATER,
+  mayCheckForUpdate,
+  stepUpdater,
+  type PendingUpdateStatus,
+  type UpdaterEvent,
+  type UpdaterState,
+} from './updateState.js';
 import { bundleOf, newestMacUpdate, type ReleaseAsset, type ReleaseInfo } from './updateVersion.js';
 import { canReplace, installMacUpdate } from './macUpdate.js';
 import { EmbeddedWeb, type EmbeddedBounds } from './embeddedWeb.js';
@@ -172,14 +183,35 @@ function strList(v: unknown, name: string): string[] {
   if (!Array.isArray(v)) throw new Error(`blocked: ${name} must be a list`);
   return v.map((x, i) => str(x, `${name}[${i}]`));
 }
-/** An existing directory, or undefined when none was given. */
+/** An existing directory narrow enough to work in, as its realpath, or
+ *  undefined when none was given. The coding agent reads and writes under a
+ *  session's root, so the top of the disk, the home folder itself (or
+ *  anything above it) and OpenShore's own settings folder are refused, the
+ *  lines the vault chooser draws (mainGuards.ts). */
 function dir(v: unknown, name: string): string | undefined {
   const s = optStr(v, name);
   if (s === undefined) return undefined;
   if (!existsSync(s) || !statSync(s).isDirectory()) {
     throw new Error(`blocked: ${name} is not a directory`);
   }
-  return s;
+  const real = realpathSync(s);
+  const refused = sessionRootRefusal(real, {
+    home: realOr(homedir()),
+    oscHome: realOr(oscHome()),
+    platform: process.platform,
+  });
+  if (refused) {
+    throw new Error(
+      `blocked: ${name} is too broad to work in (${refused}). Open a project folder inside it instead.`,
+    );
+  }
+  return real;
+}
+/** A paired device's whole token hash, the only revoke handle main accepts:
+ *  never a prefix, a label, or an empty string (which matched every device). */
+function deviceHash(v: unknown, name: string): string {
+  if (!isTokenHash(v)) throw new Error(`blocked: ${name} must be a device's whole token hash`);
+  return v;
 }
 
 // ------------------------------------------------------------ outbound HTTP
@@ -426,26 +458,46 @@ guarded('osc:gdriveOAuthWait', () => {
       resolve({ error: 'No sign-in window is open.' });
       return;
     }
+    const page = (line: string): string =>
+      '<!doctype html><meta charset="utf-8"><title>OpenShore</title>' +
+      `<body style="font:16px system-ui;padding:2rem">${line}</body>`;
+    const onRequest = (req: IncomingMessage, res: ServerResponse): void => {
+      // Only the redirect answers the sign-in (mainGuards.ts). Anything else
+      // (the browser's favicon, a stray local request) gets a 404, and a
+      // redirect without its state gets an error page; both keep listening,
+      // so neither can end the sign-in the person is in the middle of.
+      const answer = readOAuthCallback(req.method, req.url);
+      if (answer.kind === 'ignore') {
+        res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+        res.end('Not found');
+        return;
+      }
+      if (answer.kind === 'incomplete') {
+        res.writeHead(400, { 'content-type': 'text/html; charset=utf-8' });
+        res.end(
+          page('This sign-in link is missing its details. Go back to OpenShore and try again.'),
+        );
+        return;
+      }
+      clearTimeout(timeout);
+      server.off('request', onRequest);
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end(
+        page(
+          'error' in answer.result
+            ? 'Sign-in did not finish. You can close this window and return to OpenShore.'
+            : 'Signed in. You can close this window and return to OpenShore.',
+        ),
+      );
+      closeGdriveServer();
+      resolve(answer.result);
+    };
     const timeout = setTimeout(() => {
+      server.off('request', onRequest);
       closeGdriveServer();
       resolve({ error: 'Sign-in timed out.' });
     }, 300_000);
-    server.once('request', (req, res) => {
-      clearTimeout(timeout);
-      const url = new URL(req.url ?? '/', 'http://127.0.0.1');
-      const code = url.searchParams.get('code');
-      const state = url.searchParams.get('state');
-      const error = url.searchParams.get('error');
-      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      res.end(
-        '<!doctype html><meta charset="utf-8"><title>OpenShore</title>' +
-          '<body style="font:16px system-ui;padding:2rem">Signed in. You can close this window and return to OpenShore.</body>',
-      );
-      closeGdriveServer();
-      if (error) resolve({ error });
-      else if (code && state) resolve({ code, state });
-      else resolve({ error: 'The sign-in response was missing required data.' });
-    });
+    server.on('request', onRequest);
   });
 });
 
@@ -460,6 +512,45 @@ const host = new EngineHost(
   (payload) => win?.webContents.send('osc:install-progress', payload),
   (payload) => win?.webContents.send('osc:terminal-data', payload),
 );
+
+// ------------------------------------------------------------ the second key
+// The renderer is untrusted (UI-6), so its approval card is only one key. An
+// action that cannot be taken back, or that runs something on this computer,
+// is asked again here in a native dialog the page cannot draw, click, or
+// dismiss. Cancel is the default button, so a keystroke meant for the chat
+// can never confirm one. The card in the app stays as it is.
+async function confirmInMain(opts: {
+  message: string;
+  detail: string;
+  confirm: string;
+}): Promise<boolean> {
+  const options = {
+    type: 'question' as const,
+    buttons: [opts.confirm, 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+    message: opts.message,
+    detail: opts.detail,
+  };
+  const parent = win && !win.isDestroyed() ? win : undefined;
+  const { response } = parent
+    ? await dialog.showMessageBox(parent, options)
+    : await dialog.showMessageBox(options);
+  return response === 0;
+}
+
+/** Keystrokes and commands reach a shell only while the window has the
+ *  person's attention: a page acting on its own in the background cannot. */
+function windowFocused(): boolean {
+  return Boolean(win && !win.isDestroyed() && win.isFocused());
+}
+
+/** A repository address as the dialog shows it: any user or token written
+ *  into it is left out. */
+function cloneUrlForDialog(url: string): string {
+  return url.trim().replace(/^(https:\/\/)[^@/]+@/i, '$1');
+}
 
 // ------------------------------------------------------------ hub lifecycle
 // The hub (the daemon) starts with the app and lives in the tray: closing the
@@ -665,6 +756,18 @@ function createWindow(): void {
     },
   });
 
+  // No device for any page but the app's own, and for it only what it uses
+  // (mainGuards.ts): Electron's default would grant the camera, microphone,
+  // location and notifications to any page without asking. The check-time
+  // answer matches, so a page never reads "granted" for what it cannot have.
+  const permissions = win.webContents.session;
+  permissions.setPermissionRequestHandler((_contents, permission, callback, details) =>
+    callback(appPermissionAllowed(permission, details, appEntry.href)),
+  );
+  permissions.setPermissionCheckHandler((_contents, permission, _origin, details) =>
+    appPermissionAllowed(permission, details, appEntry.href),
+  );
+
   // External links open in the system browser, never inside the shell.
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//.test(url)) void shell.openExternal(url);
@@ -692,7 +795,7 @@ function createWindow(): void {
   // across hide/show) reaches the renderer here instead of only at discovery
   // time, so a fresh page is never out of sync with what main already knows.
   win.webContents.on('did-finish-load', () => {
-    win?.webContents.send('osc:update-status', pendingUpdate);
+    win?.webContents.send('osc:update-status', updater.pending);
   });
 
   // OSC_SMOKE=1 makes a headless CI run prove the page and bridge came up.
@@ -852,7 +955,18 @@ guarded('osc:compact', (sessionId: unknown, focus: unknown) =>
 guarded('osc:listFiles', (sessionId: unknown, query: unknown) =>
   host.listFiles(str(sessionId, 'sessionId'), str(query, 'query')),
 );
-guarded('osc:trustFolder', (sessionId: unknown) => host.trustFolder(str(sessionId, 'sessionId')));
+guarded('osc:trustFolder', async (sessionId: unknown) => {
+  const id = str(sessionId, 'sessionId');
+  const folder = host.sessionFolder(id);
+  if (!folder) return { error: 'That session is not open.' };
+  const ok = await confirmInMain({
+    message: 'Trust this folder?',
+    detail: `OpenShore will follow the project's own settings in it, including the command it runs to check work.\n\n${folder}`,
+    confirm: 'Trust folder',
+  });
+  if (!ok) return { error: 'Not trusted. Nothing changed.' };
+  return host.trustFolder(id);
+});
 guarded('osc:createSample', () => host.createSample());
 guarded('osc:restoreCheckpoint', (sessionId: unknown, id: unknown, how: unknown, path: unknown) => {
   const way = str(how, 'direction');
@@ -882,9 +996,13 @@ guarded('osc:answerApproval', (sessionId: unknown, approvalId: unknown, answer: 
 
 // Chat-to-terminal lane. runCommand returns the runId the renderer drives with
 // stdin/kill; command output arrives as command-* events on osc:event.
-guarded('osc:runCommand', (sessionId: unknown, command: unknown) =>
-  host.runCommand(str(sessionId, 'sessionId'), str(command, 'command')),
-);
+// A command runs only from a window the person is looking at: the tap that
+// sends it is the approval, and a page acting on its own in the background
+// gets nothing (undefined, the answer for a session that is gone).
+guarded('osc:runCommand', (sessionId: unknown, command: unknown) => {
+  if (!windowFocused()) return undefined;
+  return host.runCommand(str(sessionId, 'sessionId'), str(command, 'command'));
+});
 guarded('osc:sendCommandStdin', (sessionId: unknown, runId: unknown, data: unknown) =>
   host.sendCommandStdin(str(sessionId, 'sessionId'), str(runId, 'runId'), str(data, 'data')),
 );
@@ -903,9 +1021,12 @@ guarded('osc:terminalSubscribe', (termId: unknown, sinceOffset: unknown) =>
 guarded('osc:terminalUnsubscribe', (termId: unknown) =>
   host.terminalUnsubscribe(str(termId, 'termId')),
 );
-guarded('osc:terminalStdin', (termId: unknown, data: unknown) =>
-  host.terminalStdin(str(termId, 'termId'), str(data, 'data')),
-);
+// Keystrokes reach the shell only while the window has focus, where typing
+// comes from; a false is the same answer as a shell that is gone.
+guarded('osc:terminalStdin', (termId: unknown, data: unknown) => {
+  if (!windowFocused()) return false;
+  return host.terminalStdin(str(termId, 'termId'), str(data, 'data'));
+});
 guarded('osc:terminalResize', (termId: unknown, cols: unknown, rows: unknown) =>
   host.terminalResize(str(termId, 'termId'), num(cols, 'cols'), num(rows, 'rows')),
 );
@@ -945,9 +1066,17 @@ guarded('osc:pickFolder', async () => {
   });
   return result.canceled ? null : (result.filePaths[0] ?? null);
 });
-guarded('osc:cloneRepo', (url: unknown, token: unknown) =>
-  host.cloneRepo(str(url, 'url'), optStr(token, 'token')),
-);
+guarded('osc:cloneRepo', async (url: unknown, token: unknown) => {
+  const address = str(url, 'url');
+  const secret = optStr(token, 'token');
+  const ok = await confirmInMain({
+    message: 'Copy this repository to your computer?',
+    detail: `OpenShore downloads it into its projects folder, where the coding agent can work on it.\n\n${cloneUrlForDialog(address)}`,
+    confirm: 'Copy repository',
+  });
+  if (!ok) return { error: 'Not copied. Nothing changed.' };
+  return host.cloneRepo(address, secret);
+});
 guarded('osc:recentWorkspaces', () => host.recentWorkspaces());
 guarded('osc:reconcileRepos', (roots: unknown, tokens: unknown) =>
   host.reconcileRepos(Array.isArray(roots) ? strList(roots, 'roots') : [], platformTokens(tokens)),
@@ -997,9 +1126,25 @@ guarded('osc:daemonStop', async () => {
   refreshTrayMenu();
 });
 guarded('osc:listDeviceCredentials', () => host.listDeviceCredentials());
-guarded('osc:revokeDeviceCredential', (id: unknown) => host.revokeDeviceCredential(str(id, 'id')));
+guarded('osc:revokeDeviceCredential', (id: unknown) =>
+  host.revokeDeviceCredential(deviceHash(id, 'id')),
+);
 guarded('osc:launchAtLogin', () => launchAtLogin());
-guarded('osc:setLaunchAtLogin', (on: unknown) => setLaunchAtLogin(bool(on)));
+// Turning it on makes the app start by itself at every login, so main asks
+// first; turning it off only takes that away and needs no second key.
+guarded('osc:setLaunchAtLogin', async (on: unknown) => {
+  const want = bool(on);
+  if (want) {
+    const ok = await confirmInMain({
+      message: 'Start OpenShore with your computer?',
+      detail:
+        'It starts in the background each time you sign in to this computer, so your phone can reach it.',
+      confirm: 'Start with computer',
+    });
+    if (!ok) return { on: launchAtLogin().on, detail: 'Not changed.' };
+  }
+  return setLaunchAtLogin(want);
+});
 
 // Ollama from inside the app, and the machine in numbers. A download-page
 // plan opens the page here (the renderer never picks a URL); the command is
@@ -1391,28 +1536,56 @@ guarded('osc:httpFetch', async (req: unknown) => {
 const UPDATE_REPO = 'openshore-labs/openshore.code.ai';
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 
-let pendingUpdate: PendingUpdateStatus | undefined;
-/** The person clicked while the download was still running: install the
- *  moment it lands. */
-let installWhenReady = false;
+// The bar's state is one pure step function (updateState.ts): the events
+// below and the person's click go in, the status the renderer hears and the
+// effect to run come out.
+let updater: UpdaterState = { ...IDLE_UPDATER };
 /** macOS: the release file behind the pending update. */
 let macAsset: ReleaseAsset | undefined;
+/** A half-hourly check is running: its failure alone changes nothing. */
+let backgroundChecks = 0;
 
-interface PendingUpdateStatus {
-  version: string;
-  phase: 'downloading' | 'ready' | 'available' | 'installing' | 'failed';
-  percent?: number;
-  detail?: string;
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
-function sendUpdateStatus(update: typeof pendingUpdate): void {
-  pendingUpdate = update;
+function sendUpdateStatus(update: PendingUpdateStatus | undefined): void {
+  updater = { ...updater, pending: update };
   win?.webContents.send('osc:update-status', update);
+}
+
+/** One step of the updater: tell the renderer when the status changed, then
+ *  run what the step asks for. */
+function applyUpdate(event: UpdaterEvent): void {
+  const step = stepUpdater(updater, event);
+  updater = step.state;
+  if (step.notify) win?.webContents.send('osc:update-status', updater.pending);
+  if (step.effect === 'download') {
+    void autoUpdater
+      .downloadUpdate()
+      .catch((err) => applyUpdate({ type: 'error', detail: errorText(err) }));
+  } else if (step.effect === 'quit-and-install') {
+    autoUpdater.quitAndInstall();
+  } else if (step.effect === 'check') {
+    void retryUpdateCheck();
+  }
+}
+
+/** The person's retry after a failure: a fresh check downloads what it finds
+ *  (the update-available event), and one that finds nothing clears the bar
+ *  instead of leaving it at installing 0%. */
+async function retryUpdateCheck(): Promise<void> {
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    applyUpdate({ type: 'check-done', found: Boolean(result?.isUpdateAvailable) });
+  } catch (err) {
+    applyUpdate({ type: 'error', detail: errorText(err) });
+  }
 }
 
 async function checkMacUpdate(): Promise<void> {
   // Never interrupt an update the person already started.
-  if (pendingUpdate?.phase === 'installing') return;
+  if (updater.pending?.phase === 'installing') return;
   try {
     const res = await fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases?per_page=15`, {
       signal: AbortSignal.timeout(30000),
@@ -1421,9 +1594,16 @@ async function checkMacUpdate(): Promise<void> {
     if (!res.ok) return;
     const releases = (await res.json()) as ReleaseInfo[];
     const next = newestMacUpdate(releases, app.getVersion(), process.arch);
-    if (!next) return;
+    if (!next) {
+      // Nothing newer any more (the release was pulled): an offered or failed
+      // update leaves the bar.
+      macAsset = undefined;
+      applyUpdate({ type: 'not-available' });
+      return;
+    }
     macAsset = next.asset;
-    if (pendingUpdate?.version !== next.version || pendingUpdate.phase === 'failed') {
+    const pending = updater.pending;
+    if (pending?.version !== next.version || pending.phase === 'failed') {
       sendUpdateStatus({ version: next.version, phase: 'available' });
     }
   } catch (err) {
@@ -1432,8 +1612,8 @@ async function checkMacUpdate(): Promise<void> {
 }
 
 async function installOnMac(): Promise<void> {
-  if (!pendingUpdate) return;
-  const version = pendingUpdate.version;
+  if (!updater.pending) return;
+  const version = updater.pending.version;
   const releasePage = `https://github.com/${UPDATE_REPO}/releases/tag/v${version}`;
   const bundle = bundleOf(app.getPath('exe'));
   if (!macAsset || !(await canReplace(bundle))) {
@@ -1448,11 +1628,7 @@ async function installOnMac(): Promise<void> {
     app.quit();
   } catch (err) {
     console.error('[update] macOS in-place update failed', err);
-    sendUpdateStatus({
-      version,
-      phase: 'failed',
-      detail: err instanceof Error ? err.message : String(err),
-    });
+    sendUpdateStatus({ version, phase: 'failed', detail: errorText(err) });
     await shell.openExternal(releasePage);
   }
 }
@@ -1465,52 +1641,35 @@ if (process.platform !== 'darwin') {
   // Never install on quit: the bar is the only trigger, so a person is never
   // surprised by a relaunch they didn't ask for.
   autoUpdater.autoInstallOnAppQuit = false;
-  autoUpdater.on('update-available', (info) => {
-    if (installWhenReady) {
-      // A retry the person asked for: download straight away.
-      sendUpdateStatus({ version: info.version, phase: 'installing', percent: 0 });
-      void autoUpdater.downloadUpdate().catch(() => undefined);
-      return;
-    }
-    sendUpdateStatus({ version: info.version, phase: 'available' });
-  });
-  autoUpdater.on('download-progress', (p) => {
-    if (!pendingUpdate) return;
-    sendUpdateStatus({
-      ...pendingUpdate,
-      phase: installWhenReady ? 'installing' : 'downloading',
-      percent: Math.round(p.percent),
-    });
-  });
-  autoUpdater.on('update-downloaded', (info) => {
-    if (installWhenReady) {
-      sendUpdateStatus({ version: info.version, phase: 'installing', percent: 100 });
-      autoUpdater.quitAndInstall();
-      return;
-    }
-    sendUpdateStatus({ version: info.version, phase: 'ready' });
-  });
+  autoUpdater.on('update-available', (info) =>
+    applyUpdate({ type: 'available', version: info.version }),
+  );
+  autoUpdater.on('update-not-available', () => applyUpdate({ type: 'not-available' }));
+  autoUpdater.on('download-progress', (p) => applyUpdate({ type: 'progress', percent: p.percent }));
+  autoUpdater.on('update-downloaded', (info) =>
+    applyUpdate({ type: 'downloaded', version: info.version }),
+  );
   autoUpdater.on('error', (err) => {
     console.error('[update] electron-updater error', err);
-    if (pendingUpdate) {
-      installWhenReady = false;
-      sendUpdateStatus({
-        ...pendingUpdate,
-        phase: 'failed',
-        detail: err instanceof Error ? err.message : String(err),
-      });
-    }
+    const detail = errorText(err);
+    applyUpdate(
+      backgroundChecks > 0 ? { type: 'check-failed', detail } : { type: 'error', detail },
+    );
   });
 }
 
 async function checkForUpdatesNow(): Promise<void> {
   if (process.platform === 'darwin') return checkMacUpdate();
-  // A download already underway or waiting is not re-checked.
-  if (pendingUpdate && pendingUpdate.phase !== 'failed') return;
+  // Nothing pending, a failure, or an update not yet clicked (a newer release
+  // replaces it); never while a download is underway, done, or installing.
+  if (!mayCheckForUpdate(updater)) return;
+  backgroundChecks++;
   try {
     await autoUpdater.checkForUpdates();
   } catch (err) {
     console.error('[update] checkForUpdates failed', err);
+  } finally {
+    backgroundChecks--;
   }
 }
 
@@ -1523,49 +1682,12 @@ function scheduleUpdateChecks(): void {
 }
 
 guarded('osc:installUpdate', async () => {
-  if (!pendingUpdate) return;
+  if (!updater.pending) return;
   if (process.platform === 'darwin') {
     await installOnMac();
     return;
   }
-  if (pendingUpdate.phase === 'ready') {
-    sendUpdateStatus({ ...pendingUpdate, phase: 'installing', percent: 100 });
-    autoUpdater.quitAndInstall();
-    return;
-  }
-  installWhenReady = true;
-  if (pendingUpdate.phase === 'available') {
-    // The person's click is the download: fetch it, then install and restart.
-    sendUpdateStatus({ ...pendingUpdate, phase: 'installing', percent: 0 });
-    try {
-      await autoUpdater.downloadUpdate();
-    } catch (err) {
-      installWhenReady = false;
-      sendUpdateStatus({
-        ...pendingUpdate,
-        phase: 'failed',
-        detail: err instanceof Error ? err.message : String(err),
-      });
-    }
-    return;
-  }
-  if (pendingUpdate.phase === 'failed') {
-    // Try again from the top: a fresh check re-downloads, then installs.
-    sendUpdateStatus({ ...pendingUpdate, phase: 'installing', percent: 0, detail: undefined });
-    pendingUpdate = { ...pendingUpdate, phase: 'installing' };
-    try {
-      await autoUpdater.checkForUpdates();
-    } catch (err) {
-      installWhenReady = false;
-      sendUpdateStatus({
-        ...pendingUpdate,
-        phase: 'failed',
-        detail: err instanceof Error ? err.message : String(err),
-      });
-    }
-    return;
-  }
-  sendUpdateStatus({ ...pendingUpdate, phase: 'installing' });
+  applyUpdate({ type: 'click' });
 });
 
 // -------------------------------------------------------------- app lifecycle

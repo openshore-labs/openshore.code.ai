@@ -39,7 +39,11 @@ import {
 } from 'os-code/dist/src/git/workspaces.js';
 import { reconcileRepos, type ReconcileResult } from 'os-code/dist/src/git/reconcile.js';
 import { detectTailscale, tailscaleIp } from 'os-code/dist/src/connect/tailscale.js';
-import { loadCredentials, revokeCredential } from 'os-code/dist/src/core/security/credentials.js';
+import {
+  loadCredentials,
+  revokeCredential,
+  revokeCredentialByHash,
+} from 'os-code/dist/src/core/security/credentials.js';
 import { oscHome } from 'os-code/dist/src/config/load.js';
 import { shouldRebind } from './lifecycle.js';
 import {
@@ -75,9 +79,9 @@ import type {
   StackHealthRange,
 } from 'os-code/protocol';
 
-// One paired device as the renderer sees it. `id` is the credential's token
-// hash, which is also the handle the revoke store matches on (revokeCredential
-// takes a label or a token-hash prefix). Structural, so no shared import with
+// One paired device as the renderer sees it. `id` is the credential's whole
+// token hash, which is also the handle the desktop's revoke matches exactly
+// (revokeCredentialByHash). Structural, so no shared import with
 // electronBridge is needed.
 export interface PairedDeviceWire {
   id: string;
@@ -129,6 +133,8 @@ export interface EngineHostDeps {
   tailscale?: () => { running: boolean; ip: string | undefined };
   startDaemon?: typeof startDaemon;
   platform?: NodeJS.Platform;
+  /** The desktop's PTY host; tests hand in one with a fake pty. */
+  terminals?: TerminalManager;
 }
 
 export interface HardwareWire {
@@ -166,13 +172,13 @@ export class EngineHost {
   private daemon?: RunningDaemon;
   // The desktop app's own PTYs (the same TerminalManager the daemon uses), plus
   // the live output subscriptions the renderer opened, keyed by termId.
-  private terminals = new TerminalManager();
+  private readonly terminals: TerminalManager;
   private termSubs = new Map<string, () => void>();
   // Crew routines: the process-wide scheduler. The desktop is home, so it
   // runs whenever the app is open, daemon or no daemon; when the daemon is
   // started later it shares this same instance, so a routine fires once.
   private readonly scheduler: RoutineScheduler;
-  private readonly deps: Required<EngineHostDeps>;
+  private readonly deps: Required<Omit<EngineHostDeps, 'terminals'>>;
 
   constructor(
     private readonly forwardEvent: EventForward,
@@ -186,6 +192,7 @@ export class EngineHost {
       startDaemon: deps.startDaemon ?? startDaemon,
       platform: deps.platform ?? process.platform,
     };
+    this.terminals = deps.terminals ?? new TerminalManager();
     // Reseal any pre-encryption sessions once the host is up. Off the launch
     // path and failure-tolerant: sealing protects data, it never blocks the app.
     setImmediate(() => {
@@ -378,6 +385,11 @@ export class EngineHost {
     return this.drivers.get(sessionId)?.listFiles(query) ?? [];
   }
 
+  /** The folder an open session works in, for main's trust dialog. */
+  sessionFolder(sessionId: string): string | undefined {
+    return this.drivers.get(sessionId)?.cwd;
+  }
+
   /** The person's tap on the trust card: trust this session's folder on this
    *  computer. Its own settings apply from the next session there; the session
    *  hears it, so the card folds on every device watching. */
@@ -457,9 +469,14 @@ export class EngineHost {
     const driver = this.drivers.get(sessionId);
     if (!driver) return { unavailable: true, error: 'That session is not open.' };
     try {
-      const info = await this.terminals.ensure({ sessionId, cwd: driver.cwd, cols, rows });
-      // Content-free audit marker only (never output or stdin).
-      driver.emit({ type: 'terminal-opened', termId: info.termId, cwd: driver.cwd });
+      // A session's terminal reopens the shell it left running, like the home
+      // shell: every mount of the room used to spawn a fresh one, and the old
+      // shells ran on with nothing attached.
+      const termId = this.terminals.liveTermId(sessionId);
+      const info = await this.terminals.ensure({ sessionId, termId, cwd: driver.cwd, cols, rows });
+      // Content-free audit marker only (never output or stdin), once per shell
+      // started, not per reattach.
+      if (!termId) driver.emit({ type: 'terminal-opened', termId: info.termId, cwd: driver.cwd });
       return info;
     } catch (err) {
       if (err instanceof TerminalUnavailable) return { unavailable: true, error: err.message };
@@ -580,9 +597,11 @@ export class EngineHost {
   // ------------------------------------------------------------------ ollama
   // Ollama from inside the app (A3). Detection asks the API, then the binary;
   // starting spawns `ollama serve` detached; installing follows the platform's
-  // plan (Linux: the official installer in the built-in terminal; macOS and
-  // Windows: the download page, then the app polls ollamaStatus). The command
-  // always comes back so the renderer can show it as a copy block.
+  // plan (macOS and Windows: Ollama's own installer, fetched and opened, else
+  // the download page; then the app polls ollamaStatus). Linux runs nothing:
+  // the official script is a download piped into a shell with sudo, which the
+  // person runs in their own terminal if they choose. The command always comes
+  // back so the renderer can show it as a copy block.
 
   async ollamaStatus(): Promise<OllamaStatus> {
     return probeOllama({ baseUrl: firstLocalBaseUrl() });
@@ -604,30 +623,19 @@ export class EngineHost {
     if (plan.mode !== 'terminal') {
       // Fetch the official installer and hand main.ts its path to open; main
       // opens the download page instead when nothing could be fetched.
-      const installer = await downloadOllamaInstaller({
-        platform: this.deps.platform,
-        downloadsDir: join(homedir(), 'Downloads'),
-      });
+      const installer = await downloadOllamaInstaller({ platform: this.deps.platform });
       return installer
         ? { ...plan, started: true, installerPath: installer }
         : { ...plan, started: true };
     }
-    try {
-      const info = await this.terminals.ensure({
-        sessionId: 'ollama-install',
-        cwd: homedir(),
-        cols: 100,
-        rows: 30,
-      });
-      this.terminals.write(info.termId, `${plan.command}\r`);
-      return { ...plan, started: true, termId: info.termId };
-    } catch (err) {
-      const detail =
-        err instanceof TerminalUnavailable
-          ? 'The built-in terminal is not available on this machine. Run the command in any terminal.'
-          : (err as Error).message;
-      return { ...plan, started: false, detail };
-    }
+    // Linux: nothing is run for the person. The renderer never asked for this
+    // path (it waits and shows the command), and a download piped into sh is
+    // the one install a second key could not make safe.
+    return {
+      ...plan,
+      started: false,
+      detail: 'Run the command in a terminal. This carries on by itself once Ollama is running.',
+    };
   }
 
   // ------------------------------------------------------------- marketplace
@@ -743,7 +751,8 @@ export class EngineHost {
         },
       },
     });
-    process.env.OPENAI_API_KEY = trimmed;
+    // Never into process.env: every shell this app spawns would inherit it.
+    // The provider reads the credential store when the variable is absent.
     return {
       ok: true,
       detail: 'ChatGPT is connected. Point any stack slot at the openai provider to use it.',
@@ -925,6 +934,12 @@ export class EngineHost {
   // pointer to a credential the phone has yet to mint, never a credential.
   private claim?: { claim: string; expiresAt: string };
 
+  // Why the last bind failed, kept until one succeeds, and whether the hub
+  // should be up at all (a start and no stop since). A hub that went dark on
+  // a failed bind tries again from the re-bind poll; a paused one never does.
+  private lastBindError?: string;
+  private wantHub = false;
+
   private currentClaim(): { claim: string; expiresAt: string } | undefined {
     if (!this.daemon) return undefined;
     if (this.claim && this.daemon.pairClaimStatus(this.claim.claim) === 'live') return this.claim;
@@ -953,6 +968,10 @@ export class EngineHost {
       // uses this to avoid publishing an unreachable QR with false copy.
       mode: (this.daemon?.host === '127.0.0.1' ? 'loopback' : 'tailscale') as
         'loopback' | 'tailscale',
+      // Why the last bind failed: the tailnet (the hub fell back to loopback)
+      // or both (the hub is dark and the poll is retrying). Absent once a
+      // bind succeeds or the hub is paused.
+      ...(this.lastBindError ? { bindError: this.lastBindError } : {}),
     };
   }
 
@@ -972,6 +991,7 @@ export class EngineHost {
           bind: 'tailscale',
           port: config.daemon.port,
         });
+        this.lastBindError = undefined;
         return { host: this.daemon.host };
       } catch (err) {
         tailnetError = (err as Error).message;
@@ -983,14 +1003,18 @@ export class EngineHost {
         bind: 'loopback',
         port: config.daemon.port,
       });
+      // Up on loopback; a tailnet that refused is still worth saying why.
+      this.lastBindError = tailnetError;
       return { host: this.daemon.host };
     } catch (err) {
-      return { error: tailnetError ?? (err as Error).message };
+      this.lastBindError = tailnetError ?? (err as Error).message;
+      return { error: this.lastBindError };
     }
   }
 
   async daemonStart() {
     retireSharedPairingCredential();
+    this.wantHub = true;
     if (this.daemon) {
       // Already up: the only thing a second start can improve is the bind.
       await this.daemonRebind();
@@ -1001,13 +1025,22 @@ export class EngineHost {
     return this.daemonInfo();
   }
 
-  /** Move a loopback daemon onto the tailnet once Tailscale is up. Polled by
-   *  the shell; a no-op when there is nothing to do. True when it moved. On a
-   *  failed move the hub comes back on loopback rather than going dark. */
+  /** Move a loopback daemon onto the tailnet once Tailscale is up, and bring
+   *  back a hub whose last bind failed. Polled by the shell; a no-op when
+   *  there is nothing to do. True when it moved or came back. On a failed
+   *  move the hub comes back on loopback rather than going dark, and when
+   *  even that fails the error stays in daemonInfo and the next poll retries. */
   async daemonRebind(): Promise<boolean> {
+    if (!this.daemon) {
+      // Dark: retry only a hub that should be up and failed to bind, never a
+      // paused one.
+      if (!this.wantHub || this.lastBindError === undefined) return false;
+      const bound = await this.bindDaemon();
+      return bound.host !== undefined;
+    }
     // Cheap exit first: only a loopback daemon can move, so a tailnet daemon
-    // or a paused hub never spawns the tailscale probe.
-    if (!this.daemon || this.daemon.host !== '127.0.0.1') return false;
+    // never spawns the tailscale probe.
+    if (this.daemon.host !== '127.0.0.1') return false;
     const ts = this.tailscaleState(true);
     if (
       !shouldRebind({
@@ -1030,6 +1063,8 @@ export class EngineHost {
   }
 
   async daemonStop() {
+    this.wantHub = false;
+    this.lastBindError = undefined;
     this.daemon?.close();
     this.daemon = undefined;
     this.claim = undefined;
@@ -1051,10 +1086,11 @@ export class EngineHost {
     return listPairedDevices();
   }
 
-  // Cut off one device by its credential id (the token hash). A lost phone is
-  // revoked on its own, leaving every other paired device connected.
+  // Cut off one device by its credential id, the whole token hash, matched
+  // exactly. A lost phone is revoked on its own, leaving every other paired
+  // device connected; a prefix or an empty id removes nothing.
   revokeDeviceCredential(id: string): { removed: number } {
-    return { removed: revokeCredential(id) };
+    return { removed: revokeCredentialByHash(id) };
   }
 
   disposeAll(): void {
@@ -1062,6 +1098,8 @@ export class EngineHost {
     this.unsubs.clear();
     for (const off of this.termSubs.values()) off();
     this.termSubs.clear();
+    // The app is quitting: no shell outlives it with nothing able to reach it.
+    this.terminals.killAll();
     this.daemon?.close();
     this.scheduler.stop();
   }
