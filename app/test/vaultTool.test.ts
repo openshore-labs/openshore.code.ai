@@ -344,8 +344,8 @@ describe('the Stack batches every proposal into one approval card', () => {
     );
     const events: DriverEvent[] = [];
     driver.subscribe((e) => events.push(e));
+    // An anchor with no one to hand off to answers in one call (no framing).
     h.claudeScript.push(
-      [{ type: 'text', text: 'not a plan' }],
       [
         {
           type: 'tool_use',
@@ -383,7 +383,7 @@ describe('the Stack batches every proposal into one approval card', () => {
     const { driver } = setup();
     driver.send('save a launch note');
     await settle();
-    const tools = h.claudeParams[1]!.tools as Array<{ name: string }>;
+    const tools = h.claudeParams[0]!.tools as Array<{ name: string }>;
     expect(tools.map((t) => t.name)).toEqual(['vaultSearch', 'vaultRead', 'vaultPropose']);
     driver.dispose();
   });

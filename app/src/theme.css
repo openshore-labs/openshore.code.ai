@@ -3308,6 +3308,26 @@ button.vault-tag {
   border-radius: var(--radius);
   padding: 10px 14px;
 }
+/* The person's own Stop (CX ruling 5): a muted marker under whatever part of
+   the answer arrived, not a failure card. It fades in over --dur-3, opacity
+   only; the global reduced-motion reset zeroes it. */
+.msg-stopped.msg-stopped-own {
+  font-size: var(--text-3);
+  color: var(--muted);
+  border: none;
+  padding: 0 2px;
+  animation: stopped-in var(--dur-3) var(--ease-standard) backwards;
+}
+@keyframes stopped-in {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .msg-stopped.msg-stopped-own {
+    animation: none;
+  }
+}
 .msg-stopped-action {
   display: inline-block;
   margin-top: 8px;

@@ -134,6 +134,35 @@ describe('main-process IPC guard (UI-6)', () => {
     expect(main).toMatch(/vaultOverrides: parseVaultOverrides\(o\.vaultOverrides\)/);
   });
 
+  // Build 2026-09-29 (CTO ruling 7): a model seat's reply streams through
+  // its own guarded channel, validated in electron/chatStream.ts, with its
+  // data on osc:chat-stream and every stream torn down when the page goes.
+  // httpFetch keeps its own rules, untouched.
+  it('the chat stream channel is guarded, in lockstep, and torn down with the page', () => {
+    for (const ch of ['chatStream', 'chatStreamAbort']) {
+      expect(preload).toContain(`${ch}: invoke('osc:${ch}')`);
+      expect(main).toMatch(new RegExp(`guarded\\('osc:${ch}'`));
+    }
+    expect(preload).toContain("onChatStream: listen('osc:chat-stream')");
+    expect(main).toMatch(
+      /guarded\('osc:chatStream', \(req: unknown\) => chatStreams\.start\(req\)\)/,
+    );
+    expect(main).toMatch(/webContents\.send\('osc:chat-stream', event\)/);
+    expect(main).toMatch(/'did-start-loading', \(\) => chatStreams\.closeAll\(\)/);
+    expect(main).toMatch(/'render-process-gone', \(\) => chatStreams\.closeAll\(\)/);
+    expect(main).toMatch(/guarded\('osc:httpFetch', async \(req: unknown\) => \{/);
+    const bridgeTypes = readFileSync(
+      join(process.cwd(), 'src', 'lib', 'electronBridge.ts'),
+      'utf8',
+    );
+    expect(bridgeTypes).toMatch(
+      /chatStream\(req: ChatStreamRequest\): Promise<\{ status: number \}>/,
+    );
+    expect(bridgeTypes).toMatch(
+      /onChatStream\(cb: \(event: ChatStreamEvent\) => void\): \(\) => void/,
+    );
+  });
+
   it('exposes secureHas so the renderer can tell absent from unreadable (P0-3)', () => {
     expect(preload).toContain("secureHas: invoke('osc:secureHas')");
     expect(main).toMatch(/guarded\('osc:secureHas'/);

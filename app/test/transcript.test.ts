@@ -165,6 +165,40 @@ describe('transcript reducer', () => {
     expect(stop?.kind).toBe('stopped');
   });
 
+  // CX ruling 5 (build 2026-09-29): the person's own Stop leaves the partial
+  // answer where it is and a muted marker under it, never a failure card.
+  it("marks the person's own stop, with or without words, and keeps the partial", () => {
+    const partway = feed([
+      { type: 'task-start', input: 'explain closures' },
+      { type: 'text-delta', text: 'A closure is' },
+      { type: 'text-final', text: 'A closure is' },
+      { type: 'task-done', reason: 'aborted', message: 'Stopped.' },
+    ]);
+    expect(partway.busy).toBe(false);
+    expect(partway.items.map((i) => i.kind)).toEqual(['user', 'assistant', 'stopped']);
+    expect(partway.items.at(-1)).toMatchObject({ message: 'Stopped by you.', byYou: true });
+
+    const early = feed([
+      { type: 'task-start', input: 'explain closures' },
+      { type: 'text-final', text: '' },
+      { type: 'task-done', reason: 'aborted', message: 'Stopped at your request.' },
+    ]);
+    expect(early.items.at(-1)).toMatchObject({
+      message: 'Stopped before it answered.',
+      byYou: true,
+    });
+
+    // A failure still says what went wrong, with nothing marked as the person's.
+    const failed = feed([
+      { type: 'task-start', input: 'explain closures' },
+      { type: 'task-done', reason: 'error', message: 'Box answered 500.' },
+    ]);
+    expect(failed.items.at(-1)).toEqual(
+      expect.objectContaining({ kind: 'stopped', message: 'Box answered 500.' }),
+    );
+    expect(failed.items.at(-1)).not.toHaveProperty('byYou');
+  });
+
   it('accumulates cost, dedupes citations, and titles from the first message', () => {
     const state = feed([
       { type: 'task-start', input: 'research the topic thoroughly please' },

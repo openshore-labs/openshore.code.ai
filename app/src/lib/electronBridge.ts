@@ -46,6 +46,22 @@ import type {
   WriteResult,
 } from './gitos/providers.js';
 
+/** One streamed chat request (electron/chatStream.ts keeps the same shape):
+ *  the renderer's own id, so late data for a stopped request is dropped. */
+export interface ChatStreamRequest {
+  id: string;
+  url: string;
+  headers: Record<string, string>;
+  body: string;
+}
+
+/** A piece of a streamed chat response: body text, its end, or why it
+ *  stopped (a plain sentence). */
+export type ChatStreamEvent =
+  | { id: string; kind: 'data'; chunk: string }
+  | { id: string; kind: 'end' }
+  | { id: string; kind: 'error'; message: string };
+
 /** A change the vault folder watcher saw (Vault M1, CTO F3): the note paths
  *  that changed, or `tree` when it cannot say which (a folder changed, too
  *  many paths, an event with no name). `rootGone` says the vault folder
@@ -595,6 +611,15 @@ export interface OscodeBridge {
     headers?: Record<string, string>;
     body?: string;
   }): Promise<{ ok: boolean; status: number; body: string }>;
+
+  // A streamed chat completion for a model seat (build 2026-09-29, CTO 7;
+  // electron/chatStream.ts): POST only, to a path ending /chat/completions or
+  // /api/chat, public https pinned, plain http only on your own network, no
+  // redirects. chatStream resolves at the response head; the body arrives as
+  // osc:chat-stream events for the renderer's id, and chatStreamAbort ends it.
+  chatStream(req: ChatStreamRequest): Promise<{ status: number }>;
+  chatStreamAbort(id: string): Promise<void>;
+  onChatStream(cb: (event: ChatStreamEvent) => void): () => void;
 
   // Google Drive OAuth redirect capture: a one-shot loopback server. listen()
   // opens it and returns the port to build the redirect_uri against; wait()

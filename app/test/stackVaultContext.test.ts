@@ -119,6 +119,15 @@ vi.mock('../src/lib/platform.js', () => ({
   storeGetJson: async () => null,
 }));
 
+// The iPhone streams through the WebView's fetch first; here every server
+// refuses the cross-origin call at the preflight, so each request goes once
+// through the native shim below (the transport's fallback, CTO ruling 7).
+vi.mock('../src/lib/streamingFetch.js', () => ({
+  streamingFetch: async () => {
+    throw new TypeError('Load failed');
+  },
+}));
+
 vi.mock('../src/lib/nativeFetch.js', () => ({
   nativeFetch: async (_url: string, init: { body: string }) => {
     h.nativeBodies.push(JSON.parse(init.body));
@@ -140,6 +149,14 @@ import type { AppVaultPack, PackSeat } from '../src/drivers/types.js';
 import type { AppStack, StackModelRef } from '../src/lib/stack.js';
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
+
+/** A framing reply that plans one specialist step, so the turn goes on to
+ *  the single-turn path (a prose reply would be the lead's own answer). */
+const ONE_STEP = JSON.stringify({
+  clear: true,
+  summary: 'One step',
+  steps: [{ id: 's1', title: 'Answer', category: 'writing', brief: 'Answer it.' }],
+});
 const settle = async (n = 10) => {
   for (let i = 0; i < n; i++) await tick();
 };
@@ -268,24 +285,23 @@ describe('the pack on a Stack turn', () => {
         packSeat: seatOf,
       },
     );
-    h.nativeReplies.push('not a plan', 'Here you go.');
+    h.nativeReplies.push('Here you go.');
     driver.send('hello');
     await settle();
     expect(seats).toEqual([{ modelClass: 'large', servedTokens: 128000, leavesNetwork: true }]);
-    const answer = h.nativeBodies[1]!;
-    const system = systemOf(answer);
+    // An anchor with no one to hand off to answers in one call (B2).
+    expect(h.nativeBodies).toHaveLength(1);
+    const system = systemOf(h.nativeBodies[0]!);
     expect(system.endsWith('VAULT PACK large 128000')).toBe(true);
-    // The planning call never carried the pack.
-    expect(systemOf(h.nativeBodies[0]!)).not.toContain('VAULT PACK');
     driver.dispose();
   });
 
   it('is left out when no pack is passed (Memory off)', async () => {
     const { driver } = chat({ reasoning: gpt, active: [], saved: {} }, {}, { packSeat: seatOf });
-    h.nativeReplies.push('not a plan', 'Here you go.');
+    h.nativeReplies.push('Here you go.');
     driver.send('hello');
     await settle();
-    expect(systemOf(h.nativeBodies[1]!)).not.toContain('VAULT PACK');
+    expect(systemOf(h.nativeBodies[0]!)).not.toContain('VAULT PACK');
     driver.dispose();
   });
 
@@ -303,11 +319,16 @@ describe('the pack on a Stack turn', () => {
       { harnessCurrents: { jev: { baseUrl: 'https://jev.test' } } },
       { vaultPack: pack, packSeat: seatOf },
     );
-    h.nativeReplies.push('not a plan', 'A short note.');
+    h.nativeReplies.push(ONE_STEP, 'A short note.');
     driver.send('hello there');
     await settle();
     expect(events.some((e) => e.type === 'harness-current')).toBe(true);
-    expect(seats).toEqual([{ modelClass: 'small', servedTokens: 8192, leavesNetwork: false }]);
+    // The framing call carries the anchor's own pack (it may be the answer);
+    // the answer is budgeted for the seat Jev routed to.
+    expect(seats).toEqual([
+      { modelClass: 'large', servedTokens: 128000, leavesNetwork: true },
+      { modelClass: 'small', servedTokens: 8192, leavesNetwork: false },
+    ]);
     expect(systemOf(h.nativeBodies[1]!)).toContain('VAULT PACK small 8192');
     driver.dispose();
   });
@@ -351,7 +372,7 @@ describe('the pack on a Stack turn', () => {
         packSeat: seatOf,
       },
     );
-    h.nativeReplies.push('not a plan', 'Hermes here.');
+    h.nativeReplies.push('Hermes here.');
     driver.send('hello');
     await settle();
     expect(seats).toEqual([]);
@@ -383,8 +404,9 @@ describe('the pack on a Stack turn', () => {
     driver.send('write a launch note and check it');
     await settle(30);
     expect(prepares).toHaveLength(1);
-    // Step a on your box, step b and the synthesis on the anchor.
-    expect(seats.map((s) => s.modelClass)).toEqual(['mid', 'large', 'large']);
+    // The framing on the anchor, step a on your box, step b and the
+    // synthesis on the anchor.
+    expect(seats.map((s) => s.modelClass)).toEqual(['large', 'mid', 'large', 'large']);
     driver.dispose();
   });
 });
@@ -404,12 +426,12 @@ describe('the prompt order and the cache (J16)', () => {
         packSeat: seatOf,
       },
     );
-    h.claudeScript.push('not a plan', 'one', 'not a plan', 'two');
+    h.claudeScript.push('one', 'two');
     driver.send('first');
     await settle();
     driver.send('second');
     await settle();
-    const answers = [h.claudeParams[1]!, h.claudeParams[3]!];
+    const answers = [h.claudeParams[0]!, h.claudeParams[1]!];
     const [a, b] = answers.map(
       (p) => p.system as Array<{ text: string; cache_control?: { type: string } }>,
     );
@@ -431,10 +453,10 @@ describe('the prompt order and the cache (J16)', () => {
       vaultPack: pack,
       packSeat: seatOf,
     });
-    h.claudeScript.push('not a plan', 'one');
+    h.claudeScript.push('one');
     driver.send('first');
     await settle();
-    const params = h.claudeParams[1]!;
+    const params = h.claudeParams[0]!;
     // Caching off is byte-identical to before M5: one string, no marker.
     expect(typeof params.system).toBe('string');
     expect(JSON.stringify(params)).not.toContain('cache_control');
@@ -460,10 +482,10 @@ describe('the prompt order and the cache (J16)', () => {
       vaultPack: fakePack().pack,
       packSeat: seatOf,
     });
-    h.nativeReplies.push('not a plan', 'one');
+    h.nativeReplies.push('one');
     other.driver.send('first');
     await settle();
-    expect(systemOf(h.nativeBodies[1]!)).toBe(system);
+    expect(systemOf(h.nativeBodies[0]!)).toBe(system);
     other.driver.dispose();
   });
 });
@@ -494,7 +516,7 @@ describe('a reply after a local-only read (I5 in the app)', () => {
       { packSeat: seatOf, vaultTools },
     );
     h.nativeReplies.push(
-      'not a plan',
+      ONE_STEP,
       {
         tool_calls: [
           {
@@ -514,7 +536,7 @@ describe('a reply after a local-only read (I5 in the app)', () => {
     const finals = events.filter((e) => e.type === 'text-final');
     expect(isLocalOnlyFinal(finals.at(-1)!)).toBe(true);
 
-    h.nativeReplies.push('not a plan', 'Here is the fix.');
+    h.nativeReplies.push(ONE_STEP, 'Here is the fix.');
     driver.send('please debug this typescript function');
     await settle(20);
     // A reply with no local-only read is not marked.
@@ -669,11 +691,10 @@ describe('a reply after a local-only read (I5 in the app)', () => {
       { packSeat: seatOf },
     );
     driver.subscribe(() => {});
-    h.nativeReplies.push('not a plan', 'ok');
+    h.nativeReplies.push('ok');
     driver.send('and now?');
     await settle();
-    expect(JSON.stringify(h.nativeBodies[1]!.messages)).not.toContain('teal secret');
-    // The planning digest to the same leaving anchor is stubbed too.
+    expect(h.nativeBodies).toHaveLength(1);
     expect(JSON.stringify(h.nativeBodies[0]!.messages)).not.toContain('teal secret');
     driver.dispose();
   });

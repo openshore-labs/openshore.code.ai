@@ -3,8 +3,9 @@
 // lost the request (a memory-warning unload, a wedged runner) no token and no
 // generationDone ever came, busy stayed true, every later message queued, and
 // Stop could not unstick it. The same stall watchdog OnDeviceDriver carries now
-// guards the stack's device path, and abort() finishes the turn itself when
-// Llama.stop yields no generationDone within a beat.
+// guards the stack's device path, and abort() finishes the turn itself, at
+// once (build 2026-09-29), dropping the slot a beat later when Llama.stop
+// yields no generationDone.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DriverEvent } from 'os-code/protocol';
 
@@ -36,7 +37,8 @@ vi.mock('../src/lib/platform.js', () => ({
 }));
 
 const { StackDriver } = await import('../src/drivers/stackDriver.js');
-const { STALL_TIMEOUT_MS, ABORT_BEAT_MS } = await import('../src/drivers/deviceModel.js');
+const { STALL_TIMEOUT_MS, ABORT_BEAT_MS, loadedDeviceModel } =
+  await import('../src/drivers/deviceModel.js');
 import type { AppStack } from '../src/lib/stack.js';
 
 const stack: AppStack = {
@@ -98,17 +100,23 @@ describe('StackDriver device stall watchdog (B2)', () => {
     driver.dispose();
   });
 
-  it('abort() finishes the turn when Llama.stop yields no generationDone within a beat', async () => {
+  // Stop answers at once (build 2026-09-29, CTO ruling 7): the turn closes
+  // the moment abort() is called, and when the runner never confirms the stop
+  // the slot claim is dropped a beat later, so the next send reloads.
+  it('abort() finishes the turn at once, and drops the slot when Llama.stop yields no generationDone', async () => {
     const { driver, events } = driverWithEvents();
     driver.send('hello');
     await vi.advanceTimersByTimeAsync(5);
+    expect(loadedDeviceModel()).toBe('reason-model');
     driver.abort();
     expect(llama.stops).toHaveLength(1);
-    // No generationDone arrives. A beat later the turn is over anyway.
-    await vi.advanceTimersByTimeAsync(ABORT_BEAT_MS + 5);
     const done = doneEvents(events);
     expect(done).toHaveLength(1);
     expect(done[0]).toMatchObject({ reason: 'aborted' });
+    // No generationDone arrives. A beat later the slot is no longer trusted.
+    await vi.advanceTimersByTimeAsync(ABORT_BEAT_MS + 5);
+    expect(doneEvents(events)).toHaveLength(1);
+    expect(loadedDeviceModel()).toBeUndefined();
     driver.dispose();
   });
 

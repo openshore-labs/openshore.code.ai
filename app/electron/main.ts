@@ -102,6 +102,7 @@ import { isIP } from 'node:net';
 import electronUpdaterPkg from 'electron-updater';
 const { autoUpdater } = electronUpdaterPkg;
 import { EngineHost } from './engineHost.js';
+import { ChatStreams } from './chatStream.js';
 import { bundleOf, newestMacUpdate, type ReleaseAsset, type ReleaseInfo } from './updateVersion.js';
 import { canReplace, installMacUpdate } from './macUpdate.js';
 import { EmbeddedWeb, type EmbeddedBounds } from './embeddedWeb.js';
@@ -455,6 +456,10 @@ guarded('osc:gdriveOAuthCancel', () => {
 
 let win: BrowserWindow | undefined;
 
+// Every model reply streaming through main right now (chatStream.ts), torn
+// down whenever the page reloads, crashes or closes.
+const chatStreams = new ChatStreams((event) => win?.webContents.send('osc:chat-stream', event));
+
 const host = new EngineHost(
   (payload) => win?.webContents.send('osc:event', payload),
   (payload) => win?.webContents.send('osc:install-progress', payload),
@@ -695,6 +700,11 @@ function createWindow(): void {
     win?.webContents.send('osc:update-status', pendingUpdate);
   });
 
+  // A page that reloads, crashes or goes away cannot read a streaming reply,
+  // so every stream it opened stops here and the server stops generating.
+  win.webContents.on('did-start-loading', () => chatStreams.closeAll());
+  win.webContents.on('render-process-gone', () => chatStreams.closeAll());
+
   // OSC_SMOKE=1 makes a headless CI run prove the page and bridge came up.
   // The engine half of the proof is logged from whenReady (below); once both
   // are in, the run quits by itself so scripts/package-smoke.mjs can judge it.
@@ -721,6 +731,7 @@ function createWindow(): void {
     }
   });
   win.on('closed', () => {
+    chatStreams.closeAll();
     vaultWatcher.stop();
     win = undefined;
   });
@@ -1369,6 +1380,13 @@ guarded('osc:httpFetch', async (req: unknown) => {
     return { ok: false, status: 0, body: err instanceof Error ? err.message : String(err) };
   }
 });
+
+// A model seat's streamed chat request (CTO ruling 7, electron/chatStream.ts):
+// POST to a chat path only, public https pinned, plain http only on your own
+// network, no redirects, capped and timed. The body streams back as
+// osc:chat-stream events for the renderer's id; httpFetch above is unchanged.
+guarded('osc:chatStream', (req: unknown) => chatStreams.start(req));
+guarded('osc:chatStreamAbort', (id: unknown) => chatStreams.abort(id));
 
 // ------------------------------------------------------------- auto-update
 // Every push to main publishes a desktop release (.github/workflows/release.yml),

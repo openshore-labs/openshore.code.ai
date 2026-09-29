@@ -46,6 +46,8 @@ describe('chat rescue', () => {
 
   it('a stop the person asked for is not a failure', () => {
     expect(isFailedStop('Stopped at your request.')).toBe(false);
+    expect(isFailedStop('Stopped by you.')).toBe(false);
+    expect(isFailedStop('Stopped before it answered.')).toBe(false);
     expect(isFailedStop('The step was declined.')).toBe(false);
   });
 

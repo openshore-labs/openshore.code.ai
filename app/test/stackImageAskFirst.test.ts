@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ApprovalRequest, DriverEvent } from 'os-code/protocol';
 
-const h = vi.hoisted(() => ({ streams: 0 }));
+const h = vi.hoisted(() => ({ streams: 0, models: [] as string[] }));
 
 vi.mock('@anthropic-ai/sdk', () => {
   class APIError extends Error {}
@@ -17,8 +17,9 @@ vi.mock('@anthropic-ai/sdk', () => {
     static RateLimitError = class extends APIError {};
     static APIConnectionError = class extends APIError {};
     messages = {
-      stream: () => {
+      stream: (params: { model: string }) => {
         h.streams++;
+        h.models.push(params.model);
         const handlers: Record<string, (delta: string) => void> = {};
         return {
           on: (event: string, cb: (delta: string) => void) => {
@@ -52,7 +53,8 @@ vi.mock('../src/lib/platform.js', () => ({
   storeGetJson: async () => null,
 }));
 
-const { StackDriver, IMAGE_NOT_SENT } = await import('../src/drivers/stackDriver.js');
+const { StackDriver, IMAGE_NOT_SENT, ASK_STOP_LINE } =
+  await import('../src/drivers/stackDriver.js');
 const { harborRef } = await import('../src/lib/stack.js');
 import type { AppStack } from '../src/lib/stack.js';
 import type { Attachment } from '../src/lib/attachments.js';
@@ -84,6 +86,7 @@ const asked = (events: DriverEvent[]) =>
 
 beforeEach(() => {
   h.streams = 0;
+  h.models.length = 0;
 });
 
 describe('an image when no local model can see', () => {
@@ -92,12 +95,16 @@ describe('an image when no local model can see', () => {
     driver.send('Who is this?', [photo]);
     await settle();
     const ask = asked(events);
+    // The card names the model the image would go to: the Claude model that
+    // costs the person least, never the top of the lineup (build 2026-09-29).
     expect(ask?.request).toMatchObject({
       kind: 'cloud-spend',
       risk: 'cloud-spend',
-      summary: 'Read this image with Claude?',
+      summary: 'Read this image with Claude Haiku 4.5?',
     });
     expect(ask?.request.detail).toContain('Nothing in Stack is set for Image reading');
+    // The turn waits on the tap with no timer, so the card says Stop skips it.
+    expect(ask?.request.detail).toContain(ASK_STOP_LINE);
     expect(h.streams).toBe(0);
     expect(events.some((e) => e.type === 'task-done')).toBe(false);
     driver.dispose();
@@ -111,6 +118,7 @@ describe('an image when no local model can see', () => {
     await settle();
     expect(events.some((e) => e.type === 'approval-resolved' && e.approved)).toBe(true);
     expect(h.streams).toBe(1);
+    expect(h.models).toEqual(['claude-haiku-4-5']);
     expect(
       events.some((e) => e.type === 'status' && /Reading this image with Claude/.test(e.message)),
     ).toBe(true);

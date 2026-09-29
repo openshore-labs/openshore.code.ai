@@ -9,7 +9,9 @@ import type { ConversationSource } from '../state/types.js';
 
 /** A stop the person asked for, or a step they declined, is not a failure. */
 export function isFailedStop(message: string): boolean {
-  return !/stopped at your request|declined|was declined/i.test(message);
+  return !/stopped at your request|stopped by you|stopped before it answered|declined|was declined/i.test(
+    message,
+  );
 }
 
 /** True when the stop's fix lives under Cloud Connections (a missing workspace

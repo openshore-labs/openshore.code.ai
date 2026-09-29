@@ -2,6 +2,8 @@
 // keeps it off the screen.
 import { describe, expect, it } from 'vitest';
 import {
+  SEARCHED_NOTE,
+  SEARCH_PREFIX,
   SEARCH_PROTOCOL_NOTE,
   SearchLineFilter,
   parseSearchLine,
@@ -74,5 +76,14 @@ describe('SearchLineFilter', () => {
 
   it('the instruction names the prefix the parser reads', () => {
     expect(SEARCH_PROTOCOL_NOTE).toContain('SEARCH: your search query');
+  });
+
+  // The answer pass after a search (app drivers, build 2026-09-29 A4): the
+  // model is told its one search is spent, and the line never names the
+  // prefix, so it cannot read as an invitation to ask again.
+  it('the after-search note tells the model to answer now', () => {
+    expect(SEARCHED_NOTE).toMatch(/already searched/i);
+    expect(SEARCHED_NOTE).toMatch(/do not ask to search again/i);
+    expect(SEARCHED_NOTE).not.toContain(SEARCH_PREFIX);
   });
 });
