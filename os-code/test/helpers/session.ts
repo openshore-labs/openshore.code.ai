@@ -71,6 +71,9 @@ export interface TestSessionOptions {
   offline?: boolean;
   /** The permission mode to start in. */
   permissionMode?: AgentDeps['permissionMode'];
+  /** Also hand every event here (a LocalDriver's emit, when a test drives the
+   *  session through the driver the way the daemon does). */
+  onEvent?: (event: AgentEvent) => void;
 }
 
 export function makeTestSession(
@@ -166,7 +169,10 @@ export function makeTestSession(
       approvals.push(request);
       return options.approve ? options.approve(request) : { approve: true };
     },
-    onEvent: (event) => events.push(event),
+    onEvent: (event) => {
+      events.push(event);
+      options.onEvent?.(event);
+    },
     persistRule: (rule) => {
       persistedRules.push(rule);
       return true;

@@ -897,6 +897,11 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           history={history}
           hubRole={hubRole}
           onCommand={onCommand}
+          repoCommands={
+            thread?.repo
+              ? { commands: thread.repo.commands, notLoaded: thread.repo.commandsNotLoaded }
+              : undefined
+          }
           onOpenModelSheet={() => {
             setSheetStage('root');
             setSheetOpen(true);

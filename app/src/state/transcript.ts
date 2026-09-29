@@ -283,8 +283,24 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
     case 'mode':
       return { ...next, mode: event.mode };
 
-    case 'repo-info':
-      return { ...next, repo: { cwd: event.cwd, branch: event.branch, dirty: event.dirty } };
+    case 'repo-info': {
+      // The person's commands ride only when their list changed, so a
+      // repo-info without them keeps the last list this chat saw.
+      const commands = event.commands ?? next.repo?.commands;
+      const commandsNotLoaded = event.commands
+        ? event.commandsNotLoaded
+        : next.repo?.commandsNotLoaded;
+      return {
+        ...next,
+        repo: {
+          cwd: event.cwd,
+          branch: event.branch,
+          dirty: event.dirty,
+          ...(commands ? { commands } : {}),
+          ...(commandsNotLoaded ? { commandsNotLoaded } : {}),
+        },
+      };
+    }
 
     case 'title':
       return { ...next, title: event.title };

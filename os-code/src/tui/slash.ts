@@ -2,6 +2,20 @@
 // plain renderer. Anything that needs full-screen flow (init, market) points
 // at its command instead of half-reimplementing it inline.
 import type { SessionDriver } from '../daemon/session.js';
+import {
+  commandFromLabel,
+  commandNotLoadedLine,
+  parseSlashInput,
+  type RepoCommand,
+  type RepoCommandNotLoaded,
+} from '../core/agent/commandText.js';
+
+/** The person's own commands for this folder, as the session last said them
+ *  (the repo-info event). Kept by the renderer, read by /help. */
+export interface RepoCommandList {
+  commands: RepoCommand[];
+  notLoaded: RepoCommandNotLoaded[];
+}
 
 export interface SlashContext {
   driver: SessionDriver;
@@ -15,6 +29,8 @@ export interface SlashContext {
   webEnabled?: () => boolean;
   /** Search the session transcript (the renderer keeps the history). */
   find?: (query: string) => void;
+  /** The person's own commands for this folder, for /help. */
+  repoCommands?: () => RepoCommandList;
 }
 
 export interface SlashCommand {
@@ -32,6 +48,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
         [
           'Commands:',
           ...SLASH_COMMANDS.map((c) => `  ${c.name.padEnd(10)} ${c.description}`),
+          ...repoCommandHelp(ctx.repoCommands?.()),
           'Keys: Esc stops the current run. Ctrl+C twice quits. Up/Down recalls input history.',
           'Bigger flows have their own commands: osc init, osc market, osc doctor, osc pair.',
         ].join('\n'),
@@ -121,4 +138,51 @@ export function runSlash(text: string, ctx: SlashContext): boolean {
   if (!command) return false;
   command.run(rest.join(' '), ctx);
   return true;
+}
+
+/** The /help lines for the person's own commands: each one with where it
+ *  came from, then every file that was found and not loaded, and why. */
+export function repoCommandHelp(list: RepoCommandList | undefined): string[] {
+  if (!list || (!list.commands.length && !list.notLoaded.length)) return [];
+  const lines: string[] = [];
+  for (const from of ['project', 'user'] as const) {
+    const mine = list.commands.filter((c) => c.from === from);
+    if (!mine.length) continue;
+    lines.push(`${commandFromLabel(from)}:`);
+    for (const c of mine) {
+      const hint = c.argumentHint ? ` ${c.argumentHint}` : '';
+      lines.push(`  /${c.name}${hint}${c.description ? `  ${c.description}` : ''}`);
+    }
+  }
+  if (list.notLoaded.length) {
+    lines.push('Not loaded:');
+    for (const n of list.notLoaded) lines.push(`  ${commandNotLoadedLine(n)}`);
+  }
+  return lines;
+}
+
+/** The person's own command this line runs, when it runs one. The session
+ *  fills it in; the renderer only sends the line as typed. */
+export function findRepoCommand(
+  text: string,
+  list: RepoCommandList | undefined,
+): RepoCommand | undefined {
+  const typed = parseSlashInput(text);
+  return typed ? list?.commands.find((c) => c.name === typed.name) : undefined;
+}
+
+/** The slash hint line's matches for what is typed so far: the built-ins
+ *  first, then the person's own, each with a short description. */
+export function slashMatches(
+  value: string,
+  list: RepoCommandList | undefined,
+  limit = 5,
+): Array<{ name: string; description: string }> {
+  if (!value.startsWith('/') || value.includes(' ')) return [];
+  const typed = value.toLowerCase();
+  const own = (list?.commands ?? []).map((c) => ({
+    name: `/${c.name}`,
+    description: `${c.description ? `${c.description} ` : ''}(${commandFromLabel(c.from).toLowerCase()})`,
+  }));
+  return [...SLASH_COMMANDS, ...own].filter((c) => c.name.startsWith(typed)).slice(0, limit);
 }

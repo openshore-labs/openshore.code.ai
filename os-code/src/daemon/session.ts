@@ -38,6 +38,14 @@ import {
   type RestoreDirection,
   type RestoreResult,
 } from '../core/checkpoints/shadowGit.js';
+import { discoverCommands, menuOf, type CommandDiscovery } from '../core/agent/customCommands.js';
+import {
+  commandAsksForNote,
+  commandNotRunNote,
+  commandPreamble,
+  expandCommandBody,
+  parseSlashInput,
+} from '../core/agent/commandText.js';
 
 // DriverEvent lives in core/agent/types.ts (pure, browser-safe) so the app's
 // remote driver can share the exact protocol type; re-exported here so
@@ -581,6 +589,9 @@ function repairSessionInfo(dir: string, id: string): SessionInfo | undefined {
   }
 }
 
+/** The commands signature of a folder with none: nothing to say. */
+const COMMANDS_NONE = '';
+
 // The events that move info.json (title, updatedAt): task boundaries, a
 // generated title, and the content-free terminal markers.
 const INFO_MILESTONES = new Set<DriverEvent['type']>([
@@ -629,6 +640,11 @@ export class LocalDriver implements SessionDriver {
   // folder on this machine. On for stored sessions; off for throwaway ones
   // (tests, one-shot runs) unless asked for.
   private checkpoints?: ShadowCheckpoints;
+  // The person's own slash commands (P3): the list last said in a repo-info
+  // event (it rides again only when it changes), and the notes a command
+  // leaves for the person, said right under their message.
+  private commandsSaid = COMMANDS_NONE;
+  private notesAfterStart: string[] = [];
 
   constructor(
     readonly cwd: string,
@@ -743,6 +759,9 @@ export class LocalDriver implements SessionDriver {
   /** The agent is attached after construction so the deps can reference the driver's approver. */
   attachAgent(agent: AgentSession): void {
     this.agent = agent;
+    // A folder with commands says so at once, so a composer or the terminal
+    // can list them before the first task (a folder with none says nothing).
+    if (this.commandsSignature(this.findCommands()) !== COMMANDS_NONE) void this.emitRepoInfo();
   }
 
   /** The journaled events, in order (used to seed history on rehydrate). */
@@ -866,6 +885,12 @@ export class LocalDriver implements SessionDriver {
       } catch {}
     }
     for (const sink of this.sinks) sink(event, seq);
+    // A command's notes land right under the person's own message.
+    if (event.type === 'task-start' && this.notesAfterStart.length) {
+      const notes = this.notesAfterStart;
+      this.notesAfterStart = [];
+      for (const message of notes) this.emit({ type: 'note', message });
+    }
   }
 
   /** The Approver the AgentSession deps should use. */
@@ -904,7 +929,11 @@ export class LocalDriver implements SessionDriver {
     const handoff = this.handoff;
     this.handoff = undefined;
     const terminal = this.drainTerminalContext();
-    const preamble = [handoff, terminal].filter((p) => p?.trim()).join('\n\n') || undefined;
+    // A command the person ran (/review): the chat keeps what they typed, and
+    // the file's filled-in text rides last in the preamble, right above it.
+    const command = this.commandPreambleFor(next.text);
+    const preamble =
+      [handoff, terminal, command].filter((p) => p?.trim()).join('\n\n') || undefined;
     let completed = false;
     let before: string | undefined;
     try {
@@ -919,6 +948,8 @@ export class LocalDriver implements SessionDriver {
         message: err instanceof Error ? err.message : String(err),
       });
     } finally {
+      // A note waiting on a task that never started is dropped with it.
+      this.notesAfterStart = [];
       // The checkpoint lands before the session reads as idle, so an undo
       // can never race the snapshot it restores from.
       if (before) await this.recordCheckpoint(before);
@@ -982,13 +1013,16 @@ export class LocalDriver implements SessionDriver {
     return false;
   }
 
-  /** Where this session works and the branch it is on, for the chat's chip.
+  /** Where this session works and the branch it is on, for the chat's chip,
+   *  and the person's commands for this folder when that list changed.
    *  Best effort: a non-repo cwd reports only the cwd. */
   async emitRepoInfo(): Promise<void> {
+    // Decided before the git wait, so two calls in flight never both say it.
+    const commands = this.commandsToSay();
     try {
       const git = simpleGit(this.cwd);
       if (!(await git.checkIsRepo())) {
-        this.emit({ type: 'repo-info', cwd: this.cwd });
+        this.emit({ type: 'repo-info', cwd: this.cwd, ...commands });
         return;
       }
       const status = await git.status();
@@ -997,10 +1031,66 @@ export class LocalDriver implements SessionDriver {
         cwd: this.cwd,
         branch: status.current ?? undefined,
         dirty: !status.isClean(),
+        ...commands,
       });
     } catch {
-      this.emit({ type: 'repo-info', cwd: this.cwd });
+      this.emit({ type: 'repo-info', cwd: this.cwd, ...commands });
     }
+  }
+
+  // ---- the person's own slash commands (P3) --------------------------------
+
+  /** The commands for this folder, read fresh (a file may have changed). */
+  private findCommands(): CommandDiscovery {
+    try {
+      return discoverCommands(this.cwd);
+    } catch {
+      return { commands: [], notLoaded: [] };
+    }
+  }
+
+  private commandsSignature(found: CommandDiscovery): string {
+    if (!found.commands.length && !found.notLoaded.length) return COMMANDS_NONE;
+    return JSON.stringify([menuOf(found.commands), found.notLoaded]);
+  }
+
+  /** The repo-info fields for the commands: the list and what was left out,
+   *  only when they changed since this session last said them. */
+  private commandsToSay(): Pick<
+    Extract<DriverEvent, { type: 'repo-info' }>,
+    'commands' | 'commandsNotLoaded'
+  > {
+    const found = this.findCommands();
+    const signature = this.commandsSignature(found);
+    if (signature === this.commandsSaid) return {};
+    this.commandsSaid = signature;
+    return { commands: menuOf(found.commands), commandsNotLoaded: found.notLoaded };
+  }
+
+  /**
+   * The preamble for a message that runs one of the person's commands, or
+   * undefined for any other message. Only text comes back: a command file
+   * cannot reach the tools, the model, the mode, or the config from here,
+   * since nothing but its filled-in body and two notes leave this function.
+   */
+  private commandPreambleFor(text: string): string | undefined {
+    const typed = parseSlashInput(text);
+    if (!typed) return undefined;
+    const command = this.findCommands().commands.find((c) => c.name === typed.name);
+    if (!command) return undefined;
+    const expanded = expandCommandBody(command.body, typed.args);
+    if (expanded.notRun.length) {
+      this.notesAfterStart.push(commandNotRunNote(command.name, expanded.notRun));
+    }
+    if (command.asksFor.length) {
+      this.notesAfterStart.push(commandAsksForNote(command.name, command.asksFor));
+    }
+    return commandPreamble({
+      name: command.name,
+      file: command.file,
+      from: command.from,
+      expanded,
+    });
   }
 
   // ---- the person's controls over the agent (mode, instructions, compact) ---

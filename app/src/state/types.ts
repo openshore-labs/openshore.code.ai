@@ -7,6 +7,8 @@ import type {
   PackMode,
   PackSource,
   PermissionMode,
+  RepoCommand,
+  RepoCommandNotLoaded,
 } from 'os-code/protocol';
 import type { BuildStatus } from '../lib/codemagic.js';
 import type { AccountType, PlanTierId } from '../lib/plans.js';
@@ -216,6 +218,12 @@ export interface RepoInfo {
   cwd: string;
   branch?: string;
   dirty?: boolean;
+  /** The person's own slash commands for this folder (P3): the repository's
+   *  and their own, names and words only. Kept from the last repo-info event
+   *  that carried them. */
+  commands?: RepoCommand[];
+  /** Command files that were found and left out, and why. */
+  commandsNotLoaded?: RepoCommandNotLoaded[];
 }
 
 export interface ThreadState {

@@ -10679,6 +10679,23 @@ button.vault-tag {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Whose command it is (the person's own, from the repository or their
+   computer): quiet, at the row's end, never squeezed by a long hint. */
+.composer-menu-from {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: var(--text-2);
+  white-space: nowrap;
+}
+/* A command file that was found and left out: one quiet line under the rows. */
+.composer-menu-note {
+  padding: 8px 14px 10px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: var(--text-2);
+  line-height: 1.4;
+}
 .send-btn.queue {
   background: var(--surface-hover);
   color: var(--ink);
