@@ -1510,6 +1510,27 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         sendJson(res, 'error' in result ? 409 : 200, result);
         return;
       }
+      // ---- rewind: the chat, and its files when asked, back to a message ----
+      // The session's own owner (or an admin), like undo: the files it puts
+      // back are only this session's own checkpoints, in its own folder.
+      // Refused while a task runs; the marker is journaled, so every attached
+      // device drops the same turns (P2).
+      if (req.method === 'POST' && parts[2] === 'rewind') {
+        const body = await readJson(req);
+        const toSeq = body.toSeq;
+        if (
+          typeof toSeq !== 'number' ||
+          !Number.isSafeInteger(toSeq) ||
+          toSeq < 1 ||
+          typeof body.files !== 'boolean'
+        ) {
+          sendJson(res, 400, { error: 'Send {"toSeq": <message seq>, "files": true | false}.' });
+          return;
+        }
+        const result = await driver.rewind(toSeq, { files: body.files });
+        sendJson(res, 'error' in result ? 409 : 200, result);
+        return;
+      }
       // ---- the person's controls: mode, instructions, compaction, files ----
       if (req.method === 'POST' && parts[2] === 'mode') {
         const body = await readJson(req);

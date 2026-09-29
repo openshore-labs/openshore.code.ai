@@ -501,6 +501,22 @@ export class EngineHost {
     return driver.restoreCheckpoint(id, direction, path);
   }
 
+  /** Rewind a chat to one of the person's messages (P2): the tap on "Rewind
+   *  chat and files" or "Rewind chat only". The session journals a marker,
+   *  so every device drops the same turns. */
+  async rewind(
+    sessionId: string,
+    toSeq: number,
+    files: boolean,
+  ): Promise<{ ok: true; paths: string[] } | { error: string }> {
+    const driver = this.drivers.get(sessionId);
+    if (!driver) return { error: 'That session is not open.' };
+    if (!Number.isSafeInteger(toSeq) || toSeq < 1) {
+      return { error: 'That message is not in this chat any more.' };
+    }
+    return driver.rewind(toSeq, { files });
+  }
+
   // ---------------------------------------------------- chat-to-terminal lane
   // The owner's tap on the desktop IS the approval, so runCommand runs straight
   // away. Output streams back as command-* events on the same LocalDriver the

@@ -257,6 +257,21 @@ describe('main-process IPC guard (UI-6)', () => {
     );
   });
 
+  // Rewind (P2): one guarded channel in lockstep with the preload, a session
+  // id, the message's journal seq as a number, and the files only on an
+  // explicit true, through the engine host like undo.
+  it('rewind takes a session id, a seq, and an explicit files flag, through the host', () => {
+    expect(preload).toContain("rewind: invoke('osc:rewind')");
+    expect(main).toMatch(
+      /guarded\('osc:rewind', \(sessionId: unknown, toSeq: unknown, files: unknown\) =>/,
+    );
+    expect(handler('osc:rewind')).toMatch(
+      /host\.rewind\(str\(sessionId, 'sessionId'\), num\(toSeq, 'toSeq'\), bool\(files\)\)/,
+    );
+    const host = readFileSync(join(process.cwd(), 'electron', 'engineHost.ts'), 'utf8');
+    expect(host).toMatch(/return driver\.rewind\(toSeq, \{ files \}\);/);
+  });
+
   // A commit card's ticked files (D3): a list of strings or nothing at all.
   it('an approval answer carries a commit card files only as a list of strings', () => {
     expect(handler('osc:answerApproval')).toMatch(/files: strList\(a\.files, 'files'\)/);

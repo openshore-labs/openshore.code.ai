@@ -256,6 +256,9 @@ type SlashItem =
 
 /** The menu's exit: --dur-3 plus a hair. */
 const MENU_EXIT_MS = 240;
+/** Two Escapes this close together in an empty field open the rewind for the
+ *  last message (P2), the way Claude Code's Esc Esc does. */
+export const ESC_ESC_MS = 700;
 /** Matches .composer-chip.closing (--dur-3). */
 const CHIP_EXIT_MS = 220;
 
@@ -346,6 +349,7 @@ export function Composer({
   onOpenVoice,
   onCommand,
   repoCommands,
+  onRewind,
   hubRole,
   vault,
 }: {
@@ -380,6 +384,9 @@ export function Composer({
   onCommand?: (command: SlashCommand, arg: string) => void;
   /** The person's own commands for this chat's folder (an engine session). */
   repoCommands?: ComposerRepoCommands;
+  /** Esc Esc in an empty field (the desktop's keyboard way in, P2): open the
+   *  rewind for the last message. Absent where there is none to rewind. */
+  onRewind?: () => void;
   /** What the paired hub lets this device do (P0-1). A member device never
    *  gets a shell, so terminal mode is not offered; absent on an old hub. */
   hubRole?: HubRole;
@@ -540,6 +547,9 @@ export function Composer({
       clearTimeout(t);
     };
   }, [mentionQuery, mentionStart, agent, listFiles]);
+
+  // When Escape last landed in an empty, idle field, for Esc Esc.
+  const lastEsc = useRef(0);
 
   // Up-arrow recall through this chat's earlier messages.
   const [histIdx, setHistIdx] = useState<number | null>(null);
@@ -1092,7 +1102,20 @@ export function Composer({
       }
       if (value) {
         e.preventDefault();
+        lastEsc.current = 0;
         resetField();
+        return;
+      }
+      // Esc Esc in an empty field opens the rewind for the last message.
+      if (onRewind) {
+        const now = Date.now();
+        if (now - lastEsc.current < ESC_ESC_MS) {
+          e.preventDefault();
+          lastEsc.current = 0;
+          onRewind();
+        } else {
+          lastEsc.current = now;
+        }
       }
       return;
     }

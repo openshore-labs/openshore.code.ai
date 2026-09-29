@@ -320,6 +320,7 @@ export function guardDriver(inner: ChatDriver): ChatDriver {
   if (inner.restoreCheckpoint) {
     out.restoreCheckpoint = (id, direction, path) => inner.restoreCheckpoint!(id, direction, path);
   }
+  if (inner.rewind) out.rewind = (taskSeq, opts) => inner.rewind!(taskSeq, opts);
   if (inner.runCommand) out.runCommand = (command) => inner.runCommand!(command);
   if (inner.sendStdin) out.sendStdin = (runId, data) => inner.sendStdin!(runId, data);
   if (inner.killCommand) out.killCommand = (runId) => inner.killCommand!(runId);

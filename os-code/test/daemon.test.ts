@@ -361,6 +361,38 @@ describe('POST /sessions/:id/checkpoints/:cid/restore (undo)', () => {
   });
 });
 
+// Rewind from a paired phone (P2): the route checks its body, answers with the
+// driver's own result (a 409 for a message the chat does not hold), and is the
+// session owner's, like undo.
+describe('POST /sessions/:id/rewind', () => {
+  it('checks the body, answers an unknown message plainly, and refuses another user', async () => {
+    const created = await createSessionAs(adminToken, home);
+    const { id } = (await created.json()) as { id: string };
+    for (const body of [{ toSeq: 1 }, { toSeq: 0, files: true }, { toSeq: '3', files: false }]) {
+      const bad = await fetch(`${base}/sessions/${id}/rewind`, {
+        method: 'POST',
+        headers: auth(adminToken),
+        body: JSON.stringify(body),
+      });
+      expect(bad.status, JSON.stringify(body)).toBe(400);
+    }
+    const unknown = await fetch(`${base}/sessions/${id}/rewind`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ toSeq: 999, files: true }),
+    });
+    expect(unknown.status).toBe(409);
+    expect(await unknown.json()).toEqual({ error: 'That message is not in this chat any more.' });
+    const { token } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_rewind' });
+    const other = await fetch(`${base}/sessions/${id}/rewind`, {
+      method: 'POST',
+      headers: auth(token),
+      body: JSON.stringify({ toSeq: 1, files: false }),
+    });
+    expect(other.status).toBe(403);
+  });
+});
+
 // The workspace predicates resolve BOTH sides through realpath, so a symlink
 // planted inside ~/OSCode that points outside it cannot pass as provisioned
 // (the P0-1 escape). HOME is pointed at the scratch dir so ~/OSCode is ours.

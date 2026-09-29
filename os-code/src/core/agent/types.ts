@@ -310,7 +310,15 @@ export type DriverEvent =
   // offer "Undo these changes" and per-file undo. A restore echoes back so
   // every attached device folds the same card.
   | { type: 'checkpoint'; id: string; files: CheckpointFileChange[] }
-  | { type: 'checkpoint-restored'; id: string; direction: 'undo' | 'redo'; paths: string[] };
+  | { type: 'checkpoint-restored'; id: string; direction: 'undo' | 'redo'; paths: string[] }
+  // Rewind (P2). The chat went back to just before the person's message whose
+  // task-start was journaled at `toSeq`. Everything from `toSeq` up to this
+  // marker is taken back: a replay leaves it out (the engine's seed, the app's
+  // transcript), so a rehydrate and a paired phone agree. `paths` are the
+  // files put back (empty when only the chat went back); `kept` names the
+  // files the taken-back turns changed that stayed as they are, when the
+  // person kept them. Additive: an older client ignores it.
+  | { type: 'rewound'; toSeq: number; paths: string[]; kept?: string[] };
 
 /** One file a task changed, as a checkpoint records it. */
 export interface CheckpointFileChange {

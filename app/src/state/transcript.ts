@@ -7,6 +7,7 @@ import type { ChangedFile, ConversationSource, ThreadItem, ThreadState } from '.
 import { providerInfo } from '../lib/providers.js';
 import { isLocalOnlyFinal } from '../drivers/types.js';
 import { windowCutItem } from './securityOps.js';
+import { rewindThread } from './rewindOps.js';
 
 /** The go-ahead the app sends when a plan is approved. The reducer reads it
  *  back on replay: a task that starts with this line means the plan before
@@ -98,9 +99,12 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
       // the user bubble the moment the text leaves, so the first turn is
       // visible before the computer answers): the same text, while that
       // local task is still open with nothing after it, is one bubble.
+      // The echo carries the journal's seq, which a rewind names (P2).
+      const journaled = atSeq !== undefined && atSeq >= 1 ? { seq: atSeq } : {};
       const last = next.items[next.items.length - 1];
       if (next.busy && last && last.kind === 'user' && last.text === event.input) {
-        return { ...next, stepNote: 'Thinking' };
+        const items = atSeq ? [...next.items.slice(0, -1), { ...last, ...journaled }] : next.items;
+        return { ...next, items, stepNote: 'Thinking' };
       }
       // The go-ahead line settles the plan it answers, live or on replay.
       const items =
@@ -123,7 +127,7 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
           // The last task's list is done with; the new task writes its own.
           todos: [],
         },
-        { kind: 'user', text: event.input },
+        { kind: 'user', text: event.input, ...journaled },
       );
     }
 
@@ -396,6 +400,12 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
       });
       return { ...next, items };
     }
+
+    case 'rewound':
+      // A rewind (P2): the turns from the rewound message up to this marker
+      // are taken back, live or on replay, on every device, and a quiet line
+      // says what happened to the files (state/rewindOps.ts).
+      return rewindThread(next, event);
 
     case 'project-trust': {
       if (event.state === 'trusted') {

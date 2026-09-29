@@ -3271,6 +3271,78 @@ button.vault-tag {
   animation: msg-in var(--dur-3) var(--ease-standard);
 }
 
+/* The person's own message when the chat can rewind to it (P2). The turn
+   takes the bubble's place in the thread, so the quiet round action can sit
+   just left of the bubble without moving it; its right padding bridges the
+   gap, so the pointer never leaves the turn on its way to the action. */
+.msg-user-turn {
+  position: relative;
+  align-self: flex-end;
+  max-width: 85%;
+  display: flex;
+}
+.msg-user-turn > .msg-user {
+  max-width: 100%;
+}
+.msg-rewind {
+  position: absolute;
+  right: 100%;
+  bottom: 2px;
+  width: 34px;
+  height: 28px;
+  padding: 0 6px 0 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0;
+}
+/* Compound on purpose: .press-fb is declared later at equal specificity and
+   its `transition: scale` would reset the fades. */
+.msg-rewind.press-fb {
+  transition:
+    opacity var(--dur-2) var(--ease-standard),
+    color var(--dur-2) var(--ease-standard),
+    scale var(--press-out);
+}
+.msg-user-turn:hover .msg-rewind,
+.msg-rewind:focus-visible {
+  opacity: 1;
+}
+.msg-rewind:hover {
+  color: var(--ink);
+}
+/* A held finger eases the bubble down (the phone's way in); it springs back
+   when the finger lifts or the sheet takes over. */
+.msg-user.rewindable {
+  transition: scale var(--press-out);
+}
+.msg-user.rewindable.holding {
+  scale: var(--press-scale-row);
+  transition: scale var(--press-in);
+}
+@media (hover: none) {
+  /* Nothing hovers here: the long press is the way in. */
+  .msg-rewind {
+    display: none;
+  }
+  /* The hold opens the rewind, so it must not also select the words (the
+     sheet offers Copy instead). */
+  .msg-user.rewindable {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+}
+.rewind-sheet .rewind-files-line {
+  color: var(--ink-soft);
+}
+.rewind-sheet .rewind-failed {
+  color: var(--warn);
+  margin: -6px 0 12px;
+}
+
 .msg-assistant {
   max-width: 100%;
   color: var(--ink);

@@ -98,6 +98,15 @@ export class ElectronDriver implements ChatDriver {
     return requireBridge().restoreCheckpoint(this.sessionId, id, direction, path);
   }
 
+  async rewind(
+    taskSeq: number,
+    opts: { files: boolean },
+  ): Promise<{ ok: true; paths: string[] } | { error: string }> {
+    const b = requireBridge();
+    if (!b.rewind) return { error: 'Update OpenShore on this computer to rewind a chat.' };
+    return b.rewind(this.sessionId, taskSeq, opts.files);
+  }
+
   // ---- chat-to-terminal bridge ----
   // Output for a started run streams back as command-* events on the same
   // onEvent channel the main process already forwards, so these only kick off /

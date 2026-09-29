@@ -26,6 +26,10 @@ export type ThreadItem =
        *  stays on screen as the record, and never rides into a model's history
        *  (a switch or a relaunch reseeds from the transcript). */
       withheld?: boolean;
+      /** The sequence number its task-start was journaled at, on an engine
+       *  session: what a rewind names (P2), and what a `rewound` marker cuts
+       *  the transcript back to on every device. */
+      seq?: number;
     }
   | {
       kind: 'assistant';

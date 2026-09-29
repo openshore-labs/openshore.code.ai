@@ -47,6 +47,13 @@ import {
   expandCommandBody,
   parseSlashInput,
 } from '../core/agent/commandText.js';
+import {
+  liveJournal,
+  restoreNotes,
+  rewindKept,
+  seedHistoryFromEvents,
+  type JournalEntry,
+} from '../core/agent/seed.js';
 
 // DriverEvent lives in core/agent/types.ts (pure, browser-safe) so the app's
 // remote driver can share the exact protocol type; re-exported here so
@@ -64,6 +71,9 @@ export interface SessionDriver {
   describeModel(): { model: string; kind: 'local' | 'cloud' };
   readonly busy: boolean;
 }
+
+/** A rewind's answer (P2): the files put back, or why it did not happen. */
+export type RewindResult = { ok: true; paths: string[] } | { error: string };
 
 export function sessionsDir(): string {
   return join(oscHome(), 'sessions');
@@ -711,6 +721,9 @@ export class LocalDriver implements SessionDriver {
   // leaves for the person, said right under their message.
   private commandsSaid = COMMANDS_NONE;
   private notesAfterStart: string[] = [];
+  // True while a rewind puts files back (P2): no task starts, no other
+  // restore lands, and the driver is not evicted until it is done.
+  private rewinding = false;
 
   constructor(
     readonly cwd: string,
@@ -803,6 +816,7 @@ export class LocalDriver implements SessionDriver {
     return (
       this.persist &&
       !this.running &&
+      !this.rewinding &&
       this.queue.length === 0 &&
       ![...this.commands.keys()].some((runId) => !this.agentProcesses.has(runId)) &&
       this.pendingApprovals.size === 0 &&
@@ -837,6 +851,12 @@ export class LocalDriver implements SessionDriver {
   /** The journaled events, in order (used to seed history on rehydrate). */
   replayEvents(): DriverEvent[] {
     return this.events.map((e) => e.event);
+  }
+
+  /** The journal with its sequence numbers, which a rewind's marker points
+   *  into (the seed leaves the turns it took back out). */
+  replayJournal(): JournalEntry[] {
+    return [...this.events];
   }
 
   get busy(): boolean {
@@ -990,20 +1010,25 @@ export class LocalDriver implements SessionDriver {
   }
 
   private async pump(): Promise<void> {
-    if (this.running || !this.agent) return;
+    if (this.running || this.rewinding || !this.agent) return;
     const next = this.queue.shift();
     if (!next) return;
     this.running = true;
-    // The first task's preamble opens with the handoff (J12), then any
-    // commands the person ran; the transcript shows only their own words.
+    // The first task's preamble opens with the handoff (J12), then what
+    // changed under the model since its last task (an Undo, a Redo, a rewind:
+    // P2, so it never builds on edits that are gone), then any commands the
+    // person ran; the transcript shows only their own words. The restore
+    // notes are read from the journal after the last task-start, so this
+    // task's own task-start is what clears them.
     const handoff = this.handoff;
     this.handoff = undefined;
+    const restored = restoreNotes(this.events).join('\n\n');
     const terminal = this.drainTerminalContext();
     // A command the person ran (/review): the chat keeps what they typed, and
     // the file's filled-in text rides last in the preamble, right above it.
     const command = this.commandPreambleFor(next.text);
     const preamble =
-      [handoff, terminal, command].filter((p) => p?.trim()).join('\n\n') || undefined;
+      [handoff, restored, terminal, command].filter((p) => p?.trim()).join('\n\n') || undefined;
     let completed = false;
     let before: string | undefined;
     try {
@@ -1064,15 +1089,91 @@ export class LocalDriver implements SessionDriver {
   ): Promise<RestoreResult> {
     this.lastActivityAt = Date.now();
     if (!this.checkpoints) return { error: 'Undo is not on for this session.' };
-    if (this.running || this.queue.length) {
+    if (this.running || this.queue.length || this.rewinding) {
       return { error: 'Wait for the current step to finish, then undo.' };
     }
-    const result = await this.checkpoints.restore(id, direction, { path, sessionId: this.id });
+    const result = await this.restoreNow(this.checkpoints, id, direction, path);
+    if ('ok' in result) void this.emitRepoInfo();
+    return result;
+  }
+
+  /** One restore, journaled when it lands, so every device folds the card and
+   *  the next task's preamble names the files (restoreNotes). */
+  private async restoreNow(
+    shadow: ShadowCheckpoints,
+    id: string,
+    direction: RestoreDirection,
+    path?: string,
+  ): Promise<RestoreResult> {
+    const result = await shadow.restore(id, direction, { path, sessionId: this.id });
     if ('ok' in result) {
       this.emit({ type: 'checkpoint-restored', id, direction, paths: result.paths });
-      void this.emitRepoInfo();
     }
     return result;
+  }
+
+  /**
+   * Rewind (P2): take the chat back to just before the person's message whose
+   * task-start is journaled at `toSeq`. With `files`, every checkpoint since
+   * is undone first, newest first, through the same restore Undo uses, so the
+   * folder's files go back to how they were then (a checkpoint already undone
+   * is passed over). Refused while a task runs or waits. On the first restore
+   * that fails it stops, says what was put back, and leaves the chat as it
+   * was. Otherwise it journals a `rewound` marker, which every replay reads
+   * (the seed and the app's transcript leave the taken-back turns out, so a
+   * revived session and a paired phone agree), and the agent's history is
+   * rebuilt from the journal as it now stands, the way a revived session's is.
+   */
+  async rewind(toSeq: number, options: { files: boolean }): Promise<RewindResult> {
+    this.lastActivityAt = Date.now();
+    if (this.running || this.queue.length || this.rewinding) {
+      return { error: 'Wait for the current step to finish, then rewind.' };
+    }
+    const target = liveJournal(this.events).find((e) => e.seq === toSeq);
+    if (target?.event.type !== 'task-start') {
+      return { error: 'That message is not in this chat any more.' };
+    }
+    this.rewinding = true;
+    try {
+      const paths: string[] = [];
+      const shadow = this.checkpoints;
+      if (options.files && shadow) {
+        const records = new Map(shadow.list(this.id).map((r) => [r.id, r]));
+        const later = this.events
+          .filter((e) => e.seq > toSeq)
+          .flatMap(({ event }) => (event.type === 'checkpoint' ? [event.id] : []))
+          .reverse();
+        for (const id of [...new Set(later)]) {
+          const record = records.get(id);
+          const undone = record?.undone ?? {};
+          if (record && record.files.every((f) => f.path in undone)) continue;
+          const result = await this.restoreNow(shadow, id, 'undo');
+          if ('error' in result) return this.rewindStopped(paths, result.error);
+          for (const p of result.paths) if (!paths.includes(p)) paths.push(p);
+        }
+      }
+      const kept = rewindKept(this.events, toSeq, options.files, paths);
+      this.emit({ type: 'rewound', toSeq, paths, ...(kept.length ? { kept } : {}) });
+      if (this.agent) this.agent.history = seedHistoryFromEvents(this.events);
+      if (paths.length) void this.emitRepoInfo();
+      return { ok: true, paths };
+    } finally {
+      this.rewinding = false;
+      if (this.queue.length) void this.pump();
+    }
+  }
+
+  /** A rewind whose files could not all go back: the chat stays as it was.
+   *  When some already went back, a note says which on every device, and the
+   *  next task's preamble names them (their restores are journaled). */
+  private rewindStopped(paths: string[], reason: string): RewindResult {
+    if (!paths.length) {
+      return { error: `The rewind stopped: ${reason} The chat and its files stay as they were.` };
+    }
+    const message = `The rewind stopped partway: ${reason} The chat stays as it was, and these files already went back: ${paths.join(', ')}.`;
+    this.emit({ type: 'note', message });
+    void this.emitRepoInfo();
+    return { error: message };
   }
 
   private lastTaskCompleted(): boolean {

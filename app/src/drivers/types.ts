@@ -73,6 +73,17 @@ export interface ChatDriver {
     path?: string,
   ): Promise<{ ok: true; paths: string[] } | { error: string }>;
   /**
+   * Rewind (engine-backed drivers only, P2): take the chat back to just
+   * before the person's message whose task-start the engine journaled at
+   * `taskSeq`, and with `files`, put back every file the later tasks changed.
+   * The engine journals a `rewound` marker, so every device watching drops
+   * the same turns; the answer names the files put back.
+   */
+  rewind?(
+    taskSeq: number,
+    opts: { files: boolean },
+  ): Promise<{ ok: true; paths: string[] } | { error: string }>;
+  /**
    * The chat-to-terminal bridge (desktop-backed drivers only). Run a command
    * the user asked for on the connected machine; output streams back as
    * command-* events on the same subscription. Returns the runId, or undefined
