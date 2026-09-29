@@ -3,14 +3,15 @@
 // truth about OpenShore lives here, once, and both guides' personas splice it
 // in. Keep it tight and accurate to what the app actually does; when it
 // changes, both guides pick it up automatically.
-import { featureOn } from './focus.js';
+import { SHIPS_CURRENTS, SHIPS_LAUNCH, SHIPS_MARKETPLACE } from './focus.js';
 
 // Release tiers (docs/release-tiers.md): facts about a later tier's feature
 // stay out of an earlier build, so a guide never sends a person to a room the
-// build does not have.
-const marketplaceOn = featureOn('marketplace');
-const currentsOn = featureOn('currents');
-const launchOn = featureOn('launch');
+// build does not have. The build-time gates keep the words out of that
+// build's bundle too.
+const marketplaceOn = SHIPS_MARKETPLACE;
+const currentsOn = SHIPS_CURRENTS;
+const launchOn = SHIPS_LAUNCH;
 
 export const APP_KNOWLEDGE = [
   'FACTS ABOUT OPENSHORE (ground every answer in these; do not invent features):',

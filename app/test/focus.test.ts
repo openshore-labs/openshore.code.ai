@@ -4,7 +4,7 @@
 // navigation, and no current is on anywhere. The suite itself runs at tier 4
 // (vite.config.ts) so every tier's code stays tested; these tests pass the
 // tier explicitly to pin what a Personal build carries.
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -14,6 +14,7 @@ import {
   roomOpen,
   tierFrom,
   visibleRooms,
+  type TieredFeature,
 } from '../src/lib/focus.js';
 import { navRooms } from '../src/lib/navRooms.js';
 
@@ -113,5 +114,39 @@ describe('a Personal build', () => {
     expect(setView.slice(0, 400)).toContain('if (!roomOpen(view))');
     const detail = read('src', 'screens', 'ProjectDetailScreen.tsx');
     expect(detail).toMatch(/mayEdit && featureOn\('currents'\) \?\s*\(?\s*<ProjectCurrents/);
+  });
+});
+
+describe('the build-time gates', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  // RELEASE_TIER is spelled inline (so the bundler folds it) and each SHIPS_
+  // constant repeats a tier from FEATURE_TIER (so it folds too). Reload the
+  // module at every tier and hold both to the one rule.
+  it('agree with tierFrom and featureOn at every tier', async () => {
+    const SHIPS: Record<TieredFeature, string> = {
+      currents: 'SHIPS_CURRENTS',
+      stackhealth: 'SHIPS_STACKHEALTH',
+      launch: 'SHIPS_LAUNCH',
+      marketplace: 'SHIPS_MARKETPLACE',
+      admin: 'SHIPS_ADMIN',
+      teams: 'SHIPS_TEAMS',
+      hubMembers: 'SHIPS_HUBMEMBERS',
+    };
+    for (const raw of ['', '1', '2', ' 3 ', '4', '5', 'all']) {
+      vi.stubEnv('VITE_RELEASE_TIER', raw);
+      vi.resetModules();
+      const focus = (await import('../src/lib/focus.js')) as unknown as Record<string, unknown> &
+        typeof import('../src/lib/focus.js');
+      expect(focus.RELEASE_TIER, raw).toBe(tierFrom({ VITE_RELEASE_TIER: raw }));
+      for (const feature of Object.keys(FEATURE_TIER) as TieredFeature[]) {
+        expect(focus[SHIPS[feature]], `${SHIPS[feature]} at "${raw}"`).toBe(
+          featureOn(feature, focus.RELEASE_TIER),
+        );
+      }
+    }
   });
 });

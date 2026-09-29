@@ -6,7 +6,14 @@
 // dead room until a hub exists (review 6, blocker A), so it moves to the
 // second-session group where the room's own "Connect your hub" card still
 // explains the way in. Nothing else moves.
-import { RELEASE_TIER, visibleRooms, type ReleaseTier } from './focus.js';
+import {
+  RELEASE_TIER,
+  SHIPS_LAUNCH,
+  SHIPS_MARKETPLACE,
+  SHIPS_STACKHEALTH,
+  visibleRooms,
+  type ReleaseTier,
+} from './focus.js';
 
 export type NavRoom =
   | 'chats'
@@ -32,7 +39,9 @@ export interface NavEntry {
  *  the BackBar, and the guides all read these, so a room is named one way
  *  everywhere. Title Case only for proper nouns (Crew, Stack Health, Cloud
  *  Connections, Vault, Marketplace); Sentence case for the rest. The stack is
- *  named "Stack", never "Your stack" or "My Stack". */
+ *  named "Stack", never "Your stack" or "My Stack". A later tier's room has no
+ *  name in a build without it, the way it has no door there, so its name is
+ *  not in that build's bundle either (lib/focus.ts, SHIPS_). */
 export const ROOM_LABELS: Record<NavRoom, string> = {
   chats: 'Chats',
   projects: 'Projects',
@@ -41,9 +50,9 @@ export const ROOM_LABELS: Record<NavRoom, string> = {
   stack: 'Stack',
   vault: 'Vault',
   crew: 'Crew',
-  marketplace: 'Marketplace',
-  stackhealth: 'Stack Health',
-  launch: 'Launch with Codemagic',
+  marketplace: SHIPS_MARKETPLACE ? 'Marketplace' : '',
+  stackhealth: SHIPS_STACKHEALTH ? 'Stack Health' : '',
+  launch: SHIPS_LAUNCH ? 'Launch with Codemagic' : '',
   connections: 'Cloud Connections',
   pair: 'Desktop + phone',
   settings: 'Settings',

@@ -200,43 +200,26 @@ export function Sidebar({
   progress?: number | null;
   dragProps?: GestureProps;
 }) {
-  const { view, setView, setDrawer, settings, personalUnlockedNow } = useApp();
+  const { view, setView, setDrawer, settings } = useApp();
   const { configured: authConfigured, signedIn } = useAuth();
-  // Coming soon: the Marketplace is grayed out with a "Coming soon" tag while the
-  // scope narrows to the curated out-of-the-box models (founder, 2026-09-21). The
-  // row is non-interactive until it ships. This takes precedence over the older
-  // Personal lock pill below.
-  const COMING_SOON_VIEWS = new Set<NavIconName>(['marketplace']);
-  // Free is chat only. A locked view shows a Personal pill before the tap (tapping
-  // still opens the upgrade sheet via setView). Empty of effect while the one
-  // locked view, the Marketplace, is coming soon.
-  const unlocked = personalUnlockedNow();
-  const LOCKED_VIEWS = new Set<NavIconName>(['marketplace']);
 
   // --i is the row's place in the drawer's entrance stagger (theme.css
   // drawer-row-in): the wordmark is 0, the primary rooms follow, and the
   // bottom group carries on counting so the whole door fills top to bottom.
   const stagger = (i: number) => ({ '--i': i }) as CSSProperties;
-  const item = ({ view: v, label }: { view: NavIconName; label: string }, i: number) => {
-    const soon = COMING_SOON_VIEWS.has(v);
-    const locked = !soon && !unlocked && LOCKED_VIEWS.has(v);
-    return (
-      <button
-        key={v}
-        className={`nav-item press-fb press-fb--row${view === v ? ' active' : ''}${soon ? ' nav-item--soon' : ''}`}
-        style={stagger(1 + i)}
-        onClick={soon ? undefined : () => setView(v, { root: true })}
-        disabled={soon}
-      >
-        <span className="glyph">
-          <NavIcon name={v} />
-        </span>
-        {label}
-        {soon ? <span className="nav-soon-pill">Coming soon</span> : null}
-        {locked ? <span className="nav-lock-pill">Personal</span> : null}
-      </button>
-    );
-  };
+  const item = ({ view: v, label }: { view: NavIconName; label: string }, i: number) => (
+    <button
+      key={v}
+      className={`nav-item press-fb press-fb--row${view === v ? ' active' : ''}`}
+      style={stagger(1 + i)}
+      onClick={() => setView(v, { root: true })}
+    >
+      <span className="glyph">
+        <NavIcon name={v} />
+      </span>
+      {label}
+    </button>
+  );
 
   const body = (
     <aside

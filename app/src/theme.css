@@ -5590,9 +5590,9 @@ button.vault-tag {
   padding: 6px 4px;
 }
 
-/* The small "Personal" pill on a locked nav item. */
-.nav-lock-pill,
-.nav-soon-pill {
+/* A small quiet pill at the end of a row (the Vault's folder list reads a
+   state with it). */
+.nav-lock-pill {
   margin-left: auto;
   font-size: var(--text-1);
   font-weight: var(--weight-semibold);
@@ -5602,17 +5602,6 @@ button.vault-tag {
   background: var(--code-surface);
   border: 1px solid var(--border);
   color: var(--muted);
-}
-
-/* A coming-soon nav room: dimmed, non-interactive, and it never lights on
-   hover. The "Coming soon" pill carries the reason. */
-.nav-item--soon {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.nav-item--soon:hover {
-  background: transparent;
 }
 
 .sheet-detail {

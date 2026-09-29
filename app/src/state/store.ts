@@ -7385,12 +7385,6 @@ export const useApp = create<AppState>((set, get, api) => {
         get().openAccountGate(accountFeature, view);
         return;
       }
-      // Free is chat only: the Marketplace needs Personal. Intercept the
-      // navigation and show the upgrade sheet instead of the locked screen.
-      if (view === 'marketplace' && !get().personalUnlockedNow()) {
-        get().openPaywall('marketplace');
-        return;
-      }
       const { view: current, viewTrail } = get();
       if (view === current) {
         set({ drawerOpen: false });
@@ -9659,7 +9653,9 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async startGuideChat(guideId) {
+      // A later tier's guide is not in a build without it (setupGuides.ts).
       const guide = SETUP_GUIDES[guideId];
+      if (!guide) return;
       const s = get();
       // Whatever brain can answer here, best first: this computer's engine on
       // desktop, a connected Claude key anywhere, else Harbor Lite on the phone

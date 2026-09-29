@@ -56,9 +56,31 @@ export function tierFrom(env: { VITE_RELEASE_TIER?: string } | undefined): Relea
   return raw === '2' || raw === '3' || raw === '4' ? (Number(raw) as ReleaseTier) : 1;
 }
 
-/** This build's tier. */
-// Written as `import.meta.env` literally: Vite replaces only that exact form.
-export const RELEASE_TIER: ReleaseTier = tierFrom(import.meta.env);
+/** This build's tier. The same reading as tierFrom, spelled out inline so the
+ *  bundler can fold it: Vite writes the variable's literal value in place of
+ *  `import.meta.env.VITE_RELEASE_TIER` (only that exact form), and a call
+ *  would stop the fold. app/test/focus.test.ts holds the two to agreeing. */
+const TIER_RAW = import.meta.env?.VITE_RELEASE_TIER?.trim();
+export const RELEASE_TIER: ReleaseTier =
+  TIER_RAW === '4' ? 4 : TIER_RAW === '3' ? 3 : TIER_RAW === '2' ? 2 : 1;
+
+// Build-time twins of featureOn, one plain boolean per feature. featureOn is a
+// call, and the bundler never folds a call; these are comparisons on a folded
+// tier, so in a Personal build each is a literal `false` in the bundle and the
+// bundler drops whatever sits behind it. Gate with these (never through an
+// object, which does not fold either) where a Personal build must not carry a
+// later tier's words or code at all: the rosters, the guide's cards, a
+// settings group. featureOn stays the gate for behavior. The tiers here
+// repeat FEATURE_TIER; app/test/focus.test.ts reloads each tier and holds
+// them to featureOn, and app/test/tierBundle.test.ts builds a Personal
+// bundle and reads it.
+export const SHIPS_CURRENTS = RELEASE_TIER >= 2;
+export const SHIPS_STACKHEALTH = RELEASE_TIER >= 2;
+export const SHIPS_LAUNCH = RELEASE_TIER >= 2;
+export const SHIPS_MARKETPLACE = RELEASE_TIER >= 3;
+export const SHIPS_ADMIN = RELEASE_TIER >= 4;
+export const SHIPS_TEAMS = RELEASE_TIER >= 4;
+export const SHIPS_HUBMEMBERS = RELEASE_TIER >= 4;
 
 /** Whether this build carries a feature. */
 export function featureOn(feature: TieredFeature, tier: ReleaseTier = RELEASE_TIER): boolean {

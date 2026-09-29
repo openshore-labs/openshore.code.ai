@@ -60,6 +60,40 @@ describe('a Personal build, loaded as one', () => {
     expect(APP_KNOWLEDGE).toMatch(/Crew command/);
   });
 
+  it('carries no current, no later guide, and no later room name', async () => {
+    const { AGENTIC_CURRENTS } =
+      await asPersonal<typeof import('../src/lib/currents.js')>('../src/lib/currents.js');
+    expect(AGENTIC_CURRENTS).toEqual([]);
+    const { HARNESS_CURRENTS } = await asPersonal<typeof import('../src/lib/harnessCurrents.js')>(
+      '../src/lib/harnessCurrents.js',
+    );
+    expect(HARNESS_CURRENTS).toEqual([]);
+    const { SETUP_GUIDES, guideStepsCompact } = await asPersonal<
+      typeof import('../src/lib/setupGuides.js')
+    >('../src/lib/setupGuides.js');
+    for (const later of [
+      'connect-codemagic',
+      'connect-hermes',
+      'cli-pairing',
+      'connect-a2a',
+      'connect-jev',
+    ] as const) {
+      expect(SETUP_GUIDES[later], later).toBeUndefined();
+      expect(guideStepsCompact(later), later).toBe('');
+    }
+    for (const v1 of ['get-harbor', 'pair-computer', 'set-up-crew'] as const) {
+      expect(SETUP_GUIDES[v1], v1).toBeDefined();
+    }
+    const { ROOM_LABELS } =
+      await asPersonal<typeof import('../src/lib/navRooms.js')>('../src/lib/navRooms.js');
+    expect([ROOM_LABELS.stackhealth, ROOM_LABELS.launch, ROOM_LABELS.marketplace]).toEqual([
+      '',
+      '',
+      '',
+    ]);
+    expect(ROOM_LABELS.vault).toBe('Vault');
+  });
+
   it('the privacy list names only what can happen', async () => {
     const { egressByRecipient } = await asPersonal<typeof import('../src/lib/egressManifest.js')>(
       '../src/lib/egressManifest.js',
@@ -107,13 +141,14 @@ describe('every later-tier door the store and the screens opened is shut', () =>
   it('the screens hide the Business choice, joining an org, Launch, Stack Health, Admin, and sharing', () => {
     const app = read('src', 'App.tsx');
     expect(app).toContain("const choosingAccount = Boolean(accountChoice) && featureOn('teams');");
-    expect(app).toContain("featureOn('teams') ? <OrgJoinSheet /> : null");
+    // The teams sheets are not even loaded without the tier (test/tierBundle).
+    expect(app).toMatch(/const OrgJoinSheet =\s*BUILT_V4 && featureOn\('teams'\)/);
+    expect(app).toMatch(/const AccountSetup =\s*BUILT_V4 && featureOn\('teams'\)/);
     const settings = read('src', 'screens', 'SettingsScreen.tsx');
-    expect(settings).toContain(
-      "const shHub = featureOn('stackhealth') ? settings.daemon : undefined;",
-    );
-    expect(settings).toContain("codemagicConnected && featureOn('launch') ?");
-    expect(settings).toMatch(/isOrgAdmin\(account\) &&\s*featureOn\('admin'\)/);
+    expect(settings).toContain('const shHub = SHIPS_STACKHEALTH ? settings.daemon : undefined;');
+    expect(settings).toContain('SHIPS_STACKHEALTH && shHub ?');
+    expect(settings).toContain('SHIPS_LAUNCH && codemagicConnected ?');
+    expect(settings).toMatch(/SHIPS_ADMIN &&\s*signedIn && account\?\.type === 'commercial'/);
     const project = read('src', 'screens', 'ProjectDetailScreen.tsx');
     expect(project).toContain("const isCommercial = teams && account?.type === 'commercial';");
     expect(project).toContain('teams && project.shared ?');
