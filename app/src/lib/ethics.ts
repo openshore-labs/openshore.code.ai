@@ -19,8 +19,10 @@
 // A BLOCK is recorded to the account when the person is signed in, because
 // enforcement has to survive a reinstall. What travels is the record and
 // nothing else: a category, a tier, a timestamp, a SHA-256 of the request, and
-// the model path. The prompt never travels. When the person is signed out, or
-// the account backend is not configured on this build, the record stays on the
+// the model path. The prompt never travels, and neither does the name of a
+// person a request was about: that stays in the device's copy of the record
+// (the account column is left empty). When the person is signed out, or the
+// account backend is not configured on this build, the record stays on the
 // device and nothing is sent at all.
 
 import {
@@ -128,7 +130,9 @@ async function postRecord(record: EthicsRecord): Promise<void> {
       action: record.action,
       side: record.side,
       signals: record.signals,
-      subject: record.subject ?? null,
+      // The named person stays on this device, in the local record. A third
+      // party who never used OpenShore does not end up on our server.
+      subject: null,
     });
     // A failed check is the layer failing closed, not a person misbehaving, so
     // it never drives enforcement; an allowed-with-assertion row is not a

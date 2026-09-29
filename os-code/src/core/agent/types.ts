@@ -125,6 +125,10 @@ export type AgentEvent =
       detail?: string;
       round?: number;
       willRetry?: boolean;
+      /** Which check spoke: the project's own tests (a configured or found
+       *  command) or the page check that runs nothing (v1 Phase 1). Absent
+       *  reads as tests. */
+      check?: 'tests' | 'page';
     }
   // Best-of-N judged by the project's own check: the previous attempt spent
   // its verify retries without passing, the files it touched are restored to
@@ -228,4 +232,16 @@ export type DriverEvent =
   // line-wise and ride their own offset-based stream). These record that a
   // terminal opened or closed, with its cwd, never its output and never stdin.
   | { type: 'terminal-opened'; termId: string; cwd: string }
-  | { type: 'terminal-closed'; termId: string };
+  | { type: 'terminal-closed'; termId: string }
+  // Undo (v1 Phase 1). A checkpoint after a task that changed files: every
+  // file it changed, including ones a shell command wrote, so the chat can
+  // offer "Undo these changes" and per-file undo. A restore echoes back so
+  // every attached device folds the same card.
+  | { type: 'checkpoint'; id: string; files: CheckpointFileChange[] }
+  | { type: 'checkpoint-restored'; id: string; direction: 'undo' | 'redo'; paths: string[] };
+
+/** One file a task changed, as a checkpoint records it. */
+export interface CheckpointFileChange {
+  path: string;
+  status: 'added' | 'modified' | 'deleted';
+}

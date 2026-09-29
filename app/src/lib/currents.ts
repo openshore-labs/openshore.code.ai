@@ -28,6 +28,12 @@ export { AGENTIC_CURRENT_IDS } from 'os-code/protocol';
 export type WayfindingId = 'memory' | 'skills' | 'browser';
 export const WAYFINDING_IDS: readonly WayfindingId[] = ['memory', 'skills', 'browser'];
 
+/** The Wayfinding switches that do something today, the only ones Settings
+ *  shows: Memory is read by every session; nothing reads Skills yet, and no
+ *  browser driver exists, so a switch for either would promise what the
+ *  build cannot do. Each joins this list when its engine side lands. */
+export const WAYFINDING_READY: readonly WayfindingId[] = ['memory'];
+
 export interface WayfindingInfo {
   id: WayfindingId;
   label: string;

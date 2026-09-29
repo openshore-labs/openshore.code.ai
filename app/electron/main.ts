@@ -817,6 +817,9 @@ function sessionOpts(v: unknown) {
     chainOfThought: optBool(o.chainOfThought, 'chainOfThought'),
     // The Wayfinding Memory switch: the engine lets it only turn memory off.
     memory: optBool(o.memory, 'memory'),
+    // The person's web search answer (the app asks once): false leaves the
+    // engine's webSearch tool out.
+    webSearch: optBool(o.webSearch, 'webSearch'),
     codemagicToken: optStr(o.codemagicToken, 'codemagicToken'),
     codemagicTarget,
     // The Agentic Current's handle: the shared parser drops anything malformed,
@@ -850,6 +853,17 @@ guarded('osc:listFiles', (sessionId: unknown, query: unknown) =>
   host.listFiles(str(sessionId, 'sessionId'), str(query, 'query')),
 );
 guarded('osc:trustFolder', (sessionId: unknown) => host.trustFolder(str(sessionId, 'sessionId')));
+guarded('osc:createSample', () => host.createSample());
+guarded('osc:restoreCheckpoint', (sessionId: unknown, id: unknown, how: unknown, path: unknown) => {
+  const way = str(how, 'direction');
+  if (way !== 'undo' && way !== 'redo') throw new Error('direction must be undo or redo');
+  return host.restoreCheckpoint(
+    str(sessionId, 'sessionId'),
+    str(id, 'id'),
+    way,
+    optStr(path, 'path'),
+  );
+});
 guarded('osc:resumeSession', (id: unknown) => host.resumeSession(str(id, 'id')));
 guarded('osc:listSessions', () => host.listStoredSessions());
 guarded('osc:send', (sessionId: unknown, text: unknown) =>
@@ -994,7 +1008,14 @@ guarded('osc:ollamaStatus', () => host.ollamaStatus());
 guarded('osc:ollamaStart', () => host.ollamaStart());
 guarded('osc:ollamaInstall', async () => {
   const plan = await host.ollamaInstall();
-  if (plan.mode === 'download' && plan.downloadUrl) void shell.openExternal(plan.downloadUrl);
+  if (plan.mode === 'download') {
+    // The fetched installer opens (Ollama's own signed installer, checked by
+    // the system as a download); if it could not be fetched, or does not
+    // open, the download page does, as before.
+    const opened = plan.installerPath ? (await shell.openPath(plan.installerPath)) === '' : false;
+    if (!opened && plan.downloadUrl) void shell.openExternal(plan.downloadUrl);
+    return { ...plan, installerOpened: opened };
+  }
   return plan;
 });
 guarded('osc:hardware', () => host.hardware());
@@ -1437,16 +1458,21 @@ async function installOnMac(): Promise<void> {
 }
 
 if (process.platform !== 'darwin') {
-  autoUpdater.autoDownload = true;
+  // Ask before downloading (What leaves this device): the check finds a new
+  // version, the bar says so, and nothing downloads until the person clicks
+  // Update, which then downloads, installs, and restarts in one go.
+  autoUpdater.autoDownload = false;
   // Never install on quit: the bar is the only trigger, so a person is never
   // surprised by a relaunch they didn't ask for.
   autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.on('update-available', (info) => {
-    sendUpdateStatus({
-      version: info.version,
-      phase: installWhenReady ? 'installing' : 'downloading',
-      percent: 0,
-    });
+    if (installWhenReady) {
+      // A retry the person asked for: download straight away.
+      sendUpdateStatus({ version: info.version, phase: 'installing', percent: 0 });
+      void autoUpdater.downloadUpdate().catch(() => undefined);
+      return;
+    }
+    sendUpdateStatus({ version: info.version, phase: 'available' });
   });
   autoUpdater.on('download-progress', (p) => {
     if (!pendingUpdate) return;
@@ -1508,6 +1534,21 @@ guarded('osc:installUpdate', async () => {
     return;
   }
   installWhenReady = true;
+  if (pendingUpdate.phase === 'available') {
+    // The person's click is the download: fetch it, then install and restart.
+    sendUpdateStatus({ ...pendingUpdate, phase: 'installing', percent: 0 });
+    try {
+      await autoUpdater.downloadUpdate();
+    } catch (err) {
+      installWhenReady = false;
+      sendUpdateStatus({
+        ...pendingUpdate,
+        phase: 'failed',
+        detail: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return;
+  }
   if (pendingUpdate.phase === 'failed') {
     // Try again from the top: a fresh check re-downloads, then installs.
     sendUpdateStatus({ ...pendingUpdate, phase: 'installing', percent: 0, detail: undefined });

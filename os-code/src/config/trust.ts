@@ -47,6 +47,10 @@ interface FolderRecord {
   origin: string | null;
   trust?: { digest: string; at: string };
   grants?: PermissionRuleLike[];
+  /** Check commands the person let OpenShore run after changes here, each
+   *  with a digest of what it runs (v1 Phase 1: verify on a paired phone, and
+   *  a detected test script). A changed command or script asks again. */
+  verifyGrants?: Array<{ command: string; digest: string; at: string }>;
 }
 
 interface TrustFile {
@@ -292,4 +296,27 @@ export function addFolderGrant(cwd: string, rule: PermissionRuleLike): string {
   store.folders[folder] = { ...record, origin, grants };
   writeStore(store);
   return trustStorePath();
+}
+
+/** True when the person let this check command run after changes in this
+ *  folder, and neither the command nor what it runs has changed since. */
+export function hasVerifyGrant(cwd: string, command: string, digest: string): boolean {
+  const record = recordFor(readStore(), folderKey(cwd), readOrigin(cwd));
+  return (record?.verifyGrants ?? []).some((g) => g.command === command && g.digest === digest);
+}
+
+/** Record "always run this check here" for this folder, on this machine. A
+ *  grant for the same command with an older digest is replaced. */
+export function addVerifyGrant(cwd: string, command: string, digest: string): void {
+  const store = readStore();
+  const folder = folderKey(cwd);
+  const origin = readOrigin(cwd);
+  const record = recordFor(store, folder, origin) ?? { origin };
+  const kept = (record.verifyGrants ?? []).filter((g) => g.command !== command);
+  store.folders[folder] = {
+    ...record,
+    origin,
+    verifyGrants: [...kept, { command, digest, at: new Date().toISOString() }],
+  };
+  writeStore(store);
 }

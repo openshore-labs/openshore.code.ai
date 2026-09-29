@@ -7,7 +7,7 @@
 // the loop only calls it where shell may auto-run at all (the local-interactive
 // profile; see maybeVerify in loop.ts). A project config that sets a command it
 // should not is contained by that gate, the same way hooks are.
-import { execSync } from 'node:child_process';
+import { exec, execSync } from 'node:child_process';
 import type { VerifyConfig, VerifyResult } from '../../harness/verify.js';
 
 const MAX_DETAIL = 2000;
@@ -45,4 +45,48 @@ export function runVerify(cwd: string, config: VerifyConfig | undefined): Verify
       detail: tail(output),
     };
   }
+}
+
+/** The same check, without blocking the process: the desktop hosts the
+ *  daemon in the app's main process, so a long test run on the sync path
+ *  froze the window and made a paired phone read the computer as gone. The
+ *  loop awaits this one. Never throws. */
+export function runVerifyAsync(
+  cwd: string,
+  config: VerifyConfig | undefined,
+): Promise<VerifyResult> {
+  const command = config?.command?.trim();
+  if (!command) {
+    return Promise.resolve({ ran: false, passed: false, summary: 'No verify command configured.' });
+  }
+  return new Promise((resolve) => {
+    exec(
+      command,
+      {
+        cwd,
+        timeout: (config?.timeoutSeconds ?? 120) * 1000,
+        encoding: 'utf8',
+        maxBuffer: 16 * 1024 * 1024,
+      },
+      (err, stdout, stderr) => {
+        if (!err) {
+          resolve({
+            ran: true,
+            passed: true,
+            summary: `Verified: \`${command}\` passed.`,
+            detail: tail(stdout ?? ''),
+          });
+          return;
+        }
+        const output =
+          [stdout, stderr].filter(Boolean).join('\n') || err.message || 'command failed';
+        resolve({
+          ran: true,
+          passed: false,
+          summary: `Not verified: \`${command}\` did not pass.`,
+          detail: tail(output),
+        });
+      },
+    );
+  });
 }

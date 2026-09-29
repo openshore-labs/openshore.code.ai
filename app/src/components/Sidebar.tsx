@@ -1,6 +1,7 @@
 // The sidebar is the app's main navigation (founder, 2026-09-02): the day-one
 // rooms at the top, the second-session rooms at the bottom, nothing else. New
 // chat and the project switcher live in the Chats and Projects rooms. Persistent on desktop, a slide-over drawer on the phone.
+import { roomOpen, visibleRooms } from '../lib/focus.js';
 import type { CSSProperties } from 'react';
 import { isOrgAdmin, useApp, type ViewName } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
@@ -32,13 +33,17 @@ type NavIconName = Exclude<
 // closes it.
 const nav = (view: NavIconName & NavRoom) => ({ view, label: ROOM_LABELS[view] });
 
-const PRIMARY_NAV: Array<{ view: NavIconName; label: string }> = (
-  ['chats', 'projects', 'terminalroom', 'repos', 'stack', 'vault'] as const
-).map(nav);
+// The release tier takes a later tier's rooms out here, at the one door (a
+// Personal build shows the v1 rooms only; see lib/focus.ts).
+const PRIMARY_NAV: Array<{ view: NavIconName; label: string }> = visibleRooms(
+  (['chats', 'projects', 'terminalroom', 'repos', 'stack', 'vault'] as const).map(nav),
+);
 
-const EXPLORE_NAV: Array<{ view: NavIconName; label: string }> = (
-  ['crew', 'marketplace', 'stackhealth', 'launch', 'connections', 'pair', 'settings'] as const
-).map(nav);
+const EXPLORE_NAV: Array<{ view: NavIconName; label: string }> = visibleRooms(
+  (
+    ['crew', 'marketplace', 'stackhealth', 'launch', 'connections', 'pair', 'settings'] as const
+  ).map(nav),
+);
 
 // Hand-drawn line icons for the nav, in the same language as PairScreen's
 // download tiles: a 24-unit grid, 2px round-cap / round-join strokes, and
@@ -288,7 +293,9 @@ export function Sidebar({
           </span>
           <span className="sidebar-signin-label">
             <span className="sidebar-signin-title">Sign in</span>
-            <span className="sidebar-signin-sub">Sync chats across your devices</span>
+            <span className="sidebar-signin-sub">
+              To build, pair your phone, and keep your settings
+            </span>
           </span>
         </button>
       ) : null}
@@ -296,7 +303,9 @@ export function Sidebar({
       {/* The second-session rooms stay at the bottom, Settings last. Admin,
           when the account carries it, leads the group. */}
       <nav className="sidebar-nav">
-        {isOrgAdmin(settings.account) && settings.account?.type === 'commercial'
+        {isOrgAdmin(settings.account) &&
+        settings.account?.type === 'commercial' &&
+        roomOpen('admin')
           ? item({ view: 'admin', label: 'Admin' }, PRIMARY_NAV.length + 1)
           : null}
         {EXPLORE_NAV.map((entry, i) => item(entry, PRIMARY_NAV.length + 2 + i))}

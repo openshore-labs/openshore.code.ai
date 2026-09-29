@@ -3,6 +3,7 @@
 // everything deeper in a sheet. What this app keeps, where it lives, and a
 // few careful switches. No telemetry to toggle because there is none. Built
 // with the Creative Studio (2026-09-02, "The Ledger" direction).
+import { featureOn } from '../lib/focus.js';
 import { Fragment, useEffect, useState } from 'react';
 import { PAY_GATES_ENABLED, isOrgAdmin, useApp, type HarborDownload } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
@@ -41,10 +42,11 @@ import { DEFAULT_PERMISSION_MODE, permissionModeLabel } from '../lib/permissionM
 import { BackBar } from '../components/BackBar.js';
 import { SignInCard } from '../components/SignInCard.js';
 import { InfoSheet } from '../components/InfoSheet.js';
+import { WhatLeavesSheet } from '../components/WhatLeavesSheet.js';
 import { Sheet } from '../components/Sheet.js';
 import { Switch } from '../components/Switch.js';
 import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
-import { WAYFINDING, WAYFINDING_IDS, memoryOverride, wayfindingOn } from '../lib/currents.js';
+import { WAYFINDING, WAYFINDING_READY, memoryOverride, wayfindingOn } from '../lib/currents.js';
 import { PROVIDER_ROSTER } from '../lib/gitos/providers.js';
 import { vaultDevicePatch, vaultDeviceView } from '../lib/vaultDevice.js';
 import {
@@ -273,6 +275,10 @@ export function SettingsScreen() {
     setVaultScope,
     vaultRequestSheet,
   } = useApp();
+  const restorePurchases = useApp((s) => s.restorePurchases);
+  const setWebSearchAllowed = useApp((s) => s.setWebSearchAllowed);
+  const personalUnlockedNow = useApp((s) => s.personalUnlockedNow);
+  const userEntitlement = useApp((s) => s.userEntitlement);
   // Vault settings over Settings (Vault M7, CX Y4): the personal vault's.
   const [vaultSettingsOpen, setVaultSettingsOpen] = useState(false);
   const memoryOn = memoryOverride(settings) !== false;
@@ -357,7 +363,7 @@ export function SettingsScreen() {
     const text = insightsAsText();
     try {
       await navigator.clipboard.writeText(text);
-      showToast('Activity log copied. Paste it back to the team.');
+      showToast('Activity log copied. Paste it wherever you are asking for help.');
     } catch {
       showToast('Copy is unavailable here. The log stays on this device.');
     }
@@ -371,8 +377,31 @@ export function SettingsScreen() {
   const accountValue = signedIn
     ? account?.type === 'commercial' && org
       ? tierById(org.tierId).name
-      : 'Free'
+      : PAY_GATES_ENABLED && personalUnlockedNow()
+        ? 'Personal'
+        : 'Free'
     : 'Optional';
+  // Personal's standing on this device, in plain words: free for everyone
+  // while the pay gates are off (the beta), else active (until when) or not.
+  const personalUntil = userEntitlement?.validUntil
+    ? new Date(userEntitlement.validUntil).toLocaleDateString(undefined, {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      })
+    : undefined;
+  const personalValue = !PAY_GATES_ENABLED
+    ? 'Free in the beta'
+    : personalUnlockedNow()
+      ? 'Active'
+      : 'Not yet';
+  const personalSub = !PAY_GATES_ENABLED
+    ? 'Everything is open to everyone during the beta.'
+    : personalUnlockedNow()
+      ? personalUntil
+        ? `The coding agent is yours. Renews or ends ${personalUntil}.`
+        : 'The coding agent is yours.'
+      : 'Chat is free. Personal unlocks the coding agent, bought in the app on iPhone.';
 
   const termDesktopLocal = isDesktop() && Boolean(bridge()) && !settings.preferRemoteHub;
   const termTargetId = terminalTargetId({
@@ -398,7 +427,9 @@ export function SettingsScreen() {
   // Stack Health visibility lives on the hub (admin-owned, server-enforced), so
   // it only appears when a hub is paired. Read the current value from the hub;
   // an admin can change it, everyone else sees it read-only.
-  const shHub = settings.daemon;
+  // Stack Health is v2 (docs/release-tiers.md): a Personal build neither
+  // shows the row nor asks the hub for it.
+  const shHub = featureOn('stackhealth') ? settings.daemon : undefined;
   const [shVisibility, setShVisibility] = useState<StackHealthVisibility | undefined>();
   useEffect(() => {
     if (!shHub) {
@@ -430,13 +461,26 @@ export function SettingsScreen() {
         <SettingsGroup title="Account" index={group++}>
           <SettingsRow
             label={accountLabel}
-            sub={signedIn ? email : 'Personal use needs no account'}
+            sub={signedIn ? email : 'Chatting and building need no account'}
             value={accountValue}
             onClick={configured ? () => setSheet('account') : undefined}
           />
+          <SettingsRow label="Personal" subWrap sub={personalSub} value={personalValue} />
+          {PAY_GATES_ENABLED && configured ? (
+            <SettingsRow
+              label="Restore purchases"
+              sub={
+                signedIn
+                  ? 'Bought Personal already? Unlock it on this device.'
+                  : 'Sign in first, then restore.'
+              }
+              onClick={() => void restorePurchases()}
+            />
+          ) : null}
         </SettingsGroup>
 
         <SettingsGroup title="Privacy" index={group++}>
+          <WhatLeavesSheet />
           <InfoSheet
             title="Privacy and Conditions"
             renderTrigger={(open) => (
@@ -450,12 +494,13 @@ export function SettingsScreen() {
           >
             <h3 className="settings-sheet-head">Privacy, plainly</h3>
             <p>
-              Local models run on your hardware and nothing leaves it. Cloud models run on your own
-              keys and only with your approval. Web search leaves your computer when the agent uses
-              it. No telemetry, no analytics, no advertising, no IP address, ever. There is one
-              exception, stated plainly under Ethical boundaries below: when the guardrail blocks a
-              request and you are signed in, a record of that block reaches your account. It carries
-              a category, a time, and a one-way hash, never your prompt.
+              What you send a local model stays on this computer, and so does its answer. Cloud
+              models run on your own keys, and only on a turn you send to one. A few things do leave
+              this device, and every one is listed under What leaves this device, above: the words
+              of a web search a model makes, update checks, the model list, and, while you are
+              signed in, a record of any request the guardrail blocks. That record carries a
+              category, a time, and a one-way hash, and for a request about a real person, that
+              person's name; never your prompt. No telemetry, no analytics, no advertising.
             </p>
             <h3 className="settings-sheet-head">Encrypted on this device</h3>
             <p>
@@ -680,7 +725,7 @@ export function SettingsScreen() {
           </SettingsGroup>
         ) : null}
 
-        {codemagicConnected ? (
+        {codemagicConnected && featureOn('launch') ? (
           <SettingsGroup title="Launch with Codemagic" index={group++}>
             <SettingsRow
               label="Codemagic Access"
@@ -753,6 +798,30 @@ export function SettingsScreen() {
         ) : null}
 
         <SettingsGroup title="Harbor" index={group++}>
+          <SettingsRow
+            label="Let models search the web"
+            subWrap
+            sub={
+              settings.webSearchConsent === 'allowed'
+                ? 'On. A model sends its search words to the search service below, and nothing else from your chat.'
+                : settings.webSearchConsent === 'declined'
+                  ? 'Off. Models answer from what they know.'
+                  : isDesktop()
+                    ? 'Asks the first time a chat model wants to search. The coding agent searches only once this is on.'
+                    : 'Asks the first time a model wants to search.'
+            }
+            trailing={
+              <Switch
+                checked={settings.webSearchConsent === 'allowed'}
+                label="Let models search the web"
+                onChange={(next) => {
+                  if (next) hapticCommit();
+                  void setWebSearchAllowed(next);
+                  showToast(next ? 'Web search on.' : 'Web search off.');
+                }}
+              />
+            }
+          />
           <SettingsRow
             label="Web search"
             sub="When Harbor needs the web"
@@ -1001,7 +1070,7 @@ export function SettingsScreen() {
 
         {/* Wayfinding: how the agent finds its way. On by default. */}
         <SettingsGroup title="Wayfinding" index={group++}>
-          {WAYFINDING_IDS.map((id) => (
+          {WAYFINDING_READY.map((id) => (
             <Fragment key={id}>
               <SettingsRow
                 label={WAYFINDING[id].label}
@@ -1132,7 +1201,7 @@ export function SettingsScreen() {
           </p>
         ) : null}
         <SignInCard />
-        {signedIn && account?.type === 'commercial' && isOrgAdmin(account) ? (
+        {signedIn && account?.type === 'commercial' && isOrgAdmin(account) && featureOn('admin') ? (
           <button
             className="btn ghost"
             style={{ width: '100%' }}

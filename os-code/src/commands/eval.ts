@@ -9,18 +9,22 @@ import { runEval } from '../eval/harness.js';
 import {
   defaultTasks,
   runEvalV2,
+  runSuffix,
   variantSuffix,
   vaultTraceFields,
   type DriveTask,
   type DriveTrace,
   type EvalHandoffLayer,
   type EvalNumCtx,
+  type EvalPageCheck,
   type EvalPromptCache,
+  type EvalSuite,
   type EvalV2Report,
   type EvalVariant,
   type EvalVaultPack,
 } from '../eval/v2.js';
 import { verifyCommandFor } from '../eval/tasks.js';
+import { CLAUDE_CODE_BASELINE, claudeCodeDrive, claudeCodeVersion } from '../eval/baseline.js';
 import { buildHandoff, HANDOFF_MAX_TOKENS } from '../harness/handoff.js';
 import { classBlurb } from '../harness/profile.js';
 import { configureStreamIdle } from '../providers/streamIdle.js';
@@ -69,6 +73,18 @@ export interface EvalOptions {
   /** Deep only: run the handoff task with its handoff layer ('on') or with
    *  that layer empty ('off') (CTO J13, J19). */
   handoff?: string;
+  /** Deep only: the page check on or off for the run (v1 Phase 1). */
+  pageCheck?: string;
+  /** Deep only: the task set, 'code' (the default) or 'everyday', the jobs a
+   *  person who is not a developer brings. */
+  suite?: string;
+  /** Deep only: drive the tasks through another agent on the same model
+   *  instead of the engine ('claude-code': Claude Code pointed at Ollama),
+   *  the head-to-head baseline. */
+  baseline?: string;
+  /** The floor run: every measurement the founder's box owes, in one go
+   *  (see `evalFloor.ts`). */
+  floor?: boolean;
 }
 
 /** Parse a two-value flag; undefined when unset, an error string when bad. */
@@ -84,6 +100,11 @@ function parseChoice<T extends string>(
 }
 
 export async function evalCommand(options: EvalOptions): Promise<void> {
+  if (options.floor) {
+    const { floorCommand } = await import('./evalFloor.js');
+    await floorCommand(options);
+    return;
+  }
   const { config } = loadConfig();
   const providers = new ProviderRegistry(config, getAnthropicKey, engineEthicsContext());
   const providerId = options.provider ?? config.stack.orchestrator?.provider ?? 'ollama';
@@ -106,16 +127,38 @@ export async function evalCommand(options: EvalOptions): Promise<void> {
     'off',
   ]);
   const handoff = parseChoice<EvalHandoffLayer>('--handoff', options.handoff, ['on', 'off']);
-  for (const parsed of [vaultPack, numCtx, promptCache, handoff]) {
+  const suite = parseChoice<EvalSuite>('--suite', options.suite, ['code', 'everyday']);
+  const pageCheck = parseChoice<EvalPageCheck>('--page-check', options.pageCheck, ['on', 'off']);
+  const baseline = parseChoice<typeof CLAUDE_CODE_BASELINE>('--baseline', options.baseline, [
+    CLAUDE_CODE_BASELINE,
+  ]);
+  for (const parsed of [vaultPack, numCtx, promptCache, handoff, suite, baseline, pageCheck]) {
     if (typeof parsed === 'object') {
       warnLine(parsed.error);
       process.exitCode = 1;
       return;
     }
   }
-  if ((vaultPack || numCtx || promptCache || handoff) && !options.deep) {
+  if (
+    (vaultPack || numCtx || promptCache || handoff || suite || baseline || pageCheck) &&
+    !options.deep
+  ) {
     warnLine(
-      '--vault-pack, --num-ctx, --prompt-cache and --handoff measure the agent loop, so they go with --deep.',
+      '--vault-pack, --num-ctx, --prompt-cache, --handoff, --page-check, --suite and --baseline measure the agent loop, so they go with --deep.',
+    );
+    process.exitCode = 1;
+    return;
+  }
+  if (suite === 'everyday' && (vaultPack || handoff)) {
+    warnLine(
+      '--vault-pack and --handoff run their own tasks, so they do not go with --suite everyday.',
+    );
+    process.exitCode = 1;
+    return;
+  }
+  if (baseline && (vaultPack || numCtx || promptCache || handoff || pageCheck)) {
+    warnLine(
+      "--baseline runs another agent on the same model, so the engine's --vault-pack, --num-ctx, --prompt-cache, --handoff and --page-check do not apply to it.",
     );
     process.exitCode = 1;
     return;
@@ -123,12 +166,28 @@ export async function evalCommand(options: EvalOptions): Promise<void> {
 
   if (options.deep) {
     const attempts = Math.max(1, Math.floor(Number(options.attempts ?? 1)) || 1);
+    const chosenSuite = typeof suite === 'string' ? suite : undefined;
+    if (typeof baseline === 'string') {
+      const report = await runBaseline(config, providerId, model, attempts, chosenSuite);
+      if (!report) process.exitCode = 1;
+      return;
+    }
     const variant: EvalVariant = {};
     if (typeof vaultPack === 'string') variant.vaultPack = vaultPack;
     if (typeof numCtx === 'string') variant.numCtx = numCtx;
     if (typeof promptCache === 'string') variant.promptCache = promptCache;
     if (typeof handoff === 'string') variant.handoff = handoff;
-    await runDeep(config, providers, providerId, model, attempts, options.yes === true, variant);
+    if (typeof pageCheck === 'string') variant.pageCheck = pageCheck;
+    await runDeep(
+      config,
+      providers,
+      providerId,
+      model,
+      attempts,
+      options.yes === true,
+      variant,
+      chosenSuite,
+    );
     return;
   }
 
@@ -182,7 +241,7 @@ export async function evalCommand(options: EvalOptions): Promise<void> {
 // line the local numbers are measured against) is a deliberate tap, so it asks
 // once up front, on the terminal, with the count of tasks and tries, default
 // No; only then does the approver say yes to the loop's cloud-spend prompts.
-async function runDeep(
+export async function runDeep(
   config: OscConfig,
   providers: ProviderRegistry,
   providerId: string,
@@ -190,8 +249,12 @@ async function runDeep(
   attempts: number,
   assumeYes: boolean,
   variant: EvalVariant = {},
-): Promise<void> {
+  suite?: EvalSuite,
+): Promise<EvalV2Report | undefined> {
   header(`Deep eval of ${model} on ${providerId}`);
+  if (suite === 'everyday') {
+    out(t.muted('  The everyday suite: a page, photos, a chart, and a broken button.'));
+  }
   out(t.muted('  Runs the real agent loop against fixture workspaces, scored by behavior.'));
   if (attempts > 1) {
     out(
@@ -208,7 +271,7 @@ async function runDeep(
   if (provider.kind === 'cloud') {
     // A variant run runs its own suite (runEvalV2's default), so the spend
     // line counts that one.
-    const tasks = defaultTasks(variant);
+    const tasks = defaultTasks(variant, suite);
     const runs = tasks.length * attempts;
     out();
     out(
@@ -219,7 +282,7 @@ async function runDeep(
     cloudApproved = assumeYes || (await confirm('  Spend on this reference run?', false));
     if (!cloudApproved) {
       warnLine('Nothing was sent. Run again and answer y to draw the reference line.');
-      return;
+      return undefined;
     }
   }
 
@@ -258,12 +321,67 @@ async function runDeep(
       attempts,
       write: true,
       ...variant,
+      ...(suite ? { suite } : {}),
       onProgress: (m) => out(t.muted(`  ${m}`)),
     });
     renderV2(report, provider.kind);
+    return report;
   } catch (err) {
     warnLine(`The deep eval could not finish: ${(err as Error).message}`);
     process.exitCode = 1;
+    return undefined;
+  }
+}
+
+/**
+ * osc eval --deep --baseline claude-code: the head-to-head. The same tasks
+ * and checkers, the same local model, driven by Claude Code pointed at the
+ * person's Ollama (see `eval/baseline.ts`). Local only: a baseline against a
+ * cloud model would measure the model, not the setup.
+ */
+export async function runBaseline(
+  config: OscConfig,
+  providerId: string,
+  model: string,
+  attempts: number,
+  suite?: EvalSuite,
+): Promise<EvalV2Report | undefined> {
+  header(`Baseline: Claude Code on ${model}`);
+  const endpoint = config.providers[providerId];
+  if (endpoint?.kind !== 'openai-compatible') {
+    warnLine(
+      `The baseline runs Claude Code against a local Ollama. "${providerId}" is not one; pass --provider with your Ollama provider.`,
+    );
+    return undefined;
+  }
+  const version = claudeCodeVersion();
+  if (!version) {
+    warnLine(
+      'Claude Code is not installed on this computer, so there is nothing to compare against. Install it (claude.com/claude-code), then run this again.',
+    );
+    return undefined;
+  }
+  out(
+    t.muted(
+      `  Claude Code ${version}, through Ollama at ${endpoint.baseUrl}, same tasks, same checkers.`,
+    ),
+  );
+  out(t.muted('  Hermetic: a scratch Claude Code config, the same doors as the engine eval.'));
+  try {
+    const report = await runEvalV2(claudeCodeDrive({ model, ollamaUrl: endpoint.baseUrl }), {
+      model,
+      provider: providerId,
+      attempts,
+      write: true,
+      driver: CLAUDE_CODE_BASELINE,
+      ...(suite ? { suite } : {}),
+      onProgress: (m) => out(t.muted(`  ${m}`)),
+    });
+    renderV2(report, 'local');
+    return report;
+  } catch (err) {
+    warnLine(`The baseline could not finish: ${(err as Error).message}`);
+    return undefined;
   }
 }
 
@@ -338,6 +456,17 @@ export function deepDrive(options: DeepDriveOptions): DriveTask {
           },
         }
       : evalConfig;
+    // The page check (v1 Phase 1): on for a 'on' run, off for an 'off' run,
+    // the person's own setting otherwise.
+    if (context.pageCheck) {
+      driveConfig = {
+        ...driveConfig,
+        harness: {
+          ...driveConfig.harness,
+          verify: { ...driveConfig.harness.verify, pageCheck: context.pageCheck },
+        },
+      };
+    }
     // The handoff layer is a full-mode layer, so a handoff run with no pack
     // variant runs the pack in full; the two handoff runs then differ by the
     // handoff alone.
@@ -467,6 +596,7 @@ export function describeVariant(variant: EvalVariant): string {
   if (variant.numCtx) parts.push(`num_ctx ${variant.numCtx}`);
   if (variant.promptCache) parts.push(`prompt cache ${variant.promptCache}`);
   if (variant.handoff) parts.push(`handoff ${variant.handoff}`);
+  if (variant.pageCheck) parts.push(`page check ${variant.pageCheck}`);
   return parts.join(', ');
 }
 
@@ -482,6 +612,18 @@ function plainNodeCommand(summary: string): boolean {
   return !cmd.includes('..');
 }
 
+// Moving, copying, listing and making folders inside the workspace: what a
+// person asks for when they say "rename these photos", and nothing else. The
+// same no-chaining rules as node, and no path that starts outside the folder
+// (absolute, home, or climbing out).
+function plainFileCommand(summary: string): boolean {
+  if (!/^Run: (mv|cp|mkdir|ls)(\s|$)/.test(summary)) return false;
+  const cmd = summary.slice('Run: '.length);
+  if (/[;&|`<>]|\$\(/.test(cmd)) return false;
+  if (cmd.includes('..')) return false;
+  return !/(^|[\s"'=])[/~]/.test(cmd);
+}
+
 /** The deep eval's approver. Reads, edits, and web fetches run; a plain node
  *  invocation runs, because a coding agent asked what code returns should
  *  run it rather than reason about it (tenet 3, and the seat's arithmetic is
@@ -493,14 +635,18 @@ export function evalApprover(cloudApproved: () => boolean): Approver {
     if (req.risk === 'read' || req.risk === 'write' || req.risk === 'network') {
       return { approve: true };
     }
-    if (req.kind === 'tool' && req.toolName === 'runShell' && plainNodeCommand(req.summary)) {
+    if (
+      req.kind === 'tool' &&
+      req.toolName === 'runShell' &&
+      (plainNodeCommand(req.summary) || plainFileCommand(req.summary))
+    ) {
       return { approve: true };
     }
     if (req.kind === 'cloud-spend' && cloudApproved()) return { approve: true };
     return {
       approve: false,
       reason:
-        'osc eval --deep runs hermetically: no shell beyond a plain node command in the workspace, no push, and no cloud spend beyond a reference run you approved up front',
+        'osc eval --deep runs hermetically: no shell beyond a plain node command or a file move in the workspace, no push, and no cloud spend beyond a reference run you approved up front',
     };
   };
 }
@@ -694,7 +840,7 @@ function renderV2(report: EvalV2Report, kind: 'local' | 'cloud'): void {
   }
   out(
     t.muted(
-      `  Report saved under ~/.os-code/eval/ (v2-<model>${variantSuffix(report.variant ?? {})}.json).`,
+      `  Report saved under ~/.os-code/eval/ (v2-<model>${variantSuffix(report.variant ?? {})}${runSuffix(report)}.json).`,
     ),
   );
 }

@@ -64,6 +64,8 @@ export interface TestSessionOptions {
    *  for the pure core's. */
   onHandoff?: AgentDeps['onHandoff'];
   buildHandoff?: AgentDeps['buildHandoff'];
+  /** False for a member's session on a shared hub (v1 Phase 1 verify grant). */
+  canGrantVerify?: boolean;
 }
 
 export function makeTestSession(
@@ -149,6 +151,7 @@ export function makeTestSession(
     codeMap: options.codeMap,
     onHandoff: options.onHandoff,
     buildHandoff: options.buildHandoff,
+    ...(options.canGrantVerify === false ? { canGrantVerify: false } : {}),
     approver: async (request) => {
       approvals.push(request);
       return options.approve ? options.approve(request) : { approve: true };

@@ -93,6 +93,8 @@ import {
   isConfigured as authConfigured,
   parseAuthCallback,
   authCallbackType,
+  readUserPrefs,
+  writeUserPrefs,
   rpc as supabaseRpc,
   select as supabaseSelect,
   sendPasswordReset as supabaseSendPasswordReset,
@@ -112,6 +114,7 @@ import {
   type ServerOrg,
 } from './orgSync.js';
 import {
+  currentEntitlement as iapCurrentEntitlement,
   iapAvailable,
   purchase as iapPurchase,
   restore as iapRestore,
@@ -247,6 +250,7 @@ import {
 import { byomSecretKey, type ByomConnection } from '../lib/byom.js';
 import {
   currentBenchId,
+  isCurrentBenchId,
   currentInfo,
   currentSecretKey,
   currentsHandles,
@@ -486,6 +490,21 @@ import {
   VAULT_STARTER_NOT_EMPTY,
 } from '../lib/vaultCopy.js';
 import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
+import { SAMPLE_PROMPT, SAMPLE_REPO_NAME } from '../lib/sampleProject.js';
+import { setSearchConsent } from '../lib/localSearch.js';
+import { RELEASE_TIER, featureOn, roomOpen, type ReleaseTier } from '../lib/focus.js';
+import {
+  ACCOUNT_NOTICE,
+  needsAccount,
+  roomAccountFeature,
+  type AccountFeature,
+} from '../lib/accountGate.js';
+import {
+  pickPreferences,
+  preferencesChanged,
+  readPreferencesRecord,
+  syncDirection,
+} from '../lib/settingsReach.js';
 import { readProjectSecrets, writeProjectSecrets } from '../lib/projectSecrets.js';
 import {
   bridge,
@@ -547,7 +566,7 @@ export type ViewName =
 
 // Which locked surface triggered the Personal upgrade sheet. Free is chat only;
 // the coding agent and the Marketplace need the Personal unlock.
-export type PaywallReason = 'coding' | 'marketplace';
+export type PaywallReason = 'coding' | 'marketplace' | 'crew';
 
 export interface AppSettings {
   onboarded: boolean;
@@ -597,6 +616,10 @@ export interface AppSettings {
    *  is minted once per daemon rather than on every desktop session. Device-local
    *  bookkeeping, not synced. */
   pushRegisteredDaemons?: string[];
+  /** Web search asks once on this device (the search words go to a search
+   *  service, DuckDuckGo unless a key is set): 'allowed' after the person says
+   *  yes, 'declined' after they turn it off in Settings; unset until asked. */
+  webSearchConsent?: 'allowed' | 'declined';
   /** The user's stack: Reasoning LLM anchor, active specialists, bench metadata.
    *  Legacy single stack; kept as the migration seed and fallback. The live
    *  configuration is `stacks`, one per connectivity status. */
@@ -623,8 +646,8 @@ export interface AppSettings {
   profileOverride?: ProfileId;
   /** Opt-in, on-device, manual-export activity log for the test run. */
   insightsOptIn?: boolean;
-  /** Appearance: follow the system (default), or pin light or dark. Device
-   *  local by nature (a per-device viewing preference). */
+  /** Appearance: follow the system (default), or pin light or dark. Follows a
+   *  signed-in person to their other devices (lib/settingsReach.ts). */
   theme?: 'system' | 'light' | 'dark';
   /** Reasoning effort for new turns, the same idea Claude exposes. Defaults to
    *  'high'. Chosen from the top of the model sheet. */
@@ -666,25 +689,27 @@ export interface AppSettings {
    *  think out loud and keeps any reasoning a model sends out of the chat. */
   chainOfThought?: boolean;
   /** Notices (lib/notices.ts): a banner when a model download finishes while
-   *  you are away. On by default; undefined means on. Device local. */
+   *  you are away. On by default; undefined means on. Follows a signed-in
+   *  person (lib/settingsReach.ts). */
   noticeDownloads?: boolean;
   /** Notices: a banner when a reply lands, or a chat stops for your approval,
-   *  while you are away. On by default; undefined means on. Device local. */
+   *  while you are away. On by default; undefined means on. Follows a
+   *  signed-in person (lib/settingsReach.ts). */
   noticeReplies?: boolean;
   /** Guided setup (lib/guidedSetup.ts): Harbor Lite walking a new person
    *  through setup in its first chat. Device local. */
   guidedSetup?: GuidedSetupProgress;
   /** Voice mode: speak replies aloud during a spoken conversation. On by default
    *  (undefined means on); off keeps voice mode as listen-and-send, with replies
-   *  read on screen. Device local (a per-device output preference). */
+   *  read on screen. Follows a signed-in person (lib/settingsReach.ts). */
   voiceReplies?: boolean;
   /** The chosen text-to-speech voice id, from the device's installed system
    *  voices (lib/voice/tts.ts). Undefined uses the best default voice for the
    *  language. Device local: voices differ per device. */
   voiceId?: string;
   /** Speaking speed for voice mode, normalized 0..1 where 0.5 is the natural
-   *  default, so one slider reads the same on iOS and the web backend. Device
-   *  local. */
+   *  default, so one slider reads the same on iOS and the web backend, which
+   *  is why it can follow a signed-in person (lib/settingsReach.ts). */
   voiceRate?: number;
   /** Codemagic Access: whether the model may drive Codemagic builds on its own
    *  (trigger, read the failure, fix, rebuild until green) using this device's
@@ -729,6 +754,13 @@ export interface AppSettings {
    *  their return. Text only; attachments live in memory for the session.
    *  Device local. */
   heldFirstMessage?: { text: string; at: string };
+  /** When this device last changed a preference that follows a signed-in
+   *  person (lib/settingsReach.ts), so a sync knows which side is newer.
+   *  Device local. */
+  prefsUpdatedAt?: string;
+  /** The one-time line to someone who used OpenShore before the account gate,
+   *  signed out, has been shown. Device local. */
+  accountNoticeSeen?: boolean;
   /** When each paired hub last answered this device, keyed by base URL, so a
    *  chat banner can say "Last seen 2h ago" rather than nothing. Device local. */
   hubLastSeen?: Record<string, string>;
@@ -781,6 +813,77 @@ export interface HarborDownload {
   label: string;
   indeterminate?: boolean;
   failed?: boolean;
+  /** A plain line under the card while it waits on something the person does
+   *  (finishing the Ollama installer), so the button can stay short. */
+  note?: string;
+}
+
+/** How long the First Seat waits for Ollama to finish installing before it
+ *  says so (the installer is the person's to click through). */
+export const OLLAMA_INSTALL_WAIT_MS = 15 * 60_000;
+/** How often it asks whether Ollama is answering yet. */
+export const OLLAMA_POLL_MS = 2_000;
+
+/** The parts of the desktop bridge that bring Ollama up. */
+export type OllamaBridge = Pick<
+  NonNullable<ReturnType<typeof bridge>>,
+  'ollamaStatus' | 'ollamaStart' | 'ollamaInstall'
+>;
+
+/**
+ * Get Ollama answering for the First Seat, or say plainly why not: start it
+ * when it is installed, install it when it is not (the official installer on
+ * macOS and Windows, the one command on Linux), and wait for it. Reports each
+ * step through `report`; true once Ollama answers. Exported for its test.
+ */
+export async function bringUpOllama(
+  b: OllamaBridge,
+  report: (d: HarborDownload) => void,
+  opts: { waitMs?: number; pollMs?: number; platform?: string; detail?: string } = {},
+): Promise<boolean> {
+  const fail = (label: string) => {
+    report({ percent: 0, label, failed: true });
+    return false;
+  };
+  if (!b.ollamaStatus) {
+    // An older shell: the engine's own line says what is wrong.
+    return fail(opts.detail ?? 'Ollama is not running on this computer. Start it, then try again.');
+  }
+  const wait = async (label: string, note: string): Promise<boolean> => {
+    report({ percent: 0, label, indeterminate: true, note });
+    const deadline = Date.now() + (opts.waitMs ?? OLLAMA_INSTALL_WAIT_MS);
+    while (Date.now() < deadline) {
+      const st = await b.ollamaStatus!().catch(() => undefined);
+      if (st?.running) return true;
+      if (st?.installed && b.ollamaStart && (await b.ollamaStart().catch(() => false))) return true;
+      await new Promise((r) => setTimeout(r, opts.pollMs ?? OLLAMA_POLL_MS));
+    }
+    return false;
+  };
+  const status = await b.ollamaStatus().catch(() => undefined);
+  if (status?.running) return true;
+  if (status?.installed) {
+    report({ percent: 0, label: 'Starting Ollama', indeterminate: true });
+    if (b.ollamaStart && (await b.ollamaStart().catch(() => false))) return true;
+    return fail('Ollama is installed but did not start. Open the Ollama app, then try again.');
+  }
+  const platform = opts.platform ?? (typeof navigator !== 'undefined' ? navigator.platform : '');
+  if (/linux/i.test(platform) || !b.ollamaInstall) {
+    const ok = await wait(
+      'Waiting for Ollama',
+      'Ollama is not installed yet. In a terminal, run: curl -fsSL https://ollama.com/install.sh | sh. This carries on by itself once it is running.',
+    );
+    return ok || fail('Ollama is not running yet. Once it is installed, try again.');
+  }
+  report({ percent: 0, label: 'Getting Ollama', indeterminate: true });
+  const plan = await b.ollamaInstall().catch(() => undefined);
+  const ok = await wait(
+    'Waiting for Ollama',
+    plan?.installerOpened
+      ? "Ollama's installer is open. Click through it, and this carries on by itself."
+      : 'The Ollama download page is open. Install it from there, and this carries on by itself.',
+  );
+  return ok || fail('Ollama is not running yet. Once it is installed, try again.');
 }
 
 // Web billing lives on the marketing site (purchase never happens in-app, per
@@ -1065,6 +1168,48 @@ let pendingCallback: { session: Session; recovery: boolean } | undefined;
 // transaction, the link call failed (offline, a 401), so the signed receipt is
 // kept sealed on the device and retried on the next foreground or Restore.
 const PENDING_APPLE_LINK_KEY = 'oscode.iap.pendingLink.v1';
+/** The last server-verified Personal entitlement, so a launch with no network
+ *  (a local-model product must open offline) keeps what the person paid for
+ *  until it runs out, instead of locking the coding agent. */
+const ENTITLEMENT_CACHE_KEY = 'oscode.entitlement.personal.v1';
+
+/** What an entitlement refresh learned: the server answered, it could not be
+ *  reached, or nobody is signed in. */
+export type EntitlementRefresh = 'ok' | 'offline' | 'signed-out';
+
+/** The entitlement a launch starts from before the server answers: the last
+ *  one the server verified (while it lasts), else, on an iPhone, StoreKit's
+ *  own verified subscription. Exported for its test. */
+export async function restoreOfflineEntitlement(
+  apply: (e: Entitlement) => void,
+  deps: {
+    read?: () => Promise<Entitlement | null | undefined>;
+    storeKit?: () => Promise<{ active: boolean; expiresAt?: string } | undefined>;
+  } = {},
+): Promise<void> {
+  try {
+    const cached = await (
+      deps.read ?? (() => storeGetJson<Entitlement | null>(ENTITLEMENT_CACHE_KEY))
+    )();
+    if (cached && isEntitled(cached)) {
+      apply(cached);
+      return;
+    }
+    const kit =
+      deps.storeKit ??
+      (() =>
+        iapAvailable()
+          ? iapCurrentEntitlement(PERSONAL_YEARLY_PRODUCT_ID)
+          : Promise.resolve(undefined));
+    const live = await kit();
+    if (live?.active) {
+      const e: Entitlement = { tierId: 'personal', status: 'active', validUntil: live.expiresAt };
+      if (isEntitled(e)) apply(e);
+    }
+  } catch {
+    // Nothing kept and nothing verifiable here: the server decides once reached.
+  }
+}
 
 // Hub pairing credentials live in the secret store (Keychain, safeStorage),
 // keyed by hub, never in the settings blob (APP-11). In memory the DaemonTarget
@@ -1405,6 +1550,9 @@ interface AppState {
   /** When set, the Personal upgrade sheet is showing, and which locked surface
    *  triggered it. Free is chat only; coding and the Marketplace need Personal. */
   paywall?: PaywallReason;
+  /** When set, the sign-in sheet is showing for a feature that needs an
+   *  account (lib/accountGate.ts). */
+  accountGate?: AccountFeature;
   /** A desktop chat whose journal is still being replayed after reopen, so
    *  the screen shows a skeleton (or the saved snapshot) instead of the
    *  empty-state greeting. Cleared by the first journal frame or a timeout. */
@@ -1433,6 +1581,13 @@ interface AppState {
   /** Show the Personal upgrade sheet for a locked surface. */
   openPaywall(reason: PaywallReason): void;
   closePaywall(): void;
+  /** Whether account features need a sign-in right now: this build has
+   *  accounts and nobody is signed in (lib/accountGate.ts). */
+  needsAccountNow(): boolean;
+  /** Show the sign-in sheet for a feature; signing in carries on to `returnTo`
+   *  when a room was asked for. */
+  openAccountGate(feature: AccountFeature, returnTo?: ViewName): void;
+  closeAccountGate(): void;
   /** Whether the signed-in person has the Personal unlock, by EITHER rail (an
    *  individual Personal subscription OR an entitled commercial org). Free
    *  (signed out or no entitlement) is chat only. */
@@ -1613,7 +1768,7 @@ interface AppState {
   /** Re-read the signed-in user's server role into serverRole. */
   refreshOrgRole(): Promise<void>;
   /** Re-read the org's billing entitlement from the server. */
-  refreshEntitlement(): Promise<void>;
+  refreshEntitlement(): Promise<EntitlementRefresh>;
   /** Re-check entitlement when the app returns to the foreground, so a purchase
    *  completed in the browser lands without the user hunting for a refresh.
    *  Fires only when signed in and not already unlocked, and is self-throttled. */
@@ -2087,6 +2242,22 @@ interface AppState {
   trustProjectFolder(itemId: string): Promise<void>;
   /** The trust card's "Not now": leave the folder's settings off. */
   dismissProjectTrust(itemId: string): void;
+  /** A model asked to search the web and the person has not answered yet
+   *  (web search asks once; What leaves this device). The sheet shows it. */
+  webSearchAsk?: { query: string };
+  /** The web search question's answer: allow (remembered on this device) or
+   *  not now (asked again after the next launch). */
+  answerWebSearch(allow: boolean): void;
+  /** The Settings switch for web search. */
+  setWebSearchAllowed(allowed: boolean): Promise<void>;
+  /** The first try (v1 Phase 1): write the sample page on this computer,
+   *  open a chat in it, and ask for the fix, so the whole loop shows on
+   *  something that cannot hurt the person's own work. */
+  trySampleProject(): Promise<void>;
+  /** The changed-files card's undo: put back every file the task changed,
+   *  or one (`path`), or redo them. Runs on the computer the session runs on;
+   *  the engine echoes it, so every device folds the card. */
+  restoreChangedFiles(itemId: string, direction: 'undo' | 'redo', path?: string): Promise<void>;
   /** Set the permission mode for new sessions and the live one. */
   /** `source` names where the change came from, for the opt-in activity
    *  log's regret signal (a walk choice changed soon after). */
@@ -2255,6 +2426,22 @@ function purgeBenchId(
   return out;
 }
 
+/** A stack as a build without Currents runs it (docs/release-tiers.md): a
+ *  Current placed by an earlier build is left out of the turn (the anchor
+ *  falls back to Harbor), without touching what is saved, so a build that has
+ *  Currents finds the placement as it was. Exported for its test. */
+export function stackForTier(stack: AppStack, tier: ReleaseTier = RELEASE_TIER): AppStack {
+  if (featureOn('currents', tier)) return stack;
+  const isCurrent = (ref: StackModelRef | undefined) =>
+    ref?.kind === 'byom' && isCurrentBenchId(ref.id);
+  if (!isCurrent(stack.reasoning) && !stack.active.some((m) => isCurrent(m.ref))) return stack;
+  return {
+    ...stack,
+    reasoning: isCurrent(stack.reasoning) ? harborRef() : stack.reasoning,
+    active: stack.active.filter((m) => !isCurrent(m.ref)),
+  };
+}
+
 /** The project the person is currently in (activeProjectId, else the first), so
  *  the global rooms read its per-project current selections. */
 export function activeProjectOf(settings: AppSettings): Project | undefined {
@@ -2264,12 +2451,25 @@ export function activeProjectOf(settings: AppSettings): Project | undefined {
 
 /** The Agentic Currents view for the active project: its selection plus the
  *  device-local connections. The rooms render currents through this. */
-export function agenticView(settings: AppSettings): CurrentsSettings {
+export function agenticView(
+  settings: AppSettings,
+  tier: ReleaseTier = RELEASE_TIER,
+): CurrentsSettings {
+  // Currents are v2: in an earlier build no current is on anywhere.
+  if (!featureOn('currents', tier)) {
+    return projectCurrentsSettings(undefined, settings.currentConnections);
+  }
   return projectCurrentsSettings(activeProjectOf(settings), settings.currentConnections);
 }
 
 /** The Harness Currents view for the active project. */
-export function harnessView(settings: AppSettings): HarnessCurrentsSettings {
+export function harnessView(
+  settings: AppSettings,
+  tier: ReleaseTier = RELEASE_TIER,
+): HarnessCurrentsSettings {
+  if (!featureOn('currents', tier)) {
+    return projectHarnessSettings(undefined, settings.harnessCurrentConnections);
+  }
   return projectHarnessSettings(activeProjectOf(settings), settings.harnessCurrentConnections);
 }
 
@@ -3244,6 +3444,24 @@ export const useApp = create<AppState>((set, get, api) => {
     }
   }
 
+  // Web search asks once (What leaves this device). A yes is remembered on
+  // this device; a "not now" holds until the next launch, so a chat never
+  // asks twice in a row. Concurrent searches share one question.
+  let webSearchDeclinedThisRun = false;
+  let webSearchPending: Promise<boolean> | undefined;
+  let webSearchResolve: ((allow: boolean) => void) | undefined;
+  function askWebSearch(query: string): Promise<boolean> {
+    const consent = get().settings.webSearchConsent;
+    if (consent === 'allowed') return Promise.resolve(true);
+    if (consent === 'declined' || webSearchDeclinedThisRun) return Promise.resolve(false);
+    if (webSearchPending) return webSearchPending;
+    webSearchPending = new Promise<boolean>((resolve) => {
+      webSearchResolve = resolve;
+      set({ webSearchAsk: { query } });
+    });
+    return webSearchPending;
+  }
+
   // Register this device for completion push with the connected daemon, once per
   // daemon. iOS-only and best-effort (see registerPushForDaemon); a failure just
   // means no push until the next desktop session opens.
@@ -3550,7 +3768,9 @@ export const useApp = create<AppState>((set, get, api) => {
         let codemagicToken: string | undefined;
         let codemagicTarget:
           { appId: string; workflowId: string; branch: string; platform?: string } | undefined;
-        if (settings.codemagicAccess) {
+        // Launch is v2 (docs/release-tiers.md): an earlier build never hands
+        // the token to a session, whatever a setting left from before says.
+        if (settings.codemagicAccess && featureOn('launch')) {
           const tok = await secretGet(CODEMAGIC_SECRET_KEY);
           if (tok) {
             codemagicToken = tok;
@@ -3570,12 +3790,17 @@ export const useApp = create<AppState>((set, get, api) => {
         // Codemagic token they ride to a remote hub too: a current names a box
         // or a service the person chose to reach FROM the hub, and the key is
         // that service's own key, not a secret bound to this device.
-        const currents = currentsHandles(
-          projectCurrentsSettings(project, settings.currentConnections),
-          (await currentSecretFor(project?.agenticCurrent ?? null)) ?? undefined,
-          get().currentsHost,
-        );
-        const harnessId = project?.harnessCurrent ?? null;
+        // Currents are v2: an earlier build sends no current to any session,
+        // whatever a project saved in a build that had them.
+        const currentsOn = featureOn('currents');
+        const currents = currentsOn
+          ? currentsHandles(
+              projectCurrentsSettings(project, settings.currentConnections),
+              (await currentSecretFor(project?.agenticCurrent ?? null)) ?? undefined,
+              get().currentsHost,
+            )
+          : undefined;
+        const harnessId = currentsOn ? (project?.harnessCurrent ?? null) : null;
         const harnessCurrents = harnessId
           ? harnessCurrentsHandle(
               projectHarnessSettings(project, settings.harnessCurrentConnections),
@@ -3602,6 +3827,10 @@ export const useApp = create<AppState>((set, get, api) => {
           // project memory off (false) and is absent otherwise, so a
           // project's own config stays in charge while it is on.
           ...(memoryOverride(settings) === false ? { memory: false } : {}),
+          // Web search asks once on this device (the search words go to a
+          // search service): until the person allows it, the engine session
+          // has no webSearch tool.
+          ...(settings.webSearchConsent === 'allowed' ? {} : { webSearch: false }),
           codemagicToken,
           codemagicTarget,
           currents,
@@ -3672,6 +3901,7 @@ export const useApp = create<AppState>((set, get, api) => {
             permissionMode: sessionOpts.permissionMode,
             humanize: sessionOpts.humanize,
             chainOfThought: sessionOpts.chainOfThought,
+            ...(sessionOpts.webSearch === false ? { webSearch: false } : {}),
             memory: sessionOpts.memory,
             currents: sessionOpts.currents,
             harnessCurrents: sessionOpts.harnessCurrents,
@@ -3799,7 +4029,7 @@ export const useApp = create<AppState>((set, get, api) => {
         // The Harness Current (Jev) for THIS conversation's project, with its
         // resolved key, so the stack can let it steer a paid-seat turn. Absent
         // leaves routing exactly as it was.
-        const harnessId = project?.harnessCurrent ?? null;
+        const harnessId = featureOn('currents') ? (project?.harnessCurrent ?? null) : null;
         const harnessCurrents = harnessId
           ? harnessCurrentsHandle(
               projectHarnessSettings(project, s.settings.harnessCurrentConnections),
@@ -3807,7 +4037,7 @@ export const useApp = create<AppState>((set, get, api) => {
             )
           : undefined;
         return new StackDriver(
-          stackForProfile(s.settings.stacks, profile),
+          stackForTier(stackForProfile(s.settings.stacks, profile)),
           profile,
           {
             projectName: project?.name,
@@ -3827,7 +4057,8 @@ export const useApp = create<AppState>((set, get, api) => {
             researchOn: s.settings.perplexityResearch === true,
             // Codemagic Access on and connected: offer the codemagic tool so the
             // model can drive App Launch builds on the phone (Anthropic path).
-            codemagicAccess: s.settings.codemagicAccess === true && s.codemagicConnected,
+            codemagicAccess:
+              featureOn('launch') && s.settings.codemagicAccess === true && s.codemagicConnected,
             // Docked to a computer with a local workspace connected to this chat:
             // a play's repo/tool step runs on the engine there. Absent (not
             // docked, or a GitHub-only / repo-less chat) means such a step is
@@ -4013,6 +4244,58 @@ export const useApp = create<AppState>((set, get, api) => {
     return (await freshAuth())?.accessToken;
   }
 
+  // Accounts (lib/accountGate.ts): the room the sign-in sheet was opened for,
+  // so signing in carries on to it.
+  let accountReturn: ViewName | undefined;
+
+  // Preferences that follow a signed-in person (lib/settingsReach.ts). A local
+  // change is sent a moment after the last one; the account's copy is read at
+  // launch and at sign-in, and the newer side wins. Every failure is quiet:
+  // the preference is already saved on this device, and the next change or
+  // launch tries again.
+  let prefsPushTimer: ReturnType<typeof setTimeout> | undefined;
+  function schedulePrefsPush(): void {
+    if (!get().authSession) return;
+    if (prefsPushTimer) clearTimeout(prefsPushTimer);
+    prefsPushTimer = setTimeout(() => {
+      prefsPushTimer = undefined;
+      void pushPreferences();
+    }, 1500);
+  }
+  async function pushPreferences(): Promise<void> {
+    try {
+      const session = await freshAuth();
+      if (!session) return;
+      let st = get().settings;
+      if (!st.prefsUpdatedAt) {
+        st = { ...st, prefsUpdatedAt: new Date().toISOString() };
+        await get().saveSettings({ prefsUpdatedAt: st.prefsUpdatedAt });
+      }
+      await writeUserPrefs(session.accessToken, {
+        v: 1,
+        at: st.prefsUpdatedAt,
+        prefs: pickPreferences(st),
+      });
+    } catch {
+      // Offline or refused: kept here, sent on the next change or launch.
+    }
+  }
+  async function syncPreferences(): Promise<void> {
+    try {
+      const session = await freshAuth();
+      if (!session) return;
+      const remote = readPreferencesRecord(await readUserPrefs(session.accessToken));
+      const direction = syncDirection(get().settings, remote);
+      if (direction === 'pull' && remote) {
+        await get().saveSettings({ ...remote.prefs, prefsUpdatedAt: remote.at });
+      } else if (direction === 'push') {
+        await pushPreferences();
+      }
+    } catch {
+      // Offline: this device's preferences stand until the next launch.
+    }
+  }
+
   // Forget the session on this device: the stored copy, the pending auth
   // binding, the team vault, the org's shared projects, and (APP-7) a
   // server-backed org's roster and the signed-in identity, so local admin
@@ -4079,6 +4362,8 @@ export const useApp = create<AppState>((set, get, api) => {
     // team vault's titles leave with the session. A sign-out never keeps it.
     const open = get().vaultNote;
     const keepNote = expired && Boolean(uid) && get().vaultScope === 'team' && Boolean(open);
+    // The cached entitlement belonged to this account; it leaves with it.
+    void storeSetJson(ENTITLEMENT_CACHE_KEY, null).catch(() => {});
     set({
       authSession: undefined,
       serverRole: undefined,
@@ -6526,15 +6811,28 @@ export const useApp = create<AppState>((set, get, api) => {
     if (account && session.user.email && account.selfEmail !== session.user.email) {
       await get().saveSettings({ account: { ...account, selfEmail: session.user.email } });
     }
-    try {
-      await supabaseRpc('claim_membership', session.accessToken);
-    } catch {
-      // No invited seat, or offline: role stays whatever the server says next.
+    // Teams are v4 (docs/release-tiers.md): a Personal build claims no seat,
+    // syncs no organization and no team projects; it reads the entitlement.
+    if (featureOn('teams')) {
+      try {
+        await supabaseRpc('claim_membership', session.accessToken);
+      } catch {
+        // No invited seat, or offline: role stays whatever the server says next.
+      }
+      await reconcileOrg();
+      await get().refreshOrgRole();
     }
-    await reconcileOrg();
-    await get().refreshOrgRole();
     void get().refreshEntitlement();
-    void get().syncOrgProjects();
+    if (featureOn('teams')) void get().syncOrgProjects();
+    // Preferences that follow the person arrive (or leave) now.
+    void syncPreferences();
+    // Signed in from the account sheet: carry on to the room it was opened
+    // for, or back to where the person was.
+    if (get().accountGate) {
+      const to = accountReturn;
+      get().closeAccountGate();
+      if (to) get().setView(to);
+    }
     // Back on the team note: list the team vault again and replay what was
     // kept for this account while it was signed out.
     if (resume && get().vaultScope === 'team') void get().vaultRefresh();
@@ -6573,6 +6871,16 @@ export const useApp = create<AppState>((set, get, api) => {
       // auth-callback handling. Run exactly once per store lifetime.
       if (get().initStarted) return;
       set({ initStarted: true });
+
+      // Every app-side web search asks the person first, once (lib/localSearch).
+      setSearchConsent(askWebSearch);
+
+      // What the person paid for holds on a launch with no network: the last
+      // server-verified entitlement first, then (iPhone) StoreKit's own
+      // verified answer, until the server is reached again.
+      void restoreOfflineEntitlement((e) => {
+        if (!get().userEntitlement) set({ userEntitlement: e });
+      });
 
       // Wire the team vault (org tier) to the signed-in session: a fresh-token
       // getter and a readiness predicate, so the Supabase-backed provider can
@@ -6852,6 +7160,22 @@ export const useApp = create<AppState>((set, get, api) => {
         view: 'chat',
       });
       logEvent('app_open', { onboarded: settings.onboarded });
+      // Signed in: the account's preferences, if newer, arrive now.
+      if (stored) void syncPreferences();
+      // Someone who used OpenShore before the account gate, signed out, hears
+      // once that their work is still here and what signing in opens.
+      if (
+        authConfigured() &&
+        !stored &&
+        settings.onboarded &&
+        !settings.accountNoticeSeen &&
+        (Boolean(settings.daemon) ||
+          Boolean(settings.crew?.length) ||
+          Boolean(settings.projects?.some((p) => p.repoIds?.length)))
+      ) {
+        void get().saveSettings({ accountNoticeSeen: true });
+        get().showToast(ACCOUNT_NOTICE);
+      }
       // First open: no Personal-or-Business question (no account means
       // personal) and no setup wall. On the phone, open the built-in guide's
       // chat with its seeded hello; the desktop's empty chat is the First Seat.
@@ -6924,9 +7248,11 @@ export const useApp = create<AppState>((set, get, api) => {
               fresh = undefined;
             }
             if (!fresh) return;
-            await reconcileOrg();
-            await get().refreshOrgRole();
-            void get().syncOrgProjects();
+            if (featureOn('teams')) {
+              await reconcileOrg();
+              await get().refreshOrgRole();
+              void get().syncOrgProjects();
+            }
             // A pure-web buyer returns from checkout on this origin with
             // ?checkout=success (no deep link to fire); reconcile the
             // entitlement right away instead of waiting for a refocus.
@@ -7080,6 +7406,20 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     setView(view, opts) {
+      // Release tiers: a later tier's room has no door in this build, whoever
+      // calls (lib/focus.ts).
+      if (!roomOpen(view)) {
+        set({ drawerOpen: false });
+        return;
+      }
+      // Accounts: every room but chat, the Stack, and Settings is behind a
+      // free sign-in (lib/accountGate.ts). The sheet opens instead, and
+      // signing in carries on to this room.
+      const accountFeature = roomAccountFeature(view);
+      if (accountFeature && get().needsAccountNow()) {
+        get().openAccountGate(accountFeature, view);
+        return;
+      }
       // Free is chat only: the Marketplace needs Personal. Intercept the
       // navigation and show the upgrade sheet instead of the locked screen.
       if (view === 'marketplace' && !get().personalUnlockedNow()) {
@@ -7119,6 +7459,19 @@ export const useApp = create<AppState>((set, get, api) => {
     },
     closePaywall() {
       set({ paywall: undefined });
+    },
+
+    needsAccountNow() {
+      return needsAccount(authConfigured(), Boolean(get().authSession));
+    },
+    openAccountGate(feature, returnTo) {
+      accountReturn = returnTo;
+      logEvent('account_gate_shown', { feature });
+      set({ accountGate: feature, drawerOpen: false });
+    },
+    closeAccountGate() {
+      accountReturn = undefined;
+      set({ accountGate: undefined });
     },
 
     personalUnlockedNow() {
@@ -7218,7 +7571,19 @@ export const useApp = create<AppState>((set, get, api) => {
           get().showToast(err instanceof Error ? err.message : 'Could not complete the purchase.');
           return;
         }
-        if (result.state !== 'purchased' || !result.jws) return;
+        if (result.state === 'pending') {
+          // Ask to Buy, or a payment that needs another step: Apple finishes it
+          // later and Restore (or the next launch) picks it up.
+          get().showToast(
+            'Waiting for approval. Personal unlocks as soon as Apple completes the purchase.',
+          );
+          return;
+        }
+        if (result.state === 'cancelled') return;
+        if (result.state !== 'purchased' || !result.jws) {
+          get().showToast('The purchase did not complete. Nothing was charged. Try again.');
+          return;
+        }
         // Apple has charged and finished the transaction by now. If the link
         // to the server fails here (offline, a dead session), the receipt is
         // kept and retried on the next foreground or Restore (UI-10); the copy
@@ -7258,14 +7623,27 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       // A receipt from a purchase the server never saw goes first (UI-10).
       await retryPendingAppleLink();
-      const session = await freshAuth();
-      if (!session) return;
+      let session: Session | undefined;
+      try {
+        session = await freshAuth();
+      } catch {
+        get().showToast('You are offline. Restore once you are back online.');
+        return;
+      }
+      if (!session) {
+        get().showToast('Sign in again, then restore.');
+        return;
+      }
       if (!iapAvailable()) {
         // Not an Apple device: a web/desktop buyer's entitlement is already on
         // the account, so a refresh is the "restore".
-        await get().refreshEntitlement();
+        const refreshed = await get().refreshEntitlement();
         get().showToast(
-          get().personalUnlockedNow() ? 'Personal restored.' : 'No Personal subscription found.',
+          refreshed === 'offline'
+            ? 'Could not reach OpenShore. Try again when you are online.'
+            : get().personalUnlockedNow()
+              ? 'Personal restored.'
+              : 'No Personal subscription found on this account.',
         );
         return;
       }
@@ -7304,6 +7682,12 @@ export const useApp = create<AppState>((set, get, api) => {
       // Launch) is gated one way. Returns the current conversation id (or empty)
       // so callers that navigate on the result do not dead-end.
       const coding = source.kind === 'desktop';
+      // The coding agent needs a free sign-in (lib/accountGate.ts); chat does
+      // not. The caller hands a typed first message back to the composer.
+      if (coding && get().needsAccountNow()) {
+        get().openAccountGate('coding');
+        return get().activeId ?? '';
+      }
       if (coding && !get().personalUnlockedNow()) {
         get().openPaywall('coding');
         return get().activeId ?? '';
@@ -7790,6 +8174,12 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async createRoutine(input) {
+      // Routines sit inside Personal (CFO): with the pay gates on, making one
+      // is a Personal feature like the coding agent. Off in the beta.
+      if (!get().personalUnlockedNow()) {
+        get().openPaywall('crew');
+        return undefined;
+      }
       if (!get().crewControl().can) {
         get().showToast(CONTROL_REQUIRES_DOCK);
         return undefined;
@@ -7803,6 +8193,9 @@ export const useApp = create<AppState>((set, get, api) => {
         const routine = await client.create(input);
         logEvent('routine_created', { access: input.access ?? 'read-only' });
         await get().refreshRoutines();
+        // A routine that needs you should reach your phone: register for the
+        // computer's notifications now, not only when a desktop chat opens.
+        void ensureDesktopPush();
         return routine;
       } catch (err) {
         get().showToast(err instanceof Error ? err.message : String(err));
@@ -7851,6 +8244,10 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async runRoutineNow(id) {
+      if (!get().personalUnlockedNow()) {
+        get().openPaywall('crew');
+        return;
+      }
       if (!get().crewControl().can) {
         get().showToast(CONTROL_REQUIRES_DOCK);
         return;
@@ -8133,7 +8530,7 @@ export const useApp = create<AppState>((set, get, api) => {
 
     async setupAccount(input) {
       set({ accountChoice: undefined });
-      if (input.type === 'personal') {
+      if (input.type === 'personal' || !featureOn('teams')) {
         await get().saveSettings({ account: { type: 'personal' } });
         logEvent('account_setup', { type: 'personal' });
         return;
@@ -8304,7 +8701,12 @@ export const useApp = create<AppState>((set, get, api) => {
       const session = await supabaseSignUp(email.trim(), password, authRedirectTo());
       // A new account is the moment to ask Personal or Business, and only when
       // this device never answered (a company already set up stays as it is).
-      if (!get().settings.account) set({ accountChoice: true });
+      // Business is v4: a Personal build makes it a Personal account, no
+      // question asked.
+      if (!get().settings.account) {
+        if (featureOn('teams')) set({ accountChoice: true });
+        else await get().saveSettings({ account: { type: 'personal' } });
+      }
       if (session) {
         await onSignedIn(session);
         return { needsConfirmation: false };
@@ -8472,10 +8874,11 @@ export const useApp = create<AppState>((set, get, api) => {
       try {
         session = await freshAuth();
       } catch {
-        // Offline: keep whatever entitlement we last knew.
-        return;
+        // Offline: keep whatever entitlement we last knew (the cache below
+        // carries it across a launch).
+        return 'offline';
       }
-      if (!session) return;
+      if (!session) return 'signed-out';
       const serverId = get().settings.account?.org?.serverId;
       // Individual (Personal) entitlement: readable whenever signed in, with no
       // org. This is the path a solo Personal buyer needs; the old code gated
@@ -8491,19 +8894,21 @@ export const useApp = create<AppState>((set, get, api) => {
           `select=tier_id,status,valid_until&user_id=eq.${session.user.id}`,
         );
         const row = rows[0];
-        set({
-          userEntitlement: row
-            ? { tierId: row.tier_id, status: row.status, validUntil: row.valid_until ?? undefined }
-            : undefined,
-        });
+        const userEntitlement: Entitlement | undefined = row
+          ? { tierId: row.tier_id, status: row.status, validUntil: row.valid_until ?? undefined }
+          : undefined;
+        set({ userEntitlement });
+        // Kept on the device for the next launch that has no network.
+        void storeSetJson(ENTITLEMENT_CACHE_KEY, userEntitlement ?? null).catch(() => {});
       } catch {
         // Offline or transient: keep whatever we last knew.
+        return 'offline';
       }
       // Org entitlement: only when the account is a synced commercial org. Gates
       // team-seat growth (growthGatedByBilling), unchanged.
       if (!serverId) {
         set({ entitlement: undefined });
-        return;
+        return 'ok';
       }
       try {
         const rows = await supabaseSelect<{
@@ -8524,6 +8929,7 @@ export const useApp = create<AppState>((set, get, api) => {
       } catch {
         // Offline or transient: keep whatever entitlement we last knew.
       }
+      return 'ok';
     },
 
     async reconcileEntitlementOnForeground() {
@@ -9205,8 +9611,20 @@ export const useApp = create<AppState>((set, get, api) => {
         status = get().desktopStatus;
       }
       if (status && !status.ollama.up) {
-        set({ harborMasterDownload: { percent: 0, label: status.ollama.detail, failed: true } });
-        return false;
+        // v1 Phase 1, desktop first run: no terminal. Installed but stopped,
+        // start it; not installed, fetch and open the official installer
+        // (the download page on failure), then carry on by itself the moment
+        // Ollama answers. Linux has no one-click installer, so it names the
+        // one command and waits the same way.
+        const up = await bringUpOllama(b, (d) => set({ harborMasterDownload: d }), {
+          detail: status.ollama.detail,
+        });
+        if (!up) return false;
+        try {
+          status = await b.status();
+        } catch {
+          status = undefined;
+        }
       }
       const hw = status
         ? (status.hardware ?? hardwareFromSummary(status.hardwareSummary))
@@ -9254,12 +9672,16 @@ export const useApp = create<AppState>((set, get, api) => {
       // Kick the download in the background, then walk the Library intro over
       // the marketplace. ensureHarborMini manages harborMiniDownload / harborMiniReady.
       void get().ensureHarborMini();
+      // The Library intro walks over the Marketplace, a v3 room: an earlier
+      // build downloads in place and the row shows the progress.
+      if (!roomOpen('marketplace')) return;
       set({ libraryIntro: true, view: 'marketplace', viewTrail: [], drawerOpen: false });
     },
 
     beginHarborWithIntro() {
       logEvent('library_intro_open', { model: HARBOR_MODEL_ID });
       void get().ensureHarbor();
+      if (!roomOpen('marketplace')) return;
       set({ libraryIntro: true, view: 'marketplace', viewTrail: [], drawerOpen: false });
     },
 
@@ -9521,6 +9943,8 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     teamVaultAvailable() {
+      // The team vault is v4: a Personal build keeps every note personal.
+      if (!featureOn('teams')) return false;
       const st = get();
       return Boolean(
         authConfigured() && st.authSession && st.serverRole && st.settings.account?.org?.serverId,
@@ -11454,6 +11878,75 @@ export const useApp = create<AppState>((set, get, api) => {
       else setTrustItem({ state: 'trusted', error: undefined });
     },
 
+    answerWebSearch(allow) {
+      const resolve = webSearchResolve;
+      webSearchResolve = undefined;
+      webSearchPending = undefined;
+      set({ webSearchAsk: undefined });
+      if (allow) void get().saveSettings({ webSearchConsent: 'allowed' });
+      else webSearchDeclinedThisRun = true;
+      resolve?.(allow);
+    },
+
+    async setWebSearchAllowed(allowed) {
+      webSearchDeclinedThisRun = false;
+      await get().saveSettings({ webSearchConsent: allowed ? 'allowed' : 'declined' });
+    },
+
+    async trySampleProject() {
+      const b = isDesktop() ? bridge() : undefined;
+      if (!b?.createSample) {
+        get().showToast('The sample needs the desktop app.');
+        return;
+      }
+      if (!get().sourceReady({ kind: 'desktop' })) {
+        get().showToast('Pick a model for this computer first, then try the sample.');
+        get().setView('stack');
+        return;
+      }
+      const made = await b.createSample();
+      if ('error' in made) {
+        get().showToast(made.error);
+        return;
+      }
+      await get().newConversation({ kind: 'desktop', cwd: made.path, repoName: SAMPLE_REPO_NAME });
+      get().send(SAMPLE_PROMPT);
+    },
+
+    async restoreChangedFiles(itemId, direction, path) {
+      const { activeId } = get();
+      if (!activeId) return;
+      const patchCard = (patch: { restoring?: boolean; error?: string }) =>
+        set((s) => {
+          const c = s.conversations[activeId];
+          if (!c) return s;
+          const items = c.thread.items.map((i) =>
+            i.kind === 'changed' && i.id === itemId ? { ...i, ...patch } : i,
+          );
+          return {
+            conversations: {
+              ...s.conversations,
+              [activeId]: { ...c, thread: { ...c.thread, items } },
+            },
+          };
+        });
+      const card = get().conversations[activeId]?.thread.items.find(
+        (i): i is Extract<ThreadItem, { kind: 'changed' }> =>
+          i.kind === 'changed' && i.id === itemId,
+      );
+      const driver = drivers.get(activeId);
+      if (!card?.checkpointId || !driver?.restoreCheckpoint) {
+        patchCard({
+          error: 'This chat is not running on your computer, so there is nothing to undo here.',
+        });
+        return;
+      }
+      patchCard({ restoring: true, error: undefined });
+      const result = await driver.restoreCheckpoint(card.checkpointId, direction, path);
+      // Success folds through the engine's echo; a refusal says why here.
+      if ('error' in result) patchCard({ restoring: false, error: result.error });
+    },
+
     dismissProjectTrust(itemId) {
       const { activeId } = get();
       if (!activeId) return;
@@ -11778,6 +12271,8 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async refreshCurrents() {
+      // Currents are v2: an earlier build probes nothing at all.
+      if (!featureOn('currents')) return;
       const s = get();
       // Nothing here may throw: a probe that fails reads as "did not answer".
       const host = await currentsHost(s.settings.daemon).catch(() => undefined);
@@ -11981,7 +12476,13 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async saveSettings(patch) {
-      const settings = { ...get().settings, ...patch };
+      const before = get().settings;
+      let settings = { ...before, ...patch };
+      // A preference that follows a signed-in person changed here (not a sync
+      // applying the account's copy, which names its own time): stamp it, and
+      // send it on once the person stops changing things.
+      const ownPrefChange = !('prefsUpdatedAt' in patch) && preferencesChanged(before, settings);
+      if (ownPrefChange) settings = { ...settings, prefsUpdatedAt: new Date().toISOString() };
       set({ settings, hubRole: activeHubRole(settings) });
       setInsightsEnabled(settings.insightsOptIn ?? false);
       setActiveEffort(settings.effort ?? DEFAULT_EFFORT);
@@ -11992,6 +12493,7 @@ export const useApp = create<AppState>((set, get, api) => {
       // A pairing change relinks the hub vault before anything settles it.
       if ('daemon' in patch) await syncHubLink(settings.daemon).catch(() => false);
       await persistSettings(settings);
+      if (ownPrefChange) schedulePrefsPush();
     },
 
     async addDeviceModel(id, name) {

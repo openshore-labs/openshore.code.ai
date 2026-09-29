@@ -2746,3 +2746,138 @@ execution contract. Newest at the bottom.
   bodies; the Trash view never shows size). A member under admins-only sees
   Delete disabled with "Only admins can delete team notes here." rather than
   absent.
+- **v1 for the first-time person (founder "build all of your recommendations",
+  2026-09-27; the customer is a non-developer using Claude Code today; the
+  founder asked that the core design and feature set not change):** everything
+  new is additive, and anything that would change a default for the person
+  ships behind config or a build flag until a number or the founder says
+  otherwise. Undo: a checkpoint per task in a shadow git folder under
+  `~/.os-code/checkpoints` (not the project's git, so it works in a folder
+  with none and never touches its index or history), taken by `LocalDriver`
+  so every host has it; restore refused while a task runs, journaled so every
+  device folds; the route is the session owner's like every control (it only
+  ever touches files that session's task changed); a folder past 20,000
+  files, files over 20 MB, dependency folders and OpenShore's own state are
+  left out. Verify: a configured check now runs on a paired phone with a
+  verify grant on this machine keyed by folder, command and a digest of what
+  it runs (members never grant, routines never run an ungranted one, bypass
+  mode counts as a yes); a found test script always asks first, desktop
+  included, being the repository's own code; the page check runs nothing the
+  project wrote (compiles scripts, never runs them); `detect` and `pageCheck`
+  read off until `osc eval --floor` measures them (tenet 2), and the floor
+  plan measures each change against the same plain run. First run: the First
+  Seat fetches Ollama's own installer and opens it (marked as a download so
+  Gatekeeper checks it; the page opens on any failure) rather than
+  installing silently, and on Linux names the command instead of running a
+  sudo installer in a hidden terminal; the sample page's tap sends its ask at
+  once, since that tap is the request. Signing: unsigned stays the default;
+  a Mac certificate without notarization credentials is ignored, since it
+  would still warn. Focus flag: build time, off; it hides the review's 8/8
+  and 7/8 rooms and both Currents groups; the Crew scheduler still runs if a
+  routine exists (the engine does not read the app's build flag; a
+  follow-up). What leaves this device: disclosure first; the review's
+  changes that would alter what a feature does (web search asking first,
+  updates asking before downloading, the guardrail record's named person,
+  the repo sign-in exchange) are listed as they stand and left to the
+  founder; the privacy paragraph's false claim ("nothing leaves", "no IP
+  address, ever") is corrected; a test fails on any host not on the list.
+  Eval: the everyday suite has no test scripts on purpose (a person's folder
+  has none); the Claude Code baseline is internal, never copy, runs hermetic
+  (a scratch config, the same doors as the engine's eval approver), and the
+  eval approver gained a file-move door (mv, cp, mkdir, ls inside the
+  workspace, no chaining, nothing outside).
+- **Release tiers (founder, 2026-09-27):** "pull crew and terminal into standard
+  v1. V2 will be currents, stack health, and launch. V3 marketplace. And v4 is
+  the enterprise track with admin configuration and project permissions ...
+  Let's just build personal for now and get that working fully." One gate,
+  `app/src/lib/focus.ts` (the earlier focus flag, rebuilt as tiers), read by
+  every door; a build is Personal unless `VITE_RELEASE_TIER` names 2, 3 or 4,
+  and nothing shipped sets it, so every build is Personal today. The test
+  suite runs at tier 4 so the later tiers' code stays tested, and
+  `test/tierPersonal.test.ts` reloads the modules as a Personal build.
+  Judgment calls: Vault stays in v1 (the founder named no later tier for it);
+  Wayfinding Memory stays (Skills and Browser switches are hidden because
+  nothing reads them, not because of a tier); "teams" covers team projects,
+  sharing, the roster, project permissions, the team vault and the Business
+  account choice, so a new account in a Personal build is Personal with no
+  question; an account saved as a company by an earlier build keeps its type
+  on disk (its team surfaces are hidden, its data untouched); a Current placed
+  in a stack by an earlier build sits out of a Personal turn without losing its
+  placement; the Harbor download stays in place instead of the Library intro
+  over the Marketplace; the guide's cards and facts name only the build's
+  rooms; What leaves this device lists only what the build can do. Unlocking a
+  tier for release is a founder call recorded here. `docs/release-tiers.md`.
+- **Personal v1 readiness (2026-09-27, from an audit of the Personal flows):**
+  the Personal price label is $50 a year (the founder's figure and the CFO's
+  ruling; the Board vote stands) and the App Store's own localized price wins
+  wherever StoreKit reports one; the paywall carries Terms of Use and the
+  Privacy Policy (Apple 3.1.2, `openshore.ai/terms/` and `/privacy/`). Copy
+  says what is true: chatting and building need no account, buying Personal
+  does, chats are not synced between devices. An offline launch keeps the last
+  server-verified entitlement until it lapses, else on an iPhone StoreKit's own
+  verified subscription (a local unlock only; the server still decides once
+  reached). Settings shows Personal's standing and Restore. Crew's create and
+  Run now sit behind `personalUnlockedNow()` like the coding agent (no effect
+  while the gates are off). A Claude key needs a workspace id only when Claude
+  says so. Install by name moved into Stack (the Marketplace is v3). The
+  terminal says when it lost the computer or was refused. A revived daemon
+  session keeps the app's Humanize, Memory and Chain of Thought switches
+  (info.json `switches`). Undo's snapshots are held by per-record refs and
+  collected after 20 records age out, never objects younger than two days, so
+  a running task's starting point is never taken.
+- **The four privacy calls (founder "take care of the privacy calls based on
+  your recommendations", 2026-09-27):** each held by
+  `app/test/privacyCalls.test.ts`. Web search asks once: nothing reaches a
+  search service until the person allows it in one sheet (`WebSearchAsk`),
+  saved as `webSearchConsent: 'allowed'`; "Not now" holds for this run only,
+  so it asks again next launch rather than never; the model is told plainly it
+  did not search; Settings, Harbor, "Let models search the web" switches it.
+  Every app search runs through `localSearch.ts`'s one gate, and the desktop
+  engine is built without the `webSearch` tool (the registry's
+  `webSearch: false`, through the bridge and the daemon) until allowed; `webFetch`
+  stays, since it fetches a page the person or the task names, and the CLI,
+  routines and config keep searching (undefined is on). Desktop updates ask
+  before downloading on every platform: `autoDownload = false`, the bar says a
+  version is out, the Update click downloads, installs and restarts; the
+  check stays and is listed. The guardrail record never uploads the name of a
+  person a request was about (`subject: null` on the account; the device copy
+  keeps it; consents were already device-only). The repository sign-in
+  exchange was verified to keep nothing (no database, no storage, no token in
+  a log line) and says so. CX's further point, keeping the guardrail record
+  off the account entirely, is not taken: enforcement has to survive a
+  reinstall; it is the founder's call if wanted.
+- **Accounts (founder + CX, 2026-09-27; `docs/accounts-cx-memo.md`):**
+  chatting needs no account (Harbor Lite and Harbor, the Stack, a model you
+  connect); everything else is behind a free sign-in: the coding agent,
+  Projects, Terminal, Repositories, Vault, Crew, Cloud Connections, pairing
+  (and the later tiers' rooms). One pure gate, `app/src/lib/accountGate.ts`,
+  classifies every room with a `Record<ViewName, ...>` so a new room is a type
+  error until it is; `setView` and `newConversation` open the sign-in sheet
+  (`AccountGateSheet`, the sign-in card inside it) instead, a typed first
+  message goes back to the composer, and signing in carries on to the room. A
+  build with no account backend stays open (`needsAccount`). No account at the
+  free gate, per CX (Apple 5.1.1(v), Baymard's 18%, and Harbor Lite's promise
+  of answers with no signal). The founder asked for a signed-out reset to
+  defaults at each launch and deferred to CX; CX advised against it (iOS ends
+  a suspended app without notice, an update relaunches the desktop app, a
+  blanket reset reruns onboarding and re-offers a downloaded model), so it is
+  NOT built: settings stay on the device for everyone. The benefit of signing
+  in is additive instead: eight plain preferences (theme, effort, Humanize,
+  Chain of Thought, both notice switches, voice replies, voice speed) follow
+  the person to every device they sign in on. Every AppSettings key is
+  classified in `app/src/lib/settingsReach.ts` (a Record over the AppSettings
+  keys); prompts, work, addresses, keys and consents never follow (web search
+  consent and insights included: a consent is made on the device it applies
+  to). The copy rides on the account's own user record (`oscode_prefs` in
+  `user_metadata`, as `{ v, at, prefs }`), so no table and no migration: pulled at
+  launch and at sign-in, pushed 1.5 s after a change, the newer side wins, a
+  device that never set one takes the account's, values of the wrong shape are
+  dropped. Listed in What leaves this device. A signed-out desktop whose Stack
+  can answer opens its composer on the Stack. Someone who used OpenShore
+  before the gate, signed out, hears once that their work is still here.
+  Offline with an expired token already stays signed in (only a refused
+  refresh signs out); sign-out keeps everything on the device. If the founder
+  overrules and wants the reset: reset only the 'follows' keys, never a
+  'device' one, and say so when the change is made (the memo's copy). Open
+  (What remains): in-app account deletion before the App Store build carries
+  the gate; a free desktop chat with no Stack set up.

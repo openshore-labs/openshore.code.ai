@@ -32,11 +32,12 @@ export const PERSONAL_TIER: PlanTier = {
   blurb: 'Personal. Free to chat. For your own work.',
 };
 
-// The individual Personal UNLOCK price per year, in whole US dollars. Free is
-// chat-only; this unlocks the full app for one person. Same $20 on both rails:
-// Stripe on web/desktop, Apple In-App Purchase on iOS (Apple 3.1.1). Matches the
-// commercial Micro price by design (one person == the smallest team's per-year).
-export const PERSONAL_UNLOCK_PRICE_YEAR = 20;
+// The individual Personal UNLOCK price per year, in whole US dollars: $50 a
+// year (founder, 2026-09-05 and 2026-09-27; the CFO's ruling), bought only as
+// an Apple In-App Purchase. The App Store's own localized price wins wherever
+// StoreKit reports one (the Paywall asks for it); this is the fallback label.
+// Free is chat-only; this unlocks the full app for one person.
+export const PERSONAL_UNLOCK_PRICE_YEAR = 50;
 
 // Commercial bands, cheapest first. The boundary number belongs to the lower
 // band (5 is Micro, 30 is Small, 100 is Growth), so nobody lands in a pricier

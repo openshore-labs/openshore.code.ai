@@ -12,6 +12,7 @@
 // configure who WILL have access once a project is shared with the team (a
 // server-backed capability on the roadmap). They never lock the local owner
 // out of their own project. Same posture as the Account/Org model.
+import { featureOn } from '../lib/focus.js';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useApp, stackAdmin } from '../state/store.js';
 import type { Conversation, Project, ProjectAccess, ProjectPermission } from '../state/types.js';
@@ -57,7 +58,10 @@ export function ProjectDetailScreen() {
   const project = settings.projects?.find((p) => p.id === viewProjectId);
   const account = settings.account;
   const isActive = (settings.activeProjectId ?? settings.projects?.[0]?.id) === project?.id;
-  const isCommercial = account?.type === 'commercial';
+  // Teams are v4 (docs/release-tiers.md): a Personal build shows no roster,
+  // no sharing, and no team counts, whatever account an earlier build saved.
+  const teams = featureOn('teams');
+  const isCommercial = teams && account?.type === 'commercial';
   // The signed-in person's level on this project. A local project is fully the
   // owner's ('edit'); a shared project trusts the server-resolved level, so a
   // read/write teammate sees it but cannot change its content or roster.
@@ -168,7 +172,7 @@ export function ProjectDetailScreen() {
                   Make active
                 </button>
               )}
-              {project.shared ? <span className="pill muted">Shared</span> : null}
+              {teams && project.shared ? <span className="pill muted">Shared</span> : null}
               {project.shared && !mayEdit && myLevel ? (
                 <span className="pill muted">You {permissionLabel(myLevel).toLowerCase()}</span>
               ) : null}
@@ -351,7 +355,9 @@ export function ProjectDetailScreen() {
             method (Harness) and its agent modality (Agentic). Per project so
             different projects run different currents at once. Connecting one is
             device-local, reached from its row. Editors only. */}
-        {mayEdit ? <ProjectCurrents projectId={project.id} index={2} /> : null}
+        {mayEdit && featureOn('currents') ? (
+          <ProjectCurrents projectId={project.id} index={2} />
+        ) : null}
 
         {/* Vault notes pinned to this project's context (Vault M5): placed by
             the person, so they ride every chat here. Device local. Editors
@@ -425,7 +431,7 @@ export function ProjectDetailScreen() {
               Share with team
             </button>
           ) : null}
-          {project.shared && mayEdit ? (
+          {teams && project.shared && mayEdit ? (
             <button className="suggestion" onClick={() => void unshareProject(project.id)}>
               Stop sharing
             </button>

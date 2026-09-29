@@ -3,6 +3,7 @@
 // first-run onboarding and, as a permanent shortcut, in Settings, from one
 // source so the two never drift. In onboarding, choosing a path also marks
 // onboarding done; in Settings we are already in, so it just navigates.
+import { SAMPLE_ROW_LABEL, SAMPLE_ROW_SUB } from '../lib/sampleProject.js';
 import { useApp, type ViewName } from '../state/store.js';
 import { isDesktop } from '../lib/platform.js';
 import { logEvent } from '../lib/insights.js';
@@ -30,6 +31,7 @@ export function StartingPaths({
     settings,
     harborMiniDownload,
     harborDownload,
+    trySampleProject,
   } = useApp();
 
   const go = async (view: ViewName) => {
@@ -219,6 +221,11 @@ export function StartingPaths({
               label="Open a repository"
               sub="Read, edit, and commit with your approval"
               onClick={() => void go('repos')}
+            />
+            <SettingsRow
+              label={SAMPLE_ROW_LABEL}
+              sub={SAMPLE_ROW_SUB}
+              onClick={() => void trySampleProject()}
             />
           </>
         ) : (

@@ -268,6 +268,36 @@ describe('POST /sessions/:id/trust (project trust)', () => {
   });
 });
 
+// Undo from a paired phone: the restore route answers with the driver's own
+// result (a 409 for a checkpoint it does not hold), checks its body, and is
+// the session owner's like every other control.
+describe('POST /sessions/:id/checkpoints/:cid/restore (undo)', () => {
+  it('checks the body, answers an unknown checkpoint plainly, and refuses another user', async () => {
+    const created = await createSessionAs(adminToken, home);
+    const { id } = (await created.json()) as { id: string };
+    const bad = await fetch(`${base}/sessions/${id}/checkpoints/abc/restore`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ direction: 'sideways' }),
+    });
+    expect(bad.status).toBe(400);
+    const unknown = await fetch(`${base}/sessions/${id}/checkpoints/abc/restore`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ direction: 'undo' }),
+    });
+    expect(unknown.status).toBe(409);
+    expect(((await unknown.json()) as { error: string }).error).toMatch(/not on this computer/);
+    const { token } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_undo' });
+    const other = await fetch(`${base}/sessions/${id}/checkpoints/abc/restore`, {
+      method: 'POST',
+      headers: auth(token),
+      body: JSON.stringify({ direction: 'undo' }),
+    });
+    expect(other.status).toBe(403);
+  });
+});
+
 // The workspace predicates resolve BOTH sides through realpath, so a symlink
 // planted inside ~/OSCode that points outside it cannot pass as provisioned
 // (the P0-1 escape). HOME is pointed at the scratch dir so ~/OSCode is ours.

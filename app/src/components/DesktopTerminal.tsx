@@ -40,6 +40,9 @@ export function DesktopTerminal({ driver }: { driver: TerminalHost }) {
   const ctrlRef = useRef(false);
   const [status, setStatus] = useState<Status>('connecting');
   const [message, setMessage] = useState('');
+  // Set while the stream keeps failing, so a dropped connection says so
+  // instead of retrying behind a silent screen.
+  const [trouble, setTrouble] = useState<string | undefined>();
   const [ctrlArmed, setCtrlArmed] = useState(false);
 
   useEffect(() => {
@@ -123,6 +126,7 @@ export function DesktopTerminal({ driver }: { driver: TerminalHost }) {
     // Reconnecting stream loop: resume from the last byte offset, so a blip or a
     // foreground resume continues instead of clearing the screen.
     const runStream = async (): Promise<void> => {
+      let failures = 0;
       while (!disposed && termIdRef.current) {
         const ac = new AbortController();
         streamAbort = ac;
@@ -133,18 +137,50 @@ export function DesktopTerminal({ driver }: { driver: TerminalHost }) {
             (bytes, endOffset) => {
               term.write(bytes);
               lastOffset = Math.max(lastOffset, endOffset);
+              if (failures) {
+                failures = 0;
+                setTrouble(undefined);
+              }
             },
             ac.signal,
             (info) => markExited(info.exit),
           );
-        } catch {}
+        } catch (err) {
+          if (disposed) break;
+          failures += 1;
+          const why = err instanceof Error ? err.message : String(err);
+          // A revoked device or a refused credential will never come back on
+          // its own: say so and stop, instead of retrying forever.
+          if (/\b(401|403)\b/.test(why)) {
+            setMessage(
+              'Your computer no longer accepts this device. Pair it again from Desktop + phone.',
+            );
+            setStatus('unavailable');
+            break;
+          }
+          if (failures >= 5) {
+            setTrouble(
+              "Can't reach your computer. Check that it is on and on Tailscale. Still trying.",
+            );
+          }
+        }
         if (disposed) break;
-        await new Promise((r) => setTimeout(r, 600));
+        await new Promise((r) => setTimeout(r, failures >= 5 ? 3000 : 600));
       }
     };
 
     void (async () => {
-      const opened = await driver.openTerminal!({ cols: term.cols, rows: term.rows });
+      let opened: Awaited<ReturnType<NonNullable<typeof driver.openTerminal>>>;
+      try {
+        opened = await driver.openTerminal!({ cols: term.cols, rows: term.rows });
+      } catch {
+        if (disposed) return;
+        setStatus('unavailable');
+        setMessage(
+          "Can't reach your computer. Check that it is on and on Tailscale, then open the terminal again.",
+        );
+        return;
+      }
       if (disposed) return;
       if ('unavailable' in opened) {
         setStatus('unavailable');
@@ -216,6 +252,10 @@ export function DesktopTerminal({ driver }: { driver: TerminalHost }) {
         <div className="terminal-message">Connecting to your terminal...</div>
       ) : status === 'exited' ? (
         <div className="terminal-message">{message}</div>
+      ) : trouble ? (
+        <div className="terminal-message" role="status">
+          {trouble}
+        </div>
       ) : null}
       <div className="terminal-host" ref={containerRef} />
       {status === 'ready' ? (

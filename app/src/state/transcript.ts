@@ -317,15 +317,68 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
       return push(next, { kind: 'note', text: event.message });
 
     case 'verify':
-      // The harness ran the project's checks after a task that changed files.
-      // Shown as a note today (the summary reads "Verified:" or "Not
-      // verified:"); a dedicated pill on the task-done card is a fast follow.
-      // A failure that is going back to the model says so, so the last verify
-      // note of the task is the verdict.
+      // The harness checked the task's work: the project's own tests, or the
+      // page check that runs nothing (v1 Phase 1). One plain pill; a failure
+      // going back to the model says so, so the last pill is the verdict.
       return push(next, {
-        kind: 'note',
-        text: event.willRetry ? `${event.summary} Handing it back to the model.` : event.summary,
+        kind: 'verify',
+        passed: event.passed,
+        check: event.check ?? 'tests',
+        summary: event.summary,
+        ...(event.detail ? { detail: event.detail } : {}),
+        retrying: Boolean(event.willRetry),
       });
+
+    case 'checkpoint': {
+      // The engine's record of every file the task changed (shell writes
+      // included). It joins the task's changed-files card, or makes one when
+      // the task changed files only through commands or stopped early.
+      const since = lastUserIndex(next.items);
+      let at = -1;
+      for (let i = next.items.length - 1; i > since; i--) {
+        if (next.items[i]!.kind === 'changed') {
+          at = i;
+          break;
+        }
+      }
+      const ranCommands = next.items
+        .slice(since + 1)
+        .some((i) => i.kind === 'tool' && i.name === 'runShell');
+      if (at === -1) {
+        return push(next, {
+          kind: 'changed',
+          files: event.files.map((f) => ({ path: f.path, added: 0, removed: 0, status: f.status })),
+          checkpointId: event.id,
+          ...(ranCommands ? { ranCommands } : {}),
+        });
+      }
+      const items = next.items.map((item, i) => {
+        if (i !== at || item.kind !== 'changed') return item;
+        const files = [...item.files];
+        for (const f of event.files) {
+          const existing = files.findIndex((row) => row.path === f.path);
+          if (existing === -1) files.push({ path: f.path, added: 0, removed: 0, status: f.status });
+          else files[existing] = { ...files[existing]!, status: f.status };
+        }
+        return { ...item, files, checkpointId: event.id, ...(ranCommands ? { ranCommands } : {}) };
+      });
+      return { ...next, items };
+    }
+
+    case 'checkpoint-restored': {
+      // An undo or redo landed (from this device or another): the card with
+      // that checkpoint marks the files put back, or clears them on redo.
+      const items = next.items.map((item) => {
+        if (item.kind !== 'changed' || item.checkpointId !== event.id) return item;
+        const undone = new Set(item.undone ?? []);
+        for (const p of event.paths) {
+          if (event.direction === 'undo') undone.add(p);
+          else undone.delete(p);
+        }
+        return { ...item, undone: [...undone], restoring: false, error: undefined };
+      });
+      return { ...next, items };
+    }
 
     case 'project-trust': {
       if (event.state === 'trusted') {
@@ -736,4 +789,11 @@ function dedupeCitations(citations: Array<{ title: string; url: string }>) {
     seen.add(c.url);
     return true;
   });
+}
+
+/** The index of the last message the person sent (-1 when none): the start of
+ *  the task a late event belongs to. */
+function lastUserIndex(items: ThreadItem[]): number {
+  for (let i = items.length - 1; i >= 0; i--) if (items[i]!.kind === 'user') return i;
+  return -1;
 }

@@ -12,6 +12,7 @@ import { perplexityProvider } from '../src/core/tools/search/perplexity.js';
 import { searchProviderFor } from '../src/core/tools/search/index.js';
 import { webSearchTool } from '../src/core/tools/webSearch.js';
 import { webFetchTool } from '../src/core/tools/webFetch.js';
+import { buildToolRegistry } from '../src/core/agent/registry.js';
 import { Jail } from '../src/core/security/jail.js';
 import type { ToolContext } from '../src/core/tools/index.js';
 
@@ -214,5 +215,24 @@ describe('webFetch tool', () => {
     const result = await webFetchTool.execute({ url: 'https://gone.example/x' }, ctx());
     expect(result.ok).toBe(false);
     expect(result.content).toContain('404');
+  });
+});
+
+// Web search asks once (founder, 2026-09-27): until the person allows it in the
+// app, the session is built without the webSearch tool, so no search words can
+// leave. webFetch stays (it fetches a page the person or the task names), and
+// the CLI, routines, and config keep searching as before (undefined is on).
+describe('webSearch consent', () => {
+  const base = { stackHasVision: false, stackHasImageGen: false, stackHasSpecialists: false };
+
+  it('leaves webSearch out when the person has not allowed it, keeping webFetch', () => {
+    const names = buildToolRegistry({ ...base, webSearch: false }).names();
+    expect(names).not.toContain('webSearch');
+    expect(names).toContain('webFetch');
+  });
+
+  it('registers webSearch by default and once allowed', () => {
+    expect(buildToolRegistry(base).names()).toContain('webSearch');
+    expect(buildToolRegistry({ ...base, webSearch: true }).names()).toContain('webSearch');
   });
 });

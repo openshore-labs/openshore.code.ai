@@ -236,6 +236,30 @@ export async function getUser(accessToken: string): Promise<{ id: string; email?
   return { id: u.id, email: u.email };
 }
 
+/** The preferences that follow a signed-in person (lib/settingsReach.ts) ride
+ *  on the account's own user record, under one key, so they need no table of
+ *  their own. What is written is only the allowlisted preferences and when
+ *  they changed; the settings blob never leaves the device. */
+const PREFS_KEY = 'oscode_prefs';
+
+/** The account's copy of the preferences, raw (settingsReach reads it). */
+export async function readUserPrefs(accessToken: string): Promise<unknown> {
+  const res = await fetch(`${base()}/auth/v1/user`, { headers: authHeaders(accessToken) });
+  if (!res.ok) throw new SupabaseRequestError(await readError(res), res.status);
+  const u = (await res.json()) as { user_metadata?: Record<string, unknown> };
+  return u.user_metadata?.[PREFS_KEY];
+}
+
+/** Replace the account's copy of the preferences. */
+export async function writeUserPrefs(accessToken: string, record: unknown): Promise<void> {
+  const res = await fetch(`${base()}/auth/v1/user`, {
+    method: 'PUT',
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({ data: { [PREFS_KEY]: record } }),
+  });
+  if (!res.ok) throw new SupabaseRequestError(await readError(res), res.status);
+}
+
 /** Call a Postgres RPC (SECURITY DEFINER function) as the signed-in user. */
 export async function rpc<T>(
   fn: string,

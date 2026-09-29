@@ -81,6 +81,14 @@ export class ElectronDriver implements ChatDriver {
     return requireBridge().trustFolder(this.sessionId);
   }
 
+  restoreCheckpoint(
+    id: string,
+    direction: 'undo' | 'redo',
+    path?: string,
+  ): Promise<{ ok: true; paths: string[] } | { error: string }> {
+    return requireBridge().restoreCheckpoint(this.sessionId, id, direction, path);
+  }
+
   // ---- chat-to-terminal bridge ----
   // Output for a started run streams back as command-* events on the same
   // onEvent channel the main process already forwards, so these only kick off /

@@ -44,11 +44,13 @@ import { oscHome } from 'os-code/dist/src/config/load.js';
 import { shouldRebind } from './lifecycle.js';
 import {
   ollamaInstallPlan,
+  downloadOllamaInstaller,
   probeOllama,
   startOllama,
   type OllamaInstallPlan,
   type OllamaStatus,
 } from './ollama.js';
+import { createSampleProject } from './sampleProject.js';
 import { getRoutineScheduler, type RoutineScheduler } from 'os-code/dist/src/routines/scheduler.js';
 import { validateRoutineInput } from 'os-code/dist/src/routines/model.js';
 import {
@@ -239,6 +241,8 @@ export class EngineHost {
       projectSecrets?: string;
       humanize?: boolean;
       chainOfThought?: boolean;
+      /** False until the person allows web search on this device. */
+      webSearch?: boolean;
       /** The Wayfinding Memory switch: false turns project memory off for
        *  this session; undefined leaves the project's config in charge. */
       memory?: boolean;
@@ -279,6 +283,7 @@ export class EngineHost {
       humanize: opts.humanize,
       chainOfThought: opts.chainOfThought,
       memory: opts.memory,
+      ...(opts.webSearch === false ? { webSearch: false } : {}),
       codemagicToken: opts.codemagicToken,
       codemagicTarget: opts.codemagicTarget,
       currents,
@@ -380,6 +385,29 @@ export class EngineHost {
     const driver = this.drivers.get(sessionId);
     if (!driver) return { error: 'That session is not open.' };
     return trustSessionFolder(driver);
+  }
+
+  /** The sample page for a first try, written to ~/OSCode/Try OpenShore
+   *  (kept as it is when it already exists). */
+  createSample(): { path: string; created: boolean } | { error: string } {
+    try {
+      return createSampleProject();
+    } catch (err) {
+      return { error: `Could not make the sample: ${(err as Error).message}` };
+    }
+  }
+
+  /** Undo or redo a task's changes (every file, or one): the tap on the
+   *  changed-files card. The session echoes it, so every device folds. */
+  async restoreCheckpoint(
+    sessionId: string,
+    id: string,
+    direction: 'undo' | 'redo',
+    path?: string,
+  ): Promise<{ ok: true; paths: string[] } | { error: string }> {
+    const driver = this.drivers.get(sessionId);
+    if (!driver) return { error: 'That session is not open.' };
+    return driver.restoreCheckpoint(id, direction, path);
   }
 
   // ---------------------------------------------------- chat-to-terminal lane
@@ -565,12 +593,24 @@ export class EngineHost {
   }
 
   async ollamaInstall(): Promise<
-    OllamaInstallPlan & { started: boolean; termId?: string; detail?: string }
+    OllamaInstallPlan & {
+      started: boolean;
+      termId?: string;
+      detail?: string;
+      installerPath?: string;
+    }
   > {
     const plan = ollamaInstallPlan(this.deps.platform);
     if (plan.mode !== 'terminal') {
-      // main.ts opens the download page; "started" means the page opened.
-      return { ...plan, started: true };
+      // Fetch the official installer and hand main.ts its path to open; main
+      // opens the download page instead when nothing could be fetched.
+      const installer = await downloadOllamaInstaller({
+        platform: this.deps.platform,
+        downloadsDir: join(homedir(), 'Downloads'),
+      });
+      return installer
+        ? { ...plan, started: true, installerPath: installer }
+        : { ...plan, started: true };
     }
     try {
       const info = await this.terminals.ensure({

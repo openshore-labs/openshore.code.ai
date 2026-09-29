@@ -14,5 +14,9 @@ export default defineConfig({
   test: {
     include: ['test/**/*.test.ts', 'test/**/*.test.tsx'],
     environment: 'node',
+    // The suite exercises every tier's code (a Personal build only shuts the
+    // later tiers' doors; their code stays). test/focus.test.ts pins what a
+    // Personal build, the default with this unset, carries and hides.
+    env: { VITE_RELEASE_TIER: '4' },
   },
 });

@@ -166,15 +166,19 @@ export interface OllamaInstallResult {
   downloadUrl?: string;
   termId?: string;
   detail?: string;
+  /** macOS and Windows: the official installer was fetched and opened (else
+   *  the download page opened instead). */
+  installerOpened?: boolean;
 }
 
 /** A newer desktop version the main process found (electron/main.ts). Every
  *  push to main publishes one, and the bar across the top of the window
  *  (UpdateBanner) shows it until the app updates. `phase`:
- *  - downloading: Windows and Linux, fetching in the background; a click
+ *  - downloading: an older shell fetching in the background; a click
  *    installs the moment it lands.
  *  - ready: downloaded; a click restarts onto it.
- *  - available: macOS, found; a click downloads, swaps, and relaunches.
+ *  - available: found, nothing downloaded yet (every platform now asks
+ *    first); a click downloads, installs, and restarts.
  *  - installing: the person clicked; `percent` tracks it until the restart.
  *  - failed: it did not finish; a click tries again. */
 export interface PendingUpdate {
@@ -255,6 +259,8 @@ export interface OscodeBridge {
       humanize?: boolean;
       /** Chain of Thought for this session (off unless true). */
       chainOfThought?: boolean;
+      /** False until the person allows web search on this device. */
+      webSearch?: boolean;
       /** The Wayfinding Memory switch: false turns project memory off for
        *  this session; absent leaves the project's config in charge. */
       memory?: boolean;
@@ -293,6 +299,17 @@ export interface OscodeBridge {
   /** Trust this session's folder on this computer (the trust card's tap): its
    *  own os-code.config.json applies from the next session there. */
   trustFolder(sessionId: string): Promise<{ ok: true; folder: string } | { error: string }>;
+  /** The sample page for a first try (v1 Phase 1): written to ~/OSCode/Try
+   *  OpenShore, kept as it is when already there. Absent on an older shell. */
+  createSample?(): Promise<{ path: string; created: boolean } | { error: string }>;
+  /** Undo or redo a task's changes, every file or one (the changed-files
+   *  card's tap). */
+  restoreCheckpoint(
+    sessionId: string,
+    id: string,
+    direction: 'undo' | 'redo',
+    path?: string,
+  ): Promise<{ ok: true; paths: string[] } | { error: string }>;
   /** Resume a session and return its journal so the renderer can replay it AFTER
    *  subscribing (IPC is not buffered, so a pushed replay would be lost). */
   resumeSession(

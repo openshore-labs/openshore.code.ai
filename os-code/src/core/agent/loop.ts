@@ -56,7 +56,10 @@ import type {
 } from './types.js';
 import { instructionsPrompt, type RepoInstructions } from './instructions.js';
 import { verifyRetryPrompt } from '../../harness/verify.js';
-import { runVerify } from './verifyRun.js';
+import { runVerifyAsync } from './verifyRun.js';
+import { pageCheck } from './pageCheck.js';
+import { commandDigest, detectCheckCommand } from './checkDetect.js';
+import { addVerifyGrant, hasVerifyGrant } from '../../config/trust.js';
 import {
   deriveProfile,
   deriveModelClass,
@@ -114,6 +117,10 @@ export interface AgentDeps {
   /** Persist an allow rule for this tool in the workspace ("don't ask again
    *  for this in this project"). Returns false when nothing could be written. */
   persistRule?: (rule: ProjectRule) => boolean;
+  /** May this session's person grant a check command to run after changes
+   *  (v1 Phase 1)? False for a member's session on a shared hub: the owner
+   *  decides what runs on the computer. Undefined reads as yes. */
+  canGrantVerify?: boolean;
   /** The Harness Current the person turned on, as a per-session handle (Jev is
    *  the first). A Harness Current layers a cheap decision method into the
    *  loop; the engine uses it here for the verify judge when there is no check
@@ -466,16 +473,34 @@ export class AgentSession {
   // of its own guess. Returns 'retry' when the loop should continue, 'done'
   // otherwise. Bounded by harness.verify.maxRetries on top of the step rails,
   // and a retry only counts once the check has actually failed.
-  private maybeVerify(verifyRounds: number): 'retry' | 'passed' | 'failed' | 'skipped' {
+  //
+  // Which check runs (v1 Phase 1): a configured command runs as before on the
+  // desktop; on a paired phone (or any profile where shell cannot auto-run)
+  // it runs once the owner has let it, a verify grant on this machine keyed
+  // by the folder and the command. With no command, a found test script
+  // (`harness.verify.detect: 'on'`) always asks first, being the project's
+  // own code. With neither, the page check (`harness.verify.pageCheck: 'on'`)
+  // reads the pages and scripts the task changed and runs nothing.
+  private async maybeVerify(
+    verifyRounds: number,
+  ): Promise<'retry' | 'passed' | 'failed' | 'skipped'> {
     const verifyConfig = this.deps.config.harness?.verify;
-    if (!verifyConfig?.command || !this.wroteThisTask) return 'skipped';
-    if (!this.deps.profile.allowShellAutoApprove) return 'skipped';
-    const result = runVerify(this.deps.toolContext.cwd, verifyConfig);
+    if (!this.wroteThisTask) return 'skipped';
+    const plan = await this.resolveCheck();
+    if (!plan) return 'skipped';
+    const { cwd } = this.deps.toolContext;
+    const result =
+      plan.kind === 'command'
+        ? await runVerifyAsync(cwd, {
+            command: plan.command,
+            timeoutSeconds: verifyConfig?.timeoutSeconds,
+          })
+        : pageCheck(cwd, this.changedFiles());
     if (!result.ran) return 'skipped';
     // A lean seat gets at least its class's allowance of goes; a project's
     // own setting can only raise it.
     const maxRetries = Math.max(
-      verifyConfig.maxRetries ?? 0,
+      verifyConfig?.maxRetries ?? 0,
       this.modelProfile?.verifyRetries ?? 0,
     );
     const round = verifyRounds + 1;
@@ -487,6 +512,7 @@ export class AgentSession {
       detail: result.detail,
       round,
       willRetry,
+      check: plan.kind === 'command' ? 'tests' : 'page',
     });
     if (!willRetry) return result.passed ? 'passed' : 'failed';
     this.emit({
@@ -498,6 +524,79 @@ export class AgentSession {
       content: verifyRetryPrompt(result, round, maxRetries),
     });
     return 'retry';
+  }
+
+  /** The check this task's result gets, or undefined for none (see
+   *  maybeVerify). */
+  private async resolveCheck(): Promise<
+    { kind: 'command'; command: string } | { kind: 'page' } | undefined
+  > {
+    const verifyConfig = this.deps.config.harness?.verify;
+    const { cwd } = this.deps.toolContext;
+    const configured = verifyConfig?.command?.trim();
+    if (configured) {
+      if (this.deps.profile.allowShellAutoApprove) return { kind: 'command', command: configured };
+      const ok = await this.mayRunCheck(configured, commandDigest(configured), 'configured');
+      if (ok) return { kind: 'command', command: configured };
+    } else if (verifyConfig?.detect === 'on') {
+      const found = detectCheckCommand(cwd);
+      if (found && (await this.mayRunCheck(found.command, found.digest, found.source))) {
+        return { kind: 'command', command: found.command };
+      }
+    }
+    if (verifyConfig?.pageCheck === 'on') return { kind: 'page' };
+    return undefined;
+  }
+
+  /** Checks the person already allowed or declined this session, by command
+   *  and digest, so the card asks once. */
+  private verifyAllowed = new Set<string>();
+  private verifyDeclined = new Set<string>();
+
+  /**
+   * May this check command run now? Yes with a verify grant on this machine or
+   * an allow earlier this session; otherwise the person is asked once, through
+   * the same approval card as any command, where "always in this project"
+   * becomes the grant. A session that cannot grant (a member's on a shared
+   * hub) or has nobody to ask (a routine) never runs an ungranted check.
+   */
+  private async mayRunCheck(command: string, digest: string, source: string): Promise<boolean> {
+    const { cwd } = this.deps.toolContext;
+    const key = `${command}\0${digest}`;
+    try {
+      if (hasVerifyGrant(cwd, command, digest)) return true;
+    } catch {
+      // An unreadable trust store grants nothing.
+    }
+    if (this.verifyAllowed.has(key)) return true;
+    if (this.verifyDeclined.has(key)) return false;
+    if (this.deps.canGrantVerify === false || this.deps.profile.name === 'headless') return false;
+    if (this.mode === 'bypassPermissions') return true;
+    const answer = await this.awaitApprovalOrAbort({
+      id: `verify_${Date.now().toString(36)}`,
+      kind: 'tool',
+      toolName: 'verify',
+      risk: 'shell',
+      summary: `Check the work: run \`${command}\``,
+      detail:
+        source === 'configured'
+          ? `This project's own check command. It runs on this computer, in ${cwd}, after each change, and any failure goes back to the model to fix.`
+          : `Found ${source}. It runs on this computer, in ${cwd}, after each change, and any failure goes back to the model to fix. Allow it always for this project to stop this question.`,
+    });
+    if (answer === 'aborted') return false;
+    if (!answer.approve) {
+      this.verifyDeclined.add(key);
+      return false;
+    }
+    if (answer.alwaysInProject) {
+      try {
+        addVerifyGrant(cwd, command, digest);
+      } catch {
+        // The grant could not be saved; the allow still holds this session.
+      }
+    }
+    this.verifyAllowed.add(key);
+    return true;
   }
 
   // A Harness Current (Jev) layers a cheap decision method into the loop. The
@@ -1371,7 +1470,7 @@ export class AgentSession {
           });
           continue;
         }
-        const verdict = this.maybeVerify(verifyRounds);
+        const verdict = await this.maybeVerify(verifyRounds);
         if (verdict === 'retry') {
           verifyRounds += 1;
           continue;

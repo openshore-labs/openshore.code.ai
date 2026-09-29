@@ -240,6 +240,8 @@ export async function daemonCreateSession(
     humanize?: boolean;
     /** Chain of Thought for this session (off unless true). */
     chainOfThought?: boolean;
+    /** False until the person allows web search on this device. */
+    webSearch?: boolean;
     /** The Wayfinding Memory switch (memoryOverride): false turns project
      *  memory off for this session. Only false goes on the wire, never true,
      *  so a project's own config stays in charge while the switch is on. */
@@ -277,6 +279,7 @@ export async function daemonCreateSession(
       ...(typeof opts.humanize === 'boolean' ? { humanize: opts.humanize } : {}),
       ...(typeof opts.chainOfThought === 'boolean' ? { chainOfThought: opts.chainOfThought } : {}),
       ...(opts.memory === false ? { memory: false } : {}),
+      ...(opts.webSearch === false ? { webSearch: false } : {}),
       ...(opts.currents ? { currents: opts.currents } : {}),
       ...(opts.harnessCurrents ? { harnessCurrents: opts.harnessCurrents } : {}),
       ...(handoff ? { handoff } : {}),
@@ -695,6 +698,31 @@ export class RemoteDriver implements ChatDriver {
       return { error: failed.message ?? failed.error };
     } catch {
       return { error: 'Could not reach your computer to trust this folder.' };
+    }
+  }
+
+  async restoreCheckpoint(
+    id: string,
+    direction: 'undo' | 'redo',
+    path?: string,
+  ): Promise<{ ok: true; paths: string[] } | { error: string }> {
+    try {
+      const res = await fetch(
+        `${this.target.baseUrl}/sessions/${this.sessionId}/checkpoints/${encodeURIComponent(id)}/restore`,
+        {
+          method: 'POST',
+          headers: { ...headers(this.target), 'content-type': 'application/json' },
+          body: JSON.stringify(path === undefined ? { direction } : { direction, path }),
+          signal: AbortSignal.timeout(30_000),
+        },
+      );
+      const body = (await res.json()) as
+        { ok: true; paths: string[] } | { error: string; message?: string };
+      if ('ok' in body && body.ok) return body;
+      const failed = body as { error: string; message?: string };
+      return { error: failed.message ?? failed.error };
+    } catch {
+      return { error: 'Could not reach your computer to put the files back.' };
     }
   }
 

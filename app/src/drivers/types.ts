@@ -55,6 +55,17 @@ export interface ChatDriver {
    */
   trustFolder?(): Promise<{ ok: true; folder: string } | { error: string }>;
   /**
+   * Undo (engine-backed drivers only): put back the files a task changed, or
+   * one of them, or redo them. The engine checkpoints every task on the
+   * computer it runs on, so this works the same from the desktop and a
+   * paired phone, and the result echoes to every device watching.
+   */
+  restoreCheckpoint?(
+    id: string,
+    direction: 'undo' | 'redo',
+    path?: string,
+  ): Promise<{ ok: true; paths: string[] } | { error: string }>;
+  /**
    * The chat-to-terminal bridge (desktop-backed drivers only). Run a command
    * the user asked for on the connected machine; output streams back as
    * command-* events on the same subscription. Returns the runId, or undefined

@@ -7,6 +7,7 @@ export type {
   AgentEvent,
   ApprovalAnswer,
   ApprovalRequest,
+  CheckpointFileChange,
   DriverEvent,
   PermissionMode,
   StopReason,

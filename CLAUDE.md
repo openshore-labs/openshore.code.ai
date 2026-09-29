@@ -198,6 +198,52 @@ in this project" grants live on the machine (`~/.os-code/trust.json`), never
 in the repo. "Local" is judged by address (`isLocalHost`, `leavesThisNetwork`),
 never by a provider's config label.
 
+## This build is Personal: release tiers (standing rule, founder 2026-09-27)
+
+v1 is **Personal**: one person, their desktop and their own phone. Chats,
+Projects, Terminal, Repositories, Stack, Vault, Crew (routines), Cloud
+Connections, Desktop + phone, Settings, and buying Personal. v2 is Agentic and
+Harness Currents, Stack Health, and Launch with Codemagic; v3 the Marketplace;
+v4 Enterprise (Admin, teams, shared projects, the team vault, project
+permissions, shared-hub members). "Build personal for now and get that working
+fully." One gate, `app/src/lib/focus.ts` (`featureOn`, `roomOpen`,
+`RELEASE_TIER`): a build is Personal unless `VITE_RELEASE_TIER` names a later
+tier, and nothing shipped sets it. Later tiers' code stays in the tree with
+every door shut and no launch-time work. The suite runs at tier 4;
+`app/test/tierPersonal.test.ts` reloads the modules as a Personal build. A new
+feature names its tier in `FEATURE_TIER` before it has a door; a v1 room never
+depends on a later tier; unlocking a tier is a founder call recorded in
+`os-code/DECISIONS.md`. The Currents sections below describe built v2 code, not
+the shipping build. `docs/release-tiers.md`.
+
+## What leaves this device is a list, not a claim (standing rule, 2026-09-27)
+
+Everything OpenShore sends off a device is written down once, in plain words,
+in `app/src/lib/egressManifest.ts`, and shown under Settings, Privacy, "What
+leaves this device". `app/test/egressManifest.test.ts` fails on any host in
+`app/src`, `app/electron`, or `os-code/src` that is neither on that list nor
+marked link-only with a reason. A new call to a new service is not done until
+its entry says what it sends and when. Copy never claims more privacy than the
+list shows.
+
+## Accounts: chatting is free, the rest is a free sign-in (standing rule, founder + CX 2026-09-27)
+
+No account for chatting (Harbor Lite and Harbor, the Stack, a model you
+connect); everything else (the coding agent, Projects, Terminal, Repositories,
+Vault, Crew, Cloud Connections, pairing) opens a sign-in sheet instead, and
+signing in carries on. A build with no account backend stays open. Nothing
+resets for a signed-out person (CX advised against the founder's reset; the
+founder deferred to CX): the benefit of signing in is additive, eight plain
+preferences that follow the person to every device, riding the account's own
+user record, never the settings blob. Two classifications are the rule, each a
+type error until complete: every room in `app/src/lib/accountGate.ts`
+(`ROOM_ACCOUNT`), every AppSettings key in `app/src/lib/settingsReach.ts`
+(`SETTINGS_REACH`). A new room or settings key is not done until it is
+classified there; prompts, work, addresses, keys and consents never follow.
+`app/test/accounts.test.ts` holds it; `docs/accounts-cx-memo.md` is the why.
+In-app account deletion is a ship blocker before the App Store build carries
+the gate (PROGRESS, What remains).
+
 ## Em dash policy is TOTAL here (standing rule)
 
 No em dash anywhere in tracked source, comments included, encoded spellings

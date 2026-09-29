@@ -145,10 +145,16 @@ export function FirstSeat({ fallback }: { fallback: ReactNode }) {
           <p className="first-seat-fit" role="status">
             {harborMasterDownload!.label}
           </p>
+        ) : pulling && harborMasterDownload!.note ? (
+          <p className="first-seat-fit" role="status">
+            {harborMasterDownload!.note}
+          </p>
         ) : null}
         <button className="btn primary press-fb" disabled={pulling} onClick={setUp}>
           {pulling
-            ? `${harborMasterDownload!.label} of ${seatName}`
+            ? /%$/.test(harborMasterDownload!.label)
+              ? `${harborMasterDownload!.label} of ${seatName}`
+              : harborMasterDownload!.label
             : failed
               ? `Try ${seatName} again`
               : `Set up ${seatName}`}

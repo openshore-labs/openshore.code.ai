@@ -47,10 +47,6 @@ export function ConnectionsScreen() {
   const save = async (id: string, name: string) => {
     const key = value.trim();
     if (!key) return;
-    if (id === 'anthropic' && !workspace.trim()) {
-      showToast('Add the workspace id from the Anthropic Console, then save.');
-      return;
-    }
     // Verify the key actually works before claiming "connected", so a typo is
     // caught here, not later mid-chat. A hard rejection keeps the field open;
     // an unverifiable result (offline, dev CORS) saves but says so.
@@ -66,7 +62,12 @@ export function ConnectionsScreen() {
       return;
     }
     if (check === 'needs-workspace') {
-      showToast('Claude did not accept that workspace id. Check it in the Console.');
+      // Most keys carry their workspace; an identity-linked key needs its id.
+      showToast(
+        workspace.trim()
+          ? 'Claude did not accept that workspace id. Check it in the Console.'
+          : 'This Claude key needs its workspace id. Paste it from the Console, then save.',
+      );
       return;
     }
     setEditing(undefined);
@@ -156,7 +157,7 @@ export function ConnectionsScreen() {
                   {p.id === 'anthropic' ? (
                     <>
                       <div className="field">
-                        <label>Workspace id</label>
+                        <label>Workspace id (only if Claude asks)</label>
                         <input
                           placeholder="wrkspc_..."
                           autoCapitalize="none"
@@ -167,17 +168,17 @@ export function ConnectionsScreen() {
                         />
                       </div>
                       <p className="hint" style={{ marginBottom: 10 }}>
-                        Every Anthropic account has a Default workspace. In the Console, open
-                        Settings, then Workspaces, and copy its id (it starts with wrkspc_). To bill
-                        a different workspace, paste that one instead. The id saved here is filled
-                        in for you next time.
+                        Most keys need nothing here. A key tied to your login rather than a
+                        workspace needs its id: in the Console, open Settings, then Workspaces, and
+                        copy it (it starts with wrkspc_). The id saved here is filled in for you
+                        next time.
                       </p>
                     </>
                   ) : null}
                   <button
                     className="btn primary"
                     style={{ width: '100%' }}
-                    disabled={checking || (p.id === 'anthropic' && !workspace.trim())}
+                    disabled={checking}
                     onClick={() => void save(p.id, p.name)}
                   >
                     {checking ? 'Checking...' : 'Save'}

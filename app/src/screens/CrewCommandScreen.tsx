@@ -473,7 +473,8 @@ export function CrewCommandScreen() {
                 <div>
                   <div className="cc-dormant-title">Works, then asks</div>
                   <div className="cc-dormant-sub">
-                    Nothing risky happens unwatched. Anything that needs you waits, and pings you.
+                    Nothing risky happens unwatched. Anything that needs you waits here, and your
+                    phone hears about it when you are signed in with notifications on.
                   </div>
                 </div>
               </div>
