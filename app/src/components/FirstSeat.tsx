@@ -14,8 +14,19 @@
 //
 // When a brain IS ready this renders its fallback (the greeting, and Harbor
 // Light's First Moves on the phone), so the seat only ever owns an empty room.
+//
+// A first message sent while the seat is up waits here (state/firstRunOps.ts)
+// and the card says so in CX ruling 2's words; it goes out by itself, as a
+// plain chat that needs no account, the moment DeepBlue is ready. Signing in
+// never stands in the way of the download or the message: while the download
+// runs, one quiet line offers it, and its link opens the plain Sign in sheet.
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useApp } from '../state/store.js';
+import { FIRST_SEAT_COPY } from '../state/firstRunOps.js';
+import { logEvent } from '../lib/insights.js';
+import { Sheet } from './Sheet.js';
+import { SheetHead } from './SheetHead.js';
+import { SignInCard } from './SignInCard.js';
 import { bridge } from '../lib/electronBridge.js';
 import { isDesktop, platform } from '../lib/platform.js';
 import { useExitPresence } from '../hooks/useExitPresence.js';
@@ -41,7 +52,22 @@ export function FirstSeat({ fallback }: { fallback: ReactNode }) {
     setView,
     ensureHarborMaster,
     harborMasterDownload,
+    needsAccountNow,
   } = useApp();
+  const signedIn = useApp((s) => Boolean(s.authSession));
+  // The plain Sign in sheet the download line opens. It closes itself once
+  // the person is signed in, and it outlives the seat, so a download that
+  // finishes mid sign-in never snaps it away.
+  const [signInOpen, setSignInOpen] = useState(false);
+  useEffect(() => {
+    if (signedIn) setSignInOpen(false);
+  }, [signedIn]);
+  const signInSheet = (
+    <Sheet open={signInOpen} onClose={() => setSignInOpen(false)}>
+      <SheetHead title="Sign in" onClose={() => setSignInOpen(false)} />
+      <SignInCard />
+    </Sheet>
+  );
   const [desktopStatus, setDesktopStatus] = useState<
     | {
         hardwareSummary?: string;
@@ -88,7 +114,14 @@ export function FirstSeat({ fallback }: { fallback: ReactNode }) {
   });
 
   const { mounted, closing } = useExitPresence(needed, doorExitMs());
-  if (!mounted) return <>{fallback}</>;
+  if (!mounted) {
+    return (
+      <>
+        {fallback}
+        {signInSheet}
+      </>
+    );
+  }
 
   const starter = resolveStarter(hardware);
   const pick = starter.pick;
@@ -106,6 +139,10 @@ export function FirstSeat({ fallback }: { fallback: ReactNode }) {
     : `${pick.sizeGB} GB download.`;
   const pulling = Boolean(harborMasterDownload && !harborMasterDownload.failed);
   const failed = Boolean(harborMasterDownload?.failed);
+  // A first message waiting on this seat (CX ruling 2).
+  const held = Boolean(settings.heldFirstMessage?.untilReady);
+  // Only while the download runs, and only for someone signed out.
+  const offerSignIn = desktop && pulling && needsAccountNow();
 
   const setUp = () => {
     if (!desktop) {
@@ -119,60 +156,88 @@ export function FirstSeat({ fallback }: { fallback: ReactNode }) {
     });
   };
 
+  // The sheet sits beside the seat, never among its staggered children, so
+  // the seat's own rise and exit never move it.
   return (
-    <div className={`first-seat${closing ? ' closing' : ''}`}>
-      <span className="first-seat-mark" style={{ '--i': 0 } as React.CSSProperties}>
-        <BrandMark size={40} />
-      </span>
-      <p className="first-seat-line" style={{ '--i': 1 } as React.CSSProperties}>
-        A private coding partner that runs on your own computer. Free, and yours.
-      </p>
-      <div
-        className="first-seat-card"
-        style={{ '--i': 2 } as React.CSSProperties}
-        onAnimationEnd={(e) => {
-          // One tick, when the card seats. Never on a tap (the app root ticks
-          // every button already), so the finger never feels two.
-          if (e.animationName === 'seat-card-in') hapticTick();
-        }}
-      >
-        <h2 className="first-seat-name">{seatName}</h2>
-        <p className="first-seat-class">{classLineFor(pick.ollamaRef)}</p>
-        <p className="first-seat-fit">
-          {sizeLine} {fitLine(starter.fit, hardware)}
+    <>
+      <div className={`first-seat${closing ? ' closing' : ''}`}>
+        <span className="first-seat-mark" style={{ '--i': 0 } as React.CSSProperties}>
+          <BrandMark size={40} />
+        </span>
+        <p className="first-seat-line" style={{ '--i': 1 } as React.CSSProperties}>
+          A private coding partner that runs on your own computer. Free, and yours.
         </p>
-        {failed ? (
-          <p className="first-seat-fit" role="status">
-            {harborMasterDownload!.label}
+        <div
+          className="first-seat-card"
+          style={{ '--i': 2 } as React.CSSProperties}
+          onAnimationEnd={(e) => {
+            // One tick, when the card seats. Never on a tap (the app root ticks
+            // every button already), so the finger never feels two.
+            if (e.animationName === 'seat-card-in') hapticTick();
+          }}
+        >
+          <h2 className="first-seat-name">{seatName}</h2>
+          <p className="first-seat-class">{classLineFor(pick.ollamaRef)}</p>
+          <p className="first-seat-fit">
+            {sizeLine} {fitLine(starter.fit, hardware)}
           </p>
-        ) : pulling && harborMasterDownload!.note ? (
-          <p className="first-seat-fit" role="status">
-            {harborMasterDownload!.note}
-          </p>
-        ) : null}
-        <button className="btn primary press-fb" disabled={pulling} onClick={setUp}>
-          {pulling
-            ? /%$/.test(harborMasterDownload!.label)
-              ? `${harborMasterDownload!.label} of ${seatName}`
-              : harborMasterDownload!.label
-            : failed
-              ? `Try ${seatName} again`
-              : `Set up ${seatName}`}
-        </button>
+          {failed ? (
+            <p className="first-seat-fit" role="status">
+              {harborMasterDownload!.label}
+            </p>
+          ) : pulling && harborMasterDownload!.note ? (
+            <p className="first-seat-fit" role="status">
+              {harborMasterDownload!.note}
+            </p>
+          ) : null}
+          {held ? (
+            <p className="first-seat-held" role="status">
+              {failed ? FIRST_SEAT_COPY.failed : FIRST_SEAT_COPY.held}
+            </p>
+          ) : null}
+          <button className="btn primary press-fb" disabled={pulling} onClick={setUp}>
+            {pulling
+              ? /%$/.test(harborMasterDownload!.label)
+                ? `${harborMasterDownload!.label} of ${seatName}`
+                : harborMasterDownload!.label
+              : failed
+                ? `Try ${seatName} again`
+                : `Set up ${seatName}`}
+          </button>
+          {offerSignIn ? (
+            <p className="first-seat-aside">
+              {FIRST_SEAT_COPY.signIn.before}
+              <button
+                type="button"
+                className="linklike"
+                onClick={() => {
+                  // CX ruling 2 rests on an assumption (the wait costs nothing);
+                  // counting the sign-ins that start here tests it.
+                  logEvent('first_seat_sign_in_open');
+                  setSignInOpen(true);
+                }}
+              >
+                {FIRST_SEAT_COPY.signIn.link}
+              </button>
+              {FIRST_SEAT_COPY.signIn.after}
+            </p>
+          ) : null}
+        </div>
+        <div className="first-seat-more" style={{ '--i': 3 } as React.CSSProperties}>
+          <div className="first-seat-more-label">More ways to start</div>
+          <button className="first-seat-more-row press-fb" onClick={() => setView('pair')}>
+            Connect your computer
+          </button>
+          <button className="first-seat-more-row press-fb" onClick={() => setView('connections')}>
+            Connect an API key
+          </button>
+          <button className="first-seat-more-row press-fb" onClick={() => setView('stack')}>
+            Open Stack
+          </button>
+        </div>
       </div>
-      <div className="first-seat-more" style={{ '--i': 3 } as React.CSSProperties}>
-        <div className="first-seat-more-label">More ways to start</div>
-        <button className="first-seat-more-row press-fb" onClick={() => setView('pair')}>
-          Connect your computer
-        </button>
-        <button className="first-seat-more-row press-fb" onClick={() => setView('connections')}>
-          Connect an API key
-        </button>
-        <button className="first-seat-more-row press-fb" onClick={() => setView('stack')}>
-          Open Stack
-        </button>
-      </div>
-    </div>
+      {signInSheet}
+    </>
   );
 }
 

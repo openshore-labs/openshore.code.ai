@@ -15,7 +15,8 @@ const PROMPT_FILES = [
   'src/drivers/onDeviceDriver.ts',
   'src/lib/harbor.ts',
   'src/lib/harborMini.ts',
-  '../os-code/src/daemon/serve.ts',
+  // The free chat's system line (the daemon's /chat and the desktop's IPC).
+  '../os-code/src/daemon/freeChat.ts',
   '../os-code/src/core/agent/loop.ts',
 ];
 

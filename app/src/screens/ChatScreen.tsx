@@ -165,6 +165,13 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     unqueue,
     addNote,
     setConversationRepos,
+    holdFirstMessage,
+    holdUntilReady,
+    takeHeldFirstMessage,
+    settleHeldMessage,
+    composerDefaultSource,
+    sendWaitsOnFirstSeat,
+    retryPending,
   } = useApp();
   // The repositories a new chat will start with, picked in the header before
   // the first message (the Claude Code way): the active project's, until the
@@ -196,26 +203,25 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const resumeVoice = useRef(false);
   const online = useOnline();
   const { mounted: offlineMounted, closing: offlineClosing } = useExitPresence(!online);
-  // The brain a new chat will use, chosen from the composer. On the desktop app
-  // it defaults to the engine on this machine (the model the founder set up
-  // through Ollama or a cloud key), so a first message just works; the phone
-  // defaults to the stack, which is what "My Stack" selects.
-  // Signed out, the coding agent is behind a free sign-in (lib/accountGate.ts),
-  // so a desktop whose Stack can answer opens on the Stack instead: the first
-  // message goes somewhere that works without an account.
-  const [selectedSource, setSelectedSource] = useState<ConversationSource>(() =>
-    isDesktop() &&
-    !(useApp.getState().needsAccountNow() && useApp.getState().sourceReady({ kind: 'stack' }))
-      ? { kind: 'desktop' }
-      : { kind: 'stack' },
-  );
+  // The brain a new chat will use, chosen from the composer. Until the person
+  // picks one it follows the store's default (state/firstRunOps.ts): on the
+  // desktop app the engine on this machine, so a first message just works,
+  // and signed out (the coding agent is behind a free sign-in) the free chat
+  // with the engine's own model; the phone defaults to the stack, which is
+  // what "My Stack" selects. It is read every render, so a sign-in, a model
+  // set up, or a Stack built moves it along.
+  const [pickedSource, setPickedSource] = useState<ConversationSource | undefined>(undefined);
+  const selectedSource = pickedSource ?? composerDefaultSource();
   // A first message typed before any brain can answer (no model downloaded, no
-  // computer paired, no cloud key) is held here while the model sheet opens as a
-  // chooser, then sent the instant a working brain is picked. This is what keeps
-  // a first send from dead-ending on a fake reply or a raw load error.
-  const [pending, setPending] = useState<{ text: string; attachments?: Attachment[] } | undefined>(
-    undefined,
-  );
+  // computer paired, no cloud key) is held in the store (settings'
+  // heldFirstMessage), never here, so a jump from the chooser to a setup room
+  // cannot lose it: the model sheet opens as a chooser and a pick sends it,
+  // and on the desktop with nothing set up it waits on the First Seat and
+  // goes out once DeepBlue is ready. This is what keeps a first send from
+  // dead-ending on a fake reply, a raw load error, or a room change.
+  // True while the chooser was opened for a held message, so its dismiss
+  // hands the words back.
+  const chooserHolds = useRef(false);
   // The held message handed back to the composer when the chooser closes.
   const [restore, setRestore] = useState<ComposerRestore | undefined>(undefined);
   const booted = useBooted();
@@ -247,6 +253,24 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const history = thread
     ? thread.items.filter((i) => i.kind === 'user').map((i) => (i.kind === 'user' ? i.text : ''))
     : [];
+
+  // A held first message comes back here (state/firstRunOps.ts): into the
+  // composer when this screen returns from a setup room, or, waiting on the
+  // First Seat, sent the moment the engine can answer. Read again whenever
+  // what can answer changes; the chooser keeps a message it holds itself.
+  const heldNow = settings.heldFirstMessage;
+  const desktopStatus = useApp((s) => s.desktopStatus);
+  const cloudKey = useApp((s) => s.cloudKeyPresent);
+  const stackReadyNow = sourceReady({ kind: 'stack' });
+  const signedInNow = useApp((s) => Boolean(s.authSession));
+  useEffect(() => {
+    const back = settleHeldMessage({ chooserOpen: sheetOpen });
+    if (back) {
+      setRestore((r) => restoreFromHeld(back, r));
+      showToast(HELD_MESSAGE_KEPT);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heldNow, desktopStatus, cloudKey, stackReadyNow, signedInNow, activeId, sheetOpen]);
 
   // Reopen voice once an on-screen decision it stepped aside for is answered: the
   // approval sheet is gone and no chooser is up. Keyed on those states clearing,
@@ -322,7 +346,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   // The splash greeting. A fresh time-and-day-aware landing line lands first;
   // tapping the line rotates on through the world languages, in an order freshly
   // shuffled each time we arrive at the empty state.
-  const isEmpty = !(conv && thread && thread.items.length > 0);
+  const isEmpty = !(conv && thread && (thread.items.length > 0 || conv.pendingFirstMessage));
   const [rotation, setRotation] = useState(() => buildRotation());
   const [rotIdx, setRotIdx] = useState(0);
   // Crossfade layers: the last is the current word rising in; any earlier ones
@@ -642,9 +666,18 @@ export function ChatScreen({ compact }: { compact: boolean }) {
       ) : null}
 
       <div className="chat-body">
-        {conv && thread && thread.items.length > 0 ? (
+        {conv && thread && (thread.items.length > 0 || conv.pendingFirstMessage) ? (
           <MessageList
             thread={thread}
+            // The message parked on this chat until its brain can take it (a
+            // hub still opening, the sign-in sheet): a bubble that says it is
+            // waiting, with the reason and a Retry when something went wrong.
+            parked={
+              conv.pendingFirstMessage
+                ? { text: conv.pendingFirstMessage, error: conv.pendingFirstError }
+                : undefined
+            }
+            onRetryParked={() => retryPending(conv.id)}
             rescueLabel={rescueLabel(rescueSourceFor(conv.id))}
             onRescue={() => void continueElsewhere()}
             onPickModel={() => {
@@ -873,7 +906,15 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               // message and open the model sheet as a chooser (download a model,
               // connect your computer, or add a cloud key); the pick sends it.
               if (!sourceReady(selectedSource)) {
-                setPending({ text, attachments });
+                // On the desktop with nothing set up, the First Seat is the
+                // one way on: the message waits there, says so, and goes out
+                // once DeepBlue is ready (CX ruling 2).
+                if (sendWaitsOnFirstSeat()) {
+                  void holdUntilReady(text, attachments);
+                  return;
+                }
+                void holdFirstMessage(text, attachments);
+                chooserHolds.current = true;
                 setSheetStage('root');
                 setSheetOpen(true);
                 showToast('Pick where your first answer comes from, then this sends.');
@@ -940,8 +981,9 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         <ModelSheet
           initialStage={sheetStage}
           onPick={(source) => {
-            setSelectedSource(source);
+            setPickedSource(source);
             setSheetOpen(false);
+            chooserHolds.current = false;
             // With a chat open, switch its model in place and carry the thread
             // (Claude-style). With none open, this just sets the brain the next
             // send will use.
@@ -950,35 +992,33 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               return;
             }
             // A held first message: send it now that a working brain is chosen.
-            // If the pick still cannot answer (rare), keep holding, never
-            // dead-end into a broken chat.
-            if (pending) {
-              if (sourceReady(source)) {
-                const p = pending;
-                setPending(undefined);
-                void startWith(source, p.text, p.attachments);
-              } else {
-                // The sheet is closing: hand the message back to the field,
-                // the way a dismiss does, so it is never stranded and never
-                // sent stale by a later pick.
-                const p = pending;
-                setPending(undefined);
-                setRestore((r) => restoreFromHeld(p, r));
-                showToast('That one is not ready yet. Your message is back in the box.');
-              }
+            // If the pick still cannot answer (rare), never dead-end into a
+            // broken chat.
+            const held = takeHeldFirstMessage();
+            if (!held) return;
+            if (sourceReady(source)) {
+              void startWith(source, held.text, held.attachments);
+            } else {
+              // The sheet is closing: hand the message back to the field, the
+              // way a dismiss does, so it is never stranded and never sent
+              // stale by a later pick.
+              setRestore((r) => restoreFromHeld(held, r));
+              showToast('That one is not ready yet. Your message is back in the box.');
             }
           }}
           onClose={() => {
             setSheetOpen(false);
-            // Leaving the chooser (dismiss, or a jump to a setup screen) stops
-            // holding the message so a later pick never sends stale text, and
-            // hands it back to the field so nothing typed is lost.
-            if (pending) {
-              const p = pending;
-              setPending(undefined);
-              setRestore((r) => restoreFromHeld(p, r));
-              if (useApp.getState().view === 'chat') showToast(HELD_MESSAGE_KEPT);
-            }
+            if (!chooserHolds.current) return;
+            chooserHolds.current = false;
+            // A jump to a setup room keeps the message held in the store, and
+            // it comes back into the composer when this screen does. A dismiss
+            // hands it back to the field now, so a later pick never sends
+            // stale text and nothing typed is lost.
+            if (useApp.getState().view !== 'chat') return;
+            const held = takeHeldFirstMessage();
+            if (!held) return;
+            setRestore((r) => restoreFromHeld(held, r));
+            showToast(HELD_MESSAGE_KEPT);
           }}
         />
       ) : null}

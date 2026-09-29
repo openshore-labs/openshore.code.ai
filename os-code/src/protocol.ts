@@ -60,6 +60,9 @@ export {
   claudeThinking,
 } from './core/agent/chainOfThought.js';
 export type { ThoughtPiece } from './core/agent/chainOfThought.js';
+// The free chat's events (CTO ruling 8): what the daemon streams to a phone
+// and the desktop's main process forwards to its window. Types only.
+export type { FreeChatEvent } from './daemon/freeChat.js';
 // The Memory switch's precedence: the app's switch can only turn project
 // memory off, and a project's config off always wins.
 export { memoryEnabled } from './core/agent/memorySwitch.js';

@@ -32,6 +32,10 @@ contextBridge.exposeInMainWorld('oscode', {
   answerApproval: invoke('osc:answerApproval'),
   onEvent: listen('osc:event'),
 
+  freeChat: invoke('osc:freeChat'),
+  freeChatAbort: invoke('osc:freeChatAbort'),
+  onFreeChat: listen('osc:free-chat'),
+
   runCommand: invoke('osc:runCommand'),
   sendCommandStdin: invoke('osc:sendCommandStdin'),
   killCommand: invoke('osc:killCommand'),

@@ -10,6 +10,7 @@ import type {
   CurrentsHandles,
   CurrentsHostProbe,
   DriverEvent,
+  FreeChatEvent,
   HarnessCurrentsHandle,
   HermesNote,
   HermesNoteMeta,
@@ -206,6 +207,10 @@ export interface PendingUpdate {
   detail?: string;
 }
 
+/** One free chat event as main forwards it: the engine's own events, less the
+ *  refusal (it arrives as an error) and the ready marker. */
+export type FreeChatFrame = Exclude<FreeChatEvent, { type: 'refused' | 'open' }>;
+
 export interface DesktopStatus {
   ollama: { up: boolean; detail: string; models: string[] };
   hardwareSummary: string;
@@ -347,6 +352,14 @@ export interface OscodeBridge {
   onEvent(
     cb: (payload: { sessionId: string; seq: number; event: DriverEvent }) => void,
   ): () => void;
+
+  // The free chat (CTO ruling 8): one answer from this computer's own local
+  // model, with no session, no tools and no notes. freeChat resolves once the
+  // answer has ended; its events arrive on onFreeChat under the request id,
+  // `done` or `error` last. Absent on an older shell.
+  freeChat?(requestId: string, body: Record<string, unknown>): Promise<void>;
+  freeChatAbort?(requestId: string): Promise<void>;
+  onFreeChat?(cb: (payload: { requestId: string; event: FreeChatFrame }) => void): () => void;
 
   // Chat-to-terminal lane. runCommand runs a command on this machine and
   // returns its runId (undefined if the session is gone); output streams back as

@@ -8,7 +8,10 @@
 // phone the very top row is the model on this phone: Harbor once it is
 // downloaded, else Harbor Lite (with Harbor's download progress under it while
 // it comes down). Harbor replaces Harbor Lite there, since the better model
-// makes the guide moot (founder, 2026-09-25).
+// makes the guide moot (founder, 2026-09-25). On the desktop the top rows are
+// this computer's engine: its agent and, beside it, the free chat with its own
+// model (CTO ruling 8); Local models there lists that free chat, or the way to
+// DeepBlue in the Stack, never the phone's own download.
 import { useEffect, useRef, useState } from 'react';
 import type { ConversationSource } from '../state/types.js';
 import { useApp } from '../state/store.js';
@@ -32,8 +35,15 @@ import { PROVIDERS, providerInfo, providerModelLabel } from '../lib/providers.js
 import { EFFORTS, effortLabel, DEFAULT_EFFORT } from '../lib/effort.js';
 import { isPinned, pinKey, togglePin } from '../lib/pins.js';
 import { SwipeRow } from './SwipeRow.js';
+import { engineChatReady } from '../state/firstRunOps.js';
+import { HARBOR_MASTER_MODEL_NAME } from '../lib/harborMaster.js';
 import { BackGlyph, CloseGlyph } from './SheetGlyphs.js';
 import { Icon } from './Icon.js';
+
+/** The desktop's free chat row, and the Local models sheet's words there. */
+export const DESKTOP_CHAT_ROW = 'Chat with this computer';
+export const DESKTOP_CHAT_SUB = 'Free. Read-only, no repository or edits.';
+export const DESKTOP_LOCAL_EMPTY = `No model on this computer yet. Set up ${HARBOR_MASTER_MODEL_NAME} in the Stack. It is free and runs here.`;
 
 function RowContent({
   main,
@@ -211,6 +221,13 @@ export function ModelSheet({
     desktopStatus && desktopStatus !== 'error'
       ? desktopStatus.stack.orchestrator?.model
       : undefined;
+  // The free chat with that model (CTO ruling 8): no tools, no session, no
+  // account. Only a local model, since the free chat refuses one that leaves
+  // this network.
+  const engineChat =
+    desktopStatus && desktopStatus !== 'error' && engineChatReady(desktopStatus)
+      ? desktopStatus.stack.orchestrator?.model
+      : undefined;
 
   // The same signal the send path checks, so a stack built after the per-profile
   // stacks landed is pickable. The old read looked at the retired single-stack
@@ -291,12 +308,24 @@ export function ModelSheet({
                     </span>
                   </div>
                 ) : engineModel ? (
-                  <Row
-                    main="This computer"
-                    sub={`${engineModel}, running on this computer`}
-                    highlight
-                    onClick={() => pick({ kind: 'desktop' })}
-                  />
+                  <>
+                    <Row
+                      main="This computer"
+                      sub={`${engineModel}, running on this computer`}
+                      highlight
+                      onClick={() => pick({ kind: 'desktop' })}
+                    />
+                    {/* The free companion to the agent above, the same as the
+                        phone's: chat with this computer's own model, no
+                        repository, no edits, no account. */}
+                    {engineChat ? (
+                      <Row
+                        main={DESKTOP_CHAT_ROW}
+                        sub={DESKTOP_CHAT_SUB}
+                        onClick={() => pick({ kind: 'desktop-chat' })}
+                      />
+                    ) : null}
+                  </>
                 ) : (
                   <div className="ms-row ms-row-disabled">
                     <span className="ms-row-text">
@@ -567,7 +596,30 @@ export function ModelSheet({
           </>
         ) : null}
 
-        {stage === 'local' ? (
+        {stage === 'local' && isDesktop() ? (
+          // On the desktop the local models are the engine's, run by Ollama
+          // on this computer; the on-device list is the phone's own. So this
+          // lists the free chat with the engine's model, or, with none set
+          // up, the way to DeepBlue in the Stack.
+          <>
+            <Header title="Local models" />
+            {engineChat ? (
+              <div className="ms-group">
+                <Row
+                  main={engineChat}
+                  sub={DESKTOP_CHAT_SUB}
+                  onClick={() => pick({ kind: 'desktop-chat' })}
+                />
+              </div>
+            ) : (
+              <button className="ms-empty press-fb" onClick={() => goto('stack')}>
+                {DESKTOP_LOCAL_EMPTY}
+              </button>
+            )}
+          </>
+        ) : null}
+
+        {stage === 'local' && !isDesktop() ? (
           <>
             <Header title="Local models" />
             {deviceModels.length ? (

@@ -15,6 +15,7 @@
 // until it is: a room is free only by being written down as free here.
 
 import type { ViewName } from '../state/store.js';
+import type { ConversationSource } from '../state/types.js';
 
 export type AccountFeature =
   | 'coding'
@@ -54,6 +55,20 @@ export const ROOM_ACCOUNT: Record<ViewName, AccountFeature | null> = {
   marketplace: 'marketplace',
   launch: 'launch',
   admin: 'admin',
+};
+
+/** Which account feature each brain a chat can run on needs, or null for a
+ *  free chat. Only the coding agent ('desktop', a session that reads, edits
+ *  and runs in a repository) needs one. The free chat with a computer's own
+ *  local model ('desktop-chat', no tools, no session) is chat, on the phone
+ *  and on the desktop alike (CTO ruling 8). */
+export const SOURCE_ACCOUNT: Record<ConversationSource['kind'], AccountFeature | null> = {
+  desktop: 'coding',
+  'desktop-chat': null,
+  device: null,
+  cloud: null,
+  stack: null,
+  mock: null,
 };
 
 /** Whether a person must sign in before using account features: only when

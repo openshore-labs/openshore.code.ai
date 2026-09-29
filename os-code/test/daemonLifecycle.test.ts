@@ -335,6 +335,33 @@ describe('POST /chat answers one message at a time (H1)', () => {
     await third.text();
   });
 
+  it('a phone that stops mid-answer frees its line for the next message', async () => {
+    holdAnswers = true;
+    const stop = new AbortController();
+    const first = fetch(`${base}/chat`, {
+      method: 'POST',
+      headers: auth(legacy),
+      body: JSON.stringify({ messages }),
+      signal: stop.signal,
+    });
+    await modelHas(1);
+    const res = await first;
+    expect(res.status).toBe(200);
+    stop.abort();
+    await res.text().catch(() => '');
+    holdAnswers = false;
+    // The daemon saw the phone go and stopped the model, so the next message
+    // is taken rather than refused as still answering.
+    let next = await chat(legacy, { messages });
+    for (let i = 0; i < 50 && next.status === 409; i++) {
+      await next.text();
+      await new Promise((r) => setTimeout(r, 10));
+      next = await chat(legacy, { messages });
+    }
+    expect(next.status).toBe(200);
+    await next.text();
+  });
+
   it('refuses a conversation too long to send, by count and by size', async () => {
     const many = Array.from({ length: 201 }, () => ({ role: 'user', content: 'x' }));
     expect((await chat(legacy, { messages: many })).status).toBe(413);
