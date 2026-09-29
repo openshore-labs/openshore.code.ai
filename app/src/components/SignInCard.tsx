@@ -8,6 +8,9 @@
 // (R-19: text typed under one account never replays under another's). Team
 // text stashed offline does not show under Not saved, so a sign-out with any
 // left asks first, and deleting it is its own button, never a silent wipe.
+//
+// Sign out ends this device's sign-in only (CX ruling 4). A quiet link below
+// it ends every device's, after one confirm (state/signinOps.ts).
 import { featureOn } from '../lib/focus.js';
 import { ACCOUNT_PITCH, SIGNED_IN_PERKS } from '../lib/accountGate.js';
 import { useState } from 'react';
@@ -15,6 +18,11 @@ import { useApp } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { plainError } from '../lib/plainError.js';
 import { Sheet } from './Sheet.js';
+import {
+  SIGN_OUT_EVERYWHERE_BODY,
+  SIGN_OUT_EVERYWHERE_LINK,
+  SIGN_OUT_EVERYWHERE_TITLE,
+} from '../state/signinOps.js';
 
 type Mode = 'signin' | 'signup';
 
@@ -39,6 +47,7 @@ export function SignInCard() {
     resendConfirmation,
     updateMyPassword,
     signOut,
+    signOutEverywhere,
   } = useAuth();
   const [mode, setMode] = useState<Mode>('signin');
   const [addr, setAddr] = useState('');
@@ -47,6 +56,10 @@ export function SignInCard() {
   const [newPw, setNewPw] = useState('');
   // Unsent team vault notes a sign-out would delete; above zero, the ask is open.
   const [unsent, setUnsent] = useState(0);
+  // Which sign-out the ask stands in front of, and the confirm before every
+  // device signs out.
+  const [unsentFor, setUnsentFor] = useState<'here' | 'everywhere'>('here');
+  const [everywhere, setEverywhere] = useState(false);
 
   if (!configured) return null;
 
@@ -69,7 +82,7 @@ export function SignInCard() {
               className="btn danger press-fb"
               onClick={() => {
                 setUnsent(0);
-                void signOut();
+                void (unsentFor === 'everywhere' ? signOutEverywhere() : signOut());
               }}
             >
               Sign out and delete
@@ -79,6 +92,38 @@ export function SignInCard() {
       ) : null}
     </Sheet>
   );
+
+  // The confirm before every device signs out. Outside the signed-in card for
+  // the same reason as the ask above: its exit plays after the card is gone.
+  const everywhereAsk = (
+    <Sheet open={everywhere} onClose={() => setEverywhere(false)} variant="confirm">
+      <h3>{SIGN_OUT_EVERYWHERE_TITLE}</h3>
+      <p>{SIGN_OUT_EVERYWHERE_BODY}</p>
+      <div className="confirm-row">
+        <button type="button" className="btn ghost press-fb" onClick={() => setEverywhere(false)}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="btn danger press-fb"
+          onClick={() => {
+            setEverywhere(false);
+            void askSignOut('everywhere');
+          }}
+        >
+          {SIGN_OUT_EVERYWHERE_LINK}
+        </button>
+      </div>
+    </Sheet>
+  );
+
+  // With nothing unsent, each sign-out goes ahead, as it always has.
+  const askSignOut = async (scope: 'here' | 'everywhere') => {
+    const n = await unsentTeamTextCount().catch(() => 0);
+    setUnsentFor(scope);
+    if (n > 0) setUnsent(n);
+    else await (scope === 'everywhere' ? signOutEverywhere() : signOut());
+  };
 
   // A password-reset link signs the user in with a recovery session. Prompt for
   // a new password before anything else, so the reset actually completes.
@@ -127,12 +172,6 @@ export function SignInCard() {
   }
 
   if (signedIn) {
-    // With nothing unsent, Sign out signs out, as it always has.
-    const askSignOut = async () => {
-      const n = await unsentTeamTextCount().catch(() => 0);
-      if (n > 0) setUnsent(n);
-      else await signOut();
-    };
     return (
       <>
         <div className="card">
@@ -149,13 +188,19 @@ export function SignInCard() {
               type="button"
               className="btn ghost press-fb"
               style={{ padding: '8px 14px' }}
-              onClick={() => void askSignOut()}
+              onClick={() => void askSignOut('here')}
             >
               Sign out
             </button>
           </div>
+          <div className="sub" style={{ marginTop: 6 }}>
+            <button type="button" className="linklike" onClick={() => setEverywhere(true)}>
+              {SIGN_OUT_EVERYWHERE_LINK}
+            </button>
+          </div>
         </div>
         {signOutAsk}
+        {everywhereAsk}
       </>
     );
   }
@@ -309,6 +354,7 @@ export function SignInCard() {
         )}
       </div>
       {signOutAsk}
+      {everywhereAsk}
     </>
   );
 }

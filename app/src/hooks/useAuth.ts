@@ -15,6 +15,7 @@ export function useAuth() {
     resendConfirmation,
     updateMyPassword,
     signOutAccount,
+    signOutEverywhere,
   } = useApp();
 
   return {
@@ -34,5 +35,6 @@ export function useAuth() {
     resendConfirmation,
     updateMyPassword,
     signOut: signOutAccount,
+    signOutEverywhere,
   };
 }

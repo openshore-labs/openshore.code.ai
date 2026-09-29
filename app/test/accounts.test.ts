@@ -87,12 +87,23 @@ vi.mock('../src/lib/insights.js', () => ({
   clearInsights: async () => {},
 }));
 
+// The phone's own copy of the notice switches, as far as a test can see it.
+const notices = vi.hoisted(() => ({ synced: [] as Array<Record<string, unknown>> }));
+vi.mock('../src/lib/notices.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/lib/notices.js')>()),
+  syncNoticePrefs: async (prefs: Record<string, unknown>) => {
+    notices.synced.push(prefs);
+  },
+}));
+
 const sb = vi.hoisted(() => ({
   configured: true,
   remote: undefined as unknown,
   writes: [] as unknown[],
   failRead: false,
   deadRefresh: false,
+  signOuts: [] as Array<{ token: string; scope: string }>,
+  userId: 'u1',
 }));
 vi.mock('../src/lib/supabase.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('../src/lib/supabase.js')>();
@@ -100,7 +111,9 @@ vi.mock('../src/lib/supabase.js', async (importOriginal) => {
     ...real,
     isConfigured: () => sb.configured,
     signInWithPassword: async () => live(),
-    signOut: async () => {},
+    signOut: async (token: string, scope: string) => {
+      sb.signOuts.push({ token, scope });
+    },
     refreshSession: async () => {
       // A revoked refresh token, the way GoTrue answers one.
       if (sb.deadRefresh) throw new real.SupabaseRequestError('invalid_grant', 400);
@@ -130,11 +143,14 @@ const {
 const {
   SETTINGS_REACH,
   FOLLOWING_KEYS,
+  PREFS_RECORD_MAX_BYTES,
+  mergePreferences,
   pickPreferences,
   readPreferences,
   readPreferencesRecord,
-  syncDirection,
+  recordBytes,
 } = await import('../src/lib/settingsReach.js');
+const { SIGNED_OUT_HERE, ownerPatch } = await import('../src/state/signinOps.js');
 const { useApp } = await import('../src/state/store.js');
 const { emptyThread } = await import('../src/state/types.js');
 const { SAMPLE_PROMPT } = await import('../src/lib/sampleProject.js');
@@ -147,9 +163,12 @@ function live(): Session {
     accessToken: 'tok',
     refreshToken: 'rt',
     expiresAt: Date.now() + 3_600_000,
-    user: { id: 'u1', email: 'a@b.c' },
+    user: { id: sb.userId, email: 'a@b.c' },
   };
 }
+
+type Record2 = { v: number; prefs: Record<string, { v: unknown; at: string }> };
+const minutesAgo = (n: number) => new Date(Date.now() - n * 60_000).toISOString();
 
 const base = (extra: Partial<AppSettings> = {}): AppSettings => ({
   onboarded: true,
@@ -324,27 +343,140 @@ describe('where settings may go', () => {
         projects: [{ id: 'p' }],
       }),
     ).toEqual({ effort: 'high', chainOfThought: true });
-    expect(readPreferencesRecord({ v: 2, at: 'now', prefs: {} })).toBeUndefined();
+    // A newer shape than this build knows, and junk, are dropped whole.
+    expect(readPreferencesRecord({ v: 3, prefs: {} })).toBeUndefined();
+    expect(readPreferencesRecord({ v: 1, at: 'now', prefs: {} })).toBeUndefined();
     expect(readPreferencesRecord('junk')).toBeUndefined();
+    // In a v: 2 record, each entry stands on its own shape.
+    const at = '2026-09-28T10:00:00.000Z';
+    expect(
+      readPreferencesRecord({
+        v: 2,
+        prefs: {
+          theme: { v: 'neon', at },
+          effort: { v: 'low', at: 'yesterday' },
+          chainOfThought: { v: true, at },
+          voiceRate: 0.5,
+          projects: { v: [{ id: 'p' }], at },
+        },
+      }),
+    ).toEqual({ v: 2, prefs: { chainOfThought: { v: true, at } } });
   });
 
-  it('lets the newer side win, and a new device take the account', () => {
-    const remote = {
-      v: 1 as const,
-      at: '2026-09-27T10:00:00.000Z',
-      prefs: { theme: 'dark' as const },
-    };
-    expect(syncDirection(base(), remote)).toBe('pull');
-    expect(syncDirection(base({ prefsUpdatedAt: '2026-09-27T09:00:00.000Z' }), remote)).toBe(
-      'pull',
-    );
-    expect(syncDirection(base({ prefsUpdatedAt: '2026-09-27T11:00:00.000Z' }), remote)).toBe(
-      'push',
-    );
-    expect(syncDirection(base({ prefsUpdatedAt: remote.at }), remote)).toBe('none');
+  it('reads a v: 1 record, its one time on every key', () => {
+    const at = '2026-09-27T10:00:00.000Z';
+    expect(
+      readPreferencesRecord({ v: 1, at, prefs: { theme: 'dark', effort: 'low', junk: 1 } }),
+    ).toEqual({ v: 2, prefs: { theme: { v: 'dark', at }, effort: { v: 'low', at } } });
+  });
+
+  it('lets the newer side of each key win, and a new device take the account', () => {
+    const at = '2026-09-27T10:00:00.000Z';
+    const remote = { v: 2 as const, prefs: { theme: { v: 'dark' as const, at } } };
+    const stamped = (theme: 'light' | 'dark', when: string) =>
+      base({ theme, prefsStamps: { theme: when } });
+    // A new device takes the account's.
+    expect(mergePreferences(base(), remote).patch).toMatchObject({ theme: 'dark' });
+    // An older change here gives way; a newer one wins and is written back.
+    expect(mergePreferences(stamped('light', '2026-09-27T09:00:00.000Z'), remote).patch).toEqual({
+      theme: 'dark',
+      prefsStamps: { theme: at },
+      prefsUpdatedAt: undefined,
+    });
+    const newer = mergePreferences(stamped('light', '2026-09-27T11:00:00.000Z'), remote);
+    expect(newer.patch).toBeUndefined();
+    expect(newer.write).toBe(true);
+    expect(newer.record.prefs.theme).toEqual({ v: 'light', at: '2026-09-27T11:00:00.000Z' });
+    // The same on both sides: nothing to do either way.
+    const same = mergePreferences(stamped('dark', at), remote);
+    expect(same.write).toBe(false);
+    expect(same.patch).toBeUndefined();
+    // A value this device never stamped gives way to the account's.
+    expect(mergePreferences(base({ theme: 'light' }), remote).patch).toMatchObject({
+      theme: 'dark',
+    });
     // An account with nothing yet takes this device's only if it has some.
-    expect(syncDirection(base(), undefined)).toBe('none');
-    expect(syncDirection(base({ theme: 'light' }), undefined)).toBe('push');
+    expect(mergePreferences(base(), undefined).write).toBe(false);
+    const first = mergePreferences(base({ theme: 'light' }), undefined, Date.parse(at));
+    expect(first.write).toBe(true);
+    expect(first.record.prefs).toEqual({ theme: { v: 'light', at } });
+  });
+
+  it('keeps each key a device changed when two devices changed different ones', () => {
+    const old = '2026-09-27T08:00:00.000Z';
+    const both = { theme: old, effort: old };
+    const laptop = base({ theme: 'dark', effort: 'high', prefsStamps: both });
+    const phone = base({ theme: 'system', effort: 'low', prefsStamps: both });
+    laptop.prefsStamps = { ...both, theme: '2026-09-27T10:00:00.000Z' };
+    phone.prefsStamps = { ...both, effort: '2026-09-27T10:00:01.000Z' };
+    // The laptop writes first; the phone merges onto what it wrote.
+    const account = mergePreferences(laptop, undefined).record;
+    const merged = mergePreferences(phone, account);
+    expect(merged.record.prefs.theme?.v).toBe('dark');
+    expect(merged.record.prefs.effort?.v).toBe('low');
+    expect(merged.patch).toMatchObject({ theme: 'dark' });
+    // The laptop's next read brings the phone's change, and loses nothing.
+    expect(mergePreferences(laptop, merged.record).patch).toMatchObject({ effort: 'low' });
+  });
+
+  it('does not trust a time from the account more than five minutes ahead', () => {
+    const now = Date.parse('2026-09-29T12:00:00.000Z');
+    const ahead = new Date(now + 60 * 60_000).toISOString();
+    const soon = new Date(now + 60_000).toISOString();
+    const remote = {
+      v: 2 as const,
+      prefs: {
+        theme: { v: 'dark' as const, at: ahead },
+        effort: { v: 'low' as const, at: ahead },
+        chainOfThought: { v: true, at: soon },
+      },
+    };
+    const here = base({ theme: 'light', prefsStamps: { theme: '2026-09-29T11:00:00.000Z' } });
+    const merged = mergePreferences(here, remote, now);
+    // It never overrides a value here, and it is not applied here...
+    expect(merged.record.prefs.theme).toEqual({ v: 'light', at: '2026-09-29T11:00:00.000Z' });
+    expect(merged.patch).not.toHaveProperty('theme');
+    expect(merged.patch).not.toHaveProperty('effort');
+    // ...and with no value here, the account's entry is left as it is.
+    expect(merged.record.prefs.effort).toEqual(remote.prefs.effort);
+    // A clock a minute ahead is only a clock: that still counts.
+    expect(merged.patch).toMatchObject({ chainOfThought: true });
+  });
+
+  it('writes a small record, and only the keys that follow', () => {
+    const at = '2026-09-28T10:00:00.000Z';
+    const all = base({
+      theme: 'system',
+      effort: 'medium',
+      humanizeWriting: true,
+      chainOfThought: false,
+      noticeDownloads: true,
+      noticeReplies: false,
+      voiceReplies: true,
+      voiceRate: 0.123456789,
+      prefsStamps: Object.fromEntries(FOLLOWING_KEYS.map((k) => [k, at])),
+      heldFirstMessage: { text: 'my secret prompt', at },
+      projects: [],
+    });
+    const { record } = mergePreferences(all, {
+      v: 2,
+      prefs: { theme: { v: 'dark', at: '2026-09-28T09:00:00.000Z' } },
+    });
+    expect(Object.keys(record.prefs).sort()).toEqual([...FOLLOWING_KEYS].sort());
+    expect(recordBytes(record)).toBeLessThan(PREFS_RECORD_MAX_BYTES);
+    expect(JSON.stringify(record)).not.toMatch(/secret prompt/);
+  });
+
+  it('lets a different person signing in take their own account, not the last times', () => {
+    const stamps = { theme: '2026-09-28T10:00:00.000Z' };
+    expect(ownerPatch(base({ prefsOwner: 'u1', prefsStamps: stamps }), 'u1')).toBeUndefined();
+    expect(ownerPatch(base({ prefsOwner: 'u1', prefsStamps: stamps }), 'u2')).toEqual({
+      prefsOwner: 'u2',
+      prefsStamps: undefined,
+      prefsUpdatedAt: undefined,
+    });
+    // A device from an earlier build only learns whose it is.
+    expect(ownerPatch(base({ prefsStamps: stamps }), 'u1')).toEqual({ prefsOwner: 'u1' });
   });
 
   it('never resets anything at launch for a signed-out person', () => {
@@ -361,6 +493,9 @@ describe('the store', () => {
     sb.writes = [];
     sb.failRead = false;
     sb.deadRefresh = false;
+    sb.signOuts = [];
+    sb.userId = 'u1';
+    notices.synced.length = 0;
     shell.desktop = false;
     shell.createSample = undefined;
     engine.built.length = 0;
@@ -437,7 +572,11 @@ describe('the store', () => {
     await useApp.getState().signIn('a@b.c', 'pw');
     await vi.waitFor(() => expect(useApp.getState().settings.theme).toBe('dark'));
     expect(useApp.getState().settings.chainOfThought).toBe(true);
-    expect(useApp.getState().settings.prefsUpdatedAt).toBe('2026-09-27T10:00:00.000Z');
+    // A v: 1 record's one time stands for each of its keys.
+    expect(useApp.getState().settings.prefsStamps).toEqual({
+      theme: '2026-09-27T10:00:00.000Z',
+      chainOfThought: '2026-09-27T10:00:00.000Z',
+    });
   });
 
   it('sends a changed preference on while signed in, and only the allowlist', async () => {
@@ -448,12 +587,13 @@ describe('the store', () => {
         theme: 'light',
         heldFirstMessage: { text: 'my secret prompt', at: 'now' },
       });
-      expect(useApp.getState().settings.prefsUpdatedAt).toBeDefined();
+      const at = useApp.getState().settings.prefsStamps?.theme;
+      expect(at).toBeDefined();
       await vi.advanceTimersByTimeAsync(2000);
       expect(sb.writes).toHaveLength(1);
       const sent = sb.writes[0] as { v: number; prefs: Record<string, unknown> };
-      expect(sent.v).toBe(1);
-      expect(sent.prefs).toEqual({ theme: 'light' });
+      expect(sent.v).toBe(2);
+      expect(sent.prefs).toEqual({ theme: { v: 'light', at } });
       expect(JSON.stringify(sent)).not.toMatch(/secret prompt/);
     } finally {
       vi.useRealTimers();
@@ -474,7 +614,97 @@ describe('the store', () => {
 
   it('does not stamp a change that is not a following preference', async () => {
     await useApp.getState().saveSettings({ libraryIntroSeen: true });
-    expect(useApp.getState().settings.prefsUpdatedAt).toBeUndefined();
+    expect(useApp.getState().settings.prefsStamps).toBeUndefined();
+  });
+
+  it('hands a notice switch pulled from the account to the phone', async () => {
+    sb.remote = {
+      v: 2,
+      prefs: { noticeDownloads: { v: false, at: '2026-09-28T10:00:00.000Z' } },
+    };
+    await useApp.getState().signIn('a@b.c', 'pw');
+    await vi.waitFor(() => expect(useApp.getState().settings.noticeDownloads).toBe(false));
+    // The native side reads its own copy on a background relaunch, with no
+    // web layer to ask, so the pull reaches it too.
+    expect(notices.synced.at(-1)).toMatchObject({ noticeDownloads: false });
+  });
+
+  it('keeps its own value over a time from the account far ahead of this clock', async () => {
+    const ahead = new Date(Date.now() + 3_600_000).toISOString();
+    const mine = minutesAgo(1);
+    useApp.setState({
+      settings: base({ theme: 'light', prefsOwner: 'u1', prefsStamps: { theme: mine } }),
+    });
+    sb.remote = { v: 2, prefs: { theme: { v: 'dark', at: ahead } } };
+    await useApp.getState().signIn('a@b.c', 'pw');
+    await vi.waitFor(() => expect(sb.writes).toHaveLength(1));
+    expect(useApp.getState().settings.theme).toBe('light');
+    expect((sb.remote as Record2).prefs.theme).toEqual({ v: 'light', at: mine });
+  });
+
+  it('writes the account only the keys that follow, and a small record', async () => {
+    const at = '2026-09-28T10:00:00.000Z';
+    sb.remote = {
+      v: 2,
+      padding: 'x'.repeat(10_000),
+      prefs: {
+        theme: { v: 'dark', at },
+        projects: { v: [{ id: 'p', path: '/Users/me/secret' }], at },
+        daemon: { v: HUB, at },
+      },
+    };
+    vi.useFakeTimers();
+    try {
+      useApp.setState({
+        authSession: live(),
+        settings: base({ prefsOwner: 'u1', daemon: HUB, projects: [] }),
+      });
+      await useApp.getState().saveSettings({ effort: 'low', chainOfThought: true });
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(sb.writes).toHaveLength(1);
+      const written = sb.writes[0] as Record2;
+      expect(Object.keys(written)).toEqual(['v', 'prefs']);
+      expect(Object.keys(written.prefs).sort()).toEqual(['chainOfThought', 'effort', 'theme']);
+      for (const k of Object.keys(written.prefs)) expect(FOLLOWING_KEYS).toContain(k);
+      expect(recordBytes(written as never)).toBeLessThan(PREFS_RECORD_MAX_BYTES);
+      expect(JSON.stringify(written)).not.toMatch(/secret|127\.0\.0\.1|tok-1/);
+      // And the device took the account's theme on the way.
+      expect(useApp.getState().settings.theme).toBe('dark');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps a change saved while a pairing relinked the hub', async () => {
+    // The pairing's save waits on the hub link; the theme's save lands in
+    // that wait, and the pairing's must not write the older copy over it.
+    const pairing = useApp
+      .getState()
+      .saveSettings({ daemon: { baseUrl: 'http://127.0.0.1:7', token: 'tok-7' } });
+    await useApp.getState().saveSettings({ theme: 'dark' });
+    await pairing;
+    const saved = JSON.parse(mem.get(SETTINGS_KEY)!) as AppSettings;
+    expect(saved.theme).toBe('dark');
+    expect(saved.daemon?.baseUrl).toBe('http://127.0.0.1:7');
+  });
+
+  it('lets the next person to sign in here take their own preferences', async () => {
+    // A device from before this build: it never recorded whose times these
+    // are, so the sign-out records it.
+    useApp.setState({
+      authSession: live(),
+      settings: base({ theme: 'dark', prefsStamps: { theme: minutesAgo(1) } }),
+    });
+    await useApp.getState().signOutAccount();
+    expect(useApp.getState().settings.prefsOwner).toBe('u1');
+    // Someone else signs in. Their account's theme is older than the last
+    // person's change here, and still it is theirs that shows.
+    sb.userId = 'u2';
+    sb.remote = { v: 2, prefs: { theme: { v: 'light', at: minutesAgo(60) } } };
+    await useApp.getState().signIn('x@y.z', 'pw');
+    await vi.waitFor(() => expect(useApp.getState().settings.theme).toBe('light'));
+    expect(useApp.getState().settings.prefsOwner).toBe('u2');
+    expect(sb.writes).toHaveLength(0);
   });
 
   it('forgets a preference change still waiting to go when the session ends', async () => {
@@ -484,7 +714,9 @@ describe('the store', () => {
       await useApp.getState().saveSettings({ theme: 'dark' });
       const waiting = vi.getTimerCount();
       await useApp.getState().signOutAccount();
-      expect(vi.getTimerCount()).toBe(waiting - 1);
+      // The push timer went (one less); the sign-out's toast set its own.
+      expect(useApp.getState().toast).toBe(SIGNED_OUT_HERE);
+      expect(vi.getTimerCount()).toBe(waiting - 1 + 1);
       await vi.advanceTimersByTimeAsync(2000);
       expect(sb.writes).toHaveLength(0);
     } finally {
@@ -663,5 +895,59 @@ describe('the notice for people who used OpenShore before the gate', () => {
     useApp.setState({ initStarted: false, ready: false, toast: undefined });
     await useApp.getState().init();
     expect(useApp.getState().toast).not.toBe(ACCOUNT_NOTICE);
+  });
+});
+
+// Finding 16: the account's copy was one record with one time, so the device
+// that wrote last took every key. Two real stores here, one account between
+// them, each on its own debounced push.
+describe('two devices on one account', () => {
+  it('each keeps the preference the other changed in the same minute', async () => {
+    mem.clear();
+    sb.configured = true;
+    sb.writes = [];
+    sb.failRead = false;
+    sb.userId = 'u1';
+    vi.resetModules();
+    const { useApp: phone } = await import('../src/state/store.js');
+    const old = minutesAgo(60);
+    const start = base({
+      theme: 'system',
+      effort: 'high',
+      prefsOwner: 'u1',
+      prefsStamps: { theme: old, effort: old },
+    });
+    sb.remote = {
+      v: 2,
+      prefs: { theme: { v: 'system', at: old }, effort: { v: 'high', at: old } },
+    };
+    useApp.setState({ authSession: live(), settings: start });
+    phone.setState({ authSession: live(), settings: start });
+    vi.useFakeTimers();
+    try {
+      // Half a second apart: the laptop changes the theme, the phone the effort.
+      await useApp.getState().saveSettings({ theme: 'dark' });
+      await vi.advanceTimersByTimeAsync(500);
+      await phone.getState().saveSettings({ effort: 'low' });
+      // The laptop's push goes first; the phone's merges onto it.
+      await vi.advanceTimersByTimeAsync(1100);
+      expect(sb.writes).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(500);
+      expect(sb.writes).toHaveLength(2);
+      expect(phone.getState().settings.theme).toBe('dark');
+      // The laptop's next sync (here, its next change) brings the phone's.
+      await useApp.getState().saveSettings({ voiceReplies: true });
+      await vi.advanceTimersByTimeAsync(2000);
+      for (const device of [useApp, phone]) {
+        expect(device.getState().settings.effort).toBe('low');
+        expect(device.getState().settings.theme).toBe('dark');
+      }
+      const account = sb.remote as Record2;
+      expect(account.prefs.theme?.v).toBe('dark');
+      expect(account.prefs.effort?.v).toBe('low');
+      expect(account.prefs.voiceReplies?.v).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

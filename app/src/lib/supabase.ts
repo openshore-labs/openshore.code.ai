@@ -171,11 +171,20 @@ export async function refreshSession(refreshToken: string): Promise<Session> {
   return toSession((await res.json()) as GoTrueSession);
 }
 
-export async function signOut(accessToken: string): Promise<void> {
-  await fetch(`${base()}/auth/v1/logout`, {
+/** Where a sign-out reaches: 'local' ends this device's sign-in only, and
+ *  'global' ends it on every device. */
+export type SignOutScope = 'local' | 'global';
+
+/** End a sign-in on the server. The scope is always named, since GoTrue's own
+ *  default is global, which would sign out the person's other devices too.
+ *  Throws when the server did not confirm, so the caller can tell "done" from
+ *  "nothing changed". */
+export async function signOut(accessToken: string, scope: SignOutScope): Promise<void> {
+  const res = await fetch(`${base()}/auth/v1/logout?scope=${scope}`, {
     method: 'POST',
     headers: authHeaders(accessToken),
-  }).catch(() => {});
+  });
+  if (!res.ok) throw new SupabaseRequestError(await readError(res), res.status);
 }
 
 /** Parse the tokens a magic-link callback URL carries (hash or query). */
