@@ -114,7 +114,9 @@ import {
   type UpdaterState,
 } from './updateState.js';
 import { bundleOf, newestMacUpdate, type ReleaseAsset, type ReleaseInfo } from './updateVersion.js';
-import { canReplace, installMacUpdate } from './macUpdate.js';
+import { updateMacInPlace, writeLaunchMarker } from './macUpdate.js';
+import { installIfVerified, type DownloadedUpdate } from './releaseVerify.js';
+import { DESKTOP_RELEASE_PUBLIC_KEY, MAC_RELEASE_PUBLIC_KEY } from './releaseKeys.js';
 import { EmbeddedWeb, type EmbeddedBounds } from './embeddedWeb.js';
 import { processVideoDesktop, type DesktopMediaOptions } from './media.js';
 import {
@@ -1530,9 +1532,14 @@ guarded('osc:httpFetch', async (req: unknown) => {
 // electron-updater's in-place install relies on Squirrel.Mac matching code
 // signatures, which an unsigned build never holds (per electron-updater's own
 // docs). So the Mac updates itself (electron/macUpdate.ts): the click
-// downloads the release's zip for this Mac, swaps the bundle, and relaunches.
-// Where that cannot finish (running from a disk image, a folder it cannot
-// write), the click opens the release page instead.
+// downloads the release's zip for this Mac, checks its signature, swaps the
+// bundle, and relaunches. Where that cannot finish (running from a disk
+// image, a folder it cannot write, no key pinned, a missing or bad
+// signature), the click opens the release page instead.
+//
+// Every desktop update is checked against a key pinned in the app before it
+// runs (releaseVerify.ts, CTO rulings 1 and 2): the Mac file before it is
+// unpacked, the Windows and Linux file before quitAndInstall.
 const UPDATE_REPO = 'openshore-labs/openshore.code.ai';
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 
@@ -1540,8 +1547,12 @@ const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 // below and the person's click go in, the status the renderer hears and the
 // effect to run come out.
 let updater: UpdaterState = { ...IDLE_UPDATER };
-/** macOS: the release file behind the pending update. */
+/** macOS: the release file behind the pending update, and its signature. */
 let macAsset: ReleaseAsset | undefined;
+let macSignature: ReleaseAsset | undefined;
+/** Windows and Linux: what electron-updater downloaded, checked before it
+ *  installs. */
+let downloaded: DownloadedUpdate | undefined;
 /** A half-hourly check is running: its failure alone changes nothing. */
 let backgroundChecks = 0;
 
@@ -1565,10 +1576,25 @@ function applyUpdate(event: UpdaterEvent): void {
       .downloadUpdate()
       .catch((err) => applyUpdate({ type: 'error', detail: errorText(err) }));
   } else if (step.effect === 'quit-and-install') {
-    autoUpdater.quitAndInstall();
+    void installDownloadedUpdate();
   } else if (step.effect === 'check') {
     void retryUpdateCheck();
   }
+}
+
+/** Windows and Linux: install the download only once its signature checks
+ *  against the pinned desktop key (CTO ruling 2; electron-updater's own feed
+ *  file could be replaced along with it). With no key pinned yet, it installs
+ *  as before and the log says the check was skipped. */
+async function installDownloadedUpdate(): Promise<void> {
+  await installIfVerified({
+    downloaded,
+    publicKey: DESKTOP_RELEASE_PUBLIC_KEY,
+    signatureUrl: (name, version) =>
+      `https://github.com/${UPDATE_REPO}/releases/download/v${version}/${encodeURIComponent(name)}.sig`,
+    install: () => autoUpdater.quitAndInstall(),
+    refuse: (detail) => applyUpdate({ type: 'error', detail }),
+  });
 }
 
 /** The person's retry after a failure: a fresh check downloads what it finds
@@ -1598,10 +1624,12 @@ async function checkMacUpdate(): Promise<void> {
       // Nothing newer any more (the release was pulled): an offered or failed
       // update leaves the bar.
       macAsset = undefined;
+      macSignature = undefined;
       applyUpdate({ type: 'not-available' });
       return;
     }
     macAsset = next.asset;
+    macSignature = next.signature;
     const pending = updater.pending;
     if (pending?.version !== next.version || pending.phase === 'failed') {
       sendUpdateStatus({ version: next.version, phase: 'available' });
@@ -1615,17 +1643,28 @@ async function installOnMac(): Promise<void> {
   if (!updater.pending) return;
   const version = updater.pending.version;
   const releasePage = `https://github.com/${UPDATE_REPO}/releases/tag/v${version}`;
-  const bundle = bundleOf(app.getPath('exe'));
-  if (!macAsset || !(await canReplace(bundle))) {
-    await shell.openExternal(releasePage);
-    return;
-  }
-  sendUpdateStatus({ version, phase: 'installing', percent: 0 });
   try {
-    await installMacUpdate(macAsset, bundle!, (percent) =>
-      sendUpdateStatus({ version, phase: 'installing', percent }),
+    const outcome = await updateMacInPlace({
+      version,
+      asset: macAsset,
+      signature: macSignature,
+      bundle: bundleOf(app.getPath('exe')),
+      releasePage,
+      publicKey: MAC_RELEASE_PUBLIC_KEY,
+      userData: app.getPath('userData'),
+      onProgress: (percent) => sendUpdateStatus({ version, phase: 'installing', percent }),
+      deps: { shell },
+    });
+    if (outcome.kind === 'swapping') {
+      app.quit();
+      return;
+    }
+    console.log(
+      `[update] macOS: opened the release page instead (${outcome.reason}). ${outcome.detail}`,
     );
-    app.quit();
+    // A refusal after the download (a signature that did not match) says so
+    // on the bar; one before it leaves the bar as it was.
+    if (outcome.downloaded) sendUpdateStatus({ version, phase: 'failed', detail: outcome.detail });
   } catch (err) {
     console.error('[update] macOS in-place update failed', err);
     sendUpdateStatus({ version, phase: 'failed', detail: errorText(err) });
@@ -1646,9 +1685,10 @@ if (process.platform !== 'darwin') {
   );
   autoUpdater.on('update-not-available', () => applyUpdate({ type: 'not-available' }));
   autoUpdater.on('download-progress', (p) => applyUpdate({ type: 'progress', percent: p.percent }));
-  autoUpdater.on('update-downloaded', (info) =>
-    applyUpdate({ type: 'downloaded', version: info.version }),
-  );
+  autoUpdater.on('update-downloaded', (info) => {
+    downloaded = { file: info.downloadedFile, version: info.version };
+    applyUpdate({ type: 'downloaded', version: info.version });
+  });
   autoUpdater.on('error', (err) => {
     console.error('[update] electron-updater error', err);
     const detail = errorText(err);
@@ -1718,6 +1758,9 @@ if (!app.requestSingleInstanceLock()) {
     // A login launch (--hidden) starts in the tray alone; without a tray to
     // hide in, the window opens regardless.
     if (!isHiddenLaunch(process.argv) || !trayReady) createWindow();
+    // The proof a Mac update's swap script waits for (macUpdate.ts): this
+    // version started. Without it the script puts the previous version back.
+    if (process.platform === 'darwin') writeLaunchMarker(app.getPath('userData'), app.getVersion());
     // Cold start on Windows/Linux: the link is in this process's own argv.
     deliverDeepLink(deepLinkFromArgv(process.argv));
     app.on('activate', () => showWindow());

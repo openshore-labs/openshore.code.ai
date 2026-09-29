@@ -50,14 +50,24 @@ trap restore EXIT
 npm pkg set version="$VERSION" >/dev/null
 echo "Stamped version $VERSION (restored to $ORIGINAL when done)."
 
-rm -f release/*.dmg release/*.zip release/*.blockmap release/latest-mac.yml
+rm -f release/*.dmg release/*.zip release/*.sig release/*.blockmap release/latest-mac.yml
 pnpm --filter os-code build
 pnpm --filter oscode-app build
 pnpm --filter oscode-app rebuild:native
 pnpm exec electron-builder --mac --publish never
 
 shopt -s nullglob
-FILES=(release/*.dmg release/*.zip release/*.blockmap release/latest-mac.yml)
+# Sign for the in-place update (docs/release-signing.md): an installed Mac
+# with the Mac key pinned swaps in only a file whose .sig checks, and opens
+# the release page for anything else.
+if [ -n "${OPENSHORE_MAC_SIGNING_KEY:-}" ]; then
+  node scripts/release-sign.mjs --key-env OPENSHORE_MAC_SIGNING_KEY --version "$VERSION" \
+    release/*.dmg release/*.zip
+else
+  echo "OPENSHORE_MAC_SIGNING_KEY is not set, so these files carry no .sig: Macs with"
+  echo "the Mac key pinned open the release page for them instead of updating in place."
+fi
+FILES=(release/*.dmg release/*.zip release/*.sig release/*.blockmap release/latest-mac.yml)
 echo "Built:"; printf '  %s\n' "${FILES[@]}"
 
 if [ "$UPLOAD" = 0 ]; then

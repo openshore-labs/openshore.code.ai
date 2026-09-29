@@ -3,7 +3,14 @@
 // take to fix either. Every probe is injectable so the states are pinned by
 // tests on a machine with no Ollama at all. Nothing here touches Electron.
 import { execFile, spawn as nodeSpawn, spawnSync } from 'node:child_process';
-import { createWriteStream, existsSync, mkdtempSync, renameSync, rmSync } from 'node:fs';
+import {
+  createWriteStream,
+  existsSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
@@ -118,11 +125,13 @@ export function ollamaInstallPlan(platform: NodeJS.Platform = process.platform):
 // put a file where the app is about to open one) and opened, so they click
 // through Ollama's own signed installer without hunting for a download page;
 // the app then polls ollamaStatus and carries on by itself once Ollama
-// answers. On macOS the file is marked as downloaded from the internet, so
-// Gatekeeper checks Ollama's signature exactly as it would for a browser
-// download; the tools that mark and unpack it are named by absolute path, so
-// a PATH entry cannot stand in for them. Anything that fails falls back to
-// opening the download page, the old behavior.
+// answers. The file is marked as downloaded from the internet, the way a
+// browser marks it (quarantine on macOS, the Mark of the Web on Windows), so
+// Gatekeeper or SmartScreen checks Ollama's signature on open: Ollama
+// publishes no signature of its own for the app to check (releaseVerify.ts,
+// DOWNLOAD_THEN_RUN). The tools that mark and unpack it are named by absolute
+// path, so a PATH entry cannot stand in for them. Anything that fails falls
+// back to opening the download page, the old behavior.
 
 export interface OllamaInstaller {
   url: string;
@@ -145,6 +154,12 @@ export function ollamaInstallers(platform: NodeJS.Platform): OllamaInstaller[] {
 
 type DownloadFetch = (url: string) => Promise<Response>;
 type Runner = (cmd: string, args: string[]) => Promise<void>;
+
+/** The Zone.Identifier stream a browser writes beside a file it downloaded
+ *  from the internet (zone 3). */
+export function windowsZoneMark(url: string): string {
+  return `[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=${url}\r\n`;
+}
 
 /** macOS's own tools, by absolute path. */
 export const XATTR = '/usr/bin/xattr';
@@ -185,6 +200,15 @@ export async function downloadOllamaInstaller(opts: {
         createWriteStream(partial),
       );
       renameSync(partial, target);
+      if (opts.platform === 'win32') {
+        // The Mark of the Web (an Internet zone stream beside the file), so
+        // SmartScreen checks the installer's signature when it opens.
+        try {
+          writeFileSync(`${target}:Zone.Identifier`, windowsZoneMark(installer.url));
+        } catch {
+          // A disk that cannot hold the stream opens the installer unmarked.
+        }
+      }
       if (opts.platform === 'darwin') {
         // Marked as downloaded, so Gatekeeper verifies Ollama's signature on
         // first open, as it would for a file the browser saved.
