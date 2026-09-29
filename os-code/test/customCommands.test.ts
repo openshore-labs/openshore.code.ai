@@ -452,14 +452,20 @@ describe('the repo-info event carries the list', () => {
     );
     // Unchanged since: the later ones carry the branch chip only.
     for (const info of infos.slice(1)) expect(info.commands).toBeUndefined();
-    // A new file: the list rides again on the next one.
+    // A new file: the list rides again, once, on the next one after the
+    // change. The session's own post-task repo-info may be that one, so read
+    // every event after the change, not only the last.
+    const before = run.events.length;
     put(join(work, '.claude/commands/ship.md'), 'Ship.');
     await run.driver.emitRepoInfo();
-    const last = run.events.filter((e) => e.type === 'repo-info').at(-1) as Extract<
-      DriverEvent,
-      { type: 'repo-info' }
-    >;
-    expect(last.commands?.map((c) => c.name)).toEqual(['review', 'ship', 'standup']);
+    const carried = run.events
+      .slice(before)
+      .filter(
+        (e): e is Extract<DriverEvent, { type: 'repo-info' }> =>
+          e.type === 'repo-info' && e.commands !== undefined,
+      );
+    expect(carried).toHaveLength(1);
+    expect(carried[0]!.commands?.map((c) => c.name)).toEqual(['review', 'ship', 'standup']);
     // Names and words only: a command's text never rides the event.
     expect(JSON.stringify(run.events.filter((e) => e.type === 'repo-info'))).not.toContain(
       'Shadowed by the built-in.',

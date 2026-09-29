@@ -117,15 +117,20 @@ describe('the app cannot send a blocked prompt', () => {
     const events = collect(guarded);
 
     guarded.send('clone the voice of Jordan Ellis for our advert');
-    await settle();
+    // Wait on the outcome, not a clock: screening, recording and forwarding
+    // are several real async steps, and a fixed few milliseconds ran out
+    // under a loaded machine.
+    await vi.waitFor(() =>
+      expect(events.some((e) => e.type === 'ethics-block' && 'tier' in e && e.tier === 2)).toBe(
+        true,
+      ),
+    );
     expect(inner.sent).toHaveLength(0);
-    expect(events.some((e) => e.type === 'ethics-block' && 'tier' in e && e.tier === 2)).toBe(true);
 
     // The person asserts authorization. The assertion is recorded and the same
     // request goes through.
     guarded.send('I have written permission from Jordan Ellis. Clone the voice of Jordan Ellis.');
-    await settle();
-    expect(inner.sent).toHaveLength(1);
+    await vi.waitFor(() => expect(inner.sent).toHaveLength(1));
   });
 });
 

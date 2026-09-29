@@ -4,7 +4,12 @@ import { describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runCommand } from '../src/core/exec/commandRunner.js';
+import {
+  runCommand,
+  STOPPED_OUTPUT_WAIT_MS,
+  stopDelayMs,
+  WINDOWS_TREE_SETTLE_MS,
+} from '../src/core/exec/commandRunner.js';
 
 function cwd(): string {
   return mkdtempSync(join(tmpdir(), 'oscmd-'));
@@ -151,6 +156,64 @@ describe('commandRunner', () => {
     expect(result.timedOut).toBe(false);
     rmSync(dir, { recursive: true, force: true });
   });
+
+  // taskkill /T sees only the processes alive at that instant, so a Stop in
+  // the first moment of a run on Windows waits until the shell has started
+  // what it runs; a program started a moment later would otherwise escape.
+  it('an early stop on Windows waits for the tree to start; POSIX never waits', () => {
+    expect(stopDelayMs(0, 'win32')).toBe(WINDOWS_TREE_SETTLE_MS);
+    expect(stopDelayMs(500, 'win32')).toBe(WINDOWS_TREE_SETTLE_MS - 500);
+    expect(stopDelayMs(WINDOWS_TREE_SETTLE_MS + 1, 'win32')).toBe(0);
+    expect(stopDelayMs(0, 'linux')).toBe(0);
+    expect(stopDelayMs(0, 'darwin')).toBe(0);
+  });
+
+  // A stray process the run started in its own group (so the stop misses it)
+  // keeps the output open after the run's own process is gone. The run still
+  // ends, as stopped, instead of leaving its card running forever.
+  it.skipIf(process.platform === 'win32')(
+    'a stopped run ends once its process exits, even while a stray holds its output',
+    async () => {
+      const dir = cwd();
+      writeFileSync(
+        join(dir, 'stray.js'),
+        [
+          "const { spawn } = require('node:child_process');",
+          "const s = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { detached: true, stdio: 'inherit' });",
+          "console.log('stray ' + s.pid);",
+          's.unref();',
+          'setInterval(() => {}, 1000);',
+        ].join('\n'),
+      );
+      let strayPid = 0;
+      let up!: () => void;
+      const started = new Promise<void>((resolve) => (up = resolve));
+      const run = runCommand({
+        command: 'node stray.js',
+        cwd: dir,
+        killGraceMs: 200,
+        onChunk: (_stream, text) => {
+          const m = /stray (\d+)/.exec(text);
+          if (m) {
+            strayPid = Number(m[1]);
+            up();
+          }
+        },
+      });
+      await started;
+      const stoppedAt = Date.now();
+      run.kill();
+      const result = await run.done;
+      try {
+        process.kill(strayPid, 'SIGKILL');
+      } catch {}
+      expect(result.exitCode).toBeNull();
+      expect(result.signal).not.toBeNull();
+      expect(Date.now() - stoppedAt).toBeLessThan(STOPPED_OUTPUT_WAIT_MS + 3_000);
+      rmSync(dir, { recursive: true, force: true });
+    },
+    10_000,
+  );
 
   it('times out and kills when a timeout is set', async () => {
     const dir = cwd();
