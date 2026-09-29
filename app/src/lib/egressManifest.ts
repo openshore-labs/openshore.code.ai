@@ -100,6 +100,14 @@ export const EGRESS: EgressEntry[] = [
     hosts: ['env:VITE_SUPABASE_URL'],
   },
   {
+    id: 'account-deletion',
+    recipient: 'OpenShore (us)',
+    what: 'Your sign-in, asking our server to delete your account. It erases the account, cancels a plan you pay us for on the web, and keeps only a one-way hash of your email if the guardrail ever warned the account. Apple subscriptions are cancelled with Apple.',
+    when: 'Only when you tap Delete account and confirm.',
+    start: 'tap',
+    hosts: ['env:VITE_SUPABASE_URL'],
+  },
+  {
     id: 'catalog',
     recipient: 'OpenShore (us)',
     what: 'A request for the model list. Nothing about you rides along; the server sees your network address, as any website does.',

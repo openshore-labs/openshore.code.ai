@@ -457,6 +457,11 @@ import {
   type VaultRestoreResult,
   type VaultUndo,
 } from './vaultOps.js';
+import { invokeFunctionWithCode } from '../lib/supabase.js';
+import {
+  deleteAccount as runAccountDeletion,
+  type DeleteAccountOutcome,
+} from './accountDeletion.js';
 import { vaultPollDelayMs } from '../lib/vaultPoll.js';
 import {
   VAULT_LEASE_RENEW_MS,
@@ -1759,6 +1764,9 @@ interface AppState {
    *  that have not reached the team (stashed or held), which a sign-out
    *  deletes, so Sign out can ask first. 0 when nobody is signed in. */
   unsentTeamTextCount(): Promise<number>;
+  /** Delete the signed-in account on the server (Apple 5.1.1(v)), then sign
+   *  this device out. A result, never a throw (state/accountDeletion.ts). */
+  deleteAccount(): Promise<DeleteAccountOutcome>;
   /** Re-read the signed-in user's server role into serverRole. */
   refreshOrgRole(): Promise<void>;
   /** Re-read the org's billing entitlement from the server. */
@@ -8897,6 +8905,22 @@ export const useApp = create<AppState>((set, get, api) => {
     async unsentTeamTextCount() {
       const uid = get().authSession?.user.id;
       return uid ? countTeamDrafts(uid) : 0;
+    },
+
+    async deleteAccount() {
+      const outcome = await runAccountDeletion({
+        session: freshAuth,
+        invoke: (token) =>
+          invokeFunctionWithCode<{ ok?: boolean; appleNote?: boolean }>(
+            'delete-account',
+            token,
+            {},
+          ),
+        forgetSession: () => forgetSession(),
+        clearPendingAppleLink: () => storeDelete(PENDING_APPLE_LINK_KEY),
+      });
+      logEvent(outcome.kind === 'deleted' ? 'account_deleted' : `account_delete_${outcome.kind}`);
+      return outcome;
     },
 
     async refreshOrgRole() {

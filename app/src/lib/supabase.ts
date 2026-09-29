@@ -41,6 +41,9 @@ export class SupabaseRequestError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** The fixed refusal code an Edge Function sent (`{ error: 'owns_org' }`),
+     *  when it sent one. */
+    readonly code?: string,
   ) {
     super(message);
     this.name = 'SupabaseRequestError';
@@ -378,5 +381,32 @@ export async function invokeFunction<T>(
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(await readError(res));
+  return (await res.json()) as T;
+}
+
+/** Invoke an Edge Function that refuses with a fixed code (`{ error: 'owns_org' }`,
+ *  delete-account), keeping the status and the code on a SupabaseRequestError
+ *  so the caller can say the right thing. Only a short snake_case word counts
+ *  as a code; anything else is dropped, never shown. */
+export async function invokeFunctionWithCode<T>(
+  name: string,
+  accessToken: string,
+  body: Record<string, unknown>,
+): Promise<T> {
+  const res = await fetch(`${base()}/functions/v1/${name}`, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let code: string | undefined;
+    try {
+      const sent = ((await res.json()) as { error?: unknown }).error;
+      if (typeof sent === 'string' && /^[a-z_]{1,40}$/.test(sent)) code = sent;
+    } catch {
+      // Not JSON: no code.
+    }
+    throw new SupabaseRequestError(`Request failed (${res.status}).`, res.status, code);
+  }
   return (await res.json()) as T;
 }

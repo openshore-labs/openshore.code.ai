@@ -5899,6 +5899,19 @@ button.vault-tag {
   flex: 1;
 }
 
+/* A confirm that failed says so above its buttons, in the warning ink, and
+   leaves both choices where they were. */
+.confirm-card .confirm-failed {
+  color: var(--warn);
+  margin: -6px 0 12px;
+}
+
+/* Delete account sits under the signed-in card in the Your account sheet,
+   its own inset card, apart from Sign out. */
+.account-delete {
+  margin-top: 12px;
+}
+
 /* The confirm card leaves the way it came: the scrim fades, the card settles
    back down on the accelerate curve (Sheet.tsx holds the unmount). */
 .confirm-scrim.closing {

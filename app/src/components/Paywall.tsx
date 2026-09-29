@@ -9,7 +9,6 @@ import { useEffect, useState } from 'react';
 import { PAY_GATES_ENABLED, useApp } from '../state/store.js';
 import { useSheetExit } from '../hooks/useSheetExit.js';
 import { PERSONAL_YEARLY_PRODUCT_ID, iapAvailable, products } from '../lib/iap.js';
-import { PERSONAL_UNLOCK_PRICE_YEAR } from '../lib/plans.js';
 import { openExternal } from '../lib/platform.js';
 
 /** Apple requires the terms and the privacy policy on a subscription screen
@@ -22,6 +21,33 @@ const BULLETS = [
   'Edits with real diffs, and tool approvals you control',
   'Your models, your API keys. Your prompts never pass through us.',
 ];
+
+/** Where a subscriber stops the renewal (Apple 3.1.2 asks the sheet to say
+ *  it renews; CX's path, since iOS has no "Apple ID" step). */
+export const RENEWAL_LINE =
+  'Renews yearly. Cancel any time on your iPhone in Settings, then your name, then Subscriptions.';
+
+/** What the sheet says about money. Nothing while the pay gates are off: no
+ *  price, no renewal line, and no buy button. With them on, only the App
+ *  Store's own price is ever shown; until StoreKit answers (or on a computer,
+ *  where it never does) the sheet says where to see it instead of guessing. */
+export function paywallMoney(
+  gates: boolean,
+  ios: boolean,
+  storePrice: string | undefined,
+): { priceLine: string | null; renewal: string | null; buy: string | null } {
+  if (!gates) return { priceLine: null, renewal: null, buy: null };
+  const whole = 'One person, the whole app.';
+  const priceLine = storePrice
+    ? `${storePrice} per year. ${whole}${ios ? '' : ' Bought on your iPhone.'}`
+    : `${whole}${ios ? '' : ' Bought on your iPhone.'} See the price in the App Store.`;
+  const buy = ios
+    ? storePrice
+      ? `Unlock Personal · ${storePrice}/year`
+      : 'Unlock Personal'
+    : null;
+  return { priceLine, renewal: RENEWAL_LINE, buy };
+}
 
 export function Paywall() {
   const reason = useApp((s) => s.paywall);
@@ -55,13 +81,10 @@ export function Paywall() {
   const headline = 'Unlock the agent.';
   const subhead =
     'Chat is yours for free. Personal turns OpenShore into a coding agent that reads your repository, writes real edits, and runs the tools to prove them.';
-  // No price shows while the pay gates are off (pricing is a Board gate).
-  const price = storePrice ?? `$${PERSONAL_UNLOCK_PRICE_YEAR}`;
-  const priceLine = PAY_GATES_ENABLED
-    ? ios
-      ? `${price} per year. One person, the whole app.`
-      : `${price} per year. One person, the whole app. Bought on your iPhone.`
-    : null;
+  // No price, renewal line, or buy button while the pay gates are off
+  // (pricing is a Board gate); with them on, never a price StoreKit did not
+  // give (next build E0).
+  const { priceLine, renewal, buy } = paywallMoney(PAY_GATES_ENABLED, ios, storePrice);
 
   return (
     <div className={`sheet-scrim${closing ? ' closing' : ''}`} onClick={dismiss}>
@@ -75,6 +98,7 @@ export function Paywall() {
           ))}
         </ul>
         {priceLine ? <p className="paywall-price">{priceLine}</p> : null}
+        {renewal ? <p className="sheet-sub">{renewal}</p> : null}
         {!signedIn ? (
           <p className="sheet-sub">
             Chatting needs no account. Buying Personal does, so it follows you from your iPhone to
@@ -83,9 +107,11 @@ export function Paywall() {
         ) : null}
         <div className="sheet-actions">
           {ios ? (
-            <button className="btn primary press-fb" onClick={() => void buyPersonal()}>
-              {PAY_GATES_ENABLED ? `Unlock Personal · ${price}/year` : 'Unlock Personal'}
-            </button>
+            buy ? (
+              <button className="btn primary press-fb" onClick={() => void buyPersonal()}>
+                {buy}
+              </button>
+            ) : null
           ) : (
             <p className="sheet-sub" style={{ marginTop: 0 }}>
               Personal is an in-app purchase in OpenShore on iPhone or iPad. Buy it there, then

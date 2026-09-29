@@ -71,6 +71,17 @@ workflows:
           npm install -g pnpm@10.33.0
           pnpm --version
           pnpm install --frozen-lockfile
+      - name: Check the Apple receipt roots
+        script: |
+          set -euo pipefail
+          # A build that can sell Personal must not ship while the backend
+          # still checks receipts against placeholder Apple roots (next build
+          # E0): a real purchase would charge and stay locked. It fails only
+          # when PAY_GATES_ENABLED is true in store.ts (or
+          # OPENSHORE_STORE_RELEASE=1 is set here); while the gates are off it
+          # warns and the TestFlight build carries on. Roots kept in the
+          # function secrets instead: set APPLE_ROOTS_IN_SECRETS=1 in the group.
+          node app/scripts/check-apple-roots.mjs
       - name: Gate the build on the test suite
         script: |
           set -euo pipefail

@@ -42,6 +42,7 @@ import { hapticCommit } from '../lib/haptics.js';
 import { DEFAULT_PERMISSION_MODE, permissionModeLabel } from '../lib/permissionMode.js';
 import { BackBar } from '../components/BackBar.js';
 import { SignInCard } from '../components/SignInCard.js';
+import { DeleteAccount } from '../components/DeleteAccount.js';
 import { InfoSheet } from '../components/InfoSheet.js';
 import { WhatLeavesSheet } from '../components/WhatLeavesSheet.js';
 import { Sheet } from '../components/Sheet.js';
@@ -280,6 +281,7 @@ export function SettingsScreen() {
   const setWebSearchAllowed = useApp((s) => s.setWebSearchAllowed);
   const personalUnlockedNow = useApp((s) => s.personalUnlockedNow);
   const userEntitlement = useApp((s) => s.userEntitlement);
+  const deleteAccount = useApp((s) => s.deleteAccount);
   // Vault settings over Settings (Vault M7, CX Y4): the personal vault's.
   const [vaultSettingsOpen, setVaultSettingsOpen] = useState(false);
   const memoryOn = memoryOverride(settings) !== false;
@@ -1215,6 +1217,9 @@ export function SettingsScreen() {
             Manage the company account
           </button>
         ) : null}
+        {/* Delete account (Apple 5.1.1(v), CX ruling 3): last in the sheet,
+            shown only while signed in; its goodbye closes this sheet too. */}
+        <DeleteAccount signedIn={signedIn} onDelete={deleteAccount} onDone={close} />
       </Sheet>
 
       <Sheet open={sheet === 'log'} onClose={close}>
