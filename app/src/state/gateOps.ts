@@ -6,7 +6,7 @@
 //
 // The gate is a door, never a wipe (lib/accountGate.ts): signed out, a coding
 // chat stays readable on its saved snapshot, and nothing reaches the engine.
-import { roomAccountFeature } from '../lib/accountGate.js';
+import { SOURCE_ACCOUNT, roomAccountFeature } from '../lib/accountGate.js';
 import { snapshotThread } from './transcript.js';
 import type { AppSettings, ViewName } from './store.js';
 import type { Conversation } from './types.js';
@@ -20,13 +20,14 @@ export class CodingLockedError extends Error {
   }
 }
 
-/** Whether the door holds this chat shut: a coding session ('desktop'), and
- *  a sign-in is needed right now. */
+/** Whether the door holds this chat shut: a coding session ('desktop', the
+ *  one brain SOURCE_ACCOUNT puts behind a sign-in), and a sign-in is needed
+ *  right now. */
 export function codingLocked(
   conv: Pick<Conversation, 'source'> | undefined,
   needsAccount: boolean,
 ): boolean {
-  return conv?.source.kind === 'desktop' && needsAccount;
+  return Boolean(conv && SOURCE_ACCOUNT[conv.source.kind] === 'coding') && needsAccount;
 }
 
 /** The attached coding chats let go at a sign-out: each falls back to its

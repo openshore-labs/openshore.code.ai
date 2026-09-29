@@ -14,6 +14,7 @@ import {
   type LocalDriver,
 } from 'os-code/dist/src/daemon/session.js';
 import { startDaemon, type RunningDaemon } from 'os-code/dist/src/daemon/serve.js';
+import { freeChat, type FreeChatEvent } from 'os-code/dist/src/daemon/freeChat.js';
 import { TerminalManager, TerminalUnavailable } from 'os-code/dist/src/daemon/terminal.js';
 import { HOME_SHELL_ID } from 'os-code/dist/src/daemon/homeShellId.js';
 import { ProviderRegistry } from 'os-code/dist/src/providers/registry.js';
@@ -169,6 +170,10 @@ export type InstallForward = (payload: {
 // so a reopened terminal resumes from where it left off (Phase 2 desktop).
 export type TerminalForward = (payload: { termId: string; b64: string; offset: number }) => void;
 
+// One free chat event on its way to the window (CTO ruling 8). A refusal
+// arrives as its one error; the ready marker stays here.
+export type FreeChatForward = (event: Exclude<FreeChatEvent, { type: 'refused' | 'open' }>) => void;
+
 const OPENAI_KEY_NAME = 'openai-api-key';
 
 export class EngineHost {
@@ -184,6 +189,11 @@ export class EngineHost {
   // started later it shares this same instance, so a routine fires once.
   private readonly scheduler: RoutineScheduler;
   private readonly deps: Required<Omit<EngineHostDeps, 'terminals'>>;
+  // The free chats answering now, by the renderer's request id, and the one
+  // lane they share: this window gets one answer at a time, as a paired
+  // phone does from the daemon.
+  private freeChats = new Map<string, AbortController>();
+  private readonly freeChatLane = new Set<string>();
 
   constructor(
     private readonly forwardEvent: EventForward,
@@ -364,6 +374,60 @@ export class EngineHost {
     },
   ): void {
     this.drivers.get(sessionId)?.answerApproval(approvalId, answer);
+  }
+
+  // --------------------------------------------------------------- free chat
+
+  /** The free chat on this computer (CTO ruling 8): the engine's one free
+   *  chat function, the same one the daemon serves a paired phone, forwarded
+   *  event by event to the window that asked. No session is opened, nothing
+   *  is journaled, no tool exists, and no vault pack is built, so a signed-out
+   *  chat reaches no notes. Resolves once the answer has ended, and the last
+   *  event forwarded is always `done` or `error`. */
+  async freeChat(
+    requestId: string,
+    body: Record<string, unknown>,
+    forward: FreeChatForward,
+  ): Promise<void> {
+    if (this.freeChats.has(requestId)) return;
+    const stop = new AbortController();
+    this.freeChats.set(requestId, stop);
+    let ended = false;
+    try {
+      for await (const ev of freeChat(body, {
+        signal: stop.signal,
+        lane: { key: 'window', busy: this.freeChatLane },
+      })) {
+        if (ev.type === 'open') continue;
+        if (ev.type === 'refused') {
+          forward({ type: 'error', message: ev.error });
+          ended = true;
+          break;
+        }
+        forward(ev);
+        if (ev.type === 'done' || ev.type === 'error') ended = true;
+      }
+    } catch (err) {
+      forward({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'The answer stopped.',
+      });
+      ended = true;
+    } finally {
+      this.freeChats.delete(requestId);
+      if (!ended) forward({ type: 'error', message: 'The answer stopped.' });
+    }
+  }
+
+  /** Stop one free chat answer (the person pressed Stop). */
+  freeChatAbort(requestId: string): void {
+    this.freeChats.get(requestId)?.abort();
+  }
+
+  /** Stop every free chat still answering: the window reloaded, so nobody is
+   *  listening, and the lane is free for the next message. */
+  stopFreeChats(): void {
+    for (const stop of this.freeChats.values()) stop.abort();
   }
 
   // ---- the person's controls over a session: mode, instructions, compaction,
@@ -1117,6 +1181,7 @@ export class EngineHost {
   }
 
   disposeAll(): void {
+    this.stopFreeChats();
     for (const off of this.unsubs.values()) off();
     this.unsubs.clear();
     for (const off of this.termSubs.values()) off();

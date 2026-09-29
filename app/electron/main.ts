@@ -808,6 +808,8 @@ function createWindow(): void {
   // time, so a fresh page is never out of sync with what main already knows.
   win.webContents.on('did-finish-load', () => {
     win?.webContents.send('osc:update-status', updater.pending);
+    // A reloaded page has nobody listening for an answer still on its way.
+    host.stopFreeChats();
   });
 
   // OSC_SMOKE=1 makes a headless CI run prove the page and bridge came up.
@@ -1005,6 +1007,19 @@ guarded('osc:answerApproval', (sessionId: unknown, approvalId: unknown, answer: 
     reason: optStr(a.reason, 'reason'),
   });
 });
+
+// The free chat (CTO ruling 8): the engine's local-only chat, with no session
+// and no tools. Each event rides osc:free-chat under the request's own id, so
+// the renderer drops a late event for an answer it already stopped.
+guarded('osc:freeChat', (requestId: unknown, body: unknown) => {
+  const id = str(requestId, 'requestId');
+  return host.freeChat(id, obj(body, 'body'), (event) =>
+    win?.webContents.send('osc:free-chat', { requestId: id, event }),
+  );
+});
+guarded('osc:freeChatAbort', (requestId: unknown) =>
+  host.freeChatAbort(str(requestId, 'requestId')),
+);
 
 // Chat-to-terminal lane. runCommand returns the runId the renderer drives with
 // stdin/kill; command output arrives as command-* events on osc:event.

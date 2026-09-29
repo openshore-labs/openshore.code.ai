@@ -2,7 +2,7 @@
 // DriverEvent shape the transcript renders, and keeps its own history since the
 // endpoint is stateless.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DesktopChatDriver } from '../src/drivers/desktopChatDriver.js';
+import { DesktopChatDriver, ipcFreeChat } from '../src/drivers/desktopChatDriver.js';
 import { LOCAL_ONLY_STUB } from 'os-code/protocol';
 import type { DriverEvent } from 'os-code/protocol';
 import { isLocalOnlyFinal, seedText } from '../src/drivers/types.js';
@@ -136,5 +136,99 @@ describe('DesktopChatDriver', () => {
     driver.send('hi');
     await vi.waitFor(() => expect(events.some((e) => e.type === 'task-done')).toBe(true));
     expect(isLocalOnlyFinal(events.find((e) => e.type === 'text-final')!)).toBe(false);
+  });
+});
+
+// On the desktop itself the same driver reaches this computer's own engine
+// over IPC (CTO ruling 8): frames arrive under the request's own id, a Stop
+// asks main to stop the model, and a refusal is the turn's one error.
+describe('DesktopChatDriver over IPC (the desktop window)', () => {
+  type Payload = { requestId: string; event: Record<string, unknown> };
+  function fakeBridge(
+    script: (id: string, emit: (event: Record<string, unknown>) => void) => void,
+  ) {
+    const listeners = new Set<(p: Payload) => void>();
+    const calls = { chats: [] as Array<Record<string, unknown>>, aborted: [] as string[] };
+    const emitTo = (requestId: string) => (event: Record<string, unknown>) => {
+      for (const l of [...listeners]) l({ requestId, event } as Payload);
+    };
+    return {
+      calls,
+      bridge: {
+        freeChat: async (requestId: string, body: Record<string, unknown>) => {
+          calls.chats.push(body);
+          // Another request's frame is never this one's.
+          emitTo('someone-else')({ type: 'text', delta: 'not yours' });
+          script(requestId, emitTo(requestId));
+        },
+        freeChatAbort: async (requestId: string) => {
+          calls.aborted.push(requestId);
+        },
+        onFreeChat: (cb: (p: Payload) => void) => {
+          listeners.add(cb);
+          return () => listeners.delete(cb);
+        },
+      },
+    };
+  }
+
+  it('streams the engine frames into a final answer, and never touches the network', async () => {
+    const fetchSpy = vi.fn();
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    const { bridge, calls } = fakeBridge((_id, emit) => {
+      emit({ type: 'text', delta: 'Hel' });
+      emit({ type: 'text', delta: 'lo.' });
+      emit({ type: 'done' });
+    });
+    const driver = new DesktopChatDriver(ipcFreeChat(bridge, 'qwen2.5:3b'));
+    const events = collect(driver);
+    driver.send('hi');
+    await vi.waitFor(() => expect(events.some((e) => e.type === 'task-done')).toBe(true));
+    expect((events.find((e) => e.type === 'text-final') as any).text).toBe('Hello.');
+    expect((events.find((e) => e.type === 'task-done') as any).reason).toBe('complete');
+    expect((events.find((e) => e.type === 'turn-start') as any).model).toBe('qwen2.5:3b');
+    expect(calls.chats[0]!.messages).toEqual([{ role: 'user', content: 'hi' }]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('a refusal ends the turn with its reason', async () => {
+    const { bridge } = fakeBridge((_id, emit) =>
+      emit({ type: 'error', message: 'Free desktop chat runs your local models.' }),
+    );
+    const driver = new DesktopChatDriver(ipcFreeChat(bridge));
+    const events = collect(driver);
+    driver.send('hi');
+    await vi.waitFor(() => expect(events.some((e) => e.type === 'task-done')).toBe(true));
+    const done = events.find((e) => e.type === 'task-done') as any;
+    expect(done.reason).toBe('error');
+    expect(done.message).toMatch(/local models/);
+  });
+
+  it('Stop asks main to stop the model and keeps the partial answer', async () => {
+    let emitLater: ((event: Record<string, unknown>) => void) | undefined;
+    const { bridge, calls } = fakeBridge((_id, emit) => {
+      emit({ type: 'text', delta: 'Partly' });
+      emitLater = emit;
+    });
+    const driver = new DesktopChatDriver(ipcFreeChat(bridge));
+    const events = collect(driver);
+    driver.send('hi');
+    await vi.waitFor(() => expect(events.some((e) => e.type === 'text-delta')).toBe(true));
+    driver.abort();
+    await vi.waitFor(() => expect(events.some((e) => e.type === 'task-done')).toBe(true));
+    expect((events.find((e) => e.type === 'task-done') as any).reason).toBe('aborted');
+    expect((events.find((e) => e.type === 'text-final') as any).text).toBe('Partly');
+    expect(calls.aborted).toHaveLength(1);
+    // A frame that arrives after the stop lands nowhere.
+    emitLater?.({ type: 'text', delta: ' late' });
+    expect(events.filter((e) => e.type === 'task-done')).toHaveLength(1);
+  });
+
+  it('an older shell without the channel says so plainly', async () => {
+    const driver = new DesktopChatDriver(ipcFreeChat({}));
+    const events = collect(driver);
+    driver.send('hi');
+    await vi.waitFor(() => expect(events.some((e) => e.type === 'task-done')).toBe(true));
+    expect((events.find((e) => e.type === 'task-done') as any).message).toMatch(/Update/);
   });
 });

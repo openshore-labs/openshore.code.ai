@@ -37,6 +37,19 @@ describe('main-process IPC guard (UI-6)', () => {
     expect(guarded).toEqual(invoked);
   });
 
+  // The free chat (CTO ruling 8): two guarded channels, the request id and
+  // the body type-checked, each event sent under its request id, and every
+  // answer still running stopped when the page reloads.
+  it('the free chat channels are guarded, checked, and stopped on a reload', () => {
+    expect(preload).toContain("freeChat: invoke('osc:freeChat')");
+    expect(preload).toContain("freeChatAbort: invoke('osc:freeChatAbort')");
+    expect(preload).toContain("onFreeChat: listen('osc:free-chat')");
+    expect(main).toMatch(/guarded\('osc:freeChat', \(requestId: unknown, body: unknown\) =>/);
+    expect(main).toMatch(/str\(requestId, 'requestId'\);[\s\S]{0,80}obj\(body, 'body'\)/);
+    expect(main).toMatch(/webContents\.send\('osc:free-chat', \{ requestId: id, event \}\)/);
+    expect(main).toMatch(/did-finish-load[\s\S]{0,240}host\.stopFreeChats\(\)/);
+  });
+
   it('type-checks string arguments and requires cwd to be a directory', () => {
     expect(main).toMatch(/typeof v !== 'string'/);
     expect(main).toMatch(/statSync\([^)]*\)\.isDirectory\(\)/);

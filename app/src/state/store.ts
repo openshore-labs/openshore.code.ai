@@ -171,7 +171,16 @@ import type { Attachment } from '../lib/attachments.js';
 import { OnDeviceDriver } from '../drivers/onDeviceDriver.js';
 import { MockDriver } from '../drivers/mockDriver.js';
 import { StackDriver, type StackVaultTools } from '../drivers/stackDriver.js';
-import { DesktopChatDriver } from '../drivers/desktopChatDriver.js';
+import { DesktopChatDriver, ipcFreeChat } from '../drivers/desktopChatDriver.js';
+import {
+  FIRST_SEAT_COPY,
+  defaultComposerSource,
+  engineChatReady,
+  heldMessagePlan,
+  joinHeld,
+  waitsOnFirstSeat,
+  type HeldFirstMessage,
+} from './firstRunOps.js';
 import { guardDriver } from '../drivers/guardedDriver.js';
 import {
   HARBOR_READY_MESSAGE,
@@ -496,6 +505,7 @@ import { setSearchConsent } from '../lib/localSearch.js';
 import { RELEASE_TIER, featureOn, roomOpen, type ReleaseTier } from '../lib/focus.js';
 import {
   ACCOUNT_NOTICE,
+  SOURCE_ACCOUNT,
   needsAccount,
   roomAccountFeature,
   type AccountFeature,
@@ -759,9 +769,10 @@ export interface AppSettings {
   declinedOrgIds?: string[];
   /** A first message typed before any brain could answer, held while the
    *  person sets one up (a download, a pairing, a key) and offered back on
-   *  their return. Text only; attachments live in memory for the session.
-   *  Device local. */
-  heldFirstMessage?: { text: string; at: string };
+   *  their return, or, waiting on the desktop's First Seat, sent by itself
+   *  once the engine can answer (state/firstRunOps.ts). Text only;
+   *  attachments live in memory for the session. Device local. */
+  heldFirstMessage?: HeldFirstMessage;
   /** When this device last changed a preference that follows a signed-in
    *  person (lib/settingsReach.ts), so a sync knows which side is newer.
    *  Device local. */
@@ -1658,6 +1669,22 @@ interface AppState {
   /** Take the held message (clearing it) to send it now. */
   takeHeldFirstMessage(): { text: string; attachments?: Attachment[] } | undefined;
   discardHeldFirstMessage(): Promise<void>;
+  /** Hold a first message on the desktop's First Seat (state/firstRunOps.ts):
+   *  it goes out by itself once the engine can answer. A second one joins it. */
+  holdUntilReady(text: string, attachments?: Attachment[]): Promise<void>;
+  /** Settle a held first message against what can answer now: send one
+   *  waiting on the First Seat once the engine can answer, or hand one back
+   *  (returned, and cleared) for the composer. The chat screen calls it as it
+   *  mounts and whenever readiness changes. */
+  settleHeldMessage(opts: {
+    chooserOpen: boolean;
+  }): { text: string; attachments?: Attachment[] } | undefined;
+  /** The brain a new chat starts on when the person has not picked one
+   *  (firstRunOps.defaultComposerSource). */
+  composerDefaultSource(): ConversationSource;
+  /** Whether a send nothing can answer waits on the First Seat instead of
+   *  opening the model chooser (firstRunOps.waitsOnFirstSeat). */
+  sendWaitsOnFirstSeat(): boolean;
   /** Create a project and make it active. */
   createProject(name: string): Promise<string>;
   setActiveProject(id: string): void;
@@ -3959,9 +3986,20 @@ export const useApp = create<AppState>((set, get, api) => {
         });
       }
       case 'desktop-chat': {
-        // Free, read-only chat with the paired desktop's local models over the
-        // daemon's stateless /chat endpoint. No session is created, so this can
-        // never become the paid agent. Needs a paired daemon.
+        // Free, read-only chat with the computer's local models. No session is
+        // created, so this can never become the paid agent. On the desktop
+        // itself it reaches this computer's own engine over IPC (CTO ruling
+        // 8): no tools, no session, and no vault pack.
+        if (isDesktop() && bridge() && !settings.preferRemoteHub) {
+          return new DesktopChatDriver(
+            ipcFreeChat(bridge()!, get().desktopStatus?.stack.orchestrator?.model),
+            conv.source.model,
+            seed,
+            chatContext(conv),
+            settings.perplexityResearch === true,
+          );
+        }
+        // On the phone, the paired desktop's daemon and its stateless /chat.
         if (!settings.daemon) {
           throw new Error('Connect to your computer first (Menu, then Desktop + phone).');
         }
@@ -7572,11 +7610,16 @@ export const useApp = create<AppState>((set, get, api) => {
         case 'cloud':
           return signals.cloudReady(source.provider);
         case 'desktop':
-        case 'desktop-chat':
           // The desktop app's engine refuses to start a session until a model
           // (orchestrator) is configured, so "ready" here means that, not just
           // "we are on a desktop". A phone is ready when a computer is paired.
           if (isDesktop()) return Boolean(s.desktopStatus?.stack.configured);
+          return Boolean(st.daemon);
+        case 'desktop-chat':
+          // The free chat answers from a local model only (the engine refuses
+          // one that leaves this network), so on the desktop a cloud
+          // orchestrator is not ready for it.
+          if (isDesktop()) return engineChatReady(s.desktopStatus);
           return Boolean(st.daemon);
         case 'mock':
           return true;
@@ -7744,9 +7787,10 @@ export const useApp = create<AppState>((set, get, api) => {
       // ('stack') stays free. Central choke point so every coding entry (Repos,
       // Launch) is gated one way. Resolves to undefined when no chat opened, so
       // no caller mistakes the chat already on screen for the new one.
-      const coding = source.kind === 'desktop';
+      const coding = SOURCE_ACCOUNT[source.kind] === 'coding';
       // The coding agent needs a free sign-in (lib/accountGate.ts); chat does
-      // not. The caller hands a typed first message back to the composer.
+      // not, the free chat with a computer's own model included. The caller
+      // hands a typed first message back to the composer.
       if (coding && get().needsAccountNow()) {
         get().openAccountGate('coding');
         return undefined;
@@ -8133,6 +8177,72 @@ export const useApp = create<AppState>((set, get, api) => {
     async discardHeldFirstMessage() {
       heldAttachments = undefined;
       await get().saveSettings({ heldFirstMessage: undefined });
+    },
+
+    async holdUntilReady(text, attachments) {
+      const prev = get().settings.heldFirstMessage;
+      const kept = prev ? (heldAttachments ?? []) : [];
+      const all = [...kept, ...(attachments ?? [])];
+      heldAttachments = all.length ? all : undefined;
+      await get().saveSettings({
+        heldFirstMessage: {
+          text: joinHeld(prev?.text, text),
+          at: new Date().toISOString(),
+          untilReady: true,
+        },
+      });
+    },
+
+    settleHeldMessage({ chooserOpen }) {
+      const s = get();
+      const status = s.desktopStatus;
+      const defaultSource = s.composerDefaultSource();
+      const plan = heldMessagePlan({
+        held: s.settings.heldFirstMessage,
+        emptyChat: s.view === 'chat' && !s.activeId,
+        chooserOpen,
+        engineReady:
+          (defaultSource.kind === 'desktop' || defaultSource.kind === 'desktop-chat') &&
+          s.sourceReady(defaultSource),
+        statusKnown: !isDesktop() || status !== undefined,
+        seatUp: s.sendWaitsOnFirstSeat(),
+      });
+      if (plan === 'restore') return get().takeHeldFirstMessage();
+      if (plan !== 'send') return undefined;
+      const held = get().takeHeldFirstMessage();
+      if (!held) return undefined;
+      get().showToast(FIRST_SEAT_COPY.sending);
+      logEvent('held_message_sent', { kind: defaultSource.kind });
+      void get()
+        .newConversation(defaultSource, {
+          firstMessage: { text: held.text, attachments: held.attachments },
+        })
+        .then((id) => {
+          // Nothing opened (a door in the way): hold it again for the
+          // composer, so the words are never lost.
+          if (!id) void get().holdFirstMessage(held.text, held.attachments);
+        });
+      return undefined;
+    },
+
+    composerDefaultSource() {
+      const s = get();
+      return defaultComposerSource({
+        desktop: isDesktop(),
+        needsAccount: s.needsAccountNow(),
+        engineChat: engineChatReady(s.desktopStatus),
+        stackReady: s.sourceReady({ kind: 'stack' }),
+      });
+    },
+
+    sendWaitsOnFirstSeat() {
+      const s = get();
+      return waitsOnFirstSeat({
+        desktop: isDesktop(),
+        statusKnown: s.desktopStatus !== undefined,
+        configured: Boolean(s.desktopStatus?.stack.configured),
+        cloudReady: s.cloudKeyPresent,
+      });
     },
 
     async createProject(name) {
@@ -12218,6 +12328,12 @@ export const useApp = create<AppState>((set, get, api) => {
     runCommand(command) {
       const { activeId } = get();
       if (!activeId) return;
+      // Signed out, a coding chat's commands are behind the same door as the
+      // agent: the sign-in sheet opens, never "this chat has no terminal".
+      if (codingLockedNow(get().conversations[activeId])) {
+        get().openAccountGate('coding');
+        return;
+      }
       const driver = drivers.get(activeId);
       if (!driver?.runCommand) {
         get().showToast(

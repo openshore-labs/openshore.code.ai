@@ -18,6 +18,12 @@
 // carried a local-only note (`localOnly`, the computer judged it), the reply
 // is marked local-only, so a later switch to a seat that leaves the network
 // gets `LOCAL_ONLY_STUB` in its place (I5).
+//
+// On the desktop itself the same chat reaches this computer's own engine over
+// IPC (CTO ruling 8, `osc:freeChat`): the engine runs the one free chat
+// function the daemon serves the phone, so both get the same local-only rules.
+// No session is created and no vault pack is built there, so a signed-out
+// chat carries no notes; the transport is the only difference.
 import {
   SearchLineFilter,
   type ApprovalAnswer,
@@ -28,11 +34,130 @@ import type { ChatContext, ChatDriver, DriverEventSink } from './types.js';
 import { DriverEmitter, readChatContext, textFinal } from './types.js';
 import type { DaemonTarget } from './remoteDriver.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
+import type { OscodeBridge } from '../lib/electronBridge.js';
 import { searchForModel } from '../lib/localSearch.js';
 import { chainOfThoughtOn } from '../lib/chainOfThought.js';
 import type { SeedTurn } from '../state/types.js';
 
 type Msg = { role: 'user' | 'assistant'; content: string };
+
+/** One frame of a free chat answer, as the driver reads it: `text`,
+ *  `thinking`, `context-pack`, `error`, and `done`. */
+export type FreeChatFrameIn = { type?: string; delta?: string; message?: string } & Record<
+  string,
+  unknown
+>;
+
+/** Where a free chat answer comes from: the paired computer's daemon over
+ *  HTTP (the phone), or this computer's own engine over IPC (the desktop). */
+export interface FreeChatTransport {
+  /** The frames of one answer. A refusal is one `error` frame. */
+  stream(body: Record<string, unknown>, signal: AbortSignal): AsyncIterable<FreeChatFrameIn>;
+  /** The name the transcript gives the model, when the transport knows it. */
+  readonly seatName?: string;
+}
+
+/** The paired computer's `/chat` over HTTP: its server sent events, frame by
+ *  frame, or its refusal as one error. Streaming rides streamingFetch, past
+ *  Capacitor's native-HTTP patch. */
+export function daemonFreeChat(target: DaemonTarget): FreeChatTransport {
+  return {
+    async *stream(body, signal) {
+      const res = await streamingFetch(`${target.baseUrl}/chat`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${target.token}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(body),
+        signal,
+      });
+      if (!res.ok || !res.body) {
+        const answer = (await res.json?.().catch(() => ({}))) as { error?: string };
+        yield { type: 'error', message: answer?.error ?? `Your computer answered ${res.status}.` };
+        return;
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) return;
+        buffer += decoder.decode(value, { stream: true });
+        let idx: number;
+        while ((idx = buffer.indexOf('\n\n')) !== -1) {
+          const frame = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 2);
+          const line = frame.split('\n').find((l) => l.startsWith('data:'));
+          if (!line) continue;
+          try {
+            yield JSON.parse(line.slice(5).trim()) as FreeChatFrameIn;
+          } catch {
+            continue;
+          }
+        }
+      }
+    },
+  };
+}
+
+let freeChatSeq = 0;
+
+/** This computer's own engine over IPC (CTO ruling 8). Frames arrive on
+ *  `onFreeChat` under this request's id, so a late frame for an answer that
+ *  was stopped is dropped; a Stop, or the reader leaving early, asks main to
+ *  stop the model. */
+export function ipcFreeChat(
+  b: Pick<OscodeBridge, 'freeChat' | 'freeChatAbort' | 'onFreeChat'>,
+  seatName?: string,
+): FreeChatTransport {
+  return {
+    seatName,
+    async *stream(body, signal) {
+      const { freeChat, onFreeChat } = b;
+      if (!freeChat || !onFreeChat) {
+        yield { type: 'error', message: 'This version of OpenShore cannot chat here. Update it.' };
+        return;
+      }
+      const requestId = `fc${Date.now().toString(36)}${(freeChatSeq++).toString(36)}`;
+      const queue: FreeChatFrameIn[] = [];
+      let wake: (() => void) | undefined;
+      let finished = false;
+      const push = (frame: FreeChatFrameIn) => {
+        queue.push(frame);
+        wake?.();
+      };
+      const off = onFreeChat(({ requestId: id, event }) => {
+        if (id === requestId) push(event as FreeChatFrameIn);
+      });
+      const onAbort = () => wake?.();
+      signal.addEventListener('abort', onAbort, { once: true });
+      freeChat(requestId, body).catch((err: unknown) =>
+        push({
+          type: 'error',
+          message: err instanceof Error ? err.message : 'Could not reach this computer.',
+        }),
+      );
+      try {
+        for (;;) {
+          while (queue.length) {
+            const frame = queue.shift()!;
+            if (frame.type === 'done' || frame.type === 'error') finished = true;
+            yield frame;
+            if (finished) return;
+          }
+          if (signal.aborted) return;
+          await new Promise<void>((resolve) => (wake = resolve));
+          wake = undefined;
+        }
+      } finally {
+        off();
+        signal.removeEventListener('abort', onAbort);
+        if (!finished) void b.freeChatAbort?.(requestId);
+      }
+    },
+  };
+}
 
 export class DesktopChatDriver implements ChatDriver {
   readonly kind = 'desktop-chat' as const;
@@ -45,9 +170,12 @@ export class DesktopChatDriver implements ChatDriver {
   private packCardShown?: string;
   /** This send's pack carried a local-only note (the card said so). */
   private sendLocalOnly = false;
+  private readonly transport: FreeChatTransport;
 
   constructor(
-    private readonly target: DaemonTarget,
+    /** The paired computer (the phone), or a transport of its own (the
+     *  desktop's IPC). */
+    target: DaemonTarget | FreeChatTransport,
     private readonly model?: string,
     seed?: SeedTurn[],
     /** The project's standing instructions and the chat's repo context (and
@@ -60,6 +188,7 @@ export class DesktopChatDriver implements ChatDriver {
      *  for, or Memory off. None sends neither, so the daemon builds none. */
     private readonly vault: ChatVaultFields = {},
   ) {
+    this.transport = 'stream' in target ? target : daemonFreeChat(target);
     if (seed) this.history = seed.map((t) => ({ role: t.role, content: t.text }));
   }
 
@@ -87,20 +216,16 @@ export class DesktopChatDriver implements ChatDriver {
     this.emitter.emit({
       type: 'turn-start',
       turn,
-      model: this.model ?? 'your computer',
+      model: this.model ?? this.transport.seatName ?? 'your computer',
       providerKind: 'local',
     });
     const filter = new SearchLineFilter(searchable);
     let answer = '';
     try {
-      const res = await streamingFetch(`${this.target.baseUrl}/chat`, {
-        method: 'POST',
-        headers: {
-          authorization: `Bearer ${this.target.token}`,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          messages: this.history,
+      const frames = this.transport.stream(
+        {
+          // A copy: the history grows as this answer lands.
+          messages: [...this.history],
           model: this.model,
           context: readChatContext(this.extraSystem),
           search: true,
@@ -111,55 +236,29 @@ export class DesktopChatDriver implements ChatDriver {
           // The daemon's pack (J6): the project it is built for, or Memory
           // off. Never a note body. An older daemon ignores both.
           ...vaultBodyFields(this.vault),
-        }),
-        signal: this.abortController?.signal,
-      });
-      if (!res.ok || !res.body) {
-        const body = (await res.json?.().catch(() => ({}))) as { error?: string };
-        this.emitter.emit({
-          type: 'task-done',
-          reason: 'error',
-          message: body?.error ?? `Your computer answered ${res.status}.`,
-        });
-        return;
-      }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done || this.aborted) break;
-        buffer += decoder.decode(value, { stream: true });
-        let idx: number;
-        while ((idx = buffer.indexOf('\n\n')) !== -1) {
-          const frame = buffer.slice(0, idx);
-          buffer = buffer.slice(idx + 2);
-          const line = frame.split('\n').find((l) => l.startsWith('data:'));
-          if (!line) continue;
-          let ev: { type?: string; delta?: string; message?: string } & Record<string, unknown>;
-          try {
-            ev = JSON.parse(line.slice(5).trim());
-          } catch {
-            continue;
+        },
+        this.abortController?.signal ?? new AbortController().signal,
+      );
+      for await (const ev of frames) {
+        if (this.aborted) break;
+        if (ev.type === 'text' && ev.delta) {
+          answer += ev.delta;
+          const shown = filter.push(ev.delta);
+          if (shown) this.emitter.emit({ type: 'text-delta', text: shown });
+        } else if (ev.type === 'thinking' && ev.delta && chainOfThoughtOn()) {
+          this.emitter.emit({ type: 'thinking-delta', text: ev.delta });
+        } else if (ev.type === 'context-pack') {
+          const card = readPackCard(ev);
+          if (card?.localOnly) this.sendLocalOnly = true;
+          const key = card && JSON.stringify([card.seat, card.sources, card.withheld]);
+          if (card && key !== this.packCardShown) {
+            this.packCardShown = key;
+            this.emitter.emit(card);
           }
-          if (ev.type === 'text' && ev.delta) {
-            answer += ev.delta;
-            const shown = filter.push(ev.delta);
-            if (shown) this.emitter.emit({ type: 'text-delta', text: shown });
-          } else if (ev.type === 'thinking' && ev.delta && chainOfThoughtOn()) {
-            this.emitter.emit({ type: 'thinking-delta', text: ev.delta });
-          } else if (ev.type === 'context-pack') {
-            const card = readPackCard(ev);
-            if (card?.localOnly) this.sendLocalOnly = true;
-            const key = card && JSON.stringify([card.seat, card.sources, card.withheld]);
-            if (card && key !== this.packCardShown) {
-              this.packCardShown = key;
-              this.emitter.emit(card);
-            }
-          } else if (ev.type === 'error') {
-            this.emitter.emit({ type: 'task-done', reason: 'error', message: ev.message });
-            return;
-          }
+        } else if (ev.type === 'error') {
+          if (this.aborted) break;
+          this.emitter.emit({ type: 'task-done', reason: 'error', message: ev.message });
+          return;
         }
       }
       const { query, flush } = filter.end();

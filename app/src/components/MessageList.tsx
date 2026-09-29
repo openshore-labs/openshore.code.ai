@@ -34,6 +34,9 @@ import { Icon } from './Icon.js';
 import { Keyboard } from '@capacitor/keyboard';
 import { isPhone } from '../lib/platform.js';
 
+/** The quiet line under a parked message while it waits to go. */
+export const PARKED_WAITING = 'Waiting to send';
+
 /** How far a downward drag on the transcript travels before the keyboard goes:
  *  past a tap's wobble, well short of a real scroll. */
 const DISMISS_DRAG_PX = 16;
@@ -213,6 +216,8 @@ export function MessageList({
   onOpenPackNote,
   onSaveHandoff,
   afterItem,
+  parked,
+  onRetryParked,
 }: {
   thread: ThreadState;
   /** No dead ends: the brain a failed turn can continue on ("Harbor Lite"),
@@ -238,6 +243,12 @@ export function MessageList({
   onClarifyPick?: (text: string) => void;
   /** Drop a queued message (tap on its bubble). */
   onUnqueue?: (index: number) => void;
+  /** The message parked on the chat until its brain can take it (a hub
+   *  still opening, the sign-in sheet): its text, and why it has not gone
+   *  when something went wrong. It stays until it goes out. */
+  parked?: { text: string; error?: string };
+  /** Try the parked message again (offered beside its reason). */
+  onRetryParked?: () => void;
   /** Open a note the vault context card names, when this device's vault
    *  holds it (the store's `vaultPackOpener`). Absent keeps titles plain. */
   onOpenPackNote?: (path: string) => void;
@@ -584,6 +595,25 @@ export function MessageList({
             }
           }
         })}
+        {parked ? (
+          <div className="msg-parked">
+            <div className="msg-user parked">
+              {parked.text}
+              <span className="msg-parked-tag" role="status">
+                {parked.error ?? PARKED_WAITING}
+              </span>
+            </div>
+            {parked.error && onRetryParked ? (
+              <button
+                type="button"
+                className="msg-stopped-action ghost press-fb"
+                onClick={onRetryParked}
+              >
+                Try again
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         {thread.queued.map((text, i) => (
           <button
             key={`q${i}`}

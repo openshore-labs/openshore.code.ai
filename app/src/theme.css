@@ -5210,6 +5210,21 @@ button.vault-tag {
   margin-bottom: 4px;
 }
 
+/* The waiting message's line on the card, and the quiet sign-in offer under
+   the button while the download runs (CX ruling 2). */
+.first-seat-held {
+  color: var(--ink);
+  font-size: var(--text-3);
+  margin-bottom: 4px;
+}
+
+.first-seat-aside {
+  color: var(--muted);
+  font-size: var(--text-2);
+  line-height: 1.4;
+  margin-top: 4px;
+}
+
 .first-seat-more {
   display: flex;
   flex-direction: column;
@@ -10486,6 +10501,27 @@ button.vault-tag {
   margin-top: 4px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+/* A message parked until its brain can take it (a hub still opening, the
+   sign-in sheet): the bubble in its place, a little quieter, with one line
+   that says it is waiting, and a Retry under it when something went wrong.
+   It arrives after a second, so a brain that takes the message at once (a
+   model on this device) never shows a waiting line on the way. */
+.msg-parked {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  animation: msg-in var(--dur-3) var(--ease-standard) 1s backwards;
+}
+.msg-user.parked {
+  opacity: 0.72;
+}
+.msg-parked-tag {
+  display: block;
+  font-size: var(--text-1);
+  color: var(--muted);
+  margin-top: 4px;
 }
 .msg-stopped-actions {
   display: flex;

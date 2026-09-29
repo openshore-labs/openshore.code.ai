@@ -74,20 +74,8 @@ import { applyOutboxItem, verifyCommit, type OutboxApplyRequest } from '../git/o
 import { withKeyLock } from '../git/applyQueue.js';
 import { loadCatalog, findModel } from '../market/catalog.js';
 import { installModel, type InstallProgress } from '../market/install.js';
-import { ProviderRegistry } from '../providers/registry.js';
-import { resolveStack } from '../router/stack.js';
 import { computeStackHealth } from '../insights/stackHealth.js';
 import type { StackHealthRange } from '../insights/stackHealthTypes.js';
-import { getAnthropicKey } from '../auth/claude.js';
-import { engineEthicsContext } from '../core/ethics/host.js';
-import { leavesThisNetwork, type ChatMessage, type Provider } from '../providers/types.js';
-import {
-  ThinkTagSplitter,
-  chainOfThoughtPrompt,
-  reasonsNatively,
-  type ThoughtPiece,
-} from '../core/agent/chainOfThought.js';
-import { SEARCH_PROTOCOL_NOTE } from '../harness/localSearch.js';
 import { EgressPolicy } from '../core/security/egress.js';
 import { trustSessionFolder } from '../core/agent/projectTrust.js';
 import { giveMoreRoomHere } from '../providers/servedWindow.js';
@@ -107,6 +95,7 @@ import { isVaultNotePath } from '../core/vault/folderFs.js';
 import { vaultPackSize } from '../harness/vault/settings.js';
 import { HANDOFF_MAX_BYTES } from '../harness/handoff.js';
 import { buildChatPack, parseVaultOverrides, vaultRoute } from './vaultRoutes.js';
+import { freeChat, type FreeChatPackContext } from './freeChat.js';
 import type { VaultPrivacyWire } from './vaultWire.js';
 import { logger } from '../util/log.js';
 
@@ -128,33 +117,9 @@ const CORS_HEADERS: Record<string, string> = {
 
 const log = logger('daemon');
 
-// The free desktop-chat surface: read-only conversation with the user's own
-// LOCAL models, no tools and no acting machinery (CTO ruling). The system line
-// makes the model own that it is chat, not the coding agent.
-const CHAT_SYSTEM = [
-  'You are OpenShore, a warm, capable companion running as read-only chat over a phone-to-desktop link.',
-  'Answer directly and concretely. Use markdown, and fence code with a language tag.',
-  'You have no tools here: you cannot read or edit files, run commands, or commit. When a task needs that, say so and point the user to opening a repo on their desktop (the coding agent).',
-  'Lead with the answer. When the person has to do something, give one step at a time and wait. If you cannot help with something here, say so and name where in the app it lives.',
-  'Whenever the person must paste something (a command, a query, a config line), put it in its own fenced code block, one per step, nothing else in the block. Never inline a command in a sentence.',
-  'Never use em dashes. Use a period or a comma instead.',
-].join('\n');
-
-/** The most chat context (standing instructions, setup step) /chat carries. */
-const CHAT_CONTEXT_MAX = 8000;
-
-/** The system line for one /chat request: the fixed line, then the chat's own
- *  context (the project's standing instructions, the guided setup's step),
- *  trimmed and capped, so the phone's brief reaches this model the way it
- *  reaches every other brain. Anything that is not a string is ignored. */
-export function desktopChatSystem(context: unknown, search = false): string {
-  const extra = typeof context === 'string' ? context.trim().slice(0, CHAT_CONTEXT_MAX) : '';
-  // With search on, the phone runs any search itself and sends the results
-  // back as the next turn, so this surface only learns how to ask; it never
-  // fetches.
-  const base = search ? `${CHAT_SYSTEM}\n${SEARCH_PROTOCOL_NOTE}` : CHAT_SYSTEM;
-  return extra ? `${base}\n\n${extra}` : base;
-}
+// The free chat's system line moved with the chat itself (freeChat.ts); it is
+// re-exported here for the importers that read it from the daemon.
+export { desktopChatSystem } from './freeChat.js';
 
 // Request bodies are bounded (DAE-8): a JSON body over the cap is answered 413
 // and never buffered. The outbox carries file contents, so it gets more room.
@@ -167,13 +132,9 @@ const PAIR_CLAIM_MAX_BYTES = 4 * 1024;
 // empty probe (the phone asking whether anything answers here) is not counted.
 const PAIR_CLAIM_BUCKET = { capacity: 5, refillMs: 10_000 };
 
-// The free chat's limits (H1): one answer at a time per credential, and a
-// conversation no longer than a local model could read anyway.
+// The free chat's body cap (H1); its other limits live with the chat itself
+// (freeChat.ts), so the desktop's own window holds the same ones.
 const CHAT_BODY_MAX_BYTES = 1024 * 1024;
-const CHAT_MAX_MESSAGES = 200;
-const CHAT_MAX_TEXT_BYTES = 512 * 1024;
-/** How long /chat waits for the model list before letting the model through. */
-const CHAT_MODEL_LIST_TIMEOUT_MS = 3_000;
 
 // Session retention (H1): checked when the daemon starts and once a day.
 const RETENTION_EVERY_MS = 24 * 60 * 60_000;
@@ -855,155 +816,46 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     }
 
     // Free, read-only chat with the desktop's LOCAL models (the free tier the
-    // C-suite approved). This path instantiates NONE of the acting machinery:
-    // no AgentSession, no LocalDriver, no ToolRegistry, no command lane, no
-    // outbox, no journal, no cloud escalation. It builds only a provider and
-    // streams one completion, so it physically cannot read, edit, run, or
-    // commit. Member-auth, same bearer gate as everything else.
+    // C-suite approved). The answer comes from the one free chat function
+    // (freeChat.ts), which instantiates none of the acting machinery and
+    // leaves no session; this route only writes its events as server sent
+    // events. Member-auth, same bearer gate as everything else.
     if (req.method === 'POST' && url.pathname === '/chat') {
       const body = await readJson(req, CHAT_BODY_MAX_BYTES);
-      const rawMessages = Array.isArray(body.messages) ? body.messages : undefined;
-      if (!rawMessages) {
-        sendJson(res, 400, { error: 'Send {"messages": [{"role","content"}, ...]}.' });
-        return;
-      }
-      // A conversation no local model could read in one go is refused whole
-      // (H1), before any model is asked.
-      if (
-        rawMessages.length > CHAT_MAX_MESSAGES ||
-        chatTextBytes(rawMessages) > CHAT_MAX_TEXT_BYTES
-      ) {
-        sendJson(res, 413, {
-          error: 'This conversation is too long to send in one go. Start a new chat to keep going.',
-        });
-        return;
-      }
-      // One answer at a time per credential (H1): a second request while the
-      // first still streams would make the model answer twice at once.
-      const holder = `${auth.source}:${auth.userId}:${auth.label}`;
-      if (chatsInFlight.has(holder)) {
-        sendJson(res, 409, {
-          error:
-            'Your computer is still answering your last message. Wait for it to finish, or stop it, then send again.',
-        });
-        return;
-      }
-      chatsInFlight.add(holder);
-      try {
-        // Load the config fresh (like bootstrapSession) so this reflects the
-        // user's actual stack, not the snapshot the daemon started with.
-        const chatConfig = loadConfig().config;
-        // Guarded like every other path: the registry hands out ethics-wrapped
-        // providers, and blocks here are journaled on this machine.
-        const providers = new ProviderRegistry(chatConfig, getAnthropicKey, engineEthicsContext());
-        let orchestrator;
-        try {
-          orchestrator = resolveStack(chatConfig, providers).orchestrator;
-        } catch (err) {
-          sendJson(res, 400, {
-            error: `No local model to chat with: ${(err as Error).message}`,
-          });
-          return;
-        }
-        // Pin to local: a free surface never spends the user's cloud budget, and
-        // "local" means on this computer's own network, by address.
-        if (leavesThisNetwork(orchestrator.provider)) {
-          sendJson(res, 400, {
-            error:
-              'Free desktop chat runs your local models. Set a local orchestrator in your stack.',
-          });
-          return;
-        }
-        const model =
-          typeof body.model === 'string' && body.model ? body.model : orchestrator.ref.model;
-        // A model the phone names is checked against what this computer
-        // serves, when the server can say (H1); an unknown list lets it pass.
-        if (
-          model !== orchestrator.ref.model &&
-          !(await modelServed(orchestrator.provider, model))
-        ) {
-          sendJson(res, 400, {
-            error: `That model is not on your computer: ${model}. Pick one from your Stack.`,
-          });
-          return;
-        }
-        // Client system turns are dropped below; the chat's context rides its
-        // own capped field instead (desktopChatSystem).
-        // Chain of Thought from the app (off unless it says on): a native
-        // reasoner is asked through its API, any other model is prompted to
-        // think in tags, and the splitter below keeps tags out of the answer.
-        const cot = body.chainOfThought === true;
-        const system = desktopChatSystem(body.context, body.search === true);
-        const turns = rawMessages
-          .filter(
-            (m: unknown): m is { role: string; content: string } =>
-              Boolean(m) &&
-              typeof (m as { content?: unknown }).content === 'string' &&
-              ['user', 'assistant'].includes((m as { role?: unknown }).role as string),
-          )
-          .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
-        const controller = new AbortController();
-        req.on('close', () => controller.abort());
+      // The phone going away (a Stop, a lost link) stops the model. The
+      // response's close is the signal: the request's own close has already
+      // fired once its body was read.
+      const controller = new AbortController();
+      res.on('close', () => controller.abort());
+      const events = freeChat(body, {
+        signal: controller.signal,
+        // One answer at a time per credential (H1).
+        lane: { key: `${auth.source}:${auth.userId}:${auth.label}`, busy: chatsInFlight },
         // The vault context pack (Vault M5, CTO J6), built here over the
         // caller's own root so the phone never ships note bodies to this
-        // computer and back. Only when the app asks (an old app sends no
-        // vaultPack) and Memory is on; the class's mode, the served window and
-        // `vault.context` decide the rest, as in a session.
-        const chatPack = await desktopChatPack(body, {
-          auth,
-          config: chatConfig,
-          model,
-          provider: orchestrator.provider,
-          turns,
-          signal: controller.signal,
-        });
-        let systemText =
-          cot && !reasonsNatively(model) ? `${system}\n\n${chainOfThoughtPrompt()}` : system;
-        // The pack is the last system part (CTO J16): volatile, so it trails.
-        if (chatPack.text) systemText = `${systemText}\n\n${chatPack.text}`;
-        const messages: ChatMessage[] = [{ role: 'system', content: systemText }, ...turns];
-        res.writeHead(200, {
-          'content-type': 'text/event-stream',
-          'cache-control': 'no-cache',
-          connection: 'keep-alive',
-          ...CORS_HEADERS,
-        });
-        // The card line goes before the first text, like the engine's event.
-        if (chatPack.event) res.write(`data: ${JSON.stringify(chatPack.event)}\n\n`);
-        try {
-          const splitter = new ThinkTagSplitter();
-          const send = (pieces: ThoughtPiece[]) => {
-            for (const p of pieces) {
-              if (p.kind === 'text') {
-                res.write(`data: ${JSON.stringify({ type: 'text', delta: p.text })}\n\n`);
-              } else if (cot) {
-                res.write(`data: ${JSON.stringify({ type: 'thinking', delta: p.text })}\n\n`);
-              }
-            }
-          };
-          for await (const ev of orchestrator.provider.chat(
-            { model, messages, reasoning: cot ? 'on' : 'off' },
-            controller.signal,
-          )) {
-            // Tools are never sent, so a tool-call event cannot occur; only text
-            // (and, with Chain of Thought on, the thinking) is streamed. Anything
-            // else is ignored, keeping the surface inert.
-            if (ev.type === 'text' && ev.delta) send(splitter.push(ev.delta));
-            else if (ev.type === 'thinking' && ev.delta && cot) {
-              res.write(`data: ${JSON.stringify({ type: 'thinking', delta: ev.delta })}\n\n`);
-            }
-          }
-          send(splitter.end());
-          res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
-        } catch (err) {
-          res.write(
-            `data: ${JSON.stringify({ type: 'error', message: (err as Error).message })}\n\n`,
-          );
+        // computer and back.
+        pack: (ctx) => desktopChatPack(body, { auth, ...ctx }),
+      });
+      for await (const ev of events) {
+        if (ev.type === 'refused') {
+          sendJson(res, ev.status, { error: ev.error });
+          return;
         }
-        res.end();
-      } finally {
-        chatsInFlight.delete(holder);
+        if (!res.headersSent) {
+          res.writeHead(200, {
+            'content-type': 'text/event-stream',
+            'cache-control': 'no-cache',
+            connection: 'keep-alive',
+            ...CORS_HEADERS,
+          });
+          // Say at once that the answer is on its way: a local model can take
+          // a while to its first word.
+          res.flushHeaders();
+        }
+        if (ev.type === 'open') continue;
+        res.write(`data: ${JSON.stringify(ev)}\n\n`);
       }
+      res.end();
       return;
     }
     // ---- Crew routines: the roster of unattended jobs and their runs. ----
@@ -1919,14 +1771,7 @@ function effectiveRemoteMode(requested: PermissionMode | undefined): {
  */
 async function desktopChatPack(
   body: Record<string, unknown>,
-  o: {
-    auth: AuthContext;
-    config: OscConfig;
-    model: string;
-    provider: Provider;
-    turns: ReadonlyArray<{ role: 'user' | 'assistant'; content: string }>;
-    signal: AbortSignal;
-  },
+  o: { auth: AuthContext } & FreeChatPackContext,
 ): Promise<Awaited<ReturnType<typeof buildChatPack>>> {
   const ask = body.vaultPack;
   if (body.memory === false || !ask || typeof ask !== 'object' || Array.isArray(ask)) return {};
@@ -2018,38 +1863,6 @@ class BodyTooLarge extends Error {
       }).`,
     );
   }
-}
-
-/** The text a /chat request carries, in bytes, over every message's content. */
-function chatTextBytes(messages: unknown[]): number {
-  let total = 0;
-  for (const m of messages) {
-    const content = (m as { content?: unknown } | null)?.content;
-    if (typeof content === 'string') total += Buffer.byteLength(content, 'utf8');
-  }
-  return total;
-}
-
-/** Whether the provider serves this model, by its own list. A list it cannot
- *  give (an error, a timeout, an empty answer) lets the model through: the
- *  check guards a typo, it never blocks a working chat on a slow server. An
- *  Ollama name without a tag means `:latest`. */
-async function modelServed(provider: Provider, model: string): Promise<boolean> {
-  let listed: string[] = [];
-  try {
-    listed = await Promise.race([
-      provider.listModels(),
-      new Promise<string[]>((resolve) => {
-        const timer = setTimeout(() => resolve([]), CHAT_MODEL_LIST_TIMEOUT_MS);
-        timer.unref?.();
-      }),
-    ]);
-  } catch {
-    return true;
-  }
-  if (!listed.length) return true;
-  const norm = (m: string): string => (m.includes(':') ? m : `${m}:latest`);
-  return listed.some((m) => m === model || norm(m) === norm(model));
 }
 
 async function readJson(
