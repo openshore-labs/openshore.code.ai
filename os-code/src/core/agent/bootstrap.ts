@@ -546,7 +546,8 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   // of answering with amnesia, and tell the client the session was restored.
   if (options.sessionId) {
     const journal = driver.replayEvents();
-    const seeded = seedHistoryFromEvents(journal);
+    // With the sequence numbers, so the turns a rewind took back stay out (P2).
+    const seeded = seedHistoryFromEvents(driver.replayJournal());
     if (seeded.length) {
       agent.history = seeded;
       driver.emit({ type: 'status', message: 'Reconnected to this session after a restart.' });
