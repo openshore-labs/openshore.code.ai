@@ -2311,6 +2311,7 @@ export class StackDriver implements ChatDriver {
   ): Promise<Extract<ProviderEvent, { type: 'done' }>> {
     let started = false;
     let done: Extract<ProviderEvent, { type: 'done' }> | undefined;
+    let sources: Extract<ProviderEvent, { type: 'sources' }>['citations'] = [];
     const show = (text: string) => this.showAnswer(searchable ? this.search.push(text) : text);
     for await (const ev of client.stream(messages, tools, this.abortController?.signal)) {
       if (this.aborted) throw abortError();
@@ -2319,10 +2320,14 @@ export class StackDriver implements ChatDriver {
         if (!started && round > 0 && this.answer && !this.answer.endsWith('\n')) show('\n\n');
         started = true;
         show(ev.text);
-      } else if (ev.type === 'done') done = ev;
+      } else if (ev.type === 'sources') sources = ev.citations;
+      else if (ev.type === 'done') done = ev;
     }
     if (this.aborted) throw abortError();
     if (!done) throw new RouteUnavailable('The reply ended before it finished.');
+    // A Perplexity seat's sources, once per round, the way its direct chat
+    // shows them; a provider with none says nothing.
+    if (sources.length) this.emit({ type: 'citations', citations: sources });
     return done;
   }
 

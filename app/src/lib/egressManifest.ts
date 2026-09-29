@@ -154,7 +154,7 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'cloud-models',
     recipient: 'Your cloud providers',
-    what: 'Your chat, to Anthropic, OpenAI, Google, or Moonshot, on your own key. The amber pill marks every turn that goes.',
+    what: 'Your chat, to Anthropic, OpenAI, Google, Moonshot, or Perplexity, on your own key. The amber pill marks every turn that goes.',
     when: 'Only when you pick a cloud model, and only that turn.',
     start: 'off',
     hosts: [
@@ -162,6 +162,7 @@ export const EGRESS: EgressEntry[] = [
       'api.openai.com',
       'generativelanguage.googleapis.com',
       'api.moonshot.ai',
+      'api.perplexity.ai',
     ],
   },
   {
