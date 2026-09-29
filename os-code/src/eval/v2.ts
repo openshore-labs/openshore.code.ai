@@ -103,6 +103,13 @@ export interface DriveTrace {
   /** Input tokens written to the provider's prompt cache, summed the same
    *  way (Anthropic's `cache_creation_input_tokens`). */
   cacheWriteTokens?: number;
+  /** Each turn's served prompt against the loop's own estimate of it (C1),
+   *  in order: `read` is what the server said it took in (cache reads and
+   *  writes included), `estimated` what the loop counted it sent. A turn
+   *  read under `TRUNCATION_RATIO` of its estimate was cut by the server
+   *  (`looksTruncated`). Absent when no turn carried an estimate. The served
+   *  window gate (`--num-ctx auto|off`) closes on these. */
+  promptWindow?: Array<{ read: number; estimated: number }>;
   /** Tokens the context pack took, summed over its `context-pack` events.
    *  0 when the pack ran and was empty; absent when no pack event came. */
   packTokens?: number;
@@ -402,14 +409,19 @@ const VAULT_NOTE_LAYERS: ReadonlySet<string> = new Set(['pin', 'search', 'link']
 /** The trace fields `vaultTraceFields` reads. */
 export type VaultTraceFields = Pick<
   DriveTrace,
-  'promptTokens' | 'cacheReadTokens' | 'cacheWriteTokens' | 'packTokens' | 'packNotes'
+  | 'promptTokens'
+  | 'cacheReadTokens'
+  | 'cacheWriteTokens'
+  | 'packTokens'
+  | 'packNotes'
+  | 'promptWindow'
 >;
 
 /** The vault trace fields read off a run's events, for a drive to merge into
  *  its trace: every input token sent (summed over `usage` events), the prompt
  *  cache's reads and writes (summed over the `usage` events that carry them),
- *  the pack's tokens (summed over `context-pack` events) and the notes it
- *  used. Pure, so the CLI and the tests read the events the same way. */
+ *  each turn's served prompt against its estimate (C1), the pack's tokens
+ *  (summed over `context-pack` events) and the notes it used. Pure, so the CLI and the tests read the events the same way. */
 export function vaultTraceFields(events: readonly AgentEvent[]): VaultTraceFields {
   let promptTokens = 0;
   let sawUsage = false;
@@ -418,12 +430,17 @@ export function vaultTraceFields(events: readonly AgentEvent[]): VaultTraceField
   let packTokens = 0;
   let sawPack = false;
   const notes: string[] = [];
+  const promptWindow: Array<{ read: number; estimated: number }> = [];
   for (const e of events) {
     if (e.type === 'usage') {
       sawUsage = true;
       promptTokens += e.promptTokens;
       if (e.cacheReadTokens !== undefined) cacheRead = (cacheRead ?? 0) + e.cacheReadTokens;
       if (e.cacheWriteTokens !== undefined) cacheWrite = (cacheWrite ?? 0) + e.cacheWriteTokens;
+      if (e.estimatedPromptTokens !== undefined) {
+        const read = e.promptTokens + (e.cacheReadTokens ?? 0) + (e.cacheWriteTokens ?? 0);
+        promptWindow.push({ read, estimated: e.estimatedPromptTokens });
+      }
     } else if (e.type === 'context-pack') {
       sawPack = true;
       packTokens += e.tokens;
@@ -439,6 +456,7 @@ export function vaultTraceFields(events: readonly AgentEvent[]): VaultTraceField
   if (sawUsage) out.promptTokens = promptTokens;
   if (cacheRead !== undefined) out.cacheReadTokens = cacheRead;
   if (cacheWrite !== undefined) out.cacheWriteTokens = cacheWrite;
+  if (promptWindow.length) out.promptWindow = promptWindow;
   if (sawPack) {
     out.packTokens = packTokens;
     out.packNotes = notes;

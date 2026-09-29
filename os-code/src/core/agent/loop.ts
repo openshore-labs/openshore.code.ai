@@ -12,7 +12,13 @@ import type { ChatMessage, ContentPart, Provider, ToolCallRequest } from '../../
 import { leavesThisNetwork, ProviderError } from '../../providers/types.js';
 import { adapterFor, type ModelAdapter } from '../../providers/adapters/index.js';
 import type { DelegatedUsage, Router } from '../../router/router.js';
-import type { ApprovedPreview, ToolContext, ToolDef, ToolRegistry } from '../tools/index.js';
+import {
+  capContent,
+  type ApprovedPreview,
+  type ToolContext,
+  type ToolDef,
+  type ToolRegistry,
+} from '../tools/index.js';
 import { effectiveMode } from './modes.js';
 import { uxStandardPrompt } from './uxStandard.js';
 import { humanizerStandardPrompt } from './humanizerStandard.js';
@@ -43,7 +49,12 @@ import { Guardrails } from '../guardrails/index.js';
 import { Jail, JailViolation } from '../security/jail.js';
 import type { SecurityProfile } from '../security/profiles.js';
 import { redactSecrets } from '../security/redaction.js';
-import { compactHistory, estimateMessages, estimateTokens } from '../../context/compaction.js';
+import {
+  compactHistory,
+  estimateMessages,
+  estimateTokens,
+  estimateToolSpecs,
+} from '../../context/compaction.js';
 import { UsageTracker } from '../../auth/usage.js';
 import type {
   AgentEvent,
@@ -87,6 +98,14 @@ import type { HarnessCurrentsHandle } from '../../currents/model.js';
 import type { ToolSpec } from '../../providers/types.js';
 import { MERGED_VAULT_TOOL, seatOffersVaultTool, withVaultLookupPriority } from './registry.js';
 import { DEFAULT_VAULT_READ_CAP_CHARS } from '../tools/vaultFind.js';
+import {
+  OBSERVATION_SLACK_CHARS,
+  WindowWatch,
+  nextFailStreak,
+  platformWord,
+  seatObservationCap,
+  type CallOutcome,
+} from './window.js';
 import { logger } from '../../util/log.js';
 
 const log = logger('agent');
@@ -310,9 +329,10 @@ export class AgentSession {
   /** What the last context-pack card said, so it is shown again only when
    *  the pack changed (an escalation re-renders for the cloud seat). */
   private packCardShown?: string;
-  /** A write this task landed in the vault (vaultWrite, or a file tool inside
-   *  the vault). A note is not code: it never triggers verify or the judge. */
-  private vaultWroteThisTask = false;
+  /** A write this task landed in a note: the vault (vaultWrite, or a file
+   *  tool inside the vault) or the project's memory notes. A note is not
+   *  code: it never triggers verify or the judge. */
+  private noteWroteThisTask = false;
   /** The seat wrote Current State itself this task, so the harness does not
    *  add its own line on top (CTO I12). */
   private seatWroteCurrentState = false;
@@ -321,6 +341,11 @@ export class AgentSession {
   /** What the last handoff was built from, so an unchanged chat (a dispose
    *  right after a completed task) is not written again. */
   private handoffSignature?: string;
+  /** Says once per chat per model when a server cut the prompt (C1). */
+  private windowWatch = new WindowWatch();
+  /** What the last turn's native tool specs cost in the prompt, so the
+   *  context meter counts them as the budget does. */
+  private toolTokens = 0;
 
   constructor(private readonly deps: AgentDeps) {
     const orchestrator = deps.router.orchestrator();
@@ -356,9 +381,16 @@ export class AgentSession {
       ...(leavesThisNetwork(this.active.provider) ? { provider: this.active.provider.label } : {}),
     });
     // A vault read is capped per class (the seat answering now), past which it
-    // returns the outline and asks for a section (CTO I11).
+    // returns the outline and asks for a section (CTO I11), and never past
+    // what one observation may carry in the seat's served window (C1).
     deps.toolContext.vaultReadCapChars = () =>
-      this.modelProfile?.vaultReadCapChars ?? DEFAULT_VAULT_READ_CAP_CHARS;
+      Math.min(
+        this.modelProfile?.vaultReadCapChars ?? DEFAULT_VAULT_READ_CAP_CHARS,
+        this.observationCap(),
+      );
+    // One observation is capped by the seat's share of its served window, so a
+    // single file read never outgrows the window it lands in (C1).
+    deps.toolContext.observationCapChars = () => this.observationCap();
     deps.toolContext.noteUsage = (usage: DelegatedUsage) => {
       this.recordUsage(usage.model, usage.kind, usage.promptTokens, usage.completionTokens);
     };
@@ -523,6 +555,10 @@ export class AgentSession {
       role: 'user',
       content: verifyRetryPrompt(result, round, maxRetries),
     });
+    // The model is asked to fix the cause, which takes tools: an answer-only
+    // turn left over from repeats before the check would withhold them for
+    // every retry, and the calls before it are no longer stale.
+    this.clearRepeatState();
     return 'retry';
   }
 
@@ -948,7 +984,7 @@ export class AgentSession {
     const { toolContext, codeMap } = this.deps;
     // The prompt names only tools this seat is offered, so a lean seat is never
     // told to reach for one it cannot see.
-    const offered = this.offeredToolNames(toolMode);
+    const offered = this.offeredToolNames();
     // A lean seat (a small or tiny class) gets a short, direct core. The full
     // core below is written for a capable model working with a person: report
     // like a colleague, ask before touching something that works, open with a
@@ -959,7 +995,7 @@ export class AgentSession {
     const parts = this.leanSeat
       ? [
           "You are OS Code, a careful coding agent running on the user's own machine.",
-          `Workspace root: ${toolContext.cwd} (platform: linux). All file paths are relative to it.`,
+          `Workspace root: ${toolContext.cwd} (platform: ${platformWord()}). All file paths are relative to it.`,
           'Do the task yourself with the tools. Read a file with readFile. Change part of a file with editFile: give path, search (exact lines copied from the file) and replace (their replacement). Write a whole file with writeFile. Never ask for permission or confirmation; make the change.',
           `A tool result is shown to you once; do not repeat a call whose result you already have. Do not check git status or use any git tool unless the task itself is about version control or commits, most tasks need none of that.${
             offered.has('runShell')
@@ -970,7 +1006,7 @@ export class AgentSession {
         ]
       : [
           "You are OS Code, a careful, capable coding agent running on the user's own machine.",
-          `Workspace root: ${toolContext.cwd} (platform: linux). All file paths are relative to it.`,
+          `Workspace root: ${toolContext.cwd} (platform: ${platformWord()}). All file paths are relative to it.`,
           'Work step by step: inspect before you change, prefer small precise edits (editFile), and verify with the available tools.',
           'Use webSearch and webFetch for anything after your knowledge cutoff or specific to a library version.',
           'When the task is complete, answer with plain text: what you did, what you verified, and anything the user should know. Be concise and concrete.',
@@ -1087,8 +1123,11 @@ export class AgentSession {
       packAt = parts.length ? parts.join('\n\n').length + 2 : 0;
       parts.push(this.currentPack.text);
     }
+    // The text bridge lists the same menu native tools get (a lean seat's
+    // few, plan mode's read side), in terse lines for a lean seat, rather
+    // than every schema in the registry (C1).
     if (toolMode === 'text') {
-      parts.push(textProtocolInstructions(this.deps.tools));
+      parts.push(textProtocolInstructions(this.toolSpecs(), { terse: this.leanSeat }));
     }
     const content = this.active.adapter.systemPreamble(parts.join('\n\n'));
     return packAt !== undefined && packAt > 0 && packAt < content.length
@@ -1112,14 +1151,13 @@ export class AgentSession {
     this.readLocalOnlyThisTask = false;
     this.noWriteNudged = false;
     this.attemptedWriteThisTask = false;
-    this.repeatLog.clear();
+    this.clearRepeatState();
     this.lastChangeStep = 0;
     this.callStep = 0;
-    this.answerOnly = false;
     this.touched.clear();
     this.attempt = 1;
     this.transientRetries = 0;
-    this.vaultWroteThisTask = false;
+    this.noteWroteThisTask = false;
     this.seatWroteCurrentState = false;
     this.landedNoted = false;
     this.prepared = undefined;
@@ -1217,12 +1255,18 @@ export class AgentSession {
       // The class sets how full the window gets before this runs (I2). On a
       // leaving seat the summary itself is a request off this network, so it
       // is built from the stubbed history, never from a local-only note.
+      // The native tool specs ride in the prompt too, so they count against
+      // the same budget (C1); an answer-only turn sends none.
+      const offeredTools = toolMode === 'native' && !this.answerOnly ? this.toolSpecs() : undefined;
+      const toolTokens = estimateToolSpecs(offeredTools);
+      this.toolTokens = toolTokens;
       const beforeCompaction = this.history;
       const compacted = await compactHistory(
         leaves ? withholdLocalOnly(this.history) : this.history,
         caps.contextTokens,
         (text) => this.summarize(text, this.abortController?.signal),
         this.modelProfile?.compactAtContextFraction,
+        toolTokens,
       );
       if (compacted.compacted) {
         this.history = compacted.messages;
@@ -1267,13 +1311,17 @@ export class AgentSession {
       // wins like the counts; undefined when the provider reports none.
       let cacheReadTokens: number | undefined;
       let cacheWriteTokens: number | undefined;
+      // What this turn sends, and the loop's estimate of it (messages, tool
+      // specs, template), to hold against what the server says it read.
+      const sent = leaves ? withholdLocalOnly(this.history) : this.history;
+      const estimatedPromptTokens = estimateMessages(sent) + toolTokens;
 
       try {
         const stream = this.active.provider.chat(
           {
             model: this.active.model,
-            messages: leaves ? withholdLocalOnly(this.history) : this.history,
-            tools: toolMode === 'native' && !this.answerOnly ? this.toolSpecs() : undefined,
+            messages: sent,
+            tools: offeredTools,
             temperature: this.active.adapter.temperature(),
             maxTokens: 8192,
             stop: this.active.adapter.stopTokens().length
@@ -1342,8 +1390,17 @@ export class AgentSession {
         this.active.provider.kind,
         promptTokens,
         completionTokens,
-        { cacheReadTokens, cacheWriteTokens },
+        { cacheReadTokens, cacheWriteTokens, estimatedPromptTokens },
       );
+      // A server that read back far less than was sent cut the chat to fit a
+      // smaller window, without a word: say so, once per chat per model.
+      const cut = await this.windowWatch.check(
+        this.active.provider,
+        this.active.model,
+        promptTokens + (cacheReadTokens ?? 0) + (cacheWriteTokens ?? 0),
+        estimatedPromptTokens,
+      );
+      if (cut) this.emit(cut);
 
       // ------------------------------------------------------------------
       // Turn resolution: tool calls, a final answer, or a repair pass.
@@ -1450,7 +1507,7 @@ export class AgentSession {
           this.leanSeat &&
           this.mode !== 'plan' &&
           !this.wroteThisTask &&
-          !this.vaultWroteThisTask &&
+          !this.noteWroteThisTask &&
           !this.noWriteNudged &&
           !this.answerOnly &&
           (hasCode || this.attemptedWriteThisTask)
@@ -1535,7 +1592,7 @@ export class AgentSession {
       }
 
       // Execute the calls in order.
-      let sawFailure = false;
+      const outcomes: CallOutcome[] = [];
       const answered = new Set<string>();
       for (const call of calls) {
         const observation = await this.executeCall(call, recordMode);
@@ -1556,10 +1613,14 @@ export class AgentSession {
           return;
         }
         answered.add(call.id);
-        if (observation === 'failed') sawFailure = true;
+        outcomes.push(observation);
       }
-      parseFailStreak = sawFailure ? parseFailStreak + 1 : 0;
-      if (sawFailure && (await this.maybeEscalate(parseFailStreak))) {
+      // Only a call that ran and failed, or one the model could not form,
+      // says the model is struggling; a decline, a plan-mode or policy
+      // refusal, and a repeat answered from the record do not (C1).
+      const struggling = outcomes.includes('failed') || problems.length > 0;
+      parseFailStreak = nextFailStreak(parseFailStreak, outcomes, problems.length);
+      if (struggling && (await this.maybeEscalate(parseFailStreak))) {
         continue;
       }
     }
@@ -1572,7 +1633,7 @@ export class AgentSession {
   private async executeCall(
     call: ParsedToolCall,
     toolMode: 'native' | 'text',
-  ): Promise<'ok' | 'failed' | 'aborted'> {
+  ): Promise<CallOutcome | 'aborted'> {
     const { tools, permissions, guardrails, toolContext, profile } = this.deps;
     const tool = tools.get(call.name)!;
 
@@ -1613,7 +1674,7 @@ export class AgentSession {
             'Stop calling tools. Reply now with your final answer in plain text, using what you already have.',
         });
       }
-      return 'failed';
+      return 'refused';
     }
 
     // The path a permission rule sees is the workspace-relative one the jail
@@ -1638,7 +1699,7 @@ export class AgentSession {
             `Denied: ${err.message} Use a path inside the workspace.`,
             toolMode,
           );
-          return 'failed';
+          return 'refused';
         }
       }
     }
@@ -1655,6 +1716,14 @@ export class AgentSession {
     // A write to a note (vaultWrite, or a file tool aimed inside the vault) is
     // not a code change: it never counts toward verify or the Jev judge (4.5).
     const writesVault = tool.risk === 'write' && (tool.pathJail === 'own' || writesInsideVault);
+    // A write to one of the project's memory notes (projectMemoryWrite, or a
+    // file tool aimed at one) is a note too: the same predicate changedFiles
+    // uses, so a memory-only task runs no check and no judge (C1).
+    const writesMemory =
+      tool.risk === 'write' &&
+      !writesVault &&
+      path !== undefined &&
+      isMemoryFilePath(path.split('\\').join('/'));
     const command = tool.commandOf?.(call.args);
     let decision = permissions.decide({
       toolName: call.name,
@@ -1680,7 +1749,7 @@ export class AgentSession {
         'Not run: plan mode is read only. Finish investigating and answer with the plan; the person approves it before anything is changed.',
         toolMode,
       );
-      return 'failed';
+      return 'refused';
     }
     if (
       decision.decision === 'ask' &&
@@ -1700,7 +1769,7 @@ export class AgentSession {
       const reason = `${call.name} is denied by your permission policy (${decision.reason}).`;
       this.emit({ type: 'tool-denied', call, reason });
       this.pushObservation(call, `Denied: ${reason} Choose a different approach.`, toolMode);
-      return 'failed';
+      return 'refused';
     }
 
     // What the person approves, kept for execute: a tool whose preview names
@@ -1764,12 +1833,12 @@ export class AgentSession {
             'The user declined this action. Do not retry it as-is; adjust the approach or ask what they would prefer.',
           toolMode,
         );
-        return 'failed';
+        return 'refused';
       }
     }
 
     if (tool.risk === 'write' && !writesVault) {
-      this.attemptedWriteThisTask = true;
+      if (!writesMemory) this.attemptedWriteThisTask = true;
       if (rawPath !== undefined && tool.pathJail !== 'own') this.recordOriginal(rawPath);
     }
     this.emit({ type: 'tool-start', call });
@@ -1791,7 +1860,7 @@ export class AgentSession {
     // there is something to verify. Any successful call that is not a read may
     // have changed the workspace (a write, a shell command), so a repeat of an
     // earlier call after it is a fresh question, not a stale one.
-    if (result.ok && writesVault) this.vaultWroteThisTask = true;
+    if (result.ok && (writesVault || writesMemory)) this.noteWroteThisTask = true;
     else if (result.ok && tool.risk === 'write') this.wroteThisTask = true;
     if (
       result.ok &&
@@ -1809,7 +1878,12 @@ export class AgentSession {
       this.emit({ type: 'todos', items: this.todos });
     }
     if (result.citations?.length) this.emit({ type: 'citations', citations: result.citations });
-    this.pushObservation(call, redactSecrets(result.content), toolMode, result.localOnly);
+    this.pushObservation(
+      call,
+      this.fitObservation(redactSecrets(result.content)),
+      toolMode,
+      result.localOnly,
+    );
     return result.ok ? 'ok' : 'failed';
   }
 
@@ -1909,8 +1983,7 @@ export class AgentSession {
     this.wroteThisTask = false;
     this.attemptedWriteThisTask = false;
     this.noWriteNudged = false;
-    this.answerOnly = false;
-    this.repeatLog.clear();
+    this.clearRepeatState();
     this.lastChangeStep = this.callStep;
     this.todos = [];
     this.history = [this.taskMessage];
@@ -1920,6 +1993,15 @@ export class AgentSession {
       message: `The check did not pass and the retries are spent. Restored the ${this.touched.size} file${this.touched.size === 1 ? '' : 's'} this attempt touched and starting attempt ${this.attempt} of ${allowance} from the original task.`,
     });
     return true;
+  }
+
+  /** Forget the repeats seen so far and give tools back: at a task's start, a
+   *  fresh attempt, and a verify retry, where the model is asked to change
+   *  something and the calls before are no longer stale. Every piece of
+   *  repeat state is cleared here, so a new detector adds its own line. */
+  private clearRepeatState(): void {
+    this.answerOnly = false;
+    this.repeatLog.clear();
   }
 
   /** Record this call for repeat detection. Returns false when it should run,
@@ -2110,15 +2192,12 @@ export class AgentSession {
     return this.limitToolSpecs(specs);
   }
 
-  /** The tools this seat is offered, by name, for the system prompt: the whole
-   *  registry in text mode (the protocol lists every tool), otherwise what
-   *  survives the seat's cut. Plan mode is left out on purpose: its own block
-   *  tells the model the write tools wait for an approved plan. */
-  private offeredToolNames(toolMode: 'native' | 'text'): Set<string> {
-    const specs = this.deps.tools.specs();
-    return new Set(
-      (toolMode === 'text' ? specs : this.limitToolSpecs(this.vaultMenu(specs))).map((s) => s.name),
-    );
+  /** The tools this seat is offered, by name, for the system prompt: what
+   *  survives the seat's cut, in either tool mode (the text bridge lists the
+   *  same menu). Plan mode is left out on purpose: its own block tells the
+   *  model the write tools wait for an approved plan. */
+  private offeredToolNames(): Set<string> {
+    return new Set(this.limitToolSpecs(this.vaultMenu(this.deps.tools.specs())).map((s) => s.name));
   }
 
   /** One way into the vault per seat (CTO I11): a class with
@@ -2131,6 +2210,20 @@ export class AgentSession {
     if (!specs.some((s) => s.name === MERGED_VAULT_TOOL)) return specs;
     const merged = this.modelProfile?.mergedVaultTool ?? false;
     return specs.filter((s) => seatOffersVaultTool(s.name, merged));
+  }
+
+  /** The most characters one observation carries for the seat answering
+   *  now: its class's share of the served window (C1). */
+  private observationCap(): number {
+    return seatObservationCap(this.modelProfile, this.contextTokens);
+  }
+
+  /** An observation cut to the seat's cap when a tool did not size its own
+   *  output to it (a shell's stdout, a grep), keeping its head and tail with
+   *  a plain note of what was left out. The tool-end event keeps it whole. */
+  private fitObservation(content: string): string {
+    const cap = this.observationCap();
+    return content.length > cap + OBSERVATION_SLACK_CHARS ? capContent(content, cap) : content;
   }
 
   /** Keep at most `maxToolsShown` specs for the active profile, most useful
@@ -2192,7 +2285,11 @@ export class AgentSession {
     kind: 'local' | 'cloud',
     promptTokens: number,
     completionTokens: number,
-    cache: { cacheReadTokens?: number; cacheWriteTokens?: number } = {},
+    cache: {
+      cacheReadTokens?: number;
+      cacheWriteTokens?: number;
+      estimatedPromptTokens?: number;
+    } = {},
   ): number {
     this.deps.guardrails.noteTokens(promptTokens + completionTokens);
     let dollars = 0;
@@ -2201,7 +2298,12 @@ export class AgentSession {
       this.deps.guardrails.noteDollars(dollars);
     }
     const contextPercent = this.contextTokens
-      ? Math.min(100, Math.round((estimateMessages(this.history) / this.contextTokens) * 100))
+      ? Math.min(
+          100,
+          Math.round(
+            ((estimateMessages(this.history) + this.toolTokens) / this.contextTokens) * 100,
+          ),
+        )
       : 0;
     // The cache fields ride only when the provider reported them (additive,
     // CTO J17), so the eval's DriveTrace can sum reads and writes per task.
@@ -2213,6 +2315,9 @@ export class AgentSession {
       contextPercent,
       ...(cache.cacheReadTokens !== undefined ? { cacheReadTokens: cache.cacheReadTokens } : {}),
       ...(cache.cacheWriteTokens !== undefined ? { cacheWriteTokens: cache.cacheWriteTokens } : {}),
+      ...(cache.estimatedPromptTokens !== undefined
+        ? { estimatedPromptTokens: cache.estimatedPromptTokens }
+        : {}),
     });
     return dollars;
   }

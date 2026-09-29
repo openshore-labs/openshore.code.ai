@@ -7,6 +7,7 @@ import { GLYPHS, banner, t } from '../brand/theme.js';
 import type { ApprovalRequest } from '../core/agent/types.js';
 import type { DriverEvent, SessionDriver } from '../daemon/session.js';
 import { runSlash, type SlashContext } from './slash.js';
+import { windowCutLines } from '../core/agent/window.js';
 
 export interface PlainOptions {
   driver: SessionDriver;
@@ -79,6 +80,9 @@ export async function runPlain(options: PlainOptions): Promise<void> {
         break;
       case 'note':
         out(t.warn(`${GLYPHS.bullet} ${event.message}`));
+        break;
+      case 'window-cut':
+        for (const line of windowCutLines(event)) out(t.warn(`${GLYPHS.bullet} ${line}`));
         break;
       case 'usage':
         dollars += event.dollars;

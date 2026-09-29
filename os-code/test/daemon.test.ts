@@ -47,6 +47,7 @@ function noPtyTerminals(): TerminalManager {
 import { defaultConfig } from '../src/config/load.js';
 import { mintCredential } from '../src/core/security/credentials.js';
 import { _setFakeKeychain } from '../src/auth/store.js';
+import { _resetMoreRoom } from '../src/providers/servedWindow.js';
 
 // Every session the daemon boots, with the tools it registered, its vault
 // root, its workspace, and the project it carries, so a test can check what a
@@ -268,6 +269,65 @@ describe('POST /sessions/:id/trust (project trust)', () => {
       folders: Record<string, { trust?: unknown }>;
     };
     expect(Object.values(store.folders).some((f) => Boolean(f.trust))).toBe(true);
+  });
+});
+
+// More room from the truncation card (C1, CTO 5): the owner's tap writes
+// `numCtx: 'auto'` for that provider to machine config, never a project file;
+// a member on a shared hub cannot spend the computer's memory.
+describe('POST /sessions/:id/more-room (the truncation card)', () => {
+  const realHome = process.env.HOME;
+  afterEach(() => {
+    process.env.HOME = realHome;
+    _resetMoreRoom();
+  });
+
+  it('the owner gives the provider more room in machine config; a member is refused', async () => {
+    process.env.HOME = home;
+    const provisioned = join(home, 'OSCode', 'repo');
+    mkdirSync(provisioned, { recursive: true });
+    const member = mintCredential({ role: 'member', label: 'Phone', userId: 'u_room' });
+    const memberRes = await createSessionAs(member.token, provisioned);
+    const { id: memberId } = (await memberRes.json()) as { id: string };
+    const refused = await fetch(`${base}/sessions/${memberId}/more-room`, {
+      method: 'POST',
+      headers: auth(member.token),
+      body: JSON.stringify({ provider: 'ollama' }),
+    });
+    expect(refused.status).toBe(403);
+    const before = JSON.parse(readFileSync(join(home, 'config.json'), 'utf8'));
+    expect(before.providers).toBeUndefined();
+
+    const ownerRes = await createSessionAs(adminToken, provisioned);
+    const { id } = (await ownerRes.json()) as { id: string };
+    const bad = await fetch(`${base}/sessions/${id}/more-room`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: '{}',
+    });
+    expect(bad.status).toBe(400);
+    const unknown = await fetch(`${base}/sessions/${id}/more-room`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ provider: 'nope' }),
+    });
+    expect(unknown.status).toBe(409);
+    const given = await fetch(`${base}/sessions/${id}/more-room`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ provider: 'ollama' }),
+    });
+    expect(given.status).toBe(200);
+    expect(await given.json()).toEqual({ ok: true, provider: 'ollama' });
+    // The schema's default provider is written out whole, beside what was there.
+    const after = JSON.parse(readFileSync(join(home, 'config.json'), 'utf8'));
+    expect(after.stack.orchestrator).toEqual({ provider: 'ollama', model: 'qwen' });
+    expect(after.providers.ollama).toMatchObject({
+      kind: 'openai-compatible',
+      baseUrl: 'http://localhost:11434',
+      numCtx: 'auto',
+    });
+    expect(existsSync(join(provisioned, 'os-code.config.json'))).toBe(false);
   });
 });
 

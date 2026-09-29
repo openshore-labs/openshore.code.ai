@@ -89,6 +89,11 @@ export type AgentEvent =
       cacheReadTokens?: number;
       /** Prompt tokens written to the provider's prompt cache this turn. */
       cacheWriteTokens?: number;
+      /** The loop's own estimate of the prompt this turn sent (messages, tool
+       *  specs and template), on a turn's usage only (C1). Beside the three
+       *  counts above it shows whether the server read the prompt whole, so
+       *  the eval can close the served-window gate on data. Additive. */
+      estimatedPromptTokens?: number;
     }
   | { type: 'model-switch'; model: string; providerKind: 'local' | 'cloud'; reason: string }
   | { type: 'task-done'; reason: StopReason; message?: string }
@@ -165,6 +170,25 @@ export type AgentEvent =
       state: 'untrusted' | 'changed' | 'trusted';
       folder: string;
       waiting: string[];
+    }
+  // The model's server read back far less of a turn's prompt than was sent
+  // (`looksTruncated` in context/compaction.ts): it cut the chat to fit a
+  // window smaller than the prompt, without saying so (C1). Once per chat per
+  // model, rendered as a teal card. `room` says what the card may offer:
+  // 'more' when serving the model a larger window fits this computer's memory
+  // (the "Give it more room" action, which writes `numCtx: 'auto'` for
+  // `provider`; `gb` is about what it costs, when the model says enough),
+  // 'full' when none does, absent when the window is not the harness's to set
+  // (a server other than Ollama). `read` is what the server took in, cache
+  // included; `estimated` the loop's estimate of what it sent. Additive.
+  | {
+      type: 'window-cut';
+      model: string;
+      provider: string;
+      read: number;
+      estimated: number;
+      room?: 'more' | 'full';
+      gb?: number;
     }
   | {
       type: 'harness-current';
