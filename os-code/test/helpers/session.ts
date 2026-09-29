@@ -78,6 +78,9 @@ export interface TestSessionOptions {
    *  keep a program running: off the menu in plan mode. The test sets
    *  `toolContext.processes` itself when it runs one. */
   processes?: boolean;
+  /** Register the tools a stack with a specialist, a vision seat and an image
+   *  maker gets (delegate, analyzeImage, generateImage), as bootstrap does. */
+  specialists?: boolean;
 }
 
 export function makeTestSession(
@@ -127,9 +130,9 @@ export function makeTestSession(
   const router = new Router(config, registry, stack);
   const agentRef: { current?: AgentSession } = {};
   const registryOptions = {
-    stackHasVision: false,
-    stackHasImageGen: false,
-    stackHasSpecialists: false,
+    stackHasVision: options.specialists === true,
+    stackHasImageGen: options.specialists === true,
+    stackHasSpecialists: options.specialists === true,
     // As bootstrap does: the Memory switch off leaves the tool out.
     memory: config.memory.enabled,
     ...(options.offline ? { offline: true } : {}),

@@ -89,10 +89,13 @@ export interface ToolRegistryOptions {
   // names. Undefined means on (the CLI and config's own egress rules).
   webSearch?: boolean;
   // On for a headless run (a Crew routine): every tool that reaches the
-  // network is left out, the web tools, Codemagic, and the currents' tools
-  // (CTO 3, headless means offline). A routine reads commit messages, files
-  // and notes other people wrote, and one injected line could send a secret
-  // out in a URL or a search while nobody watches. See networkToolsLeftOut.
+  // network is left out, the web tools, Codemagic, the currents' tools, and
+  // the tools that hand work to another model (a specialist, vision, image
+  // making), which may be a cloud one and are classed as reads, so nothing
+  // would ask (CTO 3, headless means offline). A routine reads commit
+  // messages, files and notes other people wrote, and one injected line could
+  // send a secret out in a URL, a search, or a subtask while nobody watches.
+  // See networkToolsLeftOut.
   offline?: boolean;
   // On when this session's host can keep a program the agent starts running
   // (bootstrap wires ToolContext.processes to the driver's command lane):
@@ -124,13 +127,26 @@ function networkTools(options: ToolRegistryOptions): ToolDef[] {
   return out;
 }
 
+/** The tools that hand work to another model the stack names (a vision
+ *  seat, an image maker, a specialist), which may be a cloud one: left out
+ *  under egress lockdown and on an offline run, like the network tools. */
+function modelHandoffTools(options: ToolRegistryOptions): ToolDef[] {
+  const out: ToolDef[] = [];
+  if (options.stackHasVision) out.push(analyzeImageTool);
+  if (options.stackHasImageGen) out.push(generateImageTool);
+  if (options.stackHasSpecialists) out.push(delegateTool);
+  return out;
+}
+
 /** The names an offline run leaves out that it would otherwise register
  *  (webSearch is listed even when declined, since a model may still reach
  *  for it), for the loop to refuse by name and the run's note to name. Empty
  *  unless `offline`. */
 export function networkToolsLeftOut(options: ToolRegistryOptions): string[] {
   if (!options.offline) return [];
-  return networkTools({ ...options, webSearch: true }).map((t) => t.name);
+  return [...networkTools({ ...options, webSearch: true }), ...modelHandoffTools(options)].map(
+    (t) => t.name,
+  );
 }
 
 export function buildToolRegistry(options: ToolRegistryOptions): ToolRegistry {
@@ -186,11 +202,10 @@ export function buildToolRegistry(options: ToolRegistryOptions): ToolRegistry {
   // Specialist-facing tools appear only when the stack can serve them, so a
   // single-model setup never tempts the model with tools that cannot work. They
   // delegate to other models (some of which may be cloud), so egress lockdown
-  // drops them too: a secrets session does its own work, on-device.
-  if (!options.egressLockdown) {
-    if (options.stackHasVision) registry.register(analyzeImageTool);
-    if (options.stackHasImageGen) registry.register(generateImageTool);
-    if (options.stackHasSpecialists) registry.register(delegateTool);
+  // drops them too: a secrets session does its own work, on-device. So does an
+  // offline run: a routine never hands the workspace to another model unasked.
+  if (!options.egressLockdown && !options.offline) {
+    for (const tool of modelHandoffTools(options)) registry.register(tool);
   }
   return registry;
 }

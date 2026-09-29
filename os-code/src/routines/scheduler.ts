@@ -111,6 +111,9 @@ const OFFLINE_WORDS: Record<string, string> = {
   askHermes: 'hand work to another agent',
   askAgent: 'hand work to another agent',
   cliAgent: 'hand work to another agent',
+  delegate: 'hand work to another model',
+  analyzeImage: 'look at images with another model',
+  generateImage: 'make images',
 };
 
 /** The run note's offline line: that the run worked offline and what that

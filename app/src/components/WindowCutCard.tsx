@@ -3,7 +3,8 @@
 // offering one action that states its cost before the tap. After the tap the
 // action gives way to what changed. Built on the context card's teal frame;
 // it arrives the way every transcript card does. Every line is from
-// lib/securityCopy.ts.
+// lib/securityCopy.ts, and the little-room variant's title and body (CTO 6:
+// even the lean prompt fills most of the window) from lib/harnessCopy.ts.
 import type { ThreadItem } from '../state/types.js';
 import { hapticCommit } from '../lib/haptics.js';
 import {
@@ -15,6 +16,7 @@ import {
   moreRoomGiven,
   windowCutTitle,
 } from '../lib/securityCopy.js';
+import { WINDOW_TIGHT_BODY, windowTightTitle } from '../lib/harnessCopy.js';
 
 export function WindowCutCard({
   item,
@@ -31,8 +33,10 @@ export function WindowCutCard({
   const giving = item.state === 'giving';
   return (
     <div className="window-cut-card" role="status">
-      <div className="window-cut-title">{windowCutTitle(item.model)}</div>
-      <p className="window-cut-body">{WINDOW_CUT_BODY}</p>
+      <div className="window-cut-title">
+        {item.tight ? windowTightTitle(item.model) : windowCutTitle(item.model)}
+      </div>
+      <p className="window-cut-body">{item.tight ? WINDOW_TIGHT_BODY : WINDOW_CUT_BODY}</p>
       {item.room === 'more' && !given ? (
         <div className="window-cut-action">
           <button

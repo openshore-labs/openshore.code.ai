@@ -154,6 +154,11 @@ const POLICY: Record<ModelClass, ModelClassPolicy> = {
   },
 };
 
+/** The tool menu a lean prompt carries when a seat runs lean for its served
+ *  window rather than its class (a mid seat served a small window): the small
+ *  class's menu, cut by the same priority. */
+export const LEAN_MAX_TOOLS_SHOWN = POLICY.small.maxToolsShown;
+
 /** A partial policy a project may set per class in config (harness.profiles). */
 export type ModelClassOverride = Partial<ModelClassPolicy>;
 

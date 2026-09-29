@@ -16,7 +16,7 @@ import { InputBox } from './input.js';
 import { findRepoCommand, runSlash, type RepoCommandList, type SlashContext } from './slash.js';
 import { nextRevealLength } from './smoothing.js';
 import { searchTranscript } from './transcriptSearch.js';
-import { windowCutLines } from '../core/agent/window.js';
+import { retrievalLine, windowCutLines, windowTightLines } from '../core/agent/window.js';
 
 export interface AppProps {
   driver: SessionDriver;
@@ -165,6 +165,12 @@ export function App(props: AppProps): React.ReactElement {
           break;
         case 'window-cut':
           push({ kind: 'note', text: windowCutLines(event).join(' ') });
+          break;
+        case 'window-tight':
+          push({ kind: 'note', text: windowTightLines(event).join(' ') });
+          break;
+        case 'retrieval':
+          push({ kind: 'status', text: retrievalLine(event) });
           break;
         case 'usage':
           setDollars((d) => d + event.dollars);

@@ -8,6 +8,7 @@ import { providerInfo } from '../lib/providers.js';
 import { isLocalOnlyFinal } from '../drivers/types.js';
 import { windowCutItem } from './securityOps.js';
 import { rewindThread } from './rewindOps.js';
+import { retrievalItem, windowTightItem } from './harnessOps.js';
 
 /** The go-ahead the app sends when a plan is approved. The reducer reads it
  *  back on replay: a task that starts with this line means the plan before
@@ -433,6 +434,15 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
       // The server cut the chat to fit (C1): a teal card once per chat per
       // model, mapped in the security package's module (CTO 9).
       return push(next, windowCutItem(event));
+
+    case 'window-tight':
+      // Even the lean prompt fills most of the window (CTO 6): the same card
+      // family, once per chat per model, mapped in the harness's module.
+      return push(next, windowTightItem(event));
+
+    case 'retrieval':
+      // The places in the code a local seat was given before its first turn.
+      return push(next, retrievalItem(event));
 
     case 'harness-current':
       // A Harness Current (Jev) made a cheap decision this turn. Shown as a

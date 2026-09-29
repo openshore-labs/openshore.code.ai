@@ -10358,6 +10358,44 @@ button.vault-tag {
   color: var(--ink);
 }
 
+/* The task-done card's verdict (the harness package): the transcript verify
+   pill's words and colors, beside the card's title. Green for a pass, the
+   warning ink for a miss (never the danger red: a miss is news, not an
+   alarm), muted for work nothing checked. A pill with a check behind it is a
+   button with the press physics; it arrives with the card, opacity and
+   transform only. */
+.changed-head-start {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+}
+.changed-verdict {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: var(--text-2);
+  font-weight: var(--weight-semibold);
+  animation: msg-in var(--dur-3) var(--ease-standard) backwards;
+}
+.changed-verdict.pass {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.changed-verdict.fail {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.changed-verdict.not-run {
+  border-color: var(--border);
+  color: var(--muted);
+  font-weight: var(--weight-medium);
+}
+
 /* Undo (v1 Phase 1). Neutral ink, never red: undo is itself reversible. The
    head's button and each row's are quiet text buttons; a file put back dims
    and strikes through, and the card's own "Undone" line fades in. Opacity

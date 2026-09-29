@@ -103,12 +103,31 @@ export interface TodoItem {
 
 export type AgentEvent =
   | { type: 'task-start'; input: string }
-  | { type: 'turn-start'; turn: number; model: string; providerKind: 'local' | 'cloud' }
+  | {
+      type: 'turn-start';
+      turn: number;
+      model: string;
+      providerKind: 'local' | 'cloud';
+      /** 'union' when this turn's reply is held to the tool-or-answer schema
+       *  (`harness.decoding.union`, CTO 6), so the eval can tell whether the
+       *  switch engaged. Additive: absent on every other turn. */
+      decoding?: 'union';
+    }
   | { type: 'text-delta'; text: string }
   | { type: 'text-final'; text: string }
   | { type: 'thinking-delta'; text: string }
   | { type: 'tool-start'; call: ParsedToolCall }
-  | { type: 'tool-end'; call: ParsedToolCall; result: ToolOutput; durationMs: number }
+  | {
+      type: 'tool-end';
+      call: ParsedToolCall;
+      result: ToolOutput;
+      durationMs: number;
+      /** Set when the harness answered this call from the record instead of
+       *  running it: the same call again with nothing changed since
+       *  ('exact'), or two calls taking turns ('alternating', CTO 6). The
+       *  eval counts these as `repeatBreaks`. Additive. */
+      repeat?: 'exact' | 'alternating';
+    }
   | { type: 'tool-denied'; call: ParsedToolCall; reason: string }
   | { type: 'citations'; citations: Citation[] }
   | { type: 'status'; message: string }
@@ -236,6 +255,32 @@ export type AgentEvent =
       estimated: number;
       room?: 'more' | 'full';
       gb?: number;
+    }
+  // Even the lean prompt fills most of the window this computer serves the
+  // model before the chat starts (the fixed prompt, the system text and the
+  // tool menu, over half the served window). Once per chat per model, shown
+  // in the truncation card's family; `room` and `gb` as on `window-cut`.
+  // `fixedTokens` is the loop's estimate of that fixed prompt, `windowTokens`
+  // the served window. Additive.
+  | {
+      type: 'window-tight';
+      model: string;
+      provider: string;
+      fixedTokens: number;
+      windowTokens: number;
+      room?: 'more' | 'full';
+      gb?: number;
+    }
+  // Retrieval before turn one (`harness.retrieval.firstTurn: 'on'`, CTO 6):
+  // the harness searched the workspace for the task's words and put these
+  // excerpts at the head of the task, on a seat that stays on this network.
+  // `sources` names each excerpt by file and first line; `tokens` is what the
+  // excerpts cost, within `budgetTokens`. Additive.
+  | {
+      type: 'retrieval';
+      sources: Array<{ path: string; line: number }>;
+      tokens: number;
+      budgetTokens: number;
     }
   | {
       type: 'harness-current';

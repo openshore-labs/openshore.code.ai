@@ -67,6 +67,113 @@ export function parseDecoded(raw: string): DecodedReply | undefined {
   return undefined;
 }
 
+/**
+ * Streams the answer out of a union-constrained reply as it arrives (CTO 6):
+ * a reply that opens `{"say": "` has its string decoded chunk by chunk, so
+ * the person reads the words as they come instead of waiting for the closing
+ * brace; any other reply (a tool call) shows nothing while it streams. The
+ * whole reply is still parsed at the end (`parseDecoded`), which settles the
+ * answer. Escapes split across chunks, and a surrogate pair split across two
+ * escapes, are held until they complete.
+ */
+export class SayStream {
+  private state: 'open' | 'key' | 'colon' | 'quote' | 'say' | 'other' | 'done' = 'open';
+  private key = '';
+  /** A backslash sequence waiting for the rest of its characters. */
+  private pending = '';
+  /** A high surrogate waiting for its pair. */
+  private high = '';
+
+  /** Feed one chunk of the raw reply; returns the answer text it adds. */
+  push(chunk: string): string {
+    let out = '';
+    for (const ch of chunk) {
+      switch (this.state) {
+        case 'open':
+          if (ch === '{') this.state = 'key';
+          else if (!/\s/.test(ch)) this.state = 'other';
+          break;
+        case 'key':
+          if (this.key === '' && /\s/.test(ch)) break;
+          if (this.key === '') {
+            if (ch === '"') this.key = '"';
+            else this.state = 'other';
+          } else if (ch === '"') {
+            this.state = this.key === '"say' ? 'colon' : 'other';
+          } else {
+            this.key += ch;
+            if (!'"say'.startsWith(this.key)) this.state = 'other';
+          }
+          break;
+        case 'colon':
+          if (ch === ':') this.state = 'quote';
+          else if (!/\s/.test(ch)) this.state = 'other';
+          break;
+        case 'quote':
+          if (ch === '"') this.state = 'say';
+          else if (!/\s/.test(ch)) this.state = 'other';
+          break;
+        case 'say':
+          out += this.sayChar(ch);
+          break;
+        default:
+          return out;
+      }
+    }
+    return out;
+  }
+
+  private sayChar(ch: string): string {
+    if (this.pending) {
+      this.pending += ch;
+      if (this.pending.length === 2 && this.pending[1] !== 'u') {
+        const decoded = ESCAPES[this.pending[1]!] ?? this.pending[1]!;
+        this.pending = '';
+        return this.emit(decoded);
+      }
+      if (this.pending.length < 6) return '';
+      const code = Number.parseInt(this.pending.slice(2), 16);
+      this.pending = '';
+      return Number.isNaN(code) ? '' : this.emit(String.fromCharCode(code));
+    }
+    if (ch === '\\') {
+      this.pending = ch;
+      return '';
+    }
+    if (ch === '"') {
+      this.state = 'done';
+      const rest = this.high;
+      this.high = '';
+      return rest;
+    }
+    return this.emit(ch);
+  }
+
+  /** Text to show, holding a high surrogate until its pair arrives. */
+  private emit(text: string): string {
+    const code = text.charCodeAt(0);
+    if (text.length === 1 && code >= 0xd800 && code <= 0xdbff) {
+      const held = this.high;
+      this.high = text;
+      return held;
+    }
+    const out = this.high + text;
+    this.high = '';
+    return out;
+  }
+}
+
+const ESCAPES: Record<string, string> = {
+  n: '\n',
+  t: '\t',
+  r: '\r',
+  b: '\b',
+  f: '\f',
+  '"': '"',
+  '\\': '\\',
+  '/': '/',
+};
+
 /** The system-prompt line that teaches the union shape. Kept close to the
  *  existing bridge wording so a model that already knows `{tool, args}` needs
  *  only to learn the `{say}` escape hatch. */
