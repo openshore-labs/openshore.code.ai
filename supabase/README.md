@@ -12,7 +12,7 @@ it.
 | Supabase (client)    | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (app build; public)                | app sign-in (`src/lib/supabase.ts`)      |
 | Supabase (server)    | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (function secrets; NEVER `VITE_`)     | every edge function                      |
 | Stripe (client)      | `VITE_STRIPE_PUBLISHABLE_KEY` (app build; public)                                 | web checkout                             |
-| Stripe (server)      | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (function secrets)                   | stripe-checkout / -webhook / -portal     |
+| Stripe (server)      | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (function secrets)                   | stripe-checkout / -webhook / -portal, delete-account |
 | Stripe prices        | `STRIPE_PRICE_MICRO/SMALL/GROWTH/SCALE` (function secrets)                        | checkout + webhook (commercial tiers)    |
 | Stripe price (indiv) | `STRIPE_PRICE_PERSONAL` (function secret)                                         | checkout + webhook (Personal $20/yr)     |
 | Stripe ignore list   | `STRIPE_IGNORED_PRICES` (function secret, optional, comma-separated)              | webhook: log-and-200 for listed prices   |
@@ -82,11 +82,14 @@ What 0015 does, by finding:
 
 Tests: `supabase test db` runs every `tests/*.test.sql` file, each its own
 rolled-back transaction with its own plan: `tests/rls.test.sql` (32
-assertions over the cases above) and `tests/org_vault.test.sql` (56 assertions
-over 0019, below). CI runs the same command in the `sql` job of
-`.github/workflows/ci.yml`. `deno test functions/_shared/entitlement.test.ts` covers
-the pure decisions (cross-rail guard, checkout routing, Apple product and
-freshness checks, ignored prices).
+assertions over the cases above), `tests/org_vault.test.sql` (56 assertions
+over 0019, below) and `tests/account_deletion.test.sql` (37 assertions over
+0022 and 0023, below). CI runs the same command in the `sql` job of
+`.github/workflows/ci.yml`. `deno test functions/_shared` covers the pure
+decisions: `entitlement.test.ts` (cross-rail guard, checkout routing, Apple
+product and freshness checks, ignored prices) and `accountDeletion.test.ts`
+(the deletion plan and the email hash). `app/test/supabaseMigrations.test.ts`
+fails when two migration files share a number.
 
 ## Migration 0019 (Org Vault v1): what changed and how to ship it
 
@@ -133,6 +136,68 @@ order by org_id, folded;
 
 No rows means 0019 changes no data. Each row lists the paths that will be
 renamed after the first one; tell the teammates who own them.
+
+## Migrations 0022 and 0023 (account deletion, free caps): how to ship them
+
+Apple requires in-app account deletion (guideline 5.1.1(v)); the app's
+Settings, Your account, Delete account calls the `delete-account` function.
+CTO ruling 4 (2026-09-29) numbers these 0022 and 0023. **Push from main only.**
+0020 and 0021 are held on `vault-m2-team`, which renumbers them above main's
+newest file when it merges; never push them from the held branch.
+
+1. Preflight, in the SQL editor. Both queries should return no rows:
+
+   ```sql
+   select id, status from public.abuse_reports where request_hash !~ '^[0-9a-f]{64}$';
+   select user_id, request_hash, array_agg(status) from public.abuse_reports
+    where user_id is not null group by 1, 2 having count(*) > 1;
+   ```
+
+   0022 removes a queued report that repeats another for the same account and
+   hash, and never one an operator acted on. If rows remain, it prints a
+   NOTICE and leaves the new check unvalidated or the unique index uncreated;
+   fix the rows by hand and re-run that block.
+2. `supabase db push` (applies 0022, then 0023).
+3. `supabase functions deploy delete-account` (`verify_jwt = true` in
+   `config.toml`). It reads `STRIPE_SECRET_KEY` only when the account has a
+   Stripe customer or subscription to cancel.
+
+What 0022 does:
+
+- Five author columns (`org_members.invited_by`, `org_vault_notes.updated_by`,
+  `org_projects.created_by` and `updated_by`, `org_project_members.granted_by`)
+  become `on delete set null`, found by catalog, so deleting someone who ever
+  wrote to a team no longer fails on a foreign key.
+- `enforcement_tombstones` keeps a SHA-256 of the lowercased email and the
+  ladder level when a warned or terminated account is deleted (service role
+  only, no policies). `record_enforcement` reads a level 2 tombstone as an
+  operator's termination.
+- `record_enforcement` itself works now. In 0016 to 0018 an unqualified
+  `action` collided with the function's own output column, so every call
+  raised and the server-side ladder never recorded a row (the app swallowed
+  the error). Expect `enforcement_actions` rows to start appearing.
+- `org_vault_revisions` stays append-only except for one update: clearing
+  `updated_by`, which the function does for the departing person.
+- `abuse_reports.request_hash` must be 64 hex characters, one report per
+  account and hash.
+
+What 0023 does: an account owns at most one org without a live plan
+(`no_entitlement_max_owned_orgs()`, 1), and an org without a live plan holds
+at most 25 MiB of note plus revision bytes (`no_entitlement_max_org_bytes()`),
+counted in `org_storage_usage` by triggers and backfilled by the migration.
+Both refuse with `check_violation`, only on growth; deletes always go
+through. "Live plan" is `isEntitled`: `org_entitlements.status` active or
+trialing with `valid_until` unset or ahead.
+
+What `delete-account` does, in order (reads first, so a refusal never follows
+a write): refuses `owns_org` (409) when an owned org has anyone else active;
+cancels every Stripe subscription that could still charge (the person's and
+each sole-member org's); writes the tombstone; deletes the sole-member orgs;
+clears the person from team history and removes their memberships; then
+`auth.admin.deleteUser`. It answers `{ ok: true, appleNote }`, where
+`appleNote` means an Apple subscription the person must cancel on their
+iPhone; errors are the fixed codes `unauthorized`, `owns_org`, `billing`,
+`failed`. Each step is safe to repeat, so a retry finishes a partial run.
 
 ### Warning: `supabase config push` and email confirmations (P0-4)
 
