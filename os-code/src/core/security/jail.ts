@@ -46,6 +46,19 @@ export class Jail {
   }
 }
 
+/**
+ * Where `abs` really lies in the workspace at `root`, as a permission rule
+ * judges it (D3): the deepest part that exists resolved through links (an
+ * in-tree alias is judged by its target), relative to the real root, with
+ * forward slashes (a backslash is a separator, the Windows spelling). The
+ * model's own spelling never reaches a rule. A path outside the root comes
+ * back starting with `..`; the jail refuses those before this is asked.
+ */
+export function realRelativePath(abs: string, root: string): string {
+  const realRoot = safeRealpath(resolve(root));
+  return relative(realRoot, deepestRealpath(resolve(abs))).replace(/\\/g, '/');
+}
+
 function safeRealpath(p: string): string {
   try {
     return realpathSync(p);

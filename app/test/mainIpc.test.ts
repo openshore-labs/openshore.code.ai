@@ -247,6 +247,21 @@ describe('main-process IPC guard (UI-6)', () => {
     );
   });
 
+  // The truncation card's action (C1, the security package): only a provider
+  // id crosses, main writes machine config through the engine's host, and the
+  // channel is in lockstep with the preload.
+  it('giveMoreRoom takes only a provider id, through the engine host', () => {
+    expect(preload).toContain("giveMoreRoom: invoke('osc:giveMoreRoom')");
+    expect(main).toMatch(
+      /guarded\('osc:giveMoreRoom', \(provider: unknown\) => host\.giveMoreRoom\(str\(provider, 'provider'\)\)\);/,
+    );
+  });
+
+  // A commit card's ticked files (D3): a list of strings or nothing at all.
+  it('an approval answer carries a commit card files only as a list of strings', () => {
+    expect(handler('osc:answerApproval')).toMatch(/files: strList\(a\.files, 'files'\)/);
+  });
+
   it('exposes secureHas so the renderer can tell absent from unreadable (P0-3)', () => {
     expect(preload).toContain("secureHas: invoke('osc:secureHas')");
     expect(main).toMatch(/guarded\('osc:secureHas'/);

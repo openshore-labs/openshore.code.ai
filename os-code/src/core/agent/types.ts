@@ -19,6 +19,36 @@ export interface ApprovalRequest {
    *  session or the project never takes effect on it, so a client offers
    *  only approve and decline. Absent for every other tool. */
   alwaysAsk?: boolean;
+  /** True while the session holds the project's secrets (the egress
+   *  lockdown), so a client says why it is asking on every card (CX 7).
+   *  Additive: absent on every other session. */
+  lockdown?: boolean;
+  /** For a commit: every file it would stage, each flagged when it may hold a
+   *  secret, and where the app's sync sends it afterward (D3). A flagged file
+   *  is left out unless the answer's `files` names it. Additive. */
+  commit?: CommitStage;
+}
+
+/** Why a file in a commit may hold a secret: a settings file that often holds
+ *  keys (.env), a certificate or private key (*.pem), a private login key
+ *  (id_*), or text in it that looks like a key or a password. */
+export type StageSecret = 'env' | 'pem' | 'login-key' | 'detected';
+
+/** One file a commit would stage, repo-relative with forward slashes. */
+export interface StageFile {
+  path: string;
+  secret?: StageSecret;
+}
+
+/** What a commit would record, for its approval card. */
+export interface CommitStage {
+  /** The commit message the model wrote. */
+  message: string;
+  files: StageFile[];
+  /** The platform the app's sync pushes this branch to after the commit
+   *  ("GitHub"), when it will. Absent when the commit stays on this
+   *  computer. */
+  pushesTo?: string;
 }
 
 export interface ApprovalAnswer {
@@ -34,6 +64,10 @@ export interface ApprovalAnswer {
    *  denial the model can do something about, e.g. Terminal Control being off,
    *  so the model tells the person how to change it rather than just retrying. */
   reason?: string;
+  /** For a commit card (`request.commit`): the files the person left ticked,
+   *  flagged ones included only when ticked. Absent, a commit stages every
+   *  file it listed except the flagged ones. */
+  files?: string[];
 }
 
 export type Approver = (request: ApprovalRequest) => Promise<ApprovalAnswer>;

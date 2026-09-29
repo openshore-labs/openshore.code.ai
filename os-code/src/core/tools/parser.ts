@@ -27,8 +27,18 @@ function nextId(): string {
 export function validateNativeCall(
   call: ToolCallRequest,
   registry: ToolRegistry,
+  offline?: ReadonlySet<string>,
 ): ValidationResult {
   const tool = registry.get(call.name);
+  if (!tool && offline?.has(call.name)) {
+    // A tool this session left out because it works offline (CTO 3): passed
+    // through with whatever arguments came, so the loop refuses it by name
+    // and the run's note can say what was tried.
+    const parsed = call.args ?? parseJsonLoose(call.argsText || '{}');
+    const args =
+      typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {};
+    return { ok: true, call: { id: call.id, name: call.name, args } };
+  }
   if (!tool) {
     const known = registry.names().join(', ');
     return {
@@ -76,7 +86,11 @@ export interface TextExtraction {
   remainder: string;
 }
 
-export function extractTextCalls(text: string, registry: ToolRegistry): TextExtraction {
+export function extractTextCalls(
+  text: string,
+  registry: ToolRegistry,
+  offline?: ReadonlySet<string>,
+): TextExtraction {
   const calls: ParsedToolCall[] = [];
   const problems: string[] = [];
   const spansToRemove: Array<[number, number]> = [];
@@ -89,6 +103,13 @@ export function extractTextCalls(text: string, registry: ToolRegistry): TextExtr
     if (!name) continue;
     const rawArgs = firstObject(obj, ARG_KEYS) ?? {};
     const tool = registry.get(name);
+    if (!tool && offline?.has(name)) {
+      // Left out because the session works offline: the loop refuses it by
+      // name (see validateNativeCall).
+      calls.push({ id: nextId(), name, args: rawArgs });
+      spansToRemove.push([candidate.start, candidate.end]);
+      continue;
+    }
     if (!tool) {
       // An unknown name is only a malformed call when the object is shaped
       // like one. A final answer that quotes a package.json ({"name": ...})

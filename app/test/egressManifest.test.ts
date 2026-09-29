@@ -11,6 +11,7 @@ import {
   EGRESS,
   LINK_ONLY_HOSTS,
   RECIPIENT_ORDER,
+  ROUTINES_NEVER_SEARCH,
   STAYS_ON_DEVICE,
   egressByRecipient,
 } from '../src/lib/egressManifest.js';
@@ -86,6 +87,22 @@ describe('what leaves this device', () => {
     expect(by('updates').what).toMatch(/Nothing downloads until you click Update/);
     expect(by('repo-signin').what).toMatch(/passes through our server/);
     expect(by('repo-signin').what).toMatch(/keeps no copy/);
+  });
+
+  // CTO 3 and the reconciled CX 8: headless means offline, so the search
+  // entry and the Settings row say routines never search, one sentence, and
+  // claim no per-routine switch that is not built.
+  it('says Crew routines never search the web, in the list and under the Settings row', () => {
+    const search = EGRESS.find((e) => e.id === 'search')!;
+    expect(ROUTINES_NEVER_SEARCH).toBe('Crew routines never search the web.');
+    expect(search.when).toContain(ROUTINES_NEVER_SEARCH);
+    expect(search.when).not.toMatch(/routines search|turn it on for that routine/i);
+    const settings = readFileSync(
+      join(process.cwd(), 'src', 'screens', 'SettingsScreen.tsx'),
+      'utf8',
+    );
+    const row = settings.slice(settings.indexOf('label="Let models search the web"'));
+    expect(row.slice(0, row.indexOf('trailing='))).toContain('${ROUTINES_NEVER_SEARCH}');
   });
 
   it('is the list Settings shows, first under Privacy', () => {

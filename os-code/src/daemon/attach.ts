@@ -192,6 +192,7 @@ export class RemoteDriver implements SessionDriver {
         alwaysThisSession: answer.alwaysThisSession,
         alwaysInProject: answer.alwaysInProject,
         reason: answer.reason,
+        ...(answer.files ? { files: answer.files } : {}),
       }),
     }).catch(() => {});
   }

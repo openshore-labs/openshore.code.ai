@@ -1,6 +1,6 @@
 // The small model's true window, the loop's side (C1). Helpers the agent loop
-// wires in, kept here so loop.ts only calls them: the platform word in the
-// prompt, what one observation may carry for the seat, which failed calls
+// wires in, kept here so loop.ts only calls them: what one observation may
+// carry for the seat, which failed calls
 // count toward the cloud escalation offer, and the notice that a server cut
 // the prompt without a word.
 import type { MoreRoom, Provider } from '../../providers/types.js';
@@ -11,20 +11,6 @@ import {
   type ModelClassProfile,
 } from '../../harness/profile.js';
 import type { AgentEvent } from './types.js';
-
-/** The operating system in words a model knows, for the workspace line of
- *  the system prompt: a model told linux on a Mac reaches for the wrong
- *  commands. Linux stays "linux", the word the prompt has always carried. */
-export function platformWord(platform: NodeJS.Platform = process.platform): string {
-  switch (platform) {
-    case 'darwin':
-      return 'macOS';
-    case 'win32':
-      return 'Windows';
-    default:
-      return platform;
-  }
-}
 
 /** The most characters one tool observation carries for the seat answering
  *  now: its class's share of the served window. No profile (harness profiles

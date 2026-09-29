@@ -6,7 +6,9 @@
 // The contract, ruled by the CTO before the build:
 //   - A run is a normal journaled session on the HEADLESS profile: shell,
 //     push, and cloud spend can never resolve to allow, and the step ceiling
-//     is the profile's 40. The routine's own access level maps to plan mode
+//     is the profile's 40. It works offline (CTO 3, 2026-09-29): no tool that
+//     reaches the network is registered, and a network step is denied, never
+//     asked. The routine's own access level maps to plan mode
 //     (read-only) or acceptEdits (edits inside the jail flow, shell asks).
 //   - One run on the box at a time, one run per routine at a time. A slot that
 //     lands while another routine works waits its turn (within the grace
@@ -92,6 +94,41 @@ export interface OpenedSession {
   where?: 'local' | 'cloud';
   /** The orchestrator's provider, for a cloud seat's `oscode-provider`. */
   provider?: string;
+  /** The tools the run left out because it works offline (CTO 3), by name,
+   *  so its note can say what it could not do. */
+  offline?: string[];
+}
+
+/** What each tool an offline run leaves out would have done, in the words the
+ *  run's note uses ("It ran offline, so it could not ..."). */
+const OFFLINE_WORDS: Record<string, string> = {
+  webSearch: 'search the web',
+  webFetch: 'open web pages',
+  codemagic: 'start Codemagic builds',
+  askHermes: 'hand work to another agent',
+  askAgent: 'hand work to another agent',
+  cliAgent: 'hand work to another agent',
+};
+
+/** The run note's offline line: that the run worked offline and what that
+ *  left out, in plain words. */
+export function offlineLine(leftOut: readonly string[] | undefined): string {
+  const words = [...new Set((leftOut ?? []).map((name) => OFFLINE_WORDS[name] ?? name))];
+  if (!words.length) return 'It ran offline.';
+  const list =
+    words.length === 1
+      ? words[0]!
+      : `${words.slice(0, -1).join(', ')}${words.length > 2 ? ',' : ''} or ${words[words.length - 1]!}`;
+  return `It ran offline, so it could not ${list}.`;
+}
+
+/** The run note's one Note line when the model tried to search (the
+ *  reconciled CX 1 copy): the first query it tried, and where it worked from
+ *  instead. */
+export function triedToSearchLine(query: string, workspace: string): string {
+  const flat = query.replace(/\s+/g, ' ').replace(/"/g, "'").trim();
+  const shown = flat.length > 120 ? `${flat.slice(0, 117)}...` : flat;
+  return `It tried to search the web for "${shown}", but routines work offline, so it used only the files in ${workspace}.`;
 }
 
 /** A run refused before it started, for a reason the person can act on. The
@@ -166,6 +203,7 @@ export function routineInstructions(routine: Routine): string {
   return [
     `You are ${routine.agentName}, a member of the person's crew, running the scheduled routine "${routine.name}" on their own computer while they are away. Nobody is watching this session.`,
     `Persona: ${routine.persona}`,
+    'This run is offline: there is no web search and no web access. Work only from the files in this workspace and your vault notes.',
     routine.access === 'read-only'
       ? 'This routine is read-only: you can read files, search, and inspect the repository, but you cannot change anything. Do not try.'
       : 'This routine may edit files inside this workspace. Any shell command will ask for approval; if nobody answers within a few minutes the step is declined and you should carry on without it, or stop and say what is blocked.',
@@ -190,6 +228,10 @@ interface ActiveRun {
   where?: 'local' | 'cloud';
   /** The orchestrator's provider, when the session said. */
   provider?: string;
+  /** The tools the run left out because it works offline. */
+  offline?: string[];
+  /** The first web search the model tried anyway, for the note's Note line. */
+  searchTried?: string;
   off: () => void;
   finalText: string;
   steps: string[];
@@ -575,7 +617,7 @@ export class RoutineScheduler {
       void this.pump();
       return;
     }
-    const { driver, model, where, provider } = opened;
+    const { driver, model, where, provider, offline } = opened;
     if (routine.ownerUserId) driver.setOwner?.(routine.ownerUserId);
     const pidStart = ownProcessStart();
     const run = store.appendRun({
@@ -597,6 +639,7 @@ export class RoutineScheduler {
       model,
       ...(where ? { where } : {}),
       ...(provider ? { provider } : {}),
+      ...(offline ? { offline } : {}),
       off: () => {},
       finalText: '',
       steps: [],
@@ -694,6 +737,16 @@ export class RoutineScheduler {
         break;
       }
       case 'tool-denied': {
+        // A search the model reached for although the run works offline: the
+        // first one is named in the note (CTO 3). The refused call never ran,
+        // so it adds no step of its own.
+        if (event.call.name === 'webSearch') {
+          const query = event.call.args?.query;
+          if (active.searchTried === undefined && typeof query === 'string' && query.trim()) {
+            active.searchTried = query;
+          }
+          break;
+        }
         const i = active.steps.length - 1;
         if (i >= 0) active.steps[i] = `${event.call.name} (declined)`;
         break;
@@ -846,11 +899,21 @@ export class RoutineScheduler {
       '',
       `Crew: ${active.routine.agentName} · Workspace: ${basename(active.routine.cwd)} · ${stateWord(state)} · ${minutes} min · session ${active.driver.id}`,
       '',
+      // Headless means offline (CTO 3): every note says so, and what that
+      // left out.
+      offlineLine(active.offline),
+      '',
       '## Result',
       '',
       active.finalText || (endNote ? endNote : 'No result text was written.'),
     ];
     if (endNote && active.finalText) lines.push('', `Note: ${endNote}`);
+    if (active.searchTried !== undefined) {
+      lines.push(
+        '',
+        `Note: ${triedToSearchLine(active.searchTried, basename(active.routine.cwd))}`,
+      );
+    }
     if (active.plan.length) {
       lines.push('', '## Plan', '', ...active.plan.map((s) => `- ${s}`));
     }
@@ -971,11 +1034,13 @@ export function defaultOpenSession(
     warnings,
     orchestratorKind,
     router,
+    offlineTools,
   }: {
     driver: LocalDriver;
     warnings: string[];
     orchestratorKind: 'local' | 'cloud';
     router?: { orchestrator(): { ref: { model: string; provider?: string } } };
+    offlineTools?: string[];
   } = boot({
     cwd: routine.cwd,
     profile: 'headless',
@@ -1009,6 +1074,7 @@ export function defaultOpenSession(
     ...(model ? { model } : {}),
     ...(provider ? { provider } : {}),
     where: orchestratorKind,
+    ...(offlineTools ? { offline: offlineTools } : {}),
   };
 }
 

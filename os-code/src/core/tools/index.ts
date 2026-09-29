@@ -10,6 +10,7 @@ import type { ImageProvider } from '../../providers/types.js';
 import type { ToolSpec } from '../../providers/types.js';
 import type { DelegatedUsage, DelegateOptions } from '../../router/router.js';
 import type { CurrentsHandles } from '../../currents/model.js';
+import type { CommitStage } from '../agent/types.js';
 import type { ProvSize, ResolvedVaultSettings, VaultPrivacy } from '../../harness/vault/types.js';
 
 export interface Citation {
@@ -42,12 +43,18 @@ export interface ToolPreview {
    *  approves, so the tool can refuse when it changed while the approval sat.
    *  Every other tool leaves it unset. */
   basis?: string;
+  /** gitCommit: the files the commit would stage, flagged when they may hold
+   *  a secret (D3). The loop carries it onto the approval request. */
+  commit?: CommitStage;
 }
 
 /** What the person approved, passed to execute after an ask. */
 export interface ApprovedPreview {
   /** The preview's basis, when it returned one. */
   basis?: string;
+  /** gitCommit: the files the person left ticked on the card, when the
+   *  answer named them. */
+  files?: string[];
 }
 
 /** Everything a tool may touch. Built once per session. */

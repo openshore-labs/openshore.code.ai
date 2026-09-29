@@ -511,6 +511,7 @@ import {
   roomAccountFeature,
   type AccountFeature,
 } from '../lib/accountGate.js';
+import { answerFiles, giveMoreRoomFor } from './securityOps.js';
 import {
   CodingLockedError,
   accountNoticeDue,
@@ -2271,7 +2272,8 @@ interface AppState {
     approvalId: string,
     approve: boolean,
     always?: boolean,
-    opts?: { inProject?: boolean },
+    /** `files`: a commit card's ticked list (D3). */
+    opts?: { inProject?: boolean; files?: string[] },
   ): void;
   /** Answer every pending approval at once (Approve all). */
   answerAllApprovals(approve: boolean): void;
@@ -2287,6 +2289,10 @@ interface AppState {
   trustProjectFolder(itemId: string): Promise<void>;
   /** The trust card's "Not now": leave the folder's settings off. */
   dismissProjectTrust(itemId: string): void;
+  /** The truncation card's "Give it more room" (C1, CX 6): the session's
+   *  computer serves that provider's models the larger window from the next
+   *  message, in every chat. */
+  giveMoreRoom(itemId: string): Promise<void>;
   /** A model asked to search the web and the person has not answered yet
    *  (web search asks once; What leaves this device). The sheet shows it. */
   webSearchAsk?: { query: string };
@@ -11992,6 +11998,7 @@ export const useApp = create<AppState>((set, get, api) => {
         approve,
         alwaysThisSession: always,
         ...(opts?.inProject ? { alwaysInProject: true } : {}),
+        ...answerFiles(opts?.files),
       });
     },
 
@@ -12166,6 +12173,32 @@ export const useApp = create<AppState>((set, get, api) => {
       const result = await driver.restoreCheckpoint(card.checkpointId, direction, path);
       // Success folds through the engine's echo; a refusal says why here.
       if ('error' in result) patchCard({ restoring: false, error: result.error });
+    },
+
+    async giveMoreRoom(itemId) {
+      const { activeId } = get();
+      if (!activeId) return;
+      const card = get().conversations[activeId]?.thread.items.find(
+        (i) => i.kind === 'window-cut' && i.id === itemId,
+      );
+      if (!card || card.kind !== 'window-cut') return;
+      // The logic is the security package's (securityOps.ts); here it only
+      // lands on the card.
+      await giveMoreRoomFor(drivers.get(activeId), card.provider, (patch) =>
+        set((s) => {
+          const c = s.conversations[activeId];
+          if (!c) return s;
+          const items = c.thread.items.map((i) =>
+            i.kind === 'window-cut' && i.id === itemId ? { ...i, ...patch } : i,
+          );
+          return {
+            conversations: {
+              ...s.conversations,
+              [activeId]: { ...c, thread: { ...c.thread, items } },
+            },
+          };
+        }),
+      );
     },
 
     dismissProjectTrust(itemId) {

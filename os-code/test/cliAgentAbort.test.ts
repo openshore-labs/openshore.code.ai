@@ -35,7 +35,9 @@ function ctxWith(partial: Partial<ToolContext>): ToolContext {
   } as unknown as ToolContext;
 }
 
-describe('cliAgent and Stop', () => {
+// The stand-in CLI is a shebang script found through a ':' PATH, which only
+// a POSIX system runs; Windows runs a CLI as a .exe or .cmd.
+describe.skipIf(process.platform === 'win32')('cliAgent and Stop', () => {
   it('kills the CLI when the task is aborted and says it was stopped', async () => {
     const controller = new AbortController();
     const started = Date.now();

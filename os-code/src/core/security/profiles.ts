@@ -17,6 +17,12 @@ export interface SecurityProfile {
   /** May a push (a commit leaving the machine) ever run without asking? Off
    *  on the headless profile: an unattended routine never pushes silently. */
   allowPushAutoApprove: boolean;
+  /** May a network step (web search, a page fetch, another agent's service)
+   *  run at all without a person to ask? Off on the headless profile, where a
+   *  network call is denied outright, never asked: a routine reads files
+   *  other people wrote, and one injected line could send a secret out in a
+   *  URL or a search while nobody watches (CTO 3, headless means offline). */
+  allowNetworkAutoApprove: boolean;
 }
 
 export const PROFILES: Record<SecurityProfileName, SecurityProfile> = {
@@ -27,6 +33,7 @@ export const PROFILES: Record<SecurityProfileName, SecurityProfile> = {
     maxStepsCeiling: 100,
     allowCloudAutoApprove: true,
     allowPushAutoApprove: true,
+    allowNetworkAutoApprove: true,
   },
   'remote-attached': {
     name: 'remote-attached',
@@ -35,6 +42,7 @@ export const PROFILES: Record<SecurityProfileName, SecurityProfile> = {
     maxStepsCeiling: 60,
     allowCloudAutoApprove: false,
     allowPushAutoApprove: true,
+    allowNetworkAutoApprove: true,
   },
   headless: {
     name: 'headless',
@@ -43,6 +51,7 @@ export const PROFILES: Record<SecurityProfileName, SecurityProfile> = {
     maxStepsCeiling: 40,
     allowCloudAutoApprove: false,
     allowPushAutoApprove: false,
+    allowNetworkAutoApprove: false,
   },
 };
 

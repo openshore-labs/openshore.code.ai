@@ -26,6 +26,7 @@ import { WorkingRow } from './WorkingRow.js';
 import { ThinkingBlock } from './ThinkingBlock.js';
 import { PlanCard } from './PlanCard.js';
 import { TrustCard } from './TrustCard.js';
+import { WindowCutCard } from './WindowCutCard.js';
 import { ClarifyCard } from './ClarifyCard.js';
 import { ChangedFilesCard } from './ChangedFilesCard.js';
 import { VerifyPill } from './VerifyPill.js';
@@ -212,6 +213,8 @@ export function MessageList({
   onTrustFolder,
   onRestoreChanged,
   onDismissTrust,
+  onGiveMoreRoom,
+  onOpenStack,
   onUnqueue,
   onOpenPackNote,
   onSaveHandoff,
@@ -239,6 +242,10 @@ export function MessageList({
   /** Undo or redo a task's changes (every file, or one). */
   onRestoreChanged?: (itemId: string, direction: 'undo' | 'redo', path?: string) => void;
   onDismissTrust?: (itemId: string) => void;
+  /** The truncation card's "Give it more room", by item id. */
+  onGiveMoreRoom?: (itemId: string) => void;
+  /** Open the Stack room (the truncation card, with no memory to spare). */
+  onOpenStack?: () => void;
   /** Answer a clarifying question (the plan-first picker): sends the reply. */
   onClarifyPick?: (text: string) => void;
   /** Drop a queued message (tap on its bubble). */
@@ -471,6 +478,15 @@ export function MessageList({
                   error={item.error}
                   onTrust={() => onTrustFolder?.(item.id)}
                   onDismiss={() => onDismissTrust?.(item.id)}
+                />
+              );
+            case 'window-cut':
+              return (
+                <WindowCutCard
+                  key={item.id}
+                  item={item}
+                  onGiveMoreRoom={() => onGiveMoreRoom?.(item.id)}
+                  onOpenStack={onOpenStack}
                 />
               );
             case 'verify':

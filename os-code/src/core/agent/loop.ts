@@ -44,9 +44,10 @@ import {
   validateNativeCall,
   type ParsedToolCall,
 } from '../tools/parser.js';
-import { PermissionEngine, SHELL_WRAPPERS } from '../permissions/index.js';
+import { PermissionEngine, prefixGrantRefusal } from '../permissions/index.js';
 import { Guardrails } from '../guardrails/index.js';
-import { Jail, JailViolation } from '../security/jail.js';
+import { Jail, JailViolation, realRelativePath } from '../security/jail.js';
+import { platformAndShell } from '../exec/shell.js';
 import type { SecurityProfile } from '../security/profiles.js';
 import { redactSecrets } from '../security/redaction.js';
 import {
@@ -61,6 +62,7 @@ import type {
   ApprovalAnswer,
   ApprovalRequest,
   Approver,
+  CommitStage,
   EventSink,
   PermissionMode,
   TodoItem,
@@ -102,7 +104,6 @@ import {
   OBSERVATION_SLACK_CHARS,
   WindowWatch,
   nextFailStreak,
-  platformWord,
   seatObservationCap,
   type CallOutcome,
 } from './window.js';
@@ -133,6 +134,10 @@ export interface AgentDeps {
   projectSecrets?: string;
   /** The permission mode to start in. Defaults to asking for writes and shell. */
   permissionMode?: PermissionMode;
+  /** The tools this session left out because it works offline (a Crew
+   *  routine, CTO 3). A call the model makes to one anyway is refused by name,
+   *  never asked, and never read as a malformed call. */
+  offlineTools?: readonly string[];
   /** Persist an allow rule for this tool in the workspace ("don't ask again
    *  for this in this project"). Returns false when nothing could be written. */
   persistRule?: (rule: ProjectRule) => boolean;
@@ -212,6 +217,12 @@ export interface ProjectRule {
 
 /** Tools a plan may use: nothing that changes the workspace or runs a shell. */
 const PLAN_SAFE_RISKS = new Set(['read', 'network']);
+
+/** Why a call to a tool an offline run left out did not run (CTO 3). The
+ *  scheduler reads the denial for the run's note. */
+export const OFFLINE_DENIED = 'This routine works offline, so nothing here reaches the web.';
+const OFFLINE_ADVICE =
+  'Work only from the files in the workspace, and say in your report what you could not check.';
 
 /** The local calendar date, YYYY-MM-DD, for a dated Current State line. */
 function localDate(d: Date): string {
@@ -338,6 +349,12 @@ export class AgentSession {
   private seatWroteCurrentState = false;
   /** The harness's Current State line is written at most once per task. */
   private landedNoted = false;
+  /** The tools this offline session left out, refused by name. */
+  private get offlineTools(): ReadonlySet<string> {
+    this.offlineSet ??= new Set(this.deps.offlineTools ?? []);
+    return this.offlineSet;
+  }
+  private offlineSet?: ReadonlySet<string>;
   /** What the last handoff was built from, so an unchanged chat (a dispose
    *  right after a completed task) is not written again. */
   private handoffSignature?: string;
@@ -394,6 +411,11 @@ export class AgentSession {
     deps.toolContext.noteUsage = (usage: DelegatedUsage) => {
       this.recordUsage(usage.model, usage.kind, usage.promptTokens, usage.completionTokens);
     };
+    // A web tool's fetch into this computer's own network (loopback, the LAN,
+    // the tailnet) asks the person first, once per chat for each host (D3).
+    deps.toolContext.egress.setLocalGate?.((url, host, purpose) =>
+      this.confirmOwnNetwork(url, host, purpose === 'web-search' ? 'webSearch' : 'webFetch'),
+    );
     // A tool that lists (vaultList) hides what the person's policy denies, so
     // the model never sees the names inside a fenced-off folder.
     deps.toolContext.denies = (toolName: string, path: string) => {
@@ -599,15 +621,21 @@ export class AgentSession {
   private async mayRunCheck(command: string, digest: string, source: string): Promise<boolean> {
     const { cwd } = this.deps.toolContext;
     const key = `${command}\0${digest}`;
-    try {
-      if (hasVerifyGrant(cwd, command, digest)) return true;
-    } catch {
-      // An unreadable trust store grants nothing.
+    // Under the secrets lockdown every command asks, the check included: the
+    // card promises "asks before every command and commit" (CX 7), so a saved
+    // grant, an earlier yes, and bypass mode all wait for this one answer.
+    const lockdown = this.lockdown;
+    if (!lockdown) {
+      try {
+        if (hasVerifyGrant(cwd, command, digest)) return true;
+      } catch {
+        // An unreadable trust store grants nothing.
+      }
+      if (this.verifyAllowed.has(key)) return true;
     }
-    if (this.verifyAllowed.has(key)) return true;
     if (this.verifyDeclined.has(key)) return false;
     if (this.deps.canGrantVerify === false || this.deps.profile.name === 'headless') return false;
-    if (this.mode === 'bypassPermissions') return true;
+    if (this.mode === 'bypassPermissions' && !lockdown) return true;
     const answer = await this.awaitApprovalOrAbort({
       id: `verify_${Date.now().toString(36)}`,
       kind: 'tool',
@@ -618,21 +646,30 @@ export class AgentSession {
         source === 'configured'
           ? `This project's own check command. It runs on this computer, in ${cwd}, after each change, and any failure goes back to the model to fix.`
           : `Found ${source}. It runs on this computer, in ${cwd}, after each change, and any failure goes back to the model to fix. Allow it always for this project to stop this question.`,
+      ...(lockdown ? { alwaysAsk: true, lockdown: true } : {}),
     });
     if (answer === 'aborted') return false;
     if (!answer.approve) {
       this.verifyDeclined.add(key);
       return false;
     }
-    if (answer.alwaysInProject) {
+    if (answer.alwaysInProject && !lockdown) {
       try {
         addVerifyGrant(cwd, command, digest);
       } catch {
         // The grant could not be saved; the allow still holds this session.
       }
     }
-    this.verifyAllowed.add(key);
+    if (!lockdown) this.verifyAllowed.add(key);
     return true;
+  }
+
+  /** On when this session holds the project's secrets, which only a local
+   *  orchestrator is ever given (gateProjectSecrets): the egress lockdown. No
+   *  tool may send anything off the device, and every command and commit asks
+   *  (D3, CX 7). */
+  private get lockdown(): boolean {
+    return Boolean(this.deps.projectSecrets?.trim());
   }
 
   // A Harness Current (Jev) layers a cheap decision method into the loop. The
@@ -985,6 +1022,7 @@ export class AgentSession {
     // The prompt names only tools this seat is offered, so a lean seat is never
     // told to reach for one it cannot see.
     const offered = this.offeredToolNames();
+    const webTools = ['webSearch', 'webFetch'].filter((name) => offered.has(name));
     // A lean seat (a small or tiny class) gets a short, direct core. The full
     // core below is written for a capable model working with a person: report
     // like a colleague, ask before touching something that works, open with a
@@ -995,7 +1033,7 @@ export class AgentSession {
     const parts = this.leanSeat
       ? [
           "You are OS Code, a careful coding agent running on the user's own machine.",
-          `Workspace root: ${toolContext.cwd} (platform: ${platformWord()}). All file paths are relative to it.`,
+          `Workspace root: ${toolContext.cwd} (platform: ${platformAndShell()}). All file paths are relative to it.`,
           'Do the task yourself with the tools. Read a file with readFile. Change part of a file with editFile: give path, search (exact lines copied from the file) and replace (their replacement). Write a whole file with writeFile. Never ask for permission or confirmation; make the change.',
           `A tool result is shown to you once; do not repeat a call whose result you already have. Do not check git status or use any git tool unless the task itself is about version control or commits, most tasks need none of that.${
             offered.has('runShell')
@@ -1006,9 +1044,13 @@ export class AgentSession {
         ]
       : [
           "You are OS Code, a careful, capable coding agent running on the user's own machine.",
-          `Workspace root: ${toolContext.cwd} (platform: ${platformWord()}). All file paths are relative to it.`,
+          `Workspace root: ${toolContext.cwd} (platform: ${platformAndShell()}). All file paths are relative to it.`,
           'Work step by step: inspect before you change, prefer small precise edits (editFile), and verify with the available tools.',
-          'Use webSearch and webFetch for anything after your knowledge cutoff or specific to a library version.',
+          // Only the web tools this session has: an offline run (a routine) or
+          // a secrets session has none, and must not be told to reach for them.
+          webTools.length
+            ? `Use ${webTools.join(' and ')} for anything after your knowledge cutoff or specific to a library version.`
+            : 'This session has no web access: work from the files and what you already know.',
           'When the task is complete, answer with plain text: what you did, what you verified, and anything the user should know. Be concise and concrete.',
           // How the person works with a coding agent (docs/interaction-model.md):
           // lead with the answer, one step at a time when they must act, never
@@ -1028,7 +1070,7 @@ export class AgentSession {
         (name) =>
           name.startsWith('vault') && PLAN_SAFE_RISKS.has(this.deps.tools.get(name)?.risk ?? ''),
       );
-      const readable = `readFile, grep, glob, gitStatus, gitDiff, searchRepo, webSearch, webFetch, todoWrite${
+      const readable = `${['readFile', 'grep', 'glob', 'gitStatus', 'gitDiff', 'searchRepo', ...webTools, 'todoWrite'].join(', ')}${
         vaultReads.length ? `, and the vault reads ${vaultReads.join(', ')}` : ''
       }`;
       parts.push(
@@ -1419,7 +1461,7 @@ export class AgentSession {
 
       if (nativeCalls.length) {
         for (const raw of nativeCalls) {
-          const validated = validateNativeCall(raw, this.deps.tools);
+          const validated = validateNativeCall(raw, this.deps.tools, this.offlineTools);
           if (validated.ok) calls.push(validated.call);
           else {
             problems.push(validated.problem);
@@ -1442,7 +1484,7 @@ export class AgentSession {
         // "1 turn; no tools called; done: complete" on a 3B was exactly that.
         // The extractor is conservative (a known tool with valid args; prose
         // that quotes JSON is left alone), so a real answer still reads as one.
-        const extraction = extractTextCalls(streamedText, this.deps.tools);
+        const extraction = extractTextCalls(streamedText, this.deps.tools, this.offlineTools);
         const found = extraction.calls.length > 0 || extraction.problems.length > 0;
         if (toolMode === 'text' || found) {
           calls = extraction.calls;
@@ -1635,7 +1677,7 @@ export class AgentSession {
     toolMode: 'native' | 'text',
   ): Promise<CallOutcome | 'aborted'> {
     const { tools, permissions, guardrails, toolContext, profile } = this.deps;
-    const tool = tools.get(call.name)!;
+    const tool = tools.get(call.name);
 
     guardrails.noteStep();
     const repeats = guardrails.noteToolCall(call.name, call.args);
@@ -1643,6 +1685,15 @@ export class AgentSession {
     if (violation) {
       this.emit({ type: 'task-done', reason: 'guardrail', message: violation.message });
       return 'aborted';
+    }
+
+    // A tool this run left out because it works offline (a Crew routine, CTO
+    // 3). The model reached for it anyway: refused, never asked, with a line
+    // it can act on. The scheduler reads the denial for the run's note.
+    if (!tool) {
+      this.emit({ type: 'tool-denied', call, reason: OFFLINE_DENIED });
+      this.pushObservation(call, `Not run: ${OFFLINE_DENIED} ${OFFLINE_ADVICE}`, toolMode);
+      return 'refused';
     }
 
     // The same exact call again, with nothing changed in the workspace since
@@ -1690,7 +1741,9 @@ export class AgentSession {
         path = rawPath;
       } else {
         try {
-          path = relative(toolContext.jail.root, toolContext.jail.resolve(rawPath));
+          // Judged where the path really lands (D3): an in-tree link by its
+          // target, a backslash as a separator, relative to the real root.
+          path = realRelativePath(toolContext.jail.resolve(rawPath), toolContext.jail.root);
         } catch (err) {
           if (!(err instanceof JailViolation)) throw err;
           this.emit({ type: 'tool-denied', call, reason: err.message });
@@ -1712,7 +1765,12 @@ export class AgentSession {
       tool.pathJail !== 'own' &&
       rawPath !== undefined &&
       insideVault(toolContext.jail.resolve(rawPath), toolContext.vaultRoot);
-    const alwaysAsk = tool.alwaysAsk === true || writesInsideVault;
+    // Under the secrets lockdown every command and every commit asks, whatever
+    // was saved, granted, or set as the mode (D3): the one execution seam, so
+    // no rule, bypass, or default can make them quiet while the chat can see
+    // the project's secrets.
+    const lockdownAsks = this.lockdown && (tool.risk === 'shell' || call.name === 'gitCommit');
+    const alwaysAsk = tool.alwaysAsk === true || writesInsideVault || lockdownAsks;
     // A write to a note (vaultWrite, or a file tool aimed inside the vault) is
     // not a code change: it never counts toward verify or the Jev judge (4.5).
     const writesVault = tool.risk === 'write' && (tool.pathJail === 'own' || writesInsideVault);
@@ -1779,11 +1837,13 @@ export class AgentSession {
     if (decision.decision === 'ask') {
       let summary = `${call.name}`;
       let detail: string | undefined;
+      let commit: CommitStage | undefined;
       try {
         if (tool.preview) {
           const preview = await tool.preview(call.args, toolContext);
           summary = preview.summary;
           detail = preview.detail;
+          commit = preview.commit;
           approved = { basis: preview.basis };
         } else {
           summary = `${call.name} ${JSON.stringify(call.args).slice(0, 120)}`;
@@ -1801,6 +1861,8 @@ export class AgentSession {
         // An always-ask tool can never be allowed for the session or the
         // project, so the sheet shows only the choices that take effect.
         ...(alwaysAsk ? { alwaysAsk: true } : {}),
+        ...(this.lockdown ? { lockdown: true } : {}),
+        ...(commit ? { commit } : {}),
       });
       // C1: the session was aborted while this approval was pending. Do not run
       // the tool; report an abort so run() settles instead of wedging.
@@ -1821,6 +1883,10 @@ export class AgentSession {
       }
       if (answer.alwaysInProject && answer.approve && !alwaysAsk) {
         this.persistProjectAllow(call, tool, path, command);
+      }
+      // The files the person left ticked on a commit card ride to execute.
+      if (commit && answer.approve && Array.isArray(answer.files)) {
+        approved = { ...approved, files: answer.files.filter((f) => typeof f === 'string') };
       }
       if (!answer.approve) {
         // A caller-supplied reason (e.g. Terminal Control is off) tells the
@@ -1915,14 +1981,15 @@ export class AgentSession {
       rule.pathGlob = dir ? `${dir}/**` : '**';
       scope = ` under ${dir || '.'}`;
     } else if (command !== undefined) {
-      const first = command.trim().split(/\s+/)[0] ?? '';
-      if (!first || SHELL_WRAPPERS.has(first)) {
-        this.emit({
-          type: 'note',
-          message: 'That command starts with a shell wrapper, so it will keep asking.',
-        });
+      // A wrapper or interpreter by any spelling, code on the command line,
+      // `git -c`, or PowerShell: the saved first word would reach commands
+      // it never named, so it is not saved, and the note says why (D3).
+      const refusal = prefixGrantRefusal(command);
+      if (refusal) {
+        this.emit({ type: 'note', message: refusal });
         return;
       }
+      const first = command.trim().split(/\s+/)[0] ?? '';
       rule.commandPrefix = first;
       scope = ` for commands starting with ${first}`;
     }
@@ -2149,6 +2216,35 @@ export class AgentSession {
       `This step runs on ${provider.label}, a model server off this computer's network.`,
       `Your messages and the code the agent reads go to ${host}. Nothing is sent without this approval.`,
     ];
+  }
+
+  /** Hosts on this computer's own network the person let a web tool open
+   *  this session. */
+  private ownNetworkAllowed = new Set<string>();
+
+  /**
+   * May a web tool open an address on this computer's own network (D3)? A
+   * page there is not the public web: it is this computer's own apps, the
+   * router's settings, the person's other devices, a cloud machine's
+   * metadata. Asked once per chat for each host, in every mode, since the
+   * model chose the address; a profile with nobody to ask refuses.
+   */
+  private async confirmOwnNetwork(url: string, host: string, toolName: string): Promise<boolean> {
+    if (this.ownNetworkAllowed.has(host)) return true;
+    if (!this.deps.profile.allowNetworkAutoApprove) return false;
+    const answer = await this.awaitApprovalOrAbort({
+      id: `network_${randomUUID()}`,
+      kind: 'tool',
+      toolName,
+      risk: 'network',
+      summary: `Open ${host}, an address on your own network`,
+      detail: `The agent wants to open ${url}. An address on your own network is not the public web: it reaches apps on this computer, your router, and your other devices. OpenShore asks once per chat for each one.`,
+      alwaysAsk: true,
+      ...(this.lockdown ? { lockdown: true } : {}),
+    });
+    if (answer === 'aborted' || !answer.approve) return false;
+    this.ownNetworkAllowed.add(host);
+    return true;
   }
 
   private async confirmCloudSpend(reason: string, detailOverride?: string): Promise<boolean> {

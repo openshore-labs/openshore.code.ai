@@ -144,6 +144,8 @@ describe('egress policy', () => {
         allowlist: [],
         blocklist: ['blocked.invalid'],
       });
+      // The loopback start is the person's to allow (D3); here they did.
+      policy.setLocalGate(async () => true);
       await expect(
         policy.fetch(`http://127.0.0.1:${port}/start`, 'web-fetch'),
       ).rejects.toBeInstanceOf(EgressBlocked);
@@ -175,6 +177,8 @@ describe('egress policy', () => {
     try {
       const port = (origin.address() as AddressInfo).port;
       const policy = new EgressPolicy({ webEnabled: true, allowlist: [], blocklist: [] });
+      // Both loopback hops are the person's to allow (D3); here they did.
+      policy.setLocalGate(async () => true);
       const res = await policy.fetch(`http://127.0.0.1:${port}/start`, 'web-fetch', {
         method: 'POST',
         body: 'payload',

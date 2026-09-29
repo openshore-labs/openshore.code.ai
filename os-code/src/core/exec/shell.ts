@@ -134,6 +134,30 @@ export function shellInfo(opts?: ResolveShellOptions): ShellInfo {
   return { platform, shell: shell.kind };
 }
 
+/** The operating system in words a model knows: a model told linux on a Mac
+ *  reaches for the wrong commands. Linux stays "linux", the word the prompt
+ *  has always carried. */
+export function platformWord(platform: NodeJS.Platform = process.platform): string {
+  switch (platform) {
+    case 'darwin':
+      return 'macOS';
+    case 'win32':
+      return 'Windows';
+    default:
+      return platform;
+  }
+}
+
+/** Where a command runs, for the workspace line of the system prompt (CTO
+ *  10's one helper): the platform and the shell, as "macOS, bash" or
+ *  "Windows, PowerShell". Git for Windows' bash is named "Git Bash", since
+ *  that is the bash a Windows model has to write for. */
+export function platformAndShell(info: ShellInfo = shellInfo()): string {
+  const shell =
+    info.shell === 'powershell' ? 'PowerShell' : info.platform === 'win32' ? 'Git Bash' : 'bash';
+  return `${platformWord(info.platform)}, ${shell}`;
+}
+
 /**
  * Stop a command and everything it started. POSIX signals the process group
  * (the runner spawns detached, so the group id is the child's pid). Windows

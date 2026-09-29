@@ -8,8 +8,11 @@ export type {
   ApprovalAnswer,
   ApprovalRequest,
   CheckpointFileChange,
+  CommitStage,
   DriverEvent,
   PermissionMode,
+  StageFile,
+  StageSecret,
   StopReason,
   TodoItem,
 } from './core/agent/types.js';

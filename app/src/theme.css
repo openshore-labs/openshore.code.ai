@@ -5716,6 +5716,13 @@ button.vault-tag {
   color: var(--bg);
 }
 
+/* Local work's action (teal), the counterpart of .btn.cloud: the truncation
+   card's "Give it more room" spends this computer's memory, never money. */
+.btn.local {
+  background: var(--local);
+  color: var(--bg);
+}
+
 .btn:disabled {
   opacity: 0.4;
 }
@@ -10730,6 +10737,119 @@ button.vault-tag {
   margin: 12px auto 0;
   font-size: var(--text-2);
   color: var(--muted);
+}
+
+/* The secrets safety cards (D3, CX 7). The lockdown line says why the card
+   asks; the commit card lists what it would stage, a tick per file, and a
+   file that may hold a secret wears a warn pill and its reason. A ticked one
+   fades its warning in; opacity only. */
+.approval-lockdown {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--local-soft);
+  color: var(--local);
+  font-size: var(--text-2);
+}
+.commit-files {
+  margin: 4px 0 12px;
+}
+.commit-files-flagged {
+  margin: 0 0 8px;
+  font-size: var(--text-3);
+  color: var(--warn);
+}
+.commit-files-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 40vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.commit-file + .commit-file {
+  border-top: 1px solid var(--border);
+}
+.commit-file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.commit-file-row input {
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+.commit-file-path {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.commit-file-pill {
+  flex-shrink: 0;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: var(--text-1);
+  font-weight: var(--weight-semibold);
+}
+.commit-file-why,
+.commit-file-warn {
+  margin: 0;
+  padding: 0 10px 8px 34px;
+  font-size: var(--text-2);
+  color: var(--muted);
+}
+.commit-file-warn {
+  color: var(--warn);
+  animation: fade-in var(--dur-2) var(--ease-standard) backwards;
+}
+
+/* The server cut the chat to fit (C1, CX 6): a teal card, the context
+   card's local wash, arriving on msg-in like its neighbours. */
+.window-cut-card {
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--local) 30%, transparent);
+  border-radius: var(--radius);
+  background: var(--local-soft);
+  animation: msg-in var(--dur-3) var(--ease-standard) backwards;
+}
+.window-cut-title {
+  font-size: var(--text-4);
+  font-weight: var(--weight-semibold);
+  color: var(--local);
+}
+.window-cut-body {
+  margin: 4px 0 0;
+  font-size: var(--text-3);
+  color: var(--ink-soft);
+}
+.window-cut-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-top: 10px;
+}
+.window-cut-sub {
+  font-size: var(--text-2);
+  color: var(--muted);
+}
+.window-cut-done {
+  margin: 8px 0 0;
+  font-size: var(--text-3);
+  color: var(--local);
+  animation: fade-in var(--dur-3) var(--ease-standard) backwards;
+}
+.window-cut-error {
+  margin-top: 8px;
 }
 
 /* The top bar's chips. */

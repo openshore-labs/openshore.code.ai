@@ -20,6 +20,39 @@ const turndown = new TurndownService({
 });
 turndown.remove(['script', 'style', 'nav', 'footer', 'iframe', 'noscript']);
 
+/** The most of one page read before parsing (D3). The markdown is cut far
+ *  shorter for the model anyway, and a page that streams without end (or a
+ *  multi-gigabyte file) must not fill the memory of the computer it runs on. */
+export const MAX_PAGE_BYTES = 4 * 1024 * 1024;
+
+/** The body as text, reading no more than `maxBytes`; the rest is never
+ *  downloaded (the stream is cancelled). */
+export async function readCapped(res: Response, maxBytes: number): Promise<string> {
+  if (!res.body) return '';
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (total < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const room = maxBytes - total;
+      const piece = value.byteLength > room ? value.subarray(0, room) : value;
+      chunks.push(piece);
+      total += piece.byteLength;
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+  const all = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) {
+    all.set(c, at);
+    at += c.byteLength;
+  }
+  return new TextDecoder().decode(all);
+}
+
 export async function fetchReadable(
   url: string,
   egress: EgressPolicy,
@@ -37,7 +70,7 @@ export async function fetchReadable(
     throw new Error(`${url} answered ${res.status} ${res.statusText}.`);
   }
   const contentType = res.headers.get('content-type') ?? '';
-  const raw = await res.text();
+  const raw = await readCapped(res, MAX_PAGE_BYTES);
 
   if (contentType.includes('json')) {
     return finish(url, url, '```json\n' + raw + '\n```', maxChars);

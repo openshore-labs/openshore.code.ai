@@ -152,6 +152,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     approvePlan,
     trustProjectFolder,
     dismissProjectTrust,
+    giveMoreRoom,
     restoreChangedFiles,
     trySampleProject,
     revisePlan,
@@ -702,6 +703,8 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               void restoreChangedFiles(itemId, direction, path)
             }
             onDismissTrust={dismissProjectTrust}
+            onGiveMoreRoom={(itemId) => void giveMoreRoom(itemId)}
+            onOpenStack={() => setView('stack')}
             onOpenPackNote={openPackNote}
             onSaveHandoff={(itemId) => saveHandoffToVault(conv.id, itemId)}
             afterItem={(itemId) => {
@@ -937,8 +940,8 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           total={thread.pendingApprovals.length}
           agent={agent}
           mode={mode}
-          onAnswer={(approve, always, inProject) =>
-            answerApproval(approval.id, approve, always, { inProject })
+          onAnswer={(approve, always, inProject, files) =>
+            answerApproval(approval.id, approve, always, { inProject, files })
           }
           onAnswerAll={answerAllApprovals}
           onOpenMode={() => setModeSheetOpen(true)}

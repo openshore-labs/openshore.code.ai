@@ -12,7 +12,7 @@ import { perplexityProvider } from '../src/core/tools/search/perplexity.js';
 import { searchProviderFor } from '../src/core/tools/search/index.js';
 import { webSearchTool } from '../src/core/tools/webSearch.js';
 import { webFetchTool } from '../src/core/tools/webFetch.js';
-import { buildToolRegistry } from '../src/core/agent/registry.js';
+import { buildToolRegistry, webLocalExempt } from '../src/core/agent/registry.js';
 import { Jail } from '../src/core/security/jail.js';
 import type { ToolContext } from '../src/core/tools/index.js';
 
@@ -91,9 +91,13 @@ describe('keyed backends', () => {
     await expect(
       searxngProvider(bare).search('q', 3, new EgressPolicy(config.egress)),
     ).rejects.toThrow(/searxngUrl/);
-    const cfg = ConfigSchema.parse({ search: { searxngUrl: 'http://localhost:8888' } }).search;
+    const full = ConfigSchema.parse({ search: { searxngUrl: 'http://localhost:8888' } });
+    const cfg = full.search;
     mockFetchOnce(JSON.stringify({ results: [{ title: 'S', url: 'https://s.io', content: 'C' }] }));
-    const results = await searxngProvider(cfg).search('q', 3, new EgressPolicy(config.egress));
+    // A session exempts its own configured search service from the
+    // own-network ask (D3), as buildToolContext does.
+    const session = new EgressPolicy(full.egress, { localExempt: webLocalExempt(full) });
+    const results = await searxngProvider(cfg).search('q', 3, session);
     expect(results).toEqual([{ title: 'S', url: 'https://s.io', snippet: 'C' }]);
   });
 

@@ -81,6 +81,15 @@ export class ElectronDriver implements ChatDriver {
     return requireBridge().trustFolder(this.sessionId);
   }
 
+  async giveMoreRoom(
+    provider: string,
+  ): Promise<{ ok: true; provider: string } | { error: string }> {
+    const b = requireBridge();
+    if (!b.giveMoreRoom)
+      return { error: 'Update OpenShore on this computer to give a model more room.' };
+    return b.giveMoreRoom(provider);
+  }
+
   restoreCheckpoint(
     id: string,
     direction: 'undo' | 'redo',
