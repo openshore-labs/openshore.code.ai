@@ -86,7 +86,7 @@ passed, 2 skipped (2663; baseline 2598 passed, 2 skipped).
 
 - `app/src/drivers/cloudOpenAiDriver.ts:223`: the direct cloud chat with an
   OpenAI-compatible provider (outside the Stack) still asks for `stream:
-  false` through the native shim on iPhone and Electron, with no abort. It can
+false` through the native shim on iPhone and Electron, with no abort. It can
   move onto `openAiCompatibleClient` the same way; out of this package's file
   list.
 - Device check (iPhone): a BYOM seat on Ollama over the tailnet streams word

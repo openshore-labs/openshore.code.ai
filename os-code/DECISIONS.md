@@ -2863,3 +2863,62 @@ execution contract. Newest at the bottom.
   'device' one, and say so when the change is made (the memo's copy). Open
   (What remains): in-app account deletion before the App Store build carries
   the gate; a free desktop chat with no Stack set up.
+- **The premium build (founder "do the entire build, push to main, make
+  this a truly premium coding agent", 2026-09-29):** the plan in
+  `docs/next-build-2026-09-29.md` plus a third wave, built as seventeen
+  packages in parallel worktrees and merged in order. Every fork went to an
+  advisor; the rulings are `docs/build-2026-09-29/advisor-rulings.md` and
+  each package's own calls are in `docs/build-2026-09-29/<package>.md`. The
+  calls a later session should not reopen:
+  - Gate: the account check sits where a coding driver is built, so an old
+    coding chat reopened signed out never drives the engine; sign-out lets go
+    of attached coding sessions; `newConversation` returns undefined when
+    gated.
+  - Headless means offline (CTO 3): a Crew routine has no web, network,
+    Codemagic, currents, specialist, vision or image tools, a network-risk
+    call is denied (never asked), and the run note says so. "Crew routines
+    never search the web." There is no per-routine web opt-in in this build.
+  - The served window (CTO 5): the engine budgets against what Ollama
+    serves, `numCtx: 'auto'` is not flipped by default, and the "Give it more
+    room" action writes it to machine config for one provider.
+  - Harness lifts (CTO 6): alternating-repeat detection is on; retrieval
+    before turn one (`harness.retrieval.firstTurn`) and union decoding
+    (`harness.decoding.union`) are off with `--retrieval` and
+    `--union-decoding` eval switches; a seat whose served window cannot hold
+    the full prompt gets the lean one whatever its class; a running
+    program's reads (`readProcess`) are volatile and never count as repeats.
+  - Streaming (CTO 7): Electron streams model replies through a guarded main
+    channel (`osc:chatStream`, POST to chat paths only, plain http only to
+    loopback, LAN and the tailnet); iOS through the WebView with one fallback
+    to the shim; Stop closes the turn at once and the partial answer stays.
+    The founder's 2026-09-23 arrival (no caret, a fade over `--dur-6`) stands
+    over CX 5's caret.
+  - Release integrity (CTO 1, 2, reconciled with CX): every desktop update
+    is checked against pinned Ed25519 keys (`app/electron/releaseKeys.ts`,
+    empty until the founder runs `docs/release-signing.md`); releases keep
+    publishing on every push to main with the write token on the publish
+    job only; a signature that is present and fails installs nothing and
+    opens nothing; a missing signature or empty key opens the release page.
+  - Migrations (CTO 4): account deletion is `0022`, the org free caps are
+    `0023`, both pushed from main only; `vault-m2-team` renumbers its
+    0020 and 0021 above main's newest when it merges. `0022` also fixes
+    `record_enforcement`, which had errored on every call since 0016.
+  - The free desktop chat (CTO 8): one engine function serves the phone's
+    `/chat` and the desktop's `osc:freeChat`; signed out, the desktop's
+    default is this free chat; it builds no vault pack.
+  - Store split (CTO 9): not in this build; new logic lives in sibling
+    modules (`state/gateOps.ts`, `signinOps.ts`, `firstRunOps.ts`,
+    `accountDeletion.ts`, `rewindOps.ts`, `harnessOps.ts`); Launch and
+    Repositories are the pilot slice of the next build.
+  - Windows (CTO 10): Git Bash, else pwsh, else powershell.exe, never WSL's
+    bash; a `windows-latest` CI job runs the engine and the Electron-side
+    tests.
+  - Wave 3 (CTO): long-running processes, rewind, and repository commands
+    (`.claude/commands`, skills) are in; MCP servers, hooks, subagents, a
+    classifier call, and vision on desktop sessions wait for a design pass.
+  - Sign-out is local (`scope=local`) with a separate "Sign out everywhere"
+    (CX 4); preferences sync is per key (`v: 2`), still without a server
+    compare-and-swap.
+  - Lockdown is enforced at the one execution seam: every command, commit
+    and check asks under Tokens and Secrets, and a commit's flagged files
+    start unticked (CX 7).

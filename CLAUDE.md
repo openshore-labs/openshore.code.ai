@@ -91,7 +91,11 @@ in `app/src/lib/routines.ts` and `app/src/screens/CrewCommandScreen.tsx`. Do
 NOT re-scope it as a chatbot: the reference is Grok Bot (always-on agents with
 their own computer), and an earlier persona-chatbot stab was dropped on
 purpose (see `os-code/DECISIONS.md`). Copy stays honest: "while your computer
-is on", never "always on". Open follow-ups are in `os-code/PROGRESS.md`.
+is on", never "always on". Routines run offline (CTO, 2026-09-29): a headless
+run has no web, network, Codemagic, currents, specialist, vision or image
+tools, a network-risk call is denied rather than asked, and the run note says
+so. "Crew routines never search the web." Do NOT add a per-routine web switch
+without a domain-allowlist design. Open follow-ups are in `os-code/PROGRESS.md`.
 
 ## Premium UX out of the box (standing rule, founder 2026-09-02)
 
@@ -241,8 +245,39 @@ type error until complete: every room in `app/src/lib/accountGate.ts`
 (`SETTINGS_REACH`). A new room or settings key is not done until it is
 classified there; prompts, work, addresses, keys and consents never follow.
 `app/test/accounts.test.ts` holds it; `docs/accounts-cx-memo.md` is the why.
-In-app account deletion is a ship blocker before the App Store build carries
-the gate (PROGRESS, What remains).
+In-app account deletion is BUILT (2026-09-29: the `delete-account` function,
+`0022`, the Settings row); it ships once the founder deploys them (PROGRESS,
+What remains).
+
+## The premium build's standing rules (2026-09-29)
+
+Built from a whole-codebase review (`docs/next-build-2026-09-29.md`); every
+package's notes and the advisor rulings are in `docs/build-2026-09-29/`. Each
+rule is pinned by tests; keep them:
+
+- **Every model reply streams, and Stop answers at once.** One provider client
+  (`app/src/drivers/providerClient.ts`); Electron streams through the guarded
+  `osc:chatStream` channel, iOS through the WebView with one fallback. Stop
+  closes the turn immediately and the partial answer stays in the chat and its
+  history. A new seat or driver is not done until it passes the abort tests.
+- **The engine budgets against the window a local model is served**, never its
+  native one (`os-code/src/providers/servedWindow.ts`); `numCtx: 'auto'` is
+  not a default until the reference box says so (tenet 2).
+- **Every desktop update is verified** against pinned Ed25519 keys
+  (`app/electron/releaseVerify.ts`, `releaseKeys.ts`); a download that runs code
+  without `verifyAsset` fails the guard in `app/test/releaseVerify.test.ts`.
+  Founder steps: `docs/release-signing.md`.
+- **No secret rides a child process's environment** (`os-code/src/core/exec/childEnv.ts`),
+  and **lockdown is enforced at the one execution seam** (`executeCall`), never
+  by registry composition alone.
+- **The tier-1 bundle carries no later-tier code**: later rooms are gated at
+  build time (`SHIPS_*` in `app/src/lib/focus.ts`), and CI runs
+  `pnpm --filter oscode-app check:bundle`.
+- **Migrations are pushed from `main` only**; a held branch renumbers its
+  migrations above main's newest when it merges (CTO 4).
+- **New store logic goes in a sibling module** (`state/gateOps.ts` and its
+  kind), with `store.ts` only wiring it in, until the store split (Launch and
+  Repositories first) opens the next build.
 
 ## Em dash policy is TOTAL here (standing rule)
 
