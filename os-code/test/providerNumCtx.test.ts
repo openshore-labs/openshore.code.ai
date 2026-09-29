@@ -35,6 +35,7 @@ function mockServer(flavor: 'ollama' | 'vllm', nativeCtx = 131072) {
     grammar: true,
     nativeTools: true,
     label: flavor === 'ollama' ? 'Ollama' : 'vLLM',
+    ...(flavor === 'ollama' ? { version: '0.12.3' } : {}),
   });
   const chats: Array<Record<string, any>> = [];
   let shows = 0;
@@ -200,11 +201,11 @@ describe('capabilities report both numbers', () => {
     expect(server.chats[0]!.options.num_ctx).toBe(caps.contextTokens);
   });
 
-  it('off: contextTokens is the model own and no native field', async () => {
+  it('off: contextTokens is the window Ollama serves by default, native the model own (C1)', async () => {
     const server = mockServer('ollama');
     const caps = await provider(server.baseUrl, 'off').capabilities('qwen2.5-coder:14b');
-    expect(caps.contextTokens).toBe(131072);
-    expect(caps.nativeContextTokens).toBeUndefined();
+    expect(caps.contextTokens).toBe(4096);
+    expect(caps.nativeContextTokens).toBe(131072);
   });
 });
 

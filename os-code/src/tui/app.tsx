@@ -16,6 +16,7 @@ import { InputBox } from './input.js';
 import { runSlash, type SlashContext } from './slash.js';
 import { nextRevealLength } from './smoothing.js';
 import { searchTranscript } from './transcriptSearch.js';
+import { windowCutLines } from '../core/agent/window.js';
 
 export interface AppProps {
   driver: SessionDriver;
@@ -159,6 +160,9 @@ export function App(props: AppProps): React.ReactElement {
           break;
         case 'note':
           push({ kind: 'note', text: event.message });
+          break;
+        case 'window-cut':
+          push({ kind: 'note', text: windowCutLines(event).join(' ') });
           break;
         case 'usage':
           setDollars((d) => d + event.dollars);

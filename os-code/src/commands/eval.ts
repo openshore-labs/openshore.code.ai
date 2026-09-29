@@ -28,6 +28,7 @@ import { CLAUDE_CODE_BASELINE, claudeCodeDrive, claudeCodeVersion } from '../eva
 import { buildHandoff, HANDOFF_MAX_TOKENS } from '../harness/handoff.js';
 import { classBlurb } from '../harness/profile.js';
 import { configureStreamIdle } from '../providers/streamIdle.js';
+import { looksTruncated } from '../context/compaction.js';
 import { resolveStack } from '../router/stack.js';
 import { Router } from '../router/router.js';
 import {
@@ -756,7 +757,8 @@ export function traceLine(trace: DriveTrace): string {
 
 /** What a run cost, when the drive measured it (Vault M4, CTO I14): input
  *  tokens sent, the prompt cache's reads and writes (Vault M5, CTO J19), the
- *  pack's share and its notes, and wall time. '' when none. */
+ *  pack's share and its notes, how many turns the server cut (C1), and wall
+ *  time. '' when none. */
 export function costLine(trace: DriveTrace): string {
   const parts: string[] = [];
   if (trace.promptTokens !== undefined) parts.push(`${trace.promptTokens} input tokens`);
@@ -766,6 +768,11 @@ export function costLine(trace: DriveTrace): string {
   if (trace.packTokens !== undefined) {
     const notes = trace.packNotes?.length ?? 0;
     parts.push(`pack ${trace.packTokens} tokens, ${notes} note${notes === 1 ? '' : 's'}`);
+  }
+  if (trace.promptWindow?.length) {
+    const turns = trace.promptWindow.length;
+    const cut = trace.promptWindow.filter((t) => looksTruncated(t.read, t.estimated)).length;
+    parts.push(`${cut} of ${turns} turn${turns === 1 ? '' : 's'} cut by the server`);
   }
   if (trace.wallMs !== undefined) parts.push(`${(trace.wallMs / 1000).toFixed(1)}s`);
   return parts.join(', ');

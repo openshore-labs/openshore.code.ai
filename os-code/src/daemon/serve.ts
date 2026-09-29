@@ -82,6 +82,7 @@ import {
 import { SEARCH_PROTOCOL_NOTE } from '../harness/localSearch.js';
 import { EgressPolicy } from '../core/security/egress.js';
 import { trustSessionFolder } from '../core/agent/projectTrust.js';
+import { giveMoreRoomHere } from '../providers/servedWindow.js';
 import {
   machineVaultWire,
   vaultPrivacyConfig,
@@ -1469,6 +1470,28 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           return;
         }
         const result = trustSessionFolder(driver);
+        sendJson(res, 'error' in result ? 409 : 200, result);
+        return;
+      }
+      // ---- more room: the truncation card's action (C1, CTO 5) ----
+      // Serve this provider's models the larger window from the next message,
+      // in every chat: `numCtx: 'auto'` in machine config. Admin only, since
+      // it spends this computer's memory, which on a shared hub is the
+      // owner's call, never a member's.
+      if (req.method === 'POST' && parts[2] === 'more-room') {
+        if (!hasRole(auth, 'admin')) {
+          sendJson(res, 403, {
+            error: 'restricted',
+            message: "Only this computer's owner can give a model more memory.",
+          });
+          return;
+        }
+        const body = await readJson(req);
+        if (typeof body.provider !== 'string' || !body.provider) {
+          sendJson(res, 400, { error: 'Send {"provider": "<id>"}.' });
+          return;
+        }
+        const result = giveMoreRoomHere(body.provider);
         sendJson(res, 'error' in result ? 409 : 200, result);
         return;
       }

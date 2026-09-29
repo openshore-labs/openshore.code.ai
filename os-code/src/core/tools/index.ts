@@ -146,6 +146,12 @@ export interface ToolContext {
    *  turn, like `seatLeavesNetwork`; past it a read returns the note's outline
    *  and asks for a section. Unset uses capContent's own cap. */
   vaultReadCapChars?: () => number;
+  /** The most characters one tool observation carries for the seat answering
+   *  now: its class's share of the served window (`observationCapChars` in
+   *  harness/profile.ts). Set by the loop each turn; a tool that can cut its
+   *  output at a sensible place (readFile, at a line) reads it and says how
+   *  to see the rest. Unset uses the fixed 24,000. */
+  observationCapChars?: () => number;
 }
 
 export interface ToolDef<S extends z.ZodType = z.ZodType> {
@@ -202,19 +208,6 @@ export class ToolRegistry {
       description: tool.description,
       parameters: z.toJSONSchema(tool.schema) as Record<string, unknown>,
     }));
-  }
-
-  /**
-   * Plain-text tool documentation for the JSON-in-text bridge, used when a
-   * model has no native tool support.
-   */
-  textDocs(): string {
-    const lines: string[] = [];
-    for (const tool of this.all()) {
-      const schema = JSON.stringify(z.toJSONSchema(tool.schema));
-      lines.push(`- ${tool.name}: ${tool.description}\n  args schema: ${schema}`);
-    }
-    return lines.join('\n');
   }
 }
 

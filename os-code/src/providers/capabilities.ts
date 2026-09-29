@@ -17,6 +17,9 @@ export interface BackendProfile {
   nativeTools: boolean;
   /** Human name for doctor and the status line. */
   label: string;
+  /** The server's own version, when it says (Ollama's /api/version). Its
+   *  default window depends on it. */
+  version?: string;
 }
 
 const PROFILES: Record<BackendFlavor, Omit<BackendProfile, 'flavor'>> = {
@@ -48,10 +51,12 @@ export async function probeBackend(baseUrl: string): Promise<BackendProfile> {
   if (cached) return cached;
 
   let flavor: BackendFlavor = 'generic';
+  let version: string | undefined;
 
   const ollama = await tryJson(`${baseUrl}/api/version`);
   if (ollama && typeof ollama === 'object' && 'version' in ollama) {
     flavor = 'ollama';
+    if (typeof ollama.version === 'string') version = ollama.version;
   } else {
     const lmstudio = await tryJson(`${baseUrl}/api/v0/models`);
     if (lmstudio) {
@@ -73,7 +78,7 @@ export async function probeBackend(baseUrl: string): Promise<BackendProfile> {
     }
   }
 
-  const profile: BackendProfile = { flavor, ...PROFILES[flavor] };
+  const profile: BackendProfile = { flavor, ...PROFILES[flavor], ...(version ? { version } : {}) };
   probeCache.set(baseUrl, profile);
   log.info('probed backend', { baseUrl, flavor });
   return profile;

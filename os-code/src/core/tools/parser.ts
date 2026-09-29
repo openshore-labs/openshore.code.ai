@@ -4,7 +4,7 @@
 // grammar-constrained decoding on backends that support it. On repeated
 // failure the agent loop can escalate to cloud.
 import { z } from 'zod';
-import type { ToolCallRequest } from '../../providers/types.js';
+import type { ToolCallRequest, ToolSpec } from '../../providers/types.js';
 import type { ToolRegistry } from './index.js';
 
 export interface ParsedToolCall {
@@ -267,15 +267,68 @@ export function toolCallJsonSchema(registry: ToolRegistry): Record<string, unkno
   };
 }
 
-/** Appended to the system prompt when a model uses the JSON-in-text bridge. */
-export function textProtocolInstructions(registry: ToolRegistry): string {
+/**
+ * Appended to the system prompt when a model uses the JSON-in-text bridge.
+ * Takes the tools this seat is offered, the same menu native tools get (a
+ * lean seat's few, plan mode's read side), so the text bridge never hands a
+ * small model every schema in the registry. `terse` (a lean seat) lists each
+ * tool as its first sentence and a line of fields in place of the full JSON
+ * schema: about a third of the size, in words a 3B follows.
+ */
+export function textProtocolInstructions(
+  tools: ToolRegistry | readonly ToolSpec[],
+  options: { terse?: boolean } = {},
+): string {
+  const specs: readonly ToolSpec[] = Array.isArray(tools)
+    ? (tools as readonly ToolSpec[])
+    : (tools as ToolRegistry).specs();
   return [
     'TOOLS. You can use tools. To call one, reply with ONLY a single JSON object on its own line, nothing else:',
     '{"tool": "<name>", "args": { ... }}',
     'After the tool runs you will receive its output and can continue. When the task is done, reply with your answer as plain text and NO JSON object.',
     'Available tools:',
-    registry.textDocs(),
+    specs.map((spec) => (options.terse ? terseToolDoc(spec) : fullToolDoc(spec))).join('\n'),
   ].join('\n');
+}
+
+function fullToolDoc(spec: ToolSpec): string {
+  return `- ${spec.name}: ${spec.description}\n  args schema: ${JSON.stringify(spec.parameters)}`;
+}
+
+/** The first sentence of a description, at most `max` characters. */
+function firstSentence(text: string, max: number): string {
+  const m = /^[\s\S]*?[.!?](?=\s|$)/.exec(text.trim());
+  const sentence = (m ? m[0] : text.trim()).replace(/\s+/g, ' ');
+  return sentence.length > max ? `${sentence.slice(0, max - 3).trimEnd()}...` : sentence;
+}
+
+/** A JSON schema property's type in a word: "string", "integer[]", or its
+ *  choices ("replace" | "append"). */
+function typeWord(prop: Record<string, unknown>): string {
+  if (Array.isArray(prop.enum)) return prop.enum.map((v) => JSON.stringify(v)).join(' | ');
+  if (prop.type === 'array') {
+    const items = (prop.items ?? {}) as Record<string, unknown>;
+    return `${typeof items.type === 'string' ? items.type : 'item'}[]`;
+  }
+  return typeof prop.type === 'string' ? prop.type : 'value';
+}
+
+/** One tool in a line or two: its first sentence, then each field as
+ *  `name (type)`, `name? (type)` when optional, with the field's own first
+ *  sentence cut short. */
+function terseToolDoc(spec: ToolSpec): string {
+  const params = spec.parameters as {
+    properties?: Record<string, Record<string, unknown>>;
+    required?: string[];
+  };
+  const required = new Set(params.required ?? []);
+  const fields = Object.entries(params.properties ?? {}).map(([name, prop]) => {
+    const about =
+      typeof prop.description === 'string' ? `: ${firstSentence(prop.description, 60)}` : '';
+    return `${name}${required.has(name) ? '' : '?'} (${typeWord(prop)})${about}`;
+  });
+  const args = fields.length ? `\n  args: ${fields.join('; ')}` : '\n  args: none';
+  return `- ${spec.name}: ${firstSentence(spec.description, 120)}${args}`;
 }
 
 /** A corrective message sent back to the model after a malformed call. */

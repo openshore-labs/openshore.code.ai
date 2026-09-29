@@ -7,6 +7,7 @@ import type {
   ChatRequest,
   ContentPart,
   EmbeddingProvider,
+  MoreRoom,
   Provider,
   ProviderCapabilities,
   ToolCallRequest,
@@ -25,11 +26,18 @@ import { isLocalUrl } from '../core/security/egress.js';
 import { idleError, idleGuard, type IdleGuard } from './streamIdle.js';
 import { deriveModelClass, servedContextTokens } from '../harness/profile.js';
 import { hostRamGB } from './hostMemory.js';
+import { extraGB, hasMoreRoom, kvBytesPerToken, ollamaDefaultNumCtx } from './servedWindow.js';
 
 const log = logger('openai-compatible');
 
 interface ShowInfo {
   contextTokens?: number;
+  /** The `num_ctx` the model's Modelfile sets (the /api/show parameters
+   *  block), which Ollama serves when a request names none. */
+  modelfileNumCtx?: number;
+  /** Bytes one token of context holds (from model_info), for what a larger
+   *  window costs. */
+  kvBytesPerToken?: number;
   vision?: boolean;
   toolCapable?: boolean;
   /** Ollama reports "thinking" for a model that takes the think flag. */
@@ -50,8 +58,9 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
   readonly remote: boolean;
   private showCache = new Map<string, ShowInfo>();
   /** The served window per model, fixed for the process once computed: a
-   *  changed `num_ctx` reloads the model in Ollama (CTO I1). */
-  private servedCache = new Map<string, number>();
+   *  changed `num_ctx` reloads the model in Ollama (CTO I1), and without one
+   *  the Modelfile and the server default hold for the process too. */
+  private servedCache = new Map<string, { mode: 'auto' | 'off'; served: number }>();
   private readonly ramGB: () => number;
   /** Models observed to reject native tools; the bridge falls back to JSON-in-text. */
   private toolRejects = new Set<string>();
@@ -144,12 +153,22 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
         if (res.ok) {
           const body = (await res.json()) as {
             model_info?: Record<string, unknown>;
+            parameters?: unknown;
             capabilities?: string[];
             details?: { families?: string[] };
           };
           const modelInfo = body.model_info ?? {};
           for (const [k, v] of Object.entries(modelInfo)) {
             if (k.endsWith('.context_length') && typeof v === 'number') info.contextTokens = v;
+          }
+          const kv = kvBytesPerToken(modelInfo);
+          if (kv !== undefined) info.kvBytesPerToken = kv;
+          // The parameters block is the Modelfile's PARAMETER lines as text,
+          // one "name value" per line. Absent or unparseable leaves the server
+          // default in force.
+          if (typeof body.parameters === 'string') {
+            const numCtx = /^\s*num_ctx\s+(\d+)\s*$/m.exec(body.parameters);
+            if (numCtx && Number(numCtx[1]) > 0) info.modelfileNumCtx = Number(numCtx[1]);
           }
           const caps = body.capabilities ?? [];
           const families = body.details?.families ?? [];
@@ -167,24 +186,75 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
     return info;
   }
 
-  /** The window to serve `model` at, or undefined when this endpoint does not
-   *  set one: `numCtx` unset or 'off', or a backend other than Ollama (llama.cpp
-   *  and vLLM fix the window at start). The lower of the model's own window and
-   *  the per-class ceiling for this computer's memory. The class comes from the
-   *  name and size only, so the window never feeds back into its own class.
-   *  Memoized per model: the same model is always asked for the same window. */
+  /** Whether this endpoint asks Ollama for a window: set to 'auto' in config,
+   *  or given more room by the person since the process started (the
+   *  truncation card's action, which also wrote 'auto' to machine config). */
+  private get numCtxMode(): 'auto' | 'off' {
+    return this.endpoint.numCtx === 'auto' || hasMoreRoom(this.endpoint.baseUrl) ? 'auto' : 'off';
+  }
+
+  /** The window to ask Ollama for (`options.num_ctx`), or undefined when this
+   *  endpoint sends none: `numCtx` unset or 'off', or a backend other than
+   *  Ollama (llama.cpp and vLLM fix the window at start). With 'auto' it is
+   *  the served window, the one number the request and the budget share. */
+  private async requestedWindow(
+    model: string,
+    backend: BackendProfile,
+  ): Promise<number | undefined> {
+    if (this.numCtxMode !== 'auto' || backend.flavor !== 'ollama') return undefined;
+    return this.servedWindow(model, backend);
+  }
+
+  /** The window Ollama actually serves `model`, or undefined on a backend
+   *  other than Ollama (its window is whatever it was started with, which we
+   *  cannot read, so the model's own stands in as before). With `numCtx:
+   *  'auto'`, the lower of the model's own window and the per-class ceiling
+   *  for this computer's memory (`autoWindow`). Otherwise what Ollama serves a
+   *  request that names none: the Modelfile's `num_ctx`, else the default for
+   *  that Ollama version, never more than the model's own. Budgeting against
+   *  the model's own window instead let a 32k budget run into a 4k server that
+   *  cuts the prompt without a word. Memoized per model and mode: the same
+   *  model is always served the same window until the person gives it more. */
   private async servedWindow(model: string, backend: BackendProfile): Promise<number | undefined> {
-    if (this.endpoint.numCtx !== 'auto' || backend.flavor !== 'ollama') return undefined;
+    if (backend.flavor !== 'ollama') return undefined;
+    const mode = this.numCtxMode;
     const cached = this.servedCache.get(model);
-    if (cached !== undefined) return cached;
-    const native = await this.nativeWindow(model);
-    const served = servedContextTokens(
-      native,
+    if (cached?.mode === mode) return cached.served;
+    const served =
+      mode === 'auto'
+        ? await this.autoWindow(model)
+        : Math.min(
+            await this.nativeWindow(model),
+            (await this.showInfo(model)).modelfileNumCtx ?? ollamaDefaultNumCtx(backend.version),
+          );
+    this.servedCache.set(model, { mode, served });
+    return served;
+  }
+
+  /** The window 'auto' serves: the lower of the model's own and the class
+   *  ceiling for this computer's memory. The class comes from the name and
+   *  size only, so the window never feeds back into its own class. */
+  private async autoWindow(model: string): Promise<number> {
+    return servedContextTokens(
+      await this.nativeWindow(model),
       deriveModelClass({ model, kind: 'local' }),
       this.ramGB(),
     );
-    this.servedCache.set(model, served);
-    return served;
+  }
+
+  /** What giving `model` more room would do (the truncation card's action):
+   *  'more' when 'auto' would serve it a larger window than it has now on this
+   *  computer, 'full' when this computer's memory allows none larger, and
+   *  undefined when the window is not ours to set (a backend other than
+   *  Ollama). */
+  async moreRoom(model: string): Promise<MoreRoom | undefined> {
+    const backend = await this.backend();
+    const current = await this.servedWindow(model, backend);
+    if (current === undefined) return undefined;
+    const larger = await this.autoWindow(model);
+    if (larger <= current) return { room: 'full' };
+    const gb = extraGB(current, larger, (await this.showInfo(model)).kvBytesPerToken);
+    return { room: 'more', window: larger, ...(gb !== undefined ? { gb } : {}) };
   }
 
   private async nativeWindow(model: string): Promise<number> {
@@ -266,7 +336,7 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
     if (request.stop?.length) options.stop = request.stop;
     // The served window (CTO I1). Only with `numCtx: 'auto'`; off leaves the
     // body exactly as it was, so Ollama keeps its own default.
-    const numCtx = await this.servedWindow(request.model, backend);
+    const numCtx = await this.requestedWindow(request.model, backend);
     if (numCtx !== undefined) options.num_ctx = numCtx;
     if (Object.keys(options).length) body.options = options;
 
