@@ -69,6 +69,29 @@ export interface CommandResult {
 const CARRY_CHARS = 64;
 const CARRY_FLUSH_MS = 200;
 
+/**
+ * Windows ends a tree with `taskkill /T`, which sees only the processes that
+ * exist at that instant. A Stop in the first moment of a run lands while the
+ * shell is still starting the program, and a program started a moment later
+ * escapes: it keeps running and holds the output open, so the run never ends.
+ * So on Windows a Stop that early waits until the run is this old, and then
+ * ends the whole tree. POSIX signals the process group, which catches a
+ * program whenever it starts.
+ */
+export const WINDOWS_TREE_SETTLE_MS = 750;
+
+/** How long a Stop waits before the tree is ended: on Windows, until the run
+ *  has had time to start what it runs; elsewhere, not at all. */
+export function stopDelayMs(elapsedMs: number, platform: NodeJS.Platform): number {
+  if (platform !== 'win32') return 0;
+  return Math.max(0, WINDOWS_TREE_SETTLE_MS - elapsedMs);
+}
+
+/** After a stopped run's own process has exited, how long its output may stay
+ *  open (a stray process it started still holding it) before the run ends
+ *  anyway, so a card never waits on a Stop that already happened. */
+export const STOPPED_OUTPUT_WAIT_MS = 2_000;
+
 type StreamName = 'stdout' | 'stderr';
 
 interface StreamState {
@@ -85,6 +108,9 @@ export class CommandRun {
   private settled = false;
   private timer?: ReturnType<typeof setTimeout>;
   private killTimer?: ReturnType<typeof setTimeout>;
+  private stopTimer?: ReturnType<typeof setTimeout>;
+  private exitWait?: ReturnType<typeof setTimeout>;
+  private readonly startedAt = Date.now();
   /** The last signal kill() sent, once it has been asked to stop the run. */
   private stopSignal?: NodeJS.Signals;
   private readonly streams: Record<StreamName, StreamState> = {
@@ -127,6 +153,8 @@ export class CommandRun {
         this.settled = true;
         if (this.timer) clearTimeout(this.timer);
         if (this.killTimer) clearTimeout(this.killTimer);
+        if (this.stopTimer) clearTimeout(this.stopTimer);
+        if (this.exitWait) clearTimeout(this.exitWait);
         // Every data event has fired by now: release the held tails.
         this.flush('stdout');
         this.flush('stderr');
@@ -149,6 +177,17 @@ export class CommandRun {
           timedOut: this.timedOut,
           startError: e.message,
         });
+      });
+      // A stopped run ends when its own process has exited, even if a stray
+      // process it started still holds the output: the output is closed, and
+      // what was said so far is kept.
+      child.on('exit', () => {
+        if (!this.stopSignal || this.settled) return;
+        this.exitWait = setTimeout(() => {
+          child.stdout?.destroy();
+          child.stderr?.destroy();
+          settle({ exitCode: null, signal: this.stopSignal ?? null, timedOut: this.timedOut });
+        }, STOPPED_OUTPUT_WAIT_MS);
       });
       child.on('close', (code, signal) => {
         // A run this runner stopped resolves as stopped on every system: no
@@ -211,15 +250,22 @@ export class CommandRun {
   /** Ask the process tree to stop: SIGTERM, then SIGKILL after the grace. */
   kill(): void {
     const pid = this.child?.pid;
-    if (pid === undefined || this.settled) return;
+    if (pid === undefined || this.settled || this.stopTimer || this.killTimer) return;
     this.stopSignal ??= 'SIGTERM';
-    killProcessTree(pid, 'SIGTERM');
-    const grace = this.opts.killGraceMs ?? 3000;
-    this.killTimer = setTimeout(() => {
+    const end = () => {
+      this.stopTimer = undefined;
       if (this.settled) return;
-      this.stopSignal = 'SIGKILL';
-      killProcessTree(pid, 'SIGKILL');
-    }, grace);
+      killProcessTree(pid, 'SIGTERM');
+      const grace = this.opts.killGraceMs ?? 3000;
+      this.killTimer = setTimeout(() => {
+        if (this.settled) return;
+        this.stopSignal = 'SIGKILL';
+        killProcessTree(pid, 'SIGKILL');
+      }, grace);
+    };
+    const wait = stopDelayMs(Date.now() - this.startedAt, process.platform);
+    if (wait > 0) this.stopTimer = setTimeout(end, wait);
+    else end();
   }
 }
 
