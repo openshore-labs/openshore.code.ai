@@ -773,7 +773,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'account',
     title: 'Account',
     where: 'Menu, Settings, Account, or the Sign in row',
-    text: `Personal use needs no account: chatting and building work signed out. Signing in lets you buy or restore Personal and get notifications from your computer on your phone. Chats are not synced between devices; your phone reaches your computer's chats by pairing.${teamsOn ? ' After creating one you choose personal or business; a business adds a company, admins, and a shared stack managed from Admin.' : ''}`,
+    text: `Chatting needs no account. Signing in is free and opens building, Projects, Vault, Crew, and pairing, and carries a few settings to your other devices. It is also how you buy or restore Personal. Chats are not synced between devices; your phone reaches your computer's chats by pairing.${teamsOn ? ' After creating one you choose personal or business; a business adds a company, admins, and a shared stack managed from Admin.' : ''}`,
     keywords: [
       'account',
       'sign in',
@@ -790,7 +790,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'privacy',
     title: 'Privacy',
     where: 'Menu, Settings, Privacy and Ethical boundaries',
-    text: 'Local models keep everything on your device. Cloud models run on your own API keys with your approval. Chats, projects, and API keys are encrypted on the device, and there is no telemetry. Only a cloud model you connect, or a web search, sends anything off the device.',
+    text: 'Local models keep your words on your device. Cloud models run on your own API keys, and the amber pill marks every turn that goes to one. Chats, projects, and API keys are encrypted on the device. What does leave is short and listed under Settings, Privacy, What leaves this device: a cloud model you chose, a web search you allowed, update checks, the model list, and your account while signed in.',
     keywords: [
       'privacy',
       'private',

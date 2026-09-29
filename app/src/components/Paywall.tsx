@@ -20,7 +20,7 @@ export const PRIVACY_URL = 'https://openshore.ai/privacy/';
 const BULLETS = [
   'Run the agent on any repository, on your computer',
   'Edits with real diffs, and tool approvals you control',
-  'Your models, your API keys. Nothing routes through us.',
+  'Your models, your API keys. Your prompts never pass through us.',
 ];
 
 export function Paywall() {

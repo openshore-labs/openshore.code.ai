@@ -492,16 +492,16 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     attachments?: Attachment[],
   ) => {
     const hasMessage = Boolean(text || (attachments && attachments.length));
-    const before = useApp.getState().activeId;
     // The first message rides in on the new chat itself, so its bubble is on
     // screen at once, not after the model has loaded.
     const id = await newConversation(source, {
       repoIds: pendingRepoIds,
       ...(hasMessage ? { firstMessage: { text: text ?? '', attachments } } : {}),
     });
-    // No new chat opened (a paywall stood in the way): the composer already
-    // cleared, so hand the message back rather than lose it.
-    if (hasMessage && (!id || id === before)) {
+    // No new chat opened (the sign-in sheet or a paywall stood in the way):
+    // the composer already cleared, so hand the message back rather than lose
+    // it.
+    if (hasMessage && !id) {
       setRestore((r) => restoreFromHeld({ text: text ?? '', attachments }, r));
     }
   };

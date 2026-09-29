@@ -77,6 +77,7 @@ export function LaunchScreen() {
 
   const guideMe = async () => {
     const id = await newConversation({ kind: 'stack' });
+    if (!id) return;
     const prompt = [
       'Walk me through launching my app to the app stores using Codemagic, step by step.',
       'Cover, in order and concretely:',

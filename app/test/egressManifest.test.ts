@@ -14,6 +14,9 @@ import {
   STAYS_ON_DEVICE,
   egressByRecipient,
 } from '../src/lib/egressManifest.js';
+import { GUIDE_CARDS } from '../src/lib/guideCards.js';
+import { HARBOR_MINI_PERSONA } from '../src/lib/harborMini.js';
+import { APP_KNOWLEDGE } from '../src/lib/guideKnowledge.js';
 
 const ROOTS = [
   join(process.cwd(), 'src'),
@@ -96,6 +99,47 @@ describe('what leaves this device', () => {
     // The old claim was false (search words, update checks and the catalog
     // all leave); it is gone.
     expect(settings).not.toMatch(/nothing leaves it|no IP address, ever\. There is one/);
+  });
+});
+
+// Copy never claims more privacy than the list shows (finding 10). The guides
+// answer "does anything leave my phone?" in their own words, so their words
+// are held to the list too: no "only X sends anything", no "nothing leaves",
+// no "everything stays", and no promise that building needs no account.
+describe('the guides claim no more than the list', () => {
+  const OVERCLAIMS = [
+    /\bonly\b[^.]*\bsends? anything\b/i,
+    /nothing (?:ever )?leaves (?:the|this|your) (?:device|phone|computer)/i,
+    /keeps? everything on (?:the|this|your) device/i,
+    /nothing routes through us/i,
+    /building (?:need|needs|works?)[^.]*(?:no account|signed out)/i,
+    /chatting and building/i,
+  ];
+  const sources: Array<[string, string]> = [
+    ...GUIDE_CARDS.map((c): [string, string] => [`guide card ${c.id}`, c.text]),
+    ['Harbor Lite persona', HARBOR_MINI_PERSONA],
+    ['app knowledge', APP_KNOWLEDGE],
+    ['Paywall', readFileSync(join(process.cwd(), 'src', 'components', 'Paywall.tsx'), 'utf8')],
+  ];
+
+  it('says nothing about leaving the device that the list does not back', () => {
+    const found: string[] = [];
+    for (const [where, text] of sources) {
+      for (const claim of OVERCLAIMS) {
+        const hit = text.match(claim);
+        if (hit) found.push(`${where}: ${hit[0]}`);
+      }
+    }
+    expect(found).toEqual([]);
+  });
+
+  it('sends the privacy question to the list itself', () => {
+    const privacy = GUIDE_CARDS.find((c) => c.id === 'privacy')!;
+    expect(privacy.text).toMatch(/What leaves this device/);
+    // The entries it names are on the list.
+    const ids = EGRESS.map((e) => e.id);
+    for (const id of ['cloud-models', 'search', 'updates', 'catalog', 'account'])
+      expect(ids).toContain(id);
   });
 });
 

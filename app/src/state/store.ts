@@ -496,6 +496,13 @@ import {
   type AccountFeature,
 } from '../lib/accountGate.js';
 import {
+  CodingLockedError,
+  accountNoticeDue,
+  codingLocked,
+  detachCodingChats,
+  leavesRoomAtSignOut,
+} from './gateOps.js';
+import {
   pickPreferences,
   preferencesChanged,
   readPreferencesRecord,
@@ -1594,6 +1601,9 @@ interface AppState {
   /** Restore a prior Apple purchase (iOS only; required by Apple 3.1.1). */
   restorePurchases(): Promise<void>;
 
+  /** Open a new chat on `source` and resolve to its id, or to undefined when
+   *  no chat opened: the coding agent's sign-in sheet or the paywall stood in
+   *  the way, and the caller hands anything typed back to the person. */
   newConversation(
     source: ConversationSource,
     opts?: {
@@ -1611,7 +1621,7 @@ interface AppState {
        *  starts from this summary. Capped at `HANDOFF_MAX_BYTES`. */
       handoff?: string;
     },
-  ): Promise<string>;
+  ): Promise<string | undefined>;
   /** Replace the repositories a chat works with (the header picker). */
   setConversationRepos(id: string, repoIds: string[]): Promise<void>;
   /** Open a chat with a setup guide: the goal, the plan, and step one, seeded
@@ -2715,9 +2725,24 @@ export const useApp = create<AppState>((set, get, api) => {
     return message;
   }
 
+  /** One door to the coding agent (state/gateOps.ts): signed out, no coding
+   *  session is built or attached, whichever path asks. Reading a coding chat
+   *  stays free; its saved snapshot is what shows. */
+  function codingLockedNow(conv: Conversation | undefined): boolean {
+    return codingLocked(conv, get().needsAccountNow());
+  }
+
   /** The driver could not be built. Say so once, and if a message is parked
-   *  on the chat, pin the reason beside its bubble with a Retry. */
+   *  on the chat, pin the reason beside its bubble with a Retry. A build
+   *  refused at the account door is no failure: a waiting message opens the
+   *  sign-in sheet instead, and stays parked for the attach after it. */
   function failOpen(conversationId: string, err: unknown): void {
+    if (err instanceof CodingLockedError) {
+      if (get().conversations[conversationId]?.pendingFirstMessage) {
+        get().openAccountGate('coding');
+      }
+      return;
+    }
     const message = friendlyOpenError(err);
     set((state) => {
       const c = state.conversations[conversationId];
@@ -2738,6 +2763,15 @@ export const useApp = create<AppState>((set, get, api) => {
     if (hasLiveDriver(conversationId) || building.has(conversationId)) return;
     const conv = get().conversations[conversationId];
     if (!conv) return;
+    // Signed out, a coding chat reopens on its snapshot and nothing reaches
+    // the engine. A message waiting to go (a send, a Retry) opens the sign-in
+    // sheet and stays parked; signing in builds this driver and the attach
+    // delivers it (onSignedIn).
+    if (codingLockedNow(conv)) {
+      if (get().resumingId === conversationId) set({ resumingId: undefined });
+      failOpen(conversationId, new CodingLockedError());
+      return;
+    }
     building.add(conversationId);
     // Desktop threads replay their journal into the UI, so they rebuild from
     // the daemon with no seed. Chat brains (device/cloud/stack) live only in a
@@ -2787,6 +2821,12 @@ export const useApp = create<AppState>((set, get, api) => {
   }
 
   function attachDriver(conversationId: string, driver: ChatDriver): void {
+    // A coding session that finished building after a sign-out is let go:
+    // the door holds for builds that straddle it too.
+    if (codingLockedNow(get().conversations[conversationId])) {
+      driver.dispose();
+      return;
+    }
     dropDriver(conversationId);
     drivers.set(conversationId, driver);
     // APP-13: events fold into ONE state update per tick. A journal replay
@@ -3470,6 +3510,9 @@ export const useApp = create<AppState>((set, get, api) => {
     seed?: SeedTurn[],
     extra?: BuildExtra,
   ): Promise<ChatDriver> {
+    // The account door, before anything opens or resumes a session on the
+    // engine: every build passes here, so no path reaches it signed out.
+    if (codingLockedNow(conv)) throw new CodingLockedError();
     return guardDriver(await buildUnguardedDriver(conv, seed, extra));
   }
 
@@ -4286,6 +4329,9 @@ export const useApp = create<AppState>((set, get, api) => {
   // many team drafts that kept.
   async function forgetSession(expired = false): Promise<number> {
     const uid = get().authSession?.user.id;
+    // A preference change still waiting to go belonged to the session.
+    if (prefsPushTimer) clearTimeout(prefsPushTimer);
+    prefsPushTimer = undefined;
     await clearSession();
     await clearPendingAuth();
     pendingCallback = undefined;
@@ -4343,7 +4389,21 @@ export const useApp = create<AppState>((set, get, api) => {
     const keepNote = expired && Boolean(uid) && get().vaultScope === 'team' && Boolean(open);
     // The cached entitlement belonged to this account; it leaves with it.
     void storeSetJson(ENTITLEMENT_CACHE_KEY, null).catch(() => {});
+    // One door to the coding agent: no coding session stays attached past the
+    // sign-in, so nothing typed or approved from here reaches the engine. Its
+    // work goes on on the computer, journaled; the chat keeps its snapshot,
+    // and signing in again replays the rest.
+    const detached = detachCodingChats(get().conversations, [...drivers.keys()]);
+    for (const id of detached.ids) {
+      dropDriver(id);
+      snapshotIds.add(id);
+    }
+    // Standing in a room that needs an account, the person lands on chat,
+    // the free home, rather than on a room they can no longer use.
+    const leaveRoom = leavesRoomAtSignOut(get().view, authConfigured());
     set({
+      ...(leaveRoom ? { view: 'chat' as const, viewTrail: [] } : {}),
+      ...(detached.conversations ? { conversations: detached.conversations } : {}),
       authSession: undefined,
       serverRole: undefined,
       entitlement: undefined,
@@ -6798,12 +6858,32 @@ export const useApp = create<AppState>((set, get, api) => {
     if (featureOn('teams')) void get().syncOrgProjects();
     // Preferences that follow the person arrive (or leave) now.
     void syncPreferences();
+    // Someone who has signed in knows what the account opens, so the notice
+    // for people who used OpenShore before the gate is never theirs, even
+    // signed out on a later launch.
+    if (!get().settings.accountNoticeSeen) {
+      await get()
+        .saveSettings({ accountNoticeSeen: true })
+        .catch(() => {});
+    }
     // Signed in from the account sheet: carry on to the room it was opened
     // for, or back to where the person was.
     if (get().accountGate) {
       const to = accountReturn;
       get().closeAccountGate();
       if (to) get().setView(to);
+    }
+    // A message kept at the door on the open coding chat goes out now: the
+    // driver builds and its attach delivers the parked message.
+    const openId = get().activeId;
+    const open = openId ? get().conversations[openId] : undefined;
+    if (
+      openId &&
+      open?.source.kind === 'desktop' &&
+      open.pendingFirstMessage &&
+      !open.pendingFirstError
+    ) {
+      ensureDriver(openId);
     }
     // Back on the team note: list the team vault again and replay what was
     // kept for this account while it was signed out.
@@ -7125,19 +7205,19 @@ export const useApp = create<AppState>((set, get, api) => {
         view: 'chat',
       });
       logEvent('app_open', { onboarded: settings.onboarded });
-      // Signed in: the account's preferences, if newer, arrive now.
+      // Signed in: the account's preferences, if newer, arrive now. Someone
+      // signed in already knows what the account opens, so the notice below
+      // never reaches them on a later signed-out launch (onSignedIn marks a
+      // fresh sign-in the same way).
       if (stored) void syncPreferences();
+      if (stored && !settings.accountNoticeSeen) {
+        void get()
+          .saveSettings({ accountNoticeSeen: true })
+          .catch(() => {});
+      }
       // Someone who used OpenShore before the account gate, signed out, hears
       // once that their work is still here and what signing in opens.
-      if (
-        authConfigured() &&
-        !stored &&
-        settings.onboarded &&
-        !settings.accountNoticeSeen &&
-        (Boolean(settings.daemon) ||
-          Boolean(settings.crew?.length) ||
-          Boolean(settings.projects?.some((p) => p.repoIds?.length)))
-      ) {
+      if (accountNoticeDue(settings, { configured: authConfigured(), signedIn: Boolean(stored) })) {
         void get().saveSettings({ accountNoticeSeen: true });
         get().showToast(ACCOUNT_NOTICE);
       }
@@ -7411,6 +7491,16 @@ export const useApp = create<AppState>((set, get, api) => {
       const { viewTrail } = get();
       const prev = viewTrail[viewTrail.length - 1];
       if (!prev) return;
+      // The same door as setView: a room on the trail that needs an account
+      // (the person signed out since) opens the sign-in sheet instead, and
+      // signing in carries on to it. The step is spent either way, so "Not
+      // now" never leaves a back arrow that only opens the sheet again.
+      const accountFeature = roomAccountFeature(prev);
+      if (accountFeature && get().needsAccountNow()) {
+        set({ viewTrail: viewTrail.slice(0, -1) });
+        get().openAccountGate(accountFeature, prev);
+        return;
+      }
       set({ view: prev, viewTrail: viewTrail.slice(0, -1), drawerOpen: false, arrivedBack: true });
     },
 
@@ -7644,18 +7734,18 @@ export const useApp = create<AppState>((set, get, api) => {
       // the repo, writes edits, runs tools) and that is the paid surface; chat
       // with local models ('device' Harbor/Ollama) and with a connected stack
       // ('stack') stays free. Central choke point so every coding entry (Repos,
-      // Launch) is gated one way. Returns the current conversation id (or empty)
-      // so callers that navigate on the result do not dead-end.
+      // Launch) is gated one way. Resolves to undefined when no chat opened, so
+      // no caller mistakes the chat already on screen for the new one.
       const coding = source.kind === 'desktop';
       // The coding agent needs a free sign-in (lib/accountGate.ts); chat does
       // not. The caller hands a typed first message back to the composer.
       if (coding && get().needsAccountNow()) {
         get().openAccountGate('coding');
-        return get().activeId ?? '';
+        return undefined;
       }
       if (coding && !get().personalUnlockedNow()) {
         get().openPaywall('coding');
-        return get().activeId ?? '';
+        return undefined;
       }
       logEvent('source_chosen', { kind: source.kind });
       const id = newId();
@@ -9090,6 +9180,7 @@ export const useApp = create<AppState>((set, get, api) => {
       );
       if (!reviewers.length) return undefined;
       const convId = await get().newConversation({ kind: 'stack' });
+      if (!convId) return undefined;
       const list = reviewers
         .map((a) => {
           const when = a.whenCalled?.trim() ? ` Focus: ${a.whenCalled.trim()}.` : '';
@@ -9118,6 +9209,7 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       const target = launch?.target;
       const convId = await get().newConversation({ kind: 'stack' });
+      if (!convId) return;
       const prompt = [
         'A Codemagic build failed. Read this redacted build log and tell me, in order:',
         '1) the single root cause, 2) the exact fix, 3) which file or setting to change.',
@@ -9145,6 +9237,7 @@ export const useApp = create<AppState>((set, get, api) => {
         return undefined;
       }
       const convId = await get().newConversation({ kind: 'stack' });
+      if (!convId) return undefined;
       const prompt = [
         `Launch my ${target.platform} app with Codemagic, from branch ${target.branch}.`,
         'Trigger a build and watch it. If it fails, read the log, find the single root cause, and tell me the exact fix.',
@@ -9711,6 +9804,7 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       logEvent('guide_started', { model: modelId });
       const id = await get().newConversation({ kind: 'device', modelId, modelName: guide.name });
+      if (!id) return undefined;
       // Seed the guide's greeting directly (not model-generated) so first
       // launch is a warm, instant, reliable hello with zero wait.
       set((s) => {
@@ -9744,6 +9838,7 @@ export const useApp = create<AppState>((set, get, api) => {
         modelId: HARBOR_MINI_MODEL_ID,
         modelName: HARBOR_MINI_MODEL_NAME,
       });
+      if (!id) return;
       set((st) => {
         const c = st.conversations[id];
         if (!c) return st;
@@ -11846,6 +11941,12 @@ export const useApp = create<AppState>((set, get, api) => {
         get().showToast('The sample needs the desktop app.');
         return;
       }
+      // The sample is a coding chat: signed out, the sign-in sheet opens
+      // before anything is copied to disk.
+      if (get().needsAccountNow()) {
+        get().openAccountGate('coding');
+        return;
+      }
       if (!get().sourceReady({ kind: 'desktop' })) {
         get().showToast('Pick a model for this computer first, then try the sample.');
         get().setView('stack');
@@ -11856,8 +11957,13 @@ export const useApp = create<AppState>((set, get, api) => {
         get().showToast(made.error);
         return;
       }
-      await get().newConversation({ kind: 'desktop', cwd: made.path, repoName: SAMPLE_REPO_NAME });
-      get().send(SAMPLE_PROMPT);
+      // The prompt rides in on the sample's own chat, parked until its driver
+      // attaches, so it can never land in whatever chat was open before when
+      // no chat opens (the paywall).
+      await get().newConversation(
+        { kind: 'desktop', cwd: made.path, repoName: SAMPLE_REPO_NAME },
+        { firstMessage: { text: SAMPLE_PROMPT } },
+      );
     },
 
     async restoreChangedFiles(itemId, direction, path) {
@@ -12076,11 +12182,13 @@ export const useApp = create<AppState>((set, get, api) => {
         return;
       }
       const repoName = info.cwd.split(/[\\/]/).filter(Boolean).pop();
-      await get().newConversation(
+      const opened = await get().newConversation(
         { kind: 'desktop', sessionId: info.id, cwd: info.cwd, repoName },
         { title: info.title && !/^Session /.test(info.title) ? info.title : undefined },
       );
-      if (backRoom) set({ viewTrail: [backRoom] });
+      // No chat opened (the sign-in sheet): the room stays as it was, trail
+      // and all.
+      if (opened && backRoom) set({ viewTrail: [backRoom] });
     },
 
     runCommand(command) {

@@ -55,8 +55,8 @@ export function ReposScreen() {
       setView('stack');
       return false;
     }
-    await newConversation({ kind: 'desktop', cwd, repoName });
-    return true;
+    // Undefined when no chat opened (the sign-in sheet stood in the way).
+    return Boolean(await newConversation({ kind: 'desktop', cwd, repoName }));
   };
   const [workspaces, setWorkspaces] = useState<Array<{ cwd: string; name: string }>>([]);
   const [url, setUrl] = useState('');

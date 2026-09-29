@@ -4,6 +4,7 @@
 // few careful switches. No telemetry to toggle because there is none. Built
 // with the Creative Studio (2026-09-02, "The Ledger" direction).
 import { featureOn } from '../lib/focus.js';
+import { ACCOUNT_PITCH } from '../lib/accountGate.js';
 import { Fragment, useEffect, useState } from 'react';
 import { PAY_GATES_ENABLED, isOrgAdmin, useApp, type HarborDownload } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
@@ -461,7 +462,8 @@ export function SettingsScreen() {
         <SettingsGroup title="Account" index={group++}>
           <SettingsRow
             label={accountLabel}
-            sub={signedIn ? email : 'Chatting and building need no account'}
+            subWrap={!signedIn}
+            sub={signedIn ? email : `Chatting needs no account. ${ACCOUNT_PITCH}`}
             value={accountValue}
             onClick={configured ? () => setSheet('account') : undefined}
           />
