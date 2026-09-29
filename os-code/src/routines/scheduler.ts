@@ -20,7 +20,7 @@
 //   - The result lands as a dated markdown note in the vault (plain files,
 //     Obsidian-compatible) with the session id, so the transcript is one tap
 //     away; the run record carries a one-line summary for the inbox.
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { bootstrapSession } from '../core/agent/bootstrap.js';
 import { writeNewNoteSync } from '../core/vault/noteFile.js';
@@ -28,7 +28,7 @@ import { safeNoteName } from '../harness/vault/paths.js';
 import type { DriverEvent, PermissionMode } from '../core/agent/types.js';
 import { loadDaemonConfig, saveGlobalConfig } from '../config/load.js';
 import { ensureVaultRootAt, vaultRootForOwner } from '../core/vault/memberRoots.js';
-import type { LocalDriver } from '../daemon/session.js';
+import { openSessionDrivers, type LocalDriver } from '../daemon/session.js';
 import { profileFor } from '../core/security/profiles.js';
 import { isOutboxAllowedPath, realOrResolve } from '../core/security/workspaces.js';
 import { logger } from '../util/log.js';
@@ -40,11 +40,18 @@ import {
   routineCaps,
   slotKey,
   type Routine,
+  type RoutineClockStatus,
   type RoutineInput,
   type RoutineRun,
   type RoutineView,
 } from './model.js';
-import { acquireSchedulerLock, releaseSchedulerLock, type SchedulerLock } from './lock.js';
+import {
+  acquireSchedulerLock,
+  holderAlive,
+  ownProcessStart,
+  releaseSchedulerLock,
+  type SchedulerLock,
+} from './lock.js';
 import * as store from './store.js';
 import { dailyNoteConfigOf, runNoteDayPath, runNoteFrontmatter } from './runNote.js';
 import type { RunNoteProvenance } from './runNote.js';
@@ -102,6 +109,24 @@ export class RoutineRefused extends Error {
 export const WORKSPACE_NOT_ALLOWED =
   'A routine runs only in a folder on this computer that OpenShore knows: a repository under ~/OSCode, or a folder you allowed. Pick one from Repositories, or allow this folder.';
 
+/** A run refused because its folder left the allowed ones since the routine
+ *  was made (taken off the list, or swapped for a link that leads elsewhere). */
+export const WORKSPACE_LEFT =
+  "This routine's folder is no longer one routines may run in: it was taken off the allowed folders, or it now leads somewhere else. Pick its folder again, or allow it, and the next run will start.";
+
+/** A run refused because its folder is gone. */
+export const WORKSPACE_GONE =
+  "This routine's folder is not on this computer anymore, so the run did not start. Pick its folder again.";
+
+/** A scheduled slot skipped because the person was working in the same
+ *  folder (H1): two agents editing one folder at once is how work is lost. */
+export const SLOT_WAITED_FOR_YOU =
+  'You were working in this folder, so this run waited for the next time.';
+
+/** The same, for a Run now tap. */
+export const RUN_WAITED_FOR_YOU =
+  'You were working in this folder, so this run did not start. Run it again once that chat is done.';
+
 export interface SchedulerDeps {
   now?: () => number;
   tickMs?: number;
@@ -128,6 +153,11 @@ export interface SchedulerDeps {
    *  machine config, Vault M7, CTO L9). Defaults to the config the run's
    *  workspace loads (the key is machine-only, so a project cannot move it). */
   provenance?: (routine: Routine) => boolean;
+  /** Whether a person's own session is working in this folder right now
+   *  (the real path), so a run waits instead of editing under them (H1).
+   *  Defaults to every stored session this process has open (the daemon's
+   *  and the desktop engine host's alike), less the scheduler's own runs. */
+  workspaceBusy?: (realCwd: string) => boolean;
 }
 
 /** The framing every run receives as its standing instructions, ahead of the
@@ -194,8 +224,9 @@ export class RoutineScheduler {
   private readonly lock: { acquire: () => SchedulerLock; release: () => void };
   private readonly persistAllowedRoot: (cwd: string) => void;
   private readonly provenance: (routine: Routine) => boolean;
-  /** The pid of the other process whose clock is live, when ours is not. */
-  private clockHeldBy?: number;
+  private readonly workspaceBusy: (realCwd: string) => boolean;
+  /** The other process's lock, when its clock is live and ours is not. */
+  private clockHeldBy?: SchedulerLock;
   private timer?: ReturnType<typeof setInterval>;
   private active?: ActiveRun;
   private queue: QueuedRun[] = [];
@@ -218,18 +249,40 @@ export class RoutineScheduler {
     };
     this.persistAllowedRoot = deps.persistAllowedRoot ?? persistOutboxRoot;
     this.provenance = deps.provenance ?? provenanceOn;
-    // A run the previous process left open can never finish now; say so
-    // rather than show "working" forever. The journal is still on disk.
+    this.workspaceBusy =
+      deps.workspaceBusy ??
+      ((real) =>
+        openSessionDrivers().some(
+          (d) => d.busy && !this.live.has(d.id) && realOrResolve(d.cwd) === real,
+        ));
+    // Runs the previous process left open are swept by the clock holder
+    // alone (tick), never here: a passive scheduler in a second process must
+    // not mark the first process's live run failed (H1).
+    if (deps.autostart !== false) this.start();
+  }
+
+  /**
+   * A run whose process is gone can never finish now; say so rather than
+   * show "working" forever (the journal is still on disk). Only runs whose
+   * recorded process is dead, or was replaced by another under the same pid,
+   * or that predate the record (an older build, whose clock this process now
+   * holds). The write lands only while the run still reads as working.
+   */
+  private sweepOrphans(): void {
     for (const run of store.listRuns(MAX_ORPHANS)) {
-      if (run.state === 'running' || run.state === 'waiting') {
-        store.updateRun(run.id, {
+      if (run.state !== 'running' && run.state !== 'waiting') continue;
+      if (this.active?.run.id === run.id) continue;
+      if (run.pid !== undefined && holderAlive(run.pid, run.pidStart)) continue;
+      store.updateRun(
+        run.id,
+        {
           state: 'failed',
           finishedAt: new Date(this.now()).toISOString(),
           summary: 'The computer restarted before this run finished.',
-        });
-      }
+        },
+        (current) => current.state === 'running' || current.state === 'waiting',
+      );
     }
-    if (deps.autostart !== false) this.start();
   }
 
   /** Called with every driver a run opens, so the host can track it (the
@@ -256,9 +309,10 @@ export class RoutineScheduler {
       held = { pid: process.pid, startedAt: new Date(this.now()).toISOString() };
     }
     if (held.pid !== process.pid) {
-      this.clockHeldBy = held.pid;
+      this.clockHeldBy = held;
       log.info('scheduler clock held by another process; this one stays passive', {
         pid: held.pid,
+        since: held.startedAt,
       });
       return;
     }
@@ -286,7 +340,17 @@ export class RoutineScheduler {
 
   /** The pid holding the clock when it is not ours. */
   clockHolder(): number | undefined {
-    return this.clockHeldBy;
+    return this.clockHeldBy?.pid;
+  }
+
+  /** Whose clock fires the slots, for the Crew room: "held by pid N since T"
+   *  when another process on this computer has it. */
+  clockStatus(): RoutineClockStatus {
+    if (this.timer) return { live: true };
+    const held = this.clockHeldBy;
+    return held
+      ? { live: false, heldBy: { pid: held.pid, since: held.startedAt } }
+      : { live: false };
   }
 
   // ---- workspaces -----------------------------------------------------------
@@ -405,6 +469,8 @@ export class RoutineScheduler {
   async tick(): Promise<void> {
     const nowMs = this.now();
     const now = new Date(nowMs);
+    // The clock holder, and only the clock holder, sweeps orphaned runs.
+    if (this.timer) this.sweepOrphans();
     for (const routine of store.listRoutines()) {
       const slot = latestSlotAtOrBefore(routine.schedule, now);
       if (!slot) continue;
@@ -418,10 +484,12 @@ export class RoutineScheduler {
         !routine.enabled ||
         (!routine.lastSlotKey && slot.getTime() < Date.parse(routine.updatedAt))
       ) {
-        store.markSlot(routine.id, key);
+        store.claimSlot(routine.id, key);
         continue;
       }
-      store.markSlot(routine.id, key);
+      // Claimed on a fresh read under the store lock: if another clock took
+      // this slot first, it is theirs and this one moves on.
+      if (!store.claimSlot(routine.id, key)) continue;
       if (nowMs - slot.getTime() > this.graceMs) {
         store.appendRun({
           routineId: routine.id,
@@ -472,6 +540,23 @@ export class RoutineScheduler {
     const permissionMode: PermissionMode = routine.access === 'edit' ? 'acceptEdits' : 'plan';
     let opened: OpenedSession;
     try {
+      // The folder is checked again at the start, as create checked it: it
+      // may have been taken off the allowed ones, or swapped for a link that
+      // leads elsewhere, since the routine was made.
+      const real = this.checkWorkspace(routine);
+      if (this.isBusy(real)) {
+        store.appendRun({
+          routineId: routine.id,
+          startedAt,
+          finishedAt: startedAt,
+          state: 'skipped',
+          trigger,
+          summary: trigger === 'schedule' ? SLOT_WAITED_FOR_YOU : RUN_WAITED_FOR_YOU,
+        });
+        log.info('routine waited for the person', { id: routine.id, trigger });
+        void this.pump();
+        return;
+      }
       opened = this.openSession(routine, permissionMode);
     } catch (err) {
       // A refusal is recorded as its own line (the person can act on it); any
@@ -492,6 +577,7 @@ export class RoutineScheduler {
     }
     const { driver, model, where, provider } = opened;
     if (routine.ownerUserId) driver.setOwner?.(routine.ownerUserId);
+    const pidStart = ownProcessStart();
     const run = store.appendRun({
       routineId: routine.id,
       sessionId: driver.id,
@@ -499,6 +585,10 @@ export class RoutineScheduler {
       state: 'running',
       trigger,
       steps: 0,
+      // Which process runs it, so another process never calls it orphaned
+      // while this one is alive.
+      pid: process.pid,
+      ...(pidStart ? { pidStart } : {}),
     });
     const active: ActiveRun = {
       run,
@@ -532,6 +622,30 @@ export class RoutineScheduler {
     active.wallTimer.unref?.();
     log.info('routine run started', { id: routine.id, run: run.id, session: driver.id, trigger });
     driver.send(routine.task);
+  }
+
+  /** Refuse a run whose folder is gone or no longer allowed, judged on the
+   *  path as written and on where it leads. Answers the real path. */
+  private checkWorkspace(routine: Routine): string {
+    let real: string;
+    try {
+      real = realpathSync(routine.cwd);
+      if (!statSync(real).isDirectory()) throw new Error('not a folder');
+    } catch {
+      throw new RoutineRefused(WORKSPACE_GONE);
+    }
+    if (!this.allowedWorkspace(routine.cwd) || !this.allowedWorkspace(real)) {
+      throw new RoutineRefused(WORKSPACE_LEFT);
+    }
+    return real;
+  }
+
+  private isBusy(real: string): boolean {
+    try {
+      return this.workspaceBusy(real);
+    } catch {
+      return false;
+    }
   }
 
   private onEvent(active: ActiveRun, event: DriverEvent): void {

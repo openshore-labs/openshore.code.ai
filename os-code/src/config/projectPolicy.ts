@@ -50,6 +50,9 @@ export const PROJECT_POLICY: Record<keyof OscConfig, KeyPolicy> = {
     maxTokens: 'lower-only',
     maxDollars: 'lower-only',
   },
+  // The daemon's bind, its outbox roots, its session retention (H1), and the
+  // push host are this computer's: a repo can neither keep sessions longer or
+  // shorter nor point a push grant at a host of its choosing.
   daemon: 'machine',
   catalog: 'machine',
   license: 'machine',

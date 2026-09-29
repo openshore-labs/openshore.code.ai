@@ -3,6 +3,7 @@
 import { banner, t } from '../brand/theme.js';
 import { loadConfig, loadDaemonConfig } from '../config/load.js';
 import { startDaemon } from '../daemon/serve.js';
+import { installProcessGuards } from '../daemon/processGuard.js';
 import { okLine, out, warnLine } from './util.js';
 
 export interface ServeOptions {
@@ -19,6 +20,12 @@ export async function serveCommand(options: ServeOptions): Promise<void> {
   const port = options.port ?? daemon.port;
 
   out(banner('osc serve'));
+  // One stray rejection must not take the daemon, and every paired phone's
+  // session, down with it (H1): log it, tell the working sessions, stay up.
+  installProcessGuards({
+    where: 'osc serve',
+    onFault: (kind) => warnLine(`Caught a stray ${kind}; the daemon kept running. See its log.`),
+  });
   try {
     const daemon = await startDaemon({ config, bind, port });
     okLine(`Daemon up on ${daemon.host}:${daemon.port} (${bind}).`);

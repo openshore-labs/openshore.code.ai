@@ -51,6 +51,20 @@ export interface RoutineRun {
   trigger: 'schedule' | 'manual';
   /** Tool steps the run took. */
   steps?: number;
+  /** The process running it and that process's start (H1), so only the
+   *  clock holder, and only for a run whose own process is gone, marks it
+   *  failed. This computer's own business: the daemon keeps it off the wire. */
+  pid?: number;
+  pidStart?: string;
+}
+
+/** Whose clock fires the routines on this computer (H1), for the Crew room:
+ *  this process's, or another process's since a time. */
+export interface RoutineClockStatus {
+  /** True when this process fires the slots. */
+  live: boolean;
+  /** The other process holding the clock, when this one is passive. */
+  heldBy?: { pid: number; since: string };
 }
 
 export interface Routine {

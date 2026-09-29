@@ -75,6 +75,7 @@ contextBridge.exposeInMainWorld('oscode', {
   daemonStop: invoke('osc:daemonStop'),
   listDeviceCredentials: invoke('osc:listDeviceCredentials'),
   revokeDeviceCredential: invoke('osc:revokeDeviceCredential'),
+  rotateSharedToken: invoke('osc:rotateSharedToken'),
   launchAtLogin: invoke('osc:launchAtLogin'),
   setLaunchAtLogin: invoke('osc:setLaunchAtLogin'),
 

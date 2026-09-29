@@ -46,6 +46,7 @@ function noPtyTerminals(): TerminalManager {
 }
 import { defaultConfig } from '../src/config/load.js';
 import { mintCredential } from '../src/core/security/credentials.js';
+import { _setFakeKeychain } from '../src/auth/store.js';
 
 // Every session the daemon boots, with the tools it registered, its vault
 // root, its workspace, and the project it carries, so a test can check what a
@@ -60,6 +61,7 @@ const booted = vi.hoisted(
       cwd: string;
       projectName: string | undefined;
       instructions: string | undefined;
+      hermesKey: string | undefined;
     }>,
 );
 vi.mock('../src/core/agent/bootstrap.js', async (importOriginal) => {
@@ -76,6 +78,7 @@ vi.mock('../src/core/agent/bootstrap.js', async (importOriginal) => {
         projectName: result.toolContext.projectName,
         // The standing instructions the agent will send (a private field).
         instructions: (result.agent as unknown as { instructions?: string }).instructions,
+        hermesKey: result.toolContext.currents?.hermes?.apiKey,
       });
       return result;
     },
@@ -649,6 +652,47 @@ describe('a revived session keeps its project', () => {
     base = `http://127.0.0.1:${daemon.port}`;
     await fetch(`${base}/sessions/${id}/files?q=`, { headers: auth(adminToken) });
     expect(booted.filter((b) => b.id === id).at(-1)!.instructions).toBe('New rule.');
+  });
+});
+
+// H1 (finding 17): a revived session forgot a declined web search and the
+// current it was handed. Across a daemon restart both come back, and the
+// current's key comes back from this computer's credential store, never from
+// info.json.
+describe('a revived session keeps a declined search and its current', () => {
+  beforeEach(() => _setFakeKeychain({ entries: new Map() }));
+  afterEach(() => _setFakeKeychain(undefined));
+
+  it('survives a restart with no web search tool and the Hermes tool, key and all', async () => {
+    const created = await fetch(`${base}/sessions`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({
+        cwd: home,
+        webSearch: false,
+        currents: { hermes: { baseUrl: 'http://127.0.0.1:8642/v1', apiKey: 'sk-hermes-777' } },
+      }),
+    });
+    expect(created.status).toBe(201);
+    const { id } = (await created.json()) as { id: string };
+    const first = booted.filter((b) => b.id === id).at(-1)!;
+    expect(first.tools).not.toContain('webSearch');
+    expect(first.tools).toContain('askHermes');
+    expect(readFileSync(join(home, 'sessions', id, 'info.json'), 'utf8')).not.toContain(
+      'sk-hermes-777',
+    );
+
+    daemon.close();
+    daemon = await startOnFreePort();
+    base = `http://127.0.0.1:${daemon.port}`;
+    expect(
+      (await fetch(`${base}/sessions/${id}/files?q=`, { headers: auth(adminToken) })).status,
+    ).toBe(200);
+    const revived = booted.filter((b) => b.id === id);
+    expect(revived).toHaveLength(2);
+    expect(revived[1]!.tools).not.toContain('webSearch');
+    expect(revived[1]!.tools).toContain('askHermes');
+    expect(revived[1]!.hermesKey).toBe('sk-hermes-777');
   });
 });
 

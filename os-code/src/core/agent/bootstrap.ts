@@ -39,6 +39,7 @@ import { nextActionFor } from '../ethics/classify.js';
 import { configureStreamIdle } from '../../providers/streamIdle.js';
 import type { AgentEvent, PermissionMode } from './types.js';
 import type { CurrentsHandles, HarnessCurrentsHandle } from '../../currents/model.js';
+import { cliCommandAvailable } from '../../currents/host.js';
 import type { VaultContextSource } from '../../harness/vaultContext.js';
 import type { VaultOverrides } from '../../harness/vault/types.js';
 import { vaultContextOn, vaultHandoffOn, vaultPackSize } from '../../harness/vault/settings.js';
@@ -220,6 +221,14 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   const humanize = options.humanize ?? stored.switches?.humanize;
   const memorySwitch = options.memory ?? stored.switches?.memory;
   const chainOfThought = options.chainOfThought ?? stored.switches?.chainOfThought;
+  // And a declined web search, and the currents it was handed (H1): without
+  // them a revived chat searched after the person said no, and its current's
+  // tool was gone. A stored key is read back from this computer's credential
+  // store (storedSessionProject); a stored CLI handle is honored only while
+  // that CLI is still on this machine's PATH, the rule a create applies.
+  const webSearch = options.webSearch ?? stored.switches?.webSearch;
+  const currents = options.currents ?? stillRunnable(stored.switches?.currents);
+  const harnessCurrents = options.harnessCurrents ?? stored.switches?.harnessCurrents;
   let config = options.config;
   let projectTrust: ProjectTrust | undefined;
   if (!config) {
@@ -318,8 +327,8 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     stackHasSpecialists: Boolean(stack.specialists.coding || stack.specialists.fast),
     egressLockdown,
     hasCodemagic: Boolean(options.codemagicToken),
-    currents: options.currents,
-    ...(options.webSearch === false ? { webSearch: false } : {}),
+    currents,
+    ...(webSearch === false ? { webSearch: false } : {}),
     vault: vaultRoot !== null,
     // A headless run (a Crew routine) has nobody at the desk to approve an
     // always-ask vault write, and the scheduler's own note already records
@@ -389,7 +398,14 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     project: {
       projectName,
       instructions,
-      switches: { humanize, memory: memorySwitch, chainOfThought },
+      switches: {
+        humanize,
+        memory: memorySwitch,
+        chainOfThought,
+        ...(webSearch === false ? { webSearch: false } : {}),
+        ...(currents ? { currents } : {}),
+        ...(harnessCurrents ? { harnessCurrents } : {}),
+      },
     },
     handoff,
   });
@@ -403,10 +419,10 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   if (!options.sessionId) {
     const waiting = [...(projectTrust?.waiting ?? [])];
     let state = projectTrust?.state;
-    if (options.currents?.cli && hasAgentCliSettings(options.cwd)) {
+    if (currents?.cli && hasAgentCliSettings(options.cwd)) {
       const cli = cliFolderTrust(options.cwd);
       if (cli.state !== 'trusted') {
-        const name = options.currents.cli.command === 'claude' ? 'Claude Code' : 'Codex';
+        const name = currents.cli.command === 'claude' ? 'Claude Code' : 'Codex';
         waiting.push(`lets ${name} run with this folder's own settings`);
         if (state !== 'changed') state = cli.state === 'changed' ? 'changed' : 'untrusted';
       }
@@ -437,7 +453,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   }
   // The Agentic Current's handle, and this session's id so the Hermes tool can
   // keep one Hermes session per OpenShore session.
-  if (options.currents) toolContext.currents = options.currents;
+  if (currents) toolContext.currents = currents;
   toolContext.sessionId = driver.id;
 
   // The handoff store (J13), keyed by this session's owner, workspace and
@@ -494,7 +510,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     projectSecrets,
     // A Harness Current makes a cloud decision call, so it is dropped under
     // egress lockdown exactly like cloud escalation and the currents tools.
-    harnessCurrents: egressLockdown ? undefined : options.harnessCurrents,
+    harnessCurrents: egressLockdown ? undefined : harnessCurrents,
     permissionMode: options.permissionMode,
     ...(options.canGrantVerify === false ? { canGrantVerify: false } : {}),
     vaultContext,
@@ -530,6 +546,15 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   }
 
   return { driver, agent, router, config, toolContext, tools, warnings, orchestratorKind };
+}
+
+/** A revived session's stored currents, less a CLI handle whose command is no
+ *  longer on this machine's PATH (a create drops one the same way), so the
+ *  tool never registers for a command that cannot run. */
+function stillRunnable(currents: CurrentsHandles | undefined): CurrentsHandles | undefined {
+  if (!currents?.cli || cliCommandAvailable(currents.cli.command)) return currents;
+  const { cli: _dropped, ...rest } = currents;
+  return Object.keys(rest).length ? rest : undefined;
 }
 
 /** The engine's pack source, reading the vault's own settings again (forced)
