@@ -173,6 +173,7 @@ import { MockDriver } from '../drivers/mockDriver.js';
 import { StackDriver, type StackVaultTools } from '../drivers/stackDriver.js';
 import { DesktopChatDriver } from '../drivers/desktopChatDriver.js';
 import { guardDriver } from '../drivers/guardedDriver.js';
+import { setEthicsAuth } from '../lib/ethics.js';
 import {
   HARBOR_READY_MESSAGE,
   advanceMessage,
@@ -503,11 +504,15 @@ import {
   leavesRoomAtSignOut,
 } from './gateOps.js';
 import {
-  pickPreferences,
-  preferencesChanged,
-  readPreferencesRecord,
-  syncDirection,
-} from '../lib/settingsReach.js';
+  SIGNED_OUT_EVERYWHERE,
+  SIGNED_OUT_HERE,
+  SIGN_OUT_EVERYWHERE_FAILED,
+  createPrefsSync,
+  noticePrefsChanged,
+  revokeEverywhere,
+  revokeHere,
+} from './signinOps.js';
+import { preferencesChanged, stampOwnChange, type PreferenceStamps } from '../lib/settingsReach.js';
 import { readProjectSecrets, writeProjectSecrets } from '../lib/projectSecrets.js';
 import {
   bridge,
@@ -758,9 +763,19 @@ export interface AppSettings {
    *  Device local. */
   heldFirstMessage?: { text: string; at: string };
   /** When this device last changed a preference that follows a signed-in
-   *  person (lib/settingsReach.ts), so a sync knows which side is newer.
-   *  Device local. */
+   *  person, from the first account copy (v: 1), which kept one time for all
+   *  of them. Read as the stamp of any key without its own (prefsStamps), and
+   *  cleared by the first sync that stamps every key. Device local. */
   prefsUpdatedAt?: string;
+  /** When each preference that follows a signed-in person last changed here
+   *  (lib/settingsReach.ts), so a sync keeps the newer side of each one.
+   *  Device local. */
+  prefsStamps?: PreferenceStamps;
+  /** The account whose preferences were last synced on this device, so a
+   *  different person signing in next takes their own account's preferences
+   *  rather than racing the last person's times (state/signinOps.ts). Device
+   *  local. */
+  prefsOwner?: string;
   /** The one-time line to someone who used OpenShore before the account gate,
    *  signed out, has been shown. Device local. */
   accountNoticeSeen?: boolean;
@@ -1753,8 +1768,13 @@ interface AppState {
   joinOrg(): Promise<void>;
   /** Decline it on this device (remembered until sign-out). */
   declineOrg(): Promise<void>;
-  /** Sign out and forget the session. */
+  /** Sign out on this device only, and forget the session. Always finishes
+   *  here, offline too; the person's other devices stay signed in. */
   signOutAccount(): Promise<void>;
+  /** End the sign-in on every device, then sign out here. Resolves true once
+   *  the server confirmed; false (and nothing changed) when it could not be
+   *  reached. */
+  signOutEverywhere(): Promise<boolean>;
   /** How many team vault entries the signed-in account has on this device
    *  that have not reached the team (stashed or held), which a sign-out
    *  deletes, so Sign out can ask first. 0 when nobody is signed in. */
@@ -4246,9 +4266,19 @@ export const useApp = create<AppState>((set, get, api) => {
     if (!session || !authConfigured()) return undefined;
     try {
       const fresh = await freshSession(session);
-      if (fresh !== session) set({ authSession: fresh });
-      return fresh;
+      const now = get().authSession;
+      if (now === session) {
+        if (fresh !== session) set({ authSession: fresh });
+        return fresh;
+      }
+      // The sign-in changed while the refresh was out. Signed out (or someone
+      // else signed in): nothing carries on with the old one, and it is never
+      // put back. Another caller's refresh landed first: go on with that.
+      if (!now || now.user.id !== session.user.id) return undefined;
+      return now.refreshToken === fresh.refreshToken ? now : freshAuth();
     } catch (err) {
+      // A sign-out already ended this session here: nothing more to say.
+      if (get().authSession !== session) return undefined;
       if (err instanceof AuthExpiredError) {
         const kept = await forgetSession(true);
         get().showToast(
@@ -4267,57 +4297,33 @@ export const useApp = create<AppState>((set, get, api) => {
     return (await freshAuth())?.accessToken;
   }
 
+  // The guardrail record uploads on the store's session, so there is one
+  // refresh in flight on this device, never a second with a spent token.
+  setEthicsAuth(() => freshAuth());
+
   // Accounts (lib/accountGate.ts): the room the sign-in sheet was opened for,
   // so signing in carries on to it.
   let accountReturn: ViewName | undefined;
 
   // Preferences that follow a signed-in person (lib/settingsReach.ts). A local
   // change is sent a moment after the last one; the account's copy is read at
-  // launch and at sign-in, and the newer side wins. Every failure is quiet:
-  // the preference is already saved on this device, and the next change or
-  // launch tries again.
+  // launch and at sign-in. Each is one merge, key by key (state/signinOps.ts).
   let prefsPushTimer: ReturnType<typeof setTimeout> | undefined;
   function schedulePrefsPush(): void {
     if (!get().authSession) return;
     if (prefsPushTimer) clearTimeout(prefsPushTimer);
     prefsPushTimer = setTimeout(() => {
       prefsPushTimer = undefined;
-      void pushPreferences();
+      void syncPreferences();
     }, 1500);
   }
-  async function pushPreferences(): Promise<void> {
-    try {
-      const session = await freshAuth();
-      if (!session) return;
-      let st = get().settings;
-      if (!st.prefsUpdatedAt) {
-        st = { ...st, prefsUpdatedAt: new Date().toISOString() };
-        await get().saveSettings({ prefsUpdatedAt: st.prefsUpdatedAt });
-      }
-      await writeUserPrefs(session.accessToken, {
-        v: 1,
-        at: st.prefsUpdatedAt,
-        prefs: pickPreferences(st),
-      });
-    } catch {
-      // Offline or refused: kept here, sent on the next change or launch.
-    }
-  }
-  async function syncPreferences(): Promise<void> {
-    try {
-      const session = await freshAuth();
-      if (!session) return;
-      const remote = readPreferencesRecord(await readUserPrefs(session.accessToken));
-      const direction = syncDirection(get().settings, remote);
-      if (direction === 'pull' && remote) {
-        await get().saveSettings({ ...remote.prefs, prefsUpdatedAt: remote.at });
-      } else if (direction === 'push') {
-        await pushPreferences();
-      }
-    } catch {
-      // Offline: this device's preferences stand until the next launch.
-    }
-  }
+  const syncPreferences = createPrefsSync({
+    session: () => freshAuth(),
+    read: readUserPrefs,
+    write: writeUserPrefs,
+    settings: () => get().settings,
+    save: (patch) => get().saveSettings(patch),
+  });
 
   // Forget the session on this device: the stored copy, the pending auth
   // binding, the team vault, the org's shared projects, and (APP-7) a
@@ -4381,6 +4387,10 @@ export const useApp = create<AppState>((set, get, api) => {
       patch.account = { type: 'commercial', org: { ...account.org, members: [] } };
     }
     if (s.declinedOrgIds?.length) patch.declinedOrgIds = undefined;
+    // Whose preference times these are, kept on the device: a different
+    // person signing in next takes their own account's preferences instead
+    // of racing these times (state/signinOps.ts ownerPatch).
+    if (uid && s.prefsOwner !== uid) patch.prefsOwner = uid;
     if (Object.keys(patch).length) await get().saveSettings(patch);
     // An expiry with a team note open keeps that note on screen, read-only,
     // for the same person to sign back in to (Vault M2 2.6); the rest of the
@@ -8888,10 +8898,23 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async signOutAccount() {
+      // Only this device's sign-in ends (CX ruling 4), with a live token, and
+      // the sign-out finishes here whatever the server says, offline too.
       const session = get().authSession;
-      if (session) await supabaseSignOut(session.accessToken);
+      if (session) await revokeHere(session, { fresh: freshSession, logout: supabaseSignOut });
       await forgetSession();
+      if (session) get().showToast(SIGNED_OUT_HERE);
       logEvent('auth_sign_out');
+    },
+
+    async signOutEverywhere() {
+      const outcome = await revokeEverywhere({ fresh: freshAuth, logout: supabaseSignOut });
+      if (outcome === 'failed') get().showToast(SIGN_OUT_EVERYWHERE_FAILED);
+      if (outcome !== 'done') return false;
+      await forgetSession();
+      get().showToast(SIGNED_OUT_EVERYWHERE);
+      logEvent('auth_sign_out_everywhere');
+      return true;
     },
 
     async unsentTeamTextCount() {
@@ -12534,10 +12557,10 @@ export const useApp = create<AppState>((set, get, api) => {
       const before = get().settings;
       let settings = { ...before, ...patch };
       // A preference that follows a signed-in person changed here (not a sync
-      // applying the account's copy, which names its own time): stamp it, and
-      // send it on once the person stops changing things.
-      const ownPrefChange = !('prefsUpdatedAt' in patch) && preferencesChanged(before, settings);
-      if (ownPrefChange) settings = { ...settings, prefsUpdatedAt: new Date().toISOString() };
+      // applying the account's copy, which names its own times): stamp each
+      // key it touched, and send it on once the person stops changing things.
+      const ownPrefChange = !('prefsStamps' in patch) && preferencesChanged(before, settings);
+      if (ownPrefChange) settings = stampOwnChange(before, settings, new Date().toISOString());
       set({ settings, hubRole: activeHubRole(settings) });
       setInsightsEnabled(settings.insightsOptIn ?? false);
       setActiveEffort(settings.effort ?? DEFAULT_EFFORT);
@@ -12545,9 +12568,14 @@ export const useApp = create<AppState>((set, get, api) => {
       setPromptCache(settings.promptCache === true);
       // New privacy rules apply to the next read, not a minute later.
       if ('vaultPrivacy' in patch) privacyCache = undefined;
+      // The phone keeps its own copy of the notice switches, whichever way
+      // they changed: here, or pulled from the account.
+      if (noticePrefsChanged(before, settings)) void syncNoticePrefs(settings);
       // A pairing change relinks the hub vault before anything settles it.
       if ('daemon' in patch) await syncHubLink(settings.daemon).catch(() => false);
-      await persistSettings(settings);
+      // What the store holds now, not the copy from before the relink: a save
+      // that landed during it is kept, never written over.
+      await persistSettings(get().settings);
       if (ownPrefChange) schedulePrefsPush();
     },
 

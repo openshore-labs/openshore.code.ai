@@ -32,11 +32,6 @@ vi.mock('../src/lib/supabase.js', () => ({
   rpc: async () => undefined,
 }));
 
-vi.mock('../src/lib/authSession.js', () => ({
-  loadStoredSession: async () => ({ accessToken: 't', refreshToken: 'r', expiresAt: 0 }),
-  freshSession: async () => ({ accessToken: 't', refreshToken: 'r', expiresAt: 0 }),
-}));
-
 vi.mock('../src/lib/platform.js', async (orig) => ({
   ...(await orig<typeof import('../src/lib/platform.js')>()),
   storeGetJson: async () => null,
@@ -45,7 +40,9 @@ vi.mock('../src/lib/platform.js', async (orig) => ({
 
 const { searchForModel, setSearchConsent, SEARCH_NOT_ALLOWED } =
   await import('../src/lib/localSearch.js');
-const { recordEthicsEvent } = await import('../src/lib/ethics.js');
+const { recordEthicsEvent, setEthicsAuth } = await import('../src/lib/ethics.js');
+// Signed in: the store hands its session in; here, a stand-in for it.
+setEthicsAuth(async () => ({ accessToken: 't' }));
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), 'utf8');
 

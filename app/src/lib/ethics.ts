@@ -35,7 +35,20 @@ import {
 } from 'os-code/protocol';
 import { storeGetJson, storeSetJson } from './platform.js';
 import { insert, isConfigured, rpc } from './supabase.js';
-import { freshSession, loadStoredSession } from './authSession.js';
+
+/** The signed-in session with a live access token, or undefined when signed
+ *  out. The store hands its own in (setEthicsAuth), so the one refresh in
+ *  flight is the store's: a second refresher here could spend a refresh token
+ *  the store already spent, and the token endpoint answers that reuse by
+ *  signing the person out. */
+type EthicsAuth = () => Promise<{ accessToken: string } | undefined>;
+let ethicsAuth: EthicsAuth | undefined;
+
+/** Wire the store's session in (state/store.ts). Until it is, a record stays
+ *  on the device, as it does signed out. */
+export function setEthicsAuth(auth: EthicsAuth): void {
+  ethicsAuth = auth;
+}
 
 const CONSENTS_KEY = 'oscode.ethics.consents.v1';
 const RECORDS_KEY = 'oscode.ethics.records.v1';
@@ -117,10 +130,9 @@ export async function recordEthicsEvent(record: EthicsRecord): Promise<void> {
  */
 async function postRecord(record: EthicsRecord): Promise<void> {
   try {
-    if (!isConfigured()) return;
-    const stored = await loadStoredSession();
-    if (!stored) return;
-    const session = await freshSession(stored);
+    if (!isConfigured() || !ethicsAuth) return;
+    const session = await ethicsAuth();
+    if (!session) return;
     await insert('guardrail_events', session.accessToken, {
       category: record.category,
       tier: record.tier,
