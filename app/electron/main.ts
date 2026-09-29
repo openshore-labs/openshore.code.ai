@@ -1008,6 +1008,12 @@ guarded('osc:restoreCheckpoint', (sessionId: unknown, id: unknown, how: unknown,
     optStr(path, 'path'),
   );
 });
+// Rewind (P2): a session id, the message's journal seq, and whether the files
+// go back too (only an explicit true). The engine checks the seq is one of
+// the person's messages still in the chat, and refuses while a task runs.
+guarded('osc:rewind', (sessionId: unknown, toSeq: unknown, files: unknown) =>
+  host.rewind(str(sessionId, 'sessionId'), num(toSeq, 'toSeq'), bool(files)),
+);
 guarded('osc:resumeSession', (id: unknown) => host.resumeSession(str(id, 'id')));
 guarded('osc:listSessions', () => host.listStoredSessions());
 guarded('osc:send', (sessionId: unknown, text: unknown) =>

@@ -513,6 +513,13 @@ import {
 } from '../lib/accountGate.js';
 import { answerFiles, giveMoreRoomFor } from './securityOps.js';
 import {
+  REWIND_NOT_NOW,
+  cutThread,
+  rewindEngine,
+  rewindableIds,
+  rewindsFiles,
+} from './rewindOps.js';
+import {
   CodingLockedError,
   accountNoticeDue,
   codingLocked,
@@ -2309,6 +2316,11 @@ interface AppState {
    *  or one (`path`), or redo them. Runs on the computer the session runs on;
    *  the engine echoes it, so every device folds the card. */
   restoreChangedFiles(itemId: string, direction: 'undo' | 'redo', path?: string): Promise<void>;
+  /** "Rewind to here" (P2): take the active chat back to just before one of
+   *  the person's own messages, and on a coding chat its folder's files too
+   *  when `files` is set. Resolves to the message's words for the composer,
+   *  or to why it did not happen. */
+  rewindTo(itemId: string, opts: { files: boolean }): Promise<{ text: string } | { error: string }>;
   /** Set the permission mode for new sessions and the live one. */
   /** `source` names where the change came from, for the opt-in activity
    *  log's regret signal (a walk choice changed soon after). */
@@ -12173,6 +12185,48 @@ export const useApp = create<AppState>((set, get, api) => {
       const result = await driver.restoreCheckpoint(card.checkpointId, direction, path);
       // Success folds through the engine's echo; a refusal says why here.
       if ('error' in result) patchCard({ restoring: false, error: result.error });
+    },
+
+    async rewindTo(itemId, opts) {
+      const { activeId } = get();
+      const conv = activeId ? get().conversations[activeId] : undefined;
+      if (!activeId || !conv) return { error: REWIND_NOT_NOW };
+      const guided = get().settings.guidedSetup?.conversationId === activeId;
+      const index = conv.thread.items.findIndex((i) => i.id === itemId);
+      const item = conv.thread.items[index];
+      if (
+        item?.kind !== 'user' ||
+        !rewindableIds(conv.thread, conv.source, { guided }).includes(itemId)
+      ) {
+        return { error: REWIND_NOT_NOW };
+      }
+      // A coding chat: the engine on the person's computer rewinds, and its
+      // marker cuts this thread (and every other device's) as it arrives.
+      if (rewindsFiles(conv.source)) {
+        const result = await rewindEngine(drivers.get(activeId), item.seq!, opts.files);
+        return 'error' in result ? result : { text: item.text };
+      }
+      // A chat whose brain keeps its history in the app: cut the thread, then
+      // rebuild the brain from what is left, the way a reopened chat's is.
+      set((s) => {
+        const c = s.conversations[activeId];
+        if (!c) return s;
+        return {
+          conversations: {
+            ...s.conversations,
+            [activeId]: {
+              ...c,
+              thread: cutThread(c.thread, index),
+              updatedAt: new Date().toISOString(),
+            },
+          },
+        };
+      });
+      bumpDriverEpoch(activeId);
+      dropDriver(activeId);
+      ensureDriver(activeId);
+      void persistConversations(get());
+      return { text: item.text };
     },
 
     async giveMoreRoom(itemId) {

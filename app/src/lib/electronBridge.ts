@@ -341,6 +341,13 @@ export interface OscodeBridge {
     direction: 'undo' | 'redo',
     path?: string,
   ): Promise<{ ok: true; paths: string[] } | { error: string }>;
+  /** Rewind a chat to one of the person's messages (P2), and its files with
+   *  `files`. Absent on an older shell. */
+  rewind?(
+    sessionId: string,
+    toSeq: number,
+    files: boolean,
+  ): Promise<{ ok: true; paths: string[] } | { error: string }>;
   /** Resume a session and return its journal so the renderer can replay it AFTER
    *  subscribing (IPC is not buffered, so a pushed replay would be lost). */
   resumeSession(

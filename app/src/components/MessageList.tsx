@@ -4,7 +4,14 @@
 // changed-files record, quiet status lines, and citations at the end. A
 // working row fills the gap between a send and the first token, and a quiet
 // "back to latest" chip offers the way back when the person has scrolled up.
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react';
 import { useExitPresence } from '../hooks/useExitPresence.js';
 import type { ThreadState } from '../state/types.js';
 import { useSmoothedReveal } from '../hooks/useSmoothedReveal.js';
@@ -34,6 +41,7 @@ import { ContextPackCard } from './ContextPackCard.js';
 import { Icon } from './Icon.js';
 import { Keyboard } from '@capacitor/keyboard';
 import { isPhone } from '../lib/platform.js';
+import { REWIND_ACTION } from '../state/rewindOps.js';
 
 /** The quiet line under a parked message while it waits to go. */
 export const PARKED_WAITING = 'Waiting to send';
@@ -41,6 +49,80 @@ export const PARKED_WAITING = 'Waiting to send';
 /** How far a downward drag on the transcript travels before the keyboard goes:
  *  past a tap's wobble, well short of a real scroll. */
 const DISMISS_DRAG_PX = 16;
+
+/** How long a still finger holds the person's own message before its rewind
+ *  opens (the phone's way in, P2): the same hold a chat row takes. */
+const HOLD_MS = 480;
+/** Movement past this is a scroll starting, not a hold. */
+const HOLD_SLOP = 8;
+
+/**
+ * The person's own message, when the chat can rewind to it (P2). On the
+ * desktop a quiet round action sits beside the bubble and shows on hover or
+ * keyboard focus; on the phone, where nothing hovers, a still hold on the
+ * bubble opens the same choice with a tick. The bubble eases down while the
+ * finger holds, so the touch is answered before the sheet rises.
+ */
+function RewindableMessage({ text, onRewind }: { text: string; onRewind: () => void }) {
+  const [holding, setHolding] = useState(false);
+  const timer = useRef<number | null>(null);
+  const start = useRef<{ x: number; y: number; id: number } | null>(null);
+  const stopTimer = () => {
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = null;
+  };
+  useEffect(() => stopTimer, []);
+  const letGo = () => {
+    stopTimer();
+    start.current = null;
+    setHolding(false);
+  };
+  const onPointerDown = (e: ReactPointerEvent) => {
+    // A mouse has the hover action; a hold is for a finger (or a pen).
+    if (e.pointerType === 'mouse') return;
+    stopTimer();
+    start.current = { x: e.clientX, y: e.clientY, id: e.pointerId };
+    setHolding(true);
+    timer.current = window.setTimeout(() => {
+      timer.current = null;
+      start.current = null;
+      setHolding(false);
+      hapticTick();
+      onRewind();
+    }, HOLD_MS);
+  };
+  const onPointerMove = (e: ReactPointerEvent) => {
+    const from = start.current;
+    if (!from || from.id !== e.pointerId) return;
+    if (Math.hypot(e.clientX - from.x, e.clientY - from.y) > HOLD_SLOP) letGo();
+  };
+  return (
+    <div className="msg-user-turn">
+      <button
+        type="button"
+        className="msg-rewind press-fb"
+        aria-label={REWIND_ACTION}
+        title={REWIND_ACTION}
+        onClick={onRewind}
+      >
+        <Icon size={16}>
+          <path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1L3.5 8.5" />
+          <path d="M3.5 3.5v5h5" />
+        </Icon>
+      </button>
+      <div
+        className={`msg-user rewindable${holding ? ' holding' : ''}`}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={letGo}
+        onPointerCancel={letGo}
+        onPointerLeave={letGo}
+      >
+        {text}
+      </div>
+    </div>
+  );
+}
 
 /** Jump to the foot with no animation. The thread's CSS smooth scroll would
  *  otherwise animate every follow, so streaming text trails below the fold. */
@@ -212,6 +294,8 @@ export function MessageList({
   onClarifyPick,
   onTrustFolder,
   onRestoreChanged,
+  rewindIds,
+  onRewind,
   onDismissTrust,
   onGiveMoreRoom,
   onOpenStack,
@@ -241,6 +325,11 @@ export function MessageList({
   onTrustFolder?: (itemId: string) => void;
   /** Undo or redo a task's changes (every file, or one). */
   onRestoreChanged?: (itemId: string, direction: 'undo' | 'redo', path?: string) => void;
+  /** The person's own messages this chat can rewind to right now (P2). */
+  rewindIds?: readonly string[];
+  /** "Rewind to here" on one of them: opens the choice (the hover action on
+   *  the desktop, a long press on the phone). */
+  onRewind?: (itemId: string) => void;
   onDismissTrust?: (itemId: string) => void;
   /** The truncation card's "Give it more room", by item id. */
   onGiveMoreRoom?: (itemId: string) => void;
@@ -267,6 +356,7 @@ export function MessageList({
   afterItem?: (id: string) => ReactNode;
 }) {
   const threadRef = useRef<HTMLDivElement>(null);
+  const rewindable = new Set(rewindIds ?? []);
   const pinnedRef = useRef(true);
   const prevCount = useRef(0);
   const [unseen, setUnseen] = useState(0);
@@ -419,7 +509,13 @@ export function MessageList({
         {thread.items.map((item) => {
           switch (item.kind) {
             case 'user':
-              return (
+              return onRewind && rewindable.has(item.id) ? (
+                <RewindableMessage
+                  key={item.id}
+                  text={item.text}
+                  onRewind={() => onRewind(item.id)}
+                />
+              ) : (
                 <div key={item.id} className="msg-user">
                   {item.text}
                 </div>

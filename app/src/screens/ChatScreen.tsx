@@ -42,7 +42,10 @@ import { HARBOR_MINI_MODEL_ID, HARBOR_MINI_EMPTY_HINT } from '../lib/harborMini.
 import { buildRotation, type Greeting } from '../lib/greeting.js';
 import { SAMPLE_ROW_LABEL, SAMPLE_ROW_SUB } from '../lib/sampleProject.js';
 import { hapticTick } from '../lib/haptics.js';
-import { isDesktop } from '../lib/platform.js';
+import { isDesktop, isPhone } from '../lib/platform.js';
+import { copyText } from '../lib/clipboard.js';
+import { RewindSheet } from '../components/RewindSheet.js';
+import { rewindOffersFiles, rewindableIds } from '../state/rewindOps.js';
 import { DEFAULT_PERMISSION_MODE } from '../lib/permissionMode.js';
 import { useOnline } from '../hooks/useOnline.js';
 import { useExitPresence } from '../hooks/useExitPresence.js';
@@ -154,6 +157,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     dismissProjectTrust,
     giveMoreRoom,
     restoreChangedFiles,
+    rewindTo,
     trySampleProject,
     revisePlan,
     startNewChat,
@@ -247,6 +251,18 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     : backView === 'project'
       ? (settings.projects?.find((p) => p.id === viewProjectId)?.name ?? ROOM_NAMES.project)
       : ROOM_NAMES[backView];
+  // "Rewind to here" (P2): the person's messages this chat can go back to
+  // now, and the one whose choice is open. Esc Esc in an empty desktop
+  // composer opens it for the last one; the phone has the long press.
+  const rewindIds =
+    conv && thread
+      ? rewindableIds(thread, conv.source, { guided: guided?.conversationId === conv.id })
+      : [];
+  const [rewindId, setRewindId] = useState<string | undefined>(undefined);
+  const rewindItem = rewindId ? thread?.items.find((i) => i.id === rewindId) : undefined;
+  const rewindText = rewindItem?.kind === 'user' ? rewindItem.text : undefined;
+  const lastRewindId = rewindIds[rewindIds.length - 1];
+  useEffect(() => setRewindId(undefined), [activeId]);
   const approval = thread?.pendingApprovals[0];
   const agent = Boolean(conv && conv.source.kind === 'desktop' && activeIsAgent());
   const mode = settings.permissionMode ?? DEFAULT_PERMISSION_MODE;
@@ -702,6 +718,8 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             onRestoreChanged={(itemId, direction, path) =>
               void restoreChangedFiles(itemId, direction, path)
             }
+            rewindIds={rewindIds}
+            onRewind={setRewindId}
             onDismissTrust={dismissProjectTrust}
             onGiveMoreRoom={(itemId) => void giveMoreRoom(itemId)}
             onOpenStack={() => setView('stack')}
@@ -897,6 +915,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           history={history}
           hubRole={hubRole}
           onCommand={onCommand}
+          onRewind={!isPhone() && lastRewindId ? () => setRewindId(lastRewindId) : undefined}
           onOpenModelSheet={() => {
             setSheetStage('root');
             setSheetOpen(true);
@@ -1027,6 +1046,34 @@ export function ChatScreen({ compact }: { compact: boolean }) {
       ) : null}
 
       {modeSheetOpen ? <ModeSheet onClose={() => setModeSheetOpen(false)} /> : null}
+
+      <RewindSheet
+        open={Boolean(rewindText)}
+        files={Boolean(
+          conv && thread && rewindId && rewindOffersFiles(thread, rewindId, conv.source),
+        )}
+        onClose={() => setRewindId(undefined)}
+        onChoose={async (files) => {
+          if (!rewindId) return undefined;
+          const result = await rewindTo(rewindId, { files });
+          if ('error' in result) return result.error;
+          // The rewound message goes back into the composer, to change or send.
+          setRewindId(undefined);
+          setRestore((r) => restoreFromHeld({ text: result.text }, r));
+          return undefined;
+        }}
+        onCopy={
+          isPhone() && rewindText
+            ? () => {
+                const text = rewindText;
+                setRewindId(undefined);
+                void copyText(text).then((ok) =>
+                  showToast(ok ? 'Copied your message.' : 'Could not copy that. Try again.'),
+                );
+              }
+            : undefined
+        }
+      />
 
       <VoiceMode
         open={voiceOpen}
