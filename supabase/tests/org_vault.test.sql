@@ -1,7 +1,7 @@
 -- pgTAP coverage for the Org Vault v1 migration (0019, Vault M2 item 2.3, CTO
--- ruling G3) and the move migration (0020, Vault M6 item 6.2, CTO ruling K12),
+-- ruling G3) and the move migration (0024, Vault M6 item 6.2, CTO ruling K12),
 -- plus team Restore over 0019's RPCs (K6), and the settings and entitlement
--- migration (0021, Vault M7 item 7.4, CTO ruling L17). Run with `supabase
+-- migration (0025, Vault M7 item 7.4, CTO ruling L17). Run with `supabase
 -- test db` against a database that has every migration applied. Its own
 -- transaction and its own plan(), so its count never collides with
 -- rls.test.sql's.
@@ -12,7 +12,7 @@
 -- run is rolled back. Revs a later step needs are kept in a temp table.
 --
 -- Error codes: P0001 is a plpgsql `raise exception`; 42501 is a missing
--- privilege; 23505 is a unique_violation; OV402 is 0021's lapsed-plan refusal
+-- privilege; 23505 is a unique_violation; OV402 is 0025's lapsed-plan refusal
 -- and OV403 its admins-only delete.
 
 begin;
@@ -39,7 +39,7 @@ values
   ('0f000000-0000-0000-0000-00000000000f', 'f2000000-0000-0000-0000-000000000002', 'mate@example.com',   'member', 'active'),
   ('0f000000-0000-0000-0000-00000000000f', 'f3000000-0000-0000-0000-000000000003', 'leaver@example.com', 'member', 'active');
 
--- An active plan, so the writes pass 0021's OV402 gate until the lapse below.
+-- An active plan, so the writes pass 0025's OV402 gate until the lapse below.
 insert into public.org_entitlements (org_id, tier_id, seats, status)
 values ('0f000000-0000-0000-0000-00000000000f', 'commercial_small', 3, 'active');
 
@@ -329,7 +329,7 @@ select throws_ok(
   'P0001', null::text,
   'a revision row cannot be updated, even by the owner');
 
--- ------------------------------------------------------------ move (0020)
+-- ------------------------------------------------------------ move (0024)
 select set_config('request.jwt.claims',
   '{"sub":"f1000000-0000-0000-0000-000000000001","email":"author@example.com","role":"authenticated"}', true);
 set local role authenticated;
@@ -634,7 +634,7 @@ select throws_ok(
   'P0001', null::text,
   'a purge window under a day is refused');
 
--- ------------------------------------------------------------ settings (0021)
+-- ------------------------------------------------------------ settings (0025)
 -- f1 is the org's admin (and owner); f2 a member; f4 a stranger.
 select set_config('request.jwt.claims',
   '{"sub":"f2000000-0000-0000-0000-000000000002","email":"mate@example.com","role":"authenticated"}', true);

@@ -72,9 +72,11 @@ Standing rules, each pinned by tests:
   model context until v1.1 (D15).
 
 Held branches, not on `main`: `vault-m2-team` (the team client on
-compare-and-swap, 0020, 0021), `vault-m2-icloud`, and `vault-m2-native` (the
+compare-and-swap, 0024, 0025; written as 0020 and 0021 and renumbered above
+main's 0022 and 0023 by CTO 4), `vault-m2-icloud`, and `vault-m2-native` (the
 iPhone opening an Obsidian vault in place). Founder gates (PROGRESS, What
-remains): pushing 0019, 0020, 0021 in order; the entitlement date; the
+remains): pushing 0019, 0022, 0023, then 0024 and 0025, in order and from
+`main` only (`supabase/README.md`, Ship order); the entitlement date; the
 reference box evals for M4 to M6 before any pack default flips; an
 `xcodebuild test` run; and the device checklist in
 `docs/vault-v1-device-checklist.md`. Every must-fix finding maps to a test in

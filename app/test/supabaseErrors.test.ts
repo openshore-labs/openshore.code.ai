@@ -1,5 +1,5 @@
 // A failed request carries its `code` on one field, whichever source sent it.
-// From PostgREST (Vault M7, migration 0021): the team vault tells the plan
+// From PostgREST (Vault M7, migration 0025): the team vault tells the plan
 // (OV402) and the delete rule (OV403) from any other refusal by it, so the
 // client reads the code from the body, not the words. From an Edge Function
 // (delete-account): its fixed refusal word (`{ error: 'owns_org' }`).

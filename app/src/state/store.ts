@@ -1561,7 +1561,7 @@ interface AppState {
    *  Nothing else of the team vault shows meanwhile. */
   vaultTeamExpired?: boolean;
   /** The team's plan as its settings read last said (Vault M7, CX Y14,
-   *  Y15; migration 0021): not entitled is the calm read-only state, every
+   *  Y15; migration 0025): not entitled is the calm read-only state, every
    *  note still reads and exports; `entitledUntil` is a never-paid team's
    *  notice; `isAdmin` and `deleteRole` decide the settings sheet and who may
    *  delete. Undefined before the first read and after a sign-out. */
@@ -2182,7 +2182,7 @@ interface AppState {
   vaultLoadTrash(): Promise<TrashEntry[] | undefined>;
   /** Restore one Trash entry where it came from, never overwriting. */
   vaultRestoreTrash(id: string): Promise<VaultRestoreResult>;
-  /** An admin sets who may delete team notes (CX Y14; migration 0021):
+  /** An admin sets who may delete team notes (CX Y14; migration 0025):
    *  'changed' when another admin's save landed first (the sheet shows the
    *  value there now), 'failed' when it could not be written. */
   vaultSetTeamDeleteRole(role: OrgVaultDeleteRole): Promise<'ok' | 'changed' | 'failed'>;

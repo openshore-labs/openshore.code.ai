@@ -39,6 +39,11 @@
 --
 -- Additive: `create or replace` only, no data change. Ships to production after
 -- 0019, in order (see supabase/README.md).
+--
+-- Numbering (CTO ruling 4, 2026-09-29): written as 0020 on the held
+-- vault-m2-team branch and renumbered 0024 there, above main's 0022 and
+-- 0023, so it applies after both. 0025 re-creates this function with the
+-- plan gate.
 
 create or replace function public.org_vault_move(
   p_org uuid,

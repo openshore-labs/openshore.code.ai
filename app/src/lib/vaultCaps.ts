@@ -23,7 +23,7 @@
 //   writes its settings file under compare-and-swap (`writeConfig`), and only
 //   while writable and not away. A vault's own `delete: permanent` (L11)
 //   turns one-tap Trash off, so every delete asks twice "for good".
-// - On a team vault only an admin saves the settings (CX Y14; 0021 refuses a
+// - On a team vault only an admin saves the settings (CX Y14; 0025 refuses a
 //   member there too): `settingsAdmin: false` keeps the sheet read-only.
 import type { VaultDeleteMode } from 'os-code/protocol';
 import type { StorageProvider } from './gitos/providers.js';

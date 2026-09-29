@@ -97,7 +97,7 @@ select throws_ok(
   'P0001', null::text,
   'BE-10: org_vault_put refuses a traversal path even for a member');
 
--- 0021 gates every team vault write on an entitled plan (OV402). The
+-- 0025 gates every team vault write on an entitled plan (OV402). The
 -- seat-ceiling cases below need this org to have NO entitlement row yet, so
 -- the plan exists only for this one write.
 reset role;

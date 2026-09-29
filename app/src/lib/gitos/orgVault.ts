@@ -16,7 +16,7 @@
 // for every other provider; the server never makes a copy for this client.
 // The base lives in the open note and the stash entry, never in this module.
 //
-// Rename, Trash and Restore (Vault M6, CTO K3, K6, R3; migration 0020). A
+// Rename, Trash and Restore (Vault M6, CTO K3, K6, R3; migration 0024). A
 // rename is org_vault_move under the source's rev; the store adopts the path
 // and rev it answers. Trash is org_vault_remove under the rev (a tombstone
 // plus a 'deleted' revision row); Trash lists a tombstone only while its
@@ -26,7 +26,7 @@
 // never over anything. There is no Empty Trash: the server's weekly purge
 // drops tombstones and revisions after 30 days, so team Trash is Restore only.
 //
-// Settings and the plan (Vault M7, CTO L17, CX Y14, Y15; migration 0021). The
+// Settings and the plan (Vault M7, CTO L17, CX Y14, Y15; migration 0025). The
 // vault's settings are one row per org, read with org_vault_settings_get and
 // written, by admins only, with org_vault_settings_put under its rev. The
 // text this seam carries is that jsonb rendered in Postgres's own key order,
@@ -107,15 +107,15 @@ type RemoveReply =
   | { ok: true; path: string; rev?: number }
   | { ok: false; conflict: 'changed'; theirs?: TheirsRow | null };
 
-/** What org_vault_move answers (0020). */
+/** What org_vault_move answers (0024). */
 type MoveReply =
   | { ok: true; path: string; rev: number; updated_at: string; size: number }
   | { ok: false; conflict: 'exists' | 'missing' | 'changed'; theirs?: TheirsRow | null };
 
-/** Who may delete team notes (0021): admins only, or every member. */
+/** Who may delete team notes (0025): admins only, or every member. */
 export type OrgVaultDeleteRole = 'admin' | 'member';
 
-/** What org_vault_settings_get answers (0021). */
+/** What org_vault_settings_get answers (0025). */
 interface SettingsRow {
   settings: Record<string, unknown>;
   delete_role: OrgVaultDeleteRole;
@@ -128,7 +128,7 @@ interface SettingsRow {
   is_admin: boolean;
 }
 
-/** What org_vault_settings_put answers (0021). */
+/** What org_vault_settings_put answers (0025). */
 type SettingsPutReply =
   | { ok: true; rev: number; updated_at: string }
   | { ok: false; conflict: 'changed'; theirs: SettingsRow };
@@ -138,7 +138,7 @@ type SettingsPutReply =
  *  whether this person is an admin and who may delete. */
 export interface OrgVaultPlan {
   entitled: boolean;
-  /** Set only while a never-paid team has a deadline (0021's
+  /** Set only while a never-paid team has a deadline (0025's
    *  no_entitlement_vault_until); null in the beta. */
   entitledUntil?: string;
   isAdmin: boolean;
@@ -207,7 +207,7 @@ export class OrgVaultNotReady extends Error {
   }
 }
 
-/** The team plan is not active (OV402, migration 0021): team notes are
+/** The team plan is not active (OV402, migration 0025): team notes are
  *  read-only, every note still reads and exports. Permanent, so a save
  *  refused mid-edit is held as Not saved with this reason (CX Y15). */
 export class OrgVaultLapsed extends OrgVaultRefusal {
@@ -217,7 +217,7 @@ export class OrgVaultLapsed extends OrgVaultRefusal {
   }
 }
 
-/** A member's delete under admins-only (OV403, migration 0021). `whole`
+/** A member's delete under admins-only (OV403, migration 0025). `whole`
  *  says the message is the whole line, said as it is (CX Y14). */
 export class OrgVaultDeleteRefused extends OrgVaultRefusal {
   readonly whole = true;
@@ -232,7 +232,7 @@ export class OrgVaultDeleteRefused extends OrgVaultRefusal {
 // fixes), 408, and 429, and a missing function (PGRST202, a 404 on an RPC),
 // which is a server not yet migrated. Anything without a status (offline, a
 // 5xx) is left as it is, so the store stashes it and retries. OV402 and OV403
-// are the plan and the delete rule (0021), each with its own line.
+// are the plan and the delete rule (0025), each with its own line.
 const RETRYABLE_4XX = new Set([401, 408, 429]);
 async function refusing<T>(resourceId: string, call: () => Promise<T>): Promise<T> {
   try {
@@ -802,7 +802,7 @@ export const orgVaultProvider: StorageProvider = {
     // Nothing held, nothing to release.
   },
 
-  // ---- Vault M6 (CTO K3, K6, R3; migration 0020) ----------------------------
+  // ---- Vault M6 (CTO K3, K6, R3; migration 0024) ----------------------------
 
   async rename(resourceId, from, to, guard: RenameGuard): Promise<RenameResult> {
     if (!isNotePath(from))
@@ -968,7 +968,7 @@ export const orgVaultProvider: StorageProvider = {
   // No emptyTrash: the team's Trash is Restore only (R3); the server's
   // weekly purge drops what has been there 30 days.
 
-  // ---- Vault M7 (CTO L7, L17; CX Y14, Y15; migration 0021) ------------------
+  // ---- Vault M7 (CTO L7, L17; CX Y14, Y15; migration 0025) ------------------
 
   // Only the vault's own settings live on the server; Obsidian's files never
   // do, so each of their names reads absent. The read also brings the plan.
@@ -979,7 +979,7 @@ export const orgVaultProvider: StorageProvider = {
     try {
       row = await getSettings(await token(), resourceId);
     } catch (err) {
-      // A server without 0021 yet has no settings to give: the defaults.
+      // A server without 0025 yet has no settings to give: the defaults.
       if (err instanceof OrgVaultNotReady) return { ok: false, reason: 'unsupported' };
       throw err;
     }

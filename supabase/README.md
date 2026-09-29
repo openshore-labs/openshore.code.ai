@@ -83,7 +83,7 @@ What 0015 does, by finding:
 Tests: `supabase test db` runs every `tests/*.test.sql` file, each its own
 rolled-back transaction with its own plan: `tests/rls.test.sql` (32
 assertions over the cases above), `tests/org_vault.test.sql` (125 assertions
-over 0019, 0020 and 0021, below) and `tests/account_deletion.test.sql` (37
+over 0019, 0024 and 0025, below) and `tests/account_deletion.test.sql` (37
 assertions over 0022 and 0023, below). CI runs the same command in the `sql`
 job of `.github/workflows/ci.yml`. `deno test functions/_shared` covers the
 pure decisions: `entitlement.test.ts` (cross-rail guard, checkout routing,
@@ -91,6 +91,32 @@ Apple product and freshness checks, ignored prices) and
 `accountDeletion.test.ts` (the deletion plan and the email hash).
 `app/test/supabaseMigrations.test.ts` fails when two migration files share a
 number.
+
+## Ship order (CTO ruling 4): 0019, 0022, 0023, 0024, 0025, all from main
+
+`supabase db push` matches a migration by its number and applies the pending
+ones in order, so the list stays linear and nobody needs `--include-all`.
+Push from `main` only, never from a held branch. A held branch renumbers its
+migrations above main's newest when it merges: the team vault's move and
+settings were written as 0020 and 0021 on `vault-m2-team` and are 0024 and
+0025 now (2026-09-29).
+
+1. Preflights, in the SQL editor on production, each returning no rows:
+   0019's case duplicates and 0022's two `abuse_reports` queries (both
+   below).
+2. Before the team client merges, from `main`: `supabase db push --dry-run`,
+   then `supabase db push`, which applies 0019, 0022 and 0023 in that order
+   (and any older file production lacks; the dry run lists every one). Then
+   `supabase functions deploy delete-account`, and confirm
+   `oscode_vault_purge` in `select * from cron.job`.
+3. Then, from `main` as soon as they are on it, `supabase db push` applies
+   0024 (the move), then 0025 (the settings and the plan gate). CTO 4 puts
+   them in production before the team client merges, so either the two files
+   and their pgTAP reach `main` ahead of the client, or they arrive with the
+   branch's merge and are pushed at once. In that gap no shipping build opens
+   the team vault (a v4 surface, `SHIPS_TEAMS` in `app/src/lib/focus.ts`), and
+   a client that meets a function the server lacks (PGRST202) keeps the text
+   as not ready instead of writing blind.
 
 ## Migration 0019 (Org Vault v1): what changed and how to ship it
 
@@ -114,10 +140,10 @@ a history (Vault v1 plan item 2.3, CTO ruling G3):
   days, weekly (`oscode_vault_purge`, Sundays 03:29 UTC) in the same guarded
   pg_cron block as 0015.
 
-**Order (founder gate):** push 0019 to production BEFORE the team-client
-change (M2 stream D, `orgVault.ts` calling `org_vault_write`) merges to main,
-because Codemagic ships every push to main to TestFlight. Run the preflight
-below first.
+**Order (founder gate):** push 0019 to production from `main` BEFORE the
+team-client change (M2 stream D, `orgVault.ts` calling `org_vault_write`)
+merges to main, because Codemagic ships every push to main to TestFlight. Run
+the preflight below first. The whole sequence is under Ship order, above.
 
 **Preflight: case duplicates.** The unique index needs live paths in one org
 to differ by more than letter case. 0019 renames any that do not (the most
@@ -143,8 +169,9 @@ renamed after the first one; tell the teammates who own them.
 Apple requires in-app account deletion (guideline 5.1.1(v)); the app's
 Settings, Your account, Delete account calls the `delete-account` function.
 CTO ruling 4 (2026-09-29) numbers these 0022 and 0023. **Push from main only.**
-0020 and 0021 are held on `vault-m2-team`, which renumbers them above main's
-newest file when it merges; never push them from the held branch.
+The team vault's move and settings, written as 0020 and 0021 on the held
+`vault-m2-team`, are renumbered 0024 and 0025 above these and follow them
+from main (Ship order, above); never push from the held branch.
 
 1. Preflight, in the SQL editor. Both queries should return no rows:
 
@@ -158,7 +185,8 @@ newest file when it merges; never push them from the held branch.
    hash, and never one an operator acted on. If rows remain, it prints a
    NOTICE and leaves the new check unvalidated or the unique index uncreated;
    fix the rows by hand and re-run that block.
-2. `supabase db push` (applies 0022, then 0023).
+2. `supabase db push` (applies 0022, then 0023, after 0019 when production
+   lacks it; see Ship order, above).
 3. `supabase functions deploy delete-account` (`verify_jwt = true` in
    `config.toml`). It reads `STRIPE_SECRET_KEY` only when the account has a
    Stripe customer or subscription to cancel.
@@ -200,9 +228,10 @@ clears the person from team history and removes their memberships; then
 iPhone; errors are the fixed codes `unauthorized`, `owns_org`, `billing`,
 `failed`. Each step is safe to repeat, so a retry finishes a partial run.
 
-## Migration 0020 (Org Vault move): what changed and how to ship it
+## Migration 0024 (Org Vault move): what changed and how to ship it
 
-`migrations/0020_org_vault_move.sql` adds one RPC for the team vault's rename
+`migrations/0024_org_vault_move.sql` (written as 0020 on `vault-m2-team`,
+renumbered by CTO ruling 4) adds one RPC for the team vault's rename
 (Vault v1 plan item 6.2, CTO rulings K3 and K12):
 
 - `org_vault_move(org, from, to, if_match)` moves a live note when its rev is
@@ -220,14 +249,16 @@ revision (at the original path, or `{title} (restored).md` when that name is
 taken), and there is no Empty, since `org_vault_purge` from 0019 already
 drops tombstones and revision rows after 30 days.
 
-**Order (founder gate):** 0020 goes to production AFTER 0019 (it calls 0019's
-lock, snapshot, and sequence), and before the team client that calls
-`org_vault_move` merges to main. `supabase db push` applies them in order.
+**Order (founder gate):** 0024 goes to production from `main` AFTER 0019 (it
+calls 0019's lock, snapshot, and sequence), 0022 and 0023, and before the
+team client that calls `org_vault_move` is used (Ship order, step 3).
+`supabase db push` applies them in order.
 
-## Migration 0021 (Org Vault settings and entitlement): what changed and how to ship it
+## Migration 0025 (Org Vault settings and entitlement): what changed and how to ship it
 
-`migrations/0021_org_vault_settings.sql` adds the team vault's settings and
-its plan gate (Vault v1 plan item 7.4, CTO ruling L17, CX Y14 and Y15):
+`migrations/0025_org_vault_settings.sql` (written as 0021 on
+`vault-m2-team`, renumbered by CTO ruling 4) adds the team vault's settings
+and its plan gate (Vault v1 plan item 7.4, CTO ruling L17, CX Y14 and Y15):
 
 - `org_vault_settings`, one row per org: `settings` (the vault conventions as
   jsonb, top-level keys `version`, `newNotes`, `daily`, `templates`,
@@ -257,9 +288,14 @@ its plan gate (Vault v1 plan item 7.4, CTO ruling L17, CX Y14 and Y15):
   refuse a non-admin with SQLSTATE `OV403`. A move is not gated by it (a
   rename keeps the note).
 
-**Order (founder gate):** 0021 goes to production AFTER 0019 and 0020 (it
-re-creates their write RPCs), and before the team client that reads settings
-or maps `OV402` merges to main. `supabase db push` applies them in order.
+**Order (founder gate):** 0025 goes to production from `main` AFTER 0019 and
+0024 (it re-creates their write RPCs) and after 0022 and 0023, in the same
+push as 0024, and before the team client that reads settings or maps `OV402`
+is used (Ship order, step 3). 0023's free caps
+are triggers, so they hold under the write RPCs 0025 re-creates; 0023's
+`org_is_entitled` has no beta window for an org with no entitlement row, so
+such an org may write team notes under 0025 and 0023 still caps its bytes.
+`supabase db push` applies them in order.
 
 **When pay gates come back (founder gate).** Ship a one-line migration that
 replaces the body of `no_entitlement_vault_until()` with a date at least 30

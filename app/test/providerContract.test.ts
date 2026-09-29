@@ -548,7 +548,7 @@ for (const p of enforcing) {
 // and a write's version is the one readConfig and the next ifMatch accept.
 // Every `obsidian/*` name is refused before anything is written.
 //
-// The team vault keeps its settings in a jsonb column, not a file (0021), so
+// The team vault keeps its settings in a jsonb column, not a file (0025), so
 // Postgres keeps the keys in its own order and none of the whitespace. Its
 // row compares text through `same`, the JSON as the column holds it; every
 // file row keeps `same` as the identity, so their bytes stay exact.

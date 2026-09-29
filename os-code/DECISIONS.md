@@ -2692,7 +2692,8 @@ execution contract. Newest at the bottom.
   vault tool, no agent line (D15); project pins stay device-local and never
   sync. (6) **Founder decisions still open:** push 0019, then 0020, then
   0021 to production, after the case-duplicate preflight, and confirm the
-  purge cron; merge `vault-m2-team`, `vault-m2-icloud`, and `vault-m2-native`
+  purge cron (superseded 2026-09-29: 0020 and 0021 are now 0024 and 0025,
+  pushed from main after 0022 and 0023; see the renumber entry at the end); merge `vault-m2-team`, `vault-m2-icloud`, and `vault-m2-native`
   (in that dependency order: icloud before native); the date in
   `no_entitlement_vault_until()` when pay gates return (at least 30 days
   out); one recorded `xcodebuild test` run of the Swift tests on the Mac that
@@ -2940,3 +2941,25 @@ execution contract. Newest at the bottom.
   - Lockdown is enforced at the one execution seam: every command, commit
     and check asks under Tokens and Secrets, and a commit's flagged files
     start unticked (CX 7).
+
+- **The team migrations renumbered 0024 and 0025 (CTO 4, 2026-09-29,
+  `vault-m2-team`, merged with main at a5c14c3):** `git mv` keeps the bodies;
+  only comments changed. `0020_org_vault_move.sql` is
+  `0024_org_vault_move.sql` and `0021_org_vault_settings.sql` is
+  `0025_org_vault_settings.sql`, above main's 0022 and 0023, so production
+  takes 0019, 0022, 0023, 0024, 0025, in that order and from `main` only
+  (`supabase/README.md`, Ship order; PROGRESS, What remains, the held Vault
+  branches item, now the one sequence both founder gates point to). This
+  supersedes every earlier mention of pushing 0020 or 0021 (the K12, L17 and
+  M8 entries above), which stay as written. The bodies were checked against
+  main's: 0025 re-creates the write RPCs whole, and 0023's caps live in
+  triggers for exactly that reason, so they hold; 0022 and 0023 redefine none
+  of the functions 0024 and 0025 create; 0023's `org_is_entitled` and 0025's
+  `org_vault_entitled` share the row rule and differ on purpose for an org
+  with no entitlement row (0025 lets it write in the beta, 0023 still caps
+  its bytes). Main's 0022 and 0023 still name 0020 and 0021 in their
+  comments; they are left alone, since they go to production from main
+  before this branch merges and an applied migration is never edited. The
+  merge made `SupabaseRequestError.code` one field for both sources:
+  PostgREST's SQLSTATE (OV402, OV403, PGRST202) and an Edge Function's
+  refusal word (`owns_org`).

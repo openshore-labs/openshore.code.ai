@@ -10,7 +10,7 @@
 // - A folder pick opens the list once the settings sheet has left, then the
 //   settings sheet comes back (R5); a pick for "New notes go in" also sets
 //   where new notes go.
-// - A team vault reads its settings row (0021): an admin changes them and who
+// - A team vault reads its settings row (0025): an admin changes them and who
 //   may delete, a member reads them with "Your admins set these." (CX Y14),
 //   and a lapsed plan reads only, with the lead's line (Y15).
 import { useEffect, useMemo, useState } from 'react';

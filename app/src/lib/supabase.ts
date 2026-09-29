@@ -43,7 +43,7 @@ export class SupabaseRequestError extends Error {
     readonly status: number,
     /** The code the failed response carried, whichever source sent it: from
      *  PostgREST (`rpc`, `select`), the SQLSTATE a function raised (OV402,
-     *  OV403 for the team vault, migration 0021) or PostgREST's own
+     *  OV403 for the team vault, migration 0025) or PostgREST's own
      *  (PGRST202); from an Edge Function (`invokeFunctionWithCode`), its fixed
      *  refusal word (`{ error: 'owns_org' }`). Undefined when it sent none. */
     readonly code?: string,

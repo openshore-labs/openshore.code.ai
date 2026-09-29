@@ -1,7 +1,7 @@
 // A fake of the team vault's server half, in memory: the PostgREST selects the
 // provider makes on org_vault_notes, org_vault_revisions and org_members, the
 // two guarded RPCs from supabase/migrations/0019_org_vault_v1.sql,
-// org_vault_write and org_vault_remove, 0020's org_vault_move, and 0021's
+// org_vault_write and org_vault_remove, 0024's org_vault_move, and 0025's
 // settings pair and gates (OV402 when the plan is not active, OV403 for a
 // member's delete under admins-only), each by its decision table as written
 // there. Revs come from
@@ -32,7 +32,7 @@ export interface FakeRevision {
   recorded_at: string;
 }
 
-/** The org's settings row (0021); undefined is no row (the defaults). */
+/** The org's settings row (0025); undefined is no row (the defaults). */
 export interface FakeSettingsRow {
   settings: Record<string, unknown>;
   delete_role: 'admin' | 'member';
@@ -88,7 +88,7 @@ function filterValue(raw: string): string {
 const raise = (message: string, extra: Record<string, unknown> = {}) =>
   Object.assign(new Error(message), { status: 400, ...extra });
 
-/** 0021's org_vault_settings_ok: the L2 keys a team shares, each its type. */
+/** 0025's org_vault_settings_ok: the L2 keys a team shares, each its type. */
 function settingsOk(v: unknown): boolean {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
   return Object.entries(v).every(([k, x]) =>

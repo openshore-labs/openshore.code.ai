@@ -432,7 +432,7 @@ export function VaultScreen() {
   // The team sign-in expired with a team note open: the note stays, read-only,
   // until the person signs back in or leaves it (2.6).
   const teamExpired = team && Boolean(vaultTeamExpired);
-  // The team's plan is not active (CX Y15; 0021's OV402): every note reads and
+  // The team's plan is not active (CX Y15; 0025's OV402): every note reads and
   // exports, and nothing changes, calmly; New note, Today, Rename and Delete
   // leave, and Options says why.
   const teamLapsed = team && vaultTeamPlan?.entitled === false;

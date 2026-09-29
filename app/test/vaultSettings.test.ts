@@ -280,7 +280,7 @@ describe('writeConfig on each provider (stream E)', () => {
       expect(lit('local')).toBe(true);
       expect(lit('files')).toBe(true);
       expect(lit('hub')).toBe(true);
-      // The held team branch (0021): the settings row, admins only (CX Y14).
+      // The held team branch (0025): the settings row, admins only (CX Y14).
       expect(lit('org')).toBe(true);
       expect(
         m.caps.vaultCaps(m.gitos.providerFor('org')!, { readOnly: false, settingsAdmin: false })
@@ -1486,7 +1486,7 @@ describe('the room places the entry points (wave 2, CX Y4, Y7)', () => {
     );
     expect(vaultCapLine('org', 'settingsWrite')).toMatch(/cannot change here/);
     const host = readFileSync(join(SRC, 'components/vault/VaultSettingsHost.tsx'), 'utf8');
-    // The held team branch (0021): the row's own settings, not the defaults;
+    // The held team branch (0025): the row's own settings, not the defaults;
     // a member's sheet reads only under the footer; a lapsed plan says why.
     expect(host).toMatch(
       /const s: ResolvedVaultSettings = vaultSettings \|\| VAULT_SETTINGS_DEFAULTS/,

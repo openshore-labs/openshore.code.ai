@@ -34,8 +34,9 @@ Notes on the reading:
   The row counts as covered because the deferral itself is pinned: the team
   vault never enters a pack or the vault tools, and its copy makes no agent
   claim.
-- 0019 and its pgTAP are on `main` and run in CI; pushing 0019, 0020, and
-  0021 to production is a founder gate (PROGRESS, What remains).
+- 0019 and its pgTAP are on `main` and run in CI; pushing 0019, then the
+  team branch's 0024 and 0025 (written as 0020 and 0021, renumbered by CTO 4),
+  to production from `main` is a founder gate (PROGRESS, What remains).
 - The CI pgTAP job (`.github/workflows/ci.yml`, job `sql`) is the test for
   "the SQL tests never run in CI" (orgvault-13, truth-18).
 

@@ -39,7 +39,7 @@ vi.mock('../src/lib/platform.js', () => ({
   storeKeys: async (prefix: string) => [...h.mem.keys()].filter((k) => k.startsWith(prefix)),
 }));
 vi.mock('../src/lib/electronBridge.js', () => ({ bridge: () => h.bridge.current }));
-// The team vault reads its settings row (Vault M7, 0021) through the one fake
+// The team vault reads its settings row (Vault M7, 0025) through the one fake
 // of its server half, with no row yet: absent by design.
 vi.mock('../src/lib/supabase.js', async () => {
   const { createFakeOrgVaultServer } = await import('./fixtures/fakeOrgVaultServer.js');

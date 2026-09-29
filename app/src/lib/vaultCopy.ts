@@ -2514,7 +2514,7 @@ export const VAULT_TEAM_LAPSED_NOT_SAVED =
   'The team plan is not active, so team notes cannot change.';
 
 /** The notice a never-paid team reads while its deadline is set
- *  (`entitled_until`, migration 0021): shown before any refusal. */
+ *  (`entitled_until`, migration 0025): shown before any refusal. */
 export function vaultTeamEditableUntil(until: string | Date): string | undefined {
   const d = typeof until === 'string' ? new Date(until) : until;
   if (Number.isNaN(d.getTime())) return undefined;

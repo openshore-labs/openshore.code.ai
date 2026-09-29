@@ -480,7 +480,7 @@ describe('org vault editedBy', () => {
   });
 });
 
-// ---- Vault M6 on the team vault (CTO K3, K6, R3; migration 0020) ----------
+// ---- Vault M6 on the team vault (CTO K3, K6, R3; migration 0024) ----------
 
 const rpcsNamed = (fn: string) => server.rpcs.filter((r) => r.fn === fn);
 const version = (r: { ok: boolean; file?: { version?: string } }) => (r.ok ? r.file!.version! : '');
@@ -650,13 +650,13 @@ describe('org vault Trash (Restore only, R3)', () => {
     expect((err as OrgVaultDeleteRefused).whole).toBe(true);
     expect((err as OrgVaultDeleteRefused).permanent).toBe(true);
     expect(server.bytes('n.md')).toBe('x');
-    // A move is not gated by the delete rule (0021, 5.).
+    // A move is not gated by the delete rule (0025, 5.).
     const r = await orgVaultProvider.rename!(ORG, 'n.md', 'm.md', { ifMatch: version(w) });
     expect(r.ok).toBe(true);
   });
 });
 
-// ---- Vault M7 on the team vault (CTO L17; CX Y14, Y15; migration 0021) ----
+// ---- Vault M7 on the team vault (CTO L17; CX Y14, Y15; migration 0025) ----
 
 describe('org vault plan (OV402) and settings', () => {
   it('maps OV402 to the calm lapsed state: the line, permanent, and the plan', async () => {
@@ -709,7 +709,7 @@ describe('org vault plan (OV402) and settings', () => {
     });
   });
 
-  it('a server without 0021 reads the defaults', async () => {
+  it('a server without 0025 reads the defaults', async () => {
     const real = mockRpc.getMockImplementation()!;
     mockRpc.mockImplementation((async (fn: string, tok: string, args: Record<string, unknown>) => {
       if (fn === 'org_vault_settings_get') {

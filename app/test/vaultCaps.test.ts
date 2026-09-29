@@ -273,7 +273,7 @@ const MAIN: Record<string, Record<string, boolean>> = {
     today: false,
     settingsWrite: false,
   },
-  // The held team branch (0020, 0021): a native move, a real Trash with
+  // The held team branch (0024, 0025): a native move, a real Trash with
   // Restore and no Empty (R3), the settings row; no attachments.
   org: {
     rename: true,

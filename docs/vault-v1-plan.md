@@ -1102,7 +1102,7 @@ pure `planLinkRewrites` and the host apply in `vaultOps.ts` ask "Update links?"
 only when links point in, skip a note that changed twice and carry on, and
 leave a standing card with "Update the rest". Folders are created, renamed and
 trashed with counts; Local remembers an empty folder on the device. The team
-`org_vault_move` (0020, pgTAP) is on the held team branch.
+`org_vault_move` (0024, pgTAP) is on the held team branch.
 
 Team part built 2026-09-27 on the held `vault-m2-team` branch: the team client
 declares `rename` over `org_vault_move` under the source's rev and adopts the
@@ -1110,8 +1110,9 @@ path and rev it answers; a name outside ASCII is also checked by the one
 `foldPath` against the listing, since the server folds by `lower()` only. The
 team row runs every rename case in `providerContract.test.ts`, and
 `vaultCaps` lights Rename, folders (note by note, as Local) and the link
-rewrite on the team vault. Merges with the branch after 0019, 0020 and 0021
-reach production.
+rewrite on the team vault. Merges once 0019, 0022 and 0023 are in production;
+0024 and 0025 follow, pushed from main (CTO 4; the ship order is in
+`supabase/README.md`).
 
 **6.3 Trash with Undo (M; team restore needs 2.3).** Delete moves the note to
 `.trash/` (the folder Obsidian uses for its own trash, already hidden by 0.6);
@@ -1222,7 +1223,7 @@ What waits for the held branches (K19), each landing by adding seam members so
 its `providerContract` rows enroll themselves: `vault-m2-icloud` (coordinated
 rename, Trash, attachments and `readBytes`; until then an iCloud delete is
 permanent with the in-memory Undo, and no Rename, images or checkbox
-write-back); `vault-m2-team` with 0019 then 0020 in production (rename over
+write-back); `vault-m2-team` with 0019 then 0024 in production (rename over
 `org_vault_move`, Trash and Restore over tombstones and revisions, checkbox
 write-back and link rewrites; until then the team room keeps M2's delete); and
 `vault-m2-native` for the iPhone folder (the same members over its transport,
@@ -1316,8 +1317,9 @@ org that lapses can still read and export every note it has. Pricing stays a
 Board gate. Closes [orgvault-14] [orgvault-17]. Test: pgTAP cases, including
 a lapsed org reading and exporting.
 
-Built 2026-09-27, held (L17): `0021_org_vault_settings.sql` and its pgTAP on
-`vault-m2-team`, waiting with 0019 and 0020 (pushed in that order):
+Built 2026-09-27, held (L17): `0025_org_vault_settings.sql` (written as
+0021, renumbered by CTO 4 on 2026-09-29) and its pgTAP on `vault-m2-team`,
+after 0019 and `0024_org_vault_move.sql`, all pushed from main in order:
 `org_vault_settings`, admin-only compare-and-swap `org_vault_settings_put`,
 `org_vault_entitled`, `OV402` on every write RPC when not entitled, `OV403`
 for a member's delete when only admins may (a move is not gated by the delete
@@ -1338,8 +1340,8 @@ notes" row. `OV402` is the calm lapsed state (the lead line, Export kept, the
 room read-only, a mid-edit save held as Not saved with "The team plan is not
 active, so team notes cannot change."), `OV403` says "Not deleted. Only
 admins can delete team notes.", and a set `entitled_until` shows "Team notes
-stay editable until <date>." Merges with the branch after 0019, 0020 and 0021
-reach production.
+stay editable until <date>." Merges once 0019, 0022 and 0023 are in
+production; 0024 and 0025 follow, pushed from main (CTO 4).
 
 ### M8. Ship gate
 

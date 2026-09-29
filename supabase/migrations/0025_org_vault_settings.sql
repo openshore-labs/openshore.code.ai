@@ -37,11 +37,19 @@
 --      "Admin" here is an active admin member or the org's owner, as 0014
 --      counts it.
 --
--- The write RPCs are re-created whole below: each body is 0019's or 0020's
+-- The write RPCs are re-created whole below: each body is 0019's or 0024's
 -- verbatim with the two new calls added after the member check. Additive:
 -- `if not exists` / `create or replace`, no data change. Ships AFTER 0019 and
--- 0020 (see supabase/README.md). Pricing is a Board gate: nothing here names a
+-- 0024 (see supabase/README.md). Pricing is a Board gate: nothing here names a
 -- tier or a price.
+--
+-- Numbering (CTO ruling 4, 2026-09-29): written as 0021 on the held
+-- vault-m2-team branch and renumbered 0025 there, above main's 0022 and
+-- 0023, so it applies after both. 0023's free caps are triggers on
+-- org_vault_notes and org_vault_revisions, so they hold under the bodies
+-- re-created here. 0023's org_is_entitled is the row rule of
+-- org_vault_entitled below without the beta's no-row window: an org that
+-- never bought may still write notes here, and 0023 still caps its bytes.
 
 -- ---------------------------------------------------------------- 1. table
 -- The top-level keys a team row may hold: the L2 conventions a team shares.
@@ -436,7 +444,7 @@ end;
 $$;
 
 -- ---------------------------------------------------------------- 7. move
--- 0020's org_vault_move, plus the OV402 gate (not the delete rule; see 5.).
+-- 0024's org_vault_move, plus the OV402 gate (not the delete rule; see 5.).
 create or replace function public.org_vault_move(
   p_org uuid,
   p_from text,
