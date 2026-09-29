@@ -1,16 +1,14 @@
 // Cloud Claude, straight from the app on the user's own key. The official
 // SDK supports browser use (it sends the direct-browser-access CORS header
-// for us); streaming rides the WebView's native fetch. Chat-only from the
-// phone: repo tools need the desktop connection, and the UI says so.
+// for us, and Anthropic answers cross-origin calls), so the reply streams
+// through the WebView's own fetch on every shell, the same way the Stack's
+// Claude seat does; the request rides the one provider client
+// (providerClient.ts), and Stop ends the turn at once (cloudChat.ts).
+// Chat-only from the phone: repo tools need the desktop connection, and the
+// UI says so.
 import Anthropic from '@anthropic-ai/sdk';
 import type { ApprovalAnswer, DriverEvent } from 'os-code/protocol';
-import type {
-  AppVaultPack,
-  ChatContext,
-  ChatDriver,
-  DriverEventSink,
-  DriverVaultOptions,
-} from './types.js';
+import type { AppVaultPack, ChatContext, ChatDriver, DriverEventSink } from './types.js';
 import { DriverEmitter, readChatContext, seedText } from './types.js';
 import { claudeHistoryCache, claudeSystem, promptCacheOn } from '../lib/claudeCache.js';
 import { claudeContextTokens, packSeatFor } from '../lib/vaultSeat.js';
@@ -22,6 +20,8 @@ import { frameLabel, videoContextHeader, VIDEO_FRAMES_SYSTEM_NOTE } from '../lib
 import { SWITCH_TO_LOCAL } from '../lib/usageFallback.js';
 import { WORKSPACE_HINT, needsWorkspaceId } from '../lib/providers.js';
 import type { SeedTurn } from '../state/types.js';
+import { anthropicClient, isAbortError, type ProviderEvent } from './providerClient.js';
+import { CloudTurn, cloudHumanizer, type CloudChatOptions } from './cloudChat.js';
 
 // The model catalog (ids, labels, context) lives in one leaf module so the
 // driver, the model sheet, and sourceLabel all agree. Imported for the driver's
@@ -134,10 +134,10 @@ export class CloudClaudeDriver implements ChatDriver {
   private emitter = new DriverEmitter();
   private history: Anthropic.MessageParam[] = [];
   private client: Anthropic;
-  private activeStream?: { abort(): void };
-  /** The send in flight, so Stop also reaches a pack still preparing. */
-  private sendController?: AbortController;
+  /** The send in flight: Stop ends it, and only it. */
+  private turn?: CloudTurn;
   private readonly vaultPack?: AppVaultPack;
+  private readonly humanize?: boolean;
 
   constructor(
     apiKey: string,
@@ -148,10 +148,12 @@ export class CloudClaudeDriver implements ChatDriver {
     /** Extra system context for this chat (the repositories it works with,
      *  the guided setup's step), read on every reply. */
     private readonly extraSystem?: ChatContext,
-    /** The conversation's vault pack (CTO J1); none with Memory off. */
-    opts: DriverVaultOptions = {},
+    /** The conversation's vault pack (CTO J1), none with Memory off, and the
+     *  Humanize Writing setting. */
+    opts: CloudChatOptions = {},
   ) {
     this.vaultPack = opts.vaultPack;
+    this.humanize = opts.humanize;
     const ws = workspaceId?.trim();
     this.client = new Anthropic({
       apiKey,
@@ -174,20 +176,25 @@ export class CloudClaudeDriver implements ChatDriver {
   }
 
   private async run(text: string, attachments?: Attachment[]): Promise<void> {
-    const controller = new AbortController();
-    this.sendController = controller;
-    this.emitter.emit({ type: 'task-start', input: text });
+    // The answer goes back into history as Claude sent it (its content
+    // blocks) when whole, and as the visible partial when stopped or cut off
+    // (Claude's own apps re-feed the partial when you continue).
+    const turn = new CloudTurn(this.emitter, (answer, replay) =>
+      this.history.push({
+        role: 'assistant',
+        content: (replay as Anthropic.ContentBlockParam[] | undefined) ?? answer,
+      }),
+    );
+    this.turn = turn;
+    turn.emit({ type: 'task-start', input: text });
     // The pack gathers once per send, beside the turn's own setup.
-    const preparing = this.vaultPack?.prepare(text, controller.signal);
-    this.emitter.emit({ type: 'turn-start', turn: 1, model: this.model, providerKind: 'cloud' });
+    const preparing = this.vaultPack?.prepare(text, turn.signal);
+    turn.emit({ type: 'turn-start', turn: 1, model: this.model, providerKind: 'cloud' });
     // Vision: fold image attachments (and video frames) into the user turn. See
     // buildVisionContent for the frame labeling and header.
     const { content, hasFrames } = buildVisionContent(text, attachments);
     this.history.push({ role: 'user', content });
 
-    // Accumulate the streamed text so an abort can keep the visible partial in
-    // model history (Claude's own apps re-feed the partial when you continue).
-    let partial = '';
     // Chain of Thought on: Claude thinks through its own API and the summary
     // streams into the thinking block. Read once per turn, so a flip mid-reply
     // cannot half-apply.
@@ -196,17 +203,14 @@ export class CloudClaudeDriver implements ChatDriver {
     const cache = promptCacheOn();
     try {
       await preparing;
-      if (controller.signal.aborted) {
-        this.emitter.emit({ type: 'text-final', text: '' });
-        this.emitter.emit({ type: 'task-done', reason: 'aborted', message: 'Stopped.' });
-        return;
-      }
+      // Stopped while the pack gathered: nothing is sent.
+      if (!turn.open) return;
       const pack = this.vaultPackFor();
-      if (pack.event) this.emitter.emit(pack.event);
-      const stream = this.client.messages.stream({
+      if (pack.event) turn.emit(pack.event);
+      const client = anthropicClient(this.client, {
         model: this.model,
         ...claudeRequestThinking(this.model, 16000, cot),
-        system: claudeRequestSystem(SYSTEM_PROMPT, {
+        system: claudeRequestSystem(this.basePrompt(), {
           context: readChatContext(this.extraSystem),
           effort: effortDirective(),
           hasFrames,
@@ -214,77 +218,73 @@ export class CloudClaudeDriver implements ChatDriver {
           cache,
         }),
         ...claudeHistoryCache(cache),
-        messages: opensOnUser(this.history),
       });
-      this.activeStream = stream;
-      if (cot) {
-        stream.on('thinking', (delta) => {
-          if (delta) this.emitter.emit({ type: 'thinking-delta', text: delta });
-        });
+      let usage: Extract<ProviderEvent, { type: 'usage' }> | undefined;
+      let done: Extract<ProviderEvent, { type: 'done' }> | undefined;
+      for await (const ev of client.stream([...opensOnUser(this.history)], [], turn.signal)) {
+        // Stopped: whatever the request still says goes nowhere.
+        if (!turn.open) return;
+        if (ev.type === 'text') turn.text(ev.text);
+        else if (ev.type === 'thinking') {
+          if (cot) turn.emit({ type: 'thinking-delta', text: ev.text });
+        } else if (ev.type === 'usage') usage = ev;
+        else if (ev.type === 'done') done = ev;
       }
-      stream.on('text', (delta) => {
-        partial += delta;
-        this.emitter.emit({ type: 'text-delta', text: delta });
-      });
-      const final = await stream.finalMessage();
-      const answer = final.content
-        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-        .map((b) => b.text)
-        .join('');
-      this.history.push({ role: 'assistant', content: final.content });
-
+      if (!turn.open) return;
       // OpenShore does not price usage; billing rides the user's own account.
       // The shared usage event still carries a dollars field for the CLI, so
       // send 0 rather than fabricate a cost. The context meter is the honest
       // signal we do surface.
-      this.emitter.emit({
-        type: 'usage',
-        promptTokens: final.usage.input_tokens,
-        completionTokens: final.usage.output_tokens,
-        dollars: 0,
-        contextPercent: contextPercentFor(this.model, final.usage.input_tokens),
-      });
-      this.emitter.emit({ type: 'text-final', text: answer });
-      if (final.stop_reason === 'refusal') {
-        this.emitter.emit({
-          type: 'note',
-          message: 'Claude declined that request. Rephrase and try again.',
+      if (usage) {
+        turn.emit({
+          type: 'usage',
+          promptTokens: usage.inputTokens,
+          completionTokens: usage.outputTokens,
+          dollars: 0,
+          contextPercent: contextPercentFor(this.model, usage.inputTokens),
         });
       }
-      this.emitter.emit({ type: 'task-done', reason: 'complete' });
-    } catch (err) {
-      this.activeStream = undefined;
-      if (err instanceof Anthropic.APIUserAbortError) {
-        if (partial.trim()) this.history.push({ role: 'assistant', content: partial });
-        this.emitter.emit({ type: 'text-final', text: partial });
-        this.emitter.emit({ type: 'task-done', reason: 'aborted', message: 'Stopped.' });
-        return;
-      }
-      this.emitter.emit({
-        type: 'task-done',
-        reason: 'error',
-        message: describeError(err),
+      turn.finish('complete', undefined, {
+        replay: done?.replay,
+        note:
+          done?.stopReason === 'refusal'
+            ? 'Claude declined that request. Rephrase and try again.'
+            : undefined,
       });
-    } finally {
-      this.activeStream = undefined;
-      if (this.sendController === controller) this.sendController = undefined;
+    } catch (err) {
+      if (turn.signal.aborted || isAbortError(err) || err instanceof Anthropic.APIUserAbortError) {
+        turn.finish('aborted');
+      } else turn.finish('error', describeError(err));
     }
   }
 
-  /** This send's pack, rendered for this seat: Claude on the person's key,
-   *  a cloud seat, served the model's own window. */
-  private vaultPackFor(): { text?: string; event?: DriverEvent } {
-    if (!this.vaultPack) return {};
-    const seat = packSeatFor(
+  /** The base prompt, with the Humanize Writing standard beside it while it
+   *  applies: both are fixed for the chat, so they sit in the stable head. */
+  private basePrompt(): string {
+    const humanizer = cloudHumanizer(this.humanize, this.seat()?.modelClass);
+    return humanizer ? `${SYSTEM_PROMPT}\n\n${humanizer}` : SYSTEM_PROMPT;
+  }
+
+  /** This chat's seat: Claude on the person's key, a cloud seat, served the
+   *  model's own window. */
+  private seat() {
+    return packSeatFor(
       { kind: 'cloud', provider: 'anthropic', model: this.model, label: this.model },
       { ownTailnetSuffix: null },
     );
+  }
+
+  /** This send's pack, rendered for this seat. */
+  private vaultPackFor(): { text?: string; event?: DriverEvent } {
+    if (!this.vaultPack) return {};
+    const seat = this.seat();
     return seat ? this.vaultPack.render(seat) : {};
   }
 
   abort(): void {
-    this.sendController?.abort();
-    this.activeStream?.abort();
+    // Stop answers at once (CTO ruling 7): the turn closes now with what
+    // streamed so far, kept in the chat and in history.
+    this.turn?.stop();
   }
 
   recordLine(turn: SeedTurn): void {
@@ -296,9 +296,9 @@ export class CloudClaudeDriver implements ChatDriver {
   }
 
   dispose(): void {
-    this.sendController?.abort();
-    this.activeStream?.abort();
+    // Silent first: a teardown is not a Stop the chat should record.
     this.emitter.clear();
+    this.turn?.stop();
   }
 }
 

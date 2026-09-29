@@ -251,6 +251,18 @@ describe('the Electron transport', () => {
 });
 
 describe('the request body', () => {
+  it('asks a streamed reply for its usage only when the seat does, never on a whole one', () => {
+    // A direct cloud chat asks, so its meter reads the real count; a Stack
+    // seat's request stays as it was, and the shim's whole request never
+    // carries it (a provider refuses the option when nothing streams).
+    expect(JSON.parse(openAiBody(seat, [], [], true)).stream_options).toBeUndefined();
+    const asks = { ...seat, streamUsage: true };
+    expect(JSON.parse(openAiBody(asks, [], [], true)).stream_options).toEqual({
+      include_usage: true,
+    });
+    expect(JSON.parse(openAiBody(asks, [], [], false)).stream_options).toBeUndefined();
+  });
+
   it('sends num_ctx only to an Ollama endpoint, and only when it is set', () => {
     expect(isOllamaBase('http://127.0.0.1:11434/v1')).toBe(true);
     expect(isOllamaBase('https://api.openai.com/v1')).toBe(false);

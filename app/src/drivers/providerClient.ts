@@ -93,13 +93,30 @@ export interface ProviderToolCall {
   raw?: string;
 }
 
+/** One source a search-grounded answer cites. */
+export interface Citation {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
 export type ProviderEvent =
   | { type: 'text'; text: string }
   | { type: 'thinking'; text: string }
   | { type: 'usage'; inputTokens: number; outputTokens: number }
+  /** The sources a search-grounded reply cited (Perplexity's Sonar), said
+   *  once before the round ends; a reply with none says nothing. */
+  | { type: 'sources'; citations: Citation[] }
   /** The round is over: its answer text (thinking left out), the tool calls
-   *  it asked for, and the assistant turn to replay before the tool results. */
-  | { type: 'done'; text: string; toolCalls: ProviderToolCall[]; replay: unknown };
+   *  it asked for, the assistant turn to replay before the tool results, and
+   *  why the model stopped when the server says (Claude's `stop_reason`). */
+  | {
+      type: 'done';
+      text: string;
+      toolCalls: ProviderToolCall[];
+      replay: unknown;
+      stopReason?: string;
+    };
 
 /** One seat's client: `stream` sends one request and yields what comes back. */
 export interface ProviderClient<M, T> {
@@ -221,7 +238,13 @@ export function anthropicClient(
               name: b.name,
               parsed: (b.input ?? {}) as Record<string, unknown>,
             }));
-          queue.push({ type: 'done', text, toolCalls, replay: final.content });
+          queue.push({
+            type: 'done',
+            text,
+            toolCalls,
+            replay: final.content,
+            ...(final.stop_reason ? { stopReason: final.stop_reason } : {}),
+          });
           queue.end();
         },
         (err: unknown) => queue.fail(err),
@@ -246,6 +269,11 @@ export interface OpenAiSeat {
    *  Nothing on the app side sets it today, so no request carries it (CTO
    *  ruling 5: the served window's default flips only on an eval). */
   numCtx?: number;
+  /** Ask a streamed reply to report its usage in its last chunk
+   *  (`stream_options.include_usage`). Only a connected cloud provider asks,
+   *  where the context meter reads it; a whole reply reports usage anyway,
+   *  and a provider refuses the option on a request that does not stream. */
+  streamUsage?: boolean;
 }
 
 export type OaiMessage = Record<string, unknown>;
@@ -276,9 +304,48 @@ export function openAiBody(
     model: seat.model,
     stream,
     messages,
+    ...(stream && seat.streamUsage ? { stream_options: { include_usage: true } } : {}),
     ...(tools.length ? { tools } : {}),
     ...(numCtx !== undefined && isOllamaBase(seat.baseUrl) ? { options: { num_ctx: numCtx } } : {}),
   });
+}
+
+/** Perplexity's Sonar grounds its answer in a live web search and sends the
+ *  sources as top-level fields outside the OpenAI schema: `search_results`
+ *  (title, url, snippet) on current replies, or a bare `citations` URL list
+ *  on older ones. Every other provider sends neither, so this reads nothing
+ *  for them. Read defensively, never throwing on a missing field. */
+export function sonarCitations(raw: unknown): Citation[] {
+  const data = (raw && typeof raw === 'object' ? raw : {}) as {
+    citations?: unknown;
+    search_results?: unknown;
+  };
+  const results: unknown[] = Array.isArray(data.search_results) ? data.search_results : [];
+  const fromResults = results
+    .filter((r): r is { url: string; title?: unknown; snippet?: unknown } => {
+      const url = (r as { url?: unknown } | null)?.url;
+      return typeof url === 'string' && url.length > 0;
+    })
+    .map((r) => ({
+      title: typeof r.title === 'string' && r.title ? r.title : hostOfUrl(r.url),
+      url: r.url,
+      snippet: typeof r.snippet === 'string' ? r.snippet : '',
+    }));
+  if (fromResults.length) return fromResults;
+  const urls: unknown[] = Array.isArray(data.citations) ? data.citations : [];
+  return urls
+    .filter((u): u is string => typeof u === 'string' && u.length > 0)
+    .map((url) => ({ title: hostOfUrl(url), url, snippet: '' }));
+}
+
+/** The host of a URL, for a readable citation title; the raw string on a
+ *  malformed URL rather than throwing. */
+function hostOfUrl(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
 }
 
 export function openAiCompatibleClient(seat: OpenAiSeat): ProviderClient<OaiMessage, unknown> {
@@ -332,6 +399,9 @@ async function* readSse(chunks: AsyncIterable<string>): AsyncGenerator<ProviderE
   const acc = new Map<number, ToolCallAccum>();
   let text = '';
   let usage: ProviderEvent | undefined;
+  // Sonar sends its sources with the stream (often on every chunk); the last
+  // set it sent is the one said, once, at the end.
+  let sources: Citation[] = [];
   const keep = (t: string) => {
     text += t;
   };
@@ -354,6 +424,8 @@ async function* readSse(chunks: AsyncIterable<string>): AsyncGenerator<ProviderE
     if (typeof delta === 'string' && delta) yield* pieces(splitter.push(delta), keep);
     mergeToolCallDeltas(acc, choice?.delta?.tool_calls);
     usage = usageOf(chunk?.usage) ?? usage;
+    const cited = sonarCitations(chunk);
+    if (cited.length) sources = cited;
   }
   for await (const chunk of chunks) {
     buffer += chunk;
@@ -363,6 +435,7 @@ async function* readSse(chunks: AsyncIterable<string>): AsyncGenerator<ProviderE
   }
   if (buffer) yield* line(buffer);
   yield* pieces(splitter.end(), keep);
+  if (sources.length) yield { type: 'sources', citations: sources };
   if (usage) yield usage;
   const calls = finalizeToolCalls(acc);
   const replay: Record<string, unknown> = calls.length
@@ -406,6 +479,8 @@ async function* readWhole(json: unknown): AsyncGenerator<ProviderEvent> {
     const splitter = new ThinkTagSplitter();
     yield* pieces([...splitter.push(msg.content), ...splitter.end()], keep);
   }
+  const sources = sonarCitations(data);
+  if (sources.length) yield { type: 'sources', citations: sources };
   const usage = usageOf(data?.usage);
   if (usage) yield usage;
   const raw = Array.isArray(msg?.tool_calls) ? msg.tool_calls : [];

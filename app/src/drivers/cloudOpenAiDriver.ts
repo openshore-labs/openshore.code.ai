@@ -1,36 +1,33 @@
-// Cloud chat with any OpenAI-compatible provider (OpenAI, Gemini, Kimi) on the
-// user's own key, straight from the app. It mirrors CloudClaudeDriver but speaks
-// the /chat/completions shape, so a user can chat directly with any model their
-// connected provider offers, the same models they would reach in that provider's
-// own app. Billing rides the user's account; OpenShore prices nothing.
+// Cloud chat with any OpenAI-compatible provider (OpenAI, Gemini, Kimi,
+// Perplexity) on the user's own key, straight from the app. It mirrors
+// CloudClaudeDriver but speaks the /chat/completions shape, so a user can chat
+// directly with any model their connected provider offers, the same models
+// they would reach in that provider's own app. Billing rides the user's
+// account; OpenShore prices nothing.
 //
-// Streaming rides the WebView's native fetch on the web. On device and the
-// desktop shell these providers send no CORS headers, so the request goes
-// through the native shim, which cannot stream: there we ask for the whole
-// answer and emit it once, the same split stackDriver's cloud path uses.
-import {
-  ThinkTagSplitter,
-  type ApprovalAnswer,
-  type DriverEvent,
-  type ThoughtPiece,
-} from 'os-code/protocol';
-import type {
-  AppVaultPack,
-  ChatContext,
-  ChatDriver,
-  DriverEventSink,
-  DriverVaultOptions,
-} from './types.js';
+// The request rides the one provider client (providerClient.ts), so it streams
+// on every shell: the guarded main-process channel on the desktop (these
+// providers send no CORS headers), the WebView's own stream on the iPhone with
+// one fall back to the native shim when a provider refuses the cross-origin
+// call, and the streaming fetch on the web. Stop ends the turn at once on
+// every branch (cloudChat.ts).
+import type { ApprovalAnswer, DriverEvent } from 'os-code/protocol';
+import type { AppVaultPack, ChatContext, ChatDriver, DriverEventSink } from './types.js';
 import { packSeatFor } from '../lib/vaultSeat.js';
 import { DriverEmitter, readChatContext, seedText } from './types.js';
 import { effortDirective } from '../lib/effort.js';
-import { chainOfThoughtLine, chainOfThoughtOn, reasoningOf } from '../lib/chainOfThought.js';
-import { streamingFetch } from '../lib/streamingFetch.js';
-import { nativeFetch } from '../lib/nativeFetch.js';
-import { platform } from '../lib/platform.js';
+import { chainOfThoughtLine, chainOfThoughtOn } from '../lib/chainOfThought.js';
 import { imageBlockParts, type Attachment } from '../lib/attachments.js';
 import { SWITCH_TO_LOCAL } from '../lib/usageFallback.js';
 import type { SeedTurn } from '../state/types.js';
+import {
+  isAbortError,
+  openAiCompatibleClient,
+  ProviderUnavailable,
+  type Citation,
+  type ProviderEvent,
+} from './providerClient.js';
+import { CloudTurn, cloudHumanizer, type CloudChatOptions } from './cloudChat.js';
 
 /** Fallback context window when the provider catalog carries none. */
 const DEFAULT_CONTEXT_WINDOW = 200_000;
@@ -46,47 +43,12 @@ const SYSTEM_PROMPT = [
 type OaiContent =
   | string
   | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>;
-interface OaiMessage {
+/** A type alias, not an interface, so it passes as the client's plain
+ *  record message. */
+type OaiMessage = {
   role: 'system' | 'user' | 'assistant';
   content: OaiContent;
-}
-interface OaiUsage {
-  prompt_tokens?: number;
-  completion_tokens?: number;
-}
-
-/** Perplexity's Sonar grounds its answer in a live web search and returns the
- *  sources as top-level fields OUTSIDE the OpenAI schema: `search_results`
- *  (title/url/snippet) on current responses, or a bare `citations` URL list on
- *  older ones. Every other provider omits both, so this is a no-op for them.
- *  Parsed defensively (never throws on a missing field) into the same
- *  {title, url, snippet} shape the citations event already carries. */
-interface SonarSources {
-  citations?: string[];
-  search_results?: Array<{ title?: string; url?: string; snippet?: string }>;
-}
-
-function sonarCitations(
-  data: SonarSources,
-): Array<{ title: string; url: string; snippet: string }> {
-  const fromResults = (data.search_results ?? [])
-    .filter((r): r is { url: string; title?: string; snippet?: string } => Boolean(r?.url))
-    .map((r) => ({ title: r.title || hostOfUrl(r.url), url: r.url, snippet: r.snippet ?? '' }));
-  if (fromResults.length) return fromResults;
-  return (data.citations ?? [])
-    .filter((u): u is string => typeof u === 'string' && u.length > 0)
-    .map((url) => ({ title: hostOfUrl(url), url, snippet: '' }));
-}
-
-/** The host of a URL, for a readable citation title; the raw string on a
- *  malformed URL rather than throwing. */
-function hostOfUrl(url: string): string {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
-  }
-}
+};
 
 /** A rough token count for a message list, used only when the provider reports
  *  no usage of its own, so the context meter still fills instead of sitting
@@ -105,11 +67,10 @@ export class CloudOpenAiDriver implements ChatDriver {
   readonly kind = 'cloud' as const;
   private emitter = new DriverEmitter();
   private history: OaiMessage[] = [];
-  private aborted = false;
-  private controller?: AbortController;
-  /** The send in flight, so Stop also reaches a pack still preparing. */
-  private sendController?: AbortController;
+  /** The send in flight: Stop ends it, and only it. */
+  private turn?: CloudTurn;
   private readonly vaultPack?: AppVaultPack;
+  private readonly humanize?: boolean;
   private readonly contextWindow: number;
   /** The window the provider's catalog lists for this model, if any: the
    *  pack sizes itself from it, else 128k (CTO J4). */
@@ -126,12 +87,14 @@ export class CloudOpenAiDriver implements ChatDriver {
      *  the guided setup's step), read on every reply. */
     private readonly extraSystem?: ChatContext,
     contextWindow?: number,
-    /** The conversation's vault pack (CTO J1); none with Memory off. */
-    opts: DriverVaultOptions = {},
+    /** The conversation's vault pack (CTO J1), none with Memory off, and the
+     *  Humanize Writing setting. */
+    opts: CloudChatOptions = {},
   ) {
     this.listedWindow = contextWindow;
     this.contextWindow = contextWindow ?? DEFAULT_CONTEXT_WINDOW;
     this.vaultPack = opts.vaultPack;
+    this.humanize = opts.humanize;
     // A mid-chat switch seeds the prior turns so this model continues the thread.
     // A turn that drew on a local-only note reaches this cloud seat as the
     // stub, never the text (I5).
@@ -160,187 +123,124 @@ export class CloudOpenAiDriver implements ChatDriver {
   }
 
   private async run(text: string, attachments?: Attachment[]): Promise<void> {
-    this.aborted = false;
-    const send = new AbortController();
-    this.sendController = send;
-    this.emitter.emit({ type: 'task-start', input: text });
+    const turn = new CloudTurn(this.emitter, (answer) =>
+      this.history.push({ role: 'assistant', content: answer }),
+    );
+    this.turn = turn;
+    turn.emit({ type: 'task-start', input: text });
     // The pack gathers once per send, beside the turn's own setup.
-    const preparing = this.vaultPack?.prepare(text, send.signal);
-    this.emitter.emit({ type: 'turn-start', turn: 1, model: this.model, providerKind: 'cloud' });
+    const preparing = this.vaultPack?.prepare(text, turn.signal);
+    turn.emit({ type: 'turn-start', turn: 1, model: this.model, providerKind: 'cloud' });
     this.history.push({ role: 'user', content: this.userContent(text, attachments) });
-    // Chain of Thought, read once per turn. The splitter takes <think> text out
-    // of the answer either way: into the thinking block while on, nowhere while
-    // off. A reasoning field from the server is shown only while on.
+    // Chain of Thought, read once per turn. The client takes <think> text out
+    // of the answer either way; it reaches the thinking block while on, and
+    // nowhere while off. So does a reasoning field from the server.
     const cot = chainOfThoughtOn();
-    const splitter = new ThinkTagSplitter();
-    let answer = '';
-    const route = (pieces: ThoughtPiece[]) => {
-      for (const p of pieces) {
-        if (p.kind === 'text') {
-          answer += p.text;
-          this.emitter.emit({ type: 'text-delta', text: p.text });
-        } else if (cot) this.emitter.emit({ type: 'thinking-delta', text: p.text });
-      }
-    };
-    const thought = (r: string | undefined) => {
-      if (cot && r) this.emitter.emit({ type: 'thinking-delta', text: r });
-    };
-    await preparing;
-    if (this.aborted) {
-      this.emitter.emit({ type: 'text-final', text: '' });
-      this.emitter.emit({ type: 'task-done', reason: 'aborted', message: 'Stopped.' });
-      return;
-    }
-    const pack = this.vaultPackFor();
-    if (pack.event) this.emitter.emit(pack.event);
-    const messages: OaiMessage[] = [
-      {
-        role: 'system',
-        // Stable to volatile (CTO J16): the base prompt and the chat's own
-        // context first, then the per-send lines, the vault pack last.
-        content: [
-          SYSTEM_PROMPT,
-          readChatContext(this.extraSystem),
-          effortDirective(),
-          chainOfThoughtLine(this.model, cot),
-          pack.text,
-        ]
-          .filter(Boolean)
-          .join('\n'),
-      },
-      ...this.history,
-    ];
-    // A local prompt-token estimate, used only if the provider omits usage.
-    const estimatePrompt = estimateTokens(messages);
-    const headers: Record<string, string> = {
-      'content-type': 'application/json',
-      authorization: `Bearer ${this.apiKey}`,
-    };
-
     try {
-      if (platform() === 'ios' || platform() === 'electron') {
-        // The native shim buffers the whole response; ask for one answer.
-        const res = await nativeFetch(`${this.baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ model: this.model, stream: false, messages }),
-          responseType: 'json',
-        });
-        if (!res.ok) throw new Error(`${this.providerLabel} answered ${res.status}.`);
-        const data = (await res.json()) as {
-          choices?: Array<{ message?: { content?: string } }>;
-          usage?: OaiUsage;
-        } & SonarSources;
-        const message = data?.choices?.[0]?.message;
-        const content = message?.content;
-        if (!this.aborted) thought(reasoningOf(message));
-        if (typeof content === 'string' && content && !this.aborted) {
-          route([...splitter.push(content), ...splitter.end()]);
-        }
-        this.emitCitations(sonarCitations(data));
-        this.emitUsage(data.usage, estimatePrompt);
-      } else {
-        this.controller = new AbortController();
-        const res = await streamingFetch(`${this.baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            model: this.model,
-            stream: true,
-            stream_options: { include_usage: true },
-            messages,
-          }),
-          signal: this.controller.signal,
-        });
-        if (!res.ok || !res.body) throw new Error(`${this.providerLabel} answered ${res.status}.`);
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let usage: OaiUsage | undefined;
-        // Sonar sends its sources with the stream (usually the first or last
-        // chunk); keep the last non-empty set and emit once at the end.
-        let sources: Array<{ title: string; url: string; snippet: string }> = [];
-        for (;;) {
-          const { value, done } = await reader.read();
-          if (done || this.aborted) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() ?? '';
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed.startsWith('data:')) continue;
-            const payload = trimmed.slice(5).trim();
-            if (payload === '[DONE]') continue;
-            try {
-              const json = JSON.parse(payload) as {
-                choices?: Array<{ delta?: { content?: string } }>;
-                usage?: OaiUsage;
-              } & SonarSources;
-              thought(reasoningOf(json?.choices?.[0]?.delta));
-              const delta = json?.choices?.[0]?.delta?.content;
-              if (typeof delta === 'string' && delta) route(splitter.push(delta));
-              if (json?.usage) usage = json.usage;
-              const chunkSources = sonarCitations(json);
-              if (chunkSources.length) sources = chunkSources;
-            } catch {
-              // a partial line or a non-JSON keepalive: skip it
-            }
-          }
-        }
-        route(splitter.end());
-        this.emitCitations(sources);
-        this.emitUsage(usage, estimatePrompt);
+      await preparing;
+      // Stopped while the pack gathered: nothing is sent.
+      if (!turn.open) return;
+      const pack = this.vaultPackFor();
+      if (pack.event) turn.emit(pack.event);
+      const messages: OaiMessage[] = [
+        {
+          role: 'system',
+          // Stable to volatile (CTO J16): the base prompt and the humanizer,
+          // the chat's own context, then the per-send lines, the pack last.
+          content: [
+            SYSTEM_PROMPT,
+            cloudHumanizer(this.humanize, this.seat()?.modelClass),
+            readChatContext(this.extraSystem),
+            effortDirective(),
+            chainOfThoughtLine(this.model, cot),
+            pack.text,
+          ]
+            .filter(Boolean)
+            .join('\n'),
+        },
+        ...this.history,
+      ];
+      // A local prompt-token estimate, used only if the provider omits usage.
+      const estimatePrompt = estimateTokens(messages);
+      let usage: Extract<ProviderEvent, { type: 'usage' }> | undefined;
+      let sources: Citation[] = [];
+      for await (const ev of this.reply(messages, turn.signal)) {
+        // Stopped: whatever the request still says goes nowhere.
+        if (!turn.open) return;
+        if (ev.type === 'text') turn.text(ev.text);
+        else if (ev.type === 'thinking') {
+          if (cot) turn.emit({ type: 'thinking-delta', text: ev.text });
+        } else if (ev.type === 'usage') usage = ev;
+        else if (ev.type === 'sources') sources = ev.citations;
       }
-
-      if (this.aborted) {
-        if (answer) this.history.push({ role: 'assistant', content: answer });
-        this.emitter.emit({ type: 'text-final', text: answer });
-        this.emitter.emit({ type: 'task-done', reason: 'aborted', message: 'Stopped.' });
-        return;
-      }
-      this.history.push({ role: 'assistant', content: answer });
-      this.emitter.emit({ type: 'text-final', text: answer });
-      this.emitter.emit({ type: 'task-done', reason: 'complete' });
+      if (!turn.open) return;
+      // Perplexity's sources, once; a provider with none says nothing.
+      if (sources.length) turn.emit({ type: 'citations', citations: sources });
+      this.emitUsage(turn, usage, estimatePrompt);
+      turn.finish('complete');
     } catch (err) {
-      if (this.aborted) {
-        this.emitter.emit({ type: 'text-final', text: answer });
-        this.emitter.emit({ type: 'task-done', reason: 'aborted', message: 'Stopped.' });
-        return;
-      }
-      this.emitter.emit({ type: 'task-done', reason: 'error', message: this.describe(err) });
-    } finally {
-      this.controller = undefined;
+      if (turn.signal.aborted || isAbortError(err)) turn.finish('aborted');
+      else turn.finish('error', this.describe(err));
     }
   }
 
-  /** This send's pack, rendered for this seat: a cloud provider on the
-   *  person's key, served its listed window. */
-  private vaultPackFor(): { text?: string; event?: DriverEvent } {
-    if (!this.vaultPack) return {};
-    const seat = packSeatFor(
+  /** The reply's events. A streamed request asks for its usage in the last
+   *  chunk, so the context meter reads the provider's own count; a provider
+   *  that refuses the option answers 400 before a word, having generated
+   *  nothing, and is asked once more without it. */
+  private async *reply(messages: OaiMessage[], signal: AbortSignal): AsyncGenerator<ProviderEvent> {
+    const seat = {
+      label: this.providerLabel,
+      baseUrl: this.baseUrl,
+      key: this.apiKey,
+      model: this.model,
+    };
+    const withUsage = openAiCompatibleClient({ ...seat, streamUsage: true });
+    let started = false;
+    try {
+      for await (const ev of withUsage.stream(messages, [], signal)) {
+        started = true;
+        yield ev;
+      }
+      return;
+    } catch (err) {
+      const refusedOption =
+        !started && !signal.aborted && err instanceof ProviderUnavailable && err.status === 400;
+      if (!refusedOption) throw err;
+    }
+    yield* openAiCompatibleClient(seat).stream(messages, [], signal);
+  }
+
+  /** This chat's seat: a cloud provider on the person's key, served its
+   *  listed window. */
+  private seat() {
+    return packSeatFor(
       { kind: 'cloud', provider: this.providerLabel, model: this.model, label: this.model },
       { ownTailnetSuffix: null, cloudContextTokens: () => this.listedWindow },
     );
+  }
+
+  /** This send's pack, rendered for this seat. */
+  private vaultPackFor(): { text?: string; event?: DriverEvent } {
+    if (!this.vaultPack) return {};
+    const seat = this.seat();
     return seat ? this.vaultPack.render(seat) : {};
   }
 
-  /** Emit the sources of a search-grounded answer (Sonar). No-op when there
-   *  are none, so a non-Sonar provider never emits an empty citations event. */
-  private emitCitations(citations: Array<{ title: string; url: string; snippet: string }>): void {
-    if (!citations.length || this.aborted) return;
-    this.emitter.emit({ type: 'citations', citations });
-  }
-
-  private emitUsage(usage: OaiUsage | undefined, estimatePrompt: number): void {
+  private emitUsage(
+    turn: CloudTurn,
+    usage: Extract<ProviderEvent, { type: 'usage' }> | undefined,
+    estimatePrompt: number,
+  ): void {
     // OpenShore does not price usage; billing rides the user's own account. The
     // honest signal we surface is the context meter, from the reported prompt
     // tokens, or a local estimate when the provider omits usage, so the meter
     // still fills for every provider (never a fabricated cost).
-    const promptTokens = usage?.prompt_tokens ?? estimatePrompt;
-    this.emitter.emit({
+    const promptTokens = usage?.inputTokens || estimatePrompt;
+    turn.emit({
       type: 'usage',
       promptTokens,
-      completionTokens: usage?.completion_tokens ?? 0,
+      completionTokens: usage?.outputTokens ?? 0,
       dollars: 0,
       contextPercent: Math.min(100, Math.round((promptTokens / this.contextWindow) * 100)),
     });
@@ -348,19 +248,20 @@ export class CloudOpenAiDriver implements ChatDriver {
 
   private describe(err: unknown): string {
     const msg = err instanceof Error ? err.message : String(err);
-    if (/\b401\b|\b403\b/.test(msg)) {
+    const status = err instanceof ProviderUnavailable ? err.status : undefined;
+    if (status === 401 || status === 403 || /\b401\b|\b403\b/.test(msg)) {
       return `${this.providerLabel} rejected the API key. Update it under Connections.`;
     }
-    if (/\b429\b/.test(msg)) {
+    if (status === 429 || /\b429\b/.test(msg)) {
       return `${this.providerLabel} has no usage available on your account right now. ${SWITCH_TO_LOCAL}`;
     }
     return msg;
   }
 
   abort(): void {
-    this.aborted = true;
-    this.sendController?.abort();
-    this.controller?.abort();
+    // Stop answers at once (CTO ruling 7): the turn closes now with what
+    // streamed so far, kept in the chat and in history.
+    this.turn?.stop();
   }
 
   recordLine(turn: SeedTurn): void {
@@ -372,9 +273,8 @@ export class CloudOpenAiDriver implements ChatDriver {
   }
 
   dispose(): void {
-    this.aborted = true;
-    this.sendController?.abort();
-    this.controller?.abort();
+    // Silent first: a teardown is not a Stop the chat should record.
     this.emitter.clear();
+    this.turn?.stop();
   }
 }

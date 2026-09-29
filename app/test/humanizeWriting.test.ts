@@ -4,7 +4,9 @@
 // context. This pins the wiring decision; the standard's content is proven in
 // os-code (test/humanizer.test.ts).
 import { describe, expect, it } from 'vitest';
+import { MODEL_CLASSES } from 'os-code/protocol';
 import { humanizerApplies } from '../src/drivers/stackDriver.js';
+import { cloudHumanizer } from '../src/drivers/cloudChat.js';
 import type { StackModelRef } from '../src/lib/stack.js';
 
 const cloud: StackModelRef = { kind: 'cloud', provider: 'openai', model: 'gpt', label: 'GPT' };
@@ -26,5 +28,20 @@ describe('Humanize Writing wiring', () => {
   it('skips on-device pocket models to protect their small context', () => {
     expect(humanizerApplies(device, true)).toBe(false);
     expect(humanizerApplies(device, undefined)).toBe(false);
+  });
+});
+
+// The direct cloud chats (a Claude or provider model picked by itself, not
+// through the Stack) hold to the same rule as a Stack seat (build 2026-09-29,
+// package cloud): the two readings must never drift apart.
+describe('Humanize Writing in the direct cloud chats', () => {
+  it('agrees with the Stack rule for every setting and seat class', () => {
+    for (const humanize of [undefined, true, false]) {
+      for (const modelClass of [undefined, ...MODEL_CLASSES]) {
+        expect(Boolean(cloudHumanizer(humanize, modelClass)), `${humanize} ${modelClass}`).toBe(
+          humanizerApplies(cloud, humanize, modelClass),
+        );
+      }
+    }
   });
 });

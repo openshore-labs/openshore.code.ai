@@ -4046,7 +4046,7 @@ export const useApp = create<AppState>((set, get, api) => {
             seed,
             settings.anthropicWorkspaceId,
             chatContext(conv),
-            { vaultPack: conversationPack(conv) },
+            { vaultPack: conversationPack(conv), humanize: settings.humanizeWriting !== false },
           );
         }
         const info = providerInfo(source.provider);
@@ -4064,7 +4064,7 @@ export const useApp = create<AppState>((set, get, api) => {
           seed,
           chatContext(conv),
           contextWindow,
-          { vaultPack: conversationPack(conv) },
+          { vaultPack: conversationPack(conv), humanize: settings.humanizeWriting !== false },
         );
       }
       case 'stack': {

@@ -190,6 +190,18 @@ beforeEach(() => {
   h.oaiCalls.length = 0;
   h.generates.length = 0;
   h.store.clear();
+  // The OpenAI-compatible chat streams through the WebView fetch on the
+  // iPhone first; here every provider refuses the cross-origin call, so it
+  // goes once through the mocked native shim and nothing leaves the test.
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => {
+      throw new TypeError('Load failed');
+    }),
+  );
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 // ---------------------------------------------------------------------------
