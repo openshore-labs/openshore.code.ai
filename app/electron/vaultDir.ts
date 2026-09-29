@@ -11,7 +11,7 @@
 // Plain Node with the dialog and the config writer injected, so
 // test/deviceFolder.test.ts drives it exactly as main does.
 import { accessSync, constants, existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
-import { dirname, join, resolve, sep } from 'node:path';
+import { dirname, join, posix, resolve, sep, win32 } from 'node:path';
 import { readNote, writeNote } from 'os-code/dist/src/core/vault/noteFile.js';
 import { vaultConflictCopyPath } from 'os-code/dist/src/core/vault/conflictName.js';
 import { listVaultFolder, vaultNoteAbs } from './vaultFs.js';
@@ -145,14 +145,27 @@ export function realOr(p: string): string {
   }
 }
 
+/** The path rules of the platform a check judges for: Windows' separator and
+ *  disk tops on Windows, POSIX's elsewhere, never the host's by accident. */
+function pathsOf(platform: NodeJS.Platform): typeof posix {
+  return platform === 'win32' ? win32 : posix;
+}
+
 /** Whether `target` is `root` or lies inside it. Case-insensitive on Windows
  *  and macOS, whose default volumes are. */
 export function within(target: string, root: string, platform: NodeJS.Platform): boolean {
   const fold = platform === 'win32' || platform === 'darwin';
   const t = fold ? target.toLowerCase() : target;
   const r = fold ? root.toLowerCase() : root;
-  const base = r.endsWith(sep) ? r : r + sep;
+  const s = pathsOf(platform).sep;
+  const base = r.endsWith(s) ? r : r + s;
   return t === r || t.startsWith(base);
+}
+
+/** Whether `real` is the top of a disk ("/" on macOS and Linux, a drive's
+ *  root on Windows), judged for `platform`. */
+export function isDiskTop(real: string, platform: NodeJS.Platform): boolean {
+  return pathsOf(platform).dirname(real) === real;
 }
 
 /** The folder as the person reads it: home as ~ on macOS and Linux. */
@@ -166,7 +179,7 @@ export function vaultDisplay(dir: string, home: string, platform: NodeJS.Platfor
  *  can. The order matters: the most specific sentence wins. */
 export function refusePick(real: string, env: VaultDirEnv): VaultPickRefusal | undefined {
   const p = env.platform;
-  if (dirname(real) === real) return 'root';
+  if (isDiskTop(real, p)) return 'root';
   if (within(real, env.home, p) && within(env.home, real, p)) return 'home';
   if (within(env.home, real, p)) return 'home-ancestor';
   if (within(real, env.oscHome, p) || within(env.oscHome, real, p)) return 'osc-home';

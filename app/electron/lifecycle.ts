@@ -1,7 +1,7 @@
 // The desktop shell's lifecycle rules (A2), kept free of Electron so they are
 // unit-tested without a display. main.ts wires them to the real Tray, window,
 // powerSaveBlocker, and login-item APIs.
-import { join } from 'node:path';
+import { posix } from 'node:path';
 
 export interface TrayMenuItem {
   id: 'open' | 'hub' | 'quit';
@@ -56,8 +56,10 @@ export function launchAtLoginSupport(platform: NodeJS.Platform): 'native' | 'xdg
 
 export const HIDDEN_LAUNCH_FLAG = '--hidden';
 
+/** Where the XDG entry goes. Only a Linux desktop reads one, so the path is
+ *  a Linux path with "/" whatever machine composes it. */
 export function autostartEntryPath(home: string): string {
-  return join(home, '.config', 'autostart', 'openshore.desktop');
+  return posix.join(home, '.config', 'autostart', 'openshore.desktop');
 }
 
 /** The XDG autostart entry: launch the app hidden (to the tray) at login. The

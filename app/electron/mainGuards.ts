@@ -1,8 +1,7 @@
 // Small checks the main process makes on what the renderer, the browser or a
 // local page hands it, kept free of Electron so the tests pin them exactly as
 // main.ts runs them (the D2 shell package). main.ts wires each one in.
-import { dirname } from 'node:path';
-import { within } from './vaultDir.js';
+import { isDiskTop, within } from './vaultDir.js';
 
 // ------------------------------------------------------------ session roots
 
@@ -21,7 +20,7 @@ export function sessionRootRefusal(
   env: { home: string; oscHome: string; platform: NodeJS.Platform },
 ): SessionRootRefusal | undefined {
   const p = env.platform;
-  if (dirname(real) === real) return 'root';
+  if (isDiskTop(real, p)) return 'root';
   if (within(real, env.home, p) && within(env.home, real, p)) return 'home';
   if (within(env.home, real, p)) return 'home-ancestor';
   if (within(real, env.oscHome, p) || within(env.oscHome, real, p)) return 'osc-home';

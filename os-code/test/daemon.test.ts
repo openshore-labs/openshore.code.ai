@@ -15,7 +15,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import {
   desktopChatSystem,
   isAdminProvisionedWorkspace,
@@ -48,6 +48,7 @@ import { defaultConfig } from '../src/config/load.js';
 import { mintCredential } from '../src/core/security/credentials.js';
 import { _setFakeKeychain } from '../src/auth/store.js';
 import { _resetMoreRoom } from '../src/providers/servedWindow.js';
+import { portUnavailable, restoreHome, saveHome, setHome } from './helpers/portable.js';
 
 // Every session the daemon boots, with the tools it registered, its vault
 // root, its workspace, and the project it carries, so a test can check what a
@@ -103,7 +104,7 @@ async function startOnFreePort(extra: Partial<DaemonOptions> = {}): Promise<Runn
         ...extra,
       });
     } catch (err) {
-      if (String(err).includes('EADDRINUSE')) continue;
+      if (portUnavailable(err)) continue;
       throw err;
     }
   }
@@ -155,7 +156,7 @@ describe('box-run model, reached from the phone', () => {
       try {
         box = await startDaemon({ config: cfg, bind: 'loopback', port });
       } catch (err) {
-        if (!String(err).includes('EADDRINUSE')) throw err;
+        if (!portUnavailable(err)) throw err;
       }
     }
     try {
@@ -231,13 +232,13 @@ describe('daemon RBAC (D1)', () => {
 // folder on the computer; a member on a shared hub cannot, since trusting lets
 // a folder's own settings loosen OpenShore on that machine.
 describe('POST /sessions/:id/trust (project trust)', () => {
-  const realHome = process.env.HOME;
+  const realHome = saveHome();
   afterEach(() => {
-    process.env.HOME = realHome;
+    restoreHome(realHome);
   });
 
   it("the owner trusts the session's folder; a member is refused", async () => {
-    process.env.HOME = home;
+    setHome(home);
     const provisioned = join(home, 'OSCode', 'repo');
     mkdirSync(provisioned, { recursive: true });
     writeFileSync(
@@ -276,14 +277,14 @@ describe('POST /sessions/:id/trust (project trust)', () => {
 // `numCtx: 'auto'` for that provider to machine config, never a project file;
 // a member on a shared hub cannot spend the computer's memory.
 describe('POST /sessions/:id/more-room (the truncation card)', () => {
-  const realHome = process.env.HOME;
+  const realHome = saveHome();
   afterEach(() => {
-    process.env.HOME = realHome;
+    restoreHome(realHome);
     _resetMoreRoom();
   });
 
   it('the owner gives the provider more room in machine config; a member is refused', async () => {
-    process.env.HOME = home;
+    setHome(home);
     const provisioned = join(home, 'OSCode', 'repo');
     mkdirSync(provisioned, { recursive: true });
     const member = mintCredential({ role: 'member', label: 'Phone', userId: 'u_room' });
@@ -400,9 +401,9 @@ describe('POST /sessions/:id/rewind', () => {
 // machine's vault, a member on oscHome()/vaults/members/<hash>, so a member's
 // agent has the vault tools on its own folder and never the owner's.
 describe('a member session works on its own vault root on a shared hub', () => {
-  const realHome = process.env.HOME;
+  const realHome = saveHome();
   afterEach(() => {
-    process.env.HOME = realHome;
+    restoreHome(realHome);
   });
   const VAULT_TOOLS = [
     'vaultSearch',
@@ -416,7 +417,7 @@ describe('a member session works on its own vault root on a shared hub', () => {
   const membersDir = () => join(home, 'vaults', 'members');
 
   it("a member's tools point at their own root, never the owner's", async () => {
-    process.env.HOME = home;
+    setHome(home);
     const provisioned = join(home, 'OSCode', 'repo');
     mkdirSync(provisioned, { recursive: true });
     const ownerRes = await createSessionAs(adminToken, provisioned);
@@ -435,7 +436,7 @@ describe('a member session works on its own vault root on a shared hub', () => {
     expect(mine.tools).toEqual(expect.arrayContaining(VAULT_TOOLS));
     expect(mine.vaultRoot).toBeDefined();
     expect(mine.vaultRoot).not.toBe(ownerVault);
-    expect(mine.vaultRoot!.startsWith(membersDir() + '/')).toBe(true);
+    expect(mine.vaultRoot!.startsWith(membersDir() + sep)).toBe(true);
     // The root is made on first use, private to this user.
     expect(existsSync(mine.vaultRoot!)).toBe(true);
     // Nothing else moves but the programs an agent starts and leaves running
@@ -449,7 +450,7 @@ describe('a member session works on its own vault root on a shared hub', () => {
   });
 
   it("a rehydrate uses the stored owner's root, not the caller's", async () => {
-    process.env.HOME = home;
+    setHome(home);
     const provisioned = join(home, 'OSCode', 'repo');
     mkdirSync(provisioned, { recursive: true });
     const member = mintCredential({ role: 'member', label: 'Phone', userId: 'u_vault2' });
@@ -460,7 +461,7 @@ describe('a member session works on its own vault root on a shared hub', () => {
       id: string;
     };
     const memberRoot = bootOf(memberId).vaultRoot;
-    expect(memberRoot!.startsWith(membersDir() + '/')).toBe(true);
+    expect(memberRoot!.startsWith(membersDir() + sep)).toBe(true);
 
     // A restart drops every live driver; the next touch rehydrates from disk.
     // The admin's touch revives the member's session on the MEMBER's root.
@@ -483,7 +484,7 @@ describe('a member session works on its own vault root on a shared hub', () => {
   // whose workspace IS the vault (or holds it) reads the owner's notes with
   // readFile and grep, which never ask. So a member cannot open one there.
   it('a member cannot open a session in the vault or in a folder that holds it', async () => {
-    process.env.HOME = home;
+    setHome(home);
     const managed = join(home, 'OSCode');
     const vault = join(managed, 'Vault');
     mkdirSync(join(vault, 'Private'), { recursive: true });
@@ -509,7 +510,7 @@ describe('a member session works on its own vault root on a shared hub', () => {
   });
 
   it('a vault configured inside a provisioned repo keeps members out of that repo', async () => {
-    process.env.HOME = home;
+    setHome(home);
     const repo = join(home, 'OSCode', 'repo');
     const other = join(home, 'OSCode', 'other');
     mkdirSync(join(repo, 'notes'), { recursive: true });
@@ -525,7 +526,7 @@ describe('a member session works on its own vault root on a shared hub', () => {
   });
 
   it("a member's stored session in the vault is not revived", async () => {
-    process.env.HOME = home;
+    setHome(home);
     const vault = join(home, 'OSCode', 'Vault');
     mkdirSync(vault, { recursive: true });
     // A session a member opened in the vault before the gate existed.
@@ -556,13 +557,13 @@ describe('a member session works on its own vault root on a shared hub', () => {
 // routes and each caller's agent session work on that caller's own root, and
 // no caller's listing, read, or session root ever names another's note.
 describe('three callers on one hub, each on their own vault root (J8)', () => {
-  const realHome = process.env.HOME;
+  const realHome = saveHome();
   afterEach(() => {
-    process.env.HOME = realHome;
+    restoreHome(realHome);
   });
 
   it("each vault route and each session sees only the caller's own root", async () => {
-    process.env.HOME = home;
+    setHome(home);
     const provisioned = join(home, 'OSCode', 'repo');
     mkdirSync(provisioned, { recursive: true });
     const ann = mintCredential({ role: 'member', label: 'Ann', userId: 'u_ann' });
@@ -619,9 +620,9 @@ describe('three callers on one hub, each on their own vault root (J8)', () => {
     expect(roots.get('Owner')).toBe(join(home, 'OSCode', 'Vault'));
     for (const name of ['Ann', 'Ben']) {
       const root = roots.get(name)!;
-      expect(root.startsWith(join(home, 'vaults', 'members') + '/')).toBe(true);
+      expect(root.startsWith(join(home, 'vaults', 'members') + sep)).toBe(true);
       for (const other of roots.values()) {
-        if (other !== root) expect(other.startsWith(root + '/')).toBe(false);
+        if (other !== root) expect(other.startsWith(root + sep)).toBe(false);
       }
     }
   });
@@ -680,13 +681,13 @@ describe('clearing the stored handoffs', () => {
 // project, so its memory notes fell back to the workspace's folder name (the
 // split 0.16 set out to end) and the project's standing instructions dropped.
 describe('a revived session keeps its project', () => {
-  const realHome = process.env.HOME;
+  const realHome = saveHome();
   afterEach(() => {
-    process.env.HOME = realHome;
+    restoreHome(realHome);
   });
 
   it('keeps the project name and instructions across a restart', async () => {
-    process.env.HOME = home;
+    setHome(home);
     const cwd = join(home, 'OSCode', 'my-app');
     mkdirSync(cwd, { recursive: true });
     const created = await fetch(`${base}/sessions`, {
@@ -729,7 +730,7 @@ describe('a revived session keeps its project', () => {
   });
 
   it('keeps instructions the person changed mid-session', async () => {
-    process.env.HOME = home;
+    setHome(home);
     const cwd = join(home, 'OSCode', 'my-app');
     mkdirSync(cwd, { recursive: true });
     const created = await fetch(`${base}/sessions`, {
@@ -818,13 +819,13 @@ describe('POST /sessions carries the Memory switch', () => {
 });
 
 describe('workspace predicates follow symlinks (P0-1 prep)', () => {
-  const realHome = process.env.HOME;
+  const realHome = saveHome();
   afterEach(() => {
-    process.env.HOME = realHome;
+    restoreHome(realHome);
   });
 
   it('a symlink under ~/OSCode that points outside is neither provisioned nor an outbox target', () => {
-    process.env.HOME = home;
+    setHome(home);
     const managed = join(home, 'OSCode');
     const outside = join(home, 'elsewhere');
     mkdirSync(managed, { recursive: true });
@@ -846,13 +847,13 @@ describe('workspace predicates follow symlinks (P0-1 prep)', () => {
 });
 
 describe('listings are owner-scoped for members (DAE-1)', () => {
-  const realHome = process.env.HOME;
+  const realHome = saveHome();
   afterEach(() => {
-    process.env.HOME = realHome;
+    restoreHome(realHome);
   });
 
   it("a member lists exactly its own sessions and never another user's cwd or title", async () => {
-    process.env.HOME = home;
+    setHome(home);
     const provisioned = join(home, 'OSCode', 'repo');
     mkdirSync(provisioned, { recursive: true });
     const adminCwd = join(home, 'admin-private');
@@ -1572,8 +1573,8 @@ describe('session lifecycle: eviction and delete (DAE-12)', () => {
   });
 
   it('DELETE /sessions/:id removes the stored session for its owner, 403 for another member', async () => {
-    const realHome = process.env.HOME;
-    process.env.HOME = home;
+    const realHome = saveHome();
+    setHome(home);
     try {
       const provisioned = join(home, 'OSCode', 'repo');
       mkdirSync(provisioned, { recursive: true });
@@ -1608,7 +1609,7 @@ describe('session lifecycle: eviction and delete (DAE-12)', () => {
       expect(listed.live).toEqual([]);
       expect(listed.stored).toEqual([]);
     } finally {
-      process.env.HOME = realHome;
+      restoreHome(realHome);
     }
   });
 
@@ -1637,9 +1638,9 @@ describe('clone target names (DAE-16)', () => {
 });
 
 describe('the phone sees what is on this computer, and clones land once', () => {
-  const realHome = process.env.HOME;
+  const realHome = saveHome();
   afterEach(() => {
-    process.env.HOME = realHome;
+    restoreHome(realHome);
   });
 
   function plantClone(name: string, origin: string): string {
@@ -1650,7 +1651,7 @@ describe('the phone sees what is on this computer, and clones land once', () => 
   }
 
   it('lists a clone under ~/OSCode before its first chat, with its origin and no credentials', async () => {
-    process.env.HOME = home;
+    setHome(home);
     const dir = plantClone(
       'openshore-hq',
       'https://x-access-token:ghu_leak@github.com/o/openshore-hq.git',
@@ -1669,7 +1670,7 @@ describe('the phone sees what is on this computer, and clones land once', () => 
   });
 
   it('answers a clone of a repository already there with its folder, and refuses a name clash', async () => {
-    process.env.HOME = home;
+    setHome(home);
     const dir = plantClone('site', 'git@github.com:o/site.git');
     const same = await fetch(`${base}/workspaces/clone`, {
       method: 'POST',
@@ -1702,13 +1703,13 @@ describe('the phone sees what is on this computer, and clones land once', () => 
 });
 
 describe('the user command lane is admin-only (P0-1)', () => {
-  const realHome = process.env.HOME;
+  const realHome = saveHome();
   afterEach(() => {
-    process.env.HOME = realHome;
+    restoreHome(realHome);
   });
 
   it('a member gets a distinct 403 restricted on commands, stdin, and kill', async () => {
-    process.env.HOME = home;
+    setHome(home);
     const provisioned = join(home, 'OSCode', 'repo');
     mkdirSync(provisioned, { recursive: true });
     const { token } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_cmd' });

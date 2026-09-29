@@ -1395,15 +1395,18 @@ export class LocalDriver implements SessionDriver {
       const combined = proc
         ? stripAnsi(proc.tail)
         : [result.stdout, result.stderr].filter((s) => s.trim()).join('\n');
+      // A person's Stop is said from what the run knows, never read off how
+      // it ended: Windows ends a tree with taskkill, and a program may catch
+      // the signal and exit with a code of its own.
       const exitNote = result.startError
         ? `failed to start: ${result.startError}`
         : result.timedOut
           ? 'timed out and was killed'
-          : proc && result.exitCode === null
-            ? proc.stoppedBy === 'person'
-              ? 'stopped by the person'
-              : 'stopped'
-            : `exit ${result.exitCode}`;
+          : proc?.stoppedBy === 'person'
+            ? 'stopped by the person'
+            : proc && result.exitCode === null
+              ? 'stopped'
+              : `exit ${result.exitCode}`;
       const who = proc ? 'a process you started,' : 'the user ran';
       const what = proc ? `\`${command}\`, ended` : `\`${command}\``;
       this.pendingTerminalContext.push(

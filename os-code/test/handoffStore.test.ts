@@ -5,7 +5,7 @@
 // local-only message; a session created with a handoff opens its first task
 // with it, and only its first.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -24,6 +24,7 @@ import { bootstrapSession } from '../src/core/agent/bootstrap.js';
 import { HANDOFF_MAX_BYTES } from '../src/harness/handoff.js';
 import type { AgentSession } from '../src/core/agent/loop.js';
 import type { ChatMessage } from '../src/providers/types.js';
+import { removeTempDir } from './helpers/portable.js';
 
 let home: string;
 let cwd: string;
@@ -36,11 +37,11 @@ beforeEach(() => {
   process.env.OSC_HOME = home;
   _resetDataKeyCache();
 });
-afterEach(() => {
+afterEach(async () => {
   process.env.OSC_HOME = previousHome;
   _resetDataKeyCache();
-  rmSync(home, { recursive: true, force: true });
-  rmSync(cwd, { recursive: true, force: true });
+  await removeTempDir(home);
+  await removeTempDir(cwd);
 });
 
 const record = (

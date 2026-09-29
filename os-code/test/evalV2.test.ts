@@ -5,7 +5,7 @@
 // loop run, tools executed, edit applied to disk, checker discriminates).
 import { describe, it, expect } from 'vitest';
 import { readdirSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import {
   defaultTasks,
   runEvalV2,
@@ -298,7 +298,11 @@ describe('eval v2 vault tasks (Vault M4, 4.8)', () => {
     const drive: DriveTask = async (cwd, _prompt, _task, context) => {
       seen = { cwd, context };
       workspace = readdirSync(cwd);
-      files = markdownUnder(context.vaultDir!).map((f) => relative(context.vaultDir!, f));
+      // Vault paths are written with "/" on every system; the disk's own
+      // separator is a backslash on Windows.
+      files = markdownUnder(context.vaultDir!).map((f) =>
+        relative(context.vaultDir!, f).split(sep).join('/'),
+      );
       return 'rel-kestrel/';
     };
     await runEvalV2(drive, { tasks: [task('vault-recall-convention')] });

@@ -16,7 +16,14 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
+import {
+  portUnavailable,
+  restoreHome,
+  saveHome,
+  setHome,
+  type SavedHome,
+} from './helpers/portable.js';
 
 // The attachment rules are stream A2's (Vault M6); until they land in this
 // tree the stub throws "not built", so a small stand-in answers for it. Once
@@ -235,7 +242,7 @@ describe('the daemon vault routes, on the caller own root', () => {
   let daemon: RunningDaemon;
   let base: string;
   let admin: string;
-  let realHome: string | undefined;
+  let realHome: SavedHome;
 
   async function startOnFreePort(): Promise<RunningDaemon> {
     for (let attempt = 0; attempt < 30; attempt++) {
@@ -252,7 +259,7 @@ describe('the daemon vault routes, on the caller own root', () => {
           }),
         });
       } catch (err) {
-        if (String(err).includes('EADDRINUSE')) continue;
+        if (portUnavailable(err)) continue;
         throw err;
       }
     }
@@ -262,8 +269,8 @@ describe('the daemon vault routes, on the caller own root', () => {
   beforeEach(async () => {
     home = mkdtempSync(join(tmpdir(), 'oschome-'));
     process.env.OSC_HOME = home;
-    realHome = process.env.HOME;
-    process.env.HOME = home;
+    realHome = saveHome();
+    setHome(home);
     writeFileSync(
       join(home, 'config.json'),
       JSON.stringify({ stack: { orchestrator: { provider: 'ollama', model: 'qwen' } } }),
@@ -278,7 +285,7 @@ describe('the daemon vault routes, on the caller own root', () => {
   afterEach(() => {
     daemon.close();
     _resetRoutineScheduler();
-    process.env.HOME = realHome;
+    restoreHome(realHome);
     delete process.env.OSC_HOME;
     rmSync(home, { recursive: true, force: true });
   });
@@ -302,8 +309,8 @@ describe('the daemon vault routes, on the caller own root', () => {
     expect(owner).toBe(join(home, 'OSCode', 'Vault'));
     const m1 = vaultRootFor({ userId: 'u_one', role: 'member' });
     const m2 = vaultRootFor({ userId: 'u_two', role: 'member' });
-    expect(m1).toBe(join(home, 'vaults', 'members', m1.split('/').pop()!));
-    expect(m1.split('/').pop()).toMatch(/^[0-9a-f]{16}$/);
+    expect(m1).toBe(join(home, 'vaults', 'members', basename(m1)));
+    expect(basename(m1)).toMatch(/^[0-9a-f]{16}$/);
     expect(m1).not.toBe(m2);
     expect(m1.startsWith(join(home, 'OSCode'))).toBe(false);
     expect(vaultRootForOwner('u_one', false)).toBe(m1);
