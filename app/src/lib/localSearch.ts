@@ -20,8 +20,58 @@ import {
 export type SearchConsent = (query: string) => Promise<boolean>;
 let consent: SearchConsent = async () => true;
 
-export function setSearchConsent(gate: SearchConsent): void {
+/** Where the person stands on web search right now, read without asking:
+ *  `allowed` once they said yes, `declined` once they said no (in Settings, or
+ *  "not now" this launch), `unknown` while nobody has asked yet. */
+export type SearchAllowed = 'allowed' | 'declined' | 'unknown';
+
+/** What a driver reads before it builds a prompt, so a declined search is
+ *  never offered to the model (one generation, not two) and an offline one is
+ *  said plainly. The store registers the live readers beside the gate; a host
+ *  with none reads `unknown` and the browser's own online flag. */
+export interface SearchStateReaders {
+  allowed?: () => SearchAllowed;
+  online?: () => boolean;
+}
+
+const browserOnline = (): boolean =>
+  typeof navigator === 'undefined' || (navigator as { onLine?: boolean }).onLine !== false;
+let allowedReader: () => SearchAllowed = () => 'unknown';
+let onlineReader: () => boolean = browserOnline;
+
+export function setSearchConsent(gate: SearchConsent, readers: SearchStateReaders = {}): void {
   consent = gate;
+  allowedReader = readers.allowed ?? (() => 'unknown');
+  onlineReader = readers.online ?? browserOnline;
+}
+
+/** The person's answer to web search right now, without asking. */
+export function searchAllowedNow(): SearchAllowed {
+  try {
+    return allowedReader();
+  } catch {
+    return 'unknown';
+  }
+}
+
+/** Whether the web is in reach for a search right now (not offline, and not
+ *  on the Offline profile). */
+export function webOnlineNow(): boolean {
+  try {
+    return onlineReader();
+  } catch {
+    return true;
+  }
+}
+
+/** Whether a model may be offered web search this turn: the web is in reach
+ *  and the person has not declined it. `unknown` offers it, and the first
+ *  search asks. */
+export function searchOffered(
+  online: boolean = webOnlineNow(),
+  allowed: SearchAllowed = searchAllowedNow(),
+): boolean {
+  return online && allowed !== 'declined';
 }
 
 /** What the model reads when the person has not allowed web search. */

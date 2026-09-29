@@ -135,6 +135,9 @@ contextBridge.exposeInMainWorld('oscode', {
   secureDelete: invoke('osc:secureDelete'),
 
   httpFetch: invoke('osc:httpFetch'),
+  chatStream: invoke('osc:chatStream'),
+  chatStreamAbort: invoke('osc:chatStreamAbort'),
+  onChatStream: listen('osc:chat-stream'),
 
   gdriveOAuthListen: invoke('osc:gdriveOAuthListen'),
   gdriveOAuthWait: invoke('osc:gdriveOAuthWait'),

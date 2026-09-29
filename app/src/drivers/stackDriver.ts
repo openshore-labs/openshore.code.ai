@@ -33,14 +33,11 @@ import {
   uxStandardPrompt,
   humanizerStandardPrompt,
   JevAdvisor,
-  NO_SEARCH_NOTE,
-  SEARCH_PROTOCOL_NOTE,
-  SearchLineFilter,
   ThinkTagSplitter,
-  splitThinkTags,
   mergeProvenance,
   readFrontmatter,
   readProvenance,
+  type ModelClass,
   type ThoughtPiece,
 } from 'os-code/protocol';
 import {
@@ -59,18 +56,15 @@ import {
   fitDeviceHistory,
   forgetDeviceModel,
 } from './deviceModel.js';
-import { platform, secretGet, storeGetJson } from '../lib/platform.js';
+import { secretGet, storeGetJson } from '../lib/platform.js';
 import {
   CODEMAGIC_TOOL_NAME,
   codemagicOpenAiTool,
   codemagicSystemNote,
   codemagicToolSpec,
-  finalizeToolCalls,
-  mergeToolCallDeltas,
   parseCodemagicArgs,
   runCodemagicTool,
   type CodemagicToolInput,
-  type ToolCallAccum,
 } from '../lib/codemagicTool.js';
 import { nativeFetch } from '../lib/nativeFetch.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
@@ -78,15 +72,32 @@ import {
   chainOfThoughtLine,
   chainOfThoughtOn,
   claudeRequestThinking,
-  reasoningOf,
 } from '../lib/chainOfThought.js';
+import {
+  ProviderUnavailable as RouteUnavailable,
+  SLOW_START_LINE,
+  abortError,
+  anthropicClient,
+  isAbortError,
+  openAiCompatibleClient,
+  raceAbort,
+  warmingLine,
+  watchFirstWord,
+  type OaiMessage,
+  type OpenAiSeat,
+  type ProviderClient,
+  type ProviderEvent,
+  type ProviderToolCall,
+} from './providerClient.js';
+import { SearchTurn } from './searchTurn.js';
 import { claudeHistoryCache, claudeSystem, promptCacheOn } from '../lib/claudeCache.js';
 import { PROVIDERS, providerInfo, providerSecretKey } from '../lib/providers.js';
 import { imageBlockParts, type Attachment } from '../lib/attachments.js';
-import { DEFAULT_CLAUDE_MODEL } from '../lib/claudeModels.js';
+import { claudeModelLabel, visionFallbackClaudeModel } from '../lib/claudeModels.js';
 import { buildVisionContent, describeError, opensOnUser } from './cloudClaudeDriver.js';
 import { frameLabel, videoContextHeader, VIDEO_FRAMES_SYSTEM_NOTE } from '../lib/videoAttach.js';
 import {
+  PlanReplyFilter,
   briefTodos,
   handoffNote,
   mergeReplan,
@@ -107,7 +118,7 @@ import { byomSecretKey } from '../lib/byom.js';
 import { isCurrentBenchId } from '../lib/currents.js';
 import { buildHarborSystemPrompt, isHarbor } from '../lib/harbor.js';
 import { buildHarborMiniSystemPrompt, guidedSetupLine, isHarborMini } from '../lib/harborMini.js';
-import { prepareGuideTurn, searchForModel } from '../lib/localSearch.js';
+import { prepareGuideTurn, searchOffered, webOnlineNow } from '../lib/localSearch.js';
 import { locationAllowed, type ProfileId } from '../lib/profiles.js';
 import {
   harborRef,
@@ -276,8 +287,21 @@ export function engineStepSessionOpts(
  *  are skipped to protect their small context (they are not the surface where
  *  real writing happens), the same carve-out the UX standard makes; the desktop
  *  engine carries the standard through its own config, not this path. */
-export function humanizerApplies(ref: StackModelRef, humanize?: boolean): boolean {
-  return humanize !== false && ref.kind !== 'device';
+export function humanizerApplies(
+  ref: StackModelRef,
+  humanize?: boolean,
+  modelClass?: ModelClass,
+): boolean {
+  return humanize !== false && ref.kind !== 'device' && !leanSeat(modelClass);
+}
+
+/** A seat too small to carry the long standing standards (build 2026-09-29,
+ *  B2): a tiny or small model on any host. The UX standard (about 1.3k
+ *  tokens) and the humanizer (about 2k) would take a third of a 8k window on
+ *  every turn and push out the chat itself; the engine's own class profiles
+ *  already leave them out for these seats. An unknown class keeps them. */
+export function leanSeat(modelClass?: ModelClass): boolean {
+  return modelClass === 'tiny' || modelClass === 'small';
 }
 
 const BASE_SYSTEM = [
@@ -357,6 +381,12 @@ interface SystemParts {
   legacy: string;
 }
 
+/** A local seat's search line for one pass (drivers/searchTurn.ts). */
+interface SearchPrompt {
+  note: string;
+  mayAsk: boolean;
+}
+
 /** The system prompt as one string: stable to volatile with caching on, the
  *  pre-M5 prompt with it off (off is byte-identical to before M5). */
 function joinSystem(parts: SystemParts, cache: boolean): string {
@@ -432,29 +462,17 @@ function hasVideoFrames(images: Attachment[]): boolean {
 // id and interleave their token streams into one answer.
 let stackRequestSeq = 0;
 
+/** The line under every card this driver asks with (build 2026-09-29). */
+export const ASK_STOP_LINE = 'Or press Stop to skip it.';
+
 /** The turn's end when the person keeps an image off the cloud. */
 export const IMAGE_NOT_SENT =
   'You declined, so the image was not sent. Set a model for Image reading in Stack and images go to it without asking.';
 
 // A routed specialist could not run this turn (no key, load failure, HTTP
-// error). Distinct from a generic failure so run() can degrade to the Reasoning
-// anchor instead of dead-ending the turn, the way the engine's router does.
-class RouteUnavailable extends Error {
-  constructor(
-    message: string,
-    /** The HTTP status when a server answered with one. */
-    readonly status?: number,
-  ) {
-    super(message);
-  }
-}
-
-/** The error a stopped step unwinds with; run() reads its name as a calm end. */
-function abortError(): Error {
-  const err = new Error('Stopped.');
-  err.name = 'AbortError';
-  return err;
-}
+// error) throws RouteUnavailable (the provider client's ProviderUnavailable).
+// Distinct from a generic failure so run() can degrade to the Reasoning anchor
+// instead of dead-ending the turn, the way the engine's router does.
 
 /** A seat's identity for the tools-refused memo. */
 function seatKey(ref: StackModelRef): string {
@@ -499,6 +517,13 @@ export class StackDriver implements ChatDriver {
   private listenersReady: Promise<void>;
   private deviceListeners: PluginListenerHandle[] = [];
   private abortController?: AbortController;
+  // The turn is over (finished, stopped, or failed): its ending was said once,
+  // so whatever an unwinding run still says is dropped, and the partial
+  // answer is pushed to history exactly once.
+  private turnClosed = true;
+  // A device reply stopped from here: the turn closed at once, and a beat
+  // later the slot is dropped if the runner never confirmed the stop.
+  private stoppingRequestId?: string;
   // B2 (UI-1 for the stack): a started device reply that goes quiet is ended
   // from this side, and a stop the native runner never acknowledges is ended
   // a beat later, so a "My Stack" chat on the phone can never stick busy.
@@ -510,11 +535,11 @@ export class StackDriver implements ChatDriver {
   // from the roster, never hardcoded here (a room renders a current through the
   // roster, the same rule the agentic currents hold).
   private readonly harness?: { id: HarnessCurrentId; label: string; advisor: JevAdvisor };
-  // Web search for local models: the stream filter that keeps a SEARCH: line
-  // off the screen, at most one search per message, the device seat to hand
-  // the results back to, and Harbor Lite's pre-searched prompt for this turn.
-  private searchFilter = new SearchLineFilter(false);
-  private searchedThisTurn = false;
+  // Web search for local models: the one search turn per message (the filter
+  // that keeps a SEARCH: line off the screen on every pass, the prompt note,
+  // the history line), the device seat to hand the results back to, and
+  // Harbor Lite's pre-searched prompt for this turn.
+  private search = new SearchTurn();
   // Chain of Thought for the message in flight (read once when it starts, so a
   // flip mid-reply cannot half-apply), and the device reply's <think> splitter.
   private cot = false;
@@ -586,8 +611,6 @@ export class StackDriver implements ChatDriver {
   /** The turn already ended (a Stop during warm-up closes it at once), so
    *  whatever the unwinding run still says is dropped, its ending too. */
   private settled = false;
-  /** An on-device model is loading for this turn; nothing to stop yet. */
-  private warming = false;
 
   private emit = (e: Parameters<DriverEmitter['emit']>[0]) => {
     if (e.type === 'task-start') this.settled = false;
@@ -643,9 +666,11 @@ export class StackDriver implements ChatDriver {
     // paid/cloud one. A device (free, local) seat is left alone.
     if (!this.harness || target.ref.kind === 'device') return target;
     const categories = this.placedCategories();
-    const decision = await this.harness.advisor
-      .steer({ request: text, categories })
-      .catch(() => undefined);
+    // A stop while Jev decides unwinds at once (the turn is already closed).
+    const decision = await raceAbort(
+      this.harness.advisor.steer({ request: text, categories }),
+      this.abortController?.signal,
+    ).catch(() => undefined);
     if (!decision) return target;
     // The gate first: a local seat that can carry this saves the paid call.
     if (decision.gate && !decision.gate.escalate) {
@@ -710,17 +735,31 @@ export class StackDriver implements ChatDriver {
     return '';
   }
 
-  /** `search` is set only on a local model's own answer turn: true when the
-   *  web is in reach (it may ask with a SEARCH: line), false when it is not.
-   *  Unset (a play step, a cloud seat), the prompt says nothing about it.
-   *  `pack` is the vault pack rendered for this seat, placed last. */
+  /** `search` is set only on a local model's own answer turn: the note this
+   *  pass reads (it may search, it already searched, or it has no web) and
+   *  whether it may ask. Unset (a play step, a cloud seat), the prompt says
+   *  nothing about it. `pack` is the vault pack rendered for this seat,
+   *  placed last. */
   private systemFor(
     ref: StackModelRef,
     placement?: Placement,
-    search?: boolean,
+    search?: SearchPrompt,
     pack?: string,
   ): string {
     return joinSystem(this.systemParts(ref, placement, search, pack), this.promptCache());
+  }
+
+  /** This message's search prompt for a local seat, read now. */
+  private searchPrompt(): SearchPrompt {
+    const offered = this.webReachable() && searchOffered();
+    return { note: this.search.note(offered), mayAsk: this.search.mayAsk(offered) };
+  }
+
+  /** A seat's class (build 2026-09-29, B2): the pack seat's own reading (by
+   *  name and size, `packSeatFor`), else undefined for a seat nobody can
+   *  judge (an Agentic Current's bench model), which keeps every standard. */
+  private seatClass(ref: StackModelRef): ModelClass | undefined {
+    return this.seatFor(ref)?.modelClass;
   }
 
   /** The system prompt, stable to volatile (CTO J16): the base or guide, the
@@ -730,7 +769,7 @@ export class StackDriver implements ChatDriver {
   private systemParts(
     ref: StackModelRef,
     placement?: Placement,
-    search?: boolean,
+    search?: SearchPrompt,
     pack?: string,
   ): SystemParts {
     const guideSystem =
@@ -738,28 +777,30 @@ export class StackDriver implements ChatDriver {
         ? (this.guidePrompt ??
           buildHarborMiniSystemPrompt(this.lastUserText(), this.context.conversationId))
         : ref.kind === 'device' && isHarbor(ref.modelId)
-          ? buildHarborSystemPrompt(search === true)
+          ? buildHarborSystemPrompt(search?.mayAsk === true, search?.note)
           : undefined;
     // Harbor's persona carries its own search line, and Harbor Lite's guide
     // harness searches for it; every other local model reads the rule here.
     const stable = [guideSystem ?? BASE_SYSTEM];
-    if (!guideSystem && search !== undefined) {
-      stable.push(search ? SEARCH_PROTOCOL_NOTE : NO_SEARCH_NOTE);
-    }
+    if (!guideSystem && search !== undefined) stable.push(search.note);
     // The pre-M5 order (caching off): the head, the effort line, the project,
     // the walk, the crew and the persona, then the standards and the notes.
     const legacyHead = stable.slice();
     const standards: string[] = [];
+    // A tiny or small seat on any host carries neither long standard (B2).
+    const modelClass = this.seatClass(ref);
     // Premium UX out of the box for whatever writes code in this chat: the
     // coding specialist, and a cloud or BYOM reasoning anchor. On-device
-    // pocket models skip it to protect their small context (the engine's
-    // agent on the desktop always carries it).
+    // pocket models, and any seat too small to hold it, skip it to protect
+    // their context (the engine's agent on the desktop carries it by class).
     const buildsCode = placement?.category === 'coding' || (!placement && ref.kind !== 'device');
-    if (buildsCode) standards.push(uxStandardPrompt());
+    if (buildsCode && !leanSeat(modelClass)) standards.push(uxStandardPrompt());
     // Humanize Writing out of the box: any written output (not just code) reads
     // plain, specific, and honest, avoiding AI writing tells, unless the person
     // turned the setting off (humanizerStandard.ts, config in Settings).
-    if (humanizerApplies(ref, this.context.humanize)) standards.push(humanizerStandardPrompt());
+    if (humanizerApplies(ref, this.context.humanize, modelClass)) {
+      standards.push(humanizerStandardPrompt());
+    }
     // Codemagic Access is on: tell the model it can drive App Launch builds. The
     // tool is offered on every network model (Anthropic native tool use, and
     // OpenAI-compatible + BYOM function calling), so the note earns its place on
@@ -1179,7 +1220,7 @@ export class StackDriver implements ChatDriver {
   private async run(text: string, attachments?: Attachment[]): Promise<void> {
     this.aborted = false;
     this.abortController = new AbortController();
-    this.searchedThisTurn = false;
+    this.search.begin();
     this.cot = chainOfThoughtOn();
     this.guidePrompt = undefined;
     this.sendEffort = effortDirective();
@@ -1187,7 +1228,9 @@ export class StackDriver implements ChatDriver {
     this.proposals = [];
     this.sendPrivacy = undefined;
     this.turnPack = undefined;
+    this.answer = '';
     this.history.push({ role: 'user', content: text });
+    this.turnClosed = false;
     this.emit({ type: 'task-start', input: text });
     // The vault pack for this send, gathered while routing runs (CTO J5); it
     // is rendered for each seat once that seat is known.
@@ -1196,6 +1239,18 @@ export class StackDriver implements ChatDriver {
       ? pack.prepare(text, this.abortController.signal).catch(() => undefined)
       : Promise.resolve();
 
+    try {
+      await this.runTurn(text, attachments);
+    } catch (err) {
+      // A stop is a calm end (abort() already closed the turn with whatever
+      // streamed so far); anything else ends the turn with its partial answer
+      // kept in the chat and in history.
+      if (this.aborted || isAbortError(err)) this.finish('aborted');
+      else this.finish('error', describeError(err));
+    }
+  }
+
+  private async runTurn(text: string, attachments?: Attachment[]): Promise<void> {
     // Continue a pending clarification: fold the reply into the original ask and
     // re-frame, rather than answering the reply on its own.
     if (this.pendingClarify) {
@@ -1209,11 +1264,19 @@ export class StackDriver implements ChatDriver {
       // Planning could not run; fall through and answer the reply directly.
     }
 
-    // Plan-first flow: for a text-only turn (no build-tool loop), the reasoning
-    // LLM frames the request and composes a play. It hands back to the
-    // single-turn path below when the anchor is a weak or unreachable model, the
-    // plan will not parse, or the play is a single step.
-    if (!(attachments ?? []).some((a) => a.isImage) && !this.context.codemagicAccess) {
+    // Plan-first flow: for a text-only turn (no build-tool loop) on a stack
+    // with someone to hand off to, the reasoning LLM frames the request and
+    // composes a play, or answers a simple request itself in the same call
+    // (B2). A stack with only its anchor (and no docked workspace) has no one
+    // to hand off to, so it skips the framing call and answers in one. It
+    // hands back to the single-turn path below when the anchor is a weak or
+    // unreachable model, the plan will not parse, or the play is a single
+    // specialist step.
+    if (
+      !(attachments ?? []).some((a) => a.isImage) &&
+      !this.context.codemagicAccess &&
+      this.hasHandoff()
+    ) {
       const handled = await this.tryRunPlay(text);
       if (handled) return;
     }
@@ -1233,11 +1296,10 @@ export class StackDriver implements ChatDriver {
     if (images.length) {
       const vision = await this.routeVision();
       if (!vision) {
-        this.emit({
-          type: 'task-done',
-          reason: 'error',
-          message: `No image-reading model is reachable while ${this.profile}. Put an image-reading model in Stack, or connect a cloud model that reads images (Claude reads them out of the box).`,
-        });
+        this.finish(
+          'error',
+          `No image-reading model is reachable while ${this.profile}. Put an image-reading model in Stack, or connect a cloud model that reads images (Claude reads them out of the box).`,
+        );
         return;
       }
       // Only a model placed for Image reading takes an image without a word
@@ -1245,18 +1307,17 @@ export class StackDriver implements ChatDriver {
       // model filling the gap, waits on a card the person taps (tenet 4).
       if (!vision.dedicated && !(await this.askToReadImage(vision.ref, images.length))) {
         if (this.aborted) this.finish('aborted');
-        else this.emit({ type: 'task-done', reason: 'declined', message: IMAGE_NOT_SENT });
+        else this.finish('declined', IMAGE_NOT_SENT);
         return;
       }
       target = vision;
     } else {
       target = this.route(text);
       if (!this.reachable(target.ref)) {
-        this.emit({
-          type: 'task-done',
-          reason: 'error',
-          message: `Nothing in your stack is reachable while ${this.profile}. Download an on-device model or change your connection.`,
-        });
+        this.finish(
+          'error',
+          `Nothing in your stack is reachable while ${this.profile}. Download an on-device model or change your connection.`,
+        );
         return;
       }
       // Harness Current: when a paid/cloud seat would answer and Jev is on, let
@@ -1265,6 +1326,8 @@ export class StackDriver implements ChatDriver {
       // on Jev, and safe: any failure leaves the routed target as it was.
       target = await this.jevSteer(text, target);
     }
+    // Stopped while routing (a card, Jev, a key lookup): nothing is sent.
+    if (this.aborted) throw abortError();
 
     this.emit({
       type: 'turn-start',
@@ -1292,59 +1355,53 @@ export class StackDriver implements ChatDriver {
     try {
       await this.runRef(target.ref, target.placement, images);
     } catch (err) {
-      // A stop is a calm end, not an error: settle with whatever streamed so
-      // far so the partial reply stays in context for the next turn.
-      if (this.aborted || (err instanceof Error && err.name === 'AbortError')) {
-        this.finish('aborted');
-        return;
-      }
+      if (this.aborted || isAbortError(err)) throw err;
       // Graceful degradation is the contract: if a placed specialist could not
       // run, fall back to the Reasoning anchor for this turn rather than
       // dead-ending, exactly as the desktop router does. An image turn is the
       // exception: routeVision already chose the best reachable reader (and the
       // reasoning anchor may not read images at all), so it never falls back
-      // here, it fails with the clear message above.
+      // here, it fails with the clear message above. A specialist that already
+      // wrote part of its answer keeps it: the turn ends with the error and the
+      // partial, never a second answer on top.
       const isSpecialist = !images.length && target.category !== 'reasoning' && !!target.placement;
       const canFallback =
         err instanceof RouteUnavailable &&
         isSpecialist &&
+        !this.answer.trim() &&
         refName(reasoning) !== refName(target.ref) &&
         this.reachable(reasoning);
-      if (canFallback) {
-        this.emit({
-          type: 'status',
-          message: `${refName(target.ref)} is not available right now. Falling back to ${refName(reasoning)}.`,
-        });
-        this.emit({
-          type: 'turn-start',
-          turn: this.history.length,
-          model: refName(reasoning),
-          providerKind: reasoning.kind === 'device' ? 'local' : 'cloud',
-        });
-        // The anchor is a different seat: its own pack, sized for it.
-        this.turnPack = { ref: reasoning, text: await this.packFor(reasoning) };
-        this.answer = '';
-        try {
-          await this.runRef(reasoning, undefined, []);
-        } catch (err2) {
-          if (this.aborted || (err2 instanceof Error && err2.name === 'AbortError')) {
-            this.finish('aborted');
-            return;
-          }
-          this.emit({
-            type: 'task-done',
-            reason: 'error',
-            message: describeError(err2),
-          });
-        }
-        return;
-      }
+      if (!canFallback) throw err;
       this.emit({
-        type: 'task-done',
-        reason: 'error',
-        message: describeError(err),
+        type: 'status',
+        message: `${refName(target.ref)} is not available right now. Falling back to ${refName(reasoning)}.`,
       });
+      this.emit({
+        type: 'turn-start',
+        turn: this.history.length,
+        model: refName(reasoning),
+        providerKind: reasoning.kind === 'device' ? 'local' : 'cloud',
+      });
+      // The anchor is a different seat: its own pack, sized for it.
+      this.turnPack = { ref: reasoning, text: await this.packFor(reasoning) };
+      this.answer = '';
+      await this.runRef(reasoning, undefined, []);
     }
+  }
+
+  /** Someone a play could hand a step to, the only case a multi-step play
+   *  can use: a placed specialist (reachable, and not a pocket model, whose
+   *  step the anchor would cover itself), or the paired computer's engine
+   *  for a step that edits files (docked, with a workspace bound). */
+  private hasHandoff(): boolean {
+    if (this.stack.active.some((m) => m.ref.kind !== 'device' && this.reachable(m.ref))) {
+      return true;
+    }
+    return (
+      locationAllowed(this.profile, 'home') &&
+      Boolean(this.context.daemon) &&
+      Boolean(this.context.repoCwd)
+    );
   }
 
   private async runRef(
@@ -1399,9 +1456,14 @@ export class StackDriver implements ChatDriver {
   }
 
   /** Put a card in front of the person and wait for their tap. A stop counts
-   *  as a no. */
+   *  as a no, and the card says so: the turn waits on the tap with no timer,
+   *  so Stop is the way past it without answering. */
   private askFirst(request: Omit<ApprovalRequest, 'id'>): Promise<boolean> {
     const id = `ask_${Date.now().toString(36)}_${(stackRequestSeq++).toString(36)}`;
+    request = {
+      ...request,
+      detail: request.detail ? `${request.detail}\n\n${ASK_STOP_LINE}` : ASK_STOP_LINE,
+    };
     return new Promise<boolean>((resolve) => {
       this.pendingAsk = {
         id,
@@ -1416,14 +1478,17 @@ export class StackDriver implements ChatDriver {
   }
 
   /** A connected, reachable cloud model that reads images, when the stack holds
-   *  none. Claude first (its whole lineup reads images), then the first other
-   *  provider with a stored key and a vision-capable model. */
+   *  none. Claude first (its whole lineup reads images, so the one that costs
+   *  the person least), then the first other provider with a stored key and a
+   *  vision-capable model. The label names the model, so the card says
+   *  exactly which one the image would go to. */
   private async cloudVisionFallback(): Promise<StackModelRef | undefined> {
+    const claude = visionFallbackClaudeModel();
     const anthropic: StackModelRef = {
       kind: 'cloud',
       provider: 'anthropic',
-      model: DEFAULT_CLAUDE_MODEL,
-      label: 'Claude',
+      model: claude.id,
+      label: `Claude ${claudeModelLabel(claude.id)}`,
     };
     if (this.reachable(anthropic) && (await secretGet(providerSecretKey('anthropic')))) {
       return anthropic;
@@ -1436,7 +1501,7 @@ export class StackDriver implements ChatDriver {
         kind: 'cloud',
         provider: p.id,
         model: visionModel.id,
-        label: p.name,
+        label: `${p.name} ${visionModel.label}`,
       };
       if (this.reachable(ref) && (await secretGet(providerSecretKey(p.id)))) return ref;
     }
@@ -1446,11 +1511,14 @@ export class StackDriver implements ChatDriver {
   // ---- plan-first orchestration -------------------------------------------
 
   /** Frame the prompt with the reasoning LLM and, when it is clear and needs
-   *  more than one model, run the play. Returns true when it handled the turn
-   *  (ran the play, or asked the user to clarify); false to fall back to the
-   *  single-turn path. The whole flow degrades to single-turn whenever the
-   *  reasoning anchor is a weak or unreachable model or the plan cannot be
-   *  used, so a modest stack still just answers. */
+   *  more than one model, run the play. A clear request the lead would do
+   *  alone in one step is answered in that same call (B2): its prose streams
+   *  as the answer, so a simple message costs one model call. Returns true
+   *  when it handled the turn (answered, ran the play, or asked the user to
+   *  clarify); false to fall back to the single-turn path. The whole flow
+   *  degrades to single-turn whenever the reasoning anchor is a weak or
+   *  unreachable model or the plan cannot be used, so a modest stack still
+   *  just answers. */
   private async tryRunPlay(text: string, contextNote?: string): Promise<boolean> {
     const reasoning = this.stack.reasoning ?? harborRef();
     // A local pocket model cannot plan reliably; let the single-turn path (and
@@ -1458,21 +1526,51 @@ export class StackDriver implements ChatDriver {
     if (reasoning.kind === 'device' || !this.reachable(reasoning)) return false;
 
     this.emit({ type: 'status', message: 'Framing the request.' });
-    let planText: string;
+    const reply = new PlanReplyFilter();
+    let answering = false;
+    this.answer = '';
     try {
-      planText = await this.completeOnce(
+      const pack = await this.packFor(reasoning);
+      await this.completeOnce(
         reasoning,
         undefined,
-        planPrompt(text, this.stack, contextNote, this.conversationDigest(this.leaves(reasoning))),
+        planPrompt(
+          text,
+          this.stack,
+          contextNote,
+          this.conversationDigest(this.leaves(reasoning)),
+          true,
+        ),
+        {
+          pack,
+          onDelta: (d) => {
+            const shown = reply.push(d);
+            if (!shown) return;
+            if (!answering) {
+              answering = true;
+              this.emit({
+                type: 'turn-start',
+                turn: this.history.length,
+                model: refName(reasoning),
+                providerKind: 'cloud',
+              });
+            }
+            this.showAnswer(shown);
+          },
+        },
       );
-    } catch {
+    } catch (err) {
+      if (this.aborted || isAbortError(err)) throw err;
+      // An answer that began and then failed keeps what it wrote.
+      if (answering) throw err;
       return false;
     }
-    if (this.aborted) {
-      this.finish('aborted');
+    const ended = reply.end();
+    if (ended.mode === 'answer') {
+      this.finish('complete');
       return true;
     }
-    const framing = parsePlan(planText);
+    const framing = parsePlan(ended.plan);
     if (!framing) return false;
 
     // Not clear: ask the questions as a tappable picker and wait for the reply.
@@ -1485,8 +1583,8 @@ export class StackDriver implements ChatDriver {
       return true;
     }
 
-    // A single-step (or empty) play is just a normal answer; let the single-turn
-    // path handle it so behavior is unchanged for simple prompts.
+    // A single-step (or empty) play is one specialist's answer; let the
+    // single-turn path route it, so behavior is unchanged for those prompts.
     if (framing.steps.length <= 1) return false;
 
     await this.executePlay({ summary: framing.summary, steps: framing.steps }, text);
@@ -1791,8 +1889,10 @@ export class StackDriver implements ChatDriver {
   }
 
   /** One reusable completion on a cloud or BYOM model, returning its text.
-   *  Streams to onDelta when given (the final synthesis). Device models are not
-   *  driven here; callers route a device owner to the reasoning anchor. */
+   *  Streams to onDelta when given (the final synthesis, or a framing call
+   *  that answers directly). Device models are not driven here; callers route
+   *  a device owner to the reasoning anchor. An internal step shows no
+   *  thinking, so the client's thinking events are dropped here. */
   private async completeOnce(
     ref: StackModelRef,
     placement: Placement | undefined,
@@ -1800,116 +1900,78 @@ export class StackDriver implements ChatDriver {
     opts?: { images?: Attachment[]; onDelta?: (delta: string) => void; pack?: string },
   ): Promise<string> {
     const parts = this.systemParts(ref, placement, undefined, opts?.pack);
-    const system = joinSystem(parts, this.promptCache());
     if (ref.kind === 'device') {
       throw new RouteUnavailable('A local model cannot run this step.');
     }
+    const signal = this.abortController?.signal;
+    let out = '';
+    const take = (ev: ProviderEvent) => {
+      if (ev.type !== 'text') return;
+      out += ev.text;
+      opts?.onDelta?.(ev.text);
+    };
     if (ref.kind === 'cloud' && ref.provider === 'anthropic') {
       const key = await secretGet(providerSecretKey('anthropic'));
       if (!key) throw new RouteUnavailable('Connect Claude under Cloud Connections first.');
-      const ws = (
-        await storeGetJson<{ anthropicWorkspaceId?: string }>('oscode.settings.v1')
-      )?.anthropicWorkspaceId?.trim();
-      const client = new Anthropic({
-        apiKey: key,
-        dangerouslyAllowBrowser: true,
-        fetch: streamingFetch,
-        ...(ws ? { defaultHeaders: { 'anthropic-workspace-id': ws } } : {}),
+      const client = anthropicClient(await this.claudeClient(key), {
+        model: ref.model,
+        max_tokens: 4096,
+        system: this.claudeSystem(parts),
       });
       const content = opts?.images?.length
         ? buildVisionContent(prompt, opts.images).content
         : prompt;
-      const stream = client.messages.stream(
-        {
-          model: ref.model,
-          max_tokens: 4096,
-          system: this.claudeSystem(parts),
-          messages: [{ role: 'user', content }],
-        },
-        { signal: this.abortController?.signal },
-      );
-      let out = '';
-      stream.on('text', (delta) => {
-        if (this.aborted) return;
-        out += delta;
-        opts?.onDelta?.(delta);
-      });
-      await stream.finalMessage();
+      for await (const ev of client.stream([{ role: 'user', content }], [], signal)) take(ev);
       return out;
     }
     // OpenAI-compatible: a built-in cloud provider or a BYOM endpoint.
-    const base = ref.kind === 'byom' ? ref.baseUrl : providerInfo(ref.provider)?.openaiBaseUrl;
-    if (!base) throw new RouteUnavailable(`No endpoint configured for ${refName(ref)}.`);
-    const key =
-      ref.kind === 'byom'
-        ? ((await secretGet(byomSecretKey(ref.id))) ?? undefined)
-        : ((await secretGet(providerSecretKey(ref.provider))) ?? undefined);
-    const headers: Record<string, string> = { 'content-type': 'application/json' };
-    if (key) headers.authorization = `Bearer ${key}`;
+    const seat = await this.openAiSeat(ref);
     const userContent = opts?.images?.length ? openAiVisionContent(prompt, opts.images) : prompt;
-    const messages = [
-      { role: 'system', content: system },
+    const messages: OaiMessage[] = [
+      { role: 'system', content: joinSystem(parts, this.promptCache()) },
       { role: 'user', content: userContent },
     ];
-    if (platform() === 'ios' || platform() === 'electron') {
-      const res = await nativeFetch(`${base}/chat/completions`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ model: ref.model, stream: false, messages }),
-      });
-      if (!res.ok) throw new RouteUnavailable(`${refName(ref)} answered ${res.status}.`);
-      const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-      // An internal step shows no thinking; any <think> text stays out of it.
-      const out = splitThinkTags(data?.choices?.[0]?.message?.content ?? '').text;
-      if (out) opts?.onDelta?.(out);
-      return out;
-    }
-    const res = await fetch(`${base}/chat/completions`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ model: ref.model, stream: true, messages }),
-      signal: this.abortController?.signal,
-    });
-    if (!res.ok || !res.body) throw new RouteUnavailable(`${refName(ref)} answered ${res.status}.`);
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let out = '';
-    let buffer = '';
-    // An internal step shows no thinking; any <think> text stays out of it.
-    const splitter = new ThinkTagSplitter();
-    const keep = (pieces: ThoughtPiece[]) => {
-      for (const p of pieces) {
-        if (p.kind !== 'text') continue;
-        out += p.text;
-        opts?.onDelta?.(p.text);
-      }
-    };
-    for (;;) {
-      const { value, done: streamDone } = await reader.read();
-      if (streamDone || this.aborted) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith('data:')) continue;
-        const payload = trimmed.slice(5).trim();
-        if (payload === '[DONE]') continue;
-        try {
-          const delta = JSON.parse(payload)?.choices?.[0]?.delta?.content;
-          if (typeof delta === 'string' && delta) keep(splitter.push(delta));
-        } catch {
-          // skip a keepalive or partial line
-        }
-      }
-    }
-    keep(splitter.end());
+    for await (const ev of openAiCompatibleClient(seat).stream(messages, [], signal)) take(ev);
     return out;
+  }
+
+  /** The OpenAI-compatible seat for a cloud provider or your own server: its
+   *  address, key and extra headers. A cloud provider needs its key; a BYOM
+   *  server may take none (a local server often asks for nothing). */
+  private async openAiSeat(ref: Exclude<StackModelRef, { kind: 'device' }>): Promise<OpenAiSeat> {
+    if (ref.kind === 'byom') {
+      return {
+        label: ref.label,
+        baseUrl: ref.baseUrl,
+        key: (await secretGet(byomSecretKey(ref.id))) ?? undefined,
+        model: ref.model,
+        extraHeaders: benchExtraHeaders(ref.id, this.context.conversationId),
+      };
+    }
+    const base = providerInfo(ref.provider)?.openaiBaseUrl;
+    if (!base) throw new RouteUnavailable(`No endpoint configured for ${refName(ref)}.`);
+    const key = await secretGet(providerSecretKey(ref.provider));
+    if (!key) {
+      throw new RouteUnavailable(`Connect ${ref.provider} under Cloud Connections first.`);
+    }
+    return { label: refName(ref), baseUrl: base, key, model: ref.model };
   }
 
   /** A piece of the model's thinking, shown only while Chain of Thought is on. */
   private emitThought(text: string | undefined): void {
-    if (this.cot && text && !this.aborted) this.emit({ type: 'thinking-delta', text });
+    if (!text || this.aborted) return;
+    // A thought is the model at work: the slow-start line is not needed.
+    this.clearSlowStart();
+    if (this.cot) this.emit({ type: 'thinking-delta', text });
+  }
+
+  /** Show a piece of the answer and keep it for history (only what the
+   *  search filter let through, so a search line never lands in either). */
+  private showAnswer(text: string): void {
+    if (!text || this.aborted) return;
+    this.clearSlowStart();
+    this.answer += text;
+    this.emit({ type: 'text-delta', text });
   }
 
   /** The system prompt plus the think-in-tags line, for a model that does not
@@ -1928,8 +1990,16 @@ export class StackDriver implements ChatDriver {
     }
   }
 
-  private finish(reason: 'complete' | 'aborted' | 'error', message?: string): void {
+  /** End the turn, once: the answer so far (whole, or the part that streamed
+   *  before a stop or a failure) goes to history and the chat, the raw search
+   *  results give way to one line, and the turn's ending is said. A second
+   *  call (a run unwinding after Stop already closed the turn) does nothing. */
+  private finish(reason: 'complete' | 'aborted' | 'error' | 'declined', message?: string): void {
+    if (this.turnClosed) return;
+    this.turnClosed = true;
+    this.clearSlowStart();
     const text = this.answer.trim();
+    this.search.settle(this.history);
     if (text) {
       this.history.push({
         role: 'assistant',
@@ -1939,6 +2009,39 @@ export class StackDriver implements ChatDriver {
     }
     this.emit(textFinal(text, this.sendLocalOnly));
     this.emit({ type: 'task-done', reason, message });
+  }
+
+  // ---- the wait before the first word (CX ruling 5) -------------------------
+
+  private slowStart?: { word(): void; stop(): void };
+  /** Local seats this chat has already asked, so "Warming up" is said on the
+   *  first request (when a server most likely loads the model), not on every
+   *  turn to a model that is already warm. */
+  private warmedSeats = new Set<string>();
+
+  /** A model on your computer is about to be asked: the first time, say it
+   *  is warming up; on any turn, once, if no word comes in 30 seconds, that
+   *  it can be slow to start and Stop works any time. Only for a local seat
+   *  that is not this device (a pocket model says its own load). */
+  private watchLocalStart(ref: StackModelRef): void {
+    this.clearSlowStart();
+    if (ref.kind !== 'byom' || this.leaves(ref)) return;
+    if (!this.warmedSeats.has(seatKey(ref))) {
+      this.warmedSeats.add(seatKey(ref));
+      this.emit({ type: 'status', message: warmingLine(refName(ref)) });
+    }
+    this.slowStart = watchFirstWord(() => {
+      this.slowStart = undefined;
+      if (!this.turnClosed && !this.answer) {
+        this.emit({ type: 'status', message: SLOW_START_LINE });
+      }
+    });
+  }
+
+  /** A word arrived (or the turn ended): the slow-start line is not needed. */
+  private clearSlowStart(): void {
+    this.slowStart?.stop();
+    this.slowStart = undefined;
   }
 
   // ---- on-device backend --------------------------------------------------
@@ -1953,21 +2056,34 @@ export class StackDriver implements ChatDriver {
     );
     this.deviceListeners.push(
       await Llama.addListener('generationDone', ({ requestId, stopReason, detail }) => {
+        // The runner confirmed a stop this driver already closed the turn on.
+        if (requestId === this.stoppingRequestId) {
+          this.stoppingRequestId = undefined;
+          this.clearAbortBeat();
+        }
         if (requestId !== this.activeRequestId) return;
         this.clearDeviceTimers();
         this.activeRequestId = undefined;
         this.routeThought(this.thinkSplitter.end(), (t) => this.deviceText(t));
-        const { query, flush } = this.searchFilter.end();
         const turn = this.deviceTurn;
-        if (stopReason === 'end' && query && turn && !this.aborted) {
-          void this.answerWithSearch(query, turn.ref.modelName, 'local', () =>
+        const decision = this.search.decide(this.webReachable() && searchOffered());
+        if (stopReason === 'end' && turn && !this.aborted && decision.kind !== 'answer') {
+          if (decision.kind === 'refused') {
+            // A second search line (or one with no search to run) is never
+            // shown and never run: the reply had no answer in it.
+            this.finish('error', emptyReplyMessage(turn.ref.modelName));
+            return;
+          }
+          void this.answerWithSearch(decision.query, turn.ref.modelName, 'local', () =>
             this.runDevice(turn.ref, turn.placement),
           ).catch((err) =>
-            this.aborted ? this.finish('aborted') : this.finish('error', describeError(err)),
+            this.aborted || isAbortError(err)
+              ? this.finish('aborted')
+              : this.finish('error', describeError(err)),
           );
           return;
         }
-        if (flush) this.emit({ type: 'text-delta', text: flush });
+        if (decision.kind === 'answer') this.showAnswer(decision.flush);
         if (stopReason === 'error') {
           // Whatever the slot holds after an error is suspect; reload next time.
           forgetDeviceModel();
@@ -1982,9 +2098,7 @@ export class StackDriver implements ChatDriver {
 
   /** Answer text from the device model, through the search-line filter. */
   private deviceText(delta: string): void {
-    this.answer += delta;
-    const shown = this.searchFilter.push(delta);
-    if (shown) this.emit({ type: 'text-delta', text: shown });
+    this.showAnswer(this.search.push(delta));
   }
 
   private async runDevice(
@@ -1994,41 +2108,42 @@ export class StackDriver implements ChatDriver {
     await this.listenersReady;
     // The phone's one model slot is shared with every device chat (APP-3):
     // confirm the slot holds this model before every reply, never assume it.
-    this.warming = true;
-    let ready: Awaited<ReturnType<typeof ensureDeviceModel>>;
-    try {
-      ready = await ensureDeviceModel(
-        {
-          id: ref.modelId,
-          name: ref.modelName,
-          contextSize: DEVICE_CONTEXT_TOKENS,
-        },
-        (message) => this.emit({ type: 'status', message }),
-      );
-    } finally {
-      this.warming = false;
-    }
+    // A load cannot be cancelled; a Stop during it has already closed the
+    // turn, and the check below keeps the reply from starting.
+    const ready = await ensureDeviceModel(
+      {
+        id: ref.modelId,
+        name: ref.modelName,
+        contextSize: DEVICE_CONTEXT_TOKENS,
+      },
+      (message) => this.emit({ type: 'status', message }),
+    );
     // Stopped while the model loaded: the turn is already closed (abort), so
     // never start the reply the person asked to stop.
     if (this.aborted) throw abortError();
     if (!ready.ok) throw new RouteUnavailable(ready.detail);
     const guide = isHarborMini(ref.modelId);
-    const online = this.webReachable();
     if (guide && this.guidePrompt === undefined) {
       this.guidePrompt = (
-        await prepareGuideTurn(
-          this.lastUserText(),
-          this.context.researchOn === true,
-          this.emit,
-          online,
-          this.context.conversationId,
+        await raceAbort(
+          prepareGuideTurn(
+            this.lastUserText(),
+            this.context.researchOn === true,
+            this.emit,
+            // The real reach: this chat's profile, and the device right now.
+            this.webReachable() && webOnlineNow(),
+            this.context.conversationId,
+          ),
+          this.abortController?.signal,
         )
       ).prompt;
       // Stopped during the guide's web search: unwind the way a stopped load does.
       if (this.aborted) throw abortError();
     }
     this.deviceTurn = { ref, placement };
-    this.searchFilter = new SearchLineFilter(!guide && online && !this.searchedThisTurn);
+    // Harbor Lite never speaks the search protocol (its harness searched for
+    // it); every other pocket model is filtered on every pass.
+    this.search.startPass(!guide);
     const requestId = `req_${Date.now().toString(36)}_${(stackRequestSeq++).toString(36)}`;
     this.activeRequestId = requestId;
     this.deviceModelName = ref.modelName;
@@ -2036,7 +2151,7 @@ export class StackDriver implements ChatDriver {
     // reply cannot carry a thought); any other pocket model thinks in tags,
     // with room for the thought beside the answer.
     this.thinkSplitter = new ThinkTagSplitter();
-    const base = this.systemFor(ref, placement, online, this.turnPackFor(ref));
+    const base = this.systemFor(ref, placement, this.searchPrompt(), this.turnPackFor(ref));
     const system = guide ? base : this.withThinking(base, ref.modelId);
     const maxTokens = guide ? 512 : this.cot ? 2048 : 1024;
     const res = await Llama.generate({
@@ -2093,21 +2208,23 @@ export class StackDriver implements ChatDriver {
 
   /** A local model asked for a search: run it on the Settings provider, hand
    *  the results back as the next turn, and let the same model answer for
-   *  real. Once per message, so a confused model cannot loop. The SEARCH: line
-   *  never reaches the transcript or the history. */
+   *  real. Once per message (searchTurn.ts), so a confused model cannot loop.
+   *  The SEARCH: line never reaches the transcript or the history, and once
+   *  the answer is in, the results give way to one line in history. */
   private async answerWithSearch(
     query: string,
     model: string,
     providerKind: 'local' | 'cloud',
     again: () => Promise<void>,
   ): Promise<void> {
-    this.searchedThisTurn = true;
-    const resultText = await searchForModel(query, this.context.researchOn === true, this.emit);
+    const resultText = await this.search.run(
+      query,
+      this.context.researchOn === true,
+      this.emit,
+      this.abortController?.signal,
+    );
     this.answer = '';
-    if (this.aborted) {
-      this.finish('aborted');
-      return;
-    }
+    if (this.aborted) throw abortError();
     this.history.push({ role: 'user', content: resultText });
     this.emit({ type: 'turn-start', turn: this.history.length, model, providerKind });
     await again();
@@ -2120,36 +2237,24 @@ export class StackDriver implements ChatDriver {
     placement?: Placement,
     images: Attachment[] = [],
   ): Promise<void> {
-    const key = await secretGet(providerSecretKey(ref.provider));
-    if (!key) {
-      throw new RouteUnavailable(`Connect ${ref.provider} under Cloud Connections first.`);
-    }
     const parts = this.systemParts(ref, placement, undefined, this.turnPackFor(ref));
-    const system = joinSystem(parts, this.promptCache());
     // An image turn takes the plain vision path (it needs no tools); otherwise
-    // a turn with tools on it (Codemagic Access, or the vault slice) runs the
-    // tool-use loop, and one with none keeps the original single-turn path.
+    // the turn carries its tools (Codemagic Access, or the vault slice), and
+    // one with none is a single round of the same loop.
     const tools = images.length ? { codemagic: false, vault: [] } : this.toolsFor(ref);
-    const withTools = tools.codemagic || tools.vault.length > 0;
     if (ref.provider === 'anthropic') {
-      if (withTools) await this.runAnthropicWithTools(key, ref, parts, tools);
-      else await this.runAnthropic(key, ref, parts, images);
-    } else {
-      const base = providerInfo(ref.provider)?.openaiBaseUrl;
-      if (!base) {
-        throw new RouteUnavailable(`No endpoint configured for ${ref.provider}.`);
+      const key = await secretGet(providerSecretKey(ref.provider));
+      if (!key) {
+        throw new RouteUnavailable(`Connect ${ref.provider} under Cloud Connections first.`);
       }
-      if (withTools) {
-        await this.runOpenAiCompatibleWithTools(ref.provider, base, key, ref.model, system, {
-          ref,
-          tools,
-        });
-      } else {
-        await this.runOpenAiCompatible(ref.provider, base, key, ref.model, system, images, {
-          ref,
-        });
-      }
+      await this.runAnthropic(key, ref, parts, images, tools);
+      return;
     }
+    const seat = await this.openAiSeat(ref);
+    await this.runOpenAi(ref, seat, joinSystem(parts, this.promptCache()), images, {
+      tools,
+      searchable: false,
+    });
   }
 
   private async runByom(
@@ -2157,34 +2262,27 @@ export class StackDriver implements ChatDriver {
     placement?: Placement,
     images: Attachment[] = [],
   ): Promise<void> {
-    // A BYOM key is optional: a local or trusted-network server may accept
-    // unauthenticated requests, so an absent key is not an error here.
-    const key = (await secretGet(byomSecretKey(ref.id))) ?? undefined;
     // A plain text turn on your own model may search the web the way a pocket
     // model does. An Agentic Current's bench model brings its own tools.
-    const search =
-      !images.length && !this.context.codemagicAccess && !isCurrentBenchId(ref.id)
-        ? this.webReachable()
-        : undefined;
-    const system = this.systemFor(ref, placement, search, this.turnPackFor(ref));
-    const extraHeaders = benchExtraHeaders(ref.id, this.context.conversationId);
-    // An image turn takes the plain vision path; otherwise a turn with tools
-    // on it runs the tool-use loop, and one with none the single-turn path.
+    const searchable = !images.length && !this.context.codemagicAccess && !isCurrentBenchId(ref.id);
+    const system = this.systemFor(
+      ref,
+      placement,
+      searchable ? this.searchPrompt() : undefined,
+      this.turnPackFor(ref),
+    );
+    // An image turn takes the plain vision path; otherwise the turn carries
+    // its tools, and one with none is a single round of the same loop. A key
+    // is optional: a local or trusted-network server may take none.
     const tools = images.length ? { codemagic: false, vault: [] } : this.toolsFor(ref);
-    if (tools.codemagic || tools.vault.length > 0) {
-      await this.runOpenAiCompatibleWithTools(ref.label, ref.baseUrl, key, ref.model, system, {
-        ref,
-        tools,
-        extraHeaders,
-        searchable: search === true,
-      });
-    } else {
-      await this.runOpenAiCompatible(ref.label, ref.baseUrl, key, ref.model, system, images, {
-        ref,
-        extraHeaders,
-        searchable: search === true,
-      });
-    }
+    const seat = await this.openAiSeat(ref);
+    await this.runOpenAi(ref, seat, system, images, {
+      tools,
+      searchable,
+      // The answer pass after a search rebuilds the prompt, so it reads that
+      // the search is spent.
+      again: () => this.runByom(ref, placement, images),
+    });
   }
 
   /** A Claude client on the person's own key (and workspace, when set). */
@@ -2200,14 +2298,49 @@ export class StackDriver implements ChatDriver {
     });
   }
 
+  /** One streamed round on any seat: thinking to the thinking block (only
+   *  while Chain of Thought is on), answer text to the chat (through the
+   *  search filter on a searchable seat), and the round's end. A later
+   *  round's prose is set apart from the one before it. */
+  private async streamRound<M, T>(
+    client: ProviderClient<M, T>,
+    messages: M[],
+    tools: T[],
+    round: number,
+    searchable: boolean,
+  ): Promise<Extract<ProviderEvent, { type: 'done' }>> {
+    let started = false;
+    let done: Extract<ProviderEvent, { type: 'done' }> | undefined;
+    const show = (text: string) => this.showAnswer(searchable ? this.search.push(text) : text);
+    for await (const ev of client.stream(messages, tools, this.abortController?.signal)) {
+      if (this.aborted) throw abortError();
+      if (ev.type === 'thinking') this.emitThought(ev.text);
+      else if (ev.type === 'text') {
+        if (!started && round > 0 && this.answer && !this.answer.endsWith('\n')) show('\n\n');
+        started = true;
+        show(ev.text);
+      } else if (ev.type === 'done') done = ev;
+    }
+    if (this.aborted) throw abortError();
+    if (!done) throw new RouteUnavailable('The reply ended before it finished.');
+    return done;
+  }
+
+  // Claude, with or without tools. The turn's tools (Codemagic when its access
+  // is on, and the vault slice, CTO J10) are offered; each tool_use runs
+  // on-device (the Codemagic token in the Keychain, never sent to the model; a
+  // vault read judged by the privacy rules), the observation is fed back, and
+  // the loop continues until the model answers with no tool call. Bounded so
+  // a loop cannot run away. A vault write is only queued; one card at the end
+  // asks for all. A turn with images folds them into the live user turn.
   private async runAnthropic(
     key: string,
     ref: Extract<StackModelRef, { kind: 'cloud' }>,
     parts: SystemParts,
-    images: Attachment[] = [],
+    images: Attachment[],
+    tools: { codemagic: boolean; vault: AppVaultToolName[] },
   ): Promise<void> {
     const model = ref.model;
-    const client = await this.claudeClient(key);
     const messages: Anthropic.MessageParam[] = opensOnUser(
       this.historyFor(ref).map((m) => ({ role: m.role, content: m.content })),
     );
@@ -2221,54 +2354,6 @@ export class StackDriver implements ChatDriver {
       last.content = built.content;
       if (hasVideoFrames(images)) extraTail.push(VIDEO_FRAMES_SYSTEM_NOTE);
     }
-    // Chain of Thought on: Claude thinks through its own API, and the summary
-    // streams into the thinking block above the answer.
-    const stream = client.messages.stream(
-      {
-        model,
-        ...claudeRequestThinking(model, 2048, this.cot),
-        system: this.claudeSystem(parts, extraTail),
-        ...this.claudeCacheParam(),
-        messages,
-      },
-      { signal: this.abortController?.signal },
-    );
-    if (this.cot) stream.on('thinking', (delta) => this.emitThought(delta));
-    stream.on('text', (delta) => {
-      if (this.aborted) return;
-      this.answer += delta;
-      this.emit({ type: 'text-delta', text: delta });
-    });
-    try {
-      await stream.finalMessage();
-    } catch (err) {
-      if (this.aborted) {
-        this.finish('aborted');
-        return;
-      }
-      throw err;
-    }
-    this.finish(this.aborted ? 'aborted' : 'complete');
-  }
-
-  // The tool-use loop (Anthropic). Same streaming as runAnthropic, but the
-  // model is offered the turn's tools: Codemagic (when its access is on) and
-  // the vault slice (CTO J10). Each tool_use runs on-device (the Codemagic
-  // token in the Keychain, never sent to the model; a vault read judged by
-  // the privacy rules), the observation is fed back, and the loop continues
-  // until the model answers with no tool call. Bounded so a loop cannot run
-  // away. A vault write is only queued; one card at the end asks for all.
-  private async runAnthropicWithTools(
-    key: string,
-    ref: Extract<StackModelRef, { kind: 'cloud' }>,
-    parts: SystemParts,
-    tools: { codemagic: boolean; vault: AppVaultToolName[] },
-  ): Promise<void> {
-    const model = ref.model;
-    const client = await this.claudeClient(key);
-    const messages: Anthropic.MessageParam[] = opensOnUser(
-      this.historyFor(ref).map((m) => ({ role: m.role, content: m.content })),
-    );
     const offered: Anthropic.Tool[] = [
       ...(tools.codemagic ? [codemagicToolSpec as unknown as Anthropic.Tool] : []),
       ...tools.vault.map(
@@ -2279,66 +2364,30 @@ export class StackDriver implements ChatDriver {
           ) as unknown as Anthropic.Tool,
       ),
     ];
+    // Chain of Thought on: Claude thinks through its own API, and the summary
+    // streams into the thinking block above the answer. The assistant turn is
+    // replayed with its final content, so a thinking turn's signed blocks ride
+    // back with its tool_use, as the API requires.
+    const client = anthropicClient(await this.claudeClient(key), {
+      model,
+      ...claudeRequestThinking(model, 2048, this.cot),
+      system: this.claudeSystem(parts, extraTail),
+      ...this.claudeCacheParam(),
+    });
     const MAX_ROUNDS = 16;
     for (let round = 0; round < MAX_ROUNDS; round++) {
-      if (this.aborted) {
-        this.finish('aborted');
-        return;
-      }
-      const stream = client.messages.stream(
-        {
-          model,
-          ...claudeRequestThinking(model, 2048, this.cot),
-          system: this.claudeSystem(parts),
-          ...this.claudeCacheParam(),
-          messages,
-          tools: offered,
-        },
-        { signal: this.abortController?.signal },
-      );
-      // The assistant turn below is pushed with final.content, so a thinking
-      // turn's signed blocks ride back with its tool_use, as the API requires.
-      if (this.cot) stream.on('thinking', (delta) => this.emitThought(delta));
-      // A newline between rounds so a second round's prose does not butt against
-      // the first, once a tool result has come back.
-      let started = false;
-      stream.on('text', (delta) => {
-        if (this.aborted) return;
-        if (!started && round > 0 && this.answer && !this.answer.endsWith('\n')) {
-          this.answer += '\n\n';
-          this.emit({ type: 'text-delta', text: '\n\n' });
-        }
-        started = true;
-        this.answer += delta;
-        this.emit({ type: 'text-delta', text: delta });
-      });
-      let final: Anthropic.Message;
-      try {
-        final = await stream.finalMessage();
-      } catch (err) {
-        if (this.aborted) {
-          this.finish('aborted');
-          return;
-        }
-        throw err;
-      }
-      const toolUses = final.content.filter(
-        (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
-      );
-      if (!toolUses.length) {
+      if (this.aborted) throw abortError();
+      const done = await this.streamRound(client, messages, offered, round, false);
+      if (!done.toolCalls.length) {
         await this.settleProposals();
-        this.finish(this.aborted ? 'aborted' : 'complete');
+        this.finish('complete');
         return;
       }
-      // Record the assistant turn (its tool_use blocks), run each tool on-device,
-      // and hand the observations back as tool_result on the next user turn.
-      messages.push({ role: 'assistant', content: final.content });
+      messages.push({ role: 'assistant', content: done.replay as Anthropic.ContentBlockParam[] });
       const results: Anthropic.ToolResultBlockParam[] = [];
-      for (const tu of toolUses) {
-        const observation = await this.runToolCall(ref, tools, tu.name, {
-          parsed: tu.input as Record<string, unknown>,
-        });
-        results.push({ type: 'tool_result', tool_use_id: tu.id, content: observation });
+      for (const tc of done.toolCalls) {
+        const observation = await this.runToolCall(ref, tools, tc.name, { parsed: tc.parsed });
+        results.push({ type: 'tool_result', tool_use_id: tc.id, content: observation });
       }
       messages.push({ role: 'user', content: results });
     }
@@ -2349,7 +2398,7 @@ export class StackDriver implements ChatDriver {
       message: 'Paused the tool loop after several rounds. Send a message to continue.',
     });
     await this.settleProposals();
-    this.finish(this.aborted ? 'aborted' : 'complete');
+    this.finish('complete');
   }
 
   /** Dispatch one tool call to the tool it names, when that tool was offered. */
@@ -2357,7 +2406,7 @@ export class StackDriver implements ChatDriver {
     ref: StackModelRef,
     tools: { codemagic: boolean; vault: AppVaultToolName[] },
     name: string,
-    args: { parsed?: Record<string, unknown>; raw?: string },
+    args: Pick<ProviderToolCall, 'parsed' | 'raw'>,
   ): Promise<string> {
     if (isAppVaultToolName(name) && tools.vault.includes(name)) {
       const call =
@@ -2378,125 +2427,6 @@ export class StackDriver implements ChatDriver {
     return `Unknown tool ${name}.`;
   }
 
-  // The shared OpenAI-compatible path, driven by an explicit base URL and an
-  // optional key, so it serves both the built-in cloud providers and a
-  // bring-your-own-model endpoint. `label` names the source in error copy.
-  private async runOpenAiCompatible(
-    label: string,
-    base: string,
-    key: string | undefined,
-    model: string,
-    system: string,
-    images: Attachment[] = [],
-    o: {
-      ref: StackModelRef;
-      extraHeaders?: Record<string, string>;
-      /** A local model's turn that may ask for a web search (a SEARCH: line). */
-      searchable?: boolean;
-    },
-  ): Promise<void> {
-    const extraHeaders = o.extraHeaders ?? {};
-    const filter = new SearchLineFilter(o.searchable === true && !this.searchedThisTurn);
-    const splitter = new ThinkTagSplitter();
-    const text = (delta: string) => {
-      this.answer += delta;
-      const shown = filter.push(delta);
-      if (shown) this.emit({ type: 'text-delta', text: shown });
-    };
-    const show = (delta: string) => this.routeThought(splitter.push(delta), text);
-    const settle = async () => {
-      this.routeThought(splitter.end(), text);
-      const { query, flush } = filter.end();
-      if (query && !this.aborted) {
-        await this.answerWithSearch(query, label, 'cloud', () =>
-          this.runOpenAiCompatible(label, base, key, model, system, images, {
-            ref: o.ref,
-            extraHeaders,
-          }),
-        );
-        return;
-      }
-      if (flush) this.emit({ type: 'text-delta', text: flush });
-      this.finish(this.aborted ? 'aborted' : 'complete');
-    };
-    const withVideo =
-      images.length && hasVideoFrames(images) ? `${system}\n${VIDEO_FRAMES_SYSTEM_NOTE}` : system;
-    const sys = this.withThinking(withVideo, model);
-    const messages: Array<{ role: string; content: unknown }> = [
-      { role: 'system', content: sys },
-      ...this.historyFor(o.ref).map((m) => ({ role: m.role, content: m.content as unknown })),
-    ];
-    if (images.length && messages.length > 1) {
-      // Fold the images into the current (last) user turn as image_url parts,
-      // with frame labels and a context header when they came from a video.
-      const last = messages[messages.length - 1]!;
-      last.content = openAiVisionContent(String(last.content ?? ''), images);
-    }
-    const authHeaders: Record<string, string> = {
-      'content-type': 'application/json',
-      ...extraHeaders,
-    };
-    if (key) authHeaders.authorization = `Bearer ${key}`;
-
-    // On a device or the desktop shell, these providers send no CORS headers, so
-    // the request goes through the native shim, which cannot stream. Ask for a
-    // whole answer and emit it once. On the web (dev) we keep true streaming.
-    if (platform() === 'ios' || platform() === 'electron') {
-      const res = await nativeFetch(`${base}/chat/completions`, {
-        method: 'POST',
-        headers: authHeaders,
-        body: JSON.stringify({ model, stream: false, messages }),
-      });
-      if (!res.ok) {
-        throw new RouteUnavailable(`${label} answered ${res.status}.`, res.status);
-      }
-      if (!this.aborted) {
-        const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-        const message = data?.choices?.[0]?.message;
-        this.emitThought(reasoningOf(message));
-        const content = message?.content;
-        if (typeof content === 'string' && content) show(content);
-      }
-      await settle();
-      return;
-    }
-
-    const res = await fetch(`${base}/chat/completions`, {
-      method: 'POST',
-      headers: authHeaders,
-      body: JSON.stringify({ model, stream: true, messages }),
-      signal: this.abortController?.signal,
-    });
-    if (!res.ok || !res.body) {
-      throw new RouteUnavailable(`${label} answered ${res.status}.`, res.status);
-    }
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done || this.aborted) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith('data:')) continue;
-        const payload = trimmed.slice(5).trim();
-        if (payload === '[DONE]') continue;
-        try {
-          const chunk = JSON.parse(payload)?.choices?.[0]?.delta;
-          this.emitThought(reasoningOf(chunk));
-          const delta = chunk?.content;
-          if (typeof delta === 'string' && delta) show(delta);
-        } catch {
-          // skip a partial or non-JSON keepalive line
-        }
-      }
-    }
-    await settle();
-  }
-
   // Execute one codemagic tool call on-device and return the observation. Shared
   // by the Anthropic and OpenAI-compatible loops so the two behave identically.
   private async runCodemagicToolCall(name: string, input: CodemagicToolInput): Promise<string> {
@@ -2508,243 +2438,102 @@ export class StackDriver implements ChatDriver {
     return runCodemagicTool(input);
   }
 
-  // The tool-use loop for every OpenAI-compatible backend: the built-in cloud
-  // providers AND a bring-your-own-model endpoint, which both speak function
-  // calling. Same request shape as runOpenAiCompatible (native shim on
-  // device/desktop, true SSE on the web), plus the turn's tools (Codemagic when
-  // its access is on, and the vault slice); each tool call runs on-device and
-  // the observation is fed back until the model answers with no tool call.
-  // Bounded so a loop cannot run away. A server that refuses tools on the first
-  // round of a vault-only turn (a local model with no tool template) gets the
-  // plain path instead, and this seat stays on it for the rest of the chat.
-  private async runOpenAiCompatibleWithTools(
-    label: string,
-    base: string,
-    key: string | undefined,
-    model: string,
+  // Every OpenAI-compatible seat, the built-in cloud providers AND your own
+  // model server (BYOM), with or without tools, on the one provider client
+  // (streamed on every shell). Each tool call runs on-device and the
+  // observation is fed back until the model answers with no tool call. Bounded
+  // so a loop cannot run away. A server that refuses tools on the first round
+  // of a vault-only turn (a local model with no tool template) gets the plain
+  // path instead, and this seat stays on it for the rest of the chat. A
+  // searchable seat (a local model's own turn) may ask for one web search.
+  private async runOpenAi(
+    ref: Exclude<StackModelRef, { kind: 'device' }>,
+    seat: OpenAiSeat,
     system: string,
+    images: Attachment[],
     o: {
-      ref: StackModelRef;
       tools: { codemagic: boolean; vault: AppVaultToolName[] };
-      extraHeaders?: Record<string, string>;
-      searchable?: boolean;
+      searchable: boolean;
+      again?: () => Promise<void>;
     },
   ): Promise<void> {
-    const extraHeaders = o.extraHeaders ?? {};
-    const authHeaders: Record<string, string> = {
-      'content-type': 'application/json',
-      ...extraHeaders,
-    };
-    if (key) authHeaders.authorization = `Bearer ${key}`;
-    const messages: Array<Record<string, unknown>> = [
-      { role: 'system', content: this.withThinking(system, model) },
-      ...this.historyFor(o.ref).map((m) => ({ role: m.role, content: m.content })),
+    const withVideo =
+      images.length && hasVideoFrames(images) ? `${system}\n${VIDEO_FRAMES_SYSTEM_NOTE}` : system;
+    const messages: OaiMessage[] = [
+      { role: 'system', content: this.withThinking(withVideo, seat.model) },
+      ...this.historyFor(ref).map((m) => ({ role: m.role, content: m.content as unknown })),
     ];
+    if (images.length && messages.length > 1) {
+      // Fold the images into the current (last) user turn as image_url parts,
+      // with frame labels and a context header when they came from a video.
+      const last = messages[messages.length - 1]!;
+      last.content = openAiVisionContent(String(last.content ?? ''), images);
+    }
     const offered = [
       ...(o.tools.codemagic ? [codemagicOpenAiTool] : []),
       ...o.tools.vault.map((n) => vaultOpenAiTool(n, this.agentFolder(this.opts.vaultTools))),
     ];
-    // Your own model may still ask for one web search with a SEARCH: line.
-    const filter = new SearchLineFilter(o.searchable === true && !this.searchedThisTurn);
-    const out = (delta: string) => {
-      const shown = filter.push(delta);
-      if (shown) this.emit({ type: 'text-delta', text: shown });
-    };
-    const nativeShim = platform() === 'ios' || platform() === 'electron';
+    if (o.searchable) this.search.startPass();
+    this.watchLocalStart(ref);
+    const client = openAiCompatibleClient(seat);
     const MAX_ROUNDS = 16;
     for (let round = 0; round < MAX_ROUNDS; round++) {
-      if (this.aborted) {
-        this.finish('aborted');
-        return;
-      }
-      let roundOut: { toolCalls: ToolCallAccum[]; assistantMessage: Record<string, unknown> };
+      if (this.aborted) throw abortError();
+      let done: Extract<ProviderEvent, { type: 'done' }>;
       try {
-        roundOut = await this.oneOpenAiToolRound(
-          label,
-          base,
-          authHeaders,
-          model,
-          messages,
-          nativeShim,
-          round,
-          offered,
-          out,
-        );
+        done = await this.streamRound(client, messages, offered, round, o.searchable);
       } catch (err) {
         const refused =
           round === 0 &&
+          offered.length > 0 &&
           !o.tools.codemagic &&
           !this.aborted &&
+          !this.answer &&
           err instanceof RouteUnavailable &&
           (err.status === 400 || err.status === 404 || err.status === 422);
         if (!refused) throw err;
-        this.noToolSeats.add(seatKey(o.ref));
-        await this.runOpenAiCompatible(label, base, key, model, system, [], {
-          ref: o.ref,
-          extraHeaders,
-          searchable: o.searchable,
+        this.noToolSeats.add(seatKey(ref));
+        await this.runOpenAi(ref, seat, system, images, {
+          ...o,
+          tools: { codemagic: false, vault: [] },
         });
         return;
       }
-      const { toolCalls, assistantMessage } = roundOut;
-      if (this.aborted) {
-        this.finish('aborted');
-        return;
-      }
-      if (!toolCalls.length) {
-        const { query, flush } = filter.end();
-        if (query) {
-          await this.answerWithSearch(query, label, 'cloud', () =>
-            this.runOpenAiCompatibleWithTools(label, base, key, model, system, {
-              ...o,
-              searchable: false,
-            }),
-          );
-          return;
+      if (!done.toolCalls.length) {
+        if (o.searchable) {
+          const decision = this.search.decide(this.webReachable() && searchOffered());
+          if (decision.kind === 'search' && o.again) {
+            await this.answerWithSearch(decision.query, seat.label, 'cloud', o.again);
+            return;
+          }
+          if (decision.kind !== 'answer') {
+            // A second search line (or one with no search to run) is never
+            // shown and never run: the reply had no answer in it.
+            this.finish('error', emptyReplyMessage(seat.label));
+            return;
+          }
+          this.showAnswer(decision.flush);
         }
-        if (flush) this.emit({ type: 'text-delta', text: flush });
         await this.settleProposals();
-        this.finish(this.aborted ? 'aborted' : 'complete');
+        this.finish('complete');
         return;
       }
-      messages.push(assistantMessage);
-      for (const tc of toolCalls) {
-        const observation = await this.runToolCall(o.ref, o.tools, tc.name, { raw: tc.args });
+      messages.push(done.replay as OaiMessage);
+      for (const tc of done.toolCalls) {
+        const observation = await this.runToolCall(ref, o.tools, tc.name, { raw: tc.raw });
         messages.push({ role: 'tool', tool_call_id: tc.id, content: observation });
       }
     }
-    const { flush } = filter.end();
-    if (flush) this.emit({ type: 'text-delta', text: flush });
+    if (o.searchable) {
+      const decision = this.search.decide(false);
+      if (decision.kind === 'answer') this.showAnswer(decision.flush);
+    }
     this.emit({
       type: 'status',
       message: 'Paused the tool loop after several rounds. Send a message to continue.',
     });
     await this.settleProposals();
-    this.finish(this.aborted ? 'aborted' : 'complete');
-  }
-
-  // One request/response round of the OpenAI tool loop. Emits any assistant text
-  // as it arrives and returns the tool calls plus the assistant message to append
-  // to the running transcript. A newline separates a later round's prose from the
-  // previous one so tool rounds do not butt together.
-  private async oneOpenAiToolRound(
-    label: string,
-    base: string,
-    authHeaders: Record<string, string>,
-    model: string,
-    messages: Array<Record<string, unknown>>,
-    nativeShim: boolean,
-    round: number,
-    offered: unknown[],
-    out: (delta: string) => void,
-  ): Promise<{ toolCalls: ToolCallAccum[]; assistantMessage: Record<string, unknown> }> {
-    let started = false;
-    const splitter = new ThinkTagSplitter();
-    const pushText = (delta: string) => {
-      if (this.aborted || !delta) return;
-      if (!started && round > 0 && this.answer && !this.answer.endsWith('\n')) {
-        this.answer += '\n\n';
-        out('\n\n');
-      }
-      started = true;
-      this.answer += delta;
-      out(delta);
-    };
-    const body = JSON.stringify({
-      model,
-      stream: !nativeShim,
-      messages,
-      tools: offered,
-    });
-
-    if (nativeShim) {
-      const res = await nativeFetch(`${base}/chat/completions`, {
-        method: 'POST',
-        headers: authHeaders,
-        body,
-      });
-      if (!res.ok) throw new RouteUnavailable(`${label} answered ${res.status}.`, res.status);
-      const data = (await res.json()) as {
-        choices?: Array<{
-          message?: {
-            content?: string;
-            tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }>;
-          };
-        }>;
-      };
-      const msg = data.choices?.[0]?.message;
-      this.emitThought(reasoningOf(msg));
-      if (typeof msg?.content === 'string') {
-        this.routeThought([...splitter.push(msg.content), ...splitter.end()], pushText);
-      }
-      const raw = msg?.tool_calls ?? [];
-      const toolCalls: ToolCallAccum[] = raw.map((tc) => ({
-        id: tc.id,
-        name: tc.function.name,
-        args: tc.function.arguments,
-      }));
-      const assistantMessage: Record<string, unknown> = raw.length
-        ? { role: 'assistant', content: msg?.content ?? '', tool_calls: raw }
-        : { role: 'assistant', content: msg?.content ?? '' };
-      return { toolCalls, assistantMessage };
-    }
-
-    const res = await fetch(`${base}/chat/completions`, {
-      method: 'POST',
-      headers: authHeaders,
-      body,
-      signal: this.abortController?.signal,
-    });
-    if (!res.ok || !res.body) {
-      throw new RouteUnavailable(`${label} answered ${res.status}.`, res.status);
-    }
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    const acc = new Map<number, ToolCallAccum>();
-    let text = '';
-    let buffer = '';
-    // Only the answer part is kept for the transcript and the replayed turn.
-    const keepText = (t: string) => {
-      text += t;
-      pushText(t);
-    };
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done || this.aborted) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith('data:')) continue;
-        const payload = trimmed.slice(5).trim();
-        if (payload === '[DONE]') continue;
-        try {
-          const choice = (JSON.parse(payload) as { choices?: Array<Record<string, any>> })
-            ?.choices?.[0];
-          this.emitThought(reasoningOf(choice?.delta));
-          const dtext = choice?.delta?.content;
-          if (typeof dtext === 'string' && dtext) this.routeThought(splitter.push(dtext), keepText);
-          mergeToolCallDeltas(acc, choice?.delta?.tool_calls);
-        } catch {
-          // skip a partial or non-JSON keepalive line
-        }
-      }
-    }
-    this.routeThought(splitter.end(), keepText);
-    const toolCalls = finalizeToolCalls(acc);
-    const assistantMessage: Record<string, unknown> = toolCalls.length
-      ? {
-          role: 'assistant',
-          content: text || null,
-          tool_calls: toolCalls.map((tc) => ({
-            id: tc.id,
-            type: 'function',
-            function: { name: tc.name, arguments: tc.args },
-          })),
-        }
-      : { role: 'assistant', content: text };
-    return { toolCalls, assistantMessage };
+    this.finish('complete');
   }
 
   // ---- lifecycle ----------------------------------------------------------
@@ -2753,30 +2542,34 @@ export class StackDriver implements ChatDriver {
     this.aborted = true;
     this.abortController?.abort();
     this.pendingAsk?.settle(false);
-    // A model load cannot be stopped, but the turn can: close it now so Stop
-    // answers at once, and the run drops out when the load finishes.
-    if (this.warming) this.finish('aborted');
     const requestId = this.activeRequestId;
     if (requestId) {
+      // Late tokens (and the runner's own done) for this request are dropped
+      // by id from here: the turn closes below, now.
+      this.activeRequestId = undefined;
+      this.clearWatchdog();
       void Llama.stop({ requestId }).catch(() => {});
-      // The runner normally answers a stop with generationDone('stopped'),
-      // which finishes the turn. When it does not (the request was already
-      // lost), finish the turn from here a beat later rather than leave the
-      // chat busy with Stop unable to unstick it.
+      // The runner normally confirms with generationDone('stopped'). When it
+      // does not (the request was already lost), drop the slot claim a beat
+      // later so the next send reloads rather than trusting a wedged slot.
+      this.stoppingRequestId = requestId;
       this.clearAbortBeat();
       this.abortBeat = setTimeout(() => {
         this.abortBeat = undefined;
-        if (this.activeRequestId !== requestId) return;
-        this.activeRequestId = undefined;
-        this.clearWatchdog();
+        if (this.stoppingRequestId !== requestId) return;
+        this.stoppingRequestId = undefined;
         forgetDeviceModel();
-        this.finish('aborted');
       }, ABORT_BEAT_MS);
     }
     // Stop any engine turn a tool step has running on the paired computer, and
     // settle the awaited turn so the play does not hang on a stopped run.
     this.engineDriver?.abort();
     this.engineTurnSettle?.();
+    // Stop answers at once on every seat (CTO ruling 7): the turn closes now
+    // with whatever streamed so far, kept in the chat and in history. A model
+    // load cannot be stopped, but the turn can; the run drops out when the
+    // load, the shim, or the search it is waiting on comes back.
+    this.finish('aborted');
   }
 
   recordLine(turn: SeedTurn): void {

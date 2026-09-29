@@ -516,6 +516,14 @@ export function MessageList({
                 </div>
               );
             case 'stopped': {
+              // The person's own Stop: a quiet marker, nothing to rescue.
+              if (item.byYou) {
+                return (
+                  <div key={item.id} className="msg-stopped msg-stopped-own" role="status">
+                    {item.message}
+                  </div>
+                );
+              }
               // Only the last stop offers to move the chat on; an older one
               // already has what came after it.
               const isLatest =

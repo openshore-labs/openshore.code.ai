@@ -469,6 +469,16 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
         stepNote: undefined,
         pendingApprovals: [],
       };
+      // The person's own Stop (CX ruling 5): the partial answer stays where it
+      // is, and a muted marker says who stopped it and whether any of the
+      // answer had arrived. Every driver's stop reads the same.
+      if (event.reason === 'aborted') {
+        return push(done, {
+          kind: 'stopped',
+          message: answeredThisTurn(done) ? STOPPED_BY_YOU : STOPPED_BEFORE_ANSWER,
+          byYou: true,
+        });
+      }
       if (event.reason !== 'complete') {
         return push(done, {
           kind: 'stopped',
@@ -569,6 +579,21 @@ export function titleFrom(state: ThreadState): string | undefined {
 }
 
 /** A status line as a working-row note: the sentence without its full stop. */
+/** The marker under a turn the person stopped once some of it arrived. */
+export const STOPPED_BY_YOU = 'Stopped by you.';
+/** The marker when the person stopped a turn before any of it arrived. */
+export const STOPPED_BEFORE_ANSWER = 'Stopped before it answered.';
+
+/** Whether any words of an answer arrived since the person's last message. */
+function answeredThisTurn(thread: ThreadState): boolean {
+  for (let i = thread.items.length - 1; i >= 0; i--) {
+    const item = thread.items[i]!;
+    if (item.kind === 'user') return false;
+    if (item.kind === 'assistant' && item.text.trim()) return true;
+  }
+  return false;
+}
+
 function waitNote(message: string): string {
   return message.trim().replace(/\.$/, '');
 }

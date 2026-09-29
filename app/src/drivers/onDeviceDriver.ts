@@ -4,13 +4,7 @@
 // a web search the model explicitly asks for, which the user can point at
 // their own key instead of the DuckDuckGo default.
 import type { PluginListenerHandle } from '@capacitor/core';
-import {
-  SEARCH_PROTOCOL_NOTE,
-  SearchLineFilter,
-  ThinkTagSplitter,
-  type ApprovalAnswer,
-  type ThoughtPiece,
-} from 'os-code/protocol';
+import { ThinkTagSplitter, type ApprovalAnswer, type ThoughtPiece } from 'os-code/protocol';
 import { Llama } from '../lib/llamaPlugin.js';
 import {
   ABORT_BEAT_MS,
@@ -24,7 +18,9 @@ import {
 import { buildHarborSystemPrompt, isHarbor } from '../lib/harbor.js';
 import { buildHarborMiniSystemPrompt, guidedSetupLine, isHarborMini } from '../lib/harborMini.js';
 import { sanitizeGuideText } from '../lib/guideHarness.js';
-import { prepareGuideTurn, searchForModel } from '../lib/localSearch.js';
+import { prepareGuideTurn, searchOffered, webOnlineNow } from '../lib/localSearch.js';
+import { SearchTurn } from './searchTurn.js';
+import { isAbortError } from './providerClient.js';
 import type {
   AppVaultPack,
   ChatContext,
@@ -39,14 +35,18 @@ import type { SeedTurn } from '../state/types.js';
 
 const EM_DASH = String.fromCharCode(8212);
 
-const SYSTEM_PROMPT = [
-  'You are OpenShore, a friendly coding companion running fully on this device.',
-  'Be concise and useful. Use markdown for code.',
-  'You have no file access here. For repo work, the user can connect this app to their computer.',
-  SEARCH_PROTOCOL_NOTE,
-  'Whenever the person must paste something (a command, a query, a config line), put it in its own fenced code block, one per step, nothing else in the block. Never inline a command in a sentence.',
-  'Never use em dashes. Use a period or a comma instead.',
-].join('\n');
+/** A pocket model's system prompt, with this pass's search line (it may
+ *  search, it already searched, or it has no web) in the middle. */
+function systemPromptWith(searchNote: string): string {
+  return [
+    'You are OpenShore, a friendly coding companion running fully on this device.',
+    'Be concise and useful. Use markdown for code.',
+    'You have no file access here. For repo work, the user can connect this app to their computer.',
+    searchNote,
+    'Whenever the person must paste something (a command, a query, a config line), put it in its own fenced code block, one per step, nothing else in the block. Never inline a command in a sentence.',
+    'Never use em dashes. Use a period or a comma instead.',
+  ].join('\n');
+}
 
 let requestSeq = 0;
 
@@ -73,10 +73,12 @@ export class OnDeviceDriver implements ChatDriver {
    *  (a model load cannot be cancelled) instead of racing it. */
   private running: Promise<void> = Promise.resolve();
   private turn = 1;
-  /** At most one search per user message, so a confused model can't loop. */
-  private searchedThisTurn = false;
-  /** Keeps a SEARCH: request off the screen while the reply streams. */
-  private searchFilter = new SearchLineFilter(false);
+  /** The one search this message may make, and the filter that keeps a
+   *  SEARCH: request off the screen on every pass (drivers/searchTurn.ts). */
+  private search = new SearchTurn();
+  /** A reply this driver stopped: the turn closed at once, and a beat later
+   *  the slot is dropped if the runner never confirmed the stop. */
+  private stoppingRequestId?: string;
   /** Chain of Thought for the reply in flight (read once per generation), and
    *  the splitter that keeps <think> text out of the answer either way. */
   private cot = false;
@@ -132,11 +134,14 @@ export class OnDeviceDriver implements ChatDriver {
   }
 
   private systemPrompt(): string {
+    // The search line is driven by what is true now: the web in reach and
+    // not declined (one generation, never a second for a refused search).
+    const offered = searchOffered();
     const base = isHarborMini(this.modelId)
       ? (this.turnPrompt ?? buildHarborMiniSystemPrompt('', this.conversationId))
       : isHarbor(this.modelId)
-        ? buildHarborSystemPrompt()
-        : SYSTEM_PROMPT;
+        ? buildHarborSystemPrompt(this.search.mayAsk(offered), this.search.note(offered))
+        : systemPromptWith(this.search.note(offered));
     // Mid-walk, a model switched in from Harbor Lite still needs to know where
     // setup stands (Harbor Lite reads it inside its own prompt).
     const walk = isHarborMini(this.modelId) ? undefined : guidedSetupLine(this.conversationId);
@@ -155,12 +160,17 @@ export class OnDeviceDriver implements ChatDriver {
    *  block while Chain of Thought is on (nowhere while it is off). */
   private route(pieces: ThoughtPiece[]): void {
     for (const p of pieces) {
-      if (p.kind === 'text') {
-        this.answer += p.text;
-        const shown = this.searchFilter.push(p.text);
-        if (shown) this.emit({ type: 'text-delta', text: shown });
-      } else if (this.cot) this.emit({ type: 'thinking-delta', text: p.text });
+      if (p.kind === 'text') this.show(this.search.push(p.text));
+      else if (this.cot) this.emit({ type: 'thinking-delta', text: p.text });
     }
+  }
+
+  /** Show a piece of the answer and keep it (only what the search filter
+   *  let through, so a search line never lands in the chat or history). */
+  private show(text: string): void {
+    if (!text) return;
+    this.answer += text;
+    this.emit({ type: 'text-delta', text });
   }
 
   private async attachListeners(): Promise<void> {
@@ -184,6 +194,11 @@ export class OnDeviceDriver implements ChatDriver {
     );
     this.deviceListeners.push(
       await Llama.addListener('generationDone', ({ requestId, stopReason, detail }) => {
+        // The runner confirmed a stop this driver already closed the turn on.
+        if (requestId === this.stoppingRequestId) {
+          this.stoppingRequestId = undefined;
+          this.clearAbortBeat();
+        }
         if (requestId !== this.activeRequestId) return;
         this.clearWatchdog();
         this.clearAbortBeat();
@@ -233,7 +248,7 @@ export class OnDeviceDriver implements ChatDriver {
   private async run(text: string): Promise<void> {
     await this.listenersReady;
     this.turn = 1;
-    this.searchedThisTurn = false;
+    this.search.begin();
     this.aborted = false;
     this.packText = undefined;
     this.packLocalOnly = false;
@@ -297,7 +312,9 @@ export class OnDeviceDriver implements ChatDriver {
       text,
       this.researchOn,
       (e) => this.emit(e),
-      true,
+      // The real reach: offline (or the Offline profile) says a planned
+      // search is unavailable instead of trying it.
+      webOnlineNow(),
       this.conversationId,
     );
     this.afterNote = turn.after;
@@ -306,7 +323,9 @@ export class OnDeviceDriver implements ChatDriver {
 
   private async generate(): Promise<void> {
     this.answer = '';
-    this.searchFilter = new SearchLineFilter(this.searchable && !this.searchedThisTurn);
+    // Harbor Lite never speaks the protocol; every other pocket model is
+    // filtered on every pass, the answer pass after a search included.
+    this.search.startPass(this.searchable);
     this.cot = chainOfThoughtOn();
     this.thinkSplitter = new ThinkTagSplitter();
     this.renderVaultPack();
@@ -350,11 +369,13 @@ export class OnDeviceDriver implements ChatDriver {
     detail?: string,
   ): Promise<void> {
     if (!this.guideTurn) this.route(this.thinkSplitter.end());
+    const decision = this.search.decide();
+    if (decision.kind === 'answer') this.show(decision.flush);
     const text = this.guideTurn ? sanitizeGuideText(this.answer).trim() : this.answer.trim();
-    const { query, flush } = this.searchFilter.end();
     if (stopReason === 'error') {
       // Whatever the slot holds after an error is suspect; reload next time.
       forgetDeviceModel();
+      this.search.settle(this.history);
       if (text) this.history.push({ role: 'assistant', content: text });
       this.emit(textFinal(text, this.packLocalOnly));
       this.emit({
@@ -367,26 +388,33 @@ export class OnDeviceDriver implements ChatDriver {
       return;
     }
 
-    if (query && stopReason === 'end') {
-      this.searchedThisTurn = true;
+    if (decision.kind === 'search' && stopReason === 'end') {
       // The search line itself is a control message, not a real reply: leave
       // it out of the visible transcript and out of history, so the model
       // does not later "remember" having already announced it.
-      const resultText = await searchForModel(query, this.researchOn, (e) => this.emit(e));
-      // Stopped during the search: the turn is already closed.
-      if (this.aborted) return;
-      this.history.push({ role: 'user', content: resultText });
-      this.turn += 1;
-      this.emit({
-        type: 'turn-start',
-        turn: this.turn,
-        model: this.modelName,
-        providerKind: 'local',
-      });
       try {
+        const resultText = await this.search.run(
+          decision.query,
+          this.researchOn,
+          (e) => this.emit(e),
+          this.sendController?.signal,
+        );
+        // Stopped during the search: the turn is already closed.
+        if (this.aborted) return;
+        this.history.push({ role: 'user', content: resultText });
+        this.turn += 1;
+        this.emit({
+          type: 'turn-start',
+          turn: this.turn,
+          model: this.modelName,
+          providerKind: 'local',
+        });
         await this.generate();
       } catch (err) {
+        if (this.aborted || isAbortError(err)) return;
         this.activeRequestId = undefined;
+        this.search.settle(this.history);
+        this.emit(textFinal('', this.packLocalOnly));
         this.emit({
           type: 'task-done',
           reason: 'error',
@@ -396,7 +424,8 @@ export class OnDeviceDriver implements ChatDriver {
       return;
     }
 
-    if (flush) this.emit({ type: 'text-delta', text: flush });
+    // The raw results (if this message searched) give way to one line.
+    this.search.settle(this.history);
     if (text) this.history.push({ role: 'assistant', content: text });
     this.emit(textFinal(text, this.packLocalOnly));
     const after = this.afterNote;
@@ -405,7 +434,9 @@ export class OnDeviceDriver implements ChatDriver {
       this.emit({ type: 'note', message: after });
     }
     // A finished reply with no words is a failure, not a quiet success: say
-    // so, rather than leaving the chat on its "Warming up" line.
+    // so, rather than leaving the chat on its "Warming up" line. A second
+    // search line (or one with no search to run) lands here too: it is never
+    // shown and never run, and the reply had no answer in it.
     if (!text && stopReason === 'end') {
       this.emit({
         type: 'task-done',
@@ -425,18 +456,23 @@ export class OnDeviceDriver implements ChatDriver {
     this.sendController?.abort();
     const requestId = this.activeRequestId;
     if (requestId) {
+      // Stop answers at once (CTO ruling 7): late tokens for this request are
+      // dropped by id from here, and the turn closes now with what streamed.
+      this.activeRequestId = undefined;
+      this.clearWatchdog();
       void Llama.stop({ requestId }).catch(() => {});
-      // The runner answers a stop with generationDone('stopped'); when it
-      // does not (the request was already lost), end the turn a beat later.
+      // The runner normally confirms with generationDone('stopped'). When it
+      // does not (the request was already lost), drop the slot claim a beat
+      // later so the next send reloads rather than trusting a wedged slot.
+      this.stoppingRequestId = requestId;
       this.clearAbortBeat();
       this.abortBeat = setTimeout(() => {
         this.abortBeat = undefined;
-        if (this.activeRequestId !== requestId) return;
-        this.activeRequestId = undefined;
-        this.clearWatchdog();
+        if (this.stoppingRequestId !== requestId) return;
+        this.stoppingRequestId = undefined;
         forgetDeviceModel();
-        void this.handleDone('stopped');
       }, ABORT_BEAT_MS);
+      void this.handleDone('stopped');
       return;
     }
     // Nothing is generating yet (the model is loading, or a web search is
@@ -446,6 +482,7 @@ export class OnDeviceDriver implements ChatDriver {
     if (this.settled) return;
     // No words of this turn's reply exist yet (a streamed search line is a
     // control message, not a reply), so the final text is empty.
+    this.search.settle(this.history);
     this.emit({ type: 'text-final', text: '' });
     this.emit({ type: 'task-done', reason: 'aborted', message: 'Stopped.' });
   }

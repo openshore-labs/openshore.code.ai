@@ -576,6 +576,7 @@ export { JevAdvisor, JEV_SYSTEMONE_PATH } from './harness/jev.js';
 // the desktop's free chat speak the same rule.
 export {
   NO_SEARCH_NOTE,
+  SEARCHED_NOTE,
   SEARCH_PREFIX,
   SEARCH_PROTOCOL_NOTE,
   SearchLineFilter,

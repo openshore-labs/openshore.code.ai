@@ -5,7 +5,7 @@
 // Offline profile the model is told plainly it has no web access.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DriverEvent } from 'os-code/protocol';
-import { NO_SEARCH_NOTE, SEARCH_PROTOCOL_NOTE } from 'os-code/protocol';
+import { NO_SEARCH_NOTE, SEARCHED_NOTE, SEARCH_PROTOCOL_NOTE } from 'os-code/protocol';
 
 const h = vi.hoisted(() => ({
   callbacks: {} as Record<string, (payload: any) => void>,
@@ -42,6 +42,16 @@ vi.mock('../src/lib/platform.js', () => ({
   platform: () => 'ios',
   secretGet: async () => null,
   storeGetJson: async () => null,
+}));
+
+// The iPhone streams first; these model servers refuse the cross-origin call
+// at the preflight, so each request goes once through the native shim below.
+// The desktop's free chat (its daemon allows the app) streams as before.
+vi.mock('../src/lib/streamingFetch.js', () => ({
+  streamingFetch: async (url: string, init?: RequestInit) => {
+    if (url.endsWith('/chat/completions')) throw new TypeError('Load failed');
+    return globalThis.fetch(url, init);
+  },
 }));
 
 vi.mock('../src/lib/nativeFetch.js', () => ({
@@ -133,11 +143,20 @@ describe('a pocket model in a Stack chat', () => {
     await settle();
     reply(0, 'SEARCH: first');
     await settle();
+    // The answer pass is told the search is spent.
+    expect(h.generateCalls[1]!.system).toContain(SEARCHED_NOTE);
+    expect(h.generateCalls[1]!.system).not.toContain(SEARCH_PROTOCOL_NOTE);
     reply(1, 'SEARCH: second');
     await settle();
     expect(h.searchMock).toHaveBeenCalledTimes(1);
     expect(h.generateCalls).toHaveLength(2);
-    expect(events.findLast((e) => e.type === 'task-done')).toMatchObject({ reason: 'complete' });
+    // A second search line never prints as the answer (A4): the reply had no
+    // answer in it, and the turn says so plainly.
+    expect(shownText(events)).not.toContain('SEARCH');
+    expect(events.findLast((e) => e.type === 'task-done')).toMatchObject({
+      reason: 'error',
+      message: expect.stringMatching(/did not come up with an answer/),
+    });
     driver.dispose();
   });
 
@@ -201,13 +220,17 @@ describe('your own model (BYOM) in a Stack chat', () => {
   };
 
   it('searches on a SEARCH: line and answers from the results', async () => {
-    h.nativeReplies.push('', 'SEARCH: node 24 release date', 'Node 24 shipped in May.');
+    h.nativeReplies.push('SEARCH: node 24 release date', 'Node 24 shipped in May.');
     const { driver, events } = stackChat(byom, 'offshore');
     driver.send('when did node 24 ship?');
     await vi.waitFor(() => expect(events.some((e) => e.type === 'task-done')).toBe(true));
     expect(h.searchMock).toHaveBeenCalledWith('node 24 release date', undefined);
+    // One ask, one answer: an anchor with no one to hand off to never frames.
+    expect(h.nativeBodies).toHaveLength(2);
+    expect(String(h.nativeBodies[0]!.messages[0]!.content)).toContain(SEARCH_PROTOCOL_NOTE);
     const answerPass = h.nativeBodies.at(-1)!;
-    expect(String(answerPass.messages[0]!.content)).toContain(SEARCH_PROTOCOL_NOTE);
+    expect(String(answerPass.messages[0]!.content)).toContain(SEARCHED_NOTE);
+    expect(String(answerPass.messages[0]!.content)).not.toContain(SEARCH_PROTOCOL_NOTE);
     expect(String(answerPass.messages.at(-1)!.content)).toContain('RESULTS for node 24');
     expect(shownText(events)).not.toContain('SEARCH');
     const final = events.findLast((e) => e.type === 'text-final') as { text: string };

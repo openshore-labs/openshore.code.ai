@@ -122,7 +122,9 @@ export type ThreadItem =
        *  computer that could not be reached), in plain words. */
       error?: string;
     }
-  | { kind: 'stopped'; id: string; message: string }
+  // A turn that ended short. `byYou` marks the person's own Stop (CX ruling
+  // 5): a quiet marker, never a failure card, and nothing to rescue.
+  | { kind: 'stopped'; id: string; message: string; byYou?: true }
   // What the Vault gave this task's seat (Vault M4, 4.4): the notes the pack
   // used, the private notes it left out for a seat that leaves this network,
   // and whether the index was still cold. Teal for a local seat, amber for a

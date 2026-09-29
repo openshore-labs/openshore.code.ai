@@ -493,7 +493,7 @@ import {
 } from '../lib/vaultCopy.js';
 import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
 import { SAMPLE_PROMPT, SAMPLE_REPO_NAME } from '../lib/sampleProject.js';
-import { setSearchConsent } from '../lib/localSearch.js';
+import { setSearchConsent, type SearchAllowed } from '../lib/localSearch.js';
 import { RELEASE_TIER, featureOn, roomOpen, type ReleaseTier } from '../lib/focus.js';
 import {
   ACCOUNT_NOTICE,
@@ -3508,6 +3508,11 @@ export const useApp = create<AppState>((set, get, api) => {
       set({ webSearchAsk: { query } });
     });
     return webSearchPending;
+  }
+  function webSearchAllowedNow(): SearchAllowed {
+    const consent = get().settings.webSearchConsent;
+    if (consent === 'allowed') return 'allowed';
+    return consent === 'declined' || webSearchDeclinedThisRun ? 'declined' : 'unknown';
   }
 
   // Register this device for completion push with the connected daemon, once per
@@ -6943,7 +6948,17 @@ export const useApp = create<AppState>((set, get, api) => {
       set({ initStarted: true });
 
       // Every app-side web search asks the person first, once (lib/localSearch).
-      setSearchConsent(askWebSearch);
+      // The readers let a driver leave a declined or offline search out of
+      // the prompt before the model writes a word.
+      setSearchConsent(askWebSearch, {
+        allowed: webSearchAllowedNow,
+        online: () =>
+          get().connectivity.online &&
+          locationAllowed(
+            effectiveProfile(autoProfile(get().connectivity), get().settings.profileOverride),
+            'cloud',
+          ),
+      });
 
       // What the person paid for holds on a launch with no network: the last
       // server-verified entitlement first, then (iPhone) StoreKit's own

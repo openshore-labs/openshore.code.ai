@@ -80,8 +80,9 @@ describe('1. web search asks once', () => {
 
   it('is asked in one sheet, remembered once allowed, and switchable in Settings', () => {
     const store = read('src', 'state', 'store.ts');
-    // The launch wires the real question into the search seam.
-    expect(store).toMatch(/setSearchConsent\(askWebSearch\)/);
+    // The launch wires the real question into the search seam, with the
+    // readers a driver checks before it offers the model a search (A4).
+    expect(store).toMatch(/setSearchConsent\(askWebSearch, \{\s*allowed: webSearchAllowedNow,/);
     // Allowed is saved; a decline holds for this run only, so it asks again
     // next launch rather than never.
     expect(store).toMatch(/webSearchConsent: 'allowed'/);
