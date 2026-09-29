@@ -74,11 +74,25 @@ import { pageCheck } from './pageCheck.js';
 import { commandDigest, detectCheckCommand } from './checkDetect.js';
 import { addVerifyGrant, hasVerifyGrant } from '../../config/trust.js';
 import {
+  LEAN_MAX_TOOLS_SHOWN,
   deriveProfile,
   deriveModelClass,
   classBlurb,
+  useConstrainedDecoding,
   type ModelClassProfile,
 } from '../../harness/profile.js';
+import {
+  SayStream,
+  buildDecodingSchema,
+  parseDecoded,
+  unionProtocolInstructions,
+} from '../../harness/decoding.js';
+import {
+  AlternatingRepeats,
+  VOLATILE_TOOLS,
+  type RepeatPattern,
+} from '../../harness/repeatCycle.js';
+import { firstTurnRetrieval } from './lifts.js';
 import { vaultPackSize } from '../../harness/vault/settings.js';
 import { withholdLocalOnly } from '../../harness/vault/privacy.js';
 import {
@@ -102,7 +116,9 @@ import { MERGED_VAULT_TOOL, seatOffersVaultTool, withVaultLookupPriority } from 
 import { DEFAULT_VAULT_READ_CAP_CHARS } from '../tools/vaultFind.js';
 import {
   OBSERVATION_SLACK_CHARS,
+  WINDOW_LEAN_FRACTION,
   WindowWatch,
+  crowds,
   nextFailStreak,
   seatObservationCap,
   type CallOutcome,
@@ -315,6 +331,17 @@ export class AgentSession {
   /** Set when the model has repeated one exact call three times: the next turn
    *  runs with no tools so the only thing it can do is answer. */
   private answerOnly = false;
+  /** Two calls taking turns this task, A, B, A, B (CTO 6): the ladder above
+   *  answers the cycle from the record, then makes the next turn answer-only. */
+  private cycles = new AlternatingRepeats();
+  /** The seat's full fixed prompt crowds its served window, so it runs the
+   *  lean prompt and the lean menu whatever its class. Set each turn. */
+  private windowLean = false;
+  /** This turn's reply is held to the tool-or-answer union schema (CTO 6). */
+  private unionTurn = false;
+  /** Seats whose server refused the union schema, by provider and model:
+   *  they answer without it for the rest of the session. */
+  private unionRefused = new Set<string>();
   /** Best-of-N judged by the project's check. The minimal checkpoint: each
    *  workspace file a write tool touched this task, keyed by absolute path,
    *  with its content before the first touch (null when it did not exist), so
@@ -981,29 +1008,107 @@ export class AgentSession {
     );
   }
 
-  /** True when the active seat runs the lean prompt (a small or tiny class). */
   /** Chain of Thought is on for this session (the app setting, else config). */
   private get chainOfThought(): boolean {
     return this.deps.config.chainOfThought?.enabled === true;
   }
 
-  private get leanSeat(): boolean {
+  /** True when the active seat's class runs the lean prompt (tiny or small). */
+  private get classLean(): boolean {
     return this.modelProfile ? LEAN_CLASSES.has(this.modelProfile.modelClass) : false;
   }
 
+  /** True when the active seat runs the lean prompt: a lean class, or a seat
+   *  whose served window cannot hold the full prompt (`windowLean`). */
+  private get leanSeat(): boolean {
+    return this.classLean || this.windowLean;
+  }
+
+  /** The most tools the seat is shown: its class's allowance, and no more
+   *  than a lean menu when it runs lean for its window. */
+  private menuCap(): number {
+    const own = this.modelProfile?.maxToolsShown ?? Infinity;
+    return this.windowLean ? Math.min(own, LEAN_MAX_TOOLS_SHOWN) : own;
+  }
+
   /** Say once, plainly, that a small seat is running with the harness's help
-   *  (tenet 3: the harness raises the floor and says so). */
+   *  (tenet 3: the harness raises the floor and says so), and the same for a
+   *  larger seat that runs lean because its window is small. */
   private announceLeanSeat(): void {
     if (this.profileNoteEmitted || !this.leanSeat || !this.modelProfile) return;
     this.profileNoteEmitted = true;
     const total = this.deps.tools.specs().length;
-    const shown = Math.min(total, this.modelProfile.maxToolsShown);
+    const shown = Math.min(total, this.menuCap());
     this.emit({
       type: 'note',
-      message: `${cap(this.modelProfile.modelClass)} model seat: ${classBlurb(
-        this.modelProfile.modelClass,
-      )} The harness shows it ${shown} of ${total} tools and carries the checklist.`,
+      message: this.classLean
+        ? `${cap(this.modelProfile.modelClass)} model seat: ${classBlurb(
+            this.modelProfile.modelClass,
+          )} The harness shows it ${shown} of ${total} tools and carries the checklist.`
+        : `${cap(this.modelProfile.modelClass)} model seat with a small window on this computer: the harness gives it a shorter prompt and shows it ${shown} of ${total} tools, so the chat has room.`,
     });
+  }
+
+  /**
+   * Whether the seat's full fixed prompt (the system text, and the native
+   * tool menu when it has one) takes more than `WINDOW_LEAN_FRACTION` of the
+   * window it is served, so it should run lean whatever its class: a mid
+   * seat served 4,096 tokens gets about 7,000 of full prompt. Only with
+   * harness profiles on (off keeps the full prompt, as before), and never
+   * for a lean class, which is lean already. Call with `windowLean` false.
+   */
+  private fullPromptCrowds(toolMode: 'native' | 'text', contextTokens: number): boolean {
+    if (!this.modelProfile || this.classLean || !contextTokens) return false;
+    const mode = this.answerOnly ? 'native' : toolMode;
+    const system = this.systemPrompt(mode).content;
+    const tools = mode === 'native' && !this.answerOnly ? estimateToolSpecs(this.toolSpecs()) : 0;
+    return crowds(estimateTokens(system) + tools, contextTokens, WINDOW_LEAN_FRACTION);
+  }
+
+  /**
+   * Union decoding this turn (CTO 6): `harness.decoding.union: 'on'`, a tiny
+   * or small seat on the JSON text bridge whose server can hold a reply to a
+   * schema (`useConstrainedDecoding`), and not an answer-only turn, which
+   * has no tools to choose between. A server that refused the schema once is
+   * left out for the session.
+   */
+  private unionDecoding(toolMode: 'native' | 'text', caps: { supportsGrammar: boolean }): boolean {
+    if (this.deps.config.harness?.decoding?.union !== 'on') return false;
+    if (toolMode !== 'text' || this.answerOnly || !this.classLean || !this.modelProfile) {
+      return false;
+    }
+    if (this.unionRefused.has(`${this.active.provider.id}/${this.active.model}`)) return false;
+    return useConstrainedDecoding(this.modelProfile, caps);
+  }
+
+  /**
+   * Retrieval before turn one (CTO 6): with `harness.retrieval.firstTurn:
+   * 'on'`, on a seat that stays on this network (judged by address, never a
+   * label), search the workspace for the task's words and return the
+   * excerpts that head the task, shown as a card. Best effort: a search that
+   * fails costs the excerpts, never the task.
+   */
+  private async retrievalLead(task: string): Promise<string | undefined> {
+    if (this.deps.config.harness?.retrieval?.firstTurn !== 'on') return undefined;
+    if (leavesThisNetwork(this.active.provider)) return undefined;
+    const { toolContext } = this.deps;
+    try {
+      const caps = await this.active.provider.capabilities(this.active.model);
+      const found = firstTurnRetrieval({
+        cwd: toolContext.cwd,
+        task,
+        servedWindow: caps.contextTokens,
+        config: this.deps.config,
+        denies: toolContext.denies,
+        vaultRoot: toolContext.vaultRoot,
+      });
+      if (!found) return undefined;
+      this.emit(found.event);
+      return found.text;
+    } catch (err) {
+      log.warn('retrieval before the first turn failed', { err: String(err) });
+      return undefined;
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -1169,7 +1274,12 @@ export class AgentSession {
     // few, plan mode's read side), in terse lines for a lean seat, rather
     // than every schema in the registry (C1).
     if (toolMode === 'text') {
-      parts.push(textProtocolInstructions(this.toolSpecs(), { terse: this.leanSeat }));
+      parts.push(
+        textProtocolInstructions(this.toolSpecs(), {
+          terse: this.leanSeat,
+          ...(this.unionTurn ? { header: unionProtocolInstructions() } : {}),
+        }),
+      );
     }
     const content = this.active.adapter.systemPreamble(parts.join('\n\n'));
     return packAt !== undefined && packAt > 0 && packAt < content.length
@@ -1215,7 +1325,11 @@ export class AgentSession {
     // results of commands the user ran between turns) rides into the model's
     // message so it sees them, but never shows in the transcript as user text.
     this.emit({ type: 'task-start', input });
-    const modelText = contextPreamble ? `${contextPreamble}\n\n${input}` : input;
+    let modelText = contextPreamble ? `${contextPreamble}\n\n${input}` : input;
+    // Retrieval before turn one, when switched on: the excerpts head the
+    // task, so every attempt at it starts from them (CTO 6).
+    const lead = await this.retrievalLead(input);
+    if (lead) modelText = `${lead}\n\n${modelText}`;
 
     const content: string | ContentPart[] = images?.length
       ? [
@@ -1279,8 +1393,16 @@ export class AgentSession {
       // turn because the active model can switch mid-task (a cloud escalation
       // moves to the large class, which gets the full prompt back).
       this.modelProfile = this.deriveModelProfile(caps);
+      this.windowLean = false;
+      this.unionTurn = false;
       this.announceLeanSeat();
       this.renderPack(caps, leaves);
+      // A seat whose served window cannot hold the full prompt runs lean,
+      // whatever its class (the lean prompt keyed on the window as well).
+      this.windowLean = this.fullPromptCrowds(toolMode, caps.contextTokens);
+      this.announceLeanSeat();
+      const union = this.unionDecoding(toolMode, caps);
+      this.unionTurn = union;
 
       // Refresh the system prompt each turn (tool mode and model can change).
       // An answer-only turn carries no tools and no text protocol, so the
@@ -1302,6 +1424,17 @@ export class AgentSession {
       const offeredTools = toolMode === 'native' && !this.answerOnly ? this.toolSpecs() : undefined;
       const toolTokens = estimateToolSpecs(offeredTools);
       this.toolTokens = toolTokens;
+      // Even the lean prompt can fill most of a small window before the chat
+      // starts: say so once per chat per model, in the window card's family.
+      if (this.leanSeat) {
+        const tight = await this.windowWatch.tight(
+          this.active.provider,
+          this.active.model,
+          estimateTokens(system.content) + toolTokens,
+          caps.contextTokens,
+        );
+        if (tight) this.emit(tight);
+      }
       const beforeCompaction = this.history;
       const compacted = await compactHistory(
         leaves ? withholdLocalOnly(this.history) : this.history,
@@ -1324,12 +1457,18 @@ export class AgentSession {
         model: this.active.model,
         // The pill's color: amber for anything off this computer's network.
         providerKind: leavesThisNetwork(this.active.provider) ? 'cloud' : 'local',
+        ...(union ? { decoding: 'union' as const } : {}),
       });
 
       // Grammar-constrained retry: only after a failed parse, and only where
-      // the backend supports it. A permanent constraint would forbid final
-      // text answers, so it is a repair tool, not a default.
-      const useGrammar = toolMode === 'text' && repairAttempts > 0 && caps.supportsGrammar;
+      // the backend supports it (`constrainForSmallModels`, on by default).
+      // The tool-call grammar forbids a plain answer, so it is a repair tool;
+      // the union schema, which allows one, is its own switch (above).
+      const useGrammar =
+        toolMode === 'text' &&
+        repairAttempts > 0 &&
+        caps.supportsGrammar &&
+        config.harness?.decoding?.constrainForSmallModels !== false;
 
       let streamedText = '';
       const nativeCalls: ToolCallRequest[] = [];
@@ -1339,11 +1478,19 @@ export class AgentSession {
       let thinkingBlocks: unknown[] | undefined;
       const cot = this.chainOfThought;
       const splitter = new ThinkTagSplitter();
+      // A union reply is JSON: only the answer's own words stream, as they
+      // arrive; a tool call shows nothing until it runs.
+      const sayStream = union ? new SayStream() : undefined;
       const route = (pieces: Array<{ kind: 'text' | 'thinking'; text: string }>) => {
         for (const piece of pieces) {
           if (piece.kind === 'text') {
             streamedText += piece.text;
-            this.emit({ type: 'text-delta', text: piece.text });
+            if (!sayStream) {
+              this.emit({ type: 'text-delta', text: piece.text });
+            } else {
+              const said = sayStream.push(piece.text);
+              if (said) this.emit({ type: 'text-delta', text: said });
+            }
           } else if (cot) this.emit({ type: 'thinking-delta', text: piece.text });
         }
       };
@@ -1369,7 +1516,13 @@ export class AgentSession {
             stop: this.active.adapter.stopTokens().length
               ? this.active.adapter.stopTokens()
               : undefined,
-            jsonSchema: useGrammar ? toolCallJsonSchema(this.deps.tools) : undefined,
+            // The union schema offers the seat's own menu, a branch per tool,
+            // so every call's arguments keep that tool's shape.
+            jsonSchema: union
+              ? buildDecodingSchema(this.toolSpecs())
+              : useGrammar
+                ? toolCallJsonSchema(this.deps.tools)
+                : undefined,
             keepAlive: config.resourceBudget.keepAlive,
             reasoning: cot ? 'on' : 'off',
           },
@@ -1407,6 +1560,16 @@ export class AgentSession {
         }
         route(splitter.end());
       } catch (err) {
+        // A server that will not take the union schema (a 4xx on the request)
+        // answers without it from here, rather than ending the task.
+        if (union && schemaRefused(err)) {
+          this.unionRefused.add(`${this.active.provider.id}/${this.active.model}`);
+          this.emit({
+            type: 'status',
+            message: "This model's server would not take the reply format; continuing without it.",
+          });
+          continue;
+        }
         const handled = await this.handleProviderFailure(err, turn);
         if (handled === 'retry') continue;
         this.emit({
@@ -1459,6 +1622,15 @@ export class AgentSession {
       // a call it writes anyway is not run; the text stands as the reply.
       if (this.answerOnly) nativeCalls.length = 0;
 
+      // A union reply that parses as `{"say": ...}` is the answer, in its own
+      // words; a `{"tool": ..., "args": ...}` reply is read by the bridge's
+      // parser below, which takes that shape.
+      let said: string | undefined;
+      if (union && !nativeCalls.length) {
+        const decoded = parseDecoded(streamedText);
+        if (decoded?.kind === 'say') said = decoded.text;
+      }
+
       if (nativeCalls.length) {
         for (const raw of nativeCalls) {
           const validated = validateNativeCall(raw, this.deps.tools, this.offlineTools);
@@ -1469,13 +1641,13 @@ export class AgentSession {
           }
         }
       }
-      let displayText = streamedText;
+      let displayText = said ?? streamedText;
       // How this turn's calls are recorded in history. Native calls record as
       // tool_use blocks; calls the model wrote as JSON text record the text way
       // (assistant text, then "[tool result]" observations), whatever the tool
       // mode, so we never fabricate a tool_use block the model did not emit.
       let recordMode: 'native' | 'text' = toolMode;
-      if (!nativeCalls.length && streamedText.trim() && !this.answerOnly) {
+      if (!nativeCalls.length && streamedText.trim() && !this.answerOnly && said === undefined) {
         // Text extraction runs in text mode by design, and in native mode as a
         // fallback. A small local model offered native tools often writes the
         // call as JSON in its text anyway (ollama hands it back as content, not
@@ -1492,6 +1664,18 @@ export class AgentSession {
           displayText = extraction.remainder;
           if (found) recordMode = 'text';
         }
+      }
+
+      // The class's calls per turn hold on the union path only: past them a
+      // call is not run, and the model is told to make it next.
+      const perTurn = this.modelProfile?.maxCallsPerTurn ?? Infinity;
+      if (union && calls.length > perTurn) {
+        for (const extra of calls.slice(perTurn)) {
+          problems.push(
+            `${extra.name} was not run: this seat runs ${perTurn} call${perTurn === 1 ? '' : 's'} per reply. Make it in your next reply.`,
+          );
+        }
+        calls = calls.slice(0, perTurn);
       }
 
       if (!calls.length && problems.length) {
@@ -1530,7 +1714,11 @@ export class AgentSession {
         // A plain text answer: the task is done. In plan mode the answer IS the
         // plan, so it is also raised as a proposal the person can approve.
         const finalText = displayText.trim();
-        this.history.push({ role: 'assistant', content: streamedText, ...this.localOnlyMark() });
+        this.history.push({
+          role: 'assistant',
+          content: said ?? streamedText,
+          ...this.localOnlyMark(),
+        });
         this.emit({ type: 'text-final', text: finalText });
         if (this.mode === 'plan' && finalText)
           this.emit({ type: 'plan-proposed', text: finalText });
@@ -1702,22 +1890,34 @@ export class AgentSession {
     // the repeat rail. Answering the repeat from the record costs no turn on a
     // slow box and tells the model what to do instead; the third repeat makes
     // the next turn answer-only. The rail stays as the last stop behind both.
-    const stale = this.noteRepeat(call);
-    if (stale) {
+    const repeat = this.noteRepeat(call);
+    if (repeat) {
       if (tool.risk === 'write') this.attemptedWriteThisTask = true;
       const advice =
         tool.risk === 'read' || tool.risk === 'network'
           ? 'Nothing has changed since, so do not call it again. Use that result. If you have what you need, reply now with your final answer in plain text.'
           : 'Nothing has changed since, so it would end the same way. Change the arguments (for editFile, copy the exact lines from the file contents shown in that result into search), or reply with your answer.';
-      const note = `You already made this exact ${call.name} call; its result is above. ${advice}`;
+      const note =
+        repeat.pattern === 'alternating'
+          ? `You keep going back and forth between this exact ${call.name} call and the call before it; both results are above. ${advice}`
+          : `You already made this exact ${call.name} call; its result is above. ${advice}`;
       this.emit({ type: 'tool-start', call });
-      this.emit({ type: 'tool-end', call, result: { ok: false, content: note }, durationMs: 0 });
+      this.emit({
+        type: 'tool-end',
+        call,
+        result: { ok: false, content: note },
+        durationMs: 0,
+        repeat: repeat.pattern,
+      });
       this.pushObservation(call, note, toolMode);
-      if (stale === 'answer-only') {
+      if (repeat.ladder === 'answer-only') {
         this.answerOnly = true;
         this.emit({
           type: 'status',
-          message: `The model repeated the same ${call.name} call three times; the next turn is answer-only.`,
+          message:
+            repeat.pattern === 'alternating'
+              ? 'The model kept going back and forth between the same two calls; the next turn is answer-only.'
+              : `The model repeated the same ${call.name} call three times; the next turn is answer-only.`,
         });
         this.history.push({
           role: 'user',
@@ -1922,6 +2122,12 @@ export class AgentSession {
     }
     const durationMs = Date.now() - startedAt;
     this.emit({ type: 'tool-end', call, result, durationMs });
+    // A volatile call takes its place in the cycle watch by what it showed:
+    // two reads of a program's output are the same call only when the output
+    // did not move, so a cycle through one breaks only once it stops moving.
+    if (VOLATILE_TOOLS.has(call.name)) {
+      this.cycles.note(`${this.repeatKey(call)}\u0000${result.content}`);
+    }
     // Remember that this task changed files, so the verify phase runs only when
     // there is something to verify. Any successful call that is not a read may
     // have changed the workspace (a write, a shell command), so a repeat of an
@@ -2069,19 +2275,43 @@ export class AgentSession {
   private clearRepeatState(): void {
     this.answerOnly = false;
     this.repeatLog.clear();
+    this.cycles.clear();
   }
 
-  /** Record this call for repeat detection. Returns false when it should run,
-   *  'stale' when it is an exact repeat with nothing changed since (answer it
-   *  from the record), and 'answer-only' on the third such repeat. */
-  private noteRepeat(call: ParsedToolCall): false | 'stale' | 'answer-only' {
+  /** A call's identity for the repeat checks: its tool and its arguments. */
+  private repeatKey(call: ParsedToolCall): string {
+    return `${call.name}\u0000${JSON.stringify(call.args ?? {})}`;
+  }
+
+  /** Record this call for repeat detection. Returns false when it should run;
+   *  otherwise where it sits on the ladder ('stale': answer it from the
+   *  record; 'answer-only': that, and the next turn has no tools) and which
+   *  pattern caught it. An exact repeat with nothing changed since is stale
+   *  the second time and answer-only the third. Two calls taking turns (A, B,
+   *  A, B, CTO 6) are stale on the fourth call and answer-only on the next
+   *  that keeps the cycle going: a command or a write that succeeds between
+   *  them makes each look fresh to the exact check, yet the same pair again
+   *  changes nothing. */
+  private noteRepeat(
+    call: ParsedToolCall,
+  ): false | { ladder: 'stale' | 'answer-only'; pattern: RepeatPattern } {
     this.callStep += 1;
-    const key = `${call.name} ${JSON.stringify(call.args ?? {})}`;
+    // A tool whose answer moves between calls (a running program's output)
+    // is never answered from the record; it joins the cycle watch once it
+    // has run, by what it showed (executeCall).
+    if (VOLATILE_TOOLS.has(call.name)) return false;
+    const key = this.repeatKey(call);
     const prior = this.repeatLog.get(key);
     const count = (prior?.count ?? 0) + 1;
     this.repeatLog.set(key, { count, lastStep: this.callStep });
-    if (!prior || prior.lastStep <= this.lastChangeStep) return false;
-    return count >= 3 ? 'answer-only' : 'stale';
+    // Every call joins the cycle watch, a repeat answered from the record
+    // included, so the cycle is seen whichever check speaks first.
+    const cycle = this.cycles.note(key);
+    if (prior && prior.lastStep > this.lastChangeStep) {
+      return { ladder: count >= 3 ? 'answer-only' : 'stale', pattern: 'exact' };
+    }
+    if (cycle) return { ladder: cycle >= 2 ? 'answer-only' : 'stale', pattern: 'alternating' };
+    return false;
   }
 
   /** The mark an assistant turn carries once this task has read a
@@ -2304,7 +2534,8 @@ export class AgentSession {
    *  seat never loses its only way in. */
   private vaultMenu(specs: ToolSpec[]): ToolSpec[] {
     if (!specs.some((s) => s.name === MERGED_VAULT_TOOL)) return specs;
-    const merged = this.modelProfile?.mergedVaultTool ?? false;
+    // A seat that runs lean for its window gets the lean seat's one way in.
+    const merged = (this.modelProfile?.mergedVaultTool ?? false) || this.windowLean;
     return specs.filter((s) => seatOffersVaultTool(s.name, merged));
   }
 
@@ -2325,7 +2556,7 @@ export class AgentSession {
   /** Keep at most `maxToolsShown` specs for the active profile, most useful
    *  first. No profile, or an unbounded one, returns the list unchanged. */
   private limitToolSpecs(specs: ToolSpec[]): ToolSpec[] {
-    const max = this.modelProfile?.maxToolsShown ?? Infinity;
+    const max = this.menuCap();
     if (!Number.isFinite(max) || specs.length <= max) return specs;
     const rank = (name: string): number => {
       const i = SMALL_MODEL_TOOL_PRIORITY.indexOf(name);
@@ -2459,6 +2690,12 @@ export class AgentSession {
     // A model that thinks in <think> tags on its own never leaks them here.
     return splitThinkTags(out).text.trim();
   }
+}
+
+/** A request the server refused outright (a 4xx other than a rate limit):
+ *  the sign a server cannot hold a reply to the union schema. */
+function schemaRefused(err: unknown): boolean {
+  return err instanceof ProviderError && /answered 4(?!29)\d\d\b/.test(err.message);
 }
 
 /** The directory part of a workspace-relative path, '' at the root. */

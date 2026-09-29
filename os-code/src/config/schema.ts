@@ -375,10 +375,28 @@ const HarnessSchema = z.object({
     .prefault({}),
   decoding: z
     .object({
-      // Constrain a small local model's decoding to the tool-or-answer union
-      // schema when the backend supports grammar. The eval decides per family
-      // whether it is a lift or a tax, so it stays a switch.
+      // The repair pass: after a reply whose tool call could not be parsed,
+      // the retry on the JSON text bridge is held to the tool-call grammar
+      // where the backend supports one. False sends the retry unconstrained.
       constrainForSmallModels: z.boolean().default(true),
+      // Union decoding (CTO 6): 'on' holds every reply of a tiny or small
+      // seat on the text bridge to the tool-or-answer schema
+      // (harness/decoding.ts) through the server's JSON schema (Ollama's
+      // `format`), streaming the answer as it arrives. Grammar sampling
+      // slows decoding on a CPU, so unset reads 'off' until
+      // `osc eval --deep --union-decoding on|off` shows a lift (tenet 2).
+      union: z.enum(['on', 'off']).optional(),
+    })
+    .prefault({}),
+  retrieval: z
+    .object({
+      // Retrieval before turn one (CTO 6): 'on' searches the workspace for
+      // the task's words and puts the best excerpts, by file and line, at the
+      // head of the task, on a seat that stays on this network only, within
+      // the lesser of 1,500 tokens and a tenth of the served window. It adds
+      // prefill, so unset reads 'off' until `osc eval --deep --retrieval
+      // on|off` shows a lift (tenet 2).
+      firstTurn: z.enum(['on', 'off']).optional(),
     })
     .prefault({}),
   verify: z

@@ -217,6 +217,14 @@ program
   )
   .option('--page-check <on|off>', 'deep only: the page check (no test suite needed) on or off')
   .option(
+    '--retrieval <on|off>',
+    'deep or floor: search the workspace for the task and give the model the best excerpts before its first turn, or not',
+  )
+  .option(
+    '--union-decoding <on|off>',
+    'deep or floor: hold a small model on the text bridge to the tool-or-answer reply format, or not',
+  )
+  .option(
     '--suite <code|everyday>',
     'deep only: the code tasks, or the everyday ones (a page, photos, a chart, a button)',
   )

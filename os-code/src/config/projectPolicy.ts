@@ -80,7 +80,15 @@ export const PROJECT_POLICY: Record<keyof OscConfig, KeyPolicy> = {
   // on is a loosening; turning it off applies from any folder.
   memory: { enabled: 'off-only' },
   sync: { autoPush: 'off-only', autoPushDefaultBranch: 'trusted' },
-  harness: { profiles: 'project', decoding: 'project', verify: 'trusted' },
+  // The two harness lifts (CTO 6) cost time on this computer (prefill, and
+  // grammar sampling on a CPU), so like Chain of Thought a project may turn
+  // them off from any folder and on only once trusted.
+  harness: {
+    profiles: 'project',
+    decoding: { constrainForSmallModels: 'project', union: 'off-only' },
+    retrieval: { firstTurn: 'off-only' },
+    verify: 'trusted',
+  },
 };
 
 /** A project setting that was not applied, and why. */
@@ -169,6 +177,10 @@ function describe(path: string, value: unknown): string {
       return 'pushes commits on its own';
     case 'chainOfThought.enabled':
       return 'turns on Chain of Thought';
+    case 'harness.decoding.union':
+      return 'holds small models to a stricter reply format, which can make replies slower';
+    case 'harness.retrieval.firstTurn':
+      return 'reads matching code into each new task before the model starts, which makes the first reply slower';
     case 'vault.context':
       return value === 'full'
         ? 'turns on the full Vault context, so more of your notes reach the model'

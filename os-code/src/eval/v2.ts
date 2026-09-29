@@ -53,6 +53,16 @@ export type EvalHandoffLayer = 'on' | 'off';
  *  everyday suite measures the check that needs no test suite. */
 export type EvalPageCheck = 'on' | 'off';
 
+/** Retrieval before turn one (CTO 6): 'on' sets
+ *  `harness.retrieval.firstTurn: 'on'` for the run, 'off' sets 'off', so the
+ *  two runs differ by the excerpts alone. */
+export type EvalRetrieval = 'on' | 'off';
+
+/** Union decoding (CTO 6): 'on' sets `harness.decoding.union: 'on'` for the
+ *  run, 'off' sets 'off'. It engages only on a tiny or small seat on the
+ *  text bridge, which each trace's `unionTurns` shows. */
+export type EvalUnionDecoding = 'on' | 'off';
+
 /** The variant a run was made under, recorded on the report and on every
  *  trace so a with and a without number can never be mixed up. Absent keys
  *  mean the drive's own default. */
@@ -62,6 +72,8 @@ export interface EvalVariant {
   promptCache?: EvalPromptCache;
   handoff?: EvalHandoffLayer;
   pageCheck?: EvalPageCheck;
+  retrieval?: EvalRetrieval;
+  unionDecoding?: EvalUnionDecoding;
 }
 
 /** What the loop did on one run, so a zero is a diagnosis and not just a
@@ -116,6 +128,17 @@ export interface DriveTrace {
   /** The vault notes the pack used, by path, deduplicated, in first-use order
    *  (pins, search hits and links; never the map, handoff or Current State). */
   packNotes?: string[];
+  /** Calls the harness answered from the record instead of running them
+   *  (the tool-end events marked `repeat`): the same call again with nothing
+   *  changed since, and two calls taking turns (CTO 6). Absent when none. */
+  repeatBreaks?: { exact: number; alternating: number };
+  /** Tokens the excerpts took when retrieval ran before turn one (the
+   *  `retrieval` event), the prefill the lift costs. Absent when it did not. */
+  retrievalTokens?: number;
+  /** Turns whose reply was held to the union schema (the `turn-start` events
+   *  marked `decoding: 'union'`). Absent when none, so a union run on a seat
+   *  it does not reach reads as not engaged. */
+  unionTurns?: number;
   /** Wall-clock milliseconds for the drive, measured by the runner. */
   wallMs?: number;
   /** The variant this run was made under. */
@@ -132,6 +155,8 @@ export interface DriveContext {
   promptCache?: EvalPromptCache;
   handoff?: EvalHandoffLayer;
   pageCheck?: EvalPageCheck;
+  retrieval?: EvalRetrieval;
+  unionDecoding?: EvalUnionDecoding;
 }
 
 /** A drive may return just the final text, or the text plus a trace of what
@@ -208,6 +233,10 @@ export interface EvalV2Options {
   handoff?: EvalHandoffLayer;
   /** Run with the page check on or off. */
   pageCheck?: EvalPageCheck;
+  /** Run with retrieval before turn one on or off. */
+  retrieval?: EvalRetrieval;
+  /** Run with union decoding on or off. */
+  unionDecoding?: EvalUnionDecoding;
   /** The suite to run when `tasks` is not given. */
   suite?: EvalSuite;
   /** Who drives the loop, recorded on the report and in its file name when
@@ -298,6 +327,8 @@ export async function runEvalV2(
   if (options.promptCache) variant.promptCache = options.promptCache;
   if (options.handoff) variant.handoff = options.handoff;
   if (options.pageCheck) variant.pageCheck = options.pageCheck;
+  if (options.retrieval) variant.retrieval = options.retrieval;
+  if (options.unionDecoding) variant.unionDecoding = options.unionDecoding;
   const tasks = options.tasks ?? defaultTasks(variant, options.suite);
   const attempts = Math.max(1, Math.floor(options.attempts ?? 1));
   const scores: EvalV2TaskScore[] = [];
@@ -376,7 +407,9 @@ function hasVariant(variant: EvalVariant): boolean {
     variant.numCtx !== undefined ||
     variant.promptCache !== undefined ||
     variant.handoff !== undefined ||
-    variant.pageCheck !== undefined
+    variant.pageCheck !== undefined ||
+    variant.retrieval !== undefined ||
+    variant.unionDecoding !== undefined
   );
 }
 
@@ -390,6 +423,8 @@ export function variantSuffix(variant: EvalVariant): string {
   if (variant.promptCache) out += `-cache-${variant.promptCache}`;
   if (variant.handoff) out += `-handoff-${variant.handoff}`;
   if (variant.pageCheck) out += `-page-${variant.pageCheck}`;
+  if (variant.retrieval) out += `-retrieval-${variant.retrieval}`;
+  if (variant.unionDecoding) out += `-union-${variant.unionDecoding}`;
   return out;
 }
 
@@ -415,13 +450,18 @@ export type VaultTraceFields = Pick<
   | 'packTokens'
   | 'packNotes'
   | 'promptWindow'
+  | 'repeatBreaks'
+  | 'retrievalTokens'
+  | 'unionTurns'
 >;
 
 /** The vault trace fields read off a run's events, for a drive to merge into
  *  its trace: every input token sent (summed over `usage` events), the prompt
  *  cache's reads and writes (summed over the `usage` events that carry them),
  *  each turn's served prompt against its estimate (C1), the pack's tokens
- *  (summed over `context-pack` events) and the notes it used. Pure, so the CLI and the tests read the events the same way. */
+ *  (summed over `context-pack` events) and the notes it used, and the harness
+ *  lifts' own counts (CTO 6): repeats broken, the retrieval's tokens, union
+ *  turns. Pure, so the CLI and the tests read the events the same way. */
 export function vaultTraceFields(events: readonly AgentEvent[]): VaultTraceFields {
   let promptTokens = 0;
   let sawUsage = false;
@@ -431,8 +471,17 @@ export function vaultTraceFields(events: readonly AgentEvent[]): VaultTraceField
   let sawPack = false;
   const notes: string[] = [];
   const promptWindow: Array<{ read: number; estimated: number }> = [];
+  const repeats = { exact: 0, alternating: 0 };
+  let retrievalTokens: number | undefined;
+  let unionTurns = 0;
   for (const e of events) {
-    if (e.type === 'usage') {
+    if (e.type === 'tool-end' && e.repeat) {
+      repeats[e.repeat] += 1;
+    } else if (e.type === 'retrieval') {
+      retrievalTokens = (retrievalTokens ?? 0) + e.tokens;
+    } else if (e.type === 'turn-start' && e.decoding === 'union') {
+      unionTurns += 1;
+    } else if (e.type === 'usage') {
       sawUsage = true;
       promptTokens += e.promptTokens;
       if (e.cacheReadTokens !== undefined) cacheRead = (cacheRead ?? 0) + e.cacheReadTokens;
@@ -457,6 +506,9 @@ export function vaultTraceFields(events: readonly AgentEvent[]): VaultTraceField
   if (cacheRead !== undefined) out.cacheReadTokens = cacheRead;
   if (cacheWrite !== undefined) out.cacheWriteTokens = cacheWrite;
   if (promptWindow.length) out.promptWindow = promptWindow;
+  if (repeats.exact || repeats.alternating) out.repeatBreaks = repeats;
+  if (retrievalTokens !== undefined) out.retrievalTokens = retrievalTokens;
+  if (unionTurns) out.unionTurns = unionTurns;
   if (sawPack) {
     out.packTokens = packTokens;
     out.packNotes = notes;

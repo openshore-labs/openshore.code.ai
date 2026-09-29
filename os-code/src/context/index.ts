@@ -193,6 +193,85 @@ function cosine(a: number[], b: number[]): number {
   return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1);
 }
 
+/** One excerpt `keywordHits` found. */
+export interface KeywordHit {
+  /** Workspace-relative, forward slashes. */
+  path: string;
+  /** 1-based line the excerpt starts at. */
+  startLine: number;
+  lines: string[];
+  score: number;
+}
+
+/** Lines of context kept above and below the best line of a hit. */
+const HIT_LINES_BEFORE = 2;
+const HIT_LINES_AFTER = 6;
+
+/**
+ * The keyword search as excerpts with line numbers, for retrieval before turn
+ * one (CTO 6): the `k` files that hold the most of `terms` (lowercased), each
+ * as the few lines around its best line. A file that holds more of the
+ * distinct terms outranks one that repeats a single term, and a term in the
+ * file's own name counts extra. `skip` sees each candidate's path and text
+ * and keeps a file out entirely (a secret-shaped file, a local-only path, a
+ * path the policy denies), so nothing it refuses is ever returned.
+ */
+export function keywordHits(
+  root: string,
+  terms: readonly string[],
+  k: number,
+  skip?: (rel: string, text: string) => boolean,
+): KeywordHit[] {
+  if (!terms.length || k <= 0) return [];
+  const scored: Array<{ rel: string; text: string; score: number }> = [];
+  for (const found of walkFiles(root)) {
+    const rel = found.split('\\').join('/');
+    if (!TEXT_EXT.test(rel)) continue;
+    let text: string;
+    try {
+      if (statSync(join(root, found)).size > MAX_FILE_BYTES) continue;
+      text = readFileSync(join(root, found), 'utf8');
+    } catch {
+      continue;
+    }
+    if (text.includes('\u0000')) continue;
+    const lower = text.toLowerCase();
+    let distinct = 0;
+    let total = 0;
+    for (const term of terms) {
+      let idx = -1;
+      let hits = 0;
+      while ((idx = lower.indexOf(term, idx + 1)) !== -1 && hits < 50) hits++;
+      if (hits) distinct += 1;
+      total += hits;
+    }
+    if (!total) continue;
+    const name = rel.toLowerCase().split('/').pop() ?? '';
+    const named = terms.filter((t) => name.includes(t)).length;
+    if (skip?.(rel, text)) continue;
+    scored.push({ rel, text, score: distinct * 10 + named * 5 + Math.min(total, 50) });
+  }
+  scored.sort((a, b) => b.score - a.score || (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
+  return scored.slice(0, k).map(({ rel, text, score }) => {
+    const lines = text.split('\n');
+    let best = 0;
+    let bestCount = -1;
+    lines.forEach((line, i) => {
+      const lower = line.toLowerCase();
+      const count = terms.filter((t) => lower.includes(t)).length;
+      if (count > bestCount) {
+        best = i;
+        bestCount = count;
+      }
+    });
+    const start = Math.max(0, best - HIT_LINES_BEFORE);
+    const end = Math.min(lines.length, best + HIT_LINES_AFTER + 1);
+    const slice = lines.slice(start, end).map((l) => l.replace(/\s+$/, ''));
+    while (slice.length > 1 && slice[slice.length - 1] === '') slice.pop();
+    return { path: rel, startLine: start + 1, lines: slice, score };
+  });
+}
+
 /** Keyword fallback when no embedder is enabled: grep-ranked snippets. */
 export function keywordSearch(root: string, query: string, k: number): string {
   const terms = query

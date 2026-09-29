@@ -1,8 +1,9 @@
 // The small model's true window, the loop's side (C1). Helpers the agent loop
 // wires in, kept here so loop.ts only calls them: what one observation may
 // carry for the seat, which failed calls
-// count toward the cloud escalation offer, and the notice that a server cut
-// the prompt without a word.
+// count toward the cloud escalation offer, the notice that a server cut
+// the prompt without a word, when a seat runs lean for its window, and the
+// notice that even the lean prompt leaves little room (CTO 6).
 import type { MoreRoom, Provider } from '../../providers/types.js';
 import { looksTruncated } from '../../context/compaction.js';
 import {
@@ -52,12 +53,59 @@ export function nextFailStreak(
 }
 
 /**
+ * A seat whose full fixed prompt (the system text and the tool menu) takes
+ * more than this share of its served window gets the lean prompt and the
+ * lean tool menu, whatever its class: the rest is the working margin the
+ * chat, the files it reads and the answer need. A mid seat served Ollama's
+ * default 4,096 carries about 7,000 tokens of full prompt, more than the
+ * whole window. Placeholder until the eval, like the class fractions.
+ */
+export const WINDOW_LEAN_FRACTION = 0.4;
+
+/** Past this share of the served window taken by the fixed prompt before the
+ *  chat starts, even on the lean prompt, the person is told once per chat
+ *  that the model has little room (the `window-tight` event). */
+export const LITTLE_ROOM_FRACTION = 0.5;
+
+/** Whether a fixed prompt of `fixedTokens` crowds a `windowTokens` window
+ *  past `fraction`. An unknown window crowds nothing. */
+export function crowds(fixedTokens: number, windowTokens: number, fraction: number): boolean {
+  return windowTokens > 0 && fixedTokens > windowTokens * fraction;
+}
+
+/**
  * Watches each turn's served prompt against the loop's estimate and says,
  * once per chat per model, when the server cut it (CX 6). The card offers
  * more room when the provider can serve it (CTO 5).
  */
 export class WindowWatch {
   private noticed = new Set<string>();
+  private tightNoticed = new Set<string>();
+
+  /** The window-tight event when even the lean fixed prompt fills more than
+   *  `LITTLE_ROOM_FRACTION` of the served window, once per chat per model;
+   *  undefined otherwise. The same room offer as a cut. */
+  async tight(
+    provider: Provider,
+    model: string,
+    fixedTokens: number,
+    windowTokens: number,
+  ): Promise<AgentEvent | undefined> {
+    if (!crowds(fixedTokens, windowTokens, LITTLE_ROOM_FRACTION)) return undefined;
+    const key = `${provider.id}/${model}`;
+    if (this.tightNoticed.has(key)) return undefined;
+    this.tightNoticed.add(key);
+    const room = await roomFor(provider, model);
+    return {
+      type: 'window-tight',
+      model,
+      provider: provider.id,
+      fixedTokens,
+      windowTokens,
+      ...(room ? { room: room.room } : {}),
+      ...(room?.room === 'more' && room.gb !== undefined ? { gb: room.gb } : {}),
+    };
+  }
 
   /** The window-cut event for this turn, or undefined when the server read
    *  the prompt whole (or this model was already noticed in this chat).
@@ -72,12 +120,7 @@ export class WindowWatch {
     const key = `${provider.id}/${model}`;
     if (this.noticed.has(key)) return undefined;
     this.noticed.add(key);
-    let room: MoreRoom | undefined;
-    try {
-      room = await provider.moreRoom?.(model);
-    } catch {
-      // The offer is a courtesy; the notice stands without it.
-    }
+    const room = await roomFor(provider, model);
     return {
       type: 'window-cut',
       model,
@@ -88,6 +131,40 @@ export class WindowWatch {
       ...(room?.room === 'more' && room.gb !== undefined ? { gb: room.gb } : {}),
     };
   }
+}
+
+/** What giving this model more room would do, or undefined when the
+ *  provider cannot say. The offer is a courtesy; a notice stands without it. */
+async function roomFor(provider: Provider, model: string): Promise<MoreRoom | undefined> {
+  try {
+    return await provider.moreRoom?.(model);
+  } catch {
+    return undefined;
+  }
+}
+
+/** The little-room notice in plain lines, for the terminal clients, in the
+ *  same words as the app's card. */
+export function windowTightLines(event: Extract<AgentEvent, { type: 'window-tight' }>): string[] {
+  const lines = [
+    `${event.model} has little room left for this chat on this computer.`,
+    'Its instructions and tools fill most of the room your computer gives it, so older messages get summarized sooner.',
+  ];
+  if (event.room === 'more') {
+    const cost =
+      event.gb !== undefined ? `Uses about ${event.gb} GB more memory.` : 'Uses more memory.';
+    lines.push(
+      `To give it more room, set "numCtx": "auto" on the ${event.provider} provider in your OS Code config. ${cost} Replies get slower.`,
+    );
+  }
+  return lines;
+}
+
+/** The retrieval card in one plain line, for the terminal clients. */
+export function retrievalLine(event: Extract<AgentEvent, { type: 'retrieval' }>): string {
+  const places = event.sources.map((s) => `${s.path}:${s.line}`).join(', ');
+  const n = event.sources.length;
+  return `Started from ${n} place${n === 1 ? '' : 's'} in your code that match the task: ${places}.`;
 }
 
 /** The truncation card in plain lines, for the terminal clients (the app has

@@ -71,6 +71,9 @@ export interface TestSessionOptions {
   offline?: boolean;
   /** The permission mode to start in. */
   permissionMode?: AgentDeps['permissionMode'];
+  /** Register the tools a stack with a specialist, a vision seat and an image
+   *  maker gets (delegate, analyzeImage, generateImage), as bootstrap does. */
+  specialists?: boolean;
 }
 
 export function makeTestSession(
@@ -119,9 +122,9 @@ export function makeTestSession(
   const stack = resolveStack(config, registry);
   const router = new Router(config, registry, stack);
   const registryOptions = {
-    stackHasVision: false,
-    stackHasImageGen: false,
-    stackHasSpecialists: false,
+    stackHasVision: options.specialists === true,
+    stackHasImageGen: options.specialists === true,
+    stackHasSpecialists: options.specialists === true,
     // As bootstrap does: the Memory switch off leaves the tool out.
     memory: config.memory.enabled,
     ...(options.offline ? { offline: true } : {}),

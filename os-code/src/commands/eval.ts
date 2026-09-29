@@ -18,7 +18,9 @@ import {
   type EvalNumCtx,
   type EvalPageCheck,
   type EvalPromptCache,
+  type EvalRetrieval,
   type EvalSuite,
+  type EvalUnionDecoding,
   type EvalV2Report,
   type EvalVariant,
   type EvalVaultPack,
@@ -83,9 +85,31 @@ export interface EvalOptions {
    *  instead of the engine ('claude-code': Claude Code pointed at Ollama),
    *  the head-to-head baseline. */
   baseline?: string;
+  /** Deep or floor: retrieval before turn one on or off for the run (CTO 6). */
+  retrieval?: string;
+  /** Deep or floor: union decoding on or off for the run (CTO 6). */
+  unionDecoding?: string;
   /** The floor run: every measurement the founder's box owes, in one go
    *  (see `evalFloor.ts`). */
   floor?: boolean;
+}
+
+/** The two harness lift switches (CTO 6), parsed: they go with --deep and
+ *  with --floor. An error string names the bad value. */
+export function parseLiftFlags(
+  options: Pick<EvalOptions, 'retrieval' | 'unionDecoding'>,
+): { retrieval?: EvalRetrieval; unionDecoding?: EvalUnionDecoding } | { error: string } {
+  const retrieval = parseChoice<EvalRetrieval>('--retrieval', options.retrieval, ['on', 'off']);
+  if (typeof retrieval === 'object') return retrieval;
+  const unionDecoding = parseChoice<EvalUnionDecoding>('--union-decoding', options.unionDecoding, [
+    'on',
+    'off',
+  ]);
+  if (typeof unionDecoding === 'object') return unionDecoding;
+  return {
+    ...(retrieval ? { retrieval } : {}),
+    ...(unionDecoding ? { unionDecoding } : {}),
+  };
 }
 
 /** Parse a two-value flag; undefined when unset, an error string when bad. */
@@ -133,19 +157,38 @@ export async function evalCommand(options: EvalOptions): Promise<void> {
   const baseline = parseChoice<typeof CLAUDE_CODE_BASELINE>('--baseline', options.baseline, [
     CLAUDE_CODE_BASELINE,
   ]);
-  for (const parsed of [vaultPack, numCtx, promptCache, handoff, suite, baseline, pageCheck]) {
-    if (typeof parsed === 'object') {
+  const lifts = parseLiftFlags(options);
+  for (const parsed of [
+    vaultPack,
+    numCtx,
+    promptCache,
+    handoff,
+    suite,
+    baseline,
+    pageCheck,
+    lifts,
+  ]) {
+    if (parsed && typeof parsed === 'object' && 'error' in parsed) {
       warnLine(parsed.error);
       process.exitCode = 1;
       return;
     }
   }
+  const liftFlags = lifts as { retrieval?: EvalRetrieval; unionDecoding?: EvalUnionDecoding };
   if (
-    (vaultPack || numCtx || promptCache || handoff || suite || baseline || pageCheck) &&
+    (vaultPack ||
+      numCtx ||
+      promptCache ||
+      handoff ||
+      suite ||
+      baseline ||
+      pageCheck ||
+      liftFlags.retrieval ||
+      liftFlags.unionDecoding) &&
     !options.deep
   ) {
     warnLine(
-      '--vault-pack, --num-ctx, --prompt-cache, --handoff, --page-check, --suite and --baseline measure the agent loop, so they go with --deep.',
+      '--vault-pack, --num-ctx, --prompt-cache, --handoff, --page-check, --retrieval, --union-decoding, --suite and --baseline measure the agent loop, so they go with --deep (--retrieval and --union-decoding also go with --floor).',
     );
     process.exitCode = 1;
     return;
@@ -157,9 +200,18 @@ export async function evalCommand(options: EvalOptions): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  if (baseline && (vaultPack || numCtx || promptCache || handoff || pageCheck)) {
+  if (
+    baseline &&
+    (vaultPack ||
+      numCtx ||
+      promptCache ||
+      handoff ||
+      pageCheck ||
+      liftFlags.retrieval ||
+      liftFlags.unionDecoding)
+  ) {
     warnLine(
-      "--baseline runs another agent on the same model, so the engine's --vault-pack, --num-ctx, --prompt-cache, --handoff and --page-check do not apply to it.",
+      "--baseline runs another agent on the same model, so the engine's --vault-pack, --num-ctx, --prompt-cache, --handoff, --page-check, --retrieval and --union-decoding do not apply to it.",
     );
     process.exitCode = 1;
     return;
@@ -179,6 +231,8 @@ export async function evalCommand(options: EvalOptions): Promise<void> {
     if (typeof promptCache === 'string') variant.promptCache = promptCache;
     if (typeof handoff === 'string') variant.handoff = handoff;
     if (typeof pageCheck === 'string') variant.pageCheck = pageCheck;
+    if (liftFlags.retrieval) variant.retrieval = liftFlags.retrieval;
+    if (liftFlags.unionDecoding) variant.unionDecoding = liftFlags.unionDecoding;
     await runDeep(
       config,
       providers,
@@ -468,6 +522,9 @@ export function deepDrive(options: DeepDriveOptions): DriveTask {
         },
       };
     }
+    // The harness lifts (CTO 6), the same way: the run's value, else the
+    // person's own setting (unset reads off).
+    driveConfig = withLifts(driveConfig, context);
     // The handoff layer is a full-mode layer, so a handoff run with no pack
     // variant runs the pack in full; the two handoff runs then differ by the
     // handoff alone.
@@ -590,6 +647,27 @@ export function deepDrive(options: DeepDriveOptions): DriveTask {
   };
 }
 
+/** A config with the run's harness lift switches set (CTO 6): retrieval
+ *  before turn one and union decoding, each only when the run names it. */
+export function withLifts(
+  config: OscConfig,
+  lifts: { retrieval?: EvalRetrieval; unionDecoding?: EvalUnionDecoding },
+): OscConfig {
+  if (!lifts.retrieval && !lifts.unionDecoding) return config;
+  return {
+    ...config,
+    harness: {
+      ...config.harness,
+      ...(lifts.retrieval
+        ? { retrieval: { ...config.harness.retrieval, firstTurn: lifts.retrieval } }
+        : {}),
+      ...(lifts.unionDecoding
+        ? { decoding: { ...config.harness.decoding, union: lifts.unionDecoding } }
+        : {}),
+    },
+  };
+}
+
 /** The variant in words, for the header and the report ('' for none). */
 export function describeVariant(variant: EvalVariant): string {
   const parts: string[] = [];
@@ -598,6 +676,8 @@ export function describeVariant(variant: EvalVariant): string {
   if (variant.promptCache) parts.push(`prompt cache ${variant.promptCache}`);
   if (variant.handoff) parts.push(`handoff ${variant.handoff}`);
   if (variant.pageCheck) parts.push(`page check ${variant.pageCheck}`);
+  if (variant.retrieval) parts.push(`retrieval ${variant.retrieval}`);
+  if (variant.unionDecoding) parts.push(`union decoding ${variant.unionDecoding}`);
   return parts.join(', ');
 }
 
@@ -773,6 +853,19 @@ export function costLine(trace: DriveTrace): string {
     const turns = trace.promptWindow.length;
     const cut = trace.promptWindow.filter((t) => looksTruncated(t.read, t.estimated)).length;
     parts.push(`${cut} of ${turns} turn${turns === 1 ? '' : 's'} cut by the server`);
+  }
+  if (trace.retrievalTokens !== undefined) {
+    parts.push(`retrieval ${trace.retrievalTokens} tokens`);
+  }
+  if (trace.unionTurns) {
+    parts.push(`${trace.unionTurns} union turn${trace.unionTurns === 1 ? '' : 's'}`);
+  }
+  if (trace.repeatBreaks) {
+    const { exact, alternating } = trace.repeatBreaks;
+    const total = exact + alternating;
+    parts.push(
+      `${total} repeat${total === 1 ? '' : 's'} broken${alternating ? ` (${alternating} back and forth)` : ''}`,
+    );
   }
   if (trace.wallMs !== undefined) parts.push(`${(trace.wallMs / 1000).toFixed(1)}s`);
   return parts.join(', ');

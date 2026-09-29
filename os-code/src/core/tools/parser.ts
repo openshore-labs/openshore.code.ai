@@ -298,15 +298,22 @@ export function toolCallJsonSchema(registry: ToolRegistry): Record<string, unkno
  */
 export function textProtocolInstructions(
   tools: ToolRegistry | readonly ToolSpec[],
-  options: { terse?: boolean } = {},
+  options: { terse?: boolean; header?: string } = {},
 ): string {
   const specs: readonly ToolSpec[] = Array.isArray(tools)
     ? (tools as readonly ToolSpec[])
     : (tools as ToolRegistry).specs();
+  // A reply held to the union schema answers in JSON too (`{"say": ...}`), so
+  // union decoding brings its own opening lines (harness/decoding.ts).
+  const header =
+    options.header ??
+    [
+      'TOOLS. You can use tools. To call one, reply with ONLY a single JSON object on its own line, nothing else:',
+      '{"tool": "<name>", "args": { ... }}',
+      'After the tool runs you will receive its output and can continue. When the task is done, reply with your answer as plain text and NO JSON object.',
+    ].join('\n');
   return [
-    'TOOLS. You can use tools. To call one, reply with ONLY a single JSON object on its own line, nothing else:',
-    '{"tool": "<name>", "args": { ... }}',
-    'After the tool runs you will receive its output and can continue. When the task is done, reply with your answer as plain text and NO JSON object.',
+    header,
     'Available tools:',
     specs.map((spec) => (options.terse ? terseToolDoc(spec) : fullToolDoc(spec))).join('\n'),
   ].join('\n');
