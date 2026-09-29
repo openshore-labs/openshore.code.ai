@@ -2,8 +2,12 @@
 // (web search, page fetch, catalog refresh, cloud APIs) passes through here.
 // Local endpoints (Ollama, LM Studio, a self-hosted SearXNG on the LAN or
 // tailnet) are always allowed: local-first traffic is the point of the product.
+// A web tool is the exception (D3): the model steers its address, so a page
+// fetch or a redirect into this computer's own network asks first, unless it
+// is a configured model server or search service.
+import { lookup } from 'node:dns/promises';
 import { ownTailnetSuffix } from '../../connect/tailscale.js';
-import { hostIsLocal } from '../../harness/locality.js';
+import { hostIsLocal, isIPv4Literal, isIPv6Literal } from '../../harness/locality.js';
 
 export interface EgressConfig {
   /** Master switch for the web tools (search + fetch). Default on, always visible. */
@@ -50,8 +54,74 @@ function hostMatches(host: string, entry: string): boolean {
   return host === e || host.endsWith(`.${e}`);
 }
 
+/** The purposes a model steers (the web tools): a target on this computer's
+ *  own network asks before it is reached (D3). */
+const WEB_PURPOSES: ReadonlySet<EgressPurpose> = new Set(['web-search', 'web-fetch']);
+
+/** Asked before a web tool reaches an address on this computer's own
+ *  network; true lets it through. The agent loop answers it with an approval
+ *  card, once per session for each host. */
+export type LocalReachGate = (
+  url: string,
+  host: string,
+  purpose: EgressPurpose,
+) => Promise<boolean>;
+
+export interface EgressOptions {
+  /** Hosts (`host:port`, as a URL's `host`) on this computer's network that a
+   *  web tool may reach without asking: the configured model servers and a
+   *  self-hosted search service. */
+  localExempt?: readonly string[];
+  /** A name's addresses (tests stand it in). Defaults to the system resolver. */
+  lookup?: (hostname: string) => Promise<string[]>;
+}
+
+/** How long a name lookup for the local check may take before the name is
+ *  judged by itself; the fetch then resolves it on its own. */
+const LOOKUP_TIMEOUT_MS = 3000;
+
+async function systemLookup(hostname: string): Promise<string[]> {
+  const found = await lookup(hostname, { all: true, verbatim: true });
+  return found.map((a) => a.address);
+}
+
+/**
+ * True when an address is on this computer's own network in the widest sense
+ * a web fetch must not reach unasked: loopback, the LAN, the tailnet's
+ * 100.64/10 (all `isLocalHost`), plus link-local 169.254/16 (a cloud
+ * machine's metadata service), 0.0.0.0/8, `::`, unique-local fc00::/7, and an
+ * IPv4 address written as IPv6 (`::ffff:127.0.0.1`).
+ */
+export function addressOnOwnNetwork(address: string): boolean {
+  const a = address
+    .toLowerCase()
+    .replace(/^\[|\]$/g, '')
+    .replace(/%.*$/, '');
+  if (isLocalHost(a)) return true;
+  if (isIPv4Literal(a)) return /^(?:169\.254|0)\./.test(a);
+  if (!isIPv6Literal(a)) return false;
+  if (a === '::' || /^f[cd]/.test(a)) return true;
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(a)?.[1];
+  return mapped !== undefined && addressOnOwnNetwork(mapped);
+}
+
 export class EgressPolicy {
-  constructor(private readonly config: EgressConfig = DEFAULT_EGRESS) {}
+  private localGate?: LocalReachGate;
+  private readonly localExempt: ReadonlySet<string>;
+
+  constructor(
+    private readonly config: EgressConfig = DEFAULT_EGRESS,
+    private readonly options: EgressOptions = {},
+  ) {
+    this.localExempt = new Set((options.localExempt ?? []).map((h) => h.toLowerCase()));
+  }
+
+  /** Who answers before a web tool reaches this computer's own network (the
+   *  agent loop sets it). Without one such a fetch is refused, since nobody
+   *  could be asked. */
+  setLocalGate(gate: LocalReachGate | undefined): void {
+    this.localGate = gate;
+  }
 
   get webEnabled(): boolean {
     return this.config.webEnabled;
@@ -71,11 +141,13 @@ export class EgressPolicy {
     }
     const host = parsed.hostname.toLowerCase();
 
-    if (isLocalHost(host)) {
-      return { allowed: true, reason: 'local endpoint' };
-    }
     if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
       return { allowed: false, reason: `Only http(s) egress is supported, got ${parsed.protocol}` };
+    }
+    // This computer's own network is never the web switch's or the lists' to
+    // refuse; a web tool's fetch there asks first (fetch, below).
+    if (isLocalHost(host)) {
+      return { allowed: true, reason: 'local endpoint' };
     }
     if (this.config.blocklist.some((b) => hostMatches(host, b))) {
       return {
@@ -118,6 +190,9 @@ export class EgressPolicy {
       if (!decision.allowed) {
         throw new EgressBlocked(current, decision.reason);
       }
+      // A web tool's target (or a redirect's) on this computer's own network
+      // asks first, judged by the address the name resolves to (D3).
+      if (WEB_PURPOSES.has(purpose)) await this.gateOwnNetwork(current, purpose);
       const res = await fetch(current, currentInit);
       const location = res.headers.get('location');
       if (res.status >= 300 && res.status < 400 && location) {
@@ -134,6 +209,53 @@ export class EgressPolicy {
       return res;
     }
     throw new EgressBlocked(current, `Too many redirects following ${url} (over ${maxHops} hops).`);
+  }
+
+  /** Refuse, or ask, before a web tool reaches this computer's own network:
+   *  loopback (its own apps, the OpenShore daemon among them), the LAN (a
+   *  router's settings page), the tailnet, a cloud machine's metadata
+   *  address. A configured model server or search service passes. */
+  private async gateOwnNetwork(url: string, purpose: EgressPurpose): Promise<void> {
+    const parsed = new URL(url);
+    if (this.localExempt.has(parsed.host.toLowerCase())) return;
+    if (!(await this.onOwnNetwork(parsed.hostname))) return;
+    if (!this.localGate) {
+      throw new EgressBlocked(
+        url,
+        `${parsed.host} is on this computer's own network, and nobody here can approve opening it, so it was not opened.`,
+      );
+    }
+    if (!(await this.localGate(url, parsed.host, purpose))) {
+      throw new EgressBlocked(
+        url,
+        `The person did not allow opening ${parsed.host}, an address on their own network. Use a public address instead, or ask them.`,
+      );
+    }
+  }
+
+  /** Is this name on this computer's own network, by the name itself or by
+   *  any address it resolves to (a public name can point at 127.0.0.1)? A
+   *  lookup that fails or stalls leaves the name to speak for itself. */
+  private async onOwnNetwork(hostname: string): Promise<boolean> {
+    const host = hostname.replace(/^\[|\]$/g, '');
+    if (addressOnOwnNetwork(host)) return true;
+    if (isIPv4Literal(host) || isIPv6Literal(host.replace(/%.*$/, ''))) return false;
+    const resolve = this.options.lookup ?? systemLookup;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const addresses = await Promise.race([
+        resolve(host),
+        new Promise<string[]>((done) => {
+          timer = setTimeout(() => done([]), LOOKUP_TIMEOUT_MS);
+          timer.unref?.();
+        }),
+      ]);
+      return addresses.some(addressOnOwnNetwork);
+    } catch {
+      return false;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 }
 

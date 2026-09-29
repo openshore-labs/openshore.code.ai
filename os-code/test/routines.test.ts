@@ -16,7 +16,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import type { DriverEvent } from '../src/core/agent/types.js';
 import {
   PRESET_ROUTINE,
@@ -40,6 +40,7 @@ import {
   WORKSPACE_NOT_ALLOWED,
   _resetRoutineScheduler,
   defaultOpenSession,
+  offlineLine,
   routineInstructions,
   summarize,
   type RoutineDriver,
@@ -176,7 +177,12 @@ function makeScheduler(
   clock: { now: Date },
   opts: {
     approvalTimeoutMs?: number;
-    openSession?: () => { driver: FakeDriver; warnings: string[]; model?: string };
+    openSession?: () => {
+      driver: FakeDriver;
+      warnings: string[];
+      model?: string;
+      offline?: string[];
+    };
     lock?: { acquire: () => { pid: number; startedAt: string }; release: () => void };
     allowed?: Set<string>;
     vaultRoot?: () => string;
@@ -839,6 +845,90 @@ describe('routine scheduler', () => {
     desk.driver.dispose();
     // And the run is told its report becomes the note on its own.
     expect(routineInstructions(routine)).toContain("saved to their vault as this run's note");
+  });
+
+  // CTO 3 (2026-09-29): headless means offline. A routine reads files other
+  // people wrote, so no tool that reaches the network is there, and a network
+  // step is denied outright, never left waiting on an approval.
+  it('a headless run has neither web tool, and names what it left out', () => {
+    writeFileSync(
+      join(home, 'config.json'),
+      JSON.stringify({ stack: { orchestrator: { provider: 'ollama', model: 'qwen' } } }),
+    );
+    const routine = store.createRoutine(input({ access: 'edit' }));
+    let tools: string[] = [];
+    let decide: ((risk: 'network') => string) | undefined;
+    const opened = defaultOpenSession(routine, 'default', (options) => {
+      const result = bootstrapSession({ ...options, persist: false });
+      tools = result.tools.names();
+      const permissions = (
+        result.agent as unknown as {
+          deps: { permissions: { decide(q: object): { decision: string } } };
+        }
+      ).deps.permissions;
+      decide = (risk) => permissions.decide({ toolName: 'webFetch', risk }).decision;
+      return result;
+    });
+    (opened.driver as unknown as { dispose(): void }).dispose();
+    expect(tools).not.toContain('webSearch');
+    expect(tools).not.toContain('webFetch');
+    expect(opened.offline).toEqual(['webSearch', 'webFetch']);
+    expect(decide?.('network')).toBe('deny');
+    // A session at the desk keeps both.
+    const desk = bootstrapSession({ cwd: workspace, profile: 'local-interactive', persist: false });
+    expect(desk.tools.names()).toEqual(expect.arrayContaining(['webSearch', 'webFetch']));
+    expect(desk.offlineTools).toEqual([]);
+    desk.driver.dispose();
+    expect(routineInstructions(routine)).toContain('This run is offline');
+  });
+
+  it('the run note says it ran offline, and names the search it tried', () => {
+    const routine = store.createRoutine(input());
+    const clock = { now: at(0, 6, 0, 5) };
+    const driver = new FakeDriver();
+    const { scheduler } = makeScheduler(clock, {
+      openSession: () => ({ driver, warnings: [], offline: ['webSearch', 'webFetch'] }),
+    });
+    scheduler.runNow(routine.id);
+    const call = (id: string, query: string) => ({ id, name: 'webSearch', args: { query } });
+    driver.emit({
+      type: 'tool-denied',
+      call: call('c1', 'react 19\nrelease "notes"'),
+      reason: 'x',
+    });
+    driver.emit({ type: 'tool-denied', call: call('c2', 'second query'), reason: 'x' });
+    driver.emit({ type: 'text-final', text: 'Reviewed the diff.' });
+    driver.emit({ type: 'task-done', reason: 'complete' });
+    const run = scheduler.get(routine.id)!.lastRun!;
+    const text = readFileSync(join(vault, run.notePath!), 'utf8');
+    expect(text).toContain('It ran offline, so it could not search the web or open web pages.');
+    const ws = basename(workspace);
+    expect(text).toContain(
+      `Note: It tried to search the web for "react 19 release 'notes'", but routines work offline, so it used only the files in ${ws}.`,
+    );
+    expect(text).not.toContain('second query');
+    // A refused search is not a step the run took.
+    expect(run.steps).toBe(0);
+  });
+
+  it('a run that never reached for the web has no Note line about it', () => {
+    const routine = store.createRoutine(input());
+    const clock = { now: at(0, 6, 0, 5) };
+    const { scheduler, opened } = makeScheduler(clock);
+    scheduler.runNow(routine.id);
+    opened[0]!.emit({ type: 'text-final', text: 'All green.' });
+    opened[0]!.emit({ type: 'task-done', reason: 'complete' });
+    const text = readFileSync(join(vault, scheduler.get(routine.id)!.lastRun!.notePath!), 'utf8');
+    expect(text).toContain('It ran offline.');
+    expect(text).not.toContain('tried to search');
+  });
+
+  it('names what an offline run left out in plain words', () => {
+    expect(offlineLine(['webSearch'])).toBe('It ran offline, so it could not search the web.');
+    expect(offlineLine(['webSearch', 'webFetch', 'codemagic', 'askHermes', 'cliAgent'])).toBe(
+      'It ran offline, so it could not search the web, open web pages, start Codemagic builds, or hand work to another agent.',
+    );
+    expect(offlineLine(undefined)).toBe('It ran offline.');
   });
 
   // Vault M5 (CTO J13): a Crew run neither writes nor reads a handoff, so a

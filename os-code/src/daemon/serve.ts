@@ -1762,11 +1762,14 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           sendJson(res, 404, { error: `No pending approval ${parts[3]} on session ${id}.` });
           return;
         }
+        // A commit card's ticked files (D3): strings only, or none at all.
+        const files = approvalFiles(body.files);
         driver.answerApproval(parts[3], {
           approve: body.approve,
           alwaysThisSession: Boolean(body.alwaysThisSession),
           alwaysInProject: Boolean(body.alwaysInProject),
           reason: typeof body.reason === 'string' ? body.reason : undefined,
+          ...(files ? { files } : {}),
         });
         sendJson(res, 200, { resolved: true });
         return;
@@ -2095,4 +2098,13 @@ async function readJson(
 
 function isPermissionMode(v: unknown): v is PermissionMode {
   return typeof v === 'string' && (PERMISSION_MODES as readonly string[]).includes(v);
+}
+
+/** The files a commit card's answer names, when it names a list of strings
+ *  (D3); anything else names none, so the commit keeps its default of
+ *  leaving flagged files out. Capped, since a commit card lists what git
+ *  would stage, never tens of thousands of names. */
+export function approvalFiles(value: unknown): string[] | undefined {
+  if (!Array.isArray(value) || value.length > 10_000) return undefined;
+  return value.every((v) => typeof v === 'string') ? (value as string[]) : undefined;
 }

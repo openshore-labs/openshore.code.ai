@@ -18,7 +18,9 @@ import {
   buildToolContext,
   buildToolRegistry,
   lazyVaultPrivacy,
+  networkToolsLeftOut,
   vaultPrivacyConfig,
+  type ToolRegistryOptions,
 } from './registry.js';
 import { createVaultContextSource, currentStateReader } from '../vault/contextSource.js';
 import { AgentSession } from './loop.js';
@@ -147,8 +149,9 @@ export interface BootstrapOptions {
   vaultPins?: string[];
   /** Whether the person allowed web search on the device that opened this
    *  session (the app asks once: the search words go to a search service).
-   *  False leaves the webSearch tool out. Undefined (the CLI, routines) keeps
-   *  it, under the config's own egress rules. */
+   *  False leaves the webSearch tool out. Undefined (the CLI) keeps it, under
+   *  the config's own egress rules. A headless run (a routine) leaves it out
+   *  whatever this says: headless means offline. */
   webSearch?: boolean;
   /** May this session's person let a check command run after changes (v1
    *  Phase 1)? The daemon passes false for a member's session on a shared
@@ -205,6 +208,10 @@ export interface BootstrapResult {
    *  sends a task: a cloud orchestrator under a profile that cannot auto-
    *  approve spend can never finish a turn. */
   orchestratorKind: 'local' | 'cloud';
+  /** The tools an offline (headless) session left out that it would
+   *  otherwise have, by name; empty for every other session. The run's note
+   *  names them (CTO 3). */
+  offlineTools: string[];
 }
 
 export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
@@ -320,7 +327,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   // keeps the machine's vault.
   const vaultRoot: string | null | undefined = options.vaultRoot;
 
-  const tools = buildToolRegistry({
+  const registryOptions: ToolRegistryOptions = {
     stackHasVision:
       Boolean(stack.specialists.vision) || stack.orchestrator.provider.kind === 'cloud',
     stackHasImageGen: stack.imageGen,
@@ -335,7 +342,12 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     // the run, so it keeps the vault reads and drops the write.
     vaultWrite: options.profile !== 'headless',
     memory: config.memory?.enabled !== false,
-  });
+    // Headless means offline (CTO 3): nothing that reaches the network is
+    // registered, and the profile denies a network step outright.
+    offline: options.profile === 'headless',
+  };
+  const tools = buildToolRegistry(registryOptions);
+  const offlineTools = networkToolsLeftOut(registryOptions);
   const toolContext = buildToolContext({
     cwd: options.cwd,
     config,
@@ -512,6 +524,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     // egress lockdown exactly like cloud escalation and the currents tools.
     harnessCurrents: egressLockdown ? undefined : harnessCurrents,
     permissionMode: options.permissionMode,
+    ...(offlineTools.length ? { offlineTools } : {}),
     ...(options.canGrantVerify === false ? { canGrantVerify: false } : {}),
     vaultContext,
     ...(handoffOn ? { onHandoff: (record) => void writeHandoff(handoffScope(), record) } : {}),
@@ -545,7 +558,17 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     }
   }
 
-  return { driver, agent, router, config, toolContext, tools, warnings, orchestratorKind };
+  return {
+    driver,
+    agent,
+    router,
+    config,
+    toolContext,
+    tools,
+    warnings,
+    orchestratorKind,
+    offlineTools,
+  };
 }
 
 /** A revived session's stored currents, less a CLI handle whose command is no

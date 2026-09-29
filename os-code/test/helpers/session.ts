@@ -7,7 +7,7 @@ import { ConfigSchema, type OscConfig } from '../../src/config/schema.js';
 import { ProviderRegistry } from '../../src/providers/registry.js';
 import { resolveStack } from '../../src/router/stack.js';
 import { Router } from '../../src/router/router.js';
-import { buildToolRegistry } from '../../src/core/agent/registry.js';
+import { buildToolRegistry, networkToolsLeftOut } from '../../src/core/agent/registry.js';
 import { AgentSession, type AgentDeps } from '../../src/core/agent/loop.js';
 import { PermissionEngine, type PermissionConfig } from '../../src/core/permissions/index.js';
 import { Guardrails } from '../../src/core/guardrails/index.js';
@@ -66,6 +66,11 @@ export interface TestSessionOptions {
   buildHandoff?: AgentDeps['buildHandoff'];
   /** False for a member's session on a shared hub (v1 Phase 1 verify grant). */
   canGrantVerify?: boolean;
+  /** Build the session offline, as bootstrap builds a headless one (CTO 3):
+   *  no network tool registered, each refused by name. */
+  offline?: boolean;
+  /** The permission mode to start in. */
+  permissionMode?: AgentDeps['permissionMode'];
 }
 
 export function makeTestSession(
@@ -113,13 +118,16 @@ export function makeTestSession(
 
   const stack = resolveStack(config, registry);
   const router = new Router(config, registry, stack);
-  const tools = buildToolRegistry({
+  const registryOptions = {
     stackHasVision: false,
     stackHasImageGen: false,
     stackHasSpecialists: false,
     // As bootstrap does: the Memory switch off leaves the tool out.
     memory: config.memory.enabled,
-  });
+    ...(options.offline ? { offline: true } : {}),
+  };
+  const tools = buildToolRegistry(registryOptions);
+  const offlineTools = networkToolsLeftOut(registryOptions);
 
   // events and approvals are declared above, because the ethics onBlock closure
   // handed to the provider registry pushes into events before this point.
@@ -152,6 +160,8 @@ export function makeTestSession(
     onHandoff: options.onHandoff,
     buildHandoff: options.buildHandoff,
     ...(options.canGrantVerify === false ? { canGrantVerify: false } : {}),
+    ...(offlineTools.length ? { offlineTools } : {}),
+    ...(options.permissionMode ? { permissionMode: options.permissionMode } : {}),
     approver: async (request) => {
       approvals.push(request);
       return options.approve ? options.approve(request) : { approve: true };

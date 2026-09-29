@@ -152,6 +152,22 @@ describe('TerminalManager.killAll', () => {
   });
 });
 
+// The resolver's answer on a real Windows machine (CTO 10): the windows-latest
+// CI job runs this, so the probes, `git --exec-path` and the spawn are the
+// real ones there, not the injected ones below.
+describe.runIf(process.platform === 'win32')('resolveShell on this Windows machine', () => {
+  it('finds a shell that runs a command, and never the WSL launcher', async () => {
+    const shell = resolveShell();
+    expect(shell.file).not.toMatch(/system32\\bash\.exe$/i);
+    expect(shellInfo().platform).toBe('win32');
+    const dir = mkdtempSync(join(tmpdir(), 'osc-win-'));
+    const result = await runCommand({ command: 'echo osc-ok', cwd: dir, stdin: 'ignore' }).done;
+    rmSync(dir, { recursive: true, force: true });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('osc-ok');
+  });
+});
+
 describe('resolveShell', () => {
   const windowsEnv = {
     ProgramFiles: 'C:\\Program Files',

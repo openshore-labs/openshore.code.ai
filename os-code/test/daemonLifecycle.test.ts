@@ -220,7 +220,10 @@ describe('the legacy shared token (H1)', () => {
     const fresh = readFileSync(join(home, 'daemon.token'), 'utf8').trim();
     expect(fresh).not.toBe(legacy);
     expect(fresh.startsWith('osc_')).toBe(true);
-    expect(statSync(join(home, 'daemon.token')).mode & 0o777).toBe(0o600);
+    // Windows keeps no POSIX mode bits to read back.
+    if (process.platform !== 'win32') {
+      expect(statSync(join(home, 'daemon.token')).mode & 0o777).toBe(0o600);
+    }
     expect((await fetch(`${base}/health`, { headers: auth(legacy) })).status).toBe(401);
     expect((await fetch(`${base}/health`, { headers: auth(fresh) })).status).toBe(200);
   });

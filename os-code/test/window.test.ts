@@ -28,7 +28,8 @@ import {
 } from '../src/context/compaction.js';
 import { ConfigSchema, type OpenAICompatibleEndpoint } from '../src/config/schema.js';
 import { globalConfigPath } from '../src/config/load.js';
-import { platformWord, nextFailStreak } from '../src/core/agent/window.js';
+import { nextFailStreak } from '../src/core/agent/window.js';
+import { platformAndShell, platformWord } from '../src/core/exec/shell.js';
 import { MERGED_VAULT_TOOL } from '../src/core/agent/registry.js';
 import { OBSERVATION_MAX_CHARS, observationCapChars } from '../src/harness/profile.js';
 import { vaultTraceFields } from '../src/eval/v2.js';
@@ -671,7 +672,9 @@ describe('the platform word (C1, CTO 10)', () => {
     const session = makeTestSession(provider);
     await session.agent.run('hello');
     const system = String(provider.requests[0]!.messages[0]!.content);
-    expect(system).toContain(`(platform: ${platformWord(process.platform)})`);
-    if (process.platform !== 'linux') expect(system).not.toContain('(platform: linux)');
+    // The shell rides beside the platform word (CTO 10, the security package).
+    expect(system).toContain(`(platform: ${platformAndShell()})`);
+    expect(system).toContain(`(platform: ${platformWord(process.platform)}, `);
+    if (process.platform !== 'linux') expect(system).not.toContain('(platform: linux');
   });
 });

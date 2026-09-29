@@ -3,6 +3,7 @@
 // cloud quota gets its own distinct confirmation.
 import { posix } from 'node:path';
 import { minimatch } from '../util/minimatch.js';
+import { foldPath } from '../../harness/vault/paths.js';
 import type { SecurityProfile } from '../security/profiles.js';
 import { PROJECT_MEMORY_WRITE_TOOL, isMemoryFilePath } from '../agent/projectMemory.js';
 import { shellForThisMachine, type ShellChoice } from '../exec/shell.js';
@@ -51,6 +52,19 @@ export const SHELL_WRAPPERS: ReadonlySet<string> = new Set([
   'pwsh',
   'powershell',
   'cmd',
+  // Interpreters and package runners: each runs whatever code or package its
+  // arguments name (`node -e`, `python -c`, `npx some-package`), so a saved
+  // `node` would allow any program at all (D3).
+  'node',
+  'python',
+  'python3',
+  'perl',
+  'ruby',
+  'npx',
+  'bunx',
+  'deno',
+  // The Windows launcher for python.
+  'py',
 ]);
 
 const FOLDED_WRAPPERS: ReadonlySet<string> = new Set(
@@ -58,15 +72,51 @@ const FOLDED_WRAPPERS: ReadonlySet<string> = new Set(
 );
 
 /** A shell wrapper by any spelling that still runs it: PowerShell and cmd
- *  ignore case (`IEX`, `PowerShell.exe`), so does a Mac's disk (`Bash`), and
- *  a path names the same program (`/bin/sh`, `C:\Windows\System32\cmd.exe`). */
+ *  ignore case (`IEX`, `PowerShell.exe`), so does a Mac's disk (`Bash`), a
+ *  path names the same program (`/bin/sh`, `C:\Windows\System32\cmd.exe`),
+ *  and a versioned interpreter is the interpreter (`python3.12`, `perl5.34`). */
 export function isShellWrapper(word: string): boolean {
-  const base = word.split(/[\\/]/).pop() ?? word;
-  return FOLDED_WRAPPERS.has(base.toLowerCase().replace(/\.exe$/, ''));
+  const base = programOf(word);
+  return FOLDED_WRAPPERS.has(base) || /^(?:python|perl|ruby|node)[\d.]+$/.test(base);
 }
 
-/** The boundaries between the simple commands of a shell line. */
-const SEGMENT_SPLIT = /\n|;|&&|\|\||\||&/;
+/** The boundaries between the simple commands of a shell line. An `&` that
+ *  belongs to a redirect (`2>&1`, `&>`) joins, never splits. */
+const SEGMENT_SPLIT = /\n|;|&&|\|\||\||(?<![<>])&(?!>)/;
+
+/** A redirect that leaves a segment harmless: a descriptor copied onto
+ *  another (`2>&1`) or output thrown away (`> /dev/null`). Any other `>` or
+ *  `>>` writes a file the permission engine never saw, so it breaks a match. */
+const HARMLESS_REDIRECT = /(?:\d|&)?>>?\s*(?:&\d+|\/dev\/null)(?=\s|$)/g;
+
+/** Would this one segment reach past its first word? A command
+ *  substitution, a process substitution (`<(` or `>(`), or a redirect into a
+ *  file all run or write something the prefix never named. */
+function segmentEscapes(segment: string): boolean {
+  if (segment.includes('$(') || segment.includes('`')) return true;
+  if (segment.includes('<(') || segment.includes('>(')) return true;
+  return segment.replace(HARMLESS_REDIRECT, ' ').includes('>');
+}
+
+/** Git's global options that point git at a program: `-c core.pager=...`
+ *  and `-c alias.x=!...` run a command, `--config-env` does the same through
+ *  a variable, and `--exec-path` swaps the folder git runs its helpers from. */
+function gitRunsConfiguredProgram(words: string[]): boolean {
+  for (let i = 1; i < words.length; i++) {
+    const w = words[i]!;
+    if (!w.startsWith('-')) return false;
+    if (w === '-c' || w.startsWith('--config-env') || w.startsWith('--exec-path=')) return true;
+    // `-C <dir>` takes the next word as its argument.
+    if (w === '-C') i += 1;
+  }
+  return false;
+}
+
+/** A command's first word as the program it runs: its last path part,
+ *  lowercased, without `.exe`. */
+function programOf(word: string): string {
+  return (word.split(/[\\/]/).pop() ?? word).toLowerCase().replace(/\.exe$/, '');
+}
 
 /**
  * Does every simple command in `command` start with exactly `prefix`?
@@ -92,10 +142,83 @@ export function commandMatchesPrefix(
     .filter(Boolean);
   if (!segments.length) return false;
   return segments.every((segment) => {
-    if (segment.includes('$(') || segment.includes('`')) return false;
-    const first = segment.split(/\s+/)[0] ?? '';
+    if (segmentEscapes(segment)) return false;
+    const words = segment.split(/\s+/);
+    const first = words[0] ?? '';
+    if (programOf(first) === 'git' && gitRunsConfiguredProgram(words)) return false;
+    if (carriesCode(words)) return false;
     return first === prefix && !isShellWrapper(first);
   });
+}
+
+/** Flags that hand an interpreter, a database client or a script runner the
+ *  code to run on the command line: `-e` and `--eval` (node, perl, ruby,
+ *  osascript, tsx), `-c` (python, psql, `npm exec -c`), `-p` and `--print`
+ *  (node, perl). Python's `-m` needs no entry: every python spelling is a
+ *  wrapper already. */
+const CODE_FLAGS: ReadonlySet<string> = new Set(['-e', '-c', '-p', '--eval', '--print']);
+
+/** File utilities whose `-c`, `-e` or `-p` means count, a pattern, or make
+ *  the parents (`grep -c`, `mkdir -p`), never code, so their grants still
+ *  save and match. */
+const PLAIN_FLAG_PROGRAMS: ReadonlySet<string> = new Set([
+  'mkdir',
+  'cp',
+  'mv',
+  'ls',
+  'grep',
+  'egrep',
+  'fgrep',
+  'rg',
+  'wc',
+  'cut',
+  'head',
+  'tail',
+  'sort',
+  'uniq',
+  'diff',
+  'cat',
+  'touch',
+  'rm',
+  'echo',
+]);
+
+/** Does this simple command hand its program code on the command line? */
+function carriesCode(words: string[]): boolean {
+  if (PLAIN_FLAG_PROGRAMS.has(programOf(words[0] ?? ''))) return false;
+  return words.slice(1).some((w) => CODE_FLAGS.has(w));
+}
+
+/**
+ * Why "always allow this command in this project" cannot be saved for
+ * `command`, in one plain sentence, or undefined when it can. The rule the
+ * loop would save is the first word, so it is refused when that word runs
+ * other programs (a wrapper or an interpreter, which covers python's `-m`),
+ * when the command hands a program code on its command line (`-e`, `-c`,
+ * `-p`, `--eval`), when git is pointed at a program (`git -c`), and under
+ * PowerShell, where no prefix grant ever matches (D3, CTO 10). Matching
+ * refuses the same commands, so a rule saved from a plain call never
+ * reaches a later one that carries code.
+ */
+export function prefixGrantRefusal(
+  command: string,
+  shell: ShellChoice['kind'] = shellForThisMachine().kind,
+): string | undefined {
+  const words = command.trim().split(/\s+/).filter(Boolean);
+  const first = words[0] ?? '';
+  if (shell === 'powershell') {
+    return 'Commands run in PowerShell on this computer, where a saved command rule never applies, so it will keep asking.';
+  }
+  if (!first || isShellWrapper(first)) {
+    return 'That command starts with a shell wrapper, so it will keep asking.';
+  }
+  if (programOf(first) === 'git' && gitRunsConfiguredProgram(words)) {
+    return 'That git command sets a program for git to run (git -c), so it will keep asking.';
+  }
+  if (carriesCode(words)) {
+    return 'That command runs code written on its own command line, so it will keep asking.';
+  }
+  return undefined;
 }
 
 export interface PermissionConfig {
@@ -152,11 +275,29 @@ export interface PermissionResult {
  * what runs next time. `path` is workspace-relative, as the jail computed it.
  */
 export function protectedWrite(path: string): 'deny' | 'ask' | undefined {
-  const segments = posix.normalize(path).replace(/^\.\//, '').split('/');
-  if (segments.includes('.git')) return 'deny';
+  const segments = permissionPath(path).replace(/^\.\//, '').split('/').map(protectedName);
+  if (segments.includes('.git') || segments.some((s) => /^git~\d+$/.test(s))) return 'deny';
   if (segments[segments.length - 1] === 'os-code.config.json') return 'ask';
   if (segments.includes('.claude') || segments.includes('.codex')) return 'ask';
   return undefined;
+}
+
+/** A path as the permission engine compares it: a backslash is a separator
+ *  (the Windows spelling, and what a model writes there), then the dotted
+ *  segments are folded away (`./a`, `a/../b`), so a glob sees one spelling. */
+export function permissionPath(path: string): string {
+  return posix.normalize(path.replace(/\\/g, '/'));
+}
+
+/** One path segment as a disk that ignores case and Windows would open it:
+ *  folded (`.GIT` is `.git` on a Mac or Windows disk), with Windows' trailing
+ *  dots and spaces dropped (`.git.` opens `.git`) and any stream name cut
+ *  (`.git::$INDEX_ALLOCATION`). A short name like `GIT~1` is caught by the
+ *  caller. For comparing only, never for writing. */
+function protectedName(segment: string): string {
+  const colon = segment.indexOf(':');
+  const folded = foldPath(colon === -1 ? segment : segment.slice(0, colon));
+  return folded.replace(/[. ]+$/, '') || folded;
 }
 
 export class PermissionEngine {
@@ -194,7 +335,16 @@ export class PermissionEngine {
     if (risk === 'shell') return !this.profile.allowShellAutoApprove;
     if (risk === 'cloud-spend') return !this.profile.allowCloudAutoApprove;
     if (risk === 'push') return !this.profile.allowPushAutoApprove;
+    if (risk === 'network') return !this.profile.allowNetworkAutoApprove;
     return false;
+  }
+
+  /** A network step on a profile with nobody to ask (headless) is denied,
+   *  never asked: an unanswered ask would hold the run for 15 minutes and
+   *  then decline anyway, and the step is one an injected line could use to
+   *  send a secret out (CTO 3). */
+  private networkRefused(risk: ToolRisk): boolean {
+    return risk === 'network' && this.autoAllowBlocked(risk);
   }
 
   decide(q: PermissionQuery): PermissionResult {
@@ -212,9 +362,18 @@ export class PermissionEngine {
 
   private evaluate(q: PermissionQuery): PermissionResult {
     // Belt and braces under the loop's jail-based normalization (ENG-3): a
-    // dotted spelling (`./secrets/k`, `src/../secrets/k`) must match the same
-    // globs as the plain one, whoever built the query.
-    const path = q.path === undefined ? undefined : posix.normalize(q.path);
+    // dotted spelling (`./secrets/k`, `src/../secrets/k`) or a backslashed one
+    // (`secrets\\k`) must match the same globs as the plain one, whoever
+    // built the query.
+    const path = q.path === undefined ? undefined : permissionPath(q.path);
+
+    // Headless means offline: before any grant, rule, or default can allow it.
+    if (this.networkRefused(q.risk)) {
+      return {
+        decision: 'deny',
+        reason: `routines work offline, so ${q.toolName} does not run on the ${this.profile?.name ?? 'restricted'} profile`,
+      };
+    }
 
     // Files that decide what code runs, before any grant, rule, or trusted
     // repo can make a write to them quiet (see protectedWrite).
