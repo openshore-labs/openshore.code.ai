@@ -28,7 +28,8 @@ import {
   type HarnessCurrentsHandle,
 } from '../currents/model.js';
 import { runCommand as spawnCommand, type CommandRun } from '../core/exec/commandRunner.js';
-import { capContent } from '../core/tools/index.js';
+import { localAddresses, stripAnsi } from '../core/exec/localAddress.js';
+import { capContent, type ProcessView } from '../core/tools/index.js';
 import { walkFiles } from '../core/tools/walk.js';
 import { relative } from 'node:path';
 import { simpleGit } from 'simple-git';
@@ -591,6 +592,67 @@ const INFO_MILESTONES = new Set<DriverEvent['type']>([
   'terminal-closed',
 ]);
 
+// ---- processes the agent started (P1, "run my app") ------------------------
+
+/** The most programs one session's agent keeps running at once. */
+export const AGENT_PROCESS_LIMIT = 3;
+/** The rolling tail of output kept per process for readProcess (64 KB). */
+export const AGENT_PROCESS_TAIL_CHARS = 64 * 1024;
+/** Ended processes a session keeps for a last read, beyond the live ones. */
+const ENDED_AGENT_PROCESSES_KEPT = 5;
+/** The longest unended line read for an address. */
+const PARTIAL_LINE_CHARS = 4096;
+
+/** One program the agent started, live or ended, as its driver keeps it. */
+interface AgentProcess {
+  runId: string;
+  command: string;
+  startedAt: number;
+  endedAt?: number;
+  running: boolean;
+  exitCode?: number | null;
+  startError?: string;
+  /** The last AGENT_PROCESS_TAIL_CHARS of its output, stdout and stderr in
+   *  the order they arrived, already secret-redacted by the runner. */
+  tail: string;
+  dropped: boolean;
+  /** The local addresses it printed, first seen first. */
+  addresses: string[];
+  /** The line it is printing now, not yet ended: an address is read from
+   *  whole lines only, so one split between two chunks is never taken for a
+   *  shorter one. */
+  partial: string;
+  /** Who ended it before it exited: the agent's stopProcess, the person's
+   *  Stop on its card, or the session closing. */
+  stoppedBy?: 'agent' | 'person' | 'session';
+  /** Its command-end was emitted already (the session closed first). */
+  endEmitted: boolean;
+  /** Woken on each chunk and at the end (startProcess waits on them). */
+  waiters: Set<() => void>;
+}
+
+// Every live program an agent started in this OS process. A session ends its
+// own when it is disposed or evicted and when its daemon or the app closes;
+// this is the last net for a host that exits without that (the CLI), since a
+// command runs in its own process group and would outlive OpenShore with
+// nothing left able to stop it.
+const liveAgentRuns = new Set<CommandRun>();
+let agentExitNet = false;
+
+function holdAgentRun(run: CommandRun): void {
+  liveAgentRuns.add(run);
+  if (agentExitNet) return;
+  agentExitNet = true;
+  process.on('exit', () => {
+    for (const live of liveAgentRuns) live.kill();
+  });
+}
+
+/** Wake whoever waits on a process (a chunk arrived, or it ended). */
+function wake(proc: AgentProcess): void {
+  for (const waiter of [...proc.waiters]) waiter();
+}
+
 /**
  * LocalDriver: owns one AgentSession, an event journal, and the approval
  * hand-off between the loop (which awaits) and whichever UI is attached.
@@ -619,6 +681,10 @@ export class LocalDriver implements SessionDriver {
   // outcomes without a screenshot).
   private commands = new Map<string, CommandRun>();
   private pendingTerminalContext: string[] = [];
+  // The programs the agent started on that same lane (startProcess), keyed by
+  // runId: every live one and the last few that ended, each with the tail of
+  // its output for readProcess.
+  private agentProcesses = new Map<string, AgentProcess>();
   // Set once the first completed exchange has been titled, so the cheap title
   // call runs once per session, never per turn.
   private titled = false;
@@ -712,15 +778,17 @@ export class LocalDriver implements SessionDriver {
 
   /**
    * True when dropping this driver from memory loses nothing: it is stored on
-   * disk (rehydratable), no task is running or queued, no command is live, no
-   * approval is pending, and no client is attached (DAE-12).
+   * disk (rehydratable), no task is running or queued, no command the person
+   * ran is live, no approval is pending, and no client is attached (DAE-12).
+   * A program the agent started does not hold the session: eviction ends it,
+   * so nothing runs on unattended once nobody has touched the chat (P1).
    */
   get evictable(): boolean {
     return (
       this.persist &&
       !this.running &&
       this.queue.length === 0 &&
-      this.commands.size === 0 &&
+      ![...this.commands.keys()].some((runId) => !this.agentProcesses.has(runId)) &&
       this.pendingApprovals.size === 0 &&
       this.viewers.size === 0
     );
@@ -729,11 +797,13 @@ export class LocalDriver implements SessionDriver {
   /** Release what an evicted driver holds: its listeners and its in-memory
    *  journal copy. The journal on disk is the source of truth from here.
    *  The session is ending here, so its agent writes a last handoff first
-   *  (J13; a no-op when nothing changed since the last one). */
+   *  (J13; a no-op when nothing changed since the last one), and every
+   *  program the agent started ends with it (P1). */
   dispose(): void {
     try {
       this.agent?.flushHandoff();
     } catch {}
+    this.stopAgentProcesses();
     markClosed(this);
     this.sinks.clear();
     this.viewers.clear();
@@ -1058,16 +1128,19 @@ export class LocalDriver implements SessionDriver {
   private static readonly MAX_PENDING_CONTEXT = 16;
 
   /**
-   * Run a command the user asked for (not the agent). Streams output as
-   * command-* events, records the result for the model's next turn, and
-   * returns the runId the caller drives (stdin, kill). The authenticated
-   * owner's tap IS the approval; this raises no model approval.
+   * Run a command on the lane: one the person asked for (`source: 'user'`,
+   * the default), or a program the agent started (`'agent'`, through
+   * startAgentProcess). Streams output as command-* events, records the result
+   * for the model's next turn, and returns the runId the caller drives (stdin,
+   * kill). For the person's own command, the authenticated owner's tap IS the
+   * approval; an agent's start was already approved as a shell step.
    */
   runCommand(command: string, opts: { source?: 'user' | 'agent' } = {}): { runId: string } {
     this.lastActivityAt = Date.now();
     const runId = randomUUID().slice(0, 8);
     const source = opts.source ?? 'user';
     const startedAt = Date.now();
+    const proc = source === 'agent' ? this.trackAgentProcess(runId, command, startedAt) : undefined;
     this.emit({ type: 'command-start', runId, command, cwd: this.cwd, source });
 
     let emitted = 0;
@@ -1076,7 +1149,11 @@ export class LocalDriver implements SessionDriver {
       command,
       cwd: this.cwd,
       stdin: 'pipe',
+      // A program the agent leaves running can print for hours: only its
+      // rolling tail is kept, never the whole output.
+      ...(proc ? { retain: false } : {}),
       onChunk: (stream, text) => {
+        if (proc) this.appendAgentOutput(proc, text);
         if (emitted >= LocalDriver.COMMAND_EMIT_CAP) {
           truncated = true;
           return;
@@ -1091,28 +1168,55 @@ export class LocalDriver implements SessionDriver {
       },
     });
     this.commands.set(runId, run);
+    if (proc) holdAgentRun(run);
 
     void run.done.then((result) => {
       this.commands.delete(runId);
+      liveAgentRuns.delete(run);
       const durationMs = Date.now() - startedAt;
-      this.emit({
-        type: 'command-end',
-        runId,
-        exitCode: result.exitCode,
-        signal: result.signal ?? undefined,
-        durationMs,
-        truncated: truncated || result.timedOut,
-      });
+      if (proc) {
+        // Its last line may not have ended.
+        if (proc.partial) this.noteAddresses(proc, proc.partial);
+        proc.partial = '';
+        proc.running = false;
+        proc.endedAt ??= Date.now();
+        if (proc.exitCode === undefined) proc.exitCode = result.exitCode;
+        if (result.startError) proc.startError = result.startError;
+        this.pruneEndedAgentProcesses();
+        wake(proc);
+      }
+      // A closing session already ended this card (stopAgentProcesses).
+      if (!proc?.endEmitted) {
+        this.emit({
+          type: 'command-end',
+          runId,
+          exitCode: result.exitCode,
+          signal: result.signal ?? undefined,
+          durationMs,
+          truncated: truncated || result.timedOut,
+        });
+      }
       // Frame the result for the model's next turn (drained in pump). Output is
-      // already secret-redacted by the runner; cap the tail for context.
-      const combined = [result.stdout, result.stderr].filter((s) => s.trim()).join('\n');
+      // already secret-redacted by the runner; cap the tail for context. A
+      // program the agent itself stopped needs no line: stopProcess said so,
+      // and a closing session has no next turn.
+      if (proc?.stoppedBy === 'agent' || proc?.stoppedBy === 'session') return;
+      const combined = proc
+        ? stripAnsi(proc.tail)
+        : [result.stdout, result.stderr].filter((s) => s.trim()).join('\n');
       const exitNote = result.startError
         ? `failed to start: ${result.startError}`
         : result.timedOut
           ? 'timed out and was killed'
-          : `exit ${result.exitCode}`;
+          : proc && result.exitCode === null
+            ? proc.stoppedBy === 'person'
+              ? 'stopped by the person'
+              : 'stopped'
+            : `exit ${result.exitCode}`;
+      const who = proc ? 'a process you started,' : 'the user ran';
+      const what = proc ? `\`${command}\`, ended` : `\`${command}\``;
       this.pendingTerminalContext.push(
-        `[terminal] the user ran \`${command}\` in ${this.cwd} (${exitNote}, ${(durationMs / 1000).toFixed(1)}s):\n${capContent(combined, 8000)}`,
+        `[terminal] ${who} ${what} in ${this.cwd} (${exitNote}, ${(durationMs / 1000).toFixed(1)}s):\n${capContent(combined, 8000)}`,
       );
       if (this.pendingTerminalContext.length > LocalDriver.MAX_PENDING_CONTEXT) {
         this.pendingTerminalContext.shift();
@@ -1130,12 +1234,186 @@ export class LocalDriver implements SessionDriver {
     return true;
   }
 
-  /** Ask a running command to stop. */
+  /** Ask a running command to stop (the person's Stop on its card). */
   killCommand(runId: string): boolean {
     const run = this.commands.get(runId);
     if (!run) return false;
+    const proc = this.agentProcesses.get(runId);
+    if (proc?.running && !proc.stoppedBy) proc.stoppedBy = 'person';
     run.kill();
     return true;
+  }
+
+  // ---- programs the agent starts and leaves running (P1) -------------------
+  // The ToolContext.processes seam bootstrap wires: each one is a run on the
+  // lane above with `source: 'agent'`, so it shows as a command card with Stop
+  // on every host, and it ends with this session.
+
+  /** Start a program the agent asked for, unless three it started are still
+   *  running (then say which, so it can stop one). */
+  startAgentProcess(command: string): { runId: string } | { error: string } {
+    const live = this.liveAgentProcesses();
+    if (live.length >= AGENT_PROCESS_LIMIT) {
+      const names = live.map((p) => `${p.runId} (\`${p.command}\`)`).join(', ');
+      return {
+        error: `${AGENT_PROCESS_LIMIT} programs you started are still running: ${names}. Stop one with stopProcess before starting another.`,
+      };
+    }
+    return this.runCommand(command, { source: 'agent' });
+  }
+
+  /** The agent's programs that are still running (not already stopping). */
+  liveAgentProcesses(): Array<{ runId: string; command: string }> {
+    return [...this.agentProcesses.values()]
+      .filter((p) => p.running && !p.stoppedBy)
+      .map((p) => ({ runId: p.runId, command: p.command }));
+  }
+
+  /** The last `lines` of one of the agent's programs, or undefined when it
+   *  did not start that run (a command the person ran, another session's). */
+  readAgentProcess(runId: string, lines: number): ProcessView | undefined {
+    const proc = this.agentProcesses.get(runId);
+    if (!proc) return undefined;
+    // Plain lines: colour codes off, and a line a progress bar redrew with
+    // carriage returns reads as its last state.
+    const all = stripAnsi(proc.tail)
+      .replace(/\r\n/g, '\n')
+      .split('\n')
+      .map((line) => line.slice(line.lastIndexOf('\r') + 1));
+    if (all.length && all[all.length - 1] === '') all.pop();
+    return {
+      runId,
+      command: proc.command,
+      running: proc.running,
+      elapsedMs: (proc.endedAt ?? Date.now()) - proc.startedAt,
+      ...(proc.running ? {} : { exitCode: proc.exitCode ?? null }),
+      ...(proc.startError ? { startError: proc.startError } : {}),
+      output: all.slice(-Math.max(1, lines)).join('\n'),
+      dropped: proc.dropped,
+      addresses: [...proc.addresses],
+    };
+  }
+
+  /** Resolve once the program ends, prints a local address, `ms` pass, or
+   *  the signal aborts: startProcess's wait for it to come up. */
+  settleAgentProcess(runId: string, ms: number, signal?: AbortSignal): Promise<void> {
+    const proc = this.agentProcesses.get(runId);
+    return new Promise((resolve) => {
+      if (!proc || signal?.aborted) {
+        resolve();
+        return;
+      }
+      // Nothing wakes a waiter in the same tick (output and the end arrive as
+      // events), so the timer is set before `finish` can run.
+      const finish = (): void => {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', finish);
+        proc.waiters.delete(check);
+        resolve();
+      };
+      const check = (): void => {
+        if (!proc.running || proc.addresses.length) finish();
+      };
+      proc.waiters.add(check);
+      signal?.addEventListener('abort', finish, { once: true });
+      const timer = setTimeout(finish, Math.max(0, ms));
+      check();
+    });
+  }
+
+  /** Stop one of the agent's own running programs. False for a run it did
+   *  not start, or one that already ended. */
+  stopAgentProcess(runId: string): boolean {
+    const proc = this.agentProcesses.get(runId);
+    const run = this.commands.get(runId);
+    if (!proc || !run || !proc.running) return false;
+    proc.stoppedBy ??= 'agent';
+    run.kill();
+    return true;
+  }
+
+  /**
+   * End every program the agent started: the session is disposed or evicted,
+   * or its daemon or the app is closing. Each card ends now, since a closing
+   * host may not live to see the exit, so a revived session never shows one
+   * running. Returns how many it stopped.
+   */
+  stopAgentProcesses(): number {
+    let stopped = 0;
+    for (const proc of this.agentProcesses.values()) {
+      const run = this.commands.get(proc.runId);
+      if (!proc.running || !run) continue;
+      proc.stoppedBy = 'session';
+      run.kill();
+      if (!proc.endEmitted) {
+        proc.endEmitted = true;
+        this.emit({
+          type: 'command-end',
+          runId: proc.runId,
+          exitCode: null,
+          signal: 'SIGTERM',
+          durationMs: Date.now() - proc.startedAt,
+          truncated: false,
+        });
+      }
+      stopped += 1;
+    }
+    return stopped;
+  }
+
+  private trackAgentProcess(runId: string, command: string, startedAt: number): AgentProcess {
+    const proc: AgentProcess = {
+      runId,
+      command,
+      startedAt,
+      running: true,
+      tail: '',
+      dropped: false,
+      addresses: [],
+      partial: '',
+      endEmitted: false,
+      waiters: new Set(),
+    };
+    this.agentProcesses.set(runId, proc);
+    return proc;
+  }
+
+  /** Add a chunk to a program's tail, note any local address it printed,
+   *  and wake whoever waits on it. */
+  private appendAgentOutput(proc: AgentProcess, text: string): void {
+    proc.tail += text;
+    if (proc.tail.length > AGENT_PROCESS_TAIL_CHARS) {
+      proc.tail = proc.tail.slice(proc.tail.length - AGENT_PROCESS_TAIL_CHARS);
+      proc.dropped = true;
+    }
+    if (proc.addresses.length < 3) {
+      const joined = proc.partial + text;
+      const end = joined.lastIndexOf('\n');
+      if (end === -1) {
+        // A line with no end yet; a runaway one is let go rather than held.
+        proc.partial = joined.length > PARTIAL_LINE_CHARS ? '' : joined;
+      } else {
+        proc.partial = joined.slice(end + 1);
+        this.noteAddresses(proc, joined.slice(0, end));
+      }
+    }
+    wake(proc);
+  }
+
+  /** Remember the local addresses in whole lines of a program's output. */
+  private noteAddresses(proc: AgentProcess, lines: string): void {
+    for (const url of localAddresses(lines)) {
+      if (proc.addresses.length < 3 && !proc.addresses.includes(url)) proc.addresses.push(url);
+    }
+  }
+
+  /** Keep every live program and the last few that ended, so a session that
+   *  starts many over a long day holds a bounded amount of output. */
+  private pruneEndedAgentProcesses(): void {
+    const ended = [...this.agentProcesses.values()].filter((p) => !p.running);
+    for (const proc of ended.slice(0, Math.max(0, ended.length - ENDED_AGENT_PROCESSES_KEPT))) {
+      this.agentProcesses.delete(proc.runId);
+    }
   }
 
   private drainTerminalContext(): string | undefined {

@@ -17,6 +17,7 @@ import type { CurrentsHandles } from '../../currents/model.js';
 import { grepTool } from '../tools/grep.js';
 import { globTool } from '../tools/glob.js';
 import { gitCommitTool, gitDiffTool, gitLogTool, gitStatusTool } from '../tools/git.js';
+import { PROCESS_TOOLS } from '../tools/process.js';
 import { webSearchTool } from '../tools/webSearch.js';
 import { webFetchTool } from '../tools/webFetch.js';
 import { generateImageTool } from '../tools/generateImage.js';
@@ -93,6 +94,18 @@ export interface ToolRegistryOptions {
   // and notes other people wrote, and one injected line could send a secret
   // out in a URL or a search while nobody watches. See networkToolsLeftOut.
   offline?: boolean;
+  // On when this session's host can keep a program the agent starts running
+  // (bootstrap wires ToolContext.processes to the driver's command lane):
+  // registers startProcess, readProcess and stopProcess (P1). Bootstrap
+  // leaves it off on a headless run, in a member's session on a shared hub,
+  // and when config turns tools.processes off; an offline run never gets
+  // them either. Undefined means off, since only a host with a driver can
+  // hold a process.
+  processes?: boolean;
+  // Read each time the menu is built: while it says no, the process tools
+  // are off the menu and a call to one finds no tool. Bootstrap says no in
+  // plan mode (read only until the plan is approved). Unset offers them.
+  processesOffered?: () => boolean;
 }
 
 /** The tools that reach the network (or hand work to something that can), in
@@ -139,6 +152,13 @@ export function buildToolRegistry(options: ToolRegistryOptions): ToolRegistry {
   registry.register(gitDiffTool);
   registry.register(gitLogTool);
   registry.register(gitCommitTool);
+  // Programs the agent starts and leaves running ("run my app", P1). After
+  // gitCommit and outside the small-seat priority, so a lean seat's cut
+  // never reaches them and its menu stays the same with them on.
+  if (options.processes && !options.offline) {
+    const when = options.processesOffered;
+    for (const tool of PROCESS_TOOLS) registry.register(tool, when ? { when } : {});
+  }
   // Web tools reach the internet, so they are the one outbound path a secret
   // could leak through. Under egress lockdown, and on an offline run, they are
   // not registered at all.

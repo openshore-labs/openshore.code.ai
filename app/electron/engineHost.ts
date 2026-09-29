@@ -1196,8 +1196,10 @@ export class EngineHost {
     this.unsubs.clear();
     for (const off of this.termSubs.values()) off();
     this.termSubs.clear();
-    // The app is quitting: no shell outlives it with nothing able to reach it.
+    // The app is quitting: no shell outlives it with nothing able to reach it,
+    // and neither does a program an agent started (P1).
     this.terminals.killAll();
+    for (const driver of this.drivers.values()) driver.stopAgentProcesses();
     this.daemon?.close();
     this.scheduler.stop();
   }

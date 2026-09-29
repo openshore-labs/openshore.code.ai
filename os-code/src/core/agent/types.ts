@@ -265,10 +265,11 @@ export type DriverEvent =
   | AgentEvent
   | { type: 'approval-request'; request: ApprovalRequest }
   | { type: 'approval-resolved'; id: string; approved: boolean }
-  // The user-initiated command lane (the chat-to-terminal bridge). Driver-level,
-  // not agent-level: a command the user runs from the phone or desktop shell,
-  // its live output, and its result. `source: 'user'` is the tapped-Run lane;
-  // 'agent' is reserved for surfacing an agent runShell here in a later phase.
+  // The command lane (the chat-to-terminal bridge). Driver-level, not
+  // agent-level: a command runs from the phone or desktop shell, with its live
+  // output and its result. `source: 'user'` is the tapped-Run lane; 'agent' is
+  // a program the agent started and left running (startProcess, P1), which a
+  // client labels "Started by OpenShore".
   | {
       type: 'command-start';
       runId: string;

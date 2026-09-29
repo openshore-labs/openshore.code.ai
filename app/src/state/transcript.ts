@@ -344,7 +344,7 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
       }
       const ranCommands = next.items
         .slice(since + 1)
-        .some((i) => i.kind === 'tool' && i.name === 'runShell');
+        .some((i) => i.kind === 'tool' && (i.name === 'runShell' || i.name === 'startProcess'));
       if (at === -1) {
         return push(next, {
           kind: 'changed',
@@ -517,6 +517,7 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
         id: `cmd_${event.runId}`,
         runId: event.runId,
         command: event.command,
+        ...(event.source === 'agent' ? { source: 'agent' as const } : {}),
         output: '',
         state: 'running',
       });
@@ -692,6 +693,12 @@ export function describeCall(name: string, args: Record<string, unknown>): strin
       return `Find ${str(args.pattern) ?? ''}`;
     case 'runShell':
       return `$ ${(str(args.command) ?? '').slice(0, 90)}`;
+    case 'startProcess':
+      return `Start: ${(str(args.command) ?? '').slice(0, 84)}`;
+    case 'readProcess':
+      return "Read a program's output";
+    case 'stopProcess':
+      return 'Stop a program';
     case 'webSearch':
       return `Search the web: ${(str(args.query) ?? '').slice(0, 70)}`;
     case 'webFetch':

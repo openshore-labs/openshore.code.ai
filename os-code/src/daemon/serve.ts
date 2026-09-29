@@ -1107,6 +1107,9 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           // Only the computer's owner decides which check command may run
           // after changes; a member's session never grants one (v1 Phase 1).
           canGrantVerify: hasRole(auth, 'admin'),
+          // Nor starts a program that keeps running (P1): the command lane
+          // is the owner's, like the terminal.
+          processes: hasRole(auth, 'admin'),
           ...(handoff ? { handoff } : {}),
           ...(vaultPins ? { vaultPins } : {}),
           ...(vaultOverrides ? { vaultOverrides } : {}),
@@ -1411,6 +1414,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
               terminalReader,
               vaultRoot: ownerRoot,
               canGrantVerify: ownerAdmin,
+              processes: ownerAdmin,
             });
             trackDriver(revived);
             driver = revived;
@@ -1696,6 +1700,9 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       // only this daemon's tracking of its runs ends here.
       offRoutineDriver();
       if (ownsTerminals) terminals.killAll();
+      // Every program an agent started here ends with the daemon (P1): the
+      // sessions are journaled and revive, their processes do not.
+      for (const driver of drivers.values()) driver.stopAgentProcesses();
       // close() alone leaves live SSE sockets open and the port busy until they
       // drain (DAE-11); drop them so a restart never hits EADDRINUSE.
       server.close();

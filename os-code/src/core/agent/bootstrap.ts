@@ -40,6 +40,7 @@ import { engineEthicsContext } from '../ethics/host.js';
 import { nextActionFor } from '../ethics/classify.js';
 import { configureStreamIdle } from '../../providers/streamIdle.js';
 import type { AgentEvent, PermissionMode } from './types.js';
+import { processesOn } from '../tools/process.js';
 import type { CurrentsHandles, HarnessCurrentsHandle } from '../../currents/model.js';
 import { cliCommandAvailable } from '../../currents/host.js';
 import type { VaultContextSource } from '../../harness/vaultContext.js';
@@ -157,6 +158,12 @@ export interface BootstrapOptions {
    *  Phase 1)? The daemon passes false for a member's session on a shared
    *  hub; undefined (the desktop, the CLI) reads as yes. */
   canGrantVerify?: boolean;
+  /** May this session's agent start programs that keep running (P1)? The
+   *  daemon passes false for a member's session on a shared hub, since the
+   *  command lane is the computer owner's; undefined (the desktop, the CLI)
+   *  reads as yes. A headless run never gets them, and config's
+   *  `tools.processes: 'off'` turns them off everywhere. */
+  processes?: boolean;
   /** The app's vault switches for this session (Vault M7, CTO L13): each
    *  only ever narrows, the `humanize` and `memory` shape. `context: 'off'`
    *  gives no pack, `handoff: 'off'` writes and reads no handoff (the
@@ -327,6 +334,15 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   // keeps the machine's vault.
   const vaultRoot: string | null | undefined = options.vaultRoot;
 
+  // Programs the agent starts and leaves running ("run my app", P1): never on
+  // a headless run (nobody is there to see or stop one), never in a member's
+  // session on a shared hub, and off when config says so. In plan mode they
+  // leave the menu, read live since the mode changes between tasks; the agent
+  // is built below, so until then the mode is the one the session opens in.
+  const processes =
+    processesOn(config) && options.profile !== 'headless' && options.processes !== false;
+  let modeNow = (): PermissionMode => options.permissionMode ?? 'default';
+
   const registryOptions: ToolRegistryOptions = {
     stackHasVision:
       Boolean(stack.specialists.vision) || stack.orchestrator.provider.kind === 'cloud',
@@ -345,6 +361,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     // Headless means offline (CTO 3): nothing that reaches the network is
     // registered, and the profile denies a network step outright.
     offline: options.profile === 'headless',
+    ...(processes ? { processes: true, processesOffered: () => modeNow() !== 'plan' } : {}),
   };
   const tools = buildToolRegistry(registryOptions);
   const offlineTools = networkToolsLeftOut(registryOptions);
@@ -468,6 +485,19 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   if (currents) toolContext.currents = currents;
   toolContext.sessionId = driver.id;
 
+  // The process tools' seam: each program is a run on this driver's command
+  // lane, `runCommand(cmd, {source: 'agent'})` behind startAgentProcess (which
+  // holds the cap of three), with its 64 KB tail kept by the driver.
+  if (processes) {
+    toolContext.processes = {
+      start: (command) => driver.startAgentProcess(command),
+      settle: (runId, ms, signal) => driver.settleAgentProcess(runId, ms, signal),
+      read: (runId, lines) => driver.readAgentProcess(runId, lines),
+      stop: (runId) => driver.stopAgentProcess(runId),
+      live: () => driver.liveAgentProcesses(),
+    };
+  }
+
   // The handoff store (J13), keyed by this session's owner, workspace and
   // project. The owner is read when a handoff is written or read, since the
   // daemon records it just after this returns. `vault.handoff: 'off'` and
@@ -539,6 +569,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     },
   });
   driver.attachAgent(agent);
+  modeNow = () => agent.permissionMode;
 
   // Rehydrating a stored session (daemon restarted): the journal replayed into
   // the driver, but a fresh AgentSession has no memory. Seed its history from
