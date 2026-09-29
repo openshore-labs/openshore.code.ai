@@ -97,11 +97,20 @@ select throws_ok(
   'P0001', null::text,
   'BE-10: org_vault_put refuses a traversal path even for a member');
 
+-- 0025 gates every team vault write on an entitled plan (OV402). The
+-- seat-ceiling cases below need this org to have NO entitlement row yet, so
+-- the plan exists only for this one write.
+reset role;
+insert into public.org_entitlements (org_id, tier_id, seats, status)
+values ('0a000000-0000-0000-0000-00000000000a', 'commercial_large', 3, 'active');
+set local role authenticated;
+
 select lives_ok(
   $$ select public.org_vault_put('0a000000-0000-0000-0000-00000000000a', 'notes/hello.md', 'hi', null) $$,
   'a member writes a well-formed vault path');
 
 reset role;
+delete from public.org_entitlements where org_id = '0a000000-0000-0000-0000-00000000000a';
 
 -- ------------------------------------------------------------ admin limits
 select set_config('request.jwt.claims',
