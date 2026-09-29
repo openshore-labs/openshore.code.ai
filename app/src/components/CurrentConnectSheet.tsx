@@ -103,8 +103,9 @@ export function CurrentConnectSheet({
           ) : (
             <>
               <div className="field">
-                <label>Address</label>
+                <label htmlFor="current-connect-address">Address</label>
                 <input
+                  id="current-connect-address"
                   autoFocus
                   type="url"
                   inputMode="url"
@@ -128,8 +129,9 @@ export function CurrentConnectSheet({
               </div>
               {info.kind === 'hermes' || info.kind === 'endpoint' ? (
                 <div className="field">
-                  <label>Model id (optional)</label>
+                  <label htmlFor="current-connect-model-id">Model id (optional)</label>
                   <input
+                    id="current-connect-model-id"
                     autoCapitalize="none"
                     autoCorrect="off"
                     placeholder={info.kind === 'hermes' ? 'hermes' : 'default'}
@@ -139,8 +141,9 @@ export function CurrentConnectSheet({
                 </div>
               ) : null}
               <div className="field">
-                <label>API key (optional)</label>
+                <label htmlFor="current-connect-api-key">API key (optional)</label>
                 <input
+                  id="current-connect-api-key"
                   type="password"
                   placeholder={
                     saved

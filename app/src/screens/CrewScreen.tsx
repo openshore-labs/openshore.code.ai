@@ -258,8 +258,9 @@ export function CrewScreen() {
             <h2>{draft.id ? 'Edit crew member' : 'New crew member'}</h2>
 
             <div className="field">
-              <label>Name</label>
+              <label htmlFor="crew-member-name">Name</label>
               <input
+                id="crew-member-name"
                 placeholder="e.g. Security Reviewer, Ghostwriter, Contrarian"
                 value={draft.name}
                 onChange={(e) => setDraft({ ...draft, name: e.target.value })}
@@ -277,8 +278,9 @@ export function CrewScreen() {
             </div>
 
             <div className="field">
-              <label>How and when it is called (optional)</label>
+              <label htmlFor="crew-member-when">How and when it is called (optional)</label>
               <input
+                id="crew-member-when"
                 placeholder="e.g. anything touching auth or payments"
                 value={draft.whenCalled ?? ''}
                 onChange={(e) => setDraft({ ...draft, whenCalled: e.target.value })}

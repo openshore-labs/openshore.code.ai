@@ -84,6 +84,7 @@ export function CommandCard({ item }: { item: CommandItem }) {
         <div className="command-stdin">
           <input
             type="text"
+            aria-label="Reply to the command"
             value={stdin}
             placeholder="Type a reply, then press Enter"
             onChange={(e) => setStdin(e.target.value)}

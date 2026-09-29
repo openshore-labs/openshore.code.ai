@@ -380,9 +380,9 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
   },
   {
     id: 'byom',
-    title: 'Bring your own model',
-    where: 'Menu, Stack, the BYOM + pill',
-    text: 'Connects any OpenAI-compatible endpoint you control, like your own server or a fine-tune: a name, an address ending in /v1, a model id, and an optional API key. It lands on your Bench, and calls go straight from your device to it.',
+    title: 'Connect your own model',
+    where: 'Menu, Stack, the Connect a model + pill',
+    text: 'Uses a model you run: on this computer, your own server, or another service with your key (any OpenAI-compatible endpoint). It asks for a name, the address (it usually ends in /v1), the model name, and an optional API key. It lands on your Bench, and calls go straight from your device to it.',
     keywords: [
       'byom',
       'bring your own model',

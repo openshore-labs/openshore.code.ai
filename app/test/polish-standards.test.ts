@@ -260,7 +260,6 @@ describe('polish standards', () => {
     const GESTURE_FILES: Record<string, string> = {
       'components/Sheet.tsx': 'grabber drag: lift and drop',
       'components/SwipeRow.tsx': 'swipe: arm and commit',
-      'components/ProfileStatus.tsx': 'grabber drag: lift and drop',
       'hooks/useDrawerGesture.ts': 'edge drag: arm, drop, and settle',
     };
     const app = readFileSync(join(SRC, 'App.tsx'), 'utf8');
@@ -337,6 +336,122 @@ describe('polish standards', () => {
     const screen = classValues(readFileSync(files[0]!, 'utf8')).join(' ');
     expect(screen).toMatch(/vault-note/);
     expect(screen).toMatch(/vault-folder-options/);
+  });
+
+  // G2 (the screens review): a tappable that does not answer the finger, a
+  // scrim with no dialog behind it, and a field a screen reader cannot name
+  // each slipped past review one file at a time. These read every .tsx file.
+
+  /** Every opening tag of this element in a source, with its line. The tag
+   *  ends at the first `>` outside braces and quotes, so an arrow function or
+   *  a template in an attribute does not end it early. A tag on a comment
+   *  line is prose, not markup. */
+  function openingTags(src: string, name: string): Array<{ line: number; text: string }> {
+    const out: Array<{ line: number; text: string }> = [];
+    for (const m of src.matchAll(new RegExp(`<${name}\\b`, 'g'))) {
+      const lineStart = src.lastIndexOf('\n', m.index) + 1;
+      if (/^\s*(\/\/|\*|\/\*|\{\/\*)/.test(src.slice(lineStart, m.index + 1))) continue;
+      let i = m.index + m[0].length;
+      let depth = 0;
+      let quote: string | null = null;
+      for (; i < src.length; i++) {
+        const c = src[i]!;
+        if (quote) {
+          if (c === quote && src[i - 1] !== '\\') quote = null;
+        } else if (c === '"' || c === "'" || c === '`') quote = c;
+        else if (c === '{') depth++;
+        else if (c === '}') depth--;
+        else if (c === '>' && depth === 0) break;
+      }
+      out.push({ line: src.slice(0, m.index).split('\n').length, text: src.slice(m.index, i + 1) });
+    }
+    return out;
+  }
+
+  const tsxFiles = () => sourceFiles().filter((f) => f.endsWith('.tsx'));
+
+  it('gives every <button a press class, so every tap is answered', () => {
+    // A press class is one of the shared ones, or any class with its own
+    // :active rule in theme.css (the nav rows, the composer pills, the store
+    // cards), read from the stylesheet so a new rule counts on its own.
+    const press = new Set(['btn', 'linklike', 'press-fb', 'seg', 'switch']);
+    for (const m of THEME.matchAll(
+      /(?:^|[\s,{}])(?:button)?\.([a-z][\w-]*)(?:\.[\w-]+)*:active\b/gm,
+    ))
+      press.add(m[1]!);
+    const WHITELIST: Record<string, string> = {
+      // Its class list is built in a variable (cls) that always carries press-fb.
+      'components/vault/VaultProvenanceChip.tsx': 'class list built in cls, press-fb included',
+    };
+    const offenders: string[] = [];
+    for (const file of tsxFiles()) {
+      const rel = relative(SRC, file);
+      if (WHITELIST[rel]) continue;
+      const src = readFileSync(file, 'utf8');
+      for (const tag of openingTags(src, 'button')) {
+        const cls = tag.text.match(/className=(\{[\s\S]*\}|"[^"]*")/)?.[1] ?? '';
+        const words = cls.match(/[a-z][\w-]*/g) ?? [];
+        if (!words.some((w) => press.has(w)))
+          offenders.push(`${rel}:${tag.line}  ${cls.slice(0, 60) || '(no class)'}`);
+      }
+    }
+    expect(offenders, offenders.join('\n  ')).toEqual([]);
+  });
+
+  it('puts a dialog behind every hand-rolled scrim (or uses <Sheet>)', () => {
+    // components/Sheet.tsx gives its card role="dialog", aria-modal, and a
+    // name from its SheetHead; a scrim written by hand must do the same.
+    const offenders: string[] = [];
+    for (const file of tsxFiles()) {
+      const rel = relative(SRC, file);
+      if (rel === 'components/Sheet.tsx') continue;
+      const src = readFileSync(file, 'utf8');
+      for (const tag of openingTags(src, 'div')) {
+        if (!/className=\{?`?"?(sheet|confirm)-scrim\b/.test(tag.text)) continue;
+        const after = src.slice(src.indexOf(tag.text) + tag.text.length);
+        const card = openingTags(after, 'div')[0]?.text ?? '';
+        if (!/role="dialog"/.test(card)) offenders.push(`${rel}:${tag.line}`);
+      }
+    }
+    expect(offenders, offenders.join('\n  ')).toEqual([]);
+  });
+
+  it('names every text field: a wrapping <label>, a label for its id, or aria-label', () => {
+    // A placeholder is not a label: it vanishes on the first keystroke and a
+    // screen reader may skip it. Checkboxes and radios sit inside their own
+    // labels and are not read here.
+    const TEXTY = new Set(['text', 'email', 'password', 'url', 'search', 'tel', 'number']);
+    const offenders: string[] = [];
+    for (const file of tsxFiles()) {
+      const rel = relative(SRC, file);
+      const src = readFileSync(file, 'utf8');
+      for (const tag of openingTags(src, 'input')) {
+        const type = tag.text.match(/\btype="([^"]+)"/)?.[1] ?? 'text';
+        if (!TEXTY.has(type) && !/\btype=\{/.test(tag.text)) continue;
+        if (/\baria-label(ledby)?=/.test(tag.text)) continue;
+        const id = tag.text.match(/\bid=(?:"([^"]+)"|\{([^}]+)\})/);
+        if (id && (src.includes(`htmlFor="${id[1]}"`) || src.includes(`htmlFor={${id[2]}}`)))
+          continue;
+        const before = src.slice(0, src.indexOf(tag.text));
+        if (before.lastIndexOf('<label') > before.lastIndexOf('</label>')) continue;
+        offenders.push(`${rel}:${tag.line}`);
+      }
+    }
+    expect(offenders, offenders.join('\n  ')).toEqual([]);
+  });
+
+  it('asks in a sheet, never window.prompt (Electron does not implement it)', () => {
+    // A prompt() on the desktop returns nothing and the action silently does
+    // nothing (renaming a computer did). Ask with a one-field Sheet instead.
+    const WHITELIST: Record<string, string> = {
+      // The operators' abuse review, inside Admin (v4, no door in Personal).
+      'components/EnforcementReview.tsx': 'v4 operator tool; replace when Admin ships',
+    };
+    const offenders = tsxFiles()
+      .filter((f) => !WHITELIST[relative(SRC, f)])
+      .filter((f) => /\bwindow\.prompt\(/.test(readFileSync(f, 'utf8')))
+      .map((f) => relative(SRC, f));
+    expect(offenders).toEqual([]);
   });
 
   it('routes haptics through @capacitor/haptics, never navigator.vibrate', () => {

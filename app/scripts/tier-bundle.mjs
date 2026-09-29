@@ -1,14 +1,16 @@
-// Reads a built web bundle (the Vite dist) and reports what a build carries:
-// the JavaScript a launch loads before the first room opens (the entry chunk
-// and every chunk it imports statically), every other chunk, and any later
-// tier's words that reached the files. app/test/tierBundle.test.ts builds a
-// Personal bundle and runs this over it; `node scripts/tier-bundle.mjs dist`
-// reports on an existing build by hand.
+// Reads a built web bundle (the Vite dist) and checks what a Personal build
+// carries (review 9, docs/release-tiers.md): no later tier's words or rooms in
+// any file it ships, every room its own chunk that waits for its first open,
+// and what a launch loads before the first room opens. CI runs it on the
+// build it just made (`pnpm --filter oscode-app check:bundle`, .github/
+// workflows/ci.yml); app/test/tierBundle.test.ts proves the checks on a small
+// fixture. A build that asks for a later tier (VITE_RELEASE_TIER=2, 3 or 4)
+// is reported, never failed: it is meant to carry those rooms.
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { basename, join, relative } from 'node:path';
 
-/** Words that belong to a later tier only (docs/release-tiers.md). A
- *  Personal build must carry none of them, in any file it ships. */
+/** Words that belong to a later tier only. A Personal build must carry none
+ *  of them, in any file it ships. */
 export const LATER_TIER_WORDS = [
   'Stack Health',
   'Launch with Codemagic',
@@ -16,6 +18,22 @@ export const LATER_TIER_WORDS = [
   'Manage the company account',
   'Jev',
 ];
+
+/** The later tiers' room modules (lib/focus.ts ROOM_FEATURE). */
+export const LATER_ROOM_FILES = [
+  'StackHealthScreen',
+  'LaunchScreen',
+  'MarketplaceScreen',
+  'AdminScreen',
+];
+
+/** Rooms that must wait for their first open, never load at launch. */
+export const LAZY_ROOM_FILES = ['SettingsScreen', 'VaultScreen', 'PairScreen', 'StackScreen'];
+
+/** Ceilings, in bytes. Before the split the launch was one 2,560,450-byte
+ *  chunk. Crossing one means a room or a heavy library went back into the
+ *  launch path. */
+export const BUDGET = { entryBytes: 400_000, bootBytes: 2_000_000 };
 
 function filesUnder(dir) {
   return readdirSync(dir).flatMap((name) => {
@@ -28,8 +46,6 @@ function filesUnder(dir) {
  *  `import("./x.js")` is not followed: that chunk waits for its room. */
 function staticImports(code) {
   const found = new Set();
-  // Minified ESM: `import{a as b}from"./x.js"`, `import"./x.js"`, and the
-  // same with spaces.
   const re = /\bimport\s*(?:[\w${},\s*]+?\s*from\s*)?["'](\.\/[^"']+\.js)["']/g;
   for (const m of code.matchAll(re)) found.add(m[1]);
   return [...found];
@@ -68,19 +84,44 @@ export function inspectBundle(dist) {
     entryBytes: size(entry),
     bootBytes: [...boot].reduce((n, f) => n + size(f), 0),
     bootChunks: [...boot].map((f) => relative(dist, f)),
+    chunkNames: js.map((f) => basename(f)),
     totalJsBytes: js.reduce((n, f) => n + size(f), 0),
     chunks: js.length,
     leaks,
   };
 }
 
-// Run directly: report on the dist named on the command line.
+/** What is wrong with a Personal build's report, one line each. */
+export function bundleProblems(report) {
+  const problems = report.leaks.map((l) => `later-tier word "${l.word}" in ${l.file}`);
+  for (const room of LATER_ROOM_FILES) {
+    for (const name of report.chunkNames.filter((n) => n.startsWith(`${room}-`)))
+      problems.push(`later-tier room emitted: ${name}`);
+  }
+  for (const room of LAZY_ROOM_FILES) {
+    const at = report.bootChunks.find((c) => basename(c).startsWith(`${room}-`));
+    if (at) problems.push(`${room} loads at launch (${at}); rooms wait for their first open`);
+  }
+  if (report.entryBytes > BUDGET.entryBytes)
+    problems.push(`entry chunk is ${report.entryBytes} bytes, over ${BUDGET.entryBytes}`);
+  if (report.bootBytes > BUDGET.bootBytes)
+    problems.push(`launch loads ${report.bootBytes} bytes, over ${BUDGET.bootBytes}`);
+  return problems;
+}
+
+// Run directly: report on the dist named on the command line, and fail a
+// Personal build that carries what it should not.
 if (import.meta.url === `file://${process.argv[1]}`) {
   const report = inspectBundle(process.argv[2] ?? 'dist');
   const kb = (n) => `${(n / 1024).toFixed(1)} KB`;
-  console.log(`entry ${report.entry}: ${kb(report.entryBytes)}`);
-  console.log(`loaded at launch: ${kb(report.bootBytes)} in ${report.bootChunks.length} chunks`);
+  console.log(`entry ${report.entry}: ${kb(report.entryBytes)} (${report.entryBytes} bytes)`);
+  console.log(
+    `loaded at launch: ${kb(report.bootBytes)} (${report.bootBytes} bytes) in ${report.bootChunks.length} chunks`,
+  );
   console.log(`all JavaScript: ${kb(report.totalJsBytes)} in ${report.chunks} chunks`);
-  for (const leak of report.leaks) console.log(`later-tier word "${leak.word}" in ${leak.file}`);
-  process.exitCode = report.leaks.length ? 1 : 0;
+  const tier = process.env.VITE_RELEASE_TIER?.trim();
+  const later = tier === '2' || tier === '3' || tier === '4';
+  const problems = bundleProblems(report);
+  for (const p of problems) console.log(`${later ? 'note' : 'error'}: ${p}`);
+  process.exitCode = problems.length && !later ? 1 : 0;
 }

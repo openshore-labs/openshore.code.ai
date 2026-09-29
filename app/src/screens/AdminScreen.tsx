@@ -101,8 +101,9 @@ export function AdminScreen() {
           {seatEdit ? (
             <div style={{ marginTop: 12 }}>
               <div className="field">
-                <label>How many people will use it?</label>
+                <label htmlFor="admin-how-many-people">How many people will use it?</label>
                 <input
+                  id="admin-how-many-people"
                   type="number"
                   min={1}
                   value={seats}
@@ -158,9 +159,10 @@ export function AdminScreen() {
         <h3 style={{ margin: '18px 0 10px' }}>People</h3>
         <div className="card">
           <div className="field" style={{ margin: 0 }}>
-            <label>Add someone by email</label>
+            <label htmlFor="admin-add-email">Add someone by email</label>
             <div style={{ display: 'flex', gap: 8 }}>
               <input
+                id="admin-add-email"
                 type="email"
                 autoCapitalize="none"
                 autoCorrect="off"

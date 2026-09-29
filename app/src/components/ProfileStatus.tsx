@@ -3,8 +3,9 @@
 // (home reachable), amber Offshore (cloud + on-device), gray Offline
 // (on-device only). The sheet portals to the body so its fixed scrim covers
 // the viewport rather than being trapped by the top bar's backdrop-filter
-// containing block; it slides in, drags to dismiss, and always animates out.
-import { useEffect, useRef, useState } from 'react';
+// containing block; it is the house sheet, so it slides in, drags to
+// dismiss, and always animates out.
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { agenticView, harnessView, useApp } from '../state/store.js';
 import {
@@ -14,16 +15,10 @@ import {
   effectiveProfile,
   selectable,
 } from '../lib/profiles.js';
-import { hapticTick } from '../lib/haptics.js';
-import { sheetExitMs } from '../lib/motion.js';
 import { activeContribution } from '../lib/currents.js';
 import { activeHarnessContribution } from '../lib/harnessCurrents.js';
+import { Sheet } from './Sheet.js';
 import { SheetHead } from './SheetHead.js';
-
-// Drag further than this and the release dismisses; short of it, the sheet
-// springs back. The unmount hold is the door clock the sheet slides on
-// (lib/motion.ts sheetExitMs), read at dismiss time.
-const DISMISS_THRESHOLD = 90;
 
 export function ProfileStatus() {
   const { connectivity, settings, setProfileOverride } = useApp();
@@ -32,81 +27,7 @@ export function ProfileStatus() {
   const info = PROFILES[active];
 
   const [open, setOpen] = useState(false);
-  const [closing, setClosing] = useState(false);
-  const [dragY, setDragY] = useState(0);
-  const [dragging, setDragging] = useState(false);
-  const startY = useRef(0);
-  const dragYRef = useRef(0);
-  const pointerId = useRef<number | null>(null);
-  const exitTimer = useRef<number | null>(null);
-
-  useEffect(
-    () => () => {
-      if (exitTimer.current !== null) clearTimeout(exitTimer.current);
-    },
-    [],
-  );
-
-  const finish = () => {
-    setOpen(false);
-    setClosing(false);
-    setDragging(false);
-    setDragY(0);
-    dragYRef.current = 0;
-    pointerId.current = null;
-    exitTimer.current = null;
-  };
-
-  // Play the exit (scrim fade + sheet slide down), then unmount. A fixed timer
-  // drives the unmount so it also lands under prefers-reduced-motion, where the
-  // transition is suppressed and no transitionend would ever fire.
-  const dismiss = () => {
-    if (closing) return;
-    setDragging(false);
-    setClosing(true);
-    if (exitTimer.current !== null) clearTimeout(exitTimer.current);
-    exitTimer.current = window.setTimeout(finish, sheetExitMs());
-  };
-
-  const openSheet = () => {
-    if (exitTimer.current !== null) {
-      clearTimeout(exitTimer.current);
-      exitTimer.current = null;
-    }
-    setClosing(false);
-    setDragging(false);
-    setDragY(0);
-    dragYRef.current = 0;
-    setOpen(true);
-  };
-
-  const onGrabStart = (e: React.PointerEvent) => {
-    if (closing) return;
-    startY.current = e.clientY;
-    dragYRef.current = 0;
-    pointerId.current = e.pointerId;
-    setDragging(true);
-    e.currentTarget.setPointerCapture(e.pointerId);
-    hapticTick(); // the lift
-  };
-  const onGrabMove = (e: React.PointerEvent) => {
-    if (pointerId.current !== e.pointerId) return;
-    const y = Math.max(0, e.clientY - startY.current);
-    dragYRef.current = y;
-    setDragY(y);
-  };
-  const onGrabEnd = () => {
-    if (pointerId.current === null) return;
-    pointerId.current = null;
-    if (dragYRef.current > DISMISS_THRESHOLD) {
-      hapticTick(); // the drop
-      dismiss();
-    } else {
-      setDragging(false);
-      setDragY(0);
-      dragYRef.current = 0;
-    }
-  };
+  const close = () => setOpen(false);
 
   // The Agentic Current that is on, named beside the reach pill on every
   // screen, so the modality reads as whole without one room changing shape.
@@ -134,87 +55,74 @@ export function ProfileStatus() {
           {harness.header.label}
         </span>
       ) : null}
-      <button className="profile-chip" onClick={openSheet} aria-label={`Connection: ${info.label}`}>
+      <button
+        className="profile-chip"
+        onClick={() => setOpen(true)}
+        aria-label={`Connection: ${info.label}`}
+      >
         <span className="profile-dot" style={{ background: info.dot }} />
         <span>{info.label}</span>
       </button>
 
-      {open
-        ? createPortal(
-            // The top bar sets backdrop-filter, which makes it the containing
-            // block for position:fixed descendants. Rendering the scrim here
-            // would trap it inside the thin bar instead of the viewport, so we
-            // portal it to the body to cover the whole screen.
-            <div className={`sheet-scrim${closing ? ' closing' : ''}`} onClick={dismiss}>
-              <div
-                className={`sheet info-sheet${dragging ? ' dragging' : ''}${closing ? ' closing' : ''}`}
-                style={!closing && dragY ? { transform: `translateY(${dragY}px)` } : undefined}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div
-                  className="sheet-grabber"
-                  onPointerDown={onGrabStart}
-                  onPointerMove={onGrabMove}
-                  onPointerUp={onGrabEnd}
-                  onPointerCancel={onGrabEnd}
-                >
-                  <span className="sheet-grabber-bar" aria-hidden="true" />
-                </div>
-                <SheetHead title="Connection" onClose={dismiss} />
-                <p className="sheet-sub">
-                  Stack, chats, and connections are the same everywhere. What changes is reach.
-                </p>
-                <div className="sheet-actions">
-                  <button
-                    className={`profile-row${!settings.profileOverride ? ' active' : ''}`}
-                    onClick={() => {
-                      void setProfileOverride(undefined);
-                      dismiss();
-                    }}
-                  >
-                    <span
-                      className="profile-dot"
-                      style={{ background: PROFILES[auto].dot, marginTop: 5 }}
-                    />
-                    <span className="grow">
-                      <span className="profile-row-title">Automatic</span>
-                      <span className="sub">
-                        Follow the connection. Right now: {PROFILES[auto].label}.
-                      </span>
-                    </span>
-                  </button>
+      {/* The top bar sets backdrop-filter, which makes it the containing
+          block for position:fixed descendants. Rendering the scrim here would
+          trap it inside the thin bar instead of the viewport, so the sheet
+          portals to the body to cover the whole screen. */}
+      {createPortal(
+        <Sheet open={open} onClose={close} className="info-sheet">
+          <SheetHead title="Connection" onClose={close} />
+          <p className="sheet-sub">
+            Stack, chats, and connections are the same everywhere. What changes is reach.
+          </p>
+          <div className="sheet-actions">
+            <button
+              className={`profile-row${!settings.profileOverride ? ' active' : ''}`}
+              onClick={() => {
+                void setProfileOverride(undefined);
+                close();
+              }}
+            >
+              <span
+                className="profile-dot"
+                style={{ background: PROFILES[auto].dot, marginTop: 5 }}
+              />
+              <span className="grow">
+                <span className="profile-row-title">Automatic</span>
+                <span className="sub">
+                  Follow the connection. Right now: {PROFILES[auto].label}.
+                </span>
+              </span>
+            </button>
 
-                  {PROFILE_ORDER.map((id) => {
-                    const p = PROFILES[id];
-                    const canPick = selectable(id, auto);
-                    const isActive = Boolean(settings.profileOverride) && active === id;
-                    return (
-                      <button
-                        key={id}
-                        className={`profile-row${isActive ? ' active' : ''}`}
-                        disabled={!canPick}
-                        onClick={() => {
-                          void setProfileOverride(id);
-                          dismiss();
-                        }}
-                      >
-                        <span className="profile-dot" style={{ background: p.dot, marginTop: 5 }} />
-                        <span className="grow">
-                          <span className="profile-row-title">{p.label}</span>
-                          <span className="sub">
-                            {p.blurb}
-                            {!canPick ? ' Not reachable right now.' : ''}
-                          </span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>,
-            document.body,
-          )
-        : null}
+            {PROFILE_ORDER.map((id) => {
+              const p = PROFILES[id];
+              const canPick = selectable(id, auto);
+              const isActive = Boolean(settings.profileOverride) && active === id;
+              return (
+                <button
+                  key={id}
+                  className={`profile-row${isActive ? ' active' : ''}`}
+                  disabled={!canPick}
+                  onClick={() => {
+                    void setProfileOverride(id);
+                    close();
+                  }}
+                >
+                  <span className="profile-dot" style={{ background: p.dot, marginTop: 5 }} />
+                  <span className="grow">
+                    <span className="profile-row-title">{p.label}</span>
+                    <span className="sub">
+                      {p.blurb}
+                      {!canPick ? ' Not reachable right now.' : ''}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </Sheet>,
+        document.body,
+      )}
     </>
   );
 }

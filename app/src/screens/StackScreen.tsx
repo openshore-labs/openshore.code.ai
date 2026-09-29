@@ -175,8 +175,7 @@ export function StackScreen() {
           <div className="card" style={{ marginBottom: 12 }}>
             <h3>Start with a prefab stack</h3>
             <p className="hint" style={{ marginTop: 4 }}>
-              One tap fills your whole stack. These refresh on their own as new models land, so they
-              stay current without you touching a thing.
+              One tap fills your whole stack. The list updates when the catalog does.
             </p>
             {catalog.presets.map((preset) => {
               const total = presetTotalGB(preset, catalog);
@@ -200,7 +199,7 @@ export function StackScreen() {
                   >
                     {busy
                       ? (prefabLine ?? 'Installing...')
-                      : `Download ${preset.name}${preset.minVramGB ? ` · needs ${preset.minVramGB} GB VRAM` : ''}`}
+                      : `Download ${preset.name}${preset.minVramGB ? ` · best with ${preset.minVramGB} GB of graphics memory` : ''}`}
                   </button>
                 </div>
               );
@@ -319,7 +318,9 @@ export function StackScreen() {
               title={pickFor === 'orchestrator' ? 'Who runs the show?' : `Model for ${pickFor}`}
               onClose={() => setPickFor(undefined)}
             />
-            <p className="sheet-sub">Installed on this computer through Ollama.</p>
+            <p className="sheet-sub">
+              Models installed on this computer. Ollama, a free app, runs them.
+            </p>
             <div className="sheet-actions">
               {status.ollama.models.length ? (
                 status.ollama.models.map((m) => (

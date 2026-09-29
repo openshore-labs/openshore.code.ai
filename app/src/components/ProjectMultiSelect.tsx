@@ -46,7 +46,7 @@ export function ProjectMultiSelect({
     <div className="multiselect" ref={ref}>
       <button
         type="button"
-        className="multiselect-btn"
+        className="multiselect-btn press-fb"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
       >
@@ -57,6 +57,7 @@ export function ProjectMultiSelect({
         <div className="multiselect-panel">
           <input
             className="multiselect-search"
+            aria-label="Search projects"
             placeholder="Search projects"
             value={query}
             onChange={(e) => setQuery(e.target.value)}

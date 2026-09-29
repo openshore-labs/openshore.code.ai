@@ -1,23 +1,29 @@
-// A Personal build, built (review 9, docs/release-tiers.md). The later tiers'
-// doors were shut but their code still shipped: every room sat in one 2.5 MB
-// file, the v2 to v4 roadmap in plain words inside the IPA. This builds the
-// web bundle the way a shipped build does (VITE_RELEASE_TIER unset), reads
-// every file it emits, and fails on a later tier's words; it also records
-// what a launch loads before the first room opens, so the split stays one.
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+// A Personal build carries no later tier (review 9, docs/release-tiers.md).
+// The later tiers' doors were shut but their code still shipped: every room
+// sat in one 2.5 MB file, the v2 to v4 roadmap in plain words inside the IPA.
+// App.tsx now loads every room lazily and gates the later ones where the
+// bundler folds them away; CI builds the app and runs scripts/tier-bundle.mjs
+// over the result, which fails on a later tier's words or rooms and records
+// what a launch loads. These pin the gates and prove that check.
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { FEATURE_TIER, ROOM_FEATURE } from '../src/lib/focus.js';
 // @ts-expect-error: a plain .mjs script with no type declarations.
-import { LATER_TIER_WORDS, inspectBundle } from '../scripts/tier-bundle.mjs';
+import {
+  LATER_ROOM_FILES,
+  LATER_TIER_WORDS,
+  bundleProblems,
+  inspectBundle,
+} from '../scripts/tier-bundle.mjs';
 
 interface BundleReport {
   entry: string;
   entryBytes: number;
   bootBytes: number;
   bootChunks: string[];
+  chunkNames: string[];
   totalJsBytes: number;
   chunks: number;
   leaks: Array<{ file: string; word: string }>;
@@ -26,7 +32,7 @@ interface BundleReport {
 const read = (...parts: string[]) => readFileSync(join(process.cwd(), ...parts), 'utf8');
 
 /** The later tiers' room modules, by view (App.tsx loads each lazily). */
-const LATER_ROOM_FILES: Record<string, string> = {
+const LATER_ROOMS: Record<string, string> = {
   stackhealth: 'StackHealthScreen',
   launch: 'LaunchScreen',
   marketplace: 'MarketplaceScreen',
@@ -46,8 +52,8 @@ describe('the lazy rooms are gated where the bundler can see it', () => {
   });
 
   it("holds each later room behind its own tier and focus.ts's roomOpen", () => {
-    expect(Object.keys(ROOM_FEATURE).sort()).toEqual(Object.keys(LATER_ROOM_FILES).sort());
-    for (const [view, file] of Object.entries(LATER_ROOM_FILES)) {
+    expect(Object.keys(ROOM_FEATURE).sort()).toEqual(Object.keys(LATER_ROOMS).sort());
+    for (const [view, file] of Object.entries(LATER_ROOMS)) {
       const tier = FEATURE_TIER[ROOM_FEATURE[view]!];
       const gate = new RegExp(
         `const ${file} =\\s*BUILT_V${tier} && roomOpen\\('${view}'\\)\\s*\\?\\s*room\\(\\(\\) => import\\('\\./screens/${file}\\.js'\\)`,
@@ -66,9 +72,7 @@ describe('the lazy rooms are gated where the bundler can see it', () => {
             ? [join(dir, e.name)]
             : [],
       );
-    const re = new RegExp(
-      `from '[./]*(screens/)?(${Object.values(LATER_ROOM_FILES).join('|')})\\.js'`,
-    );
+    const re = new RegExp(`from '[./]*(screens/)?(${Object.values(LATER_ROOMS).join('|')})\\.js'`);
     const offenders = files(src)
       .filter((f) => re.test(readFileSync(f, 'utf8')))
       .map((f) => relative(src, f));
@@ -76,81 +80,86 @@ describe('the lazy rooms are gated where the bundler can see it', () => {
   });
 });
 
-describe('a Personal bundle, built', () => {
-  let out = '';
-  let report: BundleReport;
+describe('the bundle check CI runs on the Personal build', () => {
+  // CI builds the app, then runs scripts/tier-bundle.mjs over the dist it
+  // made (the build itself is too heavy to run beside the rest of the suite).
+  // These prove the check on a small dist laid out the way Vite writes one.
+  let dist = '';
+  const write = (name: string, text: string) => writeFileSync(join(dist, name), text);
 
-  beforeAll(() => {
-    out = mkdtempSync(join(tmpdir(), 'oscode-tier1-'));
-    // A shipped build sets no tier; the suite's own tier (4) must not leak in,
-    // nor anything that would turn the bundle into a test or dev build.
-    const env: NodeJS.ProcessEnv = { ...process.env };
-    for (const key of Object.keys(env)) {
-      if (key === 'VITE_RELEASE_TIER' || key === 'NODE_ENV' || key.startsWith('VITEST')) {
-        delete env[key];
-      }
-    }
-    execFileSync(
-      process.execPath,
-      [
-        join(process.cwd(), 'node_modules', 'vite', 'bin', 'vite.js'),
-        'build',
-        '--outDir',
-        out,
-        '--emptyOutDir',
-        '--logLevel',
-        'error',
-      ],
-      { cwd: process.cwd(), env, stdio: 'ignore' },
+  beforeEach(() => {
+    dist = mkdtempSync(join(tmpdir(), 'oscode-dist-'));
+    mkdirSync(join(dist, 'assets'));
+    write(
+      'index.html',
+      '<!doctype html><script type="module" crossorigin src="./assets/index-a1.js"></script>',
     );
-    report = inspectBundle(out) as BundleReport;
-  }, 240_000);
+    write(
+      'assets/index-a1.js',
+      'import{a as e}from"./jsx-runtime-b2.js";const t=()=>import("./SettingsScreen-c3.js");e(t);',
+    );
+    write('assets/jsx-runtime-b2.js', 'export const a=(e)=>e;');
+    write('assets/SettingsScreen-c3.js', 'export const SettingsScreen=()=>`Settings`;');
+  });
+  afterEach(() => rmSync(dist, { recursive: true, force: true }));
 
-  afterAll(() => {
-    if (out) rmSync(out, { recursive: true, force: true });
+  it('passes a clean Personal build, and measures what a launch loads', () => {
+    const report = inspectBundle(dist) as BundleReport;
+    expect(report.entry).toBe('assets/index-a1.js');
+    expect(report.bootChunks.sort()).toEqual(['assets/index-a1.js', 'assets/jsx-runtime-b2.js']);
+    expect(report.chunks).toBe(3);
+    expect(bundleProblems(report)).toEqual([]);
   });
 
-  it("carries none of a later tier's words", () => {
-    expect(LATER_TIER_WORDS).toEqual(
-      expect.arrayContaining([
-        'Stack Health',
-        'Launch with Codemagic',
-        'Hermes Agent',
-        'Manage the company account',
-        'Jev',
-      ]),
+  it("fails on a later tier's words, in any file", () => {
+    expect(LATER_TIER_WORDS).toEqual([
+      'Stack Health',
+      'Launch with Codemagic',
+      'Hermes Agent',
+      'Manage the company account',
+      'Jev',
+    ]);
+    write('assets/jsx-runtime-b2.js', 'export const a=(e)=>e,b=`Jev routed this`;');
+    write(
+      'index.html',
+      '<title>Stack Health</title><script type="module" src="./assets/index-a1.js"></script>',
     );
-    const found = report.leaks.map((l) => `"${l.word}" in ${l.file}`);
-    expect(found, found.join('\n')).toEqual([]);
+    expect((bundleProblems(inspectBundle(dist)) as string[]).sort()).toEqual([
+      'later-tier word "Jev" in assets/jsx-runtime-b2.js',
+      'later-tier word "Stack Health" in index.html',
+    ]);
+    // A whole word only: a longer word that starts the same is not a leak.
+    write('assets/jsx-runtime-b2.js', 'export const a=(e)=>e,b=`Jevons`;');
+    write('index.html', '<script type="module" src="./assets/index-a1.js"></script>');
+    expect(bundleProblems(inspectBundle(dist))).toEqual([]);
   });
 
-  it("emits no later tier's room", () => {
-    const names = readdirSync(join(out, 'assets'));
-    for (const file of Object.values(LATER_ROOM_FILES)) {
-      expect(
-        names.filter((n) => n.startsWith(`${file}-`)),
-        file,
-      ).toEqual([]);
-    }
+  it("fails on a later tier's room, and on a room that loads at launch", () => {
+    write('assets/AdminScreen-d4.js', 'export const AdminScreen=()=>null;');
+    write(
+      'assets/index-a1.js',
+      'import"./SettingsScreen-c3.js";import{a as e}from"./jsx-runtime-b2.js";e(1);',
+    );
+    const problems = bundleProblems(inspectBundle(dist));
+    expect(problems).toContain('later-tier room emitted: AdminScreen-d4.js');
+    expect(problems.some((p: string) => p.startsWith('SettingsScreen loads at launch'))).toBe(true);
   });
 
-  it('loads the rooms on demand, and records what a launch loads', () => {
-    // The v1 rooms are their own chunks, none of them loaded at launch.
-    for (const roomFile of ['SettingsScreen', 'VaultScreen', 'PairScreen', 'StackScreen']) {
-      expect(
-        report.bootChunks.some((c) => c.includes(`/${roomFile}-`)),
-        roomFile,
-      ).toBe(false);
-    }
-    // Recorded for the build notes (before the split, one 2,560,450-byte
-    // chunk was the launch). The ceilings are generous; crossing one means a
-    // room or a heavy library went back into the launch path.
-    console.info(
-      `tier-1 bundle: entry ${report.entry} ${report.entryBytes} bytes; launch loads ` +
-        `${report.bootBytes} bytes in ${report.bootChunks.length} chunks; all JavaScript ` +
-        `${report.totalJsBytes} bytes in ${report.chunks} chunks`,
-    );
-    expect(report.entryBytes).toBeLessThan(400_000);
-    expect(report.bootBytes).toBeLessThan(2_000_000);
+  it('fails a launch that grows past its ceiling', () => {
+    write('assets/jsx-runtime-b2.js', `export const a=(e)=>e;//${'x'.repeat(2_000_000)}`);
+    expect(bundleProblems(inspectBundle(dist))).toEqual([
+      expect.stringMatching(/^launch loads \d+ bytes, over 2000000$/),
+    ]);
+  });
+
+  it('names the same later rooms as App.tsx, and runs in CI after the build', () => {
+    expect([...LATER_ROOM_FILES].sort()).toEqual(Object.values(LATER_ROOMS).sort());
+    const ci = readFileSync(join(process.cwd(), '..', '.github', 'workflows', 'ci.yml'), 'utf8');
+    const build = ci.indexOf('run: pnpm -r build');
+    const check = ci.indexOf('run: pnpm --filter oscode-app check:bundle');
+    expect(build).toBeGreaterThan(0);
+    expect(check).toBeGreaterThan(build);
+    const pkg = JSON.parse(read('package.json')) as { scripts: Record<string, string> };
+    expect(pkg.scripts['check:bundle']).toBe('node scripts/tier-bundle.mjs dist');
   });
 });

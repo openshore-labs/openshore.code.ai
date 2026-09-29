@@ -2728,6 +2728,7 @@ export function VaultScreen() {
             <div className="field">
               <input
                 autoFocus
+                aria-label="Note name"
                 placeholder="Note name"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}

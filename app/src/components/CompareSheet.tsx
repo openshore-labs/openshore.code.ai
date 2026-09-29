@@ -69,6 +69,9 @@ export function CompareSheet({
     <div className={`sheet-scrim${closing ? ' closing' : ''}`} onClick={dismiss}>
       <div
         className={`sheet compare-sheet${closing ? ' closing' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Compare models"
         onClick={(e) => e.stopPropagation()}
       >
         <h2>Compare</h2>

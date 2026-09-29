@@ -5,18 +5,41 @@
 // Info.plist). If the camera cannot be opened, the sheet says so and the person
 // falls back to typing or pasting, never a silent failure.
 import { useEffect, useRef, useState } from 'react';
-import { useSheetExit } from '../hooks/useSheetExit.js';
 import { decodeQrFromImageData } from '../lib/qrDecode.js';
+import { Sheet } from './Sheet.js';
+import { SheetTitle } from './SheetHead.js';
 
+/** The scanner as a house sheet: it rises, drags down, answers Escape, and
+ *  plays its exit like every other sheet. The camera runs only while the
+ *  sheet is on screen. */
 export function QrScanner({
+  open,
   onDecode,
   onClose,
 }: {
+  open: boolean;
   /** Called once with the QR's text; the scanner closes itself after. */
   onDecode: (text: string) => void;
   onClose: () => void;
 }) {
-  const { closing, dismiss } = useSheetExit(onClose);
+  return (
+    <Sheet open={open} onClose={onClose}>
+      <SheetTitle>Scan the QR on your computer</SheetTitle>
+      <p className="sheet-sub">
+        Point the camera at the QR on your computer's Desktop + phone screen. It fills in the
+        address and pairing code and connects.
+      </p>
+      <Camera onDecode={onDecode} onClose={onClose} />
+      <div className="sheet-actions">
+        <button className="btn quiet press-fb" onClick={onClose}>
+          Cancel
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+function Camera({ onDecode, onClose }: { onDecode: (text: string) => void; onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | undefined>();
 
@@ -39,7 +62,7 @@ export function QrScanner({
         if (text) {
           done = true;
           onDecode(text);
-          dismiss();
+          onClose();
           return;
         }
       }
@@ -56,6 +79,11 @@ export function QrScanner({
           video: { facingMode: { ideal: 'environment' } },
           audio: false,
         });
+        // Closed while the camera was still opening: let it go at once.
+        if (done) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
         const video = videoRef.current;
         if (!video) return;
         video.srcObject = stream;
@@ -76,25 +104,9 @@ export function QrScanner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return (
-    <div className={`sheet-scrim${closing ? ' closing' : ''}`} onClick={dismiss}>
-      <div className={`sheet${closing ? ' closing' : ''}`} onClick={(e) => e.stopPropagation()}>
-        <h2>Scan the QR on your computer</h2>
-        <p className="sheet-sub">
-          Point the camera at the QR on your computer's Desktop + phone screen. It fills in the
-          address and token and connects.
-        </p>
-        {error ? (
-          <p className="hint">{error}</p>
-        ) : (
-          <video ref={videoRef} className="qr-scanner-video" playsInline muted />
-        )}
-        <div className="sheet-actions">
-          <button className="btn quiet press-fb" onClick={dismiss}>
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
+  return error ? (
+    <p className="hint">{error}</p>
+  ) : (
+    <video ref={videoRef} className="qr-scanner-video" playsInline muted />
   );
 }

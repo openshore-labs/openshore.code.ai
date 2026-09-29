@@ -802,7 +802,9 @@ export function SettingsScreen() {
           <SettingsRow
             label="Let models search the web"
             subWrap
-            sub={
+            // Crew routines run with nobody there to ask, so they work offline
+            // (CTO ruling 3; CX 8 wrote the line).
+            sub={`${
               settings.webSearchConsent === 'allowed'
                 ? 'On. A model sends its search words to the search service below, and nothing else from your chat.'
                 : settings.webSearchConsent === 'declined'
@@ -810,7 +812,7 @@ export function SettingsScreen() {
                   : isDesktop()
                     ? 'Asks the first time a chat model wants to search. The coding agent searches only once this is on.'
                     : 'Asks the first time a model wants to search.'
-            }
+            } Crew routines never search the web.`}
             trailing={
               <Switch
                 checked={settings.webSearchConsent === 'allowed'}
@@ -1260,9 +1262,11 @@ export function SettingsScreen() {
           ))}
         </div>
         <div className="field" style={{ marginTop: 12 }}>
+          <label htmlFor="settings-search-key">{SEARCH_BACKEND_LABEL[searchChoice]} API key</label>
           <input
+            id="settings-search-key"
             type="password"
-            placeholder={`${SEARCH_BACKEND_LABEL[searchChoice]} API key`}
+            placeholder="Paste the key"
             value={searchKeyValue}
             onChange={(e) => setSearchKeyValue(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && void saveSearch()}
