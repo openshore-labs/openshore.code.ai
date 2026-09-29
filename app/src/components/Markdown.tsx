@@ -3,11 +3,13 @@
 // code blocks are components/CodeBlock.tsx (Copy, and Run for a shell command
 // when the chat is desktop-backed; a ```diff fence renders as a real diff),
 // and a fence still open mid-stream renders as code rather than flashing as
-// prose until its closing line arrives.
-import ReactMarkdown from 'react-markdown';
+// prose until its closing line arrives. The highlighter loads the first time
+// a message holds a fence (lib/lazyHighlight.ts), so a launch never carries
+// it; until it lands, the block reads as plain code in the same box.
+import ReactMarkdown, { type Options } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
 import { CodeBlock } from './CodeBlock.js';
+import { hasCodeFence, useHighlighter } from '../lib/lazyHighlight.js';
 import { rehypeFadeWords } from '../lib/fadeWords.js';
 import { rehypeInk, type InkStamp } from '../lib/inkSwell.js';
 
@@ -34,11 +36,11 @@ export function Markdown({
    *  character stamped with its start. Undefined renders plain text. */
   ink?: { stamp: InkStamp; kind: 'greeting' | 'walk' };
 }) {
-  const plugins = ink
-    ? [rehypeHighlight, rehypeInk(ink.stamp)]
-    : fade
-      ? [rehypeHighlight, rehypeFadeWords]
-      : [rehypeHighlight];
+  const highlight = useHighlighter(hasCodeFence(text));
+  const plugins: NonNullable<Options['rehypePlugins']> = [
+    ...(highlight ? [highlight] : []),
+    ...(ink ? [rehypeInk(ink.stamp)] : fade ? [rehypeFadeWords] : []),
+  ];
   const cls = ink ? ` md-ink md-ink-${ink.kind}` : fade ? ' md-live' : '';
   return (
     <div className={`md${cls}`}>

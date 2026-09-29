@@ -153,11 +153,39 @@ async function postRecord(record: EthicsRecord): Promise<void> {
 
     // The server decides the outcome from its own history. We pass nothing and
     // trust nothing: a client cannot talk its own standing down.
-    await rpc('record_enforcement', session.accessToken, {});
+    try {
+      await rpc('record_enforcement', session.accessToken, {});
+    } catch (err) {
+      warnEnforcementFailed(err);
+    }
   } catch {
     // Offline, or the account rejected it. The device copy is the fallback, and
     // the block does not depend on this call.
   }
+}
+
+/** Whether this session already said the ladder call failed. */
+let enforcementWarned = false;
+
+/**
+ * Say once per session that `record_enforcement` failed. Swallowing it
+ * silently hid a ladder that never recorded a row for weeks (0016 to 0018,
+ * the deletion package's note). The block still stands; the line carries the
+ * error's code only (an HTTP status, or the error's kind offline), never the
+ * prompt, its hash, or the server's words.
+ */
+function warnEnforcementFailed(err: unknown): void {
+  if (enforcementWarned) return;
+  enforcementWarned = true;
+  const status = (err as { status?: unknown } | undefined)?.status;
+  const code =
+    typeof status === 'number' ? `HTTP ${status}` : err instanceof Error ? err.name : 'unknown';
+  console.warn(`[ethics] record_enforcement failed (${code}); the block stands.`);
+}
+
+/** Tests only: let the next failure say so again. */
+export function resetEnforcementWarningForTests(): void {
+  enforcementWarned = false;
 }
 
 /**

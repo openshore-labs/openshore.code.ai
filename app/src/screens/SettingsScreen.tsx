@@ -9,7 +9,7 @@ import { Fragment, useEffect, useState } from 'react';
 import { PAY_GATES_ENABLED, isOrgAdmin, useApp, type HarborDownload } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { platform, isDesktop, isPhone } from '../lib/platform.js';
-import { noticeEnabled, noticePermission, syncNoticePrefs } from '../lib/notices.js';
+import { noticeEnabled, noticePermission } from '../lib/notices.js';
 import type { NoticePermission } from '../lib/llamaPlugin.js';
 import { bridge } from '../lib/electronBridge.js';
 import { HARBOR_BYLINE } from '../lib/harbor.js';
@@ -1054,11 +1054,7 @@ export function SettingsScreen() {
                 <Switch
                   checked={noticeEnabled('download', settings)}
                   label="Download notifications"
-                  onChange={(next) => {
-                    void saveSettings({ noticeDownloads: next }).then(() =>
-                      syncNoticePrefs({ ...settings, noticeDownloads: next }),
-                    );
-                  }}
+                  onChange={(next) => void saveSettings({ noticeDownloads: next })}
                 />
               }
             />

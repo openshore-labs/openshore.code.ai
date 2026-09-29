@@ -13,12 +13,25 @@
 
 import { rpcPublic, type Session } from './supabase.js';
 import { isConfigured } from './supabase.js';
-import { freshSession } from './authSession.js';
+
+/** The store's own session with a live access token (setAbuseReviewAuth):
+ *  one refresh in flight on this device, and the store learns the new token
+ *  (the lib/ethics.ts pattern). */
+type AbuseReviewAuth = () => Promise<Session | undefined>;
+let abuseReviewAuth: AbuseReviewAuth | undefined;
+
+/** Wire the store's session in (state/store.ts). Until it is, nothing here
+ *  reaches the server. */
+export function setAbuseReviewAuth(auth: AbuseReviewAuth): void {
+  abuseReviewAuth = auth;
+}
 
 async function tokenFor(session?: Session): Promise<string | undefined> {
-  if (!isConfigured() || !session) return undefined;
+  if (!isConfigured() || !session || !abuseReviewAuth) return undefined;
   try {
-    return (await freshSession(session)).accessToken;
+    const live = await abuseReviewAuth();
+    // Only the person the caller acts for.
+    return live && live.user.id === session.user.id ? live.accessToken : undefined;
   } catch {
     return undefined;
   }

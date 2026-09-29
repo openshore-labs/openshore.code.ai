@@ -2,6 +2,7 @@
 // set over simple-git, with errors translated into actionable sentences.
 import { execFile } from 'node:child_process';
 import { simpleGit, type SimpleGit } from 'simple-git';
+import { scrubbedEnv } from '../core/exec/childEnv.js';
 
 export function git(cwd: string): SimpleGit {
   return simpleGit(cwd);
@@ -105,14 +106,17 @@ export function tokenForUrl(url: string, tokens: PlatformTokens | undefined): st
 }
 
 /**
- * The environment for one git command against `url`: terminal prompts off (a
- * missing credential fails at once instead of waiting on a prompt nobody can
- * answer), and with a token, a host-scoped auth header appended to any git
- * config the environment already carries (GIT_CONFIG_COUNT). The token never
+ * The environment for one git command against `url`: this process's own,
+ * scrubbed of every key and token (core/exec/childEnv.ts), since a clone's
+ * hooks and filters run inside git; terminal prompts off (a missing
+ * credential fails at once instead of waiting on a prompt nobody can
+ * answer); and with a token, a host-scoped auth header appended to any git
+ * config the environment already carries (GIT_CONFIG_COUNT). That header is
+ * the one credential git needs, set here after the scrub. The token never
  * lands in the process arguments, the clone's .git/config, or its remote.
  */
 export function gitAuthEnv(url: string, token: string | undefined): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
+  const env: NodeJS.ProcessEnv = { ...scrubbedEnv(), GIT_TERMINAL_PROMPT: '0' };
   const header = token ? cloneAuthHeader(url, token) : undefined;
   if (header) {
     const count = Number.parseInt(env.GIT_CONFIG_COUNT ?? '0', 10);
@@ -136,7 +140,8 @@ export function runGit(
       args,
       {
         cwd: opts.cwd,
-        env: opts.env,
+        // Scrubbed unless the caller built one (gitAuthEnv scrubs too).
+        env: opts.env ?? scrubbedEnv(),
         maxBuffer: 4 * 1024 * 1024,
         windowsHide: true,
         timeout: opts.timeoutMs,
