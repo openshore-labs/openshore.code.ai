@@ -804,8 +804,9 @@ export function CrewCommandScreen() {
             </p>
 
             <div className="field">
-              <label>Name</label>
+              <label htmlFor="routine-name">Name</label>
               <input
+                id="routine-name"
                 placeholder="e.g. Morning review, Nightly test run"
                 value={draft.name}
                 maxLength={ROUTINE_LIMITS.name}

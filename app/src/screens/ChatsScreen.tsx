@@ -338,6 +338,7 @@ export function ChatsScreen() {
             <div className="field">
               <input
                 autoFocus
+                aria-label="Chat name"
                 value={renameDraft}
                 maxLength={80}
                 placeholder="A short name"

@@ -95,15 +95,19 @@ describe('fitVerdict mirrors the engine budget exactly', () => {
   });
 
   it('prints the machine in the person units', () => {
-    expect(hardwareLine(cpu(8))).toBe('This computer: 8 GB, no GPU');
-    expect(hardwareLine(gpu(32, 12))).toBe('This computer: 32 GB, 12 GB GPU');
-    expect(hardwareLine(gpu(0, 24))).toBe('This computer: 24 GB GPU');
+    expect(hardwareLine(cpu(8))).toBe('This computer: 8 GB memory, no graphics card');
+    expect(hardwareLine(gpu(32, 12))).toBe('This computer: 32 GB memory, 12 GB graphics card');
+    expect(hardwareLine(gpu(0, 24))).toBe('This computer: 24 GB graphics card');
   });
 
   it('writes an honest fit line for each verdict', () => {
-    expect(fitLine('fits', cpu(16))).toBe('Fits this computer (16 GB, no GPU).');
-    expect(fitLine('tight', cpu(14))).toMatch(/^A tight fit on this computer \(14 GB, no GPU\)/);
-    expect(fitLine('too-big', cpu(8))).toBe('Too big for this computer (8 GB, no GPU).');
+    expect(fitLine('fits', cpu(16))).toBe('Fits this computer (16 GB memory, no graphics card).');
+    expect(fitLine('tight', cpu(14))).toMatch(
+      /^A tight fit on this computer \(14 GB memory, no graphics card\)/,
+    );
+    expect(fitLine('too-big', cpu(8))).toBe(
+      'Too big for this computer (8 GB memory, no graphics card).',
+    );
     expect(fitLine('unknown', undefined)).toBe('Could not read this computer yet.');
   });
 });

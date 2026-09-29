@@ -48,6 +48,7 @@ import {
   harnessCurrentInfo,
   type HarnessCurrentId,
 } from '../lib/harnessCurrents.js';
+import { SHIPS_CURRENTS } from '../lib/focus.js';
 import { Llama } from '../lib/llamaPlugin.js';
 import {
   ABORT_BEAT_MS,
@@ -562,7 +563,9 @@ export class StackDriver implements ChatDriver {
         body: init.body,
       });
     const id = activeHarnessId(context.harnessCurrents);
-    const advisor = JevAdvisor.from(context.harnessCurrents, jevFetch);
+    // Harness Currents are v2: the gate folds to false in a Personal build, so
+    // the advisor (and its words) stays out of that bundle (lib/focus.ts).
+    const advisor = SHIPS_CURRENTS ? JevAdvisor.from(context.harnessCurrents, jevFetch) : undefined;
     if (id && advisor) this.harness = { id, label: harnessCurrentInfo(id).label, advisor };
     this.listenersReady = this.attachDeviceListeners();
   }

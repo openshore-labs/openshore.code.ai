@@ -3,7 +3,7 @@
 // everything deeper in a sheet. What this app keeps, where it lives, and a
 // few careful switches. No telemetry to toggle because there is none. Built
 // with the Creative Studio (2026-09-02, "The Ledger" direction).
-import { featureOn } from '../lib/focus.js';
+import { SHIPS_ADMIN, SHIPS_LAUNCH, SHIPS_STACKHEALTH } from '../lib/focus.js';
 import { ACCOUNT_PITCH } from '../lib/accountGate.js';
 import { Fragment, useEffect, useState } from 'react';
 import { PAY_GATES_ENABLED, isOrgAdmin, useApp, type HarborDownload } from '../state/store.js';
@@ -431,8 +431,9 @@ export function SettingsScreen() {
   // it only appears when a hub is paired. Read the current value from the hub;
   // an admin can change it, everyone else sees it read-only.
   // Stack Health is v2 (docs/release-tiers.md): a Personal build neither
-  // shows the row nor asks the hub for it.
-  const shHub = featureOn('stackhealth') ? settings.daemon : undefined;
+  // shows the row nor asks the hub for it, and does not carry its words
+  // (the SHIPS_ gates below fold away in that build's bundle).
+  const shHub = SHIPS_STACKHEALTH ? settings.daemon : undefined;
   const [shVisibility, setShVisibility] = useState<StackHealthVisibility | undefined>();
   useEffect(() => {
     if (!shHub) {
@@ -729,7 +730,7 @@ export function SettingsScreen() {
           </SettingsGroup>
         ) : null}
 
-        {codemagicConnected && featureOn('launch') ? (
+        {SHIPS_LAUNCH && codemagicConnected ? (
           <SettingsGroup title="Launch with Codemagic" index={group++}>
             <SettingsRow
               label="Codemagic Access"
@@ -758,7 +759,7 @@ export function SettingsScreen() {
           </SettingsGroup>
         ) : null}
 
-        {shHub ? (
+        {SHIPS_STACKHEALTH && shHub ? (
           <SettingsGroup title="Stack Health" index={group++}>
             <SettingsRow
               label="Who can see Stack Health"
@@ -805,7 +806,9 @@ export function SettingsScreen() {
           <SettingsRow
             label="Let models search the web"
             subWrap
-            sub={
+            // Crew routines run with nobody there to ask, so they work offline
+            // (CTO ruling 3; CX 8 wrote the line).
+            sub={`${
               settings.webSearchConsent === 'allowed'
                 ? 'On. A model sends its search words to the search service below, and nothing else from your chat.'
                 : settings.webSearchConsent === 'declined'
@@ -813,7 +816,7 @@ export function SettingsScreen() {
                   : isDesktop()
                     ? 'Asks the first time a chat model wants to search. The coding agent searches only once this is on.'
                     : 'Asks the first time a model wants to search.'
-            }
+            } Crew routines never search the web.`}
             trailing={
               <Switch
                 checked={settings.webSearchConsent === 'allowed'}
@@ -1205,7 +1208,7 @@ export function SettingsScreen() {
           </p>
         ) : null}
         <SignInCard />
-        {signedIn && account?.type === 'commercial' && isOrgAdmin(account) && featureOn('admin') ? (
+        {SHIPS_ADMIN && signedIn && account?.type === 'commercial' && isOrgAdmin(account) ? (
           <button
             className="btn ghost"
             style={{ width: '100%' }}
@@ -1266,9 +1269,11 @@ export function SettingsScreen() {
           ))}
         </div>
         <div className="field" style={{ marginTop: 12 }}>
+          <label htmlFor="settings-search-key">{SEARCH_BACKEND_LABEL[searchChoice]} API key</label>
           <input
+            id="settings-search-key"
             type="password"
-            placeholder={`${SEARCH_BACKEND_LABEL[searchChoice]} API key`}
+            placeholder="Paste the key"
             value={searchKeyValue}
             onChange={(e) => setSearchKeyValue(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && void saveSearch()}

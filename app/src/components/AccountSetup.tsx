@@ -82,16 +82,20 @@ export function AccountSetup() {
             <div className="card account-card selected">
               <h3>Set up your company</h3>
               <div className="field" style={{ marginTop: 10 }}>
-                <label>Company name</label>
+                <label htmlFor="account-setup-company-name">Company name</label>
                 <input
+                  id="account-setup-company-name"
                   placeholder="e.g. Acme Inc"
                   value={orgName}
                   onChange={(e) => setOrgName(e.target.value)}
                 />
               </div>
               <div className="field">
-                <label>Your email (you are the first admin)</label>
+                <label htmlFor="account-setup-your-email">
+                  Your email (you are the first admin)
+                </label>
                 <input
+                  id="account-setup-your-email"
                   type="email"
                   autoCapitalize="none"
                   autoCorrect="off"
@@ -101,8 +105,9 @@ export function AccountSetup() {
                 />
               </div>
               <div className="field">
-                <label>How many people will use it?</label>
+                <label htmlFor="account-setup-how-many-people">How many people will use it?</label>
                 <input
+                  id="account-setup-how-many-people"
                   type="number"
                   min={1}
                   value={seats}

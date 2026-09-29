@@ -1,8 +1,8 @@
 // The shell: persistent sidebar on wide screens, drawer on the phone, one
 // active room. The chat is home; everything else is a short visit.
-import { useEffect, useRef } from 'react';
+import { Suspense, lazy, useEffect, useRef, type ComponentType } from 'react';
 import { Keyboard } from '@capacitor/keyboard';
-import { useApp } from './state/store.js';
+import { useApp, type ViewName } from './state/store.js';
 import { useAuthDeepLink } from './hooks/useAuthDeepLink.js';
 import { useAutoUpdate } from './hooks/useAutoUpdate.js';
 import { useSheetFocusTrap } from './hooks/useSheetFocusTrap.js';
@@ -11,32 +11,12 @@ import { platform } from './lib/platform.js';
 import { Sidebar } from './components/Sidebar.js';
 import { Paywall } from './components/Paywall.js';
 import { AuthConfirmSheet } from './components/AuthConfirmSheet.js';
-import { OrgJoinSheet } from './components/OrgJoinSheet.js';
 import { WebSearchAsk } from './components/WebSearchAsk.js';
 import { AccountGateSheet } from './components/AccountGateSheet.js';
-import { featureOn } from './lib/focus.js';
+import { featureOn, roomOpen } from './lib/focus.js';
 import { CurrentArrival, CurrentWaterline } from './components/CurrentArrival.js';
 import { UpdateBanner } from './components/UpdateBanner.js';
 import { ChatScreen } from './screens/ChatScreen.js';
-import { ChatsScreen } from './screens/ChatsScreen.js';
-import { MarketplaceScreen } from './screens/MarketplaceScreen.js';
-import { StackScreen } from './screens/StackScreen.js';
-import { StackHealthScreen } from './screens/StackHealthScreen.js';
-import { ConnectionsScreen } from './screens/ConnectionsScreen.js';
-import { ReposScreen } from './screens/ReposScreen.js';
-import { VaultRoom } from './screens/VaultScreen.js';
-import { ProjectsScreen } from './screens/ProjectsScreen.js';
-import { ProjectDetailScreen } from './screens/ProjectDetailScreen.js';
-import { ProjectMemoryScreen } from './screens/ProjectMemoryScreen.js';
-import { CrewScreen } from './screens/CrewScreen.js';
-import { CrewCommandScreen } from './screens/CrewCommandScreen.js';
-import { AdminScreen } from './screens/AdminScreen.js';
-import { LaunchScreen } from './screens/LaunchScreen.js';
-import { PairScreen } from './screens/PairScreen.js';
-import { TerminalScreen } from './screens/TerminalScreen.js';
-import { TerminalRoomScreen } from './screens/TerminalRoomScreen.js';
-import { SettingsScreen } from './screens/SettingsScreen.js';
-import { AccountSetup } from './components/AccountSetup.js';
 import { OnboardingScreen } from './screens/OnboardingScreen.js';
 import { useCompact } from './hooks/useCompact.js';
 import { useExitPresence } from './hooks/useExitPresence.js';
@@ -45,6 +25,105 @@ import { useScrollMemory } from './hooks/useScrollMemory.js';
 import { useDrawerGesture } from './hooks/useDrawerGesture.js';
 import { useKeyboardInset } from './hooks/useKeyboardInset.js';
 import { drawerExitMs, drawerWidth } from './lib/motion.js';
+
+// Every room but the chat is its own chunk (review 9: the whole app used to
+// arrive as one 2.5 MB file). The chat is home, on screen at launch, so it
+// stays in the first chunk. The rest load a moment after launch, while the
+// person reads the chat, so the first visit to a room does not wait on it.
+const roomLoaders: Array<() => Promise<unknown>> = [];
+function room<M, K extends keyof M>(load: () => Promise<M>, name: K) {
+  roomLoaders.push(load);
+  return lazy(async () => ({ default: (await load())[name] as ComponentType }));
+}
+/** How long after launch the rooms start loading in the background. */
+const ROOM_WARM_MS = 1500;
+
+const ChatsScreen = room(() => import('./screens/ChatsScreen.js'), 'ChatsScreen');
+const StackScreen = room(() => import('./screens/StackScreen.js'), 'StackScreen');
+const ConnectionsScreen = room(() => import('./screens/ConnectionsScreen.js'), 'ConnectionsScreen');
+const ReposScreen = room(() => import('./screens/ReposScreen.js'), 'ReposScreen');
+// The Vault inside its error boundary: a fault fails inside the room with a
+// way out that works, never a blank app (0.10).
+const VaultRoom = room(() => import('./screens/VaultScreen.js'), 'VaultRoom');
+const ProjectsScreen = room(() => import('./screens/ProjectsScreen.js'), 'ProjectsScreen');
+const ProjectDetailScreen = room(
+  () => import('./screens/ProjectDetailScreen.js'),
+  'ProjectDetailScreen',
+);
+const ProjectMemoryScreen = room(
+  () => import('./screens/ProjectMemoryScreen.js'),
+  'ProjectMemoryScreen',
+);
+const CrewScreen = room(() => import('./screens/CrewScreen.js'), 'CrewScreen');
+const CrewCommandScreen = room(() => import('./screens/CrewCommandScreen.js'), 'CrewCommandScreen');
+const PairScreen = room(() => import('./screens/PairScreen.js'), 'PairScreen');
+const TerminalScreen = room(() => import('./screens/TerminalScreen.js'), 'TerminalScreen');
+const TerminalRoomScreen = room(
+  () => import('./screens/TerminalRoomScreen.js'),
+  'TerminalRoomScreen',
+);
+const SettingsScreen = room(() => import('./screens/SettingsScreen.js'), 'SettingsScreen');
+
+// The later tiers' rooms and surfaces (lib/focus.ts ROOM_FEATURE, and the
+// teams sheets) exist only in a build that carries them. The gate is spelled
+// here as comparisons on import.meta.env, not read from focus.ts, because the
+// bundler settles which chunks a file emits from that file alone, before it
+// folds another module's constants: only a literal in this file keeps a
+// Personal build from emitting these rooms at all. roomOpen is the same gate
+// at run time. app/test/tierBundle.test.ts holds these tiers to focus.ts and
+// builds a Personal bundle to check none of it is there.
+const BUILT_TIER = import.meta.env?.VITE_RELEASE_TIER?.trim();
+const BUILT_V2 = BUILT_TIER === '2' || BUILT_TIER === '3' || BUILT_TIER === '4';
+const BUILT_V3 = BUILT_TIER === '3' || BUILT_TIER === '4';
+const BUILT_V4 = BUILT_TIER === '4';
+
+const StackHealthScreen =
+  BUILT_V2 && roomOpen('stackhealth')
+    ? room(() => import('./screens/StackHealthScreen.js'), 'StackHealthScreen')
+    : null;
+const LaunchScreen =
+  BUILT_V2 && roomOpen('launch')
+    ? room(() => import('./screens/LaunchScreen.js'), 'LaunchScreen')
+    : null;
+const MarketplaceScreen =
+  BUILT_V3 && roomOpen('marketplace')
+    ? room(() => import('./screens/MarketplaceScreen.js'), 'MarketplaceScreen')
+    : null;
+const AdminScreen =
+  BUILT_V4 && roomOpen('admin')
+    ? room(() => import('./screens/AdminScreen.js'), 'AdminScreen')
+    : null;
+const AccountSetup =
+  BUILT_V4 && featureOn('teams')
+    ? room(() => import('./components/AccountSetup.js'), 'AccountSetup')
+    : null;
+const OrgJoinSheet =
+  BUILT_V4 && featureOn('teams')
+    ? room(() => import('./components/OrgJoinSheet.js'), 'OrgJoinSheet')
+    : null;
+
+/** The room each view opens. Chat, onboarding, and any view not listed fall
+ *  to the chat. */
+const ROOMS: Partial<Record<ViewName, ComponentType | null>> = {
+  chats: ChatsScreen,
+  stack: StackScreen,
+  connections: ConnectionsScreen,
+  repos: ReposScreen,
+  vault: VaultRoom,
+  projects: ProjectsScreen,
+  project: ProjectDetailScreen,
+  projectmemory: ProjectMemoryScreen,
+  terminalroom: TerminalRoomScreen,
+  terminal: TerminalScreen,
+  crew: CrewScreen,
+  crewcommand: CrewCommandScreen,
+  pair: PairScreen,
+  settings: SettingsScreen,
+  stackhealth: StackHealthScreen,
+  launch: LaunchScreen,
+  marketplace: MarketplaceScreen,
+  admin: AdminScreen,
+};
 
 export function App() {
   const { ready, view, drawerOpen, toast, init, reconcileEntitlementOnForeground, accountChoice } =
@@ -84,6 +163,26 @@ export function App() {
     void init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Warm the rooms once the app is up, one at a time so no single task holds
+  // the main thread long. A failed load is left for the room's own open to
+  // retry.
+  useEffect(() => {
+    if (!ready) return;
+    let live = true;
+    const t = window.setTimeout(() => {
+      void (async () => {
+        for (const load of roomLoaders) {
+          if (!live) return;
+          await load().catch(() => undefined);
+        }
+      })();
+    }, ROOM_WARM_MS);
+    return () => {
+      live = false;
+      window.clearTimeout(t);
+    };
+  }, [ready]);
 
   // Apply the appearance preference to the document root. 'system' removes the
   // attribute so prefers-color-scheme decides; light/dark pin it. The browser
@@ -209,7 +308,13 @@ export function App() {
   if (view === 'onboarding' || choosingAccount) {
     return (
       <div className="shell">
-        {choosingAccount ? <AccountSetup /> : <OnboardingScreen />}
+        {choosingAccount && AccountSetup ? (
+          <Suspense fallback={null}>
+            <AccountSetup />
+          </Suspense>
+        ) : (
+          <OnboardingScreen />
+        )}
         {toastPresence.mounted ? (
           <div
             className={`toast${toastPresence.closing ? ' closing' : ''}`}
@@ -223,48 +328,10 @@ export function App() {
     );
   }
 
-  const room =
-    view === 'marketplace' ? (
-      <MarketplaceScreen />
-    ) : view === 'stack' ? (
-      <StackScreen />
-    ) : view === 'stackhealth' ? (
-      <StackHealthScreen />
-    ) : view === 'connections' ? (
-      <ConnectionsScreen />
-    ) : view === 'repos' ? (
-      <ReposScreen />
-    ) : view === 'vault' ? (
-      // The Vault inside its error boundary: a fault fails inside the room
-      // with a way out that works, never a blank app (0.10).
-      <VaultRoom />
-    ) : view === 'projects' ? (
-      <ProjectsScreen />
-    ) : view === 'terminalroom' ? (
-      <TerminalRoomScreen />
-    ) : view === 'project' ? (
-      <ProjectDetailScreen />
-    ) : view === 'projectmemory' ? (
-      <ProjectMemoryScreen />
-    ) : view === 'crew' ? (
-      <CrewScreen />
-    ) : view === 'crewcommand' ? (
-      <CrewCommandScreen />
-    ) : view === 'admin' ? (
-      <AdminScreen />
-    ) : view === 'launch' ? (
-      <LaunchScreen />
-    ) : view === 'pair' ? (
-      <PairScreen />
-    ) : view === 'terminal' ? (
-      <TerminalScreen />
-    ) : view === 'settings' ? (
-      <SettingsScreen />
-    ) : view === 'chats' ? (
-      <ChatsScreen />
-    ) : (
-      <ChatScreen compact={compact} />
-    );
+  // A later tier's room is null in a build without it, so its view (which
+  // setView never opens there) falls through to the chat like any unknown one.
+  const Room = ROOMS[view];
+  const room = Room ? <Room /> : <ChatScreen compact={compact} />;
 
   return (
     // The frame stacks the desktop's update bar (when one is showing) above the
@@ -276,9 +343,14 @@ export function App() {
         {/* Keyed on the view so switching rooms replays a soft fade-in instead of
           a hard cut. Same view (e.g. opening another chat) keeps the key, so a
           live transcript is never remounted mid-stream. */}
-        <div className="shell-main room-swap" key={view} ref={mainRef}>
-          {room}
-        </div>
+        {/* A room opened for the first time waits on its chunk in an empty
+          shell-main with the same fade, then arrives with a fade of its own:
+          a dissolve, never a spinner. */}
+        <Suspense fallback={<div className="shell-main room-swap" aria-busy="true" />}>
+          <div className="shell-main room-swap" key={view} ref={mainRef}>
+            {room}
+          </div>
+        </Suspense>
         <div className="room-ghost-host" ref={ghostRef} aria-hidden="true" />
         {/* The zone must outlive the gesture it started: it holds the pointer
           capture, and an element removed mid-gesture loses it, so its release
@@ -302,7 +374,11 @@ export function App() {
         ) : null}
         <Paywall />
         <AuthConfirmSheet />
-        {featureOn('teams') ? <OrgJoinSheet /> : null}
+        {OrgJoinSheet ? (
+          <Suspense fallback={null}>
+            <OrgJoinSheet />
+          </Suspense>
+        ) : null}
         <WebSearchAsk />
         <AccountGateSheet />
         {/* Agentic Currents: the arrival that flows from the switch to the

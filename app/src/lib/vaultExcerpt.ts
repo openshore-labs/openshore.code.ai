@@ -119,12 +119,22 @@ function approx(n: number): string {
   return v.toLocaleString('en-US');
 }
 
-/** The cost line under an excerpt: "About 380 tokens of this model's 4,096". */
-export function excerptCostLine(tokens: number, served: number): string {
-  const t = Math.max(0, Math.ceil(tokens));
-  const unit = t === 1 ? 'token' : 'tokens';
-  if (!Number.isFinite(served) || served <= 0) return `About ${approx(t)} ${unit}`;
-  return `About ${approx(t)} ${unit} of this model's ${Math.floor(served).toLocaleString('en-US')}`;
+/** The cost line under an excerpt, in words a person uses (CX, jargon
+ *  rewrites): the share of the model's room it takes, "Takes about 9% of
+ *  this model's room", or, when that room is not known, its length, "About
+ *  280 words" (counted from the text when there is one). */
+export function excerptCostLine(tokens: number, served: number, text?: string): string {
+  if (!Number.isFinite(served) || served <= 0) {
+    // Without the text, about three words to every four tokens.
+    const words = text
+      ? text.split(/\s+/).filter(Boolean).length
+      : Math.round(Math.max(0, tokens) * 0.75);
+    return `About ${approx(words)} ${words === 1 ? 'word' : 'words'}`;
+  }
+  const pct = (Math.max(0, tokens) / served) * 100;
+  return pct < 1
+    ? "Takes under 1% of this model's room"
+    : `Takes about ${Math.round(pct)}% of this model's room`;
 }
 
 // ---- What the composer (stream I) reads, through props ---------------------

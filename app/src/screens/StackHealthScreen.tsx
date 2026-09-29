@@ -376,7 +376,7 @@ export function StackHealthScreen() {
               key={r.id}
               role="tab"
               aria-selected={range === r.id}
-              className={`sh-seg-btn${range === r.id ? ' active' : ''}`}
+              className={`sh-seg-btn press-fb${range === r.id ? ' active' : ''}`}
               onClick={() => {
                 if (r.id !== range) setRange(r.id);
               }}

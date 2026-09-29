@@ -193,7 +193,9 @@ export function ProjectDetailScreen() {
               </div>
               <div className="project-stat" role="listitem">
                 <span className="project-stat-num">{repoCount}</span>
-                <span className="project-stat-label">{repoCount === 1 ? 'repo' : 'repos'}</span>
+                <span className="project-stat-label">
+                  {repoCount === 1 ? 'repository' : 'repositories'}
+                </span>
               </div>
               {isCommercial ? (
                 <div className="project-stat" role="listitem">
@@ -312,8 +314,9 @@ export function ProjectDetailScreen() {
           {editingDetails ? (
             <>
               <div className="field" style={{ marginTop: 8 }}>
-                <label>Name</label>
+                <label htmlFor="project-name">Name</label>
                 <input
+                  id="project-name"
                   value={details.name}
                   onChange={(e) => setDetails({ ...details, name: e.target.value })}
                 />
@@ -560,8 +563,9 @@ function TeamAccess({
       ) : (
         <>
           <div className="field" style={{ marginTop: 8 }}>
-            <label>Add a teammate by email</label>
+            <label htmlFor="project-add-teammate">Add a teammate by email</label>
             <input
+              id="project-add-teammate"
               type="email"
               placeholder="name@company.com"
               value={email}

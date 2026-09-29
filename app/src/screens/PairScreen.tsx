@@ -12,6 +12,8 @@ import { QrScanner } from '../components/QrScanner.js';
 import { Switch } from '../components/Switch.js';
 import { parsePairingQr } from '../lib/qrDecode.js';
 import { Icon } from '../components/Icon.js';
+import { Sheet } from '../components/Sheet.js';
+import { SheetHead } from '../components/SheetHead.js';
 
 // Clean glyphs for the Tailscale download rows, drawn in the tile's ink on a
 // solid accent tile (iOS-app-icon feel). One per platform.
@@ -127,8 +129,8 @@ function DesktopPair() {
       <div className="screen-inner">
         <h1>Put this on your phone</h1>
         <p className="lead">
-          Over your own private Tailscale network. Your computer owns the run; the phone can drop
-          into a tunnel and reattach with nothing lost.
+          Your phone reaches your computer over Tailscale, a free app that privately links your own
+          devices. Work stays on your computer, so losing signal loses nothing.
         </p>
 
         <div className="card">
@@ -139,7 +141,7 @@ function DesktopPair() {
                 {info?.running
                   ? info.mode === 'loopback'
                     ? 'On, but only for this computer. Tailscale is not up, so the phone cannot reach it yet. Open the Tailscale app and sign in (on Linux, run sudo tailscale up).'
-                    : `Serving on ${info.host}:${info.port} over the tailnet.`
+                    : 'On. Your phone can reach this computer over Tailscale.'
                   : info?.tailscaleUp
                     ? 'Off. Turn it on and the phone app can connect.'
                     : 'Tailscale is not up on this computer. Open the Tailscale app and sign in (on Linux, run sudo tailscale up), then turn this on.'}
@@ -176,7 +178,7 @@ function DesktopPair() {
               Address: http://{info.host}:{info.port}
             </div>
             <button
-              className="hint"
+              className="hint press-fb"
               onClick={() => setShowToken((s) => !s)}
               style={{ marginTop: 6 }}
             >
@@ -226,9 +228,8 @@ function DesktopPair() {
         ) : null}
 
         <p className="hint">
-          Both devices sign into the same tailnet (the Tailscale app, free for personal use). The
-          connection needs its own pairing token on top of the tailnet, and phone sessions are
-          stricter than sessions on the computer itself: shell commands and cloud spend always ask.
+          Both devices sign in to the same Tailscale account, free for personal use. Work started
+          from the phone always asks before commands and cloud spend.
         </p>
 
         <RemoteHubPanel />
@@ -252,7 +253,7 @@ function RemoteHubPanel() {
   const connect = async () => {
     const baseUrl = address.trim().replace(/\/$/, '');
     if (!/^https?:\/\//.test(baseUrl) || !token.trim()) {
-      setState('Enter the address and pairing token shown on the other computer.');
+      setState("Enter the other computer's address and its access key.");
       return;
     }
     setTesting(true);
@@ -291,8 +292,9 @@ function RemoteHubPanel() {
       {prefer ? (
         <>
           <div className="field" style={{ marginTop: 12 }}>
-            <label>Address</label>
+            <label htmlFor="pair-hub-address">Address</label>
             <input
+              id="pair-hub-address"
               placeholder="http://100.x.y.z:4816"
               value={address}
               autoCapitalize="none"
@@ -301,8 +303,9 @@ function RemoteHubPanel() {
             />
           </div>
           <div className="field">
-            <label>Pairing token</label>
+            <label htmlFor="pair-hub-key">Access key</label>
             <input
+              id="pair-hub-key"
               placeholder="osc_..."
               value={token}
               autoCapitalize="none"
@@ -440,7 +443,7 @@ function PhonePair() {
         <div className="card">
           <h3>Before this screen</h3>
           <div className="sub">
-            1. Install Tailscale on both devices and sign into the same tailnet.
+            1. Install Tailscale on both devices and sign in to the same account.
             <br />
             2. In OpenShore on your computer: Menu, Desktop + phone, Turn on.
           </div>
@@ -480,8 +483,9 @@ function PhonePair() {
             Or type the address and the pairing code it shows.
           </p>
           <div className="field">
-            <label>Address</label>
+            <label htmlFor="pair-phone-address">Address</label>
             <input
+              id="pair-phone-address"
               placeholder="http://100.x.y.z:4816"
               value={address}
               autoCapitalize="none"
@@ -490,8 +494,9 @@ function PhonePair() {
             />
           </div>
           <div className="field">
-            <label>Pairing code</label>
+            <label htmlFor="pair-phone-code">Pairing code</label>
             <input
+              id="pair-phone-code"
               placeholder="pc_..."
               value={code}
               autoCapitalize="none"
@@ -507,7 +512,7 @@ function PhonePair() {
           >
             {testing ? 'Checking...' : connected ? 'Connected' : 'Connect'}
           </button>
-          {scanning ? <QrScanner onDecode={onScanned} onClose={() => setScanning(false)} /> : null}
+          <QrScanner open={scanning} onDecode={onScanned} onClose={() => setScanning(false)} />
           {connected ? (
             <div className="pair-next">
               <p className="hint" style={{ margin: 0 }}>
@@ -557,7 +562,9 @@ function PhonePair() {
 // active one is marked; tapping another switches sessions to it, and each can
 // be named or forgotten.
 function HubList() {
-  const { settings, selectHub, removeHub, renameHub, showToast } = useApp();
+  const { settings, selectHub, removeHub, showToast } = useApp();
+  // The computer being named, while its sheet is open.
+  const [naming, setNaming] = useState<{ baseUrl: string; name?: string; host: string }>();
   const hubs = hubList(settings);
   if (hubs.length < 2) return null;
   const activeUrl = settings.daemon?.baseUrl;
@@ -587,10 +594,7 @@ function HubList() {
             {active ? <span className="pill ok">active</span> : null}
             <button
               className="linklike press-fb"
-              onClick={() => {
-                const name = window.prompt('Name this computer', h.name ?? '');
-                if (name !== null) void renameHub(h.baseUrl, name);
-              }}
+              onClick={() => setNaming({ baseUrl: h.baseUrl, name: h.name, host })}
             >
               rename
             </button>
@@ -606,6 +610,57 @@ function HubList() {
           </div>
         );
       })}
+      <Sheet open={Boolean(naming)} onClose={() => setNaming(undefined)}>
+        {naming ? (
+          <HubNameForm key={naming.baseUrl} hub={naming} onDone={() => setNaming(undefined)} />
+        ) : null}
+      </Sheet>
     </div>
+  );
+}
+
+// Naming a computer: one field, Save and Cancel, the Vault rename sheet's
+// shape. (window.prompt did this before; Electron never implements it, so the
+// desktop's rename did nothing.) An empty name goes back to the address.
+function HubNameForm({
+  hub,
+  onDone,
+}: {
+  hub: { baseUrl: string; name?: string; host: string };
+  onDone: () => void;
+}) {
+  const { renameHub } = useApp();
+  const [name, setName] = useState(hub.name ?? '');
+  const save = () => {
+    void renameHub(hub.baseUrl, name);
+    onDone();
+  };
+  return (
+    <>
+      <SheetHead title="Name this computer" onClose={onDone} />
+      <div className="field">
+        <label htmlFor="pair-hub-name">Name</label>
+        <input
+          id="pair-hub-name"
+          autoFocus
+          value={name}
+          placeholder={hub.host}
+          autoComplete="off"
+          spellCheck={false}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') save();
+          }}
+        />
+      </div>
+      <div className="sheet-actions">
+        <button type="button" className="btn primary press-fb" onClick={save}>
+          Save
+        </button>
+        <button type="button" className="btn quiet press-fb" onClick={onDone}>
+          Cancel
+        </button>
+      </div>
+    </>
   );
 }

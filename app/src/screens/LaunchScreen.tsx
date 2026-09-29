@@ -211,6 +211,7 @@ export function LaunchScreen() {
                 <input
                   autoFocus
                   type="password"
+                  aria-label="Codemagic API key"
                   placeholder="Codemagic API key"
                   value={token}
                   onChange={(e) => setToken(e.target.value)}
@@ -281,8 +282,9 @@ export function LaunchScreen() {
                 </select>
               </div>
               <div className="field">
-                <label>Codemagic app id</label>
+                <label htmlFor="launch-codemagic-app-id">Codemagic app id</label>
                 <input
+                  id="launch-codemagic-app-id"
                   placeholder="from the Codemagic app URL"
                   value={draft.appId}
                   onChange={(e) => setDraft({ ...draft, appId: e.target.value })}
@@ -291,8 +293,9 @@ export function LaunchScreen() {
                 />
               </div>
               <div className="field">
-                <label>Workflow id</label>
+                <label htmlFor="launch-workflow-id">Workflow id</label>
                 <input
+                  id="launch-workflow-id"
                   placeholder="e.g. ios-release, android-release"
                   value={draft.workflowId}
                   onChange={(e) => setDraft({ ...draft, workflowId: e.target.value })}
@@ -301,8 +304,9 @@ export function LaunchScreen() {
                 />
               </div>
               <div className="field">
-                <label>Branch</label>
+                <label htmlFor="launch-branch">Branch</label>
                 <input
+                  id="launch-branch"
                   placeholder="main"
                   value={draft.branch}
                   onChange={(e) => setDraft({ ...draft, branch: e.target.value })}

@@ -75,8 +75,9 @@ export function HarnessCurrentConnectSheet({
           </ul>
 
           <div className="field">
-            <label>Address</label>
+            <label htmlFor="harness-connect-address">Address</label>
             <input
+              id="harness-connect-address"
               autoFocus
               type="url"
               inputMode="url"
@@ -91,8 +92,9 @@ export function HarnessCurrentConnectSheet({
             </div>
           </div>
           <div className="field">
-            <label>Model id (optional)</label>
+            <label htmlFor="harness-connect-model-id">Model id (optional)</label>
             <input
+              id="harness-connect-model-id"
               autoCapitalize="none"
               autoCorrect="off"
               placeholder={info.defaultModel}
@@ -101,8 +103,9 @@ export function HarnessCurrentConnectSheet({
             />
           </div>
           <div className="field">
-            <label>API key</label>
+            <label htmlFor="harness-connect-api-key">API key</label>
             <input
+              id="harness-connect-api-key"
               type="password"
               placeholder={saved ? 'Leave blank to keep the saved API key' : 'Paste your API key'}
               value={apiKey}

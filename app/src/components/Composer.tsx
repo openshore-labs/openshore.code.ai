@@ -171,7 +171,7 @@ export const SLASH_COMMANDS: Array<{
   { name: 'clear', hint: 'Start a fresh chat' },
   { name: 'compact', hint: 'Fold the history to save context', arg: 'focus', agentOnly: true },
   { name: 'model', hint: 'Switch the model' },
-  { name: 'cost', hint: 'Spend and tokens so far' },
+  { name: 'cost', hint: 'What this chat has cost so far' },
   { name: 'mode', hint: 'Change the permission mode' },
   { name: 'init', hint: 'Write an OSCODE.md for this repository', agentOnly: true },
   { name: 'rename', hint: 'Name this chat', arg: 'name' },
@@ -644,10 +644,12 @@ export function Composer({
         },
         budget,
       );
+      // The share of the model's room when its window is known; otherwise
+      // the note's length in words.
       cost =
         servedTokens > 0
           ? (now.costLine ?? excerptCostLine)(excerpt.tokens, servedTokens)
-          : `About ${excerpt.tokens.toLocaleString('en-US')} tokens`;
+          : excerptCostLine(excerpt.tokens, 0, excerpt.text);
     } catch {
       showToast(`Could not take ${listed.title} into the chat. Try again.`);
       return;

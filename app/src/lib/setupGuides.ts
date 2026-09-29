@@ -5,6 +5,7 @@
 // The steps are written here, not model-generated, so they are right even on a
 // small model; the model's job is to answer questions and adapt. No em dashes.
 import { ROUTINE_NOTES_PLACE } from './vaultCopy.js';
+import { SHIPS_CURRENTS, SHIPS_LAUNCH, featureOn, type TieredFeature } from './focus.js';
 
 export type SetupGuideId =
   | 'get-harbor'
@@ -32,9 +33,11 @@ export interface SetupGuide {
   steps: Array<string | { text: string; paste: string }>;
   /** A closing line: how they know it worked. */
   done: string;
+  /** The later tier this guide belongs to, if any (lib/focus.ts). */
+  feature?: TieredFeature;
 }
 
-export const SETUP_GUIDES: Record<SetupGuideId, SetupGuide> = {
+const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
   'get-harbor': {
     id: 'get-harbor',
     title: 'Get Harbor',
@@ -76,8 +79,8 @@ export const SETUP_GUIDES: Record<SetupGuideId, SetupGuide> = {
     steps: [
       'On both this phone and your computer, install Tailscale and sign in to the same account. It is free for personal use. Ask me if you want the Tailscale steps.',
       'On your computer, open OpenShore, then Desktop + phone, and tap Turn on. It shows a QR code.',
-      'On this phone, open Desktop + phone and tap Scan the QR on your computer. Point the camera at the QR. It fills in the address and pairing token and connects.',
-      'If the camera is not available, type the address (it looks like http://100.x.y.z:4816) and the pairing token shown under the QR, then tap Connect.',
+      'On this phone, open Desktop + phone and tap Scan the QR on your computer. Point the camera at the QR. It fills in the address and pairing code and connects.',
+      'If the camera is not available, type the address (it looks like http://100.x.y.z:4816) and the pairing code shown under the QR, then tap Connect.',
     ],
     done: 'The screen says connected. In the model menu, My computer is now a choice, for chat and for coding on your repositories.',
   },
@@ -132,18 +135,6 @@ export const SETUP_GUIDES: Record<SetupGuideId, SetupGuide> = {
     ],
     done: 'The Tailscale app on the phone lists your computer. Now pair them under Desktop + phone.',
   },
-  'connect-codemagic': {
-    id: 'connect-codemagic',
-    title: 'Connect Codemagic',
-    goal: 'Ship a build to the App Store or Google Play from inside OpenShore.',
-    steps: [
-      'Create a free Codemagic account at codemagic.io and add your app repository there.',
-      'In Codemagic, open Teams, then Personal account, then Integrations, and create an API key (Codemagic calls it an API token). Copy it.',
-      'Back in OpenShore, open Launch with Codemagic, paste the API key, and save. Then enter the app id and workflow id Codemagic shows for your app.',
-      'Tap Start a build. Progress and the build log stream in here, and a failure is explained in plain words.',
-    ],
-    done: 'A build reaches TestFlight or Google Play and OpenShore shows it as delivered.',
-  },
   'set-up-crew': {
     id: 'set-up-crew',
     title: 'Set up your crew',
@@ -157,79 +148,115 @@ export const SETUP_GUIDES: Record<SetupGuideId, SetupGuide> = {
     ],
     done: `A routine shows in Crew command with its next run time, and its first report lands as a note in ${ROUTINE_NOTES_PLACE}.`,
   },
-  'connect-hermes': {
-    id: 'connect-hermes',
-    title: 'Connect Hermes Agent',
-    goal: 'Run Hermes Agent on a computer I own and reach it from OpenShore, so it shows up on my bench, in my crew, and in my vault.',
-    steps: [
-      'Agentic Currents are a beta. Hermes runs its own tools on its own computer under its own rules; OpenShore shows you what it remembers and lets your models hand it work, and off leaves no trace.',
-      {
-        text: 'On the computer that will run Hermes (a Mac mini or a small Linux box works), install it with the official installer and run the setup wizard:',
-        paste: 'curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash && hermes setup',
-      },
-      {
-        text: 'Turn on its API server so OpenShore can talk to it. This serves an OpenAI-compatible endpoint on that computer:',
-        paste: 'hermes api-server',
-      },
-      'Put both computers on the same Tailscale network, the same private link your paired computer uses. Never expose the Hermes port to the public internet.',
-      'Back in OpenShore, open the project page, then its Agentic Currents, and turn on Hermes Agent. Enter the address, which ends in /v1, for example http://mini.tail1234.ts.net:8642/v1, and the API key if you set one.',
-      'Hermes now sits on your bench in Stack, as a member in Crew command, and its memory and skills read in the Vault when you are docked to the computer that holds its home folder.',
-    ],
-    done: 'The Hermes Agent row reads On, a faint water-line frames every screen, and Hermes appears on your bench.',
-  },
-  'cli-pairing': {
-    id: 'cli-pairing',
-    title: 'Pair a coding CLI',
-    goal: 'Use Claude Code or Codex on my paired computer as a specialist my stack can hand a coding task to.',
-    steps: [
-      'Agentic Currents are a beta. Your own engine stays the default; a paired CLI is one more specialist to hand work to, and off leaves no trace.',
-      {
-        text: 'On the computer OpenShore is paired with, install the CLI you already use. For Claude Code:',
-        paste: 'npm install -g @anthropic-ai/claude-code',
-      },
-      {
-        text: 'Or for Codex:',
-        paste: 'npm install -g @openai/codex',
-      },
-      'Sign in to it once in a terminal on that computer, the way its own docs say, so it can run headless later.',
-      'In OpenShore, open the project page, then its Agentic Currents, and turn on CLI Pairing. Pick the CLI. OpenShore checks that it is really on the computer before it offers it.',
-      'Ask for something small in a coding chat, like: hand this to Claude Code and review the diff. The run shows as a command you approve, and the diff comes back for review.',
-    ],
-    done: 'The CLI Pairing row reads On, and a coding chat can hand a task to the CLI with a command you approve.',
-  },
-  'connect-a2a': {
-    id: 'connect-a2a',
-    title: 'Connect an agent over A2A',
-    goal: 'Reach an agent I run, over the open agent-to-agent protocol, so my stack can hand it work.',
-    steps: [
-      'Agentic Currents are a beta. A2A is the generic door: any agent that publishes an agent card connects here, Hermes and Vellum included when they expose one. Off leaves no trace.',
-      'Find the base address of the agent. It publishes its card at /.well-known/agent-card.json under that address, and its own docs say how to turn A2A on.',
-      'Put it on your Tailscale network if it runs on a computer you own. Never expose an agent port to the public internet.',
-      'In OpenShore, open the project page, then its Agentic Currents, and turn on A2A. Paste the address and the API key if it needs one. OpenShore reads the card and shows the name of the agent.',
-      'In a chat, ask for something the agent is good at. Your model hands it over with the askAgent tool and says plainly when an answer came from it.',
-    ],
-    done: 'The A2A row reads On and names the agent from its card, and a chat can hand it a task.',
-  },
-  'connect-jev': {
-    id: 'connect-jev',
-    title: 'Turn on Jev',
-    goal: 'Layer Jev, a cheap decision model, into the harness so it steers which of my seats answers and skips steps that do not need a model.',
-    steps: [
-      'Harness Currents are a beta. Jev does not answer for a seat; it makes the small decisions around your seats. It is a cloud call that costs a little per turn, so it only ever runs when a paid seat is in play, never against a free local model.',
-      'Get a TypeSafe API key from your TypeSafe account, the same way you would copy an API key for any cloud model.',
-      'In OpenShore, open the project page, then its Harness Currents, and turn on Jev. The address is filled in for you; paste your API key.',
-      'Now when a turn would spend on a paid seat, Jev first checks whether a cheaper local seat can carry it, routes the turn to the seat placed for that kind of work, and, when there is no check to run, judges whether the result satisfies the task. Each decision shows as a card in the chat.',
-    ],
-    done: 'The Jev row reads On, a faint water-line frames every screen, and a pill names it beside the reach pill.',
-  },
+  // A later tier's guides, tagged with their feature and left out of a build
+  // without it (SETUP_GUIDES below). They also sit behind their SHIPS_ gate,
+  // which folds to false in a Personal build's bundle, so their words are not
+  // in that build at all (app/test/tierBundle.test.ts).
+  ...(SHIPS_LAUNCH
+    ? {
+        'connect-codemagic': {
+          id: 'connect-codemagic',
+          feature: 'launch',
+          title: 'Connect Codemagic',
+          goal: 'Ship a build to the App Store or Google Play from inside OpenShore.',
+          steps: [
+            'Create a free Codemagic account at codemagic.io and add your app repository there.',
+            'In Codemagic, open Teams, then Personal account, then Integrations, and create an API key (Codemagic calls it an API token). Copy it.',
+            'Back in OpenShore, open Launch with Codemagic, paste the API key, and save. Then enter the app id and workflow id Codemagic shows for your app.',
+            'Tap Start a build. Progress and the build log stream in here, and a failure is explained in plain words.',
+          ],
+          done: 'A build reaches TestFlight or Google Play and OpenShore shows it as delivered.',
+        },
+      }
+    : {}),
+  ...(SHIPS_CURRENTS
+    ? {
+        'connect-hermes': {
+          id: 'connect-hermes',
+          feature: 'currents',
+          title: 'Connect Hermes Agent',
+          goal: 'Run Hermes Agent on a computer I own and reach it from OpenShore, so it shows up on my bench, in my crew, and in my vault.',
+          steps: [
+            'Agentic Currents are a beta. Hermes runs its own tools on its own computer under its own rules; OpenShore shows you what it remembers and lets your models hand it work, and off leaves no trace.',
+            {
+              text: 'On the computer that will run Hermes (a Mac mini or a small Linux box works), install it with the official installer and run the setup wizard:',
+              paste:
+                'curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash && hermes setup',
+            },
+            {
+              text: 'Turn on its API server so OpenShore can talk to it. This serves an OpenAI-compatible endpoint on that computer:',
+              paste: 'hermes api-server',
+            },
+            'Put both computers on the same Tailscale network, the same private link your paired computer uses. Never expose the Hermes port to the public internet.',
+            'Back in OpenShore, open the project page, then its Agentic Currents, and turn on Hermes Agent. Enter the address, which ends in /v1, for example http://mini.tail1234.ts.net:8642/v1, and the API key if you set one.',
+            'Hermes now sits on your bench in Stack, as a member in Crew command, and its memory and skills read in the Vault when you are docked to the computer that holds its home folder.',
+          ],
+          done: 'The Hermes Agent row reads On, a faint water-line frames every screen, and Hermes appears on your bench.',
+        },
+        'cli-pairing': {
+          id: 'cli-pairing',
+          feature: 'currents',
+          title: 'Pair a coding CLI',
+          goal: 'Use Claude Code or Codex on my paired computer as a specialist my stack can hand a coding task to.',
+          steps: [
+            'Agentic Currents are a beta. Your own engine stays the default; a paired CLI is one more specialist to hand work to, and off leaves no trace.',
+            {
+              text: 'On the computer OpenShore is paired with, install the CLI you already use. For Claude Code:',
+              paste: 'npm install -g @anthropic-ai/claude-code',
+            },
+            {
+              text: 'Or for Codex:',
+              paste: 'npm install -g @openai/codex',
+            },
+            'Sign in to it once in a terminal on that computer, the way its own docs say, so it can run headless later.',
+            'In OpenShore, open the project page, then its Agentic Currents, and turn on CLI Pairing. Pick the CLI. OpenShore checks that it is really on the computer before it offers it.',
+            'Ask for something small in a coding chat, like: hand this to Claude Code and review the diff. The run shows as a command you approve, and the diff comes back for review.',
+          ],
+          done: 'The CLI Pairing row reads On, and a coding chat can hand a task to the CLI with a command you approve.',
+        },
+        'connect-a2a': {
+          id: 'connect-a2a',
+          feature: 'currents',
+          title: 'Connect an agent over A2A',
+          goal: 'Reach an agent I run, over the open agent-to-agent protocol, so my stack can hand it work.',
+          steps: [
+            'Agentic Currents are a beta. A2A is the generic door: any agent that publishes an agent card connects here, Hermes and Vellum included when they expose one. Off leaves no trace.',
+            'Find the base address of the agent. It publishes its card at /.well-known/agent-card.json under that address, and its own docs say how to turn A2A on.',
+            'Put it on your Tailscale network if it runs on a computer you own. Never expose an agent port to the public internet.',
+            'In OpenShore, open the project page, then its Agentic Currents, and turn on A2A. Paste the address and the API key if it needs one. OpenShore reads the card and shows the name of the agent.',
+            'In a chat, ask for something the agent is good at. Your model hands it over with the askAgent tool and says plainly when an answer came from it.',
+          ],
+          done: 'The A2A row reads On and names the agent from its card, and a chat can hand it a task.',
+        },
+        'connect-jev': {
+          id: 'connect-jev',
+          feature: 'currents',
+          title: 'Turn on Jev',
+          goal: 'Layer Jev, a cheap decision model, into the harness so it steers which of my seats answers and skips steps that do not need a model.',
+          steps: [
+            'Harness Currents are a beta. Jev does not answer for a seat; it makes the small decisions around your seats. It is a cloud call that costs a little per turn, so it only ever runs when a paid seat is in play, never against a free local model.',
+            'Get a TypeSafe API key from your TypeSafe account, the same way you would copy an API key for any cloud model.',
+            'In OpenShore, open the project page, then its Harness Currents, and turn on Jev. The address is filled in for you; paste your API key.',
+            'Now when a turn would spend on a paid seat, Jev first checks whether a cheaper local seat can carry it, routes the turn to the seat placed for that kind of work, and, when there is no check to run, judges whether the result satisfies the task. Each decision shows as a card in the chat.',
+          ],
+          done: 'The Jev row reads On, a faint water-line frames every screen, and a pill names it beside the reach pill.',
+        },
+      }
+    : {}),
 };
+
+/** The guides this build carries: a later tier's stay out of an earlier
+ *  build (docs/release-tiers.md), the way GUIDE_CARDS leaves out its cards. */
+export const SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = Object.fromEntries(
+  Object.entries(ALL_SETUP_GUIDES).filter(([, g]) => !g.feature || featureOn(g.feature)),
+);
 
 /** The bare numbered steps for a guide, on their own lines, for splicing into a
  *  small model's grounding so it can recite an activation walkthrough verbatim
  *  rather than reason it out. A step with something to paste keeps that on the
  *  next line so the model can lift it into a copy block. */
 export function guideStepsCompact(id: SetupGuideId): string {
-  return SETUP_GUIDES[id].steps
+  return (SETUP_GUIDES[id]?.steps ?? [])
     .map((s, i) => (typeof s === 'string' ? `${i + 1}. ${s}` : `${i + 1}. ${s.text}\n${s.paste}`))
     .join('\n');
 }

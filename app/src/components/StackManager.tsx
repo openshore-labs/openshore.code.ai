@@ -280,19 +280,19 @@ export function StackManager() {
             <div className="stack-add">
               <button
                 className="stack-add-pill press-fb"
-                aria-label="Bring your own model"
-                title="Bring your own model"
+                aria-label="Connect a model"
+                title="Connect a model"
                 onClick={() => setByomOpen(true)}
               >
-                BYOM
+                Connect a model
                 <span className="stack-add-plus" aria-hidden="true">
                   +
                 </span>
               </button>
               <button
                 className="stack-byom-info"
-                aria-label="What is bring your own model?"
-                title="What is bring your own model?"
+                aria-label="About connecting your own model"
+                title="About connecting your own model"
                 onClick={() => setByomInfoOpen(true)}
               >
                 i
@@ -703,11 +703,13 @@ export function StackManager() {
         ) : null}
       </Sheet>
 
-      {/* What "bring your own model" means: lowers from the top, off the info
-          glyph on the BYOM pill. */}
+      {/* What connecting your own model means: lowers from the top, off the
+          info glyph beside the Connect a model pill. */}
       <Sheet open={byomInfoOpen} onClose={() => setByomInfoOpen(false)} variant="top">
-        <h2>Bring your own model</h2>
-        <p className="sheet-sub">BYOM points OpenShore at a model you run and control.</p>
+        <h2>Connect your own model</h2>
+        <p className="sheet-sub">
+          Use a model you run: on this computer, your own server, or another service with your key.
+        </p>
         <ul className="paywall-benefits">
           <li>
             Any OpenAI-compatible endpoint works: a model on your own server, a fine-tune behind
@@ -746,7 +748,7 @@ export function StackManager() {
       <Sheet open={Boolean(byomOpen)} onClose={() => setByomOpen(false)}>
         {byomOpen ? (
           <>
-            <h2>Bring your own model</h2>
+            <h2>Connect your own model</h2>
             <p className="sheet-sub">
               Point OpenShore at any OpenAI-compatible endpoint you control: a self-hosted server, a
               fine-tune behind your own gateway, or another provider. It lands on your bench, ready
@@ -754,8 +756,9 @@ export function StackManager() {
             </p>
 
             <div className="field">
-              <label>Name</label>
+              <label htmlFor="byom-name">Name</label>
               <input
+                id="byom-name"
                 autoFocus
                 placeholder="e.g. Our house model"
                 value={byomForm.label}
@@ -763,8 +766,9 @@ export function StackManager() {
               />
             </div>
             <div className="field">
-              <label>Address</label>
+              <label htmlFor="byom-address">Address</label>
               <input
+                id="byom-address"
                 type="url"
                 inputMode="url"
                 autoCapitalize="none"
@@ -774,12 +778,13 @@ export function StackManager() {
                 onChange={(e) => setByomForm({ ...byomForm, baseUrl: e.target.value })}
               />
               <div className="hint" style={{ marginTop: 4 }}>
-                The base URL, ending in /v1. OpenShore calls /chat/completions on it.
+                The server's address. It usually ends in /v1.
               </div>
             </div>
             <div className="field">
-              <label>Model id</label>
+              <label htmlFor="byom-model-id">Model name</label>
               <input
+                id="byom-model-id"
                 autoCapitalize="none"
                 autoCorrect="off"
                 placeholder="e.g. llama-3.1-70b-instruct"
@@ -788,8 +793,9 @@ export function StackManager() {
               />
             </div>
             <div className="field">
-              <label>API key (optional)</label>
+              <label htmlFor="byom-api-key">API key (optional)</label>
               <input
+                id="byom-api-key"
                 type="password"
                 placeholder="Leave blank for a keyless local server"
                 value={byomForm.apiKey}
@@ -885,10 +891,11 @@ export function StackManager() {
             </div>
 
             <div className="field" style={{ marginTop: 16 }}>
-              <label>
+              <label htmlFor="byom-when-called">
                 When it is called{config.placement.category === 'custom' ? '' : ' (optional)'}
               </label>
               <input
+                id="byom-when-called"
                 placeholder="e.g. anything touching SQL or migrations"
                 value={config.placement.whenCalled ?? ''}
                 onChange={(e) =>
@@ -901,8 +908,11 @@ export function StackManager() {
             </div>
 
             <div className="field">
-              <label>Persona{config.placement.category === 'custom' ? '' : ' (optional)'}</label>
+              <label htmlFor="byom-persona">
+                Persona{config.placement.category === 'custom' ? '' : ' (optional)'}
+              </label>
               <input
+                id="byom-persona"
                 placeholder="e.g. terse, cites the docs, prefers standard library"
                 value={config.placement.persona ?? ''}
                 onChange={(e) =>

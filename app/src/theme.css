@@ -1045,9 +1045,9 @@ textarea {
   gap: 12px;
 }
 
-/* The BYOM control: a labelled pill, with a small info glyph hanging off its
-   top-right corner (outside the pill, its own tap target) that opens the
-   explainer sheet. */
+/* The Connect a model control: a labelled pill, with a small info glyph
+   hanging off its top-right corner (outside the pill, its own tap target)
+   that opens the explainer sheet. */
 .stack-add {
   position: relative;
   flex-shrink: 0;
@@ -1059,6 +1059,7 @@ textarea {
   gap: 6px;
   height: 38px;
   padding: 0 15px;
+  white-space: nowrap;
   border-radius: 999px;
   font-family: var(--font-display);
   font-size: var(--text-4);
@@ -4752,19 +4753,24 @@ button.vault-tag {
    spring back out. Rides the individual `scale` property on purpose, so an
    inline transform on the same element can never shadow it. */
 .press-fb,
-.linklike {
+.linklike,
+.profile-row {
   /* Release rides the slow spring-out (overshoot lives only here). */
   transition: scale var(--press-out);
 }
 .press-fb:active,
-.linklike:active {
+.linklike:active,
+.suggestion:active,
+.profile-chip:active,
+.profile-row:active {
   /* Press-down is the curt accelerate-in; overshoot never happens here. */
   scale: var(--press-scale-btn);
   transition: scale var(--press-in);
 }
 /* A full-width row should not collapse as hard as a button, and a tile sits
    between the two. */
-.press-fb.press-fb--row:active {
+.press-fb.press-fb--row:active,
+.profile-row:active {
   scale: var(--press-scale-row);
 }
 .press-fb.press-fb--tile:active {
@@ -4817,6 +4823,12 @@ button.vault-tag {
   .press-fb:active,
   .linklike,
   .linklike:active,
+  .suggestion,
+  .suggestion:active,
+  .profile-chip,
+  .profile-chip:active,
+  .profile-row,
+  .profile-row:active,
   .ms-seg-slider,
   .send-btn,
   .composer-chip {
@@ -5280,7 +5292,11 @@ button.vault-tag {
   border: 1px solid var(--border-strong);
   border-radius: 999px;
   padding: 7px 14px;
-  transition: background var(--dur-1) var(--ease-standard);
+  /* The hover wash, plus the press release (the press-fb rule, polish
+     section): a pill answers the finger like every other tappable. */
+  transition:
+    background var(--dur-1) var(--ease-standard),
+    scale var(--press-out);
 }
 
 .suggestion:hover {
@@ -5590,9 +5606,9 @@ button.vault-tag {
   padding: 6px 4px;
 }
 
-/* The small "Personal" pill on a locked nav item. */
-.nav-lock-pill,
-.nav-soon-pill {
+/* A small quiet pill at the end of a row (the Vault's folder list reads a
+   state with it). */
+.nav-lock-pill {
   margin-left: auto;
   font-size: var(--text-1);
   font-weight: var(--weight-semibold);
@@ -5602,17 +5618,6 @@ button.vault-tag {
   background: var(--code-surface);
   border: 1px solid var(--border);
   color: var(--muted);
-}
-
-/* A coming-soon nav room: dimmed, non-interactive, and it never lights on
-   hover. The "Coming soon" pill carries the reason. */
-.nav-item--soon {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.nav-item--soon:hover {
-  background: transparent;
 }
 
 .sheet-detail {
@@ -7208,9 +7213,11 @@ button.vault-tag {
   background: var(--surface);
   color: var(--ink-soft);
   font-size: var(--text-2);
+  /* The press release rides here too (the press-fb rule). */
   transition:
     background var(--dur-1) var(--ease-standard),
-    color var(--dur-1) var(--ease-standard);
+    color var(--dur-1) var(--ease-standard),
+    scale var(--press-out);
 }
 .write-chip.on {
   background: var(--voice-soft);
@@ -7376,7 +7383,10 @@ button.vault-tag {
   background: var(--surface);
   font-size: var(--text-2);
   color: var(--ink-soft);
-  transition: background var(--dur-1) var(--ease-standard);
+  /* The hover wash, plus the press release (the press-fb rule). */
+  transition:
+    background var(--dur-1) var(--ease-standard),
+    scale var(--press-out);
 }
 
 .profile-chip:hover {
@@ -8055,7 +8065,10 @@ button.vault-tag {
   text-align: left;
   padding: 4px 0;
   border-radius: var(--radius-sm);
-  transition: background var(--dur-1) var(--ease-standard);
+  /* The press release rides here too (the press-fb rule). */
+  transition:
+    background var(--dur-1) var(--ease-standard),
+    scale var(--press-out);
 }
 .lane:not(:disabled):hover {
   background: var(--surface);
@@ -9240,9 +9253,11 @@ button.vault-tag {
   padding: 8px 6px;
   border-radius: 999px;
   cursor: pointer;
+  /* The press release rides here too (the press-fb rule). */
   transition:
     background var(--dur-2) var(--ease-standard),
-    color var(--dur-2) var(--ease-standard);
+    color var(--dur-2) var(--ease-standard),
+    scale var(--press-out);
 }
 .sh-seg-btn.active {
   background: var(--accent);

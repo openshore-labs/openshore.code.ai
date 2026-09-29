@@ -24,6 +24,7 @@ import { HARNESS_CURRENT_IDS, JEV_DEFAULT_MODEL, normalizeJevBaseUrl } from 'os-
 import type { HarnessCurrentId } from 'os-code/protocol';
 import type { CurrentState } from './currents.js';
 import type { SetupGuideId } from './setupGuides.js';
+import { SHIPS_CURRENTS } from './focus.js';
 
 export type { HarnessCurrentId } from 'os-code/protocol';
 export { HARNESS_CURRENT_IDS } from 'os-code/protocol';
@@ -54,25 +55,29 @@ export interface HarnessCurrentInfo {
 // NOTE: apiKeyUrl and the model default below are from TypeSafe's public docs
 // as of 2026-09 and, like every provider id in providers.ts, must be verified
 // against the live API before a distribution build. A retired id or a dead key
-// page is a dead button.
-export const HARNESS_CURRENTS: HarnessCurrentInfo[] = [
-  {
-    id: 'jev',
-    label: 'Jev',
-    sub: 'A cheap decision model that steers your seats: it picks the seat for a turn and skips steps that do not need one.',
-    needs:
-      'A TypeSafe API key. Jev is a cloud decision model, so it needs an API key and spends a small amount per turn.',
-    apiBase: 'https://api.typesafe.ai',
-    apiKeyUrl: 'https://typesafe.ai',
-    defaultModel: JEV_DEFAULT_MODEL,
-    jobs: [
-      'Checks whether a smaller local seat can handle a turn before the paid seat is spent.',
-      'Routes each turn to the seat placed for that kind of work.',
-      'Judges whether a result satisfies the task when there is no check to run.',
-    ],
-    guide: 'connect-jev',
-  },
-];
+// page is a dead button. Harness Currents are v2 (docs/release-tiers.md): a
+// Personal build has none, and SHIPS_CURRENTS folds to false in its bundle,
+// so the roster's words are not in it either.
+export const HARNESS_CURRENTS: HarnessCurrentInfo[] = SHIPS_CURRENTS
+  ? [
+      {
+        id: 'jev',
+        label: 'Jev',
+        sub: 'A cheap decision model that steers your seats: it picks the seat for a turn and skips steps that do not need one.',
+        needs:
+          'A TypeSafe API key. Jev is a cloud decision model, so it needs an API key and spends a small amount per turn.',
+        apiBase: 'https://api.typesafe.ai',
+        apiKeyUrl: 'https://typesafe.ai',
+        defaultModel: JEV_DEFAULT_MODEL,
+        jobs: [
+          'Checks whether a smaller local seat can handle a turn before the paid seat is spent.',
+          'Routes each turn to the seat placed for that kind of work.',
+          'Judges whether a result satisfies the task when there is no check to run.',
+        ],
+        guide: 'connect-jev',
+      },
+    ]
+  : [];
 
 export function harnessCurrentInfo(id: HarnessCurrentId): HarnessCurrentInfo {
   return HARNESS_CURRENTS.find((c) => c.id === id)!;

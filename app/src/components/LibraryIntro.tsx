@@ -130,7 +130,7 @@ export function LibraryIntro({ onDone }: { onDone: () => void }) {
           </span>
         </span>
         {!isLast ? (
-          <button className="lib-skip" onClick={onDone}>
+          <button className="lib-skip press-fb" onClick={onDone}>
             Skip
           </button>
         ) : null}

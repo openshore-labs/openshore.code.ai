@@ -13,7 +13,7 @@
 // it ends every device's, after one confirm (state/signinOps.ts).
 import { featureOn } from '../lib/focus.js';
 import { ACCOUNT_PITCH, SIGNED_IN_PERKS } from '../lib/accountGate.js';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useApp } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { plainError } from '../lib/plainError.js';
@@ -60,6 +60,9 @@ export function SignInCard() {
   // device signs out.
   const [unsentFor, setUnsentFor] = useState<'here' | 'everywhere'>('here');
   const [everywhere, setEverywhere] = useState(false);
+  // Each field's label names it (useId: the card can sit in more than one
+  // sheet, so a fixed id could repeat).
+  const fieldId = useId();
 
   if (!configured) return null;
 
@@ -150,9 +153,11 @@ export function SignInCard() {
           You are signed in from the reset link. Choose a new password to finish.
         </div>
         <div className="field">
+          <label htmlFor={`${fieldId}-new-password`}>New password</label>
           <input
+            id={`${fieldId}-new-password`}
             type="password"
-            placeholder="New password"
+            placeholder="At least 8 characters"
             autoComplete="new-password"
             value={newPw}
             onChange={(e) => setNewPw(e.target.value)}
@@ -267,9 +272,11 @@ export function SignInCard() {
               : `Creating an account is free. ${ACCOUNT_PITCH}`}
         </div>
         <div className="field">
+          <label htmlFor={`${fieldId}-email`}>Email</label>
           <input
+            id={`${fieldId}-email`}
             type="email"
-            placeholder="you@company.com"
+            placeholder="you@example.com"
             autoCapitalize="none"
             autoCorrect="off"
             autoComplete="email"
@@ -278,9 +285,11 @@ export function SignInCard() {
           />
         </div>
         <div className="field">
+          <label htmlFor={`${fieldId}-password`}>Password</label>
           <input
+            id={`${fieldId}-password`}
             type="password"
-            placeholder="Password"
+            placeholder={mode === 'signup' ? 'At least 8 characters' : ''}
             autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
             value={pw}
             onChange={(e) => setPw(e.target.value)}
