@@ -15,6 +15,12 @@ export const SEARCH_PROTOCOL_NOTE = `You can search the web. To search, respond 
 export const NO_SEARCH_NOTE =
   'You have no web access right now. Answer from what you know, and say plainly when you are not sure rather than guessing.';
 
+/** The instruction for the answer pass after a search: the one search this
+ *  message may make is spent, so the model answers now instead of asking
+ *  again (a second search line is never run, and never shown). */
+export const SEARCHED_NOTE =
+  'You already searched the web for this message, and the results are in the conversation. Answer now, from those results and what you know. Do not ask to search again.';
+
 const MAX_QUERY_CHARS = 200;
 
 /** The query when a reply opens with a search line, else undefined. Only the

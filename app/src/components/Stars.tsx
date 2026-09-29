@@ -160,7 +160,7 @@ export function CapabilityLane({
     <div className="lane-wrap">
       <button
         type="button"
-        className="lane"
+        className="lane press-fb press-fb--row"
         onClick={onToggle}
         aria-expanded={expanded}
         disabled={!hasProvenance}

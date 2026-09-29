@@ -13,9 +13,10 @@ import { StatusLine } from './statusLine.js';
 import { ApprovalPrompt } from './approval.js';
 import { CitationsPanel } from './citations.js';
 import { InputBox } from './input.js';
-import { runSlash, type SlashContext } from './slash.js';
+import { findRepoCommand, runSlash, type RepoCommandList, type SlashContext } from './slash.js';
 import { nextRevealLength } from './smoothing.js';
 import { searchTranscript } from './transcriptSearch.js';
+import { retrievalLine, windowCutLines, windowTightLines } from '../core/agent/window.js';
 
 export interface AppProps {
   driver: SessionDriver;
@@ -65,6 +66,8 @@ export function App(props: AppProps): React.ReactElement {
   // the first token or tool call, so the status line can surface warmup time.
   const [loading, setLoading] = useState(false);
   const turnStartRef = useRef(0);
+  // The person's own commands for this folder, as the session last said them.
+  const [repoCommands, setRepoCommands] = useState<RepoCommandList | undefined>();
 
   const push = (item: TranscriptItem) => setFinished((prev) => [...prev, keyed(item)]);
 
@@ -160,6 +163,15 @@ export function App(props: AppProps): React.ReactElement {
         case 'note':
           push({ kind: 'note', text: event.message });
           break;
+        case 'window-cut':
+          push({ kind: 'note', text: windowCutLines(event).join(' ') });
+          break;
+        case 'window-tight':
+          push({ kind: 'note', text: windowTightLines(event).join(' ') });
+          break;
+        case 'retrieval':
+          push({ kind: 'status', text: retrievalLine(event) });
+          break;
         case 'usage':
           setDollars((d) => d + event.dollars);
           setContextPercent(event.contextPercent);
@@ -187,6 +199,15 @@ export function App(props: AppProps): React.ReactElement {
         case 'approval-resolved':
           setApprovals((prev) => prev.filter((a) => a.id !== event.id));
           break;
+        case 'repo-info':
+          // Absent means unchanged: the list rides only when it moves.
+          if (event.commands) {
+            setRepoCommands({
+              commands: event.commands,
+              notLoaded: event.commandsNotLoaded ?? [],
+            });
+          }
+          break;
       }
     });
     return unsubscribe;
@@ -209,6 +230,7 @@ export function App(props: AppProps): React.ReactElement {
     exit: () => exit(),
     setWebEnabled: props.setWebEnabled,
     webEnabled: props.webEnabled,
+    repoCommands: () => repoCommands ?? { commands: [], notLoaded: [] },
     find: (query) => {
       const matches = searchTranscript(finished, query);
       push({
@@ -221,7 +243,9 @@ export function App(props: AppProps): React.ReactElement {
   };
 
   const onSubmit = (text: string) => {
-    if (text.startsWith('/')) {
+    // One of the person's own commands goes to the session as typed; the
+    // session fills it in, and the transcript shows what they typed.
+    if (text.startsWith('/') && !findRepoCommand(text, repoCommands)) {
       if (runSlash(text, slashContext)) return;
       push({ kind: 'status', text: `No command ${text.split(' ')[0]}. Try /help.` });
       return;
@@ -275,6 +299,7 @@ export function App(props: AppProps): React.ReactElement {
         {!activeApproval ? (
           <InputBox
             busy={busy}
+            repoCommands={repoCommands}
             onSubmit={onSubmit}
             onAbort={() => props.driver.abort()}
             onExit={() => exit()}

@@ -6,7 +6,8 @@ import { createInterface, type Interface } from 'node:readline';
 import { GLYPHS, banner, t } from '../brand/theme.js';
 import type { ApprovalRequest } from '../core/agent/types.js';
 import type { DriverEvent, SessionDriver } from '../daemon/session.js';
-import { runSlash, type SlashContext } from './slash.js';
+import { findRepoCommand, runSlash, type RepoCommandList, type SlashContext } from './slash.js';
+import { retrievalLine, windowCutLines, windowTightLines } from '../core/agent/window.js';
 
 export interface PlainOptions {
   driver: SessionDriver;
@@ -32,6 +33,8 @@ export async function runPlain(options: PlainOptions): Promise<void> {
     process.stdout.write(`${text}\n`);
   };
   let dollars = 0;
+  // The person's own commands for this folder, as the session last said them.
+  let repoCommands: RepoCommandList = { commands: [], notLoaded: [] };
   let pendingApproval: ApprovalRequest | undefined;
   let taskResolve: (() => void) | undefined;
 
@@ -80,6 +83,15 @@ export async function runPlain(options: PlainOptions): Promise<void> {
       case 'note':
         out(t.warn(`${GLYPHS.bullet} ${event.message}`));
         break;
+      case 'window-cut':
+        for (const line of windowCutLines(event)) out(t.warn(`${GLYPHS.bullet} ${line}`));
+        break;
+      case 'window-tight':
+        for (const line of windowTightLines(event)) out(t.muted(`${GLYPHS.bullet} ${line}`));
+        break;
+      case 'retrieval':
+        out(t.muted(`${GLYPHS.arrow} ${retrievalLine(event)}`));
+        break;
       case 'usage':
         dollars += event.dollars;
         break;
@@ -98,6 +110,12 @@ export async function runPlain(options: PlainOptions): Promise<void> {
         break;
       case 'approval-resolved':
         pendingApproval = undefined;
+        break;
+      case 'repo-info':
+        // Absent means unchanged: the list rides only when it moves.
+        if (event.commands) {
+          repoCommands = { commands: event.commands, notLoaded: event.commandsNotLoaded ?? [] };
+        }
         break;
     }
   });
@@ -138,6 +156,7 @@ export async function runPlain(options: PlainOptions): Promise<void> {
     },
     setWebEnabled: options.setWebEnabled,
     webEnabled: options.webEnabled,
+    repoCommands: () => repoCommands,
     find: (query) => {
       const needle = query.toLowerCase();
       const hits = log
@@ -183,7 +202,8 @@ export async function runPlain(options: PlainOptions): Promise<void> {
     }
     const text = line.trim();
     if (!text) continue;
-    if (text.startsWith('/')) {
+    // One of the person's own commands goes to the session as typed.
+    if (text.startsWith('/') && !findRepoCommand(text, repoCommands)) {
       slashContext.dollars = dollars;
       if (!runSlash(text, slashContext))
         out(t.muted(`No command ${text.split(' ')[0]}. Try /help.`));

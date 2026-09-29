@@ -4,7 +4,7 @@
 // grammar-constrained decoding on backends that support it. On repeated
 // failure the agent loop can escalate to cloud.
 import { z } from 'zod';
-import type { ToolCallRequest } from '../../providers/types.js';
+import type { ToolCallRequest, ToolSpec } from '../../providers/types.js';
 import type { ToolRegistry } from './index.js';
 
 export interface ParsedToolCall {
@@ -27,8 +27,18 @@ function nextId(): string {
 export function validateNativeCall(
   call: ToolCallRequest,
   registry: ToolRegistry,
+  offline?: ReadonlySet<string>,
 ): ValidationResult {
   const tool = registry.get(call.name);
+  if (!tool && offline?.has(call.name)) {
+    // A tool this session left out because it works offline (CTO 3): passed
+    // through with whatever arguments came, so the loop refuses it by name
+    // and the run's note can say what was tried.
+    const parsed = call.args ?? parseJsonLoose(call.argsText || '{}');
+    const args =
+      typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {};
+    return { ok: true, call: { id: call.id, name: call.name, args } };
+  }
   if (!tool) {
     const known = registry.names().join(', ');
     return {
@@ -76,7 +86,11 @@ export interface TextExtraction {
   remainder: string;
 }
 
-export function extractTextCalls(text: string, registry: ToolRegistry): TextExtraction {
+export function extractTextCalls(
+  text: string,
+  registry: ToolRegistry,
+  offline?: ReadonlySet<string>,
+): TextExtraction {
   const calls: ParsedToolCall[] = [];
   const problems: string[] = [];
   const spansToRemove: Array<[number, number]> = [];
@@ -89,6 +103,13 @@ export function extractTextCalls(text: string, registry: ToolRegistry): TextExtr
     if (!name) continue;
     const rawArgs = firstObject(obj, ARG_KEYS) ?? {};
     const tool = registry.get(name);
+    if (!tool && offline?.has(name)) {
+      // Left out because the session works offline: the loop refuses it by
+      // name (see validateNativeCall).
+      calls.push({ id: nextId(), name, args: rawArgs });
+      spansToRemove.push([candidate.start, candidate.end]);
+      continue;
+    }
     if (!tool) {
       // An unknown name is only a malformed call when the object is shaped
       // like one. A final answer that quotes a package.json ({"name": ...})
@@ -267,15 +288,75 @@ export function toolCallJsonSchema(registry: ToolRegistry): Record<string, unkno
   };
 }
 
-/** Appended to the system prompt when a model uses the JSON-in-text bridge. */
-export function textProtocolInstructions(registry: ToolRegistry): string {
+/**
+ * Appended to the system prompt when a model uses the JSON-in-text bridge.
+ * Takes the tools this seat is offered, the same menu native tools get (a
+ * lean seat's few, plan mode's read side), so the text bridge never hands a
+ * small model every schema in the registry. `terse` (a lean seat) lists each
+ * tool as its first sentence and a line of fields in place of the full JSON
+ * schema: about a third of the size, in words a 3B follows.
+ */
+export function textProtocolInstructions(
+  tools: ToolRegistry | readonly ToolSpec[],
+  options: { terse?: boolean; header?: string } = {},
+): string {
+  const specs: readonly ToolSpec[] = Array.isArray(tools)
+    ? (tools as readonly ToolSpec[])
+    : (tools as ToolRegistry).specs();
+  // A reply held to the union schema answers in JSON too (`{"say": ...}`), so
+  // union decoding brings its own opening lines (harness/decoding.ts).
+  const header =
+    options.header ??
+    [
+      'TOOLS. You can use tools. To call one, reply with ONLY a single JSON object on its own line, nothing else:',
+      '{"tool": "<name>", "args": { ... }}',
+      'After the tool runs you will receive its output and can continue. When the task is done, reply with your answer as plain text and NO JSON object.',
+    ].join('\n');
   return [
-    'TOOLS. You can use tools. To call one, reply with ONLY a single JSON object on its own line, nothing else:',
-    '{"tool": "<name>", "args": { ... }}',
-    'After the tool runs you will receive its output and can continue. When the task is done, reply with your answer as plain text and NO JSON object.',
+    header,
     'Available tools:',
-    registry.textDocs(),
+    specs.map((spec) => (options.terse ? terseToolDoc(spec) : fullToolDoc(spec))).join('\n'),
   ].join('\n');
+}
+
+function fullToolDoc(spec: ToolSpec): string {
+  return `- ${spec.name}: ${spec.description}\n  args schema: ${JSON.stringify(spec.parameters)}`;
+}
+
+/** The first sentence of a description, at most `max` characters. */
+function firstSentence(text: string, max: number): string {
+  const m = /^[\s\S]*?[.!?](?=\s|$)/.exec(text.trim());
+  const sentence = (m ? m[0] : text.trim()).replace(/\s+/g, ' ');
+  return sentence.length > max ? `${sentence.slice(0, max - 3).trimEnd()}...` : sentence;
+}
+
+/** A JSON schema property's type in a word: "string", "integer[]", or its
+ *  choices ("replace" | "append"). */
+function typeWord(prop: Record<string, unknown>): string {
+  if (Array.isArray(prop.enum)) return prop.enum.map((v) => JSON.stringify(v)).join(' | ');
+  if (prop.type === 'array') {
+    const items = (prop.items ?? {}) as Record<string, unknown>;
+    return `${typeof items.type === 'string' ? items.type : 'item'}[]`;
+  }
+  return typeof prop.type === 'string' ? prop.type : 'value';
+}
+
+/** One tool in a line or two: its first sentence, then each field as
+ *  `name (type)`, `name? (type)` when optional, with the field's own first
+ *  sentence cut short. */
+function terseToolDoc(spec: ToolSpec): string {
+  const params = spec.parameters as {
+    properties?: Record<string, Record<string, unknown>>;
+    required?: string[];
+  };
+  const required = new Set(params.required ?? []);
+  const fields = Object.entries(params.properties ?? {}).map(([name, prop]) => {
+    const about =
+      typeof prop.description === 'string' ? `: ${firstSentence(prop.description, 60)}` : '';
+    return `${name}${required.has(name) ? '' : '?'} (${typeWord(prop)})${about}`;
+  });
+  const args = fields.length ? `\n  args: ${fields.join('; ')}` : '\n  args: none';
+  return `- ${spec.name}: ${firstSentence(spec.description, 120)}${args}`;
 }
 
 /** A corrective message sent back to the model after a malformed call. */

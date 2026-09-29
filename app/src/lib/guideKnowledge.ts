@@ -3,14 +3,15 @@
 // truth about OpenShore lives here, once, and both guides' personas splice it
 // in. Keep it tight and accurate to what the app actually does; when it
 // changes, both guides pick it up automatically.
-import { featureOn } from './focus.js';
+import { SHIPS_CURRENTS, SHIPS_LAUNCH, SHIPS_MARKETPLACE } from './focus.js';
 
 // Release tiers (docs/release-tiers.md): facts about a later tier's feature
 // stay out of an earlier build, so a guide never sends a person to a room the
-// build does not have.
-const marketplaceOn = featureOn('marketplace');
-const currentsOn = featureOn('currents');
-const launchOn = featureOn('launch');
+// build does not have. The build-time gates keep the words out of that
+// build's bundle too.
+const marketplaceOn = SHIPS_MARKETPLACE;
+const currentsOn = SHIPS_CURRENTS;
+const launchOn = SHIPS_LAUNCH;
 
 export const APP_KNOWLEDGE = [
   'FACTS ABOUT OPENSHORE (ground every answer in these; do not invent features):',
@@ -34,7 +35,7 @@ export const APP_KNOWLEDGE = [
     : [
         "- Very large cloud-scale models (Kimi from Moonshot, Claude, GPT-5, Gemini) do not run locally. Connect one by adding that provider's API key under Cloud Connections; it then runs on your own key, and only on a turn you send to it.",
       ]),
-  `- Three curated models come out of the box${marketplaceOn ? ', never through the Marketplace' : ''}: Harbor Lite (built into the iPhone app, a guide), Harbor (a coding model that runs on the iPhone), and DeepBlue (the most capable, a real coding agent that runs on your own computer through Ollama, sized to that computer, installed from Settings > Harbor or the first-run card on your computer). Paired, the phone reaches DeepBlue as My computer.`,
+  `- Three curated models come out of the box${marketplaceOn ? ', never through the Marketplace' : ''}: Harbor Lite (built into the iPhone app, a guide), Harbor (a coding model that runs on the iPhone), and DeepBlue (the most capable, a real coding agent that runs on your own computer through Ollama, sized to that computer, installed from Settings > Harbor or the first-run card on your computer). Paired, the phone reaches DeepBlue as Your computer.`,
   '- Three ways to grow the stack: (1) Harbor, the coding model that runs fully on this iPhone, private and offline, from Settings, Harbor. (2) Your computer: run OpenShore there and pair this phone to it over your own private Tailscale network, under Desktop + phone. (3) Claude on your own API key: connect an Anthropic API key (and its Workspace id, if Claude asks for one) under Cloud Connections; spend always asks before it charges.',
   '- API keys and secrets stay on the device, scoped to the provider they belong to. There is no telemetry.',
   '- Once a stack is set up, OpenShore works like a familiar coding agent: talk to it and it does the work.',

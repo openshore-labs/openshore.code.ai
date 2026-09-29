@@ -74,6 +74,11 @@ export interface ModelClassPolicy {
    *  Placeholder until the 4.8 eval. A project may override it (it only shapes
    *  the menu). */
   mergedVaultTool: boolean;
+  /** Fraction of the SERVED context window one tool observation may fill
+   *  (`observationCapChars`), so a single file read never outgrows the window
+   *  it lands in. Placeholder until the eval. Not a project override: it
+   *  only keeps an observation inside the window. */
+  observationContextFraction: number;
 }
 
 export interface ModelClassProfile extends ModelClassPolicy {
@@ -84,7 +89,8 @@ export interface ModelClassProfile extends ModelClassPolicy {
 // capable as possible": the tighter the class, the more the harness does for it.
 // The three vault fields (vaultPackFraction, vaultReadCapChars,
 // mergedVaultTool) are PLACEHOLDERS (Vault M4, CTO I2) until the with-and-
-// without eval on the reference box sets them (I14, tenet 2).
+// without eval on the reference box sets them (I14, tenet 2), and so is
+// observationContextFraction.
 const POLICY: Record<ModelClass, ModelClassPolicy> = {
   tiny: {
     maxToolsShown: 6,
@@ -99,6 +105,7 @@ const POLICY: Record<ModelClass, ModelClassPolicy> = {
     vaultPackFraction: 0.08,
     vaultReadCapChars: 6_000,
     mergedVaultTool: true,
+    observationContextFraction: 0.2,
   },
   small: {
     maxToolsShown: 10,
@@ -113,6 +120,7 @@ const POLICY: Record<ModelClass, ModelClassPolicy> = {
     vaultPackFraction: 0.08,
     vaultReadCapChars: 12_000,
     mergedVaultTool: true,
+    observationContextFraction: 0.25,
   },
   mid: {
     maxToolsShown: Infinity,
@@ -127,6 +135,7 @@ const POLICY: Record<ModelClass, ModelClassPolicy> = {
     vaultPackFraction: 0.08,
     vaultReadCapChars: 32_000,
     mergedVaultTool: false,
+    observationContextFraction: 0.3,
   },
   large: {
     maxToolsShown: Infinity,
@@ -141,8 +150,14 @@ const POLICY: Record<ModelClass, ModelClassPolicy> = {
     vaultPackFraction: 0.04,
     vaultReadCapChars: 64_000,
     mergedVaultTool: false,
+    observationContextFraction: 0.3,
   },
 };
+
+/** The tool menu a lean prompt carries when a seat runs lean for its served
+ *  window rather than its class (a mid seat served a small window): the small
+ *  class's menu, cut by the same priority. */
+export const LEAN_MAX_TOOLS_SHOWN = POLICY.small.maxToolsShown;
 
 /** A partial policy a project may set per class in config (harness.profiles). */
 export type ModelClassOverride = Partial<ModelClassPolicy>;
@@ -257,6 +272,24 @@ export function numCtxCeiling(modelClass: ModelClass, ramGB: number): number {
  *  context meter and the vault pack all read this one number. */
 export function servedContextTokens(native: number, modelClass: ModelClass, ramGB: number): number {
   return Math.min(native, numCtxCeiling(modelClass, ramGB));
+}
+
+/** The most characters one tool observation carried, window or not, before
+ *  the window was known; a seat with room to spare still stops here. */
+export const OBSERVATION_MAX_CHARS = 24_000;
+
+/** The least a capped observation carries, so a tiny window still sees a
+ *  useful slice of a file rather than a line or two. */
+export const OBSERVATION_MIN_CHARS = 2_000;
+
+/** The most characters one tool observation may carry on a seat whose class
+ *  spends `fraction` of a `contextTokens` window on it (4 characters a token,
+ *  the estimator's rate), between the floor and the old fixed cap. A small
+ *  seat served 4096 tokens gets about 4,000 characters, where the fixed cap
+ *  was 24,000, about 6,000 tokens: more than its whole window. */
+export function observationCapChars(fraction: number, contextTokens: number): number {
+  const chars = Math.floor(contextTokens * fraction * 4);
+  return Math.max(OBSERVATION_MIN_CHARS, Math.min(OBSERVATION_MAX_CHARS, chars));
 }
 
 /** The concrete decision for one turn: constrain decoding only when the class

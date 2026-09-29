@@ -100,12 +100,35 @@ describe('trimOldObservations (ENG-13)', () => {
 
 describe('the class sets when compaction runs (Vault M4, CTO I2)', () => {
   it('compacts at the given fraction of the window, 0.7 when none is given', async () => {
-    // About 670 tokens of history against a 1000-token window.
-    const messages = [
-      { role: 'user' as const, content: 'x'.repeat(2640) },
-      { role: 'assistant' as const, content: 'ok' },
+    // About 660 tokens of history against a 1000-token window, most of it an
+    // old tool result the first stage can trim.
+    const messages: ChatMessage[] = [
+      { role: 'tool', content: 'x'.repeat(2400), toolCallId: 'c1', name: 'readFile' },
+      ...Array.from({ length: 6 }, (): ChatMessage => ({ role: 'assistant', content: 'ok' })),
     ];
     expect((await compactHistory(messages, 1000, async () => 's')).compacted).toBe(false);
     expect((await compactHistory(messages, 1000, async () => 's', 0.6)).compacted).toBe(true);
+  });
+
+  it('says it compacted only when something was trimmed or folded (C1)', async () => {
+    // Over budget, but nothing old to trim and too few turns to fold: the
+    // history is as short as it gets, and no summary is asked for.
+    const messages: ChatMessage[] = [
+      { role: 'user', content: 'x'.repeat(2640) },
+      { role: 'assistant', content: 'ok' },
+    ];
+    let asked = 0;
+    const result = await compactHistory(
+      messages,
+      1000,
+      async () => {
+        asked += 1;
+        return 's';
+      },
+      0.6,
+    );
+    expect(result.compacted).toBe(false);
+    expect(result.messages).toEqual(messages);
+    expect(asked).toBe(0);
   });
 });

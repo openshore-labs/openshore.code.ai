@@ -4,16 +4,24 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { GLYPHS, TOKENS, colorEnabled } from '../brand/theme.js';
-import { SLASH_COMMANDS } from './slash.js';
+import { slashMatches, type RepoCommandList } from './slash.js';
 
 export interface InputProps {
   busy: boolean;
+  /** The person's own commands for this folder, hinted after the built-ins. */
+  repoCommands?: RepoCommandList;
   onSubmit: (text: string) => void;
   onAbort: () => void;
   onExit: () => void;
 }
 
-export function InputBox({ busy, onSubmit, onAbort, onExit }: InputProps): React.ReactElement {
+export function InputBox({
+  busy,
+  repoCommands,
+  onSubmit,
+  onAbort,
+  onExit,
+}: InputProps): React.ReactElement {
   const [value, setValue] = useState('');
   const [history, setHistory] = useState<string[]>([]);
   const [, setHistoryIndex] = useState(-1);
@@ -87,16 +95,13 @@ export function InputBox({ busy, onSubmit, onAbort, onExit }: InputProps): React
     }
   });
 
-  const slashMatches =
-    value.startsWith('/') && !value.includes(' ')
-      ? SLASH_COMMANDS.filter((c) => c.name.startsWith(value)).slice(0, 5)
-      : [];
+  const matches = slashMatches(value, repoCommands);
 
   return (
     <Box flexDirection="column">
-      {slashMatches.length > 0 ? (
+      {matches.length > 0 ? (
         <Box flexDirection="column" marginLeft={2}>
-          {slashMatches.map((c) => (
+          {matches.map((c) => (
             <Text key={c.name}>
               <Text color={TOKENS.local}>{c.name}</Text>
               <Text color={TOKENS.muted}> {c.description}</Text>

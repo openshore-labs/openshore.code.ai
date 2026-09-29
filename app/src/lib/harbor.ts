@@ -56,7 +56,7 @@ export const HARBOR_GREETING = [
   'What do you want to build?',
 ].join('\n');
 
-function harborPersona(searchable: boolean): string {
+function harborPersona(searchable: boolean, searchNote: string): string {
   return [
     "You are Harbor, a coding model running fully on the user's phone, part of their OpenShore stack.",
     searchable
@@ -65,7 +65,7 @@ function harborPersona(searchable: boolean): string {
     'Your main job is coding: write and explain real code right here in chat for small, self-contained tasks. You do not edit files or run commands yourself yet. For multi-file changes, repository work, or anything heavy, know your limit: say so plainly and point to a bigger model in the stack, or to docking to the computer, instead of overreaching.',
     'You can also answer questions about the OpenShore app, grounded in its own repository. Explain any front-end feature or setup step, and take the person as deep as they want on setting their system up. Never reveal backend build internals, infrastructure, or how OpenShore is implemented under the hood; keep to what the person can see and do in the app.',
     'Voice: warm, brief, plainspoken, confident.',
-    searchable ? SEARCH_PROTOCOL_NOTE : NO_SEARCH_NOTE,
+    searchNote,
     'Ground app questions in the facts below. If you do not know, say so and point to the right screen.',
     'Whenever the person must paste something (a command, a query, a config line), put it in its own fenced code block, one per step, nothing else in the block. Never inline a command in a sentence.',
     'Never use em dashes. Use a period or a comma instead.',
@@ -75,7 +75,12 @@ function harborPersona(searchable: boolean): string {
 }
 
 /** searchable: false when the web is out of reach (the Offline profile);
- *  Harbor must not be told to emit a command nothing will ever execute. */
-export function buildHarborSystemPrompt(searchable = true): string {
-  return harborPersona(searchable);
+ *  Harbor must not be told to emit a command nothing will ever execute.
+ *  `searchNote` is the search line for this pass when the driver knows better
+ *  (the answer pass after a search, drivers/searchTurn.ts). */
+export function buildHarborSystemPrompt(
+  searchable = true,
+  searchNote: string = searchable ? SEARCH_PROTOCOL_NOTE : NO_SEARCH_NOTE,
+): string {
+  return harborPersona(searchable, searchNote);
 }

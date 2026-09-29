@@ -269,12 +269,14 @@ describe('the composer excerpt', () => {
     }
   });
 
-  it('says what it costs', () => {
-    expect(excerpt.excerptCostLine(380, 4096)).toBe("About 380 tokens of this model's 4,096");
-    expect(excerpt.excerptCostLine(1234, 200000)).toBe(
-      "About 1,230 tokens of this model's 200,000",
-    );
-    expect(excerpt.excerptCostLine(42, 4096)).toBe("About 42 tokens of this model's 4,096");
+  it('says what it costs, in the room it takes or in words', () => {
+    expect(excerpt.excerptCostLine(380, 4096)).toBe("Takes about 9% of this model's room");
+    expect(excerpt.excerptCostLine(1234, 200000)).toBe("Takes under 1% of this model's room");
+    expect(excerpt.excerptCostLine(2048, 4096)).toBe("Takes about 50% of this model's room");
+    // An unknown window: the note's length in words, never tokens.
+    expect(excerpt.excerptCostLine(42, 0, 'one two three')).toBe('About 3 words');
+    expect(excerpt.excerptCostLine(400, 0)).toBe('About 300 words');
+    expect(excerpt.excerptCostLine(1, 0, 'one')).toBe('About 1 word');
   });
 
   it('refuses a local-only note while the seat leaves the network', () => {
@@ -286,7 +288,7 @@ describe('the composer excerpt', () => {
       { servedTokens: 4096, device: true, leavesNetwork: false },
     );
     expect(local.ok).toBe(true);
-    if (local.ok) expect(local.costLine).toMatch(/of this model's 4,096$/);
+    if (local.ok) expect(local.costLine).toMatch(/of this model's room$/);
   });
 
   it('the picker never lists a hidden note and locks a local-only one', () => {

@@ -3,7 +3,7 @@
 import { VaultSchema, type OscConfig } from '../../config/schema.js';
 import { EgressPolicy } from '../security/egress.js';
 import { Jail } from '../security/jail.js';
-import { ToolRegistry, type ToolContext } from '../tools/index.js';
+import { ToolRegistry, type ToolContext, type ToolDef } from '../tools/index.js';
 import { readFileTool } from '../tools/readFile.js';
 import { writeFileTool } from '../tools/writeFile.js';
 import { editFileTool } from '../tools/editFile.js';
@@ -17,6 +17,7 @@ import type { CurrentsHandles } from '../../currents/model.js';
 import { grepTool } from '../tools/grep.js';
 import { globTool } from '../tools/glob.js';
 import { gitCommitTool, gitDiffTool, gitLogTool, gitStatusTool } from '../tools/git.js';
+import { PROCESS_TOOLS } from '../tools/process.js';
 import { webSearchTool } from '../tools/webSearch.js';
 import { webFetchTool } from '../tools/webFetch.js';
 import { generateImageTool } from '../tools/generateImage.js';
@@ -46,7 +47,8 @@ import type { Router } from '../../router/router.js';
 import type { ProviderRegistry } from '../../providers/registry.js';
 import { RepoIndex, keywordSearch } from '../../context/index.js';
 
-export function buildToolRegistry(options: {
+/** What decides which tools a session registers. */
+export interface ToolRegistryOptions {
   stackHasVision: boolean;
   stackHasImageGen: boolean;
   stackHasSpecialists: boolean;
@@ -84,9 +86,70 @@ export function buildToolRegistry(options: {
   // Off leaves webSearch out: the person has not allowed web search on this
   // device yet (the app asks once, since the search words go to a search
   // service). webFetch stays, since it fetches a page the person or the task
-  // names. Undefined means on (the CLI, routines, config's own egress rules).
+  // names. Undefined means on (the CLI and config's own egress rules).
   webSearch?: boolean;
-}): ToolRegistry {
+  // On for a headless run (a Crew routine): every tool that reaches the
+  // network is left out, the web tools, Codemagic, the currents' tools, and
+  // the tools that hand work to another model (a specialist, vision, image
+  // making), which may be a cloud one and are classed as reads, so nothing
+  // would ask (CTO 3, headless means offline). A routine reads commit
+  // messages, files and notes other people wrote, and one injected line could
+  // send a secret out in a URL, a search, or a subtask while nobody watches.
+  // See networkToolsLeftOut.
+  offline?: boolean;
+  // On when this session's host can keep a program the agent starts running
+  // (bootstrap wires ToolContext.processes to the driver's command lane):
+  // registers startProcess, readProcess and stopProcess (P1). Bootstrap
+  // leaves it off on a headless run, in a member's session on a shared hub,
+  // and when config turns tools.processes off; an offline run never gets
+  // them either. Undefined means off, since only a host with a driver can
+  // hold a process.
+  processes?: boolean;
+  // Read each time the menu is built: while it says no, the process tools
+  // are off the menu and a call to one finds no tool. Bootstrap says no in
+  // plan mode (read only until the plan is approved). Unset offers them.
+  processesOffered?: () => boolean;
+}
+
+/** The tools that reach the network (or hand work to something that can), in
+ *  the order they register: the one outbound path a secret could leak
+ *  through. Left out under egress lockdown and on an offline run. */
+function networkTools(options: ToolRegistryOptions): ToolDef[] {
+  const out: ToolDef[] = [];
+  if (options.webSearch !== false) out.push(webSearchTool);
+  out.push(webFetchTool);
+  // Codemagic reaches the network too, so it rides with the web tools under
+  // the egress gate. Present only when a token was delivered (Access on).
+  if (options.hasCodemagic) out.push(codemagicTool);
+  if (options.currents?.hermes) out.push(askHermesTool);
+  if (options.currents?.a2a) out.push(askAgentTool);
+  if (options.currents?.cli) out.push(cliAgentTool);
+  return out;
+}
+
+/** The tools that hand work to another model the stack names (a vision
+ *  seat, an image maker, a specialist), which may be a cloud one: left out
+ *  under egress lockdown and on an offline run, like the network tools. */
+function modelHandoffTools(options: ToolRegistryOptions): ToolDef[] {
+  const out: ToolDef[] = [];
+  if (options.stackHasVision) out.push(analyzeImageTool);
+  if (options.stackHasImageGen) out.push(generateImageTool);
+  if (options.stackHasSpecialists) out.push(delegateTool);
+  return out;
+}
+
+/** The names an offline run leaves out that it would otherwise register
+ *  (webSearch is listed even when declined, since a model may still reach
+ *  for it), for the loop to refuse by name and the run's note to name. Empty
+ *  unless `offline`. */
+export function networkToolsLeftOut(options: ToolRegistryOptions): string[] {
+  if (!options.offline) return [];
+  return [...networkTools({ ...options, webSearch: true }), ...modelHandoffTools(options)].map(
+    (t) => t.name,
+  );
+}
+
+export function buildToolRegistry(options: ToolRegistryOptions): ToolRegistry {
   const registry = new ToolRegistry();
   registry.register(readFileTool);
   registry.register(editFileTool);
@@ -105,17 +168,18 @@ export function buildToolRegistry(options: {
   registry.register(gitDiffTool);
   registry.register(gitLogTool);
   registry.register(gitCommitTool);
+  // Programs the agent starts and leaves running ("run my app", P1). After
+  // gitCommit and outside the small-seat priority, so a lean seat's cut
+  // never reaches them and its menu stays the same with them on.
+  if (options.processes && !options.offline) {
+    const when = options.processesOffered;
+    for (const tool of PROCESS_TOOLS) registry.register(tool, when ? { when } : {});
+  }
   // Web tools reach the internet, so they are the one outbound path a secret
-  // could leak through. Under egress lockdown they are not registered at all.
-  if (!options.egressLockdown) {
-    if (options.webSearch !== false) registry.register(webSearchTool);
-    registry.register(webFetchTool);
-    // Codemagic reaches the network too, so it rides with the web tools under
-    // the egress gate. Present only when a token was delivered (Access on).
-    if (options.hasCodemagic) registry.register(codemagicTool);
-    if (options.currents?.hermes) registry.register(askHermesTool);
-    if (options.currents?.a2a) registry.register(askAgentTool);
-    if (options.currents?.cli) registry.register(cliAgentTool);
+  // could leak through. Under egress lockdown, and on an offline run, they are
+  // not registered at all.
+  if (!options.egressLockdown && !options.offline) {
+    for (const tool of networkTools(options)) registry.register(tool);
   }
   registry.register(searchRepoTool);
   // The agent's durable, on-device knowledge vault. Reads/lists flow; writes
@@ -138,11 +202,10 @@ export function buildToolRegistry(options: {
   // Specialist-facing tools appear only when the stack can serve them, so a
   // single-model setup never tempts the model with tools that cannot work. They
   // delegate to other models (some of which may be cloud), so egress lockdown
-  // drops them too: a secrets session does its own work, on-device.
-  if (!options.egressLockdown) {
-    if (options.stackHasVision) registry.register(analyzeImageTool);
-    if (options.stackHasImageGen) registry.register(generateImageTool);
-    if (options.stackHasSpecialists) registry.register(delegateTool);
+  // drops them too: a secrets session does its own work, on-device. So does an
+  // offline run: a routine never hands the workspace to another model unasked.
+  if (!options.egressLockdown && !options.offline) {
+    for (const tool of modelHandoffTools(options)) registry.register(tool);
   }
   return registry;
 }
@@ -292,6 +355,26 @@ export function machineVaultWire(config: OscConfig): VaultPrivacyWire {
   };
 }
 
+/** The addresses on this computer's network a web tool may reach without
+ *  asking (D3): each configured model server and the self-hosted search
+ *  service, by host and port. Machine config names them, never the model. */
+export function webLocalExempt(config: OscConfig): string[] {
+  const urls = [
+    ...Object.values(config.providers).map((p) => ('baseUrl' in p ? p.baseUrl : undefined)),
+    config.search.searxngUrl,
+  ];
+  const out: string[] = [];
+  for (const url of urls) {
+    if (!url) continue;
+    try {
+      out.push(new URL(url).host.toLowerCase());
+    } catch {
+      // Not an address; nothing to exempt.
+    }
+  }
+  return out;
+}
+
 export function buildToolContext(options: {
   cwd: string;
   config: OscConfig;
@@ -312,7 +395,7 @@ export function buildToolContext(options: {
   vaultRoot?: string;
 }): ToolContext {
   const { cwd, config, router, providers, projectName, egressLockdown } = options;
-  const egress = new EgressPolicy(config.egress);
+  const egress = new EgressPolicy(config.egress, { localExempt: webLocalExempt(config) });
   const jail = new Jail(cwd);
 
   // Semantic retrieval when an embedder is enabled, keyword ranking when not.

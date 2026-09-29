@@ -20,8 +20,16 @@ import type { AgentSession } from '../core/agent/loop.js';
 import type { ApprovalAnswer, ApprovalRequest, DriverEvent } from '../core/agent/types.js';
 import { redactSecrets } from '../core/security/redaction.js';
 import { isSealed, loadOrCreateDataKey, openString, sealString } from '../core/security/atRest.js';
+import { deleteCredential, getCredential, setCredential } from '../auth/store.js';
+import {
+  parseCurrentsHandles,
+  parseHarnessCurrentsHandle,
+  type CurrentsHandles,
+  type HarnessCurrentsHandle,
+} from '../currents/model.js';
 import { runCommand as spawnCommand, type CommandRun } from '../core/exec/commandRunner.js';
-import { capContent } from '../core/tools/index.js';
+import { localAddresses, stripAnsi } from '../core/exec/localAddress.js';
+import { capContent, type ProcessView } from '../core/tools/index.js';
 import { walkFiles } from '../core/tools/walk.js';
 import { relative } from 'node:path';
 import { simpleGit } from 'simple-git';
@@ -31,6 +39,21 @@ import {
   type RestoreDirection,
   type RestoreResult,
 } from '../core/checkpoints/shadowGit.js';
+import { discoverCommands, menuOf, type CommandDiscovery } from '../core/agent/customCommands.js';
+import {
+  commandAsksForNote,
+  commandNotRunNote,
+  commandPreamble,
+  expandCommandBody,
+  parseSlashInput,
+} from '../core/agent/commandText.js';
+import {
+  liveJournal,
+  restoreNotes,
+  rewindKept,
+  seedHistoryFromEvents,
+  type JournalEntry,
+} from '../core/agent/seed.js';
 
 // DriverEvent lives in core/agent/types.ts (pure, browser-safe) so the app's
 // remote driver can share the exact protocol type; re-exported here so
@@ -48,6 +71,9 @@ export interface SessionDriver {
   describeModel(): { model: string; kind: 'local' | 'cloud' };
   readonly busy: boolean;
 }
+
+/** A rewind's answer (P2): the files put back, or why it did not happen. */
+export type RewindResult = { ok: true; paths: string[] } | { error: string };
 
 export function sessionsDir(): string {
   return join(oscHome(), 'sessions');
@@ -79,8 +105,10 @@ export interface SessionProject {
   projectName?: string;
   instructions?: string;
   /** The app's per-session switches, kept so a session revived after a
-   *  restart (the daemon's rehydrate) keeps the person's choices: Humanize
-   *  Writing, Memory, and Chain of Thought. Plain booleans, no content. */
+   *  restart (the daemon's rehydrate, the desktop's resume) keeps the
+   *  person's choices: Humanize Writing, Memory, Chain of Thought, a declined
+   *  web search, and the currents it was handed. The booleans are plain; the
+   *  handles are sealed and hold no key (see StoredHandles). */
   switches?: SessionSwitches;
 }
 
@@ -89,10 +117,161 @@ export interface SessionSwitches {
   humanize?: boolean;
   memory?: boolean;
   chainOfThought?: boolean;
+  /** The person's web search answer on the device that opened the session.
+   *  Only a decline is kept (false leaves the tool out); anything else leaves
+   *  the config in charge, as at create. */
+  webSearch?: boolean;
+  /** The Agentic Current the session was handed (see BootstrapOptions). */
+  currents?: CurrentsHandles;
+  /** The Harness Current the session was handed (see BootstrapOptions). */
+  harnessCurrents?: HarnessCurrentsHandle;
+}
+
+/**
+ * The current handles as info.json keeps them: what rebuilds the handle (its
+ * address, its model, which CLI) and, for a key, only the NAME it was put
+ * under in this computer's credential store (auth/store.ts: the keychain, or
+ * the encrypted file). The key itself never lands in info.json, and the whole
+ * record is sealed like the project, since an address can carry a login.
+ */
+interface StoredHandles {
+  currents?: {
+    hermes?: { baseUrl: string; model?: string; keyRef?: string };
+    a2a?: { agentUrl: string; keyRef?: string };
+    cli?: { command: 'claude' | 'codex' };
+  };
+  harnessCurrents?: { jev?: { baseUrl: string; model?: string; keyRef?: string } };
 }
 
 /** info.json as it sits on disk: the listing fields plus the sealed project. */
-type SessionInfoFile = SessionInfo & SessionProject;
+type SessionInfoFile = SessionInfo &
+  Omit<SessionProject, 'switches'> & {
+    /** The plain booleans only; the handles ride sealed in `handles`. */
+    switches?: Pick<SessionSwitches, 'humanize' | 'memory' | 'chainOfThought' | 'webSearch'>;
+    /** Sealed JSON of StoredHandles. */
+    handles?: string;
+  };
+
+const SWITCH_KEYS = ['humanize', 'memory', 'chainOfThought', 'webSearch'] as const;
+
+/** The credential-store name a session's current key is kept under. One per
+ *  session and current, so deleting the session can take its keys along. */
+function sessionKeyName(id: string, current: 'hermes' | 'a2a' | 'jev'): string {
+  return `session-key:${id}:${current}`;
+}
+
+/** Put a handle's key in the credential store and answer its name, or leave
+ *  it out when there is no key or the store refuses it (the revived session
+ *  then runs without the key, as a fresh one would with none). */
+function keepKey(id: string, current: 'hermes' | 'a2a' | 'jev', key: string | undefined) {
+  if (!key) return undefined;
+  const name = sessionKeyName(id, current);
+  try {
+    setCredential(name, key);
+    return name;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Read a kept key back, only under the one name this session and current
+ *  would have used: a hand-edited info.json cannot name another credential
+ *  (the person's cloud key, say) and have it handed to a current. */
+function readKey(
+  id: string,
+  current: 'hermes' | 'a2a' | 'jev',
+  ref: string | undefined,
+): string | undefined {
+  if (!ref || ref !== sessionKeyName(id, current)) return undefined;
+  try {
+    return getCredential(ref);
+  } catch {
+    return undefined;
+  }
+}
+
+/** The handles as info.json keeps them, keys moved into the store. */
+function storeHandles(id: string, switches: SessionSwitches): StoredHandles | undefined {
+  const out: StoredHandles = {};
+  const { currents, harnessCurrents } = switches;
+  if (currents) {
+    const c: NonNullable<StoredHandles['currents']> = {};
+    if (currents.hermes) {
+      const keyRef = keepKey(id, 'hermes', currents.hermes.apiKey);
+      c.hermes = {
+        baseUrl: currents.hermes.baseUrl,
+        ...(currents.hermes.model ? { model: currents.hermes.model } : {}),
+        ...(keyRef ? { keyRef } : {}),
+      };
+    }
+    if (currents.a2a) {
+      const keyRef = keepKey(id, 'a2a', currents.a2a.apiKey);
+      c.a2a = { agentUrl: currents.a2a.agentUrl, ...(keyRef ? { keyRef } : {}) };
+    }
+    if (currents.cli) c.cli = { command: currents.cli.command };
+    if (Object.keys(c).length) out.currents = c;
+  }
+  if (harnessCurrents?.jev) {
+    const keyRef = keepKey(id, 'jev', harnessCurrents.jev.apiKey);
+    out.harnessCurrents = {
+      jev: {
+        baseUrl: harnessCurrents.jev.baseUrl,
+        ...(harnessCurrents.jev.model ? { model: harnessCurrents.jev.model } : {}),
+        ...(keyRef ? { keyRef } : {}),
+      },
+    };
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** Rebuild the handles from info.json, each key read back from the store.
+ *  Parsed through the same wire validators a create uses, so a hand-edited
+ *  file can name nothing a create would refuse. */
+function revivedHandles(
+  id: string,
+  stored: StoredHandles,
+): Pick<SessionSwitches, 'currents' | 'harnessCurrents'> {
+  const hermes = stored.currents?.hermes;
+  const a2a = stored.currents?.a2a;
+  const jev = stored.harnessCurrents?.jev;
+  const currents = parseCurrentsHandles({
+    ...(hermes ? { hermes: { ...hermes, apiKey: readKey(id, 'hermes', hermes.keyRef) } } : {}),
+    ...(a2a ? { a2a: { ...a2a, apiKey: readKey(id, 'a2a', a2a.keyRef) } } : {}),
+    ...(stored.currents?.cli ? { cli: stored.currents.cli } : {}),
+  });
+  const harnessCurrents = parseHarnessCurrentsHandle(
+    jev ? { jev: { ...jev, apiKey: readKey(id, 'jev', jev.keyRef) } } : {},
+  );
+  return {
+    ...(currents ? { currents } : {}),
+    ...(harnessCurrents ? { harnessCurrents } : {}),
+  };
+}
+
+/** Every credential-store name a stored session's handles point at, under
+ *  the names this session would have used and no other. */
+function keyRefsOf(id: string, stored: StoredHandles | undefined): string[] {
+  const refs: Array<[string | undefined, 'hermes' | 'a2a' | 'jev']> = [
+    [stored?.currents?.hermes?.keyRef, 'hermes'],
+    [stored?.currents?.a2a?.keyRef, 'a2a'],
+    [stored?.harnessCurrents?.jev?.keyRef, 'jev'],
+  ];
+  return refs
+    .filter(([ref, current]) => ref !== undefined && ref === sessionKeyName(id, current))
+    .map(([ref]) => ref as string);
+}
+
+function openHandles(sealed: unknown): StoredHandles | undefined {
+  if (typeof sealed !== 'string') return undefined;
+  const clear = openField(sealed);
+  if (!clear) return undefined;
+  try {
+    const parsed = JSON.parse(clear) as StoredHandles;
+    return parsed && typeof parsed === 'object' ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 // The session title is derived from the user's first prompt, so it is user
 // content and seals like the journal; so do the project's name and standing
@@ -147,14 +326,158 @@ export function invalidateSessionIndex(): void {
 // Session ids are short hex; a path-shaped id must never reach rmSync (DAE-12).
 const SAFE_SESSION_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
-/** Remove a stored session (its journal and info) from disk. */
+/** Remove a stored session (its journal and info) from disk, and any current
+ *  key it kept in the credential store. */
 export function deleteSession(id: string): boolean {
   if (!SAFE_SESSION_ID.test(id)) return false;
   const dir = join(sessionsDir(), id);
   if (!existsSync(dir)) return false;
+  let refs: string[] = [];
+  try {
+    const file = JSON.parse(readFileSync(join(dir, 'info.json'), 'utf8')) as SessionInfoFile;
+    refs = keyRefsOf(id, openHandles(file.handles));
+  } catch {
+    // No readable info: nothing it points at can be found, so nothing to take.
+  }
   rmSync(dir, { recursive: true, force: true });
+  for (const ref of refs) {
+    try {
+      deleteCredential(ref);
+    } catch {
+      // A key the store will not drop is left; the session is gone either way.
+    }
+  }
   invalidateSessionIndex();
   return true;
+}
+
+// ---- open sessions (H1) ----------------------------------------------------
+// Every stored session loaded in this process, whoever loaded it (the daemon,
+// the desktop's engine host, the routine scheduler). Retention and the
+// routine window never delete one of these, the routine scheduler asks it
+// whether the person is busy in a folder, and a stray fault is announced to
+// the busy ones. A Set per id, since two hosts in one process can each hold a
+// driver for the same session.
+const openDrivers = new Map<string, Set<LocalDriver>>();
+
+function markOpen(driver: LocalDriver): void {
+  let set = openDrivers.get(driver.id);
+  if (!set) openDrivers.set(driver.id, (set = new Set()));
+  set.add(driver);
+}
+
+function markClosed(driver: LocalDriver): void {
+  const set = openDrivers.get(driver.id);
+  if (!set) return;
+  set.delete(driver);
+  if (!set.size) openDrivers.delete(driver.id);
+}
+
+/** True while a driver for this stored session is loaded in this process. */
+export function isSessionOpen(id: string): boolean {
+  return openDrivers.has(id);
+}
+
+/** Every stored session loaded in this process. */
+export function openSessionDrivers(): LocalDriver[] {
+  return [...openDrivers.values()].flatMap((set) => [...set]);
+}
+
+/** The newest sign of life in a stored session: the info's own stamp (moved
+ *  on every task and title) and the journal's file time (moved by every
+ *  event, whichever process writes it). The info file's own time is not
+ *  used while its stamp reads, since the at-rest sealing pass rewrites it
+ *  without any activity; it and the folder stand in only for a torn info. */
+function lastActivityMs(dir: string, id: string): number | undefined {
+  let latest: number | undefined;
+  const seen = (ms: number): void => {
+    if (Number.isFinite(ms) && (latest === undefined || ms > latest)) latest = ms;
+  };
+  try {
+    seen(statSync(join(dir, id, 'events.jsonl')).mtimeMs);
+  } catch {
+    // No journal yet.
+  }
+  let stamped = false;
+  try {
+    const file = JSON.parse(readFileSync(join(dir, id, 'info.json'), 'utf8')) as SessionInfo;
+    const at = typeof file.updatedAt === 'string' ? Date.parse(file.updatedAt) : NaN;
+    if (Number.isFinite(at)) {
+      seen(at);
+      stamped = true;
+    }
+  } catch {
+    // A torn info is judged by its file times below.
+  }
+  if (!stamped) {
+    for (const path of [join(dir, id, 'info.json'), join(dir, id)]) {
+      try {
+        seen(statSync(path).mtimeMs);
+        break;
+      } catch {
+        // Try the folder.
+      }
+    }
+  }
+  return latest;
+}
+
+/**
+ * Delete stored sessions with no activity for `retentionDays` (H1): the
+ * journal, the info, and any key they kept. A session loaded in this process
+ * is never touched, nor one `keep` names (the daemon passes its own map), and
+ * activity is read from the files as well as the info stamp, so a session
+ * another process is writing right now stays. Zero or less keeps everything.
+ * Returns the ids it deleted.
+ */
+export function pruneStoredSessions(opts: {
+  retentionDays: number;
+  now?: number;
+  keep?: (id: string) => boolean;
+}): string[] {
+  if (!(opts.retentionDays > 0)) return [];
+  const dir = sessionsDir();
+  if (!existsSync(dir)) return [];
+  const cutoff = (opts.now ?? Date.now()) - opts.retentionDays * 86_400_000;
+  const removed: string[] = [];
+  for (const id of readdirSync(dir)) {
+    if (!SAFE_SESSION_ID.test(id) || isSessionOpen(id) || opts.keep?.(id)) continue;
+    const last = lastActivityMs(dir, id);
+    if (last === undefined || last >= cutoff) continue;
+    if (deleteSession(id)) removed.push(id);
+  }
+  return removed;
+}
+
+/** Delete a routine run's stored session when its run falls out of the kept
+ *  window, unless it is loaded here right now (retention takes it later). */
+export function deleteClosedSession(id: string): boolean {
+  if (isSessionOpen(id)) return false;
+  return deleteSession(id);
+}
+
+/** A stray fault in this process (an unhandled rejection, an uncaught
+ *  exception) is said once in every session that is working right now, so
+ *  the person knows why a step may have stalled. At most once a minute. */
+let lastFaultNoticeAt = 0;
+export function announceProcessFault(now = Date.now()): number {
+  if (now - lastFaultNoticeAt < 60_000) return 0;
+  lastFaultNoticeAt = now;
+  let told = 0;
+  for (const driver of openSessionDrivers()) {
+    if (!driver.busy) continue;
+    try {
+      driver.emit({
+        type: 'status',
+        message:
+          'Something went wrong in the background. OpenShore kept running; if this step looks stuck, press Stop and send it again.',
+      });
+      told += 1;
+    } catch {
+      // The notice is a courtesy.
+    }
+  }
+  return told;
 }
 
 export function listSessions(): SessionInfo[] {
@@ -187,8 +510,15 @@ function readSessionInfo(dir: string, id: string): SessionInfo | undefined {
   try {
     const file = JSON.parse(readFileSync(join(dir, id, 'info.json'), 'utf8')) as SessionInfoFile;
     if (!file || typeof file.cwd !== 'string') return repairSessionInfo(dir, id);
-    // The project stays on disk: a listing neither carries nor opens it.
-    const { projectName: _name, instructions: _instructions, ...info } = file;
+    // The project stays on disk: a listing neither carries nor opens it, nor
+    // the switches and the sealed handles.
+    const {
+      projectName: _name,
+      instructions: _instructions,
+      switches: _switches,
+      handles: _handles,
+      ...info
+    } = file;
     info.title = openTitle(info.title);
     return info;
   } catch {
@@ -208,13 +538,15 @@ export function storedSessionProject(id: string): SessionProject {
     const project: SessionProject = {};
     if (typeof file.projectName === 'string') project.projectName = openField(file.projectName);
     if (typeof file.instructions === 'string') project.instructions = openField(file.instructions);
+    const switches: SessionSwitches = {};
     if (file.switches && typeof file.switches === 'object') {
-      const switches: SessionSwitches = {};
-      for (const key of ['humanize', 'memory', 'chainOfThought'] as const) {
+      for (const key of SWITCH_KEYS) {
         if (typeof file.switches[key] === 'boolean') switches[key] = file.switches[key];
       }
-      if (Object.keys(switches).length) project.switches = switches;
     }
+    const handles = openHandles(file.handles);
+    if (handles) Object.assign(switches, revivedHandles(id, handles));
+    if (Object.keys(switches).length) project.switches = switches;
     return project;
   } catch {
     return {};
@@ -268,6 +600,9 @@ function repairSessionInfo(dir: string, id: string): SessionInfo | undefined {
   }
 }
 
+/** The commands signature of a folder with none: nothing to say. */
+const COMMANDS_NONE = '';
+
 // The events that move info.json (title, updatedAt): task boundaries, a
 // generated title, and the content-free terminal markers.
 const INFO_MILESTONES = new Set<DriverEvent['type']>([
@@ -277,6 +612,67 @@ const INFO_MILESTONES = new Set<DriverEvent['type']>([
   'terminal-opened',
   'terminal-closed',
 ]);
+
+// ---- processes the agent started (P1, "run my app") ------------------------
+
+/** The most programs one session's agent keeps running at once. */
+export const AGENT_PROCESS_LIMIT = 3;
+/** The rolling tail of output kept per process for readProcess (64 KB). */
+export const AGENT_PROCESS_TAIL_CHARS = 64 * 1024;
+/** Ended processes a session keeps for a last read, beyond the live ones. */
+const ENDED_AGENT_PROCESSES_KEPT = 5;
+/** The longest unended line read for an address. */
+const PARTIAL_LINE_CHARS = 4096;
+
+/** One program the agent started, live or ended, as its driver keeps it. */
+interface AgentProcess {
+  runId: string;
+  command: string;
+  startedAt: number;
+  endedAt?: number;
+  running: boolean;
+  exitCode?: number | null;
+  startError?: string;
+  /** The last AGENT_PROCESS_TAIL_CHARS of its output, stdout and stderr in
+   *  the order they arrived, already secret-redacted by the runner. */
+  tail: string;
+  dropped: boolean;
+  /** The local addresses it printed, first seen first. */
+  addresses: string[];
+  /** The line it is printing now, not yet ended: an address is read from
+   *  whole lines only, so one split between two chunks is never taken for a
+   *  shorter one. */
+  partial: string;
+  /** Who ended it before it exited: the agent's stopProcess, the person's
+   *  Stop on its card, or the session closing. */
+  stoppedBy?: 'agent' | 'person' | 'session';
+  /** Its command-end was emitted already (the session closed first). */
+  endEmitted: boolean;
+  /** Woken on each chunk and at the end (startProcess waits on them). */
+  waiters: Set<() => void>;
+}
+
+// Every live program an agent started in this OS process. A session ends its
+// own when it is disposed or evicted and when its daemon or the app closes;
+// this is the last net for a host that exits without that (the CLI), since a
+// command runs in its own process group and would outlive OpenShore with
+// nothing left able to stop it.
+const liveAgentRuns = new Set<CommandRun>();
+let agentExitNet = false;
+
+function holdAgentRun(run: CommandRun): void {
+  liveAgentRuns.add(run);
+  if (agentExitNet) return;
+  agentExitNet = true;
+  process.on('exit', () => {
+    for (const live of liveAgentRuns) live.kill();
+  });
+}
+
+/** Wake whoever waits on a process (a chunk arrived, or it ended). */
+function wake(proc: AgentProcess): void {
+  for (const waiter of [...proc.waiters]) waiter();
+}
 
 /**
  * LocalDriver: owns one AgentSession, an event journal, and the approval
@@ -306,6 +702,10 @@ export class LocalDriver implements SessionDriver {
   // outcomes without a screenshot).
   private commands = new Map<string, CommandRun>();
   private pendingTerminalContext: string[] = [];
+  // The programs the agent started on that same lane (startProcess), keyed by
+  // runId: every live one and the last few that ended, each with the tail of
+  // its output for readProcess.
+  private agentProcesses = new Map<string, AgentProcess>();
   // Set once the first completed exchange has been titled, so the cheap title
   // call runs once per session, never per turn.
   private titled = false;
@@ -316,6 +716,14 @@ export class LocalDriver implements SessionDriver {
   // folder on this machine. On for stored sessions; off for throwaway ones
   // (tests, one-shot runs) unless asked for.
   private checkpoints?: ShadowCheckpoints;
+  // The person's own slash commands (P3): the list last said in a repo-info
+  // event (it rides again only when it changes), and the notes a command
+  // leaves for the person, said right under their message.
+  private commandsSaid = COMMANDS_NONE;
+  private notesAfterStart: string[] = [];
+  // True while a rewind puts files back (P2): no task starts, no other
+  // restore lands, and the driver is not evicted until it is done.
+  private rewinding = false;
 
   constructor(
     readonly cwd: string,
@@ -345,10 +753,17 @@ export class LocalDriver implements SessionDriver {
       const { projectName, instructions, switches } = options.project ?? {};
       if (projectName) info.projectName = sealField(projectName);
       if (instructions?.trim()) info.instructions = sealField(instructions);
-      if (switches && Object.values(switches).some((v) => typeof v === 'boolean')) {
-        info.switches = switches;
-      }
       if (!existsSync(infoPath)) {
+        if (switches) {
+          const flags: NonNullable<SessionInfoFile['switches']> = {};
+          for (const key of SWITCH_KEYS) {
+            if (typeof switches[key] === 'boolean') flags[key] = switches[key];
+          }
+          if (Object.keys(flags).length) info.switches = flags;
+          // The currents, keys moved into the credential store first.
+          const handles = storeHandles(this.id, switches);
+          if (handles) info.handles = sealField(JSON.stringify(handles));
+        }
         writeInfoAtomic(infoPath, info);
       } else {
         // Rehydrating a stored session: carry its recorded owner forward so the
@@ -359,6 +774,7 @@ export class LocalDriver implements SessionDriver {
         } catch {}
       }
       this.loadJournal();
+      markOpen(this);
     }
     // Only a session that has not run a task yet is seeded: a revived one
     // already carries its turns in the journal.
@@ -391,15 +807,18 @@ export class LocalDriver implements SessionDriver {
 
   /**
    * True when dropping this driver from memory loses nothing: it is stored on
-   * disk (rehydratable), no task is running or queued, no command is live, no
-   * approval is pending, and no client is attached (DAE-12).
+   * disk (rehydratable), no task is running or queued, no command the person
+   * ran is live, no approval is pending, and no client is attached (DAE-12).
+   * A program the agent started does not hold the session: eviction ends it,
+   * so nothing runs on unattended once nobody has touched the chat (P1).
    */
   get evictable(): boolean {
     return (
       this.persist &&
       !this.running &&
+      !this.rewinding &&
       this.queue.length === 0 &&
-      this.commands.size === 0 &&
+      ![...this.commands.keys()].some((runId) => !this.agentProcesses.has(runId)) &&
       this.pendingApprovals.size === 0 &&
       this.viewers.size === 0
     );
@@ -408,11 +827,14 @@ export class LocalDriver implements SessionDriver {
   /** Release what an evicted driver holds: its listeners and its in-memory
    *  journal copy. The journal on disk is the source of truth from here.
    *  The session is ending here, so its agent writes a last handoff first
-   *  (J13; a no-op when nothing changed since the last one). */
+   *  (J13; a no-op when nothing changed since the last one), and every
+   *  program the agent started ends with it (P1). */
   dispose(): void {
     try {
       this.agent?.flushHandoff();
     } catch {}
+    this.stopAgentProcesses();
+    markClosed(this);
     this.sinks.clear();
     this.viewers.clear();
     this.events = [];
@@ -421,11 +843,20 @@ export class LocalDriver implements SessionDriver {
   /** The agent is attached after construction so the deps can reference the driver's approver. */
   attachAgent(agent: AgentSession): void {
     this.agent = agent;
+    // A folder with commands says so at once, so a composer or the terminal
+    // can list them before the first task (a folder with none says nothing).
+    if (this.commandsSignature(this.findCommands()) !== COMMANDS_NONE) void this.emitRepoInfo();
   }
 
   /** The journaled events, in order (used to seed history on rehydrate). */
   replayEvents(): DriverEvent[] {
     return this.events.map((e) => e.event);
+  }
+
+  /** The journal with its sequence numbers, which a rewind's marker points
+   *  into (the seed leaves the turns it took back out). */
+  replayJournal(): JournalEntry[] {
+    return [...this.events];
   }
 
   get busy(): boolean {
@@ -544,6 +975,12 @@ export class LocalDriver implements SessionDriver {
       } catch {}
     }
     for (const sink of this.sinks) sink(event, seq);
+    // A command's notes land right under the person's own message.
+    if (event.type === 'task-start' && this.notesAfterStart.length) {
+      const notes = this.notesAfterStart;
+      this.notesAfterStart = [];
+      for (const message of notes) this.emit({ type: 'note', message });
+    }
   }
 
   /** The Approver the AgentSession deps should use. */
@@ -573,16 +1010,25 @@ export class LocalDriver implements SessionDriver {
   }
 
   private async pump(): Promise<void> {
-    if (this.running || !this.agent) return;
+    if (this.running || this.rewinding || !this.agent) return;
     const next = this.queue.shift();
     if (!next) return;
     this.running = true;
-    // The first task's preamble opens with the handoff (J12), then any
-    // commands the person ran; the transcript shows only their own words.
+    // The first task's preamble opens with the handoff (J12), then what
+    // changed under the model since its last task (an Undo, a Redo, a rewind:
+    // P2, so it never builds on edits that are gone), then any commands the
+    // person ran; the transcript shows only their own words. The restore
+    // notes are read from the journal after the last task-start, so this
+    // task's own task-start is what clears them.
     const handoff = this.handoff;
     this.handoff = undefined;
+    const restored = restoreNotes(this.events).join('\n\n');
     const terminal = this.drainTerminalContext();
-    const preamble = [handoff, terminal].filter((p) => p?.trim()).join('\n\n') || undefined;
+    // A command the person ran (/review): the chat keeps what they typed, and
+    // the file's filled-in text rides last in the preamble, right above it.
+    const command = this.commandPreambleFor(next.text);
+    const preamble =
+      [handoff, restored, terminal, command].filter((p) => p?.trim()).join('\n\n') || undefined;
     let completed = false;
     let before: string | undefined;
     try {
@@ -597,6 +1043,8 @@ export class LocalDriver implements SessionDriver {
         message: err instanceof Error ? err.message : String(err),
       });
     } finally {
+      // A note waiting on a task that never started is dropped with it.
+      this.notesAfterStart = [];
       // The checkpoint lands before the session reads as idle, so an undo
       // can never race the snapshot it restores from.
       if (before) await this.recordCheckpoint(before);
@@ -641,15 +1089,91 @@ export class LocalDriver implements SessionDriver {
   ): Promise<RestoreResult> {
     this.lastActivityAt = Date.now();
     if (!this.checkpoints) return { error: 'Undo is not on for this session.' };
-    if (this.running || this.queue.length) {
+    if (this.running || this.queue.length || this.rewinding) {
       return { error: 'Wait for the current step to finish, then undo.' };
     }
-    const result = await this.checkpoints.restore(id, direction, { path, sessionId: this.id });
+    const result = await this.restoreNow(this.checkpoints, id, direction, path);
+    if ('ok' in result) void this.emitRepoInfo();
+    return result;
+  }
+
+  /** One restore, journaled when it lands, so every device folds the card and
+   *  the next task's preamble names the files (restoreNotes). */
+  private async restoreNow(
+    shadow: ShadowCheckpoints,
+    id: string,
+    direction: RestoreDirection,
+    path?: string,
+  ): Promise<RestoreResult> {
+    const result = await shadow.restore(id, direction, { path, sessionId: this.id });
     if ('ok' in result) {
       this.emit({ type: 'checkpoint-restored', id, direction, paths: result.paths });
-      void this.emitRepoInfo();
     }
     return result;
+  }
+
+  /**
+   * Rewind (P2): take the chat back to just before the person's message whose
+   * task-start is journaled at `toSeq`. With `files`, every checkpoint since
+   * is undone first, newest first, through the same restore Undo uses, so the
+   * folder's files go back to how they were then (a checkpoint already undone
+   * is passed over). Refused while a task runs or waits. On the first restore
+   * that fails it stops, says what was put back, and leaves the chat as it
+   * was. Otherwise it journals a `rewound` marker, which every replay reads
+   * (the seed and the app's transcript leave the taken-back turns out, so a
+   * revived session and a paired phone agree), and the agent's history is
+   * rebuilt from the journal as it now stands, the way a revived session's is.
+   */
+  async rewind(toSeq: number, options: { files: boolean }): Promise<RewindResult> {
+    this.lastActivityAt = Date.now();
+    if (this.running || this.queue.length || this.rewinding) {
+      return { error: 'Wait for the current step to finish, then rewind.' };
+    }
+    const target = liveJournal(this.events).find((e) => e.seq === toSeq);
+    if (target?.event.type !== 'task-start') {
+      return { error: 'That message is not in this chat any more.' };
+    }
+    this.rewinding = true;
+    try {
+      const paths: string[] = [];
+      const shadow = this.checkpoints;
+      if (options.files && shadow) {
+        const records = new Map(shadow.list(this.id).map((r) => [r.id, r]));
+        const later = this.events
+          .filter((e) => e.seq > toSeq)
+          .flatMap(({ event }) => (event.type === 'checkpoint' ? [event.id] : []))
+          .reverse();
+        for (const id of [...new Set(later)]) {
+          const record = records.get(id);
+          const undone = record?.undone ?? {};
+          if (record && record.files.every((f) => f.path in undone)) continue;
+          const result = await this.restoreNow(shadow, id, 'undo');
+          if ('error' in result) return this.rewindStopped(paths, result.error);
+          for (const p of result.paths) if (!paths.includes(p)) paths.push(p);
+        }
+      }
+      const kept = rewindKept(this.events, toSeq, options.files, paths);
+      this.emit({ type: 'rewound', toSeq, paths, ...(kept.length ? { kept } : {}) });
+      if (this.agent) this.agent.history = seedHistoryFromEvents(this.events);
+      if (paths.length) void this.emitRepoInfo();
+      return { ok: true, paths };
+    } finally {
+      this.rewinding = false;
+      if (this.queue.length) void this.pump();
+    }
+  }
+
+  /** A rewind whose files could not all go back: the chat stays as it was.
+   *  When some already went back, a note says which on every device, and the
+   *  next task's preamble names them (their restores are journaled). */
+  private rewindStopped(paths: string[], reason: string): RewindResult {
+    if (!paths.length) {
+      return { error: `The rewind stopped: ${reason} The chat and its files stay as they were.` };
+    }
+    const message = `The rewind stopped partway: ${reason} The chat stays as it was, and these files already went back: ${paths.join(', ')}.`;
+    this.emit({ type: 'note', message });
+    void this.emitRepoInfo();
+    return { error: message };
   }
 
   private lastTaskCompleted(): boolean {
@@ -660,13 +1184,16 @@ export class LocalDriver implements SessionDriver {
     return false;
   }
 
-  /** Where this session works and the branch it is on, for the chat's chip.
+  /** Where this session works and the branch it is on, for the chat's chip,
+   *  and the person's commands for this folder when that list changed.
    *  Best effort: a non-repo cwd reports only the cwd. */
   async emitRepoInfo(): Promise<void> {
+    // Decided before the git wait, so two calls in flight never both say it.
+    const commands = this.commandsToSay();
     try {
       const git = simpleGit(this.cwd);
       if (!(await git.checkIsRepo())) {
-        this.emit({ type: 'repo-info', cwd: this.cwd });
+        this.emit({ type: 'repo-info', cwd: this.cwd, ...commands });
         return;
       }
       const status = await git.status();
@@ -675,10 +1202,66 @@ export class LocalDriver implements SessionDriver {
         cwd: this.cwd,
         branch: status.current ?? undefined,
         dirty: !status.isClean(),
+        ...commands,
       });
     } catch {
-      this.emit({ type: 'repo-info', cwd: this.cwd });
+      this.emit({ type: 'repo-info', cwd: this.cwd, ...commands });
     }
+  }
+
+  // ---- the person's own slash commands (P3) --------------------------------
+
+  /** The commands for this folder, read fresh (a file may have changed). */
+  private findCommands(): CommandDiscovery {
+    try {
+      return discoverCommands(this.cwd);
+    } catch {
+      return { commands: [], notLoaded: [] };
+    }
+  }
+
+  private commandsSignature(found: CommandDiscovery): string {
+    if (!found.commands.length && !found.notLoaded.length) return COMMANDS_NONE;
+    return JSON.stringify([menuOf(found.commands), found.notLoaded]);
+  }
+
+  /** The repo-info fields for the commands: the list and what was left out,
+   *  only when they changed since this session last said them. */
+  private commandsToSay(): Pick<
+    Extract<DriverEvent, { type: 'repo-info' }>,
+    'commands' | 'commandsNotLoaded'
+  > {
+    const found = this.findCommands();
+    const signature = this.commandsSignature(found);
+    if (signature === this.commandsSaid) return {};
+    this.commandsSaid = signature;
+    return { commands: menuOf(found.commands), commandsNotLoaded: found.notLoaded };
+  }
+
+  /**
+   * The preamble for a message that runs one of the person's commands, or
+   * undefined for any other message. Only text comes back: a command file
+   * cannot reach the tools, the model, the mode, or the config from here,
+   * since nothing but its filled-in body and two notes leave this function.
+   */
+  private commandPreambleFor(text: string): string | undefined {
+    const typed = parseSlashInput(text);
+    if (!typed) return undefined;
+    const command = this.findCommands().commands.find((c) => c.name === typed.name);
+    if (!command) return undefined;
+    const expanded = expandCommandBody(command.body, typed.args);
+    if (expanded.notRun.length) {
+      this.notesAfterStart.push(commandNotRunNote(command.name, expanded.notRun));
+    }
+    if (command.asksFor.length) {
+      this.notesAfterStart.push(commandAsksForNote(command.name, command.asksFor));
+    }
+    return commandPreamble({
+      name: command.name,
+      file: command.file,
+      from: command.from,
+      expanded,
+    });
   }
 
   // ---- the person's controls over the agent (mode, instructions, compact) ---
@@ -736,16 +1319,19 @@ export class LocalDriver implements SessionDriver {
   private static readonly MAX_PENDING_CONTEXT = 16;
 
   /**
-   * Run a command the user asked for (not the agent). Streams output as
-   * command-* events, records the result for the model's next turn, and
-   * returns the runId the caller drives (stdin, kill). The authenticated
-   * owner's tap IS the approval; this raises no model approval.
+   * Run a command on the lane: one the person asked for (`source: 'user'`,
+   * the default), or a program the agent started (`'agent'`, through
+   * startAgentProcess). Streams output as command-* events, records the result
+   * for the model's next turn, and returns the runId the caller drives (stdin,
+   * kill). For the person's own command, the authenticated owner's tap IS the
+   * approval; an agent's start was already approved as a shell step.
    */
   runCommand(command: string, opts: { source?: 'user' | 'agent' } = {}): { runId: string } {
     this.lastActivityAt = Date.now();
     const runId = randomUUID().slice(0, 8);
     const source = opts.source ?? 'user';
     const startedAt = Date.now();
+    const proc = source === 'agent' ? this.trackAgentProcess(runId, command, startedAt) : undefined;
     this.emit({ type: 'command-start', runId, command, cwd: this.cwd, source });
 
     let emitted = 0;
@@ -754,7 +1340,11 @@ export class LocalDriver implements SessionDriver {
       command,
       cwd: this.cwd,
       stdin: 'pipe',
+      // A program the agent leaves running can print for hours: only its
+      // rolling tail is kept, never the whole output.
+      ...(proc ? { retain: false } : {}),
       onChunk: (stream, text) => {
+        if (proc) this.appendAgentOutput(proc, text);
         if (emitted >= LocalDriver.COMMAND_EMIT_CAP) {
           truncated = true;
           return;
@@ -769,28 +1359,55 @@ export class LocalDriver implements SessionDriver {
       },
     });
     this.commands.set(runId, run);
+    if (proc) holdAgentRun(run);
 
     void run.done.then((result) => {
       this.commands.delete(runId);
+      liveAgentRuns.delete(run);
       const durationMs = Date.now() - startedAt;
-      this.emit({
-        type: 'command-end',
-        runId,
-        exitCode: result.exitCode,
-        signal: result.signal ?? undefined,
-        durationMs,
-        truncated: truncated || result.timedOut,
-      });
+      if (proc) {
+        // Its last line may not have ended.
+        if (proc.partial) this.noteAddresses(proc, proc.partial);
+        proc.partial = '';
+        proc.running = false;
+        proc.endedAt ??= Date.now();
+        if (proc.exitCode === undefined) proc.exitCode = result.exitCode;
+        if (result.startError) proc.startError = result.startError;
+        this.pruneEndedAgentProcesses();
+        wake(proc);
+      }
+      // A closing session already ended this card (stopAgentProcesses).
+      if (!proc?.endEmitted) {
+        this.emit({
+          type: 'command-end',
+          runId,
+          exitCode: result.exitCode,
+          signal: result.signal ?? undefined,
+          durationMs,
+          truncated: truncated || result.timedOut,
+        });
+      }
       // Frame the result for the model's next turn (drained in pump). Output is
-      // already secret-redacted by the runner; cap the tail for context.
-      const combined = [result.stdout, result.stderr].filter((s) => s.trim()).join('\n');
+      // already secret-redacted by the runner; cap the tail for context. A
+      // program the agent itself stopped needs no line: stopProcess said so,
+      // and a closing session has no next turn.
+      if (proc?.stoppedBy === 'agent' || proc?.stoppedBy === 'session') return;
+      const combined = proc
+        ? stripAnsi(proc.tail)
+        : [result.stdout, result.stderr].filter((s) => s.trim()).join('\n');
       const exitNote = result.startError
         ? `failed to start: ${result.startError}`
         : result.timedOut
           ? 'timed out and was killed'
-          : `exit ${result.exitCode}`;
+          : proc && result.exitCode === null
+            ? proc.stoppedBy === 'person'
+              ? 'stopped by the person'
+              : 'stopped'
+            : `exit ${result.exitCode}`;
+      const who = proc ? 'a process you started,' : 'the user ran';
+      const what = proc ? `\`${command}\`, ended` : `\`${command}\``;
       this.pendingTerminalContext.push(
-        `[terminal] the user ran \`${command}\` in ${this.cwd} (${exitNote}, ${(durationMs / 1000).toFixed(1)}s):\n${capContent(combined, 8000)}`,
+        `[terminal] ${who} ${what} in ${this.cwd} (${exitNote}, ${(durationMs / 1000).toFixed(1)}s):\n${capContent(combined, 8000)}`,
       );
       if (this.pendingTerminalContext.length > LocalDriver.MAX_PENDING_CONTEXT) {
         this.pendingTerminalContext.shift();
@@ -808,12 +1425,186 @@ export class LocalDriver implements SessionDriver {
     return true;
   }
 
-  /** Ask a running command to stop. */
+  /** Ask a running command to stop (the person's Stop on its card). */
   killCommand(runId: string): boolean {
     const run = this.commands.get(runId);
     if (!run) return false;
+    const proc = this.agentProcesses.get(runId);
+    if (proc?.running && !proc.stoppedBy) proc.stoppedBy = 'person';
     run.kill();
     return true;
+  }
+
+  // ---- programs the agent starts and leaves running (P1) -------------------
+  // The ToolContext.processes seam bootstrap wires: each one is a run on the
+  // lane above with `source: 'agent'`, so it shows as a command card with Stop
+  // on every host, and it ends with this session.
+
+  /** Start a program the agent asked for, unless three it started are still
+   *  running (then say which, so it can stop one). */
+  startAgentProcess(command: string): { runId: string } | { error: string } {
+    const live = this.liveAgentProcesses();
+    if (live.length >= AGENT_PROCESS_LIMIT) {
+      const names = live.map((p) => `${p.runId} (\`${p.command}\`)`).join(', ');
+      return {
+        error: `${AGENT_PROCESS_LIMIT} programs you started are still running: ${names}. Stop one with stopProcess before starting another.`,
+      };
+    }
+    return this.runCommand(command, { source: 'agent' });
+  }
+
+  /** The agent's programs that are still running (not already stopping). */
+  liveAgentProcesses(): Array<{ runId: string; command: string }> {
+    return [...this.agentProcesses.values()]
+      .filter((p) => p.running && !p.stoppedBy)
+      .map((p) => ({ runId: p.runId, command: p.command }));
+  }
+
+  /** The last `lines` of one of the agent's programs, or undefined when it
+   *  did not start that run (a command the person ran, another session's). */
+  readAgentProcess(runId: string, lines: number): ProcessView | undefined {
+    const proc = this.agentProcesses.get(runId);
+    if (!proc) return undefined;
+    // Plain lines: colour codes off, and a line a progress bar redrew with
+    // carriage returns reads as its last state.
+    const all = stripAnsi(proc.tail)
+      .replace(/\r\n/g, '\n')
+      .split('\n')
+      .map((line) => line.slice(line.lastIndexOf('\r') + 1));
+    if (all.length && all[all.length - 1] === '') all.pop();
+    return {
+      runId,
+      command: proc.command,
+      running: proc.running,
+      elapsedMs: (proc.endedAt ?? Date.now()) - proc.startedAt,
+      ...(proc.running ? {} : { exitCode: proc.exitCode ?? null }),
+      ...(proc.startError ? { startError: proc.startError } : {}),
+      output: all.slice(-Math.max(1, lines)).join('\n'),
+      dropped: proc.dropped,
+      addresses: [...proc.addresses],
+    };
+  }
+
+  /** Resolve once the program ends, prints a local address, `ms` pass, or
+   *  the signal aborts: startProcess's wait for it to come up. */
+  settleAgentProcess(runId: string, ms: number, signal?: AbortSignal): Promise<void> {
+    const proc = this.agentProcesses.get(runId);
+    return new Promise((resolve) => {
+      if (!proc || signal?.aborted) {
+        resolve();
+        return;
+      }
+      // Nothing wakes a waiter in the same tick (output and the end arrive as
+      // events), so the timer is set before `finish` can run.
+      const finish = (): void => {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', finish);
+        proc.waiters.delete(check);
+        resolve();
+      };
+      const check = (): void => {
+        if (!proc.running || proc.addresses.length) finish();
+      };
+      proc.waiters.add(check);
+      signal?.addEventListener('abort', finish, { once: true });
+      const timer = setTimeout(finish, Math.max(0, ms));
+      check();
+    });
+  }
+
+  /** Stop one of the agent's own running programs. False for a run it did
+   *  not start, or one that already ended. */
+  stopAgentProcess(runId: string): boolean {
+    const proc = this.agentProcesses.get(runId);
+    const run = this.commands.get(runId);
+    if (!proc || !run || !proc.running) return false;
+    proc.stoppedBy ??= 'agent';
+    run.kill();
+    return true;
+  }
+
+  /**
+   * End every program the agent started: the session is disposed or evicted,
+   * or its daemon or the app is closing. Each card ends now, since a closing
+   * host may not live to see the exit, so a revived session never shows one
+   * running. Returns how many it stopped.
+   */
+  stopAgentProcesses(): number {
+    let stopped = 0;
+    for (const proc of this.agentProcesses.values()) {
+      const run = this.commands.get(proc.runId);
+      if (!proc.running || !run) continue;
+      proc.stoppedBy = 'session';
+      run.kill();
+      if (!proc.endEmitted) {
+        proc.endEmitted = true;
+        this.emit({
+          type: 'command-end',
+          runId: proc.runId,
+          exitCode: null,
+          signal: 'SIGTERM',
+          durationMs: Date.now() - proc.startedAt,
+          truncated: false,
+        });
+      }
+      stopped += 1;
+    }
+    return stopped;
+  }
+
+  private trackAgentProcess(runId: string, command: string, startedAt: number): AgentProcess {
+    const proc: AgentProcess = {
+      runId,
+      command,
+      startedAt,
+      running: true,
+      tail: '',
+      dropped: false,
+      addresses: [],
+      partial: '',
+      endEmitted: false,
+      waiters: new Set(),
+    };
+    this.agentProcesses.set(runId, proc);
+    return proc;
+  }
+
+  /** Add a chunk to a program's tail, note any local address it printed,
+   *  and wake whoever waits on it. */
+  private appendAgentOutput(proc: AgentProcess, text: string): void {
+    proc.tail += text;
+    if (proc.tail.length > AGENT_PROCESS_TAIL_CHARS) {
+      proc.tail = proc.tail.slice(proc.tail.length - AGENT_PROCESS_TAIL_CHARS);
+      proc.dropped = true;
+    }
+    if (proc.addresses.length < 3) {
+      const joined = proc.partial + text;
+      const end = joined.lastIndexOf('\n');
+      if (end === -1) {
+        // A line with no end yet; a runaway one is let go rather than held.
+        proc.partial = joined.length > PARTIAL_LINE_CHARS ? '' : joined;
+      } else {
+        proc.partial = joined.slice(end + 1);
+        this.noteAddresses(proc, joined.slice(0, end));
+      }
+    }
+    wake(proc);
+  }
+
+  /** Remember the local addresses in whole lines of a program's output. */
+  private noteAddresses(proc: AgentProcess, lines: string): void {
+    for (const url of localAddresses(lines)) {
+      if (proc.addresses.length < 3 && !proc.addresses.includes(url)) proc.addresses.push(url);
+    }
+  }
+
+  /** Keep every live program and the last few that ended, so a session that
+   *  starts many over a long day holds a bounded amount of output. */
+  private pruneEndedAgentProcesses(): void {
+    const ended = [...this.agentProcesses.values()].filter((p) => !p.running);
+    for (const proc of ended.slice(0, Math.max(0, ended.length - ENDED_AGENT_PROCESSES_KEPT))) {
+      this.agentProcesses.delete(proc.runId);
+    }
   }
 
   private drainTerminalContext(): string | undefined {
@@ -957,7 +1748,7 @@ export function sealSessionsAtRest(options: { skipNewerThanMs?: number } = {}): 
       if (existsSync(infoPath) && !tooRecent(infoPath)) {
         const info = JSON.parse(readFileSync(infoPath, 'utf8')) as SessionInfoFile;
         let plain = false;
-        for (const field of ['title', 'projectName', 'instructions'] as const) {
+        for (const field of ['title', 'projectName', 'instructions', 'handles'] as const) {
           const value = info[field];
           if (typeof value === 'string' && !isSealed(value)) {
             info[field] = sealString(dk.key, value);

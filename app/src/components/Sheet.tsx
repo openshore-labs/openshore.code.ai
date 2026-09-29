@@ -10,8 +10,11 @@
 // then the sheet is gone. The drag tracks the finger 1:1, rubber-bands past
 // the top with asymptotic damping, and springs back on a short release.
 import {
+  createContext,
   useEffect,
+  useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -29,6 +32,13 @@ const COMMIT_VELOCITY = 0.35;
 const OVERSHOOT_MAX = 14;
 
 type Sample = { t: number; y: number };
+
+/** The id a sheet's title carries, so the dialog is named by it
+ *  (aria-labelledby). SheetHead takes the id and claims it while mounted; a
+ *  sheet with no SheetHead is left unnamed rather than pointed at nothing. */
+export const SheetTitleContext = createContext<{ id: string; claim: () => () => void } | null>(
+  null,
+);
 
 export function Sheet({
   open,
@@ -60,6 +70,19 @@ export function Sheet({
   const { mounted, closing } = useExitPresence(open, sheetExitMs());
   const last = useRef<ReactNode>(children);
   if (open) last.current = children;
+
+  const titleId = useId();
+  const [titled, setTitled] = useState(0);
+  const title = useMemo(
+    () => ({
+      id: titleId,
+      claim: () => {
+        setTitled((n) => n + 1);
+        return () => setTitled((n) => n - 1);
+      },
+    }),
+    [titleId],
+  );
 
   const [dragY, setDragY] = useState(0);
   const [dragging, setDragging] = useState(false);
@@ -203,6 +226,7 @@ export function Sheet({
         ref={cardRef}
         role="dialog"
         aria-modal="true"
+        aria-labelledby={titled > 0 ? titleId : undefined}
         tabIndex={initialFocus === 'dialog' ? -1 : undefined}
         className={`${card}${className ? ` ${className}` : ''}${closing ? ' closing' : ''}${dragging ? ' dragging' : ''}${settling ? ' settling' : ''}`}
         style={!closing && dragY !== 0 ? { transform: `translateY(${dragY}px)` } : undefined}
@@ -211,7 +235,9 @@ export function Sheet({
         {/* A top sheet's handle sits under its content, at the edge it drags
             toward; a bottom sheet's rides above, the edge it rises from. */}
         {variant === 'top' ? null : grabber}
-        {open ? children : last.current}
+        <SheetTitleContext.Provider value={title}>
+          {open ? children : last.current}
+        </SheetTitleContext.Provider>
         {variant === 'top' ? grabber : null}
       </div>
     </div>

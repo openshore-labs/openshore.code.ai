@@ -17,7 +17,7 @@ import {
 } from '../src/config/load.js';
 import { PROJECT_POLICY, type KeyPolicy } from '../src/config/projectPolicy.js';
 import { normalizeOrigin } from '../src/config/trust.js';
-import { trustSessionFolder } from '../src/core/agent/projectTrust.js';
+import { trustSessionFolder, waitingSettings } from '../src/core/agent/projectTrust.js';
 import type { AgentEvent } from '../src/core/agent/types.js';
 import { z } from 'zod';
 import { ConfigSchema } from '../src/config/schema.js';
@@ -28,6 +28,7 @@ import { bootstrapSession } from '../src/core/agent/bootstrap.js';
 import { isLocalHost } from '../src/core/security/egress.js';
 import { setOwnTailnetSuffixForTests } from '../src/connect/tailscale.js';
 import { cliAgentTool } from '../src/core/tools/cliAgent.js';
+import { LocalDriver } from '../src/daemon/session.js';
 import { MockProvider, textTurn, toolTurn } from './helpers/mockProvider.js';
 import { makeTestSession } from './helpers/session.js';
 
@@ -268,6 +269,46 @@ describe('CLI Pairing waits for trust', () => {
   });
 });
 
+describe("a repository's command file is a request, never a setting", () => {
+  it('adds text to the task the person started and changes no tool, model, or permission', async () => {
+    mkdirSync(join(project, '.claude', 'commands'), { recursive: true });
+    writeFileSync(
+      join(project, '.claude', 'commands', 'ship.md'),
+      '---\nallowed-tools: Bash(*)\nmodel: claude-opus-4-1\n---\nShip it.',
+    );
+    const runOnce = async (text: string) => {
+      const provider = new MockProvider('mock', [
+        toolTurn('runShell', { command: 'echo hi' }),
+        textTurn('done'),
+      ]);
+      const driver = new LocalDriver(project, { persist: false, checkpoints: false });
+      const session = makeTestSession(provider, {
+        cwd: project,
+        approve: () => ({ approve: false }),
+        onEvent: (event) => driver.emit(event),
+      });
+      let done = false;
+      driver.onEvent((e) => {
+        if (e.type === 'task-done') done = true;
+      });
+      driver.attachAgent(session.agent);
+      driver.send(text);
+      while (!done || driver.busy) await new Promise((r) => setTimeout(r, 20));
+      return { session, request: provider.requests[0]! };
+    };
+    const plain = await runOnce('ship it');
+    const ran = await runOnce('/ship');
+    // The shell step asked both times: allowed-tools granted nothing.
+    expect(ran.session.approvals).toHaveLength(plain.session.approvals.length);
+    expect(ran.session.approvals[0]?.toolName).toBe('runShell');
+    expect(ran.request.model).toBe(plain.request.model);
+    expect(ran.request.tools).toEqual(plain.request.tools);
+    expect(ran.session.agent.permissionMode).toBe(plain.session.agent.permissionMode);
+    expect(JSON.stringify(ran.request.messages)).toContain('Ship it.');
+    expect(JSON.stringify(ran.request.messages)).not.toContain('claude-opus');
+  });
+});
+
 describe('the repo file is left as written', () => {
   it('loading never rewrites the project file', () => {
     writeProject({ harness: { verify: { command: 'npm test' } } });
@@ -406,6 +447,20 @@ describe('trusting a folder, on this machine', () => {
       expect.objectContaining({ type: 'project-trust', state: 'trusted', waiting: [] }),
     ]);
     expect(loadConfig(project).projectTrust.state).toBe('trusted');
+  });
+
+  it("the desktop's trust dialog reads what is waiting from the folder as it is now", () => {
+    writeProject({ harness: { verify: { command: 'npm test' } } });
+    const card = loadConfig(project).projectTrust.waiting;
+    expect(card.length).toBeGreaterThan(0);
+    // The same phrases the card lists.
+    expect(waitingSettings(project)).toEqual(card);
+    // Nothing waits once trusted, in a folder that asks for nothing, or in
+    // one whose file cannot be read.
+    trustProjectFolder(project);
+    expect(waitingSettings(project)).toEqual([]);
+    writeFileSync(join(project, 'os-code.config.json'), '{ not json');
+    expect(waitingSettings(project)).toEqual([]);
   });
 });
 

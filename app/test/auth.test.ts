@@ -4,7 +4,10 @@
 // kept and retried (UI-10), a server org is adopted only when it is mine or
 // after an explicit yes (BE-1 client half), sign-out leaves no authority behind
 // (APP-7), and a sign-in link is bound to the request that asked for it,
-// across a cold start, or confirmed by hand when nothing asked (APP-6).
+// across a cold start, or confirmed by hand when nothing asked (APP-6). Sign
+// out ends this device's sign-in only, finishes here offline too, and "Sign
+// out everywhere" says plainly when nothing changed (finding 20, CX 4); the
+// guardrail record rides the store's one refresh (the refresh race).
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mem = new Map<string, string>();
@@ -77,7 +80,11 @@ vi.mock('../src/lib/iap.js', () => ({
 }));
 
 const { SupabaseRequestError } = await import('../src/lib/supabase.js');
+const { clearSession } = await import('../src/lib/authSession.js');
+const { recordEthicsEvent } = await import('../src/lib/ethics.js');
 const { useApp } = await import('../src/state/store.js');
+const { SIGNED_OUT_EVERYWHERE, SIGNED_OUT_HERE, SIGN_OUT_EVERYWHERE_FAILED } =
+  await import('../src/state/signinOps.js');
 type Session = import('../src/lib/supabase.js').Session;
 
 const SESSION_KEY = 'oscode.auth.session.v1';
@@ -115,7 +122,10 @@ function orgRow(id: string) {
   };
 }
 
-function resetAll() {
+async function resetAll() {
+  // A clear, as a sign-out makes one: the refresh module forgets the last
+  // token it spent, since every test here reuses the same fixture tokens.
+  await clearSession();
   mem.clear();
   secrets.clear();
   memberships = [];
@@ -230,8 +240,8 @@ describe('an Apple purchase the server could not link (UI-10)', () => {
 });
 
 describe('adopting a server org (BE-1 client half)', () => {
-  beforeEach(() => {
-    resetAll();
+  beforeEach(async () => {
+    await resetAll();
     sb.signInWithPassword.mockResolvedValue(live());
   });
 
@@ -299,8 +309,8 @@ describe('adopting a server org (BE-1 client half)', () => {
 });
 
 describe('sign-out leaves nothing behind (APP-7)', () => {
-  beforeEach(() => {
-    resetAll();
+  beforeEach(async () => {
+    await resetAll();
     sb.signInWithPassword.mockResolvedValue(live());
   });
 
@@ -399,5 +409,152 @@ describe('a sign-in link is bound to the request that asked for it (APP-6)', () 
     expect(useApp.getState().authSession?.user.email).toBe('a@b.c');
     expect(useApp.getState().authConfirm).toBeUndefined();
     await tick();
+  });
+});
+
+describe('sign-out ends this device only (finding 20)', () => {
+  beforeEach(resetAll);
+
+  it('ends this sign-in on the server with a live token, and no other', async () => {
+    mem.set(SESSION_KEY, JSON.stringify(expired()));
+    useApp.setState({ authSession: expired() });
+    await useApp.getState().signOutAccount();
+    // The stored token had expired: it is refreshed first, since the server
+    // refuses an expired one and the sign-in would stay alive there.
+    expect(sb.refreshSession).toHaveBeenCalledTimes(1);
+    expect(sb.signOut).toHaveBeenCalledTimes(1);
+    expect(sb.signOut).toHaveBeenCalledWith('fresh-token', 'local');
+    expect(useApp.getState().authSession).toBeUndefined();
+    expect(mem.has(SESSION_KEY)).toBe(false);
+    expect(useApp.getState().toast).toBe(SIGNED_OUT_HERE);
+  });
+
+  it('finishes on this device offline', async () => {
+    mem.set(SESSION_KEY, JSON.stringify(expired()));
+    useApp.setState({ authSession: expired() });
+    sb.refreshSession.mockRejectedValue(new TypeError('fetch failed'));
+    await useApp.getState().signOutAccount();
+    expect(sb.signOut).not.toHaveBeenCalled();
+    expect(useApp.getState().authSession).toBeUndefined();
+    expect(mem.has(SESSION_KEY)).toBe(false);
+    expect(useApp.getState().toast).toBe(SIGNED_OUT_HERE);
+  });
+
+  it('finishes on this device when the server refuses, or never answers', async () => {
+    useApp.setState({ authSession: live() });
+    sb.signOut.mockRejectedValue(new SupabaseRequestError('down', 503));
+    await useApp.getState().signOutAccount();
+    expect(useApp.getState().authSession).toBeUndefined();
+
+    vi.useFakeTimers();
+    try {
+      useApp.setState({ authSession: live(), toast: undefined });
+      sb.signOut.mockImplementation(() => new Promise(() => {}));
+      const out = useApp.getState().signOutAccount();
+      await vi.advanceTimersByTimeAsync(5000);
+      await out;
+      expect(useApp.getState().authSession).toBeUndefined();
+      expect(useApp.getState().toast).toBe(SIGNED_OUT_HERE);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a refresh that was out when the device signed out never signs it back in', async () => {
+    mem.set(SESSION_KEY, JSON.stringify(expired()));
+    useApp.setState({ authSession: expired() });
+    let reply!: (s: Session) => void;
+    sb.refreshSession.mockImplementation(() => new Promise<Session>((r) => (reply = r)));
+    const reading = useApp.getState().refreshEntitlement();
+    await vi.waitFor(() => expect(sb.refreshSession).toHaveBeenCalled());
+    // The server never answers the sign-out either, so it finishes here on
+    // its own clock while the refresh is still out.
+    sb.signOut.mockImplementation(() => new Promise(() => {}));
+    vi.useFakeTimers();
+    try {
+      const out = useApp.getState().signOutAccount();
+      await vi.advanceTimersByTimeAsync(5000);
+      await out;
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(useApp.getState().authSession).toBeUndefined();
+    reply(live());
+    expect(await reading).toBe('signed-out');
+    expect(useApp.getState().authSession).toBeUndefined();
+    expect(mem.has(SESSION_KEY)).toBe(false);
+  });
+});
+
+describe('sign out everywhere (CX 4)', () => {
+  beforeEach(resetAll);
+
+  it('ends the sign-in on every device with a live token, then here', async () => {
+    mem.set(SESSION_KEY, JSON.stringify(expired()));
+    useApp.setState({ authSession: expired() });
+    expect(await useApp.getState().signOutEverywhere()).toBe(true);
+    expect(sb.signOut).toHaveBeenCalledWith('fresh-token', 'global');
+    expect(useApp.getState().authSession).toBeUndefined();
+    expect(mem.has(SESSION_KEY)).toBe(false);
+    expect(useApp.getState().toast).toBe(SIGNED_OUT_EVERYWHERE);
+  });
+
+  it('says nothing changed, and changes nothing, when the server cannot be reached', async () => {
+    mem.set(SESSION_KEY, JSON.stringify(live()));
+    useApp.setState({ authSession: live() });
+    sb.signOut.mockRejectedValue(new TypeError('fetch failed'));
+    expect(await useApp.getState().signOutEverywhere()).toBe(false);
+    expect(sb.signOut).toHaveBeenCalledWith('fresh-token', 'global');
+    expect(useApp.getState().authSession?.accessToken).toBe('fresh-token');
+    expect(mem.has(SESSION_KEY)).toBe(true);
+    expect(useApp.getState().toast).toBe(SIGN_OUT_EVERYWHERE_FAILED);
+
+    // Offline before it could even ask: the same answer, still signed in.
+    sb.signOut.mockClear();
+    mem.set(SESSION_KEY, JSON.stringify(expired()));
+    useApp.setState({ authSession: expired(), toast: undefined });
+    sb.refreshSession.mockRejectedValue(new TypeError('fetch failed'));
+    expect(await useApp.getState().signOutEverywhere()).toBe(false);
+    expect(sb.signOut).not.toHaveBeenCalled();
+    expect(useApp.getState().authSession).toBeDefined();
+    expect(useApp.getState().toast).toBe(SIGN_OUT_EVERYWHERE_FAILED);
+  });
+});
+
+describe('the guardrail record rides the store session (the refresh race)', () => {
+  beforeEach(resetAll);
+
+  const blocked = {
+    category: 'weapons-uplift',
+    tier: 1,
+    timestamp: '2026-09-29T12:00:00.000Z',
+    requestHash: 'a'.repeat(64),
+    modelPath: 'local',
+    action: 'blocked',
+    side: 'input',
+    signals: [],
+  } as never;
+
+  it('uploads with the store token, and never refreshes a spent one of its own', async () => {
+    // The device's stored copy is behind the store's (its save still on the
+    // way). The old path read it and spent its refresh token a second time.
+    mem.set(SESSION_KEY, JSON.stringify(expired()));
+    useApp.setState({ authSession: live() });
+    await recordEthicsEvent(blocked);
+    expect(sb.refreshSession).not.toHaveBeenCalled();
+    expect(sb.insert).toHaveBeenCalledWith('guardrail_events', 'fresh-token', expect.anything());
+  });
+
+  it('rides the one refresh in flight, and sends nothing signed out', async () => {
+    mem.set(SESSION_KEY, JSON.stringify(expired()));
+    useApp.setState({ authSession: expired() });
+    await Promise.all([useApp.getState().refreshEntitlement(), recordEthicsEvent(blocked)]);
+    expect(sb.refreshSession).toHaveBeenCalledTimes(1);
+    expect(sb.insert).toHaveBeenCalledWith('guardrail_events', 'fresh-token', expect.anything());
+
+    sb.insert.mockClear();
+    useApp.setState({ authSession: undefined });
+    await recordEthicsEvent(blocked);
+    expect(sb.insert).not.toHaveBeenCalled();
   });
 });

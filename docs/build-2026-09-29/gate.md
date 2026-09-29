@@ -1,0 +1,26 @@
+# Package gate (A1 and A2): one door to the coding agent, and copy that says what the code does
+
+## Log
+
+2026-09-29. Signed out, nothing reaches the coding agent any more, whichever path asks (finding 1). `buildDriver` refuses a `desktop` build before any session opens or resumes. `ensureDriver` refuses before it starts one, so a reopened coding chat is read from its snapshot with no sheet. A waiting message (a send or a Retry) stays parked as `pendingFirstMessage` and opens the sign-in sheet with `'coding'`. `onSignedIn` builds the open chat's driver, and its attach delivers the message. `attachDriver` lets go of a build that straddles a sign-out. `forgetSession` detaches every attached coding session (the chat falls back to its snapshot, and the replay after the next sign-in replaces it), lands on chat when the open room is gated, and clears the preference push timer. `goBack` goes through the same door as `setView`. `newConversation` resolves to `undefined` when gated, and every caller now checks for that. `trySampleProject` checks the gate before `createSample` and parks the prompt on the sample's own chat. `openDesktopSession` sets no trail after a gated return. `onSignedIn`, and a launch that is already signed in, set `accountNoticeSeen`. The notice now also covers `gitosResources` and any project. The new rules are in `app/src/state/gateOps.ts` (CTO ruling 9), and `store.ts` only calls them. A2 fixes the copy: the Settings account row, the account and privacy guide cards, the Harbor Lite persona, and the Paywall bullet. Tests: `accounts.test.ts` gains 11 (the door, Retry, sign-out detach, the sample, the back arrow, sign-out and expiry landing, the notice in both directions, the push timer, and an app-wide sweep for "building works signed out"). `egressManifest.test.ts` gains 2 (the guide cards, the persona, the app knowledge, and the Paywall held to the list). All 10 new store tests fail on the old store, and the sweeps fail on the old copy. Gates: engine 1926 passed, 1 skipped; app 2610 passed, 2 skipped. Typecheck, lint, format and build are green in both. One full app run hit a timing flake in `vaultSearch.test.ts` (98 ms against 64 ms under load from parallel builds); it passes alone and on a rerun.
+
+## Decisions
+
+- CTO call: a sign-out or an expiry detaches every attached coding session, not only idle ones. Why: a session left attached is a back door, since sending, the queue flush, and approvals all reach the engine through it. The work goes on on the computer, journaled, and signing in replays it. The cost: signing out in the middle of a task stops the live view until the person signs in again.
+- CX call: reopening a coding chat signed out opens no sheet. The sheet opens only when something is waiting to go. Why: the memo says chats stay readable signed out, and a sheet that opens on read would get in the way of that.
+- The notice counts any project, as the package asked. Every chat creates "My work" (`store.ts:7794`), so almost everyone who used OpenShore before the gate hears it once. That is honest, because the Projects room is gated now.
+- Sign-in marks the notice as seen, and so does a launch that is already signed in. Otherwise someone who signed in before this build would hear it after a later sign-out.
+- A gated back step is used up either way, so "Not now" never leaves a back arrow that only reopens the sheet.
+- The privacy guide card drops "there is no telemetry", because the guardrail record uploads while signed in. The Settings privacy sheet, which lists that record first, keeps its own line.
+- The Harbor Lite persona says "a cloud key", not "a key". A model you connect from the Stack stays free, and only Cloud Connections is gated.
+- The Settings row reuses `ACCOUNT_PITCH` and wraps when signed out.
+- CTO rulings 5 and 6 and CX ruling 6 (the served window, repeat detection, the truncated-window card) arrived as coordinator notes. They do not touch this package, so nothing here builds them.
+- I left the egress manifest's search entry alone, as the package said.
+
+## What remains
+
+- The parked message has no bubble. `types.ts:292` promises one with a Retry, but `MessageList.tsx:587` renders only `thread.items` and `thread.queued`. So a message kept at the door disappears from view after "Not now", although it is kept and goes out on sign-in. Finding 14's package, or the integrator, should render `pendingFirstMessage` and `pendingFirstError`.
+- `runCommand` (`store.ts:12194`) and `terminalStdin` on a coding chat signed out say "This chat has no terminal". They should open the sign-in sheet. That area is D2's (`win.isFocused()`), so it was not changed here.
+- Device check (Mac): sign in, start a long task, sign out in the middle of it. The chat should show its snapshot, the task should finish on the engine, and after signing in and reopening, the replay should show the result with nothing duplicated.
+- Device check (iPhone paired to a hub): reopen a coding chat signed out and send. The sheet should open. Signing in should deliver the message once.
+- Device check: install over a pre-gate build with only a vault folder, signed out. The notice should show once and not again on the next launch.

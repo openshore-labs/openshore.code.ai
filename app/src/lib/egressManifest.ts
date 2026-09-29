@@ -32,6 +32,10 @@ export interface EgressEntry {
 }
 
 /** Recipients in the order the list shows them: OpenShore first. */
+/** Crew routines work offline (CTO 3, the reconciled CX 8 copy): the one
+ *  sentence the search entry and the Settings row both carry. */
+export const ROUTINES_NEVER_SEARCH = 'Crew routines never search the web.';
+
 export const RECIPIENT_ORDER = [
   'OpenShore (us)',
   'GitHub',
@@ -100,6 +104,14 @@ export const EGRESS: EgressEntry[] = [
     hosts: ['env:VITE_SUPABASE_URL'],
   },
   {
+    id: 'account-deletion',
+    recipient: 'OpenShore (us)',
+    what: 'Your sign-in, asking our server to delete your account. It erases the account, cancels a plan you pay us for on the web, and keeps only a one-way hash of your email if the guardrail ever warned the account. Apple subscriptions are cancelled with Apple.',
+    when: 'Only when you tap Delete account and confirm.',
+    start: 'tap',
+    hosts: ['env:VITE_SUPABASE_URL'],
+  },
+  {
     id: 'catalog',
     recipient: 'OpenShore (us)',
     what: 'A request for the model list. Nothing about you rides along; the server sees your network address, as any website does.',
@@ -127,7 +139,7 @@ export const EGRESS: EgressEntry[] = [
     id: 'search',
     recipient: 'Web search',
     what: 'The words of a web search, which a model writes from your chat. DuckDuckGo by default, with no key and no account.',
-    when: 'When a model decides to search the web, after you allow it once. A chat asks the first time; the coding agent searches only once you allow it. You can turn it off in Settings.',
+    when: `When a model decides to search the web, after you allow it once. A chat asks the first time; the coding agent searches only once you allow it. ${ROUTINES_NEVER_SEARCH} You can turn it off in Settings.`,
     start: 'off',
     hosts: ['html.duckduckgo.com', 'duckduckgo.com'],
   },
@@ -142,7 +154,7 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'cloud-models',
     recipient: 'Your cloud providers',
-    what: 'Your chat, to Anthropic, OpenAI, Google, or Moonshot, on your own key. The amber pill marks every turn that goes.',
+    what: 'Your chat, to Anthropic, OpenAI, Google, Moonshot, or Perplexity, on your own key. The amber pill marks every turn that goes.',
     when: 'Only when you pick a cloud model, and only that turn.',
     start: 'off',
     hosts: [
@@ -150,6 +162,7 @@ export const EGRESS: EgressEntry[] = [
       'api.openai.com',
       'generativelanguage.googleapis.com',
       'api.moonshot.ai',
+      'api.perplexity.ai',
     ],
   },
   {

@@ -9,6 +9,7 @@
 // should not is contained by that gate, the same way hooks are.
 import { exec, execSync } from 'node:child_process';
 import type { VerifyConfig, VerifyResult } from '../../harness/verify.js';
+import { scrubbedEnv } from '../exec/childEnv.js';
 
 const MAX_DETAIL = 2000;
 
@@ -25,6 +26,9 @@ export function runVerify(cwd: string, config: VerifyConfig | undefined): Verify
   try {
     const out = execSync(command, {
       cwd,
+      // The project's own command runs with no key OpenShore carries, like
+      // every other child shell (D2, D3).
+      env: scrubbedEnv(),
       timeout: (config?.timeoutSeconds ?? 120) * 1000,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -64,6 +68,7 @@ export function runVerifyAsync(
       command,
       {
         cwd,
+        env: scrubbedEnv(),
         timeout: (config?.timeoutSeconds ?? 120) * 1000,
         encoding: 'utf8',
         maxBuffer: 16 * 1024 * 1024,

@@ -41,8 +41,11 @@ export class SupabaseRequestError extends Error {
   constructor(
     message: string,
     readonly status: number,
-    /** PostgREST's `code`: the SQLSTATE a function raised (OV402, OV403 for
-     *  the team vault, migration 0021) or its own (PGRST202). */
+    /** The code the failed response carried, whichever source sent it: from
+     *  PostgREST (`rpc`, `select`), the SQLSTATE a function raised (OV402,
+     *  OV403 for the team vault, migration 0021) or PostgREST's own
+     *  (PGRST202); from an Edge Function (`invokeFunctionWithCode`), its fixed
+     *  refusal word (`{ error: 'owns_org' }`). Undefined when it sent none. */
     readonly code?: string,
   ) {
     super(message);
@@ -189,11 +192,20 @@ export async function refreshSession(refreshToken: string): Promise<Session> {
   return toSession((await res.json()) as GoTrueSession);
 }
 
-export async function signOut(accessToken: string): Promise<void> {
-  await fetch(`${base()}/auth/v1/logout`, {
+/** Where a sign-out reaches: 'local' ends this device's sign-in only, and
+ *  'global' ends it on every device. */
+export type SignOutScope = 'local' | 'global';
+
+/** End a sign-in on the server. The scope is always named, since GoTrue's own
+ *  default is global, which would sign out the person's other devices too.
+ *  Throws when the server did not confirm, so the caller can tell "done" from
+ *  "nothing changed". */
+export async function signOut(accessToken: string, scope: SignOutScope): Promise<void> {
+  const res = await fetch(`${base()}/auth/v1/logout?scope=${scope}`, {
     method: 'POST',
     headers: authHeaders(accessToken),
-  }).catch(() => {});
+  });
+  if (!res.ok) throw new SupabaseRequestError(await readError(res), res.status);
 }
 
 /** Parse the tokens a magic-link callback URL carries (hash or query). */
@@ -399,5 +411,32 @@ export async function invokeFunction<T>(
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(await readError(res));
+  return (await res.json()) as T;
+}
+
+/** Invoke an Edge Function that refuses with a fixed code (`{ error: 'owns_org' }`,
+ *  delete-account), keeping the status and the code on a SupabaseRequestError
+ *  so the caller can say the right thing. Only a short snake_case word counts
+ *  as a code; anything else is dropped, never shown. */
+export async function invokeFunctionWithCode<T>(
+  name: string,
+  accessToken: string,
+  body: Record<string, unknown>,
+): Promise<T> {
+  const res = await fetch(`${base()}/functions/v1/${name}`, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let code: string | undefined;
+    try {
+      const sent = ((await res.json()) as { error?: unknown }).error;
+      if (typeof sent === 'string' && /^[a-z_]{1,40}$/.test(sent)) code = sent;
+    } catch {
+      // Not JSON: no code.
+    }
+    throw new SupabaseRequestError(`Request failed (${res.status}).`, res.status, code);
+  }
   return (await res.json()) as T;
 }

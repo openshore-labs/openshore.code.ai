@@ -23,6 +23,14 @@ vi.mock('../src/lib/platform.js', () => ({
   isDesktop: () => false,
 }));
 
+// The provider refuses the WebView's cross-origin call, so the chat goes once
+// through the native shim below, whole, and nothing leaves the test.
+vi.mock('../src/lib/streamingFetch.js', () => ({
+  streamingFetch: vi.fn(async () => {
+    throw new TypeError('Load failed');
+  }),
+}));
+
 vi.mock('../src/lib/nativeFetch.js', () => ({
   nativeFetch: vi.fn(async (_url: string, init: { body: string }) => {
     calls.push({ body: JSON.parse(init.body) });

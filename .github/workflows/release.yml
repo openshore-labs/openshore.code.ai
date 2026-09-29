@@ -5,8 +5,11 @@
 # has a feed to check. This is the one workflow that actually launches
 # Electron, so unlike ci.yml it lets the Electron binary download and rebuilds
 # node-pty against Electron's ABI. Linux and Windows packages need no code
-# signing, so there are no secrets here beyond the Supabase build-time values
-# already used elsewhere. (macOS is a separate, Codemagic-driven build outside
+# signing certificate. Every Windows and Linux file is signed for the app's
+# own update check instead (CTO ruling 2, docs/release-signing.md): the
+# publish job signs them with OPENSHORE_DESKTOP_SIGNING_KEY, and an installed
+# app with the desktop key pinned installs only a file whose .sig checks.
+# (macOS is a separate, Codemagic-driven build outside
 # this workflow: see codemagic.yaml's mac-desktop job. It ships unsigned by
 # founder decision, so it is not part of electron-updater's silent install
 # path; the desktop app's update check handles that platform separately.)
@@ -49,10 +52,12 @@ on:
       - "!**/*.md"
   workflow_dispatch:
 
-# The publish job creates a GitHub Release, which writes to the repo. Nothing
-# else here needs write, and a hand run never reaches the publish job.
+# Read only by default (CTO ruling 2, 2026-09-29). The build jobs run
+# third-party install scripts (pnpm install, electron-builder's downloads), so
+# they never hold a token that can write to the repository. Only the publish
+# job, which runs no install at all, gets contents: write, below.
 permissions:
-  contents: write
+  contents: read
 
 # One release run per ref at a time, never cancelled mid-publish: pushes that
 # land while one runs wait their turn (the newest waiting one wins), and each
@@ -274,18 +279,37 @@ jobs:
       - name: Rebuild native modules for Electron
         run: pnpm --filter oscode-app rebuild:native
 
-      # Unsigned by default (see the file header): electron-builder produces a
-      # working but unsigned NSIS installer, and Windows SmartScreen warns on
-      # first run. Signed only when the founder adds the WIN_CSC_LINK and
-      # WIN_CSC_KEY_PASSWORD repository secrets (a code-signing certificate);
-      # unset, they arrive empty and electron-builder signs nothing, exactly
-      # as before. Still writes latest.yml locally (electron-updater's Windows
-      # feed file) even under --publish never.
+      # No certificate by default (see the file header): electron-builder
+      # produces a working NSIS installer without an Authenticode signature,
+      # and Windows SmartScreen warns on first run. Code-signed only when the
+      # founder adds the WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD repository
+      # secrets (a code-signing certificate). Still writes latest.yml locally
+      # (electron-updater's Windows feed file) even under --publish never.
+      #
+      # The publisher name (CTO ruling 2) is set only when the certificate is
+      # present. electron-builder 26 keeps it at win.signtoolOptions.publisherName
+      # and, left unset, fills it from the certificate's common name into the
+      # app's update settings (app-update.yml). From then on, an installed app
+      # refuses any Windows update not code-signed by that publisher. So once
+      # a certificate-signed build has shipped, EVERY later Windows build must
+      # be signed with it too: never remove these secrets after that. Without
+      # the certificate no publisher name is written, and the update check is
+      # the release signature alone (docs/release-signing.md).
       - name: Package the Windows installer
+        shell: bash
         env:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-        run: pnpm --filter oscode-app exec electron-builder --win --publish never
+        run: |
+          set -euo pipefail
+          if [ -n "$WIN_CSC_LINK" ]; then
+            echo "Code-signing the installer. Its publisher name goes into the update settings, so every later Windows build must be signed too."
+            pnpm --filter oscode-app exec electron-builder --win --publish never
+          else
+            echo "No Windows certificate: the installer is not code-signed, and no publisher name is set."
+            env -u WIN_CSC_LINK -u WIN_CSC_KEY_PASSWORD \
+              pnpm --filter oscode-app exec electron-builder --win --publish never
+          fi
 
       # The same proof as Linux, reused as-is: launch the packaged app headless
       # (windows-latest runners carry a real interactive desktop session, so
@@ -309,11 +333,28 @@ jobs:
   # once, complete, rather than Linux and Windows racing to create/upload onto
   # the same tag separately. `gh` is first-party and preinstalled on the
   # runner, so no third-party release action is trusted with the write token.
+  #
+  # CTO ruling 2 (2026-09-29): this is the only job that can write, and it
+  # runs in the `release` environment, which holds the desktop signing key.
+  # The founder limits that environment to main and v* tags, with no required
+  # reviewer (docs/release-signing.md), so every push to main still ships.
   publish:
     needs: [version, package-linux, package-windows]
     if: needs.version.outputs.tag != ''
     runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
     steps:
+      # Only the signing script, and no saved credentials: nothing here runs
+      # an install, and the write token stays with the gh steps below.
+      - name: Check out the signing script
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          sparse-checkout: app/scripts/release-sign.mjs
+          sparse-checkout-cone-mode: false
+
       - name: Download the Linux packages
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -326,7 +367,33 @@ jobs:
           name: openshore-windows
           path: release
 
+      # Every file an installed app runs after an update gets a .sig beside it
+      # (app/electron/releaseVerify.ts checks it before quitAndInstall). With
+      # the secret unset the release still publishes, unsigned, exactly as
+      # before: an app with no desktop key pinned skips the check and says so
+      # in its log. Once the key is pinned, an unsigned release is refused, so
+      # keep the secret set from then on.
+      - name: Sign the Windows and Linux files
+        env:
+          OPENSHORE_DESKTOP_SIGNING_KEY: ${{ secrets.OPENSHORE_DESKTOP_SIGNING_KEY }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OPENSHORE_DESKTOP_SIGNING_KEY:-}" ]; then
+            echo "OPENSHORE_DESKTOP_SIGNING_KEY is not set in the release environment, so this release ships without .sig files. Apps with no desktop key pinned skip the check; see docs/release-signing.md."
+            exit 0
+          fi
+          shopt -s nullglob
+          FILES=(release/*.exe release/*.AppImage release/*.deb)
+          if [ "${#FILES[@]}" -eq 0 ]; then
+            echo "No Windows or Linux files to sign." >&2
+            exit 1
+          fi
+          node app/scripts/release-sign.mjs --key-env OPENSHORE_DESKTOP_SIGNING_KEY \
+            --version "$VERSION" "${FILES[@]}"
+
       # A push to main has no tag yet: --target creates it on this exact commit.
+      # release/* carries the .sig files when the step above wrote them.
       - name: Publish the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}

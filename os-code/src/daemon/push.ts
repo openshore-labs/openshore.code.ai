@@ -47,6 +47,33 @@ function configPath(): string {
   return join(oscHome(), 'push.json');
 }
 
+/** The one path a push-send URL may have: the app's Supabase function. */
+const PUSH_SEND_PATH = '/functions/v1/push-send';
+
+/**
+ * Whether a phone's push-send URL may be kept (H1). The daemon POSTs its grant
+ * to this URL every time a run needs the person, so it is pinned to the app's
+ * own push function: https on the default port, no login in the address, no
+ * query, the push-send path exactly, and the host a Supabase project (one
+ * label under supabase.co) or the host the machine config names
+ * (`daemon.pushHost`, for a project on its own domain). Any other https host
+ * is refused, so a caller cannot point the grant somewhere else.
+ */
+export function pushSendUrlAllowed(raw: string, configuredHost?: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'https:' || url.username || url.password || url.port) return false;
+  if (url.search || url.hash || url.pathname !== PUSH_SEND_PATH) return false;
+  const host = url.hostname.toLowerCase();
+  const pinned = configuredHost?.trim().toLowerCase();
+  if (pinned) return host === pinned;
+  return /^[a-z0-9][a-z0-9-]{0,62}\.supabase\.co$/.test(host);
+}
+
 let cached: { path: string; store: PushStore } | undefined;
 
 function normalize(raw: Record<string, unknown>): PushStore {

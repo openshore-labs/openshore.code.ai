@@ -8,16 +8,38 @@ export type {
   ApprovalAnswer,
   ApprovalRequest,
   CheckpointFileChange,
+  CommitStage,
   DriverEvent,
   PermissionMode,
+  StageFile,
+  StageSecret,
   StopReason,
   TodoItem,
 } from './core/agent/types.js';
 export { PERMISSION_MODES } from './core/agent/types.js';
 import type { PermissionMode } from './core/agent/types.js';
 export { INIT_PROMPT } from './core/agent/initPrompt.js';
+// The person's own slash commands (P3): OpenShore's built-in names, the
+// label a menu shows beside one, and the sentence for a file left out. The
+// engine finds and fills them; every surface lists them with these words.
+export {
+  BUILT_IN_COMMANDS,
+  commandFromLabel,
+  commandNotLoadedLine,
+  isBuiltInCommand,
+  parseSlashInput,
+} from './core/agent/commandText.js';
+export type {
+  CommandFrom,
+  CommandNotLoadedReason,
+  RepoCommand,
+  RepoCommandNotLoaded,
+} from './core/agent/commandText.js';
 // The reserved terminal scope for the plain home-folder shell (no session).
 export { HOME_SHELL_ID } from './daemon/homeShellId.js';
+// The local addresses a started program prints (P1), so the desktop's command
+// card offers the one the engine read as ready.
+export { localAddresses } from './core/exec/localAddress.js';
 
 // Repo reconcile result (push unpushed commits, merge a moved-on remote). Type
 // only: the reconcile engine itself pulls Node/simple-git, but its result shape
@@ -60,6 +82,9 @@ export {
   claudeThinking,
 } from './core/agent/chainOfThought.js';
 export type { ThoughtPiece } from './core/agent/chainOfThought.js';
+// The free chat's events (CTO ruling 8): what the daemon streams to a phone
+// and the desktop's main process forwards to its window. Types only.
+export type { FreeChatEvent } from './daemon/freeChat.js';
 // The Memory switch's precedence: the app's switch can only turn project
 // memory off, and a project's config off always wins.
 export { memoryEnabled } from './core/agent/memorySwitch.js';
@@ -505,6 +530,7 @@ export type {
 export type {
   Routine,
   RoutineAccess,
+  RoutineClockStatus,
   RoutineInput,
   RoutinePresence,
   RoutineRun,
@@ -575,6 +601,7 @@ export { JevAdvisor, JEV_SYSTEMONE_PATH } from './harness/jev.js';
 // the desktop's free chat speak the same rule.
 export {
   NO_SEARCH_NOTE,
+  SEARCHED_NOTE,
   SEARCH_PREFIX,
   SEARCH_PROTOCOL_NOTE,
   SearchLineFilter,

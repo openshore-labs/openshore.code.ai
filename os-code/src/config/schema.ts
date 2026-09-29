@@ -213,6 +213,15 @@ export const DaemonSchema = z.object({
   // or legacy single-user hub authenticates as admin, so the default shows a solo
   // user everything. Admin-owned machine config, set through an admin-only route.
   stackHealthVisibility: z.enum(['everyone', 'admins']).default('admins'),
+  // How many days an ordinary stored session may sit with no activity before
+  // the daemon deletes it (its journal and info), checked at start and once a
+  // day (H1). Generous by default; 0 keeps every session. A session that is
+  // open is never deleted. Machine config (projectPolicy: daemon).
+  sessionRetentionDays: z.number().int().min(0).default(90),
+  // The host a phone's push-send URL must name, for an app whose Supabase
+  // project lives on its own domain. Unset, the URL must be a Supabase
+  // project's own functions address (daemon/push.ts pushSendUrlAllowed).
+  pushHost: z.string().optional(),
 });
 
 export const CatalogSchema = z.object({
@@ -332,6 +341,15 @@ const SyncSchema = z.object({
   autoPushDefaultBranch: z.boolean().default(false),
 });
 
+// The agent's tools beyond the core set. `processes` lets it start a command
+// that keeps running (a dev server, a watcher) and read or stop it later
+// (startProcess, readProcess, stopProcess; build 2026-09-29, P1), where
+// runShell would wait out its timeout and kill it. Unset reads on (the schema
+// fills 'on'); a project may only turn it off (projectPolicy.ts).
+const ToolsSchema = z.object({
+  processes: z.enum(['on', 'off']).default('on'),
+});
+
 // The premium harness (founder + advisor org, 2026-09-14; see
 // docs/premium-harness-proposal.md and CLAUDE.md "The premium harness"). The
 // discipline seam that makes the smallest models capable: a model-class profile
@@ -366,10 +384,28 @@ const HarnessSchema = z.object({
     .prefault({}),
   decoding: z
     .object({
-      // Constrain a small local model's decoding to the tool-or-answer union
-      // schema when the backend supports grammar. The eval decides per family
-      // whether it is a lift or a tax, so it stays a switch.
+      // The repair pass: after a reply whose tool call could not be parsed,
+      // the retry on the JSON text bridge is held to the tool-call grammar
+      // where the backend supports one. False sends the retry unconstrained.
       constrainForSmallModels: z.boolean().default(true),
+      // Union decoding (CTO 6): 'on' holds every reply of a tiny or small
+      // seat on the text bridge to the tool-or-answer schema
+      // (harness/decoding.ts) through the server's JSON schema (Ollama's
+      // `format`), streaming the answer as it arrives. Grammar sampling
+      // slows decoding on a CPU, so unset reads 'off' until
+      // `osc eval --deep --union-decoding on|off` shows a lift (tenet 2).
+      union: z.enum(['on', 'off']).optional(),
+    })
+    .prefault({}),
+  retrieval: z
+    .object({
+      // Retrieval before turn one (CTO 6): 'on' searches the workspace for
+      // the task's words and puts the best excerpts, by file and line, at the
+      // head of the task, on a seat that stays on this network only, within
+      // the lesser of 1,500 tokens and a tenth of the served window. It adds
+      // prefill, so unset reads 'off' until `osc eval --deep --retrieval
+      // on|off` shows a lift (tenet 2).
+      firstTurn: z.enum(['on', 'off']).optional(),
     })
     .prefault({}),
   verify: z
@@ -424,6 +460,7 @@ export const ConfigSchema = z.object({
   memory: MemorySchema.prefault({}),
   sync: SyncSchema.prefault({}),
   harness: HarnessSchema.prefault({}),
+  tools: ToolsSchema.prefault({}),
 });
 
 export type OscConfig = z.infer<typeof ConfigSchema>;

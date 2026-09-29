@@ -10,6 +10,12 @@
 //   - the head-to-head baseline: the everyday suite through Claude Code on the
 //     same model, when Claude Code is installed here.
 //
+// The harness lifts (CTO 6) ride on top: `--retrieval on|off` and
+// `--union-decoding on|off` set the lift on every engine run, and the table
+// and its file name carry them, so a floor run with a lift and one without
+// sit side by side. The baseline rows stay with the plain run, since a lift
+// never reaches Claude Code.
+//
 // The default models are the shipped floor (qwen2.5-coder:3b, under a
 // non-commercial license) and its Apache candidate (qwen3:4b), so one run
 // settles both the floor model and the license question. A model that is not
@@ -27,8 +33,16 @@ import { getAnthropicKey } from '../auth/claude.js';
 import { engineEthicsContext } from '../core/ethics/host.js';
 import { installOllamaRef } from '../market/install.js';
 import { claudeCodeVersion, ollamaRoot } from '../eval/baseline.js';
-import type { EvalNumCtx, EvalPageCheck, EvalSuite, EvalV2Report } from '../eval/v2.js';
-import { runBaseline, runDeep, type EvalOptions } from './eval.js';
+import {
+  variantSuffix,
+  type EvalNumCtx,
+  type EvalPageCheck,
+  type EvalRetrieval,
+  type EvalSuite,
+  type EvalUnionDecoding,
+  type EvalV2Report,
+} from '../eval/v2.js';
+import { parseLiftFlags, runBaseline, runDeep, type EvalOptions } from './eval.js';
 import { confirm, header, okLine, out, warnLine } from './util.js';
 
 /** The shipped floor and its Apache candidate. */
@@ -42,21 +56,56 @@ export interface FloorRun {
   driver: 'engine' | 'claude-code';
   numCtx?: EvalNumCtx;
   pageCheck?: EvalPageCheck;
+  retrieval?: EvalRetrieval;
+  unionDecoding?: EvalUnionDecoding;
+}
+
+/** The harness lift switches a floor run sets on every engine run (CTO 6). */
+export interface FloorLifts {
+  retrieval?: EvalRetrieval;
+  unionDecoding?: EvalUnionDecoding;
 }
 
 /** Every run the floor makes, in order, per model: the code suite with
  *  num_ctx off then auto; the everyday suite plain, with num_ctx auto, and
  *  with the page check on (each against the plain run, one change at a time);
- *  then the baseline. */
-export function floorPlan(models: readonly string[], withBaseline: boolean): FloorRun[] {
+ *  then the baseline. A lift, when named, is set on every engine run, and the
+ *  baseline rows are left to the plain run. */
+export function floorPlan(
+  models: readonly string[],
+  withBaseline: boolean,
+  lifts: FloorLifts = {},
+): FloorRun[] {
+  const lifted = Boolean(lifts.retrieval || lifts.unionDecoding);
   const runs: FloorRun[] = [];
   for (const model of models) {
-    runs.push({ model, suite: 'code', driver: 'engine', numCtx: 'off' });
-    runs.push({ model, suite: 'code', driver: 'engine', numCtx: 'auto' });
-    runs.push({ model, suite: 'everyday', driver: 'engine', numCtx: 'off', pageCheck: 'off' });
-    runs.push({ model, suite: 'everyday', driver: 'engine', numCtx: 'auto', pageCheck: 'off' });
-    runs.push({ model, suite: 'everyday', driver: 'engine', numCtx: 'off', pageCheck: 'on' });
-    if (withBaseline) runs.push({ model, suite: 'everyday', driver: 'claude-code' });
+    runs.push({ model, suite: 'code', driver: 'engine', numCtx: 'off', ...lifts });
+    runs.push({ model, suite: 'code', driver: 'engine', numCtx: 'auto', ...lifts });
+    runs.push({
+      model,
+      suite: 'everyday',
+      driver: 'engine',
+      numCtx: 'off',
+      pageCheck: 'off',
+      ...lifts,
+    });
+    runs.push({
+      model,
+      suite: 'everyday',
+      driver: 'engine',
+      numCtx: 'auto',
+      pageCheck: 'off',
+      ...lifts,
+    });
+    runs.push({
+      model,
+      suite: 'everyday',
+      driver: 'engine',
+      numCtx: 'off',
+      pageCheck: 'on',
+      ...lifts,
+    });
+    if (withBaseline && !lifted) runs.push({ model, suite: 'everyday', driver: 'claude-code' });
   }
   return runs;
 }
@@ -65,7 +114,9 @@ export function floorPlan(models: readonly string[], withBaseline: boolean): Flo
 export function describeRun(run: FloorRun): string {
   if (run.driver === 'claude-code') return `${run.suite}, Claude Code baseline`;
   const page = run.pageCheck ? `, page check ${run.pageCheck}` : '';
-  return `${run.suite}, OpenShore, num_ctx ${run.numCtx}${page}`;
+  const retrieval = run.retrieval ? `, retrieval ${run.retrieval}` : '';
+  const union = run.unionDecoding ? `, union decoding ${run.unionDecoding}` : '';
+  return `${run.suite}, OpenShore, num_ctx ${run.numCtx}${page}${retrieval}${union}`;
 }
 
 export interface FloorRow {
@@ -136,6 +187,12 @@ async function pulledModels(baseUrl: string): Promise<Set<string> | undefined> {
 }
 
 export async function floorCommand(options: EvalOptions): Promise<void> {
+  const lifts = parseLiftFlags(options);
+  if ('error' in lifts) {
+    warnLine(lifts.error);
+    process.exitCode = 1;
+    return;
+  }
   const { config } = loadConfig();
   const providerId = options.provider ?? 'ollama';
   const endpoint = config.providers[providerId];
@@ -198,10 +255,15 @@ export async function floorCommand(options: EvalOptions): Promise<void> {
   }
 
   const withBaseline = claudeCodeVersion() !== undefined;
+  const lifted = Boolean(lifts.retrieval || lifts.unionDecoding);
   if (!withBaseline) {
     out(t.muted('  Claude Code is not installed here, so the baseline rows are skipped.'));
+  } else if (lifted) {
+    out(
+      t.muted('  A lift never reaches Claude Code, so the baseline rows stay with the plain run.'),
+    );
   }
-  const plan = floorPlan(models, withBaseline);
+  const plan = floorPlan(models, withBaseline, lifts);
   out(t.muted(`  ${plan.length} runs. On a CPU-only box this is an overnight job.`));
 
   const providers = new ProviderRegistry(config, getAnthropicKey, engineEthicsContext());
@@ -220,6 +282,8 @@ export async function floorCommand(options: EvalOptions): Promise<void> {
             {
               ...(run.numCtx ? { numCtx: run.numCtx } : {}),
               ...(run.pageCheck ? { pageCheck: run.pageCheck } : {}),
+              ...(run.retrieval ? { retrieval: run.retrieval } : {}),
+              ...(run.unionDecoding ? { unionDecoding: run.unionDecoding } : {}),
             },
             run.suite,
           );
@@ -229,7 +293,7 @@ export async function floorCommand(options: EvalOptions): Promise<void> {
   const date = new Date().toISOString().slice(0, 10);
   const dir = join(oscHome(), 'eval');
   mkdirSync(dir, { recursive: true });
-  const path = join(dir, `floor-${date}.md`);
+  const path = join(dir, `floor-${date}${variantSuffix(lifts)}.md`);
   writeFileSync(path, floorMarkdown(rows, date, machine, attempts));
   out();
   okLine(`The floor run is done. The table is at ${path}.`);

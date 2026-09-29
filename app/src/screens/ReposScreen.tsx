@@ -55,8 +55,8 @@ export function ReposScreen() {
       setView('stack');
       return false;
     }
-    await newConversation({ kind: 'desktop', cwd, repoName });
-    return true;
+    // Undefined when no chat opened (the sign-in sheet stood in the way).
+    return Boolean(await newConversation({ kind: 'desktop', cwd, repoName }));
   };
   const [workspaces, setWorkspaces] = useState<Array<{ cwd: string; name: string }>>([]);
   const [url, setUrl] = useState('');
@@ -152,7 +152,7 @@ export function ReposScreen() {
     setTokenValue('');
     if (!key) return;
     await connectRepoPlatform(id, key);
-    showToast(`${name} connected. Its repositories are reachable on your access token.`);
+    showToast(`${name} connected. OpenShore can open your repositories there.`);
   };
 
   // One-tap OAuth: open the provider's consent screen, and on return the tokens
@@ -183,8 +183,8 @@ export function ReposScreen() {
       <div className="screen-inner">
         <h1>Repositories</h1>
         <p className="lead">
-          Connect GitHub or another platform on your own access token. OpenShore reads, edits,
-          tests, and commits with your approval on every change.
+          Connect GitHub, GitLab, or Bitbucket. OpenShore reads, edits, and tests your code, records
+          each change in its history, and asks before every change.
         </p>
 
         {/* Connect a platform. */}
@@ -283,7 +283,9 @@ export function ReposScreen() {
                     Get a {c.name} access token ↗
                   </button>
                   <div className="field">
+                    <label htmlFor="repos-access-token">{c.name} access token</label>
                     <input
+                      id="repos-access-token"
                       autoFocus
                       type="password"
                       placeholder={c.keyHint}
@@ -519,7 +521,9 @@ export function ReposScreen() {
             <div className="card">
               <h3>Clone from a URL</h3>
               <div className="field" style={{ marginTop: 10 }}>
+                <label htmlFor="repos-clone-url">Repository address</label>
                 <input
+                  id="repos-clone-url"
                   placeholder="https://github.com/owner/repo"
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
@@ -537,8 +541,8 @@ export function ReposScreen() {
                 {cloning ? 'Cloning...' : 'Clone and open a chat'}
               </button>
               <p className="hint" style={{ marginTop: 8 }}>
-                Private repositories use the platform you connected above, or an SSH key on your
-                computer.
+                Private repositories open with the account you connected above, or with Git already
+                set up on your computer.
               </p>
             </div>
 
@@ -671,8 +675,9 @@ function HomeRepoEditor({
   return (
     <div style={{ marginTop: 12 }}>
       <div className="field">
-        <label>Name</label>
+        <label htmlFor="home-repo-name">Name</label>
         <input
+          id="home-repo-name"
           placeholder="e.g. OpenShore mono"
           value={label}
           onChange={(e) => setLabel(e.target.value)}
@@ -695,8 +700,9 @@ function HomeRepoEditor({
       </div>
       {kind !== 'home' ? (
         <div className="field">
-          <label>Remote URL</label>
+          <label htmlFor="home-repo-remote-url">Remote URL</label>
           <input
+            id="home-repo-remote-url"
             placeholder="https://github.com/owner/repo"
             value={remoteUrl}
             onChange={(e) => setRemoteUrl(e.target.value)}
@@ -737,8 +743,9 @@ function HomeRepoEditor({
         </p>
       </div>
       <div className="field">
-        <label>Default branch</label>
+        <label htmlFor="home-repo-default-branch">Default branch</label>
         <input
+          id="home-repo-default-branch"
           value={branch}
           onChange={(e) => setBranch(e.target.value)}
           autoCapitalize="none"

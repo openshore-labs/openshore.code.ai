@@ -18,7 +18,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { exitLine, terminalTheme } from '../components/terminalTheme.js';
 import { useApp, driverFor } from '../state/store.js';
-import { sourceLabel } from '../state/types.js';
+import { computerName, sourceLabel } from '../state/types.js';
 
 // Keys a soft keyboard cannot send. A separate Ctrl toggle arms the next letter
 // as its control code. Each sends the raw bytes a terminal expects.
@@ -230,7 +230,7 @@ export function TerminalScreen() {
         </button>
         <div className="topbar-title">
           Terminal
-          <div className="topbar-sub">{conv ? sourceLabel(conv.source) : 'Your computer'}</div>
+          <div className="topbar-sub">{conv ? sourceLabel(conv.source) : computerName()}</div>
         </div>
         {status === 'ready' ? (
           <button className="icon-btn" onClick={endTerminal} aria-label="End terminal">

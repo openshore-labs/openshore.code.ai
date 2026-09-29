@@ -5,6 +5,7 @@ import type { ToolRisk } from '../permissions/index.js';
 import type { Citation, ToolOutput } from '../tools/index.js';
 import type { ParsedToolCall } from '../tools/parser.js';
 import type { PackMode, PackSource } from '../../harness/vaultContext.js';
+import type { RepoCommand, RepoCommandNotLoaded } from './commandText.js';
 
 export interface ApprovalRequest {
   id: string;
@@ -19,6 +20,36 @@ export interface ApprovalRequest {
    *  session or the project never takes effect on it, so a client offers
    *  only approve and decline. Absent for every other tool. */
   alwaysAsk?: boolean;
+  /** True while the session holds the project's secrets (the egress
+   *  lockdown), so a client says why it is asking on every card (CX 7).
+   *  Additive: absent on every other session. */
+  lockdown?: boolean;
+  /** For a commit: every file it would stage, each flagged when it may hold a
+   *  secret, and where the app's sync sends it afterward (D3). A flagged file
+   *  is left out unless the answer's `files` names it. Additive. */
+  commit?: CommitStage;
+}
+
+/** Why a file in a commit may hold a secret: a settings file that often holds
+ *  keys (.env), a certificate or private key (*.pem), a private login key
+ *  (id_*), or text in it that looks like a key or a password. */
+export type StageSecret = 'env' | 'pem' | 'login-key' | 'detected';
+
+/** One file a commit would stage, repo-relative with forward slashes. */
+export interface StageFile {
+  path: string;
+  secret?: StageSecret;
+}
+
+/** What a commit would record, for its approval card. */
+export interface CommitStage {
+  /** The commit message the model wrote. */
+  message: string;
+  files: StageFile[];
+  /** The platform the app's sync pushes this branch to after the commit
+   *  ("GitHub"), when it will. Absent when the commit stays on this
+   *  computer. */
+  pushesTo?: string;
 }
 
 export interface ApprovalAnswer {
@@ -34,6 +65,10 @@ export interface ApprovalAnswer {
    *  denial the model can do something about, e.g. Terminal Control being off,
    *  so the model tells the person how to change it rather than just retrying. */
   reason?: string;
+  /** For a commit card (`request.commit`): the files the person left ticked,
+   *  flagged ones included only when ticked. Absent, a commit stages every
+   *  file it listed except the flagged ones. */
+  files?: string[];
 }
 
 export type Approver = (request: ApprovalRequest) => Promise<ApprovalAnswer>;
@@ -68,12 +103,31 @@ export interface TodoItem {
 
 export type AgentEvent =
   | { type: 'task-start'; input: string }
-  | { type: 'turn-start'; turn: number; model: string; providerKind: 'local' | 'cloud' }
+  | {
+      type: 'turn-start';
+      turn: number;
+      model: string;
+      providerKind: 'local' | 'cloud';
+      /** 'union' when this turn's reply is held to the tool-or-answer schema
+       *  (`harness.decoding.union`, CTO 6), so the eval can tell whether the
+       *  switch engaged. Additive: absent on every other turn. */
+      decoding?: 'union';
+    }
   | { type: 'text-delta'; text: string }
   | { type: 'text-final'; text: string }
   | { type: 'thinking-delta'; text: string }
   | { type: 'tool-start'; call: ParsedToolCall }
-  | { type: 'tool-end'; call: ParsedToolCall; result: ToolOutput; durationMs: number }
+  | {
+      type: 'tool-end';
+      call: ParsedToolCall;
+      result: ToolOutput;
+      durationMs: number;
+      /** Set when the harness answered this call from the record instead of
+       *  running it: the same call again with nothing changed since
+       *  ('exact'), or two calls taking turns ('alternating', CTO 6). The
+       *  eval counts these as `repeatBreaks`. Additive. */
+      repeat?: 'exact' | 'alternating';
+    }
   | { type: 'tool-denied'; call: ParsedToolCall; reason: string }
   | { type: 'citations'; citations: Citation[] }
   | { type: 'status'; message: string }
@@ -89,6 +143,11 @@ export type AgentEvent =
       cacheReadTokens?: number;
       /** Prompt tokens written to the provider's prompt cache this turn. */
       cacheWriteTokens?: number;
+      /** The loop's own estimate of the prompt this turn sent (messages, tool
+       *  specs and template), on a turn's usage only (C1). Beside the three
+       *  counts above it shows whether the server read the prompt whole, so
+       *  the eval can close the served-window gate on data. Additive. */
+      estimatedPromptTokens?: number;
     }
   | { type: 'model-switch'; model: string; providerKind: 'local' | 'cloud'; reason: string }
   | { type: 'task-done'; reason: StopReason; message?: string }
@@ -108,7 +167,19 @@ export type AgentEvent =
   | { type: 'mode'; mode: PermissionMode }
   // Where the session works and the branch it is on; refreshed at the
   // bookends of each task so the chat can show it and mark uncommitted work.
-  | { type: 'repo-info'; cwd: string; branch?: string; dirty?: boolean }
+  // `commands` are the person's own slash commands found for this folder
+  // (P3: the repository's .claude/commands and their own), names and words
+  // only; `commandsNotLoaded` says which files were found and left out, and
+  // why. Both ride only when the list changed since this session last said
+  // it, so a client keeps the last list it saw while they are absent.
+  | {
+      type: 'repo-info';
+      cwd: string;
+      branch?: string;
+      dirty?: boolean;
+      commands?: RepoCommand[];
+      commandsNotLoaded?: RepoCommandNotLoaded[];
+    }
   // A short generated title after the first completed exchange.
   | { type: 'title'; title: string }
   // The harness ran the project's check command after a task that changed files
@@ -166,6 +237,51 @@ export type AgentEvent =
       folder: string;
       waiting: string[];
     }
+  // The model's server read back far less of a turn's prompt than was sent
+  // (`looksTruncated` in context/compaction.ts): it cut the chat to fit a
+  // window smaller than the prompt, without saying so (C1). Once per chat per
+  // model, rendered as a teal card. `room` says what the card may offer:
+  // 'more' when serving the model a larger window fits this computer's memory
+  // (the "Give it more room" action, which writes `numCtx: 'auto'` for
+  // `provider`; `gb` is about what it costs, when the model says enough),
+  // 'full' when none does, absent when the window is not the harness's to set
+  // (a server other than Ollama). `read` is what the server took in, cache
+  // included; `estimated` the loop's estimate of what it sent. Additive.
+  | {
+      type: 'window-cut';
+      model: string;
+      provider: string;
+      read: number;
+      estimated: number;
+      room?: 'more' | 'full';
+      gb?: number;
+    }
+  // Even the lean prompt fills most of the window this computer serves the
+  // model before the chat starts (the fixed prompt, the system text and the
+  // tool menu, over half the served window). Once per chat per model, shown
+  // in the truncation card's family; `room` and `gb` as on `window-cut`.
+  // `fixedTokens` is the loop's estimate of that fixed prompt, `windowTokens`
+  // the served window. Additive.
+  | {
+      type: 'window-tight';
+      model: string;
+      provider: string;
+      fixedTokens: number;
+      windowTokens: number;
+      room?: 'more' | 'full';
+      gb?: number;
+    }
+  // Retrieval before turn one (`harness.retrieval.firstTurn: 'on'`, CTO 6):
+  // the harness searched the workspace for the task's words and put these
+  // excerpts at the head of the task, on a seat that stays on this network.
+  // `sources` names each excerpt by file and first line; `tokens` is what the
+  // excerpts cost, within `budgetTokens`. Additive.
+  | {
+      type: 'retrieval';
+      sources: Array<{ path: string; line: number }>;
+      tokens: number;
+      budgetTokens: number;
+    }
   | {
       type: 'harness-current';
       current: string;
@@ -207,10 +323,11 @@ export type DriverEvent =
   | AgentEvent
   | { type: 'approval-request'; request: ApprovalRequest }
   | { type: 'approval-resolved'; id: string; approved: boolean }
-  // The user-initiated command lane (the chat-to-terminal bridge). Driver-level,
-  // not agent-level: a command the user runs from the phone or desktop shell,
-  // its live output, and its result. `source: 'user'` is the tapped-Run lane;
-  // 'agent' is reserved for surfacing an agent runShell here in a later phase.
+  // The command lane (the chat-to-terminal bridge). Driver-level, not
+  // agent-level: a command runs from the phone or desktop shell, with its live
+  // output and its result. `source: 'user'` is the tapped-Run lane; 'agent' is
+  // a program the agent started and left running (startProcess, P1), which a
+  // client labels "Started by OpenShore".
   | {
       type: 'command-start';
       runId: string;
@@ -238,7 +355,15 @@ export type DriverEvent =
   // offer "Undo these changes" and per-file undo. A restore echoes back so
   // every attached device folds the same card.
   | { type: 'checkpoint'; id: string; files: CheckpointFileChange[] }
-  | { type: 'checkpoint-restored'; id: string; direction: 'undo' | 'redo'; paths: string[] };
+  | { type: 'checkpoint-restored'; id: string; direction: 'undo' | 'redo'; paths: string[] }
+  // Rewind (P2). The chat went back to just before the person's message whose
+  // task-start was journaled at `toSeq`. Everything from `toSeq` up to this
+  // marker is taken back: a replay leaves it out (the engine's seed, the app's
+  // transcript), so a rehydrate and a paired phone agree. `paths` are the
+  // files put back (empty when only the chat went back); `kept` names the
+  // files the taken-back turns changed that stayed as they are, when the
+  // person kept them. Additive: an older client ignores it.
+  | { type: 'rewound'; toSeq: number; paths: string[]; kept?: string[] };
 
 /** One file a task changed, as a checkpoint records it. */
 export interface CheckpointFileChange {

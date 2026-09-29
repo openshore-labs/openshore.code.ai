@@ -39,7 +39,7 @@ export function ProjectsScreen() {
   /** The counts line under a project's name: what work and context it holds. */
   const counts = (chatCount: number, repoCount: number): string => {
     const parts = [`${chatCount} ${chatCount === 1 ? 'chat' : 'chats'}`];
-    if (repoCount) parts.push(`${repoCount} ${repoCount === 1 ? 'repo' : 'repos'}`);
+    if (repoCount) parts.push(`${repoCount} ${repoCount === 1 ? 'repository' : 'repositories'}`);
     return parts.join(' · ');
   };
 
@@ -57,6 +57,7 @@ export function ProjectsScreen() {
           <h3>New project</h3>
           <div className="field" style={{ marginTop: 10 }}>
             <input
+              aria-label="Project name"
               placeholder="e.g. Homepage, Thesis, Weekend hacks"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}

@@ -18,6 +18,7 @@ import type {
   ChatRequest,
   ContentPart,
   ImageProvider,
+  MoreRoom,
   Provider,
   ProviderCapabilities,
 } from '../../providers/types.js';
@@ -92,6 +93,11 @@ export class GuardedProvider implements Provider {
 
   health(): Promise<{ ok: boolean; detail: string }> {
     return this.inner.health();
+  }
+
+  /** Sends no prompt: what a larger window would cost on this computer. */
+  async moreRoom(model: string): Promise<MoreRoom | undefined> {
+    return this.inner.moreRoom?.(model);
   }
 
   async *chat(request: ChatRequest, signal?: AbortSignal): AsyncGenerator<ChatEvent, void, void> {

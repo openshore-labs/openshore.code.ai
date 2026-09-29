@@ -50,6 +50,9 @@ export const PROJECT_POLICY: Record<keyof OscConfig, KeyPolicy> = {
     maxTokens: 'lower-only',
     maxDollars: 'lower-only',
   },
+  // The daemon's bind, its outbox roots, its session retention (H1), and the
+  // push host are this computer's: a repo can neither keep sessions longer or
+  // shorter nor point a push grant at a host of its choosing.
   daemon: 'machine',
   catalog: 'machine',
   license: 'machine',
@@ -77,7 +80,19 @@ export const PROJECT_POLICY: Record<keyof OscConfig, KeyPolicy> = {
   // on is a loosening; turning it off applies from any folder.
   memory: { enabled: 'off-only' },
   sync: { autoPush: 'off-only', autoPushDefaultBranch: 'trusted' },
-  harness: { profiles: 'project', decoding: 'project', verify: 'trusted' },
+  // The two harness lifts (CTO 6) cost time on this computer (prefill, and
+  // grammar sampling on a CPU), so like Chain of Thought a project may turn
+  // them off from any folder and on only once trusted.
+  harness: {
+    profiles: 'project',
+    decoding: { constrainForSmallModels: 'project', union: 'off-only' },
+    retrieval: { firstTurn: 'off-only' },
+    verify: 'trusted',
+  },
+  // A process the agent starts keeps running after its step, so turning the
+  // tools on over a machine that has them off waits for trust; turning them
+  // off applies from any folder.
+  tools: { processes: 'off-only' },
 };
 
 /** A project setting that was not applied, and why. */
@@ -166,6 +181,10 @@ function describe(path: string, value: unknown): string {
       return 'pushes commits on its own';
     case 'chainOfThought.enabled':
       return 'turns on Chain of Thought';
+    case 'harness.decoding.union':
+      return 'holds small models to a stricter reply format, which can make replies slower';
+    case 'harness.retrieval.firstTurn':
+      return 'reads matching code into each new task before the model starts, which makes the first reply slower';
     case 'vault.context':
       return value === 'full'
         ? 'turns on the full Vault context, so more of your notes reach the model'
@@ -174,6 +193,8 @@ function describe(path: string, value: unknown): string {
       return 'turns the handoff back on, so a summary of earlier work reaches the model';
     case 'memory.enabled':
       return 'turns on project memory, so the agent saves notes into this repo without asking';
+    case 'tools.processes':
+      return 'lets the agent start programs that keep running, like your app';
     case 'guardrails.maxDollars':
       return `raises the spending limit to $${String(value)}`;
     case 'guardrails.maxSteps':

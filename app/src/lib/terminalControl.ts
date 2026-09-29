@@ -15,10 +15,15 @@ import { autoApproves, type PermissionMode } from './permissionMode.js';
  *  hub's base URL instead, so the two never share an On state. */
 export const LOCAL_TARGET = 'local';
 
-/** The one shell tool the coding agent runs. Terminal Control governs only this
- *  tool: file edits stay under the permission mode, and cloud spend always asks,
+/** The coding agent's shell tool. Terminal Control governs only the shell:
+ *  file edits stay under the permission mode, and cloud spend always asks,
  *  both left untouched. */
 export const SHELL_TOOL = 'runShell';
+
+/** Every tool that runs a command the model wrote: runShell, and startProcess,
+ *  which starts one and leaves it running (P1). Off keeps both out, On lets
+ *  both in, so starting an app is never a way around the switch. */
+export const SHELL_TOOLS: ReadonlySet<string> = new Set([SHELL_TOOL, 'startProcess']);
 
 /** Where the active session runs, as a stable id. The local engine is a fixed
  *  key; a remote hub is its own base URL. Undefined when nothing is reachable
@@ -63,7 +68,7 @@ export function terminalControlOn(
 
 /** Whether an approval is the coding agent asking to run a shell command. */
 export function isShellApproval(req: Pick<ApprovalRequest, 'kind' | 'toolName'>): boolean {
-  return req.kind === 'tool' && req.toolName === SHELL_TOOL;
+  return req.kind === 'tool' && SHELL_TOOLS.has(req.toolName);
 }
 
 /** Whether this person may grant autonomous shell on this machine at all. A
@@ -116,7 +121,7 @@ export type ApprovalDecision =
   { action: 'auto-approve' } | { action: 'auto-deny'; reason: string } | { action: 'sheet' };
 
 export function decideApproval(
-  req: Pick<ApprovalRequest, 'kind' | 'toolName'>,
+  req: Pick<ApprovalRequest, 'kind' | 'toolName' | 'lockdown'>,
   ctx: {
     driverKind: string;
     desktopLocal: boolean;
@@ -130,7 +135,10 @@ export function decideApproval(
   if (ctx.driverKind === 'desktop' && isShellApproval(req)) {
     const targetId = terminalTargetId({ desktopLocal: ctx.desktopLocal, daemon: ctx.daemon });
     if (shouldAutoRunShell(req, { targetId, control: ctx.control, canControl: ctx.canControl })) {
-      return { action: 'auto-approve' };
+      // While the chat holds the project's secrets, OpenShore asks before
+      // every command (D3, CX 7): On lets the model in, but the card still
+      // shows, so the person sees each command that could read them.
+      return req.lockdown ? { action: 'sheet' } : { action: 'auto-approve' };
     }
     const label = terminalTargetLabel({ desktopLocal: ctx.desktopLocal, daemon: ctx.daemon });
     return {

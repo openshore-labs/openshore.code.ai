@@ -273,7 +273,7 @@ function ReviewRowView({
         <Stars value={r.rating} size={12} fill="var(--voice)" label={`${r.rating} out of 5`} />
         {mine ? <span className="review-mine">You</span> : null}
         <button
-          className="review-more"
+          className="review-more press-fb"
           aria-label="Review options"
           onClick={() => setMenu((m) => !m)}
         >
@@ -289,7 +289,7 @@ function ReviewRowView({
       {menu && !mine ? (
         <div className="review-menu">
           <button
-            className="review-menu-item"
+            className="review-menu-item press-fb"
             onClick={() => {
               setMenu(false);
               onReport();
@@ -298,7 +298,7 @@ function ReviewRowView({
             Report this review
           </button>
           <button
-            className="review-menu-item"
+            className="review-menu-item press-fb"
             onClick={() => {
               setMenu(false);
               onBlock();
@@ -433,7 +433,7 @@ function WriteReview({
             {model.categories.map((c) => (
               <button
                 key={c}
-                className={`write-chip${useCases.includes(c) ? ' on' : ''}`}
+                className={`write-chip press-fb${useCases.includes(c) ? ' on' : ''}`}
                 onClick={() => toggleUse(c)}
               >
                 {c}
@@ -444,15 +444,15 @@ function WriteReview({
       ) : null}
 
       <label className="write-label">The run (helps the next person)</label>
-      <div className="write-field">
+      <label className="write-field">
         <span className="write-field-label">Hardware</span>
         <input
           value={hardware}
           placeholder="e.g. M3 Max, 36 GB"
           onChange={(e) => setHardware(e.target.value)}
         />
-      </div>
-      <div className="write-field">
+      </label>
+      <label className="write-field">
         <span className="write-field-label">Tokens per second</span>
         <input
           value={tokensPerSec}
@@ -460,16 +460,16 @@ function WriteReview({
           placeholder="optional"
           onChange={(e) => setTokensPerSec(e.target.value.replace(/[^0-9.]/g, ''))}
         />
-      </div>
-      <div className="write-field">
+      </label>
+      <label className="write-field">
         <span className="write-field-label">Quant</span>
         <input value={quant} onChange={(e) => setQuant(e.target.value)} />
-      </div>
+      </label>
       <div className="write-chips">
         {SPEEDS.map((s) => (
           <button
             key={s.key}
-            className={`write-chip${speed === s.key ? ' on' : ''}`}
+            className={`write-chip press-fb${speed === s.key ? ' on' : ''}`}
             onClick={() => setSpeed(speed === s.key ? undefined : s.key)}
           >
             {s.label}

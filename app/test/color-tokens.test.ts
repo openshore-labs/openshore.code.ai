@@ -138,6 +138,8 @@ const LOCAL_ALLOW: Record<string, string> = {
   'cc-routine.working': 'the same working state, on a routine card',
   'store-row-meta': 'the on-device capability glyph on a store row',
   'vault-move-card': 'the Vault move card: notes moving into a folder on this computer',
+  'window-cut': 'the truncation card (CX 6): a model on this computer ran out of room',
+  'approval-lockdown': "the secrets lockdown line: the chat holds the project's private secrets",
 };
 
 describe('color tokens', () => {

@@ -11,17 +11,43 @@ import { join } from 'node:path';
 import { PERSONAL_UNLOCK_PRICE_YEAR } from '../src/lib/plans.js';
 import { WAYFINDING_READY } from '../src/lib/currents.js';
 import { restoreOfflineEntitlement } from '../src/state/store.js';
+import { RENEWAL_LINE, paywallMoney } from '../src/components/Paywall.js';
 
 const read = (...parts: string[]) => readFileSync(join(process.cwd(), ...parts), 'utf8');
 
 describe('the paywall', () => {
   const paywall = read('src', 'components', 'Paywall.tsx');
 
-  it('shows the App Store price when StoreKit has it, and $50 otherwise', () => {
+  it('shows only the App Store price, and says where to see it otherwise (E0)', () => {
     expect(PERSONAL_UNLOCK_PRICE_YEAR).toBe(50);
-    expect(paywall).not.toMatch(/\$20/);
+    expect(paywall).not.toMatch(/\$20|\$50|PERSONAL_UNLOCK_PRICE_YEAR/);
     expect(paywall).toContain('products([PERSONAL_YEARLY_PRODUCT_ID])');
-    expect(paywall).toContain('storePrice ?? `$${PERSONAL_UNLOCK_PRICE_YEAR}`');
+    const withPrice = paywallMoney(true, true, '$49.99');
+    expect(withPrice.priceLine).toBe('$49.99 per year. One person, the whole app.');
+    expect(withPrice.buy).toBe('Unlock Personal · $49.99/year');
+    const noPrice = paywallMoney(true, true, undefined);
+    expect(noPrice.priceLine).toBe('One person, the whole app. See the price in the App Store.');
+    expect(noPrice.buy).toBe('Unlock Personal');
+    expect(paywallMoney(true, false, undefined).priceLine).toBe(
+      'One person, the whole app. Bought on your iPhone. See the price in the App Store.',
+    );
+    expect(paywallMoney(true, false, undefined).buy).toBeNull();
+  });
+
+  it('says it renews and where to cancel, under the price', () => {
+    expect(RENEWAL_LINE).toBe(
+      'Renews yearly. Cancel any time on your iPhone in Settings, then your name, then Subscriptions.',
+    );
+    expect(paywallMoney(true, true, '$49.99').renewal).toBe(RENEWAL_LINE);
+    expect(paywall.indexOf('{renewal ?')).toBeGreaterThan(paywall.indexOf('{priceLine ?'));
+  });
+
+  it('shows no price, no renewal line, and no buy button while the pay gates are off', () => {
+    expect(paywallMoney(false, true, '$49.99')).toEqual({
+      priceLine: null,
+      renewal: null,
+      buy: null,
+    });
   });
 
   it('carries the terms and the privacy policy (Apple 3.1.2)', () => {
@@ -135,9 +161,8 @@ describe('the rest of the Personal paths', () => {
   });
 
   it('small copy: Tailscale on every platform, the activity log, Crew notifications', () => {
-    expect(read('src', 'screens', 'PairScreen.tsx')).toContain(
-      'Open the Tailscale app and sign in',
-    );
+    // The status line moved into lib/hubStatus.ts (the cleanup package).
+    expect(read('src', 'lib', 'hubStatus.ts')).toContain('Open the Tailscale app and sign in');
     expect(read('src', 'screens', 'SettingsScreen.tsx')).not.toContain('Paste it back to the team');
     expect(read('src', 'screens', 'CrewCommandScreen.tsx')).not.toContain('and pings you.');
   });

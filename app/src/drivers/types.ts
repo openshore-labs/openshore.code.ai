@@ -55,6 +55,13 @@ export interface ChatDriver {
    */
   trustFolder?(): Promise<{ ok: true; folder: string } | { error: string }>;
   /**
+   * The truncation card's action (engine-backed drivers only, C1, CTO 5):
+   * serve this provider's models a larger window on the computer the session
+   * runs on, from the next message, in every chat. On a shared hub only the
+   * owner may, since it spends the computer's memory.
+   */
+  giveMoreRoom?(provider: string): Promise<{ ok: true; provider: string } | { error: string }>;
+  /**
    * Undo (engine-backed drivers only): put back the files a task changed, or
    * one of them, or redo them. The engine checkpoints every task on the
    * computer it runs on, so this works the same from the desktop and a
@@ -64,6 +71,17 @@ export interface ChatDriver {
     id: string,
     direction: 'undo' | 'redo',
     path?: string,
+  ): Promise<{ ok: true; paths: string[] } | { error: string }>;
+  /**
+   * Rewind (engine-backed drivers only, P2): take the chat back to just
+   * before the person's message whose task-start the engine journaled at
+   * `taskSeq`, and with `files`, put back every file the later tasks changed.
+   * The engine journals a `rewound` marker, so every device watching drops
+   * the same turns; the answer names the files put back.
+   */
+  rewind?(
+    taskSeq: number,
+    opts: { files: boolean },
   ): Promise<{ ok: true; paths: string[] } | { error: string }>;
   /**
    * The chat-to-terminal bridge (desktop-backed drivers only). Run a command

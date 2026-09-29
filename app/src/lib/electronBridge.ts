@@ -10,11 +10,13 @@ import type {
   CurrentsHandles,
   CurrentsHostProbe,
   DriverEvent,
+  FreeChatEvent,
   HarnessCurrentsHandle,
   HermesNote,
   HermesNoteMeta,
   PermissionMode,
   ReconcileResult,
+  RoutineClockStatus,
   RoutineInput,
   RoutineRun,
   RoutineView,
@@ -45,6 +47,22 @@ import type {
   WriteGuard,
   WriteResult,
 } from './gitos/providers.js';
+
+/** One streamed chat request (electron/chatStream.ts keeps the same shape):
+ *  the renderer's own id, so late data for a stopped request is dropped. */
+export interface ChatStreamRequest {
+  id: string;
+  url: string;
+  headers: Record<string, string>;
+  body: string;
+}
+
+/** A piece of a streamed chat response: body text, its end, or why it
+ *  stopped (a plain sentence). */
+export type ChatStreamEvent =
+  | { id: string; kind: 'data'; chunk: string }
+  | { id: string; kind: 'end' }
+  | { id: string; kind: 'error'; message: string };
 
 /** A change the vault folder watcher saw (Vault M1, CTO F3): the note paths
  *  that changed, or `tree` when it cannot say which (a folder changed, too
@@ -155,10 +173,11 @@ export interface OllamaStatus {
   version?: string;
 }
 
-/** What installing Ollama takes here. On Linux the official installer runs in
- *  the built-in terminal (`termId` names it, `started` says it began); on
- *  macOS and Windows the download page opens and the app polls ollamaStatus.
- *  `command` is always present so it can be shown as a copy block. */
+/** What installing Ollama takes here. On Linux nothing runs (`started` is
+ *  false): the official script is the person's to run in their own terminal;
+ *  on macOS and Windows the installer or the download page opens and the app
+ *  polls ollamaStatus. `command` is always present so it can be shown as a
+ *  copy block. */
 export interface OllamaInstallResult {
   started: boolean;
   command: string;
@@ -180,13 +199,19 @@ export interface OllamaInstallResult {
  *  - available: found, nothing downloaded yet (every platform now asks
  *    first); a click downloads, installs, and restarts.
  *  - installing: the person clicked; `percent` tracks it until the restart.
- *  - failed: it did not finish; a click tries again. */
+ *  - failed: it did not finish; a click tries again. `refused` when the
+ *    download failed its signature check: nothing was installed. */
 export interface PendingUpdate {
   version: string;
   phase: 'downloading' | 'ready' | 'available' | 'installing' | 'failed';
   percent?: number;
   detail?: string;
+  refused?: boolean;
 }
+
+/** One free chat event as main forwards it: the engine's own events, less the
+ *  refusal (it arrives as an error) and the ready marker. */
+export type FreeChatFrame = Exclude<FreeChatEvent, { type: 'refused' | 'open' }>;
 
 export interface DesktopStatus {
   ollama: { up: boolean; detail: string; models: string[] };
@@ -228,6 +253,10 @@ export interface DaemonInfo {
   /** 'loopback' means the tailnet bind failed and the daemon serves only this
    *  machine, so a pairing QR would be unreachable from the phone. */
   mode?: 'loopback' | 'tailscale';
+  /** Why the last bind failed: the tailnet (the hub fell back to loopback),
+   *  or every address (the hub is off and main retries on its poll). Absent
+   *  once a bind succeeds or the hub is paused. */
+  bindError?: string;
 }
 
 export interface SessionRow {
@@ -299,6 +328,10 @@ export interface OscodeBridge {
   /** Trust this session's folder on this computer (the trust card's tap): its
    *  own os-code.config.json applies from the next session there. */
   trustFolder(sessionId: string): Promise<{ ok: true; folder: string } | { error: string }>;
+  /** The truncation card's tap (C1, CTO 5): serve this provider's models the
+   *  larger window from the next message, in every chat. Absent on an older
+   *  shell. */
+  giveMoreRoom?(provider: string): Promise<{ ok: true; provider: string } | { error: string }>;
   /** The sample page for a first try (v1 Phase 1): written to ~/OSCode/Try
    *  OpenShore, kept as it is when already there. Absent on an older shell. */
   createSample?(): Promise<{ path: string; created: boolean } | { error: string }>;
@@ -309,6 +342,13 @@ export interface OscodeBridge {
     id: string,
     direction: 'undo' | 'redo',
     path?: string,
+  ): Promise<{ ok: true; paths: string[] } | { error: string }>;
+  /** Rewind a chat to one of the person's messages (P2), and its files with
+   *  `files`. Absent on an older shell. */
+  rewind?(
+    sessionId: string,
+    toSeq: number,
+    files: boolean,
   ): Promise<{ ok: true; paths: string[] } | { error: string }>;
   /** Resume a session and return its journal so the renderer can replay it AFTER
    *  subscribing (IPC is not buffered, so a pushed replay would be lost). */
@@ -325,6 +365,14 @@ export interface OscodeBridge {
   onEvent(
     cb: (payload: { sessionId: string; seq: number; event: DriverEvent }) => void,
   ): () => void;
+
+  // The free chat (CTO ruling 8): one answer from this computer's own local
+  // model, with no session, no tools and no notes. freeChat resolves once the
+  // answer has ended; its events arrive on onFreeChat under the request id,
+  // `done` or `error` last. Absent on an older shell.
+  freeChat?(requestId: string, body: Record<string, unknown>): Promise<void>;
+  freeChatAbort?(requestId: string): Promise<void>;
+  onFreeChat?(cb: (payload: { requestId: string; event: FreeChatFrame }) => void): () => void;
 
   // Chat-to-terminal lane. runCommand runs a command on this machine and
   // returns its runId (undefined if the session is gone); output streams back as
@@ -410,6 +458,10 @@ export interface OscodeBridge {
   /** Cut off one device by its credential id (a lost phone). Returns how many
    *  credentials were removed. Other paired devices stay connected. */
   revokeDeviceCredential(id: string): Promise<{ removed: number }>;
+  /** Replace the old shared token in ~/.os-code/daemon.token (H1). Nothing on
+   *  a paired phone changes; only a device still on the shared token must pair
+   *  again. Absent on an older shell. */
+  rotateSharedToken?(): Promise<{ rotated: true } | { error: string }>;
   /** Start with your computer (opt-in). `supported` is false on a run from
    *  source, which has no installed executable to register. Absent on an
    *  older shell. */
@@ -429,7 +481,12 @@ export interface OscodeBridge {
   // Crew routines: the scheduled, unattended jobs that run on this computer.
   // The same surface the daemon serves a phone; validation and the workspace
   // gate live in the engine. Keep in lockstep with electron/main.ts.
-  routinesList(): Promise<{ routines: RoutineView[]; runs: RoutineRun[] }>;
+  /** `clock` says whose clock fires the slots (H1); absent on an older shell. */
+  routinesList(): Promise<{
+    routines: RoutineView[];
+    runs: RoutineRun[];
+    clock?: RoutineClockStatus;
+  }>;
   routineCreate(input: RoutineInput): Promise<{ routine: RoutineView } | { error: string }>;
   routineUpdate(
     id: string,
@@ -595,6 +652,15 @@ export interface OscodeBridge {
     headers?: Record<string, string>;
     body?: string;
   }): Promise<{ ok: boolean; status: number; body: string }>;
+
+  // A streamed chat completion for a model seat (build 2026-09-29, CTO 7;
+  // electron/chatStream.ts): POST only, to a path ending /chat/completions or
+  // /api/chat, public https pinned, plain http only on your own network, no
+  // redirects. chatStream resolves at the response head; the body arrives as
+  // osc:chat-stream events for the renderer's id, and chatStreamAbort ends it.
+  chatStream(req: ChatStreamRequest): Promise<{ status: number }>;
+  chatStreamAbort(id: string): Promise<void>;
+  onChatStream(cb: (event: ChatStreamEvent) => void): () => void;
 
   // Google Drive OAuth redirect capture: a one-shot loopback server. listen()
   // opens it and returns the port to build the redirect_uri against; wait()

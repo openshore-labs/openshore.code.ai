@@ -27,10 +27,16 @@ contextBridge.exposeInMainWorld('oscode', {
   compact: invoke('osc:compact'),
   listFiles: invoke('osc:listFiles'),
   trustFolder: invoke('osc:trustFolder'),
+  giveMoreRoom: invoke('osc:giveMoreRoom'),
   restoreCheckpoint: invoke('osc:restoreCheckpoint'),
+  rewind: invoke('osc:rewind'),
   createSample: invoke('osc:createSample'),
   answerApproval: invoke('osc:answerApproval'),
   onEvent: listen('osc:event'),
+
+  freeChat: invoke('osc:freeChat'),
+  freeChatAbort: invoke('osc:freeChatAbort'),
+  onFreeChat: listen('osc:free-chat'),
 
   runCommand: invoke('osc:runCommand'),
   sendCommandStdin: invoke('osc:sendCommandStdin'),
@@ -75,6 +81,7 @@ contextBridge.exposeInMainWorld('oscode', {
   daemonStop: invoke('osc:daemonStop'),
   listDeviceCredentials: invoke('osc:listDeviceCredentials'),
   revokeDeviceCredential: invoke('osc:revokeDeviceCredential'),
+  rotateSharedToken: invoke('osc:rotateSharedToken'),
   launchAtLogin: invoke('osc:launchAtLogin'),
   setLaunchAtLogin: invoke('osc:setLaunchAtLogin'),
 
@@ -134,6 +141,9 @@ contextBridge.exposeInMainWorld('oscode', {
   secureDelete: invoke('osc:secureDelete'),
 
   httpFetch: invoke('osc:httpFetch'),
+  chatStream: invoke('osc:chatStream'),
+  chatStreamAbort: invoke('osc:chatStreamAbort'),
+  onChatStream: listen('osc:chat-stream'),
 
   gdriveOAuthListen: invoke('osc:gdriveOAuthListen'),
   gdriveOAuthWait: invoke('osc:gdriveOAuthWait'),

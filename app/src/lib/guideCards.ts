@@ -12,17 +12,28 @@ import { guideStepsCompact } from './setupGuides.js';
 import { AGENTIC_CURRENTS, AGENTIC_CURRENTS_TITLE } from './currents.js';
 import { HARNESS_CURRENTS, HARNESS_CURRENTS_TITLE } from './harnessCurrents.js';
 import { ROUTINE_NOTES_PLACE, vaultGuideText } from './vaultCopy.js';
-import { featureOn } from './focus.js';
+import {
+  SHIPS_ADMIN,
+  SHIPS_CURRENTS,
+  SHIPS_LAUNCH,
+  SHIPS_MARKETPLACE,
+  SHIPS_STACKHEALTH,
+  SHIPS_TEAMS,
+  featureOn,
+} from './focus.js';
 
 // Release tiers (docs/release-tiers.md): a card about a later tier's feature
 // carries `feature` and is left out of a build without it, and the cards that
-// list rooms or settings name only what this build has.
-const launchOn = featureOn('launch');
-const currentsOn = featureOn('currents');
-const stackHealthOn = featureOn('stackhealth');
-const marketplaceOn = featureOn('marketplace');
-const adminOn = featureOn('admin');
-const teamsOn = featureOn('teams');
+// list rooms or settings name only what this build has. The flags are the
+// build-time SHIPS_ gates, and each later card also sits behind its gate, so
+// a Personal build's bundle does not carry those words at all
+// (app/test/tierBundle.test.ts).
+const launchOn = SHIPS_LAUNCH;
+const currentsOn = SHIPS_CURRENTS;
+const stackHealthOn = SHIPS_STACKHEALTH;
+const marketplaceOn = SHIPS_MARKETPLACE;
+const adminOn = SHIPS_ADMIN;
+const teamsOn = SHIPS_TEAMS;
 
 function listOf(names: readonly string[]): string {
   return names.length > 1
@@ -54,7 +65,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'three-models',
     title: 'The three built-in models',
-    text: 'Three models come out of the box. Harbor Lite is the tiny guide built into the iPhone app. Harbor is a coding model that runs on the iPhone. DeepBlue is the most capable, a real coding agent on your own computer. Paired, the phone reaches DeepBlue as My computer.',
+    text: 'Three models come out of the box. Harbor Lite is the tiny guide built into the iPhone app. Harbor is a coding model that runs on the iPhone. DeepBlue is the most capable, a real coding agent on your own computer. Paired, the phone reaches DeepBlue as Your computer.',
     keywords: ['built-in models', 'three models', 'difference', 'compare', 'out of the box'],
   },
   {
@@ -155,7 +166,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     title: 'DeepBlue',
     where:
       'OpenShore on your computer: Menu, Settings, Harbor, DeepBlue, or the first-run card, or Stack, Get DeepBlue',
-    text: `DeepBlue is the most capable built-in model: a real coding agent that plans and edits your repositories on your own computer, running through Ollama and sized to your computer (Qwen 2.5 Coder 32B, 14B, 7B, or 3B). Once installed it is your Reasoning LLM, and a paired phone reaches it as My computer. How:\n${guideStepsCompact('get-harbor-master')}`,
+    text: `DeepBlue is the most capable built-in model: a real coding agent that plans and edits your repositories on your own computer, running through Ollama and sized to your computer (Qwen 2.5 Coder 32B, 14B, 7B, or 3B). Once installed it is your Reasoning LLM, and a paired phone reaches it as Your computer. How:\n${guideStepsCompact('get-harbor-master')}`,
     keywords: [
       'deepblue',
       'deep blue',
@@ -186,7 +197,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'model-picker',
     title: 'Select model',
     where: 'Tap the model pill in the chat box, next to the +',
-    text: 'Picks who answers: Stack, your pinned favorites, My computer (or Connect your computer), Cloud models, and Local models, plus Effort. Swipe a model left or tap its star to pin it. This is where you switch to Harbor once it is downloaded.',
+    text: 'Picks who answers: Stack, your pinned favorites, This computer on the desktop or Your computer on the phone (or Connect your computer), Cloud models, and Local models, plus Effort. Swipe a model left or tap its star to pin it. This is where you switch to Harbor once it is downloaded.',
     keywords: [
       'switch model',
       'switch',
@@ -369,9 +380,9 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
   },
   {
     id: 'byom',
-    title: 'Bring your own model',
-    where: 'Menu, Stack, the BYOM + pill',
-    text: 'Connects any OpenAI-compatible endpoint you control, like your own server or a fine-tune: a name, an address ending in /v1, a model id, and an optional API key. It lands on your Bench, and calls go straight from your device to it.',
+    title: 'Connect your own model',
+    where: 'Menu, Stack, the Connect a model + pill',
+    text: 'Uses a model you run: on this computer, your own server, or another service with your key (any OpenAI-compatible endpoint). It asks for a name, the address (it usually ends in /v1), the model name, and an optional API key. It lands on your Bench, and calls go straight from your device to it.',
     keywords: [
       'byom',
       'bring your own model',
@@ -403,41 +414,49 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     text: 'On an empty chat when nothing can answer yet, one card sets you up: on your computer, one tap installs DeepBlue sized to it. More ways to start offers Connect your computer, Connect an API key, and Open Stack.',
     keywords: ['first run', 'no model', 'first seat', 'nothing answers', 'one tap', 'empty chat'],
   },
-  {
-    id: 'marketplace',
-    feature: 'marketplace',
-    title: 'Marketplace',
-    where: 'Menu, Marketplace (grayed, Coming soon)',
-    text: 'A catalog of more models rated against your hardware, downloaded straight from their source. It is marked Coming soon in the Menu; today you grow the stack with the three built-in models, a cloud model on your own API key, or your own model (BYOM), all from Stack and Settings, Harbor.',
-    keywords: [
-      'marketplace',
-      'more models',
-      'other models',
-      'download models',
-      'new model',
-      'catalog',
-      'store',
-      'coming soon',
-      'bundles',
-    ],
-  },
-  {
-    id: 'stack-health',
-    feature: 'stackhealth',
-    title: 'Stack Health',
-    where: 'Menu, Stack Health',
-    text: 'An honest read of how your stack is used, worked out on your own computer, by day, week, or month: how much ran locally versus in the cloud, what the cloud cost, energy and carbon estimates, and leaner swaps.',
-    keywords: [
-      'stack health',
-      'usage',
-      'stats',
-      'how much spent',
-      'local vs cloud',
-      'carbon',
-      'energy',
-      'dashboard',
-    ],
-  },
+  ...(marketplaceOn
+    ? ([
+        {
+          id: 'marketplace',
+          feature: 'marketplace',
+          title: 'Marketplace',
+          where: 'Menu, Marketplace (grayed, Coming soon)',
+          text: 'A catalog of more models rated against your hardware, downloaded straight from their source. It is marked Coming soon in the Menu; today you grow the stack with the three built-in models, a cloud model on your own API key, or your own model (BYOM), all from Stack and Settings, Harbor.',
+          keywords: [
+            'marketplace',
+            'more models',
+            'other models',
+            'download models',
+            'new model',
+            'catalog',
+            'store',
+            'coming soon',
+            'bundles',
+          ],
+        },
+      ] satisfies GuideCard[])
+    : []),
+  ...(stackHealthOn
+    ? ([
+        {
+          id: 'stack-health',
+          feature: 'stackhealth',
+          title: 'Stack Health',
+          where: 'Menu, Stack Health',
+          text: 'An honest read of how your stack is used, worked out on your own computer, by day, week, or month: how much ran locally versus in the cloud, what the cloud cost, energy and carbon estimates, and leaner swaps.',
+          keywords: [
+            'stack health',
+            'usage',
+            'stats',
+            'how much spent',
+            'local vs cloud',
+            'carbon',
+            'energy',
+            'dashboard',
+          ],
+        },
+      ] satisfies GuideCard[])
+    : []),
 
   // ---------------------------------------------------------- connections
   {
@@ -523,24 +542,28 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
       'console',
     ],
   },
-  {
-    id: 'launch',
-    feature: 'launch',
-    title: 'Launch with Codemagic',
-    where: 'Menu, Launch with Codemagic',
-    text: `Ships your app to the App Store or Google Play through Codemagic on your own account: add a Codemagic API key and a launch target, then build. On a failed build the model can read the log. How:\n${guideStepsCompact('connect-codemagic')}`,
-    keywords: [
-      'launch',
-      'codemagic',
-      'app store',
-      'google play',
-      'ship',
-      'testflight',
-      'release',
-      'deploy',
-      'publish app',
-    ],
-  },
+  ...(launchOn
+    ? ([
+        {
+          id: 'launch',
+          feature: 'launch',
+          title: 'Launch with Codemagic',
+          where: 'Menu, Launch with Codemagic',
+          text: `Ships your app to the App Store or Google Play through Codemagic on your own account: add a Codemagic API key and a launch target, then build. On a failed build the model can read the log. How:\n${guideStepsCompact('connect-codemagic')}`,
+          keywords: [
+            'launch',
+            'codemagic',
+            'app store',
+            'google play',
+            'ship',
+            'testflight',
+            'release',
+            'deploy',
+            'publish app',
+          ],
+        },
+      ] satisfies GuideCard[])
+    : []),
 
   // ---------------------------------------------------------- projects and knowledge
   {
@@ -634,38 +657,46 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
       'while i sleep',
     ],
   },
-  {
-    id: 'agentic-currents',
-    feature: 'currents',
-    title: AGENTIC_CURRENTS_TITLE,
-    where: 'Menu, Projects, a project (editors only)',
-    text: `${AGENTIC_CURRENTS_TITLE} (beta) hand agent work in a project to an outside agent: ${listOf(agenticNames)}. They are off by default and one is on at a time per project. Turn one on and the rooms you already use gain rows for it; turn it off and every trace is gone. Connecting one is done once per device from its Set up link.`,
-    keywords: [
-      'agentic currents',
-      'currents',
-      'current',
-      'other agents',
-      'outside agent',
-      'external agent',
-      'beta',
-      ...agenticNames.map((n) => n.toLowerCase()),
-    ],
-  },
-  {
-    id: 'harness-currents',
-    feature: 'currents',
-    title: HARNESS_CURRENTS_TITLE,
-    where: 'Menu, Projects, a project (editors only)',
-    text: `${HARNESS_CURRENTS_TITLE} (beta) layer a cheap decision method into how answers are made in a project. ${listOf(harnessNames)} picks which of your models answers a turn, skips steps that need no model, and checks results, each decision shown as an amber card. It only spends on a paid or cloud seat. One on at a time per project.`,
-    keywords: [
-      'harness currents',
-      'decision',
-      'save money',
-      'cheaper',
-      'cost saving',
-      ...harnessNames.map((n) => n.toLowerCase()),
-    ],
-  },
+  ...(currentsOn
+    ? ([
+        {
+          id: 'agentic-currents',
+          feature: 'currents',
+          title: AGENTIC_CURRENTS_TITLE,
+          where: 'Menu, Projects, a project (editors only)',
+          text: `${AGENTIC_CURRENTS_TITLE} (beta) hand agent work in a project to an outside agent: ${listOf(agenticNames)}. They are off by default and one is on at a time per project. Turn one on and the rooms you already use gain rows for it; turn it off and every trace is gone. Connecting one is done once per device from its Set up link.`,
+          keywords: [
+            'agentic currents',
+            'currents',
+            'current',
+            'other agents',
+            'outside agent',
+            'external agent',
+            'beta',
+            ...agenticNames.map((n) => n.toLowerCase()),
+          ],
+        },
+      ] satisfies GuideCard[])
+    : []),
+  ...(currentsOn
+    ? ([
+        {
+          id: 'harness-currents',
+          feature: 'currents',
+          title: HARNESS_CURRENTS_TITLE,
+          where: 'Menu, Projects, a project (editors only)',
+          text: `${HARNESS_CURRENTS_TITLE} (beta) layer a cheap decision method into how answers are made in a project. ${listOf(harnessNames)} picks which of your models answers a turn, skips steps that need no model, and checks results, each decision shown as an amber card. It only spends on a paid or cloud seat. One on at a time per project.`,
+          keywords: [
+            'harness currents',
+            'decision',
+            'save money',
+            'cheaper',
+            'cost saving',
+            ...harnessNames.map((n) => n.toLowerCase()),
+          ],
+        },
+      ] satisfies GuideCard[])
+    : []),
 
   // ---------------------------------------------------------- settings
   {
@@ -773,7 +804,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'account',
     title: 'Account',
     where: 'Menu, Settings, Account, or the Sign in row',
-    text: `Personal use needs no account: chatting and building work signed out. Signing in lets you buy or restore Personal and get notifications from your computer on your phone. Chats are not synced between devices; your phone reaches your computer's chats by pairing.${teamsOn ? ' After creating one you choose personal or business; a business adds a company, admins, and a shared stack managed from Admin.' : ''}`,
+    text: `Chatting needs no account. Signing in is free and opens building, Projects, Vault, Crew, and pairing, and carries a few settings to your other devices. It is also how you buy or restore Personal. Chats are not synced between devices; your phone reaches your computer's chats by pairing.${teamsOn ? ' After creating one you choose personal or business; a business adds a company, admins, and a shared stack managed from Admin.' : ''}`,
     keywords: [
       'account',
       'sign in',
@@ -790,7 +821,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'privacy',
     title: 'Privacy',
     where: 'Menu, Settings, Privacy and Ethical boundaries',
-    text: 'Local models keep everything on your device. Cloud models run on your own API keys with your approval. Chats, projects, and API keys are encrypted on the device, and there is no telemetry. Only a cloud model you connect, or a web search, sends anything off the device.',
+    text: 'Local models keep your words on your device. Cloud models run on your own API keys, and the amber pill marks every turn that goes to one. Chats, projects, and API keys are encrypted on the device. What does leave is short and listed under Settings, Privacy, What leaves this device: a cloud model you chose, a web search you allowed, update checks, the model list, and your account while signed in.',
     keywords: [
       'privacy',
       'private',

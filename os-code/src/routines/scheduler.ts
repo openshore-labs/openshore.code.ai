@@ -6,7 +6,9 @@
 // The contract, ruled by the CTO before the build:
 //   - A run is a normal journaled session on the HEADLESS profile: shell,
 //     push, and cloud spend can never resolve to allow, and the step ceiling
-//     is the profile's 40. The routine's own access level maps to plan mode
+//     is the profile's 40. It works offline (CTO 3, 2026-09-29): no tool that
+//     reaches the network is registered, and a network step is denied, never
+//     asked. The routine's own access level maps to plan mode
 //     (read-only) or acceptEdits (edits inside the jail flow, shell asks).
 //   - One run on the box at a time, one run per routine at a time. A slot that
 //     lands while another routine works waits its turn (within the grace
@@ -20,7 +22,7 @@
 //   - The result lands as a dated markdown note in the vault (plain files,
 //     Obsidian-compatible) with the session id, so the transcript is one tap
 //     away; the run record carries a one-line summary for the inbox.
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { bootstrapSession } from '../core/agent/bootstrap.js';
 import { writeNewNoteSync } from '../core/vault/noteFile.js';
@@ -28,7 +30,7 @@ import { safeNoteName } from '../harness/vault/paths.js';
 import type { DriverEvent, PermissionMode } from '../core/agent/types.js';
 import { loadDaemonConfig, saveGlobalConfig } from '../config/load.js';
 import { ensureVaultRootAt, vaultRootForOwner } from '../core/vault/memberRoots.js';
-import type { LocalDriver } from '../daemon/session.js';
+import { openSessionDrivers, type LocalDriver } from '../daemon/session.js';
 import { profileFor } from '../core/security/profiles.js';
 import { isOutboxAllowedPath, realOrResolve } from '../core/security/workspaces.js';
 import { logger } from '../util/log.js';
@@ -40,11 +42,18 @@ import {
   routineCaps,
   slotKey,
   type Routine,
+  type RoutineClockStatus,
   type RoutineInput,
   type RoutineRun,
   type RoutineView,
 } from './model.js';
-import { acquireSchedulerLock, releaseSchedulerLock, type SchedulerLock } from './lock.js';
+import {
+  acquireSchedulerLock,
+  holderAlive,
+  ownProcessStart,
+  releaseSchedulerLock,
+  type SchedulerLock,
+} from './lock.js';
 import * as store from './store.js';
 import { dailyNoteConfigOf, runNoteDayPath, runNoteFrontmatter } from './runNote.js';
 import type { RunNoteProvenance } from './runNote.js';
@@ -59,6 +68,9 @@ const log = logger('routines');
 
 /** How often the clock is checked. */
 const DEFAULT_TICK_MS = 30_000;
+/** How often a passive scheduler (another process holds the clock) tries to
+ *  take the clock over, so closing that process never leaves the crew idle. */
+const DEFAULT_TAKEOVER_MS = 30_000;
 /** A slot older than this when first seen (the box was off) is skipped. */
 const DEFAULT_GRACE_MS = 10 * 60_000;
 /** How long a run waits on an approval before declining it. */
@@ -85,6 +97,44 @@ export interface OpenedSession {
   where?: 'local' | 'cloud';
   /** The orchestrator's provider, for a cloud seat's `oscode-provider`. */
   provider?: string;
+  /** The tools the run left out because it works offline (CTO 3), by name,
+   *  so its note can say what it could not do. */
+  offline?: string[];
+}
+
+/** What each tool an offline run leaves out would have done, in the words the
+ *  run's note uses ("It ran offline, so it could not ..."). */
+const OFFLINE_WORDS: Record<string, string> = {
+  webSearch: 'search the web',
+  webFetch: 'open web pages',
+  codemagic: 'start Codemagic builds',
+  askHermes: 'hand work to another agent',
+  askAgent: 'hand work to another agent',
+  cliAgent: 'hand work to another agent',
+  delegate: 'hand work to another model',
+  analyzeImage: 'look at images with another model',
+  generateImage: 'make images',
+};
+
+/** The run note's offline line: that the run worked offline and what that
+ *  left out, in plain words. */
+export function offlineLine(leftOut: readonly string[] | undefined): string {
+  const words = [...new Set((leftOut ?? []).map((name) => OFFLINE_WORDS[name] ?? name))];
+  if (!words.length) return 'It ran offline.';
+  const list =
+    words.length === 1
+      ? words[0]!
+      : `${words.slice(0, -1).join(', ')}${words.length > 2 ? ',' : ''} or ${words[words.length - 1]!}`;
+  return `It ran offline, so it could not ${list}.`;
+}
+
+/** The run note's one Note line when the model tried to search (the
+ *  reconciled CX 1 copy): the first query it tried, and where it worked from
+ *  instead. */
+export function triedToSearchLine(query: string, workspace: string): string {
+  const flat = query.replace(/\s+/g, ' ').replace(/"/g, "'").trim();
+  const shown = flat.length > 120 ? `${flat.slice(0, 117)}...` : flat;
+  return `It tried to search the web for "${shown}", but routines work offline, so it used only the files in ${workspace}.`;
 }
 
 /** A run refused before it started, for a reason the person can act on. The
@@ -102,9 +152,34 @@ export class RoutineRefused extends Error {
 export const WORKSPACE_NOT_ALLOWED =
   'A routine runs only in a folder on this computer that OpenShore knows: a repository under ~/OSCode, or a folder you allowed. Pick one from Repositories, or allow this folder.';
 
+/** A run refused because its folder left the allowed ones since the routine
+ *  was made (taken off the list, or swapped for a link that leads elsewhere). */
+export const WORKSPACE_LEFT =
+  "This routine's folder is no longer one routines may run in: it was taken off the allowed folders, or it now leads somewhere else. Pick its folder again, or allow it, and the next run will start.";
+
+/** A run refused because its folder is gone. */
+export const WORKSPACE_GONE =
+  "This routine's folder is not on this computer anymore, so the run did not start. Pick its folder again.";
+
+/** A scheduled slot skipped because the person was working in the same
+ *  folder (H1): two agents editing one folder at once is how work is lost. */
+export const SLOT_WAITED_FOR_YOU =
+  'You were working in this folder, so this run waited for the next time.';
+
+/** The same, for a Run now tap. */
+export const RUN_WAITED_FOR_YOU =
+  'You were working in this folder, so this run did not start. Run it again once that chat is done.';
+
+/** A run whose process closed before it finished (the orphan sweep): what
+ *  closed, not why, and what it left behind (CX cleanup 3). */
+export const RUN_ORPHANED =
+  'OpenShore closed before this run finished. Any changes it made before then are still in the folder.';
+
 export interface SchedulerDeps {
   now?: () => number;
   tickMs?: number;
+  /** How often a passive scheduler tries to take the clock over. */
+  takeoverMs?: number;
   graceMs?: number;
   approvalTimeoutMs?: number;
   /** Open the session a run lives in. Defaults to a real headless bootstrap. */
@@ -128,6 +203,11 @@ export interface SchedulerDeps {
    *  machine config, Vault M7, CTO L9). Defaults to the config the run's
    *  workspace loads (the key is machine-only, so a project cannot move it). */
   provenance?: (routine: Routine) => boolean;
+  /** Whether a person's own session is working in this folder right now
+   *  (the real path), so a run waits instead of editing under them (H1).
+   *  Defaults to every stored session this process has open (the daemon's
+   *  and the desktop engine host's alike), less the scheduler's own runs. */
+  workspaceBusy?: (realCwd: string) => boolean;
 }
 
 /** The framing every run receives as its standing instructions, ahead of the
@@ -136,6 +216,7 @@ export function routineInstructions(routine: Routine): string {
   return [
     `You are ${routine.agentName}, a member of the person's crew, running the scheduled routine "${routine.name}" on their own computer while they are away. Nobody is watching this session.`,
     `Persona: ${routine.persona}`,
+    'This run is offline: there is no web search and no web access. Work only from the files in this workspace and your vault notes.',
     routine.access === 'read-only'
       ? 'This routine is read-only: you can read files, search, and inspect the repository, but you cannot change anything. Do not try.'
       : 'This routine may edit files inside this workspace. Any shell command will ask for approval; if nobody answers within a few minutes the step is declined and you should carry on without it, or stop and say what is blocked.',
@@ -160,6 +241,10 @@ interface ActiveRun {
   where?: 'local' | 'cloud';
   /** The orchestrator's provider, when the session said. */
   provider?: string;
+  /** The tools the run left out because it works offline. */
+  offline?: string[];
+  /** The first web search the model tried anyway, for the note's Note line. */
+  searchTried?: string;
   off: () => void;
   finalText: string;
   steps: string[];
@@ -186,6 +271,7 @@ interface QueuedRun {
 export class RoutineScheduler {
   private readonly now: () => number;
   private readonly tickMs: number;
+  private readonly takeoverMs: number;
   private readonly graceMs: number;
   private readonly approvalTimeoutMs: number;
   private readonly openSession: (routine: Routine, permissionMode: PermissionMode) => OpenedSession;
@@ -194,9 +280,12 @@ export class RoutineScheduler {
   private readonly lock: { acquire: () => SchedulerLock; release: () => void };
   private readonly persistAllowedRoot: (cwd: string) => void;
   private readonly provenance: (routine: Routine) => boolean;
-  /** The pid of the other process whose clock is live, when ours is not. */
-  private clockHeldBy?: number;
+  private readonly workspaceBusy: (realCwd: string) => boolean;
+  /** The other process's lock, when its clock is live and ours is not. */
+  private clockHeldBy?: SchedulerLock;
   private timer?: ReturnType<typeof setInterval>;
+  /** A passive scheduler's retry: takes the clock once its holder is gone. */
+  private takeover?: ReturnType<typeof setInterval>;
   private active?: ActiveRun;
   private queue: QueuedRun[] = [];
   private driverHooks: Array<(driver: RoutineDriver, routine: Routine) => void> = [];
@@ -207,6 +296,7 @@ export class RoutineScheduler {
   constructor(deps: SchedulerDeps = {}) {
     this.now = deps.now ?? Date.now;
     this.tickMs = deps.tickMs ?? DEFAULT_TICK_MS;
+    this.takeoverMs = deps.takeoverMs ?? DEFAULT_TAKEOVER_MS;
     this.graceMs = deps.graceMs ?? DEFAULT_GRACE_MS;
     this.approvalTimeoutMs = deps.approvalTimeoutMs ?? DEFAULT_APPROVAL_TIMEOUT_MS;
     this.openSession = deps.openSession ?? defaultOpenSession;
@@ -218,18 +308,40 @@ export class RoutineScheduler {
     };
     this.persistAllowedRoot = deps.persistAllowedRoot ?? persistOutboxRoot;
     this.provenance = deps.provenance ?? provenanceOn;
-    // A run the previous process left open can never finish now; say so
-    // rather than show "working" forever. The journal is still on disk.
+    this.workspaceBusy =
+      deps.workspaceBusy ??
+      ((real) =>
+        openSessionDrivers().some(
+          (d) => d.busy && !this.live.has(d.id) && realOrResolve(d.cwd) === real,
+        ));
+    // Runs the previous process left open are swept by the clock holder
+    // alone (tick), never here: a passive scheduler in a second process must
+    // not mark the first process's live run failed (H1).
+    if (deps.autostart !== false) this.start();
+  }
+
+  /**
+   * A run whose process is gone can never finish now; say so rather than
+   * show "working" forever (the journal is still on disk). Only runs whose
+   * recorded process is dead, or was replaced by another under the same pid,
+   * or that predate the record (an older build, whose clock this process now
+   * holds). The write lands only while the run still reads as working.
+   */
+  private sweepOrphans(): void {
     for (const run of store.listRuns(MAX_ORPHANS)) {
-      if (run.state === 'running' || run.state === 'waiting') {
-        store.updateRun(run.id, {
+      if (run.state !== 'running' && run.state !== 'waiting') continue;
+      if (this.active?.run.id === run.id) continue;
+      if (run.pid !== undefined && holderAlive(run.pid, run.pidStart)) continue;
+      store.updateRun(
+        run.id,
+        {
           state: 'failed',
           finishedAt: new Date(this.now()).toISOString(),
-          summary: 'The computer restarted before this run finished.',
-        });
-      }
+          summary: RUN_ORPHANED,
+        },
+        (current) => current.state === 'running' || current.state === 'waiting',
+      );
     }
-    if (deps.autostart !== false) this.start();
   }
 
   /** Called with every driver a run opens, so the host can track it (the
@@ -244,33 +356,58 @@ export class RoutineScheduler {
   /** Start the clock, unless another live process on this machine already
    *  holds it (the desktop app beside `osc serve`): then this instance stays
    *  passive, so a slot fires once per box, never once per process. Run now
-   *  and the roster still work here. */
+   *  and the roster still work here. A passive instance tries again every
+   *  `takeoverMs` and takes the clock once the holder is gone, so closing the
+   *  terminal that held it never leaves the routines without a clock (CX
+   *  cleanup 6). */
   start(): void {
-    if (this.timer) return;
+    if (this.timer || this.takeover) return;
+    if (this.takeClock(true)) return;
+    this.takeover = setInterval(() => {
+      if (!this.takeClock(false)) return;
+      if (this.takeover) clearInterval(this.takeover);
+      this.takeover = undefined;
+    }, this.takeoverMs);
+    this.takeover.unref?.();
+  }
+
+  /** Try to hold the clock; true once this process holds it and the clock
+   *  runs. `first` is start's own try: an unwritable ~/.os-code is not a
+   *  reason to leave the crew idle, so that try runs the clock anyway. A
+   *  retry that meets an error stays passive instead, since another process
+   *  held the clock a moment ago and two clocks would fire a slot twice. */
+  private takeClock(first: boolean): boolean {
     let held: SchedulerLock;
     try {
       held = this.lock.acquire();
     } catch (err) {
-      // An unwritable ~/.os-code is not a reason to leave the crew idle.
+      if (!first) return false;
       log.warn('scheduler lock unavailable; running the clock anyway', { err: String(err) });
       held = { pid: process.pid, startedAt: new Date(this.now()).toISOString() };
     }
     if (held.pid !== process.pid) {
-      this.clockHeldBy = held.pid;
-      log.info('scheduler clock held by another process; this one stays passive', {
-        pid: held.pid,
-      });
-      return;
+      if (first || this.clockHeldBy?.pid !== held.pid) {
+        log.info('scheduler clock held by another process; this one stays passive', {
+          pid: held.pid,
+          since: held.startedAt,
+        });
+      }
+      this.clockHeldBy = held;
+      return false;
     }
+    if (!first) log.info('scheduler clock taken over; its holder is gone');
     this.clockHeldBy = undefined;
     this.timer = setInterval(() => void this.tick(), this.tickMs);
     this.timer.unref?.();
     void this.tick();
+    return true;
   }
 
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
+    if (this.takeover) clearInterval(this.takeover);
+    this.takeover = undefined;
     try {
       this.lock.release();
     } catch {
@@ -286,7 +423,17 @@ export class RoutineScheduler {
 
   /** The pid holding the clock when it is not ours. */
   clockHolder(): number | undefined {
-    return this.clockHeldBy;
+    return this.clockHeldBy?.pid;
+  }
+
+  /** Whose clock fires the slots, for the Crew room: "held by pid N since T"
+   *  when another process on this computer has it. */
+  clockStatus(): RoutineClockStatus {
+    if (this.timer) return { live: true };
+    const held = this.clockHeldBy;
+    return held
+      ? { live: false, heldBy: { pid: held.pid, since: held.startedAt } }
+      : { live: false };
   }
 
   // ---- workspaces -----------------------------------------------------------
@@ -405,6 +552,8 @@ export class RoutineScheduler {
   async tick(): Promise<void> {
     const nowMs = this.now();
     const now = new Date(nowMs);
+    // The clock holder, and only the clock holder, sweeps orphaned runs.
+    if (this.timer) this.sweepOrphans();
     for (const routine of store.listRoutines()) {
       const slot = latestSlotAtOrBefore(routine.schedule, now);
       if (!slot) continue;
@@ -418,10 +567,12 @@ export class RoutineScheduler {
         !routine.enabled ||
         (!routine.lastSlotKey && slot.getTime() < Date.parse(routine.updatedAt))
       ) {
-        store.markSlot(routine.id, key);
+        store.claimSlot(routine.id, key);
         continue;
       }
-      store.markSlot(routine.id, key);
+      // Claimed on a fresh read under the store lock: if another clock took
+      // this slot first, it is theirs and this one moves on.
+      if (!store.claimSlot(routine.id, key)) continue;
       if (nowMs - slot.getTime() > this.graceMs) {
         store.appendRun({
           routineId: routine.id,
@@ -472,6 +623,23 @@ export class RoutineScheduler {
     const permissionMode: PermissionMode = routine.access === 'edit' ? 'acceptEdits' : 'plan';
     let opened: OpenedSession;
     try {
+      // The folder is checked again at the start, as create checked it: it
+      // may have been taken off the allowed ones, or swapped for a link that
+      // leads elsewhere, since the routine was made.
+      const real = this.checkWorkspace(routine);
+      if (this.isBusy(real)) {
+        store.appendRun({
+          routineId: routine.id,
+          startedAt,
+          finishedAt: startedAt,
+          state: 'skipped',
+          trigger,
+          summary: trigger === 'schedule' ? SLOT_WAITED_FOR_YOU : RUN_WAITED_FOR_YOU,
+        });
+        log.info('routine waited for the person', { id: routine.id, trigger });
+        void this.pump();
+        return;
+      }
       opened = this.openSession(routine, permissionMode);
     } catch (err) {
       // A refusal is recorded as its own line (the person can act on it); any
@@ -490,8 +658,9 @@ export class RoutineScheduler {
       void this.pump();
       return;
     }
-    const { driver, model, where, provider } = opened;
+    const { driver, model, where, provider, offline } = opened;
     if (routine.ownerUserId) driver.setOwner?.(routine.ownerUserId);
+    const pidStart = ownProcessStart();
     const run = store.appendRun({
       routineId: routine.id,
       sessionId: driver.id,
@@ -499,6 +668,10 @@ export class RoutineScheduler {
       state: 'running',
       trigger,
       steps: 0,
+      // Which process runs it, so another process never calls it orphaned
+      // while this one is alive.
+      pid: process.pid,
+      ...(pidStart ? { pidStart } : {}),
     });
     const active: ActiveRun = {
       run,
@@ -507,6 +680,7 @@ export class RoutineScheduler {
       model,
       ...(where ? { where } : {}),
       ...(provider ? { provider } : {}),
+      ...(offline ? { offline } : {}),
       off: () => {},
       finalText: '',
       steps: [],
@@ -532,6 +706,30 @@ export class RoutineScheduler {
     active.wallTimer.unref?.();
     log.info('routine run started', { id: routine.id, run: run.id, session: driver.id, trigger });
     driver.send(routine.task);
+  }
+
+  /** Refuse a run whose folder is gone or no longer allowed, judged on the
+   *  path as written and on where it leads. Answers the real path. */
+  private checkWorkspace(routine: Routine): string {
+    let real: string;
+    try {
+      real = realpathSync(routine.cwd);
+      if (!statSync(real).isDirectory()) throw new Error('not a folder');
+    } catch {
+      throw new RoutineRefused(WORKSPACE_GONE);
+    }
+    if (!this.allowedWorkspace(routine.cwd) || !this.allowedWorkspace(real)) {
+      throw new RoutineRefused(WORKSPACE_LEFT);
+    }
+    return real;
+  }
+
+  private isBusy(real: string): boolean {
+    try {
+      return this.workspaceBusy(real);
+    } catch {
+      return false;
+    }
   }
 
   private onEvent(active: ActiveRun, event: DriverEvent): void {
@@ -580,6 +778,16 @@ export class RoutineScheduler {
         break;
       }
       case 'tool-denied': {
+        // A search the model reached for although the run works offline: the
+        // first one is named in the note (CTO 3). The refused call never ran,
+        // so it adds no step of its own.
+        if (event.call.name === 'webSearch') {
+          const query = event.call.args?.query;
+          if (active.searchTried === undefined && typeof query === 'string' && query.trim()) {
+            active.searchTried = query;
+          }
+          break;
+        }
         const i = active.steps.length - 1;
         if (i >= 0) active.steps[i] = `${event.call.name} (declined)`;
         break;
@@ -732,11 +940,21 @@ export class RoutineScheduler {
       '',
       `Crew: ${active.routine.agentName} · Workspace: ${basename(active.routine.cwd)} · ${stateWord(state)} · ${minutes} min · session ${active.driver.id}`,
       '',
+      // Headless means offline (CTO 3): every note says so, and what that
+      // left out.
+      offlineLine(active.offline),
+      '',
       '## Result',
       '',
       active.finalText || (endNote ? endNote : 'No result text was written.'),
     ];
     if (endNote && active.finalText) lines.push('', `Note: ${endNote}`);
+    if (active.searchTried !== undefined) {
+      lines.push(
+        '',
+        `Note: ${triedToSearchLine(active.searchTried, basename(active.routine.cwd))}`,
+      );
+    }
     if (active.plan.length) {
       lines.push('', '## Plan', '', ...active.plan.map((s) => `- ${s}`));
     }
@@ -857,11 +1075,13 @@ export function defaultOpenSession(
     warnings,
     orchestratorKind,
     router,
+    offlineTools,
   }: {
     driver: LocalDriver;
     warnings: string[];
     orchestratorKind: 'local' | 'cloud';
     router?: { orchestrator(): { ref: { model: string; provider?: string } } };
+    offlineTools?: string[];
   } = boot({
     cwd: routine.cwd,
     profile: 'headless',
@@ -895,6 +1115,7 @@ export function defaultOpenSession(
     ...(model ? { model } : {}),
     ...(provider ? { provider } : {}),
     where: orchestratorKind,
+    ...(offlineTools ? { offline: offlineTools } : {}),
   };
 }
 

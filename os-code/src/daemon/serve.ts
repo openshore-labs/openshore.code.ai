@@ -16,8 +16,10 @@ import {
   assertSafeBind,
   bearerFrom,
   hasRole,
-  loadOrCreateToken,
+  legacyTokenRefused,
   resolveAuth,
+  sharedTokenReader,
+  tokenMatches,
   type AuthContext,
 } from '../core/security/daemonAuth.js';
 import { oscHome, loadConfig, loadDaemonConfig, saveGlobalConfig } from '../config/load.js';
@@ -46,15 +48,21 @@ import {
   LocalDriver,
   deleteSession,
   listSessions,
+  pruneStoredSessions,
   sealSessionsAtRest,
   storedSessionProject,
 } from './session.js';
 import { clearHandoffs, deleteHandoff } from '../core/agent/handoffStore.js';
 import { TerminalManager, TerminalUnavailable } from './terminal.js';
 import { HOME_SHELL_ID } from './homeShellId.js';
-import { PushNotifier, savePushConfig } from './push.js';
+import { PushNotifier, pushSendUrlAllowed, savePushConfig } from './push.js';
 import { PairClaimStore, deviceLabelFrom, type PairClaimStatus } from './pairClaims.js';
-import { loadCredentials, mintCredential } from '../core/security/credentials.js';
+import { TokenBucket } from './rateLimit.js';
+import {
+  deviceCredentialExpired,
+  loadCredentials,
+  mintCredential,
+} from '../core/security/credentials.js';
 import { redactToken } from '../git/index.js';
 import {
   cloneFolderName,
@@ -66,22 +74,11 @@ import { applyOutboxItem, verifyCommit, type OutboxApplyRequest } from '../git/o
 import { withKeyLock } from '../git/applyQueue.js';
 import { loadCatalog, findModel } from '../market/catalog.js';
 import { installModel, type InstallProgress } from '../market/install.js';
-import { ProviderRegistry } from '../providers/registry.js';
-import { resolveStack } from '../router/stack.js';
 import { computeStackHealth } from '../insights/stackHealth.js';
 import type { StackHealthRange } from '../insights/stackHealthTypes.js';
-import { getAnthropicKey } from '../auth/claude.js';
-import { engineEthicsContext } from '../core/ethics/host.js';
-import { leavesThisNetwork, type ChatMessage, type Provider } from '../providers/types.js';
-import {
-  ThinkTagSplitter,
-  chainOfThoughtPrompt,
-  reasonsNatively,
-  type ThoughtPiece,
-} from '../core/agent/chainOfThought.js';
-import { SEARCH_PROTOCOL_NOTE } from '../harness/localSearch.js';
 import { EgressPolicy } from '../core/security/egress.js';
 import { trustSessionFolder } from '../core/agent/projectTrust.js';
+import { giveMoreRoomHere } from '../providers/servedWindow.js';
 import {
   machineVaultWire,
   vaultPrivacyConfig,
@@ -98,6 +95,7 @@ import { isVaultNotePath } from '../core/vault/folderFs.js';
 import { vaultPackSize } from '../harness/vault/settings.js';
 import { HANDOFF_MAX_BYTES } from '../harness/handoff.js';
 import { buildChatPack, parseVaultOverrides, vaultRoute } from './vaultRoutes.js';
+import { freeChat, type FreeChatPackContext } from './freeChat.js';
 import type { VaultPrivacyWire } from './vaultWire.js';
 import { logger } from '../util/log.js';
 
@@ -119,38 +117,27 @@ const CORS_HEADERS: Record<string, string> = {
 
 const log = logger('daemon');
 
-// The free desktop-chat surface: read-only conversation with the user's own
-// LOCAL models, no tools and no acting machinery (CTO ruling). The system line
-// makes the model own that it is chat, not the coding agent.
-const CHAT_SYSTEM = [
-  'You are OpenShore, a warm, capable companion running as read-only chat over a phone-to-desktop link.',
-  'Answer directly and concretely. Use markdown, and fence code with a language tag.',
-  'You have no tools here: you cannot read or edit files, run commands, or commit. When a task needs that, say so and point the user to opening a repo on their desktop (the coding agent).',
-  'Lead with the answer. When the person has to do something, give one step at a time and wait. If you cannot help with something here, say so and name where in the app it lives.',
-  'Whenever the person must paste something (a command, a query, a config line), put it in its own fenced code block, one per step, nothing else in the block. Never inline a command in a sentence.',
-  'Never use em dashes. Use a period or a comma instead.',
-].join('\n');
-
-/** The most chat context (standing instructions, setup step) /chat carries. */
-const CHAT_CONTEXT_MAX = 8000;
-
-/** The system line for one /chat request: the fixed line, then the chat's own
- *  context (the project's standing instructions, the guided setup's step),
- *  trimmed and capped, so the phone's brief reaches this model the way it
- *  reaches every other brain. Anything that is not a string is ignored. */
-export function desktopChatSystem(context: unknown, search = false): string {
-  const extra = typeof context === 'string' ? context.trim().slice(0, CHAT_CONTEXT_MAX) : '';
-  // With search on, the phone runs any search itself and sends the results
-  // back as the next turn, so this surface only learns how to ask; it never
-  // fetches.
-  const base = search ? `${CHAT_SYSTEM}\n${SEARCH_PROTOCOL_NOTE}` : CHAT_SYSTEM;
-  return extra ? `${base}\n\n${extra}` : base;
-}
+// The free chat's system line moved with the chat itself (freeChat.ts); it is
+// re-exported here for the importers that read it from the daemon.
+export { desktopChatSystem } from './freeChat.js';
 
 // Request bodies are bounded (DAE-8): a JSON body over the cap is answered 413
 // and never buffered. The outbox carries file contents, so it gets more room.
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 const MAX_OUTBOX_BODY_BYTES = 64 * 1024 * 1024;
+// The pairing route answers before any credential (H1), so it reads a claim
+// and a device name and nothing more.
+const PAIR_CLAIM_MAX_BYTES = 4 * 1024;
+// Claim attempts per address: a small burst, then one every ten seconds. An
+// empty probe (the phone asking whether anything answers here) is not counted.
+const PAIR_CLAIM_BUCKET = { capacity: 5, refillMs: 10_000 };
+
+// The free chat's body cap (H1); its other limits live with the chat itself
+// (freeChat.ts), so the desktop's own window holds the same ones.
+const CHAT_BODY_MAX_BYTES = 1024 * 1024;
+
+// Session retention (H1): checked when the daemon starts and once a day.
+const RETENTION_EVERY_MS = 24 * 60 * 60_000;
 
 // Idle eviction (DAE-12): a rehydratable driver that no client is attached to
 // and that has run nothing for this long is dropped from memory. Its journal
@@ -221,7 +208,10 @@ export function resolveBindHost(bind: 'loopback' | 'tailscale'): string {
 export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
   const host = resolveBindHost(options.bind);
   assertSafeBind(host);
-  const token = loadOrCreateToken(join(oscHome(), 'daemon.token'));
+  // The legacy shared token, read again when the file changes (a rotate from
+  // `osc token rotate` or the desktop takes effect with no restart).
+  const legacyToken = sharedTokenReader(join(oscHome(), 'daemon.token'));
+  legacyToken();
   const drivers = new Map<string, LocalDriver>();
   // Model installs kicked off from a paired phone (MP-F2). Progress is buffered
   // per model id so the phone can poll it, the same shape the Electron bridge
@@ -237,11 +227,17 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
   // QR; the phone redeems it below, before the bearer gate, and walks away
   // with a credential it alone holds.
   const pairClaims = new PairClaimStore();
+  const pairAttempts = new TokenBucket(PAIR_CLAIM_BUCKET);
+  // The credentials with a /chat answer streaming right now (H1).
+  const chatsInFlight = new Set<string>();
   // The interactive PTY host (Phase 2 bridge). Terminals live here, outliving
   // phone connections; their raw bytes never enter a session journal. Its
   // readForSession backs the agent's readTerminal tool, wired into every
   // bootstrapped session below.
   const terminals = options.terminals ?? new TerminalManager();
+  // Shells this daemon started itself end with it (a caller that handed its
+  // own manager in keeps it, and ends them itself).
+  const ownsTerminals = !options.terminals;
   const terminalReader = (sessionId: string, lines: number, termId?: string): string | undefined =>
     terminals.readForSession(sessionId, lines, termId);
 
@@ -288,6 +284,25 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       }
     } catch {}
   });
+
+  // Session retention (H1): an ordinary session with no activity for the
+  // machine's retention window (daemon.sessionRetentionDays, read fresh each
+  // time) is deleted, never one that is open here or tracked by this daemon.
+  const pruneSessions = (): void => {
+    try {
+      const removed = pruneStoredSessions({
+        retentionDays: loadDaemonConfig().sessionRetentionDays,
+        keep: (id) => drivers.has(id) || Boolean(scheduler.liveDriver(id)),
+      });
+      for (const id of removed) terminals.killSession(id);
+      if (removed.length) log.info('removed sessions past retention', { count: removed.length });
+    } catch (err) {
+      log.warn('session retention check failed', { err: String(err) });
+    }
+  };
+  setImmediate(pruneSessions);
+  const retention = setInterval(pruneSessions, RETENTION_EVERY_MS);
+  retention.unref();
 
   const requestListener = (req: IncomingMessage, res: ServerResponse): void => {
     void handle(req, res).catch((err) => {
@@ -337,10 +352,20 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     // disk. Every error is a readable JSON answer (with CORS) so the phone can
     // say what happened instead of "connection failed".
     if (req.method === 'POST' && url.pathname === '/pair/claim') {
-      const body = await readJson(req);
+      const body = await readJson(req, PAIR_CLAIM_MAX_BYTES);
       const presentedClaim = typeof body.claim === 'string' ? body.claim.trim() : '';
       if (!presentedClaim) {
         sendJson(res, 400, { error: 'Send {"claim": "pc_...", "deviceName": "..."}.' });
+        return;
+      }
+      // Each address gets a few tries, then one every few seconds (H1).
+      const attempt = pairAttempts.take(req.socket.remoteAddress ?? 'unknown');
+      if (!attempt.ok) {
+        const seconds = Math.max(1, Math.ceil(attempt.retryAfterMs / 1000));
+        res.setHeader('retry-after', String(seconds));
+        sendJson(res, 429, {
+          error: `Too many pairing tries from this device. Wait ${seconds} seconds, then scan the code again.`,
+        });
         return;
       }
       const redeemed = pairClaims.redeem(presentedClaim);
@@ -369,12 +394,19 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       const label = deviceLabelFrom(body.deviceName);
       const minted = mintCredential({ role: 'admin', label });
       log.info('paired a device', { label });
-      sendJson(res, 200, { token: minted.token, label, role: minted.credential.role });
+      sendJson(res, 200, {
+        token: minted.token,
+        label,
+        role: minted.credential.role,
+        // When this pairing ends (H1), so the phone can say so ahead of time.
+        expiresAt: minted.credential.expiresAt,
+      });
       return;
     }
 
     const presented = bearerFrom(req.headers.authorization);
-    const auth = resolveAuth(presented, token);
+    const from = req.socket.remoteAddress;
+    const auth = resolveAuth(presented, legacyToken(), { from });
     if (!auth) {
       // A pairing CLAIM (pc_...) presented here, instead of a minted device
       // credential (osc_...), means a phone traded no claim at all: an app
@@ -383,13 +415,27 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       // rather than the generic "wrong credential", so the fix (update the
       // app) is obvious instead of looking like a Tailscale or typo problem.
       const looksLikeStaleClaim = presented?.startsWith('pc_') ?? false;
+      // An expired pairing and the shared token from off this computer each
+      // get their own line (H1), so the fix is to pair again, not to hunt.
+      const expired =
+        !looksLikeStaleClaim && presented ? deviceCredentialExpired(presented) : false;
+      const legacyFromAfar =
+        !looksLikeStaleClaim &&
+        !expired &&
+        presented !== undefined &&
+        tokenMatches(presented, legacyToken()) &&
+        legacyTokenRefused(from);
       sendJson(
         res,
         401,
         {
           error: looksLikeStaleClaim
             ? 'That is a pairing code, not a credential; this app build is too old to trade it in. Update OpenShore on this device, then pair again from Desktop + phone.'
-            : 'Missing or wrong daemon credential. Pair this device from the desktop app (Desktop + phone), or mint a credential with `osc token mint`. On the computer itself, run: npx osc doctor',
+            : expired
+              ? "This device's pairing has expired. Pair it again from Desktop + phone on the computer."
+              : legacyFromAfar
+                ? 'This computer now pairs each device on its own, so the old shared token only works on the computer itself. Pair this device from Desktop + phone.'
+                : 'Missing or wrong daemon credential. Pair this device from the desktop app (Desktop + phone), or mint a credential with `osc token mint`. On the computer itself, run: npx osc doctor',
         },
         { cors: false },
       );
@@ -432,6 +478,15 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       }
       if (!grant || !parsed || parsed.protocol !== 'https:') {
         sendJson(res, 400, { error: 'Send {"grant": "...", "sendUrl": "https://..."}.' });
+        return;
+      }
+      // Pinned to the app's own push function (H1): the grant is sent to this
+      // URL on every push, so no other host may be named here.
+      if (!pushSendUrlAllowed(sendUrl, loadDaemonConfig().pushHost)) {
+        sendJson(res, 400, {
+          error:
+            "That is not OpenShore's notification service, so this computer will not send to it.",
+        });
         return;
       }
       // One grant per device (DAE-7): a second phone on the same credential
@@ -761,116 +816,44 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     }
 
     // Free, read-only chat with the desktop's LOCAL models (the free tier the
-    // C-suite approved). This path instantiates NONE of the acting machinery:
-    // no AgentSession, no LocalDriver, no ToolRegistry, no command lane, no
-    // outbox, no journal, no cloud escalation. It builds only a provider and
-    // streams one completion, so it physically cannot read, edit, run, or
-    // commit. Member-auth, same bearer gate as everything else.
+    // C-suite approved). The answer comes from the one free chat function
+    // (freeChat.ts), which instantiates none of the acting machinery and
+    // leaves no session; this route only writes its events as server sent
+    // events. Member-auth, same bearer gate as everything else.
     if (req.method === 'POST' && url.pathname === '/chat') {
-      const body = await readJson(req);
-      const rawMessages = Array.isArray(body.messages) ? body.messages : undefined;
-      if (!rawMessages) {
-        sendJson(res, 400, { error: 'Send {"messages": [{"role","content"}, ...]}.' });
-        return;
-      }
-      // Load the config fresh (like bootstrapSession) so this reflects the
-      // user's actual stack, not the snapshot the daemon started with.
-      const chatConfig = loadConfig().config;
-      // Guarded like every other path: the registry hands out ethics-wrapped
-      // providers, and blocks here are journaled on this machine.
-      const providers = new ProviderRegistry(chatConfig, getAnthropicKey, engineEthicsContext());
-      let orchestrator;
-      try {
-        orchestrator = resolveStack(chatConfig, providers).orchestrator;
-      } catch (err) {
-        sendJson(res, 400, {
-          error: `No local model to chat with: ${(err as Error).message}`,
-        });
-        return;
-      }
-      // Pin to local: a free surface never spends the user's cloud budget, and
-      // "local" means on this computer's own network, by address.
-      if (leavesThisNetwork(orchestrator.provider)) {
-        sendJson(res, 400, {
-          error:
-            'Free desktop chat runs your local models. Set a local orchestrator in your stack.',
-        });
-        return;
-      }
-      const model =
-        typeof body.model === 'string' && body.model ? body.model : orchestrator.ref.model;
-      // Client system turns are dropped below; the chat's context rides its
-      // own capped field instead (desktopChatSystem).
-      // Chain of Thought from the app (off unless it says on): a native
-      // reasoner is asked through its API, any other model is prompted to
-      // think in tags, and the splitter below keeps tags out of the answer.
-      const cot = body.chainOfThought === true;
-      const system = desktopChatSystem(body.context, body.search === true);
-      const turns = rawMessages
-        .filter(
-          (m: unknown): m is { role: string; content: string } =>
-            Boolean(m) &&
-            typeof (m as { content?: unknown }).content === 'string' &&
-            ['user', 'assistant'].includes((m as { role?: unknown }).role as string),
-        )
-        .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+      const body = await readJson(req, CHAT_BODY_MAX_BYTES);
+      // The phone going away (a Stop, a lost link) stops the model. The
+      // response's close is the signal: the request's own close has already
+      // fired once its body was read.
       const controller = new AbortController();
-      req.on('close', () => controller.abort());
-      // The vault context pack (Vault M5, CTO J6), built here over the
-      // caller's own root so the phone never ships note bodies to this
-      // computer and back. Only when the app asks (an old app sends no
-      // vaultPack) and Memory is on; the class's mode, the served window and
-      // `vault.context` decide the rest, as in a session.
-      const chatPack = await desktopChatPack(body, {
-        auth,
-        config: chatConfig,
-        model,
-        provider: orchestrator.provider,
-        turns,
+      res.on('close', () => controller.abort());
+      const events = freeChat(body, {
         signal: controller.signal,
+        // One answer at a time per credential (H1).
+        lane: { key: `${auth.source}:${auth.userId}:${auth.label}`, busy: chatsInFlight },
+        // The vault context pack (Vault M5, CTO J6), built here over the
+        // caller's own root so the phone never ships note bodies to this
+        // computer and back.
+        pack: (ctx) => desktopChatPack(body, { auth, ...ctx }),
       });
-      let systemText =
-        cot && !reasonsNatively(model) ? `${system}\n\n${chainOfThoughtPrompt()}` : system;
-      // The pack is the last system part (CTO J16): volatile, so it trails.
-      if (chatPack.text) systemText = `${systemText}\n\n${chatPack.text}`;
-      const messages: ChatMessage[] = [{ role: 'system', content: systemText }, ...turns];
-      res.writeHead(200, {
-        'content-type': 'text/event-stream',
-        'cache-control': 'no-cache',
-        connection: 'keep-alive',
-        ...CORS_HEADERS,
-      });
-      // The card line goes before the first text, like the engine's event.
-      if (chatPack.event) res.write(`data: ${JSON.stringify(chatPack.event)}\n\n`);
-      try {
-        const splitter = new ThinkTagSplitter();
-        const send = (pieces: ThoughtPiece[]) => {
-          for (const p of pieces) {
-            if (p.kind === 'text') {
-              res.write(`data: ${JSON.stringify({ type: 'text', delta: p.text })}\n\n`);
-            } else if (cot) {
-              res.write(`data: ${JSON.stringify({ type: 'thinking', delta: p.text })}\n\n`);
-            }
-          }
-        };
-        for await (const ev of orchestrator.provider.chat(
-          { model, messages, reasoning: cot ? 'on' : 'off' },
-          controller.signal,
-        )) {
-          // Tools are never sent, so a tool-call event cannot occur; only text
-          // (and, with Chain of Thought on, the thinking) is streamed. Anything
-          // else is ignored, keeping the surface inert.
-          if (ev.type === 'text' && ev.delta) send(splitter.push(ev.delta));
-          else if (ev.type === 'thinking' && ev.delta && cot) {
-            res.write(`data: ${JSON.stringify({ type: 'thinking', delta: ev.delta })}\n\n`);
-          }
+      for await (const ev of events) {
+        if (ev.type === 'refused') {
+          sendJson(res, ev.status, { error: ev.error });
+          return;
         }
-        send(splitter.end());
-        res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
-      } catch (err) {
-        res.write(
-          `data: ${JSON.stringify({ type: 'error', message: (err as Error).message })}\n\n`,
-        );
+        if (!res.headersSent) {
+          res.writeHead(200, {
+            'content-type': 'text/event-stream',
+            'cache-control': 'no-cache',
+            connection: 'keep-alive',
+            ...CORS_HEADERS,
+          });
+          // Say at once that the answer is on its way: a local model can take
+          // a while to its first word.
+          res.flushHeaders();
+        }
+        if (ev.type === 'open') continue;
+        res.write(`data: ${JSON.stringify(ev)}\n\n`);
       }
       res.end();
       return;
@@ -891,8 +874,10 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         const runs = scheduler
           .runs(60)
           .filter((r) => visible(r.routineId))
-          .map(({ noteAbsPath: _abs, ...r }) => r);
-        sendJson(res, 200, { routines, runs });
+          .map(({ noteAbsPath: _abs, pid: _pid, pidStart: _start, ...r }) => r);
+        // Whose clock fires the slots (H1): this computer's other OpenShore
+        // process may hold it, "held by pid N since T".
+        sendJson(res, 200, { routines, runs, clock: scheduler.clockStatus() });
         return;
       }
       if (req.method === 'GET' && parts[1] === 'runs' && parts[2] && parts[3] === 'note') {
@@ -1122,6 +1107,9 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           // Only the computer's owner decides which check command may run
           // after changes; a member's session never grants one (v1 Phase 1).
           canGrantVerify: hasRole(auth, 'admin'),
+          // Nor starts a program that keeps running (P1): the command lane
+          // is the owner's, like the terminal.
+          processes: hasRole(auth, 'admin'),
           ...(handoff ? { handoff } : {}),
           ...(vaultPins ? { vaultPins } : {}),
           ...(vaultOverrides ? { vaultOverrides } : {}),
@@ -1168,11 +1156,14 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         const cols = typeof body.cols === 'number' ? body.cols : undefined;
         const rows = typeof body.rows === 'number' ? body.rows : undefined;
         try {
-          // The home shell reopens its running shell; a session opens a fresh one.
-          const termId = id === HOME_SHELL_ID ? terminals.liveTermId(id) : undefined;
+          // Every scope reopens the shell it left running (the home shell and
+          // a session alike), so leaving the terminal and coming back lands in
+          // the same shell instead of stacking a new one per visit.
+          const termId = terminals.liveTermId(id);
           const info = await terminals.ensure({ sessionId: id, termId, cwd, cols, rows });
-          // Content-free audit marker only (cwd allowed, never output/stdin).
-          emit?.({ type: 'terminal-opened', termId: info.termId, cwd });
+          // Content-free audit marker only (cwd allowed, never output/stdin),
+          // once per shell started, not per reattach.
+          if (!termId) emit?.({ type: 'terminal-opened', termId: info.termId, cwd });
           sendJson(res, 201, info);
         } catch (err) {
           if (err instanceof TerminalUnavailable) {
@@ -1423,6 +1414,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
               terminalReader,
               vaultRoot: ownerRoot,
               canGrantVerify: ownerAdmin,
+              processes: ownerAdmin,
             });
             trackDriver(revived);
             driver = revived;
@@ -1472,6 +1464,28 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         sendJson(res, 'error' in result ? 409 : 200, result);
         return;
       }
+      // ---- more room: the truncation card's action (C1, CTO 5) ----
+      // Serve this provider's models the larger window from the next message,
+      // in every chat: `numCtx: 'auto'` in machine config. Admin only, since
+      // it spends this computer's memory, which on a shared hub is the
+      // owner's call, never a member's.
+      if (req.method === 'POST' && parts[2] === 'more-room') {
+        if (!hasRole(auth, 'admin')) {
+          sendJson(res, 403, {
+            error: 'restricted',
+            message: "Only this computer's owner can give a model more memory.",
+          });
+          return;
+        }
+        const body = await readJson(req);
+        if (typeof body.provider !== 'string' || !body.provider) {
+          sendJson(res, 400, { error: 'Send {"provider": "<id>"}.' });
+          return;
+        }
+        const result = giveMoreRoomHere(body.provider);
+        sendJson(res, 'error' in result ? 409 : 200, result);
+        return;
+      }
       // ---- undo: put back the files a task changed, or redo them ----
       // The session's own owner (or an admin), like every control here: a
       // restore only ever touches files this session's task changed, in its
@@ -1493,6 +1507,27 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           direction,
           body.path as string | undefined,
         );
+        sendJson(res, 'error' in result ? 409 : 200, result);
+        return;
+      }
+      // ---- rewind: the chat, and its files when asked, back to a message ----
+      // The session's own owner (or an admin), like undo: the files it puts
+      // back are only this session's own checkpoints, in its own folder.
+      // Refused while a task runs; the marker is journaled, so every attached
+      // device drops the same turns (P2).
+      if (req.method === 'POST' && parts[2] === 'rewind') {
+        const body = await readJson(req);
+        const toSeq = body.toSeq;
+        if (
+          typeof toSeq !== 'number' ||
+          !Number.isSafeInteger(toSeq) ||
+          toSeq < 1 ||
+          typeof body.files !== 'boolean'
+        ) {
+          sendJson(res, 400, { error: 'Send {"toSeq": <message seq>, "files": true | false}.' });
+          return;
+        }
+        const result = await driver.rewind(toSeq, { files: body.files });
         sendJson(res, 'error' in result ? 409 : 200, result);
         return;
       }
@@ -1604,11 +1639,14 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           sendJson(res, 404, { error: `No pending approval ${parts[3]} on session ${id}.` });
           return;
         }
+        // A commit card's ticked files (D3): strings only, or none at all.
+        const files = approvalFiles(body.files);
         driver.answerApproval(parts[3], {
           approve: body.approve,
           alwaysThisSession: Boolean(body.alwaysThisSession),
           alwaysInProject: Boolean(body.alwaysInProject),
           reason: typeof body.reason === 'string' ? body.reason : undefined,
+          ...(files ? { files } : {}),
         });
         sendJson(res, 200, { resolved: true });
         return;
@@ -1678,9 +1716,14 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     server.once('error', reject);
     const closeAll = (): void => {
       clearInterval(sweep);
+      clearInterval(retention);
       // The scheduler outlives the daemon (the desktop shell may still be up);
       // only this daemon's tracking of its runs ends here.
       offRoutineDriver();
+      if (ownsTerminals) terminals.killAll();
+      // Every program an agent started here ends with the daemon (P1): the
+      // sessions are journaled and revive, their processes do not.
+      for (const driver of drivers.values()) driver.stopAgentProcesses();
       // close() alone leaves live SSE sockets open and the port busy until they
       // drain (DAE-11); drop them so a restart never hits EADDRINUSE.
       server.close();
@@ -1759,14 +1802,7 @@ function effectiveRemoteMode(requested: PermissionMode | undefined): {
  */
 async function desktopChatPack(
   body: Record<string, unknown>,
-  o: {
-    auth: AuthContext;
-    config: OscConfig;
-    model: string;
-    provider: Provider;
-    turns: ReadonlyArray<{ role: 'user' | 'assistant'; content: string }>;
-    signal: AbortSignal;
-  },
+  o: { auth: AuthContext } & FreeChatPackContext,
 ): Promise<Awaited<ReturnType<typeof buildChatPack>>> {
   const ask = body.vaultPack;
   if (body.memory === false || !ask || typeof ask !== 'object' || Array.isArray(ask)) return {};
@@ -1850,7 +1886,13 @@ class BadJson extends Error {}
 /** A request body over the cap (DAE-8). Answered 413; the daemon stays up. */
 class BodyTooLarge extends Error {
   constructor(readonly limit: number) {
-    super(`The request body is too large (limit ${Math.round(limit / (1024 * 1024))} MB).`);
+    super(
+      `The request body is too large (limit ${
+        limit >= 1024 * 1024
+          ? `${Math.round(limit / (1024 * 1024))} MB`
+          : `${Math.round(limit / 1024)} KB`
+      }).`,
+    );
   }
 }
 
@@ -1897,4 +1939,13 @@ async function readJson(
 
 function isPermissionMode(v: unknown): v is PermissionMode {
   return typeof v === 'string' && (PERMISSION_MODES as readonly string[]).includes(v);
+}
+
+/** The files a commit card's answer names, when it names a list of strings
+ *  (D3); anything else names none, so the commit keeps its default of
+ *  leaving flagged files out. Capped, since a commit card lists what git
+ *  would stage, never tens of thousands of names. */
+export function approvalFiles(value: unknown): string[] | undefined {
+  if (!Array.isArray(value) || value.length > 10_000) return undefined;
+  return value.every((v) => typeof v === 'string') ? (value as string[]) : undefined;
 }

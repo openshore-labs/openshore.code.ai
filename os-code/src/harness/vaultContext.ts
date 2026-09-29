@@ -151,7 +151,7 @@ export function packBudgetTokens(
 
 /** A note's visibility from its own text (frontmatter tags and `oscode:`
  *  marks, and inline tags), for a project pin the index does not hold. */
-function bodyVisibility(privacy: VaultPrivacy, path: string, body: string): VaultVisibility {
+export function bodyVisibility(privacy: VaultPrivacy, path: string, body: string): VaultVisibility {
   const fm = readFrontmatter(body);
   const tags = [...fm.tags, ...scanNote(body).tags.map((t) => t.tag)];
   return privacy.visibility({ path, tags, oscode: oscodeMarks(fm) });

@@ -13,6 +13,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && tsc -p electron/tsconfig.json",
+    "check:bundle": "node scripts/tier-bundle.mjs dist",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p electron/tsconfig.json --noEmit",
     "lint": "eslint src electron scripts --ext .ts,.tsx,.cjs,.mjs --max-warnings 0",
     "format": "prettier --write .",
@@ -27,7 +28,8 @@
     "package:mac": "vite build && tsc -p electron/tsconfig.json && pnpm rebuild:native && electron-builder --mac",
     "package:win": "vite build && tsc -p electron/tsconfig.json && pnpm rebuild:native && electron-builder --win",
     "ios:sync": "vite build && cap sync ios",
-    "release:mac": "bash scripts/mac-release.sh"
+    "release:mac": "bash scripts/mac-release.sh",
+    "release:keygen": "node scripts/release-keygen.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.117.1",
@@ -144,6 +146,9 @@
       "target": [
         "nsis"
       ]
+    },
+    "nsis": {
+      "artifactName": "${productName}-Setup-${version}.${ext}"
     }
   }
 }

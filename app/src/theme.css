@@ -1045,9 +1045,9 @@ textarea {
   gap: 12px;
 }
 
-/* The BYOM control: a labelled pill, with a small info glyph hanging off its
-   top-right corner (outside the pill, its own tap target) that opens the
-   explainer sheet. */
+/* The Connect a model control: a labelled pill, with a small info glyph
+   hanging off its top-right corner (outside the pill, its own tap target)
+   that opens the explainer sheet. */
 .stack-add {
   position: relative;
   flex-shrink: 0;
@@ -1059,6 +1059,7 @@ textarea {
   gap: 6px;
   height: 38px;
   padding: 0 15px;
+  white-space: nowrap;
   border-radius: 999px;
   font-family: var(--font-display);
   font-size: var(--text-4);
@@ -3270,6 +3271,78 @@ button.vault-tag {
   animation: msg-in var(--dur-3) var(--ease-standard);
 }
 
+/* The person's own message when the chat can rewind to it (P2). The turn
+   takes the bubble's place in the thread, so the quiet round action can sit
+   just left of the bubble without moving it; its right padding bridges the
+   gap, so the pointer never leaves the turn on its way to the action. */
+.msg-user-turn {
+  position: relative;
+  align-self: flex-end;
+  max-width: 85%;
+  display: flex;
+}
+.msg-user-turn > .msg-user {
+  max-width: 100%;
+}
+.msg-rewind {
+  position: absolute;
+  right: 100%;
+  bottom: 2px;
+  width: 34px;
+  height: 28px;
+  padding: 0 6px 0 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0;
+}
+/* Compound on purpose: .press-fb is declared later at equal specificity and
+   its `transition: scale` would reset the fades. */
+.msg-rewind.press-fb {
+  transition:
+    opacity var(--dur-2) var(--ease-standard),
+    color var(--dur-2) var(--ease-standard),
+    scale var(--press-out);
+}
+.msg-user-turn:hover .msg-rewind,
+.msg-rewind:focus-visible {
+  opacity: 1;
+}
+.msg-rewind:hover {
+  color: var(--ink);
+}
+/* A held finger eases the bubble down (the phone's way in); it springs back
+   when the finger lifts or the sheet takes over. */
+.msg-user.rewindable {
+  transition: scale var(--press-out);
+}
+.msg-user.rewindable.holding {
+  scale: var(--press-scale-row);
+  transition: scale var(--press-in);
+}
+@media (hover: none) {
+  /* Nothing hovers here: the long press is the way in. */
+  .msg-rewind {
+    display: none;
+  }
+  /* The hold opens the rewind, so it must not also select the words (the
+     sheet offers Copy instead). */
+  .msg-user.rewindable {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+}
+.rewind-sheet .rewind-files-line {
+  color: var(--ink-soft);
+}
+.rewind-sheet .rewind-failed {
+  color: var(--warn);
+  margin: -6px 0 12px;
+}
+
 .msg-assistant {
   max-width: 100%;
   color: var(--ink);
@@ -3307,6 +3380,26 @@ button.vault-tag {
   border: 1px solid color-mix(in srgb, var(--warn) 28%, transparent);
   border-radius: var(--radius);
   padding: 10px 14px;
+}
+/* The person's own Stop (CX ruling 5): a muted marker under whatever part of
+   the answer arrived, not a failure card. It fades in over --dur-3, opacity
+   only; the global reduced-motion reset zeroes it. */
+.msg-stopped.msg-stopped-own {
+  font-size: var(--text-3);
+  color: var(--muted);
+  border: none;
+  padding: 0 2px;
+  animation: stopped-in var(--dur-3) var(--ease-standard) backwards;
+}
+@keyframes stopped-in {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .msg-stopped.msg-stopped-own {
+    animation: none;
+  }
 }
 .msg-stopped-action {
   display: inline-block;
@@ -3694,6 +3787,33 @@ button.vault-tag {
   color: var(--ink);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* A program the agent started (P1): the card says who, quietly. */
+.command-by {
+  padding: 8px 12px 0;
+  font-size: var(--text-2);
+  color: var(--muted);
+}
+
+/* Where a running program serves on this computer, opened in the browser
+   (desktop only; the phone keeps the address as plain text). */
+.command-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.command-open {
+  font-size: var(--text-2);
+  font-family: var(--font-mono);
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  background: transparent;
 }
 
 .command-note {
@@ -4752,19 +4872,24 @@ button.vault-tag {
    spring back out. Rides the individual `scale` property on purpose, so an
    inline transform on the same element can never shadow it. */
 .press-fb,
-.linklike {
+.linklike,
+.profile-row {
   /* Release rides the slow spring-out (overshoot lives only here). */
   transition: scale var(--press-out);
 }
 .press-fb:active,
-.linklike:active {
+.linklike:active,
+.suggestion:active,
+.profile-chip:active,
+.profile-row:active {
   /* Press-down is the curt accelerate-in; overshoot never happens here. */
   scale: var(--press-scale-btn);
   transition: scale var(--press-in);
 }
 /* A full-width row should not collapse as hard as a button, and a tile sits
    between the two. */
-.press-fb.press-fb--row:active {
+.press-fb.press-fb--row:active,
+.profile-row:active {
   scale: var(--press-scale-row);
 }
 .press-fb.press-fb--tile:active {
@@ -4817,6 +4942,12 @@ button.vault-tag {
   .press-fb:active,
   .linklike,
   .linklike:active,
+  .suggestion,
+  .suggestion:active,
+  .profile-chip,
+  .profile-chip:active,
+  .profile-row,
+  .profile-row:active,
   .ms-seg-slider,
   .send-btn,
   .composer-chip {
@@ -5210,6 +5341,30 @@ button.vault-tag {
   margin-bottom: 4px;
 }
 
+/* The waiting message's line on the card, and the quiet sign-in offer under
+   the button while the download runs (CX ruling 2). */
+.first-seat-held {
+  color: var(--ink);
+  font-size: var(--text-3);
+  margin-bottom: 4px;
+}
+/* The saved line folds shut when the message is taken back to edit or sent
+   (CX cleanup 8): the reveal carries the height, this the fade. */
+.first-seat-held-fold .reveal-inner {
+  opacity: 0;
+  transition: opacity var(--dur-3) var(--ease-standard);
+}
+.first-seat-held-fold.open .reveal-inner {
+  opacity: 1;
+}
+
+.first-seat-aside {
+  color: var(--muted);
+  font-size: var(--text-2);
+  line-height: 1.4;
+  margin-top: 4px;
+}
+
 .first-seat-more {
   display: flex;
   flex-direction: column;
@@ -5280,7 +5435,11 @@ button.vault-tag {
   border: 1px solid var(--border-strong);
   border-radius: 999px;
   padding: 7px 14px;
-  transition: background var(--dur-1) var(--ease-standard);
+  /* The hover wash, plus the press release (the press-fb rule, polish
+     section): a pill answers the finger like every other tappable. */
+  transition:
+    background var(--dur-1) var(--ease-standard),
+    scale var(--press-out);
 }
 
 .suggestion:hover {
@@ -5590,9 +5749,9 @@ button.vault-tag {
   padding: 6px 4px;
 }
 
-/* The small "Personal" pill on a locked nav item. */
-.nav-lock-pill,
-.nav-soon-pill {
+/* A small quiet pill at the end of a row (the Vault's folder list reads a
+   state with it). */
+.nav-lock-pill {
   margin-left: auto;
   font-size: var(--text-1);
   font-weight: var(--weight-semibold);
@@ -5602,17 +5761,6 @@ button.vault-tag {
   background: var(--code-surface);
   border: 1px solid var(--border);
   color: var(--muted);
-}
-
-/* A coming-soon nav room: dimmed, non-interactive, and it never lights on
-   hover. The "Coming soon" pill carries the reason. */
-.nav-item--soon {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.nav-item--soon:hover {
-  background: transparent;
 }
 
 .sheet-detail {
@@ -5673,6 +5821,13 @@ button.vault-tag {
 
 .btn.danger {
   background: var(--danger);
+  color: var(--bg);
+}
+
+/* Local work's action (teal), the counterpart of .btn.cloud: the truncation
+   card's "Give it more room" spends this computer's memory, never money. */
+.btn.local {
+  background: var(--local);
   color: var(--bg);
 }
 
@@ -5897,6 +6052,19 @@ button.vault-tag {
 
 .confirm-row .btn {
   flex: 1;
+}
+
+/* A confirm that failed says so above its buttons, in the warning ink, and
+   leaves both choices where they were. */
+.confirm-card .confirm-failed {
+  color: var(--warn);
+  margin: -6px 0 12px;
+}
+
+/* Delete account sits under the signed-in card in the Your account sheet,
+   its own inset card, apart from Sign out. */
+.account-delete {
+  margin-top: 12px;
 }
 
 /* The confirm card leaves the way it came: the scrim fades, the card settles
@@ -7195,9 +7363,11 @@ button.vault-tag {
   background: var(--surface);
   color: var(--ink-soft);
   font-size: var(--text-2);
+  /* The press release rides here too (the press-fb rule). */
   transition:
     background var(--dur-1) var(--ease-standard),
-    color var(--dur-1) var(--ease-standard);
+    color var(--dur-1) var(--ease-standard),
+    scale var(--press-out);
 }
 .write-chip.on {
   background: var(--voice-soft);
@@ -7363,7 +7533,10 @@ button.vault-tag {
   background: var(--surface);
   font-size: var(--text-2);
   color: var(--ink-soft);
-  transition: background var(--dur-1) var(--ease-standard);
+  /* The hover wash, plus the press release (the press-fb rule). */
+  transition:
+    background var(--dur-1) var(--ease-standard),
+    scale var(--press-out);
 }
 
 .profile-chip:hover {
@@ -8042,7 +8215,10 @@ button.vault-tag {
   text-align: left;
   padding: 4px 0;
   border-radius: var(--radius-sm);
-  transition: background var(--dur-1) var(--ease-standard);
+  /* The press release rides here too (the press-fb rule). */
+  transition:
+    background var(--dur-1) var(--ease-standard),
+    scale var(--press-out);
 }
 .lane:not(:disabled):hover {
   background: var(--surface);
@@ -9227,9 +9403,11 @@ button.vault-tag {
   padding: 8px 6px;
   border-radius: 999px;
   cursor: pointer;
+  /* The press release rides here too (the press-fb rule). */
   transition:
     background var(--dur-2) var(--ease-standard),
-    color var(--dur-2) var(--ease-standard);
+    color var(--dur-2) var(--ease-standard),
+    scale var(--press-out);
 }
 .sh-seg-btn.active {
   background: var(--accent);
@@ -10180,6 +10358,44 @@ button.vault-tag {
   color: var(--ink);
 }
 
+/* The task-done card's verdict (the harness package): the transcript verify
+   pill's words and colors, beside the card's title. Green for a pass, the
+   warning ink for a miss (never the danger red: a miss is news, not an
+   alarm), muted for work nothing checked. A pill with a check behind it is a
+   button with the press physics; it arrives with the card, opacity and
+   transform only. */
+.changed-head-start {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+}
+.changed-verdict {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: var(--text-2);
+  font-weight: var(--weight-semibold);
+  animation: msg-in var(--dur-3) var(--ease-standard) backwards;
+}
+.changed-verdict.pass {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.changed-verdict.fail {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.changed-verdict.not-run {
+  border-color: var(--border);
+  color: var(--muted);
+  font-weight: var(--weight-medium);
+}
+
 /* Undo (v1 Phase 1). Neutral ink, never red: undo is itself reversible. The
    head's button and each row's are quiet text buttons; a file put back dims
    and strikes through, and the card's own "Undone" line fades in. Opacity
@@ -10474,6 +10690,27 @@ button.vault-tag {
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
+/* A message parked until its brain can take it (a hub still opening, the
+   sign-in sheet): the bubble in its place, a little quieter, with one line
+   that says it is waiting, and a Retry under it when something went wrong.
+   It arrives after a second, so a brain that takes the message at once (a
+   model on this device) never shows a waiting line on the way. */
+.msg-parked {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  animation: msg-in var(--dur-3) var(--ease-standard) 1s backwards;
+}
+.msg-user.parked {
+  opacity: 0.72;
+}
+.msg-parked-tag {
+  display: block;
+  font-size: var(--text-1);
+  color: var(--muted);
+  margin-top: 4px;
+}
 .msg-stopped-actions {
   display: flex;
   gap: 8px;
@@ -10588,6 +10825,23 @@ button.vault-tag {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Whose command it is (the person's own, from the repository or their
+   computer): quiet, at the row's end, never squeezed by a long hint. */
+.composer-menu-from {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: var(--text-2);
+  white-space: nowrap;
+}
+/* A command file that was found and left out: one quiet line under the rows. */
+.composer-menu-note {
+  padding: 8px 14px 10px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: var(--text-2);
+  line-height: 1.4;
+}
 .send-btn.queue {
   background: var(--surface-hover);
   color: var(--ink);
@@ -10646,6 +10900,119 @@ button.vault-tag {
   margin: 12px auto 0;
   font-size: var(--text-2);
   color: var(--muted);
+}
+
+/* The secrets safety cards (D3, CX 7). The lockdown line says why the card
+   asks; the commit card lists what it would stage, a tick per file, and a
+   file that may hold a secret wears a warn pill and its reason. A ticked one
+   fades its warning in; opacity only. */
+.approval-lockdown {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--local-soft);
+  color: var(--local);
+  font-size: var(--text-2);
+}
+.commit-files {
+  margin: 4px 0 12px;
+}
+.commit-files-flagged {
+  margin: 0 0 8px;
+  font-size: var(--text-3);
+  color: var(--warn);
+}
+.commit-files-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 40vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.commit-file + .commit-file {
+  border-top: 1px solid var(--border);
+}
+.commit-file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.commit-file-row input {
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+.commit-file-path {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.commit-file-pill {
+  flex-shrink: 0;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: var(--text-1);
+  font-weight: var(--weight-semibold);
+}
+.commit-file-why,
+.commit-file-warn {
+  margin: 0;
+  padding: 0 10px 8px 34px;
+  font-size: var(--text-2);
+  color: var(--muted);
+}
+.commit-file-warn {
+  color: var(--warn);
+  animation: fade-in var(--dur-2) var(--ease-standard) backwards;
+}
+
+/* The server cut the chat to fit (C1, CX 6): a teal card, the context
+   card's local wash, arriving on msg-in like its neighbours. */
+.window-cut-card {
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--local) 30%, transparent);
+  border-radius: var(--radius);
+  background: var(--local-soft);
+  animation: msg-in var(--dur-3) var(--ease-standard) backwards;
+}
+.window-cut-title {
+  font-size: var(--text-4);
+  font-weight: var(--weight-semibold);
+  color: var(--local);
+}
+.window-cut-body {
+  margin: 4px 0 0;
+  font-size: var(--text-3);
+  color: var(--ink-soft);
+}
+.window-cut-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-top: 10px;
+}
+.window-cut-sub {
+  font-size: var(--text-2);
+  color: var(--muted);
+}
+.window-cut-done {
+  margin: 8px 0 0;
+  font-size: var(--text-3);
+  color: var(--local);
+  animation: fade-in var(--dur-3) var(--ease-standard) backwards;
+}
+.window-cut-error {
+  margin-top: 8px;
 }
 
 /* The top bar's chips. */

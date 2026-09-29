@@ -1,0 +1,171 @@
+// The Delete account row and its sheets (CX ruling 3), mounted in a real
+// (small) DOM: the row shows only while signed in, the confirm sheet asks
+// once with CX's words, "Deleting..." holds both choices while the server
+// works, a failure says so and leaves the choice open, owns_org explains the
+// one step first with a way to write to support, and the goodbye carries the
+// Apple note only when the person pays through Apple.
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { DeleteAccountOutcome } from '../src/state/accountDeletion.js';
+import { mountDom, type TestDom } from './support/dom.js';
+
+const opened = vi.hoisted(() => [] as string[]);
+vi.mock('../src/lib/platform.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../src/lib/platform.js')>();
+  return { ...real, openExternal: (url: string) => opened.push(url) };
+});
+
+let dom: TestDom;
+let done: number;
+
+beforeEach(async () => {
+  dom = await mountDom();
+  done = 0;
+  opened.length = 0;
+});
+afterEach(async () => {
+  await dom.unmount();
+});
+
+async function show(signedIn: boolean, onDelete: () => Promise<DeleteAccountOutcome>) {
+  const { DeleteAccount } = await import('../src/components/DeleteAccount.js');
+  await dom.render(<DeleteAccount signedIn={signedIn} onDelete={onDelete} onDone={() => done++} />);
+}
+
+async function copy() {
+  return (await import('../src/components/DeleteAccount.js')).DELETE_ACCOUNT_COPY;
+}
+
+/** The row is a button whose text is its label and its sub. */
+async function tapRow() {
+  const c = await copy();
+  await dom.click(`${c.row}${c.rowSub}`);
+}
+
+describe('the Delete account row', () => {
+  it('is not there while signed out', async () => {
+    await show(false, async () => ({ kind: 'failed' }));
+    expect(dom.text()).not.toContain('Delete account');
+  });
+
+  it('is there while signed in, in the danger style, with what it does', async () => {
+    const c = await copy();
+    await show(true, async () => ({ kind: 'failed' }));
+    expect(dom.text()).toContain(c.row);
+    expect(dom.text()).toContain(c.rowSub);
+    expect(dom.container.querySelector('.settings-row.danger')).not.toBeNull();
+  });
+});
+
+describe('the confirm sheet', () => {
+  it('asks once, in plain words, with Keep my account beside Delete account', async () => {
+    const c = await copy();
+    let calls = 0;
+    await show(true, async () => {
+      calls++;
+      return { kind: 'failed' };
+    });
+    await tapRow();
+    expect(dom.text()).toContain(c.title);
+    expect(dom.text()).toContain(c.body);
+    expect(dom.buttons()).toEqual(expect.arrayContaining([c.keep, c.confirm]));
+    expect(calls).toBe(0);
+  });
+
+  it('holds both choices at Deleting... while the server works', async () => {
+    const c = await copy();
+    let finish: (o: DeleteAccountOutcome) => void = () => {};
+    await show(true, () => new Promise((resolve) => (finish = resolve)));
+    await tapRow();
+    await dom.click(c.confirm);
+    expect(dom.buttons()).toContain(c.working);
+    const held = [...dom.container.querySelectorAll('button')].filter(
+      (b) => b.textContent === c.working || b.textContent === c.keep,
+    );
+    expect(held.every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
+    finish({ kind: 'failed' });
+    await dom.settle();
+  });
+
+  it('says it was not deleted, and leaves the choice open, when it fails', async () => {
+    const c = await copy();
+    await show(true, async () => ({ kind: 'failed' }));
+    await tapRow();
+    await dom.click(c.confirm);
+    await dom.settle();
+    expect(dom.text()).toContain(c.failed);
+    expect(dom.container.querySelector('[role="alert"]')?.textContent).toBe(c.failed);
+    expect(dom.buttons()).toContain(c.confirm);
+  });
+
+  it('explains the one step first when the person owns a team with others in it', async () => {
+    const c = await copy();
+    await show(true, async () => ({ kind: 'owns_org' }));
+    await tapRow();
+    await dom.click(c.confirm);
+    await dom.settle();
+    expect(dom.text()).toContain(c.ownsOrgTitle);
+    expect(dom.text()).toContain(c.ownsOrgBody);
+    await dom.click(c.emailSupport);
+    expect(opened).toEqual(['mailto:support@openshore.ai']);
+    expect(dom.buttons()).toContain(c.close);
+  });
+
+  it('says goodbye with the Apple note when the person pays through Apple', async () => {
+    const c = await copy();
+    await show(true, async () => ({ kind: 'deleted', appleNote: true }));
+    await tapRow();
+    await dom.click(c.confirm);
+    await dom.settle();
+    expect(dom.text()).toContain(c.doneTitle);
+    expect(dom.text()).toContain(c.doneBody);
+    expect(dom.text()).toContain(c.appleNote);
+    await dom.click(c.done);
+    expect(done).toBe(1);
+  });
+
+  it('leaves the Apple note out when there is no Apple subscription', async () => {
+    const c = await copy();
+    await show(true, async () => ({ kind: 'deleted', appleNote: false }));
+    await tapRow();
+    await dom.click(c.confirm);
+    await dom.settle();
+    expect(dom.text()).toContain(c.doneTitle);
+    expect(dom.text()).not.toContain(c.appleNote);
+  });
+
+  it('keeps the goodbye on screen after the signed-in row is gone', async () => {
+    const c = await copy();
+    const { DeleteAccount } = await import('../src/components/DeleteAccount.js');
+    const onDelete = async (): Promise<DeleteAccountOutcome> => ({
+      kind: 'deleted',
+      appleNote: false,
+    });
+    await show(true, onDelete);
+    await tapRow();
+    await dom.click(c.confirm);
+    await dom.settle();
+    // The store has signed the device out: the row goes, the goodbye stays.
+    await dom.render(<DeleteAccount signedIn={false} onDelete={onDelete} />);
+    expect(dom.text()).not.toContain(c.rowSub);
+    expect(dom.text()).toContain(c.doneTitle);
+  });
+});
+
+describe('where the row lives', () => {
+  it('is in the Your account sheet, after the signed-in card, wired to the store', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const settings = readFileSync(
+      join(process.cwd(), 'src', 'screens', 'SettingsScreen.tsx'),
+      'utf8',
+    );
+    const sheet = settings.slice(settings.indexOf("<Sheet open={sheet === 'account'}"));
+    const card = sheet.indexOf('<SignInCard />');
+    const row = sheet.indexOf(
+      '<DeleteAccount signedIn={signedIn} onDelete={deleteAccount} onDone={close} />',
+    );
+    expect(card).toBeGreaterThan(-1);
+    expect(row).toBeGreaterThan(card);
+    expect(row).toBeLessThan(sheet.indexOf('</Sheet>'));
+  });
+});

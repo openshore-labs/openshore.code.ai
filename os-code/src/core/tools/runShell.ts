@@ -6,9 +6,13 @@ import { z } from 'zod';
 import { capContent, type ToolDef } from './index.js';
 import { redactSecrets } from '../security/redaction.js';
 import { runCommand } from '../exec/commandRunner.js';
+import { shellCommandForm } from '../exec/shell.js';
 
+// The shell is named through shellInfo (exec/shell.ts), the same answer the
+// runner spawns and the prompt's platform line gives: bash -c on Linux and
+// macOS, and PowerShell on a Windows without Git Bash.
 const schema = z.object({
-  command: z.string().describe('The shell command to run (bash -c)'),
+  command: z.string().describe(`The shell command to run (${shellCommandForm()})`),
   timeoutSeconds: z
     .number()
     .int()

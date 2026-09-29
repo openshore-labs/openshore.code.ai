@@ -24,6 +24,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   watch as fsWatch,
@@ -45,6 +46,7 @@ import {
 import { machineVaultWire } from 'os-code/dist/src/core/agent/registry.js';
 import { VAULT_WIRE_NOTE_MAX_BYTES } from 'os-code/dist/src/daemon/vaultWire.js';
 import { managedRoot } from 'os-code/dist/src/core/security/workspaces.js';
+import { isTokenHash } from 'os-code/dist/src/core/security/credentials.js';
 import {
   VAULT_INDEX_FILE_MAX_BYTES,
   loadVaultIndexFile,
@@ -58,6 +60,7 @@ import {
   putVaultSettingsFile,
 } from 'os-code/dist/src/daemon/vaultRoutes.js';
 import { HANDOFF_MAX_BYTES } from 'os-code/dist/src/harness/handoff.js';
+import { installProcessGuards } from 'os-code/dist/src/daemon/processGuard.js';
 import { clearHandoffs } from 'os-code/dist/src/core/agent/handoffStore.js';
 import {
   createVaultFolder,
@@ -92,7 +95,7 @@ import { lookup } from 'node:dns/promises';
 import type { LookupAddress, LookupOptions } from 'node:dns';
 import { request as httpsRequest } from 'node:https';
 import { createServer } from 'node:http';
-import type { IncomingMessage, Server } from 'node:http';
+import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { isIP } from 'node:net';
 // electron-updater ships CJS; Node's ESM/CJS interop cannot statically prove
 // `autoUpdater` as a named export from it, and a packaged app (real ESM, not
@@ -102,8 +105,28 @@ import { isIP } from 'node:net';
 import electronUpdaterPkg from 'electron-updater';
 const { autoUpdater } = electronUpdaterPkg;
 import { EngineHost } from './engineHost.js';
+import {
+  LAUNCH_AT_LOGIN_CONFIRM,
+  type ConfirmWords,
+  appPermissionAllowed,
+  cloneConfirm,
+  readOAuthCallback,
+  sessionRootRefusal,
+  trustConfirm,
+} from './mainGuards.js';
+import {
+  IDLE_UPDATER,
+  mayCheckForUpdate,
+  stepUpdater,
+  type PendingUpdateStatus,
+  type UpdaterEvent,
+  type UpdaterState,
+} from './updateState.js';
+import { ChatStreams } from './chatStream.js';
 import { bundleOf, newestMacUpdate, type ReleaseAsset, type ReleaseInfo } from './updateVersion.js';
-import { canReplace, installMacUpdate } from './macUpdate.js';
+import { rolledBackVersion, updateMacInPlace, writeLaunchMarker } from './macUpdate.js';
+import { installIfVerified, type DownloadedUpdate } from './releaseVerify.js';
+import { DESKTOP_RELEASE_PUBLIC_KEY, MAC_RELEASE_PUBLIC_KEY } from './releaseKeys.js';
 import { EmbeddedWeb, type EmbeddedBounds } from './embeddedWeb.js';
 import { processVideoDesktop, type DesktopMediaOptions } from './media.js';
 import {
@@ -172,14 +195,35 @@ function strList(v: unknown, name: string): string[] {
   if (!Array.isArray(v)) throw new Error(`blocked: ${name} must be a list`);
   return v.map((x, i) => str(x, `${name}[${i}]`));
 }
-/** An existing directory, or undefined when none was given. */
+/** An existing directory narrow enough to work in, as its realpath, or
+ *  undefined when none was given. The coding agent reads and writes under a
+ *  session's root, so the top of the disk, the home folder itself (or
+ *  anything above it) and OpenShore's own settings folder are refused, the
+ *  lines the vault chooser draws (mainGuards.ts). */
 function dir(v: unknown, name: string): string | undefined {
   const s = optStr(v, name);
   if (s === undefined) return undefined;
   if (!existsSync(s) || !statSync(s).isDirectory()) {
     throw new Error(`blocked: ${name} is not a directory`);
   }
-  return s;
+  const real = realpathSync(s);
+  const refused = sessionRootRefusal(real, {
+    home: realOr(homedir()),
+    oscHome: realOr(oscHome()),
+    platform: process.platform,
+  });
+  if (refused) {
+    throw new Error(
+      `blocked: ${name} is too broad to work in (${refused}). Open a project folder inside it instead.`,
+    );
+  }
+  return real;
+}
+/** A paired device's whole token hash, the only revoke handle main accepts:
+ *  never a prefix, a label, or an empty string (which matched every device). */
+function deviceHash(v: unknown, name: string): string {
+  if (!isTokenHash(v)) throw new Error(`blocked: ${name} must be a device's whole token hash`);
+  return v;
 }
 
 // ------------------------------------------------------------ outbound HTTP
@@ -426,26 +470,46 @@ guarded('osc:gdriveOAuthWait', () => {
       resolve({ error: 'No sign-in window is open.' });
       return;
     }
+    const page = (line: string): string =>
+      '<!doctype html><meta charset="utf-8"><title>OpenShore</title>' +
+      `<body style="font:16px system-ui;padding:2rem">${line}</body>`;
+    const onRequest = (req: IncomingMessage, res: ServerResponse): void => {
+      // Only the redirect answers the sign-in (mainGuards.ts). Anything else
+      // (the browser's favicon, a stray local request) gets a 404, and a
+      // redirect without its state gets an error page; both keep listening,
+      // so neither can end the sign-in the person is in the middle of.
+      const answer = readOAuthCallback(req.method, req.url);
+      if (answer.kind === 'ignore') {
+        res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+        res.end('Not found');
+        return;
+      }
+      if (answer.kind === 'incomplete') {
+        res.writeHead(400, { 'content-type': 'text/html; charset=utf-8' });
+        res.end(
+          page('This sign-in link is missing its details. Go back to OpenShore and try again.'),
+        );
+        return;
+      }
+      clearTimeout(timeout);
+      server.off('request', onRequest);
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end(
+        page(
+          'error' in answer.result
+            ? 'Sign-in did not finish. You can close this window and return to OpenShore.'
+            : 'Signed in. You can close this window and return to OpenShore.',
+        ),
+      );
+      closeGdriveServer();
+      resolve(answer.result);
+    };
     const timeout = setTimeout(() => {
+      server.off('request', onRequest);
       closeGdriveServer();
       resolve({ error: 'Sign-in timed out.' });
     }, 300_000);
-    server.once('request', (req, res) => {
-      clearTimeout(timeout);
-      const url = new URL(req.url ?? '/', 'http://127.0.0.1');
-      const code = url.searchParams.get('code');
-      const state = url.searchParams.get('state');
-      const error = url.searchParams.get('error');
-      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      res.end(
-        '<!doctype html><meta charset="utf-8"><title>OpenShore</title>' +
-          '<body style="font:16px system-ui;padding:2rem">Signed in. You can close this window and return to OpenShore.</body>',
-      );
-      closeGdriveServer();
-      if (error) resolve({ error });
-      else if (code && state) resolve({ code, state });
-      else resolve({ error: 'The sign-in response was missing required data.' });
-    });
+    server.on('request', onRequest);
   });
 });
 
@@ -455,11 +519,58 @@ guarded('osc:gdriveOAuthCancel', () => {
 
 let win: BrowserWindow | undefined;
 
+// One stray rejection in the main process used to take the desktop, its hub,
+// and the paired phone's session down together (H1). The guard logs it, tells
+// every session that is working right now in its own transcript, and keeps
+// the app up. No IPC of its own: the notice rides each session's events.
+installProcessGuards({
+  where: 'desktop',
+  onFault: (kind, err) => console.error(`[engine] caught a stray ${kind}; kept running`, err),
+});
+// Every model reply streaming through main right now (chatStream.ts), torn
+// down whenever the page reloads, crashes or closes.
+const chatStreams = new ChatStreams((event) => win?.webContents.send('osc:chat-stream', event));
+
 const host = new EngineHost(
   (payload) => win?.webContents.send('osc:event', payload),
   (payload) => win?.webContents.send('osc:install-progress', payload),
   (payload) => win?.webContents.send('osc:terminal-data', payload),
 );
+
+// ------------------------------------------------------------ the second key
+// The renderer is untrusted (UI-6), so its approval card is only one key. An
+// action that cannot be taken back, or that runs something on this computer,
+// is asked again here in a native dialog the page cannot draw, click, or
+// dismiss. Cancel is the default button, so a keystroke meant for the chat
+// can never confirm one. The card in the app stays as it is.
+async function confirmInMain(opts: ConfirmWords): Promise<boolean> {
+  const options = {
+    type: 'question' as const,
+    buttons: [opts.confirm, 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+    message: opts.message,
+    detail: opts.detail,
+  };
+  const parent = win && !win.isDestroyed() ? win : undefined;
+  const { response } = parent
+    ? await dialog.showMessageBox(parent, options)
+    : await dialog.showMessageBox(options);
+  return response === 0;
+}
+
+/** Keystrokes and commands reach a shell only while the window has the
+ *  person's attention: a page acting on its own in the background cannot. */
+function windowFocused(): boolean {
+  return Boolean(win && !win.isDestroyed() && win.isFocused());
+}
+
+/** A repository address as the dialog shows it: any user or token written
+ *  into it is left out. */
+function cloneUrlForDialog(url: string): string {
+  return url.trim().replace(/^(https:\/\/)[^@/]+@/i, '$1');
+}
 
 // ------------------------------------------------------------ hub lifecycle
 // The hub (the daemon) starts with the app and lives in the tray: closing the
@@ -665,9 +776,23 @@ function createWindow(): void {
     },
   });
 
-  // External links open in the system browser, never inside the shell.
+  // No device for any page but the app's own, and for it only what it uses
+  // (mainGuards.ts): Electron's default would grant the camera, microphone,
+  // location and notifications to any page without asking. The check-time
+  // answer matches, so a page never reads "granted" for what it cannot have.
+  const permissions = win.webContents.session;
+  permissions.setPermissionRequestHandler((_contents, permission, callback, details) =>
+    callback(appPermissionAllowed(permission, details, appEntry.href)),
+  );
+  permissions.setPermissionCheckHandler((_contents, permission, _origin, details) =>
+    appPermissionAllowed(permission, details, appEntry.href),
+  );
+
+  // External links open in the system browser, never inside the shell, and a
+  // mail link (Email support, when deleting an account needs a hand) opens
+  // the person's own mail app.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//.test(url)) void shell.openExternal(url);
+    if (/^(https?:\/\/|mailto:)/.test(url)) void shell.openExternal(url);
     return { action: 'deny' };
   });
   // Allow navigation ONLY to the app's own bundled entry point. Any other
@@ -692,8 +817,15 @@ function createWindow(): void {
   // across hide/show) reaches the renderer here instead of only at discovery
   // time, so a fresh page is never out of sync with what main already knows.
   win.webContents.on('did-finish-load', () => {
-    win?.webContents.send('osc:update-status', pendingUpdate);
+    win?.webContents.send('osc:update-status', updater.pending);
+    // A reloaded page has nobody listening for an answer still on its way.
+    host.stopFreeChats();
   });
+
+  // A page that reloads, crashes or goes away cannot read a streaming reply,
+  // so every stream it opened stops here and the server stops generating.
+  win.webContents.on('did-start-loading', () => chatStreams.closeAll());
+  win.webContents.on('render-process-gone', () => chatStreams.closeAll());
 
   // OSC_SMOKE=1 makes a headless CI run prove the page and bridge came up.
   // The engine half of the proof is logged from whenReady (below); once both
@@ -721,6 +853,7 @@ function createWindow(): void {
     }
   });
   win.on('closed', () => {
+    chatStreams.closeAll();
     vaultWatcher.stop();
     win = undefined;
   });
@@ -852,8 +985,19 @@ guarded('osc:compact', (sessionId: unknown, focus: unknown) =>
 guarded('osc:listFiles', (sessionId: unknown, query: unknown) =>
   host.listFiles(str(sessionId, 'sessionId'), str(query, 'query')),
 );
-guarded('osc:trustFolder', (sessionId: unknown) => host.trustFolder(str(sessionId, 'sessionId')));
+guarded('osc:trustFolder', async (sessionId: unknown) => {
+  const id = str(sessionId, 'sessionId');
+  const folder = host.sessionFolder(id);
+  if (!folder) return { error: 'That session is not open.' };
+  const ok = await confirmInMain(trustConfirm(host.trustWaiting(folder), folder));
+  if (!ok) return { error: 'Not trusted. Nothing changed.' };
+  return host.trustFolder(id);
+});
 guarded('osc:createSample', () => host.createSample());
+// The truncation card's action (C1, CTO 5): serve this provider's models the
+// larger window from the next message, in every chat. Machine config, so only
+// a provider id crosses; main writes it through the engine's one writer.
+guarded('osc:giveMoreRoom', (provider: unknown) => host.giveMoreRoom(str(provider, 'provider')));
 guarded('osc:restoreCheckpoint', (sessionId: unknown, id: unknown, how: unknown, path: unknown) => {
   const way = str(how, 'direction');
   if (way !== 'undo' && way !== 'redo') throw new Error('direction must be undo or redo');
@@ -864,6 +1008,12 @@ guarded('osc:restoreCheckpoint', (sessionId: unknown, id: unknown, how: unknown,
     optStr(path, 'path'),
   );
 });
+// Rewind (P2): a session id, the message's journal seq, and whether the files
+// go back too (only an explicit true). The engine checks the seq is one of
+// the person's messages still in the chat, and refuses while a task runs.
+guarded('osc:rewind', (sessionId: unknown, toSeq: unknown, files: unknown) =>
+  host.rewind(str(sessionId, 'sessionId'), num(toSeq, 'toSeq'), bool(files)),
+);
 guarded('osc:resumeSession', (id: unknown) => host.resumeSession(str(id, 'id')));
 guarded('osc:listSessions', () => host.listStoredSessions());
 guarded('osc:send', (sessionId: unknown, text: unknown) =>
@@ -877,14 +1027,33 @@ guarded('osc:answerApproval', (sessionId: unknown, approvalId: unknown, answer: 
     alwaysThisSession: optBool(a.alwaysThisSession, 'alwaysThisSession'),
     alwaysInProject: optBool(a.alwaysInProject, 'alwaysInProject'),
     reason: optStr(a.reason, 'reason'),
+    // A commit card's ticked files (D3): a list of strings, or none.
+    ...(a.files === undefined || a.files === null ? {} : { files: strList(a.files, 'files') }),
   });
 });
 
+// The free chat (CTO ruling 8): the engine's local-only chat, with no session
+// and no tools. Each event rides osc:free-chat under the request's own id, so
+// the renderer drops a late event for an answer it already stopped.
+guarded('osc:freeChat', (requestId: unknown, body: unknown) => {
+  const id = str(requestId, 'requestId');
+  return host.freeChat(id, obj(body, 'body'), (event) =>
+    win?.webContents.send('osc:free-chat', { requestId: id, event }),
+  );
+});
+guarded('osc:freeChatAbort', (requestId: unknown) =>
+  host.freeChatAbort(str(requestId, 'requestId')),
+);
+
 // Chat-to-terminal lane. runCommand returns the runId the renderer drives with
 // stdin/kill; command output arrives as command-* events on osc:event.
-guarded('osc:runCommand', (sessionId: unknown, command: unknown) =>
-  host.runCommand(str(sessionId, 'sessionId'), str(command, 'command')),
-);
+// A command runs only from a window the person is looking at: the tap that
+// sends it is the approval, and a page acting on its own in the background
+// gets nothing (undefined, the answer for a session that is gone).
+guarded('osc:runCommand', (sessionId: unknown, command: unknown) => {
+  if (!windowFocused()) return undefined;
+  return host.runCommand(str(sessionId, 'sessionId'), str(command, 'command'));
+});
 guarded('osc:sendCommandStdin', (sessionId: unknown, runId: unknown, data: unknown) =>
   host.sendCommandStdin(str(sessionId, 'sessionId'), str(runId, 'runId'), str(data, 'data')),
 );
@@ -903,9 +1072,12 @@ guarded('osc:terminalSubscribe', (termId: unknown, sinceOffset: unknown) =>
 guarded('osc:terminalUnsubscribe', (termId: unknown) =>
   host.terminalUnsubscribe(str(termId, 'termId')),
 );
-guarded('osc:terminalStdin', (termId: unknown, data: unknown) =>
-  host.terminalStdin(str(termId, 'termId'), str(data, 'data')),
-);
+// Keystrokes reach the shell only while the window has focus, where typing
+// comes from; a false is the same answer as a shell that is gone.
+guarded('osc:terminalStdin', (termId: unknown, data: unknown) => {
+  if (!windowFocused()) return false;
+  return host.terminalStdin(str(termId, 'termId'), str(data, 'data'));
+});
 guarded('osc:terminalResize', (termId: unknown, cols: unknown, rows: unknown) =>
   host.terminalResize(str(termId, 'termId'), num(cols, 'cols'), num(rows, 'rows')),
 );
@@ -945,9 +1117,13 @@ guarded('osc:pickFolder', async () => {
   });
   return result.canceled ? null : (result.filePaths[0] ?? null);
 });
-guarded('osc:cloneRepo', (url: unknown, token: unknown) =>
-  host.cloneRepo(str(url, 'url'), optStr(token, 'token')),
-);
+guarded('osc:cloneRepo', async (url: unknown, token: unknown) => {
+  const address = str(url, 'url');
+  const secret = optStr(token, 'token');
+  const ok = await confirmInMain(cloneConfirm(cloneUrlForDialog(address)));
+  if (!ok) return { error: 'Not copied. Nothing changed.' };
+  return host.cloneRepo(address, secret);
+});
 guarded('osc:recentWorkspaces', () => host.recentWorkspaces());
 guarded('osc:reconcileRepos', (roots: unknown, tokens: unknown) =>
   host.reconcileRepos(Array.isArray(roots) ? strList(roots, 'roots') : [], platformTokens(tokens)),
@@ -997,9 +1173,21 @@ guarded('osc:daemonStop', async () => {
   refreshTrayMenu();
 });
 guarded('osc:listDeviceCredentials', () => host.listDeviceCredentials());
-guarded('osc:revokeDeviceCredential', (id: unknown) => host.revokeDeviceCredential(str(id, 'id')));
+guarded('osc:revokeDeviceCredential', (id: unknown) =>
+  host.revokeDeviceCredential(deviceHash(id, 'id')),
+);
+guarded('osc:rotateSharedToken', () => host.rotateSharedToken());
 guarded('osc:launchAtLogin', () => launchAtLogin());
-guarded('osc:setLaunchAtLogin', (on: unknown) => setLaunchAtLogin(bool(on)));
+// Turning it on makes the app start by itself at every login, so main asks
+// first; turning it off only takes that away and needs no second key.
+guarded('osc:setLaunchAtLogin', async (on: unknown) => {
+  const want = bool(on);
+  if (want) {
+    const ok = await confirmInMain(LAUNCH_AT_LOGIN_CONFIRM);
+    if (!ok) return { on: launchAtLogin().on, detail: 'Not changed.' };
+  }
+  return setLaunchAtLogin(want);
+});
 
 // Ollama from inside the app, and the machine in numbers. A download-page
 // plan opens the page here (the renderer never picks a URL); the command is
@@ -1370,6 +1558,13 @@ guarded('osc:httpFetch', async (req: unknown) => {
   }
 });
 
+// A model seat's streamed chat request (CTO ruling 7, electron/chatStream.ts):
+// POST to a chat path only, public https pinned, plain http only on your own
+// network, no redirects, capped and timed. The body streams back as
+// osc:chat-stream events for the renderer's id; httpFetch above is unchanged.
+guarded('osc:chatStream', (req: unknown) => chatStreams.start(req));
+guarded('osc:chatStreamAbort', (id: unknown) => chatStreams.abort(id));
+
 // ------------------------------------------------------------- auto-update
 // Every push to main publishes a desktop release (.github/workflows/release.yml),
 // so a desktop that is behind finds out here and says so in a bar across the
@@ -1385,34 +1580,86 @@ guarded('osc:httpFetch', async (req: unknown) => {
 // electron-updater's in-place install relies on Squirrel.Mac matching code
 // signatures, which an unsigned build never holds (per electron-updater's own
 // docs). So the Mac updates itself (electron/macUpdate.ts): the click
-// downloads the release's zip for this Mac, swaps the bundle, and relaunches.
-// Where that cannot finish (running from a disk image, a folder it cannot
-// write), the click opens the release page instead.
+// downloads the release's zip for this Mac, checks its signature, swaps the
+// bundle, and relaunches. Where that cannot finish (running from a disk
+// image, a folder it cannot write, no key pinned, a missing or bad
+// signature), the click opens the release page instead.
+//
+// Every desktop update is checked against a key pinned in the app before it
+// runs (releaseVerify.ts, CTO rulings 1 and 2): the Mac file before it is
+// unpacked, the Windows and Linux file before quitAndInstall.
 const UPDATE_REPO = 'openshore-labs/openshore.code.ai';
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 
-let pendingUpdate: PendingUpdateStatus | undefined;
-/** The person clicked while the download was still running: install the
- *  moment it lands. */
-let installWhenReady = false;
-/** macOS: the release file behind the pending update. */
+// The bar's state is one pure step function (updateState.ts): the events
+// below and the person's click go in, the status the renderer hears and the
+// effect to run come out.
+let updater: UpdaterState = { ...IDLE_UPDATER };
+/** macOS: the release file behind the pending update, and its signature. */
 let macAsset: ReleaseAsset | undefined;
+let macSignature: ReleaseAsset | undefined;
+/** Windows and Linux: what electron-updater downloaded, checked before it
+ *  installs. */
+let downloaded: DownloadedUpdate | undefined;
+/** A half-hourly check is running: its failure alone changes nothing. */
+let backgroundChecks = 0;
 
-interface PendingUpdateStatus {
-  version: string;
-  phase: 'downloading' | 'ready' | 'available' | 'installing' | 'failed';
-  percent?: number;
-  detail?: string;
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
-function sendUpdateStatus(update: typeof pendingUpdate): void {
-  pendingUpdate = update;
+function sendUpdateStatus(update: PendingUpdateStatus | undefined): void {
+  updater = { ...updater, pending: update };
   win?.webContents.send('osc:update-status', update);
+}
+
+/** One step of the updater: tell the renderer when the status changed, then
+ *  run what the step asks for. */
+function applyUpdate(event: UpdaterEvent): void {
+  const step = stepUpdater(updater, event);
+  updater = step.state;
+  if (step.notify) win?.webContents.send('osc:update-status', updater.pending);
+  if (step.effect === 'download') {
+    void autoUpdater
+      .downloadUpdate()
+      .catch((err) => applyUpdate({ type: 'error', detail: errorText(err) }));
+  } else if (step.effect === 'quit-and-install') {
+    void installDownloadedUpdate();
+  } else if (step.effect === 'check') {
+    void retryUpdateCheck();
+  }
+}
+
+/** Windows and Linux: install the download only once its signature checks
+ *  against the pinned desktop key (CTO ruling 2; electron-updater's own feed
+ *  file could be replaced along with it). With no key pinned yet, it installs
+ *  as before and the log says the check was skipped. */
+async function installDownloadedUpdate(): Promise<void> {
+  await installIfVerified({
+    downloaded,
+    publicKey: DESKTOP_RELEASE_PUBLIC_KEY,
+    signatureUrl: (name, version) =>
+      `https://github.com/${UPDATE_REPO}/releases/download/v${version}/${encodeURIComponent(name)}.sig`,
+    install: () => autoUpdater.quitAndInstall(),
+    refuse: (detail, failed) => applyUpdate({ type: 'error', detail, refused: failed }),
+  });
+}
+
+/** The person's retry after a failure: a fresh check downloads what it finds
+ *  (the update-available event), and one that finds nothing clears the bar
+ *  instead of leaving it at installing 0%. */
+async function retryUpdateCheck(): Promise<void> {
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    applyUpdate({ type: 'check-done', found: Boolean(result?.isUpdateAvailable) });
+  } catch (err) {
+    applyUpdate({ type: 'error', detail: errorText(err) });
+  }
 }
 
 async function checkMacUpdate(): Promise<void> {
   // Never interrupt an update the person already started.
-  if (pendingUpdate?.phase === 'installing') return;
+  if (updater.pending?.phase === 'installing') return;
   try {
     const res = await fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases?per_page=15`, {
       signal: AbortSignal.timeout(30000),
@@ -1420,39 +1667,68 @@ async function checkMacUpdate(): Promise<void> {
     });
     if (!res.ok) return;
     const releases = (await res.json()) as ReleaseInfo[];
-    const next = newestMacUpdate(releases, app.getVersion(), process.arch);
-    if (!next) return;
-    macAsset = next.asset;
-    if (pendingUpdate?.version !== next.version || pendingUpdate.phase === 'failed') {
-      sendUpdateStatus({ version: next.version, phase: 'available' });
+    // A version the launch watchdog rolled back never started here: offering
+    // it again would only repeat the two minutes and the rollback.
+    const next = newestMacUpdate(
+      releases,
+      app.getVersion(),
+      process.arch,
+      rolledBackVersion(app.getPath('userData')),
+    );
+    if (!next) {
+      // Nothing newer any more (the release was pulled): an offered or failed
+      // update leaves the bar.
+      macAsset = undefined;
+      macSignature = undefined;
+      applyUpdate({ type: 'not-available' });
+      return;
     }
+    macAsset = next.asset;
+    macSignature = next.signature;
+    // The machine offers it: a failed update is offered again, a refused one
+    // keeps its line, and one already offered is not news.
+    applyUpdate({ type: 'available', version: next.version });
   } catch (err) {
     console.error('[update] macOS version check failed', err);
   }
 }
 
 async function installOnMac(): Promise<void> {
-  if (!pendingUpdate) return;
-  const version = pendingUpdate.version;
+  if (!updater.pending) return;
+  const version = updater.pending.version;
   const releasePage = `https://github.com/${UPDATE_REPO}/releases/tag/v${version}`;
-  const bundle = bundleOf(app.getPath('exe'));
-  if (!macAsset || !(await canReplace(bundle))) {
-    await shell.openExternal(releasePage);
-    return;
-  }
-  sendUpdateStatus({ version, phase: 'installing', percent: 0 });
   try {
-    await installMacUpdate(macAsset, bundle!, (percent) =>
-      sendUpdateStatus({ version, phase: 'installing', percent }),
+    const outcome = await updateMacInPlace({
+      version,
+      asset: macAsset,
+      signature: macSignature,
+      bundle: bundleOf(app.getPath('exe')),
+      releasePage,
+      publicKey: MAC_RELEASE_PUBLIC_KEY,
+      userData: app.getPath('userData'),
+      onProgress: (percent) => sendUpdateStatus({ version, phase: 'installing', percent }),
+      deps: { shell },
+    });
+    if (outcome.kind === 'swapping') {
+      app.quit();
+      return;
+    }
+    if (outcome.kind === 'refused') {
+      // A signature that is there and fails: nothing opens (reconciliation
+      // 2), and the bar says the download failed its safety check.
+      console.log(`[update] macOS: refused v${version} (${outcome.reason}). ${outcome.detail}`);
+      applyUpdate({ type: 'error', detail: outcome.detail, refused: true });
+      return;
+    }
+    console.log(
+      `[update] macOS: opened the release page instead (${outcome.reason}). ${outcome.detail}`,
     );
-    app.quit();
+    // A refusal after the download (a signature that did not match) says so
+    // on the bar; one before it leaves the bar as it was.
+    if (outcome.downloaded) sendUpdateStatus({ version, phase: 'failed', detail: outcome.detail });
   } catch (err) {
     console.error('[update] macOS in-place update failed', err);
-    sendUpdateStatus({
-      version,
-      phase: 'failed',
-      detail: err instanceof Error ? err.message : String(err),
-    });
+    sendUpdateStatus({ version, phase: 'failed', detail: errorText(err) });
     await shell.openExternal(releasePage);
   }
 }
@@ -1465,52 +1741,36 @@ if (process.platform !== 'darwin') {
   // Never install on quit: the bar is the only trigger, so a person is never
   // surprised by a relaunch they didn't ask for.
   autoUpdater.autoInstallOnAppQuit = false;
-  autoUpdater.on('update-available', (info) => {
-    if (installWhenReady) {
-      // A retry the person asked for: download straight away.
-      sendUpdateStatus({ version: info.version, phase: 'installing', percent: 0 });
-      void autoUpdater.downloadUpdate().catch(() => undefined);
-      return;
-    }
-    sendUpdateStatus({ version: info.version, phase: 'available' });
-  });
-  autoUpdater.on('download-progress', (p) => {
-    if (!pendingUpdate) return;
-    sendUpdateStatus({
-      ...pendingUpdate,
-      phase: installWhenReady ? 'installing' : 'downloading',
-      percent: Math.round(p.percent),
-    });
-  });
+  autoUpdater.on('update-available', (info) =>
+    applyUpdate({ type: 'available', version: info.version }),
+  );
+  autoUpdater.on('update-not-available', () => applyUpdate({ type: 'not-available' }));
+  autoUpdater.on('download-progress', (p) => applyUpdate({ type: 'progress', percent: p.percent }));
   autoUpdater.on('update-downloaded', (info) => {
-    if (installWhenReady) {
-      sendUpdateStatus({ version: info.version, phase: 'installing', percent: 100 });
-      autoUpdater.quitAndInstall();
-      return;
-    }
-    sendUpdateStatus({ version: info.version, phase: 'ready' });
+    downloaded = { file: info.downloadedFile, version: info.version };
+    applyUpdate({ type: 'downloaded', version: info.version });
   });
   autoUpdater.on('error', (err) => {
     console.error('[update] electron-updater error', err);
-    if (pendingUpdate) {
-      installWhenReady = false;
-      sendUpdateStatus({
-        ...pendingUpdate,
-        phase: 'failed',
-        detail: err instanceof Error ? err.message : String(err),
-      });
-    }
+    const detail = errorText(err);
+    applyUpdate(
+      backgroundChecks > 0 ? { type: 'check-failed', detail } : { type: 'error', detail },
+    );
   });
 }
 
 async function checkForUpdatesNow(): Promise<void> {
   if (process.platform === 'darwin') return checkMacUpdate();
-  // A download already underway or waiting is not re-checked.
-  if (pendingUpdate && pendingUpdate.phase !== 'failed') return;
+  // Nothing pending, a failure, or an update not yet clicked (a newer release
+  // replaces it); never while a download is underway, done, or installing.
+  if (!mayCheckForUpdate(updater)) return;
+  backgroundChecks++;
   try {
     await autoUpdater.checkForUpdates();
   } catch (err) {
     console.error('[update] checkForUpdates failed', err);
+  } finally {
+    backgroundChecks--;
   }
 }
 
@@ -1523,49 +1783,12 @@ function scheduleUpdateChecks(): void {
 }
 
 guarded('osc:installUpdate', async () => {
-  if (!pendingUpdate) return;
+  if (!updater.pending) return;
   if (process.platform === 'darwin') {
     await installOnMac();
     return;
   }
-  if (pendingUpdate.phase === 'ready') {
-    sendUpdateStatus({ ...pendingUpdate, phase: 'installing', percent: 100 });
-    autoUpdater.quitAndInstall();
-    return;
-  }
-  installWhenReady = true;
-  if (pendingUpdate.phase === 'available') {
-    // The person's click is the download: fetch it, then install and restart.
-    sendUpdateStatus({ ...pendingUpdate, phase: 'installing', percent: 0 });
-    try {
-      await autoUpdater.downloadUpdate();
-    } catch (err) {
-      installWhenReady = false;
-      sendUpdateStatus({
-        ...pendingUpdate,
-        phase: 'failed',
-        detail: err instanceof Error ? err.message : String(err),
-      });
-    }
-    return;
-  }
-  if (pendingUpdate.phase === 'failed') {
-    // Try again from the top: a fresh check re-downloads, then installs.
-    sendUpdateStatus({ ...pendingUpdate, phase: 'installing', percent: 0, detail: undefined });
-    pendingUpdate = { ...pendingUpdate, phase: 'installing' };
-    try {
-      await autoUpdater.checkForUpdates();
-    } catch (err) {
-      installWhenReady = false;
-      sendUpdateStatus({
-        ...pendingUpdate,
-        phase: 'failed',
-        detail: err instanceof Error ? err.message : String(err),
-      });
-    }
-    return;
-  }
-  sendUpdateStatus({ ...pendingUpdate, phase: 'installing' });
+  applyUpdate({ type: 'click' });
 });
 
 // -------------------------------------------------------------- app lifecycle
@@ -1596,6 +1819,9 @@ if (!app.requestSingleInstanceLock()) {
     // A login launch (--hidden) starts in the tray alone; without a tray to
     // hide in, the window opens regardless.
     if (!isHiddenLaunch(process.argv) || !trayReady) createWindow();
+    // The proof a Mac update's swap script waits for (macUpdate.ts): this
+    // version started. Without it the script puts the previous version back.
+    if (process.platform === 'darwin') writeLaunchMarker(app.getPath('userData'), app.getVersion());
     // Cold start on Windows/Linux: the link is in this process's own argv.
     deliverDeepLink(deepLinkFromArgv(process.argv));
     app.on('activate', () => showWindow());

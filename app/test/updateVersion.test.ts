@@ -97,6 +97,15 @@ describe('the update bar', () => {
     expect(busy.busy).toBe(true);
     expect(busy.text).toContain('42%');
     expect(updateBarCopy({ version: '0.1.5', phase: 'failed' }).action).toBe('Try again');
+    // CX cleanup 1: a refused signature never reads as the network's failure.
+    expect(updateBarCopy({ version: '0.1.5', phase: 'failed' }).text).toBe(
+      'The update to v0.1.5 did not finish.',
+    );
+    expect(updateBarCopy({ version: '0.1.5', phase: 'failed', refused: true })).toEqual({
+      text: 'The download of v0.1.5 failed its safety check, so it was not installed. This version keeps working.',
+      action: 'Try again',
+      busy: false,
+    });
   });
 
   it('sits at the top of the window, in the layout, with no dismiss', () => {

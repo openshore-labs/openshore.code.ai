@@ -156,22 +156,27 @@ describe('hermes home reader', () => {
     expect(titleFor('Notes.md')).toBe('Notes');
   });
 
-  it('probes the host honestly: HERMES_HOME wins, a CLI must be on PATH', () => {
-    seed();
-    const bin = join(home, 'bin');
-    mkdirSync(bin);
-    writeFileSync(join(bin, 'claude'), '#!/bin/sh\n', { mode: 0o755 });
-    const env = { HERMES_HOME: home, PATH: bin } as NodeJS.ProcessEnv;
-    expect(hermesHome(env)).toBe(home);
-    expect(commandOnPath('claude', env)).toBe(true);
-    expect(commandOnPath('codex', env)).toBe(false);
-    const probe = probeCurrentsHost(env);
-    expect(probe.hermes).toEqual({ home, present: true });
-    expect(probe.cli).toEqual({ claude: true, codex: false });
-    expect(probeCurrentsHost({ HERMES_HOME: join(home, 'missing'), PATH: '' }).hermes.present).toBe(
-      false,
-    );
-  });
+  // The stand-in CLI is an executable shebang file, which Windows does not
+  // run or list as a command (it looks for .exe and .cmd through PATHEXT).
+  it.skipIf(process.platform === 'win32')(
+    'probes the host honestly: HERMES_HOME wins, a CLI must be on PATH',
+    () => {
+      seed();
+      const bin = join(home, 'bin');
+      mkdirSync(bin);
+      writeFileSync(join(bin, 'claude'), '#!/bin/sh\n', { mode: 0o755 });
+      const env = { HERMES_HOME: home, PATH: bin } as NodeJS.ProcessEnv;
+      expect(hermesHome(env)).toBe(home);
+      expect(commandOnPath('claude', env)).toBe(true);
+      expect(commandOnPath('codex', env)).toBe(false);
+      const probe = probeCurrentsHost(env);
+      expect(probe.hermes).toEqual({ home, present: true });
+      expect(probe.cli).toEqual({ claude: true, codex: false });
+      expect(
+        probeCurrentsHost({ HERMES_HOME: join(home, 'missing'), PATH: '' }).hermes.present,
+      ).toBe(false);
+    },
+  );
 });
 
 describe('askHermes', () => {

@@ -7,13 +7,20 @@
 // vault write) asks every time whatever was allowed before, so it gets no
 // standing allow at all, only once or skip. The keyboard answers too: y
 // approves, a allows for the session, n declines.
-import { useEffect, useRef } from 'react';
+//
+// While the chat can see the project's secrets, every card says so (CX 7). A
+// commit card lists the files it would stage with a tick each, and the ones
+// that may hold a secret start unticked (CommitFileList); the answer carries
+// the ticked list, so the commit records exactly those.
+import { useEffect, useRef, useState } from 'react';
 import type { ApprovalRequest, PermissionMode } from 'os-code/protocol';
 import { hapticApproval } from '../lib/haptics.js';
 import { useSheetExit } from '../hooks/useSheetExit.js';
 import { permissionModeLabel } from '../lib/permissionMode.js';
 import { DiffBlock } from './ToolCard.js';
 import { toolActionLabel } from '../lib/toolVerbs.js';
+import { LOCKDOWN_LINE } from '../lib/securityCopy.js';
+import { CommitFileList, defaultTicked } from './CommitFileList.js';
 
 /** The request as the sheet reads it. `alwaysAsk` is the engine's additive
  *  field (plan 1.6), named here as well so the sheet compiles against an
@@ -37,7 +44,8 @@ export function ApprovalSheet({
   /** An engine session: the project-wide allow is available. */
   agent: boolean;
   mode: PermissionMode;
-  onAnswer: (approve: boolean, always?: boolean, inProject?: boolean) => void;
+  /** `files` is the ticked list on a commit card, absent on any other. */
+  onAnswer: (approve: boolean, always?: boolean, inProject?: boolean, files?: string[]) => void;
   onAnswerAll: (approve: boolean) => void;
   onOpenMode: () => void;
 }) {
@@ -53,12 +61,28 @@ export function ApprovalSheet({
   // With more questions behind this one the sheet stays up and the content
   // swaps (keyed on the request), instead of bouncing closed and open.
   const more = index + 1 < total;
+  // The commit card's ticks, kept per request so the next card in a stack
+  // starts from its own defaults (no effect, no flash of the last card's).
+  const commit = request.commit;
+  const [pick, setPick] = useState<{ id: string; files: Set<string> } | undefined>();
+  const ticked =
+    commit && pick?.id === request.id ? pick.files : commit ? defaultTicked(commit) : undefined;
+  const tickedRef = useRef(ticked);
+  tickedRef.current = ticked;
+  const toggle = (path: string) => {
+    const next = new Set(ticked);
+    if (next.has(path)) next.delete(path);
+    else next.add(path);
+    setPick({ id: request.id, files: next });
+  };
   const answer = (approve: boolean, always?: boolean, inProject?: boolean) => {
+    // Read through the ref: the keyboard handler below outlives a render.
+    const files = approve && tickedRef.current ? [...tickedRef.current] : undefined;
     if (more) {
-      onAnswer(approve, always, inProject);
+      onAnswer(approve, always, inProject, files);
       return;
     }
-    pending.current = () => onAnswer(approve, always, inProject);
+    pending.current = () => onAnswer(approve, always, inProject, files);
     dismiss();
   };
   const answerAll = (approve: boolean) => {
@@ -110,7 +134,13 @@ export function ApprovalSheet({
             ) : null}
           </div>
           <h2>{request.summary}</h2>
-          {request.detail ? (
+          {request.lockdown ? <p className="approval-lockdown">{LOCKDOWN_LINE}</p> : null}
+          {commit && ticked ? (
+            <>
+              <p className="sheet-sub">Message: {commit.message}</p>
+              <CommitFileList commit={commit} ticked={ticked} onToggle={toggle} />
+            </>
+          ) : request.detail ? (
             request.detail.includes('\n') ? (
               <DiffBlock text={request.detail} />
             ) : (

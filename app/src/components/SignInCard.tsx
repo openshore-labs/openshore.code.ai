@@ -8,13 +8,22 @@
 // (R-19: text typed under one account never replays under another's). Team
 // text stashed offline does not show under Not saved, so a sign-out with any
 // left asks first, and deleting it is its own button, never a silent wipe.
+//
+// Sign out ends this device's sign-in only (CX ruling 4). A quiet link below
+// it ends every device's, after one confirm (state/signinOps.ts).
 import { featureOn } from '../lib/focus.js';
 import { ACCOUNT_PITCH, SIGNED_IN_PERKS } from '../lib/accountGate.js';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useApp } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { plainError } from '../lib/plainError.js';
 import { Sheet } from './Sheet.js';
+import {
+  SIGNING_OUT_EVERYWHERE,
+  SIGN_OUT_EVERYWHERE_BODY,
+  SIGN_OUT_EVERYWHERE_LINK,
+  SIGN_OUT_EVERYWHERE_TITLE,
+} from '../state/signinOps.js';
 
 type Mode = 'signin' | 'signup';
 
@@ -39,6 +48,7 @@ export function SignInCard() {
     resendConfirmation,
     updateMyPassword,
     signOut,
+    signOutEverywhere,
   } = useAuth();
   const [mode, setMode] = useState<Mode>('signin');
   const [addr, setAddr] = useState('');
@@ -47,6 +57,17 @@ export function SignInCard() {
   const [newPw, setNewPw] = useState('');
   // Unsent team vault notes a sign-out would delete; above zero, the ask is open.
   const [unsent, setUnsent] = useState(0);
+  // Which sign-out the ask stands in front of, and the confirm before every
+  // device signs out.
+  const [unsentFor, setUnsentFor] = useState<'here' | 'everywhere'>('here');
+  const [everywhere, setEverywhere] = useState(false);
+  // "Sign out everywhere" waits on the server (CX cleanup 7): while it does,
+  // both controls hold and a status line takes the link's place, so a second
+  // tap cannot fire and the wait is visible. The toasts say how it ended.
+  const [leaving, setLeaving] = useState(false);
+  // Each field's label names it (useId: the card can sit in more than one
+  // sheet, so a fixed id could repeat).
+  const fieldId = useId();
 
   if (!configured) return null;
 
@@ -69,7 +90,7 @@ export function SignInCard() {
               className="btn danger press-fb"
               onClick={() => {
                 setUnsent(0);
-                void signOut();
+                void (unsentFor === 'everywhere' ? everywhereNow() : signOut());
               }}
             >
               Sign out and delete
@@ -79,6 +100,47 @@ export function SignInCard() {
       ) : null}
     </Sheet>
   );
+
+  // The confirm before every device signs out. Outside the signed-in card for
+  // the same reason as the ask above: its exit plays after the card is gone.
+  const everywhereAsk = (
+    <Sheet open={everywhere} onClose={() => setEverywhere(false)} variant="confirm">
+      <h3>{SIGN_OUT_EVERYWHERE_TITLE}</h3>
+      <p>{SIGN_OUT_EVERYWHERE_BODY}</p>
+      <div className="confirm-row">
+        <button type="button" className="btn ghost press-fb" onClick={() => setEverywhere(false)}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="btn danger press-fb"
+          onClick={() => {
+            setEverywhere(false);
+            void askSignOut('everywhere');
+          }}
+        >
+          {SIGN_OUT_EVERYWHERE_LINK}
+        </button>
+      </div>
+    </Sheet>
+  );
+
+  const everywhereNow = async () => {
+    setLeaving(true);
+    try {
+      await signOutEverywhere();
+    } finally {
+      setLeaving(false);
+    }
+  };
+
+  // With nothing unsent, each sign-out goes ahead, as it always has.
+  const askSignOut = async (scope: 'here' | 'everywhere') => {
+    const n = await unsentTeamTextCount().catch(() => 0);
+    setUnsentFor(scope);
+    if (n > 0) setUnsent(n);
+    else await (scope === 'everywhere' ? everywhereNow() : signOut());
+  };
 
   // A password-reset link signs the user in with a recovery session. Prompt for
   // a new password before anything else, so the reset actually completes.
@@ -105,9 +167,11 @@ export function SignInCard() {
           You are signed in from the reset link. Choose a new password to finish.
         </div>
         <div className="field">
+          <label htmlFor={`${fieldId}-new-password`}>New password</label>
           <input
+            id={`${fieldId}-new-password`}
             type="password"
-            placeholder="New password"
+            placeholder="At least 8 characters"
             autoComplete="new-password"
             value={newPw}
             onChange={(e) => setNewPw(e.target.value)}
@@ -127,12 +191,6 @@ export function SignInCard() {
   }
 
   if (signedIn) {
-    // With nothing unsent, Sign out signs out, as it always has.
-    const askSignOut = async () => {
-      const n = await unsentTeamTextCount().catch(() => 0);
-      if (n > 0) setUnsent(n);
-      else await signOut();
-    };
     return (
       <>
         <div className="card">
@@ -149,13 +207,24 @@ export function SignInCard() {
               type="button"
               className="btn ghost press-fb"
               style={{ padding: '8px 14px' }}
-              onClick={() => void askSignOut()}
+              disabled={leaving}
+              onClick={() => void askSignOut('here')}
             >
               Sign out
             </button>
           </div>
+          <div className="sub" style={{ marginTop: 6 }}>
+            {leaving ? (
+              <span role="status">{SIGNING_OUT_EVERYWHERE}</span>
+            ) : (
+              <button type="button" className="linklike" onClick={() => setEverywhere(true)}>
+                {SIGN_OUT_EVERYWHERE_LINK}
+              </button>
+            )}
+          </div>
         </div>
         {signOutAsk}
+        {everywhereAsk}
       </>
     );
   }
@@ -222,9 +291,11 @@ export function SignInCard() {
               : `Creating an account is free. ${ACCOUNT_PITCH}`}
         </div>
         <div className="field">
+          <label htmlFor={`${fieldId}-email`}>Email</label>
           <input
+            id={`${fieldId}-email`}
             type="email"
-            placeholder="you@company.com"
+            placeholder="you@example.com"
             autoCapitalize="none"
             autoCorrect="off"
             autoComplete="email"
@@ -233,9 +304,11 @@ export function SignInCard() {
           />
         </div>
         <div className="field">
+          <label htmlFor={`${fieldId}-password`}>Password</label>
           <input
+            id={`${fieldId}-password`}
             type="password"
-            placeholder="Password"
+            placeholder={mode === 'signup' ? 'At least 8 characters' : ''}
             autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
             value={pw}
             onChange={(e) => setPw(e.target.value)}
@@ -309,6 +382,7 @@ export function SignInCard() {
         )}
       </div>
       {signOutAsk}
+      {everywhereAsk}
     </>
   );
 }

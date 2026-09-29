@@ -76,6 +76,14 @@ jobs:
       - name: Build every package
         run: pnpm -r build
 
+      # A Personal build carries no later tier (docs/release-tiers.md): no
+      # Stack Health, Launch, Marketplace, or Admin room, none of their words,
+      # and every room its own chunk that waits for its first open. Reads the
+      # app build the step above just made (VITE_RELEASE_TIER unset), reports
+      # what a launch loads, and fails on anything that should not be there.
+      - name: Check the Personal bundle
+        run: pnpm --filter oscode-app check:bundle
+
       # Prettier drift used to be invisible: neither package's formatting was
       # checked here, so files quietly diverged from .prettierrc. `pnpm format`
       # in a package fixes what this step reports.
@@ -101,6 +109,61 @@ jobs:
 
       - name: Test the edge-function shared modules
         run: deno test supabase/functions/_shared
+
+  # CTO 10 (2026-09-29): the engine and the desktop shell run on Windows too,
+  # where there is no /bin/bash (the runner resolves Git Bash, else
+  # PowerShell), paths use backslashes, and a process tree ends with taskkill.
+  # This job runs the engine's whole suite there, plus the app's Electron-side
+  # tests (the main process's IPC and guards, the updater, the engine host,
+  # the daemon lifecycle). The app's UI suite renders the same on any OS and
+  # Windows minutes cost double, so it stays on Linux in `check`. A test that
+  # needs POSIX is skipped on win32 with its reason, never loosened.
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      # Tests that read source match on LF line ends; the runner's git would
+      # otherwise check the tree out with CRLF.
+      - name: Keep line endings as committed
+        run: git config --global core.autocrlf false
+
+      - name: Check out the repo
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: 10.33.0
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the engine
+        run: pnpm --filter os-code build
+
+      - name: Test the engine
+        run: pnpm --filter os-code test
+
+      - name: Test the desktop shell's main-process side
+        working-directory: app
+        run: >-
+          pnpm exec vitest run
+          test/mainIpc.test.ts
+          test/mainGuards.test.ts
+          test/updateState.test.ts
+          test/updateVersion.test.ts
+          test/shellHost.test.ts
+          test/daemonLifecycle.test.ts
+          test/pairingCredential.test.ts
+          test/privacyCalls.test.ts
+          test/ollamaHost.test.ts
+          test/lifecycle.test.ts
 
   # The pgTAP suite (supabase/tests/*.test.sql) against every migration,
   # applied in order from an empty database (Vault v1 plan item 2.4, CTO

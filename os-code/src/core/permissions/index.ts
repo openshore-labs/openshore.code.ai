@@ -3,8 +3,10 @@
 // cloud quota gets its own distinct confirmation.
 import { posix } from 'node:path';
 import { minimatch } from '../util/minimatch.js';
+import { foldPath } from '../../harness/vault/paths.js';
 import type { SecurityProfile } from '../security/profiles.js';
 import { PROJECT_MEMORY_WRITE_TOOL, isMemoryFilePath } from '../agent/projectMemory.js';
+import { shellForThisMachine, type ShellChoice } from '../exec/shell.js';
 
 /** What a tool can do to you, coarse-grained for policy. */
 export type ToolRisk = 'read' | 'write' | 'shell' | 'network' | 'push' | 'cloud-spend';
@@ -42,31 +44,476 @@ export const SHELL_WRAPPERS: ReadonlySet<string> = new Set([
   'time',
   'command',
   'nice',
+  'timeout',
+  'watch',
   'doas',
   'su',
+  // Windows: PowerShell's own evaluators and the shells themselves.
+  'iex',
+  'Invoke-Expression',
+  'pwsh',
+  'powershell',
+  'cmd',
+  // Interpreters and package runners: each runs whatever code or package its
+  // arguments name (`node -e`, `python -c`, `npx some-package`), so a saved
+  // `node` would allow any program at all (D3).
+  'node',
+  'python',
+  'python3',
+  'perl',
+  'ruby',
+  'npx',
+  'bunx',
+  'deno',
+  // The Windows launcher for python.
+  'py',
 ]);
 
-/** The boundaries between the simple commands of a shell line. */
-const SEGMENT_SPLIT = /\n|;|&&|\|\||\||&/;
+const FOLDED_WRAPPERS: ReadonlySet<string> = new Set(
+  [...SHELL_WRAPPERS].map((word) => word.toLowerCase()),
+);
+
+/** A shell wrapper by any spelling that still runs it: PowerShell and cmd
+ *  ignore case (`IEX`, `PowerShell.exe`), so does a Mac's disk (`Bash`), a
+ *  path names the same program (`/bin/sh`, `C:\Windows\System32\cmd.exe`),
+ *  and a versioned interpreter is the interpreter (`python3.12`, `perl5.34`). */
+export function isShellWrapper(word: string): boolean {
+  const base = programOf(word);
+  return FOLDED_WRAPPERS.has(base) || /^(?:python|perl|ruby|node)[\d.]+$/.test(base);
+}
+
+/** The boundaries between the simple commands of a shell line. An `&` that
+ *  belongs to a redirect (`2>&1`, `&>`) joins, never splits. */
+const SEGMENT_SPLIT = /\n|;|&&|\|\||\||(?<![<>])&(?!>)/;
+
+/** A redirect that leaves a segment harmless: a descriptor copied onto
+ *  another (`2>&1`) or output thrown away (`> /dev/null`). Any other `>` or
+ *  `>>` writes a file the permission engine never saw, so it breaks a match. */
+const HARMLESS_REDIRECT = /(?:\d|&)?>>?\s*(?:&\d+|\/dev\/null)(?=\s|$)/g;
+
+/** Would this one segment reach past its first word? A command
+ *  substitution, a process substitution (`<(` or `>(`), or a redirect into a
+ *  file all run or write something the prefix never named. */
+function segmentEscapes(segment: string): boolean {
+  if (segment.includes('$(') || segment.includes('`')) return true;
+  if (segment.includes('<(') || segment.includes('>(')) return true;
+  return segment.replace(HARMLESS_REDIRECT, ' ').includes('>');
+}
+
+/** Git's global options that point git at a program: `-c core.pager=...`
+ *  and `-c alias.x=!...` run a command, `--config-env` does the same through
+ *  a variable, and `--exec-path` swaps the folder git runs its helpers from. */
+function gitRunsConfiguredProgram(words: string[]): boolean {
+  for (let i = 1; i < words.length; i++) {
+    const w = words[i]!;
+    if (!w.startsWith('-')) return false;
+    if (w === '-c' || w.startsWith('--config-env') || w.startsWith('--exec-path=')) return true;
+    // `-C <dir>` takes the next word as its argument.
+    if (w === '-C') i += 1;
+  }
+  return false;
+}
+
+/** A command's first word as the program it runs: its last path part,
+ *  lowercased, without `.exe`. */
+function programOf(word: string): string {
+  return (word.split(/[\\/]/).pop() ?? word).toLowerCase().replace(/\.exe$/, '');
+}
 
 /**
  * Does every simple command in `command` start with exactly `prefix`?
  * Segments are split on `;`, `&&`, `||`, `|`, `&`, and newlines. A segment
  * with command substitution (`$(` or a backtick) or a shell-wrapper first
  * word never matches, because its real command is something else.
+ *
+ * The split is bash's grammar. Under PowerShell (Windows without Git Bash)
+ * script blocks, the call operator and backtick escapes read differently, so
+ * a prefix could reach a command it never named: no prefix grant matches
+ * there, and every command asks. `shell` defaults to this computer's.
  */
-export function commandMatchesPrefix(command: string, prefix: string): boolean {
-  if (!prefix || SHELL_WRAPPERS.has(prefix)) return false;
+export function commandMatchesPrefix(
+  command: string,
+  prefix: string,
+  shell: ShellChoice['kind'] = shellForThisMachine().kind,
+): boolean {
+  if (shell === 'powershell') return false;
+  if (!prefix || isShellWrapper(prefix)) return false;
   const segments = command
     .split(SEGMENT_SPLIT)
     .map((s) => s.trim())
     .filter(Boolean);
   if (!segments.length) return false;
   return segments.every((segment) => {
-    if (segment.includes('$(') || segment.includes('`')) return false;
-    const first = segment.split(/\s+/)[0] ?? '';
-    return first === prefix && !SHELL_WRAPPERS.has(first);
+    if (segmentEscapes(segment)) return false;
+    const words = segment.split(/\s+/);
+    const first = words[0] ?? '';
+    if (programOf(first) === 'git' && gitRunsConfiguredProgram(words)) return false;
+    if (carriesCode(words)) return false;
+    return first === prefix && !isShellWrapper(first);
   });
+}
+
+/** Flags that hand an interpreter, a database client or a script runner the
+ *  code to run on the command line: `-e` and `--eval` (node, perl, ruby,
+ *  osascript, tsx), `-c` (python, psql, `npm exec -c`), `-p` and `--print`
+ *  (node, perl). Python's `-m` needs no entry: every python spelling is a
+ *  wrapper already. */
+const CODE_FLAGS: ReadonlySet<string> = new Set(['-e', '-c', '-p', '--eval', '--print']);
+
+/** File utilities whose `-c`, `-e` or `-p` means count, a pattern, or make
+ *  the parents (`grep -c`, `mkdir -p`), never code, so their grants still
+ *  save and match. */
+const PLAIN_FLAG_PROGRAMS: ReadonlySet<string> = new Set([
+  'mkdir',
+  'cp',
+  'mv',
+  'ls',
+  'grep',
+  'egrep',
+  'fgrep',
+  'rg',
+  'wc',
+  'cut',
+  'head',
+  'tail',
+  'sort',
+  'uniq',
+  'diff',
+  'cat',
+  'touch',
+  'rm',
+  'echo',
+]);
+
+/**
+ * The words of one simple command as the shell hands them to the program:
+ * quotes removed, a backslash escaping the next character. Undefined when a
+ * quote is left open, which the callers read as "cannot tell", and so as code.
+ */
+export function shellWords(text: string): string[] | undefined {
+  const out: string[] = [];
+  let word = '';
+  let has = false;
+  let quote: "'" | '"' | undefined;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!;
+    if (quote === "'") {
+      if (c === "'") quote = undefined;
+      else word += c;
+      continue;
+    }
+    if (quote === '"') {
+      if (c === '"') quote = undefined;
+      else if (c === '\\' && i + 1 < text.length && '"\\$`'.includes(text[i + 1]!))
+        word += text[++i];
+      else word += c;
+      continue;
+    }
+    if (c === "'" || c === '"') {
+      quote = c;
+      has = true;
+    } else if (c === '\\') {
+      if (i + 1 < text.length) word += text[++i];
+      has = true;
+    } else if (/\s/.test(c)) {
+      if (has || word) out.push(word);
+      word = '';
+      has = false;
+    } else {
+      word += c;
+      has = true;
+    }
+  }
+  if (quote) return undefined;
+  if (has || word) out.push(word);
+  return out;
+}
+
+/** find's actions that run a program on each file it finds. */
+const FIND_RUNS: ReadonlySet<string> = new Set(['-exec', '-execdir', '-ok', '-okdir']);
+
+/**
+ * Whether one sed script runs a command: the `e` command, or the `e` flag on
+ * `s`, which runs the pattern space. Read command by command in GNU sed's
+ * grammar, and failing closed: anything it cannot read counts as code.
+ */
+export function sedScriptRunsCode(script: string): boolean {
+  let i = 0;
+  const n = script.length;
+  const at = () => script[i] ?? '';
+  const skipSpace = () => {
+    while (i < n && /[ \t]/.test(at())) i++;
+  };
+  const toLineEnd = () => {
+    while (i < n && at() !== '\n') {
+      if (at() === '\\') i++;
+      i++;
+    }
+  };
+  const toLabelEnd = () => {
+    while (i < n && at() !== '\n' && at() !== ';') i++;
+  };
+  /** Past one delimited part (a regex or a replacement); false when it never
+   *  closes. */
+  const delimited = (delim: string): boolean => {
+    while (i < n) {
+      const c = at();
+      if (c === '\\') {
+        i += 2;
+        continue;
+      }
+      i++;
+      if (c === delim) return true;
+    }
+    return false;
+  };
+  const address = (): boolean => {
+    const c = at();
+    if (/\d/.test(c)) {
+      while (/[\d~]/.test(at())) i++;
+      return true;
+    }
+    if (c === '$') {
+      i++;
+      return true;
+    }
+    if (c === '/' || c === '\\') {
+      const delim = c === '/' ? '/' : script[i + 1];
+      if (!delim || delim === '\n' || delim === '\\') return false;
+      i += c === '/' ? 1 : 2;
+      if (!delimited(delim)) return false;
+      while (at() === 'I' || at() === 'M') i++;
+      return true;
+    }
+    return true;
+  };
+  while (i < n) {
+    const c = at();
+    if (/[\s;]/.test(c)) {
+      i++;
+      continue;
+    }
+    if (c === '#') {
+      toLineEnd();
+      continue;
+    }
+    if (!address()) return true;
+    if (at() === ',') {
+      i++;
+      if (at() === '+' || at() === '~') i++;
+      if (!address()) return true;
+    }
+    skipSpace();
+    if (at() === '!') i++;
+    skipSpace();
+    const cmd = at();
+    i++;
+    switch (cmd) {
+      case 'e':
+        return true;
+      case 's': {
+        const delim = at();
+        if (!delim || delim === '\n' || delim === '\\') return true;
+        i++;
+        if (!delimited(delim) || !delimited(delim)) return true;
+        while (/[gpiImMe0-9w]/.test(at())) {
+          if (at() === 'e') return true;
+          if (at() === 'w') {
+            toLineEnd();
+            break;
+          }
+          i++;
+        }
+        break;
+      }
+      case 'y': {
+        const delim = at();
+        if (!delim || delim === '\n' || delim === '\\') return true;
+        i++;
+        if (!delimited(delim) || !delimited(delim)) return true;
+        break;
+      }
+      case 'a':
+      case 'i':
+      case 'c':
+      case 'r':
+      case 'R':
+      case 'w':
+      case 'W':
+        toLineEnd();
+        break;
+      case ':':
+      case 'b':
+      case 't':
+      case 'T':
+      case 'v':
+        toLabelEnd();
+        break;
+      case 'q':
+      case 'Q':
+      case 'l':
+      case 'L':
+        skipSpace();
+        while (/\d/.test(at())) i++;
+        break;
+      case '{':
+      case '}':
+      case '=':
+      case 'd':
+      case 'D':
+      case 'F':
+      case 'g':
+      case 'G':
+      case 'h':
+      case 'H':
+      case 'n':
+      case 'N':
+      case 'p':
+      case 'P':
+      case 'x':
+      case 'z':
+        break;
+      default:
+        return true;
+    }
+  }
+  return false;
+}
+
+/** sed's scripts (from `-e`, `--expression`, or its first operand) and
+ *  whether any runs a command; a script read from a file cannot be seen, so
+ *  it counts as code. */
+function sedRunsCode(args: string[]): boolean {
+  const scripts: string[] = [];
+  const operands: string[] = [];
+  for (let k = 0; k < args.length; k++) {
+    const a = args[k]!;
+    if (a === '--') {
+      operands.push(...args.slice(k + 1));
+      break;
+    }
+    if (a.startsWith('--')) {
+      if (a === '--file' || a.startsWith('--file=')) return true;
+      if (a.startsWith('--expression=')) scripts.push(a.slice('--expression='.length));
+      else if (a === '--expression') scripts.push(args[++k] ?? '');
+      else if (a === '--line-length') k++;
+      continue;
+    }
+    if (a.startsWith('-') && a.length > 1) {
+      for (let j = 1; j < a.length; j++) {
+        const flag = a[j]!;
+        if (flag === 'f') return true;
+        if (flag === 'e' || flag === 'l') {
+          const value = a.slice(j + 1) || args[++k] || '';
+          if (flag === 'e') scripts.push(value);
+          break;
+        }
+        // -i takes the rest of its cluster as the backup suffix.
+        if (flag === 'i') break;
+      }
+      continue;
+    }
+    operands.push(a);
+  }
+  if (!scripts.length && operands.length) scripts.push(operands[0]!);
+  return scripts.some(sedScriptRunsCode);
+}
+
+/** tar's options that name a program for it to run: a checkpoint action, a
+ *  program to pipe each file to, a compressor, a volume script, a remote
+ *  shell. Old-style key letters (`tar xIf`) and short clusters count too. */
+function tarRunsCode(args: string[]): boolean {
+  return args.some(
+    (a, k) =>
+      /^--(?:checkpoint-action|to-command|use-compress-program|info-script|new-volume-script|rsh-command|rmt-command)(?:=|$)/.test(
+        a,
+      ) ||
+      /^-[A-Za-z]*[IF]/.test(a) ||
+      (k === 0 && /^[A-Za-z]+$/.test(a) && /[IF]/.test(a)),
+  );
+}
+
+/** awk's program runs a command through `system()`, a pipe, or an extension
+ *  it loads; a program read from a file cannot be seen. The program is the
+ *  first operand after the options (`-v` and `-F` take a value). */
+function awkRunsCode(args: string[]): boolean {
+  for (let k = 0; k < args.length; k++) {
+    const a = args[k]!;
+    if (a === '--') return awkProgramRunsCode(args[k + 1]);
+    if (/^(?:-f|--file|-E|--exec|-i|--include|-l|--load)(?:=|$)|^-[fEil]./.test(a)) return true;
+    if (a === '-v' || a === '-F' || a === '--assign' || a === '--field-separator') {
+      k++;
+      continue;
+    }
+    if (a.startsWith('-') && a.length > 1) continue;
+    return awkProgramRunsCode(a);
+  }
+  return false;
+}
+
+function awkProgramRunsCode(program: string | undefined): boolean {
+  return Boolean(program && /\bsystem\s*\(|\||@load|@include/.test(program));
+}
+
+/** Programs whose own grammar can run another program, read per program. */
+const PROGRAM_RUNS_CODE: Readonly<Record<string, (args: string[]) => boolean>> = {
+  find: (args) => args.some((a) => FIND_RUNS.has(a)),
+  gfind: (args) => args.some((a) => FIND_RUNS.has(a)),
+  sed: sedRunsCode,
+  gsed: sedRunsCode,
+  tar: tarRunsCode,
+  gtar: tarRunsCode,
+  bsdtar: tarRunsCode,
+  awk: awkRunsCode,
+  gawk: awkRunsCode,
+  mawk: awkRunsCode,
+  nawk: awkRunsCode,
+};
+
+/** Does this simple command hand its program code on the command line? A
+ *  code flag (`-e`, `-c`, `--eval`), or a program whose own grammar runs
+ *  another: `find -exec`, sed's `e`, tar's `--to-command`, awk's `system()`. */
+function carriesCode(words: string[]): boolean {
+  const program = programOf(words[0] ?? '');
+  const special = PROGRAM_RUNS_CODE[program];
+  if (special) {
+    const argv = shellWords(words.slice(1).join(' '));
+    if (!argv || special(argv)) return true;
+  }
+  if (PLAIN_FLAG_PROGRAMS.has(program)) return false;
+  return words.slice(1).some((w) => CODE_FLAGS.has(w));
+}
+
+/**
+ * Why "always allow this command in this project" cannot be saved for
+ * `command`, in one plain sentence, or undefined when it can. The rule the
+ * loop would save is the first word, so it is refused when that word runs
+ * other programs (a wrapper or an interpreter, which covers python's `-m`),
+ * when the command hands a program code on its command line (`-e`, `-c`,
+ * `-p`, `--eval`), when git is pointed at a program (`git -c`), and under
+ * PowerShell, where no prefix grant ever matches (D3, CTO 10). Matching
+ * refuses the same commands, so a rule saved from a plain call never
+ * reaches a later one that carries code.
+ */
+export function prefixGrantRefusal(
+  command: string,
+  shell: ShellChoice['kind'] = shellForThisMachine().kind,
+): string | undefined {
+  const words = command.trim().split(/\s+/).filter(Boolean);
+  const first = words[0] ?? '';
+  if (shell === 'powershell') {
+    return 'Commands run in PowerShell on this computer, where a saved command rule never applies, so it will keep asking.';
+  }
+  if (!first || isShellWrapper(first)) {
+    return 'That command starts with a shell wrapper, so it will keep asking.';
+  }
+  if (programOf(first) === 'git' && gitRunsConfiguredProgram(words)) {
+    return 'That git command sets a program for git to run (git -c), so it will keep asking.';
+  }
+  if (carriesCode(words)) {
+    return 'That command runs code written on its own command line, so it will keep asking.';
+  }
+  return undefined;
 }
 
 export interface PermissionConfig {
@@ -123,11 +570,29 @@ export interface PermissionResult {
  * what runs next time. `path` is workspace-relative, as the jail computed it.
  */
 export function protectedWrite(path: string): 'deny' | 'ask' | undefined {
-  const segments = posix.normalize(path).replace(/^\.\//, '').split('/');
-  if (segments.includes('.git')) return 'deny';
+  const segments = permissionPath(path).replace(/^\.\//, '').split('/').map(protectedName);
+  if (segments.includes('.git') || segments.some((s) => /^git~\d+$/.test(s))) return 'deny';
   if (segments[segments.length - 1] === 'os-code.config.json') return 'ask';
   if (segments.includes('.claude') || segments.includes('.codex')) return 'ask';
   return undefined;
+}
+
+/** A path as the permission engine compares it: a backslash is a separator
+ *  (the Windows spelling, and what a model writes there), then the dotted
+ *  segments are folded away (`./a`, `a/../b`), so a glob sees one spelling. */
+export function permissionPath(path: string): string {
+  return posix.normalize(path.replace(/\\/g, '/'));
+}
+
+/** One path segment as a disk that ignores case and Windows would open it:
+ *  folded (`.GIT` is `.git` on a Mac or Windows disk), with Windows' trailing
+ *  dots and spaces dropped (`.git.` opens `.git`) and any stream name cut
+ *  (`.git::$INDEX_ALLOCATION`). A short name like `GIT~1` is caught by the
+ *  caller. For comparing only, never for writing. */
+function protectedName(segment: string): string {
+  const colon = segment.indexOf(':');
+  const folded = foldPath(colon === -1 ? segment : segment.slice(0, colon));
+  return folded.replace(/[. ]+$/, '') || folded;
 }
 
 export class PermissionEngine {
@@ -165,7 +630,16 @@ export class PermissionEngine {
     if (risk === 'shell') return !this.profile.allowShellAutoApprove;
     if (risk === 'cloud-spend') return !this.profile.allowCloudAutoApprove;
     if (risk === 'push') return !this.profile.allowPushAutoApprove;
+    if (risk === 'network') return !this.profile.allowNetworkAutoApprove;
     return false;
+  }
+
+  /** A network step on a profile with nobody to ask (headless) is denied,
+   *  never asked: an unanswered ask would hold the run for 15 minutes and
+   *  then decline anyway, and the step is one an injected line could use to
+   *  send a secret out (CTO 3). */
+  private networkRefused(risk: ToolRisk): boolean {
+    return risk === 'network' && this.autoAllowBlocked(risk);
   }
 
   decide(q: PermissionQuery): PermissionResult {
@@ -183,9 +657,18 @@ export class PermissionEngine {
 
   private evaluate(q: PermissionQuery): PermissionResult {
     // Belt and braces under the loop's jail-based normalization (ENG-3): a
-    // dotted spelling (`./secrets/k`, `src/../secrets/k`) must match the same
-    // globs as the plain one, whoever built the query.
-    const path = q.path === undefined ? undefined : posix.normalize(q.path);
+    // dotted spelling (`./secrets/k`, `src/../secrets/k`) or a backslashed one
+    // (`secrets\\k`) must match the same globs as the plain one, whoever
+    // built the query.
+    const path = q.path === undefined ? undefined : permissionPath(q.path);
+
+    // Headless means offline: before any grant, rule, or default can allow it.
+    if (this.networkRefused(q.risk)) {
+      return {
+        decision: 'deny',
+        reason: `routines work offline, so ${q.toolName} does not run on the ${this.profile?.name ?? 'restricted'} profile`,
+      };
+    }
 
     // Files that decide what code runs, before any grant, rule, or trusted
     // repo can make a write to them quiet (see protectedWrite).

@@ -18,7 +18,9 @@ import {
   buildToolContext,
   buildToolRegistry,
   lazyVaultPrivacy,
+  networkToolsLeftOut,
   vaultPrivacyConfig,
+  type ToolRegistryOptions,
 } from './registry.js';
 import { createVaultContextSource, currentStateReader } from '../vault/contextSource.js';
 import { AgentSession } from './loop.js';
@@ -38,7 +40,9 @@ import { engineEthicsContext } from '../ethics/host.js';
 import { nextActionFor } from '../ethics/classify.js';
 import { configureStreamIdle } from '../../providers/streamIdle.js';
 import type { AgentEvent, PermissionMode } from './types.js';
+import { processesOn } from '../tools/process.js';
 import type { CurrentsHandles, HarnessCurrentsHandle } from '../../currents/model.js';
+import { cliCommandAvailable } from '../../currents/host.js';
 import type { VaultContextSource } from '../../harness/vaultContext.js';
 import type { VaultOverrides } from '../../harness/vault/types.js';
 import { vaultContextOn, vaultHandoffOn, vaultPackSize } from '../../harness/vault/settings.js';
@@ -146,13 +150,20 @@ export interface BootstrapOptions {
   vaultPins?: string[];
   /** Whether the person allowed web search on the device that opened this
    *  session (the app asks once: the search words go to a search service).
-   *  False leaves the webSearch tool out. Undefined (the CLI, routines) keeps
-   *  it, under the config's own egress rules. */
+   *  False leaves the webSearch tool out. Undefined (the CLI) keeps it, under
+   *  the config's own egress rules. A headless run (a routine) leaves it out
+   *  whatever this says: headless means offline. */
   webSearch?: boolean;
   /** May this session's person let a check command run after changes (v1
    *  Phase 1)? The daemon passes false for a member's session on a shared
    *  hub; undefined (the desktop, the CLI) reads as yes. */
   canGrantVerify?: boolean;
+  /** May this session's agent start programs that keep running (P1)? The
+   *  daemon passes false for a member's session on a shared hub, since the
+   *  command lane is the computer owner's; undefined (the desktop, the CLI)
+   *  reads as yes. A headless run never gets them, and config's
+   *  `tools.processes: 'off'` turns them off everywhere. */
+  processes?: boolean;
   /** The app's vault switches for this session (Vault M7, CTO L13): each
    *  only ever narrows, the `humanize` and `memory` shape. `context: 'off'`
    *  gives no pack, `handoff: 'off'` writes and reads no handoff (the
@@ -204,6 +215,10 @@ export interface BootstrapResult {
    *  sends a task: a cloud orchestrator under a profile that cannot auto-
    *  approve spend can never finish a turn. */
   orchestratorKind: 'local' | 'cloud';
+  /** The tools an offline (headless) session left out that it would
+   *  otherwise have, by name; empty for every other session. The run's note
+   *  names them (CTO 3). */
+  offlineTools: string[];
 }
 
 export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
@@ -220,6 +235,14 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   const humanize = options.humanize ?? stored.switches?.humanize;
   const memorySwitch = options.memory ?? stored.switches?.memory;
   const chainOfThought = options.chainOfThought ?? stored.switches?.chainOfThought;
+  // And a declined web search, and the currents it was handed (H1): without
+  // them a revived chat searched after the person said no, and its current's
+  // tool was gone. A stored key is read back from this computer's credential
+  // store (storedSessionProject); a stored CLI handle is honored only while
+  // that CLI is still on this machine's PATH, the rule a create applies.
+  const webSearch = options.webSearch ?? stored.switches?.webSearch;
+  const currents = options.currents ?? stillRunnable(stored.switches?.currents);
+  const harnessCurrents = options.harnessCurrents ?? stored.switches?.harnessCurrents;
   let config = options.config;
   let projectTrust: ProjectTrust | undefined;
   if (!config) {
@@ -311,22 +334,37 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   // keeps the machine's vault.
   const vaultRoot: string | null | undefined = options.vaultRoot;
 
-  const tools = buildToolRegistry({
+  // Programs the agent starts and leaves running ("run my app", P1): never on
+  // a headless run (nobody is there to see or stop one), never in a member's
+  // session on a shared hub, and off when config says so. In plan mode they
+  // leave the menu, read live since the mode changes between tasks; the agent
+  // is built below, so until then the mode is the one the session opens in.
+  const processes =
+    processesOn(config) && options.profile !== 'headless' && options.processes !== false;
+  let modeNow = (): PermissionMode => options.permissionMode ?? 'default';
+
+  const registryOptions: ToolRegistryOptions = {
     stackHasVision:
       Boolean(stack.specialists.vision) || stack.orchestrator.provider.kind === 'cloud',
     stackHasImageGen: stack.imageGen,
     stackHasSpecialists: Boolean(stack.specialists.coding || stack.specialists.fast),
     egressLockdown,
     hasCodemagic: Boolean(options.codemagicToken),
-    currents: options.currents,
-    ...(options.webSearch === false ? { webSearch: false } : {}),
+    currents,
+    ...(webSearch === false ? { webSearch: false } : {}),
     vault: vaultRoot !== null,
     // A headless run (a Crew routine) has nobody at the desk to approve an
     // always-ask vault write, and the scheduler's own note already records
     // the run, so it keeps the vault reads and drops the write.
     vaultWrite: options.profile !== 'headless',
     memory: config.memory?.enabled !== false,
-  });
+    // Headless means offline (CTO 3): nothing that reaches the network is
+    // registered, and the profile denies a network step outright.
+    offline: options.profile === 'headless',
+    ...(processes ? { processes: true, processesOffered: () => modeNow() !== 'plan' } : {}),
+  };
+  const tools = buildToolRegistry(registryOptions);
+  const offlineTools = networkToolsLeftOut(registryOptions);
   const toolContext = buildToolContext({
     cwd: options.cwd,
     config,
@@ -389,7 +427,14 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     project: {
       projectName,
       instructions,
-      switches: { humanize, memory: memorySwitch, chainOfThought },
+      switches: {
+        humanize,
+        memory: memorySwitch,
+        chainOfThought,
+        ...(webSearch === false ? { webSearch: false } : {}),
+        ...(currents ? { currents } : {}),
+        ...(harnessCurrents ? { harnessCurrents } : {}),
+      },
     },
     handoff,
   });
@@ -403,10 +448,10 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   if (!options.sessionId) {
     const waiting = [...(projectTrust?.waiting ?? [])];
     let state = projectTrust?.state;
-    if (options.currents?.cli && hasAgentCliSettings(options.cwd)) {
+    if (currents?.cli && hasAgentCliSettings(options.cwd)) {
       const cli = cliFolderTrust(options.cwd);
       if (cli.state !== 'trusted') {
-        const name = options.currents.cli.command === 'claude' ? 'Claude Code' : 'Codex';
+        const name = currents.cli.command === 'claude' ? 'Claude Code' : 'Codex';
         waiting.push(`lets ${name} run with this folder's own settings`);
         if (state !== 'changed') state = cli.state === 'changed' ? 'changed' : 'untrusted';
       }
@@ -437,8 +482,21 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   }
   // The Agentic Current's handle, and this session's id so the Hermes tool can
   // keep one Hermes session per OpenShore session.
-  if (options.currents) toolContext.currents = options.currents;
+  if (currents) toolContext.currents = currents;
   toolContext.sessionId = driver.id;
+
+  // The process tools' seam: each program is a run on this driver's command
+  // lane, `runCommand(cmd, {source: 'agent'})` behind startAgentProcess (which
+  // holds the cap of three), with its 64 KB tail kept by the driver.
+  if (processes) {
+    toolContext.processes = {
+      start: (command) => driver.startAgentProcess(command),
+      settle: (runId, ms, signal) => driver.settleAgentProcess(runId, ms, signal),
+      read: (runId, lines) => driver.readAgentProcess(runId, lines),
+      stop: (runId) => driver.stopAgentProcess(runId),
+      live: () => driver.liveAgentProcesses(),
+    };
+  }
 
   // The handoff store (J13), keyed by this session's owner, workspace and
   // project. The owner is read when a handoff is written or read, since the
@@ -494,8 +552,9 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     projectSecrets,
     // A Harness Current makes a cloud decision call, so it is dropped under
     // egress lockdown exactly like cloud escalation and the currents tools.
-    harnessCurrents: egressLockdown ? undefined : options.harnessCurrents,
+    harnessCurrents: egressLockdown ? undefined : harnessCurrents,
     permissionMode: options.permissionMode,
+    ...(offlineTools.length ? { offlineTools } : {}),
     ...(options.canGrantVerify === false ? { canGrantVerify: false } : {}),
     vaultContext,
     ...(handoffOn ? { onHandoff: (record) => void writeHandoff(handoffScope(), record) } : {}),
@@ -510,6 +569,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     },
   });
   driver.attachAgent(agent);
+  modeNow = () => agent.permissionMode;
 
   // Rehydrating a stored session (daemon restarted): the journal replayed into
   // the driver, but a fresh AgentSession has no memory. Seed its history from
@@ -517,7 +577,8 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   // of answering with amnesia, and tell the client the session was restored.
   if (options.sessionId) {
     const journal = driver.replayEvents();
-    const seeded = seedHistoryFromEvents(journal);
+    // With the sequence numbers, so the turns a rewind took back stay out (P2).
+    const seeded = seedHistoryFromEvents(driver.replayJournal());
     if (seeded.length) {
       agent.history = seeded;
       driver.emit({ type: 'status', message: 'Reconnected to this session after a restart.' });
@@ -529,7 +590,26 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     }
   }
 
-  return { driver, agent, router, config, toolContext, tools, warnings, orchestratorKind };
+  return {
+    driver,
+    agent,
+    router,
+    config,
+    toolContext,
+    tools,
+    warnings,
+    orchestratorKind,
+    offlineTools,
+  };
+}
+
+/** A revived session's stored currents, less a CLI handle whose command is no
+ *  longer on this machine's PATH (a create drops one the same way), so the
+ *  tool never registers for a command that cannot run. */
+function stillRunnable(currents: CurrentsHandles | undefined): CurrentsHandles | undefined {
+  if (!currents?.cli || cliCommandAvailable(currents.cli.command)) return currents;
+  const { cli: _dropped, ...rest } = currents;
+  return Object.keys(rest).length ? rest : undefined;
 }
 
 /** The engine's pack source, reading the vault's own settings again (forced)

@@ -21,7 +21,11 @@ describe('components are all imported somewhere', () => {
     const orphans: string[] = [];
     for (const entry of readdirSync(join(SRC, 'components'))) {
       const base = entry.replace(/\.(tsx?|css)$/, '');
-      const re = new RegExp(`from '(\\.\\.?/)*components/${base}\\.js'|from '\\./${base}\\.js'`);
+      // A static import, or a lazy one (App.tsx loads a later tier's sheets
+      // with import() so a build without that tier never carries them).
+      const re = new RegExp(
+        `(from |import\\()'(\\.\\.?/)*components/${base}\\.js'|from '\\./${base}\\.js'`,
+      );
       const used = sources.some((s) => !s.path.endsWith(`/components/${entry}`) && re.test(s.text));
       if (!used) orphans.push(relative(SRC, join(SRC, 'components', entry)));
     }

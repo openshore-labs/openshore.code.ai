@@ -9,6 +9,7 @@
 // is connected), so the switch is the sole gate, matching the engine side. No em
 // dashes anywhere.
 import { storeGetJson } from './platform.js';
+import { SHIPS_LAUNCH } from './focus.js';
 import { triggerBuild, getBuild, buildLogExcerpt, isTerminal } from './codemagic.js';
 import type { LaunchTarget } from '../state/types.js';
 
@@ -119,6 +120,10 @@ async function savedTarget(): Promise<LaunchTarget | undefined> {
  *  Mirrors the engine tool so the two surfaces behave identically. Never throws;
  *  a failure comes back as text the model can act on. */
 export async function runCodemagicTool(input: CodemagicToolInput): Promise<string> {
+  // Launch is v2 (docs/release-tiers.md). A Personal build never offers the
+  // tool, and in its bundle this check is a literal true, so the rest of the
+  // handler, and the build client behind it, is dropped from that build.
+  if (!SHIPS_LAUNCH) return 'Codemagic is not part of this build.';
   try {
     if (input.action === 'trigger') {
       const target = await savedTarget();

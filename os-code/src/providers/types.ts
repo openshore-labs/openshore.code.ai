@@ -112,10 +112,12 @@ export interface ProviderCapabilities {
   supportsGrammar: boolean;
   /** The window this model is served. With a provider's `numCtx: 'auto'`
    *  (Vault M4, CTO I1) it is the served window, the lower of the model's own
-   *  and the per-class ceiling; otherwise the model's own. */
+   *  and the per-class ceiling. On Ollama without it, what Ollama serves a
+   *  request that names no window (the Modelfile's `num_ctx`, else the server
+   *  default), never more than the model's own. Elsewhere the model's own. */
   contextTokens: number;
   /** The model's own window as the server reports it, set when
-   *  `contextTokens` holds a smaller served window. Class derivation reads
+   *  `contextTokens` holds a served window. Class derivation reads
    *  `nativeContextTokens ?? contextTokens`, so serving less never drops a
    *  seat a class. */
   nativeContextTokens?: number;
@@ -124,6 +126,12 @@ export interface ProviderCapabilities {
   /** Standard capability categories this model is strong in (see router/roles). */
   categories: CapabilityCategory[];
 }
+
+/** What giving a model more room would do on this computer, for the
+ *  truncation card: 'more' with the larger window (and about how many GB it
+ *  takes, when the model says enough), or 'full' when this computer's memory
+ *  allows no larger window than it has now. */
+export type MoreRoom = { room: 'more'; window: number; gb?: number } | { room: 'full' };
 
 export interface Provider {
   id: string;
@@ -141,6 +149,10 @@ export interface Provider {
   listModels(): Promise<string[]>;
   /** One cheap round trip to prove the endpoint is alive. */
   health(): Promise<{ ok: boolean; detail: string }>;
+  /** What serving `model` a larger window would do on this computer, for the
+   *  truncation card's action (servedWindow.ts). Only a server whose window
+   *  the harness sets (Ollama) answers; undefined elsewhere. */
+  moreRoom?(model: string): Promise<MoreRoom | undefined>;
 }
 
 /** Embedding is a separate, tiny contract; the index layer uses it directly. */

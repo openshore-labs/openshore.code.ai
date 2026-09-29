@@ -64,6 +64,12 @@ verify_jwt = false
 [functions.link-apple-purchase]
 verify_jwt = true
 
+# A signed-in user deletes their own account (Apple 5.1.1(v)). The caller's JWT
+# is required; the function resolves who they are from it with auth.getUser()
+# and never from the request body.
+[functions.delete-account]
+verify_jwt = true
+
 # Repo OAuth (GitHub, GitLab, Bitbucket). The provider redirect cannot carry a
 # Supabase bearer, and /exchange requires a valid single-use provider code, so
 # no JWT. The provider client secret lives only in this function's secrets.

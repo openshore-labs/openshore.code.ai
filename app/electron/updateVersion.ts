@@ -51,21 +51,36 @@ export function pickMacAsset(assets: ReleaseAsset[], arch: string): ReleaseAsset
   return forArch(/-mac\.zip$/i, /-arm64-mac\.zip$/i) ?? forArch(/\.dmg$/i, /-arm64\.dmg$/i);
 }
 
+export interface MacUpdate {
+  version: string;
+  tag: string;
+  asset: ReleaseAsset;
+  /** The asset's detached signature (`<asset name>.sig`), when the release
+   *  carries one; macUpdate.ts refuses to swap without it. */
+  signature?: ReleaseAsset;
+}
+
 /** The newest published release, newer than `current`, that carries a zip
- *  for this Mac; undefined when there is nothing to update to. */
+ *  for this Mac; undefined when there is nothing to update to. `skip` is a
+ *  version the launch watchdog rolled back (macUpdate.ts), never offered. */
 export function newestMacUpdate(
   releases: ReleaseInfo[],
   current: string,
   arch: string,
-): { version: string; tag: string; asset: ReleaseAsset } | undefined {
-  let best: { version: string; tag: string; asset: ReleaseAsset } | undefined;
+  skip?: string,
+): MacUpdate | undefined {
+  let best: MacUpdate | undefined;
   for (const r of releases) {
     if (r.draft || r.prerelease) continue;
     const version = r.tag_name.replace(/^v/, '');
+    if (version === skip) continue;
     if (!versionIsNewer(version, current)) continue;
     if (best && !versionIsNewer(version, best.version)) continue;
-    const asset = pickMacAsset(r.assets ?? [], arch);
-    if (asset) best = { version, tag: r.tag_name, asset };
+    const assets = r.assets ?? [];
+    const asset = pickMacAsset(assets, arch);
+    if (!asset) continue;
+    const signature = assets.find((a) => a.name === `${asset.name}.sig`);
+    best = { version, tag: r.tag_name, asset, ...(signature ? { signature } : {}) };
   }
   return best;
 }

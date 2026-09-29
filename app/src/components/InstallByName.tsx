@@ -54,6 +54,7 @@ export function InstallByName({ onInstalled }: { onInstalled?: (ref: string) => 
       </p>
       <div className="field" style={{ marginTop: 8 }}>
         <input
+          aria-label="Model name"
           placeholder="model name, e.g. qwen3:8b"
           value={refInput}
           autoCapitalize="none"

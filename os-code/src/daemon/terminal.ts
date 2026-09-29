@@ -20,6 +20,7 @@
 // and, when it is absent, throws TerminalUnavailable so the routes answer a
 // clean error instead of crashing the daemon.
 import { randomUUID } from 'node:crypto';
+import { scrubbedEnv } from '../core/exec/childEnv.js';
 
 /** The narrow slice of a pty the manager drives. node-pty's IPty satisfies it,
  *  and so does the fake pty the tests inject. */
@@ -228,16 +229,20 @@ export class TerminalManager {
 
     const termId = opts.termId ?? randomUUID().slice(0, 8);
     const shell = opts.shell || defaultShell(this.platform, this.env);
+    // The shell starts without the keys this process may hold (childEnv.ts):
+    // the person's own shell files still run, so what they export there is
+    // theirs to keep, but nothing OpenShore carried in reaches the prompt.
+    const env = scrubbedEnv(this.env);
     let pty: TerminalPty;
     try {
-      pty = await this.spawnFactory({ shell, cwd: opts.cwd, cols, rows, env: this.env });
+      pty = await this.spawnFactory({ shell, cwd: opts.cwd, cols, rows, env });
     } catch (err) {
       // A missing backend is its own answer (503 upstream). A shell that will
       // not spawn gets ONE platform-true retry: PowerShell absent or blocked on
       // Windows falls back to cmd.exe; there is no second guess elsewhere.
       const retry = opts.shell ? undefined : fallbackShell(this.platform, this.env);
       if (err instanceof TerminalUnavailable || !retry || retry === shell) throw err;
-      pty = await this.spawnFactory({ shell: retry, cwd: opts.cwd, cols, rows, env: this.env });
+      pty = await this.spawnFactory({ shell: retry, cwd: opts.cwd, cols, rows, env });
     }
 
     const entry: TerminalEntry = {
@@ -369,6 +374,15 @@ export class TerminalManager {
   killSession(sessionId: string): number {
     const ids = [...(this.bySession.get(sessionId) ?? [])];
     for (const termId of ids) this.kill(termId, sessionId);
+    return ids.length;
+  }
+
+  /** Kill every terminal this manager holds, in every scope: the app is
+   *  quitting (or the daemon that owns them is closing), and a shell left
+   *  behind would run on with nothing able to reach it. */
+  killAll(): number {
+    const ids = [...this.terminals.keys()];
+    for (const termId of ids) this.kill(termId);
     return ids.length;
   }
 

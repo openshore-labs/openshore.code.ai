@@ -19,6 +19,7 @@ import { AGENTIC_CURRENT_IDS, type AgenticCurrentId } from 'os-code/protocol';
 import type { StackModelRef } from './stack.js';
 import { byomSecretKey } from './byom.js';
 import type { SetupGuideId } from './setupGuides.js';
+import { SHIPS_CURRENTS } from './focus.js';
 
 export type { AgenticCurrentId } from 'os-code/protocol';
 export { AGENTIC_CURRENT_IDS } from 'os-code/protocol';
@@ -102,56 +103,61 @@ export interface AgenticCurrentInfo {
   guide: SetupGuideId;
 }
 
-export const AGENTIC_CURRENTS: AgenticCurrentInfo[] = [
-  {
-    id: 'hermes',
-    label: 'Hermes Agent',
-    sub: 'An agent on a computer you own, with its own memory and skills.',
-    needs:
-      'Hermes on a computer you can reach over your Tailscale network, with its API server on.',
-    kind: 'hermes',
-    available: true,
-    guide: 'connect-hermes',
-  },
-  {
-    id: 'cli',
-    label: 'CLI Pairing',
-    sub: 'Claude Code or Codex on your paired computer, as a specialist your stack can hand work to.',
-    needs: 'Claude Code or Codex installed on the paired computer.',
-    kind: 'cli',
-    available: true,
-    guide: 'cli-pairing',
-  },
-  {
-    id: 'vellum',
-    label: 'Vellum',
-    sub: 'An open-source assistant whose memory follows you across surfaces.',
-    needs:
-      'Vellum has no documented API yet. If your install exposes an A2A card or an OpenAI-compatible endpoint, paste its address and OpenShore will try.',
-    kind: 'endpoint',
-    available: false,
-    guide: 'connect-a2a',
-  },
-  {
-    id: 'openagi',
-    label: 'OpenAGI',
-    sub: 'A self-improving agent that learns from how you work.',
-    needs:
-      'OpenAGI runs in-process with no network API yet. If your install exposes an A2A card or an OpenAI-compatible endpoint, paste its address and OpenShore will try.',
-    kind: 'endpoint',
-    available: false,
-    guide: 'connect-a2a',
-  },
-  {
-    id: 'a2a',
-    label: 'A2A',
-    sub: 'Any agent that speaks the open agent-to-agent protocol. The generic door.',
-    needs: 'An agent that publishes an A2A agent card at an address you can reach.',
-    kind: 'a2a',
-    available: true,
-    guide: 'connect-a2a',
-  },
-];
+/** The roster. Currents are v2 (docs/release-tiers.md): a Personal build has
+ *  none, and SHIPS_CURRENTS folds to false in its bundle, so their names and
+ *  lines are not in it either. */
+export const AGENTIC_CURRENTS: AgenticCurrentInfo[] = SHIPS_CURRENTS
+  ? [
+      {
+        id: 'hermes',
+        label: 'Hermes Agent',
+        sub: 'An agent on a computer you own, with its own memory and skills.',
+        needs:
+          'Hermes on a computer you can reach over your Tailscale network, with its API server on.',
+        kind: 'hermes',
+        available: true,
+        guide: 'connect-hermes',
+      },
+      {
+        id: 'cli',
+        label: 'CLI Pairing',
+        sub: 'Claude Code or Codex on your paired computer, as a specialist your stack can hand work to.',
+        needs: 'Claude Code or Codex installed on the paired computer.',
+        kind: 'cli',
+        available: true,
+        guide: 'cli-pairing',
+      },
+      {
+        id: 'vellum',
+        label: 'Vellum',
+        sub: 'An open-source assistant whose memory follows you across surfaces.',
+        needs:
+          'Vellum has no documented API yet. If your install exposes an A2A card or an OpenAI-compatible endpoint, paste its address and OpenShore will try.',
+        kind: 'endpoint',
+        available: false,
+        guide: 'connect-a2a',
+      },
+      {
+        id: 'openagi',
+        label: 'OpenAGI',
+        sub: 'A self-improving agent that learns from how you work.',
+        needs:
+          'OpenAGI runs in-process with no network API yet. If your install exposes an A2A card or an OpenAI-compatible endpoint, paste its address and OpenShore will try.',
+        kind: 'endpoint',
+        available: false,
+        guide: 'connect-a2a',
+      },
+      {
+        id: 'a2a',
+        label: 'A2A',
+        sub: 'Any agent that speaks the open agent-to-agent protocol. The generic door.',
+        needs: 'An agent that publishes an A2A agent card at an address you can reach.',
+        kind: 'a2a',
+        available: true,
+        guide: 'connect-a2a',
+      },
+    ]
+  : [];
 
 export function currentInfo(id: AgenticCurrentId): AgenticCurrentInfo {
   return AGENTIC_CURRENTS.find((c) => c.id === id)!;

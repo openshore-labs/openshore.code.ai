@@ -6,6 +6,9 @@ import type { DriverEvent } from 'os-code/protocol';
 import type { ChangedFile, ConversationSource, ThreadItem, ThreadState } from './types.js';
 import { providerInfo } from '../lib/providers.js';
 import { isLocalOnlyFinal } from '../drivers/types.js';
+import { windowCutItem } from './securityOps.js';
+import { rewindThread } from './rewindOps.js';
+import { retrievalItem, windowTightItem } from './harnessOps.js';
 
 /** The go-ahead the app sends when a plan is approved. The reducer reads it
  *  back on replay: a task that starts with this line means the plan before
@@ -97,9 +100,12 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
       // the user bubble the moment the text leaves, so the first turn is
       // visible before the computer answers): the same text, while that
       // local task is still open with nothing after it, is one bubble.
+      // The echo carries the journal's seq, which a rewind names (P2).
+      const journaled = atSeq !== undefined && atSeq >= 1 ? { seq: atSeq } : {};
       const last = next.items[next.items.length - 1];
       if (next.busy && last && last.kind === 'user' && last.text === event.input) {
-        return { ...next, stepNote: 'Thinking' };
+        const items = atSeq ? [...next.items.slice(0, -1), { ...last, ...journaled }] : next.items;
+        return { ...next, items, stepNote: 'Thinking' };
       }
       // The go-ahead line settles the plan it answers, live or on replay.
       const items =
@@ -122,7 +128,7 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
           // The last task's list is done with; the new task writes its own.
           todos: [],
         },
-        { kind: 'user', text: event.input },
+        { kind: 'user', text: event.input, ...journaled },
       );
     }
 
@@ -282,8 +288,24 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
     case 'mode':
       return { ...next, mode: event.mode };
 
-    case 'repo-info':
-      return { ...next, repo: { cwd: event.cwd, branch: event.branch, dirty: event.dirty } };
+    case 'repo-info': {
+      // The person's commands ride only when their list changed, so a
+      // repo-info without them keeps the last list this chat saw.
+      const commands = event.commands ?? next.repo?.commands;
+      const commandsNotLoaded = event.commands
+        ? event.commandsNotLoaded
+        : next.repo?.commandsNotLoaded;
+      return {
+        ...next,
+        repo: {
+          cwd: event.cwd,
+          branch: event.branch,
+          dirty: event.dirty,
+          ...(commands ? { commands } : {}),
+          ...(commandsNotLoaded ? { commandsNotLoaded } : {}),
+        },
+      };
+    }
 
     case 'title':
       return { ...next, title: event.title };
@@ -343,7 +365,7 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
       }
       const ranCommands = next.items
         .slice(since + 1)
-        .some((i) => i.kind === 'tool' && i.name === 'runShell');
+        .some((i) => i.kind === 'tool' && (i.name === 'runShell' || i.name === 'startProcess'));
       if (at === -1) {
         return push(next, {
           kind: 'changed',
@@ -380,6 +402,12 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
       return { ...next, items };
     }
 
+    case 'rewound':
+      // A rewind (P2): the turns from the rewound message up to this marker
+      // are taken back, live or on replay, on every device, and a quiet line
+      // says what happened to the files (state/rewindOps.ts).
+      return rewindThread(next, event);
+
     case 'project-trust': {
       if (event.state === 'trusted') {
         const has = next.items.some((i) => i.kind === 'trust');
@@ -401,6 +429,20 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
         state: event.state,
       });
     }
+
+    case 'window-cut':
+      // The server cut the chat to fit (C1): a teal card once per chat per
+      // model, mapped in the security package's module (CTO 9).
+      return push(next, windowCutItem(event));
+
+    case 'window-tight':
+      // Even the lean prompt fills most of the window (CTO 6): the same card
+      // family, once per chat per model, mapped in the harness's module.
+      return push(next, windowTightItem(event));
+
+    case 'retrieval':
+      // The places in the code a local seat was given before its first turn.
+      return push(next, retrievalItem(event));
 
     case 'harness-current':
       // A Harness Current (Jev) made a cheap decision this turn. Shown as a
@@ -469,6 +511,16 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
         stepNote: undefined,
         pendingApprovals: [],
       };
+      // The person's own Stop (CX ruling 5): the partial answer stays where it
+      // is, and a muted marker says who stopped it and whether any of the
+      // answer had arrived. Every driver's stop reads the same.
+      if (event.reason === 'aborted') {
+        return push(done, {
+          kind: 'stopped',
+          message: answeredThisTurn(done) ? STOPPED_BY_YOU : STOPPED_BEFORE_ANSWER,
+          byYou: true,
+        });
+      }
       if (event.reason !== 'complete') {
         return push(done, {
           kind: 'stopped',
@@ -501,6 +553,7 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
         id: `cmd_${event.runId}`,
         runId: event.runId,
         command: event.command,
+        ...(event.source === 'agent' ? { source: 'agent' as const } : {}),
         output: '',
         state: 'running',
       });
@@ -569,6 +622,21 @@ export function titleFrom(state: ThreadState): string | undefined {
 }
 
 /** A status line as a working-row note: the sentence without its full stop. */
+/** The marker under a turn the person stopped once some of it arrived. */
+export const STOPPED_BY_YOU = 'Stopped by you.';
+/** The marker when the person stopped a turn before any of it arrived. */
+export const STOPPED_BEFORE_ANSWER = 'Stopped before it answered.';
+
+/** Whether any words of an answer arrived since the person's last message. */
+function answeredThisTurn(thread: ThreadState): boolean {
+  for (let i = thread.items.length - 1; i >= 0; i--) {
+    const item = thread.items[i]!;
+    if (item.kind === 'user') return false;
+    if (item.kind === 'assistant' && item.text.trim()) return true;
+  }
+  return false;
+}
+
 function waitNote(message: string): string {
   return message.trim().replace(/\.$/, '');
 }
@@ -661,6 +729,12 @@ export function describeCall(name: string, args: Record<string, unknown>): strin
       return `Find ${str(args.pattern) ?? ''}`;
     case 'runShell':
       return `$ ${(str(args.command) ?? '').slice(0, 90)}`;
+    case 'startProcess':
+      return `Start: ${(str(args.command) ?? '').slice(0, 84)}`;
+    case 'readProcess':
+      return "Read a program's output";
+    case 'stopProcess':
+      return 'Stop a program';
     case 'webSearch':
       return `Search the web: ${(str(args.query) ?? '').slice(0, 70)}`;
     case 'webFetch':

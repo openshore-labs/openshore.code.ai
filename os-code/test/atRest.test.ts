@@ -119,12 +119,17 @@ describe('the data key', () => {
     expect(second?.key.equals(first!.key)).toBe(true);
   });
 
-  it('reports the file backend honestly and holds the store at mode 600', () => {
-    const dk = loadOrCreateDataKey();
-    expect(dk?.protection).toBe('encrypted-file');
-    const mode = statSync(join(home, 'credentials')).mode & 0o777;
-    expect(mode).toBe(0o600);
-  });
+  // Windows keeps no POSIX mode bits (statSync reads 0o666 there); the store's
+  // protection on Windows is the user profile's own access list.
+  it.skipIf(process.platform === 'win32')(
+    'reports the file backend honestly and holds the store at mode 600',
+    () => {
+      const dk = loadOrCreateDataKey();
+      expect(dk?.protection).toBe('encrypted-file');
+      const mode = statSync(join(home, 'credentials')).mode & 0o777;
+      expect(mode).toBe(0o600);
+    },
+  );
 });
 
 describe('journal sealing', () => {

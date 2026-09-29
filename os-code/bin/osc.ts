@@ -31,7 +31,13 @@ import {
 } from '../src/commands/license.js';
 import { evalCommand } from '../src/commands/eval.js';
 import { attachImageCommand } from '../src/commands/attachImage.js';
-import { tokenListCommand, tokenMintCommand, tokenRevokeCommand } from '../src/commands/token.js';
+import { DEVICE_CREDENTIAL_TTL_DAYS } from '../src/core/security/credentials.js';
+import {
+  tokenListCommand,
+  tokenMintCommand,
+  tokenRevokeCommand,
+  tokenRotateCommand,
+} from '../src/commands/token.js';
 import { logger } from '../src/util/log.js';
 
 const log = logger('cli');
@@ -211,6 +217,14 @@ program
   )
   .option('--page-check <on|off>', 'deep only: the page check (no test suite needed) on or off')
   .option(
+    '--retrieval <on|off>',
+    'deep or floor: search the workspace for the task and give the model the best excerpts before its first turn, or not',
+  )
+  .option(
+    '--union-decoding <on|off>',
+    'deep or floor: hold a small model on the text bridge to the tool-or-answer reply format, or not',
+  )
+  .option(
     '--suite <code|everyday>',
     'deep only: the code tasks, or the everyday ones (a page, photos, a chart, a button)',
   )
@@ -232,13 +246,13 @@ program
 
 const tokenCmd = program
   .command('token')
-  .description('per-user daemon credentials for a team (mint, list, revoke)');
+  .description('per-user daemon credentials for a team (mint, list, revoke, rotate)');
 tokenCmd
   .command('mint')
   .description('mint a credential for a teammate, printed once')
   .option('--role <role>', 'admin or member (default: member)')
   .option('--label <label>', 'a name for the device, e.g. "Alice iPhone"')
-  .option('--ttl <days>', 'expire after N days (default: never)')
+  .option('--ttl <days>', `expire after N days (default: ${DEVICE_CREDENTIAL_TTL_DAYS})`)
   .action((options: { role?: string; label?: string; ttl?: string }) => tokenMintCommand(options));
 tokenCmd
   .command('list', { isDefault: true })
@@ -249,6 +263,10 @@ tokenCmd
   .description('revoke by label or token-hash prefix')
   .argument('<match>')
   .action(tokenRevokeCommand);
+tokenCmd
+  .command('rotate')
+  .description('replace the shared token in ~/.os-code/daemon.token with a new one')
+  .action(tokenRotateCommand);
 
 program.hook('preAction', () => {
   if (program.opts().color === false) setColorEnabled(false);

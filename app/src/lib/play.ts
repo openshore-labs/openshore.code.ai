@@ -291,12 +291,21 @@ export function planPrompt(
   /** The chat so far (conversationDigest), so "it" and "that" in the request
    *  resolve against what was already said, a switched-in thread included. */
   conversation?: string,
+  /** The framing call may be the answer (build 2026-09-29, B2): a request the
+   *  lead would do alone in one step is answered in prose right away, so a
+   *  simple message costs one model call, not a framing call and a second. */
+  answerDirectly = false,
 ): string {
   return [
     'You are the reasoning lead of a small team of models. Turn the user request into a plan.',
     'First decide if the request is clear enough to act on. Ask a question ONLY when a wrong assumption would waste real work; do not ask about taste or things you can reasonably choose. Most requests are clear.',
     'When clear, compose a play: an ordered list of steps, each owned by one category, with dependencies between them so work flows correctly (for example a coding step that a later writing step depends on).',
     'Keep the play as small as it can be to do the job well. A simple request is a single step. Do not invent steps.',
+    ...(answerDirectly
+      ? [
+          'When the request is clear and is one step you would do yourself (no specialist is needed and there is nothing to ask), do not plan: answer the user directly, as you would in chat, in plain prose with no JSON.',
+        ]
+      : []),
     '',
     'The categories you can hand off to (anything else the reasoning LLM does itself):',
     rosterLines(stack),
@@ -304,7 +313,9 @@ export function planPrompt(
     contextNote ? `Context: ${contextNote}` : '',
     '',
     conversation ? `The conversation so far, for context:\n${conversation}\n` : '',
-    'Reply with ONLY a JSON object, no prose, in this shape:',
+    answerDirectly
+      ? 'Otherwise reply with ONLY a JSON object, no prose, in this shape:'
+      : 'Reply with ONLY a JSON object, no prose, in this shape:',
     '{',
     '  "clear": boolean,',
     '  "summary": string,              // one line restating the goal',
@@ -318,6 +329,50 @@ export function planPrompt(
   ]
     .filter((l) => l !== undefined)
     .join('\n');
+}
+
+/** Reads the framing call's reply as it streams (build 2026-09-29, B2): a
+ *  reply that opens with JSON (or a fence around it) is a plan and is held
+ *  back whole; anything else is the lead answering directly, shown as it
+ *  arrives. Nothing is shown until the first real character decides it. */
+export class PlanReplyFilter {
+  private held = '';
+  mode: 'undecided' | 'plan' | 'answer' = 'undecided';
+
+  /** Feed one delta; returns the text to show now (only ever in answer mode). */
+  push(delta: string): string {
+    if (this.mode === 'answer') return delta;
+    this.held += delta;
+    if (this.mode === 'plan') return '';
+    const t = this.held.trimStart();
+    if (!t) return '';
+    if (t.startsWith('{') || t.startsWith('[')) {
+      this.mode = 'plan';
+      return '';
+    }
+    if (t.startsWith('`')) {
+      // A fence may wrap a plan (```json) or open a code answer: its first
+      // line says which.
+      const nl = t.indexOf('\n');
+      if (nl < 0) return '';
+      const opener = t.slice(0, nl).replace(/`/g, '').trim().toLowerCase();
+      if (opener === '' || opener === 'json') {
+        this.mode = 'plan';
+        return '';
+      }
+    }
+    this.mode = 'answer';
+    const out = this.held;
+    this.held = '';
+    return out;
+  }
+
+  /** The reply ended: the plan text to parse (plan or undecided), or nothing
+   *  left to show (an answer already went out). */
+  end(): { mode: 'plan' | 'answer'; plan: string } {
+    if (this.mode === 'answer') return { mode: 'answer', plan: '' };
+    return { mode: 'plan', plan: this.held };
+  }
 }
 
 /** The re-plan call: mid-run, given what is done, revise the remaining steps

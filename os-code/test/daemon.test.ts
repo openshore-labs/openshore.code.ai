@@ -46,6 +46,8 @@ function noPtyTerminals(): TerminalManager {
 }
 import { defaultConfig } from '../src/config/load.js';
 import { mintCredential } from '../src/core/security/credentials.js';
+import { _setFakeKeychain } from '../src/auth/store.js';
+import { _resetMoreRoom } from '../src/providers/servedWindow.js';
 
 // Every session the daemon boots, with the tools it registered, its vault
 // root, its workspace, and the project it carries, so a test can check what a
@@ -60,6 +62,7 @@ const booted = vi.hoisted(
       cwd: string;
       projectName: string | undefined;
       instructions: string | undefined;
+      hermesKey: string | undefined;
     }>,
 );
 vi.mock('../src/core/agent/bootstrap.js', async (importOriginal) => {
@@ -76,6 +79,7 @@ vi.mock('../src/core/agent/bootstrap.js', async (importOriginal) => {
         projectName: result.toolContext.projectName,
         // The standing instructions the agent will send (a private field).
         instructions: (result.agent as unknown as { instructions?: string }).instructions,
+        hermesKey: result.toolContext.currents?.hermes?.apiKey,
       });
       return result;
     },
@@ -268,6 +272,65 @@ describe('POST /sessions/:id/trust (project trust)', () => {
   });
 });
 
+// More room from the truncation card (C1, CTO 5): the owner's tap writes
+// `numCtx: 'auto'` for that provider to machine config, never a project file;
+// a member on a shared hub cannot spend the computer's memory.
+describe('POST /sessions/:id/more-room (the truncation card)', () => {
+  const realHome = process.env.HOME;
+  afterEach(() => {
+    process.env.HOME = realHome;
+    _resetMoreRoom();
+  });
+
+  it('the owner gives the provider more room in machine config; a member is refused', async () => {
+    process.env.HOME = home;
+    const provisioned = join(home, 'OSCode', 'repo');
+    mkdirSync(provisioned, { recursive: true });
+    const member = mintCredential({ role: 'member', label: 'Phone', userId: 'u_room' });
+    const memberRes = await createSessionAs(member.token, provisioned);
+    const { id: memberId } = (await memberRes.json()) as { id: string };
+    const refused = await fetch(`${base}/sessions/${memberId}/more-room`, {
+      method: 'POST',
+      headers: auth(member.token),
+      body: JSON.stringify({ provider: 'ollama' }),
+    });
+    expect(refused.status).toBe(403);
+    const before = JSON.parse(readFileSync(join(home, 'config.json'), 'utf8'));
+    expect(before.providers).toBeUndefined();
+
+    const ownerRes = await createSessionAs(adminToken, provisioned);
+    const { id } = (await ownerRes.json()) as { id: string };
+    const bad = await fetch(`${base}/sessions/${id}/more-room`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: '{}',
+    });
+    expect(bad.status).toBe(400);
+    const unknown = await fetch(`${base}/sessions/${id}/more-room`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ provider: 'nope' }),
+    });
+    expect(unknown.status).toBe(409);
+    const given = await fetch(`${base}/sessions/${id}/more-room`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ provider: 'ollama' }),
+    });
+    expect(given.status).toBe(200);
+    expect(await given.json()).toEqual({ ok: true, provider: 'ollama' });
+    // The schema's default provider is written out whole, beside what was there.
+    const after = JSON.parse(readFileSync(join(home, 'config.json'), 'utf8'));
+    expect(after.stack.orchestrator).toEqual({ provider: 'ollama', model: 'qwen' });
+    expect(after.providers.ollama).toMatchObject({
+      kind: 'openai-compatible',
+      baseUrl: 'http://localhost:11434',
+      numCtx: 'auto',
+    });
+    expect(existsSync(join(provisioned, 'os-code.config.json'))).toBe(false);
+  });
+});
+
 // Undo from a paired phone: the restore route answers with the driver's own
 // result (a 409 for a checkpoint it does not hold), checks its body, and is
 // the session owner's like every other control.
@@ -293,6 +356,38 @@ describe('POST /sessions/:id/checkpoints/:cid/restore (undo)', () => {
       method: 'POST',
       headers: auth(token),
       body: JSON.stringify({ direction: 'undo' }),
+    });
+    expect(other.status).toBe(403);
+  });
+});
+
+// Rewind from a paired phone (P2): the route checks its body, answers with the
+// driver's own result (a 409 for a message the chat does not hold), and is the
+// session owner's, like undo.
+describe('POST /sessions/:id/rewind', () => {
+  it('checks the body, answers an unknown message plainly, and refuses another user', async () => {
+    const created = await createSessionAs(adminToken, home);
+    const { id } = (await created.json()) as { id: string };
+    for (const body of [{ toSeq: 1 }, { toSeq: 0, files: true }, { toSeq: '3', files: false }]) {
+      const bad = await fetch(`${base}/sessions/${id}/rewind`, {
+        method: 'POST',
+        headers: auth(adminToken),
+        body: JSON.stringify(body),
+      });
+      expect(bad.status, JSON.stringify(body)).toBe(400);
+    }
+    const unknown = await fetch(`${base}/sessions/${id}/rewind`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ toSeq: 999, files: true }),
+    });
+    expect(unknown.status).toBe(409);
+    expect(await unknown.json()).toEqual({ error: 'That message is not in this chat any more.' });
+    const { token } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_rewind' });
+    const other = await fetch(`${base}/sessions/${id}/rewind`, {
+      method: 'POST',
+      headers: auth(token),
+      body: JSON.stringify({ toSeq: 1, files: false }),
     });
     expect(other.status).toBe(403);
   });
@@ -343,8 +438,14 @@ describe('a member session works on its own vault root on a shared hub', () => {
     expect(mine.vaultRoot!.startsWith(membersDir() + '/')).toBe(true);
     // The root is made on first use, private to this user.
     expect(existsSync(mine.vaultRoot!)).toBe(true);
-    // Nothing else moves: the member has exactly the owner's tool list.
-    expect([...mine.tools].sort()).toEqual([...owner.tools].sort());
+    // Nothing else moves but the programs an agent starts and leaves running
+    // (P1), which are the owner's alone, like the command lane: the member
+    // has exactly the owner's other tools.
+    const ownerOnly = ['readProcess', 'startProcess', 'stopProcess'];
+    expect(owner.tools).toEqual(expect.arrayContaining(ownerOnly));
+    expect([...mine.tools].sort()).toEqual(
+      owner.tools.filter((name) => !ownerOnly.includes(name)).sort(),
+    );
   });
 
   it("a rehydrate uses the stored owner's root, not the caller's", async () => {
@@ -649,6 +750,47 @@ describe('a revived session keeps its project', () => {
     base = `http://127.0.0.1:${daemon.port}`;
     await fetch(`${base}/sessions/${id}/files?q=`, { headers: auth(adminToken) });
     expect(booted.filter((b) => b.id === id).at(-1)!.instructions).toBe('New rule.');
+  });
+});
+
+// H1 (finding 17): a revived session forgot a declined web search and the
+// current it was handed. Across a daemon restart both come back, and the
+// current's key comes back from this computer's credential store, never from
+// info.json.
+describe('a revived session keeps a declined search and its current', () => {
+  beforeEach(() => _setFakeKeychain({ entries: new Map() }));
+  afterEach(() => _setFakeKeychain(undefined));
+
+  it('survives a restart with no web search tool and the Hermes tool, key and all', async () => {
+    const created = await fetch(`${base}/sessions`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({
+        cwd: home,
+        webSearch: false,
+        currents: { hermes: { baseUrl: 'http://127.0.0.1:8642/v1', apiKey: 'sk-hermes-777' } },
+      }),
+    });
+    expect(created.status).toBe(201);
+    const { id } = (await created.json()) as { id: string };
+    const first = booted.filter((b) => b.id === id).at(-1)!;
+    expect(first.tools).not.toContain('webSearch');
+    expect(first.tools).toContain('askHermes');
+    expect(readFileSync(join(home, 'sessions', id, 'info.json'), 'utf8')).not.toContain(
+      'sk-hermes-777',
+    );
+
+    daemon.close();
+    daemon = await startOnFreePort();
+    base = `http://127.0.0.1:${daemon.port}`;
+    expect(
+      (await fetch(`${base}/sessions/${id}/files?q=`, { headers: auth(adminToken) })).status,
+    ).toBe(200);
+    const revived = booted.filter((b) => b.id === id);
+    expect(revived).toHaveLength(2);
+    expect(revived[1]!.tools).not.toContain('webSearch');
+    expect(revived[1]!.tools).toContain('askHermes');
+    expect(revived[1]!.hermesKey).toBe('sk-hermes-777');
   });
 });
 
@@ -1286,6 +1428,27 @@ describe('the plain home shell (no session behind it)', () => {
     });
     expect(stdin.status).toBe(200);
     expect(pty.writes).toEqual(['ls\n']);
+  });
+
+  // The D2 shell package: a session's terminal used to spawn a fresh shell on
+  // every open, so each visit from the phone stacked another one.
+  it("a session's terminal also reopens the shell it left running", async () => {
+    const created = await fetch(`${shellBase}/sessions`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ cwd: home }),
+    });
+    const { id } = (await created.json()) as { id: string };
+    const open = () =>
+      fetch(`${shellBase}/sessions/${id}/term`, {
+        method: 'POST',
+        headers: auth(adminToken),
+        body: JSON.stringify({ cols: 80, rows: 24 }),
+      });
+    const first = (await (await open()).json()) as { termId: string };
+    const again = (await (await open()).json()) as { termId: string };
+    expect(again.termId).toBe(first.termId);
+    expect(spawnCwds).toHaveLength(1);
   });
 
   it('a shell that exited is replaced by a fresh one on the next open', async () => {

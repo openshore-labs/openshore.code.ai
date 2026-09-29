@@ -7,13 +7,15 @@ import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { loadConfig, saveGlobalConfig } from 'os-code/dist/src/config/load.js';
 import { bootstrapSession } from 'os-code/dist/src/core/agent/bootstrap.js';
 import type { VaultOverrides } from 'os-code/dist/src/harness/vault/types.js';
-import { trustSessionFolder } from 'os-code/dist/src/core/agent/projectTrust.js';
+import { trustSessionFolder, waitingSettings } from 'os-code/dist/src/core/agent/projectTrust.js';
+import { giveMoreRoomHere } from 'os-code/dist/src/providers/servedWindow.js';
 import {
   listSessions,
   sealSessionsAtRest,
   type LocalDriver,
 } from 'os-code/dist/src/daemon/session.js';
 import { startDaemon, type RunningDaemon } from 'os-code/dist/src/daemon/serve.js';
+import { freeChat, type FreeChatEvent } from 'os-code/dist/src/daemon/freeChat.js';
 import { TerminalManager, TerminalUnavailable } from 'os-code/dist/src/daemon/terminal.js';
 import { HOME_SHELL_ID } from 'os-code/dist/src/daemon/homeShellId.js';
 import { ProviderRegistry } from 'os-code/dist/src/providers/registry.js';
@@ -39,7 +41,13 @@ import {
 } from 'os-code/dist/src/git/workspaces.js';
 import { reconcileRepos, type ReconcileResult } from 'os-code/dist/src/git/reconcile.js';
 import { detectTailscale, tailscaleIp } from 'os-code/dist/src/connect/tailscale.js';
-import { loadCredentials, revokeCredential } from 'os-code/dist/src/core/security/credentials.js';
+import {
+  credentialExpiresAt,
+  loadCredentials,
+  revokeCredential,
+  revokeCredentialByHash,
+} from 'os-code/dist/src/core/security/credentials.js';
+import { rotateSharedToken } from 'os-code/dist/src/core/security/daemonAuth.js';
 import { oscHome } from 'os-code/dist/src/config/load.js';
 import { shouldRebind } from './lifecycle.js';
 import {
@@ -68,6 +76,7 @@ import type {
   HermesNote,
   HermesNoteMeta,
   PermissionMode,
+  RoutineClockStatus,
   RoutineInput,
   RoutineRun,
   RoutineView,
@@ -75,9 +84,9 @@ import type {
   StackHealthRange,
 } from 'os-code/protocol';
 
-// One paired device as the renderer sees it. `id` is the credential's token
-// hash, which is also the handle the revoke store matches on (revokeCredential
-// takes a label or a token-hash prefix). Structural, so no shared import with
+// One paired device as the renderer sees it. `id` is the credential's whole
+// token hash, which is also the handle the desktop's revoke matches exactly
+// (revokeCredentialByHash). Structural, so no shared import with
 // electronBridge is needed.
 export interface PairedDeviceWire {
   id: string;
@@ -101,7 +110,9 @@ export function listPairedDevices(): PairedDeviceWire[] {
     id: c.tokenHash,
     label: c.label,
     createdAt: c.createdAt,
-    expiresAt: c.expiresAt,
+    // Every credential ends now (H1); one minted before that was kept ends
+    // by its birth date, and the list says when.
+    expiresAt: credentialExpiresAt(c),
   }));
 }
 
@@ -129,6 +140,8 @@ export interface EngineHostDeps {
   tailscale?: () => { running: boolean; ip: string | undefined };
   startDaemon?: typeof startDaemon;
   platform?: NodeJS.Platform;
+  /** The desktop's PTY host; tests hand in one with a fake pty. */
+  terminals?: TerminalManager;
 }
 
 export interface HardwareWire {
@@ -158,6 +171,10 @@ export type InstallForward = (payload: {
 // so a reopened terminal resumes from where it left off (Phase 2 desktop).
 export type TerminalForward = (payload: { termId: string; b64: string; offset: number }) => void;
 
+// One free chat event on its way to the window (CTO ruling 8). A refusal
+// arrives as its one error; the ready marker stays here.
+export type FreeChatForward = (event: Exclude<FreeChatEvent, { type: 'refused' | 'open' }>) => void;
+
 const OPENAI_KEY_NAME = 'openai-api-key';
 
 export class EngineHost {
@@ -166,13 +183,18 @@ export class EngineHost {
   private daemon?: RunningDaemon;
   // The desktop app's own PTYs (the same TerminalManager the daemon uses), plus
   // the live output subscriptions the renderer opened, keyed by termId.
-  private terminals = new TerminalManager();
+  private readonly terminals: TerminalManager;
   private termSubs = new Map<string, () => void>();
   // Crew routines: the process-wide scheduler. The desktop is home, so it
   // runs whenever the app is open, daemon or no daemon; when the daemon is
   // started later it shares this same instance, so a routine fires once.
   private readonly scheduler: RoutineScheduler;
-  private readonly deps: Required<EngineHostDeps>;
+  private readonly deps: Required<Omit<EngineHostDeps, 'terminals'>>;
+  // The free chats answering now, by the renderer's request id, and the one
+  // lane they share: this window gets one answer at a time, as a paired
+  // phone does from the daemon.
+  private freeChats = new Map<string, AbortController>();
+  private readonly freeChatLane = new Set<string>();
 
   constructor(
     private readonly forwardEvent: EventForward,
@@ -186,6 +208,7 @@ export class EngineHost {
       startDaemon: deps.startDaemon ?? startDaemon,
       platform: deps.platform ?? process.platform,
     };
+    this.terminals = deps.terminals ?? new TerminalManager();
     // Reseal any pre-encryption sessions once the host is up. Off the launch
     // path and failure-tolerant: sealing protects data, it never blocks the app.
     setImmediate(() => {
@@ -349,9 +372,64 @@ export class EngineHost {
       alwaysThisSession?: boolean;
       alwaysInProject?: boolean;
       reason?: string;
+      files?: string[];
     },
   ): void {
     this.drivers.get(sessionId)?.answerApproval(approvalId, answer);
+  }
+
+  // --------------------------------------------------------------- free chat
+
+  /** The free chat on this computer (CTO ruling 8): the engine's one free
+   *  chat function, the same one the daemon serves a paired phone, forwarded
+   *  event by event to the window that asked. No session is opened, nothing
+   *  is journaled, no tool exists, and no vault pack is built, so a signed-out
+   *  chat reaches no notes. Resolves once the answer has ended, and the last
+   *  event forwarded is always `done` or `error`. */
+  async freeChat(
+    requestId: string,
+    body: Record<string, unknown>,
+    forward: FreeChatForward,
+  ): Promise<void> {
+    if (this.freeChats.has(requestId)) return;
+    const stop = new AbortController();
+    this.freeChats.set(requestId, stop);
+    let ended = false;
+    try {
+      for await (const ev of freeChat(body, {
+        signal: stop.signal,
+        lane: { key: 'window', busy: this.freeChatLane },
+      })) {
+        if (ev.type === 'open') continue;
+        if (ev.type === 'refused') {
+          forward({ type: 'error', message: ev.error });
+          ended = true;
+          break;
+        }
+        forward(ev);
+        if (ev.type === 'done' || ev.type === 'error') ended = true;
+      }
+    } catch (err) {
+      forward({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'The answer stopped.',
+      });
+      ended = true;
+    } finally {
+      this.freeChats.delete(requestId);
+      if (!ended) forward({ type: 'error', message: 'The answer stopped.' });
+    }
+  }
+
+  /** Stop one free chat answer (the person pressed Stop). */
+  freeChatAbort(requestId: string): void {
+    this.freeChats.get(requestId)?.abort();
+  }
+
+  /** Stop every free chat still answering: the window reloaded, so nobody is
+   *  listening, and the lane is free for the next message. */
+  stopFreeChats(): void {
+    for (const stop of this.freeChats.values()) stop.abort();
   }
 
   // ---- the person's controls over a session: mode, instructions, compaction,
@@ -378,6 +456,17 @@ export class EngineHost {
     return this.drivers.get(sessionId)?.listFiles(query) ?? [];
   }
 
+  /** The folder an open session works in, for main's trust dialog. */
+  sessionFolder(sessionId: string): string | undefined {
+    return this.drivers.get(sessionId)?.cwd;
+  }
+
+  /** What trusting that folder turns on, in the trust card's words, for
+   *  main's trust dialog. Read in main, never taken from the page. */
+  trustWaiting(folder: string): string[] {
+    return waitingSettings(folder);
+  }
+
   /** The person's tap on the trust card: trust this session's folder on this
    *  computer. Its own settings apply from the next session there; the session
    *  hears it, so the card folds on every device watching. */
@@ -385,6 +474,14 @@ export class EngineHost {
     const driver = this.drivers.get(sessionId);
     if (!driver) return { error: 'That session is not open.' };
     return trustSessionFolder(driver);
+  }
+
+  /** The truncation card's tap (C1, CTO 5): `numCtx: 'auto'` for this
+   *  provider in machine config, and every live provider on that server
+   *  serves the larger window from its next request. The host shares the
+   *  engine module with its sessions, so the switch reaches them at once. */
+  giveMoreRoom(provider: string): { ok: true; provider: string } | { error: string } {
+    return giveMoreRoomHere(provider);
   }
 
   /** The sample page for a first try, written to ~/OSCode/Try OpenShore
@@ -408,6 +505,22 @@ export class EngineHost {
     const driver = this.drivers.get(sessionId);
     if (!driver) return { error: 'That session is not open.' };
     return driver.restoreCheckpoint(id, direction, path);
+  }
+
+  /** Rewind a chat to one of the person's messages (P2): the tap on "Rewind
+   *  chat and files" or "Rewind chat only". The session journals a marker,
+   *  so every device drops the same turns. */
+  async rewind(
+    sessionId: string,
+    toSeq: number,
+    files: boolean,
+  ): Promise<{ ok: true; paths: string[] } | { error: string }> {
+    const driver = this.drivers.get(sessionId);
+    if (!driver) return { error: 'That session is not open.' };
+    if (!Number.isSafeInteger(toSeq) || toSeq < 1) {
+      return { error: 'That message is not in this chat any more.' };
+    }
+    return driver.rewind(toSeq, { files });
   }
 
   // ---------------------------------------------------- chat-to-terminal lane
@@ -457,9 +570,14 @@ export class EngineHost {
     const driver = this.drivers.get(sessionId);
     if (!driver) return { unavailable: true, error: 'That session is not open.' };
     try {
-      const info = await this.terminals.ensure({ sessionId, cwd: driver.cwd, cols, rows });
-      // Content-free audit marker only (never output or stdin).
-      driver.emit({ type: 'terminal-opened', termId: info.termId, cwd: driver.cwd });
+      // A session's terminal reopens the shell it left running, like the home
+      // shell: every mount of the room used to spawn a fresh one, and the old
+      // shells ran on with nothing attached.
+      const termId = this.terminals.liveTermId(sessionId);
+      const info = await this.terminals.ensure({ sessionId, termId, cwd: driver.cwd, cols, rows });
+      // Content-free audit marker only (never output or stdin), once per shell
+      // started, not per reattach.
+      if (!termId) driver.emit({ type: 'terminal-opened', termId: info.termId, cwd: driver.cwd });
       return info;
     } catch (err) {
       if (err instanceof TerminalUnavailable) return { unavailable: true, error: err.message };
@@ -580,9 +698,11 @@ export class EngineHost {
   // ------------------------------------------------------------------ ollama
   // Ollama from inside the app (A3). Detection asks the API, then the binary;
   // starting spawns `ollama serve` detached; installing follows the platform's
-  // plan (Linux: the official installer in the built-in terminal; macOS and
-  // Windows: the download page, then the app polls ollamaStatus). The command
-  // always comes back so the renderer can show it as a copy block.
+  // plan (macOS and Windows: Ollama's own installer, fetched and opened, else
+  // the download page; then the app polls ollamaStatus). Linux runs nothing:
+  // the official script is a download piped into a shell with sudo, which the
+  // person runs in their own terminal if they choose. The command always comes
+  // back so the renderer can show it as a copy block.
 
   async ollamaStatus(): Promise<OllamaStatus> {
     return probeOllama({ baseUrl: firstLocalBaseUrl() });
@@ -604,30 +724,19 @@ export class EngineHost {
     if (plan.mode !== 'terminal') {
       // Fetch the official installer and hand main.ts its path to open; main
       // opens the download page instead when nothing could be fetched.
-      const installer = await downloadOllamaInstaller({
-        platform: this.deps.platform,
-        downloadsDir: join(homedir(), 'Downloads'),
-      });
+      const installer = await downloadOllamaInstaller({ platform: this.deps.platform });
       return installer
         ? { ...plan, started: true, installerPath: installer }
         : { ...plan, started: true };
     }
-    try {
-      const info = await this.terminals.ensure({
-        sessionId: 'ollama-install',
-        cwd: homedir(),
-        cols: 100,
-        rows: 30,
-      });
-      this.terminals.write(info.termId, `${plan.command}\r`);
-      return { ...plan, started: true, termId: info.termId };
-    } catch (err) {
-      const detail =
-        err instanceof TerminalUnavailable
-          ? 'The built-in terminal is not available on this machine. Run the command in any terminal.'
-          : (err as Error).message;
-      return { ...plan, started: false, detail };
-    }
+    // Linux: nothing is run for the person. The renderer never asked for this
+    // path (it waits and shows the command), and a download piped into sh is
+    // the one install a second key could not make safe.
+    return {
+      ...plan,
+      started: false,
+      detail: 'Run the command in a terminal. This carries on by itself once Ollama is running.',
+    };
   }
 
   // ------------------------------------------------------------- marketplace
@@ -743,7 +852,8 @@ export class EngineHost {
         },
       },
     });
-    process.env.OPENAI_API_KEY = trimmed;
+    // Never into process.env: every shell this app spawns would inherit it.
+    // The provider reads the credential store when the variable is absent.
     return {
       ok: true,
       detail: 'ChatGPT is connected. Point any stack slot at the openai provider to use it.',
@@ -826,8 +936,14 @@ export class EngineHost {
   // in the shared model so the desktop and the daemon refuse the same shapes;
   // the workspace gate lives in the scheduler so it holds for every caller.
 
-  routinesList(): { routines: RoutineView[]; runs: RoutineRun[] } {
-    return { routines: this.scheduler.list(), runs: this.scheduler.runs(60) };
+  routinesList(): { routines: RoutineView[]; runs: RoutineRun[]; clock: RoutineClockStatus } {
+    // The clock status rides along (H1): "held by pid N since T" when the
+    // other OpenShore process on this computer fires the slots.
+    return {
+      routines: this.scheduler.list(),
+      runs: this.scheduler.runs(60),
+      clock: this.scheduler.clockStatus(),
+    };
   }
 
   routineCreate(input: unknown): { routine: RoutineView } | { error: string } {
@@ -925,6 +1041,12 @@ export class EngineHost {
   // pointer to a credential the phone has yet to mint, never a credential.
   private claim?: { claim: string; expiresAt: string };
 
+  // Why the last bind failed, kept until one succeeds, and whether the hub
+  // should be up at all (a start and no stop since). A hub that went dark on
+  // a failed bind tries again from the re-bind poll; a paused one never does.
+  private lastBindError?: string;
+  private wantHub = false;
+
   private currentClaim(): { claim: string; expiresAt: string } | undefined {
     if (!this.daemon) return undefined;
     if (this.claim && this.daemon.pairClaimStatus(this.claim.claim) === 'live') return this.claim;
@@ -953,6 +1075,10 @@ export class EngineHost {
       // uses this to avoid publishing an unreachable QR with false copy.
       mode: (this.daemon?.host === '127.0.0.1' ? 'loopback' : 'tailscale') as
         'loopback' | 'tailscale',
+      // Why the last bind failed: the tailnet (the hub fell back to loopback)
+      // or both (the hub is dark and the poll is retrying). Absent once a
+      // bind succeeds or the hub is paused.
+      ...(this.lastBindError ? { bindError: this.lastBindError } : {}),
     };
   }
 
@@ -972,6 +1098,7 @@ export class EngineHost {
           bind: 'tailscale',
           port: config.daemon.port,
         });
+        this.noteBindError(undefined);
         return { host: this.daemon.host };
       } catch (err) {
         tailnetError = (err as Error).message;
@@ -983,14 +1110,27 @@ export class EngineHost {
         bind: 'loopback',
         port: config.daemon.port,
       });
+      // Up on loopback; a tailnet that refused is still worth saying why.
+      this.noteBindError(tailnetError);
       return { host: this.daemon.host };
     } catch (err) {
-      return { error: tailnetError ?? (err as Error).message };
+      const error = tailnetError ?? (err as Error).message;
+      this.noteBindError(error);
+      return { error };
     }
+  }
+
+  /** Keep why the last bind failed. The Pair screen says it in plain words
+   *  (hubStatusLine); the raw reason goes to the log, once per new reason,
+   *  since the re-bind poll retries every few seconds. */
+  private noteBindError(next: string | undefined): void {
+    if (next && next !== this.lastBindError) console.warn(`[hub] could not bind: ${next}`);
+    this.lastBindError = next;
   }
 
   async daemonStart() {
     retireSharedPairingCredential();
+    this.wantHub = true;
     if (this.daemon) {
       // Already up: the only thing a second start can improve is the bind.
       await this.daemonRebind();
@@ -1001,13 +1141,22 @@ export class EngineHost {
     return this.daemonInfo();
   }
 
-  /** Move a loopback daemon onto the tailnet once Tailscale is up. Polled by
-   *  the shell; a no-op when there is nothing to do. True when it moved. On a
-   *  failed move the hub comes back on loopback rather than going dark. */
+  /** Move a loopback daemon onto the tailnet once Tailscale is up, and bring
+   *  back a hub whose last bind failed. Polled by the shell; a no-op when
+   *  there is nothing to do. True when it moved or came back. On a failed
+   *  move the hub comes back on loopback rather than going dark, and when
+   *  even that fails the error stays in daemonInfo and the next poll retries. */
   async daemonRebind(): Promise<boolean> {
+    if (!this.daemon) {
+      // Dark: retry only a hub that should be up and failed to bind, never a
+      // paused one.
+      if (!this.wantHub || this.lastBindError === undefined) return false;
+      const bound = await this.bindDaemon();
+      return bound.host !== undefined;
+    }
     // Cheap exit first: only a loopback daemon can move, so a tailnet daemon
-    // or a paused hub never spawns the tailscale probe.
-    if (!this.daemon || this.daemon.host !== '127.0.0.1') return false;
+    // never spawns the tailscale probe.
+    if (this.daemon.host !== '127.0.0.1') return false;
     const ts = this.tailscaleState(true);
     if (
       !shouldRebind({
@@ -1030,6 +1179,8 @@ export class EngineHost {
   }
 
   async daemonStop() {
+    this.wantHub = false;
+    this.lastBindError = undefined;
     this.daemon?.close();
     this.daemon = undefined;
     this.claim = undefined;
@@ -1051,17 +1202,35 @@ export class EngineHost {
     return listPairedDevices();
   }
 
-  // Cut off one device by its credential id (the token hash). A lost phone is
-  // revoked on its own, leaving every other paired device connected.
+  // Replace the legacy shared token (H1, the desktop's side of `osc token
+  // rotate`). The running hub takes the new one on its next request; the
+  // token itself never crosses to the renderer.
+  rotateSharedToken(): { rotated: true } | { error: string } {
+    try {
+      rotateSharedToken();
+      return { rotated: true };
+    } catch (err) {
+      return { error: `Could not replace the shared token: ${(err as Error).message}` };
+    }
+  }
+
+  // Cut off one device by its credential id, the whole token hash, matched
+  // exactly. A lost phone is revoked on its own, leaving every other paired
+  // device connected; a prefix or an empty id removes nothing.
   revokeDeviceCredential(id: string): { removed: number } {
-    return { removed: revokeCredential(id) };
+    return { removed: revokeCredentialByHash(id) };
   }
 
   disposeAll(): void {
+    this.stopFreeChats();
     for (const off of this.unsubs.values()) off();
     this.unsubs.clear();
     for (const off of this.termSubs.values()) off();
     this.termSubs.clear();
+    // The app is quitting: no shell outlives it with nothing able to reach it,
+    // and neither does a program an agent started (P1).
+    this.terminals.killAll();
+    for (const driver of this.drivers.values()) driver.stopAgentProcesses();
     this.daemon?.close();
     this.scheduler.stop();
   }

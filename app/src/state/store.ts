@@ -171,8 +171,20 @@ import type { Attachment } from '../lib/attachments.js';
 import { OnDeviceDriver } from '../drivers/onDeviceDriver.js';
 import { MockDriver } from '../drivers/mockDriver.js';
 import { StackDriver, type StackVaultTools } from '../drivers/stackDriver.js';
-import { DesktopChatDriver } from '../drivers/desktopChatDriver.js';
+import { DesktopChatDriver, ipcFreeChat } from '../drivers/desktopChatDriver.js';
+import {
+  FIRST_SEAT_COPY,
+  defaultComposerSource,
+  engineChatReady,
+  heldMessagePlan,
+  joinHeld,
+  waitsOnFirstSeat,
+  type HeldFirstMessage,
+} from './firstRunOps.js';
 import { guardDriver } from '../drivers/guardedDriver.js';
+import { setEthicsAuth } from '../lib/ethics.js';
+import { setReviewsAuth } from '../lib/reviews.js';
+import { setAbuseReviewAuth } from '../lib/abuseReview.js';
 import {
   HARBOR_READY_MESSAGE,
   advanceMessage,
@@ -230,6 +242,7 @@ import {
   routinesClient,
   CONTROL_REQUIRES_DOCK,
   type CrewControl,
+  type RoutineClockStatus,
   type RoutineInput,
   type RoutineRun,
   type RoutineView,
@@ -461,6 +474,11 @@ import {
   type VaultRestoreResult,
   type VaultUndo,
 } from './vaultOps.js';
+import { invokeFunctionWithCode } from '../lib/supabase.js';
+import {
+  deleteAccount as runAccountDeletion,
+  type DeleteAccountOutcome,
+} from './accountDeletion.js';
 import { vaultPollDelayMs } from '../lib/vaultPoll.js';
 import {
   VAULT_LEASE_RENEW_MS,
@@ -491,20 +509,40 @@ import {
 } from '../lib/vaultCopy.js';
 import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
 import { SAMPLE_PROMPT, SAMPLE_REPO_NAME } from '../lib/sampleProject.js';
-import { setSearchConsent } from '../lib/localSearch.js';
+import { setSearchConsent, type SearchAllowed } from '../lib/localSearch.js';
 import { RELEASE_TIER, featureOn, roomOpen, type ReleaseTier } from '../lib/focus.js';
 import {
   ACCOUNT_NOTICE,
+  SOURCE_ACCOUNT,
   needsAccount,
   roomAccountFeature,
   type AccountFeature,
 } from '../lib/accountGate.js';
+import { answerFiles, giveMoreRoomFor } from './securityOps.js';
 import {
-  pickPreferences,
-  preferencesChanged,
-  readPreferencesRecord,
-  syncDirection,
-} from '../lib/settingsReach.js';
+  REWIND_NOT_NOW,
+  cutThread,
+  rewindEngine,
+  rewindableIds,
+  rewindsFiles,
+} from './rewindOps.js';
+import {
+  CodingLockedError,
+  accountNoticeDue,
+  codingLocked,
+  detachCodingChats,
+  leavesRoomAtSignOut,
+} from './gateOps.js';
+import {
+  SIGNED_OUT_EVERYWHERE,
+  SIGNED_OUT_HERE,
+  SIGN_OUT_EVERYWHERE_FAILED,
+  createPrefsSync,
+  noticePrefsChanged,
+  revokeEverywhere,
+  revokeHere,
+} from './signinOps.js';
+import { preferencesChanged, stampOwnChange, type PreferenceStamps } from '../lib/settingsReach.js';
 import { readProjectSecrets, writeProjectSecrets } from '../lib/projectSecrets.js';
 import {
   bridge,
@@ -751,13 +789,24 @@ export interface AppSettings {
   declinedOrgIds?: string[];
   /** A first message typed before any brain could answer, held while the
    *  person sets one up (a download, a pairing, a key) and offered back on
-   *  their return. Text only; attachments live in memory for the session.
-   *  Device local. */
-  heldFirstMessage?: { text: string; at: string };
+   *  their return, or, waiting on the desktop's First Seat, sent by itself
+   *  once the engine can answer (state/firstRunOps.ts). Text only;
+   *  attachments live in memory for the session. Device local. */
+  heldFirstMessage?: HeldFirstMessage;
   /** When this device last changed a preference that follows a signed-in
-   *  person (lib/settingsReach.ts), so a sync knows which side is newer.
-   *  Device local. */
+   *  person, from the first account copy (v: 1), which kept one time for all
+   *  of them. Read as the stamp of any key without its own (prefsStamps), and
+   *  cleared by the first sync that stamps every key. Device local. */
   prefsUpdatedAt?: string;
+  /** When each preference that follows a signed-in person last changed here
+   *  (lib/settingsReach.ts), so a sync keeps the newer side of each one.
+   *  Device local. */
+  prefsStamps?: PreferenceStamps;
+  /** The account whose preferences were last synced on this device, so a
+   *  different person signing in next takes their own account's preferences
+   *  rather than racing the last person's times (state/signinOps.ts). Device
+   *  local. */
+  prefsOwner?: string;
   /** The one-time line to someone who used OpenShore before the account gate,
    *  signed out, has been shown. Device local. */
   accountNoticeSeen?: boolean;
@@ -1323,6 +1372,8 @@ export interface RoutinesState {
    *  away from home. */
   live: boolean;
   where?: 'desktop' | 'daemon';
+  /** Whose clock fires the slots, from the last live read. */
+  clock?: RoutineClockStatus;
   error?: string;
 }
 
@@ -1610,6 +1661,9 @@ interface AppState {
   /** Restore a prior Apple purchase (iOS only; required by Apple 3.1.1). */
   restorePurchases(): Promise<void>;
 
+  /** Open a new chat on `source` and resolve to its id, or to undefined when
+   *  no chat opened: the coding agent's sign-in sheet or the paywall stood in
+   *  the way, and the caller hands anything typed back to the person. */
   newConversation(
     source: ConversationSource,
     opts?: {
@@ -1627,7 +1681,7 @@ interface AppState {
        *  starts from this summary. Capped at `HANDOFF_MAX_BYTES`. */
       handoff?: string;
     },
-  ): Promise<string>;
+  ): Promise<string | undefined>;
   /** Replace the repositories a chat works with (the header picker). */
   setConversationRepos(id: string, repoIds: string[]): Promise<void>;
   /** Open a chat with a setup guide: the goal, the plan, and step one, seeded
@@ -1659,6 +1713,22 @@ interface AppState {
   /** Take the held message (clearing it) to send it now. */
   takeHeldFirstMessage(): { text: string; attachments?: Attachment[] } | undefined;
   discardHeldFirstMessage(): Promise<void>;
+  /** Hold a first message on the desktop's First Seat (state/firstRunOps.ts):
+   *  it goes out by itself once the engine can answer. A second one joins it. */
+  holdUntilReady(text: string, attachments?: Attachment[]): Promise<void>;
+  /** Settle a held first message against what can answer now: send one
+   *  waiting on the First Seat once the engine can answer, or hand one back
+   *  (returned, and cleared) for the composer. The chat screen calls it as it
+   *  mounts and whenever readiness changes. */
+  settleHeldMessage(opts: {
+    chooserOpen: boolean;
+  }): { text: string; attachments?: Attachment[] } | undefined;
+  /** The brain a new chat starts on when the person has not picked one
+   *  (firstRunOps.defaultComposerSource). */
+  composerDefaultSource(): ConversationSource;
+  /** Whether a send nothing can answer waits on the First Seat instead of
+   *  opening the model chooser (firstRunOps.waitsOnFirstSeat). */
+  sendWaitsOnFirstSeat(): boolean;
   /** Create a project and make it active. */
   createProject(name: string): Promise<string>;
   setActiveProject(id: string): void;
@@ -1759,12 +1829,20 @@ interface AppState {
   joinOrg(): Promise<void>;
   /** Decline it on this device (remembered until sign-out). */
   declineOrg(): Promise<void>;
-  /** Sign out and forget the session. */
+  /** Sign out on this device only, and forget the session. Always finishes
+   *  here, offline too; the person's other devices stay signed in. */
   signOutAccount(): Promise<void>;
+  /** End the sign-in on every device, then sign out here. Resolves true once
+   *  the server confirmed; false (and nothing changed) when it could not be
+   *  reached. */
+  signOutEverywhere(): Promise<boolean>;
   /** How many team vault entries the signed-in account has on this device
    *  that have not reached the team (stashed or held), which a sign-out
    *  deletes, so Sign out can ask first. 0 when nobody is signed in. */
   unsentTeamTextCount(): Promise<number>;
+  /** Delete the signed-in account on the server (Apple 5.1.1(v)), then sign
+   *  this device out. A result, never a throw (state/accountDeletion.ts). */
+  deleteAccount(): Promise<DeleteAccountOutcome>;
   /** Re-read the signed-in user's server role into serverRole. */
   refreshOrgRole(): Promise<void>;
   /** Re-read the org's billing entitlement from the server. */
@@ -2226,7 +2304,8 @@ interface AppState {
     approvalId: string,
     approve: boolean,
     always?: boolean,
-    opts?: { inProject?: boolean },
+    /** `files`: a commit card's ticked list (D3). */
+    opts?: { inProject?: boolean; files?: string[] },
   ): void;
   /** Answer every pending approval at once (Approve all). */
   answerAllApprovals(approve: boolean): void;
@@ -2242,6 +2321,10 @@ interface AppState {
   trustProjectFolder(itemId: string): Promise<void>;
   /** The trust card's "Not now": leave the folder's settings off. */
   dismissProjectTrust(itemId: string): void;
+  /** The truncation card's "Give it more room" (C1, CX 6): the session's
+   *  computer serves that provider's models the larger window from the next
+   *  message, in every chat. */
+  giveMoreRoom(itemId: string): Promise<void>;
   /** A model asked to search the web and the person has not answered yet
    *  (web search asks once; What leaves this device). The sheet shows it. */
   webSearchAsk?: { query: string };
@@ -2258,6 +2341,11 @@ interface AppState {
    *  or one (`path`), or redo them. Runs on the computer the session runs on;
    *  the engine echoes it, so every device folds the card. */
   restoreChangedFiles(itemId: string, direction: 'undo' | 'redo', path?: string): Promise<void>;
+  /** "Rewind to here" (P2): take the active chat back to just before one of
+   *  the person's own messages, and on a coding chat its folder's files too
+   *  when `files` is set. Resolves to the message's words for the composer,
+   *  or to why it did not happen. */
+  rewindTo(itemId: string, opts: { files: boolean }): Promise<{ text: string } | { error: string }>;
   /** Set the permission mode for new sessions and the live one. */
   /** `source` names where the change came from, for the opt-in activity
    *  log's regret signal (a walk choice changed soon after). */
@@ -2735,9 +2823,24 @@ export const useApp = create<AppState>((set, get, api) => {
     return message;
   }
 
+  /** One door to the coding agent (state/gateOps.ts): signed out, no coding
+   *  session is built or attached, whichever path asks. Reading a coding chat
+   *  stays free; its saved snapshot is what shows. */
+  function codingLockedNow(conv: Conversation | undefined): boolean {
+    return codingLocked(conv, get().needsAccountNow());
+  }
+
   /** The driver could not be built. Say so once, and if a message is parked
-   *  on the chat, pin the reason beside its bubble with a Retry. */
+   *  on the chat, pin the reason beside its bubble with a Retry. A build
+   *  refused at the account door is no failure: a waiting message opens the
+   *  sign-in sheet instead, and stays parked for the attach after it. */
   function failOpen(conversationId: string, err: unknown): void {
+    if (err instanceof CodingLockedError) {
+      if (get().conversations[conversationId]?.pendingFirstMessage) {
+        get().openAccountGate('coding');
+      }
+      return;
+    }
     const message = friendlyOpenError(err);
     set((state) => {
       const c = state.conversations[conversationId];
@@ -2758,6 +2861,15 @@ export const useApp = create<AppState>((set, get, api) => {
     if (hasLiveDriver(conversationId) || building.has(conversationId)) return;
     const conv = get().conversations[conversationId];
     if (!conv) return;
+    // Signed out, a coding chat reopens on its snapshot and nothing reaches
+    // the engine. A message waiting to go (a send, a Retry) opens the sign-in
+    // sheet and stays parked; signing in builds this driver and the attach
+    // delivers it (onSignedIn).
+    if (codingLockedNow(conv)) {
+      if (get().resumingId === conversationId) set({ resumingId: undefined });
+      failOpen(conversationId, new CodingLockedError());
+      return;
+    }
     building.add(conversationId);
     // Desktop threads replay their journal into the UI, so they rebuild from
     // the daemon with no seed. Chat brains (device/cloud/stack) live only in a
@@ -2807,6 +2919,12 @@ export const useApp = create<AppState>((set, get, api) => {
   }
 
   function attachDriver(conversationId: string, driver: ChatDriver): void {
+    // A coding session that finished building after a sign-out is let go:
+    // the door holds for builds that straddle it too.
+    if (codingLockedNow(get().conversations[conversationId])) {
+      driver.dispose();
+      return;
+    }
     dropDriver(conversationId);
     drivers.set(conversationId, driver);
     // APP-13: events fold into ONE state update per tick. A journal replay
@@ -3461,6 +3579,11 @@ export const useApp = create<AppState>((set, get, api) => {
     });
     return webSearchPending;
   }
+  function webSearchAllowedNow(): SearchAllowed {
+    const consent = get().settings.webSearchConsent;
+    if (consent === 'allowed') return 'allowed';
+    return consent === 'declined' || webSearchDeclinedThisRun ? 'declined' : 'unknown';
+  }
 
   // Register this device for completion push with the connected daemon, once per
   // daemon. iOS-only and best-effort (see registerPushForDaemon); a failure just
@@ -3490,6 +3613,9 @@ export const useApp = create<AppState>((set, get, api) => {
     seed?: SeedTurn[],
     extra?: BuildExtra,
   ): Promise<ChatDriver> {
+    // The account door, before anything opens or resumes a session on the
+    // engine: every build passes here, so no path reaches it signed out.
+    if (codingLockedNow(conv)) throw new CodingLockedError();
     return guardDriver(await buildUnguardedDriver(conv, seed, extra));
   }
 
@@ -3928,9 +4054,20 @@ export const useApp = create<AppState>((set, get, api) => {
         });
       }
       case 'desktop-chat': {
-        // Free, read-only chat with the paired desktop's local models over the
-        // daemon's stateless /chat endpoint. No session is created, so this can
-        // never become the paid agent. Needs a paired daemon.
+        // Free, read-only chat with the computer's local models. No session is
+        // created, so this can never become the paid agent. On the desktop
+        // itself it reaches this computer's own engine over IPC (CTO ruling
+        // 8): no tools, no session, and no vault pack.
+        if (isDesktop() && bridge() && !settings.preferRemoteHub) {
+          return new DesktopChatDriver(
+            ipcFreeChat(bridge()!, get().desktopStatus?.stack.orchestrator?.model),
+            conv.source.model,
+            seed,
+            chatContext(conv),
+            settings.perplexityResearch === true,
+          );
+        }
+        // On the phone, the paired desktop's daemon and its stateless /chat.
         if (!settings.daemon) {
           throw new Error('Connect to your computer first (Menu, then Desktop + phone).');
         }
@@ -3990,7 +4127,7 @@ export const useApp = create<AppState>((set, get, api) => {
             seed,
             settings.anthropicWorkspaceId,
             chatContext(conv),
-            { vaultPack: conversationPack(conv) },
+            { vaultPack: conversationPack(conv), humanize: settings.humanizeWriting !== false },
           );
         }
         const info = providerInfo(source.provider);
@@ -4008,7 +4145,7 @@ export const useApp = create<AppState>((set, get, api) => {
           seed,
           chatContext(conv),
           contextWindow,
-          { vaultPack: conversationPack(conv) },
+          { vaultPack: conversationPack(conv), humanize: settings.humanizeWriting !== false },
         );
       }
       case 'stack': {
@@ -4223,9 +4360,19 @@ export const useApp = create<AppState>((set, get, api) => {
     if (!session || !authConfigured()) return undefined;
     try {
       const fresh = await freshSession(session);
-      if (fresh !== session) set({ authSession: fresh });
-      return fresh;
+      const now = get().authSession;
+      if (now === session) {
+        if (fresh !== session) set({ authSession: fresh });
+        return fresh;
+      }
+      // The sign-in changed while the refresh was out. Signed out (or someone
+      // else signed in): nothing carries on with the old one, and it is never
+      // put back. Another caller's refresh landed first: go on with that.
+      if (!now || now.user.id !== session.user.id) return undefined;
+      return now.refreshToken === fresh.refreshToken ? now : freshAuth();
     } catch (err) {
+      // A sign-out already ended this session here: nothing more to say.
+      if (get().authSession !== session) return undefined;
       if (err instanceof AuthExpiredError) {
         const kept = await forgetSession(true);
         get().showToast(
@@ -4244,57 +4391,37 @@ export const useApp = create<AppState>((set, get, api) => {
     return (await freshAuth())?.accessToken;
   }
 
+  // The guardrail record uploads on the store's session, so there is one
+  // refresh in flight on this device, never a second with a spent token.
+  setEthicsAuth(() => freshAuth());
+  // Reviews and the abuse review queue ride the same door, so a refresh they
+  // trigger lands in the store's memory too.
+  setReviewsAuth(() => freshAuth());
+  setAbuseReviewAuth(() => freshAuth());
+
   // Accounts (lib/accountGate.ts): the room the sign-in sheet was opened for,
   // so signing in carries on to it.
   let accountReturn: ViewName | undefined;
 
   // Preferences that follow a signed-in person (lib/settingsReach.ts). A local
   // change is sent a moment after the last one; the account's copy is read at
-  // launch and at sign-in, and the newer side wins. Every failure is quiet:
-  // the preference is already saved on this device, and the next change or
-  // launch tries again.
+  // launch and at sign-in. Each is one merge, key by key (state/signinOps.ts).
   let prefsPushTimer: ReturnType<typeof setTimeout> | undefined;
   function schedulePrefsPush(): void {
     if (!get().authSession) return;
     if (prefsPushTimer) clearTimeout(prefsPushTimer);
     prefsPushTimer = setTimeout(() => {
       prefsPushTimer = undefined;
-      void pushPreferences();
+      void syncPreferences();
     }, 1500);
   }
-  async function pushPreferences(): Promise<void> {
-    try {
-      const session = await freshAuth();
-      if (!session) return;
-      let st = get().settings;
-      if (!st.prefsUpdatedAt) {
-        st = { ...st, prefsUpdatedAt: new Date().toISOString() };
-        await get().saveSettings({ prefsUpdatedAt: st.prefsUpdatedAt });
-      }
-      await writeUserPrefs(session.accessToken, {
-        v: 1,
-        at: st.prefsUpdatedAt,
-        prefs: pickPreferences(st),
-      });
-    } catch {
-      // Offline or refused: kept here, sent on the next change or launch.
-    }
-  }
-  async function syncPreferences(): Promise<void> {
-    try {
-      const session = await freshAuth();
-      if (!session) return;
-      const remote = readPreferencesRecord(await readUserPrefs(session.accessToken));
-      const direction = syncDirection(get().settings, remote);
-      if (direction === 'pull' && remote) {
-        await get().saveSettings({ ...remote.prefs, prefsUpdatedAt: remote.at });
-      } else if (direction === 'push') {
-        await pushPreferences();
-      }
-    } catch {
-      // Offline: this device's preferences stand until the next launch.
-    }
-  }
+  const syncPreferences = createPrefsSync({
+    session: () => freshAuth(),
+    read: readUserPrefs,
+    write: writeUserPrefs,
+    settings: () => get().settings,
+    save: (patch) => get().saveSettings(patch),
+  });
 
   // Forget the session on this device: the stored copy, the pending auth
   // binding, the team vault, the org's shared projects, and (APP-7) a
@@ -4306,6 +4433,9 @@ export const useApp = create<AppState>((set, get, api) => {
   // many team drafts that kept.
   async function forgetSession(expired = false): Promise<number> {
     const uid = get().authSession?.user.id;
+    // A preference change still waiting to go belonged to the session.
+    if (prefsPushTimer) clearTimeout(prefsPushTimer);
+    prefsPushTimer = undefined;
     await clearSession();
     await clearPendingAuth();
     pendingCallback = undefined;
@@ -4356,6 +4486,10 @@ export const useApp = create<AppState>((set, get, api) => {
       patch.account = { type: 'commercial', org: { ...account.org, members: [] } };
     }
     if (s.declinedOrgIds?.length) patch.declinedOrgIds = undefined;
+    // Whose preference times these are, kept on the device: a different
+    // person signing in next takes their own account's preferences instead
+    // of racing these times (state/signinOps.ts ownerPatch).
+    if (uid && s.prefsOwner !== uid) patch.prefsOwner = uid;
     if (Object.keys(patch).length) await get().saveSettings(patch);
     // An expiry with a team note open keeps that note on screen, read-only,
     // for the same person to sign back in to (Vault M2 2.6); the rest of the
@@ -4364,7 +4498,21 @@ export const useApp = create<AppState>((set, get, api) => {
     const keepNote = expired && Boolean(uid) && get().vaultScope === 'team' && Boolean(open);
     // The cached entitlement belonged to this account; it leaves with it.
     void storeSetJson(ENTITLEMENT_CACHE_KEY, null).catch(() => {});
+    // One door to the coding agent: no coding session stays attached past the
+    // sign-in, so nothing typed or approved from here reaches the engine. Its
+    // work goes on on the computer, journaled; the chat keeps its snapshot,
+    // and signing in again replays the rest.
+    const detached = detachCodingChats(get().conversations, [...drivers.keys()]);
+    for (const id of detached.ids) {
+      dropDriver(id);
+      snapshotIds.add(id);
+    }
+    // Standing in a room that needs an account, the person lands on chat,
+    // the free home, rather than on a room they can no longer use.
+    const leaveRoom = leavesRoomAtSignOut(get().view, authConfigured());
     set({
+      ...(leaveRoom ? { view: 'chat' as const, viewTrail: [] } : {}),
+      ...(detached.conversations ? { conversations: detached.conversations } : {}),
       authSession: undefined,
       serverRole: undefined,
       entitlement: undefined,
@@ -6826,12 +6974,32 @@ export const useApp = create<AppState>((set, get, api) => {
     if (featureOn('teams')) void get().syncOrgProjects();
     // Preferences that follow the person arrive (or leave) now.
     void syncPreferences();
+    // Someone who has signed in knows what the account opens, so the notice
+    // for people who used OpenShore before the gate is never theirs, even
+    // signed out on a later launch.
+    if (!get().settings.accountNoticeSeen) {
+      await get()
+        .saveSettings({ accountNoticeSeen: true })
+        .catch(() => {});
+    }
     // Signed in from the account sheet: carry on to the room it was opened
     // for, or back to where the person was.
     if (get().accountGate) {
       const to = accountReturn;
       get().closeAccountGate();
       if (to) get().setView(to);
+    }
+    // A message kept at the door on the open coding chat goes out now: the
+    // driver builds and its attach delivers the parked message.
+    const openId = get().activeId;
+    const open = openId ? get().conversations[openId] : undefined;
+    if (
+      openId &&
+      open?.source.kind === 'desktop' &&
+      open.pendingFirstMessage &&
+      !open.pendingFirstError
+    ) {
+      ensureDriver(openId);
     }
     // Back on the team note: list the team vault again and replay what was
     // kept for this account while it was signed out.
@@ -6873,7 +7041,17 @@ export const useApp = create<AppState>((set, get, api) => {
       set({ initStarted: true });
 
       // Every app-side web search asks the person first, once (lib/localSearch).
-      setSearchConsent(askWebSearch);
+      // The readers let a driver leave a declined or offline search out of
+      // the prompt before the model writes a word.
+      setSearchConsent(askWebSearch, {
+        allowed: webSearchAllowedNow,
+        online: () =>
+          get().connectivity.online &&
+          locationAllowed(
+            effectiveProfile(autoProfile(get().connectivity), get().settings.profileOverride),
+            'cloud',
+          ),
+      });
 
       // What the person paid for holds on a launch with no network: the last
       // server-verified entitlement first, then (iPhone) StoreKit's own
@@ -7160,19 +7338,19 @@ export const useApp = create<AppState>((set, get, api) => {
         view: 'chat',
       });
       logEvent('app_open', { onboarded: settings.onboarded });
-      // Signed in: the account's preferences, if newer, arrive now.
+      // Signed in: the account's preferences, if newer, arrive now. Someone
+      // signed in already knows what the account opens, so the notice below
+      // never reaches them on a later signed-out launch (onSignedIn marks a
+      // fresh sign-in the same way).
       if (stored) void syncPreferences();
+      if (stored && !settings.accountNoticeSeen) {
+        void get()
+          .saveSettings({ accountNoticeSeen: true })
+          .catch(() => {});
+      }
       // Someone who used OpenShore before the account gate, signed out, hears
       // once that their work is still here and what signing in opens.
-      if (
-        authConfigured() &&
-        !stored &&
-        settings.onboarded &&
-        !settings.accountNoticeSeen &&
-        (Boolean(settings.daemon) ||
-          Boolean(settings.crew?.length) ||
-          Boolean(settings.projects?.some((p) => p.repoIds?.length)))
-      ) {
+      if (accountNoticeDue(settings, { configured: authConfigured(), signedIn: Boolean(stored) })) {
         void get().saveSettings({ accountNoticeSeen: true });
         get().showToast(ACCOUNT_NOTICE);
       }
@@ -7420,12 +7598,6 @@ export const useApp = create<AppState>((set, get, api) => {
         get().openAccountGate(accountFeature, view);
         return;
       }
-      // Free is chat only: the Marketplace needs Personal. Intercept the
-      // navigation and show the upgrade sheet instead of the locked screen.
-      if (view === 'marketplace' && !get().personalUnlockedNow()) {
-        get().openPaywall('marketplace');
-        return;
-      }
       const { view: current, viewTrail } = get();
       if (view === current) {
         set({ drawerOpen: false });
@@ -7446,6 +7618,16 @@ export const useApp = create<AppState>((set, get, api) => {
       const { viewTrail } = get();
       const prev = viewTrail[viewTrail.length - 1];
       if (!prev) return;
+      // The same door as setView: a room on the trail that needs an account
+      // (the person signed out since) opens the sign-in sheet instead, and
+      // signing in carries on to it. The step is spent either way, so "Not
+      // now" never leaves a back arrow that only opens the sheet again.
+      const accountFeature = roomAccountFeature(prev);
+      if (accountFeature && get().needsAccountNow()) {
+        set({ viewTrail: viewTrail.slice(0, -1) });
+        get().openAccountGate(accountFeature, prev);
+        return;
+      }
       set({ view: prev, viewTrail: viewTrail.slice(0, -1), drawerOpen: false, arrivedBack: true });
     },
 
@@ -7509,11 +7691,16 @@ export const useApp = create<AppState>((set, get, api) => {
         case 'cloud':
           return signals.cloudReady(source.provider);
         case 'desktop':
-        case 'desktop-chat':
           // The desktop app's engine refuses to start a session until a model
           // (orchestrator) is configured, so "ready" here means that, not just
           // "we are on a desktop". A phone is ready when a computer is paired.
           if (isDesktop()) return Boolean(s.desktopStatus?.stack.configured);
+          return Boolean(st.daemon);
+        case 'desktop-chat':
+          // The free chat answers from a local model only (the engine refuses
+          // one that leaves this network), so on the desktop a cloud
+          // orchestrator is not ready for it.
+          if (isDesktop()) return engineChatReady(s.desktopStatus);
           return Boolean(st.daemon);
         case 'mock':
           return true;
@@ -7679,18 +7866,19 @@ export const useApp = create<AppState>((set, get, api) => {
       // the repo, writes edits, runs tools) and that is the paid surface; chat
       // with local models ('device' Harbor/Ollama) and with a connected stack
       // ('stack') stays free. Central choke point so every coding entry (Repos,
-      // Launch) is gated one way. Returns the current conversation id (or empty)
-      // so callers that navigate on the result do not dead-end.
-      const coding = source.kind === 'desktop';
+      // Launch) is gated one way. Resolves to undefined when no chat opened, so
+      // no caller mistakes the chat already on screen for the new one.
+      const coding = SOURCE_ACCOUNT[source.kind] === 'coding';
       // The coding agent needs a free sign-in (lib/accountGate.ts); chat does
-      // not. The caller hands a typed first message back to the composer.
+      // not, the free chat with a computer's own model included. The caller
+      // hands a typed first message back to the composer.
       if (coding && get().needsAccountNow()) {
         get().openAccountGate('coding');
-        return get().activeId ?? '';
+        return undefined;
       }
       if (coding && !get().personalUnlockedNow()) {
         get().openPaywall('coding');
-        return get().activeId ?? '';
+        return undefined;
       }
       logEvent('source_chosen', { kind: source.kind });
       const id = newId();
@@ -8072,6 +8260,72 @@ export const useApp = create<AppState>((set, get, api) => {
       await get().saveSettings({ heldFirstMessage: undefined });
     },
 
+    async holdUntilReady(text, attachments) {
+      const prev = get().settings.heldFirstMessage;
+      const kept = prev ? (heldAttachments ?? []) : [];
+      const all = [...kept, ...(attachments ?? [])];
+      heldAttachments = all.length ? all : undefined;
+      await get().saveSettings({
+        heldFirstMessage: {
+          text: joinHeld(prev?.text, text),
+          at: new Date().toISOString(),
+          untilReady: true,
+        },
+      });
+    },
+
+    settleHeldMessage({ chooserOpen }) {
+      const s = get();
+      const status = s.desktopStatus;
+      const defaultSource = s.composerDefaultSource();
+      const plan = heldMessagePlan({
+        held: s.settings.heldFirstMessage,
+        emptyChat: s.view === 'chat' && !s.activeId,
+        chooserOpen,
+        engineReady:
+          (defaultSource.kind === 'desktop' || defaultSource.kind === 'desktop-chat') &&
+          s.sourceReady(defaultSource),
+        statusKnown: !isDesktop() || status !== undefined,
+        seatUp: s.sendWaitsOnFirstSeat(),
+      });
+      if (plan === 'restore') return get().takeHeldFirstMessage();
+      if (plan !== 'send') return undefined;
+      const held = get().takeHeldFirstMessage();
+      if (!held) return undefined;
+      get().showToast(FIRST_SEAT_COPY.sending);
+      logEvent('held_message_sent', { kind: defaultSource.kind });
+      void get()
+        .newConversation(defaultSource, {
+          firstMessage: { text: held.text, attachments: held.attachments },
+        })
+        .then((id) => {
+          // Nothing opened (a door in the way): hold it again for the
+          // composer, so the words are never lost.
+          if (!id) void get().holdFirstMessage(held.text, held.attachments);
+        });
+      return undefined;
+    },
+
+    composerDefaultSource() {
+      const s = get();
+      return defaultComposerSource({
+        desktop: isDesktop(),
+        needsAccount: s.needsAccountNow(),
+        engineChat: engineChatReady(s.desktopStatus),
+        stackReady: s.sourceReady({ kind: 'stack' }),
+      });
+    },
+
+    sendWaitsOnFirstSeat() {
+      const s = get();
+      return waitsOnFirstSeat({
+        desktop: isDesktop(),
+        statusKnown: s.desktopStatus !== undefined,
+        configured: Boolean(s.desktopStatus?.stack.configured),
+        cloudReady: s.cloudKeyPresent,
+      });
+    },
+
     async createProject(name) {
       const id = `p${Date.now().toString(36)}${(convSeq++).toString(36)}`;
       const project: Project = {
@@ -8152,6 +8406,7 @@ export const useApp = create<AppState>((set, get, api) => {
             available: true,
             live: true,
             where: client.where,
+            clock: snap.clock,
             error: undefined,
           },
         });
@@ -8833,15 +9088,44 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async signOutAccount() {
+      // Only this device's sign-in ends (CX ruling 4), with a live token, and
+      // the sign-out finishes here whatever the server says, offline too.
       const session = get().authSession;
-      if (session) await supabaseSignOut(session.accessToken);
+      if (session) await revokeHere(session, { fresh: freshSession, logout: supabaseSignOut });
       await forgetSession();
+      if (session) get().showToast(SIGNED_OUT_HERE);
       logEvent('auth_sign_out');
+    },
+
+    async signOutEverywhere() {
+      const outcome = await revokeEverywhere({ fresh: freshAuth, logout: supabaseSignOut });
+      if (outcome === 'failed') get().showToast(SIGN_OUT_EVERYWHERE_FAILED);
+      if (outcome !== 'done') return false;
+      await forgetSession();
+      get().showToast(SIGNED_OUT_EVERYWHERE);
+      logEvent('auth_sign_out_everywhere');
+      return true;
     },
 
     async unsentTeamTextCount() {
       const uid = get().authSession?.user.id;
       return uid ? countTeamDrafts(uid) : 0;
+    },
+
+    async deleteAccount() {
+      const outcome = await runAccountDeletion({
+        session: freshAuth,
+        invoke: (token) =>
+          invokeFunctionWithCode<{ ok?: boolean; appleNote?: boolean }>(
+            'delete-account',
+            token,
+            {},
+          ),
+        forgetSession: () => forgetSession(),
+        clearPendingAppleLink: () => storeDelete(PENDING_APPLE_LINK_KEY),
+      });
+      logEvent(outcome.kind === 'deleted' ? 'account_deleted' : `account_delete_${outcome.kind}`);
+      return outcome;
     },
 
     async refreshOrgRole() {
@@ -9125,6 +9409,7 @@ export const useApp = create<AppState>((set, get, api) => {
       );
       if (!reviewers.length) return undefined;
       const convId = await get().newConversation({ kind: 'stack' });
+      if (!convId) return undefined;
       const list = reviewers
         .map((a) => {
           const when = a.whenCalled?.trim() ? ` Focus: ${a.whenCalled.trim()}.` : '';
@@ -9153,6 +9438,7 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       const target = launch?.target;
       const convId = await get().newConversation({ kind: 'stack' });
+      if (!convId) return;
       const prompt = [
         'A Codemagic build failed. Read this redacted build log and tell me, in order:',
         '1) the single root cause, 2) the exact fix, 3) which file or setting to change.',
@@ -9180,6 +9466,7 @@ export const useApp = create<AppState>((set, get, api) => {
         return undefined;
       }
       const convId = await get().newConversation({ kind: 'stack' });
+      if (!convId) return undefined;
       const prompt = [
         `Launch my ${target.platform} app with Codemagic, from branch ${target.branch}.`,
         'Trigger a build and watch it. If it fails, read the log, find the single root cause, and tell me the exact fix.',
@@ -9694,7 +9981,9 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async startGuideChat(guideId) {
+      // A later tier's guide is not in a build without it (setupGuides.ts).
       const guide = SETUP_GUIDES[guideId];
+      if (!guide) return;
       const s = get();
       // Whatever brain can answer here, best first: this computer's engine on
       // desktop, a connected Claude key anywhere, else Harbor Lite on the phone
@@ -9746,6 +10035,7 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       logEvent('guide_started', { model: modelId });
       const id = await get().newConversation({ kind: 'device', modelId, modelName: guide.name });
+      if (!id) return undefined;
       // Seed the guide's greeting directly (not model-generated) so first
       // launch is a warm, instant, reliable hello with zero wait.
       set((s) => {
@@ -9779,6 +10069,7 @@ export const useApp = create<AppState>((set, get, api) => {
         modelId: HARBOR_MINI_MODEL_ID,
         modelName: HARBOR_MINI_MODEL_NAME,
       });
+      if (!id) return;
       set((st) => {
         const c = st.conversations[id];
         if (!c) return st;
@@ -11782,6 +12073,7 @@ export const useApp = create<AppState>((set, get, api) => {
         approve,
         alwaysThisSession: always,
         ...(opts?.inProject ? { alwaysInProject: true } : {}),
+        ...answerFiles(opts?.files),
       });
     },
 
@@ -11899,6 +12191,12 @@ export const useApp = create<AppState>((set, get, api) => {
         get().showToast('The sample needs the desktop app.');
         return;
       }
+      // The sample is a coding chat: signed out, the sign-in sheet opens
+      // before anything is copied to disk.
+      if (get().needsAccountNow()) {
+        get().openAccountGate('coding');
+        return;
+      }
       if (!get().sourceReady({ kind: 'desktop' })) {
         get().showToast('Pick a model for this computer first, then try the sample.');
         get().setView('stack');
@@ -11909,8 +12207,13 @@ export const useApp = create<AppState>((set, get, api) => {
         get().showToast(made.error);
         return;
       }
-      await get().newConversation({ kind: 'desktop', cwd: made.path, repoName: SAMPLE_REPO_NAME });
-      get().send(SAMPLE_PROMPT);
+      // The prompt rides in on the sample's own chat, parked until its driver
+      // attaches, so it can never land in whatever chat was open before when
+      // no chat opens (the paywall).
+      await get().newConversation(
+        { kind: 'desktop', cwd: made.path, repoName: SAMPLE_REPO_NAME },
+        { firstMessage: { text: SAMPLE_PROMPT } },
+      );
     },
 
     async restoreChangedFiles(itemId, direction, path) {
@@ -11945,6 +12248,74 @@ export const useApp = create<AppState>((set, get, api) => {
       const result = await driver.restoreCheckpoint(card.checkpointId, direction, path);
       // Success folds through the engine's echo; a refusal says why here.
       if ('error' in result) patchCard({ restoring: false, error: result.error });
+    },
+
+    async rewindTo(itemId, opts) {
+      const { activeId } = get();
+      const conv = activeId ? get().conversations[activeId] : undefined;
+      if (!activeId || !conv) return { error: REWIND_NOT_NOW };
+      const guided = get().settings.guidedSetup?.conversationId === activeId;
+      const index = conv.thread.items.findIndex((i) => i.id === itemId);
+      const item = conv.thread.items[index];
+      if (
+        item?.kind !== 'user' ||
+        !rewindableIds(conv.thread, conv.source, { guided }).includes(itemId)
+      ) {
+        return { error: REWIND_NOT_NOW };
+      }
+      // A coding chat: the engine on the person's computer rewinds, and its
+      // marker cuts this thread (and every other device's) as it arrives.
+      if (rewindsFiles(conv.source)) {
+        const result = await rewindEngine(drivers.get(activeId), item.seq!, opts.files);
+        return 'error' in result ? result : { text: item.text };
+      }
+      // A chat whose brain keeps its history in the app: cut the thread, then
+      // rebuild the brain from what is left, the way a reopened chat's is.
+      set((s) => {
+        const c = s.conversations[activeId];
+        if (!c) return s;
+        return {
+          conversations: {
+            ...s.conversations,
+            [activeId]: {
+              ...c,
+              thread: cutThread(c.thread, index),
+              updatedAt: new Date().toISOString(),
+            },
+          },
+        };
+      });
+      bumpDriverEpoch(activeId);
+      dropDriver(activeId);
+      ensureDriver(activeId);
+      void persistConversations(get());
+      return { text: item.text };
+    },
+
+    async giveMoreRoom(itemId) {
+      const { activeId } = get();
+      if (!activeId) return;
+      const card = get().conversations[activeId]?.thread.items.find(
+        (i) => i.kind === 'window-cut' && i.id === itemId,
+      );
+      if (!card || card.kind !== 'window-cut') return;
+      // The logic is the security package's (securityOps.ts); here it only
+      // lands on the card.
+      await giveMoreRoomFor(drivers.get(activeId), card.provider, (patch) =>
+        set((s) => {
+          const c = s.conversations[activeId];
+          if (!c) return s;
+          const items = c.thread.items.map((i) =>
+            i.kind === 'window-cut' && i.id === itemId ? { ...i, ...patch } : i,
+          );
+          return {
+            conversations: {
+              ...s.conversations,
+              [activeId]: { ...c, thread: { ...c.thread, items } },
+            },
+          };
+        }),
+      );
     },
 
     dismissProjectTrust(itemId) {
@@ -12129,16 +12500,24 @@ export const useApp = create<AppState>((set, get, api) => {
         return;
       }
       const repoName = info.cwd.split(/[\\/]/).filter(Boolean).pop();
-      await get().newConversation(
+      const opened = await get().newConversation(
         { kind: 'desktop', sessionId: info.id, cwd: info.cwd, repoName },
         { title: info.title && !/^Session /.test(info.title) ? info.title : undefined },
       );
-      if (backRoom) set({ viewTrail: [backRoom] });
+      // No chat opened (the sign-in sheet): the room stays as it was, trail
+      // and all.
+      if (opened && backRoom) set({ viewTrail: [backRoom] });
     },
 
     runCommand(command) {
       const { activeId } = get();
       if (!activeId) return;
+      // Signed out, a coding chat's commands are behind the same door as the
+      // agent: the sign-in sheet opens, never "this chat has no terminal".
+      if (codingLockedNow(get().conversations[activeId])) {
+        get().openAccountGate('coding');
+        return;
+      }
       const driver = drivers.get(activeId);
       if (!driver?.runCommand) {
         get().showToast(
@@ -12479,10 +12858,10 @@ export const useApp = create<AppState>((set, get, api) => {
       const before = get().settings;
       let settings = { ...before, ...patch };
       // A preference that follows a signed-in person changed here (not a sync
-      // applying the account's copy, which names its own time): stamp it, and
-      // send it on once the person stops changing things.
-      const ownPrefChange = !('prefsUpdatedAt' in patch) && preferencesChanged(before, settings);
-      if (ownPrefChange) settings = { ...settings, prefsUpdatedAt: new Date().toISOString() };
+      // applying the account's copy, which names its own times): stamp each
+      // key it touched, and send it on once the person stops changing things.
+      const ownPrefChange = !('prefsStamps' in patch) && preferencesChanged(before, settings);
+      if (ownPrefChange) settings = stampOwnChange(before, settings, new Date().toISOString());
       set({ settings, hubRole: activeHubRole(settings) });
       setInsightsEnabled(settings.insightsOptIn ?? false);
       setActiveEffort(settings.effort ?? DEFAULT_EFFORT);
@@ -12490,9 +12869,14 @@ export const useApp = create<AppState>((set, get, api) => {
       setPromptCache(settings.promptCache === true);
       // New privacy rules apply to the next read, not a minute later.
       if ('vaultPrivacy' in patch) privacyCache = undefined;
+      // The phone keeps its own copy of the notice switches, whichever way
+      // they changed: here, or pulled from the account.
+      if (noticePrefsChanged(before, settings)) void syncNoticePrefs(settings);
       // A pairing change relinks the hub vault before anything settles it.
       if ('daemon' in patch) await syncHubLink(settings.daemon).catch(() => false);
-      await persistSettings(settings);
+      // What the store holds now, not the copy from before the relink: a save
+      // that landed during it is kept, never written over.
+      await persistSettings(get().settings);
       if (ownPrefChange) schedulePrefsPush();
     },
 

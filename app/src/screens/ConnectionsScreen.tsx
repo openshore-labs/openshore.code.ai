@@ -145,7 +145,9 @@ export function ConnectionsScreen() {
                     Get a {p.name} API key ↗
                   </button>
                   <div className="field">
+                    <label htmlFor="connections-api-key">{p.name} API key</label>
                     <input
+                      id="connections-api-key"
                       autoFocus
                       type="password"
                       placeholder={p.keyHint}
@@ -157,8 +159,11 @@ export function ConnectionsScreen() {
                   {p.id === 'anthropic' ? (
                     <>
                       <div className="field">
-                        <label>Workspace id (only if Claude asks)</label>
+                        <label htmlFor="connections-workspace-id">
+                          Workspace id (only if Claude asks)
+                        </label>
                         <input
+                          id="connections-workspace-id"
                           placeholder="wrkspc_..."
                           autoCapitalize="none"
                           autoCorrect="off"
@@ -194,8 +199,8 @@ export function ConnectionsScreen() {
           <button className="linklike" onClick={() => setView('stack')}>
             your stack
           </button>{' '}
-          to make it your Reasoning LLM or a specialist. OpenShore defers to cheaper models for the
-          right tasks, so you keep control of cost.
+          to make it your Reasoning LLM or a specialist. You choose which model each kind of task
+          goes to.
         </p>
       </div>
     </div>

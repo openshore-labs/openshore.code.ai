@@ -22,8 +22,10 @@ import type { CrewAgent } from '../state/types.js';
 import {
   PRESET,
   accessLabel,
+  CLOCK_ELSEWHERE_LINE,
   agentPresenceLine,
   busiestFirst,
+  clockKeptElsewhere,
   controlBlurb,
   controlLabel,
   crewControl,
@@ -177,6 +179,7 @@ export function CrewCommandScreen() {
 
   const now = Date.now();
   const headline = crewHeadline(routines, runs, now);
+  const elsewhere = clockKeptElsewhere(state);
   const working = routines.filter((r) => r.presence === 'working');
   const waiting = routines.filter((r) => r.presence === 'waiting');
   const startOfDay = new Date(now);
@@ -414,6 +417,19 @@ export function CrewCommandScreen() {
               ? 'Every routine runs on your own models, while your computer is on. It works, then asks: anything risky waits for you.'
               : controlBlurb(where, machine)}
           </p>
+          {/* Another OpenShore here keeps the schedule (CX cleanup 6). It
+              folds open and shut on the reveal, since this app takes the
+              clock over on its own once that one closes. */}
+          {where === 'desktop' ? (
+            <div
+              className={`reveal${elsewhere ? ' open' : ''}`}
+              aria-hidden={elsewhere ? undefined : true}
+            >
+              <div className="reveal-inner">
+                <p className="cc-hero-note cc-clock-note">{CLOCK_ELSEWHERE_LINE}</p>
+              </div>
+            </div>
+          ) : null}
           {away ? (
             <button
               className="btn primary press-fb"
@@ -804,8 +820,9 @@ export function CrewCommandScreen() {
             </p>
 
             <div className="field">
-              <label>Name</label>
+              <label htmlFor="routine-name">Name</label>
               <input
+                id="routine-name"
                 placeholder="e.g. Morning review, Nightly test run"
                 value={draft.name}
                 maxLength={ROUTINE_LIMITS.name}

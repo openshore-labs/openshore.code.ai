@@ -8,8 +8,45 @@
 // just its own file, and once everything is back the head offers "Redo". No
 // "are you sure": undo is itself reversible, and it runs on the computer the
 // chat runs on, so a paired phone undoes the same way the desktop does.
+//
+// Its head carries the task's verdict (the harness package): the last check's
+// words, the same as the transcript's verify pill ("It works", "Checks pass",
+// "Not yet", "Checks failing"), or "Not checked" when nothing checked the
+// work. Green for a pass, the warning ink for a miss, never the danger red: a
+// miss is news, not an alarm. A pill with a check behind it is a button that
+// brings that check into view.
 import type { ChangedFile } from '../state/types.js';
 import { hapticCommit } from '../lib/haptics.js';
+import { NOT_CHECKED, SHOW_CHECK } from '../lib/harnessCopy.js';
+import { verdictLabel } from './VerifyPill.js';
+import { verifyAnchor, type TaskVerdict } from '../state/harnessOps.js';
+
+/** The flash a card or pill wears for a moment after a jump brings it into
+ *  view, the same one the tool cards use. */
+function flashInto(id: string): void {
+  const el = document.getElementById(id);
+  el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el?.classList.add('tool-card-flash');
+  setTimeout(() => el?.classList.remove('tool-card-flash'), 900);
+}
+
+/** The verdict pill in the card's head. */
+function VerdictPill({ verdict }: { verdict: TaskVerdict }) {
+  if (verdict.state === 'not-run') {
+    return <span className="changed-verdict not-run">{NOT_CHECKED}</span>;
+  }
+  const label = verdictLabel(verdict.state === 'pass', verdict.check);
+  return (
+    <button
+      type="button"
+      className={`changed-verdict ${verdict.state} press-fb`}
+      aria-label={`${label}. ${SHOW_CHECK}`}
+      onClick={() => flashInto(verifyAnchor(verdict.verifyId))}
+    >
+      {label}
+    </button>
+  );
+}
 
 /** Plain words for what the task did to a file, when there are no line
  *  counts (a file a command wrote, or one the task created or removed). */
@@ -25,6 +62,7 @@ export function ChangedFilesCard({
   error,
   ranCommands = false,
   onRestore,
+  verdict,
 }: {
   files: ChangedFile[];
   checkpointId?: string;
@@ -33,6 +71,8 @@ export function ChangedFilesCard({
   error?: string;
   ranCommands?: boolean;
   onRestore?: (direction: 'undo' | 'redo', path?: string) => void;
+  /** What checked the task's work, and how it came out. */
+  verdict?: TaskVerdict;
 }) {
   const added = files.reduce((n, f) => n + f.added, 0);
   const removed = files.reduce((n, f) => n + f.removed, 0);
@@ -41,11 +81,7 @@ export function ChangedFilesCard({
   const back = new Set(undone);
   const allBack = canUndo && files.length > 0 && files.every((f) => back.has(f.path));
   const jump = (id?: string) => {
-    if (!id) return;
-    const el = document.getElementById(`tool-${id}`);
-    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    el?.classList.add('tool-card-flash');
-    setTimeout(() => el?.classList.remove('tool-card-flash'), 900);
+    if (id) flashInto(`tool-${id}`);
   };
   const restore = (direction: 'undo' | 'redo', path?: string) => {
     if (!onRestore || restoring) return;
@@ -55,8 +91,15 @@ export function ChangedFilesCard({
   return (
     <div className={`changed-card${allBack ? ' undone' : ''}`}>
       <div className="changed-head">
-        <span className="changed-title">
-          {allBack ? 'Undone' : `Changed ${files.length} ${files.length === 1 ? 'file' : 'files'}`}
+        <span className="changed-head-start">
+          <span className="changed-title">
+            {allBack
+              ? 'Undone'
+              : `Changed ${files.length} ${files.length === 1 ? 'file' : 'files'}`}
+          </span>
+          {/* Once every file is back, the verdict no longer describes what is
+              there, so it steps aside. */}
+          {verdict && !allBack ? <VerdictPill verdict={verdict} /> : null}
         </span>
         <span className="changed-head-end">
           {counted && !allBack ? (

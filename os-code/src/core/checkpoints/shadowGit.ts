@@ -33,6 +33,7 @@ import {
 } from 'node:fs';
 import { isAbsolute, join, normalize, relative, resolve } from 'node:path';
 import { oscHome } from '../../config/home.js';
+import { scrubbedEnv } from '../exec/childEnv.js';
 
 export type CheckpointFileStatus = 'added' | 'modified' | 'deleted';
 
@@ -184,8 +185,10 @@ export class ShadowCheckpoints {
           cwd: this.cwd,
           maxBuffer: 64 * 1024 * 1024,
           timeout: 120_000,
+          // Local only: no credential is needed, so git (and anything the
+          // work tree's config points it at) gets no key at all.
           env: {
-            ...process.env,
+            ...scrubbedEnv(),
             GIT_DIR: undefined,
             GIT_WORK_TREE: undefined,
             GIT_INDEX_FILE: undefined,
@@ -209,7 +212,7 @@ export class ShadowCheckpoints {
     if (existsSync(join(this.dir, 'HEAD'))) return;
     mkdirSync(this.dir, { recursive: true, mode: 0o700 });
     await new Promise<void>((resolvePromise, reject) => {
-      execFile('git', ['init', '--bare', '--quiet', this.dir], (err) =>
+      execFile('git', ['init', '--bare', '--quiet', this.dir], { env: scrubbedEnv() }, (err) =>
         err ? reject(err) : resolvePromise(),
       );
     });

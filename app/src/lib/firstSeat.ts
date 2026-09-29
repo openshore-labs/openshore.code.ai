@@ -61,10 +61,11 @@ export function fitVerdictOrUnknown(sizeGB: number, hw?: HardwareRead): FitVerdi
   return hw ? fitVerdict(sizeGB, hw) : 'unknown';
 }
 
-/** "8 GB, no GPU" or "32 GB, 12 GB GPU". */
+/** "8 GB memory, no graphics card" or "32 GB memory, 12 GB graphics card":
+ *  the words on the box, not GPU or VRAM (CX, jargon rewrites). */
 export function hardwareDesc(hw: HardwareRead): string {
-  const gpu = hw.gpu ? `${hw.gpuVramGB ?? 0} GB GPU` : 'no GPU';
-  return hw.ramGB > 0 ? `${hw.ramGB} GB, ${gpu}` : gpu;
+  const gpu = hw.gpu ? `${hw.gpuVramGB ?? 0} GB graphics card` : 'no graphics card';
+  return hw.ramGB > 0 ? `${hw.ramGB} GB memory, ${gpu}` : gpu;
 }
 
 /** The line above the store's fit pills. */

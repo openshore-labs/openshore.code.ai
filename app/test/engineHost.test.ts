@@ -7,6 +7,8 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createServer, type Server, type ServerResponse } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { DriverEvent } from 'os-code/protocol';
 
@@ -160,6 +162,134 @@ describe('EngineHost (desktop coding path, hermetic)', () => {
     const untouched = await host.createSession(cwd);
     expect(booted.find((b) => b.id === off.id)?.memory).toBe(false);
     expect(booted.find((b) => b.id === untouched.id)?.memory).toBeUndefined();
+    host.disposeAll();
+  });
+});
+
+// The free chat over IPC (CTO ruling 8): the host runs the engine's one free
+// chat function and forwards its events to the window. A fake Ollama stands
+// in for the local model, so the test reads what reached it.
+describe('EngineHost free chat (the desktop window, over IPC)', () => {
+  type Frame = Parameters<Parameters<InstanceType<typeof EngineHost>['freeChat']>[2]>[0];
+  let ollama: Server;
+  let chatHome: string;
+  let held: ServerResponse[];
+  let hold: boolean;
+  const answer = (res: ServerResponse) => {
+    res.write(
+      `${JSON.stringify({ message: { content: 'A closure keeps its scope.' }, done: false })}\n`,
+    );
+    res.end(`${JSON.stringify({ done: true })}\n`);
+  };
+
+  beforeAll(async () => {
+    held = [];
+    hold = false;
+    ollama = createServer((req, res) => {
+      req.resume();
+      req.on('end', () => {
+        if (req.url === '/api/chat') {
+          if (hold) held.push(res);
+          else answer(res);
+        } else if (req.url === '/api/version') {
+          res.end(JSON.stringify({ version: '0.9.0' }));
+        } else {
+          res.statusCode = 404;
+          res.end('{}');
+        }
+      });
+    });
+    await new Promise<void>((resolve) => ollama.listen(0, '127.0.0.1', resolve));
+    const port = (ollama.address() as AddressInfo).port;
+    chatHome = mkdtempSync(join(tmpdir(), 'osc-home-chat-'));
+    writeFileSync(
+      join(chatHome, 'config.json'),
+      JSON.stringify({
+        providers: { ollama: { kind: 'openai-compatible', baseUrl: `http://127.0.0.1:${port}` } },
+        stack: { orchestrator: { provider: 'ollama', model: 'qwen2.5:3b' } },
+      }),
+    );
+  });
+  afterAll(() => {
+    for (const res of held.splice(0)) answer(res);
+    ollama.close();
+  });
+
+  it('streams one answer with no session opened', async () => {
+    process.env.OSC_HOME = chatHome;
+    const host = makeHost([]);
+    const frames: Frame[] = [];
+    const bootsBefore = booted.length;
+    await host.freeChat(
+      'r1',
+      { messages: [{ role: 'user', content: 'What is a closure?' }] },
+      (f) => frames.push(f),
+    );
+    expect(frames).toEqual([
+      { type: 'text', delta: 'A closure keeps its scope.' },
+      { type: 'done' },
+    ]);
+    // Nothing was booted, stored, or left to resume.
+    expect(booted.length).toBe(bootsBefore);
+    expect(host.listStoredSessions()).toEqual([]);
+    host.disposeAll();
+  });
+
+  it('refuses a model that leaves this network, as its one error', async () => {
+    const remoteHome = mkdtempSync(join(tmpdir(), 'osc-home-remote-'));
+    writeFileSync(
+      join(remoteHome, 'config.json'),
+      JSON.stringify({
+        providers: { far: { kind: 'openai-compatible', baseUrl: 'https://models.example.com/v1' } },
+        stack: { orchestrator: { provider: 'far', model: 'big-model' } },
+      }),
+    );
+    process.env.OSC_HOME = remoteHome;
+    const host = makeHost([]);
+    const frames: Frame[] = [];
+    await host.freeChat('r2', { messages: [{ role: 'user', content: 'hi' }] }, (f) =>
+      frames.push(f),
+    );
+    expect(frames).toHaveLength(1);
+    expect(frames[0]).toMatchObject({ type: 'error' });
+    expect((frames[0] as { message: string }).message).toMatch(/local models/);
+    host.disposeAll();
+  });
+
+  it('with no model at all, says so as its one error', async () => {
+    process.env.OSC_HOME = emptyHome;
+    const host = makeHost([]);
+    const frames: Frame[] = [];
+    await host.freeChat('r3', { messages: [{ role: 'user', content: 'hi' }] }, (f) =>
+      frames.push(f),
+    );
+    expect(frames).toEqual([{ type: 'error', message: expect.stringMatching(/No local model/) }]);
+    host.disposeAll();
+  });
+
+  it('answers one message at a time, and a Stop frees the window for the next', async () => {
+    process.env.OSC_HOME = chatHome;
+    hold = true;
+    const host = makeHost([]);
+    const first: Frame[] = [];
+    const running = host.freeChat('r4', { messages: [{ role: 'user', content: 'hi' }] }, (f) =>
+      first.push(f),
+    );
+    for (let i = 0; i < 200 && held.length < 1; i++) await new Promise((r) => setTimeout(r, 10));
+    const second: Frame[] = [];
+    await host.freeChat('r5', { messages: [{ role: 'user', content: 'hi' }] }, (f) =>
+      second.push(f),
+    );
+    expect(second).toEqual([{ type: 'error', message: expect.stringMatching(/still answering/) }]);
+    hold = false;
+    host.freeChatAbort('r4');
+    await running;
+    expect(['done', 'error']).toContain(first.at(-1)?.type);
+    const third: Frame[] = [];
+    await host.freeChat('r6', { messages: [{ role: 'user', content: 'hi' }] }, (f) =>
+      third.push(f),
+    );
+    expect(third.at(-1)).toEqual({ type: 'done' });
     host.disposeAll();
   });
 });

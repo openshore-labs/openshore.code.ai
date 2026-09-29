@@ -35,7 +35,20 @@ import {
 } from 'os-code/protocol';
 import { storeGetJson, storeSetJson } from './platform.js';
 import { insert, isConfigured, rpc } from './supabase.js';
-import { freshSession, loadStoredSession } from './authSession.js';
+
+/** The signed-in session with a live access token, or undefined when signed
+ *  out. The store hands its own in (setEthicsAuth), so the one refresh in
+ *  flight is the store's: a second refresher here could spend a refresh token
+ *  the store already spent, and the token endpoint answers that reuse by
+ *  signing the person out. */
+type EthicsAuth = () => Promise<{ accessToken: string } | undefined>;
+let ethicsAuth: EthicsAuth | undefined;
+
+/** Wire the store's session in (state/store.ts). Until it is, a record stays
+ *  on the device, as it does signed out. */
+export function setEthicsAuth(auth: EthicsAuth): void {
+  ethicsAuth = auth;
+}
 
 const CONSENTS_KEY = 'oscode.ethics.consents.v1';
 const RECORDS_KEY = 'oscode.ethics.records.v1';
@@ -117,10 +130,9 @@ export async function recordEthicsEvent(record: EthicsRecord): Promise<void> {
  */
 async function postRecord(record: EthicsRecord): Promise<void> {
   try {
-    if (!isConfigured()) return;
-    const stored = await loadStoredSession();
-    if (!stored) return;
-    const session = await freshSession(stored);
+    if (!isConfigured() || !ethicsAuth) return;
+    const session = await ethicsAuth();
+    if (!session) return;
     await insert('guardrail_events', session.accessToken, {
       category: record.category,
       tier: record.tier,
@@ -141,11 +153,39 @@ async function postRecord(record: EthicsRecord): Promise<void> {
 
     // The server decides the outcome from its own history. We pass nothing and
     // trust nothing: a client cannot talk its own standing down.
-    await rpc('record_enforcement', session.accessToken, {});
+    try {
+      await rpc('record_enforcement', session.accessToken, {});
+    } catch (err) {
+      warnEnforcementFailed(err);
+    }
   } catch {
     // Offline, or the account rejected it. The device copy is the fallback, and
     // the block does not depend on this call.
   }
+}
+
+/** Whether this session already said the ladder call failed. */
+let enforcementWarned = false;
+
+/**
+ * Say once per session that `record_enforcement` failed. Swallowing it
+ * silently hid a ladder that never recorded a row for weeks (0016 to 0018,
+ * the deletion package's note). The block still stands; the line carries the
+ * error's code only (an HTTP status, or the error's kind offline), never the
+ * prompt, its hash, or the server's words.
+ */
+function warnEnforcementFailed(err: unknown): void {
+  if (enforcementWarned) return;
+  enforcementWarned = true;
+  const status = (err as { status?: unknown } | undefined)?.status;
+  const code =
+    typeof status === 'number' ? `HTTP ${status}` : err instanceof Error ? err.name : 'unknown';
+  console.warn(`[ethics] record_enforcement failed (${code}); the block stands.`);
+}
+
+/** Tests only: let the next failure say so again. */
+export function resetEnforcementWarningForTests(): void {
+  enforcementWarned = false;
 }
 
 /**

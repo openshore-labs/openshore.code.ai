@@ -7,6 +7,8 @@ import type {
   PackMode,
   PackSource,
   PermissionMode,
+  RepoCommand,
+  RepoCommandNotLoaded,
 } from 'os-code/protocol';
 import type { BuildStatus } from '../lib/codemagic.js';
 import type { AccountType, PlanTierId } from '../lib/plans.js';
@@ -24,6 +26,10 @@ export type ThreadItem =
        *  stays on screen as the record, and never rides into a model's history
        *  (a switch or a relaunch reseeds from the transcript). */
       withheld?: boolean;
+      /** The sequence number its task-start was journaled at, on an engine
+       *  session: what a rewind names (P2), and what a `rewound` marker cuts
+       *  the transcript back to on every device. */
+      seq?: number;
     }
   | {
       kind: 'assistant';
@@ -122,7 +128,37 @@ export type ThreadItem =
        *  computer that could not be reached), in plain words. */
       error?: string;
     }
-  | { kind: 'stopped'; id: string; message: string }
+  // A turn that ended short. `byYou` marks the person's own Stop (CX ruling
+  // 5): a quiet marker, never a failure card, and nothing to rescue.
+  | { kind: 'stopped'; id: string; message: string; byYou?: true }
+  // The server cut the chat to fit a window smaller than the prompt (C1, CX
+  // 6): once per chat per model, teal. `room` is what the card may offer:
+  // 'more' (the "Give it more room" action, about `gb` more memory when the
+  // model says), 'full' (no memory to spare), absent (a server whose window
+  // OpenShore does not set). `state` follows the tap.
+  | {
+      kind: 'window-cut';
+      id: string;
+      model: string;
+      provider: string;
+      room?: 'more' | 'full';
+      gb?: number;
+      state?: 'giving' | 'given';
+      /** Why the tap did not go through, in plain words. */
+      error?: string;
+      /** The little-room variant (CTO 6): even the lean prompt fills most of
+       *  the window before the chat starts. Same card, same action; its own
+       *  title and body. */
+      tight?: true;
+    }
+  // Retrieval before turn one (CTO 6): the places in the code the harness
+  // gave a local seat before its first turn, by file and first line. Teal,
+  // since it only runs for a seat that stays on this network.
+  | {
+      kind: 'retrieval';
+      id: string;
+      sources: Array<{ path: string; line: number }>;
+    }
   // What the Vault gave this task's seat (Vault M4, 4.4): the notes the pack
   // used, the private notes it left out for a seat that leaves this network,
   // and whether the index was still cold. Teal for a local seat, amber for a
@@ -152,6 +188,10 @@ export type ThreadItem =
       id: string;
       runId: string;
       command: string;
+      /** 'agent' for a program the agent started and left running
+       *  (startProcess, P1): its card says "Started by OpenShore". Absent for
+       *  a command the person ran. */
+      source?: 'agent';
       output: string;
       state: 'running' | 'done' | 'killed';
       exitCode?: number | null;
@@ -198,6 +238,12 @@ export interface RepoInfo {
   cwd: string;
   branch?: string;
   dirty?: boolean;
+  /** The person's own slash commands for this folder (P3): the repository's
+   *  and their own, names and words only. Kept from the last repo-info event
+   *  that carried them. */
+  commands?: RepoCommand[];
+  /** Command files that were found and left out, and why. */
+  commandsNotLoaded?: RepoCommandNotLoaded[];
 }
 
 export interface ThreadState {
@@ -521,12 +567,28 @@ export interface LaunchState {
   runs: BuildRun[];
 }
 
+/**
+ * What the app calls the computer the engine runs on (CX cleanup 4): "This
+ * computer" in the desktop app, where the person sits at it, and "Your
+ * computer" on the phone, the name Vault and the error messages use for the
+ * paired machine. Read the way lib/platform.ts reads it, without importing
+ * that module (and its native plugins) into the types.
+ */
+export function computerName(): 'This computer' | 'Your computer' {
+  const oscode =
+    typeof window !== 'undefined'
+      ? (window as { oscode?: { platform?: string } }).oscode
+      : undefined;
+  return oscode?.platform === 'electron' ? 'This computer' : 'Your computer';
+}
+
 export function sourceLabel(source: ConversationSource): string {
   switch (source.kind) {
     case 'desktop':
-      return source.repoName ? `Your computer · ${source.repoName}` : 'Your computer · Stack';
+      return `${computerName()} · ${source.repoName ?? 'Stack'}`;
     case 'desktop-chat':
-      return 'Your computer · chat';
+      // "chat" tells the free chat from the agent (CX cleanup 4).
+      return `${computerName()} · chat`;
     case 'device':
       if (isHarborMini(source.modelId)) return 'Harbor Lite · built-in guide';
       if (isHarbor(source.modelId)) return 'Harbor · coding model';
@@ -552,9 +614,11 @@ export function sourceShortLabel(source?: ConversationSource): string {
     case 'cloud':
       return sourceLabel(source).split(' · ')[0] || 'Cloud';
     case 'desktop':
-      return source.repoName ?? 'Your computer';
+      return source.repoName ?? computerName();
     case 'desktop-chat':
-      return 'My computer';
+      // The pill says what the model sheet's row says, so the person can find
+      // the row again: "This computer · chat" or "Your computer · chat".
+      return sourceLabel(source);
     case 'device':
       return sourceLabel(source).split(' · ')[0] || 'On device';
     case 'stack':
