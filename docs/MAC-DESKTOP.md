@@ -94,10 +94,14 @@ Every push to `main` that touches the app or the engine publishes a desktop
 release (`.github/workflows/release.yml`, next patch after the newest tag).
 A desktop that is behind shows a bar across the top of its window within half
 an hour, and one click updates it. On a Mac, that click downloads this
-release's `-mac.zip` for the Mac's architecture, swaps the app in place, and
-relaunches (`app/electron/macUpdate.ts`); if the app runs from somewhere it
+release's `-mac.zip` for the Mac's architecture and its `.sig`, checks the
+signature against the Mac key built into the app, swaps the app in place, and
+relaunches (`app/electron/macUpdate.ts`); the old app stays until the new one
+has started, and comes back if it never does. With no key built in yet, no
+`.sig`, a signature that does not match, or an app running from somewhere it
 cannot write (a mounted disk image, a folder it has no rights to), the click
-opens the release page instead.
+opens the release page instead. Setting up the keys is a one-time job:
+`docs/release-signing.md`.
 
 A Mac only sees a release once this Codemagic build has uploaded its zip into
 it. To have every release carry a Mac build without starting it by hand, add

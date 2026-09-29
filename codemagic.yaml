@@ -238,6 +238,13 @@ workflows:
         # simply unused here. This group already exists, so this workflow needs
         # no new Codemagic setup at all.
         - Harbor-os-code
+        # The Mac release signing key, alone in a group of its own (CTO
+        # ruling 1, 2026-09-29), so nothing else that imports a group can
+        # read it: OPENSHORE_MAC_SIGNING_KEY, the private half from
+        # app/scripts/release-keygen.mjs, marked Secure. Until the founder
+        # adds it, the signing step below says so and skips
+        # (docs/release-signing.md).
+        - openshore-mac-signing
       vars:
         # The GitHub App's public slug, as in the iOS workflow above.
         VITE_GITHUB_APP_SLUG: openshore-code
@@ -366,6 +373,33 @@ workflows:
             env -u CSC_LINK -u CSC_KEY_PASSWORD CSC_IDENTITY_AUTO_DISCOVERY=false \
               pnpm exec electron-builder --mac --publish never
           fi
+      - name: Sign the macOS files
+        script: |
+          set -euo pipefail
+          # CTO ruling 1 (2026-09-29): an installed Mac swaps in a new version
+          # only when the zip or dmg matches its .sig under the key pinned in
+          # the app (app/electron/releaseVerify.ts), so a leaked release token
+          # cannot put its own build on every Mac. The private key comes from
+          # the openshore-mac-signing group and never leaves this step; the
+          # script reads it from the environment, not the command line.
+          # Without it the files ship unsigned, and a Mac with the Mac key
+          # pinned opens the release page instead of updating in place.
+          if [ -z "${OPENSHORE_MAC_SIGNING_KEY:-}" ]; then
+            echo "OPENSHORE_MAC_SIGNING_KEY is not set (the openshore-mac-signing" \
+                 "group), so the Mac files ship without .sig files. See" \
+                 "docs/release-signing.md."
+            exit 0
+          fi
+          shopt -s nullglob
+          cd app
+          VERSION=$(node -p "require('./package.json').version")
+          FILES=(release/*.dmg release/*.zip)
+          if [ "${#FILES[@]}" -eq 0 ]; then
+            echo "No Mac files to sign." >&2
+            exit 1
+          fi
+          node scripts/release-sign.mjs --key-env OPENSHORE_MAC_SIGNING_KEY \
+            --version "$VERSION" "${FILES[@]}"
       - name: Publish to the GitHub Release
         script: |
           set -euo pipefail
@@ -411,10 +445,13 @@ workflows:
           cd app
           LATEST_TAG="$MAC_RELEASE_TAG"
           echo "Publishing the macOS build to $LATEST_TAG"
+          # The .sig files ride with the files they sign (none when the
+          # signing step above skipped; nullglob drops the pattern then).
           gh release upload "$LATEST_TAG" --repo openshore-labs/openshore.code.ai \
-            --clobber release/*.dmg release/*.zip release/*.blockmap release/latest-mac.yml
+            --clobber release/*.dmg release/*.zip release/*.sig release/*.blockmap release/latest-mac.yml
     artifacts:
       - app/release/*.dmg
       - app/release/*.zip
+      - app/release/*.sig
       - app/release/*.blockmap
       - app/release/latest-mac.yml
