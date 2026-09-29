@@ -20,6 +20,13 @@ import type { AgentSession } from '../core/agent/loop.js';
 import type { ApprovalAnswer, ApprovalRequest, DriverEvent } from '../core/agent/types.js';
 import { redactSecrets } from '../core/security/redaction.js';
 import { isSealed, loadOrCreateDataKey, openString, sealString } from '../core/security/atRest.js';
+import { deleteCredential, getCredential, setCredential } from '../auth/store.js';
+import {
+  parseCurrentsHandles,
+  parseHarnessCurrentsHandle,
+  type CurrentsHandles,
+  type HarnessCurrentsHandle,
+} from '../currents/model.js';
 import { runCommand as spawnCommand, type CommandRun } from '../core/exec/commandRunner.js';
 import { capContent } from '../core/tools/index.js';
 import { walkFiles } from '../core/tools/walk.js';
@@ -79,8 +86,10 @@ export interface SessionProject {
   projectName?: string;
   instructions?: string;
   /** The app's per-session switches, kept so a session revived after a
-   *  restart (the daemon's rehydrate) keeps the person's choices: Humanize
-   *  Writing, Memory, and Chain of Thought. Plain booleans, no content. */
+   *  restart (the daemon's rehydrate, the desktop's resume) keeps the
+   *  person's choices: Humanize Writing, Memory, Chain of Thought, a declined
+   *  web search, and the currents it was handed. The booleans are plain; the
+   *  handles are sealed and hold no key (see StoredHandles). */
   switches?: SessionSwitches;
 }
 
@@ -89,10 +98,161 @@ export interface SessionSwitches {
   humanize?: boolean;
   memory?: boolean;
   chainOfThought?: boolean;
+  /** The person's web search answer on the device that opened the session.
+   *  Only a decline is kept (false leaves the tool out); anything else leaves
+   *  the config in charge, as at create. */
+  webSearch?: boolean;
+  /** The Agentic Current the session was handed (see BootstrapOptions). */
+  currents?: CurrentsHandles;
+  /** The Harness Current the session was handed (see BootstrapOptions). */
+  harnessCurrents?: HarnessCurrentsHandle;
+}
+
+/**
+ * The current handles as info.json keeps them: what rebuilds the handle (its
+ * address, its model, which CLI) and, for a key, only the NAME it was put
+ * under in this computer's credential store (auth/store.ts: the keychain, or
+ * the encrypted file). The key itself never lands in info.json, and the whole
+ * record is sealed like the project, since an address can carry a login.
+ */
+interface StoredHandles {
+  currents?: {
+    hermes?: { baseUrl: string; model?: string; keyRef?: string };
+    a2a?: { agentUrl: string; keyRef?: string };
+    cli?: { command: 'claude' | 'codex' };
+  };
+  harnessCurrents?: { jev?: { baseUrl: string; model?: string; keyRef?: string } };
 }
 
 /** info.json as it sits on disk: the listing fields plus the sealed project. */
-type SessionInfoFile = SessionInfo & SessionProject;
+type SessionInfoFile = SessionInfo &
+  Omit<SessionProject, 'switches'> & {
+    /** The plain booleans only; the handles ride sealed in `handles`. */
+    switches?: Pick<SessionSwitches, 'humanize' | 'memory' | 'chainOfThought' | 'webSearch'>;
+    /** Sealed JSON of StoredHandles. */
+    handles?: string;
+  };
+
+const SWITCH_KEYS = ['humanize', 'memory', 'chainOfThought', 'webSearch'] as const;
+
+/** The credential-store name a session's current key is kept under. One per
+ *  session and current, so deleting the session can take its keys along. */
+function sessionKeyName(id: string, current: 'hermes' | 'a2a' | 'jev'): string {
+  return `session-key:${id}:${current}`;
+}
+
+/** Put a handle's key in the credential store and answer its name, or leave
+ *  it out when there is no key or the store refuses it (the revived session
+ *  then runs without the key, as a fresh one would with none). */
+function keepKey(id: string, current: 'hermes' | 'a2a' | 'jev', key: string | undefined) {
+  if (!key) return undefined;
+  const name = sessionKeyName(id, current);
+  try {
+    setCredential(name, key);
+    return name;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Read a kept key back, only under the one name this session and current
+ *  would have used: a hand-edited info.json cannot name another credential
+ *  (the person's cloud key, say) and have it handed to a current. */
+function readKey(
+  id: string,
+  current: 'hermes' | 'a2a' | 'jev',
+  ref: string | undefined,
+): string | undefined {
+  if (!ref || ref !== sessionKeyName(id, current)) return undefined;
+  try {
+    return getCredential(ref);
+  } catch {
+    return undefined;
+  }
+}
+
+/** The handles as info.json keeps them, keys moved into the store. */
+function storeHandles(id: string, switches: SessionSwitches): StoredHandles | undefined {
+  const out: StoredHandles = {};
+  const { currents, harnessCurrents } = switches;
+  if (currents) {
+    const c: NonNullable<StoredHandles['currents']> = {};
+    if (currents.hermes) {
+      const keyRef = keepKey(id, 'hermes', currents.hermes.apiKey);
+      c.hermes = {
+        baseUrl: currents.hermes.baseUrl,
+        ...(currents.hermes.model ? { model: currents.hermes.model } : {}),
+        ...(keyRef ? { keyRef } : {}),
+      };
+    }
+    if (currents.a2a) {
+      const keyRef = keepKey(id, 'a2a', currents.a2a.apiKey);
+      c.a2a = { agentUrl: currents.a2a.agentUrl, ...(keyRef ? { keyRef } : {}) };
+    }
+    if (currents.cli) c.cli = { command: currents.cli.command };
+    if (Object.keys(c).length) out.currents = c;
+  }
+  if (harnessCurrents?.jev) {
+    const keyRef = keepKey(id, 'jev', harnessCurrents.jev.apiKey);
+    out.harnessCurrents = {
+      jev: {
+        baseUrl: harnessCurrents.jev.baseUrl,
+        ...(harnessCurrents.jev.model ? { model: harnessCurrents.jev.model } : {}),
+        ...(keyRef ? { keyRef } : {}),
+      },
+    };
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** Rebuild the handles from info.json, each key read back from the store.
+ *  Parsed through the same wire validators a create uses, so a hand-edited
+ *  file can name nothing a create would refuse. */
+function revivedHandles(
+  id: string,
+  stored: StoredHandles,
+): Pick<SessionSwitches, 'currents' | 'harnessCurrents'> {
+  const hermes = stored.currents?.hermes;
+  const a2a = stored.currents?.a2a;
+  const jev = stored.harnessCurrents?.jev;
+  const currents = parseCurrentsHandles({
+    ...(hermes ? { hermes: { ...hermes, apiKey: readKey(id, 'hermes', hermes.keyRef) } } : {}),
+    ...(a2a ? { a2a: { ...a2a, apiKey: readKey(id, 'a2a', a2a.keyRef) } } : {}),
+    ...(stored.currents?.cli ? { cli: stored.currents.cli } : {}),
+  });
+  const harnessCurrents = parseHarnessCurrentsHandle(
+    jev ? { jev: { ...jev, apiKey: readKey(id, 'jev', jev.keyRef) } } : {},
+  );
+  return {
+    ...(currents ? { currents } : {}),
+    ...(harnessCurrents ? { harnessCurrents } : {}),
+  };
+}
+
+/** Every credential-store name a stored session's handles point at, under
+ *  the names this session would have used and no other. */
+function keyRefsOf(id: string, stored: StoredHandles | undefined): string[] {
+  const refs: Array<[string | undefined, 'hermes' | 'a2a' | 'jev']> = [
+    [stored?.currents?.hermes?.keyRef, 'hermes'],
+    [stored?.currents?.a2a?.keyRef, 'a2a'],
+    [stored?.harnessCurrents?.jev?.keyRef, 'jev'],
+  ];
+  return refs
+    .filter(([ref, current]) => ref !== undefined && ref === sessionKeyName(id, current))
+    .map(([ref]) => ref as string);
+}
+
+function openHandles(sealed: unknown): StoredHandles | undefined {
+  if (typeof sealed !== 'string') return undefined;
+  const clear = openField(sealed);
+  if (!clear) return undefined;
+  try {
+    const parsed = JSON.parse(clear) as StoredHandles;
+    return parsed && typeof parsed === 'object' ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 // The session title is derived from the user's first prompt, so it is user
 // content and seals like the journal; so do the project's name and standing
@@ -147,14 +307,158 @@ export function invalidateSessionIndex(): void {
 // Session ids are short hex; a path-shaped id must never reach rmSync (DAE-12).
 const SAFE_SESSION_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
-/** Remove a stored session (its journal and info) from disk. */
+/** Remove a stored session (its journal and info) from disk, and any current
+ *  key it kept in the credential store. */
 export function deleteSession(id: string): boolean {
   if (!SAFE_SESSION_ID.test(id)) return false;
   const dir = join(sessionsDir(), id);
   if (!existsSync(dir)) return false;
+  let refs: string[] = [];
+  try {
+    const file = JSON.parse(readFileSync(join(dir, 'info.json'), 'utf8')) as SessionInfoFile;
+    refs = keyRefsOf(id, openHandles(file.handles));
+  } catch {
+    // No readable info: nothing it points at can be found, so nothing to take.
+  }
   rmSync(dir, { recursive: true, force: true });
+  for (const ref of refs) {
+    try {
+      deleteCredential(ref);
+    } catch {
+      // A key the store will not drop is left; the session is gone either way.
+    }
+  }
   invalidateSessionIndex();
   return true;
+}
+
+// ---- open sessions (H1) ----------------------------------------------------
+// Every stored session loaded in this process, whoever loaded it (the daemon,
+// the desktop's engine host, the routine scheduler). Retention and the
+// routine window never delete one of these, the routine scheduler asks it
+// whether the person is busy in a folder, and a stray fault is announced to
+// the busy ones. A Set per id, since two hosts in one process can each hold a
+// driver for the same session.
+const openDrivers = new Map<string, Set<LocalDriver>>();
+
+function markOpen(driver: LocalDriver): void {
+  let set = openDrivers.get(driver.id);
+  if (!set) openDrivers.set(driver.id, (set = new Set()));
+  set.add(driver);
+}
+
+function markClosed(driver: LocalDriver): void {
+  const set = openDrivers.get(driver.id);
+  if (!set) return;
+  set.delete(driver);
+  if (!set.size) openDrivers.delete(driver.id);
+}
+
+/** True while a driver for this stored session is loaded in this process. */
+export function isSessionOpen(id: string): boolean {
+  return openDrivers.has(id);
+}
+
+/** Every stored session loaded in this process. */
+export function openSessionDrivers(): LocalDriver[] {
+  return [...openDrivers.values()].flatMap((set) => [...set]);
+}
+
+/** The newest sign of life in a stored session: the info's own stamp (moved
+ *  on every task and title) and the journal's file time (moved by every
+ *  event, whichever process writes it). The info file's own time is not
+ *  used while its stamp reads, since the at-rest sealing pass rewrites it
+ *  without any activity; it and the folder stand in only for a torn info. */
+function lastActivityMs(dir: string, id: string): number | undefined {
+  let latest: number | undefined;
+  const seen = (ms: number): void => {
+    if (Number.isFinite(ms) && (latest === undefined || ms > latest)) latest = ms;
+  };
+  try {
+    seen(statSync(join(dir, id, 'events.jsonl')).mtimeMs);
+  } catch {
+    // No journal yet.
+  }
+  let stamped = false;
+  try {
+    const file = JSON.parse(readFileSync(join(dir, id, 'info.json'), 'utf8')) as SessionInfo;
+    const at = typeof file.updatedAt === 'string' ? Date.parse(file.updatedAt) : NaN;
+    if (Number.isFinite(at)) {
+      seen(at);
+      stamped = true;
+    }
+  } catch {
+    // A torn info is judged by its file times below.
+  }
+  if (!stamped) {
+    for (const path of [join(dir, id, 'info.json'), join(dir, id)]) {
+      try {
+        seen(statSync(path).mtimeMs);
+        break;
+      } catch {
+        // Try the folder.
+      }
+    }
+  }
+  return latest;
+}
+
+/**
+ * Delete stored sessions with no activity for `retentionDays` (H1): the
+ * journal, the info, and any key they kept. A session loaded in this process
+ * is never touched, nor one `keep` names (the daemon passes its own map), and
+ * activity is read from the files as well as the info stamp, so a session
+ * another process is writing right now stays. Zero or less keeps everything.
+ * Returns the ids it deleted.
+ */
+export function pruneStoredSessions(opts: {
+  retentionDays: number;
+  now?: number;
+  keep?: (id: string) => boolean;
+}): string[] {
+  if (!(opts.retentionDays > 0)) return [];
+  const dir = sessionsDir();
+  if (!existsSync(dir)) return [];
+  const cutoff = (opts.now ?? Date.now()) - opts.retentionDays * 86_400_000;
+  const removed: string[] = [];
+  for (const id of readdirSync(dir)) {
+    if (!SAFE_SESSION_ID.test(id) || isSessionOpen(id) || opts.keep?.(id)) continue;
+    const last = lastActivityMs(dir, id);
+    if (last === undefined || last >= cutoff) continue;
+    if (deleteSession(id)) removed.push(id);
+  }
+  return removed;
+}
+
+/** Delete a routine run's stored session when its run falls out of the kept
+ *  window, unless it is loaded here right now (retention takes it later). */
+export function deleteClosedSession(id: string): boolean {
+  if (isSessionOpen(id)) return false;
+  return deleteSession(id);
+}
+
+/** A stray fault in this process (an unhandled rejection, an uncaught
+ *  exception) is said once in every session that is working right now, so
+ *  the person knows why a step may have stalled. At most once a minute. */
+let lastFaultNoticeAt = 0;
+export function announceProcessFault(now = Date.now()): number {
+  if (now - lastFaultNoticeAt < 60_000) return 0;
+  lastFaultNoticeAt = now;
+  let told = 0;
+  for (const driver of openSessionDrivers()) {
+    if (!driver.busy) continue;
+    try {
+      driver.emit({
+        type: 'status',
+        message:
+          'Something went wrong in the background. OpenShore kept running; if this step looks stuck, press Stop and send it again.',
+      });
+      told += 1;
+    } catch {
+      // The notice is a courtesy.
+    }
+  }
+  return told;
 }
 
 export function listSessions(): SessionInfo[] {
@@ -187,8 +491,15 @@ function readSessionInfo(dir: string, id: string): SessionInfo | undefined {
   try {
     const file = JSON.parse(readFileSync(join(dir, id, 'info.json'), 'utf8')) as SessionInfoFile;
     if (!file || typeof file.cwd !== 'string') return repairSessionInfo(dir, id);
-    // The project stays on disk: a listing neither carries nor opens it.
-    const { projectName: _name, instructions: _instructions, ...info } = file;
+    // The project stays on disk: a listing neither carries nor opens it, nor
+    // the switches and the sealed handles.
+    const {
+      projectName: _name,
+      instructions: _instructions,
+      switches: _switches,
+      handles: _handles,
+      ...info
+    } = file;
     info.title = openTitle(info.title);
     return info;
   } catch {
@@ -208,13 +519,15 @@ export function storedSessionProject(id: string): SessionProject {
     const project: SessionProject = {};
     if (typeof file.projectName === 'string') project.projectName = openField(file.projectName);
     if (typeof file.instructions === 'string') project.instructions = openField(file.instructions);
+    const switches: SessionSwitches = {};
     if (file.switches && typeof file.switches === 'object') {
-      const switches: SessionSwitches = {};
-      for (const key of ['humanize', 'memory', 'chainOfThought'] as const) {
+      for (const key of SWITCH_KEYS) {
         if (typeof file.switches[key] === 'boolean') switches[key] = file.switches[key];
       }
-      if (Object.keys(switches).length) project.switches = switches;
     }
+    const handles = openHandles(file.handles);
+    if (handles) Object.assign(switches, revivedHandles(id, handles));
+    if (Object.keys(switches).length) project.switches = switches;
     return project;
   } catch {
     return {};
@@ -345,10 +658,17 @@ export class LocalDriver implements SessionDriver {
       const { projectName, instructions, switches } = options.project ?? {};
       if (projectName) info.projectName = sealField(projectName);
       if (instructions?.trim()) info.instructions = sealField(instructions);
-      if (switches && Object.values(switches).some((v) => typeof v === 'boolean')) {
-        info.switches = switches;
-      }
       if (!existsSync(infoPath)) {
+        if (switches) {
+          const flags: NonNullable<SessionInfoFile['switches']> = {};
+          for (const key of SWITCH_KEYS) {
+            if (typeof switches[key] === 'boolean') flags[key] = switches[key];
+          }
+          if (Object.keys(flags).length) info.switches = flags;
+          // The currents, keys moved into the credential store first.
+          const handles = storeHandles(this.id, switches);
+          if (handles) info.handles = sealField(JSON.stringify(handles));
+        }
         writeInfoAtomic(infoPath, info);
       } else {
         // Rehydrating a stored session: carry its recorded owner forward so the
@@ -359,6 +679,7 @@ export class LocalDriver implements SessionDriver {
         } catch {}
       }
       this.loadJournal();
+      markOpen(this);
     }
     // Only a session that has not run a task yet is seeded: a revived one
     // already carries its turns in the journal.
@@ -413,6 +734,7 @@ export class LocalDriver implements SessionDriver {
     try {
       this.agent?.flushHandoff();
     } catch {}
+    markClosed(this);
     this.sinks.clear();
     this.viewers.clear();
     this.events = [];
@@ -957,7 +1279,7 @@ export function sealSessionsAtRest(options: { skipNewerThanMs?: number } = {}): 
       if (existsSync(infoPath) && !tooRecent(infoPath)) {
         const info = JSON.parse(readFileSync(infoPath, 'utf8')) as SessionInfoFile;
         let plain = false;
-        for (const field of ['title', 'projectName', 'instructions'] as const) {
+        for (const field of ['title', 'projectName', 'instructions', 'handles'] as const) {
           const value = info[field];
           if (typeof value === 'string' && !isSealed(value)) {
             info[field] = sealString(dk.key, value);

@@ -15,6 +15,7 @@ import type {
   HermesNoteMeta,
   PermissionMode,
   ReconcileResult,
+  RoutineClockStatus,
   RoutineInput,
   RoutineRun,
   RoutineView,
@@ -410,6 +411,10 @@ export interface OscodeBridge {
   /** Cut off one device by its credential id (a lost phone). Returns how many
    *  credentials were removed. Other paired devices stay connected. */
   revokeDeviceCredential(id: string): Promise<{ removed: number }>;
+  /** Replace the old shared token in ~/.os-code/daemon.token (H1). Nothing on
+   *  a paired phone changes; only a device still on the shared token must pair
+   *  again. Absent on an older shell. */
+  rotateSharedToken?(): Promise<{ rotated: true } | { error: string }>;
   /** Start with your computer (opt-in). `supported` is false on a run from
    *  source, which has no installed executable to register. Absent on an
    *  older shell. */
@@ -429,7 +434,12 @@ export interface OscodeBridge {
   // Crew routines: the scheduled, unattended jobs that run on this computer.
   // The same surface the daemon serves a phone; validation and the workspace
   // gate live in the engine. Keep in lockstep with electron/main.ts.
-  routinesList(): Promise<{ routines: RoutineView[]; runs: RoutineRun[] }>;
+  /** `clock` says whose clock fires the slots (H1); absent on an older shell. */
+  routinesList(): Promise<{
+    routines: RoutineView[];
+    runs: RoutineRun[];
+    clock?: RoutineClockStatus;
+  }>;
   routineCreate(input: RoutineInput): Promise<{ routine: RoutineView } | { error: string }>;
   routineUpdate(
     id: string,

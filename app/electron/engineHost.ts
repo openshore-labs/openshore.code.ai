@@ -39,7 +39,12 @@ import {
 } from 'os-code/dist/src/git/workspaces.js';
 import { reconcileRepos, type ReconcileResult } from 'os-code/dist/src/git/reconcile.js';
 import { detectTailscale, tailscaleIp } from 'os-code/dist/src/connect/tailscale.js';
-import { loadCredentials, revokeCredential } from 'os-code/dist/src/core/security/credentials.js';
+import {
+  credentialExpiresAt,
+  loadCredentials,
+  revokeCredential,
+} from 'os-code/dist/src/core/security/credentials.js';
+import { rotateSharedToken } from 'os-code/dist/src/core/security/daemonAuth.js';
 import { oscHome } from 'os-code/dist/src/config/load.js';
 import { shouldRebind } from './lifecycle.js';
 import {
@@ -68,6 +73,7 @@ import type {
   HermesNote,
   HermesNoteMeta,
   PermissionMode,
+  RoutineClockStatus,
   RoutineInput,
   RoutineRun,
   RoutineView,
@@ -101,7 +107,9 @@ export function listPairedDevices(): PairedDeviceWire[] {
     id: c.tokenHash,
     label: c.label,
     createdAt: c.createdAt,
-    expiresAt: c.expiresAt,
+    // Every credential ends now (H1); one minted before that was kept ends
+    // by its birth date, and the list says when.
+    expiresAt: credentialExpiresAt(c),
   }));
 }
 
@@ -826,8 +834,14 @@ export class EngineHost {
   // in the shared model so the desktop and the daemon refuse the same shapes;
   // the workspace gate lives in the scheduler so it holds for every caller.
 
-  routinesList(): { routines: RoutineView[]; runs: RoutineRun[] } {
-    return { routines: this.scheduler.list(), runs: this.scheduler.runs(60) };
+  routinesList(): { routines: RoutineView[]; runs: RoutineRun[]; clock: RoutineClockStatus } {
+    // The clock status rides along (H1): "held by pid N since T" when the
+    // other OpenShore process on this computer fires the slots.
+    return {
+      routines: this.scheduler.list(),
+      runs: this.scheduler.runs(60),
+      clock: this.scheduler.clockStatus(),
+    };
   }
 
   routineCreate(input: unknown): { routine: RoutineView } | { error: string } {
@@ -1049,6 +1063,18 @@ export class EngineHost {
   // Every paired device credential, for the desktop's revoke list.
   listDeviceCredentials(): PairedDeviceWire[] {
     return listPairedDevices();
+  }
+
+  // Replace the legacy shared token (H1, the desktop's side of `osc token
+  // rotate`). The running hub takes the new one on its next request; the
+  // token itself never crosses to the renderer.
+  rotateSharedToken(): { rotated: true } | { error: string } {
+    try {
+      rotateSharedToken();
+      return { rotated: true };
+    } catch (err) {
+      return { error: `Could not replace the shared token: ${(err as Error).message}` };
+    }
   }
 
   // Cut off one device by its credential id (the token hash). A lost phone is

@@ -26,8 +26,30 @@ export interface DeviceCredential {
   role: Role;
   label: string;
   createdAt: string;
-  /** ISO expiry; absent means it never expires. */
+  /** ISO expiry. Absent on a credential minted before every one carried
+   *  one; that one ends DEVICE_CREDENTIAL_TTL_DAYS after it was made. */
   expiresAt?: string;
+}
+
+/**
+ * How long a paired device's credential lasts (H1): half a year, then the
+ * device pairs again from Desktop + phone. A lost phone stops working on its
+ * own even if nobody remembers to revoke it; the desktop lists each device
+ * with its date.
+ */
+export const DEVICE_CREDENTIAL_TTL_DAYS = 180;
+
+const DAY_MS = 86_400_000;
+
+/** When a credential ends: its own expiry, or for one minted before expiry
+ *  was always set, its creation plus the lifetime. */
+export function credentialExpiresAt(cred: DeviceCredential): string {
+  if (cred.expiresAt) return cred.expiresAt;
+  const created = Date.parse(cred.createdAt);
+  // A credential with no readable birth date is treated as ended (fail closed).
+  return Number.isFinite(created)
+    ? new Date(created + DEVICE_CREDENTIAL_TTL_DAYS * DAY_MS).toISOString()
+    : new Date(0).toISOString();
 }
 
 export function credentialsPath(): string {
@@ -60,6 +82,7 @@ export interface MintOptions {
   role: Role;
   label: string;
   userId?: string;
+  /** Days until it ends; DEVICE_CREDENTIAL_TTL_DAYS when not given. */
   ttlDays?: number;
 }
 
@@ -72,9 +95,9 @@ export function mintCredential(opts: MintOptions): { token: string; credential: 
     role: opts.role,
     label: opts.label,
     createdAt: new Date().toISOString(),
-    expiresAt: opts.ttlDays
-      ? new Date(Date.now() + opts.ttlDays * 86_400_000).toISOString()
-      : undefined,
+    expiresAt: new Date(
+      Date.now() + (opts.ttlDays ?? DEVICE_CREDENTIAL_TTL_DAYS) * DAY_MS,
+    ).toISOString(),
   };
   saveCredentials([...loadCredentials(), credential]);
   return { token, credential };
@@ -89,21 +112,32 @@ export function revokeCredential(match: string): number {
 }
 
 function notExpired(cred: DeviceCredential, now = Date.now()): boolean {
-  return !cred.expiresAt || Date.parse(cred.expiresAt) > now;
+  return Date.parse(credentialExpiresAt(cred)) > now;
+}
+
+/** The stored credential a presented token matches, expired or not, compared
+ *  in constant time on the hashes. */
+function matchCredential(presented: string): DeviceCredential | undefined {
+  const presentedHash = Buffer.from(hashToken(presented));
+  for (const cred of loadCredentials()) {
+    const stored = Buffer.from(cred.tokenHash);
+    if (stored.length === presentedHash.length && timingSafeEqual(stored, presentedHash)) {
+      return cred;
+    }
+  }
+  return undefined;
 }
 
 /** Resolve a presented token to its credential, constant-time and expiry-aware. */
 export function resolveDeviceCredential(presented: string): AuthContext | undefined {
-  const presentedHash = Buffer.from(hashToken(presented));
-  for (const cred of loadCredentials()) {
-    const stored = Buffer.from(cred.tokenHash);
-    if (
-      stored.length === presentedHash.length &&
-      timingSafeEqual(stored, presentedHash) &&
-      notExpired(cred)
-    ) {
-      return { userId: cred.userId, role: cred.role, label: cred.label, source: 'device' };
-    }
-  }
-  return undefined;
+  const cred = matchCredential(presented);
+  if (!cred || !notExpired(cred)) return undefined;
+  return { userId: cred.userId, role: cred.role, label: cred.label, source: 'device' };
+}
+
+/** True when the token is a real device credential whose time is up, so the
+ *  refusal can say "pair again" instead of "wrong credential". */
+export function deviceCredentialExpired(presented: string): boolean {
+  const cred = matchCredential(presented);
+  return Boolean(cred && !notExpired(cred));
 }

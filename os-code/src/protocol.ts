@@ -505,6 +505,7 @@ export type {
 export type {
   Routine,
   RoutineAccess,
+  RoutineClockStatus,
   RoutineInput,
   RoutinePresence,
   RoutineRun,

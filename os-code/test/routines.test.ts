@@ -10,7 +10,9 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -29,8 +31,12 @@ import {
 } from '../src/routines/model.js';
 import { ROUTINE_NEEDS_LOCAL_MODEL, routineCaps } from '../src/routines/model.js';
 import {
+  RUN_WAITED_FOR_YOU,
   RoutineRefused,
   RoutineScheduler,
+  SLOT_WAITED_FOR_YOU,
+  WORKSPACE_GONE,
+  WORKSPACE_LEFT,
   WORKSPACE_NOT_ALLOWED,
   _resetRoutineScheduler,
   defaultOpenSession,
@@ -41,11 +47,15 @@ import {
 import {
   acquireSchedulerLock,
   pidAlive,
+  processStartToken,
   readSchedulerLock,
   releaseSchedulerLock,
 } from '../src/routines/lock.js';
+import { LocalDriver, sessionsDir } from '../src/daemon/session.js';
+import { _resetDataKeyCache } from '../src/core/security/atRest.js';
 import { spawn, type ChildProcess } from 'node:child_process';
 import * as store from '../src/routines/store.js';
+import { MAX_RUNS } from '../src/routines/store.js';
 import { bootstrapSession } from '../src/core/agent/bootstrap.js';
 import { readFrontmatter } from '../src/harness/vault/frontmatter.js';
 import { resolveWikilink } from '../src/harness/vault/resolve.js';
@@ -170,17 +180,25 @@ function makeScheduler(
     lock?: { acquire: () => { pid: number; startedAt: string }; release: () => void };
     allowed?: Set<string>;
     vaultRoot?: () => string;
+    workspaceBusy?: (realCwd: string) => boolean;
+    Scheduler?: typeof RoutineScheduler;
   } = {},
 ) {
   const opened: FakeDriver[] = [];
   const allowed = opts.allowed ?? new Set<string>();
-  const scheduler = new RoutineScheduler({
+  // The workspace as written and as it resolves (a temp folder can sit
+  // behind a link, /var on a Mac), since a run checks both.
+  const realWorkspace = realpathSync(workspace);
+  const Scheduler = opts.Scheduler ?? RoutineScheduler;
+  const scheduler = new Scheduler({
     now: () => clock.now.getTime(),
     autostart: false,
     graceMs: 10 * 60_000,
     approvalTimeoutMs: opts.approvalTimeoutMs ?? 1000,
     vaultRoot: opts.vaultRoot ?? (() => vault),
-    allowedWorkspace: (cwd) => cwd.startsWith(workspace) || allowed.has(cwd),
+    ...(opts.workspaceBusy ? { workspaceBusy: opts.workspaceBusy } : {}),
+    allowedWorkspace: (cwd) =>
+      cwd.startsWith(workspace) || cwd.startsWith(realWorkspace) || allowed.has(cwd),
     persistAllowedRoot: (cwd) => allowed.add(cwd),
     lock: opts.lock ?? { acquire: () => ({ pid: process.pid, startedAt: '' }), release: () => {} },
     openSession:
@@ -983,17 +1001,23 @@ describe('the scheduler lock file', () => {
     expect(readSchedulerLock(path)?.pid).toBe(pid);
   });
 
-  it('marks a run the previous process left open as failed on startup', () => {
+  it('marks a run the previous process left open as failed once this process holds the clock', () => {
     const routine = store.createRoutine(input());
+    // pid_max is 2^22 on Linux; nothing runs there, so the run's process is gone.
     store.appendRun({
       routineId: routine.id,
       startedAt: new Date().toISOString(),
       state: 'running',
       trigger: 'schedule',
       sessionId: 'old1',
+      pid: 4_194_303,
     });
     const clock = { now: at(0, 12, 0) };
     const { scheduler } = makeScheduler(clock);
+    // Building a scheduler touches nothing; taking the clock sweeps.
+    expect(scheduler.get(routine.id)?.lastRun?.state).toBe('running');
+    scheduler.start();
+    scheduler.stop();
     const run = scheduler.get(routine.id)?.lastRun;
     expect(run?.state).toBe('failed');
     expect(run?.summary).toContain('restarted');
@@ -1011,5 +1035,265 @@ describe('the scheduler lock file', () => {
     expect(scheduler.liveDriver(opened[0]!.id)).toBe(opened[0]);
     opened[0]!.emit({ type: 'task-done', reason: 'complete' });
     expect(scheduler.liveDriver(opened[0]!.id)).toBeUndefined();
+  });
+});
+
+// H1: the store and the clock across two processes, and the run's own checks
+// at the moment it starts. A second process is stood in by a second copy of
+// the scheduler and store modules (vi.resetModules), each with its own cache
+// over the one file, which is exactly what two processes are.
+describe('routines across two processes (H1)', () => {
+  // Each test has its own home, so the data key is read from this one (the
+  // second copy reads the same key from the same place, as a process would).
+  beforeEach(() => _resetDataKeyCache());
+
+  async function secondProcess(): Promise<{
+    Scheduler: typeof RoutineScheduler;
+    store: typeof store;
+  }> {
+    vi.resetModules();
+    const sched = await import('../src/routines/scheduler.js');
+    const st = await import('../src/routines/store.js');
+    return { Scheduler: sched.RoutineScheduler, store: st };
+  }
+
+  it('two schedulers on one store never clobber runs or fire a slot twice', async () => {
+    const morning = store.createRoutine(input());
+    // Paused, so its clock adds no run of its own; Run now still starts it.
+    const other = store.createRoutine(input({ name: 'Evening check', enabled: false }));
+    const clock = { now: at(1, 6, 0, 20) };
+    const a = makeScheduler(clock);
+    const b2 = await secondProcess();
+    const b = makeScheduler(clock, { Scheduler: b2.Scheduler });
+
+    // Both clocks see the 06:00 slot; only one claims it.
+    await a.scheduler.tick();
+    await b.scheduler.tick();
+    expect(a.opened.length + b.opened.length).toBe(1);
+    const firstRunner = a.opened.length ? a : b;
+    const secondRunner = a.opened.length ? b : a;
+
+    // The other process starts a run of its own while the first is working.
+    secondRunner.scheduler.runNow(other.id);
+    expect(secondRunner.opened).toHaveLength(1);
+
+    // The first run ends; its write must keep the other process's run.
+    firstRunner.opened[0]!.emit({ type: 'text-final', text: 'All quiet.' });
+    firstRunner.opened[0]!.emit({ type: 'task-done', reason: 'complete' });
+
+    for (const view of [store, b2.store]) {
+      const runs = view.listRuns(10);
+      expect(runs).toHaveLength(2);
+      expect(runs.find((r) => r.routineId === morning.id)?.state).toBe('done');
+      expect(runs.find((r) => r.routineId === other.id)?.state).toBe('running');
+    }
+    // And the routine the second copy read still carries the claimed slot.
+    expect(b2.store.getRoutine(morning.id)?.lastSlotKey).toBe(
+      store.getRoutine(morning.id)?.lastSlotKey,
+    );
+  });
+
+  it('a passive scheduler leaves a live run alone; the clock holder sweeps only dead ones', async () => {
+    const routine = store.createRoutine(input());
+    const clock = { now: at(0, 12, 0) };
+    const { scheduler, opened } = makeScheduler(clock);
+    scheduler.runNow(routine.id);
+    expect(opened).toHaveLength(1);
+    const live = scheduler.get(routine.id)!.lastRun!;
+    expect(live.state).toBe('running');
+    expect(live.pid).toBe(process.pid);
+
+    // A second process that finds the clock held stays passive and touches
+    // nothing, however it was built.
+    const other = await secondProcess();
+    const passive = makeScheduler(clock, {
+      Scheduler: other.Scheduler,
+      lock: { acquire: () => ({ pid: process.pid + 100_000, startedAt: 'T' }), release: () => {} },
+    });
+    passive.scheduler.start();
+    expect(passive.scheduler.clockLive()).toBe(false);
+    expect(passive.scheduler.clockStatus()).toEqual({
+      live: false,
+      heldBy: { pid: process.pid + 100_000, since: 'T' },
+    });
+    expect(other.store.getRun(live.id)?.state).toBe('running');
+
+    // One that holds the clock sweeps, but a run whose process is alive
+    // (this one) stays working.
+    const holder = makeScheduler(clock, { Scheduler: other.Scheduler });
+    holder.scheduler.start();
+    holder.scheduler.stop();
+    expect(other.store.getRun(live.id)?.state).toBe('running');
+
+    // Once the run's process is gone, the clock holder says so.
+    other.store.updateRun(live.id, { pid: 4_194_303 });
+    holder.scheduler.start();
+    holder.scheduler.stop();
+    expect(other.store.getRun(live.id)?.state).toBe('failed');
+  });
+
+  it('refuses a run whose folder left the allowed roots, now leads elsewhere, or is gone', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'osc-left-'));
+    const elsewhere = mkdtempSync(join(tmpdir(), 'osc-elsewhere-'));
+    try {
+      const clock = { now: at(0, 12, 0) };
+      const allowed = new Set<string>([outside]);
+      const { scheduler, opened } = makeScheduler(clock, { allowed });
+      // Allowed when made, then taken off the list.
+      const left = scheduler.create(input({ cwd: outside })) as { id: string };
+      allowed.delete(outside);
+      scheduler.runNow(left.id);
+      expect(scheduler.get(left.id)?.lastRun?.state).toBe('failed');
+      expect(scheduler.get(left.id)?.lastRun?.summary).toBe(WORKSPACE_LEFT);
+
+      // Inside the workspace by name, but a link that leads somewhere else.
+      const link = join(workspace, 'linked');
+      symlinkSync(elsewhere, link);
+      const linked = scheduler.create(input({ cwd: link, name: 'Linked' })) as { id: string };
+      scheduler.runNow(linked.id);
+      expect(scheduler.get(linked.id)?.lastRun?.summary).toBe(WORKSPACE_LEFT);
+
+      // A folder that is gone.
+      const gone = join(workspace, 'gone');
+      mkdirSync(gone);
+      const goneRoutine = scheduler.create(input({ cwd: gone, name: 'Gone' })) as { id: string };
+      rmSync(gone, { recursive: true, force: true });
+      scheduler.runNow(goneRoutine.id);
+      expect(scheduler.get(goneRoutine.id)?.lastRun?.summary).toBe(WORKSPACE_GONE);
+
+      // No session was ever opened for any of them.
+      expect(opened).toHaveLength(0);
+      expect(WORKSPACE_LEFT).not.toMatch(/admin/i);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+      rmSync(elsewhere, { recursive: true, force: true });
+    }
+  });
+
+  it('waits for the person: a busy session in the same folder skips the slot with a plain line', async () => {
+    const routine = store.createRoutine(input());
+    const real = realpathSync(workspace);
+    let busy = true;
+    const clock = { now: at(1, 6, 0, 20) };
+    const { scheduler, opened } = makeScheduler(clock, {
+      workspaceBusy: (cwd) => busy && cwd === real,
+    });
+    await scheduler.tick();
+    expect(opened).toHaveLength(0);
+    const skipped = scheduler.get(routine.id)!.lastRun!;
+    expect(skipped.state).toBe('skipped');
+    expect(skipped.summary).toBe(SLOT_WAITED_FOR_YOU);
+    expect(SLOT_WAITED_FOR_YOU).toBe(
+      'You were working in this folder, so this run waited for the next time.',
+    );
+    // A Run now tap says what to do instead.
+    clock.now = at(1, 6, 5);
+    scheduler.runNow(routine.id);
+    expect(scheduler.get(routine.id)!.lastRun!.summary).toBe(RUN_WAITED_FOR_YOU);
+    // Once the person is done, it runs.
+    busy = false;
+    clock.now = at(1, 6, 10);
+    scheduler.runNow(routine.id);
+    expect(opened).toHaveLength(1);
+  });
+
+  it("by default reads this process's open sessions, the daemon's and the desktop's alike", () => {
+    const routine = store.createRoutine(input());
+    const desk = new LocalDriver(workspace, { checkpoints: false });
+    try {
+      // A task in flight in the person's own session.
+      (desk as unknown as { running: boolean }).running = true;
+      const clock = { now: at(0, 12, 0) };
+      const { scheduler, opened } = makeScheduler(clock);
+      scheduler.runNow(routine.id);
+      expect(opened).toHaveLength(0);
+      expect(scheduler.get(routine.id)?.lastRun?.summary).toBe(RUN_WAITED_FOR_YOU);
+      (desk as unknown as { running: boolean }).running = false;
+      clock.now = at(0, 12, 1);
+      scheduler.runNow(routine.id);
+      expect(opened).toHaveLength(1);
+    } finally {
+      desk.dispose();
+    }
+  });
+
+  it('a run that leaves the kept window takes its session; one that is open stays', () => {
+    const routine = store.createRoutine(input());
+    const stored = (id: string): string => {
+      const dir = join(sessionsDir(), id);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'info.json'), JSON.stringify({ id, cwd: workspace }));
+      return dir;
+    };
+    const oldest = stored('oldest1');
+    const open = new LocalDriver(workspace, { checkpoints: false });
+    try {
+      const base = Date.parse('2026-01-01T00:00:00Z');
+      const run = (i: number, sessionId?: string) =>
+        store.appendRun({
+          routineId: routine.id,
+          startedAt: new Date(base + i * 60_000).toISOString(),
+          state: 'done',
+          trigger: 'schedule',
+          ...(sessionId ? { sessionId } : {}),
+        });
+      run(0, 'oldest1');
+      run(1, open.id);
+      for (let i = 2; i < MAX_RUNS; i++) run(i);
+      expect(existsSync(oldest)).toBe(true);
+      // Two more push the first two out of the window.
+      run(MAX_RUNS);
+      run(MAX_RUNS + 1);
+      expect(store.listRuns(1000)).toHaveLength(MAX_RUNS);
+      expect(existsSync(oldest)).toBe(false);
+      // The open one is left for retention to take once it is closed.
+      expect(existsSync(join(sessionsDir(), open.id))).toBe(true);
+    } finally {
+      open.dispose();
+    }
+  });
+});
+
+describe('the clock lock is taken once and knows a reused pid (H1)', () => {
+  let child: ChildProcess | undefined;
+  afterEach(() => {
+    child?.kill('SIGKILL');
+    child = undefined;
+  });
+
+  it.skipIf(process.platform === 'win32')(
+    'a live pid that started later than the recorded holder does not hold the lock',
+    async () => {
+      const path = join(home, 'routines', 'scheduler.lock');
+      child = spawn('sleep', ['30'], { stdio: 'ignore' });
+      await new Promise((r) => setTimeout(r, 50));
+      const pid = child.pid!;
+      expect(pidAlive(pid)).toBe(true);
+      mkdirSync(join(home, 'routines'), { recursive: true });
+      // The pid is alive, but it is not the process that wrote this lock.
+      writeFileSync(path, JSON.stringify({ pid, startedAt: '', processStart: 'linux:gone:1' }));
+      const taken = acquireSchedulerLock(path);
+      expect(taken.pid).toBe(process.pid);
+      expect(taken.processStart).toBe(processStartToken(process.pid));
+      // The same pid with its real start does hold it.
+      writeFileSync(
+        path,
+        JSON.stringify({ pid, startedAt: '', processStart: processStartToken(pid) }),
+      );
+      expect(acquireSchedulerLock(path).pid).toBe(pid);
+    },
+  );
+
+  it('creates the lock exclusively and records when the clock was taken', () => {
+    const path = join(home, 'routines', 'scheduler.lock');
+    const first = acquireSchedulerLock(path, () => Date.parse('2026-09-29T06:00:00Z'));
+    expect(first.startedAt).toBe('2026-09-29T06:00:00.000Z');
+    // A second take by the same process confirms the lock on disk; it does
+    // not write a new one.
+    const again = acquireSchedulerLock(path, () => Date.parse('2026-09-29T07:00:00Z'));
+    expect(again.startedAt).toBe('2026-09-29T06:00:00.000Z');
+    expect(readSchedulerLock(path)?.startedAt).toBe('2026-09-29T06:00:00.000Z');
+    releaseSchedulerLock(path);
+    expect(existsSync(path)).toBe(false);
   });
 });

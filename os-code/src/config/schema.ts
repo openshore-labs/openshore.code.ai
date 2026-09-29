@@ -213,6 +213,15 @@ export const DaemonSchema = z.object({
   // or legacy single-user hub authenticates as admin, so the default shows a solo
   // user everything. Admin-owned machine config, set through an admin-only route.
   stackHealthVisibility: z.enum(['everyone', 'admins']).default('admins'),
+  // How many days an ordinary stored session may sit with no activity before
+  // the daemon deletes it (its journal and info), checked at start and once a
+  // day (H1). Generous by default; 0 keeps every session. A session that is
+  // open is never deleted. Machine config (projectPolicy: daemon).
+  sessionRetentionDays: z.number().int().min(0).default(90),
+  // The host a phone's push-send URL must name, for an app whose Supabase
+  // project lives on its own domain. Unset, the URL must be a Supabase
+  // project's own functions address (daemon/push.ts pushSendUrlAllowed).
+  pushHost: z.string().optional(),
 });
 
 export const CatalogSchema = z.object({

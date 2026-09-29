@@ -93,7 +93,8 @@ describe('daemon routine routes', () => {
   it('starts empty, creates a routine in an allowed workspace, and refuses one outside', async () => {
     const empty = await fetch(`${base}/routines`, { headers: auth(adminToken) });
     expect(empty.status).toBe(200);
-    expect(await empty.json()).toEqual({ routines: [], runs: [] });
+    // The clock status rides along (H1): this daemon's process holds it.
+    expect(await empty.json()).toEqual({ routines: [], runs: [], clock: { live: true } });
 
     const outside = await fetch(`${base}/routines`, {
       method: 'POST',

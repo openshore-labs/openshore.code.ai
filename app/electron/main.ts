@@ -58,6 +58,7 @@ import {
   putVaultSettingsFile,
 } from 'os-code/dist/src/daemon/vaultRoutes.js';
 import { HANDOFF_MAX_BYTES } from 'os-code/dist/src/harness/handoff.js';
+import { installProcessGuards } from 'os-code/dist/src/daemon/processGuard.js';
 import { clearHandoffs } from 'os-code/dist/src/core/agent/handoffStore.js';
 import {
   createVaultFolder,
@@ -454,6 +455,15 @@ guarded('osc:gdriveOAuthCancel', () => {
 });
 
 let win: BrowserWindow | undefined;
+
+// One stray rejection in the main process used to take the desktop, its hub,
+// and the paired phone's session down together (H1). The guard logs it, tells
+// every session that is working right now in its own transcript, and keeps
+// the app up. No IPC of its own: the notice rides each session's events.
+installProcessGuards({
+  where: 'desktop',
+  onFault: (kind, err) => console.error(`[engine] caught a stray ${kind}; kept running`, err),
+});
 
 const host = new EngineHost(
   (payload) => win?.webContents.send('osc:event', payload),
@@ -998,6 +1008,7 @@ guarded('osc:daemonStop', async () => {
 });
 guarded('osc:listDeviceCredentials', () => host.listDeviceCredentials());
 guarded('osc:revokeDeviceCredential', (id: unknown) => host.revokeDeviceCredential(str(id, 'id')));
+guarded('osc:rotateSharedToken', () => host.rotateSharedToken());
 guarded('osc:launchAtLogin', () => launchAtLogin());
 guarded('osc:setLaunchAtLogin', (on: unknown) => setLaunchAtLogin(bool(on)));
 
