@@ -5249,6 +5249,15 @@ button.vault-tag {
   font-size: var(--text-3);
   margin-bottom: 4px;
 }
+/* The saved line folds shut when the message is taken back to edit or sent
+   (CX cleanup 8): the reveal carries the height, this the fade. */
+.first-seat-held-fold .reveal-inner {
+  opacity: 0;
+  transition: opacity var(--dur-3) var(--ease-standard);
+}
+.first-seat-held-fold.open .reveal-inner {
+  opacity: 1;
+}
 
 .first-seat-aside {
   color: var(--muted);

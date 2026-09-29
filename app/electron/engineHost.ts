@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { loadConfig, saveGlobalConfig } from 'os-code/dist/src/config/load.js';
 import { bootstrapSession } from 'os-code/dist/src/core/agent/bootstrap.js';
 import type { VaultOverrides } from 'os-code/dist/src/harness/vault/types.js';
-import { trustSessionFolder } from 'os-code/dist/src/core/agent/projectTrust.js';
+import { trustSessionFolder, waitingSettings } from 'os-code/dist/src/core/agent/projectTrust.js';
 import { giveMoreRoomHere } from 'os-code/dist/src/providers/servedWindow.js';
 import {
   listSessions,
@@ -459,6 +459,12 @@ export class EngineHost {
   /** The folder an open session works in, for main's trust dialog. */
   sessionFolder(sessionId: string): string | undefined {
     return this.drivers.get(sessionId)?.cwd;
+  }
+
+  /** What trusting that folder turns on, in the trust card's words, for
+   *  main's trust dialog. Read in main, never taken from the page. */
+  trustWaiting(folder: string): string[] {
+    return waitingSettings(folder);
   }
 
   /** The person's tap on the trust card: trust this session's folder on this
@@ -1076,7 +1082,7 @@ export class EngineHost {
           bind: 'tailscale',
           port: config.daemon.port,
         });
-        this.lastBindError = undefined;
+        this.noteBindError(undefined);
         return { host: this.daemon.host };
       } catch (err) {
         tailnetError = (err as Error).message;
@@ -1089,12 +1095,21 @@ export class EngineHost {
         port: config.daemon.port,
       });
       // Up on loopback; a tailnet that refused is still worth saying why.
-      this.lastBindError = tailnetError;
+      this.noteBindError(tailnetError);
       return { host: this.daemon.host };
     } catch (err) {
-      this.lastBindError = tailnetError ?? (err as Error).message;
-      return { error: this.lastBindError };
+      const error = tailnetError ?? (err as Error).message;
+      this.noteBindError(error);
+      return { error };
     }
+  }
+
+  /** Keep why the last bind failed. The Pair screen says it in plain words
+   *  (hubStatusLine); the raw reason goes to the log, once per new reason,
+   *  since the re-bind poll retries every few seconds. */
+  private noteBindError(next: string | undefined): void {
+    if (next && next !== this.lastBindError) console.warn(`[hub] could not bind: ${next}`);
+    this.lastBindError = next;
   }
 
   async daemonStart() {

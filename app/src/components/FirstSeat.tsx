@@ -20,7 +20,7 @@
 // plain chat that needs no account, the moment DeepBlue is ready. Signing in
 // never stands in the way of the download or the message: while the download
 // runs, one quiet line offers it, and its link opens the plain Sign in sheet.
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useApp } from '../state/store.js';
 import { FIRST_SEAT_COPY } from '../state/firstRunOps.js';
 import { logEvent } from '../lib/insights.js';
@@ -44,7 +44,16 @@ import { resolveStarter } from '../lib/starterModel.js';
 import { HARBOR_MASTER_MODEL_NAME, harborMasterSizeLine } from '../lib/harborMaster.js';
 import { HARBOR_MINI_MODEL_ID } from '../lib/harborMini.js';
 
-export function FirstSeat({ fallback }: { fallback: ReactNode }) {
+export function FirstSeat({
+  fallback,
+  onEditHeld,
+}: {
+  fallback: ReactNode;
+  /** Take the saved message back into the composer (CX cleanup 8): the chat
+   *  screen's restore path, with the cursor at the end and no toast. The
+   *  download keeps going, and Send saves the message again. */
+  onEditHeld?: () => void;
+}) {
   const {
     settings,
     cloudKeyPresent,
@@ -114,6 +123,13 @@ export function FirstSeat({ fallback }: { fallback: ReactNode }) {
   });
 
   const { mounted, closing } = useExitPresence(needed, doorExitMs());
+  // The saved line folds away (never snaps) once the message is taken back or
+  // sent, so it keeps its last words while it goes.
+  const heldMessage = Boolean(settings.heldFirstMessage?.untilReady);
+  const heldFailed = Boolean(harborMasterDownload?.failed);
+  const lastHeldLine = useRef<string | undefined>(undefined);
+  if (heldMessage)
+    lastHeldLine.current = heldFailed ? FIRST_SEAT_COPY.failed : FIRST_SEAT_COPY.held;
   if (!mounted) {
     return (
       <>
@@ -140,7 +156,8 @@ export function FirstSeat({ fallback }: { fallback: ReactNode }) {
   const pulling = Boolean(harborMasterDownload && !harborMasterDownload.failed);
   const failed = Boolean(harborMasterDownload?.failed);
   // A first message waiting on this seat (CX ruling 2).
-  const held = Boolean(settings.heldFirstMessage?.untilReady);
+  const held = heldMessage;
+  const heldLine = lastHeldLine.current;
   // Only while the download runs, and only for someone signed out.
   const offerSignIn = desktop && pulling && needsAccountNow();
 
@@ -190,10 +207,33 @@ export function FirstSeat({ fallback }: { fallback: ReactNode }) {
               {harborMasterDownload!.note}
             </p>
           ) : null}
-          {held ? (
-            <p className="first-seat-held" role="status">
-              {failed ? FIRST_SEAT_COPY.failed : FIRST_SEAT_COPY.held}
-            </p>
+          {heldLine ? (
+            <div
+              className={`reveal first-seat-held-fold${held ? ' open' : ''}`}
+              aria-hidden={held ? undefined : true}
+            >
+              <div className="reveal-inner">
+                <p className="first-seat-held" role="status">
+                  {heldLine}
+                  {onEditHeld ? (
+                    <>
+                      {' '}
+                      <button
+                        type="button"
+                        className="linklike"
+                        aria-label={FIRST_SEAT_COPY.editLabel}
+                        tabIndex={held ? undefined : -1}
+                        onClick={() => {
+                          if (held) onEditHeld();
+                        }}
+                      >
+                        {FIRST_SEAT_COPY.edit}
+                      </button>
+                    </>
+                  ) : null}
+                </p>
+              </div>
+            </div>
           ) : null}
           <button className="btn primary press-fb" disabled={pulling} onClick={setUp}>
             {pulling

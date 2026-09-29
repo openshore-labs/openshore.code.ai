@@ -26,6 +26,10 @@ export const FIRST_SEAT_COPY = {
   },
   failed: 'Your message is still saved.',
   sending: `${SEAT} is ready. Sending your message.`,
+  /** The link after the saved line (CX cleanup 8): the words go back into
+   *  the composer, and Send saves them again. */
+  edit: 'Edit',
+  editLabel: 'Edit your saved message',
 } as const;
 
 /** A first message held in settings (`heldFirstMessage`). `untilReady` marks

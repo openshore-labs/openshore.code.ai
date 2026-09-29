@@ -31,6 +31,7 @@ import {
 } from '../src/routines/model.js';
 import { ROUTINE_NEEDS_LOCAL_MODEL, routineCaps } from '../src/routines/model.js';
 import {
+  RUN_ORPHANED,
   RUN_WAITED_FOR_YOU,
   RoutineRefused,
   RoutineScheduler,
@@ -188,6 +189,7 @@ function makeScheduler(
     vaultRoot?: () => string;
     workspaceBusy?: (realCwd: string) => boolean;
     Scheduler?: typeof RoutineScheduler;
+    takeoverMs?: number;
   } = {},
 ) {
   const opened: FakeDriver[] = [];
@@ -201,6 +203,7 @@ function makeScheduler(
     autostart: false,
     graceMs: 10 * 60_000,
     approvalTimeoutMs: opts.approvalTimeoutMs ?? 1000,
+    ...(opts.takeoverMs ? { takeoverMs: opts.takeoverMs } : {}),
     vaultRoot: opts.vaultRoot ?? (() => vault),
     ...(opts.workspaceBusy ? { workspaceBusy: opts.workspaceBusy } : {}),
     allowedWorkspace: (cwd) =>
@@ -1047,6 +1050,65 @@ describe('routine scheduler', () => {
     mine.start();
     expect(mine.clockLive()).toBe(true);
     mine.stop();
+    scheduler.stop();
+  });
+
+  it('a passive scheduler takes the clock over once the holder stops (CX cleanup 6)', async () => {
+    // Two processes sharing one machine lock, as the desktop app beside a
+    // terminal's osc serve: each sees its own hold as its own pid and the
+    // other's as a foreign one.
+    let holder: 'terminal' | 'app' | undefined;
+    const pids = { terminal: process.pid + 100_001, app: process.pid + 100_002 };
+    const lockFor = (me: 'terminal' | 'app') => ({
+      acquire: () => {
+        holder ??= me;
+        return holder === me
+          ? { pid: process.pid, startedAt: 'now' }
+          : { pid: pids[holder], startedAt: 'T' };
+      },
+      release: () => {
+        if (holder === me) holder = undefined;
+      },
+    });
+    const routine = store.createRoutine(input({ schedule: { hour: 6, minute: 0, days: [] } }));
+    store.markSlot(routine.id, 'seed');
+    const clock = { now: at(0, 5, 0) };
+    const terminal = makeScheduler(clock, { lock: lockFor('terminal') });
+    const app = makeScheduler(clock, { lock: lockFor('app'), takeoverMs: 20 });
+    terminal.scheduler.start();
+    app.scheduler.start();
+    try {
+      expect(terminal.scheduler.clockLive()).toBe(true);
+      expect(app.scheduler.clockStatus()).toEqual({
+        live: false,
+        heldBy: { pid: pids.terminal, since: 'T' },
+      });
+      // While the terminal keeps it, the app's retries change nothing.
+      await new Promise((r) => setTimeout(r, 80));
+      expect(app.scheduler.clockLive()).toBe(false);
+
+      // The person closes the terminal: the app takes the clock within a
+      // retry, and the next slot fires here.
+      terminal.scheduler.stop();
+      const deadline = Date.now() + 2_000;
+      while (!app.scheduler.clockLive() && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      expect(app.scheduler.clockLive()).toBe(true);
+      expect(app.scheduler.clockStatus()).toEqual({ live: true });
+      expect(holder).toBe('app');
+      clock.now = at(0, 6, 1);
+      await app.scheduler.tick();
+      expect(app.opened).toHaveLength(1);
+      expect(terminal.opened).toHaveLength(0);
+
+      // A restarted terminal finds the app holding it and stays passive.
+      terminal.scheduler.start();
+      expect(terminal.scheduler.clockLive()).toBe(false);
+    } finally {
+      terminal.scheduler.stop();
+      app.scheduler.stop();
+    }
   });
 });
 
@@ -1110,7 +1172,7 @@ describe('the scheduler lock file', () => {
     scheduler.stop();
     const run = scheduler.get(routine.id)?.lastRun;
     expect(run?.state).toBe('failed');
-    expect(run?.summary).toContain('restarted');
+    expect(run?.summary).toBe(RUN_ORPHANED);
   });
 
   it('hands every opened driver to the host hook and sets the owner', () => {
@@ -1220,6 +1282,12 @@ describe('routines across two processes (H1)', () => {
     holder.scheduler.start();
     holder.scheduler.stop();
     expect(other.store.getRun(live.id)?.state).toBe('failed');
+    // Says what closed, not why, and what it left behind (CX cleanup 3).
+    expect(other.store.getRun(live.id)?.summary).toBe(RUN_ORPHANED);
+    expect(RUN_ORPHANED).toBe(
+      'OpenShore closed before this run finished. Any changes it made before then are still in the folder.',
+    );
+    passive.scheduler.stop();
   });
 
   it('refuses a run whose folder left the allowed roots, now leads elsewhere, or is gone', () => {

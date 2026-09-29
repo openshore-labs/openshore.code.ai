@@ -65,7 +65,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'three-models',
     title: 'The three built-in models',
-    text: 'Three models come out of the box. Harbor Lite is the tiny guide built into the iPhone app. Harbor is a coding model that runs on the iPhone. DeepBlue is the most capable, a real coding agent on your own computer. Paired, the phone reaches DeepBlue as My computer.',
+    text: 'Three models come out of the box. Harbor Lite is the tiny guide built into the iPhone app. Harbor is a coding model that runs on the iPhone. DeepBlue is the most capable, a real coding agent on your own computer. Paired, the phone reaches DeepBlue as Your computer.',
     keywords: ['built-in models', 'three models', 'difference', 'compare', 'out of the box'],
   },
   {
@@ -166,7 +166,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     title: 'DeepBlue',
     where:
       'OpenShore on your computer: Menu, Settings, Harbor, DeepBlue, or the first-run card, or Stack, Get DeepBlue',
-    text: `DeepBlue is the most capable built-in model: a real coding agent that plans and edits your repositories on your own computer, running through Ollama and sized to your computer (Qwen 2.5 Coder 32B, 14B, 7B, or 3B). Once installed it is your Reasoning LLM, and a paired phone reaches it as My computer. How:\n${guideStepsCompact('get-harbor-master')}`,
+    text: `DeepBlue is the most capable built-in model: a real coding agent that plans and edits your repositories on your own computer, running through Ollama and sized to your computer (Qwen 2.5 Coder 32B, 14B, 7B, or 3B). Once installed it is your Reasoning LLM, and a paired phone reaches it as Your computer. How:\n${guideStepsCompact('get-harbor-master')}`,
     keywords: [
       'deepblue',
       'deep blue',
@@ -197,7 +197,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'model-picker',
     title: 'Select model',
     where: 'Tap the model pill in the chat box, next to the +',
-    text: 'Picks who answers: Stack, your pinned favorites, My computer (or Connect your computer), Cloud models, and Local models, plus Effort. Swipe a model left or tap its star to pin it. This is where you switch to Harbor once it is downloaded.',
+    text: 'Picks who answers: Stack, your pinned favorites, This computer on the desktop or Your computer on the phone (or Connect your computer), Cloud models, and Local models, plus Effort. Swipe a model left or tap its star to pin it. This is where you switch to Harbor once it is downloaded.',
     keywords: [
       'switch model',
       'switch',

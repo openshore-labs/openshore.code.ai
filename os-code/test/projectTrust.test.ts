@@ -17,7 +17,7 @@ import {
 } from '../src/config/load.js';
 import { PROJECT_POLICY, type KeyPolicy } from '../src/config/projectPolicy.js';
 import { normalizeOrigin } from '../src/config/trust.js';
-import { trustSessionFolder } from '../src/core/agent/projectTrust.js';
+import { trustSessionFolder, waitingSettings } from '../src/core/agent/projectTrust.js';
 import type { AgentEvent } from '../src/core/agent/types.js';
 import { z } from 'zod';
 import { ConfigSchema } from '../src/config/schema.js';
@@ -406,6 +406,20 @@ describe('trusting a folder, on this machine', () => {
       expect.objectContaining({ type: 'project-trust', state: 'trusted', waiting: [] }),
     ]);
     expect(loadConfig(project).projectTrust.state).toBe('trusted');
+  });
+
+  it("the desktop's trust dialog reads what is waiting from the folder as it is now", () => {
+    writeProject({ harness: { verify: { command: 'npm test' } } });
+    const card = loadConfig(project).projectTrust.waiting;
+    expect(card.length).toBeGreaterThan(0);
+    // The same phrases the card lists.
+    expect(waitingSettings(project)).toEqual(card);
+    // Nothing waits once trusted, in a folder that asks for nothing, or in
+    // one whose file cannot be read.
+    trustProjectFolder(project);
+    expect(waitingSettings(project)).toEqual([]);
+    writeFileSync(join(project, 'os-code.config.json'), '{ not json');
+    expect(waitingSettings(project)).toEqual([]);
   });
 });
 

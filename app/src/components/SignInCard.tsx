@@ -19,6 +19,7 @@ import { useAuth } from '../hooks/useAuth.js';
 import { plainError } from '../lib/plainError.js';
 import { Sheet } from './Sheet.js';
 import {
+  SIGNING_OUT_EVERYWHERE,
   SIGN_OUT_EVERYWHERE_BODY,
   SIGN_OUT_EVERYWHERE_LINK,
   SIGN_OUT_EVERYWHERE_TITLE,
@@ -60,6 +61,10 @@ export function SignInCard() {
   // device signs out.
   const [unsentFor, setUnsentFor] = useState<'here' | 'everywhere'>('here');
   const [everywhere, setEverywhere] = useState(false);
+  // "Sign out everywhere" waits on the server (CX cleanup 7): while it does,
+  // both controls hold and a status line takes the link's place, so a second
+  // tap cannot fire and the wait is visible. The toasts say how it ended.
+  const [leaving, setLeaving] = useState(false);
   // Each field's label names it (useId: the card can sit in more than one
   // sheet, so a fixed id could repeat).
   const fieldId = useId();
@@ -85,7 +90,7 @@ export function SignInCard() {
               className="btn danger press-fb"
               onClick={() => {
                 setUnsent(0);
-                void (unsentFor === 'everywhere' ? signOutEverywhere() : signOut());
+                void (unsentFor === 'everywhere' ? everywhereNow() : signOut());
               }}
             >
               Sign out and delete
@@ -120,12 +125,21 @@ export function SignInCard() {
     </Sheet>
   );
 
+  const everywhereNow = async () => {
+    setLeaving(true);
+    try {
+      await signOutEverywhere();
+    } finally {
+      setLeaving(false);
+    }
+  };
+
   // With nothing unsent, each sign-out goes ahead, as it always has.
   const askSignOut = async (scope: 'here' | 'everywhere') => {
     const n = await unsentTeamTextCount().catch(() => 0);
     setUnsentFor(scope);
     if (n > 0) setUnsent(n);
-    else await (scope === 'everywhere' ? signOutEverywhere() : signOut());
+    else await (scope === 'everywhere' ? everywhereNow() : signOut());
   };
 
   // A password-reset link signs the user in with a recovery session. Prompt for
@@ -193,15 +207,20 @@ export function SignInCard() {
               type="button"
               className="btn ghost press-fb"
               style={{ padding: '8px 14px' }}
+              disabled={leaving}
               onClick={() => void askSignOut('here')}
             >
               Sign out
             </button>
           </div>
           <div className="sub" style={{ marginTop: 6 }}>
-            <button type="button" className="linklike" onClick={() => setEverywhere(true)}>
-              {SIGN_OUT_EVERYWHERE_LINK}
-            </button>
+            {leaving ? (
+              <span role="status">{SIGNING_OUT_EVERYWHERE}</span>
+            ) : (
+              <button type="button" className="linklike" onClick={() => setEverywhere(true)}>
+                {SIGN_OUT_EVERYWHERE_LINK}
+              </button>
+            )}
           </div>
         </div>
         {signOutAsk}

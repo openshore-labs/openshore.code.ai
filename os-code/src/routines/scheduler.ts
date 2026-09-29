@@ -68,6 +68,9 @@ const log = logger('routines');
 
 /** How often the clock is checked. */
 const DEFAULT_TICK_MS = 30_000;
+/** How often a passive scheduler (another process holds the clock) tries to
+ *  take the clock over, so closing that process never leaves the crew idle. */
+const DEFAULT_TAKEOVER_MS = 30_000;
 /** A slot older than this when first seen (the box was off) is skipped. */
 const DEFAULT_GRACE_MS = 10 * 60_000;
 /** How long a run waits on an approval before declining it. */
@@ -164,9 +167,16 @@ export const SLOT_WAITED_FOR_YOU =
 export const RUN_WAITED_FOR_YOU =
   'You were working in this folder, so this run did not start. Run it again once that chat is done.';
 
+/** A run whose process closed before it finished (the orphan sweep): what
+ *  closed, not why, and what it left behind (CX cleanup 3). */
+export const RUN_ORPHANED =
+  'OpenShore closed before this run finished. Any changes it made before then are still in the folder.';
+
 export interface SchedulerDeps {
   now?: () => number;
   tickMs?: number;
+  /** How often a passive scheduler tries to take the clock over. */
+  takeoverMs?: number;
   graceMs?: number;
   approvalTimeoutMs?: number;
   /** Open the session a run lives in. Defaults to a real headless bootstrap. */
@@ -258,6 +268,7 @@ interface QueuedRun {
 export class RoutineScheduler {
   private readonly now: () => number;
   private readonly tickMs: number;
+  private readonly takeoverMs: number;
   private readonly graceMs: number;
   private readonly approvalTimeoutMs: number;
   private readonly openSession: (routine: Routine, permissionMode: PermissionMode) => OpenedSession;
@@ -270,6 +281,8 @@ export class RoutineScheduler {
   /** The other process's lock, when its clock is live and ours is not. */
   private clockHeldBy?: SchedulerLock;
   private timer?: ReturnType<typeof setInterval>;
+  /** A passive scheduler's retry: takes the clock once its holder is gone. */
+  private takeover?: ReturnType<typeof setInterval>;
   private active?: ActiveRun;
   private queue: QueuedRun[] = [];
   private driverHooks: Array<(driver: RoutineDriver, routine: Routine) => void> = [];
@@ -280,6 +293,7 @@ export class RoutineScheduler {
   constructor(deps: SchedulerDeps = {}) {
     this.now = deps.now ?? Date.now;
     this.tickMs = deps.tickMs ?? DEFAULT_TICK_MS;
+    this.takeoverMs = deps.takeoverMs ?? DEFAULT_TAKEOVER_MS;
     this.graceMs = deps.graceMs ?? DEFAULT_GRACE_MS;
     this.approvalTimeoutMs = deps.approvalTimeoutMs ?? DEFAULT_APPROVAL_TIMEOUT_MS;
     this.openSession = deps.openSession ?? defaultOpenSession;
@@ -320,7 +334,7 @@ export class RoutineScheduler {
         {
           state: 'failed',
           finishedAt: new Date(this.now()).toISOString(),
-          summary: 'The computer restarted before this run finished.',
+          summary: RUN_ORPHANED,
         },
         (current) => current.state === 'running' || current.state === 'waiting',
       );
@@ -339,34 +353,58 @@ export class RoutineScheduler {
   /** Start the clock, unless another live process on this machine already
    *  holds it (the desktop app beside `osc serve`): then this instance stays
    *  passive, so a slot fires once per box, never once per process. Run now
-   *  and the roster still work here. */
+   *  and the roster still work here. A passive instance tries again every
+   *  `takeoverMs` and takes the clock once the holder is gone, so closing the
+   *  terminal that held it never leaves the routines without a clock (CX
+   *  cleanup 6). */
   start(): void {
-    if (this.timer) return;
+    if (this.timer || this.takeover) return;
+    if (this.takeClock(true)) return;
+    this.takeover = setInterval(() => {
+      if (!this.takeClock(false)) return;
+      if (this.takeover) clearInterval(this.takeover);
+      this.takeover = undefined;
+    }, this.takeoverMs);
+    this.takeover.unref?.();
+  }
+
+  /** Try to hold the clock; true once this process holds it and the clock
+   *  runs. `first` is start's own try: an unwritable ~/.os-code is not a
+   *  reason to leave the crew idle, so that try runs the clock anyway. A
+   *  retry that meets an error stays passive instead, since another process
+   *  held the clock a moment ago and two clocks would fire a slot twice. */
+  private takeClock(first: boolean): boolean {
     let held: SchedulerLock;
     try {
       held = this.lock.acquire();
     } catch (err) {
-      // An unwritable ~/.os-code is not a reason to leave the crew idle.
+      if (!first) return false;
       log.warn('scheduler lock unavailable; running the clock anyway', { err: String(err) });
       held = { pid: process.pid, startedAt: new Date(this.now()).toISOString() };
     }
     if (held.pid !== process.pid) {
+      if (first || this.clockHeldBy?.pid !== held.pid) {
+        log.info('scheduler clock held by another process; this one stays passive', {
+          pid: held.pid,
+          since: held.startedAt,
+        });
+      }
       this.clockHeldBy = held;
-      log.info('scheduler clock held by another process; this one stays passive', {
-        pid: held.pid,
-        since: held.startedAt,
-      });
-      return;
+      return false;
     }
+    if (!first) log.info('scheduler clock taken over; its holder is gone');
     this.clockHeldBy = undefined;
     this.timer = setInterval(() => void this.tick(), this.tickMs);
     this.timer.unref?.();
     void this.tick();
+    return true;
   }
 
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
+    if (this.takeover) clearInterval(this.takeover);
+    this.takeover = undefined;
     try {
       this.lock.release();
     } catch {

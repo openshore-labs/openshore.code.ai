@@ -56,7 +56,7 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
     steps: [
       'On your computer, open OpenShore. If nothing is set up yet, the chat opens on a card that says Set up DeepBlue: tap it and you are done. Otherwise open Settings and find the Harbor section.',
       'On the DeepBlue row, tap Install. It picks the size that fits your computer and pulls it through Ollama, straight from the Ollama library. Keep using the app while it lands.',
-      'When it finishes, the row reads Installed and DeepBlue is your Reasoning model on that computer. To reach it from this phone, pair the two under Desktop + phone; it then appears as My computer.',
+      'When it finishes, the row reads Installed and DeepBlue is your Reasoning model on that computer. To reach it from this phone, pair the two under Desktop + phone; it then appears as Your computer.',
     ],
     done: 'DeepBlue plans and edits your repositories on your computer. For the hardest steps, a cloud key on your own account is one tap away, and it always asks before it spends.',
   },
@@ -82,7 +82,7 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
       'On this phone, open Desktop + phone and tap Scan the QR on your computer. Point the camera at the QR. It fills in the address and pairing code and connects.',
       'If the camera is not available, type the address (it looks like http://100.x.y.z:4816) and the pairing code shown under the QR, then tap Connect.',
     ],
-    done: 'The screen says connected. In the model menu, My computer is now a choice, for chat and for coding on your repositories.',
+    done: 'The screen says connected. In the model menu, Your computer is now a choice, for chat and for coding on your repositories.',
   },
   'install-ollama': {
     id: 'install-ollama',

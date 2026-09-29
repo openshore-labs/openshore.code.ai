@@ -13,7 +13,9 @@ vi.mock('../src/lib/platform.js', () => ({
 (globalThis as { window?: unknown }).window = globalThis;
 
 const {
+  CLOCK_ELSEWHERE_LINE,
   agentPresenceLine,
+  clockKeptElsewhere,
   controlBlurb,
   controlLabel,
   crewControl,
@@ -207,5 +209,37 @@ describe('which client reaches the scheduler', () => {
     expect(routinesClient({ daemon })?.where).toBe('desktop');
     // A desktop pointed at a remote hub runs routines there, like its chats.
     expect(routinesClient({ daemon, preferRemoteHub: true })?.where).toBe('daemon');
+  });
+});
+
+describe("the Crew room's clock line (CX cleanup 6)", () => {
+  const held = { live: false, heldBy: { pid: 4242, since: '2026-09-29T06:00:00Z' } };
+
+  it('shows only on the desktop, reading its own engine live, while another OpenShore keeps it', () => {
+    expect(clockKeptElsewhere({ where: 'desktop', live: true, clock: held })).toBe(true);
+    // This app keeps the schedule itself.
+    expect(clockKeptElsewhere({ where: 'desktop', live: true, clock: { live: true } })).toBe(false);
+    // A phone, or a desktop pointed at a hub, reads another computer's clock.
+    expect(clockKeptElsewhere({ where: 'daemon', live: true, clock: held })).toBe(false);
+    // A cached picture, or an older engine that does not say.
+    expect(clockKeptElsewhere({ where: 'desktop', live: false, clock: held })).toBe(false);
+    expect(clockKeptElsewhere({ where: 'desktop', live: true })).toBe(false);
+  });
+
+  it('says what to do with no process number and no time, now that the takeover ships', () => {
+    expect(CLOCK_ELSEWHERE_LINE).toBe(
+      'Another OpenShore on this computer, such as one in a terminal, is keeping the routine schedule. If you close it, routines run here.',
+    );
+    expect(CLOCK_ELSEWHERE_LINE).not.toMatch(/\d/);
+  });
+
+  it("the desktop client hands the engine's clock through", async () => {
+    (globalThis as { __desktop?: boolean }).__desktop = true;
+    (window as unknown as { oscode?: unknown }).oscode = {
+      platform: 'electron',
+      routinesList: async () => ({ routines: [], runs: [], clock: held }),
+    };
+    const snap = await routinesClient({})!.list();
+    expect(snap.clock).toEqual(held);
   });
 });

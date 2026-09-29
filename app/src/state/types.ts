@@ -539,12 +539,28 @@ export interface LaunchState {
   runs: BuildRun[];
 }
 
+/**
+ * What the app calls the computer the engine runs on (CX cleanup 4): "This
+ * computer" in the desktop app, where the person sits at it, and "Your
+ * computer" on the phone, the name Vault and the error messages use for the
+ * paired machine. Read the way lib/platform.ts reads it, without importing
+ * that module (and its native plugins) into the types.
+ */
+export function computerName(): 'This computer' | 'Your computer' {
+  const oscode =
+    typeof window !== 'undefined'
+      ? (window as { oscode?: { platform?: string } }).oscode
+      : undefined;
+  return oscode?.platform === 'electron' ? 'This computer' : 'Your computer';
+}
+
 export function sourceLabel(source: ConversationSource): string {
   switch (source.kind) {
     case 'desktop':
-      return source.repoName ? `Your computer · ${source.repoName}` : 'Your computer · Stack';
+      return `${computerName()} · ${source.repoName ?? 'Stack'}`;
     case 'desktop-chat':
-      return 'Your computer · chat';
+      // "chat" tells the free chat from the agent (CX cleanup 4).
+      return `${computerName()} · chat`;
     case 'device':
       if (isHarborMini(source.modelId)) return 'Harbor Lite · built-in guide';
       if (isHarbor(source.modelId)) return 'Harbor · coding model';
@@ -570,9 +586,11 @@ export function sourceShortLabel(source?: ConversationSource): string {
     case 'cloud':
       return sourceLabel(source).split(' · ')[0] || 'Cloud';
     case 'desktop':
-      return source.repoName ?? 'Your computer';
+      return source.repoName ?? computerName();
     case 'desktop-chat':
-      return 'My computer';
+      // The pill says what the model sheet's row says, so the person can find
+      // the row again: "This computer · chat" or "Your computer · chat".
+      return sourceLabel(source);
     case 'device':
       return sourceLabel(source).split(' · ')[0] || 'On device';
     case 'stack':

@@ -15,6 +15,10 @@ export interface PendingUpdateStatus {
   phase: 'downloading' | 'ready' | 'available' | 'installing' | 'failed';
   percent?: number;
   detail?: string;
+  /** The download was there and its signature was there, and they did not
+   *  match (CX cleanup 1): nothing was installed, and the bar says it failed
+   *  a safety check rather than blaming the network. */
+  refused?: boolean;
 }
 
 export interface UpdaterState {
@@ -37,7 +41,9 @@ export type UpdaterEvent =
   | { type: 'check-done'; found: boolean }
   | { type: 'progress'; percent: number }
   | { type: 'downloaded'; version: string }
-  | { type: 'error'; detail: string }
+  /** A download, check, or install that did not finish. `refused` when the
+   *  download failed its signature check (releaseVerify.ts, `signatureFailed`). */
+  | { type: 'error'; detail: string; refused?: boolean }
   /** The half-hourly check itself failed (offline, rate-limited). */
   | { type: 'check-failed'; detail: string }
   /** The person clicked Update on the bar. */
@@ -75,6 +81,10 @@ export function stepUpdater(state: UpdaterState, event: UpdaterEvent): UpdaterSt
       }
       // A newer release replaces an older one the person has not clicked yet.
       if (p?.phase === 'available' && p.version === event.version) return same(state);
+      // A release whose download failed its safety check is not offered again
+      // by the half-hourly check: the bar keeps saying why. Try again, or a
+      // newer release, moves it on.
+      if (p?.refused && p.version === event.version) return same(state);
       return {
         state: { ...state, pending: { version: event.version, phase: 'available' } },
         notify: true,
@@ -128,10 +138,16 @@ export function stepUpdater(state: UpdaterState, event: UpdaterEvent): UpdaterSt
       // retry that is waiting on a check fails with it.
       if (event.type === 'check-failed' && !awaitingCheck(state)) return same(state);
       if (!p) return same({ ...state, installWhenReady: false });
+      const refused = event.type === 'error' && event.refused === true;
       return {
         state: {
           installWhenReady: false,
-          pending: { ...p, phase: 'failed', detail: event.detail },
+          pending: {
+            version: p.version,
+            phase: 'failed',
+            detail: event.detail,
+            ...(refused ? { refused } : {}),
+          },
         },
         notify: true,
       };

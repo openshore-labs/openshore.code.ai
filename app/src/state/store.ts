@@ -240,6 +240,7 @@ import {
   routinesClient,
   CONTROL_REQUIRES_DOCK,
   type CrewControl,
+  type RoutineClockStatus,
   type RoutineInput,
   type RoutineRun,
   type RoutineView,
@@ -1352,6 +1353,8 @@ export interface RoutinesState {
    *  away from home. */
   live: boolean;
   where?: 'desktop' | 'daemon';
+  /** Whose clock fires the slots, from the last live read. */
+  clock?: RoutineClockStatus;
   error?: string;
 }
 
@@ -8350,6 +8353,7 @@ export const useApp = create<AppState>((set, get, api) => {
             available: true,
             live: true,
             where: client.where,
+            clock: snap.clock,
             error: undefined,
           },
         });

@@ -14,6 +14,8 @@ import { parsePairingQr } from '../lib/qrDecode.js';
 import { Icon } from '../components/Icon.js';
 import { Sheet } from '../components/Sheet.js';
 import { SheetHead } from '../components/SheetHead.js';
+import { ReplaceSharedKey } from '../components/ReplaceSharedKey.js';
+import { hubStatusLine } from '../lib/hubStatus.js';
 
 // Clean glyphs for the Tailscale download rows, drawn in the tile's ink on a
 // solid accent tile (iOS-app-icon feel). One per platform.
@@ -137,15 +139,7 @@ function DesktopPair() {
           <div className="card-row">
             <div className="grow">
               <h3>Phone connection</h3>
-              <div className="sub">
-                {info?.running
-                  ? info.mode === 'loopback'
-                    ? 'On, but only for this computer. Tailscale is not up, so the phone cannot reach it yet. Open the Tailscale app and sign in (on Linux, run sudo tailscale up).'
-                    : 'On. Your phone can reach this computer over Tailscale.'
-                  : info?.tailscaleUp
-                    ? 'Off. Turn it on and the phone app can connect.'
-                    : 'Tailscale is not up on this computer. Open the Tailscale app and sign in (on Linux, run sudo tailscale up), then turn this on.'}
-              </div>
+              <div className="sub">{hubStatusLine(info)}</div>
             </div>
             <button
               className={`btn ${info?.running ? 'ghost' : 'primary'}`}
@@ -157,7 +151,9 @@ function DesktopPair() {
                   await b.daemonStop();
                 } else {
                   const result = await b.daemonStart();
-                  if ('error' in result) showToast(result.error);
+                  // The status line says it could not turn on (hubStatusLine);
+                  // the raw reason is for the log, not the screen.
+                  if ('error' in result) console.warn('[pair] hub did not start:', result.error);
                 }
                 await refresh();
               }}
@@ -225,6 +221,10 @@ function DesktopPair() {
               </div>
             ))}
           </div>
+        ) : null}
+
+        {bridge()?.rotateSharedToken ? (
+          <ReplaceSharedKey rotate={() => bridge()!.rotateSharedToken!()} onToast={showToast} />
         ) : null}
 
         <p className="hint">

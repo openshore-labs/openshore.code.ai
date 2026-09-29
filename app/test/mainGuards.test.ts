@@ -1,13 +1,17 @@
 // The main process's small checks (electron/mainGuards.ts), exactly as
 // main.ts runs them: which folders a session may work in, which device
 // permissions the window may have, and what the sign-in listener does with
-// each request it hears (the D2 shell package).
+// each request it hears (the D2 shell package), and the words of the three
+// native confirms (CX cleanup 2).
 import { describe, expect, it } from 'vitest';
 import {
+  LAUNCH_AT_LOGIN_CONFIRM,
   OAUTH_REDIRECT_PATH,
   appPermissionAllowed,
+  cloneConfirm,
   readOAuthCallback,
   sessionRootRefusal,
+  trustConfirm,
 } from '../electron/mainGuards.js';
 
 describe('sessionRootRefusal: the folders a coding session may not work in', () => {
@@ -119,5 +123,45 @@ describe('readOAuthCallback: the sign-in listener answers only the redirect', ()
     expect(readOAuthCallback('GET', at('error=access_denied'))).toEqual({ kind: 'incomplete' });
     expect(readOAuthCallback('GET', at('state=s1'))).toEqual({ kind: 'incomplete' });
     expect(readOAuthCallback('GET', OAUTH_REDIRECT_PATH)).toEqual({ kind: 'incomplete' });
+  });
+});
+
+describe("the second key's words (CX cleanup 2)", () => {
+  it('the trust dialog lists each waiting setting as the card does, then the folder', () => {
+    const words = trustConfirm(
+      ['uses its own check command', 'lets the agent reach api.example.com'],
+      '/Users/me/OSCode/app',
+    );
+    expect(words.message).toBe('Trust this folder?');
+    expect(words.confirm).toBe('Trust folder');
+    expect(words.detail).toBe(
+      'Its own settings will apply on this computer:\n' +
+        '\u2022 It uses its own check command.\n' +
+        '\u2022 It lets the agent reach api.example.com.\n' +
+        'Trust it only if you know who made it. If its settings change, OpenShore asks again.\n\n' +
+        '/Users/me/OSCode/app',
+    );
+  });
+
+  it('the trust dialog still reads as a sentence when nothing is waiting', () => {
+    expect(trustConfirm([], '/p').detail).toBe(
+      'Its own settings will apply on this computer.\n' +
+        'Trust it only if you know who made it. If its settings change, OpenShore asks again.\n\n/p',
+    );
+  });
+
+  it('copying a repository and starting with the computer say what they do', () => {
+    expect(cloneConfirm('https://github.com/me/app')).toEqual({
+      message: 'Copy this repository to your computer?',
+      detail:
+        'OpenShore downloads a copy into its projects folder so you can work on it in a chat. Its own settings stay off until you trust it.\n\nhttps://github.com/me/app',
+      confirm: 'Copy repository',
+    });
+    expect(LAUNCH_AT_LOGIN_CONFIRM).toEqual({
+      message: 'Start OpenShore with your computer?',
+      detail:
+        'It opens in the background each time you sign in to this computer, so your phone can reach it and your routines can run. Turn it off any time from the same switch.',
+      confirm: 'Start with my computer',
+    });
   });
 });

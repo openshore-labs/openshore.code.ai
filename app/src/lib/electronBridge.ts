@@ -199,12 +199,14 @@ export interface OllamaInstallResult {
  *  - available: found, nothing downloaded yet (every platform now asks
  *    first); a click downloads, installs, and restarts.
  *  - installing: the person clicked; `percent` tracks it until the restart.
- *  - failed: it did not finish; a click tries again. */
+ *  - failed: it did not finish; a click tries again. `refused` when the
+ *    download failed its signature check: nothing was installed. */
 export interface PendingUpdate {
   version: string;
   phase: 'downloading' | 'ready' | 'available' | 'installing' | 'failed';
   percent?: number;
   detail?: string;
+  refused?: boolean;
 }
 
 /** One free chat event as main forwards it: the engine's own events, less the

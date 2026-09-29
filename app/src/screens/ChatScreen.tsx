@@ -839,6 +839,13 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                 </h1>
               </div>
             }
+            // "Edit" on the saved line (CX cleanup 8): the words go back into
+            // the composer through the same restore a dismissed chooser uses,
+            // with no toast; the download keeps going, and Send saves again.
+            onEditHeld={() => {
+              const held = takeHeldFirstMessage();
+              if (held) setRestore((r) => restoreFromHeld(held, r));
+            }}
           />
         )}
 

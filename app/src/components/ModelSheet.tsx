@@ -382,14 +382,14 @@ export function ModelSheet({
                 ) : boxStack === undefined ? (
                   <div className="ms-row ms-row-disabled">
                     <span className="ms-row-text">
-                      <span className="ms-row-main">My computer</span>
+                      <span className="ms-row-main">Your computer</span>
                       <span className="ms-row-sub">Checking your connection...</span>
                     </span>
                   </div>
                 ) : boxStack === 'error' ? (
                   <div className="ms-row ms-row-disabled">
                     <span className="ms-row-text">
-                      <span className="ms-row-main">My computer</span>
+                      <span className="ms-row-main">Your computer</span>
                       <button className="ms-sublink press-fb" onClick={() => goto('pair')}>
                         Not reachable right now. Reconnect
                       </button>
@@ -397,7 +397,7 @@ export function ModelSheet({
                   </div>
                 ) : boxModel ? (
                   <Row
-                    main="My computer"
+                    main="Your computer"
                     sub={`${boxModel}, running on your computer`}
                     highlight
                     onClick={() => pick({ kind: 'desktop' })}
@@ -405,7 +405,7 @@ export function ModelSheet({
                 ) : (
                   <div className="ms-row ms-row-disabled">
                     <span className="ms-row-text">
-                      <span className="ms-row-main">My computer</span>
+                      <span className="ms-row-main">Your computer</span>
                       <span className="ms-row-sub">No model set up on your computer yet.</span>
                     </span>
                   </div>

@@ -17,6 +17,7 @@ import {
   isReleasePublicKey,
   nameCarriesVersion,
   releaseMessage,
+  signatureFailed,
   verifyAsset,
 } from '../electron/releaseVerify.js';
 import { DESKTOP_RELEASE_PUBLIC_KEY, MAC_RELEASE_PUBLIC_KEY } from '../electron/releaseKeys.js';
@@ -326,13 +327,28 @@ describe('Windows and Linux: the check before quitAndInstall', () => {
     const r = await attempt({ publicKey: keys.publicKey, tamper: true });
     expect(r.result).toBe('refused');
     expect(r.install).not.toHaveBeenCalled();
-    expect(r.refuse).toHaveBeenCalledWith(expect.stringContaining('does not match its signature'));
+    // A signature that was there and failed: the bar says it failed its
+    // safety check (CX cleanup 1).
+    expect(r.refuse).toHaveBeenCalledWith(
+      expect.stringContaining('does not match its signature'),
+      true,
+    );
   });
 
   it('refuses a download with no .sig when a desktop key is pinned', async () => {
     const r = await attempt({ publicKey: keys.publicKey, signature: 'missing' });
     expect(r.result).toBe('refused');
     expect(r.install).not.toHaveBeenCalled();
+    // Nothing was checked, so the bar keeps its plain "did not finish".
+    expect(r.refuse).toHaveBeenCalledWith(expect.any(String), false);
+  });
+
+  it('names only a present, failing signature as a failed check', () => {
+    expect(signatureFailed('bad-signature')).toBe(true);
+    expect(signatureFailed('wrong-version')).toBe(true);
+    for (const reason of ['no-key', 'bad-key', 'no-signature', 'unreadable'] as const) {
+      expect(signatureFailed(reason)).toBe(false);
+    }
   });
 
   it('installs a download that matches, asking for the .sig of that file and version', async () => {

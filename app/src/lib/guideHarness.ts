@@ -259,7 +259,7 @@ export function setupAdvice(eq: GuideEquipment): string[] {
       'Even the smallest DeepBlue is a stretch here, so a cloud API key under Cloud Connections will feel much better on this computer.',
     );
   lines.push(
-    'The best setup: install DeepBlue on the computer (Settings, Harbor, in OpenShore on that computer), pair this phone to it under Desktop + phone over Tailscale, and the phone reaches it as My computer, so the computer does the heavy work while the phone stays light.',
+    'The best setup: install DeepBlue on the computer (Settings, Harbor, in OpenShore on that computer), pair this phone to it under Desktop + phone over Tailscale, and the phone reaches it as Your computer, so the computer does the heavy work while the phone stays light.',
   );
   lines.push(
     'Add a cloud API key under Cloud Connections only if you want the strongest model for hard tasks; it asks before it spends.',
