@@ -341,6 +341,15 @@ const SyncSchema = z.object({
   autoPushDefaultBranch: z.boolean().default(false),
 });
 
+// The agent's tools beyond the core set. `processes` lets it start a command
+// that keeps running (a dev server, a watcher) and read or stop it later
+// (startProcess, readProcess, stopProcess; build 2026-09-29, P1), where
+// runShell would wait out its timeout and kill it. Unset reads on (the schema
+// fills 'on'); a project may only turn it off (projectPolicy.ts).
+const ToolsSchema = z.object({
+  processes: z.enum(['on', 'off']).default('on'),
+});
+
 // The premium harness (founder + advisor org, 2026-09-14; see
 // docs/premium-harness-proposal.md and CLAUDE.md "The premium harness"). The
 // discipline seam that makes the smallest models capable: a model-class profile
@@ -433,6 +442,7 @@ export const ConfigSchema = z.object({
   memory: MemorySchema.prefault({}),
   sync: SyncSchema.prefault({}),
   harness: HarnessSchema.prefault({}),
+  tools: ToolsSchema.prefault({}),
 });
 
 export type OscConfig = z.infer<typeof ConfigSchema>;

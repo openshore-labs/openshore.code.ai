@@ -3717,6 +3717,33 @@ button.vault-tag {
   word-break: break-word;
 }
 
+/* A program the agent started (P1): the card says who, quietly. */
+.command-by {
+  padding: 8px 12px 0;
+  font-size: var(--text-2);
+  color: var(--muted);
+}
+
+/* Where a running program serves on this computer, opened in the browser
+   (desktop only; the phone keeps the address as plain text). */
+.command-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.command-open {
+  font-size: var(--text-2);
+  font-family: var(--font-mono);
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  background: transparent;
+}
+
 .command-note {
   padding: 6px 12px;
   font-size: var(--text-2);

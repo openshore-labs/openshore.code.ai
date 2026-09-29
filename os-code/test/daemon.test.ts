@@ -406,8 +406,14 @@ describe('a member session works on its own vault root on a shared hub', () => {
     expect(mine.vaultRoot!.startsWith(membersDir() + '/')).toBe(true);
     // The root is made on first use, private to this user.
     expect(existsSync(mine.vaultRoot!)).toBe(true);
-    // Nothing else moves: the member has exactly the owner's tool list.
-    expect([...mine.tools].sort()).toEqual([...owner.tools].sort());
+    // Nothing else moves but the programs an agent starts and leaves running
+    // (P1), which are the owner's alone, like the command lane: the member
+    // has exactly the owner's other tools.
+    const ownerOnly = ['readProcess', 'startProcess', 'stopProcess'];
+    expect(owner.tools).toEqual(expect.arrayContaining(ownerOnly));
+    expect([...mine.tools].sort()).toEqual(
+      owner.tools.filter((name) => !ownerOnly.includes(name)).sort(),
+    );
   });
 
   it("a rehydrate uses the stored owner's root, not the caller's", async () => {

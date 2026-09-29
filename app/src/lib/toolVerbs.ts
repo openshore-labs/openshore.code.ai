@@ -7,6 +7,9 @@ import { AGENTIC_CURRENTS } from './currents.js';
 
 const TOOL_VERBS: Record<string, string> = {
   runShell: 'Run a command',
+  startProcess: 'Start a program that keeps running',
+  readProcess: 'Read what a program printed',
+  stopProcess: 'Stop a program',
   readTerminal: 'Read the terminal',
   editFile: 'Edit a file',
   writeFile: 'Edit a file',

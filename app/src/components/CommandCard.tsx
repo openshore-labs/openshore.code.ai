@@ -1,11 +1,16 @@
-// A command the user ran through the chat-to-terminal bridge, rendered as a
-// live terminal card: the command line, streaming output in a mono block that
-// sticks to the bottom while running, a stdin field to answer a prompt, a Stop
-// control, and an exit badge when it finishes. The model reads the result on
-// its next turn, so there is no screenshot round-trip.
+// A command on the chat-to-terminal bridge, rendered as a live terminal card:
+// the command line, streaming output in a mono block that sticks to the
+// bottom while running, a stdin field to answer a prompt, a Stop control, and
+// an exit badge when it finishes. The model reads the result on its next
+// turn, so there is no screenshot round-trip. The person runs one by tapping
+// Run; the agent starts one with startProcess (P1, "run my app"), and its card
+// says so. While a program runs and prints where it serves on this computer,
+// the desktop offers that address as an Open link.
 import { useEffect, useRef, useState } from 'react';
+import { localAddresses } from 'os-code/protocol';
 import type { ThreadItem } from '../state/types.js';
 import { useApp } from '../state/store.js';
+import { isDesktop, openExternal } from '../lib/platform.js';
 
 type CommandItem = Extract<ThreadItem, { kind: 'command' }>;
 
@@ -17,9 +22,19 @@ function clean(text: string): string {
   return text.replace(ANSI, '');
 }
 
+/** The line on a card for a program the agent started, not the person. */
+export const STARTED_BY_OPENSHORE = 'Started by OpenShore';
+
+/** The Open link's words for one local address: the address, less its
+ *  scheme and a bare trailing slash ("Open localhost:5173"). */
+export function openLabel(url: string): string {
+  return `Open ${url.replace(/^https?:\/\//, '').replace(/\/$/, '')}`;
+}
+
 export function CommandCard({ item }: { item: CommandItem }) {
   const killCommand = useApp((s) => s.killCommand);
   const sendCommandStdin = useApp((s) => s.sendCommandStdin);
+  const preferRemoteHub = useApp((s) => s.settings.preferRemoteHub);
   const [stdin, setStdin] = useState('');
   const bodyRef = useRef<HTMLPreElement>(null);
   const stick = useRef(true);
@@ -54,8 +69,15 @@ export function CommandCard({ item }: { item: CommandItem }) {
       </span>
     );
 
+  // A local address names the computer the program runs on. It opens only
+  // where that is this machine: the desktop on its own engine. On the phone,
+  // or a desktop driving another computer, it stays plain text in the output.
+  const onThisComputer = isDesktop() && !preferRemoteHub;
+  const links = item.state === 'running' && onThisComputer ? localAddresses(item.output) : [];
+
   return (
     <div className="command-card">
+      {item.source === 'agent' ? <div className="command-by">{STARTED_BY_OPENSHORE}</div> : null}
       <div className="command-card-head">
         <span className="command-prompt" aria-hidden="true">
           $
@@ -78,6 +100,20 @@ export function CommandCard({ item }: { item: CommandItem }) {
         <pre ref={bodyRef} className="command-output" onScroll={onScroll}>
           {clean(item.output)}
         </pre>
+      ) : null}
+      {links.length ? (
+        <div className="command-links">
+          {links.map((url) => (
+            <button
+              key={url}
+              type="button"
+              className="command-open press-fb"
+              onClick={() => openExternal(url)}
+            >
+              {openLabel(url)}
+            </button>
+          ))}
+        </div>
       ) : null}
       {item.truncated ? <div className="command-note">Output truncated.</div> : null}
       {item.state === 'running' ? (

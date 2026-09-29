@@ -74,6 +74,10 @@ export interface TestSessionOptions {
   /** Also hand every event here (a LocalDriver's emit, when a test drives the
    *  session through the driver the way the daemon does). */
   onEvent?: (event: AgentEvent) => void;
+  /** Register the process tools (P1) as bootstrap does for a host that can
+   *  keep a program running: off the menu in plan mode. The test sets
+   *  `toolContext.processes` itself when it runs one. */
+  processes?: boolean;
 }
 
 export function makeTestSession(
@@ -121,6 +125,7 @@ export function makeTestSession(
 
   const stack = resolveStack(config, registry);
   const router = new Router(config, registry, stack);
+  const agentRef: { current?: AgentSession } = {};
   const registryOptions = {
     stackHasVision: false,
     stackHasImageGen: false,
@@ -128,6 +133,9 @@ export function makeTestSession(
     // As bootstrap does: the Memory switch off leaves the tool out.
     memory: config.memory.enabled,
     ...(options.offline ? { offline: true } : {}),
+    ...(options.processes
+      ? { processes: true, processesOffered: () => agentRef.current?.permissionMode !== 'plan' }
+      : {}),
   };
   const tools = buildToolRegistry(registryOptions);
   const offlineTools = networkToolsLeftOut(registryOptions);
@@ -178,6 +186,7 @@ export function makeTestSession(
       return true;
     },
   });
+  agentRef.current = agent;
 
   return {
     agent,

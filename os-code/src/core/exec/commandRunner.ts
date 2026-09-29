@@ -35,6 +35,13 @@ export interface CommandRunOptions {
    * other command starts with the scrubbed environment.
    */
   keepEnv?: readonly string[];
+  /**
+   * False keeps no copy of the output: onChunk still sees every chunk, and
+   * the result's stdout and stderr are empty. For a program that runs for
+   * hours (one the agent started with startProcess), whose whole output would
+   * otherwise grow without end. Default true.
+   */
+  retain?: boolean;
 }
 
 export interface CommandResult {
@@ -174,8 +181,10 @@ export class CommandRun {
   }
 
   private deliver(stream: StreamName, text: string): void {
-    if (stream === 'stdout') this.stdout += text;
-    else this.stderr += text;
+    if (this.opts.retain !== false) {
+      if (stream === 'stdout') this.stdout += text;
+      else this.stderr += text;
+    }
     this.opts.onChunk?.(stream, text);
   }
 

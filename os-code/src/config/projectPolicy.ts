@@ -81,6 +81,10 @@ export const PROJECT_POLICY: Record<keyof OscConfig, KeyPolicy> = {
   memory: { enabled: 'off-only' },
   sync: { autoPush: 'off-only', autoPushDefaultBranch: 'trusted' },
   harness: { profiles: 'project', decoding: 'project', verify: 'trusted' },
+  // A process the agent starts keeps running after its step, so turning the
+  // tools on over a machine that has them off waits for trust; turning them
+  // off applies from any folder.
+  tools: { processes: 'off-only' },
 };
 
 /** A project setting that was not applied, and why. */
@@ -177,6 +181,8 @@ function describe(path: string, value: unknown): string {
       return 'turns the handoff back on, so a summary of earlier work reaches the model';
     case 'memory.enabled':
       return 'turns on project memory, so the agent saves notes into this repo without asking';
+    case 'tools.processes':
+      return 'lets the agent start programs that keep running, like your app';
     case 'guardrails.maxDollars':
       return `raises the spending limit to $${String(value)}`;
     case 'guardrails.maxSteps':

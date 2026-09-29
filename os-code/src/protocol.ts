@@ -37,6 +37,9 @@ export type {
 } from './core/agent/commandText.js';
 // The reserved terminal scope for the plain home-folder shell (no session).
 export { HOME_SHELL_ID } from './daemon/homeShellId.js';
+// The local addresses a started program prints (P1), so the desktop's command
+// card offers the one the engine read as ready.
+export { localAddresses } from './core/exec/localAddress.js';
 
 // Repo reconcile result (push unpushed commits, merge a moved-on remote). Type
 // only: the reconcile engine itself pulls Node/simple-git, but its result shape

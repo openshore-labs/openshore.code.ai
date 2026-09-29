@@ -57,6 +57,53 @@ export interface ApprovedPreview {
   files?: string[];
 }
 
+/** A process the agent started (startProcess), as its session sees it now. */
+export interface ProcessView {
+  runId: string;
+  command: string;
+  /** True while it runs. */
+  running: boolean;
+  /** Milliseconds since it started, or how long it ran once it ended. */
+  elapsedMs: number;
+  /** Its exit code once it ended; null when a signal ended it. */
+  exitCode?: number | null;
+  /** Why it could not start at all. */
+  startError?: string;
+  /** The last lines asked for, stdout and stderr in the order they arrived,
+   *  secret-redacted and without colour codes, from the run's 64 KB tail. */
+  output: string;
+  /** True when earlier output fell out of the tail. */
+  dropped: boolean;
+  /** The local addresses it printed (`localAddresses`), noted as each whole
+   *  line arrived, so one printed at start stays known after later logs push
+   *  it out of the tail. */
+  addresses: string[];
+}
+
+/**
+ * The processes this session's agent starts and leaves running (P1). The
+ * driver owns them: each is a run on its command lane (`source: 'agent'`), so
+ * it streams to the same command card the person's own commands use, with
+ * Stop on every host. At most three live at once, and they end with the
+ * session.
+ */
+export interface ToolProcesses {
+  /** Start `command` in the workspace root. Refused, naming what runs, when
+   *  three the agent started are still live. */
+  start(command: string): { runId: string } | { error: string };
+  /** Resolve once the run ends, prints a local address, `ms` pass, or the
+   *  signal aborts, whichever comes first. */
+  settle(runId: string, ms: number, signal?: AbortSignal): Promise<void>;
+  /** The last `lines` of one of this agent's own runs, or undefined when the
+   *  agent did not start that run. */
+  read(runId: string, lines: number): ProcessView | undefined;
+  /** Stop one of this agent's own live runs. False when it did not start
+   *  that run or it has already ended. */
+  stop(runId: string): boolean;
+  /** The agent's runs that are still live. */
+  live(): Array<{ runId: string; command: string }>;
+}
+
 /** Everything a tool may touch. Built once per session. */
 export interface ToolContext {
   cwd: string;
@@ -97,6 +144,13 @@ export interface ToolContext {
    * leave it undefined and the tool degrades to "no terminal here".
    */
   terminal?: (lines: number, termId?: string) => string | undefined;
+  /**
+   * The processes the agent starts and leaves running (P1, "run my app"),
+   * wired by bootstrap to this session's driver, whose command lane runs them
+   * (`runCommand(cmd, {source: 'agent'})`). Set only where the process tools
+   * are registered; unset leaves them degraded to "not available here".
+   */
+  processes?: ToolProcesses;
   /**
    * The person's Codemagic token and saved launch target, so the codemagic tool
    * can trigger and read App Launch builds. Injected per session ONLY on the
@@ -191,21 +245,32 @@ export interface ToolDef<S extends z.ZodType = z.ZodType> {
 
 export class ToolRegistry {
   private tools = new Map<string, ToolDef<any>>();
+  private gates = new Map<string, () => boolean>();
 
-  register(tool: ToolDef<any>): void {
+  /** `when`, when given, is read every time the registry is asked: while it
+   *  says no, the tool is off the menu and a call to it finds no tool (the
+   *  process tools in plan mode). A tool without one is always offered. */
+  register(tool: ToolDef<any>, options: { when?: () => boolean } = {}): void {
     this.tools.set(tool.name, tool);
+    if (options.when) this.gates.set(tool.name, options.when);
+    else this.gates.delete(tool.name);
+  }
+
+  private offered(name: string): boolean {
+    const gate = this.gates.get(name);
+    return gate ? gate() : true;
   }
 
   get(name: string): ToolDef<any> | undefined {
-    return this.tools.get(name);
+    return this.offered(name) ? this.tools.get(name) : undefined;
   }
 
   names(): string[] {
-    return [...this.tools.keys()];
+    return [...this.tools.keys()].filter((name) => this.offered(name));
   }
 
   all(): ToolDef<any>[] {
-    return [...this.tools.values()];
+    return [...this.tools.values()].filter((tool) => this.offered(tool.name));
   }
 
   /** OpenAI/Anthropic-shaped tool specs from the zod schemas. */

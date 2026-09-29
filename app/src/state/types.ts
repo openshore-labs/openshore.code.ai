@@ -172,6 +172,10 @@ export type ThreadItem =
       id: string;
       runId: string;
       command: string;
+      /** 'agent' for a program the agent started and left running
+       *  (startProcess, P1): its card says "Started by OpenShore". Absent for
+       *  a command the person ran. */
+      source?: 'agent';
       output: string;
       state: 'running' | 'done' | 'killed';
       exitCode?: number | null;

@@ -231,3 +231,40 @@ describe('the deny reason', () => {
     expect(terminalControlDenyReason({ label: 'my-hub', canControl: false })).toContain('admin');
   });
 });
+
+// Starting a program that keeps running (P1) runs a command the model wrote,
+// so Terminal Control governs it exactly as it governs runShell; and while the
+// chat holds the project's secrets, On still shows the card for every command
+// (D3, CX 7), since OpenShore asks before each one.
+describe('startProcess and the secrets lockdown', () => {
+  const base = {
+    driverKind: 'desktop',
+    desktopLocal: true,
+    daemon: undefined,
+    canControl: true,
+    mode: 'acceptEdits' as const,
+  };
+  const start = { kind: 'tool', toolName: 'startProcess' } as const;
+  const on = { [LOCAL_TARGET]: true };
+
+  it('is a shell approval; reading and stopping are not', () => {
+    expect(isShellApproval(start)).toBe(true);
+    expect(isShellApproval({ kind: 'tool', toolName: 'readProcess' })).toBe(false);
+    expect(isShellApproval({ kind: 'tool', toolName: 'stopProcess' })).toBe(false);
+  });
+
+  it('Off keeps it out with the same reason; On lets it in', () => {
+    const off = decideApproval(start, { ...base, control: {} });
+    expect(off.action).toBe('auto-deny');
+    if (off.action === 'auto-deny') expect(off.reason).toContain('Terminal Control is off');
+    expect(decideApproval(start, { ...base, control: on })).toEqual({ action: 'auto-approve' });
+  });
+
+  it('under the lockdown On shows the card instead, for both shell tools', () => {
+    for (const toolName of ['runShell', 'startProcess']) {
+      const req = { kind: 'tool' as const, toolName, lockdown: true };
+      expect(decideApproval(req, { ...base, control: on })).toEqual({ action: 'sheet' });
+      expect(decideApproval(req, { ...base, control: {} }).action).toBe('auto-deny');
+    }
+  });
+});
