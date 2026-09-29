@@ -1288,6 +1288,27 @@ describe('the plain home shell (no session behind it)', () => {
     expect(pty.writes).toEqual(['ls\n']);
   });
 
+  // The D2 shell package: a session's terminal used to spawn a fresh shell on
+  // every open, so each visit from the phone stacked another one.
+  it("a session's terminal also reopens the shell it left running", async () => {
+    const created = await fetch(`${shellBase}/sessions`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({ cwd: home }),
+    });
+    const { id } = (await created.json()) as { id: string };
+    const open = () =>
+      fetch(`${shellBase}/sessions/${id}/term`, {
+        method: 'POST',
+        headers: auth(adminToken),
+        body: JSON.stringify({ cols: 80, rows: 24 }),
+      });
+    const first = (await (await open()).json()) as { termId: string };
+    const again = (await (await open()).json()) as { termId: string };
+    expect(again.termId).toBe(first.termId);
+    expect(spawnCwds).toHaveLength(1);
+  });
+
   it('a shell that exited is replaced by a fresh one on the next open', async () => {
     const first = await openHome();
     const { termId } = (await first.json()) as { termId: string };

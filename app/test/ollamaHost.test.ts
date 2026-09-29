@@ -97,7 +97,7 @@ describe('startOllama', () => {
 });
 
 describe('ollamaInstallPlan', () => {
-  it('Linux runs the official installer in the built-in terminal', () => {
+  it('Linux names the official script for the person to run in their own terminal', () => {
     const plan = ollamaInstallPlan('linux');
     expect(plan.mode).toBe('terminal');
     expect(plan.command).toBe(OLLAMA_INSTALL_COMMAND);

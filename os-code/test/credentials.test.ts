@@ -8,10 +8,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   credentialsPath,
+  isTokenHash,
   loadCredentials,
   mintCredential,
   resolveDeviceCredential,
   revokeCredential,
+  revokeCredentialByHash,
 } from '../src/core/security/credentials.js';
 import { resolveAuth, hasRole } from '../src/core/security/daemonAuth.js';
 
@@ -57,6 +59,31 @@ describe('device credentials', () => {
     expect(resolveDeviceCredential(token)).toBeDefined();
     expect(revokeCredential('Bob phone')).toBe(1);
     expect(resolveDeviceCredential(token)).toBeUndefined();
+  });
+
+  // Every hash starts with the empty string, so a prefix match on '' used to
+  // revoke every paired device at once (the D2 shell package).
+  it('an empty or blank match revokes nothing', () => {
+    mintCredential({ role: 'admin', label: 'Phone' });
+    mintCredential({ role: 'admin', label: 'Tablet' });
+    expect(revokeCredential('')).toBe(0);
+    expect(revokeCredential('   ')).toBe(0);
+    expect(loadCredentials()).toHaveLength(2);
+  });
+
+  it('the desktop revoke matches one whole hash exactly, never a prefix or a label', () => {
+    const phone = mintCredential({ role: 'admin', label: 'Phone' });
+    const tablet = mintCredential({ role: 'admin', label: 'Tablet' });
+    const hash = phone.credential.tokenHash;
+    expect(isTokenHash(hash)).toBe(true);
+    expect(revokeCredentialByHash('')).toBe(0);
+    expect(revokeCredentialByHash(hash.slice(0, 8))).toBe(0);
+    expect(revokeCredentialByHash('Phone')).toBe(0);
+    expect(revokeCredentialByHash(hash.toUpperCase())).toBe(0);
+    expect(loadCredentials()).toHaveLength(2);
+    expect(revokeCredentialByHash(hash)).toBe(1);
+    expect(resolveDeviceCredential(phone.token)).toBeUndefined();
+    expect(resolveDeviceCredential(tablet.token)?.label).toBe('Tablet');
   });
 });
 

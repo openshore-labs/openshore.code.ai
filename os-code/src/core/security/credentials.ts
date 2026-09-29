@@ -80,10 +80,30 @@ export function mintCredential(opts: MintOptions): { token: string; credential: 
   return { token, credential };
 }
 
-/** Revoke by label or by a token-hash prefix. Returns how many were removed. */
+/** Revoke by label or by a token-hash prefix (the CLI's `osc token revoke`).
+ *  Returns how many were removed. An empty or blank match removes nothing:
+ *  every hash starts with the empty string, so it would cut every device. */
 export function revokeCredential(match: string): number {
+  if (!match.trim()) return 0;
   const before = loadCredentials();
   const after = before.filter((c) => c.label !== match && !c.tokenHash.startsWith(match));
+  if (after.length !== before.length) saveCredentials(after);
+  return before.length - after.length;
+}
+
+/** A credential's handle as the desktop's revoke list carries it: the whole
+ *  SHA-256 token hash, 64 lowercase hex characters. */
+export function isTokenHash(value: unknown): value is string {
+  return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
+}
+
+/** Revoke exactly one device by its whole token hash (the desktop's revoke
+ *  list). Never a prefix and never a label, so one tap cuts one device.
+ *  Returns how many were removed: 0 or 1. */
+export function revokeCredentialByHash(tokenHash: string): number {
+  if (!isTokenHash(tokenHash)) return 0;
+  const before = loadCredentials();
+  const after = before.filter((c) => c.tokenHash !== tokenHash);
   if (after.length !== before.length) saveCredentials(after);
   return before.length - after.length;
 }

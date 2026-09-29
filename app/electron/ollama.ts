@@ -3,7 +3,8 @@
 // take to fix either. Every probe is injectable so the states are pinned by
 // tests on a machine with no Ollama at all. Nothing here touches Electron.
 import { execFile, spawn as nodeSpawn, spawnSync } from 'node:child_process';
-import { createWriteStream, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
+import { createWriteStream, existsSync, mkdtempSync, renameSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -89,8 +90,9 @@ export async function startOllama(opts: {
 }
 
 export interface OllamaInstallPlan {
-  /** terminal: run the command in the built-in terminal (Linux). download:
-   *  open the page in the browser and poll for the server (macOS, Windows). */
+  /** terminal: the person runs the command in their own terminal (Linux; the
+   *  app runs nothing). download: fetch and open Ollama's installer, else the
+   *  page in the browser, and poll for the server (macOS, Windows). */
   mode: 'terminal' | 'download';
   /** Always present, so the renderer can show it as a copy block. */
   command: string;
@@ -111,12 +113,16 @@ export function ollamaInstallPlan(platform: NodeJS.Platform = process.platform):
 
 // Installing on macOS and Windows from inside the app (v1 Phase 1, desktop
 // first run). The official installer is fetched straight from ollama.com into
-// the person's Downloads folder and opened, so they click through Ollama's
-// own signed installer without hunting for a download page; the app then
-// polls ollamaStatus and carries on by itself once Ollama answers. On macOS
-// the file is marked as downloaded from the internet, so Gatekeeper checks
-// Ollama's signature exactly as it would for a browser download. Anything
-// that fails falls back to opening the download page, the old behavior.
+// a folder of its own under the system's temporary folder (a fresh one per
+// try, so nothing in Downloads is overwritten, and no other process can have
+// put a file where the app is about to open one) and opened, so they click
+// through Ollama's own signed installer without hunting for a download page;
+// the app then polls ollamaStatus and carries on by itself once Ollama
+// answers. On macOS the file is marked as downloaded from the internet, so
+// Gatekeeper checks Ollama's signature exactly as it would for a browser
+// download; the tools that mark and unpack it are named by absolute path, so
+// a PATH entry cannot stand in for them. Anything that fails falls back to
+// opening the download page, the old behavior.
 
 export interface OllamaInstaller {
   url: string;
@@ -140,32 +146,40 @@ export function ollamaInstallers(platform: NodeJS.Platform): OllamaInstaller[] {
 type DownloadFetch = (url: string) => Promise<Response>;
 type Runner = (cmd: string, args: string[]) => Promise<void>;
 
+/** macOS's own tools, by absolute path. */
+export const XATTR = '/usr/bin/xattr';
+export const DITTO = '/usr/bin/ditto';
+
 const defaultRunner: Runner = (cmd, args) =>
   new Promise((resolve, reject) => {
     execFile(cmd, args, { timeout: 120_000 }, (err) => (err ? reject(err) : resolve()));
   });
 
 /**
- * Fetch the official installer into `downloadsDir` and return the path to
- * open: the dmg, the installer exe, or (for the macOS zip) the extracted
+ * Fetch the official installer into a new folder of its own under `tempRoot`
+ * (the system's temporary folder by default) and return the path to open:
+ * the dmg, the installer exe, or (for the macOS zip) the extracted
  * Ollama.app. Undefined when nothing could be fetched, so the caller falls
  * back to the download page. Never throws.
  */
 export async function downloadOllamaInstaller(opts: {
   platform: NodeJS.Platform;
-  downloadsDir: string;
+  tempRoot?: string;
   fetch?: DownloadFetch;
   run?: Runner;
 }): Promise<string | undefined> {
   const fetchImpl = opts.fetch ?? ((url: string) => fetch(url, { redirect: 'follow' }));
   const run = opts.run ?? defaultRunner;
   for (const installer of ollamaInstallers(opts.platform)) {
-    const target = join(opts.downloadsDir, installer.file);
-    const partial = `${target}.part`;
+    let dir: string | undefined;
     try {
       const res = await fetchImpl(installer.url);
       if (!res.ok || !res.body) continue;
-      mkdirSync(opts.downloadsDir, { recursive: true });
+      // Made only now that there is something to save, and made fresh
+      // (mkdtemp, mode 700): never a name another process could have chosen.
+      dir = mkdtempSync(join(opts.tempRoot ?? tmpdir(), 'openshore-ollama-'));
+      const target = join(dir, installer.file);
+      const partial = `${target}.part`;
       await pipeline(
         Readable.fromWeb(res.body as Parameters<typeof Readable.fromWeb>[0]),
         createWriteStream(partial),
@@ -175,17 +189,17 @@ export async function downloadOllamaInstaller(opts: {
         // Marked as downloaded, so Gatekeeper verifies Ollama's signature on
         // first open, as it would for a file the browser saved.
         const stamp = Math.floor(Date.now() / 1000).toString(16);
-        await run('xattr', [
-          '-w',
-          'com.apple.quarantine',
-          `0081;${stamp};OpenShore;`,
-          target,
-        ]).catch(() => undefined);
+        await run(XATTR, ['-w', 'com.apple.quarantine', `0081;${stamp};OpenShore;`, target]).catch(
+          () => undefined,
+        );
         if (installer.file.endsWith('.zip')) {
-          await run('ditto', ['-x', '-k', target, opts.downloadsDir]);
-          const app = join(opts.downloadsDir, 'Ollama.app');
-          if (!existsSync(app)) continue;
-          await run('xattr', ['-w', 'com.apple.quarantine', `0081;${stamp};OpenShore;`, app]).catch(
+          await run(DITTO, ['-x', '-k', target, dir]);
+          const app = join(dir, 'Ollama.app');
+          if (!existsSync(app)) {
+            rmSync(dir, { recursive: true, force: true });
+            continue;
+          }
+          await run(XATTR, ['-w', 'com.apple.quarantine', `0081;${stamp};OpenShore;`, app]).catch(
             () => undefined,
           );
           return app;
@@ -193,7 +207,7 @@ export async function downloadOllamaInstaller(opts: {
       }
       return target;
     } catch {
-      rmSync(partial, { force: true });
+      if (dir) rmSync(dir, { recursive: true, force: true });
     }
   }
   return undefined;

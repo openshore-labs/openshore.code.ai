@@ -4,11 +4,19 @@
 // download page), and the First Seat carries on by itself once Ollama
 // answers. The sample page gives a first-time person something safe to try.
 import { describe, expect, it } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { bringUpOllama, type HarborDownload, type OllamaBridge } from '../src/state/store.js';
-import { downloadOllamaInstaller, ollamaInstallers } from '../electron/ollama.js';
+import { DITTO, XATTR, downloadOllamaInstaller, ollamaInstallers } from '../electron/ollama.js';
 import {
   createSampleProject,
   SAMPLE_FILES,
@@ -127,51 +135,81 @@ describe("fetching Ollama's own installer", () => {
     expect(ollamaInstallers('linux')).toEqual([]);
   });
 
-  it('saves the Windows installer to Downloads and returns its path', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'osc-dl-'));
+  // The D2 shell package: the installer used to land in ~/Downloads under a
+  // fixed name, overwriting whatever was there, and the app then opened that
+  // path. Each try now gets a fresh folder of its own under the temp root.
+  it('saves the Windows installer in a fresh folder of its own and returns its path', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'osc-dl-'));
     const path = await downloadOllamaInstaller({
       platform: 'win32',
-      downloadsDir: dir,
+      tempRoot: root,
       fetch: async () => body('MZ installer'),
       run: async () => {},
     });
-    expect(path).toBe(join(dir, 'OllamaSetup.exe'));
+    const [folder] = readdirSync(root);
+    expect(folder).toMatch(/^openshore-ollama-/);
+    expect(path).toBe(join(root, folder!, 'OllamaSetup.exe'));
+    expect(readFileSync(path!, 'utf8')).toBe('MZ installer');
+    if (process.platform !== 'win32') {
+      expect(statSync(join(root, folder!)).mode & 0o777).toBe(0o700);
+    }
+    const again = await downloadOllamaInstaller({
+      platform: 'win32',
+      tempRoot: root,
+      fetch: async () => body('MZ second'),
+      run: async () => {},
+    });
+    expect(again).not.toBe(path);
     expect(readFileSync(path!, 'utf8')).toBe('MZ installer');
   });
 
-  it('on macOS marks the download for Gatekeeper, and falls back to the zip', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'osc-dl-'));
+  it('on macOS marks the download for Gatekeeper with the system tools, and falls back to the zip', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'osc-dl-'));
     const ran: string[][] = [];
     const path = await downloadOllamaInstaller({
       platform: 'darwin',
-      downloadsDir: dir,
+      tempRoot: root,
       fetch: async (url) =>
         url.endsWith('.dmg') ? new Response(null, { status: 404 }) : body('zip'),
       run: async (cmd, args) => {
         ran.push([cmd, ...args]);
-        if (cmd === 'ditto') mkdirSync(join(dir, 'Ollama.app'), { recursive: true });
+        if (cmd === DITTO) mkdirSync(join(args[3]!, 'Ollama.app'), { recursive: true });
       },
     });
-    expect(path).toBe(join(dir, 'Ollama.app'));
-    expect(ran.filter((r) => r[0] === 'xattr' && r.includes('com.apple.quarantine'))).toHaveLength(
-      2,
-    );
-    expect(ran.some((r) => r[0] === 'ditto')).toBe(true);
+    const [folder] = readdirSync(root);
+    expect(path).toBe(join(root, folder!, 'Ollama.app'));
+    expect(XATTR).toBe('/usr/bin/xattr');
+    expect(DITTO).toBe('/usr/bin/ditto');
+    expect(ran.map((r) => r[0])).toEqual([XATTR, DITTO, XATTR]);
+    expect(ran.filter((r) => r.includes('com.apple.quarantine'))).toHaveLength(2);
+    expect(ran[1]).toEqual([
+      DITTO,
+      '-x',
+      '-k',
+      join(root, folder!, 'Ollama-darwin.zip'),
+      join(root, folder!),
+    ]);
   });
 
   it('returns nothing when every download fails, so the page opens instead', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'osc-dl-'));
+    const root = mkdtempSync(join(tmpdir(), 'osc-dl-'));
     expect(
       await downloadOllamaInstaller({
         platform: 'win32',
-        downloadsDir: dir,
+        tempRoot: root,
         fetch: async () => {
           throw new Error('offline');
         },
       }),
     ).toBeUndefined();
-    expect(existsSync(join(dir, 'OllamaSetup.exe.part'))).toBe(false);
-    expect(await downloadOllamaInstaller({ platform: 'linux', downloadsDir: dir })).toBeUndefined();
+    expect(readdirSync(root)).toEqual([]);
+    expect(await downloadOllamaInstaller({ platform: 'linux', tempRoot: root })).toBeUndefined();
+  });
+
+  it('the host never fetches into Downloads', () => {
+    const host = readFileSync(join(process.cwd(), 'electron', 'engineHost.ts'), 'utf8');
+    expect(host).toMatch(/downloadOllamaInstaller\(\{ platform: this\.deps\.platform \}\)/);
+    expect(host).not.toMatch(/'Downloads'/);
   });
 
   it('main opens the fetched installer, and the page only when that fails', () => {

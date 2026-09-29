@@ -11,6 +11,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { IDLE_UPDATER, stepUpdater, type UpdaterEvent } from '../electron/updateState.js';
 
 const h = vi.hoisted(() => ({
   searchMock: vi.fn(async () => [{ title: 'T', url: 'https://example.com', snippet: 's' }]),
@@ -114,18 +115,40 @@ describe('2. desktop updates ask before downloading', () => {
   });
 
   it('downloads only after the person clicks Update', () => {
-    // Every downloadUpdate() call sits behind the person's click: in the
-    // install handler, or in update-available once that click has been made.
-    const calls = [...main.matchAll(/autoUpdater\.downloadUpdate\(\)/g)].map((m) => m.index!);
-    expect(calls.length).toBeGreaterThan(0);
+    // The one downloadUpdate() call runs the updater state machine's
+    // 'download' effect (electron/updateState.ts), and the install handler
+    // feeds the machine the person's click.
+    const calls = [...main.matchAll(/\.downloadUpdate\(\)/g)].map((m) => m.index!);
+    expect(calls).toHaveLength(1);
+    expect(main.slice(Math.max(0, calls[0]! - 200), calls[0]!)).toMatch(
+      /step\.effect === 'download'/,
+    );
     const install = main.indexOf("guarded('osc:installUpdate'");
     expect(install).toBeGreaterThan(-1);
-    for (const at of calls) {
-      const before = main.slice(Math.max(0, at - 600), at);
-      expect(before, 'a download not behind the click').toMatch(
-        /installWhenReady|osc:installUpdate/,
-      );
+    expect(main.slice(install, install + 400)).toMatch(/applyUpdate\(\{ type: 'click' \}\)/);
+  });
+
+  it('the state machine asks for a download only once the person has clicked', () => {
+    // Every event electron-updater can send, in any order, without a click.
+    const events: UpdaterEvent[] = [
+      { type: 'available', version: '2.0.0' },
+      { type: 'progress', percent: 10 },
+      { type: 'not-available' },
+      { type: 'available', version: '2.0.1' },
+      { type: 'check-done', found: true },
+      { type: 'error', detail: 'x' },
+      { type: 'check-failed', detail: 'y' },
+      { type: 'available', version: '2.0.2' },
+      { type: 'downloaded', version: '2.0.2' },
+    ];
+    let state = IDLE_UPDATER;
+    for (const event of events) {
+      const step = stepUpdater(state, event);
+      expect(step.effect, event.type).not.toBe('download');
+      state = step.state;
     }
+    const offered = stepUpdater(IDLE_UPDATER, { type: 'available', version: '2.0.0' }).state;
+    expect(stepUpdater(offered, { type: 'click' }).effect).toBe('download');
   });
 });
 

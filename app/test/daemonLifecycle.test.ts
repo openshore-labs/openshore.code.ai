@@ -27,12 +27,15 @@ interface Started {
   closed: boolean;
 }
 
-function harness(opts: { tailscaleFails?: boolean } = {}) {
+function harness(opts: { tailscaleFails?: boolean; loopbackFails?: { on: boolean } } = {}) {
   const started: Started[] = [];
   const tailscale = { running: false, ip: undefined as string | undefined };
   const startDaemon = async (o: { bind: 'loopback' | 'tailscale'; port: number }) => {
     if (o.bind === 'tailscale' && (!tailscale.ip || opts.tailscaleFails)) {
       throw new Error('No Tailscale interface found.');
+    }
+    if (o.bind === 'loopback' && opts.loopbackFails?.on) {
+      throw new Error('listen EADDRINUSE: address already in use 127.0.0.1:7777');
     }
     const entry: Started = { bind: o.bind, closed: false };
     started.push(entry);
@@ -114,6 +117,59 @@ describe('daemon lifecycle in the shell', () => {
     expect(host.daemonInfo().running).toBe(true);
     expect(host.daemonInfo().mode).toBe('loopback');
     expect(started.map((s) => s.bind)).toEqual(['loopback', 'loopback']);
+    host.disposeAll();
+  });
+
+  // The D2 shell package: a re-bind whose every bind failed used to leave the
+  // hub dark for good (the poll only ever looked at a running loopback hub)
+  // and said nothing about why.
+  it('a hub that went dark on a failed bind says why, and the poll brings it back', async () => {
+    const loopbackFails = { on: false };
+    const { host, started, tailscale } = harness({ tailscaleFails: true, loopbackFails });
+    await host.daemonStart();
+    tailscale.running = true;
+    tailscale.ip = '100.64.0.9';
+    loopbackFails.on = true;
+    expect(await host.daemonRebind()).toBe(false);
+    const dark = host.daemonInfo();
+    expect(dark.running).toBe(false);
+    expect(dark.bindError).toMatch(/Tailscale/);
+    // Still failing: the poll tries again and keeps the reason.
+    expect(await host.daemonRebind()).toBe(false);
+    expect(host.daemonInfo().bindError).toBeDefined();
+    // The port frees up: the next poll brings the hub back on loopback, and
+    // the tailnet's refusal is still what daemonInfo names.
+    loopbackFails.on = false;
+    expect(await host.daemonRebind()).toBe(true);
+    expect(host.daemonInfo().running).toBe(true);
+    expect(host.daemonInfo().mode).toBe('loopback');
+    expect(host.daemonInfo().bindError).toMatch(/Tailscale/);
+    expect(started.map((s) => s.bind)).toEqual(['loopback', 'loopback']);
+    host.disposeAll();
+  });
+
+  it('a first start that fails is retried from the poll, and a success clears the reason', async () => {
+    const loopbackFails = { on: true };
+    const { host } = harness({ loopbackFails });
+    const first = await host.daemonStart();
+    expect('error' in first && first.error).toMatch(/EADDRINUSE/);
+    expect(host.daemonInfo().bindError).toMatch(/EADDRINUSE/);
+    loopbackFails.on = false;
+    expect(await host.daemonRebind()).toBe(true);
+    expect(host.daemonInfo().running).toBe(true);
+    expect(host.daemonInfo().bindError).toBeUndefined();
+    host.disposeAll();
+  });
+
+  it('a paused hub is never retried, whatever its last bind did', async () => {
+    const loopbackFails = { on: true };
+    const { host, started } = harness({ loopbackFails });
+    await host.daemonStart();
+    await host.daemonStop();
+    loopbackFails.on = false;
+    expect(await host.daemonRebind()).toBe(false);
+    expect(started).toHaveLength(0);
+    expect(host.daemonInfo().bindError).toBeUndefined();
     host.disposeAll();
   });
 
