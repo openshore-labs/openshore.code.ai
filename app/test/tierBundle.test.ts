@@ -14,6 +14,7 @@ import { FEATURE_TIER, ROOM_FEATURE } from '../src/lib/focus.js';
 import {
   LATER_ROOM_FILES,
   LATER_TIER_WORDS,
+  LAZY_LIBRARIES,
   bundleProblems,
   inspectBundle,
 } from '../scripts/tier-bundle.mjs';
@@ -27,6 +28,7 @@ interface BundleReport {
   totalJsBytes: number;
   chunks: number;
   leaks: Array<{ file: string; word: string }>;
+  lazyAtLaunch: Array<{ library: string; file: string }>;
 }
 
 const read = (...parts: string[]) => readFileSync(join(process.cwd(), ...parts), 'utf8');
@@ -143,6 +145,33 @@ describe('the bundle check CI runs on the Personal build', () => {
     const problems = bundleProblems(inspectBundle(dist));
     expect(problems).toContain('later-tier room emitted: AdminScreen-d4.js');
     expect(problems.some((p: string) => p.startsWith('SettingsScreen loads at launch'))).toBe(true);
+  });
+
+  it('fails a launch that carries the code highlighter, and passes it as its own chunk', () => {
+    expect(LAZY_LIBRARIES).toEqual([{ name: 'highlight.js', marker: 'highlightAuto' }]);
+    write(
+      'assets/jsx-runtime-b2.js',
+      'export const a=(e)=>e;const h={highlightAuto(){}};const c=()=>import("./rehype-highlight-e5.js");',
+    );
+    write('assets/rehype-highlight-e5.js', 'export default {highlightAuto(){}};');
+    expect(bundleProblems(inspectBundle(dist))).toEqual([
+      'highlight.js loads at launch (assets/jsx-runtime-b2.js); it waits for its first use',
+    ]);
+    // Only behind a dynamic import: nothing to say.
+    write(
+      'assets/jsx-runtime-b2.js',
+      'export const a=(e)=>e;const c=()=>import("./rehype-highlight-e5.js");',
+    );
+    expect(bundleProblems(inspectBundle(dist))).toEqual([]);
+  });
+
+  it('the chat loads the highlighter on first need, never with a static import', () => {
+    for (const file of ['components/Markdown.tsx', 'components/CodeBlock.tsx']) {
+      expect(read('src', ...file.split('/')), file).not.toMatch(
+        /^import[^;]*from '(?:rehype-highlight|highlight\.js|lowlight)'/m,
+      );
+    }
+    expect(read('src', 'lib', 'lazyHighlight.ts')).toMatch(/import\('rehype-highlight'\)/);
   });
 
   it('fails a launch that grows past its ceiling', () => {

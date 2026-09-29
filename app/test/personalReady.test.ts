@@ -161,9 +161,8 @@ describe('the rest of the Personal paths', () => {
   });
 
   it('small copy: Tailscale on every platform, the activity log, Crew notifications', () => {
-    expect(read('src', 'screens', 'PairScreen.tsx')).toContain(
-      'Open the Tailscale app and sign in',
-    );
+    // The status line moved into lib/hubStatus.ts (the cleanup package).
+    expect(read('src', 'lib', 'hubStatus.ts')).toContain('Open the Tailscale app and sign in');
     expect(read('src', 'screens', 'SettingsScreen.tsx')).not.toContain('Paste it back to the team');
     expect(read('src', 'screens', 'CrewCommandScreen.tsx')).not.toContain('and pings you.');
   });

@@ -1,8 +1,11 @@
 // The Mac in-place update under CTO ruling 1 (the D1 release package,
-// 2026-09-29): verify before hdiutil or ditto, open the release page on every
-// refusal, clear quarantine only on a verified bundle, and keep the old app
-// until the new version writes its launch marker. The tools, the swap, and the
-// shell are stand-ins; the files are real, under a temporary folder.
+// 2026-09-29): verify before hdiutil or ditto, open the release page on a
+// missing key or signature, open nothing on a signature that is there and
+// fails (reconciliation 2, the cleanup package), clear quarantine only on a
+// verified bundle, keep the old app until the new version writes its launch
+// marker, and never offer again a version the watchdog rolled back. The
+// tools, the swap, and the shell are stand-ins; the files are real, under a
+// temporary folder.
 import { describe, expect, it, vi } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import {
@@ -19,6 +22,8 @@ import { join } from 'node:path';
 import {
   LAUNCH_WAIT_SECONDS,
   launchMarkerPath,
+  rolledBackPath,
+  rolledBackVersion,
   swapScript,
   updateMacInPlace,
   writeLaunchMarker,
@@ -146,14 +151,11 @@ describe('the Mac in-place update refuses anything it cannot verify', () => {
     expect(r.ran).toEqual([]);
   });
 
-  it('opens the release page for a changed zip, and never runs ditto or xattr on it', async () => {
+  it('refuses a changed zip, opens nothing, and never runs ditto or xattr on it', async () => {
     const r = await setup({ served: 'the signed new app, and a payload' });
-    expect(r.outcome).toMatchObject({
-      kind: 'release-page',
-      reason: 'bad-signature',
-      downloaded: true,
-    });
-    expect(r.openExternal).toHaveBeenCalledWith(PAGE);
+    expect(r.outcome).toMatchObject({ kind: 'refused', reason: 'bad-signature' });
+    // The release page's download button serves the same file.
+    expect(r.openExternal).not.toHaveBeenCalled();
     expect(r.fetched).toContain(r.url);
     expect(r.ran).toEqual([]);
     expect(r.spawned).toEqual([]);
@@ -161,12 +163,13 @@ describe('the Mac in-place update refuses anything it cannot verify', () => {
     expect(readdirSync(r.tmpRoot)).toEqual([]);
   });
 
-  it('opens the release page for a changed dmg, and never mounts it', async () => {
+  it('refuses a changed dmg, opens nothing, and never mounts it', async () => {
     const r = await setup({
       name: 'OpenShore-0.1.5-arm64.dmg',
       served: 'a different image',
     });
-    expect(r.outcome).toMatchObject({ kind: 'release-page', reason: 'bad-signature' });
+    expect(r.outcome).toMatchObject({ kind: 'refused', reason: 'bad-signature' });
+    expect(r.openExternal).not.toHaveBeenCalled();
     expect(r.ran.filter((c) => c[0] === '/usr/bin/hdiutil')).toEqual([]);
     expect(r.ran).toEqual([]);
   });
@@ -182,24 +185,32 @@ describe('the Mac in-place update refuses anything it cannot verify', () => {
     ]);
   });
 
-  it('opens the release page for an older signed build put up as the new version', async () => {
+  it('refuses an older signed build put up as the new version, and opens nothing', async () => {
     const oldName = 'OpenShore-0.1.4-arm64-mac.zip';
     const r = await setup({
       name: oldName,
       body: 'the old app',
       signature: `${await signatureFor(oldName, 'the old app')}\n`,
     });
-    expect(r.outcome).toMatchObject({ kind: 'release-page', reason: 'wrong-version' });
-    expect(r.openExternal).toHaveBeenCalledWith(PAGE);
+    expect(r.outcome).toMatchObject({ kind: 'refused', reason: 'wrong-version' });
+    expect(r.openExternal).not.toHaveBeenCalled();
     expect(r.ran).toEqual([]);
   });
 
-  it('opens the release page for a signature from another key', async () => {
+  it('refuses a signature from another key, and opens nothing', async () => {
     const other = keygen.makeReleaseKeyPair();
     const r = await setup({
       signature: `${await signatureFor('OpenShore-0.1.5-arm64-mac.zip', 'the signed new app', other.privateKey)}\n`,
     });
-    expect(r.outcome).toMatchObject({ kind: 'release-page', reason: 'bad-signature' });
+    expect(r.outcome).toMatchObject({ kind: 'refused', reason: 'bad-signature' });
+    expect(r.openExternal).not.toHaveBeenCalled();
+    expect(r.ran).toEqual([]);
+  });
+
+  it('still opens the release page for an empty .sig (nothing to check, not a failed check)', async () => {
+    const r = await setup({ signature: '\n' });
+    expect(r.outcome).toMatchObject({ kind: 'release-page', reason: 'no-signature' });
+    expect(r.openExternal).toHaveBeenCalledWith(PAGE);
     expect(r.ran).toEqual([]);
   });
 
@@ -239,6 +250,34 @@ describe('the Mac in-place update refuses anything it cannot verify', () => {
     expect(unsigned?.signature).toBeUndefined();
   });
 
+  it('skips a version the watchdog rolled back, and still offers a newer one', () => {
+    const asset = (name: string) => ({ name, browser_download_url: `${RELEASES}/${name}` });
+    const releases = [
+      { tag_name: 'v0.1.5', assets: [asset('OpenShore-0.1.5-arm64-mac.zip')] },
+      { tag_name: 'v0.1.6', assets: [asset('OpenShore-0.1.6-arm64-mac.zip')] },
+    ];
+    expect(newestMacUpdate(releases, '0.1.4', 'arm64')?.version).toBe('0.1.6');
+    expect(newestMacUpdate(releases, '0.1.4', 'arm64', '0.1.6')?.version).toBe('0.1.5');
+    expect(newestMacUpdate(releases.slice(1), '0.1.4', 'arm64', '0.1.6')).toBeUndefined();
+    expect(newestMacUpdate(releases, '0.1.4', 'arm64', '0.1.7')?.version).toBe('0.1.6');
+  });
+
+  it('main.ts refuses a failed signature on the bar, and never opens a page for it', () => {
+    const main = readFileSync(join(process.cwd(), 'electron', 'main.ts'), 'utf8');
+    const at = main.indexOf("if (outcome.kind === 'refused') {");
+    expect(at).toBeGreaterThan(-1);
+    const branch = main.slice(at, main.indexOf('return;', at));
+    expect(branch).toMatch(
+      /applyUpdate\(\{ type: 'error', detail: outcome\.detail, refused: true \}\)/,
+    );
+    expect(branch).not.toMatch(/openExternal/);
+    // The Mac check reads the rolled-back version before it picks a release.
+    const check = main.slice(main.indexOf('async function checkMacUpdate'));
+    expect(check.slice(0, check.indexOf('\n}\n'))).toMatch(
+      /newestMacUpdate\([\s\S]*rolledBackVersion\(app\.getPath\('userData'\)\)/,
+    );
+  });
+
   it('main.ts pins the Mac key, hands over the signature, and quits only on a swap', () => {
     const main = readFileSync(join(process.cwd(), 'electron', 'main.ts'), 'utf8');
     const at = main.indexOf('await updateMacInPlace({');
@@ -259,6 +298,15 @@ describe('the launch marker', () => {
     expect(readFileSync(launchMarkerPath(userData), 'utf8')).toBe('0.1.5');
     expect(writeLaunchMarker(userData, '0.1.6')).toBe(true);
     expect(readFileSync(launchMarkerPath(userData), 'utf8')).toBe('0.1.6');
+  });
+
+  it('reads back a rolled-back version, and nothing from a missing or odd file', () => {
+    const userData = mkdtempSync(join(tmpdir(), 'osc-ud-'));
+    expect(rolledBackVersion(userData)).toBeUndefined();
+    writeFileSync(rolledBackPath(userData), '0.1.5');
+    expect(rolledBackVersion(userData)).toBe('0.1.5');
+    writeFileSync(rolledBackPath(userData), '0.1.5; rm -rf /');
+    expect(rolledBackVersion(userData)).toBeUndefined();
   });
 
   it('is written at every Mac start, once the app is ready', () => {
@@ -313,7 +361,7 @@ describe.skipIf(process.platform === 'win32')(
       );
       const done = spawnSync('/bin/sh', [script], { timeout: 20_000, encoding: 'utf8' });
       const opened = existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n') : [];
-      return { done, bundle, work, opened, marker };
+      return { done, bundle, work, opened, marker, userData };
     }
 
     it('restores the old app and opens it when no launch marker appears', () => {
@@ -323,6 +371,8 @@ describe.skipIf(process.platform === 'win32')(
       expect(existsSync(`${r.bundle}.old`)).toBe(false);
       expect(r.opened).toEqual([r.bundle, r.bundle]);
       expect(existsSync(r.work)).toBe(false);
+      // And remembers the version it gave up on, so it is not offered again.
+      expect(rolledBackVersion(r.userData)).toBe('0.1.5');
     });
 
     it('keeps the new app and drops the old one once the new version writes its marker', () => {
@@ -332,6 +382,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(existsSync(`${r.bundle}.old`)).toBe(false);
       expect(r.opened).toEqual([r.bundle]);
       expect(existsSync(r.work)).toBe(false);
+      expect(rolledBackVersion(r.userData)).toBeUndefined();
     });
 
     it("does not take the old version's own marker for the new one", () => {

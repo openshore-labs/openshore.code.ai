@@ -183,6 +183,8 @@ import {
 } from './firstRunOps.js';
 import { guardDriver } from '../drivers/guardedDriver.js';
 import { setEthicsAuth } from '../lib/ethics.js';
+import { setReviewsAuth } from '../lib/reviews.js';
+import { setAbuseReviewAuth } from '../lib/abuseReview.js';
 import {
   HARBOR_READY_MESSAGE,
   advanceMessage,
@@ -240,6 +242,7 @@ import {
   routinesClient,
   CONTROL_REQUIRES_DOCK,
   type CrewControl,
+  type RoutineClockStatus,
   type RoutineInput,
   type RoutineRun,
   type RoutineView,
@@ -1359,6 +1362,8 @@ export interface RoutinesState {
    *  away from home. */
   live: boolean;
   where?: 'desktop' | 'daemon';
+  /** Whose clock fires the slots, from the last live read. */
+  clock?: RoutineClockStatus;
   error?: string;
 }
 
@@ -4369,6 +4374,10 @@ export const useApp = create<AppState>((set, get, api) => {
   // The guardrail record uploads on the store's session, so there is one
   // refresh in flight on this device, never a second with a spent token.
   setEthicsAuth(() => freshAuth());
+  // Reviews and the abuse review queue ride the same door, so a refresh they
+  // trigger lands in the store's memory too.
+  setReviewsAuth(() => freshAuth());
+  setAbuseReviewAuth(() => freshAuth());
 
   // Accounts (lib/accountGate.ts): the room the sign-in sheet was opened for,
   // so signing in carries on to it.
@@ -8362,6 +8371,7 @@ export const useApp = create<AppState>((set, get, api) => {
             available: true,
             live: true,
             where: client.where,
+            clock: snap.clock,
             error: undefined,
           },
         });

@@ -61,16 +61,19 @@ export interface MacUpdate {
 }
 
 /** The newest published release, newer than `current`, that carries a zip
- *  for this Mac; undefined when there is nothing to update to. */
+ *  for this Mac; undefined when there is nothing to update to. `skip` is a
+ *  version the launch watchdog rolled back (macUpdate.ts), never offered. */
 export function newestMacUpdate(
   releases: ReleaseInfo[],
   current: string,
   arch: string,
+  skip?: string,
 ): MacUpdate | undefined {
   let best: MacUpdate | undefined;
   for (const r of releases) {
     if (r.draft || r.prerelease) continue;
     const version = r.tag_name.replace(/^v/, '');
+    if (version === skip) continue;
     if (!versionIsNewer(version, current)) continue;
     if (best && !versionIsNewer(version, best.version)) continue;
     const assets = r.assets ?? [];

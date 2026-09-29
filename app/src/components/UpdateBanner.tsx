@@ -30,6 +30,16 @@ export function updateBarCopy(u: PendingUpdate): {
     case 'ready':
       return { text: `OpenShore ${v} is ready.`, action: 'Restart to update', busy: false };
     case 'failed':
+      // A refused signature is its own line (CX cleanup 1), never the
+      // network's: it failed a safety check, nothing was installed, and this
+      // version still works.
+      if (u.refused) {
+        return {
+          text: `The download of ${v} failed its safety check, so it was not installed. This version keeps working.`,
+          action: 'Try again',
+          busy: false,
+        };
+      }
       return { text: `The update to ${v} did not finish.`, action: 'Try again', busy: false };
     default:
       return {

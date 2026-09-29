@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { DaemonSessionInfo } from 'os-code/protocol';
 import { useApp } from '../state/store.js';
-import { sourceLabel, type Conversation } from '../state/types.js';
+import { computerName, sourceLabel, type Conversation } from '../state/types.js';
 import { BackBar } from '../components/BackBar.js';
 import { SwipeRow } from '../components/SwipeRow.js';
 import { Sheet } from '../components/Sheet.js';
@@ -44,13 +44,13 @@ export function sourceShort(conv: Conversation): string {
     case 'cloud':
       return sourceLabel(s).split(' · ')[0] ?? 'Cloud';
     case 'desktop':
-      return s.repoName ?? 'Your computer';
+      return s.repoName ?? computerName();
     case 'device':
       return sourceLabel(s).split(' · ')[0] ?? 'On device';
     case 'stack':
       return 'Stack';
     case 'desktop-chat':
-      return 'My computer';
+      return sourceLabel(s);
     case 'mock':
       return 'Demo';
   }

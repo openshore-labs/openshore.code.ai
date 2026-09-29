@@ -28,6 +28,9 @@ export const SIGN_OUT_EVERYWHERE_FAILED =
 /** After it worked: the confirm's own promise, said back once. */
 export const SIGNED_OUT_EVERYWHERE =
   'Signed out everywhere. Your other devices sign out within an hour.';
+/** While the server works on it (CX cleanup 7): the link's place on the
+ *  card, as a status line. */
+export const SIGNING_OUT_EVERYWHERE = 'Signing out everywhere...';
 
 /** How long a sign-out waits on the server before it finishes on this device
  *  anyway. The server call only ends this device's sign-in there, so a late

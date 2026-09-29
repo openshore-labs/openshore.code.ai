@@ -25,6 +25,7 @@ import {
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, resolve, sep } from 'node:path';
 import { oscHome } from '../config/load.js';
+import { scrubbedEnv } from '../core/exec/childEnv.js';
 
 const run = promisify(execFile);
 
@@ -59,11 +60,14 @@ const AUTHOR_ENV = {
   GIT_COMMITTER_EMAIL: 'bot@os-code.local',
 };
 
-/** Run a git subcommand in cwd, returning trimmed stdout. Throws on non-zero. */
+/** Run a git subcommand in cwd, returning trimmed stdout. Throws on non-zero.
+ *  The repository's hooks run inside git (a push runs pre-push), so git gets
+ *  this process's environment scrubbed of keys and tokens; credentials come
+ *  from the person's own helper or ssh agent, which the scrub keeps. */
 async function git(cwd: string, args: string[], env?: Record<string, string>): Promise<string> {
   const { stdout } = await run('git', args, {
     cwd,
-    env: env ? { ...process.env, ...env } : process.env,
+    env: { ...scrubbedEnv(), ...env },
     maxBuffer: 64 * 1024 * 1024,
   });
   return stdout.trim();

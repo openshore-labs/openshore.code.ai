@@ -158,6 +158,14 @@ export function platformAndShell(info: ShellInfo = shellInfo()): string {
   return `${platformWord(info.platform)}, ${shell}`;
 }
 
+/** How one command string is handed to the shell, for the runShell tool's
+ *  schema: `bash -c` on Linux and macOS and under Git Bash, `PowerShell
+ *  -Command` where Windows has no bash, so a model writes for the shell that
+ *  will really run its command. */
+export function shellCommandForm(info: ShellInfo = shellInfo()): string {
+  return info.shell === 'powershell' ? 'PowerShell -Command' : 'bash -c';
+}
+
 /**
  * Stop a command and everything it started. POSIX signals the process group
  * (the runner spawns detached, so the group id is the child's pid). Windows

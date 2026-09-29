@@ -12,7 +12,6 @@ import {
   upsert,
   type Session,
 } from './supabase.js';
-import { freshSession } from './authSession.js';
 import type { ReviewRow, ReviewSummary } from './reviewsMath.js';
 
 const REVIEWS = 'model_reviews';
@@ -32,10 +31,27 @@ export function reviewsAvailable(): boolean {
   return isConfigured();
 }
 
+/** The store's own session with a live access token (setReviewsAuth), the
+ *  door every server call on this device goes through: its one refresh in
+ *  flight, and the refreshed session goes back into the store's memory. A
+ *  second refresher here could spend a refresh token the store already
+ *  spent. The same pattern the guardrail record uses (lib/ethics.ts). */
+type ReviewsAuth = () => Promise<Session | undefined>;
+let reviewsAuth: ReviewsAuth | undefined;
+
+/** Wire the store's session in (state/store.ts). Until it is, reads go out
+ *  without a token and writes ask the person to sign in. */
+export function setReviewsAuth(auth: ReviewsAuth): void {
+  reviewsAuth = auth;
+}
+
 async function tokenFor(session?: Session): Promise<string | undefined> {
-  if (!session) return undefined;
+  if (!session || !reviewsAuth) return undefined;
   try {
-    return (await freshSession(session)).accessToken;
+    const live = await reviewsAuth();
+    // The person the caller acts for: a sign-in that changed hands since the
+    // caller read it gives no token rather than another person's.
+    return live && live.user.id === session.user.id ? live.accessToken : undefined;
   } catch {
     return undefined;
   }

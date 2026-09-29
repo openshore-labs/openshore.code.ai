@@ -44,6 +44,8 @@ export const SHELL_WRAPPERS: ReadonlySet<string> = new Set([
   'time',
   'command',
   'nice',
+  'timeout',
+  'watch',
   'doas',
   'su',
   // Windows: PowerShell's own evaluators and the shells themselves.
@@ -183,9 +185,302 @@ const PLAIN_FLAG_PROGRAMS: ReadonlySet<string> = new Set([
   'echo',
 ]);
 
-/** Does this simple command hand its program code on the command line? */
+/**
+ * The words of one simple command as the shell hands them to the program:
+ * quotes removed, a backslash escaping the next character. Undefined when a
+ * quote is left open, which the callers read as "cannot tell", and so as code.
+ */
+export function shellWords(text: string): string[] | undefined {
+  const out: string[] = [];
+  let word = '';
+  let has = false;
+  let quote: "'" | '"' | undefined;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!;
+    if (quote === "'") {
+      if (c === "'") quote = undefined;
+      else word += c;
+      continue;
+    }
+    if (quote === '"') {
+      if (c === '"') quote = undefined;
+      else if (c === '\\' && i + 1 < text.length && '"\\$`'.includes(text[i + 1]!))
+        word += text[++i];
+      else word += c;
+      continue;
+    }
+    if (c === "'" || c === '"') {
+      quote = c;
+      has = true;
+    } else if (c === '\\') {
+      if (i + 1 < text.length) word += text[++i];
+      has = true;
+    } else if (/\s/.test(c)) {
+      if (has || word) out.push(word);
+      word = '';
+      has = false;
+    } else {
+      word += c;
+      has = true;
+    }
+  }
+  if (quote) return undefined;
+  if (has || word) out.push(word);
+  return out;
+}
+
+/** find's actions that run a program on each file it finds. */
+const FIND_RUNS: ReadonlySet<string> = new Set(['-exec', '-execdir', '-ok', '-okdir']);
+
+/**
+ * Whether one sed script runs a command: the `e` command, or the `e` flag on
+ * `s`, which runs the pattern space. Read command by command in GNU sed's
+ * grammar, and failing closed: anything it cannot read counts as code.
+ */
+export function sedScriptRunsCode(script: string): boolean {
+  let i = 0;
+  const n = script.length;
+  const at = () => script[i] ?? '';
+  const skipSpace = () => {
+    while (i < n && /[ \t]/.test(at())) i++;
+  };
+  const toLineEnd = () => {
+    while (i < n && at() !== '\n') {
+      if (at() === '\\') i++;
+      i++;
+    }
+  };
+  const toLabelEnd = () => {
+    while (i < n && at() !== '\n' && at() !== ';') i++;
+  };
+  /** Past one delimited part (a regex or a replacement); false when it never
+   *  closes. */
+  const delimited = (delim: string): boolean => {
+    while (i < n) {
+      const c = at();
+      if (c === '\\') {
+        i += 2;
+        continue;
+      }
+      i++;
+      if (c === delim) return true;
+    }
+    return false;
+  };
+  const address = (): boolean => {
+    const c = at();
+    if (/\d/.test(c)) {
+      while (/[\d~]/.test(at())) i++;
+      return true;
+    }
+    if (c === '$') {
+      i++;
+      return true;
+    }
+    if (c === '/' || c === '\\') {
+      const delim = c === '/' ? '/' : script[i + 1];
+      if (!delim || delim === '\n' || delim === '\\') return false;
+      i += c === '/' ? 1 : 2;
+      if (!delimited(delim)) return false;
+      while (at() === 'I' || at() === 'M') i++;
+      return true;
+    }
+    return true;
+  };
+  while (i < n) {
+    const c = at();
+    if (/[\s;]/.test(c)) {
+      i++;
+      continue;
+    }
+    if (c === '#') {
+      toLineEnd();
+      continue;
+    }
+    if (!address()) return true;
+    if (at() === ',') {
+      i++;
+      if (at() === '+' || at() === '~') i++;
+      if (!address()) return true;
+    }
+    skipSpace();
+    if (at() === '!') i++;
+    skipSpace();
+    const cmd = at();
+    i++;
+    switch (cmd) {
+      case 'e':
+        return true;
+      case 's': {
+        const delim = at();
+        if (!delim || delim === '\n' || delim === '\\') return true;
+        i++;
+        if (!delimited(delim) || !delimited(delim)) return true;
+        while (/[gpiImMe0-9w]/.test(at())) {
+          if (at() === 'e') return true;
+          if (at() === 'w') {
+            toLineEnd();
+            break;
+          }
+          i++;
+        }
+        break;
+      }
+      case 'y': {
+        const delim = at();
+        if (!delim || delim === '\n' || delim === '\\') return true;
+        i++;
+        if (!delimited(delim) || !delimited(delim)) return true;
+        break;
+      }
+      case 'a':
+      case 'i':
+      case 'c':
+      case 'r':
+      case 'R':
+      case 'w':
+      case 'W':
+        toLineEnd();
+        break;
+      case ':':
+      case 'b':
+      case 't':
+      case 'T':
+      case 'v':
+        toLabelEnd();
+        break;
+      case 'q':
+      case 'Q':
+      case 'l':
+      case 'L':
+        skipSpace();
+        while (/\d/.test(at())) i++;
+        break;
+      case '{':
+      case '}':
+      case '=':
+      case 'd':
+      case 'D':
+      case 'F':
+      case 'g':
+      case 'G':
+      case 'h':
+      case 'H':
+      case 'n':
+      case 'N':
+      case 'p':
+      case 'P':
+      case 'x':
+      case 'z':
+        break;
+      default:
+        return true;
+    }
+  }
+  return false;
+}
+
+/** sed's scripts (from `-e`, `--expression`, or its first operand) and
+ *  whether any runs a command; a script read from a file cannot be seen, so
+ *  it counts as code. */
+function sedRunsCode(args: string[]): boolean {
+  const scripts: string[] = [];
+  const operands: string[] = [];
+  for (let k = 0; k < args.length; k++) {
+    const a = args[k]!;
+    if (a === '--') {
+      operands.push(...args.slice(k + 1));
+      break;
+    }
+    if (a.startsWith('--')) {
+      if (a === '--file' || a.startsWith('--file=')) return true;
+      if (a.startsWith('--expression=')) scripts.push(a.slice('--expression='.length));
+      else if (a === '--expression') scripts.push(args[++k] ?? '');
+      else if (a === '--line-length') k++;
+      continue;
+    }
+    if (a.startsWith('-') && a.length > 1) {
+      for (let j = 1; j < a.length; j++) {
+        const flag = a[j]!;
+        if (flag === 'f') return true;
+        if (flag === 'e' || flag === 'l') {
+          const value = a.slice(j + 1) || args[++k] || '';
+          if (flag === 'e') scripts.push(value);
+          break;
+        }
+        // -i takes the rest of its cluster as the backup suffix.
+        if (flag === 'i') break;
+      }
+      continue;
+    }
+    operands.push(a);
+  }
+  if (!scripts.length && operands.length) scripts.push(operands[0]!);
+  return scripts.some(sedScriptRunsCode);
+}
+
+/** tar's options that name a program for it to run: a checkpoint action, a
+ *  program to pipe each file to, a compressor, a volume script, a remote
+ *  shell. Old-style key letters (`tar xIf`) and short clusters count too. */
+function tarRunsCode(args: string[]): boolean {
+  return args.some(
+    (a, k) =>
+      /^--(?:checkpoint-action|to-command|use-compress-program|info-script|new-volume-script|rsh-command|rmt-command)(?:=|$)/.test(
+        a,
+      ) ||
+      /^-[A-Za-z]*[IF]/.test(a) ||
+      (k === 0 && /^[A-Za-z]+$/.test(a) && /[IF]/.test(a)),
+  );
+}
+
+/** awk's program runs a command through `system()`, a pipe, or an extension
+ *  it loads; a program read from a file cannot be seen. The program is the
+ *  first operand after the options (`-v` and `-F` take a value). */
+function awkRunsCode(args: string[]): boolean {
+  for (let k = 0; k < args.length; k++) {
+    const a = args[k]!;
+    if (a === '--') return awkProgramRunsCode(args[k + 1]);
+    if (/^(?:-f|--file|-E|--exec|-i|--include|-l|--load)(?:=|$)|^-[fEil]./.test(a)) return true;
+    if (a === '-v' || a === '-F' || a === '--assign' || a === '--field-separator') {
+      k++;
+      continue;
+    }
+    if (a.startsWith('-') && a.length > 1) continue;
+    return awkProgramRunsCode(a);
+  }
+  return false;
+}
+
+function awkProgramRunsCode(program: string | undefined): boolean {
+  return Boolean(program && /\bsystem\s*\(|\||@load|@include/.test(program));
+}
+
+/** Programs whose own grammar can run another program, read per program. */
+const PROGRAM_RUNS_CODE: Readonly<Record<string, (args: string[]) => boolean>> = {
+  find: (args) => args.some((a) => FIND_RUNS.has(a)),
+  gfind: (args) => args.some((a) => FIND_RUNS.has(a)),
+  sed: sedRunsCode,
+  gsed: sedRunsCode,
+  tar: tarRunsCode,
+  gtar: tarRunsCode,
+  bsdtar: tarRunsCode,
+  awk: awkRunsCode,
+  gawk: awkRunsCode,
+  mawk: awkRunsCode,
+  nawk: awkRunsCode,
+};
+
+/** Does this simple command hand its program code on the command line? A
+ *  code flag (`-e`, `-c`, `--eval`), or a program whose own grammar runs
+ *  another: `find -exec`, sed's `e`, tar's `--to-command`, awk's `system()`. */
 function carriesCode(words: string[]): boolean {
-  if (PLAIN_FLAG_PROGRAMS.has(programOf(words[0] ?? ''))) return false;
+  const program = programOf(words[0] ?? '');
+  const special = PROGRAM_RUNS_CODE[program];
+  if (special) {
+    const argv = shellWords(words.slice(1).join(' '));
+    if (!argv || special(argv)) return true;
+  }
+  if (PLAIN_FLAG_PROGRAMS.has(program)) return false;
   return words.slice(1).some((w) => CODE_FLAGS.has(w));
 }
 

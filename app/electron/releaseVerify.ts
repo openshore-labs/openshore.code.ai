@@ -76,6 +76,19 @@ export type RefusalReason =
 export type AssetVerdict =
   { ok: true; sha256: string } | { ok: false; reason: RefusalReason; detail: string };
 
+/**
+ * A signature was there and the download failed it: the file changed after it
+ * was signed, another key signed it, or it is a signed build of another
+ * version. The download itself is suspect, so nothing opens it, the app or
+ * the person by hand (CX cleanup 1, reconciled): on a Mac the release page
+ * stays shut, since its download button serves the same file. A missing
+ * `.sig`, an empty or broken pinned key, or a file that cannot be read says
+ * nothing about the download, and keeps the older paths.
+ */
+export function signatureFailed(reason: RefusalReason): boolean {
+  return reason === 'bad-signature' || reason === 'wrong-version';
+}
+
 export interface AssetToVerify {
   /** The downloaded file on disk. */
   file: string;
@@ -179,7 +192,9 @@ export async function installIfVerified(opts: {
   signatureUrl: (name: string, version: string) => string;
   fetchSignature?: (url: string) => Promise<string | undefined>;
   install: () => void;
-  refuse: (detail: string) => void;
+  /** `failed` is true when a signature was there and the download failed it
+   *  (`signatureFailed`), so the bar can say so. */
+  refuse: (detail: string, failed: boolean) => void;
   log?: (line: string) => void;
 }): Promise<'installed' | 'installed-unchecked' | 'refused'> {
   const log = opts.log ?? ((line: string) => console.log(line));
@@ -193,7 +208,7 @@ export async function installIfVerified(opts: {
   const downloaded = opts.downloaded;
   if (!downloaded?.file) {
     log('[update] The downloaded update could not be found, so it was not installed.');
-    opts.refuse('The downloaded update could not be found, so it was not installed.');
+    opts.refuse('The downloaded update could not be found, so it was not installed.', false);
     return 'refused';
   }
   const name = basename(downloaded.file);
@@ -209,7 +224,7 @@ export async function installIfVerified(opts: {
   });
   if (!verdict.ok) {
     log(`[update] Refused ${name}: ${verdict.reason}. ${verdict.detail}`);
-    opts.refuse(verdict.detail);
+    opts.refuse(verdict.detail, signatureFailed(verdict.reason));
     return 'refused';
   }
   log(`[update] ${name} matches its signature (sha256 ${verdict.sha256}); installing.`);

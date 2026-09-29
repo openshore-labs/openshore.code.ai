@@ -16,6 +16,7 @@ import {
   nextSlotAfter,
   scheduleLabel,
   scheduleTimeLabel,
+  type RoutineClockStatus,
   type RoutineInput,
   type RoutineRun,
   type RoutineView,
@@ -32,11 +33,32 @@ export function runNeedsLocalModel(
   return run?.state === 'failed' && run.summary === ROUTINE_NEEDS_LOCAL_MODEL;
 }
 
-export type { RoutineInput, RoutineRun, RoutineView } from 'os-code/protocol';
+export type { RoutineClockStatus, RoutineInput, RoutineRun, RoutineView } from 'os-code/protocol';
 
 export interface RoutinesSnapshot {
   routines: RoutineView[];
   runs: RoutineRun[];
+  /** Whose clock fires the slots (H1): GET /routines and the desktop's
+   *  routinesList both carry it; absent from an older engine. */
+  clock?: RoutineClockStatus;
+}
+
+/** The Crew room's clock line (CX cleanup 6). A passive scheduler takes the
+ *  clock over once the other process closes, so the line says what happens
+ *  then, with no process number and no time. */
+export const CLOCK_ELSEWHERE_LINE =
+  'Another OpenShore on this computer, such as one in a terminal, is keeping the routine schedule. If you close it, routines run here.';
+
+/** Whether the Crew room shows that line: on the desktop only, reading this
+ *  app's own engine live, and only while this app is not keeping the
+ *  schedule. A phone or a desktop pointed at a hub reads another computer's
+ *  clock, which "this computer" would misname. */
+export function clockKeptElsewhere(state: {
+  where?: 'desktop' | 'daemon';
+  live: boolean;
+  clock?: RoutineClockStatus;
+}): boolean {
+  return state.where === 'desktop' && state.live && state.clock?.live === false;
 }
 
 // The one distinction the founder drew (2026-09-05): a routine is a continuous

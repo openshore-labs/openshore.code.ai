@@ -105,7 +105,15 @@ import { isIP } from 'node:net';
 import electronUpdaterPkg from 'electron-updater';
 const { autoUpdater } = electronUpdaterPkg;
 import { EngineHost } from './engineHost.js';
-import { appPermissionAllowed, readOAuthCallback, sessionRootRefusal } from './mainGuards.js';
+import {
+  LAUNCH_AT_LOGIN_CONFIRM,
+  type ConfirmWords,
+  appPermissionAllowed,
+  cloneConfirm,
+  readOAuthCallback,
+  sessionRootRefusal,
+  trustConfirm,
+} from './mainGuards.js';
 import {
   IDLE_UPDATER,
   mayCheckForUpdate,
@@ -116,7 +124,7 @@ import {
 } from './updateState.js';
 import { ChatStreams } from './chatStream.js';
 import { bundleOf, newestMacUpdate, type ReleaseAsset, type ReleaseInfo } from './updateVersion.js';
-import { updateMacInPlace, writeLaunchMarker } from './macUpdate.js';
+import { rolledBackVersion, updateMacInPlace, writeLaunchMarker } from './macUpdate.js';
 import { installIfVerified, type DownloadedUpdate } from './releaseVerify.js';
 import { DESKTOP_RELEASE_PUBLIC_KEY, MAC_RELEASE_PUBLIC_KEY } from './releaseKeys.js';
 import { EmbeddedWeb, type EmbeddedBounds } from './embeddedWeb.js';
@@ -535,11 +543,7 @@ const host = new EngineHost(
 // is asked again here in a native dialog the page cannot draw, click, or
 // dismiss. Cancel is the default button, so a keystroke meant for the chat
 // can never confirm one. The card in the app stays as it is.
-async function confirmInMain(opts: {
-  message: string;
-  detail: string;
-  confirm: string;
-}): Promise<boolean> {
+async function confirmInMain(opts: ConfirmWords): Promise<boolean> {
   const options = {
     type: 'question' as const,
     buttons: [opts.confirm, 'Cancel'],
@@ -985,11 +989,7 @@ guarded('osc:trustFolder', async (sessionId: unknown) => {
   const id = str(sessionId, 'sessionId');
   const folder = host.sessionFolder(id);
   if (!folder) return { error: 'That session is not open.' };
-  const ok = await confirmInMain({
-    message: 'Trust this folder?',
-    detail: `OpenShore will follow the project's own settings in it, including the command it runs to check work.\n\n${folder}`,
-    confirm: 'Trust folder',
-  });
+  const ok = await confirmInMain(trustConfirm(host.trustWaiting(folder), folder));
   if (!ok) return { error: 'Not trusted. Nothing changed.' };
   return host.trustFolder(id);
 });
@@ -1120,11 +1120,7 @@ guarded('osc:pickFolder', async () => {
 guarded('osc:cloneRepo', async (url: unknown, token: unknown) => {
   const address = str(url, 'url');
   const secret = optStr(token, 'token');
-  const ok = await confirmInMain({
-    message: 'Copy this repository to your computer?',
-    detail: `OpenShore downloads it into its projects folder, where the coding agent can work on it.\n\n${cloneUrlForDialog(address)}`,
-    confirm: 'Copy repository',
-  });
+  const ok = await confirmInMain(cloneConfirm(cloneUrlForDialog(address)));
   if (!ok) return { error: 'Not copied. Nothing changed.' };
   return host.cloneRepo(address, secret);
 });
@@ -1187,12 +1183,7 @@ guarded('osc:launchAtLogin', () => launchAtLogin());
 guarded('osc:setLaunchAtLogin', async (on: unknown) => {
   const want = bool(on);
   if (want) {
-    const ok = await confirmInMain({
-      message: 'Start OpenShore with your computer?',
-      detail:
-        'It starts in the background each time you sign in to this computer, so your phone can reach it.',
-      confirm: 'Start with computer',
-    });
+    const ok = await confirmInMain(LAUNCH_AT_LOGIN_CONFIRM);
     if (!ok) return { on: launchAtLogin().on, detail: 'Not changed.' };
   }
   return setLaunchAtLogin(want);
@@ -1650,7 +1641,7 @@ async function installDownloadedUpdate(): Promise<void> {
     signatureUrl: (name, version) =>
       `https://github.com/${UPDATE_REPO}/releases/download/v${version}/${encodeURIComponent(name)}.sig`,
     install: () => autoUpdater.quitAndInstall(),
-    refuse: (detail) => applyUpdate({ type: 'error', detail }),
+    refuse: (detail, failed) => applyUpdate({ type: 'error', detail, refused: failed }),
   });
 }
 
@@ -1676,7 +1667,14 @@ async function checkMacUpdate(): Promise<void> {
     });
     if (!res.ok) return;
     const releases = (await res.json()) as ReleaseInfo[];
-    const next = newestMacUpdate(releases, app.getVersion(), process.arch);
+    // A version the launch watchdog rolled back never started here: offering
+    // it again would only repeat the two minutes and the rollback.
+    const next = newestMacUpdate(
+      releases,
+      app.getVersion(),
+      process.arch,
+      rolledBackVersion(app.getPath('userData')),
+    );
     if (!next) {
       // Nothing newer any more (the release was pulled): an offered or failed
       // update leaves the bar.
@@ -1687,10 +1685,9 @@ async function checkMacUpdate(): Promise<void> {
     }
     macAsset = next.asset;
     macSignature = next.signature;
-    const pending = updater.pending;
-    if (pending?.version !== next.version || pending.phase === 'failed') {
-      sendUpdateStatus({ version: next.version, phase: 'available' });
-    }
+    // The machine offers it: a failed update is offered again, a refused one
+    // keeps its line, and one already offered is not news.
+    applyUpdate({ type: 'available', version: next.version });
   } catch (err) {
     console.error('[update] macOS version check failed', err);
   }
@@ -1714,6 +1711,13 @@ async function installOnMac(): Promise<void> {
     });
     if (outcome.kind === 'swapping') {
       app.quit();
+      return;
+    }
+    if (outcome.kind === 'refused') {
+      // A signature that is there and fails: nothing opens (reconciliation
+      // 2), and the bar says the download failed its safety check.
+      console.log(`[update] macOS: refused v${version} (${outcome.reason}). ${outcome.detail}`);
+      applyUpdate({ type: 'error', detail: outcome.detail, refused: true });
       return;
     }
     console.log(

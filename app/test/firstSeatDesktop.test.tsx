@@ -150,6 +150,73 @@ describe('the First Seat with a waiting message (CX ruling 2)', () => {
     expect(dom.buttons()).toContain('Try DeepBlue again');
   });
 
+  it('"Edit" takes the saved message back, the line folds away, and the download goes on (CX cleanup 8)', async () => {
+    const { FIRST_SEAT_COPY } = await import('../src/state/firstRunOps.js');
+    const { FirstSeat } = await import('../src/components/FirstSeat.js');
+    Object.assign(app.state, {
+      settings: { deviceModels: {}, heldFirstMessage: held },
+      harborMasterDownload: { percent: 40, label: '40%', indeterminate: false },
+    });
+    let edits = 0;
+    const card = () => <FirstSeat fallback={<p>greeting</p>} onEditHeld={() => edits++} />;
+    await dom.render(card());
+    await dom.settle();
+    const line = dom.container.querySelector('.first-seat-held');
+    expect(line?.textContent).toBe(`${FIRST_SEAT_COPY.held} Edit`);
+    const edit = dom.container.querySelector(
+      'button[aria-label="Edit your saved message"]',
+    ) as HTMLButtonElement;
+    expect(edit.textContent).toBe('Edit');
+    await dom.click('Edit');
+    expect(edits).toBe(1);
+
+    // The store hands the words to the composer and clears the saved message:
+    // the line folds shut (it never snaps), out of reach of Tab, and the
+    // download keeps going.
+    Object.assign(app.state, { settings: { deviceModels: {} } });
+    await dom.render(card());
+    await dom.settle();
+    const fold = dom.container.querySelector('.first-seat-held-fold');
+    expect(fold?.className).not.toMatch(/\bopen\b/);
+    expect(fold?.getAttribute('aria-hidden')).toBe('true');
+    expect(edit.getAttribute('tabindex')).toBe('-1');
+    expect(dom.buttons()).toContain('40% of DeepBlue');
+    // A tap on the folding link does nothing.
+    await dom.click('Edit');
+    expect(edits).toBe(1);
+
+    // Send saves it again: the line opens once more.
+    Object.assign(app.state, { settings: { deviceModels: {}, heldFirstMessage: held } });
+    await dom.render(card());
+    expect(dom.container.querySelector('.first-seat-held-fold')?.className).toMatch(/\bopen\b/);
+  });
+
+  it('after a failed download, the saved line keeps its Edit link', async () => {
+    const { FIRST_SEAT_COPY } = await import('../src/state/firstRunOps.js');
+    const { FirstSeat } = await import('../src/components/FirstSeat.js');
+    Object.assign(app.state, {
+      settings: { deviceModels: {}, heldFirstMessage: held },
+      harborMasterDownload: { percent: 0, label: 'Could not get DeepBlue.', failed: true },
+    });
+    await dom.render(<FirstSeat fallback={<p>greeting</p>} onEditHeld={() => {}} />);
+    await dom.settle();
+    expect(dom.container.querySelector('.first-seat-held')?.textContent).toBe(
+      `${FIRST_SEAT_COPY.failed} Edit`,
+    );
+  });
+
+  it('the chat screen hands the words back through its restore, with no toast', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const chat = readFileSync(join(process.cwd(), 'src', 'screens', 'ChatScreen.tsx'), 'utf8');
+    const at = chat.indexOf('onEditHeld={() => {');
+    expect(at).toBeGreaterThan(-1);
+    const body = chat.slice(at, chat.indexOf('}}', at));
+    expect(body).toMatch(/const held = takeHeldFirstMessage\(\);/);
+    expect(body).toMatch(/setRestore\(\(r\) => restoreFromHeld\(held, r\)\)/);
+    expect(body).not.toMatch(/showToast/);
+  });
+
   it('with no message waiting, the card says nothing about one', async () => {
     const { FIRST_SEAT_COPY } = await import('../src/state/firstRunOps.js');
     await seat();

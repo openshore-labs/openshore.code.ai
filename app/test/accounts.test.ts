@@ -629,6 +629,22 @@ describe('the store', () => {
     expect(notices.synced.at(-1)).toMatchObject({ noticeDownloads: false });
   });
 
+  it('a notice switch flipped in Settings reaches the phone once, through saveSettings', async () => {
+    const before = notices.synced.length;
+    await useApp.getState().saveSettings({ noticeDownloads: false });
+    expect(notices.synced.length).toBe(before + 1);
+    expect(notices.synced.at(-1)).toMatchObject({ noticeDownloads: false });
+    // The Settings row leaves it to saveSettings (the cleanup package): a
+    // second call there synced the same switch twice.
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const screen = readFileSync(
+      join(process.cwd(), 'src', 'screens', 'SettingsScreen.tsx'),
+      'utf8',
+    );
+    expect(screen).not.toMatch(/syncNoticePrefs/);
+  });
+
   it('keeps its own value over a time from the account far ahead of this clock', async () => {
     const ahead = new Date(Date.now() + 3_600_000).toISOString();
     const mine = minutesAgo(1);

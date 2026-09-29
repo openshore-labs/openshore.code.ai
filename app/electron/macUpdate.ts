@@ -12,17 +12,25 @@
 //
 // It only runs where it can finish: a bundle it can write over (not a mounted
 // disk image, not a folder the person cannot write to), a key pinned in this
-// build, and a release that carries a good signature for the file. Anywhere
-// else, and on any refusal, it opens the release page instead, so the person
-// always has a way forward and macOS checks what they download themselves.
+// build, and a release that carries a signature for the file. Anywhere else
+// it opens the release page instead, so the person always has a way forward
+// and macOS checks what they download themselves. The one exception is a
+// signature that is there and fails (reconciliation 2): the page's download
+// button serves the same file, so nothing opens, and the bar says the
+// download failed its safety check.
 import { spawn } from 'node:child_process';
-import { createWriteStream, mkdirSync, writeFileSync } from 'node:fs';
+import { createWriteStream, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { access, chmod, constants, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { fetchSignatureText, verifyAsset, type RefusalReason } from './releaseVerify.js';
+import {
+  fetchSignatureText,
+  signatureFailed,
+  verifyAsset,
+  type RefusalReason,
+} from './releaseVerify.js';
 import type { ReleaseAsset } from './updateVersion.js';
 
 function runTool(cmd: string, args: string[]): Promise<void> {
@@ -74,6 +82,28 @@ export function writeLaunchMarker(userData: string, version: string): boolean {
   }
 }
 
+// ---- a version the watchdog rolled back ---------------------------------------
+// When the swap script puts the old app back (the new version never wrote its
+// marker), it leaves the version it gave up on beside the marker. The old app
+// then skips that version on every check, so it is not offered again; a newer
+// release is offered as usual.
+
+export const ROLLED_BACK = 'rolled-back-version';
+
+export function rolledBackPath(userData: string): string {
+  return join(userData, ROLLED_BACK);
+}
+
+/** The version the watchdog last rolled back, or undefined. Never throws. */
+export function rolledBackVersion(userData: string): string | undefined {
+  try {
+    const v = readFileSync(rolledBackPath(userData), 'utf8').trim();
+    return /^[0-9A-Za-z.+-]{1,64}$/.test(v) ? v : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** One shell word, whatever the path holds. */
 function shQuote(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
@@ -84,7 +114,9 @@ function shQuote(s: string): string {
  * aside as `<bundle>.old`, moves the new one in (putting the old one back if
  * that fails), and opens it. The old bundle stays until the marker says the
  * new version started; after `waitSeconds` with no marker, it stops a hung
- * new version, restores the old bundle, and opens that instead.
+ * new version, restores the old bundle, records the version in
+ * `rolledBackPath` (beside the marker) so it is not offered again, and opens
+ * the old bundle instead.
  */
 export function swapScript(o: {
   pid: number;
@@ -105,6 +137,7 @@ export function swapScript(o: {
     `NEW=${shQuote(o.staged)}`,
     `WORK=${shQuote(o.work)}`,
     `MARKER=${shQuote(o.marker)}`,
+    `ROLLED=${shQuote(join(dirname(o.marker), ROLLED_BACK))}`,
     `VERSION=${shQuote(o.version)}`,
     `OPEN=${shQuote(o.open ?? '/usr/bin/open')}`,
     `WAIT=${wait}`,
@@ -131,6 +164,7 @@ export function swapScript(o: {
     '/usr/bin/pkill -f "$OLD/Contents/MacOS/" 2>/dev/null',
     'rm -rf "$OLD"',
     'mv "$OLD.old" "$OLD"',
+    'printf \'%s\' "$VERSION" > "$ROLLED" 2>/dev/null',
     '"$OPEN" "$OLD"',
     'rm -rf "$WORK"',
     '',
@@ -161,6 +195,9 @@ const defaultDeps = (): Omit<MacUpdateDeps, 'shell'> => ({
 export type MacUpdateOutcome =
   /** The swap script is running; the caller quits the app. */
   | { kind: 'swapping' }
+  /** The download's signature was there and it failed (`signatureFailed`).
+   *  Nothing opens, not even the release page, which serves the same file. */
+  | { kind: 'refused'; reason: RefusalReason; detail: string }
   /** The release page opened instead. `downloaded` is true when the refusal
    *  came after the download (a signature that did not match). */
   | {
@@ -173,8 +210,9 @@ export type MacUpdateOutcome =
 /**
  * Download, verify, unpack, and stage the new bundle, then start the swap
  * script. Resolves `swapping` once the script is running (the caller quits
- * the app, and the script opens the new version), or `release-page` after
- * opening the release page for any refusal. Nothing is unpacked, mounted, or
+ * the app, and the script opens the new version), `refused` when the
+ * download failed its signature, or `release-page` after opening the release
+ * page for any other refusal. Nothing is unpacked, mounted, or
  * cleared of quarantine before verifyAsset has passed. `onProgress` gets
  * 0..100. A tool that fails after the check throws; the caller opens the
  * release page then too.
@@ -255,6 +293,9 @@ export async function updateMacInPlace(opts: {
   });
   if (!verdict.ok) {
     await rm(work, { recursive: true, force: true });
+    if (signatureFailed(verdict.reason)) {
+      return { kind: 'refused', reason: verdict.reason, detail: verdict.detail };
+    }
     return toReleasePage(verdict.reason, verdict.detail, true);
   }
 

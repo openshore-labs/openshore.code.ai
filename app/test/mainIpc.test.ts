@@ -171,8 +171,19 @@ describe('main-process IPC guard (UI-6)', () => {
 
   it('every irreversible or exec IPC asks main a second time, or needs the window in focus', () => {
     for (const ch of ['osc:trustFolder', 'osc:cloneRepo', 'osc:setLaunchAtLogin']) {
-      expect(handler(ch), ch).toMatch(/await confirmInMain\(\{/);
+      expect(handler(ch), ch).toMatch(/await confirmInMain\(/);
     }
+    // CX cleanup 2: each dialog's words come from mainGuards.ts, and the trust
+    // dialog lists what trusting turns on, read by the engine in main.
+    expect(handler('osc:trustFolder')).toMatch(
+      /await confirmInMain\(trustConfirm\(host\.trustWaiting\(folder\), folder\)\)/,
+    );
+    expect(handler('osc:cloneRepo')).toMatch(
+      /await confirmInMain\(cloneConfirm\(cloneUrlForDialog\(address\)\)\)/,
+    );
+    expect(handler('osc:setLaunchAtLogin')).toMatch(
+      /await confirmInMain\(LAUNCH_AT_LOGIN_CONFIRM\)/,
+    );
     for (const ch of ['osc:runCommand', 'osc:terminalStdin']) {
       expect(handler(ch), ch).toMatch(/if \(!windowFocused\(\)\) return/);
     }
@@ -182,9 +193,7 @@ describe('main-process IPC guard (UI-6)', () => {
     expect(confirm).toMatch(/dialog\.showMessageBox/);
     expect(confirm).toMatch(/defaultId: 1,\s*cancelId: 1/);
     expect(main).toMatch(/win\.isFocused\(\)/);
-    expect(main).toContain(
-      "OpenShore will follow the project's own settings in it, including the command it runs to check work.",
-    );
+    expect(main).not.toContain("OpenShore will follow the project's own settings in it");
   });
 
   it('a session root is a realpath, and never the disk, home, or the settings folder', () => {

@@ -151,6 +151,38 @@ describe('the updater state machine', () => {
     expect(run([{ type: 'not-available' }], ready).state).toEqual(ready);
   });
 
+  it('a refused signature is its own failure, and the half-hourly check keeps its line', () => {
+    const refused = run([
+      { type: 'available', version: '1.2.0' },
+      { type: 'click' },
+      { type: 'progress', percent: 100 },
+      { type: 'downloaded', version: '1.2.0' },
+      { type: 'error', detail: 'does not match its signature', refused: true },
+    ]).state;
+    expect(refused.pending).toEqual({
+      version: '1.2.0',
+      phase: 'failed',
+      detail: 'does not match its signature',
+      refused: true,
+    });
+    // The same release found again is not offered over the refusal.
+    const again = run([{ type: 'available', version: '1.2.0' }], refused);
+    expect(again.heard).toEqual([]);
+    expect(again.state).toEqual(refused);
+    // A newer release is.
+    expect(run([{ type: 'available', version: '1.2.1' }], refused).state.pending).toEqual({
+      version: '1.2.1',
+      phase: 'available',
+    });
+    // Try again checks and downloads afresh, and the flag does not ride along.
+    const retry = run([{ type: 'click' }, { type: 'available', version: '1.2.0' }], refused);
+    expect(retry.effects).toEqual(['check', 'download']);
+    expect(retry.state.pending).toEqual({ version: '1.2.0', phase: 'installing', percent: 0 });
+    // A plain failure after that carries no refusal.
+    const plain = run([{ type: 'error', detail: 'offline' }], retry.state).state;
+    expect(plain.pending?.refused).toBeUndefined();
+  });
+
   it('a click on a finished download installs at once', () => {
     const ready: UpdaterState = {
       installWhenReady: false,

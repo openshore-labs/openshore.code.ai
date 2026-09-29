@@ -30,6 +30,12 @@ export const LATER_ROOM_FILES = [
 /** Rooms that must wait for their first open, never load at launch. */
 export const LAZY_ROOM_FILES = ['SettingsScreen', 'VaultScreen', 'PairScreen', 'StackScreen'];
 
+/** Heavy libraries that wait for their first use, never load at launch, each
+ *  found in a chunk by a word its own code keeps through minification. The
+ *  chat's code highlighter came to about 320 KB of every launch before it
+ *  loaded on the first fenced block (lib/lazyHighlight.ts). */
+export const LAZY_LIBRARIES = [{ name: 'highlight.js', marker: 'highlightAuto' }];
+
 /** Ceilings, in bytes. Before the split the launch was one 2,560,450-byte
  *  chunk. Crossing one means a room or a heavy library went back into the
  *  launch path. */
@@ -67,6 +73,15 @@ export function inspectBundle(dist) {
   };
   walk(entry);
 
+  const lazyAtLaunch = [];
+  for (const file of boot) {
+    const text = readFileSync(file, 'utf8');
+    for (const lib of LAZY_LIBRARIES) {
+      if (text.includes(lib.marker))
+        lazyAtLaunch.push({ library: lib.name, file: relative(dist, file) });
+    }
+  }
+
   const files = filesUnder(dist);
   const js = files.filter((f) => f.endsWith('.js'));
   const size = (f) => statSync(f).size;
@@ -88,6 +103,7 @@ export function inspectBundle(dist) {
     totalJsBytes: js.reduce((n, f) => n + size(f), 0),
     chunks: js.length,
     leaks,
+    lazyAtLaunch,
   };
 }
 
@@ -101,6 +117,9 @@ export function bundleProblems(report) {
   for (const room of LAZY_ROOM_FILES) {
     const at = report.bootChunks.find((c) => basename(c).startsWith(`${room}-`));
     if (at) problems.push(`${room} loads at launch (${at}); rooms wait for their first open`);
+  }
+  for (const at of report.lazyAtLaunch ?? []) {
+    problems.push(`${at.library} loads at launch (${at.file}); it waits for its first use`);
   }
   if (report.entryBytes > BUDGET.entryBytes)
     problems.push(`entry chunk is ${report.entryBytes} bytes, over ${BUDGET.entryBytes}`);

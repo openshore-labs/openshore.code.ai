@@ -93,3 +93,49 @@ export function readOAuthCallback(
   if (!code) return { kind: 'incomplete' };
   return { kind: 'done', result: { code, state } };
 }
+
+// ------------------------------------------------------ the second key's words
+
+/** A native confirm's words: its question, the detail under it, and the
+ *  button that says yes (Cancel is always the other, and the default). */
+export interface ConfirmWords {
+  message: string;
+  detail: string;
+  confirm: string;
+}
+
+/**
+ * Trusting a folder (CX cleanup 2). The dialog is the one check the page
+ * cannot fake, so it says what trusting does: each setting that would apply,
+ * worded as the trust card words it, then the folder. `waiting` comes from
+ * the engine in main (`EngineHost.trustWaiting`), never from the page.
+ */
+export function trustConfirm(waiting: readonly string[], folder: string): ConfirmWords {
+  const lines = waiting.map((line) => `• It ${line}.`);
+  const apply = lines.length
+    ? `Its own settings will apply on this computer:\n${lines.join('\n')}`
+    : 'Its own settings will apply on this computer.';
+  return {
+    message: 'Trust this folder?',
+    detail: `${apply}\nTrust it only if you know who made it. If its settings change, OpenShore asks again.\n\n${folder}`,
+    confirm: 'Trust folder',
+  };
+}
+
+/** Copying a repository to this computer. `address` is already cleaned of
+ *  any login (main's cloneUrlForDialog). */
+export function cloneConfirm(address: string): ConfirmWords {
+  return {
+    message: 'Copy this repository to your computer?',
+    detail: `OpenShore downloads a copy into its projects folder so you can work on it in a chat. Its own settings stay off until you trust it.\n\n${address}`,
+    confirm: 'Copy repository',
+  };
+}
+
+/** Turning on launch at login. */
+export const LAUNCH_AT_LOGIN_CONFIRM: ConfirmWords = {
+  message: 'Start OpenShore with your computer?',
+  detail:
+    'It opens in the background each time you sign in to this computer, so your phone can reach it and your routines can run. Turn it off any time from the same switch.',
+  confirm: 'Start with my computer',
+};
