@@ -5,7 +5,7 @@
 // advisor memos named (docs/zed-proposal.md, "Fix now" item 1): each was run
 // against the code before the fix and failed, then passed after it.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -31,6 +31,7 @@ import { cliAgentTool } from '../src/core/tools/cliAgent.js';
 import { LocalDriver } from '../src/daemon/session.js';
 import { MockProvider, textTurn, toolTurn } from './helpers/mockProvider.js';
 import { makeTestSession } from './helpers/session.js';
+import { removeTempDir } from './helpers/portable.js';
 
 let home: string;
 let project: string;
@@ -42,11 +43,13 @@ beforeEach(() => {
   previousHome = process.env.OSC_HOME;
   process.env.OSC_HOME = home;
 });
-afterEach(() => {
+afterEach(async () => {
   process.env.OSC_HOME = previousHome;
   setOwnTailnetSuffixForTests(undefined);
-  rmSync(home, { recursive: true, force: true });
-  rmSync(project, { recursive: true, force: true });
+  // A session run in the project leaves the short git status it runs when a
+  // task ends; Windows lets go of the folder a moment later.
+  await removeTempDir(home);
+  await removeTempDir(project);
 });
 
 function writeGlobal(value: unknown): void {
