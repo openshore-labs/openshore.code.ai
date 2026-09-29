@@ -701,6 +701,28 @@ export class RemoteDriver implements ChatDriver {
     }
   }
 
+  async giveMoreRoom(
+    provider: string,
+  ): Promise<{ ok: true; provider: string } | { error: string }> {
+    try {
+      const res = await fetch(`${this.target.baseUrl}/sessions/${this.sessionId}/more-room`, {
+        method: 'POST',
+        headers: { ...headers(this.target), 'content-type': 'application/json' },
+        body: JSON.stringify({ provider }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      const body = (await res.json()) as
+        { ok: true; provider: string } | { error: string; message?: string };
+      if ('ok' in body && body.ok) return body;
+      // 403 for a member (the owner's call), 409 for a server the computer
+      // does not know; both carry a plain sentence.
+      const failed = body as { error: string; message?: string };
+      return { error: failed.message ?? failed.error };
+    } catch {
+      return { error: 'Could not reach your computer to give the model more room.' };
+    }
+  }
+
   async restoreCheckpoint(
     id: string,
     direction: 'undo' | 'redo',

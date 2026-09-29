@@ -123,6 +123,22 @@ export type ThreadItem =
       error?: string;
     }
   | { kind: 'stopped'; id: string; message: string }
+  // The server cut the chat to fit a window smaller than the prompt (C1, CX
+  // 6): once per chat per model, teal. `room` is what the card may offer:
+  // 'more' (the "Give it more room" action, about `gb` more memory when the
+  // model says), 'full' (no memory to spare), absent (a server whose window
+  // OpenShore does not set). `state` follows the tap.
+  | {
+      kind: 'window-cut';
+      id: string;
+      model: string;
+      provider: string;
+      room?: 'more' | 'full';
+      gb?: number;
+      state?: 'giving' | 'given';
+      /** Why the tap did not go through, in plain words. */
+      error?: string;
+    }
   // What the Vault gave this task's seat (Vault M4, 4.4): the notes the pack
   // used, the private notes it left out for a seat that leaves this network,
   // and whether the index was still cold. Teal for a local seat, amber for a

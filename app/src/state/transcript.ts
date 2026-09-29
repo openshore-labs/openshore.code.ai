@@ -6,6 +6,7 @@ import type { DriverEvent } from 'os-code/protocol';
 import type { ChangedFile, ConversationSource, ThreadItem, ThreadState } from './types.js';
 import { providerInfo } from '../lib/providers.js';
 import { isLocalOnlyFinal } from '../drivers/types.js';
+import { windowCutItem } from './securityOps.js';
 
 /** The go-ahead the app sends when a plan is approved. The reducer reads it
  *  back on replay: a task that starts with this line means the plan before
@@ -401,6 +402,11 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
         state: event.state,
       });
     }
+
+    case 'window-cut':
+      // The server cut the chat to fit (C1): a teal card once per chat per
+      // model, mapped in the security package's module (CTO 9).
+      return push(next, windowCutItem(event));
 
     case 'harness-current':
       // A Harness Current (Jev) made a cheap decision this turn. Shown as a

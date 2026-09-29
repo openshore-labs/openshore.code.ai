@@ -305,6 +305,10 @@ export interface OscodeBridge {
   /** Trust this session's folder on this computer (the trust card's tap): its
    *  own os-code.config.json applies from the next session there. */
   trustFolder(sessionId: string): Promise<{ ok: true; folder: string } | { error: string }>;
+  /** The truncation card's tap (C1, CTO 5): serve this provider's models the
+   *  larger window from the next message, in every chat. Absent on an older
+   *  shell. */
+  giveMoreRoom?(provider: string): Promise<{ ok: true; provider: string } | { error: string }>;
   /** The sample page for a first try (v1 Phase 1): written to ~/OSCode/Try
    *  OpenShore, kept as it is when already there. Absent on an older shell. */
   createSample?(): Promise<{ path: string; created: boolean } | { error: string }>;

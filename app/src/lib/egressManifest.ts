@@ -32,6 +32,10 @@ export interface EgressEntry {
 }
 
 /** Recipients in the order the list shows them: OpenShore first. */
+/** Crew routines work offline (CTO 3, the reconciled CX 8 copy): the one
+ *  sentence the search entry and the Settings row both carry. */
+export const ROUTINES_NEVER_SEARCH = 'Crew routines never search the web.';
+
 export const RECIPIENT_ORDER = [
   'OpenShore (us)',
   'GitHub',
@@ -135,7 +139,7 @@ export const EGRESS: EgressEntry[] = [
     id: 'search',
     recipient: 'Web search',
     what: 'The words of a web search, which a model writes from your chat. DuckDuckGo by default, with no key and no account.',
-    when: 'When a model decides to search the web, after you allow it once. A chat asks the first time; the coding agent searches only once you allow it. You can turn it off in Settings.',
+    when: `When a model decides to search the web, after you allow it once. A chat asks the first time; the coding agent searches only once you allow it. ${ROUTINES_NEVER_SEARCH} You can turn it off in Settings.`,
     start: 'off',
     hosts: ['html.duckduckgo.com', 'duckduckgo.com'],
   },

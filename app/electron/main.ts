@@ -980,6 +980,10 @@ guarded('osc:trustFolder', async (sessionId: unknown) => {
   return host.trustFolder(id);
 });
 guarded('osc:createSample', () => host.createSample());
+// The truncation card's action (C1, CTO 5): serve this provider's models the
+// larger window from the next message, in every chat. Machine config, so only
+// a provider id crosses; main writes it through the engine's one writer.
+guarded('osc:giveMoreRoom', (provider: unknown) => host.giveMoreRoom(str(provider, 'provider')));
 guarded('osc:restoreCheckpoint', (sessionId: unknown, id: unknown, how: unknown, path: unknown) => {
   const way = str(how, 'direction');
   if (way !== 'undo' && way !== 'redo') throw new Error('direction must be undo or redo');
@@ -1003,6 +1007,8 @@ guarded('osc:answerApproval', (sessionId: unknown, approvalId: unknown, answer: 
     alwaysThisSession: optBool(a.alwaysThisSession, 'alwaysThisSession'),
     alwaysInProject: optBool(a.alwaysInProject, 'alwaysInProject'),
     reason: optStr(a.reason, 'reason'),
+    // A commit card's ticked files (D3): a list of strings, or none.
+    ...(a.files === undefined || a.files === null ? {} : { files: strList(a.files, 'files') }),
   });
 });
 

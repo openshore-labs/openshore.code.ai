@@ -45,6 +45,7 @@ import { SignInCard } from '../components/SignInCard.js';
 import { DeleteAccount } from '../components/DeleteAccount.js';
 import { InfoSheet } from '../components/InfoSheet.js';
 import { WhatLeavesSheet } from '../components/WhatLeavesSheet.js';
+import { ROUTINES_NEVER_SEARCH } from '../lib/egressManifest.js';
 import { Sheet } from '../components/Sheet.js';
 import { Switch } from '../components/Switch.js';
 import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
@@ -805,7 +806,7 @@ export function SettingsScreen() {
           <SettingsRow
             label="Let models search the web"
             subWrap
-            sub={
+            sub={`${
               settings.webSearchConsent === 'allowed'
                 ? 'On. A model sends its search words to the search service below, and nothing else from your chat.'
                 : settings.webSearchConsent === 'declined'
@@ -813,7 +814,7 @@ export function SettingsScreen() {
                   : isDesktop()
                     ? 'Asks the first time a chat model wants to search. The coding agent searches only once this is on.'
                     : 'Asks the first time a model wants to search.'
-            }
+            } ${ROUTINES_NEVER_SEARCH}`}
             trailing={
               <Switch
                 checked={settings.webSearchConsent === 'allowed'}

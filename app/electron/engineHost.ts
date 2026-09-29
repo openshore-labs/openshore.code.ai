@@ -8,6 +8,7 @@ import { loadConfig, saveGlobalConfig } from 'os-code/dist/src/config/load.js';
 import { bootstrapSession } from 'os-code/dist/src/core/agent/bootstrap.js';
 import type { VaultOverrides } from 'os-code/dist/src/harness/vault/types.js';
 import { trustSessionFolder } from 'os-code/dist/src/core/agent/projectTrust.js';
+import { giveMoreRoomHere } from 'os-code/dist/src/providers/servedWindow.js';
 import {
   listSessions,
   sealSessionsAtRest,
@@ -361,6 +362,7 @@ export class EngineHost {
       alwaysThisSession?: boolean;
       alwaysInProject?: boolean;
       reason?: string;
+      files?: string[];
     },
   ): void {
     this.drivers.get(sessionId)?.answerApproval(approvalId, answer);
@@ -402,6 +404,14 @@ export class EngineHost {
     const driver = this.drivers.get(sessionId);
     if (!driver) return { error: 'That session is not open.' };
     return trustSessionFolder(driver);
+  }
+
+  /** The truncation card's tap (C1, CTO 5): `numCtx: 'auto'` for this
+   *  provider in machine config, and every live provider on that server
+   *  serves the larger window from its next request. The host shares the
+   *  engine module with its sessions, so the switch reaches them at once. */
+  giveMoreRoom(provider: string): { ok: true; provider: string } | { error: string } {
+    return giveMoreRoomHere(provider);
   }
 
   /** The sample page for a first try, written to ~/OSCode/Try OpenShore
