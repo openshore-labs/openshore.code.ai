@@ -665,9 +665,11 @@ function createWindow(): void {
     },
   });
 
-  // External links open in the system browser, never inside the shell.
+  // External links open in the system browser, never inside the shell, and a
+  // mail link (Email support, when deleting an account needs a hand) opens
+  // the person's own mail app.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//.test(url)) void shell.openExternal(url);
+    if (/^(https?:\/\/|mailto:)/.test(url)) void shell.openExternal(url);
     return { action: 'deny' };
   });
   // Allow navigation ONLY to the app's own bundled entry point. Any other
