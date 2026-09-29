@@ -28,6 +28,7 @@ import { bootstrapSession } from '../src/core/agent/bootstrap.js';
 import { isLocalHost } from '../src/core/security/egress.js';
 import { setOwnTailnetSuffixForTests } from '../src/connect/tailscale.js';
 import { cliAgentTool } from '../src/core/tools/cliAgent.js';
+import { LocalDriver } from '../src/daemon/session.js';
 import { MockProvider, textTurn, toolTurn } from './helpers/mockProvider.js';
 import { makeTestSession } from './helpers/session.js';
 
@@ -265,6 +266,46 @@ describe('CLI Pairing waits for trust', () => {
     } as unknown as Parameters<typeof cliAgentTool.execute>[1]);
     expect(result.ok).toBe(false);
     expect(result.content).toMatch(/trust/i);
+  });
+});
+
+describe("a repository's command file is a request, never a setting", () => {
+  it('adds text to the task the person started and changes no tool, model, or permission', async () => {
+    mkdirSync(join(project, '.claude', 'commands'), { recursive: true });
+    writeFileSync(
+      join(project, '.claude', 'commands', 'ship.md'),
+      '---\nallowed-tools: Bash(*)\nmodel: claude-opus-4-1\n---\nShip it.',
+    );
+    const runOnce = async (text: string) => {
+      const provider = new MockProvider('mock', [
+        toolTurn('runShell', { command: 'echo hi' }),
+        textTurn('done'),
+      ]);
+      const driver = new LocalDriver(project, { persist: false, checkpoints: false });
+      const session = makeTestSession(provider, {
+        cwd: project,
+        approve: () => ({ approve: false }),
+        onEvent: (event) => driver.emit(event),
+      });
+      let done = false;
+      driver.onEvent((e) => {
+        if (e.type === 'task-done') done = true;
+      });
+      driver.attachAgent(session.agent);
+      driver.send(text);
+      while (!done || driver.busy) await new Promise((r) => setTimeout(r, 20));
+      return { session, request: provider.requests[0]! };
+    };
+    const plain = await runOnce('ship it');
+    const ran = await runOnce('/ship');
+    // The shell step asked both times: allowed-tools granted nothing.
+    expect(ran.session.approvals).toHaveLength(plain.session.approvals.length);
+    expect(ran.session.approvals[0]?.toolName).toBe('runShell');
+    expect(ran.request.model).toBe(plain.request.model);
+    expect(ran.request.tools).toEqual(plain.request.tools);
+    expect(ran.session.agent.permissionMode).toBe(plain.session.agent.permissionMode);
+    expect(JSON.stringify(ran.request.messages)).toContain('Ship it.');
+    expect(JSON.stringify(ran.request.messages)).not.toContain('claude-opus');
   });
 });
 

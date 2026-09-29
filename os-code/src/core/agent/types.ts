@@ -5,6 +5,7 @@ import type { ToolRisk } from '../permissions/index.js';
 import type { Citation, ToolOutput } from '../tools/index.js';
 import type { ParsedToolCall } from '../tools/parser.js';
 import type { PackMode, PackSource } from '../../harness/vaultContext.js';
+import type { RepoCommand, RepoCommandNotLoaded } from './commandText.js';
 
 export interface ApprovalRequest {
   id: string;
@@ -147,7 +148,19 @@ export type AgentEvent =
   | { type: 'mode'; mode: PermissionMode }
   // Where the session works and the branch it is on; refreshed at the
   // bookends of each task so the chat can show it and mark uncommitted work.
-  | { type: 'repo-info'; cwd: string; branch?: string; dirty?: boolean }
+  // `commands` are the person's own slash commands found for this folder
+  // (P3: the repository's .claude/commands and their own), names and words
+  // only; `commandsNotLoaded` says which files were found and left out, and
+  // why. Both ride only when the list changed since this session last said
+  // it, so a client keeps the last list it saw while they are absent.
+  | {
+      type: 'repo-info';
+      cwd: string;
+      branch?: string;
+      dirty?: boolean;
+      commands?: RepoCommand[];
+      commandsNotLoaded?: RepoCommandNotLoaded[];
+    }
   // A short generated title after the first completed exchange.
   | { type: 'title'; title: string }
   // The harness ran the project's check command after a task that changed files

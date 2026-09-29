@@ -19,6 +19,22 @@ export type {
 export { PERMISSION_MODES } from './core/agent/types.js';
 import type { PermissionMode } from './core/agent/types.js';
 export { INIT_PROMPT } from './core/agent/initPrompt.js';
+// The person's own slash commands (P3): OpenShore's built-in names, the
+// label a menu shows beside one, and the sentence for a file left out. The
+// engine finds and fills them; every surface lists them with these words.
+export {
+  BUILT_IN_COMMANDS,
+  commandFromLabel,
+  commandNotLoadedLine,
+  isBuiltInCommand,
+  parseSlashInput,
+} from './core/agent/commandText.js';
+export type {
+  CommandFrom,
+  CommandNotLoadedReason,
+  RepoCommand,
+  RepoCommandNotLoaded,
+} from './core/agent/commandText.js';
 // The reserved terminal scope for the plain home-folder shell (no session).
 export { HOME_SHELL_ID } from './daemon/homeShellId.js';
 

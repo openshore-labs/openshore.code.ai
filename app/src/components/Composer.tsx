@@ -11,7 +11,14 @@
 // repo files, "#" saves a line to the project's instructions, and a message
 // typed mid-run queues for the moment the agent is free. A long paste folds
 // into a chip so the field stays readable.
-import type { VaultVisibility } from 'os-code/protocol';
+import {
+  commandFromLabel,
+  commandNotLoadedLine,
+  type CommandFrom,
+  type RepoCommand,
+  type RepoCommandNotLoaded,
+  type VaultVisibility,
+} from 'os-code/protocol';
 import { isIntroPlaying } from '../lib/introWalk.js';
 import { skipReveals } from '../lib/streamSmoothing.js';
 import {
@@ -219,11 +226,33 @@ function mentionAt(value: string, caret: number): { start: number; query: string
  *  snap into view as the keyboard moves the selection. */
 interface MenuModel {
   label: string;
-  items: Array<{ key: string; name: ReactNode; hint?: string; onPick: () => void }>;
+  items: Array<{
+    key: string;
+    name: ReactNode;
+    hint?: string;
+    /** Whose it is, for the person's own commands ("From this repository"). */
+    from?: string;
+    onPick: () => void;
+  }>;
   active: number;
   onHover: (i: number) => void;
   mono?: boolean;
+  /** One quiet line under the rows (a command file that was not loaded). */
+  note?: string;
 }
+
+/** The person's own slash commands for this chat's folder (P3), as the engine
+ *  last said them: the repository's .claude/commands and their own. */
+export interface ComposerRepoCommands {
+  commands?: readonly RepoCommand[];
+  notLoaded?: readonly RepoCommandNotLoaded[];
+}
+
+/** A row of the command menu: one of OpenShore's own, or one of the
+ *  person's, which is sent as typed for the engine to fill in. */
+type SlashItem =
+  | { kind: 'built-in'; name: SlashCommand; hint: string; arg?: string }
+  | { kind: 'own'; name: string; hint?: string; arg?: string; from: CommandFrom };
 
 /** The menu's exit: --dur-3 plus a hair. */
 const MENU_EXIT_MS = 240;
@@ -240,6 +269,7 @@ function ComposerMenu({
   active,
   onHover,
   mono,
+  note,
   closing,
 }: MenuModel & { closing: boolean }) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -282,8 +312,19 @@ function ComposerMenu({
         >
           <span className={`composer-menu-name${mono ? ' mono' : ''}`}>{it.name}</span>
           {it.hint ? <span className="composer-menu-hint">{it.hint}</span> : null}
+          {it.from ? <span className="composer-menu-from">{it.from}</span> : null}
         </button>
       ))}
+      {note ? (
+        <div
+          className="composer-menu-note"
+          role="option"
+          aria-disabled="true"
+          aria-selected={false}
+        >
+          {note}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -304,6 +345,7 @@ export function Composer({
   onOpenModeSheet,
   onOpenVoice,
   onCommand,
+  repoCommands,
   hubRole,
   vault,
 }: {
@@ -336,6 +378,8 @@ export function Composer({
   onOpenVoice?: () => void;
   /** A slash command, with whatever followed it. */
   onCommand?: (command: SlashCommand, arg: string) => void;
+  /** The person's own commands for this chat's folder (an engine session). */
+  repoCommands?: ComposerRepoCommands;
   /** What the paired hub lets this device do (P0-1). A member device never
    *  gets a shell, so terminal mode is not offered; absent on an old hub. */
   hubRole?: HubRole;
@@ -438,13 +482,36 @@ export function Composer({
     input?.click();
   };
 
-  // The command menu: open while the field is exactly "/" plus a word.
-  const slashMatch = /^\/(\w*)$/.exec(value);
-  const slashItems = slashMatch
-    ? SLASH_COMMANDS.filter(
-        (c) => c.name.startsWith(slashMatch[1]!.toLowerCase()) && (agent || !c.agentOnly),
-      )
-    : [];
+  // The command menu: open while the field is exactly "/" plus a word (a -
+  // included, for the person's own /fix-issue). OpenShore's own come first,
+  // then the person's, each marked with where it came from.
+  const slashMatch = /^\/([\w-]*)$/.exec(value);
+  const typedWord = slashMatch?.[1]!.toLowerCase();
+  const ownCommands = agent ? (repoCommands?.commands ?? []) : [];
+  const slashItems: SlashItem[] =
+    typedWord === undefined
+      ? []
+      : [
+          ...SLASH_COMMANDS.filter(
+            (c) => c.name.startsWith(typedWord) && (agent || !c.agentOnly),
+          ).map((c): SlashItem => ({ kind: 'built-in', ...c })),
+          ...ownCommands
+            .filter((c) => c.name.startsWith(typedWord))
+            .map((c): SlashItem => ({
+              kind: 'own',
+              name: c.name,
+              hint: c.description,
+              arg: c.argumentHint,
+              from: c.from,
+            })),
+        ];
+  // A file of theirs that was found and left out, said once under the rows
+  // when the person types its name, so a missing /review is never a mystery.
+  const notLoadedMatch =
+    agent && typedWord
+      ? repoCommands?.notLoaded?.find((n) => n.name?.startsWith(typedWord))
+      : undefined;
+  const slashNote = notLoadedMatch ? commandNotLoadedLine(notLoadedMatch) : undefined;
   const [slashIdx, setSlashIdx] = useState(0);
   const slashWord = slashMatch?.[1];
   useEffect(() => setSlashIdx(0), [slashWord]);
@@ -554,7 +621,7 @@ export function Composer({
 
   // A command that takes an argument fills the field and keeps the caret in
   // it, so the argument lands where the person is typing.
-  const fillCommand = (name: SlashCommand) => {
+  const fillCommand = (name: string) => {
     const next = `/${name} `;
     setValue(next);
     requestAnimationFrame(() => {
@@ -568,6 +635,18 @@ export function Composer({
   const runSlash = (name: SlashCommand, arg: string) => {
     resetField();
     onCommand?.(name, arg.trim());
+  };
+
+  // A picked row: an argument to type fills the field; otherwise it runs. The
+  // person's own command is a message: it sends as typed, and the engine
+  // fills in the file's text.
+  const pickSlash = (item: SlashItem) => {
+    if (item.arg) {
+      fillCommand(item.name);
+      return;
+    }
+    if (item.kind === 'built-in') runSlash(item.name, '');
+    else submit(`/${item.name}`);
   };
 
   const insertFile = (path: string) => {
@@ -707,8 +786,8 @@ export function Composer({
     onStop();
   };
 
-  const submit = () => {
-    const text = value.trim();
+  const submit = (typed?: string) => {
+    const text = (typed ?? value).trim();
     // Terminal mode: run the text as a command on the connected machine, not a
     // prompt. Output streams into the transcript as a command card.
     if (terminal) {
@@ -717,8 +796,9 @@ export function Composer({
       resetField();
       return;
     }
-    // A slash command, with or without an argument.
-    const slash = /^\/(\w+)(?:\s+([\s\S]*))?$/.exec(text);
+    // A slash command, with or without an argument. Anything else that starts
+    // with a slash (the person's own /review) is a message.
+    const slash = /^\/([\w-]+)(?:\s+([\s\S]*))?$/.exec(text);
     if (slash && !pasted.length && !attachments.length) {
       const cmd = SLASH_COMMANDS.find((c) => c.name === slash[1]!.toLowerCase());
       if (cmd && (agent || !cmd.agentOnly)) {
@@ -961,12 +1041,8 @@ export function Composer({
       if ((e.key === 'Tab' && !e.shiftKey) || (e.key === 'Enter' && !e.shiftKey)) {
         e.preventDefault();
         const cmd = slashItems[slashIdx] ?? slashItems[0]!;
-        if (cmd.arg) {
-          fillCommand(cmd.name);
-          return;
-        }
-        hapticTick();
-        runSlash(cmd.name, '');
+        if (!cmd.arg) hapticTick();
+        pickSlash(cmd);
         return;
       }
       if (e.key === 'Escape') {
@@ -1055,13 +1131,13 @@ export function Composer({
   // it can play an exit: the last model is held while it closes.
   const menu: MenuModel | null = !focused
     ? null
-    : slashItems.length && !terminal
+    : (slashItems.length || slashNote) && !terminal
       ? {
           label: 'Commands',
           active: slashIdx,
           onHover: setSlashIdx,
           items: slashItems.map((c) => ({
-            key: c.name,
+            key: `${c.kind}:${c.name}`,
             name: (
               <>
                 /{c.name}
@@ -1069,8 +1145,10 @@ export function Composer({
               </>
             ),
             hint: c.hint,
-            onPick: () => (c.arg ? fillCommand(c.name) : runSlash(c.name, '')),
+            ...(c.kind === 'own' ? { from: commandFromLabel(c.from) } : {}),
+            onPick: () => pickSlash(c),
           })),
+          ...(slashNote ? { note: slashNote } : {}),
         }
       : mention && files.length
         ? {
@@ -1119,6 +1197,7 @@ export function Composer({
           onHover={shownMenu.onHover}
           mono={shownMenu.mono}
           items={shownMenu.items}
+          note={shownMenu.note}
           closing={menuClosing}
         />
       ) : null}
@@ -1397,7 +1476,7 @@ export function Composer({
           ) : (
             <button
               className={`send-btn press-fb${terminal ? ' terminal' : ''}${busy && !terminal ? ' queue' : ''}`}
-              onClick={submit}
+              onClick={() => submit()}
               disabled={
                 terminal
                   ? !value.trim()
