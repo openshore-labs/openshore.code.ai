@@ -371,14 +371,32 @@ describe('reading a note', () => {
     expect(await statNote(join(root, 'nope.md'))).toBeNull();
   });
 
-  it('a read that races a replace returns the new bytes with their own version', async () => {
+  // POSIX only: Windows refuses to rename over a file another handle holds
+  // open (EPERM), so a replace cannot land while the read's handle is open
+  // there; the in-place save below is the race Windows can have.
+  it.skipIf(process.platform === 'win32')(
+    'a read that races a replace returns the new bytes with their own version',
+    async () => {
+      const note = join(root, 'a.md');
+      writeFileSync(note, 'old body');
+      stubs.afterRead = () => {
+        // A sync client replaces the note while the read is under way.
+        const incoming = join(root, 'incoming');
+        writeFileSync(incoming, 'new body!');
+        renameSync(incoming, note);
+      };
+      const read = await readNote(note);
+      expect(read?.text).toBe('new body!');
+      expect(read?.version).toBe(versionOf(note));
+    },
+  );
+
+  it('a read that races a save in place returns the saved bytes with their own version', async () => {
     const note = join(root, 'a.md');
     writeFileSync(note, 'old body');
     stubs.afterRead = () => {
-      // A sync client replaces the note while the read is under way.
-      const incoming = join(root, 'incoming');
-      writeFileSync(incoming, 'new body!');
-      renameSync(incoming, note);
+      // An editor saves over the same file while the read is under way.
+      writeFileSync(note, 'new body!');
     };
     const read = await readNote(note);
     expect(read?.text).toBe('new body!');

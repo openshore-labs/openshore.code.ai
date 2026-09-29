@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { simpleGit } from 'simple-git';
 import { applyOutboxItem, confinedPath, type OutboxApplyRequest } from '../src/git/outbox.js';
 
@@ -181,24 +181,37 @@ describe('outbox apply', () => {
   });
 });
 
+// The root as this system spells it: "/repo" on Linux and macOS, the same
+// folder on the current drive on Windows.
+const ROOT = resolve('/repo');
+
 describe('path confinement', () => {
   it('accepts a normal path', () => {
-    expect(confinedPath('/repo', 'src/a.ts')).toBe('/repo/src/a.ts');
+    expect(confinedPath(ROOT, 'src/a.ts')).toBe(join(ROOT, 'src', 'a.ts'));
   });
   it('rejects absolute paths', () => {
-    expect(() => confinedPath('/repo', '/etc/passwd')).toThrow();
+    expect(() => confinedPath(ROOT, '/etc/passwd')).toThrow();
   });
   it('rejects parent-directory escapes', () => {
-    expect(() => confinedPath('/repo', '../../.ssh/authorized_keys')).toThrow();
-    expect(() => confinedPath('/repo', 'a/../../b')).toThrow();
+    expect(() => confinedPath(ROOT, '../../.ssh/authorized_keys')).toThrow();
+    expect(() => confinedPath(ROOT, 'a/../../b')).toThrow();
+  });
+  // git on Windows answers --show-toplevel with forward slashes
+  // ("C:/Users/me/repo"); a root spelled any way that resolves to the same
+  // folder confines the same, and still refuses an escape.
+  it('confines under a root spelled with forward slashes or a trailing separator', () => {
+    for (const spelled of [ROOT.split(sep).join('/'), `${ROOT}${sep}`, `${ROOT}/`]) {
+      expect(confinedPath(spelled, 'src/a.ts'), spelled).toBe(join(ROOT, 'src', 'a.ts'));
+      expect(() => confinedPath(spelled, 'a/../../b'), spelled).toThrow();
+    }
   });
 });
 
 describe('path confinement (DAE-10)', () => {
   it('rejects a path that starts with a dash, which git would read as an option', () => {
-    expect(() => confinedPath('/repo', '-rf')).toThrow();
-    expect(() => confinedPath('/repo', '--force-remove')).toThrow();
+    expect(() => confinedPath(ROOT, '-rf')).toThrow();
+    expect(() => confinedPath(ROOT, '--force-remove')).toThrow();
     // A dash later in the path is an ordinary file name.
-    expect(confinedPath('/repo', 'src/-x.ts')).toBe('/repo/src/-x.ts');
+    expect(confinedPath(ROOT, 'src/-x.ts')).toBe(join(ROOT, 'src', '-x.ts'));
   });
 });

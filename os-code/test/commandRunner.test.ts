@@ -1,7 +1,7 @@
 // The shared command runner: streams chunks live, reports the real exit code,
 // redacts secrets per chunk, answers stdin, and kills a runaway on demand.
 import { describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runCommand } from '../src/core/exec/commandRunner.js';
@@ -121,6 +121,34 @@ describe('commandRunner', () => {
     const result = await run.done;
     // Killed: not a clean exit 0.
     expect(result.exitCode === null || result.exitCode !== 0).toBe(true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  // Windows ends a tree with taskkill /F, which leaves exit code 1, and a
+  // program that catches SIGTERM can exit with any code of its own: either
+  // way a run the runner stopped says so, never "exit 1" as if it had failed.
+  it('a run it stopped reads as stopped on every system, whatever code the program left', async () => {
+    const dir = cwd();
+    writeFileSync(
+      join(dir, 'trap.js'),
+      "process.on('SIGTERM', () => process.exit(1));\nconsole.log('up');\nsetInterval(() => {}, 1000);\n",
+    );
+    let up!: () => void;
+    const started = new Promise<void>((resolve) => (up = resolve));
+    const run = runCommand({
+      command: 'node trap.js',
+      cwd: dir,
+      killGraceMs: 5000,
+      onChunk: (_stream, text) => {
+        if (text.includes('up')) up();
+      },
+    });
+    await started;
+    run.kill();
+    const result = await run.done;
+    expect(result.exitCode).toBeNull();
+    expect(result.signal).toBe('SIGTERM');
+    expect(result.timedOut).toBe(false);
     rmSync(dir, { recursive: true, force: true });
   });
 

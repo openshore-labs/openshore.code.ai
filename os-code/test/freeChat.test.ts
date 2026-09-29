@@ -11,9 +11,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { freeChat, type FreeChatEvent } from '../src/daemon/freeChat.js';
 import { sessionsDir } from '../src/daemon/session.js';
+import { restoreHome, saveHome, setHome, type SavedHome } from './helpers/portable.js';
 
 let home: string;
-let realHome: string | undefined;
+let realHome: SavedHome;
 let ollama: Server;
 let port: number;
 let sent: Array<Record<string, unknown>>;
@@ -65,15 +66,15 @@ beforeEach(async () => {
   port = addr.port;
   home = mkdtempSync(join(tmpdir(), 'oschome-free-'));
   process.env.OSC_HOME = home;
-  realHome = process.env.HOME;
-  process.env.HOME = home;
+  realHome = saveHome();
+  setHome(home);
   writeConfig(`http://127.0.0.1:${port}`);
 });
 
 afterEach(() => {
   for (const res of held.splice(0)) finish(res);
   ollama.close();
-  process.env.HOME = realHome;
+  restoreHome(realHome);
   delete process.env.OSC_HOME;
   rmSync(home, { recursive: true, force: true });
 });

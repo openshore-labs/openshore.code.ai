@@ -45,7 +45,10 @@ export interface CommandRunOptions {
 }
 
 export interface CommandResult {
+  /** The program's own exit code; null when a signal ended it, or when this
+   *  runner stopped it (kill() or the timeout), on every system. */
   exitCode: number | null;
+  /** The signal that ended it, or the one the runner sent to stop it. */
   signal: NodeJS.Signals | null;
   /** Full stdout, secret-redacted. */
   stdout: string;
@@ -82,6 +85,8 @@ export class CommandRun {
   private settled = false;
   private timer?: ReturnType<typeof setTimeout>;
   private killTimer?: ReturnType<typeof setTimeout>;
+  /** The last signal kill() sent, once it has been asked to stop the run. */
+  private stopSignal?: NodeJS.Signals;
   private readonly streams: Record<StreamName, StreamState> = {
     stdout: { carry: '' },
     stderr: { carry: '' },
@@ -146,7 +151,16 @@ export class CommandRun {
         });
       });
       child.on('close', (code, signal) => {
-        settle({ exitCode: code, signal, timedOut: this.timedOut });
+        // A run this runner stopped resolves as stopped on every system: no
+        // exit code, and the signal that ended it. POSIX ends the tree with a
+        // signal, but Windows ends it with taskkill /F, which leaves exit code
+        // 1 as though the program had failed; and a program that catches the
+        // signal and exits on its own was still stopped, not finished.
+        if (this.stopSignal) {
+          settle({ exitCode: null, signal: signal ?? this.stopSignal, timedOut: this.timedOut });
+        } else {
+          settle({ exitCode: code, signal, timedOut: this.timedOut });
+        }
       });
     });
   }
@@ -198,10 +212,12 @@ export class CommandRun {
   kill(): void {
     const pid = this.child?.pid;
     if (pid === undefined || this.settled) return;
+    this.stopSignal ??= 'SIGTERM';
     killProcessTree(pid, 'SIGTERM');
     const grace = this.opts.killGraceMs ?? 3000;
     this.killTimer = setTimeout(() => {
       if (this.settled) return;
+      this.stopSignal = 'SIGKILL';
       killProcessTree(pid, 'SIGKILL');
     }, grace);
   }

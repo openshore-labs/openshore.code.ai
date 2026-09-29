@@ -217,20 +217,24 @@ export function safeNoteName(segment: string, fallback = 'Untitled'): string {
   return s || fallback;
 }
 
+/** Whether a Windows file system can hold this "/"-separated path as
+ *  written: no : * ? " < > | (a colon names a drive or an NTFS stream of
+ *  another file), no reserved name, and no segment ending in a dot or a space
+ *  (Windows drops those, so the name would land on another file). */
+export function windowsCanHold(path: string): boolean {
+  if (/[:*?"<>|]/.test(path)) return false;
+  return !path.split('/').some((s) => isReserved(s) || /[\s.]$/.test(s));
+}
+
 /** The seam's note rule: a .md file with no dot segment, no backslash, not
- *  rooted. `windows` also refuses what a Windows file system cannot hold: a
- *  colon (a drive or an NTFS stream), the other forbidden characters, a
- *  reserved name, and a segment ending in a dot or a space. */
+ *  rooted. `windows` also refuses what a Windows file system cannot hold
+ *  (`windowsCanHold`). */
 export function isNotePath(path: string, options: IsNotePathOptions = {}): boolean {
   if (!MD.test(path)) return false;
   if (path.includes('\\') || path.startsWith('/')) return false;
   const segments = path.split('/');
   if (segments.some((segment) => segment.startsWith('.'))) return false;
-  if (options.windows) {
-    if (/[:*?"<>|]/.test(path)) return false;
-    if (segments.some((s) => isReserved(s) || /[\s.]$/.test(s))) return false;
-  }
-  return true;
+  return !options.windows || windowsCanHold(path);
 }
 
 /** The agent's hard deny under any dot folder (Vault M7, CTO L8): false when

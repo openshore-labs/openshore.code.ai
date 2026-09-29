@@ -38,6 +38,7 @@ import {
 import type { ChatRequest } from '../src/providers/types.js';
 import { MockProvider, textTurn, toolTurn } from './helpers/mockProvider.js';
 import { makeTestSession } from './helpers/session.js';
+import { removeTempDir } from './helpers/portable.js';
 
 let work: string;
 let outside: string;
@@ -61,9 +62,9 @@ beforeEach(() => {
   clearDir(claudeDir());
 });
 
-afterEach(() => {
-  rmSync(work, { recursive: true, force: true });
-  rmSync(outside, { recursive: true, force: true });
+afterEach(async () => {
+  await removeTempDir(work);
+  await removeTempDir(outside);
 });
 
 const names = (found: ReturnType<typeof discoverCommands>) => found.commands.map((c) => c.name);

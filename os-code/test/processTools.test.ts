@@ -8,14 +8,7 @@
 // A lean seat's menu is byte-identical with them on, and under the secrets
 // lockdown starting one asks like any command.
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-  existsSync,
-} from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ConfigSchema } from '../src/config/schema.js';
@@ -36,6 +29,7 @@ import { PROCESS_TOOLS, processesOn } from '../src/core/tools/process.js';
 import type { ToolContext } from '../src/core/tools/index.js';
 import { MockProvider, textTurn, toolTurn } from './helpers/mockProvider.js';
 import { makeTestSession } from './helpers/session.js';
+import { portUnavailable, removeTempDir } from './helpers/portable.js';
 
 const PROCESS_NAMES = PROCESS_TOOLS.map((t) => t.name);
 
@@ -64,9 +58,11 @@ for (let i = 0; i < 2000; i++) process.stdout.write(line + '\\n');
 console.log('END');
 `;
 
-const cleanups: Array<() => void> = [];
-afterEach(() => {
-  while (cleanups.length) cleanups.pop()!();
+// Run last in, first out: every program a test started is stopped before its
+// folder is removed, and the removal waits for Windows to let the folder go.
+const cleanups: Array<() => unknown> = [];
+afterEach(async () => {
+  while (cleanups.length) await cleanups.pop()!();
 });
 
 function workspace(): string {
@@ -81,7 +77,7 @@ function workspace(): string {
     join(dir, 'env.js'),
     "console.log('key: ' + (process.env.OSC_PROC_TEST_API_KEY ?? 'absent'));\nsetInterval(() => {}, 1000);\n",
   );
-  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  cleanups.push(() => removeTempDir(dir));
   return dir;
 }
 
@@ -394,7 +390,7 @@ describe('they end with the session', () => {
           }),
         });
       } catch (err) {
-        if (!String(err).includes('EADDRINUSE')) throw err;
+        if (!portUnavailable(err)) throw err;
       }
     }
     const home = process.env.OSC_HOME!;

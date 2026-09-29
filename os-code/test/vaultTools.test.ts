@@ -157,22 +157,55 @@ describe('vault write/read/list', () => {
     expect(readdirSync(root)).toEqual([]);
   });
 
-  it('an existing note with a name the rule would refuse still updates and reads', async () => {
+  // POSIX only: Windows cannot hold ":" or "?" in a file name (a colon names
+  // an NTFS stream), so no note by this name can exist there to update.
+  it.skipIf(process.platform === 'win32')(
+    'an existing note with a name the rule would refuse still updates and reads',
+    async () => {
+      writeFileSync(join(root, 'Decision: auth?.md'), 'old');
+      const nfd = 'Café.md';
+      writeFileSync(join(root, nfd), 'cafe');
+      const out = await vaultWriteTool.execute(
+        { path: 'Decision: auth?.md', content: 'new', mode: 'replace' },
+        ctx(),
+      );
+      expect(out.ok).toBe(true);
+      expect(readFileSync(join(root, 'Decision: auth?.md'), 'utf8')).toBe('new');
+      expect(
+        bodyOf((await vaultReadTool.execute({ path: 'Decision: auth?' }, ctx())).content),
+      ).toBe('new');
+      await vaultWriteTool.execute({ path: nfd, content: 'more', mode: 'append' }, ctx());
+      expect(readFileSync(join(root, nfd), 'utf8')).toBe('cafe\nmore');
+      expect(readdirSync(root).sort()).toEqual(['Café.md', 'Decision: auth?.md'].sort());
+    },
+  );
+
+  // On Windows the same path names a stream of a file called "Decision", never
+  // a note: the write is refused with the clean name, as a new note would be,
+  // and nothing at that path changes. Runs on every system as Windows.
+  it('on Windows, a name the file system cannot hold is refused even where something answers', async () => {
+    const realPlatform = process.platform;
     writeFileSync(join(root, 'Decision: auth?.md'), 'old');
-    const nfd = 'Café.md';
-    writeFileSync(join(root, nfd), 'cafe');
-    const out = await vaultWriteTool.execute(
-      { path: 'Decision: auth?.md', content: 'new', mode: 'replace' },
-      ctx(),
-    );
-    expect(out.ok).toBe(true);
-    expect(readFileSync(join(root, 'Decision: auth?.md'), 'utf8')).toBe('new');
-    expect(bodyOf((await vaultReadTool.execute({ path: 'Decision: auth?' }, ctx())).content)).toBe(
-      'new',
-    );
-    await vaultWriteTool.execute({ path: nfd, content: 'more', mode: 'append' }, ctx());
-    expect(readFileSync(join(root, nfd), 'utf8')).toBe('cafe\nmore');
-    expect(readdirSync(root).sort()).toEqual(['Café.md', 'Decision: auth?.md'].sort());
+    // "CON" opens the console on a real Windows disk, so its stand-in note is
+    // made only where a disk can hold one.
+    if (realPlatform !== 'win32') writeFileSync(join(root, 'CON.md'), 'old');
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    try {
+      await expect(
+        vaultWriteTool.execute(
+          { path: 'Decision: auth?.md', content: 'new', mode: 'replace' },
+          ctx(),
+        ),
+      ).rejects.toThrow(/cannot contain : \?.*Use "Decision auth\.md"/);
+      await expect(
+        vaultWriteTool.execute({ path: 'CON.md', content: 'new', mode: 'replace' }, ctx()),
+      ).rejects.toThrow(/Windows reserves.*Use "CON_\.md"/);
+    } finally {
+      Object.defineProperty(process, 'platform', { value: realPlatform });
+    }
+    expect(readFileSync(join(root, 'Decision: auth?.md'), 'utf8')).toBe('old');
+    if (realPlatform !== 'win32') expect(readFileSync(join(root, 'CON.md'), 'utf8')).toBe('old');
+    expect(readdirSync(root).filter((name) => NOTE_TEMP_PATTERN.test(name))).toEqual([]);
   });
 
   it('a new name that folds onto an existing note is refused with that note, never a twin', async () => {

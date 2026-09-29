@@ -30,6 +30,7 @@ import { ConfigSchema } from '../src/config/schema.js';
 import { buildToolContext } from '../src/core/agent/registry.js';
 import type { Router } from '../src/router/router.js';
 import type { ProviderRegistry } from '../src/providers/registry.js';
+import { restoreHome, saveHome, setHome } from './helpers/portable.js';
 
 let home: string;
 
@@ -194,14 +195,14 @@ describe('the vault folder is machine config', () => {
 // notes are never scattered between two places. Only the default is made.
 describe('ensureVaultRoot', () => {
   it('makes the default folder on first use', () => {
-    const prev = process.env.HOME;
-    process.env.HOME = home;
+    const prev = saveHome();
+    setHome(home);
     try {
       expect(defaultVaultDir()).toBe(join(home, 'OSCode', 'Vault'));
       expect(ensureVaultRoot(defaultVaultDir())).toBe(defaultVaultDir());
       expect(statSync(defaultVaultDir()).isDirectory()).toBe(true);
     } finally {
-      process.env.HOME = prev;
+      restoreHome(prev);
     }
   });
 

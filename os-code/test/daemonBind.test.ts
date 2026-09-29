@@ -32,6 +32,7 @@ vi.mock('../src/connect/tailscale.js', () => ({
 
 import { startDaemon, type RunningDaemon } from '../src/daemon/serve.js';
 import { defaultConfig } from '../src/config/load.js';
+import { portUnavailable } from './helpers/portable.js';
 
 let home: string;
 let daemon: RunningDaemon;
@@ -60,7 +61,7 @@ describe.skipIf(!SECOND_LOOPBACK_BINDABLE)('daemon dual bind (TS-P1-1)', () => {
         daemon = await startDaemon({ config: defaultConfig(), bind: 'tailscale', port });
         break;
       } catch (err) {
-        if (String(err).includes('EADDRINUSE')) continue;
+        if (portUnavailable(err)) continue;
         throw err;
       }
     }

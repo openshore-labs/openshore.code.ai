@@ -65,7 +65,8 @@ export interface ProcessView {
   running: boolean;
   /** Milliseconds since it started, or how long it ran once it ended. */
   elapsedMs: number;
-  /** Its exit code once it ended; null when a signal ended it. */
+  /** Its exit code once it ended; null when it was stopped or a signal
+   *  ended it. */
   exitCode?: number | null;
   /** Why it could not start at all. */
   startError?: string;

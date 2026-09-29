@@ -17,9 +17,16 @@ import { buildChatPack } from '../src/daemon/vaultRoutes.js';
 import { compileVaultPrivacy } from '../src/harness/vault/privacy.js';
 import { _resetRoutineScheduler } from '../src/routines/scheduler.js';
 import type { PreparedVaultContext } from '../src/harness/vaultContext.js';
+import {
+  portUnavailable,
+  restoreHome,
+  saveHome,
+  setHome,
+  type SavedHome,
+} from './helpers/portable.js';
 
 let home: string;
-let realHome: string | undefined;
+let realHome: SavedHome;
 let daemon: RunningDaemon;
 let base: string;
 let admin: string;
@@ -50,7 +57,7 @@ async function startOnFreePort(): Promise<RunningDaemon> {
         }),
       });
     } catch (err) {
-      if (String(err).includes('EADDRINUSE')) continue;
+      if (portUnavailable(err)) continue;
       throw err;
     }
   }
@@ -80,8 +87,8 @@ beforeEach(async () => {
   const port = await listen(ollama);
   home = mkdtempSync(join(tmpdir(), 'oschome-'));
   process.env.OSC_HOME = home;
-  realHome = process.env.HOME;
-  process.env.HOME = home;
+  realHome = saveHome();
+  setHome(home);
   writeFileSync(
     join(home, 'config.json'),
     JSON.stringify({
@@ -108,7 +115,7 @@ afterEach(async () => {
   ollama.close();
   await closeEngineVaultIndexes();
   _resetRoutineScheduler();
-  process.env.HOME = realHome;
+  restoreHome(realHome);
   delete process.env.OSC_HOME;
   rmSync(home, { recursive: true, force: true });
 });

@@ -13,6 +13,7 @@ import { startDaemon, type RunningDaemon } from '../src/daemon/serve.js';
 import { PAIR_CLAIM_TTL_MS, PairClaimStore } from '../src/daemon/pairClaims.js';
 import { defaultConfig } from '../src/config/load.js';
 import { loadCredentials, mintCredential } from '../src/core/security/credentials.js';
+import { portUnavailable } from './helpers/portable.js';
 
 let home: string;
 let daemon: RunningDaemon;
@@ -24,7 +25,7 @@ async function startOnFreePort(): Promise<RunningDaemon> {
     try {
       return await startDaemon({ config: defaultConfig(), bind: 'loopback', port });
     } catch (err) {
-      if (String(err).includes('EADDRINUSE')) continue;
+      if (portUnavailable(err)) continue;
       throw err;
     }
   }

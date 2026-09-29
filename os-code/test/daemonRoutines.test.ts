@@ -20,12 +20,19 @@ import type { DriverEvent } from '../src/core/agent/types.js';
 import { validateRoutineInput } from '../src/routines/model.js';
 import { vaultRootFor } from '../src/core/vault/memberRoots.js';
 import { VAULT_NOTES_ROUTE, vaultNoteRoute } from '../src/daemon/vaultWire.js';
+import {
+  portUnavailable,
+  restoreHome,
+  saveHome,
+  setHome,
+  type SavedHome,
+} from './helpers/portable.js';
 
 let home: string;
 let daemon: RunningDaemon;
 let base: string;
 let adminToken: string;
-let realHome: string | undefined;
+let realHome: SavedHome;
 
 async function startOnFreePort(): Promise<RunningDaemon> {
   for (let attempt = 0; attempt < 30; attempt++) {
@@ -42,7 +49,7 @@ async function startOnFreePort(): Promise<RunningDaemon> {
         }),
       });
     } catch (err) {
-      if (String(err).includes('EADDRINUSE')) continue;
+      if (portUnavailable(err)) continue;
       throw err;
     }
   }
@@ -52,8 +59,8 @@ async function startOnFreePort(): Promise<RunningDaemon> {
 beforeEach(async () => {
   home = mkdtempSync(join(tmpdir(), 'oschome-'));
   process.env.OSC_HOME = home;
-  realHome = process.env.HOME;
-  process.env.HOME = home;
+  realHome = saveHome();
+  setHome(home);
   writeFileSync(
     join(home, 'config.json'),
     JSON.stringify({ stack: { orchestrator: { provider: 'ollama', model: 'qwen' } } }),
@@ -68,7 +75,7 @@ beforeEach(async () => {
 afterEach(() => {
   daemon.close();
   _resetRoutineScheduler();
-  process.env.HOME = realHome;
+  restoreHome(realHome);
   delete process.env.OSC_HOME;
   rmSync(home, { recursive: true, force: true });
 });

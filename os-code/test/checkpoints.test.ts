@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { ShadowCheckpoints, checkpointDir } from '../src/core/checkpoints/shadowGit.js';
 import { LocalDriver } from '../src/daemon/session.js';
 import type { DriverEvent } from '../src/core/agent/types.js';
+import { removeTempDir } from './helpers/portable.js';
 
 let home: string;
 let folder: string;
@@ -22,11 +23,11 @@ beforeEach(() => {
   process.env.OSC_HOME = home;
 });
 
-afterEach(() => {
+afterEach(async () => {
   if (priorHome === undefined) delete process.env.OSC_HOME;
   else process.env.OSC_HOME = priorHome;
-  rmSync(home, { recursive: true, force: true });
-  rmSync(folder, { recursive: true, force: true });
+  await removeTempDir(home);
+  await removeTempDir(folder);
 });
 
 const read = (rel: string) => readFileSync(join(folder, rel), 'utf8');

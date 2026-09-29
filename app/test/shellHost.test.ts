@@ -112,7 +112,12 @@ describe("a session's terminal", () => {
     expect(spawned).toHaveLength(1);
     // It never reaches the shell.
     expect(spawned[0]!.opts.env.OPENAI_API_KEY).toBeUndefined();
-    expect(spawned[0]!.opts.env.PATH).toBe(process.env.PATH);
+    // PATH passes through. Windows spells the variable "Path" and reads names
+    // in any case, so the copy is looked up the way the shell will read it.
+    const pathVar = Object.entries(spawned[0]!.opts.env).find(
+      ([name]) => name.toUpperCase() === 'PATH',
+    );
+    expect(pathVar?.[1]).toBe(process.env.PATH);
 
     host.disposeAll();
     expect(spawned.every((s) => s.killed)).toBe(true);

@@ -23,7 +23,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { isAbsolute, join, resolve, sep } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { oscHome } from '../config/load.js';
 import { scrubbedEnv } from '../core/exec/childEnv.js';
 
@@ -86,6 +86,11 @@ async function gitOk(cwd: string, args: string[]): Promise<boolean> {
 /**
  * Confine a file path to the repo root. Rejects absolute paths and any `..`
  * segment, then resolves and asserts containment. Pure and unit-tested.
+ *
+ * The root is resolved before the comparison: on Windows `git rev-parse
+ * --show-toplevel` answers with forward slashes ("C:/Users/..."), while a
+ * resolved path carries backslashes, so a raw prefix check refused every
+ * path in every repository there.
  */
 export function confinedPath(repoRoot: string, p: string): string {
   if (typeof p !== 'string' || !p) throw new Error('empty path');
@@ -94,8 +99,10 @@ export function confinedPath(repoRoot: string, p: string): string {
   if (p.startsWith('-')) throw new Error(`path may not start with a dash: ${p}`);
   if (p.split(/[\\/]/).some((seg) => seg === '..'))
     throw new Error(`parent segment rejected: ${p}`);
-  const resolved = resolve(repoRoot, p);
-  if (resolved !== repoRoot && !resolved.startsWith(repoRoot + sep)) {
+  const root = resolve(repoRoot);
+  const resolved = resolve(root, p);
+  const rel = relative(root, resolved);
+  if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
     throw new Error(`path escapes repo: ${p}`);
   }
   return resolved;

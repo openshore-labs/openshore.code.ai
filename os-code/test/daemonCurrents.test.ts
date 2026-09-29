@@ -11,13 +11,20 @@ import { TerminalManager, TerminalUnavailable } from '../src/daemon/terminal.js'
 import { defaultConfig } from '../src/config/load.js';
 import { mintCredential } from '../src/core/security/credentials.js';
 import { _resetRoutineScheduler } from '../src/routines/scheduler.js';
+import {
+  portUnavailable,
+  restoreHome,
+  saveHome,
+  setHome,
+  type SavedHome,
+} from './helpers/portable.js';
 
 let home: string;
 let hermes: string;
 let daemon: RunningDaemon;
 let base: string;
 let adminToken: string;
-let realHome: string | undefined;
+let realHome: SavedHome;
 let realHermesHome: string | undefined;
 
 async function startOnFreePort(): Promise<RunningDaemon> {
@@ -35,7 +42,7 @@ async function startOnFreePort(): Promise<RunningDaemon> {
         }),
       });
     } catch (err) {
-      if (String(err).includes('EADDRINUSE')) continue;
+      if (portUnavailable(err)) continue;
       throw err;
     }
   }
@@ -50,9 +57,9 @@ beforeEach(async () => {
   writeFileSync(join(hermes, 'skills', 'notes', 'SKILL.md'), '# notes');
   writeFileSync(join(hermes, 'config.yaml'), 'api_key: secret');
   process.env.OSC_HOME = home;
-  realHome = process.env.HOME;
+  realHome = saveHome();
   realHermesHome = process.env.HERMES_HOME;
-  process.env.HOME = home;
+  setHome(home);
   process.env.HERMES_HOME = hermes;
   writeFileSync(
     join(home, 'config.json'),
@@ -68,7 +75,7 @@ beforeEach(async () => {
 afterEach(() => {
   daemon.close();
   _resetRoutineScheduler();
-  process.env.HOME = realHome;
+  restoreHome(realHome);
   if (realHermesHome === undefined) delete process.env.HERMES_HOME;
   else process.env.HERMES_HOME = realHermesHome;
   delete process.env.OSC_HOME;

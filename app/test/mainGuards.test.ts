@@ -44,6 +44,24 @@ describe('sessionRootRefusal: the folders a coding session may not work in', () 
     expect(sessionRootRefusal('/users/me', mac)).toBe('home');
     expect(sessionRootRefusal('/Users/Me/Code', mac)).toBeUndefined();
   });
+
+  // The check judges with the separator and disk tops of the platform it is
+  // told, never the host's, so a Windows computer is judged by Windows paths
+  // (and these POSIX cases hold on a Windows host too).
+  it('judges a Windows computer by Windows paths, on any host', () => {
+    const win = {
+      home: 'C:\\Users\\Me',
+      oscHome: 'C:\\Users\\Me\\.os-code',
+      platform: 'win32' as const,
+    };
+    expect(sessionRootRefusal('C:\\', win)).toBe('root');
+    expect(sessionRootRefusal('c:\\users\\me', win)).toBe('home');
+    expect(sessionRootRefusal('C:\\Users', win)).toBe('home-ancestor');
+    expect(sessionRootRefusal('C:\\Users\\Me\\.os-code\\sessions', win)).toBe('osc-home');
+    expect(sessionRootRefusal('C:\\Users\\Me\\OSCode\\app', win)).toBeUndefined();
+    expect(sessionRootRefusal('C:\\Users\\Me-too', win)).toBeUndefined();
+    expect(sessionRootRefusal('D:\\work\\site', win)).toBeUndefined();
+  });
 });
 
 describe('appPermissionAllowed: the main window gets no device by default', () => {

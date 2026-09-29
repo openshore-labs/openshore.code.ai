@@ -13,7 +13,12 @@ import { lstat, readdir, stat } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { z } from 'zod';
 import { Jail } from '../security/jail.js';
-import { checkNewNoteName, foldPath, isAgentWritablePath } from '../../harness/vault/paths.js';
+import {
+  checkNewNoteName,
+  foldPath,
+  isAgentWritablePath,
+  windowsCanHold,
+} from '../../harness/vault/paths.js';
 import { readFrontmatter } from '../../harness/vault/frontmatter.js';
 import { mergeProvenance, readProvenance } from '../../harness/vault/provenance.js';
 import type { ProvenanceFields } from '../../harness/vault/types.js';
@@ -96,7 +101,12 @@ function assertResolvedWritable(jail: Jail, abs: string): void {
 
 async function noteTarget(jail: Jail, raw: string): Promise<string> {
   const plain = plainNotePath(raw);
-  if (await exists(jail, plain)) return plain;
+  // On Windows a name the file system cannot hold is never an existing note:
+  // a colon there names an NTFS stream, so "Decision: auth?.md" would land in
+  // a hidden part of a file called "Decision". The new-name rule answers it
+  // instead, with the clean name, as it does for a new note on every system.
+  const holdable = process.platform !== 'win32' || windowsCanHold(plain);
+  if (holdable && (await exists(jail, plain))) return plain;
   const check = checkNewNoteName(plain);
   if (!check.ok) throw new Error(check.error);
   const rel = check.path;
