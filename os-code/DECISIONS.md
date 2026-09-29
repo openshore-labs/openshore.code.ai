@@ -2963,3 +2963,5 @@ execution contract. Newest at the bottom.
   merge made `SupabaseRequestError.code` one field for both sources:
   PostgREST's SQLSTATE (OV402, OV403, PGRST202) and an Edge Function's
   refusal word (`owns_org`).
+
+- **The team migrations after the 2026-09-29 interaction review (held `vault-m2-team`, 0024 and 0025, neither applied anywhere):** fixed in the held files, never in main's applied ones: 0025 section 10 keys `org_vault_settings.updated_by` and `org_vault_revisions.updated_by` to `auth.users` on delete set null (catalog-guarded, NOT VALID, orphans cleared through 0022's trigger exception, validated; a partial author index), so deleteUser clears a leaver's id in its own transaction (findings 1 and 3); `org_vault_move` in 0024 and in 0025's re-creation writes its `renamed` revision after the destination, so a free org at 0023's cap can rename (finding 4); the Ship order gains the 0020/0021 preflight (finding 5); findings 2, 6 and 7 are main's account-deletion calls, recorded in PROGRESS, What remains.

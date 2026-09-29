@@ -36,12 +36,19 @@
 --      the rename would take a tool away without protecting anything.
 --      "Admin" here is an active admin member or the org's owner, as 0014
 --      counts it.
+--   6. org_vault_settings.updated_by and org_vault_revisions.updated_by key
+--      to auth.users `on delete set null`, 0022's rule for an author column,
+--      so deleting an account clears who changed the settings or wrote a
+--      version and keeps the rows (section 10; the 2026-09-29 interaction
+--      review, findings 1 and 3).
 --
 -- The write RPCs are re-created whole below: each body is 0019's or 0024's
 -- verbatim with the two new calls added after the member check. Additive:
--- `if not exists` / `create or replace`, no data change. Ships AFTER 0019 and
--- 0024 (see supabase/README.md). Pricing is a Board gate: nothing here names a
--- tier or a price.
+-- `if not exists` / `create or replace`. The one data change is section 10's:
+-- an author id whose account is already gone is cleared, which the new key
+-- would refuse. Ships AFTER 0019, 0022 (its append-only trigger allows that
+-- clear) and 0024 (see supabase/README.md). Pricing is a Board gate: nothing
+-- here names a tier or a price.
 --
 -- Numbering (CTO ruling 4, 2026-09-29): written as 0021 on the held
 -- vault-m2-team branch and renumbered 0025 there, above main's 0022 and
@@ -50,6 +57,9 @@
 -- re-created here. 0023's org_is_entitled is the row rule of
 -- org_vault_entitled below without the beta's no-row window: an org that
 -- never bought may still write notes here, and 0023 still caps its bytes.
+-- 0022's header says neither held file adds an auth.users key; this one now
+-- adds two (section 10) with 0022's set-null rule, and it applies after 0022,
+-- whose trigger exception is what lets a revision's author be cleared.
 
 -- ---------------------------------------------------------------- 1. table
 -- The top-level keys a team row may hold: the L2 conventions a team shares.
@@ -85,7 +95,7 @@ create table if not exists public.org_vault_settings (
     check (context_folder is null or public.org_vault_path_ok(context_folder)),
   rev bigint not null,
   updated_at timestamptz not null default now(),
-  updated_by uuid
+  updated_by uuid -- keyed to auth.users, set null, in section 10
 );
 
 alter table public.org_vault_settings enable row level security;
@@ -518,8 +528,6 @@ begin
   end if;
 
   begin
-    perform public.org_vault_snapshot(cur, 'renamed');
-
     if lower(p_from) = lower(p_to) then
       -- Case-only rename: the same row, a new spelling and a new rev.
       delete from public.org_vault_notes
@@ -559,6 +567,12 @@ begin
         raise unique_violation;
       end if;
     end if;
+
+    -- The displaced version is kept after the destination lands, so 0023's
+    -- growth check on the destination never counts this history copy: a
+    -- free org at its 25 MiB cap can still rename (the 2026-09-29
+    -- interaction review, finding 4). A race undoes it with the move.
+    perform public.org_vault_snapshot(cur, 'renamed');
   exception when unique_violation then
     select * into other
       from public.org_vault_notes
@@ -705,3 +719,79 @@ grant execute on function public.org_vault_entitled(uuid) to authenticated;
 revoke execute on function public.org_vault_require_entitled(uuid) from public, anon, authenticated;
 revoke execute on function public.org_vault_require_may_delete(uuid) from public, anon, authenticated;
 revoke execute on function public.org_vault_is_admin(uuid) from public, anon, authenticated;
+
+-- ---------------------------------------------------------------- 10. authors
+-- 0022's rule for an author column, on the two it could not reach: this
+-- file's org_vault_settings.updated_by, and 0019's
+-- org_vault_revisions.updated_by. Each keys to auth.users `on delete set
+-- null`, so auth.admin.deleteUser clears the departing person's id in its own
+-- transaction and every row stays (the 2026-09-29 interaction review):
+--
+--   finding 1: the settings row kept a deleted admin's id, and
+--              org_vault_settings_get handed it to every member;
+--   finding 3: delete-account clears the revisions' author (0022 section 4)
+--              in one call and deletes the account in a later one, so a
+--              teammate's overwrite in between (the snapshot copies the note's
+--              author, still the leaver until deleteUser clears the note)
+--              put the id back in history.
+--
+-- Found by catalog, as 0022 section 1 finds its five: a key to auth.users on
+-- the column that is not set null is dropped, and when none is left the named
+-- set-null key lands NOT VALID (new rows are checked at once), ids of
+-- accounts already gone are cleared, and then it is validated. Re-running is
+-- a no-op. The clear on the revisions is the one update 0022's append-only
+-- trigger allows (updated_by to null, every other column unchanged), and the
+-- set-null the key makes on a deletion is that same update. 0023's byte
+-- triggers are scoped to `update of body, org_id`, so neither fires on it.
+do $$
+declare
+  r record;
+  v_con text;
+begin
+  for r in
+    select * from (values
+      ('org_vault_revisions', 'updated_by'),
+      ('org_vault_settings', 'updated_by')
+    ) as t (tbl, col)
+  loop
+    for v_con in
+      select c.conname
+        from pg_constraint c
+        join pg_attribute a
+          on a.attrelid = c.conrelid and a.attnum = any (c.conkey)
+       where c.conrelid = format('public.%I', r.tbl)::regclass
+         and c.contype = 'f'
+         and c.confrelid = 'auth.users'::regclass
+         and a.attname = r.col
+         and c.confdeltype <> 'n'
+    loop
+      execute format('alter table public.%I drop constraint %I', r.tbl, v_con);
+    end loop;
+
+    if not exists (
+      select 1
+        from pg_constraint c
+        join pg_attribute a
+          on a.attrelid = c.conrelid and a.attnum = any (c.conkey)
+       where c.conrelid = format('public.%I', r.tbl)::regclass
+         and c.contype = 'f'
+         and c.confrelid = 'auth.users'::regclass
+         and a.attname = r.col
+    ) then
+      v_con := r.tbl || '_' || r.col || '_fkey';
+      execute format(
+        'alter table public.%I add constraint %I foreign key (%I) references auth.users (id) on delete set null not valid',
+        r.tbl, v_con, r.col);
+      execute format(
+        'update public.%I t set %I = null where t.%I is not null and not exists (select 1 from auth.users u where u.id = t.%I)',
+        r.tbl, r.col, r.col, r.col);
+      execute format('alter table public.%I validate constraint %I', r.tbl, v_con);
+    end if;
+  end loop;
+end $$;
+
+-- A deletion's set-null looks the revisions up by author; without this it
+-- would scan the whole history for every account deleted. Most rows name
+-- someone, so the index skips only the cleared ones.
+create index if not exists org_vault_revisions_updated_by_idx
+  on public.org_vault_revisions (updated_by) where updated_by is not null;

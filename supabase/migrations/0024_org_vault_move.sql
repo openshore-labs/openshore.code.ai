@@ -11,6 +11,9 @@
 --      the same note (plan.md to Plan.md), which is allowed.
 --   3. The displaced version is kept as a 'renamed' revision row at the old
 --      path (0019 already allows that reason), so history follows the note.
+--      It is written last, after the destination, so a rename in a free org
+--      at 0023's byte cap is not refused for the history copy (0023 refuses
+--      note growth only, counting the revisions already written).
 --   4. A move to a new name tombstones the source and writes the destination,
 --      each with a fresh sequence rev, so other devices learn the old path is
 --      gone on their next pull and a base rev from before the move never
@@ -117,8 +120,6 @@ begin
   end if;
 
   begin
-    perform public.org_vault_snapshot(cur, 'renamed');
-
     if lower(p_from) = lower(p_to) then
       -- Case-only rename: the same row, a new spelling and a new rev.
       delete from public.org_vault_notes
@@ -158,6 +159,12 @@ begin
         raise unique_violation;
       end if;
     end if;
+
+    -- The displaced version is kept after the destination lands, so 0023's
+    -- growth check on the destination never counts this history copy: a
+    -- free org at its 25 MiB cap can still rename (the 2026-09-29
+    -- interaction review, finding 4). A race undoes it with the move.
+    perform public.org_vault_snapshot(cur, 'renamed');
   exception when unique_violation then
     select * into other
       from public.org_vault_notes

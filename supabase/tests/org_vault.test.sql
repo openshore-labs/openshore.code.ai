@@ -1,10 +1,10 @@
 -- pgTAP coverage for the Org Vault v1 migration (0019, Vault M2 item 2.3, CTO
 -- ruling G3) and the move migration (0024, Vault M6 item 6.2, CTO ruling K12),
 -- plus team Restore over 0019's RPCs (K6), and the settings and entitlement
--- migration (0025, Vault M7 item 7.4, CTO ruling L17). Run with `supabase
--- test db` against a database that has every migration applied. Its own
--- transaction and its own plan(), so its count never collides with
--- rls.test.sql's.
+-- migration (0025, Vault M7 item 7.4, CTO ruling L17, and its author keys),
+-- with a rename at 0023's free cap. Run with `supabase test db` against a
+-- database that has every migration applied. Its own transaction and its own
+-- plan(), so its count never collides with rls.test.sql's.
 --
 -- Shape follows rls.test.sql: users are seeded straight into auth.users, a
 -- caller is impersonated by setting request.jwt.claims and switching to the
@@ -12,11 +12,11 @@
 -- run is rolled back. Revs a later step needs are kept in a temp table.
 --
 -- Error codes: P0001 is a plpgsql `raise exception`; 42501 is a missing
--- privilege; 23505 is a unique_violation; OV402 is 0025's lapsed-plan refusal
--- and OV403 its admins-only delete.
+-- privilege; 23505 is a unique_violation; 23514 is 0023's byte cap; OV402 is
+-- 0025's lapsed-plan refusal and OV403 its admins-only delete.
 
 begin;
-select plan(125);
+select plan(144);
 
 -- ------------------------------------------------------------ fixtures
 --   f1 = author (confirmed, active)
@@ -475,6 +475,56 @@ select throws_ok(
   'a non-member''s org_vault_move is refused');
 reset role;
 
+-- ------------------------------------------------------------ move at the free cap
+-- A rename in an org with no entitlement row (0025 lets it write in the beta,
+-- 0023 caps its bytes) with the counter parked on the 25 MiB cap. The move
+-- frees the source and writes the destination, which nets to zero, and keeps
+-- the history copy last, so it is not refused (the 2026-09-29 interaction
+-- review, finding 4). f7 owns the org.
+insert into auth.users (id, email, email_confirmed_at, aud, role)
+values ('f7000000-0000-0000-0000-000000000007', 'quay@example.com', now(), 'authenticated', 'authenticated');
+insert into public.orgs (id, name, owner_uid)
+values ('0c000000-0000-0000-0000-00000000000c', 'Quay', 'f7000000-0000-0000-0000-000000000007');
+insert into public.org_members (org_id, user_id, email, role, status)
+values ('0c000000-0000-0000-0000-00000000000c', 'f7000000-0000-0000-0000-000000000007', 'quay@example.com', 'admin', 'active');
+
+select set_config('request.jwt.claims',
+  '{"sub":"f7000000-0000-0000-0000-000000000007","email":"quay@example.com","role":"authenticated"}', true);
+set local role authenticated;
+select is(
+  public.org_vault_write('0c000000-0000-0000-0000-00000000000c', 'b.md', 'abc', null, true)->>'ok',
+  'true',
+  'fixture: a note in an org with no plan');
+reset role;
+
+update public.org_storage_usage
+   set bytes = public.no_entitlement_max_org_bytes()
+ where org_id = '0c000000-0000-0000-0000-00000000000c';
+
+set local role authenticated;
+select is(
+  public.org_vault_move('0c000000-0000-0000-0000-00000000000c', 'b.md', 'c.md',
+    (select rev from public.org_vault_notes
+     where org_id = '0c000000-0000-0000-0000-00000000000c' and path = 'b.md'))->>'ok',
+  'true',
+  'at the 25 MiB cap, a rename in an org with no plan goes through');
+select throws_ok(
+  $$ select public.org_vault_write('0c000000-0000-0000-0000-00000000000c', 'one.md', 'x', null, true) $$,
+  '23514', null::text,
+  'the org is still at its cap: a one-byte write is refused');
+reset role;
+
+select is(
+  (select body from public.org_vault_revisions
+   where org_id = '0c000000-0000-0000-0000-00000000000c' and path = 'b.md' and reason = 'renamed'),
+  'abc',
+  'the rename at the cap keeps its renamed revision');
+select is(
+  (select bytes - public.no_entitlement_max_org_bytes() from public.org_storage_usage
+   where org_id = '0c000000-0000-0000-0000-00000000000c'),
+  3::bigint,
+  'only that history copy rides above the cap, as 0023 lets history do');
+
 -- ------------------------------------------------------------ team trash
 -- K6: a trash is org_vault_remove; Restore is org_vault_write if_absent from
 -- the latest 'deleted' revision, at the original path or "{title} (restored)".
@@ -916,6 +966,118 @@ select ok(
   (public.org_vault_settings_get('0f000000-0000-0000-0000-00000000000f')->>'entitled_until')::timestamptz
     > now() + interval '29 days',
   'inside the notice period, settings_get returns entitled_until');
+reset role;
+
+-- ------------------------------------------------------------ authors (0025)
+-- 0025 section 10 (the 2026-09-29 interaction review, findings 1 and 3). f5
+-- is an admin who is not the owner, so the account can go while the org
+-- stands; f6 owns the org and stays. The account goes the way delete-account
+-- takes it, one step at a time: the history clear, the memberships, then
+-- deleteUser, with a teammate's overwrite in the gap after the clear.
+insert into auth.users (id, email, email_confirmed_at, aud, role)
+values
+  ('f5000000-0000-0000-0000-000000000005', 'second@example.com', now(), 'authenticated', 'authenticated'),
+  ('f6000000-0000-0000-0000-000000000006', 'stayer@example.com', now(), 'authenticated', 'authenticated');
+insert into public.orgs (id, name, owner_uid, seat_count, tier_id)
+values ('0e000000-0000-0000-0000-00000000000e', 'Stayers', 'f6000000-0000-0000-0000-000000000006', 3, 'personal');
+insert into public.org_members (org_id, user_id, email, role, status)
+values
+  ('0e000000-0000-0000-0000-00000000000e', 'f6000000-0000-0000-0000-000000000006', 'stayer@example.com', 'admin', 'active'),
+  ('0e000000-0000-0000-0000-00000000000e', 'f5000000-0000-0000-0000-000000000005', 'second@example.com', 'admin', 'active');
+insert into public.org_entitlements (org_id, tier_id, seats, status)
+values ('0e000000-0000-0000-0000-00000000000e', 'commercial_small', 3, 'active');
+
+select is(
+  (select count(*) from pg_constraint c
+     join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any (c.conkey)
+    where c.conrelid in ('public.org_vault_settings'::regclass, 'public.org_vault_revisions'::regclass)
+      and c.contype = 'f'
+      and c.confrelid = 'auth.users'::regclass
+      and a.attname = 'updated_by'
+      and c.confdeltype = 'n'
+      and c.convalidated),
+  2::bigint,
+  'both author columns key to auth.users on delete set null, validated');
+select ok(
+  exists (select 1 from pg_indexes
+          where schemaname = 'public' and tablename = 'org_vault_revisions'
+            and indexname = 'org_vault_revisions_updated_by_idx'),
+  'the revisions are indexed by author for the set-null');
+
+select set_config('request.jwt.claims',
+  '{"sub":"f5000000-0000-0000-0000-000000000005","email":"second@example.com","role":"authenticated"}', true);
+set local role authenticated;
+select is(
+  public.org_vault_settings_put('0e000000-0000-0000-0000-00000000000e', '{"version": 2}', 'member', null, 0)->>'ok',
+  'true',
+  'an admin who is not the owner changes the settings');
+select is(
+  public.org_vault_write('0e000000-0000-0000-0000-00000000000e', 'theirs.md', 'the leaver wrote this', null, true)->>'ok',
+  'true',
+  'and writes a team note');
+reset role;
+
+select is(
+  (select updated_by from public.org_vault_settings where org_id = '0e000000-0000-0000-0000-00000000000e'),
+  'f5000000-0000-0000-0000-000000000005'::uuid,
+  'the settings row names that admin');
+
+set local role service_role;
+select lives_ok(
+  $$ update public.org_vault_revisions set updated_by = null
+     where updated_by = 'f5000000-0000-0000-0000-000000000005' $$,
+  'delete-account clears the leaver from team history');
+reset role;
+
+select set_config('request.jwt.claims',
+  '{"sub":"f6000000-0000-0000-0000-000000000006","email":"stayer@example.com","role":"authenticated"}', true);
+set local role authenticated;
+select is(
+  public.org_vault_write('0e000000-0000-0000-0000-00000000000e', 'theirs.md', 'the owner rewrote it',
+    (select rev from public.org_vault_notes
+     where org_id = '0e000000-0000-0000-0000-00000000000e' and path = 'theirs.md'), false)->>'ok',
+  'true',
+  'a teammate overwrites the leaver''s note after that clear');
+reset role;
+
+select is(
+  (select count(*) from public.org_vault_revisions
+   where updated_by = 'f5000000-0000-0000-0000-000000000005'),
+  1::bigint,
+  'which puts the leaver back in team history before deleteUser runs');
+
+set local role service_role;
+select lives_ok(
+  $$ delete from public.org_members where user_id = 'f5000000-0000-0000-0000-000000000005' $$,
+  'the leaver''s memberships go');
+reset role;
+
+select lives_ok(
+  $$ delete from auth.users where id = 'f5000000-0000-0000-0000-000000000005' $$,
+  'the leaver''s account deletes');
+
+select is(
+  (select count(*) from public.org_vault_revisions
+   where updated_by = 'f5000000-0000-0000-0000-000000000005'),
+  0::bigint,
+  'deleting the account clears it from team history in the same step');
+select is(
+  (select count(*) from public.org_vault_revisions
+   where org_id = '0e000000-0000-0000-0000-00000000000e' and path = 'theirs.md'
+     and body = 'the leaver wrote this' and updated_by is null),
+  1::bigint,
+  'and the revision stays, with no author');
+select is(
+  (select settings->>'version' || ' ' || rev || ' ' || coalesce(updated_by::text, 'nobody')
+   from public.org_vault_settings where org_id = '0e000000-0000-0000-0000-00000000000e'),
+  '2 1 nobody',
+  'the settings row stays, with no author');
+
+set local role authenticated;
+select is(
+  public.org_vault_settings_get('0e000000-0000-0000-0000-00000000000e')->>'updated_by',
+  null::text,
+  'so no member reads the deleted account''s id');
 reset role;
 
 select * from finish();

@@ -82,7 +82,7 @@ What 0015 does, by finding:
 
 Tests: `supabase test db` runs every `tests/*.test.sql` file, each its own
 rolled-back transaction with its own plan: `tests/rls.test.sql` (32
-assertions over the cases above), `tests/org_vault.test.sql` (125 assertions
+assertions over the cases above), `tests/org_vault.test.sql` (144 assertions
 over 0019, 0024 and 0025, below) and `tests/account_deletion.test.sql` (37
 assertions over 0022 and 0023, below). CI runs the same command in the `sql`
 job of `.github/workflows/ci.yml`. `deno test functions/_shared` covers the
@@ -103,7 +103,16 @@ settings were written as 0020 and 0021 on `vault-m2-team` and are 0024 and
 
 1. Preflights, in the SQL editor on production, each returning no rows:
    0019's case duplicates and 0022's two `abuse_reports` queries (both
-   below).
+   below), and, before any push from `main`, the held branch's old numbers:
+
+   ```sql
+   select version from supabase_migrations.schema_migrations
+    where version in ('0020', '0021');
+   ```
+
+   0020 and 0021 were the team files' numbers on the held branch only and
+   were never meant to reach production. If this returns a row, stop and ask
+   before pushing anything.
 2. Before the team client merges, from `main`: `supabase db push --dry-run`,
    then `supabase db push`, which applies 0019, 0022 and 0023 in that order
    (and any older file production lacks; the dry run lists every one). Then
@@ -241,6 +250,9 @@ renumbered by CTO ruling 4) adds one RPC for the team vault's rename
   case-only rename of the same note is allowed and updates that row in place.
 - The old version is kept as a `renamed` revision row; a move to a new name
   tombstones the source and writes the destination, each with a sequence rev.
+  The revision row is written last, so 0023's cap (which refuses note growth
+  only) never counts it against the rename: a free org at 25 MiB can still
+  rename a note.
 - Same membership rule and grants as `org_vault_write` (authenticated only).
 
 Team Trash needs no SQL of its own (K6, R3): a trash is `org_vault_remove`,
@@ -287,6 +299,15 @@ and its plan gate (Vault v1 plan item 7.4, CTO ruling L17, CX Y14 and Y15):
 - With `delete_role = 'admin'`, `org_vault_remove` and `org_vault_delete`
   refuse a non-admin with SQLSTATE `OV403`. A move is not gated by it (a
   rename keeps the note).
+- `org_vault_settings.updated_by` and `org_vault_revisions.updated_by` key to
+  `auth.users` `on delete set null`, 0022's rule, found by catalog like
+  0022's five: deleting an account clears who changed the settings or wrote a
+  version and keeps every row, in `auth.admin.deleteUser`'s own transaction,
+  so a teammate's overwrite between `delete-account`'s history clear and the
+  deletion no longer leaves the id behind. The keys land `NOT VALID`, ids of
+  accounts already gone are cleared (0022's trigger allows exactly that
+  update), and then they are validated. A partial index on the revisions'
+  author serves the set-null.
 
 **Order (founder gate):** 0025 goes to production from `main` AFTER 0019 and
 0024 (it re-creates their write RPCs) and after 0022 and 0023, in the same
