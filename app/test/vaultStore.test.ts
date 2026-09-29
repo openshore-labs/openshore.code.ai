@@ -2790,7 +2790,7 @@ describe('team live refresh by polling (M2 2.7)', () => {
     reset();
     useApp.setState({ vaultConflict: undefined });
     // The poll looks only on a storage with compare-and-swap; the team
-    // client gains it with 0019 (stream D), so it is switched on here.
+    // client gains it with 0021 (stream D), so it is switched on here.
     had = org().compareAndSwap;
     org().compareAndSwap = true;
     vi.spyOn(Math, 'random').mockReturnValue(0.5);

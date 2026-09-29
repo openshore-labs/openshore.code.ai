@@ -2922,3 +2922,112 @@ execution contract. Newest at the bottom.
   - Lockdown is enforced at the one execution seam: every command, commit
     and check asks under Tokens and Secrets, and a commit's flagged files
     start unticked (CX 7).
+- **Migrations (CTO 11, 2026-09-29):** production's history decides a
+  number. It holds 0001 to 0020, whose 0019 and 0020 are the privacy branch's
+  files, pushed from that branch on 2026-09-24 before CTO 4. Main holds them
+  byte for byte and never renumbers them, `0019_org_vault_v1` became
+  `0021_org_vault_v1` unchanged, 0022 to 0025 keep their numbers, and 0026
+  adds the export's new tables and tombstone retention.
+  `supabase/production-history.tsv` pins every applied file. CI replays
+  production before pgTAP. Every push uses `--skip-vault`. The deletion
+  function is one design: main's with the legal-hold copy. This extends CTO 4
+  and replaces nothing in it (CTO 1 to CTO 10 are the premium build's). The
+  full ruling, with founder decisions F1 to F6, was advisory; the calls a
+  later session should not reopen:
+  - Never renumber or re-apply the privacy files: a second run of 0019 keys
+    every unsubmitted fingerprint twice (its lines 316-326 are not
+    idempotent) and brings back its broken `record_enforcement`. Rejected:
+    renumbering main's five unapplied files to 0026 to 0030 (churn, breaks
+    CTO 4's pinned names), and `migration repair` on production (it rewrites
+    a true record).
+  - Unapplied files change only where the ruling names them: 0022's appeal
+    address is os-code@openshorellc.com (what production shows; F1 may
+    change it before the push), 0023's refusal says a deleted note frees its
+    space when its history is cleared, about a month later (resolves the
+    gate 1 runbook's 0.3a), and 0024 and 0025 change comments only.
+  - `export_my_data` is version 2 (0026): 0019's nineteen keys plus the
+    caller's revision and settings rows, the tombstone's level (never its
+    hash) and the staff flag. `abuse_reports` stay out until counsel rules
+    (F4), so no copy says "everything". Every table a migration creates is
+    classified as read or left out with a reason in
+    `app/test/supabaseMigrations.test.ts`.
+  - Tombstones are deleted after two years by `oscode_guardrail_retention`,
+    the same bound as enforcement actions, unless the founder records an
+    exemption.
+  - `delete-account` is not deployed from main until the merged function is
+    on main (package C): main's planner and contract, plus the privacy
+    function's legal-hold copy into `deletion_holds`, the email cleanup,
+    level 2 tombstones only, and an answer both clients read. Production's
+    2026-09-24 function keeps working after 0021 to 0026.
+  - Guards: the text tests (applied files by hash, unapplied files above
+    production's newest, no two files with the same bytes, no `[db.vault]`
+    in `config.toml`, every documented push with `--skip-vault`, no stale
+    org vault name); `.github/workflows/migrations.yml`
+    (`supabase/scripts/check-migrations.mjs`, warnings for other branches on
+    a push to main); the founder's `supabase/scripts/push-preflight.mjs`,
+    which connects to nothing; and CI's `sql-replay` job beside `sql`.
+  - Owners, in order (the repo is the channel): A, the reconcile (this
+    change); B, reviews (an app session: `reviews.ts`, `reviewsMath.ts`,
+    `ReviewsSection.tsx`, urgent, since production's 0020 took anon reads off
+    `model_reviews`); then the founder's push of 0021 to 0026; C, deletion
+    (the E1 successor: the function merge, the interim app fix first, then
+    Download my data, the owner flow and re-authentication per F2 and F3);
+    the held branches (the Vault session merges main into `vault-m2-team`,
+    `vault-m2-icloud` and `vault-m2-native`); D, app compliance; E, legal
+    drafts; F, the Qwen 3B pull (waits on F5); G, DeepBlue and eval docs.
+    Every session merges main before it touches `supabase/`. When B to E are
+    on main, the privacy branch is recorded here as superseded, kept, and
+    its head `d3d4bb7` tagged `prod-source-0019-0020`.
+  - Build calls made while landing package A: the replay fixtures live in
+    `supabase/replay/`, not `supabase/tests/replay/`, because
+    `supabase test db` runs every `.sql` file under `tests/` through pg_prove
+    (checked on 2.118.0). The file hashes read CRLF as LF, so a Windows
+    checkout pins the same value. `check-migrations.mjs` never counts a file
+    production ran (named and hashed in main's history) against a branch,
+    and lets one of main's unapplied files move, bytes unchanged, to a number
+    above production's newest; only while main has no history file yet does
+    the branch's own copy stand in. The tag waits for the founder's go-ahead,
+    since creating it is a push.
+- **Guardrail data has retention limits and a keyed hash (advisory org,
+  2026-09-24, founder delegated; arrived through the privacy branch, recorded
+  on main by CTO 11).** Block rows are kept 180 days and enforcement actions
+  two years; block rows carry no subject name; allowed-with-consent rows stop
+  going to the server and existing ones are purged (consent assertions
+  already stay on the device); the text hash becomes a server-side HMAC;
+  records tied to a submitted report are held at least one year under 18
+  U.S.C. 2258A(h). Production's 0019 embodies it. Stands until a later ruling
+  names it.
+- **Account deletion ships with Download my data (advisory org, 2026-09-24,
+  founder delegated; arrived through the privacy branch, recorded on main by
+  CTO 11).** Owners transfer ownership or delete the org inside the same flow;
+  deleting an org cancels its Stripe subscription under the refund rule, with
+  "Cancel renewal instead" offered first; Apple subscriptions are cancelled by
+  the person in iOS Settings; rows under legal hold outlive the deletion until
+  the hold ends. CX dissent recorded (pro-rata refund on org deletion).
+  Production's 0019 and its 2026-09-24 function embody it; main's owner flow
+  and refund differ, and those are founder decisions F2 and F3 (CTO 11).
+  Stands until a later ruling names it.
+- **Community ratings show the raw average (advisory org, 2026-09-24, founder
+  delegated; arrived through the privacy branch, recorded on main by
+  CTO 11).** Raw mean with the count, no average under five reviews, the
+  benchmark fit on its own labeled axis, no `user_id` for anonymous readers,
+  a server-set "OpenShore team" label on staff reviews, published community
+  guidelines, and a 24-hour look at reports. Supersedes the benchmark-shrunk
+  average. CTO dissent recorded (shrinkage resists brigading). Production's
+  0020 embodies the server half; the app half is package B. Stands until a
+  later ruling names it.
+- **Contact inboxes are role addresses on openshore.ai (advisory org,
+  2026-09-24, founder delegated; arrived through the privacy branch, recorded
+  on main by CTO 11).** support@, privacy@, legal@, and copyright@ route to one
+  monitored inbox once a test message makes the round trip; until then
+  os-code@openshorellc.com is the only published address, in the repo Terms
+  and on the site alike. Production's 0019 and main's 0022 warn with that
+  address; the app's own support links and the Terms wait on F1. Stands until
+  a later ruling names it.
+- **Published address is a commercial virtual mailbox (advisory org,
+  2026-09-24, founder delegated; arrived through the privacy branch, recorded
+  on main by CTO 11).** It appears in the site footer, the privacy policy, the
+  Terms notices, the App Store listing, and list email; the registered agent
+  address is for service of process only, and a residential address is never
+  published. The founder supplies the literal address. Stands until a later
+  ruling names it.

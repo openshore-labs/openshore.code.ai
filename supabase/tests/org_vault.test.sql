@@ -1,6 +1,7 @@
--- pgTAP coverage for the Org Vault v1 migration (0019, Vault M2 item 2.3, CTO
--- ruling G3) and the move migration (0024, Vault M6 item 6.2, CTO ruling K12),
--- plus team Restore over 0019's RPCs (K6), and the settings and entitlement
+-- pgTAP coverage for the Org Vault v1 migration (0021, written as 0019 until
+-- CTO 11 moved it; Vault M2 item 2.3, CTO ruling G3) and the move migration
+-- (0024, Vault M6 item 6.2, CTO ruling K12), plus team Restore over 0021's
+-- RPCs (K6), and the settings and entitlement
 -- migration (0025, Vault M7 item 7.4, CTO ruling L17, and its author keys),
 -- with a rename at 0023's free cap. Run with `supabase test db` against a
 -- database that has every migration applied. Its own transaction and its own

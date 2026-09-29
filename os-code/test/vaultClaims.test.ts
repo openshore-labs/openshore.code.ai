@@ -1,7 +1,7 @@
 // Team vault claims (Vault M8, finding orgvault-19): the docs and a migration
 // comment said a concurrent team overwrite is "never lost", which the review's
 // repros disproved (a conflict copy folded by the minute could still drop a
-// version with three writers in one minute; 0019's revisions table is what
+// version with three writers in one minute; 0021's revisions table is what
 // keeps every displaced body now). This guard fails on that claim, in any of
 // its wordings, wherever it sits beside the team vault: the app's and the
 // engine's source (comments included), the tracked docs, and the comment
@@ -17,7 +17,7 @@
 // - the review findings, the plan, the test map, and the progress archive
 //   quote the old claim as history;
 // - supabase/migrations/0010_org_vault.sql is an APPLIED migration, so its
-//   header comment is not edited (orgvault-19); 0019's revisions table
+//   header comment is not edited (orgvault-19); 0021's revisions table
 //   supersedes it, and the note on that lives with the M8 records.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -38,7 +38,7 @@ const EXEMPT = new Map<string, string>([
   ['os-code/docs/progress-archive.md', 'history, not session reading'],
   [
     'supabase/migrations/0010_org_vault.sql',
-    'orgvault-19: an applied migration is never edited; 0019 revisions supersede its header',
+    'orgvault-19: an applied migration is never edited; 0021 revisions supersede its header',
   ],
 ]);
 

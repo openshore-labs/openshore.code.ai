@@ -42,11 +42,11 @@
 --      version and keeps the rows (section 10; the 2026-09-29 interaction
 --      review, findings 1 and 3).
 --
--- The write RPCs are re-created whole below: each body is 0019's or 0024's
+-- The write RPCs are re-created whole below: each body is 0021's or 0024's
 -- verbatim with the two new calls added after the member check. Additive:
 -- `if not exists` / `create or replace`. The one data change is section 10's:
 -- an author id whose account is already gone is cleared, which the new key
--- would refuse. Ships AFTER 0019, 0022 (its append-only trigger allows that
+-- would refuse. Ships AFTER 0021, 0022 (its append-only trigger allows that
 -- clear) and 0024 (see supabase/README.md). Pricing is a Board gate: nothing
 -- here names a tier or a price.
 --
@@ -57,9 +57,11 @@
 -- re-created here. 0023's org_is_entitled is the row rule of
 -- org_vault_entitled below without the beta's no-row window: an org that
 -- never bought may still write notes here, and 0023 still caps its bytes.
--- 0022's header says neither held file adds an auth.users key; this one now
+-- 0022's header once said neither held file adds an auth.users key; this one
 -- adds two (section 10) with 0022's set-null rule, and it applies after 0022,
--- whose trigger exception is what lets a revision's author be cleared.
+-- whose trigger exception is what lets a revision's author be cleared. CTO 11
+-- (2026-09-29) moved org_vault_v1 to 0021, so this file applies after 0021,
+-- 0022, 0023, and 0024.
 
 -- ---------------------------------------------------------------- 1. table
 -- The top-level keys a team row may hold: the L2 conventions a team shares.
@@ -300,7 +302,7 @@ end;
 $$;
 
 -- ---------------------------------------------------------------- 5. write
--- 0019's org_vault_write, plus the OV402 gate.
+-- 0021's org_vault_write, plus the OV402 gate.
 create or replace function public.org_vault_write(
   p_org uuid,
   p_path text,
@@ -397,7 +399,7 @@ end;
 $$;
 
 -- ---------------------------------------------------------------- 6. remove
--- 0019's org_vault_remove, plus the OV402 gate and the who-may-delete rule.
+-- 0021's org_vault_remove, plus the OV402 gate and the who-may-delete rule.
 create or replace function public.org_vault_remove(
   p_org uuid,
   p_path text,
@@ -589,7 +591,7 @@ end;
 $$;
 
 -- ---------------------------------------------------------------- 8. legacy
--- 0019's org_vault_put and org_vault_delete, for builds in the field only
+-- 0021's org_vault_put and org_vault_delete, for builds in the field only
 -- (remove after M8), plus the OV402 gate, and the delete rule on the delete.
 create or replace function public.org_vault_put(
   p_org uuid,
@@ -722,7 +724,7 @@ revoke execute on function public.org_vault_is_admin(uuid) from public, anon, au
 
 -- ---------------------------------------------------------------- 10. authors
 -- 0022's rule for an author column, on the two it could not reach: this
--- file's org_vault_settings.updated_by, and 0019's
+-- file's org_vault_settings.updated_by, and 0021's
 -- org_vault_revisions.updated_by. Each keys to auth.users `on delete set
 -- null`, so auth.admin.deleteUser clears the departing person's id in its own
 -- transaction and every row stays (the 2026-09-29 interaction review):

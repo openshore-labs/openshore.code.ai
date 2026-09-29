@@ -3,7 +3,9 @@
 -- `supabase test db` against a database that has every migration applied.
 --
 -- Shape: everything happens inside one transaction that is rolled back at the
--- end, so nothing persists. Users are seeded straight into auth.users; a
+-- end, so nothing persists. Counts are scoped to this file's own ids, since
+-- CI also runs the suite on a database that replays production's rows (the
+-- `sql-replay` job, CTO 11). Users are seeded straight into auth.users; a
 -- caller is impersonated by setting request.jwt.claims (what auth.uid() and
 -- auth.email() read) and switching to the `authenticated` role. Every
 -- expected failure goes through throws_ok, which runs the statement in a
@@ -65,7 +67,9 @@ select is(
   'b2000000-0000-0000-0000-000000000002'::uuid,
   'claim_membership bound the seat to the caller');
 select is(
-  (select count(*) from public.org_members where user_id is null and email <> 'member@example.com'),
+  (select count(*) from public.org_members
+    where org_id = '0a000000-0000-0000-0000-00000000000a'
+      and user_id is null and email <> 'member@example.com'),
   2::bigint,
   'claim_membership left every other invited seat alone');
 

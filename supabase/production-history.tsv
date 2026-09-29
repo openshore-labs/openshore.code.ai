@@ -1,0 +1,32 @@
+# Production's migration history (project lzlrlfdffwiypzreoldb), CTO 11, 2026-09-29.
+# One row per row of supabase_migrations.schema_migrations, in order: the
+# version, the name, the SHA-256 of supabase/migrations/<version>_<name>.sql
+# (hex, with CRLF line ends read as LF), and a note. Recorded from the founder's
+# `select version, name from supabase_migrations.schema_migrations order by
+# version` on 2026-09-29, which listed exactly these twenty rows.
+#
+# These files are applied: never edit, rename or renumber one (CTO 4, CTO 11).
+# Any change is a new file numbered above the newest here and on main. The
+# session that records a push appends its rows here in the same change.
+# Guards: app/test/supabaseMigrations.test.ts, supabase/scripts/*.mjs.
+version	name	sha256	note
+0001	orgs	7c100589c8fb2a4341ffa77476b510ef6d79d72a097f4b0c1fa19256356d0589	
+0002	rls	64c6a666957f0cc6300e0ea756b6815ff67ef107170f071c5553262ca54895fb	
+0003	claim	506fafa6c4fc70642e4d89575e7349c182af518852cfa9585ddef9dc919237e2	
+0004	entitlement_status	5dc4a1d730a14d7e5b4c8ac6723a82eef6e41210d1dac5128e18dedab9b48d2e	
+0005	orgs_rls_lockdown	b13fa18fd017e6ed78477e4caa469a0bd328dcd18624805ed083962e48c06c08	
+0006	user_entitlements	dd8265a6cdb63fbe94012fdf0973edd5c160d6ea6e9f71b5fa00f6f7add32e6d	
+0007	user_entitlements_stripe_customer	9ccf827680e53be31a126421386b60a5d37e30631361894cbae416eca8f11388	
+0008	apple_notifications_seen	a41f890e3b4fdab2b58da7d71069f3ecefc3a4f4c6bb2ffa62baa5595176b3f2	
+0009	push	db2073ca2246d1b7738a1fc5e971e6df13a355998bce03f4909cd39e71a2a91d	
+0010	org_vault	9bba2f431edff78861f5849a3977b6e4f0491c416a253cda0a1a64394762d7af	
+0011	model_reviews	bd709009a3e74d9bd0c912d5eb919caf3ed5b7fb4141ad2dab80f24088aa723b	
+0012	review_moderation	0a0f622b8fa4e67391ea9dbac1e7206c16e16f25ac4b1b82f1028c4dc31efc9a	
+0013	review_snapshot	866ab70a497c7a2abcbc0ccf24444370c9b264c7e137d584355c18facf57f2b4	
+0014	org_projects	8e4bb7956b1d3a6bf9fc35ac0c087818525ae1a2e4031eb7c3e0812b55996929	
+0015	review_2026_09_05	024ee19fd93dbd34313427f5690d5a4121d66288bd9fd8d3b9eaf46c07184581	
+0016	guardrail_enforcement	1ca37313b32645eb1e8772815937b837e6eb4ef56346be7dc448d6287dae432a	production may have run the pre-edit bytes; 0017 reconciles them
+0017	reconcile_stale_0016	4d19d68add7e9436644747401169a2f5eaa6356b81a482ffb7180995b7f6904f	applied 2026-09-05 (PROGRESS)
+0018	graduated_enforcement	49538a0c57316501e96a28e3806df87e20983e0743ffbd573964b47bdb64fbbb	
+0019	account_deletion_and_guardrail_retention	f6d8c71256f1e71ccaf4a23948a06c1ca6e163cbd63ff83f0f7f01f9bd6245c1	pushed 2026-09-24 from claude/openshore-privacy-mobile-1ij12h at d3d4bb7
+0020	reviews_public_view	678e759e7889d220ffe76b950b5ee6d6fa563fd83987bad59ec43e095f644990	pushed 2026-09-24 from claude/openshore-privacy-mobile-1ij12h at d3d4bb7

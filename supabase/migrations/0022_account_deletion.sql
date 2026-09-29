@@ -7,7 +7,12 @@
 --      so deleting anyone who ever invited a teammate, edited a shared
 --      project, granted access, or wrote a team note failed with a foreign key
 --      error. They become `on delete set null`: the team keeps the row, and
---      the name of who wrote it goes with the account.
+--      the name of who wrote it goes with the account. Production's 0019
+--      (0019_account_deletion_and_guardrail_retention.sql, applied
+--      2026-09-24) already set these five keys to set null by their default
+--      names, so on production this loop changes nothing. It is kept because
+--      it finds the keys by catalog, and so still catches a key made in the
+--      dashboard under another name.
 --   2. enforcement_actions cascades with the account, so a terminated person
 --      could delete the account and sign up again with the same email to a
 --      clean ladder. enforcement_tombstones keeps one row per email (a SHA-256
@@ -20,12 +25,17 @@
 --      column unchanged.
 --
 -- And from the backend review: abuse_reports.request_hash gets the same
--- 64-hex check guardrail_events has, and one report per (account, hash).
+-- 64-hex check guardrail_events has, and one report per (account, hash). The
+-- unique index on (user_id, request_hash) makes a repeated queue_abuse_report
+-- call for the same account and hash raise 23505; the app does not call it
+-- today.
 --
--- Numbering (CTO ruling 4): 0020 and 0021 are held on vault-m2-team, which
--- renumbers above main's newest file when it merges. Neither held file adds an
--- auth.users foreign key or touches record_enforcement or the revisions
--- trigger, so this file composes with them in either order.
+-- Numbering (CTO 11, 2026-09-29): production holds 0019 and 0020 as the
+-- privacy branch's files (account deletion and guardrail retention, and the
+-- reviews public view), and org_vault_v1 moved to 0021. Neither privacy file
+-- touches the revisions trigger, and this file's record_enforcement
+-- supersedes 0019's on purpose: it keeps 0019's appeal address and adds the
+-- tombstone and the qualified columns.
 --
 -- Deploy ordering: apply BEFORE deploying the delete-account function (it
 -- writes enforcement_tombstones and clears org_vault_revisions.updated_by).
@@ -120,7 +130,8 @@ $$;
 revoke execute on function public.enforcement_email_key(text) from public, anon, authenticated;
 
 -- ---------------------------------------------------------------- 3. the ladder
--- 0018's record_enforcement with two changes.
+-- 0018's record_enforcement with two changes, and the appeal address 0019
+-- published (os-code@openshorellc.com, the 2026-09-24 contact-inboxes ruling).
 --
 -- A level 2 tombstone for the caller's email counts as an operator's
 -- termination, so an account deleted while terminated does not come back to
@@ -129,7 +140,7 @@ revoke execute on function public.enforcement_email_key(text) from public, anon,
 -- account.
 --
 -- And every column is qualified by its table. The function returns a column
--- named `action`, which PL/pgSQL makes a variable, so 0016 to 0018's bare
+-- named `action`, which PL/pgSQL makes a variable, so 0016 to 0019's bare
 -- `action = 'blocked'` was ambiguous and every call raised before it wrote
 -- anything: the server-side ladder has never recorded a row. (The app's call
 -- swallows the error, lib/ethics.ts postRecord.) The pgTAP test in
@@ -198,7 +209,7 @@ begin
     v_action := 'warn';
     v_reason := 'A request was blocked in a hard-blocked category. A second confirmed block within '
       || extract(day from public.enforcement_window())::int
-      || ' days ends the account. If this was legitimate work, write to support@openshore.ai.';
+      || ' days ends the account. If this was legitimate work, write to os-code@openshorellc.com.';
   else
     v_level := 0;
     v_action := 'log-only';
@@ -232,7 +243,7 @@ $$;
 grant execute on function public.record_enforcement () to authenticated;
 
 -- ---------------------------------------------------------------- 4. history
--- 0019's append-only rule, with the one exception deletion needs: clearing
+-- 0021's append-only rule, with the one exception deletion needs: clearing
 -- who wrote a revision. Anything else (a body, a path, a rev, or setting an
 -- author rather than clearing one) is still refused for every role.
 create or replace function public.org_vault_revisions_immutable()
@@ -256,11 +267,12 @@ $$;
 revoke execute on function public.org_vault_revisions_immutable() from public, anon, authenticated;
 
 -- ---------------------------------------------------------------- 5. abuse_reports
--- request_hash is a SHA-256 hex everywhere it is written by the server, but
--- queue_abuse_report took it from the client unchecked. The check lands NOT
--- VALID so a stray old row cannot stop this migration; it is validated at
--- once when every existing row already passes, and every new row is checked
--- either way.
+-- request_hash is a SHA-256 hex everywhere it is written by the server.
+-- queue_abuse_report is already checked and keyed by production's 0019, so
+-- this column check is the backstop for a service-role write. The check
+-- lands NOT VALID so a stray old row cannot stop this migration; it is
+-- validated at once when every existing row already passes, and every new row
+-- is checked either way.
 alter table public.abuse_reports
   drop constraint if exists abuse_reports_request_hash_check;
 alter table public.abuse_reports
