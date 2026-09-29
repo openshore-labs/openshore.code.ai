@@ -140,6 +140,18 @@ export type ThreadItem =
       state?: 'giving' | 'given';
       /** Why the tap did not go through, in plain words. */
       error?: string;
+      /** The little-room variant (CTO 6): even the lean prompt fills most of
+       *  the window before the chat starts. Same card, same action; its own
+       *  title and body. */
+      tight?: true;
+    }
+  // Retrieval before turn one (CTO 6): the places in the code the harness
+  // gave a local seat before its first turn, by file and first line. Teal,
+  // since it only runs for a seat that stays on this network.
+  | {
+      kind: 'retrieval';
+      id: string;
+      sources: Array<{ path: string; line: number }>;
     }
   // What the Vault gave this task's seat (Vault M4, 4.4): the notes the pack
   // used, the private notes it left out for a seat that leaves this network,

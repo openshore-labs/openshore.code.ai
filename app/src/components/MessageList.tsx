@@ -31,6 +31,8 @@ import { ClarifyCard } from './ClarifyCard.js';
 import { ChangedFilesCard } from './ChangedFilesCard.js';
 import { VerifyPill } from './VerifyPill.js';
 import { ContextPackCard } from './ContextPackCard.js';
+import { RetrievalCard } from './RetrievalCard.js';
+import { taskVerdict, verifyAnchor } from '../state/harnessOps.js';
 import { Icon } from './Icon.js';
 import { Keyboard } from '@capacitor/keyboard';
 import { isPhone } from '../lib/platform.js';
@@ -416,7 +418,7 @@ export function MessageList({
     // (lib/streamSmoothing.ts skipReveals): the reader sets the pace.
     <div className="thread" ref={threadRef} onClick={skipReveals}>
       <div className="thread-inner">
-        {thread.items.map((item) => {
+        {thread.items.map((item, index) => {
           switch (item.kind) {
             case 'user':
               return (
@@ -493,6 +495,7 @@ export function MessageList({
               return (
                 <VerifyPill
                   key={item.id}
+                  anchor={verifyAnchor(item.id)}
                   passed={item.passed}
                   check={item.check}
                   summary={item.summary}
@@ -510,6 +513,7 @@ export function MessageList({
                   restoring={item.restoring}
                   error={item.error}
                   ranCommands={item.ranCommands}
+                  verdict={taskVerdict(thread.items, index)}
                   onRestore={
                     onRestoreChanged
                       ? (direction, path) => onRestoreChanged(item.id, direction, path)
@@ -519,6 +523,8 @@ export function MessageList({
               );
             case 'context-pack':
               return <ContextPackCard key={item.id} item={item} onOpen={onOpenPackNote} />;
+            case 'retrieval':
+              return <RetrievalCard key={item.id} item={item} />;
             case 'tool':
               return <ToolCard key={item.id} item={item} />;
             case 'command':
