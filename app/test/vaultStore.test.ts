@@ -3648,9 +3648,10 @@ describe('the team plan refuses before the server is asked (Y14, Y15)', () => {
     await useApp.getState().vaultRefresh();
     const target = useApp.getState().vaultTargetRef()!;
     const theirs = { path: 'n.md', text: 'theirs', updatedAt: 'r7', version: '7' };
+    // One sitting of the note (loadedAt), so its holds keep one entry.
     const open = (kind: 'changed' | 'missing') =>
       useApp.setState({
-        vaultNote: { path: 'n.md', text: 'base', updatedAt: 'r5', version: '5' },
+        vaultNote: { path: 'n.md', text: 'base', updatedAt: 'r5', version: '5', loadedAt: 1 },
         vaultConflict: {
           path: 'n.md',
           target,
@@ -4657,7 +4658,7 @@ describe('round 7: team text belongs to its account and its version', () => {
     const kept = (path: string, t: string) =>
       pending()[`org::${ORG}::${path}`]?.text === t || sealedHas(t);
     const noFalseCopyLine = () => {
-      expect(st().toast?.text ?? '').not.toMatch(/could not keep a copy|Copy it somewhere safe/);
+      expect(st().toast ?? '').not.toMatch(/could not keep a copy|Copy it somewhere safe/);
     };
     // u1 signs back in: the text replays into the team vault, shows under
     // Not saved, or waits in the stash under the choice, back on screen.
@@ -4786,6 +4787,152 @@ describe('round 7: team text belongs to its account and its version', () => {
       expect(JSON.stringify(pending())).not.toContain('u1 typed');
       expect(JSON.stringify(sealedHeld())).not.toContain('u1 typed');
       expect(st().vaultHeld.some((h) => h.text.includes('u1 typed'))).toBe(false);
+    });
+  });
+
+  describe('E7: every Not saved entry keeps its own text', () => {
+    const FULL = `Not saved. ${VAULT_TEAM_FULL} Your text is kept under Not saved.`;
+
+    it('a second refused session of the same note keeps the first refused text', async () => {
+      server.put('n.md', 'the base', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      server.freeBytes = server.usage();
+      const first = 'the base\nA whole paragraph I wrote first.';
+      await st().vaultSave('n.md', first);
+      expect(st().toast).toBe(FULL);
+      st().vaultCloseNote();
+      await st().vaultOpen('n.md');
+      expect(st().vaultNote?.text).toBe('the base');
+      const second = 'the base\nA second thought.';
+      await st().vaultSave('n.md', second);
+      expect(
+        teamHeld()
+          .map((h) => h.text)
+          .sort(),
+      ).toEqual([first, second].sort());
+      expect(
+        sealedHeld()
+          .map((h) => h.text)
+          .sort(),
+      ).toEqual([first, second].sort());
+      // A discard removes exactly the entry shown.
+      await st().vaultDiscardHeld(teamHeld().find((h) => h.text === first)!.id);
+      expect(teamHeld().map((h) => h.text)).toEqual([second]);
+      expect(sealedHeld().map((h) => h.text)).toEqual([second]);
+    });
+
+    it('refused autosaves in one sitting leave one entry, with the newest text', async () => {
+      server.put('n.md', 'the base', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      server.freeBytes = server.usage();
+      await st().vaultSave('n.md', 'the base\nA');
+      await st().vaultSave('n.md', 'the base\nA and B');
+      expect(teamHeld().map((h) => h.text)).toEqual(['the base\nA and B']);
+      expect(sealedHeld().map((h) => h.text)).toEqual(['the base\nA and B']);
+    });
+
+    it("another account's late unsent text never replaces yours", async () => {
+      const net = perCaller(server, { members: ['u1', 'u2'] });
+      useStoreToken();
+      await st().vaultRefresh();
+      const held = net.hold('org_vault_write', () => new TypeError('Failed to fetch'));
+      const save = st().vaultSave('Idea.md', 'u1 idea');
+      await held.reached;
+      await st().signOutAccount();
+      auth.nextUser = U2;
+      await st().signIn('b@example.com', 'pw');
+      await st().setVaultScope('team');
+      server.freeBytes = server.usage();
+      await st().vaultCreate('Idea', 'u2 words about the idea');
+      expect(
+        st()
+          .vaultHeldVisible()
+          .map((h) => h.text),
+      ).toEqual(['u2 words about the idea']);
+      held.release();
+      await save;
+      await tick();
+      expect(
+        st()
+          .vaultHeldVisible()
+          .map((h) => h.text),
+      ).toEqual(['u2 words about the idea']);
+      expect(
+        st()
+          .vaultHeld.filter((h) => h.owner === 'u1')
+          .map((h) => h.text),
+      ).toEqual(['u1 idea']);
+      // A discard by u2 never removes u1's entry, whatever its id.
+      for (const h of [...st().vaultHeld]) await st().vaultDiscardHeld(h.id);
+      expect(st().vaultHeld.map((h) => [h.owner, h.text])).toEqual([['u1', 'u1 idea']]);
+    });
+
+    it("an earlier sitting's stashed words are kept beside a later refused save", async () => {
+      server.put('n.md', 'the base', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      server.rpcFailure = new TypeError('Failed to fetch');
+      await st().vaultSave('n.md', 'the base\nwritten offline');
+      server.rpcFailure = undefined;
+      expect(pending()[`org::${ORG}::n.md`]).toMatchObject({ text: 'the base\nwritten offline' });
+      st().vaultCloseNote();
+      server.freeBytes = server.usage();
+      await st().vaultOpen('n.md');
+      await st().vaultSave('n.md', 'the base\nnewer, refused');
+      expect(
+        teamHeld()
+          .map((h) => h.text)
+          .sort(),
+      ).toEqual(['the base\nnewer, refused', 'the base\nwritten offline']);
+      expect(pending()).toEqual({});
+      expect(st().toast).toBe(FULL);
+    });
+
+    it('a stashed draft refused on replay is kept beside an earlier Not saved entry', async () => {
+      server.put('n.md', 'the base', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      server.freeBytes = server.usage();
+      await st().vaultSave('n.md', 'the base\nrefused first');
+      st().vaultCloseNote();
+      server.freeBytes = undefined;
+      await st().vaultOpen('n.md');
+      server.rpcFailure = new TypeError('Failed to fetch');
+      await st().vaultSave('n.md', 'the base\nwritten offline later');
+      server.rpcFailure = undefined;
+      st().vaultCloseNote();
+      server.freeBytes = server.usage();
+      await st().vaultRefresh();
+      expect(
+        teamHeld()
+          .map((h) => h.text)
+          .sort(),
+      ).toEqual(['the base\nrefused first', 'the base\nwritten offline later']);
+      expect(
+        sealedHeld()
+          .map((h) => h.text)
+          .sort(),
+      ).toEqual(['the base\nrefused first', 'the base\nwritten offline later']);
+      expect(st().toast).toBe('An offline edit could not be saved, so it is kept under Not saved.');
+    });
+
+    it('an entry sealed under the old id can still be discarded', async () => {
+      const legacy = {
+        id: 'local::vault.personal::old.md',
+        providerId: 'local' as const,
+        resourceId: 'vault.personal',
+        path: 'old.md',
+        text: 'kept from before',
+        reason: 'x',
+        at: '2026-09-01T00:00:00.000Z',
+      };
+      mem.set(HELD, JSON.stringify([legacy]));
+      useApp.setState({ vaultHeld: [{ ...legacy, durable: true }] });
+      await st().vaultDiscardHeld(legacy.id);
+      expect(sealedHeld()).toEqual([]);
+      expect(st().vaultHeld).toEqual([]);
     });
   });
 });
