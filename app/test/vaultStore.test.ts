@@ -39,6 +39,7 @@ import {
   VAULT_TEAM_LAPSED_NOT_SAVED_LINE,
   VAULT_GONE_REASON,
   vaultFolderMoveTaken,
+  vaultFolderTrashChanged,
   vaultGoneToast,
   vaultNameInTrash,
   vaultRenameFailed,
@@ -6534,6 +6535,77 @@ describe('round 7, batch 3: the team vault answers only for itself', () => {
     }
     throw new Error('the index never settled');
   }
+
+  describe('E21: a folder delete names a note a teammate saved while it ran', () => {
+    // Before each remove of `path` a teammate saves it again, `times` times
+    // (every time when undefined), so the guard meets a newer version.
+    function teammateSaves(path: string, times?: number) {
+      const rpc = server.rpc.bind(server);
+      let n = 0;
+      server.rpc = async (fn, tok, args) => {
+        if (
+          fn === 'org_vault_remove' &&
+          args.p_path === path &&
+          (times === undefined || n < times)
+        ) {
+          n++;
+          server.put(path, `b ${n}`);
+        }
+        return rpc(fn, tok, args);
+      };
+    }
+    const listed = () =>
+      st()
+        .vaultFiles.map((f) => f.path)
+        .sort();
+
+    it('two notes, one saved by a teammate throughout: ok for one, the other named and kept', async () => {
+      server.put('Work/a.md', 'a', 'u-me');
+      server.put('Work/b.md', 'b', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('Work/b.md');
+      teammateSaves('Work/b.md');
+      const r = await st().vaultDeleteFolder('Work');
+      expect(server.bytes('Work/a.md')).toBeUndefined();
+      expect(server.bytes('Work/b.md')).toMatch(/^b \d/);
+      expect(r).toMatchObject({
+        ok: true,
+        notes: 1,
+        partial: { trashed: 1, left: ['Work/b.md'], changed: ['Work/b.md'] },
+      });
+      if (!r?.ok || r.undo?.kind !== 'trash') throw new Error('no undo');
+      expect(JSON.parse(r.undo.id.slice(2))).toEqual({ folder: 'Work', took: ['Work/a.md'] });
+      expect(listed()).toEqual(['Work/b.md']);
+      // The note still there is still open.
+      expect(st().vaultNote?.path).toBe('Work/b.md');
+    });
+
+    it('a folder whose only note changed throughout moved nothing, and says so', async () => {
+      server.put('Work/b.md', 'b', 'u-me');
+      await st().vaultRefresh();
+      teammateSaves('Work/b.md');
+      const r = await st().vaultDeleteFolder('Work');
+      expect(r).toEqual({
+        ok: false,
+        reason: 'changed',
+        line: vaultFolderTrashChanged('Work', ['Work/b.md']),
+      });
+      expect(server.bytes('Work/b.md')).toMatch(/^b \d/);
+      expect(listed()).toEqual(['Work/b.md']);
+    });
+
+    it('a note saved once while it ran is still taken on the retry', async () => {
+      server.put('Work/a.md', 'a', 'u-me');
+      server.put('Work/b.md', 'b', 'u-me');
+      await st().vaultRefresh();
+      teammateSaves('Work/b.md', 1);
+      const r = await st().vaultDeleteFolder('Work');
+      expect(r).toMatchObject({ ok: true, notes: 2 });
+      if (!r?.ok) throw new Error('not ok');
+      expect(r.partial).toBeUndefined();
+      expect(listed()).toEqual([]);
+    });
+  });
 
   describe('E19: an admins-only refusal says who may delete from then on', () => {
     const adminsOnly = () => {

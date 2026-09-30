@@ -166,14 +166,20 @@ export type TrashResult =
  *  line); `lapsed` when the plan stopped being active, so no Undo is offered
  *  (it would be refused the same way). No line: a failure that may pass. A
  *  storage that trashes all or nothing never sets it (round 7 E20). */
+// `changed`: the paths of `left` a teammate saved while the trash ran, which
+// its guard passed over rather than delete a version nobody here has seen
+// (round 7 E21).
 export interface TrashPartial {
   trashed: number;
   left: string[];
   line?: string;
   lapsed?: true;
+  changed?: string[];
 }
 
-/** A TrashResult whose ok answer may carry a TrashPartial. */
+/** A TrashResult whose ok answer may carry a TrashPartial, and whose
+ *  'changed' answer for a folder that moved nothing (every note in it
+ *  changed while it ran) names them in one, with `trashed` 0. */
 export type TrashReport = TrashResult & { partial?: TrashPartial };
 
 /** What a restore did. It never overwrites: a taken name lands beside it as

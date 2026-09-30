@@ -1084,14 +1084,20 @@ export const orgVaultProvider: StorageProvider = {
     const inside = (await orgVaultProvider.list(resourceId)).filter((f) =>
       f.path.startsWith(under),
     );
+    // A note a teammate saves again after the one retry is passed over, not
+    // trashed at a version nobody here has seen; it stays, and the answer
+    // names it (round 7 E21).
+    const changed: string[] = [];
     for (const [i, f] of inside.entries()) {
       try {
         let r = await drop(f.path, f.version ?? '');
         if (r !== 'gone' && !r.ok && r.theirs?.version) r = await drop(f.path, r.theirs.version);
-        if (r !== 'gone' && r.ok) took.push(f.path);
+        if (r === 'gone') continue;
+        if (r.ok) took.push(f.path);
+        else changed.push(f.path);
       } catch (err) {
         if (!took.length) throw err;
-        const left = inside.slice(i).map((x) => x.path);
+        const left = inside.filter((x, j) => j >= i || changed.includes(x.path)).map((x) => x.path);
         partial = {
           trashed: took.length,
           left,
@@ -1101,9 +1107,20 @@ export const orgVaultProvider: StorageProvider = {
               ? { line: err.message }
               : {}),
           ...(err instanceof OrgVaultLapsed ? { lapsed: true as const } : {}),
+          ...(changed.length ? { changed: [...changed] } : {}),
         };
         break;
       }
+    }
+    if (changed.length && !took.length) {
+      return {
+        ok: false,
+        conflict: 'changed',
+        partial: { trashed: 0, left: [...changed], changed: [...changed] },
+      };
+    }
+    if (changed.length && !partial) {
+      partial = { trashed: took.length, left: [...changed], changed: [...changed] };
     }
     return {
       ok: true,

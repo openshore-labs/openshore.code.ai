@@ -1446,6 +1446,44 @@ describe("the team's free space says what 0023 says (the review, finding 1)", ()
     );
   });
 
+  it('a folder delete names the notes a teammate saved while it ran (E21)', async () => {
+    const { vaultFolderTrashPartial, vaultFolderTrashChanged } =
+      await import('../src/lib/vaultCopy.js');
+    expect(
+      vaultFolderTrashPartial({ title: 'Work', trashed: 1, left: 1, changed: ['Work/b.md'] }),
+    ).toBe(
+      'Moved 1 of 2 notes from "Work" to Trash. "b" changed while this ran, so it is still there.',
+    );
+    expect(
+      vaultFolderTrashPartial({
+        title: 'Work',
+        trashed: 1,
+        left: 2,
+        changed: ['Work/b.md', 'Work/c.md'],
+      }),
+    ).toBe(
+      'Moved 1 of 3 notes from "Work" to Trash. "b" and "c" changed while this ran, so they are still there.',
+    );
+    // A stop as well as a pass-over: the rest, and why.
+    expect(
+      vaultFolderTrashPartial({ title: 'Work', trashed: 1, left: 2, changed: ['Work/b.md'] }),
+    ).toBe(
+      'Moved 1 of 3 notes from "Work" to Trash. The rest are still there. Try again in a moment.',
+    );
+    expect(vaultFolderTrashChanged('Work', ['Work/b.md'])).toBe(
+      'Not deleted. "b" changed while this ran, so nothing in "Work" went to Trash.',
+    );
+    expect(vaultFolderTrashChanged('Work', ['Work/a.md', 'Work/b.md', 'Work/c.md'])).toBe(
+      'Not deleted. 3 notes changed while this ran, so nothing in "Work" went to Trash.',
+    );
+    for (const line of [
+      vaultFolderTrashChanged('Work', ['Work/b.md']),
+      vaultFolderTrashPartial({ title: 'Work', trashed: 1, left: 1, changed: ['Work/b.md'] }),
+    ]) {
+      expect(line).not.toMatch(/try again/i);
+    }
+  });
+
   it('a name in team Trash is said with what to do, never "try again" (E22)', async () => {
     const { vaultNameInTrash, vaultFolderMoveInTrash } = await import('../src/lib/vaultCopy.js');
     expect(vaultNameInTrash('Plan')).toBe(

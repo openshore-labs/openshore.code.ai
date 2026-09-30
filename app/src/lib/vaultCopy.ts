@@ -2657,15 +2657,43 @@ export function vaultRestorePartial(o: {
  *  note by note): how many went to Trash, that the rest are still there, and
  *  why, when a refusal said; with no reason, the rest were not reached, so
  *  trying again is true (round 7 E20). Never "Not deleted": some were. */
+// With `changed` (the paths a teammate saved while the delete ran, which
+// its guard passed over, E21) and nothing else left, it names them instead.
 export function vaultFolderTrashPartial(o: {
   title: string;
   trashed: number;
   left: number;
   reason?: string;
+  changed?: readonly string[];
 }): string {
   const total = o.trashed + o.left;
+  const moved = `Moved ${o.trashed} of ${total} ${total === 1 ? 'note' : 'notes'} from "${o.title}" to Trash.`;
+  if (o.changed?.length && o.changed.length === o.left && !o.reason) {
+    const they = o.changed.length === 1 ? 'it is' : 'they are';
+    return `${moved} ${changedWhileThisRan(o.changed)}, so ${they} still there.`;
+  }
   const why = o.reason ? reasonSentence(o.reason) : 'Try again in a moment.';
-  return `Moved ${o.trashed} of ${total} ${total === 1 ? 'note' : 'notes'} from "${o.title}" to Trash. The rest are still there. ${why}`;
+  return `${moved} The rest are still there. ${why}`;
+}
+
+/** Which notes changed while a folder delete ran: one or two by title,
+ *  more by count. */
+function changedWhileThisRan(paths: readonly string[]): string {
+  const names = paths.map((p) => `"${noteTitle(p)}"`);
+  const who =
+    names.length === 1
+      ? names[0]!
+      : names.length === 2
+        ? `${names[0]} and ${names[1]}`
+        : `${names.length} notes`;
+  return `${who} changed while this ran`;
+}
+
+/** A folder delete that moved nothing, because every note in it was saved
+ *  by a teammate while it ran (its guard passes over a note it has not
+ *  seen): nothing went to Trash, and which changed (round 7 E21). */
+export function vaultFolderTrashChanged(title: string, changed: readonly string[]): string {
+  return `Not deleted. ${changedWhileThisRan(changed)}, so nothing in "${title}" went to Trash.`;
 }
 
 /** A folder move that stopped part way on a refusal that trying again cannot

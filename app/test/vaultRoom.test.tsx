@@ -1463,6 +1463,45 @@ describe('the team room offers only what the server takes (Y14, Y15)', () => {
     expect(dom.buttons()).not.toContain('Undo');
   });
 
+  it('a folder delete that passed over a note a teammate saved names it and stays (E21)', async () => {
+    app.state.vaultDeleteFolder = async () => ({
+      ok: true,
+      trashed: true,
+      undo: { kind: 'trash', id: 'f:x', path: 'Work', folder: true, notes: 1 },
+      notes: 1,
+      attachments: 0,
+      partial: { trashed: 1, left: ['Work/Plan.md'], changed: ['Work/Plan.md'] },
+    });
+    await openFolderSheet({ entitled: true, deleteRole: 'member', isAdmin: false });
+    await dom.click('Delete folder');
+    await dom.click(dom.buttons().find((b) => b.startsWith('Really move'))!);
+    await dom.settle();
+    await dom.settle();
+    expect(dom.text()).toContain(
+      'Moved 1 of 2 notes from "Work" to Trash. "Plan" changed while this ran, so it is still there.',
+    );
+    // Still in the folder, where Plan still is, with the Undo for what went.
+    expect(dom.text()).toContain('Plan');
+    expect(dom.buttons()).toContain('Undo');
+  });
+
+  it('a folder delete that moved nothing because every note changed says so and stays (E21)', async () => {
+    app.state.vaultDeleteFolder = async () => ({
+      ok: false,
+      reason: 'changed',
+      line: 'Not deleted. "Plan" changed while this ran, so nothing in "Work" went to Trash.',
+    });
+    await openFolderSheet({ entitled: true, deleteRole: 'member', isAdmin: false });
+    await dom.click('Delete folder');
+    await dom.click(dom.buttons().find((b) => b.startsWith('Really move'))!);
+    await dom.settle();
+    expect(app.toasts).toContain(
+      'Not deleted. "Plan" changed while this ran, so nothing in "Work" went to Trash.',
+    );
+    expect(dom.text()).toContain('Plan');
+    expect(dom.buttons()).not.toContain('Undo');
+  });
+
   it('an admin, or everyone under member delete, still gets Delete folder', async () => {
     await openFolderSheet({ entitled: true, deleteRole: 'admin', isAdmin: true });
     expect(dom.buttons()).toContain('Delete folder');

@@ -803,6 +803,9 @@ export type VaultDeleteResult =
        *  the whole line to say (the admins-only delete, CX Y14). */
       line?: string;
       whole?: true;
+      /** A folder that moved nothing because every note in it changed while
+       *  the delete ran (the team vault, round 7 E21): their paths. */
+      changed?: string[];
     };
 
 /** Is Trash real on this storage? One tap deletes only where it is (R2). */
@@ -864,7 +867,14 @@ export async function deleteFolder(deps: VaultOpsDeps, folder: string): Promise<
       kind: 'folder',
       path: folder,
     });
-    if (!r.ok) return { ok: false, reason: r.conflict, theirs: r.theirs };
+    if (!r.ok) {
+      return {
+        ok: false,
+        reason: r.conflict,
+        theirs: r.theirs,
+        ...(r.partial?.changed?.length ? { changed: r.partial.changed } : {}),
+      };
+    }
     // Stopped part way: only what went leaves the list (E20).
     const left = new Set(r.partial?.left ?? []);
     for (const p of inside) if (!left.has(p)) deps.patch.removed(p);

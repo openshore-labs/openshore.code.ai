@@ -1666,15 +1666,17 @@ export function VaultScreen() {
         showToast(vaultTrashFailed(name));
         return;
       }
-      // Some went to Trash and the rest are still here (E20): the folder
-      // stays, the line says how many and why, and the Undo brings back
-      // what went (none after the plan lapsed, which would refuse it).
+      // Some went to Trash and the rest are still here (E20), or a teammate
+      // saved some while it ran (E21): the folder stays, the line says how
+      // many and why, and the Undo brings back what went (none after the
+      // plan lapsed, which would refuse it).
       if (r.partial) {
         const line = vaultFolderTrashPartial({
           title: name,
           trashed: r.partial.trashed,
           left: r.partial.left.length,
           ...(r.partial.line ? { reason: r.partial.line } : {}),
+          ...(r.partial.changed ? { changed: r.partial.changed } : {}),
         });
         if (r.partial.lapsed || !r.undo) {
           showToast(line);

@@ -522,6 +522,7 @@ import {
   vaultFolderMoveTaken,
   vaultRenameFailed,
   vaultTrashGone,
+  vaultFolderTrashChanged,
   vaultRefusedLine,
 } from '../lib/vaultCopy.js';
 import { vaultTeamRefusal } from './vaultTeamGate.js';
@@ -1172,6 +1173,9 @@ export type VaultDeleteOutcome =
   | { ok: false; reason: 'storage'; line: string }
   // Already gone elsewhere (a teammate deleted or moved it): its gone line.
   | { ok: false; reason: 'missing'; line: string }
+  // A folder that moved nothing: every note in it changed while the delete
+  // ran (the team vault, round 7 E21), and the line names them.
+  | { ok: false; reason: 'changed'; line: string }
   | { ok: false; reason: 'storage' | 'unsupported' | 'missing' | 'changed' | 'downloading' };
 
 /** Today's note from the room (Vault M6 6.4; CTO K7, CX X11): an existing
@@ -11970,6 +11974,17 @@ export const useApp = create<AppState>((set, get, api) => {
       const refused = !r.ok ? refusalOf(r) : undefined;
       if (refused) {
         return { ok: false, reason: 'storage', line: vaultRefusedLine('delete', refused) };
+      }
+      // Nothing went, because every note in it changed while this ran (a
+      // teammate saving, E21): the folder is as it was, and the line names
+      // them, never "Try again".
+      if (!r.ok && r.reason === 'changed' && r.changed?.length) {
+        await relistActive(t);
+        return {
+          ok: false,
+          reason: 'changed',
+          line: vaultFolderTrashChanged(folder.slice(folder.lastIndexOf('/') + 1), r.changed),
+        };
       }
       if (!r.ok) return { ok: false, reason: r.reason === 'changed' ? 'storage' : r.reason };
       // Stopped part way (the team vault, E20): what went is in Trash, the
