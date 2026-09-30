@@ -221,6 +221,9 @@ export class OrgVaultNotReady extends Error {
  *  read-only, every note still reads and exports. Permanent, so a save
  *  refused mid-edit is held as Not saved with this reason (CX Y15). */
 export class OrgVaultLapsed extends OrgVaultRefusal {
+  /** The seam's mark for the store, which turns the open note back to the
+   *  team's text once its words are held (round 7 E28). */
+  readonly lapsed = true;
   constructor() {
     super(VAULT_TEAM_LAPSED_NOT_SAVED);
     this.name = 'OrgVaultLapsed';

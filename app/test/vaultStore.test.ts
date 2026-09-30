@@ -7641,6 +7641,80 @@ describe('round 7, batch 4: the team vault says what is there, and what it did',
     });
   });
 
+  describe('E28: a save the lapsed plan refused leaves the note showing the team text', () => {
+    const typed = 'the team text, and my words the plan refused';
+    async function openActive() {
+      server.put('n.md', 'the team text', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultLoadSettings({ force: true });
+      await vi.waitFor(() => expect(st().vaultTeamPlan).toMatchObject({ entitled: true }));
+      await st().vaultOpen('n.md');
+      for (let i = 0; i < 5; i++) await tick();
+      expect(st().vaultNote?.text).toBe('the team text');
+    }
+
+    it('the note reloads to the team text; the words are only under Not saved', async () => {
+      await openActive();
+      const before = st().vaultNote!.reloaded ?? 0;
+      server.entitled = false;
+      st().vaultNoteDraft('n.md', typed);
+      await st().vaultSave('n.md', typed);
+      expect(st().vaultTeamPlan).toMatchObject({ entitled: false });
+      expect(st().vaultNote).toMatchObject({
+        path: 'n.md',
+        text: 'the team text',
+        reloadedFrom: 'resolve',
+      });
+      expect(st().vaultNote!.reloaded).toBe(before + 1);
+      expect(teamHeld().map((h) => h.text)).toEqual([typed]);
+      // The plan comes back and a teammate writes: a poll asks nothing and
+      // stashes nothing from the refused words.
+      server.entitled = true;
+      server.put('n.md', 'a teammate wrote this');
+      expect(await st().vaultRecheck({ reason: 'poll' })).not.toBe('conflict');
+      expect(st().vaultConflict).toBeUndefined();
+      expect(pending()).toEqual({});
+    });
+
+    it('a keystroke sent while the refused save is on its way is held too, never dropped', async () => {
+      await openActive();
+      server.entitled = false;
+      const gate = gateWrites(server);
+      st().vaultNoteDraft('n.md', `${typed} one`);
+      const first = st().vaultSave('n.md', `${typed} one`);
+      await vi.waitFor(() => expect(gate.seen).toBe(1));
+      st().vaultNoteDraft('n.md', `${typed} one two`);
+      const second = st().vaultSave('n.md', `${typed} one two`);
+      gate.open.resolve();
+      await first;
+      await second;
+      expect(teamHeld().map((h) => h.text)).toContain(`${typed} one two`);
+      expect(st().vaultNote?.text).toBe('the team text');
+    });
+
+    it('a refusal for free space keeps the editor on the typed words', async () => {
+      await openActive();
+      const before = st().vaultNote!.reloaded;
+      server.freeBytes = server.usage();
+      st().vaultNoteDraft('n.md', typed);
+      await st().vaultSave('n.md', typed);
+      expect(teamHeld().map((h) => h.text)).toEqual([typed]);
+      expect(st().vaultNote!.reloaded).toBe(before);
+    });
+
+    it('a settings read that finds the plan lapsed ends the same way for the debounced save', async () => {
+      await openActive();
+      server.entitled = false;
+      st().vaultNoteDraft('n.md', typed);
+      await st().vaultLoadSettings({ force: true });
+      await vi.waitFor(() => expect(st().vaultTeamPlan).toMatchObject({ entitled: false }));
+      await st().vaultSave('n.md', typed);
+      expect(st().vaultNote?.text).toBe('the team text');
+      expect(st().vaultNote?.reloadedFrom).toBe('resolve');
+      expect(teamHeld().map((h) => h.text)).toEqual([typed]);
+    });
+  });
+
   describe("E32: a team list started under one account never opens that account's index for the next", () => {
     // u1's list answer is held after the server answered it; u1 signs out,
     // u2 signs in and opens the team vault; then u1's answer lands.

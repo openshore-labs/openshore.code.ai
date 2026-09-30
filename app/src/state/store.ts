@@ -5786,6 +5786,7 @@ export const useApp = create<AppState>((set, get, api) => {
       const landed = await holdVaultDraft(t, path, text, asSentence(refusal), { session });
       set({ vaultError: 'held' });
       markHeldHere(t, path, session);
+      if ((err as { lapsed?: unknown }).lapsed === true) showTeamTextAfterLapse(t, path, text);
       get().showToast(`Not saved. ${asSentence(refusal)} ${heldLine(landed)}`);
       logEvent('vault_note_save_refused');
       return;
@@ -7173,6 +7174,30 @@ export const useApp = create<AppState>((set, get, api) => {
     if (vaultLiveDraft?.path === path) return vaultLiveDraft.text;
     const open = get().vaultNote;
     return open?.path === path ? open.text : undefined;
+  }
+
+  // The plan lapsed under the open note (OV402): the room turns read-only
+  // and shows every note as the team holds it, so once the refused words are
+  // held under Not saved the editor lets go of them and shows the note's own
+  // text, and a later poll never asks about them (round 7 E28). Only when
+  // they are the editor's latest: a newer keystroke's save is still on its
+  // way, and its own refusal holds it first. A refusal that leaves the note
+  // editable (the free space) keeps the words on screen.
+  function showTeamTextAfterLapse(t: VaultTargetRef, path: string, text: string): void {
+    const open = isActiveVault(t) ? get().vaultNote : undefined;
+    if (!open || open.path !== path) return;
+    const draft = draftOf(path);
+    if (draft === undefined || (draft !== text && restoreEol(open.text, draft) !== text)) return;
+    reloadOpenNote(
+      {
+        path,
+        text: open.text,
+        updatedAt: open.updatedAt,
+        ...(open.version ? { version: open.version } : {}),
+      },
+      'resolve',
+      open.editedBy,
+    );
   }
 
   // Replace the open note's text in place, keeping it open: a calm reload of

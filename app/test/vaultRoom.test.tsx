@@ -1928,6 +1928,50 @@ describe('the team room offers only what the server takes (Y14, Y15)', () => {
     expect(dom.buttons()).toContain('C');
     expect(dom.buttons()).not.toContain(button);
   });
+
+  it('a save the lapsed plan refused leaves the read-only note showing the team text (E28)', async () => {
+    const EDITOR = 'Write. Plain markdown, and [[wikilinks]] to connect notes.';
+    const refused = 'my words the plan refused';
+    app.state.vaultTargetRef = () => ({ providerId: 'org', resourceId: 'org-1', owner: 'u1' });
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    app.state.vaultFiles = [{ path: 'n.md', updatedAt: 'x', size: 13 }];
+    app.state.vaultNote = { path: 'n.md', text: 'the team text', updatedAt: 'x', fresh: true };
+    app.state.vaultPending = [];
+    await dom.render(<VaultRoom />);
+    await dom.type(EDITOR, refused);
+    // The store held the words under Not saved, marked the plan lapsed and
+    // reloaded the note to the team's text (rescueVaultDraft).
+    app.state.vaultTeamPlan = { entitled: false, deleteRole: 'member', isAdmin: false };
+    app.state.vaultCapsNow = () => LAPSED_CAPS;
+    app.state.vaultError = 'held';
+    app.state.vaultHeld = [
+      {
+        id: 'org::org-1::n.md::u1::1',
+        providerId: 'org',
+        resourceId: 'org-1',
+        owner: 'u1',
+        path: 'n.md',
+        text: refused,
+        reason: 'The team plan is not active.',
+        at: '2026-09-30T00:00:00.000Z',
+        durable: true,
+      },
+    ];
+    app.state.vaultNote = {
+      path: 'n.md',
+      text: 'the team text',
+      updatedAt: 'x',
+      reloaded: 1,
+      reloadedFrom: 'resolve',
+    };
+    await dom.render(<VaultRoom />);
+    await dom.settle();
+    expect(dom.container.querySelector('textarea')).toBeNull();
+    const reader = dom.container.querySelector('.vault-read')?.textContent ?? '';
+    expect(reader).toContain('the team text');
+    expect(reader).not.toContain(refused);
+    expect(dom.text()).toContain('Not saved');
+  });
 });
 
 // Round 7 E18: the chip never says Saved over text the vault refused for
