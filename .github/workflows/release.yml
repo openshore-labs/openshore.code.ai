@@ -418,30 +418,11 @@ jobs:
           gh release create "$TAG" \
             --repo openshore-labs/openshore-releases \
             --title "OpenShore $TAG" \
-            --notes "OpenShore $TAG for Linux and Windows. The Mac build joins this release when it finishes. Download from https://openshore.ai." \
+            --notes "OpenShore $TAG for Linux and Windows. Mac builds are published separately. Download from https://openshore.ai." \
             release/*
 
-      # The Mac build runs on Codemagic (codemagic.yaml, mac-desktop) and
-      # uploads into the newest release, which is this one. Starting it here
-      # means Macs get every release too. Optional: with the two repository
-      # secrets unset this step says so and skips, and Macs keep updating to
-      # the newest release that has a Mac build (electron/main.ts looks for
-      # one). Set CODEMAGIC_API_TOKEN (Codemagic, Teams, Integrations,
-      # Codemagic API) and CODEMAGIC_APP_ID (the app's id in its Codemagic
-      # URL) to turn it on; see docs/MAC-DESKTOP.md.
-      - name: Start the macOS build on Codemagic
-        env:
-          CODEMAGIC_API_TOKEN: ${{ secrets.CODEMAGIC_API_TOKEN }}
-          CODEMAGIC_APP_ID: ${{ secrets.CODEMAGIC_APP_ID }}
-        run: |
-          set -euo pipefail
-          if [ -z "${CODEMAGIC_API_TOKEN:-}" ] || [ -z "${CODEMAGIC_APP_ID:-}" ]; then
-            echo "CODEMAGIC_API_TOKEN or CODEMAGIC_APP_ID is not set; skipping the Mac build."
-            exit 0
-          fi
-          BODY=$(printf '{"appId":"%s","workflowId":"mac-desktop","branch":"main"}' "$CODEMAGIC_APP_ID")
-          curl -fsS -X POST https://api.codemagic.io/builds \
-            -H "Content-Type: application/json" \
-            -H "x-auth-access-token: ${CODEMAGIC_API_TOKEN}" \
-            -d "$BODY" \
-            || echo "Could not start the Codemagic Mac build; Macs stay on the newest release with a Mac build."
+      # No Mac build starts from here (founder, 2026-09-30): every push to main
+      # publishes Linux and Windows, but Codemagic minutes are metered, so the
+      # Mac build (codemagic.yaml, mac-desktop) runs only when started by hand
+      # in Codemagic. It uploads into the newest release; Macs update to the
+      # newest release that has a Mac file (electron/main.ts looks for one).

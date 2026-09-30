@@ -108,15 +108,12 @@ opens the release page instead. Setting up the keys is a one-time job:
 `docs/release-signing.md`.
 
 A Mac only sees a release once this Codemagic build has uploaded its zip into
-it. To have every release carry a Mac build without starting it by hand, add
-two repository secrets (GitHub, Settings, Secrets and variables, Actions):
-
-- `CODEMAGIC_API_TOKEN`: Codemagic, Teams, Integrations, Codemagic API.
-- `CODEMAGIC_APP_ID`: the app's id from its Codemagic URL.
-
-The release workflow's last step then starts `mac-desktop` right after it
-publishes. Without them the step skips, and Macs update to the newest release
-that has a Mac build.
+it. The release workflow never starts it (founder, 2026-09-30: Codemagic
+minutes are metered, and every push to main is a release), so Macs update only
+when `mac-desktop` is started by hand in Codemagic; it uploads into the newest
+release, and Macs update to the newest release that has a Mac build. The
+`CODEMAGIC_API_TOKEN` and `CODEMAGIC_APP_ID` repository secrets that once
+started it automatically are no longer read and can be deleted.
 
 ### Building the Mac release by hand (offline, as a dmg)
 
