@@ -62,6 +62,7 @@ import {
   VAULT_TEAM_DELETE_REFUSED,
   VAULT_TEAM_FULL,
   VAULT_TEAM_LAPSED_NOT_SAVED,
+  VAULT_TEAM_NOT_MEMBER_REASON,
   vaultNameInTrash,
   vaultNotFolderLine,
 } from '../vaultCopy.js';
@@ -264,6 +265,35 @@ export class OrgVaultNameInTrash extends OrgVaultRefusal {
   }
 }
 
+/** This account is not a member of the org (0002's is_org_member, which
+ *  every vault RPC asks first: 0021, 0024, 0025): an admin removed it, or it
+ *  left from another device. Its selects then answer no rows (0010's RLS),
+ *  as an emptied vault would, so `notMember` tells the store, which takes the
+ *  team vault away rather than call its notes deleted (round 7 E26).
+ *  Permanent: retrying cannot make anyone a member again. */
+export class OrgVaultNotMember extends OrgVaultRefusal {
+  readonly notMember = true;
+  constructor() {
+    super(VAULT_TEAM_NOT_MEMBER_REASON);
+    this.name = 'OrgVaultNotMember';
+  }
+}
+
+/** Is this the server's "not a member of this org"? A plain raise (P0001,
+ *  which PostgREST answers with a 400), matched by its own words, since every
+ *  other raise shares the code. */
+function isNotMemberRefusal(
+  e: { code?: unknown; message?: unknown } | undefined,
+  status: unknown,
+): boolean {
+  return (
+    status === 400 &&
+    (e?.code === undefined || e.code === 'P0001') &&
+    typeof e?.message === 'string' &&
+    /^not a member of this org$/i.test(e.message.trim())
+  );
+}
+
 /** Is this 0023's free space refusal? Its code, and its own words, since a
  *  check constraint on a vault table raises the same code with Postgres's
  *  message. 0023's other cap (one team without a plan per owner) is on
@@ -291,6 +321,7 @@ async function refusing<T>(call: () => Promise<T>): Promise<T> {
     if (e?.code === 'OV403') throw new OrgVaultDeleteRefused();
     if (isFreeSpaceRefusal(e)) throw new OrgVaultFull();
     if (e?.code === 'PGRST202' || status === 404) throw new OrgVaultNotReady();
+    if (isNotMemberRefusal(e, status)) throw new OrgVaultNotMember();
     if (typeof status === 'number' && status >= 400 && status < 500 && !RETRYABLE_4XX.has(status)) {
       throw new OrgVaultRefusal(err instanceof Error ? err.message : `Request failed (${status}).`);
     }
@@ -305,6 +336,7 @@ async function refusing<T>(call: () => Promise<T>): Promise<T> {
  *  E19). */
 // A refusal that answers after the sign-in it was made under ended says
 // nothing about the next account's plan, so it marks none (round 7 E14).
+// "Not a member" from any call tells the store once per call (E26).
 async function refusingFor<T>(resourceId: string, call: () => Promise<T>): Promise<T> {
   const gen = generation;
   try {
@@ -313,6 +345,7 @@ async function refusingFor<T>(resourceId: string, call: () => Promise<T>): Promi
     if (gen === generation) {
       if (err instanceof OrgVaultLapsed) markLapsed(resourceId);
       if (err instanceof OrgVaultDeleteRefused) markAdminsOnly(resourceId);
+      if (err instanceof OrgVaultNotMember) memberListener?.(resourceId);
     }
     throw err;
   }
@@ -339,6 +372,13 @@ let planListener: ((resourceId: string, plan: OrgVaultPlan) => void) | undefined
  *  with OV402, or a delete refused with OV403). One listener: the store's. */
 export function onOrgVaultPlan(fn: (resourceId: string, plan: OrgVaultPlan) => void): void {
   planListener = fn;
+}
+
+let memberListener: ((resourceId: string) => void) | undefined;
+/** Hear that the server answered "not a member of this org" for a team
+ *  (round 7 E26). One listener: the store's. */
+export function onOrgVaultNotMember(fn: (resourceId: string) => void): void {
+  memberListener = fn;
 }
 
 /** The team's plan as last read, or undefined before the first read. */

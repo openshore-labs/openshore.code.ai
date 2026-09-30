@@ -756,6 +756,17 @@ export const VAULT_TEAM_SIGN_IN_LINE = 'Sign in again to save to your team.';
 export const VAULT_TEAM_OTHER_ACCOUNT =
   'It was started under another account, so the rest was not sent.';
 
+/** This account is no longer a member of the team (an admin removed it, or
+ *  it left from another device): the reason a save, a new note or a move
+ *  refused by the server gives, after its verb (round 7 E26). Nothing in the
+ *  team vault was deleted, so no line says it was. */
+export const VAULT_TEAM_NOT_MEMBER_REASON = 'You are no longer a member of this team.';
+
+/** Said once, as the room takes the team vault away and shows the personal
+ *  one: its notes are still there, only no longer shown to this account. */
+export const VAULT_TEAM_NOT_MEMBER =
+  'You are no longer a member of this team, so its notes are not shown here.';
+
 // ---- The lease (2.5) ----------------------------------------------------------
 // Advisory on a storage with compare-and-swap: one quiet line, never read-only.
 // Enforced only on a storage without it, and honest that the storage itself

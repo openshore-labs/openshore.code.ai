@@ -472,6 +472,7 @@ vi.mock('../src/lib/gitos/index.js', async () => {
     },
     resetOrgVault: org.resetOrgVault,
     onOrgVaultPlan: org.onOrgVaultPlan,
+    onOrgVaultNotMember: org.onOrgVaultNotMember,
     setOrgVaultDeleteRole: org.setOrgVaultDeleteRole,
   };
 });
@@ -1036,15 +1037,15 @@ describe('failures are loud, classified, and never lose text (0.4)', () => {
 
   it("a team server refusal keeps the server's own line and is never retried", async () => {
     teamScope();
-    teamNet.fail = new SupabaseRequestError('not a member of this org', 400);
+    teamNet.fail = new SupabaseRequestError('that note path is not allowed', 400);
     await useApp.getState().vaultSave('plan.md', 'our plan');
     expect(pending()).toEqual({});
     expect(useApp.getState().vaultHeld[0]).toMatchObject({
       path: 'plan.md',
       text: 'our plan',
-      reason: 'Not a member of this org.',
+      reason: 'That note path is not allowed.',
     });
-    expect(useApp.getState().toast).toMatch(/Not a member of this org/);
+    expect(useApp.getState().toast).toMatch(/That note path is not allowed/);
     expect(useApp.getState().toast).not.toMatch(/connection returns/);
   });
 
@@ -1182,10 +1183,10 @@ describe('failures are loud, classified, and never lose text (0.4)', () => {
     teamScope();
     team.set('plan.md', { body: 'ours', rev: 1 });
     await useApp.getState().vaultRefresh();
-    teamNet.fail = new SupabaseRequestError('not a member of this org', 400);
+    teamNet.fail = new SupabaseRequestError('that note path is not allowed', 400);
     expect(await useApp.getState().vaultDelete('plan.md')).toBe(false);
     expect(useApp.getState().vaultError).toBeUndefined();
-    expect(useApp.getState().toast).toMatch(/Not a member of this org/);
+    expect(useApp.getState().toast).toMatch(/That note path is not allowed/);
   });
 
   it('one unreadable file still yields backlinks for the rest', async () => {
@@ -7028,6 +7029,138 @@ describe('round 7, batch 3: the team vault answers only for itself', () => {
       expect(await st().vaultApplyMove(preview, false)).toMatchObject({ ok: true });
       expect(server.bytes('Old/A.md')).toBe('team a');
       expect(pins()).toEqual(['Work/A.md']);
+    });
+  });
+
+  describe('E26: a member removed from the team is told so, never that its notes are gone', () => {
+    const copy = () => import('../src/lib/vaultCopy.js');
+    // A member of ORG with plan.md open, as the room is before an admin
+    // removes this account (server.member false: 0002, 0010, 0025).
+    async function openPlan() {
+      useApp.setState({ serverRole: 'member' });
+      server.put('plan.md', 'the plan', 'u1');
+      server.put('other.md', 'another', 'u-teammate');
+      await st().vaultRefresh();
+      await st().vaultOpen('plan.md');
+      for (let i = 0; i < 8; i++) await tick();
+      expect(st().vaultNote?.path).toBe('plan.md');
+      expect(st().teamVaultAvailable()).toBe(true);
+    }
+
+    it('a poll after the removal says so, and the room offers the team vault no more', async () => {
+      const { VAULT_TEAM_NOT_MEMBER } = await copy();
+      await openPlan();
+      server.member = false;
+      await st().vaultRecheck({ reason: 'poll' });
+      expect(st().toast ?? '').not.toMatch(/moved or deleted somewhere else/);
+      expect(st().toast).toBe(VAULT_TEAM_NOT_MEMBER);
+      expect(st().vaultScope).toBe('personal');
+      expect(st().vaultNote).toBeUndefined();
+      expect(st().teamVaultAvailable()).toBe(false);
+      expect(st().vaultTeamPlan).toBeUndefined();
+      expect(st().vaultTrash).toBeUndefined();
+      await st().vaultRefresh();
+      const now = st();
+      expect(now.vaultScope === 'personal' || now.vaultFiles.length > 0).toBe(true);
+      await st().setVaultScope('team');
+      expect(st().vaultScope).toBe('personal');
+      await st().vaultCreate('Ideas');
+      expect(st().toast ?? '').not.toMatch(/not a member of this org/i);
+      // Nothing of the team's was touched or written.
+      server.member = true;
+      expect(server.bytes('plan.md')).toBe('the plan');
+      expect(server.bytes('Ideas.md')).toBeUndefined();
+    });
+
+    it('words typed in the open note are kept under Not saved, never asked about as missing', async () => {
+      const { VAULT_TEAM_NOT_MEMBER, VAULT_TEAM_NOT_MEMBER_REASON } = await copy();
+      await openPlan();
+      st().vaultNoteDraft('plan.md', 'the plan, and my words');
+      server.member = false;
+      await st().vaultRecheck({ reason: 'poll' });
+      await vi.waitFor(() =>
+        expect(st().toast).toBe(`${VAULT_TEAM_NOT_MEMBER} Your text is kept under Not saved.`),
+      );
+      expect(st().vaultConflict).toBeUndefined();
+      expect(
+        st()
+          .vaultHeldVisible()
+          .map((h) => [h.path, h.text, h.reason]),
+      ).toEqual([['plan.md', 'the plan, and my words', VAULT_TEAM_NOT_MEMBER_REASON]]);
+      expect(sealedHeld().map((h) => h.text)).toEqual(['the plan, and my words']);
+      expect(pending()).toEqual({});
+    });
+
+    it('a save refused by the removal says it in our words and keeps the text', async () => {
+      const { VAULT_TEAM_NOT_MEMBER_REASON } = await copy();
+      await openPlan();
+      server.member = false;
+      await st().vaultSave('plan.md', 'the plan, saved after');
+      expect(st().toast).toMatch(/no longer a member of this team/);
+      expect(st().toast ?? '').not.toMatch(/not a member of this org|try again/i);
+      expect(
+        st()
+          .vaultHeldVisible()
+          .map((h) => [h.text, h.reason]),
+      ).toEqual([['the plan, saved after', VAULT_TEAM_NOT_MEMBER_REASON]]);
+      expect(pending()).toEqual({});
+      expect(st().vaultScope).toBe('personal');
+      expect(st().teamVaultAvailable()).toBe(false);
+    });
+
+    it('a new note refused by the removal says it in our words', async () => {
+      const { VAULT_TEAM_NOT_MEMBER_REASON } = await copy();
+      useApp.setState({ serverRole: 'member' });
+      await st().vaultRefresh();
+      server.member = false;
+      await st().vaultCreate('Ideas');
+      expect(st().toast).toBe(`Could not create that note. ${VAULT_TEAM_NOT_MEMBER_REASON}`);
+      expect(st().vaultScope).toBe('personal');
+      server.member = true;
+      expect(server.bytes('Ideas.md')).toBeUndefined();
+    });
+
+    it('a list that had notes and reads none is not shown as an empty vault', async () => {
+      const { VAULT_TEAM_NOT_MEMBER } = await copy();
+      useApp.setState({ serverRole: 'member' });
+      server.put('plan.md', 'the plan', 'u1');
+      await st().vaultRefresh();
+      expect(st().vaultFiles.map((f) => f.path)).toEqual(['plan.md']);
+      server.member = false;
+      await st().vaultRefresh();
+      expect(st().vaultScope).toBe('personal');
+      expect(st().toast).toBe(VAULT_TEAM_NOT_MEMBER);
+      await vi.waitFor(() => expect(st().vaultListed).toBe(true));
+      expect(st().vaultFiles.map((f) => f.path)).not.toContain('plan.md');
+    });
+
+    it("a teammate's real delete of the open note is still said as gone", async () => {
+      await openPlan();
+      server.drop('plan.md');
+      await st().vaultRecheck({ reason: 'poll' });
+      expect(st().toast).toBe(vaultGoneToast('plan'));
+      expect(st().vaultScope).toBe('team');
+      expect(st().teamVaultAvailable()).toBe(true);
+      // And a teammate emptying the list is an empty list.
+      server.drop('other.md');
+      await st().vaultRefresh();
+      expect(st().vaultFiles).toEqual([]);
+      expect(st().vaultScope).toBe('team');
+    });
+
+    it('when the team cannot be asked, nothing is concluded', async () => {
+      await openPlan();
+      server.member = false;
+      server.rpcFailure = new TypeError('Failed to fetch');
+      expect(await st().vaultRecheck({ reason: 'poll' })).toBe('failed');
+      expect(st().vaultNote?.path).toBe('plan.md');
+      expect(st().vaultScope).toBe('team');
+      expect(st().toast ?? '').not.toMatch(/moved or deleted/);
+      // A list the same way keeps the last one.
+      await st().vaultRefresh();
+      expect(st().vaultFiles.map((f) => f.path)).toEqual(['other.md', 'plan.md']);
+      expect(st().vaultScope).toBe('team');
+      expect(st().teamVaultAvailable()).toBe(true);
     });
   });
 });

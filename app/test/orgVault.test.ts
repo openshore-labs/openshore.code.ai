@@ -35,8 +35,14 @@ import {
   ORG_VAULT_UNAPPLIED_SETTINGS,
   orgVaultAppliedSettings,
   OrgVaultFull,
+  OrgVaultNotMember,
+  onOrgVaultNotMember,
 } from '../src/lib/gitos/orgVault.js';
-import { VAULT_TEAM_FULL, vaultTeamEditableUntil } from '../src/lib/vaultCopy.js';
+import {
+  VAULT_TEAM_FULL,
+  VAULT_TEAM_NOT_MEMBER_REASON,
+  vaultTeamEditableUntil,
+} from '../src/lib/vaultCopy.js';
 
 const ORG = 'org-123';
 const mockSelect = vi.mocked(select);
@@ -321,12 +327,68 @@ describe('org vault provider', () => {
   });
 
   it("marks a server 4xx as permanent with the server's own line", async () => {
-    server.rpcFailure = Object.assign(new Error('not a member of this org'), { status: 400 });
+    server.rpcFailure = Object.assign(new Error('that note path is not allowed'), { status: 400 });
     const err = await orgVaultProvider
       .write(ORG, 'a.md', 'hi', { ifAbsent: true })
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(OrgVaultRefusal);
-    expect((err as Error).message).toBe('not a member of this org');
+    expect((err as Error).message).toBe('that note path is not allowed');
+  });
+
+  // Round 7 E26: an admin removed this account (0002's is_org_member answers
+  // no). Every RPC raises it first, and the selects answer no rows.
+  it("reads 'not a member of this org' as a removal, in our words, and tells the store", async () => {
+    const heard: string[] = [];
+    onOrgVaultNotMember((org) => heard.push(org));
+    server.put('a.md', 'there');
+    const v = (await orgVaultProvider.stat(ORG, 'a.md'))!.version!;
+    server.member = false;
+    // The selects answer a removed member with nothing, never an error.
+    expect(await orgVaultProvider.list(ORG)).toEqual([]);
+    expect(await orgVaultProvider.stat(ORG, 'a.md')).toBeUndefined();
+    const calls = [
+      orgVaultProvider.write(ORG, 'a.md', 'mine', { ifMatch: v }),
+      orgVaultProvider.remove(ORG, 'a.md', { ifMatch: v }),
+      orgVaultProvider.rename!(ORG, 'a.md', 'b.md', { ifMatch: v }),
+      orgVaultProvider.readConfig!(ORG, 'oscode/vault'),
+    ];
+    for (const call of calls) {
+      const err = await call.then(
+        () => undefined,
+        (e: unknown) => e,
+      );
+      expect(err).toBeInstanceOf(OrgVaultNotMember);
+      expect(err).toBeInstanceOf(OrgVaultRefusal);
+      expect((err as OrgVaultNotMember).permanent).toBe(true);
+      expect((err as OrgVaultNotMember).notMember).toBe(true);
+      expect((err as Error).message).toBe(VAULT_TEAM_NOT_MEMBER_REASON);
+      expect((err as Error).message).not.toMatch(/not a member of this org|try again/i);
+    }
+    expect(heard).toEqual([ORG, ORG, ORG, ORG]);
+    // Nothing was touched on the server.
+    server.member = true;
+    expect(server.bytes('a.md')).toBe('there');
+  });
+
+  it('matches the removal by its own words: any other plain raise keeps its line', async () => {
+    const heard: string[] = [];
+    onOrgVaultNotMember((org) => heard.push(org));
+    server.rpcFailure = Object.assign(new Error('that note path is not allowed'), {
+      status: 400,
+      code: 'P0001',
+    });
+    const err = await orgVaultProvider
+      .write(ORG, 'a.md', 'hi', { ifAbsent: true })
+      .catch((e: unknown) => e);
+    expect(err).not.toBeInstanceOf(OrgVaultNotMember);
+    expect((err as Error).message).toBe('that note path is not allowed');
+    // A 5xx that happens to say it is not a refusal at all.
+    server.rpcFailure = Object.assign(new Error('not a member of this org'), { status: 502 });
+    const e5 = await orgVaultProvider
+      .write(ORG, 'a.md', 'hi', { ifAbsent: true })
+      .catch((e: unknown) => e);
+    expect(e5).not.toBeInstanceOf(OrgVaultRefusal);
+    expect(heard).toEqual([]);
   });
 
   it('leaves a network failure, a 5xx, a 401, and a 429 retryable', async () => {
@@ -370,7 +432,7 @@ describe('org vault provider', () => {
 
   it('marks a refused delete as permanent too', async () => {
     server.put('a.md', 'x');
-    server.rpcFailure = Object.assign(new Error('not a member of this org'), { status: 400 });
+    server.rpcFailure = Object.assign(new Error('that note path is not allowed'), { status: 400 });
     await expect(orgVaultProvider.remove(ORG, 'a.md')).rejects.toBeInstanceOf(OrgVaultRefusal);
   });
 

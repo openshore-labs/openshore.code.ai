@@ -70,6 +70,11 @@ export interface FakeOrgVaultServer {
   caller: string;
   /** When set, every RPC throws it (a network failure, a PGRST202). */
   rpcFailure: unknown;
+  /** 0002's is_org_member for the caller. False is a member an admin removed
+   *  (or who left from another device): every select on an org_ table answers
+   *  no rows (0010's RLS, 0021's, 0025's, org_members_select's), and every RPC
+   *  raises 'not a member of this org' (P0001, a 400) before anything else. */
+  member: boolean;
   /** 0023's cap for a team with no live plan, in bytes; undefined is a team
    *  on a plan (no cap). */
   freeBytes: number | undefined;
@@ -221,6 +226,7 @@ export function createFakeOrgVaultServer(org = 'org-123'): FakeOrgVaultServer {
     rpcs: [],
     caller: 'u-me',
     rpcFailure: undefined,
+    member: true,
     freeBytes: undefined,
 
     usage() {
@@ -264,6 +270,7 @@ export function createFakeOrgVaultServer(org = 'org-123'): FakeOrgVaultServer {
       });
       const get = (k: string) => params.filter(([key]) => key === k).map(([, v]) => v);
       if (get('org_id')[0] !== `eq.${encodeURIComponent(org)}`) return [];
+      if (!server.member && table.startsWith('org_')) return [];
       if (table === 'org_members') {
         const status = get('status')[0]?.replace(/^eq\./, '');
         return server.members
@@ -323,8 +330,8 @@ export function createFakeOrgVaultServer(org = 'org-123'): FakeOrgVaultServer {
     async rpc(fn, _token, args) {
       server.rpcs.push({ fn, args });
       if (server.rpcFailure) throw server.rpcFailure;
-      if (args.p_org !== org) {
-        throw Object.assign(new Error('not a member of this org'), { status: 400 });
+      if (args.p_org !== org || !server.member) {
+        throw Object.assign(new Error('not a member of this org'), { status: 400, code: 'P0001' });
       }
       const path = args.p_path as string;
       if (fn === 'org_vault_settings_get') return settingsGet(server);

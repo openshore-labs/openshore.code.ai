@@ -396,6 +396,7 @@ import {
   setOrgVaultAuth,
   resetOrgVault,
   onOrgVaultPlan,
+  onOrgVaultNotMember,
   setOrgVaultDeleteRole,
   type OrgVaultPlan,
   type OrgVaultDeleteRole,
@@ -517,6 +518,8 @@ import {
   VAULT_MARKED_REVIEWED,
   VAULT_STARTER_NOT_EMPTY,
   VAULT_TEAM_LAPSED_NOT_SAVED,
+  VAULT_TEAM_NOT_MEMBER,
+  VAULT_TEAM_NOT_MEMBER_REASON,
   VAULT_TEAM_SIGN_IN_LINE,
   vaultFolderMoveRefused,
   vaultFolderMoveTaken,
@@ -6580,6 +6583,7 @@ export const useApp = create<AppState>((set, get, api) => {
     if (!isActiveVault(t)) return;
     const listing = await listVaultNotes(t).catch(() => undefined);
     if (!listing || !isActiveVault(t)) return;
+    if ((await teamListHolds(t, listing)) !== 'ok' || !isActiveVault(t)) return;
     set({ vaultFiles: listing });
     void vaultIndexOf(t)?.reconcile(listing);
   }
@@ -7136,6 +7140,75 @@ export const useApp = create<AppState>((set, get, api) => {
     });
   }
 
+  // This account is no longer a member of the team (round 7 E26): an admin
+  // removed it, or it left from another device, so 0002's is_org_member
+  // answers no. Every select then answers no rows and every call refuses,
+  // which reads like an emptied vault, yet nothing there was deleted, so
+  // nothing says so. The team vault goes the way it does at a sign-out (the
+  // role this device knew is dropped, so the room stops offering it), the
+  // words typed into its open note are kept under Not saved, and the room
+  // says why, once. The next launch or sign-in reads the role again.
+  async function teamMembershipEnded(resourceId: string): Promise<void> {
+    const st = get();
+    if (resourceId !== st.settings.account?.org?.serverId) return;
+    set({ serverRole: undefined, vaultTeamPlan: undefined });
+    if (st.vaultScope !== 'team' || st.vaultTeamExpired) return;
+    const t = vaultTarget();
+    if (!t || t.providerId !== 'org' || t.resourceId !== resourceId) return;
+    stopVaultPoll();
+    vaultOpenSeq++;
+    const open = st.vaultNote;
+    const draft = open ? draftOf(open.path) : undefined;
+    const choice = st.vaultConflict?.target.providerId === 'org' ? st.vaultConflict : undefined;
+    vaultLiveDraft = undefined;
+    set({
+      vaultScope: 'personal',
+      vaultError: undefined,
+      ...clearedVaultRoom(),
+      ...(choice ? { vaultConflict: undefined } : {}),
+    });
+    let line = VAULT_TEAM_NOT_MEMBER;
+    if (open && draft !== undefined && draft !== open.text) {
+      const landed = await holdVaultDraft(t, open.path, draft, VAULT_TEAM_NOT_MEMBER_REASON, {
+        session: open.loadedAt,
+      });
+      // Held for good: the stash of this sitting would only say it twice.
+      if (landed) await dropOwnStash(t, open.path, open.loadedAt, undefined);
+      line = `${line} ${heldLine(landed)}`;
+    }
+    get().showToast(line);
+    logEvent('vault_team_not_member');
+    await get().vaultRefresh();
+  }
+  // Whether the team still counts this account a member. Its selects answer
+  // a removed member with no rows, never an error, so before a team note is
+  // called gone, or a team list that had notes is taken as empty, the team is
+  // asked once: a settings read, which refuses a non-member (E26). 'removed'
+  // has already taken the room back (teamMembershipEnded); 'failed' did not
+  // answer, so nothing is concluded.
+  async function teamMembership(t: VaultTarget): Promise<'member' | 'removed' | 'failed'> {
+    if (t.providerId !== 'org' || !t.provider.readConfig) return 'member';
+    try {
+      await t.provider.readConfig(t.resourceId, 'oscode/vault');
+      return 'member';
+    } catch (err) {
+      return (err as { notMember?: unknown } | undefined)?.notMember === true
+        ? 'removed'
+        : 'failed';
+    }
+  }
+
+  // Whether a team list may be taken as it came: one that had notes and now
+  // reads none is asked about first (teamMembership, E26).
+  async function teamListHolds(
+    t: VaultTarget,
+    files: StoredFileMeta[],
+  ): Promise<'ok' | 'removed' | 'failed'> {
+    if (t.providerId !== 'org' || files.length || !get().vaultFiles.length) return 'ok';
+    const member = await teamMembership(t);
+    return member === 'member' ? 'ok' : member;
+  }
+
   // CTO F3: look at the open note once. Same version: nothing. Gone: close a
   // clean note back to its folder, or ask about a dirty one. Changed: adopt
   // the version silently when the text is what this device loaded (a touch,
@@ -7152,8 +7225,17 @@ export const useApp = create<AppState>((set, get, api) => {
     } catch {
       return 'failed'; // Not answering now; the next event, focus, or poll looks again.
     }
-    const conflict = get().vaultConflict;
-    const pending = conflict?.path === path ? conflict : undefined;
+    let conflict = get().vaultConflict;
+    let pending = conflict?.path === path ? conflict : undefined;
+    if (!meta && target.providerId === 'org' && (pending ? pending.kind !== 'missing' : base)) {
+      // A removed member reads no rows too: ask before anything is called
+      // gone (E26), and look again at what the wait left on screen.
+      const member = await teamMembership(target);
+      if (member !== 'member') return member === 'removed' ? 'checked' : 'failed';
+      if (get().vaultNote !== open || !isActiveVault(target)) return 'checked';
+      conflict = get().vaultConflict;
+      pending = conflict?.path === path ? conflict : undefined;
+    }
     if (!meta) {
       if (pending) {
         if (pending.kind !== 'missing') {
@@ -7856,6 +7938,9 @@ export const useApp = create<AppState>((set, get, api) => {
         if (resourceId !== get().settings.account?.org?.serverId) return;
         set({ vaultTeamPlan: plan });
       });
+      // The server said this account is not a member of the team any more,
+      // from any call (round 7 E26): the room takes the team vault away.
+      onOrgVaultNotMember((resourceId) => void teamMembershipEnded(resourceId));
 
       // P0-3: the sealed store settles its key first. 'locked' means a key
       // exists but could not be read this launch; every sealed value reads as
@@ -11214,6 +11299,15 @@ export const useApp = create<AppState>((set, get, api) => {
         return;
       }
       if (!isActiveVault(target)) return;
+      // A team list that had notes and reads empty may be a removed member's
+      // (E26): the room says so rather than greet an empty vault.
+      const holds = await teamListHolds(target, files);
+      if (holds === 'removed' || !isActiveVault(target)) return;
+      if (holds === 'failed') {
+        set({ vaultError: 'load', vaultListed: true });
+        get().showToast('Could not reach your vault storage. Showing the last loaded notes.');
+        return;
+      }
       set({ vaultFiles: files, vaultError: undefined, vaultListed: true });
       // The index reads only notes whose version moved (M3 3.2).
       void openVaultIndex(target).reconcile(files);

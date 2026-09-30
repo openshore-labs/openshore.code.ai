@@ -1494,4 +1494,23 @@ describe("the team's free space says what 0023 says (the review, finding 1)", ()
     );
     expect(vaultNameInTrash('Plan')).not.toMatch(/try again/i);
   });
+
+  it('a member removed from the team is told so, never that its notes are gone (E26)', async () => {
+    const { VAULT_TEAM_NOT_MEMBER, VAULT_TEAM_NOT_MEMBER_REASON, vaultRefusedLine } =
+      await import('../src/lib/vaultCopy.js');
+    expect(VAULT_TEAM_NOT_MEMBER).toBe(
+      'You are no longer a member of this team, so its notes are not shown here.',
+    );
+    expect(VAULT_TEAM_NOT_MEMBER_REASON).toBe('You are no longer a member of this team.');
+    expect(vaultRefusedLine('save', { line: VAULT_TEAM_NOT_MEMBER_REASON })).toBe(
+      'Not saved. You are no longer a member of this team.',
+    );
+    for (const line of [VAULT_TEAM_NOT_MEMBER, VAULT_TEAM_NOT_MEMBER_REASON]) {
+      // Nothing there was deleted, moved or emptied, and trying again cannot
+      // make anyone a member; the server's own words never show.
+      expect(line).not.toMatch(/deleted|empty|moved|try again|not a member of this org/i);
+      // No en or em dash (code points 8211 and 8212).
+      expect([...line].some((ch) => [8211, 8212].includes(ch.codePointAt(0)!))).toBe(false);
+    }
+  });
 });

@@ -24,6 +24,7 @@ export {
   orgVaultBaseRev,
   seedOrgVaultBaseRev,
   onOrgVaultPlan,
+  onOrgVaultNotMember,
   setOrgVaultDeleteRole,
   type OrgVaultPlan,
   type OrgVaultDeleteRole,
