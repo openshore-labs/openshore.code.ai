@@ -1181,7 +1181,7 @@ export function VaultScreen() {
       if (r.line) showToast(r.line);
     }
   };
-  const todayButton = todayOffered ? (
+  const todayButton = caps.today ? (
     <button
       type="button"
       className="icon-btn vault-today-btn press-fb"
@@ -1423,11 +1423,13 @@ export function VaultScreen() {
         );
         return;
       }
+      // A refusal with its own line (a lapsed team plan) says that line.
+      if (r.line) {
+        showToast(r.line);
+        return;
+      }
       showToast(
-        r.line ??
-          (entry.undo.kind === 'bytes'
-            ? vaultUndoFailed(item.title)
-            : vaultRestoreFailed(item.title)),
+        entry.undo.kind === 'bytes' ? vaultUndoFailed(item.title) : vaultRestoreFailed(item.title),
       );
     });
   };
@@ -2353,6 +2355,11 @@ export function VaultScreen() {
                 ? (entry.path.split('/').pop() ?? entry.path)
                 : noteTitle(entry.path);
             const r = await vaultRestoreTrash(entry.id);
+            // A refusal with its own line (a lapsed team plan) says that line.
+            if (!r.ok && r.line) {
+              showToast(r.line);
+              return;
+            }
             showToast(
               r.ok
                 ? vaultRestoredToast({
@@ -2361,7 +2368,7 @@ export function VaultScreen() {
                     renamed: r.renamed,
                     sayFolder: true,
                   })
-                : (r.line ?? vaultRestoreFailed(title)),
+                : vaultRestoreFailed(title),
             );
           }}
           onEmpty={async () => {
@@ -2402,7 +2409,7 @@ export function VaultScreen() {
         <div className="stack-head">
           <h1>Vault</h1>
           <div className="vault-head-actions">
-            {todayButton}
+            {todayOffered ? todayButton : null}
             {/* A read-only Drive vault leaves New note out; its card says why.
                 So does a moving vault, and a folder that is not there. */}
             {newNoteOffered ? (
