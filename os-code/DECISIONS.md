@@ -3115,3 +3115,13 @@ execution contract. Newest at the bottom.
     live history's CSV with the file, catches that, on push day. It runs on
     pushes that touch `supabase/` and on PRs, and it compares names, numbers
     and bytes, not what a file does.
+- 2026-09-29: **Desktop releases publish to the public
+  `openshore-labs/openshore-releases` repo, not this one.** This repo went
+  private (founder, so the code stays closed while the GitHub profile goes
+  public), and a private repo's releases are invisible to openshore.ai's
+  download buttons and to every installed app's update check. The releases
+  repo holds installers only; the publish job uses `RELEASES_TOKEN` (release
+  environment) and Codemagic's `GH_RELEASE_TOKEN`, both scoped to that repo
+  alone; notes are a fixed line, never generated from this repo's commits; the
+  version job reads tags from both repos so patch numbers keep climbing.
+  Installs from before the move cannot see the new feed and reinstall once.

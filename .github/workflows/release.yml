@@ -90,7 +90,10 @@ jobs:
             BASE=$(node -p "require('./app/package.json').version")
             MM="${BASE%.*}"
             BASE_PATCH="${BASE##*.}"
-            LAST=$(git ls-remote --tags origin \
+            # Releases (and their tags) now live in the public
+            # openshore-releases repo; older ones are tags here. Read both so
+            # the patch number keeps climbing across the move.
+            LAST=$({ git ls-remote --tags origin; git ls-remote --tags https://github.com/openshore-labs/openshore-releases.git; } \
               | awk '{print $2}' \
               | sed -n "s#^refs/tags/v${MM//./\\.}\\.\([0-9][0-9]*\)\$#\1#p" \
               | sort -n | tail -1)
@@ -392,18 +395,30 @@ jobs:
           node app/scripts/release-sign.mjs --key-env OPENSHORE_DESKTOP_SIGNING_KEY \
             --version "$VERSION" "${FILES[@]}"
 
-      # A push to main has no tag yet: --target creates it on this exact commit.
-      # release/* carries the .sig files when the step above wrote them.
+      # The installers are published to the PUBLIC openshore-labs/openshore-releases
+      # repo, never this private one: openshore.ai's download buttons and every
+      # installed app's update check read releases from there, and a private
+      # repo's releases are invisible to both. That repo holds no code, so the
+      # tag lands on its own default branch, and the notes are a fixed line
+      # (generated notes would publish this repo's commit titles).
+      # RELEASES_TOKEN (release environment) is a fine-grained token with
+      # Contents: read and write on openshore-releases only; github.token cannot
+      # write to another repository. release/* carries the .sig files when the
+      # step above wrote them.
       - name: Publish the GitHub Release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
           TAG: ${{ needs.version.outputs.tag }}
         run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "RELEASES_TOKEN is not set in the release environment, so nothing can be published to openshore-labs/openshore-releases." >&2
+            exit 1
+          fi
           gh release create "$TAG" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --target "${GITHUB_SHA}" \
+            --repo openshore-labs/openshore-releases \
             --title "OpenShore $TAG" \
-            --generate-notes \
+            --notes "OpenShore $TAG for Linux and Windows. The Mac build joins this release when it finishes. Download from https://openshore.ai." \
             release/*
 
       # The Mac build runs on Codemagic (codemagic.yaml, mac-desktop) and
