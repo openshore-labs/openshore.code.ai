@@ -3965,4 +3965,87 @@ describe('round 5: a team refusal says what happened and keeps the text', () => 
     expect(useApp.getState().vaultConflict).toMatchObject({ path: 'n.md' });
     expect(teamHeld()).toEqual([]);
   });
+
+  it('links a rename cannot update at the cap carry the reason, and Update the rest does too (finding 3)', async () => {
+    server.put('Ideas.md', 'my ideas', 'u-me');
+    server.put('Ref.md', 'see [[Ideas]]');
+    await useApp.getState().vaultRefresh();
+    await settledIndex();
+    const preview = await useApp
+      .getState()
+      .vaultPrepareMove('note', 'Ideas.md', 'Plans and more.md');
+    if (!preview) throw new Error('no preview');
+    expect(preview.links).toBe(1);
+    server.freeBytes = server.usage() + 2;
+    const r = await useApp.getState().vaultApplyMove(preview, true);
+    if (!r?.ok || !r.rewrite) throw new Error('not renamed');
+    expect(r.rewrite).toMatchObject({
+      updated: 0,
+      total: 1,
+      notUpdated: ['Ref.md'],
+      stopped: true,
+      refusal: { line: VAULT_TEAM_FULL },
+    });
+    expect(server.bytes('Plans and more.md')).toBe('my ideas');
+    expect(server.bytes('Ref.md')).toBe('see [[Ideas]]');
+    const again = await useApp.getState().vaultUpdateRest(preview, r.rewrite);
+    expect(again).toMatchObject({ stopped: true, refusal: { line: VAULT_TEAM_FULL } });
+  });
+
+  it('linking a mention and marking reviewed at the cap say why, verb first (finding 4)', async () => {
+    server.put('a.md', 'Plan is here', 'u-me');
+    await useApp.getState().vaultRefresh();
+    server.freeBytes = server.usage() + 1;
+    expect(
+      await useApp.getState().vaultRewriteNote('a.md', (t) => t.replace('Plan', '[[Plan]]')),
+    ).toEqual({ ok: false, line: `Not linked. ${VAULT_TEAM_FULL}` });
+    expect(await useApp.getState().vaultMarkReviewed('a.md', true)).toEqual({
+      kind: 'refused',
+      line: `Not marked. ${VAULT_TEAM_FULL}`,
+    });
+    expect(server.bytes('a.md')).toBe('Plan is here');
+  });
+
+  it("a settings save refused by the plan or the admin rule says that line, never 'try again' (finding 4)", async () => {
+    const ADMINS_ONLY = 'Not saved. Only admins can change team vault settings.';
+    server.put('a.md', 'x', 'u-me');
+    await useApp.getState().vaultRefresh();
+    // Each case starts from a fresh read, as the sheet's open does.
+    const read = async () => {
+      for (let i = 0; i < 5; i++) await tick();
+      await useApp.getState().vaultLoadSettings({ force: true });
+      expect(useApp.getState().vaultCapsNow().settingsWrite).toBe(true);
+    };
+    await read();
+    // Demoted after the sheet read the row: the settings read again say so.
+    server.isAdmin = false;
+    expect(
+      await useApp.getState().vaultSaveSetting({ field: 'editor.font', value: 'serif' }),
+    ).toEqual({ kind: 'refused', line: ADMINS_ONLY });
+    await vi.waitFor(() => expect(useApp.getState().vaultTeamPlan?.isAdmin).toBe(false));
+    server.isAdmin = true;
+    await read();
+    server.isAdmin = false;
+    expect(await useApp.getState().vaultSetTeamDeleteRole('admin')).toEqual({
+      kind: 'refused',
+      line: ADMINS_ONLY,
+    });
+    // The plan lapsed after the read (OV402).
+    server.isAdmin = true;
+    await read();
+    server.entitled = false;
+    expect(await useApp.getState().vaultSetTeamDeleteRole('admin')).toEqual({
+      kind: 'refused',
+      line: VAULT_TEAM_LAPSED_NOT_SAVED_LINE,
+    });
+    expect(useApp.getState().vaultTeamPlan).toMatchObject({ entitled: false });
+    server.entitled = true;
+    await read();
+    server.entitled = false;
+    expect(
+      await useApp.getState().vaultSaveSetting({ field: 'editor.font', value: 'serif' }),
+    ).toEqual({ kind: 'refused', line: VAULT_TEAM_LAPSED_NOT_SAVED_LINE });
+    expect(useApp.getState().vaultTeamPlan).toMatchObject({ entitled: false });
+    expect(server.settingsRow).toBeUndefined();
+  });
 });

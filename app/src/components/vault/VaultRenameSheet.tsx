@@ -368,6 +368,7 @@ export function VaultLinksLeftCard({
   busy,
   onOpen,
   onUpdateRest,
+  line,
 }: {
   /** The old title. */
   old: string;
@@ -378,12 +379,16 @@ export function VaultLinksLeftCard({
   /** Update the rest. Left out (links cannot be rewritten here now), the
    *  card only lists the notes, and offers nothing that would be refused. */
   onUpdateRest?: () => void;
+  /** Why the links were not updated, when the storage refused for good (a
+   *  team out of free space): said on the card, since a toast fades. */
+  line?: string;
 }) {
   if (!notes.length) return null;
   const copy = vaultLinksLeftCard(old);
   return (
     <div className="card vault-links-left" role="status">
       <h3 className="vault-links-left-title">{copy.title}</h3>
+      {line ? <p className="sub vault-links-left-line">{line}</p> : null}
       <div className="vault-tree">
         {notes.map((p) => (
           <button

@@ -2193,7 +2193,9 @@ interface AppState {
   /** An admin sets who may delete team notes (CX Y14; migration 0025):
    *  'changed' when another admin's save landed first (the sheet shows the
    *  value there now), 'failed' when it could not be written. */
-  vaultSetTeamDeleteRole(role: OrgVaultDeleteRole): Promise<'ok' | 'changed' | 'failed'>;
+  vaultSetTeamDeleteRole(
+    role: OrgVaultDeleteRole,
+  ): Promise<'ok' | 'changed' | 'failed' | { kind: 'refused'; line: string }>;
   /** Empty Trash (not a team vault's, R3). */
   vaultEmptyTrash(): Promise<
     { ok: true; removed: number; asked: number } | { ok: false; reason: string }
@@ -2245,7 +2247,12 @@ interface AppState {
   /** The person's own one-note edit (6.8, Link on an unlinked mention; CX
    *  X16): the note read now, `edit` applied, and written back only while it
    *  is still that version. False when it did not land or `edit` declined. */
-  vaultRewriteNote(path: string, edit: (text: string) => string | undefined): Promise<boolean>;
+  // A refusal for good (a team out of free space) answers its line, verb
+  // first, since "try again" would not help.
+  vaultRewriteNote(
+    path: string,
+    edit: (text: string) => string | undefined,
+  ): Promise<boolean | { ok: false; line: string }>;
   /** What images and PDFs read from on this storage (6.6): its attachments,
    *  Obsidian's attachment folder, and the byte reader. Undefined where the
    *  storage has none. */
@@ -2274,7 +2281,11 @@ interface AppState {
   /** Mark a note reviewed, or not (CX Y12): the person's own compare-and-
    *  swap write of `oscode-reviewed` through `mergeProvenance`, every other
    *  byte kept. `changed`: the note moved on and the newer version is open. */
-  vaultMarkReviewed(path: string, reviewed: boolean): Promise<'ok' | 'changed' | 'failed'>;
+  // A refusal for good answers its line, verb first ("Not marked.").
+  vaultMarkReviewed(
+    path: string,
+    reviewed: boolean,
+  ): Promise<'ok' | 'changed' | 'failed' | { kind: 'refused'; line: string }>;
   /** Whether the empty vault's ramp offers the starter layout (CTO L12). */
   vaultStarterOffered(): Promise<boolean>;
   /** Add the starter layout (CX Y13's "Add these"): emptiness re-checked,
@@ -11107,7 +11118,14 @@ export const useApp = create<AppState>((set, get, api) => {
       if (!orgId || get().vaultTeamPlan?.isAdmin !== true) return 'failed';
       try {
         return await setOrgVaultDeleteRole(orgId, role);
-      } catch {
+      } catch (err) {
+        // Refused for good (OV402, or no longer an admin): its line, verb
+        // first, and the row read again; never "try again".
+        const refusal = vaultRefusal(err);
+        if (refusal) {
+          void get().vaultLoadSettings({ force: true });
+          return { kind: 'refused', line: vaultRefusedLine('save', { line: refusal }) };
+        }
         return 'failed';
       }
     },
@@ -11343,7 +11361,10 @@ export const useApp = create<AppState>((set, get, api) => {
         if (next === undefined || next === file.text) return false;
         const r = await opsDeps(t).putVaultNote(path, next, { ifMatch: versionOf(file) });
         return r.ok;
-      } catch {
+      } catch (err) {
+        // Refused for good (a team out of free space, 0023): say why.
+        const refusal = vaultRefusal(err);
+        if (refusal) return { ok: false, line: vaultRefusedLine('link', { line: refusal }) };
         return false;
       }
     },
@@ -11432,6 +11453,13 @@ export const useApp = create<AppState>((set, get, api) => {
       if (r.kind === 'unreadable' || r.kind === 'failed') {
         void get().vaultLoadSettings({ force: true });
       }
+      // Refused for good (a plan that is not active, OV402, or a member no
+      // longer an admin): the verb first and the storage's reason, and the
+      // settings read again, so the sheet shows who may change them now.
+      if (r.kind === 'refused') {
+        void get().vaultLoadSettings({ force: true });
+        return { kind: 'refused', line: vaultRefusedLine('save', { line: r.line }) };
+      }
       return r;
     },
 
@@ -11468,7 +11496,10 @@ export const useApp = create<AppState>((set, get, api) => {
       let r: WriteResult;
       try {
         r = await opsDeps(t).putVaultNote(path, next, { ifMatch: versionOf(file) });
-      } catch {
+      } catch (err) {
+        // Refused for good (a team out of free space, 0023): say why.
+        const refusal = vaultRefusal(err);
+        if (refusal) return { kind: 'refused', line: vaultRefusedLine('mark', { line: refusal }) };
         return 'failed';
       }
       if (r.ok) return done();

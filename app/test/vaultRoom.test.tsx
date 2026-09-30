@@ -1693,6 +1693,69 @@ describe('the team room offers only what the server takes (Y14, Y15)', () => {
     expect(prepared).toEqual([]);
   });
 
+  it('links refused for good say why, on the toast and the card, and offer no Update the rest (round 5, finding 3)', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    app.state.vaultFiles = [
+      { path: 'Ideas.md', updatedAt: 'x', size: 4 },
+      { path: 'C.md', updatedAt: 'x', size: 4 },
+    ];
+    app.state.vaultNote = { path: 'Ideas.md', text: 'ideas', updatedAt: 'x' };
+    const preview = {
+      kind: 'note',
+      from: 'Ideas.md',
+      to: 'Plans.md',
+      moves: new Map([['Ideas.md', 'Plans.md']]),
+      notes: 1,
+      attachments: 0,
+      links: 1,
+      linkNotes: 1,
+      plan: { edits: [], links: 1, notes: 1, left: [] },
+      sources: [],
+    };
+    app.state.vaultPrepareMove = async () => preview;
+    app.state.vaultApplyMove = async () => {
+      app.state.vaultNote = { path: 'Plans.md', text: 'ideas', updatedAt: 'x' };
+      app.listeners.forEach((l) => l());
+      return {
+        ok: true,
+        preview,
+        moved: [{ path: 'Plans.md', updatedAt: 'x', size: 5 }],
+        rewrite: {
+          updated: 0,
+          total: 1,
+          notesUpdated: 0,
+          skipped: [],
+          notUpdated: ['C.md'],
+          stopped: true,
+          refusal: { line: copy.VAULT_TEAM_FULL },
+        },
+      };
+    };
+    app.toasts.length = 0;
+    await dom.render(<VaultRoom />);
+    await dom.click('⋯');
+    await dom.settle();
+    await dom.click(copy.VAULT_RENAME_ROW);
+    await new Promise((r) => setTimeout(r, 600));
+    await dom.settle();
+    await dom.type('Ideas', 'Plans');
+    await dom.click('Rename');
+    await dom.settle();
+    // "Update links?" asks first, since a link points here.
+    if (dom.buttons().includes('Update links')) await dom.click('Update links');
+    await dom.settle();
+    await dom.settle();
+    expect(app.toasts).toContain(
+      `Renamed to "Plans". Its links were not updated. ${copy.VAULT_TEAM_FULL}`,
+    );
+    expect(app.toasts.join(' ')).not.toMatch(/tries again|try again/i);
+    expect(dom.text()).toContain(copy.vaultLinksLeftCard('Ideas').title);
+    expect(dom.text()).toContain(`Not updated. ${copy.VAULT_TEAM_FULL}`);
+    expect(dom.buttons()).toContain('C');
+    expect(dom.buttons()).not.toContain(copy.vaultLinksLeftCard('Ideas').button);
+  });
+
   it('the links-left card offers Update the rest only while links can be rewritten', async () => {
     const copy = await import('../src/lib/vaultCopy.js');
     app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };

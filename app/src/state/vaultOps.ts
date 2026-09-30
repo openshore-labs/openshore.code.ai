@@ -251,6 +251,10 @@ export interface VaultRewriteReport {
   notUpdated: string[];
   /** True when a storage-level failure stopped the pass. */
   stopped: boolean;
+  /** A refusal for good stopped it (a team out of free space, 0023): the
+   *  storage's line, so the room says why instead of "tries again" and
+   *  offers no Update the rest that would be refused the same way. */
+  refusal?: VaultRefusal;
 }
 
 /** What a rename or move did, from the first call to the last rewrite. */
@@ -609,6 +613,7 @@ async function rewritePass(
     const first = await attempt(() => deps.putVaultNote(path, edit.text, { ifMatch: base }));
     if (!first.ok) {
       report.stopped = true;
+      if (first.refusal) report.refusal ??= first.refusal;
       report.notUpdated.push(path);
       continue;
     }
@@ -629,6 +634,7 @@ async function rewritePass(
       });
       if (!again.ok) {
         report.stopped = true;
+        if (again.refusal) report.refusal ??= again.refusal;
         report.notUpdated.push(path);
         continue;
       }
@@ -699,6 +705,7 @@ export async function updateTheRest(
       skipped: [],
       notUpdated: [...rest],
       stopped: true,
+      ...(failed.refusal ? { refusal: failed.refusal } : {}),
     };
   }
   const plan = reads.length

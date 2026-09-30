@@ -1675,11 +1675,22 @@ export function vaultRenameToast(o: {
     skipped: readonly string[];
     notUpdated: readonly string[];
     stopped: boolean;
+    /** A refusal for good stopped the pass (a team out of free space): its
+     *  reason, said in place of "tries again". */
+    refusal?: string;
   };
 }): string {
   const head = `Renamed to "${o.next}".`;
   const r = o.rewrite;
   if (!r) return head;
+  // Refused for good (a team out of free space, 0023): the storage's reason,
+  // never "tries again", since Update the rest would be refused the same way.
+  if (r.refusal) {
+    const left = r.skipped.length + r.notUpdated.length;
+    return r.updated === 0
+      ? `${head} Its links were not updated. ${reasonSentence(r.refusal)}`
+      : `${head} ${r.updated} of ${count(r.total, 'link')} updated. ${count(left, 'note')} still ${left === 1 ? 'links' : 'link'} to "${o.old}". ${reasonSentence(r.refusal)}`;
+  }
   if (r.stopped && r.updated === 0) {
     return `Renamed to "${o.next}", but its links could not be updated. Update the rest tries again.`;
   }
@@ -2574,6 +2585,9 @@ export const VAULT_REFUSED_VERB = {
   rename: 'Not renamed.',
   restore: 'Not restored.',
   delete: 'Not deleted.',
+  link: 'Not linked.',
+  mark: 'Not marked.',
+  update: 'Not updated.',
 } as const;
 
 /** A storage's reason ("a note is limited to 1 MB") as a sentence. */

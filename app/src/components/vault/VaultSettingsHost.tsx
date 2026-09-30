@@ -250,6 +250,13 @@ export function VaultSettingsHost({ open, setOpen, onOpenStorage }: VaultSetting
         setConflict({ field: r.field, theirs: asConflictValue(r.theirs), yours: r.yours });
         return;
       }
+      // Refused for good (a plan that is not active, or no longer an admin):
+      // its line, never "try again"; the sheet's lead says the rest.
+      if (r.kind === 'refused') {
+        setSave(undefined);
+        showToast(r.line);
+        return;
+      }
       setSave(r.kind === 'failed' ? 'failed' : undefined);
       return;
     }
@@ -325,6 +332,11 @@ export function VaultSettingsHost({ open, setOpen, onOpenStorage }: VaultSetting
     const r = await vaultSetTeamDeleteRole(role);
     if (r === 'ok') {
       setSave('saved');
+      return;
+    }
+    if (typeof r === 'object') {
+      setSave(undefined);
+      showToast(r.line);
       return;
     }
     setSave(r === 'failed' ? 'failed' : undefined);

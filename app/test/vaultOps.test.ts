@@ -828,6 +828,49 @@ describe('a refusal for good is carried, never "try again" (0023)', () => {
     });
   });
 
+  it('a link pass refused for good carries the line and stops, and so does Update the rest (round 5, finding 3)', async () => {
+    const h = harness(
+      memStorage({ 'Ideas.md': 'my ideas', 'B.md': 'see [[Ideas]]', 'C.md': 'also [[Ideas]]' }),
+    );
+    const p = await prepareNoteMove(h.deps, 'Ideas.md', 'Plans.md');
+    if (!p.ok) throw new Error('no plan');
+    refusing(h, full);
+    h.mem.failOn = 'B.md';
+    const r = await applyMove(h.deps, p.preview, { updateLinks: true });
+    if (!r.ok || !r.rewrite) throw new Error('no rewrite');
+    expect(r.rewrite).toEqual({
+      updated: 0,
+      total: 2,
+      notesUpdated: 0,
+      skipped: [],
+      notUpdated: ['B.md', 'C.md'],
+      stopped: true,
+      refusal: { line: FULL },
+    });
+    const said = vaultRenameToast({
+      old: 'Ideas',
+      next: 'Plans',
+      rewrite: { ...r.rewrite, skipped: [], notUpdated: ['B', 'C'], refusal: FULL },
+    });
+    expect(said).toBe(`Renamed to "Plans". Its links were not updated. ${FULL}`);
+    expect(said).not.toMatch(/tries again|try again/i);
+    // Update the rest meets the same refusal and says it the same way.
+    const again = await updateTheRest(h.deps, p.preview, r.rewrite);
+    expect(again).toMatchObject({ stopped: true, refusal: { line: FULL } });
+    // A failure that may pass carries no line: "tries again" stays true.
+    h.mem.failOn = undefined;
+    refusing(h, offline);
+    h.mem.failOn = 'B.md';
+    const later = await updateTheRest(h.deps, p.preview, r.rewrite);
+    expect(later.stopped).toBe(true);
+    expect(later.refusal).toBeUndefined();
+    // Once there is room again, the rest are updated.
+    h.mem.failOn = undefined;
+    const done = await updateTheRest(h.deps, p.preview, later);
+    expect(done).toMatchObject({ updated: 2, stopped: false });
+    expect(done.refusal).toBeUndefined();
+  });
+
   it('a delete carries a whole line as whole, and any other line as the reason', async () => {
     const h = harness(memStorage({ 'A.md': 'a', 'B.md': 'b' }, { trash: true }));
     const whole = 'Not deleted. Only admins can delete team notes.';

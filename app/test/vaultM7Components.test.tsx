@@ -806,7 +806,7 @@ describe('the provenance chip (CX Y11, Y16, R4)', () => {
 
 async function about(
   p: NoteProvenance,
-  result: 'ok' | 'changed' | 'failed' = 'ok',
+  result: 'ok' | 'changed' | 'failed' | { kind: 'refused'; line: string } = 'ok',
   canMark = true,
 ) {
   const { VaultAboutNote } = await import('../src/components/vault/VaultAboutNote.js');
@@ -895,6 +895,16 @@ describe('About this note (CX Y12)', () => {
     expect($('.vault-about-line')?.textContent).toBe(
       'Could not mark "Plan", so nothing changed. Try again in a moment.',
     );
+  });
+
+  it('says a refusal for good in its own words, never try again (round 5, finding 4)', async () => {
+    const line =
+      'Not marked. This team has used its 25 MiB of free space. A deleted note frees its space when its history is cleared, about a month later.';
+    const refused = await about({ model: 'm', where: 'local' }, { kind: 'refused', line });
+    await dom.click('Mark as reviewed');
+    await dom.settle();
+    expect(refused.closed()).toBe(0);
+    expect($('.vault-about-line')?.textContent).toBe(line);
   });
 
   it('has no mark button where the note cannot be written', async () => {

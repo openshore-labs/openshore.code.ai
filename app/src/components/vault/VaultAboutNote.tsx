@@ -37,7 +37,7 @@ import {
   vaultMarkRefused,
 } from '../../lib/vaultCopy.js';
 
-export type VaultMarkResult = 'ok' | 'changed' | 'failed';
+export type VaultMarkResult = 'ok' | 'changed' | 'failed' | { kind: 'refused'; line: string };
 
 /** An ISO date as a short local date, or undefined when it does not parse
  *  (a hand-edited property is shown as nothing rather than as nonsense). */
@@ -101,6 +101,11 @@ export function VaultAboutNote({
     setBusy(false);
     if (result === 'ok') {
       onClose();
+      return;
+    }
+    // Refused for good (a team out of free space): the storage's line.
+    if (typeof result === 'object') {
+      setLine(result.line);
       return;
     }
     setLine(result === 'changed' ? vaultMarkRefused(title) : vaultMarkFailed(title));

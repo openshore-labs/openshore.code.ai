@@ -282,6 +282,10 @@ export type VaultSettingSave =
   // Also a field this storage does not carry out (`unappliedSettings`):
   // nothing written.
   | { kind: 'read-only' }
+  /** The storage refused it for good (a team plan that is not active, a
+   *  member who is no longer an admin): nothing changed, and `line` is the
+   *  storage's reason, which the store says after "Not saved." */
+  | { kind: 'refused'; line: string }
   /** The write failed or was refused twice: nothing changed. */
   | { kind: 'failed' };
 
@@ -329,6 +333,7 @@ async function writeOnce(
   | { ok: true; text: string; version: string }
   | { ok: false; unreadable: true }
   | { ok: false; conflict: string; theirs?: { text: string; version: string } }
+  | { ok: false; refused: string }
   | { ok: false; failed: true }
 > {
   const next = core.patch(base?.text, patch);
@@ -337,7 +342,13 @@ async function writeOnce(
   let r;
   try {
     r = await deps.provider.writeConfig!(deps.resourceId, 'oscode/vault', next, guard);
-  } catch {
+  } catch (err) {
+    // A refusal the storage marks permanent (the team vault's OV402, or its
+    // admins-only write) keeps its line; trying again cannot help.
+    const e = err as { permanent?: unknown; message?: unknown } | undefined;
+    if (e?.permanent === true && typeof e.message === 'string' && e.message) {
+      return { ok: false, refused: e.message };
+    }
     return { ok: false, failed: true };
   }
   if (r.ok) return { ok: true, text: next, version: r.file.version ?? r.file.updatedAt };
@@ -376,6 +387,7 @@ export async function saveVaultSetting(
   const base = fileOf(entry.reads.file);
   const first = await writeOnce(deps, base, patch, core);
   if ('unreadable' in first) return { kind: 'unreadable' };
+  if ('refused' in first) return { kind: 'refused', line: first.refused };
   if ('failed' in first) return { kind: 'failed' };
   const landed = async (
     text: string,
@@ -420,6 +432,7 @@ export async function saveVaultSetting(
     await resolveEntry(deps.key, theirsReads, at, core, store);
     return { kind: 'unreadable' };
   }
+  if ('refused' in again) return { kind: 'refused', line: again.refused };
   if (again.ok) return landed(again.text, again.version, true);
   // Refused twice: nothing changed here; the next read shows what is there.
   clearVaultSettingsCache(deps.key);

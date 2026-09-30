@@ -132,6 +132,7 @@ import {
   vaultRenameFailed,
   vaultRenameTaken,
   vaultRenameToast,
+  vaultRefusedLine,
   vaultRecentAgentLabel,
   vaultTodayAria,
   vaultReaderCopy,
@@ -1355,6 +1356,11 @@ export function VaultScreen() {
     void vaultRewriteNote(row.path, (text) => linkMentionText(text, row.mention, target)).then(
       (ok) => {
         setLinking((now) => new Set([...now].filter((p) => p !== row.path)));
+        // Refused for good (a team out of free space): its own line.
+        if (typeof ok === 'object') {
+          showToast(ok.line);
+          return;
+        }
         showToast(ok ? vaultLinkedIn(other) : vaultLinkMentionFailed(other));
         if (ok) {
           setUnlinked((u) =>
@@ -1521,6 +1527,8 @@ export function VaultScreen() {
         skipped: report.skipped.filter((x) => x.reason !== 'missing').map((x) => noteTitle(x.path)),
         notUpdated: report.notUpdated.map((x) => noteTitle(x)),
         stopped: report.stopped,
+        // A refusal for good says its reason, never "tries again".
+        ...(report.refusal ? { refusal: report.refusal.line } : {}),
       },
     });
   const applyRename = async (
@@ -2256,7 +2264,14 @@ export function VaultScreen() {
               // Update the rest writes: offered only while links can be
               // rewritten here (not on a lapsed plan, a lease held elsewhere,
               // or a computer that is away), else the card only lists them.
-              {...(caps.linkRewrite ? {} : { onUpdateRest: undefined })}
+              // A pass refused for good (a team out of free space) would be
+              // refused again: the card says why and offers nothing.
+              {...(caps.linkRewrite && !linksLeft.report.refusal
+                ? {}
+                : { onUpdateRest: undefined })}
+              {...(linksLeft.report.refusal
+                ? { line: vaultRefusedLine('update', linksLeft.report.refusal) }
+                : {})}
             />
           ) : null}
 
