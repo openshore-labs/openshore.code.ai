@@ -19,6 +19,7 @@ import type {
   ReadBytesOptions,
   VaultConfigName,
   VaultSettingsConfigName,
+  VaultSettingsField,
   VaultTrashEntry,
 } from 'os-code/protocol';
 
@@ -281,6 +282,15 @@ export interface StorageProvider {
     text: string,
     guard: WriteGuard,
   ): Promise<WriteResult>;
+
+  /** The vault settings this storage does not carry out, so none of them
+   *  may say or do anything here: the settings sheet never offers their
+   *  rows, `saveVaultSetting` never saves one, `vaultCaps` never lets one
+   *  narrow the room, and the provider neither reads one back nor sends one.
+   *  The team vault's are `ORG_VAULT_UNAPPLIED_SETTINGS` (its deletes always
+   *  keep the note in Trash, it holds notes only, and no model reads it in
+   *  v1). Absent: every field applies. */
+  readonly unappliedSettings?: readonly VaultSettingsField[];
 }
 
 /** A gitOS resource: metadata for one repo or vault. The bytes live behind

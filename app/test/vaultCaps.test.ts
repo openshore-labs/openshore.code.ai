@@ -186,6 +186,31 @@ describe('vaultCaps, Vault M7 (CTO L7, L11)', () => {
     expect(vaultCaps(full, WRITABLE, {})).toEqual(base);
   });
 
+  // The team review of 2026-09-30: For good only where a delete really is.
+  it('a storage that does not carry Delete out keeps one-tap Trash under For good', () => {
+    const keeps = fake({ ...full, unappliedSettings: ['delete'] });
+    const base = vaultCaps(keeps, WRITABLE);
+    expect(base.trash).toBe(true);
+    expect(vaultCaps(keeps, WRITABLE, { delete: 'permanent' })).toEqual(base);
+    // Another unapplied field leaves the Delete choice where it was.
+    const other = fake({ ...full, unappliedSettings: ['attachments.folder'] });
+    expect(vaultCaps(other, WRITABLE, { delete: 'permanent' }).trash).toBe(false);
+  });
+
+  it('the team vault: a stored delete: permanent is still one tap to Trash', () => {
+    const team = providerFor('org')!;
+    expect(team.unappliedSettings).toContain('delete');
+    for (const state of [
+      WRITABLE,
+      { readOnly: false, settingsAdmin: true },
+      { readOnly: false, settingsAdmin: false },
+    ]) {
+      const caps = vaultCaps(team, state, { delete: 'permanent' });
+      expect(caps).toEqual(vaultCaps(team, state));
+      expect(caps.trash).toBe(true);
+    }
+  });
+
   it('every provider on main with writeConfig declares compare-and-swap', () => {
     for (const id of VAULT_COPY_PROVIDERS) {
       const p = providerFor(id)!;

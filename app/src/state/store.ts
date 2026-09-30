@@ -5915,7 +5915,10 @@ export const useApp = create<AppState>((set, get, api) => {
           (t.providerId === 'org' &&
             (Boolean(st.vaultTeamExpired) || st.vaultTeamPlan?.entitled === false)) ||
           (t.providerId === 'files' && st.vaultFolder?.exists === false)));
-    // The vault's Delete choice (L11): For good turns Trash off here.
+    // The vault's Delete choice (L11): For good turns Trash off here, but
+    // never on a storage that does not carry Delete out (the team vault,
+    // whose deletes stay in its Trash): vaultCaps reads the provider's
+    // `unappliedSettings`, and the team provider never reads the key back.
     const settings = cachedVaultSettings(foldersKey(t));
     return vaultCaps(
       t.provider,

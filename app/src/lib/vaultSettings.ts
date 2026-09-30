@@ -278,13 +278,14 @@ export type VaultSettingSave =
     }
   /** The file is not a JSON object: never overwritten, nothing written. */
   | { kind: 'unreadable' }
-  /** This storage cannot save settings (no `writeConfig`). */
+  /** This storage cannot save settings (no `writeConfig`), or does not
+   *  carry out this field (`unappliedSettings`): nothing written. */
   | { kind: 'read-only' }
   /** The write failed or was refused twice: nothing changed. */
   | { kind: 'failed' };
 
 export interface VaultSettingSaveDeps {
-  provider: Pick<StorageProvider, 'readConfig' | 'writeConfig'>;
+  provider: Pick<StorageProvider, 'readConfig' | 'writeConfig' | 'unappliedSettings'>;
   resourceId: string;
   key: string;
   now?: () => number;
@@ -352,6 +353,9 @@ export async function saveVaultSetting(
   patch: VaultSettingsPatch,
 ): Promise<VaultSettingSave> {
   if (typeof deps.provider.writeConfig !== 'function') return { kind: 'read-only' };
+  // A field this storage does not carry out is never saved, so it never
+  // reads "Saved" for what the storage drops (the team vault's Delete).
+  if ((deps.provider.unappliedSettings ?? []).includes(patch.field)) return { kind: 'read-only' };
   const core = deps.core ?? CORE;
   const store = deps.narrowings ?? sealedNarrowingStore;
   const at = (deps.now ?? (() => Date.now()))();

@@ -22,7 +22,11 @@
 // - The Vault settings sheet saves (Vault M7, CTO L7) only where the storage
 //   writes its settings file under compare-and-swap (`writeConfig`), and only
 //   while writable and not away. A vault's own `delete: permanent` (L11)
-//   turns one-tap Trash off, so every delete asks twice "for good".
+//   turns one-tap Trash off, so every delete asks twice "for good", but
+//   only on a storage that carries the Delete choice out: one whose
+//   `unappliedSettings` names `delete` (the team vault, whose every delete
+//   keeps the note in its Trash for 30 days) keeps one-tap Trash whatever
+//   a stored settings row says, since "for good" would be untrue there.
 // - On a team vault only an admin saves the settings (CX Y14; 0025 refuses a
 //   member there too): `settingsAdmin: false` keeps the sheet read-only.
 import type { VaultDeleteMode } from 'os-code/protocol';
@@ -85,12 +89,9 @@ export function vaultCaps(
 ): VaultCaps {
   const cas = p.compareAndSwap === true;
   const writable = cas && !s.readOnly && s.reach !== 'away';
-  const trash =
-    writable &&
-    settings?.delete !== 'permanent' &&
-    has(p, 'trash') &&
-    has(p, 'listTrash') &&
-    has(p, 'restore');
+  const forGood =
+    settings?.delete === 'permanent' && !(p.unappliedSettings ?? []).includes('delete');
+  const trash = writable && !forGood && has(p, 'trash') && has(p, 'listTrash') && has(p, 'restore');
   return {
     rename: writable,
     renameNative: writable && has(p, 'rename'),

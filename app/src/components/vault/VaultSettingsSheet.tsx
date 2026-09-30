@@ -22,6 +22,11 @@
 //   unset adds "Obsidian keeps its own setting for this."
 // - The phone drops Link paths and every "From your computer's config" row
 //   (it cannot change them: no dead rows). Everything else is on both.
+// - A field the storage does not carry out (`unapplied`, the provider's
+//   `unappliedSettings`) has no row at all: on the team vault that is
+//   Delete (every team delete keeps the note in Trash, so "For good" would be
+//   untrue), the attachments folder (notes only) and the templates folder
+//   (no model reads team notes in v1).
 // - A sheet that cannot write (the storage cannot, the computer is away, the
 //   file is unreadable) shows every file row read-only, `aria-disabled`, with
 //   the reason as `aria-describedby`. "On this device" still works: those are
@@ -271,6 +276,11 @@ export interface VaultSettingsSheetProps {
   /** Every file row reads only, with no line of its own at the top (a team
    *  member, whose footer already says who sets these, Y14). */
   readOnly?: boolean;
+  /** The fields this storage does not carry out (the provider's
+   *  `unappliedSettings`): their rows are not offered at all, so the sheet
+   *  never promises what the storage will not do (the team vault's Delete,
+   *  attachments folder and templates folder). */
+  unapplied?: readonly VaultSettingsField[];
   /** A team vault's "Who can delete team notes" (Y14): the value, and the
    *  change for an admin; without `onChange` the row reads only. */
   teamDelete?: {
@@ -519,6 +529,7 @@ export function VaultSettingsSheet(props: VaultSettingsSheetProps) {
     onPickFolder,
     onOpenStorage,
     teamDelete,
+    unapplied = [],
   } = props;
   const uid = useId();
   const ids = {
@@ -555,6 +566,8 @@ export function VaultSettingsSheet(props: VaultSettingsSheetProps) {
     }, sheetExitMs());
   };
 
+  /** A row shows only while this storage carries out one of its fields. */
+  const offered = (...fields: VaultSettingsField[]) => fields.some((f) => !unapplied.includes(f));
   const fromObsidian = (...fields: VaultSettingsField[]) =>
     fields.some((f) => s.source[f] === 'obsidian');
   /** A row's sub, with Obsidian's own-setting note where it applies. */
@@ -573,6 +586,7 @@ export function VaultSettingsSheet(props: VaultSettingsSheetProps) {
     value: string,
     editor: () => ReactNode,
   ): ReactNode => {
+    if (!offered(...fields)) return null;
     if (fromObsidian(...fields)) {
       const isOpen = expanded.has(key);
       const subId = `${uid}-${key}-obs`;
@@ -836,7 +850,7 @@ export function VaultSettingsSheet(props: VaultSettingsSheetProps) {
                   (v) => set('tree.sort', v),
                 ),
               )}
-              {caps.trash ? (
+              {!offered('delete') ? null : caps.trash ? (
                 fieldRow('delete', ['delete'], c.deleteLabel, optLabel('delete', s.delete), () =>
                   segRow(
                     'delete',

@@ -29,6 +29,8 @@ import {
   onOrgVaultPlan,
   orgVaultPlan,
   setOrgVaultDeleteRole,
+  ORG_VAULT_UNAPPLIED_SETTINGS,
+  orgVaultAppliedSettings,
 } from '../src/lib/gitos/orgVault.js';
 import { vaultTeamEditableUntil } from '../src/lib/vaultCopy.js';
 
@@ -695,11 +697,11 @@ describe('org vault plan (OV402) and settings', () => {
   });
 
   it('reads the row as the vault file in jsonb key order, with its rev', async () => {
-    server.putSettings({ version: 1, delete: 'permanent', tree: { sort: 'modified' } });
+    server.putSettings({ version: 1, tree: { sort: 'modified' }, links: { style: 'markdown' } });
     const read = await orgVaultProvider.readConfig!(ORG, 'oscode/vault');
     expect(read).toEqual({
       ok: true,
-      text: '{\n  "tree": {\n    "sort": "modified"\n  },\n  "delete": "permanent",\n  "version": 1\n}\n',
+      text: '{\n  "tree": {\n    "sort": "modified"\n  },\n  "links": {\n    "style": "markdown"\n  },\n  "version": 1\n}\n',
       version: '1',
     });
     // Obsidian's files never live on the server.
@@ -736,14 +738,14 @@ describe('org vault plan (OV402) and settings', () => {
     const r = await orgVaultProvider.writeConfig!(
       ORG,
       'oscode/vault',
-      '{"version":1,"delete":"trash"}',
+      '{"version":1,"tree":{"sort":"name"}}',
       {
         ifMatch: read.ok ? read.version : '',
       },
     );
     expect(rpcsNamed('org_vault_settings_put')[0]!.args).toEqual({
       p_org: ORG,
-      p_settings: { version: 1, delete: 'trash' },
+      p_settings: { version: 1, tree: { sort: 'name' } },
       p_delete_role: 'admin',
       p_context_folder: 'Team/Context',
       p_base_rev: 3,
@@ -780,6 +782,79 @@ describe('org vault plan (OV402) and settings', () => {
       orgVaultProvider.writeConfig!(ORG, 'oscode/vault', '[1]', { ifAbsent: true }),
     ).rejects.toThrow(/one JSON object/);
     expect(rpcsNamed('org_vault_settings_put')).toEqual([]);
+  });
+
+  // The team review of 2026-09-30: 0025's row may hold `delete: "permanent"`,
+  // but every team delete keeps the note in Trash for 30 days, so the key is
+  // never read back or sent, and nor are the attachments and templates
+  // folders, which a team vault never uses.
+  it('declares the settings a team vault does not carry out', () => {
+    expect(orgVaultProvider.unappliedSettings).toEqual([
+      'delete',
+      'attachments.folder',
+      'templates.folder',
+    ]);
+    expect(ORG_VAULT_UNAPPLIED_SETTINGS).toBe(orgVaultProvider.unappliedSettings);
+  });
+
+  it('never reads back a stored Delete, attachments folder, or templates folder', async () => {
+    server.putSettings({
+      version: 1,
+      delete: 'permanent',
+      attachments: { folder: 'Files' },
+      templates: { folder: 'Templates', dateFormat: 'DD/MM' },
+      tree: { sort: 'modified' },
+    });
+    const read = await orgVaultProvider.readConfig!(ORG, 'oscode/vault');
+    expect(read.ok).toBe(true);
+    const json = JSON.parse(read.ok ? read.text : '{}');
+    expect(json).toEqual({
+      version: 1,
+      templates: { dateFormat: 'DD/MM' },
+      tree: { sort: 'modified' },
+    });
+    expect(read.ok ? read.text : '').not.toMatch(/permanent|"delete"|attachments|Templates/);
+    // A conflict's theirs is the same text the read gives.
+    const stale = await orgVaultProvider.writeConfig!(ORG, 'oscode/vault', '{"version":1}', {
+      ifMatch: '9',
+    });
+    expect(stale).toMatchObject({ ok: false, conflict: 'changed' });
+    expect(stale.ok ? '' : stale.theirs?.text).toBe(read.ok ? read.text : undefined);
+  });
+
+  it('never sends Delete, and answers the text the next read gives', async () => {
+    server.putSettings({ version: 1 });
+    const r = await orgVaultProvider.writeConfig!(
+      ORG,
+      'oscode/vault',
+      '{"version":1,"delete":"permanent","attachments":{"folder":"Files"},"templates":{"folder":"T"},"editor":{"font":"serif"}}',
+      { ifMatch: '1' },
+    );
+    expect(rpcsNamed('org_vault_settings_put')[0]!.args.p_settings).toEqual({
+      version: 1,
+      editor: { font: 'serif' },
+    });
+    expect(server.settingsRow?.settings).toEqual({ version: 1, editor: { font: 'serif' } });
+    const next = await orgVaultProvider.readConfig!(ORG, 'oscode/vault');
+    expect(r).toMatchObject({ ok: true, file: { text: next.ok ? next.text : '' } });
+  });
+
+  it('setting who may delete drops a stored Delete from the row it writes', async () => {
+    server.putSettings({ version: 1, delete: 'permanent', tree: { sort: 'name' } });
+    expect(await setOrgVaultDeleteRole(ORG, 'admin')).toBe('ok');
+    expect(rpcsNamed('org_vault_settings_put')[0]!.args.p_settings).toEqual({
+      version: 1,
+      tree: { sort: 'name' },
+    });
+  });
+
+  it('orgVaultAppliedSettings never changes its input and tolerates any shape', () => {
+    const input = { delete: 'permanent', attachments: { folder: 'F', other: 1 }, v: 2 };
+    expect(orgVaultAppliedSettings(input)).toEqual({ attachments: { other: 1 }, v: 2 });
+    expect(input).toEqual({ delete: 'permanent', attachments: { folder: 'F', other: 1 }, v: 2 });
+    expect(orgVaultAppliedSettings({ templates: 'x' })).toEqual({ templates: 'x' });
+    expect(orgVaultAppliedSettings(null)).toEqual({});
+    expect(orgVaultAppliedSettings([1])).toEqual({});
   });
 
   it('an admin sets who may delete, keeping the settings as they are', async () => {

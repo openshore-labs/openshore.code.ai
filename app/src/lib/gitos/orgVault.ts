@@ -34,7 +34,10 @@
 // whether the plan is active, until when a never-paid team stays editable,
 // and whether this person is an admin; a write refused with OV402 (plan not
 // active) marks the plan lapsed, and OV403 (admins-only delete) answers the
-// Y14 line.
+// Y14 line. Three settings a team vault does not carry out
+// (ORG_VAULT_UNAPPLIED_SETTINGS: Delete, the attachments folder and the
+// templates folder) are never read back from the row and never sent to it,
+// so a stored "For good" cannot make a restorable delete look permanent.
 //
 // Multi-writer, so there is no single-writer lease to take: acquireLease grants
 // trivially and the server resolves concurrency. Team vault is online by
@@ -48,6 +51,7 @@ import {
   type ConfigRead,
   type VaultConfigName,
   type VaultSettingsConfigName,
+  type VaultSettingsField,
 } from 'os-code/protocol';
 import { isConfigured, rpc, select } from '../supabase.js';
 import {
@@ -609,6 +613,47 @@ function jsonbOrder(v: unknown): unknown {
   return v;
 }
 
+/** The vault settings a team vault does not carry out, each of which would
+ *  say something untrue there (the team review of 2026-09-30):
+ *  - `delete`: every team delete is org_vault_remove, which keeps a
+ *    tombstone and a 'deleted' revision (0024) that Trash lists and any
+ *    member restores until the weekly purge at 30 days, so "For good" would
+ *    call a restorable delete permanent. A team delete is one tap to Trash.
+ *  - `attachments.folder`: a team vault holds notes only, so no image or PDF
+ *    is ever placed or found there.
+ *  - `templates.folder`: its one reader keeps templates out of the notes a
+ *    model is given, and no model reads team notes in v1 (D15).
+ *  0025's row may hold them (its check allows the keys), so they are dropped
+ *  on every read and every write here, and the sheet never offers them. */
+export const ORG_VAULT_UNAPPLIED_SETTINGS: readonly VaultSettingsField[] = Object.freeze([
+  'delete',
+  'attachments.folder',
+  'templates.folder',
+]);
+
+/** The settings without the fields a team vault does not carry out: a
+ *  dotted field drops its key, and a section it leaves empty goes too. The
+ *  input is never changed. */
+export function orgVaultAppliedSettings(settings: unknown): Record<string, unknown> {
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return {};
+  const out: Record<string, unknown> = { ...(settings as Record<string, unknown>) };
+  for (const field of ORG_VAULT_UNAPPLIED_SETTINGS) {
+    const [head, leaf] = field.split('.') as [string, string | undefined];
+    if (!Object.hasOwn(out, head)) continue;
+    if (leaf === undefined) {
+      delete out[head];
+      continue;
+    }
+    const section = out[head];
+    if (!section || typeof section !== 'object' || Array.isArray(section)) continue;
+    const rest = { ...(section as Record<string, unknown>) };
+    delete rest[leaf];
+    if (Object.keys(rest).length) out[head] = rest;
+    else delete out[head];
+  }
+  return out;
+}
+
 /** The settings as the seam's text: the vault file's JSON, two-space. */
 export function orgVaultSettingsText(settings: unknown): string {
   return `${JSON.stringify(jsonbOrder(settings ?? {}), null, 2)}\n`;
@@ -616,7 +661,7 @@ export function orgVaultSettingsText(settings: unknown): string {
 
 const settingsFile = (row: SettingsRow): StoredFile => ({
   path: VAULT_SETTINGS_PATH,
-  text: orgVaultSettingsText(row.settings),
+  text: orgVaultSettingsText(orgVaultAppliedSettings(row.settings)),
   updatedAt: row.updated_at ?? new Date(0).toISOString(),
   version: versionOfRev(row.rev),
 });
@@ -646,7 +691,7 @@ async function putSettings(
   const reply = await refusing(resourceId, () =>
     rpc<SettingsPutReply>('org_vault_settings_put', auth, {
       p_org: resourceId,
-      p_settings: settings,
+      p_settings: orgVaultAppliedSettings(settings),
       p_delete_role: deleteRole ?? cols.deleteRole,
       p_context_folder: cols.contextFolder,
       p_base_rev: baseRev,
@@ -688,6 +733,7 @@ export const orgVaultProvider: StorageProvider = {
   ready: false,
   pending: 'Sign in to your team to use this.',
   compareAndSwap: true,
+  unappliedSettings: ORG_VAULT_UNAPPLIED_SETTINGS,
 
   // Keyset paging (CTO G3): ordered by path, each page starts after the last
   // path of the one before, until a short page. Offsets would skip or repeat
@@ -984,7 +1030,11 @@ export const orgVaultProvider: StorageProvider = {
       throw err;
     }
     if (!row.rev) return { ok: false, reason: 'absent' };
-    return { ok: true, text: orgVaultSettingsText(row.settings), version: versionOfRev(row.rev) };
+    return {
+      ok: true,
+      text: orgVaultSettingsText(orgVaultAppliedSettings(row.settings)),
+      version: versionOfRev(row.rev),
+    };
   },
 
   // Admins only, the server says (a member's write is refused there too).
@@ -1008,7 +1058,9 @@ export const orgVaultProvider: StorageProvider = {
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       throw new OrgVaultRefusal('Team vault settings must be one JSON object, so nothing changed.');
     }
-    const settings = parsed as Record<string, unknown>;
+    // What the team vault does not carry out is never sent (see
+    // ORG_VAULT_UNAPPLIED_SETTINGS), so the text this answers is the next read's.
+    const settings = orgVaultAppliedSettings(parsed);
     const auth = await token();
     let base: number;
     if ('ifAbsent' in guard) {

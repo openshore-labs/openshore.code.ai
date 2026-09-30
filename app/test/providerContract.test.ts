@@ -627,7 +627,19 @@ const settingsRows: Array<{
 ];
 
 const V1 = '{\n  "version": 1\n}\n';
-const V2 = '{\n  "version": 1,\n  "delete": "permanent"\n}\n';
+// A field every storage carries out (the team's Delete is not one: see
+// `unappliedSettings`, the review of 2026-09-30).
+const V2 = '{\n  "version": 1,\n  "editor": {\n    "font": "serif"\n  }\n}\n';
+// Three fields a storage may not carry out, beside one it keeps.
+const HELD =
+  '{"version":1,"delete":"permanent","attachments":{"folder":"Files"},"templates":{"folder":"T","dateFormat":"DD/MM"}}';
+const HELD_FIELDS = ['delete', 'attachments.folder', 'templates.folder'] as const;
+const holds = (json: Record<string, unknown>, field: string): boolean => {
+  const [head, leaf] = field.split('.') as [string, string | undefined];
+  const v = json[head];
+  if (leaf === undefined) return v !== undefined;
+  return Boolean(v && typeof v === 'object' && (v as Record<string, unknown>)[leaf] !== undefined);
+};
 
 for (const p of settingsRows) {
   describe(`writeConfig contract: ${p.name}`, () => {
@@ -638,6 +650,22 @@ for (const p of settingsRows) {
     it('declares writeConfig beside compareAndSwap', () => {
       expect(typeof p.provider.writeConfig).toBe('function');
       expect(p.provider.compareAndSwap).toBe(true);
+    });
+
+    it('never writes or reads back a field it does not carry out, and keeps the rest', async () => {
+      const unapplied: readonly string[] = p.provider.unappliedSettings ?? [];
+      const r = await write(HELD, { ifAbsent: true });
+      expect(r.ok).toBe(true);
+      const read = await p.provider.readConfig!(R, 'oscode/vault');
+      const stored = JSON.parse(p.bytes() ?? '{}') as Record<string, unknown>;
+      const back = JSON.parse(read.ok ? read.text : '{}') as Record<string, unknown>;
+      for (const field of HELD_FIELDS) {
+        const kept = !unapplied.includes(field);
+        expect(holds(stored, field), `${p.name} stores ${field}`).toBe(kept);
+        expect(holds(back, field), `${p.name} reads ${field}`).toBe(kept);
+      }
+      expect(back.templates).toMatchObject({ dateFormat: 'DD/MM' });
+      expect(same(r.ok ? r.file.text : '')).toBe(same(read.ok ? read.text : 'no'));
     });
 
     it('ifAbsent makes the file, and readConfig reads the same text and version', async () => {

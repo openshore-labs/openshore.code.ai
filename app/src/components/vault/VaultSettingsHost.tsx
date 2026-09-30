@@ -12,7 +12,9 @@
 //   where new notes go.
 // - A team vault reads its settings row (0025): an admin changes them and who
 //   may delete, a member reads them with "Your admins set these." (CX Y14),
-//   and a lapsed plan reads only, with the lead's line (Y15).
+//   and a lapsed plan reads only, with the lead's line (Y15). A field the
+//   storage does not carry out (`unappliedSettings`) has no row: the team
+//   vault never offers Delete "For good", since its deletes stay in Trash.
 import { useEffect, useMemo, useState } from 'react';
 import {
   VAULT_SETTINGS_DEFAULTS,
@@ -26,6 +28,7 @@ import { memoryOverride } from '../../lib/currents.js';
 import { bridge } from '../../lib/electronBridge.js';
 import { isDesktop, isPhone, platform } from '../../lib/platform.js';
 import { hubReach } from '../../lib/gitos/hub.js';
+import { providerFor } from '../../lib/gitos/index.js';
 import { PROVIDER_ROSTER, type StorageProviderId } from '../../lib/gitos/providers.js';
 import { sheetExitMs } from '../../lib/motion.js';
 import {
@@ -162,6 +165,7 @@ export function VaultSettingsHost({ open, setOpen, onOpenStorage }: VaultSetting
     : ((settings.gitosResources ?? []).find((r) => r.id === VAULT_RESOURCE_ID)?.providerId ??
       'local');
   const copyProvider = copyProviderOf(providerId) ?? 'local';
+  const unapplied = providerFor(providerId)?.unappliedSettings;
   const caps = vaultCapsNow();
   const storageCaps = vaultCapsNow({ storageOnly: true });
 
@@ -352,6 +356,7 @@ export function VaultSettingsHost({ open, setOpen, onOpenStorage }: VaultSetting
               },
             }
           : {})}
+        {...(unapplied ? { unapplied } : {})}
         storageName={PROVIDER_ROSTER.find((r) => r.id === providerId)?.label ?? providerId}
         footer={footer}
         {...(lockLine ? { lockLine } : {})}

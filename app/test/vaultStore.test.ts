@@ -298,6 +298,11 @@ const teamNet = {
   puts: [] as Array<{ token: string; path: string; body: string; base: number }>,
   // How many one-note reads (stat or read, a `path=eq.` select) were asked.
   heads: 0,
+  /** The org's settings row (0025) as org_vault_settings_get answers it, with
+   *  this caller an admin; undefined answers nothing, as before 0025. */
+  settings: undefined as Record<string, unknown> | undefined,
+  /** Every org_vault_settings_put's p_settings, in order. */
+  settingsPuts: [] as unknown[],
 };
 let teamToken: string | undefined = 'tok';
 // The account the fake auth server hands out: refreshSession answers with
@@ -344,6 +349,23 @@ vi.mock('../src/lib/supabase.js', async (importOriginal) => {
       if (!fn.startsWith('org_vault_')) return null;
       if (teamNet.fail) throw teamNet.fail;
       if (teamNet.rpcFail) throw teamNet.rpcFail;
+      if (fn === 'org_vault_settings_get' && teamNet.settings) {
+        return {
+          settings: teamNet.settings,
+          delete_role: 'member',
+          context_folder: null,
+          rev: 1,
+          updated_at: 's1',
+          updated_by: null,
+          entitled: true,
+          entitled_until: null,
+          is_admin: true,
+        };
+      }
+      if (fn === 'org_vault_settings_put') {
+        teamNet.settingsPuts.push(args.p_settings);
+        return { ok: true, rev: 2, updated_at: 's2' };
+      }
       const path = args.p_path as string;
       const theirs = (p: string) => {
         const r = row(p);
@@ -450,6 +472,8 @@ function reset() {
   teamNet.beforePut = undefined;
   teamNet.puts = [];
   teamNet.heads = 0;
+  teamNet.settings = undefined;
+  teamNet.settingsPuts = [];
   teamToken = 'tok';
   auth.refresh = undefined;
   auth.nextUser = { id: 'u1', email: 'me@example.com' };
@@ -3489,5 +3513,52 @@ describe('Vault M6 operations through the store', () => {
     expect(back).toMatchObject({ ok: true, path: 'x (restored).md', renamed: true });
     expect(F.get('x.md')).toBe('someone else');
     expect(F.get('x (restored).md')).toBe('first words');
+  });
+});
+
+// The team review of 2026-09-30: 0025's row accepts `delete: "permanent"`,
+// but every team delete is org_vault_remove, which keeps the note in Trash
+// for 30 days where any member restores it. So a team vault whose stored
+// settings say For good still deletes with one tap to Trash, never arms
+// "for good", and never saves the choice.
+describe('a team delete is always one tap to Trash', () => {
+  beforeEach(() => {
+    reset();
+    useApp.setState({ vaultConflict: undefined, vaultTrash: undefined });
+  });
+  afterEach(() => {
+    wiring.org!.resetOrgVault();
+  });
+
+  it('a stored delete: permanent still goes to Trash in one tap, and is never saved', async () => {
+    teamNet.settings = { version: 1, delete: 'permanent', tree: { sort: 'modified' } };
+    teamScope();
+    team.set('plan.md', { body: 'the team plan', rev: 1 });
+    await useApp.getState().vaultRefresh();
+    const s = await useApp.getState().vaultLoadSettings({ force: true });
+    // The row was read (its sort holds), and its Delete was not.
+    expect(s?.tree.sort).toBe('modified');
+    expect(s?.delete).toBe('trash');
+    const caps = useApp.getState().vaultCapsNow();
+    expect(caps.trash).toBe(true);
+    expect(caps.settingsWrite).toBe(true);
+    const r = await useApp.getState().vaultDeleteNote('plan.md');
+    expect(r).toMatchObject({ ok: true, trashed: true, undo: { kind: 'trash' } });
+    expect(team.has('plan.md')).toBe(false);
+    // An admin cannot save For good on the team vault: nothing is sent.
+    expect(
+      await useApp.getState().vaultSaveSetting({ field: 'delete', value: 'permanent' }),
+    ).toEqual({ kind: 'read-only' });
+    expect(
+      await useApp.getState().vaultSaveSetting({ field: 'attachments.folder', value: 'Files' }),
+    ).toEqual({ kind: 'read-only' });
+    expect(teamNet.settingsPuts).toEqual([]);
+    // A field the team does carry out still saves, with no Delete in it.
+    expect(
+      await useApp.getState().vaultSaveSetting({ field: 'editor.font', value: 'serif' }),
+    ).toMatchObject({ kind: 'saved' });
+    expect(teamNet.settingsPuts).toEqual([
+      { version: 1, tree: { sort: 'modified' }, editor: { font: 'serif' } },
+    ]);
   });
 });

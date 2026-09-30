@@ -3332,3 +3332,26 @@ execution contract. Newest at the bottom.
   `CLAUDE.md`. The pointer lives here instead: the K12, L17 and M8 entries
   still name 0020 and 0021 as written, and the push they point to is now
   0021 to 0026 from main, per `docs/vault-gate1-runbook.md`.
+
+- 2026-09-30: **The team vault never offers or applies Delete "For good"
+  (held `vault-m2-team`, a HIGH review finding).** 0025's
+  `org_vault_settings_ok` accepts `delete: "permanent"`, and with it the team
+  room armed "Really delete X for good?" and the sheet said "Deletes skip
+  Trash and ask twice", but every team delete is `org_vault_remove`, which
+  keeps a tombstone and a `deleted` revision (0024) that Trash lists and any
+  member restores until the 30-day purge: the copy called a restorable delete
+  permanent. The rule is a provider member, not an id check:
+  `StorageProvider.unappliedSettings` names the fields a storage does not
+  carry out, and the team's (`ORG_VAULT_UNAPPLIED_SETTINGS`) are `delete`,
+  `attachments.folder` (a team vault holds notes only) and `templates.folder`
+  (its one reader keeps templates out of a model's notes, and no model reads
+  team notes in v1, D15). The sheet shows no row for them, `saveVaultSetting`
+  answers read-only for them, `vaultCaps` keeps one-tap Trash under a stored
+  For good there (so `capsOf` needs no id check), and the team provider
+  drops them on every read and every write (setting who may delete
+  included). No SQL change: 0025 is main's and about to be applied, and a
+  key the row still holds is inert. The other team rows (new notes, open
+  mode, sort, Today's folder, format and template, link style and paths,
+  font, size, who may delete) were checked against the server and do what
+  they say. The same Attachments folder row on a personal Local vault (which
+  also keeps notes only) is left for a personal-sheet pass.

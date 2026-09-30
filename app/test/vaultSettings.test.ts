@@ -1493,6 +1493,10 @@ describe('the room places the entry points (wave 2, CX Y4, Y7)', () => {
     );
     expect(host).toMatch(/readOnly: !caps\.settingsWrite/);
     expect(host).toMatch(/teamLapsed\s*\?\s*VAULT_TEAM_LAPSED_LEAD/);
+    // The sheet hides what the storage does not carry out (the team's
+    // Delete, the review of 2026-09-30), read from the provider itself.
+    expect(host).toMatch(/providerFor\(providerId\)\?\.unappliedSettings/);
+    expect(host).toMatch(/\{ unapplied \}/);
   });
 });
 
