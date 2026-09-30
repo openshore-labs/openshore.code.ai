@@ -21,30 +21,68 @@
 # back on exit, whatever happens. Every push command in the README and the
 # runbook carries --skip-vault as well.
 #
-# It refuses anything that could reach a remote project.
+# What it runs: an allowlist. Only the commands that apply migrations to the
+# LOCAL stack pass: `start`, `db start`, `db reset` (local; --linked and
+# --db-url are refused) and `db push --local`. Everything else is refused
+# before anything runs, whatever it is (`db pull`, `pull`, `migration repair`,
+# `migration list`, `db dump`, `inspect`, `link`, `functions`, `secrets` and
+# the rest), and so is any flag that names a project or another supabase/
+# folder (--linked, --db-url, --project-ref, --project-id, --workdir,
+# --profile). The subcommand is the first word after the launcher
+# (`supabase`, `npx [--yes] supabase@<version>`, or a path ending in
+# /supabase); an unknown launcher is refused too.
 set -euo pipefail
+
+refuse() {
+  echo "local-vault.sh: refusing $1. This script runs only start, db start, db reset and db push --local, against the local stack." >&2
+  exit 64
+}
 
 if [ "$#" -eq 0 ]; then
   echo "usage: bash supabase/scripts/local-vault.sh <supabase command...>" >&2
   exit 64
 fi
 
-push=0
 local_flag=0
 for arg in "$@"; do
   case "$arg" in
-    --linked | --db-url | --db-url=* | --project-ref | --project-ref=* | link | login | secrets | functions | config)
-      echo "local-vault.sh: refusing '$arg'. This script is for the local stack only." >&2
-      exit 64
+    --linked | --db-url | --db-url=* | --project-ref | --project-ref=* | --project-id | --project-id=* | \
+      --workdir | --workdir=* | --profile | --profile=*)
+      refuse "'$arg'"
       ;;
-    push) push=1 ;;
     --local) local_flag=1 ;;
   esac
 done
-if [ "$push" -eq 1 ] && [ "$local_flag" -eq 0 ]; then
-  echo "local-vault.sh: 'db push' without --local targets the linked project. Refusing." >&2
-  exit 64
-fi
+
+# The CLI's own subcommand and the word after it, past the launcher.
+launcher=1
+top=""
+sub=""
+for arg in "$@"; do
+  if [ "$launcher" -eq 1 ]; then
+    case "$arg" in
+      npx | --yes | -y | supabase | supabase@* | */supabase) continue ;;
+    esac
+    launcher=0
+  fi
+  case "$arg" in -*) continue ;; esac
+  if [ -z "$top" ]; then
+    top="$arg"
+  elif [ -z "$sub" ]; then
+    sub="$arg"
+    break
+  fi
+done
+
+case "$top $sub" in
+  "start "* | "db start" | "db reset") ;;
+  "db push")
+    if [ "$local_flag" -eq 0 ]; then
+      refuse "'db push' without --local (it targets the linked project)"
+    fi
+    ;;
+  *) refuse "'$top${sub:+ $sub}'" ;;
+esac
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 config="$here/../config.toml"
