@@ -665,6 +665,13 @@ export function vaultGoneManyLine(count: number): string {
   return `${count} notes with text you had not saved were moved or deleted somewhere else.`;
 }
 
+/** The Not saved reason for text stashed on this device that no editor
+ *  showed (the note was opened again, at the vault's version, before the
+ *  text was saved), once newer text for the same note took its place in the
+ *  stash (round 7 E10). */
+export const VAULT_UNSEEN_DRAFT_REASON =
+  'Typed earlier on this device and not saved before the note was opened and edited again. Copy it into the note if you still need it.';
+
 /** The Not saved reason when no conflict-copy name was free after 20 tries. */
 export const VAULT_NO_COPY_NAME_REASON =
   'No free name was left for your copy, so the text is kept here.';

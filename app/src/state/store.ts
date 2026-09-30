@@ -500,6 +500,7 @@ import {
   VAULT_TICK_FAILED,
   vaultTickChanged,
   VAULT_GONE_REASON,
+  VAULT_UNSEEN_DRAFT_REASON,
   vaultGoneManyLine,
   VAULT_NO_COPY_NAME_REASON,
   vaultEarlierFolderHeld,
@@ -4910,8 +4911,15 @@ export const useApp = create<AppState>((set, get, api) => {
      *  M2 carried beside an ISO base. The loader turns it into the base once
      *  the team provider compares revs (CTO G3); nothing writes it now. */
     rev?: number;
-    /** When it was stashed, on this device's clock (ordering only). */
+    /** When it was stashed, on this device's clock (ordering only), always
+     *  later than the last (nextStashAt): a save's own entry, and any entry
+     *  written after that save began, compare by it (round 7 E10). */
     at: string;
+    /** The sitting of the note the text was typed in (the open note's
+     *  loadedAt), when it was open. A save supersedes an entry of its own
+     *  sitting, since the editor showed those words, but never one of
+     *  another: an open shows the vault's read, never the stash (E10). */
+    sitting?: number;
     /** The desktop folder only: the folder the text was typed in (its
      *  realpath) and how it reads, so text typed before the vault was
      *  pointed at another folder never replays into the new one (CTO F7.6). */
@@ -5165,9 +5173,7 @@ export const useApp = create<AppState>((set, get, api) => {
   ): Promise<void> {
     if (t.owner && t.owner === keptTeamOwner) {
       try {
-        await editVaultPending((p) => {
-          p[vaultKey(t, path)] = pendingEntry(t, path, text, base);
-        });
+        await stashDraft(t, path, text, base, { sitting: session });
         get().showToast(
           'Your sign-in expired, so this team vault text is kept on this device for when you sign in again.',
         );
@@ -5473,6 +5479,7 @@ export const useApp = create<AppState>((set, get, api) => {
     path: string,
     text: string,
     base: string | undefined,
+    o: { sitting?: number; at?: string } = {},
   ): VaultPendingEntry {
     const { providerId, resourceId } = t;
     const owner = providerId === 'org' ? t.owner : undefined;
@@ -5484,9 +5491,74 @@ export const useApp = create<AppState>((set, get, api) => {
       path,
       text,
       ...(base ? { base } : {}),
-      at: new Date().toISOString(),
+      at: o.at ?? nextStashAt(),
+      ...(o.sitting !== undefined ? { sitting: o.sitting } : {}),
       ...(folder ? { folder: folder.dir, folderDisplay: folder.display } : {}),
     };
+  }
+
+  // A stash time on this device's clock, always later than the last, so an
+  // entry written after a save began is always newer than that save's mark.
+  let lastStashAt = 0;
+  function nextStashAt(): string {
+    lastStashAt = Math.max(Date.now(), lastStashAt + 1);
+    return new Date(lastStashAt).toISOString();
+  }
+
+  // Whether a stash entry is a save's to settle: text stashed in the same
+  // sitting of the note before the save began (the editor showed those
+  // words, so the save supersedes them, data-1), never one written after it
+  // began, and never an earlier sitting's, which no editor showed (E10).
+  function ownsStash(
+    e: VaultPendingEntry | undefined,
+    sitting: number | undefined,
+    mark: string | undefined,
+  ): boolean {
+    if (!e || sitting === undefined || e.sitting !== sitting) return false;
+    return mark === undefined || e.at <= mark;
+  }
+
+  // Put text in the stash, the one entry a note keeps there, and never over
+  // words it would lose (round 7 E10). An entry written after `mark` wins:
+  // one of the same sitting was typed on top of this text, so this text is
+  // superseded; one of another sitting keeps its place and this text goes
+  // under Not saved. An older entry of another sitting, with other words, is
+  // text no editor showed: it goes under Not saved before this takes its
+  // place. Resolves to where this text is now.
+  async function stashDraft(
+    t: VaultTargetRef,
+    path: string,
+    text: string,
+    base: string | undefined,
+    o: { sitting?: number; mark?: string } = {},
+  ): Promise<'stashed' | 'superseded' | 'held'> {
+    const key = vaultKey(t, path);
+    const entry = pendingEntry(t, path, text, base, {
+      sitting: o.sitting,
+      at: o.mark ?? nextStashAt(),
+    });
+    const out = await editVaultPending((p) => {
+      const e = p[key];
+      const same = o.sitting !== undefined && e?.sitting === o.sitting;
+      if (e && e.at > entry.at) {
+        return same || e.text === text ? ('superseded' as const) : ('held' as const);
+      }
+      p[key] = entry;
+      return e && !same && e.text !== text ? e : undefined;
+    });
+    if (out === 'superseded') return out;
+    if (out === 'held') {
+      await holdVaultDraft(t, path, text, VAULT_UNSEEN_DRAFT_REASON, { session: o.sitting });
+      set({ vaultError: 'held' });
+      return out;
+    }
+    if (out) {
+      await holdVaultDraft(out, out.path, out.text, VAULT_UNSEEN_DRAFT_REASON, {
+        at: out.at,
+        session: `stash:${out.at}`,
+      });
+    }
+    return 'stashed';
   }
 
   // Text stashed against the desktop folder while the vault used another one
@@ -5528,6 +5600,8 @@ export const useApp = create<AppState>((set, get, api) => {
     base: string | undefined,
     err: unknown,
     session?: number,
+    /** When the save began (its mark), when it was a save (E10). */
+    mark?: string,
   ): Promise<void> {
     if (!speaksNow(t)) {
       await keepUnsentTeamText(t, path, text, base, session);
@@ -5536,11 +5610,13 @@ export const useApp = create<AppState>((set, get, api) => {
     const key = vaultKey(t, path);
     const refusal = vaultRefusal(err);
     if (refusal) {
-      // This text is newer than any draft stashed for the note, so that one
-      // must not replay under it. Words of its own (an earlier sitting's)
-      // go under Not saved beside this, never away (round 7 E7).
+      // This text is newer than any draft stashed for the note before it
+      // began, so that one must not replay under it. Words of their own (an
+      // earlier sitting's) go under Not saved beside this, never away (round
+      // 7 E7). One stashed after this save began is newer, and stays.
       const older = await editVaultPending((p) => {
         const e = p[key];
+        if (e && mark !== undefined && e.at > mark) return undefined;
         delete p[key];
         return e;
       }).catch(() => undefined);
@@ -5557,9 +5633,12 @@ export const useApp = create<AppState>((set, get, api) => {
       return;
     }
     try {
-      await editVaultPending((p) => {
-        p[key] = pendingEntry(t, path, text, base);
-      });
+      // Never over newer words, nor over words no editor showed (E10).
+      if ((await stashDraft(t, path, text, base, { sitting: session, mark })) === 'held') {
+        get().showToast(`Not saved. ${heldLine(true)}`);
+        logEvent('vault_note_save_failed');
+        return;
+      }
     } catch {
       const reason = 'This device could not keep a copy to retry. Copy it somewhere safe.';
       await holdVaultDraft(t, path, text, reason, { session });
@@ -7088,9 +7167,12 @@ export const useApp = create<AppState>((set, get, api) => {
       /** The note's text at `base`, as this device read or saved it, when
        *  it knows (E4). */
       baseText?: string;
+      /** When the save was asked for (nextStashAt): a stash entry written
+       *  after it is newer than this text (E10). */
+      mark?: string;
     } = {},
   ): Promise<string | undefined> {
-    const { session, baseText } = opts;
+    const { session, baseText, mark } = opts;
     const readOnly = vaultReadOnlyReason(target.providerId);
     if (readOnly) {
       // A read-only vault takes no write, but typed text is never dropped.
@@ -7122,7 +7204,7 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       if (!result.ok && result.conflict === 'downloading') mustLand(result);
     } catch (err) {
-      await rescueVaultDraft(target, path, text, base, err, session);
+      await rescueVaultDraft(target, path, text, base, err, session, mark);
       return base;
     }
     // Settling can write too (a keep-both copy of a note that closed while
@@ -7137,22 +7219,20 @@ export const useApp = create<AppState>((set, get, api) => {
         return base;
       }
       try {
-        return await settleSaveConflict(target, path, text, base, result, session);
+        return await settleSaveConflict(target, path, text, base, result, session, mark);
       } catch (err) {
-        await rescueVaultDraft(target, path, text, base, err, session);
+        await rescueVaultDraft(target, path, text, base, err, session, mark);
         return base;
       }
     }
-    if (!result.ok) return settleSaveConflict(target, path, text, base, result, session);
+    if (!result.ok) return settleSaveConflict(target, path, text, base, result, session, mark);
     const saved = result.file;
-    // This save supersedes any older draft stashed for the same note, so
-    // drop it before the replay below: replaying it now would put the older
-    // words back over these (data-1). Saves to one note run one at a time,
-    // so no newer save's draft for it can be stashed yet.
-    const key = vaultKey(target, path);
-    await editVaultPending((p) => {
-      delete p[key];
-    }).catch(() => {});
+    // This save supersedes any older draft stashed for the same note in the
+    // same sitting, so drop it before the replay below: replaying it now
+    // would put the older words back over these (data-1). A draft of an
+    // earlier sitting no editor showed stays, and the replay below keeps it
+    // beside these words; one stashed after this save began is newer (E10).
+    await dropOwnStash(target, path, session, mark);
     // The list and the body cache were patched from the write's result
     // (putVaultNote), so nothing is re-listed here.
     const reopened = isActiveVault(target) && get().vaultNote?.path === path;
@@ -7211,14 +7291,30 @@ export const useApp = create<AppState>((set, get, api) => {
     path: string,
     text: string,
     base: string | undefined,
+    mark?: string,
   ): Promise<void> {
-    await editVaultPending((p) => {
-      p[vaultKey(t, path)] = pendingEntry(t, path, text, base);
-    }).catch(() => {});
+    // The editor's text, of the sitting on screen when it is this note.
+    const open = isActiveVault(t) ? get().vaultNote : undefined;
+    const sitting = open?.path === path ? open.loadedAt : undefined;
+    await stashDraft(t, path, text, base, { sitting, mark }).catch(() => {});
   }
   async function dropStash(t: VaultTargetRef, path: string): Promise<void> {
     await editVaultPending((p) => {
       delete p[vaultKey(t, path)];
+    }).catch(() => {});
+  }
+  // A save settled its text (it landed, or went beside the note or under Not
+  // saved): drop the stash entry it owns, never a newer one or an earlier
+  // sitting's no editor showed, which replays on its own (E10).
+  async function dropOwnStash(
+    t: VaultTargetRef,
+    path: string,
+    sitting: number | undefined,
+    mark: string | undefined,
+  ): Promise<void> {
+    await editVaultPending((p) => {
+      const key = vaultKey(t, path);
+      if (ownsStash(p[key], sitting, mark)) delete p[key];
     }).catch(() => {});
   }
 
@@ -7297,6 +7393,7 @@ export const useApp = create<AppState>((set, get, api) => {
     base: string | undefined,
     result: Extract<WriteResult, { ok: false }>,
     session?: number,
+    mark?: string,
   ): Promise<string | undefined> {
     const theirs = result.theirs;
     const shown = isActiveVault(target) && get().vaultNote?.path === path;
@@ -7305,7 +7402,7 @@ export const useApp = create<AppState>((set, get, api) => {
     // another read, so it is never asked about this text (E3).
     const isOpen = shown && get().vaultNote?.loadedAt === session;
     if (theirs && theirs.text === text) {
-      await dropStash(target, path);
+      await dropOwnStash(target, path, session, mark);
       if (shown && !isOpen) await landOnReopened(target, path, theirs);
       if (isOpen) {
         set({
@@ -7330,18 +7427,18 @@ export const useApp = create<AppState>((set, get, api) => {
           base,
         );
       }
-      await stashConflictText(target, path, text, base);
+      await stashConflictText(target, path, text, base, mark);
       return base;
     }
     if (result.conflict === 'missing' || !theirs) {
-      await dropStash(target, path);
+      await dropOwnStash(target, path, session, mark);
       const kept = await holdVaultDraft(target, path, text, VAULT_GONE_REASON, { session });
       set({ vaultError: 'held' });
       get().showToast(`${vaultGoneToast(noteTitle(path))} ${heldLine(kept)}`);
       return base;
     }
     const copy = await writeConflictCopy(target, path, text, new Date());
-    await dropStash(target, path);
+    await dropOwnStash(target, path, session, mark);
     if (!copy) {
       const kept = await holdVaultDraft(target, path, text, VAULT_NO_COPY_NAME_REASON, {
         session,
@@ -11156,10 +11253,9 @@ export const useApp = create<AppState>((set, get, api) => {
       // Offline: still open the editor so the user can write, and stash the
       // note body so the create is not lost. The stash carries no base, so a
       // replay that finds a note already there keeps both, never overwrites.
+      const loadedAt = nextLoadedAt();
       try {
-        await editVaultPending((p) => {
-          p[vaultKey(target, normalized)] = pendingEntry(target, normalized, content, undefined);
-        });
+        await stashDraft(target, normalized, content, undefined, { sitting: loadedAt });
       } catch {
         if (seeded) {
           const reason = 'This device could not keep a copy to retry. Copy it somewhere safe.';
@@ -11168,7 +11264,7 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       if (!isActiveVault(target)) return;
       set({
-        vaultNote: { path: normalized, text: content, updatedAt: '', fresh: !seeded },
+        vaultNote: { path: normalized, text: content, updatedAt: '', fresh: !seeded, loadedAt },
         vaultError: 'save',
       });
       get().showToast('Working offline. This note saves when your storage reconnects.');
@@ -11445,8 +11541,10 @@ export const useApp = create<AppState>((set, get, api) => {
       // The version at call time, used only when the note has closed and no
       // earlier save for it says more.
       const called = vaultBaseOf(target, path);
-      // The sitting this text was typed in, for Not saved (E7).
+      // The sitting this text was typed in, for Not saved (E7), and when
+      // this save was asked for, so it never settles a newer stash (E10).
       const session = open?.path === path ? open.loadedAt : undefined;
+      const mark = nextStashAt();
       const before = vaultSaveChains.get(key);
       const run = (async () => {
         const carried = before ? await before : undefined;
@@ -11466,7 +11564,7 @@ export const useApp = create<AppState>((set, get, api) => {
               : cached?.version === base
                 ? cached.text
                 : undefined;
-        return saveVaultNote(target, path, text, base, { session, baseText });
+        return saveVaultNote(target, path, text, base, { session, baseText, mark });
       })();
       const link = run.catch(() => undefined);
       vaultSaveChains.set(key, link);

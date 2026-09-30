@@ -24,6 +24,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   VAULT_GONE_REASON,
+  VAULT_UNSEEN_DRAFT_REASON,
   VAULT_NO_COPY_NAME_REASON,
   VAULT_RESOLVE_AGAIN,
   VAULT_RESOLVE_FAILED,
@@ -1408,5 +1409,11 @@ describe("the team's free space says what 0023 says (the review, finding 1)", ()
       '3 notes with text you had not saved were moved or deleted somewhere else.',
     );
     expect(vaultGoneManyLine(3)).not.toMatch(/try again/i);
+  });
+
+  it('text no editor showed is named as typed earlier, with what to do (E10)', () => {
+    expect(VAULT_UNSEEN_DRAFT_REASON).toMatch(/^Typed earlier on this device/);
+    expect(VAULT_UNSEEN_DRAFT_REASON).toMatch(/Copy it into the note if you still need it\.$/);
+    expect(VAULT_UNSEEN_DRAFT_REASON).not.toMatch(/try again/i);
   });
 });

@@ -5877,4 +5877,105 @@ describe('round 7, batch 2: team text and names stay where they belong', () => {
       expect(teamHeld()).toEqual([]);
     });
   });
+  describe('E10: a stashed draft nobody saw is never superseded unseen', () => {
+    const KEY = `org::${ORG}::n.md`;
+    // Yesterday: 'A, and yesterday offline' typed offline into n.md and
+    // stashed. Today the list answers but the replay's write fails once, so
+    // the stash still holds it when the note is opened again, at 'A'.
+    async function yesterdayWaits() {
+      server.put('n.md', 'A', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      server.rpcFailure = new TypeError('Failed to fetch');
+      st().vaultNoteDraft('n.md', 'A, and yesterday offline');
+      await st().vaultSave('n.md', 'A, and yesterday offline');
+      st().vaultCloseNote();
+      server.rpcFailure = undefined;
+      const rpc = server.rpc.bind(server);
+      let once = true;
+      server.rpc = async (fn, token, args) => {
+        if (fn === 'org_vault_write' && once) {
+          once = false;
+          throw new TypeError('Failed to fetch');
+        }
+        return rpc(fn, token, args);
+      };
+      await st().vaultRefresh();
+      expect(pending()[KEY]).toMatchObject({ text: 'A, and yesterday offline' });
+      await st().vaultOpen('n.md');
+      expect(st().vaultNote?.text).toBe('A');
+      useApp.setState({ toast: undefined });
+    }
+
+    it('the next save lands, and the old words are kept beside the note', async () => {
+      await yesterdayWaits();
+      await st().vaultSave('n.md', 'A, and today');
+      expect(server.bytes('n.md')).toBe('A, and today');
+      expect(liveHas(server, 'yesterday offline')).toBe(true);
+      const copies = [...server.notes.values()].filter(
+        (n) => !n.deleted && conflictCopy('n').test(n.path),
+      );
+      expect(copies.map((n) => n.body)).toEqual(['A, and yesterday offline']);
+      expect(st().toast).toMatch(/is kept as ".*", since the note changed elsewhere/);
+      expect(pending()).toEqual({});
+    });
+
+    it('a refusal at the cap holds both texts', async () => {
+      await yesterdayWaits();
+      server.freeBytes = server.usage();
+      await st().vaultSave('n.md', 'A, and today, which grows the note');
+      expect(
+        teamHeld()
+          .map((h) => h.text)
+          .sort(),
+      ).toEqual(['A, and today, which grows the note', 'A, and yesterday offline']);
+      expect(pending()).toEqual({});
+    });
+
+    it('a failed save never writes over the waiting words', async () => {
+      await yesterdayWaits();
+      server.rpcFailure = new TypeError('Failed to fetch');
+      await st().vaultSave('n.md', 'A, and today');
+      server.rpcFailure = undefined;
+      expect(liveHas(server, 'yesterday offline')).toBe(true);
+      expect(liveHas(server, 'A, and today')).toBe(true);
+      expect(pending()[KEY]).toMatchObject({ text: 'A, and today' });
+      expect(teamHeld()).toEqual([
+        expect.objectContaining({ path: 'n.md', text: 'A, and yesterday offline' }),
+      ]);
+    });
+
+    it('a draft typed, stashed and superseded in the same sitting is still dropped', async () => {
+      server.put('n.md', 'A', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      server.rpcFailure = new TypeError('Failed to fetch');
+      await st().vaultSave('n.md', 'A, typed offline');
+      server.rpcFailure = undefined;
+      await st().vaultSave('n.md', 'A, typed offline, then more');
+      expect(server.bytes('n.md')).toBe('A, typed offline, then more');
+      expect(pending()).toEqual({});
+      expect([...server.notes.values()].filter((n) => !n.deleted).map((n) => n.path)).toEqual([
+        'n.md',
+      ]);
+      expect(teamHeld()).toEqual([]);
+    });
+
+    it('on This device too, a save over an unseen draft keeps the draft', async () => {
+      reset();
+      local.files.set('n.md', 'A');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      fail.write = true;
+      await st().vaultSave('n.md', 'A, and yesterday offline');
+      fail.write = false;
+      st().vaultCloseNote();
+      // The note is opened again before any replay ran.
+      await st().vaultOpen('n.md');
+      expect(st().vaultNote?.text).toBe('A');
+      await st().vaultSave('n.md', 'A, and today');
+      expect(local.files.get('n.md')).toBe('A, and today');
+      expect([...local.files.values()]).toContain('A, and yesterday offline');
+    });
+  });
 });
