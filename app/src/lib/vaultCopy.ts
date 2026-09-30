@@ -1789,6 +1789,12 @@ export function vaultRestoredToast(o: {
   return o.sayFolder ? `Restored "${o.title}" to ${where}.` : `Restored "${o.title}".`;
 }
 
+/** Undo or Restore found nothing left in Trash to put back: it was restored
+ *  or cleared somewhere else (a teammate, the purge, another device). */
+export function vaultTrashGone(title: string): string {
+  return `"${title}" is no longer in Trash. It was restored or cleared somewhere else.`;
+}
+
 /** Undo or Restore could not put it back. */
 export function vaultRestoreFailed(title: string): string {
   return `Could not restore "${title}". It is still in Trash. Try again in a moment.`;

@@ -505,6 +505,10 @@ export async function applyMove(
         if (!meta) return { ok: false as const, conflict: 'missing' as const };
         return renameOne(deps, from, to, versionOf(meta));
       });
+      // Gone since the plan was made (a teammate deleted or moved it, and
+      // the index had not caught up): nothing is left to move and nothing
+      // is lost, so the rest still move (round 5 sweep).
+      if (r.ok && !r.value.ok && r.value.conflict === 'missing') continue;
       const failed = !r.ok ? 'storage' : !r.value.ok ? r.value.conflict : undefined;
       if (failed || !r.ok || !r.value.ok) {
         await settleMoved(deps, preview, moved);
@@ -866,6 +870,8 @@ export async function deleteFolder(deps: VaultOpsDeps, folder: string): Promise<
  *  for a lapsed team plan, refused before the server is asked). */
 export type VaultRestoreResult =
   | { ok: true; path: string; renamed: boolean; partial: RestorePartial }
+  /** No longer in Trash (restored or cleared elsewhere): the store's line. */
+  | { ok: false; reason: 'missing'; line: string; whole: true }
   | ({ ok: false; reason: VaultOpFailure } & VaultRefusal)
   | { ok: true; path: string; renamed: boolean }
   | { ok: false; reason: 'missing' | 'exists' | VaultOpFailure };
@@ -986,6 +992,8 @@ export async function openToday(
 
 export type VaultTickResult =
   | { ok: true; file: StoredFile; status: string }
+  /** Refused for good (a team plan not active, OV402): the storage's line. */
+  | ({ ok: false; reason: 'storage' } & VaultRefusal)
   | { ok: false; reason: 'moved' | 'custom' | 'none' | VaultOpFailure }
   | {
       ok: false;
@@ -1040,6 +1048,7 @@ async function tickOnce(
     const reason = r.conflict === 'exists' ? 'changed' : r.conflict;
     return { ok: false, reason, theirs: r.theirs };
   });
+  if (!run.ok && run.refusal) return { ok: false, reason: 'storage', ...run.refusal };
   return run.ok ? run.value : { ok: false, reason: 'storage' };
 }
 

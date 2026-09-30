@@ -576,6 +576,39 @@ describe('folders (K5)', () => {
     expect(h.renamed).toEqual([['Work/A.md', 'Jobs/A.md']]);
   });
 
+  it('carries what stopped it, and passes over a note already gone (round 5)', async () => {
+    const mem = memStorage({
+      'Work/A.md': 'a',
+      'Work/B.md': 'b',
+      'Work/C.md': 'c',
+      'Jobs/c.md': 'x',
+    });
+    const h = harness(mem);
+    const p = await prepareFolderMove(h.deps, 'Work', 'Jobs');
+    if (!p.ok) throw new Error('no plan');
+    // A is deleted elsewhere after the plan: nothing to move, nothing lost.
+    mem.files.delete('Work/A.md');
+    // C meets a note already there under another case.
+    const rename = mem.provider.rename!;
+    mem.provider.rename = async (r, from, to, g) =>
+      from === 'Work/C.md'
+        ? {
+            ok: false,
+            conflict: 'exists',
+            theirs: { path: 'Jobs/c.md', text: 'x', updatedAt: 't', version: 'v9' },
+          }
+        : rename(r, from, to, g);
+    const r = await applyMove(h.deps, p.preview, { updateLinks: false });
+    expect(r).toMatchObject({
+      ok: false,
+      reason: 'partial',
+      moved: [expect.objectContaining({ path: 'Jobs/B.md' })],
+      stoppedOn: 'exists',
+      stoppedAt: 'Jobs/C.md',
+      theirs: expect.objectContaining({ path: 'Jobs/c.md' }),
+    });
+  });
+
   it('creates a real folder where there is one, and remembers one where there is not', async () => {
     const mem = memStorage({});
     const made: string[] = [];

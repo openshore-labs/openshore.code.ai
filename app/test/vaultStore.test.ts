@@ -38,6 +38,8 @@ import {
   VAULT_TEAM_LAPSED_NOT_SAVED_LINE,
   vaultFolderMoveTaken,
   vaultGoneToast,
+  vaultRenameFailed,
+  vaultTrashGone,
 } from '../src/lib/vaultCopy.js';
 
 const mem = new Map<string, string>();
@@ -4138,5 +4140,88 @@ describe('round 5: a team refusal says what happened and keeps the text', () => 
     expect(useApp.getState().vaultNote).toMatchObject({ path: 'plan.md', text: 'their plan' });
     expect(server.bytes('Plan.md')).toBeUndefined();
     expect([...server.notes.keys()]).toEqual(['plan.md']);
+  });
+
+  // The sweep after the round 5 findings: the paths the review did not name.
+  it('a tick refused by a plan the room had not read (OV402) says the plan, never try again (sweep)', async () => {
+    server.put('t.md', '- [ ] one', 'u-me');
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen('t.md');
+    for (let i = 0; i < 5; i++) await tick();
+    server.entitled = false;
+    useApp.setState({ vaultTeamPlan: undefined, toast: undefined });
+    expect(await useApp.getState().vaultToggleTask('t.md', 0, true)).toBe(false);
+    expect(useApp.getState().toast).toBe(VAULT_TEAM_LAPSED_NOT_SAVED_LINE);
+    expect(useApp.getState().vaultTeamPlan).toMatchObject({ entitled: false });
+    expect(server.bytes('t.md')).toBe('- [ ] one');
+  });
+
+  it('a Restore or an Undo of what is no longer in Trash says so, never "still in Trash" (sweep)', async () => {
+    // A folder's Undo after a teammate brought its notes back.
+    server.put('Work/a.md', 'a', 'u-me');
+    await useApp.getState().vaultRefresh();
+    const at = useApp.getState().vaultTargetRef();
+    const gone = await useApp.getState().vaultDeleteFolder('Work');
+    if (!gone?.ok || !gone.undo) throw new Error('not deleted');
+    server.put('Work/a.md', 'a, back', 'u-teammate');
+    expect(await useApp.getState().vaultUndoDelete(gone.undo, at)).toEqual({
+      ok: false,
+      reason: 'missing',
+      line: vaultTrashGone('Work'),
+      whole: true,
+    });
+    await vi.waitFor(() =>
+      expect(useApp.getState().vaultFiles.map((f) => f.path)).toEqual(['Work/a.md']),
+    );
+    // A Trash page's Restore of a note whose history was cleared meanwhile.
+    server.put('Old.md', 'old', 'u-me');
+    server.drop('Old.md');
+    await useApp.getState().vaultRefresh();
+    expect((await useApp.getState().vaultLoadTrash())?.map((e) => e.path)).toEqual(['Old.md']);
+    server.revisions.length = 0;
+    server.notes.delete('Old.md');
+    expect(await useApp.getState().vaultRestoreTrash('n:Old.md')).toEqual({
+      ok: false,
+      reason: 'missing',
+      line: vaultTrashGone('Old'),
+      whole: true,
+    });
+    await vi.waitFor(() => expect(useApp.getState().vaultTrash).toEqual([]));
+  });
+
+  it('a folder move passes over a note a teammate already deleted, and moves the rest (sweep)', async () => {
+    server.put('Work/a.md', 'a', 'u-me');
+    server.put('Work/b.md', 'b', 'u-me');
+    await useApp.getState().vaultRefresh();
+    await settledIndex();
+    // Deleted elsewhere before this list or the index caught up.
+    server.drop('Work/a.md');
+    const preview = await useApp.getState().vaultPrepareMove('folder', 'Work', 'Done');
+    if (!preview) throw new Error('no preview');
+    expect(await useApp.getState().vaultApplyMove(preview, false)).toMatchObject({ ok: true });
+    expect(server.bytes('Done/b.md')).toBe('b');
+    expect(server.bytes('Work/b.md')).toBeUndefined();
+    expect(useApp.getState().vaultFiles.map((f) => f.path)).toEqual(['Done/b.md']);
+  });
+
+  it('a folder whose first note changed while it moved says nothing moved, not "the newer version is open" (sweep)', async () => {
+    server.put('Work/a.md', 'a', 'u-me');
+    await useApp.getState().vaultRefresh();
+    await settledIndex();
+    const preview = await useApp.getState().vaultPrepareMove('folder', 'Work', 'Done');
+    if (!preview) throw new Error('no preview');
+    // A teammate saves the note between the stat and the move.
+    const rpc = server.rpc.bind(server);
+    server.rpc = async (fn, token, args) => {
+      if (fn === 'org_vault_move') server.put('Work/a.md', 'a, edited');
+      return rpc(fn, token, args);
+    };
+    expect(await useApp.getState().vaultApplyMove(preview, false)).toMatchObject({
+      ok: false,
+      reason: 'changed',
+      line: vaultRenameFailed('Work'),
+      whole: true,
+    });
+    expect(server.bytes('Work/a.md')).toBe('a, edited');
   });
 });

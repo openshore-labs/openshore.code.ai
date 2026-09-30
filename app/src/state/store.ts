@@ -513,6 +513,8 @@ import {
   VAULT_TEAM_LAPSED_NOT_SAVED,
   vaultFolderMoveRefused,
   vaultFolderMoveTaken,
+  vaultRenameFailed,
+  vaultTrashGone,
   vaultRefusedLine,
 } from '../lib/vaultCopy.js';
 import { vaultTeamRefusal } from './vaultTeamGate.js';
@@ -11121,6 +11123,16 @@ export const useApp = create<AppState>((set, get, api) => {
       const r = await opsUndoDelete(opsDeps(t), undo);
       if (r.ok && undo.kind === 'trash' && undo.folder) await relistActive(t);
       void refreshVaultTrash(t);
+      // Nothing of it is left in Trash (a teammate brought it back, or its
+      // history was cleared): it says so, never "still in Trash", and the
+      // list is read again (round 5 sweep).
+      if (!r.ok && r.reason === 'missing' && undo.kind === 'trash') {
+        await relistActive(t);
+        const title = undo.folder
+          ? undo.path.slice(undo.path.lastIndexOf('/') + 1)
+          : noteTitle(undo.path);
+        return { ok: false, reason: 'missing', line: vaultTrashGone(title), whole: true };
+      }
       // A refusal for good (the team's free space, 0023) says the verb first.
       const refused = !r.ok ? refusalOf(r) : undefined;
       if (refused) {
@@ -11163,6 +11175,16 @@ export const useApp = create<AppState>((set, get, api) => {
       const r = await opsRestoreEntry(opsDeps(t), id);
       if (r.ok && entry?.kind === 'folder') await relistActive(t);
       void refreshVaultTrash(t);
+      // Nothing of it is left in Trash (restored or cleared elsewhere): it
+      // says so, never "still in Trash" (round 5 sweep).
+      if (!r.ok && r.reason === 'missing' && entry) {
+        await relistActive(t);
+        const title =
+          entry.kind === 'folder'
+            ? entry.path.slice(entry.path.lastIndexOf('/') + 1)
+            : noteTitle(entry.path);
+        return { ok: false, reason: 'missing', line: vaultTrashGone(title), whole: true };
+      }
       // A refusal for good (the team's free space, 0023) says the verb first.
       const refused = !r.ok ? refusalOf(r) : undefined;
       if (refused) {
@@ -11234,6 +11256,13 @@ export const useApp = create<AppState>((set, get, api) => {
           folder: noteFolder(there),
         });
         return { ...r, line, whole: true };
+      }
+      // A folder whose first note changed while the move ran moved nothing,
+      // and a folder has no newer version to open, so it says only that;
+      // trying again is true (round 5 sweep).
+      if (!r.ok && r.reason === 'changed' && preview.kind === 'folder') {
+        const old = preview.from.slice(preview.from.lastIndexOf('/') + 1);
+        return { ...r, line: vaultRenameFailed(old), whole: true };
       }
       if (r.ok) logEvent('vault_rename', { kind: preview.kind, links: preview.links > 0 });
       // A refusal for good (a team past its free space, 0023): the verb
@@ -11380,6 +11409,13 @@ export const useApp = create<AppState>((set, get, api) => {
       if (task.checked === checked) return true;
       const r = await opsToggleTask(opsDeps(t), path, task.at, task.status);
       if (r.ok) return true;
+      // Refused for good (a plan the room had not read yet, OV402): its
+      // line, never "try again" (round 5 sweep).
+      const tickRefused = refusalOf(r);
+      if (tickRefused) {
+        get().showToast(vaultRefusedLine('save', tickRefused));
+        return false;
+      }
       if (r.reason === 'changed' || r.reason === 'missing') {
         // Changed somewhere else: the open note takes M1's path (a clean
         // one reloads the newer version, which the box then shows).
