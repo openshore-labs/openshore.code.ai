@@ -156,10 +156,14 @@ describe('Trash (CX X10, R3)', () => {
     expect(calls).toEqual(['restore a', 'empty']);
   });
 
-  it('a team Trash restores only, and says why', async () => {
+  it('a team Trash restores only, and says for how long (0021 purge)', async () => {
     await trash('team');
     expect(dom.buttons()).not.toContain('Empty Trash');
-    expect(dom.text()).toContain("Team notes are kept in your organization's history.");
+    // The weekly purge clears what has been in Trash 30 days, so the page
+    // says so and never promises the notes are kept.
+    expect(dom.text()).toContain('Deleted team notes can be restored from here for 30 days.');
+    expect(dom.text()).toContain("After that they are cleared from your organization's history.");
+    expect(dom.text()).not.toContain("Team notes are kept in your organization's history.");
   });
 });
 

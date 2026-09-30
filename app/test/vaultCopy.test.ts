@@ -87,6 +87,9 @@ import {
   hubMoveOffer,
   hubTooLargeLine,
   VAULT_EVAL_CLAIMS_UNLOCKED,
+  VAULT_TRASH_TEAM_LINE,
+  vaultCapLine,
+  vaultTrashLead,
   type VaultCopyOpts,
   type VaultCopyProvider,
 } from '../src/lib/vaultCopy.js';
@@ -1250,5 +1253,61 @@ describe('Vault copy waits on the eval (M8 8.4, D12)', () => {
     // A setting's value is not copy.
     expect(readable('always')).toBe(false);
     expect(readable('Always on')).toBe(true);
+  });
+});
+
+// The team Trash says how long a deleted note can be restored, and that
+// number is the server's own (review, 2026-09-30): org_vault_purge drops
+// tombstones and revisions older than its default window, and pg_cron runs it
+// weekly with no argument, so the default is the window (migration 0021). Read
+// from the migrations themselves, so a later file that changes the window or
+// the schedule fails here until the copy says the new number. The number is a
+// lower bound (the purge runs weekly), which is how the copy says it.
+describe('the team Trash says what the purge does (0021)', () => {
+  const MIGRATIONS = resolve(ROOT, '../supabase/migrations');
+  const files = readdirSync(MIGRATIONS)
+    .filter((f) => /^\d{4}_.*\.sql$/.test(f))
+    .sort();
+  /** The last match of `re` across the migrations, in the order they apply. */
+  function lastMatch(re: RegExp): { file: string; m: RegExpMatchArray } | undefined {
+    let hit: { file: string; m: RegExpMatchArray } | undefined;
+    for (const file of files) {
+      for (const m of readFileSync(join(MIGRATIONS, file), 'utf8').matchAll(re)) hit = { file, m };
+    }
+    return hit;
+  }
+  const purgeWindow = lastMatch(
+    /create or replace function public\.org_vault_purge\(\s*p_older_than interval default '(\d+) days'\s*\)/gi,
+  );
+  const job = lastMatch(
+    /cron\.schedule\(\s*'oscode_vault_purge',\s*'([^']+)',\s*\$job\$\s*select public\.org_vault_purge\(\);\s*\$job\$\s*\)/gi,
+  );
+  const daysIn = (line: string) => Number(/\b(\d+) days\b/.exec(line)?.[1]);
+
+  it('reads the window and the weekly job, with no argument, from the migrations', () => {
+    expect(purgeWindow?.file).toBe('0021_org_vault_v1.sql');
+    expect(Number(purgeWindow?.m[1])).toBeGreaterThan(0);
+    expect(job?.file).toBe('0021_org_vault_v1.sql');
+    expect(job?.m[1]).toBe('29 3 * * 0');
+    // Once a week at a fixed minute: never sooner than the window says.
+    expect(job?.m[1]).toMatch(/^\d+ \d+ \* \* [0-6]$/);
+  });
+
+  it("the lead, the line and the Empty Trash line say the purge's number, never forever", () => {
+    const days = Number(purgeWindow?.m[1]);
+    const lead = vaultTrashLead('team');
+    const empty = vaultCapLine('org', 'emptyTrash');
+    expect(lead).toBe(`Deleted team notes can be restored from here for ${days} days.`);
+    expect(VAULT_TRASH_TEAM_LINE).toBe(
+      "After that they are cleared from your organization's history.",
+    );
+    expect(empty).toBe(
+      `Deleted team notes are cleared from your organization's history after ${days} days.`,
+    );
+    expect(daysIn(lead)).toBe(days);
+    expect(daysIn(empty)).toBe(days);
+    for (const line of [lead, VAULT_TRASH_TEAM_LINE, empty]) {
+      expect(line).not.toMatch(/\b(kept|keeps|forever|always|permanently)\b/i);
+    }
   });
 });

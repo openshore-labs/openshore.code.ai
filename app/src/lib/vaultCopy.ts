@@ -1381,6 +1381,12 @@ type M6CapLineName = Exclude<VaultCapLineName, 'settingsWrite'>;
 
 const DRIVE_READ_ONLY = 'Google Drive vaults are read-only here';
 
+/** How many days a deleted team note waits in Trash: org_vault_purge's
+ *  default window, which pg_cron runs weekly with no argument (migration
+ *  0021; vaultCopy.test.ts reads both there). A lower bound, since the purge
+ *  runs once a week, so the copy says "for 30 days" and "after 30 days". */
+export const VAULT_TEAM_TRASH_DAYS = 30;
+
 const CAP_LINES: Record<M6CapLineName, Partial<Record<VaultCopyProvider, string>>> = {
   rename: {
     icloud: 'Notes in iCloud Drive cannot be renamed here yet. The Files app can rename them.',
@@ -1398,7 +1404,7 @@ const CAP_LINES: Record<M6CapLineName, Partial<Record<VaultCopyProvider, string>
     gdrive: `${DRIVE_READ_ONLY}, so notes cannot be deleted.`,
   },
   emptyTrash: {
-    org: "Team notes are kept in your organization's history.",
+    org: `Deleted team notes are cleared from your organization's history after ${VAULT_TEAM_TRASH_DAYS} days.`,
   },
   attachments: {
     local: 'This device keeps notes only, so images and PDFs do not show here.',
@@ -1788,14 +1794,19 @@ export const VAULT_TRASH_BACK = 'Vault';
 export const VAULT_TRASH_RESTORE = 'Restore';
 export const VAULT_TRASH_EMPTY = 'Empty Trash';
 export const VAULT_TRASH_IS_EMPTY = 'Trash is empty.';
-export const VAULT_TRASH_TEAM_LINE = "Team notes are kept in your organization's history.";
+/** The team Trash's second line: what the weekly purge does after the lead's
+ *  window (VAULT_TEAM_TRASH_DAYS). */
+export const VAULT_TRASH_TEAM_LINE =
+  "After that they are cleared from your organization's history.";
 
 /** The lead line, per kind of storage (X10; never "stay in the vault"). */
 export function vaultTrashLead(kind: 'folder' | 'local' | 'team'): string {
   if (kind === 'folder') {
     return 'Deleted notes wait here, in the .trash folder, until you empty it.';
   }
-  if (kind === 'team') return 'Deleted team notes can be restored from here.';
+  if (kind === 'team') {
+    return `Deleted team notes can be restored from here for ${VAULT_TEAM_TRASH_DAYS} days.`;
+  }
   return 'Deleted notes wait here until you empty Trash.';
 }
 
@@ -1899,6 +1910,8 @@ export const VAULT_OUTGOING_LINKS = 'Links from this note';
 export const VAULT_UNLINKED_MENTIONS = 'Unlinked mentions';
 export const VAULT_BACKLINKS_LOADING = 'Finding linked mentions';
 export const VAULT_OUTGOING_MISSING = 'Not created yet. Tap to create it.';
+/** The same row where no note can be made now (a lapsed team plan). */
+export const VAULT_OUTGOING_MISSING_OFF = 'Not created yet.';
 export const VAULT_FIND_UNLINKED = 'Find unlinked mentions';
 export const VAULT_LINK_BUTTON = 'Link';
 export function vaultUnlinkedBusy(n: number): string {
@@ -2512,6 +2525,10 @@ export const VAULT_TEAM_OPEN_ADMIN = 'Open Admin';
  *  reason. The text is held, never lost. */
 export const VAULT_TEAM_LAPSED_NOT_SAVED =
   'The team plan is not active, so team notes cannot change.';
+
+/** A tapped link to a note not made yet, while the plan is lapsed: said here,
+ *  and the server (which refuses it, OV402) is never asked. */
+export const VAULT_TEAM_LAPSED_NOT_CREATED = `Not created. ${VAULT_TEAM_LAPSED_NOT_SAVED}`;
 
 /** The notice a never-paid team reads while its deadline is set
  *  (`entitled_until`, migration 0025): shown before any refusal. */

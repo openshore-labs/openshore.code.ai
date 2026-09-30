@@ -3355,3 +3355,26 @@ execution contract. Newest at the bottom.
   font, size, who may delete) were checked against the server and do what
   they say. The same Attachments folder row on a personal Local vault (which
   also keeps notes only) is left for a personal-sheet pass.
+
+- 2026-09-30: **The team room offers only what the server takes, and its
+  Trash says the purge's number (held `vault-m2-team`, three medium review
+  findings).** (1) The team Trash said notes were "kept in your
+  organization's history", but 0021's `org_vault_purge` (default 30 days, run
+  weekly by pg_cron with no argument) clears tombstones and revisions past
+  that window. The lead now reads "Deleted team notes can be restored from
+  here for 30 days." and the line "After that they are cleared from your
+  organization's history."; 30 is `VAULT_TEAM_TRASH_DAYS`, a lower bound, and
+  `vaultCopy.test.ts` reads the default and the cron line from the
+  migrations. (2) The folder sheet offered Delete folder to a member under
+  admins-only (0025 refuses it, OV403); it now leaves Delete out and shows the
+  note sheet's admins-only line. Rename, Move, New folder, Restore and the
+  settings save were checked against 0024 and 0025: a move is not gated by
+  the delete rule, a restore is a write any member makes, settings are
+  admins only already, and a lapsed plan turns every write cap off. (3) A
+  lapsed plan's empty vault offered New note and promised a first note
+  (0025 refuses it, OV402); one answer (`newNoteOffered`) now gates the
+  header's New note and the card's, and the card keeps only its heading, since
+  the lapsed lead above says why. The same class turned up in links: a
+  missing link offered "Tap to create it" while lapsed, so the row reads "Not
+  created yet." without a tap, and a tapped unresolved link says the lapsed
+  line without asking the server.

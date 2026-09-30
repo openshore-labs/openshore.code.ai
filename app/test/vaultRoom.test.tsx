@@ -1309,3 +1309,150 @@ describe('Linked mentions come from the index (M3 3.2)', () => {
     dom = await mountDom();
   });
 });
+
+// The team room offers only what the server takes from this person on this
+// plan (review, 2026-09-30; 0025's OV403 and OV402): a member under
+// admins-only delete gets no Delete folder, and says why; a lapsed plan's
+// empty vault offers no New note and promises no first note; a lapsed plan's
+// missing link is never offered as a create.
+describe('the team room offers only what the server takes (Y14, Y15)', () => {
+  let dom: TestDom;
+  const TEAM_CAPS = {
+    rename: true,
+    renameNative: true,
+    folders: true,
+    trash: true,
+    emptyTrash: false,
+    attachments: false,
+    taskWriteBack: true,
+    linkRewrite: true,
+    today: true,
+    settingsWrite: false,
+  };
+  // Lapsed is read-only in the store (capsOf), so every write cap is off.
+  const LAPSED_CAPS = {
+    ...TEAM_CAPS,
+    rename: false,
+    renameNative: false,
+    folders: false,
+    trash: false,
+    taskWriteBack: false,
+    linkRewrite: false,
+  };
+  const caps = app.state.vaultCapsNow;
+  beforeEach(async () => {
+    globalThis.requestAnimationFrame ??= (cb: FrameRequestCallback) =>
+      setTimeout(() => cb(Date.now()), 0) as unknown as number;
+    app.toasts.length = 0;
+    app.created.length = 0;
+    app.state.vaultScope = 'team';
+    app.state.teamVaultAvailable = () => true;
+    app.state.authSession = { user: { id: 'u1' } };
+    app.state.vaultCapsNow = () => TEAM_CAPS;
+    dom = await mountDom();
+  });
+  afterEach(async () => {
+    await dom.unmount();
+    app.state.vaultScope = 'personal';
+    app.state.teamVaultAvailable = () => false;
+    app.state.authSession = undefined;
+    app.state.vaultNote = undefined;
+    app.state.vaultFiles = [];
+    app.state.vaultTeamPlan = undefined;
+    app.state.vaultCapsNow = caps;
+  });
+
+  async function openFolderSheet(plan: Record<string, unknown>) {
+    app.state.vaultTeamPlan = plan;
+    app.state.vaultFiles = [{ path: 'Work/Plan.md', updatedAt: '1', size: 4 }];
+    await dom.render(<VaultRoom />);
+    await dom.click('Work');
+    await dom.settle();
+    const options = dom.container.querySelector('[aria-label="Options for Work"]');
+    expect(options).toBeTruthy();
+    const { act } = await import('react');
+    await act(async () => {
+      (options as HTMLElement).click();
+    });
+    await dom.settle();
+    expect(dom.buttons()).toContain('Rename folder');
+  }
+
+  it('a member under admins-only delete gets no Delete folder, and the admins-only line', async () => {
+    await openFolderSheet({ entitled: true, deleteRole: 'admin', isAdmin: false });
+    expect(dom.buttons().some((b) => b.startsWith('Delete folder'))).toBe(false);
+    expect(dom.text()).toContain('Only admins can delete team notes here.');
+    // Rename and Move are not gated by the delete rule (0025 section 5).
+    expect(dom.buttons()).toContain('Move folder');
+    expect(dom.buttons()).toContain('New folder');
+  });
+
+  it('an admin, or everyone under member delete, still gets Delete folder', async () => {
+    await openFolderSheet({ entitled: true, deleteRole: 'admin', isAdmin: true });
+    expect(dom.buttons()).toContain('Delete folder');
+    expect(dom.text()).not.toContain('Only admins can delete team notes here.');
+    await dom.unmount();
+    dom = await mountDom();
+    await openFolderSheet({ entitled: true, deleteRole: 'member', isAdmin: false });
+    expect(dom.buttons()).toContain('Delete folder');
+    expect(dom.text()).not.toContain('Only admins can delete team notes here.');
+  });
+
+  it('a lapsed plan with an empty vault offers no New note and promises no first note', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultCapsNow = () => LAPSED_CAPS;
+    app.state.vaultTeamPlan = { entitled: false, deleteRole: 'member', isAdmin: false };
+    await dom.render(<VaultRoom />);
+    expect(dom.text()).toContain('Your team vault is empty.');
+    expect(dom.text()).toContain(copy.VAULT_TEAM_LAPSED_LEAD);
+    expect(dom.buttons()).not.toContain('New note');
+    expect(dom.container.querySelector('[aria-label="New note"]')).toBeNull();
+    expect(dom.text()).not.toContain('The first note you write');
+  });
+
+  it('an active plan with an empty vault still offers New note', async () => {
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    await dom.render(<VaultRoom />);
+    expect(dom.buttons()).toContain('New note');
+    expect(dom.text()).toContain('The first note you write is shared with your organization.');
+  });
+
+  it('a lapsed plan never offers a missing link as a create, and says why on a tap', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    const { vaultIndexFor } = await import('../src/lib/vaultIndexHost.js');
+    const text = 'See [[Nowhere]] next.';
+    // The team vault's own index (a fresh target, so no parked personal
+    // index answers with other text); the room closes it when it goes.
+    const host = vaultIndexFor(
+      { providerId: 'org', resourceId: 'org-1' },
+      {
+        read: async (_r: string, path: string) => ({ path, text, updatedAt: 'x', version: 'v1' }),
+      },
+    );
+    const listed = [{ path: 'Plan.md', updatedAt: 'x', size: text.length, version: 'v1' }];
+    await host.reconcile(listed);
+    app.state.vaultCapsNow = () => LAPSED_CAPS;
+    app.state.vaultTeamPlan = { entitled: false, deleteRole: 'member', isAdmin: false };
+    app.state.vaultFiles = listed;
+    app.state.vaultNote = { path: 'Plan.md', text, updatedAt: 'x' };
+    await dom.render(<VaultRoom />);
+    await dom.settle();
+    await dom.settle();
+    // Links from this note: the missing one reads as not created, and does
+    // not take a tap.
+    expect(dom.text()).toContain('Links from this note');
+    expect(dom.text()).not.toContain(copy.VAULT_OUTGOING_MISSING);
+    const row = dom.container.querySelector('.vault-outgoing-missing') as HTMLButtonElement;
+    expect(row?.disabled).toBe(true);
+    // The link in the note says why, and asks the server nothing.
+    const link = dom.container.querySelector('a.wikilink.unresolved') as HTMLElement;
+    expect(link).toBeTruthy();
+    const { act } = await import('react');
+    await act(async () => {
+      link.click();
+    });
+    await dom.settle();
+    expect(app.created).toEqual([]);
+    expect(app.toasts.at(-1)).toBe(copy.VAULT_TEAM_LAPSED_NOT_CREATED);
+  });
+});

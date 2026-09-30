@@ -56,6 +56,7 @@ import {
   VAULT_TEAM_DELETE_ADMINS_ONLY,
   VAULT_TEAM_LAPSED_ADMIN,
   VAULT_TEAM_LAPSED_LEAD,
+  VAULT_TEAM_LAPSED_NOT_CREATED,
   VAULT_TEAM_LAPSED_WEB,
   VAULT_TEAM_OPEN_ADMIN,
   VAULT_TEAM_SETTINGS_LINK,
@@ -456,6 +457,11 @@ export function VaultScreen() {
     folderGone ||
     teamExpired ||
     teamLapsed;
+  // A new note may be made here now: the header's New note, the empty team
+  // card's, and a missing link's create all follow this one answer, so none
+  // is offered where the server would refuse it (a lapsed plan, OV402).
+  const newNoteOffered =
+    !driveReadOnly && !vaultMoving && !folderGone && !readOnly && !hubAway && !teamLapsed;
   // What this storage may do now (CTO K1): every M6 action's visibility
   // follows this one answer.
   const caps = vaultCapsNow();
@@ -1272,6 +1278,12 @@ export function VaultScreen() {
         return;
       }
       showToast(`"${name}" is an attachment. ${vaultReaderCopy.otherFile}`);
+      return;
+    }
+    if (isNew && teamLapsed) {
+      // The plan is not active, so the server refuses any new note (OV402):
+      // said here, and it is never asked.
+      showToast(VAULT_TEAM_LAPSED_NOT_CREATED);
       return;
     }
     if (subpath) setPendingAnchor({ path: p, subpath, key: Date.now() });
@@ -2197,7 +2209,7 @@ export function VaultScreen() {
               onOpen={openNote}
               loading={mentionsLoading}
               outgoing={outgoing}
-              onCreate={(name) => followLink(name, true)}
+              {...(teamLapsed ? {} : { onCreate: (name: string) => followLink(name, true) })}
               title={title}
               unlinked={unlinked}
               onFindUnlinked={findUnlinked}
@@ -2366,12 +2378,7 @@ export function VaultScreen() {
             {!vaultMoving && !folderGone && !teamLapsed ? todayButton : null}
             {/* A read-only Drive vault leaves New note out; its card says why.
                 So does a moving vault, and a folder that is not there. */}
-            {!driveReadOnly &&
-            !vaultMoving &&
-            !folderGone &&
-            !readOnly &&
-            !hubAway &&
-            !teamLapsed ? (
+            {newNoteOffered ? (
               <button
                 type="button"
                 className="icon-btn vault-new-btn press-fb"
@@ -2670,10 +2677,17 @@ export function VaultScreen() {
         ) : vaultFiles.length === 0 && team ? (
           <div className="card empty-notice">
             <h3>Your team vault is empty.</h3>
-            <p className="sub">The first note you write is shared with your organization.</p>
-            <button className="btn primary" onClick={() => setNewOpen(true)}>
-              New note
-            </button>
+            {/* Lapsed (or read-only), no first note can be written, so the
+                card neither promises one nor offers New note; the lead above
+                says why (CX Y15). */}
+            {newNoteOffered ? (
+              <>
+                <p className="sub">The first note you write is shared with your organization.</p>
+                <button className="btn primary press-fb" onClick={() => setNewOpen(true)}>
+                  New note
+                </button>
+              </>
+            ) : null}
           </div>
         ) : vaultFiles.length === 0 ? (
           // New user, personal vault: an onboarding ramp, not a blank void. It
@@ -2774,7 +2788,10 @@ export function VaultScreen() {
         counts={folderCounts}
         canRename={caps.rename}
         canCreate={caps.folders}
-        canTrash={caps.trash}
+        // A member under admins-only is refused a delete (OV403, Y14), so
+        // Delete folder leaves and the note sheet's line says why.
+        canTrash={caps.trash && !teamDeleteBlocked}
+        {...(teamDeleteBlocked ? { notes: [VAULT_TEAM_DELETE_ADMINS_ONLY] } : {})}
         onClose={() => setFolderMenuOpen(false)}
         onRename={() => afterFolderMenu(() => openRename('folder', folder))}
         onMove={() => afterFolderMenu(() => openRename('folder', folder, 'folders'))}

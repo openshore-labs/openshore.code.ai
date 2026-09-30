@@ -29,6 +29,7 @@ import {
   VAULT_LINK_BUTTON,
   VAULT_OUTGOING_LINKS,
   VAULT_OUTGOING_MISSING,
+  VAULT_OUTGOING_MISSING_OFF,
   VAULT_UNLINKED_MENTIONS,
   vaultLinkMentionAria,
   vaultUnlinkedBusy,
@@ -156,7 +157,8 @@ export interface VaultBacklinksProps {
   loading?: boolean;
   /** The note's links out (`outgoingLinks`). */
   outgoing?: readonly VaultOutgoingLink[];
-  /** Tap on a link to a note not created yet. */
+  /** Tap on a link to a note not created yet. Left out (no note can be
+   *  made now), the row says only that it is not created, and takes no tap. */
   onCreate?: (name: string) => void;
   /** The note's title, for the unlinked lines. */
   title?: string;
@@ -265,7 +267,9 @@ export function VaultBacklinks({
                 onClick={() => onCreate?.(o.target)}
               >
                 <span className="vault-mention-title">{o.target}</span>
-                <span className="vault-mention-excerpt">{VAULT_OUTGOING_MISSING}</span>
+                <span className="vault-mention-excerpt">
+                  {onCreate ? VAULT_OUTGOING_MISSING : VAULT_OUTGOING_MISSING_OFF}
+                </span>
               </button>
             ),
           )}

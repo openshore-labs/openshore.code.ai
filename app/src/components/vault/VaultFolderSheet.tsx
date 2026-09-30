@@ -34,8 +34,13 @@ export interface VaultFolderSheetProps {
   canRename: boolean;
   /** Folders can be made here (`vaultCaps().folders`). */
   canCreate: boolean;
-  /** Trash is real here (`vaultCaps().trash`): Delete folder is offered. */
+  /** Trash is real here (`vaultCaps().trash`) and this person may delete
+   *  (a team member under admins-only may not, CX Y14): Delete folder is
+   *  offered. */
   canTrash: boolean;
+  /** Why a row is not offered here (the admins-only line), one line each,
+   *  shown under the counts, as the note's Options sheet shows them. */
+  notes?: readonly string[];
   onClose: () => void;
   onRename: () => void;
   onMove: () => void;
@@ -53,6 +58,7 @@ export function VaultFolderSheet({
   canRename,
   canCreate,
   canTrash,
+  notes,
   onClose,
   onRename,
   onMove,
@@ -95,6 +101,11 @@ export function VaultFolderSheet({
               {vaultFolderHolds(counts.notes, counts.attachments)}
             </p>
           ) : null}
+          {notes?.map((line) => (
+            <p key={line} className="hint vault-options-note">
+              {line}
+            </p>
+          ))}
           {making ? (
             <div className="vault-folder-new">
               <div className="field">

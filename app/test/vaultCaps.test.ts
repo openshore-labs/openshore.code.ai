@@ -374,8 +374,10 @@ describe('vaultCapLine', () => {
       if (MAIN[id]!.trash) continue;
       if (id !== 'gdrive') expect(line, id).toMatch(/for good and asks twice/);
     }
+    // The team Trash is never emptied from here because the weekly purge
+    // clears it (0021), and the line says after how long.
     expect(vaultCapLine('org', 'emptyTrash')).toBe(
-      "Team notes are kept in your organization's history.",
+      "Deleted team notes are cleared from your organization's history after 30 days.",
     );
   });
 });
