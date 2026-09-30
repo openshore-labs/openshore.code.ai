@@ -3724,3 +3724,41 @@ execution contract. Newest at the bottom.
   the folder delete; `.vault-save-chip.offline` in `theme.css`. Main test:
   the Trash contract's "restore never overwrites" has another writer take
   the name, since the team vault no longer makes a note over one in Trash.
+
+- 2026-09-30: **Round 7, batch 3: the team vault answers only for itself,
+  and a late answer, a removal or a rename never says what is not true
+  (held `vault-m2-team`, two high, six medium).** (E26) The server's "not
+  a member of this org" (a plain P0001, matched by its words) is
+  `OrgVaultNotMember`, said as "You are no longer a member of this team.";
+  from any call it drops this device's role for that org and takes the room
+  back to the personal vault the way a sign-out does, words typed into the
+  open note held under Not saved. A removed member's selects answer no rows,
+  so one settings read confirms membership before a team note is called
+  gone or a team list that had notes is taken as empty; a read that does not
+  answer concludes nothing. (E30) A tick is refused while the open note's
+  editor holds text the note does not (held, kept for later, or a choice
+  open), and an operation that writes the open note reloads the editor only
+  when its text is the note's. (E11) A sign-out stops team text speaking
+  from its first step, so a save failing while it runs is memory only, and
+  `stashDraft` never seals team text for an account that no longer speaks
+  (an expiry still keeps it for the same account). (E14) The team provider
+  and the settings loader keep a generation that each sign-in end moves on:
+  an answer to a call made under an earlier one is returned but never
+  remembered, told to the store or cached. (E15) Only a personal rename
+  moves a project's pins. (E16) An answer with theirs at another spelling
+  of the same name moves the open note, its draft, its stash and the choice
+  there, keeping the version this device typed on; Keep yours is guarded
+  where theirs is, and lands at once over a pure rename. (E19) OV403 marks
+  the plan admins only, as OV402 marks it lapsed. (E21) A team folder
+  delete names the notes a teammate saved while it ran, stays in the
+  folder, and says nothing moved when nothing did. Main lines this changes,
+  each because the fix lives in it: in the store, `speaksNow`,
+  `keepUnsentTeamText`'s type and toast, `forgetSession` (now a wrapper
+  around `endSession`), `rekeyVaultPath`, the `putVaultNote` of `opsDeps`,
+  `recheckOpenNote`'s gone branch, `settleSaveConflict`'s open branch,
+  `vaultResolve`'s `done`, Keep theirs and Keep yours, and
+  `vaultLoadSettings`'s paint; `resolveEntry` and `loadVaultSettings` in
+  `vaultSettings.ts`; `deleteFolder` in `vaultOps.ts`. Main tests: two
+  store tests and two provider tests that used "not a member of this org"
+  as their example of a server refusal keeping its own line now use 0021's
+  "that note path is not allowed", since that raise now has a line of ours.
