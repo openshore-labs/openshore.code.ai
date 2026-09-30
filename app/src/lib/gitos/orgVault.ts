@@ -981,8 +981,9 @@ export const orgVaultProvider: StorageProvider = {
     };
     if (target.kind === 'note') {
       const r = await drop(target.path, target.ifMatch);
-      // Gone before this trash: nothing went to Trash, as a stale remove.
-      if (r === 'gone') return { ok: false, conflict: 'changed' };
+      // Gone before this trash (a teammate deleted or moved it): nothing
+      // went to Trash here, and the store says it is gone, never "changed".
+      if (r === 'gone') return { ok: false, conflict: 'missing' };
       if (!r.ok)
         return r.theirs
           ? { ok: false, conflict: 'changed', theirs: r.theirs }

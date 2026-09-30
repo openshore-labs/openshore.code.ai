@@ -512,6 +512,7 @@ import {
   VAULT_STARTER_NOT_EMPTY,
   VAULT_TEAM_LAPSED_NOT_SAVED,
   vaultFolderMoveRefused,
+  vaultFolderMoveTaken,
   vaultRefusedLine,
 } from '../lib/vaultCopy.js';
 import { vaultTeamRefusal } from './vaultTeamGate.js';
@@ -1127,6 +1128,8 @@ export type VaultDeleteOutcome =
   // A refusal for good, as the whole line the room says (the team vault's
   // admins-only delete, CX Y14, or a lapsed plan).
   | { ok: false; reason: 'storage'; line: string }
+  // Already gone elsewhere (a teammate deleted or moved it): its gone line.
+  | { ok: false; reason: 'missing'; line: string }
   | { ok: false; reason: 'storage' | 'unsupported' | 'missing' | 'changed' | 'downloading' };
 
 /** Today's note from the room (Vault M6 6.4; CTO K7, CX X11): an existing
@@ -10548,6 +10551,13 @@ export const useApp = create<AppState>((set, get, api) => {
           // Never over anything: a note that appeared under this name since
           // the stat above is opened, not replaced (ifAbsent, CTO F4).
           const result = await putVaultNote(target, normalized, content, { ifAbsent: true });
+          // Taken under another spelling (the team vault matches a name by
+          // letter case, 0021): open the note that is there, at its own path,
+          // never a blank one at the spelling asked for (round 5, finding 6).
+          if (!result.ok && result.conflict === 'exists' && result.theirs) {
+            if (isActiveVault(target)) await get().vaultOpen(result.theirs.path);
+            return;
+          }
           if (!result.ok && result.conflict === 'exists') {
             if (isActiveVault(target)) await get().vaultOpen(normalized);
             return;
@@ -11052,6 +11062,18 @@ export const useApp = create<AppState>((set, get, api) => {
           );
           return undefined;
         }
+        // Already gone (a teammate deleted or moved it before this list or
+        // the open note caught up): nothing is left to delete, so it says so
+        // and the list is read again, never "try again". An open note takes
+        // M1's path: a clean one closes, one with unsaved edits asks
+        // (round 5, finding 5).
+        if (r.reason === 'missing') {
+          if (isActiveVault(t) && get().vaultNote?.path === path) {
+            await inSaveChain(t, path, () => recheckOpenNote(t, path)).catch(() => undefined);
+          }
+          await relistActive(t);
+          return { ok: false, reason: 'missing', line: vaultGoneToast(noteTitle(path)) };
+        }
         const refused = refusalOf(r);
         if (refused) {
           return { ok: false, reason: 'storage', line: vaultRefusedLine('delete', refused) };
@@ -11187,6 +11209,31 @@ export const useApp = create<AppState>((set, get, api) => {
         // Changed somewhere else before the rename ran: the open note takes
         // the M1 path (a clean one reloads, a dirty one asks).
         await inSaveChain(t, preview.from, () => recheckOpenNote(t, preview.from));
+      }
+      // Gone before the rename ran (a teammate deleted or moved it): it says
+      // so, never "try again", and the list is read again. An open note takes
+      // the M1 path (round 5, finding 5).
+      if (!r.ok && r.reason === 'missing' && preview.kind === 'note') {
+        if (get().vaultNote?.path === preview.from) {
+          await inSaveChain(t, preview.from, () => recheckOpenNote(t, preview.from)).catch(
+            () => undefined,
+          );
+        }
+        await relistActive(t);
+        return { ...r, line: vaultGoneToast(noteTitle(preview.from)), whole: true };
+      }
+      // A folder moved note by note that stopped on a name already taken
+      // where it was going (letter case counts): it names that note.
+      if (!r.ok && r.stoppedOn === 'exists' && preview.kind === 'folder') {
+        const there = r.theirs?.path ?? r.stoppedAt ?? preview.to;
+        const line = vaultFolderMoveTaken({
+          old: preview.from.slice(preview.from.lastIndexOf('/') + 1),
+          moved: r.moved?.length ?? 0,
+          total: preview.notes,
+          name: noteTitle(there),
+          folder: noteFolder(there),
+        });
+        return { ...r, line, whole: true };
       }
       if (r.ok) logEvent('vault_rename', { kind: preview.kind, links: preview.links > 0 });
       // A refusal for good (a team past its free space, 0023): the verb

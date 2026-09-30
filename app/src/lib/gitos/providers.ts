@@ -155,6 +155,9 @@ export type TrashTarget =
 /** What a trash did, with the counts the toast and the sheet say. */
 export type TrashResult =
   | { ok: true; entry: TrashEntry; notes: number; attachments: number }
+  /** The note was already gone (deleted or moved elsewhere), so nothing went
+   *  to Trash here: the team vault's remove answers so for a gone note. */
+  | { ok: false; conflict: 'missing'; theirs?: undefined }
   | { ok: false; conflict: 'changed' | 'downloading'; theirs?: StoredFile };
 
 /** What a restore did. It never overwrites: a taken name lands beside it as

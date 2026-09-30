@@ -601,7 +601,9 @@ describe('org vault Trash (Restore only, R3)', () => {
     expect((await orgVaultProvider.listTrash!(ORG)).map((x) => x.path)).toEqual(['back.md']);
   });
 
-  it('a note already gone is changed with no theirs, and nothing is listed', async () => {
+  // Gone is its own answer, never "changed" (round 5, finding 5): the store
+  // says the note is gone instead of "changed somewhere else".
+  it('a note already gone is missing, and nothing is listed', async () => {
     const w = await orgVaultProvider.write(ORG, 'g.md', 'x', { ifAbsent: true });
     server.drop('g.md');
     server.revisions.length = 0;
@@ -610,7 +612,7 @@ describe('org vault Trash (Restore only, R3)', () => {
       path: 'g.md',
       ifMatch: version(w),
     });
-    expect(t).toEqual({ ok: false, conflict: 'changed' });
+    expect(t).toEqual({ ok: false, conflict: 'missing' });
   });
 
   it('a second restore of the same entry lands nowhere new', async () => {

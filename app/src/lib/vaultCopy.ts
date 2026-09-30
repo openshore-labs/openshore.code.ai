@@ -2636,6 +2636,26 @@ export function vaultFolderMoveRefused(
   return `Moved ${moved} of ${total} ${total === 1 ? 'note' : 'notes'} from "${old}". The rest were not moved, so they are still there. ${reasonSentence(reason)}`;
 }
 
+/** A folder moved note by note that stopped because a note's name is taken
+ *  where it was going (letter case counts as the same name): what moved,
+ *  and which name, never "try again", since the same move meets the same
+ *  name every time. */
+export function vaultFolderMoveTaken(o: {
+  old: string;
+  moved: number;
+  total: number;
+  /** The title of the note already there. */
+  name: string;
+  /** The folder it is in ("" for the top of the vault). */
+  folder: string;
+}): string {
+  const where = o.folder ? vaultFolderLabel(o.folder) : 'your vault';
+  const fix = 'Rename one of them, then move the folder again.';
+  return o.moved
+    ? `Moved ${o.moved} of ${o.total} ${o.total === 1 ? 'note' : 'notes'} from "${o.old}". "${o.name}" is already in ${where}, so the rest were not moved and are still there. ${fix}`
+    : `"${o.old}" was not moved. "${o.name}" is already in ${where}. ${fix}`;
+}
+
 /** The team settings sheet (Y14): its title, the lead's link to it, and the
  *  who-may-delete row. */
 export const VAULT_TEAM_SETTINGS_TITLE = 'Team vault settings';

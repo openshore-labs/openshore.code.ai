@@ -36,6 +36,8 @@ import {
   VAULT_TEAM_LAPSED_NOT_RESTORED,
   VAULT_TEAM_LAPSED_NOT_SAVED,
   VAULT_TEAM_LAPSED_NOT_SAVED_LINE,
+  vaultFolderMoveTaken,
+  vaultGoneToast,
 } from '../src/lib/vaultCopy.js';
 
 const mem = new Map<string, string>();
@@ -4047,5 +4049,94 @@ describe('round 5: a team refusal says what happened and keeps the text', () => 
     ).toEqual({ kind: 'refused', line: VAULT_TEAM_LAPSED_NOT_SAVED_LINE });
     expect(useApp.getState().vaultTeamPlan).toMatchObject({ entitled: false });
     expect(server.settingsRow).toBeUndefined();
+  });
+
+  it('a delete of a note a teammate already deleted says it is gone and relists (finding 5)', async () => {
+    server.put('gone.md', 'x', 'u-me');
+    server.put('open.md', 'y', 'u-me');
+    server.put('keep.md', 'z', 'u-me');
+    await useApp.getState().vaultRefresh();
+    // From a stale list, closed.
+    server.drop('gone.md');
+    expect(await useApp.getState().vaultDeleteNote('gone.md')).toEqual({
+      ok: false,
+      reason: 'missing',
+      line: vaultGoneToast('gone'),
+    });
+    expect(
+      useApp
+        .getState()
+        .vaultFiles.map((f) => f.path)
+        .sort(),
+    ).toEqual(['keep.md', 'open.md']);
+    // Open, clean: the remove's gone answer is not "changed", and the note closes.
+    await useApp.getState().vaultOpen('open.md');
+    server.drop('open.md');
+    expect(await useApp.getState().vaultDeleteNote('open.md')).toEqual({
+      ok: false,
+      reason: 'missing',
+      line: vaultGoneToast('open'),
+    });
+    expect(useApp.getState().vaultNote).toBeUndefined();
+    expect(useApp.getState().vaultFiles.map((f) => f.path)).toEqual(['keep.md']);
+  });
+
+  it('a rename of a note a teammate deleted says it is gone, not try again (finding 5)', async () => {
+    server.put('a.md', 'x', 'u-me');
+    server.put('keep.md', 'z', 'u-me');
+    await useApp.getState().vaultRefresh();
+    const preview = await useApp.getState().vaultPrepareMove('note', 'a.md', 'b.md');
+    if (!preview) throw new Error('no preview');
+    server.drop('a.md');
+    expect(await useApp.getState().vaultApplyMove(preview, false)).toMatchObject({
+      ok: false,
+      reason: 'missing',
+      line: vaultGoneToast('a'),
+      whole: true,
+    });
+    expect(useApp.getState().vaultFiles.map((f) => f.path)).toEqual(['keep.md']);
+  });
+
+  it('a folder move stopped by a taken name, even one that differs by case, names it (finding 5)', async () => {
+    server.put('Work/a.md', 'a', 'u-me');
+    server.put('Work/c.md', 'c', 'u-me');
+    server.put('Done/C.md', 'theirs');
+    await useApp.getState().vaultRefresh();
+    await settledIndex();
+    const preview = await useApp.getState().vaultPrepareMove('folder', 'Work', 'Done');
+    if (!preview) throw new Error('no preview');
+    const r = await useApp.getState().vaultApplyMove(preview, false);
+    expect(r).toMatchObject({
+      ok: false,
+      reason: 'partial',
+      line: vaultFolderMoveTaken({ old: 'Work', moved: 1, total: 2, name: 'C', folder: 'Done' }),
+      whole: true,
+    });
+    expect(r && !r.ok ? r.line : '').not.toMatch(/try again/i);
+    expect(server.bytes('Done/a.md')).toBe('a');
+    expect(server.bytes('Work/c.md')).toBe('c');
+    expect(server.bytes('Done/C.md')).toBe('theirs');
+    // Taken on the first note: nothing moved, and it still names the note.
+    server.put('Old/d.md', 'd', 'u-me');
+    server.put('Done/D.md', 'theirs');
+    await useApp.getState().vaultRefresh();
+    await settledIndex();
+    const first = await useApp.getState().vaultPrepareMove('folder', 'Old', 'Done');
+    if (!first) throw new Error('no preview');
+    expect(await useApp.getState().vaultApplyMove(first, false)).toMatchObject({
+      ok: false,
+      reason: 'exists',
+      line: vaultFolderMoveTaken({ old: 'Old', moved: 0, total: 1, name: 'D', folder: 'Done' }),
+      whole: true,
+    });
+  });
+
+  it("a new note whose name a teammate took in another case opens theirs, at theirs' path (finding 6)", async () => {
+    await useApp.getState().vaultRefresh();
+    server.put('plan.md', 'their plan');
+    await useApp.getState().vaultCreate('Plan');
+    expect(useApp.getState().vaultNote).toMatchObject({ path: 'plan.md', text: 'their plan' });
+    expect(server.bytes('Plan.md')).toBeUndefined();
+    expect([...server.notes.keys()]).toEqual(['plan.md']);
   });
 });

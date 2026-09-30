@@ -287,6 +287,11 @@ export type VaultMoveResult =
       /** A refusal for good (VaultRefusal): its line, and `whole`. */
       line?: string;
       whole?: true;
+      /** A folder moved note by note that stopped on a conflict: which one,
+       *  the path it was going to, and, for a taken name, the note there, so
+       *  the room names it instead of saying "try again" (round 5). */
+      stoppedOn?: 'changed' | 'missing' | 'exists' | 'downloading';
+      stoppedAt?: string;
     };
 
 /** The sources for a rewrite plan, from the index only (K4): the backlinks of
@@ -505,6 +510,18 @@ export async function applyMove(
         await settleMoved(deps, preview, moved);
         if (!r.ok && r.refusal) {
           return { ok: false, reason: moved.length ? 'partial' : 'storage', moved, ...r.refusal };
+        }
+        // A conflict stopped it: carry which, where, and what is there.
+        if (r.ok && !r.value.ok) {
+          const { conflict, theirs } = r.value;
+          return {
+            ok: false,
+            reason: moved.length ? 'partial' : conflict,
+            moved,
+            stoppedOn: conflict,
+            stoppedAt: to,
+            ...(theirs ? { theirs } : {}),
+          };
         }
         return { ok: false, reason: moved.length ? 'partial' : (failed ?? 'storage'), moved };
       }
