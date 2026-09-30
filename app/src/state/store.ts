@@ -7818,9 +7818,9 @@ export const useApp = create<AppState>((set, get, api) => {
         () => accessToken(),
         () => get().teamVaultAvailable(),
       );
-      // The team's plan, from each settings read and from a write refused
-      // with OV402: only the signed-in org's, so a late answer for another
-      // org never paints this one (CX Y15).
+      // The team's plan, from each settings read, a write refused with OV402
+      // and a delete refused with OV403: only the signed-in org's, so a late
+      // answer for another org never paints this one (CX Y15).
       onOrgVaultPlan((resourceId, plan) => {
         if (resourceId !== get().settings.account?.org?.serverId) return;
         set({ vaultTeamPlan: plan });

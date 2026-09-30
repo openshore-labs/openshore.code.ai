@@ -6535,6 +6535,95 @@ describe('round 7, batch 3: the team vault answers only for itself', () => {
     throw new Error('the index never settled');
   }
 
+  describe('E19: an admins-only refusal says who may delete from then on', () => {
+    const adminsOnly = () => {
+      server.settingsRow = {
+        settings: {},
+        delete_role: 'admin',
+        context_folder: null,
+        rev: 1,
+        updated_at: 'x',
+        updated_by: 'u-admin',
+      };
+    };
+    const removes = () => server.rpcs.filter((r) => r.fn === 'org_vault_remove').length;
+
+    it('after one OV403 the plan says admins only, and the next delete is not sent', async () => {
+      server.put('a.md', 'x', 'u-me');
+      server.put('b.md', 'y', 'u-me');
+      server.isAdmin = false;
+      await st().vaultRefresh();
+      await st().vaultLoadSettings({ force: true });
+      await vi.waitFor(() =>
+        expect(st().vaultTeamPlan).toMatchObject({ deleteRole: 'member', isAdmin: false }),
+      );
+      adminsOnly();
+      expect(await st().vaultDeleteNote('a.md')).toMatchObject({
+        ok: false,
+        line: VAULT_TEAM_DELETE_REFUSED,
+      });
+      expect(st().vaultTeamPlan).toMatchObject({
+        entitled: true,
+        deleteRole: 'admin',
+        isAdmin: false,
+      });
+      const n = removes();
+      expect(await st().vaultDeleteNote('b.md')).toMatchObject({
+        ok: false,
+        line: VAULT_TEAM_DELETE_REFUSED,
+      });
+      expect(removes()).toBe(n);
+      expect(server.bytes('a.md')).toBe('x');
+      expect(server.bytes('b.md')).toBe('y');
+    });
+
+    it('a folder delete refused the same way is refused before the server the second time', async () => {
+      server.put('F/a.md', 'x', 'u-me');
+      server.isAdmin = false;
+      await st().vaultRefresh();
+      await st().vaultLoadSettings({ force: true });
+      await vi.waitFor(() => expect(st().vaultTeamPlan).toMatchObject({ deleteRole: 'member' }));
+      adminsOnly();
+      expect(await st().vaultDeleteFolder('F')).toMatchObject({ ok: false });
+      expect(st().vaultTeamPlan).toMatchObject({ deleteRole: 'admin', isAdmin: false });
+      const n = removes();
+      expect(await st().vaultDeleteFolder('F')).toMatchObject({
+        ok: false,
+        line: VAULT_TEAM_DELETE_REFUSED,
+      });
+      expect(removes()).toBe(n);
+      expect(server.bytes('F/a.md')).toBe('x');
+    });
+
+    it('with no plan read yet, OV403 still sets one: entitled, a member, admins only', async () => {
+      server.put('a.md', 'x', 'u-me');
+      server.isAdmin = false;
+      await st().vaultRefresh();
+      await st().vaultLoadSettings({ force: true });
+      await vi.waitFor(() => expect(st().vaultTeamPlan).toBeDefined());
+      adminsOnly();
+      useApp.setState({ vaultTeamPlan: undefined });
+      wiring.org!.resetOrgVault();
+      const n = removes();
+      await st().vaultDeleteNote('a.md');
+      expect(removes()).toBe(n + 1);
+      expect(st().vaultTeamPlan).toEqual({ entitled: true, isAdmin: false, deleteRole: 'admin' });
+    });
+
+    it('a later read that says members may delete again gives Delete back', async () => {
+      server.put('a.md', 'x', 'u-me');
+      server.isAdmin = false;
+      await st().vaultRefresh();
+      adminsOnly();
+      await st().vaultDeleteNote('a.md');
+      expect(st().vaultTeamPlan).toMatchObject({ deleteRole: 'admin' });
+      server.settingsRow = { ...server.settingsRow!, delete_role: 'member', rev: 2 };
+      await st().vaultLoadSettings({ force: true });
+      await vi.waitFor(() => expect(st().vaultTeamPlan).toMatchObject({ deleteRole: 'member' }));
+      expect(await st().vaultDeleteNote('a.md')).toMatchObject({ ok: true });
+    });
+  });
+
   describe("E15: a team rename never repoints a project's pin of a personal note", () => {
     function pinned(pins: string[]) {
       const s = st().settings;

@@ -299,12 +299,16 @@ async function refusing<T>(call: () => Promise<T>): Promise<T> {
 }
 
 /** refusing, for one team: a plan refused as not active (OV402) marks that
- *  team's plan lapsed, so the room turns read-only and says why (CX Y15). */
+ *  team's plan lapsed, so the room turns read-only and says why (CX Y15),
+ *  and an admins-only delete refusal (OV403) marks who may delete, so the
+ *  room drops Delete and the next one is refused before it is sent (round 7
+ *  E19). */
 async function refusingFor<T>(resourceId: string, call: () => Promise<T>): Promise<T> {
   try {
     return await refusing(call);
   } catch (err) {
     if (err instanceof OrgVaultLapsed) markLapsed(resourceId);
+    if (err instanceof OrgVaultDeleteRefused) markAdminsOnly(resourceId);
     throw err;
   }
 }
@@ -321,8 +325,8 @@ const columns = new Map<
 >();
 let planListener: ((resourceId: string, plan: OrgVaultPlan) => void) | undefined;
 
-/** Hear every change to a team's plan (a settings read, or a write refused
- *  with OV402). One listener: the store's. */
+/** Hear every change to a team's plan (a settings read, a write refused
+ *  with OV402, or a delete refused with OV403). One listener: the store's. */
 export function onOrgVaultPlan(fn: (resourceId: string, plan: OrgVaultPlan) => void): void {
   planListener = fn;
 }
@@ -344,6 +348,19 @@ function markLapsed(resourceId: string): void {
     entitled: false,
     isAdmin: was?.isAdmin ?? false,
     deleteRole: was?.deleteRole ?? 'member',
+  });
+}
+
+/** OV403 proves three things (0025's org_vault_remove checks the plan first,
+ *  then who may delete): the plan is active, deletes are admins only, and
+ *  this person is not an admin. The notice date stays from the last read. */
+function markAdminsOnly(resourceId: string): void {
+  const was = plans.get(resourceId);
+  setPlan(resourceId, {
+    ...(was?.entitledUntil ? { entitledUntil: was.entitledUntil } : {}),
+    entitled: true,
+    isAdmin: false,
+    deleteRole: 'admin',
   });
 }
 
