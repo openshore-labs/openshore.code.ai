@@ -130,6 +130,8 @@ describe('the release workflow', () => {
     expect(wf).not.toContain('--repo "${GITHUB_REPOSITORY}"');
     expect(wf).not.toContain('--generate-notes');
     // The patch number keeps climbing across the move: both repos' tags count.
-    expect(wf).toContain('git ls-remote --tags https://github.com/openshore-labs/openshore-releases.git');
+    expect(wf).toContain(
+      'git ls-remote --tags https://github.com/openshore-labs/openshore-releases.git',
+    );
   });
 });
