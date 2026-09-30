@@ -2932,3 +2932,17 @@ execution contract. Newest at the bottom.
   alone; notes are a fixed line, never generated from this repo's commits; the
   version job reads tags from both repos so patch numbers keep climbing.
   Installs from before the move cannot see the new feed and reinstall once.
+- 2026-09-30: **The curated models move to Apache weights: Harbor and
+  DeepBlue's floor are Qwen3-4B-Instruct-2507, not Qwen 2.5 Coder 3B.** Founder:
+  update the three to the commercially viable Apache 2.0 versions, evals later.
+  Of the two routes the 2026-09-24 item named, Qwen3 4B over Qwen 2.5 Coder
+  1.5B: a 2025 4B is the stronger coder and reasoner (the catalog's phone pick
+  already), the 1.5B scored 0.48 on the published probe, and one set of
+  weights serves both slots. The 2507 Instruct build, not the hybrid
+  `qwen3:4b`, so no model thinks unless Chain of Thought asks, and the Ollama
+  ref is the full tag so a retag cannot change it. The desktop catalog entry
+  stays `orchestratorCapable: false` until the box number exists rather than
+  inventing an eval. Older Harbor weights are deleted at launch by a recorded
+  version, since the slot id did not change. Cost: 2.5 GB instead of 1.9 on
+  the phone (a 6 GB iPhone), and a 4 GB CPU computer reads too big for
+  DeepBlue. Harbor Lite was already Apache (SmolLM2-135M-Instruct).

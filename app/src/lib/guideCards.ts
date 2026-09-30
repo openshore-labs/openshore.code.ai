@@ -149,7 +149,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     title: 'Harbor',
     where:
       'Menu, Settings, Harbor, Harbor on the phone, or Get Harbor on the Set up OpenShore page',
-    text: `Harbor is a coding model (Qwen 2.5 Coder 3B, about 1.9 GB) that runs fully on the iPhone, private and even in airplane mode. It writes and explains code in chat and can search the web; it does not edit files or run commands yet. How to get it:\n${guideStepsCompact('get-harbor')}`,
+    text: `Harbor is a coding model (Qwen3 4B Instruct, about 2.5 GB, for a phone with 6 GB of memory) that runs fully on the iPhone, private and even in airplane mode. It writes and explains code in chat and can search the web; it does not edit files or run commands yet. How to get it:\n${guideStepsCompact('get-harbor')}`,
     keywords: [
       'harbor',
       'get harbor',

@@ -16,9 +16,10 @@
 // sit side by side. The baseline rows stay with the plain run, since a lift
 // never reaches Claude Code.
 //
-// The default models are the shipped floor (qwen2.5-coder:3b, under a
-// non-commercial license) and its Apache candidate (qwen3:4b), so one run
-// settles both the floor model and the license question. A model that is not
+// The default models are the shipped floor (Qwen3 4B Instruct, Apache 2.0, the
+// DeepBlue size for a CPU box and the same weights as Harbor on the phone) and
+// the non-commercial qwen2.5-coder:3b it replaced on 2026-09-30, measured at
+// 75% on the box, so one run says what the license move cost. A model that is not
 // pulled yet is a download the person approves, never a silent pull.
 //
 // It ends with one markdown table written beside the reports, ready to paste
@@ -45,8 +46,9 @@ import {
 import { parseLiftFlags, runBaseline, runDeep, type EvalOptions } from './eval.js';
 import { confirm, header, okLine, out, warnLine } from './util.js';
 
-/** The shipped floor and its Apache candidate. */
-export const FLOOR_MODELS = ['qwen2.5-coder:3b', 'qwen3:4b'] as const;
+/** The shipped floor and the non-commercial 3B it replaced, for comparison.
+ *  The ref is the full tag DeepBlue pulls (app/src/lib/harborMaster.ts). */
+export const FLOOR_MODELS = ['qwen3:4b-instruct-2507-q4_K_M', 'qwen2.5-coder:3b'] as const;
 
 /** One planned run of the floor. */
 export interface FloorRun {

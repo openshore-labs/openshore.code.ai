@@ -40,6 +40,7 @@ export const SETTINGS_REACH: Record<keyof AppSettings, SettingReach> = {
   cloudModels: 'device',
   harborMiniReady: 'device',
   harborReady: 'device',
+  harborVersion: 'device',
   libraryIntroSeen: 'device',
   terminalRoomSeen: 'device',
   guidedSetup: 'device',

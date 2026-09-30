@@ -40,6 +40,7 @@ interface CatalogModel {
   name: string;
   sizeGB?: number;
   source: { kind: string; ref: string };
+  license?: { id: string };
 }
 const catalog = JSON.parse(read('../os-code/catalog.sample.json')) as { models: CatalogModel[] };
 const byId = new Map(catalog.models.map((m) => [m.id, m]));
@@ -61,10 +62,18 @@ describe('DeepBlue is a stable slot over catalog weights', () => {
     }
   });
 
-  it('lists sizes largest first, the 3B floor last, and defaults to the 7B', () => {
+  it('every size is Apache 2.0 in the catalog, so DeepBlue is sellable', () => {
+    for (const s of HARBOR_MASTER_SIZES) {
+      expect(byId.get(s.catalogId)!.license?.id, s.catalogId).toBe('Apache-2.0');
+    }
+  });
+
+  it('lists sizes largest first, the Qwen3 4B floor last, and defaults to the 7B', () => {
     const gbs = HARBOR_MASTER_SIZES.map((s) => s.sizeGB);
     expect([...gbs].sort((a, b) => b - a)).toEqual(gbs);
-    expect(HARBOR_MASTER_SIZES[HARBOR_MASTER_SIZES.length - 1]!.ollamaRef).toBe('qwen2.5-coder:3b');
+    expect(HARBOR_MASTER_SIZES[HARBOR_MASTER_SIZES.length - 1]!.ollamaRef).toBe(
+      'qwen3:4b-instruct-2507-q4_K_M',
+    );
     expect(HARBOR_MASTER_DEFAULT_SIZE.ollamaRef).toBe('qwen2.5-coder:7b');
   });
 
@@ -80,8 +89,8 @@ describe('DeepBlue is a stable slot over catalog weights', () => {
 });
 
 describe('DeepBlue is sized to the computer with the engine budget', () => {
-  it('the 3B on the reference box, the 7B on a 16 GB laptop or an 8 GB GPU, the 14B on a hub with room', () => {
-    expect(resolveHarborMaster(cpu(8)).size.ollamaRef).toBe('qwen2.5-coder:3b');
+  it('the 4B on the reference box, the 7B on a 16 GB laptop or an 8 GB GPU, the 14B on a hub with room', () => {
+    expect(resolveHarborMaster(cpu(8)).size.ollamaRef).toBe('qwen3:4b-instruct-2507-q4_K_M');
     expect(resolveHarborMaster(cpu(8)).fit).toBe('fits');
     expect(resolveHarborMaster(cpu(16)).size.ollamaRef).toBe('qwen2.5-coder:7b');
     expect(resolveHarborMaster(gpu(16, 8)).size.ollamaRef).toBe('qwen2.5-coder:7b');
@@ -107,11 +116,15 @@ describe('DeepBlue is sized to the computer with the engine budget', () => {
     expect(harborMasterInstalled(undefined)).toBeUndefined();
     expect(harborMasterInstalled([])).toBeUndefined();
     expect(harborMasterInstalled(['llama3.1:8b'])).toBeUndefined();
-    expect(harborMasterInstalled(['qwen2.5-coder:3b', 'qwen2.5-coder:7b'])?.ollamaRef).toBe(
-      'qwen2.5-coder:7b',
-    );
+    expect(
+      harborMasterInstalled(['qwen3:4b-instruct-2507-q4_K_M', 'qwen2.5-coder:7b'])?.ollamaRef,
+    ).toBe('qwen2.5-coder:7b');
     expect(isHarborMasterRef('qwen2.5-coder:7b')).toBe(true);
     expect(isHarborMasterRef('qwen2.5-coder')).toBe(false);
+    // The non-commercial 3B left DeepBlue (2026-09-30); a stray pull of it is
+    // not DeepBlue, and neither is the thinking build behind a bare qwen3:4b.
+    expect(isHarborMasterRef('qwen2.5-coder:3b')).toBe(false);
+    expect(isHarborMasterRef('qwen3:4b')).toBe(false);
   });
 
   it('names what is really behind the slot on the size line, with a class line the engine wrote', () => {
@@ -154,8 +167,9 @@ describe('the copy keeps the honesty bar', () => {
   it('the attribution names the real weights and their license', () => {
     expect(HARBOR_MASTER_ATTRIBUTION).toContain('Qwen 2.5 Coder');
     expect(HARBOR_MASTER_ATTRIBUTION).toContain('Apache License 2.0');
-    // The 3B is not Apache (its model card, checked 2026-09-24).
-    expect(HARBOR_MASTER_ATTRIBUTION).toContain('the 3B under the Qwen Research License');
+    expect(HARBOR_MASTER_ATTRIBUTION).toContain('Qwen3 4B');
+    // Every size is sellable (founder, 2026-09-30): no research-licensed weights.
+    expect(HARBOR_MASTER_ATTRIBUTION).not.toMatch(/Research License|3B/);
   });
 });
 

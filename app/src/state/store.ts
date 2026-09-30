@@ -231,6 +231,8 @@ import {
   HARBOR_MODEL_ID,
   HARBOR_MODEL_NAME,
   HARBOR_MODEL_URL,
+  HARBOR_MODEL_VERSION,
+  harborWeightsStale,
   isHarbor,
 } from '../lib/harbor.js';
 import { HARBOR_MASTER_MODEL_NAME, resolveHarborMaster } from '../lib/harborMaster.js';
@@ -641,6 +643,9 @@ export interface AppSettings {
   harborMiniReady?: boolean;
   /** Whether the preferred guide (Harbor) has been downloaded to this device. */
   harborReady?: boolean;
+  /** The HARBOR_MODEL_VERSION of the Harbor weights on this device, recorded at
+   *  download. Older (or unrecorded) weights are dropped at launch. */
+  harborVersion?: string;
   /** Web search backend for local models, when the user has brought their own key.
    *  Undefined means the zero-config DuckDuckGo default. */
   searchBackend?: SearchBackend;
@@ -1905,7 +1910,7 @@ interface AppState {
   /** Cancel an in-progress Harbor download. */
   cancelHarbor(): void;
   /** Remove Harbor's weights from this device and drop its ready flag. Harbor
-   *  is a real download (about 1.9 GB), so it is uninstallable; Harbor Lite is
+   *  is a real download (about 2.5 GB), so it is uninstallable; Harbor Lite is
    *  bundled with the app and has no counterpart here. */
   removeHarbor(): Promise<void>;
   /** Desktop only. Pull the DeepBlue size that fits this computer through
@@ -3873,7 +3878,8 @@ export const useApp = create<AppState>((set, get, api) => {
         // this device and only ever runs on this device.
         let codemagicToken: string | undefined;
         let codemagicTarget:
-          { appId: string; workflowId: string; branch: string; platform?: string } | undefined;
+          | { appId: string; workflowId: string; branch: string; platform?: string }
+          | undefined;
         // Launch is v2 (docs/release-tiers.md): an earlier build never hands
         // the token to a session, whatever a setting left from before says.
         if (settings.codemagicAccess && featureOn('launch')) {
@@ -7126,7 +7132,14 @@ export const useApp = create<AppState>((set, get, api) => {
             settings.harborMiniReady = harborMiniHere;
             changed = true;
           }
-          const harborHere = present.has(HARBOR_MODEL_ID);
+          let harborHere = present.has(HARBOR_MODEL_ID);
+          // Weights from an older Harbor (the research-licensed 3B before 3.0)
+          // are deleted, so the person gets the current Harbor from its row.
+          if (harborHere && harborWeightsStale(settings.harborVersion)) {
+            await Llama.deleteModel({ id: HARBOR_MODEL_ID }).catch(() => {});
+            logEvent('harbor_stale_removed');
+            harborHere = false;
+          }
           if (Boolean(settings.harborReady) !== harborHere) {
             settings.harborReady = harborHere;
             changed = true;
@@ -9777,7 +9790,7 @@ export const useApp = create<AppState>((set, get, api) => {
           notice: downloadNoticeCopy('Harbor', HARBOR_MODEL_ID),
         });
         set({ harborDownload: { percent: 100, label: 'Verifying', indeterminate: true } });
-        await get().saveSettings({ harborReady: true });
+        await get().saveSettings({ harborReady: true, harborVersion: HARBOR_MODEL_VERSION });
         logEvent('harbor_ready');
         // Make Harbor the Reasoning anchor when the stack has none, its anchor
         // is a guide not on the device, or the anchor is Harbor Lite (Harbor is

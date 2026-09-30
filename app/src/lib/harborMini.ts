@@ -38,8 +38,10 @@ import type { WebSearchResult } from './webSearch.js';
 export const HARBOR_MINI_MODEL_ID = 'harbor-mini';
 export const HARBOR_MINI_MODEL_NAME = 'Harbor Lite';
 
-// SmolLM2-135M-Instruct, Q4_K_M (Apache-2.0), from unsloth's GGUF repo (the
-// same source we use for Harbor's Qwen3-1.7B). About 105 MB. VERIFY the exact
+// SmolLM2-135M-Instruct, Q4_K_M (Apache-2.0, free for commercial use; re-checked
+// 2026-09-30 when Harbor and DeepBlue moved to Apache weights, so all three
+// curated models are commercially usable), from unsloth's GGUF repo (the same
+// source we use for Harbor's Qwen3 4B). About 105 MB. VERIFY the exact
 // filename/casing resolves (200) before a build; this sandbox cannot reach
 // huggingface.co to check it.
 export const HARBOR_MINI_MODEL_URL =

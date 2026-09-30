@@ -450,6 +450,33 @@
       "blessed": false
     },
     {
+      "id": "qwen3-4b",
+      "name": "Qwen3 4B Instruct",
+      "tagline": "A 2025 4B that runs short plans on a computer with no GPU. The same weights as Harbor on the phone.",
+      "categories": ["coding", "reasoning", "fast"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "qwen3:4b-instruct-2507-q4_K_M",
+        "pullCommand": "ollama pull qwen3:4b-instruct-2507-q4_K_M",
+        "popularityRef": "Qwen/Qwen3-4B-Instruct-2507"
+      },
+      "sizeGB": 2.5,
+      "quantization": "Q4_K_M",
+      "contextTokens": 32768,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "note": "Free for commercial use."
+      },
+      "curation": {
+        "rank": 12,
+        "note": "DeepBlue's floor size: the Apache seat for a CPU box under about 12 GB. Not yet measured on the coding loop; it becomes orchestrator-capable when osc eval --floor records its number."
+      },
+      "blessed": false
+    },
+    {
       "id": "qwen2.5-7b",
       "name": "Qwen 2.5 7B",
       "tagline": "A strong general model for chat, reasoning, and clean writing.",

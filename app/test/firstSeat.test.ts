@@ -113,29 +113,32 @@ describe('fitVerdict mirrors the engine budget exactly', () => {
 });
 
 describe('resolveStarter is a preference list resolved by fit', () => {
-  it('is DeepBlue: the 32B on a big hub, the 14B, the 7B, then the 3B floor seat', () => {
+  it('is DeepBlue: the 32B on a big hub, the 14B, the 7B, then the Qwen3 4B floor seat', () => {
     expect(STARTER_CANDIDATES.map((c) => c.catalogId)).toEqual([
       'qwen2.5-coder-32b',
       'qwen2.5-coder-14b',
       'qwen2.5-coder-7b',
-      'qwen2.5-coder-3b',
+      'qwen3-4b',
     ]);
     // The default pick, before the machine is read, is never the biggest.
     expect(STARTER_MODEL.catalogId).toBe('qwen2.5-coder-7b');
   });
 
-  it('picks the 3B on a CPU box under about 12 GB and the 7B when it fits', () => {
+  it('picks the 4B on a CPU box under about 12 GB and the 7B when it fits', () => {
     // The fit is the engine's own verdict (fitVerdict over budgetFor), so the
     // pill never drifts from the store. The load-bearing guarantee is the PICK:
-    // the 3B on a CPU box through 12 GB, the 7B once real memory allows it.
+    // the 4B on a CPU box through 12 GB, the 7B once real memory allows it.
     for (const ram of [4, 8, 12]) {
-      expect(resolveStarter(cpu(ram)).pick.ollamaRef, `${ram} GB`).toBe('qwen2.5-coder:3b');
+      expect(resolveStarter(cpu(ram)).pick.ollamaRef, `${ram} GB`).toBe(
+        'qwen3:4b-instruct-2507-q4_K_M',
+      );
     }
-    // On the 8 and 12 GB boxes the 3B reads a clean fit; a 4 GB box is honestly
-    // tight (half of 4 GB leaves the 3B little headroom), never a false "fits".
+    // On the 8 and 12 GB boxes the 4B reads a clean fit. A 4 GB box is too
+    // small for it by the engine's budget, and the card says so rather than a
+    // false "fits" (the 3B read tight there; it left DeepBlue for its license).
     expect(resolveStarter(cpu(8)).fit).toBe('fits');
     expect(resolveStarter(cpu(12)).fit).toBe('fits');
-    expect(resolveStarter(cpu(4)).fit).toBe('tight');
+    expect(resolveStarter(cpu(4)).fit).toBe('too-big');
     expect(resolveStarter(cpu(14))).toMatchObject({
       pick: { ollamaRef: 'qwen2.5-coder:7b' },
       fit: 'tight',
@@ -156,13 +159,13 @@ describe('resolveStarter is a preference list resolved by fit', () => {
     expect(r.fit).toBe('unknown');
   });
 
-  it('falls to the 3B on the reference box because the 7B is too big, and says so honestly', () => {
+  it('falls to the 4B on the reference box because the 7B is too big, and says so honestly', () => {
     // The 8 GB CPU box is the founder's floor: the 7B is the engine's own
-    // "too big" there (it swaps), so the starter falls to the 3B and reports
-    // the 3B's real verdict, never the 7B's.
+    // "too big" there (it swaps), so the starter falls to the 4B and reports
+    // the 4B's real verdict, never the 7B's.
     expect(fitVerdict(4.7, cpu(8))).toBe('too-big');
     const r = resolveStarter(cpu(8));
-    expect(r.pick.ollamaRef).toBe('qwen2.5-coder:3b');
+    expect(r.pick.ollamaRef).toBe('qwen3:4b-instruct-2507-q4_K_M');
     expect(r.fit).toBe('fits');
   });
 });
@@ -182,9 +185,9 @@ describe('the class line comes from the engine, never invented on the card', () 
     expect(modelClassFor(32)).toBe('large');
   });
 
-  it('the 7B and 3B picks are small, the 14B is mid, and the 32B is large', () => {
+  it('the 7B and 4B picks are small, the 14B is mid, and the 32B is large', () => {
     for (const c of STARTER_CANDIDATES.filter(
-      (c) => c.catalogId === 'qwen2.5-coder-7b' || c.catalogId === 'qwen2.5-coder-3b',
+      (c) => c.catalogId === 'qwen2.5-coder-7b' || c.catalogId === 'qwen3-4b',
     )) {
       expect(classLineFor(c.ollamaRef)).toBe(
         'Runs short plans. The harness carries the checklist.',
