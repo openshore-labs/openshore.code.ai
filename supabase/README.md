@@ -15,7 +15,7 @@ it.
 | Stripe (server)      | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (function secrets)                   | stripe-checkout / -webhook / -portal, delete-account |
 | Guardrail HMAC key   | Vault secret `guardrail_hmac_key` (created once in the SQL editor, never committed, never in `config.toml`) | 0019's insert trigger and re-key |
 | Stripe prices        | `STRIPE_PRICE_MICRO/SMALL/GROWTH/SCALE` (function secrets)                        | checkout + webhook (commercial tiers)    |
-| Stripe price (indiv) | `STRIPE_PRICE_PERSONAL` (function secret)                                         | checkout + webhook (Personal $20/yr)     |
+| Stripe price (indiv) | `STRIPE_PRICE_PERSONAL` (function secret)                                         | checkout + webhook (Personal $49.99/yr)  |
 | Stripe ignore list   | `STRIPE_IGNORED_PRICES` (function secret, optional, comma-separated)              | webhook: log-and-200 for listed prices   |
 | Apple products       | `APPLE_PRODUCT_IDS` (function secret, comma-separated, REQUIRED for the rail)     | link-apple-purchase, apple-notifications |
 | Repo OAuth           | `GITHUB/GITLAB/BITBUCKET_OAUTH_CLIENT_ID/_SECRET` (function secrets)              | repo-oauth (PKCE + fixed error codes)    |
@@ -585,7 +585,7 @@ client-read-only) and gated on `status`. There is no signed-claim function; the
 old Ed25519 entitlement-claim path was removed as dead code.
 
 Two entitlement rails, one gate. Commercial teams live in `org_entitlements`
-(seat-based, org-scoped). The individual Personal plan ($20/yr, unlocks the full
+(seat-based, org-scoped). The individual Personal plan ($49.99/yr, unlocks the full
 app for one person) lives in `user_entitlements` (keyed by `user_id`, migration
 0006), written by the same `stripe-webhook` when a checkout carries
 `metadata.userId` instead of `orgId`, and on iOS by the Apple rail (see below).
@@ -618,7 +618,7 @@ The app treats EITHER an active individual OR org entitlement as unlocking
 ## Phase 2 - billing (Stripe, on the web)
 
 1. Create 4 annual commercial prices in Stripe (Micro $20, Small $100, Growth
-   $250, Scale $500) plus the individual **Personal $20/yr** price, and set
+   $250, Scale $500) plus the individual **Personal $49.99/yr** price, and set
    `STRIPE_PRICE_MICRO/SMALL/GROWTH/SCALE` + `STRIPE_PRICE_PERSONAL` as function
    secrets.
 2. Deploy the functions: `supabase functions deploy stripe-checkout

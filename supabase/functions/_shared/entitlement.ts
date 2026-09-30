@@ -237,3 +237,18 @@ export function appleLinkRefusal(
   }
   return undefined;
 }
+
+// ---------------------------------------------------------------------------
+// appAccountToken (2026-09-30, the Personal paid gate). The app passes the
+// signed-in account's id as the purchase's appAccountToken, and Apple signs it
+// into every transaction. A notification for a subscription nobody linked yet
+// (Ask to Buy approved later, the app closed before the link) falls back to
+// it: the token names the account the buyer was signed in as. Only a UUID is
+// read; anything else is no account.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The account a transaction's appAccountToken names, lowercased, or
+ *  undefined when there is none or it is not a UUID. */
+export function appAccountTokenUser(token: unknown): string | undefined {
+  return typeof token === 'string' && UUID_RE.test(token) ? token.toLowerCase() : undefined;
+}
