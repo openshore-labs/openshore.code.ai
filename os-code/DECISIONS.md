@@ -3249,6 +3249,11 @@ execution contract. Newest at the bottom.
   `production-history.tsv`, the Vault key present, no leftovers, pg_cron on
   with both jobs, and no rows from 4.2 to 4.5. The founder said yes to landing
   `prod-reconcile` (packages A, B and C) on main.
+- 2026-09-30: **The Mac build runs only when started by hand in Codemagic.**
+  Founder: Codemagic minutes are metered and every push to main is a release,
+  so the release workflow no longer starts `mac-desktop` after it publishes.
+  Linux and Windows still ship on every push; Macs update to the newest
+  release a hand-started Mac build has uploaded into.
 - 2026-09-30: **The curated models move to Apache weights: Harbor and
   DeepBlue's floor are Qwen3-4B-Instruct-2507, not Qwen 2.5 Coder 3B.** Founder:
   update the three to the commercially viable Apache 2.0 versions, evals later.
