@@ -7416,3 +7416,72 @@ describe('round 7, batch 3: the team vault answers only for itself', () => {
     });
   });
 });
+
+describe('round 7, batch 4: Your computer keeps main behavior in the resolve sheet', () => {
+  beforeEach(() => {
+    reset();
+    useApp.setState({ vaultConflict: undefined });
+  });
+  afterEach(() => {
+    useApp.setState({ vaultConflict: undefined });
+  });
+
+  describe('E29: Keep both refused while the computer is away keeps the choice open', () => {
+    async function changedOnHub() {
+      useApp.setState({
+        settings: { ...useApp.getState().settings, gitosResources: personalOn('hub') },
+      });
+      hub.files.set('n.md', 'base');
+      await useApp.getState().vaultRefresh();
+      await useApp.getState().vaultOpen('n.md');
+      hub.files.set('n.md', 'theirs');
+      await useApp.getState().vaultSave('n.md', 'mine typed');
+      expect(useApp.getState().vaultConflict?.kind).toBe('changed');
+    }
+    // The hub refuses any create while the computer is away (hub.ts write).
+    async function awayForCreates<T>(run: () => Promise<T>): Promise<T> {
+      const { HubRefusal } = await import('../src/lib/gitos/hub.js');
+      const { HUB_AWAY_READ_ONLY } = await import('../src/lib/vaultCopy.js');
+      const hp = hub.provider as unknown as Record<string, unknown>;
+      const write = hub.provider.write.bind(hub.provider);
+      hp.write = async (r: string, path: string, text: string, guard?: WriteGuard) => {
+        if (guard && 'ifAbsent' in guard) throw new HubRefusal(HUB_AWAY_READ_ONLY);
+        return write(r, path, text, guard);
+      };
+      try {
+        return await run();
+      } finally {
+        hp.write = write;
+      }
+    }
+
+    it('keeps the sheet, the editor and the stash, as on main, and lands once the computer is back', async () => {
+      await changedOnHub();
+      const r = await awayForCreates(() => useApp.getState().vaultResolve('both', 'mine typed'));
+      expect(r).toEqual({ ok: false, failed: true });
+      expect(useApp.getState().vaultConflict).toBeDefined();
+      expect(useApp.getState().vaultHeld).toEqual([]);
+      expect(Object.values(pending()).map((e) => e.text)).toEqual(['mine typed']);
+      expect(await useApp.getState().vaultResolve('both', 'mine typed')).toEqual({ ok: true });
+      expect([...hub.files.values()]).toContain('mine typed');
+      expect(hub.files.get('n.md')).toBe('theirs');
+    });
+
+    it('Keep yours on a gone note while away keeps the choice open too', async () => {
+      useApp.setState({
+        settings: { ...useApp.getState().settings, gitosResources: personalOn('hub') },
+      });
+      hub.files.set('n.md', 'base');
+      await useApp.getState().vaultRefresh();
+      await useApp.getState().vaultOpen('n.md');
+      hub.files.delete('n.md');
+      await useApp.getState().vaultSave('n.md', 'mine typed');
+      expect(useApp.getState().vaultConflict?.kind).toBe('missing');
+      const r = await awayForCreates(() => useApp.getState().vaultResolve('mine', 'mine typed'));
+      expect(r).toEqual({ ok: false, failed: true });
+      expect(useApp.getState().vaultConflict).toBeDefined();
+      expect(useApp.getState().vaultHeld).toEqual([]);
+      expect(Object.values(pending()).map((e) => e.text)).toEqual(['mine typed']);
+    });
+  });
+});

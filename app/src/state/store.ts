@@ -11809,7 +11809,10 @@ export const useApp = create<AppState>((set, get, api) => {
           // The sign-in ended while the choice was on its way (a dead refresh
           // token found by this tap): the choice and its words wait, sealed.
           if (!teamChoiceSpeaks(c)) return waitForTeamSignIn(c, draft);
-          const refusal = vaultRefusal(err);
+          // Only the team vault's refusals hold the text here. A personal
+          // vault keeps main's answer: Your computer asleep refuses a create
+          // for now, not for good, so the choice stays open (round 7 E29).
+          const refusal = c.target.providerId === 'org' ? vaultRefusal(err) : undefined;
           if (refusal) {
             const landed = await holdVaultDraft(c.target, c.path, draft, asSentence(refusal), {
               session,
