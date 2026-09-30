@@ -17,7 +17,7 @@
 //
 // The team vault (Vault M2 2.1 and 2.3, CTO G3) is enrolled through a fake of
 // its server half (test/fixtures/fakeOrgVaultServer.ts), which answers the
-// two guarded RPCs of migration 0019 by their decision table; another writer
+// two guarded RPCs of migration 0021 by their decision table; another writer
 // is a teammate's save with a fresh rev.
 //
 // Your computer (Vault M5, CTO J9) is enrolled too, through its real provider

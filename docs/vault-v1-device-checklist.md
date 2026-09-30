@@ -7,8 +7,7 @@ is the one list; PROGRESS "What remains" points here. The reference box evals
 (M4 to M6 numbers) are founder gates of their own and stay in PROGRESS. Record
 each result (date, device, OS, pass or what happened) under its line. A line
 marked (held) needs its held branch merged first: `vault-m2-icloud`,
-`vault-m2-native`, or `vault-m2-team` with 0019, 0024, and 0025 pushed from
-`main` (0024 and 0025 were 0020 and 0021 before CTO 4 renumbered them).
+`vault-m2-native`, or `vault-m2-team` with 0021 to 0026 pushed from main.
 
 ## Desktop: This folder, the agent, and Obsidian
 
@@ -75,7 +74,7 @@ marked (held) needs its held branch merged first: `vault-m2-icloud`,
 - [ ] One recorded `xcodebuild test` run of the `CoordinatedTree` and folder
       Swift tests.
 
-## Team vault, two members (held: `vault-m2-team`, 0019, 0024 and 0025 pushed)
+## Team vault, two members (held: `vault-m2-team`, 0021 to 0026 pushed from main)
 
 - [ ] Two members edit one note: the conflict reaches the resolve sheet and
       the copy wears its badge.

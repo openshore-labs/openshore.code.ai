@@ -72,15 +72,13 @@ Standing rules, each pinned by tests:
   model context until v1.1 (D15).
 
 Held branches, not on `main`: `vault-m2-team` (the team client on
-compare-and-swap, 0024, 0025; written as 0020 and 0021 and renumbered above
-main's 0022 and 0023 by CTO 4), `vault-m2-icloud`, and `vault-m2-native` (the
-iPhone opening an Obsidian vault in place). Founder gates (PROGRESS, What
-remains): pushing 0019, 0022, 0023, then 0024 and 0025, in order and from
-`main` only (`supabase/README.md`, Ship order); the entitlement date; the
-reference box evals for M4 to M6 before any pack default flips; an
-`xcodebuild test` run; and the device checklist in
-`docs/vault-v1-device-checklist.md`. Every must-fix finding maps to a test in
-`docs/vault-v1-test-map.md`.
+compare-and-swap; its migrations are main's 0024 and 0025), `vault-m2-icloud`,
+and `vault-m2-native` (the iPhone opening an Obsidian vault in place). Founder
+gates (PROGRESS, What remains): pushing 0021 to 0026 from main per
+`docs/vault-gate1-runbook.md`; the entitlement date; the reference box evals
+for M4 to M6 before any pack default flips; an `xcodebuild test` run; and the
+device checklist in `docs/vault-v1-device-checklist.md`. Every must-fix finding
+maps to a test in `docs/vault-v1-test-map.md`.
 
 ## Crew routines (the botOS brief) are BUILT (2026-09-05)
 
@@ -247,9 +245,16 @@ type error until complete: every room in `app/src/lib/accountGate.ts`
 (`SETTINGS_REACH`). A new room or settings key is not done until it is
 classified there; prompts, work, addresses, keys and consents never follow.
 `app/test/accounts.test.ts` holds it; `docs/accounts-cx-memo.md` is the why.
-In-app account deletion is BUILT (2026-09-29: the `delete-account` function,
-`0022`, the Settings row); it ships once the founder deploys them (PROGRESS,
-What remains).
+In-app account deletion is BUILT as one design (2026-09-29, CTO 11 package C:
+main's `delete-account` planner and answer, the privacy function's legal-hold
+copy, and 0022's service-role `account_deletion_` functions for the guarded
+team delete, the operator-only tombstone and the email cleanup; the Settings
+row reads either function's answers). It ships when the founder pushes 0021
+to 0026 and then deploys it (`docs/vault-gate1-runbook.md` 7.4); production
+runs the privacy branch's 2026-09-24 function until then. The published
+address is one constant, `SUPPORT_EMAIL` (support@openshore.ai, founder F1
+2026-09-30), and `app/test/contactAddress.test.ts` holds 0022's ladder and
+the Terms to it.
 
 ## The premium build's standing rules (2026-09-29)
 
@@ -276,10 +281,30 @@ rule is pinned by tests; keep them:
   build time (`SHIPS_*` in `app/src/lib/focus.ts`), and CI runs
   `pnpm --filter oscode-app check:bundle`.
 - **Migrations are pushed from `main` only**; a held branch renumbers its
-  migrations above main's newest when it merges (CTO 4).
+  migrations above main's newest and production's newest when it merges
+  (CTO 4, CTO 11; see the migration history rule below).
 - **New store logic goes in a sibling module** (`state/gateOps.ts` and its
   kind), with `store.ts` only wiring it in, until the store split (Launch and
   Repositories first) opens the next build.
+
+## Production's migration history is the authority on numbers (standing rule, CTO 11, 2026-09-29)
+
+Production's migration history is the authority on numbers. Migrations go to
+production from main only (CTO 4). Every applied file is pinned in
+`supabase/production-history.tsv` and never edited or renumbered (CTO 11). A
+new file takes the next number above both main's newest and production's
+newest, and every push uses `--skip-vault`. Production holds 0001 to 0020; its
+0019 and 0020 are the privacy branch's files (pushed 2026-09-24), held on main
+byte for byte, and main's Org Vault v1 file is `0021_org_vault_v1.sql`. Only
+`docs/vault-gate1-runbook.md` pushes, after `supabase/scripts/push-preflight.mjs`;
+the session that records a push appends its rows to the history file in the
+same change; a session branch that adds a migration says in its commit and
+PROGRESS that the file is unapplied. A local database gets its throwaway Vault
+key from `supabase/scripts/local-vault.sh`, never from a committed
+`[db.vault]`. Guards: `app/test/supabaseMigrations.test.ts`, CI's `sql` and
+`sql-replay` jobs, and `.github/workflows/migrations.yml`. The privacy branch
+(`claude/openshore-privacy-mobile-1ij12h`) is harvested in packages, never
+merged whole (DECISIONS, CTO 11).
 
 ## Em dash policy is TOTAL here (standing rule)
 

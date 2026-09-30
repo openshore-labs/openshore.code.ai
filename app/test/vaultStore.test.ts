@@ -287,7 +287,7 @@ const fail = local.fail;
 // rows in memory. `teamNet.fail` makes every request throw; `beforePut` runs
 // ahead of each org_vault_write (hold it, or throw); `puts` records what each
 // one sent (base is its if_match, 0 for a create). Like org_vault_write
-// (0019), a stale if_match answers `changed` with theirs and writes nothing.
+// (0021), a stale if_match answers `changed` with theirs and writes nothing.
 const ORG = 'org-1';
 const team = new Map<string, { body: string; rev: number }>();
 const teamNet = {
@@ -349,7 +349,7 @@ vi.mock('../src/lib/supabase.js', async (importOriginal) => {
         const r = row(p);
         return { path: p, body: r.body, rev: r.rev, updated_at: r.updated_at, updated_by: null };
       };
-      // Revs never repeat, as with the server's sequence (0019).
+      // Revs never repeat, as with the server's sequence (0021).
       const nextRev = () => Math.max(0, ...[...team.values()].map((r) => r.rev)) + 1;
       if (fn === 'org_vault_remove') {
         const prev = team.get(path);
@@ -2867,7 +2867,7 @@ describe('team live refresh by polling (M2 2.7)', () => {
     reset();
     useApp.setState({ vaultConflict: undefined });
     // The poll looks only on a storage with compare-and-swap; the team
-    // client gains it with 0019 (stream D), so it is switched on here.
+    // client gains it with 0021 (stream D), so it is switched on here.
     had = org().compareAndSwap;
     org().compareAndSwap = true;
     vi.spyOn(Math, 'random').mockReturnValue(0.5);

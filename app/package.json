@@ -91,7 +91,7 @@
     "publish": {
       "provider": "github",
       "owner": "openshore-labs",
-      "repo": "openshore.code.ai"
+      "repo": "openshore-releases"
     },
     "files": [
       "dist/**",

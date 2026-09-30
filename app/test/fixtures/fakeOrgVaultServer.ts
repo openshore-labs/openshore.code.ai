@@ -1,6 +1,6 @@
 // A fake of the team vault's server half, in memory: the PostgREST selects the
 // provider makes on org_vault_notes, org_vault_revisions and org_members, the
-// two guarded RPCs from supabase/migrations/0019_org_vault_v1.sql,
+// two guarded RPCs from supabase/migrations/0021_org_vault_v1.sql,
 // org_vault_write and org_vault_remove, 0024's org_vault_move, and 0025's
 // settings pair and gates (OV402 when the plan is not active, OV403 for a
 // member's delete under admins-only), each by its decision table as written
@@ -22,7 +22,7 @@ export interface FakeNote {
   deleted: boolean;
 }
 
-/** A revision row (0019): the displaced version, and why. */
+/** A revision row (0021): the displaced version, and why. */
 export interface FakeRevision {
   id: number;
   path: string;

@@ -6,11 +6,11 @@
 --   1. Guarded by the source's rev. A stale rev is `changed` with theirs; a
 --      source with no live note is `missing`. Nothing is written on either.
 --   2. A move never replaces. A live note at the destination, judged under
---      lower(path) the way 0019's unique index judges it, is `exists` with
+--      lower(path) the way 0021's unique index judges it, is `exists` with
 --      theirs under its real path. The one exception is a case-only rename of
 --      the same note (plan.md to Plan.md), which is allowed.
 --   3. The displaced version is kept as a 'renamed' revision row at the old
---      path (0019 already allows that reason), so history follows the note.
+--      path (0021 already allows that reason), so history follows the note.
 --      It is written last, after the destination, so a rename in a free org
 --      at 0023's byte cap is not refused for the history copy (0023 refuses
 --      note growth only, counting the revisions already written).
@@ -24,7 +24,7 @@
 --      would read as "delete this file" on a case-insensitive volume. A stale
 --      tombstone already holding the exact new spelling is dropped first (its
 --      'deleted' revision row stays), or the primary key would refuse the move.
---   6. Both paths take 0019's advisory lock, in lower() order, so two moves
+--   6. Both paths take 0021's advisory lock, in lower() order, so two moves
 --      that cross each other cannot deadlock and a write to either path waits.
 --      The unique index stays the backstop: a unique_violation from a race
 --      undoes the whole move and answers `exists`.
@@ -37,16 +37,17 @@
 -- tombstones whose latest revision row is 'deleted', and Restore is
 -- org_vault_write with if_absent from that revision's body, at the original
 -- path or, when that name is taken, at "{title} (restored).md". There is no
--- Empty: org_vault_purge (0019) already drops tombstones and revision rows
+-- Empty: org_vault_purge (0021) already drops tombstones and revision rows
 -- after 30 days, weekly through pg_cron. The pgTAP file exercises that path.
 --
 -- Additive: `create or replace` only, no data change. Ships to production after
--- 0019, in order (see supabase/README.md).
+-- 0021, in order (see supabase/README.md).
 --
 -- Numbering (CTO ruling 4, 2026-09-29): written as 0020 on the held
 -- vault-m2-team branch and renumbered 0024 there, above main's 0022 and
 -- 0023, so it applies after both. 0025 re-creates this function with the
--- plan gate.
+-- plan gate. CTO 11 (2026-09-29) moved org_vault_v1 to 0021, so this file
+-- applies after 0021, 0022, and 0023.
 
 create or replace function public.org_vault_move(
   p_org uuid,

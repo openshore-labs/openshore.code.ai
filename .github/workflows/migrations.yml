@@ -1,0 +1,46 @@
+# Migration numbers (CTO 11, 2026-09-29). `supabase db push` matches a
+# migration by its number only, so a branch that reuses a number main or
+# production already gave to another file would have its file skipped, or
+# re-run under a new name. That happened once: production's 0019 and 0020 came
+# from an unmerged branch while main used 0019 for another file.
+#
+# On every push that touches supabase/ and on every PR, this fails a branch
+# whose files collide with main's numbers, with production's history
+# (supabase/production-history.tsv on main), or sit at or below the newest
+# taken number without being on main (merge main, then renumber above it). On a
+# push to main it also scans every other branch and lists collisions in the job
+# summary as warnings, so a stale held branch shows up the day main takes its
+# number. No install: git and the runner's Node only.
+name: Migrations
+
+on:
+  push:
+    paths:
+      - 'supabase/**'
+      - '.github/workflows/migrations.yml'
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migrations-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  numbers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Every branch, so origin/main and the other branches are there to read.
+      - name: Check out the repo
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - name: This tree's migration numbers against main and production
+        run: node supabase/scripts/check-migrations.mjs --against origin/main
+
+      - name: Other branches that now collide (warnings only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: node supabase/scripts/check-migrations.mjs --scan-remotes --against origin/main

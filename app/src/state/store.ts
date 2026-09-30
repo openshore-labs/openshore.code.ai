@@ -474,9 +474,10 @@ import {
   type VaultRestoreResult,
   type VaultUndo,
 } from './vaultOps.js';
-import { invokeFunctionWithCode } from '../lib/supabase.js';
+import { authUserState, invokeFunctionWithCode } from '../lib/supabase.js';
 import {
   deleteAccount as runAccountDeletion,
+  type DeleteAccountAnswer,
   type DeleteAccountOutcome,
 } from './accountDeletion.js';
 import { vaultPollDelayMs } from '../lib/vaultPoll.js';
@@ -9115,13 +9116,14 @@ export const useApp = create<AppState>((set, get, api) => {
     async deleteAccount() {
       const outcome = await runAccountDeletion({
         session: freshAuth,
-        invoke: (token) =>
-          invokeFunctionWithCode<{ ok?: boolean; appleNote?: boolean }>(
-            'delete-account',
-            token,
-            {},
-          ),
+        invoke: (token) => invokeFunctionWithCode<DeleteAccountAnswer>('delete-account', token, {}),
+        authState: (token) => authUserState(token),
+        // Deleted: a sign-out, nothing of the account kept. A dead sign-in
+        // (the account may still be there) ends the way the session door
+        // ends one on a dead refresh token, so unsent team vault text stays
+        // sealed for the same account.
         forgetSession: () => forgetSession(),
+        endSignIn: () => forgetSession(true),
         clearPendingAppleLink: () => storeDelete(PENDING_APPLE_LINK_KEY),
       });
       logEvent(outcome.kind === 'deleted' ? 'account_deleted' : `account_delete_${outcome.kind}`);

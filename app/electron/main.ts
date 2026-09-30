@@ -1588,7 +1588,9 @@ guarded('osc:chatStreamAbort', (id: unknown) => chatStreams.abort(id));
 // Every desktop update is checked against a key pinned in the app before it
 // runs (releaseVerify.ts, CTO rulings 1 and 2): the Mac file before it is
 // unpacked, the Windows and Linux file before quitAndInstall.
-const UPDATE_REPO = 'openshore-labs/openshore.code.ai';
+// Releases live in the public openshore-releases repo (installers only, no
+// code), so an update check needs no token; this repo is private.
+const UPDATE_REPO = 'openshore-labs/openshore-releases';
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 
 // The bar's state is one pure step function (updateState.ts): the events

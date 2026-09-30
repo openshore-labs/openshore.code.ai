@@ -7,7 +7,7 @@ import {
 // The provider talks to Supabase through ../supabase.js; mock that seam so these
 // tests exercise the provider's own logic (row mapping, versions, paging, the
 // RPCs it calls and how it reads their answers) without a network or a live
-// Postgres. The fake speaks migration 0019's RPC semantics.
+// Postgres. The fake speaks migration 0021's RPC semantics.
 vi.mock('../src/lib/supabase.js', () => ({
   isConfigured: () => true,
   select: vi.fn(),
@@ -338,7 +338,7 @@ describe('org vault provider', () => {
     }
   });
 
-  // A server that has not had migration 0019 yet answers PGRST202 (a 404).
+  // A server that has not had migration 0021 yet answers PGRST202 (a 404).
   // Not permanent: the text is stashed and retried, and nothing is written
   // blind through the old last-write-wins function (CTO G3).
   it('PGRST202 (function not found) is non-permanent, for a write and a remove', async () => {

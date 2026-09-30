@@ -22,7 +22,6 @@ function summary(count: number, average: number): ReviewSummary {
 function review(over: Partial<ReviewRow> & { id: string }): ReviewRow {
   return {
     id: over.id,
-    user_id: `u-${over.id}`,
     model_id: 'm',
     rating: 5,
     created_at: '2026-09-03T00:00:00Z',

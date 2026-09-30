@@ -11,7 +11,7 @@
 // server rev as a string, the same token from list, stat, read, and write. A
 // write goes through org_vault_write with exactly one guard and a remove
 // through org_vault_remove with the rev it was read at (see
-// supabase/migrations/0019_org_vault_v1.sql). A conflict comes back as a
+// supabase/migrations/0021_org_vault_v1.sql). A conflict comes back as a
 // result with theirs, so the store shows its resolve sheet the way it does
 // for every other provider; the server never makes a copy for this client.
 // The base lives in the open note and the stash entry, never in this module.
@@ -197,7 +197,7 @@ export class OrgVaultRefusal extends Error {
 
 /** The server does not have the guarded functions yet (PostgREST PGRST202,
  *  function not found, which arrives as a 404): a build that reached people
- *  before migration 0019 did. Not permanent, so the store stashes the text
+ *  before migration 0021 did. Not permanent, so the store stashes the text
  *  and retries it once the server catches up, and nothing is written blind
  *  through the old last-write-wins function in the meantime (CTO G3). */
 export class OrgVaultNotReady extends Error {
@@ -491,7 +491,7 @@ async function foldedTaken(
   return row ? asFile(row) : undefined;
 }
 
-/** A revision row as Trash reads it (0019's org_vault_revisions). */
+/** A revision row as Trash reads it (0021's org_vault_revisions). */
 interface RevisionRow {
   id: number;
   path: string;

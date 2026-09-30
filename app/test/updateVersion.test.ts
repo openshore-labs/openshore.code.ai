@@ -121,6 +121,17 @@ describe('the release workflow', () => {
   it('publishes on every push to main, not only on a tag', () => {
     expect(wf).toMatch(/branches:\s*\n\s*- main/);
     expect(wf).toContain("if: needs.version.outputs.tag != ''");
-    expect(wf).toContain('--target "${GITHUB_SHA}"');
+  });
+
+  it('publishes to the public installers-only repo, never this private one', () => {
+    // openshore.ai's download buttons and every installed app read releases
+    // from openshore-releases; a private repo's releases are invisible to both.
+    expect(wf).toContain('--repo openshore-labs/openshore-releases');
+    expect(wf).not.toContain('--repo "${GITHUB_REPOSITORY}"');
+    expect(wf).not.toContain('--generate-notes');
+    // The patch number keeps climbing across the move: both repos' tags count.
+    expect(wf).toContain(
+      'git ls-remote --tags https://github.com/openshore-labs/openshore-releases.git',
+    );
   });
 });

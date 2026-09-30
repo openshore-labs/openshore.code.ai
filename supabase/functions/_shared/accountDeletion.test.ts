@@ -1,19 +1,19 @@
 // Deno tests for delete-account's decisions. Run:
 // `deno test supabase/functions/_shared/accountDeletion.test.ts`. The edge
-// function has no runtime harness; these cover the plan it follows and the
-// email hash the tombstone is keyed by (the same hex tests/
-// account_deletion.test.sql pins for 0022's enforcement_email_key).
+// function has no runtime harness; these cover the plan it follows, how it
+// reads the owned-team delete's answer, and the answer it sends. The database
+// writes it asks for (0022 section 6) are covered by
+// supabase/tests/account_deletion.test.sql.
 import { assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
 import {
   DELETE_ACCOUNT_ERRORS,
   DELETE_ACCOUNT_STATUS,
-  emailSha256,
-  mergeTombstoneLevel,
-  normalizeEmail,
+  deletedAnswer,
+  otherActiveMembers,
+  ownedOrgsGone,
   planAccountDeletion,
   subscriptionMayBill,
   subscriptionsToCancel,
-  tombstoneLevelFor,
   type DeletionFacts,
 } from './accountDeletion.ts';
 
@@ -21,8 +21,6 @@ const nobody: DeletionFacts = {
   personal: null,
   appleLinked: false,
   ownedOrgs: [],
-  enforcementActions: [],
-  hasAbuseReport: false,
 };
 
 Deno.test('plan: an account with nothing attached just goes', () => {
@@ -30,7 +28,6 @@ Deno.test('plan: an account with nothing attached just goes', () => {
     stripeCustomers: [],
     stripeSubscriptions: [],
     deleteOrgs: [],
-    tombstoneLevel: 0,
     appleNote: false,
   });
 });
@@ -54,7 +51,11 @@ Deno.test('plan: a sole-member org is deleted and its billing swept', () => {
       {
         id: 'solo',
         otherActiveMembers: 0,
-        billing: { status: 'active', stripe_customer_id: 'cus_org', stripe_subscription_id: 'sub_org' },
+        billing: {
+          status: 'active',
+          stripe_customer_id: 'cus_org',
+          stripe_subscription_id: 'sub_org',
+        },
       },
     ],
   });
@@ -87,38 +88,67 @@ Deno.test('plan: a live Personal subscription on Stripe is canceled; a dead one 
   assertEquals(dead.stripeSubscriptions, []);
 });
 
-Deno.test('plan: an Apple subscription gets the note, and its old Stripe customer is still swept', () => {
-  const plan = planAccountDeletion({
-    ...nobody,
-    personal: { source: 'apple', status: 'active', stripe_customer_id: 'cus_earlier' },
-  });
-  if (plan.refuse) throw new Error('should not refuse');
-  assertEquals(plan.appleNote, true);
-  assertEquals(plan.stripeCustomers, ['cus_earlier']);
-
-  const linkedOnly = planAccountDeletion({ ...nobody, appleLinked: true });
-  if (linkedOnly.refuse) throw new Error('should not refuse');
-  assertEquals(linkedOnly.appleNote, true);
-});
-
-Deno.test('plan: the tombstone follows the ladder', () => {
-  const level = (facts: Partial<DeletionFacts>) => {
-    const plan = planAccountDeletion({ ...nobody, ...facts });
+Deno.test(
+  'plan: an Apple subscription gets the note, and its old Stripe customer is still swept',
+  () => {
+    const plan = planAccountDeletion({
+      ...nobody,
+      personal: { source: 'apple', status: 'active', stripe_customer_id: 'cus_earlier' },
+    });
     if (plan.refuse) throw new Error('should not refuse');
-    return plan.tombstoneLevel;
-  };
-  assertEquals(level({ enforcementActions: ['log-only'] }), 0);
-  assertEquals(level({ enforcementActions: ['log-only', 'warn'] }), 1);
-  assertEquals(level({ enforcementActions: ['warn', 'terminate'] }), 2);
-  assertEquals(level({ hasAbuseReport: true }), 2);
+    assertEquals(plan.appleNote, true);
+    assertEquals(plan.stripeCustomers, ['cus_earlier']);
+
+    const linkedOnly = planAccountDeletion({ ...nobody, appleLinked: true });
+    if (linkedOnly.refuse) throw new Error('should not refuse');
+    assertEquals(linkedOnly.appleNote, true);
+  },
+);
+
+Deno.test(
+  'members: only an active row bound to someone else counts, as in account_deletion_orgs',
+  () => {
+    const owner = 'owner';
+    assertEquals(
+      otherActiveMembers(
+        [
+          { user_id: owner, status: 'active' },
+          { user_id: null, status: 'invited' },
+          { user_id: null, status: 'active' },
+          { user_id: 'gone', status: 'revoked' },
+        ],
+        owner,
+      ),
+      0,
+    );
+    assertEquals(
+      otherActiveMembers(
+        [
+          { user_id: owner, status: 'active' },
+          { user_id: 'teammate', status: 'active' },
+        ],
+        owner,
+      ),
+      1,
+    );
+  },
+);
+
+Deno.test('owned-team delete: every planned team back is done; fewer is owns_org', () => {
+  assertEquals(ownedOrgsGone([], null), true);
+  assertEquals(ownedOrgsGone(['a', 'b'], ['b', 'a']), true);
+  assertEquals(ownedOrgsGone(['a', 'b'], ['a']), false);
+  // All or none: a teammate turned active, so nothing came back.
+  assertEquals(ownedOrgsGone(['a'], []), false);
+  // Not a list of ids: read as nothing deleted, never as done.
+  assertEquals(ownedOrgsGone(['a'], null), false);
+  assertEquals(ownedOrgsGone(['a'], 'a'), false);
+  assertEquals(ownedOrgsGone(['a'], [{ id: 'a' }]), false);
 });
 
-Deno.test('tombstoneLevelFor and mergeTombstoneLevel never step down', () => {
-  assertEquals(tombstoneLevelFor([], false), 0);
-  assertEquals(mergeTombstoneLevel(2, 1), 2);
-  assertEquals(mergeTombstoneLevel(1, 2), 2);
-  assertEquals(mergeTombstoneLevel(null, 1), 1);
-  assertEquals(mergeTombstoneLevel(7, 0), 0);
+Deno.test('answer: both client contracts read success', () => {
+  assertEquals(deletedAnswer(true), { ok: true, deleted: true, appleNote: true });
+  assertEquals(deletedAnswer(false), { ok: true, deleted: true, appleNote: false });
 });
 
 Deno.test('subscriptions: only canceled and incomplete_expired are finished', () => {
@@ -142,14 +172,4 @@ Deno.test('errors: a fixed set of codes, each with its status', () => {
   assertEquals([...DELETE_ACCOUNT_ERRORS], ['unauthorized', 'owns_org', 'billing', 'failed']);
   assertEquals(DELETE_ACCOUNT_STATUS.owns_org, 409);
   assertEquals(DELETE_ACCOUNT_STATUS.unauthorized, 401);
-});
-
-Deno.test('email hash: ASCII case folded, SHA-256 hex, the same as the SQL key', async () => {
-  assertEquals(
-    await emailSha256('returner@example.com'),
-    '83bac1dc27f294e2dddc84ed4adf8e854e28261f626cf27a129eecf62a0fc361',
-  );
-  assertEquals(await emailSha256('Returner@Example.COM'), await emailSha256('returner@example.com'));
-  // Only ASCII letters fold, as `lower(... collate "C")` does in 0022.
-  assertEquals(normalizeEmail('ÉLAN@Example.com'), 'Élan@example.com');
 });

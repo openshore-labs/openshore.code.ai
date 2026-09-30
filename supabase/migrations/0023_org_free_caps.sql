@@ -11,9 +11,9 @@
 --      org_vault_notes and org_vault_revisions, so the check never scans.
 --
 -- Both are triggers, never code inside org_vault_put or org_vault_write:
--- 0021 on the held vault-m2-team branch re-creates both of those whole, and a
--- trigger holds whichever body is live. no_entitlement_max_seats (0015) is
--- left alone.
+-- the settings file (written as 0021 on the held vault-m2-team branch, today's
+-- 0025_org_vault_settings.sql) re-creates both of those whole, and a trigger
+-- holds whichever body is live. no_entitlement_max_seats (0015) is left alone.
 --
 -- "Entitled" is _shared/entitlement.ts isEntitled, the rule 0015's seat
 -- ceiling reads: an org_entitlements row with status active or trialing,
@@ -22,9 +22,11 @@
 --
 -- Refusals raise check_violation (23514), the same code 0015's seat ceilings
 -- use. Only growth is refused: a delete, a shrink, or a purge always goes
--- through, even over the cap, so nobody is stuck unable to make room. Rows
--- already over a cap when this lands stay (grandfathered, as 0015 does for
--- seats); they cannot grow.
+-- through, even over the cap. A delete's bytes stay counted in its revision
+-- row until the weekly purge clears it (about 30 days), and the refusal says
+-- so (CTO 11 resolved the gate 1 runbook's 0.3a this way while the file was
+-- still unapplied). Rows already over a cap when this lands stay
+-- (grandfathered, as 0015 does for seats); they cannot grow.
 --
 -- Deploy ordering: additive, after 0022. It backfills the byte totals from the
 -- rows already stored, inside the migration.
@@ -124,7 +126,7 @@ revoke all on public.org_storage_usage from anon, authenticated;
 -- Every insert, body change, and delete on either table moves the total by
 -- the bytes it adds or frees. The refusal is on NOTE growth only: a revision
 -- row is the displaced copy of something already counted, written in the same
--- call as the note change that displaced it (0019's snapshot), and refusing it
+-- call as the note change that displaced it (0021's snapshot), and refusing it
 -- would refuse a delete near the cap (the snapshot lands before the
 -- tombstone). Revisions still count toward the total a note's growth is
 -- checked against, so history cannot be used to hide bytes; at most one
@@ -185,7 +187,7 @@ begin
   if tg_table_name = 'org_vault_notes'
      and v_total > public.no_entitlement_max_org_bytes()
      and not public.org_is_entitled(v_org) then
-    raise exception 'this team has used its 25 MiB of free space; start a plan or delete notes to make room'
+    raise exception 'this team has used its 25 MiB of free space; start a plan to add more. A deleted note frees its space when its history is cleared, about a month later'
       using errcode = 'check_violation';
   end if;
   return null;
