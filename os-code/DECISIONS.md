@@ -3667,3 +3667,60 @@ execution contract. Newest at the bottom.
   pairing, a routine already scheduled), and a chat's vault pack still reads
   notes that exist; Projects stays free, so a project's repository link
   opens the paywall only at Repositories.
+
+- 2026-09-30: **Round 7, batch 2: nothing of a note, a draft or a name is
+  lost or shown to the wrong account, and the room says what is true (held
+  `vault-m2-team`, eight high).** (E9) A stashed draft whose guarded replay
+  finds its note moved or deleted is held under Not saved with the gone
+  reason and the gone toast, never made again: this supersedes the Vault M1
+  line above that brought it back with `ifAbsent` (the M0 rule), for every
+  storage with compare-and-swap; only a draft with no base (a note made
+  offline) is written as a create. (E10) Every stash entry carries its
+  sitting (the open note's `loadedAt`) and a stash time always later than
+  the last, and each save carries the time it was asked for: a save settles
+  only its own sitting's older entries (data-1 still holds there), one
+  writer (`stashDraft`) never writes over newer words, and an earlier
+  sitting's words no editor showed go under Not saved before newer text
+  takes their place, or stay for the replay, which keeps them beside the
+  note. (E17) A save to a storage whose writes cross the network (the team
+  vault, your computer) writes its words to the sealed store first
+  (`oscode.vault.inflight`, apart from the stash, so the chip and the
+  replay never see a save still running) and removes them once it settles;
+  what a launch that ended left there goes to the stash on the next refresh
+  and replays at its version. Team entries follow R-19. (E12) One helper
+  clears what the room holds of a vault (list, note, folders, Trash, the
+  folder to return to, whether it listed) at a scope switch and at both ends
+  of a sign-in. (E13) A team vault's remembered empty folders and Recent are
+  keyed by account (`org::<org>::<uid>`), a sign-out drops them all and a
+  sign-in or an expiry keeps only that account's, and the role is read in
+  the org this device points at, so an account outside it gets no team
+  vault. (E18) The open note says `held` once the last save of its sitting
+  is set aside, and the chip says Not saved (no Try again) while it is.
+  (E20) A team folder delete stopped part way answers ok for what went,
+  with `partial` (how many, what is left, why, `lapsed` for OV402); the room
+  says so, stays in the folder and offers that Undo unless the plan lapsed.
+  (E22) The team client makes no note and moves none onto a name in Trash
+  (the tombstone would be revived and the deleted note would leave Trash):
+  a refusal for good, "is in Trash. Restore it from Trash, or use another
+  name."; Restore still revives its own name and passes over a
+  "(restored)" name in Trash, a keep-both copy goes on to the next name,
+  and Save it again on a note a teammate deleted meets the same rule (the
+  text is held; Restore brings back theirs). The race between the check and
+  the write needs a 'trashed' conflict in 0021's and 0024's functions, a
+  later migration and a founder gate. Main lines this changes, each because
+  the fix lives in it: in the store, the sets in `forgetSession`,
+  `onSignedIn` and `setVaultScope`, `editEmptyFolders`,
+  `refreshVaultFolders`, `editVaultRecent`, `noteVaultRecent`,
+  `vaultRecentRing`, `refreshOrgRole`'s query, the `VaultPendingEntry` type,
+  `pendingEntry`, `rescueVaultDraft`, `stashConflictText`,
+  `keepUnsentTeamText`, `replayVaultDraft`, `replayVaultPending`'s toast,
+  `saveVaultNote`'s success, `settleSaveConflict`'s stash drops,
+  `reloadOpenNote`, `writeConflictCopy`, `vaultCreate`'s offline branch,
+  `vaultSave`, `vaultRefresh`, `vaultDeleteFolder`, `forgetTeamVaultDrafts`,
+  `settleTeamVaultDrafts`, `countTeamDrafts` and the `vaultNote` and
+  `VaultDeleteOutcome` types; `VaultDeleteResult` and `deleteFolder` in
+  `vaultOps.ts`; `VaultSaveStatus` and `vaultSaveChip` in `vaultCopy.ts`;
+  in `VaultScreen.tsx`, the save status, `SaveChip`'s role, `offerUndo` and
+  the folder delete; `.vault-save-chip.offline` in `theme.css`. Main test:
+  the Trash contract's "restore never overwrites" has another writer take
+  the name, since the team vault no longer makes a note over one in Trash.
