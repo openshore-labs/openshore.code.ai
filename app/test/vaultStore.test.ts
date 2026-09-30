@@ -327,6 +327,10 @@ const teamNet = {
    *  (test/fixtures/fakeOrgVaultServer.ts: Trash, moves, and 0023's free
    *  space as the migrations write them). */
   server: undefined as FakeOrgVaultServer | undefined,
+  /** When set, the orgs each account is an active member of, as the role
+   *  select answers it (its org_id filter honoured, as RLS lets a caller see
+   *  their own row in any org); undefined answers "member" to any query. */
+  memberOf: undefined as Record<string, string[]> | undefined,
 };
 let teamToken: string | undefined = 'tok';
 // The account the fake auth server hands out: refreshSession answers with
@@ -362,7 +366,12 @@ vi.mock('../src/lib/supabase.js', async (importOriginal) => {
       if (teamNet.fail) throw teamNet.fail;
       // An active member of ORG; no org to pull, no projects, no entitlement.
       if (table === 'org_members' && query.startsWith('select=role')) {
-        return [{ role: 'member', status: 'active' }];
+        if (!teamNet.memberOf) return [{ role: 'member', status: 'active' }];
+        const uid = decodeURIComponent(/user_id=eq\.([^&]+)/.exec(query)?.[1] ?? '');
+        const only = /org_id=eq\.([^&]+)/.exec(query)?.[1];
+        return (teamNet.memberOf[uid] ?? [])
+          .filter((o) => only === undefined || o === decodeURIComponent(only))
+          .map(() => ({ role: 'member', status: 'active' }));
       }
       if (teamNet.server) return teamNet.server.select(table, _token, query);
       if (table !== 'org_vault_notes') return [];
@@ -504,6 +513,7 @@ function reset() {
   teamNet.settings = undefined;
   teamNet.settingsPuts = [];
   teamNet.server = undefined;
+  teamNet.memberOf = undefined;
   teamToken = 'tok';
   auth.refresh = undefined;
   auth.nextUser = { id: 'u1', email: 'me@example.com' };
@@ -5629,6 +5639,126 @@ describe('round 7, batch 2: team text and names stay where they belong', () => {
       await st().signIn('me@example.com', 'pw');
       expect(st().vaultScope).toBe('team');
       expect(st().vaultNote?.path).toBe('Plan.md');
+    });
+  });
+  describe("E13: a team's remembered folders and Recent belong to the account", () => {
+    async function u1Leaves() {
+      perCaller(server, { members: ['u1', 'u2'] });
+      useStoreToken();
+      server.put('Offer letter - Dana.md', 'x', 'u9');
+      await st().vaultRefresh();
+      await tick();
+      expect(await st().vaultCreateFolder('Layoffs Q4')).toEqual({ ok: true, path: 'Layoffs Q4' });
+      await st().vaultOpen('Offer letter - Dana.md');
+      await tick();
+      expect(
+        st()
+          .vaultRecentRing()
+          .map((r) => r.path),
+      ).toEqual(['Offer letter - Dana.md']);
+      await st().signOutAccount();
+    }
+
+    it("u1's empty team folders and Recent never show to u2 after a sign-out", async () => {
+      await u1Leaves();
+      expect(JSON.stringify(st().settings.vaultEmptyFolders ?? {})).not.toContain('Layoffs Q4');
+      expect(JSON.stringify(st().settings.vaultRecent ?? {})).not.toContain('Offer letter');
+      auth.nextUser = U2;
+      await st().signIn('b@example.com', 'pw');
+      await st().setVaultScope('team');
+      await tick();
+      expect(st().vaultScope).toBe('team');
+      expect(st().vaultFolders ?? []).not.toContain('Layoffs Q4');
+      expect(st().vaultRecentRing()).toEqual([]);
+    });
+
+    it('an account that is not a member of the org on this device gets no team vault', async () => {
+      perCaller(server, { members: ['u1'] });
+      teamNet.memberOf = { u1: [ORG], u2: ['org-other'] };
+      useStoreToken();
+      await st().vaultRefresh();
+      await st().vaultCreateFolder('Layoffs Q4');
+      await st().signOutAccount();
+      auth.nextUser = U2;
+      await st().signIn('b@example.com', 'pw');
+      const avail = st().teamVaultAvailable();
+      await st().setVaultScope('team');
+      await tick();
+      expect({ avail, scope: st().vaultScope, folders: st().vaultFolders ?? [] }).toEqual({
+        avail: false,
+        scope: 'personal',
+        folders: [],
+      });
+    });
+
+    it('a member of the org on this device still gets it', async () => {
+      teamNet.memberOf = { u1: [ORG] };
+      await st().refreshOrgRole();
+      expect(st().serverRole).toBe('member');
+      expect(st().teamVaultAvailable()).toBe(true);
+    });
+
+    it("an expiry keeps the account's own folders and Recent for its return", async () => {
+      perCaller(server, { members: ['u1', 'u2'] });
+      useStoreToken();
+      server.put('Offer letter - Dana.md', 'x', 'u9');
+      await st().vaultRefresh();
+      await st().vaultCreateFolder('Layoffs Q4');
+      await st().vaultOpen('Offer letter - Dana.md');
+      await tick();
+      useApp.setState({ authSession: session(auth.nextUser, -1000) });
+      auth.refresh = new SupabaseRequestError('invalid grant', 400);
+      await st().refreshOrgRole();
+      auth.refresh = undefined;
+      expect(st().vaultTeamExpired).toBe(true);
+      st().vaultCloseNote();
+      await st().signIn('me@example.com', 'pw');
+      await st().setVaultScope('team');
+      await tick();
+      expect(st().vaultFolders ?? []).toContain('Layoffs Q4');
+      expect(
+        st()
+          .vaultRecentRing()
+          .map((r) => r.path),
+      ).toEqual(['Offer letter - Dana.md']);
+    });
+
+    it("an expiry followed by another account shows none of the first account's", async () => {
+      perCaller(server, { members: ['u1', 'u2'] });
+      useStoreToken();
+      server.put('Offer letter - Dana.md', 'x', 'u9');
+      await st().vaultRefresh();
+      await st().vaultCreateFolder('Layoffs Q4');
+      await st().vaultOpen('Offer letter - Dana.md');
+      await tick();
+      useApp.setState({ authSession: session(auth.nextUser, -1000) });
+      auth.refresh = new SupabaseRequestError('invalid grant', 400);
+      await st().refreshOrgRole();
+      auth.refresh = undefined;
+      auth.nextUser = U2;
+      await st().signIn('b@example.com', 'pw');
+      await st().setVaultScope('team');
+      await tick();
+      expect(st().vaultFolders ?? []).not.toContain('Layoffs Q4');
+      expect(st().vaultRecentRing()).toEqual([]);
+      expect(JSON.stringify(st().settings.vaultEmptyFolders ?? {})).not.toContain('Layoffs Q4');
+      expect(JSON.stringify(st().settings.vaultRecent ?? {})).not.toContain('Offer letter');
+    });
+
+    it('a Recent ring kept from before names no account, so it is dropped at a sign-in', async () => {
+      useApp.setState({
+        settings: {
+          ...st().settings,
+          vaultEmptyFolders: {
+            [`org::${ORG}`]: ['Old team folder'],
+            'local::vault.personal': ['Mine'],
+          },
+          vaultRecent: { [`org::${ORG}`]: [{ path: 'Old.md', at: '2026-09-01T00:00:00.000Z' }] },
+        },
+      });
+      await st().signIn('me@example.com', 'pw');
+      expect(st().settings.vaultEmptyFolders).toEqual({ 'local::vault.personal': ['Mine'] });
+      expect(st().settings.vaultRecent).toBeUndefined();
     });
   });
 });

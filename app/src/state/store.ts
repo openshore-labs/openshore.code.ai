@@ -4573,9 +4573,11 @@ export const useApp = create<AppState>((set, get, api) => {
     if (expired && uid) {
       keptTeamOwner = uid;
       kept = await countTeamDrafts(uid);
+      await forgetTeamMemory(uid);
     } else {
       keptTeamOwner = undefined;
       await forgetTeamVaultDrafts();
+      await forgetTeamMemory();
       // The team index goes with the drafts (M3 3.2): here and where it was kept.
       const orgId = get().settings.account?.org?.serverId;
       if (orgId && uid) await dropVaultIndex({ providerId: 'org', resourceId: orgId, owner: uid });
@@ -6353,8 +6355,36 @@ export const useApp = create<AppState>((set, get, api) => {
     return r.entries;
   }
 
-  /** The key a vault's remembered empty folders sit under. */
+  /** The key a vault's cached settings and Today sit under. */
   const foldersKey = (t: VaultTargetRef) => `${t.providerId}::${t.resourceId}`;
+  /** The key what this device remembers of a vault for the person sits
+   *  under (its empty folders, its Recent ring): the team vault's names the
+   *  account too, so one member's folder names and activity never show to
+   *  another on a shared device (round 7 E13). */
+  const memoryKey = (t: VaultTargetRef) =>
+    t.providerId === 'org' ? `${foldersKey(t)}::${t.owner ?? ''}` : foldersKey(t);
+  /** Drop what this device remembers of team vaults (empty folders, Recent)
+   *  for every account but `keep`: a sign-out drops all of it, an expiry and
+   *  a sign-in keep only that account's. A key from before it named an
+   *  account belongs to nobody, so it goes too. */
+  async function forgetTeamMemory(keep?: string): Promise<void> {
+    const s = get().settings;
+    const others = (k: string) => k.startsWith('org::') && (!keep || k.split('::')[2] !== keep);
+    const trim = <V>(rec: Record<string, V> | undefined) => {
+      if (!rec || !Object.keys(rec).some(others)) return undefined;
+      const kept = Object.fromEntries(Object.entries(rec).filter(([k]) => !others(k)));
+      return { value: Object.keys(kept).length ? kept : undefined };
+    };
+    const folders = trim(s.vaultEmptyFolders);
+    const recent = trim(s.vaultRecent);
+    if (!folders && !recent) return;
+    await get()
+      .saveSettings({
+        ...(folders ? { vaultEmptyFolders: folders.value } : {}),
+        ...(recent ? { vaultRecent: recent.value } : {}),
+      })
+      .catch(() => {});
+  }
 
   /** Rewrite one vault's remembered empty folders. */
   async function editEmptyFolders(
@@ -6362,12 +6392,13 @@ export const useApp = create<AppState>((set, get, api) => {
     edit: (list: string[]) => string[],
   ): Promise<void> {
     const all = get().settings.vaultEmptyFolders ?? {};
-    const before = all[foldersKey(t)] ?? [];
+    const key = memoryKey(t);
+    const before = all[key] ?? [];
     const after = [...new Set(edit(before))].sort();
     if (JSON.stringify(after) === JSON.stringify(before)) return;
     const next = { ...all };
-    if (after.length) next[foldersKey(t)] = after;
-    else delete next[foldersKey(t)];
+    if (after.length) next[key] = after;
+    else delete next[key];
     await get().saveSettings({ vaultEmptyFolders: next });
   }
 
@@ -6382,7 +6413,7 @@ export const useApp = create<AppState>((set, get, api) => {
     const notes = isActiveVault(t) ? get().vaultFiles.map((f) => foldPath(f.path)) : [];
     const holds = (folder: string) => notes.some((p) => p.startsWith(`${foldPath(folder)}/`));
     await editEmptyFolders(t, (list) => list.filter((f) => !holds(f))).catch(() => {});
-    const kept = get().settings.vaultEmptyFolders?.[foldersKey(t)] ?? [];
+    const kept = get().settings.vaultEmptyFolders?.[memoryKey(t)] ?? [];
     if (isActiveVault(t)) set({ vaultFolders: [...new Set([...real, ...kept])].sort() });
   }
 
@@ -6404,7 +6435,7 @@ export const useApp = create<AppState>((set, get, api) => {
     edit: (ring: VaultRecentEntry[]) => VaultRecentEntry[],
   ): Promise<void> {
     const all = get().settings.vaultRecent ?? {};
-    const key = foldersKey(t);
+    const key = memoryKey(t);
     const before = all[key] ?? [];
     const after = edit(before);
     if (JSON.stringify(after) === JSON.stringify(before)) return;
@@ -6416,7 +6447,7 @@ export const useApp = create<AppState>((set, get, api) => {
   /** A note opened or saved here goes to the top of Recent; a save of the
    *  note already on top writes nothing. */
   function noteVaultRecent(t: VaultTargetRef, path: string): void {
-    const ring = get().settings.vaultRecent?.[foldersKey(t)] ?? [];
+    const ring = get().settings.vaultRecent?.[memoryKey(t)] ?? [];
     if (ring[0]?.path === path) return;
     void editVaultRecent(t, (r) => pushVaultRecent(r, path, new Date().toISOString())).catch(
       () => {},
@@ -7369,6 +7400,7 @@ export const useApp = create<AppState>((set, get, api) => {
       Boolean(get().vaultNote);
     keptTeamOwner = undefined;
     await settleTeamVaultDrafts(session.user.id);
+    await forgetTeamMemory(session.user.id);
     if (resume) {
       set({ authSession: session, vaultTeamExpired: undefined });
     } else {
@@ -9677,10 +9709,15 @@ export const useApp = create<AppState>((set, get, api) => {
       try {
         const fresh = await freshAuth();
         if (!fresh) return;
+        // The role in the org this device points at, when it has one: a
+        // membership of any other org opens nothing of this one (round 7
+        // E13), and a join points the device at its org first.
+        const orgId = account?.org?.serverId;
+        const inOrg = orgId ? `&org_id=eq.${encodeURIComponent(orgId)}` : '';
         const rows = await supabaseSelect<{ role: 'admin' | 'member'; status: string }>(
           'org_members',
           fresh.accessToken,
-          `select=role,status&user_id=eq.${fresh.user.id}&status=eq.active`,
+          `select=role,status&user_id=eq.${fresh.user.id}&status=eq.active${inOrg}`,
         );
         const role = rows.find((r) => r.role === 'admin')
           ? 'admin'
@@ -12189,7 +12226,7 @@ export const useApp = create<AppState>((set, get, api) => {
 
     vaultRecentRing() {
       const t = vaultTarget();
-      return t ? (get().settings.vaultRecent?.[foldersKey(t)] ?? []) : [];
+      return t ? (get().settings.vaultRecent?.[memoryKey(t)] ?? []) : [];
     },
 
     async vaultFolderCounts(folder) {
