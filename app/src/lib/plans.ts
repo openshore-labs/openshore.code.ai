@@ -26,11 +26,11 @@ export interface PlanTier {
 // Personal unlock below (lib/payGate.ts).
 export const PERSONAL_TIER: PlanTier = {
   id: 'personal',
-  name: 'Personal',
+  name: 'OpenShore Plus',
   priceYear: 0,
   minEmployees: 1,
   maxEmployees: 1,
-  blurb: 'Personal. Free to chat. For your own work.',
+  blurb: 'Free to chat. Plus lets the agent build on your computer.',
 };
 
 // The individual Personal UNLOCK price per year, in whole US dollars: $50 a

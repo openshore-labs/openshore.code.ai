@@ -379,13 +379,13 @@ export function SettingsScreen() {
   const accountLabel = signedIn
     ? account?.type === 'commercial'
       ? (org?.name ?? 'Company account')
-      : 'Personal account'
+      : 'Your account'
     : 'Sign in';
   const accountValue = signedIn
     ? account?.type === 'commercial' && org
       ? tierById(org.tierId).name
       : PAY_GATES_ENABLED && personalUnlockedNow()
-        ? 'Personal'
+        ? 'Plus'
         : 'Free'
     : 'Optional';
   // Personal's standing on this device, in plain words: free for everyone
@@ -408,7 +408,7 @@ export function SettingsScreen() {
       ? personalUntil
         ? `The coding agent is yours. Renews or ends ${personalUntil}.`
         : 'The coding agent is yours.'
-      : 'Chatting is free. Personal lets the agent build and run routines on your computer.';
+      : 'Chatting is free. Plus lets the agent build and run routines on your computer.';
   // The Personal rows (2026-09-30): an Apple device restores through the App
   // Store and manages its subscription with Apple; the desktop re-reads the
   // account ("I already paid") and manages it in the Stripe portal.
@@ -479,13 +479,13 @@ export function SettingsScreen() {
             value={accountValue}
             onClick={configured ? () => setSheet('account') : undefined}
           />
-          <SettingsRow label="Personal" subWrap sub={personalSub} value={personalValue} />
+          <SettingsRow label="OpenShore Plus" subWrap sub={personalSub} value={personalValue} />
           {PAY_GATES_ENABLED && configured && appleDevice ? (
             <SettingsRow
               label="Restore purchases"
               sub={
                 signedIn
-                  ? 'Bought Personal already? Unlock it on this device.'
+                  ? 'Bought Plus already? Unlock it on this device.'
                   : 'Sign in first, then restore.'
               }
               onClick={() => void restorePurchases()}
@@ -496,7 +496,7 @@ export function SettingsScreen() {
               label="I already paid"
               sub={
                 signedIn
-                  ? 'Bought Personal already? Check your account again.'
+                  ? 'Bought Plus already? Check your account again.'
                   : 'Sign in with the email you paid with.'
               }
               onClick={() => void recheckPersonal()}

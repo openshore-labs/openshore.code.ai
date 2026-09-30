@@ -4638,7 +4638,9 @@ export const useApp = create<AppState>((set, get, api) => {
         const wasUnlocked = get().personalUnlockedNow();
         await get().refreshEntitlement();
         if (!wasUnlocked && get().personalUnlockedNow()) {
-          afterPersonalUnlocked('Apple completed your purchase. Personal is unlocked.');
+          afterPersonalUnlocked(
+            'Apple completed your purchase. Plus is on. The agent can build on your computer.',
+          );
         }
       })().catch(() => {});
     };
@@ -7842,7 +7844,7 @@ export const useApp = create<AppState>((set, get, api) => {
     async buyPersonal() {
       // Buying requires an account to attach the entitlement to.
       if (!authConfigured() || !get().authSession) {
-        get().showToast('Sign in first to unlock Personal.');
+        get().showToast('Sign in first to get Plus.');
         return;
       }
       // iOS: Apple In-App Purchase (Apple 3.1.1). Never open web checkout in the
@@ -7862,7 +7864,7 @@ export const useApp = create<AppState>((set, get, api) => {
           // Ask to Buy, or a payment that needs another step: Apple finishes it
           // later and Restore (or the next launch) picks it up.
           get().showToast(
-            'Waiting for approval. Personal unlocks as soon as Apple completes the purchase.',
+            'Waiting for approval. Plus turns on as soon as Apple completes the purchase.',
           );
           return;
         }
@@ -7891,7 +7893,7 @@ export const useApp = create<AppState>((set, get, api) => {
         }
         await get().refreshEntitlement();
         if (get().personalUnlockedNow()) {
-          afterPersonalUnlocked("You're Personal. The coding agent is unlocked.");
+          afterPersonalUnlocked('Plus is on. The agent can build on your computer.');
         }
         return;
       }
@@ -7906,7 +7908,7 @@ export const useApp = create<AppState>((set, get, api) => {
         token = undefined;
       }
       if (!token) {
-        get().showToast('Sign in again, then buy Personal.');
+        get().showToast('Sign in again, then get Plus.');
         return;
       }
       const outcome = await startWebCheckout({
@@ -7922,8 +7924,8 @@ export const useApp = create<AppState>((set, get, api) => {
       lastEntitlementForegroundAt = 0;
       get().showToast(
         outcome.kind === 'manage'
-          ? 'You already have Personal. Your subscription opened in the browser.'
-          : 'Checkout opened in your browser. Personal unlocks here when you finish.',
+          ? 'You already have Plus. Your subscription opened in the browser.'
+          : 'Checkout opened in your browser. Plus turns on here when you finish.',
       );
     },
 
@@ -7938,11 +7940,11 @@ export const useApp = create<AppState>((set, get, api) => {
         return;
       }
       if (get().personalUnlockedNow()) {
-        afterPersonalUnlocked('Personal is unlocked. Welcome.');
+        afterPersonalUnlocked('Plus is on. The agent can build on your computer.');
         return;
       }
       get().showToast(
-        'No Personal subscription on this account yet. A payment can take a minute to land.',
+        'No Plus subscription on this account yet. A payment can take a minute to land.',
       );
     },
 
@@ -8001,7 +8003,7 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       await get().refreshEntitlement();
       if (get().personalUnlockedNow()) {
-        afterPersonalUnlocked('Personal restored.');
+        afterPersonalUnlocked('Plus restored. The agent can build on your computer.');
       } else if (restoreError) {
         get().showToast(restoreError);
       } else if (linkFailed) {
@@ -9379,7 +9381,9 @@ export const useApp = create<AppState>((set, get, api) => {
       // first, whatever the gate says (UI-10).
       if (await retryPendingAppleLink()) {
         await get().refreshEntitlement();
-        afterPersonalUnlocked('Your purchase is linked. Personal is unlocked.');
+        afterPersonalUnlocked(
+          'Your purchase is linked. Plus is on. The agent can build on your computer.',
+        );
         return;
       }
       // Already unlocked: nothing to reconcile.
@@ -9389,7 +9393,7 @@ export const useApp = create<AppState>((set, get, api) => {
       lastEntitlementForegroundAt = now;
       await get().refreshEntitlement();
       if (get().personalUnlockedNow()) {
-        afterPersonalUnlocked('Personal is unlocked. Welcome.');
+        afterPersonalUnlocked('Plus is on. The agent can build on your computer.');
       }
     },
 
@@ -9397,7 +9401,7 @@ export const useApp = create<AppState>((set, get, api) => {
       if (!authConfigured() || !get().authSession) return;
       await get().refreshEntitlement();
       if (get().personalUnlockedNow()) {
-        afterPersonalUnlocked('Personal is unlocked. Welcome.');
+        afterPersonalUnlocked('Plus is on. The agent can build on your computer.');
       } else {
         get().showToast('Payment received. Your unlock will appear shortly.');
       }

@@ -254,7 +254,8 @@ main's function deployed, both 2026-09-30 (`docs/vault-gate1-runbook.md` 7.4). T
 address is one constant, `SUPPORT_EMAIL` (support@openshore.ai, founder F1
 2026-09-30), and `app/test/contactAddress.test.ts` holds 0022's ladder and
 the Terms to it.
-The Personal paid gate (CTO, CFO, CX, 2026-09-30): only coding, building
+The paid gate (CTO, CFO, CX, 2026-09-30; sold as OpenShore Plus, never
+"Personal", in customer copy): only coding, building
 and agentic work is paid, on actions, never rooms (starting or reattaching a
 coding session, the sample project, making, editing or running a routine),
 after the sign-in; every chat and everything else stays free. Every account

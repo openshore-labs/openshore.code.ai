@@ -3343,3 +3343,21 @@ execution contract. Newest at the bottom.
   against the Board's (100/250/500/1000) and are deliberately left alone
   until the v4 tier opens; that session sets them, with a new Stripe price
   object per band.
+- 2026-09-30: **The paid plan is called OpenShore Plus (CMO and Creative
+  Studio, at the founder's ask).** "No need to call it personal in customer
+  copy." Weighed Premium (clashes with the site's free "Premium by default"
+  promise), house water names (unclear in a subscription list), and the
+  founder's "OpenShore Code" (names the app, not a plan, so it reads as "the
+  app costs money"; "Code" leaves out routines and tells non-developers it is
+  for programmers; looks like a second app in the App Store; no clean team
+  name above it). Plus reads as "more than free", and "OpenShore Team" can
+  sit above it in v4. Customer words: App Store subscription and group
+  "OpenShore Plus" (1 year), Stripe product "OpenShore Plus" with price
+  nickname "Yearly" and statement descriptor "OPENSHORE PLUS"; buttons "Get
+  Plus" (not "Start": there is no trial) and "Renew Plus"; lapsed headline
+  "Your Plus year has ended."; the Settings row "OpenShore Plus" (Active, Not
+  yet); badge "Plus"; unlock toast "Plus is on. The agent can build on your
+  computer."; the signed-in account row reads "Your account". Internal names
+  stay: the v1 release tier is still Personal, and `personal` ids, the
+  product id `ai.openshore.oscode.personal.yearly`, `STRIPE_PRICE_PERSONAL`,
+  `buyPersonal` and friends are unseen and unchanged.

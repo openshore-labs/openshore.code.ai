@@ -24,18 +24,18 @@ describe('the paywall', () => {
     expect(paywall).toContain('products([PERSONAL_YEARLY_PRODUCT_ID])');
     const withPrice = paywallMoney(true, true, '$49.99');
     expect(withPrice.priceLine).toBe('$49.99 per year. Renews yearly.');
-    expect(withPrice.buy).toBe('Start Personal');
+    expect(withPrice.buy).toBe('Get Plus');
     const noPrice = paywallMoney(true, true, undefined);
     expect(noPrice.priceLine).toBe('Renews yearly. See the price in the App Store.');
-    expect(noPrice.buy).toBe('Start Personal');
+    expect(noPrice.buy).toBe('Get Plus');
     // The desktop and the web buy through Stripe at the one web price.
     const web = paywallMoney(true, false, undefined);
     expect(web.priceLine).toBe('$49.99 a year. Renews yearly.');
-    expect(web.buy).toBe('Start Personal');
+    expect(web.buy).toBe('Get Plus');
     expect(web.renewal).toBe(WEB_RENEWAL_LINE);
     // A lapsed subscriber renews.
-    expect(paywallMoney(true, false, undefined, true).buy).toBe('Renew Personal');
-    expect(paywallMoney(true, true, '$49.99', true).buy).toBe('Renew Personal');
+    expect(paywallMoney(true, false, undefined, true).buy).toBe('Renew Plus');
+    expect(paywallMoney(true, true, '$49.99', true).buy).toBe('Renew Plus');
   });
 
   it('says it renews and where to cancel, under the price', () => {
@@ -62,7 +62,7 @@ describe('the paywall', () => {
   });
 
   it('says buying needs an account when signed out', () => {
-    expect(paywall).toContain('Buying Personal does');
+    expect(paywall).toContain('Buying Plus does');
   });
 });
 
@@ -84,8 +84,8 @@ describe('accounts, said plainly', () => {
 describe('Settings', () => {
   const settings = read('src', 'screens', 'SettingsScreen.tsx');
 
-  it('shows Personal and offers Restore', () => {
-    expect(settings).toContain('<SettingsRow label="Personal"');
+  it('shows OpenShore Plus and offers Restore', () => {
+    expect(settings).toContain('<SettingsRow label="OpenShore Plus"');
     expect(settings).toContain('label="Restore purchases"');
     expect(settings).toContain("'Free in the beta'");
   });

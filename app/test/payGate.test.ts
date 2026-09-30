@@ -218,7 +218,7 @@ describe('Apple', () => {
 
   it('says what a restore that found nothing means', () => {
     expect(RESTORE_FOUND_NOTHING).toBe(
-      'No Personal purchase on this Apple Account. Bought on the web? Sign in with that email.',
+      'No Plus purchase on this Apple Account. Bought on the web? Sign in with that email.',
     );
   });
 });
@@ -243,7 +243,7 @@ describe("the paywall's App Store branch", () => {
   it('carries no "buy on your computer" line anywhere, and CX\'s words', () => {
     expect(paywall).not.toMatch(/on your computer, then|Bought on your iPhone|buy it there/i);
     expect(paywall).toContain("'Let OpenShore build it.'");
-    expect(paywall).toContain("'Your Personal year has ended.'");
+    expect(paywall).toContain("'Your Plus year has ended.'");
     expect(paywall).toContain('Not now. Keep chatting.');
     expect(paywall).toContain('I already paid');
     expect(paywall).toContain(

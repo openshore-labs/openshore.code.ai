@@ -97,7 +97,7 @@ export function paywallReasonFor(feature: AccountFeature): PaywallReason {
  *  message waiting to go opens the paywall instead, and stays parked. */
 export class PaywallLockedError extends Error {
   constructor() {
-    super('The coding agent is part of Personal.');
+    super('The coding agent is part of OpenShore Plus.');
     this.name = 'PaywallLockedError';
   }
 }
@@ -131,7 +131,7 @@ export const APPLE_SUBSCRIPTIONS_URL = 'https://apps.apple.com/account/subscript
 
 /** Restore on an Apple device that found nothing to link. */
 export const RESTORE_FOUND_NOTHING =
-  'No Personal purchase on this Apple Account. Bought on the web? Sign in with that email.';
+  'No Plus purchase on this Apple Account. Bought on the web? Sign in with that email.';
 
 export type WebCheckoutOutcome =
   | { kind: 'opened'; url: string }

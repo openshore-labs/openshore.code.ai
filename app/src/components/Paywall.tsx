@@ -28,9 +28,9 @@ export const TERMS_URL = 'https://openshore.ai/terms/';
 export const PRIVACY_URL = 'https://openshore.ai/privacy/';
 
 export const PAYWALL_HEADLINE = 'Let OpenShore build it.';
-export const PAYWALL_LAPSED_HEADLINE = 'Your Personal year has ended.';
+export const PAYWALL_LAPSED_HEADLINE = 'Your Plus year has ended.';
 export const PAYWALL_BODY =
-  'Chatting stays free. Personal lets the agent work on your computer: it reads your project, makes real changes you approve, and runs routines while your computer is on.';
+  'Chatting stays free. Plus lets the agent work on your computer: it reads your project, makes real changes you approve, and runs routines while your computer is on.';
 
 // CX's second bullet names where a routine's note really lands (the Vault
 // copy rule, lib/vaultCopy.ts): the vault folder on the computer.
@@ -58,7 +58,7 @@ export function paywallMoney(
   lapsed = false,
 ): { priceLine: string | null; renewal: string | null; buy: string | null } {
   if (!gates) return { priceLine: null, renewal: null, buy: null };
-  const buy = lapsed ? 'Renew Personal' : 'Start Personal';
+  const buy = lapsed ? 'Renew Plus' : 'Get Plus';
   if (ios) {
     return {
       priceLine: storePrice
@@ -147,7 +147,7 @@ export function Paywall() {
   // the paywall closes the way every other sheet does.
   return (
     <Sheet open={Boolean(reason)} onClose={closePaywall}>
-      <span className="approval-badge tool">Personal</span>
+      <span className="approval-badge tool">Plus</span>
       <SheetTitle>{headline}</SheetTitle>
       <p className="sheet-sub">{PAYWALL_BODY}</p>
       <ul className="paywall-benefits">
@@ -159,8 +159,8 @@ export function Paywall() {
       {renewal ? <p className="sheet-sub">{renewal}</p> : null}
       {!signedIn ? (
         <p className="sheet-sub">
-          Chatting needs no account. Buying Personal does, so it follows you to every device you
-          sign in on.
+          Chatting needs no account. Buying Plus does, so it follows you to every device you sign in
+          on.
         </p>
       ) : null}
       <div className="sheet-actions">
