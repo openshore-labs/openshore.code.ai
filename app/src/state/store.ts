@@ -5014,6 +5014,105 @@ export const useApp = create<AppState>((set, get, api) => {
     return run;
   }
 
+  // Words on their way to a storage across the network (the team vault, your
+  // computer), written to the sealed store before each save goes out and
+  // removed once it settles, so a page iOS suspends and reclaims, or a tab
+  // closed, while the write is out never takes the last words with it (round
+  // 7 E17). Kept apart from the stash, which holds only text still to save:
+  // the save chip, the replay and the one-entry-per-note rule never see
+  // these while their save runs. What a launch that ended left here goes to
+  // the stash on the next refresh (recoverVaultInflight) and replays at the
+  // version it was typed on, landing, or settling if it had landed.
+  const VAULT_INFLIGHT_KEY = 'oscode.vault.inflight';
+  // This launch's entries whose save is still running.
+  const liveInflight = new Set<string>();
+  let vaultInflightChain: Promise<unknown> = Promise.resolve();
+  function editVaultInflight<T>(edit: (p: VaultPending) => T): Promise<T> {
+    const run = vaultInflightChain.then(async () => {
+      const p = (await storeGetJson<VaultPending>(VAULT_INFLIGHT_KEY)) ?? {};
+      const before = JSON.stringify(p);
+      const out = edit(p);
+      if (JSON.stringify(p) !== before) {
+        if (Object.keys(p).length === 0) await storeDelete(VAULT_INFLIGHT_KEY);
+        else await storeSetJson(VAULT_INFLIGHT_KEY, p);
+      }
+      return out;
+    });
+    vaultInflightChain = run.catch(() => {});
+    return run;
+  }
+  /** Whether a storage's writes cross the network, so a save writes ahead. */
+  const writesAhead = (t: VaultTargetRef) => t.providerId === 'org' || t.providerId === 'hub';
+  // Put a save's words on the device before it goes out. Resolves to the
+  // entry's id, or undefined when the sealed store did not take them (the
+  // save still goes, as before).
+  async function writeAhead(
+    t: VaultTargetRef,
+    path: string,
+    text: string,
+    base: string | undefined,
+    sitting: number | undefined,
+    mark: string,
+  ): Promise<string | undefined> {
+    const id = `${vaultKey(t, path)}@${mark}`;
+    liveInflight.add(id);
+    try {
+      await editVaultInflight((p) => {
+        p[id] = pendingEntry(t, path, text, base, { sitting, at: mark });
+      });
+      return id;
+    } catch {
+      liveInflight.delete(id);
+      return undefined;
+    }
+  }
+  // The version a save is sent against, once its turn comes (a save queued
+  // behind another learns it only then), so a relaunch replays it there.
+  async function restampAhead(id: string, base: string | undefined): Promise<void> {
+    await editVaultInflight((p) => {
+      const e = p[id];
+      if (!e || e.base === base) return;
+      const { base: _was, ...rest } = e;
+      p[id] = base ? { ...rest, base } : rest;
+    }).catch(() => {});
+  }
+  // A save settled: its words landed, or the save put them in the stash or
+  // under Not saved. One that ended some other way (it threw) leaves them in
+  // the stash instead, never nowhere.
+  async function settleAhead(id: string, ended: boolean): Promise<void> {
+    const e = await editVaultInflight((p) => {
+      const out = p[id];
+      delete p[id];
+      return out;
+    }).catch(() => undefined);
+    liveInflight.delete(id);
+    if (!ended && e) {
+      await stashDraft(e, e.path, e.text, e.base, { sitting: e.sitting, mark: e.at }).catch(
+        () => {},
+      );
+    }
+  }
+  // Words a launch that ended left on their way go to the stash, oldest
+  // first, for the replay; team words only while their account is signed in
+  // (the rest wait sealed for it, or leave with a sign-out or another sign-in).
+  async function recoverVaultInflight(): Promise<void> {
+    const left = await editVaultInflight((p) => {
+      const out: VaultPendingEntry[] = [];
+      for (const [id, e] of Object.entries(p)) {
+        if (liveInflight.has(id) || !e || typeof e.text !== 'string') continue;
+        if (!speaksNow(e)) continue;
+        out.push(e);
+        delete p[id];
+      }
+      return out.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+    }).catch(() => [] as VaultPendingEntry[]);
+    for (const e of left) {
+      await stashDraft(e, e.path, e.text, e.base, { sitting: e.sitting, mark: e.at }).catch(
+        () => {},
+      );
+    }
+  }
+
   // The "Not saved" list: text no vault took and nothing will retry. State is
   // what the screen shows; the sealed store keeps the durable copy, loaded
   // once per launch (vaultRefresh) and edited in step with state. Only the
@@ -7468,6 +7567,9 @@ export const useApp = create<AppState>((set, get, api) => {
     await editVaultPending((p) => {
       for (const [key, e] of Object.entries(p)) if (e.providerId === 'org') delete p[key];
     }).catch(() => {});
+    await editVaultInflight((p) => {
+      for (const [id, e] of Object.entries(p)) if (e.providerId === 'org') delete p[id];
+    }).catch(() => {});
     await editVaultHeld((list) => list.filter((h) => h.providerId !== 'org')).catch(() => {});
   }
 
@@ -7480,19 +7582,30 @@ export const useApp = create<AppState>((set, get, api) => {
         if (e.providerId === 'org' && e.owner !== uid) delete p[key];
       }
     }).catch(() => {});
+    await editVaultInflight((p) => {
+      for (const [id, e] of Object.entries(p)) {
+        if (e.providerId === 'org' && e.owner !== uid) delete p[id];
+      }
+    }).catch(() => {});
     await editVaultHeld((list) =>
       list.filter((h) => h.providerId !== 'org' || h.owner === uid),
     ).catch(() => {});
   }
 
-  // How many unsent team drafts (stashed or held) an account has on this
-  // device, for the expiry line and the sign-out ask.
+  // How many unsent team drafts (stashed, on their way, or held) an account
+  // has on this device, for the expiry line and the sign-out ask: a note
+  // counts once however many of its saves are out.
   async function countTeamDrafts(uid: string): Promise<number> {
-    const stashed = await editVaultPending(
-      (p) => Object.values(p).filter((e) => e.providerId === 'org' && e.owner === uid).length,
-    ).catch(() => 0);
+    const mine = (e: VaultPendingEntry) => e.providerId === 'org' && e.owner === uid;
+    const stashed = await editVaultPending((p) => Object.values(p).filter(mine)).catch(
+      () => [] as VaultPendingEntry[],
+    );
+    const out = await editVaultInflight((p) => Object.values(p).filter(mine)).catch(
+      () => [] as VaultPendingEntry[],
+    );
+    const notes = new Set([...stashed, ...out].map((e) => vaultKey(e, e.path)));
     const held = get().vaultHeld.filter((h) => h.providerId === 'org' && h.owner === uid);
-    return stashed + held.length;
+    return notes.size + held.length;
   }
 
   // verified email, claim any invited org seat, and read the server role.
@@ -11040,7 +11153,9 @@ export const useApp = create<AppState>((set, get, api) => {
       // it simply points at the folder (CX 1.3 b).
       if (await repointEmptyLocal(target, files)) return;
       // The list came back, so the provider is reachable: flush any drafts
-      // stranded by an earlier offline write.
+      // stranded by an earlier offline write, and any words a launch that
+      // ended left on their way (E17).
+      await recoverVaultInflight();
       await replayVaultPending(target);
     },
 
@@ -11545,26 +11660,45 @@ export const useApp = create<AppState>((set, get, api) => {
       // this save was asked for, so it never settles a newer stash (E10).
       const session = open?.path === path ? open.loadedAt : undefined;
       const mark = nextStashAt();
+      // Across the network the words go on the device first, at once, even
+      // for a save queued behind a hung one, and stay until it settles (E17).
+      const ahead =
+        writesAhead(target) && speaksNow(target) && !vaultReadOnlyReason(target.providerId)
+          ? writeAhead(target, path, text, called, session, mark)
+          : undefined;
       const before = vaultSaveChains.get(key);
       const run = (async () => {
-        const carried = before ? await before : undefined;
-        // The version this text was typed on: the open note's while it is
-        // still the sitting the text came from; once the note was opened
-        // again, what this device last knew of that sitting (E3).
-        const now = isActiveVault(target) ? get().vaultNote : undefined;
-        const same = now?.path === path && now.loadedAt === session;
-        const base = same ? (vaultBaseOf(target, path) ?? carried ?? called) : (carried ?? called);
-        // The text at that version, as this device knows it now (E4).
-        const cached = vaultBodyCache.get(key);
-        const baseText =
-          base === undefined
-            ? undefined
-            : same && now && versionOf(now) === base
-              ? now.text
-              : cached?.version === base
-                ? cached.text
-                : undefined;
-        return saveVaultNote(target, path, text, base, { session, baseText, mark });
+        const aheadId = ahead ? await ahead : undefined;
+        let ended = false;
+        try {
+          const carried = before ? await before : undefined;
+          // The version this text was typed on: the open note's while it is
+          // still the sitting the text came from; once the note was opened
+          // again, what this device last knew of that sitting (E3).
+          const now = isActiveVault(target) ? get().vaultNote : undefined;
+          const same = now?.path === path && now.loadedAt === session;
+          const base = same
+            ? (vaultBaseOf(target, path) ?? carried ?? called)
+            : (carried ?? called);
+          // The text at that version, as this device knows it now (E4).
+          const cached = vaultBodyCache.get(key);
+          const baseText =
+            base === undefined
+              ? undefined
+              : same && now && versionOf(now) === base
+                ? now.text
+                : cached?.version === base
+                  ? cached.text
+                  : undefined;
+          if (aheadId && base !== called) await restampAhead(aheadId, base);
+          const out = await saveVaultNote(target, path, text, base, { session, baseText, mark });
+          ended = true;
+          return out;
+        } finally {
+          // Landed, or kept in the stash or under Not saved: the words on
+          // their way are settled (E17).
+          if (aheadId) await settleAhead(aheadId, ended);
+        }
       })();
       const link = run.catch(() => undefined);
       vaultSaveChains.set(key, link);

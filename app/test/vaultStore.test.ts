@@ -5978,4 +5978,188 @@ describe('round 7, batch 2: team text and names stay where they belong', () => {
       expect([...local.files.values()]).toContain('A, and yesterday offline');
     });
   });
+  describe('E17: team words are on the device until the team has them', () => {
+    // Whether the sealed store holds the words anywhere the vault keeps text
+    // (the stash, the words on their way, Not saved).
+    const sealedHas = (words: string) =>
+      [...mem.entries()].some(([k, v]) => k.startsWith('oscode.vault.') && v.includes(words));
+    const INFLIGHT = 'oscode.vault.inflight';
+
+    it('a save on its way keeps its words on the device until the team answers', async () => {
+      server.put('n.md', 'A', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      const at = st().vaultTargetRef();
+      const g = gateWrites(server);
+      const words = 'A, and the last words before iOS froze the page';
+      const save = st().vaultSave('n.md', words, at);
+      await vi.waitFor(() => expect(g.seen).toBe(1));
+      const onDevice = sealedHas(words);
+      g.on = false;
+      g.open.resolve();
+      await save;
+      expect(onDevice).toBe(true);
+      expect(server.bytes('n.md')).toBe(words);
+      expect(sealedHas(words)).toBe(false);
+      expect(pending()).toEqual({});
+      expect(mem.has(INFLIGHT)).toBe(false);
+      expect([...server.notes.values()].filter((n) => !n.deleted)).toHaveLength(1);
+    });
+
+    it('saves queued behind a hung write are each on the device at once', async () => {
+      server.put('n.md', 'A', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      const g = gateWrites(server);
+      const first = st().vaultSave('n.md', 'A1');
+      await vi.waitFor(() => expect(g.seen).toBe(1));
+      const second = st().vaultSave('n.md', 'A1 A2');
+      const third = st().vaultSave('n.md', 'A1 A2 A3');
+      await tick();
+      await tick();
+      expect(sealedHas('A1 A2 A3')).toBe(true);
+      g.on = false;
+      g.open.resolve();
+      await Promise.all([first, second, third]);
+      expect(server.bytes('n.md')).toBe('A1 A2 A3');
+      expect(mem.has(INFLIGHT)).toBe(false);
+      expect(pending()).toEqual({});
+      expect([...server.notes.values()].filter((n) => !n.deleted)).toHaveLength(1);
+    });
+
+    it("a closed note's keep-both copy keeps its words on the device while it is written", async () => {
+      server.put('n.md', 'A', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      const rpc = server.rpc.bind(server);
+      const first = deferred();
+      const copyGate = deferred();
+      let writes = 0;
+      let copyHeld = false;
+      server.rpc = async (fn, token, args) => {
+        if (fn === 'org_vault_write') {
+          writes++;
+          if (writes === 1) await first.promise;
+          if (args.p_if_absent) {
+            copyHeld = true;
+            await copyGate.promise;
+          }
+        }
+        return rpc(fn, token, args);
+      };
+      const words = 'A, and words for a note I left';
+      const save = st().vaultSave('n.md', words);
+      await vi.waitFor(() => expect(writes).toBe(1));
+      st().vaultCloseNote();
+      server.put('n.md', 'A, and a teammate');
+      first.resolve();
+      await vi.waitFor(() => expect(copyHeld).toBe(true));
+      const onDevice = sealedHas(words);
+      copyGate.resolve();
+      await save;
+      expect(onDevice).toBe(true);
+      const copies = [...server.notes.values()].filter(
+        (n) => !n.deleted && conflictCopy('n').test(n.path),
+      );
+      expect(copies.map((n) => n.body)).toEqual([words]);
+      expect(sealedHas(words)).toBe(false);
+    });
+
+    it('after a relaunch, words that never landed land, with no copy', async () => {
+      server.put('n.md', 'A', 'u1');
+      const rev = String(server.notes.get('n.md')!.rev);
+      mem.set(
+        INFLIGHT,
+        JSON.stringify({
+          [`org::${ORG}::n.md@2026-09-30T00:00:00.000Z`]: {
+            providerId: 'org',
+            resourceId: ORG,
+            owner: 'u1',
+            path: 'n.md',
+            text: 'A, then the app was killed',
+            base: rev,
+            at: '2026-09-30T00:00:00.000Z',
+          },
+        }),
+      );
+      await st().vaultRefresh();
+      expect(server.bytes('n.md')).toBe('A, then the app was killed');
+      expect([...server.notes.values()].filter((n) => !n.deleted)).toHaveLength(1);
+      expect(mem.has(INFLIGHT)).toBe(false);
+      expect(pending()).toEqual({});
+    });
+
+    it('after a relaunch, words that had landed settle with no copy', async () => {
+      server.put('n.md', 'A', 'u1');
+      const rev = String(server.notes.get('n.md')!.rev);
+      server.put('n.md', 'A, and it landed', 'u1');
+      mem.set(
+        INFLIGHT,
+        JSON.stringify({
+          [`org::${ORG}::n.md@2026-09-30T00:00:00.000Z`]: {
+            providerId: 'org',
+            resourceId: ORG,
+            owner: 'u1',
+            path: 'n.md',
+            text: 'A, and it landed',
+            base: rev,
+            at: '2026-09-30T00:00:00.000Z',
+          },
+        }),
+      );
+      await st().vaultRefresh();
+      expect(server.bytes('n.md')).toBe('A, and it landed');
+      expect([...server.notes.values()].filter((n) => !n.deleted)).toHaveLength(1);
+      expect(mem.has(INFLIGHT)).toBe(false);
+      expect(teamHeld()).toEqual([]);
+    });
+
+    it("another account's words on their way never replay, and a sign-out wipes them", async () => {
+      mem.set(
+        INFLIGHT,
+        JSON.stringify({
+          [`org::${ORG}::n.md@2026-09-30T00:00:00.000Z`]: {
+            providerId: 'org',
+            resourceId: ORG,
+            owner: 'u9',
+            path: 'n.md',
+            text: 'u9 words',
+            at: '2026-09-30T00:00:00.000Z',
+          },
+        }),
+      );
+      await st().vaultRefresh();
+      expect(server.bytes('n.md')).toBeUndefined();
+      expect(await st().unsentTeamTextCount()).toBe(0);
+      await st().signOutAccount();
+      expect(sealedHas('u9 words')).toBe(false);
+    });
+
+    it('a sign-out while a save is on its way counts it, and wipes it', async () => {
+      server.put('n.md', 'A', 'u1');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      const g = gateWrites(server);
+      const save = st().vaultSave('n.md', 'A, and unsent words');
+      await vi.waitFor(() => expect(g.seen).toBe(1));
+      expect(await st().unsentTeamTextCount()).toBe(1);
+      await st().signOutAccount();
+      expect(sealedHas('unsent words')).toBe(false);
+      g.on = false;
+      g.open.resolve();
+      await save;
+      expect(sealedHas('unsent words')).toBe(false);
+    });
+
+    it('a personal folder save writes nothing ahead', async () => {
+      reset();
+      useApp.setState({ settings: { ...st().settings, gitosResources: personalOn('files') } });
+      folder.files.set('n.md', 'A');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      await st().vaultSave('n.md', 'A, on the folder');
+      expect(folder.files.get('n.md')).toBe('A, on the folder');
+      expect(mem.has(INFLIGHT)).toBe(false);
+    });
+  });
 });
