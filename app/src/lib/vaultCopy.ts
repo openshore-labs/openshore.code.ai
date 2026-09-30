@@ -2784,6 +2784,13 @@ export function vaultFolderMoveTaken(o: {
     : `"${o.old}" was not moved. "${o.name}" is already in ${where}. ${fix}`;
 }
 
+/** A folder's move that found nothing left to move (round 7 E25): its notes
+ *  were moved or deleted somewhere else since the list, so nothing was
+ *  renamed. Trying again cannot help, so it never says to. */
+export function vaultFolderMoveGone(old: string): string {
+  return `"${old}" has no notes left to move. They were moved or deleted somewhere else.`;
+}
+
 /** The team settings sheet (Y14): its title, the lead's link to it, and the
  *  who-may-delete row. */
 export const VAULT_TEAM_SETTINGS_TITLE = 'Team vault settings';

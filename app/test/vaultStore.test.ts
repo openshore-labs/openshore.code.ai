@@ -38,6 +38,7 @@ import {
   VAULT_TEAM_LAPSED_NOT_SAVED,
   VAULT_TEAM_LAPSED_NOT_SAVED_LINE,
   VAULT_GONE_REASON,
+  vaultFolderMoveGone,
   vaultFolderMoveTaken,
   vaultFolderTrashChanged,
   vaultGoneToast,
@@ -8034,6 +8035,111 @@ describe('round 7, batch 4: the team vault says what is there, and what it did',
         whole: true,
       });
       expect(server.bytes('Plan.md')).toBeUndefined();
+    });
+  });
+
+  describe('E25: a folder move moves what is in the folder when it runs, and says so', () => {
+    async function teammateMove(from: string, to: string) {
+      const was = server.caller;
+      server.caller = 'u-teammate';
+      await server.rpc('org_vault_move', 'tok', {
+        p_org: ORG,
+        p_from: from,
+        p_to: to,
+        p_if_match: server.notes.get(from)!.rev,
+      });
+      server.caller = was;
+      server.rpcs.pop();
+    }
+    const live = () =>
+      [...server.notes.values()]
+        .filter((n) => !n.deleted)
+        .map((n) => n.path)
+        .sort();
+    async function move(from = 'Work', to = 'Done', links = false) {
+      const preview = await st().vaultPrepareMove('folder', from, to);
+      if (!preview) throw new Error('no preview');
+      return st().vaultApplyMove(preview, links);
+    }
+
+    it('(a) a note a teammate added since the list moves with the folder', async () => {
+      server.put('Work/a.md', 'a', 'u-me');
+      await st().vaultRefresh();
+      await settledIndex();
+      server.put('Work/new.md', 'theirs, just added');
+      expect(await move()).toMatchObject({ ok: true });
+      expect(server.bytes('Work/new.md')).toBeUndefined();
+      expect(server.bytes('Done/new.md')).toBe('theirs, just added');
+      expect(live()).toEqual(['Done/a.md', 'Done/new.md']);
+      expect(
+        st()
+          .vaultFiles.map((f) => f.path)
+          .sort(),
+      ).toEqual(['Done/a.md', 'Done/new.md']);
+    });
+
+    it('(b) a note a teammate renamed by case follows the folder at its own spelling', async () => {
+      server.put('Work/a.md', 'a', 'u-me');
+      server.put('Work/b.md', 'b', 'u-me');
+      await st().vaultRefresh();
+      await settledIndex();
+      await teammateMove('Work/b.md', 'Work/B.md');
+      expect(await move()).toMatchObject({ ok: true });
+      expect(server.bytes('Work/B.md')).toBeUndefined();
+      expect(live()).toEqual(['Done/B.md', 'Done/a.md']);
+    });
+
+    it('(c) with every note gone, it says so, moves nothing, and is not a rename', async () => {
+      server.put('Work/a.md', 'a', 'u-me');
+      await st().vaultRefresh();
+      await settledIndex();
+      server.drop('Work/a.md');
+      const r = await move();
+      expect(r).toMatchObject({
+        ok: false,
+        reason: 'missing',
+        line: vaultFolderMoveGone('Work'),
+        whole: true,
+      });
+      expect(st().vaultFiles).toEqual([]);
+    });
+
+    it("a teammate's added note meeting a taken name stops there and names it", async () => {
+      server.put('Work/a.md', 'a', 'u-me');
+      server.put('Done/x.md', 'already in Done', 'u-me');
+      await st().vaultRefresh();
+      await settledIndex();
+      server.put('Work/X.md', 'theirs, just added');
+      const r = await move();
+      expect(r).toMatchObject({
+        ok: false,
+        reason: 'partial',
+        line: vaultFolderMoveTaken({
+          old: 'Work',
+          moved: 1,
+          total: 2,
+          name: 'x',
+          folder: 'Done',
+        }),
+      });
+      expect(server.bytes('Work/X.md')).toBe('theirs, just added');
+      expect(server.bytes('Done/x.md')).toBe('already in Done');
+    });
+
+    it('the links report counts only links to notes that moved', async () => {
+      server.put('Work/a.md', 'a', 'u-me');
+      server.put('Work/b.md', 'b', 'u-me');
+      server.put('Home.md', 'See [[Work/a]] and [[Work/b]].', 'u-me');
+      await st().vaultRefresh();
+      await settledIndex();
+      server.drop('Work/a.md');
+      const r = await move('Work', 'Done', true);
+      expect(r).toMatchObject({ ok: true });
+      if (!r?.ok) throw new Error('not ok');
+      expect(r.rewrite).toMatchObject({ updated: 1, total: 1 });
+      // The link to the note that moved is rewritten (its shortest form);
+      // the link to the note already gone is left as written.
+      expect(server.bytes('Home.md')).toBe('See [[Work/a]] and [[b]].');
     });
   });
 

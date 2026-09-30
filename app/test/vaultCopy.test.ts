@@ -1522,6 +1522,16 @@ describe("the team's free space says what 0023 says (the review, finding 1)", ()
     expect(vaultTickUnsaved('t')).not.toMatch(/try again/i);
   });
 
+  it('a folder move with nothing left to move says why, never "try again" (E25)', async () => {
+    const { vaultFolderMoveGone } = await import('../src/lib/vaultCopy.js');
+    const line = vaultFolderMoveGone('Work');
+    expect(line).toBe(
+      '"Work" has no notes left to move. They were moved or deleted somewhere else.',
+    );
+    expect(line).not.toMatch(/try again|renamed/i);
+    expect([...line].some((ch) => [8211, 8212].includes(ch.codePointAt(0)!))).toBe(false);
+  });
+
   it('a note brought back beside its name says why, and a folder says which (E23)', async () => {
     const { vaultRestoredBeside } = await import('../src/lib/vaultCopy.js');
     const inTrash = { from: 'Plan.md', to: 'Plan (restored).md', inTrash: true };

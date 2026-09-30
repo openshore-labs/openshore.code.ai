@@ -295,6 +295,9 @@ export type VaultMoveResult =
        *  the room names it instead of saying "try again" (round 5). */
       stoppedOn?: 'changed' | 'missing' | 'exists' | 'downloading';
       stoppedAt?: string;
+      /** A folder moved note by note: how many notes it set out to move,
+       *  a note found in the folder as it ran included (E25). */
+      notes?: number;
     };
 
 /** The sources for a rewrite plan, from the index only (K4): the backlinks of
@@ -329,13 +332,16 @@ async function planMoves(
   deps: VaultOpsDeps,
   moves: ReadonlyMap<string, string>,
   known: readonly string[],
+  /** Where a source is now, when it moved already (a plan made again after
+   *  a folder's notes moved, E25). */
+  now?: ReadonlyMap<string, string>,
 ): Promise<{ plan: LinkRewritePlan; sources: RewriteSource[] }> {
   const before = buildPathIndex(known);
   const after = buildPathIndex(known.map((p) => moves.get(p) ?? p));
   const reads: LinkRewriteSource[] = [];
   const sources: RewriteSource[] = [];
   for (const path of sourcePaths(deps.index(), moves)) {
-    const file = await deps.provider.read(deps.target.resourceId, path);
+    const file = await deps.provider.read(deps.target.resourceId, now?.get(path) ?? path);
     if (!file) continue;
     reads.push({ path, text: file.text, version: versionOf(file) });
     sources.push({ before: path, after: moves.get(path) ?? path });
@@ -499,41 +505,9 @@ export async function applyMove(
       moved.push({ path: m.to, updatedAt: at, size: 0, version: m.version });
     }
   } else {
-    // No folder rename on this storage (Local): note by note, stopping on
-    // the first failure and saying which moved (K5).
-    for (const [from, to] of preview.moves) {
-      if (!MD_END.test(from)) continue;
-      const r = await attempt(async () => {
-        const meta = await provider.stat(target.resourceId, from);
-        if (!meta) return { ok: false as const, conflict: 'missing' as const };
-        return renameOne(deps, from, to, versionOf(meta));
-      });
-      // Gone since the plan was made (a teammate deleted or moved it, and
-      // the index had not caught up): nothing is left to move and nothing
-      // is lost, so the rest still move (round 5 sweep).
-      if (r.ok && !r.value.ok && r.value.conflict === 'missing') continue;
-      const failed = !r.ok ? 'storage' : !r.value.ok ? r.value.conflict : undefined;
-      if (failed || !r.ok || !r.value.ok) {
-        await settleMoved(deps, preview, moved);
-        if (!r.ok && r.refusal) {
-          return { ok: false, reason: moved.length ? 'partial' : 'storage', moved, ...r.refusal };
-        }
-        // A conflict stopped it: carry which, where, and what is there.
-        if (r.ok && !r.value.ok) {
-          const { conflict, theirs } = r.value;
-          return {
-            ok: false,
-            reason: moved.length ? 'partial' : conflict,
-            moved,
-            stoppedOn: conflict,
-            stoppedAt: to,
-            ...(theirs ? { theirs } : {}),
-          };
-        }
-        return { ok: false, reason: moved.length ? 'partial' : (failed ?? 'storage'), moved };
-      }
-      moved.push(r.value.file);
-    }
+    // No folder rename on this storage (Local, the team vault): note by
+    // note, stopping on the first failure and saying which moved (K5).
+    return moveNoteByNote(deps, preview, opts);
   }
   await settleMoved(deps, preview, moved);
 
@@ -542,6 +516,126 @@ export async function applyMove(
   }
   const rewrite = await rewritePass(deps, preview, moved, opts.onProgress);
   return { ok: true, preview, moved, rewrite, ...(keptBoth ? { keptBoth } : {}) };
+}
+
+/** A folder's move on a storage with no folder rename: the notes the plan
+ *  counted, one by one, then, once, any note still in the folder when they
+ *  have (a teammate's note added since the plan, or one renamed by letter
+ *  case), the way a storage's own folder rename moves whatever is there
+ *  (round 7 E25). A planned note gone since is passed over (round 5 sweep);
+ *  a folder with nothing left to move is `missing`, never a rename. The
+ *  links are planned again for what moved when that is not what the plan
+ *  counted, so the report never counts a link to a note that did not move. */
+async function moveNoteByNote(
+  deps: VaultOpsDeps,
+  preview: VaultMovePreview,
+  opts: { updateLinks: boolean; onProgress?: (i: number, m: number) => void },
+): Promise<VaultMoveResult> {
+  const { provider, target } = deps;
+  const moved: StoredFileMeta[] = [];
+  // Every note this move set out to move, from where it is to where it goes.
+  const moves = new Map(preview.moves);
+  // What actually moved: where each came from, and where it is now.
+  const done = new Map<string, string>();
+  const queue = [...preview.moves].filter(([from]) => MD_END.test(from));
+  const planned = queue.length;
+  let tried = planned;
+  const stop = async (
+    r: Awaited<ReturnType<typeof moveOne>>,
+    to: string,
+  ): Promise<VaultMoveResult> => {
+    await settleMoved(deps, { ...preview, moves }, moved);
+    const counts = tried !== preview.notes ? { notes: tried } : {};
+    if (!r.ok && r.refusal) {
+      return {
+        ok: false,
+        reason: moved.length ? 'partial' : 'storage',
+        moved,
+        ...counts,
+        ...r.refusal,
+      };
+    }
+    // A conflict stopped it: carry which, where, and what is there.
+    if (r.ok && !r.value.ok) {
+      const { conflict, theirs } = r.value;
+      return {
+        ok: false,
+        reason: moved.length ? 'partial' : conflict,
+        moved,
+        stoppedOn: conflict,
+        stoppedAt: to,
+        ...counts,
+        ...(theirs ? { theirs } : {}),
+      };
+    }
+    return { ok: false, reason: moved.length ? 'partial' : 'storage', moved, ...counts };
+  };
+  const moveOne = (from: string, to: string) =>
+    attempt(async () => {
+      const meta = await provider.stat(target.resourceId, from);
+      if (!meta) return { ok: false as const, conflict: 'missing' as const };
+      return renameOne(deps, from, to, versionOf(meta));
+    });
+  for (let pass = 0; pass < 2; pass++) {
+    for (const [from, to] of queue) {
+      const r = await moveOne(from, to);
+      // Gone since the plan was made (a teammate deleted or moved it, and
+      // the index had not caught up): nothing is left to move and nothing
+      // is lost, so the rest still move (round 5 sweep).
+      if (r.ok && !r.value.ok && r.value.conflict === 'missing') continue;
+      if (!r.ok || !r.value.ok) return stop(r, to);
+      moved.push(r.value.file);
+      done.set(from, r.value.file.path);
+    }
+    if (pass > 0) break;
+    // What is still in the folder once the plan's notes moved: a note the
+    // plan did not count, at the place under the new name that matches its
+    // own. Not a note already moved there, when the new name is inside.
+    const listing = await attempt(() => provider.list(target.resourceId));
+    if (!listing.ok) break;
+    const under = `${foldPath(preview.from)}/`;
+    const into = `${foldPath(preview.to)}/`;
+    const depth = preview.from.split('/').length;
+    queue.length = 0;
+    for (const f of listing.value) {
+      const folded = foldPath(f.path);
+      if (!MD_END.test(f.path) || !folded.startsWith(under) || folded.startsWith(into)) continue;
+      const to = `${preview.to}/${f.path.split('/').slice(depth).join('/')}`;
+      queue.push([f.path, to]);
+      moves.set(f.path, to);
+    }
+    tried += queue.length;
+    if (!queue.length) break;
+  }
+  // Nothing was left to move: the folder's notes were moved or deleted
+  // somewhere else, so this is not a rename (an empty folder still is).
+  if (!moved.length && planned > 0) return { ok: false, reason: 'missing', moved };
+  // The links as planned, unless what moved is not what the plan counted:
+  // then planned again for what did, before the index takes the new paths.
+  const asPlanned =
+    done.size === planned &&
+    [...done].every(([from, at]) => {
+      const to = preview.moves.get(from);
+      return to !== undefined && foldPath(to) === foldPath(at);
+    });
+  let run: VaultMovePreview = preview;
+  if (opts.updateLinks && !asPlanned) {
+    const actual = new Map([...preview.moves].filter(([from]) => !MD_END.test(from)));
+    for (const [from, at] of done) actual.set(from, at);
+    const known = [...new Set([...indexedPaths(deps), ...done.keys()])];
+    const replanned = await attempt(() => planMoves(deps, actual, known, done));
+    run = {
+      ...preview,
+      moves: actual,
+      ...(replanned.ok
+        ? replanned.value
+        : { plan: { edits: [], links: 0, notes: 0, left: [] }, sources: [] }),
+    };
+  }
+  await settleMoved(deps, { ...preview, moves }, moved);
+  if (!opts.updateLinks || !run.plan.edits.length) return { ok: true, preview, moved };
+  const rewrite = await rewritePass(deps, run, moved, opts.onProgress);
+  return { ok: true, preview, moved, rewrite };
 }
 
 /** The vault's paths after the moves, attachments that moved included, for

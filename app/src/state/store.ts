@@ -523,6 +523,7 @@ import {
   VAULT_TEAM_NOT_MEMBER_REASON,
   VAULT_TEAM_SIGN_IN_LINE,
   vaultFolderMoveRefused,
+  vaultFolderMoveGone,
   vaultFolderMoveTaken,
   vaultRenameFailed,
   vaultTrashGone,
@@ -12452,6 +12453,15 @@ export const useApp = create<AppState>((set, get, api) => {
         await relistActive(t);
         return { ...r, line: vaultGoneToast(noteTitle(preview.from)), whole: true };
       }
+      // A folder with nothing left to move (its notes were moved or deleted
+      // somewhere else since the list): not a rename, and the list is read
+      // again (round 7 E25).
+      if (!r.ok && r.reason === 'missing' && preview.kind === 'folder') {
+        await relistActive(t);
+        await refreshVaultFolders(t);
+        const old = preview.from.slice(preview.from.lastIndexOf('/') + 1);
+        return { ...r, line: vaultFolderMoveGone(old), whole: true };
+      }
       // A folder moved note by note that stopped on a name already taken
       // where it was going (letter case counts): it names that note.
       if (!r.ok && r.stoppedOn === 'exists' && preview.kind === 'folder') {
@@ -12459,7 +12469,7 @@ export const useApp = create<AppState>((set, get, api) => {
         const line = vaultFolderMoveTaken({
           old: preview.from.slice(preview.from.lastIndexOf('/') + 1),
           moved: r.moved?.length ?? 0,
-          total: preview.notes,
+          total: r.notes ?? preview.notes,
           name: noteTitle(there),
           folder: noteFolder(there),
         });
@@ -12482,7 +12492,7 @@ export const useApp = create<AppState>((set, get, api) => {
             ? vaultFolderMoveRefused(
                 preview.from.slice(preview.from.lastIndexOf('/') + 1),
                 r.moved?.length ?? 0,
-                preview.notes,
+                r.notes ?? preview.notes,
                 refused.line,
               )
             : vaultRefusedLine('rename', refused);

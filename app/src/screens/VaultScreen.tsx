@@ -1570,7 +1570,9 @@ export function VaultScreen() {
       // A refusal for good says its own line (a team out of free space).
       if (r.line) {
         showToast(r.line);
-        if (r.reason === 'partial') setFolder('');
+        // Part moved, or nothing was left to move (E25): the room leaves
+        // the old folder rather than stay in one that may be gone.
+        if (r.reason === 'partial' || (!note && r.reason === 'missing')) setFolder('');
         return;
       }
       showToast(
@@ -1581,7 +1583,7 @@ export function VaultScreen() {
             : r.reason === 'exists'
               ? vaultRenameTaken(next, noteFolder(preview.to))
               : r.reason === 'partial'
-                ? vaultFolderMovePartial(old, r.moved?.length ?? 0, preview.notes)
+                ? vaultFolderMovePartial(old, r.moved?.length ?? 0, r.notes ?? preview.notes)
                 : vaultRenameFailed(old),
       );
       if (r.reason === 'partial') setFolder('');

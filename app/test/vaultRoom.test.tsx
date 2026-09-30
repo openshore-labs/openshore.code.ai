@@ -1807,6 +1807,37 @@ describe('the team room offers only what the server takes (Y14, Y15)', () => {
     expect(app.toasts).not.toContain(copy.vaultRenameFailed('Ideas'));
   });
 
+  it('a folder move that found nothing left to move says so and does not go into the new name (E25)', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    const preview = {
+      kind: 'folder',
+      from: 'Work',
+      to: 'Done',
+      moves: new Map([['Work/Plan.md', 'Done/Plan.md']]),
+      notes: 1,
+      attachments: 0,
+      links: 0,
+      linkNotes: 0,
+      plan: { edits: [], links: 0, notes: 0, left: [] },
+      sources: [],
+    };
+    const line = copy.vaultFolderMoveGone('Work');
+    app.state.vaultPrepareMove = async () => preview;
+    app.state.vaultApplyMove = async () => ({ ok: false, reason: 'missing', line, whole: true });
+    await openFolderSheet({ entitled: true, deleteRole: 'member', isAdmin: false });
+    await dom.click('Rename folder');
+    await new Promise((r) => setTimeout(r, 600));
+    await dom.settle();
+    await dom.type('Work', 'Done');
+    await dom.click('Rename');
+    await dom.settle();
+    await dom.settle();
+    expect(app.toasts.at(-1)).toBe(line);
+    expect(app.toasts.some((t) => t.startsWith('Renamed to'))).toBe(false);
+    expect(dom.container.querySelector('[aria-label="Options for Done"]')).toBeNull();
+    expect(dom.container.querySelector('[aria-label="Options for Work"]')).toBeNull();
+  });
+
   it('a rename sheet up when the plan lapses says why, and plans nothing', async () => {
     const copy = await import('../src/lib/vaultCopy.js');
     app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
