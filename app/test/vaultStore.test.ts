@@ -5369,4 +5369,148 @@ describe('round 7: team text belongs to its account and its version', () => {
       expect(server.bytes('n.md')).toBe("the teammate's version");
     });
   });
+
+  describe('E8: a replay that lands on the open note is never overwritten unseen', () => {
+    // The text the editor shows, as in E3.
+    const stops: Array<() => void> = [];
+    afterEach(() => {
+      for (const stop of stops.splice(0)) stop();
+    });
+    function screen() {
+      let seen = st().vaultNote;
+      stops.push(
+        useApp.subscribe((state) => {
+          const now = state.vaultNote;
+          if (!now) seen = undefined;
+          else if (now.path !== seen?.path || now.reloaded !== seen?.reloaded) seen = now;
+        }),
+      );
+      return () => seen?.text ?? '';
+    }
+    // Hold the next org_vault_write whose body holds `words` until released.
+    function holdWrite(words: string) {
+      const rpc = server.rpc.bind(server);
+      const gate = deferred();
+      const h = { reached: false, release: gate.resolve };
+      server.rpc = async (fn, token, args) => {
+        if (fn === 'org_vault_write' && String(args.p_body).includes(words) && !h.reached) {
+          h.reached = true;
+          await gate.promise;
+        }
+        return rpc(fn, token, args);
+      };
+      return h;
+    }
+    // Text typed offline into n.md ('A'), stashed, and the note closed.
+    async function typedOffline(typed = 'A, and words typed offline') {
+      server.put('n.md', 'A', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      server.rpcFailure = new TypeError('Failed to fetch');
+      st().vaultNoteDraft('n.md', typed);
+      await st().vaultSave('n.md', typed);
+      server.rpcFailure = undefined;
+      expect(pending()[`org::${ORG}::n.md`]).toMatchObject({ text: typed });
+      st().vaultCloseNote();
+      return typed;
+    }
+
+    it('opened while the replay is on its way: the note shows the replayed words, and a save on top keeps them', async () => {
+      const typed = await typedOffline();
+      const h = holdWrite('words typed offline');
+      const refresh = st().vaultRefresh();
+      await vi.waitFor(() => expect(h.reached).toBe(true));
+      const shown = screen();
+      const open = st().vaultOpen('n.md');
+      await tick();
+      h.release();
+      await refresh;
+      await open;
+      expect(shown()).toBe(typed);
+      await st().vaultSave('n.md', `${shown()}, and more`);
+      expect(server.bytes('n.md')).toBe(`${typed}, and more`);
+    });
+
+    it('opened before Retry: the replay reloads the clean editor with its words', async () => {
+      const typed = await typedOffline();
+      await st().vaultOpen('n.md');
+      const shown = screen();
+      expect(shown()).toBe('A');
+      await st().vaultRefresh();
+      expect(shown()).toBe(typed);
+      await st().vaultSave('n.md', `${shown()}, and more`);
+      expect(server.bytes('n.md')).toBe(`${typed}, and more`);
+    });
+
+    it('a dirty editor with its save out when the replay lands: the choice is asked, nothing overwritten', async () => {
+      const typed = await typedOffline();
+      await st().vaultOpen('n.md');
+      const g = gateWrites(server);
+      const refresh = st().vaultRefresh();
+      await vi.waitFor(() => expect(g.seen).toBe(1));
+      st().vaultNoteDraft('n.md', 'A, and more');
+      const save = st().vaultSave('n.md', 'A, and more');
+      await vi.waitFor(() => expect(g.seen).toBe(2));
+      g.on = false;
+      g.open.resolve();
+      await refresh;
+      await save;
+      expect(server.bytes('n.md')).toBe(typed);
+      expect(st().vaultConflict).toMatchObject({ path: 'n.md', kind: 'changed' });
+      expect(st().vaultConflict?.theirs?.text).toBe(typed);
+      expect(pending()[`org::${ORG}::n.md`]).toMatchObject({ text: 'A, and more' });
+    });
+
+    it('a dirty editor whose save lands first: the replayed words are a keep-both copy', async () => {
+      const typed = await typedOffline();
+      await st().vaultOpen('n.md');
+      const h = holdWrite('words typed offline');
+      const refresh = st().vaultRefresh();
+      await vi.waitFor(() => expect(h.reached).toBe(true));
+      st().vaultNoteDraft('n.md', 'A, and more');
+      await st().vaultSave('n.md', 'A, and more');
+      h.release();
+      await refresh;
+      expect(server.bytes('n.md')).toBe('A, and more');
+      expect(liveHas(server, typed)).toBe(true);
+    });
+
+    it('Retry with the typed text on screen adopts it quietly', async () => {
+      server.put('n.md', 'A', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      server.rpcFailure = new TypeError('Failed to fetch');
+      st().vaultNoteDraft('n.md', 'A, typed offline');
+      await st().vaultSave('n.md', 'A, typed offline');
+      server.rpcFailure = undefined;
+      const before = st().vaultNote!;
+      await st().vaultRefresh();
+      expect(server.bytes('n.md')).toBe('A, typed offline');
+      expect(st().vaultNote?.text).toBe('A, typed offline');
+      expect(st().vaultNote?.reloaded).toBe(before.reloaded);
+      expect(st().vaultNote?.version).toBe(String(server.notes.get('n.md')!.rev));
+      expect(st().vaultConflict).toBeUndefined();
+    });
+
+    it('on the folder, and on This device, a replay reloads the clean open note', async () => {
+      for (const id of ['files', 'local'] as const) {
+        reset();
+        useApp.setState({ settings: { ...st().settings, gitosResources: personalOn(id) } });
+        const p = byId[id]!;
+        p.files.set('n.md', 'A');
+        await st().vaultRefresh();
+        await st().vaultOpen('n.md');
+        p.fail.write = true;
+        st().vaultNoteDraft('n.md', 'A, offline here');
+        await st().vaultSave('n.md', 'A, offline here');
+        p.fail.write = false;
+        st().vaultCloseNote();
+        await st().vaultOpen('n.md');
+        const shown = screen();
+        expect(shown()).toBe('A');
+        await st().vaultRefresh();
+        expect(shown()).toBe('A, offline here');
+      }
+    });
+  });
 });

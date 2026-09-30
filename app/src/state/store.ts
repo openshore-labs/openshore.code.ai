@@ -6440,7 +6440,7 @@ export const useApp = create<AppState>((set, get, api) => {
       if (!r.ok && r.conflict === 'missing')
         r = await putVaultNote(t, e.path, e.text, guardFor(undefined));
       if (r.ok) {
-        adoptReplayed(t, e, r.file);
+        await adoptReplayed(t, e, r.file);
         return undefined;
       }
       if (r.conflict === 'downloading') mustLand(r);
@@ -6458,7 +6458,8 @@ export const useApp = create<AppState>((set, get, api) => {
         unchanged = current !== undefined && versionOf(current) === e.base;
       }
       if (!now || unchanged) {
-        adoptReplayed(t, e, mustLand(await putVaultNote(t, e.path, e.text, guardFor(e.base))));
+        const saved = mustLand(await putVaultNote(t, e.path, e.text, guardFor(e.base)));
+        await adoptReplayed(t, e, saved);
         return undefined;
       }
       current ??= now.evicted ? undefined : await t.provider.read(t.resourceId, e.path);
@@ -6472,12 +6473,31 @@ export const useApp = create<AppState>((set, get, api) => {
   }
 
   // A replayed draft that landed on the note open now is what that note last
-  // saved as: the open note takes its text and version, so the next keystroke
-  // saves against it instead of meeting this device's own replay as a change
-  // from elsewhere (a Retry from the save chip replays while a note is open).
-  function adoptReplayed(t: VaultTargetRef, e: VaultPendingEntry, saved: StoredFile): void {
+  // saved as. When the editor already shows those words (a Retry from the
+  // save chip with the typed text on screen), the open note takes their text
+  // and version quietly, so the next keystroke saves against it. A clean
+  // editor showing an older read takes the words in place; one typed into
+  // since is asked, its text stashed, so no keystroke ever saves over the
+  // replayed words unseen (E8).
+  async function adoptReplayed(
+    t: VaultTargetRef,
+    e: VaultPendingEntry,
+    saved: StoredFile,
+  ): Promise<void> {
     const open = get().vaultNote;
     if (!isActiveVault(t) || open?.path !== e.path) return;
+    const draft = draftOf(e.path) ?? open.text;
+    if (draft !== saved.text) {
+      if (draft === open.text) {
+        reloadOpenNote(saved, 'resolve');
+        return;
+      }
+      if (get().vaultConflict?.path === e.path) return;
+      const base = versionOf(open) || undefined;
+      raiseVaultConflict(t, e.path, 'changed', saved, base);
+      await stashConflictText(t, e.path, draft, base);
+      return;
+    }
     set({
       vaultNote: {
         ...open,
@@ -6541,7 +6561,18 @@ export const useApp = create<AppState>((set, get, api) => {
       let refusal = readOnly;
       if (!refusal) {
         try {
-          const copy = await replayVaultDraft(t, e);
+          // An open of this note waits for it (E8, settledWrites).
+          const replay = replayVaultDraft(t, e);
+          const key = vaultKey(e, e.path);
+          const replayed = replay.then(
+            () => undefined,
+            () => undefined,
+          );
+          vaultReplays.set(key, replayed);
+          void replayed.then(() => {
+            if (vaultReplays.get(key) === replayed) vaultReplays.delete(key);
+          });
+          const copy = await replay;
           if (copy) copies.push(copy);
           settled.push(e);
           continue;
@@ -6687,14 +6718,18 @@ export const useApp = create<AppState>((set, get, api) => {
   const vaultSaveChains = new Map<string, Promise<string | undefined>>();
   // How many vaultSave calls are running, for the save chip (vaultSaving).
   let vaultSavesInFlight = 0;
+  // Stashed drafts being replayed now, by note, so an open of one waits for
+  // its replay to land (E8).
+  const vaultReplays = new Map<string, Promise<undefined>>();
   // Every vaultOpen, vaultCloseNote and scope change takes the next number,
   // so an open that waited knows a later tap came after it (E3).
   let vaultOpenSeq = 0;
   // Wait, a bounded while, for this device's writes to a note that are on
-  // their way (its save chain), so an open reads what they wrote (E3).
+  // their way (its save chain, a replay of its stash), so an open reads what
+  // they wrote (E3, E8).
   async function settledWrites(t: VaultTargetRef, path: string): Promise<void> {
     const key = vaultKey(t, path);
-    const waits = [vaultSaveChains.get(key)].filter((w) => w !== undefined);
+    const waits = [vaultSaveChains.get(key), vaultReplays.get(key)].filter((w) => w !== undefined);
     if (!waits.length) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     await Promise.race([
