@@ -989,8 +989,19 @@ export function VaultScreen() {
   // never mid-keystroke: while the editor has focus and had input in the last
   // VAULT_RESOLVE_IDLE_MS it waits, then rises. Sheets never stack: the
   // Options sheet leaves first. A deferred conflict ('not now') stays a card.
+  // Only the choice about this note in this vault, for the account signed in
+  // now: a personal note never shows a team choice of the same name.
+  const onScreen = vaultConflict && vaultNote ? vaultTargetRef() : undefined;
   const conflictHere =
-    vaultConflict && vaultNote && vaultConflict.path === vaultNote.path ? vaultConflict : undefined;
+    vaultConflict &&
+    vaultNote &&
+    onScreen &&
+    vaultConflict.path === vaultNote.path &&
+    vaultConflict.target.providerId === onScreen.providerId &&
+    vaultConflict.target.resourceId === onScreen.resourceId &&
+    (vaultConflict.target.owner ?? '') === (onScreen.owner ?? '')
+      ? vaultConflict
+      : undefined;
   const conflictWaiting = Boolean(conflictHere && !conflictHere.deferred);
   useEffect(() => {
     if (!conflictWaiting) {

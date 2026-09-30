@@ -447,7 +447,7 @@ describe('the Vault screen with a choice open (1.1)', () => {
   const EDITOR = 'Write. Plain markdown, and [[wikilinks]] to connect notes.';
   const conflict = (over: Record<string, unknown> = {}) => ({
     path: 'Plan.md',
-    target: { providerId: 'files', resourceId: 'vault.personal' },
+    target: { providerId: 'local', resourceId: 'vault.personal' },
     kind: 'changed',
     base: 'loaded',
     theirs: { path: 'Plan.md', text: 'theirs', updatedAt: 'x', version: 'v2' },
@@ -501,6 +501,21 @@ describe('the Vault screen with a choice open (1.1)', () => {
     // Its button brings the sheet back.
     await dom.click('Choose a version');
     expect(app.state.vaultConflict?.deferred).toBe(false);
+  });
+
+  it('never shows a choice about another vault or account on a note of the same name', async () => {
+    await dom.render(<VaultRoom />);
+    for (const target of [
+      { providerId: 'org', resourceId: 'org-1', owner: 'u1' },
+      { providerId: 'files', resourceId: 'vault.personal' },
+    ]) {
+      app.state.vaultConflict = conflict({ target });
+      await notify();
+      await dom.settle();
+      expect(sheet()).toBeNull();
+      expect(dom.container.querySelector('.vault-conflict-card')).toBeNull();
+      expect(dom.text()).not.toContain('theirs');
+    }
   });
 
   it('does not rise while the person is typing, only once the editor has been quiet', async () => {

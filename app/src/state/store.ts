@@ -4597,6 +4597,14 @@ export const useApp = create<AppState>((set, get, api) => {
     // team vault's titles leave with the session. A sign-out never keeps it.
     const open = get().vaultNote;
     const keepNote = expired && Boolean(uid) && get().vaultScope === 'team' && Boolean(open);
+    // A team choice and the editor's live text belong to the sign-in too
+    // (R-19): a sign-out takes them, and an expiry keeps them only on the kept
+    // note, for the same account, whose stash holds the text sealed.
+    const choice = get().vaultConflict;
+    const dropChoice =
+      choice?.target.providerId === 'org' &&
+      !(keepNote && choice.path === open?.path && choice.target.owner === uid);
+    if (!keepNote && get().vaultScope === 'team') vaultLiveDraft = undefined;
     // The cached entitlement belonged to this account; it leaves with it.
     void storeSetJson(ENTITLEMENT_CACHE_KEY, null).catch(() => {});
     // One door to the coding agent: no coding session stays attached past the
@@ -4621,6 +4629,7 @@ export const useApp = create<AppState>((set, get, api) => {
       passwordRecovery: undefined,
       authConfirm: undefined,
       orgJoin: undefined,
+      ...(dropChoice ? { vaultConflict: undefined } : {}),
       ...(keepNote
         ? {
             vaultTeamExpired: true,
@@ -4791,6 +4800,11 @@ export const useApp = create<AppState>((set, get, api) => {
     return (
       t.providerId !== 'org' || (t.owner !== undefined && t.owner === get().authSession?.user.id)
     );
+  }
+  // Whether a resolve choice may be settled now: any personal one, and a
+  // team one only while its account is signed in and its vault is on screen.
+  function teamChoiceSpeaks(c: VaultConflict): boolean {
+    return c.target.providerId !== 'org' || (speaksNow(c.target) && isActiveVault(c.target));
   }
   const vaultKey = (t: VaultTargetRef, path: string) => `${t.providerId}::${t.resourceId}::${path}`;
   // What a provider lists that the Vault treats as notes: `.md` files outside
@@ -6784,6 +6798,10 @@ export const useApp = create<AppState>((set, get, api) => {
     if (!c) return;
     const text = draftOf(c.path) ?? c.base;
     set({ vaultConflict: undefined });
+    // Team text is written only under the account that typed it, to the
+    // team vault on screen; any other choice is dropped unsettled, with
+    // nothing sent and nothing said (R-19).
+    if (!teamChoiceSpeaks(c)) return;
     const target = vaultTargetFrom(c.target);
     const title = noteTitle(c.path);
     logEvent('vault_conflict_choice', { choice: 'left', kind: c.kind });
@@ -7106,12 +7124,16 @@ export const useApp = create<AppState>((set, get, api) => {
     if (resume) {
       set({ authSession: session, vaultTeamExpired: undefined });
     } else {
+      // No team choice or typed team text carries into another sign-in.
+      if (get().vaultScope === 'team') vaultLiveDraft = undefined;
+      const choice = get().vaultConflict;
       set({
         authSession: session,
         vaultScope: 'personal',
         vaultFiles: [],
         vaultNote: undefined,
         vaultTeamExpired: undefined,
+        ...(choice?.target.providerId === 'org' ? { vaultConflict: undefined } : {}),
       });
     }
     const account = get().settings.account;
@@ -10895,6 +10917,12 @@ export const useApp = create<AppState>((set, get, api) => {
     async vaultResolve(choice, draft) {
       const c = get().vaultConflict;
       if (!c) return { ok: false };
+      // Another account's team choice, or one whose vault is not on screen,
+      // is never settled here: nothing is written, loaded or dropped (R-19).
+      if (!teamChoiceSpeaks(c)) {
+        set({ vaultConflict: undefined });
+        return { ok: false };
+      }
       const target = vaultTargetFrom(c.target);
       if (!target) return { ok: false, failed: true };
       const title = noteTitle(c.path);

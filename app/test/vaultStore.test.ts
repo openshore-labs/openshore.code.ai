@@ -4225,3 +4225,245 @@ describe('round 5: a team refusal says what happened and keeps the text', () => 
     expect(server.bytes('Work/a.md')).toBe('a, edited');
   });
 });
+
+// ---- round 7: team text belongs to its account and its version ------------
+// The fake server, per caller: auth.uid() is the token's account (0021's
+// org_vault_write stamps updated_by with it), a non-member's RPCs raise "not a
+// member of this org", and a non-member's RLS selects answer nothing. `hold`
+// delays the answer of the next matching call (the request already ran on the
+// server), as a slow network would; with `fail`, the call waits and then
+// throws what `fail` returns, before it reaches the server.
+function perCaller(server: FakeOrgVaultServer, opts: { members?: string[] } = {}) {
+  const rpc = server.rpc.bind(server);
+  const select = server.select.bind(server);
+  const uidOf = (token: string) => token.replace(/^tok-/, '');
+  const holds: Array<{ fn: string; gate: Promise<void>; hit: () => void; fail?: () => unknown }> =
+    [];
+  server.rpc = async (fn, token, args) => {
+    const uid = uidOf(token);
+    if (opts.members && !opts.members.includes(uid)) {
+      server.rpcs.push({ fn, args });
+      throw Object.assign(new Error('not a member of this org'), { status: 400 });
+    }
+    const i = holds.findIndex((h) => h.fn === fn);
+    const h = i >= 0 ? holds.splice(i, 1)[0]! : undefined;
+    if (h?.fail) {
+      h.hit();
+      await h.gate;
+      const e = h.fail();
+      if (e) throw e;
+    }
+    server.caller = uid;
+    const out = await rpc(fn, token, args);
+    if (h && !h.fail) {
+      h.hit();
+      await h.gate;
+    }
+    return out;
+  };
+  server.select = async (table, token, query) => {
+    if (opts.members && !opts.members.includes(uidOf(token)) && table.startsWith('org_vault')) {
+      return [];
+    }
+    return select(table, token, query);
+  };
+  return {
+    hold(fn: string, fail?: () => unknown) {
+      const d = deferred();
+      const reached = deferred();
+      holds.push({ fn, gate: d.promise, hit: reached.resolve, ...(fail ? { fail } : {}) });
+      return { release: d.resolve, reached: reached.promise };
+    },
+  };
+}
+// Hold every org_vault_write before it reaches the server until `open`
+// resolves; `seen` counts the ones held.
+function gateWrites(server: FakeOrgVaultServer) {
+  const rpc = server.rpc.bind(server);
+  const g = { on: true, open: deferred(), seen: 0 };
+  server.rpc = async (fn, token, args) => {
+    if (fn === 'org_vault_write' && g.on) {
+      g.seen++;
+      await g.open.promise;
+    }
+    return rpc(fn, token, args);
+  };
+  return g;
+}
+const U2 = { id: 'u2', email: 'b@example.com' };
+// Whether words are anywhere this device or the team keeps them: a live note,
+// the stash, or Not saved.
+const liveHas = (server: FakeOrgVaultServer, words: string) =>
+  [...server.notes.values()].some((n) => !n.deleted && n.body.includes(words)) ||
+  Object.values(pending()).some((e) => e.text.includes(words)) ||
+  useApp.getState().vaultHeld.some((h) => h.text.includes(words));
+const sealedHeld = () =>
+  JSON.parse(mem.get(HELD) ?? '[]') as Array<{ text: string; owner?: string; id: string }>;
+
+describe('round 7: team text belongs to its account and its version', () => {
+  let server: FakeOrgVaultServer;
+  const st = () => useApp.getState();
+  beforeEach(async () => {
+    reset();
+    await closeVaultIndex();
+    wiring.org!.resetOrgVault();
+    useApp.setState({ vaultTeamPlan: undefined, vaultConflict: undefined, vaultTrash: undefined });
+    server = createFakeOrgVaultServer(ORG);
+    teamNet.server = server;
+    teamScope();
+  });
+  afterEach(async () => {
+    useApp.setState({ vaultTeamPlan: undefined, vaultConflict: undefined });
+    await closeVaultIndex();
+  });
+
+  describe('E1: a team choice and its draft leave with the sign-in', () => {
+    // u1 types in team Plan.md as a teammate saves, defers the choice (as
+    // leaving the room does), signs out, and u2 signs in on the personal vault.
+    async function staleChoice(words: string, members = ['u1', 'u2'], theirs = 'team theirs') {
+      perCaller(server, { members });
+      useStoreToken();
+      server.put('Plan.md', 'the base', 'u1');
+      await st().vaultRefresh();
+      await st().vaultOpen('Plan.md');
+      server.put('Plan.md', theirs);
+      st().vaultNoteDraft('Plan.md', words);
+      await st().vaultSave('Plan.md', words);
+      expect(st().vaultConflict?.kind).toBe('changed');
+      st().vaultDeferConflict(true);
+      await st().signOutAccount();
+      signedOut = st().vaultConflict;
+      auth.nextUser = U2;
+      await st().signIn('b@example.com', 'pw');
+      expect(st().authSession?.user.id).toBe('u2');
+      useApp.setState({ vaultScope: 'personal', toast: undefined });
+    }
+    let signedOut: unknown;
+
+    it('the choice is gone after the sign-out and after the next sign-in', async () => {
+      await staleChoice('u1 private words');
+      expect(signedOut).toBeUndefined();
+      expect(st().vaultConflict).toBeUndefined();
+    });
+
+    it("opening any personal note never publishes u1's words under u2 (B4)", async () => {
+      await staleChoice('u1 private words');
+      files.set('Other.md', 'u2 personal');
+      await st().vaultRefresh();
+      await st().vaultOpen('Other.md');
+      for (let i = 0; i < 10; i++) await tick();
+      const live = [...server.notes.values()]
+        .filter((n) => !n.deleted && n.body.includes('u1 private words'))
+        .map((n) => `${n.path} by ${n.updated_by}`);
+      expect(live).toEqual([]);
+      expect(st().toast).toBeUndefined();
+      expect(JSON.stringify(st().vaultHeld)).not.toContain('u1 private words');
+    });
+
+    it('Keep yours on a personal note of the same name never writes it over the team note (B2)', async () => {
+      await staleChoice('u1 private words');
+      files.set('Plan.md', "u2's private personal plan");
+      await st().vaultRefresh();
+      await st().vaultOpen('Plan.md');
+      expect(st().vaultConflict).toBeUndefined();
+      await st().vaultResolve('mine', "u2's private personal plan");
+      expect(server.bytes('Plan.md')).toBe('team theirs');
+    });
+
+    it('Keep the other version never puts team text into the personal file (B3)', async () => {
+      await staleChoice('u1 private words');
+      files.set('Plan.md', "u2's private personal plan");
+      await st().vaultRefresh();
+      await st().vaultOpen('Plan.md');
+      await st().vaultResolve('theirs', "u2's private personal plan");
+      await st().vaultSave('Plan.md', `${st().vaultNote?.text ?? ''}!`);
+      expect(files.get('Plan.md')).toBe("u2's private personal plan!");
+    });
+
+    it("an account outside the org is never shown the org's text", async () => {
+      await staleChoice('u1 private words', ['u1'], 'org-only salary table');
+      files.set('Plan.md', "u2's private personal plan");
+      await st().vaultRefresh();
+      await st().vaultOpen('Plan.md');
+      expect({ theirs: st().vaultConflict?.theirs?.text, base: st().vaultConflict?.base }).toEqual({
+        theirs: undefined,
+        base: undefined,
+      });
+      expect(JSON.stringify(st().vaultHeld)).not.toContain('u1 private words');
+    });
+
+    it('a stale choice left in place is never settled under another account', async () => {
+      perCaller(server, { members: ['u1', 'u2'] });
+      useStoreToken();
+      server.put('Plan.md', 'the base', 'u1');
+      await st().vaultRefresh();
+      await st().vaultOpen('Plan.md');
+      server.put('Plan.md', 'team theirs');
+      st().vaultNoteDraft('Plan.md', 'u1 private words');
+      await st().vaultSave('Plan.md', 'u1 private words');
+      const c = st().vaultConflict!;
+      // Put back as if a sign-out had missed it: u2 is now signed in.
+      await st().signOutAccount();
+      auth.nextUser = U2;
+      await st().signIn('b@example.com', 'pw');
+      await st().setVaultScope('team');
+      useApp.setState({ vaultConflict: c, toast: undefined });
+      expect(await st().vaultResolve('both', 'u1 private words')).toMatchObject({ ok: false });
+      useApp.setState({ vaultConflict: c });
+      await st().vaultLeaveConflict();
+      for (let i = 0; i < 10; i++) await tick();
+      expect(liveHas(server, 'u1 private words')).toBe(false);
+      expect(st().vaultConflict).toBeUndefined();
+      expect(server.rpcs.filter((r) => r.fn === 'org_vault_write').length).toBe(1);
+    });
+
+    it('an expiry keeps the choice for the same account, whose Keep both then writes the copy', async () => {
+      perCaller(server, { members: ['u1', 'u2'] });
+      useStoreToken();
+      server.put('Plan.md', 'the base', 'u1');
+      await st().vaultRefresh();
+      await st().vaultOpen('Plan.md');
+      server.put('Plan.md', 'team theirs');
+      st().vaultNoteDraft('Plan.md', 'u1 typed words');
+      await st().vaultSave('Plan.md', 'u1 typed words');
+      useApp.setState({ authSession: session(auth.nextUser, -1000) });
+      auth.refresh = new SupabaseRequestError('invalid grant', 400);
+      await st().refreshOrgRole();
+      auth.refresh = undefined;
+      expect(st().vaultTeamExpired).toBe(true);
+      expect(st().vaultConflict).toMatchObject({ path: 'Plan.md', kind: 'changed' });
+      await st().signIn('me@example.com', 'pw');
+      expect(st().vaultConflict).toMatchObject({ path: 'Plan.md', kind: 'changed' });
+      expect(await st().vaultResolve('both', 'u1 typed words')).toEqual({ ok: true });
+      const copies = [...server.notes.values()].filter(
+        (n) => !n.deleted && conflictCopy('Plan').test(n.path),
+      );
+      expect(copies.map((n) => [n.body, n.updated_by])).toEqual([['u1 typed words', 'u1']]);
+    });
+
+    it('an expiry followed by another account clears the choice and sends nothing', async () => {
+      perCaller(server, { members: ['u1', 'u2'] });
+      useStoreToken();
+      server.put('Plan.md', 'the base', 'u1');
+      await st().vaultRefresh();
+      await st().vaultOpen('Plan.md');
+      server.put('Plan.md', 'team theirs');
+      st().vaultNoteDraft('Plan.md', 'u1 typed words');
+      await st().vaultSave('Plan.md', 'u1 typed words');
+      useApp.setState({ authSession: session(auth.nextUser, -1000) });
+      auth.refresh = new SupabaseRequestError('invalid grant', 400);
+      await st().refreshOrgRole();
+      auth.refresh = undefined;
+      const writes = server.rpcs.filter((r) => r.fn === 'org_vault_write').length;
+      auth.nextUser = U2;
+      await st().signIn('b@example.com', 'pw');
+      expect(st().vaultConflict).toBeUndefined();
+      files.set('Other.md', 'u2 personal');
+      await st().vaultRefresh();
+      await st().vaultOpen('Other.md');
+      for (let i = 0; i < 10; i++) await tick();
+      expect(server.rpcs.filter((r) => r.fn === 'org_vault_write').length).toBe(writes);
+      expect(liveHas(server, 'u1 typed words')).toBe(false);
+    });
+  });
+});
