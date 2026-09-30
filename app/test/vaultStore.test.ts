@@ -39,6 +39,7 @@ import {
   vaultFolderMoveTaken,
   vaultGoneToast,
   vaultRenameFailed,
+  vaultTickChanged,
   vaultTrashGone,
 } from '../src/lib/vaultCopy.js';
 
@@ -3518,11 +3519,12 @@ describe('Vault M6 operations through the store', () => {
     // The open note shows what landed, at its new version.
     expect(useApp.getState().vaultNote?.text).toBe(F.get('t.md'));
     expect(useApp.getState().vaultNote?.version).toBe(folder.version('t.md'));
-    // Changed somewhere else: nothing is written over it.
+    // Changed somewhere else: nothing is written over it, or even tried
+    // (the tick reads the note first, E2).
     F.set('t.md', `${F.get('t.md')}more from elsewhere\n`);
     const writes = folder.counts.writes.length;
     expect(await useApp.getState().vaultToggleTask('t.md', 5, true)).toBe(false);
-    expect(folder.counts.writes.length).toBe(writes + 1);
+    expect(folder.counts.writes.length).toBe(writes);
     expect(F.get('t.md')).toContain('- [ ] first');
   });
 
@@ -4933,6 +4935,113 @@ describe('round 7: team text belongs to its account and its version', () => {
       await st().vaultDiscardHeld(legacy.id);
       expect(sealedHeld()).toEqual([]);
       expect(st().vaultHeld).toEqual([]);
+    });
+  });
+
+  describe('E2: a tick is made on the text of the version it is guarded by', () => {
+    it("reopening a note a teammate changed, then ticking, keeps the teammate's text", async () => {
+      server.put('Tasks.md', '- [ ] mine', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('Tasks.md');
+      await st().vaultSave('Tasks.md', '- [ ] mine\n- [ ] also mine');
+      st().vaultCloseNote();
+      server.put('Tasks.md', '- [ ] mine\n- [ ] also mine\n- [ ] theirs');
+      await st().vaultOpen('Tasks.md');
+      expect(st().vaultNote).toMatchObject({ text: '- [ ] mine\n- [ ] also mine\n- [ ] theirs' });
+      expect(await st().vaultToggleTask('Tasks.md', 0, true)).toBe(true);
+      expect(server.bytes('Tasks.md')).toBe('- [x] mine\n- [ ] also mine\n- [ ] theirs');
+      expect(st().vaultNote?.text).toBe('- [x] mine\n- [ ] also mine\n- [ ] theirs');
+    });
+
+    it("a tick after the poll reloaded a teammate's version keeps their text", async () => {
+      server.put('t.md', '- [ ] one', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('t.md');
+      await st().vaultSave('t.md', '- [ ] one\nmine');
+      server.put('t.md', '- [ ] one\nmine\ntheir line');
+      expect(await st().vaultRecheck({ reason: 'poll' })).toBe('checked');
+      expect(st().vaultNote).toMatchObject({ text: '- [ ] one\nmine\ntheir line' });
+      expect(await st().vaultToggleTask('t.md', 0, true)).toBe(true);
+      expect(server.bytes('t.md')).toBe('- [x] one\nmine\ntheir line');
+    });
+
+    it('Keep the other version, then a tick, keeps their text', async () => {
+      server.put('n.md', '- [ ] one', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      await st().vaultSave('n.md', '- [ ] one\nsaved here');
+      server.put('n.md', '- [ ] one\nsaved here\ntheir words');
+      st().vaultNoteDraft('n.md', '- [ ] one\nsaved here\ntyped here');
+      await st().vaultSave('n.md', '- [ ] one\nsaved here\ntyped here');
+      expect(await st().vaultResolve('theirs', '- [ ] one\nsaved here\ntyped here')).toEqual({
+        ok: true,
+      });
+      expect(await st().vaultToggleTask('n.md', 0, true)).toBe(true);
+      expect(server.bytes('n.md')).toBe('- [x] one\nsaved here\ntheir words');
+    });
+
+    it("tick, a teammate adds a task, the poll reloads, tick again: the teammate's task stays", async () => {
+      server.put('t.md', '- [ ] a\n- [ ] b', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('t.md');
+      expect(await st().vaultToggleTask('t.md', 0, true)).toBe(true);
+      server.put('t.md', '- [x] a\n- [ ] b\n- [ ] c from a teammate');
+      expect(await st().vaultRecheck({ reason: 'poll' })).toBe('checked');
+      expect(await st().vaultToggleTask('t.md', 1, true)).toBe(true);
+      expect(server.bytes('t.md')).toBe('- [x] a\n- [x] b\n- [ ] c from a teammate');
+    });
+
+    it('a teammate line above the task, not yet on screen: the tick is refused, nothing is written, and the newer version opens', async () => {
+      server.put('t.md', '- [ ] a\n- [ ] b', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('t.md');
+      server.put('t.md', '- [ ] a\n- [ ] new from a teammate\n- [ ] b');
+      const writes = server.rpcs.filter((r) => r.fn === 'org_vault_write').length;
+      // The person ticks b, the second line on screen.
+      expect(await st().vaultToggleTask('t.md', 1, true)).toBe(false);
+      expect(server.bytes('t.md')).toBe('- [ ] a\n- [ ] new from a teammate\n- [ ] b');
+      expect(server.rpcs.filter((r) => r.fn === 'org_vault_write').length).toBe(writes);
+      expect(st().toast).toBe(vaultTickChanged('t'));
+      expect(st().vaultNote?.text).toBe('- [ ] a\n- [ ] new from a teammate\n- [ ] b');
+    });
+
+    it('a team save patches the list and the body cache at its new version', async () => {
+      server.put('t.md', 'one', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('t.md');
+      await st().vaultSave('t.md', 'one, two');
+      const rev = String(server.notes.get('t.md')!.rev);
+      expect(st().vaultFiles.find((f) => f.path === 't.md')?.version).toBe(rev);
+      st().vaultCloseNote();
+      const reads = server.selects.length;
+      expect(await st().vaultReadBody('t.md')).toBe('one, two');
+      expect(server.selects.length).toBe(reads);
+    });
+
+    it('a plain tick with no other writer writes once', async () => {
+      server.put('t.md', '- [ ] a', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('t.md');
+      const writes = server.rpcs.filter((r) => r.fn === 'org_vault_write').length;
+      expect(await st().vaultToggleTask('t.md', 0, true)).toBe(true);
+      expect(server.rpcs.filter((r) => r.fn === 'org_vault_write').length).toBe(writes + 1);
+      expect(server.bytes('t.md')).toBe('- [x] a');
+    });
+
+    it("on the folder, a tick after the watcher reloaded Obsidian's edit keeps it", async () => {
+      reset();
+      useApp.setState({
+        settings: { ...st().settings, gitosResources: personalOn('files') },
+      });
+      folder.files.set('t.md', '- [ ] a\n- [ ] b');
+      await st().vaultRefresh();
+      await st().vaultOpen('t.md');
+      expect(await st().vaultToggleTask('t.md', 0, true)).toBe(true);
+      folder.files.set('t.md', '- [x] a\n- [ ] b\nadded in Obsidian');
+      await st().vaultRecheck({ reason: 'watch', paths: ['t.md'] });
+      expect(st().vaultNote?.text).toBe('- [x] a\n- [ ] b\nadded in Obsidian');
+      expect(await st().vaultToggleTask('t.md', 1, true)).toBe(true);
+      expect(folder.files.get('t.md')).toBe('- [x] a\n- [x] b\nadded in Obsidian');
     });
   });
 });

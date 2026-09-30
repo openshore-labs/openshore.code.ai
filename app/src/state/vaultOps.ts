@@ -1006,8 +1006,12 @@ export type VaultTickResult =
  *  returned (K11). */
 const tickChains = new Map<string, Promise<unknown>>();
 
-/** Tick or untick one task box: flush any pending save, toggle on the note's
- *  current text, and write it guarded by the open note's version. A refused
+/** Tick or untick one task box: flush any pending save, read the note once,
+ *  toggle on that text and write it guarded by that same version, so the
+ *  tick is made on the text it is guarded by (round 7 E2). The open note
+ *  must still be the version read, and the text read must be `seen`, the
+ *  text the box's offset was counted on, when given; otherwise nothing is
+ *  written and the result is `changed` with what is there now. A refused
  *  write is a result for the store's resolve path; the box then shows the
  *  file's truth. */
 export function toggleTask(
@@ -1015,10 +1019,11 @@ export function toggleTask(
   path: string,
   at: number,
   expected: string,
+  seen?: string,
 ): Promise<VaultTickResult> {
   const key = JSON.stringify([deps.target.providerId, deps.target.resourceId, path]);
   const before = tickChains.get(key) ?? Promise.resolve();
-  const run = before.then(() => tickOnce(deps, path, at, expected));
+  const run = before.then(() => tickOnce(deps, path, at, expected, seen));
   const link = run.catch(() => undefined);
   tickChains.set(key, link);
   void link.then(() => {
@@ -1032,16 +1037,25 @@ async function tickOnce(
   path: string,
   at: number,
   expected: string,
+  seen: string | undefined,
 ): Promise<VaultTickResult> {
   if (!deps.provider.compareAndSwap) return { ok: false, reason: 'unsupported' };
   const run = await attempt(async (): Promise<VaultTickResult> => {
     await deps.flushOpenSave();
     const open = deps.openNote();
-    const ifMatch = open?.path === path ? open.version : await guardFor(deps, path);
+    const file = await deps.provider.read(deps.target.resourceId, path);
+    if (!file) return { ok: false, reason: 'missing' };
+    const ifMatch = versionOf(file);
     if (!ifMatch) return { ok: false, reason: 'missing' };
-    const text = await deps.readBody(path);
-    if (text === undefined) return { ok: false, reason: 'missing' };
-    const toggled = toggleTaskAt(text, at, expected);
+    // Moved on since the person saw it: nothing is ticked on text they
+    // have not seen, and the store opens the newer version.
+    if (
+      (open?.path === path && open.version !== ifMatch) ||
+      (seen !== undefined && seen !== file.text)
+    ) {
+      return { ok: false, reason: 'changed', theirs: file };
+    }
+    const toggled = toggleTaskAt(file.text, at, expected);
     if (!toggled.ok) return { ok: false, reason: toggled.reason };
     const r = await deps.putVaultNote(path, toggled.text, { ifMatch });
     if (r.ok) return { ok: true, file: r.file, status: toggled.status };

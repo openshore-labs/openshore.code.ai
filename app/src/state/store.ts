@@ -6052,7 +6052,10 @@ export const useApp = create<AppState>((set, get, api) => {
     // list and body cache never take it (they were cleared for that one).
     if (t.providerId === 'org' && t.owner !== get().authSession?.user.id) return r;
     if (r.ok && t.providerId) {
-      patchVaultFiles({ providerId: t.providerId, resourceId: t.resourceId }, { saved: r.file });
+      const { providerId, resourceId, owner } = t;
+      patchVaultFiles(owner ? { providerId, resourceId, owner } : { providerId, resourceId }, {
+        saved: r.file,
+      });
     }
     return r;
   }
@@ -6165,12 +6168,17 @@ export const useApp = create<AppState>((set, get, api) => {
     );
   }
 
-  /** A note's text in one vault, through the body cache. */
+  /** A note's text in one vault, through the body cache. The open note's
+   *  version is the newest this device knows of it, so a body cached for an
+   *  older version never stands in for it (E2). */
   async function readBodyOf(t: VaultTarget, path: string): Promise<string | undefined> {
     const key = vaultKey(t, path);
-    const listed = isActiveVault(t) ? get().vaultFiles.find((f) => f.path === path) : undefined;
+    const active = isActiveVault(t);
+    const listed = active ? get().vaultFiles.find((f) => f.path === path) : undefined;
+    const open = active ? get().vaultNote : undefined;
+    const known = (open?.path === path && versionOf(open)) || (listed && versionOf(listed));
     const cached = vaultBodyCache.get(key);
-    if (cached && listed && cached.version === versionOf(listed)) return cached.text;
+    if (cached && known && cached.version === known) return cached.text;
     const note = await t.provider.read(t.resourceId, path);
     if (!note) return undefined;
     vaultBodyCache.set(key, { version: versionOf(note), text: note.text });
@@ -6701,6 +6709,14 @@ export const useApp = create<AppState>((set, get, api) => {
     }
   }
 
+  // The open note took a version from a read: the body cache holds its text
+  // at that version, so nothing pairs an older body with it (E2).
+  function cacheOpenBody(file: StoredFile): void {
+    const t = vaultTarget();
+    const version = versionOf(file);
+    if (t && version) vaultBodyCache.set(vaultKey(t, file.path), { version, text: file.text });
+  }
+
   // When the open note's text was read or reloaded: Date.now(), but always
   // later than the last, so two sittings of one note never share one (E7).
   let lastLoadedAt = 0;
@@ -6728,6 +6744,7 @@ export const useApp = create<AppState>((set, get, api) => {
   ): void {
     const open = get().vaultNote;
     if (!open || open.path !== file.path) return;
+    cacheOpenBody(file);
     vaultLiveDraft = { path: file.path, text: file.text };
     set({
       vaultNote: {
@@ -6809,6 +6826,7 @@ export const useApp = create<AppState>((set, get, api) => {
     if (theirs.text === now.text || theirs.text === draft) {
       // Nothing to ask: the bytes are what this device loaded, or what the
       // person typed. Adopt the version (and a draft that matches reads clean).
+      cacheOpenBody(theirs);
       set({
         vaultNote: {
           ...now,
@@ -10809,6 +10827,7 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       if (!isActiveVault(target)) return;
       if (existing) vaultIndexOf(target)?.noteRead(existing);
+      if (existing) cacheOpenBody(existing);
       // Opening another note leaves this one: a choice still open on it keeps
       // both (CS 1c).
       if (get().vaultConflict && get().vaultConflict?.path !== openPath) {
@@ -11761,7 +11780,12 @@ export const useApp = create<AppState>((set, get, api) => {
       const title = noteTitle(path);
       // The tick acts on what the person last typed, saved first.
       await flushOpenSave(t).catch(() => {});
-      const text = await readBodyOf(t, path).catch(() => undefined);
+      // The line is counted on the text the person sees: the open note as it
+      // stands after that save, else the note as last read. The tick then
+      // lands only on that same text (E2).
+      const open = isActiveVault(t) ? get().vaultNote : undefined;
+      const text =
+        open?.path === path ? open.text : await readBodyOf(t, path).catch(() => undefined);
       if (text === undefined) {
         get().showToast(VAULT_TICK_FAILED);
         return false;
@@ -11771,7 +11795,7 @@ export const useApp = create<AppState>((set, get, api) => {
       const task = listTasks(text).find((x) => x.line === line);
       if (!task || task.custom) return false;
       if (task.checked === checked) return true;
-      const r = await opsToggleTask(opsDeps(t), path, task.at, task.status);
+      const r = await opsToggleTask(opsDeps(t), path, task.at, task.status, text);
       if (r.ok) return true;
       // Refused for good (a plan the room had not read yet, OV402): its
       // line, never "try again" (round 5 sweep).
