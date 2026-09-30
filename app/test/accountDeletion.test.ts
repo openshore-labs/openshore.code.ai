@@ -299,11 +299,8 @@ describe('the deletion flow', () => {
     expect(seen.asked).toEqual(['fresh']);
   });
 
-  it('fails without touching the device when offline, refused, or answered oddly', async () => {
+  it('fails without touching the device when the function refused or answered oddly', async () => {
     for (const invoke of [
-      async () => {
-        throw new TypeError('Failed to fetch');
-      },
       async () => {
         throw new SupabaseRequestError('Request failed (500).', 500);
       },
@@ -315,6 +312,48 @@ describe('the deletion flow', () => {
       const { deps, seen } = fakes({ invoke });
       expect(await deleteAccount(deps)).toEqual({ kind: 'failed' });
       expect(seen.forgot).toBe(0);
+    }
+  });
+
+  // A request that broke on the way (a dropped connection, an answer cut
+  // short) may have reached the function and finished: deleting the user is
+  // its last step. Only the auth server can say, and "not deleted" is never
+  // said while the account might be gone or the function still running.
+  it('settles a request that broke on the way by asking the auth server, never as failed', async () => {
+    const broke = [
+      async () => {
+        throw new TypeError('Failed to fetch');
+      },
+      async () => {
+        throw new TypeError('Load failed');
+      },
+      async () => {
+        throw new SyntaxError('Unexpected end of JSON input');
+      },
+    ];
+    for (const invoke of broke) {
+      const gone = fakes({ invoke, authState: async () => 'gone' });
+      expect(await deleteAccount(gone.deps)).toEqual({ kind: 'deleted' });
+      expect(gone.seen.forgot).toBe(1);
+      expect(gone.seen.cleared).toBe(1);
+      const dead = fakes({ invoke, authState: async () => 'invalid' });
+      expect(await deleteAccount(dead.deps)).toEqual({ kind: 'signed_out' });
+      expect(dead.seen.ended).toBe(1);
+      expect(dead.seen.forgot).toBe(0);
+      const here = fakes({ invoke });
+      expect(await deleteAccount(here.deps)).toEqual({ kind: 'unconfirmed' });
+      expect(here.seen.asked).toEqual(['fresh']);
+      expect(here.seen.forgot).toBe(0);
+      expect(here.seen.ended).toBe(0);
+      const cannot = fakes({
+        invoke,
+        authState: async () => {
+          throw new TypeError('Failed to fetch');
+        },
+      });
+      expect(await deleteAccount(cannot.deps)).toEqual({ kind: 'unconfirmed' });
+      expect(cannot.seen.forgot).toBe(0);
+      expect(cannot.seen.ended).toBe(0);
     }
   });
 

@@ -59,16 +59,21 @@ export type DeleteAccountOutcome =
    *  here or on another device) or not; nothing here can tell, so the sheet
    *  claims neither. */
   | { kind: 'signed_out' }
-  /** The server found no account for this token, and the auth server could
-   *  not say whether the account or only the sign-in is gone (offline, a
-   *  server error, or an answer with no code to read). The account may or may
-   *  not be deleted; nothing changed on the device. */
+  /** Nobody can say whether the account was deleted: the server found no
+   *  account for this token and the auth server could not say whether the
+   *  account or only the sign-in is gone (offline, a server error, or an
+   *  answer with no code to read); or the request itself broke on the way
+   *  (the connection dropped, the answer came back cut short), so the
+   *  function may have finished, or may still be running, while the account
+   *  still reads as here. Nothing changed on the device. */
   | { kind: 'unconfirmed' }
   /** Refused: a subscription could not be stopped, so nothing was deleted
    *  (main's 'billing', the 2026-09-24 function's 'billing_failed'). */
   | { kind: 'billing' }
-  /** Not deleted: offline, or the server failed. Nothing changed on the
-   *  device either. */
+  /** Not deleted: the session door could not reach the server (nothing was
+   *  sent), the function answered that it failed, or the auth server shows
+   *  the account still here after the function said it found none. Nothing
+   *  changed on the device either. */
   | { kind: 'failed' };
 
 /** A success body from either function. */
@@ -159,8 +164,19 @@ export async function deleteAccount(deps: AccountDeletionDeps): Promise<DeleteAc
   try {
     outcome = answerOutcome(await deps.invoke(session.accessToken));
   } catch (err) {
-    if (refusalOf(err) !== 'no_user') return refusalOutcome(err);
-    outcome = await noUserOutcome(deps, session.accessToken);
+    if (err instanceof SupabaseRequestError) {
+      // The function (or its gateway) answered: a coded refusal is what it
+      // says, and a no-user code is settled by asking the auth server.
+      if (refusalOf(err) !== 'no_user') return refusalOutcome(err);
+      outcome = await askAuth(deps, session.accessToken, { kind: 'failed' });
+    } else {
+      // The request broke on the way (a dropped connection, an answer cut
+      // short): the function may have finished, since deleting the user is
+      // its last step, or may still be running. Only the auth server can
+      // say it is gone; an account still here is unconfirmed, not "not
+      // deleted".
+      outcome = await askAuth(deps, session.accessToken, { kind: 'unconfirmed' });
+    }
     if (outcome.kind === 'signed_out') await deps.endSignIn().catch(() => {});
   }
   if (outcome.kind !== 'deleted') return outcome;
@@ -172,14 +188,16 @@ export async function deleteAccount(deps: AccountDeletionDeps): Promise<DeleteAc
   return outcome;
 }
 
-/** The server found no account for this token. Ask the auth server once:
- *  gone is a deletion (the Apple note as an if, since nobody said), a dead
- *  sign-in is signed out, and a live one means the function failed. When the
- *  auth server cannot say either, it is unconfirmed: the account may be gone,
- *  so it is never read as "not deleted". */
-async function noUserOutcome(
+/** Ask the auth server once what it makes of this token: gone is a deletion
+ *  (the Apple note as an if, since nobody said), a dead sign-in is signed
+ *  out, and a live account reads as `live` (failed when the function said it
+ *  found no account, unconfirmed when the request broke on the way). When
+ *  the auth server cannot say either, it is unconfirmed: the account may be
+ *  gone, so it is never read as "not deleted". */
+async function askAuth(
   deps: AccountDeletionDeps,
   accessToken: string,
+  live: DeleteAccountOutcome,
 ): Promise<DeleteAccountOutcome> {
   let state: AuthUserState;
   try {
@@ -189,5 +207,5 @@ async function noUserOutcome(
   }
   if (state === 'gone') return { kind: 'deleted' };
   if (state === 'invalid') return { kind: 'signed_out' };
-  return { kind: 'failed' };
+  return live;
 }

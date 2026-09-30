@@ -3184,14 +3184,25 @@ execution contract. Newest at the bottom.
       deleted. Check your connection and try again.", the device untouched,
       never "was not deleted". This supersedes the bullet above that read
       `bad_jwt` as a dead sign-in and the double failure as failed.
+    - A request that broke on the way (a dropped connection, an answer cut
+      short, anything but an answer from the function or its gateway) is
+      settled the same way, since the function may have finished (deleting
+      the user is its last step) or may still be running: gone is the
+      goodbye, a dead sign-in is signed out, and an account still here, or
+      no answer, is `unconfirmed`. "Not deleted" is said only when nothing
+      was sent (the session door failed), the function answered that it
+      failed, or the function found no account and the auth server shows
+      it still here (the final review caught the dropped connection).
     - A dead sign-in (`signed_out`) ends the way the session door ends one
       on `AuthExpiredError`: `forgetSession(true)`, through the new
       `endSignIn` dep, so unsent team vault text stays sealed for the same
       account. A deletion keeps the plain `forgetSession()`. The signed-out
       sheet fits a deletion on this device or another: "If your account was
       already deleted, here or on another device, it is gone."
-    - `local-vault.sh` refuses `--wizard` in any spelling and a bare `--`
-      anywhere, and before the subcommand (and between `db` and its own)
+    - `local-vault.sh` refuses `--wizard` in any spelling, a bare `--` and
+      every `--no-<flag>` anywhere (2.118.0 reads `--no-linked` as
+      `--linked` and `--no-wizard` as `--wizard`, checked offline; the final
+      review caught it), and before the subcommand (and between `db` and its own)
       lets through only 2.118.0's global flags, each checked against its
       `--help`. On 2.118.0 a target flag counts once given, whatever its
       value (checked offline in a folder linked to nothing:
