@@ -734,6 +734,11 @@ export function vaultSaveChip(
  *  what to do to save again. */
 export const VAULT_TEAM_SIGN_IN_LINE = 'Sign in again to save to your team.';
 
+/** A team step started under one account, refused because another account
+ *  is signed in now: nothing more of it is sent under the new one (R-19). */
+export const VAULT_TEAM_OTHER_ACCOUNT =
+  'It was started under another account, so the rest was not sent.';
+
 // ---- The lease (2.5) ----------------------------------------------------------
 // Advisory on a storage with compare-and-swap: one quiet line, never read-only.
 // Enforced only on a storage without it, and honest that the storage itself

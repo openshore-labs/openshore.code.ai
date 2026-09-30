@@ -4466,4 +4466,166 @@ describe('round 7: team text belongs to its account and its version', () => {
       expect(liveHas(server, 'u1 typed words')).toBe(false);
     });
   });
+
+  describe('E5: team text is sent only under the account that typed it', () => {
+    // Every team RPC with the token it went out on.
+    function recordTokens() {
+      const calls: Array<{ fn: string; token: string; body?: unknown; path?: unknown }> = [];
+      const rpc = server.rpc.bind(server);
+      server.rpc = async (fn, token, args) => {
+        calls.push({ fn, token, body: args.p_body, path: args.p_path ?? args.p_to });
+        return rpc(fn, token, args);
+      };
+      return calls;
+    }
+    async function switchTo(user: { id: string; email: string }) {
+      await st().signOutAccount();
+      auth.nextUser = user;
+      await st().signIn(user.email, 'pw');
+    }
+
+    it("a keep-both copy after the account switch is never sent on the new account's token", async () => {
+      useStoreToken();
+      server.put('n.md', 'A', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      const g = gateWrites(server);
+      const calls = recordTokens();
+      const at = st().vaultTargetRef();
+      const save = st().vaultSave('n.md', 'u1 words, private to u1', at);
+      await vi.waitFor(() => expect(g.seen).toBe(1));
+      server.put('n.md', 'a teammate saved');
+      g.on = false;
+      await switchTo(U2);
+      g.open.resolve();
+      await save;
+      for (let i = 0; i < 10; i++) await tick();
+      expect(
+        calls.filter(
+          (c) => c.token === 'tok-u2' && typeof c.body === 'string' && c.body.includes('u1 words'),
+        ),
+      ).toEqual([]);
+      expect(liveHas(server, 'u1 words, private to u1')).toBe(true);
+      expect(server.bytes('n.md')).toBe('a teammate saved');
+      expect(st().vaultHeldVisible()).toEqual([]);
+    });
+
+    it("the copy is never published under u2, and u1's text shows to u1 alone", async () => {
+      const net = perCaller(server, { members: ['u1', 'u2'] });
+      useStoreToken();
+      server.put('Plan.md', 'the base', 'u9');
+      await st().vaultRefresh();
+      await st().vaultOpen('Plan.md');
+      server.put('Plan.md', 'theirs', 'u-teammate');
+      const held = net.hold('org_vault_write');
+      const save = st().vaultSave('Plan.md', 'the base\nu1 in-flight words');
+      await held.reached;
+      await switchTo(U2);
+      held.release();
+      await save;
+      for (let i = 0; i < 10; i++) await tick();
+      const live = [...server.notes.values()].filter((n) => !n.deleted);
+      expect(live.map((n) => [n.path, n.body, n.updated_by])).toEqual([
+        ['Plan.md', 'theirs', 'u-teammate'],
+      ]);
+      expect(st().vaultHeldVisible()).toEqual([]);
+      // Kept in memory for u1 alone, never sent (keepUnsentTeamText).
+      expect(st().vaultHeld.map((h) => [h.owner, h.text, h.durable])).toEqual([
+        ['u1', 'the base\nu1 in-flight words', false],
+      ]);
+    });
+
+    it("a replay that runs across a sign-out never writes the rest of u1's stash under u2", async () => {
+      const net = perCaller(server, { members: ['u1', 'u2'] });
+      useStoreToken();
+      teamNet.fail = new TypeError('Failed to fetch');
+      await st().vaultSave('a.md', 'u1 draft a');
+      await st().vaultSave('b.md', 'u1 draft b');
+      teamNet.fail = undefined;
+      expect(Object.keys(pending()).length).toBe(2);
+      const held = net.hold('org_vault_write');
+      const refresh = st().vaultRefresh();
+      await held.reached;
+      await switchTo(U2);
+      useApp.setState({ toast: undefined, vaultError: undefined });
+      held.release();
+      await refresh;
+      for (let i = 0; i < 10; i++) await tick();
+      const byU2 = [...server.notes.values()].filter(
+        (n) => !n.deleted && n.body.startsWith('u1 draft') && n.updated_by === 'u2',
+      );
+      expect(byU2.map((n) => n.path)).toEqual([]);
+      expect(pending()).toEqual({});
+      expect(st().vaultError).toBeUndefined();
+      expect(st().toast).toBeUndefined();
+    });
+
+    it('a replay cut short by an expiry keeps the rest sealed, and it replays under u1 on return', async () => {
+      const net = perCaller(server, { members: ['u1', 'u2'] });
+      useStoreToken();
+      teamNet.fail = new TypeError('Failed to fetch');
+      await st().vaultSave('a.md', 'u1 draft a');
+      await st().vaultSave('b.md', 'u1 draft b');
+      teamNet.fail = undefined;
+      const held = net.hold('org_vault_write');
+      const refresh = st().vaultRefresh();
+      await held.reached;
+      useApp.setState({ authSession: session(auth.nextUser, -1000) });
+      auth.refresh = new SupabaseRequestError('invalid grant', 400);
+      await st().refreshOrgRole();
+      auth.refresh = undefined;
+      expect(st().vaultTeamExpired).toBeFalsy();
+      held.release();
+      await refresh;
+      for (let i = 0; i < 10; i++) await tick();
+      expect(server.bytes('b.md')).toBeUndefined();
+      expect(Object.values(pending()).map((e) => e.text)).toEqual(['u1 draft b']);
+      await st().signIn('me@example.com', 'pw');
+      await st().setVaultScope('team');
+      for (let i = 0; i < 10; i++) await tick();
+      expect(server.notes.get('b.md')).toMatchObject({ body: 'u1 draft b', updated_by: 'u1' });
+      expect(pending()).toEqual({});
+    });
+
+    it('a folder move that spans the switch sends no step on the new token', async () => {
+      const net = perCaller(server, { members: ['u1', 'u2'] });
+      useStoreToken();
+      server.put('Work/a.md', 'a', 'u1');
+      server.put('Work/b.md', 'b', 'u1');
+      await st().vaultRefresh();
+      for (let i = 0; i < 20; i++) await tick();
+      const preview = await st().vaultPrepareMove('folder', 'Work', 'Done');
+      if (!preview) throw new Error('no preview');
+      const calls = recordTokens();
+      const held = net.hold('org_vault_move');
+      const move = st().vaultApplyMove(preview, false);
+      await held.reached;
+      await switchTo(U2);
+      held.release();
+      await move;
+      expect(
+        calls.filter((c) => c.token === 'tok-u2' && c.fn !== 'org_vault_settings_get'),
+      ).toEqual([]);
+    });
+
+    it('with no account switch, the keep-both copy is written and every draft replays', async () => {
+      perCaller(server, { members: ['u1', 'u2'] });
+      useStoreToken();
+      server.put('n.md', 'A', 'u1');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      st().vaultCloseNote();
+      teamNet.fail = new TypeError('Failed to fetch');
+      await st().vaultSave('a.md', 'u1 draft a');
+      await st().vaultSave('b.md', 'u1 draft b');
+      teamNet.fail = undefined;
+      // The access token turns over mid-replay: the same account goes on.
+      useApp.setState({ authSession: session(auth.nextUser, -1000) });
+      await st().vaultRefresh();
+      for (let i = 0; i < 10; i++) await tick();
+      expect(server.notes.get('a.md')).toMatchObject({ body: 'u1 draft a', updated_by: 'u1' });
+      expect(server.notes.get('b.md')).toMatchObject({ body: 'u1 draft b', updated_by: 'u1' });
+      expect(pending()).toEqual({});
+    });
+  });
 });

@@ -520,6 +520,7 @@ import {
   vaultRefusedLine,
 } from '../lib/vaultCopy.js';
 import { vaultTeamRefusal } from './vaultTeamGate.js';
+import { ownerBoundProvider } from './teamOwner.js';
 import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
 import { SAMPLE_PROMPT, SAMPLE_REPO_NAME } from '../lib/sampleProject.js';
 import { setSearchConsent, type SearchAllowed } from '../lib/localSearch.js';
@@ -4763,13 +4764,24 @@ export const useApp = create<AppState>((set, get, api) => {
   // team when no signed-in org is present, so the actions no-op instead of
   // throwing.
   type VaultTarget = VaultTargetRef & { provider: StorageProvider };
+  // A team target's storage answers only while its account is the one
+  // signed in (state/teamOwner.ts), so nothing started under one account is
+  // ever sent under the next (R-19).
+  const teamStorage = (provider: StorageProvider, owner: string | undefined) =>
+    ownerBoundProvider(provider, owner, () => get().authSession?.user.id);
   function vaultTarget(): VaultTarget | undefined {
     const st = get();
     if (st.vaultScope === 'team') {
       const orgId = st.settings.account?.org?.serverId;
       const provider = providerFor('org');
       if (!orgId || !provider) return undefined;
-      return { provider, providerId: 'org', resourceId: orgId, owner: st.authSession?.user.id };
+      const owner = st.authSession?.user.id;
+      return {
+        provider: teamStorage(provider, owner),
+        providerId: 'org',
+        resourceId: orgId,
+        owner,
+      };
     }
     const providerId = vaultProviderId(st.settings);
     const provider = providerFor(providerId);
@@ -4777,21 +4789,25 @@ export const useApp = create<AppState>((set, get, api) => {
     return { provider, providerId, resourceId: VAULT_RESOURCE_ID };
   }
   // A target a caller pinned earlier (a scheduled save), or the active one. A
-  // team ref that names no account speaks for whoever is signed in now.
+  // team ref speaks only for the account it names; one that names none
+  // (pinned while nobody was signed in) speaks for nobody.
   function vaultTargetFrom(at?: VaultTargetRef): VaultTarget | undefined {
     if (!at) return vaultTarget();
     const provider = providerFor(at.providerId);
     if (!provider) return undefined;
-    const { providerId, resourceId } = at;
+    const { providerId, resourceId, owner } = at;
     return providerId === 'org'
-      ? { provider, providerId, resourceId, owner: at.owner ?? get().authSession?.user.id }
+      ? { provider: teamStorage(provider, owner), providerId, resourceId, owner }
       : { provider, providerId, resourceId };
   }
   // Whether a target is the vault on screen now, so a late result never
-  // paints one vault's list or note over the other's.
+  // paints one vault's list or note over the other's, nor one account's team
+  // vault over another's. A team note kept open after an expiry is still its
+  // account's.
   function isActiveVault(t: VaultTargetRef): boolean {
     const now = vaultTarget();
-    return Boolean(now && now.providerId === t.providerId && now.resourceId === t.resourceId);
+    if (!now || now.providerId !== t.providerId || now.resourceId !== t.resourceId) return false;
+    return t.providerId !== 'org' || (now.owner ?? keptTeamOwner) === t.owner;
   }
   // Whether text for a target may be sent, stashed, or shown right now:
   // always for a personal vault; for the team vault only while the account
@@ -5967,12 +5983,20 @@ export const useApp = create<AppState>((set, get, api) => {
   }
 
   async function putVaultNote(
-    t: { provider: StorageProvider; resourceId: string; providerId?: StorageProviderId },
+    t: {
+      provider: StorageProvider;
+      resourceId: string;
+      providerId?: StorageProviderId;
+      owner?: string;
+    },
     path: string,
     text: string,
     guard: WriteGuard,
   ): Promise<WriteResult> {
     const r = await t.provider.write(t.resourceId, path, text, guard);
+    // A team write that lands after its account left: the next sign-in's
+    // list and body cache never take it (they were cleared for that one).
+    if (t.providerId === 'org' && t.owner !== get().authSession?.user.id) return r;
     if (r.ok && t.providerId) {
       patchVaultFiles({ providerId: t.providerId, resourceId: t.resourceId }, { saved: r.file });
     }
@@ -6408,6 +6432,9 @@ export const useApp = create<AppState>((set, get, api) => {
     // While another device holds the enforced lease, nothing replays into
     // its notes; the stash waits for the lease to come back (CTO G5).
     if (leaseBlocks(t)) return;
+    // A team replay runs only for the account signed in now, and only its
+    // own drafts (R-19).
+    if (!speaksNow(t)) return;
     const folderNow = t.providerId === 'files' ? get().vaultFolder?.dir : undefined;
     if (folderNow) await holdOtherFolderDrafts(folderNow, false);
     let mine: VaultPendingEntry[];
@@ -6421,6 +6448,7 @@ export const useApp = create<AppState>((set, get, api) => {
             e.providerId === t.providerId &&
             e.resourceId === t.resourceId &&
             speaksNow(e) &&
+            (t.providerId !== 'org' || e.owner === t.owner) &&
             !(
               open &&
               open.path === e.path &&
@@ -6439,6 +6467,10 @@ export const useApp = create<AppState>((set, get, api) => {
     let held = 0;
     let unkept = 0;
     for (const e of mine) {
+      // Its account signed out, expired, or gave way to another while the
+      // replay ran: the rest waits, sealed for that account (an expiry) or
+      // already wiped (a sign-out), and nothing more is sent (R-19).
+      if (!speaksNow(e)) break;
       let refusal = readOnly;
       if (!refusal) {
         try {
@@ -6447,6 +6479,7 @@ export const useApp = create<AppState>((set, get, api) => {
           settled.push(e);
           continue;
         } catch (err) {
+          if (!speaksNow(e)) break;
           refusal = vaultRefusal(err);
           // Anything else is still failing; keep it for the next attempt.
           if (!refusal) continue;
@@ -6874,6 +6907,12 @@ export const useApp = create<AppState>((set, get, api) => {
     // of free space, 0023) or fail: the text is held or stashed the same
     // way, never dropped with the rejection (round 5, finding 1).
     if (!result.ok) {
+      // The account that typed it left while the write was out: nothing
+      // more is sent, and the text is kept for that account alone (R-19).
+      if (!speaksNow(target)) {
+        await keepUnsentTeamText(target, path, text, base);
+        return base;
+      }
       try {
         return await settleSaveConflict(target, path, text, base, result);
       } catch (err) {
