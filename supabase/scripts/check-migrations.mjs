@@ -22,7 +22,10 @@
 //     On a push to main: runs the same checks for every refs/remotes/origin/*
 //     branch and reports each collision as a warning (in the job summary when
 //     $GITHUB_STEP_SUMMARY is set). It never fails, so a stale held branch
-//     shows up the day main takes its number without turning main red.
+//     shows up the day main takes its number without turning main red. A
+//     branch missing applied files, check (d), is one line, "behind main;
+//     merge main before touching supabase/", not one line per file: every
+//     branch cut before main took production's files would list all of them.
 //
 // Reads git objects only. Connects to nothing, installs nothing.
 import { appendFileSync, readFileSync } from 'node:fs';
@@ -121,12 +124,11 @@ export function problemsFor(ref, mainRef) {
   const treeFiles = filesAt(ref);
   const inTree = new Set(treeFiles);
 
-  for (const row of history ?? []) {
-    if (!inTree.has(row.file)) {
-      problems.push(
-        `(d) ${row.file}: production applied it, and it is missing here; an applied file stays, byte for byte`,
-      );
-    }
+  const missing = (history ?? []).filter((row) => !inTree.has(row.file)).map((row) => row.file);
+  for (const file of missing) {
+    problems.push(
+      `(d) ${file}: production applied it, and it is missing here; an applied file stays, byte for byte`,
+    );
   }
 
   for (const file of treeFiles) {
@@ -180,7 +182,19 @@ export function problemsFor(ref, mainRef) {
       );
     }
   }
-  return { problems, notes, history: history !== null, ceiling };
+  return { problems, notes, history: history !== null, ceiling, missing };
+}
+
+/** A scanned branch's warnings: check (d) as one line for the branch (the
+ *  branch is behind main), every other problem as it is. */
+export function scanLines(found) {
+  const rest = found.problems.filter((p) => !p.startsWith('(d) '));
+  if (found.missing.length === 0) return rest;
+  const n = found.missing.length;
+  return [
+    `(d) behind main; merge main before touching supabase/ (${n} file${n === 1 ? '' : 's'} production applied ${n === 1 ? 'is' : 'are'} missing here)`,
+    ...rest,
+  ];
 }
 
 if (args.includes('--scan-remotes')) {
@@ -191,7 +205,7 @@ if (args.includes('--scan-remotes')) {
   for (const ref of refs) {
     let found;
     try {
-      found = problemsFor(ref, against).problems;
+      found = scanLines(problemsFor(ref, against));
     } catch {
       continue; // no supabase/migrations on that branch
     }

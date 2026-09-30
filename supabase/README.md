@@ -121,9 +121,13 @@ rand -hex 32` key, runs the one command, and restores the file on exit. It
 runs only `start`, `db start`, `db reset` and `db push --local`, and refuses
 everything else (among them `db pull`, `pull`, `migration repair`,
 `migration list`, `db dump` and `inspect`) and every flag that names a project
-or another `supabase/` folder, in any spelling (`--linked=true` included), and
-any `--local=` other than `--local=true`, before anything runs
-(`app/test/localVaultScript.test.ts`). The entry is never
+or another `supabase/` folder, in any spelling (on 2.118.0 a target flag
+counts once given, whatever its value, so `--linked=false` targets the linked
+project), any `--local=` other than `--local=true`, `--wizard` in any
+spelling, a bare `--`, and any flag before the subcommand that is not one of
+the CLI's global flags, before anything runs
+(`app/test/localVaultScript.test.ts`, which also runs every use documented
+here, in the runbook and in CI). The entry is never
 committed: the CLI's push upserts every Vault secret `config.toml` resolves
 before it migrates (2.118.0: "Vault secrets from config.toml are updated before
 migrations unless --skip-vault is set"), so a committed entry with the variable
