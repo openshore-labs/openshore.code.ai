@@ -12,13 +12,20 @@
 //           with other bytes than the pinned hash;
 //       (c) a file not on main numbered at or below the higher of main's
 //           newest and production's newest. Such a branch renumbers before it
-//           merges.
+//           merges;
+//       (d) a file production applied (main's production-history.tsv) missing
+//           from the tree, deleted or renamed away;
+//     and a file whose bytes another file in the tree already holds (a copy
+//     under a new number, not a move).
 //
 //   node supabase/scripts/check-migrations.mjs --scan-remotes --against origin/main
 //     On a push to main: runs the same checks for every refs/remotes/origin/*
 //     branch and reports each collision as a warning (in the job summary when
 //     $GITHUB_STEP_SUMMARY is set). It never fails, so a stale held branch
-//     shows up the day main takes its number without turning main red.
+//     shows up the day main takes its number without turning main red. A
+//     branch missing applied files, check (d), is one line, "behind main;
+//     merge main before touching supabase/", not one line per file: every
+//     branch cut before main took production's files would list all of them.
 //
 // Reads git objects only. Connects to nothing, installs nothing.
 import { appendFileSync, readFileSync } from 'node:fs';
@@ -84,7 +91,8 @@ function historyAt(ref) {
  *
  * A file whose bytes main holds under another name is one of two things: main's
  * unapplied file moved, bytes unchanged, to a free number above production's
- * newest (the reconcile's own move; it passes), or a stale name or a
+ * newest (the reconcile's own move; it passes, but only when the old name is
+ * gone from the tree, so a copy is never read as a move), or a stale name or a
  * renumbered copy, which gets one line saying what to do instead of three.
  */
 export function problemsFor(ref, mainRef) {
@@ -113,8 +121,17 @@ export function problemsFor(ref, mainRef) {
   const newestProd = history?.at(-1)?.version ?? '0000';
   const ceiling = newestMain > newestProd ? newestMain : newestProd;
   const mainByHash = new Map(mainFiles.map((f) => [sha256(bytesAt(mainRef, f)), f]));
+  const treeFiles = filesAt(ref);
+  const inTree = new Set(treeFiles);
 
-  for (const file of filesAt(ref)) {
+  const missing = (history ?? []).filter((row) => !inTree.has(row.file)).map((row) => row.file);
+  for (const file of missing) {
+    problems.push(
+      `(d) ${file}: production applied it, and it is missing here; an applied file stays, byte for byte`,
+    );
+  }
+
+  for (const file of treeFiles) {
     const m = FILE_NAME.exec(file);
     if (!m) {
       problems.push(`${file}: not named NNNN_words.sql`);
@@ -126,7 +143,11 @@ export function problemsFor(ref, mainRef) {
     const sameBytes = mainByHash.get(hash);
     if (sameBytes && sameBytes !== file) {
       const free = !onMain || onMain === sameBytes;
-      if (!appliedFiles.has(sameBytes) && version > newestProd && free) {
+      if (inTree.has(sameBytes)) {
+        problems.push(
+          `${file}: a copy of ${sameBytes}, which is here too; one change is one file`,
+        );
+      } else if (!appliedFiles.has(sameBytes) && version > newestProd && free) {
         notes.push(
           `${file} is main's unapplied ${sameBytes}, moved above production's newest (${newestProd})`,
         );
@@ -161,7 +182,19 @@ export function problemsFor(ref, mainRef) {
       );
     }
   }
-  return { problems, notes, history: history !== null, ceiling };
+  return { problems, notes, history: history !== null, ceiling, missing };
+}
+
+/** A scanned branch's warnings: check (d) as one line for the branch (the
+ *  branch is behind main), every other problem as it is. */
+export function scanLines(found) {
+  const rest = found.problems.filter((p) => !p.startsWith('(d) '));
+  if (found.missing.length === 0) return rest;
+  const n = found.missing.length;
+  return [
+    `(d) behind main; merge main before touching supabase/ (${n} file${n === 1 ? '' : 's'} production applied ${n === 1 ? 'is' : 'are'} missing here)`,
+    ...rest,
+  ];
 }
 
 if (args.includes('--scan-remotes')) {
@@ -172,7 +205,7 @@ if (args.includes('--scan-remotes')) {
   for (const ref of refs) {
     let found;
     try {
-      found = problemsFor(ref, against).problems;
+      found = scanLines(problemsFor(ref, against));
     } catch {
       continue; // no supabase/migrations on that branch
     }

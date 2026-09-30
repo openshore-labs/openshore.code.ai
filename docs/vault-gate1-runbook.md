@@ -2,11 +2,11 @@
 
 This replaces the earlier drafts (push-0019-0021, v2, and the CTO 4 edition that pushed "0019, 0022 to 0025"). Do not use any of them.
 
-**Status (2026-09-29):** production's history holds 0001 to 0020, and its 0019 and 0020 are the privacy branch's files, not main's (the founder's `schema_migrations` query, 2026-09-29). CTO 11 reconciled main to that history (package A), and the closure memo made account deletion one design (package C: main's `delete-account` with the privacy function's legal-hold copy, the email cleanup and the guarded team delete, and an app that reads either function's answers). Once both are on `main`, start at section 0.
+**Status (2026-09-30):** production's history holds 0001 to 0020, and its 0019 and 0020 are the privacy branch's files, not main's (the founder's `schema_migrations` query, 2026-09-29). Packages A to C are on `main` (41bea18, landed 2026-09-30 from another session): CTO 11's reconcile to that history (A), reviews from production's view (B), and account deletion as one design (C: main's `delete-account` with the privacy function's legal-hold copy, the email cleanup and the guarded team delete, and an app that reads either function's answers). Section 0 ran clean on 2026-09-30 and you said yes to landing (DECISIONS, the F1 entry); it stays below as the reference. The review fixes on `prod-reconcile` (PR #2) change 0022 and 0026, both unapplied, so they land on `main` before push day (section 1). Once they have, your next step is push day: section 2 onward, through section 10.
 
 **CTO 4 and CTO 11, as the repo records them:** migrations go to production from `main` only, never from a held branch (`supabase/README.md`, Migration history and Ship order; DECISIONS, the premium build entry and CTO 11). Production's history decides what a number means. `supabase/production-history.tsv` pins every applied file by name and SHA-256, and an applied file is never edited, renamed or renumbered. Main's Org Vault v1 file moved from 0019 to `0021_org_vault_v1.sql` with its bytes unchanged. `0022` and `0023` are main's. The team files are `0024_org_vault_move.sql` and `0025_org_vault_settings.sql` (written as 0020 and 0021 on the held branch). `0026_export_and_retention.sql` is new with CTO 11.
 
-**Where things stand (2026-09-29):**
+**Where things stand (2026-09-30; section 0's 4.1 matched it that day):**
 
 - Production (lzlrlfdffwiypzreoldb) has exactly these 20 rows, and `supabase/production-history.tsv` has the same 20:
 
@@ -38,7 +38,7 @@ This replaces the earlier drafts (push-0019-0021, v2, and the CTO 4 edition that
 
 ## The plan in three steps
 
-1. **Claude** lands packages A, B and C (CTO 11, the closure memo) on `main`, once you give the go-ahead (section 1).
+1. **Claude** lands packages A, B and C (CTO 11, the closure memo) on `main`, once you give the go-ahead (section 1). Done 2026-09-30 for A to C; the review fixes (PR #2) land the same way before push day.
 2. **You**, from an up-to-date `main`: the preflights (among them `push-preflight.mjs` and which `delete-account` is live), backups, one push at a quiet hour, one deploy of main's `delete-account`, then the checks and the rolled-back smoke test (sections 2 to 10).
 3. **Claude** records the push in `supabase/production-history.tsv`, merges `main` into the held branches, and merges draft PR #1 once its CI is green on the current `main` (section 11).
 
@@ -46,8 +46,8 @@ This replaces the earlier drafts (push-0019-0021, v2, and the CTO 4 edition that
 
 - **Production's 0019 and 0020 are not main's old files.** They were pushed on 2026-09-24 from the unmerged branch `claude/openshore-privacy-mobile-1ij12h` (its head `d3d4bb7` says so). The CLI matches on the version number only, so a push from the old `main` would have treated main's org vault file (then 0019) as applied and skipped it, and refused because remote 0020 had no local file. Main now holds both privacy files byte for byte (blobs `6c50cda` and `6d91842`), and the org vault file is 0021.
 - **Never renumber the privacy files.** A renumbered copy would run 0019's re-key again (0019 lines 316-326 are not idempotent), keying every unsubmitted fingerprint a second time and breaking the report dedupe, and would put back 0019's broken `record_enforcement` (lines 377-462). The earlier hand-off sentence asking the privacy branch to renumber is withdrawn.
-- **0021 to 0026 passed pgTAP both ways, locally on 2.118.0 (2026-09-29, with package C's 0022 and 0026).** From empty: `Files=4, Tests=295`, `Result: PASS`. Replaying production (its 20 files, then rows with production's shape, then the six pending files through `db push --local --skip-vault`): `supabase/replay/after_push.sql` printed `REPLAY CHECKS PASSED: 11 checks held on production's rows.`, and pgTAP gave `Files=4, Tests=295`, `Result: PASS`. CI's `sql` and `sql-replay` jobs are the proof of record.
-- **Which `delete-account` is live decides whether the push is safe for deletions.** The analysis in 7.4 and the compatibility window assume production runs the privacy branch's function, deployed 2026-09-24 with 0019 and 0020 (d3d4bb7): it writes only tables that exist before and after the push. Main's pre-merge function (never meant to be deployed) writes a tombstone shape 0022 no longer has. So 0.2 and 2.2d check the deployment time before anything else (founder decision F6).
+- **0021 to 0026 passed pgTAP both ways, locally on 2.118.0 (2026-09-30, with package C's 0022 and 0026 and the review's fixes).** From empty: `Files=4, Tests=301`, `Result: PASS`. Replaying production (its 20 files, then rows with production's shape, then the six pending files through `db push --local --skip-vault`): `supabase/replay/after_push.sql` printed `REPLAY CHECKS PASSED: 11 checks held on production's rows.`, and pgTAP gave `Files=4, Tests=301`, `Result: PASS`. CI's `sql` and `sql-replay` jobs are the proof of record.
+- **Which `delete-account` is live decides whether the push is safe for deletions.** The analysis in 7.4 and the compatibility window assume production runs the privacy branch's function, deployed 2026-09-24 with 0019 and 0020 (d3d4bb7): it writes only tables that exist before and after the push. Main's pre-merge function (never meant to be deployed) writes a tombstone shape 0022 no longer has. So 0.2 and 2.2d check the deployment time before anything else (founder decision F6). 0.2 found 2026-09-24 on 2026-09-30; 2.2d looks again on push day.
 - **"CI is green" means `check`, `sql`, `sql-replay` and `migrations`.** The `windows` job has failed on `main` for reasons with no SQL in them (run 36590234172: `test/processTools.test.ts`, EBUSY on a temp folder). Compare any windows failure against main's latest windows run.
 - **Merging is safe for builds in the field; pushing changes what they see.** Main's app calls only `org_vault_put`, `org_vault_delete` and plain selects on `org_vault_notes` (`app/src/lib/gitos/orgVault.ts`). But 0025 re-creates `org_vault_put` and `org_vault_delete` with the plan gate (0025 lines 596-708), so once pushed, a team with a lapsed entitlement row goes read-only in every build (4.3), and 0023's caps reach every build too (4.5).
 - **The files are the same bytes the held branches carry.** `0021_org_vault_v1.sql` is blob `a2bee6c`, the same bytes `vault-m2-team`, `vault-team-migrations`, `vault-m2-icloud` and `vault-m2-native` hold under the old number. None of them edits it, so the rename carries through when they merge main.
@@ -68,34 +68,41 @@ This replaces the earlier drafts (push-0019-0021, v2, and the CTO 4 edition that
 
 ## 0. Look and decide first (browser only, read only)
 
+**Done 2026-09-30, clean** (DECISIONS, the F1 entry): nothing deploys from `main`, the live `delete-account` was deployed 2026-09-24, and 0.3 found the history equal to `production-history.tsv`, the Vault key present, no leftovers, pg_cron on with both jobs, and no rows from 4.2 to 4.5. You said yes to landing. Nothing here is to do again; it stays as the reference for what push day re-checks (2.2b, 2.2d, and sections 4 and 5 in full).
+
 1. **2.2b before package A reaches `main`.** If an integration deploys migrations when `main` changes, landing package A would push 0021 to 0026 with no preflight. Tell Claude to hold the landing until you have looked.
+   - **Done 2026-09-30:** Project Settings, Integrations, GitHub showed "Choose GitHub repository", so no repository is connected and nothing deploys from `main`. Look again on push day (2.2b), since a connection can be added later.
 2. **Which `delete-account` is live (F6).** Dashboard, Edge Functions, `delete-account`: note its last deployed time.
+   - **Done 2026-09-30:** 2026-09-24, the privacy branch's function (DECISIONS, F6's first fact). 2.2d looks again on push day.
    - **2026-09-24** means the privacy branch's function, the one this runbook's safety analysis assumes (7.4). Go on.
    - **Stop if** it is any other date, or there is no such function. Something else was deployed; hand the date to Claude before any push.
-3. **In the SQL editor, run 4.1 to 4.5 and 5.2.**
+3. **In the SQL editor, run the SQL blocks of 4.1 (the history, the Vault secret count and the leftovers query), 4.2 to 4.5, and 5.2.** Skip 4.1's `push-preflight.mjs` step here: it runs in the Terminal from `oscode-main`, which 2.3 makes on push day. Compare the history with the 20-row table under "Where things stand" instead.
+   - **Done 2026-09-30, clean:** the history equal to `production-history.tsv`, the Vault secret count 1, no leftovers, no rows from 4.2 to 4.5, and 5.2 showed both jobs. That run's 5.2 had no `username` column (it came with the review fixes), so push day's re-run of sections 4 and 5 is the first look at it.
    - 4.1 hits a stop: hand the output to Claude and do not push.
    - 4.2 returns rows: have the owners fix those notes first, or ask Claude for the local rename rehearsal (4.2).
    - 4.3 lists teams: decide per 4.3.
    - 4.4 returns rows: fix them with Claude before any push.
    - 4.5 returns rows: tell those owners before the push (in the words 4.5 gives).
    - 5.2 lacks `oscode_guardrail_retention`: turn pg_cron on at 5.1; 0026 schedules the job.
+   - 5.2 shows `oscode_guardrail_retention` under a username other than `postgres`: hand it to Claude and do not push.
 4. **What the interaction review left open, now settled.**
    - a. **0023's refusal copy: resolved by CTO 11.** 0023 was unapplied, so the file itself now says "start a plan to add more. A deleted note frees its space when its history is cleared, about a month later" (0023 line 190). Nothing to decide.
    - b. **The `delete-account` race: resolved by package C.** 0022's `account_deletion_orgs` deletes the owned teams in one statement, all or none, only while nobody else is active in them; fewer back than planned and the function answers `owns_org`.
    - c. **A deleted person's email in `org_project_members` and pending invites: resolved by package C** (CX: erase it). 0022's `account_deletion_memberships` removes every row bound to the account and every unclaimed row under its confirmed email.
    - d. **Founder decision F1, the appeal address: ruled 2026-09-30.** support@openshore.ai passed its round-trip test, so 0022's warning, the app's Delete account sheet and block card (`SUPPORT_EMAIL`), and the Terms all say it, and `app/test/contactAddress.test.ts` fails if any of them differs. 0022 was unapplied, so its one line changed with the constant and the Terms. After the push, switching it again takes a new migration.
 
-On push day you run section 4 again.
+On push day you run sections 4 and 5 again, in full, `push-preflight.mjs` included.
 
 ---
 
-## 1. Step 1: Claude lands packages A, B and C on `main`
+## 1. Step 1: Claude lands packages A, B and C, then the review fixes, on `main`
 
-With your go-ahead, and only after 0.1. What Claude does, and what it reports back:
+With your go-ahead, and only after 0.1.
 
-- Merges the reconcile branch (`prod-reconcile`: package A, the migrations; B, reviews from the public view; C, account deletion as one design) into the current `origin/main`, through a PR, as one series whose every commit keeps `check`, `sql` and `sql-replay` green.
-- After it lands, main's CI runs. **You should see:** `sql` ending with `Files=4, Tests=295` and `Result: PASS`; `sql-replay` green through its steps (the dry run lists exactly 0021 to 0026, `REPLAY CHECKS PASSED: 11 checks`, pgTAP `Files=4, Tests=295`, and an empty schema diff); `check` and `migrations` green; `windows` failing no differently from main's latest windows run.
-- **Side effects:** one TestFlight build, since Codemagic builds every push to `main` (`codemagic.yaml` lines 51-57). It carries two app fixes against what production already runs: community reviews read `model_reviews_public` (production's 0020), and Delete account reads the live 2026-09-24 function's answers correctly. Nothing changes in production; only a push and a deploy do.
+- **Done 2026-09-30 for packages A to C:** the reconcile branch (package A, the migrations; B, reviews from the public view; C, account deletion as one design) is on `main` at 41bea18, merged through a PR from another session after your yes.
+- **Before push day, the review fixes:** `prod-reconcile` into `main`, PR #2, through GitHub with your go-ahead, never a direct push to `main`. They change two unapplied files, 0022 (`account_deletion_orgs` is all or none over every team named) and 0026 (the export matches by email only rows nobody has claimed, and it stops, naming the owner, on a retention job another role owns), and the `delete-account` function, which now copies the legal hold after the team delete. They also carry app fixes (Block this user reads a void call's empty answer, and Delete account settles an account already gone, ends a dead sign-in the way an expiry does, and says when it could not confirm), `local-vault.sh` and `check-migrations.mjs`. **Push day waits for this merge:** a push from a `main` without it would apply the older 0022 and 0026, and an applied file is frozen. Claude reports the merge commit; 2.3 checks for it.
+- After PR #2 lands, main's CI runs. **You should see:** `sql` ending with `Files=4, Tests=301` and `Result: PASS`; `sql-replay` green through its steps (the dry run lists exactly 0021 to 0026, `REPLAY CHECKS PASSED: 11 checks`, pgTAP `Files=4, Tests=301`, and an empty schema diff); `check` and `migrations` green; `windows` failing no differently from main's latest windows run.
+- **Side effects:** one TestFlight build, since Codemagic builds every push to `main` (`codemagic.yaml` lines 51-57), and a desktop release, since `.github/workflows/release.yml` builds the desktops on every push to `main` that touches `app/`, `os-code/` or the workspace files (section 11). Both carry the same app fixes against what production already runs: community reviews read `model_reviews_public` (production's 0020), Block this user saves and reloads, and Delete account reads the live 2026-09-24 function's answers correctly. Nothing changes in production; only a push and a deploy do.
 - **Stop if** `sql`, `sql-replay`, `check` or `migrations` fails.
 
 ---
@@ -117,11 +124,11 @@ env | grep '^SUPABASE_'
 **2.2 Dashboard checks** (first in section 0, again on push day):
 
 - a. Project Settings, General. The Project ID must be `lzlrlfdffwiypzreoldb` (it is also in the README's repo-oauth callback URL).
-- b. Project Settings, Integrations, GitHub. Confirm that nothing deploys migrations to production automatically, and note whether Branching is on. **Stop if** automatic production deploys are on, and rethink the plan with Claude. The repo has no deploy automation of its own (no push step or `SUPABASE_ACCESS_TOKEN` in `.github/` or `codemagic.yaml`). Not verified here: the dashboard path or your settings.
+- b. Project Settings, Integrations, GitHub. Confirm that nothing deploys migrations to production automatically, and note whether Branching is on. **Stop if** automatic production deploys are on, and rethink the plan with Claude. The repo has no deploy automation of its own (no push step or `SUPABASE_ACCESS_TOKEN` in `.github/` or `codemagic.yaml`). On 2026-09-30 (0.1) this page showed "Choose GitHub repository": nothing connected. Look again; a connection can be added at any time.
 - c. Codemagic, environment group `Harbor-os-code` (`codemagic.yaml` lines 31-32 and 233-240). `VITE_SUPABASE_URL` must be `https://lzlrlfdffwiypzreoldb.supabase.co`. **Stop if** it names another project. Not verified here: the group is not visible from the repo.
 - d. Edge Functions, `delete-account`: its last deployed time is still 2026-09-24 (0.2). **Stop if** it changed since you looked in section 0.
 
-**2.3 An up-to-date checkout of main.** After Claude reports that packages A to C landed.
+**2.3 An up-to-date checkout of main.** After Claude reports that PR #2 (the review fixes) merged into `main` (section 1).
 
 ```
 cd <your clone of openshore-labs/openshore.code.ai>
@@ -133,12 +140,13 @@ git log -1 --format='%h %s'
 git status --short
 ls supabase/migrations | tail -8
 cat supabase/production-history.tsv | grep -v '^#' | tail -3
+grep -c 'cannot re-schedule it' supabase/migrations/0026_export_and_retention.sql
 ```
 
 - **If `git worktree list` shows `oscode-migrations`** from the first runbook, remove it first: `git worktree remove ../oscode-migrations` (add `--force` if git refuses). Nothing may ever be pushed from it.
 - **If `worktree add` says `../oscode-main` already exists,** run `git worktree remove ../oscode-main` and add it again.
-- **You should see:** the landing commit (or a newer `main` commit); nothing from `git status --short`; the last eight files `0019_account_deletion_and_guardrail_retention.sql`, `0020_reviews_public_view.sql`, `0021_org_vault_v1.sql`, `0022_account_deletion.sql`, `0023_org_free_caps.sql`, `0024_org_vault_move.sql`, `0025_org_vault_settings.sql`, `0026_export_and_retention.sql`; and the history ending at `0020 reviews_public_view`.
-- **Stop if:** any file numbered 0027 or higher exists (unless Claude revised this runbook for it), or the history file ends anywhere else.
+- **You should see:** the merge commit Claude reported for PR #2 (or a newer `main` commit); nothing from `git status --short`; the last eight files `0019_account_deletion_and_guardrail_retention.sql`, `0020_reviews_public_view.sql`, `0021_org_vault_v1.sql`, `0022_account_deletion.sql`, `0023_org_free_caps.sql`, `0024_org_vault_move.sql`, `0025_org_vault_settings.sql`, `0026_export_and_retention.sql`; the history ending at `0020 reviews_public_view`; and `1` from the `grep`, 0026's retention-owner stop, which came with the review fixes.
+- **Stop if:** any file numbered 0027 or higher exists (unless Claude revised this runbook for it), the history file ends anywhere else, or the `grep` prints `0`: this `main` does not have the review fixes yet, and a push now would freeze the older 0022 and 0026.
 
 **2.4 Log in and link:**
 
@@ -240,7 +248,7 @@ brew install libpq
 
 ---
 
-## 4. Preflight (SQL editor and Terminal, read only; first in section 0, then again on push day)
+## 4. Preflight (SQL editor and Terminal, read only; the SQL blocks first in section 0, then all of it again on push day)
 
 **4.1 Migration history, and the preflight script.**
 
@@ -251,7 +259,7 @@ select version, name from supabase_migrations.schema_migrations order by version
 - **You should see:** exactly the 20 rows in `supabase/production-history.tsv` at the checked-out commit (the table under "Where things stand"), in order, each name matching.
 - **Stop if** any row differs from that file: a missing row, an extra row, or another name. Hand the full output to Claude.
 - **Stop if** any row 0021 or above exists. Something pushed without you (re-check 2.2b).
-- Download the result as CSV (the editor's export button) to, for example, `~/Downloads/production.csv`. Then, in the Terminal window, from `oscode-main`:
+- **Push day only (after 2.3):** download the result as CSV (the editor's export button) to, for example, `~/Downloads/production.csv`. Then, in the Terminal window, from `oscode-main`:
 
   ```
   node supabase/scripts/push-preflight.mjs ~/Downloads/production.csv
@@ -300,7 +308,7 @@ select version, name from supabase_migrations.schema_migrations order by version
   ```
   - The `r00NN_` prefix names the file. In `functions`, `org_vault_lock` is 0021's, `enforcement_email_key` and the four `account_deletion_` functions are 0022's, `org_is_entitled` and `org_storage_track` are 0023's, `org_vault_move` is 0024's, and `org_vault_entitled` is 0025's. Every name in `triggers` is 0023's.
   - The last column reads `cron.job` only when pg_cron is installed, so the query runs either way.
-  - **Pass:** every other column is NULL, and `r0026_tombstone_line` is `false`: production's retention job (0019's) has no tombstone line yet. It is NULL when there is no pg_cron or no retention job (see 5.1 and 5.2).
+  - **Pass:** every other column is NULL, and `r0026_tombstone_line` is `false` or NULL. `false`: production's retention job (0019's) has no tombstone line yet. NULL: there is no pg_cron or no retention job; that passes here too, and 5.1 and 5.2 say what to do about it.
   - **Stop if** any other column is filled in, or `r0026_tombstone_line` is `true`, because `if not exists` would silently keep a leftover. Hand it to Claude.
 
 **4.2 Case duplicates (0021).** The README's query (0021 section, Preflight: case duplicates) with a tie-break added, so the first path shown is exactly the one 0021 keeps (0021 lines 169-172), and a path check, because a path that fails `org_vault_path_ok` makes 0021 roll back (0021 lines 123-150):
@@ -415,10 +423,11 @@ select extname, extversion from pg_extension where extname = 'pg_cron';
 **5.2 Existing cron jobs:**
 
 ```sql
-select jobname, schedule, active from cron.job order by jobname;
+select jobname, schedule, username, active from cron.job order by jobname;
 ```
 
-- **You should see:** `oscode_guardrail_retention` at `41 3 * * *` (production's 0019) and `oscode_ledger_retention` at `17 3 * * 0` (0015).
+- **You should see:** `oscode_guardrail_retention` at `41 3 * * *` (production's 0019) and `oscode_ledger_retention` at `17 3 * * 0` (0015), each with username `postgres`, the role the push runs as. The `username` column is new since section 0 ran on 2026-09-30, so this is its first look.
+- **Stop if** `oscode_guardrail_retention` has any other username, or appears twice. pg_cron lets a role re-schedule only its own jobs, so 0026 stops on it (naming the owner) with 0021 to 0025 already applied. Hand the output to Claude before any push.
 - **If `oscode_guardrail_retention` is missing,** pg_cron was off when 0019 ran in September. Turn it on at 5.1; 0026 schedules the whole job (with its tombstone line), so nothing else is needed. If `oscode_ledger_retention` is missing, 0015's cron block needs a re-run later; that does not block this push.
 
 Nothing else is needed. Production's 0019 (applied) reads the Vault secret `guardrail_hmac_key` on every guardrail insert (4.1 checks it is there); none of 0021 to 0026 reads or writes a Vault secret, and the push itself must not either, so `config.toml` has no `[db.vault]` section and every push carries `--skip-vault`. 0022 hashes with the built-in `sha256()` (lines 133-148). There is no `supabase/roles.sql`.
@@ -496,7 +505,7 @@ sb db push --linked --skip-vault
 
 **7.3 Record PUSH_TIME.** After `Finished supabase db push.`, run `select now();` in the SQL editor and write it down.
 
-**7.4 Deploy main's `delete-account` (closure memo; package C).** Only after `Finished supabase db push.` with all six files applied (8.1 can wait until after this step). Main's function calls 0022's four `account_deletion_` functions and clears `org_vault_revisions.updated_by` (0021), so it must never run before the push. Until this step, and forever if you skip it, the privacy branch's 2026-09-24 function keeps working after 0021 to 0026: its tables still exist, and the one new write its deletion causes (the set-null 0025 puts on a revision's author) is the one update 0022's trigger allows. That holds only if 0.2 found the 2026-09-24 deployment.
+**7.4 Deploy main's `delete-account` (closure memo; package C).** Only after `Finished supabase db push.` with all six files applied (8.1 can wait until after this step). This deploys the function as merged on `main`, the review fixes from PR #2 included: it deletes the owned teams all or none over every team named, then copies the legal hold, then the rest (the README's "What main's `delete-account` does"). Main's function calls 0022's four `account_deletion_` functions and clears `org_vault_revisions.updated_by` (0021), so it must never run before the push. Until this step, and forever if you skip it, the privacy branch's 2026-09-24 function keeps working after 0021 to 0026: its tables still exist, and the one new write its deletion causes (the set-null 0025 puts on a revision's author) is the one update 0022's trigger allows. That holds only if 0.2 found the 2026-09-24 deployment.
 
 ```
 sb functions deploy delete-account --use-api
@@ -512,7 +521,7 @@ sb functions deploy delete-account --use-api
   ```
 
   **Pass:** `{"error":"unauthorized"}`, main's answer when no user signs the request. `{"error":"Sign in first.","code":"not_signed_in"}` is the 2026-09-24 function, so the deploy did not take; run it again. Read in both functions' code, not run against production.
-- **What changes for people deleting an account:** the 2026-09-24 function's ten-minute re-sign-in check, its choice to delete a team that still has members, and its refunds are gone until the privacy branch's own PR brings them back (founder decisions F2 and F3). A person who owns a team with anyone else active gets "One step first" (`owns_org`) and emails os-code@openshorellc.com. Builds from `main` with package C read either function's answers; a `main` build from before package C reads this function's `{ ok: true, deleted: true }` as the success it is.
+- **What changes for people deleting an account:** the 2026-09-24 function's ten-minute re-sign-in check, its choice to delete a team that still has members, and its refunds are gone until the privacy branch's own PR brings them back (founder decisions F2 and F3). A person who owns a team with anyone else active gets "One step first" (`owns_org`) and emails support@openshore.ai (F1). Builds from `main` with package C read either function's answers; a `main` build from before package C reads this function's `{ ok: true, deleted: true }` as the success it is.
 - **If the deploy fails:** nothing changed; the 2026-09-24 function still answers. Hand the output to Claude, and go on to section 8 either way.
 - **If the push stopped partway (7.2):** do not deploy. Deploy once a later push has applied all six.
 
@@ -732,7 +741,7 @@ where pronamespace = 'public'::regnamespace and proname = 'export_my_data';
 ```sql
 with j as (
   select case when to_regclass('cron.job') is not null then nullif(query_to_xml(
-    $q$select schedule, active,
+    $q$select schedule, username, active,
               position('delete from public.enforcement_tombstones where terminated_at < now() - interval ''2 years'';' in command) > 0 as tombstone_line,
               position('delete from public.deletion_holds where hold_until <= now();' in command) > 0 as holds_line
          from cron.job where jobname = 'oscode_guardrail_retention'$q$,
@@ -740,14 +749,15 @@ with j as (
 )
 select to_regclass('cron.job') is not null as pg_cron,
        (xpath('/row/schedule/text()', x))[1]::text as schedule,
+       (xpath('/row/username/text()', x))[1]::text as username,
        (xpath('/row/active/text()', x))[1]::text as active,
        (xpath('/row/tombstone_line/text()', x))[1]::text as tombstone_line,
        (xpath('/row/holds_line/text()', x))[1]::text as holds_line
 from j;
 ```
 
-- **Pass:** `t`, `41 3 * * *`, `true`, `true`, `true`.
-- **If `pg_cron` is `f`, or the other four are empty:** pg_cron was not on when 0026 ran, or the job is missing. Do 5.1, then run 0026's retention block exactly as written (the `do $$ ... $$;` at the end of `0026_export_and_retention.sql`), and re-run this check.
+- **Pass:** `t`, `41 3 * * *`, `postgres`, `true`, `true`, `true`.
+- **If `pg_cron` is `f`, or the other five are empty:** pg_cron was not on when 0026 ran, or the job is missing. Do 5.1, then run 0026's retention block exactly as written (the `do $$ ... $$;` at the end of `0026_export_and_retention.sql`), and re-run this check.
 
 **8.10 The ladder's address (0022):**
 
@@ -767,7 +777,7 @@ where pronamespace = 'public'::regnamespace and proname = 'record_enforcement';
 
 This block makes a throwaway team and runs 25 checks across 0021 and 0022 to 0025. Then it raises an error on purpose, so everything rolls back. The only lasting effect is that the rev and revision-id sequences move forward, which is harmless.
 
-It follows the pgTAP fixture pattern (`org_vault.test.sql` lines 21-53). It was run through psql as `postgres` on 2026-09-29 on a local stack that replays production: production's 20 files, the rows in `supabase/replay/production_rows.sql`, then 0021 to 0026 through `db push --local --skip-vault`. It printed `SMOKE PASSED: 25 checks held`, and afterwards no smoke org, user, note, revision, action or tombstone was left. So a `FAIL` here means production differs from the files.
+It follows the pgTAP fixture pattern (`org_vault.test.sql` lines 21-53). It was run through psql as `postgres` on 2026-09-29, and again on 2026-09-30 after the review fixes, on a local stack that replays production: production's 20 files, the rows in `supabase/replay/production_rows.sql`, then 0021 to 0026 through `db push --local --skip-vault`. It printed `SMOKE PASSED: 25 checks held`, and afterwards no smoke org, user, note, revision, action or tombstone was left. So a `FAIL` here means production differs from the files.
 
 What each number checks: 1 to 7, 0021's guarded writes, legacy pair and history; 8 and 14, 0024's move (14 is a member's move under admins-only delete); 9 to 13, 16 and 17, 0025's settings, OV403 and OV402; 15, 21 and 22, 0022's ladder and the history's author rule; 18 and 19, 0023's byte total and the one-free-team cap; 20, 0025's author keys (deleting an account keeps its history rows and clears its id); 23 to 25, the functions main's `delete-account` calls (0022 section 6: the team delete is all or none while anyone else is active, an operator's termination leaves a tombstone at its own time, and the person's membership goes).
 
@@ -1001,9 +1011,11 @@ Paste this to Claude:
 
 ## Review notes
 
+- Second review revision (2026-09-30): the Status line says packages A to C are on `main` (41bea18) and section 0 ran clean with your yes (DECISIONS, the F1 entry), and points to push day; section 0 is marked done and kept as the reference, 0.3's "until the packages land" clause is gone, and 5.2's `username` column is first seen on push day's re-run of sections 4 and 5; section 1 marks A to C done and has the review fixes (PR #2, which change the unapplied 0022 and 0026) land before push day; 2.3 checks for them (the `grep` on 0026) and stops without them; 7.4 deploys the function as merged with them.
 - Package C revision (2026-09-29, closure memo): 0.2 and 2.2d check which `delete-account` is live before anything depends on it; 0.4b and 0.4c are resolved by 0022's section 6; 7.4 deploys main's merged function after a complete push, with an anon-key call that tells the two functions apart; 7.2 no longer promises NOTICE lines (2.118.0 shows none); 4.1's leftover row expects `false` in its last column on production's state, and it and 8.9 read `cron.job` only when pg_cron exists; 8.3, 8.6 and 8.8 cover the four `account_deletion_` functions, the tombstone's shape and the export's six keys; the smoke test gains checks 23 to 25 and was re-run on the replay stack (`SMOKE PASSED: 25 checks held`); pgTAP is `Files=4, Tests=295`.
+- Review revision (2026-09-30): the Status line starts at section 0 now, since 0.1 comes before the landing; 0.3 runs only 4.1's SQL blocks, because `push-preflight.mjs` needs `oscode-main` (2.3, push day) and a main that holds it; 4.1's Pass line says a NULL `r0026_tombstone_line` passes; 5.2 and 8.9 show the retention job's `username`, and 5.2 stops when it is not `postgres` (0026 now stops on it too, naming the owner); section 1 names the desktop release beside TestFlight; pgTAP is `Files=4, Tests=301` (0022's all-or-none over every team named, and the export's email rows); section 8 and the smoke test were re-run on the replay stack with the same values, 8.9 now `t`, `41 3 * * *`, `postgres`, `true`, `true`, `true`.
 - CTO 11 revision (2026-09-29): production's 20 rows replace "no 0020 or 0021 in production"; every "0018 missing" and "0019 already applied" branch is gone; the org vault file is 0021 throughout (its line citations are unchanged, since its bytes are); 0022 to 0025 citations re-checked after their comment edits; 4.1 gains the Vault secret check, the leftover column for 0026 and `push-preflight.mjs`; 5.2 expects the guardrail retention job; 6.1, 6.2 and 8.1 name exactly 0021 to 0026 and 26 rows; every push carries `--skip-vault`; 7.4's deploy is removed (package C); 8.8 to 8.10 are new; 0.3a is resolved in 0023, and 0.3b and 0.3c move to package C; the smoke test was re-run on the replay stack; the hand-off appends to `production-history.tsv` and no longer asks the privacy branch to renumber.
-- commands, stale pgTAP count: applied (Tests=213 from run 36592050642 on 6609338; Files=4, Tests=261 with `guardrail_privacy.test.sql`; now 295 with package C).
+- commands, stale pgTAP count: applied (Tests=213 from run 36592050642 on 6609338; Files=4, Tests=261 with `guardrail_privacy.test.sql`; 295 with package C; now 301 with the 2026-09-30 review fixes).
 - commands, verification misses 0025 section 10: applied (8.6 seven rows with the not-valid mark, 8.2 author_idx and new_objects 4, 4.1 leftover columns).
 - commands, hand-off records a false follow-up: applied (sentence replaced; findings 2, 6, 7 settled as 0.4 says).
 - commands, step 1 prompt predates the fix stage: superseded (step 1 is now landing package A).

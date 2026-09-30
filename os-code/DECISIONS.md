@@ -3053,6 +3053,10 @@ execution contract. Newest at the bottom.
   - Order: plan and refuse, cancel Stripe, copy held rows (before anything
     is deleted), delete the teams (fewer back than planned answers
     `owns_org`), tombstone, clear team history, memberships, `deleteUser`.
+    Since the review (2026-09-30, below): the team delete comes before the
+    held-row copy, so the order is plan and refuse, cancel Stripe, delete
+    the teams, copy held rows, tombstone, team history, memberships,
+    `deleteUser`.
     Known limit, accepted: in the moment between the plan and the team
     delete a teammate can turn active; then nothing is deleted and the
     answer is `owns_org`, but that team's subscription is already
@@ -3116,6 +3120,114 @@ execution contract. Newest at the bottom.
     live history's CSV with the file, catches that, on push day. It runs on
     pushes that touch `supabase/` and on PRs, and it compares names, numbers
     and bytes, not what a file does.
+- **The review of prod-reconcile (2026-09-30).** Unapplied, on
+  `prod-reconcile` with packages A to C. The calls a later session should
+  not reopen:
+  - Push day is six files, 0021 to 0026. The closure memo says "push 0021
+    to 0025" and leaves the export's coverage of `org_vault_revisions`,
+    `org_vault_settings` and `enforcement_tombstones` to the privacy
+    branch's PR (its item 7); both are read under CTO 11, which adds 0026:
+    it carries the memo's ruled two-year tombstone expiry (a cron change has
+    to live in a new file, since 0019 is applied) and the export additions
+    item 7 had deferred. The runbook, the README and PROGRESS say six.
+  - Delete account, `unauthorized` (main's function) or `not_signed_in` (the
+    2026-09-24 one): neither function can tell a dead sign-in from an
+    account already gone, so the app asks `GET /auth/v1/user` once with the
+    same token. 403 `user_not_found` (gotrue v2.197.0, checked on the local
+    stack) is a deletion: the goodbye, signed out, the Apple note as an if.
+    Any other 401 or 403 (`session_not_found` after a sign-out everywhere,
+    `bad_jwt`) signs the device out with a sheet that claims nothing about
+    the account, and keeps a pending Apple receipt. A 200 is a failure.
+    When the auth server cannot be asked either, it is a failure (the one gap
+    left, PROGRESS What remains). No session at the door (the refresh token
+    was dead) is the same signed-out sheet. Neither function changes.
+  - `billing` and `billing_failed` have their own line, which names the
+    published address; `failed` keeps naming the connection. The re-sign-in
+    line names the live function's ten minutes.
+  - PostgREST answers a void function with 204 and no body (postgrest
+    v16.3); `rpc` and `rpcPublic` read that as no value. It broke Block this
+    user, and every void call through them (`delete_org_project`,
+    `set_org_project_access`, `revoke_org_project_access`,
+    `org_vault_delete`, `admin_set_review_status`,
+    `admin_mark_report_submitted`).
+  - `local-vault.sh` refuses every argument that starts with a project flag's
+    name (`--linked=true`, `--linked=1` and the rest are `--linked` to the
+    CLI), marks the local stack only by `--local` or `--local=true` and
+    refuses any other `--local=`, and reads past the values of the CLI's
+    value-taking global flags (`--agent no`) to find the subcommand.
+  - `account_deletion_orgs` is all or none over every team named, not only
+    the ones still owned: a named team that support handed over after the
+    plan returns `{}`. `delete-account` copies the legal hold after the team
+    delete (deleting a team touches no held row), so `owns_org` leaves no
+    copy behind for an account that stays.
+  - `export_my_data` matches by email only rows nobody has claimed (a row
+    bound to another account under the same address is theirs, as 0022 6d
+    keeps it), and finds a tombstone by the account's confirmed email, not
+    the token's.
+  - 0026 stops, naming the owner, when another role owns
+    `oscode_guardrail_retention` (pg_cron re-schedules only the current
+    role's jobs); runbook 5.2 shows `username` and stops first.
+  - `check-migrations.mjs` now fails a tree missing a file production
+    applied, and a copy of a file beside its original (the relief rule
+    covers a move only); the known-limits bullet above no longer covers
+    those two.
+  - The "OpenShore team" label reads `--wave-ink` (`#3a6f7d` light, 4.5:1 on
+    `--surface`), ported from the privacy branch.
+  - Second review of these fixes (2026-09-30, low findings only), on the
+    same branch:
+    - Delete account: only GoTrue's `session_not_found` reads as a dead
+      sign-in, and `user_not_found` stays gone. `bad_jwt`, and a 401 or 403
+      with no GoTrue code, cannot tell, so they never sign the device out.
+      When the function answered its no-user code and the auth server
+      cannot tell (offline, a 5xx, `bad_jwt`, no code), the outcome is
+      `unconfirmed`: "We could not confirm whether your account was
+      deleted. Check your connection and try again.", the device untouched,
+      never "was not deleted". This supersedes the bullet above that read
+      `bad_jwt` as a dead sign-in and the double failure as failed.
+    - A request that broke on the way (a dropped connection, an answer cut
+      short, anything but an answer from the function or its gateway) is
+      settled the same way, since the function may have finished (deleting
+      the user is its last step) or may still be running: gone is the
+      goodbye, a dead sign-in is signed out, and an account still here, or
+      no answer, is `unconfirmed`. "Not deleted" is said only when nothing
+      was sent (the session door failed), the function answered that it
+      failed, or the function found no account and the auth server shows
+      it still here (the final review caught the dropped connection).
+    - A dead sign-in (`signed_out`) ends the way the session door ends one
+      on `AuthExpiredError`: `forgetSession(true)`, through the new
+      `endSignIn` dep, so unsent team vault text stays sealed for the same
+      account. A deletion keeps the plain `forgetSession()`. The signed-out
+      sheet fits a deletion on this device or another: "If your account was
+      already deleted, here or on another device, it is gone."
+    - `local-vault.sh` refuses `--wizard` in any spelling, a bare `--` and
+      every `--no-<flag>` anywhere (2.118.0 reads `--no-linked` as
+      `--linked` and `--no-wizard` as `--wizard`, checked offline; the final
+      review caught it), and before the subcommand (and between `db` and its own)
+      lets through only 2.118.0's global flags, each checked against its
+      `--help`. On 2.118.0 a target flag counts once given, whatever its
+      value (checked offline in a folder linked to nothing:
+      `db push --linked=false --dry-run` looks for the linked project,
+      `--local=false` connects to the local database), so `--linked=false`
+      targets the linked project. The earlier comment that `--local=false`
+      after `--local` would reach the linked project was wrong; any
+      `--local=` but `true` stays refused so a command never says one thing
+      and does another. Its test runs every use the runbook, the README and
+      CI document.
+    - `check-migrations.mjs --scan-remotes` (a push to main, warnings only)
+      reports check (d) as one line per branch, "behind main; merge main
+      before touching supabase/", with the count; the single-tree check
+      still fails (d) file by file.
+    - Known limit, accepted: `account_deletion_hold` (step 5) reads the held
+      rows once. A legal hold an operator sets between the team delete and
+      `deleteUser` (while steps 5 to 8 run) and after that read is not
+      copied, and the row cascades with the account. Nothing in the database copies on
+      delete. If counsel wants the window closed, the privacy branch's PR
+      may add a BEFORE DELETE trigger on `guardrail_events` and
+      `enforcement_actions` that copies a held row into `deletion_holds`.
+    - The runbook's Status now points to push day: packages A to C are on
+      main (41bea18), section 0 ran clean on 2026-09-30 and is marked done,
+      and push day waits for this branch's PR, which changes the unapplied
+      0022 and 0026 (2.3 checks for it).
 - 2026-09-29: **Desktop releases publish to the public
   `openshore-labs/openshore-releases` repo, not this one.** This repo went
   private (founder, so the code stays closed while the GitHub profile goes

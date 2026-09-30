@@ -28,9 +28,32 @@
 # `migration list`, `db dump`, `inspect`, `link`, `functions`, `secrets` and
 # the rest), and so is any flag that names a project or another supabase/
 # folder (--linked, --db-url, --project-ref, --project-id, --workdir,
-# --profile). The subcommand is the first word after the launcher
-# (`supabase`, `npx [--yes] supabase@<version>`, or a path ending in
-# /supabase); an unknown launcher is refused too.
+# --profile) in every spelling. On 2.118.0 a target flag counts once it is
+# given, whatever its value (checked offline, in a folder linked to nothing:
+# `db push --linked=false --dry-run` looks for the linked project, and
+# `db push --local=false --dry-run` connects to the local database), so
+# `--linked=false` targets the linked project just as `--linked` does, and
+# every argument that starts with one of those names is refused. The only
+# spellings that mark the local stack are `--local` and `--local=true`; any
+# other `--local=<value>` is refused too, so what a command says and what it
+# does never differ. Refused anywhere as well: `--wizard` in any spelling
+# (it asks its own questions after this check), a bare `--` (the words
+# after it are not read as flags here, whatever the CLI makes of them), and
+# every `--no-<flag>`: 2.118.0 reads `--no-linked` as `--linked` and
+# `--no-wizard` as `--wizard` (checked offline, in a folder linked to
+# nothing), and no local use needs one.
+#
+# The subcommand is the first word after the launcher (`supabase`,
+# `npx [--yes|-y] supabase` or `npx [--yes|-y] supabase@<version>`, or a path
+# ending in /supabase; any other launcher is refused). Before it, and between
+# `db` and its own subcommand, only 2.118.0's global flags may stand (its
+# --help, GLOBAL FLAGS): --agent, --completions, --dns-resolver, --log-level,
+# --network-id, --output or -o, and --output-format, each with its value as
+# the next word or after `=` (the runbook's `sb` alias writes `--agent no`);
+# and --debug, --experimental, --yes and --create-ticket, bare. Any other flag
+# there is refused, so a flag the CLI would read as taking the next word can
+# never hide the real subcommand from this check. Guard:
+# app/test/localVaultScript.test.ts.
 set -euo pipefail
 
 refuse() {
@@ -46,36 +69,82 @@ fi
 local_flag=0
 for arg in "$@"; do
   case "$arg" in
-    --linked | --db-url | --db-url=* | --project-ref | --project-ref=* | --project-id | --project-id=* | \
-      --workdir | --workdir=* | --profile | --profile=*)
+    --)
+      refuse "a bare '--' (what follows it is not checked as flags here)"
+      ;;
+    --no-*)
+      refuse "'$arg' (2.118.0 reads --no-<flag> as the flag being given)"
+      ;;
+    --wizard*)
+      refuse "'$arg' (wizard mode asks its own questions after this check)"
+      ;;
+    --linked* | --db-url* | --project-ref* | --project-id* | --workdir* | --profile*)
       refuse "'$arg'"
       ;;
-    --local) local_flag=1 ;;
+    --local | --local=true) local_flag=1 ;;
+    --local=*) refuse "'$arg' (only --local or --local=true names the local stack)" ;;
   esac
 done
 
-# The CLI's own subcommand and the word after it, past the launcher.
-launcher=1
+# The launcher: supabase, npx [--yes|-y] supabase[@<version>], or a path
+# ending in /supabase.
+args=("$@")
+n=${#args[@]}
+i=0
+case "${args[0]}" in
+  npx)
+    i=1
+    while [ "$i" -lt "$n" ] && { [ "${args[$i]}" = --yes ] || [ "${args[$i]}" = -y ]; }; do
+      i=$((i + 1))
+    done
+    case "${args[$i]:-}" in
+      supabase | supabase@*) i=$((i + 1)) ;;
+      *) refuse "'${args[*]:0:$((i + 1))}' (the launcher is supabase, npx [--yes] supabase@<version>, or a path ending in /supabase)" ;;
+    esac
+    ;;
+  supabase | */supabase) i=1 ;;
+  *) refuse "'${args[0]}' (the launcher is supabase, npx [--yes] supabase@<version>, or a path ending in /supabase)" ;;
+esac
+
+# The CLI's own subcommand and, after `db`, the word after it. Only 2.118.0's
+# global flags may stand before them, with the value of each one that takes
+# a value (the next word, or after `=`).
 top=""
 sub=""
-for arg in "$@"; do
-  if [ "$launcher" -eq 1 ]; then
-    case "$arg" in
-      npx | --yes | -y | supabase | supabase@* | */supabase) continue ;;
-    esac
-    launcher=0
-  fi
-  case "$arg" in -*) continue ;; esac
+while [ "$i" -lt "$n" ]; do
+  arg="${args[$i]}"
+  i=$((i + 1))
+  case "$arg" in
+    --agent | --completions | --dns-resolver | --log-level | --network-id | --output | -o | --output-format)
+      if [ "$i" -ge "$n" ]; then
+        refuse "'$arg' with no value"
+      fi
+      i=$((i + 1))
+      continue
+      ;;
+    --agent=* | --completions=* | --dns-resolver=* | --log-level=* | --network-id=* | --output=* | -o=* | --output-format=*)
+      continue
+      ;;
+    --debug | --experimental | --yes | --create-ticket)
+      continue
+      ;;
+    -*)
+      refuse "'$arg' before the subcommand (only the CLI's global flags go there)"
+      ;;
+  esac
   if [ -z "$top" ]; then
     top="$arg"
-  elif [ -z "$sub" ]; then
+    if [ "$top" != db ]; then
+      break
+    fi
+  else
     sub="$arg"
     break
   fi
 done
 
 case "$top $sub" in
-  "start "* | "db start" | "db reset") ;;
+  "start " | "db start" | "db reset") ;;
   "db push")
     if [ "$local_flag" -eq 0 ]; then
       refuse "'db push' without --local (it targets the linked project)"

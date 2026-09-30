@@ -6,15 +6,19 @@
 -- so the two gaps the overlap opened close here:
 --
 --   1. export_my_data() is re-created with the same signature, grants and
---      SECURITY DEFINER. It keeps 0019's nineteen keys unchanged, moves
---      'version' to 2 (the new keys only add to the document), and adds:
+--      SECURITY DEFINER. It keeps 0019's nineteen keys, with one narrowing:
+--      org_memberships, org_projects and org_project_members match by email
+--      only the rows nobody has claimed, since a row bound to another account
+--      under the same address is that account's (0022 6d keeps it when this
+--      one is deleted, and access follows user_id). It moves 'version' to 2
+--      (the new keys only add to the document), and adds:
 --        org_vault_revisions_authored  the team history rows the caller wrote
 --                                      (0021), matched by updated_by;
 --        org_vault_settings_updated    the team settings rows the caller last
 --                                      changed (0025), matched by updated_by;
 --        enforcement_tombstone         the level and terminated_at of a
---                                      tombstone under the caller's email
---                                      (0022), or null; never the hash;
+--                                      tombstone under the caller's confirmed
+--                                      email (0022), or null; never the hash;
 --        review_staff                  whether the caller carries the
 --                                      "OpenShore team" label (0020);
 --        push_sends                    the caller's push delivery rows (0009):
@@ -29,9 +33,9 @@
 --
 --      What it leaves out, and why:
 --        org_storage_usage         a team's byte count; it names no person.
---        deletion_holds            rows copied from a deleted account under a
---                                  hash of its id; not linked to any live
---                                  account.
+--        deletion_holds            copies made while an account is deleted,
+--                                  kept under a hash of its id; no key links
+--                                  them to an account.
 --        abuse_reports             0019 left them out without a stated
 --                                  reason. Whether a report prepared under 18
 --                                  U.S.C. 2258A is disclosed to its subject is
@@ -61,7 +65,8 @@
 --      of the write, so no tombstone lives past two years from the decision
 --      it carries. Because this block unschedules and schedules the whole
 --      job, it also schedules it on a project where pg_cron was off when 0019
---      ran.
+--      ran. A job of that name owned by another role stops the migration with
+--      the owner's name (pg_cron re-schedules only the current role's jobs).
 --
 -- Nothing applied is edited: both are `create or replace` or a re-schedule.
 -- Deploy ordering: after 0019, 0021, 0022 and 0025 (it reads their tables).
@@ -101,10 +106,13 @@ begin
     'apple_links', coalesce((
       select jsonb_agg(to_jsonb(t)) from public.apple_links t where t.user_id = v_uid
     ), '[]'::jsonb),
+    -- By email, only rows nobody has claimed: a row bound to another account
+    -- under this address is theirs (0022 6d keeps it on deletion, and access
+    -- follows user_id), so it is not in this person's export.
     'org_memberships', coalesce((
       select jsonb_agg(to_jsonb(t)) from public.org_members t
        where t.user_id = v_uid
-          or (v_confirmed is not null and lower(t.email) = v_confirmed)
+          or (t.user_id is null and v_confirmed is not null and lower(t.email) = v_confirmed)
     ), '[]'::jsonb),
     'orgs_owned', coalesce((
       select jsonb_agg(to_jsonb(t)) from public.orgs t where t.owner_uid = v_uid
@@ -117,13 +125,14 @@ begin
             select 1 from public.org_project_members m
              where m.project_id = p.id
                and (m.user_id = v_uid
-                    or (v_confirmed is not null and lower(m.email) = v_confirmed))
+                    or (m.user_id is null and v_confirmed is not null
+                        and lower(m.email) = v_confirmed))
           )
     ), '[]'::jsonb),
     'org_project_members', coalesce((
       select jsonb_agg(to_jsonb(t)) from public.org_project_members t
        where t.user_id = v_uid
-          or (v_confirmed is not null and lower(t.email) = v_confirmed)
+          or (t.user_id is null and v_confirmed is not null and lower(t.email) = v_confirmed)
     ), '[]'::jsonb),
     'org_vault_notes_updated', coalesce((
       select jsonb_agg(to_jsonb(t)) from public.org_vault_notes t where t.updated_by = v_uid
@@ -160,10 +169,13 @@ begin
     'org_vault_settings_updated', coalesce((
       select jsonb_agg(to_jsonb(t)) from public.org_vault_settings t where t.updated_by = v_uid
     ), '[]'::jsonb),
+    -- Keyed on the account's own confirmed address, like every other email
+    -- match here: an unconfirmed sign-up learns nothing about an address.
     'enforcement_tombstone', (
       select jsonb_build_object('level', t.level, 'terminated_at', t.terminated_at)
         from public.enforcement_tombstones t
-       where t.email_sha256 = public.enforcement_email_key(auth.email())
+       where v_confirmed is not null
+         and t.email_sha256 = public.enforcement_email_key(v_confirmed)
     ),
     'review_staff', exists (
       select 1 from public.review_staff s where s.user_id = v_uid
@@ -194,6 +206,18 @@ begin
     raise notice 'pg_cron could not be enabled here (%). Enable it in the dashboard, then re-run this block.', sqlerrm;
   end;
   if exists (select 1 from pg_extension where extname = 'pg_cron') then
+    -- pg_cron unschedules by name only among the current role's own jobs,
+    -- while this role (BYPASSRLS on Supabase) sees every role's. A job of
+    -- this name that another role owns would otherwise fail the push here
+    -- with pg_cron's "could not find valid entry", or, left alone, leave two
+    -- jobs; stop instead, naming the owner (runbook 5.2 looks first).
+    if exists (select 1 from cron.job
+                where jobname = 'oscode_guardrail_retention' and username <> current_user) then
+      raise exception 'cron job oscode_guardrail_retention belongs to %, not to %, so this migration cannot re-schedule it. Stop and see docs/vault-gate1-runbook.md 5.2.',
+        (select string_agg(distinct username, ', ' order by username) from cron.job
+          where jobname = 'oscode_guardrail_retention' and username <> current_user),
+        current_user;
+    end if;
     if exists (select 1 from cron.job where jobname = 'oscode_guardrail_retention') then
       perform cron.unschedule('oscode_guardrail_retention');
     end if;

@@ -20,7 +20,7 @@
 -- check_violation (the caps and the request_hash check).
 
 begin;
-select plan(66);
+select plan(68);
 
 -- ------------------------------------------------------------ fixtures
 --   d1 = leaving: an active admin (not the owner) who invites, edits a shared
@@ -404,6 +404,26 @@ select is(
 update public.org_members set status = 'revoked'
  where org_id = '0e000000-0000-0000-0000-00000000000b'
    and user_id = 'd2000000-0000-0000-0000-000000000002';
+
+-- Support hands team A over (the service role moves owner_uid) after
+-- delete-account read its plan: all or none covers every team named, so B
+-- stays too, and nothing was deleted when fewer come back.
+update public.orgs set owner_uid = 'd2000000-0000-0000-0000-000000000002'
+ where id = '0e000000-0000-0000-0000-00000000000a';
+set local role service_role;
+select is(
+  public.account_deletion_orgs('d9000000-0000-0000-0000-000000000009',
+    array['0e000000-0000-0000-0000-00000000000a', '0e000000-0000-0000-0000-00000000000b']::uuid[]),
+  '{}'::uuid[],
+  'a named team handed to someone else keeps both: all or none');
+reset role;
+select is(
+  (select count(*) from public.orgs
+    where id in ('0e000000-0000-0000-0000-00000000000a', '0e000000-0000-0000-0000-00000000000b')),
+  2::bigint,
+  'both teams still stand');
+update public.orgs set owner_uid = 'd9000000-0000-0000-0000-000000000009'
+ where id = '0e000000-0000-0000-0000-00000000000a';
 
 set local role service_role;
 select is(

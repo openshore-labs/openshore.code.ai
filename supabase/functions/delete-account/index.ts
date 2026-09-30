@@ -19,13 +19,17 @@
 //   3. Cancel every Stripe subscription that could still charge, for the
 //      person and for each org about to go. Apple bills on its own; the
 //      answer carries appleNote so the app can say where to cancel it.
-//   4. Copy the rows under a legal hold into deletion_holds, before anything
-//      is deleted (account_deletion_hold; 0019's table, 18 U.S.C. 2258A(h)).
-//   5. Delete the owned orgs, only if nobody else is active in any of them,
-//      in one statement (account_deletion_orgs). Fewer back than planned
-//      means someone joined after step 1: answer owns_org. Nothing was
-//      deleted then, but step 3 has already canceled that team's
-//      subscription; the window is the time between step 1 and step 5.
+//   4. Delete the owned orgs, only if nobody else is active in any of them
+//      and this account still owns every one, in one statement
+//      (account_deletion_orgs). Fewer back than planned means someone joined,
+//      or support handed a team over, after step 1: answer owns_org. Nothing
+//      was deleted then, but step 3 has already canceled that team's
+//      subscription; the window is the time between step 1 and step 4.
+//   5. Copy the rows under a legal hold into deletion_holds, before anything
+//      under a hold is deleted (account_deletion_hold; 0019's table, 18
+//      U.S.C. 2258A(h)). It comes after step 4 so an owns_org answer leaves
+//      no copy behind for an account that stays, and deleting a team touches
+//      no guardrail or enforcement row.
 //   6. Keep a tombstone when an operator confirmed a termination of this
 //      account, so deleting it does not reset the ladder
 //      (account_deletion_tombstone; never for an automatic termination).
@@ -180,11 +184,7 @@ Deno.serve(async (req) => {
     // ---- 3. billing
     await cancelStripe(plan.stripeCustomers, plan.stripeSubscriptions);
 
-    // ---- 4. the legal-hold copy, before anything is deleted
-    const { error: holdErr } = await admin.rpc('account_deletion_hold', { p_user: uid });
-    if (holdErr) throw new Error(`legal-hold copy failed: ${holdErr.message}`);
-
-    // ---- 5. owned orgs, all or none, only while nobody else is active
+    // ---- 4. owned orgs, all or none, only while nobody else is active
     if (plan.deleteOrgs.length > 0) {
       const { data: gone, error: delOrgErr } = await admin.rpc('account_deletion_orgs', {
         p_owner: uid,
@@ -193,6 +193,10 @@ Deno.serve(async (req) => {
       if (delOrgErr) throw new Error(`orgs delete failed: ${delOrgErr.message}`);
       if (!ownedOrgsGone(plan.deleteOrgs, gone)) return refuse('owns_org', req);
     }
+
+    // ---- 5. the legal-hold copy, before anything under a hold is deleted
+    const { error: holdErr } = await admin.rpc('account_deletion_hold', { p_user: uid });
+    if (holdErr) throw new Error(`legal-hold copy failed: ${holdErr.message}`);
 
     // ---- 6. tombstone, while the enforcement record still exists
     const { error: tombErr } = await admin.rpc('account_deletion_tombstone', { p_user: uid });
