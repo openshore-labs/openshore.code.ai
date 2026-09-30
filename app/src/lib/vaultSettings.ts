@@ -119,15 +119,26 @@ const inFlight = new Map<string, Promise<ResolvedVaultSettings>>();
 /** The last good narrowing seen this run, per vault, ahead of the store. */
 const lastGood = new Map<string, VaultPrivacyNarrowing>();
 
+/** How many times every vault's settings were forgotten, and each vault's
+ *  own count: a read that began before a forget is returned to its caller
+ *  but never cached or kept as the last good narrowing, so an answer made
+ *  under a sign-in that has ended never stands in for the next account's
+ *  read (round 7 E14). */
+let epoch = 0;
+const keyEpochs = new Map<string, number>();
+const readGeneration = (key: string) => `${epoch}:${keyEpochs.get(key) ?? 0}`;
+
 /** Forget one vault's settings, or every vault's (a sign-out, a pairing
  *  change, a test). The last good narrowing is kept: it is a floor, not a
  *  cache. */
 export function clearVaultSettingsCache(key?: string): void {
   if (key === undefined) {
+    epoch++;
     cache.clear();
     inFlight.clear();
     return;
   }
+  keyEpochs.set(key, (keyEpochs.get(key) ?? 0) + 1);
   cache.delete(key);
   inFlight.delete(key);
 }
@@ -182,8 +193,11 @@ async function withNarrowing(
   key: string,
   settings: ResolvedVaultSettings,
   store: VaultNarrowingStore,
+  current = true,
 ): Promise<ResolvedVaultSettings> {
   if (settings.fileState === 'ok' || settings.fileState === 'absent') {
+    // A read from before a forget keeps nothing (E14).
+    if (!current) return settings;
     const n = settings.fileState === 'ok' ? settings.narrowing : {};
     lastGood.set(key, n);
     try {
@@ -211,9 +225,11 @@ async function resolveEntry(
   at: number,
   core: VaultSettingsCore,
   store: VaultNarrowingStore,
+  gen = readGeneration(key),
 ): Promise<ResolvedVaultSettings> {
-  const settings = await withNarrowing(key, core.resolve(reads), store);
-  cache.set(key, { at, reads, settings });
+  const current = () => gen === readGeneration(key);
+  const settings = await withNarrowing(key, core.resolve(reads), store, current());
+  if (current()) cache.set(key, { at, reads, settings });
   return settings;
 }
 
@@ -234,9 +250,17 @@ export async function loadVaultSettings(
   }
   const pending = inFlight.get(key);
   if (pending && !opts.force) return pending;
+  const gen = readGeneration(key);
   const run = (async () => {
     const reads = await readAll(provider, resourceId);
-    return resolveEntry(key, reads, at, opts.core ?? CORE, opts.narrowings ?? sealedNarrowingStore);
+    return resolveEntry(
+      key,
+      reads,
+      at,
+      opts.core ?? CORE,
+      opts.narrowings ?? sealedNarrowingStore,
+      gen,
+    );
   })();
   inFlight.set(key, run);
   try {

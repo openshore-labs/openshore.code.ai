@@ -12419,8 +12419,11 @@ export const useApp = create<AppState>((set, get, api) => {
       } catch {
         return undefined;
       }
-      // A late read never paints another vault's settings.
-      if (isActiveVault(t) && get().vaultSettings !== settings) set({ vaultSettings: settings });
+      // A late read never paints another vault's settings, nor a team read
+      // made under an account that has since signed out (round 7 E14).
+      if (isActiveVault(t) && speaksNow(t) && get().vaultSettings !== settings) {
+        set({ vaultSettings: settings });
+      }
       return settings;
     },
 

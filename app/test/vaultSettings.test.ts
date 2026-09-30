@@ -326,6 +326,7 @@ import type { StorageProvider, StoredFile, WriteGuard } from '../src/lib/gitos/p
 import {
   VAULT_SETTINGS_TTL_MS,
   cachedVaultSettings,
+  clearVaultSettingsCache,
   loadVaultSettings,
   rawFieldValue,
   resetVaultSettingsForTests,
@@ -621,6 +622,32 @@ describe('loading a vault settings (L5, L6, L18)', () => {
     expect(vaultSettingsHint(KEY, ['.config/app.json'], '.config')).toBe(true);
     await load(provider, { force: true });
     expect(calls.reads).toHaveLength(12);
+  });
+
+  it('a read that began before a forget (a sign-out) is answered but never cached (E14)', async () => {
+    const { provider, calls } = storage({ 'oscode/vault': ok({ version: 1 }, 'u1') });
+    let open!: () => void;
+    const gate = new Promise<void>((r) => (open = r));
+    const slow = {
+      async readConfig(rid: string, name: string) {
+        await gate;
+        return provider.readConfig(rid, name);
+      },
+    };
+    const narrowings = memoryNarrowings();
+    const late = load(slow, { narrowings });
+    clearVaultSettingsCache();
+    // A read after the forget is its own, never the one on its way.
+    const mine = load(provider, { narrowings });
+    open();
+    expect((await late).fileVersion).toBe('u1');
+    await mine;
+    expect(calls.reads).toHaveLength(8);
+    clearVaultSettingsCache();
+    const again = load(slow, { narrowings });
+    clearVaultSettingsCache(KEY);
+    await again;
+    expect(cachedVaultSettings(KEY)).toBeUndefined();
   });
 
   it('the privacy stamp moves with the file version', async () => {

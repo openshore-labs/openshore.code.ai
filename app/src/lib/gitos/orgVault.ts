@@ -303,12 +303,17 @@ async function refusing<T>(call: () => Promise<T>): Promise<T> {
  *  and an admins-only delete refusal (OV403) marks who may delete, so the
  *  room drops Delete and the next one is refused before it is sent (round 7
  *  E19). */
+// A refusal that answers after the sign-in it was made under ended says
+// nothing about the next account's plan, so it marks none (round 7 E14).
 async function refusingFor<T>(resourceId: string, call: () => Promise<T>): Promise<T> {
+  const gen = generation;
   try {
     return await refusing(call);
   } catch (err) {
-    if (err instanceof OrgVaultLapsed) markLapsed(resourceId);
-    if (err instanceof OrgVaultDeleteRefused) markAdminsOnly(resourceId);
+    if (gen === generation) {
+      if (err instanceof OrgVaultLapsed) markLapsed(resourceId);
+      if (err instanceof OrgVaultDeleteRefused) markAdminsOnly(resourceId);
+    }
     throw err;
   }
 }
@@ -317,6 +322,11 @@ async function refusingFor<T>(resourceId: string, call: () => Promise<T>): Promi
 // The last plan each org's settings read gave, and who hears a change: the
 // store, which turns the room read-only and says why (CX Y15).
 const plans = new Map<string, OrgVaultPlan>();
+/** Which sign-in this module's memory belongs to: resetOrgVault moves it on,
+ *  and an answer to a call made under an earlier one (another account's
+ *  role, plan or member labels, still on its way at the sign-out) is
+ *  returned to its caller but never remembered or told (round 7 E14). */
+let generation = 0;
 /** The settings row's columns the sheet does not change, from the last read,
  *  so a settings write echoes them under the same rev. */
 const columns = new Map<
@@ -387,6 +397,7 @@ const members = new Map<string, { at: number; labels: Map<string, string> }>();
 async function memberLabels(resourceId: string, auth: string): Promise<Map<string, string>> {
   const hit = members.get(resourceId);
   if (hit && Date.now() - hit.at < ORG_VAULT_MEMBERS_TTL_MS) return hit.labels;
+  const gen = generation;
   const labels = new Map<string, string>();
   try {
     const rows = await select<{ user_id: string | null; email: string | null }>(
@@ -403,7 +414,7 @@ async function memberLabels(resourceId: string, auth: string): Promise<Map<strin
     // so the next list asks again.
     return hit?.labels ?? labels;
   }
-  members.set(resourceId, { at: Date.now(), labels });
+  if (gen === generation) members.set(resourceId, { at: Date.now(), labels });
   return labels;
 }
 
@@ -420,6 +431,7 @@ function editedBy(
  *  sign-out / account switch so one account's team-vault state never carries
  *  into the next on a shared device. */
 export function resetOrgVault(): void {
+  generation++;
   members.clear();
   plans.clear();
   columns.clear();
@@ -792,11 +804,13 @@ const settingsFile = (row: SettingsRow): StoredFile => ({
   version: versionOfRev(row.rev),
 });
 
+// A row read under an earlier sign-in is returned but not remembered (E14).
 async function getSettings(auth: string, resourceId: string): Promise<SettingsRow> {
+  const gen = generation;
   const row = await refusingFor(resourceId, () =>
     rpc<SettingsRow>('org_vault_settings_get', auth, { p_org: resourceId }),
   );
-  rememberSettings(resourceId, row);
+  if (gen === generation) rememberSettings(resourceId, row);
   return row;
 }
 
@@ -809,10 +823,15 @@ async function putSettings(
   baseRev: number,
   deleteRole?: OrgVaultDeleteRole,
 ): Promise<SettingsPutReply> {
+  const gen = generation;
   let cols = columns.get(resourceId);
   if (!cols || cols.rev !== baseRev) {
-    await getSettings(auth, resourceId);
-    cols = columns.get(resourceId)!;
+    const row = await getSettings(auth, resourceId);
+    cols = columns.get(resourceId) ?? {
+      rev: row.rev,
+      deleteRole: row.delete_role === 'admin' ? 'admin' : 'member',
+      contextFolder: row.context_folder ?? null,
+    };
   }
   const reply = await refusingFor(resourceId, () =>
     rpc<SettingsPutReply>('org_vault_settings_put', auth, {
@@ -823,6 +842,7 @@ async function putSettings(
       p_base_rev: baseRev,
     }),
   );
+  if (gen !== generation) return reply;
   if (reply.ok) {
     columns.set(resourceId, {
       rev: reply.rev,

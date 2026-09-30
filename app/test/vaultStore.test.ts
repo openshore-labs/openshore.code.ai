@@ -4258,8 +4258,12 @@ describe('round 5: a team refusal says what happened and keeps the text', () => 
 // member of this org", and a non-member's RLS selects answer nothing. `hold`
 // delays the answer of the next matching call (the request already ran on the
 // server), as a slow network would; with `fail`, the call waits and then
-// throws what `fail` returns, before it reaches the server.
-function perCaller(server: FakeOrgVaultServer, opts: { members?: string[] } = {}) {
+// throws what `fail` returns, before it reaches the server. With `admins`,
+// org_vault_is_admin (0025) is true for those accounts only.
+function perCaller(
+  server: FakeOrgVaultServer,
+  opts: { members?: string[]; admins?: string[] } = {},
+) {
   const rpc = server.rpc.bind(server);
   const select = server.select.bind(server);
   const uidOf = (token: string) => token.replace(/^tok-/, '');
@@ -4280,6 +4284,7 @@ function perCaller(server: FakeOrgVaultServer, opts: { members?: string[] } = {}
       if (e) throw e;
     }
     server.caller = uid;
+    if (opts.admins) server.isAdmin = opts.admins.includes(uid);
     const out = await rpc(fn, token, args);
     if (h && !h.fail) {
       h.hit();
@@ -6535,6 +6540,139 @@ describe('round 7, batch 3: the team vault answers only for itself', () => {
     }
     throw new Error('the index never settled');
   }
+
+  describe('E14: a team read started under one account never answers for the next', () => {
+    const settingsGets = () => server.rpcs.filter((r) => r.fn === 'org_vault_settings_get').length;
+    // u1's forced settings read is held on its way back; u1 signs out and u2
+    // signs in; `between` runs before the held answer lands.
+    async function lateRead(o: {
+      admins: string[];
+      deleteRole?: 'admin' | 'member';
+      between?: () => Promise<void>;
+    }) {
+      const net = perCaller(server, { members: ['u1', 'u2'], admins: o.admins });
+      if (o.deleteRole) {
+        server.settingsRow = {
+          settings: {},
+          delete_role: o.deleteRole,
+          context_folder: null,
+          rev: 1,
+          updated_at: 'x',
+          updated_by: 'u-admin',
+        };
+      }
+      useStoreToken();
+      server.put('a.md', 'x', 'u1');
+      await st().vaultRefresh();
+      await st().vaultLoadSettings({ force: true });
+      await vi.waitFor(() => expect(st().vaultTeamPlan).toBeDefined());
+      const held = net.hold('org_vault_settings_get');
+      const read = st().vaultLoadSettings({ force: true });
+      await held.reached;
+      await st().signOutAccount();
+      auth.nextUser = U2;
+      await st().signIn('b@example.com', 'pw');
+      expect(st().authSession?.user.id).toBe('u2');
+      await o.between?.();
+      held.release();
+      await read;
+      for (let i = 0; i < 5; i++) await tick();
+    }
+
+    it("u1's late answer never paints u1's admin role for u2, nor fills the cache", async () => {
+      await lateRead({ admins: ['u1'] });
+      expect(st().vaultTeamPlan?.isAdmin).not.toBe(true);
+      // u2's own read goes to the server, with u2's token.
+      teamScope(U2);
+      const n = settingsGets();
+      await st().vaultLoadSettings();
+      expect(settingsGets()).toBe(n + 1);
+      await vi.waitFor(() => expect(st().vaultTeamPlan).toMatchObject({ isAdmin: false }));
+    });
+
+    it("u2's own read, made first, is not overwritten by u1's late one", async () => {
+      await lateRead({
+        admins: ['u1'],
+        between: async () => {
+          teamScope(U2);
+          await st().vaultLoadSettings({ force: true });
+          await vi.waitFor(() => expect(st().vaultTeamPlan).toMatchObject({ isAdmin: false }));
+        },
+      });
+      expect(st().vaultTeamPlan).toMatchObject({ isAdmin: false });
+      await st().vaultRefresh();
+      expect(st().vaultTeamPlan).toMatchObject({ isAdmin: false });
+    });
+
+    it("an admin after a member is never refused a delete by the member's late answer", async () => {
+      await lateRead({
+        admins: ['u2'],
+        deleteRole: 'admin',
+        between: async () => {
+          teamScope(U2);
+          await st().vaultRefresh();
+          await st().vaultLoadSettings({ force: true });
+          await vi.waitFor(() => expect(st().vaultTeamPlan).toMatchObject({ isAdmin: true }));
+        },
+      });
+      expect(st().vaultTeamPlan).toMatchObject({ isAdmin: true });
+      const removes = server.rpcs.filter((r) => r.fn === 'org_vault_remove').length;
+      expect(await st().vaultDeleteNote('a.md')).toMatchObject({ ok: true });
+      expect(server.rpcs.filter((r) => r.fn === 'org_vault_remove').length).toBe(removes + 1);
+    });
+
+    it("u2's read made while u1's is on its way is u2's own, not u1's promise", async () => {
+      const net = perCaller(server, { members: ['u1', 'u2'], admins: ['u1'] });
+      useStoreToken();
+      await st().vaultRefresh();
+      const held = net.hold('org_vault_settings_get');
+      const read = st().vaultLoadSettings({ force: true });
+      await held.reached;
+      await st().signOutAccount();
+      auth.nextUser = U2;
+      await st().signIn('b@example.com', 'pw');
+      teamScope(U2);
+      const n = settingsGets();
+      const mine = await st().vaultLoadSettings();
+      expect(settingsGets()).toBe(n + 1);
+      expect(mine).toBeDefined();
+      await vi.waitFor(() => expect(st().vaultTeamPlan).toMatchObject({ isAdmin: false }));
+      held.release();
+      await read;
+      for (let i = 0; i < 5; i++) await tick();
+      expect(st().vaultTeamPlan).toMatchObject({ isAdmin: false });
+    });
+
+    it("u1's late plan refusal (OV402) never marks u2's plan lapsed", async () => {
+      const net = perCaller(server, { members: ['u1', 'u2'] });
+      useStoreToken();
+      server.put('a.md', 'x', 'u1');
+      await st().vaultRefresh();
+      await st().vaultOpen('a.md');
+      // The server answered OV402 to u1 (its plan then was not active).
+      const held = net.hold('org_vault_write', () =>
+        Object.assign(
+          new Error("the organization's plan is not active, so team notes are read-only"),
+          {
+            status: 400,
+            code: 'OV402',
+          },
+        ),
+      );
+      const save = st().vaultSave('a.md', 'x and more');
+      await held.reached;
+      await st().signOutAccount();
+      auth.nextUser = U2;
+      await st().signIn('b@example.com', 'pw');
+      teamScope(U2);
+      await st().vaultLoadSettings({ force: true });
+      await vi.waitFor(() => expect(st().vaultTeamPlan).toMatchObject({ entitled: true }));
+      held.release();
+      await save.catch(() => {});
+      for (let i = 0; i < 5; i++) await tick();
+      expect(st().vaultTeamPlan).toMatchObject({ entitled: true });
+    });
+  });
 
   describe('E21: a folder delete names a note a teammate saved while it ran', () => {
     // Before each remove of `path` a teammate saves it again, `times` times
