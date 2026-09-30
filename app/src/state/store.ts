@@ -501,6 +501,7 @@ import {
   VAULT_TODAY_FAILED,
   VAULT_TICK_FAILED,
   vaultTickChanged,
+  vaultTickUnsaved,
   VAULT_GONE_REASON,
   VAULT_UNSEEN_DRAFT_REASON,
   vaultFolderMoveInTrash,
@@ -6545,8 +6546,12 @@ export const useApp = create<AppState>((set, get, api) => {
       putVaultNote: async (path, text, guard) => {
         const r = await putVaultNote(t, path, text, guard);
         // The open note written by an operation (a link rewrite, a tick)
-        // shows the text and version that landed.
-        if (r.ok && isActiveVault(t) && get().vaultNote?.path === r.file.path) {
+        // shows the text and version that landed, unless its editor holds
+        // words the note does not (a save held or kept for later): those
+        // stay on screen, and its next save meets this version as a choice,
+        // never over it (E30).
+        const open = isActiveVault(t) ? get().vaultNote : undefined;
+        if (r.ok && open?.path === r.file.path && (draftOf(open.path) ?? open.text) === open.text) {
           reloadOpenNote(r.file, 'resolve');
         }
         return r;
@@ -12436,6 +12441,16 @@ export const useApp = create<AppState>((set, get, api) => {
       // stands after that save, else the note as last read. The tick then
       // lands only on that same text (E2).
       const open = isActiveVault(t) ? get().vaultNote : undefined;
+      // Unless the editor holds text the note does not have (its save held,
+      // kept for later, or waiting on a choice): the reader counted the line
+      // on that text, and the note's line there may be another task (E30).
+      if (
+        open?.path === path &&
+        ((draftOf(path) ?? open.text) !== open.text || get().vaultConflict?.path === path)
+      ) {
+        get().showToast(vaultTickUnsaved(title));
+        return false;
+      }
       const text =
         open?.path === path ? open.text : await readBodyOf(t, path).catch(() => undefined);
       if (text === undefined) {

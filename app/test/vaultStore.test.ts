@@ -7163,4 +7163,114 @@ describe('round 7, batch 3: the team vault answers only for itself', () => {
       expect(st().teamVaultAvailable()).toBe(true);
     });
   });
+
+  describe('E30: a tick lands on the task ticked, and never takes typed text off the screen', () => {
+    const copy = () => import('../src/lib/vaultCopy.js');
+    afterEach(() => st().vaultBindAutosave(undefined));
+    // t.md open with two tasks, the team at its free cap (0023), and a line
+    // typed above them whose save was held (growth is refused).
+    async function heldAbove() {
+      server.put('t.md', '- [ ] one\n- [ ] two', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('t.md');
+      for (let i = 0; i < 5; i++) await tick();
+      server.freeBytes = server.usage();
+      const typed = '- [ ] zero\n- [ ] one\n- [ ] two';
+      st().vaultNoteDraft('t.md', typed);
+      await st().vaultSave('t.md', typed);
+      expect(teamHeld()).toHaveLength(1);
+      return typed;
+    }
+
+    it('a tick on a note whose last save was held is refused, and nothing is written', async () => {
+      const { vaultTickUnsaved } = await copy();
+      const typed = await heldAbove();
+      const writes = server.rpcs.filter((r) => r.fn === 'org_vault_write').length;
+      const before = st().vaultNote!.reloaded;
+      // 'one' is line 1 of what the person sees.
+      expect(await st().vaultToggleTask('t.md', 1, true)).toBe(false);
+      expect(server.bytes('t.md')).toBe('- [ ] one\n- [ ] two');
+      expect(server.rpcs.filter((r) => r.fn === 'org_vault_write').length).toBe(writes);
+      expect(st().toast).toBe(vaultTickUnsaved('t'));
+      expect(st().toast).not.toMatch(/try again/i);
+      expect(st().vaultNote!.reloaded).toBe(before);
+      expect(teamHeld().map((h) => h.text)).toEqual([typed]);
+    });
+
+    it('typing on after the refused tick still keeps the first line typed', async () => {
+      const typed = await heldAbove();
+      await st().vaultToggleTask('t.md', 1, true);
+      const more = `${typed}\n- [ ] three`;
+      st().vaultNoteDraft('t.md', more);
+      await st().vaultSave('t.md', more);
+      expect(teamHeld().map((h) => h.text)).toEqual([more]);
+      expect(liveHas(server, 'zero')).toBe(true);
+    });
+
+    it('a link rewrite of a note whose save was held never takes the typed text off the screen', async () => {
+      server.put('r.md', 'see [[Old]] now', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('r.md');
+      for (let i = 0; i < 5; i++) await tick();
+      server.freeBytes = server.usage();
+      const typed = 'added line\nsee [[Old]] now';
+      st().vaultNoteDraft('r.md', typed);
+      await st().vaultSave('r.md', typed);
+      expect(teamHeld()).toHaveLength(1);
+      const before = st().vaultNote!.reloaded;
+      // Same size, so 0023 lets it through.
+      await st().vaultRewriteNote('r.md', (text) => text.replace('[[Old]]', '[[New]]'));
+      expect(server.bytes('r.md')).toBe('see [[New]] now');
+      expect(st().vaultNote!.reloaded).toBe(before);
+      expect(st().vaultNote!.text).toBe('see [[Old]] now');
+      // The typed text meets the rewrite as a choice, never over it.
+      expect(await st().vaultRecheck({ reason: 'poll' })).toBe('checked');
+      expect(st().vaultConflict).toMatchObject({ path: 'r.md', kind: 'changed' });
+      expect(server.bytes('r.md')).toBe('see [[New]] now');
+      expect(liveHas(server, 'added line')).toBe(true);
+    });
+
+    it('typed text an autosave lands first is ticked on the line the reader counted', async () => {
+      const { vaultAutosave } = await import('../src/lib/vaultAutosave.js');
+      server.put('t.md', '- [ ] one\n- [ ] two', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('t.md');
+      for (let i = 0; i < 5; i++) await tick();
+      const autosave = vaultAutosave({
+        target: () => st().vaultTargetRef(),
+        save: (path, text, at) => void st().vaultSave(path, text, at),
+        delayMs: 10_000,
+      });
+      st().vaultBindAutosave(autosave);
+      const typed = '- [ ] zero\n- [ ] one\n- [ ] two';
+      st().vaultNoteDraft('t.md', typed);
+      autosave.schedule('t.md', typed);
+      expect(await st().vaultToggleTask('t.md', 1, true)).toBe(true);
+      expect(server.bytes('t.md')).toBe('- [ ] zero\n- [x] one\n- [ ] two');
+      expect(st().vaultNote?.text).toBe('- [ ] zero\n- [x] one\n- [ ] two');
+    });
+
+    it('on a personal vault whose save was kept for later, the tick is refused the same way', async () => {
+      const { vaultTickUnsaved } = await copy();
+      // The desktop folder: a personal storage with compare-and-swap, so
+      // ticks write back there.
+      useApp.setState({
+        vaultScope: 'personal',
+        settings: { ...st().settings, gitosResources: personalOn('files') },
+      });
+      folder.files.set('t.md', '- [ ] one\n- [ ] two');
+      await st().vaultRefresh();
+      await st().vaultOpen('t.md');
+      folder.fail.write = true;
+      const typed = '- [ ] zero\n- [ ] one\n- [ ] two';
+      st().vaultNoteDraft('t.md', typed);
+      await st().vaultSave('t.md', typed);
+      expect(Object.values(pending()).map((e) => e.text)).toEqual([typed]);
+      folder.fail.write = false;
+      expect(st().vaultCapsNow().taskWriteBack).toBe(true);
+      expect(await st().vaultToggleTask('t.md', 1, true)).toBe(false);
+      expect(folder.files.get('t.md')).toBe('- [ ] one\n- [ ] two');
+      expect(st().toast).toBe(vaultTickUnsaved('t'));
+    });
+  });
 });

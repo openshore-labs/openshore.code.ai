@@ -1913,6 +1913,13 @@ export function vaultTickChanged(title: string): string {
   return `"${title}" changed somewhere else, so that box was not ticked. The newer version is open now.`;
 }
 export const VAULT_TICK_FAILED = 'Could not save that tick. Try again.';
+/** A tick on a note whose editor holds text the note does not have yet (a
+ *  save held under Not saved, or kept to send when the connection returns):
+ *  the box was counted on that text, so it is not ticked on the note, whose
+ *  line there may be another task (round 7 E30). */
+export function vaultTickUnsaved(title: string): string {
+  return `"${title}" has text that is not saved yet, so that box was not ticked.`;
+}
 
 // ---- M6 stream G end ----
 

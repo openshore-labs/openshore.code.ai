@@ -1513,4 +1513,12 @@ describe("the team's free space says what 0023 says (the review, finding 1)", ()
       expect([...line].some((ch) => [8211, 8212].includes(ch.codePointAt(0)!))).toBe(false);
     }
   });
+
+  it('a tick on text not saved yet says why the box was not ticked (E30)', async () => {
+    const { vaultTickUnsaved } = await import('../src/lib/vaultCopy.js');
+    expect(vaultTickUnsaved('t')).toBe(
+      '"t" has text that is not saved yet, so that box was not ticked.',
+    );
+    expect(vaultTickUnsaved('t')).not.toMatch(/try again/i);
+  });
 });
