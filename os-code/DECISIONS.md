@@ -3285,3 +3285,9 @@ execution contract. Newest at the bottom.
   own rows. The runbook's `sb db push` stays the default for a push with real
   users. Open: the `delete-account` deploy (runbook 7.4) and the section 11
   hand-off (held branches, PR #1).
+- 2026-09-30: **Main's `delete-account` is deployed.** The founder ran
+  `supabase functions deploy delete-account --use-api` (CLI 2.118.0) from
+  main at 81253d0, after 0021 to 0026 were applied. The runbook's no-sign-in
+  check answered `{"error":"unauthorized"}`, main's answer (the 2026-09-24
+  function answers `not_signed_in`), so the privacy branch's function is
+  replaced. In-app account deletion is live for builds from main.
