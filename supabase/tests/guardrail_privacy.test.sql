@@ -5,7 +5,9 @@
 --   0020_reviews_public_view.sql: the public view, own rows only on the base
 --     table, the staff label, block by review;
 --   0022: the ladder's warning carries the ruled appeal address;
---   0026: Download my data version 2, and the retention job's tombstone line.
+--   0026: Download my data version 2 (with the caller's push_sends and
+--     likeness_consents), and the retention job's tombstone line, counted from
+--     the termination a tombstone carries.
 -- Run with `supabase test db` against a database that has every migration
 -- applied, whether built from empty or by replaying production (the CI jobs
 -- `sql` and `sql-replay`). Its own transaction and its own plan(); every
@@ -23,19 +25,21 @@
 -- Error codes: 42501 is a missing privilege; P0001 a plpgsql `raise exception`.
 
 begin;
-select plan(48);
+select plan(53);
 
 -- ------------------------------------------------------------ fixtures
 --   p1 = one: owns the team, blocks, reviews, exports
 --   p2 = two: a member of the team, reviews, carries the staff label
 --   p3 = warned: one confirmed Tier 1 block
 --   p4 = held: rows for the retention job
+--   p5 = old: an operator terminated this account two years and a day ago
 insert into auth.users (id, email, email_confirmed_at, aud, role)
 values
   ('9a000000-0000-0000-0000-000000000001', 'priv-one@example.com',    now(), 'authenticated', 'authenticated'),
   ('9a000000-0000-0000-0000-000000000002', 'priv-two@example.com',    now(), 'authenticated', 'authenticated'),
   ('9a000000-0000-0000-0000-000000000003', 'priv-warned@example.com', now(), 'authenticated', 'authenticated'),
-  ('9a000000-0000-0000-0000-000000000004', 'priv-held@example.com',   now(), 'authenticated', 'authenticated');
+  ('9a000000-0000-0000-0000-000000000004', 'priv-held@example.com',   now(), 'authenticated', 'authenticated'),
+  ('9a000000-0000-0000-0000-000000000005', 'priv-old@example.com',    now(), 'authenticated', 'authenticated');
 
 insert into public.orgs (id, name, owner_uid, seat_count, tier_id)
 values ('9a000000-0000-0000-0000-00000000000a', 'Privacy', '9a000000-0000-0000-0000-000000000001', 2, 'personal');
@@ -274,8 +278,16 @@ select is(
   'one changes the team settings');
 reset role;
 
-insert into public.enforcement_tombstones (email_sha256, level)
-values (public.enforcement_email_key('priv-one@example.com'), 1);
+insert into public.enforcement_tombstones (email_sha256, terminated_at)
+values (public.enforcement_email_key('priv-one@example.com'), now() - interval '3 days');
+
+-- Push bookkeeping and a consent assertion, one person's and the other's.
+insert into public.push_sends (user_id, session_id, dedupe_key)
+values
+  ('9a000000-0000-0000-0000-000000000001', 'priv-session-one', 'priv-one-push'),
+  ('9a000000-0000-0000-0000-000000000002', 'priv-session-two', 'priv-two-push');
+insert into public.likeness_consents (user_id, subject)
+values ('9a000000-0000-0000-0000-000000000001', 'priv subject');
 
 select set_config('request.jwt.claims',
   '{"sub":"9a000000-0000-0000-0000-000000000001","email":"priv-one@example.com","role":"authenticated"}', true);
@@ -295,12 +307,12 @@ select is(
 select is(
   (select array_agg(key order by key collate "C") from exported, jsonb_object_keys(v) as key where k = 'one'),
   array['account', 'apple_links', 'enforcement_actions', 'enforcement_tombstone', 'exported_at',
-        'format', 'guardrail_events', 'model_reviews', 'org_memberships', 'org_project_members',
-        'org_projects', 'org_vault_notes_updated', 'org_vault_revisions_authored',
-        'org_vault_settings_updated', 'orgs_owned', 'push_devices', 'push_grants',
-        'review_eula_acceptance', 'review_reports', 'review_staff', 'user_blocks',
-        'user_entitlements', 'version'],
-  'it carries 0019''s nineteen keys and the four 0026 adds');
+        'format', 'guardrail_events', 'likeness_consents', 'model_reviews', 'org_memberships',
+        'org_project_members', 'org_projects', 'org_vault_notes_updated',
+        'org_vault_revisions_authored', 'org_vault_settings_updated', 'orgs_owned',
+        'push_devices', 'push_grants', 'push_sends', 'review_eula_acceptance', 'review_reports',
+        'review_staff', 'user_blocks', 'user_entitlements', 'version'],
+  'it carries 0019''s nineteen keys and the six 0026 adds');
 select is(
   (select array_agg(distinct x->>'updated_by') from exported,
      jsonb_array_elements(v->'org_vault_revisions_authored') x where k = 'one'),
@@ -320,9 +332,12 @@ select is(
   '[]'::jsonb,
   'two''s export holds no settings row');
 select is(
-  (select v->'enforcement_tombstone'->>'level' from exported where k = 'one'),
-  '1',
-  'a tombstone under the caller''s email shows its level');
+  (select array[v->'enforcement_tombstone'->>'level',
+                ((v->'enforcement_tombstone'->>'terminated_at')::timestamptz
+                   < now() - interval '2 days')::text]
+     from exported where k = 'one'),
+  array['2', 'true'],
+  'a tombstone under the caller''s email shows its level and the termination''s time');
 select ok(
   (select position(public.enforcement_email_key('priv-one@example.com') in v::text) = 0
      from exported where k = 'one'),
@@ -336,6 +351,22 @@ select is(
      from exported where k = 'one'),
   array['false', 'true'],
   'review_staff says whether the caller carries the OpenShore team label');
+select is(
+  (select array_agg(x->>'dedupe_key') from exported, jsonb_array_elements(v->'push_sends') x
+    where k = 'one'),
+  array['priv-one-push'],
+  'one''s export holds one''s push_sends rows and no one else''s');
+select is(
+  (select array_agg(x->>'dedupe_key') from exported, jsonb_array_elements(v->'push_sends') x
+    where k = 'two'),
+  array['priv-two-push'],
+  'two''s export holds two''s push_sends rows and no one else''s');
+select is(
+  (select array[(select x->>'subject' from jsonb_array_elements(v->'likeness_consents') x),
+                (select jsonb_array_length(v->'likeness_consents') from exported where k = 'two')::text]
+     from exported where k = 'one'),
+  array['priv subject', '0'],
+  'likeness_consents holds the caller''s own assertion and nobody else''s');
 
 set local role anon;
 select throws_ok($$ select public.export_my_data() $$, '42501', null::text,
@@ -351,9 +382,9 @@ select ok(
   (select command like '%delete from public.guardrail_events%'
       and command like '%delete from public.enforcement_actions%'
       and command like '%delete from public.deletion_holds where hold_until <= now();%'
-      and command like '%delete from public.enforcement_tombstones where recorded_at < now() - interval ''2 years'';%'
+      and command like '%delete from public.enforcement_tombstones where terminated_at < now() - interval ''2 years'';%'
      from cron.job where jobname = 'oscode_guardrail_retention'),
-  'it keeps 0019''s three deletes and adds the tombstone delete');
+  'it keeps 0019''s three deletes and adds the tombstone delete, by the termination''s time');
 
 -- Rows the job must delete and rows it must keep. The insert trigger stamps
 -- created_at with the server clock, so the age is set afterwards.
@@ -366,10 +397,21 @@ update public.guardrail_events
    set created_at = now() - interval '181 days',
        legal_hold_until = case when signals = '{held}' then now() + interval '1 year' else null end
  where user_id = '9a000000-0000-0000-0000-000000000004' and signals in ('{old}', '{held}');
-insert into public.enforcement_tombstones (email_sha256, level, recorded_at)
+insert into public.enforcement_tombstones (email_sha256, terminated_at)
 values
-  (public.enforcement_email_key('old-tombstone@example.com'), 2, now() - interval '2 years 1 day'),
-  (public.enforcement_email_key('new-tombstone@example.com'), 2, now() - interval '1 year');
+  (public.enforcement_email_key('old-tombstone@example.com'), now() - interval '2 years 1 day'),
+  (public.enforcement_email_key('new-tombstone@example.com'), now() - interval '1 year');
+-- A tombstone written today (the account deleted now) for a termination two
+-- years and a day old: it carries the termination's time, so it goes too.
+insert into public.enforcement_actions (user_id, level, action, reason, actor, created_at)
+values ('9a000000-0000-0000-0000-000000000005', 2, 'terminate', 'Confirmed on review.',
+        '9a000000-0000-0000-0000-000000000002', now() - interval '2 years 1 day');
+set local role service_role;
+select is(
+  public.account_deletion_tombstone('9a000000-0000-0000-0000-000000000005'),
+  true,
+  'deleting an account an operator terminated long ago writes its tombstone today');
+reset role;
 insert into public.deletion_holds (user_id_sha256, held_rows, hold_until)
 values (repeat('d', 64), '{}'::jsonb, now() - interval '1 day');
 
@@ -391,6 +433,11 @@ select is(
     where email_sha256 = public.enforcement_email_key('new-tombstone@example.com')),
   1::bigint,
   'a younger tombstone stays');
+select is(
+  (select count(*) from public.enforcement_tombstones
+    where email_sha256 = public.enforcement_email_key('priv-old@example.com')),
+  0::bigint,
+  'a tombstone written today for a termination past two years goes: nothing outlives two years');
 select is(
   (select count(*) from public.deletion_holds where user_id_sha256 = repeat('d', 64)),
   0::bigint,

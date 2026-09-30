@@ -20,6 +20,8 @@ declare
   n bigint;
   r jsonb;
   v_action text;
+  v_ids uuid[];
+  v_at timestamptz;
 begin
   -- 1. The history is production's rows, then the pending files, in order.
   select array_agg(version order by version) into v_got from supabase_migrations.schema_migrations;
@@ -145,7 +147,9 @@ begin
   if r->>'version' is distinct from '2'
      or jsonb_array_length(r->'orgs_owned') <> 1
      or jsonb_array_length(r->'org_memberships') < 1
-     or (r->>'review_staff') is distinct from 'true' then
+     or (r->>'review_staff') is distinct from 'true'
+     or r->'push_sends'->0->>'dedupe_key' is distinct from 'replay-push-1'
+     or r->'likeness_consents' is distinct from '[]'::jsonb then
     raise exception 'REPLAY FAIL 9: export_my_data gave %', r;
   end if;
 
@@ -164,7 +168,46 @@ begin
     raise exception 'REPLAY FAIL 10: the warning does not carry the published address';
   end if;
 
-  raise notice 'REPLAY CHECKS PASSED: 10 checks held on production''s rows.';
+  -- 11. The deletion's writes (0022 section 6) on production's rows, rolled
+  --     back with everything else: r4's held rows are copied, r4's operator
+  --     termination leaves a level 2 tombstone at its own time, and r1's team
+  --     is not deleted while r2 is active in it. Clients cannot call any of
+  --     the four.
+  set local role service_role;
+  if public.account_deletion_hold('7e000000-0000-0000-0000-000000000004') <> 3 then
+    raise exception 'REPLAY FAIL 11: the legal-hold copy did not find r4''s two block rows and action';
+  end if;
+  if not public.account_deletion_tombstone('7e000000-0000-0000-0000-000000000004') then
+    raise exception 'REPLAY FAIL 11: r4''s operator termination left no tombstone';
+  end if;
+  v_ids := public.account_deletion_orgs('7e000000-0000-0000-0000-000000000001',
+             array['7e000000-0000-0000-0000-0000000000aa']::uuid[]);
+  reset role;
+  if cardinality(v_ids) <> 0
+     or not exists (select 1 from public.orgs where id = '7e000000-0000-0000-0000-0000000000aa') then
+    raise exception 'REPLAY FAIL 11: the owned-team delete removed a team with an active member';
+  end if;
+  select terminated_at into v_at from public.enforcement_tombstones
+   where email_sha256 = public.enforcement_email_key('reported@replay.invalid') and level = 2;
+  if v_at is distinct from (select created_at from public.enforcement_actions
+                             where user_id = '7e000000-0000-0000-0000-000000000004'
+                               and action = 'terminate' and actor <> 'system') then
+    raise exception 'REPLAY FAIL 11: the tombstone does not carry the termination''s own time (%)', v_at;
+  end if;
+  if (select count(*) from public.deletion_holds
+       where user_id_sha256 = encode(sha256(convert_to('7e000000-0000-0000-0000-000000000004', 'UTF8')), 'hex')) <> 1 then
+    raise exception 'REPLAY FAIL 11: r4''s held rows are not one copy under the hash of its id';
+  end if;
+  select count(*) into n from pg_proc p
+   where p.pronamespace = 'public'::regnamespace
+     and p.proname in ('account_deletion_hold', 'account_deletion_orgs',
+                       'account_deletion_tombstone', 'account_deletion_memberships')
+     and not has_function_privilege('anon', p.oid, 'execute')
+     and not has_function_privilege('authenticated', p.oid, 'execute')
+     and has_function_privilege('service_role', p.oid, 'execute');
+  if n <> 4 then raise exception 'REPLAY FAIL 11: % of the four deletion functions are service role only', n; end if;
+
+  raise notice 'REPLAY CHECKS PASSED: 11 checks held on production''s rows.';
 end $check$;
 
 rollback;

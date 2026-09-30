@@ -12,11 +12,20 @@
 --                                      (0021), matched by updated_by;
 --        org_vault_settings_updated    the team settings rows the caller last
 --                                      changed (0025), matched by updated_by;
---        enforcement_tombstone         the level and recorded_at of a
+--        enforcement_tombstone         the level and terminated_at of a
 --                                      tombstone under the caller's email
 --                                      (0022), or null; never the hash;
 --        review_staff                  whether the caller carries the
---                                      "OpenShore team" label (0020).
+--                                      "OpenShore team" label (0020);
+--        push_sends                    the caller's push delivery rows (0009):
+--                                      a session id and a dedupe key per push,
+--                                      kept 30 days by oscode_ledger_retention;
+--                                      0019 left them out, but they are keyed
+--                                      to the person, so they are theirs;
+--        likeness_consents             the caller's consent assertions (0016),
+--                                      if any exist: the app never writes
+--                                      them (consent stays on the device, 0019
+--                                      section C), so this is normally empty.
 --
 --      What it leaves out, and why:
 --        org_storage_usage         a team's byte count; it names no person.
@@ -29,12 +38,6 @@
 --                                  a counsel call (founder decision F4); until
 --                                  then they stay out, and no copy says the
 --                                  export holds everything.
---        push_sends                push delivery bookkeeping (a dedupe key per
---                                  push), service role only, deleted after 30
---                                  days by oscode_ledger_retention (0015);
---                                  0019 left it out.
---        likeness_consents         never written: consent assertions stay on
---                                  the device (0019 section C).
 --        org_entitlements          a team's plan, keyed by the team; it names
 --                                  no person.
 --        apple_notifications_seen  Apple's notification ids for replay
@@ -49,11 +52,14 @@
 --   2. The retention job, re-scheduled under the same name
 --      (oscode_guardrail_retention, daily at 03:41 UTC) with the same pg_cron
 --      guard as 0019 section B. It keeps 0019's three deletes verbatim and
---      adds one: an enforcement tombstone older than two years. A tombstone
---      re-creates the effect of an enforcement action on a new account, so it
---      may not outlive the two years the 2026-09-24 ruling gives enforcement
---      actions (the founder may record an exemption instead; the default is
---      two years). Because this block unschedules and schedules the whole
+--      adds one: a tombstone whose termination is more than two years old. A
+--      tombstone re-creates the effect of an operator's termination on a new
+--      account, so it may not outlive the two years the 2026-09-24 ruling
+--      gives enforcement actions (the founder may record an exemption instead;
+--      the default is two years). The age is counted from terminated_at, the
+--      termination's own time (0022), which no later write moves to the time
+--      of the write, so no tombstone lives past two years from the decision
+--      it carries. Because this block unschedules and schedules the whole
 --      job, it also schedules it on a project where pg_cron was off when 0019
 --      ran.
 --
@@ -155,13 +161,21 @@ begin
       select jsonb_agg(to_jsonb(t)) from public.org_vault_settings t where t.updated_by = v_uid
     ), '[]'::jsonb),
     'enforcement_tombstone', (
-      select jsonb_build_object('level', t.level, 'recorded_at', t.recorded_at)
+      select jsonb_build_object('level', t.level, 'terminated_at', t.terminated_at)
         from public.enforcement_tombstones t
        where t.email_sha256 = public.enforcement_email_key(auth.email())
     ),
     'review_staff', exists (
       select 1 from public.review_staff s where s.user_id = v_uid
-    )
+    ),
+    'push_sends', coalesce((
+      select jsonb_agg(to_jsonb(t) order by t.created_at, t.id) from public.push_sends t
+       where t.user_id = v_uid
+    ), '[]'::jsonb),
+    'likeness_consents', coalesce((
+      select jsonb_agg(to_jsonb(t) order by t.asserted_at, t.id) from public.likeness_consents t
+       where t.user_id = v_uid
+    ), '[]'::jsonb)
   );
 end;
 $$;
@@ -194,7 +208,7 @@ begin
          where created_at < now() - interval '2 years'
            and (legal_hold_until is null or legal_hold_until <= now());
         delete from public.deletion_holds where hold_until <= now();
-        delete from public.enforcement_tombstones where recorded_at < now() - interval '2 years';
+        delete from public.enforcement_tombstones where terminated_at < now() - interval '2 years';
       $job$
     );
   else

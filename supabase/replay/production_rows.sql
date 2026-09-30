@@ -108,6 +108,12 @@ insert into public.user_blocks (blocker_id, blocked_id)
 values ('7e000000-0000-0000-0000-000000000002', '7e000000-0000-0000-0000-000000000005');
 insert into public.review_staff (user_id) values ('7e000000-0000-0000-0000-000000000001');
 
+-- ------------------------------------------------------------ push bookkeeping
+-- A push the owner's desktop sent (0009's push_sends, service role only), which
+-- 0026's Download my data now includes.
+insert into public.push_sends (user_id, session_id, dedupe_key, created_at)
+values ('7e000000-0000-0000-0000-000000000001', 'replay-session', 'replay-push-1', now() - interval '2 days');
+
 -- ------------------------------------------------------------ the snapshot
 -- What the pending files must never change: every fingerprint and every hold.
 drop schema if exists replay_snapshot cascade;

@@ -166,6 +166,7 @@ describe('the newest record_enforcement', () => {
   });
 
   it('names the published appeal address (the 2026-09-24 contact-inboxes ruling)', () => {
+    // The same address as the app's SUPPORT_EMAIL: app/test/contactAddress.test.ts.
     expect(body).toMatch(/write to os-code@openshorellc\.com\./);
     expect(body).not.toMatch(/support@openshore\.ai/);
   });
@@ -252,15 +253,14 @@ describe('Download my data covers every table', () => {
     'org_vault_revisions',
     'enforcement_tombstones',
     'org_vault_settings',
+    'push_sends',
+    'likeness_consents',
   ]);
   // Left out, each with its reason (0026's header says the same).
   const EXEMPT: Record<string, string> = {
     org_entitlements: "a team's plan, keyed by the team; it names no person",
     apple_notifications_seen: "Apple's notification ids for replay defence; they name no person",
-    push_sends:
-      'push delivery bookkeeping, service role only, deleted after 30 days (0015); 0019 left it out',
     review_moderators: 'an operator allowlist the service role seeds; 0019 left it out',
-    likeness_consents: 'never written: consent assertions stay on the device (0019 section C)',
     abuse_reports:
       'whether a report prepared under 18 U.S.C. 2258A is disclosed to its subject is a counsel call (F4)',
     abuse_reviewers: 'an operator allowlist the service role seeds; 0019 left it out',
