@@ -3309,6 +3309,15 @@ execution contract. Newest at the bottom.
   check answered `{"error":"unauthorized"}`, main's answer (the 2026-09-24
   function answers `not_signed_in`), so the privacy branch's function is
   replaced. In-app account deletion is live for builds from main.
+- 2026-09-30: **Release signing keys are pinned.** The founder ran
+  `app/scripts/release-keygen.mjs`, put the Windows and Linux private key in
+  GitHub's `release` environment (`OPENSHORE_DESKTOP_SIGNING_KEY`; the
+  environment already allowed only `main` and `v*`, with no reviewer) and
+  the Mac private key in Codemagic (`OPENSHORE_MAC_SIGNING_KEY`, group
+  `openshore-mac-signing`, secure), then sent the two public keys, which
+  `app/electron/releaseKeys.ts` now pins. From the first build carrying them,
+  every Windows and Linux update and every Mac update must be signed with the
+  matching private key. Private keys never passed through a session.
 
 - **The team migrations renumbered 0024 and 0025 (CTO 4, 2026-09-29,
   `vault-m2-team`, merged with main at a5c14c3):** `git mv` keeps the bodies;
