@@ -3600,3 +3600,44 @@ execution contract. Newest at the bottom.
   sign-in, a parked message on a paid chat waited no longer for the
   entitlement read, so a subscriber met the paywall; with the gates on the
   build now waits for that read.
+
+- 2026-09-30: **Round 7, batch 1: team text belongs to its account and to the
+  version it was typed on (held `vault-m2-team`, two blockers, six high).**
+  (E1) A team resolve choice and the editor's live text leave with a
+  sign-out or another account's sign-in; an expiry keeps them only on the
+  kept note for the same account, and a team choice is settled only while
+  its account is signed in and its vault is on screen (the room shows a
+  choice only on its own note, vault and account). (E5) Every team target's
+  storage is bound to its account (`state/teamOwner.ts`): each call checks,
+  in the turn the provider reads the session for its token, that the
+  account is still the one signed in, and refuses for good otherwise; a
+  save answered after its account left keeps the text for that account; a
+  replay stops when its account leaves; a team ref naming no account speaks
+  for nobody; `isActiveVault` compares the team vault's account. (E6) After
+  an expiry, a choice tapped waits for the same account's return with its
+  words in the sealed stash, and that account's holds stay sealed. (E7) A
+  Not saved entry's id names the note, the account and the sitting (the
+  open note's `loadedAt`, now always later than the last); a hold replaces
+  only its own sitting's older text or the same words, and a refused save
+  keeps an earlier sitting's stashed words beside it. (E2) A task tick reads
+  the note once and toggles and guards on that read, and the body cache
+  never pairs an older body with the open note's version. (E3) Opening a
+  note leaves an open one as it is, waits up to 2 s for this device's save
+  or replay of it, and drops an open a later tap came after; a save landing
+  on a note opened after it began reloads a clean editor or asks. (E4) A
+  save's metadata-only retry, and the delete's, compare theirs with the text
+  they began on. (E8) A replay landing on the open note reloads a clean
+  editor or asks, never adopts under an older read. Main lines this
+  changes, each because the fix lives in them: in the store, the sets in
+  `forgetSession` and `onSignedIn`, `vaultTarget`, `vaultTargetFrom`,
+  `isActiveVault`, `putVaultNote`, `readBodyOf`, `reloadOpenNote`,
+  `recheckOpenNote`'s adopt, `heldDraft`, `keepNewest`, `holdVaultDraft`,
+  `keepUnsentTeamText`, `rescueVaultDraft`, `adoptReplayed` (now async),
+  `replayVaultPending`'s filter and loop, `leaveVaultConflict`,
+  `saveVaultNote` (its retry and success), `settleSaveConflict`, `vaultOpen`,
+  `vaultCloseNote`, `setVaultScope`, `vaultSave`, `vaultDelete`'s retry,
+  `vaultDiscardHeld`, `vaultToggleTask`, and each `loadedAt: Date.now()`;
+  `toggleTask` and `tickOnce` in `vaultOps.ts`; `conflictHere` in
+  `VaultScreen.tsx`. Main tests: the room's choice fixture names the vault
+  the room is on (`local`), and the frontmatter tick expects no write
+  attempt on a changed note.
