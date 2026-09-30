@@ -32,6 +32,8 @@ import {
   VAULT_TEAM_DELETE_ADMINS_ONLY,
   VAULT_TEAM_DELETE_REFUSED,
   VAULT_TEAM_FULL,
+  VAULT_TEAM_FULL_NOT_CREATED,
+  VAULT_TEAM_FULL_NOT_RESTORED,
   VAULT_TEAM_LAPSED_NOT_CREATED,
   VAULT_TEAM_LAPSED_NOT_DELETED,
   VAULT_TEAM_LAPSED_NOT_RESTORED,
@@ -475,6 +477,7 @@ vi.mock('../src/lib/gitos/index.js', async () => {
     onOrgVaultPlan: org.onOrgVaultPlan,
     onOrgVaultNotMember: org.onOrgVaultNotMember,
     setOrgVaultDeleteRole: org.setOrgVaultDeleteRole,
+    clearOrgVaultFull: org.clearOrgVaultFull,
   };
 });
 
@@ -4940,7 +4943,9 @@ describe('round 7: team text belongs to its account and its version', () => {
       server.freeBytes = server.usage();
       await st().vaultSave('n.md', 'the base\nrefused first');
       st().vaultCloseNote();
+      // The team makes room, and a refresh asks it afresh (E27).
       server.freeBytes = undefined;
+      await st().vaultRefresh();
       await st().vaultOpen('n.md');
       server.rpcFailure = new TypeError('Failed to fetch');
       await st().vaultSave('n.md', 'the base\nwritten offline later');
@@ -6210,7 +6215,9 @@ describe('round 7, batch 2: team text and names stay where they belong', () => {
       server.freeBytes = server.usage();
       await st().vaultSave('Plan.md', 'the base\nAgain.');
       expect(st().vaultNote?.held).toBe(true);
+      // The team makes room, and a refresh asks it afresh (E27).
       server.freeBytes = undefined;
+      await st().vaultRefresh();
       await st().vaultSave('Plan.md', 'the base\nAgain, with room.');
       expect(st().vaultNote?.held).toBe(false);
     });
@@ -7676,7 +7683,9 @@ describe('round 7, batch 4: the team vault says what is there, and what it did',
     it('N9b: a new note at the old name, held too, keeps both texts', async () => {
       await heldAtCap();
       await rename('a.md', 'b.md');
+      // The team makes room, and a refresh asks it afresh (E27).
       server.freeBytes = undefined;
+      await st().vaultRefresh();
       await st().vaultCreate('a');
       expect(st().vaultNote?.path).toBe('a.md');
       server.freeBytes = server.usage();
@@ -8140,6 +8149,138 @@ describe('round 7, batch 4: the team vault says what is there, and what it did',
       // The link to the note that moved is rewritten (its shortest form);
       // the link to the note already gone is left as written.
       expect(server.bytes('Home.md')).toBe('See [[Work/a]] and [[b]].');
+    });
+  });
+
+  describe('E27: once the team is known to be full, what adds text is held here, said once', () => {
+    const writes = () => server.rpcs.filter((r) => r.fn === 'org_vault_write').length;
+    // A team at its cap with Ideas.md just made and one growing save refused.
+    async function fullAfterFirstRefusal() {
+      server.put('a.md', 'x'.repeat(40), 'u-me');
+      await st().vaultRefresh();
+      server.freeBytes = server.usage();
+      await st().vaultCreate('Ideas');
+      expect(st().vaultNote?.path).toBe('Ideas.md');
+      useApp.setState({ toast: undefined });
+      await st().vaultSave('Ideas.md', 'h');
+      expect(st().toast).toMatch(/^Not saved\. This team has used its 25 MiB/);
+      expect(st().vaultTeamPlan).toMatchObject({ full: true });
+    }
+
+    it('N4: later growing saves are held unsent and quiet; a second New note or Today asks nothing', async () => {
+      await fullAfterFirstRefusal();
+      const before = writes();
+      const toasts: string[] = [];
+      const unsub = useApp.subscribe((s, p) => {
+        if (s.toast && s.toast !== p.toast) toasts.push(String(s.toast));
+      });
+      for (const t of ['he', 'hel']) {
+        useApp.setState({ toast: undefined });
+        await st().vaultSave('Ideas.md', t);
+      }
+      unsub();
+      expect({ sends: writes() - before, toasts: toasts.length }).toEqual({ sends: 0, toasts: 0 });
+      expect(teamHeld().map((h) => h.text)).toEqual(['hel']);
+      expect(st().vaultError).toBe('held');
+      // A second New note, and Today, send nothing and make nothing.
+      await st().vaultCreate('More');
+      expect(st().toast).toBe(VAULT_TEAM_FULL_NOT_CREATED);
+      expect(server.notes.has('More.md')).toBe(false);
+      server.putSettings({ version: 1, daily: { folder: 'Daily', format: 'YYYY-MM-DD' } });
+      await st().vaultLoadSettings({ force: true });
+      clearVaultTodayCache();
+      expect(await st().vaultToday()).toEqual({
+        kind: 'refused',
+        line: `Not started. ${VAULT_TEAM_FULL}`,
+      });
+      expect(writes() - before).toBe(0);
+    });
+
+    it('a save that trims the note still goes, and lands', async () => {
+      server.put('long.md', 'a long note body', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('long.md');
+      for (let i = 0; i < 5; i++) await tick();
+      server.freeBytes = server.usage();
+      await st().vaultSave('long.md', 'a long note body, and more');
+      expect(st().vaultTeamPlan).toMatchObject({ full: true });
+      const before = writes();
+      await st().vaultSave('long.md', 'a long note');
+      expect(writes()).toBe(before + 1);
+      expect(server.bytes('long.md')).toBe('a long note');
+    });
+
+    it('delete and rename still go', async () => {
+      // At the cap, not past it: a rename adds nothing (0024).
+      server.put('b.md', 'b', 'u-me');
+      server.put('c.md', 'c', 'u-me');
+      await fullAfterFirstRefusal();
+      expect(await st().vaultDeleteNote('b.md')).toMatchObject({ ok: true });
+      expect(server.bytes('b.md')).toBeUndefined();
+      const preview = await st().vaultPrepareMove('note', 'c.md', 'd.md');
+      if (!preview) throw new Error('no preview');
+      expect(await st().vaultApplyMove(preview, false)).toMatchObject({ ok: true });
+      expect(server.bytes('d.md')).toBe('c');
+    });
+
+    it('Undo and Restore are refused here while full', async () => {
+      server.put('b.md', 'b', 'u-me');
+      await fullAfterFirstRefusal();
+      const gone = await st().vaultDeleteNote('b.md');
+      if (!gone?.ok || !gone.undo) throw new Error('not deleted');
+      const before = writes();
+      expect(await st().vaultUndoDelete(gone.undo)).toEqual({
+        ok: false,
+        reason: 'unsupported',
+        line: VAULT_TEAM_FULL_NOT_RESTORED,
+        whole: true,
+      });
+      expect(writes()).toBe(before);
+    });
+
+    it('a refresh asks again; a settings read does not', async () => {
+      await fullAfterFirstRefusal();
+      await st().vaultLoadSettings({ force: true });
+      expect(st().vaultTeamPlan).toMatchObject({ full: true });
+      await st().vaultRefresh();
+      expect(st().vaultTeamPlan?.full).toBeUndefined();
+      // The team bought room: the next growing save goes, and lands.
+      server.freeBytes = undefined;
+      await st().vaultSave('Ideas.md', 'hello');
+      expect(server.bytes('Ideas.md')).toBe('hello');
+    });
+
+    it('a new note with text that lands says the team has room again', async () => {
+      await fullAfterFirstRefusal();
+      server.freeBytes = undefined;
+      await wiring.org!.orgVaultProvider.write(ORG, 'seeded.md', 'words', { ifAbsent: true });
+      expect(st().vaultTeamPlan?.full).toBeUndefined();
+    });
+
+    it('Keep both, which writes a copy, is held here with the free space line', async () => {
+      server.put('n.md', 'the base', 'u-me');
+      await fullAfterFirstRefusal();
+      await st().vaultOpen('n.md');
+      for (let i = 0; i < 5; i++) await tick();
+      server.put('n.md', 'theirs, meanwhile');
+      st().vaultNoteDraft('n.md', 'the');
+      await st().vaultSave('n.md', 'the');
+      expect(st().vaultConflict).toMatchObject({ kind: 'changed' });
+      const before = writes();
+      expect(await st().vaultResolve('both', 'the base, and mine')).toEqual({ ok: true });
+      expect(writes()).toBe(before);
+      expect(teamHeld().find((h) => h.path === 'n.md')).toMatchObject({
+        text: 'the base, and mine',
+        reason: VAULT_TEAM_FULL,
+      });
+      expect(server.bytes('n.md')).toBe('theirs, meanwhile');
+    });
+
+    it('a sign-out forgets it', async () => {
+      await fullAfterFirstRefusal();
+      await st().signOutAccount();
+      expect(st().vaultTeamPlan).toBeUndefined();
+      expect(wiring.org!.orgVaultPlan(ORG)).toBeUndefined();
     });
   });
 

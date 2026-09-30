@@ -37,6 +37,7 @@ import {
   OrgVaultFull,
   OrgVaultNotMember,
   onOrgVaultNotMember,
+  clearOrgVaultFull,
 } from '../src/lib/gitos/orgVault.js';
 import {
   VAULT_TEAM_FULL,
@@ -1086,6 +1087,40 @@ describe('org vault free space (0023)', () => {
     expect(await orgVaultProvider.remove(ORG, 'b.md', { ifMatch: version(b) })).toEqual({
       ok: true,
     });
+  });
+
+  it('a refusal for the free space marks the team full until a refresh or a note with text lands (E27)', async () => {
+    const a = await orgVaultProvider.write(ORG, 'a.md', 'a', { ifAbsent: true });
+    await orgVaultProvider.readConfig!(ORG, 'oscode/vault');
+    server.freeBytes = server.usage();
+    const err = await orgVaultProvider
+      .write(ORG, 'a.md', 'a, and more', { ifMatch: version(a) })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(OrgVaultFull);
+    expect((err as OrgVaultFull).full).toBe(true);
+    expect(orgVaultPlan(ORG)).toMatchObject({ entitled: true, full: true });
+    // A settings read says nothing about the free space, so it stays.
+    await orgVaultProvider.readConfig!(ORG, 'oscode/vault');
+    expect(orgVaultPlan(ORG)).toMatchObject({ full: true });
+    // A save that trims lands and says nothing about room.
+    expect((await orgVaultProvider.write(ORG, 'a.md', '', { ifMatch: version(a) })).ok).toBe(true);
+    expect(orgVaultPlan(ORG)).toMatchObject({ full: true });
+    // A refresh asks afresh.
+    clearOrgVaultFull(ORG);
+    expect(orgVaultPlan(ORG)?.full).toBeUndefined();
+    // Marked again, then a new note with text lands: there was room.
+    await orgVaultProvider.write(ORG, 'b.md', 'too much', { ifAbsent: true }).catch(() => {});
+    expect(orgVaultPlan(ORG)).toMatchObject({ full: true });
+    server.freeBytes = undefined;
+    await orgVaultProvider.write(ORG, 'c.md', 'words', { ifAbsent: true });
+    expect(orgVaultPlan(ORG)?.full).toBeUndefined();
+    // A sign-out forgets it.
+    await orgVaultProvider.write(ORG, 'd.md', 'x', { ifAbsent: true });
+    server.freeBytes = 0;
+    await orgVaultProvider.write(ORG, 'e.md', 'y', { ifAbsent: true }).catch(() => {});
+    expect(orgVaultPlan(ORG)).toMatchObject({ full: true });
+    resetOrgVault();
+    expect(orgVaultPlan(ORG)).toBeUndefined();
   });
 
   it('a check_violation in other words stays the server line, still permanent', async () => {

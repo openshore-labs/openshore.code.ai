@@ -9,6 +9,8 @@
 import type { OrgVaultPlan } from '../lib/gitos/orgVault.js';
 import {
   VAULT_TEAM_DELETE_REFUSED,
+  VAULT_TEAM_FULL_NOT_CREATED,
+  VAULT_TEAM_FULL_NOT_RESTORED,
   VAULT_TEAM_LAPSED_NOT_CREATED,
   VAULT_TEAM_LAPSED_NOT_DELETED,
   VAULT_TEAM_LAPSED_NOT_RESTORED,
@@ -41,5 +43,10 @@ export function vaultTeamRefusal(
   if (write === 'delete' && plan.deleteRole === 'admin' && plan.isAdmin === false) {
     return VAULT_TEAM_DELETE_REFUSED;
   }
+  // The free space is used up (0023, learned from a refusal, E27): a new
+  // note and a note brought back add text, so they are refused here. A save
+  // may only trim, so the store judges it by its size.
+  if (plan.full && write === 'create') return VAULT_TEAM_FULL_NOT_CREATED;
+  if (plan.full && write === 'restore') return VAULT_TEAM_FULL_NOT_RESTORED;
   return undefined;
 }

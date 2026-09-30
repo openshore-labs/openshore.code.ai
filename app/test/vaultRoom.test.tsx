@@ -1525,6 +1525,23 @@ describe('the team room offers only what the server takes (Y14, Y15)', () => {
     expect(dom.text()).not.toContain('The first note you write');
   });
 
+  it('a full team says so in the lead and offers no New note or Today, and the editor stays (E27)', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false, full: true };
+    await dom.render(<VaultRoom />);
+    expect(dom.text()).toContain(copy.VAULT_TEAM_FULL_LEAD);
+    expect(dom.buttons()).not.toContain('New note');
+    expect(dom.container.querySelector('[aria-label="New note"]')).toBeNull();
+    expect(dom.container.querySelector('.vault-today-btn')).toBeNull();
+    expect(dom.text()).not.toContain('The first note you write');
+    // A note open at the cap still edits: a save that trims lands.
+    app.state.vaultFiles = [{ path: 'n.md', updatedAt: 'x', size: 4 }];
+    app.state.vaultNote = { path: 'n.md', text: 'long', updatedAt: 'x', fresh: true };
+    await dom.render(<VaultRoom />);
+    await dom.settle();
+    expect(dom.container.querySelector('textarea')).toBeTruthy();
+  });
+
   it('an active plan with an empty vault still offers New note', async () => {
     app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
     await dom.render(<VaultRoom />);

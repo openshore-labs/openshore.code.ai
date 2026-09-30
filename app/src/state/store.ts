@@ -398,6 +398,7 @@ import {
   onOrgVaultPlan,
   onOrgVaultNotMember,
   setOrgVaultDeleteRole,
+  clearOrgVaultFull,
   type OrgVaultPlan,
   type OrgVaultDeleteRole,
   isNotePath,
@@ -519,6 +520,7 @@ import {
   VAULT_MARKED_REVIEWED,
   VAULT_STARTER_NOT_EMPTY,
   VAULT_TEAM_LAPSED_NOT_SAVED,
+  VAULT_TEAM_FULL,
   VAULT_TEAM_NOT_MEMBER,
   VAULT_TEAM_NOT_MEMBER_REASON,
   VAULT_TEAM_SIGN_IN_LINE,
@@ -5763,6 +5765,8 @@ export const useApp = create<AppState>((set, get, api) => {
     session?: number,
     /** When the save began (its mark), when it was a save (E10). */
     mark?: string,
+    /** Held without a toast: this sitting already said why (E27). */
+    opts: { quiet?: boolean } = {},
   ): Promise<void> {
     if (!speaksNow(t)) {
       await keepUnsentTeamText(t, path, text, base, session);
@@ -5791,7 +5795,7 @@ export const useApp = create<AppState>((set, get, api) => {
       set({ vaultError: 'held' });
       markHeldHere(t, path, session);
       if ((err as { lapsed?: unknown }).lapsed === true) showTeamTextAfterLapse(t, path, text);
-      get().showToast(`Not saved. ${asSentence(refusal)} ${heldLine(landed)}`);
+      if (!opts.quiet) get().showToast(`Not saved. ${asSentence(refusal)} ${heldLine(landed)}`);
       logEvent('vault_note_save_refused');
       return;
     }
@@ -7542,6 +7546,49 @@ export const useApp = create<AppState>((set, get, api) => {
     get().showToast(vaultLeaveToast('edit', { title, copyTitle: noteTitle(copy) }));
   }
 
+  // Whether text is more bytes than the text it was typed on: what 0023
+  // counts as growth (E27).
+  const grows = (text: string, was: string) =>
+    new TextEncoder().encode(text).length > new TextEncoder().encode(was).length;
+  // A team save to hold here, unsent: the team is known to be full and this
+  // save adds text to what it was typed on. Unknown ground is sent, and the
+  // server says (E27).
+  function teamFullHolds(t: VaultTargetRef, text: string, baseText: string | undefined): boolean {
+    return (
+      t.providerId === 'org' &&
+      get().vaultTeamPlan?.full === true &&
+      baseText !== undefined &&
+      grows(text, baseText)
+    );
+  }
+  // Hold a save the full team would refuse, under Not saved with the free
+  // space's reason: the sitting's entry takes the newest text, and the toast
+  // is said only when this sitting had none yet (E27).
+  async function holdFullTeamSave(
+    t: VaultTarget,
+    path: string,
+    text: string,
+    base: string | undefined,
+    session: number | undefined,
+    mark: string | undefined,
+  ): Promise<void> {
+    const reason = asSentence(VAULT_TEAM_FULL);
+    const said =
+      session !== undefined &&
+      get().vaultHeld.some(
+        (h) =>
+          h.providerId === t.providerId &&
+          h.resourceId === t.resourceId &&
+          h.path === path &&
+          h.reason === reason &&
+          h.id.endsWith(`::${session}`),
+      );
+    // As the server's own refusal is held (rescueVaultDraft), quietly when
+    // this sitting has said it already.
+    const refused = Object.assign(new Error(VAULT_TEAM_FULL), { permanent: true });
+    await rescueVaultDraft(t, path, text, base, refused, session, mark, { quiet: said });
+  }
+
   async function saveVaultNote(
     target: VaultTarget,
     path: string,
@@ -7572,6 +7619,12 @@ export const useApp = create<AppState>((set, get, api) => {
     // Team text is sent only under the account that typed it.
     if (!speaksNow(target)) {
       await keepUnsentTeamText(target, path, text, base, session);
+      return base;
+    }
+    // The team's free space is used up (E27): a save that adds text is held
+    // at once, never sent to be refused again, and said once per sitting.
+    if (teamFullHolds(target, text, baseText)) {
+      await holdFullTeamSave(target, path, text, base, session, mark);
       return base;
     }
     let result: WriteResult;
@@ -7615,6 +7668,10 @@ export const useApp = create<AppState>((set, get, api) => {
     }
     if (!result.ok) return settleSaveConflict(target, path, text, base, result, session, mark);
     const saved = result.file;
+    // Text was added and it landed: the team had room for it (E27).
+    if (target.providerId === 'org' && (baseText === undefined || grows(text, baseText))) {
+      clearOrgVaultFull(target.resourceId);
+    }
     // This save supersedes any older draft stashed for the same note in the
     // same sitting, so drop it before the replay below: replaying it now
     // would put the older words back over these (data-1). A draft of an
@@ -11415,6 +11472,9 @@ export const useApp = create<AppState>((set, get, api) => {
         set({ vaultFiles: [], vaultError: undefined, vaultListed: true });
         return;
       }
+      // A refresh asks the team afresh whether it has room: what adds text
+      // is sent again, and a refusal says so once (E27).
+      if (target.providerId === 'org') clearOrgVaultFull(target.resourceId);
       let files: StoredFileMeta[];
       try {
         files = await listVaultNotes(target);
@@ -11606,7 +11666,10 @@ export const useApp = create<AppState>((set, get, api) => {
       const teamRefused = vaultTeamRefusal(target.providerId, get().vaultTeamPlan, 'create');
       if (teamRefused) {
         if (seeded) {
-          await holdVaultDraft(target, normalized, content, VAULT_TEAM_LAPSED_NOT_SAVED);
+          // The plan's reason, or the free space's (E27).
+          const why =
+            get().vaultTeamPlan?.entitled === false ? VAULT_TEAM_LAPSED_NOT_SAVED : VAULT_TEAM_FULL;
+          await holdVaultDraft(target, normalized, content, why);
           set({ vaultError: 'held' });
         }
         get().showToast(teamRefused);
@@ -11808,16 +11871,24 @@ export const useApp = create<AppState>((set, get, api) => {
           // yours put the text under Not saved with the plan's reason before
           // any server call, and the note shows what the vault holds (or
           // closes, when it is gone). Nothing typed is lost, nothing is sent.
-          const teamRefused =
+          const lapsed =
             choice === 'both' || choice === 'mine'
               ? vaultTeamRefusal(target.providerId, get().vaultTeamPlan, 'save')
               : undefined;
+          // Keep both writes a copy, which adds text: refused here once the
+          // team is known to be full (E27). Keep yours may only trim, so it
+          // goes, and the server says.
+          const full =
+            !lapsed && choice === 'both' && target.providerId === 'org' && get().vaultTeamPlan?.full
+              ? vaultRefusedLine('save', { line: VAULT_TEAM_FULL })
+              : undefined;
+          const teamRefused = lapsed ?? full;
           if (teamRefused) {
             const landed = await holdVaultDraft(
               c.target,
               c.path,
               draft,
-              VAULT_TEAM_LAPSED_NOT_SAVED,
+              lapsed ? VAULT_TEAM_LAPSED_NOT_SAVED : VAULT_TEAM_FULL,
               { session },
             );
             set({ vaultError: 'held' });
@@ -12582,6 +12653,11 @@ export const useApp = create<AppState>((set, get, api) => {
           vaultTeamRefusal(t.providerId, get().vaultTeamPlan, 'create') ??
           VAULT_TODAY_FAILED;
         return { kind: 'refused', line: why };
+      }
+      // The team's free space is used up (E27): a new note is refused here,
+      // before the server is asked.
+      if (t.providerId === 'org' && get().vaultTeamPlan?.full) {
+        return { kind: 'refused', line: vaultRefusedLine('today', { line: VAULT_TEAM_FULL }) };
       }
       if (await leaseRefuses(t)) return undefined;
       const r = await opsOpenToday(opsDeps(t), { path: plan.path, text: plan.text });

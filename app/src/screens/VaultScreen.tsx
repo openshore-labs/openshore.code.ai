@@ -56,6 +56,8 @@ import {
   VAULT_TEAM_DELETE_ADMINS_ONLY,
   VAULT_TEAM_LAPSED_ADMIN,
   VAULT_TEAM_LAPSED_LEAD,
+  VAULT_TEAM_FULL_LEAD,
+  VAULT_TEAM_FULL_NOT_CREATED,
   VAULT_TEAM_LAPSED_NOT_CREATED,
   VAULT_TEAM_LAPSED_NOT_SAVED,
   VAULT_TEAM_LAPSED_WEB,
@@ -442,6 +444,10 @@ export function VaultScreen() {
   // exports, and nothing changes, calmly; New note, Today, Rename and Delete
   // leave, and Options says why.
   const teamLapsed = team && vaultTeamPlan?.entitled === false;
+  // The team's free space is used up, as a write this sign-in made was
+  // refused for it (0023, round 7 E27): New note and Today leave, the lead
+  // says why, and the editor stays, since a save that trims still lands.
+  const teamFull = team && !teamLapsed && vaultTeamPlan?.full === true;
   // Only admins may delete team notes here, and this person is not one (Y14).
   const teamDeleteBlocked =
     team && vaultTeamPlan?.deleteRole === 'admin' && vaultTeamPlan.isAdmin === false;
@@ -473,14 +479,15 @@ export function VaultScreen() {
     !readOnly &&
     !hubAway &&
     !teamExpired &&
-    !teamLapsed;
+    !teamLapsed &&
+    !teamFull;
   // What this storage may do now (CTO K1): every M6 action's visibility
   // follows this one answer.
   const caps = vaultCapsNow();
   // Today's note may be offered now: the header's button and the switcher's
   // first row follow this one answer. A lapsed plan takes no new note
   // (OV402), a moving vault holds still, and a folder that is gone has none.
-  const todayOffered = caps.today && !vaultMoving && !folderGone && !teamLapsed;
+  const todayOffered = caps.today && !vaultMoving && !folderGone && !teamLapsed && !teamFull;
   // What the storage itself lacks, said once in Options (CTO K1): rename, and
   // a Trash, where a delete is then for good.
   const storageCaps = vaultCapsNow({ storageOnly: true });
@@ -1312,6 +1319,11 @@ export function VaultScreen() {
       // The plan is not active, so the server refuses any new note (OV402):
       // said here, and it is never asked.
       showToast(VAULT_TEAM_LAPSED_NOT_CREATED);
+      return;
+    }
+    if (isNew && teamFull) {
+      // The free space is used up (E27): said here, and it is never asked.
+      showToast(VAULT_TEAM_FULL_NOT_CREATED);
       return;
     }
     if (subpath) setPendingAnchor({ path: p, subpath, key: Date.now() });
@@ -2342,8 +2354,9 @@ export function VaultScreen() {
               loading={mentionsLoading}
               outgoing={outgoing}
               onCreate={(name) => followLink(name, true)}
-              // A lapsed plan makes no note, so a missing link offers none.
-              {...(!teamLapsed ? {} : { onCreate: undefined })}
+              // A lapsed plan or a full team makes no note, so a missing
+              // link offers none.
+              {...(!teamLapsed && !teamFull ? {} : { onCreate: undefined })}
               title={title}
               unlinked={unlinked}
               onFindUnlinked={findUnlinked}
@@ -2573,7 +2586,9 @@ export function VaultScreen() {
           {team
             ? teamLapsed
               ? VAULT_TEAM_LAPSED_LEAD
-              : vaultCopy(on, 'org').storage
+              : teamFull
+                ? VAULT_TEAM_FULL_LEAD
+                : vaultCopy(on, 'org').storage
             : vaultLead(personalCopy, { offerShown })}
           {team && vaultTeamExportable(on) && vaultFiles.length > 0 ? (
             <>

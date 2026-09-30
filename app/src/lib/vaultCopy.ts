@@ -2623,6 +2623,21 @@ export const VAULT_TEAM_FREE_MIB = 25;
  *  the verb first (VAULT_REFUSED_VERB). */
 export const VAULT_TEAM_FULL = `This team has used its ${VAULT_TEAM_FREE_MIB} MiB of free space. A deleted note frees its space when its history is cleared, about a month later.`;
 
+/** The team room's lead once a write was refused for the free space (round
+ *  7 E27): what still works, so the room does not offer what the server
+ *  refuses (New note, Today, a new note from a link). A save that trims a
+ *  note, a delete, and reading still work; a save that adds text is kept
+ *  under Not saved. */
+export const VAULT_TEAM_FULL_LEAD = `${VAULT_TEAM_FULL} Notes can still be read, shortened and deleted; text added now is kept under Not saved.`;
+
+/** A new note (New note, Today, a missing link) refused before the server
+ *  is asked, once the team is known to be full (E27). */
+export const VAULT_TEAM_FULL_NOT_CREATED = `Not created. ${VAULT_TEAM_FULL}`;
+
+/** A Restore in Trash, or an Undo, refused before the server is asked once
+ *  the team is known to be full: bringing a note back adds its text (E27). */
+export const VAULT_TEAM_FULL_NOT_RESTORED = `Not restored. ${VAULT_TEAM_FULL}`;
+
 /** What did not happen, said first when a storage refuses for good (a team
  *  out of free space, a plan not active), before the storage's reason. */
 export const VAULT_REFUSED_VERB = {

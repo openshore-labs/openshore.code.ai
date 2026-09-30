@@ -46,6 +46,21 @@ describe('vaultTeamRefusal', () => {
     expect(vaultTeamRefusal('org', active, 'delete')).toBeUndefined();
   });
 
+  it('a full team refuses a new note and a restore here, and leaves saves and deletes to the size (E27)', async () => {
+    const { VAULT_TEAM_FULL_NOT_CREATED, VAULT_TEAM_FULL_NOT_RESTORED } =
+      await import('../src/lib/vaultCopy.js');
+    const full = { ...active, full: true as const };
+    expect(vaultTeamRefusal('org', full, 'create')).toBe(VAULT_TEAM_FULL_NOT_CREATED);
+    expect(vaultTeamRefusal('org', full, 'restore')).toBe(VAULT_TEAM_FULL_NOT_RESTORED);
+    expect(vaultTeamRefusal('org', full, 'save')).toBeUndefined();
+    expect(vaultTeamRefusal('org', full, 'delete')).toBeUndefined();
+    // Lapsed says the plan's line first.
+    expect(vaultTeamRefusal('org', { ...lapsed, full: true }, 'create')).toBe(
+      VAULT_TEAM_LAPSED_NOT_CREATED,
+    );
+    expect(vaultTeamRefusal('local', full, 'create')).toBeUndefined();
+  });
+
   it('an active plan, a plan not read yet, and every other storage refuse nothing', () => {
     for (const w of WRITES) {
       expect(vaultTeamRefusal('org', active, w)).toBeUndefined();

@@ -153,6 +153,12 @@ export interface OrgVaultPlan {
   entitledUntil?: string;
   isAdmin: boolean;
   deleteRole: OrgVaultDeleteRole;
+  /** The team's free space is used up (0023), as a write this sign-in made
+   *  was refused for it: what adds text is refused here, before the server
+   *  is asked, until a refresh or a write that adds text lands (round 7
+   *  E27). No read says so (0025's settings answer no usage), so only a
+   *  refusal sets it, and a settings read keeps it. */
+  full?: true;
 }
 
 // The store owns the Supabase session and the active org, so it registers a
@@ -249,6 +255,8 @@ export class OrgVaultDeleteRefused extends OrgVaultRefusal {
  *  cannot help; permanent, and its message is the reason only
  *  (VAULT_TEAM_FULL), which the store says after the verb ("Not restored."). */
 export class OrgVaultFull extends OrgVaultRefusal {
+  /** The seam's mark for the store (round 7 E27). */
+  readonly full = true;
   constructor() {
     super(VAULT_TEAM_FULL);
     this.name = 'OrgVaultFull';
@@ -349,6 +357,7 @@ async function refusingFor<T>(resourceId: string, call: () => Promise<T>): Promi
     if (gen === generation) {
       if (err instanceof OrgVaultLapsed) markLapsed(resourceId);
       if (err instanceof OrgVaultDeleteRefused) markAdminsOnly(resourceId);
+      if (err instanceof OrgVaultFull) markFull(resourceId);
       if (err instanceof OrgVaultNotMember) memberListener?.(resourceId);
     }
     throw err;
@@ -405,6 +414,26 @@ function markLapsed(resourceId: string): void {
   });
 }
 
+/** 0023 refused a write that added text: the team is full (round 7 E27). */
+function markFull(resourceId: string): void {
+  const was = plans.get(resourceId);
+  if (was?.full) return;
+  setPlan(resourceId, {
+    ...(was ?? { entitled: true, isAdmin: false, deleteRole: 'member' }),
+    full: true,
+  });
+}
+
+/** The team may have room again (a refresh asks the server afresh, or a
+ *  write that added text landed): what adds text is sent again, and the
+ *  server says, once, if it is still full (round 7 E27). */
+export function clearOrgVaultFull(resourceId: string): void {
+  const was = plans.get(resourceId);
+  if (!was?.full) return;
+  const { full: _full, ...rest } = was;
+  setPlan(resourceId, rest);
+}
+
 /** OV403 proves three things (0025's org_vault_remove checks the plan first,
  *  then who may delete): the plan is active, deletes are admins only, and
  *  this person is not an admin. The notice date stays from the last read. */
@@ -429,6 +458,9 @@ function rememberSettings(resourceId: string, row: SettingsRow): void {
     ...(row.entitled_until ? { entitledUntil: row.entitled_until } : {}),
     isAdmin: row.is_admin === true,
     deleteRole: row.delete_role === 'admin' ? 'admin' : 'member',
+    // No read says how full the team is (0025's entitled is not 0023's
+    // plan), so what a refusal learned stands (E27).
+    ...(plans.get(resourceId)?.full ? { full: true as const } : {}),
   });
 }
 
@@ -591,12 +623,18 @@ async function guardedWrite(
     }
     args = { p_org: resourceId, p_path: path, p_body: text, p_if_match: rev };
   }
+  const gen = generation;
   const reply = await refusingFor(resourceId, () => rpc<WriteReply>('org_vault_write', auth, args));
   if (!reply.ok) {
     const theirs = theirsFile(reply.theirs);
     return theirs
       ? { ok: false, conflict: reply.conflict, theirs }
       : { ok: false, conflict: reply.conflict };
+  }
+  // A new note with text in it landed, so the team had room for it (E27).
+  // A save over a note may only have trimmed it: the store judges that.
+  if ('ifAbsent' in guard && text.length > 0 && gen === generation) {
+    clearOrgVaultFull(resourceId);
   }
   return {
     ok: true,

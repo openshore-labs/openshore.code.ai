@@ -1522,6 +1522,28 @@ describe("the team's free space says what 0023 says (the review, finding 1)", ()
     expect(vaultTickUnsaved('t')).not.toMatch(/try again/i);
   });
 
+  it('a full team\'s lead and refusals say what still works, never "try again" (E27)', async () => {
+    const {
+      VAULT_TEAM_FULL,
+      VAULT_TEAM_FULL_LEAD,
+      VAULT_TEAM_FULL_NOT_CREATED,
+      VAULT_TEAM_FULL_NOT_RESTORED,
+    } = await import('../src/lib/vaultCopy.js');
+    expect(VAULT_TEAM_FULL_LEAD).toBe(
+      `${VAULT_TEAM_FULL} Notes can still be read, shortened and deleted; text added now is kept under Not saved.`,
+    );
+    expect(VAULT_TEAM_FULL_NOT_CREATED).toBe(`Not created. ${VAULT_TEAM_FULL}`);
+    expect(VAULT_TEAM_FULL_NOT_RESTORED).toBe(`Not restored. ${VAULT_TEAM_FULL}`);
+    for (const line of [
+      VAULT_TEAM_FULL_LEAD,
+      VAULT_TEAM_FULL_NOT_CREATED,
+      VAULT_TEAM_FULL_NOT_RESTORED,
+    ]) {
+      expect(line).not.toMatch(/try again|renamed|plan/i);
+      expect([...line].some((ch) => [8211, 8212].includes(ch.codePointAt(0)!))).toBe(false);
+    }
+  });
+
   it('a folder move with nothing left to move says why, never "try again" (E25)', async () => {
     const { vaultFolderMoveGone } = await import('../src/lib/vaultCopy.js');
     const line = vaultFolderMoveGone('Work');
