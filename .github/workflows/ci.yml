@@ -229,13 +229,19 @@ jobs:
 
       # Fails unless every row of production-history.tsv has its file with the
       # pinned hash, then moves every other migration file aside.
+      # With nothing pending (every file on main is applied), the steps that
+      # load production-shaped rows and check the push's effects sit out;
+      # the history build, pgTAP and the schema diff still run. The next
+      # push that adds a file brings fixtures for its own rows.
       - name: Set aside the files production has not applied
+        id: split
         run: node supabase/scripts/replay-split.mjs split
 
       - name: Build production's database from its recorded history
         run: bash supabase/scripts/local-vault.sh supabase db start
 
       - name: Load rows with production's shape
+        if: steps.split.outputs.pending != '0'
         run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/replay/production_rows.sql
 
       # The CLI prints the list to stderr, hence 2>&1.
@@ -249,6 +255,7 @@ jobs:
         run: supabase db push --local --skip-vault --yes
 
       - name: Check what must hold after the push
+        if: steps.split.outputs.pending != '0'
         run: >-
           psql "$DB_URL" -v ON_ERROR_STOP=1
           -v expected_versions="$(node supabase/scripts/replay-split.mjs versions)"

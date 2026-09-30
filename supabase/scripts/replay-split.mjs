@@ -12,8 +12,17 @@
 //
 // dir defaults to $RUNNER_TEMP/pending-migrations (or the OS temp folder).
 // `split` fails unless every row of supabase/production-history.tsv has its
-// file on disk with the pinned SHA-256.
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync } from 'node:fs';
+// file on disk with the pinned SHA-256, and in CI it writes `pending=<count>`
+// to the step's outputs.
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -52,6 +61,11 @@ if (cmd === 'split') {
     `History: ${history.length} applied files, ${history[0].file} to ${history.at(-1).file}.`,
   );
   console.log(`Moved ${pending.length} pending file(s) to ${dir}: ${pending.join(', ') || 'none'}`);
+  // The replay's push-shaped steps (production's rows, the after-push
+  // checks) describe the next push; with nothing pending they sit out.
+  if (process.env.GITHUB_OUTPUT) {
+    appendFileSync(process.env.GITHUB_OUTPUT, `pending=${pending.length}\n`);
+  }
 } else if (cmd === 'restore') {
   const dir = pendingDir();
   if (!existsSync(dir)) fail(`${dir} does not exist`);

@@ -4,8 +4,10 @@
 --   psql -v ON_ERROR_STOP=1 -f supabase/replay/production_rows.sql
 --
 -- on a local database built from exactly the files in
--- supabase/production-history.tsv (0001 to 0020 today), BEFORE the pending
--- files are pushed. CI applies migrations to an empty database, so without
+-- supabase/production-history.tsv (0001 to 0020 when it was written), BEFORE
+-- the pending files are pushed. It describes the 2026-09-30 push (0021 to
+-- 0026, now applied); CI skips it while nothing is pending, and the next push
+-- that adds a file replaces it with rows shaped like production then. CI applies migrations to an empty database, so without
 -- these rows nothing the pending files do to existing data (0021's
 -- case-duplicate rename, 0022's report dedupe and checks, 0023's byte
 -- backfill, 0025's author keys) would ever run against a row.
