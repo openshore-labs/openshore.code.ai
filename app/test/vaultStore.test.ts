@@ -6500,3 +6500,83 @@ describe('round 7, batch 2: team text and names stay where they belong', () => {
     });
   });
 });
+
+// ---- round 7, batch 3: a team action, a late answer or a removal never
+// changes what belongs elsewhere, and the room says what is true ------------
+describe('round 7, batch 3: the team vault answers only for itself', () => {
+  let server: FakeOrgVaultServer;
+  const st = () => useApp.getState();
+  beforeEach(async () => {
+    reset();
+    await (await import('../src/lib/authSession.js')).clearSession();
+    await closeVaultIndex();
+    wiring.org!.resetOrgVault();
+    useApp.setState({
+      vaultTeamPlan: undefined,
+      vaultConflict: undefined,
+      vaultTrash: undefined,
+      vaultFolders: undefined,
+      vaultReturnFolder: undefined,
+    });
+    server = createFakeOrgVaultServer(ORG);
+    teamNet.server = server;
+    teamScope();
+  });
+  afterEach(async () => {
+    useApp.setState({ vaultTeamPlan: undefined, vaultConflict: undefined });
+    await closeVaultIndex();
+  });
+  async function settledIndex() {
+    for (let i = 0; i < 100; i++) {
+      await tick();
+      const state = vaultIndexStatus().state;
+      if (currentVaultIndex() && (state === 'ready' || state === 'partial')) return;
+    }
+    throw new Error('the index never settled');
+  }
+
+  describe("E15: a team rename never repoints a project's pin of a personal note", () => {
+    function pinned(pins: string[]) {
+      const s = st().settings;
+      useApp.setState({
+        settings: {
+          ...s,
+          projects: [{ id: 'p1', name: 'Mine', createdAt: 'x', vaultPins: pins } as never],
+          activeProjectId: 'p1',
+        },
+      });
+    }
+    const pins = () => st().settings.projects?.[0]?.vaultPins;
+
+    it('a team note renamed leaves the pin of the personal note with its name', async () => {
+      perCaller(server, { members: ['u1'] });
+      files.set('Plan.md', 'my personal plan');
+      useStoreToken();
+      pinned(['Plan.md']);
+      server.put('Plan.md', 'the team plan', 'u9');
+      await st().vaultRefresh();
+      const preview = await st().vaultPrepareMove('note', 'Plan.md', 'Archive/Plan.md');
+      if (!preview) throw new Error('no preview');
+      expect(await st().vaultApplyMove(preview, false)).toMatchObject({ ok: true });
+      expect(server.bytes('Archive/Plan.md')).toBe('the team plan');
+      expect(files.get('Plan.md')).toBe('my personal plan');
+      expect(pins()).toEqual(['Plan.md']);
+    });
+
+    it('a team folder moved leaves the pins of personal notes under the same folder', async () => {
+      perCaller(server, { members: ['u1'] });
+      files.set('Work/A.md', 'my personal a');
+      useStoreToken();
+      pinned(['Work/A.md']);
+      server.put('Work/A.md', 'team a', 'u9');
+      server.put('Work/B.md', 'team b', 'u9');
+      await st().vaultRefresh();
+      await settledIndex();
+      const preview = await st().vaultPrepareMove('folder', 'Work', 'Old');
+      if (!preview) throw new Error('no preview');
+      expect(await st().vaultApplyMove(preview, false)).toMatchObject({ ok: true });
+      expect(server.bytes('Old/A.md')).toBe('team a');
+      expect(pins()).toEqual(['Work/A.md']);
+    });
+  });
+});

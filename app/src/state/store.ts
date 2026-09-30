@@ -6471,9 +6471,14 @@ export const useApp = create<AppState>((set, get, api) => {
   }
 
   /** Everything this device keys by a note's path follows a rename: project
-   *  pins, the stash, and the open note (at the version the storage gave). */
+   *  pins, the stash, and the open note (at the version the storage gave).
+   *  A pin names a personal note only (the pack reads personalVault()), so
+   *  only a personal rename moves one: a team note of the same name is
+   *  another note (round 7 E15). */
   async function rekeyVaultPath(t: VaultTargetRef, from: string, to: string): Promise<void> {
-    await rewriteVaultPins(from, to).catch(() => {});
+    if (t.providerId === vaultProviderId(get().settings) && t.resourceId === VAULT_RESOURCE_ID) {
+      await rewriteVaultPins(from, to).catch(() => {});
+    }
     await editVaultRecent(t, (ring) => renameVaultRecent(ring, from, to)).catch(() => {});
     await editVaultPending((p) => {
       const e = p[vaultKey(t, from)];
