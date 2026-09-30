@@ -3795,3 +3795,46 @@ execution contract. Newest at the bottom.
   sandbox run, the desktop flag with Stripe, the sandbox policy before any
   public TestFlight, the review notes and a demo video, and a device check
   that Stop still works on a process after a lapse.
+
+- 2026-09-30: **Round 7, batch 4: the team vault says what is there and what
+  it did, and a personal vault keeps main's resolve sheet (held
+  `vault-m2-team`, eight medium).** (E23) A Trash entry names the rev its
+  delete took (`n:{path}@{rev}`, a folder's `took` as [path, rev] pairs;
+  that rev is the 'deleted' revision's, the one the remove matched), and a
+  restore reads exactly that revision. It takes its own name back only
+  while its delete is still the newest ending there; when a later delete of
+  the name is in Trash, that one keeps the name (E22's rule) and this comes
+  back beside it as "(restored)", and the line says why. A folder's Undo
+  brings back each note it took, at its name or beside what holds it now,
+  never passing one over. Ids without a rev restore the newest delete, as
+  before. Kept as a limit: Trash lists one entry per name, so an older
+  delete at a name that was made and deleted again is reached by its Undo
+  only; listing every delete needs a way to tell a restored one apart (a
+  migration). (E24) An empty read of a note is always followed by a stat:
+  evicted still says downloading (iCloud only), a note that is there is
+  read once more, and a listed note the storage no longer holds is said
+  gone once, the list taken again, a case twin opened at its spelling.
+  Today and New note on a gone name go on to their guarded create. (E25) A
+  folder moved note by note moves, once, what is still in the folder after
+  the planned notes (a teammate's note added since, one renamed by case),
+  as a storage's own folder rename does; nothing left to move is `missing`
+  ("has no notes left to move"), never Renamed; links are planned again for
+  what moved. (E27) 0023's refusal marks the team `full` (like OV402's
+  lapsed mark); a settings read keeps it, a refresh or a new note with text
+  landing clears it. While full, New note, Today, Restore, Undo and Keep
+  both are refused before the server is asked, and a save that adds text is
+  held unsent, said once per sitting; a trim, a delete and a rename still
+  go. The first New note at the cap still makes one empty note (nothing
+  tells the client sooner). (E28) A save the lapsed plan refused reloads the
+  open note to the team's text once its words are held. (E29) vaultResolve
+  holds a refused draft for the team vault only; Your computer asleep keeps
+  main's { ok: false, failed: true } and the sheet. (E31) Held text follows
+  its note through a rename. (E32) A team list that fails after its account
+  left says nothing in the next one's session. Main lines this changes, each
+  because the fix lives in it: in the store, the `vaultOpen` type and its
+  signature, its empty-read branch, `vaultCreate`'s listed branch,
+  `vaultToday`'s plan and its made-elsewhere open, and `rescueVaultDraft`'s
+  refusal toast (now quiet when the sitting said it); in `vaultOps.ts`,
+  `planMoves`'s source read and `applyMove`'s note-by-note loop (now
+  `moveNoteByNote`); in `VaultScreen.tsx`, the Undo's and Trash's restored
+  toasts and `vaultFolderMovePartial`'s count. No main test changes.
