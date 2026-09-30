@@ -3053,6 +3053,10 @@ execution contract. Newest at the bottom.
   - Order: plan and refuse, cancel Stripe, copy held rows (before anything
     is deleted), delete the teams (fewer back than planned answers
     `owns_org`), tombstone, clear team history, memberships, `deleteUser`.
+    Since the review (2026-09-30, below): the team delete comes before the
+    held-row copy, so the order is plan and refuse, cancel Stripe, delete
+    the teams, copy held rows, tombstone, team history, memberships,
+    `deleteUser`.
     Known limit, accepted: in the moment between the plan and the team
     delete a teammate can turn active; then nothing is deleted and the
     answer is `owns_org`, but that team's subscription is already
@@ -3169,6 +3173,50 @@ execution contract. Newest at the bottom.
     those two.
   - The "OpenShore team" label reads `--wave-ink` (`#3a6f7d` light, 4.5:1 on
     `--surface`), ported from the privacy branch.
+  - Second review of these fixes (2026-09-30, low findings only), on the
+    same branch:
+    - Delete account: only GoTrue's `session_not_found` reads as a dead
+      sign-in, and `user_not_found` stays gone. `bad_jwt`, and a 401 or 403
+      with no GoTrue code, cannot tell, so they never sign the device out.
+      When the function answered its no-user code and the auth server
+      cannot tell (offline, a 5xx, `bad_jwt`, no code), the outcome is
+      `unconfirmed`: "We could not confirm whether your account was
+      deleted. Check your connection and try again.", the device untouched,
+      never "was not deleted". This supersedes the bullet above that read
+      `bad_jwt` as a dead sign-in and the double failure as failed.
+    - A dead sign-in (`signed_out`) ends the way the session door ends one
+      on `AuthExpiredError`: `forgetSession(true)`, through the new
+      `endSignIn` dep, so unsent team vault text stays sealed for the same
+      account. A deletion keeps the plain `forgetSession()`. The signed-out
+      sheet fits a deletion on this device or another: "If your account was
+      already deleted, here or on another device, it is gone."
+    - `local-vault.sh` refuses `--wizard` in any spelling and a bare `--`
+      anywhere, and before the subcommand (and between `db` and its own)
+      lets through only 2.118.0's global flags, each checked against its
+      `--help`. On 2.118.0 a target flag counts once given, whatever its
+      value (checked offline in a folder linked to nothing:
+      `db push --linked=false --dry-run` looks for the linked project,
+      `--local=false` connects to the local database), so `--linked=false`
+      targets the linked project. The earlier comment that `--local=false`
+      after `--local` would reach the linked project was wrong; any
+      `--local=` but `true` stays refused so a command never says one thing
+      and does another. Its test runs every use the runbook, the README and
+      CI document.
+    - `check-migrations.mjs --scan-remotes` (a push to main, warnings only)
+      reports check (d) as one line per branch, "behind main; merge main
+      before touching supabase/", with the count; the single-tree check
+      still fails (d) file by file.
+    - Known limit, accepted: `account_deletion_hold` (step 5) reads the held
+      rows once. A legal hold an operator sets between the team delete and
+      `deleteUser` (while steps 5 to 8 run) and after that read is not
+      copied, and the row cascades with the account. Nothing in the database copies on
+      delete. If counsel wants the window closed, the privacy branch's PR
+      may add a BEFORE DELETE trigger on `guardrail_events` and
+      `enforcement_actions` that copies a held row into `deletion_holds`.
+    - The runbook's Status now points to push day: packages A to C are on
+      main (41bea18), section 0 ran clean on 2026-09-30 and is marked done,
+      and push day waits for this branch's PR, which changes the unapplied
+      0022 and 0026 (2.3 checks for it).
 - 2026-09-29: **Desktop releases publish to the public
   `openshore-labs/openshore-releases` repo, not this one.** This repo went
   private (founder, so the code stays closed while the GitHub profile goes
