@@ -11,6 +11,8 @@
 // is on", never "always on"; "works, then asks", never "unsupervised".
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { agenticView, useApp } from '../state/store.js';
+import { PlusNote } from '../components/PlusNote.js';
+import { CREW_PLUS_LINE } from '../lib/payGate.js';
 import { BackBar } from '../components/BackBar.js';
 import { Sheet } from '../components/Sheet.js';
 import { SwipeRow } from '../components/SwipeRow.js';
@@ -330,6 +332,8 @@ export function CrewCommandScreen() {
             activityLevel: 'request',
             projectIds: [],
           });
+          // Held at the paid door: the sheet is open instead.
+          if (!id) return;
           agent = { id, name, persona: PRESET.persona };
         }
       }
@@ -376,6 +380,7 @@ export function CrewCommandScreen() {
     <div className="screen crew-command">
       <BackBar title="Crew command" />
       <div className="screen-inner">
+        <PlusNote feature="crew" line={CREW_PLUS_LINE} />
         <section className={`cc-hero ${where}`} aria-label="Crew status">
           <div className="cc-hero-top">
             <div className="cc-kicker">Crew command · {machine}</div>

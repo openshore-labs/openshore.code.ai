@@ -4,7 +4,7 @@
 // few careful switches. No telemetry to toggle because there is none. Built
 // with the Creative Studio (2026-09-02, "The Ledger" direction).
 import { SHIPS_ADMIN, SHIPS_LAUNCH, SHIPS_STACKHEALTH, SHIPS_TEAMS } from '../lib/focus.js';
-import { ACCOUNT_PITCH } from '../lib/accountGate.js';
+import { accountCopy } from '../lib/accountGate.js';
 import { Fragment, useEffect, useState } from 'react';
 import { PAY_GATES_ENABLED, isOrgAdmin, useApp, type HarborDownload } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
@@ -38,6 +38,7 @@ import {
   type StackHealthVisibility,
 } from '../lib/stackHealth.js';
 import { tierById, shownPrice } from '../lib/plans.js';
+import { REPO_CONNECTORS } from '../lib/repos.js';
 import { clearInsights, insightsAsText, insightsCount } from '../lib/insights.js';
 import { hapticCommit } from '../lib/haptics.js';
 import { DEFAULT_PERMISSION_MODE, permissionModeLabel } from '../lib/permissionMode.js';
@@ -286,6 +287,13 @@ export function SettingsScreen() {
   const personalUnlockedNow = useApp((s) => s.personalUnlockedNow);
   const userEntitlement = useApp((s) => s.userEntitlement);
   const deleteAccount = useApp((s) => s.deleteAccount);
+  // The free ways out while their rooms are shut (CTO, 2026-09-30):
+  // exporting the iPhone's sealed vault and removing a git host's sign-in.
+  const exportPersonalVault = useApp((s) => s.exportPersonalVault);
+  const vaultRoomShut = useApp((s) => s.personalDoor('vault') !== 'open');
+  const reposRoomShut = useApp((s) => s.personalDoor('repos') !== 'open');
+  const connectedRepoPlatforms = useApp((s) => s.connectedRepoPlatforms);
+  const disconnectRepoPlatform = useApp((s) => s.disconnectRepoPlatform);
   // Vault settings over Settings (Vault M7, CX Y4): the personal vault's.
   const [vaultSettingsOpen, setVaultSettingsOpen] = useState(false);
   const memoryOn = memoryOverride(settings) !== false;
@@ -475,7 +483,11 @@ export function SettingsScreen() {
           <SettingsRow
             label={accountLabel}
             subWrap={!signedIn}
-            sub={signedIn ? email : `Chatting needs no account. ${ACCOUNT_PITCH}`}
+            sub={
+              signedIn
+                ? email
+                : `Chatting needs no account. ${accountCopy(PAY_GATES_ENABLED).pitch}`
+            }
             value={accountValue}
             onClick={configured ? () => setSheet('account') : undefined}
           />
@@ -620,6 +632,35 @@ export function SettingsScreen() {
         </SettingsGroup>
 
         <SettingsGroup title="This device" index={group++}>
+          {platform() === 'ios' && vaultProviderId === 'local' && vaultRoomShut ? (
+            <SettingsRow
+              label="Export your notes"
+              sub="Copies your Vault notes to Files. Always free."
+              onClick={() => void exportPersonalVault()}
+            />
+          ) : null}
+          {reposRoomShut
+            ? REPO_CONNECTORS.filter((c) => connectedRepoPlatforms[c.id]).map((c) => (
+                <SettingsRow
+                  key={c.id}
+                  label={c.name}
+                  sub="Connected. Removing its sign-in from this device is always free."
+                  trailing={
+                    <button
+                      type="button"
+                      className="btn ghost press-fb"
+                      style={{ padding: '8px 14px' }}
+                      onClick={async () => {
+                        await disconnectRepoPlatform(c.id);
+                        showToast(`${c.name} disconnected.`);
+                      }}
+                    >
+                      Remove
+                    </button>
+                  }
+                />
+              ))
+            : null}
           <SettingsRow
             label="Appearance"
             sub="Stays on this device"

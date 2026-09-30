@@ -28,6 +28,7 @@ export type AccountFeature =
   | 'connections'
   | 'pairing'
   | 'health'
+  | 'plus'
   | 'marketplace'
   | 'launch'
   | 'admin';
@@ -99,6 +100,9 @@ export const ACCOUNT_GATE_TITLE: Record<AccountFeature, string> = {
   pairing: 'Pairing your phone and computer needs an account',
   // Folded at build time like navRooms' label, so a Personal bundle carries
   // no later tier's name (scripts/tier-bundle.mjs).
+  // Get Plus, Restore or I already paid, tapped signed out: buying needs an
+  // account, and signing in carries on to the sheet (CTO, 2026-09-30).
+  plus: 'OpenShore Plus needs an account',
   health: SHIPS_STACKHEALTH ? 'Stack Health needs an account' : 'This needs an account',
   marketplace: 'The Marketplace needs an account',
   launch: 'Launch needs an account',
@@ -112,6 +116,43 @@ export const ACCOUNT_GATE_BODY =
  *  sign-in comes first, then the paywall (store.ts setView), so it says so. */
 export const ACCOUNT_GATE_PLUS_BODY =
   'This is part of OpenShore Plus. Sign in first: Plus rides on your account, so it follows you to every device you sign in on. Chatting needs no account.';
+
+/** The account copy for this build (CTO, 2026-09-30): with the pay gates
+ *  off, signing in opens building, Vault, Crew and pairing, so the copy says
+ *  so and mentions no buying; with them on, signing in opens Projects and
+ *  Cloud Connections and is how you get OpenShore Plus, and nothing says it
+ *  opens the rest. The flag is a parameter (lib/payGate.ts imports this
+ *  module, so this one cannot import the flag back). */
+export interface AccountCopy {
+  /** The sign-in sheet's line for a free feature (a Plus feature's sheet
+   *  says ACCOUNT_GATE_PLUS_BODY while the gates are on). */
+  body: string;
+  /** The pitch on the sign-in card and in Settings. */
+  pitch: string;
+  /** Said once to someone who used OpenShore before the gate, signed out. */
+  notice: string;
+  /** The sidebar's Sign in subline. */
+  signInSub: string;
+}
+
+export function accountCopy(gates: boolean): AccountCopy {
+  if (!gates) {
+    return {
+      body: ACCOUNT_GATE_BODY,
+      pitch: ACCOUNT_PITCH,
+      notice: ACCOUNT_NOTICE,
+      signInSub: 'To build, pair your phone, and keep your settings',
+    };
+  }
+  return {
+    body: 'Signing in is free. It opens Projects and Cloud Connections, takes your theme, reasoning, voice, and notice settings to every device you sign in on, and is how you get OpenShore Plus. Your chats stay on your devices, and chatting needs no account.',
+    pitch:
+      'Sign in for Projects and Cloud Connections, and take your settings to any device. OpenShore Plus rides on your account. Your chats stay on your devices.',
+    notice:
+      'Projects and Cloud Connections now need a free account, and the rest of OpenShore is part of OpenShore Plus. Everything you made is still here.',
+    signInSub: 'For Projects, Plus, and your settings',
+  };
+}
 
 /** The pitch on the sign-in card and in the sidebar. */
 export const ACCOUNT_PITCH =

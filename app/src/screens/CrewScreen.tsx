@@ -5,6 +5,8 @@
 // projects, or let it work across all of them.
 import { useEffect, useState } from 'react';
 import { useApp } from '../state/store.js';
+import { PlusNote } from '../components/PlusNote.js';
+import { CREW_PLUS_LINE } from '../lib/payGate.js';
 import { BackBar } from '../components/BackBar.js';
 import { ProjectMultiSelect } from '../components/ProjectMultiSelect.js';
 import type { CrewActivityLevel, CrewAgent } from '../state/types.js';
@@ -101,8 +103,11 @@ export function CrewScreen() {
       activityLevel: draft.activityLevel,
       projectIds: draft.projectIds,
     };
-    if (draft.id) await updateCrewAgent(draft.id, payload);
-    else await createCrewAgent(payload);
+    // Held at the paid door (the sheet opened instead): keep the draft.
+    const saved = draft.id
+      ? await updateCrewAgent(draft.id, payload)
+      : Boolean(await createCrewAgent(payload));
+    if (!saved) return;
     setDraft(undefined);
     showToast(draft.id ? 'Crew member updated.' : `${name} joined your crew.`);
   };
@@ -113,13 +118,15 @@ export function CrewScreen() {
   const missingAdvisors = ADVISOR_TEAM.filter((p) => !crew.some((a) => a.name === p.name));
   const addAdvisorTeam = async () => {
     for (const p of missingAdvisors) {
-      await createCrewAgent({
+      const id = await createCrewAgent({
         name: p.name,
         persona: p.persona,
         whenCalled: p.whenCalled,
         activityLevel: p.activityLevel,
         projectIds: [],
       });
+      // Held at the paid door: the sheet is open, and nothing joined.
+      if (!id) return;
     }
     showToast(
       missingAdvisors.length
@@ -137,6 +144,8 @@ export function CrewScreen() {
           Build your own agents. Each has a name, a persona, and a rule for how and when it is
           called. Point them at specific projects, or let them work across all of them.
         </p>
+
+        <PlusNote feature="crew" line={CREW_PLUS_LINE} />
 
         {/* The door to the command center: the crew's unattended work, with
             a live line so the roster reads as a team, not a list. */}

@@ -513,7 +513,7 @@ import { SAMPLE_PROMPT, SAMPLE_REPO_NAME } from '../lib/sampleProject.js';
 import { setSearchConsent, type SearchAllowed } from '../lib/localSearch.js';
 import { RELEASE_TIER, featureOn, roomOpen, type ReleaseTier } from '../lib/focus.js';
 import {
-  ACCOUNT_NOTICE,
+  accountCopy,
   SOURCE_ACCOUNT,
   needsAccount,
   roomAccountFeature,
@@ -528,6 +528,7 @@ import {
   rewindsFiles,
 } from './rewindOps.js';
 import { PAY_GATES_ENABLED, roomPaid } from '../lib/payGate.js';
+import { exportVaultToFiles, vaultExportLine } from '../lib/vaultExport.js';
 import {
   APPLE_SUBSCRIPTIONS_URL,
   PaywallLockedError,
@@ -539,6 +540,7 @@ import {
   paidDoor,
   paywallReasonFor,
   personalUnlocked,
+  roomPass,
   personalUnlockedFor,
   routinePatchFree,
   startWebCheckout,
@@ -1931,8 +1933,14 @@ interface AppState {
 
   // Crew: user-authored agents.
   /** Create a crew agent and return its id. */
-  createCrewAgent(input: Omit<CrewAgent, 'id' | 'createdAt'>): Promise<string>;
-  updateCrewAgent(id: string, patch: Partial<Omit<CrewAgent, 'id' | 'createdAt'>>): Promise<void>;
+  /** Resolves to the new member's id, or undefined when the paid door held
+   *  it (the sign-in sheet or the paywall opened instead). */
+  createCrewAgent(input: Omit<CrewAgent, 'id' | 'createdAt'>): Promise<string | undefined>;
+  /** Resolves false when the paid door held it. */
+  updateCrewAgent(
+    id: string,
+    patch: Partial<Omit<CrewAgent, 'id' | 'createdAt'>>,
+  ): Promise<boolean>;
   deleteCrewAgent(id: string): Promise<void>;
   /** Download the Harbor Lite guide model if it is not here yet. Returns success. */
   ensureHarborMini(): Promise<boolean>;
@@ -2049,6 +2057,9 @@ interface AppState {
   /** Every note body, for export, plus the paths that could not be read
    *  (`failed`). */
   vaultReadAll(): Promise<VaultReadAllResult>;
+  /** The iPhone's free way out of the sealed Local vault (Settings, while
+   *  the Vault room is shut): every personal note, exported to Files. */
+  exportPersonalVault(): Promise<void>;
   /** One note's text in the vault on screen, through the body cache (read
    *  only when its listed version moved), for Linked mentions' excerpts.
    *  Undefined when it is not there. */
@@ -2819,6 +2830,15 @@ export const useApp = create<AppState>((set, get, api) => {
     return codingLocked(conv, get().needsAccountNow());
   }
 
+  /** The facts a paid room's pass reads (state/payOps.ts roomPass). */
+  function roomPassNow(view: ViewName): boolean {
+    return roomPass(view, {
+      routines: get().routines.routines.length,
+      desktop: isDesktop() && Boolean(bridge()),
+      savedHubs: hubList(get().settings).length,
+    });
+  }
+
   /** Whether a chat with the computer goes over the network from here: a
    *  phone, or a desktop set to run on another computer (isRemote's test,
    *  before any driver exists). */
@@ -2847,6 +2867,73 @@ export const useApp = create<AppState>((set, get, api) => {
       return false;
     }
     return true;
+  }
+
+  /** Read the account's entitlements from the server (refreshEntitlement's
+   *  body). Marks the server as having answered, so a late offline answer
+   *  (the cache or StoreKit at launch) can never overrule it. */
+  async function readEntitlementsNow(): Promise<EntitlementRefresh> {
+    let session: Session | undefined;
+    try {
+      session = await freshAuth();
+    } catch {
+      // Offline: keep whatever entitlement we last knew (the cache below
+      // carries it across a launch).
+      return 'offline';
+    }
+    if (!session) return 'signed-out';
+    const serverId = get().settings.account?.org?.serverId;
+    // Individual (Personal) entitlement: readable whenever signed in, with no
+    // org. This is the path a solo Personal buyer needs; the old code gated
+    // the whole method on an org serverId and so never read it.
+    try {
+      const rows = await supabaseSelect<{
+        tier_id: string;
+        status: Entitlement['status'];
+        valid_until: string | null;
+      }>(
+        'user_entitlements',
+        session.accessToken,
+        `select=tier_id,status,valid_until&user_id=eq.${session.user.id}`,
+      );
+      const row = rows[0];
+      const userEntitlement: Entitlement | undefined = row
+        ? { tierId: row.tier_id, status: row.status, validUntil: row.valid_until ?? undefined }
+        : undefined;
+      set({ userEntitlement });
+      entitlementAnswered = true;
+      // Kept on the device for the next launch that has no network.
+      void storeSetJson(ENTITLEMENT_CACHE_KEY, userEntitlement ?? null).catch(() => {});
+    } catch {
+      // Offline or transient: keep whatever we last knew.
+      return 'offline';
+    }
+    // Org entitlement: only when the account is a synced commercial org. Gates
+    // team-seat growth (growthGatedByBilling), unchanged.
+    if (!serverId) {
+      set({ entitlement: undefined });
+      return 'ok';
+    }
+    try {
+      const rows = await supabaseSelect<{
+        tier_id: string;
+        status: Entitlement['status'];
+        valid_until: string | null;
+      }>(
+        'org_entitlements',
+        session.accessToken,
+        `select=tier_id,status,valid_until&org_id=eq.${serverId}`,
+      );
+      const row = rows[0];
+      set({
+        entitlement: row
+          ? { tierId: row.tier_id, status: row.status, validUntil: row.valid_until ?? undefined }
+          : undefined,
+      });
+    } catch {
+      // Offline or transient: keep whatever entitlement we last knew.
+    }
+    return 'ok';
   }
 
   /** Personal just unlocked (a purchase, a restore, a checkout return, a
@@ -3912,6 +3999,10 @@ export const useApp = create<AppState>((set, get, api) => {
         return r;
       },
       teamVault: () => get().vaultScope === 'team',
+      // Writing notes from a chat is Vault authoring: Plus (CTO, 2026-09-30).
+      // Reading what the person made stays.
+      // Keyed on Plus itself, so a build with the gates off is unchanged.
+      canWrite: () => get().personalUnlockedNow(),
       // The vault's agent folder (Vault M7, CTO L2), at the offer and again
       // at approve.
       agentFolder: () => personalSettings()?.agent.folder,
@@ -4473,6 +4564,23 @@ export const useApp = create<AppState>((set, get, api) => {
   /** The paid room the paywall was opened for, so a purchase carries on to
    *  it the way a sign-in carries on to accountReturn. */
   let paywallReturn: ViewName | undefined;
+  /** The server has answered an entitlement read this launch: from then on
+   *  it alone decides, and the offline restore (the cache, StoreKit) never
+   *  applies over it (CTO, 2026-09-30). */
+  let entitlementAnswered = false;
+  /** The sheet that was open when Get Plus, Restore or I already paid was
+   *  tapped signed out: signing in reopens it (CTO, 2026-09-30), so buying
+   *  signed out is never a dead end. */
+  let paywallAfterSignIn: PaywallReason | undefined;
+
+  /** Buying needs an account: close the sheet, open the sign-in sheet, and
+   *  come back to the sheet once signed in (onSignedIn). */
+  function signInToBuy(): void {
+    paywallAfterSignIn = get().paywall ?? 'plus';
+    // Not closePaywall: the room the sheet was opened for stays remembered.
+    set({ paywall: undefined });
+    get().openAccountGate('plus');
+  }
 
   // Preferences that follow a signed-in person (lib/settingsReach.ts). A local
   // change is sent a moment after the last one; the account's copy is read at
@@ -5464,6 +5572,39 @@ export const useApp = create<AppState>((set, get, api) => {
 
   /** The personal vault, whatever scope is on screen (the team vault is
    *  never in context, D15). */
+  /** Every note body in a vault, plus the paths that could not be read. */
+  async function readAllNotes(target: VaultTarget): Promise<VaultReadAllResult> {
+    const notes: Array<{ path: string; text: string }> = [];
+    const failed: string[] = [];
+    const files = await listVaultNotes(target);
+    // Read only the files that changed since we last saw them. Backlinks
+    // re-run this on every note open, so without a cache a 300-note Drive
+    // vault was 300+ serial reads per open (R-8). The cache key carries the
+    // provider and resource, and the read is skipped when the file's
+    // version (versionOf) matches. One unreadable file is reported in `failed` and
+    // never costs the rest (data-16).
+    for (const f of files) {
+      const key = vaultKey(target, f.path);
+      const cached = vaultBodyCache.get(key);
+      if (cached && cached.version === versionOf(f)) {
+        notes.push({ path: f.path, text: cached.text });
+        continue;
+      }
+      try {
+        const note = await target.provider.read(target.resourceId, f.path);
+        if (!note) {
+          failed.push(f.path);
+          continue;
+        }
+        vaultBodyCache.set(key, { version: versionOf(note), text: note.text });
+        notes.push({ path: note.path, text: note.text });
+      } catch {
+        failed.push(f.path);
+      }
+    }
+    return Object.assign(notes, { failed });
+  }
+
   function personalVault(): VaultTarget | undefined {
     const providerId = vaultProviderId(get().settings);
     const provider = providerFor(providerId);
@@ -7097,12 +7238,25 @@ export const useApp = create<AppState>((set, get, api) => {
     // for, or back to where the person was.
     if (get().accountGate) {
       const to = accountReturn;
+      const sheet = paywallAfterSignIn;
       get().closeAccountGate();
-      // A paid room reads the entitlement at its door, so with the pay gates
-      // on the step waits for that read: a subscriber walks straight in.
-      if (to && PAY_GATES_ENABLED && roomPaid(to))
+      if (sheet && PAY_GATES_ENABLED) {
+        // Signed in to buy: once the account is read, the sheet comes back,
+        // or Plus is already on and the person carries on.
+        void entitlementRead.then(() => {
+          if (get().personalUnlockedNow()) {
+            afterPersonalUnlocked('Plus is on. The agent can build on your computer.');
+            return;
+          }
+          const room = paywallReturn;
+          get().openPaywall(sheet);
+          paywallReturn = room;
+        });
+      } else if (to && PAY_GATES_ENABLED && roomPaid(to)) {
+        // A paid room reads the entitlement at its door, so with the pay
+        // gates on the step waits for that read: a subscriber walks in.
         void entitlementRead.then(() => get().setView(to));
-      else if (to) get().setView(to);
+      } else if (to) get().setView(to);
     }
     // A message kept at the door on the open chat (a coding session, or a
     // chat with the computer from the phone) goes out now: the driver builds
@@ -7175,8 +7329,8 @@ export const useApp = create<AppState>((set, get, api) => {
       // What the person paid for holds on a launch with no network: the last
       // server-verified entitlement first, then (iPhone) StoreKit's own
       // verified answer, until the server is reached again.
-      void restoreOfflineEntitlement((e) => {
-        if (!get().userEntitlement) set({ userEntitlement: e });
+      const offlineRestore = restoreOfflineEntitlement((e) => {
+        if (!entitlementAnswered && !get().userEntitlement) set({ userEntitlement: e });
       });
 
       // A purchase Apple completes later (Ask to Buy, another device) reaches
@@ -7433,6 +7587,13 @@ export const useApp = create<AppState>((set, get, api) => {
       // once the app is already open, so it does not need to gate this.
       const stored: Session | undefined = authConfigured() ? await loadStoredSession() : undefined;
 
+      // With the pay gates on, the sidebar and the paid doors read the
+      // entitlement from the first frame: wait for the cache (already on
+      // its way), giving StoreKit's fallback half a second at most (CTO,
+      // 2026-09-30), so a subscriber never sees the free layout first.
+      if (PAY_GATES_ENABLED) {
+        await Promise.race([offlineRestore, new Promise((r) => setTimeout(r, 500))]);
+      }
       set({
         settings,
         conversations,
@@ -7461,6 +7622,10 @@ export const useApp = create<AppState>((set, get, api) => {
         view: 'chat',
       });
       logEvent('app_open', { onboarded: settings.onboarded });
+      // With the pay gates on, Crew's pass reads the routine list (CTO,
+      // 2026-09-30), so read it live now: a routine made from another device
+      // then opens Crew here to be paused or deleted.
+      if (PAY_GATES_ENABLED) void get().refreshRoutines();
       // Signed in: the account's preferences, if newer, arrive now. Someone
       // signed in already knows what the account opens, so the notice below
       // never reaches them on a later signed-out launch (onSignedIn marks a
@@ -7475,7 +7640,7 @@ export const useApp = create<AppState>((set, get, api) => {
       // once that their work is still here and what signing in opens.
       if (accountNoticeDue(settings, { configured: authConfigured(), signedIn: Boolean(stored) })) {
         void get().saveSettings({ accountNoticeSeen: true });
-        get().showToast(ACCOUNT_NOTICE);
+        get().showToast(accountCopy(PAY_GATES_ENABLED).notice);
       }
       // First open: no Personal-or-Business question (no account means
       // personal) and no setup wall. On the phone, open the built-in guide's
@@ -7724,7 +7889,13 @@ export const useApp = create<AppState>((set, get, api) => {
       // Plus (founder, 2026-09-30): every room but Chats, Projects, the Stack,
       // Cloud Connections and Settings is paid (lib/payGate.ts). The sheet
       // opens instead, and a purchase carries on to this room.
-      if (accountFeature && get().personalDoor(accountFeature) === 'paywall') {
+      // Stopping, revoking and forgetting stay free (CTO, 2026-09-30): a
+      // room holding something to stop or let go of opens (roomPass).
+      if (
+        accountFeature &&
+        get().personalDoor(accountFeature) === 'paywall' &&
+        !roomPassNow(view)
+      ) {
         get().openPaywall(paywallReasonFor(accountFeature));
         paywallReturn = view;
         return;
@@ -7760,7 +7931,11 @@ export const useApp = create<AppState>((set, get, api) => {
         return;
       }
       // And a paid room (Plus lapsed since) opens the paywall, the step spent.
-      if (accountFeature && get().personalDoor(accountFeature) === 'paywall') {
+      if (
+        accountFeature &&
+        get().personalDoor(accountFeature) === 'paywall' &&
+        !roomPassNow(prev)
+      ) {
         set({ viewTrail: viewTrail.slice(0, -1) });
         get().openPaywall(paywallReasonFor(accountFeature));
         paywallReturn = prev;
@@ -7793,6 +7968,7 @@ export const useApp = create<AppState>((set, get, api) => {
     },
     closeAccountGate() {
       accountReturn = undefined;
+      paywallAfterSignIn = undefined;
       set({ accountGate: undefined });
     },
 
@@ -7898,9 +8074,11 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async buyPersonal() {
-      // Buying requires an account to attach the entitlement to.
-      if (!authConfigured() || !get().authSession) {
-        get().showToast('Sign in first to get Plus.');
+      // Buying requires an account to attach the entitlement to: the sign-in
+      // sheet opens, and signing in brings the sheet back.
+      if (!authConfigured()) return;
+      if (!get().authSession) {
+        signInToBuy();
         return;
       }
       // iOS: Apple In-App Purchase (Apple 3.1.1). Never open web checkout in the
@@ -7986,8 +8164,9 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async recheckPersonal() {
-      if (!authConfigured() || !get().authSession) {
-        get().showToast('Sign in with the email you paid with, then try again.');
+      if (!authConfigured()) return;
+      if (!get().authSession) {
+        signInToBuy();
         return;
       }
       const refreshed = await get().refreshEntitlement();
@@ -8015,8 +8194,9 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async restorePurchases() {
-      if (!authConfigured() || !get().authSession) {
-        get().showToast('Sign in first, then restore.');
+      if (!authConfigured()) return;
+      if (!get().authSession) {
+        signInToBuy();
         return;
       }
       // A receipt from a purchase the server never saw goes first (UI-10).
@@ -9368,66 +9548,15 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async refreshEntitlement() {
-      let session: Session | undefined;
-      try {
-        session = await freshAuth();
-      } catch {
-        // Offline: keep whatever entitlement we last knew (the cache below
-        // carries it across a launch).
-        return 'offline';
+      const wasUnlocked = get().personalUnlockedNow();
+      const result = await readEntitlementsNow();
+      // A sheet left open while the read landed (a subscriber whose cached
+      // row had lapsed and renewed, tapping a paid room before the server
+      // answered) closes and carries on by itself (CTO, 2026-09-30).
+      if (!wasUnlocked && get().paywall && get().personalUnlockedNow()) {
+        afterPersonalUnlocked('Plus is on. The agent can build on your computer.');
       }
-      if (!session) return 'signed-out';
-      const serverId = get().settings.account?.org?.serverId;
-      // Individual (Personal) entitlement: readable whenever signed in, with no
-      // org. This is the path a solo Personal buyer needs; the old code gated
-      // the whole method on an org serverId and so never read it.
-      try {
-        const rows = await supabaseSelect<{
-          tier_id: string;
-          status: Entitlement['status'];
-          valid_until: string | null;
-        }>(
-          'user_entitlements',
-          session.accessToken,
-          `select=tier_id,status,valid_until&user_id=eq.${session.user.id}`,
-        );
-        const row = rows[0];
-        const userEntitlement: Entitlement | undefined = row
-          ? { tierId: row.tier_id, status: row.status, validUntil: row.valid_until ?? undefined }
-          : undefined;
-        set({ userEntitlement });
-        // Kept on the device for the next launch that has no network.
-        void storeSetJson(ENTITLEMENT_CACHE_KEY, userEntitlement ?? null).catch(() => {});
-      } catch {
-        // Offline or transient: keep whatever we last knew.
-        return 'offline';
-      }
-      // Org entitlement: only when the account is a synced commercial org. Gates
-      // team-seat growth (growthGatedByBilling), unchanged.
-      if (!serverId) {
-        set({ entitlement: undefined });
-        return 'ok';
-      }
-      try {
-        const rows = await supabaseSelect<{
-          tier_id: string;
-          status: Entitlement['status'];
-          valid_until: string | null;
-        }>(
-          'org_entitlements',
-          session.accessToken,
-          `select=tier_id,status,valid_until&org_id=eq.${serverId}`,
-        );
-        const row = rows[0];
-        set({
-          entitlement: row
-            ? { tierId: row.tier_id, status: row.status, validUntil: row.valid_until ?? undefined }
-            : undefined,
-        });
-      } catch {
-        // Offline or transient: keep whatever entitlement we last knew.
-      }
-      return 'ok';
+      return result;
     },
 
     async reconcileEntitlementOnForeground() {
@@ -9914,6 +10043,9 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async createCrewAgent(input) {
+      // Making a crew member is Crew's work: paid (CTO, 2026-09-30). Deleting
+      // one stays free.
+      if (!requirePersonal('crew')) return undefined;
       const id = `a${Date.now().toString(36)}${(convSeq++).toString(36)}`;
       const agent: CrewAgent = { ...input, id, createdAt: new Date().toISOString() };
       const crew = [...(get().settings.crew ?? []), agent];
@@ -9923,8 +10055,10 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async updateCrewAgent(id, patch) {
+      if (!requirePersonal('crew')) return false;
       const crew = (get().settings.crew ?? []).map((a) => (a.id === id ? { ...a, ...patch } : a));
       await get().saveSettings({ crew });
+      return true;
     },
 
     async deleteCrewAgent(id) {
@@ -11061,37 +11195,31 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async vaultReadAll() {
-      const notes: Array<{ path: string; text: string }> = [];
-      const failed: string[] = [];
       const target = vaultTarget();
-      if (!target) return Object.assign(notes, { failed });
-      const files = await listVaultNotes(target);
-      // Read only the files that changed since we last saw them. Backlinks
-      // re-run this on every note open, so without a cache a 300-note Drive
-      // vault was 300+ serial reads per open (R-8). The cache key carries the
-      // provider and resource, and the read is skipped when the file's
-      // version (versionOf) matches. One unreadable file is reported in `failed` and
-      // never costs the rest (data-16).
-      for (const f of files) {
-        const key = vaultKey(target, f.path);
-        const cached = vaultBodyCache.get(key);
-        if (cached && cached.version === versionOf(f)) {
-          notes.push({ path: f.path, text: cached.text });
-          continue;
+      if (!target)
+        return Object.assign([] as Array<{ path: string; text: string }>, { failed: [] });
+      return readAllNotes(target);
+    },
+
+    async exportPersonalVault() {
+      // The iPhone's way out of the sealed Local vault, free from Settings
+      // while the Vault room is shut (CTO, 2026-09-30): exporting is never
+      // behind the paywall.
+      const target = personalVault();
+      if (!target) return;
+      try {
+        const notes = await readAllNotes(target);
+        if (!notes.length && !notes.failed.length) {
+          get().showToast('Nothing to export yet.');
+          return;
         }
-        try {
-          const note = await target.provider.read(target.resourceId, f.path);
-          if (!note) {
-            failed.push(f.path);
-            continue;
-          }
-          vaultBodyCache.set(key, { version: versionOf(note), text: note.text });
-          notes.push({ path: note.path, text: note.text });
-        } catch {
-          failed.push(f.path);
-        }
+        const result = await exportVaultToFiles(notes, notes.failed);
+        get().showToast(
+          result ? vaultExportLine(result) : 'Export works in OpenShore on the iPhone.',
+        );
+      } catch {
+        get().showToast('Could not export your vault. Check device storage and try again.');
       }
-      return Object.assign(notes, { failed });
     },
 
     async vaultReadBody(path) {
@@ -12021,6 +12149,9 @@ export const useApp = create<AppState>((set, get, api) => {
         void (async () => {
           if (get().vaultScope !== 'personal') await get().setVaultScope('personal');
           get().setView('vault');
+          // The Vault room is Plus: when the sign-in sheet or the paywall
+          // opened instead, nothing opens behind it (CTO, 2026-09-30).
+          if (get().view !== 'vault') return;
           await get().vaultOpen(path);
         })();
       };
@@ -12031,6 +12162,9 @@ export const useApp = create<AppState>((set, get, api) => {
       const item = conv?.thread.items.find((i) => i.id === itemId);
       if (!item || item.kind !== 'note' || !item.handoff) return undefined;
       if (item.handoff.savedPath) return item.handoff.savedPath;
+      // Saving a handoff writes a Vault note: Plus (CTO, 2026-09-30). With
+      // the gates off Plus is open to everyone, so nothing changes there.
+      if (!get().personalUnlockedNow() && !requirePersonal('vault')) return undefined;
       const t = personalVault();
       if (!t) {
         get().showToast('Your Vault is not ready on this device yet.');

@@ -6,6 +6,8 @@
 import { InfoSheet } from './InfoSheet.js';
 import { SettingsRow } from './SettingsRow.js';
 import { STAYS_ON_DEVICE, egressByRecipient, type EgressEntry } from '../lib/egressManifest.js';
+import { RELEASE_TIER } from '../lib/focus.js';
+import { platform } from '../lib/platform.js';
 
 const START_WORDS: Record<EgressEntry['start'], string> = {
   on: 'On by default',
@@ -14,7 +16,8 @@ const START_WORDS: Record<EgressEntry['start'], string> = {
 };
 
 export function WhatLeavesSheet() {
-  const groups = egressByRecipient();
+  // This platform's list: the iPhone and iPad leave out the Stripe rail.
+  const groups = egressByRecipient(RELEASE_TIER, platform());
   return (
     <InfoSheet
       title="What leaves this device"

@@ -12,9 +12,13 @@
 // Sign out ends this device's sign-in only (CX ruling 4). A quiet link below
 // it ends every device's, after one confirm (state/signinOps.ts).
 import { featureOn } from '../lib/focus.js';
-import { ACCOUNT_PITCH, SIGNED_IN_PERKS } from '../lib/accountGate.js';
+import { SIGNED_IN_PERKS, accountCopy } from '../lib/accountGate.js';
 import { useId, useState } from 'react';
 import { useApp } from '../state/store.js';
+import { PAY_GATES_ENABLED } from '../lib/payGate.js';
+
+// The pitch for this build: what signing in opens with the pay gates off or on.
+const pitch = accountCopy(PAY_GATES_ENABLED).pitch;
 import { useAuth } from '../hooks/useAuth.js';
 import { plainError } from '../lib/plainError.js';
 import { Sheet } from './Sheet.js';
@@ -284,11 +288,11 @@ export function SignInCard() {
         <div className="sub" style={{ marginBottom: 10 }}>
           {mode === 'signin'
             ? featureOn('teams')
-              ? `Sign in to sync your company account and role. ${ACCOUNT_PITCH}`
-              : ACCOUNT_PITCH
+              ? `Sign in to sync your company account and role. ${pitch}`
+              : pitch
             : featureOn('teams')
-              ? `Create an account to sync your company role across your devices. ${ACCOUNT_PITCH}`
-              : `Creating an account is free. ${ACCOUNT_PITCH}`}
+              ? `Create an account to sync your company role across your devices. ${pitch}`
+              : `Creating an account is free. ${pitch}`}
         </div>
         <div className="field">
           <label htmlFor={`${fieldId}-email`}>Email</label>

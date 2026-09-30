@@ -3408,3 +3408,35 @@ execution contract. Newest at the bottom.
   pairing, a routine already scheduled), and a chat's vault pack still reads
   notes that exist; Projects stays free, so a project's repository link
   opens the paywall only at Repositories.
+- 2026-09-30: **The CTO's calls on the widened paid gate (founder: "Have my
+  CTO make any outstanding calls").** (1) Stopping, revoking, forgetting and
+  exporting are always free: `roomPass` opens Crew while routines exist and
+  Desktop + phone on the desktop (Revoke) or on a phone with a paired
+  computer (Forget), every paid action inside keeping its door; crew-member
+  create and edit gained doors; the routine list is read live at launch with
+  the gates on; Settings carries the iPhone's Export your notes (Local
+  vault) and Remove per git host while those rooms are shut. Rejected: moving
+  the lists into Settings (two copies to keep in sync) and leaving it (a
+  routine or a phone credential nobody could stop). (2) Account copy follows
+  the flag (`accountCopy(gates)`; the guide card and Harbor Lite too): off,
+  no buying; on, signing in opens Projects and Cloud Connections and never
+  "building". (3) A free chat keeps reading the vault; writing is Plus
+  (`canWrite` drops the proposal tool per turn; handoff save and the pack
+  opener hold at the door). (4) Routines keep running after a lapse:
+  accepted, since the engine is the person's and pausing on lapse would cut
+  scheduled work; Crew says so and stays open to stop them. (5) Launch waits
+  up to 500 ms for the cached entitlement with the gates on, a read that
+  finds Plus closes an open sheet, and the server's answer outranks a late
+  offline one. (6) The flag goes on in TestFlight only after the App Store
+  product, the Apple functions and secrets, and the G3 root, through the
+  `store_release` input (never the `Harbor-os-code` group). (7) The held
+  Vault branches stay as they are (already merged through 48436ff and
+  4ffe370); PR #1 merges after the review binary. (8) App Store 3.1.1: the
+  restore miss names no other way to pay, the Stripe rows leave the iPhone's
+  egress list, and Get Plus signed out opens the sign-in sheet. The gold
+  banner still opens the sheet first (it explains Plus), and its Get Plus
+  then asks for the sign-in: a deliberate step short of routing the banner
+  itself through the sign-in. Founder-only: the store setup and the flag-on
+  sandbox run, the desktop flag with Stripe, the sandbox policy before any
+  public TestFlight, the review notes and a demo video, and a device check
+  that Stop still works on a process after a lapse.

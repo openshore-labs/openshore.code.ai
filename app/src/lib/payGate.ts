@@ -34,6 +34,8 @@ export const PAY_GATE: Record<AccountFeature, PayLevel> = {
   coding: 'personal',
   crew: 'personal',
   pairing: 'personal',
+  // The purchase itself, when tapped signed out (no room carries it).
+  plus: 'personal',
   terminal: 'personal',
   repos: 'personal',
   vault: 'personal',
@@ -48,6 +50,11 @@ export const PAY_GATE: Record<AccountFeature, PayLevel> = {
   launch: 'personal',
   admin: 'free',
 };
+
+/** What Crew says to someone without Plus who still has routines (CTO,
+ *  2026-09-30): they keep running, and stopping them is free. */
+export const CREW_PLUS_LINE =
+  'Your routines keep running on your computer while it is on, and you can pause, stop or delete them any time. Making or changing a crew member or a routine is part of OpenShore Plus.';
 
 /** Whether this feature is part of the paid Personal plan. */
 export function featurePaid(feature: AccountFeature): boolean {

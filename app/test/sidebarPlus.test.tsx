@@ -9,7 +9,9 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mountDom, type TestDom } from './support/dom.js';
 
-vi.stubEnv('VITE_PAY_GATES', '1');
+// Hoisted above the imports: a module a static import reaches (types.ts ->
+// harborMini.ts) reads the flag when it loads.
+vi.hoisted(() => vi.stubEnv('VITE_PAY_GATES', '1'));
 
 vi.mock('../src/lib/platform.js', () => ({
   platform: () => 'web',

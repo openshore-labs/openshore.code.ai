@@ -8,7 +8,8 @@
 // rest sit greyed at the bottom under a gold Upgrade banner. A greyed room
 // still answers the tap: it opens the paywall (store.ts setView).
 import { roomOpen, visibleRooms } from '../lib/focus.js';
-import { roomPaid } from '../lib/payGate.js';
+import { PAY_GATES_ENABLED, roomPaid } from '../lib/payGate.js';
+import { accountCopy } from '../lib/accountGate.js';
 import type { CSSProperties } from 'react';
 import { isOrgAdmin, useApp, type ViewName } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
@@ -312,9 +313,7 @@ export function Sidebar({
           </span>
           <span className="sidebar-signin-label">
             <span className="sidebar-signin-title">Sign in</span>
-            <span className="sidebar-signin-sub">
-              To build, pair your phone, and keep your settings
-            </span>
+            <span className="sidebar-signin-sub">{accountCopy(PAY_GATES_ENABLED).signInSub}</span>
           </span>
         </button>
       ) : null}

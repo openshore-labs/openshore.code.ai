@@ -266,7 +266,13 @@ Scan and Connect, a chat or shell on the computer from another device). The
 free sidebar puts the free rooms up top and the Plus rooms greyed under a
 gold "Upgrade to OpenShore Plus" banner; Plus gets the familiar layout
 (`components/Sidebar.tsx`, `app/test/sidebarPlus.test.tsx`). Nothing a
-person made is locked away. Every account
+person made is locked away, and stopping, revoking, forgetting and exporting
+are always free (CTO, 2026-09-30): Crew opens while routines exist, Desktop +
+phone while there is a pairing to let go of (`roomPass`), and Settings holds
+the iPhone's vault export and each git host's Remove while those rooms are
+shut (`app/test/plusRoomPass.test.tsx`). The switch for the review build is
+the Codemagic `store_release` input, never the `Harbor-os-code` group
+(`docs/TESTFLIGHT.md` section 7). Every account
 feature is classified in `app/src/lib/payGate.ts` (`PAY_GATE`, a type error
 until complete), the logic is `app/src/state/payOps.ts`, and the switch is
 the build flag `VITE_PAY_GATES`, off by default and set only in the build

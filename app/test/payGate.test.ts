@@ -43,9 +43,11 @@ describe('what is paid', () => {
       Object.values(ROOM_ACCOUNT).filter((f): f is AccountFeature => f !== null),
     );
     features.add('coding');
+    // The purchase itself, tapped signed out (no room carries it).
+    features.add('plus');
     expect(new Set(Object.keys(PAY_GATE))).toEqual(features);
     const paidV1 = (Object.keys(PAY_GATE) as AccountFeature[]).filter(
-      (f) => featurePaid(f) && !['marketplace', 'launch', 'health'].includes(f),
+      (f) => featurePaid(f) && !['marketplace', 'launch', 'health', 'plus'].includes(f),
     );
     // The founder's widening (2026-09-30), over the advisors' actions-only.
     expect(paidV1.sort()).toEqual(['coding', 'crew', 'pairing', 'repos', 'terminal', 'vault']);
@@ -274,14 +276,58 @@ describe('Apple', () => {
   });
 
   it('says what a restore that found nothing means', () => {
-    expect(RESTORE_FOUND_NOTHING).toBe(
-      'No Plus purchase on this Apple Account. Bought on the web? Sign in with that email.',
-    );
+    // No other way to pay is named (App Store 3.1.1; CTO, 2026-09-30).
+    expect(RESTORE_FOUND_NOTHING).toBe('No OpenShore Plus purchase on this Apple Account.');
   });
 });
 
 // App Store 3.1.1: the iPhone and iPad branch of the sheet names no other way
 // to pay, no web price, and no address.
+// App Store 3.1.1 beyond the sheet's own buttons (CTO, 2026-09-30): every
+// purchase string an iPhone or iPad can reach names no other way to pay, no
+// web price, and no address.
+describe('every purchase string iOS can reach', () => {
+  const OTHER_WAY = /stripe|checkout|on the web|the web\b|web price|https?:|www\.|\$\d/i;
+
+  it('says nothing about another way to pay', async () => {
+    const p = await import('../src/components/Paywall.js');
+    const { ACCOUNT_GATE_PLUS_BODY, accountCopy } = await import('../src/lib/accountGate.js');
+    const on = accountCopy(true);
+    const strings = [
+      RESTORE_FOUND_NOTHING,
+      p.RENEWAL_LINE,
+      p.PAYWALL_HEADLINE,
+      p.PAYWALL_PAIRING_HEADLINE,
+      p.PAYWALL_PLUS_HEADLINE,
+      p.PAYWALL_LAPSED_HEADLINE,
+      p.PAYWALL_BODY,
+      ...p.BULLETS,
+      ACCOUNT_GATE_PLUS_BODY,
+      on.body,
+      on.pitch,
+      on.notice,
+      on.signInSub,
+      // The App Store branch's money lines, before StoreKit answers.
+      p.paywallMoney(true, true, undefined).priceLine!,
+      p.paywallMoney(true, true, undefined).renewal!,
+    ];
+    for (const s of strings) expect(s, s).not.toMatch(OTHER_WAY);
+  });
+
+  it("leaves the Stripe rail off the iPhone's What leaves this device", async () => {
+    const { egressByRecipient } = await import('../src/lib/egressManifest.js');
+    const ios = egressByRecipient(4, 'ios');
+    const ids = ios.flatMap((g) => g.entries.map((e) => e.id));
+    expect(ids).toContain('purchase');
+    expect(ids).not.toContain('purchase-web');
+    expect(ids).not.toContain('stripe');
+    expect(ios.map((g) => g.recipient)).not.toContain('Payments');
+    const desktop = egressByRecipient(4, 'electron').flatMap((g) => g.entries.map((e) => e.id));
+    expect(desktop).toContain('stripe');
+    expect(desktop).not.toContain('purchase');
+  });
+});
+
 describe("the paywall's App Store branch", () => {
   const paywall = read('src', 'components', 'Paywall.tsx');
   const start = paywall.indexOf('function AppStoreActions');
@@ -338,10 +384,17 @@ describe('Desktop + phone, at its screens', () => {
     const revoke = pair.slice(start, pair.indexOf('Revoke\n', start));
     expect(revoke).toContain('Device revoked');
     expect(revoke).not.toMatch(/requirePersonal|pairOpen/);
-    expect(pair).toContain("if (door !== 'paywall') return null;");
+    // The note lives in its own component now, shared with Crew.
+    expect(pair).toContain("import { PlusNote } from '../components/PlusNote.js';");
+    expect(read('src', 'components', 'PlusNote.tsx')).toContain(
+      "if (door !== 'paywall') return null;",
+    );
   });
 
-  it("gates the computer's home shell from another device, never the desktop's own", () => {
+  // The Terminal room itself became Plus with the room gate (2026-09-30), so
+  // the desktop's own shell is paid at the room's door; this in-room check is
+  // what holds a phone that reached the room some other way.
+  it("asks the door for the computer's shell from another device, inside the Plus room", () => {
     expect(terminal).toContain("if (!desktopLocal && !requirePersonal('pairing')) return;");
   });
 
