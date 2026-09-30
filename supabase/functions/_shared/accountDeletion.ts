@@ -1,8 +1,12 @@
-// The decisions behind delete-account (Apple 5.1.1(v); next build E1), kept
-// pure so CI's `deno test supabase/functions/_shared` covers them. The edge
-// function reads everything first, asks planAccountDeletion what to do, and
-// only then writes: a refusal (owns_org) must never follow a canceled
-// subscription or a deleted org.
+// The decisions behind delete-account (Apple 5.1.1(v); next build E1; CTO 11
+// package C), kept pure so CI's `deno test supabase/functions/_shared` covers
+// them. The edge function reads everything first, asks planAccountDeletion
+// what to do, and only then writes: the owns_org refusal comes before any
+// canceled subscription or deleted row. The database's own writes (the
+// legal-hold copy, the owned-team delete, the tombstone, memberships and
+// grants) are service-role functions in 0022 section 6, so their rules live
+// in SQL beside their pgTAP tests; this module decides what to ask them and
+// how to read what they answer.
 //
 // Every refusal the function sends is one of DELETE_ACCOUNT_ERRORS, a fixed
 // code with nothing from the request or the database echoed back.
@@ -20,6 +24,19 @@ export const DELETE_ACCOUNT_STATUS: Record<DeleteAccountError, number> = {
   billing: 502,
   failed: 500,
 };
+
+/** The success body. `ok` is what main's app reads; `deleted` is what the
+ *  2026-09-24 function answered (`{ deleted: true }`), so a build that reads
+ *  either one sees success (CTO 11). */
+export interface DeleteAccountAnswer {
+  ok: true;
+  deleted: true;
+  appleNote: boolean;
+}
+
+export function deletedAnswer(appleNote: boolean): DeleteAccountAnswer {
+  return { ok: true, deleted: true, appleNote };
+}
 
 /** A Stripe subscription that could still charge or retry a charge: every
  *  live status checkout knows, plus `incomplete` (a first payment still in
@@ -43,6 +60,21 @@ export interface BillingRow {
   stripe_subscription_id?: string | null;
 }
 
+/** An org_members row as the function reads it for an owned team. */
+export interface MemberRow {
+  user_id: string | null;
+  status: string;
+}
+
+/** Who else is active in a team: an active row bound to someone other than
+ *  the owner. An active row with no user id is nobody (its person's account
+ *  was deleted, and 0001's key set it null). The same test 0022's
+ *  account_deletion_orgs makes, so the plan and the delete agree. */
+export function otherActiveMembers(rows: readonly MemberRow[], ownerId: string): number {
+  return rows.filter((m) => m.status === 'active' && m.user_id !== null && m.user_id !== ownerId)
+    .length;
+}
+
 export interface OwnedOrg {
   id: string;
   /** Active members other than the person deleting their account. */
@@ -57,10 +89,6 @@ export interface DeletionFacts {
   appleLinked: boolean;
   /** Orgs whose owner_uid is this account. */
   ownedOrgs: OwnedOrg[];
-  /** enforcement_actions.action values recorded for this account. */
-  enforcementActions: string[];
-  /** True when abuse_reports holds a row for this account. */
-  hasAbuseReport: boolean;
 }
 
 export type DeletionPlan =
@@ -74,26 +102,9 @@ export type DeletionPlan =
       stripeSubscriptions: string[];
       /** Owned orgs with nobody else active in them, deleted outright. */
       deleteOrgs: string[];
-      /** The tombstone to keep for this email, or 0 for none. */
-      tombstoneLevel: 0 | 1 | 2;
       /** The person pays (or paid) through Apple, which only they can cancel. */
       appleNote: boolean;
     };
-
-/** The ladder level a deleted account leaves behind: 2 after a termination
- *  (a prepared report only follows one), 1 after a warning, else 0. */
-export function tombstoneLevelFor(actions: readonly string[], hasAbuseReport: boolean): 0 | 1 | 2 {
-  if (hasAbuseReport || actions.includes('terminate')) return 2;
-  if (actions.includes('warn')) return 1;
-  return 0;
-}
-
-/** A tombstone never steps down: a second deletion under the same email keeps
- *  the higher of the two levels. */
-export function mergeTombstoneLevel(existing: number | null | undefined, next: 0 | 1 | 2): 0 | 1 | 2 {
-  const before = existing === 1 || existing === 2 ? existing : 0;
-  return Math.max(before, next) as 0 | 1 | 2;
-}
 
 function billingTargets(rows: readonly (BillingRow | null)[]): {
   customers: string[];
@@ -126,22 +137,18 @@ export function planAccountDeletion(facts: DeletionFacts): DeletionPlan {
     stripeCustomers: customers,
     stripeSubscriptions: subscriptions,
     deleteOrgs: facts.ownedOrgs.map((o) => o.id),
-    tombstoneLevel: tombstoneLevelFor(facts.enforcementActions, facts.hasAbuseReport),
     appleNote: facts.personal?.source === 'apple' || facts.appleLinked,
   };
 }
 
-/** The address as the tombstone keys it: ASCII letters lowercased and nothing
- *  else touched, the same as 0022's enforcement_email_key (`lower(... collate
- *  "C")`), so the two hashes match byte for byte in any locale. */
-export function normalizeEmail(email: string): string {
-  return email.replace(/[A-Z]/g, (c) => c.toLowerCase());
-}
-
-/** SHA-256 hex of the normalized address: the only form of it the tombstone
- *  keeps. */
-export async function emailSha256(email: string): Promise<string> {
-  const bytes = new TextEncoder().encode(normalizeEmail(email));
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+/** Read account_deletion_orgs' answer (a uuid array, all or none): true only
+ *  when every planned team came back deleted. Anything less means someone
+ *  became active in one of them after the plan was read, nothing was deleted,
+ *  and the function answers owns_org. An answer that is not a list of ids
+ *  reads as nothing deleted. */
+export function ownedOrgsGone(planned: readonly string[], answered: unknown): boolean {
+  if (planned.length === 0) return true;
+  if (!Array.isArray(answered)) return false;
+  const gone = new Set(answered.filter((id): id is string => typeof id === 'string'));
+  return planned.every((id) => gone.has(id));
 }
