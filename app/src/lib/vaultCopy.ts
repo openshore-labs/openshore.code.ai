@@ -2671,6 +2671,31 @@ export function vaultRestorePartial(o: {
   return `Restored ${o.restored} of ${total} ${total === 1 ? 'note' : 'notes'} from "${o.title}". Still in Trash: ${names.join(', ')}${more}. ${why}`;
 }
 
+/** A restore or an Undo that brought notes back beside their own names (the
+ *  team vault, round 7 E23): a note of that name is in the vault now, or the
+ *  name is held by a later delete that is still in Trash, which keeps it.
+ *  `folder` is set for a folder's Restore or Undo, whose title is the
+ *  folder's. Undefined when a note came back beside a note in the vault,
+ *  which vaultRestoredToast already says. */
+export function vaultRestoredBeside(o: {
+  title: string;
+  folder: boolean;
+  beside: readonly { from: string; to: string; inTrash: boolean }[];
+}): string | undefined {
+  const first = o.beside[0];
+  if (!first) return undefined;
+  const why = (inTrash: boolean) =>
+    inTrash ? 'that name is in Trash from a later delete' : 'a note of that name is there now';
+  if (!o.folder) {
+    if (!first.inTrash) return undefined;
+    return `"${o.title}" came back as "${noteTitle(first.to)}", since ${why(true)}.`;
+  }
+  if (o.beside.length === 1) {
+    return `Restored "${o.title}". "${noteTitle(first.from)}" came back as "${noteTitle(first.to)}", since ${why(first.inTrash)}.`;
+  }
+  return `Restored "${o.title}". ${o.beside.length} notes came back beside their names, as "(restored)", since those names are taken or in Trash.`;
+}
+
 /** A folder delete that stopped part way (the team vault trashes a folder
  *  note by note): how many went to Trash, that the rest are still there, and
  *  why, when a refusal said; with no reason, the rest were not reached, so

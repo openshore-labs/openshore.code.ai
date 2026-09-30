@@ -75,6 +75,7 @@ import type {
   RemoveResult,
   RenameGuard,
   RenameResult,
+  RestoreBeside,
   RestoreReport,
   StorageProvider,
   StoredFile,
@@ -647,6 +648,9 @@ async function inTrashAt(auth: string, resourceId: string, path: string): Promis
 interface RevisionRow {
   id: number;
   path: string;
+  /** The rev the note had when this version was displaced: for a delete,
+   *  the rev the remove matched (0021's org_vault_snapshot, 0025). */
+  rev?: number;
   reason: 'overwritten' | 'deleted' | 'renamed';
   recorded_at: string;
   body?: string;
@@ -682,7 +686,7 @@ async function newestEndings(auth: string, resourceId: string): Promise<Map<stri
     const got = await select<RevisionRow>(
       'org_vault_revisions',
       auth,
-      `select=id,path,reason,recorded_at&org_id=eq.${eq(resourceId)}&reason=in.(deleted,renamed)${from}&order=id.desc&limit=${ORG_VAULT_PAGE_SIZE}`,
+      `select=id,path,rev,reason,recorded_at&org_id=eq.${eq(resourceId)}&reason=in.(deleted,renamed)${from}&order=id.desc&limit=${ORG_VAULT_PAGE_SIZE}`,
     );
     for (const r of got) if (!newest.has(r.path)) newest.set(r.path, r);
     if (got.length < ORG_VAULT_PAGE_SIZE) break;
@@ -695,19 +699,44 @@ async function newestEndings(auth: string, resourceId: string): Promise<Map<stri
 // trash, with the folder and exactly the notes that trash tombstoned. A
 // folder's Restore (its Undo) brings back only those, never a note deleted
 // under the folder before it: a teammate's deliberate delete stays in Trash.
+// Each names the rev its delete took (the 'deleted' revision's rev, which is
+// the rev the remove matched), so an Undo brings back exactly what it took,
+// never a later delete at the same name (round 7 E23). An id from before
+// this build names no rev and restores the newest delete there, as it did.
 const NOTE_ID = 'n:';
 const FOLDER_ID = 'f:';
 
-/** A folder trash's id: the folder, and the paths that trash tombstoned. */
-function folderEntryId(folder: string, took: readonly string[]): string {
+/** A deleted note in an id: its path, and the rev its delete took. */
+interface TookNote {
+  path: string;
+  rev?: number;
+}
+
+/** A note entry's id: `n:{path}@{rev}`. A note path ends in `.md`, so the
+ *  rev after the last `@` is never part of it. */
+function noteEntryId(path: string, rev: number | undefined): string {
+  return rev === undefined ? `${NOTE_ID}${path}` : `${NOTE_ID}${path}@${rev}`;
+}
+
+/** The note and rev a note entry's id names. */
+function noteEntryOf(id: string): TookNote {
+  const rest = id.slice(NOTE_ID.length);
+  const m = /^(.*)@(\d{1,15})$/.exec(rest);
+  return m && isNotePath(m[1]!) ? { path: m[1]!, rev: Number(m[2]) } : { path: rest };
+}
+
+/** A folder trash's id: the folder, and each note that trash tombstoned with
+ *  the rev it removed. */
+function folderEntryId(folder: string, took: readonly (readonly [string, number])[]): string {
   return `${FOLDER_ID}${JSON.stringify({ folder, took })}`;
 }
 
-/** The paths a folder trash's id says it tombstoned, each under its folder,
- *  or undefined for an id that does not say (a folder id from before this
- *  build named only the folder, so which notes it took is unknown and it
- *  restores nothing rather than everything under the folder). */
-function folderEntryTook(id: string): string[] | undefined {
+/** The notes a folder trash's id says it tombstoned, each under its folder
+ *  (with its rev, or a bare path in an id from before E23), or undefined for
+ *  an id that does not say (a folder id from before that named only the
+ *  folder, so which notes it took is unknown and it restores nothing rather
+ *  than everything under the folder). */
+function folderEntryTook(id: string): TookNote[] | undefined {
   let named: { folder?: unknown; took?: unknown };
   try {
     named = JSON.parse(id.slice(FOLDER_ID.length)) as typeof named;
@@ -716,7 +745,20 @@ function folderEntryTook(id: string): string[] | undefined {
   }
   if (typeof named?.folder !== 'string' || !Array.isArray(named.took)) return undefined;
   const under = `${named.folder}/`;
-  return named.took.filter((p): p is string => typeof p === 'string' && p.startsWith(under));
+  const out: TookNote[] = [];
+  for (const x of named.took as unknown[]) {
+    if (typeof x === 'string') {
+      if (x.startsWith(under)) out.push({ path: x });
+    } else if (
+      Array.isArray(x) &&
+      typeof x[0] === 'string' &&
+      x[0].startsWith(under) &&
+      Number.isSafeInteger(x[1])
+    ) {
+      out.push({ path: x[0], rev: x[1] as number });
+    }
+  }
+  return out;
 }
 
 /** Put a trashed body back: its own path while free, else "{title}
@@ -728,7 +770,14 @@ async function putBack(
   resourceId: string,
   path: string,
   body: string,
-): Promise<{ file: StoredFileMeta; renamed: boolean }> {
+  /** Whether the tombstone at its own name is this delete's. When a later
+   *  delete there is in Trash (someone made the name again and deleted it),
+   *  that one keeps the name and this comes back beside it (E23). */
+  own = true,
+): Promise<{ file: StoredFileMeta; renamed: boolean; inTrash?: boolean }> {
+  // Whether its own name was passed over because a delete there is in Trash.
+  let inTrash = false;
+  const beside = (n: number) => (n > 0 ? { inTrash } : {});
   for (let n = 0; n <= 99; n++) {
     const at = n === 0 ? path : restoredPath(path, n);
     // Back at its own name it revives its tombstone, as Restore means to; a
@@ -736,9 +785,19 @@ async function putBack(
     // note leaves Trash on the way (E22).
     let r: WriteResult;
     try {
-      r = await guardedWrite(auth, resourceId, at, body, { ifAbsent: true }, { revive: n === 0 });
+      r = await guardedWrite(
+        auth,
+        resourceId,
+        at,
+        body,
+        { ifAbsent: true },
+        { revive: n === 0 && own },
+      );
     } catch (err) {
-      if (err instanceof OrgVaultNameInTrash) continue;
+      if (err instanceof OrgVaultNameInTrash) {
+        if (n === 0) inTrash = true;
+        continue;
+      }
       throw err;
     }
     if (r.ok) {
@@ -746,6 +805,7 @@ async function putBack(
       return {
         file: { path: f.path, updatedAt: f.updatedAt, size: utf8Length(body), version: f.version },
         renamed: n > 0,
+        ...beside(n),
       };
     }
     if (r.conflict === 'exists' && r.theirs?.text === body) {
@@ -753,24 +813,62 @@ async function putBack(
       return {
         file: { path: t.path, updatedAt: t.updatedAt, size: utf8Length(body), version: t.version },
         renamed: n > 0,
+        ...beside(n),
       };
     }
   }
   throw new OrgVaultRefusal(`There is no free name beside "${path}" to restore it to.`);
 }
 
-/** The newest 'deleted' revision's body at a path, or undefined. */
+/** The 'deleted' revision a Trash entry names at a path: the one with that
+ *  rev, or the newest when the entry names none; undefined when its history
+ *  was cleared. */
 async function deletedBody(
   auth: string,
   resourceId: string,
   path: string,
+  rev?: number,
 ): Promise<RevisionRow | undefined> {
+  const byRev = rev === undefined ? '' : `&rev=eq.${rev}`;
   const rows = await select<RevisionRow>(
     'org_vault_revisions',
     auth,
-    `select=id,path,reason,recorded_at,body&org_id=eq.${eq(resourceId)}&path=eq.${eqPath(path)}&reason=eq.deleted&order=id.desc&limit=1`,
+    `select=id,path,rev,reason,recorded_at,body&org_id=eq.${eq(resourceId)}&path=eq.${eqPath(path)}&reason=eq.deleted${byRev}&order=id.desc&limit=1`,
   );
   return rows[0];
+}
+
+/** Whether a delete (by its rev) is still the newest event that ended the
+ *  note at its path, so the tombstone there is its own to revive (E23). An
+ *  entry that names no rev is taken as the newest, as before. */
+async function ownsName(
+  auth: string,
+  resourceId: string,
+  path: string,
+  rev: number | undefined,
+): Promise<boolean> {
+  if (rev === undefined) return true;
+  const rows = await select<RevisionRow>(
+    'org_vault_revisions',
+    auth,
+    `select=id,rev,reason&org_id=eq.${eq(resourceId)}&path=eq.${eqPath(path)}&reason=in.(deleted,renamed)&order=id.desc&limit=1`,
+  );
+  return rows[0]?.reason === 'deleted' && rows[0].rev === rev;
+}
+
+/** Bring back one deleted note from the revision its entry names: at its
+ *  own name while that is its to take, else beside, never over anything. */
+async function restoreTook(
+  auth: string,
+  resourceId: string,
+  took: TookNote,
+): Promise<{ file: StoredFileMeta; renamed: boolean; inTrash?: boolean } | undefined> {
+  const row = await refusingFor(resourceId, () =>
+    deletedBody(auth, resourceId, took.path, took.rev),
+  );
+  if (!row || typeof row.body !== 'string') return undefined;
+  const own = await refusingFor(resourceId, () => ownsName(auth, resourceId, took.path, took.rev));
+  return putBack(auth, resourceId, took.path, row.body, own);
 }
 
 // ---------------------------------------------------------------- M7 helpers
@@ -1095,7 +1193,12 @@ export const orgVaultProvider: StorageProvider = {
     }
     const auth = await token();
     const trashedAt = new Date().toISOString();
-    const drop = async (path: string, version: string): Promise<RemoveResult | 'gone'> => {
+    // A remove that went through answers the rev it matched: its entry
+    // names it (E23).
+    const drop = async (
+      path: string,
+      version: string,
+    ): Promise<{ ok: true; removed: number } | Exclude<RemoveResult, { ok: true }> | 'gone'> => {
       const rev = revOf(version);
       if (rev === undefined) {
         const now = await headFor(auth, resourceId, path);
@@ -1108,7 +1211,7 @@ export const orgVaultProvider: StorageProvider = {
           p_if_match: rev,
         }),
       );
-      if (reply.ok) return reply.rev === undefined ? 'gone' : { ok: true };
+      if (reply.ok) return reply.rev === undefined ? 'gone' : { ok: true, removed: rev };
       const theirs = theirsFile(reply.theirs);
       return theirs
         ? { ok: false, conflict: 'changed', theirs }
@@ -1126,7 +1229,7 @@ export const orgVaultProvider: StorageProvider = {
       return {
         ok: true,
         entry: {
-          id: `${NOTE_ID}${target.path}`,
+          id: noteEntryId(target.path, r.removed),
           path: target.path,
           kind: 'note',
           size: 0,
@@ -1137,8 +1240,9 @@ export const orgVaultProvider: StorageProvider = {
       };
     }
     const under = `${target.path}/`;
-    // The notes this trash tombstoned, and only those, go in its entry's id.
-    const took: string[] = [];
+    // The notes this trash tombstoned, and only those, go in its entry's id,
+    // each with the rev it removed (E23).
+    const took: Array<[string, number]> = [];
     // A folder goes note by note, each its own call: one stopped part way (a
     // plan that lapsed, admins-only switched on, the network, a 5xx) says
     // what went to Trash and what is left, with its Undo, and throws only
@@ -1156,7 +1260,7 @@ export const orgVaultProvider: StorageProvider = {
         let r = await drop(f.path, f.version ?? '');
         if (r !== 'gone' && !r.ok && r.theirs?.version) r = await drop(f.path, r.theirs.version);
         if (r === 'gone') continue;
-        if (r.ok) took.push(f.path);
+        if (r.ok) took.push([f.path, r.removed]);
         else changed.push(f.path);
       } catch (err) {
         if (!took.length) throw err;
@@ -1213,7 +1317,13 @@ export const orgVaultProvider: StorageProvider = {
     const out: TrashEntry[] = [];
     for (const [path, r] of endings) {
       if (r.reason !== 'deleted' || !dead.has(path)) continue;
-      out.push({ id: `${NOTE_ID}${path}`, path, kind: 'note', size: 0, trashedAt: r.recorded_at });
+      out.push({
+        id: noteEntryId(path, r.rev),
+        path,
+        kind: 'note',
+        size: 0,
+        trashedAt: r.recorded_at,
+      });
     }
     return out.sort((a, b) => (b.trashedAt ?? '').localeCompare(a.trashedAt ?? ''));
   },
@@ -1232,32 +1342,48 @@ export const orgVaultProvider: StorageProvider = {
   async restore(resourceId, id): Promise<RestoreReport> {
     const auth = await token();
     if (id.startsWith(NOTE_ID)) {
-      const path = id.slice(NOTE_ID.length);
-      const rev = await refusingFor(resourceId, () => deletedBody(auth, resourceId, path));
-      if (!rev || typeof rev.body !== 'string') return { ok: false, conflict: 'missing' };
-      return { ok: true, ...(await putBack(auth, resourceId, path, rev.body)) };
+      const took = noteEntryOf(id);
+      const back = await restoreTook(auth, resourceId, took);
+      if (!back) return { ok: false, conflict: 'missing' };
+      const { file, renamed, inTrash } = back;
+      return {
+        ok: true,
+        file,
+        renamed,
+        ...(renamed
+          ? { beside: [{ from: took.path, to: file.path, inTrash: inTrash === true }] }
+          : {}),
+      };
     }
     if (id.startsWith(FOLDER_ID)) {
-      const took = new Set(folderEntryTook(id));
-      if (!took.size) return { ok: false, conflict: 'missing' };
-      const entries = (await orgVaultProvider.listTrash!(resourceId)).filter((e) =>
-        took.has(e.path),
-      );
+      const named = folderEntryTook(id) ?? [];
+      if (!named.length) return { ok: false, conflict: 'missing' };
+      // Each note that names its rev comes back from that revision, at its
+      // name or beside whatever holds it now (E23). An id from before names
+      // bare paths, and brings back those still in Trash, as it did.
+      const bare = named.filter((x) => x.rev === undefined).map((x) => x.path);
+      const inTrash = bare.length
+        ? new Set((await orgVaultProvider.listTrash!(resourceId)).map((e) => e.path))
+        : new Set<string>();
+      const entries = named.filter((x) => x.rev !== undefined || inTrash.has(x.path));
       let first: StoredFileMeta | undefined;
       let renamed = false;
       let restored = 0;
       const left: string[] = [];
       let refusal: OrgVaultRefusal | undefined;
       let failure: unknown;
+      const beside: RestoreBeside[] = [];
       const sorted = entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
       for (const [i, e] of sorted.entries()) {
         try {
-          const rev = await refusingFor(resourceId, () => deletedBody(auth, resourceId, e.path));
-          if (!rev || typeof rev.body !== 'string') continue;
-          const back = await putBack(auth, resourceId, e.path, rev.body);
+          const back = await restoreTook(auth, resourceId, e);
+          if (!back) continue;
           first ??= back.file;
           renamed ||= back.renamed;
           restored += 1;
+          if (back.renamed) {
+            beside.push({ from: e.path, to: back.file.path, inTrash: back.inTrash === true });
+          }
         } catch (err) {
           if (err instanceof OrgVaultRefusal && !(err instanceof OrgVaultLapsed)) {
             refusal ??= err;
@@ -1276,12 +1402,14 @@ export const orgVaultProvider: StorageProvider = {
         if (failure !== undefined) throw failure;
         return { ok: false, conflict: 'missing' };
       }
-      if (!left.length) return { ok: true, file: first, renamed };
+      const besides = beside.length ? { beside } : {};
+      if (!left.length) return { ok: true, file: first, renamed, ...besides };
       return {
         ok: true,
         file: first,
         renamed,
         partial: { restored, left, ...(why ? { line: why.message } : {}) },
+        ...besides,
       };
     }
     return { ok: false, conflict: 'missing' };

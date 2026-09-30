@@ -24,6 +24,7 @@ import {
 import type { VaultIndexHost } from '../lib/vaultIndexHost.js';
 import {
   versionOf,
+  type RestoreBeside,
   type RestorePartial,
   type RestoreReport,
   type TrashPartial,
@@ -896,7 +897,15 @@ export async function deleteFolder(deps: VaultOpsDeps, folder: string): Promise<
  *  for good (VaultRefusal: the storage's line, or the store's own whole line
  *  for a lapsed team plan, refused before the server is asked). */
 export type VaultRestoreResult =
-  | { ok: true; path: string; renamed: boolean; partial: RestorePartial }
+  | {
+      ok: true;
+      path: string;
+      renamed: boolean;
+      partial: RestorePartial;
+      beside?: readonly RestoreBeside[];
+    }
+  /** Came back, some of it beside its own name (the team vault, E23). */
+  | { ok: true; path: string; renamed: boolean; beside: readonly RestoreBeside[] }
   /** No longer in Trash (restored or cleared elsewhere): the store's line. */
   | { ok: false; reason: 'missing'; line: string; whole: true }
   | ({ ok: false; reason: VaultOpFailure } & VaultRefusal)
@@ -950,13 +959,19 @@ export async function restoreEntry(deps: VaultOpsDeps, id: string): Promise<Vaul
   await adopt(deps, r.value.file);
   // A folder that came back only in part says how many, and which stayed.
   const report: RestoreReport = r.value;
+  // And which came back beside their names, so the line can say so (E23).
+  const beside = report.beside?.length ? { beside: report.beside } : {};
   if (report.partial) {
     return {
       ok: true,
       path: r.value.file.path,
       renamed: r.value.renamed,
       partial: report.partial,
+      ...beside,
     };
+  }
+  if (report.beside?.length) {
+    return { ok: true, path: r.value.file.path, renamed: r.value.renamed, beside: report.beside };
   }
   return { ok: true, path: r.value.file.path, renamed: r.value.renamed };
 }

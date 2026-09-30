@@ -1521,4 +1521,32 @@ describe("the team's free space says what 0023 says (the review, finding 1)", ()
     );
     expect(vaultTickUnsaved('t')).not.toMatch(/try again/i);
   });
+
+  it('a note brought back beside its name says why, and a folder says which (E23)', async () => {
+    const { vaultRestoredBeside } = await import('../src/lib/vaultCopy.js');
+    const inTrash = { from: 'Plan.md', to: 'Plan (restored).md', inTrash: true };
+    const taken = { from: 'Work/Plan.md', to: 'Work/Plan (restored).md', inTrash: false };
+    expect(vaultRestoredBeside({ title: 'Plan', folder: false, beside: [inTrash] })).toBe(
+      '"Plan" came back as "Plan (restored)", since that name is in Trash from a later delete.',
+    );
+    // Beside a note in the vault, vaultRestoredToast already says it.
+    expect(
+      vaultRestoredBeside({
+        title: 'Plan',
+        folder: false,
+        beside: [{ ...inTrash, inTrash: false }],
+      }),
+    ).toBeUndefined();
+    expect(vaultRestoredBeside({ title: 'Work', folder: true, beside: [taken] })).toBe(
+      'Restored "Work". "Plan" came back as "Plan (restored)", since a note of that name is there now.',
+    );
+    const two = vaultRestoredBeside({ title: 'Work', folder: true, beside: [taken, inTrash] })!;
+    expect(two).toBe(
+      'Restored "Work". 2 notes came back beside their names, as "(restored)", since those names are taken or in Trash.',
+    );
+    for (const line of [two]) {
+      expect(line).not.toMatch(/try again/i);
+      expect([...line].some((ch) => [8211, 8212].includes(ch.codePointAt(0)!))).toBe(false);
+    }
+  });
 });

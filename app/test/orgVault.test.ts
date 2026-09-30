@@ -766,6 +766,40 @@ describe('org vault Trash (Restore only, R3)', () => {
     });
   });
 
+  it('an entry names the rev its delete took, and its restore reads that revision (E23)', async () => {
+    const w = await orgVaultProvider.write(ORG, 'Plan.md', 'mine', { ifAbsent: true });
+    const t = await orgVaultProvider.trash!(ORG, {
+      kind: 'note',
+      path: 'Plan.md',
+      ifMatch: version(w),
+    });
+    expect(t.ok && t.entry.id).toBe(`n:Plan.md@${version(w)}`);
+    server.put('Plan.md', 'theirs');
+    server.drop('Plan.md');
+    server.selects.length = 0;
+    const back = await orgVaultProvider.restore!(ORG, t.ok ? t.entry.id : '');
+    expect(back).toMatchObject({ ok: true, renamed: true, file: { path: 'Plan (restored).md' } });
+    expect(server.bytes('Plan (restored).md')).toBe('mine');
+    const body = server.selects.find(
+      (q) => q.table === 'org_vault_revisions' && q.query.includes('body'),
+    );
+    expect(body?.query).toContain(`&rev=eq.${version(w)}`);
+    // The listing names the newest delete by its own rev.
+    const listed = await orgVaultProvider.listTrash!(ORG);
+    const theirs = server.revisions.filter((r) => r.reason === 'deleted').at(-1)!;
+    expect(listed.map((e) => e.id)).toEqual([`n:Plan.md@${theirs.rev}`]);
+  });
+
+  it("a folder entry names each note's rev (E23)", async () => {
+    const a = await orgVaultProvider.write(ORG, 'Work/a.md', 'a', { ifAbsent: true });
+    const t = await orgVaultProvider.trash!(ORG, { kind: 'folder', path: 'Work' });
+    const id = t.ok ? t.entry.id : '';
+    expect(JSON.parse(id.slice(2))).toEqual({
+      folder: 'Work',
+      took: [['Work/a.md', Number(version(a))]],
+    });
+  });
+
   it('has no Empty Trash: the purge takes what has been there 30 days', () => {
     expect(orgVaultProvider.emptyTrash).toBeUndefined();
   });

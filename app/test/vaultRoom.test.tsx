@@ -1720,6 +1720,37 @@ describe('the team room offers only what the server takes (Y14, Y15)', () => {
     );
   });
 
+  it('an Undo that came back beside a later delete of its name says so (E23)', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    app.state.vaultFiles = [{ path: 'Plan.md', updatedAt: 'x', size: 4 }];
+    app.state.vaultNote = { path: 'Plan.md', text: 'plan', updatedAt: 'x' };
+    app.state.vaultDeleteNote = async () => ({
+      ok: true,
+      trashed: true,
+      undo: { kind: 'trash', id: 'n:Plan.md@7', path: 'Plan.md', folder: false, notes: 1 },
+      notes: 1,
+      attachments: 0,
+    });
+    app.state.vaultUndoDelete = async () => ({
+      ok: true,
+      path: 'Plan (restored).md',
+      renamed: true,
+      beside: [{ from: 'Plan.md', to: 'Plan (restored).md', inTrash: true }],
+    });
+    await dom.render(<VaultRoom />);
+    await dom.click('⋯');
+    await dom.settle();
+    await dom.click(copy.VAULT_DELETE_ROW);
+    await dom.settle();
+    await dom.click(copy.VAULT_UNDO);
+    await dom.settle();
+    expect(app.toasts.at(-1)).toBe(
+      '"Plan" came back as "Plan (restored)", since that name is in Trash from a later delete.',
+    );
+    expect(app.toasts.at(-1)).not.toMatch(/already in your vault/);
+  });
+
   it('a Restore in Trash past the free space says Not restored and why', async () => {
     const copy = await import('../src/lib/vaultCopy.js');
     app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };

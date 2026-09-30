@@ -197,9 +197,22 @@ export interface RestorePartial {
   line?: string;
 }
 
-/** A RestoreResult whose ok answer may carry a RestorePartial. Every
- *  RestoreResult is one, so a caller reads `partial` without a cast. */
-export type RestoreReport = RestoreResult & { partial?: RestorePartial };
+/** A restored note that came back beside its own name (the team vault,
+ *  round 7 E23): the name it had, where it landed, and whether that name is
+ *  held by another delete still in Trash rather than by a note in the vault. */
+export interface RestoreBeside {
+  from: string;
+  to: string;
+  inTrash: boolean;
+}
+
+/** A RestoreResult whose ok answer may carry a RestorePartial, and the notes
+ *  that came back beside their names. Every RestoreResult is one, so a
+ *  caller reads `partial` and `beside` without a cast. */
+export type RestoreReport = RestoreResult & {
+  partial?: RestorePartial;
+  beside?: RestoreBeside[];
+};
 
 /** What Delete forever or Empty Trash removed. */
 export interface EmptyTrashResult {

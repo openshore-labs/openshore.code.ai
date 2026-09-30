@@ -291,6 +291,9 @@ export function createFakeOrgVaultServer(org = 'org-123'): FakeOrgVaultServer {
           if (f.startsWith('lt.')) revs = revs.filter((r) => r.id < Number(f.slice(3)));
           if (f.startsWith('eq.')) revs = revs.filter((r) => r.id === Number(f.slice(3)));
         }
+        for (const f of get('rev')) {
+          if (f.startsWith('eq.')) revs = revs.filter((r) => r.rev === Number(f.slice(3)));
+        }
         if (get('order')[0] === 'id.desc') revs.sort((a, b) => b.id - a.id);
         revs = revs.slice(0, Math.min(Number(get('limit')[0] ?? 1000), 1000));
         const rcols = (get('select')[0] ?? '*').split(',');

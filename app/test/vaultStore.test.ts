@@ -4184,13 +4184,23 @@ describe('round 5: a team refusal says what happened and keeps the text', () => 
   });
 
   it('a Restore or an Undo of what is no longer in Trash says so, never "still in Trash" (sweep)', async () => {
-    // A folder's Undo after a teammate brought its notes back.
+    // A folder's Undo after a teammate brought its notes back: they are back,
+    // so it says so and changes nothing (E23 reads each note's own revision,
+    // and a name that holds its text already is the restore done).
     server.put('Work/a.md', 'a', 'u-me');
     await useApp.getState().vaultRefresh();
     const at = useApp.getState().vaultTargetRef();
     const gone = await useApp.getState().vaultDeleteFolder('Work');
     if (!gone?.ok || !gone.undo) throw new Error('not deleted');
-    server.put('Work/a.md', 'a, back', 'u-teammate');
+    const back = server.put('Work/a.md', 'a', 'u-teammate');
+    expect(await useApp.getState().vaultUndoDelete(gone.undo, at)).toMatchObject({
+      ok: true,
+      path: 'Work/a.md',
+      renamed: false,
+    });
+    expect(server.notes.get('Work/a.md')!.rev).toBe(back.rev);
+    // The same Undo once its history was cleared: nothing of it is left.
+    server.revisions.length = 0;
     expect(await useApp.getState().vaultUndoDelete(gone.undo, at)).toEqual({
       ok: false,
       reason: 'missing',
@@ -4204,10 +4214,11 @@ describe('round 5: a team refusal says what happened and keeps the text', () => 
     server.put('Old.md', 'old', 'u-me');
     server.drop('Old.md');
     await useApp.getState().vaultRefresh();
-    expect((await useApp.getState().vaultLoadTrash())?.map((e) => e.path)).toEqual(['Old.md']);
+    const inTrash = (await useApp.getState().vaultLoadTrash()) ?? [];
+    expect(inTrash.map((e) => e.path)).toEqual(['Old.md']);
     server.revisions.length = 0;
     server.notes.delete('Old.md');
-    expect(await useApp.getState().vaultRestoreTrash('n:Old.md')).toEqual({
+    expect(await useApp.getState().vaultRestoreTrash(inTrash[0]!.id)).toEqual({
       ok: false,
       reason: 'missing',
       line: vaultTrashGone('Old'),
@@ -6865,7 +6876,11 @@ describe('round 7, batch 3: the team vault answers only for itself', () => {
         partial: { trashed: 1, left: ['Work/b.md'], changed: ['Work/b.md'] },
       });
       if (!r?.ok || r.undo?.kind !== 'trash') throw new Error('no undo');
-      expect(JSON.parse(r.undo.id.slice(2))).toEqual({ folder: 'Work', took: ['Work/a.md'] });
+      // Each note it took, with the rev it removed (E23).
+      expect(JSON.parse(r.undo.id.slice(2))).toEqual({
+        folder: 'Work',
+        took: [['Work/a.md', expect.any(Number)]],
+      });
       expect(listed()).toEqual(['Work/b.md']);
       // The note still there is still open.
       expect(st().vaultNote?.path).toBe('Work/b.md');
@@ -7903,6 +7918,122 @@ describe('round 7, batch 4: the team vault says what is there, and what it did',
       expect(server.bytes('y.md')).toBeUndefined();
       expect(teamHeld().map((h) => h.text)).toEqual(['the seed']);
       expect(st().toast ?? '').toMatch(/is in Trash/);
+    });
+  });
+
+  describe('E23: an Undo brings back what its delete took, never a later delete at the name', () => {
+    const trash = async () => (await st().vaultLoadTrash()) ?? [];
+    // A teammate makes their own note at `path` and deletes it.
+    function theirsMadeAndDeleted(path: string, body = 'their other plan') {
+      server.put(path, body);
+      server.drop(path);
+    }
+
+    it('a note: mine comes back beside the name, and theirs stays in Trash', async () => {
+      server.put('Plan.md', 'my plan', 'u-me');
+      await st().vaultRefresh();
+      const at = st().vaultTargetRef();
+      const gone = await st().vaultDeleteNote('Plan.md', at);
+      if (!gone?.ok || !gone.undo) throw new Error('not deleted');
+      theirsMadeAndDeleted('Plan.md');
+      const back = await st().vaultUndoDelete(gone.undo, at);
+      expect(back).toMatchObject({ ok: true, path: 'Plan (restored).md', renamed: true });
+      expect(server.bytes('Plan (restored).md')).toBe('my plan');
+      expect(server.bytes('Plan.md')).toBeUndefined();
+      // Their delete is still in Trash, and brings back their text.
+      const left = await trash();
+      expect(left.map((e) => e.path)).toEqual(['Plan.md']);
+      expect(await st().vaultRestoreTrash(left[0]!.id)).toMatchObject({ ok: true, renamed: false });
+      expect(server.bytes('Plan.md')).toBe('their other plan');
+    });
+
+    it('a note: with nothing in between, Undo is back at its own name', async () => {
+      server.put('Plan.md', 'my plan', 'u-me');
+      await st().vaultRefresh();
+      const gone = await st().vaultDeleteNote('Plan.md');
+      if (!gone?.ok || !gone.undo) throw new Error('not deleted');
+      expect(await st().vaultUndoDelete(gone.undo)).toMatchObject({
+        ok: true,
+        path: 'Plan.md',
+        renamed: false,
+      });
+      expect(server.bytes('Plan.md')).toBe('my plan');
+    });
+
+    it('a note: a teammate made the name again and left it, so mine lands beside', async () => {
+      server.put('Plan.md', 'my plan', 'u-me');
+      await st().vaultRefresh();
+      const gone = await st().vaultDeleteNote('Plan.md');
+      if (!gone?.ok || !gone.undo) throw new Error('not deleted');
+      server.put('Plan.md', 'their new plan');
+      expect(await st().vaultUndoDelete(gone.undo)).toMatchObject({ ok: true, renamed: true });
+      expect(server.bytes('Plan.md')).toBe('their new plan');
+      expect(server.bytes('Plan (restored).md')).toBe('my plan');
+    });
+
+    it('a folder: each note comes back from what the folder delete took', async () => {
+      server.put('Work/Plan.md', 'my plan', 'u-me');
+      server.put('Work/b.md', 'b', 'u-me');
+      await st().vaultRefresh();
+      const gone = await st().vaultDeleteFolder('Work');
+      if (!gone?.ok || !gone.undo) throw new Error('not deleted');
+      theirsMadeAndDeleted('Work/Plan.md');
+      expect(await st().vaultUndoDelete(gone.undo)).toMatchObject({ ok: true });
+      expect(server.bytes('Work/Plan (restored).md')).toBe('my plan');
+      expect(server.bytes('Work/b.md')).toBe('b');
+      expect(server.bytes('Work/Plan.md')).toBeUndefined();
+      expect((await trash()).map((e) => e.path)).toEqual(['Work/Plan.md']);
+    });
+
+    it('a folder: a name a teammate made again and left is not passed over; mine lands beside', async () => {
+      server.put('Work/Plan.md', 'my plan', 'u-me');
+      server.put('Work/b.md', 'b', 'u-me');
+      await st().vaultRefresh();
+      const gone = await st().vaultDeleteFolder('Work');
+      if (!gone?.ok || !gone.undo) throw new Error('not deleted');
+      server.put('Work/Plan.md', 'their new plan');
+      const back = await st().vaultUndoDelete(gone.undo);
+      expect(back).toMatchObject({ ok: true });
+      expect(back).not.toHaveProperty('partial');
+      expect(server.bytes('Work/Plan.md')).toBe('their new plan');
+      expect(server.bytes('Work/Plan (restored).md')).toBe('my plan');
+      expect(server.bytes('Work/b.md')).toBe('b');
+    });
+
+    it('an id from before this build (no rev) still restores the newest delete there', async () => {
+      server.put('Old.md', 'old words', 'u-me');
+      server.drop('Old.md');
+      server.put('Work/a.md', 'a', 'u-me');
+      server.drop('Work/a.md');
+      await st().vaultRefresh();
+      expect(await st().vaultRestoreTrash('n:Old.md')).toMatchObject({ ok: true, renamed: false });
+      expect(server.bytes('Old.md')).toBe('old words');
+      const folderId = `f:${JSON.stringify({ folder: 'Work', took: ['Work/a.md'] })}`;
+      expect(
+        await st().vaultUndoDelete({
+          kind: 'trash',
+          id: folderId,
+          path: 'Work',
+          folder: true,
+          notes: 1,
+        }),
+      ).toMatchObject({ ok: true });
+      expect(server.bytes('Work/a.md')).toBe('a');
+    });
+
+    it('a delete whose history was cleared says it is gone, never Restored', async () => {
+      server.put('Plan.md', 'my plan', 'u-me');
+      await st().vaultRefresh();
+      const gone = await st().vaultDeleteNote('Plan.md');
+      if (!gone?.ok || !gone.undo) throw new Error('not deleted');
+      server.revisions.length = 0;
+      expect(await st().vaultUndoDelete(gone.undo)).toEqual({
+        ok: false,
+        reason: 'missing',
+        line: vaultTrashGone('Plan'),
+        whole: true,
+      });
+      expect(server.bytes('Plan.md')).toBeUndefined();
     });
   });
 

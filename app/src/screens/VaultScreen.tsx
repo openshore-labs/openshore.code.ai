@@ -114,6 +114,7 @@ import {
   vaultWarningLine,
   vaultWelcomeNote,
   vaultRestoreFailed,
+  vaultRestoredBeside,
   vaultRestoredToast,
   vaultTrashEmptied,
   vaultFolderTrashPartial,
@@ -1445,12 +1446,23 @@ export function VaultScreen() {
         return;
       }
       if (r.ok) {
+        // Beside its name because a later delete keeps it, or a folder's
+        // notes beside theirs: says which (E23).
+        const beside =
+          'beside' in r && r.beside
+            ? vaultRestoredBeside({
+                title: item.title,
+                folder: entry.undo.kind === 'trash' && entry.undo.folder,
+                beside: r.beside,
+              })
+            : undefined;
         showToast(
-          vaultRestoredToast({
-            title: item.title,
-            folder: noteFolder(r.path),
-            renamed: r.renamed,
-          }),
+          beside ??
+            vaultRestoredToast({
+              title: item.title,
+              folder: noteFolder(r.path),
+              renamed: r.renamed,
+            }),
         );
         return;
       }
@@ -2458,15 +2470,20 @@ export function VaultScreen() {
               showToast(restoredPart(title, r.partial));
               return;
             }
+            const beside =
+              r.ok && 'beside' in r && r.beside
+                ? vaultRestoredBeside({ title, folder: entry.kind === 'folder', beside: r.beside })
+                : undefined;
             showToast(
-              r.ok
-                ? vaultRestoredToast({
-                    title,
-                    folder: noteFolder(r.path),
-                    renamed: r.renamed,
-                    sayFolder: true,
-                  })
-                : vaultRestoreFailed(title),
+              beside ??
+                (r.ok
+                  ? vaultRestoredToast({
+                      title,
+                      folder: noteFolder(r.path),
+                      renamed: r.renamed,
+                      sayFolder: true,
+                    })
+                  : vaultRestoreFailed(title)),
             );
           }}
           onEmpty={async () => {
