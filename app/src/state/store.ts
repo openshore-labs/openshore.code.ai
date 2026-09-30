@@ -500,6 +500,7 @@ import {
   VAULT_TICK_FAILED,
   vaultTickChanged,
   VAULT_GONE_REASON,
+  vaultGoneManyLine,
   VAULT_NO_COPY_NAME_REASON,
   vaultEarlierFolderHeld,
   vaultFolderOffer,
@@ -6454,6 +6455,9 @@ export const useApp = create<AppState>((set, get, api) => {
     );
   }
 
+  // A replay found its note moved or deleted since the text was typed (E9).
+  class VaultNoteGone extends Error {}
+
   // Put text beside a note as a keep-both copy under the first free conflict
   // name ("Note (conflict 2026-09-27 1405).md", then " 2", " 3"), never over
   // anything: a guarded provider refuses a taken name itself (ifAbsent), the
@@ -6482,18 +6486,18 @@ export const useApp = create<AppState>((set, get, api) => {
   // are kept: the draft lands beside it as a conflict copy (its path is
   // returned), and a body that already matches is simply done. A guarded
   // provider checks the version itself as it writes (compare-and-swap); the
-  // others are asked first, as in M0.
+  // others are asked first, as in M0. On a guarded provider a note moved or
+  // deleted since the text was typed throws VaultNoteGone: it is held, never
+  // made again, since nobody chose that write (round 7 E9).
   async function replayVaultDraft(
     t: VaultTarget,
     e: VaultPendingEntry,
   ): Promise<string | undefined> {
     let current: StoredFile | undefined;
     if (t.provider.compareAndSwap) {
-      let r = await putVaultNote(t, e.path, e.text, guardFor(e.base));
-      // Gone since it was typed: the draft is the only copy of these words,
-      // so it comes back under its name, still never over anything.
-      if (!r.ok && r.conflict === 'missing')
-        r = await putVaultNote(t, e.path, e.text, guardFor(undefined));
+      // A draft with no base is a note made offline: its write is a create.
+      const r = await putVaultNote(t, e.path, e.text, guardFor(e.base));
+      if (!r.ok && r.conflict === 'missing') throw new VaultNoteGone();
       if (r.ok) {
         await adoptReplayed(t, e, r.file);
         return undefined;
@@ -6567,9 +6571,10 @@ export const useApp = create<AppState>((set, get, api) => {
 
   // Replay the drafts stashed against this provider and resource, and for the
   // team vault only those typed under the account signed in now. A refused
-  // one is held instead (retrying cannot fix it), a read-only vault holds
-  // them all, and anything still failing stays for the next attempt. Never
-  // throws: a replay is always a side trip after a success.
+  // one is held instead (retrying cannot fix it), and so is one whose note
+  // was moved or deleted elsewhere (E9); a read-only vault holds them all,
+  // and anything still failing stays for the next attempt. Never throws: a
+  // replay is always a side trip after a success.
   async function replayVaultPending(t: VaultTarget): Promise<void> {
     // While another device holds the enforced lease, nothing replays into
     // its notes; the stash waits for the lease to come back (CTO G5).
@@ -6606,6 +6611,7 @@ export const useApp = create<AppState>((set, get, api) => {
     const readOnly = vaultReadOnlyReason(t.providerId);
     const settled: VaultPendingEntry[] = [];
     const copies: string[] = [];
+    const gone: string[] = [];
     let held = 0;
     let unkept = 0;
     for (const e of mine) {
@@ -6633,7 +6639,10 @@ export const useApp = create<AppState>((set, get, api) => {
           continue;
         } catch (err) {
           if (!speaksNow(e)) break;
-          refusal = vaultRefusal(err);
+          if (err instanceof VaultNoteGone) {
+            refusal = VAULT_GONE_REASON;
+            gone.push(e.path);
+          } else refusal = vaultRefusal(err);
           // Anything else is still failing; keep it for the next attempt.
           if (!refusal) continue;
         }
@@ -6659,7 +6668,13 @@ export const useApp = create<AppState>((set, get, api) => {
       get().showToast(vaultReplayCopiesLine(copies));
       logEvent('vault_draft_kept_both', { count: copies.length });
     }
-    if (held) {
+    if (held && gone.length === held) {
+      // Every one held is text for a note moved or deleted elsewhere (E9).
+      set({ vaultError: 'held' });
+      get().showToast(
+        `${gone.length === 1 ? vaultGoneToast(noteTitle(gone[0]!)) : vaultGoneManyLine(gone.length)} ${heldLine(!unkept)}`,
+      );
+    } else if (held) {
       set({ vaultError: 'held' });
       const one = held === 1;
       const lead = one
@@ -7189,7 +7204,8 @@ export const useApp = create<AppState>((set, get, api) => {
 
   // Stash text for a note while a choice about it is open, stamped with the
   // version it was typed against, so a crash or a quit loses nothing (the
-  // next launch's replay turns it into a keep-both copy). Never the note.
+  // next launch's replay turns it into a keep-both copy, or, when the note
+  // is gone, holds it under Not saved). Never the note.
   async function stashConflictText(
     t: VaultTargetRef,
     path: string,

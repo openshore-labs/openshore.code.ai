@@ -30,6 +30,7 @@ import {
   VAULT_RESOLVE_SAME,
   VAULT_UPDATED_SUFFIX,
   vaultConflictCard,
+  vaultGoneManyLine,
   vaultGoneToast,
   vaultLeaveToast,
   vaultReplayCopiesLine,
@@ -730,6 +731,7 @@ describe('the resolve sheet says only what it knows (1.1)', () => {
       VAULT_NO_COPY_NAME_REASON,
       VAULT_UPDATED_SUFFIX,
       vaultGoneToast('Ideas'),
+      vaultGoneManyLine(3),
       vaultReplayCopiesLine(['Ideas (conflict 2026-09-27 1405).md']),
       vaultReplayCopiesLine(['a (conflict 2026-09-27 1405).md', 'b (conflict 2026-09-27 1405).md']),
     );
@@ -1399,5 +1401,12 @@ describe("the team's free space says what 0023 says (the review, finding 1)", ()
     expect(vaultFolderMoveRefused('Work', 1, 3, VAULT_TEAM_FULL)).toBe(
       `Moved 1 of 3 notes from "Work". The rest were not moved, so they are still there. ${VAULT_TEAM_FULL}`,
     );
+  });
+
+  it('a replay that finds notes moved or deleted says so, and never "try again" (E9)', () => {
+    expect(vaultGoneManyLine(3)).toBe(
+      '3 notes with text you had not saved were moved or deleted somewhere else.',
+    );
+    expect(vaultGoneManyLine(3)).not.toMatch(/try again/i);
   });
 });

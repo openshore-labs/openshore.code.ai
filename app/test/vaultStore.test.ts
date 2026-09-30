@@ -36,6 +36,7 @@ import {
   VAULT_TEAM_LAPSED_NOT_RESTORED,
   VAULT_TEAM_LAPSED_NOT_SAVED,
   VAULT_TEAM_LAPSED_NOT_SAVED_LINE,
+  VAULT_GONE_REASON,
   vaultFolderMoveTaken,
   vaultGoneToast,
   vaultRenameFailed,
@@ -5759,6 +5760,121 @@ describe('round 7, batch 2: team text and names stay where they belong', () => {
       await st().signIn('me@example.com', 'pw');
       expect(st().settings.vaultEmptyFolders).toEqual({ 'local::vault.personal': ['Mine'] });
       expect(st().settings.vaultRecent).toBeUndefined();
+    });
+  });
+  describe('E9: a replay never brings back a note someone deleted or moved', () => {
+    const GONE = `${vaultGoneToast('n')} Your text is kept under Not saved.`;
+    // Text typed into n.md ('A') while the team did not answer, stashed with
+    // its base, and the note closed.
+    async function typedOffline(words = 'A, and my offline words') {
+      server.put('n.md', 'A', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      server.rpcFailure = new TypeError('Failed to fetch');
+      await st().vaultSave('n.md', words);
+      server.rpcFailure = undefined;
+      expect(Object.keys(pending())).toHaveLength(1);
+      st().vaultCloseNote();
+      useApp.setState({ toast: undefined });
+      return words;
+    }
+
+    it("a teammate's delete stands: the text is held, and the note stays in Trash", async () => {
+      const words = await typedOffline();
+      server.drop('n.md');
+      await st().vaultRefresh();
+      await vi.waitFor(() => expect(Object.keys(pending())).toHaveLength(0));
+      expect(server.bytes('n.md')).toBeUndefined();
+      expect(teamHeld()).toEqual([
+        expect.objectContaining({ path: 'n.md', text: words, reason: VAULT_GONE_REASON }),
+      ]);
+      expect(st().toast).toBe(GONE);
+      expect((await st().vaultLoadTrash())?.map((e) => e.path)).toEqual(['n.md']);
+    });
+
+    it("the teammate's last text stays in Trash, and Restore brings it back", async () => {
+      await typedOffline();
+      server.put('n.md', 'A plus their paragraph B');
+      server.drop('n.md');
+      await st().vaultRefresh();
+      expect(server.bytes('n.md')).toBeUndefined();
+      await st().vaultLoadTrash();
+      expect(await st().vaultRestoreTrash('n:n.md')).toMatchObject({ ok: true });
+      expect(server.bytes('n.md')).toBe('A plus their paragraph B');
+    });
+
+    it("a teammate's rename stands: the old name is not made again", async () => {
+      const words = await typedOffline();
+      const rpc = server.rpc.bind(server);
+      server.caller = 'u-them';
+      await rpc('org_vault_move', 'tok', {
+        p_org: ORG,
+        p_from: 'n.md',
+        p_to: 'renamed.md',
+        p_if_match: server.notes.get('n.md')!.rev,
+      });
+      await st().vaultRefresh();
+      expect(server.bytes('n.md')).toBeUndefined();
+      expect(server.bytes('renamed.md')).toBe('A');
+      expect(teamHeld()).toEqual([expect.objectContaining({ path: 'n.md', text: words })]);
+      expect(st().toast).toBe(GONE);
+    });
+
+    it('a gone-note choice open when the app was killed is never answered as Save it again', async () => {
+      server.put('n.md', 'A', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      server.drop('n.md');
+      st().vaultNoteDraft('n.md', 'A, and my words');
+      await st().vaultSave('n.md', 'A, and my words');
+      expect(st().vaultConflict).toMatchObject({ kind: 'missing' });
+      // A relaunch: the choice and the open note are gone; the stash is not.
+      useApp.setState({ vaultConflict: undefined, vaultNote: undefined, toast: undefined });
+      await st().vaultRefresh();
+      expect({ bytes: server.bytes('n.md'), toast: st().toast }).toEqual({
+        bytes: undefined,
+        toast: GONE,
+      });
+      expect(teamHeld()).toEqual([
+        expect.objectContaining({ path: 'n.md', text: 'A, and my words' }),
+      ]);
+      expect(pending()).toEqual({});
+    });
+
+    it('on the folder and on your computer too, a relaunch replay holds a gone note', async () => {
+      for (const id of ['files', 'hub'] as const) {
+        reset();
+        useApp.setState({ settings: { ...st().settings, gitosResources: personalOn(id) } });
+        const p = byId[id]!;
+        p.files.set('n.md', 'A');
+        await st().vaultRefresh();
+        await st().vaultOpen('n.md');
+        p.fail.write = true;
+        await st().vaultSave('n.md', 'A, offline here');
+        p.fail.write = false;
+        st().vaultCloseNote();
+        p.files.delete('n.md');
+        useApp.setState({ toast: undefined });
+        await st().vaultRefresh();
+        expect(p.files.has('n.md')).toBe(false);
+        expect(st().vaultHeld).toEqual([
+          expect.objectContaining({ path: 'n.md', text: 'A, offline here' }),
+        ]);
+        expect(st().toast).toBe(GONE);
+        expect(pending()).toEqual({});
+      }
+    });
+
+    it('an offline create (no base) still lands when the list answers', async () => {
+      await st().vaultRefresh();
+      server.rpcFailure = new TypeError('Failed to fetch');
+      await st().vaultCreate('Fresh', 'first words');
+      server.rpcFailure = undefined;
+      expect(Object.keys(pending())).toEqual([`org::${ORG}::Fresh.md`]);
+      await st().vaultRefresh();
+      expect(server.bytes('Fresh.md')).toBe('first words');
+      expect(pending()).toEqual({});
+      expect(teamHeld()).toEqual([]);
     });
   });
 });

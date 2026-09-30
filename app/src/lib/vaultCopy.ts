@@ -658,6 +658,13 @@ export function vaultLeaveToast(
 export const VAULT_GONE_REASON =
   'The note was moved or deleted somewhere else before this text was saved.';
 
+/** A replay found several notes moved or deleted somewhere else before the
+ *  text typed in them was saved: the text is held, the notes are not made
+ *  again (round 7 E9). The held line follows. */
+export function vaultGoneManyLine(count: number): string {
+  return `${count} notes with text you had not saved were moved or deleted somewhere else.`;
+}
+
 /** The Not saved reason when no conflict-copy name was free after 20 tries. */
 export const VAULT_NO_COPY_NAME_REASON =
   'No free name was left for your copy, so the text is kept here.';
