@@ -105,8 +105,11 @@
   --tile-ink-start: #2b3f49;
   --tile-ink-end: #1c2a33;
 
-  /* Wave-mark accent from the brand tile (the lighter shore teal). */
+  /* Wave-mark accent from the brand tile (the lighter shore teal). A fill and
+     a graphic color; --wave-ink is the same teal deepened for text, 4.5:1 on
+     --bg and --surface (app/test/reviewStaffContrast.test.ts). */
   --wave: #4b90a3;
+  --wave-ink: #3a6f7d;
 
   /* The currents glow (the Siri-style ring in the brand's water): deep water,
      water, shore teal, a light aqua the ring needs for its highlight, and the
@@ -279,6 +282,7 @@
     --danger: #e5675a;
     --link: #6fb0e0;
     --wave: #6bb3c4;
+    --wave-ink: #6bb3c4;
     --current-1: #2f6f80;
     --current-2: #4b90a3;
     --current-3: #6bb3c4;
@@ -325,6 +329,7 @@
   --danger: #e5675a;
   --link: #6fb0e0;
   --wave: #6bb3c4;
+  --wave-ink: #6bb3c4;
   --current-1: #2f6f80;
   --current-2: #4b90a3;
   --current-3: #6bb3c4;
@@ -7290,7 +7295,7 @@ button.vault-tag {
    reviewer. */
 .review-staff {
   font-size: var(--text-1);
-  color: var(--wave);
+  color: var(--wave-ink);
   font-weight: var(--weight-semibold);
 }
 .review-more {

@@ -21,7 +21,17 @@
 //                  'not_signed_in' or 'billing_failed' (500 has no code).
 // A success must never read as a failure: the account is gone either way, and
 // a device that stays signed in to a deleted account is the fault this fixes.
-import { SupabaseRequestError, type Session } from '../lib/supabase.js';
+//
+// Neither function can tell "signed out" from "already deleted": both ask
+// the auth server who the token belongs to, and a token for an account that
+// no longer exists gets no user, so main's answers 'unauthorized' and the
+// 2026-09-24 one 'not_signed_in'. That is the answer on a retry after a lost
+// 200, and on the second device after the person deleted the account on the
+// first. So on either code this side asks the auth server once itself: an
+// account that is gone reads as deleted (signed out, the goodbye), a sign-in
+// that is dead signs the device out with a line that claims nothing about
+// the account, and a live one is a plain failure.
+import { SupabaseRequestError, type AuthUserState, type Session } from '../lib/supabase.js';
 
 /** What a delete-account attempt came to. */
 export type DeleteAccountOutcome =
@@ -35,8 +45,15 @@ export type DeleteAccountOutcome =
   /** Refused: the server wants a recent sign-in first (the 2026-09-24
    *  function's ten-minute check). Nothing changed. */
   | { kind: 'reauth_required' }
-  /** Not deleted: offline, signed out underneath, or the server failed.
-   *  Nothing changed on the device either. */
+  /** This device's sign-in is no longer valid, so the device is signed out
+   *  now. The account may be gone (deleted on another device) or not; nothing
+   *  here can tell, so the sheet claims neither. */
+  | { kind: 'signed_out' }
+  /** Refused: a subscription could not be stopped, so nothing was deleted
+   *  (main's 'billing', the 2026-09-24 function's 'billing_failed'). */
+  | { kind: 'billing' }
+  /** Not deleted: offline, or the server failed. Nothing changed on the
+   *  device either. */
   | { kind: 'failed' };
 
 /** A success body from either function. */
@@ -53,26 +70,44 @@ export interface AccountDeletionDeps {
   /** POST delete-account as that session. Throws a SupabaseRequestError
    *  carrying the refusal code when the server says no. */
   invoke: (accessToken: string) => Promise<DeleteAccountAnswer>;
+  /** Ask the auth server, once, what it makes of this access token (lib/
+   *  supabase.ts authUserState). Throws when it cannot say (offline). */
+  authState: (accessToken: string) => Promise<AuthUserState>;
   /** Sign this device out, as Sign out does. */
   forgetSession: () => Promise<unknown>;
   /** Drop the Apple receipt still waiting to be linked, if any. */
   clearPendingAppleLink: () => Promise<void>;
 }
 
-/** The refusal codes either function sends that mean something other than
- *  "failed". Every other code, and none, is a failure. */
-const REFUSALS: Record<string, DeleteAccountOutcome['kind']> = {
+/** How a refusal code from either function reads. 'no_user' is not an
+ *  outcome: the server found no account for the token, which deleteAccount
+ *  settles by asking the auth server itself. Every other code, and none, is
+ *  a failure. */
+type Refusal = 'owns_org' | 'reauth_required' | 'billing' | 'no_user';
+const REFUSALS: Record<string, Refusal> = {
   owns_org: 'owns_org',
   transfer_or_delete_org: 'owns_org',
   reauth_required: 'reauth_required',
+  billing: 'billing',
+  billing_failed: 'billing',
+  unauthorized: 'no_user',
+  not_signed_in: 'no_user',
 };
 
-/** Read a refusal: a SupabaseRequestError's code, mapped; anything else,
- *  including a network error, is a failure. */
+function refusalOf(err: unknown): Refusal | undefined {
+  return err instanceof SupabaseRequestError && err.code && Object.hasOwn(REFUSALS, err.code)
+    ? REFUSALS[err.code]
+    : undefined;
+}
+
+/** Read a refusal that needs no second question: a SupabaseRequestError's
+ *  code, mapped; anything else, including a network error, is a failure. A
+ *  no-user code reads as failed here; deleteAccount asks before it settles. */
 export function refusalOutcome(err: unknown): DeleteAccountOutcome {
-  const kind = err instanceof SupabaseRequestError && err.code ? REFUSALS[err.code] : undefined;
+  const kind = refusalOf(err);
   if (kind === 'owns_org') return { kind: 'owns_org' };
   if (kind === 'reauth_required') return { kind: 'reauth_required' };
+  if (kind === 'billing') return { kind: 'billing' };
   return { kind: 'failed' };
 }
 
@@ -93,13 +128,19 @@ export async function deleteAccount(deps: AccountDeletionDeps): Promise<DeleteAc
   } catch {
     return { kind: 'failed' };
   }
-  if (!session) return { kind: 'failed' };
+  // The row shows only while signed in, so no session here means the sign-in
+  // ended underneath: the session door found the refresh token dead (the
+  // account deleted on another device, or signed out everywhere) and has
+  // already signed the device out. Nothing more to forget.
+  if (!session) return { kind: 'signed_out' };
 
   let outcome: DeleteAccountOutcome;
   try {
     outcome = answerOutcome(await deps.invoke(session.accessToken));
   } catch (err) {
-    return refusalOutcome(err);
+    if (refusalOf(err) !== 'no_user') return refusalOutcome(err);
+    outcome = await noUserOutcome(deps, session.accessToken);
+    if (outcome.kind === 'signed_out') await deps.forgetSession().catch(() => {});
   }
   if (outcome.kind !== 'deleted') return outcome;
 
@@ -108,4 +149,23 @@ export async function deleteAccount(deps: AccountDeletionDeps): Promise<DeleteAc
   await deps.forgetSession().catch(() => {});
   await deps.clearPendingAppleLink().catch(() => {});
   return outcome;
+}
+
+/** The server found no account for this token. Ask the auth server once:
+ *  gone is a deletion (the Apple note as an if, since nobody said), a dead
+ *  sign-in is signed out, and a live one means the function failed. When the
+ *  auth server cannot be asked either, it is a failure. */
+async function noUserOutcome(
+  deps: AccountDeletionDeps,
+  accessToken: string,
+): Promise<DeleteAccountOutcome> {
+  let state: AuthUserState;
+  try {
+    state = await deps.authState(accessToken);
+  } catch {
+    return { kind: 'failed' };
+  }
+  if (state === 'gone') return { kind: 'deleted' };
+  if (state === 'invalid') return { kind: 'signed_out' };
+  return { kind: 'failed' };
 }

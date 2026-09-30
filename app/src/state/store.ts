@@ -470,7 +470,7 @@ import {
   type VaultRestoreResult,
   type VaultUndo,
 } from './vaultOps.js';
-import { invokeFunctionWithCode } from '../lib/supabase.js';
+import { authUserState, invokeFunctionWithCode } from '../lib/supabase.js';
 import {
   deleteAccount as runAccountDeletion,
   type DeleteAccountAnswer,
@@ -9082,6 +9082,7 @@ export const useApp = create<AppState>((set, get, api) => {
       const outcome = await runAccountDeletion({
         session: freshAuth,
         invoke: (token) => invokeFunctionWithCode<DeleteAccountAnswer>('delete-account', token, {}),
+        authState: (token) => authUserState(token),
         forgetSession: () => forgetSession(),
         clearPendingAppleLink: () => storeDelete(PENDING_APPLE_LINK_KEY),
       });

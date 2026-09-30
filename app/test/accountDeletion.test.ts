@@ -48,6 +48,8 @@ const sb = vi.hoisted(() => ({
   calls: [] as Array<{ name: string; token: string; body: unknown }>,
   answer: { ok: true, appleNote: false } as unknown,
   refuse: undefined as { status: number; code?: string } | undefined,
+  authState: 'here' as 'here' | 'gone' | 'invalid',
+  asked: [] as string[],
 }));
 vi.mock('../src/lib/supabase.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('../src/lib/supabase.js')>();
@@ -58,6 +60,10 @@ vi.mock('../src/lib/supabase.js', async (importOriginal) => {
     rpc: async () => null,
     readUserPrefs: async () => undefined,
     writeUserPrefs: async () => {},
+    authUserState: async (token: string) => {
+      sb.asked.push(token);
+      return sb.authState;
+    },
     invokeFunctionWithCode: async (name: string, token: string, body: unknown) => {
       sb.calls.push({ name, token, body });
       if (sb.refuse) {
@@ -82,12 +88,16 @@ function live(token = 'tok'): Session {
 }
 
 function fakes(over: Partial<Parameters<typeof deleteAccount>[0]> = {}) {
-  const seen = { invoked: [] as string[], forgot: 0, cleared: 0 };
+  const seen = { invoked: [] as string[], asked: [] as string[], forgot: 0, cleared: 0 };
   const deps = {
     session: async () => live('fresh'),
     invoke: async (token: string) => {
       seen.invoked.push(token);
       return { ok: true, appleNote: false };
+    },
+    authState: async (token: string): Promise<'here' | 'gone' | 'invalid'> => {
+      seen.asked.push(token);
+      return 'here';
     },
     forgetSession: async () => {
       seen.forgot += 1;
@@ -165,8 +175,21 @@ describe('the deletion flow', () => {
     expect(seen.cleared).toBe(0);
   });
 
-  it('reads every other code from either function as failed', async () => {
-    for (const code of ['billing', 'billing_failed', 'not_signed_in', 'unauthorized', 'failed']) {
+  it('reads a subscription that could not be stopped, from either function, as billing', async () => {
+    for (const code of ['billing', 'billing_failed']) {
+      const { deps, seen } = fakes({
+        invoke: async () => {
+          throw new SupabaseRequestError('Request failed (502).', 502, code);
+        },
+      });
+      expect(await deleteAccount(deps), code).toEqual({ kind: 'billing' });
+      expect(seen.forgot).toBe(0);
+      expect(seen.asked).toEqual([]);
+    }
+  });
+
+  it('reads every other code from either function as failed, and asks nothing more', async () => {
+    for (const code of ['failed', 'not_a_code_either_sends']) {
       const { deps, seen } = fakes({
         invoke: async () => {
           throw new SupabaseRequestError('refused', 500, code);
@@ -174,7 +197,66 @@ describe('the deletion flow', () => {
       });
       expect(await deleteAccount(deps), code).toEqual({ kind: 'failed' });
       expect(seen.forgot).toBe(0);
+      expect(seen.asked).toEqual([]);
     }
+  });
+
+  // Main's 'unauthorized' and the 2026-09-24 function's 'not_signed_in' both
+  // mean the server found no account for the token. That is what a retry
+  // after a lost 200 gets, and what the second device gets after the person
+  // deleted the account on the first (review 2026-09-30). The flow asks the
+  // auth server once before it says anything.
+  for (const code of ['unauthorized', 'not_signed_in']) {
+    const noUser = (answer: () => Promise<'here' | 'gone' | 'invalid'>) =>
+      fakes({
+        invoke: async () => {
+          throw new SupabaseRequestError('Request failed (401).', 401, code);
+        },
+        authState: answer,
+      });
+
+    it(`${code}, and the auth server says the account is gone: deleted, signed out`, async () => {
+      const { deps, seen } = noUser(async () => 'gone');
+      const outcome = await deleteAccount(deps);
+      expect(outcome).toEqual({ kind: 'deleted' });
+      expect(outcome.kind === 'deleted' && outcome.appleNote).toBeUndefined();
+      expect(seen.forgot).toBe(1);
+      expect(seen.cleared).toBe(1);
+    });
+
+    it(`${code}, and the sign-in itself is dead: signed out, claiming nothing`, async () => {
+      const { deps, seen } = noUser(async () => 'invalid');
+      expect(await deleteAccount(deps)).toEqual({ kind: 'signed_out' });
+      expect(seen.forgot).toBe(1);
+      // The account may still exist: its pending Apple receipt stays.
+      expect(seen.cleared).toBe(0);
+    });
+
+    it(`${code}, and the account and sign-in are live: failed, still signed in`, async () => {
+      const { deps, seen } = noUser(async () => 'here');
+      expect(await deleteAccount(deps)).toEqual({ kind: 'failed' });
+      expect(seen.forgot).toBe(0);
+    });
+
+    it(`${code}, and the auth server cannot be asked: failed, still signed in`, async () => {
+      const { deps, seen } = noUser(async () => {
+        throw new TypeError('Failed to fetch');
+      });
+      expect(await deleteAccount(deps)).toEqual({ kind: 'failed' });
+      expect(seen.forgot).toBe(0);
+    });
+  }
+
+  it('asks the auth server about the same token it sent', async () => {
+    const { deps, seen } = fakes({
+      invoke: async (token) => {
+        seen.invoked.push(token);
+        throw new SupabaseRequestError('Request failed (401).', 401, 'unauthorized');
+      },
+    });
+    await deleteAccount(deps);
+    expect(seen.invoked).toEqual(['fresh']);
+    expect(seen.asked).toEqual(['fresh']);
   });
 
   it('fails without touching the device when offline, refused, or answered oddly', async () => {
@@ -183,7 +265,7 @@ describe('the deletion flow', () => {
         throw new TypeError('Failed to fetch');
       },
       async () => {
-        throw new SupabaseRequestError('Request failed (502).', 502, 'billing');
+        throw new SupabaseRequestError('Request failed (500).', 500);
       },
       async () => ({ ok: false }),
       async () => ({ deleted: false }),
@@ -196,10 +278,13 @@ describe('the deletion flow', () => {
     }
   });
 
-  it('never calls the server without a session', async () => {
+  // The row shows only while signed in, so no session means the session door
+  // found the sign-in dead and has already signed the device out.
+  it('never calls the server without a session, and says the device is signed out', async () => {
     const { deps, seen } = fakes({ session: async () => undefined });
-    expect(await deleteAccount(deps)).toEqual({ kind: 'failed' });
+    expect(await deleteAccount(deps)).toEqual({ kind: 'signed_out' });
     expect(seen.invoked).toEqual([]);
+    expect(seen.forgot).toBe(0);
     const offline = fakes({
       session: async () => {
         throw new Error('offline');
@@ -226,6 +311,8 @@ describe('the store', () => {
     sb.calls = [];
     sb.answer = { ok: true, appleNote: false };
     sb.refuse = undefined;
+    sb.authState = 'here';
+    sb.asked = [];
     useApp.setState({ authSession: live(), toast: undefined });
   });
 
@@ -265,7 +352,33 @@ describe('the store', () => {
 
   it('asks nothing when nobody is signed in', async () => {
     useApp.setState({ authSession: undefined });
-    expect(await useApp.getState().deleteAccount()).toEqual({ kind: 'failed' });
+    expect(await useApp.getState().deleteAccount()).toEqual({ kind: 'signed_out' });
     expect(sb.calls).toEqual([]);
+  });
+
+  it('signs out with the goodbye when the account was already deleted elsewhere', async () => {
+    mem.set(PENDING, JSON.stringify({ jws: 'x.y.z', at: 'now' }));
+    sb.refuse = { status: 401, code: 'not_signed_in' };
+    sb.authState = 'gone';
+    expect(await useApp.getState().deleteAccount()).toEqual({ kind: 'deleted' });
+    expect(sb.asked).toEqual(['tok']);
+    expect(useApp.getState().authSession).toBeUndefined();
+    expect(mem.has(PENDING)).toBe(false);
+  });
+
+  it('signs out, and keeps the pending receipt, when only the sign-in is dead', async () => {
+    mem.set(PENDING, JSON.stringify({ jws: 'x.y.z', at: 'now' }));
+    sb.refuse = { status: 401, code: 'unauthorized' };
+    sb.authState = 'invalid';
+    expect(await useApp.getState().deleteAccount()).toEqual({ kind: 'signed_out' });
+    expect(useApp.getState().authSession).toBeUndefined();
+    expect(mem.has(PENDING)).toBe(true);
+  });
+
+  it('keeps the person signed in when the auth server still knows them', async () => {
+    sb.refuse = { status: 401, code: 'unauthorized' };
+    sb.authState = 'here';
+    expect(await useApp.getState().deleteAccount()).toEqual({ kind: 'failed' });
+    expect(useApp.getState().authSession).toBeDefined();
   });
 });

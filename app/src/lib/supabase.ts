@@ -227,6 +227,31 @@ export async function getUser(accessToken: string): Promise<{ id: string; email?
   return { id: u.id, email: u.email };
 }
 
+/** What the auth server says about an access token's account, asked once:
+ *  'here' (the account and this sign-in are live), 'gone' (the token names an
+ *  account that no longer exists), or 'invalid' (the sign-in itself is dead:
+ *  ended everywhere, or a token the server will not read). GoTrue answers a
+ *  deleted account with 403 and error_code `user_not_found` (checked on the
+ *  local stack's gotrue v2.197.0), and looks the account up before the
+ *  session, so only that code means gone. Offline, or any other answer,
+ *  throws: nothing here can tell. */
+export type AuthUserState = 'here' | 'gone' | 'invalid';
+
+export async function authUserState(accessToken: string): Promise<AuthUserState> {
+  const res = await fetch(`${base()}/auth/v1/user`, { headers: authHeaders(accessToken) });
+  if (res.ok) return 'here';
+  let code: unknown = res.headers.get('x-sb-error-code');
+  try {
+    const body = (await res.json()) as { error_code?: unknown } | null;
+    code = body?.error_code ?? code;
+  } catch {
+    // Not JSON: the header, if any, is all there is.
+  }
+  if (code === 'user_not_found') return 'gone';
+  if (res.status === 401 || res.status === 403) return 'invalid';
+  throw new SupabaseRequestError(`Request failed (${res.status}).`, res.status);
+}
+
 /** The preferences that follow a signed-in person (lib/settingsReach.ts) ride
  *  on the account's own user record, under one key, so they need no table of
  *  their own. What is written is only the allowlisted preferences and when
@@ -265,7 +290,17 @@ export async function rpc<T>(
   // The status rides along so a caller can tell a refusal (a raised P0001
   // arrives as a 400) from a failure worth retrying.
   if (!res.ok) throw new SupabaseRequestError(await readError(res), res.status);
-  return (await res.json()) as T;
+  return readRpcBody<T>(res);
+}
+
+/** An RPC's answer. PostgREST answers a function that returns void with 204
+ *  and no body (postgrest v16.3, the CLI's pinned image), and `res.json()` on
+ *  an empty body throws, so a call that worked would read as a failure. No
+ *  body is no value. */
+async function readRpcBody<T>(res: Response): Promise<T> {
+  if (res.status === 204) return undefined as T;
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 /** A minimal PostgREST select. Pass a query string like "select=*&org_id=eq.123". */
@@ -305,7 +340,7 @@ export async function rpcPublic<T>(
     body: JSON.stringify(args),
   });
   if (!res.ok) throw new Error(await readError(res));
-  return (await res.json()) as T;
+  return readRpcBody<T>(res);
 }
 
 /** Insert one or more rows, returning the inserted representation. */
