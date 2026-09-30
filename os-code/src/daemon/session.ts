@@ -720,6 +720,8 @@ export class LocalDriver implements SessionDriver {
   // event (it rides again only when it changes), and the notes a command
   // leaves for the person, said right under their message.
   private commandsSaid = COMMANDS_NONE;
+  // The last repo-info still on its way out; the next one waits for it.
+  private repoInfoSaid: Promise<void> = Promise.resolve();
   private notesAfterStart: string[] = [];
   // True while a rewind puts files back (P2): no task starts, no other
   // restore lands, and the driver is not evicted until it is done.
@@ -1190,22 +1192,30 @@ export class LocalDriver implements SessionDriver {
   async emitRepoInfo(): Promise<void> {
     // Decided before the git wait, so two calls in flight never both say it.
     const commands = this.commandsToSay();
+    const read = this.readRepoState();
+    // Said in the order asked: each call reads git at once but speaks only
+    // after the call before it has, so a slow first read (the one carrying
+    // the command list, as the agent attached) is never overtaken by a
+    // quicker later one that carries nothing.
+    const previous = this.repoInfoSaid;
+    const said = (async () => {
+      const state = await read;
+      await previous;
+      this.emit({ type: 'repo-info', cwd: this.cwd, ...state, ...commands });
+    })();
+    this.repoInfoSaid = said.catch(() => undefined);
+    return said;
+  }
+
+  /** The branch and whether files changed; nothing for a non-repo cwd or a git failure. */
+  private async readRepoState(): Promise<{ branch?: string; dirty?: boolean }> {
     try {
       const git = simpleGit(this.cwd);
-      if (!(await git.checkIsRepo())) {
-        this.emit({ type: 'repo-info', cwd: this.cwd, ...commands });
-        return;
-      }
+      if (!(await git.checkIsRepo())) return {};
       const status = await git.status();
-      this.emit({
-        type: 'repo-info',
-        cwd: this.cwd,
-        branch: status.current ?? undefined,
-        dirty: !status.isClean(),
-        ...commands,
-      });
+      return { branch: status.current ?? undefined, dirty: !status.isClean() };
     } catch {
-      this.emit({ type: 'repo-info', cwd: this.cwd, ...commands });
+      return {};
     }
   }
 

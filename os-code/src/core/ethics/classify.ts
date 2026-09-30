@@ -106,11 +106,21 @@ export type IntentCheck = (input: {
 // suggestions that read as a moral aside.
 // ---------------------------------------------------------------------------
 
+/** The one published address for questions, appeals and support (founder
+ *  decision F1, 2026-09-30: support@openshore.ai passed its round-trip test,
+ *  so it replaces os-code@openshorellc.com). The app's Delete account sheet
+ *  reads this constant through os-code/protocol; the server's ladder (the
+ *  newest record_enforcement, 0022) and docs/terms-of-use.md cannot import it,
+ *  so app/test/contactAddress.test.ts fails when either says anything else.
+ *  Switching it again changes this line, the Terms, and the ladder's warning
+ *  through a new migration, since 0022 is never edited once production runs it
+ *  (DECISIONS, CTO 11 package C). */
+export const SUPPORT_EMAIL = 'support@openshore.ai';
+
 /** The next action on a hard block, kept apart from the refusal so the
  *  refusal stays two short sentences. Over-blocking is a defect, so a block
  *  names the appeal path: the app renders it as a card with a prefilled note to
  *  support, and the engine appends it to the block event's message. */
-export const SUPPORT_EMAIL = 'support@openshore.ai';
 export const BLOCK_NEXT_ACTION = `If this was legitimate work, say so: write to ${SUPPORT_EMAIL} with the category and the time. Over-blocking is treated as a defect on our side.`;
 
 /** The next action for a block in this category: the appeal line on the three

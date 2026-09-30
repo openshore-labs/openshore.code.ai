@@ -5,11 +5,24 @@
 // work is state/accountDeletion.ts, reached through the store; this is only
 // what the person sees, so it takes the call as a prop and mounts in a test.
 //
-// Three sheets, one at a time: the ask, "One step first" when the person owns
-// a team with other people in it, and the goodbye. Each is a presence-aware
-// Sheet, so the ask plays its exit while the next one arrives, and the
-// goodbye outlives the signed-in state that drew the row.
+// Four sheets, one at a time: the ask, "One step first" when the person owns
+// a team with other people in it, the goodbye, and "This device is signed
+// out" when the sign-in died underneath (the account deleted, here on an
+// earlier try or on another device, or signed out everywhere). Each is a
+// presence-aware Sheet, so the ask plays its exit while the next one
+// arrives, and the goodbye and the signed-out note outlive the signed-in
+// state that drew the row. A failure, a subscription that could not be
+// stopped, the live 2026-09-24 function asking for a recent sign-in, or an
+// answer nobody could confirm (the server found no account and the auth
+// server could not say why), is a line in the ask itself, with the choice
+// left open. Only the lines for a refusal the server named say "was not
+// deleted"; the unconfirmed one never does.
+//
+// The support address is the one published address (SUPPORT_EMAIL, founder
+// decision F1), read from the engine's constant so the app, the Terms and the
+// server's ladder cannot drift apart (app/test/contactAddress.test.ts).
 import { useState } from 'react';
+import { SUPPORT_EMAIL } from 'os-code/protocol';
 import type { DeleteAccountOutcome } from '../state/accountDeletion.js';
 import { hapticCommit } from '../lib/haptics.js';
 import { openExternal } from '../lib/platform.js';
@@ -26,21 +39,39 @@ export const DELETE_ACCOUNT_COPY = {
   keep: 'Keep my account',
   working: 'Deleting...',
   failed: 'Your account was not deleted. Check your connection and try again.',
+  unconfirmed:
+    'We could not confirm whether your account was deleted. Check your connection and try again.',
+  billing: `Your account was not deleted: a subscription could not be stopped. Try again, or write to ${SUPPORT_EMAIL}.`,
+  reauth:
+    'Your account was not deleted. For your safety, this needs a recent sign-in: sign out, sign back in, then delete your account within ten minutes.',
   ownsOrgTitle: 'One step first',
-  ownsOrgBody:
-    'You own a team with other people in it, so this account cannot be deleted yet. Email support@openshore.ai and we will hand the team over or close it with you.',
+  ownsOrgBody: `You own a team with other people in it, so this account cannot be deleted yet. Email ${SUPPORT_EMAIL} and we will hand the team over or close it with you.`,
   emailSupport: 'Email support',
   close: 'Close',
+  signedOutTitle: 'This device is signed out',
+  signedOutBody:
+    "This device's sign-in is no longer valid, so it has been signed out. If your account was already deleted, here or on another device, it is gone. If not, sign in again and try once more.",
   doneTitle: 'Your account is deleted',
   doneBody: 'This device is signed out. Your chats and projects are still here.',
   appleNote:
     'Your Apple subscription is separate. Cancel it on your iPhone in Settings, then your name, then Subscriptions, or it keeps renewing.',
+  appleNoteIf:
+    'If you pay for Personal through Apple, that subscription is separate. Cancel it on your iPhone in Settings, then your name, then Subscriptions, or it keeps renewing.',
   done: 'Done',
 } as const;
 
-export const SUPPORT_MAILTO = 'mailto:support@openshore.ai';
+export const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}`;
 
-type Step = 'ask' | 'owns_org' | 'done' | undefined;
+type Step = 'ask' | 'owns_org' | 'done' | 'signed_out' | undefined;
+/** A line in the ask after a try that did not delete. */
+type Notice = 'failed' | 'unconfirmed' | 'billing' | 'reauth' | undefined;
+
+const NOTICE_COPY: Record<NonNullable<Notice>, string> = {
+  failed: DELETE_ACCOUNT_COPY.failed,
+  unconfirmed: DELETE_ACCOUNT_COPY.unconfirmed,
+  billing: DELETE_ACCOUNT_COPY.billing,
+  reauth: DELETE_ACCOUNT_COPY.reauth,
+};
 
 export function DeleteAccount({
   signedIn,
@@ -55,11 +86,13 @@ export function DeleteAccount({
 }) {
   const [step, setStep] = useState<Step>(undefined);
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const [appleNote, setAppleNote] = useState(false);
+  const [notice, setNotice] = useState<Notice>(undefined);
+  // true: the server says the person pays through Apple; undefined: it did
+  // not say (the 2026-09-24 function), so the note is an if.
+  const [appleNote, setAppleNote] = useState<boolean | undefined>(false);
 
   const ask = () => {
-    setFailed(false);
+    setNotice(undefined);
     setStep('ask');
   };
   // Nothing closes the ask while the server is at work: a dismissed sheet
@@ -70,7 +103,7 @@ export function DeleteAccount({
   const run = async () => {
     hapticCommit();
     setBusy(true);
-    setFailed(false);
+    setNotice(undefined);
     const outcome = await onDelete().catch((): DeleteAccountOutcome => ({ kind: 'failed' }));
     setBusy(false);
     if (outcome.kind === 'deleted') {
@@ -78,8 +111,16 @@ export function DeleteAccount({
       setStep('done');
     } else if (outcome.kind === 'owns_org') {
       setStep('owns_org');
+    } else if (outcome.kind === 'signed_out') {
+      setStep('signed_out');
+    } else if (outcome.kind === 'reauth_required') {
+      setNotice('reauth');
+    } else if (outcome.kind === 'billing') {
+      setNotice('billing');
+    } else if (outcome.kind === 'unconfirmed') {
+      setNotice('unconfirmed');
     } else {
-      setFailed(true);
+      setNotice('failed');
     }
   };
   const finish = () => {
@@ -104,9 +145,9 @@ export function DeleteAccount({
       <Sheet open={step === 'ask'} onClose={closeAsk} variant="confirm">
         <h3>{DELETE_ACCOUNT_COPY.title}</h3>
         <p>{DELETE_ACCOUNT_COPY.body}</p>
-        {failed ? (
+        {notice ? (
           <p className="confirm-failed" role="alert">
-            {DELETE_ACCOUNT_COPY.failed}
+            {NOTICE_COPY[notice]}
           </p>
         ) : null}
         <div className="confirm-row">
@@ -141,10 +182,21 @@ export function DeleteAccount({
         </div>
       </Sheet>
 
+      <Sheet open={step === 'signed_out'} onClose={() => setStep(undefined)} variant="confirm">
+        <h3>{DELETE_ACCOUNT_COPY.signedOutTitle}</h3>
+        <p>{DELETE_ACCOUNT_COPY.signedOutBody}</p>
+        <div className="confirm-row">
+          <button type="button" className="btn primary press-fb" onClick={() => setStep(undefined)}>
+            {DELETE_ACCOUNT_COPY.close}
+          </button>
+        </div>
+      </Sheet>
+
       <Sheet open={step === 'done'} onClose={finish} variant="confirm">
         <h3>{DELETE_ACCOUNT_COPY.doneTitle}</h3>
         <p>{DELETE_ACCOUNT_COPY.doneBody}</p>
-        {appleNote ? <p>{DELETE_ACCOUNT_COPY.appleNote}</p> : null}
+        {appleNote === true ? <p>{DELETE_ACCOUNT_COPY.appleNote}</p> : null}
+        {appleNote === undefined ? <p>{DELETE_ACCOUNT_COPY.appleNoteIf}</p> : null}
         <div className="confirm-row">
           <button type="button" className="btn primary press-fb" onClick={finish}>
             {DELETE_ACCOUNT_COPY.done}

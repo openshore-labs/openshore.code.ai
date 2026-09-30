@@ -1,6 +1,8 @@
 # Continuous integration: lint, typecheck, and test the whole workspace on
-# every push to main and every PR that targets it, and (the `sql` job) run the
-# pgTAP suite against every Supabase migration. Before this workflow existed
+# every push to main and every PR that targets it, and run the pgTAP suite
+# against the Supabase migrations two ways: built from empty (the `sql` job)
+# and replaying production's recorded history first (the `sql-replay` job,
+# CTO 11). Before this workflow existed
 # the only gate was Codemagic, which ships each main push straight to TestFlight
 # WITHOUT running the suite, so the em-dash guard, redaction tests, RBAC/crypto
 # tests, and the security tests only ever ran on a developer's machine. This is
@@ -192,10 +194,76 @@ jobs:
       # major_version) with the auth schema and roles, then applies
       # supabase/migrations in order. Only the database container starts; the
       # `supabase start -x ...` fallback is not needed on this version.
+      # 0019 reads the guardrail HMAC key from Supabase Vault and stops without
+      # it, so local-vault.sh adds a throwaway key to config.toml for this one
+      # command and puts the file back (the entry is never committed: `db push`
+      # would upsert it into production).
       - name: Start the database and apply every migration
-        run: supabase db start
+        run: bash supabase/scripts/local-vault.sh supabase db start
 
       # Runs every supabase/tests/*.test.sql through pg_prove. Any failed
       # assertion, plan mismatch, or SQL error fails the job.
       - name: Run the pgTAP suite
         run: supabase test db
+
+  # Production's replay (CTO 11, 2026-09-29). The `sql` job proves the files
+  # apply to an empty database; production is not empty and already holds
+  # 0001 to 0020 (supabase/production-history.tsv). This job builds exactly
+  # that history, loads rows with production's shape, pushes the pending files
+  # the way the founder's push will (`db push`, one transaction per file),
+  # checks what must hold afterwards, runs the whole pgTAP suite on the result,
+  # and compares its schema with one built from empty.
+  sql-replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up the Supabase CLI
+        uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb # v1.7.3
+        with:
+          version: 2.118.0
+
+      # Fails unless every row of production-history.tsv has its file with the
+      # pinned hash, then moves every other migration file aside.
+      - name: Set aside the files production has not applied
+        run: node supabase/scripts/replay-split.mjs split
+
+      - name: Build production's database from its recorded history
+        run: bash supabase/scripts/local-vault.sh supabase db start
+
+      - name: Load rows with production's shape
+        run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/replay/production_rows.sql
+
+      # The CLI prints the list to stderr, hence 2>&1.
+      - name: Bring the pending files back; the dry run must list exactly them
+        run: |
+          node supabase/scripts/replay-split.mjs restore
+          supabase db push --local --dry-run --skip-vault 2>&1 | tee "$RUNNER_TEMP/dry-run.txt"
+          node supabase/scripts/replay-split.mjs dry-run "$RUNNER_TEMP/dry-run.txt"
+
+      - name: Push the pending files, as production's push will
+        run: supabase db push --local --skip-vault --yes
+
+      - name: Check what must hold after the push
+        run: >-
+          psql "$DB_URL" -v ON_ERROR_STOP=1
+          -v expected_versions="$(node supabase/scripts/replay-split.mjs versions)"
+          -f supabase/replay/after_push.sql
+
+      # Every pgTAP file scopes its counts to its own ids, so it runs on a
+      # database that is not empty.
+      - name: Run the pgTAP suite on the replayed database
+        run: supabase test db
+
+      # Both paths apply the same files in the same order, so any difference
+      # is a data-dependent branch worth reading.
+      - name: The replayed schema equals one built from empty
+        run: |
+          supabase db dump --local --schema public -f "$RUNNER_TEMP/replayed.sql"
+          bash supabase/scripts/local-vault.sh supabase db reset --local
+          supabase db dump --local --schema public -f "$RUNNER_TEMP/fresh.sql"
+          diff -u "$RUNNER_TEMP/replayed.sql" "$RUNNER_TEMP/fresh.sql"

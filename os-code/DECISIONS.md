@@ -2922,6 +2922,312 @@ execution contract. Newest at the bottom.
   - Lockdown is enforced at the one execution seam: every command, commit
     and check asks under Tokens and Secrets, and a commit's flagged files
     start unticked (CX 7).
+- **Migrations (CTO 11, 2026-09-29):** production's history decides a
+  number. It holds 0001 to 0020, whose 0019 and 0020 are the privacy branch's
+  files, pushed from that branch on 2026-09-24 before CTO 4. Main holds them
+  byte for byte and never renumbers them, `0019_org_vault_v1` became
+  `0021_org_vault_v1` unchanged, 0022 to 0025 keep their numbers, and 0026
+  adds the export's new tables and tombstone retention.
+  `supabase/production-history.tsv` pins every applied file. CI replays
+  production before pgTAP. Every push uses `--skip-vault`. The deletion
+  function is one design: main's with the legal-hold copy. This extends CTO 4
+  and replaces nothing in it (CTO 1 to CTO 10 are the premium build's). The
+  full ruling, with founder decisions F1 to F6, was advisory; the calls a
+  later session should not reopen:
+  - Never renumber or re-apply the privacy files: a second run of 0019 keys
+    every unsubmitted fingerprint twice (its lines 316-326 are not
+    idempotent) and brings back its broken `record_enforcement`. Rejected:
+    renumbering main's five unapplied files to 0026 to 0030 (churn, breaks
+    CTO 4's pinned names), and `migration repair` on production (it rewrites
+    a true record).
+  - Unapplied files change only where the ruling names them: 0022's appeal
+    address is os-code@openshorellc.com (what production shows; F1 may
+    change it before the push), 0023's refusal says a deleted note frees its
+    space when its history is cleared, about a month later (resolves the
+    gate 1 runbook's 0.3a), and 0024 and 0025 change comments only.
+  - `export_my_data` is version 2 (0026): 0019's nineteen keys plus the
+    caller's revision and settings rows, the tombstone's level (never its
+    hash) and the staff flag. `abuse_reports` stay out until counsel rules
+    (F4), so no copy says "everything". Every table a migration creates is
+    classified as read or left out with a reason in
+    `app/test/supabaseMigrations.test.ts`.
+  - Tombstones are deleted after two years by `oscode_guardrail_retention`,
+    the same bound as enforcement actions, unless the founder records an
+    exemption.
+  - `delete-account` is not deployed from main until the merged function is
+    on main (package C): main's planner and contract, plus the privacy
+    function's legal-hold copy into `deletion_holds`, the email cleanup,
+    level 2 tombstones only, and an answer both clients read. Production's
+    2026-09-24 function keeps working after 0021 to 0026.
+  - Guards: the text tests (applied files by hash, unapplied files above
+    production's newest, no two files with the same bytes, no `[db.vault]`
+    in `config.toml`, every documented push with `--skip-vault`, no stale
+    org vault name); `.github/workflows/migrations.yml`
+    (`supabase/scripts/check-migrations.mjs`, warnings for other branches on
+    a push to main); the founder's `supabase/scripts/push-preflight.mjs`,
+    which connects to nothing; and CI's `sql-replay` job beside `sql`.
+  - Owners, in order (the repo is the channel): A, the reconcile (this
+    change); B, reviews (an app session: `reviews.ts`, `reviewsMath.ts`,
+    `ReviewsSection.tsx`, urgent, since production's 0020 took anon reads off
+    `model_reviews`); then the founder's push of 0021 to 0026; C, deletion
+    (the E1 successor: the function merge, the interim app fix first, then
+    Download my data, the owner flow and re-authentication per F2 and F3);
+    the held branches (the Vault session merges main into `vault-m2-team`,
+    `vault-m2-icloud` and `vault-m2-native`); D, app compliance; E, legal
+    drafts; F, the Qwen 3B pull (waits on F5); G, DeepBlue and eval docs.
+    Every session merges main before it touches `supabase/`. When B to E are
+    on main, the privacy branch is recorded here as superseded, kept, and
+    its head `d3d4bb7` tagged `prod-source-0019-0020`.
+  - Build calls made while landing package A: the replay fixtures live in
+    `supabase/replay/`, not `supabase/tests/replay/`, because
+    `supabase test db` runs every `.sql` file under `tests/` through pg_prove
+    (checked on 2.118.0). The file hashes read CRLF as LF, so a Windows
+    checkout pins the same value. `check-migrations.mjs` never counts a file
+    production ran (named and hashed in main's history) against a branch,
+    and lets one of main's unapplied files move, bytes unchanged, to a number
+    above production's newest; only while main has no history file yet does
+    the branch's own copy stand in. The tag waits for the founder's go-ahead,
+    since creating it is a push.
+- **Guardrail data has retention limits and a keyed hash (advisory org,
+  2026-09-24, founder delegated; arrived through the privacy branch, recorded
+  on main by CTO 11).** Block rows are kept 180 days and enforcement actions
+  two years; block rows carry no subject name; allowed-with-consent rows stop
+  going to the server and existing ones are purged (consent assertions
+  already stay on the device); the text hash becomes a server-side HMAC;
+  records tied to a submitted report are held at least one year under 18
+  U.S.C. 2258A(h). Production's 0019 embodies it. Stands until a later ruling
+  names it.
+- **Account deletion ships with Download my data (advisory org, 2026-09-24,
+  founder delegated; arrived through the privacy branch, recorded on main by
+  CTO 11).** Owners transfer ownership or delete the org inside the same flow;
+  deleting an org cancels its Stripe subscription under the refund rule, with
+  "Cancel renewal instead" offered first; Apple subscriptions are cancelled by
+  the person in iOS Settings; rows under legal hold outlive the deletion until
+  the hold ends. CX dissent recorded (pro-rata refund on org deletion).
+  Production's 0019 and its 2026-09-24 function embody it; main's owner flow
+  and refund differ, and those are founder decisions F2 and F3 (CTO 11).
+  Stands until a later ruling names it.
+- **Community ratings show the raw average (advisory org, 2026-09-24, founder
+  delegated; arrived through the privacy branch, recorded on main by
+  CTO 11).** Raw mean with the count, no average under five reviews, the
+  benchmark fit on its own labeled axis, no `user_id` for anonymous readers,
+  a server-set "OpenShore team" label on staff reviews, published community
+  guidelines, and a 24-hour look at reports. Supersedes the benchmark-shrunk
+  average. CTO dissent recorded (shrinkage resists brigading). Production's
+  0020 embodies the server half; the app half is package B. Stands until a
+  later ruling names it.
+- **Contact inboxes are role addresses on openshore.ai (advisory org,
+  2026-09-24, founder delegated; arrived through the privacy branch, recorded
+  on main by CTO 11).** support@, privacy@, legal@, and copyright@ route to one
+  monitored inbox once a test message makes the round trip; until then
+  os-code@openshorellc.com is the only published address, in the repo Terms
+  and on the site alike. Production's 0019 and main's 0022 warn with that
+  address, and since package C (below) the app's `SUPPORT_EMAIL` and the
+  Terms say it too. Stands until a later ruling names it.
+- **Published address is a commercial virtual mailbox (advisory org,
+  2026-09-24, founder delegated; arrived through the privacy branch, recorded
+  on main by CTO 11).** It appears in the site footer, the privacy policy, the
+  Terms notices, the App Store listing, and list email; the registered agent
+  address is for service of process only, and a residential address is never
+  published. The founder supplies the literal address. Stands until a later
+  ruling names it.
+- **Account deletion is one design, and main reads reviews from production's
+  view (packages B and C, the CTO closure memo, 2026-09-29; founder yes to
+  its item 1a).** Built on `prod-reconcile` with package A; unapplied, pushed
+  from main only through `docs/vault-gate1-runbook.md`. The calls a later
+  session should not reopen:
+  - The deletion's database writes are four SECURITY DEFINER functions in
+    0022 section 6 that only the service role may call, so each rule lives
+    beside its pgTAP: `account_deletion_hold` (the privacy function's
+    legal-hold copy into `deletion_holds`, same shape, under a SHA-256 of
+    the user id; append-only: identical held rows add nothing, changed ones
+    add a newer copy, nothing is edited or removed, and an advisory lock
+    keeps two taps from both inserting), `account_deletion_orgs` (the owned
+    teams, all or none, in one delete statement after locking the teams and
+    their member rows, only while nobody else is active; an active row with
+    no user id is nobody), `account_deletion_tombstone` and
+    `account_deletion_memberships`. `delete-account` keeps main's planner
+    and fixed error codes and answers
+    `{ ok: true, deleted: true, appleNote }`, so either app contract reads
+    success.
+  - Order: plan and refuse, cancel Stripe, copy held rows (before anything
+    is deleted), delete the teams (fewer back than planned answers
+    `owns_org`), tombstone, clear team history, memberships, `deleteUser`.
+    Since the review (2026-09-30, below): the team delete comes before the
+    held-row copy, so the order is plan and refuse, cancel Stripe, delete
+    the teams, copy held rows, tombstone, team history, memberships,
+    `deleteUser`.
+    Known limit, accepted: in the moment between the plan and the team
+    delete a teammate can turn active; then nothing is deleted and the
+    answer is `owns_org`, but that team's subscription is already
+    canceled. Billing stays first because a Stripe failure must leave the
+    account whole and a retry must still see the team's billing.
+  - Tombstones (item 4a): level 2 only, `check (level = 2)`, CTO 11's
+    domain; written only for an operator's confirmed termination (action
+    `terminate`, actor not `system`, record_enforcement's own test), never
+    for the ladder's automatic one, including the one a tombstone itself
+    causes on a returning account. `terminated_at` is that termination's own
+    `created_at`; a second write keeps the later of two terminations' times
+    and never the time of the write, and 0026's retention deletes a tombstone
+    two years after `terminated_at`. Rejected: main's first design (level 1
+    and 2, `recorded_at` refreshed on every deletion), which turned an
+    automatic decision into a binding ban and let a ban renew itself past two
+    years by deleting the returning account.
+  - Email cleanup (finding (c), CX: erase it): rows bound to the account go
+    by id; rows nobody has claimed (user id null) go by the account's
+    confirmed email, lowercased, as `claim_membership` and `export_my_data`
+    match it. A row bound to someone else stays whatever its email says.
+  - Download my data includes the caller's `push_sends` and
+    `likeness_consents` (0026): both are keyed to the person and no schema
+    reason keeps them out.
+  - F1 (superseded 2026-09-30, below: support@openshore.ai):
+    os-code@openshorellc.com is the one published address in 0022's
+    ladder, the engine's `SUPPORT_EMAIL` (the block card and, through
+    `os-code/protocol`, the Delete account sheet) and `docs/terms-of-use.md`;
+    `app/test/contactAddress.test.ts` fails when any of them differs. F1 may
+    switch it later only through a new migration for the ladder (0022 is
+    never edited once production runs it) plus the constant and the Terms in
+    the same change.
+  - The interim app fix reads both functions: `ok` or `deleted` is success
+    (a missing `appleNote` shows the Apple note as an if), `code` is read
+    before `error`, `transfer_or_delete_org` is `owns_org`, and
+    `reauth_required` says the account was not deleted and asks for a fresh
+    sign-in. It shipped with the function, so a build from main is right
+    whichever function is live.
+  - Deploy: `supabase functions deploy delete-account --use-api` on push
+    day, after all six files applied (runbook 7.4), never before; the
+    runbook first checks the live function's deployment date (2026-09-24 is
+    the privacy branch's). Deploying drops the 2026-09-24 function's
+    ten-minute re-sign-in check, deleting a team that still has members, and
+    refunds, until the privacy branch's own PR (F2, F3).
+  - Package B ports what production's 0020 requires and nothing more: every
+    list reads `model_reviews_public` (no author id; `is_mine`, `is_staff`
+    and the "OpenShore team" label), and Block names the review
+    (`block_review_author`) and reloads. The raw-average half of the
+    2026-09-24 ratings ruling (no benchmark shrinkage) is app behavior
+    production does not run, so it rides with the privacy branch's own PR.
+  - `supabase/scripts/local-vault.sh` is an allowlist: only `start`,
+    `db start`, `db reset` and `db push --local` run, and every flag naming
+    a project or another `supabase/` folder is refused first.
+  - The collision guard's known limits (`check-migrations.mjs`,
+    `migrations.yml`): it compares one tree with `origin/main` and main's
+    `production-history.tsv` only. Two unmerged branches that take the same
+    new number both pass until one merges; then the other fails on its next
+    push or PR, and main's scan lists it as a warning, never a failure. It
+    sees production only through the history file on main, so a push made
+    outside the runbook and never recorded there (the 2026-09-24 case) is
+    invisible to it; only the founder's `push-preflight.mjs`, comparing the
+    live history's CSV with the file, catches that, on push day. It runs on
+    pushes that touch `supabase/` and on PRs, and it compares names, numbers
+    and bytes, not what a file does.
+- **The review of prod-reconcile (2026-09-30).** Unapplied, on
+  `prod-reconcile` with packages A to C. The calls a later session should
+  not reopen:
+  - Push day is six files, 0021 to 0026. The closure memo says "push 0021
+    to 0025" and leaves the export's coverage of `org_vault_revisions`,
+    `org_vault_settings` and `enforcement_tombstones` to the privacy
+    branch's PR (its item 7); both are read under CTO 11, which adds 0026:
+    it carries the memo's ruled two-year tombstone expiry (a cron change has
+    to live in a new file, since 0019 is applied) and the export additions
+    item 7 had deferred. The runbook, the README and PROGRESS say six.
+  - Delete account, `unauthorized` (main's function) or `not_signed_in` (the
+    2026-09-24 one): neither function can tell a dead sign-in from an
+    account already gone, so the app asks `GET /auth/v1/user` once with the
+    same token. 403 `user_not_found` (gotrue v2.197.0, checked on the local
+    stack) is a deletion: the goodbye, signed out, the Apple note as an if.
+    Any other 401 or 403 (`session_not_found` after a sign-out everywhere,
+    `bad_jwt`) signs the device out with a sheet that claims nothing about
+    the account, and keeps a pending Apple receipt. A 200 is a failure.
+    When the auth server cannot be asked either, it is a failure (the one gap
+    left, PROGRESS What remains). No session at the door (the refresh token
+    was dead) is the same signed-out sheet. Neither function changes.
+  - `billing` and `billing_failed` have their own line, which names the
+    published address; `failed` keeps naming the connection. The re-sign-in
+    line names the live function's ten minutes.
+  - PostgREST answers a void function with 204 and no body (postgrest
+    v16.3); `rpc` and `rpcPublic` read that as no value. It broke Block this
+    user, and every void call through them (`delete_org_project`,
+    `set_org_project_access`, `revoke_org_project_access`,
+    `org_vault_delete`, `admin_set_review_status`,
+    `admin_mark_report_submitted`).
+  - `local-vault.sh` refuses every argument that starts with a project flag's
+    name (`--linked=true`, `--linked=1` and the rest are `--linked` to the
+    CLI), marks the local stack only by `--local` or `--local=true` and
+    refuses any other `--local=`, and reads past the values of the CLI's
+    value-taking global flags (`--agent no`) to find the subcommand.
+  - `account_deletion_orgs` is all or none over every team named, not only
+    the ones still owned: a named team that support handed over after the
+    plan returns `{}`. `delete-account` copies the legal hold after the team
+    delete (deleting a team touches no held row), so `owns_org` leaves no
+    copy behind for an account that stays.
+  - `export_my_data` matches by email only rows nobody has claimed (a row
+    bound to another account under the same address is theirs, as 0022 6d
+    keeps it), and finds a tombstone by the account's confirmed email, not
+    the token's.
+  - 0026 stops, naming the owner, when another role owns
+    `oscode_guardrail_retention` (pg_cron re-schedules only the current
+    role's jobs); runbook 5.2 shows `username` and stops first.
+  - `check-migrations.mjs` now fails a tree missing a file production
+    applied, and a copy of a file beside its original (the relief rule
+    covers a move only); the known-limits bullet above no longer covers
+    those two.
+  - The "OpenShore team" label reads `--wave-ink` (`#3a6f7d` light, 4.5:1 on
+    `--surface`), ported from the privacy branch.
+  - Second review of these fixes (2026-09-30, low findings only), on the
+    same branch:
+    - Delete account: only GoTrue's `session_not_found` reads as a dead
+      sign-in, and `user_not_found` stays gone. `bad_jwt`, and a 401 or 403
+      with no GoTrue code, cannot tell, so they never sign the device out.
+      When the function answered its no-user code and the auth server
+      cannot tell (offline, a 5xx, `bad_jwt`, no code), the outcome is
+      `unconfirmed`: "We could not confirm whether your account was
+      deleted. Check your connection and try again.", the device untouched,
+      never "was not deleted". This supersedes the bullet above that read
+      `bad_jwt` as a dead sign-in and the double failure as failed.
+    - A request that broke on the way (a dropped connection, an answer cut
+      short, anything but an answer from the function or its gateway) is
+      settled the same way, since the function may have finished (deleting
+      the user is its last step) or may still be running: gone is the
+      goodbye, a dead sign-in is signed out, and an account still here, or
+      no answer, is `unconfirmed`. "Not deleted" is said only when nothing
+      was sent (the session door failed), the function answered that it
+      failed, or the function found no account and the auth server shows
+      it still here (the final review caught the dropped connection).
+    - A dead sign-in (`signed_out`) ends the way the session door ends one
+      on `AuthExpiredError`: `forgetSession(true)`, through the new
+      `endSignIn` dep, so unsent team vault text stays sealed for the same
+      account. A deletion keeps the plain `forgetSession()`. The signed-out
+      sheet fits a deletion on this device or another: "If your account was
+      already deleted, here or on another device, it is gone."
+    - `local-vault.sh` refuses `--wizard` in any spelling, a bare `--` and
+      every `--no-<flag>` anywhere (2.118.0 reads `--no-linked` as
+      `--linked` and `--no-wizard` as `--wizard`, checked offline; the final
+      review caught it), and before the subcommand (and between `db` and its own)
+      lets through only 2.118.0's global flags, each checked against its
+      `--help`. On 2.118.0 a target flag counts once given, whatever its
+      value (checked offline in a folder linked to nothing:
+      `db push --linked=false --dry-run` looks for the linked project,
+      `--local=false` connects to the local database), so `--linked=false`
+      targets the linked project. The earlier comment that `--local=false`
+      after `--local` would reach the linked project was wrong; any
+      `--local=` but `true` stays refused so a command never says one thing
+      and does another. Its test runs every use the runbook, the README and
+      CI document.
+    - `check-migrations.mjs --scan-remotes` (a push to main, warnings only)
+      reports check (d) as one line per branch, "behind main; merge main
+      before touching supabase/", with the count; the single-tree check
+      still fails (d) file by file.
+    - Known limit, accepted: `account_deletion_hold` (step 5) reads the held
+      rows once. A legal hold an operator sets between the team delete and
+      `deleteUser` (while steps 5 to 8 run) and after that read is not
+      copied, and the row cascades with the account. Nothing in the database copies on
+      delete. If counsel wants the window closed, the privacy branch's PR
+      may add a BEFORE DELETE trigger on `guardrail_events` and
+      `enforcement_actions` that copies a held row into `deletion_holds`.
+    - The runbook's Status now points to push day: packages A to C are on
+      main (41bea18), section 0 ran clean on 2026-09-30 and is marked done,
+      and push day waits for this branch's PR, which changes the unapplied
+      0022 and 0026 (2.3 checks for it).
 - 2026-09-29: **Desktop releases publish to the public
   `openshore-labs/openshore-releases` repo, not this one.** This repo went
   private (founder, so the code stays closed while the GitHub profile goes
@@ -2932,6 +3238,17 @@ execution contract. Newest at the bottom.
   alone; notes are a fixed line, never generated from this repo's commits; the
   version job reads tags from both repos so patch numbers keep climbing.
   Installs from before the move cannot see the new feed and reinstall once.
+- 2026-09-30: **Founder decision F1: support@openshore.ai is the one
+  published address.** The founder confirmed its round-trip test. 0022 was
+  unapplied, so its warning changed in place with `SUPPORT_EMAIL`, the Terms,
+  the pgTAP and replay checks, and the runbook's 8.10; production's 0019
+  (applied) keeps its old text and is replaced by 0022's function on the push.
+  F6, first fact: the founder ran the 2026-09-24 push; the live
+  `delete-account` was deployed that day (the privacy version). Gate 1's
+  section 0 ran clean the same morning: history equal to
+  `production-history.tsv`, the Vault key present, no leftovers, pg_cron on
+  with both jobs, and no rows from 4.2 to 4.5. The founder said yes to landing
+  `prod-reconcile` (packages A, B and C) on main.
 - 2026-09-30: **The curated models move to Apache weights: Harbor and
   DeepBlue's floor are Qwen3-4B-Instruct-2507, not Qwen 2.5 Coder 3B.** Founder:
   update the three to the commercially viable Apache 2.0 versions, evals later.

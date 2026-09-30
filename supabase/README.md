@@ -13,6 +13,7 @@ it.
 | Supabase (server)    | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (function secrets; NEVER `VITE_`)     | every edge function                      |
 | Stripe (client)      | `VITE_STRIPE_PUBLISHABLE_KEY` (app build; public)                                 | web checkout                             |
 | Stripe (server)      | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (function secrets)                   | stripe-checkout / -webhook / -portal, delete-account |
+| Guardrail HMAC key   | Vault secret `guardrail_hmac_key` (created once in the SQL editor, never committed, never in `config.toml`) | 0019's insert trigger and re-key |
 | Stripe prices        | `STRIPE_PRICE_MICRO/SMALL/GROWTH/SCALE` (function secrets)                        | checkout + webhook (commercial tiers)    |
 | Stripe price (indiv) | `STRIPE_PRICE_PERSONAL` (function secret)                                         | checkout + webhook (Personal $20/yr)     |
 | Stripe ignore list   | `STRIPE_IGNORED_PRICES` (function secret, optional, comma-separated)              | webhook: log-and-200 for listed prices   |
@@ -22,12 +23,221 @@ it.
 Rule: a secret can live in more than one place. Never put a service-role or
 secret key in a `VITE_` var.
 
-## Migration 0015 (review 2026-09-05): what changed and how to ship it
+## Migration history: production decides what a number means (CTO 4, CTO 11)
+
+The CLI matches a migration by its number only. Production's history
+(`supabase_migrations.schema_migrations` on project lzlrlfdffwiypzreoldb) is the
+authority on what each number means, and `production-history.tsv` records it:
+every applied version, its name, and the SHA-256 of its file. Today production
+holds 0001 to 0020. Its 0019 and 0020 are
+`0019_account_deletion_and_guardrail_retention.sql` and
+`0020_reviews_public_view.sql`, pushed on 2026-09-24 from the privacy branch
+(`claude/openshore-privacy-mobile-1ij12h` at `d3d4bb7`) before CTO 4. Main holds
+both byte for byte and never edits, renames, renumbers, or re-applies them.
+Main's Org Vault v1 file, written as 0019 before anyone knew production had
+used the number, is `0021_org_vault_v1.sql` now, bytes unchanged.
+
+Rules (CTO 4, CTO 11):
+
+- Migrations go to production from `main` only, and only through
+  `docs/vault-gate1-runbook.md`.
+- Never edit an applied file. Any change to an applied object is a new file.
+- A new file takes the next number above both main's newest and production's
+  newest.
+- A session branch that adds a migration says in its commit and in PROGRESS
+  that the file is unapplied and must not be pushed.
+- Every push command carries `--skip-vault` (below, "Local stack: the Vault
+  secret").
+- The session that records a push appends its rows to
+  `production-history.tsv` in the same change.
+- The runbook's 2.2b dashboard check (no automatic deploys, Branching off)
+  stays.
+
+Guards: `app/test/supabaseMigrations.test.ts` fails when an applied file is
+missing, renamed, or edited, when an unapplied file is numbered at or below
+production's newest, when two files share a number or the same bytes, or when
+`config.toml` gains a `[db.vault]` section. `.github/workflows/migrations.yml`
+runs `node supabase/scripts/check-migrations.mjs --against origin/main` on every
+branch push that touches `supabase/` and on every PR, and fails a branch whose
+numbers collide with main's or production's.
+
+## Tests
+
+`supabase test db` runs every `.sql` file under `tests/`, each its own
+rolled-back transaction with its own plan: `tests/rls.test.sql` (32 assertions
+over the 0015 cases below), `tests/org_vault.test.sql` (144 over 0021, 0024 and
+0025), `tests/account_deletion.test.sql` (68 over 0022, its section 6
+deletion functions included, and 0023), and `tests/guardrail_privacy.test.sql`
+(57 over production's 0019 and 0020, 0022's appeal address, and 0026). Every file scopes its counts to its own ids, since it
+also runs on a database that is not empty. (Files outside `tests/`, such as
+`replay/`, are not pgTAP files and must stay out of it.)
+
+CI (`.github/workflows/ci.yml`) builds the database two ways, and both must pass
+pgTAP:
+
+- **`sql`, from empty:** `bash supabase/scripts/local-vault.sh supabase db
+  start`, then `supabase test db`.
+- **`sql-replay`, replaying production:**
+  1. `node supabase/scripts/replay-split.mjs split` checks every row of
+     `production-history.tsv` against its file's hash and sets the other files
+     aside.
+  2. The database is built from production's files only.
+  3. `replay/production_rows.sql` loads rows with production's shape (a team
+     with an invite, case-duplicate note paths, a queued report and its repeat,
+     a submitted report under legal hold, keyed block rows, reviews) and
+     snapshots every fingerprint and hold.
+  4. The pending files come back, and the local dry run must list exactly
+     them.
+  5. `supabase db push --local --skip-vault --yes` applies them the way
+     production's push will.
+  6. `replay/after_push.sql` checks what must hold (the history, the rename,
+     the dedupe, no fingerprint keyed twice, the author keys, the cron jobs, the
+     export, the ladder, and the deletion functions on production's rows).
+  7. The full pgTAP suite runs on the result.
+  8. Its schema must equal one built from empty.
+
+`deno test functions/_shared` covers the pure decisions: `entitlement.test.ts`
+(cross-rail guard, checkout routing, Apple product and freshness checks, ignored
+prices) and `accountDeletion.test.ts` (the deletion plan, how the function reads the
+owned-team delete's answer, and the answer both apps read).
+
+## Local stack: the Vault secret
+
+Production's 0019 reads the guardrail HMAC key from Supabase Vault by name and
+stops, by design, when it is missing, so a local database needs a throwaway key
+before 0019 runs. Build or reset the local stack through the wrapper, never with
+a bare `db start`:
+
+```
+bash supabase/scripts/local-vault.sh npx --yes supabase@2.118.0 db start
+bash supabase/scripts/local-vault.sh npx --yes supabase@2.118.0 db reset --local
+npx --yes supabase@2.118.0 test db
+npx --yes supabase@2.118.0 stop --no-backup
+```
+
+The wrapper appends `[db.vault] guardrail_hmac_key =
+"env(OSCODE_LOCAL_GUARDRAIL_HMAC_KEY)"` to `config.toml` with a fresh `openssl
+rand -hex 32` key, runs the one command, and restores the file on exit. It
+runs only `start`, `db start`, `db reset` and `db push --local`, and refuses
+everything else (among them `db pull`, `pull`, `migration repair`,
+`migration list`, `db dump` and `inspect`) and every flag that names a project
+or another `supabase/` folder, in any spelling (on 2.118.0 a target flag
+counts once given, whatever its value, so `--linked=false` targets the linked
+project), any `--local=` other than `--local=true`, `--wizard` in any
+spelling, a bare `--`, every `--no-<flag>` (2.118.0 reads `--no-linked` as
+`--linked` and `--no-wizard` as `--wizard`), and any flag before the
+subcommand that is not one of
+the CLI's global flags, before anything runs
+(`app/test/localVaultScript.test.ts`, which also runs every use documented
+here, in the runbook and in CI). The entry is never
+committed: the CLI's push upserts every Vault secret `config.toml` resolves
+before it migrates (2.118.0: "Vault secrets from config.toml are updated before
+migrations unless --skip-vault is set"), so a committed entry with the variable
+set would silently rotate production's key and break the link between old and
+new fingerprints. That is also why every push command here carries
+`--skip-vault`.
+
+## Ship order (CTO 4, CTO 11): production holds 0001 to 0020; the next push is 0021 to 0026, from main
+
+`docs/vault-gate1-runbook.md` is the one verified sequence. In short, from an
+up-to-date `main`:
+
+1. Run the runbook's preflights in the SQL editor (4.1 to 4.5, 5.1 and 5.2),
+   among them 0021's case duplicates and 0022's two `abuse_reports` queries
+   (below), and the Vault secret check
+   (`select count(*) from vault.secrets where name = 'guardrail_hmac_key'`
+   returns 1; never select the decrypted value).
+2. Download production's history as CSV from the SQL editor
+   (`select version, name from supabase_migrations.schema_migrations order by
+   version`) and run `node supabase/scripts/push-preflight.mjs production.csv`.
+   It connects to nothing. It refuses unless the checkout is `main` at
+   `origin/main` with a clean tree, the CSV equals `production-history.tsv`
+   exactly, and every applied file matches its pinned hash; then it prints the
+   list the dry run must show.
+3. `supabase db push --linked --dry-run --skip-vault`: exactly 0021 to 0026,
+   in order. Then the push itself, which the founder types
+   (`supabase db push --linked --skip-vault`).
+4. Only after all six applied: `supabase functions deploy delete-account
+   --use-api` (the runbook's 7.4; always name the function, never `--prune`).
+   Main's function is one design (CTO 11 package C, the closure memo): main's
+   planner and answer, the privacy function's legal-hold copy into
+   `deletion_holds`, and 0022's guarded team delete and email cleanup. It
+   calls 0022's `account_deletion_` functions, so it never goes before the
+   push. Before the push the runbook checks which function is live
+   (Dashboard, Edge Functions, `delete-account`: a 2026-09-24 deployment is
+   the privacy branch's): that function keeps working after 0021 to 0026,
+   since its tables still exist and the one new write a deletion causes (the
+   set-null 0025 puts on a revision's author) is the one update 0022's
+   trigger allows.
+5. In the hand-off, append the six new rows to `production-history.tsv`.
+
+## Migration 0019 (account deletion and guardrail retention): applied 2026-09-24
+
+`migrations/0019_account_deletion_and_guardrail_retention.sql` came from the
+privacy branch and is applied in production. It is history here: never edit or
+re-run it. What it did (its sections A to G):
+
+- **A.** The five actor keys (`org_members.invited_by`,
+  `org_vault_notes.updated_by`, `org_projects.created_by` and `updated_by`,
+  `org_project_members.granted_by`) became `on delete set null` by their
+  default names. `orgs.owner_uid` stays restrict.
+- **B.** `legal_hold_until` on `guardrail_events`, `enforcement_actions` and
+  `abuse_reports`. A report marked submitted holds itself and the account's
+  block rows and actions for at least a year (18 U.S.C. 2258A(h)).
+  `deletion_holds` (service role only) keeps held rows past an account
+  deletion under a SHA-256 of the user id. The daily pg_cron job
+  `oscode_guardrail_retention` (03:41 UTC) deletes block rows after 180 days,
+  enforcement actions after two years, and ended holds, skipping anything on
+  hold. 0026 re-schedules it with the tombstone line.
+- **C.** Block rows only, and no names: allowed-with-assertion rows were
+  purged and are dropped on insert; `subject` is cleared and must stay null.
+- **D.** The fingerprint is an HMAC-SHA256 under the Vault key, computed on
+  insert. The file re-keyed the stored rows once, when it ran; re-running it
+  would key them a second time and break the report dedupe, which is one
+  reason it is never renumbered.
+- **E.** `record_enforcement` with the published appeal address
+  (os-code@openshorellc.com). It still had the ambiguous `action` that
+  0016 to 0018 had; 0022 fixes it.
+- **F.** `export_my_data()`: Download my data, version 1. 0026 makes it
+  version 2.
+- **G.** Billing events for a deleted account or team are dropped, not
+  retried.
+
+What the founder did before it ran, kept as history:
+
+1. Created the key once in the SQL editor:
+   `select vault.create_secret(encode(gen_random_bytes(32), 'hex'), 'guardrail_hmac_key');`
+   A missing secret makes guardrail inserts fail (the app tolerates that; the
+   block itself happens on the device). Rotating it breaks the link between old
+   and new fingerprints, so rotate only on a suspected leak.
+2. Enabled pg_cron so the retention job would schedule. Whether it was on in
+   September is not recorded; the runbook's 5.2 checks, and 0026 schedules the
+   job either way.
+3. Deployed the privacy branch's `delete-account` (the one production runs
+   until the runbook's 7.4 deploys main's merged function).
+
+## Migration 0020 (reviews public view): applied 2026-09-24
+
+`migrations/0020_reviews_public_view.sql` came from the privacy branch too and
+is applied in production. It added `review_staff` (service role only; the
+"OpenShore team" label), the `model_reviews_public` view (no `user_id`,
+`is_staff`, `is_mine`, visible rows only, the reader's blocks applied), took
+anon reads off `model_reviews` (a signed-in person reads only their own rows
+there), made the three aggregate RPCs SECURITY DEFINER, and added
+`block_review_author(review id)`. Main's app reads every review list from
+the view and blocks by review (CTO 11 package B, `app/src/lib/reviews.ts`);
+builds from main before that read `model_reviews` directly, so they show
+signed-out readers no reviews and signed-in readers only their own. Seeding
+the label, if wanted:
+`insert into public.review_staff (user_id) select id from auth.users where email = '<address>' on conflict do nothing;`
+
+## Migration 0015 (review 2026-09-05): what changed and how it shipped
 
 `migrations/0015_review_2026_09_05.sql` carries every schema fix from the
-2026-09-05 review in one idempotent file. Ship it in this order:
+2026-09-05 review in one idempotent file. It is applied. It shipped in this
+order:
 
-1. `supabase db push` (applies 0015). Nothing in it is destructive.
+1. A push from main applied 0015. Nothing in it is destructive.
 2. Redeploy the functions that call the new RPCs and read the new secrets:
    `supabase functions deploy stripe-webhook stripe-checkout apple-notifications
    link-apple-purchase push-register repo-oauth`.
@@ -51,9 +261,9 @@ What 0015 does, by finding:
 - **BE-2** Seat ceilings: `tier_max_seats(tier)` (hand-mirrored bands, pinned
   by `app/test/entitlementDrift.test.ts`), `no_entitlement_max_seats()` (null
   today: no cap without an entitlement row, per the beta; the CFO recommends
-  5 once billing is live, a one-line 0016), `org_seat_ceiling(org)`, and two
-  SECURITY DEFINER triggers: a new or re-activated member past the ceiling is
-  refused (existing rows are grandfathered on a downgrade), and
+  5 once billing is live, a one-line migration), `org_seat_ceiling(org)`, and
+  two SECURITY DEFINER triggers: a new or re-activated member past the ceiling
+  is refused (existing rows are grandfathered on a downgrade), and
   `orgs.seat_count` cannot exceed the band. Both raise `check_violation`.
 - **BE-4** `apple_links` gains `status`, `valid_until`, `last_event_at`,
   written by `apple-notifications`; `link-apple-purchase` refuses a JWS that
@@ -80,57 +290,12 @@ What 0015 does, by finding:
   editor if the migration ran before the extension was on. Check with
   `select * from cron.job`.
 
-Tests: `supabase test db` runs every `tests/*.test.sql` file, each its own
-rolled-back transaction with its own plan: `tests/rls.test.sql` (32
-assertions over the cases above), `tests/org_vault.test.sql` (144 assertions
-over 0019, 0024 and 0025, below) and `tests/account_deletion.test.sql` (37
-assertions over 0022 and 0023, below). CI runs the same command in the `sql`
-job of `.github/workflows/ci.yml`. `deno test functions/_shared` covers the
-pure decisions: `entitlement.test.ts` (cross-rail guard, checkout routing,
-Apple product and freshness checks, ignored prices) and
-`accountDeletion.test.ts` (the deletion plan and the email hash).
-`app/test/supabaseMigrations.test.ts` fails when two migration files share a
-number.
+## Migration 0021 (Org Vault v1): what changed and how to ship it
 
-## Ship order (CTO ruling 4): 0019, 0022, 0023, 0024, 0025, all from main
-
-`supabase db push` matches a migration by its number and applies the pending
-ones in order, so the list stays linear and nobody needs `--include-all`.
-Push from `main` only, never from a held branch. A held branch renumbers its
-migrations above main's newest when it merges: the team vault's move and
-settings were written as 0020 and 0021 on `vault-m2-team` and are 0024 and
-0025 now (2026-09-29).
-
-1. Preflights, in the SQL editor on production, each returning no rows:
-   0019's case duplicates and 0022's two `abuse_reports` queries (both
-   below), and, before any push from `main`, the held branch's old numbers:
-
-   ```sql
-   select version from supabase_migrations.schema_migrations
-    where version in ('0020', '0021');
-   ```
-
-   0020 and 0021 were the team files' numbers on the held branch only and
-   were never meant to reach production. If this returns a row, stop and ask
-   before pushing anything.
-2. Before the team client merges, from `main`: `supabase db push --dry-run`,
-   then `supabase db push`, which applies 0019, 0022 and 0023 in that order
-   (and any older file production lacks; the dry run lists every one). Then
-   `supabase functions deploy delete-account`, and confirm
-   `oscode_vault_purge` in `select * from cron.job`.
-3. Then, from `main` as soon as they are on it, `supabase db push` applies
-   0024 (the move), then 0025 (the settings and the plan gate). CTO 4 puts
-   them in production before the team client merges, so either the two files
-   and their pgTAP reach `main` ahead of the client, or they arrive with the
-   branch's merge and are pushed at once. In that gap no shipping build opens
-   the team vault (a v4 surface, `SHIPS_TEAMS` in `app/src/lib/focus.ts`), and
-   a client that meets a function the server lacks (PGRST202) keeps the text
-   as not ready instead of writing blind.
-
-## Migration 0019 (Org Vault v1): what changed and how to ship it
-
-`migrations/0019_org_vault_v1.sql` gives the team vault compare-and-swap and
-a history (Vault v1 plan item 2.3, CTO ruling G3):
+`migrations/0021_org_vault_v1.sql` (written as 0019; CTO 11 moved it to 0021
+with its bytes unchanged, because production's 0019 is the privacy file) gives
+the team vault compare-and-swap and a history (Vault v1 plan item 2.3, CTO
+ruling G3):
 
 - New RPCs for the v1 client: `org_vault_write(org, path, body, if_match,
   if_absent)` and `org_vault_remove(org, path, if_match)`. A clash comes back
@@ -149,16 +314,16 @@ a history (Vault v1 plan item 2.3, CTO ruling G3):
   days, weekly (`oscode_vault_purge`, Sundays 03:29 UTC) in the same guarded
   pg_cron block as 0015.
 
-**Order (founder gate):** push 0019 to production from `main` BEFORE the
+**Order (founder gate):** push 0021 to production from `main` BEFORE the
 team-client change (M2 stream D, `orgVault.ts` calling `org_vault_write`)
 merges to main, because Codemagic ships every push to main to TestFlight. Run
 the preflight below first. The whole sequence is under Ship order, above.
 
 **Preflight: case duplicates.** The unique index needs live paths in one org
-to differ by more than letter case. 0019 renames any that do not (the most
+to differ by more than letter case. 0021 renames any that do not (the most
 recently updated note keeps its path; each other one moves to a free
 "(conflict YYYY-MM-DD HHMM)" name and leaves a revision row), so nothing is
-lost, but look first. In the SQL editor, before `supabase db push`:
+lost, but look first. In the SQL editor, before the push:
 
 ```sql
 select org_id, lower(path) as folded, count(*) as notes,
@@ -170,8 +335,9 @@ having count(*) > 1
 order by org_id, folded;
 ```
 
-No rows means 0019 changes no data. Each row lists the paths that will be
-renamed after the first one; tell the teammates who own them.
+No rows means 0021 changes no data. Each row lists the paths that will be
+renamed after the first one; tell the teammates who own them. The replay job
+runs this rename against case-duplicate rows on every CI run.
 
 ## Migrations 0022 and 0023 (account deletion, free caps): how to ship them
 
@@ -179,8 +345,8 @@ Apple requires in-app account deletion (guideline 5.1.1(v)); the app's
 Settings, Your account, Delete account calls the `delete-account` function.
 CTO ruling 4 (2026-09-29) numbers these 0022 and 0023. **Push from main only.**
 The team vault's move and settings, written as 0020 and 0021 on the held
-`vault-m2-team`, are renumbered 0024 and 0025 above these and follow them
-from main (Ship order, above); never push from the held branch.
+`vault-m2-team`, are 0024 and 0025 on main and follow them (Ship order, above);
+never push from a held branch.
 
 1. Preflight, in the SQL editor. Both queries should return no rows:
 
@@ -193,49 +359,88 @@ from main (Ship order, above); never push from the held branch.
    0022 removes a queued report that repeats another for the same account and
    hash, and never one an operator acted on. If rows remain, it prints a
    NOTICE and leaves the new check unvalidated or the unique index uncreated;
-   fix the rows by hand and re-run that block.
-2. `supabase db push` (applies 0022, then 0023, after 0019 when production
-   lacks it; see Ship order, above).
-3. `supabase functions deploy delete-account` (`verify_jwt = true` in
-   `config.toml`). It reads `STRIPE_SECRET_KEY` only when the account has a
-   Stripe customer or subscription to cancel.
+   fix the rows by hand and re-run that block. Production's 0019 already keyed
+   every unsubmitted hash, so a repeat means the same content, keyed; the
+   queries still apply as written.
+2. The push from main applies 0021 to 0026 in order (Ship order, above).
+3. Then `supabase functions deploy delete-account --use-api` (Ship order,
+   step 4), never before the push.
 
 What 0022 does:
 
 - Five author columns (`org_members.invited_by`, `org_vault_notes.updated_by`,
   `org_projects.created_by` and `updated_by`, `org_project_members.granted_by`)
-  become `on delete set null`, found by catalog, so deleting someone who ever
-  wrote to a team no longer fails on a foreign key.
-- `enforcement_tombstones` keeps a SHA-256 of the lowercased email and the
-  ladder level when a warned or terminated account is deleted (service role
-  only, no policies). `record_enforcement` reads a level 2 tombstone as an
-  operator's termination.
-- `record_enforcement` itself works now. In 0016 to 0018 an unqualified
+  become `on delete set null`, found by catalog. Production's 0019 already did
+  this by name, so on production it changes nothing; it still catches a key
+  made in the dashboard under another name.
+- `enforcement_tombstones` keeps a SHA-256 of the lowercased email when an
+  account an operator terminated is deleted (service role only, no
+  policies): level 2 only (CTO 11), and only for an operator's confirmed
+  termination (action `terminate`, actor not `system`), never for the
+  ladder's automatic one, so an automatic decision never becomes a lasting
+  ban. `terminated_at` is that termination's own time, never the deletion's,
+  and no later write moves it to the time of the write. `record_enforcement`
+  reads a tombstone as an operator's termination. 0026 deletes a tombstone
+  two years after `terminated_at`.
+- `record_enforcement` itself works now. In 0016 to 0019 an unqualified
   `action` collided with the function's own output column, so every call
   raised and the server-side ladder never recorded a row (the app swallowed
-  the error). Expect `enforcement_actions` rows to start appearing.
+  the error). Expect `enforcement_actions` rows to start appearing. Its warning
+  names support@openshore.ai (founder decision F1, 2026-09-30; production's
+  0019 said os-code@openshorellc.com). Changing it again takes a new file.
 - `org_vault_revisions` stays append-only except for one update: clearing
   `updated_by`, which the function does for the departing person.
 - `abuse_reports.request_hash` must be 64 hex characters, one report per
-  account and hash.
+  account and hash (a repeated `queue_abuse_report` for the same pair raises
+  23505; the app does not call it today).
+- Section 6, the deletion's own writes, four SECURITY DEFINER functions only
+  the service role may call, each safe to repeat:
+  `account_deletion_hold(user)` copies the rows still under a legal hold
+  (`guardrail_events` and `enforcement_actions` with `legal_hold_until` ahead)
+  into `deletion_holds` without the user id, under a SHA-256 of it, in the
+  2026-09-24 function's shape, adding nothing when the same rows are already
+  copied; `account_deletion_orgs(owner, orgs)` deletes the named owned teams
+  in one statement, all or none, only while nobody else is active in any of
+  them (the interaction review's finding (b)), and returns the ids it
+  deleted; `account_deletion_tombstone(user)` writes the tombstone above;
+  `account_deletion_memberships(user)` removes the person's `org_members`
+  and `org_project_members` rows by id and every unclaimed row under their
+  confirmed email (finding (c); CX: erase it).
 
 What 0023 does: an account owns at most one org without a live plan
 (`no_entitlement_max_owned_orgs()`, 1), and an org without a live plan holds
 at most 25 MiB of note plus revision bytes (`no_entitlement_max_org_bytes()`),
 counted in `org_storage_usage` by triggers and backfilled by the migration.
-Both refuse with `check_violation`, only on growth; deletes always go
-through. "Live plan" is `isEntitled`: `org_entitlements.status` active or
+Both refuse with `check_violation`, only on growth; deletes always go through.
+A deleted note's bytes stay counted in its revision row until the weekly purge,
+about 30 days later, and the refusal says so ("start a plan to add more. A
+deleted note frees its space when its history is cleared, about a month
+later"; CTO 11 resolved the runbook's 0.3a this way while 0023 was
+unapplied). "Live plan" is `isEntitled`: `org_entitlements.status` active or
 trialing with `valid_until` unset or ahead.
 
-What `delete-account` does, in order (reads first, so a refusal never follows
-a write): refuses `owns_org` (409) when an owned org has anyone else active;
-cancels every Stripe subscription that could still charge (the person's and
-each sole-member org's); writes the tombstone; deletes the sole-member orgs;
-clears the person from team history and removes their memberships; then
-`auth.admin.deleteUser`. It answers `{ ok: true, appleNote }`, where
-`appleNote` means an Apple subscription the person must cancel on their
-iPhone; errors are the fixed codes `unauthorized`, `owns_org`, `billing`,
-`failed`. Each step is safe to repeat, so a retry finishes a partial run.
+What main's `delete-account` does, in order (reads first, so the planned
+refusal comes before any write): refuses `owns_org` (409) when an owned org
+has anyone else active; cancels every Stripe subscription that could still
+charge (the person's and each sole-member org's); deletes the sole-member
+orgs through `account_deletion_orgs`, all or none, answering `owns_org` when
+fewer come back than planned (someone joined, or support handed a team over,
+in the meantime; nothing was deleted, though that team's subscription is
+already canceled); copies the rows under a legal hold
+(`account_deletion_hold`), before anything under a hold is deleted (deleting
+a team touches none, and an `owns_org` answer leaves no copy); writes the
+tombstone (`account_deletion_tombstone`); clears the person from team history
+and removes their memberships and grants (`account_deletion_memberships`);
+then `auth.admin.deleteUser`. It answers `{ ok: true, deleted: true,
+appleNote }` (`ok` for main's app, `deleted` for a build that read the
+2026-09-24 function), where `appleNote` means an Apple subscription the
+person must cancel on their iPhone; errors are the fixed codes
+`unauthorized`, `owns_org`, `billing`, `failed`. Each step is safe to repeat,
+so a retry finishes a partial run. The 2026-09-24 function's ten-minute
+re-sign-in check, its choice to delete a team that still has members, and its
+refunds are not in it (founder decisions F2 and F3); the app reads that
+function's answers too (`reauth_required`, `transfer_or_delete_org`,
+`{ deleted: true }`), so a build from main is right whichever one is live.
 
 ## Migration 0024 (Org Vault move): what changed and how to ship it
 
@@ -245,7 +450,7 @@ renumbered by CTO ruling 4) adds one RPC for the team vault's rename
 
 - `org_vault_move(org, from, to, if_match)` moves a live note when its rev is
   still `if_match`. It never replaces: a taken name, judged under
-  `lower(path)` like 0019's unique index, answers `exists` with `theirs`; a
+  `lower(path)` like 0021's unique index, answers `exists` with `theirs`; a
   stale rev is `changed` with `theirs`; a source that is gone is `missing`. A
   case-only rename of the same note is allowed and updates that row in place.
 - The old version is kept as a `renamed` revision row; a move to a new name
@@ -258,13 +463,13 @@ renumbered by CTO ruling 4) adds one RPC for the team vault's rename
 Team Trash needs no SQL of its own (K6, R3): a trash is `org_vault_remove`,
 Restore is `org_vault_write` with `if_absent` from the latest `deleted`
 revision (at the original path, or `{title} (restored).md` when that name is
-taken), and there is no Empty, since `org_vault_purge` from 0019 already
+taken), and there is no Empty, since `org_vault_purge` from 0021 already
 drops tombstones and revision rows after 30 days.
 
-**Order (founder gate):** 0024 goes to production from `main` AFTER 0019 (it
-calls 0019's lock, snapshot, and sequence), 0022 and 0023, and before the
-team client that calls `org_vault_move` is used (Ship order, step 3).
-`supabase db push` applies them in order.
+**Order (founder gate):** 0024 goes to production from `main` AFTER 0021 (it
+calls 0021's lock, snapshot, and sequence), 0022 and 0023, and before the
+team client that calls `org_vault_move` is used. The push applies them in
+order.
 
 ## Migration 0025 (Org Vault settings and entitlement): what changed and how to ship it
 
@@ -309,14 +514,13 @@ and its plan gate (Vault v1 plan item 7.4, CTO ruling L17, CX Y14 and Y15):
   update), and then they are validated. A partial index on the revisions'
   author serves the set-null.
 
-**Order (founder gate):** 0025 goes to production from `main` AFTER 0019 and
+**Order (founder gate):** 0025 goes to production from `main` AFTER 0021 and
 0024 (it re-creates their write RPCs) and after 0022 and 0023, in the same
-push as 0024, and before the team client that reads settings or maps `OV402`
-is used (Ship order, step 3). 0023's free caps
-are triggers, so they hold under the write RPCs 0025 re-creates; 0023's
-`org_is_entitled` has no beta window for an org with no entitlement row, so
-such an org may write team notes under 0025 and 0023 still caps its bytes.
-`supabase db push` applies them in order.
+push, and before the team client that reads settings or maps `OV402` is used.
+0023's free caps are triggers, so they hold under the write RPCs 0025
+re-creates; 0023's `org_is_entitled` has no beta window for an org with no
+entitlement row, so such an org may write team notes under 0025 and 0023 still
+caps its bytes.
 
 **When pay gates come back (founder gate).** Ship a one-line migration that
 replaces the body of `no_entitlement_vault_until()` with a date at least 30
@@ -326,6 +530,34 @@ shows "Team notes stay editable until <date>" from `entitled_until`. After
 it, an org with no entitlement row reads and exports every note, and buying a
 plan unlocks editing. Never ship a date inside 30 days: that is the cliff this
 function exists to avoid.
+
+## Migration 0026 (Download my data version 2, tombstone retention): what changed and how to ship it
+
+`migrations/0026_export_and_retention.sql` (CTO 11) closes the two gaps the
+overlap between production's 0019 and main's files opened. Nothing applied is
+edited; both parts are a `create or replace` or a re-schedule.
+
+- `export_my_data()` keeps 0019's nineteen keys, moves `version` to 2, and
+  adds `org_vault_revisions_authored` (0021), `org_vault_settings_updated`
+  (0025), `enforcement_tombstone` (level and `terminated_at` under the
+  caller's email, never the hash; 0022), `review_staff` (0020), and the
+  caller's own `push_sends` (0009) and `likeness_consents` (0016), which
+  0019 left out though they are keyed to the person. Its header says what it
+  leaves out and why: `org_storage_usage` names no person, `deletion_holds`
+  is linked to no live account, and `abuse_reports` wait on counsel (founder
+  decision F4), so no copy says the export holds everything.
+  `app/test/supabaseMigrations.test.ts` classifies every table a migration
+  creates as read or left out with a reason.
+- `oscode_guardrail_retention` is re-scheduled under the same name and time
+  with 0019's three deletes verbatim plus
+  `delete from public.enforcement_tombstones where terminated_at < now() -
+  interval '2 years'`: a tombstone re-creates the effect of an enforcement
+  action, so it may not outlive the two years the 2026-09-24 ruling gives
+  those actions, counted from the termination it carries, which no write
+  moves. Because it unschedules and schedules the whole job, it also
+  schedules it where pg_cron was off when 0019 ran.
+
+**Order:** after 0019, 0021, 0022 and 0025, in the same push as 0021 to 0025.
 
 ### Warning: `supabase config push` and email confirmations (P0-4)
 
@@ -364,7 +596,9 @@ The app treats EITHER an active individual OR org entitlement as unlocking
 
 1. Create a Supabase project. Copy `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY`
    into the app's `.env.local`.
-2. Apply the schema: `supabase db push` (or run `migrations/0001_orgs.sql`,
+2. Create the guardrail Vault secret first (the 0019 section above: 0019
+   stops without it), then apply the schema from main:
+   `supabase db push --linked --skip-vault` (or run `migrations/0001_orgs.sql`,
    `0002_rls.sql`, `0003_claim.sql` in the SQL editor, in order).
 3. Auth settings: enable Email (magic link and/or password). Add the app's
    redirect URLs so the magic-link callback lands on the app's own origin:

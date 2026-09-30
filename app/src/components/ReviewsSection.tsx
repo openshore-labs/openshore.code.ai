@@ -96,7 +96,8 @@ export function ReviewsSection({
 
   const score: CommunityScore = communityScore(summary, benchmarkStars);
   const signal = hardwareSignal(reviews, deviceRamGB);
-  const mine = session ? reviews.find((r) => r.user_id === session.user.id) : undefined;
+  // The view marks the reader's own review; readers never see author ids.
+  const mine = session ? reviews.find((r) => r.is_mine === true) : undefined;
 
   if (!reviewsAvailable()) return null; // no community layer on this build
 
@@ -121,8 +122,10 @@ export function ReviewsSection({
   const onBlock = async (r: ReviewRow) => {
     if (!session) return onNeedSignIn();
     try {
-      await blockUser(session, r.user_id);
-      setReviews((list) => list.filter((x) => x.user_id !== r.user_id));
+      await blockUser(session, r.id);
+      // The view drops every review by a blocked author, so a reload shows the
+      // list without them (the reader never learns whose reviews those were).
+      await load();
       showToast('Blocked. You will not see their reviews.');
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Could not block that user.');
@@ -210,7 +213,7 @@ export function ReviewsSection({
               <ReviewRowView
                 key={r.id}
                 r={r}
-                mine={session?.user.id === r.user_id}
+                mine={Boolean(session) && r.is_mine === true}
                 index={i}
                 onReport={() => void onReport(r)}
                 onBlock={() => void onBlock(r)}
@@ -272,6 +275,7 @@ function ReviewRowView({
       <div className="review-row-head">
         <Stars value={r.rating} size={12} fill="var(--voice)" label={`${r.rating} out of 5`} />
         {mine ? <span className="review-mine">You</span> : null}
+        {r.is_staff ? <span className="review-staff">OpenShore team</span> : null}
         <button
           className="review-more press-fb"
           aria-label="Review options"

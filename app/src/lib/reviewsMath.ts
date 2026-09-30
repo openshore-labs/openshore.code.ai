@@ -117,11 +117,12 @@ export function containsObjectionable(text: string | undefined | null): boolean 
 
 // ------------------------------------------------------- hardware-aware read
 
-/** One review row, as read from the reviews table (the fields the fit signal
- *  and the list need). */
+/** One review row, as read from the model_reviews_public view (production's
+ *  0020): the fields the fit signal and the list need, and never the author's
+ *  id. `is_staff` is set by the server from its staff list; `is_mine` is true
+ *  only on the reader's own review. */
 export interface ReviewRow {
   id: string;
-  user_id: string;
   model_id: string;
   rating: number;
   body?: string | null;
@@ -132,6 +133,8 @@ export interface ReviewRow {
   quant?: string | null;
   felt_speed?: 'snappy' | 'usable' | 'slow' | null;
   created_at: string;
+  is_staff?: boolean | null;
+  is_mine?: boolean | null;
 }
 
 /** A coarse memory tier for "machines like yours", so a reader on a 16GB phone

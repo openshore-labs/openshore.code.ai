@@ -227,6 +227,40 @@ export async function getUser(accessToken: string): Promise<{ id: string; email?
   return { id: u.id, email: u.email };
 }
 
+/** What the auth server says about an access token's account, asked once:
+ *  'here' (the account and this sign-in are live), 'gone' (the token names an
+ *  account that no longer exists), or 'invalid' (the sign-in itself is dead:
+ *  its session was ended, here or everywhere). GoTrue (checked on the local
+ *  stack's gotrue v2.197.0) answers a deleted account with 403 and error_code
+ *  `user_not_found`, and looks the account up before the session, so only
+ *  that code means gone; a live account whose session was ended gets 403
+ *  `session_not_found`, and only that code means the sign-in is dead.
+ *  Anything else throws, because nothing here can tell: offline, a server
+ *  error, `bad_jwt` (a token it could not read, which says nothing about the
+ *  account or the session), or a 401 or 403 with no GoTrue code at all (a
+ *  gateway or proxy in the way). A caller must never sign the device out on
+ *  a throw. */
+export type AuthUserState = 'here' | 'gone' | 'invalid';
+
+export async function authUserState(accessToken: string): Promise<AuthUserState> {
+  const res = await fetch(`${base()}/auth/v1/user`, { headers: authHeaders(accessToken) });
+  if (res.ok) return 'here';
+  let code: unknown = res.headers.get('x-sb-error-code');
+  try {
+    const body = (await res.json()) as { error_code?: unknown } | null;
+    code = body?.error_code ?? code;
+  } catch {
+    // Not JSON: the header, if any, is all there is.
+  }
+  if (code === 'user_not_found') return 'gone';
+  if (code === 'session_not_found') return 'invalid';
+  throw new SupabaseRequestError(
+    `Request failed (${res.status}).`,
+    res.status,
+    typeof code === 'string' && code ? code : undefined,
+  );
+}
+
 /** The preferences that follow a signed-in person (lib/settingsReach.ts) ride
  *  on the account's own user record, under one key, so they need no table of
  *  their own. What is written is only the allowlisted preferences and when
@@ -265,7 +299,17 @@ export async function rpc<T>(
   // The status rides along so a caller can tell a refusal (a raised P0001
   // arrives as a 400) from a failure worth retrying.
   if (!res.ok) throw new SupabaseRequestError(await readError(res), res.status);
-  return (await res.json()) as T;
+  return readRpcBody<T>(res);
+}
+
+/** An RPC's answer. PostgREST answers a function that returns void with 204
+ *  and no body (postgrest v16.3, the CLI's pinned image), and `res.json()` on
+ *  an empty body throws, so a call that worked would read as a failure. No
+ *  body is no value. */
+async function readRpcBody<T>(res: Response): Promise<T> {
+  if (res.status === 204) return undefined as T;
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 /** A minimal PostgREST select. Pass a query string like "select=*&org_id=eq.123". */
@@ -305,7 +349,7 @@ export async function rpcPublic<T>(
     body: JSON.stringify(args),
   });
   if (!res.ok) throw new Error(await readError(res));
-  return (await res.json()) as T;
+  return readRpcBody<T>(res);
 }
 
 /** Insert one or more rows, returning the inserted representation. */
@@ -393,10 +437,18 @@ export async function invokeFunction<T>(
   return (await res.json()) as T;
 }
 
-/** Invoke an Edge Function that refuses with a fixed code (`{ error: 'owns_org' }`,
- *  delete-account), keeping the status and the code on a SupabaseRequestError
- *  so the caller can say the right thing. Only a short snake_case word counts
- *  as a code; anything else is dropped, never shown. */
+/** A refusal code: a short snake_case word. */
+function asCode(sent: unknown): string | undefined {
+  return typeof sent === 'string' && /^[a-z_]{1,40}$/.test(sent) ? sent : undefined;
+}
+
+/** Invoke an Edge Function that refuses with a fixed code, keeping the status
+ *  and the code on a SupabaseRequestError so the caller can say the right
+ *  thing. Two shapes carry a code: `{ code, error: <a sentence> }` (the
+ *  2026-09-24 delete-account, still live in production) and
+ *  `{ error: 'owns_org' }` (main's). `code` is read before `error`. Only a
+ *  short snake_case word counts as a code; anything else is dropped, never
+ *  shown. */
 export async function invokeFunctionWithCode<T>(
   name: string,
   accessToken: string,
@@ -410,8 +462,8 @@ export async function invokeFunctionWithCode<T>(
   if (!res.ok) {
     let code: string | undefined;
     try {
-      const sent = ((await res.json()) as { error?: unknown }).error;
-      if (typeof sent === 'string' && /^[a-z_]{1,40}$/.test(sent)) code = sent;
+      const sent = (await res.json()) as { code?: unknown; error?: unknown } | null;
+      code = asCode(sent?.code) ?? asCode(sent?.error);
     } catch {
       // Not JSON: no code.
     }
