@@ -3168,3 +3168,13 @@ execution contract. Newest at the bottom.
     those two.
   - The "OpenShore team" label reads `--wave-ink` (`#3a6f7d` light, 4.5:1 on
     `--surface`), ported from the privacy branch.
+- 2026-09-29: **Desktop releases publish to the public
+  `openshore-labs/openshore-releases` repo, not this one.** This repo went
+  private (founder, so the code stays closed while the GitHub profile goes
+  public), and a private repo's releases are invisible to openshore.ai's
+  download buttons and to every installed app's update check. The releases
+  repo holds installers only; the publish job uses `RELEASES_TOKEN` (release
+  environment) and Codemagic's `GH_RELEASE_TOKEN`, both scoped to that repo
+  alone; notes are a fixed line, never generated from this repo's commits; the
+  version job reads tags from both repos so patch numbers keep climbing.
+  Installs from before the move cannot see the new feed and reinstall once.

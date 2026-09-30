@@ -1154,16 +1154,11 @@ describe('the scheduler lock file', () => {
   });
 
   it('marks a run the previous process left open as failed once this process holds the clock', () => {
-    // The routine's slot passed an hour before it was made, so taking the
-    // clock claims that slot quietly and records nothing over the orphan,
-    // whatever the time of day. (A fixed 06:00 slot with the clock at noon
-    // read as a missed slot whenever the suite ran between midnight and
-    // 06:00, and its skipped run became the last run.)
-    const now = new Date();
-    const earlier = new Date(now.getTime() - 60 * 60_000);
-    const routine = store.createRoutine(
-      input({ schedule: { hour: earlier.getHours(), minute: earlier.getMinutes(), days: [] } }),
-    );
+    // Its slot (13:00) is after the 12:00 clock, so the latest slot is
+    // yesterday's, before the routine existed: taking the clock records no
+    // missed slot at any real hour. (With the default 06:00, a run between
+    // midnight and 06:00 real time recorded a skipped slot as the last run.)
+    const routine = store.createRoutine(input({ schedule: { hour: 13, minute: 0, days: [] } }));
     // pid_max is 2^22 on Linux; nothing runs there, so the run's process is gone.
     store.appendRun({
       routineId: routine.id,

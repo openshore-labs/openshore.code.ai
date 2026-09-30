@@ -28,7 +28,7 @@ double-click. Exact copy for the download page:
 The `mac-desktop` job's last step uploads the dmg/zip to whichever GitHub
 Release is currently latest, the same release Linux and Windows publish to
 via `release.yml`, so one link
-(`https://github.com/openshore-labs/openshore.code.ai/releases/latest`)
+(`https://github.com/openshore-labs/openshore-releases/releases/latest`)
 carries every platform, and the desktop app's own macOS update check (which
 opens exactly that URL when a newer version exists; see
 `app/electron/main.ts`'s `checkMacUpdate`) has something real to point to.
@@ -49,10 +49,14 @@ own GitHub integration is read-only clone access, not a general API token:
 1. github.com -> Settings -> Developer settings -> Personal access tokens ->
    Fine-grained tokens -> Generate new token.
 2. Resource owner: `openshore-labs`. Repository access: **Only select
-   repositories** -> `openshore.code.ai`. Permissions: **Contents: Read and
-   write** (nothing else needed).
+   repositories** -> `openshore-releases` (the public, installers-only repo
+   every release publishes to; this code repo is private). Permissions:
+   **Contents: Read and write** (nothing else needed).
 3. Codemagic -> this app -> Environment variables -> the `Harbor-os-code`
    group -> add `GH_RELEASE_TOKEN`, paste the token, mark **Secure**.
+4. The same token is the `RELEASES_TOKEN` secret in this repo's `release`
+   environment (Settings -> Environments -> release), which the Linux and
+   Windows publish job in `.github/workflows/release.yml` uses.
 
 Without it, the build still succeeds and the dmg/zip are still attached as
 Codemagic's own build artifacts (downloadable from the Codemagic UI); the
@@ -85,7 +89,7 @@ To actually confirm a run published, do not trust the green checkmark or even
 the per-step durations shown in the Codemagic UI at a glance, open the step
 log itself. Either check the "Publish to the GitHub Release" step's own log
 for `Publishing the macOS build to vX.Y.Z`, or just check the release itself:
-`curl -s https://api.github.com/repos/openshore-labs/openshore.code.ai/releases/latest`
+`curl -s https://api.github.com/repos/openshore-labs/openshore-releases/releases/latest`
 and look for a `.dmg` in `assets` with the current version in its filename.
 
 ## Updates on every push to main (2026-09-23)

@@ -301,7 +301,7 @@ workflows:
                  "committed in app/package.json."
             exit 0
           fi
-          if ! LATEST_TAG=$(gh release view --repo openshore-labs/openshore.code.ai \
+          if ! LATEST_TAG=$(gh release view --repo openshore-labs/openshore-releases \
             --json tagName -q .tagName 2>&1); then
             echo "Could not look up the latest GitHub release: $LATEST_TAG"
             echo "Packaging with whatever version is committed in app/package.json."
@@ -447,7 +447,7 @@ workflows:
           echo "Publishing the macOS build to $LATEST_TAG"
           # The .sig files ride with the files they sign (none when the
           # signing step above skipped; nullglob drops the pattern then).
-          gh release upload "$LATEST_TAG" --repo openshore-labs/openshore.code.ai \
+          gh release upload "$LATEST_TAG" --repo openshore-labs/openshore-releases \
             --clobber release/*.dmg release/*.zip release/*.sig release/*.blockmap release/latest-mac.yml
     artifacts:
       - app/release/*.dmg
