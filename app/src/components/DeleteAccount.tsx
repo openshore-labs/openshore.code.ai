@@ -9,7 +9,12 @@
 // a team with other people in it, and the goodbye. Each is a presence-aware
 // Sheet, so the ask plays its exit while the next one arrives, and the
 // goodbye outlives the signed-in state that drew the row.
+//
+// The support address is the one published address (SUPPORT_EMAIL, founder
+// decision F1), read from the engine's constant so the app, the Terms and the
+// server's ladder cannot drift apart (app/test/contactAddress.test.ts).
 import { useState } from 'react';
+import { SUPPORT_EMAIL } from 'os-code/protocol';
 import type { DeleteAccountOutcome } from '../state/accountDeletion.js';
 import { hapticCommit } from '../lib/haptics.js';
 import { openExternal } from '../lib/platform.js';
@@ -27,8 +32,7 @@ export const DELETE_ACCOUNT_COPY = {
   working: 'Deleting...',
   failed: 'Your account was not deleted. Check your connection and try again.',
   ownsOrgTitle: 'One step first',
-  ownsOrgBody:
-    'You own a team with other people in it, so this account cannot be deleted yet. Email support@openshore.ai and we will hand the team over or close it with you.',
+  ownsOrgBody: `You own a team with other people in it, so this account cannot be deleted yet. Email ${SUPPORT_EMAIL} and we will hand the team over or close it with you.`,
   emailSupport: 'Email support',
   close: 'Close',
   doneTitle: 'Your account is deleted',
@@ -38,7 +42,7 @@ export const DELETE_ACCOUNT_COPY = {
   done: 'Done',
 } as const;
 
-export const SUPPORT_MAILTO = 'mailto:support@openshore.ai';
+export const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}`;
 
 type Step = 'ask' | 'owns_org' | 'done' | undefined;
 

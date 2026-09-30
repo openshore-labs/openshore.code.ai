@@ -125,4 +125,4 @@ or section 4 will be surfaced in the app.
 ## 10. Contact
 
 Questions, appeals of an enforcement decision, and reports of misuse:
-support@openshore.ai
+os-code@openshorellc.com
