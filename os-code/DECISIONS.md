@@ -3022,8 +3022,8 @@ execution contract. Newest at the bottom.
   monitored inbox once a test message makes the round trip; until then
   os-code@openshorellc.com is the only published address, in the repo Terms
   and on the site alike. Production's 0019 and main's 0022 warn with that
-  address; the app's own support links and the Terms wait on F1. Stands until
-  a later ruling names it.
+  address, and since package C (below) the app's `SUPPORT_EMAIL` and the
+  Terms say it too. Stands until a later ruling names it.
 - **Published address is a commercial virtual mailbox (advisory org,
   2026-09-24, founder delegated; arrived through the privacy branch, recorded
   on main by CTO 11).** It appears in the site footer, the privacy policy, the
@@ -3031,3 +3031,87 @@ execution contract. Newest at the bottom.
   address is for service of process only, and a residential address is never
   published. The founder supplies the literal address. Stands until a later
   ruling names it.
+- **Account deletion is one design, and main reads reviews from production's
+  view (packages B and C, the CTO closure memo, 2026-09-29; founder yes to
+  its item 1a).** Built on `prod-reconcile` with package A; unapplied, pushed
+  from main only through `docs/vault-gate1-runbook.md`. The calls a later
+  session should not reopen:
+  - The deletion's database writes are four SECURITY DEFINER functions in
+    0022 section 6 that only the service role may call, so each rule lives
+    beside its pgTAP: `account_deletion_hold` (the privacy function's
+    legal-hold copy into `deletion_holds`, same shape, under a SHA-256 of
+    the user id; append-only: identical held rows add nothing, changed ones
+    add a newer copy, nothing is edited or removed, and an advisory lock
+    keeps two taps from both inserting), `account_deletion_orgs` (the owned
+    teams, all or none, in one delete statement after locking the teams and
+    their member rows, only while nobody else is active; an active row with
+    no user id is nobody), `account_deletion_tombstone` and
+    `account_deletion_memberships`. `delete-account` keeps main's planner
+    and fixed error codes and answers
+    `{ ok: true, deleted: true, appleNote }`, so either app contract reads
+    success.
+  - Order: plan and refuse, cancel Stripe, copy held rows (before anything
+    is deleted), delete the teams (fewer back than planned answers
+    `owns_org`), tombstone, clear team history, memberships, `deleteUser`.
+    Known limit, accepted: in the moment between the plan and the team
+    delete a teammate can turn active; then nothing is deleted and the
+    answer is `owns_org`, but that team's subscription is already
+    canceled. Billing stays first because a Stripe failure must leave the
+    account whole and a retry must still see the team's billing.
+  - Tombstones (item 4a): level 2 only, `check (level = 2)`, CTO 11's
+    domain; written only for an operator's confirmed termination (action
+    `terminate`, actor not `system`, record_enforcement's own test), never
+    for the ladder's automatic one, including the one a tombstone itself
+    causes on a returning account. `terminated_at` is that termination's own
+    `created_at`; a second write keeps the later of two terminations' times
+    and never the time of the write, and 0026's retention deletes a tombstone
+    two years after `terminated_at`. Rejected: main's first design (level 1
+    and 2, `recorded_at` refreshed on every deletion), which turned an
+    automatic decision into a binding ban and let a ban renew itself past two
+    years by deleting the returning account.
+  - Email cleanup (finding (c), CX: erase it): rows bound to the account go
+    by id; rows nobody has claimed (user id null) go by the account's
+    confirmed email, lowercased, as `claim_membership` and `export_my_data`
+    match it. A row bound to someone else stays whatever its email says.
+  - Download my data includes the caller's `push_sends` and
+    `likeness_consents` (0026): both are keyed to the person and no schema
+    reason keeps them out.
+  - F1: os-code@openshorellc.com is the one published address in 0022's
+    ladder, the engine's `SUPPORT_EMAIL` (the block card and, through
+    `os-code/protocol`, the Delete account sheet) and `docs/terms-of-use.md`;
+    `app/test/contactAddress.test.ts` fails when any of them differs. F1 may
+    switch it later only through a new migration for the ladder (0022 is
+    never edited once production runs it) plus the constant and the Terms in
+    the same change.
+  - The interim app fix reads both functions: `ok` or `deleted` is success
+    (a missing `appleNote` shows the Apple note as an if), `code` is read
+    before `error`, `transfer_or_delete_org` is `owns_org`, and
+    `reauth_required` says the account was not deleted and asks for a fresh
+    sign-in. It shipped with the function, so a build from main is right
+    whichever function is live.
+  - Deploy: `supabase functions deploy delete-account --use-api` on push
+    day, after all six files applied (runbook 7.4), never before; the
+    runbook first checks the live function's deployment date (2026-09-24 is
+    the privacy branch's). Deploying drops the 2026-09-24 function's
+    ten-minute re-sign-in check, deleting a team that still has members, and
+    refunds, until the privacy branch's own PR (F2, F3).
+  - Package B ports what production's 0020 requires and nothing more: every
+    list reads `model_reviews_public` (no author id; `is_mine`, `is_staff`
+    and the "OpenShore team" label), and Block names the review
+    (`block_review_author`) and reloads. The raw-average half of the
+    2026-09-24 ratings ruling (no benchmark shrinkage) is app behavior
+    production does not run, so it rides with the privacy branch's own PR.
+  - `supabase/scripts/local-vault.sh` is an allowlist: only `start`,
+    `db start`, `db reset` and `db push --local` run, and every flag naming
+    a project or another `supabase/` folder is refused first.
+  - The collision guard's known limits (`check-migrations.mjs`,
+    `migrations.yml`): it compares one tree with `origin/main` and main's
+    `production-history.tsv` only. Two unmerged branches that take the same
+    new number both pass until one merges; then the other fails on its next
+    push or PR, and main's scan lists it as a warning, never a failure. It
+    sees production only through the history file on main, so a push made
+    outside the runbook and never recorded there (the 2026-09-24 case) is
+    invisible to it; only the founder's `push-preflight.mjs`, comparing the
+    live history's CSV with the file, catches that, on push day. It runs on
+    pushes that touch `supabase/` and on PRs, and it compares names, numbers
+    and bytes, not what a file does.

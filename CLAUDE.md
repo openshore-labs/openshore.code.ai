@@ -245,11 +245,16 @@ type error until complete: every room in `app/src/lib/accountGate.ts`
 (`SETTINGS_REACH`). A new room or settings key is not done until it is
 classified there; prompts, work, addresses, keys and consents never follow.
 `app/test/accounts.test.ts` holds it; `docs/accounts-cx-memo.md` is the why.
-In-app account deletion is BUILT (2026-09-29: the `delete-account` function,
-`0022`, the Settings row); it ships once the founder pushes 0021 to 0026 and
-the merged function (main's with the privacy function's legal-hold copy, CTO 11
-package C) is deployed (PROGRESS, What remains). Production runs the privacy
-branch's 2026-09-24 function until then.
+In-app account deletion is BUILT as one design (2026-09-29, CTO 11 package C:
+main's `delete-account` planner and answer, the privacy function's legal-hold
+copy, and 0022's service-role `account_deletion_` functions for the guarded
+team delete, the operator-only tombstone and the email cleanup; the Settings
+row reads either function's answers). It ships when the founder pushes 0021
+to 0026 and then deploys it (`docs/vault-gate1-runbook.md` 7.4); production
+runs the privacy branch's 2026-09-24 function until then. The published
+address is one constant, `SUPPORT_EMAIL` (os-code@openshorellc.com until F1
+says otherwise), and `app/test/contactAddress.test.ts` holds 0022's ladder
+and the Terms to it.
 
 ## The premium build's standing rules (2026-09-29)
 
