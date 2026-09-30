@@ -7485,3 +7485,139 @@ describe('round 7, batch 4: Your computer keeps main behavior in the resolve she
     });
   });
 });
+
+describe('round 7, batch 4: the team vault says what is there, and what it did', () => {
+  let server: FakeOrgVaultServer;
+  const st = () => useApp.getState();
+  beforeEach(async () => {
+    reset();
+    await (await import('../src/lib/authSession.js')).clearSession();
+    await closeVaultIndex();
+    wiring.org!.resetOrgVault();
+    useApp.setState({
+      vaultTeamPlan: undefined,
+      vaultConflict: undefined,
+      vaultTrash: undefined,
+      vaultFolders: undefined,
+      vaultReturnFolder: undefined,
+    });
+    server = createFakeOrgVaultServer(ORG);
+    teamNet.server = server;
+    teamScope();
+  });
+  afterEach(async () => {
+    useApp.setState({ vaultTeamPlan: undefined, vaultConflict: undefined });
+    await closeVaultIndex();
+  });
+  async function settledIndex() {
+    for (let i = 0; i < 100; i++) {
+      await tick();
+      const state = vaultIndexStatus().state;
+      if (currentVaultIndex() && (state === 'ready' || state === 'partial')) return;
+    }
+    throw new Error('the index never settled');
+  }
+
+  describe("E32: a team list started under one account never opens that account's index for the next", () => {
+    // u1's list answer is held after the server answered it; u1 signs out,
+    // u2 signs in and opens the team vault; then u1's answer lands.
+    async function lateList(o: { fail?: boolean } = {}) {
+      perCaller(server, { members: ['u1', 'u2'] });
+      useStoreToken();
+      server.put('Plan.md', 'alpha beta', 'u9');
+      const origSelect = server.select;
+      const d = deferred();
+      const reached = deferred();
+      let gated = false;
+      server.select = async (table, token, query) => {
+        const out = await origSelect(table, token, query);
+        if (
+          !gated &&
+          table === 'org_vault_notes' &&
+          /deleted=is\.false/.test(query) &&
+          !/path=eq\./.test(query) &&
+          token === 'tok-u1'
+        ) {
+          gated = true;
+          reached.resolve();
+          await d.promise;
+          if (o.fail) throw new TypeError('Failed to fetch');
+        }
+        return out;
+      };
+      const first = st().vaultRefresh();
+      await reached.promise;
+      await st().signOutAccount();
+      auth.nextUser = U2;
+      await st().signIn('b@example.com', 'pw');
+      await st().setVaultScope('team');
+      await settledIndex();
+      useApp.setState({ toast: undefined });
+      d.resolve();
+      await first;
+      for (let i = 0; i < 5; i++) await tick();
+    }
+
+    it("u2 keeps u2's own index and can search it", async () => {
+      await lateList();
+      expect(currentVaultIndex()?.target).toEqual({
+        providerId: 'org',
+        resourceId: ORG,
+        owner: 'u2',
+      });
+      expect(st().vaultTargetRef()).toMatchObject({ owner: 'u2' });
+    });
+
+    it("u1's list failing late says nothing in u2's session", async () => {
+      await lateList({ fail: true });
+      expect(st().vaultError).toBeUndefined();
+      expect(st().toast).toBeUndefined();
+    });
+
+    it("a late read of u1's note never opens it in u2's session", async () => {
+      const net = perCaller(server, { members: ['u1', 'u2'] });
+      useStoreToken();
+      server.put('Plan.md', 'alpha beta', 'u9');
+      await st().vaultRefresh();
+      const origSelect = server.select;
+      const d = deferred();
+      const reached = deferred();
+      let gated = false;
+      server.select = async (table, token, query) => {
+        const out = await origSelect(table, token, query);
+        if (!gated && table === 'org_vault_notes' && /path=eq\./.test(query) && token === 'tok-u1') {
+          gated = true;
+          reached.resolve();
+          await d.promise;
+        }
+        return out;
+      };
+      void net;
+      const open = st().vaultOpen('Plan.md');
+      await reached.promise;
+      await st().signOutAccount();
+      auth.nextUser = U2;
+      await st().signIn('b@example.com', 'pw');
+      await st().setVaultScope('team');
+      d.resolve();
+      await open;
+      for (let i = 0; i < 5; i++) await tick();
+      expect(st().vaultNote).toBeUndefined();
+    });
+
+    it('the same account signing back in still gets its own late list', async () => {
+      perCaller(server, { members: ['u1'] });
+      useStoreToken();
+      server.put('Plan.md', 'alpha beta', 'u9');
+      await st().vaultRefresh();
+      await settledIndex();
+      expect(currentVaultIndex()?.target).toMatchObject({ owner: 'u1' });
+      expect(st().vaultFiles.map((f) => f.path)).toEqual(['Plan.md']);
+      // An ordinary team save still patches the list.
+      await st().vaultOpen('Plan.md');
+      await st().vaultSave('Plan.md', 'alpha beta gamma');
+      expect(server.bytes('Plan.md')).toBe('alpha beta gamma');
+      expect(st().vaultFiles.find((f) => f.path === 'Plan.md')?.size).toBe(16);
+    });
+  });
+});

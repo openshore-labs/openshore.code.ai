@@ -11316,6 +11316,9 @@ export const useApp = create<AppState>((set, get, api) => {
       try {
         files = await listVaultNotes(target);
       } catch {
+        // A list that fails after its vault left the screen (another vault,
+        // or another account's team vault, E32) says nothing about this one.
+        if (!isActiveVault(target)) return;
         // Keep the last-known file list so the screen can show an offline
         // state rather than the first-run "empty vault" greeting over notes
         // that really exist.
