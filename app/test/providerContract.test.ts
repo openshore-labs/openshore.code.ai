@@ -492,7 +492,9 @@ for (const p of enforcing) {
         path: 'Plans.md',
         ifMatch: versionOfWrite(w),
       });
-      await p.provider.write(R, 'Plans.md', 'new plans', { ifAbsent: true });
+      // Another writer takes the name (the team vault makes no note over a
+      // name in Trash itself, E22).
+      p.replace('Plans.md', 'new plans');
       const back = await p.provider.restore!(R, t.ok ? t.entry.id : '');
       expect(back).toMatchObject({
         ok: true,

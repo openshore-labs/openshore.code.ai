@@ -1445,4 +1445,15 @@ describe("the team's free space says what 0023 says (the review, finding 1)", ()
       /Not deleted/,
     );
   });
+
+  it('a name in team Trash is said with what to do, never "try again" (E22)', async () => {
+    const { vaultNameInTrash, vaultFolderMoveInTrash } = await import('../src/lib/vaultCopy.js');
+    expect(vaultNameInTrash('Plan')).toBe(
+      '"Plan" is in Trash. Restore it from Trash, or use another name.',
+    );
+    expect(vaultFolderMoveInTrash('Work', 'a')).toBe(
+      '"Work" was not moved. "a" is in Trash. Restore it from Trash, or use another name.',
+    );
+    expect(vaultNameInTrash('Plan')).not.toMatch(/try again/i);
+  });
 });

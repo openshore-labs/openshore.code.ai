@@ -543,7 +543,31 @@ describe('org vault rename (org_vault_move)', () => {
     const w = await orgVaultProvider.write(ORG, 'a.md', 'x', { ifAbsent: true });
     server.selects.length = 0;
     await orgVaultProvider.rename!(ORG, 'a.md', 'b.md', { ifMatch: version(w) });
-    expect(notesSelects()).toEqual([]);
+    // Only the one row at the destination, whether it is in Trash (E22).
+    expect(notesSelects().map((q) => q.query)).toEqual([
+      `select=path&org_id=eq.${ORG}&path=eq.%22b.md%22&deleted=is.true&limit=1`,
+    ]);
+  });
+
+  it('never moves a note onto a name in Trash, and never makes one there (E22)', async () => {
+    const t = await orgVaultProvider.write(ORG, 'Trashed.md', 'their text', { ifAbsent: true });
+    await orgVaultProvider.trash!(ORG, { kind: 'note', path: 'Trashed.md', ifMatch: version(t) });
+    const a = await orgVaultProvider.write(ORG, 'a.md', 'mine', { ifAbsent: true });
+    const moves = rpcsNamed('org_vault_move').length;
+    await expect(
+      orgVaultProvider.rename!(ORG, 'a.md', 'Trashed.md', { ifMatch: version(a) }),
+    ).rejects.toMatchObject({ name: 'OrgVaultNameInTrash', permanent: true, nameInTrash: true });
+    await expect(
+      orgVaultProvider.write(ORG, 'Trashed.md', 'new', { ifAbsent: true }),
+    ).rejects.toMatchObject({ name: 'OrgVaultNameInTrash' });
+    expect(rpcsNamed('org_vault_move').length).toBe(moves);
+    expect((await orgVaultProvider.listTrash!(ORG)).map((x) => x.path)).toEqual(['Trashed.md']);
+    // Restore still puts it back at its own name.
+    expect(await orgVaultProvider.restore!(ORG, 'n:Trashed.md')).toMatchObject({
+      ok: true,
+      renamed: false,
+    });
+    expect(server.bytes('Trashed.md')).toBe('their text');
   });
 });
 
@@ -585,10 +609,12 @@ describe('org vault Trash (Restore only, R3)', () => {
     const a = await orgVaultProvider.write(ORG, 'moved.md', 'm', { ifAbsent: true });
     await orgVaultProvider.rename!(ORG, 'moved.md', 'elsewhere.md', { ifMatch: version(a) });
     // Deleted, then moved onto and away again: renamed is newest, so not listed.
+    // (Made again on the server itself: this client makes no note over a
+    // name in Trash, E22.)
     const b = await orgVaultProvider.write(ORG, 'twice.md', 't', { ifAbsent: true });
     await orgVaultProvider.trash!(ORG, { kind: 'note', path: 'twice.md', ifMatch: version(b) });
-    const c = await orgVaultProvider.write(ORG, 'twice.md', 't2', { ifAbsent: true });
-    await orgVaultProvider.rename!(ORG, 'twice.md', 'other.md', { ifMatch: version(c) });
+    const c = server.put('twice.md', 't2', 'u-me');
+    await orgVaultProvider.rename!(ORG, 'twice.md', 'other.md', { ifMatch: String(c.rev) });
     // Moved away, then made and deleted there: deleted is newest, so listed.
     const d = await orgVaultProvider.write(ORG, 'back.md', 'd', { ifAbsent: true });
     await orgVaultProvider.rename!(ORG, 'back.md', 'gone.md', { ifMatch: version(d) });
@@ -597,7 +623,7 @@ describe('org vault Trash (Restore only, R3)', () => {
     // Deleted and made again: live, so not in Trash.
     const f = await orgVaultProvider.write(ORG, 'alive.md', 'f', { ifAbsent: true });
     await orgVaultProvider.trash!(ORG, { kind: 'note', path: 'alive.md', ifMatch: version(f) });
-    await orgVaultProvider.write(ORG, 'alive.md', 'f2', { ifAbsent: true });
+    server.put('alive.md', 'f2', 'u-me');
     expect((await orgVaultProvider.listTrash!(ORG)).map((x) => x.path)).toEqual(['back.md']);
   });
 

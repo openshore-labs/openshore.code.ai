@@ -27,7 +27,7 @@ import {
   createFakeOrgVaultServer,
   type FakeOrgVaultServer,
 } from './fixtures/fakeOrgVaultServer.js';
-import { backlinksTo, normalizeNotePath } from '../src/lib/vault.js';
+import { backlinksTo, normalizeNotePath, noteTitle } from '../src/lib/vault.js';
 import {
   VAULT_TEAM_DELETE_ADMINS_ONLY,
   VAULT_TEAM_DELETE_REFUSED,
@@ -40,6 +40,7 @@ import {
   VAULT_GONE_REASON,
   vaultFolderMoveTaken,
   vaultGoneToast,
+  vaultNameInTrash,
   vaultRenameFailed,
   vaultTickChanged,
   vaultTrashGone,
@@ -3890,12 +3891,21 @@ describe('round 5: a team refusal says what happened and keeps the text', () => 
   }
   // The note open here, changed (or deleted) by a teammate, and a save of
   // `typed` that raises the resolve sheet.
+  // `gone`: a teammate moved the note away, so its name is free (a note
+  // deleted to Trash keeps its name, E22).
   async function sheetOn(path: string, typed: string, gone = false) {
     server.put(path, 'the base', 'u-me');
     await useApp.getState().vaultRefresh();
     await useApp.getState().vaultOpen(path);
-    if (gone) server.drop(path);
-    else server.put(path, 'theirs');
+    if (gone) {
+      const rpc = server.rpc.bind(server);
+      await rpc('org_vault_move', 'tok', {
+        p_org: ORG,
+        p_from: path,
+        p_to: `Moved away/${path}`,
+        p_if_match: server.notes.get(path)!.rev,
+      });
+    } else server.put(path, 'theirs');
     await useApp.getState().vaultSave(path, typed);
     expect(useApp.getState().vaultConflict).toMatchObject({
       path,
@@ -6309,6 +6319,184 @@ describe('round 7, batch 2: team text and names stay where they belong', () => {
       onRemove(1, { fail: () => new TypeError('Failed to fetch') });
       expect(await st().vaultDeleteFolder('Work')).toEqual({ ok: false, reason: 'storage' });
       expect(listed()).toEqual(['Work/a.md', 'Work/b.md']);
+    });
+  });
+  describe('E22: nothing leaves team Trash because a name was used again', () => {
+    const trashPaths = async () => ((await st().vaultLoadTrash()) ?? []).map((e) => e.path).sort();
+    // The index has read the list the last refresh gave: every listed note,
+    // and nothing more.
+    async function indexed() {
+      for (let i = 0; i < 200; i++) {
+        await tick();
+        const host = currentVaultIndex();
+        const state = vaultIndexStatus().state;
+        if (!host || (state !== 'ready' && state !== 'partial')) continue;
+        const listed = st().vaultFiles.map((f) => f.path);
+        if (listed.every((p) => host.index.entry(p) !== undefined)) return host;
+      }
+      throw new Error('the index never caught up');
+    }
+    // A teammate's note, deleted on purpose: team Trash lists it.
+    async function trashed(path: string, body = 'their long plan') {
+      server.put(path, body, 'u-teammate');
+      server.drop(path);
+    }
+
+    it('a new note under a name in Trash is not made, and says so; Restore still brings it back', async () => {
+      await trashed('Plan.md');
+      await st().vaultRefresh();
+      expect(await trashPaths()).toEqual(['Plan.md']);
+      await st().vaultCreate('Plan');
+      expect(st().vaultNote).toBeUndefined();
+      expect(st().toast).toBe(`Could not create that note. ${vaultNameInTrash('Plan')}`);
+      expect(await trashPaths()).toEqual(['Plan.md']);
+      expect(server.notes.get('Plan.md')?.deleted).toBe(true);
+      expect(await st().vaultRestoreTrash('n:Plan.md')).toMatchObject({ ok: true });
+      expect(server.bytes('Plan.md')).toBe('their long plan');
+    });
+
+    it('a rename onto a name in Trash is not made, and says so', async () => {
+      await trashed('B.md', 'their B');
+      server.put('A.md', 'my A', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('A.md');
+      const preview = await st().vaultPrepareMove('note', 'A.md', 'B.md');
+      if (!preview) throw new Error('no preview');
+      expect(await st().vaultApplyMove(preview, false)).toMatchObject({
+        ok: false,
+        line: `Not renamed. ${vaultNameInTrash('B')}`,
+      });
+      expect(server.bytes('A.md')).toBe('my A');
+      expect(await trashPaths()).toEqual(['B.md']);
+    });
+
+    it("Today's note in Trash is not started again, and says so", async () => {
+      await st().vaultRefresh();
+      expect(await st().vaultToday()).toMatchObject({ kind: 'created' });
+      const path = st().vaultNote!.path;
+      await st().vaultSave(path, 'the morning, typed');
+      st().vaultCloseNote();
+      server.drop(path);
+      await st().vaultRefresh();
+      await vi.waitFor(() => expect(currentVaultIndex()?.index.entry(path)).toBeUndefined());
+      expect(await trashPaths()).toEqual([path]);
+      expect(await st().vaultToday()).toEqual({
+        kind: 'refused',
+        line: `Not started. ${vaultNameInTrash(noteTitle(path))}`,
+      });
+      expect(await trashPaths()).toEqual([path]);
+    });
+
+    it('a folder moved where a name is in Trash moves nothing, and says which', async () => {
+      await trashed('Done/a.md', 'their a');
+      server.put('Work/a.md', 'my a', 'u-me');
+      server.put('Work/b.md', 'my b', 'u-me');
+      await st().vaultRefresh();
+      await indexed();
+      const preview = await st().vaultPrepareMove('folder', 'Work', 'Done');
+      if (!preview) throw new Error('no preview');
+      expect(await st().vaultApplyMove(preview, false)).toMatchObject({
+        ok: false,
+        line: `"Work" was not moved. ${vaultNameInTrash('a')}`,
+      });
+      expect([server.bytes('Work/a.md'), server.bytes('Work/b.md')]).toEqual(['my a', 'my b']);
+      expect(await trashPaths()).toEqual(['Done/a.md']);
+    });
+
+    it('Restore beside a taken name skips a "(restored)" name in Trash', async () => {
+      await trashed('Plan (restored).md', 'an older restored copy');
+      await trashed('Plan.md', 'their long plan');
+      server.put('PLAN.md', 'someone else', 'u-teammate');
+      await st().vaultRefresh();
+      await st().vaultLoadTrash();
+      expect(await st().vaultRestoreTrash('n:Plan.md')).toMatchObject({ ok: true });
+      expect(server.bytes('Plan (restored 2).md')).toBe('their long plan');
+      expect(await trashPaths()).toContain('Plan (restored).md');
+      expect(await st().vaultRestoreTrash('n:Plan (restored).md')).toMatchObject({ ok: true });
+      expect(server.bytes('Plan (restored).md')).toBe('an older restored copy');
+    });
+
+    it('a name a note was moved away from is not in Trash, and a new note there is made', async () => {
+      server.put('Old.md', 'moved away', 'u-me');
+      await st().vaultRefresh();
+      const preview = await st().vaultPrepareMove('note', 'Old.md', 'New.md');
+      if (!preview) throw new Error('no preview');
+      expect(await st().vaultApplyMove(preview, false)).toMatchObject({ ok: true });
+      await st().vaultCreate('Old');
+      expect(st().vaultNote).toMatchObject({ path: 'Old.md', text: '' });
+      expect(server.bytes('Old.md')).toBe('');
+    });
+
+    it('another spelling of the name is a note of its own, and the one in Trash stays', async () => {
+      await trashed('Plan.md');
+      await st().vaultRefresh();
+      await st().vaultCreate('plan');
+      expect(st().vaultNote).toMatchObject({ path: 'plan.md' });
+      expect(await trashPaths()).toEqual(['Plan.md']);
+    });
+
+    it('a note made offline under a name now in Trash is held, never made', async () => {
+      await st().vaultRefresh();
+      server.rpcFailure = new TypeError('Failed to fetch');
+      await st().vaultCreate('Plan', 'my offline plan');
+      server.rpcFailure = undefined;
+      st().vaultCloseNote();
+      await trashed('Plan.md');
+      await st().vaultRefresh();
+      expect(server.notes.get('Plan.md')?.deleted).toBe(true);
+      expect(teamHeld()).toEqual([
+        expect.objectContaining({ path: 'Plan.md', text: 'my offline plan' }),
+      ]);
+      expect(await trashPaths()).toEqual(['Plan.md']);
+    });
+
+    it('Save it again on a note deleted to Trash holds the text, and the note stays in Trash', async () => {
+      server.put('n.md', 'A', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      server.put('n.md', 'A, and their last paragraph');
+      server.drop('n.md');
+      st().vaultNoteDraft('n.md', 'A, and mine');
+      await st().vaultSave('n.md', 'A, and mine');
+      expect(st().vaultConflict).toMatchObject({ kind: 'missing' });
+      await st().vaultResolve('mine', 'A, and mine');
+      expect(server.notes.get('n.md')?.deleted).toBe(true);
+      expect(teamHeld()).toEqual([
+        expect.objectContaining({
+          path: 'n.md',
+          text: 'A, and mine',
+          reason: vaultNameInTrash('n'),
+        }),
+      ]);
+      expect(st().toast).toContain(vaultNameInTrash('n'));
+      expect(await trashPaths()).toEqual(['n.md']);
+      expect(await st().vaultRestoreTrash('n:n.md')).toMatchObject({ ok: true });
+      expect(server.bytes('n.md')).toBe('A, and their last paragraph');
+    });
+
+    it('a keep-both copy never lands on a copy name in Trash', async () => {
+      server.put('n.md', 'A', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      const first = deferred();
+      const rpc = server.rpc.bind(server);
+      let writes = 0;
+      server.rpc = async (fn, token, args) => {
+        if (fn === 'org_vault_write' && ++writes === 1) await first.promise;
+        return rpc(fn, token, args);
+      };
+      const save = st().vaultSave('n.md', 'A, and mine');
+      await vi.waitFor(() => expect(writes).toBe(1));
+      st().vaultCloseNote();
+      server.put('n.md', 'A, and theirs');
+      // A copy made this minute was deleted by a teammate.
+      const now = new Date();
+      const taken = (await import('os-code/protocol')).vaultConflictCopyPath('n.md', now);
+      await trashed(taken, 'an older copy');
+      first.resolve();
+      await save;
+      expect(server.notes.get(taken)?.deleted).toBe(true);
+      expect(liveHas(server, 'A, and mine')).toBe(true);
     });
   });
 });

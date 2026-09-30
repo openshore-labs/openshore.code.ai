@@ -2679,6 +2679,20 @@ export function vaultFolderMoveRefused(
   return `Moved ${moved} of ${total} ${total === 1 ? 'note' : 'notes'} from "${old}". The rest were not moved, so they are still there. ${reasonSentence(reason)}`;
 }
 
+/** A new note, a rename, Today or a keep-both copy whose name is a team note
+ *  in Trash: making it there would take that note out of Trash for good (the
+ *  team's Trash is keyed by name), so it is not made (round 7 E22). The
+ *  reason only: the store puts the verb first. */
+export function vaultNameInTrash(title: string): string {
+  return `"${title}" is in Trash. Restore it from Trash, or use another name.`;
+}
+
+/** A folder move refused before any note moved, because a note would land on
+ *  a name in team Trash (E22). */
+export function vaultFolderMoveInTrash(old: string, title: string): string {
+  return `"${old}" was not moved. ${vaultNameInTrash(title)}`;
+}
+
 /** A folder moved note by note that stopped because a note's name is taken
  *  where it was going (letter case counts as the same name): what moved,
  *  and which name, never "try again", since the same move meets the same

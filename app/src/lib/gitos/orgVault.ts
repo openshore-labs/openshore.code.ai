@@ -49,6 +49,7 @@ import { isVaultConfigName, type ConfigRead, type VaultConfigName } from 'os-cod
 import {
   VAULT_CONFIG_MAX_BYTES,
   foldPath,
+  noteTitle,
   utf8Length,
   type VaultSettingsConfigName,
   type VaultSettingsField,
@@ -61,6 +62,7 @@ import {
   VAULT_TEAM_DELETE_REFUSED,
   VAULT_TEAM_FULL,
   VAULT_TEAM_LAPSED_NOT_SAVED,
+  vaultNameInTrash,
   vaultNotFolderLine,
 } from '../vaultCopy.js';
 import { isVaultFolderPath } from './folderClient.js';
@@ -245,6 +247,20 @@ export class OrgVaultFull extends OrgVaultRefusal {
   constructor() {
     super(VAULT_TEAM_FULL);
     this.name = 'OrgVaultFull';
+  }
+}
+
+/** A create or a move onto a name that is in Trash (E22): 0021's if_absent
+ *  and 0024's move revive the tombstone at that exact path, which takes the
+ *  deleted note out of Trash with no word and leaves its text unreachable,
+ *  so the call is refused before it is sent. Permanent: the same name meets
+ *  the same Trash. `nameInTrash` lets a caller that tries names in turn (a
+ *  keep-both copy) go on to the next. */
+export class OrgVaultNameInTrash extends OrgVaultRefusal {
+  readonly nameInTrash = true;
+  constructor(path: string) {
+    super(vaultNameInTrash(noteTitle(path)));
+    this.name = 'OrgVaultNameInTrash';
   }
 }
 
@@ -479,9 +495,16 @@ async function guardedWrite(
   path: string,
   text: string,
   guard: WriteGuard,
+  /** A Restore putting a note back at its own name: the one create that
+   *  means to revive the tombstone there. */
+  opts: { revive?: boolean } = {},
 ): Promise<WriteResult> {
   let args: Record<string, unknown>;
   if ('ifAbsent' in guard) {
+    // Never a create over a note in Trash, which would take it out (E22).
+    if (!opts.revive && (await refusingFor(resourceId, () => inTrashAt(auth, resourceId, path)))) {
+      throw new OrgVaultNameInTrash(path);
+    }
     args = { p_org: resourceId, p_path: path, p_body: text, p_if_absent: true };
   } else {
     const rev = revOf(guard.ifMatch);
@@ -529,6 +552,23 @@ async function foldedTaken(
   if (!hit) return undefined;
   const row = await headFor(auth, resourceId, hit.path);
   return row ? asFile(row) : undefined;
+}
+
+/** Whether this exact path is in Trash, by the listing's rule (listTrash):
+ *  its row is a tombstone and its newest ending is a delete, never a move. */
+async function inTrashAt(auth: string, resourceId: string, path: string): Promise<boolean> {
+  const dead = await select<{ path: string }>(
+    'org_vault_notes',
+    auth,
+    `select=path&org_id=eq.${eq(resourceId)}&path=eq.${eqPath(path)}&deleted=is.true&limit=1`,
+  );
+  if (!dead.some((r) => r.path === path)) return false;
+  const ending = await select<RevisionRow>(
+    'org_vault_revisions',
+    auth,
+    `select=id,path,reason,recorded_at&org_id=eq.${eq(resourceId)}&path=eq.${eqPath(path)}&reason=in.(deleted,renamed)&order=id.desc&limit=1`,
+  );
+  return ending[0]?.reason === 'deleted';
 }
 
 /** A revision row as Trash reads it (0021's org_vault_revisions). */
@@ -619,7 +659,16 @@ async function putBack(
 ): Promise<{ file: StoredFileMeta; renamed: boolean }> {
   for (let n = 0; n <= 99; n++) {
     const at = n === 0 ? path : restoredPath(path, n);
-    const r = await guardedWrite(auth, resourceId, at, body, { ifAbsent: true });
+    // Back at its own name it revives its tombstone, as Restore means to; a
+    // "(restored)" name that is itself in Trash is passed over, so no other
+    // note leaves Trash on the way (E22).
+    let r: WriteResult;
+    try {
+      r = await guardedWrite(auth, resourceId, at, body, { ifAbsent: true }, { revive: n === 0 });
+    } catch (err) {
+      if (err instanceof OrgVaultNameInTrash) continue;
+      throw err;
+    }
     if (r.ok) {
       const f = r.file;
       return {
@@ -924,6 +973,10 @@ export const orgVaultProvider: StorageProvider = {
     }
     const folded = await refusingFor(resourceId, () => foldedTaken(auth, resourceId, to, from));
     if (folded) return { ok: false, conflict: 'exists', theirs: folded };
+    // A move onto a name in Trash revives that tombstone (0024): refused (E22).
+    if (to !== from && (await refusingFor(resourceId, () => inTrashAt(auth, resourceId, to)))) {
+      throw new OrgVaultNameInTrash(to);
+    }
     const reply = await refusingFor(resourceId, () =>
       rpc<MoveReply>('org_vault_move', auth, {
         p_org: resourceId,

@@ -502,6 +502,7 @@ import {
   vaultTickChanged,
   VAULT_GONE_REASON,
   VAULT_UNSEEN_DRAFT_REASON,
+  vaultFolderMoveInTrash,
   vaultGoneManyLine,
   VAULT_NO_COPY_NAME_REASON,
   vaultEarlierFolderHeld,
@@ -6677,7 +6678,14 @@ export const useApp = create<AppState>((set, get, api) => {
     for (let n = 1; n <= 20; n++) {
       const copy = n === 1 ? first : vaultConflictCopyPath(path, when, n);
       if (!t.provider.compareAndSwap && (await t.provider.stat(t.resourceId, copy))) continue;
-      const r = await putVaultNote(t, copy, text, { ifAbsent: true });
+      let r: WriteResult;
+      try {
+        r = await putVaultNote(t, copy, text, { ifAbsent: true });
+      } catch (err) {
+        // A copy name that is a team note in Trash is passed over (E22).
+        if ((err as { nameInTrash?: unknown } | undefined)?.nameInTrash === true) continue;
+        throw err;
+      }
       if (r.ok) return r.file.path;
       if (r.conflict !== 'exists') mustLand(r);
     }
@@ -12078,6 +12086,24 @@ export const useApp = create<AppState>((set, get, api) => {
       const t = vaultTarget();
       if (!t || !capsOf(t).rename) return undefined;
       if (await leaseRefuses(t)) return undefined;
+      // A team folder moved where a note would land on a name in Trash moves
+      // nothing: each note's move would be refused there anyway (the move
+      // would take that note out of Trash), and a folder half moved helps
+      // nobody (E22). A single note's move is refused by the storage.
+      if (preview.kind === 'folder' && t.providerId === 'org' && t.provider.listTrash) {
+        const trash = await t.provider.listTrash(t.resourceId).catch(() => undefined);
+        const dead = new Set((trash ?? []).filter((e) => e.kind === 'note').map((e) => e.path));
+        const hit = [...preview.moves.values()].find((to) => dead.has(to));
+        if (hit) {
+          const old = preview.from.slice(preview.from.lastIndexOf('/') + 1);
+          return {
+            ok: false,
+            reason: 'storage',
+            line: vaultFolderMoveInTrash(old, noteTitle(hit)),
+            whole: true,
+          };
+        }
+      }
       const r = await opsApplyMove(opsDeps(t), preview, {
         updateLinks: updateLinks && capsOf(t).linkRewrite,
         ...(onProgress ? { onProgress } : {}),
