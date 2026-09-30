@@ -3839,3 +3839,130 @@ describe("the team's free space (0023) says why, never 'try again'", () => {
     expect(server.bytes('a.md')).toBe('x'.repeat(20));
   });
 });
+
+// The round 5 review (2026-09-30): every way a team refusal or a thrown
+// provider error reaches the person ends in an honest line and never loses
+// typed text. The real team provider over the shared fake server, which
+// raises 0023's 23514 past `freeBytes`, OV402 when `entitled` is false, and
+// answers `missing`, `exists` and `changed` the way 0021 and 0024 do.
+describe('round 5: a team refusal says what happened and keeps the text', () => {
+  let server: FakeOrgVaultServer;
+  beforeEach(async () => {
+    reset();
+    await closeVaultIndex();
+    wiring.org!.resetOrgVault();
+    useApp.setState({ vaultTeamPlan: undefined, vaultConflict: undefined, vaultTrash: undefined });
+    server = createFakeOrgVaultServer(ORG);
+    teamNet.server = server;
+    teamScope();
+  });
+  afterEach(async () => {
+    useApp.setState({ vaultTeamPlan: undefined, vaultConflict: undefined });
+    await closeVaultIndex();
+  });
+  const FULL_HELD = `Not saved. ${VAULT_TEAM_FULL} Your text is kept under Not saved.`;
+  async function settledIndex() {
+    for (let i = 0; i < 100; i++) {
+      await tick();
+      const state = vaultIndexStatus().state;
+      if (currentVaultIndex() && (state === 'ready' || state === 'partial')) return;
+    }
+    throw new Error('the index never settled');
+  }
+  // The note open here, changed (or deleted) by a teammate, and a save of
+  // `typed` that raises the resolve sheet.
+  async function sheetOn(path: string, typed: string, gone = false) {
+    server.put(path, 'the base', 'u-me');
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen(path);
+    if (gone) server.drop(path);
+    else server.put(path, 'theirs');
+    await useApp.getState().vaultSave(path, typed);
+    expect(useApp.getState().vaultConflict).toMatchObject({
+      path,
+      kind: gone ? 'missing' : 'changed',
+    });
+  }
+
+  it('a save that lands after its note closed keeps the text when the keep-both copy is refused (finding 1)', async () => {
+    server.put('plan.md', 'the plan', 'u-me');
+    await useApp.getState().vaultRefresh();
+    await useApp.getState().vaultOpen('plan.md');
+    const at = useApp.getState().vaultTargetRef();
+    server.put('plan.md', 'their plan');
+    server.freeBytes = server.usage() + 3;
+    const words = 'my words, typed before leaving';
+    // Leaving the note flushes its save; the answer comes back after it closed.
+    const saving = useApp.getState().vaultSave('plan.md', words, at);
+    useApp.getState().vaultCloseNote();
+    await expect(saving).resolves.toBeUndefined();
+    expect(pending()).toEqual({});
+    expect(teamHeld()).toEqual([
+      expect.objectContaining({ path: 'plan.md', text: words, reason: VAULT_TEAM_FULL }),
+    ]);
+    expect(useApp.getState().toast).toBe(FULL_HELD);
+    expect(useApp.getState().vaultError).toBe('held');
+    expect(server.bytes('plan.md')).toBe('their plan');
+    expect([...server.notes.keys()]).toEqual(['plan.md']);
+  });
+
+  it('Keep both, Keep yours and Save it again at the cap hold the text with the reason (finding 2)', async () => {
+    const mine = 'mine, typed here while it changed';
+    for (const [choice, path] of [
+      ['both', 'a.md'],
+      ['mine', 'b.md'],
+    ] as const) {
+      await sheetOn(path, mine);
+      server.freeBytes = server.usage() + 2;
+      expect(await useApp.getState().vaultResolve(choice, mine)).toEqual({ ok: true });
+      const st = useApp.getState();
+      expect(st.vaultConflict).toBeUndefined();
+      expect(st.vaultNote).toMatchObject({ path, text: 'theirs' });
+      expect(teamHeld()).toContainEqual(
+        expect.objectContaining({ path, text: mine, reason: VAULT_TEAM_FULL }),
+      );
+      expect(st.toast).toBe(FULL_HELD);
+      expect(server.bytes(path)).toBe('theirs');
+      server.freeBytes = undefined;
+    }
+    // Gone elsewhere: Save it again is a new note, refused the same way.
+    await sheetOn('c.md', mine, true);
+    server.freeBytes = server.usage() + 2;
+    expect(await useApp.getState().vaultResolve('mine', mine)).toEqual({ ok: true });
+    expect(useApp.getState().vaultNote).toBeUndefined();
+    expect(teamHeld()).toContainEqual(
+      expect.objectContaining({ path: 'c.md', text: mine, reason: VAULT_TEAM_FULL }),
+    );
+    expect(useApp.getState().toast).toBe(FULL_HELD);
+    expect(server.bytes('c.md')).toBeUndefined();
+    // Nothing is left to replay over the note later.
+    expect(pending()).toEqual({});
+  });
+
+  it('a plan the room has not read yet (OV402) holds the text with its line on the first tap (finding 2)', async () => {
+    const mine = 'mine, typed here';
+    await sheetOn('n.md', mine);
+    server.entitled = false;
+    useApp.setState({ vaultTeamPlan: undefined });
+    expect(await useApp.getState().vaultResolve('both', mine)).toEqual({ ok: true });
+    expect(teamHeld()).toEqual([
+      expect.objectContaining({ path: 'n.md', text: mine, reason: VAULT_TEAM_LAPSED_NOT_SAVED }),
+    ]);
+    expect(useApp.getState().toast).toBe(
+      `${VAULT_TEAM_LAPSED_NOT_SAVED_LINE} Your text is kept under Not saved.`,
+    );
+    expect(useApp.getState().vaultTeamPlan).toMatchObject({ entitled: false });
+  });
+
+  it('a failure that may pass keeps the sheet up and says so, holding nothing', async () => {
+    const mine = 'mine, typed here';
+    await sheetOn('n.md', mine);
+    server.rpcFailure = new TypeError('Failed to fetch');
+    expect(await useApp.getState().vaultResolve('both', mine)).toEqual({
+      ok: false,
+      failed: true,
+    });
+    expect(useApp.getState().vaultConflict).toMatchObject({ path: 'n.md' });
+    expect(teamHeld()).toEqual([]);
+  });
+});

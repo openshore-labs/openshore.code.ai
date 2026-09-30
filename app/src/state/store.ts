@@ -6715,6 +6715,18 @@ export const useApp = create<AppState>((set, get, api) => {
       await rescueVaultDraft(target, path, text, base, err);
       return base;
     }
+    // Settling can write too (a keep-both copy of a note that closed while
+    // this save was out), and that write can be refused for good (a team out
+    // of free space, 0023) or fail: the text is held or stashed the same
+    // way, never dropped with the rejection (round 5, finding 1).
+    if (!result.ok) {
+      try {
+        return await settleSaveConflict(target, path, text, base, result);
+      } catch (err) {
+        await rescueVaultDraft(target, path, text, base, err);
+        return base;
+      }
+    }
     if (!result.ok) return settleSaveConflict(target, path, text, base, result);
     const saved = result.file;
     // This save supersedes any older draft stashed for the same note, so
@@ -10752,7 +10764,25 @@ export const useApp = create<AppState>((set, get, api) => {
             return done(vaultResolveToast('mine', { title, missing: c.kind === 'missing' }));
           }
           return { ok: false };
-        } catch {
+        } catch (err) {
+          // Refused for good (a team out of free space, 0023, or a plan the
+          // room had not read yet, OV402): trying again cannot help, so the
+          // text goes under Not saved with the refusal's line, and the note
+          // shows what the vault holds (or closes, when it is gone), as the
+          // lapsed branch above does. A failure that may pass keeps the
+          // sheet up (round 5, finding 2).
+          const refusal = vaultRefusal(err);
+          if (refusal) {
+            const landed = await holdVaultDraft(c.target, c.path, draft, asSentence(refusal));
+            set({ vaultError: 'held' });
+            if (c.theirs) {
+              reloadOpenNote(c.theirs, 'resolve');
+            } else {
+              vaultLiveDraft = undefined;
+              set({ vaultNote: undefined, vaultReturnFolder: noteFolder(c.path) });
+            }
+            return done(`Not saved. ${asSentence(refusal)} ${heldLine(landed)}`);
+          }
           return { ok: false, failed: true };
         }
       });
