@@ -5236,4 +5236,137 @@ describe('round 7: team text belongs to its account and its version', () => {
       }
     });
   });
+
+  describe("E4: a save's retry compares theirs with the text it was typed on", () => {
+    it("a reopen past the wait never lets the retry overwrite a teammate's save", async () => {
+      server.put('n.md', 'A', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      const at = st().vaultTargetRef();
+      const g = gateWrites(server);
+      const typed = 'A, and B typed before leaving';
+      st().vaultNoteDraft('n.md', typed);
+      const save = st().vaultSave('n.md', typed, at);
+      st().vaultCloseNote();
+      server.put('n.md', "the teammate's paragraph");
+      // The write hangs past the open's wait, so the note opens on theirs.
+      await st().vaultOpen('n.md');
+      expect(st().vaultNote?.text).toBe("the teammate's paragraph");
+      useApp.setState({ toast: undefined });
+      g.open.resolve();
+      await save;
+      expect(server.bytes('n.md')).toBe("the teammate's paragraph");
+      expect(liveHas(server, 'A, and B typed before leaving')).toBe(true);
+    }, 10_000);
+
+    it('the same note picked again, or Today on it, with the save out: nothing is overwritten', async () => {
+      await st().vaultRefresh();
+      await st().vaultToday();
+      const path = st().vaultNote!.path;
+      const at = st().vaultTargetRef();
+      const g = gateWrites(server);
+      const typed = 'typed on the empty note';
+      st().vaultNoteDraft(path, typed);
+      const save = st().vaultSave(path, typed, at);
+      server.put(path, "the teammate's morning");
+      await st().vaultOpen(path);
+      await st().vaultToday();
+      g.open.resolve();
+      await save;
+      expect(server.bytes(path)).toBe("the teammate's morning");
+      expect(st().vaultConflict).toMatchObject({ path, kind: 'changed' });
+      expect(pending()[`org::${ORG}::${path}`]).toMatchObject({ text: typed });
+    });
+
+    it('across an account switch the retry never overwrites the teammate under u2', async () => {
+      const net = perCaller(server, { members: ['u1', 'u2'] });
+      useStoreToken();
+      server.put('Plan.md', 'the base', 'u9');
+      await st().vaultRefresh();
+      await st().vaultOpen('Plan.md');
+      server.put('Plan.md', 'theirs', 'u-teammate');
+      const held = net.hold('org_vault_write');
+      const save = st().vaultSave('Plan.md', 'the base\nu1 in-flight words');
+      await held.reached;
+      await st().signOutAccount();
+      auth.nextUser = U2;
+      await st().signIn('b@example.com', 'pw');
+      await st().setVaultScope('team');
+      await st().vaultOpen('Plan.md');
+      held.release();
+      await save;
+      await tick();
+      const note = server.notes.get('Plan.md')!;
+      expect([note.body, note.updated_by]).toEqual(['theirs', 'u-teammate']);
+      expect(st().vaultNote?.text).toBe('theirs');
+    });
+
+    it('a same-bytes rewrite under the open note is still adopted and saved', async () => {
+      server.put('n.md', 'A', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      server.put('n.md', 'A');
+      await st().vaultSave('n.md', 'A, and mine');
+      expect(server.bytes('n.md')).toBe('A, and mine');
+      expect(st().vaultConflict).toBeUndefined();
+    });
+
+    it("a same-bytes rewrite under a closed note's save is still adopted, through the body cache", async () => {
+      server.put('n.md', 'A', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      const at = st().vaultTargetRef();
+      const g = gateWrites(server);
+      const save = st().vaultSave('n.md', 'A, and mine', at);
+      st().vaultCloseNote();
+      server.put('n.md', 'A');
+      g.open.resolve();
+      await save;
+      expect(server.bytes('n.md')).toBe('A, and mine');
+      expect(teamHeld()).toEqual([]);
+    });
+
+    it('a chained second save retries on the version the first one left', async () => {
+      server.put('n.md', 'A', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      const g = gateWrites(server);
+      const first = st().vaultSave('n.md', 'A1');
+      await vi.waitFor(() => expect(g.seen).toBe(1));
+      const second = st().vaultSave('n.md', 'A1 A2');
+      g.on = false;
+      g.open.resolve();
+      await first;
+      // A metadata-only touch of the first save's version, before the second.
+      server.put('n.md', 'A1');
+      await second;
+      expect(server.bytes('n.md')).toBe('A1 A2');
+      expect(st().vaultConflict).toBeUndefined();
+    });
+
+    it("a delete while the note was reopened on a teammate's version never deletes it", async () => {
+      server.put('n.md', 'A', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      const at = st().vaultTargetRef();
+      const rpc = server.rpc.bind(server);
+      const gate = deferred();
+      let held = false;
+      server.rpc = async (fn, token, args) => {
+        if (fn === 'org_vault_remove' && !held) {
+          held = true;
+          await gate.promise;
+        }
+        return rpc(fn, token, args);
+      };
+      const removing = st().vaultDelete('n.md', at);
+      await vi.waitFor(() => expect(held).toBe(true));
+      server.put('n.md', "the teammate's version");
+      st().vaultCloseNote();
+      await st().vaultOpen('n.md');
+      gate.resolve();
+      expect(await removing).toBe(false);
+      expect(server.bytes('n.md')).toBe("the teammate's version");
+    });
+  });
 });

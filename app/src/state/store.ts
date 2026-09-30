@@ -6980,9 +6980,12 @@ export const useApp = create<AppState>((set, get, api) => {
       /** The sitting the text was typed in: the open note's loadedAt when
        *  the save was asked for, if it was this note. */
       session?: number;
+      /** The note's text at `base`, as this device read or saved it, when
+       *  it knows (E4). */
+      baseText?: string;
     } = {},
   ): Promise<string | undefined> {
-    const { session } = opts;
+    const { session, baseText } = opts;
     const readOnly = vaultReadOnlyReason(target.providerId);
     if (readOnly) {
       // A read-only vault takes no write, but typed text is never dropped.
@@ -7000,14 +7003,16 @@ export const useApp = create<AppState>((set, get, api) => {
     try {
       result = await putVaultNote(target, path, text, guardFor(base));
       // The note moved on under this save, but only in its metadata (a touch,
-      // a sync client rewriting the same bytes): theirs is the text this
-      // device loaded or last saved, so adopt its version and save again,
-      // with nothing to ask (F1). Bounded, so a busy writer cannot spin it.
+      // a sync client rewriting the same bytes): theirs is the very text this
+      // save was typed on, so adopt its version and save again, with nothing
+      // to ask (F1). Compared with that text as it was when the save began,
+      // never with whatever the note on screen holds when the answer comes
+      // (a reopen, another account's note), which may be theirs (E4).
+      // Bounded, so a busy writer cannot spin it.
       for (let tries = 0; tries < 3 && !result.ok && result.theirs; tries++) {
         const theirs = result.theirs;
-        const open = get().vaultNote;
-        const loaded = isActiveVault(target) && open?.path === path ? open.text : undefined;
-        if (result.conflict !== 'changed' || theirs.text !== loaded) break;
+        if (result.conflict !== 'changed' || baseText === undefined) break;
+        if (theirs.text !== baseText) break;
         result = await putVaultNote(target, path, text, { ifMatch: versionOf(theirs) });
       }
       if (!result.ok && result.conflict === 'downloading') mustLand(result);
@@ -11326,7 +11331,17 @@ export const useApp = create<AppState>((set, get, api) => {
         const now = isActiveVault(target) ? get().vaultNote : undefined;
         const same = now?.path === path && now.loadedAt === session;
         const base = same ? (vaultBaseOf(target, path) ?? carried ?? called) : (carried ?? called);
-        return saveVaultNote(target, path, text, base, { session });
+        // The text at that version, as this device knows it now (E4).
+        const cached = vaultBodyCache.get(key);
+        const baseText =
+          base === undefined
+            ? undefined
+            : same && now && versionOf(now) === base
+              ? now.text
+              : cached?.version === base
+                ? cached.text
+                : undefined;
+        return saveVaultNote(target, path, text, base, { session, baseText });
       })();
       const link = run.catch(() => undefined);
       vaultSaveChains.set(key, link);
@@ -11356,6 +11371,8 @@ export const useApp = create<AppState>((set, get, api) => {
       // delete never removes a version this device has not seen (Vault M2
       // wave 0). A provider that does not check the guard yet removes anyway.
       const base = vaultBaseOf(target, path);
+      // The text the person saw at that version, as the delete began (E4).
+      const loaded = base ? get().vaultNote?.text : undefined;
       let removed: RemoveResult;
       try {
         removed = await target.provider.remove(
@@ -11368,8 +11385,7 @@ export const useApp = create<AppState>((set, get, api) => {
         // so the delete still means what the person meant. Bounded, like the
         // save's retry, so a busy writer cannot spin it.
         for (let tries = 0; tries < 3 && !removed.ok && removed.theirs; tries++) {
-          const open = get().vaultNote;
-          const loaded = isActiveVault(target) && open?.path === path ? open.text : undefined;
+          if (loaded === undefined) break;
           if (removed.conflict !== 'changed' || removed.theirs.text !== loaded) break;
           removed = await target.provider.remove(target.resourceId, path, {
             ifMatch: versionOf(removed.theirs),
