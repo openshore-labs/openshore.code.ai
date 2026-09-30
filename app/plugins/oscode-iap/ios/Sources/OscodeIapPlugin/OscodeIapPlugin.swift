@@ -13,8 +13,10 @@ import StoreKit
 /// server can verify the transaction independently with Apple. The server is
 /// the source of truth for entitlement; the client is a fast path.
 ///
-/// Event: transactionUpdate (renewals and revocations that arrive while the app
-/// is open, via Transaction.updates).
+/// Event: transactionUpdate (purchases completed outside the purchase call, such
+/// as Ask to Buy or another device, renewals, and revocations that arrive while
+/// the app is open, via Transaction.updates). The store links a live one to the
+/// signed-in account through link-apple-purchase.
 @objc(OscodeIapPlugin)
 public class OscodeIapPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "OscodeIapPlugin"
@@ -82,7 +84,14 @@ public class OscodeIapPlugin: CAPPlugin, CAPBridgedPlugin {
                     call.reject("That product is not available from the App Store.")
                     return
                 }
-                let result = try await product.purchase()
+                // The signed-in account's id (a UUID) rides on the transaction
+                // as appAccountToken, so apple-notifications can find the
+                // account for a purchase that completes later (Ask to Buy).
+                var options: Set<Product.PurchaseOption> = []
+                if let token = call.getString("appAccountToken"), let uuid = UUID(uuidString: token) {
+                    options.insert(.appAccountToken(uuid))
+                }
+                let result = try await product.purchase(options: options)
                 switch result {
                 case .success(let verification):
                     // Bind the transaction from either case so it can always be
@@ -190,7 +199,9 @@ public class OscodeIapPlugin: CAPPlugin, CAPBridgedPlugin {
         if let expiresAt = transaction.expirationDate {
             payload["expiresAt"] = Self.iso8601.string(from: expiresAt)
         }
-        notifyListeners("transactionUpdate", data: payload)
+        // Kept until a listener is added: an update can land at launch before
+        // the web view has wired its listener (app/src/lib/iap.ts).
+        notifyListeners("transactionUpdate", data: payload, retainUntilConsumed: true)
     }
 
     // ----------------------------------------------------------------- utils

@@ -804,7 +804,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'account',
     title: 'Account',
     where: 'Menu, Settings, Account, or the Sign in row',
-    text: `Chatting needs no account. Signing in is free and opens building, Projects, Vault, Crew, and pairing, and carries a few settings to your other devices. It is also how you buy or restore Personal. Chats are not synced between devices; your phone reaches your computer's chats by pairing.${teamsOn ? ' After creating one you choose personal or business; a business adds a company, admins, and a shared stack managed from Admin.' : ''}`,
+    text: `Chatting needs no account. Signing in is free and opens building, Projects, Vault, Crew, and pairing, and carries a few settings to your other devices. It is also how you buy or restore OpenShore Plus. Chats are not synced between devices; your phone reaches your computer's chats by pairing.${teamsOn ? ' After creating one you choose personal or business; a business adds a company, admins, and a shared stack managed from Admin.' : ''}`,
     keywords: [
       'account',
       'sign in',

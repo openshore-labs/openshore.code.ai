@@ -161,7 +161,7 @@ Deno.serve(async (req) => {
     if (linkErr) throw new Error(`apple_links upsert failed: ${linkErr.message}`);
 
     // F3: if the sub just MOVED off another account, revoke that prior holder's
-    // Apple entitlement, so one $20 sub cannot leave two accounts entitled. Only
+    // Apple entitlement, so one Personal sub cannot leave two accounts entitled. Only
     // an apple-sourced row is touched (a Stripe sub on the old account is their
     // own separate purchase and must stay). Throw on error.
     if (priorLink?.user_id && priorLink.user_id !== user.id) {

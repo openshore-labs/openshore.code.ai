@@ -4,6 +4,7 @@
 import { assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
 import {
   APPLE_JWS_MAX_AGE_MS,
+  appAccountTokenUser,
   appleLinkRefusal,
   appleTransactionAccepted,
   checkoutDecision,
@@ -241,4 +242,17 @@ Deno.test('isIgnoredPrice (BE-13): only a listed price is ignored', () => {
   assertEquals(isIgnoredPrice('price_legacy_1', ignored), true);
   assertEquals(isIgnoredPrice('price_unknown', ignored), false);
   assertEquals(isIgnoredPrice('price_unknown', new Set()), false);
+});
+
+// ------------------------------------------------------------ appAccountToken
+
+Deno.test('appAccountTokenUser: a UUID names the account, anything else none', () => {
+  assertEquals(
+    appAccountTokenUser('3F2504E0-4F89-41D3-9A0C-0305E82C3301'),
+    '3f2504e0-4f89-41d3-9a0c-0305e82c3301',
+  );
+  assertEquals(appAccountTokenUser(undefined), undefined);
+  assertEquals(appAccountTokenUser(''), undefined);
+  assertEquals(appAccountTokenUser('not-a-uuid'), undefined);
+  assertEquals(appAccountTokenUser(42), undefined);
 });

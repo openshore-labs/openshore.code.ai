@@ -3,12 +3,13 @@
 // everything deeper in a sheet. What this app keeps, where it lives, and a
 // few careful switches. No telemetry to toggle because there is none. Built
 // with the Creative Studio (2026-09-02, "The Ledger" direction).
-import { SHIPS_ADMIN, SHIPS_LAUNCH, SHIPS_STACKHEALTH } from '../lib/focus.js';
+import { SHIPS_ADMIN, SHIPS_LAUNCH, SHIPS_STACKHEALTH, SHIPS_TEAMS } from '../lib/focus.js';
 import { ACCOUNT_PITCH } from '../lib/accountGate.js';
 import { Fragment, useEffect, useState } from 'react';
 import { PAY_GATES_ENABLED, isOrgAdmin, useApp, type HarborDownload } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { platform, isDesktop, isPhone } from '../lib/platform.js';
+import { iapAvailable } from '../lib/iap.js';
 import { noticeEnabled, noticePermission } from '../lib/notices.js';
 import type { NoticePermission } from '../lib/llamaPlugin.js';
 import { bridge } from '../lib/electronBridge.js';
@@ -279,6 +280,8 @@ export function SettingsScreen() {
     vaultRequestSheet,
   } = useApp();
   const restorePurchases = useApp((s) => s.restorePurchases);
+  const recheckPersonal = useApp((s) => s.recheckPersonal);
+  const manageSubscription = useApp((s) => s.manageSubscription);
   const setWebSearchAllowed = useApp((s) => s.setWebSearchAllowed);
   const personalUnlockedNow = useApp((s) => s.personalUnlockedNow);
   const userEntitlement = useApp((s) => s.userEntitlement);
@@ -376,13 +379,13 @@ export function SettingsScreen() {
   const accountLabel = signedIn
     ? account?.type === 'commercial'
       ? (org?.name ?? 'Company account')
-      : 'Personal account'
+      : 'Your account'
     : 'Sign in';
   const accountValue = signedIn
     ? account?.type === 'commercial' && org
       ? tierById(org.tierId).name
       : PAY_GATES_ENABLED && personalUnlockedNow()
-        ? 'Personal'
+        ? 'Plus'
         : 'Free'
     : 'Optional';
   // Personal's standing on this device, in plain words: free for everyone
@@ -405,7 +408,12 @@ export function SettingsScreen() {
       ? personalUntil
         ? `The coding agent is yours. Renews or ends ${personalUntil}.`
         : 'The coding agent is yours.'
-      : 'Chat is free. Personal unlocks the coding agent, bought in the app on iPhone.';
+      : 'Chatting is free. Plus lets the agent build and run routines on your computer, and your phone reach it.';
+  // The Personal rows (2026-09-30): an Apple device restores through the App
+  // Store and manages its subscription with Apple; the desktop re-reads the
+  // account ("I already paid") and manages it in the Stripe portal.
+  const appleDevice = iapAvailable();
+  const showManage = PAY_GATES_ENABLED && configured && signedIn && Boolean(userEntitlement);
 
   const termDesktopLocal = isDesktop() && Boolean(bridge()) && !settings.preferRemoteHub;
   const termTargetId = terminalTargetId({
@@ -471,16 +479,38 @@ export function SettingsScreen() {
             value={accountValue}
             onClick={configured ? () => setSheet('account') : undefined}
           />
-          <SettingsRow label="Personal" subWrap sub={personalSub} value={personalValue} />
-          {PAY_GATES_ENABLED && configured ? (
+          <SettingsRow label="OpenShore Plus" subWrap sub={personalSub} value={personalValue} />
+          {PAY_GATES_ENABLED && configured && appleDevice ? (
             <SettingsRow
               label="Restore purchases"
               sub={
                 signedIn
-                  ? 'Bought Personal already? Unlock it on this device.'
+                  ? 'Bought Plus already? Unlock it on this device.'
                   : 'Sign in first, then restore.'
               }
               onClick={() => void restorePurchases()}
+            />
+          ) : null}
+          {PAY_GATES_ENABLED && configured && !appleDevice ? (
+            <SettingsRow
+              label="I already paid"
+              sub={
+                signedIn
+                  ? 'Bought Plus already? Check your account again.'
+                  : 'Sign in with the email you paid with.'
+              }
+              onClick={() => void recheckPersonal()}
+            />
+          ) : null}
+          {showManage ? (
+            <SettingsRow
+              label="Manage subscription"
+              sub={
+                appleDevice
+                  ? 'Renewal and cancellation, with Apple.'
+                  : 'Renewal, card, and cancellation.'
+              }
+              onClick={() => void manageSubscription()}
             />
           ) : null}
         </SettingsGroup>
@@ -1195,7 +1225,8 @@ export function SettingsScreen() {
 
       <Sheet open={sheet === 'account'} onClose={close}>
         <SheetHead title={signedIn ? 'Your account' : 'Sign in'} onClose={close} />
-        {signedIn && account?.type === 'commercial' && org ? (
+        {/* A team's plan and price are v4 (founder 2026-09-30: Personal first). */}
+        {SHIPS_TEAMS && signedIn && account?.type === 'commercial' && org ? (
           <p className="sheet-sub">
             {tierById(org.tierId).name} plan ·{' '}
             {shownPrice(tierById(org.tierId), PAY_GATES_ENABLED)

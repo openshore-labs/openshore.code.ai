@@ -1,4 +1,4 @@
-// Create a Stripe Checkout session for a commercial OS Code plan. The purchase
+// Create a Stripe Checkout session for Personal or a commercial OS Code plan. The purchase
 // happens on the WEB (openshore.ai), in the system browser, never inside the
 // iOS app: seat-based SaaS bought in-app trips Apple 3.1.1. The app only ever
 // signs in and reads the resulting entitlement.
@@ -26,8 +26,11 @@ const PRICE_BY_TIER: Record<string, string | undefined> = {
   commercial_small: Deno.env.get('STRIPE_PRICE_SMALL'),
   commercial_mid: Deno.env.get('STRIPE_PRICE_GROWTH'),
   commercial_large: Deno.env.get('STRIPE_PRICE_SCALE'),
-  // The individual Personal unlock ($20/yr). Bought on the web/desktop here; on
-  // iOS the same unlock is an Apple IAP (Apple 3.1.1), never this endpoint.
+  // The individual Personal unlock ($49.99 a year, the same on both rails;
+  // 2026-09-30). Bought on the web/desktop here; on iOS the same unlock is an
+  // Apple IAP (Apple 3.1.1), never this endpoint. No trial at launch: the
+  // CFO's 14-day trial would be subscription_data.trial_period_days here AND
+  // an Apple introductory offer, set together (DECISIONS 2026-09-30).
   personal: Deno.env.get('STRIPE_PRICE_PERSONAL'),
 };
 

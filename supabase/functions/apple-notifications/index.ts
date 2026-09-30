@@ -19,14 +19,19 @@
 //     last_event_at inside the write, and idempotency by notificationUUID
 //     drops exact re-deliveries. Cross-rail guard (BE-3): shouldApplyRailWrite.
 //   - Every DB write error THROWS -> 500 so Apple retries.
-//   - An unknown original_transaction_id returns 200 (nothing to do) so Apple
-//     stops retrying, like stripe-webhook's unmatched-customer case.
+//   - An unknown original_transaction_id falls back to the transaction's
+//     appAccountToken (the account the buyer was signed in as when they bought,
+//     2026-09-30): an existing account gets the link row and the entitlement,
+//     so a purchase Apple completed later (Ask to Buy) still unlocks. With no
+//     token, or no such account, it returns 200 (nothing to do) so Apple stops
+//     retrying, like stripe-webhook's unmatched-customer case.
 //
 // Env (Supabase function secrets):
 //   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, APPLE_BUNDLE_ID,
 //   APPLE_APP_APPLE_ID (see _shared/apple.ts), APPLE_PRODUCT_IDS.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
+  appAccountTokenUser,
   appleTransactionAccepted,
   isEntitled,
   parseProductIds,
@@ -61,6 +66,30 @@ async function userIdForOriginalTransaction(
     .maybeSingle();
   if (error) throw new Error(`apple_links lookup failed: ${error.message}`);
   return data?.user_id;
+}
+
+// The fallback for a subscription nobody linked yet: the account the
+// transaction's appAccountToken names, when it exists. The link row is written
+// here (never over a row link-apple-purchase wrote meanwhile) and the lookup
+// is read again, so the two writers always agree on one account.
+async function userIdFromAppAccountToken(
+  token: unknown,
+  originalTransactionId: string,
+): Promise<string | undefined> {
+  const candidate = appAccountTokenUser(token);
+  if (!candidate) return undefined;
+  const { data, error } = await supabase.auth.admin.getUserById(candidate);
+  if (error || !data?.user) return undefined;
+  const { error: linkErr } = await supabase.from('apple_links').upsert(
+    {
+      original_transaction_id: originalTransactionId,
+      user_id: candidate,
+      linked_at: new Date().toISOString(),
+    },
+    { onConflict: 'original_transaction_id', ignoreDuplicates: true },
+  );
+  if (linkErr) throw new Error(`apple_links fallback insert failed: ${linkErr.message}`);
+  return await userIdForOriginalTransaction(originalTransactionId);
 }
 
 // The link's own state (BE-4): what Apple last told us about this
@@ -179,10 +208,12 @@ Deno.serve(async (req) => {
     const originalTransactionId = txn.originalTransactionId;
     if (!originalTransactionId) return new Response('ok', { status: 200 });
 
-    const userId = await userIdForOriginalTransaction(originalTransactionId);
+    const userId =
+      (await userIdForOriginalTransaction(originalTransactionId)) ??
+      (await userIdFromAppAccountToken(txn.appAccountToken, originalTransactionId));
     if (!userId) {
-      // We do not track this sub (never linked to an account). Ack so Apple
-      // stops retrying; the uuid stays recorded.
+      // We do not track this sub (never linked, and no account token names an
+      // account). Ack so Apple stops retrying; the uuid stays recorded.
       return new Response('ok', { status: 200 });
     }
 

@@ -6,10 +6,12 @@
 // can sell must not ship while the load-bearing root (AppleRootCA-G3) is
 // still one.
 //
-// A build "can sell" when app/src/state/store.ts has PAY_GATES_ENABLED = true,
-// or when the pipeline says so with OPENSHORE_STORE_RELEASE=1. Anything else
-// (every TestFlight build while the gates are off) gets a warning, not a
-// failure, so ordinary CI and the founder's push-to-TestFlight stay green.
+// A build "can sell" when it is built with VITE_PAY_GATES=1 (the build flag
+// app/src/lib/payGate.ts reads into PAY_GATES_ENABLED; only the build
+// submitted to App Review sets it), or when the pipeline says so with
+// OPENSHORE_STORE_RELEASE=1. Anything else (every TestFlight build while the
+// gates are off) gets a warning, not a failure, so ordinary CI and the
+// founder's push-to-TestFlight stay green.
 // The roots may live in the function secrets instead of the file
 // (APPLE_ROOT_CA_G3_DER_BASE64); a build machine cannot see those, so
 // APPLE_ROOTS_IN_SECRETS=1 says they are set there.
@@ -22,7 +24,6 @@ import { fileURLToPath } from 'node:url';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const APPLE_TS = resolve(REPO, 'supabase', 'functions', '_shared', 'apple.ts');
-export const STORE_TS = resolve(REPO, 'app', 'src', 'state', 'store.ts');
 
 const SENTINEL = 'PASTE_REAL_BASE64_DER_HERE_';
 const ROOTS = [
@@ -43,28 +44,24 @@ export function placeholderRoots(appleSource) {
   return left;
 }
 
-/** Whether this build can take money: the pay gates are on in the store, or
- *  the pipeline marks it a store release. */
-export function buildCanSell(storeSource, env) {
-  if (env.OPENSHORE_STORE_RELEASE === '1') return true;
-  return /export const PAY_GATES_ENABLED = true\b/.test(storeSource);
+/** Whether this build can take money: it is built with the pay gates on
+ *  (VITE_PAY_GATES=1, the same variable the app reads), or the pipeline
+ *  marks it a store release. */
+export function buildCanSell(env) {
+  return env.OPENSHORE_STORE_RELEASE === '1' || env.VITE_PAY_GATES === '1';
 }
 
 /** The verdict: 'ok', 'warn' (placeholders, but nothing can be bought yet),
  *  or 'fail'. */
-export function appleRootsVerdict(appleSource, storeSource, env) {
+export function appleRootsVerdict(appleSource, env) {
   const left = placeholderRoots(appleSource);
   if (!left.includes('APPLE_ROOT_CA_G3_DER_BASE64')) return { verdict: 'ok', left };
   if (env.APPLE_ROOTS_IN_SECRETS === '1') return { verdict: 'ok', left };
-  return { verdict: buildCanSell(storeSource, env) ? 'fail' : 'warn', left };
+  return { verdict: buildCanSell(env) ? 'fail' : 'warn', left };
 }
 
 function main() {
-  const { verdict, left } = appleRootsVerdict(
-    readFileSync(APPLE_TS, 'utf8'),
-    readFileSync(STORE_TS, 'utf8'),
-    process.env,
-  );
+  const { verdict, left } = appleRootsVerdict(readFileSync(APPLE_TS, 'utf8'), process.env);
   if (verdict === 'ok') {
     console.log('Apple receipt roots: AppleRootCA-G3 is configured.');
     return;

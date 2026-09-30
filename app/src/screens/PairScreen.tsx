@@ -1,6 +1,8 @@
 // Desktop + phone. On the desktop: turn on the connection, show the address,
 // token, and a QR. On the phone: paste or scan those in, test, save. The
 // daemon owns the run, so a dropped connection reattaches with nothing lost.
+// Part of Plus (lib/payGate.ts): the pairing code, Scan, and Connect open the
+// paywall while it is shut; Revoke, Forget, and Turn off never do.
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { hubList, useApp, type HubRole } from '../state/store.js';
@@ -89,8 +91,34 @@ export function PairScreen() {
   return isDesktop() ? <DesktopPair /> : <PhonePair />;
 }
 
+/** Desktop + phone is part of Plus (founder, 2026-09-30; lib/payGate.ts).
+ *  Said before the steps, so nobody sets up Tailscale only to meet the
+ *  paywall at Connect. Shown only while the paywall would open, so never
+ *  with the pay gates off. */
+function PlusNote({ line }: { line: string }) {
+  const door = useApp((s) => s.personalDoor('pairing'));
+  const requirePersonal = useApp((s) => s.requirePersonal);
+  if (door !== 'paywall') return null;
+  return (
+    <div className="card">
+      <h3 style={{ marginTop: 0 }}>Part of OpenShore Plus</h3>
+      <div className="sub">{line}</div>
+      <button
+        className="btn primary press-fb"
+        style={{ width: '100%', marginTop: 12 }}
+        onClick={() => requirePersonal('pairing')}
+      >
+        See Plus
+      </button>
+    </div>
+  );
+}
+
 function DesktopPair() {
   const { showToast } = useApp();
+  // The pairing code is the paid moment on this side: it shows only while
+  // Plus is open. Revoking a phone stays free.
+  const pairOpen = useApp((s) => s.personalDoor('pairing') === 'open');
   const [info, setInfo] = useState<DaemonInfo | undefined>();
   const [qr, setQr] = useState<string | undefined>();
   const [showToken, setShowToken] = useState(false);
@@ -163,7 +191,9 @@ function DesktopPair() {
           </div>
         </div>
 
-        {info?.running && qr ? (
+        <PlusNote line="Reaching this computer from your phone is part of OpenShore Plus. Chat on each device, with its own models or your keys, stays free." />
+
+        {pairOpen && info?.running && qr ? (
           <div className="card" style={{ textAlign: 'center' }}>
             <h3>Scan from the phone app</h3>
             <div className="sub" style={{ marginBottom: 12 }}>
@@ -243,7 +273,7 @@ function DesktopPair() {
 // the phone does, instead of on this machine. Off by default, so a desktop stays
 // its own engine unless you say otherwise.
 function RemoteHubPanel() {
-  const { settings, saveHub, setPreferRemoteHub, showToast } = useApp();
+  const { settings, saveHub, setPreferRemoteHub, showToast, requirePersonal } = useApp();
   const [address, setAddress] = useState(settings.daemon?.baseUrl ?? '');
   const [token, setToken] = useState(settings.daemon?.token ?? '');
   const [testing, setTesting] = useState(false);
@@ -256,6 +286,8 @@ function RemoteHubPanel() {
       setState("Enter the other computer's address and its access key.");
       return;
     }
+    // Connecting to another computer is Desktop + phone's paid moment too.
+    if (!requirePersonal('pairing')) return;
     setTesting(true);
     const health = await daemonHealth({ baseUrl, token: token.trim() });
     setTesting(false);
@@ -338,7 +370,8 @@ function phoneDeviceName(): string {
 }
 
 function PhonePair() {
-  const { settings, saveHub, removeHub, showToast, startGuideChat, setView } = useApp();
+  const { settings, saveHub, removeHub, showToast, startGuideChat, setView, requirePersonal } =
+    useApp();
   const [address, setAddress] = useState(settings.daemon?.baseUrl ?? '');
   const [code, setCode] = useState('');
   const [testing, setTesting] = useState(false);
@@ -372,6 +405,9 @@ function PhonePair() {
       );
       return;
     }
+    // The paid moment, before the one-time code is spent: a claim traded and
+    // then refused would leave a device on the computer this phone never saved.
+    if (!requirePersonal('pairing')) return;
     setTesting(true);
     setConnected(false);
     const claimed = await redeemPairClaim(baseUrl, rawClaim.trim(), phoneDeviceName());
@@ -440,6 +476,8 @@ function PhonePair() {
           Walk me through it
         </button>
 
+        <PlusNote line="Reaching your computer from this phone is part of OpenShore Plus: chats with its models, coding, and its shell. Chat on this phone stays free." />
+
         <div className="card">
           <h3>Before this screen</h3>
           <div className="sub">
@@ -475,7 +513,10 @@ function PhonePair() {
             className="btn primary press-fb"
             style={{ width: '100%', marginBottom: 12 }}
             disabled={testing}
-            onClick={() => setScanning(true)}
+            onClick={() => {
+              // The paywall before the camera, never after a scan.
+              if (requirePersonal('pairing')) setScanning(true);
+            }}
           >
             Scan the QR on your computer
           </button>

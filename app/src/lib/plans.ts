@@ -21,22 +21,24 @@ export interface PlanTier {
   blurb: string;
 }
 
-// The free default account: chat only (Harbor / Ollama). The full app (coding
-// agent, Marketplace) is the paid Personal unlock below.
+// The free default account: every chat on the device itself, the Stack,
+// Projects, Repositories, Vault by hand. The coding agent, Crew routines,
+// and Desktop + phone are the paid Personal unlock below (lib/payGate.ts).
 export const PERSONAL_TIER: PlanTier = {
   id: 'personal',
-  name: 'Personal',
+  name: 'OpenShore Plus',
   priceYear: 0,
   minEmployees: 1,
   maxEmployees: 1,
-  blurb: 'Personal. Free to chat. For your own work.',
+  blurb: 'Free to chat. Plus lets the agent build on your computer.',
 };
 
 // The individual Personal UNLOCK price per year, in whole US dollars: $50 a
-// year (founder, 2026-09-05 and 2026-09-27; the CFO's ruling), bought only as
-// an Apple In-App Purchase. The App Store's own localized price wins wherever
-// StoreKit reports one (the Paywall asks for it); this is the fallback label.
-// Free is chat-only; this unlocks the full app for one person.
+// year (founder, 2026-09-05 and 2026-09-27; the CFO's ruling), charged as
+// $49.99 on both rails (2026-09-30): an Apple In-App Purchase on iPhone and
+// iPad, Stripe Checkout on the desktop and the web. The App Store's own
+// localized price wins on iOS (the Paywall asks StoreKit); the desktop shows
+// lib/payGate.ts PERSONAL_WEB_PRICE. Neither shows while the pay gates are off.
 export const PERSONAL_UNLOCK_PRICE_YEAR = 50;
 
 // Commercial bands, cheapest first. The boundary number belongs to the lower
@@ -100,7 +102,8 @@ export function priceLabel(tier: PlanTier): string {
 /** The price a screen may show, or null. Pricing is a Board gate, so no price
  *  reaches the screen while the pay gates are off (brand sweep, founder
  *  2026-09-24); the headcount band (the tier's blurb) shows instead. Every UI
- *  price goes through here with store.ts PAY_GATES_ENABLED. */
+ *  price goes through here with PAY_GATES_ENABLED (lib/payGate.ts, the
+ *  VITE_PAY_GATES build flag). */
 export function shownPrice(tier: PlanTier, payGatesOn: boolean): string | null {
   return payGatesOn ? priceLabel(tier) : null;
 }

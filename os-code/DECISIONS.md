@@ -3518,3 +3518,85 @@ execution contract. Newest at the bottom.
   refusal's line (the union a caller must handle). Left as it is: main's team
   export line blames device storage for a failed list (a read, nothing typed
   at risk, and the fix would edit main's catch).
+- 2026-09-30: **The Personal paid gate (CTO, CFO, CX).** Only coding,
+  building and agentic work is paid, and the gate sits on actions, not rooms.
+  Paid (Personal, after the free sign-in; the paywall opens after the sign-in
+  sheet when both are needed): starting a coding session (source `desktop`)
+  on the desktop or the phone; reattaching or rebuilding one and a command
+  inside a coding chat (checked at the build, so a turn already running is
+  never cut); the sample project, before anything is copied; creating,
+  editing, resuming and Run now of a Crew routine. Free: every chat (device,
+  cloud, Stack, a model you connect, `desktop-chat`), web search in chat, the
+  Stack, Projects, Repositories, your own Vault notes by hand, the plain home
+  shell in Terminal, pairing, Settings, Cloud Connections, reading an old
+  coding chat from its saved copy, and pausing, deleting or stopping a
+  routine and reading its runs. Enforcement is app-side only: the person owns
+  the engine and the daemon. The switch is the build flag `VITE_PAY_GATES`
+  (`app/src/lib/payGate.ts`), off by default and set to `1` only in the build
+  submitted to App Review; `PAY_GATE` classifies every account feature, so a
+  new one is a type error until it is. Stripe on the desktop and the web (the
+  `stripe-checkout` function, `{ tierId: 'personal' }`, in the system browser)
+  supersedes the 2026-08-31 Apple-only decision; iOS stays the App Store only,
+  and its sheet names no other way to pay (App Store 3.1.1). $49.99 a year on
+  both rails. No trial at launch (CX); the CFO wanted 14 days, which needs an
+  Apple introductory offer and a Stripe trial set the same way, so it is a
+  hook to revisit, not a switch. No double purchase: `stripe-checkout`
+  refuses while an Apple subscription is active and opens the portal for a
+  live Stripe one. A lapsed subscriber keeps everything; only the paid moments
+  reopen the sheet, which then says "Your Personal year has ended." and
+  offers Renew. Known limit: routines already scheduled keep running on the
+  person's own engine after a lapse. The account id rides on an App Store
+  purchase as `appAccountToken`, so `apple-notifications` finds the account
+  for a purchase Apple completes later (Ask to Buy) when no link row exists.
+  CX's bullet "Routines that leave a note in your Vault" reads "in the vault
+  folder on your computer" (`ROUTINE_NOTES_PLACE`), since the Vault copy rule
+  bars the shorter claim.
+- 2026-09-30: **Personal only; the team side waits (founder).** "We're not
+  doing the enterprise/team side until later. We're just starting with
+  personal." The only thing sold is Personal ($49.99 a year, Stripe on the
+  desktop and the web, the App Store on iPhone and iPad). Team setup, Admin
+  and a team's plan line in Settings ship only at tier 4 (`SHIPS_TEAMS`,
+  `featureOn('teams')`), so no team plan or price reaches a Personal build.
+  The team prices in `app/src/lib/plans.ts` (20/100/250/500) are stale
+  against the Board's (100/250/500/1000) and are deliberately left alone
+  until the v4 tier opens; that session sets them, with a new Stripe price
+  object per band.
+- 2026-09-30: **The paid plan is called OpenShore Plus (CMO and Creative
+  Studio, at the founder's ask).** "No need to call it personal in customer
+  copy." Weighed Premium (clashes with the site's free "Premium by default"
+  promise), house water names (unclear in a subscription list), and the
+  founder's "OpenShore Code" (names the app, not a plan, so it reads as "the
+  app costs money"; "Code" leaves out routines and tells non-developers it is
+  for programmers; looks like a second app in the App Store; no clean team
+  name above it). Plus reads as "more than free", and "OpenShore Team" can
+  sit above it in v4. Customer words: App Store subscription and group
+  "OpenShore Plus" (1 year), Stripe product "OpenShore Plus" with price
+  nickname "Yearly" and statement descriptor "OPENSHORE PLUS"; buttons "Get
+  Plus" (not "Start": there is no trial) and "Renew Plus"; lapsed headline
+  "Your Plus year has ended."; the Settings row "OpenShore Plus" (Active, Not
+  yet); badge "Plus"; unlock toast "Plus is on. The agent can build on your
+  computer."; the signed-in account row reads "Your account". Internal names
+  stay: the v1 release tier is still Personal, and `personal` ids, the
+  product id `ai.openshore.oscode.personal.yearly`, `STRIPE_PRICE_PERSONAL`,
+  `buyPersonal` and friends are unseen and unchanged.
+- 2026-09-30: **Desktop + phone is part of OpenShore Plus (founder, over the
+  advisors' "pairing free").** "Also make the computer+mobile feature gated."
+  `PAY_GATE.pairing` is 'personal', on actions like the rest: on a phone,
+  Scan and Connect (before the one-time code is spent, so a refused claim
+  never leaves a device on the computer this phone did not save), every chat
+  with the computer's models, and the computer's home shell; on the desktop,
+  the pairing code and QR (Revoke, Turn off and Forget stay free), and
+  Connect under "Run on another computer". The free chat with a computer's
+  own models stays free on that desktop (CTO ruling 8); the same chat from
+  another device is Desktop + phone, so the build refuses it with
+  `PaywallLockedError('pairing')` and a parked message opens the sign-in
+  sheet first, then the paywall. A lapse keeps the pairing and cuts no turn:
+  the next chat or shell on the computer opens the sheet; the vault a pairing
+  pointed at the computer stays reachable, since the paid gate never locks
+  what a person made (nothing moves, so no J9 step runs). The hub still
+  starts with the desktop app (routines need it). The sheet gets its own
+  headline, "Reach your computer from your phone.", and a bullet, "Your
+  computer from your phone, while it is on". Found on the way: after a
+  sign-in, a parked message on a paid chat waited no longer for the
+  entitlement read, so a subscriber met the paywall; with the gates on the
+  build now waits for that read.
