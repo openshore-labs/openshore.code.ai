@@ -121,7 +121,9 @@ rand -hex 32` key, runs the one command, and restores the file on exit. It
 runs only `start`, `db start`, `db reset` and `db push --local`, and refuses
 everything else (among them `db pull`, `pull`, `migration repair`,
 `migration list`, `db dump` and `inspect`) and every flag that names a project
-or another `supabase/` folder, before anything runs. The entry is never
+or another `supabase/` folder, in any spelling (`--linked=true` included), and
+any `--local=` other than `--local=true`, before anything runs
+(`app/test/localVaultScript.test.ts`). The entry is never
 committed: the CLI's push upserts every Vault secret `config.toml` resolves
 before it migrates (2.118.0: "Vault secrets from config.toml are updated before
 migrations unless --skip-vault is set"), so a committed entry with the variable
@@ -414,11 +416,13 @@ trialing with `valid_until` unset or ahead.
 What main's `delete-account` does, in order (reads first, so the planned
 refusal comes before any write): refuses `owns_org` (409) when an owned org
 has anyone else active; cancels every Stripe subscription that could still
-charge (the person's and each sole-member org's); copies the rows under a
-legal hold (`account_deletion_hold`), before anything is deleted; deletes the
-sole-member orgs through `account_deletion_orgs`, answering `owns_org` when
-fewer come back than planned (someone joined in the meantime; nothing was
-deleted, though that team's subscription is already canceled); writes the
+charge (the person's and each sole-member org's); deletes the sole-member
+orgs through `account_deletion_orgs`, all or none, answering `owns_org` when
+fewer come back than planned (someone joined, or support handed a team over,
+in the meantime; nothing was deleted, though that team's subscription is
+already canceled); copies the rows under a legal hold
+(`account_deletion_hold`), before anything under a hold is deleted (deleting
+a team touches none, and an `owns_org` answer leaves no copy); writes the
 tombstone (`account_deletion_tombstone`); clears the person from team history
 and removes their memberships and grants (`account_deletion_memberships`);
 then `auth.admin.deleteUser`. It answers `{ ok: true, deleted: true,

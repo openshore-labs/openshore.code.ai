@@ -25,7 +25,7 @@
 -- Error codes: 42501 is a missing privilege; P0001 a plpgsql `raise exception`.
 
 begin;
-select plan(53);
+select plan(57);
 
 -- ------------------------------------------------------------ fixtures
 --   p1 = one: owns the team, blocks, reviews, exports
@@ -281,6 +281,35 @@ reset role;
 insert into public.enforcement_tombstones (email_sha256, terminated_at)
 values (public.enforcement_email_key('priv-one@example.com'), now() - interval '3 days');
 
+-- Rows under one's address that are not one's: a membership and a project
+-- grant bound to six (whose own address changed), beside an unclaimed invite
+-- and grant under one's address in another case. And seven, who signed up
+-- under an address with a tombstone and never confirmed it.
+insert into auth.users (id, email, email_confirmed_at, aud, role)
+values
+  ('9a000000-0000-0000-0000-000000000006', 'priv-six@example.com', now(), 'authenticated', 'authenticated'),
+  ('9a000000-0000-0000-0000-000000000007', 'priv-seven@example.com', null, 'authenticated', 'authenticated');
+insert into public.orgs (id, name, owner_uid, seat_count, tier_id)
+values ('9a000000-0000-0000-0000-00000000000b', 'Elsewhere', '9a000000-0000-0000-0000-000000000006', 5, 'personal');
+insert into public.org_entitlements (org_id, tier_id, seats, status)
+values ('9a000000-0000-0000-0000-00000000000b', 'commercial_small', 5, 'active');
+insert into public.orgs (id, name, owner_uid, seat_count, tier_id)
+values ('9a000000-0000-0000-0000-00000000000c', 'Invites', '9a000000-0000-0000-0000-000000000006', 5, 'personal');
+insert into public.org_members (org_id, user_id, email, role, status)
+values
+  ('9a000000-0000-0000-0000-00000000000b', '9a000000-0000-0000-0000-000000000006', 'priv-one@example.com', 'admin', 'active'),
+  ('9a000000-0000-0000-0000-00000000000c', null, 'PRIV-ONE@example.com', 'member', 'invited');
+insert into public.org_projects (id, org_id, name, created_by)
+values
+  ('9a000000-0000-0000-0000-0000000000a1', '9a000000-0000-0000-0000-00000000000b', 'Theirs', '9a000000-0000-0000-0000-000000000006'),
+  ('9a000000-0000-0000-0000-0000000000a2', '9a000000-0000-0000-0000-00000000000b', 'Unclaimed', '9a000000-0000-0000-0000-000000000006');
+insert into public.org_project_members (project_id, user_id, email, level)
+values
+  ('9a000000-0000-0000-0000-0000000000a1', '9a000000-0000-0000-0000-000000000006', 'priv-one@example.com', 'read'),
+  ('9a000000-0000-0000-0000-0000000000a2', null, 'Priv-One@Example.com', 'read');
+insert into public.enforcement_tombstones (email_sha256, terminated_at)
+values (public.enforcement_email_key('priv-seven@example.com'), now() - interval '3 days');
+
 -- Push bookkeeping and a consent assertion, one person's and the other's.
 insert into public.push_sends (user_id, session_id, dedupe_key)
 values
@@ -298,6 +327,11 @@ select set_config('request.jwt.claims',
   '{"sub":"9a000000-0000-0000-0000-000000000002","email":"priv-two@example.com","role":"authenticated"}', true);
 set local role authenticated;
 insert into exported select 'two', public.export_my_data();
+reset role;
+select set_config('request.jwt.claims',
+  '{"sub":"9a000000-0000-0000-0000-000000000007","email":"priv-seven@example.com","role":"authenticated"}', true);
+set local role authenticated;
+insert into exported select 'seven', public.export_my_data();
 reset role;
 
 select is(
@@ -342,6 +376,25 @@ select ok(
   (select position(public.enforcement_email_key('priv-one@example.com') in v::text) = 0
      from exported where k = 'one'),
   'the export never carries the tombstone''s hash');
+select is(
+  (select jsonb_typeof(v->'enforcement_tombstone') from exported where k = 'seven'),
+  'null',
+  'an unconfirmed address sees no tombstone');
+select is(
+  (select array_agg(x->>'org_id' order by x->>'org_id') from exported,
+     jsonb_array_elements(v->'org_memberships') x where k = 'one'),
+  array['9a000000-0000-0000-0000-00000000000a', '9a000000-0000-0000-0000-00000000000c'],
+  'memberships: one''s own row and the unclaimed invite, not a row bound to someone else');
+select is(
+  (select array_agg(x->>'project_id') from exported,
+     jsonb_array_elements(v->'org_project_members') x where k = 'one'),
+  array['9a000000-0000-0000-0000-0000000000a2'],
+  'project grants: the unclaimed one, not one bound to someone else');
+select is(
+  (select array_agg(x->>'name') from exported, jsonb_array_elements(v->'org_projects') x
+    where k = 'one'),
+  array['Unclaimed'],
+  'projects: only through a grant that is one''s');
 select is(
   (select jsonb_typeof(v->'enforcement_tombstone') from exported where k = 'two'),
   'null',

@@ -28,9 +28,16 @@
 # `migration list`, `db dump`, `inspect`, `link`, `functions`, `secrets` and
 # the rest), and so is any flag that names a project or another supabase/
 # folder (--linked, --db-url, --project-ref, --project-id, --workdir,
-# --profile). The subcommand is the first word after the launcher
-# (`supabase`, `npx [--yes] supabase@<version>`, or a path ending in
-# /supabase); an unknown launcher is refused too.
+# --profile) in every spelling: the CLI reads `--linked=true`, `--linked=1`
+# and the like as --linked, so every argument that starts with one of those
+# names is refused. The only spellings that mark the local stack are
+# `--local` and `--local=true`; any other `--local=<value>` is refused, since
+# the CLI takes the last one it reads and `--local=false` after `--local`
+# would push to the linked project. The subcommand is the first word after
+# the launcher (`supabase`, `npx [--yes] supabase@<version>`, or a path ending
+# in /supabase), past the CLI's global flags and the values of the ones that
+# take one (`--agent no`, `--log-level warn`, the runbook's `sb` alias); an
+# unknown launcher is refused too. Guard: app/test/localVaultScript.test.ts.
 set -euo pipefail
 
 refuse() {
@@ -46,16 +53,19 @@ fi
 local_flag=0
 for arg in "$@"; do
   case "$arg" in
-    --linked | --db-url | --db-url=* | --project-ref | --project-ref=* | --project-id | --project-id=* | \
-      --workdir | --workdir=* | --profile | --profile=*)
+    --linked* | --db-url* | --project-ref* | --project-id* | --workdir* | --profile*)
       refuse "'$arg'"
       ;;
-    --local) local_flag=1 ;;
+    --local | --local=true) local_flag=1 ;;
+    --local=*) refuse "'$arg' (only --local or --local=true names the local stack)" ;;
   esac
 done
 
-# The CLI's own subcommand and the word after it, past the launcher.
+# The CLI's own subcommand and the word after it, past the launcher, its
+# global flags, and the value of each global flag that takes one as a
+# separate word (2.118.0's --help, GLOBAL FLAGS).
 launcher=1
+value_next=0
 top=""
 sub=""
 for arg in "$@"; do
@@ -65,7 +75,17 @@ for arg in "$@"; do
     esac
     launcher=0
   fi
-  case "$arg" in -*) continue ;; esac
+  if [ "$value_next" -eq 1 ]; then
+    value_next=0
+    continue
+  fi
+  case "$arg" in
+    --agent | --completions | --dns-resolver | --log-level | --network-id | --output | -o | --output-format)
+      value_next=1
+      continue
+      ;;
+    -*) continue ;;
+  esac
   if [ -z "$top" ]; then
     top="$arg"
   elif [ -z "$sub" ]; then

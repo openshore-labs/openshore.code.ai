@@ -12,7 +12,11 @@
 //           with other bytes than the pinned hash;
 //       (c) a file not on main numbered at or below the higher of main's
 //           newest and production's newest. Such a branch renumbers before it
-//           merges.
+//           merges;
+//       (d) a file production applied (main's production-history.tsv) missing
+//           from the tree, deleted or renamed away;
+//     and a file whose bytes another file in the tree already holds (a copy
+//     under a new number, not a move).
 //
 //   node supabase/scripts/check-migrations.mjs --scan-remotes --against origin/main
 //     On a push to main: runs the same checks for every refs/remotes/origin/*
@@ -84,7 +88,8 @@ function historyAt(ref) {
  *
  * A file whose bytes main holds under another name is one of two things: main's
  * unapplied file moved, bytes unchanged, to a free number above production's
- * newest (the reconcile's own move; it passes), or a stale name or a
+ * newest (the reconcile's own move; it passes, but only when the old name is
+ * gone from the tree, so a copy is never read as a move), or a stale name or a
  * renumbered copy, which gets one line saying what to do instead of three.
  */
 export function problemsFor(ref, mainRef) {
@@ -113,8 +118,18 @@ export function problemsFor(ref, mainRef) {
   const newestProd = history?.at(-1)?.version ?? '0000';
   const ceiling = newestMain > newestProd ? newestMain : newestProd;
   const mainByHash = new Map(mainFiles.map((f) => [sha256(bytesAt(mainRef, f)), f]));
+  const treeFiles = filesAt(ref);
+  const inTree = new Set(treeFiles);
 
-  for (const file of filesAt(ref)) {
+  for (const row of history ?? []) {
+    if (!inTree.has(row.file)) {
+      problems.push(
+        `(d) ${row.file}: production applied it, and it is missing here; an applied file stays, byte for byte`,
+      );
+    }
+  }
+
+  for (const file of treeFiles) {
     const m = FILE_NAME.exec(file);
     if (!m) {
       problems.push(`${file}: not named NNNN_words.sql`);
@@ -126,7 +141,11 @@ export function problemsFor(ref, mainRef) {
     const sameBytes = mainByHash.get(hash);
     if (sameBytes && sameBytes !== file) {
       const free = !onMain || onMain === sameBytes;
-      if (!appliedFiles.has(sameBytes) && version > newestProd && free) {
+      if (inTree.has(sameBytes)) {
+        problems.push(
+          `${file}: a copy of ${sameBytes}, which is here too; one change is one file`,
+        );
+      } else if (!appliedFiles.has(sameBytes) && version > newestProd && free) {
         notes.push(
           `${file} is main's unapplied ${sameBytes}, moved above production's newest (${newestProd})`,
         );

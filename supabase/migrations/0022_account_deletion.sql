@@ -354,9 +354,10 @@ end $$;
 -- copied first, without the user id, under a SHA-256 of it, in the shape the
 -- 2026-09-24 function wrote: { "guardrail_events": [...],
 -- "enforcement_actions": [...] }, held until the latest of their holds. Called
--- before anything is deleted. A second call with the same held rows adds
--- nothing; a call after the held rows changed adds the newer copy beside the
--- older one and never edits or removes either. Returns how many rows are
+-- after the owned teams go (6b; deleting a team touches no held row) and
+-- before anything under a hold is deleted. A second call with the same held
+-- rows adds nothing; a call after the held rows changed adds the newer copy
+-- beside the older one and never edits or removes either. Returns how many rows are
 -- under hold (0 when none, and then nothing is written).
 create or replace function public.account_deletion_hold(p_user uuid)
 returns integer
@@ -411,6 +412,9 @@ $$;
 -- active, or a member added, while the account is being deleted either lands
 -- before the check (and stops the delete) or waits and finds the team gone.
 -- An active row with no user id (its person's account was deleted) is nobody.
+-- A team named here that this account no longer owns (support handed it over
+-- after delete-account read the plan) stops the delete too, so all or none
+-- holds for every team named, not only the ones still owned.
 -- Returns the ids it deleted, as one array; delete-account answers owns_org
 -- when fewer come back than it planned, and then nothing was deleted.
 create or replace function public.account_deletion_orgs(p_owner uuid, p_orgs uuid[])
@@ -433,6 +437,10 @@ begin
    where m.org_id = any (p_orgs)
    order by m.id
      for update;
+  if (select count(*) from public.orgs o where o.id = any (p_orgs) and o.owner_uid = p_owner)
+     <> (select count(distinct x) from unnest(p_orgs) as x) then
+    return '{}'::uuid[];
+  end if;
   with gone as (
     delete from public.orgs o
      where o.id = any (p_orgs)

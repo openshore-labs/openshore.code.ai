@@ -265,7 +265,7 @@ describe('Download my data covers every table', () => {
       'whether a report prepared under 18 U.S.C. 2258A is disclosed to its subject is a counsel call (F4)',
     abuse_reviewers: 'an operator allowlist the service role seeds; 0019 left it out',
     deletion_holds:
-      "rows kept under a hash of a deleted account's id; not linked to any live account",
+      'copies made while an account is deleted, kept under a hash of its id; no key links them to an account',
     org_storage_usage: "a team's byte count; it names no person",
   };
 
@@ -308,5 +308,25 @@ describe('Download my data covers every table', () => {
   it('is version 2 and never exports the tombstone hash', () => {
     expect(body).toMatch(/'version', 2,/);
     expect(body).not.toMatch(/'email_sha256'|to_jsonb\(t\) from public\.enforcement_tombstones/);
+  });
+});
+
+describe("0026's retention re-schedule", () => {
+  // pg_cron unschedules by name only among the current role's own jobs, while
+  // the role a push runs as sees every role's (review 2026-09-30). A job of
+  // this name that another role owns must stop the migration with the
+  // owner's name, before the unschedule that would fail with pg_cron's own
+  // "could not find valid entry" or leave a second job beside it.
+  it('stops on a job another role owns, before it unschedules', () => {
+    const sql = read('0026_export_and_retention.sql').toString('utf8');
+    const check = sql.indexOf(
+      "where jobname = 'oscode_guardrail_retention' and username <> current_user",
+    );
+    const unschedule = sql.indexOf("perform cron.unschedule('oscode_guardrail_retention')");
+    expect(check).toBeGreaterThan(-1);
+    expect(unschedule).toBeGreaterThan(check);
+    expect(sql.slice(check, unschedule)).toMatch(
+      /raise exception 'cron job oscode_guardrail_retention belongs to %/,
+    );
   });
 });
