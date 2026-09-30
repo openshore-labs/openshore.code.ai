@@ -3333,3 +3333,13 @@ execution contract. Newest at the bottom.
   CX's bullet "Routines that leave a note in your Vault" reads "in the vault
   folder on your computer" (`ROUTINE_NOTES_PLACE`), since the Vault copy rule
   bars the shorter claim.
+- 2026-09-30: **Personal only; the team side waits (founder).** "We're not
+  doing the enterprise/team side until later. We're just starting with
+  personal." The only thing sold is Personal ($49.99 a year, Stripe on the
+  desktop and the web, the App Store on iPhone and iPad). Team setup, Admin
+  and a team's plan line in Settings ship only at tier 4 (`SHIPS_TEAMS`,
+  `featureOn('teams')`), so no team plan or price reaches a Personal build.
+  The team prices in `app/src/lib/plans.ts` (20/100/250/500) are stale
+  against the Board's (100/250/500/1000) and are deliberately left alone
+  until the v4 tier opens; that session sets them, with a new Stripe price
+  object per band.

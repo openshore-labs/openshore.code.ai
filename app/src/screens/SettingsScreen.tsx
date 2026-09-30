@@ -3,7 +3,7 @@
 // everything deeper in a sheet. What this app keeps, where it lives, and a
 // few careful switches. No telemetry to toggle because there is none. Built
 // with the Creative Studio (2026-09-02, "The Ledger" direction).
-import { SHIPS_ADMIN, SHIPS_LAUNCH, SHIPS_STACKHEALTH } from '../lib/focus.js';
+import { SHIPS_ADMIN, SHIPS_LAUNCH, SHIPS_STACKHEALTH, SHIPS_TEAMS } from '../lib/focus.js';
 import { ACCOUNT_PITCH } from '../lib/accountGate.js';
 import { Fragment, useEffect, useState } from 'react';
 import { PAY_GATES_ENABLED, isOrgAdmin, useApp, type HarborDownload } from '../state/store.js';
@@ -1225,7 +1225,8 @@ export function SettingsScreen() {
 
       <Sheet open={sheet === 'account'} onClose={close}>
         <SheetHead title={signedIn ? 'Your account' : 'Sign in'} onClose={close} />
-        {signedIn && account?.type === 'commercial' && org ? (
+        {/* A team's plan and price are v4 (founder 2026-09-30: Personal first). */}
+        {SHIPS_TEAMS && signedIn && account?.type === 'commercial' && org ? (
           <p className="sheet-sub">
             {tierById(org.tierId).name} plan ·{' '}
             {shownPrice(tierById(org.tierId), PAY_GATES_ENABLED)
