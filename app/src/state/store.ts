@@ -6526,6 +6526,7 @@ export const useApp = create<AppState>((set, get, api) => {
       delete p[vaultKey(t, from)];
       p[vaultKey(t, to)] = { ...e, path: to };
     }).catch(() => {});
+    await rekeyVaultHeld(t, from, to);
     if (!isActiveVault(t)) return;
     const open = get().vaultNote;
     if (open?.path === from) {
@@ -6543,6 +6544,36 @@ export const useApp = create<AppState>((set, get, api) => {
         },
       });
     }
+  }
+
+  // Text held under Not saved for a note follows the note to its new name,
+  // so the note it was typed in still shows it (round 7 E31). Every account's
+  // entry moves, since the name changed for everyone and nothing is shown to
+  // anyone new; text from an earlier desktop folder is another note and
+  // stays. Each keeps an id of its own at the new name, so a later hold
+  // there never replaces it, and a memory-only entry stays out of the
+  // sealed store (editVaultHeld keeps only durable ones there).
+  async function rekeyVaultHeld(t: VaultTargetRef, from: string, to: string): Promise<void> {
+    await loadVaultHeld();
+    const moves = (h: VaultHeldDraft) =>
+      h.providerId === t.providerId &&
+      h.resourceId === t.resourceId &&
+      h.path === from &&
+      h.folder === undefined;
+    if (!get().vaultHeld.some(moves)) return;
+    const was = vaultKey(t, from);
+    const now = vaultKey(t, to);
+    const rekey = (list: VaultHeldDraft[]) => {
+      const ids = new Set(list.filter((h) => !moves(h)).map((h) => h.id));
+      return list.map((h) => {
+        if (!moves(h)) return h;
+        let id = h.id.startsWith(was) ? `${now}${h.id.slice(was.length)}` : `${now}::${h.id}`;
+        for (let n = 2; ids.has(id); n++) id = `${id.replace(/::moved-\d+$/, '')}::moved-${n}`;
+        ids.add(id);
+        return { ...h, id, path: to };
+      });
+    };
+    await editVaultHeld(rekey).catch(() => false);
   }
 
   // The storage answered with the note at another spelling of the same name

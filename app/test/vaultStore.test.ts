@@ -7426,6 +7426,42 @@ describe('round 7, batch 4: Your computer keeps main behavior in the resolve she
     useApp.setState({ vaultConflict: undefined });
   });
 
+  it('E31: a held entry on a personal note follows its rename', async () => {
+    const fp = folder.provider as unknown as Record<string, unknown>;
+    fp.rename = async (_r: string, from: string, to: string) => {
+      folder.files.set(to, folder.files.get(from)!);
+      folder.files.delete(from);
+      const v = folder.version(to);
+      return { ok: true, file: { path: to, updatedAt: v, size: 4, version: v } };
+    };
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('files') },
+    });
+    folder.files.set('a.md', 'kept');
+    await useApp.getState().vaultRefresh();
+    useApp.setState({
+      vaultHeld: [
+        {
+          id: 'files::vault.personal::a.md::::s1',
+          providerId: 'files',
+          resourceId: 'vault.personal',
+          path: 'a.md',
+          text: 'held words',
+          reason: 'x',
+          at: '2026-09-29T00:00:00.000Z',
+          durable: true,
+        },
+      ],
+    });
+    const preview = await useApp.getState().vaultPrepareMove('note', 'a.md', 'b.md');
+    if (!preview) throw new Error('no preview');
+    expect(await useApp.getState().vaultApplyMove(preview, false)).toMatchObject({ ok: true });
+    delete fp.rename;
+    expect(useApp.getState().vaultHeld.map((h) => [h.path, h.id])).toEqual([
+      ['b.md', 'files::vault.personal::b.md::::s1'],
+    ]);
+  });
+
   describe('E29: Keep both refused while the computer is away keeps the choice open', () => {
     async function changedOnHub() {
       useApp.setState({
@@ -7517,6 +7553,93 @@ describe('round 7, batch 4: the team vault says what is there, and what it did',
     }
     throw new Error('the index never settled');
   }
+
+  describe('E31: text held under Not saved follows its note through a rename', () => {
+    // a.md open at the team's cap, its growing save held.
+    async function heldAtCap(path = 'a.md') {
+      server.put(path, 'the base', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen(path);
+      for (let i = 0; i < 5; i++) await tick();
+      server.freeBytes = server.usage();
+      await st().vaultSave(path, 'the base, and a held paragraph');
+      expect(teamHeld().map((h) => h.path)).toEqual([path]);
+    }
+    async function rename(from: string, to: string, kind: 'note' | 'folder' = 'note') {
+      const preview = await st().vaultPrepareMove(kind, from, to);
+      if (!preview) throw new Error('no preview');
+      expect(await st().vaultApplyMove(preview, false)).toMatchObject({ ok: true });
+    }
+
+    it('N9: the held text is on the renamed note, here and sealed', async () => {
+      await heldAtCap();
+      await rename('a.md', 'b.md');
+      expect(st().vaultNote?.path).toBe('b.md');
+      expect(st().vaultHeldVisible().filter((h) => h.path === 'b.md')).toHaveLength(1);
+      expect(st().vaultHeldVisible().filter((h) => h.path === 'a.md')).toHaveLength(0);
+      expect(sealedHeld().map((h) => [(h as { path?: string }).path, h.text])).toEqual([
+        ['b.md', 'the base, and a held paragraph'],
+      ]);
+    });
+
+    it('N9b: a new note at the old name, held too, keeps both texts', async () => {
+      await heldAtCap();
+      await rename('a.md', 'b.md');
+      server.freeBytes = undefined;
+      await st().vaultCreate('a');
+      expect(st().vaultNote?.path).toBe('a.md');
+      server.freeBytes = server.usage();
+      await st().vaultSave('a.md', 'new words at the old name');
+      const texts = teamHeld()
+        .map((h) => [h.path, h.text])
+        .sort();
+      expect(texts).toEqual([
+        ['a.md', 'new words at the old name'],
+        ['b.md', 'the base, and a held paragraph'],
+      ]);
+      expect(sealedHeld().map((h) => h.text).sort()).toEqual([
+        'new words at the old name',
+        'the base, and a held paragraph',
+      ]);
+    });
+
+    it('a held note inside a renamed folder follows it', async () => {
+      await heldAtCap('Work/a.md');
+      await rename('Work', 'Done', 'folder');
+      expect(teamHeld().map((h) => h.path)).toEqual(['Done/a.md']);
+      expect(sealedHeld().map((h) => (h as { path?: string }).path)).toEqual(['Done/a.md']);
+    });
+
+    it('two held entries meeting at one name keep their own ids', async () => {
+      await heldAtCap();
+      // Text held for b.md before, from another sitting.
+      useApp.setState({
+        vaultHeld: [
+          ...st().vaultHeld,
+          {
+            id: `org::${ORG}::b.md::u1::other`,
+            providerId: 'org',
+            resourceId: ORG,
+            path: 'b.md',
+            text: 'older words for b',
+            reason: 'x',
+            at: '2026-09-29T00:00:00.000Z',
+            owner: 'u1',
+            durable: false,
+          },
+        ],
+      });
+      await rename('a.md', 'b.md');
+      const atB = teamHeld().filter((h) => h.path === 'b.md');
+      expect(atB.map((h) => h.text).sort()).toEqual([
+        'older words for b',
+        'the base, and a held paragraph',
+      ]);
+      expect(new Set(atB.map((h) => h.id)).size).toBe(2);
+      // The memory-only one never reaches the sealed store.
+      expect(sealedHeld().map((h) => h.text)).toEqual(['the base, and a held paragraph']);
+    });
+  });
 
   describe("E32: a team list started under one account never opens that account's index for the next", () => {
     // u1's list answer is held after the server answered it; u1 signs out,
