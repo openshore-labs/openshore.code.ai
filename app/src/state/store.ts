@@ -6510,7 +6510,12 @@ export const useApp = create<AppState>((set, get, api) => {
    *  A pin names a personal note only (the pack reads personalVault()), so
    *  only a personal rename moves one: a team note of the same name is
    *  another note (round 7 E15). */
-  async function rekeyVaultPath(t: VaultTargetRef, from: string, to: string): Promise<void> {
+  async function rekeyVaultPath(
+    t: VaultTargetRef,
+    from: string,
+    to: string,
+    opts: { keepVersion?: boolean } = {},
+  ): Promise<void> {
     if (t.providerId === vaultProviderId(get().settings) && t.resourceId === VAULT_RESOURCE_ID) {
       await rewriteVaultPins(from, to).catch(() => {});
     }
@@ -6524,7 +6529,10 @@ export const useApp = create<AppState>((set, get, api) => {
     if (!isActiveVault(t)) return;
     const open = get().vaultNote;
     if (open?.path === from) {
-      const listed = get().vaultFiles.find((f) => f.path === to);
+      // Following another writer's rename keeps the version this device
+      // typed on: the listing's is theirs, and adopting it would let the
+      // next save land over theirs unasked (E16).
+      const listed = opts.keepVersion ? undefined : get().vaultFiles.find((f) => f.path === to);
       if (vaultLiveDraft?.path === from) vaultLiveDraft = { ...vaultLiveDraft, path: to };
       set({
         vaultNote: {
@@ -6535,6 +6543,25 @@ export const useApp = create<AppState>((set, get, api) => {
         },
       });
     }
+  }
+
+  // The storage answered with the note at another spelling of the same name
+  // (the team vault matches a name by letter case, 0021): a teammate renamed
+  // it by case only, or a new note met its twin. It is one name, so the open
+  // note, its typed text, its stash and Recent follow it there, and the next
+  // write is guarded at that spelling, never at one the storage no longer
+  // has (a 'missing' and 'changed' loop). The version this device typed on
+  // stays the base: theirs is shown, never adopted (round 7 E16). Resolves
+  // to the path the note is at now.
+  async function followCaseRename(
+    t: VaultTargetRef,
+    from: string,
+    theirs: StoredFile | undefined,
+  ): Promise<string> {
+    if (!theirs || theirs.path === from) return from;
+    if (theirs.path.toLowerCase() !== from.toLowerCase()) return from;
+    await rekeyVaultPath(t, from, theirs.path, { keepVersion: true });
+    return theirs.path;
   }
 
   /** The one VaultOpsDeps for an operation on vault `t`. */
@@ -7677,17 +7704,19 @@ export const useApp = create<AppState>((set, get, api) => {
       return versionOf(theirs);
     }
     if (isOpen) {
+      // Theirs under another spelling of this name: the note follows it (E16).
+      const at = await followCaseRename(target, path, theirs);
       const open = get().vaultConflict;
-      if (!open || open.path !== path) {
+      if (!open || (open.path !== path && open.path !== at)) {
         raiseVaultConflict(
           target,
-          path,
+          at,
           result.conflict === 'missing' ? 'missing' : 'changed',
           theirs,
           base,
         );
       }
-      await stashConflictText(target, path, text, base, mark);
+      await stashConflictText(target, at, text, base, mark);
       return base;
     }
     if (result.conflict === 'missing' || !theirs) {
@@ -11650,9 +11679,11 @@ export const useApp = create<AppState>((set, get, api) => {
       const title = noteTitle(c.path);
       const open = get().vaultNote;
       const session = open?.path === c.path ? open.loadedAt : undefined;
-      const done = async (toast: string) => {
+      // The stash is dropped where the note is now (a case-only rename
+      // followed, E16).
+      const done = async (toast: string, at = c.path) => {
         set({ vaultConflict: undefined });
-        await dropStash(c.target, c.path);
+        await dropStash(c.target, at);
         get().showToast(toast);
         logEvent('vault_conflict_choice', { choice, kind: c.kind });
         return { ok: true };
@@ -11685,8 +11716,10 @@ export const useApp = create<AppState>((set, get, api) => {
             return done(`${teamRefused} ${heldLine(landed)}`);
           }
           if (choice === 'theirs' && c.theirs) {
+            // Shown at its own spelling of the name, so the editor takes it (E16).
+            const at = await followCaseRename(c.target, c.path, c.theirs);
             reloadOpenNote(c.theirs, 'resolve');
-            return done(vaultResolveToast('theirs', { title }));
+            return done(vaultResolveToast('theirs', { title }), at);
           }
           if (choice === 'discard') {
             vaultLiveDraft = undefined;
@@ -11707,33 +11740,52 @@ export const useApp = create<AppState>((set, get, api) => {
               });
               set({ vaultError: 'held' });
             }
+            const at = await followCaseRename(c.target, c.path, c.theirs);
             reloadOpenNote(c.theirs, 'resolve');
             return done(
               copy
                 ? vaultResolveToast('both', { title, copyTitle: noteTitle(copy) })
                 : `Not saved. ${heldLine(true)}`,
+              at,
             );
           }
           if (choice === 'mine') {
             const guard: WriteGuard = c.theirs
               ? { ifMatch: versionOf(c.theirs) }
               : { ifAbsent: true };
-            const r = await putVaultNote(target, c.path, draft, guard);
+            // Guarded where theirs is: the spelling the sheet shows (E16).
+            let at = await followCaseRename(c.target, c.path, c.theirs);
+            let r = await putVaultNote(target, at, draft, guard);
+            // Theirs under another spelling of this name (a teammate's
+            // case-only rename): the note follows it, and when theirs is
+            // just the text this device loaded, nothing is left to ask, so
+            // Keep yours lands there, as a save does over a pure touch (E16).
+            if (!r.ok && r.theirs) {
+              const was = at;
+              at = await followCaseRename(c.target, at, r.theirs);
+              if (at !== was && r.theirs.text === c.base) {
+                r = await putVaultNote(target, at, draft, { ifMatch: versionOf(r.theirs) });
+              }
+            }
             if (!r.ok) {
               if (r.conflict === 'downloading') return { ok: false, failed: true };
               // It changed again (or came back): the sheet shows what is
               // there now, and the person chooses again.
-              const theirs = r.theirs ?? (await target.provider.read(target.resourceId, c.path));
+              const theirs = r.theirs ?? (await target.provider.read(target.resourceId, at));
+              const moved =
+                at === c.path
+                  ? {}
+                  : { path: at, copyPath: vaultConflictCopyPath(at, new Date(c.foundAt)) };
               set({
                 vaultConflict: theirs
-                  ? { ...c, kind: 'changed', theirs, again: true }
-                  : { ...c, kind: 'missing', theirs: undefined, again: true },
+                  ? { ...c, ...moved, kind: 'changed', theirs, again: true }
+                  : { ...c, ...moved, kind: 'missing', theirs: undefined, again: true },
               });
               return { ok: false };
             }
             const saved = r.file;
             const open = get().vaultNote;
-            if (open?.path === c.path) {
+            if (open?.path === at) {
               set({
                 vaultNote: {
                   ...open,
@@ -11744,7 +11796,7 @@ export const useApp = create<AppState>((set, get, api) => {
                 },
               });
             }
-            return done(vaultResolveToast('mine', { title, missing: c.kind === 'missing' }));
+            return done(vaultResolveToast('mine', { title, missing: c.kind === 'missing' }), at);
           }
           return { ok: false };
         } catch (err) {

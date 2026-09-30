@@ -7273,4 +7273,146 @@ describe('round 7, batch 3: the team vault answers only for itself', () => {
       expect(st().toast).toBe(vaultTickUnsaved('t'));
     });
   });
+
+  describe("E16: a teammate's case-only rename is followed, never looped", () => {
+    // A teammate renames `from` to `to` (0024's org_vault_move), not seen by
+    // this device's own RPC log.
+    async function teammateMove(from: string, to: string) {
+      const was = server.caller;
+      server.caller = 'u-teammate';
+      const cur = server.notes.get(from)!;
+      await server.rpc('org_vault_move', 'tok', {
+        p_org: ORG,
+        p_from: from,
+        p_to: to,
+        p_if_match: cur.rev,
+      });
+      server.caller = was;
+      server.rpcs.pop();
+    }
+    const lastWrite = () => server.rpcs.filter((r) => r.fn === 'org_vault_write').at(-1)?.args;
+    const typed = 'the base, and my words';
+    // plan.md open with words typed, after a teammate renamed it Plan.md:
+    // the save answers missing (0025 matches if_match by the exact path).
+    async function missingAfterRename(also?: string) {
+      server.put('plan.md', 'the base', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('plan.md');
+      for (let i = 0; i < 5; i++) await tick();
+      await teammateMove('plan.md', 'Plan.md');
+      if (also) server.put('Plan.md', also);
+      st().vaultNoteDraft('plan.md', typed);
+      await st().vaultSave('plan.md', typed);
+      expect(st().vaultConflict).toMatchObject({ kind: 'missing' });
+    }
+
+    it('Save it again follows a pure rename and lands there', async () => {
+      await missingAfterRename();
+      const kinds: string[] = [];
+      let landed = false;
+      for (let i = 0; i < 4 && !landed; i++) {
+        landed = (await st().vaultResolve('mine', typed)).ok === true;
+        kinds.push(st().vaultConflict?.kind ?? 'none');
+      }
+      expect(kinds).toEqual(['none']);
+      expect(server.bytes('Plan.md')).toBe(typed);
+      expect(server.notes.has('plan.md')).toBe(false);
+      expect(lastWrite()).toMatchObject({ p_path: 'Plan.md' });
+      expect(st().vaultNote).toMatchObject({ path: 'Plan.md', text: typed });
+      expect(pending()).toEqual({});
+    });
+
+    it('with their words too, the sheet shows theirs at Plan.md, and Keep yours lands there', async () => {
+      await missingAfterRename('their newer words');
+      expect((await st().vaultResolve('mine', typed)).ok).toBeFalsy();
+      expect(st().vaultConflict).toMatchObject({
+        path: 'Plan.md',
+        kind: 'changed',
+        theirs: { path: 'Plan.md', text: 'their newer words' },
+      });
+      expect(st().vaultNote?.path).toBe('Plan.md');
+      expect(Object.keys(pending())).toEqual([`org::${ORG}::Plan.md`]);
+      expect(await st().vaultResolve('mine', typed)).toEqual({ ok: true });
+      expect(lastWrite()).toMatchObject({ p_path: 'Plan.md' });
+      expect(server.bytes('Plan.md')).toBe(typed);
+      expect(st().vaultConflict).toBeUndefined();
+      expect(pending()).toEqual({});
+    });
+
+    it('Keep the other version shows theirs at Plan.md', async () => {
+      await missingAfterRename('their newer words');
+      await st().vaultResolve('mine', typed);
+      const before = st().vaultNote!.reloaded;
+      expect(await st().vaultResolve('theirs', typed)).toEqual({ ok: true });
+      expect(st().toast).toBe('Kept the other version.');
+      expect(st().vaultNote).toMatchObject({ path: 'Plan.md', text: 'their newer words' });
+      expect(st().vaultNote!.reloaded).not.toBe(before);
+      expect(pending()).toEqual({});
+      expect(server.bytes('Plan.md')).toBe('their newer words');
+    });
+
+    it('Keep both writes a copy of the typed words and leaves theirs as it is', async () => {
+      await missingAfterRename('their newer words');
+      await st().vaultResolve('mine', typed);
+      expect(await st().vaultResolve('both', typed)).toEqual({ ok: true });
+      expect(server.bytes('Plan.md')).toBe('their newer words');
+      expect(liveHas(server, typed)).toBe(true);
+      expect(st().vaultNote).toMatchObject({ path: 'Plan.md', text: 'their newer words' });
+    });
+
+    it('leaving the sheet after the rename keeps both', async () => {
+      await missingAfterRename('their newer words');
+      await st().vaultResolve('mine', typed);
+      st().vaultCloseNote();
+      await vi.waitFor(() =>
+        expect([...server.notes.values()].some((n) => !n.deleted && n.body === typed)).toBe(true),
+      );
+      expect(server.bytes('Plan.md')).toBe('their newer words');
+    });
+
+    it("a new note meeting a teammate's twin asks at the twin's spelling, and Keep both leaves it", async () => {
+      teamNet.fail = new TypeError('Failed to fetch');
+      await st().vaultCreate('plan');
+      teamNet.fail = undefined;
+      expect(st().vaultNote?.path).toBe('plan.md');
+      server.put('Plan.md', 'their plan');
+      st().vaultNoteDraft('plan.md', 'my plan');
+      await st().vaultSave('plan.md', 'my plan');
+      expect(st().vaultConflict).toMatchObject({
+        path: 'Plan.md',
+        kind: 'changed',
+        theirs: { path: 'Plan.md', text: 'their plan' },
+      });
+      expect(await st().vaultResolve('both', 'my plan')).toEqual({ ok: true });
+      expect(server.bytes('Plan.md')).toBe('their plan');
+      expect(liveHas(server, 'my plan')).toBe(true);
+      expect(server.notes.has('plan.md')).toBe(false);
+    });
+
+    it("a new note meeting a twin: Keep yours is guarded at the twin's version", async () => {
+      teamNet.fail = new TypeError('Failed to fetch');
+      await st().vaultCreate('plan');
+      teamNet.fail = undefined;
+      server.put('Plan.md', 'their plan');
+      const rev = server.notes.get('Plan.md')!.rev;
+      st().vaultNoteDraft('plan.md', 'my plan');
+      await st().vaultSave('plan.md', 'my plan');
+      expect(await st().vaultResolve('mine', 'my plan')).toEqual({ ok: true });
+      expect(lastWrite()).toMatchObject({ p_path: 'Plan.md', p_if_match: rev });
+      expect(server.bytes('Plan.md')).toBe('my plan');
+    });
+
+    it('a listing that already shows Plan.md at its new version never lets a save land over it unasked', async () => {
+      await missingAfterRename('their newer words');
+      await st().vaultRefresh();
+      expect(st().vaultFiles.map((f) => f.path)).toContain('Plan.md');
+      await st().vaultResolve('mine', typed);
+      expect(st().vaultNote?.path).toBe('Plan.md');
+      // The sheet is set aside, and the next autosave goes out.
+      useApp.setState({ vaultConflict: undefined });
+      await st().vaultSave('Plan.md', `${typed}, more`);
+      expect(server.bytes('Plan.md')).toBe('their newer words');
+      expect(st().vaultConflict).toMatchObject({ path: 'Plan.md', kind: 'changed' });
+    });
+  });
 });
