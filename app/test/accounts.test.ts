@@ -223,12 +223,14 @@ function sourceFiles(dir = join(process.cwd(), 'src'), out: string[] = []): stri
 }
 
 describe('the gate: chat is free, everything else is a free sign-in', () => {
-  it('leaves exactly chat, the chat list, the Stack, its health, Settings, and setup free', () => {
+  it('leaves exactly chat, the chat list, the Stack, Settings, and setup free', () => {
     const free = Object.entries(ROOM_ACCOUNT)
       .filter(([, f]) => f === null)
       .map(([v]) => v)
       .sort();
-    expect(free).toEqual(['chat', 'chats', 'onboarding', 'settings', 'stack', 'stackhealth']);
+    // Stack Health left the list when it became part of Plus (founder,
+    // 2026-09-30): buying needs an account.
+    expect(free).toEqual(['chat', 'chats', 'onboarding', 'settings', 'stack']);
   });
 
   it('puts Projects, Terminal, Repositories, Vault, Crew, Connections, and pairing behind it', () => {

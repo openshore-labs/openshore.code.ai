@@ -3641,3 +3641,29 @@ execution contract. Newest at the bottom.
   `VaultScreen.tsx`. Main tests: the room's choice fixture names the vault
   the room is on (`local`), and the frontmatter tick expects no write
   attempt on a changed note.
+- 2026-09-30: **Plus opens every room but five, and the free sidebar shows
+  it (founder, with a screenshot of the drawer).** "Basically everything
+  except chats, projects, stack, cloud connections and settings should be
+  gated." This supersedes the advisors' "on actions, never rooms" for rooms:
+  `PAY_GATE` now marks Terminal, Repositories and Vault paid beside coding,
+  Crew and pairing, and Stack Health (v2) gains its own feature, `health`,
+  behind the sign-in and paid (so `ROOM_ACCOUNT.stackhealth` is no longer
+  null). `roomPaid(view)` reads the classification; `setView` and `goBack`
+  open the paywall for a paid room after the account door, remember it, and
+  a purchase carries on there; dismissing forgets it. A sign-in carried on
+  to a paid room waits for the entitlement read, so a subscriber walks in.
+  The sidebar: with Plus (and in every build while `VITE_PAY_GATES` is off),
+  the layout as it was; without, the free rooms move up top (Chats,
+  Projects, Stack, Cloud Connections, Settings, derived from the same lists
+  in order), the sign-in card stays between the groups, and the bottom group
+  is a gold "Upgrade to OpenShore Plus" banner (its own `--plus` token, kept
+  apart from spend amber and the people-signal honey; it opens the sheet)
+  above every Plus room, greyed but live (a tap opens the paywall; the label
+  says "part of OpenShore Plus"). The sheet's headline for a room or the
+  banner is "All of OpenShore, with Plus.", its body names the free four,
+  and a bullet names Terminal, Repositories, and Vault; the sign-in sheet
+  says Plus comes next for a paid feature while the gates are on. Kept: what
+  someone made is never locked away (notes on disk and in Obsidian, a
+  pairing, a routine already scheduled), and a chat's vault pack still reads
+  notes that exist; Projects stays free, so a project's repository link
+  opens the paywall only at Repositories.

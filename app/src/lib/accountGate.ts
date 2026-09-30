@@ -14,6 +14,7 @@
 // Every room is classified, and the Record type makes a new room a type error
 // until it is: a room is free only by being written down as free here.
 
+import { SHIPS_STACKHEALTH } from './focus.js';
 import type { ViewName } from '../state/store.js';
 import type { ConversationSource } from '../state/types.js';
 
@@ -26,6 +27,7 @@ export type AccountFeature =
   | 'crew'
   | 'connections'
   | 'pairing'
+  | 'health'
   | 'marketplace'
   | 'launch'
   | 'admin';
@@ -33,13 +35,15 @@ export type AccountFeature =
 /** Which account feature each room belongs to, or null for a free room. */
 export const ROOM_ACCOUNT: Record<ViewName, AccountFeature | null> = {
   // Free: chat, the chat list, the Stack (where the models to chat with come
-  // from), its health check, Settings, and the setup page.
+  // from), Settings, and the setup page.
   chat: null,
   chats: null,
   stack: null,
-  stackhealth: null,
   settings: null,
   onboarding: null,
+  // Stack Health (a v2 room) is part of OpenShore Plus (founder, 2026-09-30),
+  // and buying needs an account, so it sits behind the sign-in too.
+  stackhealth: 'health',
   // Behind a free sign-in.
   projects: 'projects',
   project: 'projects',
@@ -93,6 +97,9 @@ export const ACCOUNT_GATE_TITLE: Record<AccountFeature, string> = {
   crew: 'Crew needs an account',
   connections: 'Cloud Connections need an account',
   pairing: 'Pairing your phone and computer needs an account',
+  // Folded at build time like navRooms' label, so a Personal bundle carries
+  // no later tier's name (scripts/tier-bundle.mjs).
+  health: SHIPS_STACKHEALTH ? 'Stack Health needs an account' : 'This needs an account',
   marketplace: 'The Marketplace needs an account',
   launch: 'Launch needs an account',
   admin: 'Admin needs an account',
@@ -100,6 +107,11 @@ export const ACCOUNT_GATE_TITLE: Record<AccountFeature, string> = {
 
 export const ACCOUNT_GATE_BODY =
   'Signing in is free. It opens building, Projects, Vault, Crew, and pairing, and takes your theme, reasoning, voice, and notice settings to every device you sign in on. Your chats stay on your devices, and chatting needs no account.';
+
+/** The sheet's line for a Plus feature while the pay gates are on: the
+ *  sign-in comes first, then the paywall (store.ts setView), so it says so. */
+export const ACCOUNT_GATE_PLUS_BODY =
+  'This is part of OpenShore Plus. Sign in first: Plus rides on your account, so it follows you to every device you sign in on. Chatting needs no account.';
 
 /** The pitch on the sign-in card and in the sidebar. */
 export const ACCOUNT_PITCH =

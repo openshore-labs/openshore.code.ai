@@ -21,16 +21,17 @@ export interface PlanTier {
   blurb: string;
 }
 
-// The free default account: every chat on the device itself, the Stack,
-// Projects, Repositories, Vault by hand. The coding agent, Crew routines,
-// and Desktop + phone are the paid Personal unlock below (lib/payGate.ts).
+// The free default account: Chats, Projects, the Stack, Cloud Connections
+// and Settings. Every other room (the coding agent, Terminal, Repositories,
+// Vault, My Crew, Desktop + phone) is the paid Personal unlock below, sold as
+// OpenShore Plus (lib/payGate.ts).
 export const PERSONAL_TIER: PlanTier = {
   id: 'personal',
   name: 'OpenShore Plus',
   priceYear: 0,
   minEmployees: 1,
   maxEmployees: 1,
-  blurb: 'Free to chat. Plus lets the agent build on your computer.',
+  blurb: 'Free to chat. Plus opens the rest of OpenShore.',
 };
 
 // The individual Personal UNLOCK price per year, in whole US dollars: $50 a
