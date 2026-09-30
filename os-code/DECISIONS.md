@@ -3286,6 +3286,29 @@ execution contract. Newest at the bottom.
   version, since the slot id did not change. Cost: 2.5 GB instead of 1.9 on
   the phone (a 6 GB iPhone), and a 4 GB CPU computer reads too big for
   DeepBlue. Harbor Lite was already Apache (SmolLM2-135M-Instruct).
+- 2026-09-30: **0021 to 0026 are applied, through the SQL editor (founder's
+  call).** With one person on TestFlight, the founder chose the Supabase SQL
+  editor over `sb db push`. Each of the six files ran on its own, bytes as on
+  main at 4ffe370, with a guard above it (runs as `postgres`, the file is not
+  applied yet, and the newest applied version is the one before it) and, in
+  the same transaction, the history row `supabase db push` writes
+  (`version`, `name`, `statements` null). The section 0 preflights had run
+  clean that morning. A check afterwards listed 0021 to 0026 in
+  `supabase_migrations.schema_migrations`, matched all 31 function bodies the
+  six files define to the repo by md5, and found `oscode_guardrail_retention`,
+  `oscode_ledger_retention` and `oscode_vault_purge` scheduled.
+  `production-history.tsv` gains the six rows. CI's `sql-replay` now skips
+  its push-shaped steps (production's rows and the after-push checks) when
+  nothing is pending; the next push that adds a file brings fixtures for its
+  own rows. The runbook's `sb db push` stays the default for a push with real
+  users. Open: the `delete-account` deploy (runbook 7.4) and the section 11
+  hand-off (held branches, PR #1).
+- 2026-09-30: **Main's `delete-account` is deployed.** The founder ran
+  `supabase functions deploy delete-account --use-api` (CLI 2.118.0) from
+  main at 81253d0, after 0021 to 0026 were applied. The runbook's no-sign-in
+  check answered `{"error":"unauthorized"}`, main's answer (the 2026-09-24
+  function answers `not_signed_in`), so the privacy branch's function is
+  replaced. In-app account deletion is live for builds from main.
 
 - **The team migrations renumbered 0024 and 0025 (CTO 4, 2026-09-29,
   `vault-m2-team`, merged with main at a5c14c3):** `git mv` keeps the bodies;

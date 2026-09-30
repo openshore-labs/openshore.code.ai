@@ -5,6 +5,12 @@
 # `select version, name from supabase_migrations.schema_migrations order by
 # version` on 2026-09-29, which listed exactly these twenty rows.
 #
+# The rows 0021 to 0026 were applied on 2026-09-30 by the founder in the SQL
+# editor from main at 4ffe370, one file per run, each file's bytes unchanged
+# with a guard above it and its history row (statements null) written in the
+# same transaction; a check that day matched all 31 function bodies by md5
+# (DECISIONS, 2026-09-30).
+#
 # These files are applied: never edit, rename or renumber one (CTO 4, CTO 11).
 # Any change is a new file numbered above the newest here and on main. The
 # session that records a push appends its rows here in the same change.
@@ -30,3 +36,9 @@ version	name	sha256	note
 0018	graduated_enforcement	49538a0c57316501e96a28e3806df87e20983e0743ffbd573964b47bdb64fbbb	
 0019	account_deletion_and_guardrail_retention	f6d8c71256f1e71ccaf4a23948a06c1ca6e163cbd63ff83f0f7f01f9bd6245c1	pushed 2026-09-24 from claude/openshore-privacy-mobile-1ij12h at d3d4bb7
 0020	reviews_public_view	678e759e7889d220ffe76b950b5ee6d6fa563fd83987bad59ec43e095f644990	pushed 2026-09-24 from claude/openshore-privacy-mobile-1ij12h at d3d4bb7
+0021	org_vault_v1	ace868bd8ebbc753745432cd5b2db8b582afe742da8f02a1c4e4837989222e2b	applied 2026-09-30 in the SQL editor from main at 4ffe370
+0022	account_deletion	140ce5e209b6685133e544b7d0859fdd0eb8e6d27d0437c58e31105bd4cea7ec	applied 2026-09-30 in the SQL editor from main at 4ffe370
+0023	org_free_caps	ee24864d6dd6fb0c8d8273f6326da1f7db10b18136913cd88fc3da086d418d29	applied 2026-09-30 in the SQL editor from main at 4ffe370
+0024	org_vault_move	5dfba94bf0f31c723336ef99985b26179535a088ba65667f0c1f86beb780a7a2	applied 2026-09-30 in the SQL editor from main at 4ffe370
+0025	org_vault_settings	4b2a08be85e5f3250aeda951a7c9414282d6b4f979e866e968ce9bc2d80c9fb7	applied 2026-09-30 in the SQL editor from main at 4ffe370
+0026	export_and_retention	285399bd6b92cf8fd1a010d0099d77c84e28b0770dfa67549a0b55eab580baa9	applied 2026-09-30 in the SQL editor from main at 4ffe370

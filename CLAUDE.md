@@ -74,7 +74,7 @@ Standing rules, each pinned by tests:
 Held branches, not on `main`: `vault-m2-team` (the team client; its
 migrations are main's 0024 and 0025), `vault-m2-icloud`, and `vault-m2-native`
 (the iPhone opening an Obsidian vault in place). Founder gates (PROGRESS, What
-remains): pushing 0021 to 0026 from main per `docs/vault-gate1-runbook.md`;
+remains): 0021 to 0026 are applied and `delete-account` deployed (2026-09-30);
 the entitlement date; the reference box evals for M4 to M6 before any pack
 default flips; an `xcodebuild test` run; and the device checklist in
 `docs/vault-v1-device-checklist.md`. Every must-fix finding maps to a test in
@@ -249,9 +249,8 @@ In-app account deletion is BUILT as one design (2026-09-29, CTO 11 package C:
 main's `delete-account` planner and answer, the privacy function's legal-hold
 copy, and 0022's service-role `account_deletion_` functions for the guarded
 team delete, the operator-only tombstone and the email cleanup; the Settings
-row reads either function's answers). It ships when the founder pushes 0021
-to 0026 and then deploys it (`docs/vault-gate1-runbook.md` 7.4); production
-runs the privacy branch's 2026-09-24 function until then. The published
+row reads either function's answers). It is live: 0021 to 0026 applied and
+main's function deployed, both 2026-09-30 (`docs/vault-gate1-runbook.md` 7.4). The published
 address is one constant, `SUPPORT_EMAIL` (support@openshore.ai, founder F1
 2026-09-30), and `app/test/contactAddress.test.ts` holds 0022's ladder and
 the Terms to it.
@@ -293,9 +292,11 @@ Production's migration history is the authority on numbers. Migrations go to
 production from main only (CTO 4). Every applied file is pinned in
 `supabase/production-history.tsv` and never edited or renumbered (CTO 11). A
 new file takes the next number above both main's newest and production's
-newest, and every push uses `--skip-vault`. Production holds 0001 to 0020; its
+newest, and every push uses `--skip-vault`. Production holds 0001 to 0026; its
 0019 and 0020 are the privacy branch's files (pushed 2026-09-24), held on main
-byte for byte, and main's Org Vault v1 file is `0021_org_vault_v1.sql`. Only
+byte for byte, main's Org Vault v1 file is `0021_org_vault_v1.sql`, and 0021 to
+0026 went in on 2026-09-30 through the SQL editor, the founder's call, each
+file guarded with its history row and checked by md5 afterwards (DECISIONS). Only
 `docs/vault-gate1-runbook.md` pushes, after `supabase/scripts/push-preflight.mjs`;
 the session that records a push appends its rows to the history file in the
 same change; a session branch that adds a migration says in its commit and
