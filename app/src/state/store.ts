@@ -4653,8 +4653,8 @@ export const useApp = create<AppState>((set, get, api) => {
         : {
             vaultTeamExpired: undefined,
             vaultScope: 'personal' as const,
-            vaultFiles: [],
-            vaultNote: undefined,
+            vaultError: undefined,
+            ...clearedVaultRoom(),
           }),
     });
     return kept;
@@ -5869,6 +5869,22 @@ export const useApp = create<AppState>((set, get, api) => {
             ...(chosenAt ? { chosenAt } : {}),
           },
         ];
+  }
+
+  // What the Vault room holds of the vault on screen: its list, the open
+  // note, its folders, its Trash and the folder the list goes back to. A
+  // scope switch and each end of a sign-in clear all of it the same way, so
+  // nothing of one vault, or of one account's team vault, stays on screen
+  // under another (round 7 E12).
+  function clearedVaultRoom() {
+    return {
+      vaultNote: undefined,
+      vaultFiles: [] as StoredFileMeta[],
+      vaultListed: false,
+      vaultTrash: undefined,
+      vaultFolders: undefined,
+      vaultReturnFolder: undefined,
+    };
   }
 
   /** The vault on screen now points somewhere else: its warm index, list and
@@ -7362,9 +7378,9 @@ export const useApp = create<AppState>((set, get, api) => {
       set({
         authSession: session,
         vaultScope: 'personal',
-        vaultFiles: [],
-        vaultNote: undefined,
         vaultTeamExpired: undefined,
+        vaultError: undefined,
+        ...clearedVaultRoom(),
         ...(choice?.target.providerId === 'org' ? { vaultConflict: undefined } : {}),
       });
     }
@@ -10777,15 +10793,7 @@ export const useApp = create<AppState>((set, get, api) => {
       await leaveVaultConflict();
       vaultLiveDraft = undefined;
       stopVaultPoll();
-      set({
-        vaultScope: scope,
-        vaultNote: undefined,
-        vaultFiles: [],
-        vaultListed: false,
-        vaultTeamExpired: undefined,
-        vaultTrash: undefined,
-        vaultFolders: undefined,
-      });
+      set({ vaultScope: scope, vaultTeamExpired: undefined, ...clearedVaultRoom() });
       logEvent('vault_scope', { scope });
       await get().vaultRefresh();
     },

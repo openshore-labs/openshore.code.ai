@@ -5514,3 +5514,121 @@ describe('round 7: team text belongs to its account and its version', () => {
     });
   });
 });
+
+// ---- round 7, batch 2: nothing of a note, a draft or a name is lost or shown
+// to the wrong account, and what the room says about them is true ----------
+describe('round 7, batch 2: team text and names stay where they belong', () => {
+  let server: FakeOrgVaultServer;
+  const st = () => useApp.getState();
+  beforeEach(async () => {
+    reset();
+    await (await import('../src/lib/authSession.js')).clearSession();
+    await closeVaultIndex();
+    wiring.org!.resetOrgVault();
+    useApp.setState({
+      vaultTeamPlan: undefined,
+      vaultConflict: undefined,
+      vaultTrash: undefined,
+      vaultFolders: undefined,
+      vaultReturnFolder: undefined,
+    });
+    server = createFakeOrgVaultServer(ORG);
+    teamNet.server = server;
+    teamScope();
+  });
+  afterEach(async () => {
+    useApp.setState({ vaultTeamPlan: undefined, vaultConflict: undefined });
+    await closeVaultIndex();
+  });
+
+  describe("E12: the team's folders and Trash leave the room with the sign-in", () => {
+    async function teamTrashAndFolder() {
+      server.put('Acquisition target.md', 'confidential', 'u1');
+      server.put('Other.md', 'x', 'u1');
+      await st().vaultRefresh();
+      expect(await st().vaultDeleteNote('Acquisition target.md')).toMatchObject({
+        ok: true,
+        trashed: true,
+      });
+      await vi.waitFor(() => expect(st().vaultTrash?.length).toBe(1));
+      expect(await st().vaultCreateFolder('Deals 2027')).toMatchObject({ ok: true });
+      expect(st().vaultFolders).toContain('Deals 2027');
+    }
+    const roomNow = () => ({
+      trash: (st().vaultTrash ?? []).map((e) => e.path),
+      folders: st().vaultFolders ?? [],
+      listed: Boolean(st().vaultListed),
+      returnTo: st().vaultReturnFolder,
+    });
+    const EMPTY = { trash: [], folders: [], listed: false, returnTo: undefined };
+
+    it('after a sign-out, no team Trash entry or folder is on screen for the next account', async () => {
+      await teamTrashAndFolder();
+      useApp.setState({ vaultReturnFolder: 'Deals 2027' });
+      await st().signOutAccount();
+      expect(roomNow()).toEqual(EMPTY);
+      auth.nextUser = U2;
+      await st().signIn('b@example.com', 'pw');
+      expect(st().vaultScope).toBe('personal');
+      expect(roomNow()).toEqual(EMPTY);
+      fail.list = true; // the personal storage does not answer this time
+      await st().vaultRefresh();
+      expect({ trash: roomNow().trash, folders: roomNow().folders }).toEqual({
+        trash: [],
+        folders: [],
+      });
+    });
+
+    it('another account arriving on the auth callback clears them too', async () => {
+      await teamTrashAndFolder();
+      // Another account's session arrives with no sign-out in between (the
+      // auth callback, a magic link opened on this device).
+      auth.nextUser = U2;
+      await st().signIn('b@example.com', 'pw');
+      expect(st().vaultScope).toBe('personal');
+      expect(roomNow()).toEqual(EMPTY);
+    });
+
+    it("a personal storage whose Trash does not answer never shows the team's", async () => {
+      await teamTrashAndFolder();
+      await st().signOutAccount();
+      auth.nextUser = U2;
+      await st().signIn('b@example.com', 'pw');
+      useApp.setState({ settings: { ...st().settings, gitosResources: personalOn('hub') } });
+      hub.files.set('Mine.md', 'u2 personal');
+      const withTrash = hub.provider as unknown as Record<string, unknown>;
+      withTrash.trash = async () => ({ ok: false, reason: 'unsupported' });
+      withTrash.restore = async () => ({ ok: false, reason: 'unsupported' });
+      withTrash.listTrash = async () => {
+        throw new Error('offline');
+      };
+      try {
+        await st().vaultRefresh();
+        await tick();
+        expect(st().vaultFiles.map((f) => f.path)).toEqual(['Mine.md']);
+        expect(st().vaultTrash ?? []).toEqual([]);
+        expect((await st().vaultLoadTrash()) ?? []).toEqual([]);
+        expect(st().vaultTrash ?? []).toEqual([]);
+      } finally {
+        delete withTrash.trash;
+        delete withTrash.restore;
+        delete withTrash.listTrash;
+      }
+    });
+
+    it('an expiry keeps the kept note, and the same account resumes it', async () => {
+      server.put('Plan.md', 'the base', 'u1');
+      await st().vaultRefresh();
+      await st().vaultOpen('Plan.md');
+      useApp.setState({ authSession: session(auth.nextUser, -1000) });
+      auth.refresh = new SupabaseRequestError('invalid grant', 400);
+      await st().refreshOrgRole();
+      auth.refresh = undefined;
+      expect(st().vaultTeamExpired).toBe(true);
+      expect(st().vaultNote?.path).toBe('Plan.md');
+      await st().signIn('me@example.com', 'pw');
+      expect(st().vaultScope).toBe('team');
+      expect(st().vaultNote?.path).toBe('Plan.md');
+    });
+  });
+});
