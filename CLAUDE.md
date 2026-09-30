@@ -254,6 +254,15 @@ main's function deployed, both 2026-09-30 (`docs/vault-gate1-runbook.md` 7.4). T
 address is one constant, `SUPPORT_EMAIL` (support@openshore.ai, founder F1
 2026-09-30), and `app/test/contactAddress.test.ts` holds 0022's ladder and
 the Terms to it.
+The Personal paid gate (CTO, CFO, CX, 2026-09-30): only coding, building
+and agentic work is paid, on actions, never rooms (starting or reattaching a
+coding session, the sample project, making, editing or running a routine),
+after the sign-in; every chat and everything else stays free. Every account
+feature is classified in `app/src/lib/payGate.ts` (`PAY_GATE`, a type error
+until complete), the logic is `app/src/state/payOps.ts`, and the switch is
+the build flag `VITE_PAY_GATES`, off by default and set only in the build
+submitted to App Review. iOS buys through the App Store only; the desktop
+and the web through Stripe; $49.99 on both. `app/test/payGate.test.ts`.
 
 ## The premium build's standing rules (2026-09-29)
 

@@ -3300,3 +3300,36 @@ execution contract. Newest at the bottom.
   `app/electron/releaseKeys.ts` now pins. From the first build carrying them,
   every Windows and Linux update and every Mac update must be signed with the
   matching private key. Private keys never passed through a session.
+- 2026-09-30: **The Personal paid gate (CTO, CFO, CX).** Only coding,
+  building and agentic work is paid, and the gate sits on actions, not rooms.
+  Paid (Personal, after the free sign-in; the paywall opens after the sign-in
+  sheet when both are needed): starting a coding session (source `desktop`)
+  on the desktop or the phone; reattaching or rebuilding one and a command
+  inside a coding chat (checked at the build, so a turn already running is
+  never cut); the sample project, before anything is copied; creating,
+  editing, resuming and Run now of a Crew routine. Free: every chat (device,
+  cloud, Stack, a model you connect, `desktop-chat`), web search in chat, the
+  Stack, Projects, Repositories, your own Vault notes by hand, the plain home
+  shell in Terminal, pairing, Settings, Cloud Connections, reading an old
+  coding chat from its saved copy, and pausing, deleting or stopping a
+  routine and reading its runs. Enforcement is app-side only: the person owns
+  the engine and the daemon. The switch is the build flag `VITE_PAY_GATES`
+  (`app/src/lib/payGate.ts`), off by default and set to `1` only in the build
+  submitted to App Review; `PAY_GATE` classifies every account feature, so a
+  new one is a type error until it is. Stripe on the desktop and the web (the
+  `stripe-checkout` function, `{ tierId: 'personal' }`, in the system browser)
+  supersedes the 2026-08-31 Apple-only decision; iOS stays the App Store only,
+  and its sheet names no other way to pay (App Store 3.1.1). $49.99 a year on
+  both rails. No trial at launch (CX); the CFO wanted 14 days, which needs an
+  Apple introductory offer and a Stripe trial set the same way, so it is a
+  hook to revisit, not a switch. No double purchase: `stripe-checkout`
+  refuses while an Apple subscription is active and opens the portal for a
+  live Stripe one. A lapsed subscriber keeps everything; only the paid moments
+  reopen the sheet, which then says "Your Personal year has ended." and
+  offers Renew. Known limit: routines already scheduled keep running on the
+  person's own engine after a lapse. The account id rides on an App Store
+  purchase as `appAccountToken`, so `apple-notifications` finds the account
+  for a purchase Apple completes later (Ask to Buy) when no link row exists.
+  CX's bullet "Routines that leave a note in your Vault" reads "in the vault
+  folder on your computer" (`ROUTINE_NOTES_PLACE`), since the Vault copy rule
+  bars the shorter claim.
