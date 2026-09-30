@@ -393,10 +393,18 @@ export async function invokeFunction<T>(
   return (await res.json()) as T;
 }
 
-/** Invoke an Edge Function that refuses with a fixed code (`{ error: 'owns_org' }`,
- *  delete-account), keeping the status and the code on a SupabaseRequestError
- *  so the caller can say the right thing. Only a short snake_case word counts
- *  as a code; anything else is dropped, never shown. */
+/** A refusal code: a short snake_case word. */
+function asCode(sent: unknown): string | undefined {
+  return typeof sent === 'string' && /^[a-z_]{1,40}$/.test(sent) ? sent : undefined;
+}
+
+/** Invoke an Edge Function that refuses with a fixed code, keeping the status
+ *  and the code on a SupabaseRequestError so the caller can say the right
+ *  thing. Two shapes carry a code: `{ code, error: <a sentence> }` (the
+ *  2026-09-24 delete-account, still live in production) and
+ *  `{ error: 'owns_org' }` (main's). `code` is read before `error`. Only a
+ *  short snake_case word counts as a code; anything else is dropped, never
+ *  shown. */
 export async function invokeFunctionWithCode<T>(
   name: string,
   accessToken: string,
@@ -410,8 +418,8 @@ export async function invokeFunctionWithCode<T>(
   if (!res.ok) {
     let code: string | undefined;
     try {
-      const sent = ((await res.json()) as { error?: unknown }).error;
-      if (typeof sent === 'string' && /^[a-z_]{1,40}$/.test(sent)) code = sent;
+      const sent = (await res.json()) as { code?: unknown; error?: unknown } | null;
+      code = asCode(sent?.code) ?? asCode(sent?.error);
     } catch {
       // Not JSON: no code.
     }

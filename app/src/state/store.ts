@@ -473,6 +473,7 @@ import {
 import { invokeFunctionWithCode } from '../lib/supabase.js';
 import {
   deleteAccount as runAccountDeletion,
+  type DeleteAccountAnswer,
   type DeleteAccountOutcome,
 } from './accountDeletion.js';
 import { vaultPollDelayMs } from '../lib/vaultPoll.js';
@@ -9080,12 +9081,7 @@ export const useApp = create<AppState>((set, get, api) => {
     async deleteAccount() {
       const outcome = await runAccountDeletion({
         session: freshAuth,
-        invoke: (token) =>
-          invokeFunctionWithCode<{ ok?: boolean; appleNote?: boolean }>(
-            'delete-account',
-            token,
-            {},
-          ),
+        invoke: (token) => invokeFunctionWithCode<DeleteAccountAnswer>('delete-account', token, {}),
         forgetSession: () => forgetSession(),
         clearPendingAppleLink: () => storeDelete(PENDING_APPLE_LINK_KEY),
       });

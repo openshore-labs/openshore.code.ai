@@ -125,6 +125,58 @@ describe('the deletion flow', () => {
     expect(seen.cleared).toBe(0);
   });
 
+  // The 2026-09-24 function (production's until main's is deployed, CTO 11
+  // package C) answers { deleted: true } with no ok and no appleNote. That is
+  // a deletion: the device must sign out, and never say it failed.
+  it("reads the live 2026-09-24 function's { deleted: true } as deleted, and signs out", async () => {
+    const { deps, seen } = fakes({ invoke: async () => ({ deleted: true }) });
+    const outcome = await deleteAccount(deps);
+    expect(outcome).toEqual({ kind: 'deleted' });
+    expect(outcome.kind === 'deleted' && outcome.appleNote).toBeUndefined();
+    expect(seen.forgot).toBe(1);
+    expect(seen.cleared).toBe(1);
+  });
+
+  it("reads main's merged answer { ok, deleted, appleNote }", async () => {
+    const { deps } = fakes({
+      invoke: async () => ({ ok: true, deleted: true, appleNote: false }),
+    });
+    expect(await deleteAccount(deps)).toEqual({ kind: 'deleted', appleNote: false });
+  });
+
+  it("reads the 2026-09-24 function's team refusal as owns_org", async () => {
+    const { deps, seen } = fakes({
+      invoke: async () => {
+        throw new SupabaseRequestError('Request failed (409).', 409, 'transfer_or_delete_org');
+      },
+    });
+    expect(await deleteAccount(deps)).toEqual({ kind: 'owns_org' });
+    expect(seen.forgot).toBe(0);
+  });
+
+  it('says a recent sign-in is needed, and changes nothing, on reauth_required', async () => {
+    const { deps, seen } = fakes({
+      invoke: async () => {
+        throw new SupabaseRequestError('Request failed (401).', 401, 'reauth_required');
+      },
+    });
+    expect(await deleteAccount(deps)).toEqual({ kind: 'reauth_required' });
+    expect(seen.forgot).toBe(0);
+    expect(seen.cleared).toBe(0);
+  });
+
+  it('reads every other code from either function as failed', async () => {
+    for (const code of ['billing', 'billing_failed', 'not_signed_in', 'unauthorized', 'failed']) {
+      const { deps, seen } = fakes({
+        invoke: async () => {
+          throw new SupabaseRequestError('refused', 500, code);
+        },
+      });
+      expect(await deleteAccount(deps), code).toEqual({ kind: 'failed' });
+      expect(seen.forgot).toBe(0);
+    }
+  });
+
   it('fails without touching the device when offline, refused, or answered oddly', async () => {
     for (const invoke of [
       async () => {
@@ -134,6 +186,9 @@ describe('the deletion flow', () => {
         throw new SupabaseRequestError('Request failed (502).', 502, 'billing');
       },
       async () => ({ ok: false }),
+      async () => ({ deleted: false }),
+      async () => ({}),
+      async () => null as unknown as { ok?: boolean },
     ]) {
       const { deps, seen } = fakes({ invoke });
       expect(await deleteAccount(deps)).toEqual({ kind: 'failed' });
@@ -187,6 +242,18 @@ describe('the store', () => {
   it('keeps the person signed in when they own a team with others in it', async () => {
     sb.refuse = { status: 409, code: 'owns_org' };
     expect(await useApp.getState().deleteAccount()).toEqual({ kind: 'owns_org' });
+    expect(useApp.getState().authSession).toBeDefined();
+  });
+
+  it("signs out after the live 2026-09-24 function's { deleted: true }", async () => {
+    sb.answer = { deleted: true };
+    expect(await useApp.getState().deleteAccount()).toEqual({ kind: 'deleted' });
+    expect(useApp.getState().authSession).toBeUndefined();
+  });
+
+  it('keeps the person signed in when the server asks for a recent sign-in', async () => {
+    sb.refuse = { status: 401, code: 'reauth_required' };
+    expect(await useApp.getState().deleteAccount()).toEqual({ kind: 'reauth_required' });
     expect(useApp.getState().authSession).toBeDefined();
   });
 
