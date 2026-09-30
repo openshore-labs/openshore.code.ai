@@ -3378,3 +3378,37 @@ execution contract. Newest at the bottom.
   missing link offered "Tap to create it" while lapsed, so the row reads "Not
   created yet." without a tap, and a tapped unresolved link says the lapsed
   line without asking the server.
+
+- 2026-09-30: **Every team write the room can still hand over says the
+  plan's line before the server is asked, and a folder's Undo brings back
+  only what it took (held `vault-m2-team`, two medium review findings).** (1)
+  The quick switcher offered "Today's note" and 'New note "x"' on a lapsed
+  plan; New note did nothing and Today said the generic "Could not open
+  today's note". The switcher now takes Today and New note from the header's
+  own answers (`todayOffered`, `newNoteOffered`, which now also leaves out an
+  expired team sign-in), and the store's Today says the lapsed line. The
+  sweep of every other write found: no drag and drop, paste or write-back
+  from the link suggest in the room (the editor, the only place they could
+  live, is not shown while locked); the task checkbox, Mark reviewed, Link
+  and the settings save already follow the caps; the agent's approval card
+  writes the personal vault only (D15). What could still be tapped after the
+  plan lapsed under it now refuses before any server call through one pure
+  answer, `vaultTeamRefusal` (`state/vaultTeamGate.ts`): the Undo toast and a
+  Trash page's Restore ("Not restored."), a new note from any caller ("Not
+  created.", a listed note still opens), a delete ("Not deleted.", which
+  also stops the for-good path the caps would pick once Trash is off, and
+  says the admins-only line to a member before OV403), the resolve sheet's
+  Keep both and Keep yours (the text goes under Not saved with the plan's
+  reason and the note shows the vault's version, nothing sent), and a
+  rename sheet already up (it says the plan's line and plans nothing). The
+  links-left card leaves out Update the rest while links cannot be
+  rewritten, where it used to do nothing. (2) A team folder's trash returned
+  `f:<folder>` and its Restore brought back every Trash entry under the
+  folder, so a teammate's earlier delete came back and the Undo named the
+  wrong note. The entry's id now carries the paths that trash tombstoned,
+  and Restore brings back only those still in Trash; an id that does not
+  say (the old shape) restores nothing. The other providers keep a folder
+  trash as one entry of exactly what it took (Local's trash doc, the desktop
+  folder's own directory in `.trash`, " 2" beside a name already there, and
+  the hub through the same engine), and a new provider contract row holds
+  all four to it.

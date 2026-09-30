@@ -509,7 +509,9 @@ import {
   VAULT_MARKED_NOT_REVIEWED,
   VAULT_MARKED_REVIEWED,
   VAULT_STARTER_NOT_EMPTY,
+  VAULT_TEAM_LAPSED_NOT_SAVED,
 } from '../lib/vaultCopy.js';
+import { vaultTeamRefusal } from './vaultTeamGate.js';
 import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
 import { SAMPLE_PROMPT, SAMPLE_REPO_NAME } from '../lib/sampleProject.js';
 import { setSearchConsent, type SearchAllowed } from '../lib/localSearch.js';
@@ -10483,6 +10485,18 @@ export const useApp = create<AppState>((set, get, api) => {
         await get().vaultOpen(listed.path);
         return;
       }
+      // A lapsed team plan takes no new note (OV402): said here, before the
+      // server is asked (a listed note still opens, read-only), and a seeded
+      // body is held so its words are not lost.
+      const teamRefused = vaultTeamRefusal(target.providerId, get().vaultTeamPlan, 'create');
+      if (teamRefused) {
+        if (seeded) {
+          await holdVaultDraft(target, normalized, content, VAULT_TEAM_LAPSED_NOT_SAVED);
+          set({ vaultError: 'held' });
+        }
+        get().showToast(teamRefused);
+        return;
+      }
       // The list can be stale (the agent, a routine, Obsidian, or another
       // device wrote the note after it loaded), so ask the provider itself
       // before writing, and open what it holds (data-2).
@@ -10653,6 +10667,30 @@ export const useApp = create<AppState>((set, get, api) => {
       };
       return inSaveChain(target, c.path, async (): Promise<VaultResolveResult> => {
         try {
+          // A lapsed team plan takes no write (OV402): Keep both and Keep
+          // yours put the text under Not saved with the plan's reason before
+          // any server call, and the note shows what the vault holds (or
+          // closes, when it is gone). Nothing typed is lost, nothing is sent.
+          const teamRefused =
+            choice === 'both' || choice === 'mine'
+              ? vaultTeamRefusal(target.providerId, get().vaultTeamPlan, 'save')
+              : undefined;
+          if (teamRefused) {
+            const landed = await holdVaultDraft(
+              c.target,
+              c.path,
+              draft,
+              VAULT_TEAM_LAPSED_NOT_SAVED,
+            );
+            set({ vaultError: 'held' });
+            if (c.theirs) {
+              reloadOpenNote(c.theirs, 'resolve');
+            } else {
+              vaultLiveDraft = undefined;
+              set({ vaultNote: undefined, vaultReturnFolder: noteFolder(c.path) });
+            }
+            return done(`${teamRefused} ${heldLine(landed)}`);
+          }
           if (choice === 'theirs' && c.theirs) {
             reloadOpenNote(c.theirs, 'resolve');
             return done(vaultResolveToast('theirs', { title }));
@@ -10934,6 +10972,11 @@ export const useApp = create<AppState>((set, get, api) => {
         get().showToast(readOnly);
         return undefined;
       }
+      // A lapsed plan, or a member under admins-only (OV402, OV403): the
+      // server's refusal, said before it is asked. Lapsed, the caps have no
+      // Trash, and the for-good path below must never run on a team note.
+      const teamRefused = vaultTeamRefusal(t.providerId, get().vaultTeamPlan, 'delete');
+      if (teamRefused) return { ok: false, reason: 'storage', line: teamRefused };
       if (await leaseRefuses(t)) return undefined;
       if (!capsOf(t).trash) {
         // No real Trash here: the delete is for good (two taps on screen),
@@ -10976,6 +11019,10 @@ export const useApp = create<AppState>((set, get, api) => {
     async vaultDeleteFolder(folder) {
       const t = vaultTarget();
       if (!t) return undefined;
+      // A lapsed plan, or a member under admins-only (OV402, OV403), said
+      // before the server is asked.
+      const teamRefused = vaultTeamRefusal(t.providerId, get().vaultTeamPlan, 'delete');
+      if (teamRefused) return { ok: false, reason: 'storage', line: teamRefused };
       if (!capsOf(t).trash) return { ok: false, reason: 'unsupported' };
       if (await leaseRefuses(t)) return undefined;
       const r = await opsDeleteFolder(opsDeps(t), folder);
@@ -10999,6 +11046,10 @@ export const useApp = create<AppState>((set, get, api) => {
     async vaultUndoDelete(undo, at) {
       const t = vaultTargetFrom(at);
       if (!t) return undefined;
+      // The plan lapsed while the toast was up: the Undo is a write the
+      // server refuses (OV402), so it says the plan's line and asks nothing.
+      const teamRefused = vaultTeamRefusal(t.providerId, get().vaultTeamPlan, 'restore');
+      if (teamRefused) return { ok: false, reason: 'unsupported', line: teamRefused };
       const r = await opsUndoDelete(opsDeps(t), undo);
       if (r.ok && undo.kind === 'trash' && undo.folder) await relistActive(t);
       void refreshVaultTrash(t);
@@ -11023,6 +11074,10 @@ export const useApp = create<AppState>((set, get, api) => {
     async vaultRestoreTrash(id) {
       const t = vaultTarget();
       if (!t) return { ok: false, reason: 'unsupported' };
+      // A Trash page open when the plan lapsed: Restore is a write the server
+      // refuses (OV402), so it says the plan's line and asks nothing.
+      const teamRefused = vaultTeamRefusal(t.providerId, get().vaultTeamPlan, 'restore');
+      if (teamRefused) return { ok: false, reason: 'unsupported', line: teamRefused };
       const entry = get().vaultTrash?.find((e) => e.id === id);
       const r = await opsRestoreEntry(opsDeps(t), id);
       if (r.ok && entry?.kind === 'folder') await relistActive(t);
@@ -11135,6 +11190,9 @@ export const useApp = create<AppState>((set, get, api) => {
           (get().vaultLeaseHeldByOther
             ? vaultLeaseEnforced(get().vaultLeaseOther?.label).line
             : undefined) ??
+          // A lapsed team plan takes no new note (OV402): its line, never
+          // the generic one.
+          vaultTeamRefusal(t.providerId, get().vaultTeamPlan, 'create') ??
           VAULT_TODAY_FAILED;
         return { kind: 'refused', line: why };
       }

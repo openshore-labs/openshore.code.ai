@@ -57,6 +57,7 @@ import {
   VAULT_TEAM_LAPSED_ADMIN,
   VAULT_TEAM_LAPSED_LEAD,
   VAULT_TEAM_LAPSED_NOT_CREATED,
+  VAULT_TEAM_LAPSED_NOT_SAVED,
   VAULT_TEAM_LAPSED_WEB,
   VAULT_TEAM_OPEN_ADMIN,
   VAULT_TEAM_SETTINGS_LINK,
@@ -458,13 +459,24 @@ export function VaultScreen() {
     teamExpired ||
     teamLapsed;
   // A new note may be made here now: the header's New note, the empty team
-  // card's, and a missing link's create all follow this one answer, so none
-  // is offered where the server would refuse it (a lapsed plan, OV402).
+  // card's, the switcher's New note row, and a missing link's create all
+  // follow this one answer, so none is offered where the server would refuse
+  // it (a lapsed plan, OV402) or the store would (an expired team sign-in).
   const newNoteOffered =
-    !driveReadOnly && !vaultMoving && !folderGone && !readOnly && !hubAway && !teamLapsed;
+    !driveReadOnly &&
+    !vaultMoving &&
+    !folderGone &&
+    !readOnly &&
+    !hubAway &&
+    !teamExpired &&
+    !teamLapsed;
   // What this storage may do now (CTO K1): every M6 action's visibility
   // follows this one answer.
   const caps = vaultCapsNow();
+  // Today's note may be offered now: the header's button and the switcher's
+  // first row follow this one answer. A lapsed plan takes no new note
+  // (OV402), a moving vault holds still, and a folder that is gone has none.
+  const todayOffered = caps.today && !vaultMoving && !folderGone && !teamLapsed;
   // What the storage itself lacks, said once in Options (CTO K1): rename, and
   // a Trash, where a delete is then for good.
   const storageCaps = vaultCapsNow({ storageOnly: true });
@@ -1169,7 +1181,7 @@ export function VaultScreen() {
       if (r.line) showToast(r.line);
     }
   };
-  const todayButton = caps.today ? (
+  const todayButton = todayOffered ? (
     <button
       type="button"
       className="icon-btn vault-today-btn press-fb"
@@ -1186,6 +1198,8 @@ export function VaultScreen() {
 
   // The quick switcher (6.1; CTO K9, CX X3): Cmd or Ctrl+O while the room is
   // shown. Titles only; Today first and Recent while the field is empty.
+  // Today and New note are rows only where the header offers them, so a
+  // lapsed plan's switcher opens notes and offers nothing it cannot make.
   useVaultSwitcherShortcut(true, () => setSwitcherOpen(true));
   const switcher = (
     <VaultSwitcher
@@ -1195,13 +1209,17 @@ export function VaultScreen() {
       recent={recentRows}
       agentLabel={agentLabel}
       onPick={openNote}
-      {...(caps.today ? { onToday: () => void openToday() } : {})}
-      onCreate={(name) => {
-        const path = normalizeNotePath(name);
-        if (!path || locked || hubAway) return;
-        flushSave();
-        void vaultCreate(path);
-      }}
+      {...(todayOffered ? { onToday: () => void openToday() } : {})}
+      {...(newNoteOffered
+        ? {
+            onCreate: (name: string) => {
+              const path = normalizeNotePath(name);
+              if (!path) return;
+              flushSave();
+              void vaultCreate(path);
+            },
+          }
+        : {})}
     />
   );
 
@@ -1406,7 +1424,10 @@ export function VaultScreen() {
         return;
       }
       showToast(
-        entry.undo.kind === 'bytes' ? vaultUndoFailed(item.title) : vaultRestoreFailed(item.title),
+        r.line ??
+          (entry.undo.kind === 'bytes'
+            ? vaultUndoFailed(item.title)
+            : vaultRestoreFailed(item.title)),
       );
     });
   };
@@ -1551,6 +1572,9 @@ export function VaultScreen() {
       prepare={(to) => vaultPrepareMove(renaming.kind, renaming.from, to)}
       apply={applyRename}
       updateOnRename={vs.links.updateOnRename}
+      // A plan that lapsed while the sheet was up takes no rename (OV402):
+      // the sheet says so, and nothing is planned or sent.
+      {...(teamLapsed ? { refused: VAULT_TEAM_LAPSED_NOT_SAVED } : {})}
       onClose={() => setRenameOpen(false)}
     />
   ) : null;
@@ -2198,7 +2222,10 @@ export function VaultScreen() {
               notes={notesLeft(linksLeft.report)}
               busy={linksLeft.busy}
               onOpen={openNote}
-              onUpdateRest={() => void updateRest()}
+              // Update the rest writes: offered only while links can be
+              // rewritten here (not on a lapsed plan, a lease held elsewhere,
+              // or a computer that is away), else the card only lists them.
+              {...(caps.linkRewrite ? { onUpdateRest: () => void updateRest() } : {})}
             />
           ) : null}
 
@@ -2334,7 +2361,7 @@ export function VaultScreen() {
                     renamed: r.renamed,
                     sayFolder: true,
                   })
-                : vaultRestoreFailed(title),
+                : (r.line ?? vaultRestoreFailed(title)),
             );
           }}
           onEmpty={async () => {
@@ -2375,7 +2402,7 @@ export function VaultScreen() {
         <div className="stack-head">
           <h1>Vault</h1>
           <div className="vault-head-actions">
-            {!vaultMoving && !folderGone && !teamLapsed ? todayButton : null}
+            {todayButton}
             {/* A read-only Drive vault leaves New note out; its card says why.
                 So does a moving vault, and a folder that is not there. */}
             {newNoteOffered ? (

@@ -23,8 +23,10 @@
 // newest revision of any reason is 'deleted', so a path a note moved away
 // from never shows there. Restore writes that revision's body back with
 // if_absent, and beside it as "{title} (restored)" when the name is taken,
-// never over anything. There is no Empty Trash: the server's weekly purge
-// drops tombstones and revisions after 30 days, so team Trash is Restore only.
+// never over anything. A folder's entry names the notes its trash took, and
+// its Restore brings back only those. There is no Empty Trash: the server's
+// weekly purge drops tombstones and revisions after 30 days, so team Trash is
+// Restore only.
 //
 // Settings and the plan (Vault M7, CTO L17, CX Y14, Y15; migration 0025). The
 // vault's settings are one row per org, read with org_vault_settings_get and
@@ -543,9 +545,33 @@ async function newestEndings(auth: string, resourceId: string): Promise<Map<stri
   return newest;
 }
 
-// An entry's id says what it names: `n:` one note's path, `f:` a folder's.
+// An entry's id says what it names: `n:` one note's path, `f:` one folder
+// trash, with the folder and exactly the notes that trash tombstoned. A
+// folder's Restore (its Undo) brings back only those, never a note deleted
+// under the folder before it: a teammate's deliberate delete stays in Trash.
 const NOTE_ID = 'n:';
 const FOLDER_ID = 'f:';
+
+/** A folder trash's id: the folder, and the paths that trash tombstoned. */
+function folderEntryId(folder: string, took: readonly string[]): string {
+  return `${FOLDER_ID}${JSON.stringify({ folder, took })}`;
+}
+
+/** The paths a folder trash's id says it tombstoned, each under its folder,
+ *  or undefined for an id that does not say (a folder id from before this
+ *  build named only the folder, so which notes it took is unknown and it
+ *  restores nothing rather than everything under the folder). */
+function folderEntryTook(id: string): string[] | undefined {
+  let named: { folder?: unknown; took?: unknown };
+  try {
+    named = JSON.parse(id.slice(FOLDER_ID.length)) as typeof named;
+  } catch {
+    return undefined;
+  }
+  if (typeof named?.folder !== 'string' || !Array.isArray(named.took)) return undefined;
+  const under = `${named.folder}/`;
+  return named.took.filter((p): p is string => typeof p === 'string' && p.startsWith(under));
+}
 
 /** Put a trashed body back: its own path while free, else "{title}
  *  (restored)" beside it, never over anything. A name that already holds
@@ -943,23 +969,24 @@ export const orgVaultProvider: StorageProvider = {
       };
     }
     const under = `${target.path}/`;
-    let notes = 0;
+    // The notes this trash tombstoned, and only those, go in its entry's id.
+    const took: string[] = [];
     for (const f of await orgVaultProvider.list(resourceId)) {
       if (!f.path.startsWith(under)) continue;
       let r = await drop(f.path, f.version ?? '');
       if (r !== 'gone' && !r.ok && r.theirs?.version) r = await drop(f.path, r.theirs.version);
-      if (r !== 'gone' && r.ok) notes++;
+      if (r !== 'gone' && r.ok) took.push(f.path);
     }
     return {
       ok: true,
       entry: {
-        id: `${FOLDER_ID}${target.path}`,
+        id: folderEntryId(target.path, took),
         path: target.path,
         kind: 'folder',
         size: 0,
         trashedAt,
       },
-      notes,
+      notes: took.length,
       attachments: 0,
     };
   },
@@ -983,7 +1010,9 @@ export const orgVaultProvider: StorageProvider = {
   },
 
   // A note comes back from its newest 'deleted' revision; a folder brings
-  // back every note of it still in Trash. Never over anything (R3).
+  // back the notes that its trash took and that are still in Trash, never
+  // one deleted under it before (a teammate's delete is theirs to undo).
+  // Never over anything (R3).
   async restore(resourceId, id): Promise<RestoreResult> {
     const auth = await token();
     if (id.startsWith(NOTE_ID)) {
@@ -993,9 +1022,10 @@ export const orgVaultProvider: StorageProvider = {
       return { ok: true, ...(await putBack(auth, resourceId, path, rev.body)) };
     }
     if (id.startsWith(FOLDER_ID)) {
-      const under = `${id.slice(FOLDER_ID.length)}/`;
+      const took = new Set(folderEntryTook(id));
+      if (!took.size) return { ok: false, conflict: 'missing' };
       const entries = (await orgVaultProvider.listTrash!(resourceId)).filter((e) =>
-        e.path.startsWith(under),
+        took.has(e.path),
       );
       let first: StoredFileMeta | undefined;
       let renamed = false;

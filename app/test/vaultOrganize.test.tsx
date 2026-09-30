@@ -238,6 +238,50 @@ describe('the rename sheet (CX X5, X6)', () => {
     expect(applied).toEqual([false]);
   });
 
+  // A team plan that lapsed while the sheet was up (CX Y15): the sheet says
+  // the plan's line and plans nothing, at the name and at the links question.
+  it('a refused rename says why, and plans and runs nothing', async () => {
+    const { VaultRenameSheet } = await import('../src/components/vault/VaultRenameSheet.js');
+    const { VAULT_TEAM_LAPSED_NOT_SAVED } = await import('../src/lib/vaultCopy.js');
+    const prepared: string[] = [];
+    const applied: boolean[] = [];
+    const sheet = (refused?: string) => (
+      <VaultRenameSheet
+        open
+        kind="note"
+        from="Ideas.md"
+        folders={['Work']}
+        known={['Ideas.md']}
+        prepare={async (to) => {
+          prepared.push(to);
+          return preview(3);
+        }}
+        apply={async (_p, update) => {
+          applied.push(update);
+        }}
+        {...(refused ? { refused } : {})}
+        onClose={noop}
+      />
+    );
+    await dom.render(sheet(VAULT_TEAM_LAPSED_NOT_SAVED));
+    await dom.type('Ideas', 'Plans');
+    await dom.click('Rename');
+    await dom.settle();
+    expect(dom.text()).toContain(VAULT_TEAM_LAPSED_NOT_SAVED);
+    expect(prepared).toEqual([]);
+    // At the links question: the plan lapses, and neither choice runs.
+    await dom.render(sheet());
+    await dom.type('Ideas', 'Plans');
+    await dom.click('Rename');
+    await dom.settle();
+    expect(dom.text()).toContain('Update links?');
+    await dom.render(sheet(VAULT_TEAM_LAPSED_NOT_SAVED));
+    await dom.click('Rename only');
+    await dom.settle();
+    expect(applied).toEqual([]);
+    expect(dom.text()).toContain(VAULT_TEAM_LAPSED_NOT_SAVED);
+  });
+
   it('the standing card names each note still pointing at the old name', async () => {
     const { VaultLinksLeftCard } = await import('../src/components/vault/VaultRenameSheet.js');
     let rest = 0;

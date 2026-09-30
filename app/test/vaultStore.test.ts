@@ -24,6 +24,14 @@ import type {
 } from '../src/lib/gitos/providers.js';
 import { isNotePath } from '../src/lib/gitos/providers.js';
 import { backlinksTo, normalizeNotePath } from '../src/lib/vault.js';
+import {
+  VAULT_TEAM_DELETE_REFUSED,
+  VAULT_TEAM_LAPSED_NOT_CREATED,
+  VAULT_TEAM_LAPSED_NOT_DELETED,
+  VAULT_TEAM_LAPSED_NOT_RESTORED,
+  VAULT_TEAM_LAPSED_NOT_SAVED,
+  VAULT_TEAM_LAPSED_NOT_SAVED_LINE,
+} from '../src/lib/vaultCopy.js';
 
 const mem = new Map<string, string>();
 // Sealed-store keys whose writes throw, as a full localStorage quota would.
@@ -298,6 +306,8 @@ const teamNet = {
   puts: [] as Array<{ token: string; path: string; body: string; base: number }>,
   // How many one-note reads (stat or read, a `path=eq.` select) were asked.
   heads: 0,
+  /** Every org_vault_ RPC asked, by name, in order. */
+  calls: [] as string[],
   /** The org's settings row (0025) as org_vault_settings_get answers it, with
    *  this caller an admin; undefined answers nothing, as before 0025. */
   settings: undefined as Record<string, unknown> | undefined,
@@ -347,6 +357,7 @@ vi.mock('../src/lib/supabase.js', async (importOriginal) => {
     },
     rpc: async (fn: string, token: string, args: Record<string, unknown>) => {
       if (!fn.startsWith('org_vault_')) return null;
+      teamNet.calls.push(fn);
       if (teamNet.fail) throw teamNet.fail;
       if (teamNet.rpcFail) throw teamNet.rpcFail;
       if (fn === 'org_vault_settings_get' && teamNet.settings) {
@@ -472,6 +483,7 @@ function reset() {
   teamNet.beforePut = undefined;
   teamNet.puts = [];
   teamNet.heads = 0;
+  teamNet.calls = [];
   teamNet.settings = undefined;
   teamNet.settingsPuts = [];
   teamToken = 'tok';
@@ -3560,5 +3572,141 @@ describe('a team delete is always one tap to Trash', () => {
     expect(teamNet.settingsPuts).toEqual([
       { version: 1, tree: { sort: 'modified' }, editor: { font: 'serif' } },
     ]);
+  });
+});
+
+// A lapsed team plan (CX Y15, 0025's OV402), or a member under admins-only
+// delete (Y14, OV403): every store write the room can still hand over (an
+// Undo toast up, a Trash page or a resolve sheet open when the plan lapsed,
+// any other caller) says the plan's line before the server is asked, and
+// the text a write carried is never lost (review, 2026-09-30).
+describe('the team plan refuses before the server is asked (Y14, Y15)', () => {
+  beforeEach(reset);
+  afterEach(() => {
+    useApp.setState({ vaultTeamPlan: undefined, vaultConflict: undefined });
+  });
+  const lapse = () =>
+    useApp.setState({ vaultTeamPlan: { entitled: false, isAdmin: false, deleteRole: 'member' } });
+
+  it("Today on a lapsed plan says the plan's line, never the generic one", async () => {
+    teamScope();
+    lapse();
+    expect(await useApp.getState().vaultToday()).toEqual({
+      kind: 'refused',
+      line: VAULT_TEAM_LAPSED_NOT_CREATED,
+    });
+    expect(teamNet.puts).toEqual([]);
+  });
+
+  it('a new note on a lapsed plan is refused before the server is asked', async () => {
+    teamScope();
+    team.set('Plan.md', { body: 'ours', rev: 3 });
+    await useApp.getState().vaultRefresh();
+    lapse();
+    teamNet.heads = 0;
+    teamNet.calls = [];
+    await useApp.getState().vaultCreate('Ideas');
+    expect(useApp.getState().toast).toBe(VAULT_TEAM_LAPSED_NOT_CREATED);
+    expect(useApp.getState().vaultNote).toBeUndefined();
+    // A seeded body is held, never dropped.
+    await useApp.getState().vaultCreate('Welcome', 'hello');
+    expect(teamHeld()).toEqual([
+      expect.objectContaining({
+        path: 'Welcome.md',
+        text: 'hello',
+        reason: VAULT_TEAM_LAPSED_NOT_SAVED,
+      }),
+    ]);
+    expect([teamNet.calls, teamNet.heads]).toEqual([[], 0]);
+    expect(team.has('Ideas.md')).toBe(false);
+    // A note that is there still opens, read-only.
+    await useApp.getState().vaultCreate('Plan');
+    expect(useApp.getState().vaultNote).toMatchObject({ path: 'Plan.md', text: 'ours' });
+    expect(teamNet.calls).toEqual([]);
+  });
+
+  it('Keep both and Keep yours on a lapsed plan hold the text and send nothing', async () => {
+    teamScope();
+    team.set('n.md', { body: 'theirs', rev: 7 });
+    await useApp.getState().vaultRefresh();
+    const target = useApp.getState().vaultTargetRef()!;
+    const theirs = { path: 'n.md', text: 'theirs', updatedAt: 'r7', version: '7' };
+    const open = (kind: 'changed' | 'missing') =>
+      useApp.setState({
+        vaultNote: { path: 'n.md', text: 'base', updatedAt: 'r5', version: '5' },
+        vaultConflict: {
+          path: 'n.md',
+          target,
+          kind,
+          base: 'base',
+          baseVersion: '5',
+          ...(kind === 'changed' ? { theirs } : {}),
+          copyPath: 'n (conflict 2026-09-30 1200).md',
+          foundAt: Date.now(),
+          deferred: false,
+        },
+        toast: undefined,
+      });
+    lapse();
+    teamNet.calls = [];
+    for (const choice of ['both', 'mine'] as const) {
+      open('changed');
+      expect(await useApp.getState().vaultResolve(choice, 'mine')).toEqual({ ok: true });
+      const st = useApp.getState();
+      expect(st.vaultConflict).toBeUndefined();
+      expect(st.vaultNote).toMatchObject({ path: 'n.md', text: 'theirs' });
+      expect(teamHeld()).toEqual([
+        expect.objectContaining({
+          path: 'n.md',
+          text: 'mine',
+          reason: VAULT_TEAM_LAPSED_NOT_SAVED,
+        }),
+      ]);
+      expect(st.toast).toBe(
+        `${VAULT_TEAM_LAPSED_NOT_SAVED_LINE} Your text is kept under Not saved.`,
+      );
+    }
+    // A note gone elsewhere: Keep yours holds the text and closes the note.
+    open('missing');
+    expect(await useApp.getState().vaultResolve('mine', 'mine again')).toEqual({ ok: true });
+    expect(useApp.getState().vaultNote).toBeUndefined();
+    expect(teamHeld()).toEqual([expect.objectContaining({ path: 'n.md', text: 'mine again' })]);
+    expect(teamNet.calls).toEqual([]);
+    expect(team.get('n.md')?.body).toBe('theirs');
+    expect([...team.keys()]).toEqual(['n.md']);
+  });
+
+  it("Restore and Undo on a lapsed plan say the plan's line and ask nothing", async () => {
+    teamScope();
+    lapse();
+    const refused = { ok: false, reason: 'unsupported', line: VAULT_TEAM_LAPSED_NOT_RESTORED };
+    const undo = {
+      kind: 'trash' as const,
+      id: 'n:Old.md',
+      path: 'Old.md',
+      folder: false,
+      notes: 1,
+    };
+    const at = useApp.getState().vaultTargetRef();
+    expect(await useApp.getState().vaultUndoDelete(undo, at)).toEqual(refused);
+    expect(await useApp.getState().vaultRestoreTrash('n:Old.md')).toEqual(refused);
+    expect(teamNet.calls).toEqual([]);
+  });
+
+  it('a delete on a lapsed plan, or by a member under admins-only, is refused before the server', async () => {
+    teamScope();
+    team.set('Work/n.md', { body: 'keep', rev: 5 });
+    await useApp.getState().vaultRefresh();
+    lapse();
+    teamNet.calls = [];
+    const lapsed = { ok: false, reason: 'storage', line: VAULT_TEAM_LAPSED_NOT_DELETED };
+    expect(await useApp.getState().vaultDeleteNote('Work/n.md')).toEqual(lapsed);
+    expect(await useApp.getState().vaultDeleteFolder('Work')).toEqual(lapsed);
+    useApp.setState({ vaultTeamPlan: { entitled: true, isAdmin: false, deleteRole: 'admin' } });
+    const member = { ok: false, reason: 'storage', line: VAULT_TEAM_DELETE_REFUSED };
+    expect(await useApp.getState().vaultDeleteNote('Work/n.md')).toEqual(member);
+    expect(await useApp.getState().vaultDeleteFolder('Work')).toEqual(member);
+    expect(teamNet.calls).toEqual([]);
+    expect(team.get('Work/n.md')?.body).toBe('keep');
   });
 });

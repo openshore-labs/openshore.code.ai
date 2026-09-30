@@ -1340,7 +1340,11 @@ describe('the team room offers only what the server takes (Y14, Y15)', () => {
     linkRewrite: false,
   };
   const caps = app.state.vaultCapsNow;
+  // The store's state before each case, put back after it, so a case that
+  // hands the room its own store answers leaves none behind.
+  let saved: typeof app.state;
   beforeEach(async () => {
+    saved = { ...app.state };
     globalThis.requestAnimationFrame ??= (cb: FrameRequestCallback) =>
       setTimeout(() => cb(Date.now()), 0) as unknown as number;
     app.toasts.length = 0;
@@ -1360,6 +1364,7 @@ describe('the team room offers only what the server takes (Y14, Y15)', () => {
     app.state.vaultFiles = [];
     app.state.vaultTeamPlan = undefined;
     app.state.vaultCapsNow = caps;
+    Object.assign(app.state, saved);
   });
 
   async function openFolderSheet(plan: Record<string, unknown>) {
@@ -1454,5 +1459,211 @@ describe('the team room offers only what the server takes (Y14, Y15)', () => {
     await dom.settle();
     expect(app.created).toEqual([]);
     expect(app.toasts.at(-1)).toBe(copy.VAULT_TEAM_LAPSED_NOT_CREATED);
+  });
+
+  // The quick switcher (Cmd or Ctrl+O) offers Today and New note only where
+  // the header does: a lapsed plan's switcher opens notes and nothing else.
+  async function openSwitcher(): Promise<HTMLElement> {
+    const { act } = await import('react');
+    await act(async () => {
+      const e = new window.Event('keydown', { bubbles: true });
+      Object.assign(e, { key: 'o', metaKey: true, ctrlKey: false, shiftKey: false, altKey: false });
+      window.dispatchEvent(e);
+    });
+    await dom.settle();
+    const list = dom.container.querySelector('.vault-switcher-list');
+    expect(list).toBeTruthy();
+    return list as HTMLElement;
+  }
+  const rowsIn = (list: HTMLElement) =>
+    [...list.querySelectorAll('[role="option"]')].map(
+      (b) => b.querySelector('.vault-search-row-title')?.textContent ?? '',
+    );
+  async function shiftEnter() {
+    const { act } = await import('react');
+    const field = dom.container.querySelector(
+      '[placeholder="Type a note name"]',
+    ) as HTMLInputElement;
+    await act(async () => {
+      const e = new window.Event('keydown', { bubbles: true });
+      Object.assign(e, { key: 'Enter', shiftKey: true, isComposing: false });
+      field.dispatchEvent(e);
+    });
+    await dom.settle();
+  }
+
+  it("a lapsed plan's switcher offers no Today's note and no New note", async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultCapsNow = () => LAPSED_CAPS;
+    app.state.vaultTeamPlan = { entitled: false, deleteRole: 'member', isAdmin: false };
+    await dom.render(<VaultRoom />);
+    // The header leaves Today out too.
+    expect(dom.container.querySelector('.vault-today-btn')).toBeNull();
+    const list = await openSwitcher();
+    expect(rowsIn(list)).not.toContain(copy.VAULT_SWITCHER_TODAY);
+    await dom.type(copy.VAULT_SWITCHER_PLACEHOLDER, 'Ideas');
+    expect(rowsIn(list).some((r) => r.startsWith('New note'))).toBe(false);
+    expect(dom.text()).not.toContain(copy.vaultSwitcherNew('Ideas'));
+    // Shift+Enter, the New note chord, makes nothing either.
+    await shiftEnter();
+    expect(app.created).toEqual([]);
+  });
+
+  it("an active plan's switcher still offers Today's note and New note", async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    await dom.render(<VaultRoom />);
+    expect(dom.container.querySelector('.vault-today-btn')).toBeTruthy();
+    const list = await openSwitcher();
+    expect(rowsIn(list)[0]).toBe(copy.VAULT_SWITCHER_TODAY);
+    await dom.type(copy.VAULT_SWITCHER_PLACEHOLDER, 'Ideas');
+    expect(rowsIn(list)).toContain(copy.vaultSwitcherNew('Ideas'));
+    await shiftEnter();
+    await new Promise((r) => setTimeout(r, 600));
+    await dom.settle();
+    expect(app.created).toEqual(['Ideas.md']);
+  });
+
+  it("an Undo the plan refuses says the plan's line, not a generic failure", async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    app.state.vaultFiles = [{ path: 'Plan.md', updatedAt: 'x', size: 4 }];
+    app.state.vaultNote = { path: 'Plan.md', text: 'plan', updatedAt: 'x' };
+    app.state.vaultDeleteNote = async () => ({
+      ok: true,
+      trashed: true,
+      undo: { kind: 'trash', id: 'n:Plan.md', path: 'Plan.md', folder: false, notes: 1 },
+      notes: 1,
+      attachments: 0,
+    });
+    const undos: unknown[] = [];
+    app.state.vaultUndoDelete = async (undo: unknown) => {
+      undos.push(undo);
+      return { ok: false, reason: 'unsupported', line: copy.VAULT_TEAM_LAPSED_NOT_RESTORED };
+    };
+    await dom.render(<VaultRoom />);
+    await dom.click('⋯');
+    await dom.settle();
+    await dom.click(copy.VAULT_DELETE_ROW);
+    await dom.settle();
+    await dom.click(copy.VAULT_UNDO);
+    await dom.settle();
+    expect(undos).toHaveLength(1);
+    expect(app.toasts.at(-1)).toBe(copy.VAULT_TEAM_LAPSED_NOT_RESTORED);
+  });
+
+  it("a Restore in Trash the plan refuses says the plan's line", async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    app.state.vaultFiles = [{ path: 'Plan.md', updatedAt: 'x', size: 4 }];
+    app.state.vaultTrash = [
+      { id: 'n:Old.md', path: 'Old.md', kind: 'note', size: 0, trashedAt: '2026-09-30T00:00:00Z' },
+    ];
+    app.state.vaultRestoreTrash = async () => ({
+      ok: false,
+      reason: 'unsupported',
+      line: copy.VAULT_TEAM_LAPSED_NOT_RESTORED,
+    });
+    await dom.render(<VaultRoom />);
+    const { act } = await import('react');
+    const row = dom.container.querySelector('.vault-trash-entry') as HTMLElement;
+    expect(row).toBeTruthy();
+    await act(async () => {
+      row.click();
+    });
+    await dom.settle();
+    await dom.click(copy.VAULT_TRASH_RESTORE);
+    await dom.settle();
+    expect(app.toasts.at(-1)).toBe(copy.VAULT_TEAM_LAPSED_NOT_RESTORED);
+  });
+
+  it('a rename sheet up when the plan lapses says why, and plans nothing', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    app.state.vaultFiles = [{ path: 'Ideas.md', updatedAt: 'x', size: 4 }];
+    app.state.vaultNote = { path: 'Ideas.md', text: 'ideas', updatedAt: 'x' };
+    const prepared: string[] = [];
+    app.state.vaultPrepareMove = async (_kind: string, _from: string, to: string) => {
+      prepared.push(to);
+      return undefined;
+    };
+    await dom.render(<VaultRoom />);
+    await dom.click('⋯');
+    await dom.settle();
+    await dom.click(copy.VAULT_RENAME_ROW);
+    await new Promise((r) => setTimeout(r, 600));
+    await dom.settle();
+    app.state.vaultCapsNow = () => LAPSED_CAPS;
+    app.state.vaultTeamPlan = { entitled: false, deleteRole: 'member', isAdmin: false };
+    await dom.render(<VaultRoom />);
+    await dom.type('Ideas', 'Plans');
+    await dom.click('Rename');
+    await dom.settle();
+    expect(dom.text()).toContain(copy.VAULT_TEAM_LAPSED_NOT_SAVED);
+    expect(dom.text()).not.toContain(copy.vaultRenameFailed('Ideas'));
+    expect(prepared).toEqual([]);
+  });
+
+  it('the links-left card offers Update the rest only while links can be rewritten', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    app.state.vaultFiles = [
+      { path: 'Ideas.md', updatedAt: 'x', size: 4 },
+      { path: 'C.md', updatedAt: 'x', size: 4 },
+    ];
+    app.state.vaultNote = { path: 'Ideas.md', text: 'ideas', updatedAt: 'x' };
+    const preview = {
+      kind: 'note',
+      from: 'Ideas.md',
+      to: 'Plans.md',
+      moves: new Map([['Ideas.md', 'Plans.md']]),
+      notes: 1,
+      attachments: 0,
+      links: 0,
+      linkNotes: 0,
+      plan: { edits: [], links: 0, notes: 0, left: [] },
+      sources: [],
+    };
+    app.state.vaultPrepareMove = async () => preview;
+    app.state.vaultApplyMove = async () => {
+      app.state.vaultNote = { path: 'Plans.md', text: 'ideas', updatedAt: 'x' };
+      app.listeners.forEach((l) => l());
+      return {
+        ok: true,
+        preview,
+        moved: [{ path: 'Plans.md', updatedAt: 'x', size: 5 }],
+        rewrite: {
+          updated: 0,
+          total: 1,
+          notesUpdated: 0,
+          skipped: [],
+          notUpdated: ['C.md'],
+          stopped: true,
+        },
+      };
+    };
+    await dom.render(<VaultRoom />);
+    await dom.click('⋯');
+    await dom.settle();
+    await dom.click(copy.VAULT_RENAME_ROW);
+    // The rename sheet rises once Options has left (the door clock).
+    await new Promise((r) => setTimeout(r, 600));
+    await dom.settle();
+    await dom.type('Ideas', 'Plans');
+    await dom.click('Rename');
+    await dom.settle();
+    await dom.settle();
+    const button = copy.vaultLinksLeftCard('Ideas').button;
+    expect(dom.text()).toContain(copy.vaultLinksLeftCard('Ideas').title);
+    expect(dom.buttons()).toContain(button);
+    // The plan lapses while the card is up: the card only lists the notes.
+    app.state.vaultCapsNow = () => LAPSED_CAPS;
+    app.state.vaultTeamPlan = { entitled: false, deleteRole: 'member', isAdmin: false };
+    // The mock store hands the same state object back, so render again (the
+    // room keeps its own state: the card is still up).
+    await dom.render(<VaultRoom />);
+    expect(dom.text()).toContain(copy.vaultLinksLeftCard('Ideas').title);
+    expect(dom.buttons()).toContain('C');
+    expect(dom.buttons()).not.toContain(button);
   });
 });

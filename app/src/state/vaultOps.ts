@@ -805,7 +805,13 @@ export async function deleteFolder(deps: VaultOpsDeps, folder: string): Promise<
 
 export type VaultRestoreResult =
   | { ok: true; path: string; renamed: boolean }
-  | { ok: false; reason: 'missing' | 'exists' | VaultOpFailure };
+  | {
+      ok: false;
+      reason: 'missing' | 'exists' | VaultOpFailure;
+      /** The whole line to say instead of the generic one (a lapsed team
+       *  plan, refused before the server is asked). */
+      line?: string;
+    };
 
 /** Put a restored or re-created note into the list, the body cache and the
  *  index. A read that fails leaves the next listing to find it. */

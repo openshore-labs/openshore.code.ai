@@ -2530,6 +2530,18 @@ export const VAULT_TEAM_LAPSED_NOT_SAVED =
  *  and the server (which refuses it, OV402) is never asked. */
 export const VAULT_TEAM_LAPSED_NOT_CREATED = `Not created. ${VAULT_TEAM_LAPSED_NOT_SAVED}`;
 
+/** A Restore in Trash, or an Undo, while the plan is lapsed: said here, and
+ *  the server (which refuses it, OV402) is never asked. */
+export const VAULT_TEAM_LAPSED_NOT_RESTORED = `Not restored. ${VAULT_TEAM_LAPSED_NOT_SAVED}`;
+
+/** A delete while the plan is lapsed, said before the server is asked. */
+export const VAULT_TEAM_LAPSED_NOT_DELETED = `Not deleted. ${VAULT_TEAM_LAPSED_NOT_SAVED}`;
+
+/** A choice on the resolve sheet that would write while the plan is lapsed:
+ *  the text goes under Not saved with VAULT_TEAM_LAPSED_NOT_SAVED as its
+ *  reason, and nothing is sent. */
+export const VAULT_TEAM_LAPSED_NOT_SAVED_LINE = `Not saved. ${VAULT_TEAM_LAPSED_NOT_SAVED}`;
+
 /** The notice a never-paid team reads while its deadline is set
  *  (`entitled_until`, migration 0025): shown before any refusal. */
 export function vaultTeamEditableUntil(until: string | Date): string | undefined {

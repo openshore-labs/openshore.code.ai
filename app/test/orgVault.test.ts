@@ -625,6 +625,53 @@ describe('org vault Trash (Restore only, R3)', () => {
     ]);
   });
 
+  // A folder's Undo brings back what that trash took and nothing else: a note
+  // deleted under the folder before it (a teammate's deliberate delete) stays
+  // in Trash, and the answer names the note that came back.
+  it('a folder restore brings back only the notes its trash took', async () => {
+    const old = await orgVaultProvider.write(ORG, 'Work/Old.md', 'old', { ifAbsent: true });
+    await orgVaultProvider.write(ORG, 'Work/Plan.md', 'plan', { ifAbsent: true });
+    await orgVaultProvider.write(ORG, 'Other.md', 'other', { ifAbsent: true });
+    await orgVaultProvider.trash!(ORG, {
+      kind: 'note',
+      path: 'Work/Old.md',
+      ifMatch: version(old),
+    });
+    const t = await orgVaultProvider.trash!(ORG, { kind: 'folder', path: 'Work' });
+    expect(t).toMatchObject({ ok: true, notes: 1, entry: { kind: 'folder', path: 'Work' } });
+    const back = await orgVaultProvider.restore!(ORG, t.ok ? t.entry.id : '');
+    expect(back).toEqual({
+      ok: true,
+      renamed: false,
+      file: expect.objectContaining({ path: 'Work/Plan.md' }),
+    });
+    const live = [...server.notes.values()].filter((n) => !n.deleted).map((n) => n.path);
+    expect(live.sort()).toEqual(['Other.md', 'Work/Plan.md']);
+    expect((await orgVaultProvider.listTrash!(ORG)).map((e) => e.path)).toEqual(['Work/Old.md']);
+    // One write went out, for Plan; Old was never asked for.
+    const writes = rpcsNamed('org_vault_write').map((r) => r.args.p_path);
+    expect(writes.filter((p) => p === 'Work/Old.md')).toEqual(['Work/Old.md']);
+    expect(writes.at(-1)).toBe('Work/Plan.md');
+  });
+
+  it('a folder id that does not name what it took restores nothing', async () => {
+    await orgVaultProvider.write(ORG, 'Work/Plan.md', 'plan', { ifAbsent: true });
+    await orgVaultProvider.trash!(ORG, { kind: 'folder', path: 'Work' });
+    // The old shape, the folder alone, says nothing about which notes.
+    expect(await orgVaultProvider.restore!(ORG, 'f:Work')).toEqual({
+      ok: false,
+      conflict: 'missing',
+    });
+    expect(server.bytes('Work/Plan.md')).toBeUndefined();
+    // A trash that took nothing restores nothing.
+    const none = await orgVaultProvider.trash!(ORG, { kind: 'folder', path: 'Empty' });
+    expect(none).toMatchObject({ ok: true, notes: 0 });
+    expect(await orgVaultProvider.restore!(ORG, none.ok ? none.entry.id : '')).toEqual({
+      ok: false,
+      conflict: 'missing',
+    });
+  });
+
   it('has no Empty Trash: the purge takes what has been there 30 days', () => {
     expect(orgVaultProvider.emptyTrash).toBeUndefined();
   });

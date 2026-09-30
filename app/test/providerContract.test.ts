@@ -515,6 +515,26 @@ for (const p of enforcing) {
       expect(await listedPaths(p.provider)).toEqual(['Other.md', 'Work/Deep/b.md', 'Work/a.md']);
     });
 
+    it("a folder's restore brings back only what that trash took", async () => {
+      const old = await p.provider.write(R, 'Work/Old.md', 'old', { ifAbsent: true });
+      await p.provider.write(R, 'Work/Plan.md', 'plan', { ifAbsent: true });
+      const first = await p.provider.trash!(R, {
+        kind: 'note',
+        path: 'Work/Old.md',
+        ifMatch: versionOfWrite(old),
+      });
+      const t = await p.provider.trash!(R, { kind: 'folder', path: 'Work' });
+      expect(t).toMatchObject({ ok: true, notes: 1 });
+      const back = await p.provider.restore!(R, t.ok ? t.entry.id : '');
+      expect(back).toMatchObject({ ok: true, renamed: false });
+      expect(await listedPaths(p.provider)).toEqual(['Work/Plan.md']);
+      // The note deleted before the folder is still in Trash, as its own entry.
+      const left = await p.provider.listTrash!(R);
+      expect(left.map((e) => e.path)).toEqual(['Work/Old.md']);
+      expect(left.map((e) => e.id)).toEqual([first.ok ? first.entry.id : '']);
+      expect(p.bytes('Work/Old.md')).toBeUndefined();
+    });
+
     it('an unknown entry is missing', async () => {
       expect(await p.provider.restore!(R, 'no-such-entry')).toEqual({
         ok: false,
