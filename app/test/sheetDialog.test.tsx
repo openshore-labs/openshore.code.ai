@@ -20,6 +20,7 @@ const app = vi.hoisted(() => {
     authSession: undefined,
     buyPersonal: async () => {},
     restorePurchases: async () => {},
+    recheckPersonal: async () => {},
     closePaywall: () => set({ paywall: undefined }),
   });
   return { state, set, listeners };
@@ -88,7 +89,7 @@ describe('the sheets that used to hand-roll their scrims', () => {
     expect(dialog()).toBeNull();
     const { act } = await import('react');
     await act(async () => app.set({ paywall: 'coding' }));
-    expect(nameOf(dialog())).toBe('Unlock the agent.');
+    expect(nameOf(dialog())).toBe('Let OpenShore build it.');
     await dom.click('Not now. Keep chatting.');
     // Still on screen, leaving: it animates out rather than vanishing.
     expect(dialog()?.className).toMatch(/\bclosing\b/);

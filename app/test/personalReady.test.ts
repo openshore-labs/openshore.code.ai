@@ -11,32 +11,36 @@ import { join } from 'node:path';
 import { PERSONAL_UNLOCK_PRICE_YEAR } from '../src/lib/plans.js';
 import { WAYFINDING_READY } from '../src/lib/currents.js';
 import { restoreOfflineEntitlement } from '../src/state/store.js';
-import { RENEWAL_LINE, paywallMoney } from '../src/components/Paywall.js';
+import { RENEWAL_LINE, WEB_RENEWAL_LINE, paywallMoney } from '../src/components/Paywall.js';
 
 const read = (...parts: string[]) => readFileSync(join(process.cwd(), ...parts), 'utf8');
 
 describe('the paywall', () => {
   const paywall = read('src', 'components', 'Paywall.tsx');
 
-  it('shows only the App Store price, and says where to see it otherwise (E0)', () => {
+  it('shows only the App Store price on iOS, and the one web price elsewhere (E0, 2026-09-30)', () => {
     expect(PERSONAL_UNLOCK_PRICE_YEAR).toBe(50);
     expect(paywall).not.toMatch(/\$20|\$50|PERSONAL_UNLOCK_PRICE_YEAR/);
     expect(paywall).toContain('products([PERSONAL_YEARLY_PRODUCT_ID])');
     const withPrice = paywallMoney(true, true, '$49.99');
-    expect(withPrice.priceLine).toBe('$49.99 per year. One person, the whole app.');
-    expect(withPrice.buy).toBe('Unlock Personal · $49.99/year');
+    expect(withPrice.priceLine).toBe('$49.99 per year. Renews yearly.');
+    expect(withPrice.buy).toBe('Start Personal');
     const noPrice = paywallMoney(true, true, undefined);
-    expect(noPrice.priceLine).toBe('One person, the whole app. See the price in the App Store.');
-    expect(noPrice.buy).toBe('Unlock Personal');
-    expect(paywallMoney(true, false, undefined).priceLine).toBe(
-      'One person, the whole app. Bought on your iPhone. See the price in the App Store.',
-    );
-    expect(paywallMoney(true, false, undefined).buy).toBeNull();
+    expect(noPrice.priceLine).toBe('Renews yearly. See the price in the App Store.');
+    expect(noPrice.buy).toBe('Start Personal');
+    // The desktop and the web buy through Stripe at the one web price.
+    const web = paywallMoney(true, false, undefined);
+    expect(web.priceLine).toBe('$49.99 a year. Renews yearly.');
+    expect(web.buy).toBe('Start Personal');
+    expect(web.renewal).toBe(WEB_RENEWAL_LINE);
+    // A lapsed subscriber renews.
+    expect(paywallMoney(true, false, undefined, true).buy).toBe('Renew Personal');
+    expect(paywallMoney(true, true, '$49.99', true).buy).toBe('Renew Personal');
   });
 
   it('says it renews and where to cancel, under the price', () => {
     expect(RENEWAL_LINE).toBe(
-      'Renews yearly. Cancel any time on your iPhone in Settings, then your name, then Subscriptions.',
+      'Cancel any time on your iPhone in Settings, then your name, then Subscriptions.',
     );
     expect(paywallMoney(true, true, '$49.99').renewal).toBe(RENEWAL_LINE);
     expect(paywall.indexOf('{renewal ?')).toBeGreaterThan(paywall.indexOf('{priceLine ?'));
@@ -154,9 +158,18 @@ describe('the rest of the Personal paths', () => {
 
   it('Crew sits behind Personal once the pay gates return', () => {
     const store = read('src', 'state', 'store.ts');
-    for (const name of ['async createRoutine(input) {', 'async runRoutineNow(id) {']) {
+    for (const name of [
+      'async createRoutine(input) {',
+      'async runRoutineNow(id) {',
+      'async updateRoutine(id, patch) {',
+    ]) {
       const body = store.slice(store.indexOf(`    ${name}`));
-      expect(body.slice(0, 400), name).toContain("get().openPaywall('crew')");
+      expect(body.slice(0, 400), name).toContain("requirePersonal('crew')");
+    }
+    // Deleting and stopping stay free.
+    for (const name of ['async deleteRoutine(id) {', 'async stopRoutine(id) {']) {
+      const body = store.slice(store.indexOf(`    ${name}`));
+      expect(body.slice(0, 400), name).not.toContain('requirePersonal');
     }
   });
 

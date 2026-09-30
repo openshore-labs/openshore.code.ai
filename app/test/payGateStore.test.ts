@@ -1,0 +1,209 @@
+// The Personal paid gate, ON (VITE_PAY_GATES=1, the build submitted to App
+// Review), in the store: sign-in first, then the paywall; chat stays free;
+// Crew's pause stays free; the desktop buys through stripe-checkout. The
+// flag is read at module load, so the env is stubbed before the store loads.
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AppSettings } from '../src/state/store.js';
+import type { Conversation } from '../src/state/types.js';
+import { emptyThread } from '../src/state/types.js';
+
+vi.stubEnv('VITE_PAY_GATES', '1');
+
+const mem = new Map<string, string>();
+const opened = vi.hoisted(() => [] as string[]);
+
+vi.mock('../src/lib/platform.js', () => ({
+  platform: () => 'web',
+  isDesktop: () => false,
+  isPhone: () => false,
+  dataUnlockState: async () => 'ok',
+  openExternal: (url: string) => {
+    opened.push(url);
+  },
+  openInAppBrowser: (url: string) => {
+    opened.push(url);
+  },
+  storeGetJson: async (k: string) => {
+    const v = mem.get(k);
+    return v ? JSON.parse(v) : undefined;
+  },
+  storeSetJson: async (k: string, v: unknown) => {
+    mem.set(k, JSON.stringify(v));
+  },
+  storeGet: async (k: string) => mem.get(k) ?? null,
+  storeSet: async (k: string, v: string) => {
+    mem.set(k, v);
+  },
+  storeDelete: async (k: string) => {
+    mem.delete(k);
+  },
+  sealExistingKeys: async () => {},
+  secretGet: async () => null,
+  secretSet: async () => {},
+  secretDelete: async () => {},
+}));
+
+vi.mock('../src/lib/insights.js', () => ({
+  loadInsights: async () => {},
+  logEvent: () => {},
+  logOnce: () => {},
+  setInsightsEnabled: () => {},
+  insightsAsText: () => '',
+  insightsCount: () => 0,
+  clearInsights: async () => {},
+}));
+
+const sb = vi.hoisted(() => ({
+  invoked: [] as Array<{ fn: string; body: unknown }>,
+  rows: [] as unknown[],
+}));
+vi.mock('../src/lib/supabase.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../src/lib/supabase.js')>();
+  return {
+    ...real,
+    isConfigured: () => true,
+    select: async () => sb.rows,
+    rpc: async () => null,
+    invokeFunction: async (fn: string, _token: string, body: unknown) => {
+      sb.invoked.push({ fn, body });
+      return { url: 'https://checkout.stripe.com/c/pay/cs_test' };
+    },
+  };
+});
+
+const { useApp, PAY_GATES_ENABLED } = await import('../src/state/store.js');
+
+const session = () => ({
+  accessToken: 'tok',
+  refreshToken: 'rt',
+  expiresAt: Date.now() + 3_600_000,
+  user: { id: '3f2504e0-4f89-41d3-9a0c-0305e82c3301', email: 'a@b.c' },
+});
+
+const base = (): AppSettings => ({ onboarded: true, claudeModel: 'x', deviceModels: {} });
+
+function codingChat(): Conversation {
+  const at = '2026-09-30T10:00:00.000Z';
+  return {
+    id: 'code1',
+    title: 'Fix the header',
+    source: { kind: 'desktop', sessionId: 'sess_1', cwd: '/repo' },
+    repoIds: [],
+    createdAt: at,
+    updatedAt: at,
+    thread: emptyThread(),
+  };
+}
+
+beforeEach(() => {
+  mem.clear();
+  opened.length = 0;
+  sb.invoked.length = 0;
+  sb.rows = [];
+  useApp.setState({
+    authSession: session(),
+    accountGate: undefined,
+    paywall: undefined,
+    userEntitlement: undefined,
+    entitlement: undefined,
+    view: 'chat',
+    viewTrail: [],
+    toast: undefined,
+    conversations: {},
+    order: [],
+    activeId: undefined,
+    settings: base(),
+  });
+});
+
+describe('the paid gate, on', () => {
+  it('is on in this build', () => {
+    expect(PAY_GATES_ENABLED).toBe(true);
+  });
+
+  it('opens the paywall, not the sign-in sheet, for a signed-in coding start', async () => {
+    const id = await useApp.getState().newConversation({ kind: 'desktop' });
+    expect(id).toBeUndefined();
+    expect(useApp.getState().paywall).toBe('coding');
+    expect(useApp.getState().accountGate).toBeUndefined();
+  });
+
+  it('asks for the sign-in first when both are needed', async () => {
+    useApp.setState({ authSession: undefined });
+    await useApp.getState().newConversation({ kind: 'desktop' });
+    expect(useApp.getState().accountGate).toBe('coding');
+    expect(useApp.getState().paywall).toBeUndefined();
+  });
+
+  it('keeps every chat free', async () => {
+    const id = await useApp.getState().newConversation({ kind: 'mock' });
+    expect(id).toBeDefined();
+    expect(useApp.getState().paywall).toBeUndefined();
+  });
+
+  it('unlocks with a live entitlement', async () => {
+    useApp.setState({ userEntitlement: { tierId: 'personal', status: 'active' } });
+    expect(useApp.getState().personalUnlockedNow()).toBe(true);
+    expect(useApp.getState().personalDoor('coding')).toBe('open');
+  });
+
+  it('holds a command inside a coding chat at the paid door', () => {
+    useApp.setState({
+      conversations: { code1: codingChat() },
+      order: ['code1'],
+      activeId: 'code1',
+    });
+    useApp.getState().runCommand('ls');
+    expect(useApp.getState().paywall).toBe('coding');
+  });
+
+  it('opens the paywall for a message kept on a reopened coding chat', async () => {
+    useApp.setState({
+      conversations: { code1: { ...codingChat(), pendingFirstMessage: 'fix it' } },
+      order: ['code1'],
+      activeId: 'code1',
+    });
+    useApp.getState().openConversation('code1');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(useApp.getState().paywall).toBe('coding');
+    expect(useApp.getState().accountGate).toBeUndefined();
+  });
+
+  it('charges a routine made, edited, resumed or run; a pause stays free', async () => {
+    await useApp.getState().createRoutine({
+      name: 'n',
+      agentName: 'a',
+      persona: 'p',
+      task: 't',
+      cwd: '/repo',
+      schedule: { kind: 'daily', at: '09:00' } as never,
+    });
+    expect(useApp.getState().paywall).toBe('crew');
+    useApp.setState({ paywall: undefined });
+    await useApp.getState().updateRoutine('r1', { task: 'new' });
+    expect(useApp.getState().paywall).toBe('crew');
+    useApp.setState({ paywall: undefined });
+    await useApp.getState().updateRoutine('r1', { enabled: true });
+    expect(useApp.getState().paywall).toBe('crew');
+    useApp.setState({ paywall: undefined });
+    await useApp.getState().runRoutineNow('r1');
+    expect(useApp.getState().paywall).toBe('crew');
+    useApp.setState({ paywall: undefined });
+    await useApp.getState().updateRoutine('r1', { enabled: false });
+    expect(useApp.getState().paywall).toBeUndefined();
+  });
+
+  it('buys on the desktop through stripe-checkout, in the browser', async () => {
+    await useApp.getState().buyPersonal();
+    expect(sb.invoked).toEqual([{ fn: 'stripe-checkout', body: { tierId: 'personal' } }]);
+    expect(opened).toEqual(['https://checkout.stripe.com/c/pay/cs_test']);
+  });
+
+  it('"I already paid" re-reads the account and carries on', async () => {
+    useApp.setState({ paywall: 'coding' });
+    sb.rows = [{ tier_id: 'personal', status: 'active', valid_until: null }];
+    await useApp.getState().recheckPersonal();
+    expect(useApp.getState().personalUnlockedNow()).toBe(true);
+    expect(useApp.getState().paywall).toBeUndefined();
+  });
+});

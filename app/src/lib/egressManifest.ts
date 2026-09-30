@@ -38,6 +38,7 @@ export const ROUTINES_NEVER_SEARCH = 'Crew routines never search the web.';
 
 export const RECIPIENT_ORDER = [
   'OpenShore (us)',
+  'Payments',
   'GitHub',
   'Web search',
   'Your cloud providers',
@@ -102,6 +103,22 @@ export const EGRESS: EgressEntry[] = [
     when: 'Only when you buy or restore a purchase.',
     start: 'tap',
     hosts: ['env:VITE_SUPABASE_URL'],
+  },
+  {
+    id: 'purchase-web',
+    recipient: 'OpenShore (us)',
+    what: 'Your sign-in, asking our server to start a Personal checkout or open your subscription. Our server makes the Stripe page for your account and answers its address; your card never touches OpenShore.',
+    when: 'Only on the desktop or the web, when you tap Start Personal or Manage subscription.',
+    start: 'tap',
+    hosts: ['env:VITE_SUPABASE_URL'],
+  },
+  {
+    id: 'stripe',
+    recipient: 'Payments',
+    what: 'Stripe Checkout and the Stripe billing page open in your own browser, where you give Stripe your email and card. Stripe tells our server that you paid and until when, and nothing about your chats or work.',
+    when: 'Only on the desktop or the web, after you tap Start Personal or Manage subscription. On iPhone and iPad, Personal is bought through the App Store.',
+    start: 'tap',
+    hosts: ['checkout.stripe.com', 'billing.stripe.com'],
   },
   {
     id: 'account-deletion',

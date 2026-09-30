@@ -12,10 +12,9 @@ import * as check from '../scripts/check-apple-roots.mjs';
 const { appleRootsVerdict, buildCanSell, placeholderRoots } = check as unknown as {
   appleRootsVerdict: (
     apple: string,
-    store: string,
     env: Record<string, string | undefined>,
   ) => { verdict: 'ok' | 'warn' | 'fail'; left: string[] };
-  buildCanSell: (store: string, env: Record<string, string | undefined>) => boolean;
+  buildCanSell: (env: Record<string, string | undefined>) => boolean;
   placeholderRoots: (apple: string) => string[];
 };
 
@@ -30,8 +29,10 @@ const pasted = placeholder.replace(
   "PASTE + 'AppleRootCA_G3'",
   "'MIICQzCCAcmgAwIBAgIILcX8iNLFS5UwCgYIKoZIzj0EAwMwZzEbMBkGA1UEAwwS'",
 );
-const gatesOff = 'export const PAY_GATES_ENABLED = false as boolean;';
-const gatesOn = 'export const PAY_GATES_ENABLED = true as boolean;';
+// The build flag the app reads (app/src/lib/payGate.ts): VITE_PAY_GATES=1
+// only in the build submitted to App Review.
+const gatesOff: Record<string, string | undefined> = {};
+const gatesOn: Record<string, string | undefined> = { VITE_PAY_GATES: '1' };
 
 describe('the Apple roots release check', () => {
   it('reads which roots are still placeholders', () => {
@@ -40,29 +41,30 @@ describe('the Apple roots release check', () => {
   });
 
   it('fails a build that can sell while AppleRootCA-G3 is a placeholder', () => {
-    expect(appleRootsVerdict(placeholder, gatesOn, {}).verdict).toBe('fail');
-    expect(appleRootsVerdict(placeholder, gatesOff, { OPENSHORE_STORE_RELEASE: '1' }).verdict).toBe(
-      'fail',
-    );
+    expect(appleRootsVerdict(placeholder, gatesOn).verdict).toBe('fail');
+    expect(appleRootsVerdict(placeholder, { OPENSHORE_STORE_RELEASE: '1' }).verdict).toBe('fail');
   });
 
   it('only warns while the pay gates are off, so TestFlight and CI stay green', () => {
-    expect(appleRootsVerdict(placeholder, gatesOff, {}).verdict).toBe('warn');
+    expect(appleRootsVerdict(placeholder, gatesOff).verdict).toBe('warn');
+    expect(appleRootsVerdict(placeholder, { VITE_PAY_GATES: '0' }).verdict).toBe('warn');
   });
 
   it('passes once G3 is pasted, or kept in the function secrets', () => {
-    expect(appleRootsVerdict(pasted, gatesOn, {}).verdict).toBe('ok');
-    expect(appleRootsVerdict(placeholder, gatesOn, { APPLE_ROOTS_IN_SECRETS: '1' }).verdict).toBe(
-      'ok',
-    );
+    expect(appleRootsVerdict(pasted, gatesOn).verdict).toBe('ok');
+    expect(
+      appleRootsVerdict(placeholder, { ...gatesOn, APPLE_ROOTS_IN_SECRETS: '1' }).verdict,
+    ).toBe('ok');
   });
 
-  it('reads the real store switch and the real apple.ts shape', () => {
+  it('reads the same build flag as the app, and the real apple.ts shape', () => {
     const root = join(process.cwd(), '..');
-    const store = readFileSync(join(root, 'app', 'src', 'state', 'store.ts'), 'utf8');
-    expect(store).toMatch(/export const PAY_GATES_ENABLED = (true|false)\b/);
-    expect(buildCanSell(gatesOn, {})).toBe(true);
-    expect(buildCanSell(gatesOff, {})).toBe(false);
+    const payGate = readFileSync(join(root, 'app', 'src', 'lib', 'payGate.ts'), 'utf8');
+    expect(payGate).toContain(
+      "export const PAY_GATES_ENABLED = import.meta.env.VITE_PAY_GATES === '1';",
+    );
+    expect(buildCanSell(gatesOn)).toBe(true);
+    expect(buildCanSell(gatesOff)).toBe(false);
     // Every root constant the check looks for is still where apple.ts keeps it.
     const apple = readFileSync(join(root, 'supabase', 'functions', '_shared', 'apple.ts'), 'utf8');
     for (const name of [

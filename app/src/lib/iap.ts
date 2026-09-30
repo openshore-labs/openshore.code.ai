@@ -1,7 +1,7 @@
 // The App Store In-App Purchase bridge: StoreKit 2 reached through a small
 // Capacitor plugin (Swift side in app/plugins/oscode-iap). This file is the JS
-// contract. It is the typed bridge only. Wiring into the store or any UI is a
-// later phase.
+// contract. It is the typed bridge only; the store wires the purchase, the
+// restore and the transaction updates.
 //
 // The server is the source of truth for entitlement: every method returns the
 // raw signed JWS so the backend can verify each transaction with Apple. The
@@ -55,8 +55,11 @@ export interface TransactionUpdate {
 export interface OscodeIapPlugin {
   /** Load App Store products for the given ids. */
   products(options: { productIds: string[] }): Promise<{ products: IapProduct[] }>;
-  /** Buy a product. Finishes the transaction and returns its JWS. */
-  purchase(options: { productId: string }): Promise<PurchaseResult>;
+  /** Buy a product. Finishes the transaction and returns its JWS. An
+   *  appAccountToken (a UUID: the signed-in account's id) rides on the
+   *  transaction, so the server can find the account for a delayed purchase
+   *  (Ask to Buy) that reaches it only as an App Store notification. */
+  purchase(options: { productId: string; appAccountToken?: string }): Promise<PurchaseResult>;
   /** Restore Purchases (Apple 3.1.1): current entitlements as JWS list. */
   restore(options?: { productId?: string }): Promise<{ transactions: RestoredTransaction[] }>;
   /** Is there a live entitlement for this product right now? */
@@ -85,8 +88,27 @@ export function products(productIds: string[]): Promise<{ products: IapProduct[]
   return OscodeIap.products({ productIds });
 }
 
-export function purchase(productId: string): Promise<PurchaseResult> {
-  return OscodeIap.purchase({ productId });
+/** A string Apple accepts as an appAccountToken: a UUID. */
+export function isUuid(value: string | undefined): value is string {
+  return Boolean(
+    value && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value),
+  );
+}
+
+export function purchase(productId: string, appAccountToken?: string): Promise<PurchaseResult> {
+  return OscodeIap.purchase(
+    isUuid(appAccountToken) ? { productId, appAccountToken } : { productId },
+  );
+}
+
+/** Purchases Apple completes outside the purchase call (Ask to Buy approved
+ *  later, a purchase on another device, a renewal) and revocations, while
+ *  the app is open. The plugin keeps an update that arrived before this
+ *  listener until it is added. */
+export function onTransactionUpdate(
+  listener: (update: TransactionUpdate) => void,
+): Promise<PluginListenerHandle> {
+  return OscodeIap.addListener('transactionUpdate', listener);
 }
 
 export function restore(productId?: string): Promise<{ transactions: RestoredTransaction[] }> {

@@ -77,6 +77,7 @@ vi.mock('../src/lib/iap.js', () => ({
   PERSONAL_YEARLY_PRODUCT_ID: 'ai.openshore.oscode.personal.yearly',
   purchase: (...args: unknown[]) => iap.purchase(...args),
   restore: (...args: unknown[]) => iap.restore(...args),
+  onTransactionUpdate: async () => ({ remove: async () => {} }),
 }));
 
 const { SupabaseRequestError } = await import('../src/lib/supabase.js');

@@ -9,6 +9,7 @@ import { Fragment, useEffect, useState } from 'react';
 import { PAY_GATES_ENABLED, isOrgAdmin, useApp, type HarborDownload } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { platform, isDesktop, isPhone } from '../lib/platform.js';
+import { iapAvailable } from '../lib/iap.js';
 import { noticeEnabled, noticePermission } from '../lib/notices.js';
 import type { NoticePermission } from '../lib/llamaPlugin.js';
 import { bridge } from '../lib/electronBridge.js';
@@ -279,6 +280,8 @@ export function SettingsScreen() {
     vaultRequestSheet,
   } = useApp();
   const restorePurchases = useApp((s) => s.restorePurchases);
+  const recheckPersonal = useApp((s) => s.recheckPersonal);
+  const manageSubscription = useApp((s) => s.manageSubscription);
   const setWebSearchAllowed = useApp((s) => s.setWebSearchAllowed);
   const personalUnlockedNow = useApp((s) => s.personalUnlockedNow);
   const userEntitlement = useApp((s) => s.userEntitlement);
@@ -405,7 +408,12 @@ export function SettingsScreen() {
       ? personalUntil
         ? `The coding agent is yours. Renews or ends ${personalUntil}.`
         : 'The coding agent is yours.'
-      : 'Chat is free. Personal unlocks the coding agent, bought in the app on iPhone.';
+      : 'Chatting is free. Personal lets the agent build and run routines on your computer.';
+  // The Personal rows (2026-09-30): an Apple device restores through the App
+  // Store and manages its subscription with Apple; the desktop re-reads the
+  // account ("I already paid") and manages it in the Stripe portal.
+  const appleDevice = iapAvailable();
+  const showManage = PAY_GATES_ENABLED && configured && signedIn && Boolean(userEntitlement);
 
   const termDesktopLocal = isDesktop() && Boolean(bridge()) && !settings.preferRemoteHub;
   const termTargetId = terminalTargetId({
@@ -472,7 +480,7 @@ export function SettingsScreen() {
             onClick={configured ? () => setSheet('account') : undefined}
           />
           <SettingsRow label="Personal" subWrap sub={personalSub} value={personalValue} />
-          {PAY_GATES_ENABLED && configured ? (
+          {PAY_GATES_ENABLED && configured && appleDevice ? (
             <SettingsRow
               label="Restore purchases"
               sub={
@@ -481,6 +489,28 @@ export function SettingsScreen() {
                   : 'Sign in first, then restore.'
               }
               onClick={() => void restorePurchases()}
+            />
+          ) : null}
+          {PAY_GATES_ENABLED && configured && !appleDevice ? (
+            <SettingsRow
+              label="I already paid"
+              sub={
+                signedIn
+                  ? 'Bought Personal already? Check your account again.'
+                  : 'Sign in with the email you paid with.'
+              }
+              onClick={() => void recheckPersonal()}
+            />
+          ) : null}
+          {showManage ? (
+            <SettingsRow
+              label="Manage subscription"
+              sub={
+                appleDevice
+                  ? 'Renewal and cancellation, with Apple.'
+                  : 'Renewal, card, and cancellation.'
+              }
+              onClick={() => void manageSubscription()}
             />
           ) : null}
         </SettingsGroup>
