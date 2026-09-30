@@ -7286,6 +7286,13 @@ button.vault-tag {
   color: var(--voice);
   font-weight: var(--weight-semibold);
 }
+/* Set by the server from its staff list (0020's review_staff), never by the
+   reviewer. */
+.review-staff {
+  font-size: var(--text-1);
+  color: var(--wave);
+  font-weight: var(--weight-semibold);
+}
 .review-more {
   margin-left: auto;
   color: var(--muted);
