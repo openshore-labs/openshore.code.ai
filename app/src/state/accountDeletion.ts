@@ -11,6 +11,12 @@
 // account. Every answer is a result, never a throw, and nothing here shows a
 // toast; the sheet says what happened (components/DeleteAccount.tsx).
 //
+// Two ways off the device. A deletion is a sign-out (forgetSession): the
+// account is gone, so nothing of it is kept. A dead sign-in with the account
+// perhaps still there is an involuntary end (endSignIn), the way the session
+// door ends one on a dead refresh token: unsent team vault text stays sealed
+// on the device for the same account to sign back in to.
+//
 // Two functions answer (CTO 11, package C). Production runs the privacy
 // branch's 2026-09-24 function until main's merged one is deployed, and a
 // build in the field must read both:
@@ -29,8 +35,11 @@
 // 200, and on the second device after the person deleted the account on the
 // first. So on either code this side asks the auth server once itself: an
 // account that is gone reads as deleted (signed out, the goodbye), a sign-in
-// that is dead signs the device out with a line that claims nothing about
-// the account, and a live one is a plain failure.
+// that is dead ends the sign-in with a line that claims nothing about the
+// account, and a live one is a plain failure. When the auth server cannot
+// say (offline, a server error, an answer it gives no code for), nothing
+// here knows whether the account is gone, so the device is left as it was
+// and the sheet says it could not confirm, never that nothing was deleted.
 import { SupabaseRequestError, type AuthUserState, type Session } from '../lib/supabase.js';
 
 /** What a delete-account attempt came to. */
@@ -46,9 +55,15 @@ export type DeleteAccountOutcome =
    *  function's ten-minute check). Nothing changed. */
   | { kind: 'reauth_required' }
   /** This device's sign-in is no longer valid, so the device is signed out
-   *  now. The account may be gone (deleted on another device) or not; nothing
-   *  here can tell, so the sheet claims neither. */
+   *  now, as an involuntary end (endSignIn). The account may be gone (deleted
+   *  here or on another device) or not; nothing here can tell, so the sheet
+   *  claims neither. */
   | { kind: 'signed_out' }
+  /** The server found no account for this token, and the auth server could
+   *  not say whether the account or only the sign-in is gone (offline, a
+   *  server error, or an answer with no code to read). The account may or may
+   *  not be deleted; nothing changed on the device. */
+  | { kind: 'unconfirmed' }
   /** Refused: a subscription could not be stopped, so nothing was deleted
    *  (main's 'billing', the 2026-09-24 function's 'billing_failed'). */
   | { kind: 'billing' }
@@ -71,10 +86,16 @@ export interface AccountDeletionDeps {
    *  carrying the refusal code when the server says no. */
   invoke: (accessToken: string) => Promise<DeleteAccountAnswer>;
   /** Ask the auth server, once, what it makes of this access token (lib/
-   *  supabase.ts authUserState). Throws when it cannot say (offline). */
+   *  supabase.ts authUserState). Throws when it cannot say (offline, a
+   *  server error, `bad_jwt`, a 401 or 403 with no code). */
   authState: (accessToken: string) => Promise<AuthUserState>;
-  /** Sign this device out, as Sign out does. */
+  /** Sign this device out, as Sign out does: the account is deleted. */
   forgetSession: () => Promise<unknown>;
+  /** End this device's sign-in involuntarily, as the session door does on a
+   *  dead refresh token (the store's forgetSession(true)): unsent team vault
+   *  text stays sealed for the same account. The sign-in is dead and the
+   *  account may still exist. */
+  endSignIn: () => Promise<unknown>;
   /** Drop the Apple receipt still waiting to be linked, if any. */
   clearPendingAppleLink: () => Promise<void>;
 }
@@ -140,7 +161,7 @@ export async function deleteAccount(deps: AccountDeletionDeps): Promise<DeleteAc
   } catch (err) {
     if (refusalOf(err) !== 'no_user') return refusalOutcome(err);
     outcome = await noUserOutcome(deps, session.accessToken);
-    if (outcome.kind === 'signed_out') await deps.forgetSession().catch(() => {});
+    if (outcome.kind === 'signed_out') await deps.endSignIn().catch(() => {});
   }
   if (outcome.kind !== 'deleted') return outcome;
 
@@ -154,7 +175,8 @@ export async function deleteAccount(deps: AccountDeletionDeps): Promise<DeleteAc
 /** The server found no account for this token. Ask the auth server once:
  *  gone is a deletion (the Apple note as an if, since nobody said), a dead
  *  sign-in is signed out, and a live one means the function failed. When the
- *  auth server cannot be asked either, it is a failure. */
+ *  auth server cannot say either, it is unconfirmed: the account may be gone,
+ *  so it is never read as "not deleted". */
 async function noUserOutcome(
   deps: AccountDeletionDeps,
   accessToken: string,
@@ -163,7 +185,7 @@ async function noUserOutcome(
   try {
     state = await deps.authState(accessToken);
   } catch {
-    return { kind: 'failed' };
+    return { kind: 'unconfirmed' };
   }
   if (state === 'gone') return { kind: 'deleted' };
   if (state === 'invalid') return { kind: 'signed_out' };

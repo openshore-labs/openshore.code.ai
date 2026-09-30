@@ -6,9 +6,11 @@
 // nothing was deleted, owns_org explains the one step first with a way to
 // write to the one published address, the goodbye carries the Apple note
 // when the person pays through Apple, as an if when the server did not say,
-// a subscription that could not be stopped says so, and a sign-in that died
-// underneath says the device is signed out without claiming the account is
-// gone or still there.
+// a subscription that could not be stopped says so, an answer nobody could
+// confirm says exactly that (never "was not deleted") and leaves the choice
+// open, and a sign-in that died underneath says the device is signed out
+// without claiming the account is gone or still there, whichever device
+// deleted it.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DeleteAccountOutcome } from '../src/state/accountDeletion.js';
 import { mountDom, type TestDom } from './support/dom.js';
@@ -132,6 +134,24 @@ describe('the confirm sheet', () => {
     expect(dom.buttons()).toEqual(expect.arrayContaining([c.keep, c.confirm]));
   });
 
+  it('says it could not confirm the deletion, never that it was not deleted, and leaves the choice open', async () => {
+    const c = await copy();
+    await show(true, async () => ({ kind: 'unconfirmed' }));
+    await tapRow();
+    await dom.click(c.confirm);
+    await dom.settle();
+    expect(dom.container.querySelector('[role="alert"]')?.textContent).toBe(c.unconfirmed);
+    expect(c.unconfirmed).toBe(
+      'We could not confirm whether your account was deleted. Check your connection and try again.',
+    );
+    expect(c.unconfirmed).not.toMatch(/was not deleted|is deleted/);
+    expect(dom.text()).not.toContain(c.failed);
+    expect(dom.text()).not.toContain(c.doneTitle);
+    expect(dom.text()).not.toContain(c.signedOutTitle);
+    expect(dom.buttons()).toEqual(expect.arrayContaining([c.keep, c.confirm]));
+    expect(done).toBe(0);
+  });
+
   it('says the device is signed out, claiming nothing about the account, when the sign-in died', async () => {
     const c = await copy();
     const { DeleteAccount } = await import('../src/components/DeleteAccount.js');
@@ -145,6 +165,12 @@ describe('the confirm sheet', () => {
     expect(dom.text()).not.toContain(c.failed);
     expect(dom.text()).not.toContain(c.doneTitle);
     expect(c.signedOutBody).not.toMatch(/was not deleted|is deleted/);
+    // It fits a deletion on this device (a retry after a lost answer) as
+    // well as on another one.
+    expect(c.signedOutBody).toContain(
+      'If your account was already deleted, here or on another device, it is gone. If not, sign in again and try once more.',
+    );
+    expect(c.signedOutBody).not.toMatch(/you already deleted your account on another device/);
     // The store signed the device out: the row goes, the note stays until Close.
     await dom.render(<DeleteAccount signedIn={false} onDelete={onDelete} onDone={() => done++} />);
     expect(dom.text()).not.toContain(c.rowSub);

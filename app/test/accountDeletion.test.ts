@@ -48,7 +48,7 @@ const sb = vi.hoisted(() => ({
   calls: [] as Array<{ name: string; token: string; body: unknown }>,
   answer: { ok: true, appleNote: false } as unknown,
   refuse: undefined as { status: number; code?: string } | undefined,
-  authState: 'here' as 'here' | 'gone' | 'invalid',
+  authState: 'here' as 'here' | 'gone' | 'invalid' | Error,
   asked: [] as string[],
 }));
 vi.mock('../src/lib/supabase.js', async (importOriginal) => {
@@ -62,6 +62,7 @@ vi.mock('../src/lib/supabase.js', async (importOriginal) => {
     writeUserPrefs: async () => {},
     authUserState: async (token: string) => {
       sb.asked.push(token);
+      if (sb.authState instanceof Error) throw sb.authState;
       return sb.authState;
     },
     invokeFunctionWithCode: async (name: string, token: string, body: unknown) => {
@@ -88,7 +89,13 @@ function live(token = 'tok'): Session {
 }
 
 function fakes(over: Partial<Parameters<typeof deleteAccount>[0]> = {}) {
-  const seen = { invoked: [] as string[], asked: [] as string[], forgot: 0, cleared: 0 };
+  const seen = {
+    invoked: [] as string[],
+    asked: [] as string[],
+    forgot: 0,
+    ended: 0,
+    cleared: 0,
+  };
   const deps = {
     session: async () => live('fresh'),
     invoke: async (token: string) => {
@@ -101,6 +108,9 @@ function fakes(over: Partial<Parameters<typeof deleteAccount>[0]> = {}) {
     },
     forgetSession: async () => {
       seen.forgot += 1;
+    },
+    endSignIn: async () => {
+      seen.ended += 1;
     },
     clearPendingAppleLink: async () => {
       seen.cleared += 1;
@@ -220,15 +230,20 @@ describe('the deletion flow', () => {
       const outcome = await deleteAccount(deps);
       expect(outcome).toEqual({ kind: 'deleted' });
       expect(outcome.kind === 'deleted' && outcome.appleNote).toBeUndefined();
+      // A deletion is a plain sign-out: nothing of the account is kept.
       expect(seen.forgot).toBe(1);
+      expect(seen.ended).toBe(0);
       expect(seen.cleared).toBe(1);
     });
 
-    it(`${code}, and the sign-in itself is dead: signed out, claiming nothing`, async () => {
+    it(`${code}, and the sign-in itself is dead: the sign-in ends, claiming nothing`, async () => {
       const { deps, seen } = noUser(async () => 'invalid');
       expect(await deleteAccount(deps)).toEqual({ kind: 'signed_out' });
-      expect(seen.forgot).toBe(1);
-      // The account may still exist: its pending Apple receipt stays.
+      // An involuntary end, as the session door's on a dead refresh token:
+      // the account may still exist, so its unsent team text stays sealed
+      // and its pending Apple receipt stays.
+      expect(seen.ended).toBe(1);
+      expect(seen.forgot).toBe(0);
       expect(seen.cleared).toBe(0);
     });
 
@@ -236,16 +251,41 @@ describe('the deletion flow', () => {
       const { deps, seen } = noUser(async () => 'here');
       expect(await deleteAccount(deps)).toEqual({ kind: 'failed' });
       expect(seen.forgot).toBe(0);
+      expect(seen.ended).toBe(0);
     });
 
-    it(`${code}, and the auth server cannot be asked: failed, still signed in`, async () => {
-      const { deps, seen } = noUser(async () => {
-        throw new TypeError('Failed to fetch');
-      });
-      expect(await deleteAccount(deps)).toEqual({ kind: 'failed' });
-      expect(seen.forgot).toBe(0);
+    it(`${code}, and the auth server cannot say: unconfirmed, the device untouched`, async () => {
+      for (const cannot of [
+        new TypeError('Failed to fetch'),
+        new SupabaseRequestError('Request failed (503).', 503),
+        new SupabaseRequestError('Request failed (403).', 403, 'bad_jwt'),
+        new SupabaseRequestError('Request failed (401).', 401),
+      ]) {
+        const { deps, seen } = noUser(async () => {
+          throw cannot;
+        });
+        expect(await deleteAccount(deps), cannot.message).toEqual({ kind: 'unconfirmed' });
+        expect(seen.forgot).toBe(0);
+        expect(seen.ended).toBe(0);
+        expect(seen.cleared).toBe(0);
+      }
     });
   }
+
+  it('ends a dead sign-in involuntarily, and signs a deletion out plainly, never the other way', async () => {
+    const dead = fakes({
+      invoke: async () => {
+        throw new SupabaseRequestError('Request failed (401).', 401, 'unauthorized');
+      },
+      authState: async () => 'invalid',
+    });
+    expect(await deleteAccount(dead.deps)).toEqual({ kind: 'signed_out' });
+    expect([dead.seen.ended, dead.seen.forgot]).toEqual([1, 0]);
+
+    const deleted = fakes();
+    expect((await deleteAccount(deleted.deps)).kind).toBe('deleted');
+    expect([deleted.seen.ended, deleted.seen.forgot]).toEqual([0, 1]);
+  });
 
   it('asks the auth server about the same token it sent', async () => {
     const { deps, seen } = fakes({
@@ -279,12 +319,13 @@ describe('the deletion flow', () => {
   });
 
   // The row shows only while signed in, so no session means the session door
-  // found the sign-in dead and has already signed the device out.
+  // found the sign-in dead and has already ended it (involuntarily).
   it('never calls the server without a session, and says the device is signed out', async () => {
     const { deps, seen } = fakes({ session: async () => undefined });
     expect(await deleteAccount(deps)).toEqual({ kind: 'signed_out' });
     expect(seen.invoked).toEqual([]);
     expect(seen.forgot).toBe(0);
+    expect(seen.ended).toBe(0);
     const offline = fakes({
       session: async () => {
         throw new Error('offline');
@@ -305,6 +346,28 @@ describe('the deletion flow', () => {
 
 describe('the store', () => {
   const PENDING = 'oscode.iap.pendingLink.v1';
+  // Unsent team vault text, stashed for the signed-in account (the store's
+  // VAULT_PENDING_KEY): a sign-out wipes it, an involuntary end keeps it.
+  const TEAM_PENDING = 'oscode.vault.pending';
+  const TEAM_KEY = 'org::org-1::plan.md';
+  const stashTeamText = () =>
+    mem.set(
+      TEAM_PENDING,
+      JSON.stringify({
+        [TEAM_KEY]: {
+          providerId: 'org',
+          resourceId: 'org-1',
+          owner: 'u1',
+          path: 'plan.md',
+          text: 'unsent team draft',
+          at: '2026-09-30T00:00:00.000Z',
+        },
+      }),
+    );
+  const teamTextKept = () => {
+    const raw = mem.get(TEAM_PENDING);
+    return raw ? TEAM_KEY in (JSON.parse(raw) as Record<string, unknown>) : false;
+  };
 
   beforeEach(() => {
     mem.clear();
@@ -358,21 +421,46 @@ describe('the store', () => {
 
   it('signs out with the goodbye when the account was already deleted elsewhere', async () => {
     mem.set(PENDING, JSON.stringify({ jws: 'x.y.z', at: 'now' }));
+    stashTeamText();
     sb.refuse = { status: 401, code: 'not_signed_in' };
     sb.authState = 'gone';
     expect(await useApp.getState().deleteAccount()).toEqual({ kind: 'deleted' });
     expect(sb.asked).toEqual(['tok']);
     expect(useApp.getState().authSession).toBeUndefined();
     expect(mem.has(PENDING)).toBe(false);
+    // A deletion is a plain sign-out: the gone account's team text goes too.
+    expect(teamTextKept()).toBe(false);
   });
 
-  it('signs out, and keeps the pending receipt, when only the sign-in is dead', async () => {
+  it('wipes unsent team text on a deletion, as Sign out does', async () => {
+    stashTeamText();
+    sb.answer = { ok: true, deleted: true, appleNote: false };
+    expect(await useApp.getState().deleteAccount()).toEqual({ kind: 'deleted', appleNote: false });
+    expect(teamTextKept()).toBe(false);
+  });
+
+  it('ends the sign-in involuntarily, keeping the pending receipt and the team text, when only the sign-in is dead', async () => {
     mem.set(PENDING, JSON.stringify({ jws: 'x.y.z', at: 'now' }));
+    stashTeamText();
     sb.refuse = { status: 401, code: 'unauthorized' };
     sb.authState = 'invalid';
     expect(await useApp.getState().deleteAccount()).toEqual({ kind: 'signed_out' });
     expect(useApp.getState().authSession).toBeUndefined();
     expect(mem.has(PENDING)).toBe(true);
+    // The session door's end (forgetSession(true)), not Sign out's: the text
+    // stays sealed for the same account to sign back in to.
+    expect(teamTextKept()).toBe(true);
+  });
+
+  it('leaves the device as it was when nobody can confirm the deletion', async () => {
+    mem.set(PENDING, JSON.stringify({ jws: 'x.y.z', at: 'now' }));
+    stashTeamText();
+    sb.refuse = { status: 401, code: 'not_signed_in' };
+    sb.authState = new TypeError('Failed to fetch');
+    expect(await useApp.getState().deleteAccount()).toEqual({ kind: 'unconfirmed' });
+    expect(useApp.getState().authSession).toBeDefined();
+    expect(mem.has(PENDING)).toBe(true);
+    expect(teamTextKept()).toBe(true);
   });
 
   it('keeps the person signed in when the auth server still knows them', async () => {

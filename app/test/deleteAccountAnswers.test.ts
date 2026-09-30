@@ -6,11 +6,14 @@
 // That includes the answer an account already gone gets (a retry after a
 // lost 200, or the second device): neither function can tell it from a dead
 // sign-in, so the app asks the auth server, and the auth answers below are
-// the ones the local stack's gotrue v2.197.0 sends. When the auth server
-// cannot be asked either, the flow still says failed; that double failure is
-// the one gap left (os-code/PROGRESS.md, What remains). The function bodies
-// are the ones each function sends (supabase/functions/delete-account/
-// index.ts, and d3d4bb7's).
+// the ones the local stack's gotrue v2.197.0 sends. Only `user_not_found`
+// says the account is gone and only `session_not_found` says the sign-in is
+// dead; when the auth server cannot say (offline, a 5xx, `bad_jwt`, a 401 or
+// 403 with no code), the flow says it could not confirm whether the account
+// was deleted and leaves the device as it was, never "was not deleted"
+// (os-code/PROGRESS.md, What remains, Accounts). The function bodies are the
+// ones each function sends (supabase/functions/delete-account/index.ts, and
+// d3d4bb7's).
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.stubEnv('VITE_SUPABASE_URL', 'https://sb.test');
@@ -40,6 +43,17 @@ const AUTH = {
       msg: 'Session from session_id claim in JWT does not exist',
     },
   },
+  badJwt: {
+    status: 403,
+    body: {
+      code: 403,
+      error_code: 'bad_jwt',
+      msg: 'invalid JWT: unable to parse or verify signature, token has invalid claims: token is expired',
+    },
+  },
+  /** A 401 or 403 with no GoTrue code: a gateway or proxy answered, not GoTrue. */
+  noCode401: { status: 401, body: { message: 'Invalid authentication credentials' } },
+  noCode403: { status: 403, body: { message: 'Forbidden' } },
   down: { status: 503, body: { message: 'upstream unavailable' } },
 } as const;
 type Auth = (typeof AUTH)[keyof typeof AUTH];
@@ -65,9 +79,14 @@ function answer(status: number, body: unknown, auth: Auth = AUTH.here) {
   );
 }
 
+/** How the last run left the device: signed out plainly (a deletion),
+ *  ended involuntarily (a dead sign-in), or neither. */
+let last = { forgot: 0, ended: 0 };
+
 async function run(status: number, body: unknown, auth?: Auth) {
   answer(status, body, auth);
-  const seen = { forgot: 0 };
+  const seen = { forgot: 0, ended: 0 };
+  last = seen;
   const outcome = await deleteAccount({
     session: async () => ({
       accessToken: 'tok',
@@ -80,9 +99,12 @@ async function run(status: number, body: unknown, auth?: Auth) {
     forgetSession: async () => {
       seen.forgot += 1;
     },
+    endSignIn: async () => {
+      seen.ended += 1;
+    },
     clearPendingAppleLink: async () => {},
   });
-  return { outcome, signedOut: seen.forgot === 1 };
+  return { outcome, signedOut: seen.forgot + seen.ended === 1 };
 }
 
 afterEach(() => {
@@ -196,37 +218,81 @@ describe("main's merged function", () => {
     });
   });
 
-  it('401 unauthorized after a sign-out everywhere signs this device out, claiming nothing', async () => {
+  it('401 unauthorized after a sign-out everywhere ends the sign-in involuntarily, claiming nothing', async () => {
     expect(await run(401, { error: 'unauthorized' }, AUTH.signedOutEverywhere)).toEqual({
       outcome: { kind: 'signed_out' },
       signedOut: true,
     });
+    expect(last).toEqual({ forgot: 0, ended: 1 });
   });
 
-  it('401 unauthorized with the auth server down is a failure, still signed in', async () => {
+  it('401 unauthorized with the auth server down is unconfirmed, still signed in', async () => {
     expect(await run(401, { error: 'unauthorized' }, AUTH.down)).toEqual({
-      outcome: { kind: 'failed' },
+      outcome: { kind: 'unconfirmed' },
       signedOut: false,
     });
+  });
+
+  it('401 unauthorized with an answer the auth server gives no reason for is unconfirmed, still signed in', async () => {
+    for (const auth of [AUTH.badJwt, AUTH.noCode401, AUTH.noCode403]) {
+      expect(await run(401, { error: 'unauthorized' }, auth), JSON.stringify(auth.body)).toEqual({
+        outcome: { kind: 'unconfirmed' },
+        signedOut: false,
+      });
+    }
+  });
+
+  it('401 not_signed_in offline at the auth server is unconfirmed, still signed in', async () => {
+    const offline = vi.fn(async (url: string) => {
+      if (new URL(url).pathname === '/auth/v1/user') throw new TypeError('Failed to fetch');
+      return new Response(JSON.stringify({ error: 'Sign in first.', code: 'not_signed_in' }), {
+        status: 401,
+      });
+    });
+    vi.stubGlobal('fetch', offline);
+    const seen = { forgot: 0, ended: 0 };
+    const outcome = await deleteAccount({
+      session: async () => ({
+        accessToken: 'tok',
+        refreshToken: 'rt',
+        expiresAt: Date.now() + 3_600_000,
+        user: { id: 'u1', email: 'a@b.c' },
+      }),
+      invoke: (token) => invokeFunctionWithCode<Answer>('delete-account', token, {}),
+      authState: (token) => authUserState(token),
+      forgetSession: async () => {
+        seen.forgot += 1;
+      },
+      endSignIn: async () => {
+        seen.ended += 1;
+      },
+      clearPendingAppleLink: async () => {},
+    });
+    expect(outcome).toEqual({ kind: 'unconfirmed' });
+    expect(seen).toEqual({ forgot: 0, ended: 0 });
   });
 });
 
 describe('authUserState', () => {
-  it('reads only user_not_found as gone, a 401 or 403 as a dead sign-in, and throws otherwise', async () => {
+  it('reads only user_not_found as gone and session_not_found as a dead sign-in, and throws otherwise', async () => {
     const stateOf = async (auth: Auth) => {
       answer(200, {}, auth);
       try {
         return await authUserState('tok');
       } catch (err) {
-        return err instanceof SupabaseRequestError ? `threw ${err.status}` : 'threw';
+        return err instanceof SupabaseRequestError
+          ? `threw ${err.status}${err.code ? ` ${err.code}` : ''}`
+          : 'threw';
       }
     };
     expect(await stateOf(AUTH.here)).toBe('here');
     expect(await stateOf(AUTH.gone)).toBe('gone');
     expect(await stateOf(AUTH.signedOutEverywhere)).toBe('invalid');
-    expect(
-      await stateOf({ status: 403, body: { code: 403, error_code: 'bad_jwt' } } as never),
-    ).toBe('invalid');
+    // bad_jwt, and a 401 or 403 with no GoTrue code, cannot tell a dead
+    // sign-in from anything else, so they never read as one.
+    expect(await stateOf(AUTH.badJwt)).toBe('threw 403 bad_jwt');
+    expect(await stateOf(AUTH.noCode401)).toBe('threw 401');
+    expect(await stateOf(AUTH.noCode403)).toBe('threw 403');
     expect(await stateOf(AUTH.down)).toBe('threw 503');
   });
 });

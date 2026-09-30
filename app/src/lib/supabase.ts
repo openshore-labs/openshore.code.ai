@@ -230,11 +230,16 @@ export async function getUser(accessToken: string): Promise<{ id: string; email?
 /** What the auth server says about an access token's account, asked once:
  *  'here' (the account and this sign-in are live), 'gone' (the token names an
  *  account that no longer exists), or 'invalid' (the sign-in itself is dead:
- *  ended everywhere, or a token the server will not read). GoTrue answers a
- *  deleted account with 403 and error_code `user_not_found` (checked on the
- *  local stack's gotrue v2.197.0), and looks the account up before the
- *  session, so only that code means gone. Offline, or any other answer,
- *  throws: nothing here can tell. */
+ *  its session was ended, here or everywhere). GoTrue (checked on the local
+ *  stack's gotrue v2.197.0) answers a deleted account with 403 and error_code
+ *  `user_not_found`, and looks the account up before the session, so only
+ *  that code means gone; a live account whose session was ended gets 403
+ *  `session_not_found`, and only that code means the sign-in is dead.
+ *  Anything else throws, because nothing here can tell: offline, a server
+ *  error, `bad_jwt` (a token it could not read, which says nothing about the
+ *  account or the session), or a 401 or 403 with no GoTrue code at all (a
+ *  gateway or proxy in the way). A caller must never sign the device out on
+ *  a throw. */
 export type AuthUserState = 'here' | 'gone' | 'invalid';
 
 export async function authUserState(accessToken: string): Promise<AuthUserState> {
@@ -248,8 +253,12 @@ export async function authUserState(accessToken: string): Promise<AuthUserState>
     // Not JSON: the header, if any, is all there is.
   }
   if (code === 'user_not_found') return 'gone';
-  if (res.status === 401 || res.status === 403) return 'invalid';
-  throw new SupabaseRequestError(`Request failed (${res.status}).`, res.status);
+  if (code === 'session_not_found') return 'invalid';
+  throw new SupabaseRequestError(
+    `Request failed (${res.status}).`,
+    res.status,
+    typeof code === 'string' && code ? code : undefined,
+  );
 }
 
 /** The preferences that follow a signed-in person (lib/settingsReach.ts) ride
