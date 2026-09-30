@@ -162,8 +162,8 @@ reset role;
 select matches(
   (select reason from public.enforcement_actions
     where user_id = '9a000000-0000-0000-0000-000000000003' order by created_at desc limit 1),
-  'If this was legitimate work, write to os-code@openshorellc\.com\.$',
-  'the warning names the published appeal address (the 2026-09-24 contact-inboxes ruling)');
+  'If this was legitimate work, write to support@openshore\.ai\.$',
+  'the warning names the published appeal address (founder decision F1)');
 
 -- ------------------------------------------------------------ 0020: reviews
 select set_config('request.jwt.claims',

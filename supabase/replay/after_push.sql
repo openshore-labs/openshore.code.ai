@@ -164,7 +164,7 @@ begin
   reset role;
   if not exists (select 1 from public.enforcement_actions
                   where user_id = '7e000000-0000-0000-0000-000000000003'
-                    and reason like '%write to os-code@openshorellc.com.') then
+                    and reason like '%write to support@openshore.ai.') then
     raise exception 'REPLAY FAIL 10: the warning does not carry the published address';
   end if;
 

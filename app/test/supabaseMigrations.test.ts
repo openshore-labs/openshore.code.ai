@@ -165,10 +165,10 @@ describe('the newest record_enforcement', () => {
     expect(body).toMatch(/v_operator_terminated := v_operator_terminated or v_tombstoned/);
   });
 
-  it('names the published appeal address (the 2026-09-24 contact-inboxes ruling)', () => {
+  it('names the published appeal address (founder decision F1)', () => {
     // The same address as the app's SUPPORT_EMAIL: app/test/contactAddress.test.ts.
-    expect(body).toMatch(/write to os-code@openshorellc\.com\./);
-    expect(body).not.toMatch(/support@openshore\.ai/);
+    expect(body).toMatch(/write to support@openshore\.ai\./);
+    expect(body).not.toMatch(/os-code@openshorellc\.com/);
   });
 
   it('still has no network address in it', () => {

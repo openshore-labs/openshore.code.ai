@@ -127,7 +127,7 @@ describe('the confirm sheet', () => {
     expect(c.billing).toMatch(
       /^Your account was not deleted: a subscription could not be stopped\./,
     );
-    expect(c.billing).toContain('os-code@openshorellc.com');
+    expect(c.billing).toContain('support@openshore.ai');
     expect(c.billing).not.toMatch(/connection/);
     expect(dom.buttons()).toEqual(expect.arrayContaining([c.keep, c.confirm]));
   });
@@ -164,7 +164,7 @@ describe('the confirm sheet', () => {
     expect(dom.text()).toContain(c.ownsOrgTitle);
     expect(dom.text()).toContain(c.ownsOrgBody);
     await dom.click(c.emailSupport);
-    expect(opened).toEqual(['mailto:os-code@openshorellc.com']);
+    expect(opened).toEqual(['mailto:support@openshore.ai']);
     expect(dom.buttons()).toContain(c.close);
   });
 

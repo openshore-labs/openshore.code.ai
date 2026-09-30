@@ -17,7 +17,7 @@ Account deletion is built end to end. Migration 0022 sets the five `no action` a
 - CX call (ruling 3): the row sits last in the Your account sheet, below the signed-in card, after the v4-only "Manage the company account". The failure line uses the warning color. The goodbye sheet also closes the account sheet.
 - CTO call: the Apple roots check fails only for a build that can sell (`PAY_GATES_ENABLED` true, or `OPENSHORE_STORE_RELEASE=1`). Otherwise it warns, so TestFlight on every push stays green. `APPLE_ROOTS_IN_SECRETS=1` accepts roots kept in function secrets. Only AppleRootCA-G3 is required, because it is the load-bearing root.
 - Paywall: when StoreKit gives no price, the line reads "One person, the whole app. See the price in the App Store." The renewal line uses CX's corrected path.
-- "Email support" opens `mailto:` the published address (superseded by F1, 2026-09-29: `SUPPORT_EMAIL`, os-code@openshorellc.com, until the founder confirms support@openshore.ai). On the desktop, that needed `mailto:` added to Electron's window-open handler (`app/electron/main.ts:671`), which is outside this package.
+- "Email support" opens `mailto:` the published address (`SUPPORT_EMAIL`, support@openshore.ai since F1, decided 2026-09-30). On the desktop, that needed `mailto:` added to Electron's window-open handler (`app/electron/main.ts:671`), which is outside this package.
 
 ## What remains
 
@@ -29,5 +29,5 @@ Account deletion is built end to end. Migration 0022 sets the five `no action` a
 - Backend: `queue_abuse_report` (`supabase/migrations/0016_guardrail_enforcement.sql:274`) now raises 23505 on a repeated hash and 23514 on a non-hex one. The app does not call it today.
 - `app/src/lib/ethics.ts:144` still swallows every `record_enforcement` error, which is how the broken ladder stayed hidden. Consider logging a failure there.
 - Team client (v4, held `vault-m2-team`): map the caps' `check_violation` refusals to copy in `orgVault.ts` and in org creation (`pushOrgToServer`).
-- There is no appeal path for a tombstone besides an operator deleting the row by hand (written to the published address; superseded by F1, 2026-09-29: os-code@openshorellc.com, not support@openshore.ai, until the founder confirms it).
+- There is no appeal path for a tombstone besides an operator deleting the row by hand (written to the published address, support@openshore.ai since F1, decided 2026-09-30).
 - Out of scope, seen: `app/src/screens/SettingsScreen.tsx:466` still says "Chatting and building need no account" (finding 10).

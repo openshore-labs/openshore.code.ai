@@ -1,12 +1,11 @@
-// One published address (founder decision F1, CTO 11, 2026-09-29; the
-// 2026-09-24 contact-inboxes ruling). The engine's SUPPORT_EMAIL is the one
+// One published address (founder decision F1, 2026-09-30: support@openshore.ai
+// passed its round-trip test). The engine's SUPPORT_EMAIL is the one
 // constant: the block card's appeal line and the Delete account sheet read it.
 // Two places cannot import it, the server's enforcement ladder (the newest
 // record_enforcement, which production shows a warned person) and the Terms,
-// so this fails the moment either says a different address. Until the founder
-// confirms that support@openshore.ai makes a round trip, the address is
-// os-code@openshorellc.com; switching it is this constant, the Terms, and a
-// new migration for the ladder (an applied migration is never edited).
+// so this fails the moment either says a different address. Switching it again
+// is this constant, the Terms, and a new migration for the ladder (an applied
+// migration is never edited).
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -30,8 +29,8 @@ function newestRecordEnforcement(): string {
 }
 
 describe('the one published address', () => {
-  it('is os-code@openshorellc.com until the founder confirms another (F1)', () => {
-    expect(SUPPORT_EMAIL).toBe('os-code@openshorellc.com');
+  it('is support@openshore.ai, the F1 ruling', () => {
+    expect(SUPPORT_EMAIL).toBe('support@openshore.ai');
   });
 
   it('is what the block card and the Delete account sheet say', () => {
