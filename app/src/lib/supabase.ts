@@ -320,6 +320,7 @@ export async function rpc<T>(
   // The status rides along so a caller can tell a refusal (a raised P0001
   // arrives as a 400) from a failure worth retrying.
   if (!res.ok) throw await requestError(res);
+  if (!res.ok) throw new SupabaseRequestError(await readError(res), res.status);
   return readRpcBody<T>(res);
 }
 
@@ -339,6 +340,7 @@ export async function select<T>(table: string, accessToken: string, query: strin
     headers: authHeaders(accessToken),
   });
   if (!res.ok) throw await requestError(res);
+  if (!res.ok) throw new SupabaseRequestError(await readError(res), res.status);
   return (await res.json()) as T[];
 }
 

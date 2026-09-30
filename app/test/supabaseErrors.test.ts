@@ -3,6 +3,7 @@
 // (OV402) and the delete rule (OV403) from any other refusal by it, so the
 // client reads the code from the body, not the words. From an Edge Function
 // (delete-account): its fixed refusal word (`{ error: 'owns_org' }`).
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
@@ -57,5 +58,21 @@ describe('supabase request errors', () => {
       status: 500,
       code: undefined,
     });
+  });
+
+  // The coded throw is inserted above main's own line in rpc and select, so
+  // main's line stays byte for byte and a merge with main changes none of
+  // its lines (the 2026-09-30 review, finding 7).
+  it("rpc and select keep main's own throw beneath the coded one", () => {
+    const src = readFileSync(new URL('../src/lib/supabase.ts', import.meta.url), 'utf8');
+    const pair =
+      '  if (!res.ok) throw await requestError(res);\n' +
+      '  if (!res.ok) throw new SupabaseRequestError(await readError(res), res.status);\n';
+    for (const fn of ['export async function rpc<T>(', 'export async function select<T>(']) {
+      const at = src.indexOf(fn);
+      expect(at).toBeGreaterThan(-1);
+      const body = src.slice(at, src.indexOf('\n}\n', at));
+      expect(body).toContain(pair);
+    }
   });
 });
