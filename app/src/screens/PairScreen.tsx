@@ -18,6 +18,7 @@ import { Sheet } from '../components/Sheet.js';
 import { SheetHead } from '../components/SheetHead.js';
 import { ReplaceSharedKey } from '../components/ReplaceSharedKey.js';
 import { hubStatusLine } from '../lib/hubStatus.js';
+import { PlusNote } from '../components/PlusNote.js';
 
 // Clean glyphs for the Tailscale download rows, drawn in the tile's ink on a
 // solid accent tile (iOS-app-icon feel). One per platform.
@@ -89,29 +90,6 @@ const TAILSCALE_LINKS: { label: string; glyph: keyof typeof GLYPHS; href: string
 
 export function PairScreen() {
   return isDesktop() ? <DesktopPair /> : <PhonePair />;
-}
-
-/** Desktop + phone is part of Plus (founder, 2026-09-30; lib/payGate.ts).
- *  Said before the steps, so nobody sets up Tailscale only to meet the
- *  paywall at Connect. Shown only while the paywall would open, so never
- *  with the pay gates off. */
-function PlusNote({ line }: { line: string }) {
-  const door = useApp((s) => s.personalDoor('pairing'));
-  const requirePersonal = useApp((s) => s.requirePersonal);
-  if (door !== 'paywall') return null;
-  return (
-    <div className="card">
-      <h3 style={{ marginTop: 0 }}>Part of OpenShore Plus</h3>
-      <div className="sub">{line}</div>
-      <button
-        className="btn primary press-fb"
-        style={{ width: '100%', marginTop: 12 }}
-        onClick={() => requirePersonal('pairing')}
-      >
-        See Plus
-      </button>
-    </div>
-  );
 }
 
 function DesktopPair() {
@@ -191,7 +169,10 @@ function DesktopPair() {
           </div>
         </div>
 
-        <PlusNote line="Reaching this computer from your phone is part of OpenShore Plus. Chat on each device, with its own models or your keys, stays free." />
+        <PlusNote
+          feature="pairing"
+          line="Reaching this computer from your phone is part of OpenShore Plus. Chat on each device, with its own models or your keys, stays free."
+        />
 
         {pairOpen && info?.running && qr ? (
           <div className="card" style={{ textAlign: 'center' }}>
@@ -476,7 +457,10 @@ function PhonePair() {
           Walk me through it
         </button>
 
-        <PlusNote line="Reaching your computer from this phone is part of OpenShore Plus: chats with its models, coding, and its shell. Chat on this phone stays free." />
+        <PlusNote
+          feature="pairing"
+          line="Reaching your computer from this phone is part of OpenShore Plus: chats with its models, coding, and its shell. Chat on this phone stays free."
+        />
 
         <div className="card">
           <h3>Before this screen</h3>

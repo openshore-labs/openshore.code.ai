@@ -246,6 +246,46 @@ describe('the gate: chat is free, everything else is a free sign-in', () => {
       expect(ROOM_ACCOUNT[view as keyof typeof ROOM_ACCOUNT], view).not.toBeNull();
   });
 
+  // The account copy says only what is true for this build (CTO,
+  // 2026-09-30): with the pay gates on, signing in never "opens" the Plus
+  // rooms; with them off, nothing talks about buying.
+  it('keeps the account copy true with the pay gates on and off', async () => {
+    const { accountCopy } = await import('../src/lib/accountGate.js');
+    const on = accountCopy(true);
+    for (const line of [on.body, on.pitch, on.notice, on.signInSub]) {
+      expect(line, line).not.toMatch(/opens? (building|Vault|Crew|pairing)/i);
+      expect(line, line).not.toMatch(/\bto build\b/i);
+    }
+    expect(on.body).toMatch(/OpenShore Plus/);
+    const off = accountCopy(false);
+    for (const line of [off.body, off.pitch, off.notice, off.signInSub])
+      expect(line, line).not.toMatch(/\bbuy|purchase|OpenShore Plus/i);
+    // This suite runs with the gates off: the guide and Harbor Lite say
+    // nothing about buying either.
+    const { GUIDE_CARDS } = await import('../src/lib/guideCards.js');
+    const account = GUIDE_CARDS.find((c) => c.id === 'account')!;
+    expect(account.text).not.toMatch(/\bbuy|OpenShore Plus/i);
+    const { HARBOR_MINI_PERSONA } = await import('../src/lib/harborMini.js');
+    expect(HARBOR_MINI_PERSONA).not.toMatch(/OpenShore Plus/);
+  });
+
+  it('says what Plus holds in the guide and Harbor Lite once the gates are on', async () => {
+    vi.stubEnv('VITE_PAY_GATES', '1');
+    vi.resetModules();
+    try {
+      const { GUIDE_CARDS } = await import('../src/lib/guideCards.js');
+      const account = GUIDE_CARDS.find((c) => c.id === 'account')!;
+      expect(account.text).toMatch(/part of OpenShore Plus/);
+      expect(account.text).not.toMatch(/opens building/);
+      const { HARBOR_MINI_PERSONA } = await import('../src/lib/harborMini.js');
+      expect(HARBOR_MINI_PERSONA).toMatch(/part of OpenShore Plus/);
+      expect(HARBOR_MINI_PERSONA).not.toMatch(/stripe|on the web|checkout/i);
+    } finally {
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
+  });
+
   it('asks only when the build has accounts and nobody is signed in', () => {
     expect(needsAccount(true, false)).toBe(true);
     expect(needsAccount(true, true)).toBe(false);

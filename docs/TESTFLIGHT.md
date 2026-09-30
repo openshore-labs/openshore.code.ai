@@ -94,6 +94,45 @@ some contact info first:
    `beta_groups: [<external group name>]`). Ask Claude to make this change.
 3. Push; the next build auto-submits for beta review.
 
+## 7. A store release (App Store review)
+
+The build for review is the only build with the pay gates on (OpenShore Plus,
+`VITE_PAY_GATES=1`; CTO, 2026-09-30). Every push to `main` builds
+`ios-testflight` with them off, so never submit a push build. Start the build
+for review by hand: Codemagic, the app, Start new build, workflow
+`ios-testflight`, branch `main`, and turn on the build input `store_release`
+("Store release, the build for App Store review"). On, the steps "Check the
+Apple receipt roots" and "Build the web app, sync the iOS project" export
+`OPENSHORE_STORE_RELEASE=1` and `VITE_PAY_GATES=1`; the test gate runs without
+them. A start through Codemagic's Builds API sets
+`"environment": {"variables": {"OPENSHORE_STORE_RELEASE": "1"}}` instead, which
+the same steps read.
+
+Never put `VITE_PAY_GATES` in the `Harbor-os-code` group: `mac-desktop`
+imports it too, and the desktop sells through Stripe only once Stripe is set
+up.
+
+Before the first store release, in order (CTO, 2026-09-30):
+
+1. App Store Connect: the Paid Apps Agreement, the subscription group and
+   product "OpenShore Plus" (`ai.openshore.oscode.personal.yearly`, $49.99 a
+   year), attached to the version you submit, so StoreKit answers a price
+   during review.
+2. The Apple functions deployed (`link-apple-purchase`,
+   `apple-notifications`) with the `APPLE_*` secrets and
+   `APPLE_ALLOW_SANDBOX=1`, which stays on through every review (each review
+   buys with sandbox).
+3. AppleRootCA-G3 pasted into `supabase/functions/_shared/apple.ts` (or kept
+   in the function secrets with `APPLE_ROOTS_IN_SECRETS=1` in the group). A
+   build that can sell stops at "Check the Apple receipt roots" until then.
+
+Then build once with `store_release` on and install it from TestFlight: a
+sandbox purchase with a separate sandbox Apple ID and a separate test
+account, a restore, and the free sidebar. Submit that same binary. Keep your
+own account working with either a comp entitlement row or sandbox purchases,
+not both: sandbox renewals speed up and then stop, and would overwrite a comp
+row.
+
 ## Troubleshooting
 
 - **Signing errors on the first build**: the `os_code_app_store`

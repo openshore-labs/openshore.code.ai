@@ -13,7 +13,7 @@
 // so it stays open (the accounts rule).
 import { SOURCE_ACCOUNT, type AccountFeature } from '../lib/accountGate.js';
 import { featurePaid } from '../lib/payGate.js';
-import type { PaywallReason } from './store.js';
+import type { PaywallReason, ViewName } from './store.js';
 import type { Conversation, Entitlement } from './types.js';
 
 type EntitlementLike = { status: string; validUntil?: string | null };
@@ -107,6 +107,35 @@ export function paywallReasonFor(feature: AccountFeature): PaywallReason {
   }
 }
 
+/** What a paid room's pass reads (roomPass). */
+export interface RoomPassFacts {
+  /** Routines on the computer, from the cached or live list. */
+  routines: number;
+  /** This is the desktop app, the computer itself. */
+  desktop: boolean;
+  /** Computers this device has paired with (a phone's saved hubs). */
+  savedHubs: number;
+}
+
+/** Stopping, revoking, forgetting and exporting are always free (CTO,
+ *  2026-09-30). A paid room opens without the paywall when the person has
+ *  something in it to stop or let go of, and every paid action inside keeps
+ *  its own door: Crew while routines exist (pause, stop, delete; making,
+ *  editing and Run now are paid), Desktop + phone on the desktop always
+ *  (Revoke; the pairing code and Connect are paid), and on a phone with a
+ *  paired computer (Forget; Scan and Connect are paid). */
+export function roomPass(view: ViewName, f: RoomPassFacts): boolean {
+  switch (view) {
+    case 'crew':
+    case 'crewcommand':
+      return f.routines > 0;
+    case 'pair':
+      return f.desktop || f.savedHubs > 0;
+    default:
+      return false;
+  }
+}
+
 /** A chat refused at the paid door. Not a failure to show: a message waiting
  *  to go opens the paywall instead (the sign-in sheet first, when needed),
  *  and stays parked. `feature` names the door. */
@@ -165,9 +194,10 @@ export function routinePatchFree(patch: Record<string, unknown>): boolean {
  *  iOS; the desktop opens the Stripe customer portal instead. */
 export const APPLE_SUBSCRIPTIONS_URL = 'https://apps.apple.com/account/subscriptions';
 
-/** Restore on an Apple device that found nothing to link. */
-export const RESTORE_FOUND_NOTHING =
-  'No Plus purchase on this Apple Account. Bought on the web? Sign in with that email.';
+/** Restore on an Apple device that found nothing to link. It names no other
+ *  way to pay (App Store 3.1.1; CTO, 2026-09-30): a reviewer on a clean
+ *  sandbox account sees exactly this. */
+export const RESTORE_FOUND_NOTHING = 'No OpenShore Plus purchase on this Apple Account.';
 
 export type WebCheckoutOutcome =
   | { kind: 'opened'; url: string }

@@ -11,6 +11,7 @@
 // person, and the repository sign-in exchange keeps no copy of the token.
 
 import { featureOn, type ReleaseTier, type TieredFeature, RELEASE_TIER } from './focus.js';
+import type { Platform } from './platform.js';
 
 export interface EgressEntry {
   id: string;
@@ -29,6 +30,10 @@ export interface EgressEntry {
   /** The later-tier feature this belongs to (docs/release-tiers.md); a build
    *  without it leaves the entry off the list, since it cannot happen there. */
   feature?: TieredFeature;
+  /** The platforms it can happen on, when not all of them. The iPhone and
+   *  iPad list leaves out what they never contact (the Stripe rail), so the
+   *  list there names no other way to pay (App Store 3.1.1; CTO, 2026-09-30). */
+  platforms?: readonly Platform[];
 }
 
 /** Recipients in the order the list shows them: OpenShore first. */
@@ -103,6 +108,7 @@ export const EGRESS: EgressEntry[] = [
     when: 'Only when you buy or restore a purchase.',
     start: 'tap',
     hosts: ['env:VITE_SUPABASE_URL'],
+    platforms: ['ios'],
   },
   {
     id: 'purchase-web',
@@ -111,14 +117,16 @@ export const EGRESS: EgressEntry[] = [
     when: 'Only on the desktop or the web, when you tap Get Plus or Manage subscription.',
     start: 'tap',
     hosts: ['env:VITE_SUPABASE_URL'],
+    platforms: ['electron', 'web'],
   },
   {
     id: 'stripe',
     recipient: 'Payments',
     what: 'Stripe Checkout and the Stripe billing page open in your own browser, where you give Stripe your email and card. Stripe tells our server that you paid and until when, and nothing about your chats or work.',
-    when: 'Only on the desktop or the web, after you tap Get Plus or Manage subscription. On iPhone and iPad, Plus is bought through the App Store.',
+    when: 'Only on the desktop or the web, after you tap Get Plus or Manage subscription.',
     start: 'tap',
     hosts: ['checkout.stripe.com', 'billing.stripe.com'],
+    platforms: ['electron', 'web'],
   },
   {
     id: 'account-deletion',
@@ -266,14 +274,19 @@ export const STAYS_ON_DEVICE: string[] = [
   'Which folders you trust and the commands you allow.',
 ];
 
-/** The entries this build can do, grouped by recipient, OpenShore first. */
+/** The entries this build can do on this platform, grouped by recipient,
+ *  OpenShore first. With no platform given, every platform's entries. */
 export function egressByRecipient(
   tier: ReleaseTier = RELEASE_TIER,
+  on?: Platform,
 ): Array<{ recipient: string; entries: EgressEntry[] }> {
   return RECIPIENT_ORDER.map((recipient) => ({
     recipient,
     entries: EGRESS.filter(
-      (e) => e.recipient === recipient && (!e.feature || featureOn(e.feature, tier)),
+      (e) =>
+        e.recipient === recipient &&
+        (!e.feature || featureOn(e.feature, tier)) &&
+        (!on || !e.platforms || e.platforms.includes(on)),
     ),
   })).filter((g) => g.entries.length > 0);
 }

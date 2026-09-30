@@ -7,7 +7,9 @@ import type { AppSettings } from '../src/state/store.js';
 import type { Conversation } from '../src/state/types.js';
 import { emptyThread } from '../src/state/types.js';
 
-vi.stubEnv('VITE_PAY_GATES', '1');
+// Hoisted above the imports: a module a static import reaches (types.ts ->
+// harborMini.ts) reads the flag when it loads.
+vi.hoisted(() => vi.stubEnv('VITE_PAY_GATES', '1'));
 
 const mem = new Map<string, string>();
 const opened = vi.hoisted(() => [] as string[]);
@@ -316,6 +318,59 @@ describe('the paid gate, on', () => {
     sb.rows = [{ tier_id: 'personal', status: 'active', valid_until: null }];
     await useApp.getState().recheckPersonal();
     expect(useApp.getState().view).toBe('chat');
+  });
+
+  // Get Plus, Restore or I already paid, tapped signed out, opens the
+  // sign-in sheet instead of a dead-end toast (CTO, 2026-09-30).
+  it('sends a signed-out purchase to the sign-in sheet', async () => {
+    for (const tap of ['buyPersonal', 'restorePurchases', 'recheckPersonal'] as const) {
+      useApp.setState({ authSession: undefined, paywall: 'plus', accountGate: undefined });
+      await useApp.getState()[tap]();
+      expect(useApp.getState().accountGate, tap).toBe('plus');
+      expect(useApp.getState().paywall, tap).toBeUndefined();
+      expect(sb.invoked, tap).toEqual([]);
+    }
+  });
+
+  // A read that finds Plus while the sheet is open closes it and carries on
+  // by itself (CTO, 2026-09-30): no paywall left standing for a subscriber.
+  it('closes the sheet when an entitlement read finds Plus', async () => {
+    useApp.getState().setView('terminalroom', { root: true });
+    expect(useApp.getState().paywall).toBe('plus');
+    sb.rows = [{ tier_id: 'personal', status: 'active', valid_until: null }];
+    await useApp.getState().refreshEntitlement();
+    expect(useApp.getState().paywall).toBeUndefined();
+    expect(useApp.getState().view).toBe('terminalroom');
+  });
+
+  it('holds saving a handoff to the Vault at the paid door', async () => {
+    const at = '2026-09-30T10:00:00.000Z';
+    useApp.setState({
+      conversations: {
+        c1: {
+          id: 'c1',
+          title: 'Switch',
+          source: { kind: 'mock' },
+          repoIds: [],
+          createdAt: at,
+          updatedAt: at,
+          thread: {
+            ...emptyThread(),
+            items: [
+              {
+                kind: 'note',
+                id: 'n1',
+                text: 'Handoff',
+                handoff: { date: '2026-09-30', project: 'Atlas' },
+              } as never,
+            ],
+          },
+        },
+      },
+      order: ['c1'],
+    });
+    expect(await useApp.getState().saveHandoffToVault('c1', 'n1')).toBeUndefined();
+    expect(useApp.getState().paywall).toBe('plus');
   });
 
   it('"I already paid" re-reads the account and carries on', async () => {

@@ -310,7 +310,7 @@ describe('the Stack batches every proposal into one approval card', () => {
       ? { modelClass: 'large', servedTokens: 200000, leavesNetwork: true }
       : { modelClass: 'tiny', servedTokens: 4096, leavesNetwork: false };
 
-  function setup() {
+  function setup(canWrite?: () => boolean) {
     const store = new Map<string, { text: string; version: string }>([
       ['Decisions/Auth.md', { text: '# Auth\nSessions.', version: 'v1' }],
     ]);
@@ -339,6 +339,7 @@ describe('the Stack batches every proposal into one approval card', () => {
           read: async (p: string) => store.get(p),
           write: write as never,
           onWritten: (paths: string[]) => written.push(paths),
+          ...(canWrite ? { canWrite } : {}),
         },
       },
     );
@@ -386,6 +387,30 @@ describe('the Stack batches every proposal into one approval card', () => {
     const tools = h.claudeParams[0]!.tools as Array<{ name: string }>;
     expect(tools.map((t) => t.name)).toEqual(['vaultSearch', 'vaultRead', 'vaultPropose']);
     driver.dispose();
+  });
+
+  // Writing notes from a chat is Vault authoring, part of OpenShore Plus (CTO,
+  // 2026-09-30): while it is shut the chat still reads, but is never offered
+  // the proposal tool, so no card appears that could not land.
+  it('offers no proposal tool while writing is shut, and shows no card', async () => {
+    let open = false;
+    const { driver, events, write } = setup(() => open);
+    driver.send('save a launch note');
+    await settle();
+    const tools = h.claudeParams[0]!.tools as Array<{ name: string }>;
+    expect(tools.map((t) => t.name)).toEqual(['vaultSearch', 'vaultRead']);
+    expect(cards(events)).toHaveLength(0);
+    expect(write).not.toHaveBeenCalled();
+    driver.dispose();
+    // Read each turn: open again, the tool comes back.
+    open = true;
+    h.claudeParams.length = 0;
+    const again = setup(() => open);
+    again.driver.send('save a launch note');
+    await settle();
+    const back = h.claudeParams[0]!.tools as Array<{ name: string }>;
+    expect(back.map((t) => t.name)).toEqual(['vaultSearch', 'vaultRead', 'vaultPropose']);
+    again.driver.dispose();
   });
 
   it('declined: one card for both, nothing written', async () => {
