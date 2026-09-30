@@ -7462,6 +7462,73 @@ describe('round 7, batch 4: Your computer keeps main behavior in the resolve she
     ]);
   });
 
+  describe('E24 on the personal vaults', () => {
+    it('Your computer: a listed note deleted there is said gone and relisted', async () => {
+      useApp.setState({
+        settings: { ...useApp.getState().settings, gitosResources: personalOn('hub') },
+      });
+      hub.files.set('n.md', 'on the computer');
+      hub.files.set('keep.md', 'k');
+      await useApp.getState().vaultRefresh();
+      hub.files.delete('n.md');
+      await useApp.getState().vaultOpen('n.md');
+      expect(useApp.getState().toast).toBe(vaultGoneToast('n'));
+      expect(useApp.getState().vaultFiles.map((f) => f.path)).toEqual(['keep.md']);
+      expect(useApp.getState().vaultNote).toBeUndefined();
+    });
+
+    it('iCloud: a listed note evicted since the list still says downloading', async () => {
+      useApp.setState({
+        settings: { ...useApp.getState().settings, gitosResources: personalOn('icloud') },
+      });
+      cloud.files.set('n.md', 'here');
+      await useApp.getState().vaultRefresh();
+      cloud.files.delete('n.md');
+      cloud.evicted.add('n.md');
+      await useApp.getState().vaultOpen('n.md');
+      expect(useApp.getState().toast).toMatch(/Still downloading/);
+      expect(useApp.getState().vaultNote).toBeUndefined();
+    });
+
+    it('a read that raced empty while the note is there reads again and opens it', async () => {
+      files.set('n.md', 'the words');
+      await useApp.getState().vaultRefresh();
+      const lp = local.provider as unknown as Record<string, unknown>;
+      const read = local.provider.read.bind(local.provider);
+      let first = true;
+      lp.read = async (r: string, path: string) => {
+        if (first) {
+          first = false;
+          return undefined;
+        }
+        return read(r, path);
+      };
+      try {
+        await useApp.getState().vaultOpen('n.md');
+      } finally {
+        lp.read = read;
+      }
+      expect(useApp.getState().vaultNote).toMatchObject({ path: 'n.md', text: 'the words' });
+    });
+
+    it('a note there whose bytes never answer says the connection, never an empty editor', async () => {
+      files.set('n.md', 'the words');
+      await useApp.getState().vaultRefresh();
+      const lp = local.provider as unknown as Record<string, unknown>;
+      const read = local.provider.read.bind(local.provider);
+      lp.read = async () => undefined;
+      try {
+        await useApp.getState().vaultOpen('n.md');
+      } finally {
+        lp.read = read;
+      }
+      expect(useApp.getState().vaultNote).toBeUndefined();
+      expect(useApp.getState().toast).toBe(
+        'Could not open that note. Check your vault storage connection.',
+      );
+    });
+  });
+
   describe('E29: Keep both refused while the computer is away keeps the choice open', () => {
     async function changedOnHub() {
       useApp.setState({
@@ -7575,8 +7642,16 @@ describe('round 7, batch 4: the team vault says what is there, and what it did',
       await heldAtCap();
       await rename('a.md', 'b.md');
       expect(st().vaultNote?.path).toBe('b.md');
-      expect(st().vaultHeldVisible().filter((h) => h.path === 'b.md')).toHaveLength(1);
-      expect(st().vaultHeldVisible().filter((h) => h.path === 'a.md')).toHaveLength(0);
+      expect(
+        st()
+          .vaultHeldVisible()
+          .filter((h) => h.path === 'b.md'),
+      ).toHaveLength(1);
+      expect(
+        st()
+          .vaultHeldVisible()
+          .filter((h) => h.path === 'a.md'),
+      ).toHaveLength(0);
       expect(sealedHeld().map((h) => [(h as { path?: string }).path, h.text])).toEqual([
         ['b.md', 'the base, and a held paragraph'],
       ]);
@@ -7597,10 +7672,11 @@ describe('round 7, batch 4: the team vault says what is there, and what it did',
         ['a.md', 'new words at the old name'],
         ['b.md', 'the base, and a held paragraph'],
       ]);
-      expect(sealedHeld().map((h) => h.text).sort()).toEqual([
-        'new words at the old name',
-        'the base, and a held paragraph',
-      ]);
+      expect(
+        sealedHeld()
+          .map((h) => h.text)
+          .sort(),
+      ).toEqual(['new words at the old name', 'the base, and a held paragraph']);
     });
 
     it('a held note inside a renamed folder follows it', async () => {
@@ -7715,6 +7791,121 @@ describe('round 7, batch 4: the team vault says what is there, and what it did',
     });
   });
 
+  describe('E24: a listed note someone deleted or renamed is said gone, never still downloading', () => {
+    async function teammateMove(from: string, to: string) {
+      const was = server.caller;
+      server.caller = 'u-teammate';
+      await server.rpc('org_vault_move', 'tok', {
+        p_org: ORG,
+        p_from: from,
+        p_to: to,
+        p_if_match: server.notes.get(from)!.rev,
+      });
+      server.caller = was;
+      server.rpcs.pop();
+    }
+    async function today() {
+      server.putSettings({ version: 1, daily: { folder: 'Daily', format: 'YYYY-MM-DD' } });
+      await st().vaultRefresh();
+      await st().vaultLoadSettings({ force: true });
+      clearVaultTodayCache();
+      const made = await st().vaultToday();
+      expect(made).toMatchObject({ kind: 'created' });
+      const path = (made as { path: string }).path;
+      st().vaultCloseNote();
+      return path;
+    }
+
+    it('opening a listed note a teammate deleted says it is gone and relists', async () => {
+      server.put('x.md', 'x', 'u-me');
+      server.put('keep.md', 'k', 'u-me');
+      await st().vaultRefresh();
+      server.drop('x.md');
+      useApp.setState({ toast: undefined });
+      await st().vaultOpen('x.md');
+      expect({ toast: st().toast, files: st().vaultFiles.map((f) => f.path) }).toEqual({
+        toast: vaultGoneToast('x'),
+        files: ['keep.md'],
+      });
+      expect(st().vaultNote).toBeUndefined();
+    });
+
+    it('N7: reopening a note just deleted does not say downloading', async () => {
+      server.put('n.md', 'A', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      st().vaultCloseNote();
+      server.drop('n.md');
+      useApp.setState({ toast: undefined });
+      await st().vaultOpen('n.md');
+      expect(st().toast ?? '').not.toMatch(/downloading/i);
+      expect(st().toast).toBe(vaultGoneToast('n'));
+    });
+
+    it("a teammate's case-only rename opens the note at its own spelling", async () => {
+      server.put('Plan.md', 'the plan', 'u-me');
+      await st().vaultRefresh();
+      await teammateMove('Plan.md', 'plan.md');
+      useApp.setState({ toast: undefined });
+      await st().vaultOpen('Plan.md');
+      expect(st().vaultNote).toMatchObject({ path: 'plan.md', text: 'the plan' });
+      expect(st().vaultFiles.map((f) => f.path)).toEqual(['plan.md']);
+      expect(st().toast ?? '').not.toMatch(/downloading|no longer/i);
+    });
+
+    it("Today on today's note a teammate deleted does not answer opened or say downloading", async () => {
+      const path = await today();
+      server.drop(path);
+      useApp.setState({ toast: undefined });
+      const again = await st().vaultToday();
+      expect(st().toast ?? '').not.toMatch(/downloading/i);
+      expect(again).not.toMatchObject({ kind: 'opened' });
+      // It is in Trash, so no new note takes its name (E22): the line says so.
+      expect(again).toMatchObject({ kind: 'refused' });
+      expect((again as { line: string }).line).toMatch(/is in Trash/);
+    });
+
+    it("Today on today's note a teammate moved away makes it again", async () => {
+      const path = await today();
+      await teammateMove(path, 'Daily/moved.md');
+      useApp.setState({ toast: undefined });
+      const again = await st().vaultToday();
+      expect(again).toMatchObject({ kind: 'created', path });
+      expect(server.bytes(path)).toBeDefined();
+      expect(st().vaultNote?.path).toBe(path);
+      expect(st().toast ?? '').not.toMatch(/downloading|no longer/i);
+    });
+
+    it('Today with the plan lapsed says the plan line, not opened', async () => {
+      const path = await today();
+      server.drop(path);
+      server.entitled = false;
+      await st().vaultLoadSettings({ force: true });
+      await vi.waitFor(() => expect(st().vaultTeamPlan).toMatchObject({ entitled: false }));
+      const again = await st().vaultToday();
+      expect(again).toEqual({ kind: 'refused', line: VAULT_TEAM_LAPSED_NOT_CREATED });
+    });
+
+    it('New note on a listed name a teammate moved away makes it, seed and all', async () => {
+      server.put('y.md', 'old', 'u-me');
+      await st().vaultRefresh();
+      await teammateMove('y.md', 'z.md');
+      await st().vaultCreate('y', 'the seed');
+      expect(server.bytes('y.md')).toBe('the seed');
+      expect(st().vaultNote).toMatchObject({ path: 'y.md', text: 'the seed' });
+    });
+
+    it('New note on a listed name a teammate deleted keeps the seed under Not saved', async () => {
+      server.put('y.md', 'old', 'u-me');
+      await st().vaultRefresh();
+      server.drop('y.md');
+      await st().vaultCreate('y', 'the seed');
+      expect(server.bytes('y.md')).toBeUndefined();
+      expect(teamHeld().map((h) => h.text)).toEqual(['the seed']);
+      expect(st().toast ?? '').toMatch(/is in Trash/);
+    });
+  });
+
   describe("E32: a team list started under one account never opens that account's index for the next", () => {
     // u1's list answer is held after the server answered it; u1 signs out,
     // u2 signs in and opens the team vault; then u1's answer lands.
@@ -7782,7 +7973,12 @@ describe('round 7, batch 4: the team vault says what is there, and what it did',
       let gated = false;
       server.select = async (table, token, query) => {
         const out = await origSelect(table, token, query);
-        if (!gated && table === 'org_vault_notes' && /path=eq\./.test(query) && token === 'tok-u1') {
+        if (
+          !gated &&
+          table === 'org_vault_notes' &&
+          /path=eq\./.test(query) &&
+          token === 'tok-u1'
+        ) {
           gated = true;
           reached.resolve();
           await d.promise;

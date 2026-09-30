@@ -2048,7 +2048,10 @@ interface AppState {
   /** Open a note into vaultNote, by its exact listed path. A path that is not
    *  listed is a typed name: it is normalized, and when the provider does not
    *  hold it either, it opens as a fresh empty note. */
-  vaultOpen(path: string): Promise<void>;
+  // A listed note the storage no longer holds answers 'gone' (said once,
+  // unless `quietGone`: a caller that makes it again says its own), and the
+  // list is taken again (round 7 E24).
+  vaultOpen(path: string, opts?: { quietGone?: boolean }): Promise<'opened' | 'gone' | undefined>;
   /** Create a note from a typed name: write an empty file so it persists
    *  immediately (a fresh note no longer evaporates on back-out), then open it
    *  in write mode. If it already exists, listed or not, just opens it. `at`
@@ -7297,6 +7300,49 @@ export const useApp = create<AppState>((set, get, api) => {
     return member === 'member' ? 'ok' : member;
   }
 
+  // A note the list shows that the storage no longer holds (round 7 E24): a
+  // teammate or another device deleted or renamed it since the list. The
+  // team is asked first whether this account is still a member, since a
+  // removed member reads no rows either (E26). The list is taken again, a
+  // note at another spelling of the name (a case-only rename) opens at its
+  // own, once, and otherwise the note is said gone, once. Nothing opens.
+  let vaultOpenFollowing = false;
+  async function vaultOpenGone(
+    target: VaultTarget,
+    path: string,
+    seq: number,
+    opts: { quietGone?: boolean },
+  ): Promise<'opened' | 'gone' | undefined> {
+    const member = await teamMembership(target);
+    if (member === 'removed') return undefined;
+    if (member === 'failed') {
+      get().showToast('Could not open that note. Check your vault storage connection.');
+      return undefined;
+    }
+    const listing = await listVaultNotes(target).catch(() => undefined);
+    if (seq !== vaultOpenSeq || !isActiveVault(target)) return undefined;
+    // Out of the list and the index at once, so a caller that goes on to
+    // make it again (Today, New note) does not find it there.
+    patchVaultFiles(target, { removed: path });
+    if (listing) {
+      set({ vaultFiles: listing });
+      void vaultIndexOf(target)?.reconcile(listing);
+    }
+    const want = foldPath(path);
+    const twin = listing?.find((f) => f.path !== path && foldPath(f.path) === want);
+    if (twin && !vaultOpenFollowing) {
+      vaultOpenFollowing = true;
+      try {
+        return await get().vaultOpen(twin.path, opts);
+      } finally {
+        vaultOpenFollowing = false;
+      }
+    }
+    if (!opts.quietGone) get().showToast(vaultGoneToast(noteTitle(path)));
+    logEvent('vault_note_gone', { dirty: false });
+    return 'gone';
+  }
+
   // CTO F3: look at the open note once. Same version: nothing. Gone: close a
   // clean note back to its folder, or ask about a dirty one. Changed: adopt
   // the version silently when the text is what this device loaded (a touch,
@@ -11420,7 +11466,7 @@ export const useApp = create<AppState>((set, get, api) => {
       await replayVaultPending(target);
     },
 
-    async vaultOpen(path) {
+    async vaultOpen(path, opts = {}) {
       const target = vaultTarget();
       if (!target) return;
       // The latest tap wins: an open that waited is dropped once another
@@ -11474,22 +11520,30 @@ export const useApp = create<AppState>((set, get, api) => {
         return;
       }
       if (!existing) {
-        // Listed, or unlisted but the provider knows it (the list is stale, or
-        // iCloud is still downloading it): either way its bytes are not here
-        // yet. Never fabricate an empty note over it (data-2).
-        let there = Boolean(listed);
-        if (!there) {
-          try {
-            there = Boolean(await target.provider.stat(target.resourceId, openPath));
-          } catch {
-            get().showToast('Could not open that note. Check your vault storage connection.');
-            return;
+        // Listed or not, the storage is asked what it holds now (E24). A note
+        // it has whose bytes are not here yet (iCloud's placeholder) is never
+        // fabricated as an empty note (data-2); a stat and a read are two
+        // looks, so a write between them answers a second read. A listed
+        // note it no longer has was deleted or renamed somewhere else since
+        // the list, and only a name it never held opens fresh.
+        let meta: StoredFileMeta | undefined;
+        try {
+          meta = await target.provider.stat(target.resourceId, openPath);
+          if (meta && !meta.evicted) {
+            existing = await target.provider.read(target.resourceId, openPath);
           }
-        }
-        if (there) {
-          downloading();
+        } catch {
+          get().showToast('Could not open that note. Check your vault storage connection.');
           return;
         }
+        if (meta && !existing) {
+          // Only iCloud keeps notes whose bytes are elsewhere; on any other
+          // storage "try again shortly" would never come true.
+          if (meta.evicted || target.providerId === 'icloud') downloading();
+          else get().showToast('Could not open that note. Check your vault storage connection.');
+          return;
+        }
+        if (!meta && listed) return vaultOpenGone(target, openPath, seq, opts);
       }
       if (seq !== vaultOpenSeq || !isActiveVault(target)) return;
       if (existing) vaultIndexOf(target)?.noteRead(existing);
@@ -11514,6 +11568,7 @@ export const useApp = create<AppState>((set, get, api) => {
       });
       logEvent('vault_note_open', { fresh: !existing });
       if (existing) noteVaultRecent(target, openPath);
+      return 'opened';
     },
 
     async vaultCreate(path, content = '', at) {
@@ -11541,10 +11596,9 @@ export const useApp = create<AppState>((set, get, api) => {
       const listed =
         files.find((f) => f.path === normalized) ??
         files.find((f) => f.path.toLowerCase() === normalized.toLowerCase());
-      if (listed) {
-        await get().vaultOpen(listed.path);
-        return;
-      }
+      // Gone since the list (a teammate deleted or moved it): the create goes
+      // on below, and is guarded there like any other (E24).
+      if (listed && (await get().vaultOpen(listed.path, { quietGone: true })) !== 'gone') return;
       // A lapsed team plan takes no new note (OV402): said here, before the
       // server is asked (a listed note still opens, read-only), and a seeded
       // body is held so its words are not lost.
@@ -12477,19 +12531,32 @@ export const useApp = create<AppState>((set, get, api) => {
     async vaultToday() {
       const t = vaultTarget();
       if (!t || !capsOf(t).today) return undefined;
-      const plan = await resolveVaultToday({
-        provider: t.provider,
-        resourceId: t.resourceId,
-        paths: get().vaultFiles.map((f) => f.path),
-        readBody: (path) => readBodyOf(t, path),
-        cacheKey: foldersKey(t),
-      }).catch(() => undefined);
+      const resolve = () =>
+        resolveVaultToday({
+          provider: t.provider,
+          resourceId: t.resourceId,
+          paths: get().vaultFiles.map((f) => f.path),
+          readBody: (path) => readBodyOf(t, path),
+          cacheKey: foldersKey(t),
+        }).catch(() => undefined);
+      let plan = await resolve();
       if (!plan) return { kind: 'refused', line: VAULT_TODAY_FAILED };
       if (!plan.ok) return { kind: 'refused', line: vaultTodayLine(plan)! };
-      // Already there: it opens as it is, with nothing written (K7).
+      // Already there: it opens as it is, with nothing written (K7). Gone
+      // since the list (a teammate deleted or moved it), the day is planned
+      // again on the list taken then, template and all, and made below
+      // like any new day (E24).
       if (plan.exists) {
-        await get().vaultOpen(plan.path);
-        return { kind: 'opened', path: plan.path };
+        if ((await get().vaultOpen(plan.path, { quietGone: true })) !== 'gone') {
+          return { kind: 'opened', path: plan.path };
+        }
+        plan = await resolve();
+        if (!plan) return { kind: 'refused', line: VAULT_TODAY_FAILED };
+        if (!plan.ok) return { kind: 'refused', line: vaultTodayLine(plan)! };
+        if (plan.exists) {
+          await get().vaultOpen(plan.path);
+          return { kind: 'opened', path: plan.path };
+        }
       }
       // A start is a write: read-only or away says so in the room's words.
       const caps = capsOf(t);
@@ -12522,7 +12589,8 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       if (!r.created) {
         // Another device made it a moment ago: open what is there, silently.
-        await get().vaultOpen(r.path);
+        // Gone again by then, the open has said so (E24).
+        if ((await get().vaultOpen(r.path)) === 'gone') return undefined;
         return { kind: 'opened', path: r.path };
       }
       if (!isActiveVault(t)) return undefined;
