@@ -66,9 +66,9 @@ numbers collide with main's or production's.
 `supabase test db` runs every `.sql` file under `tests/`, each its own
 rolled-back transaction with its own plan: `tests/rls.test.sql` (32 assertions
 over the 0015 cases below), `tests/org_vault.test.sql` (144 over 0021, 0024 and
-0025), `tests/account_deletion.test.sql` (66 over 0022, its section 6
+0025), `tests/account_deletion.test.sql` (68 over 0022, its section 6
 deletion functions included, and 0023), and `tests/guardrail_privacy.test.sql`
-(53 over production's 0019 and 0020, 0022's appeal address, and 0026). Every file scopes its counts to its own ids, since it
+(57 over production's 0019 and 0020, 0022's appeal address, and 0026). Every file scopes its counts to its own ids, since it
 also runs on a database that is not empty. (Files outside `tests/`, such as
 `replay/`, are not pgTAP files and must stay out of it.)
 
@@ -124,7 +124,9 @@ everything else (among them `db pull`, `pull`, `migration repair`,
 or another `supabase/` folder, in any spelling (on 2.118.0 a target flag
 counts once given, whatever its value, so `--linked=false` targets the linked
 project), any `--local=` other than `--local=true`, `--wizard` in any
-spelling, a bare `--`, and any flag before the subcommand that is not one of
+spelling, a bare `--`, every `--no-<flag>` (2.118.0 reads `--no-linked` as
+`--linked` and `--no-wizard` as `--wizard`), and any flag before the
+subcommand that is not one of
 the CLI's global flags, before anything runs
 (`app/test/localVaultScript.test.ts`, which also runs every use documented
 here, in the runbook and in CI). The entry is never

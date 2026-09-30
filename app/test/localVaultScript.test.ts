@@ -108,6 +108,16 @@ describe('local-vault.sh refuses anything that could reach a project', () => {
     'supabase db reset --local --wizard=true',
     'supabase db push --local --wizard=1',
     'npx --yes supabase@2.118.0 --agent no --wizard db start',
+    // --no-<flag> anywhere: 2.118.0 reads --no-linked as --linked and
+    // --no-wizard as --wizard.
+    'supabase db reset --no-linked',
+    'supabase --yes db reset --no-linked',
+    'npx --yes supabase@2.118.0 --agent no db reset --no-linked',
+    'supabase db push --local --no-linked',
+    'supabase db start --no-wizard',
+    'supabase start --no-wizard',
+    'supabase db reset --local --no-wizard',
+    'supabase db reset --no-local',
     // A bare -- anywhere.
     'supabase -- db start',
     'supabase db start --',

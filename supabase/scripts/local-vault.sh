@@ -37,8 +37,11 @@
 # spellings that mark the local stack are `--local` and `--local=true`; any
 # other `--local=<value>` is refused too, so what a command says and what it
 # does never differ. Refused anywhere as well: `--wizard` in any spelling
-# (it asks its own questions after this check) and a bare `--` (the words
-# after it are not read as flags here, whatever the CLI makes of them).
+# (it asks its own questions after this check), a bare `--` (the words
+# after it are not read as flags here, whatever the CLI makes of them), and
+# every `--no-<flag>`: 2.118.0 reads `--no-linked` as `--linked` and
+# `--no-wizard` as `--wizard` (checked offline, in a folder linked to
+# nothing), and no local use needs one.
 #
 # The subcommand is the first word after the launcher (`supabase`,
 # `npx [--yes|-y] supabase` or `npx [--yes|-y] supabase@<version>`, or a path
@@ -68,6 +71,9 @@ for arg in "$@"; do
   case "$arg" in
     --)
       refuse "a bare '--' (what follows it is not checked as flags here)"
+      ;;
+    --no-*)
+      refuse "'$arg' (2.118.0 reads --no-<flag> as the flag being given)"
       ;;
     --wizard*)
       refuse "'$arg' (wizard mode asks its own questions after this check)"
