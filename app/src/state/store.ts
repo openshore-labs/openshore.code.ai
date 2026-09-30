@@ -986,6 +986,11 @@ const ANTHROPIC_KEY_KEY = 'oscode.secret.anthropic';
 // storage sheet.
 const VAULT_RESOURCE_ID = 'vault.personal';
 
+// How long opening a note waits for this device's save of it that is still
+// on its way (E3). A team save is one round trip; past this the note opens
+// anyway, and the save's landing reloads it.
+const VAULT_OPEN_WAIT_MS = 2000;
+
 /** What a driver build takes besides the chat and its seed. */
 interface BuildExtra {
   /** A handoff for a desktop agent's first task (CTO J12). */
@@ -6682,6 +6687,22 @@ export const useApp = create<AppState>((set, get, api) => {
   const vaultSaveChains = new Map<string, Promise<string | undefined>>();
   // How many vaultSave calls are running, for the save chip (vaultSaving).
   let vaultSavesInFlight = 0;
+  // Every vaultOpen, vaultCloseNote and scope change takes the next number,
+  // so an open that waited knows a later tap came after it (E3).
+  let vaultOpenSeq = 0;
+  // Wait, a bounded while, for this device's writes to a note that are on
+  // their way (its save chain), so an open reads what they wrote (E3).
+  async function settledWrites(t: VaultTargetRef, path: string): Promise<void> {
+    const key = vaultKey(t, path);
+    const waits = [vaultSaveChains.get(key)].filter((w) => w !== undefined);
+    if (!waits.length) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      Promise.all(waits).catch(() => undefined),
+      new Promise((resolve) => (timer = setTimeout(resolve, VAULT_OPEN_WAIT_MS))),
+    ]);
+    if (timer) clearTimeout(timer);
+  }
 
   // Run one step as the next link of a note's save chain, so it never sees
   // this device's own save half done (a re-check, a resolve choice).
@@ -7024,7 +7045,13 @@ export const useApp = create<AppState>((set, get, api) => {
     }).catch(() => {});
     // The list and the body cache were patched from the write's result
     // (putVaultNote), so nothing is re-listed here.
-    if (isActiveVault(target)) {
+    const reopened = isActiveVault(target) && get().vaultNote?.path === path;
+    if (reopened && get().vaultNote?.loadedAt !== session) {
+      // The note was opened again after this save began, so the editor shows
+      // that read, not these words (E3).
+      await landOnReopened(target, path, saved);
+      if (isActiveVault(target)) set({ vaultError: undefined });
+    } else if (isActiveVault(target)) {
       set({
         vaultNote:
           get().vaultNote?.path === path
@@ -7045,6 +7072,24 @@ export const useApp = create<AppState>((set, get, api) => {
     await replayVaultPending(target);
     logEvent('vault_note_save');
     return versionOf(saved);
+  }
+
+  // A write this device sent landed on a note opened again (or reloaded)
+  // after the save began, so the editor shows that read, not these words: a
+  // clean editor takes them in place; one typed into since is asked, with
+  // the typed text stashed against the version it was typed on (E3).
+  async function landOnReopened(t: VaultTarget, path: string, file: StoredFile): Promise<void> {
+    const open = get().vaultNote;
+    if (!open || open.path !== path || !isActiveVault(t)) return;
+    const draft = draftOf(path) ?? open.text;
+    if (draft === open.text || draft === file.text) {
+      reloadOpenNote(file, 'resolve');
+      return;
+    }
+    if (get().vaultConflict?.path === path) return;
+    const base = versionOf(open) || undefined;
+    raiseVaultConflict(t, path, 'changed', file, base);
+    await stashConflictText(t, path, draft, base);
   }
 
   // Stash text for a note while a choice about it is open, stamped with the
@@ -7143,9 +7188,14 @@ export const useApp = create<AppState>((set, get, api) => {
     session?: number,
   ): Promise<string | undefined> {
     const theirs = result.theirs;
-    const isOpen = isActiveVault(target) && get().vaultNote?.path === path;
+    const shown = isActiveVault(target) && get().vaultNote?.path === path;
+    // Open, and still the sitting this text was typed in. A note opened again
+    // after the save began is settled like a closed one: its editor shows
+    // another read, so it is never asked about this text (E3).
+    const isOpen = shown && get().vaultNote?.loadedAt === session;
     if (theirs && theirs.text === text) {
       await dropStash(target, path);
+      if (shown && !isOpen) await landOnReopened(target, path, theirs);
       if (isOpen) {
         set({
           vaultNote: {
@@ -10653,6 +10703,7 @@ export const useApp = create<AppState>((set, get, api) => {
     async setVaultScope(scope) {
       if (scope === get().vaultScope) return;
       if (scope === 'team' && !get().teamVaultAvailable()) return;
+      vaultOpenSeq++;
       // Leaving the note with a choice open keeps both (CS 1c).
       await leaveVaultConflict();
       vaultLiveDraft = undefined;
@@ -10769,6 +10820,9 @@ export const useApp = create<AppState>((set, get, api) => {
     async vaultOpen(path) {
       const target = vaultTarget();
       if (!target) return;
+      // The latest tap wins: an open that waited is dropped once another
+      // open, a close, or a scope change came after it (E3).
+      const seq = ++vaultOpenSeq;
       const files = get().vaultFiles;
       // Open by the exact listed path. A note the agent, a routine, or
       // Obsidian named with characters the typed-name rule strips ("Decision:
@@ -10787,6 +10841,15 @@ export const useApp = create<AppState>((set, get, api) => {
           files.find((f) => f.path.toLowerCase() === normalized.toLowerCase());
         openPath = listed?.path ?? normalized;
       }
+      // Already open (Today on today's note, the switcher): it stays as it
+      // is, typed text and all, never re-read under the editor (E3).
+      if (get().vaultNote?.path === openPath) return;
+      // A save of this note still on its way lands first, so the note opens
+      // at what it wrote, never at an older version the next keystroke would
+      // save over (E3). Bounded: a hung write never keeps the note shut, and
+      // its landing reloads the note (saveVaultNote).
+      await settledWrites(target, openPath);
+      if (seq !== vaultOpenSeq || !isActiveVault(target)) return;
       const downloading = () =>
         get().showToast('Still downloading this note from your vault storage. Try again shortly.');
       // UI-2: a note whose bytes are evicted from this device (iCloud's
@@ -10825,13 +10888,14 @@ export const useApp = create<AppState>((set, get, api) => {
           return;
         }
       }
-      if (!isActiveVault(target)) return;
+      if (seq !== vaultOpenSeq || !isActiveVault(target)) return;
       if (existing) vaultIndexOf(target)?.noteRead(existing);
       if (existing) cacheOpenBody(existing);
       // Opening another note leaves this one: a choice still open on it keeps
       // both (CS 1c).
       if (get().vaultConflict && get().vaultConflict?.path !== openPath) {
         await leaveVaultConflict();
+        if (seq !== vaultOpenSeq || !isActiveVault(target)) return;
       }
       vaultLiveDraft = undefined;
       set({
@@ -10981,6 +11045,8 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     vaultCloseNote() {
+      // An open still waiting for its note's save never reopens it (E3).
+      vaultOpenSeq++;
       // Leaving the note with a choice open keeps both (CS 1c); the conflict
       // clears at once and the copy is written after.
       void leaveVaultConflict();
@@ -11254,9 +11320,13 @@ export const useApp = create<AppState>((set, get, api) => {
       const before = vaultSaveChains.get(key);
       const run = (async () => {
         const carried = before ? await before : undefined;
-        return saveVaultNote(target, path, text, vaultBaseOf(target, path) ?? carried ?? called, {
-          session,
-        });
+        // The version this text was typed on: the open note's while it is
+        // still the sitting the text came from; once the note was opened
+        // again, what this device last knew of that sitting (E3).
+        const now = isActiveVault(target) ? get().vaultNote : undefined;
+        const same = now?.path === path && now.loadedAt === session;
+        const base = same ? (vaultBaseOf(target, path) ?? carried ?? called) : (carried ?? called);
+        return saveVaultNote(target, path, text, base, { session });
       })();
       const link = run.catch(() => undefined);
       vaultSaveChains.set(key, link);

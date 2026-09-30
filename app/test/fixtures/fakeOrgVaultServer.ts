@@ -149,7 +149,18 @@ export function createFakeOrgVaultServer(org = 'org-123'): FakeOrgVaultServer {
     return n;
   };
 
+  // 0021's org_vault_snapshot: a delete or a rename always records; an
+  // overwrite records only when the displaced version is someone else's (or
+  // nobody's) or more than ten minutes old, so a member's quick second save
+  // keeps no copy of the first.
   const snapshot = (s: FakeOrgVaultServer, n: FakeNote, reason: FakeRevision['reason']) => {
+    if (
+      reason === 'overwritten' &&
+      n.updated_by === s.caller &&
+      Date.parse(n.updated_at) >= clock - 10 * 60 * 1000
+    ) {
+      return;
+    }
     s.revisions.push({
       id: ++revisionId,
       path: n.path,

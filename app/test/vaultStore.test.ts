@@ -5044,4 +5044,196 @@ describe('round 7: team text belongs to its account and its version', () => {
       expect(folder.files.get('t.md')).toBe('- [x] a\n- [x] b\nadded in Obsidian');
     });
   });
+
+  describe('E3: reopening a note while its save is on its way keeps the words in flight', () => {
+    // The text the editor shows, followed through every store change: it
+    // takes the note's text only when the path changes or `reloaded` moves,
+    // as VaultScreen's draft effects do.
+    function screen() {
+      let seen = st().vaultNote;
+      const stop = useApp.subscribe((state) => {
+        const now = state.vaultNote;
+        if (!now) seen = undefined;
+        else if (now.path !== seen?.path || now.reloaded !== seen?.reloaded) seen = now;
+      });
+      stops.push(stop);
+      return () => seen?.text ?? '';
+    }
+    const stops: Array<() => void> = [];
+    afterEach(() => {
+      for (const stop of stops.splice(0)) stop();
+    });
+
+    it('All notes and straight back: the reopened note shows the words, and the next save keeps them', async () => {
+      server.put('n.md', 'A', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      const at = st().vaultTargetRef();
+      const g = gateWrites(server);
+      const typed = 'A, and B typed before leaving';
+      st().vaultNoteDraft('n.md', typed);
+      const save = st().vaultSave('n.md', typed, at);
+      st().vaultCloseNote();
+      const shown = screen();
+      const reopen = st().vaultOpen('n.md');
+      await tick();
+      g.open.resolve();
+      await save;
+      await reopen;
+      expect(shown()).toBe(typed);
+      await st().vaultSave('n.md', `${shown()}, and C`);
+      expect(server.bytes('n.md')).toBe(`${typed}, and C`);
+    });
+
+    it('the same through Today from the list', async () => {
+      await st().vaultRefresh();
+      expect(await st().vaultToday()).toMatchObject({ kind: 'created' });
+      const path = st().vaultNote!.path;
+      const at = st().vaultTargetRef();
+      const g = gateWrites(server);
+      const typed = `${st().vaultNote!.text}The morning's first paragraph.`;
+      st().vaultNoteDraft(path, typed);
+      const save = st().vaultSave(path, typed, at);
+      st().vaultCloseNote();
+      const shown = screen();
+      const today = st().vaultToday();
+      await tick();
+      g.open.resolve();
+      await save;
+      expect(await today).toMatchObject({ kind: 'opened' });
+      expect(shown()).toBe(typed);
+      await st().vaultSave(path, `${shown()} Later.`);
+      expect(liveHas(server, "The morning's first paragraph.")).toBe(true);
+    });
+
+    it("a teammate's save in the window: the note shows theirs, and the words in flight are a keep-both copy", async () => {
+      server.put('n.md', 'A', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      const at = st().vaultTargetRef();
+      const g = gateWrites(server);
+      const typed = 'A, and B typed before leaving';
+      st().vaultNoteDraft('n.md', typed);
+      const save = st().vaultSave('n.md', typed, at);
+      st().vaultCloseNote();
+      const reopen = st().vaultOpen('n.md');
+      await tick();
+      server.put('n.md', 'theirs');
+      g.open.resolve();
+      await save;
+      await reopen;
+      expect(st().vaultNote?.text).toBe('theirs');
+      expect(st().vaultConflict).toBeUndefined();
+      const copies = [...server.notes.values()].filter(
+        (n) => !n.deleted && conflictCopy('n').test(n.path),
+      );
+      expect(copies.map((n) => n.body)).toEqual([typed]);
+      expect(st().toast).toMatch(/kept as/);
+    });
+
+    it('Today on the open note leaves it and its typed text as they are', async () => {
+      await st().vaultRefresh();
+      await st().vaultToday();
+      const path = st().vaultNote!.path;
+      const before = st().vaultNote;
+      st().vaultNoteDraft(path, 'typed, not yet saved');
+      expect(await st().vaultToday()).toMatchObject({ kind: 'opened' });
+      expect(st().vaultNote).toBe(before);
+      // A choice raised later is left with the typed text, never ''.
+      server.put(path, 'a teammate wrote today');
+      await st().vaultSave(path, 'typed, not yet saved');
+      expect(st().vaultConflict).toMatchObject({ path });
+      st().vaultCloseNote();
+      for (let i = 0; i < 10; i++) await tick();
+      expect(liveHas(server, 'typed, not yet saved')).toBe(true);
+    });
+
+    it("opening another note while one's save is out: the later tap wins", async () => {
+      server.put('x.md', 'X', 'u-me');
+      server.put('y.md', 'Y', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('x.md');
+      const at = st().vaultTargetRef();
+      const g = gateWrites(server);
+      const save = st().vaultSave('x.md', 'X, more', at);
+      st().vaultCloseNote();
+      const first = st().vaultOpen('x.md');
+      await tick();
+      await st().vaultOpen('y.md');
+      g.open.resolve();
+      await save;
+      await first;
+      expect(st().vaultNote?.path).toBe('y.md');
+    });
+
+    it('a save that fails while the open waits: the note opens and the stash holds the text', async () => {
+      server.put('n.md', 'A', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      const at = st().vaultTargetRef();
+      const g = gateWrites(server);
+      const save = st().vaultSave('n.md', 'A, offline words', at);
+      st().vaultCloseNote();
+      const reopen = st().vaultOpen('n.md');
+      await tick();
+      server.rpcFailure = new TypeError('Failed to fetch');
+      g.open.resolve();
+      await save;
+      server.rpcFailure = undefined;
+      await reopen;
+      expect(st().vaultNote?.path).toBe('n.md');
+      expect(pending()[`org::${ORG}::n.md`]).toMatchObject({ text: 'A, offline words' });
+    });
+
+    it('a hung write: the note opens within the wait, and the landing reloads the clean editor', async () => {
+      server.put('n.md', 'A', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      const at = st().vaultTargetRef();
+      const g = gateWrites(server);
+      const typed = 'A, and words on a slow line';
+      const save = st().vaultSave('n.md', typed, at);
+      st().vaultCloseNote();
+      const shown = screen();
+      const started = Date.now();
+      await st().vaultOpen('n.md');
+      expect(Date.now() - started).toBeLessThan(4000);
+      expect(shown()).toBe('A');
+      g.open.resolve();
+      await save;
+      expect(shown()).toBe(typed);
+      expect(st().vaultNote?.version).toBe(String(server.notes.get('n.md')!.rev));
+    }, 10_000);
+
+    it('on a personal folder vault, reopening while its save is out never loses the saved words', async () => {
+      reset();
+      useApp.setState({ settings: { ...st().settings, gitosResources: personalOn('files') } });
+      folder.files.set('n.md', 'A');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      const at = st().vaultTargetRef();
+      const gate = deferred();
+      const p = folder.provider as unknown as Record<string, unknown>;
+      const write = folder.provider.write.bind(folder.provider);
+      p.write = async (r: string, path: string, text: string, guard?: WriteGuard) => {
+        await gate.promise;
+        return write(r, path, text, guard);
+      };
+      try {
+        const saving = st().vaultSave('n.md', 'A, and B', at);
+        st().vaultCloseNote();
+        const shown = screen();
+        const reopen = st().vaultOpen('n.md');
+        await tick();
+        p.write = write;
+        gate.resolve();
+        await saving;
+        await reopen;
+        await st().vaultSave('n.md', `${shown()}, and C`);
+        expect(folder.files.get('n.md')).toBe('A, and B, and C');
+      } finally {
+        p.write = write;
+      }
+    });
+  });
 });
