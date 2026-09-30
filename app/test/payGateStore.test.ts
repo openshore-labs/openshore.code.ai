@@ -199,6 +199,76 @@ describe('the paid gate, on', () => {
     expect(opened).toEqual(['https://checkout.stripe.com/c/pay/cs_test']);
   });
 
+  // This build is not a desktop (the platform mock), so a chat with the
+  // computer's models reaches it over the network: Desktop + phone.
+  it("holds a phone's chat with its computer at the paid door, and the rest of chat stays free", async () => {
+    const at = '2026-09-30T10:00:00.000Z';
+    useApp.setState({
+      conversations: {
+        dc1: {
+          id: 'dc1',
+          title: 'Ask my computer',
+          source: { kind: 'desktop-chat', model: 'qwen' },
+          repoIds: [],
+          createdAt: at,
+          updatedAt: at,
+          thread: emptyThread(),
+          pendingFirstMessage: 'hi',
+        },
+      },
+      order: ['dc1'],
+      activeId: 'dc1',
+    });
+    useApp.getState().openConversation('dc1');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(useApp.getState().paywall).toBe('pairing');
+    expect(useApp.getState().conversations.dc1?.pendingFirstMessage).toBe('hi');
+    expect(useApp.getState().conversations.dc1?.pendingFirstError).toBeUndefined();
+  });
+
+  it('asks a signed-out phone to sign in before the paywall', async () => {
+    const at = '2026-09-30T10:00:00.000Z';
+    useApp.setState({
+      authSession: undefined,
+      conversations: {
+        dc1: {
+          id: 'dc1',
+          title: 'Ask my computer',
+          source: { kind: 'desktop-chat' },
+          repoIds: [],
+          createdAt: at,
+          updatedAt: at,
+          thread: emptyThread(),
+          pendingFirstMessage: 'hi',
+        },
+      },
+      order: ['dc1'],
+      activeId: 'dc1',
+    });
+    useApp.getState().openConversation('dc1');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(useApp.getState().accountGate).toBe('pairing');
+    expect(useApp.getState().paywall).toBeUndefined();
+  });
+
+  it("opens the paywall at a screen's pairing moment, and lets it through with Plus", () => {
+    expect(useApp.getState().requirePersonal('pairing')).toBe(false);
+    expect(useApp.getState().paywall).toBe('pairing');
+    useApp.setState({ paywall: undefined, authSession: undefined });
+    expect(useApp.getState().requirePersonal('pairing')).toBe(false);
+    expect(useApp.getState().accountGate).toBe('pairing');
+    useApp.setState({
+      accountGate: undefined,
+      authSession: session(),
+      userEntitlement: { tierId: 'personal', status: 'active' },
+    });
+    expect(useApp.getState().requirePersonal('pairing')).toBe(true);
+    expect(useApp.getState().paywall).toBeUndefined();
+    // A free feature never meets the paywall.
+    useApp.setState({ userEntitlement: undefined });
+    expect(useApp.getState().requirePersonal('vault')).toBe(true);
+  });
+
   it('"I already paid" re-reads the account and carries on', async () => {
     useApp.setState({ paywall: 'coding' });
     sb.rows = [{ tier_id: 'personal', status: 'active', valid_until: null }];

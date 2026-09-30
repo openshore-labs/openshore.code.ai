@@ -35,6 +35,7 @@ export function TerminalRoomScreen() {
   const setView = useApp((s) => s.setView);
   const saveSettings = useApp((s) => s.saveSettings);
   const setTerminalControl = useApp((s) => s.setTerminalControl);
+  const requirePersonal = useApp((s) => s.requirePersonal);
 
   const driver = activeId ? driverFor(activeId) : undefined;
   const hasTerminal = typeof driver?.openTerminal === 'function';
@@ -206,7 +207,15 @@ export function TerminalRoomScreen() {
             </p>
             <div className="tc-actions">
               {shellOffered ? (
-                <button className="btn primary press-fb" onClick={() => setHomeShellOpen(true)}>
+                <button
+                  className="btn primary press-fb"
+                  onClick={() => {
+                    // A shell on the computer from another device is Desktop +
+                    // phone, part of Plus; the desktop's own shell stays free.
+                    if (!desktopLocal && !requirePersonal('pairing')) return;
+                    setHomeShellOpen(true);
+                  }}
+                >
                   Open a shell
                 </button>
               ) : null}

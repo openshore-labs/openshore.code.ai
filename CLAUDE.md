@@ -258,7 +258,11 @@ The paid gate (CTO, CFO, CX, 2026-09-30; sold as OpenShore Plus, never
 "Personal", in customer copy): only coding, building
 and agentic work is paid, on actions, never rooms (starting or reattaching a
 coding session, the sample project, making, editing or running a routine),
-after the sign-in; every chat and everything else stays free. Every account
+after the sign-in; so is Desktop + phone (founder, 2026-09-30: Scan and
+Connect, the desktop's pairing code, and each chat or shell on the computer
+from another device; Revoke and Forget stay free, a lapse keeps the pairing
+and the vault). Every chat on the device itself and everything else stays
+free. Every account
 feature is classified in `app/src/lib/payGate.ts` (`PAY_GATE`, a type error
 until complete), the logic is `app/src/state/payOps.ts`, and the switch is
 the build flag `VITE_PAY_GATES`, off by default and set only in the build

@@ -533,7 +533,8 @@ import {
   PaywallLockedError,
   RESTORE_FOUND_NOTHING,
   appleUpdateAction,
-  codingPaywalled,
+  chatPaidFeature,
+  chatPaywall,
   isEntitled,
   paidDoor,
   paywallReasonFor,
@@ -619,8 +620,8 @@ export type ViewName =
   | 'onboarding';
 
 // Which locked surface triggered the Personal upgrade sheet. Free is chat only;
-// the coding agent and the Marketplace need the Personal unlock.
-export type PaywallReason = 'coding' | 'marketplace' | 'crew';
+// the coding agent, Crew, Desktop + phone and the Marketplace need the unlock.
+export type PaywallReason = 'coding' | 'marketplace' | 'crew' | 'pairing';
 
 export interface AppSettings {
   onboarded: boolean;
@@ -1652,6 +1653,10 @@ interface AppState {
   /** Where a paid action on this feature goes right now: on, to the sign-in
    *  sheet, or to the paywall (lib/payGate.ts, state/payOps.ts). */
   personalDoor(feature: AccountFeature): 'open' | 'account' | 'paywall';
+  /** One door for a paid action a screen takes (Connect on Desktop + phone,
+   *  the computer's home shell): the sign-in sheet first, then the paywall.
+   *  True when the action may go ahead. */
+  requirePersonal(feature: AccountFeature): boolean;
   /** Re-read the account's entitlement after a purchase made elsewhere (the
    *  desktop's "I already paid"), and carry on when it unlocks. */
   recheckPersonal(): Promise<void>;
@@ -2813,11 +2818,19 @@ export const useApp = create<AppState>((set, get, api) => {
     return codingLocked(conv, get().needsAccountNow());
   }
 
+  /** Whether a chat with the computer goes over the network from here: a
+   *  phone, or a desktop set to run on another computer (isRemote's test,
+   *  before any driver exists). */
+  function reachesHubNow(): boolean {
+    return !(isDesktop() && bridge() && !get().settings.preferRemoteHub);
+  }
+
   /** The paid door, after the account door (state/payOps.ts): a coding
-   *  session is built or reattached only while Personal is open. Checked at
-   *  the build, so a turn already running is never cut. */
-  function codingPaywalledNow(conv: Conversation | undefined): boolean {
-    return codingPaywalled(conv, get().personalUnlockedNow());
+   *  session anywhere, and a chat with the computer from another device, is
+   *  built or reattached only while Plus is open. Checked at the build, so a
+   *  turn already running is never cut. The door that holds it, or null. */
+  function chatPaywallNow(conv: Conversation | undefined): AccountFeature | null {
+    return chatPaywall(conv, get().personalUnlockedNow(), reachesHubNow());
   }
 
   /** One door for a paid action: the sign-in sheet first, then the paywall.
@@ -2837,7 +2850,8 @@ export const useApp = create<AppState>((set, get, api) => {
 
   /** Personal just unlocked (a purchase, a restore, a checkout return, a
    *  re-check): close the sheet and carry on to a message kept at the paid
-   *  door on the open coding chat, the way a sign-in carries on. */
+   *  door on the open chat (a coding session, or a chat with the computer
+   *  from the phone), the way a sign-in carries on. */
   function afterPersonalUnlocked(message: string): void {
     set({ paywall: undefined });
     get().showToast(message);
@@ -2845,8 +2859,8 @@ export const useApp = create<AppState>((set, get, api) => {
     const open = openId ? get().conversations[openId] : undefined;
     if (
       openId &&
-      open?.source.kind === 'desktop' &&
-      open.pendingFirstMessage &&
+      chatPaidFeature(open, reachesHubNow()) &&
+      open?.pendingFirstMessage &&
       !open.pendingFirstError
     ) {
       ensureDriver(openId);
@@ -2864,11 +2878,13 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       return;
     }
-    // Refused at the paid door: a waiting message opens the paywall, never
-    // the sign-in sheet, and stays parked for the build after the purchase.
+    // Refused at the paid door: a waiting message opens the paywall and stays
+    // parked for the build after the purchase. A coding chat met the sign-in
+    // above, so it goes straight to the paywall; a signed-out phone's chat
+    // with its computer meets the sign-in sheet first.
     if (err instanceof PaywallLockedError) {
       if (get().conversations[conversationId]?.pendingFirstMessage) {
-        get().openPaywall('coding');
+        requirePersonal(err.feature);
       }
       return;
     }
@@ -2903,9 +2919,10 @@ export const useApp = create<AppState>((set, get, api) => {
     }
     // Signed in without Personal (the pay gates on): the same, at the paid
     // door. The purchase carries on to this chat (afterPersonalUnlocked).
-    if (codingPaywalledNow(conv)) {
+    const shut = chatPaywallNow(conv);
+    if (shut) {
       if (get().resumingId === conversationId) set({ resumingId: undefined });
-      failOpen(conversationId, new PaywallLockedError());
+      failOpen(conversationId, new PaywallLockedError(shut));
       return;
     }
     building.add(conversationId);
@@ -2965,7 +2982,7 @@ export const useApp = create<AppState>((set, get, api) => {
     }
     // A coding session built after Personal lapsed is let go the same way;
     // a driver already attached keeps its running turn.
-    if (codingPaywalledNow(get().conversations[conversationId])) {
+    if (chatPaywallNow(get().conversations[conversationId])) {
       driver.dispose();
       return;
     }
@@ -3660,7 +3677,8 @@ export const useApp = create<AppState>((set, get, api) => {
     // The account door, before anything opens or resumes a session on the
     // engine: every build passes here, so no path reaches it signed out.
     if (codingLockedNow(conv)) throw new CodingLockedError();
-    if (codingPaywalledNow(conv)) throw new PaywallLockedError();
+    const shut = chatPaywallNow(conv);
+    if (shut) throw new PaywallLockedError(shut);
     return guardDriver(await buildUnguardedDriver(conv, seed, extra));
   }
 
@@ -7052,9 +7070,10 @@ export const useApp = create<AppState>((set, get, api) => {
     }
     // An Apple purchase kept while nobody was signed in (Ask to Buy approved
     // later) links to this account first, then the entitlement is read.
-    void retryPendingAppleLink()
+    const entitlementRead = retryPendingAppleLink()
       .catch(() => false)
-      .then(() => get().refreshEntitlement());
+      .then(() => get().refreshEntitlement())
+      .catch(() => {});
     if (featureOn('teams')) void get().syncOrgProjects();
     // Preferences that follow the person arrive (or leave) now.
     void syncPreferences();
@@ -7073,17 +7092,21 @@ export const useApp = create<AppState>((set, get, api) => {
       get().closeAccountGate();
       if (to) get().setView(to);
     }
-    // A message kept at the door on the open coding chat goes out now: the
-    // driver builds and its attach delivers the parked message.
+    // A message kept at the door on the open chat (a coding session, or a
+    // chat with the computer from the phone) goes out now: the driver builds
+    // and its attach delivers the parked message. With the pay gates on, the
+    // paid door reads the entitlement, so the build waits for that read and
+    // a subscriber never meets the paywall on the way in.
     const openId = get().activeId;
     const open = openId ? get().conversations[openId] : undefined;
     if (
       openId &&
-      open?.source.kind === 'desktop' &&
-      open.pendingFirstMessage &&
+      chatPaidFeature(open, reachesHubNow()) &&
+      open?.pendingFirstMessage &&
       !open.pendingFirstError
     ) {
-      ensureDriver(openId);
+      if (PAY_GATES_ENABLED) void entitlementRead.then(() => ensureDriver(openId));
+      else ensureDriver(openId);
     }
     // Back on the team note: list the team vault again and replay what was
     // kept for this account while it was signed out.
@@ -7760,6 +7783,10 @@ export const useApp = create<AppState>((set, get, api) => {
         needsAccount: get().needsAccountNow(),
         unlocked: get().personalUnlockedNow(),
       });
+    },
+
+    requirePersonal(feature) {
+      return requirePersonal(feature);
     },
 
     sourceReady(source) {
@@ -12660,8 +12687,9 @@ export const useApp = create<AppState>((set, get, api) => {
         return;
       }
       // A command inside a coding chat is the coding agent's work: paid.
-      if (codingPaywalledNow(get().conversations[activeId])) {
-        get().openPaywall('coding');
+      const shut = chatPaywallNow(get().conversations[activeId]);
+      if (shut) {
+        get().openPaywall(paywallReasonFor(shut));
         return;
       }
       const driver = drivers.get(activeId);

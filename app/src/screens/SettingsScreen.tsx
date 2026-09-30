@@ -408,7 +408,7 @@ export function SettingsScreen() {
       ? personalUntil
         ? `The coding agent is yours. Renews or ends ${personalUntil}.`
         : 'The coding agent is yours.'
-      : 'Chatting is free. Plus lets the agent build and run routines on your computer.';
+      : 'Chatting is free. Plus lets the agent build and run routines on your computer, and your phone reach it.';
   // The Personal rows (2026-09-30): an Apple device restores through the App
   // Store and manages its subscription with Apple; the desktop re-reads the
   // account ("I already paid") and manages it in the Stripe portal.

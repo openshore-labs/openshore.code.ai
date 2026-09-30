@@ -1,6 +1,7 @@
 // The Personal sheet (CTO, CFO, CX, 2026-09-30). Chatting stays free; only
-// coding, building and agentic work opens this, at the moment it is asked for
-// (lib/payGate.ts). Copy is CX's. Two rails, one price ($49.99 a year):
+// coding, building and agentic work, and Desktop + phone, open this, at the
+// moment it is asked for (lib/payGate.ts). Copy is CX's. Two rails, one price
+// ($49.99 a year):
 //
 // - iPhone and iPad buy through the App Store only (App Store 3.1.1): the
 //   StoreKit price, Start Personal, and Restore purchases. That branch never
@@ -28,15 +29,19 @@ export const TERMS_URL = 'https://openshore.ai/terms/';
 export const PRIVACY_URL = 'https://openshore.ai/privacy/';
 
 export const PAYWALL_HEADLINE = 'Let OpenShore build it.';
+/** Desktop + phone's own headline: the person asked for exactly that. */
+export const PAYWALL_PAIRING_HEADLINE = 'Reach your computer from your phone.';
 export const PAYWALL_LAPSED_HEADLINE = 'Your Plus year has ended.';
 export const PAYWALL_BODY =
   'Chatting stays free. Plus lets the agent work on your computer: it reads your project, makes real changes you approve, and runs routines while your computer is on.';
 
 // CX's second bullet names where a routine's note really lands (the Vault
-// copy rule, lib/vaultCopy.ts): the vault folder on the computer.
+// copy rule, lib/vaultCopy.ts): the vault folder on the computer. The third
+// is Desktop + phone (founder, 2026-09-30), honest about the computer being on.
 export const BULLETS = [
   'Build and fix in your projects',
   `Routines that leave a note in ${ROUTINE_NOTES_PLACE}`,
+  'Your computer from your phone, while it is on',
   'Your models, your keys. Your prompts never pass through us.',
 ];
 
@@ -136,9 +141,14 @@ export function Paywall() {
     };
   }, [reason, ios]);
 
-  // One headline for any reason (the sheet sells building, never the
-  // Marketplace); a lapsed subscriber hears that their year ended.
-  const headline = lapsed ? PAYWALL_LAPSED_HEADLINE : PAYWALL_HEADLINE;
+  // One headline for building, whatever asked (the sheet never sells the
+  // Marketplace), and Desktop + phone's own; a lapsed subscriber hears that
+  // their year ended.
+  const headline = lapsed
+    ? PAYWALL_LAPSED_HEADLINE
+    : reason === 'pairing'
+      ? PAYWALL_PAIRING_HEADLINE
+      : PAYWALL_HEADLINE;
   // No price, renewal line, or buy button while the pay gates are off; with
   // them on, never an App Store price StoreKit did not give.
   const { priceLine, renewal, buy } = paywallMoney(PAY_GATES_ENABLED, ios, storePrice, lapsed);

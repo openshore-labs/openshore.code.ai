@@ -2,7 +2,8 @@
 // lib/payGate.ts holds the classification). Plain functions a test reads
 // without the store; store.ts only wires them into newConversation,
 // ensureDriver, buildDriver, attachDriver, failOpen, runCommand, the sample
-// project, the routine actions, buyPersonal and manageBilling. Test:
+// project, the routine actions, buyPersonal and manageBilling, and hands
+// requirePersonal to the Desktop + phone and Terminal screens. Test:
 // app/test/payGate.test.ts.
 //
 // The gate sits on actions, never rooms, and it never cuts a turn already
@@ -90,26 +91,55 @@ export function paidDoor(
 
 /** The paywall's reason for a paid feature. */
 export function paywallReasonFor(feature: AccountFeature): PaywallReason {
-  return feature === 'crew' ? 'crew' : feature === 'marketplace' ? 'marketplace' : 'coding';
+  switch (feature) {
+    case 'crew':
+    case 'marketplace':
+    case 'pairing':
+      return feature;
+    default:
+      return 'coding';
+  }
 }
 
-/** A coding session refused at the paid door. Not a failure to show: a
- *  message waiting to go opens the paywall instead, and stays parked. */
+/** A chat refused at the paid door. Not a failure to show: a message waiting
+ *  to go opens the paywall instead (the sign-in sheet first, when needed),
+ *  and stays parked. `feature` names the door. */
 export class PaywallLockedError extends Error {
-  constructor() {
-    super('The coding agent is part of OpenShore Plus.');
+  constructor(readonly feature: AccountFeature = 'coding') {
+    super(
+      feature === 'pairing'
+        ? 'Reaching your computer from another device is part of OpenShore Plus.'
+        : 'The coding agent is part of OpenShore Plus.',
+    );
     this.name = 'PaywallLockedError';
   }
 }
 
-/** Whether the paid door holds this chat shut: a coding session and the paid
- *  moments are closed right now. Checked at a build, never mid-turn. */
-export function codingPaywalled(
+/** The paid feature a chat's brain needs on this device: the coding agent for
+ *  a coding session anywhere, and Desktop + phone for the free chat with a
+ *  computer's models reached from another device (`reachesHub`: a phone, or
+ *  a desktop set to run on another computer). On the desktop itself that
+ *  chat is this computer's own, and free (CTO ruling 8). Null for the rest. */
+export function chatPaidFeature(
+  conv: Pick<Conversation, 'source'> | undefined,
+  reachesHub: boolean,
+): AccountFeature | null {
+  if (!conv) return null;
+  const feature = SOURCE_ACCOUNT[conv.source.kind];
+  if (feature) return feature;
+  return conv.source.kind === 'desktop-chat' && reachesHub ? 'pairing' : null;
+}
+
+/** The door that holds this chat shut, or null when it may build: its paid
+ *  feature while the paid moments are closed. Checked at a build, never
+ *  mid-turn. */
+export function chatPaywall(
   conv: Pick<Conversation, 'source'> | undefined,
   unlocked: boolean,
-): boolean {
-  const feature = conv ? SOURCE_ACCOUNT[conv.source.kind] : null;
-  return Boolean(feature && featurePaid(feature)) && !unlocked;
+  reachesHub: boolean,
+): AccountFeature | null {
+  const feature = chatPaidFeature(conv, reachesHub);
+  return feature && featurePaid(feature) && !unlocked ? feature : null;
 }
 
 /** Whether a routine change is free: pausing only (enabled set to false, and

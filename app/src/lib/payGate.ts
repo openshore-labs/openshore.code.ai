@@ -1,10 +1,14 @@
 // The Personal paid gate (CTO, CFO, CX, 2026-09-30; os-code/DECISIONS.md).
 // Only coding, building and agentic work is paid, and the gate sits on
 // actions, not rooms: starting or reattaching a coding session, the sample
-// project, and creating, editing or running a Crew routine. Everything else
-// (every chat, web search in chat, the Stack, Projects, Repositories, your own
-// Vault notes by hand, the plain home shell, pairing, Settings, Cloud
-// Connections, reading an old coding chat) stays free.
+// project, and creating, editing or running a Crew routine. Desktop + phone
+// is paid too (founder, 2026-09-30, over the advisors' "pairing free"):
+// pairing a phone or another computer, and each chat with the computer's
+// models or shell in its home folder opened from that other device.
+// Everything else (every chat on the device itself, web search in chat, the
+// Stack, Projects, Repositories, your own Vault notes by hand, including the
+// vault a pairing points at the computer, the desktop's own home shell,
+// Settings, Cloud Connections, reading an old coding chat) stays free.
 //
 // Every account feature is classified here, and the Record type makes a new
 // one a type error until it is: a feature is paid only by being written down
@@ -18,17 +22,19 @@ export type PayLevel = 'personal' | 'free';
 
 export const PAY_GATE: Record<AccountFeature, PayLevel> = {
   // Paid: the coding agent (a 'desktop' session, the sample project, a
-  // command inside a coding chat) and Crew's agentic work (create, edit, Run
-  // now; deleting, pausing, stopping and reading runs stay free, in payOps).
+  // command inside a coding chat), Crew's agentic work (create, edit, Run
+  // now; deleting, pausing, stopping and reading runs stay free, in payOps),
+  // and Desktop + phone (Connect, the desktop's pairing code, and the
+  // computer reached from another device; Revoke and Forget stay free).
   coding: 'personal',
   crew: 'personal',
+  pairing: 'personal',
   // Free, behind the free sign-in only.
   projects: 'free',
   terminal: 'free',
   repos: 'free',
   vault: 'free',
   connections: 'free',
-  pairing: 'free',
   // Later tiers (docs/release-tiers.md), classified now so the type holds:
   // the Marketplace already has a paywall reason, Launch builds an app, and
   // Admin is the team's own room (its seats are billed per org, apart).

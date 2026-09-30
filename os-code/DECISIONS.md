@@ -3361,3 +3361,24 @@ execution contract. Newest at the bottom.
   stay: the v1 release tier is still Personal, and `personal` ids, the
   product id `ai.openshore.oscode.personal.yearly`, `STRIPE_PRICE_PERSONAL`,
   `buyPersonal` and friends are unseen and unchanged.
+- 2026-09-30: **Desktop + phone is part of OpenShore Plus (founder, over the
+  advisors' "pairing free").** "Also make the computer+mobile feature gated."
+  `PAY_GATE.pairing` is 'personal', on actions like the rest: on a phone,
+  Scan and Connect (before the one-time code is spent, so a refused claim
+  never leaves a device on the computer this phone did not save), every chat
+  with the computer's models, and the computer's home shell; on the desktop,
+  the pairing code and QR (Revoke, Turn off and Forget stay free), and
+  Connect under "Run on another computer". The free chat with a computer's
+  own models stays free on that desktop (CTO ruling 8); the same chat from
+  another device is Desktop + phone, so the build refuses it with
+  `PaywallLockedError('pairing')` and a parked message opens the sign-in
+  sheet first, then the paywall. A lapse keeps the pairing and cuts no turn:
+  the next chat or shell on the computer opens the sheet; the vault a pairing
+  pointed at the computer stays reachable, since the paid gate never locks
+  what a person made (nothing moves, so no J9 step runs). The hub still
+  starts with the desktop app (routines need it). The sheet gets its own
+  headline, "Reach your computer from your phone.", and a bullet, "Your
+  computer from your phone, while it is on". Found on the way: after a
+  sign-in, a parked message on a paid chat waited no longer for the
+  entitlement read, so a subscriber met the paywall; with the gates on the
+  build now waits for that read.

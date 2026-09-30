@@ -18,7 +18,8 @@ import {
   PaywallLockedError,
   RESTORE_FOUND_NOTHING,
   appleUpdateAction,
-  codingPaywalled,
+  chatPaidFeature,
+  chatPaywall,
   paidDoor,
   paywallReasonFor,
   personalLapsed,
@@ -36,7 +37,7 @@ afterEach(() => {
 });
 
 describe('what is paid', () => {
-  it('classifies every account feature; only coding and Crew are Personal in v1', () => {
+  it('classifies every account feature; coding, Crew and Desktop + phone are Plus in v1', () => {
     const features = new Set(
       Object.values(ROOM_ACCOUNT).filter((f): f is AccountFeature => f !== null),
     );
@@ -45,8 +46,9 @@ describe('what is paid', () => {
     const paidV1 = (Object.keys(PAY_GATE) as AccountFeature[]).filter(
       (f) => featurePaid(f) && !['marketplace', 'launch'].includes(f),
     );
-    expect(paidV1.sort()).toEqual(['coding', 'crew']);
-    for (const free of ['projects', 'terminal', 'repos', 'vault', 'connections', 'pairing']) {
+    // Pairing is the founder's call (2026-09-30), over the advisors' free.
+    expect(paidV1.sort()).toEqual(['coding', 'crew', 'pairing']);
+    for (const free of ['projects', 'terminal', 'repos', 'vault', 'connections']) {
       expect(PAY_GATE[free as AccountFeature], free).toBe('free');
     }
   });
@@ -106,18 +108,40 @@ describe('the paid door', () => {
     expect(paidDoor('coding', { needsAccount: false, unlocked: false })).toBe('paywall');
     expect(paidDoor('crew', { needsAccount: false, unlocked: true })).toBe('open');
     expect(paidDoor('vault', { needsAccount: false, unlocked: false })).toBe('open');
+    expect(paidDoor('pairing', { needsAccount: false, unlocked: false })).toBe('paywall');
     expect(paywallReasonFor('crew')).toBe('crew');
     expect(paywallReasonFor('coding')).toBe('coding');
+    expect(paywallReasonFor('pairing')).toBe('pairing');
+    expect(paywallReasonFor('launch')).toBe('coding');
   });
 
-  it('holds only a coding session shut, never a chat', () => {
-    expect(codingPaywalled({ source: { kind: 'desktop' } }, false)).toBe(true);
-    expect(codingPaywalled({ source: { kind: 'desktop' } }, true)).toBe(false);
-    for (const kind of ['desktop-chat', 'device', 'stack', 'mock'] as const) {
+  it('holds a coding session shut anywhere, and a chat with the computer from another device', () => {
+    const desktop = { source: { kind: 'desktop' } } as never;
+    const computerChat = { source: { kind: 'desktop-chat' } } as never;
+    expect(chatPaywall(desktop, false, false)).toBe('coding');
+    expect(chatPaywall(desktop, false, true)).toBe('coding');
+    expect(chatPaywall(desktop, true, true)).toBeNull();
+    // The computer's own chat on the desktop is free (CTO ruling 8); from the
+    // phone, or a desktop running on another computer, it is Desktop + phone.
+    expect(chatPaywall(computerChat, false, false)).toBeNull();
+    expect(chatPaywall(computerChat, false, true)).toBe('pairing');
+    expect(chatPaywall(computerChat, true, true)).toBeNull();
+    expect(chatPaidFeature(computerChat, true)).toBe('pairing');
+    for (const kind of ['device', 'stack', 'mock', 'cloud'] as const) {
       const source = kind === 'device' ? { kind, modelId: 'm' } : { kind };
-      expect(codingPaywalled({ source } as never, false), kind).toBe(false);
+      expect(chatPaywall({ source } as never, false, true), kind).toBeNull();
     }
-    expect(new PaywallLockedError().name).toBe('PaywallLockedError');
+    expect(chatPaywall(undefined, false, true)).toBeNull();
+  });
+
+  it('names the door a refused chat met', () => {
+    const coding = new PaywallLockedError();
+    expect(coding.name).toBe('PaywallLockedError');
+    expect(coding.feature).toBe('coding');
+    expect(coding.message).toBe('The coding agent is part of OpenShore Plus.');
+    const pairing = new PaywallLockedError('pairing');
+    expect(pairing.feature).toBe('pairing');
+    expect(pairing.message).toMatch(/computer from another device is part of OpenShore Plus/);
   });
 
   it('lets a pause through for free, and charges an edit or a resume', () => {
@@ -249,5 +273,48 @@ describe("the paywall's App Store branch", () => {
     expect(paywall).toContain(
       '{ios ? <AppStoreActions buy={buy} /> : <CheckoutActions buy={buy} />}',
     );
+  });
+});
+
+// Desktop + phone is part of Plus (founder, 2026-09-30): each screen's paid
+// moment passes the one door, and the free ones (Revoke, Forget, Turn off,
+// the desktop's own shell) never do.
+describe('Desktop + phone, at its screens', () => {
+  const pair = read('src', 'screens', 'PairScreen.tsx');
+  const terminal = read('src', 'screens', 'TerminalRoomScreen.tsx');
+  const paywall = read('src', 'components', 'Paywall.tsx');
+
+  it('asks the door before Scan, before a claim is spent, and before another computer', () => {
+    expect(pair).toContain("if (requirePersonal('pairing')) setScanning(true);");
+    const phone = pair.slice(pair.indexOf('function PhonePair'));
+    const door = phone.indexOf("if (!requirePersonal('pairing')) return;");
+    expect(door).toBeGreaterThan(-1);
+    expect(door).toBeLessThan(phone.indexOf('redeemPairClaim('));
+    const remote = pair.slice(
+      pair.indexOf('function RemoteHubPanel'),
+      pair.indexOf('function PhonePair'),
+    );
+    expect(remote.indexOf("requirePersonal('pairing')")).toBeLessThan(
+      remote.indexOf('daemonHealth('),
+    );
+  });
+
+  it('shows the pairing code only while Plus is open, and keeps Revoke free', () => {
+    expect(pair).toContain('{pairOpen && info?.running && qr ? (');
+    const start = pair.indexOf('revokeDeviceCredential');
+    const revoke = pair.slice(start, pair.indexOf('Revoke\n', start));
+    expect(revoke).toContain('Device revoked');
+    expect(revoke).not.toMatch(/requirePersonal|pairOpen/);
+    expect(pair).toContain("if (door !== 'paywall') return null;");
+  });
+
+  it("gates the computer's home shell from another device, never the desktop's own", () => {
+    expect(terminal).toContain("if (!desktopLocal && !requirePersonal('pairing')) return;");
+  });
+
+  it('gives the sheet its own headline and an honest bullet', () => {
+    expect(paywall).toContain("'Reach your computer from your phone.'");
+    expect(paywall).toContain("'Your computer from your phone, while it is on'");
+    expect(paywall).not.toMatch(/always on/i);
   });
 });
