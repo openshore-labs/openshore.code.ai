@@ -4305,6 +4305,8 @@ describe('round 7: team text belongs to its account and its version', () => {
   const st = () => useApp.getState();
   beforeEach(async () => {
     reset();
+    // No refresh an earlier case made stands in for this case's own.
+    await (await import('../src/lib/authSession.js')).clearSession();
     await closeVaultIndex();
     wiring.org!.resetOrgVault();
     useApp.setState({ vaultTeamPlan: undefined, vaultConflict: undefined, vaultTrash: undefined });
@@ -4626,6 +4628,164 @@ describe('round 7: team text belongs to its account and its version', () => {
       expect(server.notes.get('a.md')).toMatchObject({ body: 'u1 draft a', updated_by: 'u1' });
       expect(server.notes.get('b.md')).toMatchObject({ body: 'u1 draft b', updated_by: 'u1' });
       expect(pending()).toEqual({});
+    });
+  });
+
+  describe('E6: after an expiry, team text stays sealed for the same account', () => {
+    beforeEach(() => {
+      perCaller(server, { members: ['u1', 'u2'] });
+    });
+    // The note open here, changed (or deleted) by a teammate, and a save of
+    // `typed` that raises the choice; its words are in the stash.
+    async function choiceOn(path: string, typed: string, gone = false) {
+      server.put(path, 'the base', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen(path);
+      if (gone) server.drop(path);
+      else server.put(path, 'theirs');
+      st().vaultNoteDraft(path, typed);
+      await st().vaultSave(path, typed);
+      expect(st().vaultConflict).toMatchObject({ path, kind: gone ? 'missing' : 'changed' });
+    }
+    async function expire() {
+      useApp.setState({ authSession: session(auth.nextUser, -1000) });
+      auth.refresh = new SupabaseRequestError('invalid grant', 400);
+      await st().refreshOrgRole();
+      auth.refresh = undefined;
+    }
+    const sealedHas = (t: string) => sealedHeld().some((h) => h.text === t && h.owner === 'u1');
+    const kept = (path: string, t: string) =>
+      pending()[`org::${ORG}::${path}`]?.text === t || sealedHas(t);
+    const noFalseCopyLine = () => {
+      expect(st().toast?.text ?? '').not.toMatch(/could not keep a copy|Copy it somewhere safe/);
+    };
+    // u1 signs back in: the text replays into the team vault, shows under
+    // Not saved, or waits in the stash under the choice, back on screen.
+    async function backAsU1(t: string) {
+      await st().signIn('me@example.com', 'pw');
+      if (st().vaultScope !== 'team') await st().setVaultScope('team');
+      else await st().vaultRefresh();
+      for (let i = 0; i < 10; i++) await tick();
+      const shown = st()
+        .vaultHeldVisible()
+        .some((h) => h.text === t);
+      const saved = [...server.notes.values()].some(
+        (n) => !n.deleted && n.body === t && n.updated_by === 'u1',
+      );
+      const c = st().vaultConflict;
+      const asking =
+        c?.target.owner === 'u1' &&
+        st().vaultNote?.path === c.path &&
+        pending()[`org::${ORG}::${c.path}`]?.text === t;
+      expect(shown || saved || asking).toBe(true);
+    }
+
+    for (const choice of ['both', 'mine'] as const) {
+      it(`${choice === 'both' ? 'Keep both' : 'Keep yours'} after an expiry keeps the words sealed and sends nothing`, async () => {
+        useStoreToken();
+        await choiceOn('n.md', 'typed before expiry');
+        await expire();
+        expect(st().vaultTeamExpired).toBe(true);
+        useApp.setState({ toast: undefined });
+        const writes = server.rpcs.filter((r) => r.fn === 'org_vault_write').length;
+        expect(await st().vaultResolve(choice, 'typed before expiry')).toMatchObject({ ok: false });
+        expect(kept('n.md', 'typed before expiry')).toBe(true);
+        expect(server.rpcs.filter((r) => r.fn === 'org_vault_write').length).toBe(writes);
+        noFalseCopyLine();
+        await backAsU1('typed before expiry');
+      });
+    }
+
+    it('a tap that is the first to find the expiry keeps the words sealed', async () => {
+      useStoreToken();
+      await choiceOn('n.md', 'mine, typed while it changed');
+      useApp.setState({ authSession: session(auth.nextUser, -1000), toast: undefined });
+      auth.refresh = new SupabaseRequestError('invalid grant', 400);
+      await st().vaultResolve('both', 'mine, typed while it changed');
+      auth.refresh = undefined;
+      expect(st().vaultTeamExpired).toBe(true);
+      expect(kept('n.md', 'mine, typed while it changed')).toBe(true);
+      noFalseCopyLine();
+      await backAsU1('mine, typed while it changed');
+    });
+
+    it('closing the kept note on a gone-note choice keeps the words sealed', async () => {
+      useStoreToken();
+      await choiceOn('n.md', 'typed before expiry', true);
+      await expire();
+      useApp.setState({ toast: undefined });
+      st().vaultCloseNote();
+      for (let i = 0; i < 10; i++) await tick();
+      expect(kept('n.md', 'typed before expiry')).toBe(true);
+      noFalseCopyLine();
+      await backAsU1('typed before expiry');
+    });
+
+    it("Settings' Vault row on a gone-note choice after an expiry keeps the words sealed", async () => {
+      useStoreToken();
+      await choiceOn('n.md', 'mine, typed as it went', true);
+      await expire();
+      useApp.setState({ toast: undefined });
+      await st().setVaultScope('personal');
+      expect(kept('n.md', 'mine, typed as it went')).toBe(true);
+      noFalseCopyLine();
+      await backAsU1('mine, typed as it went');
+    });
+
+    it('an expiry during a replay keeps the rest sealed', async () => {
+      useStoreToken();
+      server.put('x.md', 'X', 'u-me');
+      server.put('y.md', 'Y', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('x.md');
+      server.rpcFailure = new TypeError('Failed to fetch');
+      await st().vaultSave('x.md', 'X, and offline words');
+      server.rpcFailure = undefined;
+      await st().vaultOpen('y.md');
+      const g = gateWrites(server);
+      const save = st().vaultSave('y.md', 'Y, saved');
+      await vi.waitFor(() => expect(g.seen).toBe(1));
+      useApp.setState({ authSession: session(auth.nextUser, -1000) });
+      auth.refresh = new SupabaseRequestError('invalid grant', 400);
+      g.on = false;
+      g.open.resolve();
+      await save;
+      auth.refresh = undefined;
+      for (let i = 0; i < 10; i++) await tick();
+      expect(kept('x.md', 'X, and offline words')).toBe(true);
+      noFalseCopyLine();
+    });
+
+    it('a save out when it expired, meeting a deleted note, keeps the words sealed', async () => {
+      useStoreToken();
+      server.put('n.md', 'A', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      const at = st().vaultTargetRef();
+      const g = gateWrites(server);
+      const save = st().vaultSave('n.md', 'A, and words out when it expired', at);
+      await vi.waitFor(() => expect(g.seen).toBe(1));
+      st().vaultCloseNote();
+      server.drop('n.md');
+      await expire();
+      useApp.setState({ toast: undefined });
+      g.open.resolve();
+      await save;
+      expect(kept('n.md', 'A, and words out when it expired')).toBe(true);
+      noFalseCopyLine();
+    });
+
+    it('another account signing in after the expiry gets nothing of it', async () => {
+      useStoreToken();
+      await choiceOn('n.md', 'u1 typed before expiry', true);
+      await expire();
+      st().vaultCloseNote();
+      for (let i = 0; i < 10; i++) await tick();
+      auth.nextUser = U2;
+      await st().signIn('b@example.com', 'pw');
+      expect(JSON.stringify(pending())).not.toContain('u1 typed');
+      expect(JSON.stringify(sealedHeld())).not.toContain('u1 typed');
+      expect(st().vaultHeld.some((h) => h.text.includes('u1 typed'))).toBe(false);
     });
   });
 });

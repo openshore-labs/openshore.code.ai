@@ -513,6 +513,7 @@ import {
   VAULT_MARKED_REVIEWED,
   VAULT_STARTER_NOT_EMPTY,
   VAULT_TEAM_LAPSED_NOT_SAVED,
+  VAULT_TEAM_SIGN_IN_LINE,
   vaultFolderMoveRefused,
   vaultFolderMoveTaken,
   vaultRenameFailed,
@@ -4822,6 +4823,20 @@ export const useApp = create<AppState>((set, get, api) => {
   function teamChoiceSpeaks(c: VaultConflict): boolean {
     return c.target.providerId !== 'org' || (speaksNow(c.target) && isActiveVault(c.target));
   }
+  // A team choice tapped when it cannot be settled. After an expiry it is
+  // the same account's: the words on screen go to the sealed stash, the
+  // choice stays for its return, and the line says to sign in. Any other is
+  // another account's, dropped with nothing written, kept or said (R-19).
+  async function waitForTeamSignIn(c: VaultConflict, draft: string): Promise<VaultResolveResult> {
+    const owner = c.target.owner;
+    if (owner && owner === keptTeamOwner && !get().authSession) {
+      await stashConflictText(c.target, c.path, draft, c.baseVersion);
+      get().showToast(VAULT_TEAM_SIGN_IN_LINE);
+      return { ok: false };
+    }
+    if (get().vaultConflict === c) set({ vaultConflict: undefined });
+    return { ok: false };
+  }
   const vaultKey = (t: VaultTargetRef, path: string) => `${t.providerId}::${t.resourceId}::${path}`;
   // What a provider lists that the Vault treats as notes: `.md` files outside
   // dot folders, so `.obsidian/` and attachments never show or copy (0.6).
@@ -5057,7 +5072,10 @@ export const useApp = create<AppState>((set, get, api) => {
     reason: string,
     opts: { at?: string; memoryOnly?: boolean; folder?: string; folderDisplay?: string } = {},
   ): Promise<boolean> {
-    const durable = !opts.memoryOnly && speaksNow(t);
+    // Team text of an account whose sign-in expired stays sealed for its
+    // return, hidden until then (vaultHeldFor), like its stash.
+    const expiredOwner = t.providerId === 'org' && Boolean(t.owner) && t.owner === keptTeamOwner;
+    const durable = !opts.memoryOnly && (speaksNow(t) || expiredOwner);
     const h: VaultHeldDraft = {
       ...heldDraft(t, path, text, reason, opts.at),
       durable,
@@ -10958,10 +10976,8 @@ export const useApp = create<AppState>((set, get, api) => {
       if (!c) return { ok: false };
       // Another account's team choice, or one whose vault is not on screen,
       // is never settled here: nothing is written, loaded or dropped (R-19).
-      if (!teamChoiceSpeaks(c)) {
-        set({ vaultConflict: undefined });
-        return { ok: false };
-      }
+      // After an expiry, the same account's choice waits for its return.
+      if (!teamChoiceSpeaks(c)) return waitForTeamSignIn(c, draft);
       const target = vaultTargetFrom(c.target);
       if (!target) return { ok: false, failed: true };
       const title = noteTitle(c.path);
@@ -11066,6 +11082,9 @@ export const useApp = create<AppState>((set, get, api) => {
           // shows what the vault holds (or closes, when it is gone), as the
           // lapsed branch above does. A failure that may pass keeps the
           // sheet up (round 5, finding 2).
+          // The sign-in ended while the choice was on its way (a dead refresh
+          // token found by this tap): the choice and its words wait, sealed.
+          if (!teamChoiceSpeaks(c)) return waitForTeamSignIn(c, draft);
           const refusal = vaultRefusal(err);
           if (refusal) {
             const landed = await holdVaultDraft(c.target, c.path, draft, asSentence(refusal));
