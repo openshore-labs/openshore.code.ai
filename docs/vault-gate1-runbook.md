@@ -69,6 +69,7 @@ This replaces the earlier drafts (push-0019-0021, v2, and the CTO 4 edition that
 ## 0. Look and decide first (browser only, read only)
 
 1. **2.2b before package A reaches `main`.** If an integration deploys migrations when `main` changes, landing package A would push 0021 to 0026 with no preflight. Tell Claude to hold the landing until you have looked.
+   - **Done 2026-09-30:** Project Settings, Integrations, GitHub showed "Choose GitHub repository", so no repository is connected and nothing deploys from `main`. Look again on push day (2.2b), since a connection can be added later.
 2. **Which `delete-account` is live (F6).** Dashboard, Edge Functions, `delete-account`: note its last deployed time.
    - **2026-09-24** means the privacy branch's function, the one this runbook's safety analysis assumes (7.4). Go on.
    - **Stop if** it is any other date, or there is no such function. Something else was deployed; hand the date to Claude before any push.
