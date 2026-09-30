@@ -1100,6 +1100,10 @@ describe('the save chip and conflict badges (M2 2.2)', () => {
     expect(vaultSaveChip('offline', 4).count).toBe('4 notes waiting');
     // No count it cannot back up.
     expect(vaultSaveChip('offline', 0)).not.toHaveProperty('count');
+    // Refused for good and set aside: Not saved, with no count and no Try
+    // again, since trying again meets the same refusal (E18).
+    expect(vaultSaveChip('held', 0)).toEqual({ label: 'Not saved' });
+    expect(vaultSaveChip('held', 2)).toEqual({ label: 'Not saved' });
   });
 
   it('badges exactly the keep-both names the store and the server make', async () => {

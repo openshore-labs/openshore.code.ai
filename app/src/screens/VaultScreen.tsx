@@ -2094,12 +2094,21 @@ export function VaultScreen() {
       conflictPath: conflictHere?.path,
       uid,
     });
+    // Held: the last save of this sitting went under Not saved (the store
+    // says so), or, before it has said, the room holds text of this note
+    // set aside since the note was read (E18). Never Saved over it.
+    const heldNow =
+      vaultNote.held ??
+      (vaultError === 'held' &&
+        heldHere.some((h) => Date.parse(h.at) >= (vaultNote.loadedAt ?? 0)));
     const saveStatus: VaultSaveStatus =
       pendingHere > 0 || vaultError === 'save'
         ? 'offline'
         : vaultSaving || autosave.isPending()
           ? 'saving'
-          : 'saved';
+          : heldNow
+            ? 'held'
+            : 'saved';
     return (
       <div className="screen vault-screen">
         <BackBar title={title} back={{ to: 'Vault', onBack: backToNotes }} />
@@ -3136,7 +3145,7 @@ function SaveChip({
     <span
       key={status}
       className={`vault-save-chip ${status}`}
-      {...(status === 'offline' ? { role: 'status' } : {})}
+      {...(status === 'offline' || status === 'held' ? { role: 'status' } : {})}
     >
       {chip.label}
       {chip.count ? <span className="vault-save-count">{chip.count}</span> : null}

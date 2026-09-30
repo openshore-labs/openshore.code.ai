@@ -1551,6 +1551,11 @@ interface AppState {
     /** Who last saved `text`, when the storage says (the team vault only,
      *  StoredFileMeta.editedBy, CTO G6). Cleared by this device's own save. */
     editedBy?: { id: string; label?: string };
+    /** Whether the last save of this sitting was set aside under Not saved
+     *  (refused for good, a read-only vault, or no copy kept): true, false
+     *  once one lands, undefined before either. The save chip says Not saved
+     *  while it is true, never Saved (round 7 E18). */
+    held?: boolean;
   };
   /** A note that changed somewhere else under unsaved edits, waiting for the
    *  person's choice (the resolve sheet). At most one at a time. */
@@ -5251,6 +5256,14 @@ export const useApp = create<AppState>((set, get, api) => {
     landed
       ? 'Your text is kept under Not saved.'
       : 'This device could not keep a copy, so it is under Not saved only until the app closes. Copy it somewhere safe now.';
+  // The last save of the open note's sitting was set aside under Not saved:
+  // the note says so until one lands (E18). Only that sitting's own save.
+  function markHeldHere(t: VaultTargetRef, path: string, session: number | undefined): void {
+    const open = get().vaultNote;
+    if (!isActiveVault(t) || open?.path !== path) return;
+    if (session === undefined || open.loadedAt !== session) return;
+    set({ vaultNote: { ...open, held: true } });
+  }
 
   // The account an expired sign-in belonged to, while nobody has signed in
   // since. Its unsent team text is kept sealed and hidden for its return; a
@@ -5727,6 +5740,7 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       const landed = await holdVaultDraft(t, path, text, asSentence(refusal), { session });
       set({ vaultError: 'held' });
+      markHeldHere(t, path, session);
       get().showToast(`Not saved. ${asSentence(refusal)} ${heldLine(landed)}`);
       logEvent('vault_note_save_refused');
       return;
@@ -5742,6 +5756,7 @@ export const useApp = create<AppState>((set, get, api) => {
       const reason = 'This device could not keep a copy to retry. Copy it somewhere safe.';
       await holdVaultDraft(t, path, text, reason, { session });
       set({ vaultError: 'held' });
+      markHeldHere(t, path, session);
       get().showToast(
         'Could not save to your vault, and this device could not keep a copy to retry. Your text is under Not saved.',
       );
@@ -7058,6 +7073,7 @@ export const useApp = create<AppState>((set, get, api) => {
         version: file.version,
         editedBy,
         fresh: undefined,
+        held: undefined,
         loadedAt: nextLoadedAt(),
         reloaded: (open.reloaded ?? 0) + 1,
         reloadedFrom: from,
@@ -7277,6 +7293,7 @@ export const useApp = create<AppState>((set, get, api) => {
       // A read-only vault takes no write, but typed text is never dropped.
       const landed = await holdVaultDraft(target, path, text, readOnly, { session });
       set({ vaultError: 'held' });
+      markHeldHere(target, path, session);
       get().showToast(`${readOnly} ${heldLine(landed)}`);
       return base;
     }
@@ -7352,6 +7369,7 @@ export const useApp = create<AppState>((set, get, api) => {
                 version: saved.version,
                 fresh: undefined,
                 editedBy: undefined,
+                held: false,
               }
             : get().vaultNote,
         vaultError: undefined,
@@ -7510,6 +7528,7 @@ export const useApp = create<AppState>((set, get, api) => {
             text: theirs.text,
             updatedAt: theirs.updatedAt,
             version: theirs.version,
+            held: false,
           },
         });
       }

@@ -24,6 +24,8 @@ const app = vi.hoisted(() => {
       fresh?: boolean;
       reloaded?: number;
       reloadedFrom?: 'elsewhere' | 'resolve';
+      held?: boolean;
+      loadedAt?: number;
     };
     vaultConflict?: Record<string, unknown> & { deferred: boolean };
     vaultCloseNote: () => void;
@@ -203,7 +205,7 @@ vi.mock('../src/state/store.js', async () => {
     useApp: <T,>(select?: (s: typeof app.state) => T) =>
       useSyncExternalStore(subscribe, () => (select ? select(app.state) : app.state)),
     agenticView: () => ({}),
-    vaultHeldFor: () => [],
+    vaultHeldFor: (held: unknown[] | undefined) => held ?? [],
     isOrgAdmin: () => true,
   };
 });
@@ -1832,5 +1834,92 @@ describe('the team room offers only what the server takes (Y14, Y15)', () => {
     expect(dom.text()).toContain(copy.vaultLinksLeftCard('Ideas').title);
     expect(dom.buttons()).toContain('C');
     expect(dom.buttons()).not.toContain(button);
+  });
+});
+
+// Round 7 E18: the chip never says Saved over text the vault refused for
+// good and kept under Not saved.
+describe('the save chip after a refusal for good (E18)', () => {
+  let dom: TestDom;
+  const FULL = 'This team has used its 25 MiB of free space.';
+  const heldEntry = (at = '2026-09-30T00:00:00.000Z') => ({
+    id: 'org::org-1::Plan.md::u1::1',
+    providerId: 'org',
+    resourceId: 'org-1',
+    owner: 'u1',
+    path: 'Plan.md',
+    text: 'the base\nA whole paragraph.',
+    reason: FULL,
+    at,
+    durable: true,
+  });
+  beforeEach(async () => {
+    globalThis.requestAnimationFrame ??= (cb: FrameRequestCallback) =>
+      setTimeout(() => cb(Date.now()), 0) as unknown as number;
+    app.state.vaultScope = 'team';
+    app.state.teamVaultAvailable = () => true;
+    app.state.authSession = { user: { id: 'u1' } };
+    app.state.vaultTargetRef = () => ({ providerId: 'org', resourceId: 'org-1', owner: 'u1' });
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    app.state.vaultNote = { path: 'Plan.md', text: 'the base', updatedAt: 'v1' };
+    app.state.vaultFiles = [{ path: 'Plan.md', updatedAt: 'v1', size: 8 }];
+    app.state.vaultPending = [];
+    app.state.vaultSaving = false;
+    app.state.vaultError = 'held';
+    app.state.vaultHeld = [heldEntry()];
+    dom = await mountDom();
+  });
+  afterEach(async () => {
+    await dom.unmount();
+    app.state.vaultScope = 'personal';
+    app.state.teamVaultAvailable = () => false;
+    app.state.authSession = undefined;
+    app.state.vaultTargetRef = () => undefined;
+    app.state.vaultTeamPlan = undefined;
+    app.state.vaultNote = undefined;
+    app.state.vaultFiles = [];
+    app.state.vaultError = undefined;
+    app.state.vaultHeld = [];
+  });
+  const chip = () => dom.container.querySelector('.vault-save-chip');
+
+  it('never says Saved while the last save of this note was refused and held', async () => {
+    await dom.render(<VaultRoom />);
+    await dom.settle();
+    expect(dom.text()).toContain('Not saved');
+    expect(chip()?.textContent).not.toBe('Saved');
+    expect(chip()?.textContent).toBe('Not saved');
+    expect(chip()?.getAttribute('role')).toBe('status');
+    expect(chip()?.querySelector('button')).toBeNull();
+  });
+
+  it('the store saying this sitting is held is enough', async () => {
+    app.state.vaultError = undefined;
+    app.state.vaultNote = { path: 'Plan.md', text: 'the base', updatedAt: 'v1', held: true };
+    await dom.render(<VaultRoom />);
+    expect(chip()?.textContent).toBe('Not saved');
+  });
+
+  it('says Saved once this note saved since, whatever another note left', async () => {
+    app.state.vaultNote = { path: 'Plan.md', text: 'the base', updatedAt: 'v1', held: false };
+    await dom.render(<VaultRoom />);
+    expect(chip()?.textContent).toBe('Saved');
+  });
+
+  it("an earlier sitting's held text does not make this one Not saved", async () => {
+    app.state.vaultNote = {
+      path: 'Plan.md',
+      text: 'the base',
+      updatedAt: 'v1',
+      loadedAt: Date.parse('2026-09-30T01:00:00.000Z'),
+    };
+    await dom.render(<VaultRoom />);
+    expect(chip()?.textContent).toBe('Saved');
+  });
+
+  it('a lapsed plan shows no chip at all', async () => {
+    app.state.vaultTeamPlan = { entitled: false, deleteRole: 'member', isAdmin: false };
+    await dom.render(<VaultRoom />);
+    expect(chip()).toBeNull();
   });
 });

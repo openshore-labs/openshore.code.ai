@@ -6162,4 +6162,50 @@ describe('round 7, batch 2: team text and names stay where they belong', () => {
       expect(mem.has(INFLIGHT)).toBe(false);
     });
   });
+  describe('E18: the open note says when its last save was held', () => {
+    it('a refusal for good marks the sitting held, and the next save that lands clears it', async () => {
+      server.put('Plan.md', 'the base', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('Plan.md');
+      server.freeBytes = server.usage();
+      await st().vaultSave('Plan.md', 'the base\nA whole paragraph.');
+      expect(st().vaultNote).toMatchObject({ path: 'Plan.md', held: true });
+      expect(st().vaultError).toBe('held');
+      expect(pending()).toEqual({});
+      // A shrinking save at the cap is never refused (0023), and lands.
+      await st().vaultSave('Plan.md', 'the');
+      expect(server.bytes('Plan.md')).toBe('the');
+      expect(st().vaultNote?.held).toBe(false);
+      expect(st().vaultError).toBeUndefined();
+      server.freeBytes = server.usage();
+      await st().vaultSave('Plan.md', 'the base\nAgain.');
+      expect(st().vaultNote?.held).toBe(true);
+      server.freeBytes = undefined;
+      await st().vaultSave('Plan.md', 'the base\nAgain, with room.');
+      expect(st().vaultNote?.held).toBe(false);
+    });
+
+    it("another note's refusal never marks the open one", async () => {
+      server.put('Plan.md', 'the base', 'u-me');
+      server.put('Other.md', 'other', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('Plan.md');
+      server.freeBytes = server.usage();
+      await st().vaultSave('Other.md', 'other, grown');
+      expect(teamHeld().map((h) => h.path)).toEqual(['Other.md']);
+      expect(st().vaultNote?.held).toBeUndefined();
+    });
+
+    it('opening the note again starts a sitting with nothing held yet', async () => {
+      server.put('Plan.md', 'the base', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('Plan.md');
+      server.freeBytes = server.usage();
+      await st().vaultSave('Plan.md', 'the base\nA whole paragraph.');
+      expect(st().vaultNote?.held).toBe(true);
+      st().vaultCloseNote();
+      await st().vaultOpen('Plan.md');
+      expect(st().vaultNote?.held).toBeUndefined();
+    });
+  });
 });

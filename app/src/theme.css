@@ -1509,8 +1509,9 @@ textarea {
 }
 
 /* The save chip in the note bar (Vault M2 2.2): quiet muted text for Saved and
-   Saving, the warn color when the text is kept on this device to save later.
-   Re-keyed per status, so each change settles in on fade-rise. */
+   Saving, the warn color when the text is kept on this device to save later
+   or was set aside under Not saved (E18). Re-keyed per status, so each change
+   settles in on fade-rise. */
 .vault-save-chip {
   display: inline-flex;
   flex-wrap: wrap;
@@ -1522,7 +1523,8 @@ textarea {
   color: var(--muted);
   animation: fade-rise var(--dur-4) var(--ease-arrive) backwards;
 }
-.vault-save-chip.offline {
+.vault-save-chip.offline,
+.vault-save-chip.held {
   color: var(--warn);
 }
 .vault-save-count {

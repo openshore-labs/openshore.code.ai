@@ -724,17 +724,20 @@ function copyOrigin(copy: string): string {
 // a way to try now. A conflict copy wears a badge in the tree, so the person
 // can find the text that landed beside a note.
 
-/** Where the open note's text stands. */
-export type VaultSaveStatus = 'saved' | 'saving' | 'offline';
+/** Where the open note's text stands. 'held': its last save was set aside
+ *  under Not saved (refused for good, read-only), never "Saved" (E18). */
+export type VaultSaveStatus = 'saved' | 'saving' | 'offline' | 'held';
 
 /** The save chip's words: the label, how many notes wait (offline only), and
- *  the retry button's label (offline only). */
+ *  the retry button's label (offline only; a refusal for good has no retry,
+ *  since trying again meets the same refusal). */
 export function vaultSaveChip(
   status: VaultSaveStatus,
   pending: number,
 ): { label: string; count?: string; retry?: string } {
   if (status === 'saved') return { label: 'Saved' };
   if (status === 'saving') return { label: 'Saving' };
+  if (status === 'held') return { label: 'Not saved' };
   return {
     label: 'Offline, kept on this device',
     ...(pending > 0
