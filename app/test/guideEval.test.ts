@@ -63,7 +63,7 @@ describe('equipment and setup advice', () => {
   });
 
   it('sizes DeepBlue from the fit table, not from the model', () => {
-    expect(setupAdvice({ ramGB: 8, gpu: false })[0]).toContain('3B');
+    expect(setupAdvice({ ramGB: 8, gpu: false })[0]).toContain('4B');
     expect(setupAdvice({ ramGB: 16, gpu: false })[0]).toContain('7B');
     expect(setupAdvice({ ramGB: 36, mac: true })[0]).toContain('14B');
     expect(setupAdvice({ ramGB: 64, gpu: true, gpuVramGB: 24 })[0]).toMatch(/14B|32B/);
@@ -159,7 +159,7 @@ describe('what the reference box eval taught (2026-09-24)', () => {
       message: 'I have a laptop with 8GB of RAM and no GPU. What should I use?',
       cards: GUIDE_CARDS,
     });
-    expect(plan.after).toContain('Qwen 2.5 Coder 3B');
+    expect(plan.after).toContain('Qwen3 4B Instruct');
     expect(
       planGuideTurn({ message: 'What model should I get for my computer?', cards: GUIDE_CARDS })
         .after,

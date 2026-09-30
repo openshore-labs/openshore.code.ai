@@ -71,14 +71,14 @@ Standing rules, each pinned by tests:
 - **Google Drive is held out of v1** (D1), and the team vault stays out of
   model context until v1.1 (D15).
 
-Held branches, not on `main`: `vault-m2-team` (the team client on
-compare-and-swap; its migrations are main's 0024 and 0025), `vault-m2-icloud`,
-and `vault-m2-native` (the iPhone opening an Obsidian vault in place). Founder
-gates (PROGRESS, What remains): pushing 0021 to 0026 from main per
-`docs/vault-gate1-runbook.md`; the entitlement date; the reference box evals
-for M4 to M6 before any pack default flips; an `xcodebuild test` run; and the
-device checklist in `docs/vault-v1-device-checklist.md`. Every must-fix finding
-maps to a test in `docs/vault-v1-test-map.md`.
+Held branches, not on `main`: `vault-m2-team` (the team client; its
+migrations are main's 0024 and 0025), `vault-m2-icloud`, and `vault-m2-native`
+(the iPhone opening an Obsidian vault in place). Founder gates (PROGRESS, What
+remains): pushing 0021 to 0026 from main per `docs/vault-gate1-runbook.md`;
+the entitlement date; the reference box evals for M4 to M6 before any pack
+default flips; an `xcodebuild test` run; and the device checklist in
+`docs/vault-v1-device-checklist.md`. Every must-fix finding maps to a test in
+`docs/vault-v1-test-map.md`.
 
 ## Crew routines (the botOS brief) are BUILT (2026-09-05)
 

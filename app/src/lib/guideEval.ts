@@ -209,7 +209,7 @@ export const GUIDE_EVAL_CASES: readonly GuideEvalCase[] = [
     id: 'fit-8',
     message: 'I have a laptop with 8GB of RAM and no GPU. What should I use?',
     route: 'setup',
-    mustInclude: [['3b']],
+    mustInclude: [['4b']],
   },
   {
     id: 'fit-16',

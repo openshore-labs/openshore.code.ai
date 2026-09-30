@@ -1102,8 +1102,7 @@ pure `planLinkRewrites` and the host apply in `vaultOps.ts` ask "Update links?"
 only when links point in, skip a note that changed twice and carry on, and
 leave a standing card with "Update the rest". Folders are created, renamed and
 trashed with counts; Local remembers an empty folder on the device. The team
-`org_vault_move` (0024, pgTAP) is on `main`, unpushed; its client is on the
-held team branch.
+`org_vault_move` (0020, pgTAP) is on the held team branch.
 
 Team part built 2026-09-27 on the held `vault-m2-team` branch: the team client
 declares `rename` over `org_vault_move` under the source's rev and adopts the
@@ -1224,7 +1223,7 @@ What waits for the held branches (K19), each landing by adding seam members so
 its `providerContract` rows enroll themselves: `vault-m2-icloud` (coordinated
 rename, Trash, attachments and `readBytes`; until then an iCloud delete is
 permanent with the in-memory Undo, and no Rename, images or checkbox
-write-back); `vault-m2-team` with 0021 to 0026 in production (rename over
+write-back); `vault-m2-team` with 0019 then 0020 in production (rename over
 `org_vault_move`, Trash and Restore over tombstones and revisions, checkbox
 write-back and link rewrites; until then the team room keeps M2's delete); and
 `vault-m2-native` for the iPhone folder (the same members over its transport,
@@ -1318,10 +1317,8 @@ org that lapses can still read and export every note it has. Pricing stays a
 Board gate. Closes [orgvault-14] [orgvault-17]. Test: pgTAP cases, including
 a lapsed org reading and exporting.
 
-Built 2026-09-27, held (L17): `0025_org_vault_settings.sql` (written as
-0021, renumbered by CTO 4 on 2026-09-29) and its pgTAP, now on `main`, after
-`0021_org_vault_v1.sql` (0019 until CTO 11) and `0024_org_vault_move.sql`, all
-pushed from main in order:
+Built 2026-09-27, held (L17): `0021_org_vault_settings.sql` and its pgTAP on
+`vault-m2-team`, waiting with 0019 and 0020 (pushed in that order):
 `org_vault_settings`, admin-only compare-and-swap `org_vault_settings_put`,
 `org_vault_entitled`, `OV402` on every write RPC when not entitled, `OV403`
 for a member's delete when only admins may (a move is not gated by the delete

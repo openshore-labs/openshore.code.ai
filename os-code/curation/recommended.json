@@ -38,9 +38,15 @@
     "licenseNote": "Commercial use is fine. Attribution required."
   },
   "qwen2.5-coder-3b": {
+    "isRecommended": false,
+    "rank": 13,
+    "note": "Measured at 75% on the coding loop on a CPU-only box (best of 2, 2026-09-15). Research and personal use only; for a computer with no GPU, Qwen3 4B Instruct is the Apache pick.",
+    "licenseNote": "Research and non-commercial use. Commercial use needs permission from Qwen."
+  },
+  "qwen3-4b": {
     "isRecommended": true,
     "rank": 6,
-    "note": "The seat for a computer with no GPU and under about 12 GB of memory. Measured at 75% on the coding loop on a CPU-only box (best of 2, 2026-09-15). Runs short plans; the harness carries the checklist.",
+    "note": "The seat for a computer with no GPU and under about 12 GB of memory, and DeepBlue's floor size. Apache 2.0. Not yet measured on the coding loop.",
     "licenseNote": "Commercial use is fine. Attribution required."
   }
 }

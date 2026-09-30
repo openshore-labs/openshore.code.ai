@@ -1,4 +1,4 @@
-// Harbor: the mobile coder. Qwen 2.5 Coder 3B running fully on this device,
+// Harbor: the mobile coder. Qwen3 4B Instruct running fully on this device,
 // with real reasoning and real web search, so it can write and explain real
 // code and look things up instead of guessing. Harbor Lite (harborMini.ts) is
 // the tiny built-in guide; a fresh stack seeds with Harbor Lite to keep the
@@ -10,8 +10,12 @@
 // HARBOR_MODEL_ID is a stable slot, not tied to one set of weights: as the
 // model improves, HARBOR_MODEL_VERSION bumps and HARBOR_MODEL_URL points at the
 // new weights, but the id and the "Harbor" name stay put so a device that
-// already has Harbor just re-downloads in place. Version 2.0 is the recast from
-// the earlier Qwen3-1.7B guide to the Qwen 2.5 Coder 3B mobile coder.
+// already has Harbor just re-downloads in place. Version 2.0 was the recast from
+// the earlier Qwen3-1.7B guide to the Qwen 2.5 Coder 3B mobile coder; 3.0 moves
+// to Qwen3-4B-Instruct-2507 because the 3B is under the Qwen Research License
+// (non-commercial) and Harbor must be sellable (founder, 2026-09-30). A device
+// still holding older weights drops them at launch (harborWeightsStale), so no
+// phone keeps running the research-licensed 3B.
 //
 // Harbor is a reserved on-device model id, so it flows through the existing
 // OnDeviceDriver / llama plugin and the same download path as any pocket
@@ -21,19 +25,24 @@ import { NO_SEARCH_NOTE, SEARCH_PROTOCOL_NOTE } from 'os-code/protocol';
 import { APP_KNOWLEDGE } from './guideKnowledge.js';
 
 export const HARBOR_MODEL_ID = 'harbor';
-export const HARBOR_MODEL_VERSION = '2.0';
+export const HARBOR_MODEL_VERSION = '3.0';
 // The display name is just "Harbor" (the version rides the slot, not the copy).
 export const HARBOR_MODEL_NAME = 'Harbor';
 
-// Qwen2.5-Coder-3B-Instruct, Q4_K_M (Qwen Research License, not Apache: research
-// and non-commercial use, commercial use needs Qwen's permission; checked on the
-// model card 2026-09-24), from unsloth's GGUF repo (the
-// standard source for this quant level, the same we use for Harbor Lite). About
-// 1.9 GB. VERIFY the exact filename/casing resolves (200) before a build; this
-// sandbox cannot reach huggingface.co to check it.
+// Qwen3-4B-Instruct-2507, Q4_K_M (Apache License 2.0, free for commercial use),
+// from unsloth's GGUF repo (the standard source for this quant level, the same
+// we use for Harbor Lite). The same file as the catalog's qwen3-4b-phone, and
+// the same weights as DeepBlue's floor size on the desktop. The non-thinking
+// 2507 build, so it answers without a reasoning preamble unless Chain of
+// Thought asks. About 2.5 GB, and it needs a 6 GB phone (the catalog's
+// minRamGB). Not yet measured against the 3B it replaces (tenet 2: the founder
+// runs osc eval on the box). VERIFY the exact filename/casing resolves (200)
+// before a build; this sandbox cannot reach huggingface.co to check it.
 export const HARBOR_MODEL_URL =
-  'https://huggingface.co/unsloth/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-3B-Instruct-Q4_K_M.gguf';
-export const HARBOR_APPROX_LABEL = 'about 1.9 GB';
+  'https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf';
+export const HARBOR_APPROX_LABEL = 'about 2.5 GB';
+/** The honest name of the weights behind the slot, for attribution copy. */
+export const HARBOR_WEIGHTS_NAME = 'Qwen3 4B Instruct';
 
 // The byline shown under the Harbor row in Settings. Harbor is the coder that
 // runs on the phone, a step up from the built-in Harbor Lite guide. It is a
@@ -43,6 +52,13 @@ export const HARBOR_BYLINE =
 
 export function isHarbor(modelId: string): boolean {
   return modelId === HARBOR_MODEL_ID;
+}
+
+/** Are the Harbor weights on this device from an older version of the slot?
+ *  A download records HARBOR_MODEL_VERSION; weights with no record predate
+ *  3.0 (the research-licensed 3B), so they count as stale too. */
+export function harborWeightsStale(recorded: string | undefined): boolean {
+  return recorded !== HARBOR_MODEL_VERSION;
 }
 
 /** The instant, seeded first message, shown once Harbor is downloaded. Not

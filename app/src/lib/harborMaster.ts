@@ -4,21 +4,27 @@
 // built-in phone guide; Harbor is the mobile coder; DeepBlue is a real coding
 // agent that plans and edits your repositories on the desktop engine, pulled
 // through Ollama and sized to the machine it lands on (Qwen 2.5 Coder 32B where
-// it fits, down to 3B on a small box), out of the box and never behind the
+// it fits, down to Qwen3 4B on a small box), out of the box and never behind the
 // Marketplace. Docked, the phone reaches it as "Your computer".
 //
 // The internal slot keeps the harborMaster / harbor-master identifiers (the
 // stable-slot pattern, like harborMini backing "Harbor Lite"); only the display
-// name and the copy carry "DeepBlue". Today every size points at stock Qwen 2.5
-// Coder weights (the catalog's own picks), and when OpenShore's tuned weights
+// name and the copy carry "DeepBlue". Today every size points at stock Qwen
+// weights under the Apache License 2.0 (the catalog's own picks), and when OpenShore's tuned weights
 // ship (docs/house-model-proposal.md) only the refs, the size labels, and the
 // attribution change. The display name is one constant, so a rename touches copy
 // only.
 //
 // Honesty bar (CLAUDE.md, the claim ladder): copy never says "as smart as
 // Claude", "a compact Opus", "trains itself", or "always on". Today the
-// attribution says the weights are stock Qwen 2.5 Coder; "tuned for OpenShore"
-// is written only when an adapter actually ships.
+// attribution says the weights are stock Qwen; "tuned for OpenShore" is written
+// only when an adapter actually ships.
+//
+// License (founder, 2026-09-30): every size is Apache 2.0, so DeepBlue is
+// sellable. The floor was Qwen 2.5 Coder 3B, which is under the Qwen Research
+// License (non-commercial); it is now Qwen3-4B-Instruct-2507, the same weights
+// Harbor runs on the phone. The 3B's 75% on the reference box does not carry
+// over: the 4B is unmeasured until the founder runs osc eval --floor.
 import { fitVerdict, type FitVerdict, type HardwareRead } from './firstSeat.js';
 
 export const HARBOR_MASTER_MODEL_ID = 'harbor-master';
@@ -32,7 +38,7 @@ export const HARBOR_MASTER_BYLINE =
 /** The attribution sentence for the "Local models, honestly" sheet. Names the
  *  real weights behind the slot; changes in the same commit as the refs. */
 export const HARBOR_MASTER_ATTRIBUTION =
-  'On the desktop, DeepBlue is Qwen 2.5 Coder, sized to your computer: the 32B, 14B, and 7B under the Apache License 2.0, and the 3B under the Qwen Research License.';
+  'On the desktop, DeepBlue is Qwen 2.5 Coder 32B, 14B, or 7B, or Qwen3 4B on a smaller computer, sized to fit it, all under the Apache License 2.0.';
 
 /** One size of DeepBlue. The catalog id is what the engine's installer
  *  takes; the Ollama ref is what seats it as the Reasoning LLM once pulled;
@@ -47,9 +53,10 @@ export interface HarborMasterSize {
 /** Largest first: the pick is the biggest size that is not too big for this
  *  computer. The 32B is the flagship on a hub with real room (a 48 GB GPU class
  *  by the engine's budget); the 14B is "the one to grow into"; the 7B is the
- *  catalog's rank 1 and the 16 GB laptop or 8 GB GPU pick; the 3B is the floor
- *  seat (measured 75% on the coding loop on a CPU-only 8 GB box, best of 2,
- *  2026-09-15). Every id is pinned against the engine's bundled catalog by
+ *  catalog's rank 1 and the 16 GB laptop or 8 GB GPU pick; Qwen3 4B Instruct
+ *  is the floor seat on a CPU box under about 12 GB (Apache 2.0, replacing the
+ *  non-commercial Qwen 2.5 Coder 3B on 2026-09-30; not yet measured on the
+ *  reference box). Every id is pinned against the engine's bundled catalog by
  *  harborMaster.test.ts. */
 export const HARBOR_MASTER_SIZES: readonly HarborMasterSize[] = [
   {
@@ -71,10 +78,12 @@ export const HARBOR_MASTER_SIZES: readonly HarborMasterSize[] = [
     sizeGB: 4.7,
   },
   {
-    catalogId: 'qwen2.5-coder-3b',
-    ollamaRef: 'qwen2.5-coder:3b',
-    weightsName: 'Qwen 2.5 Coder 3B',
-    sizeGB: 1.9,
+    // The non-thinking 2507 build at Q4_K_M, pinned by its full tag so a
+    // retagged `qwen3:4b` can never swap in the thinking model.
+    catalogId: 'qwen3-4b',
+    ollamaRef: 'qwen3:4b-instruct-2507-q4_K_M',
+    weightsName: 'Qwen3 4B Instruct',
+    sizeGB: 2.5,
   },
 ];
 

@@ -2692,8 +2692,7 @@ execution contract. Newest at the bottom.
   vault tool, no agent line (D15); project pins stay device-local and never
   sync. (6) **Founder decisions still open:** push 0019, then 0020, then
   0021 to production, after the case-duplicate preflight, and confirm the
-  purge cron (superseded 2026-09-29: 0020 and 0021 are now 0024 and 0025,
-  pushed from main after 0022 and 0023; see the renumber entry at the end); merge `vault-m2-team`, `vault-m2-icloud`, and `vault-m2-native`
+  purge cron; merge `vault-m2-team`, `vault-m2-icloud`, and `vault-m2-native`
   (in that dependency order: icloud before native); the date in
   `no_entitlement_vault_until()` when pay gates return (at least 30 days
   out); one recorded `xcodebuild test` run of the Swift tests on the Mac that
@@ -3268,6 +3267,25 @@ execution contract. Newest at the bottom.
   `production-history.tsv`, the Vault key present, no leftovers, pg_cron on
   with both jobs, and no rows from 4.2 to 4.5. The founder said yes to landing
   `prod-reconcile` (packages A, B and C) on main.
+- 2026-09-30: **The Mac build runs only when started by hand in Codemagic.**
+  Founder: Codemagic minutes are metered and every push to main is a release,
+  so the release workflow no longer starts `mac-desktop` after it publishes.
+  Linux and Windows still ship on every push; Macs update to the newest
+  release a hand-started Mac build has uploaded into.
+- 2026-09-30: **The curated models move to Apache weights: Harbor and
+  DeepBlue's floor are Qwen3-4B-Instruct-2507, not Qwen 2.5 Coder 3B.** Founder:
+  update the three to the commercially viable Apache 2.0 versions, evals later.
+  Of the two routes the 2026-09-24 item named, Qwen3 4B over Qwen 2.5 Coder
+  1.5B: a 2025 4B is the stronger coder and reasoner (the catalog's phone pick
+  already), the 1.5B scored 0.48 on the published probe, and one set of
+  weights serves both slots. The 2507 Instruct build, not the hybrid
+  `qwen3:4b`, so no model thinks unless Chain of Thought asks, and the Ollama
+  ref is the full tag so a retag cannot change it. The desktop catalog entry
+  stays `orchestratorCapable: false` until the box number exists rather than
+  inventing an eval. Older Harbor weights are deleted at launch by a recorded
+  version, since the slot id did not change. Cost: 2.5 GB instead of 1.9 on
+  the phone (a 6 GB iPhone), and a 4 GB CPU computer reads too big for
+  DeepBlue. Harbor Lite was already Apache (SmolLM2-135M-Instruct).
 
 - **The team migrations renumbered 0024 and 0025 (CTO 4, 2026-09-29,
   `vault-m2-team`, merged with main at a5c14c3):** `git mv` keeps the bodies;
@@ -3306,3 +3324,11 @@ execution contract. Newest at the bottom.
   0026 are in production (the runbook's section 11). `rpc` keeps the branch's
   coded error (`requestError`, so OV402, OV403 and PGRST202 still reach the
   team client) and takes main's 204 read, so a void RPC answers `undefined`.
+  The merge of main at 4ffe370 gave main's own text back its bytes where the
+  branch had edited it outside the team feature: the M8 entry's founder item
+  (6), phase E1's migration line in `docs/next-build-2026-09-29.md`, three
+  migration lines of `docs/vault-v1-plan.md` (6.2, K19 and L17; the team
+  paragraphs the branch adds there stay), and the held-branches line of
+  `CLAUDE.md`. The pointer lives here instead: the K12, L17 and M8 entries
+  still name 0020 and 0021 as written, and the push they point to is now
+  0021 to 0026 from main, per `docs/vault-gate1-runbook.md`.

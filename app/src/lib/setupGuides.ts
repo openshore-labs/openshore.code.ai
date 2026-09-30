@@ -44,7 +44,7 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
     goal: 'Add Harbor, a coding model that runs on my phone and can help me build for real.',
     steps: [
       'Open Settings and find the Harbor section. Harbor Lite, the built-in guide, is already there. Harbor is the coder that runs alongside it.',
-      'On the Harbor row, tap Install. It downloads straight from the source, about 1.9 GB, roughly a couple of minutes on wifi. You can keep chatting while it lands.',
+      'On the Harbor row, tap Install. It downloads straight from the source, about 2.5 GB, roughly a few minutes on wifi. You can keep chatting while it lands.',
       'When it finishes, the row shows Uninstall and Harbor becomes your Reasoning model automatically. Start a new chat to talk to it.',
     ],
     done: 'Harbor writes and explains code, reasons, and can search the web. For heavier repository work, add a cloud key or dock to your computer.',
