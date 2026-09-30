@@ -45,13 +45,11 @@
 // trivially and the server resolves concurrency. Team vault is online by
 // design; when there is no session it fails with a clear message rather than
 // pretending to hold bytes it cannot reach.
+import { isVaultConfigName, type ConfigRead, type VaultConfigName } from 'os-code/protocol';
 import {
   VAULT_CONFIG_MAX_BYTES,
   foldPath,
-  isVaultConfigName,
   utf8Length,
-  type ConfigRead,
-  type VaultConfigName,
   type VaultSettingsConfigName,
   type VaultSettingsField,
 } from 'os-code/protocol';
@@ -60,28 +58,28 @@ import {
   VAULT_SETTINGS_NAME_REFUSED,
   VAULT_SETTINGS_TOO_LARGE,
   VAULT_TEAM_DELETE_REFUSED,
+  VAULT_TEAM_FULL,
   VAULT_TEAM_LAPSED_NOT_SAVED,
   vaultNotFolderLine,
 } from '../vaultCopy.js';
 import { isVaultFolderPath } from './folderClient.js';
-import {
-  VAULT_SETTINGS_PATH,
-  isNotePath,
-  restoredPath,
-  type Lease,
-  type RemoveGuard,
-  type RemoveResult,
-  type RenameGuard,
-  type RenameResult,
-  type RestoreResult,
-  type StorageProvider,
-  type StoredFile,
-  type StoredFileMeta,
-  type TrashEntry,
-  type TrashResult,
-  type TrashTarget,
-  type WriteGuard,
-  type WriteResult,
+import { VAULT_SETTINGS_PATH, restoredPath } from './local.js';
+import { isNotePath } from './providers.js';
+import type {
+  Lease,
+  RemoveGuard,
+  RemoveResult,
+  RenameGuard,
+  RenameResult,
+  RestoreReport,
+  StorageProvider,
+  StoredFile,
+  StoredFileMeta,
+  TrashEntry,
+  TrashResult,
+  TrashTarget,
+  WriteGuard,
+  WriteResult,
 } from './providers.js';
 
 interface NoteRow {
@@ -176,7 +174,8 @@ export function isOrgVaultAvailable(): boolean {
 }
 
 /** The team vault's per-note cap, the same byte count the server enforces
- *  (octet_length over 1048576 in org_vault_write). */
+ *  (octet_length over 1048576 in org_vault_put). */
+// And in org_vault_write (0021, 0025), the write this client makes.
 export const ORG_VAULT_NOTE_LIMIT_BYTES = 1_048_576;
 
 /** One page of a list. PostgREST caps a select at max_rows (1000), so a
@@ -233,28 +232,61 @@ export class OrgVaultDeleteRefused extends OrgVaultRefusal {
   }
 }
 
+/** A team without a live plan has used its free space (migration 0023's byte
+ *  cap, raised as check_violation, SQLSTATE 23514, which PostgREST answers
+ *  with a 400). Only growth is refused: a save, a new note, Today, a Restore
+ *  or an Undo, and a rename once the team is past the cap. A delete always
+ *  goes through but frees nothing until the weekly purge, so trying again
+ *  cannot help; permanent, and its message is the reason only
+ *  (VAULT_TEAM_FULL), which the store says after the verb ("Not restored."). */
+export class OrgVaultFull extends OrgVaultRefusal {
+  constructor() {
+    super(VAULT_TEAM_FULL);
+    this.name = 'OrgVaultFull';
+  }
+}
+
+/** Is this 0023's free space refusal? Its code, and its own words, since a
+ *  check constraint on a vault table raises the same code with Postgres's
+ *  message. 0023's other cap (one team without a plan per owner) is on
+ *  public.orgs, which no RPC this client calls writes, so it never reaches
+ *  here; only org creation meets it (the store's pushOrgToServer). */
+function isFreeSpaceRefusal(e: { code?: unknown; message?: unknown } | undefined): boolean {
+  return e?.code === '23514' && typeof e.message === 'string' && /\bfree space\b/i.test(e.message);
+}
+
 // A 4xx from PostgREST is the server saying no (a raised P0001 arrives as a
 // 400), except the three that say "try again": 401 (a token the next refresh
-// fixes), 408, and 429, and a missing function (PGRST202, a 404 on an RPC),
-// which is a server not yet migrated. Anything without a status (offline, a
-// 5xx) is left as it is, so the store stashes it and retries. OV402 and OV403
-// are the plan and the delete rule (0025), each with its own line.
+// fixes), 408, and 429. Anything without a status (offline, a 5xx) is left
+// as it is, so the store stashes it and retries.
+// A missing function (PGRST202, a 404 on an RPC) is a server not yet
+// migrated, retried the same way. OV402 and OV403 are the plan and the delete
+// rule (0025), and 23514 the free space (0023), each with its own line.
 const RETRYABLE_4XX = new Set([401, 408, 429]);
-async function refusing<T>(resourceId: string, call: () => Promise<T>): Promise<T> {
+async function refusing<T>(call: () => Promise<T>): Promise<T> {
   try {
     return await call();
   } catch (err) {
-    const e = err as { status?: unknown; code?: unknown } | undefined;
-    const status = e?.status;
-    if (e?.code === 'OV402') {
-      markLapsed(resourceId);
-      throw new OrgVaultLapsed();
-    }
+    const status = (err as { status?: unknown } | undefined)?.status;
+    const e = err as { code?: unknown; message?: unknown } | undefined;
+    if (e?.code === 'OV402') throw new OrgVaultLapsed();
     if (e?.code === 'OV403') throw new OrgVaultDeleteRefused();
+    if (isFreeSpaceRefusal(e)) throw new OrgVaultFull();
     if (e?.code === 'PGRST202' || status === 404) throw new OrgVaultNotReady();
     if (typeof status === 'number' && status >= 400 && status < 500 && !RETRYABLE_4XX.has(status)) {
       throw new OrgVaultRefusal(err instanceof Error ? err.message : `Request failed (${status}).`);
     }
+    throw err;
+  }
+}
+
+/** refusing, for one team: a plan refused as not active (OV402) marks that
+ *  team's plan lapsed, so the room turns read-only and says why (CX Y15). */
+async function refusingFor<T>(resourceId: string, call: () => Promise<T>): Promise<T> {
+  try {
+    return await refusing(call);
+  } catch (err) {
+    if (err instanceof OrgVaultLapsed) markLapsed(resourceId);
     throw err;
   }
 }
@@ -387,12 +419,12 @@ function eq(value: string): string {
   return encodeURIComponent(value);
 }
 
-/** Encode a note PATH for an `eq.` or `gt.` filter. Paths carry spaces, dots,
- *  and (for conflict copies) parentheses and commas, all of which PostgREST
- *  treats as reserved in a filter value. Wrapping the value in double quotes
- *  makes them literal; embedded quotes and backslashes are escaped first.
- *  Without this, a path like `note (conflict 2026-01-01 1200).md` would
- *  mis-parse. */
+/** Encode a note PATH for an `eq.` filter. Paths carry spaces, dots, and (for
+ *  conflict copies) parentheses and commas, all of which PostgREST treats as
+ *  reserved in a filter value. Wrapping the value in double quotes makes them
+ *  literal; embedded quotes and backslashes are escaped first. Without this, a
+ *  path like `note (conflict 2026-01-01 1200).md` would mis-parse. */
+// The same for a `gt.` filter (the list's keyset paging).
 function eqPath(path: string): string {
   const quoted = '"' + path.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
   return encodeURIComponent(quoted);
@@ -430,7 +462,7 @@ async function readRow(
 /** readRow as the first step of a write or remove, so its failure is
  *  classified the way the write's own would be (a refusal holds the text). */
 const headFor = (auth: string, resourceId: string, path: string) =>
-  refusing(resourceId, () => readRow(auth, resourceId, path));
+  refusingFor(resourceId, () => readRow(auth, resourceId, path));
 
 const asFile = (r: NoteRow): StoredFile => ({
   path: r.path,
@@ -461,7 +493,7 @@ async function guardedWrite(
     }
     args = { p_org: resourceId, p_path: path, p_body: text, p_if_match: rev };
   }
-  const reply = await refusing(resourceId, () => rpc<WriteReply>('org_vault_write', auth, args));
+  const reply = await refusingFor(resourceId, () => rpc<WriteReply>('org_vault_write', auth, args));
   if (!reply.ok) {
     const theirs = theirsFile(reply.theirs);
     return theirs
@@ -693,7 +725,7 @@ const settingsFile = (row: SettingsRow): StoredFile => ({
 });
 
 async function getSettings(auth: string, resourceId: string): Promise<SettingsRow> {
-  const row = await refusing(resourceId, () =>
+  const row = await refusingFor(resourceId, () =>
     rpc<SettingsRow>('org_vault_settings_get', auth, { p_org: resourceId }),
   );
   rememberSettings(resourceId, row);
@@ -714,7 +746,7 @@ async function putSettings(
     await getSettings(auth, resourceId);
     cols = columns.get(resourceId)!;
   }
-  const reply = await refusing(resourceId, () =>
+  const reply = await refusingFor(resourceId, () =>
     rpc<SettingsPutReply>('org_vault_settings_put', auth, {
       p_org: resourceId,
       p_settings: orgVaultAppliedSettings(settings),
@@ -852,7 +884,7 @@ export const orgVaultProvider: StorageProvider = {
       if (!now) return { ok: true };
       rev = now.rev;
     }
-    const reply = await refusing(resourceId, () =>
+    const reply = await refusingFor(resourceId, () =>
       rpc<RemoveReply>('org_vault_remove', auth, {
         p_org: resourceId,
         p_path: path,
@@ -888,9 +920,9 @@ export const orgVaultProvider: StorageProvider = {
         ? { ok: false, conflict: 'changed', theirs: asFile(now) }
         : { ok: false, conflict: 'missing' };
     }
-    const folded = await refusing(resourceId, () => foldedTaken(auth, resourceId, to, from));
+    const folded = await refusingFor(resourceId, () => foldedTaken(auth, resourceId, to, from));
     if (folded) return { ok: false, conflict: 'exists', theirs: folded };
-    const reply = await refusing(resourceId, () =>
+    const reply = await refusingFor(resourceId, () =>
       rpc<MoveReply>('org_vault_move', auth, {
         p_org: resourceId,
         p_from: from,
@@ -934,7 +966,7 @@ export const orgVaultProvider: StorageProvider = {
         const now = await headFor(auth, resourceId, path);
         return now ? { ok: false, conflict: 'changed', theirs: asFile(now) } : 'gone';
       }
-      const reply = await refusing(resourceId, () =>
+      const reply = await refusingFor(resourceId, () =>
         rpc<RemoveReply>('org_vault_remove', auth, {
           p_org: resourceId,
           p_path: path,
@@ -1013,11 +1045,18 @@ export const orgVaultProvider: StorageProvider = {
   // back the notes that its trash took and that are still in Trash, never
   // one deleted under it before (a teammate's delete is theirs to undo).
   // Never over anything (R3).
-  async restore(resourceId, id): Promise<RestoreResult> {
+  //
+  // A folder is caught note by note (0023): a note refused for good (the
+  // team's free space) stays in Trash and the rest are still tried, since a
+  // smaller one may fit; a plan that is not active, or a failure that would
+  // fail every later call the same way (offline), stops there. When some came
+  // back, the answer says how many and which stayed (`partial`); when none
+  // did, the first refusal (or the failure) is thrown as a note's would be.
+  async restore(resourceId, id): Promise<RestoreReport> {
     const auth = await token();
     if (id.startsWith(NOTE_ID)) {
       const path = id.slice(NOTE_ID.length);
-      const rev = await refusing(resourceId, () => deletedBody(auth, resourceId, path));
+      const rev = await refusingFor(resourceId, () => deletedBody(auth, resourceId, path));
       if (!rev || typeof rev.body !== 'string') return { ok: false, conflict: 'missing' };
       return { ok: true, ...(await putBack(auth, resourceId, path, rev.body)) };
     }
@@ -1029,14 +1068,44 @@ export const orgVaultProvider: StorageProvider = {
       );
       let first: StoredFileMeta | undefined;
       let renamed = false;
-      for (const e of entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))) {
-        const rev = await refusing(resourceId, () => deletedBody(auth, resourceId, e.path));
-        if (!rev || typeof rev.body !== 'string') continue;
-        const back = await putBack(auth, resourceId, e.path, rev.body);
-        first ??= back.file;
-        renamed ||= back.renamed;
+      let restored = 0;
+      const left: string[] = [];
+      let refusal: OrgVaultRefusal | undefined;
+      let failure: unknown;
+      const sorted = entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+      for (const [i, e] of sorted.entries()) {
+        try {
+          const rev = await refusingFor(resourceId, () => deletedBody(auth, resourceId, e.path));
+          if (!rev || typeof rev.body !== 'string') continue;
+          const back = await putBack(auth, resourceId, e.path, rev.body);
+          first ??= back.file;
+          renamed ||= back.renamed;
+          restored += 1;
+        } catch (err) {
+          if (err instanceof OrgVaultRefusal && !(err instanceof OrgVaultLapsed)) {
+            refusal ??= err;
+            left.push(e.path);
+            continue;
+          }
+          failure = err;
+          left.push(...sorted.slice(i).map((x) => x.path));
+          break;
+        }
       }
-      return first ? { ok: true, file: first, renamed } : { ok: false, conflict: 'missing' };
+      // A plan that is not active outranks the free space: nothing lands.
+      const why = failure instanceof OrgVaultRefusal ? failure : refusal;
+      if (!first) {
+        if (why) throw why;
+        if (failure !== undefined) throw failure;
+        return { ok: false, conflict: 'missing' };
+      }
+      if (!left.length) return { ok: true, file: first, renamed };
+      return {
+        ok: true,
+        file: first,
+        renamed,
+        partial: { restored, left, ...(why ? { line: why.message } : {}) },
+      };
     }
     return { ok: false, conflict: 'missing' };
   },

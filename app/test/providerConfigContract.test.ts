@@ -52,7 +52,8 @@ vi.mock('../src/lib/supabase.js', async () => {
 });
 
 import { localProvider } from '../src/lib/gitos/local.js';
-import { orgVaultProvider, setOrgVaultAuth } from '../src/lib/gitos/orgVault.js';
+import { orgVaultProvider } from '../src/lib/gitos/orgVault.js';
+import { setOrgVaultAuth } from '../src/lib/gitos/orgVault.js';
 import { gdriveProvider } from '../src/lib/gitos/gdrive.js';
 import { deviceFolderProvider } from '../src/lib/gitos/deviceFolder.js';
 import {

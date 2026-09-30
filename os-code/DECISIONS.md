@@ -3412,3 +3412,38 @@ execution contract. Newest at the bottom.
   folder's own directory in `.trash`, " 2" beside a name already there, and
   the hub through the same engine), and a new provider contract row holds
   all four to it.
+- 2026-09-30: **The team vault says 0023's free space refusal for what it
+  is, and inserts beside main's lines instead of rewriting them (held
+  `vault-m2-team`, a high and a medium review finding).** (1) 0023 caps every
+  team with no live plan (the beta's teams included) at 25 MiB of note and
+  revision bytes and refuses growth with check_violation (23514, a 400).
+  `refusing` in `orgVault.ts` turned it into a plain refusal, only save said
+  it, and Restore, Undo, Today and a rename near the cap said "Try again in a
+  moment", which a retry cannot make true. It is now `OrgVaultFull`
+  (permanent), matched by its code and 0023's own words (a check constraint
+  on a vault table raises the same code in other words and stays the server
+  line), and says `VAULT_TEAM_FULL` in 0023's and the runbook's 4.5 terms.
+  The copy leaves out 0023's "start a plan to add more": no build offers a
+  plan yet, and no price or plan name (a Board gate). `vaultOps` carries any
+  refusal for good through `attempt` (its line, and `whole` for a line that
+  already names what did not happen), and the store puts the verb first:
+  "Not saved.", "Not restored." (Trash and Undo), "Not renamed.", "Not
+  started." (Today), "Not deleted.". A folder's Restore is caught note by
+  note: a note refused for good stays in Trash and the rest are still tried
+  (a smaller one may fit); a plan that is not active, or a failure that may
+  pass, stops there; the answer says how many came back and which stayed
+  (`RestorePartial`), or throws the refusal when none did. 0023's other cap
+  (one team without a plan per owner) is on `public.orgs`, which no vault RPC
+  writes, so it cannot reach the vault client; mapping it at org creation
+  (`pushOrgToServer`) stays open with deletion.md. The shared fake server
+  models the cap in each RPC's write order (0024 moves write the tombstone
+  first, so a team at the cap still renames). The resolve sheet's Keep yours
+  and the links rewrite pass near the cap still say their generic lines; not
+  in this finding. (2) `restoredPath` and `VAULT_SETTINGS_PATH` are back in
+  `local.ts` (the team vault imports them from there, no cycle), and main's
+  lines in the room, the store, `vaultCaps`, `vaultOps`, `providers.ts`,
+  `supabase.ts`, the settings sheet and host, the folder sheet and backlinks
+  are restored with insertions beside them (a later JSX prop or object
+  spread, a pushed note line, an added union member, a comment after
+  main's). What still changes a main line is listed with its reason in the
+  change that made this entry.

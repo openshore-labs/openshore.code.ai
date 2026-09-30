@@ -81,6 +81,8 @@ import {
   openToday,
   prepareFolderMove,
   prepareNoteMove,
+  refusalOf,
+  restoreEntry,
   restoredPath,
   toggleTask,
   undoDelete,
@@ -694,6 +696,158 @@ describe('Today (6.4)', () => {
     const r = await openToday(h.deps, { path: 'Daily/2026-09-27.md', text: '# Sunday' });
     expect(r).toMatchObject({ ok: true, created: true });
     expect(text(h, 'Daily/2026-09-27.md')).toBe('# Sunday');
+  });
+});
+
+// ---- a refusal for good (the 2026-09-30 review, finding 1) ----------------
+
+// A storage that refuses for good (the team vault out of free space, 0023:
+// OrgVaultFull, `permanent`) is not a failure worth trying again, so every
+// operation that writes carries the storage's line in its result, and the
+// store says it after the verb. Anything unclassified stays a plain
+// `storage` failure with no line.
+describe('a refusal for good is carried, never "try again" (0023)', () => {
+  // The provider's own line, as OrgVaultFull carries it.
+  const FULL = 'This team has used its 25 MiB of free space.';
+  const full = () => Object.assign(new Error(FULL), { permanent: true });
+  const offline = () => new TypeError('Failed to fetch');
+  const refusing = (h: Harness, err: () => Error) => {
+    const write = h.mem.provider.write.bind(h.mem.provider);
+    h.mem.provider.write = async (r, path, t, guard) => {
+      if (h.mem.failOn === path) throw err();
+      return write(r, path, t, guard);
+    };
+  };
+
+  it('Restore carries the line; a failure that may pass carries none', async () => {
+    const h = harness(memStorage({ 'Old.md': 'old' }, { trash: true }));
+    const d = await deleteNote(h.deps, 'Old.md');
+    if (!d.ok || d.undo.kind !== 'trash') throw new Error('not trashed');
+    h.mem.provider.restore = async () => {
+      throw full();
+    };
+    const refused = await restoreEntry(h.deps, d.undo.id);
+    expect(refused).toEqual({ ok: false, reason: 'storage', line: FULL });
+    expect(refusalOf(refused)).toEqual({ line: FULL });
+    h.mem.provider.restore = async () => {
+      throw offline();
+    };
+    const failed = await restoreEntry(h.deps, d.undo.id);
+    expect(failed).toEqual({ ok: false, reason: 'storage' });
+    expect(refusalOf(failed)).toBeUndefined();
+  });
+
+  it('a folder that came back in part says how many and which stayed', async () => {
+    const h = harness(memStorage({ 'Work/a.md': 'a', 'Work/b.md': 'b' }, { trash: true }));
+    const d = await deleteFolder(h.deps, 'Work');
+    if (!d.ok || d.undo.kind !== 'trash') throw new Error('not trashed');
+    h.mem.provider.restore = async () => {
+      h.mem.files.set('Work/a.md', { text: 'a', v: 90 });
+      return {
+        ok: true,
+        file: { path: 'Work/a.md', updatedAt: 't', size: 1, version: 'v90' },
+        renamed: false,
+        partial: { restored: 1, left: ['Work/b.md'], line: FULL },
+      };
+    };
+    expect(await undoDelete(h.deps, d.undo)).toEqual({
+      ok: true,
+      path: 'Work/a.md',
+      renamed: false,
+      partial: { restored: 1, left: ['Work/b.md'], line: FULL },
+    });
+  });
+
+  it('Undo from Trash and Undo from memory both carry the line', async () => {
+    const h = harness(memStorage({ 'Old.md': 'old' }, { trash: true }));
+    const d = await deleteNote(h.deps, 'Old.md');
+    if (!d.ok) throw new Error('not trashed');
+    h.mem.provider.restore = async () => {
+      throw full();
+    };
+    expect(await undoDelete(h.deps, d.undo)).toEqual({
+      ok: false,
+      reason: 'storage',
+      line: FULL,
+    });
+    const m = harness(memStorage({ 'Mine.md': 'kept in memory' }));
+    const gone = await deleteNote(m.deps, 'Mine.md');
+    if (!gone.ok) throw new Error('not deleted');
+    refusing(m, full);
+    m.mem.failOn = 'Mine.md';
+    expect(await undoDelete(m.deps, gone.undo)).toEqual({
+      ok: false,
+      reason: 'storage',
+      line: FULL,
+    });
+  });
+
+  it("Today's start carries the line", async () => {
+    const h = harness(memStorage({}));
+    refusing(h, full);
+    h.mem.failOn = 'Daily/2026-09-30.md';
+    expect(await openToday(h.deps, { path: 'Daily/2026-09-30.md', text: '# Wednesday' })).toEqual({
+      ok: false,
+      reason: 'storage',
+      line: FULL,
+    });
+    h.mem.failOn = undefined;
+    refusing(h, offline);
+    h.mem.failOn = 'Daily/2026-09-30.md';
+    expect(await openToday(h.deps, { path: 'Daily/2026-09-30.md', text: '# Wednesday' })).toEqual({
+      ok: false,
+      reason: 'storage',
+    });
+  });
+
+  it('a rename carries the line, and a folder moved note by note says what moved first', async () => {
+    const h = harness(memStorage({ 'Ideas.md': 'my ideas' }));
+    h.mem.provider.rename = async () => {
+      throw full();
+    };
+    const p = await prepareNoteMove(h.deps, 'Ideas.md', 'Plans.md');
+    if (!p.ok) throw new Error('no plan');
+    expect(await applyMove(h.deps, p.preview, { updateLinks: false })).toEqual({
+      ok: false,
+      reason: 'storage',
+      line: FULL,
+    });
+    const f = harness(memStorage({ 'Work/a.md': 'a', 'Work/b.md': 'b' }));
+    const rename = f.mem.provider.rename!.bind(f.mem.provider);
+    f.mem.provider.rename = async (r, from, to, guard) => {
+      if (from === 'Work/b.md') throw full();
+      return rename(r, from, to, guard);
+    };
+    const fp = await prepareFolderMove(f.deps, 'Work', 'Done');
+    if (!fp.ok) throw new Error('no plan');
+    expect(await applyMove(f.deps, fp.preview, { updateLinks: false })).toMatchObject({
+      ok: false,
+      reason: 'partial',
+      moved: [expect.objectContaining({ path: 'Done/a.md' })],
+      line: FULL,
+    });
+  });
+
+  it('a delete carries a whole line as whole, and any other line as the reason', async () => {
+    const h = harness(memStorage({ 'A.md': 'a', 'B.md': 'b' }, { trash: true }));
+    const whole = 'Not deleted. Only admins can delete team notes.';
+    h.mem.provider.trash = async () => {
+      throw Object.assign(new Error(whole), { permanent: true, whole: true });
+    };
+    expect(await deleteNote(h.deps, 'A.md')).toEqual({
+      ok: false,
+      reason: 'storage',
+      line: whole,
+      whole: true,
+    });
+    h.mem.provider.trash = async () => {
+      throw Object.assign(new Error('not a member of this org'), { permanent: true });
+    };
+    expect(await deleteNote(h.deps, 'B.md')).toEqual({
+      ok: false,
+      reason: 'storage',
+      line: 'not a member of this org',
+    });
   });
 });
 

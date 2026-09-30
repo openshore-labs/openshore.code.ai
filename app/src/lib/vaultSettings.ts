@@ -278,8 +278,9 @@ export type VaultSettingSave =
     }
   /** The file is not a JSON object: never overwritten, nothing written. */
   | { kind: 'unreadable' }
-  /** This storage cannot save settings (no `writeConfig`), or does not
-   *  carry out this field (`unappliedSettings`): nothing written. */
+  /** This storage cannot save settings (no `writeConfig`). */
+  // Also a field this storage does not carry out (`unappliedSettings`):
+  // nothing written.
   | { kind: 'read-only' }
   /** The write failed or was refused twice: nothing changed. */
   | { kind: 'failed' };

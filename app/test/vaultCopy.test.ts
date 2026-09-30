@@ -90,10 +90,17 @@ import {
   VAULT_TRASH_TEAM_LINE,
   vaultCapLine,
   vaultTrashLead,
+  VAULT_TEAM_FREE_MIB,
+  VAULT_TEAM_FULL,
+  VAULT_TEAM_TRASH_DAYS,
+  vaultFolderMoveRefused,
+  vaultRefusedLine,
+  vaultRestorePartial,
   type VaultCopyOpts,
   type VaultCopyProvider,
 } from '../src/lib/vaultCopy.js';
 import { GUIDE_CARDS } from '../src/lib/guideCards.js';
+import { FREE_SPACE_REFUSAL } from './fixtures/fakeOrgVaultServer.js';
 import { PROVIDER_ROSTER } from '../src/lib/gitos/providers.js';
 import { WAYFINDING } from '../src/lib/currents.js';
 import type { Platform } from '../src/lib/platform.js';
@@ -1309,5 +1316,88 @@ describe('the team Trash says what the purge does (0021)', () => {
     for (const line of [lead, VAULT_TRASH_TEAM_LINE, empty]) {
       expect(line).not.toMatch(/\b(kept|keeps|forever|always|permanently)\b/i);
     }
+  });
+});
+
+// The team's free space (the 2026-09-30 review, finding 1): the line a
+// refused team write says is 0023's own, read from the migration, so a later
+// file that changes the number or the words fails here until the copy says
+// the new ones. The test fake raises the same text. No "try again" (a purge
+// frees space about a month later, so a retry fails the same way) and no
+// price or plan name (a Board gate).
+describe("the team's free space says what 0023 says (the review, finding 1)", () => {
+  const sql = readFileSync(resolve(ROOT, '../supabase/migrations/0023_org_free_caps.sql'), 'utf8');
+  const bytes = Number(
+    /function public\.no_entitlement_max_org_bytes\(\)[\s\S]*?select (\d+)::bigint/.exec(sql)?.[1],
+  );
+  const raised =
+    /raise exception '(this team has used[^']*)'\s+using errcode = 'check_violation'/.exec(
+      sql,
+    )?.[1];
+  const runbook = readFileSync(resolve(ROOT, '../docs/vault-gate1-runbook.md'), 'utf8');
+
+  it('reads the cap and the refusal from the migration', () => {
+    expect(bytes).toBe(26214400);
+    expect(bytes).toBe(VAULT_TEAM_FREE_MIB * 1024 * 1024);
+    expect(raised).toBeDefined();
+    // The fake server the tests run against raises the migration's own words.
+    expect(FREE_SPACE_REFUSAL).toBe(raised);
+  });
+
+  it("says 0023's number and words, and the runbook's month", () => {
+    const [used, freed] = VAULT_TEAM_FULL.split('. ');
+    expect(raised!.toLowerCase()).toContain(used!.toLowerCase());
+    expect(raised).toContain(`${VAULT_TEAM_FREE_MIB} MiB of free space`);
+    expect(raised).toContain(freed!.replace(/\.$/, ''));
+    expect(runbook).toContain('its history is cleared, about a month later');
+    // "About a month" is the weekly purge's window, the Trash lines' number.
+    expect(VAULT_TEAM_TRASH_DAYS).toBe(30);
+    expect(VAULT_TEAM_FULL).not.toMatch(/try again|\$|price|tier|plan\b|start a plan/i);
+  });
+
+  it('puts the verb first, and says a whole line as it is', () => {
+    expect(vaultRefusedLine('restore', { line: VAULT_TEAM_FULL })).toBe(
+      `Not restored. ${VAULT_TEAM_FULL}`,
+    );
+    expect(vaultRefusedLine('rename', { line: VAULT_TEAM_FULL })).toBe(
+      `Not renamed. ${VAULT_TEAM_FULL}`,
+    );
+    expect(vaultRefusedLine('today', { line: VAULT_TEAM_FULL })).toBe(
+      `Not started. ${VAULT_TEAM_FULL}`,
+    );
+    expect(vaultRefusedLine('save', { line: 'not a member of this org' })).toBe(
+      'Not saved. Not a member of this org.',
+    );
+    const whole = 'Not deleted. Only admins can delete team notes.';
+    expect(vaultRefusedLine('delete', { line: whole, whole: true })).toBe(whole);
+  });
+
+  it('a folder that came back in part says how many, names what stayed, and why', () => {
+    expect(
+      vaultRestorePartial({
+        title: 'Work',
+        restored: 2,
+        left: ['Work/big.md'],
+        reason: VAULT_TEAM_FULL,
+      }),
+    ).toBe(`Restored 2 of 3 notes from "Work". Still in Trash: "big". ${VAULT_TEAM_FULL}`);
+    // Four or more stayed: three by name, and the count of the rest.
+    expect(
+      vaultRestorePartial({
+        title: 'Work',
+        restored: 1,
+        left: ['Work/a.md', 'Work/b.md', 'Work/c.md', 'Work/d.md', 'Work/e.md'],
+        reason: 'not a member of this org',
+      }),
+    ).toBe(
+      'Restored 1 of 6 notes from "Work". Still in Trash: "a", "b", "c" and 2 more. Not a member of this org.',
+    );
+    // With no reason, the rest were not reached, so trying again is true.
+    expect(vaultRestorePartial({ title: 'Work', restored: 1, left: ['Work/b.md'] })).toMatch(
+      /Try again in a moment\.$/,
+    );
+    expect(vaultFolderMoveRefused('Work', 1, 3, VAULT_TEAM_FULL)).toBe(
+      `Moved 1 of 3 notes from "Work". The rest were not moved, so they are still there. ${VAULT_TEAM_FULL}`,
+    );
   });
 });

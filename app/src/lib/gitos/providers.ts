@@ -11,7 +11,6 @@
 // real and visible, but marked not ready until their OAuth wiring lands. They
 // are never faked.
 
-import { VAULT_CONFIG_FILES } from 'os-code/protocol';
 import type {
   AttachmentMeta,
   BytesRead,
@@ -81,19 +80,6 @@ export function isNotePath(path: string): boolean {
   if (path.includes('\\') || path.startsWith('/')) return false;
   return !path.split('/').some((segment) => segment.startsWith('.'));
 }
-
-/** "Plans.md" beside a taken name: "Plans (restored).md", then
- *  "Plans (restored 2).md" up to 99 (R3). */
-export function restoredPath(path: string, n: number): string {
-  const stem = path.replace(/\.md$/i, '');
-  const ext = path.slice(stem.length) || '.md';
-  return `${stem} (restored${n > 1 ? ` ${n}` : ''})${ext}`;
-}
-
-/** Where the settings file sits in a folder (`.oscode/vault.json`): the
- *  path every provider's `writeConfig` answers with, so the sheet names one
- *  file whatever the storage. */
-export const VAULT_SETTINGS_PATH = `.${VAULT_CONFIG_FILES['oscode/vault'].dir}/${VAULT_CONFIG_FILES['oscode/vault'].file}`;
 
 /** The version a write's guard compares against: the provider's own opaque
  *  version where it has one, else its updatedAt. The only way the store
@@ -175,6 +161,20 @@ export type TrashResult =
  *  "{title} (restored)" (R3) and `renamed` says so; parents are made. */
 export type RestoreResult =
   { ok: true; file: StoredFileMeta; renamed: boolean } | { ok: false; conflict: 'missing' };
+
+/** A folder's Restore that brought back only some of its notes (the team
+ *  vault near its free space, migration 0023): how many came back, the paths
+ *  still in Trash, and the storage's own line for why, when a refusal said
+ *  one. A storage that restores all or nothing never sets it. */
+export interface RestorePartial {
+  restored: number;
+  left: string[];
+  line?: string;
+}
+
+/** A RestoreResult whose ok answer may carry a RestorePartial. Every
+ *  RestoreResult is one, so a caller reads `partial` without a cast. */
+export type RestoreReport = RestoreResult & { partial?: RestorePartial };
 
 /** What Delete forever or Empty Trash removed. */
 export interface EmptyTrashResult {

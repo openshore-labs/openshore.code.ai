@@ -41,6 +41,7 @@
 // `.obsidian/`) is refused (L8), so a model's write can never pose as the
 // settings file.
 import {
+  VAULT_CONFIG_FILES,
   VAULT_CONFIG_MAX_BYTES,
   foldPath,
   isAgentWritablePath,
@@ -60,9 +61,7 @@ import {
 import { asConfigRead } from './config.js';
 import { isVaultFolderPath } from './folderClient.js';
 import {
-  VAULT_SETTINGS_PATH,
   isNotePath,
-  restoredPath,
   type Lease,
   type RemoveGuard,
   type RemoveResult,
@@ -78,9 +77,6 @@ import {
   type WriteGuard,
   type WriteResult,
 } from './providers.js';
-
-// Shared with the team vault (lib/gitos/providers.ts), kept importable here.
-export { VAULT_SETTINGS_PATH, restoredPath };
 
 const indexKey = (resourceId: string) => `oscode.gitos.index.${resourceId}`;
 const filePrefix = (resourceId: string) => `oscode.gitos.file.${resourceId}.`;
@@ -294,6 +290,14 @@ async function takenAt(
     if (body) return fileOf(f.path, body);
   }
   return undefined;
+}
+
+/** "Plans.md" beside a taken name: "Plans (restored).md", then
+ *  "Plans (restored 2).md" up to 99 (R3). */
+export function restoredPath(path: string, n: number): string {
+  const stem = path.replace(/\.md$/i, '');
+  const ext = path.slice(stem.length) || '.md';
+  return `${stem} (restored${n > 1 ? ` ${n}` : ''})${ext}`;
 }
 
 /** Where a trashed note comes back: its own path while free, else beside it. */
@@ -610,5 +614,10 @@ async function readConfigBody(resourceId: string): Promise<Body | undefined> {
   const body = await storeGetJson<Body>(configKey(resourceId));
   return typeof body?.text === 'string' ? body : undefined;
 }
+
+/** Where the settings file sits in a folder (`.oscode/vault.json`): the
+ *  path every provider's `writeConfig` answers with, so the sheet names one
+ *  file whatever the storage. */
+export const VAULT_SETTINGS_PATH = `.${VAULT_CONFIG_FILES['oscode/vault'].dir}/${VAULT_CONFIG_FILES['oscode/vault'].file}`;
 
 const configFileOf = (b: Body): StoredFile => fileOf(VAULT_SETTINGS_PATH, b);

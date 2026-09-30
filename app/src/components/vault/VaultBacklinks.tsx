@@ -157,8 +157,9 @@ export interface VaultBacklinksProps {
   loading?: boolean;
   /** The note's links out (`outgoingLinks`). */
   outgoing?: readonly VaultOutgoingLink[];
-  /** Tap on a link to a note not created yet. Left out (no note can be
-   *  made now), the row says only that it is not created, and takes no tap. */
+  /** Tap on a link to a note not created yet. */
+  // Left out (no note can be made now), the row says only that it is not
+  // created, and takes no tap.
   onCreate?: (name: string) => void;
   /** The note's title, for the unlinked lines. */
   title?: string;

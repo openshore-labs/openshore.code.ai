@@ -271,8 +271,6 @@ export interface VaultSettingsSheetProps {
   onPickFolder: (field: VaultSettingsPickField) => void;
   /** Open the storage sheet, after the exit. */
   onOpenStorage: () => void;
-  /** The sheet's title in place of the copy's (the team's, CX Y14). */
-  title?: string;
   /** Every file row reads only, with no line of its own at the top (a team
    *  member, whose footer already says who sets these, Y14). */
   readOnly?: boolean;
@@ -777,7 +775,7 @@ export function VaultSettingsSheet(props: VaultSettingsSheetProps) {
     <Sheet open={open} onClose={onClose} className="vault-settings">
       {open ? (
         <>
-          <SheetHead title={props.title ?? c.title} onClose={onClose} />
+          <SheetHead title={c.title} onClose={onClose} />
           <p id={ids.status} className="vault-settings-status" role="status">
             {statusText ? (
               <span key={save} className="vault-settings-status-text">
@@ -850,7 +848,7 @@ export function VaultSettingsSheet(props: VaultSettingsSheetProps) {
                   (v) => set('tree.sort', v),
                 ),
               )}
-              {!offered('delete') ? null : caps.trash ? (
+              {caps.trash ? (
                 fieldRow('delete', ['delete'], c.deleteLabel, optLabel('delete', s.delete), () =>
                   segRow(
                     'delete',

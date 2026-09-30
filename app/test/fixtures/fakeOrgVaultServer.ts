@@ -4,7 +4,10 @@
 // org_vault_write and org_vault_remove, 0024's org_vault_move, and 0025's
 // settings pair and gates (OV402 when the plan is not active, OV403 for a
 // member's delete under admins-only), each by its decision table as written
-// there. Revs come from
+// there, and 0023's free space cap (`freeBytes`: note and revision bytes of a
+// team with no live plan, counted by its triggers in the order each RPC
+// writes, refused with check_violation 23514 on note growth only, the whole
+// call rolled back). Revs come from
 // one sequence and never repeat, so a note removed and made again never
 // matches an old base. Shared by test/orgVault.test.ts and the team row of
 // test/providerContract.test.ts, so there is one fake, not two.
@@ -42,6 +45,11 @@ export interface FakeSettingsRow {
   updated_by: string | null;
 }
 
+/** 0023's refusal, word for word (org_storage_track's raise); vaultCopy.test
+ *  holds it to the migration. */
+export const FREE_SPACE_REFUSAL =
+  'this team has used its 25 MiB of free space; start a plan to add more. A deleted note frees its space when its history is cleared, about a month later';
+
 export interface FakeOrgVaultServer {
   org: string;
   notes: Map<string, FakeNote>;
@@ -62,6 +70,12 @@ export interface FakeOrgVaultServer {
   caller: string;
   /** When set, every RPC throws it (a network failure, a PGRST202). */
   rpcFailure: unknown;
+  /** 0023's cap for a team with no live plan, in bytes; undefined is a team
+   *  on a plan (no cap). */
+  freeBytes: number | undefined;
+  /** What 0023's org_storage_usage holds: every note body (tombstones are
+   *  empty) and every revision body, in UTF-8 bytes. */
+  usage(): number;
   /** Another writer: sets a live note with a fresh rev, as a teammate's save would. */
   put(path: string, body: string, by?: string): FakeNote;
   /** Another writer's delete: the row becomes a tombstone with a fresh rev,
@@ -84,6 +98,8 @@ function filterValue(raw: string): string {
   }
   return v;
 }
+
+const utf8 = (text: string) => new TextEncoder().encode(text).length;
 
 const raise = (message: string, extra: Record<string, unknown> = {}) =>
   Object.assign(new Error(message), { status: 400, ...extra });
@@ -154,6 +170,25 @@ export function createFakeOrgVaultServer(org = 'org-123'): FakeOrgVaultServer {
     entitled_until: s.entitledUntil,
     is_admin: s.isAdmin,
   });
+  // 0023: after a note grows, a team past its free space is refused, and the
+  // call's writes are undone with it, as the raise rolls back the RPC.
+  const grew = (s: FakeOrgVaultServer, delta: number) => {
+    if (s.freeBytes !== undefined && delta > 0 && s.usage() > s.freeBytes) {
+      throw raise(FREE_SPACE_REFUSAL, { code: '23514' });
+    }
+  };
+  const inCall = <T>(s: FakeOrgVaultServer, run: () => T): T => {
+    const notes = new Map(s.notes);
+    const revisions = s.revisions.length;
+    try {
+      return run();
+    } catch (err) {
+      s.notes.clear();
+      for (const [k, v] of notes) s.notes.set(k, v);
+      s.revisions.length = revisions;
+      throw err;
+    }
+  };
   const requireEntitled = (s: FakeOrgVaultServer) => {
     if (!s.entitled) {
       throw raise("the organization's plan is not active, so team notes are read-only", {
@@ -175,6 +210,14 @@ export function createFakeOrgVaultServer(org = 'org-123'): FakeOrgVaultServer {
     rpcs: [],
     caller: 'u-me',
     rpcFailure: undefined,
+    freeBytes: undefined,
+
+    usage() {
+      let total = 0;
+      for (const n of server.notes.values()) total += utf8(n.body);
+      for (const r of server.revisions) total += utf8(r.body);
+      return total;
+    },
 
     put(path, body, by = 'u-teammate') {
       return set(server, path, body, by);
@@ -320,14 +363,22 @@ export function createFakeOrgVaultServer(org = 'org-123'): FakeOrgVaultServer {
           (x) => !x.deleted && x.path !== from && x.path.toLowerCase() === to.toLowerCase(),
         );
         if (other) return { ok: false, conflict: 'exists', theirs: theirs(other) };
-        snapshot(server, cur, 'renamed');
-        if (from.toLowerCase() === to.toLowerCase()) {
-          server.notes.delete(from);
-        } else {
-          server.notes.set(from, { ...cur, deleted: true, body: '', rev: nextRev() });
-        }
-        const n = set(server, to, cur.body, server.caller);
-        return { ok: true, path: n.path, rev: n.rev, updated_at: n.updated_at, size: size(n) };
+        // 0024's order: the source's tombstone, then the destination (the
+        // growth 0023 checks), then the displaced version, so a team at its
+        // cap still renames and only one already past it is refused. A
+        // case-only rename changes no body, so nothing is checked.
+        return inCall(server, () => {
+          if (from.toLowerCase() === to.toLowerCase()) {
+            server.notes.delete(from);
+          } else {
+            server.notes.set(from, { ...cur, deleted: true, body: '', rev: nextRev() });
+          }
+          const was = utf8(server.notes.get(to)?.body ?? '');
+          const n = set(server, to, cur.body, server.caller);
+          if (from.toLowerCase() !== to.toLowerCase()) grew(server, utf8(n.body) - was);
+          snapshot(server, cur, 'renamed');
+          return { ok: true, path: n.path, rev: n.rev, updated_at: n.updated_at, size: size(n) };
+        });
       }
       if (fn === 'org_vault_write') {
         requireEntitled(server);
@@ -345,13 +396,22 @@ export function createFakeOrgVaultServer(org = 'org-123'): FakeOrgVaultServer {
             (x) => !x.deleted && x.path.toLowerCase() === path.toLowerCase(),
           );
           if (taken) return { ok: false, conflict: 'exists', theirs: theirs(taken) };
-          n = set(server, path, body, server.caller);
+          const was = utf8(server.notes.get(path)?.body ?? '');
+          n = inCall(server, () => {
+            const made = set(server, path, body, server.caller);
+            grew(server, utf8(body) - was);
+            return made;
+          });
         } else {
           const cur = live(server, path);
           if (!cur) return { ok: false, conflict: 'missing' };
           if (cur.rev !== ifMatch) return { ok: false, conflict: 'changed', theirs: theirs(cur) };
-          snapshot(server, cur, 'overwritten');
-          n = set(server, path, body, server.caller);
+          n = inCall(server, () => {
+            snapshot(server, cur, 'overwritten');
+            const made = set(server, path, body, server.caller);
+            grew(server, utf8(body) - utf8(cur.body));
+            return made;
+          });
         }
         return {
           ok: true,

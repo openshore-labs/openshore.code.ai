@@ -24,6 +24,8 @@ import {
 import type { VaultIndexHost } from '../lib/vaultIndexHost.js';
 import {
   versionOf,
+  type RestorePartial,
+  type RestoreReport,
   type StorageProvider,
   type StoredFile,
   type StoredFileMeta,
@@ -95,23 +97,46 @@ export interface VaultOpsDeps {
  *  M6 falls back on a provider without it). */
 export type VaultOpFailure = 'storage' | 'unsupported';
 
+/** A storage's refusal that trying again cannot fix (`permanent`: the team
+ *  vault out of free space, migration 0023, or its plan not active, 0025), as
+ *  a result carries it: the storage's line, and `whole` when that line
+ *  already names what did not happen (the admins-only delete, CX Y14). The
+ *  store says it with the verb first (vaultRefusedLine), never as "try
+ *  again". */
+export interface VaultRefusal {
+  line: string;
+  whole?: true;
+}
+
 /** Did a provider call throw? Then the storage itself failed, and every later
  *  call would fail the same way (R1). */
 async function attempt<T>(
   run: () => Promise<T>,
-): Promise<{ ok: true; value: T } | { ok: false; line?: string }> {
+): Promise<{ ok: true; value: T } | { ok: false; refusal?: VaultRefusal }> {
   try {
     return { ok: true, value: await run() };
   } catch (err) {
-    return { ok: false, ...wholeLine(err) };
+    // A refusal for good is carried, so the result can say it.
+    const refusal = refusalOfError(err);
+    if (refusal) return { ok: false, refusal };
+    return { ok: false };
   }
 }
 
-/** A storage refusal whose message is the whole line to say (`whole`, the
- *  team vault's admins-only delete, CX Y14), else nothing. */
-function wholeLine(err: unknown): { line?: string } {
-  const e = err as { whole?: unknown; message?: unknown } | undefined;
-  return e?.whole === true && typeof e.message === 'string' ? { line: e.message } : {};
+/** The refusal a thrown storage error is, or undefined for a failure that
+ *  may pass (offline, a timeout, anything unclassified). */
+function refusalOfError(err: unknown): VaultRefusal | undefined {
+  const e = err as { permanent?: unknown; whole?: unknown; message?: unknown } | undefined;
+  if (e?.permanent !== true || typeof e.message !== 'string' || !e.message) return undefined;
+  return e.whole === true ? { line: e.message, whole: true } : { line: e.message };
+}
+
+/** The refusal any result of this module carries (its `line` and `whole`),
+ *  or undefined, so the store and the room read it without a cast. */
+export function refusalOf(r: object): VaultRefusal | undefined {
+  const { line, whole } = r as { line?: unknown; whole?: unknown };
+  if (typeof line !== 'string' || !line) return undefined;
+  return whole === true ? { line, whole: true } : { line };
 }
 
 const MD_END = /\.md$/i;
@@ -255,6 +280,9 @@ export type VaultMoveResult =
         | 'partial';
       moved?: StoredFileMeta[];
       theirs?: StoredFile;
+      /** A refusal for good (VaultRefusal): its line, and `whole`. */
+      line?: string;
+      whole?: true;
     };
 
 /** The sources for a rewrite plan, from the index only (K4): the backlinks of
@@ -441,6 +469,7 @@ export async function applyMove(
     const guard = open?.path === preview.from ? open.version : preview.guard;
     if (!guard) return { ok: false, reason: 'missing' };
     const r = await attempt(() => renameOne(deps, preview.from, preview.to, guard));
+    if (!r.ok && r.refusal) return { ok: false, reason: 'storage', ...r.refusal };
     if (!r.ok) return { ok: false, reason: 'storage' };
     if (!r.value.ok) return { ok: false, reason: r.value.conflict, theirs: r.value.theirs };
     keptBoth = Boolean(r.value.keptBoth);
@@ -449,6 +478,7 @@ export async function applyMove(
     const r = await attempt(() =>
       provider.renameFolder!(target.resourceId, preview.from, preview.to),
     );
+    if (!r.ok && r.refusal) return { ok: false, reason: 'storage', ...r.refusal };
     if (!r.ok) return { ok: false, reason: 'storage' };
     if (!r.value.ok) return { ok: false, reason: r.value.conflict };
     const at = new Date(deps.now?.() ?? Date.now()).toISOString();
@@ -469,6 +499,9 @@ export async function applyMove(
       const failed = !r.ok ? 'storage' : !r.value.ok ? r.value.conflict : undefined;
       if (failed || !r.ok || !r.value.ok) {
         await settleMoved(deps, preview, moved);
+        if (!r.ok && r.refusal) {
+          return { ok: false, reason: moved.length ? 'partial' : 'storage', moved, ...r.refusal };
+        }
         return { ok: false, reason: moved.length ? 'partial' : (failed ?? 'storage'), moved };
       }
       moved.push(r.value.file);
@@ -727,8 +760,10 @@ export type VaultDeleteResult =
       ok: false;
       reason: 'changed' | 'downloading' | 'missing' | VaultOpFailure;
       theirs?: StoredFile;
-      /** The storage's own whole line for a refusal (CX Y14). */
+      /** A refusal for good (VaultRefusal): its line, and `whole` when it is
+       *  the whole line to say (the admins-only delete, CX Y14). */
       line?: string;
+      whole?: true;
     };
 
 /** Is Trash real on this storage? One tap deletes only where it is (R2). */
@@ -772,9 +807,8 @@ export async function deleteNote(deps: VaultOpsDeps, path: string): Promise<Vaul
       attachments: 0,
     };
   });
-  return run.ok
-    ? run.value
-    : { ok: false, reason: 'storage', ...(run.line ? { line: run.line } : {}) };
+  if (!run.ok && run.refusal) return { ok: false, reason: 'storage', ...run.refusal };
+  return run.ok ? run.value : { ok: false, reason: 'storage' };
 }
 
 /** Move a folder to Trash, whatever is in it (Trash is recoverable, so the
@@ -798,20 +832,19 @@ export async function deleteFolder(deps: VaultOpsDeps, folder: string): Promise<
       attachments: r.attachments,
     };
   });
-  return run.ok
-    ? run.value
-    : { ok: false, reason: 'storage', ...(run.line ? { line: run.line } : {}) };
+  if (!run.ok && run.refusal) return { ok: false, reason: 'storage', ...run.refusal };
+  return run.ok ? run.value : { ok: false, reason: 'storage' };
 }
 
+/** A restore or an Undo. Beside the plain answers: a folder that came back
+ *  only in part (`partial`, a team near its free space, 0023), and a refusal
+ *  for good (VaultRefusal: the storage's line, or the store's own whole line
+ *  for a lapsed team plan, refused before the server is asked). */
 export type VaultRestoreResult =
+  | { ok: true; path: string; renamed: boolean; partial: RestorePartial }
+  | ({ ok: false; reason: VaultOpFailure } & VaultRefusal)
   | { ok: true; path: string; renamed: boolean }
-  | {
-      ok: false;
-      reason: 'missing' | 'exists' | VaultOpFailure;
-      /** The whole line to say instead of the generic one (a lapsed team
-       *  plan, refused before the server is asked). */
-      line?: string;
-    };
+  | { ok: false; reason: 'missing' | 'exists' | VaultOpFailure };
 
 /** Put a restored or re-created note into the list, the body cache and the
  *  index. A read that fails leaves the next listing to find it. */
@@ -827,11 +860,13 @@ async function adopt(deps: VaultOpsDeps, meta: StoredFileMeta): Promise<void> {
 export async function undoDelete(deps: VaultOpsDeps, undo: VaultUndo): Promise<VaultRestoreResult> {
   if (undo.kind === 'trash') return restoreEntry(deps, undo.id);
   const first = await attempt(() => deps.putVaultNote(undo.path, undo.text, { ifAbsent: true }));
+  if (!first.ok && first.refusal) return { ok: false, reason: 'storage', ...first.refusal };
   if (!first.ok) return { ok: false, reason: 'storage' };
   if (first.value.ok) return { ok: true, path: first.value.file.path, renamed: false };
   if (first.value.conflict !== 'exists') return { ok: false, reason: 'storage' };
   const beside = restoredPath(undo.path);
   const second = await attempt(() => deps.putVaultNote(beside, undo.text, { ifAbsent: true }));
+  if (!second.ok && second.refusal) return { ok: false, reason: 'storage', ...second.refusal };
   if (!second.ok) return { ok: false, reason: 'storage' };
   if (second.value.ok) return { ok: true, path: second.value.file.path, renamed: true };
   return { ok: false, reason: 'exists' };
@@ -852,9 +887,20 @@ export async function listTrash(
 export async function restoreEntry(deps: VaultOpsDeps, id: string): Promise<VaultRestoreResult> {
   if (!deps.provider.restore) return { ok: false, reason: 'unsupported' };
   const r = await attempt(() => deps.provider.restore!(deps.target.resourceId, id));
+  if (!r.ok && r.refusal) return { ok: false, reason: 'storage', ...r.refusal };
   if (!r.ok) return { ok: false, reason: 'storage' };
   if (!r.value.ok) return { ok: false, reason: 'missing' };
   await adopt(deps, r.value.file);
+  // A folder that came back only in part says how many, and which stayed.
+  const report: RestoreReport = r.value;
+  if (report.partial) {
+    return {
+      ok: true,
+      path: r.value.file.path,
+      renamed: r.value.renamed,
+      partial: report.partial,
+    };
+  }
   return { ok: true, path: r.value.file.path, renamed: r.value.renamed };
 }
 
@@ -887,6 +933,7 @@ export interface VaultTodayPlan {
 export type VaultTodayResult =
   | { ok: true; created: false; path: string }
   | { ok: true; created: true; file: StoredFile }
+  | ({ ok: false; reason: 'storage' } & VaultRefusal)
   | { ok: false; reason: 'downloading' | VaultOpFailure };
 
 /** Open today's note, creating it only while nothing has the name: a note the
@@ -901,6 +948,7 @@ export async function openToday(
   if (known !== undefined) return { ok: true, created: false, path: known };
   if (!deps.provider.compareAndSwap) return { ok: false, reason: 'unsupported' };
   const r = await attempt(() => deps.putVaultNote(plan.path, plan.text, { ifAbsent: true }));
+  if (!r.ok && r.refusal) return { ok: false, reason: 'storage', ...r.refusal };
   if (!r.ok) return { ok: false, reason: 'storage' };
   if (r.value.ok) return { ok: true, created: true, file: r.value.file };
   if (r.value.conflict === 'exists') {

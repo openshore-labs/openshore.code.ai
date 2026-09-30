@@ -465,6 +465,7 @@ import {
   listTrash as opsListTrash,
   prepareFolderMove as opsPrepareFolderMove,
   prepareNoteMove as opsPrepareNoteMove,
+  refusalOf,
   restoreEntry as opsRestoreEntry,
   undoDelete as opsUndoDelete,
   updateTheRest as opsUpdateTheRest,
@@ -510,6 +511,8 @@ import {
   VAULT_MARKED_REVIEWED,
   VAULT_STARTER_NOT_EMPTY,
   VAULT_TEAM_LAPSED_NOT_SAVED,
+  vaultFolderMoveRefused,
+  vaultRefusedLine,
 } from '../lib/vaultCopy.js';
 import { vaultTeamRefusal } from './vaultTeamGate.js';
 import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
@@ -1121,13 +1124,10 @@ export interface VaultMoveResult {
  *  `undefined`. */
 export type VaultDeleteOutcome =
   | { ok: true; trashed: boolean; undo?: VaultUndo; notes: number; attachments: number }
-  | {
-      ok: false;
-      reason: 'storage' | 'unsupported' | 'missing' | 'changed' | 'downloading';
-      /** The storage's own whole line for a refusal (the team vault's
-       *  admins-only delete, CX Y14), said as it is. */
-      line?: string;
-    };
+  // A refusal for good, as the whole line the room says (the team vault's
+  // admins-only delete, CX Y14, or a lapsed plan).
+  | { ok: false; reason: 'storage'; line: string }
+  | { ok: false; reason: 'storage' | 'unsupported' | 'missing' | 'changed' | 'downloading' };
 
 /** Today's note from the room (Vault M6 6.4; CTO K7, CX X11): an existing
  *  note opens as it is, a new one opens in the editor with its line, and a
@@ -5914,11 +5914,11 @@ export const useApp = create<AppState>((set, get, api) => {
       (active &&
         (Boolean(st.vaultLeaseHeldByOther) ||
           Boolean(st.vaultMoving) ||
-          (t.providerId === 'org' &&
-            (Boolean(st.vaultTeamExpired) || st.vaultTeamPlan?.entitled === false)) ||
+          (t.providerId === 'org' && Boolean(st.vaultTeamExpired)) ||
+          (t.providerId === 'org' && st.vaultTeamPlan?.entitled === false) ||
           (t.providerId === 'files' && st.vaultFolder?.exists === false)));
-    // The vault's Delete choice (L11): For good turns Trash off here, but
-    // never on a storage that does not carry Delete out (the team vault,
+    // The vault's Delete choice (L11): For good turns Trash off here.
+    // Never on a storage that does not carry Delete out (the team vault,
     // whose deletes stay in its Trash): vaultCaps reads the provider's
     // `unappliedSettings`, and the team provider never reads the key back.
     const settings = cachedVaultSettings(foldersKey(t));
@@ -10874,11 +10874,14 @@ export const useApp = create<AppState>((set, get, api) => {
         // text saves later, which is not about a delete, and nothing retries
         // one, so vaultError is left as it was.
         const refusal = vaultRefusal(err);
+        // A refusal that is its own whole line (CX Y14) is said as it is.
+        if (refusal && (err as { whole?: unknown }).whole === true) {
+          get().showToast(refusal);
+          return false;
+        }
         get().showToast(
           refusal
-            ? (err as { whole?: unknown }).whole === true
-              ? refusal
-              : `Could not delete that note. ${asSentence(refusal)}`
+            ? `Could not delete that note. ${asSentence(refusal)}`
             : 'Could not delete that note. Check your vault storage connection.',
         );
         return false;
@@ -11008,7 +11011,11 @@ export const useApp = create<AppState>((set, get, api) => {
           );
           return undefined;
         }
-        return { ok: false, reason: r.reason, ...(r.line ? { line: r.line } : {}) };
+        const refused = refusalOf(r);
+        if (refused) {
+          return { ok: false, reason: 'storage', line: vaultRefusedLine('delete', refused) };
+        }
+        return { ok: false, reason: r.reason };
       }
       await afterNoteGone(t, path);
       logEvent('vault_note_trash');
@@ -11026,13 +11033,11 @@ export const useApp = create<AppState>((set, get, api) => {
       if (!capsOf(t).trash) return { ok: false, reason: 'unsupported' };
       if (await leaseRefuses(t)) return undefined;
       const r = await opsDeleteFolder(opsDeps(t), folder);
-      if (!r.ok) {
-        return {
-          ok: false,
-          reason: r.reason === 'changed' ? 'storage' : r.reason,
-          ...(r.line ? { line: r.line } : {}),
-        };
+      const refused = !r.ok ? refusalOf(r) : undefined;
+      if (refused) {
+        return { ok: false, reason: 'storage', line: vaultRefusedLine('delete', refused) };
       }
+      if (!r.ok) return { ok: false, reason: r.reason === 'changed' ? 'storage' : r.reason };
       const open = get().vaultNote;
       if (open && open.path.startsWith(`${folder}/`)) await afterNoteGone(t, open.path);
       await moveEmptyFolders(t, folder);
@@ -11049,10 +11054,16 @@ export const useApp = create<AppState>((set, get, api) => {
       // The plan lapsed while the toast was up: the Undo is a write the
       // server refuses (OV402), so it says the plan's line and asks nothing.
       const teamRefused = vaultTeamRefusal(t.providerId, get().vaultTeamPlan, 'restore');
-      if (teamRefused) return { ok: false, reason: 'unsupported', line: teamRefused };
+      if (teamRefused) return { ok: false, reason: 'unsupported', line: teamRefused, whole: true };
       const r = await opsUndoDelete(opsDeps(t), undo);
       if (r.ok && undo.kind === 'trash' && undo.folder) await relistActive(t);
       void refreshVaultTrash(t);
+      // A refusal for good (the team's free space, 0023) says the verb first.
+      const refused = !r.ok ? refusalOf(r) : undefined;
+      if (refused) {
+        const line = vaultRefusedLine('restore', refused);
+        return { ok: false, reason: 'storage', line, whole: true };
+      }
       return r;
     },
 
@@ -11077,11 +11088,17 @@ export const useApp = create<AppState>((set, get, api) => {
       // A Trash page open when the plan lapsed: Restore is a write the server
       // refuses (OV402), so it says the plan's line and asks nothing.
       const teamRefused = vaultTeamRefusal(t.providerId, get().vaultTeamPlan, 'restore');
-      if (teamRefused) return { ok: false, reason: 'unsupported', line: teamRefused };
+      if (teamRefused) return { ok: false, reason: 'unsupported', line: teamRefused, whole: true };
       const entry = get().vaultTrash?.find((e) => e.id === id);
       const r = await opsRestoreEntry(opsDeps(t), id);
       if (r.ok && entry?.kind === 'folder') await relistActive(t);
       void refreshVaultTrash(t);
+      // A refusal for good (the team's free space, 0023) says the verb first.
+      const refused = !r.ok ? refusalOf(r) : undefined;
+      if (refused) {
+        const line = vaultRefusedLine('restore', refused);
+        return { ok: false, reason: 'storage', line, whole: true };
+      }
       return r;
     },
 
@@ -11124,6 +11141,21 @@ export const useApp = create<AppState>((set, get, api) => {
         await inSaveChain(t, preview.from, () => recheckOpenNote(t, preview.from));
       }
       if (r.ok) logEvent('vault_rename', { kind: preview.kind, links: preview.links > 0 });
+      // A refusal for good (a team past its free space, 0023): the verb
+      // first, or, for a folder stopped part way, what moved before it.
+      const refused = !r.ok ? refusalOf(r) : undefined;
+      if (refused && !r.ok) {
+        const line =
+          r.reason === 'partial'
+            ? vaultFolderMoveRefused(
+                preview.from.slice(preview.from.lastIndexOf('/') + 1),
+                r.moved?.length ?? 0,
+                preview.notes,
+                refused.line,
+              )
+            : vaultRefusedLine('rename', refused);
+        return { ...r, line, whole: true };
+      }
       return r;
     },
 
@@ -11198,6 +11230,9 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       if (await leaseRefuses(t)) return undefined;
       const r = await opsOpenToday(opsDeps(t), { path: plan.path, text: plan.text });
+      // A refusal for good (a team out of free space, 0023) says why.
+      const refused = !r.ok ? refusalOf(r) : undefined;
+      if (refused) return { kind: 'refused', line: vaultRefusedLine('today', refused) };
       if (!r.ok) {
         return {
           kind: 'refused',

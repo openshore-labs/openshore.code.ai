@@ -1,6 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
 import {
   createFakeOrgVaultServer,
+  FREE_SPACE_REFUSAL,
   type FakeOrgVaultServer,
 } from './fixtures/fakeOrgVaultServer.js';
 
@@ -31,8 +34,9 @@ import {
   setOrgVaultDeleteRole,
   ORG_VAULT_UNAPPLIED_SETTINGS,
   orgVaultAppliedSettings,
+  OrgVaultFull,
 } from '../src/lib/gitos/orgVault.js';
-import { vaultTeamEditableUntil } from '../src/lib/vaultCopy.js';
+import { VAULT_TEAM_FULL, vaultTeamEditableUntil } from '../src/lib/vaultCopy.js';
 
 const ORG = 'org-123';
 const mockSelect = vi.mocked(select);
@@ -912,5 +916,173 @@ describe('org vault plan (OV402) and settings', () => {
       settings: { version: 1, tree: { sort: 'name' } },
     });
     expect(orgVaultPlan(ORG)?.deleteRole).toBe('admin');
+  });
+});
+
+// 0023's free space (the 2026-09-30 review, finding 1): a team with no live
+// plan holds 25 MiB of note and revision bytes, and a call that grows its
+// notes past that is refused with check_violation (SQLSTATE 23514, a 400).
+// Deleting frees nothing until the weekly purge, so that refusal is for good:
+// the client says it in 0023's own terms (VAULT_TEAM_FULL), never as a
+// failure to try again, and a folder's Restore says what came back.
+describe('org vault free space (0023)', () => {
+  const fill = (n: number) => 'x'.repeat(n);
+  const live = () =>
+    [...server.notes.values()]
+      .filter((n) => !n.deleted)
+      .map((n) => n.path)
+      .sort();
+
+  it('maps the refusal to a permanent one in the copy words, and writes nothing', async () => {
+    const a = await orgVaultProvider.write(ORG, 'a.md', fill(10), { ifAbsent: true });
+    server.freeBytes = server.usage() + 5;
+    const grown = await orgVaultProvider
+      .write(ORG, 'a.md', fill(30), { ifMatch: version(a) })
+      .catch((e: unknown) => e);
+    expect(grown).toBeInstanceOf(OrgVaultFull);
+    expect(grown).toBeInstanceOf(OrgVaultRefusal);
+    expect(grown).toMatchObject({ permanent: true, message: VAULT_TEAM_FULL });
+    expect((grown as { whole?: unknown }).whole).toBeUndefined();
+    const made = await orgVaultProvider
+      .write(ORG, 'b.md', fill(20), { ifAbsent: true })
+      .catch((e: unknown) => e);
+    expect(made).toBeInstanceOf(OrgVaultFull);
+    // The call rolled back: the note, its history and the total are as they were.
+    expect(server.bytes('a.md')).toBe(fill(10));
+    expect(server.bytes('b.md')).toBeUndefined();
+    expect(server.revisions).toEqual([]);
+  });
+
+  it('a shrink and a delete near the cap go through', async () => {
+    const a = await orgVaultProvider.write(ORG, 'a.md', fill(40), { ifAbsent: true });
+    const b = await orgVaultProvider.write(ORG, 'b.md', fill(40), { ifAbsent: true });
+    server.freeBytes = server.usage();
+    const smaller = await orgVaultProvider.write(ORG, 'a.md', fill(5), { ifMatch: version(a) });
+    expect(smaller.ok).toBe(true);
+    expect(await orgVaultProvider.remove(ORG, 'b.md', { ifMatch: version(b) })).toEqual({
+      ok: true,
+    });
+  });
+
+  it('a check_violation in other words stays the server line, still permanent', async () => {
+    mockRpc.mockRejectedValueOnce(
+      Object.assign(new Error('new row violates check constraint "org_vault_settings_ok"'), {
+        status: 400,
+        code: '23514',
+      }),
+    );
+    const err = await orgVaultProvider
+      .write(ORG, 'a.md', 'hi', { ifAbsent: true })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(OrgVaultRefusal);
+    expect(err).not.toBeInstanceOf(OrgVaultFull);
+    expect((err as Error).message).toMatch(/check constraint/);
+  });
+
+  it('the refusal reads as 0023 raises it, the code and the words', async () => {
+    mockRpc.mockRejectedValueOnce(
+      Object.assign(new Error(FREE_SPACE_REFUSAL), { status: 400, code: '23514' }),
+    );
+    await expect(
+      orgVaultProvider.write(ORG, 'a.md', 'hi', { ifAbsent: true }),
+    ).rejects.toBeInstanceOf(OrgVaultFull);
+  });
+
+  it('a Restore that would pass the cap is refused for good, and the note stays in Trash', async () => {
+    const w = await orgVaultProvider.write(ORG, 'Old.md', fill(50), { ifAbsent: true });
+    const t = await orgVaultProvider.trash!(ORG, {
+      kind: 'note',
+      path: 'Old.md',
+      ifMatch: version(w),
+    });
+    // The deleted body still counts (its revision), until the purge.
+    server.freeBytes = server.usage() + 10;
+    const err = await orgVaultProvider.restore!(ORG, t.ok ? t.entry.id : '').catch((e) => e);
+    expect(err).toBeInstanceOf(OrgVaultFull);
+    expect(live()).toEqual([]);
+    expect((await orgVaultProvider.listTrash!(ORG)).map((e) => e.path)).toEqual(['Old.md']);
+  });
+
+  it('a folder Restore brings back what fits, and says how many and which stayed', async () => {
+    await orgVaultProvider.write(ORG, 'Work/a.md', fill(5), { ifAbsent: true });
+    await orgVaultProvider.write(ORG, 'Work/big.md', fill(60), { ifAbsent: true });
+    await orgVaultProvider.write(ORG, 'Work/c.md', fill(5), { ifAbsent: true });
+    const t = await orgVaultProvider.trash!(ORG, { kind: 'folder', path: 'Work' });
+    server.freeBytes = server.usage() + 20;
+    const back = await orgVaultProvider.restore!(ORG, t.ok ? t.entry.id : '');
+    expect(back).toEqual({
+      ok: true,
+      renamed: false,
+      file: expect.objectContaining({ path: 'Work/a.md' }),
+      partial: { restored: 2, left: ['Work/big.md'], line: VAULT_TEAM_FULL },
+    });
+    // The smaller note after the refused one was still tried.
+    expect(live()).toEqual(['Work/a.md', 'Work/c.md']);
+    expect((await orgVaultProvider.listTrash!(ORG)).map((e) => e.path)).toEqual(['Work/big.md']);
+  });
+
+  it('a folder Restore where nothing fits is refused for good', async () => {
+    await orgVaultProvider.write(ORG, 'Work/a.md', fill(30), { ifAbsent: true });
+    await orgVaultProvider.write(ORG, 'Work/b.md', fill(30), { ifAbsent: true });
+    const t = await orgVaultProvider.trash!(ORG, { kind: 'folder', path: 'Work' });
+    server.freeBytes = server.usage() + 10;
+    const err = await orgVaultProvider.restore!(ORG, t.ok ? t.entry.id : '').catch((e) => e);
+    expect(err).toBeInstanceOf(OrgVaultFull);
+    expect(live()).toEqual([]);
+  });
+
+  it('a failure part way lists the rest as not reached, with no reason to give', async () => {
+    await orgVaultProvider.write(ORG, 'Work/a.md', 'a', { ifAbsent: true });
+    await orgVaultProvider.write(ORG, 'Work/b.md', 'b', { ifAbsent: true });
+    await orgVaultProvider.write(ORG, 'Work/c.md', 'c', { ifAbsent: true });
+    const t = await orgVaultProvider.trash!(ORG, { kind: 'folder', path: 'Work' });
+    let writes = 0;
+    mockRpc.mockImplementation(async (fn, token, args) => {
+      if (fn === 'org_vault_write' && ++writes === 2) throw new TypeError('Failed to fetch');
+      return server.rpc(fn, token, args as Record<string, unknown>);
+    });
+    const back = await orgVaultProvider.restore!(ORG, t.ok ? t.entry.id : '');
+    expect(back).toMatchObject({
+      ok: true,
+      partial: { restored: 1, left: ['Work/b.md', 'Work/c.md'] },
+    });
+    expect((back as { partial?: { line?: string } }).partial?.line).toBeUndefined();
+  });
+
+  it('a rename at the cap goes through; a team already past it is refused for good', async () => {
+    const a = await orgVaultProvider.write(ORG, 'a.md', fill(20), { ifAbsent: true });
+    server.freeBytes = server.usage() + 20;
+    // 0024 writes the tombstone before the destination: at the cap, a move
+    // adds nothing, so it lands (its history copy rides above, as 0023 says).
+    const moved = await orgVaultProvider.rename!(ORG, 'a.md', 'b.md', { ifMatch: version(a) });
+    expect(moved).toMatchObject({ ok: true, file: { path: 'b.md' } });
+    // Past the cap (grandfathered rows, or history above it), it is refused.
+    server.freeBytes = server.usage() - 1;
+    const err = await orgVaultProvider.rename!(ORG, 'b.md', 'c.md', {
+      ifMatch: moved.ok ? moved.file.version! : '',
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(OrgVaultFull);
+    expect(live()).toEqual(['b.md']);
+  });
+});
+
+// The team client inserts beside main's code and never moves it (the
+// 2026-09-30 review, finding 2): restoredPath and VAULT_SETTINGS_PATH stay in
+// local.ts, where main defines them, and the team vault imports them from
+// there. local.ts never imports the team vault, so there is no cycle.
+describe("the team client leaves main's modules where they are", () => {
+  const src = (f: string) =>
+    readFileSync(new URL(`../src/lib/gitos/${f}`, import.meta.url), 'utf8');
+
+  it('reads restoredPath and VAULT_SETTINGS_PATH from local.ts, with no cycle', () => {
+    const local = src('local.ts');
+    const providers = src('providers.ts');
+    expect(local).toMatch(/^export function restoredPath\(path: string, n: number\): string \{$/m);
+    expect(local).toMatch(/^export const VAULT_SETTINGS_PATH = /m);
+    expect(providers).not.toMatch(/restoredPath|VAULT_SETTINGS_PATH|VAULT_CONFIG_FILES/);
+    expect(src('orgVault.ts')).toContain(
+      "import { VAULT_SETTINGS_PATH, restoredPath } from './local.js';",
+    );
+    expect(local).not.toMatch(/from '\.\/orgVault\.js'/);
   });
 });

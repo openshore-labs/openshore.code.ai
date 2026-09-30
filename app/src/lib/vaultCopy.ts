@@ -2551,6 +2551,77 @@ export function vaultTeamEditableUntil(until: string | Date): string | undefined
   return `Team notes stay editable until ${date}.`;
 }
 
+/** The free space a team without a live plan holds for its notes and their
+ *  history, in MiB: migration 0023's no_entitlement_max_org_bytes (26214400
+ *  bytes). vaultCopy.test.ts reads the number there. */
+export const VAULT_TEAM_FREE_MIB = 25;
+
+/** A write refused because a team without a live plan has used its free
+ *  space (0023's check_violation, SQLSTATE 23514): a save, a new note,
+ *  Today, a Restore or an Undo, and a rename once a team is past it. Said in
+ *  0023's own words and the gate 1 runbook's (4.5): a delete frees nothing
+ *  until the weekly purge clears its history, about a month later
+ *  (VAULT_TEAM_TRASH_DAYS). No price or plan name (a Board gate), and no
+ *  "start a plan" while no build offers one. The reason only: the store puts
+ *  the verb first (VAULT_REFUSED_VERB). */
+export const VAULT_TEAM_FULL = `This team has used its ${VAULT_TEAM_FREE_MIB} MiB of free space. A deleted note frees its space when its history is cleared, about a month later.`;
+
+/** What did not happen, said first when a storage refuses for good (a team
+ *  out of free space, a plan not active), before the storage's reason. */
+export const VAULT_REFUSED_VERB = {
+  save: 'Not saved.',
+  today: 'Not started.',
+  rename: 'Not renamed.',
+  restore: 'Not restored.',
+  delete: 'Not deleted.',
+} as const;
+
+/** A storage's reason ("a note is limited to 1 MB") as a sentence. */
+function reasonSentence(line: string): string {
+  const t = line.trim();
+  const s = t.charAt(0).toUpperCase() + t.slice(1);
+  return /[.!?]$/.test(s) ? s : `${s}.`;
+}
+
+/** A refusal as the room says it: a line that already names what did not
+ *  happen (`whole`, the admins-only delete, CX Y14) as it is; any other line
+ *  is the storage's reason, so the verb goes first and the reason follows as
+ *  a sentence ("Not restored. This team has used its 25 MiB..."). */
+export function vaultRefusedLine(
+  verb: keyof typeof VAULT_REFUSED_VERB,
+  r: { line: string; whole?: boolean },
+): string {
+  return r.whole ? r.line : `${VAULT_REFUSED_VERB[verb]} ${reasonSentence(r.line)}`;
+}
+
+/** A folder's Restore (or its Undo) that brought back only some of its
+ *  notes: how many came back, which are still in Trash (the first three by
+ *  title), and why, when the storage said. With no reason, the rest were not
+ *  reached, so trying again is true. */
+export function vaultRestorePartial(o: {
+  title: string;
+  restored: number;
+  left: readonly string[];
+  reason?: string;
+}): string {
+  const total = o.restored + o.left.length;
+  const names = o.left.slice(0, 3).map((p) => `"${noteTitle(p)}"`);
+  const more = o.left.length > 3 ? ` and ${o.left.length - 3} more` : '';
+  const why = o.reason ? reasonSentence(o.reason) : 'Try again in a moment.';
+  return `Restored ${o.restored} of ${total} ${total === 1 ? 'note' : 'notes'} from "${o.title}". Still in Trash: ${names.join(', ')}${more}. ${why}`;
+}
+
+/** A folder move that stopped part way on a refusal that trying again cannot
+ *  fix (a team out of free space): what moved, and the storage's reason. */
+export function vaultFolderMoveRefused(
+  old: string,
+  moved: number,
+  total: number,
+  reason: string,
+): string {
+  return `Moved ${moved} of ${total} ${total === 1 ? 'note' : 'notes'} from "${old}". The rest were not moved, so they are still there. ${reasonSentence(reason)}`;
+}
+
 /** The team settings sheet (Y14): its title, the lead's link to it, and the
  *  who-may-delete row. */
 export const VAULT_TEAM_SETTINGS_TITLE = 'Team vault settings';

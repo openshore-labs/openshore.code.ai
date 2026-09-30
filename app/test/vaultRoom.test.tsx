@@ -1577,6 +1577,95 @@ describe('the team room offers only what the server takes (Y14, Y15)', () => {
     expect(app.toasts.at(-1)).toBe(copy.VAULT_TEAM_LAPSED_NOT_RESTORED);
   });
 
+  // 0023's free space (the 2026-09-30 review, finding 1): the store says a
+  // refusal for good as one whole line, and a folder that came back in part
+  // with its counts; the room shows exactly that, never "Try again".
+  it('an Undo that came back only in part says how many, and which stayed in Trash', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    app.state.vaultFiles = [{ path: 'Plan.md', updatedAt: 'x', size: 4 }];
+    app.state.vaultNote = { path: 'Plan.md', text: 'plan', updatedAt: 'x' };
+    app.state.vaultDeleteNote = async () => ({
+      ok: true,
+      trashed: true,
+      undo: { kind: 'trash', id: 'n:Plan.md', path: 'Plan.md', folder: false, notes: 1 },
+      notes: 1,
+      attachments: 0,
+    });
+    app.state.vaultUndoDelete = async () => ({
+      ok: true,
+      path: 'Work/a.md',
+      renamed: false,
+      partial: { restored: 1, left: ['Work/big.md'], line: copy.VAULT_TEAM_FULL },
+    });
+    await dom.render(<VaultRoom />);
+    await dom.click('⋯');
+    await dom.settle();
+    await dom.click(copy.VAULT_DELETE_ROW);
+    await dom.settle();
+    await dom.click(copy.VAULT_UNDO);
+    await dom.settle();
+    expect(app.toasts.at(-1)).toBe(
+      'Restored 1 of 2 notes from "Plan". Still in Trash: "big". ' + copy.VAULT_TEAM_FULL,
+    );
+  });
+
+  it('a Restore in Trash past the free space says Not restored and why', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    app.state.vaultFiles = [{ path: 'Plan.md', updatedAt: 'x', size: 4 }];
+    app.state.vaultTrash = [
+      { id: 'n:Old.md', path: 'Old.md', kind: 'note', size: 0, trashedAt: '2026-09-30T00:00:00Z' },
+    ];
+    const line = `Not restored. ${copy.VAULT_TEAM_FULL}`;
+    app.state.vaultRestoreTrash = async () => ({ ok: false, reason: 'storage', line, whole: true });
+    await dom.render(<VaultRoom />);
+    const { act } = await import('react');
+    const row = dom.container.querySelector('.vault-trash-entry') as HTMLElement;
+    await act(async () => {
+      row.click();
+    });
+    await dom.settle();
+    await dom.click(copy.VAULT_TRASH_RESTORE);
+    await dom.settle();
+    expect(app.toasts.at(-1)).toBe(line);
+    expect(app.toasts.some((t) => /Try again/.test(t))).toBe(false);
+  });
+
+  it('a rename past the free space says Not renamed and why, never Try again', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    app.state.vaultFiles = [{ path: 'Ideas.md', updatedAt: 'x', size: 4 }];
+    app.state.vaultNote = { path: 'Ideas.md', text: 'ideas', updatedAt: 'x' };
+    const preview = {
+      kind: 'note',
+      from: 'Ideas.md',
+      to: 'Plans.md',
+      moves: new Map([['Ideas.md', 'Plans.md']]),
+      notes: 1,
+      attachments: 0,
+      links: 0,
+      linkNotes: 0,
+      plan: { edits: [], links: 0, notes: 0, left: [] },
+      sources: [],
+    };
+    const line = `Not renamed. ${copy.VAULT_TEAM_FULL}`;
+    app.state.vaultPrepareMove = async () => preview;
+    app.state.vaultApplyMove = async () => ({ ok: false, reason: 'storage', line, whole: true });
+    await dom.render(<VaultRoom />);
+    await dom.click('⋯');
+    await dom.settle();
+    await dom.click(copy.VAULT_RENAME_ROW);
+    await new Promise((r) => setTimeout(r, 600));
+    await dom.settle();
+    await dom.type('Ideas', 'Plans');
+    await dom.click('Rename');
+    await dom.settle();
+    await dom.settle();
+    expect(app.toasts.at(-1)).toBe(line);
+    expect(app.toasts).not.toContain(copy.vaultRenameFailed('Ideas'));
+  });
+
   it('a rename sheet up when the plan lapses says why, and plans nothing', async () => {
     const copy = await import('../src/lib/vaultCopy.js');
     app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };

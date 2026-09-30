@@ -61,6 +61,7 @@ import {
   VAULT_TEAM_LAPSED_WEB,
   VAULT_TEAM_OPEN_ADMIN,
   VAULT_TEAM_SETTINGS_LINK,
+  vaultRestorePartial,
   vaultTeamEditableUntil,
 } from '../lib/vaultCopy.js';
 import {
@@ -487,18 +488,14 @@ export function VaultScreen() {
           (r) => r.id === VAULT_RESOURCE_ID,
         )?.providerId ?? 'local') as StorageProviderId,
       );
-  const capNotes = [
-    ...(capKey
-      ? (['rename', 'trash'] as const)
-          .filter((cap) => !storageCaps[cap])
-          .map((cap) => vaultCapLine(capKey, cap))
-      : []),
-    ...(teamLapsed
-      ? [VAULT_TEAM_LAPSED_LEAD]
-      : teamDeleteBlocked
-        ? [VAULT_TEAM_DELETE_ADMINS_ONLY]
-        : []),
-  ];
+  const capNotes = capKey
+    ? (['rename', 'trash'] as const)
+        .filter((cap) => !storageCaps[cap])
+        .map((cap) => vaultCapLine(capKey, cap))
+    : [];
+  // Options also says why the plan leaves a row out (CX Y14, Y15).
+  if (teamLapsed) capNotes.push(VAULT_TEAM_LAPSED_LEAD);
+  else if (teamDeleteBlocked) capNotes.push(VAULT_TEAM_DELETE_ADMINS_ONLY);
   const teamAvailable = teamVaultAvailable();
   // The project a note's "Pin to project context" pins to: the active one.
   const pinProjectId = settings.activeProjectId ?? settings.projects?.[0]?.id;
@@ -1209,17 +1206,16 @@ export function VaultScreen() {
       recent={recentRows}
       agentLabel={agentLabel}
       onPick={openNote}
-      {...(todayOffered ? { onToday: () => void openToday() } : {})}
-      {...(newNoteOffered
-        ? {
-            onCreate: (name: string) => {
-              const path = normalizeNotePath(name);
-              if (!path) return;
-              flushSave();
-              void vaultCreate(path);
-            },
-          }
-        : {})}
+      {...(caps.today ? { onToday: () => void openToday() } : {})}
+      onCreate={(name) => {
+        const path = normalizeNotePath(name);
+        if (!path || locked || hubAway) return;
+        flushSave();
+        void vaultCreate(path);
+      }}
+      // Only what the header offers: none where it would be refused.
+      {...(todayOffered ? {} : { onToday: undefined })}
+      {...(newNoteOffered ? {} : { onCreate: undefined })}
     />
   );
 
@@ -1398,6 +1394,18 @@ export function VaultScreen() {
   };
 
   // ---- delete, Undo and Trash (6.3; CTO K6, R2; CX X8 to X10) -------------
+  // A folder's Restore that came back only in part (a team near its free
+  // space, 0023): how many, which stayed in Trash, and why when it was said.
+  const restoredPart = (
+    title: string,
+    p: { restored: number; left: readonly string[]; line?: string },
+  ) =>
+    vaultRestorePartial({
+      title,
+      restored: p.restored,
+      left: p.left,
+      ...(p.line ? { reason: p.line } : {}),
+    });
   const offerUndo = (
     undo: VaultUndo,
     at: VaultTargetRef | undefined,
@@ -1413,6 +1421,11 @@ export function VaultScreen() {
     if (!entry) return;
     void vaultUndoDelete(entry.undo, entry.at).then((r) => {
       if (!r) return;
+      // A folder that came back only in part says how many, and which stayed.
+      if (r.ok && 'partial' in r) {
+        showToast(restoredPart(item.title, r.partial));
+        return;
+      }
       if (r.ok) {
         showToast(
           vaultRestoredToast({
@@ -1423,8 +1436,9 @@ export function VaultScreen() {
         );
         return;
       }
-      // A refusal with its own line (a lapsed team plan) says that line.
-      if (r.line) {
+      // A refusal for good says its own line (a lapsed plan, a team out of
+      // free space), never "try again".
+      if ('line' in r) {
         showToast(r.line);
         return;
       }
@@ -1449,7 +1463,11 @@ export function VaultScreen() {
     void vaultDeleteNote(path, at).then((r) => {
       if (!r) return;
       if (!r.ok) {
-        showToast(r.line ?? vaultTrashFailed(title));
+        if ('line' in r) {
+          showToast(r.line);
+          return;
+        }
+        showToast(vaultTrashFailed(title));
         return;
       }
       if (!r.undo) {
@@ -1517,6 +1535,12 @@ export function VaultScreen() {
     setRenameOpen(false);
     if (!r) return;
     if (!r.ok) {
+      // A refusal for good says its own line (a team out of free space).
+      if (r.line) {
+        showToast(r.line);
+        if (r.reason === 'partial') setFolder('');
+        return;
+      }
       showToast(
         r.reason === 'choice-open'
           ? VAULT_RENAME_CHOICE_OPEN
@@ -1615,7 +1639,11 @@ export function VaultScreen() {
     void vaultDeleteFolder(target).then((r) => {
       if (!r) return;
       if (!r.ok) {
-        showToast(r.line ?? vaultTrashFailed(name));
+        if ('line' in r) {
+          showToast(r.line);
+          return;
+        }
+        showToast(vaultTrashFailed(name));
         return;
       }
       setFolder(target.includes('/') ? target.slice(0, target.lastIndexOf('/')) : '');
@@ -2224,10 +2252,11 @@ export function VaultScreen() {
               notes={notesLeft(linksLeft.report)}
               busy={linksLeft.busy}
               onOpen={openNote}
+              onUpdateRest={() => void updateRest()}
               // Update the rest writes: offered only while links can be
               // rewritten here (not on a lapsed plan, a lease held elsewhere,
               // or a computer that is away), else the card only lists them.
-              {...(caps.linkRewrite ? { onUpdateRest: () => void updateRest() } : {})}
+              {...(caps.linkRewrite ? {} : { onUpdateRest: undefined })}
             />
           ) : null}
 
@@ -2238,7 +2267,9 @@ export function VaultScreen() {
               onOpen={openNote}
               loading={mentionsLoading}
               outgoing={outgoing}
-              {...(teamLapsed ? {} : { onCreate: (name: string) => followLink(name, true) })}
+              onCreate={(name) => followLink(name, true)}
+              // A lapsed plan makes no note, so a missing link offers none.
+              {...(!teamLapsed ? {} : { onCreate: undefined })}
               title={title}
               unlinked={unlinked}
               onFindUnlinked={findUnlinked}
@@ -2284,7 +2315,9 @@ export function VaultScreen() {
             flushSave();
             setTimeout(() => openRename('note', path), sheetExitMs());
           }}
-          deleteDisabled={Boolean(driveReadOnly) || hubAway || teamLapsed || teamDeleteBlocked}
+          deleteDisabled={Boolean(driveReadOnly) || hubAway}
+          // A lapsed plan, or a member under admins-only, deletes nothing.
+          {...(!teamLapsed && !teamDeleteBlocked ? {} : { deleteDisabled: true })}
           onClose={() => {
             setMenuOpen(false);
             setConfirmDelete(false);
@@ -2355,9 +2388,14 @@ export function VaultScreen() {
                 ? (entry.path.split('/').pop() ?? entry.path)
                 : noteTitle(entry.path);
             const r = await vaultRestoreTrash(entry.id);
-            // A refusal with its own line (a lapsed team plan) says that line.
-            if (!r.ok && r.line) {
+            // A refusal for good says its own line (a lapsed plan, a team out
+            // of free space), never "try again".
+            if (!r.ok && 'line' in r) {
               showToast(r.line);
+              return;
+            }
+            if (r.ok && 'partial' in r) {
+              showToast(restoredPart(title, r.partial));
               return;
             }
             showToast(
@@ -2822,10 +2860,10 @@ export function VaultScreen() {
         counts={folderCounts}
         canRename={caps.rename}
         canCreate={caps.folders}
+        canTrash={caps.trash}
         // A member under admins-only is refused a delete (OV403, Y14), so
         // Delete folder leaves and the note sheet's line says why.
-        canTrash={caps.trash && !teamDeleteBlocked}
-        {...(teamDeleteBlocked ? { notes: [VAULT_TEAM_DELETE_ADMINS_ONLY] } : {})}
+        {...(!teamDeleteBlocked ? {} : { canTrash: false, notes: [VAULT_TEAM_DELETE_ADMINS_ONLY] })}
         onClose={() => setFolderMenuOpen(false)}
         onRename={() => afterFolderMenu(() => openRename('folder', folder))}
         onMove={() => afterFolderMenu(() => openRename('folder', folder, 'folders'))}

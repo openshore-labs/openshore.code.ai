@@ -23,9 +23,14 @@ import type {
   WriteResult,
 } from '../src/lib/gitos/providers.js';
 import { isNotePath } from '../src/lib/gitos/providers.js';
+import {
+  createFakeOrgVaultServer,
+  type FakeOrgVaultServer,
+} from './fixtures/fakeOrgVaultServer.js';
 import { backlinksTo, normalizeNotePath } from '../src/lib/vault.js';
 import {
   VAULT_TEAM_DELETE_REFUSED,
+  VAULT_TEAM_FULL,
   VAULT_TEAM_LAPSED_NOT_CREATED,
   VAULT_TEAM_LAPSED_NOT_DELETED,
   VAULT_TEAM_LAPSED_NOT_RESTORED,
@@ -313,6 +318,10 @@ const teamNet = {
   settings: undefined as Record<string, unknown> | undefined,
   /** Every org_vault_settings_put's p_settings, in order. */
   settingsPuts: [] as unknown[],
+  /** When set, the team's selects and RPCs go to this fake server instead
+   *  (test/fixtures/fakeOrgVaultServer.ts: Trash, moves, and 0023's free
+   *  space as the migrations write them). */
+  server: undefined as FakeOrgVaultServer | undefined,
 };
 let teamToken: string | undefined = 'tok';
 // The account the fake auth server hands out: refreshSession answers with
@@ -350,6 +359,7 @@ vi.mock('../src/lib/supabase.js', async (importOriginal) => {
       if (table === 'org_members' && query.startsWith('select=role')) {
         return [{ role: 'member', status: 'active' }];
       }
+      if (teamNet.server) return teamNet.server.select(table, _token, query);
       if (table !== 'org_vault_notes') return [];
       const m = /path=eq\.([^&]+)/.exec(query);
       const only = m ? (JSON.parse(decodeURIComponent(m[1]!)) as string) : undefined;
@@ -360,6 +370,7 @@ vi.mock('../src/lib/supabase.js', async (importOriginal) => {
       teamNet.calls.push(fn);
       if (teamNet.fail) throw teamNet.fail;
       if (teamNet.rpcFail) throw teamNet.rpcFail;
+      if (teamNet.server) return teamNet.server.rpc(fn, token, args);
       if (fn === 'org_vault_settings_get' && teamNet.settings) {
         return {
           settings: teamNet.settings,
@@ -451,6 +462,7 @@ const { useApp } = await import('../src/state/store.js');
 const { closeVaultIndex, currentVaultIndex, vaultIndexStatus } =
   await import('../src/lib/vaultIndexHost.js');
 const { SupabaseRequestError } = await import('../src/lib/supabase.js');
+const { clearVaultTodayCache } = await import('../src/lib/vaultToday.js');
 
 // init() registers the store's own team-token getter (captured above).
 await useApp.getState().init();
@@ -486,6 +498,7 @@ function reset() {
   teamNet.calls = [];
   teamNet.settings = undefined;
   teamNet.settingsPuts = [];
+  teamNet.server = undefined;
   teamToken = 'tok';
   auth.refresh = undefined;
   auth.nextUser = { id: 'u1', email: 'me@example.com' };
@@ -3679,7 +3692,12 @@ describe('the team plan refuses before the server is asked (Y14, Y15)', () => {
   it("Restore and Undo on a lapsed plan say the plan's line and ask nothing", async () => {
     teamScope();
     lapse();
-    const refused = { ok: false, reason: 'unsupported', line: VAULT_TEAM_LAPSED_NOT_RESTORED };
+    const refused = {
+      ok: false,
+      reason: 'unsupported',
+      line: VAULT_TEAM_LAPSED_NOT_RESTORED,
+      whole: true,
+    };
     const undo = {
       kind: 'trash' as const,
       id: 'n:Old.md',
@@ -3708,5 +3726,116 @@ describe('the team plan refuses before the server is asked (Y14, Y15)', () => {
     expect(await useApp.getState().vaultDeleteFolder('Work')).toEqual(member);
     expect(teamNet.calls).toEqual([]);
     expect(team.get('Work/n.md')?.body).toBe('keep');
+  });
+});
+
+// 0023's free space (the 2026-09-30 review, finding 1): every team with no
+// live plan runs under it in the beta. The real team provider over the shared
+// fake server, which refuses growth past `freeBytes` with 0023's own 23514:
+// save, Restore, Undo, Today and a rename each say why, the verb first, and
+// never "Try again in a moment", which would be false; a folder's Undo says
+// what came back and what stayed in Trash.
+describe("the team's free space (0023) says why, never 'try again'", () => {
+  let server: FakeOrgVaultServer;
+  beforeEach(() => {
+    reset();
+    server = createFakeOrgVaultServer(ORG);
+    teamNet.server = server;
+    teamScope();
+  });
+
+  it('a save past it is held under Not saved with the reason, and nothing retries', async () => {
+    server.freeBytes = server.usage();
+    await useApp.getState().vaultSave('plan.md', 'our plan');
+    expect(pending()).toEqual({});
+    expect(teamHeld()).toEqual([
+      expect.objectContaining({ path: 'plan.md', text: 'our plan', reason: VAULT_TEAM_FULL }),
+    ]);
+    expect(useApp.getState().toast).toBe(
+      `Not saved. ${VAULT_TEAM_FULL} Your text is kept under Not saved.`,
+    );
+    expect(server.bytes('plan.md')).toBeUndefined();
+  });
+
+  it('Restore in Trash past it says Not restored and why, and the note stays in Trash', async () => {
+    server.put('Old.md', 'x'.repeat(40), 'u-me');
+    server.drop('Old.md');
+    server.freeBytes = server.usage() + 10;
+    await useApp.getState().vaultRefresh();
+    expect((await useApp.getState().vaultLoadTrash())?.map((e) => e.path)).toEqual(['Old.md']);
+    expect(await useApp.getState().vaultRestoreTrash('n:Old.md')).toEqual({
+      ok: false,
+      reason: 'storage',
+      line: `Not restored. ${VAULT_TEAM_FULL}`,
+      whole: true,
+    });
+    expect(server.bytes('Old.md')).toBeUndefined();
+  });
+
+  it('Undo of a delete past it says Not restored and why', async () => {
+    server.put('Old.md', 'x'.repeat(40), 'u-me');
+    await useApp.getState().vaultRefresh();
+    const at = useApp.getState().vaultTargetRef();
+    const gone = await useApp.getState().vaultDeleteNote('Old.md', at);
+    if (!gone?.ok || !gone.undo) throw new Error('not deleted');
+    server.freeBytes = server.usage() + 10;
+    expect(await useApp.getState().vaultUndoDelete(gone.undo, at)).toEqual({
+      ok: false,
+      reason: 'storage',
+      line: `Not restored. ${VAULT_TEAM_FULL}`,
+      whole: true,
+    });
+  });
+
+  it("a folder's Undo brings back what fits, and says which stayed in Trash", async () => {
+    server.put('Work/a.md', 'a'.repeat(5), 'u-me');
+    server.put('Work/big.md', 'b'.repeat(60), 'u-me');
+    server.put('Work/c.md', 'c'.repeat(5), 'u-me');
+    await useApp.getState().vaultRefresh();
+    const at = useApp.getState().vaultTargetRef();
+    const gone = await useApp.getState().vaultDeleteFolder('Work');
+    if (!gone?.ok || !gone.undo) throw new Error('not deleted');
+    server.freeBytes = server.usage() + 20;
+    expect(await useApp.getState().vaultUndoDelete(gone.undo, at)).toEqual({
+      ok: true,
+      path: 'Work/a.md',
+      renamed: false,
+      partial: { restored: 2, left: ['Work/big.md'], line: VAULT_TEAM_FULL },
+    });
+    // The list shows what came back.
+    expect(
+      useApp
+        .getState()
+        .vaultFiles.map((f) => f.path)
+        .sort(),
+    ).toEqual(['Work/a.md', 'Work/c.md']);
+  });
+
+  it("Today's start past it says Not started and why", async () => {
+    server.putSettings({ version: 1, daily: { template: 'Templates/Day' } });
+    server.put('Templates/Day.md', '# The day', 'u-me');
+    await useApp.getState().vaultRefresh();
+    // Settings read before this case are cached for a minute: read them again.
+    clearVaultTodayCache();
+    server.freeBytes = server.usage();
+    expect(await useApp.getState().vaultToday()).toEqual({
+      kind: 'refused',
+      line: `Not started. ${VAULT_TEAM_FULL}`,
+    });
+  });
+
+  it('a rename once the team is past it says Not renamed and why', async () => {
+    server.put('a.md', 'x'.repeat(20), 'u-me');
+    await useApp.getState().vaultRefresh();
+    const preview = await useApp.getState().vaultPrepareMove('note', 'a.md', 'b.md');
+    if (!preview) throw new Error('no preview');
+    server.freeBytes = server.usage() - 1;
+    expect(await useApp.getState().vaultApplyMove(preview, false)).toEqual({
+      ok: false,
+      reason: 'storage',
+      line: `Not renamed. ${VAULT_TEAM_FULL}`,
+      whole: true,
+    });
+    expect(server.bytes('a.md')).toBe('x'.repeat(20));
   });
 });

@@ -343,9 +343,12 @@ export function VaultSettingsHost({ open, setOpen, onOpenStorage }: VaultSetting
         settings={s}
         platform={isPhone() ? 'phone' : 'desktop'}
         team={team}
-        {...(team
-          ? {
-              title: VAULT_TEAM_SETTINGS_TITLE,
+        // The team's sheet: its own title (CX Y14), read-only for a member,
+        // and who may delete.
+        {...(!team
+          ? {}
+          : {
+              copy: { ...copy, title: VAULT_TEAM_SETTINGS_TITLE },
               readOnly: !caps.settingsWrite,
               teamDelete: {
                 label: VAULT_TEAM_WHO_DELETES,
@@ -354,8 +357,7 @@ export function VaultSettingsHost({ open, setOpen, onOpenStorage }: VaultSetting
                 value: vaultTeamPlan?.deleteRole ?? 'member',
                 ...(caps.settingsWrite ? { onChange: (v) => void setDeleteRole(v) } : {}),
               },
-            }
-          : {})}
+            })}
         {...(unapplied ? { unapplied } : {})}
         storageName={PROVIDER_ROSTER.find((r) => r.id === providerId)?.label ?? providerId}
         footer={footer}

@@ -34,9 +34,9 @@ export interface VaultFolderSheetProps {
   canRename: boolean;
   /** Folders can be made here (`vaultCaps().folders`). */
   canCreate: boolean;
-  /** Trash is real here (`vaultCaps().trash`) and this person may delete
-   *  (a team member under admins-only may not, CX Y14): Delete folder is
-   *  offered. */
+  /** Trash is real here (`vaultCaps().trash`): Delete folder is offered. */
+  // False too for a team member under admins-only, who may not delete (CX
+  // Y14).
   canTrash: boolean;
   /** Why a row is not offered here (the admins-only line), one line each,
    *  shown under the counts, as the note's Options sheet shows them. */
