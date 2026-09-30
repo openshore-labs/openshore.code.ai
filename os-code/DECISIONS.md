@@ -3115,3 +3115,56 @@ execution contract. Newest at the bottom.
     live history's CSV with the file, catches that, on push day. It runs on
     pushes that touch `supabase/` and on PRs, and it compares names, numbers
     and bytes, not what a file does.
+- **The review of prod-reconcile (2026-09-30).** Unapplied, on
+  `prod-reconcile` with packages A to C. The calls a later session should
+  not reopen:
+  - Push day is six files, 0021 to 0026. The closure memo says "push 0021
+    to 0025" and leaves the export's coverage of `org_vault_revisions`,
+    `org_vault_settings` and `enforcement_tombstones` to the privacy
+    branch's PR (its item 7); both are read under CTO 11, which adds 0026:
+    it carries the memo's ruled two-year tombstone expiry (a cron change has
+    to live in a new file, since 0019 is applied) and the export additions
+    item 7 had deferred. The runbook, the README and PROGRESS say six.
+  - Delete account, `unauthorized` (main's function) or `not_signed_in` (the
+    2026-09-24 one): neither function can tell a dead sign-in from an
+    account already gone, so the app asks `GET /auth/v1/user` once with the
+    same token. 403 `user_not_found` (gotrue v2.197.0, checked on the local
+    stack) is a deletion: the goodbye, signed out, the Apple note as an if.
+    Any other 401 or 403 (`session_not_found` after a sign-out everywhere,
+    `bad_jwt`) signs the device out with a sheet that claims nothing about
+    the account, and keeps a pending Apple receipt. A 200 is a failure.
+    When the auth server cannot be asked either, it is a failure (the one gap
+    left, PROGRESS What remains). No session at the door (the refresh token
+    was dead) is the same signed-out sheet. Neither function changes.
+  - `billing` and `billing_failed` have their own line, which names the
+    published address; `failed` keeps naming the connection. The re-sign-in
+    line names the live function's ten minutes.
+  - PostgREST answers a void function with 204 and no body (postgrest
+    v16.3); `rpc` and `rpcPublic` read that as no value. It broke Block this
+    user, and every void call through them (`delete_org_project`,
+    `set_org_project_access`, `revoke_org_project_access`,
+    `org_vault_delete`, `admin_set_review_status`,
+    `admin_mark_report_submitted`).
+  - `local-vault.sh` refuses every argument that starts with a project flag's
+    name (`--linked=true`, `--linked=1` and the rest are `--linked` to the
+    CLI), marks the local stack only by `--local` or `--local=true` and
+    refuses any other `--local=`, and reads past the values of the CLI's
+    value-taking global flags (`--agent no`) to find the subcommand.
+  - `account_deletion_orgs` is all or none over every team named, not only
+    the ones still owned: a named team that support handed over after the
+    plan returns `{}`. `delete-account` copies the legal hold after the team
+    delete (deleting a team touches no held row), so `owns_org` leaves no
+    copy behind for an account that stays.
+  - `export_my_data` matches by email only rows nobody has claimed (a row
+    bound to another account under the same address is theirs, as 0022 6d
+    keeps it), and finds a tombstone by the account's confirmed email, not
+    the token's.
+  - 0026 stops, naming the owner, when another role owns
+    `oscode_guardrail_retention` (pg_cron re-schedules only the current
+    role's jobs); runbook 5.2 shows `username` and stops first.
+  - `check-migrations.mjs` now fails a tree missing a file production
+    applied, and a copy of a file beside its original (the relief rule
+    covers a move only); the known-limits bullet above no longer covers
+    those two.
+  - The "OpenShore team" label reads `--wave-ink` (`#3a6f7d` light, 4.5:1 on
+    `--surface`), ported from the privacy branch.
