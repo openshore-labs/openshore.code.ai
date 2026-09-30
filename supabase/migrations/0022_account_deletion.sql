@@ -149,8 +149,9 @@ $$;
 revoke execute on function public.enforcement_email_key(text) from public, anon, authenticated;
 
 -- ---------------------------------------------------------------- 3. the ladder
--- 0018's record_enforcement with two changes, and the appeal address 0019
--- published (os-code@openshorellc.com, the 2026-09-24 contact-inboxes ruling).
+-- 0018's record_enforcement with two changes, and the one published appeal
+-- address (support@openshore.ai, founder decision F1 of 2026-09-30, after its
+-- round-trip test; 0019 had os-code@openshorellc.com until then).
 --
 -- A tombstone for the caller's email counts as an operator's termination, so
 -- an account an operator terminated does not come back to a clean ladder
@@ -228,7 +229,7 @@ begin
     v_action := 'warn';
     v_reason := 'A request was blocked in a hard-blocked category. A second confirmed block within '
       || extract(day from public.enforcement_window())::int
-      || ' days ends the account. If this was legitimate work, write to os-code@openshorellc.com.';
+      || ' days ends the account. If this was legitimate work, write to support@openshore.ai.';
   else
     v_level := 0;
     v_action := 'log-only';

@@ -3076,7 +3076,8 @@ execution contract. Newest at the bottom.
   - Download my data includes the caller's `push_sends` and
     `likeness_consents` (0026): both are keyed to the person and no schema
     reason keeps them out.
-  - F1: os-code@openshorellc.com is the one published address in 0022's
+  - F1 (superseded 2026-09-30, below: support@openshore.ai):
+    os-code@openshorellc.com is the one published address in 0022's
     ladder, the engine's `SUPPORT_EMAIL` (the block card and, through
     `os-code/protocol`, the Delete account sheet) and `docs/terms-of-use.md`;
     `app/test/contactAddress.test.ts` fails when any of them differs. F1 may
@@ -3125,3 +3126,14 @@ execution contract. Newest at the bottom.
   alone; notes are a fixed line, never generated from this repo's commits; the
   version job reads tags from both repos so patch numbers keep climbing.
   Installs from before the move cannot see the new feed and reinstall once.
+- 2026-09-30: **Founder decision F1: support@openshore.ai is the one
+  published address.** The founder confirmed its round-trip test. 0022 was
+  unapplied, so its warning changed in place with `SUPPORT_EMAIL`, the Terms,
+  the pgTAP and replay checks, and the runbook's 8.10; production's 0019
+  (applied) keeps its old text and is replaced by 0022's function on the push.
+  F6, first fact: the founder ran the 2026-09-24 push; the live
+  `delete-account` was deployed that day (the privacy version). Gate 1's
+  section 0 ran clean the same morning: history equal to
+  `production-history.tsv`, the Vault key present, no leftovers, pg_cron on
+  with both jobs, and no rows from 4.2 to 4.5. The founder said yes to landing
+  `prod-reconcile` (packages A, B and C) on main.

@@ -378,8 +378,8 @@ What 0022 does:
   `action` collided with the function's own output column, so every call
   raised and the server-side ladder never recorded a row (the app swallowed
   the error). Expect `enforcement_actions` rows to start appearing. Its warning
-  names os-code@openshorellc.com, the address production publishes (founder
-  decision F1 can change it, by a new file).
+  names support@openshore.ai (founder decision F1, 2026-09-30; production's
+  0019 said os-code@openshorellc.com). Changing it again takes a new file.
 - `org_vault_revisions` stays append-only except for one update: clearing
   `updated_by`, which the function does for the departing person.
 - `abuse_reports.request_hash` must be 64 hex characters, one report per

@@ -252,9 +252,9 @@ team delete, the operator-only tombstone and the email cleanup; the Settings
 row reads either function's answers). It ships when the founder pushes 0021
 to 0026 and then deploys it (`docs/vault-gate1-runbook.md` 7.4); production
 runs the privacy branch's 2026-09-24 function until then. The published
-address is one constant, `SUPPORT_EMAIL` (os-code@openshorellc.com until F1
-says otherwise), and `app/test/contactAddress.test.ts` holds 0022's ladder
-and the Terms to it.
+address is one constant, `SUPPORT_EMAIL` (support@openshore.ai, founder F1
+2026-09-30), and `app/test/contactAddress.test.ts` holds 0022's ladder and
+the Terms to it.
 
 ## The premium build's standing rules (2026-09-29)
 

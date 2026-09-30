@@ -107,15 +107,15 @@ export type IntentCheck = (input: {
 // ---------------------------------------------------------------------------
 
 /** The one published address for questions, appeals and support (founder
- *  decision F1, CTO 11; the 2026-09-24 contact-inboxes ruling): the openshore.ai
- *  role inboxes wait for a round-trip test, so until the founder confirms one
- *  this is it. The app's Delete account sheet reads this constant through
- *  os-code/protocol; the server's ladder (the newest record_enforcement, 0022)
- *  and docs/terms-of-use.md cannot import it, so app/test/contactAddress.test.ts
- *  fails when either says anything else. Switching it changes this line, the
- *  Terms, and the ladder's warning through a new migration, since 0022 is
- *  never edited once production runs it (DECISIONS, CTO 11 package C). */
-export const SUPPORT_EMAIL = 'os-code@openshorellc.com';
+ *  decision F1, 2026-09-30: support@openshore.ai passed its round-trip test,
+ *  so it replaces os-code@openshorellc.com). The app's Delete account sheet
+ *  reads this constant through os-code/protocol; the server's ladder (the
+ *  newest record_enforcement, 0022) and docs/terms-of-use.md cannot import it,
+ *  so app/test/contactAddress.test.ts fails when either says anything else.
+ *  Switching it again changes this line, the Terms, and the ladder's warning
+ *  through a new migration, since 0022 is never edited once production runs it
+ *  (DECISIONS, CTO 11 package C). */
+export const SUPPORT_EMAIL = 'support@openshore.ai';
 
 /** The next action on a hard block, kept apart from the refusal so the
  *  refusal stays two short sentences. Over-blocking is a defect, so a block

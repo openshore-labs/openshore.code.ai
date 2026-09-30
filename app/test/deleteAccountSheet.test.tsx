@@ -121,7 +121,7 @@ describe('the confirm sheet', () => {
     expect(dom.text()).toContain(c.ownsOrgTitle);
     expect(dom.text()).toContain(c.ownsOrgBody);
     await dom.click(c.emailSupport);
-    expect(opened).toEqual(['mailto:os-code@openshorellc.com']);
+    expect(opened).toEqual(['mailto:support@openshore.ai']);
     expect(dom.buttons()).toContain(c.close);
   });
 

@@ -55,7 +55,7 @@ This replaces the earlier drafts (push-0019-0021, v2, and the CTO 4 edition that
 - **A push is one transaction per file, and it stops at the first failure.** Verified locally on 2.118.0: with a failing statement added to 0025, the push applied 0024, stopped at 0025, left the history ending at 0024, and a second push applied only 0025.
 - **A push writes Vault secrets unless told not to.** 2.118.0 upserts every Vault secret `config.toml` resolves before it migrates, "unless --skip-vault is set". `config.toml` has no `[db.vault]` section (a text test fails if it gains one), and every push command below carries `--skip-vault` anyway, so production's `guardrail_hmac_key` is never touched.
 - **0021's case-duplicate rename runs against rows in CI now.** The `sql-replay` job loads case-duplicate paths before the push (`supabase/replay/production_rows.sql`) and checks the rename afterwards. Production's own rows are still unknown until 4.2.
-- **0022 turns on a ladder that has never recorded anything.** In 0016 to 0019, `record_enforcement` raised on every call ("column reference action is ambiguous"; 0022 lines 161-166). After 0022, the app's call after a blocked request records a row: a warning after one confirmed Tier 1 block, and a termination flag plus a queued, never submitted, report after a second one within 90 days (0018 lines 42-48). The warning names os-code@openshorellc.com, the address production already shows.
+- **0022 turns on a ladder that has never recorded anything.** In 0016 to 0019, `record_enforcement` raised on every call ("column reference action is ambiguous"; 0022 lines 161-166). After 0022, the app's call after a blocked request records a row: a warning after one confirmed Tier 1 block, and a termination flag plus a queued, never submitted, report after a second one within 90 days (0018 lines 42-48). The warning names support@openshore.ai (founder decision F1, 2026-09-30); production's 0019 showed os-code@openshorellc.com, and its ladder never recorded a row.
 - **The CLI skips its own confirmation when it thinks an AI agent is running it.** Under Claude Code it printed JSON, and its confirm helper then returns the default, Yes for a push. So run every `sb` command below yourself, in a Terminal window you typed into. Never through Claude.
 
 **Ground rules**
@@ -83,7 +83,7 @@ This replaces the earlier drafts (push-0019-0021, v2, and the CTO 4 edition that
    - a. **0023's refusal copy: resolved by CTO 11.** 0023 was unapplied, so the file itself now says "start a plan to add more. A deleted note frees its space when its history is cleared, about a month later" (0023 line 190). Nothing to decide.
    - b. **The `delete-account` race: resolved by package C.** 0022's `account_deletion_orgs` deletes the owned teams in one statement, all or none, only while nobody else is active in them; fewer back than planned and the function answers `owns_org`.
    - c. **A deleted person's email in `org_project_members` and pending invites: resolved by package C** (CX: erase it). 0022's `account_deletion_memberships` removes every row bound to the account and every unclaimed row under its confirmed email.
-   - d. **Founder decision F1, the appeal address.** 0022's warning, the app's Delete account sheet and block card (`SUPPORT_EMAIL`), and the Terms all say os-code@openshorellc.com, the address production shows today; `app/test/contactAddress.test.ts` fails if any of them differs. If you rule that support@openshore.ai has passed its round-trip test before push day, tell Claude: 0022 is unapplied, so its one line can still change with the constant and the Terms. After the push, switching it takes a new migration.
+   - d. **Founder decision F1, the appeal address: ruled 2026-09-30.** support@openshore.ai passed its round-trip test, so 0022's warning, the app's Delete account sheet and block card (`SUPPORT_EMAIL`), and the Terms all say it, and `app/test/contactAddress.test.ts` fails if any of them differs. 0022 was unapplied, so its one line changed with the constant and the Terms. After the push, switching it again takes a new migration.
 
 On push day you run section 4 again.
 
@@ -525,7 +525,7 @@ sb functions deploy delete-account --use-api
   - The teams from 4.3 get OV402, `past_due` ones included.
   - The teams from 4.5 cannot grow past the free caps.
   - Deleting an account clears its id from team history and settings: the 2026-09-24 function by 0025's keys, main's function (after 7.4) by its own history clear as well.
-  - The enforcement ladder records rows for the first time, and its warning names os-code@openshorellc.com.
+  - The enforcement ladder records rows for the first time, and its warning names support@openshore.ai.
   - Download my data (for a build that calls it) gains six keys and reports version 2.
   - Saves and sign-ins are briefly slow or time out while 0021 and 0025 hold their locks.
 
@@ -752,8 +752,8 @@ from j;
 **8.10 The ladder's address (0022):**
 
 ```sql
-select position('write to os-code@openshorellc.com.' in prosrc) > 0 as ruled_address,
-       position('support@openshore.ai' in prosrc) = 0 as no_old_address,
+select position('write to support@openshore.ai.' in prosrc) > 0 as ruled_address,
+       position('os-code@openshorellc.com' in prosrc) = 0 as no_old_address,
        position('enforcement_tombstones' in prosrc) > 0 as reads_tombstones
 from pg_proc
 where pronamespace = 'public'::regnamespace and proname = 'record_enforcement';
