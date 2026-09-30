@@ -3470,3 +3470,42 @@ execution contract. Newest at the bottom.
   spread, a pushed note line, an added union member, a comment after
   main's). What still changes a main line is listed with its reason in the
   change that made this entry.
+
+- 2026-09-30: **Round 5's review: every team refusal says what happened and
+  keeps the text (held `vault-m2-team`, one blocker, two high, four medium).**
+  (1) A save whose answer came back after its note closed, meeting a
+  teammate's change, wrote a keep-both copy outside `saveVaultNote`'s try;
+  at 0023's cap the copy was refused and the text was dropped with the
+  rejection. The settle is caught and the text rescued (held with
+  `VAULT_TEAM_FULL`, or stashed when the failure may pass). (2) The resolve
+  sheet's Keep both, Keep yours and Save it again hold the draft with the
+  refusal's line on a refusal for good (the cap, or OV402 before the plan
+  was read), as the lapsed branch does; a failure that may pass keeps the
+  sheet up. (3) The link pass after a rename or move carries the refusal in
+  its report (`VaultRewriteReport.refusal`); the toast says "Its links were
+  not updated" with the reason, and the links-left card says "Not updated."
+  with it and offers no Update the rest. (4) Linking a mention, Mark
+  reviewed, a settings save and who may delete answer the storage's line
+  verb first ("Not linked.", "Not marked.", "Not saved."), and a settings
+  refusal reads the row again. (5) A gone note is gone and a taken name is
+  taken: the org Trash answers `missing` for a note already deleted
+  (`TrashResult` gains that member, inserted above main's), a delete or a
+  rename of it says `vaultGoneToast` and relists, and a folder moved note by
+  note carries the conflict that stopped it (`stoppedOn`, `stoppedAt`,
+  `theirs`) so the room names the taken note (letter case counts). (6) A
+  create that meets 0021's `exists` opens theirs at its own path. (7) Main's
+  two throw lines in `supabase.ts` are back, with the coded throw inserted
+  above each. The sweep of every other path found four more, fixed the same
+  way: a tick refused by OV402, a Restore or Undo of what is no longer in
+  Trash ("no longer in Trash", not "still in Trash"), a folder move that met
+  a note already deleted (it passes over it, nothing to move and nothing
+  lost), and a folder whose first note changed mid-move (no "newer version
+  is open" for a folder). Main lines this changes, each because the change
+  needs the value main's line cannot carry: `vaultResolve`'s, the link
+  write's and the mark write's `} catch {` in the store and `writeOnce`'s in
+  `vaultSettings.ts` become `} catch (err) {` (the refusal is read from the
+  error); `vaultRewriteNote` and `vaultMarkReviewed` in `AppState`, and
+  `VaultMarkResult` in `VaultAboutNote.tsx`, widen their answer by the
+  refusal's line (the union a caller must handle). Left as it is: main's team
+  export line blames device storage for a failed list (a read, nothing typed
+  at risk, and the fix would edit main's catch).
