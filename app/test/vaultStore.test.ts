@@ -6541,6 +6541,158 @@ describe('round 7, batch 3: the team vault answers only for itself', () => {
     throw new Error('the index never settled');
   }
 
+  describe('E11: team text that fails while Sign out runs never outlives it', () => {
+    // A save of `path` is held on its way out; Sign out starts, and the held
+    // answer (`fail`) comes back the moment the wipe has taken the stash, so
+    // the save settles while the sign-out is still running.
+    async function signOutDuring(
+      net: ReturnType<typeof perCaller>,
+      path: string,
+      text: string,
+      fail: () => unknown,
+    ) {
+      const held = net.hold('org_vault_write', fail);
+      const save = st().vaultSave(path, text);
+      await held.reached;
+      const get = mem.get.bind(mem);
+      let signingOut = false;
+      let wiped = false;
+      // The wipe reads the held list after it took the stash.
+      mem.get = (k: string) => {
+        if (signingOut && k === HELD && !wiped) {
+          wiped = true;
+          held.release();
+        }
+        return get(k);
+      };
+      signingOut = true;
+      const out = st().signOutAccount();
+      await save.catch(() => {});
+      await out;
+      mem.get = get;
+      expect(wiped).toBe(true);
+      expect(st().authSession).toBeUndefined();
+    }
+    async function stashedEarlier() {
+      teamNet.fail = new TypeError('Failed to fetch');
+      await st().vaultSave('old.md', 'u1 earlier');
+      teamNet.fail = undefined;
+      expect(Object.keys(pending())).toEqual([`org::${ORG}::old.md`]);
+    }
+    const sealedTeam = () => sealedHeld().filter((h) => h.id.startsWith('org::'));
+
+    it('an offline failure in the window is not stashed after the wipe', async () => {
+      const net = perCaller(server, { members: ['u1', 'u2'] });
+      useStoreToken();
+      await stashedEarlier();
+      await signOutDuring(
+        net,
+        'plan.md',
+        'u1 typed then signed out',
+        () => new TypeError('Failed to fetch'),
+      );
+      expect(pending()).toEqual({});
+      expect(sealedTeam()).toEqual([]);
+      expect(st().toast).not.toMatch(/before the account changed/);
+    });
+
+    it('with nothing stashed before (a plain sign-out), the same', async () => {
+      const net = perCaller(server, { members: ['u1', 'u2'] });
+      useStoreToken();
+      await signOutDuring(
+        net,
+        'plan.md',
+        'u1 only in flight',
+        () => new TypeError('Failed to fetch'),
+      );
+      expect(pending()).toEqual({});
+      expect(sealedTeam()).toEqual([]);
+    });
+
+    it('u1 signing back in never publishes the text Sign out deleted', async () => {
+      const net = perCaller(server, { members: ['u1', 'u2'] });
+      useStoreToken();
+      await stashedEarlier();
+      await signOutDuring(
+        net,
+        'plan.md',
+        'u1 typed then signed out',
+        () => new TypeError('Failed to fetch'),
+      );
+      await st().signIn('me@example.com', 'pw');
+      await st().setVaultScope('team');
+      await st().vaultRefresh();
+      for (let i = 0; i < 5; i++) await tick();
+      expect(server.bytes('plan.md')).toBeUndefined();
+      expect(server.bytes('old.md')).toBeUndefined();
+    });
+
+    it('a refusal in the window is held in memory only, for u1 alone', async () => {
+      const net = perCaller(server, { members: ['u1', 'u2'] });
+      useStoreToken();
+      await stashedEarlier();
+      await signOutDuring(net, 'plan.md', 'u1 refused words', () =>
+        Object.assign(new Error('that note path is not allowed'), { status: 400 }),
+      );
+      expect(sealedTeam()).toEqual([]);
+      expect(st().vaultHeldVisible()).toEqual([]);
+      await st().signIn('me@example.com', 'pw');
+      expect(
+        st()
+          .vaultHeldVisible()
+          .map((h) => [h.text, h.durable]),
+      ).toEqual([['u1 refused words', false]]);
+      expect(sealedTeam()).toEqual([]);
+    });
+
+    it('a seeded team create whose write fails after the sign-out is not stashed', async () => {
+      const net = perCaller(server, { members: ['u1', 'u2'] });
+      useStoreToken();
+      await st().vaultRefresh();
+      const held = net.hold('org_vault_write', () => new TypeError('Failed to fetch'));
+      const create = st().vaultCreate('Welcome', 'u1 seeded words');
+      await held.reached;
+      await st().signOutAccount();
+      held.release();
+      await create;
+      await tick();
+      expect(pending()).toEqual({});
+      expect(sealedTeam()).toEqual([]);
+    });
+
+    it('an expiry still keeps a failure in the window for the same account, and sends it on its return', async () => {
+      const net = perCaller(server, { members: ['u1', 'u2'] });
+      useStoreToken();
+      const held = net.hold('org_vault_write', () => new TypeError('Failed to fetch'));
+      const save = st().vaultSave('plan.md', 'u1 typed as it expired');
+      await held.reached;
+      const get = mem.get.bind(mem);
+      let expiring = false;
+      let released = false;
+      mem.get = (k: string) => {
+        if (expiring && k === PENDING && !released) {
+          released = true;
+          held.release();
+        }
+        return get(k);
+      };
+      useApp.setState({ authSession: session(auth.nextUser, -1000) });
+      auth.refresh = new SupabaseRequestError('invalid grant', 400);
+      expiring = true;
+      await st().refreshOrgRole();
+      await save.catch(() => {});
+      mem.get = get;
+      auth.refresh = undefined;
+      expect(released).toBe(true);
+      expect(st().authSession).toBeUndefined();
+      expect(Object.keys(pending())).toEqual([`org::${ORG}::plan.md`]);
+      await st().signIn('me@example.com', 'pw');
+      await st().setVaultScope('team');
+      await st().vaultRefresh();
+      expect(server.bytes('plan.md')).toBe('u1 typed as it expired');
+    });
+  });
+
   describe('E14: a team read started under one account never answers for the next', () => {
     const settingsGets = () => server.rpcs.filter((r) => r.fn === 'org_vault_settings_get').length;
     // u1's forced settings read is held on its way back; u1 signs out and u2

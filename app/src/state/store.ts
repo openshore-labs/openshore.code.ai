@@ -4571,6 +4571,19 @@ export const useApp = create<AppState>((set, get, api) => {
   // person, whose unsent team text is kept rather than wiped. Resolves to how
   // many team drafts that kept.
   async function forgetSession(expired = false): Promise<number> {
+    // From its first step a sign-out stops the team vault speaking for this
+    // account (speaksNow), so a save that fails while the rest runs is kept
+    // in memory only, never stashed after the wipe below took the stash
+    // (E11). An expiry keeps the text for the same account instead.
+    if (expired) return endSession(true);
+    signingOut++;
+    try {
+      return await endSession(false);
+    } finally {
+      signingOut--;
+    }
+  }
+  async function endSession(expired: boolean): Promise<number> {
     const uid = get().authSession?.user.id;
     // A preference change still waiting to go belonged to the session.
     if (prefsPushTimer) clearTimeout(prefsPushTimer);
@@ -4850,10 +4863,11 @@ export const useApp = create<AppState>((set, get, api) => {
   }
   // Whether text for a target may be sent, stashed, or shown right now:
   // always for a personal vault; for the team vault only while the account
-  // that typed it is the one signed in.
+  // that typed it is the one signed in, and no sign-out is under way (E11).
   function speaksNow(t: VaultTargetRef): boolean {
     return (
-      t.providerId !== 'org' || (t.owner !== undefined && t.owner === get().authSession?.user.id)
+      t.providerId !== 'org' ||
+      (signingOut === 0 && t.owner !== undefined && t.owner === get().authSession?.user.id)
     );
   }
   // Whether a resolve choice may be settled now: any personal one, and a
@@ -5285,6 +5299,9 @@ export const useApp = create<AppState>((set, get, api) => {
   // since. Its unsent team text is kept sealed and hidden for its return; a
   // sign-out, or any sign-in, clears this.
   let keptTeamOwner: string | undefined;
+  // How many sign-outs are running (forgetSession). While one is, no team
+  // text speaks for anyone: the sign-out is wiping it (E11).
+  let signingOut = 0;
 
   // Team text whose account is no longer the one signed in, from a save that
   // ran or failed after a sign-out, an expiry, or an account switch. It is
@@ -5293,7 +5310,7 @@ export const useApp = create<AppState>((set, get, api) => {
   // memory only, shown to that account alone if it signs back in before the
   // app closes.
   async function keepUnsentTeamText(
-    t: VaultTarget,
+    t: VaultTargetRef,
     path: string,
     text: string,
     base: string | undefined,
@@ -5315,7 +5332,7 @@ export const useApp = create<AppState>((set, get, api) => {
       'Not sent, because you were signed out of your team. Copy it back into the note.';
     await holdVaultDraft(t, path, text, reason, { memoryOnly: true, session });
     get().showToast(
-      get().authSession
+      get().authSession && signingOut === 0
         ? 'Team vault text typed before the account changed was not sent.'
         : 'Not saved to the team vault, because you are signed out. Sign in again with the same account before the app closes to get it back under Not saved.',
     );
@@ -5659,7 +5676,15 @@ export const useApp = create<AppState>((set, get, api) => {
     text: string,
     base: string | undefined,
     o: { sitting?: number; mark?: string } = {},
-  ): Promise<'stashed' | 'superseded' | 'held'> {
+  ): Promise<'stashed' | 'superseded' | 'held' | 'unsent'> {
+    // Team text is stashed only for the account signed in now, or, after an
+    // expiry, for that account's return. Text that settles after its account
+    // left (a sign-out under way or done, another account in) is kept in
+    // memory only, never sealed behind the wipe (E11).
+    if (t.providerId === 'org' && !speaksNow(t) && !(t.owner && t.owner === keptTeamOwner)) {
+      await keepUnsentTeamText(t, path, text, base, o.sitting);
+      return 'unsent';
+    }
     const key = vaultKey(t, path);
     const entry = pendingEntry(t, path, text, base, {
       sitting: o.sitting,
@@ -5763,7 +5788,9 @@ export const useApp = create<AppState>((set, get, api) => {
     }
     try {
       // Never over newer words, nor over words no editor showed (E10).
-      if ((await stashDraft(t, path, text, base, { sitting: session, mark })) === 'held') {
+      const where = await stashDraft(t, path, text, base, { sitting: session, mark });
+      if (where === 'unsent') return;
+      if (where === 'held') {
         get().showToast(`Not saved. ${heldLine(true)}`);
         logEvent('vault_note_save_failed');
         return;
@@ -11415,6 +11442,12 @@ export const useApp = create<AppState>((set, get, api) => {
       // Offline: still open the editor so the user can write, and stash the
       // note body so the create is not lost. The stash carries no base, so a
       // replay that finds a note already there keeps both, never overwrites.
+      // A team create whose account left while it was out is never stashed
+      // (E11): a seeded body is kept in memory only, and no editor opens.
+      if (!speaksNow(target)) {
+        if (seeded) await keepUnsentTeamText(target, normalized, content, undefined);
+        return;
+      }
       const loadedAt = nextLoadedAt();
       try {
         await stashDraft(target, normalized, content, undefined, { sitting: loadedAt });
