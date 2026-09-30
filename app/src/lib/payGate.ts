@@ -1,14 +1,17 @@
-// The Personal paid gate (CTO, CFO, CX, 2026-09-30; os-code/DECISIONS.md).
-// Only coding, building and agentic work is paid, and the gate sits on
-// actions, not rooms: starting or reattaching a coding session, the sample
-// project, and creating, editing or running a Crew routine. Desktop + phone
-// is paid too (founder, 2026-09-30, over the advisors' "pairing free"):
-// pairing a phone or another computer, and each chat with the computer's
-// models or shell in its home folder opened from that other device.
-// Everything else (every chat on the device itself, web search in chat, the
-// Stack, Projects, Repositories, your own Vault notes by hand, including the
-// vault a pairing points at the computer, the desktop's own home shell,
-// Settings, Cloud Connections, reading an old coding chat) stays free.
+// The Personal paid gate, sold as OpenShore Plus (os-code/DECISIONS.md).
+// The advisors (CTO, CFO, CX, 2026-09-30) put only coding, building and
+// agentic work behind it, on actions. The founder widened it the same day,
+// twice: first Desktop + phone, then every room but five. Free is Chats,
+// Projects, the Stack, Cloud Connections and Settings (and what those reach:
+// a chat, a project, its notes, the setup page). Everything else is Plus:
+// Terminal, Repositories, Vault, My Crew, Desktop + phone, and the later
+// tiers' rooms. A paid room opens the paywall instead of the room
+// (store.ts setView), and the free build's sidebar lists those rooms greyed
+// under an Upgrade banner (components/Sidebar.tsx). The actions keep their
+// own doors too: a coding session anywhere, a routine made, edited or run,
+// Scan and Connect, and a chat or shell on the computer from another device.
+// What someone made is never locked away: their chats, their notes on disk,
+// a pairing, a routine already scheduled.
 //
 // Every account feature is classified here, and the Record type makes a new
 // one a type error until it is: a feature is paid only by being written down
@@ -16,28 +19,31 @@
 // after the sign-in sheet when both are needed. Enforcement is app-side only,
 // since the person owns the engine and the daemon.
 
-import type { AccountFeature } from './accountGate.js';
+import { ROOM_ACCOUNT, type AccountFeature } from './accountGate.js';
+import type { ViewName } from '../state/store.js';
 
 export type PayLevel = 'personal' | 'free';
 
 export const PAY_GATE: Record<AccountFeature, PayLevel> = {
-  // Paid: the coding agent (a 'desktop' session, the sample project, a
-  // command inside a coding chat), Crew's agentic work (create, edit, Run
-  // now; deleting, pausing, stopping and reading runs stay free, in payOps),
-  // and Desktop + phone (Connect, the desktop's pairing code, and the
-  // computer reached from another device; Revoke and Forget stay free).
+  // Plus: the coding agent (a 'desktop' session, the sample project, a
+  // command inside a coding chat), My Crew (Crew's agentic work too: create,
+  // edit, Run now; deleting, pausing and stopping stay free, in payOps),
+  // Desktop + phone (Connect, the desktop's pairing code, and the computer
+  // reached from another device; Revoke and Forget stay free), Terminal,
+  // Repositories, and Vault.
   coding: 'personal',
   crew: 'personal',
   pairing: 'personal',
+  terminal: 'personal',
+  repos: 'personal',
+  vault: 'personal',
   // Free, behind the free sign-in only.
   projects: 'free',
-  terminal: 'free',
-  repos: 'free',
-  vault: 'free',
   connections: 'free',
   // Later tiers (docs/release-tiers.md), classified now so the type holds:
-  // the Marketplace already has a paywall reason, Launch builds an app, and
-  // Admin is the team's own room (its seats are billed per org, apart).
+  // Stack Health, the Marketplace and Launch are Plus when their tiers open,
+  // and Admin is the team's own room (its seats are billed per org, apart).
+  health: 'personal',
   marketplace: 'personal',
   launch: 'personal',
   admin: 'free',
@@ -46,6 +52,13 @@ export const PAY_GATE: Record<AccountFeature, PayLevel> = {
 /** Whether this feature is part of the paid Personal plan. */
 export function featurePaid(feature: AccountFeature): boolean {
   return PAY_GATE[feature] === 'personal';
+}
+
+/** Whether a room is part of Plus: its account feature is paid. The free
+ *  five, and the rooms they reach, have no paid feature. */
+export function roomPaid(view: ViewName): boolean {
+  const feature = ROOM_ACCOUNT[view];
+  return Boolean(feature && featurePaid(feature));
 }
 
 /** The build flag. Nothing shipped sets it: only the build submitted to App

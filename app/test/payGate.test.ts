@@ -12,6 +12,7 @@ import {
   PERSONAL_WEB_PRICE,
   featurePaid,
   payGatesFrom,
+  roomPaid,
 } from '../src/lib/payGate.js';
 import {
   APPLE_SUBSCRIPTIONS_URL,
@@ -37,20 +38,49 @@ afterEach(() => {
 });
 
 describe('what is paid', () => {
-  it('classifies every account feature; coding, Crew and Desktop + phone are Plus in v1', () => {
+  it('classifies every account feature; only Projects and Cloud Connections stay free in v1', () => {
     const features = new Set(
       Object.values(ROOM_ACCOUNT).filter((f): f is AccountFeature => f !== null),
     );
     features.add('coding');
     expect(new Set(Object.keys(PAY_GATE))).toEqual(features);
     const paidV1 = (Object.keys(PAY_GATE) as AccountFeature[]).filter(
-      (f) => featurePaid(f) && !['marketplace', 'launch'].includes(f),
+      (f) => featurePaid(f) && !['marketplace', 'launch', 'health'].includes(f),
     );
-    // Pairing is the founder's call (2026-09-30), over the advisors' free.
-    expect(paidV1.sort()).toEqual(['coding', 'crew', 'pairing']);
-    for (const free of ['projects', 'terminal', 'repos', 'vault', 'connections']) {
+    // The founder's widening (2026-09-30), over the advisors' actions-only.
+    expect(paidV1.sort()).toEqual(['coding', 'crew', 'pairing', 'repos', 'terminal', 'vault']);
+    for (const free of ['projects', 'connections', 'admin']) {
       expect(PAY_GATE[free as AccountFeature], free).toBe('free');
     }
+    expect(PAY_GATE.health).toBe('personal');
+  });
+
+  it('opens Chats, Projects, the Stack, Cloud Connections and Settings, and no other nav room', () => {
+    const nav = [
+      'chats',
+      'projects',
+      'terminalroom',
+      'repos',
+      'stack',
+      'vault',
+      'crew',
+      'marketplace',
+      'stackhealth',
+      'launch',
+      'connections',
+      'pair',
+      'settings',
+    ] as const;
+    expect(nav.filter((v) => !roomPaid(v))).toEqual([
+      'chats',
+      'projects',
+      'stack',
+      'connections',
+      'settings',
+    ]);
+    // The rooms those reach stay free with them.
+    for (const v of ['chat', 'project', 'projectmemory', 'onboarding'] as const)
+      expect(roomPaid(v), v).toBe(false);
   });
 
   it('the one web price is $49.99, the same as the App Store tier', () => {
@@ -107,12 +137,15 @@ describe('the paid door', () => {
     expect(paidDoor('coding', { needsAccount: true, unlocked: false })).toBe('account');
     expect(paidDoor('coding', { needsAccount: false, unlocked: false })).toBe('paywall');
     expect(paidDoor('crew', { needsAccount: false, unlocked: true })).toBe('open');
-    expect(paidDoor('vault', { needsAccount: false, unlocked: false })).toBe('open');
+    expect(paidDoor('projects', { needsAccount: false, unlocked: false })).toBe('open');
+    expect(paidDoor('vault', { needsAccount: false, unlocked: false })).toBe('paywall');
     expect(paidDoor('pairing', { needsAccount: false, unlocked: false })).toBe('paywall');
     expect(paywallReasonFor('crew')).toBe('crew');
     expect(paywallReasonFor('coding')).toBe('coding');
     expect(paywallReasonFor('pairing')).toBe('pairing');
     expect(paywallReasonFor('launch')).toBe('coding');
+    for (const room of ['terminal', 'repos', 'vault', 'health'] as const)
+      expect(paywallReasonFor(room), room).toBe('plus');
   });
 
   it('holds a coding session shut anywhere, and a chat with the computer from another device', () => {
@@ -314,6 +347,8 @@ describe('Desktop + phone, at its screens', () => {
 
   it('gives the sheet its own headline and an honest bullet', () => {
     expect(paywall).toContain("'Reach your computer from your phone.'");
+    expect(paywall).toContain("'All of OpenShore, with Plus.'");
+    expect(paywall).toContain("'Terminal, Repositories, and Vault'");
     expect(paywall).toContain("'Your computer from your phone, while it is on'");
     expect(paywall).not.toMatch(/always on/i);
   });

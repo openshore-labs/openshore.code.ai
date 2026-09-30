@@ -254,15 +254,19 @@ main's function deployed, both 2026-09-30 (`docs/vault-gate1-runbook.md` 7.4). T
 address is one constant, `SUPPORT_EMAIL` (support@openshore.ai, founder F1
 2026-09-30), and `app/test/contactAddress.test.ts` holds 0022's ladder and
 the Terms to it.
-The paid gate (CTO, CFO, CX, 2026-09-30; sold as OpenShore Plus, never
-"Personal", in customer copy): only coding, building
-and agentic work is paid, on actions, never rooms (starting or reattaching a
-coding session, the sample project, making, editing or running a routine),
-after the sign-in; so is Desktop + phone (founder, 2026-09-30: Scan and
-Connect, the desktop's pairing code, and each chat or shell on the computer
-from another device; Revoke and Forget stay free, a lapse keeps the pairing
-and the vault). Every chat on the device itself and everything else stays
-free. Every account
+The paid gate (sold as OpenShore Plus, never "Personal", in customer copy):
+the advisors (CTO, CFO, CX, 2026-09-30) put coding, building and agentic work
+behind it on actions; the founder widened it the same day to every room but
+five. Free: Chats, Projects, the Stack, Cloud Connections and Settings (and
+what they reach). Plus: Terminal, Repositories, Vault, My Crew, Desktop +
+phone, and the later tiers' rooms. A Plus room opens the paywall at
+`setView` (after the sign-in), and a purchase carries on to it; the actions
+keep their doors (a coding session anywhere, a routine made, edited or run,
+Scan and Connect, a chat or shell on the computer from another device). The
+free sidebar puts the free rooms up top and the Plus rooms greyed under a
+gold "Upgrade to OpenShore Plus" banner; Plus gets the familiar layout
+(`components/Sidebar.tsx`, `app/test/sidebarPlus.test.tsx`). Nothing a
+person made is locked away. Every account
 feature is classified in `app/src/lib/payGate.ts` (`PAY_GATE`, a type error
 until complete), the logic is `app/src/state/payOps.ts`, and the switch is
 the build flag `VITE_PAY_GATES`, off by default and set only in the build

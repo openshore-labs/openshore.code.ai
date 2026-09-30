@@ -1,7 +1,14 @@
 // The sidebar is the app's main navigation (founder, 2026-09-02): the day-one
 // rooms at the top, the second-session rooms at the bottom, nothing else. New
 // chat and the project switcher live in the Chats and Projects rooms. Persistent on desktop, a slide-over drawer on the phone.
+//
+// Two layouts (founder, 2026-09-30). With OpenShore Plus (and in every build
+// while the pay gates are off), the one below. Without it, the free rooms
+// (Chats, Projects, Stack, Cloud Connections, Settings) move up top, and the
+// rest sit greyed at the bottom under a gold Upgrade banner. A greyed room
+// still answers the tap: it opens the paywall (store.ts setView).
 import { roomOpen, visibleRooms } from '../lib/focus.js';
+import { roomPaid } from '../lib/payGate.js';
 import type { CSSProperties } from 'react';
 import { isOrgAdmin, useApp, type ViewName } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
@@ -35,15 +42,28 @@ const nav = (view: NavIconName & NavRoom) => ({ view, label: ROOM_LABELS[view] }
 
 // The release tier takes a later tier's rooms out here, at the one door (a
 // Personal build shows the v1 rooms only; see lib/focus.ts).
-const PRIMARY_NAV: Array<{ view: NavIconName; label: string }> = visibleRooms(
+type NavEntry = { view: NavIconName; label: string };
+const PRIMARY_NAV: NavEntry[] = visibleRooms(
   (['chats', 'projects', 'terminalroom', 'repos', 'stack', 'vault'] as const).map(nav),
 );
 
-const EXPLORE_NAV: Array<{ view: NavIconName; label: string }> = visibleRooms(
+const EXPLORE_NAV: NavEntry[] = visibleRooms(
   (
     ['crew', 'marketplace', 'stackhealth', 'launch', 'connections', 'pair', 'settings'] as const
   ).map(nav),
 );
+
+// The free layout reads the same two lists through lib/payGate.ts, so a room
+// moves between the groups by its classification alone, in the same order:
+// the free rooms up top (Chats, Projects, Stack, Cloud Connections,
+// Settings), the Plus rooms greyed below the banner.
+const FREE_PRIMARY: NavEntry[] = PRIMARY_NAV.filter((e) => !roomPaid(e.view));
+const FREE_EXPLORE: NavEntry[] = EXPLORE_NAV.filter((e) => !roomPaid(e.view));
+const PLUS_ROOMS: NavEntry[] = [...PRIMARY_NAV, ...EXPLORE_NAV].filter((e) => roomPaid(e.view));
+
+/** The banner's words, and each greyed room's spoken label. */
+export const UPGRADE_BANNER = 'Upgrade to OpenShore Plus';
+export const PLUS_ROOM_LABEL = (label: string) => `${label}, part of OpenShore Plus`;
 
 // Hand-drawn line icons for the nav, in the same language as PairScreen's
 // download tiles: a 24-unit grid, 2px round-cap / round-join strokes, and
@@ -200,18 +220,22 @@ export function Sidebar({
   progress?: number | null;
   dragProps?: GestureProps;
 }) {
-  const { view, setView, setDrawer, settings } = useApp();
+  const { view, setView, setDrawer, settings, openPaywall } = useApp();
   const { configured: authConfigured, signedIn } = useAuth();
+  // True in every build while the pay gates are off (state/payOps.ts), so
+  // only the build with them on ever shows the free layout.
+  const plus = useApp((s) => s.personalUnlockedNow());
 
   // --i is the row's place in the drawer's entrance stagger (theme.css
   // drawer-row-in): the wordmark is 0, the primary rooms follow, and the
   // bottom group carries on counting so the whole door fills top to bottom.
   const stagger = (i: number) => ({ '--i': i }) as CSSProperties;
-  const item = ({ view: v, label }: { view: NavIconName; label: string }, i: number) => (
+  const item = ({ view: v, label }: NavEntry, i: number, locked = false) => (
     <button
       key={v}
-      className={`nav-item press-fb press-fb--row${view === v ? ' active' : ''}`}
+      className={`nav-item press-fb press-fb--row${view === v ? ' active' : ''}${locked ? ' nav-item--plus' : ''}`}
       style={stagger(1 + i)}
+      aria-label={locked ? PLUS_ROOM_LABEL(label) : undefined}
       onClick={() => setView(v, { root: true })}
     >
       <span className="glyph">
@@ -220,6 +244,13 @@ export function Sidebar({
       {label}
     </button>
   );
+
+  const adminItem = (i: number) =>
+    isOrgAdmin(settings.account) && settings.account?.type === 'commercial' && roomOpen('admin')
+      ? item({ view: 'admin', label: 'Admin' }, i)
+      : null;
+
+  const topRooms = plus ? PRIMARY_NAV : FREE_PRIMARY;
 
   const body = (
     <aside
@@ -253,8 +284,13 @@ export function Sidebar({
         </span>
       </div>
 
-      {/* The day-one rooms, pinned to the top where the hand lands first. */}
-      <nav className="sidebar-nav sidebar-nav--primary">{PRIMARY_NAV.map(item)}</nav>
+      {/* The day-one rooms, pinned to the top where the hand lands first.
+          Without Plus, the free rooms, Admin and Settings among them. */}
+      <nav className="sidebar-nav sidebar-nav--primary">
+        {topRooms.map((entry, i) => item(entry, i))}
+        {plus ? null : adminItem(topRooms.length)}
+        {plus ? null : FREE_EXPLORE.map((entry, i) => item(entry, topRooms.length + 1 + i))}
+      </nav>
 
       <div className="sidebar-spacer" />
 
@@ -262,7 +298,7 @@ export function Sidebar({
         <button
           type="button"
           className="sidebar-signin"
-          style={stagger(1 + PRIMARY_NAV.length)}
+          style={stagger(1 + topRooms.length)}
           onClick={() => {
             setView('settings', { root: true });
             setDrawer(false);
@@ -283,16 +319,37 @@ export function Sidebar({
         </button>
       ) : null}
 
-      {/* The second-session rooms stay at the bottom, Settings last. Admin,
-          when the account carries it, leads the group. */}
-      <nav className="sidebar-nav">
-        {isOrgAdmin(settings.account) &&
-        settings.account?.type === 'commercial' &&
-        roomOpen('admin')
-          ? item({ view: 'admin', label: 'Admin' }, PRIMARY_NAV.length + 1)
-          : null}
-        {EXPLORE_NAV.map((entry, i) => item(entry, PRIMARY_NAV.length + 2 + i))}
-      </nav>
+      {plus ? (
+        /* The second-session rooms stay at the bottom, Settings last. Admin,
+           when the account carries it, leads the group. */
+        <nav className="sidebar-nav">
+          {adminItem(PRIMARY_NAV.length + 1)}
+          {EXPLORE_NAV.map((entry, i) => item(entry, PRIMARY_NAV.length + 2 + i))}
+        </nav>
+      ) : (
+        /* Free: the gold banner, then every Plus room, greyed but live. */
+        <nav className="sidebar-nav sidebar-nav--plus" aria-label="OpenShore Plus">
+          <button
+            type="button"
+            className="sidebar-plus press-fb"
+            style={stagger(2 + topRooms.length + FREE_EXPLORE.length)}
+            onClick={() => openPaywall('plus')}
+          >
+            <span className="sidebar-plus-mark" aria-hidden="true">
+              <Icon size={16} variant="fill">
+                <path
+                  fill="currentColor"
+                  d="M12 3.5l2.5 5.3 5.7.7-4.2 3.9 1.1 5.7L12 16.3l-5.1 2.8 1.1-5.7-4.2-3.9 5.7-.7L12 3.5Z"
+                />
+              </Icon>
+            </span>
+            {UPGRADE_BANNER}
+          </button>
+          {PLUS_ROOMS.map((entry, i) =>
+            item(entry, 3 + topRooms.length + FREE_EXPLORE.length + i, true),
+          )}
+        </nav>
+      )}
     </aside>
   );
 

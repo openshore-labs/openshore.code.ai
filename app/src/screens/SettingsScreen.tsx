@@ -406,9 +406,9 @@ export function SettingsScreen() {
     ? 'Everything is open to everyone during the beta.'
     : personalUnlockedNow()
       ? personalUntil
-        ? `The coding agent is yours. Renews or ends ${personalUntil}.`
-        : 'The coding agent is yours.'
-      : 'Chatting is free. Plus lets the agent build and run routines on your computer, and your phone reach it.';
+        ? `All of OpenShore is open. Renews or ends ${personalUntil}.`
+        : 'All of OpenShore is open.'
+      : 'Chats, Projects, the Stack and Cloud Connections are free. Plus opens the rest.';
   // The Personal rows (2026-09-30): an Apple device restores through the App
   // Store and manages its subscription with Apple; the desktop re-reads the
   // account ("I already paid") and manages it in the Stripe portal.

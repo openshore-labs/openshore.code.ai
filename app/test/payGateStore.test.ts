@@ -266,7 +266,56 @@ describe('the paid gate, on', () => {
     expect(useApp.getState().paywall).toBeUndefined();
     // A free feature never meets the paywall.
     useApp.setState({ userEntitlement: undefined });
-    expect(useApp.getState().requirePersonal('vault')).toBe(true);
+    expect(useApp.getState().requirePersonal('projects')).toBe(true);
+  });
+
+  // The founder's widening (2026-09-30): every room but the free five.
+  it('opens the paywall for a Plus room, and walks into a free one', () => {
+    for (const room of ['vault', 'terminalroom', 'repos', 'crew', 'pair'] as const) {
+      useApp.setState({ paywall: undefined, view: 'chat' });
+      useApp.getState().setView(room, { root: true });
+      expect(useApp.getState().view, room).toBe('chat');
+      expect(useApp.getState().paywall, room).toBe(
+        room === 'crew' ? 'crew' : room === 'pair' ? 'pairing' : 'plus',
+      );
+    }
+    useApp.setState({ paywall: undefined });
+    for (const room of ['chats', 'projects', 'stack', 'connections', 'settings'] as const) {
+      useApp.getState().setView(room, { root: true });
+      expect(useApp.getState().view, room).toBe(room);
+      expect(useApp.getState().paywall, room).toBeUndefined();
+    }
+  });
+
+  it('asks a signed-out person to sign in before a Plus room, then says Plus comes next', () => {
+    useApp.setState({ authSession: undefined });
+    useApp.getState().setView('vault', { root: true });
+    expect(useApp.getState().accountGate).toBe('vault');
+    expect(useApp.getState().paywall).toBeUndefined();
+  });
+
+  it('carries a purchase on to the room it was opened for', async () => {
+    useApp.getState().setView('vault', { root: true });
+    expect(useApp.getState().paywall).toBe('plus');
+    sb.rows = [{ tier_id: 'personal', status: 'active', valid_until: null }];
+    await useApp.getState().recheckPersonal();
+    expect(useApp.getState().paywall).toBeUndefined();
+    expect(useApp.getState().view).toBe('vault');
+  });
+
+  it('lets a subscriber into every room', () => {
+    useApp.setState({ userEntitlement: { tierId: 'personal', status: 'active' } });
+    useApp.getState().setView('terminalroom', { root: true });
+    expect(useApp.getState().view).toBe('terminalroom');
+    expect(useApp.getState().paywall).toBeUndefined();
+  });
+
+  it('forgets the room when the sheet is dismissed', async () => {
+    useApp.getState().setView('repos', { root: true });
+    useApp.getState().closePaywall();
+    sb.rows = [{ tier_id: 'personal', status: 'active', valid_until: null }];
+    await useApp.getState().recheckPersonal();
+    expect(useApp.getState().view).toBe('chat');
   });
 
   it('"I already paid" re-reads the account and carries on', async () => {

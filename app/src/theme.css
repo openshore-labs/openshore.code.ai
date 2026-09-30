@@ -70,6 +70,10 @@
      star can never be misread as spend or as the teal benchmark score. */
   --voice: #c98a1f;
   --voice-soft: rgba(201, 138, 31, 0.14);
+  /* Plus: the gold of the free build's Upgrade banner (founder, 2026-09-30),
+     kept apart from the spend amber and the people-signal honey. */
+  --plus: #c9a24a;
+  --plus-ink: #2a2111;
 
   /* Status. Deepened so they read as text on a light ground. */
   --ok: #2f8f4e;
@@ -276,6 +280,8 @@
     --syntax-string: #d4a373;
     --voice: #eab94f;
     --voice-soft: rgba(234, 185, 79, 0.18);
+    --plus: #d8b667;
+    --plus-ink: #1c160b;
     --ok: #5fbf7e;
     --ok-soft: rgba(95, 191, 126, 0.16);
     --warn: #c4b163;
@@ -323,6 +329,8 @@
   --syntax-string: #d4a373;
   --voice: #eab94f;
   --voice-soft: rgba(234, 185, 79, 0.18);
+  --plus: #d8b667;
+  --plus-ink: #1c160b;
   --ok: #5fbf7e;
   --ok-soft: rgba(95, 191, 126, 0.16);
   --warn: #c4b163;
@@ -735,6 +743,45 @@ textarea {
   opacity: 0.9;
 }
 
+/* The free build's Plus rooms (founder, 2026-09-30): greyed, still live. A
+   tap opens the paywall; the label says so to assistive tech. */
+.nav-item--plus {
+  color: color-mix(in srgb, var(--muted) 60%, transparent);
+}
+
+.nav-item--plus .glyph {
+  opacity: 0.6;
+}
+
+/* The gold Upgrade banner, just above the Plus rooms: one solid gold row with
+   ink type, the same shape and press as the sign-in card. */
+.sidebar-plus {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 0 0 6px;
+  padding: 11px 12px;
+  border-radius: var(--radius-md);
+  background: var(--plus);
+  color: var(--plus-ink);
+  font-size: var(--text-4);
+  font-weight: var(--weight-semibold);
+  text-align: left;
+  transition: transform var(--press-out);
+}
+
+.sidebar-plus:active {
+  transform: scale(0.985);
+}
+
+.sidebar-plus-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 /* Mobile drawer variant of the sidebar */
 @property --drawer-width {
   syntax: '<length>';
@@ -795,13 +842,15 @@ textarea {
    in. Opened by the finger, the rows are simply there. */
 .sidebar.drawer .sidebar-head,
 .sidebar.drawer .nav-item,
-.sidebar.drawer .sidebar-signin {
+.sidebar.drawer .sidebar-signin,
+.sidebar.drawer .sidebar-plus {
   animation: drawer-row-in var(--dur-5) var(--ease-glide) backwards;
   animation-delay: calc(var(--dur-2) + var(--i, 0) * var(--stagger));
 }
 .sidebar.drawer.via-gesture .sidebar-head,
 .sidebar.drawer.via-gesture .nav-item,
-.sidebar.drawer.via-gesture .sidebar-signin {
+.sidebar.drawer.via-gesture .sidebar-signin,
+.sidebar.drawer.via-gesture .sidebar-plus {
   animation: none;
 }
 @keyframes drawer-row-in {

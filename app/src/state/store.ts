@@ -527,7 +527,7 @@ import {
   rewindableIds,
   rewindsFiles,
 } from './rewindOps.js';
-import { PAY_GATES_ENABLED } from '../lib/payGate.js';
+import { PAY_GATES_ENABLED, roomPaid } from '../lib/payGate.js';
 import {
   APPLE_SUBSCRIPTIONS_URL,
   PaywallLockedError,
@@ -619,9 +619,10 @@ export type ViewName =
   | 'projectmemory'
   | 'onboarding';
 
-// Which locked surface triggered the Personal upgrade sheet. Free is chat only;
-// the coding agent, Crew, Desktop + phone and the Marketplace need the unlock.
-export type PaywallReason = 'coding' | 'marketplace' | 'crew' | 'pairing';
+// Which locked surface triggered the Personal upgrade sheet: the coding agent,
+// Crew, Desktop + phone, the Marketplace, or 'plus' for a paid room and the
+// sidebar's Upgrade banner (lib/payGate.ts).
+export type PaywallReason = 'coding' | 'marketplace' | 'crew' | 'pairing' | 'plus';
 
 export interface AppSettings {
   onboarded: boolean;
@@ -2853,8 +2854,12 @@ export const useApp = create<AppState>((set, get, api) => {
    *  door on the open chat (a coding session, or a chat with the computer
    *  from the phone), the way a sign-in carries on. */
   function afterPersonalUnlocked(message: string): void {
+    const room = paywallReturn;
+    paywallReturn = undefined;
     set({ paywall: undefined });
     get().showToast(message);
+    // Opened from a paid room: go there now.
+    if (room) get().setView(room);
     const openId = get().activeId;
     const open = openId ? get().conversations[openId] : undefined;
     if (
@@ -4465,6 +4470,9 @@ export const useApp = create<AppState>((set, get, api) => {
   // Accounts (lib/accountGate.ts): the room the sign-in sheet was opened for,
   // so signing in carries on to it.
   let accountReturn: ViewName | undefined;
+  /** The paid room the paywall was opened for, so a purchase carries on to
+   *  it the way a sign-in carries on to accountReturn. */
+  let paywallReturn: ViewName | undefined;
 
   // Preferences that follow a signed-in person (lib/settingsReach.ts). A local
   // change is sent a moment after the last one; the account's copy is read at
@@ -7090,7 +7098,11 @@ export const useApp = create<AppState>((set, get, api) => {
     if (get().accountGate) {
       const to = accountReturn;
       get().closeAccountGate();
-      if (to) get().setView(to);
+      // A paid room reads the entitlement at its door, so with the pay gates
+      // on the step waits for that read: a subscriber walks straight in.
+      if (to && PAY_GATES_ENABLED && roomPaid(to))
+        void entitlementRead.then(() => get().setView(to));
+      else if (to) get().setView(to);
     }
     // A message kept at the door on the open chat (a coding session, or a
     // chat with the computer from the phone) goes out now: the driver builds
@@ -7709,6 +7721,14 @@ export const useApp = create<AppState>((set, get, api) => {
         get().openAccountGate(accountFeature, view);
         return;
       }
+      // Plus (founder, 2026-09-30): every room but Chats, Projects, the Stack,
+      // Cloud Connections and Settings is paid (lib/payGate.ts). The sheet
+      // opens instead, and a purchase carries on to this room.
+      if (accountFeature && get().personalDoor(accountFeature) === 'paywall') {
+        get().openPaywall(paywallReasonFor(accountFeature));
+        paywallReturn = view;
+        return;
+      }
       const { view: current, viewTrail } = get();
       if (view === current) {
         set({ drawerOpen: false });
@@ -7739,6 +7759,13 @@ export const useApp = create<AppState>((set, get, api) => {
         get().openAccountGate(accountFeature, prev);
         return;
       }
+      // And a paid room (Plus lapsed since) opens the paywall, the step spent.
+      if (accountFeature && get().personalDoor(accountFeature) === 'paywall') {
+        set({ viewTrail: viewTrail.slice(0, -1) });
+        get().openPaywall(paywallReasonFor(accountFeature));
+        paywallReturn = prev;
+        return;
+      }
       set({ view: prev, viewTrail: viewTrail.slice(0, -1), drawerOpen: false, arrivedBack: true });
     },
 
@@ -7748,9 +7775,11 @@ export const useApp = create<AppState>((set, get, api) => {
 
     openPaywall(reason) {
       logEvent('paywall_shown', { reason });
+      paywallReturn = undefined;
       set({ paywall: reason, drawerOpen: false });
     },
     closePaywall() {
+      paywallReturn = undefined;
       set({ paywall: undefined });
     },
 

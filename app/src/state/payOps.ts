@@ -6,8 +6,8 @@
 // requirePersonal to the Desktop + phone and Terminal screens. Test:
 // app/test/payGate.test.ts.
 //
-// The gate sits on actions, never rooms, and it never cuts a turn already
-// running: a coding session is checked when it is built or reattached, so a
+// The gate sits on rooms (store.ts setView, since the founder's widening of
+// 2026-09-30) and on actions, and it never cuts a turn already running: a coding session is checked when it is built or reattached, so a
 // lapse locks the next build, not the current answer. Sign-in comes first,
 // then the paywall. A build with no account backend has nobody to buy with,
 // so it stays open (the accounts rule).
@@ -89,15 +89,21 @@ export function paidDoor(
   return s.unlocked ? 'open' : 'paywall';
 }
 
-/** The paywall's reason for a paid feature. */
+/** The paywall's reason for a paid feature: building for the coding agent
+ *  and Launch, its own for Crew, Desktop + phone and the Marketplace, and
+ *  the whole of Plus for a room (Terminal, Repositories, Vault, Stack
+ *  Health). */
 export function paywallReasonFor(feature: AccountFeature): PaywallReason {
   switch (feature) {
     case 'crew':
     case 'marketplace':
     case 'pairing':
       return feature;
-    default:
+    case 'coding':
+    case 'launch':
       return 'coding';
+    default:
+      return 'plus';
   }
 }
 
