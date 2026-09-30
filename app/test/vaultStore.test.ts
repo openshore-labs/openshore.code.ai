@@ -29,6 +29,7 @@ import {
 } from './fixtures/fakeOrgVaultServer.js';
 import { backlinksTo, normalizeNotePath } from '../src/lib/vault.js';
 import {
+  VAULT_TEAM_DELETE_ADMINS_ONLY,
   VAULT_TEAM_DELETE_REFUSED,
   VAULT_TEAM_FULL,
   VAULT_TEAM_LAPSED_NOT_CREATED,
@@ -6206,6 +6207,108 @@ describe('round 7, batch 2: team text and names stay where they belong', () => {
       st().vaultCloseNote();
       await st().vaultOpen('Plan.md');
       expect(st().vaultNote?.held).toBeUndefined();
+    });
+  });
+  describe('E20: a folder delete stopped part way says what moved, and offers its Undo', () => {
+    // Work holds a, b and c; `stop` runs after the nth remove answers (or
+    // throws before it reaches the server, with `fail`).
+    async function work(names = ['a', 'b', 'c']) {
+      for (const n of names) server.put(`Work/${n}.md`, n, 'u-me');
+      await st().vaultRefresh();
+    }
+    function onRemove(n: number, o: { after?: () => void; fail?: () => unknown }) {
+      const rpc = server.rpc.bind(server);
+      let removes = 0;
+      server.rpc = async (fn, tok, args) => {
+        const mine = fn === 'org_vault_remove' ? ++removes : 0;
+        if (mine === n && o.fail) throw o.fail();
+        const out = await rpc(fn, tok, args);
+        if (mine === n) o.after?.();
+        return out;
+      };
+    }
+    const listed = () =>
+      st()
+        .vaultFiles.map((f) => f.path)
+        .sort();
+
+    it('a plan that lapses after the first note: ok for what moved, with the reason', async () => {
+      await work();
+      onRemove(1, { after: () => (server.entitled = false) });
+      const r = await st().vaultDeleteFolder('Work');
+      expect(server.bytes('Work/a.md')).toBeUndefined();
+      expect(r).toMatchObject({
+        ok: true,
+        notes: 1,
+        partial: {
+          trashed: 1,
+          left: ['Work/b.md', 'Work/c.md'],
+          line: VAULT_TEAM_LAPSED_NOT_SAVED,
+          lapsed: true,
+        },
+      });
+      expect(listed()).toEqual(['Work/b.md', 'Work/c.md']);
+    });
+
+    it('admins-only switched on mid-folder: ok for what moved, and its Undo brings back only that', async () => {
+      await work();
+      onRemove(1, {
+        after: () => {
+          server.isAdmin = false;
+          server.settingsRow = {
+            settings: {},
+            delete_role: 'admin',
+            context_folder: null,
+            rev: 1,
+            updated_at: 'x',
+            updated_by: 'u-admin',
+          };
+        },
+      });
+      const r = await st().vaultDeleteFolder('Work');
+      expect(r).toMatchObject({
+        ok: true,
+        notes: 1,
+        partial: {
+          trashed: 1,
+          left: ['Work/b.md', 'Work/c.md'],
+          line: VAULT_TEAM_DELETE_ADMINS_ONLY,
+        },
+      });
+      if (!r?.ok) throw new Error('not ok');
+      expect(r.partial?.lapsed).toBeUndefined();
+      expect(await st().vaultUndoDelete(r.undo)).toMatchObject({ ok: true });
+      expect(listed()).toEqual(['Work/a.md', 'Work/b.md', 'Work/c.md']);
+      expect(server.bytes('Work/a.md')).toBe('a');
+    });
+
+    for (const [name, fail] of [
+      ['the network drops', () => new TypeError('Failed to fetch')],
+      ['a 502 answers', () => Object.assign(new Error('Bad gateway'), { status: 502 })],
+    ] as const) {
+      it(`${name} on the second note: ok for what moved, the list read again, and Undo`, async () => {
+        await work(['a', 'b']);
+        onRemove(2, { fail });
+        const r = await st().vaultDeleteFolder('Work');
+        expect(server.bytes('Work/a.md')).toBeUndefined();
+        expect(r).toMatchObject({
+          ok: true,
+          notes: 1,
+          partial: { trashed: 1, left: ['Work/b.md'] },
+        });
+        if (!r?.ok) throw new Error('not ok');
+        expect(r.partial).not.toHaveProperty('line');
+        expect(listed()).toEqual(['Work/b.md']);
+        expect(await st().vaultUndoDelete(r.undo)).toMatchObject({ ok: true });
+        expect(server.bytes('Work/a.md')).toBe('a');
+      });
+    }
+
+    it('nothing moved: still Not deleted, as before', async () => {
+      await work(['a', 'b']);
+      onRemove(1, { fail: () => new TypeError('Failed to fetch') });
+      expect(await st().vaultDeleteFolder('Work')).toEqual({ ok: false, reason: 'storage' });
+      expect(listed()).toEqual(['Work/a.md', 'Work/b.md']);
     });
   });
 });

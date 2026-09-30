@@ -427,6 +427,7 @@ import {
   versionOf,
   type RemoveResult,
   type TrashEntry,
+  type TrashPartial,
   type WriteGuard,
   type WriteResult,
 } from '../lib/gitos/providers.js';
@@ -1154,7 +1155,17 @@ export interface VaultMoveResult {
  *  A refusal the store already said (a toast, the resolve path) is
  *  `undefined`. */
 export type VaultDeleteOutcome =
-  | { ok: true; trashed: boolean; undo?: VaultUndo; notes: number; attachments: number }
+  | {
+      ok: true;
+      trashed: boolean;
+      undo?: VaultUndo;
+      notes: number;
+      attachments: number;
+      /** A folder that went to Trash only in part (the team vault, round 7
+       *  E20): how many went, what is left and why; its Undo brings back
+       *  exactly what went. */
+      partial?: TrashPartial;
+    }
   // A refusal for good, as the whole line the room says (the team vault's
   // admins-only delete, CX Y14, or a lapsed plan).
   | { ok: false; reason: 'storage'; line: string }
@@ -11948,9 +11959,15 @@ export const useApp = create<AppState>((set, get, api) => {
         return { ok: false, reason: 'storage', line: vaultRefusedLine('delete', refused) };
       }
       if (!r.ok) return { ok: false, reason: r.reason === 'changed' ? 'storage' : r.reason };
+      // Stopped part way (the team vault, E20): what went is in Trash, the
+      // rest is still in the folder, so the folder stays and the list is
+      // read again either way.
+      const left = new Set(r.partial?.left ?? []);
       const open = get().vaultNote;
-      if (open && open.path.startsWith(`${folder}/`)) await afterNoteGone(t, open.path);
-      await moveEmptyFolders(t, folder);
+      if (open && open.path.startsWith(`${folder}/`) && !left.has(open.path)) {
+        await afterNoteGone(t, open.path);
+      }
+      if (!r.partial) await moveEmptyFolders(t, folder);
       await refreshVaultFolders(t);
       logEvent('vault_folder_trash');
       await relistActive(t);

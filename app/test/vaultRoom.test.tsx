@@ -1409,6 +1409,60 @@ describe('the team room offers only what the server takes (Y14, Y15)', () => {
     expect(dom.buttons()).toContain('New folder');
   });
 
+  it('a folder delete stopped part way says how many went, stays, and offers their Undo (E20)', async () => {
+    const undos: unknown[] = [];
+    app.state.vaultDeleteFolder = async () => ({
+      ok: true,
+      trashed: true,
+      undo: { kind: 'trash', id: 'f:x', path: 'Work', folder: true, notes: 1 },
+      notes: 1,
+      attachments: 0,
+      partial: { trashed: 1, left: ['Work/Plan.md', 'Work/Other.md'] },
+    });
+    app.state.vaultUndoDelete = async (undo: unknown) => {
+      undos.push(undo);
+      return { ok: true, path: 'Work/a.md', renamed: false };
+    };
+    await openFolderSheet({ entitled: true, deleteRole: 'member', isAdmin: false });
+    await dom.click('Delete folder');
+    await dom.click(dom.buttons().find((b) => b.startsWith('Really move'))!);
+    await dom.settle();
+    await dom.settle();
+    const line =
+      'Moved 1 of 3 notes from "Work" to Trash. The rest are still there. Try again in a moment.';
+    expect(dom.text()).toContain(line);
+    expect(dom.text()).not.toContain('Not deleted');
+    // Still in the folder: its notes are still there.
+    expect(dom.text()).toContain('Plan');
+    await dom.click('Undo');
+    await dom.settle();
+    expect(undos).toEqual([{ kind: 'trash', id: 'f:x', path: 'Work', folder: true, notes: 1 }]);
+  });
+
+  it('a folder delete stopped by a lapsed plan says why, with no Undo (E20)', async () => {
+    app.state.vaultDeleteFolder = async () => ({
+      ok: true,
+      trashed: true,
+      undo: { kind: 'trash', id: 'f:x', path: 'Work', folder: true, notes: 1 },
+      notes: 1,
+      attachments: 0,
+      partial: {
+        trashed: 1,
+        left: ['Work/Plan.md'],
+        line: 'The team plan is not active, so team notes cannot change.',
+        lapsed: true,
+      },
+    });
+    await openFolderSheet({ entitled: true, deleteRole: 'member', isAdmin: false });
+    await dom.click('Delete folder');
+    await dom.click(dom.buttons().find((b) => b.startsWith('Really move'))!);
+    await dom.settle();
+    expect(app.toasts).toContain(
+      'Moved 1 of 2 notes from "Work" to Trash. The rest are still there. The team plan is not active, so team notes cannot change.',
+    );
+    expect(dom.buttons()).not.toContain('Undo');
+  });
+
   it('an admin, or everyone under member delete, still gets Delete folder', async () => {
     await openFolderSheet({ entitled: true, deleteRole: 'admin', isAdmin: true });
     expect(dom.buttons()).toContain('Delete folder');

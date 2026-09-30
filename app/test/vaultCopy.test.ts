@@ -1420,4 +1420,29 @@ describe("the team's free space says what 0023 says (the review, finding 1)", ()
     expect(VAULT_UNSEEN_DRAFT_REASON).toMatch(/Copy it into the note if you still need it\.$/);
     expect(VAULT_UNSEEN_DRAFT_REASON).not.toMatch(/try again/i);
   });
+
+  it('a folder delete stopped part way says how many went, and why (E20)', async () => {
+    const { vaultFolderTrashPartial, VAULT_TEAM_DELETE_ADMINS_ONLY } =
+      await import('../src/lib/vaultCopy.js');
+    expect(
+      vaultFolderTrashPartial({
+        title: 'Work',
+        trashed: 1,
+        left: 2,
+        reason: VAULT_TEAM_DELETE_ADMINS_ONLY,
+      }),
+    ).toBe(
+      'Moved 1 of 3 notes from "Work" to Trash. The rest are still there. Only admins can delete team notes here.',
+    );
+    // A refusal for good never says "try again"; a failure that may pass does.
+    expect(
+      vaultFolderTrashPartial({ title: 'Work', trashed: 1, left: 2, reason: 'x' }),
+    ).not.toMatch(/try again/i);
+    expect(vaultFolderTrashPartial({ title: 'Work', trashed: 2, left: 1 })).toBe(
+      'Moved 2 of 3 notes from "Work" to Trash. The rest are still there. Try again in a moment.',
+    );
+    expect(vaultFolderTrashPartial({ title: 'Work', trashed: 1, left: 1 })).not.toMatch(
+      /Not deleted/,
+    );
+  });
 });

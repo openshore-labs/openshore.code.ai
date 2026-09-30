@@ -160,6 +160,22 @@ export type TrashResult =
   | { ok: false; conflict: 'missing'; theirs?: undefined }
   | { ok: false; conflict: 'changed' | 'downloading'; theirs?: StoredFile };
 
+/** A folder's trash that stopped part way (the team vault, which trashes a
+ *  folder note by note): how many went to Trash, the paths still in the
+ *  folder, and why, when a refusal for good said (its reason, never a whole
+ *  line); `lapsed` when the plan stopped being active, so no Undo is offered
+ *  (it would be refused the same way). No line: a failure that may pass. A
+ *  storage that trashes all or nothing never sets it (round 7 E20). */
+export interface TrashPartial {
+  trashed: number;
+  left: string[];
+  line?: string;
+  lapsed?: true;
+}
+
+/** A TrashResult whose ok answer may carry a TrashPartial. */
+export type TrashReport = TrashResult & { partial?: TrashPartial };
+
 /** What a restore did. It never overwrites: a taken name lands beside it as
  *  "{title} (restored)" (R3) and `renamed` says so; parents are made. */
 export type RestoreResult =

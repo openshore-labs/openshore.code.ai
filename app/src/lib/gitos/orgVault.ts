@@ -57,6 +57,7 @@ import { isConfigured, rpc, select } from '../supabase.js';
 import {
   VAULT_SETTINGS_NAME_REFUSED,
   VAULT_SETTINGS_TOO_LARGE,
+  VAULT_TEAM_DELETE_ADMINS_ONLY,
   VAULT_TEAM_DELETE_REFUSED,
   VAULT_TEAM_FULL,
   VAULT_TEAM_LAPSED_NOT_SAVED,
@@ -76,7 +77,8 @@ import type {
   StoredFile,
   StoredFileMeta,
   TrashEntry,
-  TrashResult,
+  TrashPartial,
+  TrashReport,
   TrashTarget,
   WriteGuard,
   WriteResult,
@@ -951,7 +953,7 @@ export const orgVaultProvider: StorageProvider = {
   // A note goes under its rev; a folder is every note under it, each under
   // the rev it was listed at (one retry on a teammate's save in between).
   // Only notes live here, so a folder with none moves nothing.
-  async trash(resourceId, target: TrashTarget): Promise<TrashResult> {
+  async trash(resourceId, target: TrashTarget): Promise<TrashReport> {
     if (target.kind === 'note' && !isNotePath(target.path)) {
       throw new OrgVaultRefusal(`"${target.path}" is not a note, so the vault does not move it.`);
     }
@@ -1004,11 +1006,34 @@ export const orgVaultProvider: StorageProvider = {
     const under = `${target.path}/`;
     // The notes this trash tombstoned, and only those, go in its entry's id.
     const took: string[] = [];
-    for (const f of await orgVaultProvider.list(resourceId)) {
-      if (!f.path.startsWith(under)) continue;
-      let r = await drop(f.path, f.version ?? '');
-      if (r !== 'gone' && !r.ok && r.theirs?.version) r = await drop(f.path, r.theirs.version);
-      if (r !== 'gone' && r.ok) took.push(f.path);
+    // A folder goes note by note, each its own call: one stopped part way (a
+    // plan that lapsed, admins-only switched on, the network, a 5xx) says
+    // what went to Trash and what is left, with its Undo, and throws only
+    // when nothing went (round 7 E20).
+    let partial: TrashPartial | undefined;
+    const inside = (await orgVaultProvider.list(resourceId)).filter((f) =>
+      f.path.startsWith(under),
+    );
+    for (const [i, f] of inside.entries()) {
+      try {
+        let r = await drop(f.path, f.version ?? '');
+        if (r !== 'gone' && !r.ok && r.theirs?.version) r = await drop(f.path, r.theirs.version);
+        if (r !== 'gone' && r.ok) took.push(f.path);
+      } catch (err) {
+        if (!took.length) throw err;
+        const left = inside.slice(i).map((x) => x.path);
+        partial = {
+          trashed: took.length,
+          left,
+          ...(err instanceof OrgVaultDeleteRefused
+            ? { line: VAULT_TEAM_DELETE_ADMINS_ONLY }
+            : err instanceof OrgVaultRefusal
+              ? { line: err.message }
+              : {}),
+          ...(err instanceof OrgVaultLapsed ? { lapsed: true as const } : {}),
+        };
+        break;
+      }
     }
     return {
       ok: true,
@@ -1021,6 +1046,7 @@ export const orgVaultProvider: StorageProvider = {
       },
       notes: took.length,
       attachments: 0,
+      ...(partial ? { partial } : {}),
     };
   },
 

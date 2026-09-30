@@ -26,6 +26,8 @@ import {
   versionOf,
   type RestorePartial,
   type RestoreReport,
+  type TrashPartial,
+  type TrashReport,
   type StorageProvider,
   type StoredFile,
   type StoredFileMeta,
@@ -783,7 +785,16 @@ export type VaultUndo =
   | { kind: 'bytes'; path: string; text: string };
 
 export type VaultDeleteResult =
-  | { ok: true; trashed: boolean; undo: VaultUndo; notes: number; attachments: number }
+  | {
+      ok: true;
+      trashed: boolean;
+      undo: VaultUndo;
+      notes: number;
+      attachments: number;
+      /** A folder that went to Trash only in part (the team vault, round 7
+       *  E20): the Undo brings back exactly what went. */
+      partial?: TrashPartial;
+    }
   | {
       ok: false;
       reason: 'changed' | 'downloading' | 'missing' | VaultOpFailure;
@@ -849,15 +860,21 @@ export async function deleteFolder(deps: VaultOpsDeps, folder: string): Promise<
     await deps.flushOpenSave();
     // The notes inside, as known before the move (the index follows after).
     const inside = indexedPaths(deps).filter((p) => inFolder(p, folder));
-    const r = await provider.trash!(target.resourceId, { kind: 'folder', path: folder });
+    const r: TrashReport = await provider.trash!(target.resourceId, {
+      kind: 'folder',
+      path: folder,
+    });
     if (!r.ok) return { ok: false, reason: r.conflict, theirs: r.theirs };
-    for (const p of inside) deps.patch.removed(p);
+    // Stopped part way: only what went leaves the list (E20).
+    const left = new Set(r.partial?.left ?? []);
+    for (const p of inside) if (!left.has(p)) deps.patch.removed(p);
     return {
       ok: true,
       trashed: true,
       undo: { kind: 'trash', id: r.entry.id, path: folder, folder: true, notes: r.notes },
       notes: r.notes,
       attachments: r.attachments,
+      ...(r.partial ? { partial: r.partial } : {}),
     };
   });
   if (!run.ok && run.refusal) return { ok: false, reason: 'storage', ...run.refusal };

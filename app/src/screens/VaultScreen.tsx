@@ -116,6 +116,7 @@ import {
   vaultRestoreFailed,
   vaultRestoredToast,
   vaultTrashEmptied,
+  vaultFolderTrashPartial,
   vaultTrashFailed,
   vaultUndoFailed,
   vaultUndoText,
@@ -1427,11 +1428,11 @@ export function VaultScreen() {
     undo: VaultUndo,
     at: VaultTargetRef | undefined,
     title: string,
-    o: { trashed: boolean; folder: boolean; notes: number },
+    o: { trashed: boolean; folder: boolean; notes: number; line?: string },
   ) => {
     const id = `${Date.now()}:${undo.path}`;
     undoFor.current.set(id, { undo, ...(at ? { at } : {}) });
-    setUndoItem({ id, text: vaultUndoText(o), title, trashed: o.trashed });
+    setUndoItem({ id, text: o.line ?? vaultUndoText(o), title, trashed: o.trashed });
   };
   const runUndo = (item: VaultUndoToastItem) => {
     const entry = undoFor.current.get(item.id);
@@ -1663,6 +1664,28 @@ export function VaultScreen() {
           return;
         }
         showToast(vaultTrashFailed(name));
+        return;
+      }
+      // Some went to Trash and the rest are still here (E20): the folder
+      // stays, the line says how many and why, and the Undo brings back
+      // what went (none after the plan lapsed, which would refuse it).
+      if (r.partial) {
+        const line = vaultFolderTrashPartial({
+          title: name,
+          trashed: r.partial.trashed,
+          left: r.partial.left.length,
+          ...(r.partial.line ? { reason: r.partial.line } : {}),
+        });
+        if (r.partial.lapsed || !r.undo) {
+          showToast(line);
+          return;
+        }
+        offerUndo(r.undo, at, vaultFolderLabel(target), {
+          trashed: true,
+          folder: true,
+          notes: r.notes,
+          line,
+        });
         return;
       }
       setFolder(target.includes('/') ? target.slice(0, target.lastIndexOf('/')) : '');

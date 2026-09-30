@@ -2653,6 +2653,21 @@ export function vaultRestorePartial(o: {
   return `Restored ${o.restored} of ${total} ${total === 1 ? 'note' : 'notes'} from "${o.title}". Still in Trash: ${names.join(', ')}${more}. ${why}`;
 }
 
+/** A folder delete that stopped part way (the team vault trashes a folder
+ *  note by note): how many went to Trash, that the rest are still there, and
+ *  why, when a refusal said; with no reason, the rest were not reached, so
+ *  trying again is true (round 7 E20). Never "Not deleted": some were. */
+export function vaultFolderTrashPartial(o: {
+  title: string;
+  trashed: number;
+  left: number;
+  reason?: string;
+}): string {
+  const total = o.trashed + o.left;
+  const why = o.reason ? reasonSentence(o.reason) : 'Try again in a moment.';
+  return `Moved ${o.trashed} of ${total} ${total === 1 ? 'note' : 'notes'} from "${o.title}" to Trash. The rest are still there. ${why}`;
+}
+
 /** A folder move that stopped part way on a refusal that trying again cannot
  *  fix (a team out of free space): what moved, and the storage's reason. */
 export function vaultFolderMoveRefused(
