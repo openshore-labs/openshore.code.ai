@@ -1,7 +1,7 @@
 # Renders the iOS launch-screen images from scripts/brand/osc-splash.svg (light)
 # and scripts/brand/osc-splash-dark.svg (dark): the openshore.ai wave-mark tile
 # centered on a field that matches the app's --bg token in each theme (cream
-# paper #f6f4ef, warm dark #17140e), so cold launch reads as one continuous
+# paper #f6f4ef, Nightshore dark #0b1417), so cold launch reads as one continuous
 # brand surface in either appearance. The imageset carries both, the dark set
 # tagged with the dark luminosity appearance so iOS picks it by itself. Run:
 # python3 scripts/gen-splash.py
@@ -44,7 +44,7 @@ if not chrome:
 VARIANTS = (
     # (svg, file stem, background the page paints behind the svg)
     (SVG, "splash-2732x2732", "f6f4efff"),
-    (SVG_DARK, "splash-dark-2732x2732", "17140eff"),
+    (SVG_DARK, "splash-dark-2732x2732", "0b1417ff"),
 )
 
 for svg, stem, bg in VARIANTS:

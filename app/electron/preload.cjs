@@ -84,6 +84,7 @@ contextBridge.exposeInMainWorld('oscode', {
   rotateSharedToken: invoke('osc:rotateSharedToken'),
   launchAtLogin: invoke('osc:launchAtLogin'),
   setLaunchAtLogin: invoke('osc:setLaunchAtLogin'),
+  setAppIcon: invoke('osc:setAppIcon'),
 
   ollamaStatus: invoke('osc:ollamaStatus'),
   ollamaStart: invoke('osc:ollamaStart'),

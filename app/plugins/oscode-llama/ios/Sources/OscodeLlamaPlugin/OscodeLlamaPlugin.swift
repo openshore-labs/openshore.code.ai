@@ -67,6 +67,7 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "postNotice", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setNoticePrefs", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "secureGet", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setAppIcon", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "secureSet", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "secureDelete", returnType: CAPPluginReturnPromise)
     ]
@@ -482,6 +483,41 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func setNoticePrefs(_ call: CAPPluginCall) {
         if let downloads = call.getBool("downloads") { Notices.downloadsEnabled = downloads }
         call.resolve()
+    }
+
+    // ---------------------------------------------------------------- app icon
+
+    /// The Home Screen icon the person picked in Settings, Appearance
+    /// (founder, 2026-10-01). `name` is an alternate icon set compiled into
+    /// the app (AppIcon-Turquoise, AppIcon-White; ASSETCATALOG_COMPILER_
+    /// ALTERNATE_APPICON_NAMES), or null for the default. iOS itself then
+    /// says the icon changed; that alert is the system's and cannot be hidden.
+    private static let appIcons: Set<String> = ["AppIcon-Turquoise", "AppIcon-White"]
+
+    @objc func setAppIcon(_ call: CAPPluginCall) {
+        let name = call.getString("name")
+        if let name, !Self.appIcons.contains(name) {
+            call.resolve(["ok": false, "detail": "That icon is not in this build."])
+            return
+        }
+        DispatchQueue.main.async {
+            let app = UIApplication.shared
+            guard app.supportsAlternateIcons else {
+                call.resolve(["ok": false, "detail": "This device does not change app icons."])
+                return
+            }
+            if app.alternateIconName == name {
+                call.resolve(["ok": true])
+                return
+            }
+            app.setAlternateIconName(name) { error in
+                if let error {
+                    call.resolve(["ok": false, "detail": error.localizedDescription])
+                } else {
+                    call.resolve(["ok": true])
+                }
+            }
+        }
     }
 
     // ---------------------------------------------------------------- secrets

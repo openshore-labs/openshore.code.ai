@@ -25,6 +25,8 @@ export type SettingReach = 'follows' | 'device';
 export const SETTINGS_REACH: Record<keyof AppSettings, SettingReach> = {
   // The preferences that follow a signed-in person.
   theme: 'follows',
+  // The Home Screen or Dock icon is this device's own (founder, 2026-10-01).
+  appIcon: 'device',
   effort: 'follows',
   humanizeWriting: 'follows',
   chainOfThought: 'follows',

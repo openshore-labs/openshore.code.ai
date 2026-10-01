@@ -777,6 +777,10 @@ export interface AppSettings {
   /** Appearance: follow the system (default), or pin light or dark. Follows a
    *  signed-in person to their other devices (lib/settingsReach.ts). */
   theme?: 'system' | 'light' | 'dark';
+  /** The app icon (Settings, Appearance, founder 2026-10-01): the default ink
+   *  tile, turquoise, or white (lib/appIcon.ts). Device-local, since the
+   *  Home Screen icon is this device's. Unset is the default. */
+  appIcon?: 'default' | 'turquoise' | 'white';
   /** Reasoning effort for new turns, the same idea Claude exposes. Defaults to
    *  'high'. Chosen from the top of the model sheet. */
   effort?: Effort;

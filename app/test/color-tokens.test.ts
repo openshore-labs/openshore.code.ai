@@ -109,6 +109,8 @@ function sourceFiles(dir = SRC, out: string[] = []): string[] {
 // Files that may hold literal colours, each with its reason.
 const TSX_COLOR_ALLOW: Record<string, string> = {
   'components/BrandMark.tsx': 'the brand mark is drawn in its exact brand values in both themes',
+  'lib/appIcon.ts':
+    'the three app icon tiles, in the exact brand values of their PNGs (founder, 2026-10-01)',
   'components/terminalTheme.ts': 'xterm fallbacks for --term-bg/--term-fg, read before CSS lands',
 };
 // Single lines elsewhere, matched by content.

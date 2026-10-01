@@ -690,6 +690,23 @@ function launchExecutable(): string | undefined {
   return app.isPackaged ? process.execPath : undefined;
 }
 
+const APP_ICON_IDS = new Set(['default', 'turquoise', 'white']);
+
+function setAppIcon(id: string): { ok: boolean } {
+  if (!APP_ICON_IDS.has(id)) return { ok: false };
+  // Bundled into dist by Vite from public/app-icons; a source run reads public.
+  const file = [
+    join(here, '..', 'dist', 'app-icons', `${id}.png`),
+    join(here, '..', 'public', 'app-icons', `${id}.png`),
+  ].find((p) => existsSync(p));
+  if (!file) return { ok: false };
+  const image = nativeImage.createFromPath(file);
+  if (image.isEmpty()) return { ok: false };
+  if (process.platform === 'darwin') app.dock?.setIcon(image);
+  else win?.setIcon(image);
+  return { ok: true };
+}
+
 function launchAtLogin(): { on: boolean; supported: boolean } {
   const supported = launchExecutable() !== undefined;
   if (launchAtLoginSupport(process.platform) === 'native') {
@@ -773,7 +790,7 @@ function createWindow(): void {
     // The window's ground before the first paint, matched to the app's --bg
     // in the system's scheme (theme.css and the index.html splash), so a
     // dark-mode open never flashes cream.
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#17140e' : '#f6f4ef',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0b1417' : '#f6f4ef',
     autoHideMenuBar: true,
     title: 'OpenShore',
     webPreferences: {
@@ -1186,6 +1203,10 @@ guarded('osc:revokeDeviceCredential', (id: unknown) =>
 );
 guarded('osc:rotateSharedToken', () => host.rotateSharedToken());
 guarded('osc:launchAtLogin', () => launchAtLogin());
+// The app icon picked in Settings, Appearance (founder, 2026-10-01): the Dock
+// icon on a Mac, the window icon elsewhere, while the app runs. Only the
+// three known tiles, read from the app's own bundled files.
+guarded('osc:setAppIcon', (id: unknown) => setAppIcon(str(id, 'id')));
 // Turning it on makes the app start by itself at every login, so main asks
 // first; turning it off only takes that away and needs no second key.
 guarded('osc:setLaunchAtLogin', async (on: unknown) => {

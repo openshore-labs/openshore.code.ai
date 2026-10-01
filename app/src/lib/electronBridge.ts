@@ -467,6 +467,9 @@ export interface OscodeBridge {
    *  older shell. */
   launchAtLogin?(): Promise<{ on: boolean; supported: boolean }>;
   setLaunchAtLogin?(on: boolean): Promise<{ on: boolean; detail?: string }>;
+  /** The app icon picked in Settings, Appearance: the window and Dock icon
+   *  change while the app runs (the installed icon on disk does not). */
+  setAppIcon?(id: string): Promise<{ ok: boolean }>;
 
   // Ollama from inside the app, and the machine in numbers. Optional because
   // an older shell may not carry them; callers fall back to the Stack probe.

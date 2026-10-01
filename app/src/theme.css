@@ -140,6 +140,11 @@
      bars, sm for chips and small tiles, md for controls nested inside a card,
      the base for cards, lg for sheets and heroes. 50% and 999px stay literal
      (a circle and a pill are shapes, not sizes). */
+  /* The app icon tiles (Settings, Appearance; lib/appIcon.ts): the in-app
+     mark wears the picked tile in its exact brand values, in both themes. */
+  --icon-turquoise: #5bb6cb;
+  --icon-abyss: #0b1417;
+  --icon-white: #ffffff;
   --radius-xs: 4px;
   --radius-sm: 8px;
   --radius-md: 10px;
@@ -246,8 +251,12 @@
   color-scheme: light;
 }
 
-/* Warm dark theme (Creative Studio ruling): a brown-black ground carried from
-   the paper palette, never a cold slate. Accents LIFT rather than just swap
+/* Nightshore, the dark theme (founder, 2026-10-01: "make dark mode in this
+   theme", from openshore.ai): the site's water-tinted near-black abyss
+   (#0b1417) for the ground, its deep-teal cards and hairlines, warm paper text
+   (never pure white), and the bright wave (#5bb6cb) for the accent, the same
+   tokens as the site's openshore.css. It replaced the warm brown-black of the
+   first Creative Studio ruling. Accents LIFT rather than just swap
    (the teal rises toward the wave tone, the amber toward its bright end) so
    they read on dark, and status colors are re-tuned to sit as text on the dark
    ground. Elevation leans on the borders here rather than the ink-tinted
@@ -261,47 +270,47 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     --ink-crest: brightness(1.14);
-    --bg: #17140e;
-    --bg-raised: #201c14;
-    --surface: #29241a;
-    --surface-hover: #332d21;
-    --border: #3a3427;
-    --border-strong: #4a4433;
-    --ink: #ece5d6;
-    --ink-soft: #b3ab99;
-    --muted: #8b8674;
-    --local: #6bb3c4;
-    --local-deep: #4b90a3;
-    --local-soft: rgba(107, 179, 196, 0.16);
+    --bg: #0b1417;
+    --bg-raised: #10202a;
+    --surface: #162831;
+    --surface-hover: #1c3440;
+    --border: #24424d;
+    --border-strong: #2f5462;
+    --ink: #f6f4ef;
+    --ink-soft: #a9bac0;
+    --muted: #81949c;
+    --local: #5bb6cb;
+    --local-deep: #3f97ab;
+    --local-soft: rgba(91, 182, 203, 0.16);
     --cloud: #e0902f;
     --cloud-soft: rgba(224, 144, 47, 0.16);
-    --accent: #6bb3c4;
-    --accent-deep: #4b90a3;
-    --accent-soft: rgba(107, 179, 196, 0.16);
+    --accent: #5bb6cb;
+    --accent-deep: #3f97ab;
+    --accent-soft: rgba(91, 182, 203, 0.16);
     --attention: #c79bd8;
     --attention-soft: rgba(199, 155, 216, 0.16);
     --syntax-string: #d4a373;
     --voice: #eab94f;
     --voice-soft: rgba(234, 185, 79, 0.18);
     --plus: #d8b667;
-    --plus-ink: #1c160b;
+    --plus-ink: #0b1417;
     --ok: #5fbf7e;
     --ok-soft: rgba(95, 191, 126, 0.16);
     --warn: #c4b163;
     --danger: #e5675a;
     --link: #6fb0e0;
-    --wave: #6bb3c4;
-    --wave-ink: #6bb3c4;
+    --wave: #5bb6cb;
+    --wave-ink: #5bb6cb;
     --current-1: #2f6f80;
     --current-2: #4b90a3;
-    --current-3: #6bb3c4;
-    --current-4: #b3e4ef;
+    --current-3: #5bb6cb;
+    --current-4: #a8dde9;
     --current-5: #f0a850;
-    --current-glow-fade: rgba(107, 179, 196, 0.4);
-    --flow: #9fb0b7;
-    --flow-deep: #b6c3c9;
+    --current-glow-fade: rgba(91, 182, 203, 0.4);
+    --flow: #8fa4ac;
+    --flow-deep: #a9bac0;
     --cloud-bright: #f0a850;
-    --code-surface: #211d15;
+    --code-surface: #10202a;
     --shadow-rgb: 0, 0, 0;
     color-scheme: dark;
   }
@@ -310,47 +319,47 @@
 /* The explicit toggle wins over the system preference in both directions. */
 :root[data-theme='dark'] {
   --ink-crest: brightness(1.14);
-  --bg: #17140e;
-  --bg-raised: #201c14;
-  --surface: #29241a;
-  --surface-hover: #332d21;
-  --border: #3a3427;
-  --border-strong: #4a4433;
-  --ink: #ece5d6;
-  --ink-soft: #b3ab99;
-  --muted: #8b8674;
-  --local: #6bb3c4;
-  --local-deep: #4b90a3;
-  --local-soft: rgba(107, 179, 196, 0.16);
+  --bg: #0b1417;
+  --bg-raised: #10202a;
+  --surface: #162831;
+  --surface-hover: #1c3440;
+  --border: #24424d;
+  --border-strong: #2f5462;
+  --ink: #f6f4ef;
+  --ink-soft: #a9bac0;
+  --muted: #81949c;
+  --local: #5bb6cb;
+  --local-deep: #3f97ab;
+  --local-soft: rgba(91, 182, 203, 0.16);
   --cloud: #e0902f;
   --cloud-soft: rgba(224, 144, 47, 0.16);
-  --accent: #6bb3c4;
-  --accent-deep: #4b90a3;
-  --accent-soft: rgba(107, 179, 196, 0.16);
+  --accent: #5bb6cb;
+  --accent-deep: #3f97ab;
+  --accent-soft: rgba(91, 182, 203, 0.16);
   --attention: #c79bd8;
   --attention-soft: rgba(199, 155, 216, 0.16);
   --syntax-string: #d4a373;
   --voice: #eab94f;
   --voice-soft: rgba(234, 185, 79, 0.18);
   --plus: #d8b667;
-  --plus-ink: #1c160b;
+  --plus-ink: #0b1417;
   --ok: #5fbf7e;
   --ok-soft: rgba(95, 191, 126, 0.16);
   --warn: #c4b163;
   --danger: #e5675a;
   --link: #6fb0e0;
-  --wave: #6bb3c4;
-  --wave-ink: #6bb3c4;
+  --wave: #5bb6cb;
+  --wave-ink: #5bb6cb;
   --current-1: #2f6f80;
   --current-2: #4b90a3;
-  --current-3: #6bb3c4;
-  --current-4: #b3e4ef;
+  --current-3: #5bb6cb;
+  --current-4: #a8dde9;
   --current-5: #f0a850;
-  --current-glow-fade: rgba(107, 179, 196, 0.4);
-  --flow: #9fb0b7;
-  --flow-deep: #b6c3c9;
+  --current-glow-fade: rgba(91, 182, 203, 0.4);
+  --flow: #8fa4ac;
+  --flow-deep: #a9bac0;
   --cloud-bright: #f0a850;
-  --code-surface: #211d15;
+  --code-surface: #10202a;
   --shadow-rgb: 0, 0, 0;
   color-scheme: dark;
 }
@@ -14346,4 +14355,63 @@ button.settings-row:active {
 .pair-done {
   margin: 0 0 12px;
   animation: msg-in var(--dur-4) var(--ease-arrive) backwards;
+}
+
+/* The app icon the person picked (Settings, Appearance, lib/appIcon.ts): the
+   in-app mark wears the same tile as the Home Screen or Dock. The default ink
+   tile is the mark's own fallback, so it needs no rule here. The colours are
+   the tile's, not the theme's: they stay put in light and dark. */
+:root[data-icon='turquoise'] .brand-mark .bm-tile {
+  fill: var(--icon-turquoise);
+}
+:root[data-icon='turquoise'] .brand-mark .bm-line,
+:root[data-icon='turquoise'] .brand-mark .bm-wave,
+:root[data-icon='white'] .brand-mark .bm-line,
+:root[data-icon='white'] .brand-mark .bm-wave {
+  stroke: var(--icon-abyss);
+}
+:root[data-icon='white'] .brand-mark .bm-tile {
+  fill: var(--icon-white);
+  stroke: var(--border-strong);
+  stroke-width: 0.6;
+}
+
+/* The app icon picker: three tiles in a row, the chosen one ringed in the
+   accent. The ring fades in on the tokens; the tile answers the press. */
+.icon-picker {
+  display: flex;
+  gap: 14px;
+  padding: 4px 16px 14px;
+}
+.icon-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 0;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: var(--text-4);
+  cursor: pointer;
+}
+.icon-choice .icon-choice-tile {
+  display: grid;
+  place-items: center;
+  padding: 4px;
+}
+.icon-choice .brand-mark {
+  border-radius: var(--radius);
+  box-shadow:
+    0 0 0 2px var(--bg),
+    0 0 0 4px transparent;
+  transition: box-shadow var(--dur-3) var(--ease-standard);
+}
+.icon-choice[aria-checked='true'] {
+  color: var(--ink);
+}
+.icon-choice[aria-checked='true'] .brand-mark {
+  box-shadow:
+    0 0 0 2px var(--bg),
+    0 0 0 4px var(--accent);
 }
