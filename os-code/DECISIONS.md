@@ -3991,7 +3991,7 @@ execution contract. Newest at the bottom.
   closed note's keep-both copy that fails is stashed instead of rejecting
   the save. Each is truer than main's line and none loses text; the
   personal-provider tests that pin them are part of E53.
-- 2026-10-01: **The app's tests ignore the build machine's VITE_ values.**
+- 2026-10-01: **The app's tests ignore the build machine's `VITE_` values.**
   Codemagic's test gate failed 27 app tests on main once the engine's Mac
   failures were fixed (they had stopped `pnpm -r test` before the app's turn,
   so these had hidden behind them). The `Harbor-os-code` group sets
