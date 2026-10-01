@@ -12664,7 +12664,8 @@ export const useApp = create<AppState>((set, get, api) => {
       const t = vaultTargetFrom(at);
       if (!t) return undefined;
       // The plan lapsed while the toast was up: the Undo is a write the
-      // server refuses (OV402), so it says the plan's line and asks nothing.
+      // server refuses (OV402), so once a read of the plan says so still
+      // (E37) it says the plan's line and writes nothing.
       const teamRefused = await teamRefusalNow(t, 'restore');
       if (teamRefused) return { ok: false, reason: 'unsupported', line: teamRefused, whole: true };
       const r = await opsUndoDelete(opsDeps(t), undo);
@@ -12724,7 +12725,8 @@ export const useApp = create<AppState>((set, get, api) => {
       const t = vaultTarget();
       if (!t) return { ok: false, reason: 'unsupported' };
       // A Trash page open when the plan lapsed: Restore is a write the server
-      // refuses (OV402), so it says the plan's line and asks nothing.
+      // refuses (OV402), so once a read of the plan says so still (E37) it
+      // says the plan's line and writes nothing.
       const teamRefused = await teamRefusalNow(t, 'restore');
       if (teamRefused) return { ok: false, reason: 'unsupported', line: teamRefused, whole: true };
       const entry = get().vaultTrash?.find((e) => e.id === id);
