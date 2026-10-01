@@ -14,15 +14,18 @@
 # founder decision, so it is not part of electron-updater's silent install
 # path; the desktop app's update check handles that platform separately.)
 #
-# Three ways in:
-#   - push to main (founder, 2026-09-23: every push to main reaches the
-#     desktops) -> the `version` job picks the next patch after the newest
+# Two ways in, both by hand (founder, 2026-10-01: a one-person team on a
+# private repo pushes everything to main, and a release on every push spent
+# the month's Actions minutes; this supersedes the 2026-09-23 "every push
+# reaches the desktops"):
+#   - run it by hand on main (Actions -> Release -> Run workflow), Publish on
+#     (the default) -> the `version` job picks the next patch after the newest
 #     v<major>.<minor>.* tag, then build, smoke, AND publish that Release. A
 #     desktop that is behind shows its update bar within half an hour
-#     (electron/main.ts). Pushes that only touch the iOS project or docs skip.
+#     (electron/main.ts). Publish off -> build and smoke only, so packaging
+#     can be proven without cutting a release.
 #   - push a tag like v0.1.0  -> build, smoke, AND publish a Release
-#   - run it by hand (Actions -> Release -> Run workflow) -> build and smoke
-#     only, so packaging can be proven any time without cutting a release.
+# A push to main starts nothing here.
 #
 # Linux and Windows build and smoke-test in parallel; a single `publish` job
 # waits for both so the release is created once, atomically, with every
@@ -36,21 +39,14 @@ name: Release
 
 on:
   push:
-    branches:
-      - main
     tags:
       - "v*"
-    # Path filters apply to the branch push only; a tag push always runs.
-    paths:
-      - "app/**"
-      - "os-code/**"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - ".github/workflows/release.yml"
-      - "!app/ios/**"
-      - "!**/*.md"
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish a desktop release (the next patch version). Off: build and smoke only."
+        type: boolean
+        default: true
 
 # Read only by default (CTO ruling 2, 2026-09-29). The build jobs run
 # third-party install scripts (pnpm install, electron-builder's downloads), so
@@ -68,9 +64,10 @@ concurrency:
 
 jobs:
   # The version this run ships, and whether it publishes. A tag names its own
-  # version; a push to main takes the next patch after the newest tag in the
-  # same major.minor as app/package.json (0.1.x today); a hand run publishes
-  # nothing and keeps the committed version.
+  # version; a hand run on main with Publish on takes the next patch after the
+  # newest tag in the same major.minor as app/package.json (0.1.x today); a
+  # hand run with Publish off publishes nothing and keeps the committed
+  # version.
   version:
     runs-on: ubuntu-latest
     outputs:
@@ -82,11 +79,14 @@ jobs:
 
       - name: Pick the version
         id: pick
+        env:
+          # Empty on a tag push; "true" or "false" on a hand run.
+          PUBLISH: ${{ inputs.publish }}
         run: |
           set -euo pipefail
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
-          elif [[ "$GITHUB_REF" == refs/heads/main ]]; then
+          elif [[ "$GITHUB_REF" == refs/heads/main && "${PUBLISH:-}" == "true" ]]; then
             BASE=$(node -p "require('./app/package.json').version")
             MM="${BASE%.*}"
             BASE_PATCH="${BASE##*.}"

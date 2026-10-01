@@ -29,7 +29,7 @@ describe('versionIsNewer', () => {
   });
 });
 
-// ---- every push to main reaches the desktops (founder, 2026-09-23) ----------
+// ---- a published release reaches the desktops (run by hand since 2026-10-01) ----
 
 const asset = (name: string) => ({ name, browser_download_url: `https://x/${name}` });
 const release = (tag: string, names: string[]) => ({ tag_name: tag, assets: names.map(asset) });
@@ -118,8 +118,17 @@ describe('the update bar', () => {
 
 describe('the release workflow', () => {
   const wf = readFileSync(join(process.cwd(), '../.github/workflows/release.yml'), 'utf8');
-  it('publishes on every push to main, not only on a tag', () => {
-    expect(wf).toMatch(/branches:\s*\n\s*- main/);
+  // By hand since 2026-10-01 (founder: a private repo's Actions minutes ran
+  // out with a release on every push): Run workflow on main publishes, or a
+  // v* tag does; a push to main starts nothing.
+  it('publishes when run by hand on main or on a tag, never on a plain push', () => {
+    const on = wf.slice(wf.indexOf('\non:\n'), wf.indexOf('\npermissions:'));
+    expect(on).not.toMatch(/branches:/);
+    expect(on).toMatch(/tags:\s*\n\s*- "v\*"/);
+    expect(on).toMatch(/workflow_dispatch:\s*\n\s*inputs:\s*\n\s*publish:/);
+    expect(wf).toContain(
+      'elif [[ "$GITHUB_REF" == refs/heads/main && "${PUBLISH:-}" == "true" ]]; then',
+    );
     expect(wf).toContain("if: needs.version.outputs.tag != ''");
   });
 

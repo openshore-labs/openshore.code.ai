@@ -22,7 +22,7 @@ Both public keys in the app start empty, and that is safe but limited:
   place. The person downloads the new version and macOS checks it.
 - **Windows and Linux**: updates install as before, without the check. The
   app writes a line in its log saying the check was skipped.
-- Releases still publish on every push to main, unsigned, exactly as today.
+- Releases still publish when you run the Release workflow, unsigned, exactly as today.
 
 ## The steps (about fifteen minutes)
 
@@ -47,7 +47,7 @@ Both public keys in the app start empty, and that is safe but limited:
      it is not there yet).
    - Under Deployment branches and tags, choose Selected branches and tags,
      then add the branch `main` and the tag pattern `v*`.
-   - Leave Required reviewers off. Releases keep going out on every push.
+   - Leave Required reviewers off. Releases go out when you run the Release workflow.
    - Under Environment secrets, add `OPENSHORE_DESKTOP_SIGNING_KEY` and paste
      the Windows and Linux private key.
 

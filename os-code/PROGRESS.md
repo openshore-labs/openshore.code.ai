@@ -838,7 +838,7 @@ extended that day by the graduated enforcement ladder (migration
       `scripts/desktop-preflight.mjs` now refuses to launch with a node-pty that
       is missing or built for the wrong ABI (2026-09-05).
 - [x] **First Codemagic build to TestFlight:** done. The `ios-testflight`
-      workflow ships every push to `main`; about 62 builds had reached
+      workflow shipped every push to `main` until 2026-10-01 (by hand since); 62 had reached
       TestFlight by 2026-09-03 (walkthrough in `docs/TESTFLIGHT.md`). Xcode is
       pinned in `codemagic.yaml` since 2026-09-05; bump it deliberately.
 - [x] **At-rest journal encryption:** done. Engine-side sealing

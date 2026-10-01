@@ -497,7 +497,7 @@ describe('the release builds sign what they publish', () => {
     expect(publish).toMatch(/\n {4}environment: release\n/);
     expect(publish).not.toMatch(/pnpm install|npm install|npm ci/);
     expect(publish).toMatch(/persist-credentials: false/);
-    // Still every push to main (the founder's call) and every v* tag.
+    // A hand run on main with Publish on, or a v* tag (by hand since 2026-10-01).
     expect(publish).toContain("if: needs.version.outputs.tag != ''");
   });
 
