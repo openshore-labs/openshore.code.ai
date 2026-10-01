@@ -489,6 +489,7 @@ export interface OscodeBridge {
     routines: RoutineView[];
     runs: RoutineRun[];
     clock?: RoutineClockStatus;
+    webSearch?: boolean;
   }>;
   routineCreate(input: RoutineInput): Promise<{ routine: RoutineView } | { error: string }>;
   routineUpdate(
@@ -498,6 +499,7 @@ export interface OscodeBridge {
   routineDelete(id: string): Promise<{ deleted: boolean }>;
   routineRun(id: string): Promise<{ queued: true; position: number } | { error: string }>;
   routineStop(id: string): Promise<{ stopped: boolean }>;
+  routinesWebSearch(allowed: boolean): Promise<{ webSearch: boolean }>;
   routineNote(runId: string): Promise<{ path: string; markdown: string } | null>;
 
   // Agentic Currents: what this computer can host (a Hermes home present, a

@@ -115,6 +115,33 @@ describe('headless means offline (CTO 3)', () => {
     expect(networkToolsLeftOut(base)).toEqual([]);
   });
 
+  it('when the person allowed web search, a routine keeps webSearch and nothing else (founder, 2026-10-01)', () => {
+    const everything = {
+      ...base,
+      hasCodemagic: true,
+      currents: { cli: { command: 'claude' } },
+    } as unknown as Parameters<typeof buildToolRegistry>[0];
+    const opts = { ...everything, offline: true, offlineSearch: true };
+    const names = buildToolRegistry(opts).names();
+    expect(names).toContain('webSearch');
+    for (const name of ['webFetch', 'codemagic', 'cliAgent']) expect(names).not.toContain(name);
+    expect(networkToolsLeftOut(opts)).toEqual(['webFetch', 'codemagic', 'cliAgent']);
+    // Not allowed (the default), a declined search, or a secrets lockdown: still offline.
+    expect(buildToolRegistry({ ...opts, offlineSearch: false }).names()).not.toContain('webSearch');
+    expect(buildToolRegistry({ ...opts, webSearch: false }).names()).not.toContain('webSearch');
+    const locked = { ...opts, egressLockdown: true };
+    expect(buildToolRegistry(locked).names()).not.toContain('webSearch');
+    expect(networkToolsLeftOut(locked)).toContain('webSearch');
+  });
+
+  it('the headless profile runs webSearch silently only when allowed, and never another network tool', () => {
+    const engine = new PermissionEngine(DEFAULT_PERMISSIONS, profileFor('headless'), true);
+    expect(engine.decide({ toolName: 'webSearch', risk: 'network' }).decision).toBe('allow');
+    expect(engine.decide({ toolName: 'webFetch', risk: 'network' }).decision).toBe('deny');
+    const off = new PermissionEngine(DEFAULT_PERMISSIONS, profileFor('headless'));
+    expect(off.decide({ toolName: 'webSearch', risk: 'network' }).decision).toBe('deny');
+  });
+
   it('a search the model reaches for anyway is refused by name, never asked', async () => {
     const provider = new MockProvider('mock', [
       toolTurn('webSearch', { query: 'latest react version' }, 'c1'),

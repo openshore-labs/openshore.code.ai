@@ -48,7 +48,7 @@ import { SignInCard } from '../components/SignInCard.js';
 import { DeleteAccount } from '../components/DeleteAccount.js';
 import { InfoSheet } from '../components/InfoSheet.js';
 import { WhatLeavesSheet } from '../components/WhatLeavesSheet.js';
-import { ROUTINES_NEVER_SEARCH } from '../lib/egressManifest.js';
+import { ROUTINES_SEARCH_LINE } from '../lib/egressManifest.js';
 import { Sheet } from '../components/Sheet.js';
 import { Switch } from '../components/Switch.js';
 import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
@@ -809,13 +809,13 @@ export function SettingsScreen() {
           <SettingsRow
             label="Let models search the web"
             subWrap
-            // Crew routines run with nobody there to ask, so they work offline
-            // (CTO ruling 3; CX 8 wrote the line).
+            // Crew routines follow this switch and only search (founder,
+            // 2026-10-01); every other web tool stays off for them.
             sub={`${
               webSearchOn(settings.webSearchConsent)
                 ? 'On. A model sends its search words to the search service below, and nothing else from your chat.'
                 : 'Off. Models answer from what they know.'
-            } ${ROUTINES_NEVER_SEARCH}`}
+            } ${ROUTINES_SEARCH_LINE}`}
             trailing={
               <Switch
                 checked={webSearchOn(settings.webSearchConsent)}

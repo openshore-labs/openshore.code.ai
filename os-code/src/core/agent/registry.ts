@@ -97,6 +97,11 @@ export interface ToolRegistryOptions {
   // send a secret out in a URL, a search, or a subtask while nobody watches.
   // See networkToolsLeftOut.
   offline?: boolean;
+  // With `offline`, keeps webSearch (and only webSearch): the person allowed
+  // models to search the web and a routine follows that switch (founder,
+  // 2026-10-01). Results are titles, links and snippets; webFetch, Codemagic,
+  // the currents and the model handoffs stay out. Ignored under egress lockdown.
+  offlineSearch?: boolean;
   // On when this session's host can keep a program the agent starts running
   // (bootstrap wires ToolContext.processes to the driver's command lane):
   // registers startProcess, readProcess and stopProcess (P1). Bootstrap
@@ -144,9 +149,10 @@ function modelHandoffTools(options: ToolRegistryOptions): ToolDef[] {
  *  unless `offline`. */
 export function networkToolsLeftOut(options: ToolRegistryOptions): string[] {
   if (!options.offline) return [];
-  return [...networkTools({ ...options, webSearch: true }), ...modelHandoffTools(options)].map(
-    (t) => t.name,
-  );
+  const keepsSearch = Boolean(options.offlineSearch) && !options.egressLockdown;
+  return [...networkTools({ ...options, webSearch: true }), ...modelHandoffTools(options)]
+    .map((t) => t.name)
+    .filter((name) => !(keepsSearch && name === webSearchTool.name));
 }
 
 export function buildToolRegistry(options: ToolRegistryOptions): ToolRegistry {
@@ -180,6 +186,13 @@ export function buildToolRegistry(options: ToolRegistryOptions): ToolRegistry {
   // not registered at all.
   if (!options.egressLockdown && !options.offline) {
     for (const tool of networkTools(options)) registry.register(tool);
+  } else if (
+    !options.egressLockdown &&
+    options.offline &&
+    options.offlineSearch &&
+    options.webSearch !== false
+  ) {
+    registry.register(webSearchTool);
   }
   registry.register(searchRepoTool);
   // The agent's durable, on-device knowledge vault. Reads/lists flow; writes

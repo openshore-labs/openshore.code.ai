@@ -41,6 +41,9 @@ export interface RoutinesSnapshot {
   /** Whose clock fires the slots (H1): GET /routines and the desktop's
    *  routinesList both carry it; absent from an older engine. */
   clock?: RoutineClockStatus;
+  /** Whether this computer lets a routine search the web (machine config);
+   *  absent from an older engine. */
+  webSearch?: boolean;
 }
 
 /** The Crew room's clock line (CX cleanup 6). A passive scheduler takes the
@@ -139,6 +142,8 @@ export interface RoutinesClient {
   run(id: string): Promise<void>;
   stop(id: string): Promise<void>;
   note(runId: string): Promise<{ path: string; markdown: string } | null>;
+  /** Carry the person's web search switch to the computer that runs routines. */
+  setWebSearch(allowed: boolean): Promise<void>;
 }
 
 function headers(target: DaemonTarget): Record<string, string> {
@@ -187,6 +192,12 @@ function daemonClient(target: DaemonTarget): RoutinesClient {
     stop: async (id) => {
       await daemonJson(target, `/routines/${id}/stop`, { method: 'POST' });
     },
+    setWebSearch: async (allowed) => {
+      await daemonJson(target, '/routines/web-search', {
+        method: 'POST',
+        body: JSON.stringify({ allowed }),
+      });
+    },
     note: async (runId) => {
       try {
         return await daemonJson<{ path: string; markdown: string }>(
@@ -225,6 +236,9 @@ function bridgeClient(): RoutinesClient {
       await b().routineStop(id);
     },
     note: (runId) => b().routineNote(runId),
+    setWebSearch: async (allowed) => {
+      await b().routinesWebSearch(allowed);
+    },
   };
 }
 

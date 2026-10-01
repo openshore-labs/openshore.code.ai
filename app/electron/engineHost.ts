@@ -936,13 +936,19 @@ export class EngineHost {
   // in the shared model so the desktop and the daemon refuse the same shapes;
   // the workspace gate lives in the scheduler so it holds for every caller.
 
-  routinesList(): { routines: RoutineView[]; runs: RoutineRun[]; clock: RoutineClockStatus } {
+  routinesList(): {
+    routines: RoutineView[];
+    runs: RoutineRun[];
+    clock: RoutineClockStatus;
+    webSearch: boolean;
+  } {
     // The clock status rides along (H1): "held by pid N since T" when the
     // other OpenShore process on this computer fires the slots.
     return {
       routines: this.scheduler.list(),
       runs: this.scheduler.runs(60),
       clock: this.scheduler.clockStatus(),
+      webSearch: loadConfig().config.routines.webSearch,
     };
   }
 
@@ -990,6 +996,13 @@ export class EngineHost {
 
   routineRun(id: string): { queued: true; position: number } | { error: string } {
     return this.scheduler.runNow(id);
+  }
+
+  /** The person's web search switch, carried to the scheduler's machine config
+   *  so a routine follows it (founder, 2026-10-01). */
+  routinesWebSearch(allowed: boolean): { webSearch: boolean } {
+    saveGlobalConfig({ routines: { webSearch: allowed === true } });
+    return { webSearch: allowed === true };
   }
 
   routineStop(id: string): { stopped: boolean } {

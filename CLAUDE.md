@@ -91,11 +91,14 @@ in `app/src/lib/routines.ts` and `app/src/screens/CrewCommandScreen.tsx`. Do
 NOT re-scope it as a chatbot: the reference is Grok Bot (always-on agents with
 their own computer), and an earlier persona-chatbot stab was dropped on
 purpose (see `os-code/DECISIONS.md`). Copy stays honest: "while your computer
-is on", never "always on". Routines run offline (CTO, 2026-09-29): a headless
-run has no web, network, Codemagic, currents, specialist, vision or image
-tools, a network-risk call is denied rather than asked, and the run note says
-so. "Crew routines never search the web." Do NOT add a per-routine web switch
-without a domain-allowlist design. Open follow-ups are in `os-code/PROGRESS.md`.
+is on", never "always on". Routines run offline (CTO, 2026-09-29) with one
+exception (founder, 2026-10-01): a headless run has no page fetch, network,
+Codemagic, currents, specialist, vision or image tools, and a network-risk
+call is denied rather than asked, and the run note says so; but `webSearch`,
+and only it, stays when the person's "Let models search the web" switch is on
+(carried to the machine as `routines.webSearch`, machine config). Do NOT add a
+per-routine web switch, and do NOT give a routine `webFetch`, without a
+domain-allowlist design. Open follow-ups are in `os-code/PROGRESS.md`.
 
 ## Premium UX out of the box (standing rule, founder 2026-09-02)
 

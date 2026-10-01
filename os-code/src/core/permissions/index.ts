@@ -605,6 +605,9 @@ export class PermissionEngine {
   constructor(
     private readonly config: PermissionConfig = DEFAULT_PERMISSIONS,
     private readonly profile?: SecurityProfile,
+    /** A routine may run webSearch, and only webSearch, unattended: the person
+     *  allowed web search and the registry kept the tool (founder, 2026-10-01). */
+    private readonly offlineWebSearch = false,
   ) {}
 
   /** Grant "always allow for this session" for one tool. Profile-gated. */
@@ -625,12 +628,15 @@ export class PermissionEngine {
 
   /** On a restrictive profile, no allow (session grant, rule, or configured
    *  default) may make a shell, push, or cloud-spend step silent. */
-  private autoAllowBlocked(risk: ToolRisk): boolean {
+  private autoAllowBlocked(risk: ToolRisk, toolName?: string): boolean {
     if (!this.profile) return false;
     if (risk === 'shell') return !this.profile.allowShellAutoApprove;
     if (risk === 'cloud-spend') return !this.profile.allowCloudAutoApprove;
     if (risk === 'push') return !this.profile.allowPushAutoApprove;
-    if (risk === 'network') return !this.profile.allowNetworkAutoApprove;
+    if (risk === 'network') {
+      if (this.offlineWebSearch && toolName === 'webSearch') return false;
+      return !this.profile.allowNetworkAutoApprove;
+    }
     return false;
   }
 
@@ -638,8 +644,8 @@ export class PermissionEngine {
    *  never asked: an unanswered ask would hold the run for 15 minutes and
    *  then decline anyway, and the step is one an injected line could use to
    *  send a secret out (CTO 3). */
-  private networkRefused(risk: ToolRisk): boolean {
-    return risk === 'network' && this.autoAllowBlocked(risk);
+  private networkRefused(risk: ToolRisk, toolName?: string): boolean {
+    return risk === 'network' && this.autoAllowBlocked(risk, toolName);
   }
 
   decide(q: PermissionQuery): PermissionResult {
@@ -663,7 +669,7 @@ export class PermissionEngine {
     const path = q.path === undefined ? undefined : permissionPath(q.path);
 
     // Headless means offline: before any grant, rule, or default can allow it.
-    if (this.networkRefused(q.risk)) {
+    if (this.networkRefused(q.risk, q.toolName)) {
       return {
         decision: 'deny',
         reason: `routines work offline, so ${q.toolName} does not run on the ${this.profile?.name ?? 'restricted'} profile`,
@@ -702,7 +708,11 @@ export class PermissionEngine {
     // Session grants never apply to shell or cloud spend on restrictive
     // profiles, and never to an always-ask tool, whose grant could only mean
     // "ask" and must not hide a deny rule below it.
-    if (!q.alwaysAsk && this.sessionAllows.has(q.toolName) && !this.autoAllowBlocked(q.risk)) {
+    if (
+      !q.alwaysAsk &&
+      this.sessionAllows.has(q.toolName) &&
+      !this.autoAllowBlocked(q.risk, q.toolName)
+    ) {
       return { decision: 'allow', reason: 'allowed for this session' };
     }
 
@@ -716,7 +726,7 @@ export class PermissionEngine {
       }
       // A configured allow is no louder than a session grant: on the phone or
       // headless profile it cannot make shell or cloud spend silent (ENG-4).
-      if (rule.decision === 'allow' && this.autoAllowBlocked(q.risk)) continue;
+      if (rule.decision === 'allow' && this.autoAllowBlocked(q.risk, q.toolName)) continue;
       return { decision: rule.decision, reason: `permission rule for ${rule.tool}` };
     }
 
@@ -730,7 +740,7 @@ export class PermissionEngine {
     // phone or headless profile. A routine running at 3am asks, or is denied
     // when no one answers; it never runs a shell command unattended (the CTO's
     // must-fix for unattended crew).
-    if (decision === 'allow' && this.autoAllowBlocked(q.risk)) {
+    if (decision === 'allow' && this.autoAllowBlocked(q.risk, q.toolName)) {
       return {
         decision: 'ask',
         reason: `${q.risk} never runs silently on the ${this.profile?.name ?? 'restricted'} profile`,

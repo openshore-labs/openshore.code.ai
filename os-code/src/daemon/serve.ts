@@ -893,7 +893,12 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           .map(({ noteAbsPath: _abs, pid: _pid, pidStart: _start, ...r }) => r);
         // Whose clock fires the slots (H1): this computer's other OpenShore
         // process may hold it, "held by pid N since T".
-        sendJson(res, 200, { routines, runs, clock: scheduler.clockStatus() });
+        sendJson(res, 200, {
+          routines,
+          runs,
+          clock: scheduler.clockStatus(),
+          webSearch: loadConfig(process.cwd()).config.routines.webSearch,
+        });
         return;
       }
       if (req.method === 'GET' && parts[1] === 'runs' && parts[2] && parts[3] === 'note') {
@@ -919,6 +924,19 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           return;
         }
         sendJson(res, 201, { routine: created });
+        return;
+      }
+      // The person's "Let models search the web" switch, carried to this
+      // computer so a routine follows it (founder, 2026-10-01). Machine config.
+      if (req.method === 'POST' && parts[1] === 'web-search' && !parts[2]) {
+        if (!requireAdmin()) return;
+        const body = (await readJson(req)) as { allowed?: unknown };
+        if (typeof body?.allowed !== 'boolean') {
+          sendJson(res, 400, { error: 'allowed must be true or false.' });
+          return;
+        }
+        saveGlobalConfig({ routines: { webSearch: body.allowed } });
+        sendJson(res, 200, { webSearch: body.allowed });
         return;
       }
       if (parts[1]) {

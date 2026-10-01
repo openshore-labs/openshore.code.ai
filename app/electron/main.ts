@@ -1175,6 +1175,7 @@ guarded('osc:routineUpdate', (id: unknown, patch: unknown) =>
 );
 guarded('osc:routineDelete', (id: unknown) => host.routineDelete(str(id, 'id')));
 guarded('osc:routineRun', (id: unknown) => host.routineRun(str(id, 'id')));
+guarded('osc:routinesWebSearch', (allowed: unknown) => host.routinesWebSearch(allowed === true));
 guarded('osc:routineStop', (id: unknown) => host.routineStop(str(id, 'id')));
 guarded('osc:routineNote', (runId: unknown) => host.routineNote(str(runId, 'runId')));
 

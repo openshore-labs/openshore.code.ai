@@ -239,6 +239,14 @@ export const UiSchema = z.object({
   plain: z.boolean().default(false),
 });
 
+export const RoutinesSchema = z.object({
+  // Crew routines may search the web, and only search: the person's "Let models
+  // search the web" switch reaches this machine through the daemon (founder,
+  // 2026-10-01, overriding CTO 3's "never"). Machine config: a repo never turns
+  // it on. Off unless the person's switch says on.
+  webSearch: z.boolean().default(false),
+});
+
 export const VaultSchema = z.object({
   // Where the agent's on-device knowledge vault lives on disk. Plain markdown
   // files, so Obsidian or any editor opens the folder directly. Machine config:
@@ -453,6 +461,7 @@ export const ConfigSchema = z.object({
   catalog: CatalogSchema.prefault({}),
   license: LicenseSchema.prefault({}),
   ui: UiSchema.prefault({}),
+  routines: RoutinesSchema.prefault({}),
   vault: VaultSchema.prefault({}),
   ux: UxSchema.prefault({}),
   humanizer: HumanizerSchema.prefault({}),

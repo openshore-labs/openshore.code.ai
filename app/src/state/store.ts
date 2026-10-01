@@ -10146,6 +10146,13 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       try {
         const snap = await client.list();
+        // A routine follows the person's web search switch (founder,
+        // 2026-10-01): when this computer's copy differs, carry it over. A
+        // failure leaves routines offline, the safe side.
+        const wantSearch = webSearchOn(get().settings.webSearchConsent);
+        if (snap.webSearch !== undefined && snap.webSearch !== wantSearch) {
+          void client.setWebSearch(wantSearch).catch(() => undefined);
+        }
         set({
           routines: {
             routines: snap.routines,
@@ -14435,6 +14442,8 @@ export const useApp = create<AppState>((set, get, api) => {
 
     async setWebSearchAllowed(allowed) {
       await get().saveSettings({ webSearchConsent: allowed ? 'allowed' : 'declined' });
+      // Routines on this computer follow the switch (founder, 2026-10-01).
+      void get().refreshRoutines();
     },
 
     async trySampleProject() {

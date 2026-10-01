@@ -154,6 +154,10 @@ export interface BootstrapOptions {
    *  the config's own egress rules. A headless run (a routine) leaves it out
    *  whatever this says: headless means offline. */
   webSearch?: boolean;
+  /** A headless run (a Crew routine) keeps webSearch, and only that, when the
+   *  person's switch allowed it (machine config `routines.webSearch`, read by
+   *  the scheduler). Ignored on every other profile. */
+  routineSearch?: boolean;
   /** May this session's person let a check command run after changes (v1
    *  Phase 1)? The daemon passes false for a member's session on a shared
    *  hub; undefined (the desktop, the CLI) reads as yes. */
@@ -361,6 +365,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     // Headless means offline (CTO 3): nothing that reaches the network is
     // registered, and the profile denies a network step outright.
     offline: options.profile === 'headless',
+    offlineSearch: options.profile === 'headless' && options.routineSearch === true,
     ...(processes ? { processes: true, processesOffered: () => modeNow() !== 'plan' } : {}),
   };
   const tools = buildToolRegistry(registryOptions);
@@ -392,7 +397,11 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   }
 
   const profile = profileFor(options.profile);
-  const permissions = new PermissionEngine(config.permissions as PermissionConfig, profile);
+  const permissions = new PermissionEngine(
+    config.permissions as PermissionConfig,
+    profile,
+    options.profile === 'headless' && options.routineSearch === true && !egressLockdown,
+  );
   const guardrails = new Guardrails(
     options.caps
       ? {

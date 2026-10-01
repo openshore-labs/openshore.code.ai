@@ -1091,6 +1091,8 @@ export function defaultOpenSession(
     caps: routineCaps(routine),
     // The run reads its earlier notes in its owner's vault (CTO J8).
     vaultRoot: vaultRootForOwner(routine.ownerUserId),
+    // The person's web search switch, as this computer holds it (machine config).
+    routineSearch: routineSearchOn(routine),
   });
   if (orchestratorKind === 'cloud' && !profile.allowCloudAutoApprove) {
     try {
@@ -1117,6 +1119,17 @@ export function defaultOpenSession(
     where: orchestratorKind,
     ...(offlineTools ? { offline: offlineTools } : {}),
   };
+}
+
+/** `routines.webSearch` from the config the run's workspace loads; the key is
+ *  machine-only, so this is the machine's value. Off unless the person's
+ *  switch says on. */
+function routineSearchOn(routine: Routine): boolean {
+  try {
+    return loadConfig(routine.cwd).config.routines.webSearch === true;
+  } catch {
+    return false;
+  }
 }
 
 /** `vault.provenance` from the config the run's workspace loads; the key is

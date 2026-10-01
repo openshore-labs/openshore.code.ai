@@ -57,6 +57,9 @@ export const PROJECT_POLICY: Record<keyof OscConfig, KeyPolicy> = {
   catalog: 'machine',
   license: 'machine',
   ui: 'project',
+  // Whether a Crew routine may search the web is the person's own switch,
+  // never a repo's (founder, 2026-10-01).
+  routines: { webSearch: 'machine' },
   // The vault folder and which notes are hidden or stay on this computer are
   // the person's own (a repo never names their private folders); the context
   // pack may only be turned off from a project (Vault M4, CTO I3), and so may
