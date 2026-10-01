@@ -97,6 +97,7 @@ import {
   VAULT_TEAM_TRASH_DAYS,
   vaultFolderMoveRefused,
   vaultRefusedLine,
+  vaultGoneLine,
   vaultRestorePartial,
   type VaultCopyOpts,
   type VaultCopyProvider,
@@ -1377,6 +1378,16 @@ describe("the team's free space says what 0023 says (the review, finding 1)", ()
     );
     const whole = 'Not deleted. Only admins can delete team notes.';
     expect(vaultRefusedLine('delete', { line: whole, whole: true })).toBe(whole);
+  });
+
+  it('a tick, a mark or a link on a note gone elsewhere says so, verb first, never try again (E34)', () => {
+    for (const verb of ['tick', 'mark', 'link'] as const) {
+      const line = vaultGoneLine(verb, 'Plan');
+      expect(line).toMatch(/^Not (ticked|marked|linked)\. "Plan" is no longer in your vault\./);
+      expect(line).toContain('moved or deleted somewhere else');
+      expect(line).not.toMatch(/try again|newer version/i);
+      expect(line).not.toMatch(/[\u2013\u2014]/);
+    }
   });
 
   it('a folder that came back in part says how many, names what stayed, and why', () => {

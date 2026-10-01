@@ -510,6 +510,7 @@ import {
   VAULT_NO_COPY_NAME_REASON,
   vaultEarlierFolderHeld,
   vaultFolderOffer,
+  vaultGoneLine,
   vaultGoneToast,
   vaultRepointToast,
   vaultLeaveToast,
@@ -2336,11 +2337,12 @@ interface AppState {
    *  X16): the note read now, `edit` applied, and written back only while it
    *  is still that version. False when it did not land or `edit` declined. */
   // A refusal for good (a team out of free space) answers its line, verb
-  // first, since "try again" would not help.
+  // first, since "try again" would not help; a note moved or deleted
+  // somewhere else answers `gone` too, so the room drops its row (E34).
   vaultRewriteNote(
     path: string,
     edit: (text: string) => string | undefined,
-  ): Promise<boolean | { ok: false; line: string }>;
+  ): Promise<boolean | { ok: false; line: string; gone?: true }>;
   /** What images and PDFs read from on this storage (6.6): its attachments,
    *  Obsidian's attachment folder, and the byte reader. Undefined where the
    *  storage has none. */
@@ -7583,6 +7585,42 @@ export const useApp = create<AppState>((set, get, api) => {
     raiseVaultConflict(target, path, 'changed', theirs, base);
     await stashConflictText(target, path, draft, base);
     return 'checked';
+  }
+
+  // An operation on a note (a tick, Mark reviewed, linking a mention) found
+  // nothing there: its read came back empty, or its guarded write answered
+  // `missing` (round 7 E34). That can also be a note still downloading, or
+  // one this storage never held (an offline create), so nothing is called
+  // gone on that alone. The open note is looked at again in its save chain,
+  // which closes a clean one with the gone line, or asks about a dirty one
+  // with its words kept; any other note is asked about once (a stat, and for
+  // the team, whether this account is still a member, E26) and the list is
+  // taken again. 'said': the room has said it (the gone line, the missing
+  // choice, or the end of the membership). 'gone': nothing said yet, the
+  // caller says it. 'not': not known to be gone, so a retry may help.
+  async function noteGoneHere(t: VaultTarget, path: string): Promise<'gone' | 'said' | 'not'> {
+    const open = isActiveVault(t) ? get().vaultNote : undefined;
+    if (open?.path === path) {
+      const r = await inSaveChain(t, path, () => recheckOpenNote(t, path)).catch(
+        () => 'failed' as const,
+      );
+      if (r !== 'checked') return 'not';
+      if (!isActiveVault(t)) return 'said';
+      const choice = get().vaultConflict;
+      if (choice?.path === path && choice.kind === 'missing') return 'said';
+      return get().vaultNote?.path === path ? 'not' : 'said';
+    }
+    let meta: StoredFileMeta | undefined;
+    try {
+      meta = await t.provider.stat(t.resourceId, path);
+    } catch {
+      return 'not';
+    }
+    if (meta) return 'not';
+    const member = await teamMembership(t);
+    if (member !== 'member') return member === 'removed' ? 'said' : 'not';
+    await relistActive(t).catch(() => undefined);
+    return 'gone';
   }
 
   // The team vault's live refresh (Vault M2 2.7, CTO G6; lib/vaultPoll.ts):
@@ -12847,12 +12885,22 @@ export const useApp = create<AppState>((set, get, api) => {
         get().showToast(vaultTickUnsaved(title));
         return false;
       }
-      const text =
-        open?.path === path ? open.text : await readBodyOf(t, path).catch(() => undefined);
-      if (text === undefined) {
+      let text: string | undefined;
+      try {
+        text = open?.path === path ? open.text : await readBodyOf(t, path);
+      } catch {
+        // Not answering now: a retry may land it.
         get().showToast(VAULT_TICK_FAILED);
         return false;
       }
+      // Nothing there: gone (E34) says so; anything else may land on a retry.
+      const tickGone = async () => {
+        const gone = await noteGoneHere(t, path);
+        if (gone === 'gone') get().showToast(vaultGoneLine('tick', title));
+        else if (gone === 'not') get().showToast(VAULT_TICK_FAILED);
+        return false;
+      };
+      if (text === undefined) return tickGone();
       // The reader counts lines in the whole note, frontmatter included,
       // the same basis as the core's listTasks.
       const task = listTasks(text).find((x) => x.line === line);
@@ -12867,7 +12915,10 @@ export const useApp = create<AppState>((set, get, api) => {
         get().showToast(vaultRefusedLine('save', tickRefused));
         return false;
       }
-      if (r.reason === 'changed' || r.reason === 'missing') {
+      // Moved or deleted somewhere else: said so, never "the newer version
+      // is open" over a note that closed (E34).
+      if (r.reason === 'missing') return tickGone();
+      if (r.reason === 'changed') {
         // Changed somewhere else: the open note takes M1's path (a clean
         // one reloads the newer version, which the box then shows).
         if (isActiveVault(t) && get().vaultNote?.path === path) {
@@ -12888,12 +12939,24 @@ export const useApp = create<AppState>((set, get, api) => {
       const open = openNoteOf(t);
       // Never under the person: a note open here with a choice waiting.
       if (open?.path === path && open.choiceOpen) return false;
+      // Moved or deleted somewhere else: its line, and the room drops the
+      // row, never "try again" (E34).
+      const linkGone = async () => {
+        const gone = await noteGoneHere(t, path);
+        if (gone === 'not') return false;
+        return {
+          ok: false as const,
+          line: vaultGoneLine('link', noteTitle(path)),
+          gone: true as const,
+        };
+      };
       try {
         const file = await t.provider.read(t.resourceId, path);
-        if (!file) return false;
+        if (!file) return await linkGone();
         const next = edit(file.text);
         if (next === undefined || next === file.text) return false;
         const r = await opsDeps(t).putVaultNote(path, next, { ifMatch: versionOf(file) });
+        if (!r.ok && r.conflict === 'missing') return await linkGone();
         return r.ok;
       } catch (err) {
         // Refused for good (a team out of free space, 0023): say why.
@@ -13012,7 +13075,13 @@ export const useApp = create<AppState>((set, get, api) => {
       } catch {
         return 'failed';
       }
-      if (!file) return 'failed';
+      // Moved or deleted somewhere else: its line, never "try again" (E34).
+      const markGone = async () => {
+        const gone = await noteGoneHere(t, path);
+        if (gone === 'not') return 'failed' as const;
+        return { kind: 'refused' as const, line: vaultGoneLine('mark', noteTitle(path)) };
+      };
+      if (!file) return markGone();
       // The person's own write (CX Y12): one line, every other byte kept.
       let next: string;
       try {
@@ -13040,7 +13109,8 @@ export const useApp = create<AppState>((set, get, api) => {
         return 'failed';
       }
       if (r.ok) return done();
-      if (r.conflict === 'changed' || r.conflict === 'missing') {
+      if (r.conflict === 'missing') return markGone();
+      if (r.conflict === 'changed') {
         // The note moved on somewhere else: the newer version opens here.
         if (isActiveVault(t) && get().vaultNote?.path === path) {
           await inSaveChain(t, path, () => recheckOpenNote(t, path)).catch(() => undefined);

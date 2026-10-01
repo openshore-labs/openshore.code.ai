@@ -1381,9 +1381,15 @@ export function VaultScreen() {
     void vaultRewriteNote(row.path, (text) => linkMentionText(text, row.mention, target)).then(
       (ok) => {
         setLinking((now) => new Set([...now].filter((p) => p !== row.path)));
-        // Refused for good (a team out of free space): its own line.
+        // Refused for good (a team out of free space): its own line. A note
+        // moved or deleted somewhere else leaves the list too (E34).
         if (typeof ok === 'object') {
           showToast(ok.line);
+          if (ok.gone) {
+            setUnlinked((u) =>
+              u.status === 'done' ? { ...u, rows: u.rows.filter((r) => r.path !== row.path) } : u,
+            );
+          }
           return;
         }
         showToast(ok ? vaultLinkedIn(other) : vaultLinkMentionFailed(other));

@@ -40,9 +40,11 @@ import {
   VAULT_TEAM_LAPSED_NOT_SAVED,
   VAULT_TEAM_LAPSED_NOT_SAVED_LINE,
   VAULT_GONE_REASON,
+  VAULT_TICK_FAILED,
   vaultFolderMoveGone,
   vaultFolderMoveTaken,
   vaultFolderTrashChanged,
+  vaultGoneLine,
   vaultGoneToast,
   vaultNameInTrash,
   vaultRenameFailed,
@@ -8389,6 +8391,175 @@ describe('round 7, batch 4: the team vault says what is there, and what it did',
       await st().vaultSave('Plan.md', 'alpha beta gamma');
       expect(server.bytes('Plan.md')).toBe('alpha beta gamma');
       expect(st().vaultFiles.find((f) => f.path === 'Plan.md')?.size).toBe(16);
+    });
+  });
+});
+
+describe('round 7, batch 5: the team vault says what is gone, moved and refused, truly', () => {
+  let server: FakeOrgVaultServer;
+  const st = () => useApp.getState();
+  beforeEach(async () => {
+    reset();
+    await (await import('../src/lib/authSession.js')).clearSession();
+    await closeVaultIndex();
+    wiring.org!.resetOrgVault();
+    useApp.setState({
+      vaultTeamPlan: undefined,
+      vaultConflict: undefined,
+      vaultTrash: undefined,
+      vaultFolders: undefined,
+      vaultReturnFolder: undefined,
+    });
+    server = createFakeOrgVaultServer(ORG);
+    teamNet.server = server;
+    teamScope();
+  });
+  afterEach(async () => {
+    useApp.setState({ vaultTeamPlan: undefined, vaultConflict: undefined });
+    await closeVaultIndex();
+  });
+  async function settledIndex() {
+    for (let i = 0; i < 100; i++) {
+      await tick();
+      const state = vaultIndexStatus().state;
+      if (currentVaultIndex() && (state === 'ready' || state === 'partial')) return;
+    }
+    throw new Error('the index never settled');
+  }
+  // A teammate renames `from` to `to` (0024's org_vault_move), not seen in
+  // this device's own RPC log.
+  async function teammateMove(from: string, to: string) {
+    const was = server.caller;
+    server.caller = 'u-teammate';
+    await server.rpc('org_vault_move', 'tok', {
+      p_org: ORG,
+      p_from: from,
+      p_to: to,
+      p_if_match: server.notes.get(from)!.rev,
+    });
+    server.caller = was;
+    server.rpcs.pop();
+  }
+
+  describe('E34: a tick, a mark or a link on a note a teammate deleted says it is gone', () => {
+    async function openTeam(path: string, body: string) {
+      server.put(path, body, 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen(path);
+      for (let i = 0; i < 5; i++) await tick();
+    }
+
+    it('a tick on a note a teammate deleted closes it and says it is gone', async () => {
+      await openTeam('t.md', '- [ ] one');
+      server.drop('t.md');
+      useApp.setState({ toast: undefined });
+      expect(await st().vaultToggleTask('t.md', 0, true)).toBe(false);
+      expect(st().vaultNote).toBeUndefined();
+      expect(st().toast).toBe(vaultGoneToast('t'));
+      expect(st().vaultFiles.map((f) => f.path)).toEqual([]);
+    });
+
+    it('a tick after a save, on a note a teammate deleted, never says the newer version is open', async () => {
+      await openTeam('t.md', '- [ ] one');
+      await st().vaultSave('t.md', '- [ ] one\n- [ ] two');
+      server.drop('t.md');
+      await st().vaultToggleTask('t.md', 0, true);
+      expect(st().toast).not.toBe(vaultTickChanged('t'));
+      expect(st().toast).toBe(vaultGoneToast('t'));
+      expect(st().vaultNote).toBeUndefined();
+    });
+
+    it("a tick on a note a teammate renamed by case says it moved, never 'try again'", async () => {
+      await openTeam('t.md', '- [ ] one');
+      await teammateMove('t.md', 'T.md');
+      useApp.setState({ toast: undefined });
+      expect(await st().vaultToggleTask('t.md', 0, true)).toBe(false);
+      expect(st().toast).toBe(vaultGoneToast('t'));
+      expect(st().vaultNote).toBeUndefined();
+      expect(server.bytes('T.md')).toBe('- [ ] one');
+    });
+
+    it('a tick whose read fails for now still says try again, and keeps the note open', async () => {
+      await openTeam('t.md', '- [ ] one');
+      teamNet.fail = new TypeError('Failed to fetch');
+      useApp.setState({ toast: undefined });
+      expect(await st().vaultToggleTask('t.md', 0, true)).toBe(false);
+      teamNet.fail = undefined;
+      expect(st().toast).toBe(VAULT_TICK_FAILED);
+      expect(st().vaultNote?.path).toBe('t.md');
+    });
+
+    it('Mark reviewed on a deleted note says it is gone, never failed', async () => {
+      await openTeam('m.md', 'body');
+      server.drop('m.md');
+      const r = await st().vaultMarkReviewed('m.md', true);
+      expect(r).toEqual({ kind: 'refused', line: vaultGoneLine('mark', 'm') });
+      expect(st().vaultNote).toBeUndefined();
+      expect(st().toast).toBe(vaultGoneToast('m'));
+    });
+
+    it('Mark reviewed on a note deleted mid-write says it is gone, never changed', async () => {
+      await openTeam('m.md', 'body');
+      const rpc = server.rpc.bind(server);
+      server.rpc = async (fn, tok, args) => {
+        if (fn === 'org_vault_write') server.drop('m.md');
+        return rpc(fn, tok, args);
+      };
+      const r = await st().vaultMarkReviewed('m.md', true);
+      expect(st().vaultNote).toBeUndefined();
+      expect(r).toEqual({ kind: 'refused', line: vaultGoneLine('mark', 'm') });
+    });
+
+    it('Mark reviewed whose read fails for now still answers failed', async () => {
+      await openTeam('m.md', 'body');
+      teamNet.fail = new TypeError('Failed to fetch');
+      const r = await st().vaultMarkReviewed('m.md', true);
+      teamNet.fail = undefined;
+      expect(r).toBe('failed');
+      expect(st().vaultNote?.path).toBe('m.md');
+    });
+
+    it('Mark reviewed on a dirty note a teammate deleted asks, and keeps the words', async () => {
+      await openTeam('m.md', 'body');
+      server.drop('m.md');
+      st().vaultNoteDraft('m.md', 'body, and my words');
+      const r = await st().vaultMarkReviewed('m.md', true);
+      expect(r).toEqual({ kind: 'refused', line: vaultGoneLine('mark', 'm') });
+      expect(st().vaultNote?.path).toBe('m.md');
+      expect(st().vaultConflict).toMatchObject({ kind: 'missing', path: 'm.md' });
+      expect(liveHas(server, 'body, and my words')).toBe(true);
+    });
+
+    it('a note made offline, not yet on the team, is never called gone', async () => {
+      teamNet.fail = new TypeError('Failed to fetch');
+      await st().vaultCreate('fresh');
+      teamNet.fail = undefined;
+      expect(st().vaultNote?.path).toBe('fresh.md');
+      useApp.setState({ toast: undefined });
+      expect(await st().vaultMarkReviewed('fresh.md', true)).toBe('failed');
+      expect(st().vaultNote?.path).toBe('fresh.md');
+      expect(st().toast).toBeUndefined();
+    });
+
+    it('linking a mention in a note a teammate deleted says it is gone, never try again', async () => {
+      server.put('a.md', 'Plan is here', 'u-me');
+      await st().vaultRefresh();
+      server.drop('a.md');
+      const r = await st().vaultRewriteNote('a.md', (t) => t.replace('Plan', '[[Plan]]'));
+      expect(r).toEqual({ ok: false, line: vaultGoneLine('link', 'a'), gone: true });
+      expect(st().vaultFiles.map((f) => f.path)).toEqual([]);
+    });
+
+    it('linking a mention in a note deleted mid-write says it is gone', async () => {
+      server.put('a.md', 'Plan is here', 'u-me');
+      await st().vaultRefresh();
+      const rpc = server.rpc.bind(server);
+      server.rpc = async (fn, tok, args) => {
+        if (fn === 'org_vault_write') server.drop('a.md');
+        return rpc(fn, tok, args);
+      };
+      const r = await st().vaultRewriteNote('a.md', (t) => t.replace('Plan', '[[Plan]]'));
+      expect(r).toEqual({ ok: false, line: vaultGoneLine('link', 'a'), gone: true });
     });
   });
 });

@@ -2648,8 +2648,16 @@ export const VAULT_REFUSED_VERB = {
   delete: 'Not deleted.',
   link: 'Not linked.',
   mark: 'Not marked.',
+  tick: 'Not ticked.',
   update: 'Not updated.',
 } as const;
+
+/** A tick, a mark or a link whose note a teammate (or another device) moved
+ *  or deleted: what did not happen first, then why (round 7 E34). Never "try
+ *  again": the note is not there to try on. */
+export function vaultGoneLine(verb: keyof typeof VAULT_REFUSED_VERB, title: string): string {
+  return `${VAULT_REFUSED_VERB[verb]} ${vaultGoneToast(title)}`;
+}
 
 /** A storage's reason ("a note is limited to 1 MB") as a sentence. */
 function reasonSentence(line: string): string {
