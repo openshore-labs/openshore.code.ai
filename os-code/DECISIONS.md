@@ -4092,3 +4092,28 @@ execution contract. Newest at the bottom.
   chat opens the same list. The desktop's list is the repository and the API
   key (Harbor and pairing are the phone's). Not built from the Studio memo: the
   buttons fading out before the line inks, and a tap starting the water early.
+- **The pairing room is named Pairing (CX-led Creative Studio, 2026-10-01;
+  `docs/pairing-review.md`):** the founder floated "Hub Pairing"; CX chose
+  "Pairing", since "hub" is retired from customer copy by the glossary test and
+  one plain word reads right from either device. The glossary retires
+  "Desktop + phone" and "Hub pairing". The review's eight bugs are fixed (a
+  revoked phone is told so, a spent code is saved before it is checked, Turn
+  off holds across launches, revoking cuts open streams, Forget revokes the
+  phone on the computer through `DELETE /pair/self`, iPad and time on each row,
+  a pairing QR only for the person's own network, a launch-at-login switch),
+  and the QR is an `oscode://pair` link the iPhone Camera opens, which always
+  asks before it pairs.
+- **The sidebar is one group (founder, 2026-10-01):** Crew, Cloud Connections
+  and Pairing sit straight under the Vault, with no separate section; the
+  later tiers' rooms follow them. An order saved under the old two-group
+  default is set aside once (`NAV_ORDER_VERSION` 2); the person can still drag
+  a room below the recent chats.
+- **Smarter chat names (founder, 2026-10-01):** a chat is named by its first
+  message's subject (`app/src/lib/chatTitle.ts`): the polite lead-in and a
+  trailing please go, the first sentence stays, the cut lands on a word, the
+  first letter is raised; a bare link is "Link from {site}", code is "Code
+  snippet", and "help me get set up" is "Getting set up". The setup walk's chat
+  is "First-time setup" (the founder's "First time set up and onboarding", in
+  sentence case and short enough for the sidebar). A launch tidies chats still
+  carrying the old 48-character cut, and never a name the person chose or an
+  engine's own title.

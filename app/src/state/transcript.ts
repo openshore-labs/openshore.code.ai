@@ -2,6 +2,7 @@
 // stream into the ThreadState the chat renders. Local model, desktop stack,
 // cloud, replayed journal: same events, same reducer, same UI. Kept free of
 // React so it is exhaustively testable.
+import { chatTitle } from '../lib/chatTitle.js';
 import type { DriverEvent } from 'os-code/protocol';
 import type { ChangedFile, ConversationSource, ThreadItem, ThreadState } from './types.js';
 import { providerInfo } from '../lib/providers.js';
@@ -614,9 +615,17 @@ export function reduceEvents(
   return events.reduce((acc, { event, seq: s }) => reduceEvent(acc, event, s), state);
 }
 
-/** First user message, trimmed, for auto-titling a conversation. */
+/** A chat's name from its first user message (lib/chatTitle.ts), for
+ *  auto-titling a conversation. */
 export function titleFrom(state: ThreadState): string | undefined {
   if (state.title) return state.title;
+  const user = state.items.find((i) => i.kind === 'user');
+  return user && user.kind === 'user' ? chatTitle(user.text) : undefined;
+}
+
+/** The name the old rule gave (the first 48 characters, cut anywhere), so a
+ *  launch can tell an untouched auto-name from one the person chose. */
+export function legacyTitleFrom(state: ThreadState): string | undefined {
   const user = state.items.find((i) => i.kind === 'user');
   return user && user.kind === 'user' ? user.text.slice(0, 48) : undefined;
 }

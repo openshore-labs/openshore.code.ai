@@ -299,7 +299,7 @@ export function StackScreen() {
                 <button className="linklike" onClick={() => setView('pair')}>
                   Connect your computer
                 </button>{' '}
-                (Menu, then Desktop + phone) to see and use its stack.
+                (Menu, then Pairing) to see and use its stack.
               </>
             )}
           </p>

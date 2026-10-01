@@ -1,6 +1,6 @@
 // "Part of OpenShore Plus", said inside a paid room a free person can still
 // open because it holds something to stop or let go of (roomPass in
-// state/payOps.ts; CTO, 2026-09-30): Crew with routines, Desktop + phone
+// state/payOps.ts; CTO, 2026-09-30): Crew with routines, Pairing
 // with pairings. The free actions work below it; the paid ones open the
 // sheet. Shown only while the paywall would open, so never with the pay
 // gates off.

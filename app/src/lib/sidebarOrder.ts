@@ -12,7 +12,13 @@ export type MovableRoom = Exclude<NavRoom, 'settings'>;
 export interface NavOrder {
   top: MovableRoom[];
   bottom: MovableRoom[];
+  /** The default the order was saved against. An order saved under an older
+   *  default is set aside once (NAV_ORDER_VERSION). */
+  v?: number;
 }
+
+/** 2: every room in one group under the Vault (founder, 2026-10-01). */
+export const NAV_ORDER_VERSION = 2;
 
 /** Where the recent chats sit in the flat list a drag works on. */
 export const DIVIDER = '|' as const;

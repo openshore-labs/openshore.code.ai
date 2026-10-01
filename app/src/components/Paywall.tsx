@@ -31,7 +31,7 @@ export const TERMS_URL = 'https://openshore.ai/terms/';
 export const PRIVACY_URL = 'https://openshore.ai/privacy/';
 
 export const PAYWALL_HEADLINE = 'Let OpenShore build it.';
-/** Desktop + phone's own headline: the person asked for exactly that. */
+/** Pairing's own headline: the person asked for exactly that. */
 export const PAYWALL_PAIRING_HEADLINE = 'Reach your computer from your phone.';
 /** A Plus room (Terminal, Repositories, Vault) or the Upgrade banner. */
 export const PAYWALL_PLUS_HEADLINE = 'All of OpenShore, with Plus.';
@@ -41,7 +41,7 @@ export const PAYWALL_BODY =
 
 // CX's second bullet names where a routine's note really lands (the Vault
 // copy rule, lib/vaultCopy.ts): the vault folder on the computer. The rooms
-// and Desktop + phone follow (founder, 2026-09-30), honest about the
+// and Pairing follow (founder, 2026-09-30), honest about the
 // computer being on.
 export const BULLETS = [
   'Build and fix in your projects',
@@ -148,7 +148,7 @@ export function Paywall() {
   }, [reason, ios]);
 
   // One headline for building (the sheet never sells the Marketplace),
-  // Desktop + phone's own, and the whole of Plus for a room or the banner;
+  // Pairing's own, and the whole of Plus for a room or the banner;
   // a lapsed subscriber hears that their year ended.
   const headline = lapsed
     ? PAYWALL_LAPSED_HEADLINE

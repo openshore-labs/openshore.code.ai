@@ -206,7 +206,7 @@ never by a provider's config label.
 
 v1 is **Personal**: one person, their desktop and their own phone. Chats,
 Projects, Terminal, Repositories, Stack, Vault, Crew (routines), Cloud
-Connections, Desktop + phone, Settings, and buying Personal. v2 is Agentic and
+Connections, Pairing, Settings, and buying Personal. v2 is Agentic and
 Harness Currents, Stack Health, and Launch with Codemagic; v3 the Marketplace;
 v4 Enterprise (Admin, teams, shared projects, the team vault, project
 permissions, shared-hub members). "Build personal for now and get that working
@@ -258,8 +258,7 @@ The paid gate (sold as OpenShore Plus, never "Personal", in customer copy):
 the advisors (CTO, CFO, CX, 2026-09-30) put coding, building and agentic work
 behind it on actions; the founder widened it the same day to every room but
 five. Free: Chats, Projects, the Stack, Cloud Connections and Settings (and
-what they reach). Plus: Terminal, Repositories, Vault, My Crew, Desktop +
-phone, and the later tiers' rooms. A Plus room opens the paywall at
+what they reach). Plus: Terminal, Repositories, Vault, My Crew, Pairing, and the later tiers' rooms. A Plus room opens the paywall at
 `setView` (after the sign-in), and a purchase carries on to it; the actions
 keep their doors (a coding session anywhere, a routine made, edited or run,
 Scan and Connect, a chat or shell on the computer from another device). The
@@ -267,8 +266,7 @@ free sidebar puts the free rooms up top and the Plus rooms greyed under a
 gold "Upgrade to OpenShore Plus" banner; Plus gets the familiar layout
 (`components/Sidebar.tsx`, `app/test/sidebarPlus.test.tsx`). Nothing a
 person made is locked away, and stopping, revoking, forgetting and exporting
-are always free (CTO, 2026-09-30): Crew opens while routines exist, Desktop +
-phone while there is a pairing to let go of (`roomPass`), and Settings holds
+are always free (CTO, 2026-09-30): Crew opens while routines exist, Pairing while there is a pairing to let go of (`roomPass`), and Settings holds
 the iPhone's vault export and each git host's Remove while those rooms are
 shut (`app/test/plusRoomPass.test.tsx`). The switch for the review build is
 the Codemagic `store_release` input, never the `Harbor-os-code` group

@@ -1,5 +1,6 @@
-// The sidebar is the app's main navigation (founder, 2026-09-02): the day-one
-// rooms at the top, the second-session rooms at the bottom. New chat and the
+// The sidebar is the app's main navigation (founder, 2026-09-02): every room
+// in one group at the top (founder, 2026-10-01), the day-one rooms first and
+// Crew, Cloud Connections and Hub pairing under the Vault. New chat and the
 // project switcher live in the Chats and Projects rooms. Persistent on
 // desktop, a slide-over drawer on the phone.
 //
@@ -25,6 +26,7 @@ import { BrandMark } from './BrandMark.js';
 import { ROOM_LABELS, type NavRoom } from '../lib/navRooms.js';
 import { Icon } from './Icon.js';
 import {
+  NAV_ORDER_VERSION,
   recentFit,
   resolveNavOrder,
   type MovableRoom,
@@ -65,17 +67,21 @@ const PRIMARY_NAV: NavEntry[] = visibleRooms(
 );
 
 const EXPLORE_NAV: NavEntry[] = visibleRooms(
-  (['crew', 'marketplace', 'stackhealth', 'launch', 'connections', 'pair'] as const).map(nav),
+  (['crew', 'connections', 'pair', 'marketplace', 'stackhealth', 'launch'] as const).map(nav),
 );
 
 // Settings is pinned to the bottom, under every room and above the sign-in
 // card, in both layouts (founder, 2026-10-01).
 const SETTINGS: NavEntry = nav('settings');
 
-// The order before the person has moved anything.
+// The order before the person has moved anything: every room in one group
+// above the recent chats, Crew, Cloud Connections and Hub pairing straight
+// under the Vault (founder, 2026-10-01, "no need for a separate section").
+// The group below the recent chats stays, empty, for a room the person drags
+// there.
 const DEFAULT_ORDER: NavOrder = {
-  top: PRIMARY_NAV.map((e) => e.view as MovableRoom),
-  bottom: EXPLORE_NAV.map((e) => e.view as MovableRoom),
+  top: [...PRIMARY_NAV, ...EXPLORE_NAV].map((e) => e.view as MovableRoom),
+  bottom: [],
 };
 
 const entryOf = (view: MovableRoom): NavEntry => nav(view);
@@ -245,8 +251,14 @@ export function Sidebar({
   // only the build with them on ever shows the free layout.
   const plus = useApp((s) => s.personalUnlockedNow());
 
-  const saved = resolveNavOrder(settings.navOrder, DEFAULT_ORDER);
-  const reorder = useNavReorder(saved, (next) => void saveSettings({ navOrder: next }));
+  // An order saved under the old two-group default is set aside once, so
+  // every room comes up under the Vault; the person's moves from here on keep.
+  const savedOrder = settings.navOrder?.v === NAV_ORDER_VERSION ? settings.navOrder : undefined;
+  const saved = resolveNavOrder(savedOrder, DEFAULT_ORDER);
+  const reorder = useNavReorder(
+    saved,
+    (next) => void saveSettings({ navOrder: { ...next, v: NAV_ORDER_VERSION } }),
+  );
   const order = reorder.order;
 
   // The drawer's rows arrive one after another, once. After that (or the

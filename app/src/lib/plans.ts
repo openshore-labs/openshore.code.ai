@@ -23,7 +23,7 @@ export interface PlanTier {
 
 // The free default account: Chats, Projects, the Stack, Cloud Connections
 // and Settings. Every other room (the coding agent, Terminal, Repositories,
-// Vault, My Crew, Desktop + phone) is the paid Personal unlock below, sold as
+// Vault, My Crew, Pairing) is the paid Personal unlock below, sold as
 // OpenShore Plus (lib/payGate.ts).
 export const PERSONAL_TIER: PlanTier = {
   id: 'personal',

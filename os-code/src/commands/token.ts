@@ -82,7 +82,7 @@ export function tokenRotateCommand(): void {
   okLine('Replaced the shared token at ~/.os-code/daemon.token.');
   out(
     t.muted(
-      '  Tools on this computer read the new one on their own. A device that still used the old one pairs again from Desktop + phone.',
+      '  Tools on this computer read the new one on their own. A device that still used the old one pairs again from Pairing.',
     ),
   );
 }

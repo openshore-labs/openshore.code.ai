@@ -16,6 +16,7 @@ import {
   unflatten,
   type NavOrder,
 } from '../src/lib/sidebarOrder.js';
+import { ROOM_LABELS } from '../src/lib/navRooms.js';
 import { mountDom, type TestDom } from './support/dom.js';
 
 vi.mock('../src/lib/platform.js', () => ({
@@ -164,7 +165,7 @@ describe('the sidebar', () => {
     useApp.setState((s) => ({
       settings: {
         ...s.settings,
-        navOrder: { top: ['vault', 'chats', 'crew'], bottom: ['projects'] },
+        navOrder: { top: ['vault', 'chats', 'crew'], bottom: ['projects'], v: 2 },
       } as never,
     }));
     const t = await texts();
@@ -214,8 +215,25 @@ describe('the sidebar', () => {
       vault.dispatchEvent(ev);
     });
     const saved = useApp.getState().settings.navOrder;
-    expect(saved?.top).not.toContain('vault');
-    expect(saved?.bottom[0]).toBe('vault');
+    // One step down, past Crew, the room that now sits under the Vault.
+    expect(saved?.top.indexOf('vault')).toBe(saved!.top.indexOf('crew') + 1);
+    expect(saved?.v).toBe(2);
+  });
+
+  // Founder, 2026-10-01: no separate section. Crew, Cloud Connections and the
+  // pairing room sit straight under the Vault, and an order saved under the
+  // old two-group default is set aside once so they come up there.
+  it('puts every room in one group under the Vault, setting an old order aside once', async () => {
+    useApp.setState((s) => ({
+      settings: {
+        ...s.settings,
+        navOrder: { top: ['chats', 'vault'], bottom: ['crew', 'connections', 'pair'] },
+      } as never,
+    }));
+    const t = await texts();
+    const vault = t.indexOf('Vault');
+    expect(t.slice(vault + 1, vault + 4)).toEqual(['Crew', 'Cloud Connections', ROOM_LABELS.pair]);
+    expect(t.indexOf(ROOM_LABELS.pair)).toBeLessThan(t.indexOf('Settings'));
   });
 });
 

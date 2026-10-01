@@ -14282,3 +14282,10 @@ button.settings-row:active {
 .setup-menu > .setup-menu-item {
   animation-delay: calc(var(--i, 0) * var(--stagger));
 }
+
+/* Pairing (CX 2026-10-01): a phone that pairs while the desktop's room is
+   open is named at the top, arriving the way the phone's next step does. */
+.pair-done {
+  margin: 0 0 12px;
+  animation: msg-in var(--dur-4) var(--ease-arrive) backwards;
+}

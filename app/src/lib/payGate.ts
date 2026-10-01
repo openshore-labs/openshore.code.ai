@@ -1,10 +1,10 @@
 // The Personal paid gate, sold as OpenShore Plus (os-code/DECISIONS.md).
 // The advisors (CTO, CFO, CX, 2026-09-30) put only coding, building and
 // agentic work behind it, on actions. The founder widened it the same day,
-// twice: first Desktop + phone, then every room but five. Free is Chats,
+// twice: first Pairing, then every room but five. Free is Chats,
 // Projects, the Stack, Cloud Connections and Settings (and what those reach:
 // a chat, a project, its notes, the setup page). Everything else is Plus:
-// Terminal, Repositories, Vault, My Crew, Desktop + phone, and the later
+// Terminal, Repositories, Vault, My Crew, Pairing, and the later
 // tiers' rooms. A paid room opens the paywall instead of the room
 // (store.ts setView), and the free build's sidebar lists those rooms greyed
 // under an Upgrade banner (components/Sidebar.tsx). The actions keep their
@@ -28,7 +28,7 @@ export const PAY_GATE: Record<AccountFeature, PayLevel> = {
   // Plus: the coding agent (a 'desktop' session, the sample project, a
   // command inside a coding chat), My Crew (Crew's agentic work too: create,
   // edit, Run now; deleting, pausing and stopping stay free, in payOps),
-  // Desktop + phone (Connect, the desktop's pairing code, and the computer
+  // Pairing (Connect, the desktop's pairing code, and the computer
   // reached from another device; Revoke and Forget stay free), Terminal,
   // Repositories, and Vault.
   coding: 'personal',

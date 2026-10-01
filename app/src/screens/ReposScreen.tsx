@@ -194,7 +194,7 @@ export function ReposScreen() {
             You can add an access token now. Repositories open once this phone is connected to your
             computer, where the code lives.{' '}
             <button className="linklike" onClick={() => setView('pair')}>
-              Open Desktop + phone
+              Open Pairing
             </button>
             {' or '}
             <button
@@ -616,7 +616,7 @@ export function ReposScreen() {
             <p className="hint" style={{ marginTop: 8, marginBottom: 0 }}>
               The same screen lives under Menu, then{' '}
               <button className="linklike" onClick={() => setView('pair')}>
-                Desktop + phone
+                Pairing
               </button>
               .
             </p>

@@ -46,6 +46,6 @@ describe('navRooms', () => {
 
   it('names the pair room one way', () => {
     const { explore } = navRooms({ desktop: false, hubPaired: false });
-    expect(explore.find((r) => r.view === 'pair')?.label).toBe('Desktop + phone');
+    expect(explore.find((r) => r.view === 'pair')?.label).toBe('Pairing');
   });
 });

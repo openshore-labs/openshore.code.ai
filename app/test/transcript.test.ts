@@ -216,7 +216,7 @@ describe('transcript reducer', () => {
     expect(state.dollars).toBeCloseTo(0.03);
     expect(state.contextPercent).toBe(15);
     expect(state.citations).toHaveLength(2);
-    expect(titleFrom(state)).toBe('research the topic thoroughly please');
+    expect(titleFrom(state)).toBe('Research the topic thoroughly');
   });
 
   it('keeps the highest sequence number for SSE resume', () => {

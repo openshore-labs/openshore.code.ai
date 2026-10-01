@@ -99,9 +99,9 @@ export function TerminalRoomScreen() {
               </li>
             </ol>
             <p className="hint" style={{ marginBottom: 0 }}>
-              Desktop + phone has the download links and the pairing steps.{' '}
+              Pairing has the download links and the pairing steps.{' '}
               <button className="linklike" onClick={() => setView('pair')}>
-                Open Desktop + phone
+                Open Pairing
               </button>
               {' or '}
               <button
@@ -228,11 +228,11 @@ export function TerminalRoomScreen() {
           <div className="card tc-section" style={{ '--i': 0 } as CSSProperties}>
             <h3 style={{ marginTop: 0 }}>Connect your computer</h3>
             <p className="hint" style={{ marginBottom: 10 }}>
-              This device is not paired with a computer yet. Set it up under Desktop + phone, then
-              the terminal lives here.
+              This device is not paired with a computer yet. Set it up under Pairing, then the
+              terminal lives here.
             </p>
             <button className="btn press-fb" onClick={() => setView('pair')}>
-              Set up Desktop + phone
+              Set up pairing
             </button>
           </div>
         )}

@@ -4,7 +4,7 @@
 //
 //   v1 Personal: one person, their desktop and their phone. Chats, Projects,
 //      Terminal, Repositories, Stack, Vault, Crew, Cloud Connections,
-//      Desktop + phone, Settings.
+//      Pairing, Settings.
 //   v2: Agentic and Harness Currents, Stack Health, Launch with Codemagic.
 //   v3: the Marketplace.
 //   v4 Enterprise: Admin, teams (shared projects, the team vault, project

@@ -1,4 +1,4 @@
-// The Desktop + phone screen's two cleanup changes (CX cleanup 5): the status
+// The Pairing screen's two cleanup changes (CX cleanup 5): the status
 // line says what a failed bind means, without blaming Tailscale when Tailscale
 // is up and without the raw error; and "Replace the shared key" asks once,
 // replaces the key through main, and says how it went.
@@ -52,9 +52,19 @@ describe('the phone connection status line', () => {
     expect(hubStatusLine(undefined)).toMatch(/^Tailscale is not up on this computer\./);
   });
 
+  // CX 2026-10-01: the Linux command only on Linux.
+  it('shows sudo tailscale up on Linux only', () => {
+    const off = { ...base, running: false, tailscaleUp: false };
+    expect(hubStatusLine(off)).toBe(
+      'Tailscale is not up on this computer. Open the Tailscale app and sign in, then turn this on.',
+    );
+    expect(hubStatusLine(off, { linux: true })).toMatch(/or run sudo tailscale up/);
+    expect(hubStatusLine({ ...base, mode: 'loopback' })).not.toMatch(/sudo/);
+  });
+
   it('the screen reads the line from hubStatusLine and never toasts the raw start error', () => {
     const screen = readFileSync(join(process.cwd(), 'src', 'screens', 'PairScreen.tsx'), 'utf8');
-    expect(screen).toContain('{hubStatusLine(info)}');
+    expect(screen).toContain('{hubStatusLine(info, { linux: onLinux() })}');
     expect(screen).not.toMatch(/showToast\(result\.error\)/);
     // The replace link sits outside the paired-devices card, so it shows with
     // no device paired too.

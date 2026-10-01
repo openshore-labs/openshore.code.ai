@@ -10,7 +10,7 @@ fully."
 
 | Tier | Name | What it carries |
 | --- | --- | --- |
-| v1 | Personal | One person, their desktop and their own phone. Chats, Projects, Terminal, Repositories, Stack, Vault, Crew (routines), Cloud Connections, Desktop + phone, Settings, and buying Personal. |
+| v1 | Personal | One person, their desktop and their own phone. Chats, Projects, Terminal, Repositories, Stack, Vault, Crew (routines), Cloud Connections, Pairing, Settings, and buying Personal. |
 | v2 | Currents | Agentic Currents and Harness Currents, Stack Health, Launch with Codemagic. |
 | v3 | Marketplace | The Marketplace, its catalog browsing and reviews. |
 | v4 | Enterprise | Admin configuration, teams (shared projects, the team vault, project permissions), seats, and shared-hub members. |

@@ -17,16 +17,16 @@ import {
 } from '../electron/lifecycle.js';
 
 describe('tray menu', () => {
-  it('offers Open, Pause hub, and Quit, in that order', () => {
+  it('offers Open, Pause phone access, and Quit, in that order', () => {
     const items = trayMenuTemplate({ hubRunning: true });
     expect(items.map((i) => i.id)).toEqual(['open', 'hub', 'quit']);
     expect(items[0]!.label).toBe('Open OpenShore');
-    expect(items[1]!.label).toBe('Pause hub');
+    expect(items[1]!.label).toBe('Pause phone access');
     expect(items[2]!.label).toBe('Quit OpenShore');
   });
 
-  it('reads Resume hub while the hub is paused', () => {
-    expect(trayMenuTemplate({ hubRunning: false })[1]!.label).toBe('Resume hub');
+  it('reads Resume phone access while it is paused', () => {
+    expect(trayMenuTemplate({ hubRunning: false })[1]!.label).toBe('Resume phone access');
   });
 });
 
@@ -82,5 +82,28 @@ describe('launch at login', () => {
   it('recognizes the hidden launch flag the entry passes', () => {
     expect(isHiddenLaunch(['/usr/bin/openshore', '--hidden'])).toBe(true);
     expect(isHiddenLaunch(['/usr/bin/openshore'])).toBe(false);
+  });
+});
+
+describe('Turn off holds across launches (pairing review, CX 2026-10-01)', () => {
+  it('remembers a pause and forgets it on resume', async () => {
+    const { mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { readHubPaused, writeHubPaused } = await import('../electron/lifecycle.js');
+    const dir = mkdtempSync(join(tmpdir(), 'osc-paused-'));
+    expect(readHubPaused(dir)).toBe(false);
+    writeHubPaused(dir, true);
+    expect(readHubPaused(dir)).toBe(true);
+    writeHubPaused(dir, false);
+    expect(readHubPaused(dir)).toBe(false);
+  });
+
+  it('skips the start at launch while paused', async () => {
+    const { readFileSync } = await import('node:fs');
+    const main = readFileSync('electron/main.ts', 'utf8');
+    expect(main).toMatch(
+      /hubPaused = readHubPaused\(app\.getPath\('userData'\)\);\s*if \(!hubPaused\)/,
+    );
   });
 });

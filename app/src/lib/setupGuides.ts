@@ -56,7 +56,7 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
     steps: [
       'On your computer, open OpenShore. If nothing is set up yet, the chat opens on a card that says Set up DeepBlue: tap it and you are done. Otherwise open Settings and find the Harbor section.',
       'On the DeepBlue row, tap Install. It picks the size that fits your computer and pulls it through Ollama, straight from the Ollama library. Keep using the app while it lands.',
-      'When it finishes, the row reads Installed and DeepBlue is your Reasoning model on that computer. To reach it from this phone, pair the two under Desktop + phone; it then appears as Your computer.',
+      'When it finishes, the row reads Installed and DeepBlue is your Reasoning model on that computer. To reach it from this phone, pair the two under Pairing; it then appears as Your computer.',
     ],
     done: 'DeepBlue plans and edits your repositories on your computer. For the hardest steps, a cloud key on your own account is one tap away, and it always asks before it spends.',
   },
@@ -78,8 +78,8 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
     goal: 'Run my model on my own computer and reach it from this phone.',
     steps: [
       'On both this phone and your computer, install Tailscale and sign in to the same account. It is free for personal use. Ask me if you want the Tailscale steps.',
-      'On your computer, open OpenShore, then Desktop + phone, and tap Turn on. It shows a QR code.',
-      'On this phone, open Desktop + phone and tap Scan the QR on your computer. Point the camera at the QR. It fills in the address and pairing code and connects.',
+      'On your computer, open OpenShore, then Pairing. The QR is there (if it says Off, tap Turn on).',
+      'On this phone, open Pairing and tap Scan the QR on your computer. Point the camera at the QR and it connects by itself. Or point the iPhone Camera at it and tap the link.',
       'If the camera is not available, type the address (it looks like http://100.x.y.z:4816) and the pairing code shown under the QR, then tap Connect.',
     ],
     done: 'The screen says connected. In the model menu, Your computer is now a choice, for chat and for coding on your repositories.',
@@ -133,7 +133,7 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
       'Install the Tailscale app on this phone from the App Store and sign in with the same account.',
       'Turn Tailscale on in the phone app. Both devices now share a private network, no port forwarding, no public exposure.',
     ],
-    done: 'The Tailscale app on the phone lists your computer. Now pair them under Desktop + phone.',
+    done: 'The Tailscale app on the phone lists your computer. Now pair them under Pairing.',
   },
   'set-up-crew': {
     id: 'set-up-crew',
@@ -141,7 +141,7 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
     goal: 'Have a crew member work on a schedule on my own computer, so results are waiting when I come back.',
     steps: [
       'Routines run on your main computer, on your own models, while it is on. You set one up while connected to that computer, then watch and steer it from anywhere.',
-      'If you have not paired yet, open Desktop + phone and pair this device. Tailscale must be on for both, the same connection the big models use.',
+      'If you have not paired yet, open Pairing and pair this device. Tailscale must be on for both, the same connection the big models use.',
       'Make sure the work lives on your computer: open Repositories and clone the repository you want the crew to work in, if it is not there already.',
       'Open Crew, then Crew command, and set up the Morning review routine. It reads what changed overnight and leaves a checklist, read-only, so it never needs an approval.',
       'Away from home you can always watch your crew and read its results here. To change or run a routine, reconnect to your computer over Tailscale first.',

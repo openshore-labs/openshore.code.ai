@@ -98,10 +98,10 @@ describe('the free sidebar', () => {
       'Repositories',
       'Vault',
       'Crew',
+      'Pairing',
       'Marketplace',
       'Stack Health',
       'Launch with Codemagic',
-      'Desktop + phone',
     ]);
     expect(texts.at(-1)).toBe('Settings');
     expect(r.slice(0, banner + 1).every((x) => !x.plus)).toBe(true);
@@ -146,11 +146,11 @@ describe('the Plus sidebar', () => {
       'Stack',
       'Vault',
       'Crew',
+      'Cloud Connections',
+      'Pairing',
       'Marketplace',
       'Stack Health',
       'Launch with Codemagic',
-      'Cloud Connections',
-      'Desktop + phone',
       'Settings',
     ]);
     expect(r.some((x) => x.plus)).toBe(false);

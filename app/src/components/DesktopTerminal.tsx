@@ -152,9 +152,7 @@ export function DesktopTerminal({ driver }: { driver: TerminalHost }) {
           // A revoked device or a refused credential will never come back on
           // its own: say so and stop, instead of retrying forever.
           if (/\b(401|403)\b/.test(why)) {
-            setMessage(
-              'Your computer no longer accepts this device. Pair it again from Desktop + phone.',
-            );
+            setMessage('Your computer no longer accepts this device. Pair it again from Pairing.');
             setStatus('unavailable');
             break;
           }

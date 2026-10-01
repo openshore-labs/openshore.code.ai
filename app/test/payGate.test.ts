@@ -358,7 +358,7 @@ describe("the paywall's App Store branch", () => {
 // Desktop + phone is part of Plus (founder, 2026-09-30): each screen's paid
 // moment passes the one door, and the free ones (Revoke, Forget, Turn off,
 // the desktop's own shell) never do.
-describe('Desktop + phone, at its screens', () => {
+describe('Pairing, at its screens', () => {
   const pair = read('src', 'screens', 'PairScreen.tsx');
   const terminal = read('src', 'screens', 'TerminalRoomScreen.tsx');
   const paywall = read('src', 'components', 'Paywall.tsx');
@@ -382,7 +382,7 @@ describe('Desktop + phone, at its screens', () => {
     expect(pair).toContain('{pairOpen && info?.running && qr ? (');
     const start = pair.indexOf('revokeDeviceCredential');
     const revoke = pair.slice(start, pair.indexOf('Revoke\n', start));
-    expect(revoke).toContain('Device revoked');
+    expect(revoke).toContain('revoked. It can no longer connect');
     expect(revoke).not.toMatch(/requirePersonal|pairOpen/);
     // The note lives in its own component now, shared with Crew.
     expect(pair).toContain("import { PlusNote } from '../components/PlusNote.js';");

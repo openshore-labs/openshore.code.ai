@@ -164,13 +164,13 @@ describe('the store, with the gates on and no Plus', () => {
 });
 
 describe('the rooms, as a person taps them', () => {
-  it('Desktop + phone on a paired phone: Scan opens the sheet, Forget does not', async () => {
+  it('Pairing on a paired phone: Scan opens the sheet, Forget does not', async () => {
     useApp.setState({ settings: { ...useApp.getState().settings, daemon: hub, daemons: [hub] } });
     const { PairScreen } = await import('../src/screens/PairScreen.js');
     dom ??= await mountDom();
     await dom.render(<PairScreen />);
     expect(dom.text()).toContain('Part of OpenShore Plus');
-    await dom.click('Scan the QR on your computer');
+    await dom.click('Scan to pair another computer');
     expect(useApp.getState().paywall).toBe('pairing');
     useApp.setState({ paywall: undefined });
     await dom.click('Forget this computer');

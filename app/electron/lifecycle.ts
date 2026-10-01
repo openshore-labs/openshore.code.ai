@@ -1,7 +1,8 @@
 // The desktop shell's lifecycle rules (A2), kept free of Electron so they are
 // unit-tested without a display. main.ts wires them to the real Tray, window,
 // powerSaveBlocker, and login-item APIs.
-import { posix } from 'node:path';
+import { existsSync, rmSync, writeFileSync } from 'node:fs';
+import { join, posix } from 'node:path';
 
 export interface TrayMenuItem {
   id: 'open' | 'hub' | 'quit';
@@ -12,7 +13,7 @@ export interface TrayMenuItem {
 export function trayMenuTemplate(state: { hubRunning: boolean }): TrayMenuItem[] {
   return [
     { id: 'open', label: 'Open OpenShore' },
-    { id: 'hub', label: state.hubRunning ? 'Pause hub' : 'Resume hub' },
+    { id: 'hub', label: state.hubRunning ? 'Pause phone access' : 'Resume phone access' },
     { id: 'quit', label: 'Quit OpenShore' },
   ];
 }
@@ -79,4 +80,24 @@ export function autostartEntry(opts: { execPath: string }): string {
 
 export function isHiddenLaunch(argv: readonly string[]): boolean {
   return argv.includes(HIDDEN_LAUNCH_FLAG);
+}
+
+/** The person's own Turn off (or the tray's Pause), kept across launches
+ *  (pairing review, CX 2026-10-01): a computer someone took off the phone
+ *  stays off until they turn it back on, never silently reopened by the next
+ *  launch. A marker file in userData; present means paused. */
+export const HUB_PAUSED_FILE = 'hub-paused';
+
+export function readHubPaused(userData: string): boolean {
+  return existsSync(join(userData, HUB_PAUSED_FILE));
+}
+
+export function writeHubPaused(userData: string, paused: boolean): void {
+  const path = join(userData, HUB_PAUSED_FILE);
+  try {
+    if (paused) writeFileSync(path, 'paused\n');
+    else rmSync(path, { force: true });
+  } catch {
+    // Best effort: a write that fails leaves this launch's state as it is.
+  }
 }

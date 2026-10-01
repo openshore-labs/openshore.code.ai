@@ -18,16 +18,17 @@ export function QrScanner({
   onClose,
 }: {
   open: boolean;
-  /** Called once with the QR's text; the scanner closes itself after. */
-  onDecode: (text: string) => void;
+  /** Called with each QR's text. True when it was a pairing code (the
+   *  scanner closes itself); false keeps the camera running and says so in
+   *  the sheet, so a wrong QR never ends the scan (CX 2026-10-01). */
+  onDecode: (text: string) => boolean;
   onClose: () => void;
 }) {
   return (
     <Sheet open={open} onClose={onClose}>
       <SheetTitle>Scan the QR on your computer</SheetTitle>
       <p className="sheet-sub">
-        Point the camera at the QR on your computer's Desktop + phone screen. It fills in the
-        address and pairing code and connects.
+        Point the camera at the QR on your computer's Pairing screen. It connects by itself.
       </p>
       <Camera onDecode={onDecode} onClose={onClose} />
       <div className="sheet-actions">
@@ -39,14 +40,30 @@ export function QrScanner({
   );
 }
 
-function Camera({ onDecode, onClose }: { onDecode: (text: string) => void; onClose: () => void }) {
+/** Said in the sheet when the camera sees a QR that is not a pairing code. */
+export const FOREIGN_QR =
+  "That QR is not an OpenShore pairing code. Point the camera at the one on your computer's Pairing screen.";
+/** Said when the camera cannot be opened. */
+export const CAMERA_BLOCKED =
+  'Could not open the camera. Allow camera access for OpenShore in iPhone Settings, or type the address and pairing code from your computer.';
+
+function Camera({
+  onDecode,
+  onClose,
+}: {
+  onDecode: (text: string) => boolean;
+  onClose: () => void;
+}) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | undefined>();
+  const [foreign, setForeign] = useState(false);
 
   useEffect(() => {
     let stream: MediaStream | undefined;
     let raf = 0;
     let done = false;
+    // The last foreign QR, so one held in view is reported once, not every frame.
+    let lastForeign: string | undefined;
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
@@ -59,11 +76,14 @@ function Camera({ onDecode, onClose }: { onDecode: (text: string) => void; onClo
         ctx.drawImage(video, 0, 0);
         const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const text = decodeQrFromImageData(img);
-        if (text) {
-          done = true;
-          onDecode(text);
-          onClose();
-          return;
+        if (text && text !== lastForeign) {
+          if (onDecode(text)) {
+            done = true;
+            onClose();
+            return;
+          }
+          lastForeign = text;
+          setForeign(true);
         }
       }
       raf = requestAnimationFrame(tick);
@@ -72,7 +92,7 @@ function Camera({ onDecode, onClose }: { onDecode: (text: string) => void; onClo
     void (async () => {
       try {
         if (!navigator.mediaDevices?.getUserMedia) {
-          setError('This device has no camera access here. Type or paste the pairing text.');
+          setError(CAMERA_BLOCKED);
           return;
         }
         stream = await navigator.mediaDevices.getUserMedia({
@@ -90,9 +110,7 @@ function Camera({ onDecode, onClose }: { onDecode: (text: string) => void; onClo
         await video.play();
         raf = requestAnimationFrame(tick);
       } catch {
-        setError(
-          'Could not open the camera. Allow camera access in Settings, or type or paste the pairing text.',
-        );
+        setError(CAMERA_BLOCKED);
       }
     })();
 
@@ -107,6 +125,13 @@ function Camera({ onDecode, onClose }: { onDecode: (text: string) => void; onClo
   return error ? (
     <p className="hint">{error}</p>
   ) : (
-    <video ref={videoRef} className="qr-scanner-video" playsInline muted />
+    <>
+      <video ref={videoRef} className="qr-scanner-video" playsInline muted />
+      {foreign ? (
+        <p className="hint" role="status">
+          {FOREIGN_QR}
+        </p>
+      ) : null}
+    </>
   );
 }

@@ -1,4 +1,4 @@
-// "Replace the shared key" on the Desktop + phone screen (CX cleanup 5b).
+// "Replace the shared key" on the Pairing screen (CX cleanup 5b).
 // Before per-device pairing, a setup connected with one shared key; replacing
 // it cuts off anything still using the old one, while paired devices keep
 // their own credentials and a terminal on this computer reads the new key by

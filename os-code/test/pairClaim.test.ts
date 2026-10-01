@@ -151,7 +151,7 @@ describe('POST /pair/claim (per-device pairing)', () => {
     const res = await fetch(`${base}/health`);
     expect(res.status).toBe(401);
     const { error } = (await res.json()) as { error: string };
-    expect(error).toContain('Desktop + phone');
+    expect(error).toContain('Pairing');
     expect(error).toContain('npx osc doctor');
   });
 
@@ -164,5 +164,46 @@ describe('POST /pair/claim (per-device pairing)', () => {
     const { error } = (await res.json()) as { error: string };
     expect(error).toContain('too old to trade it in');
     expect(error).toContain('Update OpenShore');
+  });
+});
+
+// Pairing review (CX, 2026-10-01): a phone that forgets its computer revokes
+// its own credential, so the desktop's Paired devices list never fills with
+// rows nothing uses. Only the presented credential goes; never another.
+describe('DELETE /pair/self (a phone forgetting its computer)', () => {
+  it('revokes exactly the presented device credential, and it stops working', async () => {
+    const a = (await (
+      await claim({ claim: daemon.mintPairClaim().claim, deviceName: 'iPhone' })
+    ).json()) as { token: string };
+    const b = (await (
+      await claim({ claim: daemon.mintPairClaim().claim, deviceName: 'iPad' })
+    ).json()) as { token: string };
+    const res = await fetch(`${base}/pair/self`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${a.token}` },
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { revoked: number }).revoked).toBe(1);
+    expect(loadCredentials().map((c) => c.label)).toEqual(['iPad']);
+    const gone = await fetch(`${base}/health`, { headers: { authorization: `Bearer ${a.token}` } });
+    expect(gone.status).toBe(401);
+    const kept = await fetch(`${base}/health`, { headers: { authorization: `Bearer ${b.token}` } });
+    expect(kept.status).toBe(200);
+  });
+
+  it('needs a credential, and never touches the shared token', async () => {
+    const res = await fetch(`${base}/pair/self`, { method: 'DELETE' });
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('revoking a device cuts its open streams (CX 2026-10-01)', () => {
+  it('every keepalive re-checks the credential the stream opened with', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(join(__dirname, '../src/daemon/serve.ts'), 'utf8');
+    const keepalives =
+      src.match(/const keepalive = setInterval\(\(\) => \{\s*if \(!stillAuthorized\(\)\)/g) ?? [];
+    expect(keepalives).toHaveLength(2);
+    expect(src).not.toMatch(/setInterval\(\(\) => safeWrite\(':ka/);
   });
 });

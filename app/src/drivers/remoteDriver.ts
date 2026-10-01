@@ -150,7 +150,7 @@ export async function daemonHealth(
 
 /** The computer answered, but not to this device's credential. */
 export const PAIRING_REJECTED =
-  'Your computer answered, but it no longer accepts this device. The pairing was revoked or has expired. Pair again from Desktop + phone on the computer.';
+  'Your computer answered, but it no longer accepts this device. The pairing was revoked or has expired. Pair again from Pairing on the computer.';
 
 /** Nothing answered at the computer's address. */
 export const HUB_UNREACHABLE =
@@ -167,6 +167,23 @@ async function hubAnswers(baseUrl: string): Promise<boolean> {
       signal: AbortSignal.timeout(4000),
     });
     return res.status === 400;
+  } catch {
+    return false;
+  }
+}
+
+/** This phone forgetting its computer: ask the computer to revoke this
+ *  device's own credential (DELETE /pair/self), so its Paired devices list
+ *  never keeps a row nothing uses (CX 2026-10-01). Best effort: a computer
+ *  that is off or away keeps the row until it is revoked there. */
+export async function daemonForgetSelf(target: DaemonTarget): Promise<boolean> {
+  try {
+    const res = await fetch(`${target.baseUrl}/pair/self`, {
+      method: 'DELETE',
+      headers: headers(target),
+      signal: AbortSignal.timeout(4000),
+    });
+    return res.ok;
   } catch {
     return false;
   }
@@ -497,6 +514,8 @@ export class RemoteDriver implements ChatDriver {
   // closes the SSE immediately cannot spin this in a zero-delay hot loop.
   private link: HubLinkState | undefined;
   private outageSince?: number;
+  /** This outage has already asked whether the computer refuses this phone. */
+  private rejectionChecked = false;
   private notFoundStreak = 0;
 
   private setLink(state: HubLinkState): void {
@@ -533,9 +552,7 @@ export class RemoteDriver implements ChatDriver {
           { headers: headers(this.target), signal: this.abortStream.signal },
         );
         if (res.status === 401 || res.status === 403) {
-          this.emitTerminal(
-            'Your computer rejected this phone. Pair again from Menu, Desktop + phone.',
-          );
+          this.emitTerminal('Your computer rejected this phone. Pair again from Menu, Pairing.');
           return;
         }
         if (res.status === 404) {
@@ -554,6 +571,7 @@ export class RemoteDriver implements ChatDriver {
         // Reset here so backoff and the link do not stay degraded on an idle
         // stream that never emits a productive frame (TS-P2-3).
         this.outageSince = undefined;
+        this.rejectionChecked = false;
         this.setLink('live');
         backoffMs = 600;
         const reader = res.body.getReader();
@@ -585,6 +603,19 @@ export class RemoteDriver implements ChatDriver {
           this.setLink('reconnecting');
         } else if (now - this.outageSince >= AWAY_AFTER_MS) {
           this.setLink('away');
+          // A revoked phone's 401 carries no CORS headers, so the WebView's
+          // stream reports it as a network error and the check above never
+          // sees it (pairing review, CX 2026-10-01). Once per outage, ask the
+          // credential-free route whether the computer is there and only this
+          // phone is refused; if so, say so and stop, instead of "away" forever.
+          if (!this.rejectionChecked) {
+            this.rejectionChecked = true;
+            const health = await daemonHealth(this.target);
+            if (health.detail === PAIRING_REJECTED) {
+              this.emitTerminal(PAIRING_REJECTED);
+              return;
+            }
+          }
         }
         await stepBackoff();
         continue;

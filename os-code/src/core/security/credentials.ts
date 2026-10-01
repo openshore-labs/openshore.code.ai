@@ -33,7 +33,7 @@ export interface DeviceCredential {
 
 /**
  * How long a paired device's credential lasts (H1): half a year, then the
- * device pairs again from Desktop + phone. A lost phone stops working on its
+ * device pairs again from Pairing. A lost phone stops working on its
  * own even if nobody remembers to revoke it; the desktop lists each device
  * with its date.
  */

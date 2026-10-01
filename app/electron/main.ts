@@ -136,6 +136,8 @@ import {
   closeAction,
   isHiddenLaunch,
   launchAtLoginSupport,
+  readHubPaused,
+  writeHubPaused,
   powerBlockerNext,
   trayMenuTemplate,
 } from './lifecycle.js';
@@ -583,6 +585,12 @@ let quitting = false;
 let hubPaused = false;
 let disposed = false;
 
+/** The person's Turn off or Pause, remembered across launches (lifecycle.ts). */
+function setHubPaused(paused: boolean): void {
+  hubPaused = paused;
+  writeHubPaused(app.getPath('userData'), paused);
+}
+
 function trayIconPath(): string {
   return join(here, '..', 'build', 'icon.png');
 }
@@ -613,9 +621,9 @@ async function onTrayAction(id: 'open' | 'hub' | 'quit'): Promise<void> {
   } else if (id === 'hub') {
     if (host.daemonRunning()) {
       await host.daemonStop();
-      hubPaused = true;
+      setHubPaused(true);
     } else {
-      hubPaused = false;
+      setHubPaused(false);
       const result = await host.daemonStart();
       if ('error' in result) console.error(hubStartError(result.error));
     }
@@ -674,7 +682,7 @@ function startLifecyclePolls(): void {
   rebind.unref();
 }
 
-// Launch at login, opt-in from the Pair screen. Electron's login item covers
+// Launch at login, opt-in from the Pairing screen. Electron's login item covers
 // macOS and Windows; Linux gets an XDG autostart entry that starts the app
 // hidden (to the tray). A source run has no stable executable to register.
 function launchExecutable(): string | undefined {
@@ -1162,13 +1170,13 @@ guarded('osc:hermesNote', (path: unknown) => host.hermesNote(str(path, 'path')))
 
 guarded('osc:daemonInfo', () => host.daemonInfo());
 guarded('osc:daemonStart', async () => {
-  hubPaused = false;
+  setHubPaused(false);
   const result = await host.daemonStart();
   refreshTrayMenu();
   return result;
 });
 guarded('osc:daemonStop', async () => {
-  hubPaused = true;
+  setHubPaused(true);
   await host.daemonStop();
   refreshTrayMenu();
 });
@@ -1829,9 +1837,13 @@ if (!app.requestSingleInstanceLock()) {
     app.on('activate', () => showWindow());
 
     // The hub starts with the app: the tailnet when it is up, else loopback
-    // (and it moves to the tailnet on its own once Tailscale appears).
-    const started = await host.daemonStart();
-    if ('error' in started) console.error(hubStartError(started.error));
+    // (and it moves to the tailnet on its own once Tailscale appears). Unless
+    // the person turned phone access off: that holds across launches.
+    hubPaused = readHubPaused(app.getPath('userData'));
+    if (!hubPaused) {
+      const started = await host.daemonStart();
+      if ('error' in started) console.error(hubStartError(started.error));
+    }
     refreshTrayMenu();
     startLifecyclePolls();
     scheduleUpdateChecks();

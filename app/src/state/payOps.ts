@@ -3,7 +3,7 @@
 // without the store; store.ts only wires them into newConversation,
 // ensureDriver, buildDriver, attachDriver, failOpen, runCommand, the sample
 // project, the routine actions, buyPersonal and manageBilling, and hands
-// requirePersonal to the Desktop + phone and Terminal screens. Test:
+// requirePersonal to the Pairing and Terminal screens. Test:
 // app/test/payGate.test.ts.
 //
 // The gate sits on rooms (store.ts setView, since the founder's widening of
@@ -90,7 +90,7 @@ export function paidDoor(
 }
 
 /** The paywall's reason for a paid feature: building for the coding agent
- *  and Launch, its own for Crew, Desktop + phone and the Marketplace, and
+ *  and Launch, its own for Crew, Pairing and the Marketplace, and
  *  the whole of Plus for a room (Terminal, Repositories, Vault, Stack
  *  Health). */
 export function paywallReasonFor(feature: AccountFeature): PaywallReason {
@@ -121,7 +121,7 @@ export interface RoomPassFacts {
  *  2026-09-30). A paid room opens without the paywall when the person has
  *  something in it to stop or let go of, and every paid action inside keeps
  *  its own door: Crew while routines exist (pause, stop, delete; making,
- *  editing and Run now are paid), Desktop + phone on the desktop always
+ *  editing and Run now are paid), Pairing on the desktop always
  *  (Revoke; the pairing code and Connect are paid), and on a phone with a
  *  paired computer (Forget; Scan and Connect are paid). */
 export function roomPass(view: ViewName, f: RoomPassFacts): boolean {
@@ -151,7 +151,7 @@ export class PaywallLockedError extends Error {
 }
 
 /** The paid feature a chat's brain needs on this device: the coding agent for
- *  a coding session anywhere, and Desktop + phone for the free chat with a
+ *  a coding session anywhere, and Pairing for the free chat with a
  *  computer's models reached from another device (`reachesHub`: a phone, or
  *  a desktop set to run on another computer). On the desktop itself that
  *  chat is this computer's own, and free (CTO ruling 8). Null for the rest. */

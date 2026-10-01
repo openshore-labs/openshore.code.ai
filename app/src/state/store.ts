@@ -60,6 +60,7 @@ import {
   reduceEvent,
   snapshotThread,
   titleFrom,
+  legacyTitleFrom,
 } from './transcript.js';
 import {
   HUB_NO_ANSWER,
@@ -73,6 +74,7 @@ import {
   daemonApplyOutbox,
   daemonClearHandoffs,
   daemonCreateSession,
+  daemonForgetSelf,
   daemonHealth,
   daemonVerifyCommit,
   type DaemonTarget,
@@ -217,6 +219,8 @@ import {
   type SetupFacts,
 } from '../lib/guidedSetup.js';
 import { REVEAL_SKIP_EVENT, prefersReducedMotion } from '../lib/streamSmoothing.js';
+import { SETUP_CHAT_TITLE } from '../lib/chatTitle.js';
+import { parsePairingQr } from '../lib/qrDecode.js';
 import {
   GREETING_PACE,
   INTRO_START_MS,
@@ -675,7 +679,7 @@ export type ViewName =
   | 'onboarding';
 
 // Which locked surface triggered the Personal upgrade sheet: the coding agent,
-// Crew, Desktop + phone, the Marketplace, or 'plus' for a paid room and the
+// Crew, Pairing, the Marketplace, or 'plus' for a paid room and the
 // sidebar's Upgrade banner (lib/payGate.ts).
 export type PaywallReason = 'coding' | 'marketplace' | 'crew' | 'pairing' | 'plus';
 
@@ -1752,7 +1756,7 @@ interface AppState {
   /** Where a paid action on this feature goes right now: on, to the sign-in
    *  sheet, or to the paywall (lib/payGate.ts, state/payOps.ts). */
   personalDoor(feature: AccountFeature): 'open' | 'account' | 'paywall';
-  /** One door for a paid action a screen takes (Connect on Desktop + phone,
+  /** One door for a paid action a screen takes (Connect on Pairing,
    *  the computer's home shell): the sign-in sheet first, then the paywall.
    *  True when the action may go ahead. */
   requirePersonal(feature: AccountFeature): boolean;
@@ -2079,6 +2083,13 @@ interface AppState {
   /** The fork after Harbor (lib/guidedSetup.ts): start chatting (the walk
    *  steps back until "Pick up setup") or keep setting up. */
   chooseNext(choice: NextChoice): void;
+  /** A pairing link opened from outside the app (the iPhone Camera reading
+   *  the computer's QR, CX 2026-10-01): Pairing opens and asks before it
+   *  pairs. Never pairs on its own. */
+  pairOffer?: { address: string; claim: string };
+  /** Open Pairing with the link's offer, or say why it is not one. */
+  offerPairing(link: string): void;
+  clearPairOffer(): void;
   /** The break after the walk's opening (lib/guidedSetup.ts START_CHOICES):
    *  set up now, or just chat, which says where setup waits and carries the
    *  person to the main chat page on Slack Water (components/SlackWater.tsx).
@@ -3578,6 +3589,32 @@ export const useApp = create<AppState>((set, get, api) => {
     );
   }
 
+  // Chats named before the smarter names (lib/chatTitle.ts, founder
+  // 2026-10-01) are tidied once at launch: the setup walk's chat becomes
+  // "First-time setup", and a name that is still the old 48-character cut of
+  // the first message is made again. A chat the person renamed, or one the
+  // engine titled, is never touched.
+  function retitleChats(): void {
+    const walkId = get().settings.guidedSetup?.conversationId;
+    let changed = false;
+    const conversations = { ...get().conversations };
+    for (const [id, c] of Object.entries(conversations)) {
+      if (c.renamed) continue;
+      let title = c.title;
+      if (id === walkId && title === HARBOR_MINI_MODEL_NAME) title = SETUP_CHAT_TITLE;
+      else if (title !== 'New chat' && title === legacyTitleFrom(c.thread)) {
+        title = titleFrom({ ...c.thread, title: undefined }) ?? title;
+      }
+      if (title !== c.title) {
+        conversations[id] = { ...c, title };
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    set({ conversations });
+    void persistConversations(get());
+  }
+
   // A walk whose letter was cut short (the app closed mid-letter) is made
   // whole on the next launch, settled, so its chat never sits empty.
   function repairIntroLetter(): void {
@@ -4427,7 +4464,7 @@ export const useApp = create<AppState>((set, get, api) => {
           return new ElectronDriver(sessionId, journal);
         }
         if (!settings.daemon) {
-          throw new Error('Connect to your computer first (Menu, then Desktop + phone).');
+          throw new Error('Connect to your computer first (Menu, then Pairing).');
         }
         let sessionId = conv.source.sessionId;
         if (!sessionId) {
@@ -4486,7 +4523,7 @@ export const useApp = create<AppState>((set, get, api) => {
         }
         // On the phone, the paired desktop's daemon and its stateless /chat.
         if (!settings.daemon) {
-          throw new Error('Connect to your computer first (Menu, then Desktop + phone).');
+          throw new Error('Connect to your computer first (Menu, then Pairing).');
         }
         // The computer builds this chat's pack itself (J6): the phone names
         // the project and never ships note bodies there and back. Memory off
@@ -9004,6 +9041,7 @@ export const useApp = create<AppState>((set, get, api) => {
       void get().reconcileProjectRepos('open');
 
       repairIntroLetter();
+      retitleChats();
 
       // Guided setup: whichever model answers in the walk's own chat reads
       // where the walk stands on every reply. Keyed by the chat the reply is
@@ -11671,7 +11709,7 @@ export const useApp = create<AppState>((set, get, api) => {
         const c = st.conversations[id];
         if (!c) return st;
         return {
-          conversations: { ...st.conversations, [id]: { ...c, title: HARBOR_MINI_MODEL_NAME } },
+          conversations: { ...st.conversations, [id]: { ...c, title: SETUP_CHAT_TITLE } },
         };
       });
       void persistConversations(get());
@@ -11806,6 +11844,21 @@ export const useApp = create<AppState>((set, get, api) => {
                 harborAnnounced: p.harborAnnounced || (!after && facts.harborReady),
               },
       });
+    },
+
+    offerPairing(link) {
+      const pair = parsePairingQr(link);
+      if (!pair) {
+        get().showToast('That pairing link is not for a computer on your own network.');
+        return;
+      }
+      logEvent('pair_offer', { via: 'link' });
+      set({ pairOffer: pair });
+      get().setView('pair', { root: true });
+    },
+
+    clearPairOffer() {
+      set({ pairOffer: undefined });
     },
 
     chooseStart(choice, origin) {
@@ -14936,6 +14989,9 @@ export const useApp = create<AppState>((set, get, api) => {
       const prior = list.find((d) => d.baseUrl === target.baseUrl);
       // Keep a name already on file if this save did not carry one.
       const merged: DaemonTarget = { ...target, name: target.name ?? prior?.name };
+      // Pairing the same computer again: the old credential is revoked there
+      // (best effort), so one phone is one row on the computer.
+      if (prior?.token && prior.token !== target.token) void daemonForgetSelf(prior);
       const others = list.filter((d) => d.baseUrl !== target.baseUrl);
       // The credential goes to the secret store (APP-11); the settings blob
       // carries the hub without it (see persistSettings).
@@ -14969,6 +15025,11 @@ export const useApp = create<AppState>((set, get, api) => {
 
     async removeHub(baseUrl) {
       const s = get().settings;
+      // Forgetting a computer revokes this device there too (best effort; a
+      // computer that is off keeps the row until it is revoked on it), so its
+      // Paired devices list never fills with rows nothing uses.
+      const leaving = hubList(s).find((d) => d.baseUrl === baseUrl);
+      if (leaving?.token) void daemonForgetSelf(leaving);
       const daemons = hubList(s).filter((d) => d.baseUrl !== baseUrl);
       const daemon = s.daemon?.baseUrl === baseUrl ? daemons[0] : s.daemon;
       const hubRoles = { ...(s.hubRoles ?? {}) };

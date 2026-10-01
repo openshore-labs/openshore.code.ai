@@ -30,11 +30,7 @@ export async function serveCommand(options: ServeOptions): Promise<void> {
     const daemon = await startDaemon({ config, bind, port });
     okLine(`Daemon up on ${daemon.host}:${daemon.port} (${bind}).`);
     okLine('Auth: the bearer token at ~/.os-code/daemon.token (mode 600).');
-    out(
-      t.muted(
-        '  A phone pairs from the desktop app (Desktop + phone), each with its own credential.',
-      ),
-    );
+    out(t.muted('  A phone pairs from the desktop app (Pairing), each with its own credential.'));
     out(t.muted('  From a phone over the tailnet: ssh in, then osc attach.'));
     out(t.muted('  Ctrl+C stops the daemon; stored sessions survive and reattach later.'));
     const shutdown = () => {

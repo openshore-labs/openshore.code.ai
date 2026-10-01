@@ -59,6 +59,7 @@ vi.mock('../src/drivers/remoteDriver.js', () => ({
   daemonCreateSession: vi.fn(async () => 'sess_1'),
   daemonClearHandoffs: vi.fn(async () => true),
   daemonHealth: vi.fn(async () => ({ ok: false, detail: 'off' })),
+  daemonForgetSelf: vi.fn(async () => true),
   daemonApplyOutbox: vi.fn(),
   daemonVerifyCommit: vi.fn(),
 }));

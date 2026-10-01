@@ -94,7 +94,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     text: `Screens that set something up carry a Walk me through it (or Guide me) button that opens a chat with a step-by-step guide: the goal, a numbered plan, then one step at a time, with questions welcome between steps. It is on ${listOf(
       [
         'Cloud Connections',
-        'Desktop + phone on the phone',
+        'Pairing on the phone',
         'Repositories before you connect',
         'Terminal',
         'Crew command',
@@ -123,7 +123,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
       ...(stackHealthOn ? ['Stack Health'] : []),
       ...(launchOn ? ['Launch with Codemagic'] : []),
       'Cloud Connections',
-      'Desktop + phone',
+      'Pairing',
       'Settings',
     ].join(', ')}. A Sign in row shows when you are signed out.`,
     keywords: ['menu', 'sidebar', 'navigation', 'drawer', 'where is', 'find', 'rooms', 'hamburger'],
@@ -487,7 +487,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'pair-phone',
     title: 'Connect your computer',
-    where: 'Phone: Menu, Desktop + phone',
+    where: 'Phone: Menu, Pairing',
     text: `Connects the phone to OpenShore on your computer so the computer does the heavy lifting, your battery lasts, and a long answer keeps going when you close the app. It runs over your own private Tailscale network (free for personal use), so nothing is opened to the internet. How:\n${guideStepsCompact('pair-computer')}`,
     keywords: [
       'pair',
@@ -505,8 +505,8 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
   },
   {
     id: 'pair-desktop',
-    title: 'Desktop + phone, on the computer',
-    where: 'On your computer: Menu, Desktop + phone',
+    title: 'Pairing, on the computer',
+    where: 'On your computer: Menu, Pairing',
     text: 'Tap Turn on to open the phone connection over Tailscale; it shows a QR code and a one-time pairing code good for five minutes. Paired devices are listed and each can be revoked on its own.',
     keywords: ['turn on', 'show qr', 'pairing code', 'revoke', 'paired devices', 'desktop + phone'],
   },
@@ -812,7 +812,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     // 2026-09-30).
     text: `${
       gatesOn
-        ? "Chatting needs no account. Signing in is free, opens Projects and Cloud Connections, and carries a few settings to your other devices. The rest of OpenShore (the coding agent, Terminal, Repositories, Vault, Crew, and Desktop + phone) is part of OpenShore Plus, which rides on your account; get it or restore it in Settings. Chats are not synced between devices; with Desktop + phone, your phone reaches your computer's chats."
+        ? "Chatting needs no account. Signing in is free, opens Projects and Cloud Connections, and carries a few settings to your other devices. The rest of OpenShore (the coding agent, Terminal, Repositories, Vault, Crew, and Pairing) is part of OpenShore Plus, which rides on your account; get it or restore it in Settings. Chats are not synced between devices; with Pairing, your phone reaches your computer's chats."
         : "Chatting needs no account. Signing in is free and opens building, Projects, Vault, Crew, and pairing, and carries a few settings to your other devices. Chats are not synced between devices; your phone reaches your computer's chats by pairing."
     }${teamsOn ? ' After creating one you choose personal or business; a business adds a company, admins, and a shared stack managed from Admin.' : ''}`,
     keywords: [

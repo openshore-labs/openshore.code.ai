@@ -22,6 +22,7 @@ import {
   tokenMatches,
   type AuthContext,
 } from '../core/security/daemonAuth.js';
+import { hashToken, revokeCredentialByHash } from '../core/security/credentials.js';
 import { oscHome, loadConfig, loadDaemonConfig, saveGlobalConfig } from '../config/load.js';
 import type { OscConfig } from '../config/schema.js';
 import { profileFor } from '../core/security/profiles.js';
@@ -374,17 +375,16 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           used: {
             status: 410,
             error:
-              'That pairing code has already been used. Open Desktop + phone on the computer for a fresh one.',
+              "That pairing code has already been used. Scan the new QR on your computer's Pairing screen.",
           },
           expired: {
             status: 410,
-            error:
-              'That pairing code expired. Open Desktop + phone on the computer for a fresh one.',
+            error: "That pairing code expired. Scan the new QR on your computer's Pairing screen.",
           },
           unknown: {
             status: 401,
             error:
-              'That is not a pairing code this computer handed out. Scan the QR on its Desktop + phone screen.',
+              'That is not a pairing code this computer handed out. Scan the QR on its Pairing screen.',
           },
         };
         const answer = answers[redeemed.reason];
@@ -430,17 +430,21 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         401,
         {
           error: looksLikeStaleClaim
-            ? 'That is a pairing code, not a credential; this app build is too old to trade it in. Update OpenShore on this device, then pair again from Desktop + phone.'
+            ? 'That is a pairing code, not a credential; this app build is too old to trade it in. Update OpenShore on this device, then pair again from Pairing.'
             : expired
-              ? "This device's pairing has expired. Pair it again from Desktop + phone on the computer."
+              ? "This device's pairing has expired. Pair it again from Pairing on the computer."
               : legacyFromAfar
-                ? 'This computer now pairs each device on its own, so the old shared token only works on the computer itself. Pair this device from Desktop + phone.'
-                : 'Missing or wrong daemon credential. Pair this device from the desktop app (Desktop + phone), or mint a credential with `osc token mint`. On the computer itself, run: npx osc doctor',
+                ? 'This computer now pairs each device on its own, so the old shared token only works on the computer itself. Pair this device from Pairing.'
+                : 'Missing or wrong daemon credential. Pair this device from the desktop app (Pairing), or mint a credential with `osc token mint`. On the computer itself, run: npx osc doctor',
         },
         { cors: false },
       );
       return;
     }
+    // A long-lived stream re-checks the credential it opened with on every
+    // keepalive (pairing review, CX 2026-10-01), so revoking a lost phone cuts
+    // its open event stream and shell too, not only its next request.
+    const stillAuthorized = (): boolean => resolveAuth(presented, legacyToken(), { from }) !== null;
     // requireAdmin gates a mutating admin route (403 for a member). Read routes
     // and a member's own session/outbox actions stay open to any valid member.
     // Wired here so an admin-only route (stack config, home-repo/storage config)
@@ -459,6 +463,18 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         role: auth.role,
         user: auth.userId,
       });
+      return;
+    }
+
+    // A phone forgetting this computer revokes its own credential, so the
+    // desktop's Paired devices list never fills with rows nothing uses (CX
+    // 2026-10-01). Only the credential presented: never the shared token,
+    // never another device.
+    if (req.method === 'DELETE' && url.pathname === '/pair/self') {
+      const revoked =
+        auth.source === 'legacy' || !presented ? 0 : revokeCredentialByHash(hashToken(presented));
+      if (revoked) log.info('a device forgot this computer', { label: auth.label });
+      sendJson(res, 200, { ok: true, revoked });
       return;
     }
 
@@ -1241,7 +1257,14 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
             return true;
           }
           teardown.push(unsubscribe);
-          const keepalive = setInterval(() => safeWrite(':ka\n\n'), 15_000);
+          const keepalive = setInterval(() => {
+            if (!stillAuthorized()) {
+              cleanup();
+              if (!res.writableEnded) res.end();
+              return;
+            }
+            safeWrite(':ka\n\n');
+          }, 15_000);
           teardown.push(() => clearInterval(keepalive));
           res.socket?.setTimeout(120_000, () => {
             cleanup();
@@ -1697,7 +1720,14 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           return;
         }
         teardown.push(unsubscribe);
-        const keepalive = setInterval(() => safeWrite(':ka\n\n'), 15_000);
+        const keepalive = setInterval(() => {
+          if (!stillAuthorized()) {
+            cleanup();
+            if (!res.writableEnded) res.end();
+            return;
+          }
+          safeWrite(':ka\n\n');
+        }, 15_000);
         teardown.push(() => clearInterval(keepalive));
         res.socket?.setTimeout(120_000, () => {
           cleanup();

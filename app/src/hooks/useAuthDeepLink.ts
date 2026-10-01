@@ -1,6 +1,7 @@
-// Deep-link router for the two moments the OS bounces a flow back into the app
+// Deep-link router for the moments the OS bounces a flow back into the app
 // over the oscode:// scheme: a Supabase auth callback (magic link, email
-// confirmation, or password reset) and the Stripe checkout-return page. On iOS
+// confirmation, or password reset), the Stripe checkout-return page, and the
+// computer's pairing QR read by the iPhone Camera app. On iOS
 // Capacitor hands us the URL via appUrlOpen (warm) and getLaunchUrl (cold); on
 // Electron the main process forwards it over the bridge's onDeepLink (see
 // electron/main.ts). Off both, the browser origin receives the redirect
@@ -11,14 +12,15 @@ import { platform } from '../lib/platform.js';
 import { bridge } from '../lib/electronBridge.js';
 
 export function useAuthDeepLink(): void {
-  const { completeAuthCallback, onCheckoutReturn, resumeRepoOAuth, showToast } = useApp();
+  const { completeAuthCallback, onCheckoutReturn, resumeRepoOAuth, showToast, offerPairing } =
+    useApp();
   useEffect(() => {
     let cancelled = false;
     const removers: Array<() => void> = [];
 
     // Exact scheme + host matching, never a substring check, so a crafted link
     // cannot smuggle one route's name inside another's URL.
-    const routeOf = (url: string): 'checkout' | 'auth' | 'repo' | undefined => {
+    const routeOf = (url: string): 'checkout' | 'auth' | 'repo' | 'pair' | undefined => {
       try {
         const u = new URL(url);
         if (u.protocol !== 'oscode:') return undefined;
@@ -30,6 +32,7 @@ export function useAuthDeepLink(): void {
         if (host === 'checkout-success') return 'checkout';
         if (host === 'auth-callback') return 'auth';
         if (host === 'repo-oauth') return 'repo';
+        if (host === 'pair') return 'pair';
         return undefined;
       } catch {
         return undefined;
@@ -54,6 +57,12 @@ export function useAuthDeepLink(): void {
         } catch (err) {
           showToast(err instanceof Error ? err.message : String(err));
         }
+        return;
+      }
+      // The computer's pairing QR, read by the iPhone Camera (CX 2026-10-01):
+      // Pairing opens and asks first; the phone alone never pairs on a link.
+      if (kind === 'pair') {
+        offerPairing(url);
         return;
       }
       if (kind === 'repo' && coldStart) {
@@ -83,5 +92,5 @@ export function useAuthDeepLink(): void {
       cancelled = true;
       for (const r of removers) r();
     };
-  }, [completeAuthCallback, onCheckoutReturn, resumeRepoOAuth, showToast]);
+  }, [completeAuthCallback, onCheckoutReturn, resumeRepoOAuth, showToast, offerPairing]);
 }
