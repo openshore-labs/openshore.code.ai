@@ -35,7 +35,15 @@ describe('copy blocks for anything pasted', () => {
     expect(block).toContain('copyText(');
     expect(block).toContain("'Copy'");
     expect(block).toContain("'Copy failed'");
-    expect(src).toMatch(/pre:\s*\(\{ children \}\) => <CodeBlock>/);
+    // Every fence is a CodeBlock, but for an app action's proposal
+    // (lib/appActions.ts), whose card carries its own Copy beside Add to
+    // Settings.
+    expect(src).toMatch(/pre:\s*\(\{ children \}\) => \{/);
+    expect(src).toContain('return <CodeBlock>{children}</CodeBlock>;');
+    const card = readFileSync(join(process.cwd(), 'src/components/AppActionCard.tsx'), 'utf8');
+    expect(card).toContain('copyText(');
+    expect(card).toContain("'Copy'");
+    expect(card).toContain("'Copy failed'");
   });
 
   it('a guide step with something to paste renders it as its own fenced block', () => {

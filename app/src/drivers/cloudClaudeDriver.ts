@@ -22,6 +22,7 @@ import { WORKSPACE_HINT, needsWorkspaceId } from '../lib/providers.js';
 import type { SeedTurn } from '../state/types.js';
 import { anthropicClient, isAbortError, type ProviderEvent } from './providerClient.js';
 import { CloudTurn, cloudHumanizer, type CloudChatOptions } from './cloudChat.js';
+import { writingVoiceLine } from '../lib/writingVoice.js';
 
 // The model catalog (ids, labels, context) lives in one leaf module so the
 // driver, the model sheet, and sourceLabel all agree. Imported for the driver's
@@ -138,6 +139,7 @@ export class CloudClaudeDriver implements ChatDriver {
   private turn?: CloudTurn;
   private readonly vaultPack?: AppVaultPack;
   private readonly humanize?: boolean;
+  private readonly writingVoice?: string;
 
   constructor(
     apiKey: string,
@@ -154,6 +156,7 @@ export class CloudClaudeDriver implements ChatDriver {
   ) {
     this.vaultPack = opts.vaultPack;
     this.humanize = opts.humanize;
+    this.writingVoice = opts.writingVoice;
     const ws = workspaceId?.trim();
     this.client = new Anthropic({
       apiKey,
@@ -261,8 +264,13 @@ export class CloudClaudeDriver implements ChatDriver {
   /** The base prompt, with the Humanize Writing standard beside it while it
    *  applies: both are fixed for the chat, so they sit in the stable head. */
   private basePrompt(): string {
-    const humanizer = cloudHumanizer(this.humanize, this.seat()?.modelClass);
-    return humanizer ? `${SYSTEM_PROMPT}\n\n${humanizer}` : SYSTEM_PROMPT;
+    return [
+      SYSTEM_PROMPT,
+      cloudHumanizer(this.humanize, this.seat()?.modelClass),
+      writingVoiceLine(this.writingVoice),
+    ]
+      .filter(Boolean)
+      .join('\n\n');
   }
 
   /** This chat's seat: Claude on the person's key, a cloud seat, served the

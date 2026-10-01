@@ -274,6 +274,17 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     ? thread.items.filter((i) => i.kind === 'user').map((i) => (i.kind === 'user' ? i.text : ''))
     : [];
 
+  // A composer seed (Settings' "Shape it in a chat"): the opening of a prompt
+  // for the person to finish, handed to the field once, the way a held
+  // message comes back.
+  const composerSeed = useApp((s) => s.composerSeed);
+  const clearComposerSeed = useApp((s) => s.clearComposerSeed);
+  useEffect(() => {
+    if (!composerSeed) return;
+    setRestore((r) => restoreFromHeld({ text: composerSeed.text }, r));
+    clearComposerSeed();
+  }, [composerSeed, clearComposerSeed]);
+
   // A held first message comes back here (state/firstRunOps.ts): into the
   // composer when this screen returns from a setup room, or, waiting on the
   // First Seat, sent the moment the engine can answer. Read again whenever

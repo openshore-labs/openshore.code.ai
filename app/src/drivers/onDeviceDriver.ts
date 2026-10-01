@@ -31,6 +31,8 @@ import type {
 import { DriverEmitter, readChatContext, textFinal } from './types.js';
 import { packSeatFor } from '../lib/vaultSeat.js';
 import { chainOfThoughtLine, chainOfThoughtOn } from '../lib/chainOfThought.js';
+import { writingVoiceLine } from '../lib/writingVoice.js';
+import { appActionsContract } from '../lib/appActions.js';
 import type { SeedTurn } from '../state/types.js';
 
 const EM_DASH = String.fromCharCode(8212);
@@ -99,6 +101,7 @@ export class OnDeviceDriver implements ChatDriver {
   /** The conversation's vault pack (CTO J1), and the text this reply's
    *  system prompt carries from it, the prompt's last part. */
   private readonly vaultPack?: AppVaultPack;
+  private readonly writingVoice?: string;
   private packText?: string;
   /** This send's pack carried a note that stays on this computer, so the
    *  reply is marked local-only (I5). */
@@ -121,10 +124,12 @@ export class OnDeviceDriver implements ChatDriver {
     /** The chat this driver answers for, so the guided setup's line reaches
      *  only the walk's own chat, whichever chat is on screen. */
     private readonly conversationId?: string,
-    /** The conversation's vault pack (CTO J1); none with Memory off. */
-    opts: DriverVaultOptions = {},
+    /** The conversation's vault pack (CTO J1); none with Memory off. And the
+     *  person's writing voice (lib/writingVoice.ts), when they set one. */
+    opts: DriverVaultOptions & { writingVoice?: string } = {},
   ) {
     this.vaultPack = opts.vaultPack;
+    this.writingVoice = opts.writingVoice;
     this.searchable = !isHarborMini(modelId);
     this.guide = isHarborMini(modelId) || isHarbor(modelId);
     this.guideTurn = isHarborMini(modelId);
@@ -151,7 +156,17 @@ export class OnDeviceDriver implements ChatDriver {
     const cot = this.guideTurn ? undefined : chainOfThoughtLine(this.modelId, this.cot);
     // The vault pack is a separate, last part, so fitDeviceHistory counts it
     // against the 4,096-token window with the rest of the prompt.
-    return [base, readChatContext(this.extraSystem), walk, cot, this.packText]
+    // The person's writing voice, and the app actions contract (this phone is
+    // always local, lib/appActions.ts), before the pack.
+    return [
+      base,
+      readChatContext(this.extraSystem),
+      walk,
+      writingVoiceLine(this.writingVoice),
+      appActionsContract(false),
+      cot,
+      this.packText,
+    ]
       .filter(Boolean)
       .join('\n\n');
   }

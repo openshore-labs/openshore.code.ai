@@ -603,6 +603,11 @@ import {
   startWebCheckout,
 } from './payOps.js';
 import {
+  appActionPlan,
+  writingVoiceSeed,
+  type ComposerSeed,
+} from './appActionOps.js';
+import {
   CodingLockedError,
   accountNoticeDue,
   codingLocked,
@@ -805,6 +810,11 @@ export interface AppSettings {
    *  writing). On by default; undefined means on. Off drops the standard from
    *  the prompt, so a model runs a little faster on a shorter prompt. */
   humanizeWriting?: boolean;
+  /** Your writing voice (Settings, Writing): the person's own instructions for
+   *  how a model writes for them, on every app-side seat, alone or layered on
+   *  Humanize Writing (lib/writingVoice.ts). A prompt, so it stays on the
+   *  device. Undefined or empty means none. */
+  writingVoice?: string;
   /** Chain of Thought: show a model's reasoning above its answer, live while it
    *  thinks, then folded to "Thought for Ns" (lib/chainOfThought.ts). OFF by
    *  default; undefined means off. Native reasoners are asked through their own
@@ -1497,6 +1507,9 @@ interface AppState {
    *  read by the detail screen and by a chat opened from it (its way back). */
   viewProjectId?: string;
   drawerOpen: boolean;
+  /** Text the next chat's composer opens with (state/appActionOps.ts), taken
+   *  once by the chat screen. Not persisted. */
+  composerSeed?: ComposerSeed;
   conversations: Record<string, Conversation>;
   order: string[];
   activeId?: string;
@@ -1826,6 +1839,15 @@ interface AppState {
   /** Open a fresh, empty chat (the source picker decides who answers). A
    *  project is auto-created on first save, so this never dead-ends. */
   startNewChat(): void;
+  /** Settings, Writing: open a fresh chat with the writing voice's shaping
+   *  prompt in the composer, for the person to finish and send. */
+  startWritingVoiceChat(): void;
+  /** The chat screen took the composer seed. */
+  clearComposerSeed(): void;
+  /** Apply an app action the person tapped on a model's proposal
+   *  (lib/appActions.ts). Resolves false for a key or value the app does not
+   *  take, which changes nothing. */
+  applyAppAction(key: string, value: string): Promise<boolean>;
   /** Send text once the active conversation's driver has attached. */
   sendWhenAttached(conversationId: string, text: string, attachments?: Attachment[]): void;
   /** Try again to deliver a chat's parked first message: rebuild the driver
@@ -4563,7 +4585,7 @@ export const useApp = create<AppState>((set, get, api) => {
           settings.perplexityResearch === true,
           standingContext(conv),
           conv.id,
-          { vaultPack },
+          { vaultPack, writingVoice: settings.writingVoice },
         );
       }
       case 'cloud': {
@@ -4581,7 +4603,11 @@ export const useApp = create<AppState>((set, get, api) => {
             seed,
             settings.anthropicWorkspaceId,
             chatContext(conv),
-            { vaultPack: conversationPack(conv), humanize: settings.humanizeWriting !== false },
+            {
+              vaultPack: conversationPack(conv),
+              humanize: settings.humanizeWriting !== false,
+              writingVoice: settings.writingVoice,
+            },
           );
         }
         const info = providerInfo(source.provider);
@@ -4599,7 +4625,11 @@ export const useApp = create<AppState>((set, get, api) => {
           seed,
           chatContext(conv),
           contextWindow,
-          { vaultPack: conversationPack(conv), humanize: settings.humanizeWriting !== false },
+          {
+              vaultPack: conversationPack(conv),
+              humanize: settings.humanizeWriting !== false,
+              writingVoice: settings.writingVoice,
+            },
         );
       }
       case 'stack': {
@@ -4639,6 +4669,7 @@ export const useApp = create<AppState>((set, get, api) => {
                 .join('\n\n') || undefined,
             crew,
             humanize: s.settings.humanizeWriting !== false,
+            writingVoice: s.settings.writingVoice,
             // A play's engine step opens its own session on the paired
             // computer; the Memory switch rides there the same way.
             memory: memoryOverride(s.settings),
@@ -9878,6 +9909,24 @@ export const useApp = create<AppState>((set, get, api) => {
 
     startNewChat() {
       set({ activeId: undefined, view: 'chat', viewTrail: [], drawerOpen: false });
+    },
+
+    startWritingVoiceChat() {
+      get().startNewChat();
+      set((st) => ({ composerSeed: writingVoiceSeed(st.composerSeed) }));
+    },
+
+    clearComposerSeed() {
+      if (get().composerSeed) set({ composerSeed: undefined });
+    },
+
+    async applyAppAction(key, value) {
+      const plan = appActionPlan(key, value);
+      if (!plan) return false;
+      await get().saveSettings(plan.patch);
+      get().showToast(plan.toast);
+      logEvent('app_action_applied', { key });
+      return true;
     },
 
     sendWhenAttached(conversationId, text, attachments) {

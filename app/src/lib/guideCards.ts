@@ -768,6 +768,21 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     ],
   },
   {
+    id: 'writing-voice',
+    title: 'Your writing voice',
+    where: 'Menu, Settings, Writing',
+    text: 'Your own words for how models write for you, alone or with Humanize Writing. Type it in Settings, Writing, or tap Shape it in a chat: describe the style, and a model on your device can add the result to Settings when you tap.',
+    keywords: [
+      'writing voice',
+      'my voice',
+      'my style',
+      'write like me',
+      'custom voice',
+      'custom writing',
+      'writing prompt',
+    ],
+  },
+  {
     id: 'chain-of-thought',
     title: 'Chain of Thought',
     where: 'Menu, Settings, Reasoning',

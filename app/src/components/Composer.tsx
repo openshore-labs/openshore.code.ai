@@ -582,6 +582,12 @@ export function Composer({
     }
     setAttachments(restore.attachments ?? []);
     areaRef.current?.focus();
+    // The caret goes after the words, so a seeded opening reads as a sentence
+    // to finish, once the value has rendered.
+    requestAnimationFrame(() => {
+      const el = areaRef.current;
+      if (el) el.setSelectionRange(el.value.length, el.value.length);
+    });
     // Only a new seq restores; the payload rides along with it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restore?.seq]);

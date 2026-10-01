@@ -8,7 +8,10 @@
 // it; until it lands, the block reads as plain code in the same box.
 import ReactMarkdown, { type Options } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { CodeBlock } from './CodeBlock.js';
+import { isValidElement } from 'react';
+import { CodeBlock, extractText } from './CodeBlock.js';
+import { AppActionCard } from './AppActionCard.js';
+import { appActionKeyFromClass } from '../lib/appActions.js';
 import { hasCodeFence, useHighlighter } from '../lib/lazyHighlight.js';
 import { rehypeFadeWords } from '../lib/fadeWords.js';
 import { rehypeInk, type InkStamp } from '../lib/inkSwell.js';
@@ -26,8 +29,13 @@ export function Markdown({
   streaming = false,
   fade = false,
   ink,
+  actions = false,
 }: {
   text: string;
+  /** A chat reply: a fence tagged `openshore-set:<key>` renders as the app
+   *  action card (lib/appActions.ts) instead of code. Off everywhere else, so
+   *  a note in the vault or a plan never offers to change a setting. */
+  actions?: boolean;
   streaming?: boolean;
   /** A live reply: split prose into word spans so each new word fades in
    *  (lib/fadeWords.ts, `.md-live .w`). Off renders plain text. */
@@ -48,7 +56,22 @@ export function Markdown({
         remarkPlugins={[remarkGfm]}
         rehypePlugins={plugins}
         components={{
-          pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
+          pre: ({ children }) => {
+            const key =
+              actions && isValidElement(children)
+                ? appActionKeyFromClass((children.props as { className?: string }).className)
+                : undefined;
+            if (key) {
+              return (
+                <AppActionCard
+                  actionKey={key}
+                  value={extractText(children).replace(/\n$/, '')}
+                  streaming={streaming}
+                />
+              );
+            }
+            return <CodeBlock>{children}</CodeBlock>;
+          },
           // Links leave the app rather than navigating the WebView away from it.
           a: ({ href, children }) => (
             <a href={href} target="_blank" rel="noreferrer noopener">

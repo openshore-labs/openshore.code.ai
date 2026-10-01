@@ -11,6 +11,9 @@ import type { DriverEmitter, DriverVaultOptions } from './types.js';
 export interface CloudChatOptions extends DriverVaultOptions {
   /** Humanize Writing (Settings): false only when the person turned it off. */
   humanize?: boolean;
+  /** Your writing voice (Settings, Writing; lib/writingVoice.ts). A cloud
+   *  seat gets the voice, never the app actions contract (lib/appActions.ts). */
+  writingVoice?: string;
 }
 
 /** The Humanize Writing standard for a direct cloud chat, by the rule the

@@ -152,6 +152,8 @@ import type { ChatDriver, DriverEventSink, DriverVaultOptions, PackSeat } from '
 import { DriverEmitter, isLocalOnlyFinal, textFinal } from './types.js';
 import { RemoteDriver, daemonCreateSession, type DaemonTarget } from './remoteDriver.js';
 import type { DriverEvent, VaultOverrides } from 'os-code/protocol';
+import { writingVoiceLine } from '../lib/writingVoice.js';
+import { appActionsContract } from '../lib/appActions.js';
 
 /** Extra context a chat carries into the router: its project and its crew. */
 export interface StackContext {
@@ -163,6 +165,10 @@ export interface StackContext {
    *  to the plain, specific, honest voice that avoids AI writing tells. Off
    *  drops the standard from the prompt, so the model runs on a shorter prompt. */
   humanize?: boolean;
+  /** Your writing voice (Settings, Writing; lib/writingVoice.ts): the
+   *  person's own words for how a model writes for them. Rides to every seat,
+   *  alone or beside the humanizer. */
+  writingVoice?: string;
   /** The Wayfinding Memory switch (memoryOverride): false when the person
    *  turned Memory off, so a play's engine step opens its session with project
    *  memory off. Undefined leaves the project's config in charge. App-side
@@ -807,6 +813,14 @@ export class StackDriver implements ChatDriver {
     if (humanizerApplies(ref, this.context.humanize, modelClass)) {
       standards.push(humanizerStandardPrompt());
     }
+    // The person's own writing voice: on every seat, small ones included,
+    // since it is their instruction and a few lines long.
+    const voice = writingVoiceLine(this.context.writingVoice);
+    if (voice) standards.push(voice);
+    // App actions: only a seat whose requests stay on this network is told it
+    // may propose a settings change (lib/appActions.ts).
+    const actions = appActionsContract(this.leaves(ref));
+    if (actions) standards.push(actions);
     // Codemagic Access is on: tell the model it can drive App Launch builds. The
     // tool is offered on every network model (Anthropic native tool use, and
     // OpenAI-compatible + BYOM function calling), so the note earns its place on

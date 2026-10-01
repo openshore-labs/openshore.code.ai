@@ -28,6 +28,7 @@ import {
   type ProviderEvent,
 } from './providerClient.js';
 import { CloudTurn, cloudHumanizer, type CloudChatOptions } from './cloudChat.js';
+import { writingVoiceLine } from '../lib/writingVoice.js';
 
 /** Fallback context window when the provider catalog carries none. */
 const DEFAULT_CONTEXT_WINDOW = 200_000;
@@ -71,6 +72,7 @@ export class CloudOpenAiDriver implements ChatDriver {
   private turn?: CloudTurn;
   private readonly vaultPack?: AppVaultPack;
   private readonly humanize?: boolean;
+  private readonly writingVoice?: string;
   private readonly contextWindow: number;
   /** The window the provider's catalog lists for this model, if any: the
    *  pack sizes itself from it, else 128k (CTO J4). */
@@ -95,6 +97,7 @@ export class CloudOpenAiDriver implements ChatDriver {
     this.contextWindow = contextWindow ?? DEFAULT_CONTEXT_WINDOW;
     this.vaultPack = opts.vaultPack;
     this.humanize = opts.humanize;
+    this.writingVoice = opts.writingVoice;
     // A mid-chat switch seeds the prior turns so this model continues the thread.
     // A turn that drew on a local-only note reaches this cloud seat as the
     // stub, never the text (I5).
@@ -150,6 +153,7 @@ export class CloudOpenAiDriver implements ChatDriver {
           content: [
             SYSTEM_PROMPT,
             cloudHumanizer(this.humanize, this.seat()?.modelClass),
+            writingVoiceLine(this.writingVoice),
             readChatContext(this.extraSystem),
             effortDirective(),
             chainOfThoughtLine(this.model, cot),

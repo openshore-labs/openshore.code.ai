@@ -186,7 +186,7 @@ function AssistantBubble({
           <Markdown text={text} ink={ink && paced ? { stamp: ink, kind: paced } : undefined} />
         </div>
       ) : (
-        <Markdown text={shown} streaming={live} fade={fading} />
+        <Markdown text={shown} streaming={live} fade={fading} actions />
       )}
     </div>
   );

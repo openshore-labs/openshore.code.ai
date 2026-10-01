@@ -51,6 +51,7 @@ import { ROUTINES_NEVER_SEARCH } from '../lib/egressManifest.js';
 import { Sheet } from '../components/Sheet.js';
 import { Switch } from '../components/Switch.js';
 import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
+import { WritingVoiceField } from '../components/WritingVoiceField.js';
 import { WAYFINDING, WAYFINDING_READY, memoryOverride, wayfindingOn } from '../lib/currents.js';
 import { PROVIDER_ROSTER } from '../lib/gitos/providers.js';
 import { vaultDevicePatch, vaultDeviceView } from '../lib/vaultDevice.js';
@@ -945,6 +946,7 @@ export function SettingsScreen() {
               they are, to protect their limited context.
             </p>
           </InfoSheet>
+          <WritingVoiceField />
         </SettingsGroup>
 
         <SettingsGroup title="Voice" index={group++}>

@@ -10453,6 +10453,21 @@ button.vault-tag {
   flex: 1;
 }
 
+/* A model's proposal to change a setting (components/AppActionCard.tsx). */
+.app-action-card {
+  margin: 8px 0;
+}
+.app-action-value {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--text-3);
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+
 .changed-card {
   border: 1px solid var(--border);
   background: var(--bg-raised);
@@ -11690,6 +11705,46 @@ button.vault-tag {
   border-top: 1px solid var(--border);
   /* The hairline is inset from the left so rows read as one ledger. */
   border-image: linear-gradient(to right, transparent 14px, var(--border) 14px) 1;
+}
+
+/* A settings card's free-form block (an open field under its rows): Settings,
+   Writing, your writing voice (components/WritingVoiceField.tsx). */
+.settings-block {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px 14px;
+  border-top: 1px solid var(--border);
+  border-image: linear-gradient(to right, transparent 14px, var(--border) 14px) 1;
+}
+.settings-block .field {
+  margin-bottom: 0;
+}
+.settings-block .sheet-actions {
+  margin-top: 0;
+}
+.writing-voice-shape {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px dashed var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  color: var(--ink);
+  transition:
+    background var(--dur-1) var(--ease-standard),
+    scale var(--press-out);
+}
+.writing-voice-shape-title {
+  font-weight: var(--weight-semibold);
+  color: var(--accent);
+}
+.writing-voice-shape-sub {
+  font-size: var(--text-2);
+  color: var(--ink-soft);
 }
 button.settings-row:active {
   background: var(--surface);

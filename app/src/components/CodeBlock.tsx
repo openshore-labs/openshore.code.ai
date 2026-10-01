@@ -10,7 +10,7 @@ import { useApp } from '../state/store.js';
 import { copyText } from '../lib/clipboard.js';
 import { DiffBlock } from './ToolCard.js';
 
-function extractText(node: ReactNode): string {
+export function extractText(node: ReactNode): string {
   if (typeof node === 'string') return node;
   if (typeof node === 'number') return String(node);
   if (Array.isArray(node)) return node.map(extractText).join('');

@@ -81,6 +81,8 @@ export const SETTINGS_REACH: Record<keyof AppSettings, SettingReach> = {
   projects: 'device',
   activeProjectId: 'device',
   crew: 'device',
+  // A prompt in the person's own words: never follows (the rule above).
+  writingVoice: 'device',
   account: 'device',
   declinedOrgIds: 'device',
   launch: 'device',
