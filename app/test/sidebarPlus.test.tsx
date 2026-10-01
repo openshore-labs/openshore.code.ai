@@ -1,7 +1,8 @@
 // The sidebar's two layouts (founder, 2026-09-30), with the pay gates ON (the
-// build submitted to App Review). Free: Chats, Projects, Stack, Cloud
-// Connections and Settings up top, then the gold Upgrade banner, then every
-// Plus room greyed. With Plus: the familiar layout. The flag is read at module
+// build submitted to App Review). Free: Chats, Projects, Stack and Cloud
+// Connections up top, then the gold Upgrade banner, then every Plus room
+// greyed. With Plus: the familiar layout. In both, Settings and then the
+// sign-in card are pinned to the bottom (founder, 2026-10-01). The flag is read at module
 // load, so the env is stubbed before the store loads; the suite runs at tier
 // 4, so the later tiers' rooms show too, each on its own side of the line.
 import { readFileSync } from 'node:fs';
@@ -91,14 +92,8 @@ describe('the free sidebar', () => {
     const r = await rows();
     const texts = r.map((x) => x.text);
     const banner = texts.indexOf(UPGRADE_BANNER);
-    expect(texts.slice(0, banner)).toEqual([
-      'Chats',
-      'Projects',
-      'Stack',
-      'Cloud Connections',
-      'Settings',
-    ]);
-    expect(texts.slice(banner + 1)).toEqual([
+    expect(texts.slice(0, banner)).toEqual(['Chats', 'Projects', 'Stack', 'Cloud Connections']);
+    expect(texts.slice(banner + 1, -1)).toEqual([
       'Terminal',
       'Repositories',
       'Vault',
@@ -108,8 +103,10 @@ describe('the free sidebar', () => {
       'Launch with Codemagic',
       'Desktop + phone',
     ]);
+    expect(texts.at(-1)).toBe('Settings');
     expect(r.slice(0, banner + 1).every((x) => !x.plus)).toBe(true);
-    expect(r.slice(banner + 1).every((x) => x.plus)).toBe(true);
+    expect(r.slice(banner + 1, -1).every((x) => x.plus)).toBe(true);
+    expect(r.at(-1)?.plus).toBe(false);
   });
 
   it('keeps the greyed rooms live and says what they are', async () => {
@@ -127,12 +124,13 @@ describe('the free sidebar', () => {
     expect(useApp.getState().view).toBe('chat');
   });
 
-  it('shows the free layout signed out too, with the sign-in card above the banner', async () => {
+  it('shows the free layout signed out too, with the sign-in card last, under Settings', async () => {
     useApp.setState({ authSession: undefined });
     const texts = (await rows()).map((x) => x.text);
     const signIn = texts.findIndex((t) => t.startsWith('Sign in'));
-    expect(signIn).toBeGreaterThan(texts.indexOf('Settings'));
-    expect(signIn).toBeLessThan(texts.indexOf(UPGRADE_BANNER));
+    expect(signIn).toBe(texts.length - 1);
+    expect(texts[signIn - 1]).toBe('Settings');
+    expect(signIn).toBeGreaterThan(texts.indexOf(UPGRADE_BANNER));
   });
 });
 

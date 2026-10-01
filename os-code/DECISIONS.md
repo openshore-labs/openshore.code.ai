@@ -4021,3 +4021,11 @@ execution contract. Newest at the bottom.
   reflection. This reverses the splash part of `60e6ff1` (the Swell Line, the
   dark splash ground); the rest of that brand sweep stays, as do the head's
   dark theme-color metas and the Fraunces preload.
+- **The sidebar is the person's to arrange (founder, 2026-10-01):** every room
+  moves, in its group or across the recent chats to the other; Settings and the
+  sign-in card are pinned under them. The order stays on the device
+  (`navOrder: 'device'`), not among the preferences that follow an account,
+  since a desktop's and a phone's rooms differ and that list is a short
+  allowlist. Recents follow the Chats room's reach (the active project), so
+  View all continues the same list. The free layout honors the saved order
+  but is not draggable: its two groups are set by the pay gate, not by hand.

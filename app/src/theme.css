@@ -634,22 +634,86 @@ textarea {
   display: block;
 }
 
-/* Holds the space the recent-chats list used to fill, so the room nav still
-   sits at the bottom of the drawer. */
-.sidebar-spacer {
-  flex: 1;
+/* The recent chats between the two room groups (founder, 2026-10-01). It
+   takes the space the groups leave, and Sidebar fits as many rows as that
+   holds cleanly, so the heights here are fixed and mirrored there
+   (RECENT_HEAD 30, RECENT_ROW 34, RECENT_FOOT 36). */
+.sidebar-recents {
+  flex: 1 1 0;
   min-height: 8px;
+  overflow: hidden;
+  padding: 0 8px;
+  display: flex;
+  flex-direction: column;
 }
 
-/* The signed-out prompt: sits right where an account slot would be, between
-   the chat list and the room nav, so it reads as "the thing you're missing"
-   rather than one more room in the list. */
+.sidebar-recents-head {
+  height: 30px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-end;
+  padding: 0 10px 6px;
+  margin: 0;
+  font-size: var(--text-2);
+  font-weight: var(--weight-medium);
+  color: var(--muted);
+}
+
+.sidebar-recent {
+  height: 34px;
+  flex-shrink: 0;
+  display: block;
+  width: 100%;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  text-align: left;
+  font-size: var(--text-3);
+  line-height: 34px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background var(--dur-1) var(--ease-standard);
+}
+
+.sidebar-recent:hover,
+.sidebar-recent.active {
+  background: var(--surface);
+}
+
+.sidebar-recent.active {
+  color: var(--ink);
+}
+
+.sidebar-recents-all {
+  height: 36px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-2);
+  font-weight: var(--weight-medium);
+  color: var(--accent);
+}
+
+/* Settings and the sign-in card, pinned under every room in both layouts. */
+.sidebar-foot {
+  border-top: 1px solid var(--border);
+  padding: 8px;
+  padding-bottom: calc(8px + var(--safe-bottom));
+}
+
+/* The signed-out prompt: the last thing in the drawer, under Settings, so it
+   reads as "the thing you're missing" rather than one more room. */
 .sidebar-signin {
   display: flex;
   align-items: center;
   gap: 10px;
-  width: calc(100% - 16px);
-  margin: 8px;
+  width: 100%;
+  margin: 6px 0 0;
   padding: 9px 10px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
@@ -703,7 +767,6 @@ textarea {
 .sidebar-nav {
   border-top: 1px solid var(--border);
   padding: 8px;
-  padding-bottom: calc(8px + var(--safe-bottom));
 }
 
 /* The day-one group sits directly under the wordmark: no rule above it, and no
@@ -741,6 +804,38 @@ textarea {
   width: 20px;
   height: 20px;
   opacity: 0.9;
+}
+
+/* A room the person can move (founder, 2026-10-01). A long press lifts it
+   (hooks/useNavReorder.ts), so the system's callout and text selection stay
+   off it. The rows it passes step aside on the standard curve (a FLIP: the
+   hook sets each one's offset with the slide held, then lets it go), and the
+   lifted row follows the finger exactly, raised on the panel's own ground,
+   then settles into its slot on the spring. Transform only, never layout. */
+.nav-item--movable,
+.sidebar-recents {
+  position: relative;
+  -webkit-touch-callout: none;
+  user-select: none;
+  transition:
+    background var(--dur-1) var(--ease-standard),
+    transform var(--dur-3) var(--ease-standard);
+}
+
+.nav-item--movable.lifted {
+  z-index: 3;
+  background: var(--bg-raised);
+  color: var(--ink);
+  box-shadow: 0 6px 18px rgba(var(--shadow-rgb), 0.16);
+  transition: none;
+}
+
+.nav-item--movable.nav-settling {
+  transition: transform var(--dur-4) var(--ease-spring);
+}
+
+.nav-flip-hold {
+  transition: none;
 }
 
 /* The free build's Plus rooms (founder, 2026-09-30): greyed, still live. A
@@ -842,6 +937,7 @@ textarea {
    in. Opened by the finger, the rows are simply there. */
 .sidebar.drawer .sidebar-head,
 .sidebar.drawer .nav-item,
+.sidebar.drawer .sidebar-recents,
 .sidebar.drawer .sidebar-signin,
 .sidebar.drawer .sidebar-plus {
   animation: drawer-row-in var(--dur-5) var(--ease-glide) backwards;
@@ -849,8 +945,16 @@ textarea {
 }
 .sidebar.drawer.via-gesture .sidebar-head,
 .sidebar.drawer.via-gesture .nav-item,
+.sidebar.drawer.via-gesture .sidebar-recents,
 .sidebar.drawer.via-gesture .sidebar-signin,
-.sidebar.drawer.via-gesture .sidebar-plus {
+.sidebar.drawer.via-gesture .sidebar-plus,
+/* Arrived (Sidebar sets it once the stagger has run, or at a lift): a row
+   that remounts after a reorder must not replay the entrance. */
+.sidebar.drawer.entered .sidebar-head,
+.sidebar.drawer.entered .nav-item,
+.sidebar.drawer.entered .sidebar-recents,
+.sidebar.drawer.entered .sidebar-signin,
+.sidebar.drawer.entered .sidebar-plus {
   animation: none;
 }
 @keyframes drawer-row-in {

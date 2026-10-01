@@ -42,6 +42,7 @@ export const SETTINGS_REACH: Record<keyof AppSettings, SettingReach> = {
   harborReady: 'device',
   harborVersion: 'device',
   libraryIntroSeen: 'device',
+  navOrder: 'device',
   terminalRoomSeen: 'device',
   guidedSetup: 'device',
   heldFirstMessage: 'device',

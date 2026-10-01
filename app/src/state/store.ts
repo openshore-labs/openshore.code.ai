@@ -467,6 +467,7 @@ import {
   type VaultSearchSource,
 } from '../lib/vaultSearch.js';
 import type { VaultAutosave } from '../lib/vaultAutosave.js';
+import type { NavOrder } from '../lib/sidebarOrder.js';
 import {
   applyMove as opsApplyMove,
   createFolder as opsCreateFolder,
@@ -716,6 +717,11 @@ export interface AppSettings {
   searchBackend?: SearchBackend;
   /** Whether the Marketplace intro walkthrough has been shown. */
   libraryIntroSeen?: boolean;
+  /** The person's sidebar order (founder, 2026-10-01): the rooms above the
+   *  recent chats and the rooms below them, as last dragged. Settings and the
+   *  sign-in card are pinned and never in it. Unset means the default order;
+   *  lib/sidebarOrder.ts resolves it against the rooms this build shows. */
+  navOrder?: NavOrder;
   /** Daemon base URLs this device has registered for completion push, so a grant
    *  is minted once per daemon rather than on every desktop session. Device-local
    *  bookkeeping, not synced. */

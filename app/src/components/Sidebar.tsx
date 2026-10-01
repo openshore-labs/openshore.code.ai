@@ -1,22 +1,38 @@
 // The sidebar is the app's main navigation (founder, 2026-09-02): the day-one
-// rooms at the top, the second-session rooms at the bottom, nothing else. New
-// chat and the project switcher live in the Chats and Projects rooms. Persistent on desktop, a slide-over drawer on the phone.
+// rooms at the top, the second-session rooms at the bottom. New chat and the
+// project switcher live in the Chats and Projects rooms. Persistent on
+// desktop, a slide-over drawer on the phone.
+//
+// The person's own order (founder, 2026-10-01): every room can be dragged to
+// a new place, in its group or across to the other (hooks/useNavReorder.ts,
+// lib/sidebarOrder.ts). The recent chats sit under the top group, as many as
+// fit cleanly, with View all to the Chats room. Settings and the sign-in card
+// are pinned to the bottom and never move.
 //
 // Two layouts (founder, 2026-09-30). With OpenShore Plus (and in every build
 // while the pay gates are off), the one below. Without it, the free rooms
 // (Chats, Projects, Stack, Cloud Connections, Settings) move up top, and the
 // rest sit greyed at the bottom under a gold Upgrade banner. A greyed room
 // still answers the tap: it opens the paywall (store.ts setView).
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { roomOpen, visibleRooms } from '../lib/focus.js';
 import { PAY_GATES_ENABLED, roomPaid } from '../lib/payGate.js';
 import { accountCopy } from '../lib/accountGate.js';
-import type { CSSProperties } from 'react';
 import { isOrgAdmin, useApp, type ViewName } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
 import type { GestureProps } from '../hooks/useDrawerGesture.js';
 import { BrandMark } from './BrandMark.js';
 import { ROOM_LABELS, type NavRoom } from '../lib/navRooms.js';
 import { Icon } from './Icon.js';
+import {
+  recentFit,
+  resolveNavOrder,
+  type MovableRoom,
+  type NavOrder,
+} from '../lib/sidebarOrder.js';
+import { useNavReorder } from '../hooks/useNavReorder.js';
+import { durationMs } from '../lib/motion.js';
+import type { Conversation } from '../state/types.js';
 
 // Every view that has a nav glyph: all ViewNames except the ones that never
 // appear as a nav item (chat is home; onboarding and terminal are full-screen
@@ -49,18 +65,20 @@ const PRIMARY_NAV: NavEntry[] = visibleRooms(
 );
 
 const EXPLORE_NAV: NavEntry[] = visibleRooms(
-  (
-    ['crew', 'marketplace', 'stackhealth', 'launch', 'connections', 'pair', 'settings'] as const
-  ).map(nav),
+  (['crew', 'marketplace', 'stackhealth', 'launch', 'connections', 'pair'] as const).map(nav),
 );
 
-// The free layout reads the same two lists through lib/payGate.ts, so a room
-// moves between the groups by its classification alone, in the same order:
-// the free rooms up top (Chats, Projects, Stack, Cloud Connections,
-// Settings), the Plus rooms greyed below the banner.
-const FREE_PRIMARY: NavEntry[] = PRIMARY_NAV.filter((e) => !roomPaid(e.view));
-const FREE_EXPLORE: NavEntry[] = EXPLORE_NAV.filter((e) => !roomPaid(e.view));
-const PLUS_ROOMS: NavEntry[] = [...PRIMARY_NAV, ...EXPLORE_NAV].filter((e) => roomPaid(e.view));
+// Settings is pinned to the bottom, under every room and above the sign-in
+// card, in both layouts (founder, 2026-10-01).
+const SETTINGS: NavEntry = nav('settings');
+
+// The order before the person has moved anything.
+const DEFAULT_ORDER: NavOrder = {
+  top: PRIMARY_NAV.map((e) => e.view as MovableRoom),
+  bottom: EXPLORE_NAV.map((e) => e.view as MovableRoom),
+};
+
+const entryOf = (view: MovableRoom): NavEntry => nav(view);
 
 /** The banner's words, and each greyed room's spoken label. */
 export const UPGRADE_BANNER = 'Upgrade to OpenShore Plus';
@@ -221,41 +239,81 @@ export function Sidebar({
   progress?: number | null;
   dragProps?: GestureProps;
 }) {
-  const { view, setView, setDrawer, settings, openPaywall } = useApp();
+  const { view, setView, setDrawer, settings, openPaywall, saveSettings } = useApp();
   const { configured: authConfigured, signedIn } = useAuth();
   // True in every build while the pay gates are off (state/payOps.ts), so
   // only the build with them on ever shows the free layout.
   const plus = useApp((s) => s.personalUnlockedNow());
 
+  const saved = resolveNavOrder(settings.navOrder, DEFAULT_ORDER);
+  const reorder = useNavReorder(saved, (next) => void saveSettings({ navOrder: next }));
+  const order = reorder.order;
+
+  // The drawer's rows arrive one after another, once. After that (or the
+  // moment a row is lifted) the entrance is switched off, so a row that moves
+  // to the other group, and so mounts again there, never replays it.
+  const [entered, setEntered] = useState(!drawer);
+  useEffect(() => {
+    if (entered) return;
+    const t = window.setTimeout(
+      () => setEntered(true),
+      durationMs('--dur-2', 120) + durationMs('--dur-5', 320) + 20 * durationMs('--stagger', 40),
+    );
+    return () => window.clearTimeout(t);
+  }, [entered]);
+  if (reorder.lifted && !entered) setEntered(true);
+
   // --i is the row's place in the drawer's entrance stagger (theme.css
-  // drawer-row-in): the wordmark is 0, the primary rooms follow, and the
-  // bottom group carries on counting so the whole door fills top to bottom.
+  // drawer-row-in): the wordmark is 0, the top rooms follow, and the rest
+  // carry on counting so the whole door fills top to bottom.
   const stagger = (i: number) => ({ '--i': i }) as CSSProperties;
-  const item = ({ view: v, label }: NavEntry, i: number, locked = false) => (
-    <button
-      key={v}
-      className={`nav-item press-fb press-fb--row${view === v ? ' active' : ''}${locked ? ' nav-item--plus' : ''}`}
-      style={stagger(1 + i)}
-      aria-label={locked ? PLUS_ROOM_LABEL(label) : undefined}
-      onClick={() => setView(v, { root: true })}
-    >
-      <span className="glyph">
-        <NavIcon name={v} />
-      </span>
-      {label}
-    </button>
-  );
+  const item = (
+    { view: v, label }: NavEntry,
+    i: number,
+    opts: { locked?: boolean; movable?: boolean } = {},
+  ) => {
+    const movable = opts.movable && v !== 'settings' && v !== 'admin';
+    const lifted = movable && reorder.lifted === v;
+    return (
+      <button
+        key={v}
+        className={`nav-item press-fb press-fb--row${view === v ? ' active' : ''}${opts.locked ? ' nav-item--plus' : ''}${movable ? ' nav-item--movable' : ''}${lifted ? ' lifted' : ''}`}
+        style={stagger(1 + i)}
+        aria-label={opts.locked ? PLUS_ROOM_LABEL(label) : undefined}
+        onClick={() => setView(v, { root: true })}
+        {...(movable ? reorder.rowProps(v as MovableRoom) : {})}
+      >
+        <span className="glyph">
+          <NavIcon name={v} />
+        </span>
+        {label}
+      </button>
+    );
+  };
 
   const adminItem = (i: number) =>
     isOrgAdmin(settings.account) && settings.account?.type === 'commercial' && roomOpen('admin')
       ? item({ view: 'admin', label: 'Admin' }, i)
       : null;
 
-  const topRooms = plus ? PRIMARY_NAV : FREE_PRIMARY;
+  // With Plus, the person's two groups as they left them. Without it, the free
+  // rooms in the same order up top and every Plus room greyed under the
+  // banner, so a room moves between them by its classification alone
+  // (lib/payGate.ts) and keeps its place among its own kind.
+  const flat = [...order.top, ...order.bottom].map(entryOf);
+  const top = plus ? order.top.map(entryOf) : flat.filter((e) => !roomPaid(e.view));
+  const bottom = plus ? order.bottom.map(entryOf) : [];
+  const plusRooms = plus ? [] : flat.filter((e) => roomPaid(e.view));
+  const hasAdmin = adminItem(0) !== null;
+  const afterTop = top.length + (plus || !hasAdmin ? 0 : 1);
+  const afterRecents = afterTop + 1;
+  const afterBottom = plus
+    ? afterRecents + (hasAdmin ? 1 : 0) + bottom.length
+    : afterRecents + 1 + plusRooms.length;
 
   const body = (
     <aside
-      className={`sidebar${drawer ? ' drawer' : ''}${closing ? ' closing' : ''}${dragging ? ' dragging' : ''}${viaGesture ? ' via-gesture' : ''}`}
+      className={`sidebar${drawer ? ' drawer' : ''}${drawer && entered ? ' entered' : ''}${closing ? ' closing' : ''}${dragging ? ' dragging' : ''}${viaGesture ? ' via-gesture' : ''}`}
       // --drawer-x lets the exit keyframe (theme.css drawer-out) start from
       // the finger's position after a drag-to-close, so the door keeps sliding
       // rather than jumping back to open first.
@@ -285,45 +343,23 @@ export function Sidebar({
         </span>
       </div>
 
-      {/* The day-one rooms, pinned to the top where the hand lands first.
-          Without Plus, the free rooms, Admin and Settings among them. */}
+      {/* The top group, where the hand lands first. With Plus it is the
+          person's to reorder; without it, the free rooms, Admin among them. */}
       <nav className="sidebar-nav sidebar-nav--primary">
-        {topRooms.map((entry, i) => item(entry, i))}
-        {plus ? null : adminItem(topRooms.length)}
-        {plus ? null : FREE_EXPLORE.map((entry, i) => item(entry, topRooms.length + 1 + i))}
+        {top.map((entry, i) => item(entry, i, { movable: plus }))}
+        {plus ? null : adminItem(top.length)}
       </nav>
 
-      <div className="sidebar-spacer" />
-
-      {authConfigured && !signedIn ? (
-        <button
-          type="button"
-          className="sidebar-signin"
-          style={stagger(1 + topRooms.length)}
-          onClick={() => {
-            setView('settings', { root: true });
-            setDrawer(false);
-          }}
-        >
-          <span className="sidebar-signin-avatar" aria-hidden="true">
-            <Icon size={18}>
-              <circle cx="12" cy="8.5" r="3.4" />
-              <path d="M5 20v-1a7 7 0 0 1 14 0v1" />
-            </Icon>
-          </span>
-          <span className="sidebar-signin-label">
-            <span className="sidebar-signin-title">Sign in</span>
-            <span className="sidebar-signin-sub">{accountCopy(PAY_GATES_ENABLED).signInSub}</span>
-          </span>
-        </button>
-      ) : null}
+      <RecentChats divider={plus ? reorder.dividerRef : undefined} i={1 + afterTop} />
 
       {plus ? (
-        /* The second-session rooms stay at the bottom, Settings last. Admin,
-           when the account carries it, leads the group. */
+        /* The second-session rooms, the person's to reorder. Admin, when the
+           account carries it, leads the group. */
         <nav className="sidebar-nav">
-          {adminItem(PRIMARY_NAV.length + 1)}
-          {EXPLORE_NAV.map((entry, i) => item(entry, PRIMARY_NAV.length + 2 + i))}
+          {adminItem(afterRecents)}
+          {bottom.map((entry, i) =>
+            item(entry, afterRecents + (hasAdmin ? 1 : 0) + i, { movable: true }),
+          )}
         </nav>
       ) : (
         /* Free: the gold banner, then every Plus room, greyed but live. */
@@ -331,7 +367,7 @@ export function Sidebar({
           <button
             type="button"
             className="sidebar-plus press-fb"
-            style={stagger(2 + topRooms.length + FREE_EXPLORE.length)}
+            style={stagger(1 + afterRecents)}
             onClick={() => openPaywall('plus')}
           >
             <span className="sidebar-plus-mark" aria-hidden="true">
@@ -344,11 +380,37 @@ export function Sidebar({
             </span>
             {UPGRADE_BANNER}
           </button>
-          {PLUS_ROOMS.map((entry, i) =>
-            item(entry, 3 + topRooms.length + FREE_EXPLORE.length + i, true),
-          )}
+          {plusRooms.map((entry, i) => item(entry, 2 + afterRecents + i, { locked: true }))}
         </nav>
       )}
+
+      {/* Pinned to the bottom in both layouts: Settings, then the sign-in
+          card under it (founder, 2026-10-01). */}
+      <div className="sidebar-foot">
+        {item(SETTINGS, afterBottom)}
+        {authConfigured && !signedIn ? (
+          <button
+            type="button"
+            className="sidebar-signin"
+            style={stagger(2 + afterBottom)}
+            onClick={() => {
+              setView('settings', { root: true });
+              setDrawer(false);
+            }}
+          >
+            <span className="sidebar-signin-avatar" aria-hidden="true">
+              <Icon size={18}>
+                <circle cx="12" cy="8.5" r="3.4" />
+                <path d="M5 20v-1a7 7 0 0 1 14 0v1" />
+              </Icon>
+            </span>
+            <span className="sidebar-signin-label">
+              <span className="sidebar-signin-title">Sign in</span>
+              <span className="sidebar-signin-sub">{accountCopy(PAY_GATES_ENABLED).signInSub}</span>
+            </span>
+          </button>
+        ) : null}
+      </div>
     </aside>
   );
 
@@ -374,5 +436,94 @@ export function Sidebar({
       />
       {body}
     </>
+  );
+}
+
+// The recent chats between the two groups: as many as fit cleanly in the space
+// the groups leave, newest first, then View all to the Chats room. Same reach
+// as that room (the active project's chats), so View all shows the same list
+// continued. The fixed row heights live in theme.css (.sidebar-recents).
+const RECENT_ROW = 34;
+const RECENT_HEAD = 30;
+const RECENT_FOOT = 36;
+/** With no way to measure (no ResizeObserver), a short list rather than none. */
+const RECENT_UNMEASURED = 5;
+
+export function recentChats(
+  order: readonly string[],
+  conversations: Record<string, Conversation>,
+  projectId: string | undefined,
+): Conversation[] {
+  return order
+    .map((id) => conversations[id])
+    .filter(
+      (c): c is Conversation =>
+        Boolean(c) &&
+        // A fresh chat with nothing said yet is not a place to dip back into.
+        !(c!.title === 'New chat' && c!.thread.items.length === 0) &&
+        (projectId ? c!.projectId === projectId : !c!.projectId),
+    )
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+}
+
+function RecentChats({ divider, i }: { divider?: (el: HTMLElement | null) => void; i: number }) {
+  const { order, conversations, activeId, view, openConversation, setView, settings } = useApp();
+  const projects = settings.projects ?? [];
+  const project = projects.find((p) => p.id === settings.activeProjectId) ?? projects[0];
+  const chats = recentChats(order, conversations, project?.id);
+  const box = useRef<HTMLElement | null>(null);
+  const [height, setHeight] = useState<number | null>(null);
+
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    setHeight(el.clientHeight);
+    const ro = new ResizeObserver(() => setHeight(el.clientHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const fit =
+    height === null
+      ? Math.min(chats.length, RECENT_UNMEASURED)
+      : recentFit(height, RECENT_ROW, RECENT_HEAD + RECENT_FOOT, chats.length);
+  const shown = chats.slice(0, fit);
+
+  return (
+    <section
+      className="sidebar-recents"
+      aria-label="Recent chats"
+      style={{ '--i': i } as CSSProperties}
+      ref={(el) => {
+        box.current = el;
+        divider?.(el);
+      }}
+    >
+      {shown.length > 0 ? (
+        <>
+          <h2 className="sidebar-recents-head">Recents</h2>
+          {shown.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              className={`sidebar-recent press-fb press-fb--row${view === 'chat' && activeId === c.id ? ' active' : ''}`}
+              onClick={() => openConversation(c.id)}
+            >
+              {c.title || 'New chat'}
+            </button>
+          ))}
+          <button
+            type="button"
+            className="sidebar-recents-all press-fb press-fb--row"
+            onClick={() => setView('chats', { root: true })}
+          >
+            View all
+            <Icon size={14}>
+              <path d="M9 6l6 6-6 6" />
+            </Icon>
+          </button>
+        </>
+      ) : null}
+    </section>
   );
 }
