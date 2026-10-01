@@ -4038,3 +4038,13 @@ execution contract. Newest at the bottom.
   is installed, since no API downloads them for us. A browser's online voices
   are dropped (they send the words to a speech service the egress list does not
   name). A cloud or bundled neural voice would be a separate call.
+- **Chats room polish (founder, 2026-10-01):** "a little more delightful, not
+  revolutionary", so the Claude-app shape stays (one flat list, no date
+  captions, no cards). Added: a search pill with its icon and a clear button
+  that searches inside each chat too, marking the hit and showing its line
+  under the title; a reach dot on each row in the house colours (teal local,
+  amber cloud) read from the last served model, else the source, and a faint
+  ring when unknown rather than a guess; a real plus badge on New chat, hidden
+  while searching; Enter opens the top result, Escape clears; and one quiet
+  line under the list naming the swipe and the hold. Date grouping was left
+  out on purpose, since the earlier Creative Studio call ruled it out.

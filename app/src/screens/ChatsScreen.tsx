@@ -3,10 +3,15 @@
 // sorted by recency, each a one-line title over a quiet "2h ago · Claude".
 // No cards, no date captions, no grouping; the timestamp carries recency.
 // Tap to open, swipe to delete (with a confirm, since it cannot be undone),
-// hold to name.
+// hold to name; a quiet line under the list says so, since a gesture nobody
+// mentions is a gesture nobody finds.
+// Search reads inside the chats too: a title hit is marked in place, a hit in
+// the conversation shows its line under the title. Each row carries a small
+// dot in the house reach colours (teal local, amber cloud) when the reach is
+// known, and only a faint ring when it is not.
 // Sessions running on the paired desktop with no chat here yet sit in the
 // same list, marked, so a job started at the desk is picked up from the couch.
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { DaemonSessionInfo } from 'os-code/protocol';
 import { useApp } from '../state/store.js';
 import { computerName, sourceLabel, type Conversation } from '../state/types.js';
@@ -56,6 +61,118 @@ export function sourceShort(conv: Conversation): string {
   }
 }
 
+/** Where a chat's model ran, when that is known: the last turn's model wins,
+ *  then the source's own kind. A Stack or engine chat with no turn yet is
+ *  unknown, and gets a ring rather than a guess. */
+export function chatReach(conv: Conversation): 'local' | 'cloud' | undefined {
+  const served = conv.thread.model?.kind;
+  if (served) return served;
+  switch (conv.source.kind) {
+    case 'cloud':
+      return 'cloud';
+    case 'device':
+    case 'desktop-chat':
+      return 'local';
+    default:
+      return undefined;
+  }
+}
+
+const REACH_HINT = {
+  local: 'Ran on a local model',
+  cloud: 'Ran on a cloud model',
+  unknown: 'No reply yet',
+} as const;
+
+/** The reach dot: filled teal or amber when known, a faint ring when not, so
+ *  every row's second line starts at the same edge. */
+export function ReachDot({ reach }: { reach: 'local' | 'cloud' | undefined }) {
+  const kind = reach ?? 'unknown';
+  return (
+    <span className={`chat-reach chat-reach-${kind}`} title={REACH_HINT[kind]} aria-hidden="true" />
+  );
+}
+
+/** The plus badge on the "New chat" row. */
+export function NewChatGlyph() {
+  return (
+    <span className="chat-new-plus" aria-hidden="true">
+      <Icon size={16}>
+        <path d="M12 5v14" />
+        <path d="M5 12h14" />
+      </Icon>
+    </span>
+  );
+}
+
+/** Where a search found a chat: its title, or a line inside it. */
+export type ChatMatch =
+  { where: 'title' } | { where: 'body'; before: string; hit: string; after: string };
+
+const SNIPPET_RADIUS = 36;
+
+/** Plain text for matching: markdown marks dropped, whitespace collapsed. */
+function plain(text: string): string {
+  return text
+    .replace(/[`*_#>]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Find `query` in a chat's title, else in its messages, newest first. */
+export function matchChat(conv: Conversation, query: string): ChatMatch | null {
+  const q = query.trim().toLowerCase();
+  if (!q) return { where: 'title' };
+  if (conv.title.toLowerCase().includes(q)) return { where: 'title' };
+  const items = conv.thread.items;
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i]!;
+    if (item.kind !== 'user' && item.kind !== 'assistant') continue;
+    const text = plain(item.text);
+    const at = text.toLowerCase().indexOf(q);
+    if (at < 0) continue;
+    const from = Math.max(0, at - SNIPPET_RADIUS);
+    const to = Math.min(text.length, at + q.length + SNIPPET_RADIUS * 2);
+    return {
+      where: 'body',
+      before: (from > 0 ? '…' : '') + text.slice(from, at),
+      hit: text.slice(at, at + q.length),
+      after: text.slice(at + q.length, to) + (to < text.length ? '…' : ''),
+    };
+  }
+  return null;
+}
+
+/** `text` with each case-insensitive occurrence of `query` marked. */
+export function Marked({ text, query }: { text: string; query: string }) {
+  const q = query.trim();
+  if (!q) return <>{text}</>;
+  const lower = text.toLowerCase();
+  const needle = q.toLowerCase();
+  const out: ReactNode[] = [];
+  let i = 0;
+  for (let at = lower.indexOf(needle); at >= 0; at = lower.indexOf(needle, i)) {
+    if (at > i) out.push(text.slice(i, at));
+    out.push(
+      <mark key={at} className="chat-hit">
+        {text.slice(at, at + needle.length)}
+      </mark>,
+    );
+    i = at + needle.length;
+  }
+  if (i < text.length) out.push(text.slice(i));
+  return <>{out}</>;
+}
+
+function SearchIcon() {
+  return (
+    <Icon size={17}>
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="m16 16 4 4" />
+    </Icon>
+  );
+}
+
 function ComposeIcon() {
   return (
     <Icon size={22}>
@@ -69,7 +186,7 @@ function ComposeIcon() {
 const ROW_OUT_MS = 300;
 
 type Row =
-  | { kind: 'chat'; id: string; at: number; conv: Conversation }
+  | { kind: 'chat'; id: string; at: number; conv: Conversation; match: ChatMatch }
   | { kind: 'desktop'; id: string; at: number; session: DaemonSessionInfo };
 
 export function ChatsScreen() {
@@ -93,6 +210,7 @@ export function ChatsScreen() {
   const [leavingId, setLeavingId] = useState<string | undefined>();
   const [desktopSessions, setDesktopSessions] = useState<DaemonSessionInfo[]>([]);
   const leaveTimer = useRef<number | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   useEffect(
     () => () => {
       if (leaveTimer.current !== null) window.clearTimeout(leaveTimer.current);
@@ -102,23 +220,23 @@ export function ChatsScreen() {
 
   const projects = settings.projects ?? [];
   const activeProject = projects.find((p) => p.id === settings.activeProjectId) ?? projects[0];
+  const projectId = activeProject?.id;
 
-  // The chats in the active project.
+  // The chats in the active project, each with where the search found it.
   const q = query.trim().toLowerCase();
-  const chats: Row[] = order
-    .filter((id) => {
-      const conv = conversations[id];
-      if (!conv) return false;
-      if (q && !conv.title.toLowerCase().includes(q)) return false;
-      if (activeProject) return conv.projectId === activeProject.id;
-      return !conv.projectId;
-    })
-    .map((id) => ({
-      kind: 'chat' as const,
-      id,
-      at: new Date(conversations[id]!.updatedAt).getTime(),
-      conv: conversations[id]!,
-    }));
+  const chats: Row[] = useMemo(
+    () =>
+      order.flatMap((id) => {
+        const conv = conversations[id];
+        if (!conv) return [];
+        if (projectId ? conv.projectId !== projectId : conv.projectId) return [];
+        const match = matchChat(conv, q);
+        if (!match) return [];
+        const at = new Date(conv.updatedAt).getTime();
+        return [{ kind: 'chat' as const, id, at, conv, match }];
+      }),
+    [order, conversations, projectId, q],
+  );
 
   // Sessions on the paired desktop with no chat here. Best effort: a desktop
   // that is asleep just yields an empty list.
@@ -157,6 +275,17 @@ export function ChatsScreen() {
     }));
 
   const rows = [...chats, ...desktopRows].sort((a, b) => b.at - a.at);
+
+  const openRow = (row: Row) => {
+    if (row.kind === 'chat') {
+      openConversation(row.id);
+      return;
+    }
+    const s = row.session;
+    void openDesktopSession({ id: s.id, cwd: s.cwd, title: s.title }).catch((err: unknown) =>
+      showToast(plainError(err)),
+    );
+  };
 
   const confirmConv = confirmId ? conversations[confirmId] : undefined;
   const renameConv = renameId ? conversations[renameId] : undefined;
@@ -199,31 +328,61 @@ export function ChatsScreen() {
     <div className="screen">
       <BackBar title="Chats" action={compose} />
       <div className="screen-inner chats">
-        <div className="chat-search">
+        <div className={`chat-search${query ? ' has-query' : ''}`}>
+          <span className="chat-search-icon">
+            <SearchIcon />
+          </span>
           <input
+            ref={searchRef}
             type="search"
             value={query}
-            placeholder="Search"
+            placeholder="Search chats"
             aria-label="Search chats"
+            enterKeyHint="go"
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape' && query) {
+                e.preventDefault();
+                setQuery('');
+              } else if (e.key === 'Enter' && q && rows[0]) {
+                e.preventDefault();
+                openRow(rows[0]);
+              }
+            }}
           />
+          <button
+            type="button"
+            className="chat-search-clear press-fb"
+            aria-label="Clear search"
+            tabIndex={query ? 0 : -1}
+            aria-hidden={!query}
+            onClick={() => {
+              setQuery('');
+              searchRef.current?.focus();
+            }}
+          >
+            <Icon size={12}>
+              <path d="M6 6l12 12" />
+              <path d="M18 6 6 18" />
+            </Icon>
+          </button>
         </div>
 
         <div className="chat-list">
-          <button
-            type="button"
-            className="chat-row chat-row-new press-fb press-fb--row"
-            onClick={() => {
-              startNewChat();
-            }}
-          >
-            <span className="chat-row-title">
-              <span className="chat-new-plus" aria-hidden="true">
-                +
+          {q ? null : (
+            <button
+              type="button"
+              className="chat-row chat-row-new press-fb press-fb--row"
+              onClick={() => {
+                startNewChat();
+              }}
+            >
+              <span className="chat-row-title">
+                <NewChatGlyph />
+                New chat
               </span>
-              New chat
-            </span>
-          </button>
+            </button>
+          )}
 
           {rows.map((row, i) => {
             const style = { '--stagger': `${Math.min(i, 8) * 22}ms` } as CSSProperties;
@@ -238,15 +397,11 @@ export function ChatsScreen() {
                   <button
                     type="button"
                     className="chat-row press-fb press-fb--row"
-                    onClick={() => {
-                      void openDesktopSession({ id: s.id, cwd: s.cwd, title: s.title }).catch(
-                        (err: unknown) => showToast(plainError(err)),
-                      );
-                    }}
+                    onClick={() => openRow(row)}
                   >
                     <span className="chat-row-title">
                       <span className="chat-row-remote" aria-hidden="true" />
-                      {name}
+                      <Marked text={name} query={q} />
                     </span>
                     <span className="chat-row-sub">
                       {s.updatedAt ? `${relativeTime(s.updatedAt)} · ` : ''}Running on your computer
@@ -278,9 +433,17 @@ export function ChatsScreen() {
                     {conv.thread.busy ? (
                       <span className="chat-row-live" aria-label="working" />
                     ) : null}
-                    {conv.title}
+                    <Marked text={conv.title} query={row.match.where === 'title' ? q : ''} />
                   </span>
+                  {row.match.where === 'body' ? (
+                    <span className="chat-row-snippet">
+                      {row.match.before}
+                      <mark className="chat-hit">{row.match.hit}</mark>
+                      {row.match.after}
+                    </span>
+                  ) : null}
                   <span className="chat-row-sub">
+                    <ReachDot reach={chatReach(conv)} />
                     {relativeTime(conv.updatedAt)} · {sourceShort(conv)}
                   </span>
                 </div>
@@ -289,9 +452,14 @@ export function ChatsScreen() {
           })}
         </div>
 
+        {rows.length > 0 && !q ? (
+          <p className="chat-list-hint">Swipe a chat left to delete it. Hold it to rename.</p>
+        ) : null}
+
         {rows.length === 0 ? (
           <div className="chat-empty">
-            <h2>{q ? 'No chat called that.' : 'Nothing here yet.'}</h2>
+            <h2>{q ? `Nothing matches “${query.trim()}”.` : 'Nothing here yet.'}</h2>
+            {q ? <p>Search looks through chat names and what was said in them.</p> : null}
             {!q ? (
               <p>
                 {activeProject

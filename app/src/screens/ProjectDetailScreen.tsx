@@ -30,7 +30,7 @@ import {
   permissionLabel,
   projectPermissionFor,
 } from '../lib/projectAccess.js';
-import { relativeTime, sourceShort } from './ChatsScreen.js';
+import { NewChatGlyph, ReachDot, chatReach, relativeTime, sourceShort } from './ChatsScreen.js';
 import { useTitleHero } from '../lib/heroTitle.js';
 import { durationMs } from '../lib/motion.js';
 import { Icon } from '../components/Icon.js';
@@ -259,9 +259,7 @@ export function ProjectDetailScreen() {
                 }}
               >
                 <span className="chat-row-title">
-                  <span className="chat-new-plus" aria-hidden="true">
-                    +
-                  </span>
+                  <NewChatGlyph />
                   New chat
                 </span>
               </button>
@@ -283,6 +281,7 @@ export function ProjectDetailScreen() {
                     {conv.title}
                   </span>
                   <span className="chat-row-sub">
+                    <ReachDot reach={chatReach(conv)} />
                     {relativeTime(conv.updatedAt)} · {sourceShort(conv)}
                   </span>
                 </button>
