@@ -3440,3 +3440,18 @@ execution contract. Newest at the bottom.
   sandbox run, the desktop flag with Stripe, the sandbox policy before any
   public TestFlight, the review notes and a demo video, and a device check
   that Stop still works on a process after a lapse.
+- 2026-10-01: **Paths behind a symlink compare in one space (the Mac build's
+  test gate).** Codemagic's iOS build stopped at "Gate the build on the test
+  suite": on a Mac every temp folder sits behind a symlink (/var is
+  /private/var), which GitHub's Linux CI never sees. Four tests failed there,
+  three on real bugs: the harness's Current State line measured jail-resolved
+  paths from the raw cwd ("changed ../../private/var/.../a.txt"; now from
+  `jail.root`); `realOrResolve` fell back to an unresolved path for a folder
+  not made yet, so the vault overlap guard could miss a vault behind a symlink
+  (now the deepest existing ancestor, the jail's `deepestRealpath`); and the
+  syntax check's error named the probe file by its resolved path (both
+  spellings now map back, the resolved one first since it contains the plain
+  one). The fourth was a test whose readdir stub keyed on the unresolved root.
+  New tests in `security.test.ts` and `loopVaultContext.test.ts` go through a
+  real symlink, so Linux CI watches it too; both full suites also pass with
+  TMPDIR pointed at a symlink.

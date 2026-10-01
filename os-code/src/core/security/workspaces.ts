@@ -10,19 +10,19 @@
 // starts) can share the exact same gate without a circular import.
 import { join, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
-import { realpathSync } from 'node:fs';
+import { deepestRealpath } from './jail.js';
 import { loadDaemonConfig, loadVaultDir, type DaemonConfig } from '../../config/load.js';
 import type { OscConfig } from '../../config/schema.js';
 import { memberVaultsDir } from '../vault/memberRoots.js';
 
-/** Resolve a path to its real location when it exists (symlinks followed),
- *  else to its lexical absolute form. */
+/** Resolve a path to its real location (symlinks followed); one that does
+ *  not exist yet resolves its deepest existing ancestor and keeps the rest. */
 export function realOrResolve(p: string): string {
-  try {
-    return realpathSync(p);
-  } catch {
-    return resolve(p);
-  }
+  // A folder that does not exist yet (a vault not yet made, a member root)
+  // resolves through its deepest existing ancestor, so it compares in the
+  // same space as one that exists: on a Mac /var is /private/var, and a
+  // plain resolve() there made the overlap guard miss a vault behind it.
+  return deepestRealpath(resolve(p));
 }
 
 export function within(target: string, root: string): boolean {
