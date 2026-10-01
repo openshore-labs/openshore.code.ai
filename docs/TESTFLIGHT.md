@@ -1,7 +1,8 @@
 # Getting OS Code onto your iPhone with Codemagic + TestFlight
 
-One-time setup, then every push to `main` builds and ships to TestFlight
-automatically. Work through the steps in order; each one is small.
+One-time setup, then each build you start by hand in Codemagic ships to
+TestFlight. A push to `main` starts nothing (founder, 2026-10-01). Work
+through the steps in order; each one is small.
 
 ## What you need
 
@@ -64,7 +65,8 @@ Codemagic uses this key to sign the app and upload builds.
 3. When it finishes, the build appears in App Store Connect -> TestFlight
    within a few minutes.
 
-Every later push to `main` triggers this automatically.
+Every later build is started the same way, by hand: a push to `main` starts
+no build.
 
 ## 5. Onto your iPhone (internal testing, no review)
 
@@ -92,14 +94,13 @@ some contact info first:
    Phone, Email** (Beta App Review Information). Save.
 2. In `codemagic.yaml`, set `submit_to_testflight: true` (optionally add
    `beta_groups: [<external group name>]`). Ask Claude to make this change.
-3. Push; the next build auto-submits for beta review.
+3. Start a new build by hand; it submits for beta review when it uploads.
 
 ## 7. A store release (App Store review)
 
 The build for review is the only build with the pay gates on (OpenShore Plus,
-`VITE_PAY_GATES=1`; CTO, 2026-09-30). Every push to `main` builds
-`ios-testflight` with them off, so never submit a push build. Start the build
-for review by hand: Codemagic, the app, Start new build, workflow
+`VITE_PAY_GATES=1`; CTO, 2026-09-30). A build started with `store_release`
+off has them off, so never submit one of those. Start the build for review: Codemagic, the app, Start new build, workflow
 `ios-testflight`, branch `main`, and turn on the build input `store_release`
 ("Store release, the build for App Store review"). On, the steps "Check the
 Apple receipt roots" and "Build the web app, sync the iOS project" export
