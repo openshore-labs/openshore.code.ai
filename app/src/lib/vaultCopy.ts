@@ -1711,11 +1711,21 @@ export function vaultRenameToast(o: {
     /** A refusal for good stopped the pass (a team out of free space): its
      *  reason, said in place of "tries again". */
     refusal?: string;
+    /** Linking notes moved or deleted somewhere else while the pass ran and
+     *  not found again (round 7 E36): named after the rest, never counted
+     *  as updated, and never offered to Update the rest. */
+    gone?: readonly string[];
   };
 }): string {
   const head = `Renamed to "${o.next}".`;
   const r = o.rewrite;
   if (!r) return head;
+  if (r.gone?.length) {
+    const { gone, ...rest } = r;
+    const nothingElse = !rest.skipped.length && !rest.notUpdated.length && !rest.total;
+    const said = nothingElse && !rest.refusal ? head : vaultRenameToast({ ...o, rewrite: rest });
+    return `${said} ${vaultLinksGoneLine(gone)}`;
+  }
   // Refused for good (a team out of free space, 0023): the storage's reason,
   // never "tries again", since Update the rest would be refused the same way.
   if (r.refusal) {
@@ -1736,6 +1746,15 @@ export function vaultRenameToast(o: {
     return `${head} ${r.updated} of ${count(r.total, 'link')} updated. ${count(left.length, 'note')} could not be reached, so their links still point to "${o.old}".`;
   }
   return `${head} ${r.updated} of ${count(r.total, 'link')} updated. ${count(left.length, 'note')} changed while this ran, so their links still point to "${o.old}".`;
+}
+
+/** The linking notes a rename's pass did not find where it read them: moved
+ *  or deleted somewhere else while it ran (round 7 E36). Which of the two is
+ *  not known here, so both are said; never "try again". */
+export function vaultLinksGoneLine(titles: readonly string[]): string {
+  return titles.length === 1
+    ? `"${titles[0]}" was moved or deleted while this ran, so its links were not updated.`
+    : `${count(titles.length, 'note')} were moved or deleted while this ran, so their links were not updated.`;
 }
 
 /** The standing card on the renamed note, since toasts fade (X7). */

@@ -1553,8 +1553,9 @@ export function VaultScreen() {
     setRenaming({ kind, from, ...(startAt ? { startAt } : {}) });
     setRenameOpen(true);
   };
-  // The notes a pass left pointing at the old name, never the ones that were
-  // gone (they lost nothing).
+  // The notes a pass left pointing at the old name, never the ones that
+  // were gone: Update the rest would not find them either (E36), so the
+  // toast names them instead.
   const notesLeft = (report: VaultRewriteReport) => [
     ...report.skipped.filter((x) => x.reason !== 'missing').map((x) => x.path),
     ...report.notUpdated,
@@ -1571,6 +1572,8 @@ export function VaultScreen() {
         stopped: report.stopped,
         // A refusal for good says its reason, never "tries again".
         ...(report.refusal ? { refusal: report.refusal.line } : {}),
+        // Linking notes moved or deleted while it ran are named (E36).
+        gone: report.skipped.filter((x) => x.reason === 'missing').map((x) => noteTitle(x.path)),
       },
     });
   const applyRename = async (

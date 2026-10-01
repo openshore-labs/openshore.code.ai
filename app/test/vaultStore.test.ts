@@ -8743,4 +8743,91 @@ describe('round 7, batch 5: the team vault says what is gone, moved and refused,
       st().vaultBindAutosave(undefined as never);
     });
   });
+  describe('E36: a link in a note a teammate renamed or moved is updated there, or named', () => {
+    async function planRename() {
+      await st().vaultRefresh();
+      await settledIndex();
+      const preview = await st().vaultPrepareMove('note', 'Ideas.md', 'Plans.md');
+      if (!preview) throw new Error('no preview');
+      return preview;
+    }
+    async function apply(preview: Awaited<ReturnType<typeof planRename>>) {
+      const r = await st().vaultApplyMove(preview, true);
+      if (!r?.ok || !r.rewrite) throw new Error('not renamed');
+      return r.rewrite;
+    }
+
+    it('a note a teammate renamed by case is updated at its new spelling', async () => {
+      server.put('Ideas.md', 'ideas', 'u-me');
+      server.put('ref.md', 'see [[Ideas]]', 'u-me');
+      const preview = await planRename();
+      await teammateMove('ref.md', 'Ref.md');
+      const rewrite = await apply(preview);
+      expect(server.bytes('Ref.md')).toBe('see [[Plans]]');
+      expect(rewrite).toMatchObject({ updated: 1, total: 1, notesUpdated: 1, skipped: [] });
+    });
+
+    it('a note a teammate moved to another folder is found by its text and updated there', async () => {
+      server.put('Ideas.md', 'ideas', 'u-me');
+      server.put('ref.md', 'see [[Ideas]]', 'u-me');
+      const preview = await planRename();
+      await teammateMove('ref.md', 'Refs/ref.md');
+      const rewrite = await apply(preview);
+      expect(server.bytes('Refs/ref.md')).toBe('see [[Plans]]');
+      expect(rewrite).toMatchObject({ updated: 1, total: 1, skipped: [] });
+    });
+
+    it('a note moved and changed is named, its links not counted, and nothing is written blind', async () => {
+      server.put('Ideas.md', 'ideas', 'u-me');
+      server.put('a.md', 'and [[Ideas]]', 'u-me');
+      server.put('ref.md', 'see [[Ideas]]', 'u-me');
+      const preview = await planRename();
+      await teammateMove('ref.md', 'Refs/ref.md');
+      server.put('Refs/ref.md', 'see [[Ideas]], and theirs');
+      const writesBefore = server.rpcs.filter((r) => r.fn === 'org_vault_write').length;
+      const rewrite = await apply(preview);
+      expect(rewrite).toMatchObject({
+        updated: 1,
+        total: 1,
+        skipped: [{ path: 'ref.md', reason: 'missing' }],
+      });
+      expect(server.bytes('Refs/ref.md')).toBe('see [[Ideas]], and theirs');
+      expect(server.bytes('a.md')).toBe('and [[Plans]]');
+      // Every write is guarded, and none is sent to where the note is now.
+      const writes = server.rpcs.filter((r) => r.fn === 'org_vault_write').slice(writesBefore);
+      expect(writes.every((w) => typeof w.args.p_if_match === 'number')).toBe(true);
+      expect(writes.map((w) => w.args.p_path)).not.toContain('Refs/ref.md');
+    });
+
+    it('on the desktop folder too, a linking note moved by Finder is updated where it is', async () => {
+      useApp.setState({
+        vaultScope: 'personal',
+        settings: { ...st().settings, gitosResources: personalOn('files') },
+      });
+      folder.files.set('Ideas.md', 'ideas');
+      folder.files.set('ref.md', 'see [[Ideas]]');
+      await st().vaultRefresh();
+      await settledIndex();
+      const preview = await st().vaultPrepareMove('note', 'Ideas.md', 'Plans.md');
+      if (!preview) throw new Error('no preview');
+      folder.files.delete('ref.md');
+      folder.files.set('Refs/ref.md', 'see [[Ideas]]');
+      const r = await st().vaultApplyMove(preview, true);
+      expect(r).toMatchObject({ ok: true, rewrite: { updated: 1, total: 1, skipped: [] } });
+      expect(folder.files.get('Refs/ref.md')).toBe('see [[Plans]]');
+    });
+
+    it('a linking note a teammate deleted counts nothing and is named', async () => {
+      server.put('Ideas.md', 'ideas', 'u-me');
+      server.put('ref.md', 'see [[Ideas]]', 'u-me');
+      const preview = await planRename();
+      server.drop('ref.md');
+      const rewrite = await apply(preview);
+      expect(rewrite).toMatchObject({
+        updated: 0,
+        total: 0,
+        skipped: [{ path: 'ref.md', reason: 'missing' }],
+      });
+    });
+  });
 });

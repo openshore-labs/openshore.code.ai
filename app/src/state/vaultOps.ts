@@ -248,7 +248,9 @@ export interface VaultRewriteReport {
   total: number;
   /** Notes written. */
   notesUpdated: number;
-  /** Notes left as they were, each with why. `missing` notes lost nothing. */
+  /** Notes left as they were, each with why. `missing`: moved or deleted
+   *  somewhere else while this ran and not found again (E36); its links are
+   *  not in `total`, and the room names it. */
   skipped: Array<{ path: string; reason: VaultSkipReason }>;
   /** A storage-level failure stopped the pass: these were not tried. */
   notUpdated: string[];
@@ -714,6 +716,88 @@ async function rewritePass(
     return p.edits[0];
   };
 
+  // A linking note that is not where the plan read it (round 7 E36): another
+  // writer renamed, moved or deleted it while the sheet was open. The
+  // storage is listed once for the pass, and the note is looked for at
+  // another spelling of its name (a case-only rename, as the team vault
+  // does it in place), then among the notes this device did not know of,
+  // by its text: one the plan would rewrite exactly as it planned is that
+  // same note, moved. Found, it is rewritten where it is now, by
+  // compare-and-swap like any other; not found (deleted, or moved and
+  // changed), it is named and its links are not counted.
+  const knownFolded = new Set(known.map(foldPath));
+  let listing: StoredFileMeta[] | null | undefined;
+  const findMoved = async (edit: LinkRewriteEdit, path: string) => {
+    listing ??= await deps.provider.list(deps.target.resourceId).catch(() => null);
+    if (!listing) return undefined;
+    const want = foldPath(path);
+    const name = want.slice(want.lastIndexOf('/') + 1);
+    const nameOf = (p: string) => foldPath(p).slice(foldPath(p).lastIndexOf('/') + 1);
+    const rank = (p: string) => (foldPath(p) === want ? 0 : nameOf(p) === name ? 1 : 2);
+    const candidates = listing
+      .filter(
+        (m) =>
+          !m.evicted &&
+          m.path !== path &&
+          (foldPath(m.path) === want || !knownFolded.has(foldPath(m.path))),
+      )
+      .sort((a, b) => rank(a.path) - rank(b.path))
+      .slice(0, MOVED_LOOKUPS);
+    for (const c of candidates) {
+      const fresh = await deps.provider.read(deps.target.resourceId, c.path);
+      if (!fresh) continue;
+      if (foldPath(fresh.path) === want) return fresh;
+      if (replan(edit, fresh)?.text === edit.text) return fresh;
+    }
+    return undefined;
+  };
+  // Rewrites `edit` in the note found moved, or names it gone; the report
+  // says which.
+  const atMoved = async (edit: LinkRewriteEdit, path: string): Promise<void> => {
+    const found = await attempt(() => findMoved(edit, path));
+    if (!found.ok) {
+      report.stopped = true;
+      if (found.refusal) report.refusal ??= found.refusal;
+      report.notUpdated.push(path);
+      return;
+    }
+    const fresh = found.value;
+    if (!fresh) {
+      report.total -= edit.count;
+      report.skipped.push({ path, reason: 'missing' });
+      return;
+    }
+    const open = deps.openNote();
+    if (open && open.path === fresh.path && (open.dirty || open.choiceOpen)) {
+      report.skipped.push({ path: fresh.path, reason: 'open' });
+      return;
+    }
+    const next = replan(edit, fresh);
+    if (!next) {
+      report.total -= edit.count;
+      return;
+    }
+    report.total += next.count - edit.count;
+    const wrote = await attempt(() =>
+      deps.putVaultNote(fresh.path, next.text, { ifMatch: versionOf(fresh) }),
+    );
+    if (!wrote.ok) {
+      report.stopped = true;
+      if (wrote.refusal) report.refusal ??= wrote.refusal;
+      report.notUpdated.push(fresh.path);
+      return;
+    }
+    if (wrote.value.ok) {
+      report.updated += next.count;
+      report.notesUpdated += 1;
+      return;
+    }
+    report.skipped.push({
+      path: fresh.path,
+      reason: wrote.value.conflict === 'downloading' ? 'downloading' : 'changed',
+    });
+  };
+
   for (let i = 0; i < edits.length; i++) {
     const edit = edits[i]!;
     if (report.stopped) {
@@ -737,6 +821,10 @@ async function rewritePass(
     }
     let result: WriteResult = first.value;
     let count = edit.count;
+    if (!result.ok && result.conflict === 'missing') {
+      await atMoved(edit, path);
+      continue;
+    }
     if (!result.ok && result.conflict === 'changed') {
       // Once, silently: read what is there now and plan against it.
       const again = await attempt(async () => {
@@ -757,7 +845,7 @@ async function rewritePass(
         continue;
       }
       if (again.value.kind === 'missing') {
-        report.skipped.push({ path, reason: 'missing' });
+        await atMoved(edit, path);
         continue;
       }
       // Someone else already fixed the links: nothing left to write.
@@ -772,18 +860,21 @@ async function rewritePass(
       report.notesUpdated += 1;
       continue;
     }
+    if (result.conflict === 'missing') {
+      await atMoved(edit, path);
+      continue;
+    }
     report.skipped.push({
       path,
-      reason:
-        result.conflict === 'missing'
-          ? 'missing'
-          : result.conflict === 'downloading'
-            ? 'downloading'
-            : 'changed',
+      reason: result.conflict === 'downloading' ? 'downloading' : 'changed',
     });
   }
   return report;
 }
+
+/** How many notes this device did not know of a rewrite reads, at most, to
+ *  find a linking note another writer moved while the sheet was open. */
+const MOVED_LOOKUPS = 10;
 
 /** "Update the rest" on the standing card (CX X7): re-plan the notes the
  *  last pass skipped or never reached, from fresh reads, and run the pass
@@ -806,10 +897,16 @@ export async function updateTheRest(
   const afterIdx = buildPathIndex(known);
   const reads: LinkRewriteSource[] = [];
   const sources: RewriteSource[] = [];
+  // Moved or deleted somewhere else since the last pass: named, as the
+  // pass names them (E36).
+  const gone: Array<{ path: string; reason: 'missing' }> = [];
   const failed = await attempt(async () => {
     for (const after of rest) {
       const file = await deps.provider.read(deps.target.resourceId, after);
-      if (!file) continue;
+      if (!file) {
+        gone.push({ path: after, reason: 'missing' });
+        continue;
+      }
       const before = reverse.get(foldPath(after)) ?? after;
       reads.push({ path: before, text: file.text, version: versionOf(file) });
       sources.push({ before, after });
@@ -829,7 +926,8 @@ export async function updateTheRest(
   const plan = reads.length
     ? planLinkRewrites(preview.moves, beforeIdx, afterIdx, reads)
     : { edits: [], links: 0, notes: 0, left: [] };
-  return rewritePass(deps, { ...preview, plan, sources }, [], onProgress);
+  const pass = await rewritePass(deps, { ...preview, plan, sources }, [], onProgress);
+  return gone.length ? { ...pass, skipped: [...pass.skipped, ...gone] } : pass;
 }
 
 // ---- folders (K5) -----------------------------------------------------------

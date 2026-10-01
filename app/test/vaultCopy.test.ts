@@ -98,6 +98,8 @@ import {
   vaultFolderMoveRefused,
   vaultRefusedLine,
   vaultGoneLine,
+  vaultLinksGoneLine,
+  vaultRenameToast,
   vaultRestorePartial,
   type VaultCopyOpts,
   type VaultCopyProvider,
@@ -1378,6 +1380,31 @@ describe("the team's free space says what 0023 says (the review, finding 1)", ()
     );
     const whole = 'Not deleted. Only admins can delete team notes.';
     expect(vaultRefusedLine('delete', { line: whole, whole: true })).toBe(whole);
+  });
+
+  it('a rename names the linking notes moved or deleted while it ran, never as updated (E36)', () => {
+    const base = { updated: 1, total: 1, skipped: [], notUpdated: [], stopped: false };
+    expect(
+      vaultRenameToast({ old: 'Ideas', next: 'Plans', rewrite: { ...base, gone: ['ref'] } }),
+    ).toBe(
+      'Renamed to "Plans". 1 link updated. "ref" was moved or deleted while this ran, so its links were not updated.',
+    );
+    expect(
+      vaultRenameToast({
+        old: 'Ideas',
+        next: 'Plans',
+        rewrite: { ...base, updated: 0, total: 0, gone: ['ref', 'b'] },
+      }),
+    ).toBe(
+      'Renamed to "Plans". 2 notes were moved or deleted while this ran, so their links were not updated.',
+    );
+    // Without any, the line is what it always was.
+    expect(vaultRenameToast({ old: 'Ideas', next: 'Plans', rewrite: { ...base, gone: [] } })).toBe(
+      'Renamed to "Plans". 1 link updated.',
+    );
+    for (const line of [vaultLinksGoneLine(['a']), vaultLinksGoneLine(['a', 'b'])]) {
+      expect(line).not.toMatch(/try again|[\u2013\u2014]/i);
+    }
   });
 
   it('a tick, a mark or a link on a note gone elsewhere says so, verb first, never try again (E34)', () => {
