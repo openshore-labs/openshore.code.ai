@@ -9201,4 +9201,81 @@ describe('round 7, batch 6: the team vault says what it can do now, truly', () =
       expect(server.bytes('Old.md')).toBeUndefined();
     });
   });
+
+  describe('E55: Who can delete team notes asks the server when the plan was never read', () => {
+    // The account says admin (isOrgAdmin), so the sheet offers the row before
+    // the first settings read answers.
+    beforeEach(() => {
+      const now = st();
+      const account = now.settings.account!;
+      useApp.setState({
+        settings: {
+          ...now.settings,
+          account: {
+            ...account,
+            selfEmail: 'me@example.com',
+            org: {
+              ...account.org!,
+              members: [{ email: 'me@example.com', role: 'admin', status: 'active' }],
+            },
+          },
+        } as typeof now.settings,
+      });
+    });
+    const puts = () => server.rpcs.filter((r) => r.fn === 'org_vault_settings_put').length;
+    async function readOffline() {
+      teamNet.rpcFail = new TypeError('Failed to fetch');
+      await st().vaultLoadSettings({ force: true });
+      expect(st().vaultTeamPlan).toBeUndefined();
+      expect(st().vaultCapsNow().settingsWrite).toBe(true);
+    }
+
+    it('a tap the row offers reaches the server once the network is back', async () => {
+      await readOffline();
+      teamNet.rpcFail = undefined;
+      const first = await st().vaultSetTeamDeleteRole('admin');
+      const again = await st().vaultSetTeamDeleteRole('member');
+      expect({ first, again, puts: puts() }).toEqual({ first: 'ok', again: 'ok', puts: 2 });
+      expect(server.settingsRow?.delete_role).toBe('member');
+    });
+
+    it('still offline, the tap fails as one a retry can fix, and the next one lands', async () => {
+      await readOffline();
+      expect(await st().vaultSetTeamDeleteRole('admin')).toBe('failed');
+      expect(puts()).toBe(0);
+      teamNet.rpcFail = undefined;
+      expect(await st().vaultSetTeamDeleteRole('admin')).toBe('ok');
+      expect(puts()).toBe(1);
+    });
+
+    it('the server says not an admin: refused, verb first, never try again, and the row goes', async () => {
+      await readOffline();
+      teamNet.rpcFail = undefined;
+      server.isAdmin = false;
+      const r = await st().vaultSetTeamDeleteRole('admin');
+      expect(r).toMatchObject({ kind: 'refused' });
+      const line = (r as { line: string }).line;
+      expect(line.startsWith('Not saved.')).toBe(true);
+      expect(line).not.toMatch(/try again/i);
+      expect(puts()).toBe(0);
+      expect(st().vaultTeamPlan).toMatchObject({ isAdmin: false });
+      expect(st().vaultCapsNow().settingsWrite).toBe(false);
+      // A plan known to say so refuses before anything is asked (the row's
+      // own read again, after the refusal, settles first).
+      for (let i = 0; i < 5; i++) await tick();
+      const before = server.rpcs.length;
+      expect(await st().vaultSetTeamDeleteRole('admin')).toMatchObject({ kind: 'refused', line });
+      expect(server.rpcs.length).toBe(before);
+    });
+
+    it("a lapsed plan says the plan's line, never 'failed'", async () => {
+      await readOffline();
+      teamNet.rpcFail = undefined;
+      server.entitled = false;
+      const r = await st().vaultSetTeamDeleteRole('admin');
+      expect(r).toEqual({ kind: 'refused', line: VAULT_TEAM_LAPSED_NOT_SAVED_LINE });
+      expect(puts()).toBe(0);
+      expect(st().vaultTeamPlan).toMatchObject({ entitled: false });
+    });
+  });
 });

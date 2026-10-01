@@ -1693,4 +1693,18 @@ describe('round 7, batch 6: the team lines say what is true now', () => {
     expect(refused).not.toMatch(/try again/i);
     for (const line of [VAULT_TEAM_EXPORT_UNREACHABLE, refused]) expect(line).not.toMatch(DASHES);
   });
+
+  it("a settings change by someone not an admin says 0025's reason, verb first (E55)", async () => {
+    const { VAULT_TEAM_SETTINGS_ADMINS_ONLY, vaultRefusedLine } =
+      await import('../src/lib/vaultCopy.js');
+    const sql = readFileSync(
+      resolve(ROOT, '../supabase/migrations/0025_org_vault_settings.sql'),
+      'utf8',
+    );
+    expect(sql).toContain("raise exception 'only admins can change team vault settings'");
+    const line = vaultRefusedLine('save', { line: VAULT_TEAM_SETTINGS_ADMINS_ONLY });
+    expect(line).toBe('Not saved. Only admins can change team vault settings.');
+    expect(line).not.toMatch(/try again/i);
+    expect(line).not.toMatch(DASHES);
+  });
 });

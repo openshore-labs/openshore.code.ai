@@ -536,6 +536,7 @@ import {
   VAULT_TEAM_FULL,
   VAULT_TEAM_NOT_MEMBER,
   VAULT_TEAM_NOT_MEMBER_REASON,
+  VAULT_TEAM_SETTINGS_ADMINS_ONLY,
   VAULT_TEAM_SIGN_IN_LINE,
   vaultFolderMoveRefused,
   vaultFolderMoveGone,
@@ -12650,7 +12651,16 @@ export const useApp = create<AppState>((set, get, api) => {
 
     async vaultSetTeamDeleteRole(role) {
       const orgId = get().settings.account?.org?.serverId;
-      if (!orgId || get().vaultTeamPlan?.isAdmin !== true) return 'failed';
+      if (!orgId) return 'failed';
+      // A plan read as "not an admin" refuses here, verb first; a plan never
+      // read (its first read failed) is asked for, by the write's own read,
+      // so a retry the row offers reaches the server (round 7 E55).
+      if (get().vaultTeamPlan?.isAdmin === false) {
+        return {
+          kind: 'refused',
+          line: vaultRefusedLine('save', { line: VAULT_TEAM_SETTINGS_ADMINS_ONLY }),
+        };
+      }
       try {
         return await setOrgVaultDeleteRole(orgId, role);
       } catch (err) {

@@ -2647,6 +2647,11 @@ export const VAULT_TEAM_DELETE_REFUSED = 'Not deleted. Only admins can delete te
 /** Options' note for a member when only admins may delete (Y14). */
 export const VAULT_TEAM_DELETE_ADMINS_ONLY = 'Only admins can delete team notes here.';
 
+/** Who can delete team notes, changed by someone the settings read says is
+ *  not an admin (0025's org_vault_settings_put checks it first): the reason,
+ *  said after "Not saved.", never "try again" (round 7 E55). */
+export const VAULT_TEAM_SETTINGS_ADMINS_ONLY = 'Only admins can change team vault settings.';
+
 /** The lapsed plan's lead (Y15): read-only, calm, export still there. */
 export const VAULT_TEAM_LAPSED_LEAD =
   "Your organization's plan is not active, so team notes are read-only. Everyone can still read and export all of them.";

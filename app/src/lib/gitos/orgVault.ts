@@ -68,6 +68,7 @@ import {
   VAULT_TEAM_NOT_READY,
   VAULT_TEAM_PATH_NOT_ALLOWED,
   VAULT_TEAM_PATH_TOO_LONG,
+  VAULT_TEAM_SETTINGS_ADMINS_ONLY,
 } from '../vaultCopy.js';
 import { TEAM_PATH_MAX, fitMadeName, teamPathProblem } from '../vault.js';
 import { isVaultFolderPath } from './folderClient.js';
@@ -1083,6 +1084,11 @@ export async function setOrgVaultDeleteRole(
 ): Promise<'ok' | 'changed'> {
   const auth = await token();
   const now = await getSettings(auth, resourceId);
+  // The read just made answers what 0025's put checks first (an admin, then
+  // the plan), so a write it would refuse is refused here, in the app's
+  // words, and never sent (round 7 E55).
+  if (now.is_admin === false) throw new OrgVaultRefusal(VAULT_TEAM_SETTINGS_ADMINS_ONLY);
+  if (now.entitled === false) throw new OrgVaultLapsed();
   const reply = await putSettings(auth, resourceId, now.settings ?? {}, now.rev, role);
   return reply.ok ? 'ok' : 'changed';
 }
