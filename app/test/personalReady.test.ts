@@ -87,7 +87,10 @@ describe('Settings', () => {
   it('shows OpenShore Plus and offers Restore', () => {
     expect(settings).toContain('<SettingsRow label="OpenShore Plus"');
     expect(settings).toContain('label="Restore purchases"');
-    expect(settings).toContain("'Free in the beta'");
+    // Hidden while the pay gates are off (the App Store build, 2026-10-01).
+    expect(settings).toContain(
+      '{PAY_GATES_ENABLED ? (\n            <SettingsRow label="OpenShore Plus"',
+    );
   });
 
   it('shows only the Wayfinding switches that do something', () => {

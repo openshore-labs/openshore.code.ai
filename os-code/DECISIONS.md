@@ -4143,3 +4143,4 @@ execution contract. Newest at the bottom.
   copy says so. The in-app mark wears the picked tile. Device-local.
   `scripts/gen-icon.py` renders all three; the default PNG is byte-identical.
 >>>>>>> origin/main
+- 2026-10-01 (founder): the first App Store submission ships with the pay gates off; Plus is built after approval. The gate code stays in the tree dormant (`VITE_PAY_GATES` unset), `codemagic.yaml` drops the `store_release` input, and Settings hides the Plus row while off.

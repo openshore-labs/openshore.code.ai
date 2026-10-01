@@ -495,7 +495,9 @@ export function SettingsScreen() {
             value={accountValue}
             onClick={configured ? () => setSheet('account') : undefined}
           />
-          <SettingsRow label="OpenShore Plus" subWrap sub={personalSub} value={personalValue} />
+          {PAY_GATES_ENABLED ? (
+            <SettingsRow label="OpenShore Plus" subWrap sub={personalSub} value={personalValue} />
+          ) : null}
           {PAY_GATES_ENABLED && configured && appleDevice ? (
             <SettingsRow
               label="Restore purchases"

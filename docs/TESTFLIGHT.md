@@ -98,6 +98,8 @@ some contact info first:
 
 ## 7. A store release (App Store review)
 
+**Paused (founder, 2026-10-01): the first App Store submission ships with the pay gates off.** `codemagic.yaml` no longer has the `store_release` input and unsets `VITE_PAY_GATES`, and Settings hides the OpenShore Plus row while the gates are off. Everything below is for when Plus is built after approval: restore the input and the two exports, then follow the steps.
+
 The build for review is the only build with the pay gates on (OpenShore Plus,
 `VITE_PAY_GATES=1`; CTO, 2026-09-30). A build started with `store_release`
 off has them off, so never submit one of those. Start the build for review: Codemagic, the app, Start new build, workflow

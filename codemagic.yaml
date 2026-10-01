@@ -6,21 +6,9 @@ workflows:
     name: OpenShore iOS (TestFlight)
     max_build_duration: 90
     instance_type: mac_mini_m2
-    # The store-release switch (docs/TESTFLIGHT.md section 7; the same input
-    # the held vault-m2-native branch carries). Codemagic asks for it under
-    # Start new build, prefilled with the default, false: a TestFlight build
-    # with the pay gates off.
-    # True makes this build the one for App Store review: the two steps that
-    # read it export OPENSHORE_STORE_RELEASE=1 and VITE_PAY_GATES=1 (CTO,
-    # 2026-09-30). VITE_PAY_GATES is never set in the Harbor-os-code group:
-    # mac-desktop imports that group too, and the desktop sells through Stripe
-    # only once Stripe is set up. Codemagic writes a boolean input into a
-    # script as the text "true" or "false".
-    inputs:
-      store_release:
-        description: Store release, the build for App Store review (docs/TESTFLIGHT.md section 7). Leave off for TestFlight.
-        type: boolean
-        default: false
+    # No store-release switch: the pay gates are off in every iOS build until
+    # after approval (founder, 2026-10-01). Bring the input back from
+    # docs/TESTFLIGHT.md section 7 when Plus is built.
     integrations:
       app_store_connect: os_code_app_store
     environment:
@@ -93,12 +81,9 @@ workflows:
           # both set by the store_release input); while the gates are off it
           # warns and the TestFlight build carries on. Roots kept in the
           # function secrets instead: set APPLE_ROOTS_IN_SECRETS=1 in the group.
-          if [ "${{ inputs.store_release }}" = "true" ]; then
-            export OPENSHORE_STORE_RELEASE=1
-          fi
-          if [ "${OPENSHORE_STORE_RELEASE:-}" = "1" ]; then
-            export VITE_PAY_GATES=1
-          fi
+          # The pay gates are off in every iOS build until after approval
+          # (founder, 2026-10-01): nothing here can turn them on.
+          unset VITE_PAY_GATES OPENSHORE_STORE_RELEASE
           node app/scripts/check-apple-roots.mjs
       - name: Gate the build on the test suite
         script: |
@@ -124,12 +109,9 @@ workflows:
           # Builds API) exports VITE_PAY_GATES=1 for this step alone, so the
           # test gate above runs without it and every TestFlight build stays
           # free.
-          if [ "${{ inputs.store_release }}" = "true" ]; then
-            export OPENSHORE_STORE_RELEASE=1
-          fi
-          if [ "${OPENSHORE_STORE_RELEASE:-}" = "1" ]; then
-            export VITE_PAY_GATES=1
-          fi
+          # The pay gates are off in every iOS build until after approval
+          # (founder, 2026-10-01): nothing here can turn them on.
+          unset VITE_PAY_GATES OPENSHORE_STORE_RELEASE
           cd app
           npx vite build
           npx cap sync ios
