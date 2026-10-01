@@ -146,6 +146,7 @@ import {
   type VaultDriveLink,
   type VaultOnboard,
   type VaultSaveStatus,
+  type VaultWaitKind,
   HUB_AWAY_LINE,
   HUB_OFFER_COPY,
   hubMoveOffer,
@@ -272,6 +273,7 @@ export function VaultScreen() {
     vaultReadBody,
     vaultMoveTo,
     vaultError,
+    vaultSaveWait,
     vaultHeld,
     vaultPending,
     vaultSaving,
@@ -2182,6 +2184,7 @@ export function VaultScreen() {
               <SaveChip
                 status={saveStatus}
                 pending={pendingHere}
+                {...(vaultError === 'save' && vaultSaveWait ? { kind: vaultSaveWait } : {})}
                 onRetry={() => void vaultRefresh()}
               />
             ) : null}
@@ -3202,13 +3205,16 @@ export function VaultScreen() {
 function SaveChip({
   status,
   pending,
+  kind,
   onRetry,
 }: {
   status: VaultSaveStatus;
   pending: number;
+  /** Why it waits, when this sitting knows (E42). */
+  kind?: VaultWaitKind;
   onRetry: () => void;
 }) {
-  const chip = vaultSaveChip(status, pending);
+  const chip = vaultSaveChip(status, pending, kind);
   return (
     <span
       key={status}

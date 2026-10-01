@@ -22,6 +22,7 @@ import {
   type LinkRewriteSource,
 } from 'os-code/protocol';
 import type { VaultIndexHost } from '../lib/vaultIndexHost.js';
+import type { VaultWaitKind } from '../lib/vaultCopy.js';
 import {
   versionOf,
   type RestoreBeside,
@@ -142,6 +143,20 @@ function refusalOfError(err: unknown): VaultRefusal | undefined {
   const e = err as { permanent?: unknown; whole?: unknown; message?: unknown } | undefined;
   if (e?.permanent !== true || typeof e.message !== 'string' || !e.message) return undefined;
   return e.whole === true ? { line: e.message, whole: true } : { line: e.message };
+}
+
+/** Why a write that did not land waits (round 7 E42), from what it threw:
+ *  the team vault being updated (its function not found during a deploy,
+ *  marked `notReady` by the seam), a storage that answered with a server
+ *  error or asked to slow down, or else the connection. A device the
+ *  browser knows is offline is always 'offline'. */
+export function vaultWaitKind(err: unknown): VaultWaitKind {
+  const e = err as { notReady?: unknown; status?: unknown } | undefined;
+  if (e?.notReady === true) return 'not-ready';
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'offline';
+  const status = typeof e?.status === 'number' ? e.status : undefined;
+  if (status !== undefined && (status >= 500 || status === 408 || status === 429)) return 'server';
+  return 'offline';
 }
 
 /** The refusal any result of this module carries (its `line` and `whole`),

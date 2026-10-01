@@ -65,6 +65,7 @@ import {
   VAULT_TEAM_NOT_MEMBER_REASON,
   vaultNameInTrash,
   vaultNotFolderLine,
+  VAULT_TEAM_NOT_READY,
 } from '../vaultCopy.js';
 import { isVaultFolderPath } from './folderClient.js';
 import { VAULT_SETTINGS_PATH, restoredPath } from './local.js';
@@ -218,8 +219,11 @@ export class OrgVaultRefusal extends Error {
  *  and retries it once the server catches up, and nothing is written blind
  *  through the old last-write-wins function in the meantime (CTO G3). */
 export class OrgVaultNotReady extends Error {
+  /** The seam's mark for the store, which says this line, never "offline"
+   *  (round 7 E42); its words are vaultCopy's. */
+  readonly notReady = true;
   constructor() {
-    super('The team vault is being updated. Your text is kept and saves when it is ready.');
+    super(VAULT_TEAM_NOT_READY);
     this.name = 'OrgVaultNotReady';
   }
 }

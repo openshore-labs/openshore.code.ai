@@ -1109,6 +1109,30 @@ describe('the save chip and conflict badges (M2 2.2)', () => {
     expect(vaultSaveChip('held', 2)).toEqual({ label: 'Not saved' });
   });
 
+  it('says Offline only when the connection is why it waits (E42)', async () => {
+    const { vaultSaveChip, vaultSaveWaitToast, vaultCreateWaitToast, VAULT_TEAM_NOT_READY } =
+      await import('../src/lib/vaultCopy.js');
+    expect(vaultSaveChip('offline', 1, 'offline').label).toBe('Offline, kept on this device');
+    for (const kind of ['not-ready', 'server'] as const) {
+      const chip = vaultSaveChip('offline', 1, kind);
+      expect(chip.label).not.toMatch(/offline/i);
+      expect(chip.label).toMatch(/kept on this device$/);
+      expect(chip).toMatchObject({ count: '1 note waiting', retry: 'Try again' });
+      for (const line of [vaultSaveWaitToast(kind), vaultCreateWaitToast(kind)]) {
+        expect(line).not.toMatch(/offline|connection|try again|[\u2013\u2014]/i);
+        expect(line).toMatch(/kept|saves when/);
+      }
+    }
+    expect(vaultSaveWaitToast('not-ready')).toBe(VAULT_TEAM_NOT_READY);
+    // The connection's own lines are what they always were.
+    expect(vaultSaveWaitToast('offline')).toBe(
+      'Could not save to your vault. Your text is kept and saves when the connection returns.',
+    );
+    expect(vaultCreateWaitToast('offline')).toBe(
+      'Working offline. This note saves when your storage reconnects.',
+    );
+  });
+
   it('badges exactly the keep-both names the store and the server make', async () => {
     const { isConflictCopy: isVaultConflictCopy } = await import('../src/lib/vault.js');
     const { vaultConflictCopyPath } = await import('os-code/protocol');

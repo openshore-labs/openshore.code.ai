@@ -43,6 +43,7 @@ import {
   VAULT_TEAM_FULL,
   VAULT_TEAM_NOT_MEMBER_REASON,
   vaultTeamEditableUntil,
+  VAULT_TEAM_NOT_READY,
 } from '../src/lib/vaultCopy.js';
 
 const ORG = 'org-123';
@@ -422,6 +423,9 @@ describe('org vault provider', () => {
         .write(ORG, 'a.md', 'mine', { ifMatch: v })
         .catch((e: unknown) => e);
       expect(w).toBeInstanceOf(OrgVaultNotReady);
+      // Its words are vaultCopy's, and the store reads its mark (E42).
+      expect((w as Error).message).toBe(VAULT_TEAM_NOT_READY);
+      expect((w as { notReady?: unknown }).notReady).toBe(true);
       expect(w).not.toBeInstanceOf(OrgVaultRefusal);
       expect((w as { permanent?: unknown }).permanent).toBeUndefined();
       const r = await orgVaultProvider.remove(ORG, 'a.md', { ifMatch: v }).catch((e: unknown) => e);

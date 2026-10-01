@@ -41,6 +41,9 @@ import {
   VAULT_TEAM_LAPSED_NOT_SAVED_LINE,
   VAULT_GONE_REASON,
   VAULT_TICK_FAILED,
+  VAULT_TEAM_NOT_READY,
+  vaultCreateWaitToast,
+  vaultSaveWaitToast,
   vaultFolderMoveGone,
   vaultFolderMoveTaken,
   vaultFolderTrashChanged,
@@ -8991,6 +8994,71 @@ describe('round 7, batch 5: the team vault says what is gone, moved and refused,
     it('a new folder named like one there in another case is still that name', async () => {
       await twoSpellings();
       expect(await st().vaultCreateFolder('WORK')).toMatchObject({ ok: false, reason: 'exists' });
+    });
+  });
+  describe('E42: a deploy window or a storage that did not answer is never called offline', () => {
+    const notReady = () =>
+      new SupabaseRequestError(
+        'Could not find the function public.org_vault_write',
+        404,
+        'PGRST202',
+      );
+    const upstream = () => new SupabaseRequestError('upstream', 503);
+    async function openN() {
+      server.put('n.md', 'the base', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('n.md');
+      for (let i = 0; i < 5; i++) await tick();
+    }
+
+    it('a save during a deploy window says the team vault is being updated, and lands after', async () => {
+      await openN();
+      server.rpcFailure = notReady();
+      await st().vaultSave('n.md', 'the base and more');
+      expect(st().toast).toBe(VAULT_TEAM_NOT_READY);
+      expect(st().vaultError).toBe('save');
+      expect(st().vaultSaveWait).toBe('not-ready');
+      expect(Object.values(pending()).map((e) => e.text)).toEqual(['the base and more']);
+      server.rpcFailure = undefined;
+      await st().vaultRefresh();
+      expect(server.bytes('n.md')).toBe('the base and more');
+      expect(pending()).toEqual({});
+    });
+
+    it('a new note during a deploy window never says working offline', async () => {
+      server.rpcFailure = notReady();
+      await st().vaultCreate('Fresh');
+      expect(st().toast).toBe(vaultCreateWaitToast('not-ready'));
+      expect(st().toast).not.toMatch(/offline/i);
+      expect(st().vaultNote?.path).toBe('Fresh.md');
+    });
+
+    it('a 5xx on a save or a new note says the storage did not answer, not the connection', async () => {
+      await openN();
+      server.rpcFailure = upstream();
+      await st().vaultSave('n.md', 'the base and more');
+      expect(st().toast).toBe(vaultSaveWaitToast('server'));
+      expect(st().toast).not.toMatch(/connection/);
+      st().vaultCloseNote();
+      await st().vaultCreate('Fresh');
+      expect(st().toast).toBe(vaultCreateWaitToast('server'));
+      expect(st().vaultSaveWait).toBe('server');
+    });
+
+    it('a 5xx on the stat before a new note says the same', async () => {
+      teamNet.fail = upstream();
+      await st().vaultCreate('Fresh');
+      teamNet.fail = undefined;
+      expect(st().toast).toBe(vaultCreateWaitToast('server'));
+    });
+
+    it('a dropped connection still says the connection', async () => {
+      await openN();
+      server.rpcFailure = new TypeError('Failed to fetch');
+      await st().vaultSave('n.md', 'the base and more');
+      expect(st().toast).toBe(vaultSaveWaitToast('offline'));
+      expect(st().toast).toMatch(/connection returns/);
+      expect(st().vaultSaveWait).toBe('offline');
     });
   });
 });

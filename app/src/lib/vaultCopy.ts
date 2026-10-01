@@ -728,18 +728,58 @@ function copyOrigin(copy: string): string {
  *  under Not saved (refused for good, read-only), never "Saved" (E18). */
 export type VaultSaveStatus = 'saved' | 'saving' | 'offline' | 'held';
 
+/** Why a save or a new note is waiting on this device (round 7 E42): the
+ *  connection dropped ('offline'), the team vault is being updated (its
+ *  function not found during a deploy, 'not-ready'), or the storage did not
+ *  answer (a 5xx, a timeout, 'server'). The device is online for the last
+ *  two, so neither says it is not. Each may pass, so each keeps the text. */
+export type VaultWaitKind = 'offline' | 'not-ready' | 'server';
+
+/** The team vault's function was not found (a deploy's window): the text is
+ *  stashed and replays once the server has it (CTO G3). */
+export const VAULT_TEAM_NOT_READY =
+  'The team vault is being updated. Your text is kept and saves when it is ready.';
+
+/** The toast when a save is stashed to replay, by why it waits (E42). */
+export function vaultSaveWaitToast(kind: VaultWaitKind): string {
+  if (kind === 'not-ready') return VAULT_TEAM_NOT_READY;
+  if (kind === 'server') {
+    return 'Could not save to your vault: your vault storage did not answer. Your text is kept and saves when it does.';
+  }
+  return 'Could not save to your vault. Your text is kept and saves when the connection returns.';
+}
+
+/** The toast when a new note opens before its storage has it, by why (E42). */
+export function vaultCreateWaitToast(kind: VaultWaitKind): string {
+  if (kind === 'not-ready') {
+    return 'The team vault is being updated. This note is kept on this device and saves when it is ready.';
+  }
+  if (kind === 'server') {
+    return 'Your vault storage did not answer. This note is kept on this device and saves when it does.';
+  }
+  return 'Working offline. This note saves when your storage reconnects.';
+}
+
 /** The save chip's words: the label, how many notes wait (offline only), and
  *  the retry button's label (offline only; a refusal for good has no retry,
- *  since trying again meets the same refusal). */
+ *  since trying again meets the same refusal). `kind` says why it waits,
+ *  where this sitting knows (E42); unknown (a stash from before a relaunch)
+ *  keeps the line it always had. */
 export function vaultSaveChip(
   status: VaultSaveStatus,
   pending: number,
+  kind?: VaultWaitKind,
 ): { label: string; count?: string; retry?: string } {
   if (status === 'saved') return { label: 'Saved' };
   if (status === 'saving') return { label: 'Saving' };
   if (status === 'held') return { label: 'Not saved' };
   return {
-    label: 'Offline, kept on this device',
+    label:
+      kind === 'not-ready'
+        ? 'Team vault updating, kept on this device'
+        : kind === 'server'
+          ? 'Storage not answering, kept on this device'
+          : 'Offline, kept on this device',
     ...(pending > 0
       ? { count: pending === 1 ? '1 note waiting' : `${pending} notes waiting` }
       : {}),

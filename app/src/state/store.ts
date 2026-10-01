@@ -480,6 +480,7 @@ import {
   type VaultOpsDeps,
   type VaultOpsOpenNote,
   type VaultRekeyRebase,
+  vaultWaitKind,
   type VaultRestoreResult,
   type VaultUndo,
 } from './vaultOps.js';
@@ -513,6 +514,9 @@ import {
   vaultFolderOffer,
   vaultGoneLine,
   vaultGoneToast,
+  vaultCreateWaitToast,
+  vaultSaveWaitToast,
+  type VaultWaitKind,
   vaultRepointToast,
   vaultLeaveToast,
   vaultReplayCopiesLine,
@@ -1607,6 +1611,10 @@ interface AppState {
    *  retried (a refusal, a read-only vault, or a stash that failed).
    *  Undefined when the vault is healthy. */
   vaultError?: 'load' | 'save' | 'held';
+  /** Why the last 'save' error waits (round 7 E42): the connection, the team
+   *  vault being updated, or a storage that did not answer. Read only beside
+   *  vaultError 'save'; the chip says "Offline" for the first alone. */
+  vaultSaveWait?: VaultWaitKind;
   /** Text no vault took, kept until the person copies and discards it: the
    *  "Not saved" list. Durable in the sealed store unless an entry says
    *  otherwise (`durable: false`). It holds team text of accounts not signed
@@ -5930,10 +5938,11 @@ export const useApp = create<AppState>((set, get, api) => {
       logEvent('vault_note_stash_failed');
       return;
     }
-    set({ vaultError: 'save' });
-    get().showToast(
-      'Could not save to your vault. Your text is kept and saves when the connection returns.',
-    );
+    // Why it waits, said as it is: a deploy's window or a storage that did
+    // not answer is never called the connection (E42).
+    const wait = vaultWaitKind(err);
+    set({ vaultError: 'save', vaultSaveWait: wait });
+    get().showToast(vaultSaveWaitToast(wait));
     logEvent('vault_note_save_failed');
   }
 
@@ -11894,10 +11903,13 @@ export const useApp = create<AppState>((set, get, api) => {
       // before writing, and open what it holds (data-2).
       let stored: StoredFileMeta | undefined;
       let reachable = true;
+      // What kept the storage from answering, so the line says why (E42).
+      let failure: unknown;
       try {
         stored = await target.provider.stat(target.resourceId, normalized);
-      } catch {
+      } catch (err) {
         reachable = false;
+        failure = err;
       }
       if (stored) {
         if (stored.evicted) {
@@ -11956,6 +11968,7 @@ export const useApp = create<AppState>((set, get, api) => {
             get().showToast(`Could not create that note. ${asSentence(refusal)}`);
             return;
           }
+          failure = err;
         }
       }
       // Offline: still open the editor so the user can write, and stash the
@@ -11977,11 +11990,13 @@ export const useApp = create<AppState>((set, get, api) => {
         }
       }
       if (!isActiveVault(target)) return;
+      const wait = vaultWaitKind(failure);
       set({
         vaultNote: { path: normalized, text: content, updatedAt: '', fresh: !seeded, loadedAt },
         vaultError: 'save',
+        vaultSaveWait: wait,
       });
-      get().showToast('Working offline. This note saves when your storage reconnects.');
+      get().showToast(vaultCreateWaitToast(wait));
     },
 
     vaultCloseNote() {
