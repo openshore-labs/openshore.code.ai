@@ -9,7 +9,7 @@
 // withheld from a leaving seat), so these tests pin the LOOP's wiring, not
 // the builder's rendering.
 import { describe, expect, it, vi } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
@@ -352,6 +352,27 @@ describe('Current State kept current on a lean seat (4.7, I12)', () => {
     const session = leanRun({});
     await session.agent.run('write a.txt');
     expect(existsSync(csFile(session.cwd))).toBe(false);
+  });
+
+  // A project behind a symlink (on a Mac, every temp folder: /var is
+  // /private/var) names the file the same. Caught first by the Mac build's
+  // test gate (2026-10-01); this keeps Linux CI watching it.
+  it('names the changed file the same when the project sits behind a symlink', async () => {
+    const real = mkdtempSync(join(tmpdir(), 'osc-real-'));
+    const link = join(mkdtempSync(join(tmpdir(), 'osc-link-')), 'project');
+    symlinkSync(real, link);
+    const session = leanRun(
+      { harness: { profiles: { enabled: true }, verify: pass } },
+      'x\n',
+      link,
+    );
+    await session.agent.run('write a.txt');
+    const lines = readFileSync(csFile(link), 'utf8')
+      .split('\n')
+      .filter((l) => l.endsWith(HARNESS_LINE_MARK));
+    expect(lines).toEqual([
+      '- 2026-09-27: changed a.txt, `node -e "process.exit(0)"` passed (noted by the harness)',
+    ]);
   });
 
   it('an identical line is not written twice', async () => {

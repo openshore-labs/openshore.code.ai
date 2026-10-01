@@ -7,6 +7,8 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Jail, JailViolation } from '../src/core/security/jail.js';
+import { overlapsVault, realOrResolve } from '../src/core/security/workspaces.js';
+import { structuralCheck } from '../src/core/edit/verify.js';
 import { containsSecret, redactSecrets } from '../src/core/security/redaction.js';
 import { EgressBlocked, EgressPolicy, isLocalHost } from '../src/core/security/egress.js';
 import {
@@ -43,6 +45,36 @@ describe('the jail', () => {
     symlinkSync(outside, join(root, 'sneaky'));
     const jail = new Jail(root);
     expect(() => jail.resolve('sneaky/secret.txt')).toThrow(JailViolation);
+  });
+});
+
+// A folder that does not exist yet, behind a symlink (on a Mac every temp
+// folder: /var is /private/var), compares in the same space as one that does,
+// so the vault overlap guard never misses a vault that is not made yet
+// (2026-10-01, caught by the Mac build's test gate).
+describe('paths behind a symlink', () => {
+  it('resolve a missing folder through its deepest existing ancestor', () => {
+    const real = realpathSync(mkdtempSync(join(tmpdir(), 'osc-real-')));
+    const link = join(mkdtempSync(join(tmpdir(), 'osc-link-')), 'home');
+    symlinkSync(real, link);
+    expect(realOrResolve(join(link, 'OSCode', 'Vault'))).toBe(join(real, 'OSCode', 'Vault'));
+    expect(realOrResolve(link)).toBe(real);
+    // The guard sees the overlap from either side, made or not.
+    expect(overlapsVault(join(link, 'OSCode'), join(link, 'OSCode', 'Vault'))).toBe(true);
+    expect(overlapsVault(join(real, 'OSCode'), join(link, 'OSCode', 'Vault'))).toBe(true);
+    expect(overlapsVault(join(link, 'repo'), join(link, 'OSCode', 'Vault'))).toBe(false);
+  });
+
+  it("name a syntax error by the file's own path, never the probe's", () => {
+    const real = realpathSync(mkdtempSync(join(tmpdir(), 'osc-real-')));
+    const link = join(mkdtempSync(join(tmpdir(), 'osc-link-')), 'proj');
+    symlinkSync(real, link);
+    const abs = join(link, 'g.mjs');
+    writeFileSync(abs, 'export const a = 1;\n');
+    const bad = structuralCheck(abs, '(name) {\n  return 1;\n}\n');
+    expect(bad.ok).toBe(false);
+    expect(bad.detail).toContain(abs);
+    expect(bad.detail).not.toContain('osc-check');
   });
 });
 

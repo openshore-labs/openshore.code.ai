@@ -7,6 +7,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   utimesSync,
   writeFileSync,
@@ -58,7 +59,9 @@ let root: string;
 const ctx = () => ({ vaultRoot: root }) as unknown as ToolContext;
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), 'osc-vault-'));
+  // Resolved, the way the vault tools walk it, so the readdir refusals below
+  // name the same paths on a Mac (/var is /private/var).
+  root = realpathSync(mkdtempSync(join(tmpdir(), 'osc-vault-')));
 });
 afterEach(async () => {
   noteFileHooksForTests.afterTemp = undefined;

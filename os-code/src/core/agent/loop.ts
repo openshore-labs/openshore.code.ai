@@ -969,10 +969,14 @@ export class AgentSession {
    *  every file a write touched whose content now differs from before, less
    *  the memory notes themselves. */
   private changedFiles(): string[] {
-    const { cwd } = this.deps.toolContext;
+    // The touched paths come from the jail, which resolves symlinks, so they
+    // are measured from the jail's own resolved root, never the raw cwd: on a
+    // Mac the temp folder (/var -> /private/var) or any symlinked project
+    // would otherwise read as "../../private/var/.../a.txt".
+    const { root } = this.deps.toolContext.jail;
     const out: string[] = [];
     for (const [abs, original] of this.touched) {
-      const rel = relative(cwd, abs).split('\\').join('/');
+      const rel = relative(root, abs).split('\\').join('/');
       if (isMemoryFilePath(rel)) continue;
       let now: string | null;
       try {

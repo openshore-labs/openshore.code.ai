@@ -2,7 +2,7 @@
 // is byte-for-byte what the engine produced, and (when configured) run a
 // cheap structural check. A verification failure reverts nothing by itself;
 // it reports precisely so the caller can decide.
-import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { readFileSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 
@@ -61,7 +61,21 @@ export function structuralCheck(path: string, content: string): VerifyResult {
         timeout: 10_000,
       });
       if (res.status === 0) return { ok: true, detail: 'JavaScript syntax check passed.' };
-      const raw = (res.stderr || res.stdout).trim().split(probe).join(path);
+      // Node names the probe by its resolved path (on a Mac /var is
+      // /private/var), so both spellings go back to the file's own name. The
+      // resolved one first: it contains the plain one.
+      let realProbe = probe;
+      try {
+        realProbe = realpathSync(probe);
+      } catch {
+        // gone already: the plain spelling is all there is
+      }
+      const raw = (res.stderr || res.stdout)
+        .trim()
+        .split(realProbe)
+        .join(path)
+        .split(probe)
+        .join(path);
       return { ok: false, detail: `Syntax check failed: ${raw.slice(0, 400)}` };
     } finally {
       try {

@@ -68,7 +68,7 @@ function safeRealpath(p: string): string {
 }
 
 /** Realpath of the deepest ancestor that exists, re-joined with the rest. */
-function deepestRealpath(abs: string): string {
+export function deepestRealpath(abs: string): string {
   let existing = abs;
   let tail = '';
   // Walk up until something exists, carrying the non-existent tail.
