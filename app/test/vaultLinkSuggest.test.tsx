@@ -388,6 +388,21 @@ describe('outgoing links, unlinked mentions, and the outline', () => {
     expect(asked).toBe(1);
   });
 
+  it('a missing link where nothing can be created reads as not created, and takes no tap', async () => {
+    const { VaultBacklinks } = await import('../src/components/vault/VaultBacklinks.js');
+    await dom.render(
+      <VaultBacklinks
+        mentions={[]}
+        outgoing={[{ target: 'Garden', path: null }]}
+        onOpen={() => {}}
+      />,
+    );
+    expect(dom.text()).toContain('Not created yet.');
+    expect(dom.text()).not.toContain('Tap to create it.');
+    const row = dom.container.querySelector('.vault-outgoing-missing') as HTMLButtonElement;
+    expect(row.disabled).toBe(true);
+  });
+
   it('the outline is offered from two headings, indented by level up to H3', async () => {
     const { outlineOffered, outlineDepth } =
       await import('../src/components/vault/VaultOutlineSheet.js');

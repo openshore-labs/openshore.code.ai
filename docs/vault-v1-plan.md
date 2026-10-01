@@ -1104,6 +1104,16 @@ leave a standing card with "Update the rest". Folders are created, renamed and
 trashed with counts; Local remembers an empty folder on the device. The team
 `org_vault_move` (0020, pgTAP) is on the held team branch.
 
+Team part built 2026-09-27 on the held `vault-m2-team` branch: the team client
+declares `rename` over `org_vault_move` under the source's rev and adopts the
+path and rev it answers; a name outside ASCII is also checked by the one
+`foldPath` against the listing, since the server folds by `lower()` only. The
+team row runs every rename case in `providerContract.test.ts`, and
+`vaultCaps` lights Rename, folders (note by note, as Local) and the link
+rewrite on the team vault. Merges once 0021 to 0026 are in production,
+pushed from main (CTO 4 and CTO 11; the one sequence is
+`docs/vault-gate1-runbook.md`).
+
 **6.3 Trash with Undo (M; team restore needs 2.3).** Delete moves the note to
 `.trash/` (the folder Obsidian uses for its own trash, already hidden by 0.6);
 an Undo toast rides
@@ -1119,6 +1129,15 @@ toast (`VaultUndoToast`, 6 s, pauses under a hand, "Also in Trash.") and the
 Trash page (the last row at the root, Restore per row, Empty on a second tap)
 restore beside a taken name as "{title} (restored)". Team Trash (Restore only)
 waits for the held team branch.
+
+Team part built 2026-09-27 on the held `vault-m2-team` branch: a trash is
+`org_vault_remove` under the rev; Trash lists a tombstone only while its
+newest revision of any reason is `deleted`, so a path a note moved away from
+never shows; Restore writes that revision's body back with `if_absent`, else
+as "{title} (restored)", and a second Restore of the same entry lands nowhere
+new. No Empty Trash (R3): the server's purge drops what has been there 30
+days. One tap deletes on the team vault, since its Trash is real. The team row
+runs every Trash case in `providerContract.test.ts`.
 
 **6.4 Today's note (M).** A Today action whose folder, format, and template
 come from `.obsidian/daily-notes.json` (through 3.4), else Obsidian's defaults
@@ -1308,6 +1327,20 @@ open until `no_entitlement_vault_until()` (null in the beta), which one
 migration sets at least 30 days out when pay gates return; a lapsed paid row
 is read-only with export regardless. Team settings in the app land with that
 branch; on main the team vault shows the defaults read-only.
+
+App part built 2026-09-27 on the held `vault-m2-team` branch (CX Y14, Y15):
+the team client reads and writes the row as the vault's `oscode/vault` file
+(`org_vault_settings_get` and `_put`, rendered in jsonb key order, so the
+writeConfig contract row compares the JSON the column holds), echoing who may
+delete and the context folder from the same read. `vaultCaps` lights the
+settings sheet for admins only; members read it under "Your admins set
+these."; admins get "Team settings" beside Export and a "Who can delete team
+notes" row. `OV402` is the calm lapsed state (the lead line, Export kept, the
+room read-only, a mid-edit save held as Not saved with "The team plan is not
+active, so team notes cannot change."), `OV403` says "Not deleted. Only
+admins can delete team notes.", and a set `entitled_until` shows "Team notes
+stay editable until <date>." Merges once 0021 to 0026 are in production,
+pushed from main (CTO 4 and CTO 11).
 
 ### M8. Ship gate
 

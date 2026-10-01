@@ -18,6 +18,7 @@ import type {
   ReadBytesOptions,
   VaultConfigName,
   VaultSettingsConfigName,
+  VaultSettingsField,
   VaultTrashEntry,
 } from 'os-code/protocol';
 
@@ -154,12 +155,72 @@ export type TrashTarget =
 /** What a trash did, with the counts the toast and the sheet say. */
 export type TrashResult =
   | { ok: true; entry: TrashEntry; notes: number; attachments: number }
+  /** The note was already gone (deleted or moved elsewhere), so nothing went
+   *  to Trash here: the team vault's remove answers so for a gone note. */
+  | { ok: false; conflict: 'missing'; theirs?: undefined }
   | { ok: false; conflict: 'changed' | 'downloading'; theirs?: StoredFile };
+
+/** A folder's trash that stopped part way (the team vault, which trashes a
+ *  folder note by note): how many went to Trash, the paths still in the
+ *  folder, and why, when a refusal for good said (its reason, never a whole
+ *  line); `lapsed` when the plan stopped being active, so no Undo is offered
+ *  (it would be refused the same way). No line: a failure that may pass. A
+ *  storage that trashes all or nothing never sets it (round 7 E20). */
+// `changed`: the paths of `left` a teammate saved while the trash ran, which
+// its guard passed over rather than delete a version nobody here has seen
+// (round 7 E21).
+export interface TrashPartial {
+  trashed: number;
+  left: string[];
+  line?: string;
+  lapsed?: true;
+  changed?: string[];
+}
+
+/** A TrashResult whose ok answer may carry a TrashPartial, and whose
+ *  'changed' answer for a folder that moved nothing (every note in it
+ *  changed while it ran) names them in one, with `trashed` 0. */
+export type TrashReport = TrashResult & { partial?: TrashPartial };
 
 /** What a restore did. It never overwrites: a taken name lands beside it as
  *  "{title} (restored)" (R3) and `renamed` says so; parents are made. */
+/** How a restore was asked for. `listed`: from a row the Trash page showed,
+ *  which may be stale on a storage others share, so it comes back only while
+ *  it is still in Trash (round 7 E38); an Undo of this device's own delete
+ *  brings back what that delete took. */
+export interface RestoreOptions {
+  listed?: boolean;
+}
+
 export type RestoreResult =
   { ok: true; file: StoredFileMeta; renamed: boolean } | { ok: false; conflict: 'missing' };
+
+/** A folder's Restore that brought back only some of its notes (the team
+ *  vault near its free space, migration 0023): how many came back, the paths
+ *  still in Trash, and the storage's own line for why, when a refusal said
+ *  one. A storage that restores all or nothing never sets it. */
+export interface RestorePartial {
+  restored: number;
+  left: string[];
+  line?: string;
+}
+
+/** A restored note that came back beside its own name (the team vault,
+ *  round 7 E23): the name it had, where it landed, and whether that name is
+ *  held by another delete still in Trash rather than by a note in the vault. */
+export interface RestoreBeside {
+  from: string;
+  to: string;
+  inTrash: boolean;
+}
+
+/** A RestoreResult whose ok answer may carry a RestorePartial, and the notes
+ *  that came back beside their names. Every RestoreResult is one, so a
+ *  caller reads `partial` and `beside` without a cast. */
+export type RestoreReport = RestoreResult & {
+  partial?: RestorePartial;
+  beside?: RestoreBeside[];
+};
 
 /** What Delete forever or Empty Trash removed. */
 export interface EmptyTrashResult {
@@ -243,7 +304,7 @@ export interface StorageProvider {
   /** What is in Trash. */
   listTrash?(resourceId: string): Promise<TrashEntry[]>;
   /** Put one entry back where it came from, never overwriting. */
-  restore?(resourceId: string, id: string): Promise<RestoreResult>;
+  restore?(resourceId: string, id: string, opts?: RestoreOptions): Promise<RestoreResult>;
   /** Delete entries for good, or all of Trash with no ids. */
   emptyTrash?(resourceId: string, ids?: string[]): Promise<EmptyTrashResult>;
   /** The vault's attachments (K11), from the same walk as the note list. */
@@ -267,6 +328,15 @@ export interface StorageProvider {
     text: string,
     guard: WriteGuard,
   ): Promise<WriteResult>;
+
+  /** The vault settings this storage does not carry out, so none of them
+   *  may say or do anything here: the settings sheet never offers their
+   *  rows, `saveVaultSetting` never saves one, `vaultCaps` never lets one
+   *  narrow the room, and the provider neither reads one back nor sends one.
+   *  The team vault's are `ORG_VAULT_UNAPPLIED_SETTINGS` (its deletes always
+   *  keep the note in Trash, it holds notes only, and no model reads it in
+   *  v1). Absent: every field applies. */
+  readonly unappliedSettings?: readonly VaultSettingsField[];
 }
 
 /** A gitOS resource: metadata for one repo or vault. The bytes live behind

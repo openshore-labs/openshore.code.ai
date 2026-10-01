@@ -40,6 +40,10 @@ export interface VaultTrashViewProps {
   entries: readonly TrashEntry[] | undefined;
   /** A line when Trash could not be read. */
   error?: string;
+  /** Why nothing here can be restored now (a team whose plan is not active,
+   *  round 7 E51): said in place of the restore promise, and every Restore
+   *  is left out. The rows stay, named, as the record they are. */
+  refused?: string;
   /** Who deleted a team note, by `vaultEditedByLine`'s naming rule. */
   deletedBy?: (entry: TrashEntry) => string | undefined;
   /** The clock (tests pass their own). */
@@ -61,6 +65,7 @@ export function VaultTrashView({
   kind,
   entries,
   error,
+  refused,
   deletedBy,
   now,
   onBack,
@@ -94,8 +99,18 @@ export function VaultTrashView({
     <>
       <BackBar title={VAULT_TRASH} back={{ to: VAULT_TRASH_BACK, onBack }} />
       <div key="trash" ref={rootRef} className="screen-inner vault-trash">
-        <p className="hint vault-trash-lead">{vaultTrashLead(kind)}</p>
-        {kind === 'team' ? <p className="hint vault-trash-team">{VAULT_TRASH_TEAM_LINE}</p> : null}
+        {refused ? (
+          <p className="hint vault-trash-lead" role="status">
+            {refused}
+          </p>
+        ) : (
+          <>
+            <p className="hint vault-trash-lead">{vaultTrashLead(kind)}</p>
+            {kind === 'team' ? (
+              <p className="hint vault-trash-team">{VAULT_TRASH_TEAM_LINE}</p>
+            ) : null}
+          </>
+        )}
         {error ? (
           <p className="hint vault-trash-error" role="alert">
             {error}
@@ -127,15 +142,17 @@ export function VaultTrashView({
                       })}
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    className="btn ghost press-fb vault-trash-restore"
-                    aria-label={vaultTrashRestoreLabel(title)}
-                    disabled={busy !== undefined}
-                    onClick={() => void restore(entry)}
-                  >
-                    {VAULT_TRASH_RESTORE}
-                  </button>
+                  {refused ? null : (
+                    <button
+                      type="button"
+                      className="btn ghost press-fb vault-trash-restore"
+                      aria-label={vaultTrashRestoreLabel(title)}
+                      disabled={busy !== undefined}
+                      onClick={() => void restore(entry)}
+                    >
+                      {VAULT_TRASH_RESTORE}
+                    </button>
+                  )}
                 </li>
               );
             })}

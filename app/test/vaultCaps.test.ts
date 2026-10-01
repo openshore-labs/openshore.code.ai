@@ -186,6 +186,31 @@ describe('vaultCaps, Vault M7 (CTO L7, L11)', () => {
     expect(vaultCaps(full, WRITABLE, {})).toEqual(base);
   });
 
+  // The team review of 2026-09-30: For good only where a delete really is.
+  it('a storage that does not carry Delete out keeps one-tap Trash under For good', () => {
+    const keeps = fake({ ...full, unappliedSettings: ['delete'] });
+    const base = vaultCaps(keeps, WRITABLE);
+    expect(base.trash).toBe(true);
+    expect(vaultCaps(keeps, WRITABLE, { delete: 'permanent' })).toEqual(base);
+    // Another unapplied field leaves the Delete choice where it was.
+    const other = fake({ ...full, unappliedSettings: ['attachments.folder'] });
+    expect(vaultCaps(other, WRITABLE, { delete: 'permanent' }).trash).toBe(false);
+  });
+
+  it('the team vault: a stored delete: permanent is still one tap to Trash', () => {
+    const team = providerFor('org')!;
+    expect(team.unappliedSettings).toContain('delete');
+    for (const state of [
+      WRITABLE,
+      { readOnly: false, settingsAdmin: true },
+      { readOnly: false, settingsAdmin: false },
+    ]) {
+      const caps = vaultCaps(team, state, { delete: 'permanent' });
+      expect(caps).toEqual(vaultCaps(team, state));
+      expect(caps.trash).toBe(true);
+    }
+  });
+
   it('every provider on main with writeConfig declares compare-and-swap', () => {
     for (const id of VAULT_COPY_PROVIDERS) {
       const p = providerFor(id)!;
@@ -193,11 +218,17 @@ describe('vaultCaps, Vault M7 (CTO L7, L11)', () => {
     }
   });
 
-  it('the team vault on main has no writeConfig, so its settings read as defaults', () => {
-    expect(providerFor('org')!.writeConfig).toBeUndefined();
-    expect(vaultCapLine('org', 'settingsWrite')).toBe(
-      'Team vault settings cannot change here yet.',
-    );
+  it('the team vault saves its settings for an admin only (CX Y14)', () => {
+    const team = providerFor('org')!;
+    expect(typeof team.writeConfig).toBe('function');
+    expect(vaultCaps(team, { readOnly: false, settingsAdmin: true }).settingsWrite).toBe(true);
+    expect(vaultCaps(team, { readOnly: false, settingsAdmin: false }).settingsWrite).toBe(false);
+    // A member keeps every note action; only the sheet reads.
+    const member = vaultCaps(team, { readOnly: false, settingsAdmin: false });
+    expect(member).toEqual({ ...vaultCaps(team, WRITABLE), settingsWrite: false });
+    // A lapsed plan is read-only: nothing writes, the sheet included (Y15).
+    const lapsed = vaultCaps(team, { readOnly: true, settingsAdmin: true });
+    expect(lapsed.settingsWrite || lapsed.rename || lapsed.trash).toBe(false);
   });
 });
 
@@ -267,17 +298,19 @@ const MAIN: Record<string, Record<string, boolean>> = {
     today: false,
     settingsWrite: false,
   },
+  // The held team branch (0024, 0025): a native move, a real Trash with
+  // Restore and no Empty (R3), the settings row; no attachments.
   org: {
-    rename: false,
-    renameNative: false,
-    folders: false,
-    trash: false,
+    rename: true,
+    renameNative: true,
+    folders: true,
+    trash: true,
     emptyTrash: false,
     attachments: false,
-    taskWriteBack: false,
-    linkRewrite: false,
-    today: false,
-    settingsWrite: false,
+    taskWriteBack: true,
+    linkRewrite: true,
+    today: true,
+    settingsWrite: true,
   },
 };
 
@@ -341,8 +374,10 @@ describe('vaultCapLine', () => {
       if (MAIN[id]!.trash) continue;
       if (id !== 'gdrive') expect(line, id).toMatch(/for good and asks twice/);
     }
+    // The team Trash is never emptied from here because the weekly purge
+    // clears it (0021), and the line says after how long.
     expect(vaultCapLine('org', 'emptyTrash')).toBe(
-      "Team notes are kept in your organization's history.",
+      "Deleted team notes are cleared from your organization's history after 30 days.",
     );
   });
 });

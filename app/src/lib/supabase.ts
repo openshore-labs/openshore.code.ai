@@ -43,6 +43,9 @@ export class SupabaseRequestError extends Error {
     readonly status: number,
     /** The fixed refusal code an Edge Function sent (`{ error: 'owns_org' }`),
      *  when it sent one. */
+    // From PostgREST (`rpc`, `select`) it is the SQLSTATE a function raised
+    // (OV402 and OV403 for the team vault, migration 0025; 23514 for 0023's
+    // free caps) or PostgREST's own (PGRST202), when the body names one.
     readonly code?: string,
   ) {
     super(message);
@@ -74,6 +77,24 @@ async function readError(res: Response): Promise<string> {
   } catch {
     return `Request failed (${res.status}).`;
   }
+}
+
+/** A PostgREST failure as a SupabaseRequestError, with its `code` when the
+ *  body names one. */
+async function requestError(res: Response): Promise<SupabaseRequestError> {
+  let body: { error_description?: string; msg?: string; message?: string; code?: unknown } = {};
+  try {
+    body = (await res.json()) as typeof body;
+  } catch {
+    // No JSON body: the status says it.
+  }
+  const message =
+    body.error_description ?? body.msg ?? body.message ?? `Request failed (${res.status}).`;
+  return new SupabaseRequestError(
+    message,
+    res.status,
+    typeof body.code === 'string' ? body.code : undefined,
+  );
 }
 
 /** Email + password sign-in. */
@@ -298,6 +319,7 @@ export async function rpc<T>(
   });
   // The status rides along so a caller can tell a refusal (a raised P0001
   // arrives as a 400) from a failure worth retrying.
+  if (!res.ok) throw await requestError(res);
   if (!res.ok) throw new SupabaseRequestError(await readError(res), res.status);
   return readRpcBody<T>(res);
 }
@@ -317,6 +339,7 @@ export async function select<T>(table: string, accessToken: string, query: strin
   const res = await fetch(`${base()}/rest/v1/${table}?${query}`, {
     headers: authHeaders(accessToken),
   });
+  if (!res.ok) throw await requestError(res);
   if (!res.ok) throw new SupabaseRequestError(await readError(res), res.status);
   return (await res.json()) as T[];
 }

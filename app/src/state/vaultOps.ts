@@ -22,8 +22,15 @@ import {
   type LinkRewriteSource,
 } from 'os-code/protocol';
 import type { VaultIndexHost } from '../lib/vaultIndexHost.js';
+import type { VaultWaitKind } from '../lib/vaultCopy.js';
 import {
   versionOf,
+  type RestoreBeside,
+  type RestoreOptions,
+  type RestorePartial,
+  type RestoreReport,
+  type TrashPartial,
+  type TrashReport,
   type StorageProvider,
   type StoredFile,
   type StoredFileMeta,
@@ -32,6 +39,13 @@ import {
   type WriteResult,
 } from '../lib/gitos/providers.js';
 import type { VaultTargetRef } from './store.js';
+
+/** A rename this device made: the version it was guarded by, and the
+ *  version the note has at its new path (E40). */
+export interface VaultRekeyRebase {
+  guard: string;
+  version?: string;
+}
 
 /** The note open on screen, as an operation needs to see it: a note with
  *  unsaved edits or an open resolve choice is never rewritten under the
@@ -77,8 +91,10 @@ export interface VaultOpsDeps {
   };
   /** Re-key everything a path owns on this device after a rename: project
    *  pins (`vaultRenamePins`), stash entries, the recent ring, and the open
-   *  note. */
-  rekey: (from: string, to: string) => Promise<void>;
+   *  note. `rebase`: the version the rename was guarded by and the one the
+   *  note took at `to`, so a stashed draft typed on exactly what moved is
+   *  based on where it is now (round 7 E40). */
+  rekey: (from: string, to: string, rebase?: VaultRekeyRebase) => Promise<void>;
   /** Write the open note's pending save now, before an operation reads it. */
   flushOpenSave: () => Promise<void>;
   /** The note open on screen, or undefined. */
@@ -95,14 +111,60 @@ export interface VaultOpsDeps {
  *  M6 falls back on a provider without it). */
 export type VaultOpFailure = 'storage' | 'unsupported';
 
+/** A storage's refusal that trying again cannot fix (`permanent`: the team
+ *  vault out of free space, migration 0023, or its plan not active, 0025), as
+ *  a result carries it: the storage's line, and `whole` when that line
+ *  already names what did not happen (the admins-only delete, CX Y14). The
+ *  store says it with the verb first (vaultRefusedLine), never as "try
+ *  again". */
+export interface VaultRefusal {
+  line: string;
+  whole?: true;
+}
+
 /** Did a provider call throw? Then the storage itself failed, and every later
  *  call would fail the same way (R1). */
-async function attempt<T>(run: () => Promise<T>): Promise<{ ok: true; value: T } | { ok: false }> {
+async function attempt<T>(
+  run: () => Promise<T>,
+): Promise<{ ok: true; value: T } | { ok: false; refusal?: VaultRefusal }> {
   try {
     return { ok: true, value: await run() };
-  } catch {
+  } catch (err) {
+    // A refusal for good is carried, so the result can say it.
+    const refusal = refusalOfError(err);
+    if (refusal) return { ok: false, refusal };
     return { ok: false };
   }
+}
+
+/** The refusal a thrown storage error is, or undefined for a failure that
+ *  may pass (offline, a timeout, anything unclassified). */
+function refusalOfError(err: unknown): VaultRefusal | undefined {
+  const e = err as { permanent?: unknown; whole?: unknown; message?: unknown } | undefined;
+  if (e?.permanent !== true || typeof e.message !== 'string' || !e.message) return undefined;
+  return e.whole === true ? { line: e.message, whole: true } : { line: e.message };
+}
+
+/** Why a write that did not land waits (round 7 E42), from what it threw:
+ *  the team vault being updated (its function not found during a deploy,
+ *  marked `notReady` by the seam), a storage that answered with a server
+ *  error or asked to slow down, or else the connection. A device the
+ *  browser knows is offline is always 'offline'. */
+export function vaultWaitKind(err: unknown): VaultWaitKind {
+  const e = err as { notReady?: unknown; status?: unknown } | undefined;
+  if (e?.notReady === true) return 'not-ready';
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'offline';
+  const status = typeof e?.status === 'number' ? e.status : undefined;
+  if (status !== undefined && (status >= 500 || status === 408 || status === 429)) return 'server';
+  return 'offline';
+}
+
+/** The refusal any result of this module carries (its `line` and `whole`),
+ *  or undefined, so the store and the room read it without a cast. */
+export function refusalOf(r: object): VaultRefusal | undefined {
+  const { line, whole } = r as { line?: unknown; whole?: unknown };
+  if (typeof line !== 'string' || !line) return undefined;
+  return whole === true ? { line, whole: true } : { line };
 }
 
 const MD_END = /\.md$/i;
@@ -112,8 +174,17 @@ function joinPath(folder: string, file: string): string {
   return folder ? `${folder}/${file}` : file;
 }
 
-/** Is `path` inside `folder` (at any depth)? */
+/** Is `path` inside `folder` (at any depth)? As the tree groups notes, by
+ *  the folder's own spelling: on a storage that keeps "Work" and "work"
+ *  apart (Local, the team vault), each is its own folder, and a folder's
+ *  count, delete, move and Undo all take the same notes (round 7 E41). */
 function inFolder(path: string, folder: string): boolean {
+  return path.startsWith(`${folder}/`);
+}
+
+/** Whether a folder name is already used, in any letter case: a new folder
+ *  is a name, and names are matched without case (E41). */
+function folderNameUsed(path: string, folder: string): boolean {
   return foldPath(path).startsWith(`${foldPath(folder)}/`);
 }
 
@@ -211,12 +282,18 @@ export interface VaultRewriteReport {
   total: number;
   /** Notes written. */
   notesUpdated: number;
-  /** Notes left as they were, each with why. `missing` notes lost nothing. */
+  /** Notes left as they were, each with why. `missing`: moved or deleted
+   *  somewhere else while this ran and not found again (E36); its links are
+   *  not in `total`, and the room names it. */
   skipped: Array<{ path: string; reason: VaultSkipReason }>;
   /** A storage-level failure stopped the pass: these were not tried. */
   notUpdated: string[];
   /** True when a storage-level failure stopped the pass. */
   stopped: boolean;
+  /** A refusal for good stopped it (a team out of free space, 0023): the
+   *  storage's line, so the room says why instead of "tries again" and
+   *  offers no Update the rest that would be refused the same way. */
+  refusal?: VaultRefusal;
 }
 
 /** What a rename or move did, from the first call to the last rewrite. */
@@ -246,6 +323,17 @@ export type VaultMoveResult =
         | 'partial';
       moved?: StoredFileMeta[];
       theirs?: StoredFile;
+      /** A refusal for good (VaultRefusal): its line, and `whole`. */
+      line?: string;
+      whole?: true;
+      /** A folder moved note by note that stopped on a conflict: which one,
+       *  the path it was going to, and, for a taken name, the note there, so
+       *  the room names it instead of saying "try again" (round 5). */
+      stoppedOn?: 'changed' | 'missing' | 'exists' | 'downloading';
+      stoppedAt?: string;
+      /** A folder moved note by note: how many notes it set out to move,
+       *  a note found in the folder as it ran included (E25). */
+      notes?: number;
     };
 
 /** The sources for a rewrite plan, from the index only (K4): the backlinks of
@@ -280,13 +368,16 @@ async function planMoves(
   deps: VaultOpsDeps,
   moves: ReadonlyMap<string, string>,
   known: readonly string[],
+  /** Where a source is now, when it moved already (a plan made again after
+   *  a folder's notes moved, E25). */
+  now?: ReadonlyMap<string, string>,
 ): Promise<{ plan: LinkRewritePlan; sources: RewriteSource[] }> {
   const before = buildPathIndex(known);
   const after = buildPathIndex(known.map((p) => moves.get(p) ?? p));
   const reads: LinkRewriteSource[] = [];
   const sources: RewriteSource[] = [];
   for (const path of sourcePaths(deps.index(), moves)) {
-    const file = await deps.provider.read(deps.target.resourceId, path);
+    const file = await deps.provider.read(deps.target.resourceId, now?.get(path) ?? path);
     if (!file) continue;
     reads.push({ path, text: file.text, version: versionOf(file) });
     sources.push({ before: path, after: moves.get(path) ?? path });
@@ -425,6 +516,9 @@ export async function applyMove(
   }
 
   const moved: StoredFileMeta[] = [];
+  // The version each note's rename was guarded by, where it is known (a
+  // storage's own folder rename says none), by where it landed (E40).
+  const guards = new Map<string, string>();
   let keptBoth = false;
   if (preview.kind === 'note') {
     // The guard is the version as last seen; a note the preview could not
@@ -432,14 +526,17 @@ export async function applyMove(
     const guard = open?.path === preview.from ? open.version : preview.guard;
     if (!guard) return { ok: false, reason: 'missing' };
     const r = await attempt(() => renameOne(deps, preview.from, preview.to, guard));
+    if (!r.ok && r.refusal) return { ok: false, reason: 'storage', ...r.refusal };
     if (!r.ok) return { ok: false, reason: 'storage' };
     if (!r.value.ok) return { ok: false, reason: r.value.conflict, theirs: r.value.theirs };
     keptBoth = Boolean(r.value.keptBoth);
     moved.push(r.value.file);
+    guards.set(foldPath(r.value.file.path), guard);
   } else if (provider.renameFolder) {
     const r = await attempt(() =>
       provider.renameFolder!(target.resourceId, preview.from, preview.to),
     );
+    if (!r.ok && r.refusal) return { ok: false, reason: 'storage', ...r.refusal };
     if (!r.ok) return { ok: false, reason: 'storage' };
     if (!r.value.ok) return { ok: false, reason: r.value.conflict };
     const at = new Date(deps.now?.() ?? Date.now()).toISOString();
@@ -448,30 +545,142 @@ export async function applyMove(
       moved.push({ path: m.to, updatedAt: at, size: 0, version: m.version });
     }
   } else {
-    // No folder rename on this storage (Local): note by note, stopping on
-    // the first failure and saying which moved (K5).
-    for (const [from, to] of preview.moves) {
-      if (!MD_END.test(from)) continue;
-      const r = await attempt(async () => {
-        const meta = await provider.stat(target.resourceId, from);
-        if (!meta) return { ok: false as const, conflict: 'missing' as const };
-        return renameOne(deps, from, to, versionOf(meta));
-      });
-      const failed = !r.ok ? 'storage' : !r.value.ok ? r.value.conflict : undefined;
-      if (failed || !r.ok || !r.value.ok) {
-        await settleMoved(deps, preview, moved);
-        return { ok: false, reason: moved.length ? 'partial' : (failed ?? 'storage'), moved };
-      }
-      moved.push(r.value.file);
-    }
+    // No folder rename on this storage (Local, the team vault): note by
+    // note, stopping on the first failure and saying which moved (K5).
+    return moveNoteByNote(deps, preview, opts);
   }
-  await settleMoved(deps, preview, moved);
+  await settleMoved(deps, preview, moved, guards);
 
   if (!opts.updateLinks || !preview.plan.edits.length) {
     return { ok: true, preview, moved, ...(keptBoth ? { keptBoth } : {}) };
   }
   const rewrite = await rewritePass(deps, preview, moved, opts.onProgress);
   return { ok: true, preview, moved, rewrite, ...(keptBoth ? { keptBoth } : {}) };
+}
+
+/** A folder's move on a storage with no folder rename: the notes the plan
+ *  counted, one by one, then, once, any note still in the folder when they
+ *  have (a teammate's note added since the plan, or one renamed by letter
+ *  case), the way a storage's own folder rename moves whatever is there
+ *  (round 7 E25). A planned note gone since is passed over (round 5 sweep);
+ *  a folder with nothing left to move is `missing`, never a rename. The
+ *  links are planned again for what moved when that is not what the plan
+ *  counted, so the report never counts a link to a note that did not move. */
+async function moveNoteByNote(
+  deps: VaultOpsDeps,
+  preview: VaultMovePreview,
+  opts: { updateLinks: boolean; onProgress?: (i: number, m: number) => void },
+): Promise<VaultMoveResult> {
+  const { provider, target } = deps;
+  const moved: StoredFileMeta[] = [];
+  // The version each note's move was guarded by, by where it landed (E40).
+  const guards = new Map<string, string>();
+  // Every note this move set out to move, from where it is to where it goes.
+  const moves = new Map(preview.moves);
+  // What actually moved: where each came from, and where it is now.
+  const done = new Map<string, string>();
+  const queue = [...preview.moves].filter(([from]) => MD_END.test(from));
+  const planned = queue.length;
+  let tried = planned;
+  const stop = async (
+    r: Awaited<ReturnType<typeof moveOne>>,
+    to: string,
+  ): Promise<VaultMoveResult> => {
+    await settleMoved(deps, { ...preview, moves }, moved, guards);
+    const counts = tried !== preview.notes ? { notes: tried } : {};
+    if (!r.ok && r.refusal) {
+      return {
+        ok: false,
+        reason: moved.length ? 'partial' : 'storage',
+        moved,
+        ...counts,
+        ...r.refusal,
+      };
+    }
+    // A conflict stopped it: carry which, where, and what is there.
+    if (r.ok && !r.value.ok) {
+      const { conflict, theirs } = r.value;
+      return {
+        ok: false,
+        reason: moved.length ? 'partial' : conflict,
+        moved,
+        stoppedOn: conflict,
+        stoppedAt: to,
+        ...counts,
+        ...(theirs ? { theirs } : {}),
+      };
+    }
+    return { ok: false, reason: moved.length ? 'partial' : 'storage', moved, ...counts };
+  };
+  const moveOne = (from: string, to: string) =>
+    attempt(async () => {
+      const meta = await provider.stat(target.resourceId, from);
+      if (!meta) return { ok: false as const, conflict: 'missing' as const };
+      const guard = versionOf(meta);
+      const r = await renameOne(deps, from, to, guard);
+      if (r.ok && guard) guards.set(foldPath(r.file.path), guard);
+      return r;
+    });
+  for (let pass = 0; pass < 2; pass++) {
+    for (const [from, to] of queue) {
+      const r = await moveOne(from, to);
+      // Gone since the plan was made (a teammate deleted or moved it, and
+      // the index had not caught up): nothing is left to move and nothing
+      // is lost, so the rest still move (round 5 sweep).
+      if (r.ok && !r.value.ok && r.value.conflict === 'missing') continue;
+      if (!r.ok || !r.value.ok) return stop(r, to);
+      moved.push(r.value.file);
+      done.set(from, r.value.file.path);
+    }
+    if (pass > 0) break;
+    // What is still in the folder once the plan's notes moved: a note the
+    // plan did not count, at the place under the new name that matches its
+    // own. Not a note already moved there, when the new name is inside.
+    const listing = await attempt(() => provider.list(target.resourceId));
+    if (!listing.ok) break;
+    const depth = preview.from.split('/').length;
+    queue.length = 0;
+    for (const f of listing.value) {
+      // In the folder by its own spelling, as the plan counted (E41).
+      if (!MD_END.test(f.path) || !inFolder(f.path, preview.from) || inFolder(f.path, preview.to)) {
+        continue;
+      }
+      const to = `${preview.to}/${f.path.split('/').slice(depth).join('/')}`;
+      queue.push([f.path, to]);
+      moves.set(f.path, to);
+    }
+    tried += queue.length;
+    if (!queue.length) break;
+  }
+  // Nothing was left to move: the folder's notes were moved or deleted
+  // somewhere else, so this is not a rename (an empty folder still is).
+  if (!moved.length && planned > 0) return { ok: false, reason: 'missing', moved };
+  // The links as planned, unless what moved is not what the plan counted:
+  // then planned again for what did, before the index takes the new paths.
+  const asPlanned =
+    done.size === planned &&
+    [...done].every(([from, at]) => {
+      const to = preview.moves.get(from);
+      return to !== undefined && foldPath(to) === foldPath(at);
+    });
+  let run: VaultMovePreview = preview;
+  if (opts.updateLinks && !asPlanned) {
+    const actual = new Map([...preview.moves].filter(([from]) => !MD_END.test(from)));
+    for (const [from, at] of done) actual.set(from, at);
+    const known = [...new Set([...indexedPaths(deps), ...done.keys()])];
+    const replanned = await attempt(() => planMoves(deps, actual, known, done));
+    run = {
+      ...preview,
+      moves: actual,
+      ...(replanned.ok
+        ? replanned.value
+        : { plan: { edits: [], links: 0, notes: 0, left: [] }, sources: [] }),
+    };
+  }
+  await settleMoved(deps, { ...preview, moves }, moved, guards);
+  if (!opts.updateLinks || !run.plan.edits.length) return { ok: true, preview, moved };
+  const rewrite = await rewritePass(deps, run, moved, opts.onProgress);
+  return { ok: true, preview, moved, rewrite };
 }
 
 /** The vault's paths after the moves, attachments that moved included, for
@@ -491,6 +700,7 @@ async function settleMoved(
   deps: VaultOpsDeps,
   preview: VaultMovePreview,
   moved: readonly StoredFileMeta[],
+  guards?: ReadonlyMap<string, string>,
 ): Promise<void> {
   const back = new Map<string, string>();
   for (const [from, to] of preview.moves) back.set(foldPath(to), from);
@@ -498,7 +708,11 @@ async function settleMoved(
     const from = back.get(foldPath(file.path));
     if (from === undefined) continue;
     deps.patch.renamed(from, file);
-    await deps.rekey(from, file.path).catch(() => {});
+    const guard = guards?.get(foldPath(file.path));
+    const rebase = guard
+      ? { guard, ...(file.version ? { version: file.version } : {}) }
+      : undefined;
+    await deps.rekey(from, file.path, rebase).catch(() => {});
   }
 }
 
@@ -550,6 +764,88 @@ async function rewritePass(
     return p.edits[0];
   };
 
+  // A linking note that is not where the plan read it (round 7 E36): another
+  // writer renamed, moved or deleted it while the sheet was open. The
+  // storage is listed once for the pass, and the note is looked for at
+  // another spelling of its name (a case-only rename, as the team vault
+  // does it in place), then among the notes this device did not know of,
+  // by its text: one the plan would rewrite exactly as it planned is that
+  // same note, moved. Found, it is rewritten where it is now, by
+  // compare-and-swap like any other; not found (deleted, or moved and
+  // changed), it is named and its links are not counted.
+  const knownFolded = new Set(known.map(foldPath));
+  let listing: StoredFileMeta[] | null | undefined;
+  const findMoved = async (edit: LinkRewriteEdit, path: string) => {
+    listing ??= await deps.provider.list(deps.target.resourceId).catch(() => null);
+    if (!listing) return undefined;
+    const want = foldPath(path);
+    const name = want.slice(want.lastIndexOf('/') + 1);
+    const nameOf = (p: string) => foldPath(p).slice(foldPath(p).lastIndexOf('/') + 1);
+    const rank = (p: string) => (foldPath(p) === want ? 0 : nameOf(p) === name ? 1 : 2);
+    const candidates = listing
+      .filter(
+        (m) =>
+          !m.evicted &&
+          m.path !== path &&
+          (foldPath(m.path) === want || !knownFolded.has(foldPath(m.path))),
+      )
+      .sort((a, b) => rank(a.path) - rank(b.path))
+      .slice(0, MOVED_LOOKUPS);
+    for (const c of candidates) {
+      const fresh = await deps.provider.read(deps.target.resourceId, c.path);
+      if (!fresh) continue;
+      if (foldPath(fresh.path) === want) return fresh;
+      if (replan(edit, fresh)?.text === edit.text) return fresh;
+    }
+    return undefined;
+  };
+  // Rewrites `edit` in the note found moved, or names it gone; the report
+  // says which.
+  const atMoved = async (edit: LinkRewriteEdit, path: string): Promise<void> => {
+    const found = await attempt(() => findMoved(edit, path));
+    if (!found.ok) {
+      report.stopped = true;
+      if (found.refusal) report.refusal ??= found.refusal;
+      report.notUpdated.push(path);
+      return;
+    }
+    const fresh = found.value;
+    if (!fresh) {
+      report.total -= edit.count;
+      report.skipped.push({ path, reason: 'missing' });
+      return;
+    }
+    const open = deps.openNote();
+    if (open && open.path === fresh.path && (open.dirty || open.choiceOpen)) {
+      report.skipped.push({ path: fresh.path, reason: 'open' });
+      return;
+    }
+    const next = replan(edit, fresh);
+    if (!next) {
+      report.total -= edit.count;
+      return;
+    }
+    report.total += next.count - edit.count;
+    const wrote = await attempt(() =>
+      deps.putVaultNote(fresh.path, next.text, { ifMatch: versionOf(fresh) }),
+    );
+    if (!wrote.ok) {
+      report.stopped = true;
+      if (wrote.refusal) report.refusal ??= wrote.refusal;
+      report.notUpdated.push(fresh.path);
+      return;
+    }
+    if (wrote.value.ok) {
+      report.updated += next.count;
+      report.notesUpdated += 1;
+      return;
+    }
+    report.skipped.push({
+      path: fresh.path,
+      reason: wrote.value.conflict === 'downloading' ? 'downloading' : 'changed',
+    });
+  };
+
   for (let i = 0; i < edits.length; i++) {
     const edit = edits[i]!;
     if (report.stopped) {
@@ -567,11 +863,16 @@ async function rewritePass(
     const first = await attempt(() => deps.putVaultNote(path, edit.text, { ifMatch: base }));
     if (!first.ok) {
       report.stopped = true;
+      if (first.refusal) report.refusal ??= first.refusal;
       report.notUpdated.push(path);
       continue;
     }
     let result: WriteResult = first.value;
     let count = edit.count;
+    if (!result.ok && result.conflict === 'missing') {
+      await atMoved(edit, path);
+      continue;
+    }
     if (!result.ok && result.conflict === 'changed') {
       // Once, silently: read what is there now and plan against it.
       const again = await attempt(async () => {
@@ -587,11 +888,12 @@ async function rewritePass(
       });
       if (!again.ok) {
         report.stopped = true;
+        if (again.refusal) report.refusal ??= again.refusal;
         report.notUpdated.push(path);
         continue;
       }
       if (again.value.kind === 'missing') {
-        report.skipped.push({ path, reason: 'missing' });
+        await atMoved(edit, path);
         continue;
       }
       // Someone else already fixed the links: nothing left to write.
@@ -606,18 +908,21 @@ async function rewritePass(
       report.notesUpdated += 1;
       continue;
     }
+    if (result.conflict === 'missing') {
+      await atMoved(edit, path);
+      continue;
+    }
     report.skipped.push({
       path,
-      reason:
-        result.conflict === 'missing'
-          ? 'missing'
-          : result.conflict === 'downloading'
-            ? 'downloading'
-            : 'changed',
+      reason: result.conflict === 'downloading' ? 'downloading' : 'changed',
     });
   }
   return report;
 }
+
+/** How many notes this device did not know of a rewrite reads, at most, to
+ *  find a linking note another writer moved while the sheet was open. */
+const MOVED_LOOKUPS = 10;
 
 /** "Update the rest" on the standing card (CX X7): re-plan the notes the
  *  last pass skipped or never reached, from fresh reads, and run the pass
@@ -640,10 +945,16 @@ export async function updateTheRest(
   const afterIdx = buildPathIndex(known);
   const reads: LinkRewriteSource[] = [];
   const sources: RewriteSource[] = [];
+  // Moved or deleted somewhere else since the last pass: named, as the
+  // pass names them (E36).
+  const gone: Array<{ path: string; reason: 'missing' }> = [];
   const failed = await attempt(async () => {
     for (const after of rest) {
       const file = await deps.provider.read(deps.target.resourceId, after);
-      if (!file) continue;
+      if (!file) {
+        gone.push({ path: after, reason: 'missing' });
+        continue;
+      }
       const before = reverse.get(foldPath(after)) ?? after;
       reads.push({ path: before, text: file.text, version: versionOf(file) });
       sources.push({ before, after });
@@ -657,12 +968,14 @@ export async function updateTheRest(
       skipped: [],
       notUpdated: [...rest],
       stopped: true,
+      ...(failed.refusal ? { refusal: failed.refusal } : {}),
     };
   }
   const plan = reads.length
     ? planLinkRewrites(preview.moves, beforeIdx, afterIdx, reads)
     : { edits: [], links: 0, notes: 0, left: [] };
-  return rewritePass(deps, { ...preview, plan, sources }, [], onProgress);
+  const pass = await rewritePass(deps, { ...preview, plan, sources }, [], onProgress);
+  return gone.length ? { ...pass, skipped: [...pass.skipped, ...gone] } : pass;
 }
 
 // ---- folders (K5) -----------------------------------------------------------
@@ -697,7 +1010,9 @@ export async function createFolder(
 > {
   const clean = path.trim().replace(/^\/+|\/+$/g, '');
   if (!checkFolderName(clean)) return { ok: false, reason: 'bad-name' };
-  if (indexedPaths(deps).some((p) => inFolder(p, clean))) return { ok: false, reason: 'exists' };
+  if (indexedPaths(deps).some((p) => folderNameUsed(p, clean))) {
+    return { ok: false, reason: 'exists' };
+  }
   if (!deps.provider.createFolder) return { ok: true, remembered: true };
   const r = await attempt(() => deps.provider.createFolder!(deps.target.resourceId, clean));
   if (!r.ok) return { ok: false, reason: 'storage' };
@@ -713,11 +1028,27 @@ export type VaultUndo =
   | { kind: 'bytes'; path: string; text: string };
 
 export type VaultDeleteResult =
-  | { ok: true; trashed: boolean; undo: VaultUndo; notes: number; attachments: number }
+  | {
+      ok: true;
+      trashed: boolean;
+      undo: VaultUndo;
+      notes: number;
+      attachments: number;
+      /** A folder that went to Trash only in part (the team vault, round 7
+       *  E20): the Undo brings back exactly what went. */
+      partial?: TrashPartial;
+    }
   | {
       ok: false;
       reason: 'changed' | 'downloading' | 'missing' | VaultOpFailure;
       theirs?: StoredFile;
+      /** A refusal for good (VaultRefusal): its line, and `whole` when it is
+       *  the whole line to say (the admins-only delete, CX Y14). */
+      line?: string;
+      whole?: true;
+      /** A folder that moved nothing because every note in it changed while
+       *  the delete ran (the team vault, round 7 E21): their paths. */
+      changed?: string[];
     };
 
 /** Is Trash real on this storage? One tap deletes only where it is (R2). */
@@ -761,6 +1092,7 @@ export async function deleteNote(deps: VaultOpsDeps, path: string): Promise<Vaul
       attachments: 0,
     };
   });
+  if (!run.ok && run.refusal) return { ok: false, reason: 'storage', ...run.refusal };
   return run.ok ? run.value : { ok: false, reason: 'storage' };
 }
 
@@ -774,21 +1106,51 @@ export async function deleteFolder(deps: VaultOpsDeps, folder: string): Promise<
     await deps.flushOpenSave();
     // The notes inside, as known before the move (the index follows after).
     const inside = indexedPaths(deps).filter((p) => inFolder(p, folder));
-    const r = await provider.trash!(target.resourceId, { kind: 'folder', path: folder });
-    if (!r.ok) return { ok: false, reason: r.conflict, theirs: r.theirs };
-    for (const p of inside) deps.patch.removed(p);
+    const r: TrashReport = await provider.trash!(target.resourceId, {
+      kind: 'folder',
+      path: folder,
+    });
+    if (!r.ok) {
+      return {
+        ok: false,
+        reason: r.conflict,
+        theirs: r.theirs,
+        ...(r.partial?.changed?.length ? { changed: r.partial.changed } : {}),
+      };
+    }
+    // Stopped part way: only what went leaves the list (E20).
+    const left = new Set(r.partial?.left ?? []);
+    for (const p of inside) if (!left.has(p)) deps.patch.removed(p);
     return {
       ok: true,
       trashed: true,
       undo: { kind: 'trash', id: r.entry.id, path: folder, folder: true, notes: r.notes },
       notes: r.notes,
       attachments: r.attachments,
+      ...(r.partial ? { partial: r.partial } : {}),
     };
   });
+  if (!run.ok && run.refusal) return { ok: false, reason: 'storage', ...run.refusal };
   return run.ok ? run.value : { ok: false, reason: 'storage' };
 }
 
+/** A restore or an Undo. Beside the plain answers: a folder that came back
+ *  only in part (`partial`, a team near its free space, 0023), and a refusal
+ *  for good (VaultRefusal: the storage's line, or the store's own whole line
+ *  for a lapsed team plan, refused before the server is asked). */
 export type VaultRestoreResult =
+  | {
+      ok: true;
+      path: string;
+      renamed: boolean;
+      partial: RestorePartial;
+      beside?: readonly RestoreBeside[];
+    }
+  /** Came back, some of it beside its own name (the team vault, E23). */
+  | { ok: true; path: string; renamed: boolean; beside: readonly RestoreBeside[] }
+  /** No longer in Trash (restored or cleared elsewhere): the store's line. */
+  | { ok: false; reason: 'missing'; line: string; whole: true }
+  | ({ ok: false; reason: VaultOpFailure } & VaultRefusal)
   | { ok: true; path: string; renamed: boolean }
   | { ok: false; reason: 'missing' | 'exists' | VaultOpFailure };
 
@@ -806,11 +1168,13 @@ async function adopt(deps: VaultOpsDeps, meta: StoredFileMeta): Promise<void> {
 export async function undoDelete(deps: VaultOpsDeps, undo: VaultUndo): Promise<VaultRestoreResult> {
   if (undo.kind === 'trash') return restoreEntry(deps, undo.id);
   const first = await attempt(() => deps.putVaultNote(undo.path, undo.text, { ifAbsent: true }));
+  if (!first.ok && first.refusal) return { ok: false, reason: 'storage', ...first.refusal };
   if (!first.ok) return { ok: false, reason: 'storage' };
   if (first.value.ok) return { ok: true, path: first.value.file.path, renamed: false };
   if (first.value.conflict !== 'exists') return { ok: false, reason: 'storage' };
   const beside = restoredPath(undo.path);
   const second = await attempt(() => deps.putVaultNote(beside, undo.text, { ifAbsent: true }));
+  if (!second.ok && second.refusal) return { ok: false, reason: 'storage', ...second.refusal };
   if (!second.ok) return { ok: false, reason: 'storage' };
   if (second.value.ok) return { ok: true, path: second.value.file.path, renamed: true };
   return { ok: false, reason: 'exists' };
@@ -827,13 +1191,35 @@ export async function listTrash(
   return { ok: true, entries };
 }
 
-/** Restore one Trash entry where it came from, never overwriting. */
-export async function restoreEntry(deps: VaultOpsDeps, id: string): Promise<VaultRestoreResult> {
+/** Restore one Trash entry where it came from, never overwriting. A row
+ *  from the Trash page says so (`listed`, E38). */
+export async function restoreEntry(
+  deps: VaultOpsDeps,
+  id: string,
+  opts?: RestoreOptions,
+): Promise<VaultRestoreResult> {
   if (!deps.provider.restore) return { ok: false, reason: 'unsupported' };
-  const r = await attempt(() => deps.provider.restore!(deps.target.resourceId, id));
+  const r = await attempt(() => deps.provider.restore!(deps.target.resourceId, id, opts));
+  if (!r.ok && r.refusal) return { ok: false, reason: 'storage', ...r.refusal };
   if (!r.ok) return { ok: false, reason: 'storage' };
   if (!r.value.ok) return { ok: false, reason: 'missing' };
   await adopt(deps, r.value.file);
+  // A folder that came back only in part says how many, and which stayed.
+  const report: RestoreReport = r.value;
+  // And which came back beside their names, so the line can say so (E23).
+  const beside = report.beside?.length ? { beside: report.beside } : {};
+  if (report.partial) {
+    return {
+      ok: true,
+      path: r.value.file.path,
+      renamed: r.value.renamed,
+      partial: report.partial,
+      ...beside,
+    };
+  }
+  if (report.beside?.length) {
+    return { ok: true, path: r.value.file.path, renamed: r.value.renamed, beside: report.beside };
+  }
   return { ok: true, path: r.value.file.path, renamed: r.value.renamed };
 }
 
@@ -866,6 +1252,7 @@ export interface VaultTodayPlan {
 export type VaultTodayResult =
   | { ok: true; created: false; path: string }
   | { ok: true; created: true; file: StoredFile }
+  | ({ ok: false; reason: 'storage' } & VaultRefusal)
   | { ok: false; reason: 'downloading' | VaultOpFailure };
 
 /** Open today's note, creating it only while nothing has the name: a note the
@@ -880,6 +1267,7 @@ export async function openToday(
   if (known !== undefined) return { ok: true, created: false, path: known };
   if (!deps.provider.compareAndSwap) return { ok: false, reason: 'unsupported' };
   const r = await attempt(() => deps.putVaultNote(plan.path, plan.text, { ifAbsent: true }));
+  if (!r.ok && r.refusal) return { ok: false, reason: 'storage', ...r.refusal };
   if (!r.ok) return { ok: false, reason: 'storage' };
   if (r.value.ok) return { ok: true, created: true, file: r.value.file };
   if (r.value.conflict === 'exists') {
@@ -893,6 +1281,8 @@ export async function openToday(
 
 export type VaultTickResult =
   | { ok: true; file: StoredFile; status: string }
+  /** Refused for good (a team plan not active, OV402): the storage's line. */
+  | ({ ok: false; reason: 'storage' } & VaultRefusal)
   | { ok: false; reason: 'moved' | 'custom' | 'none' | VaultOpFailure }
   | {
       ok: false;
@@ -905,8 +1295,12 @@ export type VaultTickResult =
  *  returned (K11). */
 const tickChains = new Map<string, Promise<unknown>>();
 
-/** Tick or untick one task box: flush any pending save, toggle on the note's
- *  current text, and write it guarded by the open note's version. A refused
+/** Tick or untick one task box: flush any pending save, read the note once,
+ *  toggle on that text and write it guarded by that same version, so the
+ *  tick is made on the text it is guarded by (round 7 E2). The open note
+ *  must still be the version read, and the text read must be `seen`, the
+ *  text the box's offset was counted on, when given; otherwise nothing is
+ *  written and the result is `changed` with what is there now. A refused
  *  write is a result for the store's resolve path; the box then shows the
  *  file's truth. */
 export function toggleTask(
@@ -914,10 +1308,11 @@ export function toggleTask(
   path: string,
   at: number,
   expected: string,
+  seen?: string,
 ): Promise<VaultTickResult> {
   const key = JSON.stringify([deps.target.providerId, deps.target.resourceId, path]);
   const before = tickChains.get(key) ?? Promise.resolve();
-  const run = before.then(() => tickOnce(deps, path, at, expected));
+  const run = before.then(() => tickOnce(deps, path, at, expected, seen));
   const link = run.catch(() => undefined);
   tickChains.set(key, link);
   void link.then(() => {
@@ -931,22 +1326,32 @@ async function tickOnce(
   path: string,
   at: number,
   expected: string,
+  seen: string | undefined,
 ): Promise<VaultTickResult> {
   if (!deps.provider.compareAndSwap) return { ok: false, reason: 'unsupported' };
   const run = await attempt(async (): Promise<VaultTickResult> => {
     await deps.flushOpenSave();
     const open = deps.openNote();
-    const ifMatch = open?.path === path ? open.version : await guardFor(deps, path);
+    const file = await deps.provider.read(deps.target.resourceId, path);
+    if (!file) return { ok: false, reason: 'missing' };
+    const ifMatch = versionOf(file);
     if (!ifMatch) return { ok: false, reason: 'missing' };
-    const text = await deps.readBody(path);
-    if (text === undefined) return { ok: false, reason: 'missing' };
-    const toggled = toggleTaskAt(text, at, expected);
+    // Moved on since the person saw it: nothing is ticked on text they
+    // have not seen, and the store opens the newer version.
+    if (
+      (open?.path === path && open.version !== ifMatch) ||
+      (seen !== undefined && seen !== file.text)
+    ) {
+      return { ok: false, reason: 'changed', theirs: file };
+    }
+    const toggled = toggleTaskAt(file.text, at, expected);
     if (!toggled.ok) return { ok: false, reason: toggled.reason };
     const r = await deps.putVaultNote(path, toggled.text, { ifMatch });
     if (r.ok) return { ok: true, file: r.file, status: toggled.status };
     const reason = r.conflict === 'exists' ? 'changed' : r.conflict;
     return { ok: false, reason, theirs: r.theirs };
   });
+  if (!run.ok && run.refusal) return { ok: false, reason: 'storage', ...run.refusal };
   return run.ok ? run.value : { ok: false, reason: 'storage' };
 }
 

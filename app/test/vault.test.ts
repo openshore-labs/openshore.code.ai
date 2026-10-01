@@ -402,3 +402,48 @@ describe('isConflictCopy', () => {
     expect(isConflictCopy('Conflict resolution.md')).toBe(false);
   });
 });
+
+// The team vault's path rule (0015's org_vault_path_ok, round 7 E43): the
+// names this app makes beside a note fit 512 characters, shortening only the
+// note's own name, so the copy stays in its folder and still reads as one.
+describe('team paths fit 512 characters (E43)', async () => {
+  const { TEAM_PATH_MAX, fitMadeName, isConflictCopy, teamPathProblem } =
+    await import('../src/lib/vault.js');
+  const { vaultConflictCopyPath } = await import('os-code/protocol');
+  const folder = `${'a'.repeat(170)}/${'b'.repeat(170)}/`;
+
+  it('a keep-both copy of a long path is cut in its own name, folder and suffix kept', () => {
+    for (const stem of ['c'.repeat(165), 'é'.repeat(120), '日本'.repeat(60)]) {
+      for (let n = 1; n <= 20; n++) {
+        const copy = vaultConflictCopyPath(`${folder}${stem}.md`, new Date(2026, 9, 1, 0, 12), n);
+        const fit = fitMadeName(copy, TEAM_PATH_MAX);
+        expect([...fit].length).toBeLessThanOrEqual(TEAM_PATH_MAX);
+        expect(fit.startsWith(folder)).toBe(true);
+        expect(isConflictCopy(fit)).toBe(true);
+        expect(teamPathProblem(fit)).toBeUndefined();
+      }
+    }
+  });
+
+  it('a "(restored)" name is cut the same way, and a short name is left alone', () => {
+    const fit = fitMadeName(`${folder}${'c'.repeat(165)} (restored 2).md`, TEAM_PATH_MAX);
+    expect([...fit].length).toBe(TEAM_PATH_MAX);
+    expect(fit).toMatch(/^a+\/b+\/c+ \(restored 2\)\.md$/);
+    expect(fitMadeName('Plan (restored).md', TEAM_PATH_MAX)).toBe('Plan (restored).md');
+  });
+
+  it('a folder that leaves no room, or a name it did not make, is left for the storage to refuse', () => {
+    const deep = `${'f'.repeat(500)}/x (restored).md`;
+    expect(fitMadeName(deep, TEAM_PATH_MAX)).toBe(deep);
+    const plain = `${folder}${'c'.repeat(200)}.md`;
+    expect(fitMadeName(plain, TEAM_PATH_MAX)).toBe(plain);
+  });
+
+  it("names the path problems 0015's rule refuses", () => {
+    expect(teamPathProblem('ok/Plan.md')).toBeUndefined();
+    expect(teamPathProblem(`${folder}${'c'.repeat(200)}.md`)).toBe('long');
+    for (const bad of ['', ' ', '/Plan.md', 'a\\b.md', 'a//b.md', './a.md', 'a/../b.md']) {
+      expect(teamPathProblem(bad)).toBe('bad');
+    }
+  });
+});

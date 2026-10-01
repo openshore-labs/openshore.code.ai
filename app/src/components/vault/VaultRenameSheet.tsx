@@ -68,6 +68,10 @@ export interface VaultRenameSheetProps {
   /** The vault's `links.updateOnRename` (Vault M7, CTO L2): `always`
    *  updates the links without asking; `ask` (the default) asks. */
   updateOnRename?: 'ask' | 'always';
+  /** The whole line a rename is refused with now (a team plan that lapsed
+   *  while the sheet was up, CX Y15): the sheet says it and goes no further,
+   *  so nothing is planned or sent. */
+  refused?: string;
 }
 
 function stemOf(kind: 'note' | 'folder', path: string): string {
@@ -128,6 +132,10 @@ export function VaultRenameSheet(props: VaultRenameSheetProps) {
   };
 
   const submit = async () => {
+    if (props.refused) {
+      setProblem(props.refused);
+      return;
+    }
     const t = target();
     if ('problem' in t) {
       // An unchanged name and place is simply nothing to do.
@@ -162,6 +170,12 @@ export function VaultRenameSheet(props: VaultRenameSheetProps) {
   };
 
   const run = async (updateLinks: boolean) => {
+    if (props.refused) {
+      // The name step is where the sheet says why.
+      setStep('name');
+      setProblem(props.refused);
+      return;
+    }
     if (!preview) return;
     setBusy(true);
     await apply(preview, updateLinks, (i, m) => setProgress({ i, m }));
@@ -354,6 +368,7 @@ export function VaultLinksLeftCard({
   busy,
   onOpen,
   onUpdateRest,
+  line,
 }: {
   /** The old title. */
   old: string;
@@ -361,13 +376,19 @@ export function VaultLinksLeftCard({
   notes: readonly string[];
   busy?: boolean;
   onOpen: (path: string) => void;
-  onUpdateRest: () => void;
+  /** Update the rest. Left out (links cannot be rewritten here now), the
+   *  card only lists the notes, and offers nothing that would be refused. */
+  onUpdateRest?: () => void;
+  /** Why the links were not updated, when the storage refused for good (a
+   *  team out of free space): said on the card, since a toast fades. */
+  line?: string;
 }) {
   if (!notes.length) return null;
   const copy = vaultLinksLeftCard(old);
   return (
     <div className="card vault-links-left" role="status">
       <h3 className="vault-links-left-title">{copy.title}</h3>
+      {line ? <p className="sub vault-links-left-line">{line}</p> : null}
       <div className="vault-tree">
         {notes.map((p) => (
           <button
@@ -380,11 +401,18 @@ export function VaultLinksLeftCard({
           </button>
         ))}
       </div>
-      <div className="vault-move-actions">
-        <button type="button" className="btn ghost press-fb" disabled={busy} onClick={onUpdateRest}>
-          {copy.button}
-        </button>
-      </div>
+      {onUpdateRest ? (
+        <div className="vault-move-actions">
+          <button
+            type="button"
+            className="btn ghost press-fb"
+            disabled={busy}
+            onClick={onUpdateRest}
+          >
+            {copy.button}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

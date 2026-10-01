@@ -395,6 +395,13 @@ import {
   isGdriveConnected,
   setOrgVaultAuth,
   resetOrgVault,
+  onOrgVaultPlan,
+  onOrgVaultNotMember,
+  setOrgVaultDeleteRole,
+  clearOrgVaultFull,
+  refreshOrgVaultPlan,
+  type OrgVaultPlan,
+  type OrgVaultDeleteRole,
   isNotePath,
   type GitosResource,
   type Lease,
@@ -409,7 +416,14 @@ import {
   disconnectRepoOAuth,
   resumeRepoOAuthFromLink,
 } from '../lib/gitos/repoOAuth.js';
-import { normalizeNotePath, noteFolder, noteTitle, restoreEol } from '../lib/vault.js';
+import {
+  TEAM_PATH_MAX,
+  fitMadeName,
+  normalizeNotePath,
+  noteFolder,
+  noteTitle,
+  restoreEol,
+} from '../lib/vault.js';
 import {
   currentVaultIndex,
   dropVaultIndex,
@@ -423,6 +437,7 @@ import {
   versionOf,
   type RemoveResult,
   type TrashEntry,
+  type TrashPartial,
   type WriteGuard,
   type WriteResult,
 } from '../lib/gitos/providers.js';
@@ -430,6 +445,7 @@ import { vaultCaps, type VaultCaps } from '../lib/vaultCaps.js';
 import { clearVaultTodayCache, resolveVaultToday, vaultTodayLine } from '../lib/vaultToday.js';
 import {
   cachedVaultSettings,
+  clearVaultSettingsCache,
   loadVaultSettings,
   saveVaultSetting,
   vaultNarrowingStamp,
@@ -463,6 +479,7 @@ import {
   listTrash as opsListTrash,
   prepareFolderMove as opsPrepareFolderMove,
   prepareNoteMove as opsPrepareNoteMove,
+  refusalOf,
   restoreEntry as opsRestoreEntry,
   undoDelete as opsUndoDelete,
   updateTheRest as opsUpdateTheRest,
@@ -471,6 +488,8 @@ import {
   type VaultRewriteReport,
   type VaultOpsDeps,
   type VaultOpsOpenNote,
+  type VaultRekeyRebase,
+  vaultWaitKind,
   type VaultRestoreResult,
   type VaultUndo,
 } from './vaultOps.js';
@@ -494,11 +513,19 @@ import {
   VAULT_TODAY_FAILED,
   VAULT_TICK_FAILED,
   vaultTickChanged,
+  vaultTickUnsaved,
   VAULT_GONE_REASON,
+  VAULT_UNSEEN_DRAFT_REASON,
+  vaultFolderMoveInTrash,
+  vaultGoneManyLine,
   VAULT_NO_COPY_NAME_REASON,
   vaultEarlierFolderHeld,
   vaultFolderOffer,
+  vaultGoneLine,
   vaultGoneToast,
+  vaultCreateWaitToast,
+  vaultSaveWaitToast,
+  type VaultWaitKind,
   vaultRepointToast,
   vaultLeaveToast,
   vaultReplayCopiesLine,
@@ -507,7 +534,23 @@ import {
   VAULT_MARKED_NOT_REVIEWED,
   VAULT_MARKED_REVIEWED,
   VAULT_STARTER_NOT_EMPTY,
+  VAULT_TEAM_LAPSED_NOT_SAVED,
+  VAULT_TEAM_FULL,
+  VAULT_TEAM_NOT_MEMBER,
+  VAULT_TEAM_NOT_MEMBER_REASON,
+  VAULT_TEAM_SETTINGS_ADMINS_ONLY,
+  VAULT_TEAM_SIGN_IN_LINE,
+  vaultFolderMoveRefused,
+  vaultFolderMoveGone,
+  vaultFolderMoveTaken,
+  vaultRenameFailed,
+  vaultTrashGone,
+  vaultFolderTrashChanged,
+  vaultRefusedLine,
 } from '../lib/vaultCopy.js';
+import { vaultTeamRefusal, type VaultTeamWrite } from './vaultTeamGate.js';
+import { ownerBoundProvider } from './teamOwner.js';
+import { dropTeamIndexes, noteTeamIndex } from './teamIndexes.js';
 import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
 import { SAMPLE_PROMPT, SAMPLE_REPO_NAME } from '../lib/sampleProject.js';
 import { setSearchConsent, type SearchAllowed } from '../lib/localSearch.js';
@@ -975,6 +1018,11 @@ const ANTHROPIC_KEY_KEY = 'oscode.secret.anthropic';
 // storage sheet.
 const VAULT_RESOURCE_ID = 'vault.personal';
 
+// How long opening a note waits for this device's save of it that is still
+// on its way (E3). A team save is one round trip; past this the note opens
+// anyway, and the save's landing reloads it.
+const VAULT_OPEN_WAIT_MS = 2000;
+
 /** What a driver build takes besides the chat and its seed. */
 interface BuildExtra {
   /** A handoff for a desktop agent's first task (CTO J12). */
@@ -1135,7 +1183,25 @@ export interface VaultMoveResult {
  *  A refusal the store already said (a toast, the resolve path) is
  *  `undefined`. */
 export type VaultDeleteOutcome =
-  | { ok: true; trashed: boolean; undo?: VaultUndo; notes: number; attachments: number }
+  | {
+      ok: true;
+      trashed: boolean;
+      undo?: VaultUndo;
+      notes: number;
+      attachments: number;
+      /** A folder that went to Trash only in part (the team vault, round 7
+       *  E20): how many went, what is left and why; its Undo brings back
+       *  exactly what went. */
+      partial?: TrashPartial;
+    }
+  // A refusal for good, as the whole line the room says (the team vault's
+  // admins-only delete, CX Y14, or a lapsed plan).
+  | { ok: false; reason: 'storage'; line: string }
+  // Already gone elsewhere (a teammate deleted or moved it): its gone line.
+  | { ok: false; reason: 'missing'; line: string }
+  // A folder that moved nothing: every note in it changed while the delete
+  // ran (the team vault, round 7 E21), and the line names them.
+  | { ok: false; reason: 'changed'; line: string }
   | { ok: false; reason: 'storage' | 'unsupported' | 'missing' | 'changed' | 'downloading' };
 
 /** Today's note from the room (Vault M6 6.4; CTO K7, CX X11): an existing
@@ -1527,6 +1593,11 @@ interface AppState {
     /** Who last saved `text`, when the storage says (the team vault only,
      *  StoredFileMeta.editedBy, CTO G6). Cleared by this device's own save. */
     editedBy?: { id: string; label?: string };
+    /** Whether the last save of this sitting was set aside under Not saved
+     *  (refused for good, a read-only vault, or no copy kept): true, false
+     *  once one lands, undefined before either. The save chip says Not saved
+     *  while it is true, never Saved (round 7 E18). */
+    held?: boolean;
   };
   /** A note that changed somewhere else under unsaved edits, waiting for the
    *  person's choice (the resolve sheet). At most one at a time. */
@@ -1551,6 +1622,10 @@ interface AppState {
    *  retried (a refusal, a read-only vault, or a stash that failed).
    *  Undefined when the vault is healthy. */
   vaultError?: 'load' | 'save' | 'held';
+  /** Why the last 'save' error waits (round 7 E42): the connection, the team
+   *  vault being updated, or a storage that did not answer. Read only beside
+   *  vaultError 'save'; the chip says "Offline" for the first alone. */
+  vaultSaveWait?: VaultWaitKind;
   /** Text no vault took, kept until the person copies and discards it: the
    *  "Not saved" list. Durable in the sealed store unless an entry says
    *  otherwise (`durable: false`). It holds team text of accounts not signed
@@ -1576,6 +1651,12 @@ interface AppState {
    *  team", until the person leaves it or the same account signs back in.
    *  Nothing else of the team vault shows meanwhile. */
   vaultTeamExpired?: boolean;
+  /** The team's plan as its settings read last said (Vault M7, CX Y14,
+   *  Y15; migration 0025): not entitled is the calm read-only state, every
+   *  note still reads and exports; `entitledUntil` is a never-paid team's
+   *  notice; `isAdmin` and `deleteRole` decide the settings sheet and who may
+   *  delete. Undefined before the first read and after a sign-out. */
+  vaultTeamPlan?: OrgVaultPlan;
   /** Which vault the Vault screen is showing: the personal one (on the chosen
    *  storage provider) or the shared team vault (org tier, Supabase-backed).
    *  Team is only reachable when signed in as an active member of an org. */
@@ -1999,7 +2080,10 @@ interface AppState {
   /** Open a note into vaultNote, by its exact listed path. A path that is not
    *  listed is a typed name: it is normalized, and when the provider does not
    *  hold it either, it opens as a fresh empty note. */
-  vaultOpen(path: string): Promise<void>;
+  // A listed note the storage no longer holds answers 'gone' (said once,
+  // unless `quietGone`: a caller that makes it again says its own), and the
+  // list is taken again (round 7 E24).
+  vaultOpen(path: string, opts?: { quietGone?: boolean }): Promise<'opened' | 'gone' | undefined>;
   /** Create a note from a typed name: write an empty file so it persists
    *  immediately (a fresh note no longer evaporates on back-out), then open it
    *  in write mode. If it already exists, listed or not, just opens it. `at`
@@ -2215,6 +2299,12 @@ interface AppState {
   vaultLoadTrash(): Promise<TrashEntry[] | undefined>;
   /** Restore one Trash entry where it came from, never overwriting. */
   vaultRestoreTrash(id: string): Promise<VaultRestoreResult>;
+  /** An admin sets who may delete team notes (CX Y14; migration 0025):
+   *  'changed' when another admin's save landed first (the sheet shows the
+   *  value there now), 'failed' when it could not be written. */
+  vaultSetTeamDeleteRole(
+    role: OrgVaultDeleteRole,
+  ): Promise<'ok' | 'changed' | 'failed' | { kind: 'refused'; line: string }>;
   /** Empty Trash (not a team vault's, R3). */
   vaultEmptyTrash(): Promise<
     { ok: true; removed: number; asked: number } | { ok: false; reason: string }
@@ -2266,7 +2356,13 @@ interface AppState {
   /** The person's own one-note edit (6.8, Link on an unlinked mention; CX
    *  X16): the note read now, `edit` applied, and written back only while it
    *  is still that version. False when it did not land or `edit` declined. */
-  vaultRewriteNote(path: string, edit: (text: string) => string | undefined): Promise<boolean>;
+  // A refusal for good (a team out of free space) answers its line, verb
+  // first, since "try again" would not help; a note moved or deleted
+  // somewhere else answers `gone` too, so the room drops its row (E34).
+  vaultRewriteNote(
+    path: string,
+    edit: (text: string) => string | undefined,
+  ): Promise<boolean | { ok: false; line: string; gone?: true }>;
   /** What images and PDFs read from on this storage (6.6): its attachments,
    *  Obsidian's attachment folder, and the byte reader. Undefined where the
    *  storage has none. */
@@ -2295,7 +2391,11 @@ interface AppState {
   /** Mark a note reviewed, or not (CX Y12): the person's own compare-and-
    *  swap write of `oscode-reviewed` through `mergeProvenance`, every other
    *  byte kept. `changed`: the note moved on and the newer version is open. */
-  vaultMarkReviewed(path: string, reviewed: boolean): Promise<'ok' | 'changed' | 'failed'>;
+  // A refusal for good answers its line, verb first ("Not marked.").
+  vaultMarkReviewed(
+    path: string,
+    reviewed: boolean,
+  ): Promise<'ok' | 'changed' | 'failed' | { kind: 'refused'; line: string }>;
   /** Whether the empty vault's ramp offers the starter layout (CTO L12). */
   vaultStarterOffered(): Promise<boolean>;
   /** Add the starter layout (CX Y13's "Add these"): emptiness re-checked,
@@ -4611,6 +4711,19 @@ export const useApp = create<AppState>((set, get, api) => {
   // person, whose unsent team text is kept rather than wiped. Resolves to how
   // many team drafts that kept.
   async function forgetSession(expired = false): Promise<number> {
+    // From its first step a sign-out stops the team vault speaking for this
+    // account (speaksNow), so a save that fails while the rest runs is kept
+    // in memory only, never stashed after the wipe below took the stash
+    // (E11). An expiry keeps the text for the same account instead.
+    if (expired) return endSession(true);
+    signingOut++;
+    try {
+      return await endSession(false);
+    } finally {
+      signingOut--;
+    }
+  }
+  async function endSession(expired: boolean): Promise<number> {
     const uid = get().authSession?.user.id;
     // A preference change still waiting to go belonged to the session.
     if (prefsPushTimer) clearTimeout(prefsPushTimer);
@@ -4631,16 +4744,22 @@ export const useApp = create<AppState>((set, get, api) => {
     resetOrgVault();
     forgetTeamBodies();
     stopVaultPoll();
+    set({ vaultTeamPlan: undefined });
     let kept = 0;
     if (expired && uid) {
       keptTeamOwner = uid;
       kept = await countTeamDrafts(uid);
+      await forgetTeamMemory(uid);
     } else {
       keptTeamOwner = undefined;
       await forgetTeamVaultDrafts();
+      await forgetTeamMemory();
       // The team index goes with the drafts (M3 3.2): here and where it was kept.
       const orgId = get().settings.account?.org?.serverId;
       if (orgId && uid) await dropVaultIndex({ providerId: 'org', resourceId: orgId, owner: uid });
+      // And every other team's this account built here (round 7 E33): a team
+      // the account left, or one before its org changed.
+      if (uid) await dropTeamIndexes((m) => m.owner !== uid);
     }
     // Whatever index is still warm (the personal one a chat's pack reads)
     // closes with the sign-in (Vault M5, CTO J1), its last write saved first,
@@ -4674,6 +4793,14 @@ export const useApp = create<AppState>((set, get, api) => {
     // team vault's titles leave with the session. A sign-out never keeps it.
     const open = get().vaultNote;
     const keepNote = expired && Boolean(uid) && get().vaultScope === 'team' && Boolean(open);
+    // A team choice and the editor's live text belong to the sign-in too
+    // (R-19): a sign-out takes them, and an expiry keeps them only on the kept
+    // note, for the same account, whose stash holds the text sealed.
+    const choice = get().vaultConflict;
+    const dropChoice =
+      choice?.target.providerId === 'org' &&
+      !(keepNote && choice.path === open?.path && choice.target.owner === uid);
+    if (!keepNote && get().vaultScope === 'team') vaultLiveDraft = undefined;
     // The cached entitlement belonged to this account; it leaves with it.
     void storeSetJson(ENTITLEMENT_CACHE_KEY, null).catch(() => {});
     // One door to the coding agent: no coding session stays attached past the
@@ -4698,6 +4825,7 @@ export const useApp = create<AppState>((set, get, api) => {
       passwordRecovery: undefined,
       authConfirm: undefined,
       orgJoin: undefined,
+      ...(dropChoice ? { vaultConflict: undefined } : {}),
       ...(keepNote
         ? {
             vaultTeamExpired: true,
@@ -4706,8 +4834,8 @@ export const useApp = create<AppState>((set, get, api) => {
         : {
             vaultTeamExpired: undefined,
             vaultScope: 'personal' as const,
-            vaultFiles: [],
-            vaultNote: undefined,
+            vaultError: undefined,
+            ...clearedVaultRoom(),
           }),
     });
     return kept;
@@ -4831,13 +4959,24 @@ export const useApp = create<AppState>((set, get, api) => {
   // team when no signed-in org is present, so the actions no-op instead of
   // throwing.
   type VaultTarget = VaultTargetRef & { provider: StorageProvider };
+  // A team target's storage answers only while its account is the one
+  // signed in (state/teamOwner.ts), so nothing started under one account is
+  // ever sent under the next (R-19).
+  const teamStorage = (provider: StorageProvider, owner: string | undefined) =>
+    ownerBoundProvider(provider, owner, () => get().authSession?.user.id);
   function vaultTarget(): VaultTarget | undefined {
     const st = get();
     if (st.vaultScope === 'team') {
       const orgId = st.settings.account?.org?.serverId;
       const provider = providerFor('org');
       if (!orgId || !provider) return undefined;
-      return { provider, providerId: 'org', resourceId: orgId, owner: st.authSession?.user.id };
+      const owner = st.authSession?.user.id;
+      return {
+        provider: teamStorage(provider, owner),
+        providerId: 'org',
+        resourceId: orgId,
+        owner,
+      };
     }
     const providerId = vaultProviderId(st.settings);
     const provider = providerFor(providerId);
@@ -4845,29 +4984,72 @@ export const useApp = create<AppState>((set, get, api) => {
     return { provider, providerId, resourceId: VAULT_RESOURCE_ID };
   }
   // A target a caller pinned earlier (a scheduled save), or the active one. A
-  // team ref that names no account speaks for whoever is signed in now.
+  // team ref speaks only for the account it names; one that names none
+  // (pinned while nobody was signed in) speaks for nobody.
   function vaultTargetFrom(at?: VaultTargetRef): VaultTarget | undefined {
     if (!at) return vaultTarget();
     const provider = providerFor(at.providerId);
     if (!provider) return undefined;
-    const { providerId, resourceId } = at;
+    const { providerId, resourceId, owner } = at;
     return providerId === 'org'
-      ? { provider, providerId, resourceId, owner: at.owner ?? get().authSession?.user.id }
+      ? { provider: teamStorage(provider, owner), providerId, resourceId, owner }
       : { provider, providerId, resourceId };
   }
   // Whether a target is the vault on screen now, so a late result never
-  // paints one vault's list or note over the other's.
+  // paints one vault's list or note over the other's, nor one account's team
+  // vault over another's. A team note kept open after an expiry is still its
+  // account's.
   function isActiveVault(t: VaultTargetRef): boolean {
     const now = vaultTarget();
-    return Boolean(now && now.providerId === t.providerId && now.resourceId === t.resourceId);
+    if (!now || now.providerId !== t.providerId || now.resourceId !== t.resourceId) return false;
+    return t.providerId !== 'org' || (now.owner ?? keptTeamOwner) === t.owner;
   }
   // Whether text for a target may be sent, stashed, or shown right now:
   // always for a personal vault; for the team vault only while the account
-  // that typed it is the one signed in.
+  // that typed it is the one signed in, and no sign-out is under way (E11).
   function speaksNow(t: VaultTargetRef): boolean {
     return (
-      t.providerId !== 'org' || (t.owner !== undefined && t.owner === get().authSession?.user.id)
+      t.providerId !== 'org' ||
+      (signingOut === 0 && t.owner !== undefined && t.owner === get().authSession?.user.id)
     );
+  }
+  // The team gate (vaultTeamGate) on the plan as it is now (round 7 E37): a
+  // plan that would refuse is read again first, since an admin may have let
+  // everyone delete again, or the plan may be active again, since it was
+  // read. One settings read, only on the refusal path; a read that does not
+  // answer leaves the refusal standing (it fails closed). The free space is
+  // learned from a refusal, never a read, so a refusal for it alone is said
+  // as it is, with nothing asked.
+  async function teamRefusalNow(
+    t: VaultTargetRef,
+    write: VaultTeamWrite,
+  ): Promise<string | undefined> {
+    const plan = get().vaultTeamPlan;
+    const refused = vaultTeamRefusal(t.providerId, plan, write);
+    if (!refused || !plan || t.providerId !== 'org' || !speaksNow(t)) return refused;
+    const { full: _full, ...unfull } = plan;
+    if (!vaultTeamRefusal(t.providerId, unfull, write)) return refused;
+    await refreshOrgVaultPlan(t.resourceId);
+    return vaultTeamRefusal(t.providerId, get().vaultTeamPlan, write);
+  }
+  // Whether a resolve choice may be settled now: any personal one, and a
+  // team one only while its account is signed in and its vault is on screen.
+  function teamChoiceSpeaks(c: VaultConflict): boolean {
+    return c.target.providerId !== 'org' || (speaksNow(c.target) && isActiveVault(c.target));
+  }
+  // A team choice tapped when it cannot be settled. After an expiry it is
+  // the same account's: the words on screen go to the sealed stash, the
+  // choice stays for its return, and the line says to sign in. Any other is
+  // another account's, dropped with nothing written, kept or said (R-19).
+  async function waitForTeamSignIn(c: VaultConflict, draft: string): Promise<VaultResolveResult> {
+    const owner = c.target.owner;
+    if (owner && owner === keptTeamOwner && !get().authSession) {
+      await stashConflictText(c.target, c.path, draft, c.baseVersion);
+      get().showToast(VAULT_TEAM_SIGN_IN_LINE);
+      return { ok: false };
+    }
+    if (get().vaultConflict === c) set({ vaultConflict: undefined });
+    return { ok: false };
   }
   const vaultKey = (t: VaultTargetRef, path: string) => `${t.providerId}::${t.resourceId}::${path}`;
   // What a provider lists that the Vault treats as notes: `.md` files outside
@@ -4890,6 +5072,9 @@ export const useApp = create<AppState>((set, get, api) => {
     return owner ? { providerId, resourceId, owner } : { providerId, resourceId };
   }
   function openVaultIndex(t: VaultTarget): VaultIndexHost {
+    // A team index is named on the device's list as it opens, so it leaves
+    // with its account whichever way the sign-in ends (round 7 E33).
+    if (t.providerId === 'org' && t.owner) void noteTeamIndex(t.resourceId, t.owner);
     return vaultIndexFor(indexTargetOf(t), t.provider);
   }
   function vaultIndexOf(t: VaultTargetRef): VaultIndexHost | undefined {
@@ -4926,8 +5111,15 @@ export const useApp = create<AppState>((set, get, api) => {
      *  M2 carried beside an ISO base. The loader turns it into the base once
      *  the team provider compares revs (CTO G3); nothing writes it now. */
     rev?: number;
-    /** When it was stashed, on this device's clock (ordering only). */
+    /** When it was stashed, on this device's clock (ordering only), always
+     *  later than the last (nextStashAt): a save's own entry, and any entry
+     *  written after that save began, compare by it (round 7 E10). */
     at: string;
+    /** The sitting of the note the text was typed in (the open note's
+     *  loadedAt), when it was open. A save supersedes an entry of its own
+     *  sitting, since the editor showed those words, but never one of
+     *  another: an open shows the vault's read, never the stash (E10). */
+    sitting?: number;
     /** The desktop folder only: the folder the text was typed in (its
      *  realpath) and how it reads, so text typed before the vault was
      *  pointed at another folder never replays into the new one (CTO F7.6). */
@@ -5022,6 +5214,105 @@ export const useApp = create<AppState>((set, get, api) => {
     return run;
   }
 
+  // Words on their way to a storage across the network (the team vault, your
+  // computer), written to the sealed store before each save goes out and
+  // removed once it settles, so a page iOS suspends and reclaims, or a tab
+  // closed, while the write is out never takes the last words with it (round
+  // 7 E17). Kept apart from the stash, which holds only text still to save:
+  // the save chip, the replay and the one-entry-per-note rule never see
+  // these while their save runs. What a launch that ended left here goes to
+  // the stash on the next refresh (recoverVaultInflight) and replays at the
+  // version it was typed on, landing, or settling if it had landed.
+  const VAULT_INFLIGHT_KEY = 'oscode.vault.inflight';
+  // This launch's entries whose save is still running.
+  const liveInflight = new Set<string>();
+  let vaultInflightChain: Promise<unknown> = Promise.resolve();
+  function editVaultInflight<T>(edit: (p: VaultPending) => T): Promise<T> {
+    const run = vaultInflightChain.then(async () => {
+      const p = (await storeGetJson<VaultPending>(VAULT_INFLIGHT_KEY)) ?? {};
+      const before = JSON.stringify(p);
+      const out = edit(p);
+      if (JSON.stringify(p) !== before) {
+        if (Object.keys(p).length === 0) await storeDelete(VAULT_INFLIGHT_KEY);
+        else await storeSetJson(VAULT_INFLIGHT_KEY, p);
+      }
+      return out;
+    });
+    vaultInflightChain = run.catch(() => {});
+    return run;
+  }
+  /** Whether a storage's writes cross the network, so a save writes ahead. */
+  const writesAhead = (t: VaultTargetRef) => t.providerId === 'org' || t.providerId === 'hub';
+  // Put a save's words on the device before it goes out. Resolves to the
+  // entry's id, or undefined when the sealed store did not take them (the
+  // save still goes, as before).
+  async function writeAhead(
+    t: VaultTargetRef,
+    path: string,
+    text: string,
+    base: string | undefined,
+    sitting: number | undefined,
+    mark: string,
+  ): Promise<string | undefined> {
+    const id = `${vaultKey(t, path)}@${mark}`;
+    liveInflight.add(id);
+    try {
+      await editVaultInflight((p) => {
+        p[id] = pendingEntry(t, path, text, base, { sitting, at: mark });
+      });
+      return id;
+    } catch {
+      liveInflight.delete(id);
+      return undefined;
+    }
+  }
+  // The version a save is sent against, once its turn comes (a save queued
+  // behind another learns it only then), so a relaunch replays it there.
+  async function restampAhead(id: string, base: string | undefined): Promise<void> {
+    await editVaultInflight((p) => {
+      const e = p[id];
+      if (!e || e.base === base) return;
+      const { base: _was, ...rest } = e;
+      p[id] = base ? { ...rest, base } : rest;
+    }).catch(() => {});
+  }
+  // A save settled: its words landed, or the save put them in the stash or
+  // under Not saved. One that ended some other way (it threw) leaves them in
+  // the stash instead, never nowhere.
+  async function settleAhead(id: string, ended: boolean): Promise<void> {
+    const e = await editVaultInflight((p) => {
+      const out = p[id];
+      delete p[id];
+      return out;
+    }).catch(() => undefined);
+    liveInflight.delete(id);
+    if (!ended && e) {
+      await stashDraft(e, e.path, e.text, e.base, { sitting: e.sitting, mark: e.at }).catch(
+        () => {},
+      );
+    }
+  }
+  // Words a launch that ended left on their way go to the stash, oldest
+  // first, for the replay; team words only while their account is signed in
+  // (the rest wait sealed for it, or leave with a sign-out or another sign-in).
+  async function recoverVaultInflight(): Promise<void> {
+    const left = await editVaultInflight((p) => {
+      const out: VaultPendingEntry[] = [];
+      for (const [id, e] of Object.entries(p)) {
+        if (liveInflight.has(id) || !e || typeof e.text !== 'string') continue;
+        if (!speaksNow(e)) continue;
+        out.push(e);
+        delete p[id];
+      }
+      return out.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+    }).catch(() => [] as VaultPendingEntry[]);
+    for (const e of left) {
+      await stashDraft(e, e.path, e.text, e.base, { sitting: e.sitting, mark: e.at }).catch(
+        () => {},
+      );
+    }
+  }
+
   // The "Not saved" list: text no vault took and nothing will retry. State is
   // what the screen shows; the sealed store keeps the durable copy, loaded
   // once per launch (vaultRefresh) and edited in step with state. Only the
@@ -5030,17 +5321,24 @@ export const useApp = create<AppState>((set, get, api) => {
   const VAULT_HELD_KEY = 'oscode.vault.held';
   let vaultHeldChain: Promise<unknown> = Promise.resolve();
   let vaultHeldLoaded = false;
+  // Every entry is its own: the id names the note, the account (team text),
+  // and the sitting it came from, so a later hold replaces only the same
+  // sitting's older text, never an earlier sitting's or another account's
+  // (round 7 E7). A hold from no sitting (a create, a replay, a leftover) is
+  // always an entry of its own. Entries sealed before this keep their ids.
+  let heldSeq = 0;
   function heldDraft(
     t: VaultTargetRef,
     path: string,
     text: string,
     reason: string,
     at = new Date().toISOString(),
+    session?: string | number,
   ): VaultHeldDraft {
     const { providerId, resourceId } = t;
     const owner = providerId === 'org' ? t.owner : undefined;
     return {
-      id: vaultKey(t, path),
+      id: `${vaultKey(t, path)}::${owner ?? ''}::${session ?? `${at}#${++heldSeq}`}`,
       providerId,
       resourceId,
       path,
@@ -5051,10 +5349,20 @@ export const useApp = create<AppState>((set, get, api) => {
       durable: true,
     };
   }
-  // Put a held draft in a list, keeping whichever text for that note is newer.
+  // Put a held draft in a list: it replaces its own entry (the same sitting's
+  // older text) unless that one is newer, and an entry holding the very same
+  // words for the same note and account, never anything else.
   const keepNewest = (h: VaultHeldDraft) => (list: VaultHeldDraft[]) => {
     const old = list.find((x) => x.id === h.id);
-    return old && old.at > h.at ? list : [...list.filter((x) => x.id !== h.id), h];
+    if (old && old.at > h.at) return list;
+    const twin = (x: VaultHeldDraft) =>
+      x.text === h.text &&
+      x.path === h.path &&
+      x.providerId === h.providerId &&
+      x.resourceId === h.resourceId &&
+      x.owner === h.owner &&
+      x.folder === h.folder;
+    return [...list.filter((x) => x.id !== h.id && !twin(x)), h];
   };
   // Apply one edit to the list on screen and, when `durable`, to the sealed
   // copy. Resolves true only when the sealed store now holds the edited list:
@@ -5102,11 +5410,22 @@ export const useApp = create<AppState>((set, get, api) => {
     path: string,
     text: string,
     reason: string,
-    opts: { at?: string; memoryOnly?: boolean; folder?: string; folderDisplay?: string } = {},
+    opts: {
+      at?: string;
+      memoryOnly?: boolean;
+      folder?: string;
+      folderDisplay?: string;
+      /** The sitting the text was typed in (the open note's loadedAt), so
+       *  refused saves of one sitting keep one entry, its newest text. */
+      session?: string | number;
+    } = {},
   ): Promise<boolean> {
-    const durable = !opts.memoryOnly && speaksNow(t);
+    // Team text of an account whose sign-in expired stays sealed for its
+    // return, hidden until then (vaultHeldFor), like its stash.
+    const expiredOwner = t.providerId === 'org' && Boolean(t.owner) && t.owner === keptTeamOwner;
+    const durable = !opts.memoryOnly && (speaksNow(t) || expiredOwner);
     const h: VaultHeldDraft = {
-      ...heldDraft(t, path, text, reason, opts.at),
+      ...heldDraft(t, path, text, reason, opts.at, opts.session),
       durable,
       // Text from an earlier folder keeps its own entry, so a later hold of
       // the same path in the folder used now never replaces it.
@@ -5132,11 +5451,22 @@ export const useApp = create<AppState>((set, get, api) => {
     landed
       ? 'Your text is kept under Not saved.'
       : 'This device could not keep a copy, so it is under Not saved only until the app closes. Copy it somewhere safe now.';
+  // The last save of the open note's sitting was set aside under Not saved:
+  // the note says so until one lands (E18). Only that sitting's own save.
+  function markHeldHere(t: VaultTargetRef, path: string, session: number | undefined): void {
+    const open = get().vaultNote;
+    if (!isActiveVault(t) || open?.path !== path) return;
+    if (session === undefined || open.loadedAt !== session) return;
+    set({ vaultNote: { ...open, held: true } });
+  }
 
   // The account an expired sign-in belonged to, while nobody has signed in
   // since. Its unsent team text is kept sealed and hidden for its return; a
   // sign-out, or any sign-in, clears this.
   let keptTeamOwner: string | undefined;
+  // How many sign-outs are running (forgetSession). While one is, no team
+  // text speaks for anyone: the sign-out is wiping it (E11).
+  let signingOut = 0;
 
   // Team text whose account is no longer the one signed in, from a save that
   // ran or failed after a sign-out, an expiry, or an account switch. It is
@@ -5145,16 +5475,15 @@ export const useApp = create<AppState>((set, get, api) => {
   // memory only, shown to that account alone if it signs back in before the
   // app closes.
   async function keepUnsentTeamText(
-    t: VaultTarget,
+    t: VaultTargetRef,
     path: string,
     text: string,
     base: string | undefined,
+    session?: number,
   ): Promise<void> {
     if (t.owner && t.owner === keptTeamOwner) {
       try {
-        await editVaultPending((p) => {
-          p[vaultKey(t, path)] = pendingEntry(t, path, text, base);
-        });
+        await stashDraft(t, path, text, base, { sitting: session });
         get().showToast(
           'Your sign-in expired, so this team vault text is kept on this device for when you sign in again.',
         );
@@ -5166,9 +5495,9 @@ export const useApp = create<AppState>((set, get, api) => {
     }
     const reason =
       'Not sent, because you were signed out of your team. Copy it back into the note.';
-    await holdVaultDraft(t, path, text, reason, { memoryOnly: true });
+    await holdVaultDraft(t, path, text, reason, { memoryOnly: true, session });
     get().showToast(
-      get().authSession
+      get().authSession && signingOut === 0
         ? 'Team vault text typed before the account changed was not sent.'
         : 'Not saved to the team vault, because you are signed out. Sign in again with the same account before the app closes to get it back under Not saved.',
     );
@@ -5460,6 +5789,7 @@ export const useApp = create<AppState>((set, get, api) => {
     path: string,
     text: string,
     base: string | undefined,
+    o: { sitting?: number; at?: string } = {},
   ): VaultPendingEntry {
     const { providerId, resourceId } = t;
     const owner = providerId === 'org' ? t.owner : undefined;
@@ -5471,9 +5801,82 @@ export const useApp = create<AppState>((set, get, api) => {
       path,
       text,
       ...(base ? { base } : {}),
-      at: new Date().toISOString(),
+      at: o.at ?? nextStashAt(),
+      ...(o.sitting !== undefined ? { sitting: o.sitting } : {}),
       ...(folder ? { folder: folder.dir, folderDisplay: folder.display } : {}),
     };
+  }
+
+  // A stash time on this device's clock, always later than the last, so an
+  // entry written after a save began is always newer than that save's mark.
+  let lastStashAt = 0;
+  function nextStashAt(): string {
+    lastStashAt = Math.max(Date.now(), lastStashAt + 1);
+    return new Date(lastStashAt).toISOString();
+  }
+
+  // Whether a stash entry is a save's to settle: text stashed in the same
+  // sitting of the note before the save began (the editor showed those
+  // words, so the save supersedes them, data-1), never one written after it
+  // began, and never an earlier sitting's, which no editor showed (E10).
+  function ownsStash(
+    e: VaultPendingEntry | undefined,
+    sitting: number | undefined,
+    mark: string | undefined,
+  ): boolean {
+    if (!e || sitting === undefined || e.sitting !== sitting) return false;
+    return mark === undefined || e.at <= mark;
+  }
+
+  // Put text in the stash, the one entry a note keeps there, and never over
+  // words it would lose (round 7 E10). An entry written after `mark` wins:
+  // one of the same sitting was typed on top of this text, so this text is
+  // superseded; one of another sitting keeps its place and this text goes
+  // under Not saved. An older entry of another sitting, with other words, is
+  // text no editor showed: it goes under Not saved before this takes its
+  // place. Resolves to where this text is now.
+  async function stashDraft(
+    t: VaultTargetRef,
+    path: string,
+    text: string,
+    base: string | undefined,
+    o: { sitting?: number; mark?: string } = {},
+  ): Promise<'stashed' | 'superseded' | 'held' | 'unsent'> {
+    // Team text is stashed only for the account signed in now, or, after an
+    // expiry, for that account's return. Text that settles after its account
+    // left (a sign-out under way or done, another account in) is kept in
+    // memory only, never sealed behind the wipe (E11).
+    if (t.providerId === 'org' && !speaksNow(t) && !(t.owner && t.owner === keptTeamOwner)) {
+      await keepUnsentTeamText(t, path, text, base, o.sitting);
+      return 'unsent';
+    }
+    const key = vaultKey(t, path);
+    const entry = pendingEntry(t, path, text, base, {
+      sitting: o.sitting,
+      at: o.mark ?? nextStashAt(),
+    });
+    const out = await editVaultPending((p) => {
+      const e = p[key];
+      const same = o.sitting !== undefined && e?.sitting === o.sitting;
+      if (e && e.at > entry.at) {
+        return same || e.text === text ? ('superseded' as const) : ('held' as const);
+      }
+      p[key] = entry;
+      return e && !same && e.text !== text ? e : undefined;
+    });
+    if (out === 'superseded') return out;
+    if (out === 'held') {
+      await holdVaultDraft(t, path, text, VAULT_UNSEEN_DRAFT_REASON, { session: o.sitting });
+      set({ vaultError: 'held' });
+      return out;
+    }
+    if (out) {
+      await holdVaultDraft(out, out.path, out.text, VAULT_UNSEEN_DRAFT_REASON, {
+        at: out.at,
+        session: `stash:${out.at}`,
+      });
+    }
+    return 'stashed';
   }
 
   // Text stashed against the desktop folder while the vault used another one
@@ -5514,43 +5917,68 @@ export const useApp = create<AppState>((set, get, api) => {
     text: string,
     base: string | undefined,
     err: unknown,
+    session?: number,
+    /** When the save began (its mark), when it was a save (E10). */
+    mark?: string,
+    /** Held without a toast: this sitting already said why (E27). */
+    opts: { quiet?: boolean } = {},
   ): Promise<void> {
     if (!speaksNow(t)) {
-      await keepUnsentTeamText(t, path, text, base);
+      await keepUnsentTeamText(t, path, text, base, session);
       return;
     }
     const key = vaultKey(t, path);
     const refusal = vaultRefusal(err);
     if (refusal) {
-      // This text is newer than any draft stashed for the note, so that one
-      // must not replay under it.
-      await editVaultPending((p) => {
+      // This text is newer than any draft stashed for the note before it
+      // began, so that one must not replay under it. Words of their own (an
+      // earlier sitting's) go under Not saved beside this, never away (round
+      // 7 E7). One stashed after this save began is newer, and stays.
+      const older = await editVaultPending((p) => {
+        const e = p[key];
+        if (e && mark !== undefined && e.at > mark) return undefined;
         delete p[key];
-      }).catch(() => {});
-      const landed = await holdVaultDraft(t, path, text, asSentence(refusal));
+        return e;
+      }).catch(() => undefined);
+      if (older && older.text !== text) {
+        await holdVaultDraft(older, older.path, older.text, asSentence(refusal), {
+          at: older.at,
+          session: `stash:${older.at}`,
+        });
+      }
+      const landed = await holdVaultDraft(t, path, text, asSentence(refusal), { session });
       set({ vaultError: 'held' });
-      get().showToast(`Not saved. ${asSentence(refusal)} ${heldLine(landed)}`);
+      markHeldHere(t, path, session);
+      if ((err as { lapsed?: unknown }).lapsed === true) showTeamTextAfterLapse(t, path, text);
+      if (!opts.quiet) get().showToast(`Not saved. ${asSentence(refusal)} ${heldLine(landed)}`);
       logEvent('vault_note_save_refused');
       return;
     }
     try {
-      await editVaultPending((p) => {
-        p[key] = pendingEntry(t, path, text, base);
-      });
+      // Never over newer words, nor over words no editor showed (E10).
+      const where = await stashDraft(t, path, text, base, { sitting: session, mark });
+      if (where === 'unsent') return;
+      if (where === 'held') {
+        get().showToast(`Not saved. ${heldLine(true)}`);
+        logEvent('vault_note_save_failed');
+        return;
+      }
     } catch {
       const reason = 'This device could not keep a copy to retry. Copy it somewhere safe.';
-      await holdVaultDraft(t, path, text, reason);
+      await holdVaultDraft(t, path, text, reason, { session });
       set({ vaultError: 'held' });
+      markHeldHere(t, path, session);
       get().showToast(
         'Could not save to your vault, and this device could not keep a copy to retry. Your text is under Not saved.',
       );
       logEvent('vault_note_stash_failed');
       return;
     }
-    set({ vaultError: 'save' });
-    get().showToast(
-      'Could not save to your vault. Your text is kept and saves when the connection returns.',
-    );
+    // Why it waits, said as it is: a deploy's window or a storage that did
+    // not answer is never called the connection (E42).
+    const wait = vaultWaitKind(err);
+    set({ vaultError: 'save', vaultSaveWait: wait });
+    get().showToast(vaultSaveWaitToast(wait));
     logEvent('vault_note_save_failed');
   }
 
@@ -5884,6 +6312,22 @@ export const useApp = create<AppState>((set, get, api) => {
         ];
   }
 
+  // What the Vault room holds of the vault on screen: its list, the open
+  // note, its folders, its Trash and the folder the list goes back to. A
+  // scope switch and each end of a sign-in clear all of it the same way, so
+  // nothing of one vault, or of one account's team vault, stays on screen
+  // under another (round 7 E12).
+  function clearedVaultRoom() {
+    return {
+      vaultNote: undefined,
+      vaultFiles: [] as StoredFileMeta[],
+      vaultListed: false,
+      vaultTrash: undefined,
+      vaultFolders: undefined,
+      vaultReturnFolder: undefined,
+    };
+  }
+
   /** The vault on screen now points somewhere else: its warm index, list and
    *  open note belonged to the old home (J1 closes the index here, on a
    *  storage change or a pairing change, never on leaving the room). */
@@ -6063,14 +6507,25 @@ export const useApp = create<AppState>((set, get, api) => {
   }
 
   async function putVaultNote(
-    t: { provider: StorageProvider; resourceId: string; providerId?: StorageProviderId },
+    t: {
+      provider: StorageProvider;
+      resourceId: string;
+      providerId?: StorageProviderId;
+      owner?: string;
+    },
     path: string,
     text: string,
     guard: WriteGuard,
   ): Promise<WriteResult> {
     const r = await t.provider.write(t.resourceId, path, text, guard);
+    // A team write that lands after its account left: the next sign-in's
+    // list and body cache never take it (they were cleared for that one).
+    if (t.providerId === 'org' && t.owner !== get().authSession?.user.id) return r;
     if (r.ok && t.providerId) {
-      patchVaultFiles({ providerId: t.providerId, resourceId: t.resourceId }, { saved: r.file });
+      const { providerId, resourceId, owner } = t;
+      patchVaultFiles(owner ? { providerId, resourceId, owner } : { providerId, resourceId }, {
+        saved: r.file,
+      });
     }
     return r;
   }
@@ -6161,25 +6616,39 @@ export const useApp = create<AppState>((set, get, api) => {
         (Boolean(st.vaultLeaseHeldByOther) ||
           Boolean(st.vaultMoving) ||
           (t.providerId === 'org' && Boolean(st.vaultTeamExpired)) ||
+          (t.providerId === 'org' && st.vaultTeamPlan?.entitled === false) ||
           (t.providerId === 'files' && st.vaultFolder?.exists === false)));
     // The vault's Delete choice (L11): For good turns Trash off here.
+    // Never on a storage that does not carry Delete out (the team vault,
+    // whose deletes stay in its Trash): vaultCaps reads the provider's
+    // `unappliedSettings`, and the team provider never reads the key back.
     const settings = cachedVaultSettings(foldersKey(t));
     return vaultCaps(
       t.provider,
       {
         readOnly,
         ...(t.providerId === 'hub' ? { reach: hubReach() } : {}),
+        // Only an admin saves a team's settings (CX Y14); before the first
+        // read, the account's own role says.
+        ...(t.providerId === 'org'
+          ? { settingsAdmin: st.vaultTeamPlan?.isAdmin ?? isOrgAdmin(st.settings.account) }
+          : {}),
       },
       settings ? { delete: settings.delete } : undefined,
     );
   }
 
-  /** A note's text in one vault, through the body cache. */
+  /** A note's text in one vault, through the body cache. The open note's
+   *  version is the newest this device knows of it, so a body cached for an
+   *  older version never stands in for it (E2). */
   async function readBodyOf(t: VaultTarget, path: string): Promise<string | undefined> {
     const key = vaultKey(t, path);
-    const listed = isActiveVault(t) ? get().vaultFiles.find((f) => f.path === path) : undefined;
+    const active = isActiveVault(t);
+    const listed = active ? get().vaultFiles.find((f) => f.path === path) : undefined;
+    const open = active ? get().vaultNote : undefined;
+    const known = (open?.path === path && versionOf(open)) || (listed && versionOf(listed));
     const cached = vaultBodyCache.get(key);
-    if (cached && listed && cached.version === versionOf(listed)) return cached.text;
+    if (cached && known && cached.version === known) return cached.text;
     const note = await t.provider.read(t.resourceId, path);
     if (!note) return undefined;
     vaultBodyCache.set(key, { version: versionOf(note), text: note.text });
@@ -6235,20 +6704,40 @@ export const useApp = create<AppState>((set, get, api) => {
   }
 
   /** Everything this device keys by a note's path follows a rename: project
-   *  pins, the stash, and the open note (at the version the storage gave). */
-  async function rekeyVaultPath(t: VaultTargetRef, from: string, to: string): Promise<void> {
-    await rewriteVaultPins(from, to).catch(() => {});
+   *  pins, the stash, and the open note (at the version the storage gave).
+   *  A pin names a personal note only (the pack reads personalVault()), so
+   *  only a personal rename moves one: a team note of the same name is
+   *  another note (round 7 E15). */
+  async function rekeyVaultPath(
+    t: VaultTargetRef,
+    from: string,
+    to: string,
+    opts: { keepVersion?: boolean; rebase?: VaultRekeyRebase } = {},
+  ): Promise<void> {
+    if (t.providerId === vaultProviderId(get().settings) && t.resourceId === VAULT_RESOURCE_ID) {
+      await rewriteVaultPins(from, to).catch(() => {});
+    }
     await editVaultRecent(t, (ring) => renameVaultRecent(ring, from, to)).catch(() => {});
+    // A draft stashed on exactly the version this device's rename carried is
+    // based on that note where it is now, so its replay lands there, never as
+    // a conflict copy over a change nobody made (round 7 E40). One typed on
+    // an older version keeps its base, and still keeps both.
+    const rebase = opts.rebase;
     await editVaultPending((p) => {
       const e = p[vaultKey(t, from)];
       if (!e) return;
       delete p[vaultKey(t, from)];
-      p[vaultKey(t, to)] = { ...e, path: to };
+      const rebased = rebase?.version !== undefined && e.base === rebase.guard;
+      p[vaultKey(t, to)] = { ...e, path: to, ...(rebased ? { base: rebase.version } : {}) };
     }).catch(() => {});
+    await rekeyVaultHeld(t, from, to);
     if (!isActiveVault(t)) return;
     const open = get().vaultNote;
     if (open?.path === from) {
-      const listed = get().vaultFiles.find((f) => f.path === to);
+      // Following another writer's rename keeps the version this device
+      // typed on: the listing's is theirs, and adopting it would let the
+      // next save land over theirs unasked (E16).
+      const listed = opts.keepVersion ? undefined : get().vaultFiles.find((f) => f.path === to);
       if (vaultLiveDraft?.path === from) vaultLiveDraft = { ...vaultLiveDraft, path: to };
       set({
         vaultNote: {
@@ -6261,6 +6750,55 @@ export const useApp = create<AppState>((set, get, api) => {
     }
   }
 
+  // Text held under Not saved for a note follows the note to its new name,
+  // so the note it was typed in still shows it (round 7 E31). Every account's
+  // entry moves, since the name changed for everyone and nothing is shown to
+  // anyone new; text from an earlier desktop folder is another note and
+  // stays. Each keeps an id of its own at the new name, so a later hold
+  // there never replaces it, and a memory-only entry stays out of the
+  // sealed store (editVaultHeld keeps only durable ones there).
+  async function rekeyVaultHeld(t: VaultTargetRef, from: string, to: string): Promise<void> {
+    await loadVaultHeld();
+    const moves = (h: VaultHeldDraft) =>
+      h.providerId === t.providerId &&
+      h.resourceId === t.resourceId &&
+      h.path === from &&
+      h.folder === undefined;
+    if (!get().vaultHeld.some(moves)) return;
+    const was = vaultKey(t, from);
+    const now = vaultKey(t, to);
+    const rekey = (list: VaultHeldDraft[]) => {
+      const ids = new Set(list.filter((h) => !moves(h)).map((h) => h.id));
+      return list.map((h) => {
+        if (!moves(h)) return h;
+        let id = h.id.startsWith(was) ? `${now}${h.id.slice(was.length)}` : `${now}::${h.id}`;
+        for (let n = 2; ids.has(id); n++) id = `${id.replace(/::moved-\d+$/, '')}::moved-${n}`;
+        ids.add(id);
+        return { ...h, id, path: to };
+      });
+    };
+    await editVaultHeld(rekey).catch(() => false);
+  }
+
+  // The storage answered with the note at another spelling of the same name
+  // (the team vault matches a name by letter case, 0021): a teammate renamed
+  // it by case only, or a new note met its twin. It is one name, so the open
+  // note, its typed text, its stash and Recent follow it there, and the next
+  // write is guarded at that spelling, never at one the storage no longer
+  // has (a 'missing' and 'changed' loop). The version this device typed on
+  // stays the base: theirs is shown, never adopted (round 7 E16). Resolves
+  // to the path the note is at now.
+  async function followCaseRename(
+    t: VaultTargetRef,
+    from: string,
+    theirs: StoredFile | undefined,
+  ): Promise<string> {
+    if (!theirs || theirs.path === from) return from;
+    if (theirs.path.toLowerCase() !== from.toLowerCase()) return from;
+    await rekeyVaultPath(t, from, theirs.path, { keepVersion: true });
+    return theirs.path;
+  }
+
   /** The one VaultOpsDeps for an operation on vault `t`. */
   function opsDeps(t: VaultTarget): VaultOpsDeps {
     return {
@@ -6270,8 +6808,12 @@ export const useApp = create<AppState>((set, get, api) => {
       putVaultNote: async (path, text, guard) => {
         const r = await putVaultNote(t, path, text, guard);
         // The open note written by an operation (a link rewrite, a tick)
-        // shows the text and version that landed.
-        if (r.ok && isActiveVault(t) && get().vaultNote?.path === r.file.path) {
+        // shows the text and version that landed, unless its editor holds
+        // words the note does not (a save held or kept for later): those
+        // stay on screen, and its next save meets this version as a choice,
+        // never over it (E30).
+        const open = isActiveVault(t) ? get().vaultNote : undefined;
+        if (r.ok && open?.path === r.file.path && (draftOf(open.path) ?? open.text) === open.text) {
           reloadOpenNote(r.file, 'resolve');
         }
         return r;
@@ -6282,7 +6824,7 @@ export const useApp = create<AppState>((set, get, api) => {
         removed: (path) => patchVaultFiles(t, { removed: path }),
         renamed: (from, to) => patchVaultRename(t, from, to),
       },
-      rekey: (from, to) => rekeyVaultPath(t, from, to),
+      rekey: (from, to, rebase) => rekeyVaultPath(t, from, to, rebase ? { rebase } : {}),
       flushOpenSave: () => flushOpenSave(t),
       openNote: () => openNoteOf(t),
     };
@@ -6308,6 +6850,7 @@ export const useApp = create<AppState>((set, get, api) => {
     if (!isActiveVault(t)) return;
     const listing = await listVaultNotes(t).catch(() => undefined);
     if (!listing || !isActiveVault(t)) return;
+    if ((await teamListHolds(t, listing)) !== 'ok' || !isActiveVault(t)) return;
     set({ vaultFiles: listing });
     void vaultIndexOf(t)?.reconcile(listing);
   }
@@ -6325,8 +6868,36 @@ export const useApp = create<AppState>((set, get, api) => {
     return r.entries;
   }
 
-  /** The key a vault's remembered empty folders sit under. */
+  /** The key a vault's cached settings and Today sit under. */
   const foldersKey = (t: VaultTargetRef) => `${t.providerId}::${t.resourceId}`;
+  /** The key what this device remembers of a vault for the person sits
+   *  under (its empty folders, its Recent ring): the team vault's names the
+   *  account too, so one member's folder names and activity never show to
+   *  another on a shared device (round 7 E13). */
+  const memoryKey = (t: VaultTargetRef) =>
+    t.providerId === 'org' ? `${foldersKey(t)}::${t.owner ?? ''}` : foldersKey(t);
+  /** Drop what this device remembers of team vaults (empty folders, Recent)
+   *  for every account but `keep`: a sign-out drops all of it, an expiry and
+   *  a sign-in keep only that account's. A key from before it named an
+   *  account belongs to nobody, so it goes too. */
+  async function forgetTeamMemory(keep?: string): Promise<void> {
+    const s = get().settings;
+    const others = (k: string) => k.startsWith('org::') && (!keep || k.split('::')[2] !== keep);
+    const trim = <V>(rec: Record<string, V> | undefined) => {
+      if (!rec || !Object.keys(rec).some(others)) return undefined;
+      const kept = Object.fromEntries(Object.entries(rec).filter(([k]) => !others(k)));
+      return { value: Object.keys(kept).length ? kept : undefined };
+    };
+    const folders = trim(s.vaultEmptyFolders);
+    const recent = trim(s.vaultRecent);
+    if (!folders && !recent) return;
+    await get()
+      .saveSettings({
+        ...(folders ? { vaultEmptyFolders: folders.value } : {}),
+        ...(recent ? { vaultRecent: recent.value } : {}),
+      })
+      .catch(() => {});
+  }
 
   /** Rewrite one vault's remembered empty folders. */
   async function editEmptyFolders(
@@ -6334,12 +6905,13 @@ export const useApp = create<AppState>((set, get, api) => {
     edit: (list: string[]) => string[],
   ): Promise<void> {
     const all = get().settings.vaultEmptyFolders ?? {};
-    const before = all[foldersKey(t)] ?? [];
+    const key = memoryKey(t);
+    const before = all[key] ?? [];
     const after = [...new Set(edit(before))].sort();
     if (JSON.stringify(after) === JSON.stringify(before)) return;
     const next = { ...all };
-    if (after.length) next[foldersKey(t)] = after;
-    else delete next[foldersKey(t)];
+    if (after.length) next[key] = after;
+    else delete next[key];
     await get().saveSettings({ vaultEmptyFolders: next });
   }
 
@@ -6354,7 +6926,7 @@ export const useApp = create<AppState>((set, get, api) => {
     const notes = isActiveVault(t) ? get().vaultFiles.map((f) => foldPath(f.path)) : [];
     const holds = (folder: string) => notes.some((p) => p.startsWith(`${foldPath(folder)}/`));
     await editEmptyFolders(t, (list) => list.filter((f) => !holds(f))).catch(() => {});
-    const kept = get().settings.vaultEmptyFolders?.[foldersKey(t)] ?? [];
+    const kept = get().settings.vaultEmptyFolders?.[memoryKey(t)] ?? [];
     if (isActiveVault(t)) set({ vaultFolders: [...new Set([...real, ...kept])].sort() });
   }
 
@@ -6376,7 +6948,7 @@ export const useApp = create<AppState>((set, get, api) => {
     edit: (ring: VaultRecentEntry[]) => VaultRecentEntry[],
   ): Promise<void> {
     const all = get().settings.vaultRecent ?? {};
-    const key = foldersKey(t);
+    const key = memoryKey(t);
     const before = all[key] ?? [];
     const after = edit(before);
     if (JSON.stringify(after) === JSON.stringify(before)) return;
@@ -6388,11 +6960,23 @@ export const useApp = create<AppState>((set, get, api) => {
   /** A note opened or saved here goes to the top of Recent; a save of the
    *  note already on top writes nothing. */
   function noteVaultRecent(t: VaultTargetRef, path: string): void {
-    const ring = get().settings.vaultRecent?.[foldersKey(t)] ?? [];
+    const ring = get().settings.vaultRecent?.[memoryKey(t)] ?? [];
     if (ring[0]?.path === path) return;
     void editVaultRecent(t, (r) => pushVaultRecent(r, path, new Date().toISOString())).catch(
       () => {},
     );
+  }
+
+  // A replay found its note moved or deleted since the text was typed (E9).
+  class VaultNoteGone extends Error {}
+
+  // The keep-both name for a copy of `path` in vault `t`: the team vault
+  // takes a path of at most 512 characters (0015), so there the note's own
+  // name is shortened to fit, its folder and the conflict suffix kept
+  // (round 7 E43).
+  function conflictCopyPathIn(t: VaultTargetRef, path: string, when: Date, n = 1): string {
+    const copy = vaultConflictCopyPath(path, when, n);
+    return t.providerId === 'org' ? fitMadeName(copy, TEAM_PATH_MAX) : copy;
   }
 
   // Put text beside a note as a keep-both copy under the first free conflict
@@ -6405,12 +6989,19 @@ export const useApp = create<AppState>((set, get, api) => {
     path: string,
     text: string,
     when: Date,
-    first = vaultConflictCopyPath(path, when),
+    first = conflictCopyPathIn(t, path, when),
   ): Promise<string | undefined> {
     for (let n = 1; n <= 20; n++) {
-      const copy = n === 1 ? first : vaultConflictCopyPath(path, when, n);
+      const copy = n === 1 ? first : conflictCopyPathIn(t, path, when, n);
       if (!t.provider.compareAndSwap && (await t.provider.stat(t.resourceId, copy))) continue;
-      const r = await putVaultNote(t, copy, text, { ifAbsent: true });
+      let r: WriteResult;
+      try {
+        r = await putVaultNote(t, copy, text, { ifAbsent: true });
+      } catch (err) {
+        // A copy name that is a team note in Trash is passed over (E22).
+        if ((err as { nameInTrash?: unknown } | undefined)?.nameInTrash === true) continue;
+        throw err;
+      }
       if (r.ok) return r.file.path;
       if (r.conflict !== 'exists') mustLand(r);
     }
@@ -6423,20 +7014,20 @@ export const useApp = create<AppState>((set, get, api) => {
   // are kept: the draft lands beside it as a conflict copy (its path is
   // returned), and a body that already matches is simply done. A guarded
   // provider checks the version itself as it writes (compare-and-swap); the
-  // others are asked first, as in M0.
+  // others are asked first, as in M0. On a guarded provider a note moved or
+  // deleted since the text was typed throws VaultNoteGone: it is held, never
+  // made again, since nobody chose that write (round 7 E9).
   async function replayVaultDraft(
     t: VaultTarget,
     e: VaultPendingEntry,
   ): Promise<string | undefined> {
     let current: StoredFile | undefined;
     if (t.provider.compareAndSwap) {
-      let r = await putVaultNote(t, e.path, e.text, guardFor(e.base));
-      // Gone since it was typed: the draft is the only copy of these words,
-      // so it comes back under its name, still never over anything.
-      if (!r.ok && r.conflict === 'missing')
-        r = await putVaultNote(t, e.path, e.text, guardFor(undefined));
+      // A draft with no base is a note made offline: its write is a create.
+      const r = await putVaultNote(t, e.path, e.text, guardFor(e.base));
+      if (!r.ok && r.conflict === 'missing') throw new VaultNoteGone();
       if (r.ok) {
-        adoptReplayed(t, e, r.file);
+        await adoptReplayed(t, e, r.file);
         return undefined;
       }
       if (r.conflict === 'downloading') mustLand(r);
@@ -6454,7 +7045,8 @@ export const useApp = create<AppState>((set, get, api) => {
         unchanged = current !== undefined && versionOf(current) === e.base;
       }
       if (!now || unchanged) {
-        adoptReplayed(t, e, mustLand(await putVaultNote(t, e.path, e.text, guardFor(e.base))));
+        const saved = mustLand(await putVaultNote(t, e.path, e.text, guardFor(e.base)));
+        await adoptReplayed(t, e, saved);
         return undefined;
       }
       current ??= now.evicted ? undefined : await t.provider.read(t.resourceId, e.path);
@@ -6468,12 +7060,31 @@ export const useApp = create<AppState>((set, get, api) => {
   }
 
   // A replayed draft that landed on the note open now is what that note last
-  // saved as: the open note takes its text and version, so the next keystroke
-  // saves against it instead of meeting this device's own replay as a change
-  // from elsewhere (a Retry from the save chip replays while a note is open).
-  function adoptReplayed(t: VaultTargetRef, e: VaultPendingEntry, saved: StoredFile): void {
+  // saved as. When the editor already shows those words (a Retry from the
+  // save chip with the typed text on screen), the open note takes their text
+  // and version quietly, so the next keystroke saves against it. A clean
+  // editor showing an older read takes the words in place; one typed into
+  // since is asked, its text stashed, so no keystroke ever saves over the
+  // replayed words unseen (E8).
+  async function adoptReplayed(
+    t: VaultTargetRef,
+    e: VaultPendingEntry,
+    saved: StoredFile,
+  ): Promise<void> {
     const open = get().vaultNote;
     if (!isActiveVault(t) || open?.path !== e.path) return;
+    const draft = draftOf(e.path) ?? open.text;
+    if (draft !== saved.text) {
+      if (draft === open.text) {
+        reloadOpenNote(saved, 'resolve');
+        return;
+      }
+      if (get().vaultConflict?.path === e.path) return;
+      const base = versionOf(open) || undefined;
+      raiseVaultConflict(t, e.path, 'changed', saved, base);
+      await stashConflictText(t, e.path, draft, base);
+      return;
+    }
     set({
       vaultNote: {
         ...open,
@@ -6488,13 +7099,17 @@ export const useApp = create<AppState>((set, get, api) => {
 
   // Replay the drafts stashed against this provider and resource, and for the
   // team vault only those typed under the account signed in now. A refused
-  // one is held instead (retrying cannot fix it), a read-only vault holds
-  // them all, and anything still failing stays for the next attempt. Never
-  // throws: a replay is always a side trip after a success.
+  // one is held instead (retrying cannot fix it), and so is one whose note
+  // was moved or deleted elsewhere (E9); a read-only vault holds them all,
+  // and anything still failing stays for the next attempt. Never throws: a
+  // replay is always a side trip after a success.
   async function replayVaultPending(t: VaultTarget): Promise<void> {
     // While another device holds the enforced lease, nothing replays into
     // its notes; the stash waits for the lease to come back (CTO G5).
     if (leaseBlocks(t)) return;
+    // A team replay runs only for the account signed in now, and only its
+    // own drafts (R-19).
+    if (!speaksNow(t)) return;
     const folderNow = t.providerId === 'files' ? get().vaultFolder?.dir : undefined;
     if (folderNow) await holdOtherFolderDrafts(folderNow, false);
     let mine: VaultPendingEntry[];
@@ -6508,6 +7123,7 @@ export const useApp = create<AppState>((set, get, api) => {
             e.providerId === t.providerId &&
             e.resourceId === t.resourceId &&
             speaksNow(e) &&
+            (t.providerId !== 'org' || e.owner === t.owner) &&
             !(
               open &&
               open.path === e.path &&
@@ -6523,23 +7139,47 @@ export const useApp = create<AppState>((set, get, api) => {
     const readOnly = vaultReadOnlyReason(t.providerId);
     const settled: VaultPendingEntry[] = [];
     const copies: string[] = [];
+    const gone: string[] = [];
     let held = 0;
     let unkept = 0;
     for (const e of mine) {
+      // Its account signed out, expired, or gave way to another while the
+      // replay ran: the rest waits, sealed for that account (an expiry) or
+      // already wiped (a sign-out), and nothing more is sent (R-19).
+      if (!speaksNow(e)) break;
       let refusal = readOnly;
       if (!refusal) {
         try {
-          const copy = await replayVaultDraft(t, e);
+          // An open of this note waits for it (E8, settledWrites).
+          const replay = replayVaultDraft(t, e);
+          const key = vaultKey(e, e.path);
+          const replayed = replay.then(
+            () => undefined,
+            () => undefined,
+          );
+          vaultReplays.set(key, replayed);
+          void replayed.then(() => {
+            if (vaultReplays.get(key) === replayed) vaultReplays.delete(key);
+          });
+          const copy = await replay;
           if (copy) copies.push(copy);
           settled.push(e);
           continue;
         } catch (err) {
-          refusal = vaultRefusal(err);
+          if (!speaksNow(e)) break;
+          if (err instanceof VaultNoteGone) {
+            refusal = VAULT_GONE_REASON;
+            gone.push(e.path);
+          } else refusal = vaultRefusal(err);
           // Anything else is still failing; keep it for the next attempt.
           if (!refusal) continue;
         }
       }
-      if (!(await holdVaultDraft(e, e.path, e.text, asSentence(refusal), { at: e.at }))) unkept++;
+      const kept = await holdVaultDraft(e, e.path, e.text, asSentence(refusal), {
+        at: e.at,
+        session: `stash:${e.at}`,
+      });
+      if (!kept) unkept++;
       settled.push(e);
       held++;
     }
@@ -6556,7 +7196,13 @@ export const useApp = create<AppState>((set, get, api) => {
       get().showToast(vaultReplayCopiesLine(copies));
       logEvent('vault_draft_kept_both', { count: copies.length });
     }
-    if (held) {
+    if (held && gone.length === held) {
+      // Every one held is text for a note moved or deleted elsewhere (E9).
+      set({ vaultError: 'held' });
+      get().showToast(
+        `${gone.length === 1 ? vaultGoneToast(noteTitle(gone[0]!)) : vaultGoneManyLine(gone.length)} ${heldLine(!unkept)}`,
+      );
+    } else if (held) {
       set({ vaultError: 'held' });
       const one = held === 1;
       const lead = one
@@ -6670,6 +7316,26 @@ export const useApp = create<AppState>((set, get, api) => {
   const vaultSaveChains = new Map<string, Promise<string | undefined>>();
   // How many vaultSave calls are running, for the save chip (vaultSaving).
   let vaultSavesInFlight = 0;
+  // Stashed drafts being replayed now, by note, so an open of one waits for
+  // its replay to land (E8).
+  const vaultReplays = new Map<string, Promise<undefined>>();
+  // Every vaultOpen, vaultCloseNote and scope change takes the next number,
+  // so an open that waited knows a later tap came after it (E3).
+  let vaultOpenSeq = 0;
+  // Wait, a bounded while, for this device's writes to a note that are on
+  // their way (its save chain, a replay of its stash), so an open reads what
+  // they wrote (E3, E8).
+  async function settledWrites(t: VaultTargetRef, path: string): Promise<void> {
+    const key = vaultKey(t, path);
+    const waits = [vaultSaveChains.get(key), vaultReplays.get(key)].filter((w) => w !== undefined);
+    if (!waits.length) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      Promise.all(waits).catch(() => undefined),
+      new Promise((resolve) => (timer = setTimeout(resolve, VAULT_OPEN_WAIT_MS))),
+    ]);
+    if (timer) clearTimeout(timer);
+  }
 
   // Run one step as the next link of a note's save chain, so it never sees
   // this device's own save half done (a re-check, a resolve choice).
@@ -6697,6 +7363,22 @@ export const useApp = create<AppState>((set, get, api) => {
     }
   }
 
+  // The open note took a version from a read: the body cache holds its text
+  // at that version, so nothing pairs an older body with it (E2).
+  function cacheOpenBody(file: StoredFile): void {
+    const t = vaultTarget();
+    const version = versionOf(file);
+    if (t && version) vaultBodyCache.set(vaultKey(t, file.path), { version, text: file.text });
+  }
+
+  // When the open note's text was read or reloaded: Date.now(), but always
+  // later than the last, so two sittings of one note never share one (E7).
+  let lastLoadedAt = 0;
+  function nextLoadedAt(): number {
+    lastLoadedAt = Math.max(Date.now(), lastLoadedAt + 1);
+    return lastLoadedAt;
+  }
+
   // The editor's live text for the open note (vaultNoteDraft), so a re-check
   // can tell a clean draft from a dirty one. Not state: nothing renders it.
   let vaultLiveDraft: { path: string; text: string } | undefined;
@@ -6704,6 +7386,30 @@ export const useApp = create<AppState>((set, get, api) => {
     if (vaultLiveDraft?.path === path) return vaultLiveDraft.text;
     const open = get().vaultNote;
     return open?.path === path ? open.text : undefined;
+  }
+
+  // The plan lapsed under the open note (OV402): the room turns read-only
+  // and shows every note as the team holds it, so once the refused words are
+  // held under Not saved the editor lets go of them and shows the note's own
+  // text, and a later poll never asks about them (round 7 E28). Only when
+  // they are the editor's latest: a newer keystroke's save is still on its
+  // way, and its own refusal holds it first. A refusal that leaves the note
+  // editable (the free space) keeps the words on screen.
+  function showTeamTextAfterLapse(t: VaultTargetRef, path: string, text: string): void {
+    const open = isActiveVault(t) ? get().vaultNote : undefined;
+    if (!open || open.path !== path) return;
+    const draft = draftOf(path);
+    if (draft === undefined || (draft !== text && restoreEol(open.text, draft) !== text)) return;
+    reloadOpenNote(
+      {
+        path,
+        text: open.text,
+        updatedAt: open.updatedAt,
+        ...(open.version ? { version: open.version } : {}),
+      },
+      'resolve',
+      open.editedBy,
+    );
   }
 
   // Replace the open note's text in place, keeping it open: a calm reload of
@@ -6716,6 +7422,7 @@ export const useApp = create<AppState>((set, get, api) => {
   ): void {
     const open = get().vaultNote;
     if (!open || open.path !== file.path) return;
+    cacheOpenBody(file);
     vaultLiveDraft = { path: file.path, text: file.text };
     set({
       vaultNote: {
@@ -6725,11 +7432,140 @@ export const useApp = create<AppState>((set, get, api) => {
         version: file.version,
         editedBy,
         fresh: undefined,
-        loadedAt: Date.now(),
+        held: undefined,
+        loadedAt: nextLoadedAt(),
         reloaded: (open.reloaded ?? 0) + 1,
         reloadedFrom: from,
       },
     });
+  }
+
+  // This account is no longer a member of the team (round 7 E26): an admin
+  // removed it, or it left from another device, so 0002's is_org_member
+  // answers no. Every select then answers no rows and every call refuses,
+  // which reads like an emptied vault, yet nothing there was deleted, so
+  // nothing says so. The team vault goes the way it does at a sign-out (the
+  // role this device knew is dropped, so the room stops offering it), the
+  // words typed into its open note are kept under Not saved, and the room
+  // says why, once. The next launch or sign-in reads the role again.
+  async function teamMembershipEnded(resourceId: string): Promise<void> {
+    const st = get();
+    if (resourceId !== st.settings.account?.org?.serverId) return;
+    set({ serverRole: undefined, vaultTeamPlan: undefined });
+    if (st.vaultScope !== 'team' || st.vaultTeamExpired) return;
+    const t = vaultTarget();
+    if (!t || t.providerId !== 'org' || t.resourceId !== resourceId) return;
+    stopVaultPoll();
+    vaultOpenSeq++;
+    const open = st.vaultNote;
+    const draft = open ? draftOf(open.path) : undefined;
+    const choice = st.vaultConflict?.target.providerId === 'org' ? st.vaultConflict : undefined;
+    vaultLiveDraft = undefined;
+    set({
+      vaultScope: 'personal',
+      vaultError: undefined,
+      ...clearedVaultRoom(),
+      ...(choice ? { vaultConflict: undefined } : {}),
+    });
+    let line = VAULT_TEAM_NOT_MEMBER;
+    if (open && draft !== undefined && draft !== open.text) {
+      const landed = await holdVaultDraft(t, open.path, draft, VAULT_TEAM_NOT_MEMBER_REASON, {
+        session: open.loadedAt,
+      });
+      // Held for good: the stash of this sitting would only say it twice.
+      if (landed) await dropOwnStash(t, open.path, open.loadedAt, undefined);
+      line = `${line} ${heldLine(landed)}`;
+    }
+    get().showToast(line);
+    logEvent('vault_team_not_member');
+    await get().vaultRefresh();
+  }
+  // Whether the team still counts this account a member. Its selects answer
+  // a removed member with no rows, never an error, so before a team note is
+  // called gone, or a team list that had notes is taken as empty, the team is
+  // asked once: a settings read, which refuses a non-member (E26). 'removed'
+  // has already taken the room back (teamMembershipEnded); 'failed' did not
+  // answer, so nothing is concluded.
+  async function teamMembership(t: VaultTarget): Promise<'member' | 'removed' | 'failed'> {
+    if (t.providerId !== 'org' || !t.provider.readConfig) return 'member';
+    try {
+      await t.provider.readConfig(t.resourceId, 'oscode/vault');
+      return 'member';
+    } catch (err) {
+      return (err as { notMember?: unknown } | undefined)?.notMember === true
+        ? 'removed'
+        : 'failed';
+    }
+  }
+
+  // Whether a team list may be taken as it came: one that had notes and now
+  // reads none is asked about first (teamMembership, E26).
+  async function teamListHolds(
+    t: VaultTarget,
+    files: StoredFileMeta[],
+  ): Promise<'ok' | 'removed' | 'failed'> {
+    if (t.providerId !== 'org' || files.length || !get().vaultFiles.length) return 'ok';
+    const member = await teamMembership(t);
+    return member === 'member' ? 'ok' : member;
+  }
+
+  // A note the list shows that the storage no longer holds (round 7 E24): a
+  // teammate or another device deleted or renamed it since the list. The
+  // team is asked first whether this account is still a member, since a
+  // removed member reads no rows either (E26). The list is taken again, a
+  // note at another spelling of the name (a case-only rename) opens at its
+  // own, once, and otherwise the note is said gone, once. Nothing opens.
+  let vaultOpenFollowing = false;
+  async function vaultOpenGone(
+    target: VaultTarget,
+    path: string,
+    seq: number,
+    opts: { quietGone?: boolean },
+  ): Promise<'opened' | 'gone' | undefined> {
+    const member = await teamMembership(target);
+    if (member === 'removed') return undefined;
+    if (member === 'failed') {
+      get().showToast('Could not open that note. Check your vault storage connection.');
+      return undefined;
+    }
+    const listing = await listVaultNotes(target).catch(() => undefined);
+    if (seq !== vaultOpenSeq || !isActiveVault(target)) return undefined;
+    // Out of the list and the index at once, so a caller that goes on to
+    // make it again (Today, New note) does not find it there.
+    patchVaultFiles(target, { removed: path });
+    if (listing) {
+      set({ vaultFiles: listing });
+      void vaultIndexOf(target)?.reconcile(listing);
+    }
+    const want = foldPath(path);
+    const twin = listing?.find((f) => f.path !== path && foldPath(f.path) === want);
+    if (twin && !vaultOpenFollowing) {
+      vaultOpenFollowing = true;
+      try {
+        return await get().vaultOpen(twin.path, opts);
+      } finally {
+        vaultOpenFollowing = false;
+      }
+    }
+    if (!opts.quietGone) get().showToast(vaultGoneToast(noteTitle(path)));
+    logEvent('vault_note_gone', { dirty: false });
+    return 'gone';
+  }
+
+  // This device's own renames and deletes on their way to the storage, and
+  // a count of every one begun, so a look at the open note that overlaps one
+  // says nothing about it (round 7 E35): the note is not there because this
+  // device moved it, and the move itself brings the note along.
+  let vaultOwnMoves = 0;
+  let vaultOwnMoveGen = 0;
+  async function asOwnMove<T>(run: () => Promise<T>): Promise<T> {
+    vaultOwnMoves++;
+    vaultOwnMoveGen++;
+    try {
+      return await run();
+    } finally {
+      vaultOwnMoves--;
+    }
   }
 
   // CTO F3: look at the open note once. Same version: nothing. Gone: close a
@@ -6741,6 +7577,23 @@ export const useApp = create<AppState>((set, get, api) => {
   async function recheckOpenNote(target: VaultTarget, path: string): Promise<VaultRecheckResult> {
     const open = get().vaultNote;
     if (!open || open.path !== path || !isActiveVault(target)) return 'skipped';
+    // What it finds speaks only for the sitting it looked at, and never for
+    // this device's own rename or delete on its way (round 7 E35): the note
+    // closed and another opened, or the same note opened again, or a rename
+    // that has already moved it on the storage while its answer is still on
+    // the wire. Each is left alone; the next look sees it as it is.
+    const moves = vaultOwnMoveGen;
+    const sameSitting = () => {
+      const now = get().vaultNote;
+      return (
+        isActiveVault(target) &&
+        now?.path === path &&
+        now.loadedAt === open.loadedAt &&
+        vaultOwnMoves === 0 &&
+        moves === vaultOwnMoveGen
+      );
+    };
+    if (vaultOwnMoves > 0) return 'skipped';
     const base = vaultBaseOf(target, path);
     let meta: StoredFileMeta | undefined;
     try {
@@ -6748,8 +7601,18 @@ export const useApp = create<AppState>((set, get, api) => {
     } catch {
       return 'failed'; // Not answering now; the next event, focus, or poll looks again.
     }
-    const conflict = get().vaultConflict;
-    const pending = conflict?.path === path ? conflict : undefined;
+    if (!sameSitting()) return 'skipped';
+    let conflict = get().vaultConflict;
+    let pending = conflict?.path === path ? conflict : undefined;
+    if (!meta && target.providerId === 'org' && (pending ? pending.kind !== 'missing' : base)) {
+      // A removed member reads no rows too: ask before anything is called
+      // gone (E26), and look again at what the wait left on screen.
+      const member = await teamMembership(target);
+      if (member !== 'member') return member === 'removed' ? 'checked' : 'failed';
+      if (get().vaultNote !== open || !sameSitting()) return 'skipped';
+      conflict = get().vaultConflict;
+      pending = conflict?.path === path ? conflict : undefined;
+    }
     if (!meta) {
       if (pending) {
         if (pending.kind !== 'missing') {
@@ -6786,7 +7649,8 @@ export const useApp = create<AppState>((set, get, api) => {
       return 'failed';
     }
     if (theirs) vaultIndexOf(target)?.noteRead(theirs);
-    if (!theirs || get().vaultNote?.path !== path) return 'checked';
+    if (!sameSitting()) return 'skipped';
+    if (!theirs) return 'checked';
     if (pending) {
       // Still undecided: the sheet shows this newest version, and says so.
       set({ vaultConflict: { ...pending, kind: 'changed', theirs, again: true } });
@@ -6797,6 +7661,7 @@ export const useApp = create<AppState>((set, get, api) => {
     if (theirs.text === now.text || theirs.text === draft) {
       // Nothing to ask: the bytes are what this device loaded, or what the
       // person typed. Adopt the version (and a draft that matches reads clean).
+      cacheOpenBody(theirs);
       set({
         vaultNote: {
           ...now,
@@ -6816,6 +7681,42 @@ export const useApp = create<AppState>((set, get, api) => {
     raiseVaultConflict(target, path, 'changed', theirs, base);
     await stashConflictText(target, path, draft, base);
     return 'checked';
+  }
+
+  // An operation on a note (a tick, Mark reviewed, linking a mention) found
+  // nothing there: its read came back empty, or its guarded write answered
+  // `missing` (round 7 E34). That can also be a note still downloading, or
+  // one this storage never held (an offline create), so nothing is called
+  // gone on that alone. The open note is looked at again in its save chain,
+  // which closes a clean one with the gone line, or asks about a dirty one
+  // with its words kept; any other note is asked about once (a stat, and for
+  // the team, whether this account is still a member, E26) and the list is
+  // taken again. 'said': the room has said it (the gone line, the missing
+  // choice, or the end of the membership). 'gone': nothing said yet, the
+  // caller says it. 'not': not known to be gone, so a retry may help.
+  async function noteGoneHere(t: VaultTarget, path: string): Promise<'gone' | 'said' | 'not'> {
+    const open = isActiveVault(t) ? get().vaultNote : undefined;
+    if (open?.path === path) {
+      const r = await inSaveChain(t, path, () => recheckOpenNote(t, path)).catch(
+        () => 'failed' as const,
+      );
+      if (r !== 'checked') return 'not';
+      if (!isActiveVault(t)) return 'said';
+      const choice = get().vaultConflict;
+      if (choice?.path === path && choice.kind === 'missing') return 'said';
+      return get().vaultNote?.path === path ? 'not' : 'said';
+    }
+    let meta: StoredFileMeta | undefined;
+    try {
+      meta = await t.provider.stat(t.resourceId, path);
+    } catch {
+      return 'not';
+    }
+    if (meta) return 'not';
+    const member = await teamMembership(t);
+    if (member !== 'member') return member === 'removed' ? 'said' : 'not';
+    await relistActive(t).catch(() => undefined);
+    return 'gone';
   }
 
   // The team vault's live refresh (Vault M2 2.7, CTO G6; lib/vaultPoll.ts):
@@ -6884,13 +7785,19 @@ export const useApp = create<AppState>((set, get, api) => {
     const c = get().vaultConflict;
     if (!c) return;
     const text = draftOf(c.path) ?? c.base;
+    const open = get().vaultNote;
+    const session = open?.path === c.path ? open.loadedAt : undefined;
     set({ vaultConflict: undefined });
+    // Team text is written only under the account that typed it, to the
+    // team vault on screen; any other choice is dropped unsettled, with
+    // nothing sent and nothing said (R-19).
+    if (!teamChoiceSpeaks(c)) return;
     const target = vaultTargetFrom(c.target);
     const title = noteTitle(c.path);
     logEvent('vault_conflict_choice', { choice: 'left', kind: c.kind });
     if (!target) return;
     if (c.kind === 'missing') {
-      await holdVaultDraft(c.target, c.path, text, VAULT_GONE_REASON);
+      await holdVaultDraft(c.target, c.path, text, VAULT_GONE_REASON, { session });
       await dropStash(c.target, c.path);
       set({ vaultError: 'held' });
       get().showToast(vaultLeaveToast('missing', { title, copyTitle: title }));
@@ -6901,11 +7808,11 @@ export const useApp = create<AppState>((set, get, api) => {
       copy = await writeConflictCopy(target, c.path, text, new Date(c.foundAt), c.copyPath);
     } catch (err) {
       // The stash still holds the text; the replay makes the same copy later.
-      await rescueVaultDraft(target, c.path, text, c.baseVersion, err);
+      await rescueVaultDraft(target, c.path, text, c.baseVersion, err, session);
       return;
     }
     if (!copy) {
-      await holdVaultDraft(c.target, c.path, text, VAULT_NO_COPY_NAME_REASON);
+      await holdVaultDraft(c.target, c.path, text, VAULT_NO_COPY_NAME_REASON, { session });
       await dropStash(c.target, c.path);
       set({ vaultError: 'held' });
       return;
@@ -6914,57 +7821,147 @@ export const useApp = create<AppState>((set, get, api) => {
     get().showToast(vaultLeaveToast('edit', { title, copyTitle: noteTitle(copy) }));
   }
 
+  // Whether text is more bytes than the text it was typed on: what 0023
+  // counts as growth (E27).
+  const grows = (text: string, was: string) =>
+    new TextEncoder().encode(text).length > new TextEncoder().encode(was).length;
+  // A team save to hold here, unsent: the team is known to be full and this
+  // save adds text to what it was typed on. Unknown ground is sent, and the
+  // server says (E27).
+  function teamFullHolds(t: VaultTargetRef, text: string, baseText: string | undefined): boolean {
+    return (
+      t.providerId === 'org' &&
+      get().vaultTeamPlan?.full === true &&
+      baseText !== undefined &&
+      grows(text, baseText)
+    );
+  }
+  // Hold a save the full team would refuse, under Not saved with the free
+  // space's reason: the sitting's entry takes the newest text, and the toast
+  // is said only when this sitting had none yet (E27).
+  async function holdFullTeamSave(
+    t: VaultTarget,
+    path: string,
+    text: string,
+    base: string | undefined,
+    session: number | undefined,
+    mark: string | undefined,
+  ): Promise<void> {
+    const reason = asSentence(VAULT_TEAM_FULL);
+    const said =
+      session !== undefined &&
+      get().vaultHeld.some(
+        (h) =>
+          h.providerId === t.providerId &&
+          h.resourceId === t.resourceId &&
+          h.path === path &&
+          h.reason === reason &&
+          h.id.endsWith(`::${session}`),
+      );
+    // As the server's own refusal is held (rescueVaultDraft), quietly when
+    // this sitting has said it already.
+    const refused = Object.assign(new Error(VAULT_TEAM_FULL), { permanent: true });
+    await rescueVaultDraft(t, path, text, base, refused, session, mark, { quiet: said });
+  }
+
   async function saveVaultNote(
     target: VaultTarget,
     path: string,
     text: string,
     base: string | undefined,
+    opts: {
+      /** The sitting the text was typed in: the open note's loadedAt when
+       *  the save was asked for, if it was this note. */
+      session?: number;
+      /** The note's text at `base`, as this device read or saved it, when
+       *  it knows (E4). */
+      baseText?: string;
+      /** When the save was asked for (nextStashAt): a stash entry written
+       *  after it is newer than this text (E10). */
+      mark?: string;
+    } = {},
   ): Promise<string | undefined> {
+    const { session, baseText, mark } = opts;
     const readOnly = vaultReadOnlyReason(target.providerId);
     if (readOnly) {
       // A read-only vault takes no write, but typed text is never dropped.
-      const landed = await holdVaultDraft(target, path, text, readOnly);
+      const landed = await holdVaultDraft(target, path, text, readOnly, { session });
       set({ vaultError: 'held' });
+      markHeldHere(target, path, session);
       get().showToast(`${readOnly} ${heldLine(landed)}`);
       return base;
     }
     // Team text is sent only under the account that typed it.
     if (!speaksNow(target)) {
-      await keepUnsentTeamText(target, path, text, base);
+      await keepUnsentTeamText(target, path, text, base, session);
+      return base;
+    }
+    // The team's free space is used up (E27): a save that adds text is held
+    // at once, never sent to be refused again, and said once per sitting.
+    if (teamFullHolds(target, text, baseText)) {
+      await holdFullTeamSave(target, path, text, base, session, mark);
       return base;
     }
     let result: WriteResult;
     try {
       result = await putVaultNote(target, path, text, guardFor(base));
       // The note moved on under this save, but only in its metadata (a touch,
-      // a sync client rewriting the same bytes): theirs is the text this
-      // device loaded or last saved, so adopt its version and save again,
-      // with nothing to ask (F1). Bounded, so a busy writer cannot spin it.
+      // a sync client rewriting the same bytes): theirs is the very text this
+      // save was typed on, so adopt its version and save again, with nothing
+      // to ask (F1). Compared with that text as it was when the save began,
+      // never with whatever the note on screen holds when the answer comes
+      // (a reopen, another account's note), which may be theirs (E4).
+      // Bounded, so a busy writer cannot spin it.
       for (let tries = 0; tries < 3 && !result.ok && result.theirs; tries++) {
         const theirs = result.theirs;
-        const open = get().vaultNote;
-        const loaded = isActiveVault(target) && open?.path === path ? open.text : undefined;
-        if (result.conflict !== 'changed' || theirs.text !== loaded) break;
+        if (result.conflict !== 'changed' || baseText === undefined) break;
+        if (theirs.text !== baseText) break;
         result = await putVaultNote(target, path, text, { ifMatch: versionOf(theirs) });
       }
       if (!result.ok && result.conflict === 'downloading') mustLand(result);
     } catch (err) {
-      await rescueVaultDraft(target, path, text, base, err);
+      await rescueVaultDraft(target, path, text, base, err, session, mark);
       return base;
     }
-    if (!result.ok) return settleSaveConflict(target, path, text, base, result);
+    // Settling can write too (a keep-both copy of a note that closed while
+    // this save was out), and that write can be refused for good (a team out
+    // of free space, 0023) or fail: the text is held or stashed the same
+    // way, never dropped with the rejection (round 5, finding 1).
+    if (!result.ok) {
+      // The account that typed it left while the write was out: nothing
+      // more is sent, and the text is kept for that account alone (R-19).
+      if (!speaksNow(target)) {
+        await keepUnsentTeamText(target, path, text, base, session);
+        return base;
+      }
+      try {
+        return await settleSaveConflict(target, path, text, base, result, session, mark);
+      } catch (err) {
+        await rescueVaultDraft(target, path, text, base, err, session, mark);
+        return base;
+      }
+    }
+    if (!result.ok) return settleSaveConflict(target, path, text, base, result, session, mark);
     const saved = result.file;
-    // This save supersedes any older draft stashed for the same note, so
-    // drop it before the replay below: replaying it now would put the older
-    // words back over these (data-1). Saves to one note run one at a time,
-    // so no newer save's draft for it can be stashed yet.
-    const key = vaultKey(target, path);
-    await editVaultPending((p) => {
-      delete p[key];
-    }).catch(() => {});
+    // Text was added and it landed: the team had room for it (E27).
+    if (target.providerId === 'org' && (baseText === undefined || grows(text, baseText))) {
+      clearOrgVaultFull(target.resourceId);
+    }
+    // This save supersedes any older draft stashed for the same note in the
+    // same sitting, so drop it before the replay below: replaying it now
+    // would put the older words back over these (data-1). A draft of an
+    // earlier sitting no editor showed stays, and the replay below keeps it
+    // beside these words; one stashed after this save began is newer (E10).
+    await dropOwnStash(target, path, session, mark);
     // The list and the body cache were patched from the write's result
     // (putVaultNote), so nothing is re-listed here.
-    if (isActiveVault(target)) {
+    const reopened = isActiveVault(target) && get().vaultNote?.path === path;
+    if (reopened && get().vaultNote?.loadedAt !== session) {
+      // The note was opened again after this save began, so the editor shows
+      // that read, not these words (E3).
+      await landOnReopened(target, path, saved);
+      if (isActiveVault(target)) set({ vaultError: undefined });
+    } else if (isActiveVault(target)) {
       set({
         vaultNote:
           get().vaultNote?.path === path
@@ -6976,6 +7973,7 @@ export const useApp = create<AppState>((set, get, api) => {
                 version: saved.version,
                 fresh: undefined,
                 editedBy: undefined,
+                held: false,
               }
             : get().vaultNote,
         vaultError: undefined,
@@ -6987,22 +7985,57 @@ export const useApp = create<AppState>((set, get, api) => {
     return versionOf(saved);
   }
 
+  // A write this device sent landed on a note opened again (or reloaded)
+  // after the save began, so the editor shows that read, not these words: a
+  // clean editor takes them in place; one typed into since is asked, with
+  // the typed text stashed against the version it was typed on (E3).
+  async function landOnReopened(t: VaultTarget, path: string, file: StoredFile): Promise<void> {
+    const open = get().vaultNote;
+    if (!open || open.path !== path || !isActiveVault(t)) return;
+    const draft = draftOf(path) ?? open.text;
+    if (draft === open.text || draft === file.text) {
+      reloadOpenNote(file, 'resolve');
+      return;
+    }
+    if (get().vaultConflict?.path === path) return;
+    const base = versionOf(open) || undefined;
+    raiseVaultConflict(t, path, 'changed', file, base);
+    await stashConflictText(t, path, draft, base);
+  }
+
   // Stash text for a note while a choice about it is open, stamped with the
   // version it was typed against, so a crash or a quit loses nothing (the
-  // next launch's replay turns it into a keep-both copy). Never the note.
+  // next launch's replay turns it into a keep-both copy, or, when the note
+  // is gone, holds it under Not saved). Never the note.
   async function stashConflictText(
     t: VaultTargetRef,
     path: string,
     text: string,
     base: string | undefined,
+    mark?: string,
   ): Promise<void> {
-    await editVaultPending((p) => {
-      p[vaultKey(t, path)] = pendingEntry(t, path, text, base);
-    }).catch(() => {});
+    // The editor's text, of the sitting on screen when it is this note.
+    const open = isActiveVault(t) ? get().vaultNote : undefined;
+    const sitting = open?.path === path ? open.loadedAt : undefined;
+    await stashDraft(t, path, text, base, { sitting, mark }).catch(() => {});
   }
   async function dropStash(t: VaultTargetRef, path: string): Promise<void> {
     await editVaultPending((p) => {
       delete p[vaultKey(t, path)];
+    }).catch(() => {});
+  }
+  // A save settled its text (it landed, or went beside the note or under Not
+  // saved): drop the stash entry it owns, never a newer one or an earlier
+  // sitting's no editor showed, which replays on its own (E10).
+  async function dropOwnStash(
+    t: VaultTargetRef,
+    path: string,
+    sitting: number | undefined,
+    mark: string | undefined,
+  ): Promise<void> {
+    await editVaultPending((p) => {
+      const key = vaultKey(t, path);
+      if (ownsStash(p[key], sitting, mark)) delete p[key];
     }).catch(() => {});
   }
 
@@ -7027,7 +8060,7 @@ export const useApp = create<AppState>((set, get, api) => {
         base: open?.path === path ? open.text : '',
         ...(baseVersion ? { baseVersion } : {}),
         ...(theirs ? { theirs } : {}),
-        copyPath: vaultConflictCopyPath(path, new Date(now)),
+        copyPath: conflictCopyPathIn(t, path, new Date(now)),
         foundAt: now,
         deferred: false,
       },
@@ -7080,11 +8113,18 @@ export const useApp = create<AppState>((set, get, api) => {
     text: string,
     base: string | undefined,
     result: Extract<WriteResult, { ok: false }>,
+    session?: number,
+    mark?: string,
   ): Promise<string | undefined> {
     const theirs = result.theirs;
-    const isOpen = isActiveVault(target) && get().vaultNote?.path === path;
+    const shown = isActiveVault(target) && get().vaultNote?.path === path;
+    // Open, and still the sitting this text was typed in. A note opened again
+    // after the save began is settled like a closed one: its editor shows
+    // another read, so it is never asked about this text (E3).
+    const isOpen = shown && get().vaultNote?.loadedAt === session;
     if (theirs && theirs.text === text) {
-      await dropStash(target, path);
+      await dropOwnStash(target, path, session, mark);
+      if (shown && !isOpen) await landOnReopened(target, path, theirs);
       if (isOpen) {
         set({
           vaultNote: {
@@ -7092,36 +8132,41 @@ export const useApp = create<AppState>((set, get, api) => {
             text: theirs.text,
             updatedAt: theirs.updatedAt,
             version: theirs.version,
+            held: false,
           },
         });
       }
       return versionOf(theirs);
     }
     if (isOpen) {
+      // Theirs under another spelling of this name: the note follows it (E16).
+      const at = await followCaseRename(target, path, theirs);
       const open = get().vaultConflict;
-      if (!open || open.path !== path) {
+      if (!open || (open.path !== path && open.path !== at)) {
         raiseVaultConflict(
           target,
-          path,
+          at,
           result.conflict === 'missing' ? 'missing' : 'changed',
           theirs,
           base,
         );
       }
-      await stashConflictText(target, path, text, base);
+      await stashConflictText(target, at, text, base, mark);
       return base;
     }
     if (result.conflict === 'missing' || !theirs) {
-      await dropStash(target, path);
-      const kept = await holdVaultDraft(target, path, text, VAULT_GONE_REASON);
+      await dropOwnStash(target, path, session, mark);
+      const kept = await holdVaultDraft(target, path, text, VAULT_GONE_REASON, { session });
       set({ vaultError: 'held' });
       get().showToast(`${vaultGoneToast(noteTitle(path))} ${heldLine(kept)}`);
       return base;
     }
     const copy = await writeConflictCopy(target, path, text, new Date());
-    await dropStash(target, path);
+    await dropOwnStash(target, path, session, mark);
     if (!copy) {
-      const kept = await holdVaultDraft(target, path, text, VAULT_NO_COPY_NAME_REASON);
+      const kept = await holdVaultDraft(target, path, text, VAULT_NO_COPY_NAME_REASON, {
+        session,
+      });
       set({ vaultError: 'held' });
       get().showToast(`Not saved. ${heldLine(kept)}`);
       return versionOf(theirs);
@@ -7147,6 +8192,9 @@ export const useApp = create<AppState>((set, get, api) => {
     await editVaultPending((p) => {
       for (const [key, e] of Object.entries(p)) if (e.providerId === 'org') delete p[key];
     }).catch(() => {});
+    await editVaultInflight((p) => {
+      for (const [id, e] of Object.entries(p)) if (e.providerId === 'org') delete p[id];
+    }).catch(() => {});
     await editVaultHeld((list) => list.filter((h) => h.providerId !== 'org')).catch(() => {});
   }
 
@@ -7159,19 +8207,30 @@ export const useApp = create<AppState>((set, get, api) => {
         if (e.providerId === 'org' && e.owner !== uid) delete p[key];
       }
     }).catch(() => {});
+    await editVaultInflight((p) => {
+      for (const [id, e] of Object.entries(p)) {
+        if (e.providerId === 'org' && e.owner !== uid) delete p[id];
+      }
+    }).catch(() => {});
     await editVaultHeld((list) =>
       list.filter((h) => h.providerId !== 'org' || h.owner === uid),
     ).catch(() => {});
   }
 
-  // How many unsent team drafts (stashed or held) an account has on this
-  // device, for the expiry line and the sign-out ask.
+  // How many unsent team drafts (stashed, on their way, or held) an account
+  // has on this device, for the expiry line and the sign-out ask: a note
+  // counts once however many of its saves are out.
   async function countTeamDrafts(uid: string): Promise<number> {
-    const stashed = await editVaultPending(
-      (p) => Object.values(p).filter((e) => e.providerId === 'org' && e.owner === uid).length,
-    ).catch(() => 0);
+    const mine = (e: VaultPendingEntry) => e.providerId === 'org' && e.owner === uid;
+    const stashed = await editVaultPending((p) => Object.values(p).filter(mine)).catch(
+      () => [] as VaultPendingEntry[],
+    );
+    const out = await editVaultInflight((p) => Object.values(p).filter(mine)).catch(
+      () => [] as VaultPendingEntry[],
+    );
+    const notes = new Set([...stashed, ...out].map((e) => vaultKey(e, e.path)));
     const held = get().vaultHeld.filter((h) => h.providerId === 'org' && h.owner === uid);
-    return stashed + held.length;
+    return notes.size + held.length;
   }
 
   // verified email, claim any invited org seat, and read the server role.
@@ -7182,6 +8241,7 @@ export const useApp = create<AppState>((set, get, api) => {
     // Unsent team text stays only for the account that typed it.
     resetOrgVault();
     forgetTeamBodies();
+    set({ vaultTeamPlan: undefined });
     // The same person signing back in after an expiry that kept a team note
     // open goes on with that note, now able to save (Vault M2 2.6).
     const resume =
@@ -7189,17 +8249,35 @@ export const useApp = create<AppState>((set, get, api) => {
       keptTeamOwner === session.user.id &&
       get().vaultScope === 'team' &&
       Boolean(get().vaultNote);
+    // Who was signed in before, as this device saved it (an expiry or a
+    // relaunch since leaves nothing else), and their team (round 7 E33).
+    const before = keptTeamOwner ?? get().settings.prefsOwner;
+    const beforeOrg = get().settings.account?.org?.serverId;
     keptTeamOwner = undefined;
     await settleTeamVaultDrafts(session.user.id);
+    // Another account's team indexes go with its drafts: every one on the
+    // device's list, and the last account's team, for an index built before
+    // the list was kept. The same account's wait for it (E33).
+    await dropTeamIndexes((m) => m.owner === session.user.id);
+    if (before && beforeOrg && before !== session.user.id) {
+      await dropVaultIndex({ providerId: 'org', resourceId: beforeOrg, owner: before }).catch(
+        () => {},
+      );
+    }
+    await forgetTeamMemory(session.user.id);
     if (resume) {
       set({ authSession: session, vaultTeamExpired: undefined });
     } else {
+      // No team choice or typed team text carries into another sign-in.
+      if (get().vaultScope === 'team') vaultLiveDraft = undefined;
+      const choice = get().vaultConflict;
       set({
         authSession: session,
         vaultScope: 'personal',
-        vaultFiles: [],
-        vaultNote: undefined,
         vaultTeamExpired: undefined,
+        vaultError: undefined,
+        ...clearedVaultRoom(),
+        ...(choice?.target.providerId === 'org' ? { vaultConflict: undefined } : {}),
       });
     }
     const account = get().settings.account;
@@ -7348,6 +8426,20 @@ export const useApp = create<AppState>((set, get, api) => {
         () => accessToken(),
         () => get().teamVaultAvailable(),
       );
+      // The team's plan, from each settings read, a write refused with OV402
+      // and a delete refused with OV403: only the signed-in org's, so a late
+      // answer for another org never paints this one (CX Y15).
+      onOrgVaultPlan((resourceId, plan, learned) => {
+        if (resourceId !== get().settings.account?.org?.serverId) return;
+        // A plan learned from a refusal says only part of it: the next
+        // relist reads the settings again rather than waiting out their
+        // cache, so a renewed plan or a switched rule comes back (E37).
+        if (learned === 'refusal') clearVaultSettingsCache(`org::${resourceId}`);
+        set({ vaultTeamPlan: plan });
+      });
+      // The server said this account is not a member of the team any more,
+      // from any call (round 7 E26): the room takes the team vault away.
+      onOrgVaultNotMember((resourceId) => void teamMembershipEnded(resourceId));
 
       // P0-3: the sealed store settles its key first. 'locked' means a key
       // exists but could not be read this launch; every sealed value reads as
@@ -9527,10 +10619,15 @@ export const useApp = create<AppState>((set, get, api) => {
       try {
         const fresh = await freshAuth();
         if (!fresh) return;
+        // The role in the org this device points at, when it has one: a
+        // membership of any other org opens nothing of this one (round 7
+        // E13), and a join points the device at its org first.
+        const orgId = account?.org?.serverId;
+        const inOrg = orgId ? `&org_id=eq.${encodeURIComponent(orgId)}` : '';
         const rows = await supabaseSelect<{ role: 'admin' | 'member'; status: string }>(
           'org_members',
           fresh.accessToken,
-          `select=role,status&user_id=eq.${fresh.user.id}&status=eq.active`,
+          `select=role,status&user_id=eq.${fresh.user.id}&status=eq.active${inOrg}`,
         );
         const role = rows.find((r) => r.role === 'admin')
           ? 'admin'
@@ -10592,19 +11689,12 @@ export const useApp = create<AppState>((set, get, api) => {
     async setVaultScope(scope) {
       if (scope === get().vaultScope) return;
       if (scope === 'team' && !get().teamVaultAvailable()) return;
+      vaultOpenSeq++;
       // Leaving the note with a choice open keeps both (CS 1c).
       await leaveVaultConflict();
       vaultLiveDraft = undefined;
       stopVaultPoll();
-      set({
-        vaultScope: scope,
-        vaultNote: undefined,
-        vaultFiles: [],
-        vaultListed: false,
-        vaultTeamExpired: undefined,
-        vaultTrash: undefined,
-        vaultFolders: undefined,
-      });
+      set({ vaultScope: scope, vaultTeamExpired: undefined, ...clearedVaultRoom() });
       logEvent('vault_scope', { scope });
       await get().vaultRefresh();
     },
@@ -10622,7 +11712,10 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async vaultDiscardHeld(id) {
-      await editVaultHeld((list) => list.filter((h) => h.id !== id)).catch(() => {});
+      // Only the entry shown: another account's team text is never touched.
+      const uid = get().authSession?.user.id;
+      const shown = (h: VaultHeldDraft) => vaultHeldFor([h], uid).length > 0;
+      await editVaultHeld((list) => list.filter((h) => h.id !== id || !shown(h))).catch(() => {});
       logEvent('vault_held_discarded');
     },
 
@@ -10664,10 +11757,16 @@ export const useApp = create<AppState>((set, get, api) => {
         set({ vaultFiles: [], vaultError: undefined, vaultListed: true });
         return;
       }
+      // A refresh asks the team afresh whether it has room: what adds text
+      // is sent again, and a refusal says so once (E27).
+      if (target.providerId === 'org') clearOrgVaultFull(target.resourceId);
       let files: StoredFileMeta[];
       try {
         files = await listVaultNotes(target);
       } catch {
+        // A list that fails after its vault left the screen (another vault,
+        // or another account's team vault, E32) says nothing about this one.
+        if (!isActiveVault(target)) return;
         // Keep the last-known file list so the screen can show an offline
         // state rather than the first-run "empty vault" greeting over notes
         // that really exist.
@@ -10685,6 +11784,15 @@ export const useApp = create<AppState>((set, get, api) => {
         return;
       }
       if (!isActiveVault(target)) return;
+      // A team list that had notes and reads empty may be a removed member's
+      // (E26): the room says so rather than greet an empty vault.
+      const holds = await teamListHolds(target, files);
+      if (holds === 'removed' || !isActiveVault(target)) return;
+      if (holds === 'failed') {
+        set({ vaultError: 'load', vaultListed: true });
+        get().showToast('Could not reach your vault storage. Showing the last loaded notes.');
+        return;
+      }
       set({ vaultFiles: files, vaultError: undefined, vaultListed: true });
       // The index reads only notes whose version moved (M3 3.2).
       void openVaultIndex(target).reconcile(files);
@@ -10698,13 +11806,18 @@ export const useApp = create<AppState>((set, get, api) => {
       // it simply points at the folder (CX 1.3 b).
       if (await repointEmptyLocal(target, files)) return;
       // The list came back, so the provider is reachable: flush any drafts
-      // stranded by an earlier offline write.
+      // stranded by an earlier offline write, and any words a launch that
+      // ended left on their way (E17).
+      await recoverVaultInflight();
       await replayVaultPending(target);
     },
 
-    async vaultOpen(path) {
+    async vaultOpen(path, opts = {}) {
       const target = vaultTarget();
       if (!target) return;
+      // The latest tap wins: an open that waited is dropped once another
+      // open, a close, or a scope change came after it (E3).
+      const seq = ++vaultOpenSeq;
       const files = get().vaultFiles;
       // Open by the exact listed path. A note the agent, a routine, or
       // Obsidian named with characters the typed-name rule strips ("Decision:
@@ -10723,6 +11836,15 @@ export const useApp = create<AppState>((set, get, api) => {
           files.find((f) => f.path.toLowerCase() === normalized.toLowerCase());
         openPath = listed?.path ?? normalized;
       }
+      // Already open (Today on today's note, the switcher): it stays as it
+      // is, typed text and all, never re-read under the editor (E3).
+      if (get().vaultNote?.path === openPath) return;
+      // A save of this note still on its way lands first, so the note opens
+      // at what it wrote, never at an older version the next keystroke would
+      // save over (E3). Bounded: a hung write never keeps the note shut, and
+      // its landing reloads the note (saveVaultNote).
+      await settledWrites(target, openPath);
+      if (seq !== vaultOpenSeq || !isActiveVault(target)) return;
       const downloading = () =>
         get().showToast('Still downloading this note from your vault storage. Try again shortly.');
       // UI-2: a note whose bytes are evicted from this device (iCloud's
@@ -10744,35 +11866,45 @@ export const useApp = create<AppState>((set, get, api) => {
         return;
       }
       if (!existing) {
-        // Listed, or unlisted but the provider knows it (the list is stale, or
-        // iCloud is still downloading it): either way its bytes are not here
-        // yet. Never fabricate an empty note over it (data-2).
-        let there = Boolean(listed);
-        if (!there) {
-          try {
-            there = Boolean(await target.provider.stat(target.resourceId, openPath));
-          } catch {
-            get().showToast('Could not open that note. Check your vault storage connection.');
-            return;
+        // Listed or not, the storage is asked what it holds now (E24). A note
+        // it has whose bytes are not here yet (iCloud's placeholder) is never
+        // fabricated as an empty note (data-2); a stat and a read are two
+        // looks, so a write between them answers a second read. A listed
+        // note it no longer has was deleted or renamed somewhere else since
+        // the list, and only a name it never held opens fresh.
+        let meta: StoredFileMeta | undefined;
+        try {
+          meta = await target.provider.stat(target.resourceId, openPath);
+          if (meta && !meta.evicted) {
+            existing = await target.provider.read(target.resourceId, openPath);
           }
-        }
-        if (there) {
-          downloading();
+        } catch {
+          get().showToast('Could not open that note. Check your vault storage connection.');
           return;
         }
+        if (meta && !existing) {
+          // Only iCloud keeps notes whose bytes are elsewhere; on any other
+          // storage "try again shortly" would never come true.
+          if (meta.evicted || target.providerId === 'icloud') downloading();
+          else get().showToast('Could not open that note. Check your vault storage connection.');
+          return;
+        }
+        if (!meta && listed) return vaultOpenGone(target, openPath, seq, opts);
       }
-      if (!isActiveVault(target)) return;
+      if (seq !== vaultOpenSeq || !isActiveVault(target)) return;
       if (existing) vaultIndexOf(target)?.noteRead(existing);
+      if (existing) cacheOpenBody(existing);
       // Opening another note leaves this one: a choice still open on it keeps
       // both (CS 1c).
       if (get().vaultConflict && get().vaultConflict?.path !== openPath) {
         await leaveVaultConflict();
+        if (seq !== vaultOpenSeq || !isActiveVault(target)) return;
       }
       vaultLiveDraft = undefined;
       set({
         vaultNote: {
           ...(existing ?? { path: openPath, text: '', updatedAt: '' }),
-          loadedAt: Date.now(),
+          loadedAt: nextLoadedAt(),
           // Who saved it last, when the list said and it is still that
           // version (the team vault, G6).
           ...(listed?.editedBy && existing && versionOf(listed) === versionOf(existing)
@@ -10782,6 +11914,7 @@ export const useApp = create<AppState>((set, get, api) => {
       });
       logEvent('vault_note_open', { fresh: !existing });
       if (existing) noteVaultRecent(target, openPath);
+      return 'opened';
     },
 
     async vaultCreate(path, content = '', at) {
@@ -10809,8 +11942,22 @@ export const useApp = create<AppState>((set, get, api) => {
       const listed =
         files.find((f) => f.path === normalized) ??
         files.find((f) => f.path.toLowerCase() === normalized.toLowerCase());
-      if (listed) {
-        await get().vaultOpen(listed.path);
+      // Gone since the list (a teammate deleted or moved it): the create goes
+      // on below, and is guarded there like any other (E24).
+      if (listed && (await get().vaultOpen(listed.path, { quietGone: true })) !== 'gone') return;
+      // A lapsed team plan takes no new note (OV402): said here, before the
+      // server is asked (a listed note still opens, read-only), and a seeded
+      // body is held so its words are not lost.
+      const teamRefused = await teamRefusalNow(target, 'create');
+      if (teamRefused) {
+        if (seeded) {
+          // The plan's reason, or the free space's (E27).
+          const why =
+            get().vaultTeamPlan?.entitled === false ? VAULT_TEAM_LAPSED_NOT_SAVED : VAULT_TEAM_FULL;
+          await holdVaultDraft(target, normalized, content, why);
+          set({ vaultError: 'held' });
+        }
+        get().showToast(teamRefused);
         return;
       }
       // The list can be stale (the agent, a routine, Obsidian, or another
@@ -10818,10 +11965,13 @@ export const useApp = create<AppState>((set, get, api) => {
       // before writing, and open what it holds (data-2).
       let stored: StoredFileMeta | undefined;
       let reachable = true;
+      // What kept the storage from answering, so the line says why (E42).
+      let failure: unknown;
       try {
         stored = await target.provider.stat(target.resourceId, normalized);
-      } catch {
+      } catch (err) {
         reachable = false;
+        failure = err;
       }
       if (stored) {
         if (stored.evicted) {
@@ -10841,6 +11991,13 @@ export const useApp = create<AppState>((set, get, api) => {
           // Never over anything: a note that appeared under this name since
           // the stat above is opened, not replaced (ifAbsent, CTO F4).
           const result = await putVaultNote(target, normalized, content, { ifAbsent: true });
+          // Taken under another spelling (the team vault matches a name by
+          // letter case, 0021): open the note that is there, at its own path,
+          // never a blank one at the spelling asked for (round 5, finding 6).
+          if (!result.ok && result.conflict === 'exists' && result.theirs) {
+            if (isActiveVault(target)) await get().vaultOpen(result.theirs.path);
+            return;
+          }
           if (!result.ok && result.conflict === 'exists') {
             if (isActiveVault(target)) await get().vaultOpen(normalized);
             return;
@@ -10856,7 +12013,7 @@ export const useApp = create<AppState>((set, get, api) => {
               updatedAt: saved.updatedAt,
               version: saved.version,
               fresh: !seeded,
-              loadedAt: Date.now(),
+              loadedAt: nextLoadedAt(),
             },
             vaultError: undefined,
           });
@@ -10873,15 +12030,21 @@ export const useApp = create<AppState>((set, get, api) => {
             get().showToast(`Could not create that note. ${asSentence(refusal)}`);
             return;
           }
+          failure = err;
         }
       }
       // Offline: still open the editor so the user can write, and stash the
       // note body so the create is not lost. The stash carries no base, so a
       // replay that finds a note already there keeps both, never overwrites.
+      // A team create whose account left while it was out is never stashed
+      // (E11): a seeded body is kept in memory only, and no editor opens.
+      if (!speaksNow(target)) {
+        if (seeded) await keepUnsentTeamText(target, normalized, content, undefined);
+        return;
+      }
+      const loadedAt = nextLoadedAt();
       try {
-        await editVaultPending((p) => {
-          p[vaultKey(target, normalized)] = pendingEntry(target, normalized, content, undefined);
-        });
+        await stashDraft(target, normalized, content, undefined, { sitting: loadedAt });
       } catch {
         if (seeded) {
           const reason = 'This device could not keep a copy to retry. Copy it somewhere safe.';
@@ -10889,14 +12052,18 @@ export const useApp = create<AppState>((set, get, api) => {
         }
       }
       if (!isActiveVault(target)) return;
+      const wait = vaultWaitKind(failure);
       set({
-        vaultNote: { path: normalized, text: content, updatedAt: '', fresh: !seeded },
+        vaultNote: { path: normalized, text: content, updatedAt: '', fresh: !seeded, loadedAt },
         vaultError: 'save',
+        vaultSaveWait: wait,
       });
-      get().showToast('Working offline. This note saves when your storage reconnects.');
+      get().showToast(vaultCreateWaitToast(wait));
     },
 
     vaultCloseNote() {
+      // An open still waiting for its note's save never reopens it (E3).
+      vaultOpenSeq++;
       // Leaving the note with a choice open keeps both (CS 1c); the conflict
       // clears at once and the copy is written after.
       void leaveVaultConflict();
@@ -10971,21 +12138,64 @@ export const useApp = create<AppState>((set, get, api) => {
     async vaultResolve(choice, draft) {
       const c = get().vaultConflict;
       if (!c) return { ok: false };
+      // Another account's team choice, or one whose vault is not on screen,
+      // is never settled here: nothing is written, loaded or dropped (R-19).
+      // After an expiry, the same account's choice waits for its return.
+      if (!teamChoiceSpeaks(c)) return waitForTeamSignIn(c, draft);
       const target = vaultTargetFrom(c.target);
       if (!target) return { ok: false, failed: true };
       const title = noteTitle(c.path);
-      const done = async (toast: string) => {
+      const open = get().vaultNote;
+      const session = open?.path === c.path ? open.loadedAt : undefined;
+      // The stash is dropped where the note is now (a case-only rename
+      // followed, E16).
+      const done = async (toast: string, at = c.path) => {
         set({ vaultConflict: undefined });
-        await dropStash(c.target, c.path);
+        await dropStash(c.target, at);
         get().showToast(toast);
         logEvent('vault_conflict_choice', { choice, kind: c.kind });
         return { ok: true };
       };
       return inSaveChain(target, c.path, async (): Promise<VaultResolveResult> => {
         try {
+          // A lapsed team plan takes no write (OV402): Keep both and Keep
+          // yours put the text under Not saved with the plan's reason before
+          // any server call, and the note shows what the vault holds (or
+          // closes, when it is gone). Nothing typed is lost, nothing is sent.
+          const lapsed =
+            choice === 'both' || choice === 'mine'
+              ? await teamRefusalNow(target, 'save')
+              : undefined;
+          // Keep both writes a copy, which adds text: refused here once the
+          // team is known to be full (E27). Keep yours may only trim, so it
+          // goes, and the server says.
+          const full =
+            !lapsed && choice === 'both' && target.providerId === 'org' && get().vaultTeamPlan?.full
+              ? vaultRefusedLine('save', { line: VAULT_TEAM_FULL })
+              : undefined;
+          const teamRefused = lapsed ?? full;
+          if (teamRefused) {
+            const landed = await holdVaultDraft(
+              c.target,
+              c.path,
+              draft,
+              lapsed ? VAULT_TEAM_LAPSED_NOT_SAVED : VAULT_TEAM_FULL,
+              { session },
+            );
+            set({ vaultError: 'held' });
+            if (c.theirs) {
+              reloadOpenNote(c.theirs, 'resolve');
+            } else {
+              vaultLiveDraft = undefined;
+              set({ vaultNote: undefined, vaultReturnFolder: noteFolder(c.path) });
+            }
+            return done(`${teamRefused} ${heldLine(landed)}`);
+          }
           if (choice === 'theirs' && c.theirs) {
+            // Shown at its own spelling of the name, so the editor takes it (E16).
+            const at = await followCaseRename(c.target, c.path, c.theirs);
             reloadOpenNote(c.theirs, 'resolve');
-            return done(vaultResolveToast('theirs', { title }));
+            return done(vaultResolveToast('theirs', { title }), at);
           }
           if (choice === 'discard') {
             vaultLiveDraft = undefined;
@@ -11001,36 +12211,57 @@ export const useApp = create<AppState>((set, get, api) => {
               c.copyPath,
             );
             if (!copy) {
-              await holdVaultDraft(c.target, c.path, draft, VAULT_NO_COPY_NAME_REASON);
+              await holdVaultDraft(c.target, c.path, draft, VAULT_NO_COPY_NAME_REASON, {
+                session,
+              });
               set({ vaultError: 'held' });
             }
+            const at = await followCaseRename(c.target, c.path, c.theirs);
             reloadOpenNote(c.theirs, 'resolve');
             return done(
               copy
                 ? vaultResolveToast('both', { title, copyTitle: noteTitle(copy) })
                 : `Not saved. ${heldLine(true)}`,
+              at,
             );
           }
           if (choice === 'mine') {
             const guard: WriteGuard = c.theirs
               ? { ifMatch: versionOf(c.theirs) }
               : { ifAbsent: true };
-            const r = await putVaultNote(target, c.path, draft, guard);
+            // Guarded where theirs is: the spelling the sheet shows (E16).
+            let at = await followCaseRename(c.target, c.path, c.theirs);
+            let r = await putVaultNote(target, at, draft, guard);
+            // Theirs under another spelling of this name (a teammate's
+            // case-only rename): the note follows it, and when theirs is
+            // just the text this device loaded, nothing is left to ask, so
+            // Keep yours lands there, as a save does over a pure touch (E16).
+            if (!r.ok && r.theirs) {
+              const was = at;
+              at = await followCaseRename(c.target, at, r.theirs);
+              if (at !== was && r.theirs.text === c.base) {
+                r = await putVaultNote(target, at, draft, { ifMatch: versionOf(r.theirs) });
+              }
+            }
             if (!r.ok) {
               if (r.conflict === 'downloading') return { ok: false, failed: true };
               // It changed again (or came back): the sheet shows what is
               // there now, and the person chooses again.
-              const theirs = r.theirs ?? (await target.provider.read(target.resourceId, c.path));
+              const theirs = r.theirs ?? (await target.provider.read(target.resourceId, at));
+              const moved =
+                at === c.path
+                  ? {}
+                  : { path: at, copyPath: conflictCopyPathIn(target, at, new Date(c.foundAt)) };
               set({
                 vaultConflict: theirs
-                  ? { ...c, kind: 'changed', theirs, again: true }
-                  : { ...c, kind: 'missing', theirs: undefined, again: true },
+                  ? { ...c, ...moved, kind: 'changed', theirs, again: true }
+                  : { ...c, ...moved, kind: 'missing', theirs: undefined, again: true },
               });
               return { ok: false };
             }
             const saved = r.file;
             const open = get().vaultNote;
-            if (open?.path === c.path) {
+            if (open?.path === at) {
               set({
                 vaultNote: {
                   ...open,
@@ -11041,10 +12272,36 @@ export const useApp = create<AppState>((set, get, api) => {
                 },
               });
             }
-            return done(vaultResolveToast('mine', { title, missing: c.kind === 'missing' }));
+            return done(vaultResolveToast('mine', { title, missing: c.kind === 'missing' }), at);
           }
           return { ok: false };
-        } catch {
+        } catch (err) {
+          // Refused for good (a team out of free space, 0023, or a plan the
+          // room had not read yet, OV402): trying again cannot help, so the
+          // text goes under Not saved with the refusal's line, and the note
+          // shows what the vault holds (or closes, when it is gone), as the
+          // lapsed branch above does. A failure that may pass keeps the
+          // sheet up (round 5, finding 2).
+          // The sign-in ended while the choice was on its way (a dead refresh
+          // token found by this tap): the choice and its words wait, sealed.
+          if (!teamChoiceSpeaks(c)) return waitForTeamSignIn(c, draft);
+          // Only the team vault's refusals hold the text here. A personal
+          // vault keeps main's answer: Your computer asleep refuses a create
+          // for now, not for good, so the choice stays open (round 7 E29).
+          const refusal = c.target.providerId === 'org' ? vaultRefusal(err) : undefined;
+          if (refusal) {
+            const landed = await holdVaultDraft(c.target, c.path, draft, asSentence(refusal), {
+              session,
+            });
+            set({ vaultError: 'held' });
+            if (c.theirs) {
+              reloadOpenNote(c.theirs, 'resolve');
+            } else {
+              vaultLiveDraft = undefined;
+              set({ vaultNote: undefined, vaultReturnFolder: noteFolder(c.path) });
+            }
+            return done(`Not saved. ${asSentence(refusal)} ${heldLine(landed)}`);
+          }
           return { ok: false, failed: true };
         }
       });
@@ -11109,10 +12366,49 @@ export const useApp = create<AppState>((set, get, api) => {
       // The version at call time, used only when the note has closed and no
       // earlier save for it says more.
       const called = vaultBaseOf(target, path);
+      // The sitting this text was typed in, for Not saved (E7), and when
+      // this save was asked for, so it never settles a newer stash (E10).
+      const session = open?.path === path ? open.loadedAt : undefined;
+      const mark = nextStashAt();
+      // Across the network the words go on the device first, at once, even
+      // for a save queued behind a hung one, and stay until it settles (E17).
+      const ahead =
+        writesAhead(target) && speaksNow(target) && !vaultReadOnlyReason(target.providerId)
+          ? writeAhead(target, path, text, called, session, mark)
+          : undefined;
       const before = vaultSaveChains.get(key);
       const run = (async () => {
-        const carried = before ? await before : undefined;
-        return saveVaultNote(target, path, text, vaultBaseOf(target, path) ?? carried ?? called);
+        const aheadId = ahead ? await ahead : undefined;
+        let ended = false;
+        try {
+          const carried = before ? await before : undefined;
+          // The version this text was typed on: the open note's while it is
+          // still the sitting the text came from; once the note was opened
+          // again, what this device last knew of that sitting (E3).
+          const now = isActiveVault(target) ? get().vaultNote : undefined;
+          const same = now?.path === path && now.loadedAt === session;
+          const base = same
+            ? (vaultBaseOf(target, path) ?? carried ?? called)
+            : (carried ?? called);
+          // The text at that version, as this device knows it now (E4).
+          const cached = vaultBodyCache.get(key);
+          const baseText =
+            base === undefined
+              ? undefined
+              : same && now && versionOf(now) === base
+                ? now.text
+                : cached?.version === base
+                  ? cached.text
+                  : undefined;
+          if (aheadId && base !== called) await restampAhead(aheadId, base);
+          const out = await saveVaultNote(target, path, text, base, { session, baseText, mark });
+          ended = true;
+          return out;
+        } finally {
+          // Landed, or kept in the stash or under Not saved: the words on
+          // their way are settled (E17).
+          if (aheadId) await settleAhead(aheadId, ended);
+        }
       })();
       const link = run.catch(() => undefined);
       vaultSaveChains.set(key, link);
@@ -11142,6 +12438,8 @@ export const useApp = create<AppState>((set, get, api) => {
       // delete never removes a version this device has not seen (Vault M2
       // wave 0). A provider that does not check the guard yet removes anyway.
       const base = vaultBaseOf(target, path);
+      // The text the person saw at that version, as the delete began (E4).
+      const loaded = base ? get().vaultNote?.text : undefined;
       let removed: RemoveResult;
       try {
         removed = await target.provider.remove(
@@ -11154,8 +12452,7 @@ export const useApp = create<AppState>((set, get, api) => {
         // so the delete still means what the person meant. Bounded, like the
         // save's retry, so a busy writer cannot spin it.
         for (let tries = 0; tries < 3 && !removed.ok && removed.theirs; tries++) {
-          const open = get().vaultNote;
-          const loaded = isActiveVault(target) && open?.path === path ? open.text : undefined;
+          if (loaded === undefined) break;
           if (removed.conflict !== 'changed' || removed.theirs.text !== loaded) break;
           removed = await target.provider.remove(target.resourceId, path, {
             ifMatch: versionOf(removed.theirs),
@@ -11166,6 +12463,11 @@ export const useApp = create<AppState>((set, get, api) => {
         // text saves later, which is not about a delete, and nothing retries
         // one, so vaultError is left as it was.
         const refusal = vaultRefusal(err);
+        // A refusal that is its own whole line (CX Y14) is said as it is.
+        if (refusal && (err as { whole?: unknown }).whole === true) {
+          get().showToast(refusal);
+          return false;
+        }
         get().showToast(
           refusal
             ? `Could not delete that note. ${asSentence(refusal)}`
@@ -11256,6 +12558,11 @@ export const useApp = create<AppState>((set, get, api) => {
         get().showToast(readOnly);
         return undefined;
       }
+      // A lapsed plan, or a member under admins-only (OV402, OV403): the
+      // server's refusal, said before it is asked. Lapsed, the caps have no
+      // Trash, and the for-good path below must never run on a team note.
+      const teamRefused = await teamRefusalNow(t, 'delete');
+      if (teamRefused) return { ok: false, reason: 'storage', line: teamRefused };
       if (await leaseRefuses(t)) return undefined;
       if (!capsOf(t).trash) {
         // No real Trash here: the delete is for good (two taps on screen),
@@ -11274,7 +12581,7 @@ export const useApp = create<AppState>((set, get, api) => {
         };
       }
       const base = vaultBaseOf(t, path);
-      const r = await opsDeleteNote(opsDeps(t), path);
+      const r = await asOwnMove(() => opsDeleteNote(opsDeps(t), path));
       if (!r.ok) {
         // The note moved on, or is gone, or is still downloading: M2's stale
         // delete path says so and reloads it; nothing went to Trash.
@@ -11287,6 +12594,22 @@ export const useApp = create<AppState>((set, get, api) => {
           );
           return undefined;
         }
+        // Already gone (a teammate deleted or moved it before this list or
+        // the open note caught up): nothing is left to delete, so it says so
+        // and the list is read again, never "try again". An open note takes
+        // M1's path: a clean one closes, one with unsaved edits asks
+        // (round 5, finding 5).
+        if (r.reason === 'missing') {
+          if (isActiveVault(t) && get().vaultNote?.path === path) {
+            await inSaveChain(t, path, () => recheckOpenNote(t, path)).catch(() => undefined);
+          }
+          await relistActive(t);
+          return { ok: false, reason: 'missing', line: vaultGoneToast(noteTitle(path)) };
+        }
+        const refused = refusalOf(r);
+        if (refused) {
+          return { ok: false, reason: 'storage', line: vaultRefusedLine('delete', refused) };
+        }
         return { ok: false, reason: r.reason };
       }
       await afterNoteGone(t, path);
@@ -11298,13 +12621,38 @@ export const useApp = create<AppState>((set, get, api) => {
     async vaultDeleteFolder(folder) {
       const t = vaultTarget();
       if (!t) return undefined;
+      // A lapsed plan, or a member under admins-only (OV402, OV403), said
+      // before the server is asked.
+      const teamRefused = await teamRefusalNow(t, 'delete');
+      if (teamRefused) return { ok: false, reason: 'storage', line: teamRefused };
       if (!capsOf(t).trash) return { ok: false, reason: 'unsupported' };
       if (await leaseRefuses(t)) return undefined;
-      const r = await opsDeleteFolder(opsDeps(t), folder);
+      const r = await asOwnMove(() => opsDeleteFolder(opsDeps(t), folder));
+      const refused = !r.ok ? refusalOf(r) : undefined;
+      if (refused) {
+        return { ok: false, reason: 'storage', line: vaultRefusedLine('delete', refused) };
+      }
+      // Nothing went, because every note in it changed while this ran (a
+      // teammate saving, E21): the folder is as it was, and the line names
+      // them, never "Try again".
+      if (!r.ok && r.reason === 'changed' && r.changed?.length) {
+        await relistActive(t);
+        return {
+          ok: false,
+          reason: 'changed',
+          line: vaultFolderTrashChanged(folder.slice(folder.lastIndexOf('/') + 1), r.changed),
+        };
+      }
       if (!r.ok) return { ok: false, reason: r.reason === 'changed' ? 'storage' : r.reason };
+      // Stopped part way (the team vault, E20): what went is in Trash, the
+      // rest is still in the folder, so the folder stays and the list is
+      // read again either way.
+      const left = new Set(r.partial?.left ?? []);
       const open = get().vaultNote;
-      if (open && open.path.startsWith(`${folder}/`)) await afterNoteGone(t, open.path);
-      await moveEmptyFolders(t, folder);
+      if (open && open.path.startsWith(`${folder}/`) && !left.has(open.path)) {
+        await afterNoteGone(t, open.path);
+      }
+      if (!r.partial) await moveEmptyFolders(t, folder);
       await refreshVaultFolders(t);
       logEvent('vault_folder_trash');
       await relistActive(t);
@@ -11315,9 +12663,30 @@ export const useApp = create<AppState>((set, get, api) => {
     async vaultUndoDelete(undo, at) {
       const t = vaultTargetFrom(at);
       if (!t) return undefined;
+      // The plan lapsed while the toast was up: the Undo is a write the
+      // server refuses (OV402), so once a read of the plan says so still
+      // (E37) it says the plan's line and writes nothing.
+      const teamRefused = await teamRefusalNow(t, 'restore');
+      if (teamRefused) return { ok: false, reason: 'unsupported', line: teamRefused, whole: true };
       const r = await opsUndoDelete(opsDeps(t), undo);
       if (r.ok && undo.kind === 'trash' && undo.folder) await relistActive(t);
       void refreshVaultTrash(t);
+      // Nothing of it is left in Trash (a teammate brought it back, or its
+      // history was cleared): it says so, never "still in Trash", and the
+      // list is read again (round 5 sweep).
+      if (!r.ok && r.reason === 'missing' && undo.kind === 'trash') {
+        await relistActive(t);
+        const title = undo.folder
+          ? undo.path.slice(undo.path.lastIndexOf('/') + 1)
+          : noteTitle(undo.path);
+        return { ok: false, reason: 'missing', line: vaultTrashGone(title), whole: true };
+      }
+      // A refusal for good (the team's free space, 0023) says the verb first.
+      const refused = !r.ok ? refusalOf(r) : undefined;
+      if (refused) {
+        const line = vaultRefusedLine('restore', refused);
+        return { ok: false, reason: 'storage', line, whole: true };
+      }
       return r;
     },
 
@@ -11326,13 +12695,61 @@ export const useApp = create<AppState>((set, get, api) => {
       return t ? refreshVaultTrash(t) : undefined;
     },
 
+    async vaultSetTeamDeleteRole(role) {
+      const orgId = get().settings.account?.org?.serverId;
+      if (!orgId) return 'failed';
+      // A plan read as "not an admin" refuses here, verb first; a plan never
+      // read (its first read failed) is asked for, by the write's own read,
+      // so a retry the row offers reaches the server (round 7 E55).
+      if (get().vaultTeamPlan?.isAdmin === false) {
+        return {
+          kind: 'refused',
+          line: vaultRefusedLine('save', { line: VAULT_TEAM_SETTINGS_ADMINS_ONLY }),
+        };
+      }
+      try {
+        return await setOrgVaultDeleteRole(orgId, role);
+      } catch (err) {
+        // Refused for good (OV402, or no longer an admin): its line, verb
+        // first, and the row read again; never "try again".
+        const refusal = vaultRefusal(err);
+        if (refusal) {
+          void get().vaultLoadSettings({ force: true });
+          return { kind: 'refused', line: vaultRefusedLine('save', { line: refusal }) };
+        }
+        return 'failed';
+      }
+    },
+
     async vaultRestoreTrash(id) {
       const t = vaultTarget();
       if (!t) return { ok: false, reason: 'unsupported' };
+      // A Trash page open when the plan lapsed: Restore is a write the server
+      // refuses (OV402), so once a read of the plan says so still (E37) it
+      // says the plan's line and writes nothing.
+      const teamRefused = await teamRefusalNow(t, 'restore');
+      if (teamRefused) return { ok: false, reason: 'unsupported', line: teamRefused, whole: true };
       const entry = get().vaultTrash?.find((e) => e.id === id);
-      const r = await opsRestoreEntry(opsDeps(t), id);
+      // A row the page showed: it comes back only while still in Trash (E38).
+      const r = await opsRestoreEntry(opsDeps(t), id, { listed: true });
       if (r.ok && entry?.kind === 'folder') await relistActive(t);
       void refreshVaultTrash(t);
+      // Nothing of it is left in Trash (restored or cleared elsewhere): it
+      // says so, never "still in Trash" (round 5 sweep).
+      if (!r.ok && r.reason === 'missing' && entry) {
+        await relistActive(t);
+        const title =
+          entry.kind === 'folder'
+            ? entry.path.slice(entry.path.lastIndexOf('/') + 1)
+            : noteTitle(entry.path);
+        return { ok: false, reason: 'missing', line: vaultTrashGone(title), whole: true };
+      }
+      // A refusal for good (the team's free space, 0023) says the verb first.
+      const refused = !r.ok ? refusalOf(r) : undefined;
+      if (refused) {
+        const line = vaultRefusedLine('restore', refused);
+        return { ok: false, reason: 'storage', line, whole: true };
+      }
       return r;
     },
 
@@ -11358,10 +12775,30 @@ export const useApp = create<AppState>((set, get, api) => {
       const t = vaultTarget();
       if (!t || !capsOf(t).rename) return undefined;
       if (await leaseRefuses(t)) return undefined;
-      const r = await opsApplyMove(opsDeps(t), preview, {
-        updateLinks: updateLinks && capsOf(t).linkRewrite,
-        ...(onProgress ? { onProgress } : {}),
-      });
+      // A team folder moved where a note would land on a name in Trash moves
+      // nothing: each note's move would be refused there anyway (the move
+      // would take that note out of Trash), and a folder half moved helps
+      // nobody (E22). A single note's move is refused by the storage.
+      if (preview.kind === 'folder' && t.providerId === 'org' && t.provider.listTrash) {
+        const trash = await t.provider.listTrash(t.resourceId).catch(() => undefined);
+        const dead = new Set((trash ?? []).filter((e) => e.kind === 'note').map((e) => e.path));
+        const hit = [...preview.moves.values()].find((to) => dead.has(to));
+        if (hit) {
+          const old = preview.from.slice(preview.from.lastIndexOf('/') + 1);
+          return {
+            ok: false,
+            reason: 'storage',
+            line: vaultFolderMoveInTrash(old, noteTitle(hit)),
+            whole: true,
+          };
+        }
+      }
+      const r = await asOwnMove(() =>
+        opsApplyMove(opsDeps(t), preview, {
+          updateLinks: updateLinks && capsOf(t).linkRewrite,
+          ...(onProgress ? { onProgress } : {}),
+        }),
+      );
       if (preview.kind === 'folder' && (r.ok || r.reason === 'partial')) {
         // The folder's remembered empty folders follow it, and the list is
         // read again for the spelling the storage gave every moved path.
@@ -11374,7 +12811,63 @@ export const useApp = create<AppState>((set, get, api) => {
         // the M1 path (a clean one reloads, a dirty one asks).
         await inSaveChain(t, preview.from, () => recheckOpenNote(t, preview.from));
       }
+      // Gone before the rename ran (a teammate deleted or moved it): it says
+      // so, never "try again", and the list is read again. An open note takes
+      // the M1 path (round 5, finding 5).
+      if (!r.ok && r.reason === 'missing' && preview.kind === 'note') {
+        if (get().vaultNote?.path === preview.from) {
+          await inSaveChain(t, preview.from, () => recheckOpenNote(t, preview.from)).catch(
+            () => undefined,
+          );
+        }
+        await relistActive(t);
+        return { ...r, line: vaultGoneToast(noteTitle(preview.from)), whole: true };
+      }
+      // A folder with nothing left to move (its notes were moved or deleted
+      // somewhere else since the list): not a rename, and the list is read
+      // again (round 7 E25).
+      if (!r.ok && r.reason === 'missing' && preview.kind === 'folder') {
+        await relistActive(t);
+        await refreshVaultFolders(t);
+        const old = preview.from.slice(preview.from.lastIndexOf('/') + 1);
+        return { ...r, line: vaultFolderMoveGone(old), whole: true };
+      }
+      // A folder moved note by note that stopped on a name already taken
+      // where it was going (letter case counts): it names that note.
+      if (!r.ok && r.stoppedOn === 'exists' && preview.kind === 'folder') {
+        const there = r.theirs?.path ?? r.stoppedAt ?? preview.to;
+        const line = vaultFolderMoveTaken({
+          old: preview.from.slice(preview.from.lastIndexOf('/') + 1),
+          moved: r.moved?.length ?? 0,
+          total: r.notes ?? preview.notes,
+          name: noteTitle(there),
+          folder: noteFolder(there),
+        });
+        return { ...r, line, whole: true };
+      }
+      // A folder whose first note changed while the move ran moved nothing,
+      // and a folder has no newer version to open, so it says only that;
+      // trying again is true (round 5 sweep).
+      if (!r.ok && r.reason === 'changed' && preview.kind === 'folder') {
+        const old = preview.from.slice(preview.from.lastIndexOf('/') + 1);
+        return { ...r, line: vaultRenameFailed(old), whole: true };
+      }
       if (r.ok) logEvent('vault_rename', { kind: preview.kind, links: preview.links > 0 });
+      // A refusal for good (a team past its free space, 0023): the verb
+      // first, or, for a folder stopped part way, what moved before it.
+      const refused = !r.ok ? refusalOf(r) : undefined;
+      if (refused && !r.ok) {
+        const line =
+          r.reason === 'partial'
+            ? vaultFolderMoveRefused(
+                preview.from.slice(preview.from.lastIndexOf('/') + 1),
+                r.moved?.length ?? 0,
+                r.notes ?? preview.notes,
+                refused.line,
+              )
+            : vaultRefusedLine('rename', refused);
+        return { ...r, line, whole: true };
+      }
       return r;
     },
 
@@ -11418,19 +12911,37 @@ export const useApp = create<AppState>((set, get, api) => {
     async vaultToday() {
       const t = vaultTarget();
       if (!t || !capsOf(t).today) return undefined;
-      const plan = await resolveVaultToday({
-        provider: t.provider,
-        resourceId: t.resourceId,
-        paths: get().vaultFiles.map((f) => f.path),
-        readBody: (path) => readBodyOf(t, path),
-        cacheKey: foldersKey(t),
-      }).catch(() => undefined);
+      const resolve = () =>
+        resolveVaultToday({
+          provider: t.provider,
+          resourceId: t.resourceId,
+          paths: get().vaultFiles.map((f) => f.path),
+          readBody: (path) => readBodyOf(t, path),
+          cacheKey: foldersKey(t),
+        }).catch(() => undefined);
+      let plan = await resolve();
       if (!plan) return { kind: 'refused', line: VAULT_TODAY_FAILED };
       if (!plan.ok) return { kind: 'refused', line: vaultTodayLine(plan)! };
-      // Already there: it opens as it is, with nothing written (K7).
+      // Already there: it opens as it is, with nothing written (K7). Gone
+      // since the list (a teammate deleted or moved it), the day is planned
+      // again on the list taken then, template and all, and made below
+      // like any new day (E24).
       if (plan.exists) {
-        await get().vaultOpen(plan.path);
-        return { kind: 'opened', path: plan.path };
+        if ((await get().vaultOpen(plan.path, { quietGone: true })) !== 'gone') {
+          return { kind: 'opened', path: plan.path };
+        }
+        plan = await resolve();
+        if (!plan) return { kind: 'refused', line: VAULT_TODAY_FAILED };
+        if (!plan.ok) return { kind: 'refused', line: vaultTodayLine(plan)! };
+        if (plan.exists) {
+          await get().vaultOpen(plan.path);
+          return { kind: 'opened', path: plan.path };
+        }
+      }
+      // A team plan read as lapsed is read again first, and the caps follow
+      // what it says now (round 7 E37).
+      if (t.providerId === 'org' && get().vaultTeamPlan?.entitled === false) {
+        await teamRefusalNow(t, 'create');
       }
       // A start is a write: read-only or away says so in the room's words.
       const caps = capsOf(t);
@@ -11441,11 +12952,22 @@ export const useApp = create<AppState>((set, get, api) => {
           (get().vaultLeaseHeldByOther
             ? vaultLeaseEnforced(get().vaultLeaseOther?.label).line
             : undefined) ??
+          // A lapsed team plan takes no new note (OV402): its line, never
+          // the generic one.
+          vaultTeamRefusal(t.providerId, get().vaultTeamPlan, 'create') ??
           VAULT_TODAY_FAILED;
         return { kind: 'refused', line: why };
       }
+      // The team's free space is used up (E27): a new note is refused here,
+      // before the server is asked.
+      if (t.providerId === 'org' && get().vaultTeamPlan?.full) {
+        return { kind: 'refused', line: vaultRefusedLine('today', { line: VAULT_TEAM_FULL }) };
+      }
       if (await leaseRefuses(t)) return undefined;
       const r = await opsOpenToday(opsDeps(t), { path: plan.path, text: plan.text });
+      // A refusal for good (a team out of free space, 0023) says why.
+      const refused = !r.ok ? refusalOf(r) : undefined;
+      if (refused) return { kind: 'refused', line: vaultRefusedLine('today', refused) };
       if (!r.ok) {
         return {
           kind: 'refused',
@@ -11457,7 +12979,8 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       if (!r.created) {
         // Another device made it a moment ago: open what is there, silently.
-        await get().vaultOpen(r.path);
+        // Gone again by then, the open has said so (E24).
+        if ((await get().vaultOpen(r.path)) === 'gone') return undefined;
         return { kind: 'opened', path: r.path };
       }
       if (!isActiveVault(t)) return undefined;
@@ -11469,7 +12992,7 @@ export const useApp = create<AppState>((set, get, api) => {
           updatedAt: r.file.updatedAt,
           version: r.file.version,
           fresh: true,
-          loadedAt: Date.now(),
+          loadedAt: nextLoadedAt(),
         },
         vaultError: undefined,
       });
@@ -11486,19 +13009,54 @@ export const useApp = create<AppState>((set, get, api) => {
       const title = noteTitle(path);
       // The tick acts on what the person last typed, saved first.
       await flushOpenSave(t).catch(() => {});
-      const text = await readBodyOf(t, path).catch(() => undefined);
-      if (text === undefined) {
+      // The line is counted on the text the person sees: the open note as it
+      // stands after that save, else the note as last read. The tick then
+      // lands only on that same text (E2).
+      const open = isActiveVault(t) ? get().vaultNote : undefined;
+      // Unless the editor holds text the note does not have (its save held,
+      // kept for later, or waiting on a choice): the reader counted the line
+      // on that text, and the note's line there may be another task (E30).
+      if (
+        open?.path === path &&
+        ((draftOf(path) ?? open.text) !== open.text || get().vaultConflict?.path === path)
+      ) {
+        get().showToast(vaultTickUnsaved(title));
+        return false;
+      }
+      let text: string | undefined;
+      try {
+        text = open?.path === path ? open.text : await readBodyOf(t, path);
+      } catch {
+        // Not answering now: a retry may land it.
         get().showToast(VAULT_TICK_FAILED);
         return false;
       }
+      // Nothing there: gone (E34) says so; anything else may land on a retry.
+      const tickGone = async () => {
+        const gone = await noteGoneHere(t, path);
+        if (gone === 'gone') get().showToast(vaultGoneLine('tick', title));
+        else if (gone === 'not') get().showToast(VAULT_TICK_FAILED);
+        return false;
+      };
+      if (text === undefined) return tickGone();
       // The reader counts lines in the whole note, frontmatter included,
       // the same basis as the core's listTasks.
       const task = listTasks(text).find((x) => x.line === line);
       if (!task || task.custom) return false;
       if (task.checked === checked) return true;
-      const r = await opsToggleTask(opsDeps(t), path, task.at, task.status);
+      const r = await opsToggleTask(opsDeps(t), path, task.at, task.status, text);
       if (r.ok) return true;
-      if (r.reason === 'changed' || r.reason === 'missing') {
+      // Refused for good (a plan the room had not read yet, OV402): its
+      // line, never "try again" (round 5 sweep).
+      const tickRefused = refusalOf(r);
+      if (tickRefused) {
+        get().showToast(vaultRefusedLine('save', tickRefused));
+        return false;
+      }
+      // Moved or deleted somewhere else: said so, never "the newer version
+      // is open" over a note that closed (E34).
+      if (r.reason === 'missing') return tickGone();
+      if (r.reason === 'changed') {
         // Changed somewhere else: the open note takes M1's path (a clean
         // one reloads the newer version, which the box then shows).
         if (isActiveVault(t) && get().vaultNote?.path === path) {
@@ -11519,14 +13077,29 @@ export const useApp = create<AppState>((set, get, api) => {
       const open = openNoteOf(t);
       // Never under the person: a note open here with a choice waiting.
       if (open?.path === path && open.choiceOpen) return false;
+      // Moved or deleted somewhere else: its line, and the room drops the
+      // row, never "try again" (E34).
+      const linkGone = async () => {
+        const gone = await noteGoneHere(t, path);
+        if (gone === 'not') return false;
+        return {
+          ok: false as const,
+          line: vaultGoneLine('link', noteTitle(path)),
+          gone: true as const,
+        };
+      };
       try {
         const file = await t.provider.read(t.resourceId, path);
-        if (!file) return false;
+        if (!file) return await linkGone();
         const next = edit(file.text);
         if (next === undefined || next === file.text) return false;
         const r = await opsDeps(t).putVaultNote(path, next, { ifMatch: versionOf(file) });
+        if (!r.ok && r.conflict === 'missing') return await linkGone();
         return r.ok;
-      } catch {
+      } catch (err) {
+        // Refused for good (a team out of free space, 0023): say why.
+        const refusal = vaultRefusal(err);
+        if (refusal) return { ok: false, line: vaultRefusedLine('link', { line: refusal }) };
         return false;
       }
     },
@@ -11585,8 +13158,11 @@ export const useApp = create<AppState>((set, get, api) => {
       } catch {
         return undefined;
       }
-      // A late read never paints another vault's settings.
-      if (isActiveVault(t) && get().vaultSettings !== settings) set({ vaultSettings: settings });
+      // A late read never paints another vault's settings, nor a team read
+      // made under an account that has since signed out (round 7 E14).
+      if (isActiveVault(t) && speaksNow(t) && get().vaultSettings !== settings) {
+        set({ vaultSettings: settings });
+      }
       return settings;
     },
 
@@ -11615,6 +13191,13 @@ export const useApp = create<AppState>((set, get, api) => {
       if (r.kind === 'unreadable' || r.kind === 'failed') {
         void get().vaultLoadSettings({ force: true });
       }
+      // Refused for good (a plan that is not active, OV402, or a member no
+      // longer an admin): the verb first and the storage's reason, and the
+      // settings read again, so the sheet shows who may change them now.
+      if (r.kind === 'refused') {
+        void get().vaultLoadSettings({ force: true });
+        return { kind: 'refused', line: vaultRefusedLine('save', { line: r.line }) };
+      }
       return r;
     },
 
@@ -11630,7 +13213,13 @@ export const useApp = create<AppState>((set, get, api) => {
       } catch {
         return 'failed';
       }
-      if (!file) return 'failed';
+      // Moved or deleted somewhere else: its line, never "try again" (E34).
+      const markGone = async () => {
+        const gone = await noteGoneHere(t, path);
+        if (gone === 'not') return 'failed' as const;
+        return { kind: 'refused' as const, line: vaultGoneLine('mark', noteTitle(path)) };
+      };
+      if (!file) return markGone();
       // The person's own write (CX Y12): one line, every other byte kept.
       let next: string;
       try {
@@ -11651,11 +13240,15 @@ export const useApp = create<AppState>((set, get, api) => {
       let r: WriteResult;
       try {
         r = await opsDeps(t).putVaultNote(path, next, { ifMatch: versionOf(file) });
-      } catch {
+      } catch (err) {
+        // Refused for good (a team out of free space, 0023): say why.
+        const refusal = vaultRefusal(err);
+        if (refusal) return { kind: 'refused', line: vaultRefusedLine('mark', { line: refusal }) };
         return 'failed';
       }
       if (r.ok) return done();
-      if (r.conflict === 'changed' || r.conflict === 'missing') {
+      if (r.conflict === 'missing') return markGone();
+      if (r.conflict === 'changed') {
         // The note moved on somewhere else: the newer version opens here.
         if (isActiveVault(t) && get().vaultNote?.path === path) {
           await inSaveChain(t, path, () => recheckOpenNote(t, path)).catch(() => undefined);
@@ -11712,7 +13305,7 @@ export const useApp = create<AppState>((set, get, api) => {
 
     vaultRecentRing() {
       const t = vaultTarget();
-      return t ? (get().settings.vaultRecent?.[foldersKey(t)] ?? []) : [];
+      return t ? (get().settings.vaultRecent?.[memoryKey(t)] ?? []) : [];
     },
 
     async vaultFolderCounts(folder) {

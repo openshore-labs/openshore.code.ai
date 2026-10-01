@@ -15,6 +15,11 @@
 // and ignore it until their M2 stream lands; they are held to the result
 // shape here and must not claim compareAndSwap.
 //
+// The team vault (Vault M2 2.1 and 2.3, CTO G3) is enrolled through a fake of
+// its server half (test/fixtures/fakeOrgVaultServer.ts), which answers the
+// two guarded RPCs of migration 0021 by their decision table; another writer
+// is a teammate's save with a fresh rev.
+//
 // Your computer (Vault M5, CTO J9) is enrolled too, through its real provider
 // against a fake of the daemon's /vault routes (test/support/fakeHubDaemon.ts),
 // where another writer is a note replaced on the computer with a fresh
@@ -37,9 +42,11 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { StorageProvider } from '../src/lib/gitos/providers.js';
+import type { FakeOrgVaultServer } from './fixtures/fakeOrgVaultServer.js';
 
 const h = vi.hoisted(() => ({
   root: '',
+  team: undefined as FakeOrgVaultServer | undefined,
   store: new Map<string, string>(),
   Icloud: {
     available: async () => true,
@@ -65,6 +72,12 @@ vi.mock('../src/lib/platform.js', () => ({
   storeKeys: async () => [...h.store.keys()],
 }));
 vi.mock('../src/lib/gitos/icloudPlugin.js', () => ({ Icloud: h.Icloud }));
+// The team vault's Supabase seam, answered by the fake server.
+vi.mock('../src/lib/supabase.js', () => ({
+  isConfigured: () => true,
+  select: (table: string, token: string, query: string) => h.team!.select(table, token, query),
+  rpc: (fn: string, token: string, args: Record<string, unknown>) => h.team!.rpc(fn, token, args),
+}));
 // The Electron bridge, answered by main's own handlers over the temp folder.
 vi.mock('../src/lib/electronBridge.js', async () => {
   const fs = await import('../electron/vaultFs.js');
@@ -130,6 +143,13 @@ function m6Bridge(fs: Record<string, unknown>): Record<string, unknown> {
 const { deviceFolderProvider } = await import('../src/lib/gitos/deviceFolder.js');
 const { localProvider } = await import('../src/lib/gitos/local.js');
 const { icloudProvider } = await import('../src/lib/gitos/icloud.js');
+const { orgVaultProvider, setOrgVaultAuth, resetOrgVault } =
+  await import('../src/lib/gitos/orgVault.js');
+const { createFakeOrgVaultServer } = await import('./fixtures/fakeOrgVaultServer.js');
+setOrgVaultAuth(
+  async () => 'tok',
+  () => true,
+);
 const { createHubProvider } = await import('../src/lib/gitos/hub.js');
 const { fakeHubDaemon } = await import('./support/fakeHubDaemon.js');
 
@@ -180,6 +200,16 @@ const enforcing: Array<{
     remove: (p) => h.store.delete(`oscode.gitos.file.${R}.${p}`),
   },
   {
+    name: 'Team vault',
+    provider: orgVaultProvider,
+    bytes: (p) => h.team!.bytes(p),
+    // Another writer: a teammate's save, with a fresh rev from the sequence.
+    replace: (p, t) => {
+      h.team!.put(p, t);
+    },
+    remove: (p) => h.team!.drop(p),
+  },
+  {
     name: 'Your computer (the hub)',
     provider: hubProvider,
     bytes: (p) => hub.bytes(p),
@@ -197,6 +227,9 @@ afterAll(() => {
 beforeEach(() => {
   for (const name of readdirSync(h.root)) rmSync(join(h.root, name), { recursive: true });
   h.store.clear();
+  // The resource id is the org's id for the team vault.
+  h.team = createFakeOrgVaultServer(R);
+  resetOrgVault();
   hub.reset();
 });
 
@@ -459,7 +492,9 @@ for (const p of enforcing) {
         path: 'Plans.md',
         ifMatch: versionOfWrite(w),
       });
-      await p.provider.write(R, 'Plans.md', 'new plans', { ifAbsent: true });
+      // Another writer takes the name (the team vault makes no note over a
+      // name in Trash itself, E22).
+      p.replace('Plans.md', 'new plans');
       const back = await p.provider.restore!(R, t.ok ? t.entry.id : '');
       expect(back).toMatchObject({
         ok: true,
@@ -480,6 +515,41 @@ for (const p of enforcing) {
       const back = await p.provider.restore!(R, t.ok ? t.entry.id : '');
       expect(back).toMatchObject({ ok: true, renamed: false });
       expect(await listedPaths(p.provider)).toEqual(['Other.md', 'Work/Deep/b.md', 'Work/a.md']);
+    });
+
+    // A storage that keeps "Work" and "work" apart (a case-insensitive disk
+    // makes them one folder, so the desktop folder is left to its disk):
+    // a folder's trash takes its own spelling only, as the tree groups it and
+    // as the room counts it before it acts (round 7 E41).
+    it.skipIf(p.name.startsWith('This folder'))(
+      'a folder trash takes the notes under its own spelling, never another case',
+      async () => {
+        await p.provider.write(R, 'Work/a.md', 'a', { ifAbsent: true });
+        await p.provider.write(R, 'work/b.md', 'b', { ifAbsent: true });
+        const t = await p.provider.trash!(R, { kind: 'folder', path: 'Work' });
+        expect(t).toMatchObject({ ok: true, notes: 1 });
+        expect(await listedPaths(p.provider)).toEqual(['work/b.md']);
+      },
+    );
+
+    it("a folder's restore brings back only what that trash took", async () => {
+      const old = await p.provider.write(R, 'Work/Old.md', 'old', { ifAbsent: true });
+      await p.provider.write(R, 'Work/Plan.md', 'plan', { ifAbsent: true });
+      const first = await p.provider.trash!(R, {
+        kind: 'note',
+        path: 'Work/Old.md',
+        ifMatch: versionOfWrite(old),
+      });
+      const t = await p.provider.trash!(R, { kind: 'folder', path: 'Work' });
+      expect(t).toMatchObject({ ok: true, notes: 1 });
+      const back = await p.provider.restore!(R, t.ok ? t.entry.id : '');
+      expect(back).toMatchObject({ ok: true, renamed: false });
+      expect(await listedPaths(p.provider)).toEqual(['Work/Plan.md']);
+      // The note deleted before the folder is still in Trash, as its own entry.
+      const left = await p.provider.listTrash!(R);
+      expect(left.map((e) => e.path)).toEqual(['Work/Old.md']);
+      expect(left.map((e) => e.id)).toEqual([first.ok ? first.entry.id : '']);
+      expect(p.bytes('Work/Old.md')).toBeUndefined();
     });
 
     it('an unknown entry is missing', async () => {
@@ -514,6 +584,13 @@ for (const p of enforcing) {
 // leaves the bytes, an ifMatch on a file gone is `missing` and makes nothing,
 // and a write's version is the one readConfig and the next ifMatch accept.
 // Every `obsidian/*` name is refused before anything is written.
+//
+// The team vault keeps its settings in a jsonb column, not a file (0025), so
+// Postgres keeps the keys in its own order and none of the whitespace. Its
+// row compares text through `same`, the JSON as the column holds it; every
+// file row keeps `same` as the identity, so their bytes stay exact.
+
+const { orgVaultSettingsText } = await import('../src/lib/gitos/orgVault.js');
 
 const settingsRows: Array<{
   name: string;
@@ -522,6 +599,8 @@ const settingsRows: Array<{
   replace: (text: string) => void;
   remove: () => void;
   obsidianUntouched: () => boolean;
+  /** How this storage's text compares (the identity for a file). */
+  same?: (text: string) => string;
 }> = [
   {
     name: 'This folder (desktop)',
@@ -569,39 +648,87 @@ const settingsRows: Array<{
     },
     obsidianUntouched: () => [...hub.config.keys()].every((k) => !k.startsWith('obsidian/')),
   },
+  {
+    name: 'Team vault',
+    provider: orgVaultProvider,
+    bytes: () =>
+      h.team!.settingsRow ? orgVaultSettingsText(h.team!.settingsRow.settings) : undefined,
+    // Another admin's save, with a fresh rev.
+    replace: (t) => h.team!.putSettings(JSON.parse(t) as Record<string, unknown>),
+    remove: () => {
+      h.team!.settingsRow = undefined;
+    },
+    obsidianUntouched: () => h.team!.rpcs.every((r) => r.fn !== 'org_vault_settings_put'),
+    same: (t) => orgVaultSettingsText(JSON.parse(t)),
+  },
 ];
 
 const V1 = '{\n  "version": 1\n}\n';
-const V2 = '{\n  "version": 1,\n  "delete": "permanent"\n}\n';
+// A field every storage carries out (the team's Delete is not one: see
+// `unappliedSettings`, the review of 2026-09-30).
+const V2 = '{\n  "version": 1,\n  "editor": {\n    "font": "serif"\n  }\n}\n';
+// Three fields a storage may not carry out, beside one it keeps.
+const HELD =
+  '{"version":1,"delete":"permanent","attachments":{"folder":"Files"},"templates":{"folder":"T","dateFormat":"DD/MM"}}';
+const HELD_FIELDS = ['delete', 'attachments.folder', 'templates.folder'] as const;
+const holds = (json: Record<string, unknown>, field: string): boolean => {
+  const [head, leaf] = field.split('.') as [string, string | undefined];
+  const v = json[head];
+  if (leaf === undefined) return v !== undefined;
+  return Boolean(v && typeof v === 'object' && (v as Record<string, unknown>)[leaf] !== undefined);
+};
 
 for (const p of settingsRows) {
   describe(`writeConfig contract: ${p.name}`, () => {
     const write = (text: string, guard: { ifMatch: string } | { ifAbsent: true }) =>
       p.provider.writeConfig!(R, 'oscode/vault', text, guard);
+    const same = (t: string | undefined) => (t === undefined ? t : (p.same ?? ((x) => x))(t));
 
     it('declares writeConfig beside compareAndSwap', () => {
       expect(typeof p.provider.writeConfig).toBe('function');
       expect(p.provider.compareAndSwap).toBe(true);
     });
 
+    it('never writes or reads back a field it does not carry out, and keeps the rest', async () => {
+      const unapplied: readonly string[] = p.provider.unappliedSettings ?? [];
+      const r = await write(HELD, { ifAbsent: true });
+      expect(r.ok).toBe(true);
+      const read = await p.provider.readConfig!(R, 'oscode/vault');
+      const stored = JSON.parse(p.bytes() ?? '{}') as Record<string, unknown>;
+      const back = JSON.parse(read.ok ? read.text : '{}') as Record<string, unknown>;
+      for (const field of HELD_FIELDS) {
+        const kept = !unapplied.includes(field);
+        expect(holds(stored, field), `${p.name} stores ${field}`).toBe(kept);
+        expect(holds(back, field), `${p.name} reads ${field}`).toBe(kept);
+      }
+      expect(back.templates).toMatchObject({ dateFormat: 'DD/MM' });
+      expect(same(r.ok ? r.file.text : '')).toBe(same(read.ok ? read.text : 'no'));
+    });
+
     it('ifAbsent makes the file, and readConfig reads the same text and version', async () => {
       const r = await write(V1, { ifAbsent: true });
-      expect(r).toMatchObject({ ok: true, file: { path: '.oscode/vault.json', text: V1 } });
-      expect(p.bytes()).toBe(V1);
+      expect(r).toMatchObject({ ok: true, file: { path: '.oscode/vault.json' } });
+      expect(same(r.ok ? r.file.text : '')).toBe(same(V1));
+      expect(same(p.bytes())).toBe(same(V1));
       const read = await p.provider.readConfig!(R, 'oscode/vault');
-      expect(read).toEqual({ ok: true, text: V1, version: r.ok ? r.file.version : '' });
+      expect(read).toEqual({
+        ok: true,
+        text: r.ok ? r.file.text : '',
+        version: r.ok ? r.file.version : '',
+      });
     });
 
     it("a write's version is accepted by the next ifMatch, and each write is a new one", async () => {
       const first = await write(V1, { ifAbsent: true });
       const v1 = first.ok ? first.file.version! : '';
       const second = await write(V2, { ifMatch: v1 });
-      expect(second).toMatchObject({ ok: true, file: { text: V2 } });
+      expect(second.ok).toBe(true);
+      expect(same(second.ok ? second.file.text : '')).toBe(same(V2));
       const v2 = second.ok ? second.file.version! : '';
       expect(v2).toBeTruthy();
       expect(v2).not.toBe(v1);
       expect((await write(V1, { ifMatch: v2 })).ok).toBe(true);
-      expect(p.bytes()).toBe(V1);
+      expect(same(p.bytes())).toBe(same(V1));
     });
 
     it('a stale ifMatch is changed with theirs, and leaves their bytes', async () => {
@@ -609,11 +736,13 @@ for (const p of settingsRows) {
       p.replace('{"version":1,"tree":{"sort":"modified"}}');
       const r = await write(V2, { ifMatch: first.ok ? first.file.version! : '' });
       expect(r).toMatchObject({ ok: false, conflict: 'changed' });
-      expect(!r.ok && r.theirs?.text).toBe('{"version":1,"tree":{"sort":"modified"}}');
+      expect(same(!r.ok ? r.theirs?.text : '')).toBe(
+        same('{"version":1,"tree":{"sort":"modified"}}'),
+      );
       // Theirs carries the version the re-read gives, so one re-apply lands.
       const now = await p.provider.readConfig!(R, 'oscode/vault');
       expect(!r.ok && r.theirs?.version).toBe(now.ok ? now.version : 'no');
-      expect(p.bytes()).toBe('{"version":1,"tree":{"sort":"modified"}}');
+      expect(same(p.bytes())).toBe(same('{"version":1,"tree":{"sort":"modified"}}'));
       const again = await write(V2, { ifMatch: !r.ok ? r.theirs!.version! : '' });
       expect(again.ok).toBe(true);
     });
@@ -622,8 +751,8 @@ for (const p of settingsRows) {
       p.replace('{"version":1}');
       const r = await write(V1, { ifAbsent: true });
       expect(r).toMatchObject({ ok: false, conflict: 'exists' });
-      expect(!r.ok && r.theirs?.text).toBe('{"version":1}');
-      expect(p.bytes()).toBe('{"version":1}');
+      expect(same(!r.ok ? r.theirs?.text : '')).toBe(same('{"version":1}'));
+      expect(same(p.bytes())).toBe(same('{"version":1}'));
     });
 
     it('ifMatch on a file gone is missing, and makes nothing', async () => {

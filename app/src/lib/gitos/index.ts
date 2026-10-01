@@ -23,6 +23,13 @@ export {
   resetOrgVault,
   orgVaultBaseRev,
   seedOrgVaultBaseRev,
+  onOrgVaultPlan,
+  onOrgVaultNotMember,
+  setOrgVaultDeleteRole,
+  clearOrgVaultFull,
+  refreshOrgVaultPlan,
+  type OrgVaultPlan,
+  type OrgVaultDeleteRole,
 } from './orgVault.js';
 export {
   HUB_VAULT_RESOURCE_ID,

@@ -119,15 +119,26 @@ const inFlight = new Map<string, Promise<ResolvedVaultSettings>>();
 /** The last good narrowing seen this run, per vault, ahead of the store. */
 const lastGood = new Map<string, VaultPrivacyNarrowing>();
 
+/** How many times every vault's settings were forgotten, and each vault's
+ *  own count: a read that began before a forget is returned to its caller
+ *  but never cached or kept as the last good narrowing, so an answer made
+ *  under a sign-in that has ended never stands in for the next account's
+ *  read (round 7 E14). */
+let epoch = 0;
+const keyEpochs = new Map<string, number>();
+const readGeneration = (key: string) => `${epoch}:${keyEpochs.get(key) ?? 0}`;
+
 /** Forget one vault's settings, or every vault's (a sign-out, a pairing
  *  change, a test). The last good narrowing is kept: it is a floor, not a
  *  cache. */
 export function clearVaultSettingsCache(key?: string): void {
   if (key === undefined) {
+    epoch++;
     cache.clear();
     inFlight.clear();
     return;
   }
+  keyEpochs.set(key, (keyEpochs.get(key) ?? 0) + 1);
   cache.delete(key);
   inFlight.delete(key);
 }
@@ -182,8 +193,11 @@ async function withNarrowing(
   key: string,
   settings: ResolvedVaultSettings,
   store: VaultNarrowingStore,
+  current = true,
 ): Promise<ResolvedVaultSettings> {
   if (settings.fileState === 'ok' || settings.fileState === 'absent') {
+    // A read from before a forget keeps nothing (E14).
+    if (!current) return settings;
     const n = settings.fileState === 'ok' ? settings.narrowing : {};
     lastGood.set(key, n);
     try {
@@ -211,9 +225,11 @@ async function resolveEntry(
   at: number,
   core: VaultSettingsCore,
   store: VaultNarrowingStore,
+  gen = readGeneration(key),
 ): Promise<ResolvedVaultSettings> {
-  const settings = await withNarrowing(key, core.resolve(reads), store);
-  cache.set(key, { at, reads, settings });
+  const current = () => gen === readGeneration(key);
+  const settings = await withNarrowing(key, core.resolve(reads), store, current());
+  if (current()) cache.set(key, { at, reads, settings });
   return settings;
 }
 
@@ -234,9 +250,17 @@ export async function loadVaultSettings(
   }
   const pending = inFlight.get(key);
   if (pending && !opts.force) return pending;
+  const gen = readGeneration(key);
   const run = (async () => {
     const reads = await readAll(provider, resourceId);
-    return resolveEntry(key, reads, at, opts.core ?? CORE, opts.narrowings ?? sealedNarrowingStore);
+    return resolveEntry(
+      key,
+      reads,
+      at,
+      opts.core ?? CORE,
+      opts.narrowings ?? sealedNarrowingStore,
+      gen,
+    );
   })();
   inFlight.set(key, run);
   try {
@@ -279,12 +303,18 @@ export type VaultSettingSave =
   /** The file is not a JSON object: never overwritten, nothing written. */
   | { kind: 'unreadable' }
   /** This storage cannot save settings (no `writeConfig`). */
+  // Also a field this storage does not carry out (`unappliedSettings`):
+  // nothing written.
   | { kind: 'read-only' }
+  /** The storage refused it for good (a team plan that is not active, a
+   *  member who is no longer an admin): nothing changed, and `line` is the
+   *  storage's reason, which the store says after "Not saved." */
+  | { kind: 'refused'; line: string }
   /** The write failed or was refused twice: nothing changed. */
   | { kind: 'failed' };
 
 export interface VaultSettingSaveDeps {
-  provider: Pick<StorageProvider, 'readConfig' | 'writeConfig'>;
+  provider: Pick<StorageProvider, 'readConfig' | 'writeConfig' | 'unappliedSettings'>;
   resourceId: string;
   key: string;
   now?: () => number;
@@ -327,6 +357,7 @@ async function writeOnce(
   | { ok: true; text: string; version: string }
   | { ok: false; unreadable: true }
   | { ok: false; conflict: string; theirs?: { text: string; version: string } }
+  | { ok: false; refused: string }
   | { ok: false; failed: true }
 > {
   const next = core.patch(base?.text, patch);
@@ -335,7 +366,13 @@ async function writeOnce(
   let r;
   try {
     r = await deps.provider.writeConfig!(deps.resourceId, 'oscode/vault', next, guard);
-  } catch {
+  } catch (err) {
+    // A refusal the storage marks permanent (the team vault's OV402, or its
+    // admins-only write) keeps its line; trying again cannot help.
+    const e = err as { permanent?: unknown; message?: unknown } | undefined;
+    if (e?.permanent === true && typeof e.message === 'string' && e.message) {
+      return { ok: false, refused: e.message };
+    }
     return { ok: false, failed: true };
   }
   if (r.ok) return { ok: true, text: next, version: r.file.version ?? r.file.updatedAt };
@@ -352,6 +389,9 @@ export async function saveVaultSetting(
   patch: VaultSettingsPatch,
 ): Promise<VaultSettingSave> {
   if (typeof deps.provider.writeConfig !== 'function') return { kind: 'read-only' };
+  // A field this storage does not carry out is never saved, so it never
+  // reads "Saved" for what the storage drops (the team vault's Delete).
+  if ((deps.provider.unappliedSettings ?? []).includes(patch.field)) return { kind: 'read-only' };
   const core = deps.core ?? CORE;
   const store = deps.narrowings ?? sealedNarrowingStore;
   const at = (deps.now ?? (() => Date.now()))();
@@ -371,6 +411,7 @@ export async function saveVaultSetting(
   const base = fileOf(entry.reads.file);
   const first = await writeOnce(deps, base, patch, core);
   if ('unreadable' in first) return { kind: 'unreadable' };
+  if ('refused' in first) return { kind: 'refused', line: first.refused };
   if ('failed' in first) return { kind: 'failed' };
   const landed = async (
     text: string,
@@ -415,6 +456,7 @@ export async function saveVaultSetting(
     await resolveEntry(deps.key, theirsReads, at, core, store);
     return { kind: 'unreadable' };
   }
+  if ('refused' in again) return { kind: 'refused', line: again.refused };
   if (again.ok) return landed(again.text, again.version, true);
   // Refused twice: nothing changed here; the next read shows what is there.
   clearVaultSettingsCache(deps.key);

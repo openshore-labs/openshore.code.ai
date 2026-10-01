@@ -2728,6 +2728,24 @@ execution contract. Newest at the bottom.
   needs the active project's config read on demand (a session's report goes
   stale, and a project can span several repos); the engine still enforces
   a project's off.
+
+- **Team vault M6 and M7 client (2026-09-27, held `vault-m2-team`, plan 6.2,
+  6.3, 7.4):** the team client gains `rename` (`org_vault_move`, adopting the
+  answered path and rev), `trash`, `listTrash` and `restore` (a tombstone is
+  listed only while its newest revision of any reason is `deleted`; entries
+  are keyed by path, restore takes the newest `deleted` revision, and a name
+  that already holds exactly that text counts as the restore done, so a
+  second tap makes no copy), no `emptyTrash` (R3, the purge), and
+  `readConfig`/`writeConfig` over `org_vault_settings_get`/`_put`. The
+  settings text is the jsonb rendered in Postgres's key order, so the
+  writeConfig contract row for the team compares the JSON the column holds
+  (a per-row `same`, the identity for every file row); `vaultCaps` takes
+  `settingsAdmin` so only admins save; OV402 marks the plan lapsed (the room
+  read-only, Export kept) and OV403 is the whole Y14 line, carried to the
+  toast as `line`. Trash entries carry `size: 0` (the listing reads no
+  bodies; the Trash view never shows size). A member under admins-only sees
+  Delete disabled with "Only admins can delete team notes here." rather than
+  absent.
 - **v1 for the first-time person (founder "build all of your recommendations",
   2026-09-27; the customer is a non-developer using Claude Code today; the
   founder asked that the core design and feature set not change):** everything
@@ -3300,6 +3318,206 @@ execution contract. Newest at the bottom.
   `app/electron/releaseKeys.ts` now pins. From the first build carrying them,
   every Windows and Linux update and every Mac update must be signed with the
   matching private key. Private keys never passed through a session.
+
+- **The team migrations renumbered 0024 and 0025 (CTO 4, 2026-09-29,
+  `vault-m2-team`, merged with main at a5c14c3):** `git mv` keeps the bodies;
+  only comments changed. `0020_org_vault_move.sql` is
+  `0024_org_vault_move.sql` and `0021_org_vault_settings.sql` is
+  `0025_org_vault_settings.sql`, above main's 0022 and 0023, so production
+  takes 0019, 0022, 0023, 0024, 0025, in that order and from `main` only
+  (`supabase/README.md`, Ship order; PROGRESS, What remains, the held Vault
+  branches item, now the one sequence both founder gates point to). This
+  supersedes every earlier mention of pushing 0020 or 0021 (the K12, L17 and
+  M8 entries above), which stay as written. The bodies were checked against
+  main's: 0025 re-creates the write RPCs whole, and 0023's caps live in
+  triggers for exactly that reason, so they hold; 0022 and 0023 redefine none
+  of the functions 0024 and 0025 create; 0023's `org_is_entitled` and 0025's
+  `org_vault_entitled` share the row rule and differ on purpose for an org
+  with no entitlement row (0025 lets it write in the beta, 0023 still caps
+  its bytes). Main's 0022 and 0023 still name 0020 and 0021 in their
+  comments; they are left alone, since they go to production from main
+  before this branch merges and an applied migration is never edited. The
+  merge made `SupabaseRequestError.code` one field for both sources:
+  PostgREST's SQLSTATE (OV402, OV403, PGRST202) and an Edge Function's
+  refusal word (`owns_org`).
+
+- **The team migrations after the 2026-09-29 interaction review (held `vault-m2-team`, 0024 and 0025, neither applied anywhere):** fixed in the held files, never in main's applied ones: 0025 section 10 keys `org_vault_settings.updated_by` and `org_vault_revisions.updated_by` to `auth.users` on delete set null (catalog-guarded, NOT VALID, orphans cleared through 0022's trigger exception, validated; a partial author index), so deleteUser clears a leaver's id in its own transaction (findings 1 and 3); `org_vault_move` in 0024 and in 0025's re-creation writes its `renamed` revision after the destination, so a free org at 0023's cap can rename (finding 4); the Ship order gains the 0020/0021 preflight (finding 5); findings 2, 6 and 7 are main's account-deletion calls, recorded in PROGRESS, What remains.
+
+- 2026-09-30: **`vault-m2-team` takes main's migration numbers (CTO 11, the
+  merge of main at ef3bd2f).** The branch's `supabase/migrations` is now
+  exactly main's: the org vault file is `0021_org_vault_v1.sql` (bytes
+  unchanged), the team files are main's `0024_org_vault_move.sql` and
+  `0025_org_vault_settings.sql` (CTO 11 changed comments only in both), and
+  the branch keeps no copy under another number. The two branch entries just
+  above stay as written; where they have production take 0019, 0022, 0023,
+  0024, 0025, or call the org vault file 0019, CTO 11 supersedes them:
+  production holds 0001 to 0020, and the next push is 0021 to 0026 from main
+  (`docs/vault-gate1-runbook.md`). The team client merges only once 0021 to
+  0026 are in production (the runbook's section 11). `rpc` keeps the branch's
+  coded error (`requestError`, so OV402, OV403 and PGRST202 still reach the
+  team client) and takes main's 204 read, so a void RPC answers `undefined`.
+  The merge of main at 4ffe370 gave main's own text back its bytes where the
+  branch had edited it outside the team feature: the M8 entry's founder item
+  (6), phase E1's migration line in `docs/next-build-2026-09-29.md`, three
+  migration lines of `docs/vault-v1-plan.md` (6.2, K19 and L17; the team
+  paragraphs the branch adds there stay), and the held-branches line of
+  `CLAUDE.md`. The pointer lives here instead: the K12, L17 and M8 entries
+  still name 0020 and 0021 as written, and the push they point to is now
+  0021 to 0026 from main, per `docs/vault-gate1-runbook.md`.
+
+- 2026-09-30: **The team vault never offers or applies Delete "For good"
+  (held `vault-m2-team`, a HIGH review finding).** 0025's
+  `org_vault_settings_ok` accepts `delete: "permanent"`, and with it the team
+  room armed "Really delete X for good?" and the sheet said "Deletes skip
+  Trash and ask twice", but every team delete is `org_vault_remove`, which
+  keeps a tombstone and a `deleted` revision (0024) that Trash lists and any
+  member restores until the 30-day purge: the copy called a restorable delete
+  permanent. The rule is a provider member, not an id check:
+  `StorageProvider.unappliedSettings` names the fields a storage does not
+  carry out, and the team's (`ORG_VAULT_UNAPPLIED_SETTINGS`) are `delete`,
+  `attachments.folder` (a team vault holds notes only) and `templates.folder`
+  (its one reader keeps templates out of a model's notes, and no model reads
+  team notes in v1, D15). The sheet shows no row for them, `saveVaultSetting`
+  answers read-only for them, `vaultCaps` keeps one-tap Trash under a stored
+  For good there (so `capsOf` needs no id check), and the team provider
+  drops them on every read and every write (setting who may delete
+  included). No SQL change: 0025 is main's and about to be applied, and a
+  key the row still holds is inert. The other team rows (new notes, open
+  mode, sort, Today's folder, format and template, link style and paths,
+  font, size, who may delete) were checked against the server and do what
+  they say. The same Attachments folder row on a personal Local vault (which
+  also keeps notes only) is left for a personal-sheet pass.
+
+- 2026-09-30: **The team room offers only what the server takes, and its
+  Trash says the purge's number (held `vault-m2-team`, three medium review
+  findings).** (1) The team Trash said notes were "kept in your
+  organization's history", but 0021's `org_vault_purge` (default 30 days, run
+  weekly by pg_cron with no argument) clears tombstones and revisions past
+  that window. The lead now reads "Deleted team notes can be restored from
+  here for 30 days." and the line "After that they are cleared from your
+  organization's history."; 30 is `VAULT_TEAM_TRASH_DAYS`, a lower bound, and
+  `vaultCopy.test.ts` reads the default and the cron line from the
+  migrations. (2) The folder sheet offered Delete folder to a member under
+  admins-only (0025 refuses it, OV403); it now leaves Delete out and shows the
+  note sheet's admins-only line. Rename, Move, New folder, Restore and the
+  settings save were checked against 0024 and 0025: a move is not gated by
+  the delete rule, a restore is a write any member makes, settings are
+  admins only already, and a lapsed plan turns every write cap off. (3) A
+  lapsed plan's empty vault offered New note and promised a first note
+  (0025 refuses it, OV402); one answer (`newNoteOffered`) now gates the
+  header's New note and the card's, and the card keeps only its heading, since
+  the lapsed lead above says why. The same class turned up in links: a
+  missing link offered "Tap to create it" while lapsed, so the row reads "Not
+  created yet." without a tap, and a tapped unresolved link says the lapsed
+  line without asking the server.
+
+- 2026-09-30: **Every team write the room can still hand over says the
+  plan's line before the server is asked, and a folder's Undo brings back
+  only what it took (held `vault-m2-team`, two medium review findings).** (1)
+  The quick switcher offered "Today's note" and 'New note "x"' on a lapsed
+  plan; New note did nothing and Today said the generic "Could not open
+  today's note". The switcher now takes Today and New note from the header's
+  own answers (`todayOffered`, `newNoteOffered`, which now also leaves out an
+  expired team sign-in), and the store's Today says the lapsed line. The
+  sweep of every other write found: no drag and drop, paste or write-back
+  from the link suggest in the room (the editor, the only place they could
+  live, is not shown while locked); the task checkbox, Mark reviewed, Link
+  and the settings save already follow the caps; the agent's approval card
+  writes the personal vault only (D15). What could still be tapped after the
+  plan lapsed under it now refuses before any server call through one pure
+  answer, `vaultTeamRefusal` (`state/vaultTeamGate.ts`): the Undo toast and a
+  Trash page's Restore ("Not restored."), a new note from any caller ("Not
+  created.", a listed note still opens), a delete ("Not deleted.", which
+  also stops the for-good path the caps would pick once Trash is off, and
+  says the admins-only line to a member before OV403), the resolve sheet's
+  Keep both and Keep yours (the text goes under Not saved with the plan's
+  reason and the note shows the vault's version, nothing sent), and a
+  rename sheet already up (it says the plan's line and plans nothing). The
+  links-left card leaves out Update the rest while links cannot be
+  rewritten, where it used to do nothing. (2) A team folder's trash returned
+  `f:<folder>` and its Restore brought back every Trash entry under the
+  folder, so a teammate's earlier delete came back and the Undo named the
+  wrong note. The entry's id now carries the paths that trash tombstoned,
+  and Restore brings back only those still in Trash; an id that does not
+  say (the old shape) restores nothing. The other providers keep a folder
+  trash as one entry of exactly what it took (Local's trash doc, the desktop
+  folder's own directory in `.trash`, " 2" beside a name already there, and
+  the hub through the same engine), and a new provider contract row holds
+  all four to it.
+- 2026-09-30: **The team vault says 0023's free space refusal for what it
+  is, and inserts beside main's lines instead of rewriting them (held
+  `vault-m2-team`, a high and a medium review finding).** (1) 0023 caps every
+  team with no live plan (the beta's teams included) at 25 MiB of note and
+  revision bytes and refuses growth with check_violation (23514, a 400).
+  `refusing` in `orgVault.ts` turned it into a plain refusal, only save said
+  it, and Restore, Undo, Today and a rename near the cap said "Try again in a
+  moment", which a retry cannot make true. It is now `OrgVaultFull`
+  (permanent), matched by its code and 0023's own words (a check constraint
+  on a vault table raises the same code in other words and stays the server
+  line), and says `VAULT_TEAM_FULL` in 0023's and the runbook's 4.5 terms.
+  The copy leaves out 0023's "start a plan to add more": no build offers a
+  plan yet, and no price or plan name (a Board gate). `vaultOps` carries any
+  refusal for good through `attempt` (its line, and `whole` for a line that
+  already names what did not happen), and the store puts the verb first:
+  "Not saved.", "Not restored." (Trash and Undo), "Not renamed.", "Not
+  started." (Today), "Not deleted.". A folder's Restore is caught note by
+  note: a note refused for good stays in Trash and the rest are still tried
+  (a smaller one may fit); a plan that is not active, or a failure that may
+  pass, stops there; the answer says how many came back and which stayed
+  (`RestorePartial`), or throws the refusal when none did. 0023's other cap
+  (one team without a plan per owner) is on `public.orgs`, which no vault RPC
+  writes, so it cannot reach the vault client; mapping it at org creation
+  (`pushOrgToServer`) stays open with deletion.md. The shared fake server
+  models the cap in each RPC's write order (0024 moves write the tombstone
+  first, so a team at the cap still renames). The resolve sheet's Keep yours
+  and the links rewrite pass near the cap still say their generic lines; not
+  in this finding. (2) `restoredPath` and `VAULT_SETTINGS_PATH` are back in
+  `local.ts` (the team vault imports them from there, no cycle), and main's
+  lines in the room, the store, `vaultCaps`, `vaultOps`, `providers.ts`,
+  `supabase.ts`, the settings sheet and host, the folder sheet and backlinks
+  are restored with insertions beside them (a later JSX prop or object
+  spread, a pushed note line, an added union member, a comment after
+  main's). What still changes a main line is listed with its reason in the
+  change that made this entry.
+
+- 2026-09-30: **Round 5's review: every team refusal says what happened and
+  keeps the text (held `vault-m2-team`, one blocker, two high, four medium).**
+  (1) A save whose answer came back after its note closed, meeting a
+  teammate's change, wrote a keep-both copy outside `saveVaultNote`'s try;
+  at 0023's cap the copy was refused and the text was dropped with the
+  rejection. The settle is caught and the text rescued (held with
+  `VAULT_TEAM_FULL`, or stashed when the failure may pass). (2) The resolve
+  sheet's Keep both, Keep yours and Save it again hold the draft with the
+  refusal's line on a refusal for good (the cap, or OV402 before the plan
+  was read), as the lapsed branch does; a failure that may pass keeps the
+  sheet up. (3) The link pass after a rename or move carries the refusal in
+  its report (`VaultRewriteReport.refusal`); the toast says "Its links were
+  not updated" with the reason, and the links-left card says "Not updated."
+  with it and offers no Update the rest. (4) Linking a mention, Mark
+  reviewed, a settings save and who may delete answer the storage's line
+  verb first ("Not linked.", "Not marked.", "Not saved."), and a settings
+  refusal reads the row again. (5) A gone note is gone and a taken name is
+  taken: the org Trash answers `missing` for a note already deleted
+  (`TrashResult` gains that member, inserted above main's), a delete or a
+  rename of it says `vaultGoneToast` and relists, and a folder moved note by
+  note carries the conflict that stopped it (`stoppedOn`, `stoppedAt`,
+  `theirs`) so the room names the taken note (letter case counts). (6) A
+  create that meets 0021's `exists` opens theirs at its own path. (7) Main's
+  two throw lines in `supabase.ts` are back, with the coded throw inserted
+  above each. The sweep of every other path found four more, fixed the same
+  way: a tick refused by OV402, a Restore or Undo of what is no longer in
+  Trash ("no longer in Trash", not "still in Trash"), a folder move that met
+  a note already deleted (it passes over it, nothing to move and nothing
+  lost), and a folder whose first note changed mid-move (no "newer version
+  is open" for a folder). Main lines this changes, each because the change
+  needs the value main's line cannot carry: `vaultResolve`'s, the link
+  write's and the mark write's `} catch {` in the store and `writeOnce`'s in
+  `vaultSettings.ts` become `} catch (err) {` (the refusal is read from the
+  error); `vaultRewriteNote` and `vaultMarkReviewed` in `AppState`, and
+  `VaultMarkResult` in `VaultAboutNote.tsx`, widen their answer by the
+  refusal's line (the union a caller must handle). Left as it is: main's team
+  export line blames device storage for a failed list (a read, nothing typed
+  at risk, and the fix would edit main's catch).
 - 2026-09-30: **The Personal paid gate (CTO, CFO, CX).** Only coding,
   building and agentic work is paid, and the gate sits on actions, not rooms.
   Paid (Personal, after the free sign-in; the paywall opens after the sign-in
@@ -3382,6 +3600,47 @@ execution contract. Newest at the bottom.
   sign-in, a parked message on a paid chat waited no longer for the
   entitlement read, so a subscriber met the paywall; with the gates on the
   build now waits for that read.
+
+- 2026-09-30: **Round 7, batch 1: team text belongs to its account and to the
+  version it was typed on (held `vault-m2-team`, two blockers, six high).**
+  (E1) A team resolve choice and the editor's live text leave with a
+  sign-out or another account's sign-in; an expiry keeps them only on the
+  kept note for the same account, and a team choice is settled only while
+  its account is signed in and its vault is on screen (the room shows a
+  choice only on its own note, vault and account). (E5) Every team target's
+  storage is bound to its account (`state/teamOwner.ts`): each call checks,
+  in the turn the provider reads the session for its token, that the
+  account is still the one signed in, and refuses for good otherwise; a
+  save answered after its account left keeps the text for that account; a
+  replay stops when its account leaves; a team ref naming no account speaks
+  for nobody; `isActiveVault` compares the team vault's account. (E6) After
+  an expiry, a choice tapped waits for the same account's return with its
+  words in the sealed stash, and that account's holds stay sealed. (E7) A
+  Not saved entry's id names the note, the account and the sitting (the
+  open note's `loadedAt`, now always later than the last); a hold replaces
+  only its own sitting's older text or the same words, and a refused save
+  keeps an earlier sitting's stashed words beside it. (E2) A task tick reads
+  the note once and toggles and guards on that read, and the body cache
+  never pairs an older body with the open note's version. (E3) Opening a
+  note leaves an open one as it is, waits up to 2 s for this device's save
+  or replay of it, and drops an open a later tap came after; a save landing
+  on a note opened after it began reloads a clean editor or asks. (E4) A
+  save's metadata-only retry, and the delete's, compare theirs with the text
+  they began on. (E8) A replay landing on the open note reloads a clean
+  editor or asks, never adopts under an older read. Main lines this
+  changes, each because the fix lives in them: in the store, the sets in
+  `forgetSession` and `onSignedIn`, `vaultTarget`, `vaultTargetFrom`,
+  `isActiveVault`, `putVaultNote`, `readBodyOf`, `reloadOpenNote`,
+  `recheckOpenNote`'s adopt, `heldDraft`, `keepNewest`, `holdVaultDraft`,
+  `keepUnsentTeamText`, `rescueVaultDraft`, `adoptReplayed` (now async),
+  `replayVaultPending`'s filter and loop, `leaveVaultConflict`,
+  `saveVaultNote` (its retry and success), `settleSaveConflict`, `vaultOpen`,
+  `vaultCloseNote`, `setVaultScope`, `vaultSave`, `vaultDelete`'s retry,
+  `vaultDiscardHeld`, `vaultToggleTask`, and each `loadedAt: Date.now()`;
+  `toggleTask` and `tickOnce` in `vaultOps.ts`; `conflictHere` in
+  `VaultScreen.tsx`. Main tests: the room's choice fixture names the vault
+  the room is on (`local`), and the frontmatter tick expects no write
+  attempt on a changed note.
 - 2026-09-30: **Plus opens every room but five, and the free sidebar shows
   it (founder, with a screenshot of the drawer).** "Basically everything
   except chats, projects, stack, cloud connections and settings should be
@@ -3408,6 +3667,102 @@ execution contract. Newest at the bottom.
   pairing, a routine already scheduled), and a chat's vault pack still reads
   notes that exist; Projects stays free, so a project's repository link
   opens the paywall only at Repositories.
+
+- 2026-09-30: **Round 7, batch 2: nothing of a note, a draft or a name is
+  lost or shown to the wrong account, and the room says what is true (held
+  `vault-m2-team`, eight high).** (E9) A stashed draft whose guarded replay
+  finds its note moved or deleted is held under Not saved with the gone
+  reason and the gone toast, never made again: this supersedes the Vault M1
+  line above that brought it back with `ifAbsent` (the M0 rule), for every
+  storage with compare-and-swap; only a draft with no base (a note made
+  offline) is written as a create. (E10) Every stash entry carries its
+  sitting (the open note's `loadedAt`) and a stash time always later than
+  the last, and each save carries the time it was asked for: a save settles
+  only its own sitting's older entries (data-1 still holds there), one
+  writer (`stashDraft`) never writes over newer words, and an earlier
+  sitting's words no editor showed go under Not saved before newer text
+  takes their place, or stay for the replay, which keeps them beside the
+  note. (E17) A save to a storage whose writes cross the network (the team
+  vault, your computer) writes its words to the sealed store first
+  (`oscode.vault.inflight`, apart from the stash, so the chip and the
+  replay never see a save still running) and removes them once it settles;
+  what a launch that ended left there goes to the stash on the next refresh
+  and replays at its version. Team entries follow R-19. (E12) One helper
+  clears what the room holds of a vault (list, note, folders, Trash, the
+  folder to return to, whether it listed) at a scope switch and at both ends
+  of a sign-in. (E13) A team vault's remembered empty folders and Recent are
+  keyed by account (`org::<org>::<uid>`), a sign-out drops them all and a
+  sign-in or an expiry keeps only that account's, and the role is read in
+  the org this device points at, so an account outside it gets no team
+  vault. (E18) The open note says `held` once the last save of its sitting
+  is set aside, and the chip says Not saved (no Try again) while it is.
+  (E20) A team folder delete stopped part way answers ok for what went,
+  with `partial` (how many, what is left, why, `lapsed` for OV402); the room
+  says so, stays in the folder and offers that Undo unless the plan lapsed.
+  (E22) The team client makes no note and moves none onto a name in Trash
+  (the tombstone would be revived and the deleted note would leave Trash):
+  a refusal for good, "is in Trash. Restore it from Trash, or use another
+  name."; Restore still revives its own name and passes over a
+  "(restored)" name in Trash, a keep-both copy goes on to the next name,
+  and Save it again on a note a teammate deleted meets the same rule (the
+  text is held; Restore brings back theirs). The race between the check and
+  the write needs a 'trashed' conflict in 0021's and 0024's functions, a
+  later migration and a founder gate. Main lines this changes, each because
+  the fix lives in it: in the store, the sets in `forgetSession`,
+  `onSignedIn` and `setVaultScope`, `editEmptyFolders`,
+  `refreshVaultFolders`, `editVaultRecent`, `noteVaultRecent`,
+  `vaultRecentRing`, `refreshOrgRole`'s query, the `VaultPendingEntry` type,
+  `pendingEntry`, `rescueVaultDraft`, `stashConflictText`,
+  `keepUnsentTeamText`, `replayVaultDraft`, `replayVaultPending`'s toast,
+  `saveVaultNote`'s success, `settleSaveConflict`'s stash drops,
+  `reloadOpenNote`, `writeConflictCopy`, `vaultCreate`'s offline branch,
+  `vaultSave`, `vaultRefresh`, `vaultDeleteFolder`, `forgetTeamVaultDrafts`,
+  `settleTeamVaultDrafts`, `countTeamDrafts` and the `vaultNote` and
+  `VaultDeleteOutcome` types; `VaultDeleteResult` and `deleteFolder` in
+  `vaultOps.ts`; `VaultSaveStatus` and `vaultSaveChip` in `vaultCopy.ts`;
+  in `VaultScreen.tsx`, the save status, `SaveChip`'s role, `offerUndo` and
+  the folder delete; `.vault-save-chip.offline` in `theme.css`. Main test:
+  the Trash contract's "restore never overwrites" has another writer take
+  the name, since the team vault no longer makes a note over one in Trash.
+
+- 2026-09-30: **Round 7, batch 3: the team vault answers only for itself,
+  and a late answer, a removal or a rename never says what is not true
+  (held `vault-m2-team`, two high, six medium).** (E26) The server's "not
+  a member of this org" (a plain P0001, matched by its words) is
+  `OrgVaultNotMember`, said as "You are no longer a member of this team.";
+  from any call it drops this device's role for that org and takes the room
+  back to the personal vault the way a sign-out does, words typed into the
+  open note held under Not saved. A removed member's selects answer no rows,
+  so one settings read confirms membership before a team note is called
+  gone or a team list that had notes is taken as empty; a read that does not
+  answer concludes nothing. (E30) A tick is refused while the open note's
+  editor holds text the note does not (held, kept for later, or a choice
+  open), and an operation that writes the open note reloads the editor only
+  when its text is the note's. (E11) A sign-out stops team text speaking
+  from its first step, so a save failing while it runs is memory only, and
+  `stashDraft` never seals team text for an account that no longer speaks
+  (an expiry still keeps it for the same account). (E14) The team provider
+  and the settings loader keep a generation that each sign-in end moves on:
+  an answer to a call made under an earlier one is returned but never
+  remembered, told to the store or cached. (E15) Only a personal rename
+  moves a project's pins. (E16) An answer with theirs at another spelling
+  of the same name moves the open note, its draft, its stash and the choice
+  there, keeping the version this device typed on; Keep yours is guarded
+  where theirs is, and lands at once over a pure rename. (E19) OV403 marks
+  the plan admins only, as OV402 marks it lapsed. (E21) A team folder
+  delete names the notes a teammate saved while it ran, stays in the
+  folder, and says nothing moved when nothing did. Main lines this changes,
+  each because the fix lives in it: in the store, `speaksNow`,
+  `keepUnsentTeamText`'s type and toast, `forgetSession` (now a wrapper
+  around `endSession`), `rekeyVaultPath`, the `putVaultNote` of `opsDeps`,
+  `recheckOpenNote`'s gone branch, `settleSaveConflict`'s open branch,
+  `vaultResolve`'s `done`, Keep theirs and Keep yours, and
+  `vaultLoadSettings`'s paint; `resolveEntry` and `loadVaultSettings` in
+  `vaultSettings.ts`; `deleteFolder` in `vaultOps.ts`. Main tests: two
+  store tests and two provider tests that used "not a member of this org"
+  as their example of a server refusal keeping its own line now use 0021's
+  "that note path is not allowed", since that raise now has a line of ours.
+
 - 2026-09-30: **The CTO's calls on the widened paid gate (founder: "Have my
   CTO make any outstanding calls").** (1) Stopping, revoking, forgetting and
   exporting are always free: `roomPass` opens Crew while routines exist and
@@ -3475,3 +3830,164 @@ execution contract. Newest at the bottom.
   changed and `windows` only when the engine, the desktop shell, its tests or
   the dependencies did; Markdown is left out of both. CI can also be run by
   hand, which runs every job. Codemagic is already by hand (same day).
+
+- 2026-09-30: **Round 7, batch 4: the team vault says what is there and what
+  it did, and a personal vault keeps main's resolve sheet (held
+  `vault-m2-team`, eight medium).** (E23) A Trash entry names the rev its
+  delete took (`n:{path}@{rev}`, a folder's `took` as [path, rev] pairs;
+  that rev is the 'deleted' revision's, the one the remove matched), and a
+  restore reads exactly that revision. It takes its own name back only
+  while its delete is still the newest ending there; when a later delete of
+  the name is in Trash, that one keeps the name (E22's rule) and this comes
+  back beside it as "(restored)", and the line says why. A folder's Undo
+  brings back each note it took, at its name or beside what holds it now,
+  never passing one over. Ids without a rev restore the newest delete, as
+  before. Kept as a limit: Trash lists one entry per name, so an older
+  delete at a name that was made and deleted again is reached by its Undo
+  only; listing every delete needs a way to tell a restored one apart (a
+  migration). (E24) An empty read of a note is always followed by a stat:
+  evicted still says downloading (iCloud only), a note that is there is
+  read once more, and a listed note the storage no longer holds is said
+  gone once, the list taken again, a case twin opened at its spelling.
+  Today and New note on a gone name go on to their guarded create. (E25) A
+  folder moved note by note moves, once, what is still in the folder after
+  the planned notes (a teammate's note added since, one renamed by case),
+  as a storage's own folder rename does; nothing left to move is `missing`
+  ("has no notes left to move"), never Renamed; links are planned again for
+  what moved. (E27) 0023's refusal marks the team `full` (like OV402's
+  lapsed mark); a settings read keeps it, a refresh or a new note with text
+  landing clears it. While full, New note, Today, Restore, Undo and Keep
+  both are refused before the server is asked, and a save that adds text is
+  held unsent, said once per sitting; a trim, a delete and a rename still
+  go. The first New note at the cap still makes one empty note (nothing
+  tells the client sooner). (E28) A save the lapsed plan refused reloads the
+  open note to the team's text once its words are held. (E29) vaultResolve
+  holds a refused draft for the team vault only; Your computer asleep keeps
+  main's { ok: false, failed: true } and the sheet. (E31) Held text follows
+  its note through a rename. (E32) A team list that fails after its account
+  left says nothing in the next one's session. Main lines this changes, each
+  because the fix lives in it: in the store, the `vaultOpen` type and its
+  signature, its empty-read branch, `vaultCreate`'s listed branch,
+  `vaultToday`'s plan and its made-elsewhere open, and `rescueVaultDraft`'s
+  refusal toast (now quiet when the sitting said it); in `vaultOps.ts`,
+  `planMoves`'s source read and `applyMove`'s note-by-note loop (now
+  `moveNoteByNote`); in `VaultScreen.tsx`, the Undo's and Trash's restored
+  toasts and `vaultFolderMovePartial`'s count. No main test changes.
+
+- 2026-10-01: **Round 7, batch 5: the team vault says what is gone, moved
+  and refused, truly (held `vault-m2-team`, eight medium).** (E34) A tick,
+  Mark reviewed or Link a mention that reads nothing, or whose guarded
+  write answers `missing`, asks before it says gone (noteGoneHere: the open
+  note rechecked in its save chain, any other stat'd and the membership
+  asked, E26) and then says vaultGoneLine, "Not ticked/marked/linked." and
+  the gone line, never "try again" or "the newer version is open"; a read
+  that throws keeps "try again", a note made offline is never called gone.
+  (E35) recheckOpenNote acts only for the sitting it looked at (path and
+  loadedAt) and never while, or across, this device's own rename or delete
+  (asOwnMove counts them); the save chain is not held for those, since
+  they flush it first and would wait on themselves. vaultDelete, main's
+  path with no Trash, is left as it was. (E36) A rewrite whose linking note
+  answers `missing` looks for it once: another spelling of its name, then
+  up to ten notes this device did not know, by text (the one the plan
+  rewrites exactly as planned is that note, moved); found, it is rewritten
+  there by compare-and-swap; not, its links leave `total` and the toast
+  names it ("moved or deleted while this ran"), with no Update the rest.
+  (E38) A Trash page Restore of a note goes on only while the note is still
+  in Trash by listTrash's own rule (restore takes `{ listed }`); an Undo
+  keeps E23's rule, since the server cannot tell a teammate's restore from
+  a new note at the name. (E40) A stash moved by this device's rename takes
+  the landed version as its base when its base is the rename's guard; a
+  storage's own folder rename names no guard, so it keeps both as before.
+  (E41) Folder membership is the folder's own spelling (inFolder), the rule
+  the tree and every storage's trash use; a new folder's name still folds.
+  (E42) A save or new note that waits says why: the team vault being
+  updated (OrgVaultNotReady, its line now vaultCopy's), a storage that did
+  not answer (5xx, 408, 429), or the connection; the chip says "Offline"
+  only for the last, and a stash from before a relaunch keeps today's chip.
+  (E43) Team paths follow 0015's 512 characters: keep-both and restored
+  names are fitted in the note's own name, and a new note or a rename over
+  it is refused before it is sent with VAULT_TEAM_PATH_TOO_LONG; the
+  server's own refusal still passes through in its words, as main's tests
+  pin it. The shared fake checks path_ok first, in 0025's order. Main lines
+  this changes, each because the fix lives in it: in the store,
+  `vaultToggleTask`'s read and its `missing` branch, `vaultMarkReviewed`'s
+  empty read and `missing` mapping, `vaultRewriteNote`'s empty read and
+  result, `recheckOpenNote`'s after-read check, `rekeyVaultPath`'s stash
+  line and the deps' `rekey`, `writeConflictCopy`'s and
+  `raiseVaultConflict`'s copy names, `rescueVaultDraft`'s stash toast,
+  `vaultCreate`'s stash toast and stat catch, and the calls into
+  `opsApplyMove`, `opsDeleteNote`, `opsDeleteFolder` and `opsRestoreEntry`;
+  in `vaultOps.ts`, `inFolder`, `createFolder`'s exists check,
+  `rewritePass`'s `missing` skips, `updateTheRest`'s read loop,
+  `VaultOpsDeps.rekey`, `settleMoved`, the note-by-note `moveOne`, and
+  `restoreEntry`'s signature; `StorageProvider.restore`'s signature;
+  `vaultSaveChip`'s label; in `VaultScreen.tsx`, `notesLeft`'s comment and
+  `SaveChip`'s call. No main test changes.
+
+- 2026-10-01: **Round 7, batch 6: the team vault says what it can do now,
+  truly (held `vault-m2-team`, three medium, five low).** (E46) Export as
+  plain files reads the team vault in its own try: a list that did not
+  answer says VAULT_TEAM_EXPORT_UNREACHABLE, a refusal for good says
+  "Nothing was exported." and its reason; only the device write keeps
+  main's storage line. The personal export's same catch (a hub vault with
+  the computer off) is main's and left for a main-side change. (E51) The
+  Trash page takes `refused`: on a lapsed plan it says the lapsed lead (and
+  the web's export line where Export is not offered) in place of the 30-day
+  promise, and offers no Restore; rows stay, named. (E55) Who can delete
+  team notes on a plan never read goes to the write, whose own settings
+  read answers; a plan read as not an admin is refused here, "Not saved."
+  first; setOrgVaultDeleteRole refuses what that read says 0025's put
+  would (not an admin, a lapsed plan) before the put. (E33) A list saved on
+  the device names each team index as it opens (ids only); a sign-out drops
+  every one its account built, a sign-in every one another account built
+  (and the last account's team by prefsOwner, for an index from before the
+  list); an expiry drops none. (E37) A plan that would refuse a write is
+  read again first (teamRefusalNow: one settings read, only on the refusal
+  path, only while its account is signed in); a read that fails keeps the
+  refusal; a refusal for the free space alone asks nothing (no read answers
+  it). A plan learned from a refusal drops that team's settings cache, so
+  the next relist reads it. (E39) Trash leaves out a deleted note whose
+  text a "(restored)" name beside it already holds exactly (putBack's own
+  rule: nothing new would land), found by one plain `like` on "restored";
+  edited since, it is listed again; anything that fails keeps every row;
+  E38's listed-row check follows the same rule. No twin check: a note whose
+  text is live beside it is back, whoever holds its old name. (E44) The
+  1 MB refusal's size rounds up to two places through vaultCopy's
+  vaultTeamTooLargeLine; main's hubTooLargeLine has the same toFixed(1)
+  edge at 4 MB and is left for main. (E45) An open team note on a lapsed
+  plan says VAULT_TEAM_LAPSED_NOTE (no export promise; the note offers
+  none); the expired sign-in's line wins when both hold. Main lines this
+  changes, each because the fix lives in it: in `VaultScreen.tsx`,
+  `exportTeam`'s read (`const notes = await vaultReadAll();`, now in its
+  own try above main's); in `VaultTrashView.tsx`, the lead and team lines
+  and the Restore button (wrapped, so re-indented); in `orgVault.ts`,
+  `write`'s 1 MB lines. The store's `endSession`, `onSignedIn`,
+  `openVaultIndex` and `vaultToday` gain lines without changing main's. No
+  main test changes.
+- 2026-10-01: **PR #1 merges with nine low findings open, behind the
+  teams switch (founder).** The edge-case review of the team client (six
+  lenses, each finding reproduced by a test, then confirmed by a second
+  reproduction) found 57: 2 blocker, 16 high, 25 medium, 14 low. The
+  founder ruled the rest overkill once the serious ones were fixed: 48 are
+  fixed, every blocker, high and medium among them, each with a test that
+  fails before its fix; the re-review round was skipped. Open, all low, all
+  must-fix before `featureOn('teams')` ships (PROGRESS, What remains): E47
+  (an OV402 met before the plan is read makes an admin read as a member),
+  E48 (the fake server snapshots every overwrite and models neither
+  `org_vault_path_ok` nor RLS for a non-member), E49 (after a renewal the
+  Trash row waits for a second relist), E50 (a never-paid team's notice
+  can name a passed deadline), E52 (the expired sign-in's kept note is
+  never on screen; Today is still offered then), E53 (below), E54 (after a
+  scope switch the room runs on the other vault's settings until its own
+  read lands; main's `!team` guard was dropped), E56 (DECISIONS lacks a
+  reason line for some changed main lines). E57 (a DECISIONS merge
+  conflict) is resolved by the merge. E53, the one that reaches a shipping
+  build: the branch's refusal and gone handling is provider-agnostic, so
+  the personal vaults (Your computer, the desktop folder, Local) now give
+  the specific line where main said "try again": a refused delete or Today
+  on Your computer names the reason ("Not deleted.", "Not started."), a
+  note or Trash entry already gone says so and relists, a refused link or
+  settings save says "Not linked." or "Not saved." with the reason, and a
+  closed note's keep-both copy that fails is stashed instead of rejecting
+  the save. Each is truer than main's line and none loses text; the
+  personal-provider tests that pin them are part of E53.

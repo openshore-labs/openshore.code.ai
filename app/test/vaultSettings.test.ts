@@ -274,13 +274,18 @@ describe('writeConfig on each provider (stream E)', () => {
   });
 
   describe('settingsWrite on the storages on main (L7, L16)', () => {
-    it('lights where writeConfig is, and the team vault reads defaults', () => {
+    it('lights where writeConfig is, and on the team vault for an admin only', () => {
       const lit = (id: Parameters<typeof m.gitos.providerFor>[0]) =>
         m.caps.vaultCaps(m.gitos.providerFor(id)!, { readOnly: false }).settingsWrite;
       expect(lit('local')).toBe(true);
       expect(lit('files')).toBe(true);
       expect(lit('hub')).toBe(true);
-      expect(lit('org')).toBe(false);
+      // The held team branch (0025): the settings row, admins only (CX Y14).
+      expect(lit('org')).toBe(true);
+      expect(
+        m.caps.vaultCaps(m.gitos.providerFor('org')!, { readOnly: false, settingsAdmin: false })
+          .settingsWrite,
+      ).toBe(false);
       expect(lit('gdrive')).toBe(false);
       expect(lit('icloud')).toBe(false);
     });
@@ -321,6 +326,7 @@ import type { StorageProvider, StoredFile, WriteGuard } from '../src/lib/gitos/p
 import {
   VAULT_SETTINGS_TTL_MS,
   cachedVaultSettings,
+  clearVaultSettingsCache,
   loadVaultSettings,
   rawFieldValue,
   resetVaultSettingsForTests,
@@ -616,6 +622,32 @@ describe('loading a vault settings (L5, L6, L18)', () => {
     expect(vaultSettingsHint(KEY, ['.config/app.json'], '.config')).toBe(true);
     await load(provider, { force: true });
     expect(calls.reads).toHaveLength(12);
+  });
+
+  it('a read that began before a forget (a sign-out) is answered but never cached (E14)', async () => {
+    const { provider, calls } = storage({ 'oscode/vault': ok({ version: 1 }, 'u1') });
+    let open!: () => void;
+    const gate = new Promise<void>((r) => (open = r));
+    const slow = {
+      async readConfig(rid: string, name: string) {
+        await gate;
+        return provider.readConfig(rid, name);
+      },
+    };
+    const narrowings = memoryNarrowings();
+    const late = load(slow, { narrowings });
+    clearVaultSettingsCache();
+    // A read after the forget is its own, never the one on its way.
+    const mine = load(provider, { narrowings });
+    open();
+    expect((await late).fileVersion).toBe('u1');
+    await mine;
+    expect(calls.reads).toHaveLength(8);
+    clearVaultSettingsCache();
+    const again = load(slow, { narrowings });
+    clearVaultSettingsCache(KEY);
+    await again;
+    expect(cachedVaultSettings(KEY)).toBeUndefined();
   });
 
   it('the privacy stamp moves with the file version', async () => {
@@ -1473,7 +1505,7 @@ describe('the room places the entry points (wave 2, CX Y4, Y7)', () => {
     expect(settings).not.toMatch(/SettingsGroup title="Vault/);
   });
 
-  it('the team vault on main reads the defaults, read-only, with its footer', async () => {
+  it('the team vault reads its own settings: admins change them, members read them', async () => {
     const { vaultSettingsTeamFooter, vaultCapLine } = await import('../src/lib/vaultCopy.js');
     expect(vaultSettingsTeamFooter({ admin: false })).toBe('Your admins set these.');
     expect(vaultSettingsTeamFooter({ admin: true, org: 'Acme' })).toBe(
@@ -1481,8 +1513,17 @@ describe('the room places the entry points (wave 2, CX Y4, Y7)', () => {
     );
     expect(vaultCapLine('org', 'settingsWrite')).toMatch(/cannot change here/);
     const host = readFileSync(join(SRC, 'components/vault/VaultSettingsHost.tsx'), 'utf8');
-    expect(host).toMatch(/\(!team && vaultSettings\) \|\| VAULT_SETTINGS_DEFAULTS/);
-    expect(host).toMatch(/\? vaultCapLine\('org', 'settingsWrite'\)/);
+    // The held team branch (0025): the row's own settings, not the defaults;
+    // a member's sheet reads only under the footer; a lapsed plan says why.
+    expect(host).toMatch(
+      /const s: ResolvedVaultSettings = vaultSettings \|\| VAULT_SETTINGS_DEFAULTS/,
+    );
+    expect(host).toMatch(/readOnly: !caps\.settingsWrite/);
+    expect(host).toMatch(/teamLapsed\s*\?\s*VAULT_TEAM_LAPSED_LEAD/);
+    // The sheet hides what the storage does not carry out (the team's
+    // Delete, the review of 2026-09-30), read from the provider itself.
+    expect(host).toMatch(/providerFor\(providerId\)\?\.unappliedSettings/);
+    expect(host).toMatch(/\{ unapplied \}/);
   });
 });
 

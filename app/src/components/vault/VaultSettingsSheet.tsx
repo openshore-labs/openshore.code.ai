@@ -22,6 +22,11 @@
 //   unset adds "Obsidian keeps its own setting for this."
 // - The phone drops Link paths and every "From your computer's config" row
 //   (it cannot change them: no dead rows). Everything else is on both.
+// - A field the storage does not carry out (`unapplied`, the provider's
+//   `unappliedSettings`) has no row at all: on the team vault that is
+//   Delete (every team delete keeps the note in Trash, so "For good" would be
+//   untrue), the attachments folder (notes only) and the templates folder
+//   (no model reads team notes in v1).
 // - A sheet that cannot write (the storage cannot, the computer is away, the
 //   file is unreadable) shows every file row read-only, `aria-disabled`, with
 //   the reason as `aria-describedby`. "On this device" still works: those are
@@ -266,6 +271,23 @@ export interface VaultSettingsSheetProps {
   onPickFolder: (field: VaultSettingsPickField) => void;
   /** Open the storage sheet, after the exit. */
   onOpenStorage: () => void;
+  /** Every file row reads only, with no line of its own at the top (a team
+   *  member, whose footer already says who sets these, Y14). */
+  readOnly?: boolean;
+  /** The fields this storage does not carry out (the provider's
+   *  `unappliedSettings`): their rows are not offered at all, so the sheet
+   *  never promises what the storage will not do (the team vault's Delete,
+   *  attachments folder and templates folder). */
+  unapplied?: readonly VaultSettingsField[];
+  /** A team vault's "Who can delete team notes" (Y14): the value, and the
+   *  change for an admin; without `onChange` the row reads only. */
+  teamDelete?: {
+    label: string;
+    sub: string;
+    options: readonly { value: 'admin' | 'member'; label: string }[];
+    value: 'admin' | 'member';
+    onChange?: (value: 'admin' | 'member') => void;
+  };
 }
 
 /** The attributes that set `--vault-font` and `--vault-size-step` on the
@@ -504,6 +526,8 @@ export function VaultSettingsSheet(props: VaultSettingsSheetProps) {
     onDevice,
     onPickFolder,
     onOpenStorage,
+    teamDelete,
+    unapplied = [],
   } = props;
   const uid = useId();
   const ids = {
@@ -512,7 +536,7 @@ export function VaultSettingsSheet(props: VaultSettingsSheetProps) {
   };
   const desktop = platform === 'desktop';
   const lockLine = s.fileState === 'unreadable' ? c.unreadable : props.lockLine;
-  const locked = Boolean(lockLine);
+  const locked = Boolean(lockLine) || Boolean(props.readOnly);
   const opts = options(c);
 
   // Y2: which "From Obsidian" rows are showing their one line.
@@ -540,6 +564,8 @@ export function VaultSettingsSheet(props: VaultSettingsSheetProps) {
     }, sheetExitMs());
   };
 
+  /** A row shows only while this storage carries out one of its fields. */
+  const offered = (...fields: VaultSettingsField[]) => fields.some((f) => !unapplied.includes(f));
   const fromObsidian = (...fields: VaultSettingsField[]) =>
     fields.some((f) => s.source[f] === 'obsidian');
   /** A row's sub, with Obsidian's own-setting note where it applies. */
@@ -558,6 +584,7 @@ export function VaultSettingsSheet(props: VaultSettingsSheetProps) {
     value: string,
     editor: () => ReactNode,
   ): ReactNode => {
+    if (!offered(...fields)) return null;
     if (fromObsidian(...fields)) {
       const isOpen = expanded.has(key);
       const subId = `${uid}-${key}-obs`;
@@ -591,7 +618,7 @@ export function VaultSettingsSheet(props: VaultSettingsSheetProps) {
           className="vault-settings-item vault-settings-row vault-settings-locked"
           key={key}
           aria-disabled="true"
-          aria-describedby={ids.lock}
+          aria-describedby={lockLine ? ids.lock : undefined}
         >
           <RowText label={label} />
           <span className="vault-settings-value">{value}</span>
@@ -841,6 +868,32 @@ export function VaultSettingsSheet(props: VaultSettingsSheetProps) {
                 >
                   <RowText label={c.deleteLabel} sub={caps.trashLine} subId={`${uid}-trash-line`} />
                 </div>
+              ) : null}
+              {teamDelete ? (
+                teamDelete.onChange && !locked ? (
+                  <div className="vault-settings-item" key="team-delete">
+                    {segRow(
+                      'team-delete',
+                      [],
+                      teamDelete.label,
+                      teamDelete.options,
+                      teamDelete.value,
+                      teamDelete.onChange,
+                      teamDelete.sub,
+                    )}
+                  </div>
+                ) : (
+                  <div
+                    className="vault-settings-item vault-settings-row vault-settings-locked"
+                    key="team-delete"
+                    aria-disabled="true"
+                  >
+                    <RowText label={teamDelete.label} sub={teamDelete.sub} />
+                    <span className="vault-settings-value">
+                      {teamDelete.options.find((o) => o.value === teamDelete.value)?.label}
+                    </span>
+                  </div>
+                )
               ) : null}
               {s.ignore.paths.length ? (
                 <div className="vault-settings-item vault-settings-row vault-settings-row-stack">

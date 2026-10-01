@@ -658,6 +658,20 @@ export function vaultLeaveToast(
 export const VAULT_GONE_REASON =
   'The note was moved or deleted somewhere else before this text was saved.';
 
+/** A replay found several notes moved or deleted somewhere else before the
+ *  text typed in them was saved: the text is held, the notes are not made
+ *  again (round 7 E9). The held line follows. */
+export function vaultGoneManyLine(count: number): string {
+  return `${count} notes with text you had not saved were moved or deleted somewhere else.`;
+}
+
+/** The Not saved reason for text stashed on this device that no editor
+ *  showed (the note was opened again, at the vault's version, before the
+ *  text was saved), once newer text for the same note took its place in the
+ *  stash (round 7 E10). */
+export const VAULT_UNSEEN_DRAFT_REASON =
+  'Typed earlier on this device and not saved before the note was opened and edited again. Copy it into the note if you still need it.';
+
 /** The Not saved reason when no conflict-copy name was free after 20 tries. */
 export const VAULT_NO_COPY_NAME_REASON =
   'No free name was left for your copy, so the text is kept here.';
@@ -710,19 +724,62 @@ function copyOrigin(copy: string): string {
 // a way to try now. A conflict copy wears a badge in the tree, so the person
 // can find the text that landed beside a note.
 
-/** Where the open note's text stands. */
-export type VaultSaveStatus = 'saved' | 'saving' | 'offline';
+/** Where the open note's text stands. 'held': its last save was set aside
+ *  under Not saved (refused for good, read-only), never "Saved" (E18). */
+export type VaultSaveStatus = 'saved' | 'saving' | 'offline' | 'held';
+
+/** Why a save or a new note is waiting on this device (round 7 E42): the
+ *  connection dropped ('offline'), the team vault is being updated (its
+ *  function not found during a deploy, 'not-ready'), or the storage did not
+ *  answer (a 5xx, a timeout, 'server'). The device is online for the last
+ *  two, so neither says it is not. Each may pass, so each keeps the text. */
+export type VaultWaitKind = 'offline' | 'not-ready' | 'server';
+
+/** The team vault's function was not found (a deploy's window): the text is
+ *  stashed and replays once the server has it (CTO G3). */
+export const VAULT_TEAM_NOT_READY =
+  'The team vault is being updated. Your text is kept and saves when it is ready.';
+
+/** The toast when a save is stashed to replay, by why it waits (E42). */
+export function vaultSaveWaitToast(kind: VaultWaitKind): string {
+  if (kind === 'not-ready') return VAULT_TEAM_NOT_READY;
+  if (kind === 'server') {
+    return 'Could not save to your vault: your vault storage did not answer. Your text is kept and saves when it does.';
+  }
+  return 'Could not save to your vault. Your text is kept and saves when the connection returns.';
+}
+
+/** The toast when a new note opens before its storage has it, by why (E42). */
+export function vaultCreateWaitToast(kind: VaultWaitKind): string {
+  if (kind === 'not-ready') {
+    return 'The team vault is being updated. This note is kept on this device and saves when it is ready.';
+  }
+  if (kind === 'server') {
+    return 'Your vault storage did not answer. This note is kept on this device and saves when it does.';
+  }
+  return 'Working offline. This note saves when your storage reconnects.';
+}
 
 /** The save chip's words: the label, how many notes wait (offline only), and
- *  the retry button's label (offline only). */
+ *  the retry button's label (offline only; a refusal for good has no retry,
+ *  since trying again meets the same refusal). `kind` says why it waits,
+ *  where this sitting knows (E42); unknown (a stash from before a relaunch)
+ *  keeps the line it always had. */
 export function vaultSaveChip(
   status: VaultSaveStatus,
   pending: number,
+  kind?: VaultWaitKind,
 ): { label: string; count?: string; retry?: string } {
   if (status === 'saved') return { label: 'Saved' };
   if (status === 'saving') return { label: 'Saving' };
+  if (status === 'held') return { label: 'Not saved' };
   return {
-    label: 'Offline, kept on this device',
+    label:
+      kind === 'not-ready'
+        ? 'Team vault updating, kept on this device'
+        : kind === 'server'
+          ? 'Storage not answering, kept on this device'
+          : 'Offline, kept on this device',
     ...(pending > 0
       ? { count: pending === 1 ? '1 note waiting' : `${pending} notes waiting` }
       : {}),
@@ -733,6 +790,52 @@ export function vaultSaveChip(
 /** A team note kept open after the sign-in expired (2.6): read-only, and
  *  what to do to save again. */
 export const VAULT_TEAM_SIGN_IN_LINE = 'Sign in again to save to your team.';
+
+/** A team step started under one account, refused because another account
+ *  is signed in now: nothing more of it is sent under the new one (R-19). */
+export const VAULT_TEAM_OTHER_ACCOUNT =
+  'It was started under another account, so the rest was not sent.';
+
+/** This account is no longer a member of the team (an admin removed it, or
+ *  it left from another device): the reason a save, a new note or a move
+ *  refused by the server gives, after its verb (round 7 E26). Nothing in the
+ *  team vault was deleted, so no line says it was. */
+export const VAULT_TEAM_NOT_MEMBER_REASON = 'You are no longer a member of this team.';
+
+/** A team note's path over 0015's 512 characters, refused before it is sent
+ *  (round 7 E43): a new note, a rename, a restore. Never "try again". */
+export const VAULT_TEAM_PATH_TOO_LONG =
+  "A team note's name, its folders included, can be up to 512 characters.";
+
+/** A team note over 0021's and 0025's 1 MB (octet_length over 1048576),
+ *  refused before it is sent: its size rounded UP to two places, so a note a
+ *  byte over never reads "this one is 1.0 MB" beside the cap (round 7 E44).
+ *  Never "try again": the same text meets the same cap. */
+export function vaultTeamTooLargeLine(bytes: number): string {
+  const over = Math.max(Math.ceil((bytes / 1_048_576) * 100) / 100, 1.01);
+  return `A team note is limited to 1 MB, and this one is ${Number(over.toFixed(2))} MB.`;
+}
+
+/** The server's own path refusal (0015's org_vault_path_ok, 'that note path
+ *  is not allowed'), in the app's words (E43). */
+export const VAULT_TEAM_PATH_NOT_ALLOWED = 'The team vault does not take that note name.';
+
+/** Export as plain files, when the team vault's list did not answer (the
+ *  connection, a 5xx): nothing was read, so nothing was written on this
+ *  device, and its storage is not the cause (round 7 E46). */
+export const VAULT_TEAM_EXPORT_UNREACHABLE =
+  'Could not reach the team vault, so nothing was exported. Try again when it answers.';
+
+/** Export as plain files, refused for good before a note was read (no team
+ *  session): its reason, never "try again" (E46). */
+export function vaultTeamExportRefused(reason: string): string {
+  return `Nothing was exported. ${reason}`;
+}
+
+/** Said once, as the room takes the team vault away and shows the personal
+ *  one: its notes are still there, only no longer shown to this account. */
+export const VAULT_TEAM_NOT_MEMBER =
+  'You are no longer a member of this team, so its notes are not shown here.';
 
 // ---- The lease (2.5) ----------------------------------------------------------
 // Advisory on a storage with compare-and-swap: one quiet line, never read-only.
@@ -1381,6 +1484,12 @@ type M6CapLineName = Exclude<VaultCapLineName, 'settingsWrite'>;
 
 const DRIVE_READ_ONLY = 'Google Drive vaults are read-only here';
 
+/** How many days a deleted team note waits in Trash: org_vault_purge's
+ *  default window, which pg_cron runs weekly with no argument (migration
+ *  0021; vaultCopy.test.ts reads both there). A lower bound, since the purge
+ *  runs once a week, so the copy says "for 30 days" and "after 30 days". */
+export const VAULT_TEAM_TRASH_DAYS = 30;
+
 const CAP_LINES: Record<M6CapLineName, Partial<Record<VaultCopyProvider, string>>> = {
   rename: {
     icloud: 'Notes in iCloud Drive cannot be renamed here yet. The Files app can rename them.',
@@ -1398,7 +1507,7 @@ const CAP_LINES: Record<M6CapLineName, Partial<Record<VaultCopyProvider, string>
     gdrive: `${DRIVE_READ_ONLY}, so notes cannot be deleted.`,
   },
   emptyTrash: {
-    org: "Team notes are kept in your organization's history.",
+    org: `Deleted team notes are cleared from your organization's history after ${VAULT_TEAM_TRASH_DAYS} days.`,
   },
   attachments: {
     local: 'This device keeps notes only, so images and PDFs do not show here.',
@@ -1669,11 +1778,32 @@ export function vaultRenameToast(o: {
     skipped: readonly string[];
     notUpdated: readonly string[];
     stopped: boolean;
+    /** A refusal for good stopped the pass (a team out of free space): its
+     *  reason, said in place of "tries again". */
+    refusal?: string;
+    /** Linking notes moved or deleted somewhere else while the pass ran and
+     *  not found again (round 7 E36): named after the rest, never counted
+     *  as updated, and never offered to Update the rest. */
+    gone?: readonly string[];
   };
 }): string {
   const head = `Renamed to "${o.next}".`;
   const r = o.rewrite;
   if (!r) return head;
+  if (r.gone?.length) {
+    const { gone, ...rest } = r;
+    const nothingElse = !rest.skipped.length && !rest.notUpdated.length && !rest.total;
+    const said = nothingElse && !rest.refusal ? head : vaultRenameToast({ ...o, rewrite: rest });
+    return `${said} ${vaultLinksGoneLine(gone)}`;
+  }
+  // Refused for good (a team out of free space, 0023): the storage's reason,
+  // never "tries again", since Update the rest would be refused the same way.
+  if (r.refusal) {
+    const left = r.skipped.length + r.notUpdated.length;
+    return r.updated === 0
+      ? `${head} Its links were not updated. ${reasonSentence(r.refusal)}`
+      : `${head} ${r.updated} of ${count(r.total, 'link')} updated. ${count(left, 'note')} still ${left === 1 ? 'links' : 'link'} to "${o.old}". ${reasonSentence(r.refusal)}`;
+  }
   if (r.stopped && r.updated === 0) {
     return `Renamed to "${o.next}", but its links could not be updated. Update the rest tries again.`;
   }
@@ -1686,6 +1816,15 @@ export function vaultRenameToast(o: {
     return `${head} ${r.updated} of ${count(r.total, 'link')} updated. ${count(left.length, 'note')} could not be reached, so their links still point to "${o.old}".`;
   }
   return `${head} ${r.updated} of ${count(r.total, 'link')} updated. ${count(left.length, 'note')} changed while this ran, so their links still point to "${o.old}".`;
+}
+
+/** The linking notes a rename's pass did not find where it read them: moved
+ *  or deleted somewhere else while it ran (round 7 E36). Which of the two is
+ *  not known here, so both are said; never "try again". */
+export function vaultLinksGoneLine(titles: readonly string[]): string {
+  return titles.length === 1
+    ? `"${titles[0]}" was moved or deleted while this ran, so its links were not updated.`
+    : `${count(titles.length, 'note')} were moved or deleted while this ran, so their links were not updated.`;
 }
 
 /** The standing card on the renamed note, since toasts fade (X7). */
@@ -1772,6 +1911,12 @@ export function vaultRestoredToast(o: {
   return o.sayFolder ? `Restored "${o.title}" to ${where}.` : `Restored "${o.title}".`;
 }
 
+/** Undo or Restore found nothing left in Trash to put back: it was restored
+ *  or cleared somewhere else (a teammate, the purge, another device). */
+export function vaultTrashGone(title: string): string {
+  return `"${title}" is no longer in Trash. It was restored or cleared somewhere else.`;
+}
+
 /** Undo or Restore could not put it back. */
 export function vaultRestoreFailed(title: string): string {
   return `Could not restore "${title}". It is still in Trash. Try again in a moment.`;
@@ -1788,14 +1933,19 @@ export const VAULT_TRASH_BACK = 'Vault';
 export const VAULT_TRASH_RESTORE = 'Restore';
 export const VAULT_TRASH_EMPTY = 'Empty Trash';
 export const VAULT_TRASH_IS_EMPTY = 'Trash is empty.';
-export const VAULT_TRASH_TEAM_LINE = "Team notes are kept in your organization's history.";
+/** The team Trash's second line: what the weekly purge does after the lead's
+ *  window (VAULT_TEAM_TRASH_DAYS). */
+export const VAULT_TRASH_TEAM_LINE =
+  "After that they are cleared from your organization's history.";
 
 /** The lead line, per kind of storage (X10; never "stay in the vault"). */
 export function vaultTrashLead(kind: 'folder' | 'local' | 'team'): string {
   if (kind === 'folder') {
     return 'Deleted notes wait here, in the .trash folder, until you empty it.';
   }
-  if (kind === 'team') return 'Deleted team notes can be restored from here.';
+  if (kind === 'team') {
+    return `Deleted team notes can be restored from here for ${VAULT_TEAM_TRASH_DAYS} days.`;
+  }
   return 'Deleted notes wait here until you empty Trash.';
 }
 
@@ -1852,6 +2002,13 @@ export function vaultTickChanged(title: string): string {
   return `"${title}" changed somewhere else, so that box was not ticked. The newer version is open now.`;
 }
 export const VAULT_TICK_FAILED = 'Could not save that tick. Try again.';
+/** A tick on a note whose editor holds text the note does not have yet (a
+ *  save held under Not saved, or kept to send when the connection returns):
+ *  the box was counted on that text, so it is not ticked on the note, whose
+ *  line there may be another task (round 7 E30). */
+export function vaultTickUnsaved(title: string): string {
+  return `"${title}" has text that is not saved yet, so that box was not ticked.`;
+}
 
 // ---- M6 stream G end ----
 
@@ -1899,6 +2056,8 @@ export const VAULT_OUTGOING_LINKS = 'Links from this note';
 export const VAULT_UNLINKED_MENTIONS = 'Unlinked mentions';
 export const VAULT_BACKLINKS_LOADING = 'Finding linked mentions';
 export const VAULT_OUTGOING_MISSING = 'Not created yet. Tap to create it.';
+/** The same row where no note can be made now (a lapsed team plan). */
+export const VAULT_OUTGOING_MISSING_OFF = 'Not created yet.';
 export const VAULT_FIND_UNLINKED = 'Find unlinked mentions';
 export const VAULT_LINK_BUTTON = 'Link';
 export function vaultUnlinkedBusy(n: number): string {
@@ -2486,3 +2645,280 @@ export function vaultPackEngineLine(
 }
 
 // ---- M8 end ----
+
+// ---- Team vault begin ----
+// The team vault's M6 and M7 lines (the held vault-m2-team branch; CX Y14,
+// Y15). Neutral words, no price or tier name (pricing is a Board gate).
+
+/** A member's delete refused by the server under admins-only (OV403, Y14). */
+export const VAULT_TEAM_DELETE_REFUSED = 'Not deleted. Only admins can delete team notes.';
+
+/** Options' note for a member when only admins may delete (Y14). */
+export const VAULT_TEAM_DELETE_ADMINS_ONLY = 'Only admins can delete team notes here.';
+
+/** Who can delete team notes, changed by someone the settings read says is
+ *  not an admin (0025's org_vault_settings_put checks it first): the reason,
+ *  said after "Not saved.", never "try again" (round 7 E55). */
+export const VAULT_TEAM_SETTINGS_ADMINS_ONLY = 'Only admins can change team vault settings.';
+
+/** The lapsed plan's lead (Y15): read-only, calm, export still there. */
+export const VAULT_TEAM_LAPSED_LEAD =
+  "Your organization's plan is not active, so team notes are read-only. Everyone can still read and export all of them.";
+
+/** The same, said on an open team note, which offers no Export of its own
+ *  (round 7 E45): why it is read-only, and nothing it cannot keep. */
+export const VAULT_TEAM_LAPSED_NOTE =
+  "Your organization's plan is not active, so this note is read-only.";
+
+/** The lapsed lead's export line on the web, where Export is not offered. */
+export const VAULT_TEAM_LAPSED_WEB = 'Open OpenShore on your computer or iPhone to export them.';
+
+/** The one more line an admin reads in the lapsed lead, and its button. */
+export const VAULT_TEAM_LAPSED_ADMIN = 'Editing comes back when the plan is active again.';
+export const VAULT_TEAM_OPEN_ADMIN = 'Open Admin';
+
+/** A save refused mid-edit because the plan lapsed (OV402): the Not saved
+ *  reason. The text is held, never lost. */
+export const VAULT_TEAM_LAPSED_NOT_SAVED =
+  'The team plan is not active, so team notes cannot change.';
+
+/** A tapped link to a note not made yet, while the plan is lapsed: said here,
+ *  and the server (which refuses it, OV402) is never asked. */
+export const VAULT_TEAM_LAPSED_NOT_CREATED = `Not created. ${VAULT_TEAM_LAPSED_NOT_SAVED}`;
+
+/** A Restore in Trash, or an Undo, while the plan is lapsed: said here, and
+ *  the server (which refuses it, OV402) is never asked. */
+export const VAULT_TEAM_LAPSED_NOT_RESTORED = `Not restored. ${VAULT_TEAM_LAPSED_NOT_SAVED}`;
+
+/** A delete while the plan is lapsed, said before the server is asked. */
+export const VAULT_TEAM_LAPSED_NOT_DELETED = `Not deleted. ${VAULT_TEAM_LAPSED_NOT_SAVED}`;
+
+/** A choice on the resolve sheet that would write while the plan is lapsed:
+ *  the text goes under Not saved with VAULT_TEAM_LAPSED_NOT_SAVED as its
+ *  reason, and nothing is sent. */
+export const VAULT_TEAM_LAPSED_NOT_SAVED_LINE = `Not saved. ${VAULT_TEAM_LAPSED_NOT_SAVED}`;
+
+/** The notice a never-paid team reads while its deadline is set
+ *  (`entitled_until`, migration 0025): shown before any refusal. */
+export function vaultTeamEditableUntil(until: string | Date): string | undefined {
+  const d = typeof until === 'string' ? new Date(until) : until;
+  if (Number.isNaN(d.getTime())) return undefined;
+  const date = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  return `Team notes stay editable until ${date}.`;
+}
+
+/** The free space a team without a live plan holds for its notes and their
+ *  history, in MiB: migration 0023's no_entitlement_max_org_bytes (26214400
+ *  bytes). vaultCopy.test.ts reads the number there. */
+export const VAULT_TEAM_FREE_MIB = 25;
+
+/** A write refused because a team without a live plan has used its free
+ *  space (0023's check_violation, SQLSTATE 23514): a save, a new note,
+ *  Today, a Restore or an Undo, and a rename once a team is past it. Said in
+ *  0023's own words and the gate 1 runbook's (4.5): a delete frees nothing
+ *  until the weekly purge clears its history, about a month later
+ *  (VAULT_TEAM_TRASH_DAYS). No price or plan name (a Board gate), and no
+ *  "start a plan" while no build offers one. The reason only: the store puts
+ *  the verb first (VAULT_REFUSED_VERB). */
+export const VAULT_TEAM_FULL = `This team has used its ${VAULT_TEAM_FREE_MIB} MiB of free space. A deleted note frees its space when its history is cleared, about a month later.`;
+
+/** The team room's lead once a write was refused for the free space (round
+ *  7 E27): what still works, so the room does not offer what the server
+ *  refuses (New note, Today, a new note from a link). A save that trims a
+ *  note, a delete, and reading still work; a save that adds text is kept
+ *  under Not saved. */
+export const VAULT_TEAM_FULL_LEAD = `${VAULT_TEAM_FULL} Notes can still be read, shortened and deleted; text added now is kept under Not saved.`;
+
+/** A new note (New note, Today, a missing link) refused before the server
+ *  is asked, once the team is known to be full (E27). */
+export const VAULT_TEAM_FULL_NOT_CREATED = `Not created. ${VAULT_TEAM_FULL}`;
+
+/** A Restore in Trash, or an Undo, refused before the server is asked once
+ *  the team is known to be full: bringing a note back adds its text (E27). */
+export const VAULT_TEAM_FULL_NOT_RESTORED = `Not restored. ${VAULT_TEAM_FULL}`;
+
+/** What did not happen, said first when a storage refuses for good (a team
+ *  out of free space, a plan not active), before the storage's reason. */
+export const VAULT_REFUSED_VERB = {
+  save: 'Not saved.',
+  today: 'Not started.',
+  rename: 'Not renamed.',
+  restore: 'Not restored.',
+  delete: 'Not deleted.',
+  link: 'Not linked.',
+  mark: 'Not marked.',
+  tick: 'Not ticked.',
+  update: 'Not updated.',
+} as const;
+
+/** A tick, a mark or a link whose note a teammate (or another device) moved
+ *  or deleted: what did not happen first, then why (round 7 E34). Never "try
+ *  again": the note is not there to try on. */
+export function vaultGoneLine(verb: keyof typeof VAULT_REFUSED_VERB, title: string): string {
+  return `${VAULT_REFUSED_VERB[verb]} ${vaultGoneToast(title)}`;
+}
+
+/** A storage's reason ("a note is limited to 1 MB") as a sentence. */
+function reasonSentence(line: string): string {
+  const t = line.trim();
+  const s = t.charAt(0).toUpperCase() + t.slice(1);
+  return /[.!?]$/.test(s) ? s : `${s}.`;
+}
+
+/** A refusal as the room says it: a line that already names what did not
+ *  happen (`whole`, the admins-only delete, CX Y14) as it is; any other line
+ *  is the storage's reason, so the verb goes first and the reason follows as
+ *  a sentence ("Not restored. This team has used its 25 MiB..."). */
+export function vaultRefusedLine(
+  verb: keyof typeof VAULT_REFUSED_VERB,
+  r: { line: string; whole?: boolean },
+): string {
+  return r.whole ? r.line : `${VAULT_REFUSED_VERB[verb]} ${reasonSentence(r.line)}`;
+}
+
+/** A folder's Restore (or its Undo) that brought back only some of its
+ *  notes: how many came back, which are still in Trash (the first three by
+ *  title), and why, when the storage said. With no reason, the rest were not
+ *  reached, so trying again is true. */
+export function vaultRestorePartial(o: {
+  title: string;
+  restored: number;
+  left: readonly string[];
+  reason?: string;
+}): string {
+  const total = o.restored + o.left.length;
+  const names = o.left.slice(0, 3).map((p) => `"${noteTitle(p)}"`);
+  const more = o.left.length > 3 ? ` and ${o.left.length - 3} more` : '';
+  const why = o.reason ? reasonSentence(o.reason) : 'Try again in a moment.';
+  return `Restored ${o.restored} of ${total} ${total === 1 ? 'note' : 'notes'} from "${o.title}". Still in Trash: ${names.join(', ')}${more}. ${why}`;
+}
+
+/** A restore or an Undo that brought notes back beside their own names (the
+ *  team vault, round 7 E23): a note of that name is in the vault now, or the
+ *  name is held by a later delete that is still in Trash, which keeps it.
+ *  `folder` is set for a folder's Restore or Undo, whose title is the
+ *  folder's. Undefined when a note came back beside a note in the vault,
+ *  which vaultRestoredToast already says. */
+export function vaultRestoredBeside(o: {
+  title: string;
+  folder: boolean;
+  beside: readonly { from: string; to: string; inTrash: boolean }[];
+}): string | undefined {
+  const first = o.beside[0];
+  if (!first) return undefined;
+  const why = (inTrash: boolean) =>
+    inTrash ? 'that name is in Trash from a later delete' : 'a note of that name is there now';
+  if (!o.folder) {
+    if (!first.inTrash) return undefined;
+    return `"${o.title}" came back as "${noteTitle(first.to)}", since ${why(true)}.`;
+  }
+  if (o.beside.length === 1) {
+    return `Restored "${o.title}". "${noteTitle(first.from)}" came back as "${noteTitle(first.to)}", since ${why(first.inTrash)}.`;
+  }
+  return `Restored "${o.title}". ${o.beside.length} notes came back beside their names, as "(restored)", since those names are taken or in Trash.`;
+}
+
+/** A folder delete that stopped part way (the team vault trashes a folder
+ *  note by note): how many went to Trash, that the rest are still there, and
+ *  why, when a refusal said; with no reason, the rest were not reached, so
+ *  trying again is true (round 7 E20). Never "Not deleted": some were. */
+// With `changed` (the paths a teammate saved while the delete ran, which
+// its guard passed over, E21) and nothing else left, it names them instead.
+export function vaultFolderTrashPartial(o: {
+  title: string;
+  trashed: number;
+  left: number;
+  reason?: string;
+  changed?: readonly string[];
+}): string {
+  const total = o.trashed + o.left;
+  const moved = `Moved ${o.trashed} of ${total} ${total === 1 ? 'note' : 'notes'} from "${o.title}" to Trash.`;
+  if (o.changed?.length && o.changed.length === o.left && !o.reason) {
+    const they = o.changed.length === 1 ? 'it is' : 'they are';
+    return `${moved} ${changedWhileThisRan(o.changed)}, so ${they} still there.`;
+  }
+  const why = o.reason ? reasonSentence(o.reason) : 'Try again in a moment.';
+  return `${moved} The rest are still there. ${why}`;
+}
+
+/** Which notes changed while a folder delete ran: one or two by title,
+ *  more by count. */
+function changedWhileThisRan(paths: readonly string[]): string {
+  const names = paths.map((p) => `"${noteTitle(p)}"`);
+  const who =
+    names.length === 1
+      ? names[0]!
+      : names.length === 2
+        ? `${names[0]} and ${names[1]}`
+        : `${names.length} notes`;
+  return `${who} changed while this ran`;
+}
+
+/** A folder delete that moved nothing, because every note in it was saved
+ *  by a teammate while it ran (its guard passes over a note it has not
+ *  seen): nothing went to Trash, and which changed (round 7 E21). */
+export function vaultFolderTrashChanged(title: string, changed: readonly string[]): string {
+  return `Not deleted. ${changedWhileThisRan(changed)}, so nothing in "${title}" went to Trash.`;
+}
+
+/** A folder move that stopped part way on a refusal that trying again cannot
+ *  fix (a team out of free space): what moved, and the storage's reason. */
+export function vaultFolderMoveRefused(
+  old: string,
+  moved: number,
+  total: number,
+  reason: string,
+): string {
+  return `Moved ${moved} of ${total} ${total === 1 ? 'note' : 'notes'} from "${old}". The rest were not moved, so they are still there. ${reasonSentence(reason)}`;
+}
+
+/** A new note, a rename, Today or a keep-both copy whose name is a team note
+ *  in Trash: making it there would take that note out of Trash for good (the
+ *  team's Trash is keyed by name), so it is not made (round 7 E22). The
+ *  reason only: the store puts the verb first. */
+export function vaultNameInTrash(title: string): string {
+  return `"${title}" is in Trash. Restore it from Trash, or use another name.`;
+}
+
+/** A folder move refused before any note moved, because a note would land on
+ *  a name in team Trash (E22). */
+export function vaultFolderMoveInTrash(old: string, title: string): string {
+  return `"${old}" was not moved. ${vaultNameInTrash(title)}`;
+}
+
+/** A folder moved note by note that stopped because a note's name is taken
+ *  where it was going (letter case counts as the same name): what moved,
+ *  and which name, never "try again", since the same move meets the same
+ *  name every time. */
+export function vaultFolderMoveTaken(o: {
+  old: string;
+  moved: number;
+  total: number;
+  /** The title of the note already there. */
+  name: string;
+  /** The folder it is in ("" for the top of the vault). */
+  folder: string;
+}): string {
+  const where = o.folder ? vaultFolderLabel(o.folder) : 'your vault';
+  const fix = 'Rename one of them, then move the folder again.';
+  return o.moved
+    ? `Moved ${o.moved} of ${o.total} ${o.total === 1 ? 'note' : 'notes'} from "${o.old}". "${o.name}" is already in ${where}, so the rest were not moved and are still there. ${fix}`
+    : `"${o.old}" was not moved. "${o.name}" is already in ${where}. ${fix}`;
+}
+
+/** A folder's move that found nothing left to move (round 7 E25): its notes
+ *  were moved or deleted somewhere else since the list, so nothing was
+ *  renamed. Trying again cannot help, so it never says to. */
+export function vaultFolderMoveGone(old: string): string {
+  return `"${old}" has no notes left to move. They were moved or deleted somewhere else.`;
+}
+
+/** The team settings sheet (Y14): its title, the lead's link to it, and the
+ *  who-may-delete row. */
+export const VAULT_TEAM_SETTINGS_TITLE = 'Team vault settings';
+export const VAULT_TEAM_SETTINGS_LINK = 'Team settings';
+export const VAULT_TEAM_WHO_DELETES = 'Who can delete team notes';
+export const VAULT_TEAM_WHO_DELETES_SUB = 'Everyone can still read and export every note.';
+export const VAULT_TEAM_DELETE_ROLES = { admin: 'Admins', member: 'Everyone' } as const;
+
+// ---- Team vault end ----

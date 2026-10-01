@@ -305,6 +305,52 @@ describe('Vault settings: the seven sections (CX Y1)', () => {
     expect(dom.text()).not.toContain('Notes models never see');
   });
 
+  // The team review of 2026-09-30: every team delete keeps the note in
+  // Trash, the team holds notes only, and no model reads it in v1, so its
+  // sheet offers no Delete, no attachments folder and no templates folder,
+  // whatever its row holds.
+  it('offers no row for a field the storage does not carry out (the team vault)', async () => {
+    const { ORG_VAULT_UNAPPLIED_SETTINGS } = await import('../src/lib/gitos/orgVault.js');
+    await sheet({
+      team: true,
+      device: undefined,
+      unapplied: ORG_VAULT_UNAPPLIED_SETTINGS,
+      settings: resolved({
+        delete: 'permanent',
+        attachments: { folder: 'Files' },
+        templates: { folder: 'Templates', dateFormat: 'YYYY-MM-DD', timeFormat: 'HH:mm' },
+      }),
+      teamDelete: {
+        label: 'Who can delete team notes',
+        sub: 'Everyone can still read and export every note.',
+        options: [
+          { value: 'admin', label: 'Admins' },
+          { value: 'member', label: 'Everyone' },
+        ],
+        value: 'member',
+        onChange: () => {},
+      },
+    });
+    expect(radioGroup('Delete')).toBeNull();
+    expect(rowWith('Delete')).toBeUndefined();
+    expect(dom.text()).not.toMatch(/for good|skip Trash|ask twice/i);
+    expect(dom.text()).not.toContain('Attachments folder');
+    expect(dom.text()).not.toContain('Templates folder');
+    // Who may delete, and every row the team does carry out, stay.
+    expect(radioGroup('Who can delete team notes')).toBeTruthy();
+    for (const label of ['New notes go in', 'Folder', 'Template', 'Where it lives']) {
+      expect(rowWith(label), label).toBeTruthy();
+    }
+    for (const group of ['Open notes in', 'Sort notes by', 'New links use', 'Font', 'Text size']) {
+      expect(radioGroup(group), group).toBeTruthy();
+    }
+    // The personal sheet keeps all three.
+    await sheet({ settings: resolved({ delete: 'permanent' }) });
+    expect(radioGroup('Delete')).toBeTruthy();
+    expect(dom.text()).toContain('Attachments folder');
+    expect(dom.text()).toContain('Templates folder');
+  });
+
   it('on the phone drops Link paths and the computer-config rows, and keeps the rest', async () => {
     await sheet({ platform: 'phone' });
     expect(radioGroup('Link paths')).toBeNull();
@@ -760,7 +806,7 @@ describe('the provenance chip (CX Y11, Y16, R4)', () => {
 
 async function about(
   p: NoteProvenance,
-  result: 'ok' | 'changed' | 'failed' = 'ok',
+  result: 'ok' | 'changed' | 'failed' | { kind: 'refused'; line: string } = 'ok',
   canMark = true,
 ) {
   const { VaultAboutNote } = await import('../src/components/vault/VaultAboutNote.js');
@@ -849,6 +895,16 @@ describe('About this note (CX Y12)', () => {
     expect($('.vault-about-line')?.textContent).toBe(
       'Could not mark "Plan", so nothing changed. Try again in a moment.',
     );
+  });
+
+  it('says a refusal for good in its own words, never try again (round 5, finding 4)', async () => {
+    const line =
+      'Not marked. This team has used its 25 MiB of free space. A deleted note frees its space when its history is cleared, about a month later.';
+    const refused = await about({ model: 'm', where: 'local' }, { kind: 'refused', line });
+    await dom.click('Mark as reviewed');
+    await dom.settle();
+    expect(refused.closed()).toBe(0);
+    expect($('.vault-about-line')?.textContent).toBe(line);
   });
 
   it('has no mark button where the note cannot be written', async () => {

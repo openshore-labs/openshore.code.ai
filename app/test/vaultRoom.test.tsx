@@ -24,6 +24,8 @@ const app = vi.hoisted(() => {
       fresh?: boolean;
       reloaded?: number;
       reloadedFrom?: 'elsewhere' | 'resolve';
+      held?: boolean;
+      loadedAt?: number;
     };
     vaultConflict?: Record<string, unknown> & { deferred: boolean };
     vaultCloseNote: () => void;
@@ -203,7 +205,7 @@ vi.mock('../src/state/store.js', async () => {
     useApp: <T,>(select?: (s: typeof app.state) => T) =>
       useSyncExternalStore(subscribe, () => (select ? select(app.state) : app.state)),
     agenticView: () => ({}),
-    vaultHeldFor: () => [],
+    vaultHeldFor: (held: unknown[] | undefined) => held ?? [],
     isOrgAdmin: () => true,
   };
 });
@@ -447,7 +449,7 @@ describe('the Vault screen with a choice open (1.1)', () => {
   const EDITOR = 'Write. Plain markdown, and [[wikilinks]] to connect notes.';
   const conflict = (over: Record<string, unknown> = {}) => ({
     path: 'Plan.md',
-    target: { providerId: 'files', resourceId: 'vault.personal' },
+    target: { providerId: 'local', resourceId: 'vault.personal' },
     kind: 'changed',
     base: 'loaded',
     theirs: { path: 'Plan.md', text: 'theirs', updatedAt: 'x', version: 'v2' },
@@ -501,6 +503,21 @@ describe('the Vault screen with a choice open (1.1)', () => {
     // Its button brings the sheet back.
     await dom.click('Choose a version');
     expect(app.state.vaultConflict?.deferred).toBe(false);
+  });
+
+  it('never shows a choice about another vault or account on a note of the same name', async () => {
+    await dom.render(<VaultRoom />);
+    for (const target of [
+      { providerId: 'org', resourceId: 'org-1', owner: 'u1' },
+      { providerId: 'files', resourceId: 'vault.personal' },
+    ]) {
+      app.state.vaultConflict = conflict({ target });
+      await notify();
+      await dom.settle();
+      expect(sheet()).toBeNull();
+      expect(dom.container.querySelector('.vault-conflict-card')).toBeNull();
+      expect(dom.text()).not.toContain('theirs');
+    }
   });
 
   it('does not rise while the person is typing, only once the editor has been quiet', async () => {
@@ -1234,6 +1251,53 @@ describe('the team export row (M2 2.8)', () => {
     await dom.render(<VaultRoom />);
     expect(dom.buttons()).not.toContain('Export as plain files');
   });
+
+  // Round 7 E46: a list that never answered (offline, a 5xx) touched nothing
+  // on this device, so the line never blames its storage; a refusal for good
+  // (no team session) says its reason, never "try again"; a write that failed
+  // on the device keeps the storage line.
+  const STORAGE_LINE =
+    'Could not export the team vault. Check storage on this device and try again.';
+
+  it('a team vault that cannot be reached says so, never device storage (E46)', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultReadAll = async () => {
+      throw new TypeError('Failed to fetch');
+    };
+    await dom.render(<VaultRoom />);
+    await dom.click('Export as plain files');
+    await dom.settle();
+    expect(app.toasts).toEqual([copy.VAULT_TEAM_EXPORT_UNREACHABLE]);
+    expect(app.toasts).not.toContain(STORAGE_LINE);
+    expect(calls).toEqual([]);
+  });
+
+  it('a refusal for good says its reason, with no try again (E46)', async () => {
+    const { OrgVaultRefusal } = await import('../src/lib/gitos/orgVault.js');
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultReadAll = async () => {
+      throw new OrgVaultRefusal('Sign in to your team to use the team vault.');
+    };
+    await dom.render(<VaultRoom />);
+    await dom.click('Export as plain files');
+    await dom.settle();
+    expect(app.toasts).toEqual([
+      copy.vaultTeamExportRefused('Sign in to your team to use the team vault.'),
+    ]);
+    expect(app.toasts.join(' ')).not.toMatch(/try again/i);
+    expect(calls).toEqual([]);
+  });
+
+  it('a write that fails on this device keeps the storage line (E46)', async () => {
+    (window as unknown as { oscode: { vaultTeamExport: unknown } }).oscode.vaultTeamExport =
+      async () => {
+        throw Object.assign(new Error('ENOSPC'), { code: 'ENOSPC' });
+      };
+    await dom.render(<VaultRoom />);
+    await dom.click('Export as plain files');
+    await dom.settle();
+    expect(app.toasts).toEqual([STORAGE_LINE]);
+  });
 });
 
 describe('Linked mentions come from the index (M3 3.2)', () => {
@@ -1307,5 +1371,951 @@ describe('Linked mentions come from the index (M3 3.2)', () => {
     await closeVaultIndex();
     expect(currentVaultIndex()).toBeUndefined();
     dom = await mountDom();
+  });
+});
+
+// The team room offers only what the server takes from this person on this
+// plan (review, 2026-09-30; 0025's OV403 and OV402): a member under
+// admins-only delete gets no Delete folder, and says why; a lapsed plan's
+// empty vault offers no New note and promises no first note; a lapsed plan's
+// missing link is never offered as a create.
+describe('the team room offers only what the server takes (Y14, Y15)', () => {
+  let dom: TestDom;
+  const TEAM_CAPS = {
+    rename: true,
+    renameNative: true,
+    folders: true,
+    trash: true,
+    emptyTrash: false,
+    attachments: false,
+    taskWriteBack: true,
+    linkRewrite: true,
+    today: true,
+    settingsWrite: false,
+  };
+  // Lapsed is read-only in the store (capsOf), so every write cap is off.
+  const LAPSED_CAPS = {
+    ...TEAM_CAPS,
+    rename: false,
+    renameNative: false,
+    folders: false,
+    trash: false,
+    taskWriteBack: false,
+    linkRewrite: false,
+  };
+  const caps = app.state.vaultCapsNow;
+  // The store's state before each case, put back after it, so a case that
+  // hands the room its own store answers leaves none behind.
+  let saved: typeof app.state;
+  beforeEach(async () => {
+    saved = { ...app.state };
+    globalThis.requestAnimationFrame ??= (cb: FrameRequestCallback) =>
+      setTimeout(() => cb(Date.now()), 0) as unknown as number;
+    app.toasts.length = 0;
+    app.created.length = 0;
+    app.state.vaultScope = 'team';
+    app.state.teamVaultAvailable = () => true;
+    app.state.authSession = { user: { id: 'u1' } };
+    app.state.vaultCapsNow = () => TEAM_CAPS;
+    dom = await mountDom();
+  });
+  afterEach(async () => {
+    await dom.unmount();
+    app.state.vaultScope = 'personal';
+    app.state.teamVaultAvailable = () => false;
+    app.state.authSession = undefined;
+    app.state.vaultNote = undefined;
+    app.state.vaultFiles = [];
+    app.state.vaultTeamPlan = undefined;
+    app.state.vaultCapsNow = caps;
+    Object.assign(app.state, saved);
+  });
+
+  async function openFolderSheet(plan: Record<string, unknown>) {
+    app.state.vaultTeamPlan = plan;
+    app.state.vaultFiles = [{ path: 'Work/Plan.md', updatedAt: '1', size: 4 }];
+    await dom.render(<VaultRoom />);
+    await dom.click('Work');
+    await dom.settle();
+    const options = dom.container.querySelector('[aria-label="Options for Work"]');
+    expect(options).toBeTruthy();
+    const { act } = await import('react');
+    await act(async () => {
+      (options as HTMLElement).click();
+    });
+    await dom.settle();
+    expect(dom.buttons()).toContain('Rename folder');
+  }
+
+  it('a member under admins-only delete gets no Delete folder, and the admins-only line', async () => {
+    await openFolderSheet({ entitled: true, deleteRole: 'admin', isAdmin: false });
+    expect(dom.buttons().some((b) => b.startsWith('Delete folder'))).toBe(false);
+    expect(dom.text()).toContain('Only admins can delete team notes here.');
+    // Rename and Move are not gated by the delete rule (0025 section 5).
+    expect(dom.buttons()).toContain('Move folder');
+    expect(dom.buttons()).toContain('New folder');
+  });
+
+  it('a folder delete stopped part way says how many went, stays, and offers their Undo (E20)', async () => {
+    const undos: unknown[] = [];
+    app.state.vaultDeleteFolder = async () => ({
+      ok: true,
+      trashed: true,
+      undo: { kind: 'trash', id: 'f:x', path: 'Work', folder: true, notes: 1 },
+      notes: 1,
+      attachments: 0,
+      partial: { trashed: 1, left: ['Work/Plan.md', 'Work/Other.md'] },
+    });
+    app.state.vaultUndoDelete = async (undo: unknown) => {
+      undos.push(undo);
+      return { ok: true, path: 'Work/a.md', renamed: false };
+    };
+    await openFolderSheet({ entitled: true, deleteRole: 'member', isAdmin: false });
+    await dom.click('Delete folder');
+    await dom.click(dom.buttons().find((b) => b.startsWith('Really move'))!);
+    await dom.settle();
+    await dom.settle();
+    const line =
+      'Moved 1 of 3 notes from "Work" to Trash. The rest are still there. Try again in a moment.';
+    expect(dom.text()).toContain(line);
+    expect(dom.text()).not.toContain('Not deleted');
+    // Still in the folder: its notes are still there.
+    expect(dom.text()).toContain('Plan');
+    await dom.click('Undo');
+    await dom.settle();
+    expect(undos).toEqual([{ kind: 'trash', id: 'f:x', path: 'Work', folder: true, notes: 1 }]);
+  });
+
+  it('a folder delete stopped by a lapsed plan says why, with no Undo (E20)', async () => {
+    app.state.vaultDeleteFolder = async () => ({
+      ok: true,
+      trashed: true,
+      undo: { kind: 'trash', id: 'f:x', path: 'Work', folder: true, notes: 1 },
+      notes: 1,
+      attachments: 0,
+      partial: {
+        trashed: 1,
+        left: ['Work/Plan.md'],
+        line: 'The team plan is not active, so team notes cannot change.',
+        lapsed: true,
+      },
+    });
+    await openFolderSheet({ entitled: true, deleteRole: 'member', isAdmin: false });
+    await dom.click('Delete folder');
+    await dom.click(dom.buttons().find((b) => b.startsWith('Really move'))!);
+    await dom.settle();
+    expect(app.toasts).toContain(
+      'Moved 1 of 2 notes from "Work" to Trash. The rest are still there. The team plan is not active, so team notes cannot change.',
+    );
+    expect(dom.buttons()).not.toContain('Undo');
+  });
+
+  it('a folder delete that passed over a note a teammate saved names it and stays (E21)', async () => {
+    app.state.vaultDeleteFolder = async () => ({
+      ok: true,
+      trashed: true,
+      undo: { kind: 'trash', id: 'f:x', path: 'Work', folder: true, notes: 1 },
+      notes: 1,
+      attachments: 0,
+      partial: { trashed: 1, left: ['Work/Plan.md'], changed: ['Work/Plan.md'] },
+    });
+    await openFolderSheet({ entitled: true, deleteRole: 'member', isAdmin: false });
+    await dom.click('Delete folder');
+    await dom.click(dom.buttons().find((b) => b.startsWith('Really move'))!);
+    await dom.settle();
+    await dom.settle();
+    expect(dom.text()).toContain(
+      'Moved 1 of 2 notes from "Work" to Trash. "Plan" changed while this ran, so it is still there.',
+    );
+    // Still in the folder, where Plan still is, with the Undo for what went.
+    expect(dom.text()).toContain('Plan');
+    expect(dom.buttons()).toContain('Undo');
+  });
+
+  it('a folder delete that moved nothing because every note changed says so and stays (E21)', async () => {
+    app.state.vaultDeleteFolder = async () => ({
+      ok: false,
+      reason: 'changed',
+      line: 'Not deleted. "Plan" changed while this ran, so nothing in "Work" went to Trash.',
+    });
+    await openFolderSheet({ entitled: true, deleteRole: 'member', isAdmin: false });
+    await dom.click('Delete folder');
+    await dom.click(dom.buttons().find((b) => b.startsWith('Really move'))!);
+    await dom.settle();
+    expect(app.toasts).toContain(
+      'Not deleted. "Plan" changed while this ran, so nothing in "Work" went to Trash.',
+    );
+    expect(dom.text()).toContain('Plan');
+    expect(dom.buttons()).not.toContain('Undo');
+  });
+
+  it('an admin, or everyone under member delete, still gets Delete folder', async () => {
+    await openFolderSheet({ entitled: true, deleteRole: 'admin', isAdmin: true });
+    expect(dom.buttons()).toContain('Delete folder');
+    expect(dom.text()).not.toContain('Only admins can delete team notes here.');
+    await dom.unmount();
+    dom = await mountDom();
+    await openFolderSheet({ entitled: true, deleteRole: 'member', isAdmin: false });
+    expect(dom.buttons()).toContain('Delete folder');
+    expect(dom.text()).not.toContain('Only admins can delete team notes here.');
+  });
+
+  it('a lapsed plan with an empty vault offers no New note and promises no first note', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultCapsNow = () => LAPSED_CAPS;
+    app.state.vaultTeamPlan = { entitled: false, deleteRole: 'member', isAdmin: false };
+    await dom.render(<VaultRoom />);
+    expect(dom.text()).toContain('Your team vault is empty.');
+    expect(dom.text()).toContain(copy.VAULT_TEAM_LAPSED_LEAD);
+    expect(dom.buttons()).not.toContain('New note');
+    expect(dom.container.querySelector('[aria-label="New note"]')).toBeNull();
+    expect(dom.text()).not.toContain('The first note you write');
+  });
+
+  it('a full team says so in the lead and offers no New note or Today, and the editor stays (E27)', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false, full: true };
+    await dom.render(<VaultRoom />);
+    expect(dom.text()).toContain(copy.VAULT_TEAM_FULL_LEAD);
+    expect(dom.buttons()).not.toContain('New note');
+    expect(dom.container.querySelector('[aria-label="New note"]')).toBeNull();
+    expect(dom.container.querySelector('.vault-today-btn')).toBeNull();
+    expect(dom.text()).not.toContain('The first note you write');
+    // A note open at the cap still edits: a save that trims lands.
+    app.state.vaultFiles = [{ path: 'n.md', updatedAt: 'x', size: 4 }];
+    app.state.vaultNote = { path: 'n.md', text: 'long', updatedAt: 'x', fresh: true };
+    await dom.render(<VaultRoom />);
+    await dom.settle();
+    expect(dom.container.querySelector('textarea')).toBeTruthy();
+  });
+
+  it('an active plan with an empty vault still offers New note', async () => {
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    await dom.render(<VaultRoom />);
+    expect(dom.buttons()).toContain('New note');
+    expect(dom.text()).toContain('The first note you write is shared with your organization.');
+  });
+
+  it('a lapsed plan never offers a missing link as a create, and says why on a tap', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    const { vaultIndexFor } = await import('../src/lib/vaultIndexHost.js');
+    const text = 'See [[Nowhere]] next.';
+    // The team vault's own index (a fresh target, so no parked personal
+    // index answers with other text); the room closes it when it goes.
+    const host = vaultIndexFor(
+      { providerId: 'org', resourceId: 'org-1' },
+      {
+        read: async (_r: string, path: string) => ({ path, text, updatedAt: 'x', version: 'v1' }),
+      },
+    );
+    const listed = [{ path: 'Plan.md', updatedAt: 'x', size: text.length, version: 'v1' }];
+    await host.reconcile(listed);
+    app.state.vaultCapsNow = () => LAPSED_CAPS;
+    app.state.vaultTeamPlan = { entitled: false, deleteRole: 'member', isAdmin: false };
+    app.state.vaultFiles = listed;
+    app.state.vaultNote = { path: 'Plan.md', text, updatedAt: 'x' };
+    await dom.render(<VaultRoom />);
+    await dom.settle();
+    await dom.settle();
+    // Links from this note: the missing one reads as not created, and does
+    // not take a tap.
+    expect(dom.text()).toContain('Links from this note');
+    expect(dom.text()).not.toContain(copy.VAULT_OUTGOING_MISSING);
+    const row = dom.container.querySelector('.vault-outgoing-missing') as HTMLButtonElement;
+    expect(row?.disabled).toBe(true);
+    // The link in the note says why, and asks the server nothing.
+    const link = dom.container.querySelector('a.wikilink.unresolved') as HTMLElement;
+    expect(link).toBeTruthy();
+    const { act } = await import('react');
+    await act(async () => {
+      link.click();
+    });
+    await dom.settle();
+    expect(app.created).toEqual([]);
+    expect(app.toasts.at(-1)).toBe(copy.VAULT_TEAM_LAPSED_NOT_CREATED);
+  });
+
+  // The quick switcher (Cmd or Ctrl+O) offers Today and New note only where
+  // the header does: a lapsed plan's switcher opens notes and nothing else.
+  async function openSwitcher(): Promise<HTMLElement> {
+    const { act } = await import('react');
+    await act(async () => {
+      const e = new window.Event('keydown', { bubbles: true });
+      Object.assign(e, { key: 'o', metaKey: true, ctrlKey: false, shiftKey: false, altKey: false });
+      window.dispatchEvent(e);
+    });
+    await dom.settle();
+    const list = dom.container.querySelector('.vault-switcher-list');
+    expect(list).toBeTruthy();
+    return list as HTMLElement;
+  }
+  const rowsIn = (list: HTMLElement) =>
+    [...list.querySelectorAll('[role="option"]')].map(
+      (b) => b.querySelector('.vault-search-row-title')?.textContent ?? '',
+    );
+  async function shiftEnter() {
+    const { act } = await import('react');
+    const field = dom.container.querySelector(
+      '[placeholder="Type a note name"]',
+    ) as HTMLInputElement;
+    await act(async () => {
+      const e = new window.Event('keydown', { bubbles: true });
+      Object.assign(e, { key: 'Enter', shiftKey: true, isComposing: false });
+      field.dispatchEvent(e);
+    });
+    await dom.settle();
+  }
+
+  it("a lapsed plan's switcher offers no Today's note and no New note", async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultCapsNow = () => LAPSED_CAPS;
+    app.state.vaultTeamPlan = { entitled: false, deleteRole: 'member', isAdmin: false };
+    await dom.render(<VaultRoom />);
+    // The header leaves Today out too.
+    expect(dom.container.querySelector('.vault-today-btn')).toBeNull();
+    const list = await openSwitcher();
+    expect(rowsIn(list)).not.toContain(copy.VAULT_SWITCHER_TODAY);
+    await dom.type(copy.VAULT_SWITCHER_PLACEHOLDER, 'Ideas');
+    expect(rowsIn(list).some((r) => r.startsWith('New note'))).toBe(false);
+    expect(dom.text()).not.toContain(copy.vaultSwitcherNew('Ideas'));
+    // Shift+Enter, the New note chord, makes nothing either.
+    await shiftEnter();
+    expect(app.created).toEqual([]);
+  });
+
+  it("an active plan's switcher still offers Today's note and New note", async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    await dom.render(<VaultRoom />);
+    expect(dom.container.querySelector('.vault-today-btn')).toBeTruthy();
+    const list = await openSwitcher();
+    expect(rowsIn(list)[0]).toBe(copy.VAULT_SWITCHER_TODAY);
+    await dom.type(copy.VAULT_SWITCHER_PLACEHOLDER, 'Ideas');
+    expect(rowsIn(list)).toContain(copy.vaultSwitcherNew('Ideas'));
+    await shiftEnter();
+    await new Promise((r) => setTimeout(r, 600));
+    await dom.settle();
+    expect(app.created).toEqual(['Ideas.md']);
+  });
+
+  it("an Undo the plan refuses says the plan's line, not a generic failure", async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    app.state.vaultFiles = [{ path: 'Plan.md', updatedAt: 'x', size: 4 }];
+    app.state.vaultNote = { path: 'Plan.md', text: 'plan', updatedAt: 'x' };
+    app.state.vaultDeleteNote = async () => ({
+      ok: true,
+      trashed: true,
+      undo: { kind: 'trash', id: 'n:Plan.md', path: 'Plan.md', folder: false, notes: 1 },
+      notes: 1,
+      attachments: 0,
+    });
+    const undos: unknown[] = [];
+    app.state.vaultUndoDelete = async (undo: unknown) => {
+      undos.push(undo);
+      return { ok: false, reason: 'unsupported', line: copy.VAULT_TEAM_LAPSED_NOT_RESTORED };
+    };
+    await dom.render(<VaultRoom />);
+    await dom.click('⋯');
+    await dom.settle();
+    await dom.click(copy.VAULT_DELETE_ROW);
+    await dom.settle();
+    await dom.click(copy.VAULT_UNDO);
+    await dom.settle();
+    expect(undos).toHaveLength(1);
+    expect(app.toasts.at(-1)).toBe(copy.VAULT_TEAM_LAPSED_NOT_RESTORED);
+  });
+
+  it("a Restore in Trash the plan refuses says the plan's line", async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    app.state.vaultFiles = [{ path: 'Plan.md', updatedAt: 'x', size: 4 }];
+    app.state.vaultTrash = [
+      { id: 'n:Old.md', path: 'Old.md', kind: 'note', size: 0, trashedAt: '2026-09-30T00:00:00Z' },
+    ];
+    app.state.vaultRestoreTrash = async () => ({
+      ok: false,
+      reason: 'unsupported',
+      line: copy.VAULT_TEAM_LAPSED_NOT_RESTORED,
+    });
+    await dom.render(<VaultRoom />);
+    const { act } = await import('react');
+    const row = dom.container.querySelector('.vault-trash-entry') as HTMLElement;
+    expect(row).toBeTruthy();
+    await act(async () => {
+      row.click();
+    });
+    await dom.settle();
+    await dom.click(copy.VAULT_TRASH_RESTORE);
+    await dom.settle();
+    expect(app.toasts.at(-1)).toBe(copy.VAULT_TEAM_LAPSED_NOT_RESTORED);
+  });
+
+  // 0023's free space (the 2026-09-30 review, finding 1): the store says a
+  // refusal for good as one whole line, and a folder that came back in part
+  // with its counts; the room shows exactly that, never "Try again".
+  it('an Undo that came back only in part says how many, and which stayed in Trash', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    app.state.vaultFiles = [{ path: 'Plan.md', updatedAt: 'x', size: 4 }];
+    app.state.vaultNote = { path: 'Plan.md', text: 'plan', updatedAt: 'x' };
+    app.state.vaultDeleteNote = async () => ({
+      ok: true,
+      trashed: true,
+      undo: { kind: 'trash', id: 'n:Plan.md', path: 'Plan.md', folder: false, notes: 1 },
+      notes: 1,
+      attachments: 0,
+    });
+    app.state.vaultUndoDelete = async () => ({
+      ok: true,
+      path: 'Work/a.md',
+      renamed: false,
+      partial: { restored: 1, left: ['Work/big.md'], line: copy.VAULT_TEAM_FULL },
+    });
+    await dom.render(<VaultRoom />);
+    await dom.click('⋯');
+    await dom.settle();
+    await dom.click(copy.VAULT_DELETE_ROW);
+    await dom.settle();
+    await dom.click(copy.VAULT_UNDO);
+    await dom.settle();
+    expect(app.toasts.at(-1)).toBe(
+      'Restored 1 of 2 notes from "Plan". Still in Trash: "big". ' + copy.VAULT_TEAM_FULL,
+    );
+  });
+
+  it('an Undo that came back beside a later delete of its name says so (E23)', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    app.state.vaultFiles = [{ path: 'Plan.md', updatedAt: 'x', size: 4 }];
+    app.state.vaultNote = { path: 'Plan.md', text: 'plan', updatedAt: 'x' };
+    app.state.vaultDeleteNote = async () => ({
+      ok: true,
+      trashed: true,
+      undo: { kind: 'trash', id: 'n:Plan.md@7', path: 'Plan.md', folder: false, notes: 1 },
+      notes: 1,
+      attachments: 0,
+    });
+    app.state.vaultUndoDelete = async () => ({
+      ok: true,
+      path: 'Plan (restored).md',
+      renamed: true,
+      beside: [{ from: 'Plan.md', to: 'Plan (restored).md', inTrash: true }],
+    });
+    await dom.render(<VaultRoom />);
+    await dom.click('⋯');
+    await dom.settle();
+    await dom.click(copy.VAULT_DELETE_ROW);
+    await dom.settle();
+    await dom.click(copy.VAULT_UNDO);
+    await dom.settle();
+    expect(app.toasts.at(-1)).toBe(
+      '"Plan" came back as "Plan (restored)", since that name is in Trash from a later delete.',
+    );
+    expect(app.toasts.at(-1)).not.toMatch(/already in your vault/);
+  });
+
+  it('a Restore in Trash past the free space says Not restored and why', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    app.state.vaultFiles = [{ path: 'Plan.md', updatedAt: 'x', size: 4 }];
+    app.state.vaultTrash = [
+      { id: 'n:Old.md', path: 'Old.md', kind: 'note', size: 0, trashedAt: '2026-09-30T00:00:00Z' },
+    ];
+    const line = `Not restored. ${copy.VAULT_TEAM_FULL}`;
+    app.state.vaultRestoreTrash = async () => ({ ok: false, reason: 'storage', line, whole: true });
+    await dom.render(<VaultRoom />);
+    const { act } = await import('react');
+    const row = dom.container.querySelector('.vault-trash-entry') as HTMLElement;
+    await act(async () => {
+      row.click();
+    });
+    await dom.settle();
+    await dom.click(copy.VAULT_TRASH_RESTORE);
+    await dom.settle();
+    expect(app.toasts.at(-1)).toBe(line);
+    expect(app.toasts.some((t) => /Try again/.test(t))).toBe(false);
+  });
+
+  it('a rename past the free space says Not renamed and why, never Try again', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    app.state.vaultFiles = [{ path: 'Ideas.md', updatedAt: 'x', size: 4 }];
+    app.state.vaultNote = { path: 'Ideas.md', text: 'ideas', updatedAt: 'x' };
+    const preview = {
+      kind: 'note',
+      from: 'Ideas.md',
+      to: 'Plans.md',
+      moves: new Map([['Ideas.md', 'Plans.md']]),
+      notes: 1,
+      attachments: 0,
+      links: 0,
+      linkNotes: 0,
+      plan: { edits: [], links: 0, notes: 0, left: [] },
+      sources: [],
+    };
+    const line = `Not renamed. ${copy.VAULT_TEAM_FULL}`;
+    app.state.vaultPrepareMove = async () => preview;
+    app.state.vaultApplyMove = async () => ({ ok: false, reason: 'storage', line, whole: true });
+    await dom.render(<VaultRoom />);
+    await dom.click('⋯');
+    await dom.settle();
+    await dom.click(copy.VAULT_RENAME_ROW);
+    await new Promise((r) => setTimeout(r, 600));
+    await dom.settle();
+    await dom.type('Ideas', 'Plans');
+    await dom.click('Rename');
+    await dom.settle();
+    await dom.settle();
+    expect(app.toasts.at(-1)).toBe(line);
+    expect(app.toasts).not.toContain(copy.vaultRenameFailed('Ideas'));
+  });
+
+  it('a folder move that found nothing left to move says so and does not go into the new name (E25)', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    const preview = {
+      kind: 'folder',
+      from: 'Work',
+      to: 'Done',
+      moves: new Map([['Work/Plan.md', 'Done/Plan.md']]),
+      notes: 1,
+      attachments: 0,
+      links: 0,
+      linkNotes: 0,
+      plan: { edits: [], links: 0, notes: 0, left: [] },
+      sources: [],
+    };
+    const line = copy.vaultFolderMoveGone('Work');
+    app.state.vaultPrepareMove = async () => preview;
+    app.state.vaultApplyMove = async () => ({ ok: false, reason: 'missing', line, whole: true });
+    await openFolderSheet({ entitled: true, deleteRole: 'member', isAdmin: false });
+    await dom.click('Rename folder');
+    await new Promise((r) => setTimeout(r, 600));
+    await dom.settle();
+    await dom.type('Work', 'Done');
+    await dom.click('Rename');
+    await dom.settle();
+    await dom.settle();
+    expect(app.toasts.at(-1)).toBe(line);
+    expect(app.toasts.some((t) => t.startsWith('Renamed to'))).toBe(false);
+    expect(dom.container.querySelector('[aria-label="Options for Done"]')).toBeNull();
+    expect(dom.container.querySelector('[aria-label="Options for Work"]')).toBeNull();
+  });
+
+  it('a rename sheet up when the plan lapses says why, and plans nothing', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    app.state.vaultFiles = [{ path: 'Ideas.md', updatedAt: 'x', size: 4 }];
+    app.state.vaultNote = { path: 'Ideas.md', text: 'ideas', updatedAt: 'x' };
+    const prepared: string[] = [];
+    app.state.vaultPrepareMove = async (_kind: string, _from: string, to: string) => {
+      prepared.push(to);
+      return undefined;
+    };
+    await dom.render(<VaultRoom />);
+    await dom.click('⋯');
+    await dom.settle();
+    await dom.click(copy.VAULT_RENAME_ROW);
+    await new Promise((r) => setTimeout(r, 600));
+    await dom.settle();
+    app.state.vaultCapsNow = () => LAPSED_CAPS;
+    app.state.vaultTeamPlan = { entitled: false, deleteRole: 'member', isAdmin: false };
+    await dom.render(<VaultRoom />);
+    await dom.type('Ideas', 'Plans');
+    await dom.click('Rename');
+    await dom.settle();
+    expect(dom.text()).toContain(copy.VAULT_TEAM_LAPSED_NOT_SAVED);
+    expect(dom.text()).not.toContain(copy.vaultRenameFailed('Ideas'));
+    expect(prepared).toEqual([]);
+  });
+
+  it('links refused for good say why, on the toast and the card, and offer no Update the rest (round 5, finding 3)', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    app.state.vaultFiles = [
+      { path: 'Ideas.md', updatedAt: 'x', size: 4 },
+      { path: 'C.md', updatedAt: 'x', size: 4 },
+    ];
+    app.state.vaultNote = { path: 'Ideas.md', text: 'ideas', updatedAt: 'x' };
+    const preview = {
+      kind: 'note',
+      from: 'Ideas.md',
+      to: 'Plans.md',
+      moves: new Map([['Ideas.md', 'Plans.md']]),
+      notes: 1,
+      attachments: 0,
+      links: 1,
+      linkNotes: 1,
+      plan: { edits: [], links: 1, notes: 1, left: [] },
+      sources: [],
+    };
+    app.state.vaultPrepareMove = async () => preview;
+    app.state.vaultApplyMove = async () => {
+      app.state.vaultNote = { path: 'Plans.md', text: 'ideas', updatedAt: 'x' };
+      app.listeners.forEach((l) => l());
+      return {
+        ok: true,
+        preview,
+        moved: [{ path: 'Plans.md', updatedAt: 'x', size: 5 }],
+        rewrite: {
+          updated: 0,
+          total: 1,
+          notesUpdated: 0,
+          skipped: [],
+          notUpdated: ['C.md'],
+          stopped: true,
+          refusal: { line: copy.VAULT_TEAM_FULL },
+        },
+      };
+    };
+    app.toasts.length = 0;
+    await dom.render(<VaultRoom />);
+    await dom.click('⋯');
+    await dom.settle();
+    await dom.click(copy.VAULT_RENAME_ROW);
+    await new Promise((r) => setTimeout(r, 600));
+    await dom.settle();
+    await dom.type('Ideas', 'Plans');
+    await dom.click('Rename');
+    await dom.settle();
+    // "Update links?" asks first, since a link points here.
+    if (dom.buttons().includes('Update links')) await dom.click('Update links');
+    await dom.settle();
+    await dom.settle();
+    expect(app.toasts).toContain(
+      `Renamed to "Plans". Its links were not updated. ${copy.VAULT_TEAM_FULL}`,
+    );
+    expect(app.toasts.join(' ')).not.toMatch(/tries again|try again/i);
+    expect(dom.text()).toContain(copy.vaultLinksLeftCard('Ideas').title);
+    expect(dom.text()).toContain(`Not updated. ${copy.VAULT_TEAM_FULL}`);
+    expect(dom.buttons()).toContain('C');
+    expect(dom.buttons()).not.toContain(copy.vaultLinksLeftCard('Ideas').button);
+  });
+
+  it('the links-left card offers Update the rest only while links can be rewritten', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    app.state.vaultFiles = [
+      { path: 'Ideas.md', updatedAt: 'x', size: 4 },
+      { path: 'C.md', updatedAt: 'x', size: 4 },
+    ];
+    app.state.vaultNote = { path: 'Ideas.md', text: 'ideas', updatedAt: 'x' };
+    const preview = {
+      kind: 'note',
+      from: 'Ideas.md',
+      to: 'Plans.md',
+      moves: new Map([['Ideas.md', 'Plans.md']]),
+      notes: 1,
+      attachments: 0,
+      links: 0,
+      linkNotes: 0,
+      plan: { edits: [], links: 0, notes: 0, left: [] },
+      sources: [],
+    };
+    app.state.vaultPrepareMove = async () => preview;
+    app.state.vaultApplyMove = async () => {
+      app.state.vaultNote = { path: 'Plans.md', text: 'ideas', updatedAt: 'x' };
+      app.listeners.forEach((l) => l());
+      return {
+        ok: true,
+        preview,
+        moved: [{ path: 'Plans.md', updatedAt: 'x', size: 5 }],
+        rewrite: {
+          updated: 0,
+          total: 1,
+          notesUpdated: 0,
+          skipped: [],
+          notUpdated: ['C.md'],
+          stopped: true,
+        },
+      };
+    };
+    await dom.render(<VaultRoom />);
+    await dom.click('⋯');
+    await dom.settle();
+    await dom.click(copy.VAULT_RENAME_ROW);
+    // The rename sheet rises once Options has left (the door clock).
+    await new Promise((r) => setTimeout(r, 600));
+    await dom.settle();
+    await dom.type('Ideas', 'Plans');
+    await dom.click('Rename');
+    await dom.settle();
+    await dom.settle();
+    const button = copy.vaultLinksLeftCard('Ideas').button;
+    expect(dom.text()).toContain(copy.vaultLinksLeftCard('Ideas').title);
+    expect(dom.buttons()).toContain(button);
+    // The plan lapses while the card is up: the card only lists the notes.
+    app.state.vaultCapsNow = () => LAPSED_CAPS;
+    app.state.vaultTeamPlan = { entitled: false, deleteRole: 'member', isAdmin: false };
+    // The mock store hands the same state object back, so render again (the
+    // room keeps its own state: the card is still up).
+    await dom.render(<VaultRoom />);
+    expect(dom.text()).toContain(copy.vaultLinksLeftCard('Ideas').title);
+    expect(dom.buttons()).toContain('C');
+    expect(dom.buttons()).not.toContain(button);
+  });
+
+  it('a save the lapsed plan refused leaves the read-only note showing the team text (E28)', async () => {
+    const EDITOR = 'Write. Plain markdown, and [[wikilinks]] to connect notes.';
+    const refused = 'my words the plan refused';
+    app.state.vaultTargetRef = () => ({ providerId: 'org', resourceId: 'org-1', owner: 'u1' });
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    app.state.vaultFiles = [{ path: 'n.md', updatedAt: 'x', size: 13 }];
+    app.state.vaultNote = { path: 'n.md', text: 'the team text', updatedAt: 'x', fresh: true };
+    app.state.vaultPending = [];
+    await dom.render(<VaultRoom />);
+    await dom.type(EDITOR, refused);
+    // The store held the words under Not saved, marked the plan lapsed and
+    // reloaded the note to the team's text (rescueVaultDraft).
+    app.state.vaultTeamPlan = { entitled: false, deleteRole: 'member', isAdmin: false };
+    app.state.vaultCapsNow = () => LAPSED_CAPS;
+    app.state.vaultError = 'held';
+    app.state.vaultHeld = [
+      {
+        id: 'org::org-1::n.md::u1::1',
+        providerId: 'org',
+        resourceId: 'org-1',
+        owner: 'u1',
+        path: 'n.md',
+        text: refused,
+        reason: 'The team plan is not active.',
+        at: '2026-09-30T00:00:00.000Z',
+        durable: true,
+      },
+    ];
+    app.state.vaultNote = {
+      path: 'n.md',
+      text: 'the team text',
+      updatedAt: 'x',
+      reloaded: 1,
+      reloadedFrom: 'resolve',
+    };
+    await dom.render(<VaultRoom />);
+    await dom.settle();
+    expect(dom.container.querySelector('textarea')).toBeNull();
+    const reader = dom.container.querySelector('.vault-read')?.textContent ?? '';
+    expect(reader).toContain('the team text');
+    expect(reader).not.toContain(refused);
+    expect(dom.text()).toContain('Not saved');
+  });
+
+  // Round 7 E51: a Trash page that is up when the plan turns out lapsed says
+  // the plan's line in place of the 30-day promise, and offers no Restore.
+  // The mock store hands back the same state object, so each change renders
+  // the room again, as the real store's update would.
+  async function openTrash() {
+    app.state.vaultFiles = [{ path: 'Plan.md', updatedAt: 'x', size: 4 }];
+    app.state.vaultTrash = [
+      { id: 'n:Old.md', path: 'Old.md', kind: 'note', size: 0, trashedAt: '2026-09-30T00:00:00Z' },
+    ];
+    await dom.render(<VaultRoom />);
+    const { act } = await import('react');
+    const row = dom.container.querySelector('.vault-trash-entry') as HTMLElement;
+    expect(row).toBeTruthy();
+    await act(async () => {
+      row.click();
+    });
+    await dom.settle();
+  }
+
+  it('a Trash page up when a Restore finds the plan lapsed never promises a restore (E51)', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    app.state.vaultRestoreTrash = async () => {
+      app.state.vaultTeamPlan = { entitled: false, deleteRole: 'member', isAdmin: false };
+      app.state.vaultCapsNow = () => LAPSED_CAPS;
+      app.state.vaultTrash = undefined;
+      app.listeners.forEach((l) => l());
+      return {
+        ok: false,
+        reason: 'storage',
+        line: copy.VAULT_TEAM_LAPSED_NOT_RESTORED,
+        whole: true,
+      };
+    };
+    await openTrash();
+    expect(dom.text()).toContain(copy.vaultTrashLead('team'));
+    await dom.click(copy.VAULT_TRASH_RESTORE);
+    await dom.settle();
+    await dom.render(<VaultRoom />);
+    await dom.settle();
+    expect(app.toasts.at(-1)).toBe(copy.VAULT_TEAM_LAPSED_NOT_RESTORED);
+    expect(dom.text()).not.toContain(copy.vaultTrashLead('team'));
+    expect(dom.text()).not.toContain(copy.VAULT_TRASH_TEAM_LINE);
+    expect(dom.text()).toContain(copy.VAULT_TEAM_LAPSED_LEAD);
+    expect(dom.buttons()).not.toContain(copy.VAULT_TRASH_RESTORE);
+  });
+
+  it('a plan read as lapsed while Trash still lists rows offers no Restore (E51)', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    await openTrash();
+    // A settings read marks the plan lapsed; Trash's rows were listed before.
+    app.state.vaultTeamPlan = { entitled: false, deleteRole: 'member', isAdmin: false };
+    app.state.vaultCapsNow = () => LAPSED_CAPS;
+    await dom.render(<VaultRoom />);
+    await dom.settle();
+    expect(dom.text()).toContain(copy.VAULT_TEAM_LAPSED_LEAD);
+    expect(dom.text()).not.toContain(copy.vaultTrashLead('team'));
+    // The row is still named, as a record, with nothing to tap on it.
+    expect(dom.text()).toContain('Old');
+    expect(dom.buttons()).not.toContain(copy.VAULT_TRASH_RESTORE);
+  });
+
+  // Round 7 E45: a team note opened on a lapsed plan says why it is
+  // read-only, in the note itself, as an expired sign-in does.
+  async function openLapsedNote(entitled: boolean, expired?: boolean) {
+    app.state.vaultTeamExpired = expired;
+    app.state.vaultTargetRef = () => ({ providerId: 'org', resourceId: 'org-1', owner: 'u1' });
+    app.state.vaultPending = [];
+    app.state.vaultCapsNow = () => (entitled ? TEAM_CAPS : LAPSED_CAPS);
+    app.state.vaultTeamPlan = { entitled, deleteRole: 'member', isAdmin: false };
+    app.state.vaultFiles = [{ path: 'n.md', updatedAt: '1', size: 8 }];
+    app.state.vaultNote = {
+      path: 'n.md',
+      text: 'the base',
+      updatedAt: '1',
+      version: '1',
+    };
+    await dom.render(<VaultRoom />);
+    await dom.settle();
+  }
+
+  it('a note on a lapsed plan says why it is read-only (E45)', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    await openLapsedNote(false);
+    expect(dom.text()).toContain(copy.VAULT_TEAM_LAPSED_NOTE);
+    expect(dom.container.querySelector('[aria-label="Edit"]')).toBeNull();
+    expect(dom.container.querySelector('textarea')).toBeNull();
+    expect(dom.container.querySelector('.vault-save-chip')).toBeNull();
+  });
+
+  it('a note on an active plan says nothing of it (E45)', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    await openLapsedNote(true);
+    expect(dom.text()).not.toContain(copy.VAULT_TEAM_LAPSED_NOTE);
+    expect(dom.container.querySelector('[aria-label="Edit"]')).not.toBeNull();
+  });
+
+  it('an expired sign-in says sign in first, not the plan (E45)', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    await openLapsedNote(false, true);
+    expect(dom.text()).toContain(copy.VAULT_TEAM_SIGN_IN_LINE);
+    expect(dom.text()).not.toContain(copy.VAULT_TEAM_LAPSED_NOTE);
+    app.state.vaultTeamExpired = undefined;
+  });
+
+  it('a plan that lapses while the note is being edited takes the editor and says why (E45)', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    await openLapsedNote(true);
+    const { act } = await import('react');
+    await act(async () => {
+      (dom.container.querySelector('[aria-label="Edit"]') as HTMLElement).click();
+    });
+    await dom.settle();
+    expect(dom.container.querySelector('textarea')).not.toBeNull();
+    app.state.vaultTeamPlan = { entitled: false, deleteRole: 'member', isAdmin: false };
+    app.state.vaultCapsNow = () => LAPSED_CAPS;
+    await dom.render(<VaultRoom />);
+    await dom.settle();
+    expect(dom.container.querySelector('textarea')).toBeNull();
+    expect(dom.text()).toContain(copy.VAULT_TEAM_LAPSED_NOTE);
+  });
+
+  it('an active plan keeps the 30-day lead, the team line and Restore (E51)', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    await openTrash();
+    expect(dom.text()).toContain(copy.vaultTrashLead('team'));
+    expect(dom.text()).toContain(copy.VAULT_TRASH_TEAM_LINE);
+    expect(dom.text()).not.toContain(copy.VAULT_TEAM_LAPSED_LEAD);
+    expect(dom.buttons()).toContain(copy.VAULT_TRASH_RESTORE);
+  });
+});
+
+// Round 7 E18: the chip never says Saved over text the vault refused for
+// good and kept under Not saved.
+describe('the save chip after a refusal for good (E18)', () => {
+  let dom: TestDom;
+  const FULL = 'This team has used its 25 MiB of free space.';
+  const heldEntry = (at = '2026-09-30T00:00:00.000Z') => ({
+    id: 'org::org-1::Plan.md::u1::1',
+    providerId: 'org',
+    resourceId: 'org-1',
+    owner: 'u1',
+    path: 'Plan.md',
+    text: 'the base\nA whole paragraph.',
+    reason: FULL,
+    at,
+    durable: true,
+  });
+  beforeEach(async () => {
+    globalThis.requestAnimationFrame ??= (cb: FrameRequestCallback) =>
+      setTimeout(() => cb(Date.now()), 0) as unknown as number;
+    app.state.vaultScope = 'team';
+    app.state.teamVaultAvailable = () => true;
+    app.state.authSession = { user: { id: 'u1' } };
+    app.state.vaultTargetRef = () => ({ providerId: 'org', resourceId: 'org-1', owner: 'u1' });
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    app.state.vaultNote = { path: 'Plan.md', text: 'the base', updatedAt: 'v1' };
+    app.state.vaultFiles = [{ path: 'Plan.md', updatedAt: 'v1', size: 8 }];
+    app.state.vaultPending = [];
+    app.state.vaultSaving = false;
+    app.state.vaultError = 'held';
+    app.state.vaultHeld = [heldEntry()];
+    dom = await mountDom();
+  });
+  afterEach(async () => {
+    await dom.unmount();
+    app.state.vaultScope = 'personal';
+    app.state.teamVaultAvailable = () => false;
+    app.state.authSession = undefined;
+    app.state.vaultTargetRef = () => undefined;
+    app.state.vaultTeamPlan = undefined;
+    app.state.vaultNote = undefined;
+    app.state.vaultFiles = [];
+    app.state.vaultError = undefined;
+    app.state.vaultHeld = [];
+  });
+  const chip = () => dom.container.querySelector('.vault-save-chip');
+
+  it('never says Saved while the last save of this note was refused and held', async () => {
+    await dom.render(<VaultRoom />);
+    await dom.settle();
+    expect(dom.text()).toContain('Not saved');
+    expect(chip()?.textContent).not.toBe('Saved');
+    expect(chip()?.textContent).toBe('Not saved');
+    expect(chip()?.getAttribute('role')).toBe('status');
+    expect(chip()?.querySelector('button')).toBeNull();
+  });
+
+  it('the store saying this sitting is held is enough', async () => {
+    app.state.vaultError = undefined;
+    app.state.vaultNote = { path: 'Plan.md', text: 'the base', updatedAt: 'v1', held: true };
+    await dom.render(<VaultRoom />);
+    expect(chip()?.textContent).toBe('Not saved');
+  });
+
+  it('says Saved once this note saved since, whatever another note left', async () => {
+    app.state.vaultNote = { path: 'Plan.md', text: 'the base', updatedAt: 'v1', held: false };
+    await dom.render(<VaultRoom />);
+    expect(chip()?.textContent).toBe('Saved');
+  });
+
+  it("an earlier sitting's held text does not make this one Not saved", async () => {
+    app.state.vaultNote = {
+      path: 'Plan.md',
+      text: 'the base',
+      updatedAt: 'v1',
+      loadedAt: Date.parse('2026-09-30T01:00:00.000Z'),
+    };
+    await dom.render(<VaultRoom />);
+    expect(chip()?.textContent).toBe('Saved');
+  });
+
+  it('a lapsed plan shows no chip at all', async () => {
+    app.state.vaultTeamPlan = { entitled: false, deleteRole: 'member', isAdmin: false };
+    await dom.render(<VaultRoom />);
+    expect(chip()).toBeNull();
   });
 });

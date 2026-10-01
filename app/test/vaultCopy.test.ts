@@ -24,12 +24,14 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   VAULT_GONE_REASON,
+  VAULT_UNSEEN_DRAFT_REASON,
   VAULT_NO_COPY_NAME_REASON,
   VAULT_RESOLVE_AGAIN,
   VAULT_RESOLVE_FAILED,
   VAULT_RESOLVE_SAME,
   VAULT_UPDATED_SUFFIX,
   vaultConflictCard,
+  vaultGoneManyLine,
   vaultGoneToast,
   vaultLeaveToast,
   vaultReplayCopiesLine,
@@ -87,12 +89,28 @@ import {
   hubMoveOffer,
   hubTooLargeLine,
   VAULT_EVAL_CLAIMS_UNLOCKED,
+  VAULT_TRASH_TEAM_LINE,
+  vaultCapLine,
+  vaultTrashLead,
+  VAULT_TEAM_FREE_MIB,
+  VAULT_TEAM_FULL,
+  VAULT_TEAM_TRASH_DAYS,
+  vaultFolderMoveRefused,
+  vaultRefusedLine,
+  vaultGoneLine,
+  vaultLinksGoneLine,
+  vaultRenameToast,
+  vaultRestorePartial,
   type VaultCopyOpts,
   type VaultCopyProvider,
 } from '../src/lib/vaultCopy.js';
 import { GUIDE_CARDS } from '../src/lib/guideCards.js';
+import { FREE_SPACE_REFUSAL } from './fixtures/fakeOrgVaultServer.js';
 import { PROVIDER_ROSTER } from '../src/lib/gitos/providers.js';
 import { WAYFINDING } from '../src/lib/currents.js';
+
+// An en or an em dash, built from char codes so this file holds neither.
+const DASHES = new RegExp(`[${String.fromCharCode(0x2013)}${String.fromCharCode(0x2014)}]`);
 import type { Platform } from '../src/lib/platform.js';
 
 // Who holds the device: nobody else's computer and none paired, a computer
@@ -720,6 +738,7 @@ describe('the resolve sheet says only what it knows (1.1)', () => {
       VAULT_NO_COPY_NAME_REASON,
       VAULT_UPDATED_SUFFIX,
       vaultGoneToast('Ideas'),
+      vaultGoneManyLine(3),
       vaultReplayCopiesLine(['Ideas (conflict 2026-09-27 1405).md']),
       vaultReplayCopiesLine(['a (conflict 2026-09-27 1405).md', 'b (conflict 2026-09-27 1405).md']),
     );
@@ -1087,6 +1106,35 @@ describe('the save chip and conflict badges (M2 2.2)', () => {
     expect(vaultSaveChip('offline', 4).count).toBe('4 notes waiting');
     // No count it cannot back up.
     expect(vaultSaveChip('offline', 0)).not.toHaveProperty('count');
+    // Refused for good and set aside: Not saved, with no count and no Try
+    // again, since trying again meets the same refusal (E18).
+    expect(vaultSaveChip('held', 0)).toEqual({ label: 'Not saved' });
+    expect(vaultSaveChip('held', 2)).toEqual({ label: 'Not saved' });
+  });
+
+  it('says Offline only when the connection is why it waits (E42)', async () => {
+    const { vaultSaveChip, vaultSaveWaitToast, vaultCreateWaitToast, VAULT_TEAM_NOT_READY } =
+      await import('../src/lib/vaultCopy.js');
+    expect(vaultSaveChip('offline', 1, 'offline').label).toBe('Offline, kept on this device');
+    for (const kind of ['not-ready', 'server'] as const) {
+      const chip = vaultSaveChip('offline', 1, kind);
+      expect(chip.label).not.toMatch(/offline/i);
+      expect(chip.label).toMatch(/kept on this device$/);
+      expect(chip).toMatchObject({ count: '1 note waiting', retry: 'Try again' });
+      for (const line of [vaultSaveWaitToast(kind), vaultCreateWaitToast(kind)]) {
+        expect(line).not.toMatch(/offline|connection|try again/i);
+        expect(line).not.toMatch(DASHES);
+        expect(line).toMatch(/kept|saves when/);
+      }
+    }
+    expect(vaultSaveWaitToast('not-ready')).toBe(VAULT_TEAM_NOT_READY);
+    // The connection's own lines are what they always were.
+    expect(vaultSaveWaitToast('offline')).toBe(
+      'Could not save to your vault. Your text is kept and saves when the connection returns.',
+    );
+    expect(vaultCreateWaitToast('offline')).toBe(
+      'Working offline. This note saves when your storage reconnects.',
+    );
   });
 
   it('badges exactly the keep-both names the store and the server make', async () => {
@@ -1250,5 +1298,443 @@ describe('Vault copy waits on the eval (M8 8.4, D12)', () => {
     // A setting's value is not copy.
     expect(readable('always')).toBe(false);
     expect(readable('Always on')).toBe(true);
+  });
+});
+
+// The team Trash says how long a deleted note can be restored, and that
+// number is the server's own (review, 2026-09-30): org_vault_purge drops
+// tombstones and revisions older than its default window, and pg_cron runs it
+// weekly with no argument, so the default is the window (migration 0021). Read
+// from the migrations themselves, so a later file that changes the window or
+// the schedule fails here until the copy says the new number. The number is a
+// lower bound (the purge runs weekly), which is how the copy says it.
+describe('the team Trash says what the purge does (0021)', () => {
+  const MIGRATIONS = resolve(ROOT, '../supabase/migrations');
+  const files = readdirSync(MIGRATIONS)
+    .filter((f) => /^\d{4}_.*\.sql$/.test(f))
+    .sort();
+  /** The last match of `re` across the migrations, in the order they apply. */
+  function lastMatch(re: RegExp): { file: string; m: RegExpMatchArray } | undefined {
+    let hit: { file: string; m: RegExpMatchArray } | undefined;
+    for (const file of files) {
+      for (const m of readFileSync(join(MIGRATIONS, file), 'utf8').matchAll(re)) hit = { file, m };
+    }
+    return hit;
+  }
+  const purgeWindow = lastMatch(
+    /create or replace function public\.org_vault_purge\(\s*p_older_than interval default '(\d+) days'\s*\)/gi,
+  );
+  const job = lastMatch(
+    /cron\.schedule\(\s*'oscode_vault_purge',\s*'([^']+)',\s*\$job\$\s*select public\.org_vault_purge\(\);\s*\$job\$\s*\)/gi,
+  );
+  const daysIn = (line: string) => Number(/\b(\d+) days\b/.exec(line)?.[1]);
+
+  it('reads the window and the weekly job, with no argument, from the migrations', () => {
+    expect(purgeWindow?.file).toBe('0021_org_vault_v1.sql');
+    expect(Number(purgeWindow?.m[1])).toBeGreaterThan(0);
+    expect(job?.file).toBe('0021_org_vault_v1.sql');
+    expect(job?.m[1]).toBe('29 3 * * 0');
+    // Once a week at a fixed minute: never sooner than the window says.
+    expect(job?.m[1]).toMatch(/^\d+ \d+ \* \* [0-6]$/);
+  });
+
+  it("the lead, the line and the Empty Trash line say the purge's number, never forever", () => {
+    const days = Number(purgeWindow?.m[1]);
+    const lead = vaultTrashLead('team');
+    const empty = vaultCapLine('org', 'emptyTrash');
+    expect(lead).toBe(`Deleted team notes can be restored from here for ${days} days.`);
+    expect(VAULT_TRASH_TEAM_LINE).toBe(
+      "After that they are cleared from your organization's history.",
+    );
+    expect(empty).toBe(
+      `Deleted team notes are cleared from your organization's history after ${days} days.`,
+    );
+    expect(daysIn(lead)).toBe(days);
+    expect(daysIn(empty)).toBe(days);
+    for (const line of [lead, VAULT_TRASH_TEAM_LINE, empty]) {
+      expect(line).not.toMatch(/\b(kept|keeps|forever|always|permanently)\b/i);
+    }
+  });
+});
+
+// 0015's path rule (round 7 E43): the words the server raises are the ones
+// the provider maps to the app's own line, the limit is 0015's, and the
+// fake server checks the same rule first, as 0021, 0024 and 0025 do.
+describe("the team's path rule says what 0015 says, in the app's words (E43)", () => {
+  const read = (f: string) => readFileSync(resolve(ROOT, `../supabase/migrations/${f}`), 'utf8');
+  it('reads the limit and the refusal from the migrations', async () => {
+    const { orgVaultPathOk } = await import('./fixtures/fakeOrgVaultServer.js');
+    const { TEAM_PATH_MAX } = await import('../src/lib/vault.js');
+    const { VAULT_TEAM_PATH_TOO_LONG, VAULT_TEAM_PATH_NOT_ALLOWED } =
+      await import('../src/lib/vaultCopy.js');
+    const ok = read('0015_review_2026_09_05.sql');
+    expect(/char_length\(p_path\) <= (\d+)/.exec(ok)?.[1]).toBe(String(TEAM_PATH_MAX));
+    expect(VAULT_TEAM_PATH_TOO_LONG).toContain(`${TEAM_PATH_MAX} characters`);
+    for (const f of [
+      '0021_org_vault_v1.sql',
+      '0024_org_vault_move.sql',
+      '0025_org_vault_settings.sql',
+    ]) {
+      expect(read(f)).toContain("raise exception 'that note path is not allowed'");
+    }
+    for (const line of [VAULT_TEAM_PATH_TOO_LONG, VAULT_TEAM_PATH_NOT_ALLOWED]) {
+      expect(line).not.toMatch(/try again/i);
+      expect(line).not.toMatch(DASHES);
+    }
+    expect(orgVaultPathOk('a'.repeat(512))).toBe(true);
+    expect(orgVaultPathOk('a'.repeat(513))).toBe(false);
+  });
+});
+
+// The team's free space (the 2026-09-30 review, finding 1): the line a
+// refused team write says is 0023's own, read from the migration, so a later
+// file that changes the number or the words fails here until the copy says
+// the new ones. The test fake raises the same text. No "try again" (a purge
+// frees space about a month later, so a retry fails the same way) and no
+// price or plan name (a Board gate).
+describe("the team's free space says what 0023 says (the review, finding 1)", () => {
+  const sql = readFileSync(resolve(ROOT, '../supabase/migrations/0023_org_free_caps.sql'), 'utf8');
+  const bytes = Number(
+    /function public\.no_entitlement_max_org_bytes\(\)[\s\S]*?select (\d+)::bigint/.exec(sql)?.[1],
+  );
+  const raised =
+    /raise exception '(this team has used[^']*)'\s+using errcode = 'check_violation'/.exec(
+      sql,
+    )?.[1];
+  const runbook = readFileSync(resolve(ROOT, '../docs/vault-gate1-runbook.md'), 'utf8');
+
+  it('reads the cap and the refusal from the migration', () => {
+    expect(bytes).toBe(26214400);
+    expect(bytes).toBe(VAULT_TEAM_FREE_MIB * 1024 * 1024);
+    expect(raised).toBeDefined();
+    // The fake server the tests run against raises the migration's own words.
+    expect(FREE_SPACE_REFUSAL).toBe(raised);
+  });
+
+  it("says 0023's number and words, and the runbook's month", () => {
+    const [used, freed] = VAULT_TEAM_FULL.split('. ');
+    expect(raised!.toLowerCase()).toContain(used!.toLowerCase());
+    expect(raised).toContain(`${VAULT_TEAM_FREE_MIB} MiB of free space`);
+    expect(raised).toContain(freed!.replace(/\.$/, ''));
+    expect(runbook).toContain('its history is cleared, about a month later');
+    // "About a month" is the weekly purge's window, the Trash lines' number.
+    expect(VAULT_TEAM_TRASH_DAYS).toBe(30);
+    expect(VAULT_TEAM_FULL).not.toMatch(/try again|\$|price|tier|plan\b|start a plan/i);
+  });
+
+  it('puts the verb first, and says a whole line as it is', () => {
+    expect(vaultRefusedLine('restore', { line: VAULT_TEAM_FULL })).toBe(
+      `Not restored. ${VAULT_TEAM_FULL}`,
+    );
+    expect(vaultRefusedLine('rename', { line: VAULT_TEAM_FULL })).toBe(
+      `Not renamed. ${VAULT_TEAM_FULL}`,
+    );
+    expect(vaultRefusedLine('today', { line: VAULT_TEAM_FULL })).toBe(
+      `Not started. ${VAULT_TEAM_FULL}`,
+    );
+    expect(vaultRefusedLine('save', { line: 'not a member of this org' })).toBe(
+      'Not saved. Not a member of this org.',
+    );
+    const whole = 'Not deleted. Only admins can delete team notes.';
+    expect(vaultRefusedLine('delete', { line: whole, whole: true })).toBe(whole);
+  });
+
+  it('a rename names the linking notes moved or deleted while it ran, never as updated (E36)', () => {
+    const base = { updated: 1, total: 1, skipped: [], notUpdated: [], stopped: false };
+    expect(
+      vaultRenameToast({ old: 'Ideas', next: 'Plans', rewrite: { ...base, gone: ['ref'] } }),
+    ).toBe(
+      'Renamed to "Plans". 1 link updated. "ref" was moved or deleted while this ran, so its links were not updated.',
+    );
+    expect(
+      vaultRenameToast({
+        old: 'Ideas',
+        next: 'Plans',
+        rewrite: { ...base, updated: 0, total: 0, gone: ['ref', 'b'] },
+      }),
+    ).toBe(
+      'Renamed to "Plans". 2 notes were moved or deleted while this ran, so their links were not updated.',
+    );
+    // Without any, the line is what it always was.
+    expect(vaultRenameToast({ old: 'Ideas', next: 'Plans', rewrite: { ...base, gone: [] } })).toBe(
+      'Renamed to "Plans". 1 link updated.',
+    );
+    for (const line of [vaultLinksGoneLine(['a']), vaultLinksGoneLine(['a', 'b'])]) {
+      expect(line).not.toMatch(/try again/i);
+      expect(line).not.toMatch(DASHES);
+    }
+  });
+
+  it('a tick, a mark or a link on a note gone elsewhere says so, verb first, never try again (E34)', () => {
+    for (const verb of ['tick', 'mark', 'link'] as const) {
+      const line = vaultGoneLine(verb, 'Plan');
+      expect(line).toMatch(/^Not (ticked|marked|linked)\. "Plan" is no longer in your vault\./);
+      expect(line).toContain('moved or deleted somewhere else');
+      expect(line).not.toMatch(/try again|newer version/i);
+      expect(line).not.toMatch(DASHES);
+    }
+  });
+
+  it('a folder that came back in part says how many, names what stayed, and why', () => {
+    expect(
+      vaultRestorePartial({
+        title: 'Work',
+        restored: 2,
+        left: ['Work/big.md'],
+        reason: VAULT_TEAM_FULL,
+      }),
+    ).toBe(`Restored 2 of 3 notes from "Work". Still in Trash: "big". ${VAULT_TEAM_FULL}`);
+    // Four or more stayed: three by name, and the count of the rest.
+    expect(
+      vaultRestorePartial({
+        title: 'Work',
+        restored: 1,
+        left: ['Work/a.md', 'Work/b.md', 'Work/c.md', 'Work/d.md', 'Work/e.md'],
+        reason: 'not a member of this org',
+      }),
+    ).toBe(
+      'Restored 1 of 6 notes from "Work". Still in Trash: "a", "b", "c" and 2 more. Not a member of this org.',
+    );
+    // With no reason, the rest were not reached, so trying again is true.
+    expect(vaultRestorePartial({ title: 'Work', restored: 1, left: ['Work/b.md'] })).toMatch(
+      /Try again in a moment\.$/,
+    );
+    expect(vaultFolderMoveRefused('Work', 1, 3, VAULT_TEAM_FULL)).toBe(
+      `Moved 1 of 3 notes from "Work". The rest were not moved, so they are still there. ${VAULT_TEAM_FULL}`,
+    );
+  });
+
+  it('a replay that finds notes moved or deleted says so, and never "try again" (E9)', () => {
+    expect(vaultGoneManyLine(3)).toBe(
+      '3 notes with text you had not saved were moved or deleted somewhere else.',
+    );
+    expect(vaultGoneManyLine(3)).not.toMatch(/try again/i);
+  });
+
+  it('text no editor showed is named as typed earlier, with what to do (E10)', () => {
+    expect(VAULT_UNSEEN_DRAFT_REASON).toMatch(/^Typed earlier on this device/);
+    expect(VAULT_UNSEEN_DRAFT_REASON).toMatch(/Copy it into the note if you still need it\.$/);
+    expect(VAULT_UNSEEN_DRAFT_REASON).not.toMatch(/try again/i);
+  });
+
+  it('a folder delete stopped part way says how many went, and why (E20)', async () => {
+    const { vaultFolderTrashPartial, VAULT_TEAM_DELETE_ADMINS_ONLY } =
+      await import('../src/lib/vaultCopy.js');
+    expect(
+      vaultFolderTrashPartial({
+        title: 'Work',
+        trashed: 1,
+        left: 2,
+        reason: VAULT_TEAM_DELETE_ADMINS_ONLY,
+      }),
+    ).toBe(
+      'Moved 1 of 3 notes from "Work" to Trash. The rest are still there. Only admins can delete team notes here.',
+    );
+    // A refusal for good never says "try again"; a failure that may pass does.
+    expect(
+      vaultFolderTrashPartial({ title: 'Work', trashed: 1, left: 2, reason: 'x' }),
+    ).not.toMatch(/try again/i);
+    expect(vaultFolderTrashPartial({ title: 'Work', trashed: 2, left: 1 })).toBe(
+      'Moved 2 of 3 notes from "Work" to Trash. The rest are still there. Try again in a moment.',
+    );
+    expect(vaultFolderTrashPartial({ title: 'Work', trashed: 1, left: 1 })).not.toMatch(
+      /Not deleted/,
+    );
+  });
+
+  it('a folder delete names the notes a teammate saved while it ran (E21)', async () => {
+    const { vaultFolderTrashPartial, vaultFolderTrashChanged } =
+      await import('../src/lib/vaultCopy.js');
+    expect(
+      vaultFolderTrashPartial({ title: 'Work', trashed: 1, left: 1, changed: ['Work/b.md'] }),
+    ).toBe(
+      'Moved 1 of 2 notes from "Work" to Trash. "b" changed while this ran, so it is still there.',
+    );
+    expect(
+      vaultFolderTrashPartial({
+        title: 'Work',
+        trashed: 1,
+        left: 2,
+        changed: ['Work/b.md', 'Work/c.md'],
+      }),
+    ).toBe(
+      'Moved 1 of 3 notes from "Work" to Trash. "b" and "c" changed while this ran, so they are still there.',
+    );
+    // A stop as well as a pass-over: the rest, and why.
+    expect(
+      vaultFolderTrashPartial({ title: 'Work', trashed: 1, left: 2, changed: ['Work/b.md'] }),
+    ).toBe(
+      'Moved 1 of 3 notes from "Work" to Trash. The rest are still there. Try again in a moment.',
+    );
+    expect(vaultFolderTrashChanged('Work', ['Work/b.md'])).toBe(
+      'Not deleted. "b" changed while this ran, so nothing in "Work" went to Trash.',
+    );
+    expect(vaultFolderTrashChanged('Work', ['Work/a.md', 'Work/b.md', 'Work/c.md'])).toBe(
+      'Not deleted. 3 notes changed while this ran, so nothing in "Work" went to Trash.',
+    );
+    for (const line of [
+      vaultFolderTrashChanged('Work', ['Work/b.md']),
+      vaultFolderTrashPartial({ title: 'Work', trashed: 1, left: 1, changed: ['Work/b.md'] }),
+    ]) {
+      expect(line).not.toMatch(/try again/i);
+    }
+  });
+
+  it('a name in team Trash is said with what to do, never "try again" (E22)', async () => {
+    const { vaultNameInTrash, vaultFolderMoveInTrash } = await import('../src/lib/vaultCopy.js');
+    expect(vaultNameInTrash('Plan')).toBe(
+      '"Plan" is in Trash. Restore it from Trash, or use another name.',
+    );
+    expect(vaultFolderMoveInTrash('Work', 'a')).toBe(
+      '"Work" was not moved. "a" is in Trash. Restore it from Trash, or use another name.',
+    );
+    expect(vaultNameInTrash('Plan')).not.toMatch(/try again/i);
+  });
+
+  it('a member removed from the team is told so, never that its notes are gone (E26)', async () => {
+    const { VAULT_TEAM_NOT_MEMBER, VAULT_TEAM_NOT_MEMBER_REASON, vaultRefusedLine } =
+      await import('../src/lib/vaultCopy.js');
+    expect(VAULT_TEAM_NOT_MEMBER).toBe(
+      'You are no longer a member of this team, so its notes are not shown here.',
+    );
+    expect(VAULT_TEAM_NOT_MEMBER_REASON).toBe('You are no longer a member of this team.');
+    expect(vaultRefusedLine('save', { line: VAULT_TEAM_NOT_MEMBER_REASON })).toBe(
+      'Not saved. You are no longer a member of this team.',
+    );
+    for (const line of [VAULT_TEAM_NOT_MEMBER, VAULT_TEAM_NOT_MEMBER_REASON]) {
+      // Nothing there was deleted, moved or emptied, and trying again cannot
+      // make anyone a member; the server's own words never show.
+      expect(line).not.toMatch(/deleted|empty|moved|try again|not a member of this org/i);
+      // No en or em dash (code points 8211 and 8212).
+      expect([...line].some((ch) => [8211, 8212].includes(ch.codePointAt(0)!))).toBe(false);
+    }
+  });
+
+  it('a tick on text not saved yet says why the box was not ticked (E30)', async () => {
+    const { vaultTickUnsaved } = await import('../src/lib/vaultCopy.js');
+    expect(vaultTickUnsaved('t')).toBe(
+      '"t" has text that is not saved yet, so that box was not ticked.',
+    );
+    expect(vaultTickUnsaved('t')).not.toMatch(/try again/i);
+  });
+
+  it('a full team\'s lead and refusals say what still works, never "try again" (E27)', async () => {
+    const {
+      VAULT_TEAM_FULL,
+      VAULT_TEAM_FULL_LEAD,
+      VAULT_TEAM_FULL_NOT_CREATED,
+      VAULT_TEAM_FULL_NOT_RESTORED,
+    } = await import('../src/lib/vaultCopy.js');
+    expect(VAULT_TEAM_FULL_LEAD).toBe(
+      `${VAULT_TEAM_FULL} Notes can still be read, shortened and deleted; text added now is kept under Not saved.`,
+    );
+    expect(VAULT_TEAM_FULL_NOT_CREATED).toBe(`Not created. ${VAULT_TEAM_FULL}`);
+    expect(VAULT_TEAM_FULL_NOT_RESTORED).toBe(`Not restored. ${VAULT_TEAM_FULL}`);
+    for (const line of [
+      VAULT_TEAM_FULL_LEAD,
+      VAULT_TEAM_FULL_NOT_CREATED,
+      VAULT_TEAM_FULL_NOT_RESTORED,
+    ]) {
+      expect(line).not.toMatch(/try again|renamed|plan/i);
+      expect([...line].some((ch) => [8211, 8212].includes(ch.codePointAt(0)!))).toBe(false);
+    }
+  });
+
+  it('a folder move with nothing left to move says why, never "try again" (E25)', async () => {
+    const { vaultFolderMoveGone } = await import('../src/lib/vaultCopy.js');
+    const line = vaultFolderMoveGone('Work');
+    expect(line).toBe(
+      '"Work" has no notes left to move. They were moved or deleted somewhere else.',
+    );
+    expect(line).not.toMatch(/try again|renamed/i);
+    expect([...line].some((ch) => [8211, 8212].includes(ch.codePointAt(0)!))).toBe(false);
+  });
+
+  it('a note brought back beside its name says why, and a folder says which (E23)', async () => {
+    const { vaultRestoredBeside } = await import('../src/lib/vaultCopy.js');
+    const inTrash = { from: 'Plan.md', to: 'Plan (restored).md', inTrash: true };
+    const taken = { from: 'Work/Plan.md', to: 'Work/Plan (restored).md', inTrash: false };
+    expect(vaultRestoredBeside({ title: 'Plan', folder: false, beside: [inTrash] })).toBe(
+      '"Plan" came back as "Plan (restored)", since that name is in Trash from a later delete.',
+    );
+    // Beside a note in the vault, vaultRestoredToast already says it.
+    expect(
+      vaultRestoredBeside({
+        title: 'Plan',
+        folder: false,
+        beside: [{ ...inTrash, inTrash: false }],
+      }),
+    ).toBeUndefined();
+    expect(vaultRestoredBeside({ title: 'Work', folder: true, beside: [taken] })).toBe(
+      'Restored "Work". "Plan" came back as "Plan (restored)", since a note of that name is there now.',
+    );
+    const two = vaultRestoredBeside({ title: 'Work', folder: true, beside: [taken, inTrash] })!;
+    expect(two).toBe(
+      'Restored "Work". 2 notes came back beside their names, as "(restored)", since those names are taken or in Trash.',
+    );
+    for (const line of [two]) {
+      expect(line).not.toMatch(/try again/i);
+      expect([...line].some((ch) => [8211, 8212].includes(ch.codePointAt(0)!))).toBe(false);
+    }
+  });
+});
+
+// Round 7, batch 6: what the team vault can do now, said truly.
+describe('round 7, batch 6: the team lines say what is true now', () => {
+  it('an export that never reached the team vault never blames this device (E46)', async () => {
+    const { VAULT_TEAM_EXPORT_UNREACHABLE, vaultTeamExportRefused } =
+      await import('../src/lib/vaultCopy.js');
+    expect(VAULT_TEAM_EXPORT_UNREACHABLE).toBe(
+      'Could not reach the team vault, so nothing was exported. Try again when it answers.',
+    );
+    expect(VAULT_TEAM_EXPORT_UNREACHABLE).not.toMatch(/storage|device/i);
+    const refused = vaultTeamExportRefused('Sign in to your team to use the team vault.');
+    expect(refused).toBe('Nothing was exported. Sign in to your team to use the team vault.');
+    expect(refused).not.toMatch(/try again/i);
+    for (const line of [VAULT_TEAM_EXPORT_UNREACHABLE, refused]) expect(line).not.toMatch(DASHES);
+  });
+
+  it("a lapsed plan's open note says why it is read-only, and promises no export (E45)", async () => {
+    const { VAULT_TEAM_LAPSED_NOTE } = await import('../src/lib/vaultCopy.js');
+    expect(VAULT_TEAM_LAPSED_NOTE).toBe(
+      "Your organization's plan is not active, so this note is read-only.",
+    );
+    expect(VAULT_TEAM_LAPSED_NOTE).not.toMatch(/export|try again/i);
+    expect(VAULT_TEAM_LAPSED_NOTE).not.toMatch(DASHES);
+  });
+
+  it('a note over the 1 MB cap never reads as the same size as the cap (E44)', async () => {
+    const { vaultTeamTooLargeLine } = await import('../src/lib/vaultCopy.js');
+    const sql = readFileSync(
+      resolve(ROOT, '../supabase/migrations/0025_org_vault_settings.sql'),
+      'utf8',
+    );
+    expect(sql).toContain('octet_length(v_body) > 1048576');
+    const line = (bytes: number) => vaultTeamTooLargeLine(bytes);
+    expect(line(1_048_577)).toBe('A team note is limited to 1 MB, and this one is 1.01 MB.');
+    expect(line(1_101_004)).toBe('A team note is limited to 1 MB, and this one is 1.05 MB.');
+    expect(line(1_101_005)).toBe('A team note is limited to 1 MB, and this one is 1.06 MB.');
+    expect(line(2 * 1_048_576)).toBe('A team note is limited to 1 MB, and this one is 2 MB.');
+    for (const bytes of [1_048_577, 1_050_000, 1_100_000, 1_101_004]) {
+      const shown = Number(/this one is ([\d.]+) MB/.exec(line(bytes))?.[1]);
+      expect(shown).toBeGreaterThan(1);
+      expect(line(bytes)).not.toContain('1.0 MB');
+      expect(line(bytes)).not.toMatch(/try again/i);
+      expect(line(bytes)).not.toMatch(DASHES);
+    }
+  });
+
+  it("a settings change by someone not an admin says 0025's reason, verb first (E55)", async () => {
+    const { VAULT_TEAM_SETTINGS_ADMINS_ONLY, vaultRefusedLine } =
+      await import('../src/lib/vaultCopy.js');
+    const sql = readFileSync(
+      resolve(ROOT, '../supabase/migrations/0025_org_vault_settings.sql'),
+      'utf8',
+    );
+    expect(sql).toContain("raise exception 'only admins can change team vault settings'");
+    const line = vaultRefusedLine('save', { line: VAULT_TEAM_SETTINGS_ADMINS_ONLY });
+    expect(line).toBe('Not saved. Only admins can change team vault settings.');
+    expect(line).not.toMatch(/try again/i);
+    expect(line).not.toMatch(DASHES);
   });
 });

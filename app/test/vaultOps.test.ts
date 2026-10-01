@@ -81,6 +81,8 @@ import {
   openToday,
   prepareFolderMove,
   prepareNoteMove,
+  refusalOf,
+  restoreEntry,
   restoredPath,
   toggleTask,
   undoDelete,
@@ -391,6 +393,39 @@ describe('rename with links following (6.2, R1)', () => {
     ).toBe('Renamed to "Plans". 4 links updated.');
   });
 
+  it('re-keys with the version the rename was guarded by and the one it landed at (E40)', async () => {
+    const seen: Array<[string, string, unknown]> = [];
+    h.deps.rekey = async (from, to, rebase) => {
+      seen.push([from, to, rebase]);
+    };
+    const p = await prepareNoteMove(h.deps, 'Ideas.md', 'Plans.md');
+    if (!p.ok) throw new Error('no plan');
+    const guard = p.preview.guard!;
+    expect(await applyMove(h.deps, p.preview, { updateLinks: false })).toMatchObject({ ok: true });
+    const landed = `v${h.mem.files.get('Plans.md')!.v}`;
+    expect(seen).toEqual([['Ideas.md', 'Plans.md', { guard, version: landed }]]);
+  });
+
+  it('a folder moved note by note re-keys each with its guard; a storage folder rename names none (E40)', async () => {
+    for (const renameFolder of [false, true]) {
+      const g = harness(memStorage({ 'Work/a.md': 'a' }, { renameFolder }));
+      const seen: Array<[string, string, unknown]> = [];
+      g.deps.rekey = async (from, to, rebase) => {
+        seen.push([from, to, rebase]);
+      };
+      const before = `v${g.mem.files.get('Work/a.md')!.v}`;
+      const p = await prepareFolderMove(g.deps, 'Work', 'Done');
+      if (!p.ok) throw new Error('no plan');
+      expect(await applyMove(g.deps, p.preview, { updateLinks: false })).toMatchObject({
+        ok: true,
+      });
+      const landed = `v${g.mem.files.get('Done/a.md')!.v}`;
+      expect(seen).toEqual([
+        ['Work/a.md', 'Done/a.md', renameFolder ? undefined : { guard: before, version: landed }],
+      ]);
+    }
+  });
+
   it('a rename skips a referring note that changed, reports it, and writes the notes after it', async () => {
     const p = await prepareNoteMove(h.deps, 'Ideas.md', 'Plans.md');
     if (!p.ok) throw new Error('no plan');
@@ -574,6 +609,39 @@ describe('folders (K5)', () => {
     expect(h.renamed).toEqual([['Work/A.md', 'Jobs/A.md']]);
   });
 
+  it('carries what stopped it, and passes over a note already gone (round 5)', async () => {
+    const mem = memStorage({
+      'Work/A.md': 'a',
+      'Work/B.md': 'b',
+      'Work/C.md': 'c',
+      'Jobs/c.md': 'x',
+    });
+    const h = harness(mem);
+    const p = await prepareFolderMove(h.deps, 'Work', 'Jobs');
+    if (!p.ok) throw new Error('no plan');
+    // A is deleted elsewhere after the plan: nothing to move, nothing lost.
+    mem.files.delete('Work/A.md');
+    // C meets a note already there under another case.
+    const rename = mem.provider.rename!;
+    mem.provider.rename = async (r, from, to, g) =>
+      from === 'Work/C.md'
+        ? {
+            ok: false,
+            conflict: 'exists',
+            theirs: { path: 'Jobs/c.md', text: 'x', updatedAt: 't', version: 'v9' },
+          }
+        : rename(r, from, to, g);
+    const r = await applyMove(h.deps, p.preview, { updateLinks: false });
+    expect(r).toMatchObject({
+      ok: false,
+      reason: 'partial',
+      moved: [expect.objectContaining({ path: 'Jobs/B.md' })],
+      stoppedOn: 'exists',
+      stoppedAt: 'Jobs/C.md',
+      theirs: expect.objectContaining({ path: 'Jobs/c.md' }),
+    });
+  });
+
   it('creates a real folder where there is one, and remembers one where there is not', async () => {
     const mem = memStorage({});
     const made: string[] = [];
@@ -694,6 +762,201 @@ describe('Today (6.4)', () => {
     const r = await openToday(h.deps, { path: 'Daily/2026-09-27.md', text: '# Sunday' });
     expect(r).toMatchObject({ ok: true, created: true });
     expect(text(h, 'Daily/2026-09-27.md')).toBe('# Sunday');
+  });
+});
+
+// ---- a refusal for good (the 2026-09-30 review, finding 1) ----------------
+
+// A storage that refuses for good (the team vault out of free space, 0023:
+// OrgVaultFull, `permanent`) is not a failure worth trying again, so every
+// operation that writes carries the storage's line in its result, and the
+// store says it after the verb. Anything unclassified stays a plain
+// `storage` failure with no line.
+describe('a refusal for good is carried, never "try again" (0023)', () => {
+  // The provider's own line, as OrgVaultFull carries it.
+  const FULL = 'This team has used its 25 MiB of free space.';
+  const full = () => Object.assign(new Error(FULL), { permanent: true });
+  const offline = () => new TypeError('Failed to fetch');
+  const refusing = (h: Harness, err: () => Error) => {
+    const write = h.mem.provider.write.bind(h.mem.provider);
+    h.mem.provider.write = async (r, path, t, guard) => {
+      if (h.mem.failOn === path) throw err();
+      return write(r, path, t, guard);
+    };
+  };
+
+  it('Restore carries the line; a failure that may pass carries none', async () => {
+    const h = harness(memStorage({ 'Old.md': 'old' }, { trash: true }));
+    const d = await deleteNote(h.deps, 'Old.md');
+    if (!d.ok || d.undo.kind !== 'trash') throw new Error('not trashed');
+    h.mem.provider.restore = async () => {
+      throw full();
+    };
+    const refused = await restoreEntry(h.deps, d.undo.id);
+    expect(refused).toEqual({ ok: false, reason: 'storage', line: FULL });
+    expect(refusalOf(refused)).toEqual({ line: FULL });
+    h.mem.provider.restore = async () => {
+      throw offline();
+    };
+    const failed = await restoreEntry(h.deps, d.undo.id);
+    expect(failed).toEqual({ ok: false, reason: 'storage' });
+    expect(refusalOf(failed)).toBeUndefined();
+  });
+
+  it('a folder that came back in part says how many and which stayed', async () => {
+    const h = harness(memStorage({ 'Work/a.md': 'a', 'Work/b.md': 'b' }, { trash: true }));
+    const d = await deleteFolder(h.deps, 'Work');
+    if (!d.ok || d.undo.kind !== 'trash') throw new Error('not trashed');
+    h.mem.provider.restore = async () => {
+      h.mem.files.set('Work/a.md', { text: 'a', v: 90 });
+      return {
+        ok: true,
+        file: { path: 'Work/a.md', updatedAt: 't', size: 1, version: 'v90' },
+        renamed: false,
+        partial: { restored: 1, left: ['Work/b.md'], line: FULL },
+      };
+    };
+    expect(await undoDelete(h.deps, d.undo)).toEqual({
+      ok: true,
+      path: 'Work/a.md',
+      renamed: false,
+      partial: { restored: 1, left: ['Work/b.md'], line: FULL },
+    });
+  });
+
+  it('Undo from Trash and Undo from memory both carry the line', async () => {
+    const h = harness(memStorage({ 'Old.md': 'old' }, { trash: true }));
+    const d = await deleteNote(h.deps, 'Old.md');
+    if (!d.ok) throw new Error('not trashed');
+    h.mem.provider.restore = async () => {
+      throw full();
+    };
+    expect(await undoDelete(h.deps, d.undo)).toEqual({
+      ok: false,
+      reason: 'storage',
+      line: FULL,
+    });
+    const m = harness(memStorage({ 'Mine.md': 'kept in memory' }));
+    const gone = await deleteNote(m.deps, 'Mine.md');
+    if (!gone.ok) throw new Error('not deleted');
+    refusing(m, full);
+    m.mem.failOn = 'Mine.md';
+    expect(await undoDelete(m.deps, gone.undo)).toEqual({
+      ok: false,
+      reason: 'storage',
+      line: FULL,
+    });
+  });
+
+  it("Today's start carries the line", async () => {
+    const h = harness(memStorage({}));
+    refusing(h, full);
+    h.mem.failOn = 'Daily/2026-09-30.md';
+    expect(await openToday(h.deps, { path: 'Daily/2026-09-30.md', text: '# Wednesday' })).toEqual({
+      ok: false,
+      reason: 'storage',
+      line: FULL,
+    });
+    h.mem.failOn = undefined;
+    refusing(h, offline);
+    h.mem.failOn = 'Daily/2026-09-30.md';
+    expect(await openToday(h.deps, { path: 'Daily/2026-09-30.md', text: '# Wednesday' })).toEqual({
+      ok: false,
+      reason: 'storage',
+    });
+  });
+
+  it('a rename carries the line, and a folder moved note by note says what moved first', async () => {
+    const h = harness(memStorage({ 'Ideas.md': 'my ideas' }));
+    h.mem.provider.rename = async () => {
+      throw full();
+    };
+    const p = await prepareNoteMove(h.deps, 'Ideas.md', 'Plans.md');
+    if (!p.ok) throw new Error('no plan');
+    expect(await applyMove(h.deps, p.preview, { updateLinks: false })).toEqual({
+      ok: false,
+      reason: 'storage',
+      line: FULL,
+    });
+    const f = harness(memStorage({ 'Work/a.md': 'a', 'Work/b.md': 'b' }));
+    const rename = f.mem.provider.rename!.bind(f.mem.provider);
+    f.mem.provider.rename = async (r, from, to, guard) => {
+      if (from === 'Work/b.md') throw full();
+      return rename(r, from, to, guard);
+    };
+    const fp = await prepareFolderMove(f.deps, 'Work', 'Done');
+    if (!fp.ok) throw new Error('no plan');
+    expect(await applyMove(f.deps, fp.preview, { updateLinks: false })).toMatchObject({
+      ok: false,
+      reason: 'partial',
+      moved: [expect.objectContaining({ path: 'Done/a.md' })],
+      line: FULL,
+    });
+  });
+
+  it('a link pass refused for good carries the line and stops, and so does Update the rest (round 5, finding 3)', async () => {
+    const h = harness(
+      memStorage({ 'Ideas.md': 'my ideas', 'B.md': 'see [[Ideas]]', 'C.md': 'also [[Ideas]]' }),
+    );
+    const p = await prepareNoteMove(h.deps, 'Ideas.md', 'Plans.md');
+    if (!p.ok) throw new Error('no plan');
+    refusing(h, full);
+    h.mem.failOn = 'B.md';
+    const r = await applyMove(h.deps, p.preview, { updateLinks: true });
+    if (!r.ok || !r.rewrite) throw new Error('no rewrite');
+    expect(r.rewrite).toEqual({
+      updated: 0,
+      total: 2,
+      notesUpdated: 0,
+      skipped: [],
+      notUpdated: ['B.md', 'C.md'],
+      stopped: true,
+      refusal: { line: FULL },
+    });
+    const said = vaultRenameToast({
+      old: 'Ideas',
+      next: 'Plans',
+      rewrite: { ...r.rewrite, skipped: [], notUpdated: ['B', 'C'], refusal: FULL },
+    });
+    expect(said).toBe(`Renamed to "Plans". Its links were not updated. ${FULL}`);
+    expect(said).not.toMatch(/tries again|try again/i);
+    // Update the rest meets the same refusal and says it the same way.
+    const again = await updateTheRest(h.deps, p.preview, r.rewrite);
+    expect(again).toMatchObject({ stopped: true, refusal: { line: FULL } });
+    // A failure that may pass carries no line: "tries again" stays true.
+    h.mem.failOn = undefined;
+    refusing(h, offline);
+    h.mem.failOn = 'B.md';
+    const later = await updateTheRest(h.deps, p.preview, r.rewrite);
+    expect(later.stopped).toBe(true);
+    expect(later.refusal).toBeUndefined();
+    // Once there is room again, the rest are updated.
+    h.mem.failOn = undefined;
+    const done = await updateTheRest(h.deps, p.preview, later);
+    expect(done).toMatchObject({ updated: 2, stopped: false });
+    expect(done.refusal).toBeUndefined();
+  });
+
+  it('a delete carries a whole line as whole, and any other line as the reason', async () => {
+    const h = harness(memStorage({ 'A.md': 'a', 'B.md': 'b' }, { trash: true }));
+    const whole = 'Not deleted. Only admins can delete team notes.';
+    h.mem.provider.trash = async () => {
+      throw Object.assign(new Error(whole), { permanent: true, whole: true });
+    };
+    expect(await deleteNote(h.deps, 'A.md')).toEqual({
+      ok: false,
+      reason: 'storage',
+      line: whole,
+      whole: true,
+    });
+    h.mem.provider.trash = async () => {
+      throw Object.assign(new Error('not a member of this org'), { permanent: true });
+    };
+    expect(await deleteNote(h.deps, 'B.md')).toEqual({
+      ok: false,
+      reason: 'storage',
+      line: 'not a member of this org',
+    });
   });
 });
 

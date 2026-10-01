@@ -23,6 +23,12 @@
 //   writes its settings file under compare-and-swap (`writeConfig`), and only
 //   while writable and not away. A vault's own `delete: permanent` (L11)
 //   turns one-tap Trash off, so every delete asks twice "for good".
+//   Only on a storage that carries the Delete choice out: one whose
+//   `unappliedSettings` names `delete` (the team vault, whose every delete
+//   keeps the note in its Trash for 30 days) keeps one-tap Trash whatever
+//   a stored settings row says, since "for good" would be untrue there.
+// - On a team vault only an admin saves the settings (CX Y14; 0025 refuses a
+//   member there too): `settingsAdmin: false` keeps the sheet read-only.
 import type { VaultDeleteMode } from 'os-code/protocol';
 import type { StorageProvider } from './gitos/providers.js';
 
@@ -61,6 +67,9 @@ export interface VaultCapsState {
   /** Your computer's reach (`HubReach`); `away` is read-only. Absent or
    *  `unknown` for every other storage and before the first answer. */
   reach?: 'unknown' | 'reachable' | 'away';
+  /** A team vault: whether this person is an admin, who alone saves its
+   *  settings (CX Y14). Absent for every other storage. */
+  settingsAdmin?: boolean;
 }
 
 /** The vault's own settings that narrow the caps (Vault M7, CTO L11): the
@@ -80,6 +89,10 @@ export function vaultCaps(
 ): VaultCaps {
   const cas = p.compareAndSwap === true;
   const writable = cas && !s.readOnly && s.reach !== 'away';
+  // A Delete choice this storage does not carry out narrows nothing.
+  if (settings && (p.unappliedSettings ?? []).includes('delete')) {
+    settings = { ...settings, delete: undefined };
+  }
   const trash =
     writable &&
     settings?.delete !== 'permanent' &&
@@ -97,5 +110,7 @@ export function vaultCaps(
     linkRewrite: writable,
     today: cas,
     settingsWrite: writable && has(p, 'writeConfig'),
+    // A team member who is not an admin saves no settings (CX Y14).
+    ...(s.settingsAdmin === false ? { settingsWrite: false } : {}),
   };
 }

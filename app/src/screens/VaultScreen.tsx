@@ -53,6 +53,23 @@ import {
 } from '../lib/vaultExport.js';
 import { VAULT_AUTOSAVE_MS, vaultAutosave } from '../lib/vaultAutosave.js';
 import {
+  VAULT_TEAM_DELETE_ADMINS_ONLY,
+  VAULT_TEAM_EXPORT_UNREACHABLE,
+  VAULT_TEAM_LAPSED_ADMIN,
+  VAULT_TEAM_LAPSED_LEAD,
+  VAULT_TEAM_LAPSED_NOTE,
+  VAULT_TEAM_FULL_LEAD,
+  VAULT_TEAM_FULL_NOT_CREATED,
+  VAULT_TEAM_LAPSED_NOT_CREATED,
+  VAULT_TEAM_LAPSED_NOT_SAVED,
+  VAULT_TEAM_LAPSED_WEB,
+  VAULT_TEAM_OPEN_ADMIN,
+  VAULT_TEAM_SETTINGS_LINK,
+  vaultRestorePartial,
+  vaultTeamEditableUntil,
+  vaultTeamExportRefused,
+} from '../lib/vaultCopy.js';
+import {
   DRIVE_RECONNECT_FAILED_LINE,
   DRIVE_WEB_URL,
   VAULT_FOLDER_MISSING_LINE,
@@ -102,8 +119,10 @@ import {
   vaultWarningLine,
   vaultWelcomeNote,
   vaultRestoreFailed,
+  vaultRestoredBeside,
   vaultRestoredToast,
   vaultTrashEmptied,
+  vaultFolderTrashPartial,
   vaultTrashFailed,
   vaultUndoFailed,
   vaultUndoText,
@@ -120,6 +139,7 @@ import {
   vaultRenameFailed,
   vaultRenameTaken,
   vaultRenameToast,
+  vaultRefusedLine,
   vaultRecentAgentLabel,
   vaultTodayAria,
   vaultReaderCopy,
@@ -129,6 +149,7 @@ import {
   type VaultDriveLink,
   type VaultOnboard,
   type VaultSaveStatus,
+  type VaultWaitKind,
   HUB_AWAY_LINE,
   HUB_OFFER_COPY,
   hubMoveOffer,
@@ -255,10 +276,13 @@ export function VaultScreen() {
     vaultReadBody,
     vaultMoveTo,
     vaultError,
+    vaultSaveWait,
     vaultHeld,
     vaultPending,
     vaultSaving,
     vaultTeamExpired,
+    vaultTeamPlan,
+    setView,
     vaultTargetRef,
     vaultReadOnly,
     vaultDiscardHeld,
@@ -421,6 +445,17 @@ export function VaultScreen() {
   // The team sign-in expired with a team note open: the note stays, read-only,
   // until the person signs back in or leaves it (2.6).
   const teamExpired = team && Boolean(vaultTeamExpired);
+  // The team's plan is not active (CX Y15; 0025's OV402): every note reads and
+  // exports, and nothing changes, calmly; New note, Today, Rename and Delete
+  // leave, and Options says why.
+  const teamLapsed = team && vaultTeamPlan?.entitled === false;
+  // The team's free space is used up, as a write this sign-in made was
+  // refused for it (0023, round 7 E27): New note and Today leave, the lead
+  // says why, and the editor stays, since a save that trims still lands.
+  const teamFull = team && !teamLapsed && vaultTeamPlan?.full === true;
+  // Only admins may delete team notes here, and this person is not one (Y14).
+  const teamDeleteBlocked =
+    team && vaultTeamPlan?.deleteRole === 'admin' && vaultTeamPlan.isAdmin === false;
   // The personal vault is on the paired computer and it did not answer (CTO
   // J9): the list is the last one seen, an open note still saves (its change
   // waits here), and the tree holds still, so New note and Delete leave.
@@ -432,10 +467,32 @@ export function VaultScreen() {
     )?.providerId === 'hub';
   const hubAway = personalOnHub && reach === 'away';
   const locked =
-    readOnly || Boolean(driveReadOnly) || Boolean(vaultMoving) || folderGone || teamExpired;
+    readOnly ||
+    Boolean(driveReadOnly) ||
+    Boolean(vaultMoving) ||
+    folderGone ||
+    teamExpired ||
+    teamLapsed;
+  // A new note may be made here now: the header's New note, the empty team
+  // card's, the switcher's New note row, and a missing link's create all
+  // follow this one answer, so none is offered where the server would refuse
+  // it (a lapsed plan, OV402) or the store would (an expired team sign-in).
+  const newNoteOffered =
+    !driveReadOnly &&
+    !vaultMoving &&
+    !folderGone &&
+    !readOnly &&
+    !hubAway &&
+    !teamExpired &&
+    !teamLapsed &&
+    !teamFull;
   // What this storage may do now (CTO K1): every M6 action's visibility
   // follows this one answer.
   const caps = vaultCapsNow();
+  // Today's note may be offered now: the header's button and the switcher's
+  // first row follow this one answer. A lapsed plan takes no new note
+  // (OV402), a moving vault holds still, and a folder that is gone has none.
+  const todayOffered = caps.today && !vaultMoving && !folderGone && !teamLapsed && !teamFull;
   // What the storage itself lacks, said once in Options (CTO K1): rename, and
   // a Trash, where a delete is then for good.
   const storageCaps = vaultCapsNow({ storageOnly: true });
@@ -451,6 +508,9 @@ export function VaultScreen() {
         .filter((cap) => !storageCaps[cap])
         .map((cap) => vaultCapLine(capKey, cap))
     : [];
+  // Options also says why the plan leaves a row out (CX Y14, Y15).
+  if (teamLapsed) capNotes.push(VAULT_TEAM_LAPSED_LEAD);
+  else if (teamDeleteBlocked) capNotes.push(VAULT_TEAM_DELETE_ADMINS_ONLY);
   const teamAvailable = teamVaultAvailable();
   // The project a note's "Pin to project context" pins to: the active one.
   const pinProjectId = settings.activeProjectId ?? settings.projects?.[0]?.id;
@@ -624,7 +684,7 @@ export function VaultScreen() {
   useEffect(() => {
     void vaultLoadSettings({ force: true });
   }, [vaultLoadSettings, currentProviderId, vaultScope]);
-  const vs = (!team && vaultSettings) || VAULT_SETTINGS_DEFAULTS;
+  const vs = vaultSettings || VAULT_SETTINGS_DEFAULTS;
   // The open note's provenance (CTO L9), from the text as loaded or saved.
   const noteText = vaultNote?.text;
   const noteProvenance = useMemo(() => {
@@ -943,8 +1003,19 @@ export function VaultScreen() {
   // never mid-keystroke: while the editor has focus and had input in the last
   // VAULT_RESOLVE_IDLE_MS it waits, then rises. Sheets never stack: the
   // Options sheet leaves first. A deferred conflict ('not now') stays a card.
+  // Only the choice about this note in this vault, for the account signed in
+  // now: a personal note never shows a team choice of the same name.
+  const onScreen = vaultConflict && vaultNote ? vaultTargetRef() : undefined;
   const conflictHere =
-    vaultConflict && vaultNote && vaultConflict.path === vaultNote.path ? vaultConflict : undefined;
+    vaultConflict &&
+    vaultNote &&
+    onScreen &&
+    vaultConflict.path === vaultNote.path &&
+    vaultConflict.target.providerId === onScreen.providerId &&
+    vaultConflict.target.resourceId === onScreen.resourceId &&
+    (vaultConflict.target.owner ?? '') === (onScreen.owner ?? '')
+      ? vaultConflict
+      : undefined;
   const conflictWaiting = Boolean(conflictHere && !conflictHere.deferred);
   useEffect(() => {
     if (!conflictWaiting) {
@@ -1150,6 +1221,8 @@ export function VaultScreen() {
 
   // The quick switcher (6.1; CTO K9, CX X3): Cmd or Ctrl+O while the room is
   // shown. Titles only; Today first and Recent while the field is empty.
+  // Today and New note are rows only where the header offers them, so a
+  // lapsed plan's switcher opens notes and offers nothing it cannot make.
   useVaultSwitcherShortcut(true, () => setSwitcherOpen(true));
   const switcher = (
     <VaultSwitcher
@@ -1166,6 +1239,9 @@ export function VaultScreen() {
         flushSave();
         void vaultCreate(path);
       }}
+      // Only what the header offers: none where it would be refused.
+      {...(todayOffered ? {} : { onToday: undefined })}
+      {...(newNoteOffered ? {} : { onCreate: undefined })}
     />
   );
 
@@ -1244,6 +1320,17 @@ export function VaultScreen() {
       showToast(`"${name}" is an attachment. ${vaultReaderCopy.otherFile}`);
       return;
     }
+    if (isNew && teamLapsed) {
+      // The plan is not active, so the server refuses any new note (OV402):
+      // said here, and it is never asked.
+      showToast(VAULT_TEAM_LAPSED_NOT_CREATED);
+      return;
+    }
+    if (isNew && teamFull) {
+      // The free space is used up (E27): said here, and it is never asked.
+      showToast(VAULT_TEAM_FULL_NOT_CREATED);
+      return;
+    }
     if (subpath) setPendingAnchor({ path: p, subpath, key: Date.now() });
     if (isNew) {
       flushSave();
@@ -1299,6 +1386,17 @@ export function VaultScreen() {
     void vaultRewriteNote(row.path, (text) => linkMentionText(text, row.mention, target)).then(
       (ok) => {
         setLinking((now) => new Set([...now].filter((p) => p !== row.path)));
+        // Refused for good (a team out of free space): its own line. A note
+        // moved or deleted somewhere else leaves the list too (E34).
+        if (typeof ok === 'object') {
+          showToast(ok.line);
+          if (ok.gone) {
+            setUnlinked((u) =>
+              u.status === 'done' ? { ...u, rows: u.rows.filter((r) => r.path !== row.path) } : u,
+            );
+          }
+          return;
+        }
         showToast(ok ? vaultLinkedIn(other) : vaultLinkMentionFailed(other));
         if (ok) {
           setUnlinked((u) =>
@@ -1338,29 +1436,63 @@ export function VaultScreen() {
   };
 
   // ---- delete, Undo and Trash (6.3; CTO K6, R2; CX X8 to X10) -------------
+  // A folder's Restore that came back only in part (a team near its free
+  // space, 0023): how many, which stayed in Trash, and why when it was said.
+  const restoredPart = (
+    title: string,
+    p: { restored: number; left: readonly string[]; line?: string },
+  ) =>
+    vaultRestorePartial({
+      title,
+      restored: p.restored,
+      left: p.left,
+      ...(p.line ? { reason: p.line } : {}),
+    });
   const offerUndo = (
     undo: VaultUndo,
     at: VaultTargetRef | undefined,
     title: string,
-    o: { trashed: boolean; folder: boolean; notes: number },
+    o: { trashed: boolean; folder: boolean; notes: number; line?: string },
   ) => {
     const id = `${Date.now()}:${undo.path}`;
     undoFor.current.set(id, { undo, ...(at ? { at } : {}) });
-    setUndoItem({ id, text: vaultUndoText(o), title, trashed: o.trashed });
+    setUndoItem({ id, text: o.line ?? vaultUndoText(o), title, trashed: o.trashed });
   };
   const runUndo = (item: VaultUndoToastItem) => {
     const entry = undoFor.current.get(item.id);
     if (!entry) return;
     void vaultUndoDelete(entry.undo, entry.at).then((r) => {
       if (!r) return;
+      // A folder that came back only in part says how many, and which stayed.
+      if (r.ok && 'partial' in r) {
+        showToast(restoredPart(item.title, r.partial));
+        return;
+      }
       if (r.ok) {
+        // Beside its name because a later delete keeps it, or a folder's
+        // notes beside theirs: says which (E23).
+        const beside =
+          'beside' in r && r.beside
+            ? vaultRestoredBeside({
+                title: item.title,
+                folder: entry.undo.kind === 'trash' && entry.undo.folder,
+                beside: r.beside,
+              })
+            : undefined;
         showToast(
-          vaultRestoredToast({
-            title: item.title,
-            folder: noteFolder(r.path),
-            renamed: r.renamed,
-          }),
+          beside ??
+            vaultRestoredToast({
+              title: item.title,
+              folder: noteFolder(r.path),
+              renamed: r.renamed,
+            }),
         );
+        return;
+      }
+      // A refusal for good says its own line (a lapsed plan, a team out of
+      // free space), never "try again".
+      if ('line' in r) {
+        showToast(r.line);
         return;
       }
       showToast(
@@ -1384,6 +1516,10 @@ export function VaultScreen() {
     void vaultDeleteNote(path, at).then((r) => {
       if (!r) return;
       if (!r.ok) {
+        if ('line' in r) {
+          showToast(r.line);
+          return;
+        }
         showToast(vaultTrashFailed(title));
         return;
       }
@@ -1422,8 +1558,9 @@ export function VaultScreen() {
     setRenaming({ kind, from, ...(startAt ? { startAt } : {}) });
     setRenameOpen(true);
   };
-  // The notes a pass left pointing at the old name, never the ones that were
-  // gone (they lost nothing).
+  // The notes a pass left pointing at the old name, never the ones that
+  // were gone: Update the rest would not find them either (E36), so the
+  // toast names them instead.
   const notesLeft = (report: VaultRewriteReport) => [
     ...report.skipped.filter((x) => x.reason !== 'missing').map((x) => x.path),
     ...report.notUpdated,
@@ -1438,6 +1575,10 @@ export function VaultScreen() {
         skipped: report.skipped.filter((x) => x.reason !== 'missing').map((x) => noteTitle(x.path)),
         notUpdated: report.notUpdated.map((x) => noteTitle(x)),
         stopped: report.stopped,
+        // A refusal for good says its reason, never "tries again".
+        ...(report.refusal ? { refusal: report.refusal.line } : {}),
+        // Linking notes moved or deleted while it ran are named (E36).
+        gone: report.skipped.filter((x) => x.reason === 'missing').map((x) => noteTitle(x.path)),
       },
     });
   const applyRename = async (
@@ -1452,6 +1593,14 @@ export function VaultScreen() {
     setRenameOpen(false);
     if (!r) return;
     if (!r.ok) {
+      // A refusal for good says its own line (a team out of free space).
+      if (r.line) {
+        showToast(r.line);
+        // Part moved, or nothing was left to move (E25): the room leaves
+        // the old folder rather than stay in one that may be gone.
+        if (r.reason === 'partial' || (!note && r.reason === 'missing')) setFolder('');
+        return;
+      }
       showToast(
         r.reason === 'choice-open'
           ? VAULT_RENAME_CHOICE_OPEN
@@ -1460,7 +1609,7 @@ export function VaultScreen() {
             : r.reason === 'exists'
               ? vaultRenameTaken(next, noteFolder(preview.to))
               : r.reason === 'partial'
-                ? vaultFolderMovePartial(old, r.moved?.length ?? 0, preview.notes)
+                ? vaultFolderMovePartial(old, r.moved?.length ?? 0, r.notes ?? preview.notes)
                 : vaultRenameFailed(old),
       );
       if (r.reason === 'partial') setFolder('');
@@ -1509,6 +1658,9 @@ export function VaultScreen() {
       prepare={(to) => vaultPrepareMove(renaming.kind, renaming.from, to)}
       apply={applyRename}
       updateOnRename={vs.links.updateOnRename}
+      // A plan that lapsed while the sheet was up takes no rename (OV402):
+      // the sheet says so, and nothing is planned or sent.
+      {...(teamLapsed ? { refused: VAULT_TEAM_LAPSED_NOT_SAVED } : {})}
       onClose={() => setRenameOpen(false)}
     />
   ) : null;
@@ -1547,7 +1699,35 @@ export function VaultScreen() {
     void vaultDeleteFolder(target).then((r) => {
       if (!r) return;
       if (!r.ok) {
+        if ('line' in r) {
+          showToast(r.line);
+          return;
+        }
         showToast(vaultTrashFailed(name));
+        return;
+      }
+      // Some went to Trash and the rest are still here (E20), or a teammate
+      // saved some while it ran (E21): the folder stays, the line says how
+      // many and why, and the Undo brings back what went (none after the
+      // plan lapsed, which would refuse it).
+      if (r.partial) {
+        const line = vaultFolderTrashPartial({
+          title: name,
+          trashed: r.partial.trashed,
+          left: r.partial.left.length,
+          ...(r.partial.line ? { reason: r.partial.line } : {}),
+          ...(r.partial.changed ? { changed: r.partial.changed } : {}),
+        });
+        if (r.partial.lapsed || !r.undo) {
+          showToast(line);
+          return;
+        }
+        offerUndo(r.undo, at, vaultFolderLabel(target), {
+          trashed: true,
+          folder: true,
+          notes: r.notes,
+          line,
+        });
         return;
       }
       setFolder(target.includes('/') ? target.slice(0, target.lastIndexOf('/')) : '');
@@ -1812,8 +1992,22 @@ export function VaultScreen() {
   const exportTeam = async () => {
     if (exportingTeam || !teamOrg?.serverId) return;
     setExportingTeam(true);
+    // The read in its own try (round 7 E46): a list that never answered wrote
+    // nothing here, so it never blames this device's storage, and a refusal
+    // for good (no team session) says its reason with no "try again".
+    let notes: Awaited<ReturnType<typeof vaultReadAll>>;
     try {
-      const notes = await vaultReadAll();
+      notes = await vaultReadAll();
+    } catch (err) {
+      setExportingTeam(false);
+      showToast(
+        err instanceof Error && (err as { permanent?: unknown }).permanent === true
+          ? vaultTeamExportRefused(err.message)
+          : VAULT_TEAM_EXPORT_UNREACHABLE,
+      );
+      return;
+    }
+    try {
       if (!notes.length && !notes.failed.length) {
         showToast('Nothing to export yet. Write a note first.');
         return;
@@ -1979,12 +2173,21 @@ export function VaultScreen() {
       conflictPath: conflictHere?.path,
       uid,
     });
+    // Held: the last save of this sitting went under Not saved (the store
+    // says so), or, before it has said, the room holds text of this note
+    // set aside since the note was read (E18). Never Saved over it.
+    const heldNow =
+      vaultNote.held ??
+      (vaultError === 'held' &&
+        heldHere.some((h) => Date.parse(h.at) >= (vaultNote.loadedAt ?? 0)));
     const saveStatus: VaultSaveStatus =
       pendingHere > 0 || vaultError === 'save'
         ? 'offline'
         : vaultSaving || autosave.isPending()
           ? 'saving'
-          : 'saved';
+          : heldNow
+            ? 'held'
+            : 'saved';
     return (
       <div className="screen vault-screen">
         <BackBar title={title} back={{ to: 'Vault', onBack: backToNotes }} />
@@ -1998,6 +2201,7 @@ export function VaultScreen() {
               <SaveChip
                 status={saveStatus}
                 pending={pendingHere}
+                {...(vaultError === 'save' && vaultSaveWait ? { kind: vaultSaveWait } : {})}
                 onRetry={() => void vaultRefresh()}
               />
             ) : null}
@@ -2065,6 +2269,13 @@ export function VaultScreen() {
           {teamExpired ? (
             <p className="hint" role="status" style={{ marginTop: 8, color: 'var(--warn)' }}>
               {VAULT_TEAM_SIGN_IN_LINE}
+            </p>
+          ) : null}
+          {/* A lapsed plan's note says why it is read-only, here as the tree
+              does; an expired sign-in says its own line first (E45). */}
+          {teamLapsed && !teamExpired ? (
+            <p className="hint" role="status" style={{ marginTop: 8 }}>
+              {VAULT_TEAM_LAPSED_NOTE}
             </p>
           ) : null}
           {renderDriveCard(true)}
@@ -2157,6 +2368,17 @@ export function VaultScreen() {
               busy={linksLeft.busy}
               onOpen={openNote}
               onUpdateRest={() => void updateRest()}
+              // Update the rest writes: offered only while links can be
+              // rewritten here (not on a lapsed plan, a lease held elsewhere,
+              // or a computer that is away), else the card only lists them.
+              // A pass refused for good (a team out of free space) would be
+              // refused again: the card says why and offers nothing.
+              {...(caps.linkRewrite && !linksLeft.report.refusal
+                ? {}
+                : { onUpdateRest: undefined })}
+              {...(linksLeft.report.refusal
+                ? { line: vaultRefusedLine('update', linksLeft.report.refusal) }
+                : {})}
             />
           ) : null}
 
@@ -2168,6 +2390,9 @@ export function VaultScreen() {
               loading={mentionsLoading}
               outgoing={outgoing}
               onCreate={(name) => followLink(name, true)}
+              // A lapsed plan or a full team makes no note, so a missing
+              // link offers none.
+              {...(!teamLapsed && !teamFull ? {} : { onCreate: undefined })}
               title={title}
               unlinked={unlinked}
               onFindUnlinked={findUnlinked}
@@ -2214,6 +2439,8 @@ export function VaultScreen() {
             setTimeout(() => openRename('note', path), sheetExitMs());
           }}
           deleteDisabled={Boolean(driveReadOnly) || hubAway}
+          // A lapsed plan, or a member under admins-only, deletes nothing.
+          {...(!teamLapsed && !teamDeleteBlocked ? {} : { deleteDisabled: true })}
           onClose={() => {
             setMenuOpen(false);
             setConfirmDelete(false);
@@ -2277,6 +2504,13 @@ export function VaultScreen() {
           kind={trashKind}
           entries={vaultTrash}
           error={trashError}
+          {...(teamLapsed
+            ? {
+                refused: vaultTeamExportable(on)
+                  ? VAULT_TEAM_LAPSED_LEAD
+                  : `${VAULT_TEAM_LAPSED_LEAD} ${VAULT_TEAM_LAPSED_WEB}`,
+              }
+            : {})}
           onBack={() => setTrashOpen(false)}
           onRestore={async (entry) => {
             const title =
@@ -2284,15 +2518,30 @@ export function VaultScreen() {
                 ? (entry.path.split('/').pop() ?? entry.path)
                 : noteTitle(entry.path);
             const r = await vaultRestoreTrash(entry.id);
+            // A refusal for good says its own line (a lapsed plan, a team out
+            // of free space), never "try again".
+            if (!r.ok && 'line' in r) {
+              showToast(r.line);
+              return;
+            }
+            if (r.ok && 'partial' in r) {
+              showToast(restoredPart(title, r.partial));
+              return;
+            }
+            const beside =
+              r.ok && 'beside' in r && r.beside
+                ? vaultRestoredBeside({ title, folder: entry.kind === 'folder', beside: r.beside })
+                : undefined;
             showToast(
-              r.ok
-                ? vaultRestoredToast({
-                    title,
-                    folder: noteFolder(r.path),
-                    renamed: r.renamed,
-                    sayFolder: true,
-                  })
-                : vaultRestoreFailed(title),
+              beside ??
+                (r.ok
+                  ? vaultRestoredToast({
+                      title,
+                      folder: noteFolder(r.path),
+                      renamed: r.renamed,
+                      sayFolder: true,
+                    })
+                  : vaultRestoreFailed(title)),
             );
           }}
           onEmpty={async () => {
@@ -2333,10 +2582,10 @@ export function VaultScreen() {
         <div className="stack-head">
           <h1>Vault</h1>
           <div className="vault-head-actions">
-            {!vaultMoving && !folderGone ? todayButton : null}
+            {todayOffered ? todayButton : null}
             {/* A read-only Drive vault leaves New note out; its card says why.
                 So does a moving vault, and a folder that is not there. */}
-            {!driveReadOnly && !vaultMoving && !folderGone && !readOnly && !hubAway ? (
+            {newNoteOffered ? (
               <button
                 type="button"
                 className="icon-btn vault-new-btn press-fb"
@@ -2377,7 +2626,13 @@ export function VaultScreen() {
           </div>
         ) : null}
         <p className="lead">
-          {team ? vaultCopy(on, 'org').storage : vaultLead(personalCopy, { offerShown })}
+          {team
+            ? teamLapsed
+              ? VAULT_TEAM_LAPSED_LEAD
+              : teamFull
+                ? VAULT_TEAM_FULL_LEAD
+                : vaultCopy(on, 'org').storage
+            : vaultLead(personalCopy, { offerShown })}
           {team && vaultTeamExportable(on) && vaultFiles.length > 0 ? (
             <>
               {' '}
@@ -2391,6 +2646,18 @@ export function VaultScreen() {
               </button>
             </>
           ) : null}
+          {team && vaultTeamPlan?.isAdmin && !teamLapsed ? (
+            <>
+              {' '}
+              <button
+                type="button"
+                className="linklike press-fb"
+                onClick={() => setSettingsOpen(true)}
+              >
+                {VAULT_TEAM_SETTINGS_LINK}
+              </button>
+            </>
+          ) : null}
           {!team ? (
             <>
               {' '}
@@ -2400,6 +2667,22 @@ export function VaultScreen() {
             </>
           ) : null}
         </p>
+        {teamLapsed && !vaultTeamExportable(on) ? (
+          <p className="hint">{VAULT_TEAM_LAPSED_WEB}</p>
+        ) : null}
+        {teamLapsed && vaultTeamPlan?.isAdmin ? (
+          <p className="hint">
+            {VAULT_TEAM_LAPSED_ADMIN}{' '}
+            <button type="button" className="linklike press-fb" onClick={() => setView('admin')}>
+              {VAULT_TEAM_OPEN_ADMIN}
+            </button>
+          </p>
+        ) : null}
+        {team && !teamLapsed && vaultTeamPlan?.entitledUntil ? (
+          <p className="hint" role="status">
+            {vaultTeamEditableUntil(vaultTeamPlan.entitledUntil)}
+          </p>
+        ) : null}
 
         {renderError('tree')}
         {renderLeaseLine()}
@@ -2603,10 +2886,17 @@ export function VaultScreen() {
         ) : vaultFiles.length === 0 && team ? (
           <div className="card empty-notice">
             <h3>Your team vault is empty.</h3>
-            <p className="sub">The first note you write is shared with your organization.</p>
-            <button className="btn primary" onClick={() => setNewOpen(true)}>
-              New note
-            </button>
+            {/* Lapsed (or read-only), no first note can be written, so the
+                card neither promises one nor offers New note; the lead above
+                says why (CX Y15). */}
+            {newNoteOffered ? (
+              <>
+                <p className="sub">The first note you write is shared with your organization.</p>
+                <button className="btn primary press-fb" onClick={() => setNewOpen(true)}>
+                  New note
+                </button>
+              </>
+            ) : null}
           </div>
         ) : vaultFiles.length === 0 ? (
           // New user, personal vault: an onboarding ramp, not a blank void. It
@@ -2708,6 +2998,9 @@ export function VaultScreen() {
         canRename={caps.rename}
         canCreate={caps.folders}
         canTrash={caps.trash}
+        // A member under admins-only is refused a delete (OV403, Y14), so
+        // Delete folder leaves and the note sheet's line says why.
+        {...(!teamDeleteBlocked ? {} : { canTrash: false, notes: [VAULT_TEAM_DELETE_ADMINS_ONLY] })}
         onClose={() => setFolderMenuOpen(false)}
         onRename={() => afterFolderMenu(() => openRename('folder', folder))}
         onMove={() => afterFolderMenu(() => openRename('folder', folder, 'folders'))}
@@ -2943,18 +3236,21 @@ export function VaultScreen() {
 function SaveChip({
   status,
   pending,
+  kind,
   onRetry,
 }: {
   status: VaultSaveStatus;
   pending: number;
+  /** Why it waits, when this sitting knows (E42). */
+  kind?: VaultWaitKind;
   onRetry: () => void;
 }) {
-  const chip = vaultSaveChip(status, pending);
+  const chip = vaultSaveChip(status, pending, kind);
   return (
     <span
       key={status}
       className={`vault-save-chip ${status}`}
-      {...(status === 'offline' ? { role: 'status' } : {})}
+      {...(status === 'offline' || status === 'held' ? { role: 'status' } : {})}
     >
       {chip.label}
       {chip.count ? <span className="vault-save-count">{chip.count}</span> : null}
