@@ -9293,7 +9293,7 @@ describe('round 7, batch 6: the team vault says what it can do now, truly', () =
     });
   });
 
-  describe("E33: a team index leaves with its account, whoever signs in next", () => {
+  describe('E33: a team index leaves with its account, whoever signs in next', () => {
     const u1Index = (org = ORG) => ({ providerId: 'org', resourceId: org, owner: 'u1' });
     async function indexTeam() {
       useStoreToken();
