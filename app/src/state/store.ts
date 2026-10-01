@@ -602,11 +602,7 @@ import {
   routinePatchFree,
   startWebCheckout,
 } from './payOps.js';
-import {
-  appActionPlan,
-  writingVoiceSeed,
-  type ComposerSeed,
-} from './appActionOps.js';
+import { appActionPlan, writingVoiceSeed, type ComposerSeed } from './appActionOps.js';
 import {
   CodingLockedError,
   accountNoticeDue,
@@ -4630,10 +4626,10 @@ export const useApp = create<AppState>((set, get, api) => {
           chatContext(conv),
           contextWindow,
           {
-              vaultPack: conversationPack(conv),
-              humanize: settings.humanizeWriting !== false,
-              writingVoice: settings.writingVoice,
-            },
+            vaultPack: conversationPack(conv),
+            humanize: settings.humanizeWriting !== false,
+            writingVoice: settings.writingVoice,
+          },
         );
       }
       case 'stack': {
