@@ -3888,3 +3888,44 @@ execution contract. Newest at the bottom.
   `restoreEntry`'s signature; `StorageProvider.restore`'s signature;
   `vaultSaveChip`'s label; in `VaultScreen.tsx`, `notesLeft`'s comment and
   `SaveChip`'s call. No main test changes.
+
+- 2026-10-01: **Round 7, batch 6: the team vault says what it can do now,
+  truly (held `vault-m2-team`, three medium, five low).** (E46) Export as
+  plain files reads the team vault in its own try: a list that did not
+  answer says VAULT_TEAM_EXPORT_UNREACHABLE, a refusal for good says
+  "Nothing was exported." and its reason; only the device write keeps
+  main's storage line. The personal export's same catch (a hub vault with
+  the computer off) is main's and left for a main-side change. (E51) The
+  Trash page takes `refused`: on a lapsed plan it says the lapsed lead (and
+  the web's export line where Export is not offered) in place of the 30-day
+  promise, and offers no Restore; rows stay, named. (E55) Who can delete
+  team notes on a plan never read goes to the write, whose own settings
+  read answers; a plan read as not an admin is refused here, "Not saved."
+  first; setOrgVaultDeleteRole refuses what that read says 0025's put
+  would (not an admin, a lapsed plan) before the put. (E33) A list saved on
+  the device names each team index as it opens (ids only); a sign-out drops
+  every one its account built, a sign-in every one another account built
+  (and the last account's team by prefsOwner, for an index from before the
+  list); an expiry drops none. (E37) A plan that would refuse a write is
+  read again first (teamRefusalNow: one settings read, only on the refusal
+  path, only while its account is signed in); a read that fails keeps the
+  refusal; a refusal for the free space alone asks nothing (no read answers
+  it). A plan learned from a refusal drops that team's settings cache, so
+  the next relist reads it. (E39) Trash leaves out a deleted note whose
+  text a "(restored)" name beside it already holds exactly (putBack's own
+  rule: nothing new would land), found by one plain `like` on "restored";
+  edited since, it is listed again; anything that fails keeps every row;
+  E38's listed-row check follows the same rule. No twin check: a note whose
+  text is live beside it is back, whoever holds its old name. (E44) The
+  1 MB refusal's size rounds up to two places through vaultCopy's
+  vaultTeamTooLargeLine; main's hubTooLargeLine has the same toFixed(1)
+  edge at 4 MB and is left for main. (E45) An open team note on a lapsed
+  plan says VAULT_TEAM_LAPSED_NOTE (no export promise; the note offers
+  none); the expired sign-in's line wins when both hold. Main lines this
+  changes, each because the fix lives in it: in `VaultScreen.tsx`,
+  `exportTeam`'s read (`const notes = await vaultReadAll();`, now in its
+  own try above main's); in `VaultTrashView.tsx`, the lead and team lines
+  and the Restore button (wrapped, so re-indented); in `orgVault.ts`,
+  `write`'s 1 MB lines. The store's `endSession`, `onSignedIn`,
+  `openVaultIndex` and `vaultToday` gain lines without changing main's. No
+  main test changes.
