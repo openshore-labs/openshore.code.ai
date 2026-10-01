@@ -1251,6 +1251,53 @@ describe('the team export row (M2 2.8)', () => {
     await dom.render(<VaultRoom />);
     expect(dom.buttons()).not.toContain('Export as plain files');
   });
+
+  // Round 7 E46: a list that never answered (offline, a 5xx) touched nothing
+  // on this device, so the line never blames its storage; a refusal for good
+  // (no team session) says its reason, never "try again"; a write that failed
+  // on the device keeps the storage line.
+  const STORAGE_LINE =
+    'Could not export the team vault. Check storage on this device and try again.';
+
+  it('a team vault that cannot be reached says so, never device storage (E46)', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultReadAll = async () => {
+      throw new TypeError('Failed to fetch');
+    };
+    await dom.render(<VaultRoom />);
+    await dom.click('Export as plain files');
+    await dom.settle();
+    expect(app.toasts).toEqual([copy.VAULT_TEAM_EXPORT_UNREACHABLE]);
+    expect(app.toasts).not.toContain(STORAGE_LINE);
+    expect(calls).toEqual([]);
+  });
+
+  it('a refusal for good says its reason, with no try again (E46)', async () => {
+    const { OrgVaultRefusal } = await import('../src/lib/gitos/orgVault.js');
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultReadAll = async () => {
+      throw new OrgVaultRefusal('Sign in to your team to use the team vault.');
+    };
+    await dom.render(<VaultRoom />);
+    await dom.click('Export as plain files');
+    await dom.settle();
+    expect(app.toasts).toEqual([
+      copy.vaultTeamExportRefused('Sign in to your team to use the team vault.'),
+    ]);
+    expect(app.toasts.join(' ')).not.toMatch(/try again/i);
+    expect(calls).toEqual([]);
+  });
+
+  it('a write that fails on this device keeps the storage line (E46)', async () => {
+    (window as unknown as { oscode: { vaultTeamExport: unknown } }).oscode.vaultTeamExport =
+      async () => {
+        throw Object.assign(new Error('ENOSPC'), { code: 'ENOSPC' });
+      };
+    await dom.render(<VaultRoom />);
+    await dom.click('Export as plain files');
+    await dom.settle();
+    expect(app.toasts).toEqual([STORAGE_LINE]);
+  });
 });
 
 describe('Linked mentions come from the index (M3 3.2)', () => {

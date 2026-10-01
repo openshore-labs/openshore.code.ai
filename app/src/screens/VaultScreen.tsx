@@ -54,6 +54,7 @@ import {
 import { VAULT_AUTOSAVE_MS, vaultAutosave } from '../lib/vaultAutosave.js';
 import {
   VAULT_TEAM_DELETE_ADMINS_ONLY,
+  VAULT_TEAM_EXPORT_UNREACHABLE,
   VAULT_TEAM_LAPSED_ADMIN,
   VAULT_TEAM_LAPSED_LEAD,
   VAULT_TEAM_FULL_LEAD,
@@ -65,6 +66,7 @@ import {
   VAULT_TEAM_SETTINGS_LINK,
   vaultRestorePartial,
   vaultTeamEditableUntil,
+  vaultTeamExportRefused,
 } from '../lib/vaultCopy.js';
 import {
   DRIVE_RECONNECT_FAILED_LINE,
@@ -1989,8 +1991,22 @@ export function VaultScreen() {
   const exportTeam = async () => {
     if (exportingTeam || !teamOrg?.serverId) return;
     setExportingTeam(true);
+    // The read in its own try (round 7 E46): a list that never answered wrote
+    // nothing here, so it never blames this device's storage, and a refusal
+    // for good (no team session) says its reason with no "try again".
+    let notes: Awaited<ReturnType<typeof vaultReadAll>>;
     try {
-      const notes = await vaultReadAll();
+      notes = await vaultReadAll();
+    } catch (err) {
+      setExportingTeam(false);
+      showToast(
+        err instanceof Error && (err as { permanent?: unknown }).permanent === true
+          ? vaultTeamExportRefused(err.message)
+          : VAULT_TEAM_EXPORT_UNREACHABLE,
+      );
+      return;
+    }
+    try {
       if (!notes.length && !notes.failed.length) {
         showToast('Nothing to export yet. Write a note first.');
         return;

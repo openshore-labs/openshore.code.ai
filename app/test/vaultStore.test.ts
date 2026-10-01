@@ -9146,3 +9146,41 @@ describe('round 7, batch 5: the team vault says what is gone, moved and refused,
     });
   });
 });
+
+describe('round 7, batch 6: the team vault says what it can do now, truly', () => {
+  let server: FakeOrgVaultServer;
+  const st = () => useApp.getState();
+  beforeEach(async () => {
+    reset();
+    await (await import('../src/lib/authSession.js')).clearSession();
+    await closeVaultIndex();
+    wiring.org!.resetOrgVault();
+    useApp.setState({
+      vaultTeamPlan: undefined,
+      vaultConflict: undefined,
+      vaultTrash: undefined,
+      vaultFolders: undefined,
+      vaultReturnFolder: undefined,
+    });
+    server = createFakeOrgVaultServer(ORG);
+    teamNet.server = server;
+    teamScope();
+  });
+  afterEach(async () => {
+    useApp.setState({ vaultTeamPlan: undefined, vaultConflict: undefined });
+    await closeVaultIndex();
+  });
+
+  describe('E46: a team export whose list never answered throws to the room', () => {
+    it.each([
+      ['offline', new TypeError('Failed to fetch')],
+      ['a 502', Object.assign(new Error('Bad gateway'), { status: 502 })],
+    ])('%s rejects the read, never an all-failed result', async (_why, err) => {
+      server.put('n.md', 'words', 'u-me');
+      await st().vaultRefresh();
+      expect(st().vaultFiles.map((f) => f.path)).toEqual(['n.md']);
+      teamNet.fail = err;
+      await expect(st().vaultReadAll()).rejects.toBe(err);
+    });
+  });
+});

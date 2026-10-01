@@ -811,6 +811,18 @@ export const VAULT_TEAM_PATH_TOO_LONG =
  *  is not allowed'), in the app's words (E43). */
 export const VAULT_TEAM_PATH_NOT_ALLOWED = 'The team vault does not take that note name.';
 
+/** Export as plain files, when the team vault's list did not answer (the
+ *  connection, a 5xx): nothing was read, so nothing was written on this
+ *  device, and its storage is not the cause (round 7 E46). */
+export const VAULT_TEAM_EXPORT_UNREACHABLE =
+  'Could not reach the team vault, so nothing was exported. Try again when it answers.';
+
+/** Export as plain files, refused for good before a note was read (no team
+ *  session): its reason, never "try again" (E46). */
+export function vaultTeamExportRefused(reason: string): string {
+  return `Nothing was exported. ${reason}`;
+}
+
 /** Said once, as the room takes the team vault away and shows the personal
  *  one: its notes are still there, only no longer shown to this account. */
 export const VAULT_TEAM_NOT_MEMBER =

@@ -1678,3 +1678,19 @@ describe("the team's free space says what 0023 says (the review, finding 1)", ()
     }
   });
 });
+
+// Round 7, batch 6: what the team vault can do now, said truly.
+describe('round 7, batch 6: the team lines say what is true now', () => {
+  it('an export that never reached the team vault never blames this device (E46)', async () => {
+    const { VAULT_TEAM_EXPORT_UNREACHABLE, vaultTeamExportRefused } =
+      await import('../src/lib/vaultCopy.js');
+    expect(VAULT_TEAM_EXPORT_UNREACHABLE).toBe(
+      'Could not reach the team vault, so nothing was exported. Try again when it answers.',
+    );
+    expect(VAULT_TEAM_EXPORT_UNREACHABLE).not.toMatch(/storage|device/i);
+    const refused = vaultTeamExportRefused('Sign in to your team to use the team vault.');
+    expect(refused).toBe('Nothing was exported. Sign in to your team to use the team vault.');
+    expect(refused).not.toMatch(/try again/i);
+    for (const line of [VAULT_TEAM_EXPORT_UNREACHABLE, refused]) expect(line).not.toMatch(DASHES);
+  });
+});
