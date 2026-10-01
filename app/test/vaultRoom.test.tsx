@@ -2098,6 +2098,79 @@ describe('the team room offers only what the server takes (Y14, Y15)', () => {
     expect(reader).not.toContain(refused);
     expect(dom.text()).toContain('Not saved');
   });
+
+  // Round 7 E51: a Trash page that is up when the plan turns out lapsed says
+  // the plan's line in place of the 30-day promise, and offers no Restore.
+  // The mock store hands back the same state object, so each change renders
+  // the room again, as the real store's update would.
+  async function openTrash() {
+    app.state.vaultFiles = [{ path: 'Plan.md', updatedAt: 'x', size: 4 }];
+    app.state.vaultTrash = [
+      { id: 'n:Old.md', path: 'Old.md', kind: 'note', size: 0, trashedAt: '2026-09-30T00:00:00Z' },
+    ];
+    await dom.render(<VaultRoom />);
+    const { act } = await import('react');
+    const row = dom.container.querySelector('.vault-trash-entry') as HTMLElement;
+    expect(row).toBeTruthy();
+    await act(async () => {
+      row.click();
+    });
+    await dom.settle();
+  }
+
+  it('a Trash page up when a Restore finds the plan lapsed never promises a restore (E51)', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    app.state.vaultRestoreTrash = async () => {
+      app.state.vaultTeamPlan = { entitled: false, deleteRole: 'member', isAdmin: false };
+      app.state.vaultCapsNow = () => LAPSED_CAPS;
+      app.state.vaultTrash = undefined;
+      app.listeners.forEach((l) => l());
+      return {
+        ok: false,
+        reason: 'storage',
+        line: copy.VAULT_TEAM_LAPSED_NOT_RESTORED,
+        whole: true,
+      };
+    };
+    await openTrash();
+    expect(dom.text()).toContain(copy.vaultTrashLead('team'));
+    await dom.click(copy.VAULT_TRASH_RESTORE);
+    await dom.settle();
+    await dom.render(<VaultRoom />);
+    await dom.settle();
+    expect(app.toasts.at(-1)).toBe(copy.VAULT_TEAM_LAPSED_NOT_RESTORED);
+    expect(dom.text()).not.toContain(copy.vaultTrashLead('team'));
+    expect(dom.text()).not.toContain(copy.VAULT_TRASH_TEAM_LINE);
+    expect(dom.text()).toContain(copy.VAULT_TEAM_LAPSED_LEAD);
+    expect(dom.buttons()).not.toContain(copy.VAULT_TRASH_RESTORE);
+  });
+
+  it('a plan read as lapsed while Trash still lists rows offers no Restore (E51)', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    await openTrash();
+    // A settings read marks the plan lapsed; Trash's rows were listed before.
+    app.state.vaultTeamPlan = { entitled: false, deleteRole: 'member', isAdmin: false };
+    app.state.vaultCapsNow = () => LAPSED_CAPS;
+    await dom.render(<VaultRoom />);
+    await dom.settle();
+    expect(dom.text()).toContain(copy.VAULT_TEAM_LAPSED_LEAD);
+    expect(dom.text()).not.toContain(copy.vaultTrashLead('team'));
+    // The row is still named, as a record, with nothing to tap on it.
+    expect(dom.text()).toContain('Old');
+    expect(dom.buttons()).not.toContain(copy.VAULT_TRASH_RESTORE);
+  });
+
+  it('an active plan keeps the 30-day lead, the team line and Restore (E51)', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };
+    await openTrash();
+    expect(dom.text()).toContain(copy.vaultTrashLead('team'));
+    expect(dom.text()).toContain(copy.VAULT_TRASH_TEAM_LINE);
+    expect(dom.text()).not.toContain(copy.VAULT_TEAM_LAPSED_LEAD);
+    expect(dom.buttons()).toContain(copy.VAULT_TRASH_RESTORE);
+  });
 });
 
 // Round 7 E18: the chip never says Saved over text the vault refused for

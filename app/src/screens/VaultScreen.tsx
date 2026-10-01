@@ -2496,6 +2496,13 @@ export function VaultScreen() {
           kind={trashKind}
           entries={vaultTrash}
           error={trashError}
+          {...(teamLapsed
+            ? {
+                refused: vaultTeamExportable(on)
+                  ? VAULT_TEAM_LAPSED_LEAD
+                  : `${VAULT_TEAM_LAPSED_LEAD} ${VAULT_TEAM_LAPSED_WEB}`,
+              }
+            : {})}
           onBack={() => setTrashOpen(false)}
           onRestore={async (entry) => {
             const title =

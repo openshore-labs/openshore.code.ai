@@ -9183,4 +9183,22 @@ describe('round 7, batch 6: the team vault says what it can do now, truly', () =
       await expect(st().vaultReadAll()).rejects.toBe(err);
     });
   });
+
+  describe('E51: a Restore the lapsed plan refuses takes Trash away with nothing written', () => {
+    it('marks the plan lapsed, drops the listed Trash and writes nothing', async () => {
+      server.put('Old.md', 'old words', 'u-me');
+      server.drop('Old.md');
+      server.put('Plan.md', 'plan', 'u-me');
+      await st().vaultRefresh();
+      const listed = (await st().vaultLoadTrash()) ?? [];
+      expect(listed.map((e) => e.path)).toEqual(['Old.md']);
+      server.entitled = false;
+      const r = await st().vaultRestoreTrash(listed[0]!.id);
+      expect(r).toMatchObject({ ok: false, line: VAULT_TEAM_LAPSED_NOT_RESTORED });
+      expect(st().vaultTeamPlan).toMatchObject({ entitled: false });
+      expect(st().vaultCapsNow().trash).toBe(false);
+      expect(st().vaultTrash).toBeUndefined();
+      expect(server.bytes('Old.md')).toBeUndefined();
+    });
+  });
 });
