@@ -950,7 +950,73 @@ async function stillInTrash(auth: string, resourceId: string, path: string): Pro
       `select=id,rev,reason&org_id=eq.${eq(resourceId)}&path=eq.${eqPath(path)}&reason=in.(deleted,renamed)&order=id.desc&limit=1`,
     ),
   ]);
-  return dead.length > 0 && ending[0]?.reason === 'deleted';
+  if (!(dead.length > 0 && ending[0]?.reason === 'deleted')) return false;
+  // Brought back beside a case twin is out of Trash too (E39).
+  return !(await restoredBeside(auth, resourceId, [{ ...ending[0], path }])).has(path);
+}
+
+/** The deleted notes in `candidates` already brought back beside their own
+ *  name (round 7 E39). 0021's if_absent folds letter case, so a Restore
+ *  that meets a live note spelled otherwise ("PLAN.md" for "Plan.md") lands
+ *  at "Plan (restored).md" and leaves the tombstone at "Plan.md", whose
+ *  newest event is still its delete. By putBack's own rule (a name that
+ *  already holds exactly this text is the restore already done) such an
+ *  entry has nothing new to bring back, so it leaves Trash; edited since,
+ *  it is listed again, and its next Restore lands "(restored 2)". One select
+ *  of the live names with "restored" in them (a plain `like`, no reserved
+ *  character to quote), then two reads per name that matches; anything that
+ *  does not answer keeps the row. */
+async function restoredBeside(
+  auth: string,
+  resourceId: string,
+  candidates: readonly RevisionRow[],
+): Promise<Set<string>> {
+  const back = new Set<string>();
+  if (!candidates.length) return back;
+  try {
+    const live = new Map<string, number>();
+    let after: string | undefined;
+    for (let page = 0; page < ORG_VAULT_MAX_PAGES; page++) {
+      const from = after === undefined ? '' : `&path=gt.${eqPath(after)}`;
+      const got = await select<{ path: string; size: number }>(
+        'org_vault_notes',
+        auth,
+        `select=path,size&org_id=eq.${eq(resourceId)}&deleted=is.false&path=like.${eq('*restored*')}${from}&order=path.asc&limit=${ORG_VAULT_PAGE_SIZE}`,
+      );
+      for (const r of got) live.set(r.path, r.size);
+      if (got.length < ORG_VAULT_PAGE_SIZE) break;
+      after = got[got.length - 1]!.path;
+    }
+    if (!live.size) return back;
+    for (const c of candidates) {
+      const names: string[] = [];
+      for (let n = 1; n <= 99; n++) {
+        const at = fitMadeName(restoredPath(c.path, n), TEAM_PATH_MAX);
+        if (live.has(at)) names.push(at);
+      }
+      if (!names.length) continue;
+      const row = await deletedBody(auth, resourceId, c.path, c.rev);
+      if (!row || typeof row.body !== 'string') continue;
+      const body = row.body;
+      const bytes = utf8Length(body);
+      for (const at of names) {
+        if (live.get(at) !== bytes) continue;
+        const copy = await select<{ path: string; body: string }>(
+          'org_vault_notes',
+          auth,
+          `select=path,body&org_id=eq.${eq(resourceId)}&path=eq.${eqPath(at)}&deleted=is.false&limit=1`,
+        );
+        if (copy[0]?.path === at && copy[0].body === body) {
+          back.add(c.path);
+          break;
+        }
+      }
+    }
+  } catch {
+    // A check that did not answer hides nothing: every row stays.
+    return new Set();
+  }
+  return back;
 }
 
 /** Bring back one deleted note from the revision its entry names: at its
@@ -1434,8 +1500,13 @@ export const orgVaultProvider: StorageProvider = {
       newestEndings(auth, resourceId),
     ]);
     const out: TrashEntry[] = [];
+    const back = await restoredBeside(
+      auth,
+      resourceId,
+      [...endings.values()].filter((r) => r.reason === 'deleted' && dead.has(r.path)),
+    );
     for (const [path, r] of endings) {
-      if (r.reason !== 'deleted' || !dead.has(path)) continue;
+      if (r.reason !== 'deleted' || !dead.has(path) || back.has(path)) continue;
       out.push({
         id: noteEntryId(path, r.rev),
         path,

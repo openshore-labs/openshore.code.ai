@@ -696,6 +696,31 @@ describe('org vault Trash (Restore only, R3)', () => {
     expect(server.bytes('Old.md')).toBe('old words, and theirs');
   });
 
+  it('a note restored beside a case twin is checked with one plain like, and leaves Trash (E39)', async () => {
+    const selectsOf = (needle: string) =>
+      server.selects.filter((x) => decodeURIComponent(x.query).includes(needle));
+    // An empty Trash asks nothing more.
+    await orgVaultProvider.listTrash!(ORG);
+    expect(selectsOf('like.')).toEqual([]);
+    const w = await orgVaultProvider.write(ORG, 'a, (b).md', 'words', { ifAbsent: true });
+    await orgVaultProvider.trash!(ORG, { kind: 'note', path: 'a, (b).md', ifMatch: version(w) });
+    server.put('A, (B).md', 'theirs');
+    const listed = await orgVaultProvider.listTrash!(ORG);
+    expect(listed.map((e) => e.path)).toEqual(['a, (b).md']);
+    // No reserved character in the pattern, so it needs no quoting.
+    expect(selectsOf('like.').map((x) => /path=like\.([^&]*)/.exec(x.query)?.[1])).toEqual([
+      '*restored*',
+    ]);
+    expect(await orgVaultProvider.restore!(ORG, listed[0]!.id)).toMatchObject({
+      ok: true,
+      renamed: true,
+      file: { path: 'a, (b) (restored).md' },
+    });
+    expect(await orgVaultProvider.listTrash!(ORG)).toEqual([]);
+    // The copy is read by its exact name, quoted (commas and parentheses).
+    expect(selectsOf('path=eq."a, (b) (restored).md"').length).toBeGreaterThan(0);
+  });
+
   it('lists a tombstone only while its newest revision of any reason is deleted', async () => {
     // Moved away: the old path is a tombstone whose newest revision is renamed.
     const a = await orgVaultProvider.write(ORG, 'moved.md', 'm', { ifAbsent: true });

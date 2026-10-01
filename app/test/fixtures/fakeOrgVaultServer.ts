@@ -327,6 +327,20 @@ export function createFakeOrgVaultServer(org = 'org-123'): FakeOrgVaultServer {
         } else if (f.startsWith('gt.')) {
           const p = filterValue(f.slice(3));
           rows = rows.filter((n) => n.path > p);
+        } else if (f.startsWith('like.')) {
+          // PostgREST's like: `*` (or `%`) for any run, `_` for one character.
+          const pattern = filterValue(f.slice(5))
+            .split('')
+            .map((ch) =>
+              ch === '*' || ch === '%'
+                ? '.*'
+                : ch === '_'
+                  ? '.'
+                  : ch.replace(/[.+?^${}()|[\]\\]/g, '\\$&'),
+            )
+            .join('');
+          const re = new RegExp(`^${pattern}$`, 's');
+          rows = rows.filter((n) => re.test(n.path));
         }
       }
       if (get('order')[0]?.startsWith('path')) {

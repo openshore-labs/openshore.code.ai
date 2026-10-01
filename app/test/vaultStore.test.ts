@@ -9478,4 +9478,128 @@ describe('round 7, batch 6: the team vault says what it can do now, truly', () =
       await vi.waitFor(() => expect(st().vaultTeamPlan).toMatchObject({ entitled: true }));
     });
   });
+
+  describe('E39: a note restored beside a case twin leaves Trash', () => {
+    const trashPaths = async () => ((await st().vaultLoadTrash()) ?? []).map((e) => e.path);
+    async function deleteMine(path = 'Plan.md', body = 'mine') {
+      server.put(path, body, 'u-me');
+      await st().vaultRefresh();
+      const gone = await st().vaultDeleteNote(path);
+      if (!gone?.ok) throw new Error('not deleted');
+      return gone;
+    }
+
+    it('a restore beside a case twin takes the note out of Trash', async () => {
+      await deleteMine();
+      server.put('PLAN.md', 'theirs');
+      expect(await st().vaultRestoreTrash('n:Plan.md')).toMatchObject({
+        ok: true,
+        renamed: true,
+        path: 'Plan (restored).md',
+      });
+      expect(server.bytes('Plan (restored).md')).toBe('mine');
+      expect(await trashPaths()).toEqual([]);
+      expect(st().vaultTrash?.map((e) => e.path)).toEqual([]);
+    });
+
+    it('an Undo that lands beside a case twin takes it out of Trash too', async () => {
+      const gone = await deleteMine();
+      if (!('undo' in gone) || !gone.undo) throw new Error('no undo');
+      server.put('PLAN.md', 'theirs');
+      const at = st().vaultTargetRef();
+      expect(await st().vaultUndoDelete(gone.undo, at)).toMatchObject({
+        ok: true,
+        renamed: true,
+        path: 'Plan (restored).md',
+      });
+      expect(await trashPaths()).toEqual([]);
+    });
+
+    it('a deleted note with a case twin that was never restored stays in Trash', async () => {
+      await deleteMine();
+      server.put('PLAN.md', 'theirs');
+      expect(await trashPaths()).toEqual(['Plan.md']);
+      // A "(restored)" note with other words is not this one.
+      server.put('Plan (restored).md', 'other words');
+      expect(await trashPaths()).toEqual(['Plan.md']);
+    });
+
+    it('a restore beside refused for free space stays in Trash', async () => {
+      await deleteMine();
+      server.put('PLAN.md', 'theirs');
+      server.freeBytes = server.usage();
+      expect(await st().vaultRestoreTrash('n:Plan.md')).toMatchObject({ ok: false });
+      expect(server.bytes('Plan (restored).md')).toBeUndefined();
+      expect(await trashPaths()).toEqual(['Plan.md']);
+    });
+
+    it('once the restored copy is edited the entry is back, and a tap lands "(restored 2)"', async () => {
+      await deleteMine();
+      server.put('PLAN.md', 'theirs');
+      await st().vaultRestoreTrash('n:Plan.md');
+      expect(await trashPaths()).toEqual([]);
+      server.put('Plan (restored).md', 'mine, edited');
+      expect(await trashPaths()).toEqual(['Plan.md']);
+      const listed = (await st().vaultLoadTrash()) ?? [];
+      expect(await st().vaultRestoreTrash(listed[0]!.id)).toMatchObject({
+        ok: true,
+        path: 'Plan (restored 2).md',
+      });
+      expect(server.bytes('Plan (restored 2).md')).toBe('mine');
+      expect(await trashPaths()).toEqual([]);
+    });
+
+    it('a folder Undo whose notes land beside case twins leaves no rows', async () => {
+      server.put('Work/a.md', 'alpha', 'u-me');
+      server.put('Work/b.md', 'beta', 'u-me');
+      await st().vaultRefresh();
+      const gone = await st().vaultDeleteFolder('Work');
+      if (!gone?.ok || !('undo' in gone) || !gone.undo) throw new Error('no undo');
+      server.put('WORK/A.md', 'theirs');
+      const at = st().vaultTargetRef();
+      expect(await st().vaultUndoDelete(gone.undo, at)).toMatchObject({ ok: true });
+      expect(server.bytes('Work/a (restored).md')).toBe('alpha');
+      expect(server.bytes('Work/b.md')).toBe('beta');
+      expect(await trashPaths()).toEqual([]);
+    });
+
+    it('a stale Trash row restored beside by a teammate writes nothing and says it is gone', async () => {
+      await deleteMine();
+      const listed = (await st().vaultLoadTrash()) ?? [];
+      server.put('PLAN.md', 'theirs');
+      // A teammate's device restores it, beside their note.
+      expect(await wiring.org!.orgVaultProvider.restore!(ORG, listed[0]!.id)).toMatchObject({
+        ok: true,
+        renamed: true,
+      });
+      const writes = server.rpcs.filter((r) => r.fn === 'org_vault_write').length;
+      expect(await st().vaultRestoreTrash(listed[0]!.id)).toMatchObject({
+        ok: false,
+        reason: 'missing',
+      });
+      expect(server.rpcs.filter((r) => r.fn === 'org_vault_write').length).toBe(writes);
+    });
+
+    it('a check that does not answer keeps the row', async () => {
+      await deleteMine();
+      server.put('PLAN.md', 'theirs');
+      await st().vaultRestoreTrash('n:Plan.md');
+      const select = server.select.bind(server);
+      server.select = async (table, tok, query) => {
+        if (decodeURIComponent(query).includes('restored')) throw new TypeError('Failed to fetch');
+        return select(table, tok, query);
+      };
+      expect(await trashPaths()).toEqual(['Plan.md']);
+      server.select = select;
+    });
+
+    it('a name with commas, quotes and parentheses is matched exactly', async () => {
+      const path = 'Q3, "draft" (v2).md';
+      await deleteMine(path, 'odd');
+      server.put(path.toUpperCase(), 'theirs');
+      expect(await st().vaultRestoreTrash(`n:${path}`)).toMatchObject({ ok: true, renamed: true });
+      expect(server.bytes('Q3, "draft" (v2) (restored).md')).toBe('odd');
+      expect(await trashPaths()).toEqual([]);
+    });
+  });
 });
