@@ -1,7 +1,7 @@
-// Pick the voice, the way Claude lets you. A short hand-picked list of English
-// voices (lib/voice/voiceCatalog.ts), each named with its accent and a
-// one-word persona, the most natural first; tapping one selects it and speaks
-// a short sample so you hear it before you keep it. On an Apple device with
+// Pick the voice, the way Claude lets you. The best-sounding English voices by
+// name, split into Female and Male, ten at most (lib/voice/voiceCatalog.ts);
+// tapping one selects it and speaks a short sample so you hear it before you
+// keep it. On an Apple device with
 // none of the premium voices installed, a note says where to get them.
 // Reached from Settings and from the voice-mode overlay's voice name.
 import { useEffect, useRef, useState } from 'react';
@@ -9,6 +9,7 @@ import { Sheet } from './Sheet.js';
 import { SheetHead } from './SheetHead.js';
 import { Speaker, listVoices } from '../lib/voice/tts.js';
 import {
+  byGender,
   curateVoices,
   premiumHint,
   resolveVoice,
@@ -16,6 +17,8 @@ import {
   type CuratedVoice,
 } from '../lib/voice/voiceCatalog.js';
 import { platform } from '../lib/platform.js';
+
+const GROUP = { female: 'Female', male: 'Male' } as const;
 
 /** Where the premium voices come from on this device, if anywhere. */
 export function voiceHome(): 'ios' | 'mac' | 'other' {
@@ -79,46 +82,44 @@ export function VoicePicker({
   return (
     <Sheet open={open} onClose={onClose}>
       <SheetHead title="Voice" onClose={onClose} />
-      <p className="sheet-sub">
-        English voices, picked for how natural they sound. Each one speaks on this device.
-      </p>
+      <p className="sheet-sub">The most natural English voices. Each one speaks on this device.</p>
       {hint ? <p className="voice-hint">{hint}</p> : null}
-      <div className="voice-list">
-        {voices === null ? (
-          <p className="hint">Loading voices...</p>
-        ) : voices.length === 0 ? (
-          <p className="hint">No English voices are installed on this device.</p>
-        ) : (
-          voices.map((voice) => {
-            const active = voice.id === current;
-            return (
-              <button
-                key={voice.id}
-                type="button"
-                className={`voice-row press-fb${active ? ' active' : ''}`}
-                aria-pressed={active}
-                onClick={() => preview(voice)}
-              >
-                <span className="voice-row-text">
-                  <span className="voice-row-name">
-                    {voice.display}
-                    {voice.quality === 'premium' ? (
-                      <span className="voice-row-tier">Premium</span>
-                    ) : null}
-                  </span>
-                  <span className="voice-row-persona">{voice.persona}</span>
-                </span>
-                <span className="voice-row-lang">{voice.accent}</span>
-                {active ? (
-                  <span className="voice-row-check" aria-hidden="true">
-                    {'✓'}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })
-        )}
-      </div>
+      {voices === null ? (
+        <p className="hint">Loading voices...</p>
+      ) : voices.length === 0 ? (
+        <p className="hint">No English voices are installed on this device.</p>
+      ) : (
+        (['female', 'male'] as const).map((gender) => {
+          const group = byGender(voices)[gender];
+          if (group.length === 0) return null;
+          return (
+            <section key={gender} className="voice-group" aria-label={GROUP[gender]}>
+              <h3 className="voice-group-head">{GROUP[gender]}</h3>
+              <div className="voice-list">
+                {group.map((voice) => {
+                  const active = voice.id === current;
+                  return (
+                    <button
+                      key={voice.id}
+                      type="button"
+                      className={`voice-row press-fb${active ? ' active' : ''}`}
+                      aria-pressed={active}
+                      onClick={() => preview(voice)}
+                    >
+                      <span className="voice-row-name">{voice.display}</span>
+                      {active ? (
+                        <span className="voice-row-check" aria-hidden="true">
+                          {'✓'}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })
+      )}
     </Sheet>
   );
 }

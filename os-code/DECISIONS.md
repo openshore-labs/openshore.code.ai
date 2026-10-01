@@ -4038,3 +4038,13 @@ execution contract. Newest at the bottom.
   is installed, since no API downloads them for us. A browser's online voices
   are dropped (they send the words to a speech service the egress list does not
   name). A cloud or bundled neural voice would be a separate call.
+- **Voices: Siri's where offered, female and male, ten at most (founder,
+  2026-10-01):** "just the Siri voices since those all sound the best... a split
+  in male/female... no more than 10." Apple keeps the Siri voices for Siri and
+  the system; a third-party app's synthesizer is not given them. So a Siri
+  voice leads the list, under its own name, wherever a device does list one to
+  the app, and otherwise the best on offer are Apple's premium neural voices,
+  with the download hint when none is installed. Names only (accents and
+  personas dropped), Female then Male, five of each at most. Gender comes from
+  the system on iOS (the plugin now reports it) and from the catalog by name
+  on the desktop.

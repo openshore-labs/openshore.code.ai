@@ -56,6 +56,7 @@ public class OscodeTtsPlugin: CAPPlugin, CAPBridgedPlugin, AVSpeechSynthesizerDe
                     "name": voice.name,
                     "lang": voice.language,
                     "quality": Self.qualityName(voice.quality),
+                    "gender": Self.genderName(voice.gender),
                 ]
             }
             .sorted { a, b in
@@ -157,6 +158,16 @@ public class OscodeTtsPlugin: CAPPlugin, CAPBridgedPlugin, AVSpeechSynthesizerDe
         case .premium: return "premium"
         case .enhanced: return "enhanced"
         default: return "default"
+        }
+    }
+
+    // The voice's gender as the system records it, so the picker can split
+    // its list into female and male voices without guessing from a name.
+    private static func genderName(_ gender: AVSpeechSynthesisVoiceGender) -> String {
+        switch gender {
+        case .female: return "female"
+        case .male: return "male"
+        default: return "unspecified"
         }
     }
 

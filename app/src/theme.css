@@ -13549,31 +13549,19 @@ button.settings-row:active {
   border-color: var(--accent);
   background: var(--accent-soft);
 }
-.voice-row-text {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
 .voice-row-name {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+  flex: 1;
   font-weight: var(--weight-semibold);
 }
-.voice-row-persona {
+/* The Female and Male groups. */
+.voice-group + .voice-group {
+  margin-top: 14px;
+}
+.voice-group-head {
+  margin: 8px 12px 0;
+  font-size: var(--text-2);
+  font-weight: var(--weight-medium);
   color: var(--muted);
-  font-size: var(--text-3);
-}
-/* Apple's top tier, the neural voices: a quiet gold mark, the Plus gold. */
-.voice-row-tier {
-  padding: 1px 7px;
-  border-radius: var(--radius-xs);
-  background: var(--plus);
-  color: var(--plus-ink);
-  font-size: var(--text-1);
-  font-weight: var(--weight-semibold);
 }
 /* How to get the premium voices, when none is installed. */
 .voice-hint {

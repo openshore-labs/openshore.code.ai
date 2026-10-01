@@ -1,136 +1,107 @@
-// The voices OpenShore offers (founder, 2026-10-01): English only, a short
-// hand-picked list, the best quality first. A device carries dozens of system
-// voices, most of them other languages, novelty sounds (Bubbles, Bad News,
-// Zarvox) or the old robotic set; the raw list read as low quality. Here each
-// good English voice is named once, with its accent and a one-word persona,
-// and anything not on the list stays out. Pure, so the rules are tested.
+// The voices OpenShore offers (founder, 2026-10-01): the best-sounding
+// English voices only, by name, split into female and male, ten at most. A
+// device carries dozens of system voices, most of them other languages,
+// novelty sounds (Bubbles, Bad News, Zarvox) or the old robotic set; the raw
+// list read as low quality. Pure, so the rules are tested.
 //
-// The gold standard on Apple devices is the premium (neural) tier: free from
-// Apple, downloaded once, then fully on-device. When none is installed the
-// picker says how to get them (premiumHint), rather than pretending the
-// compact voices are the best there is.
+// The founder asked for the Siri voices, since they sound the best. Apple
+// keeps them for Siri and the system: a third-party app's speech synthesizer
+// is not given them. Where a device does list one to the app it leads here,
+// under its own name. Otherwise the best on offer are Apple's premium (neural)
+// voices, free and fully on-device once downloaded, and when none is installed
+// the picker says where to get them (premiumHint).
 import type { TtsVoiceInfo } from '../ttsPlugin.js';
 
-export type Accent =
-  | 'American'
-  | 'British'
-  | 'Scottish'
-  | 'Irish'
-  | 'Australian'
-  | 'New Zealand'
-  | 'Indian'
-  | 'South African';
+export type Gender = 'female' | 'male';
 
-/** The order accents are listed in, once quality has been ranked. */
-export const ACCENTS: Accent[] = [
-  'American',
-  'British',
-  'Scottish',
-  'Irish',
-  'Australian',
-  'New Zealand',
-  'Indian',
-  'South African',
-];
-
-/** A voice on the list: the system voice plus what the picker says about it. */
+/** A voice on the list: the system voice plus what the picker shows. */
 export interface CuratedVoice extends TtsVoiceInfo {
   /** The voice's own name, cleaned of the system's tags ("Ava", not
    *  "Ava (Premium)" or "Microsoft Zira - English (United States)"). */
   display: string;
-  accent: Accent;
-  persona: string;
+  gender: Gender;
+  /** One of Siri's own voices, where the device offers it to the app. */
+  siri: boolean;
 }
 
 /**
- * The hand-picked voices, in the order they are offered at the same quality:
- * the voices that sound most natural first. Apple's names, then the Windows
- * desktop's own. A voice that is not here is not offered.
+ * The hand-picked voices and their gender, in the order they are offered at
+ * the same quality: the most natural first. Apple's names (Siri's among them),
+ * then the Windows desktop's own. A voice not here is offered only when it is
+ * a Siri voice whose gender the system reports.
  */
-const CATALOG: Array<[name: string, persona: string]> = [
-  ['Ava', 'Warm and natural'],
-  ['Zoe', 'Bright and friendly'],
-  ['Evan', 'Calm and even'],
-  ['Nathan', 'Relaxed'],
-  ['Noelle', 'Soft-spoken'],
-  ['Serena', 'Polished'],
-  ['Jamie', 'Easygoing'],
-  ['Matilda', 'Lively'],
-  ['Joelle', 'Upbeat'],
-  ['Tom', 'Steady narrator'],
-  ['Allison', 'Clear and crisp'],
-  ['Susan', 'Measured'],
-  ['Samantha', 'The classic'],
-  ['Daniel', 'Composed'],
-  ['Kate', 'Crisp'],
-  ['Stephanie', 'Poised'],
-  ['Oliver', 'Friendly'],
-  ['Arthur', 'Gentle'],
-  ['Martha', 'Warm'],
-  ['Fiona', 'Bright'],
-  ['Moira', 'Gentle'],
-  ['Karen', 'Friendly'],
-  ['Lee', 'Laid-back'],
-  ['Catherine', 'Clear'],
-  ['Gordon', 'Grounded'],
-  ['Rishi', 'Clear and warm'],
-  ['Veena', 'Bright'],
-  ['Isha', 'Friendly'],
-  ['Sangeeta', 'Calm'],
-  ['Tessa', 'Warm'],
+const CATALOG: Array<[name: string, gender: Gender]> = [
+  ['Ava', 'female'],
+  ['Zoe', 'female'],
+  ['Evan', 'male'],
+  ['Nathan', 'male'],
+  ['Noelle', 'female'],
+  ['Tom', 'male'],
+  ['Serena', 'female'],
+  ['Jamie', 'male'],
+  ['Matilda', 'female'],
+  ['Joelle', 'female'],
+  ['Nicky', 'female'],
+  ['Aaron', 'male'],
+  ['Allison', 'female'],
+  ['Susan', 'female'],
+  ['Samantha', 'female'],
+  ['Daniel', 'male'],
+  ['Kate', 'female'],
+  ['Oliver', 'male'],
+  ['Arthur', 'male'],
+  ['Martha', 'female'],
+  ['Stephanie', 'female'],
+  ['Gordon', 'male'],
+  ['Lee', 'male'],
+  ['Catherine', 'female'],
+  ['Karen', 'female'],
+  ['Moira', 'female'],
+  ['Fiona', 'female'],
+  ['Rishi', 'male'],
+  ['Tessa', 'female'],
   // The Windows desktop's built-in voices.
-  ['Aria', 'Warm and natural'],
-  ['Jenny', 'Friendly'],
-  ['Guy', 'Relaxed'],
-  ['Zira', 'Clear'],
-  ['David', 'Steady'],
-  ['Mark', 'Relaxed'],
-  ['Hazel', 'Polished'],
-  ['George', 'Composed'],
+  ['Aria', 'female'],
+  ['Jenny', 'female'],
+  ['Guy', 'male'],
+  ['Zira', 'female'],
+  ['David', 'male'],
+  ['Mark', 'male'],
+  ['Hazel', 'female'],
+  ['George', 'male'],
 ];
 const RANK = new Map(CATALOG.map(([name], i) => [name.toLowerCase(), i]));
-const PERSONA = new Map(CATALOG.map(([name, persona]) => [name.toLowerCase(), persona]));
+const GENDER = new Map(CATALOG.map(([name, gender]) => [name.toLowerCase(), gender]));
 
-/** The most voices the picker lists. Enough to choose a sound and an accent,
- *  few enough to read at a glance. */
-export const VOICE_LIST_MAX = 12;
+/** At most this many of each, so the list is ten voices at most. */
+export const VOICES_PER_GENDER = 5;
 
-/** The voices to get when none of the premium tier is installed. */
-export const PREMIUM_PICKS = ['Ava', 'Zoe', 'Evan'];
+/** The voices to get when no premium (or Siri) voice is installed. */
+export const PREMIUM_PICKS = ['Ava', 'Zoe', 'Evan', 'Nathan'];
 
-const QUALITY_RANK: Record<TtsVoiceInfo['quality'], number> = {
-  premium: 2,
-  enhanced: 1,
-  default: 0,
-};
-
-/** The accent a language tag speaks, or undefined when it is not English. */
-export function accentOf(lang: string): Accent | undefined {
-  const tag = lang.toLowerCase().replace(/_/g, '-');
-  if (!/^en(-|$)/.test(tag)) return undefined;
-  if (tag.includes('scotland') || tag.includes('gbsct')) return 'Scottish';
-  const region = tag.split('-')[1];
-  switch (region) {
-    case 'gb':
-    case 'uk':
-      return 'British';
-    case 'ie':
-      return 'Irish';
-    case 'au':
-      return 'Australian';
-    case 'nz':
-      return 'New Zealand';
-    case 'in':
-      return 'Indian';
-    case 'za':
-      return 'South African';
-    default:
-      return 'American';
-  }
+/** How good a voice sounds, best highest: Siri's own, then Apple's tiers. */
+function tier(v: { quality: TtsVoiceInfo['quality']; siri: boolean }): number {
+  if (v.siri) return 3;
+  return v.quality === 'premium' ? 2 : v.quality === 'enhanced' ? 1 : 0;
 }
 
-/** The voice's own name and any quality the system wrote into it. */
-export function cleanName(raw: string): { name: string; quality?: TtsVoiceInfo['quality'] } {
+/** Whether a language tag is English. */
+export function isEnglish(lang: string): boolean {
+  return /^en([-_]|$)/i.test(lang);
+}
+
+/** Whether the system marks this as one of Siri's voices. */
+export function isSiriVoice(v: Pick<TtsVoiceInfo, 'id' | 'name'>): boolean {
+  return /siri/i.test(v.id) || /siri/i.test(v.name);
+}
+
+/** The voice's own name and any quality the system wrote into it. A Siri
+ *  voice's name is read from its id ("com.apple.ttsbundle.siri_Nicky_en-US"). */
+export function cleanName(
+  raw: string,
+  id = '',
+): { name: string; quality?: TtsVoiceInfo['quality'] } {
+  const siri = id.match(/siri_([A-Za-z]+)_/);
   let name = raw.trim();
   let quality: TtsVoiceInfo['quality'] | undefined;
   const tagged = name.match(/\s*\((premium|enhanced)\)\s*$/i);
@@ -141,36 +112,53 @@ export function cleanName(raw: string): { name: string; quality?: TtsVoiceInfo['
   // "Microsoft Zira - English (United States)", "Microsoft Aria Online (Natural)".
   name = name.replace(/^Microsoft\s+/i, '').replace(/\s+-\s+.*$/, '');
   name = name.replace(/\s+Online(\s*\(Natural\))?$/i, '').trim();
+  if (siri && (!name || /siri|voice\s*\d/i.test(name))) name = siri[1]!;
   return { name, quality };
 }
 
 /**
- * The list the picker shows: English voices on the catalog, one per name and
- * accent at the best quality installed, ranked premium first, then by the
- * catalog's order, capped at VOICE_LIST_MAX.
+ * The list the picker shows: English voices, one per name at the best quality
+ * installed, ranked Siri first, then premium, then by the catalog's order, at
+ * most VOICES_PER_GENDER of each gender. Best first overall, so the first is
+ * the default.
  */
 export function curateVoices(voices: readonly TtsVoiceInfo[]): CuratedVoice[] {
   const best = new Map<string, CuratedVoice>();
   for (const v of voices) {
-    const accent = accentOf(v.lang);
-    if (!accent) continue;
-    const { name, quality: tagged } = cleanName(v.name);
-    const persona = PERSONA.get(name.toLowerCase());
-    if (!persona) continue;
-    const quality = tagged && QUALITY_RANK[tagged] > QUALITY_RANK[v.quality] ? tagged : v.quality;
-    const voice: CuratedVoice = { ...v, quality, display: name, accent, persona };
-    const key = `${name.toLowerCase()}|${accent}`;
+    if (!isEnglish(v.lang)) continue;
+    const siri = isSiriVoice(v);
+    const { name, quality: tagged } = cleanName(v.name, v.id);
+    const known = GENDER.get(name.toLowerCase());
+    const reported = v.gender === 'female' || v.gender === 'male' ? v.gender : undefined;
+    // A voice on the catalog, or a Siri voice the system names a gender for.
+    if (!known && !(siri && reported)) continue;
+    const gender = reported ?? known!;
+    const quality =
+      tagged && tier({ quality: tagged, siri: false }) > tier({ quality: v.quality, siri: false })
+        ? tagged
+        : v.quality;
+    const voice: CuratedVoice = { ...v, quality, display: name, gender, siri };
+    const key = name.toLowerCase();
     const held = best.get(key);
-    if (!held || QUALITY_RANK[quality] > QUALITY_RANK[held.quality]) best.set(key, voice);
+    if (!held || tier(voice) > tier(held)) best.set(key, voice);
   }
-  return [...best.values()]
-    .sort(
-      (a, b) =>
-        QUALITY_RANK[b.quality] - QUALITY_RANK[a.quality] ||
-        RANK.get(a.display.toLowerCase())! - RANK.get(b.display.toLowerCase())! ||
-        ACCENTS.indexOf(a.accent) - ACCENTS.indexOf(b.accent),
-    )
-    .slice(0, VOICE_LIST_MAX);
+  const ranked = [...best.values()].sort(
+    (a, b) =>
+      tier(b) - tier(a) ||
+      (RANK.get(a.display.toLowerCase()) ?? CATALOG.length) -
+        (RANK.get(b.display.toLowerCase()) ?? CATALOG.length) ||
+      a.display.localeCompare(b.display),
+  );
+  const count: Record<Gender, number> = { female: 0, male: 0 };
+  return ranked.filter((v) => ++count[v.gender] <= VOICES_PER_GENDER);
+}
+
+/** The list split for the picker, each in its ranked order. */
+export function byGender(curated: readonly CuratedVoice[]): Record<Gender, CuratedVoice[]> {
+  return {
+    female: curated.filter((v) => v.gender === 'female'),
+    male: curated.filter((v) => v.gender === 'male'),
+  };
 }
 
 /** The voice to use: the chosen one while it is on the list, else the best
@@ -184,12 +172,12 @@ export function resolveVoice(
 }
 
 /** Whether the picker should say how to get the premium voices: on an Apple
- *  device with none of the premium tier installed. */
+ *  device with neither a premium nor a Siri voice on the list. */
 export function wantsPremiumHint(
   curated: readonly CuratedVoice[],
   where: 'ios' | 'mac' | 'other',
 ): boolean {
-  return where !== 'other' && !curated.some((v) => v.quality === 'premium');
+  return where !== 'other' && !curated.some((v) => tier(v) >= 2);
 }
 
 /** Where the premium voices are downloaded, in the device's own words. */

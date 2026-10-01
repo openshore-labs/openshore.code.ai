@@ -13,6 +13,9 @@ export interface TtsVoiceInfo {
   name: string;
   lang: string;
   quality: 'default' | 'enhanced' | 'premium';
+  /** As the system records it (iOS); absent on the web, where the voice
+   *  catalog knows each listed voice's gender by name. */
+  gender?: 'female' | 'male' | 'unspecified';
 }
 
 export interface TtsStart {
