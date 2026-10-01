@@ -1,8 +1,8 @@
 /* OpenShore app design system. Structure borrowed from the best chat apps,
    skin 100% OpenShore: the openshore.ai palette exactly. Cream paper ground,
    deep-ink text, deep-water teal for local/brand, warm amber for anything
-   cloud or spend. Type is Fraunces (serif display) + Inter (sans UI), the same
-   self-hosted faces the marketing site ships. */
+   cloud or spend. Type is Inter throughout, as on the marketing site, with Fraunces
+   kept for the wordmark only. */
 
 @font-face {
   font-family: 'Inter';
@@ -173,7 +173,10 @@
   --icon-stroke: 1.8;
   --icon-stroke-hairline: 1.4;
   --font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Ubuntu, sans-serif;
-  --font-display: 'Fraunces', 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+  /* Headings use Inter, as the openshore.ai pages do. Fraunces stays only on
+     the wordmark (--font-brand). */
+  --font-display: var(--font);
+  --font-brand: 'Fraunces', 'Iowan Old Style', Georgia, 'Times New Roman', serif;
   --font-mono: 'SF Mono', ui-monospace, 'JetBrains Mono', 'Fira Code', Menlo, monospace;
 
   --safe-top: env(safe-area-inset-top, 0px);
@@ -566,7 +569,7 @@ textarea {
 }
 
 .wordmark {
-  font-family: var(--font-display);
+  font-family: var(--font-brand);
   font-weight: var(--weight-medium);
   font-size: var(--text-5);
   letter-spacing: 0.02em;
