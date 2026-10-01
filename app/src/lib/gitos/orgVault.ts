@@ -387,11 +387,17 @@ const columns = new Map<
   string,
   { rev: number; deleteRole: OrgVaultDeleteRole; contextFolder: string | null }
 >();
-let planListener: ((resourceId: string, plan: OrgVaultPlan) => void) | undefined;
+/** How a plan was learned: a settings read, or a refusal (OV402, OV403,
+ *  0023's free space) that says only part of it (round 7 E37). */
+export type OrgVaultPlanSource = 'read' | 'refusal';
+let planListener:
+  ((resourceId: string, plan: OrgVaultPlan, learned: OrgVaultPlanSource) => void) | undefined;
 
 /** Hear every change to a team's plan (a settings read, a write refused
  *  with OV402, or a delete refused with OV403). One listener: the store's. */
-export function onOrgVaultPlan(fn: (resourceId: string, plan: OrgVaultPlan) => void): void {
+export function onOrgVaultPlan(
+  fn: (resourceId: string, plan: OrgVaultPlan, learned: OrgVaultPlanSource) => void,
+): void {
   planListener = fn;
 }
 
@@ -408,28 +414,40 @@ export function orgVaultPlan(resourceId: string): OrgVaultPlan | undefined {
   return p ? { ...p } : undefined;
 }
 
-function setPlan(resourceId: string, plan: OrgVaultPlan): void {
+function setPlan(
+  resourceId: string,
+  plan: OrgVaultPlan,
+  learned: OrgVaultPlanSource = 'read',
+): void {
   plans.set(resourceId, plan);
-  planListener?.(resourceId, { ...plan });
+  planListener?.(resourceId, { ...plan }, learned);
 }
 
 function markLapsed(resourceId: string): void {
   const was = plans.get(resourceId);
-  setPlan(resourceId, {
-    entitled: false,
-    isAdmin: was?.isAdmin ?? false,
-    deleteRole: was?.deleteRole ?? 'member',
-  });
+  setPlan(
+    resourceId,
+    {
+      entitled: false,
+      isAdmin: was?.isAdmin ?? false,
+      deleteRole: was?.deleteRole ?? 'member',
+    },
+    'refusal',
+  );
 }
 
 /** 0023 refused a write that added text: the team is full (round 7 E27). */
 function markFull(resourceId: string): void {
   const was = plans.get(resourceId);
   if (was?.full) return;
-  setPlan(resourceId, {
-    ...(was ?? { entitled: true, isAdmin: false, deleteRole: 'member' }),
-    full: true,
-  });
+  setPlan(
+    resourceId,
+    {
+      ...(was ?? { entitled: true, isAdmin: false, deleteRole: 'member' }),
+      full: true,
+    },
+    'refusal',
+  );
 }
 
 /** The team may have room again (a refresh asks the server afresh, or a
@@ -447,12 +465,16 @@ export function clearOrgVaultFull(resourceId: string): void {
  *  this person is not an admin. The notice date stays from the last read. */
 function markAdminsOnly(resourceId: string): void {
   const was = plans.get(resourceId);
-  setPlan(resourceId, {
-    ...(was?.entitledUntil ? { entitledUntil: was.entitledUntil } : {}),
-    entitled: true,
-    isAdmin: false,
-    deleteRole: 'admin',
-  });
+  setPlan(
+    resourceId,
+    {
+      ...(was?.entitledUntil ? { entitledUntil: was.entitledUntil } : {}),
+      entitled: true,
+      isAdmin: false,
+      deleteRole: 'admin',
+    },
+    'refusal',
+  );
 }
 
 function rememberSettings(resourceId: string, row: SettingsRow): void {
@@ -1078,6 +1100,19 @@ async function putSettings(
 /** An admin changes who may delete team notes (CX Y14). The settings stay
  *  as they are; the write is guarded by the rev just read, so a change from
  *  another admin in between is `changed`, never lost. */
+/** Read the team's plan again (one settings read) and return it, or
+ *  undefined when the read did not answer. Never throws: the store asks
+ *  this only when the plan it has would refuse a write, and a read that
+ *  fails leaves that refusal standing (round 7 E37). */
+export async function refreshOrgVaultPlan(resourceId: string): Promise<OrgVaultPlan | undefined> {
+  try {
+    await getSettings(await token(), resourceId);
+  } catch {
+    return undefined;
+  }
+  return orgVaultPlan(resourceId);
+}
+
 export async function setOrgVaultDeleteRole(
   resourceId: string,
   role: OrgVaultDeleteRole,

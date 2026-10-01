@@ -399,6 +399,7 @@ import {
   onOrgVaultNotMember,
   setOrgVaultDeleteRole,
   clearOrgVaultFull,
+  refreshOrgVaultPlan,
   type OrgVaultPlan,
   type OrgVaultDeleteRole,
   isNotePath,
@@ -444,6 +445,7 @@ import { vaultCaps, type VaultCaps } from '../lib/vaultCaps.js';
 import { clearVaultTodayCache, resolveVaultToday, vaultTodayLine } from '../lib/vaultToday.js';
 import {
   cachedVaultSettings,
+  clearVaultSettingsCache,
   loadVaultSettings,
   saveVaultSetting,
   vaultNarrowingStamp,
@@ -546,7 +548,7 @@ import {
   vaultFolderTrashChanged,
   vaultRefusedLine,
 } from '../lib/vaultCopy.js';
-import { vaultTeamRefusal } from './vaultTeamGate.js';
+import { vaultTeamRefusal, type VaultTeamWrite } from './vaultTeamGate.js';
 import { ownerBoundProvider } from './teamOwner.js';
 import { dropTeamIndexes, noteTeamIndex } from './teamIndexes.js';
 import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
@@ -5011,6 +5013,25 @@ export const useApp = create<AppState>((set, get, api) => {
       (signingOut === 0 && t.owner !== undefined && t.owner === get().authSession?.user.id)
     );
   }
+  // The team gate (vaultTeamGate) on the plan as it is now (round 7 E37): a
+  // plan that would refuse is read again first, since an admin may have let
+  // everyone delete again, or the plan may be active again, since it was
+  // read. One settings read, only on the refusal path; a read that does not
+  // answer leaves the refusal standing (it fails closed). The free space is
+  // learned from a refusal, never a read, so a refusal for it alone is said
+  // as it is, with nothing asked.
+  async function teamRefusalNow(
+    t: VaultTargetRef,
+    write: VaultTeamWrite,
+  ): Promise<string | undefined> {
+    const plan = get().vaultTeamPlan;
+    const refused = vaultTeamRefusal(t.providerId, plan, write);
+    if (!refused || !plan || t.providerId !== 'org' || !speaksNow(t)) return refused;
+    const { full: _full, ...unfull } = plan;
+    if (!vaultTeamRefusal(t.providerId, unfull, write)) return refused;
+    await refreshOrgVaultPlan(t.resourceId);
+    return vaultTeamRefusal(t.providerId, get().vaultTeamPlan, write);
+  }
   // Whether a resolve choice may be settled now: any personal one, and a
   // team one only while its account is signed in and its vault is on screen.
   function teamChoiceSpeaks(c: VaultConflict): boolean {
@@ -8408,8 +8429,12 @@ export const useApp = create<AppState>((set, get, api) => {
       // The team's plan, from each settings read, a write refused with OV402
       // and a delete refused with OV403: only the signed-in org's, so a late
       // answer for another org never paints this one (CX Y15).
-      onOrgVaultPlan((resourceId, plan) => {
+      onOrgVaultPlan((resourceId, plan, learned) => {
         if (resourceId !== get().settings.account?.org?.serverId) return;
+        // A plan learned from a refusal says only part of it: the next
+        // relist reads the settings again rather than waiting out their
+        // cache, so a renewed plan or a switched rule comes back (E37).
+        if (learned === 'refusal') clearVaultSettingsCache(`org::${resourceId}`);
         set({ vaultTeamPlan: plan });
       });
       // The server said this account is not a member of the team any more,
@@ -11923,7 +11948,7 @@ export const useApp = create<AppState>((set, get, api) => {
       // A lapsed team plan takes no new note (OV402): said here, before the
       // server is asked (a listed note still opens, read-only), and a seeded
       // body is held so its words are not lost.
-      const teamRefused = vaultTeamRefusal(target.providerId, get().vaultTeamPlan, 'create');
+      const teamRefused = await teamRefusalNow(target, 'create');
       if (teamRefused) {
         if (seeded) {
           // The plan's reason, or the free space's (E27).
@@ -12139,7 +12164,7 @@ export const useApp = create<AppState>((set, get, api) => {
           // closes, when it is gone). Nothing typed is lost, nothing is sent.
           const lapsed =
             choice === 'both' || choice === 'mine'
-              ? vaultTeamRefusal(target.providerId, get().vaultTeamPlan, 'save')
+              ? await teamRefusalNow(target, 'save')
               : undefined;
           // Keep both writes a copy, which adds text: refused here once the
           // team is known to be full (E27). Keep yours may only trim, so it
@@ -12536,7 +12561,7 @@ export const useApp = create<AppState>((set, get, api) => {
       // A lapsed plan, or a member under admins-only (OV402, OV403): the
       // server's refusal, said before it is asked. Lapsed, the caps have no
       // Trash, and the for-good path below must never run on a team note.
-      const teamRefused = vaultTeamRefusal(t.providerId, get().vaultTeamPlan, 'delete');
+      const teamRefused = await teamRefusalNow(t, 'delete');
       if (teamRefused) return { ok: false, reason: 'storage', line: teamRefused };
       if (await leaseRefuses(t)) return undefined;
       if (!capsOf(t).trash) {
@@ -12598,7 +12623,7 @@ export const useApp = create<AppState>((set, get, api) => {
       if (!t) return undefined;
       // A lapsed plan, or a member under admins-only (OV402, OV403), said
       // before the server is asked.
-      const teamRefused = vaultTeamRefusal(t.providerId, get().vaultTeamPlan, 'delete');
+      const teamRefused = await teamRefusalNow(t, 'delete');
       if (teamRefused) return { ok: false, reason: 'storage', line: teamRefused };
       if (!capsOf(t).trash) return { ok: false, reason: 'unsupported' };
       if (await leaseRefuses(t)) return undefined;
@@ -12640,7 +12665,7 @@ export const useApp = create<AppState>((set, get, api) => {
       if (!t) return undefined;
       // The plan lapsed while the toast was up: the Undo is a write the
       // server refuses (OV402), so it says the plan's line and asks nothing.
-      const teamRefused = vaultTeamRefusal(t.providerId, get().vaultTeamPlan, 'restore');
+      const teamRefused = await teamRefusalNow(t, 'restore');
       if (teamRefused) return { ok: false, reason: 'unsupported', line: teamRefused, whole: true };
       const r = await opsUndoDelete(opsDeps(t), undo);
       if (r.ok && undo.kind === 'trash' && undo.folder) await relistActive(t);
@@ -12700,7 +12725,7 @@ export const useApp = create<AppState>((set, get, api) => {
       if (!t) return { ok: false, reason: 'unsupported' };
       // A Trash page open when the plan lapsed: Restore is a write the server
       // refuses (OV402), so it says the plan's line and asks nothing.
-      const teamRefused = vaultTeamRefusal(t.providerId, get().vaultTeamPlan, 'restore');
+      const teamRefused = await teamRefusalNow(t, 'restore');
       if (teamRefused) return { ok: false, reason: 'unsupported', line: teamRefused, whole: true };
       const entry = get().vaultTrash?.find((e) => e.id === id);
       // A row the page showed: it comes back only while still in Trash (E38).
@@ -12910,6 +12935,11 @@ export const useApp = create<AppState>((set, get, api) => {
           await get().vaultOpen(plan.path);
           return { kind: 'opened', path: plan.path };
         }
+      }
+      // A team plan read as lapsed is read again first, and the caps follow
+      // what it says now (round 7 E37).
+      if (t.providerId === 'org' && get().vaultTeamPlan?.entitled === false) {
+        await teamRefusalNow(t, 'create');
       }
       // A start is a write: read-only or away says so in the room's words.
       const caps = capsOf(t);

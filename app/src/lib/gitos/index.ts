@@ -27,6 +27,7 @@ export {
   onOrgVaultNotMember,
   setOrgVaultDeleteRole,
   clearOrgVaultFull,
+  refreshOrgVaultPlan,
   type OrgVaultPlan,
   type OrgVaultDeleteRole,
 } from './orgVault.js';

@@ -484,6 +484,7 @@ vi.mock('../src/lib/gitos/index.js', async () => {
     onOrgVaultNotMember: org.onOrgVaultNotMember,
     setOrgVaultDeleteRole: org.setOrgVaultDeleteRole,
     clearOrgVaultFull: org.clearOrgVaultFull,
+    refreshOrgVaultPlan: org.refreshOrgVaultPlan,
   };
 });
 
@@ -3645,6 +3646,10 @@ describe('the team plan refuses before the server is asked (Y14, Y15)', () => {
   });
   const lapse = () =>
     useApp.setState({ vaultTeamPlan: { entitled: false, isAdmin: false, deleteRole: 'member' } });
+  // A plan that would refuse is read again first (round 7 E37); this fake
+  // answers no settings row, so the read fails and the refusal stands. No
+  // write is asked either way.
+  const writesAsked = () => teamNet.calls.filter((fn) => fn !== 'org_vault_settings_get');
 
   it("Today on a lapsed plan says the plan's line, never the generic one", async () => {
     teamScope();
@@ -3675,12 +3680,12 @@ describe('the team plan refuses before the server is asked (Y14, Y15)', () => {
         reason: VAULT_TEAM_LAPSED_NOT_SAVED,
       }),
     ]);
-    expect([teamNet.calls, teamNet.heads]).toEqual([[], 0]);
+    expect([writesAsked(), teamNet.heads]).toEqual([[], 0]);
     expect(team.has('Ideas.md')).toBe(false);
     // A note that is there still opens, read-only.
     await useApp.getState().vaultCreate('Plan');
     expect(useApp.getState().vaultNote).toMatchObject({ path: 'Plan.md', text: 'ours' });
-    expect(teamNet.calls).toEqual([]);
+    expect(writesAsked()).toEqual([]);
   });
 
   it('Keep both and Keep yours on a lapsed plan hold the text and send nothing', async () => {
@@ -3730,7 +3735,7 @@ describe('the team plan refuses before the server is asked (Y14, Y15)', () => {
     expect(await useApp.getState().vaultResolve('mine', 'mine again')).toEqual({ ok: true });
     expect(useApp.getState().vaultNote).toBeUndefined();
     expect(teamHeld()).toEqual([expect.objectContaining({ path: 'n.md', text: 'mine again' })]);
-    expect(teamNet.calls).toEqual([]);
+    expect(writesAsked()).toEqual([]);
     expect(team.get('n.md')?.body).toBe('theirs');
     expect([...team.keys()]).toEqual(['n.md']);
   });
@@ -3754,7 +3759,7 @@ describe('the team plan refuses before the server is asked (Y14, Y15)', () => {
     const at = useApp.getState().vaultTargetRef();
     expect(await useApp.getState().vaultUndoDelete(undo, at)).toEqual(refused);
     expect(await useApp.getState().vaultRestoreTrash('n:Old.md')).toEqual(refused);
-    expect(teamNet.calls).toEqual([]);
+    expect(writesAsked()).toEqual([]);
   });
 
   it('a delete on a lapsed plan, or by a member under admins-only, is refused before the server', async () => {
@@ -3770,7 +3775,7 @@ describe('the team plan refuses before the server is asked (Y14, Y15)', () => {
     const member = { ok: false, reason: 'storage', line: VAULT_TEAM_DELETE_REFUSED };
     expect(await useApp.getState().vaultDeleteNote('Work/n.md')).toEqual(member);
     expect(await useApp.getState().vaultDeleteFolder('Work')).toEqual(member);
-    expect(teamNet.calls).toEqual([]);
+    expect(writesAsked()).toEqual([]);
     expect(team.get('Work/n.md')?.body).toBe('keep');
   });
 });
@@ -9355,6 +9360,122 @@ describe('round 7, batch 6: the team vault says what it can do now, truly', () =
       await st().signOutAccount();
       expect(indexDrops.calls).toContainEqual(u1Index());
       expect(indexDrops.calls).toContainEqual(u1Index('org-2'));
+    });
+  });
+
+  describe('E37: a plan that would refuse is read again first', () => {
+    const WRITES = ['org_vault_write', 'org_vault_remove', 'org_vault_restore', 'org_vault_move'];
+    const asked = () => server.rpcs.map((r) => r.fn);
+    const writes = () => asked().filter((fn) => WRITES.includes(fn));
+    async function memberUnderAdminsOnly() {
+      server.put('a.md', 'x', 'u-me');
+      server.isAdmin = false;
+      server.settingsRow = {
+        settings: {},
+        delete_role: 'admin',
+        context_folder: null,
+        rev: 1,
+        updated_at: 'x',
+        updated_by: 'u-admin',
+      };
+      await st().vaultRefresh();
+      await st().vaultLoadSettings({ force: true });
+      await vi.waitFor(() =>
+        expect(st().vaultTeamPlan).toMatchObject({ deleteRole: 'admin', isAdmin: false }),
+      );
+    }
+
+    it('a stale admins-only plan does not refuse a delete the server takes', async () => {
+      await memberUnderAdminsOnly();
+      server.settingsRow = { ...server.settingsRow!, delete_role: 'member', rev: 2 };
+      server.rpcs.length = 0;
+      expect(await st().vaultDeleteNote('a.md')).toMatchObject({ ok: true, trashed: true });
+      // One settings read, before the remove.
+      expect(asked().slice(0, 2)).toEqual(['org_vault_settings_get', 'org_vault_remove']);
+      expect(asked().filter((fn) => fn === 'org_vault_settings_get')).toHaveLength(1);
+      expect(st().vaultTeamPlan).toMatchObject({ deleteRole: 'member' });
+    });
+
+    it('a plan marked lapsed and then renewed takes the delete', async () => {
+      server.put('a.md', 'x', 'u-me');
+      server.put('b.md', 'y', 'u-me');
+      await st().vaultRefresh();
+      server.entitled = false;
+      expect(await st().vaultDeleteNote('a.md')).toMatchObject({ ok: false });
+      expect(st().vaultTeamPlan).toMatchObject({ entitled: false });
+      server.entitled = true;
+      expect(await st().vaultDeleteNote('b.md')).toMatchObject({ ok: true, trashed: true });
+      expect(st().vaultTeamPlan).toMatchObject({ entitled: true });
+    });
+
+    it('a Restore and a new note go on once the plan is active again', async () => {
+      server.put('Old.md', 'old words', 'u-me');
+      server.drop('Old.md');
+      await st().vaultRefresh();
+      const listed = (await st().vaultLoadTrash()) ?? [];
+      useApp.setState({ vaultTeamPlan: { entitled: false, isAdmin: false, deleteRole: 'member' } });
+      expect(await st().vaultRestoreTrash(listed[0]!.id)).toMatchObject({ ok: true });
+      expect(server.bytes('Old.md')).toBe('old words');
+      useApp.setState({ vaultTeamPlan: { entitled: false, isAdmin: false, deleteRole: 'member' } });
+      await st().vaultCreate('Ideas');
+      expect(server.bytes('Ideas.md')).toBe('');
+    });
+
+    it('a fresh read that still refuses says the line and writes nothing', async () => {
+      await memberUnderAdminsOnly();
+      server.rpcs.length = 0;
+      expect(await st().vaultDeleteNote('a.md')).toEqual({
+        ok: false,
+        reason: 'storage',
+        line: VAULT_TEAM_DELETE_REFUSED,
+      });
+      expect(asked()).toEqual(['org_vault_settings_get']);
+      server.entitled = false;
+      await st().vaultLoadSettings({ force: true });
+      server.rpcs.length = 0;
+      expect(await st().vaultDeleteNote('a.md')).toMatchObject({
+        ok: false,
+        line: VAULT_TEAM_LAPSED_NOT_DELETED,
+      });
+      expect(writes()).toEqual([]);
+      expect(server.bytes('a.md')).toBe('x');
+    });
+
+    it('a read that does not answer keeps refusing from the plan it has', async () => {
+      await memberUnderAdminsOnly();
+      server.settingsRow = { ...server.settingsRow!, delete_role: 'member', rev: 2 };
+      teamNet.rpcFail = new TypeError('Failed to fetch');
+      expect(await st().vaultDeleteNote('a.md')).toMatchObject({
+        ok: false,
+        line: VAULT_TEAM_DELETE_REFUSED,
+      });
+      teamNet.rpcFail = undefined;
+      expect(writes()).toEqual([]);
+      expect(server.bytes('a.md')).toBe('x');
+    });
+
+    it("an Undo after a switch to the personal vault reads the team's plan, not the personal one", async () => {
+      server.put('a.md', 'x', 'u-me');
+      await st().vaultRefresh();
+      const at = st().vaultTargetRef();
+      const r = await st().vaultDeleteNote('a.md');
+      if (!r?.ok || !('undo' in r) || !r.undo) throw new Error('no undo');
+      useApp.setState({ vaultTeamPlan: { entitled: false, isAdmin: false, deleteRole: 'member' } });
+      useApp.setState({ vaultScope: 'personal' });
+      expect(await st().vaultUndoDelete(r.undo, at)).toMatchObject({ ok: true });
+      expect(server.bytes('a.md')).toBe('x');
+    });
+
+    it('a plan learned from a refusal is read again at the next refresh, not after a minute', async () => {
+      server.put('a.md', 'x', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultLoadSettings({ force: true });
+      server.entitled = false;
+      await st().vaultDeleteNote('a.md');
+      expect(st().vaultTeamPlan).toMatchObject({ entitled: false });
+      server.entitled = true;
+      await st().vaultRefresh();
+      await vi.waitFor(() => expect(st().vaultTeamPlan).toMatchObject({ entitled: true }));
     });
   });
 });
