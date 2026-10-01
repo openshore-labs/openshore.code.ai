@@ -92,10 +92,12 @@ for `Publishing the macOS build to vX.Y.Z`, or just check the release itself:
 `curl -s https://api.github.com/repos/openshore-labs/openshore-releases/releases/latest`
 and look for a `.dmg` in `assets` with the current version in its filename.
 
-## Updates on every push to main (2026-09-23)
+## Updates when you release (2026-10-01)
 
-Every push to `main` that touches the app or the engine publishes a desktop
-release (`.github/workflows/release.yml`, next patch after the newest tag).
+A desktop release is published when you run it by hand: Actions, Release, Run
+workflow on `main` with Publish on (`.github/workflows/release.yml`, next
+patch after the newest tag). A push to `main` publishes nothing (founder,
+2026-10-01, to save Actions minutes; it superseded 2026-09-23's every push).
 A desktop that is behind shows a bar across the top of its window within half
 an hour, and one click updates it. On a Mac, that click downloads this
 release's `-mac.zip` for the Mac's architecture and its `.sig`, checks the

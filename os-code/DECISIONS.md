@@ -3463,3 +3463,15 @@ execution contract. Newest at the bottom.
   TestFlight and on for the App Review build. The desktop release in
   `.github/workflows/release.yml` (GitHub Actions, not Codemagic) still runs
   on pushes; this call does not touch it.
+- 2026-10-01: **GitHub Actions runs only what a push needs (founder: "It makes
+  me run out of mins. I'm a one man team so I put everything on main").** The
+  repo is private, so Actions minutes are counted, and Windows minutes count
+  double. The desktop release (`release.yml`) no longer runs on a push to
+  `main`: it runs by hand (Run workflow, Publish on by default, off for build
+  and smoke only) or on a `v*` tag; this supersedes 2026-09-23's "every push
+  reaches the desktops". CI keeps `check` on every push and gains `changes`,
+  which diffs from the last green CI run on main (so a cancelled run never
+  lets a change skip) and runs `sql` and `sql-replay` only when `supabase/`
+  changed and `windows` only when the engine, the desktop shell, its tests or
+  the dependencies did; Markdown is left out of both. CI can also be run by
+  hand, which runs every job. Codemagic is already by hand (same day).
