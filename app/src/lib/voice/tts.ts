@@ -41,15 +41,16 @@ export async function listVoices(): Promise<Voice[]> {
     }
   }
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return [];
+  // Only voices synthesized on this machine: a browser's online voices send
+  // the words to a speech service, which nothing in OpenShore's list of what
+  // leaves the device allows. The Web Speech API does not expose Apple's
+  // quality tier; the name carries it ("Ava (Premium)"), and voiceCatalog.ts
+  // reads it from there.
   const read = (): Voice[] =>
-    window.speechSynthesis.getVoices().map((v) => ({
-      id: v.voiceURI,
-      name: v.name,
-      lang: v.lang,
-      // The Web Speech API does not expose Apple's quality tier; treat local
-      // voices as default and remote ones as, at best, enhanced.
-      quality: v.localService ? 'default' : 'enhanced',
-    }));
+    window.speechSynthesis
+      .getVoices()
+      .filter((v) => v.localService)
+      .map((v) => ({ id: v.voiceURI, name: v.name, lang: v.lang, quality: 'default' }));
   const now = read();
   if (now.length) return now;
   return new Promise<Voice[]>((resolve) => {
@@ -59,22 +60,6 @@ export async function listVoices(): Promise<Voice[]> {
     // hang the picker on it.
     setTimeout(done, 400);
   });
-}
-
-/** A readable one-line label for a voice, with a quality tag when it earns one. */
-export function voiceLabel(voice: Voice): string {
-  const tag =
-    voice.quality === 'premium' ? ' (Premium)' : voice.quality === 'enhanced' ? ' (Enhanced)' : '';
-  return `${voice.name}${tag}`;
-}
-
-/** A sensible default voice when the person has not chosen one: the best-quality
- *  voice matching the app's language, else the best-quality voice at all. */
-export function pickDefaultVoice(voices: Voice[], lang: string): Voice | undefined {
-  if (!voices.length) return undefined;
-  const base = (lang || 'en').slice(0, 2).toLowerCase();
-  const matching = voices.filter((v) => v.lang.slice(0, 2).toLowerCase() === base);
-  return (matching.length ? matching : voices)[0];
 }
 
 /** Map the normalized 0..1 rate (0.5 is natural) onto the Web Speech range,

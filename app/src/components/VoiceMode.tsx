@@ -16,7 +16,8 @@ import { doorExitMs } from '../lib/motion.js';
 import { hapticApproval } from '../lib/haptics.js';
 import { useVoiceMode, type VoicePhase } from '../hooks/useVoiceMode.js';
 import type { VoiceBreak } from '../lib/voice/voiceBreaks.js';
-import { listVoices, pickDefaultVoice } from '../lib/voice/tts.js';
+import { listVoices } from '../lib/voice/tts.js';
+import { curateVoices, resolveVoice } from '../lib/voice/voiceCatalog.js';
 import { VoicePicker } from './VoicePicker.js';
 import { CloseGlyph } from './SheetGlyphs.js';
 
@@ -98,18 +99,11 @@ export function VoiceMode({
     let live = true;
     void listVoices().then((voices) => {
       if (!live) return;
-      let id = settings.voiceId;
-      if (!id) {
-        const def = pickDefaultVoice(
-          voices,
-          typeof navigator !== 'undefined' ? navigator.language : 'en',
-        );
-        if (def) {
-          id = def.id;
-          void saveSettings({ voiceId: def.id });
-        }
-      }
-      setVoiceName(voices.find((v) => v.id === id)?.name ?? '');
+      // The chosen voice while it is on the list, else the best English one
+      // (a voice picked before the list was narrowed gives way, and is saved).
+      const voice = resolveVoice(curateVoices(voices), settings.voiceId);
+      if (voice && voice.id !== settings.voiceId) void saveSettings({ voiceId: voice.id });
+      setVoiceName(voice?.display ?? '');
     });
     return () => {
       live = false;
@@ -183,7 +177,7 @@ export function VoiceMode({
         onSelect={(id) => {
           void saveSettings({ voiceId: id });
           void listVoices().then((voices) =>
-            setVoiceName(voices.find((v) => v.id === id)?.name ?? ''),
+            setVoiceName(resolveVoice(curateVoices(voices), id)?.display ?? ''),
           );
         }}
       />

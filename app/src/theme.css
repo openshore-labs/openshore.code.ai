@@ -13490,7 +13490,7 @@ button.settings-row:active {
 }
 .voice-row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
   width: 100%;
   text-align: left;
@@ -13505,9 +13505,40 @@ button.settings-row:active {
   border-color: var(--accent);
   background: var(--accent-soft);
 }
-.voice-row-name {
+.voice-row-text {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.voice-row-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-weight: var(--weight-semibold);
+}
+.voice-row-persona {
+  color: var(--muted);
+  font-size: var(--text-3);
+}
+/* Apple's top tier, the neural voices: a quiet gold mark, the Plus gold. */
+.voice-row-tier {
+  padding: 1px 7px;
+  border-radius: var(--radius-xs);
+  background: var(--plus);
+  color: var(--plus-ink);
+  font-size: var(--text-1);
+  font-weight: var(--weight-semibold);
+}
+/* How to get the premium voices, when none is installed. */
+.voice-hint {
+  margin: 4px 0 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: var(--text-3);
 }
 .voice-row-lang {
   color: var(--ink-soft);

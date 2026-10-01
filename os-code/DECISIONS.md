@@ -4029,3 +4029,12 @@ execution contract. Newest at the bottom.
   allowlist. Recents follow the Chats room's reach (the active project), so
   View all continues the same list. The free layout honors the saved order
   but is not draggable: its two groups are set by the pay gate, not by hand.
+- **Voices: English, hand-picked, premium first (founder, 2026-10-01):** "The
+  voices are insane and such low quality... just do English... narrow the
+  list." The picker offers only catalog voices (`voiceCatalog.ts`), at most
+  twelve, each with its accent and a one-word persona; novelty voices and other
+  languages never show. The gold standard stays on the device: Apple's premium
+  (neural) voices, which the picker names and says where to download when none
+  is installed, since no API downloads them for us. A browser's online voices
+  are dropped (they send the words to a speech service the egress list does not
+  name). A cloud or bundled neural voice would be a separate call.

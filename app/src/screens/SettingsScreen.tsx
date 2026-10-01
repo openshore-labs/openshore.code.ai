@@ -68,6 +68,7 @@ import { VaultSettingsHost } from '../components/vault/VaultSettingsHost.js';
 import { SheetHead } from '../components/SheetHead.js';
 import { VoicePicker } from '../components/VoicePicker.js';
 import { listVoices } from '../lib/voice/tts.js';
+import { curateVoices, resolveVoice } from '../lib/voice/voiceCatalog.js';
 import type { SearchBackend } from '../lib/webSearch.js';
 import { PACK_BY_CLASS, TRUST_STATEMENT_LINES, type StackHealthSealFact } from 'os-code/protocol';
 
@@ -333,7 +334,7 @@ export function SettingsScreen() {
   useEffect(() => {
     let live = true;
     void listVoices().then((voices) => {
-      if (live) setVoiceName(voices.find((v) => v.id === settings.voiceId)?.name ?? '');
+      if (live) setVoiceName(resolveVoice(curateVoices(voices), settings.voiceId)?.display ?? '');
     });
     return () => {
       live = false;

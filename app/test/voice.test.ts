@@ -14,7 +14,7 @@ import {
   planIntent,
   type VoiceThreadView,
 } from '../src/lib/voice/voiceBreaks.js';
-import { mapWebRate, pickDefaultVoice, voiceLabel, type Voice } from '../src/lib/voice/tts.js';
+import { mapWebRate } from '../src/lib/voice/tts.js';
 
 const thread = (
   items: ThreadItem[],
@@ -195,20 +195,5 @@ describe('tts helpers', () => {
     expect(mapWebRate(0.5)).toBe(1);
     expect(mapWebRate(0)).toBe(0.5);
     expect(mapWebRate(1)).toBe(2);
-  });
-  it('labels a premium voice with its tier', () => {
-    expect(voiceLabel({ id: 'v', name: 'Ava', lang: 'en-US', quality: 'premium' })).toBe(
-      'Ava (Premium)',
-    );
-    expect(voiceLabel({ id: 'v', name: 'Sam', lang: 'en-US', quality: 'default' })).toBe('Sam');
-  });
-  it('picks a default voice matching the language, best quality first', () => {
-    const voices: Voice[] = [
-      { id: 'de', name: 'Anna', lang: 'de-DE', quality: 'premium' },
-      { id: 'en1', name: 'Ava', lang: 'en-US', quality: 'premium' },
-      { id: 'en2', name: 'Sam', lang: 'en-GB', quality: 'default' },
-    ];
-    expect(pickDefaultVoice(voices, 'en-US')?.id).toBe('en1');
-    expect(pickDefaultVoice([], 'en-US')).toBeUndefined();
   });
 });
