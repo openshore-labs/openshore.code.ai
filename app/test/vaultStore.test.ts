@@ -8562,4 +8562,185 @@ describe('round 7, batch 5: the team vault says what is gone, moved and refused,
       expect(r).toEqual({ ok: false, line: vaultGoneLine('link', 'a'), gone: true });
     });
   });
+  describe('E35: a poll that finds a note gone acts only on that note, never on this device own rename', () => {
+    // Hold the stat of `path` (a one-note select of `size`) until released.
+    function holdStat(path: string) {
+      const gate = deferred();
+      const reached = deferred();
+      const select = server.select.bind(server);
+      let held = false;
+      server.select = async (table, tok, query) => {
+        if (
+          !held &&
+          table === 'org_vault_notes' &&
+          query.includes(encodeURIComponent(JSON.stringify(path))) &&
+          query.includes('size')
+        ) {
+          held = true;
+          reached.resolve();
+          await gate.promise;
+        }
+        return select(table, tok, query);
+      };
+      return { release: gate.resolve, reached: reached.promise };
+    }
+    // Hold the answer of the next `fn` after the server ran it.
+    function holdReply(fn: string) {
+      const gate = deferred();
+      const reached = deferred();
+      const rpc = server.rpc.bind(server);
+      let held = false;
+      server.rpc = async (f, tok, args) => {
+        const out = await rpc(f, tok, args);
+        if (!held && f === fn) {
+          held = true;
+          reached.resolve();
+          await gate.promise;
+        }
+        return out;
+      };
+      return { release: gate.resolve, reached: reached.promise };
+    }
+
+    it('a poll that finds A gone leaves B, opened meanwhile, open and says nothing', async () => {
+      server.put('A.md', 'a', 'u-me');
+      server.put('B.md', 'b', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('A.md');
+      const hold = holdStat('A.md');
+      const poll = st().vaultRecheck({ reason: 'poll' });
+      await hold.reached;
+      server.drop('A.md');
+      st().vaultCloseNote();
+      await st().vaultOpen('B.md');
+      useApp.setState({ toast: undefined });
+      hold.release();
+      await poll;
+      expect(st().vaultNote).toMatchObject({ path: 'B.md' });
+      expect(st().toast).toBeUndefined();
+    });
+
+    it('a poll that finds A gone after A was opened again leaves the new sitting alone', async () => {
+      server.put('A.md', 'a', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('A.md');
+      const hold = holdStat('A.md');
+      const poll = st().vaultRecheck({ reason: 'poll' });
+      await hold.reached;
+      st().vaultCloseNote();
+      await st().vaultOpen('A.md');
+      const sitting = st().vaultNote!.loadedAt;
+      server.drop('A.md');
+      useApp.setState({ toast: undefined });
+      hold.release();
+      expect(await poll).toBe('skipped');
+      expect(st().vaultNote?.loadedAt).toBe(sitting);
+    });
+
+    it('a poll during this device rename does not close the note', async () => {
+      server.put('Old.md', 'body', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('Old.md');
+      const preview = await st().vaultPrepareMove('note', 'Old.md', 'New.md');
+      if (!preview) throw new Error('no preview');
+      const hold = holdReply('org_vault_move');
+      const moving = st().vaultApplyMove(preview, false);
+      await hold.reached;
+      useApp.setState({ toast: undefined });
+      let said: string | undefined;
+      try {
+        await st().vaultRecheck({ reason: 'poll' });
+        said = st().toast;
+      } finally {
+        hold.release();
+      }
+      expect(said).toBeUndefined();
+      expect(await moving).toMatchObject({ ok: true });
+      expect(st().vaultNote).toMatchObject({ path: 'New.md' });
+      expect(st().toast).toBeUndefined();
+    });
+
+    it('a focus recheck during this device rename says nothing either', async () => {
+      server.put('Old.md', 'body', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('Old.md');
+      const preview = await st().vaultPrepareMove('note', 'Old.md', 'New.md');
+      if (!preview) throw new Error('no preview');
+      const hold = holdReply('org_vault_move');
+      const moving = st().vaultApplyMove(preview, false);
+      await hold.reached;
+      useApp.setState({ toast: undefined });
+      try {
+        await st().vaultRecheck({ reason: 'focus' });
+      } finally {
+        hold.release();
+      }
+      await moving;
+      expect(st().vaultNote).toMatchObject({ path: 'New.md' });
+      expect(st().toast).not.toBe(vaultGoneToast('Old'));
+    });
+
+    it('a poll during this device delete of the open note never says somewhere else', async () => {
+      server.put('Old.md', 'body', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('Old.md');
+      const hold = holdReply('org_vault_remove');
+      const deleting = st().vaultDeleteNote('Old.md');
+      await hold.reached;
+      useApp.setState({ toast: undefined });
+      let said: string | undefined;
+      try {
+        await st().vaultRecheck({ reason: 'poll' });
+        said = st().toast;
+      } finally {
+        hold.release();
+      }
+      expect(said).toBeUndefined();
+      expect(await deleting).toMatchObject({ ok: true });
+      expect(st().toast).toBeUndefined();
+    });
+
+    it('a poll during this device folder move of the open note does not close it', async () => {
+      server.put('Work/a.md', 'a', 'u-me');
+      await st().vaultRefresh();
+      await settledIndex();
+      await st().vaultOpen('Work/a.md');
+      const preview = await st().vaultPrepareMove('folder', 'Work', 'Done');
+      if (!preview) throw new Error('no preview');
+      const hold = holdReply('org_vault_move');
+      const moving = st().vaultApplyMove(preview, false);
+      await hold.reached;
+      useApp.setState({ toast: undefined });
+      try {
+        await st().vaultRecheck({ reason: 'poll' });
+      } finally {
+        hold.release();
+      }
+      expect(await moving).toMatchObject({ ok: true });
+      expect(st().vaultNote).toMatchObject({ path: 'Done/a.md' });
+      expect(st().toast).toBeUndefined();
+    });
+
+    it('typing and then renaming at once saves the typed text first, and does not hang', async () => {
+      const { vaultAutosave } = await import('../src/lib/vaultAutosave.js');
+      server.put('Old.md', 'body', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen('Old.md');
+      for (let i = 0; i < 5; i++) await tick();
+      const autosave = vaultAutosave({
+        target: () => st().vaultTargetRef(),
+        save: (path, text, at) => void st().vaultSave(path, text, at),
+        delayMs: 10_000,
+      });
+      st().vaultBindAutosave(autosave);
+      st().vaultNoteDraft('Old.md', 'body, typed');
+      autosave.schedule('Old.md', 'body, typed');
+      const preview = await st().vaultPrepareMove('note', 'Old.md', 'New.md');
+      if (!preview) throw new Error('no preview');
+      expect(await st().vaultApplyMove(preview, false)).toMatchObject({ ok: true });
+      expect(server.bytes('New.md')).toBe('body, typed');
+      expect(st().vaultNote).toMatchObject({ path: 'New.md' });
+      st().vaultBindAutosave(undefined as never);
+    });
+  });
 });

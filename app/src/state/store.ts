@@ -7491,6 +7491,22 @@ export const useApp = create<AppState>((set, get, api) => {
     return 'gone';
   }
 
+  // This device's own renames and deletes on their way to the storage, and
+  // a count of every one begun, so a look at the open note that overlaps one
+  // says nothing about it (round 7 E35): the note is not there because this
+  // device moved it, and the move itself brings the note along.
+  let vaultOwnMoves = 0;
+  let vaultOwnMoveGen = 0;
+  async function asOwnMove<T>(run: () => Promise<T>): Promise<T> {
+    vaultOwnMoves++;
+    vaultOwnMoveGen++;
+    try {
+      return await run();
+    } finally {
+      vaultOwnMoves--;
+    }
+  }
+
   // CTO F3: look at the open note once. Same version: nothing. Gone: close a
   // clean note back to its folder, or ask about a dirty one. Changed: adopt
   // the version silently when the text is what this device loaded (a touch,
@@ -7500,6 +7516,23 @@ export const useApp = create<AppState>((set, get, api) => {
   async function recheckOpenNote(target: VaultTarget, path: string): Promise<VaultRecheckResult> {
     const open = get().vaultNote;
     if (!open || open.path !== path || !isActiveVault(target)) return 'skipped';
+    // What it finds speaks only for the sitting it looked at, and never for
+    // this device's own rename or delete on its way (round 7 E35): the note
+    // closed and another opened, or the same note opened again, or a rename
+    // that has already moved it on the storage while its answer is still on
+    // the wire. Each is left alone; the next look sees it as it is.
+    const moves = vaultOwnMoveGen;
+    const sameSitting = () => {
+      const now = get().vaultNote;
+      return (
+        isActiveVault(target) &&
+        now?.path === path &&
+        now.loadedAt === open.loadedAt &&
+        vaultOwnMoves === 0 &&
+        moves === vaultOwnMoveGen
+      );
+    };
+    if (vaultOwnMoves > 0) return 'skipped';
     const base = vaultBaseOf(target, path);
     let meta: StoredFileMeta | undefined;
     try {
@@ -7507,6 +7540,7 @@ export const useApp = create<AppState>((set, get, api) => {
     } catch {
       return 'failed'; // Not answering now; the next event, focus, or poll looks again.
     }
+    if (!sameSitting()) return 'skipped';
     let conflict = get().vaultConflict;
     let pending = conflict?.path === path ? conflict : undefined;
     if (!meta && target.providerId === 'org' && (pending ? pending.kind !== 'missing' : base)) {
@@ -7514,7 +7548,7 @@ export const useApp = create<AppState>((set, get, api) => {
       // gone (E26), and look again at what the wait left on screen.
       const member = await teamMembership(target);
       if (member !== 'member') return member === 'removed' ? 'checked' : 'failed';
-      if (get().vaultNote !== open || !isActiveVault(target)) return 'checked';
+      if (get().vaultNote !== open || !sameSitting()) return 'skipped';
       conflict = get().vaultConflict;
       pending = conflict?.path === path ? conflict : undefined;
     }
@@ -7554,7 +7588,8 @@ export const useApp = create<AppState>((set, get, api) => {
       return 'failed';
     }
     if (theirs) vaultIndexOf(target)?.noteRead(theirs);
-    if (!theirs || get().vaultNote?.path !== path) return 'checked';
+    if (!sameSitting()) return 'skipped';
+    if (!theirs) return 'checked';
     if (pending) {
       // Still undecided: the sheet shows this newest version, and says so.
       set({ vaultConflict: { ...pending, kind: 'changed', theirs, again: true } });
@@ -12462,7 +12497,7 @@ export const useApp = create<AppState>((set, get, api) => {
         };
       }
       const base = vaultBaseOf(t, path);
-      const r = await opsDeleteNote(opsDeps(t), path);
+      const r = await asOwnMove(() => opsDeleteNote(opsDeps(t), path));
       if (!r.ok) {
         // The note moved on, or is gone, or is still downloading: M2's stale
         // delete path says so and reloads it; nothing went to Trash.
@@ -12508,7 +12543,7 @@ export const useApp = create<AppState>((set, get, api) => {
       if (teamRefused) return { ok: false, reason: 'storage', line: teamRefused };
       if (!capsOf(t).trash) return { ok: false, reason: 'unsupported' };
       if (await leaseRefuses(t)) return undefined;
-      const r = await opsDeleteFolder(opsDeps(t), folder);
+      const r = await asOwnMove(() => opsDeleteFolder(opsDeps(t), folder));
       const refused = !r.ok ? refusalOf(r) : undefined;
       if (refused) {
         return { ok: false, reason: 'storage', line: vaultRefusedLine('delete', refused) };
@@ -12662,10 +12697,12 @@ export const useApp = create<AppState>((set, get, api) => {
           };
         }
       }
-      const r = await opsApplyMove(opsDeps(t), preview, {
-        updateLinks: updateLinks && capsOf(t).linkRewrite,
-        ...(onProgress ? { onProgress } : {}),
-      });
+      const r = await asOwnMove(() =>
+        opsApplyMove(opsDeps(t), preview, {
+          updateLinks: updateLinks && capsOf(t).linkRewrite,
+          ...(onProgress ? { onProgress } : {}),
+        }),
+      );
       if (preview.kind === 'folder' && (r.ok || r.reason === 'partial')) {
         // The folder's remembered empty folders follow it, and the list is
         // read again for the spelling the storage gave every moved path.
