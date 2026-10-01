@@ -13,6 +13,7 @@
 
 import { featureOn, type ReleaseTier, type TieredFeature, RELEASE_TIER } from './focus.js';
 import type { Platform } from './platform.js';
+import { PAY_GATES_ENABLED } from './payGate.js';
 
 export interface EgressEntry {
   id: string;
@@ -35,6 +36,9 @@ export interface EgressEntry {
    *  iPad list leaves out what they never contact (the Stripe rail), so the
    *  list there names no other way to pay (App Store 3.1.1; CTO, 2026-09-30). */
   platforms?: readonly Platform[];
+  /** Only happens in a build with the pay gates on, so a build without them
+   *  leaves it off the list (first submission, 2026-10-01). */
+  paid?: true;
 }
 
 /** Recipients in the order the list shows them: OpenShore first. */
@@ -59,7 +63,7 @@ export const EGRESS: EgressEntry[] = [
     id: 'account',
     recipient: 'OpenShore (us)',
     what: 'Your email and password to sign in, then your plan, your organization, and team projects.',
-    when: 'Only when you sign in. Chatting needs no account; building, Projects, Vault, Crew, Terminal, pairing, and buying OpenShore Plus do.',
+    when: 'Only when you sign in. Chatting needs no account; building, Projects, Vault, Crew, Terminal, and pairing do.',
     start: 'tap',
     hosts: ['env:VITE_SUPABASE_URL'],
   },
@@ -112,6 +116,7 @@ export const EGRESS: EgressEntry[] = [
     start: 'tap',
     hosts: ['env:VITE_SUPABASE_URL'],
     platforms: ['ios'],
+    paid: true,
   },
   {
     id: 'purchase-web',
@@ -121,6 +126,7 @@ export const EGRESS: EgressEntry[] = [
     start: 'tap',
     hosts: ['env:VITE_SUPABASE_URL'],
     platforms: ['electron', 'web'],
+    paid: true,
   },
   {
     id: 'stripe',
@@ -130,6 +136,7 @@ export const EGRESS: EgressEntry[] = [
     start: 'tap',
     hosts: ['checkout.stripe.com', 'billing.stripe.com'],
     platforms: ['electron', 'web'],
+    paid: true,
   },
   {
     id: 'account-deletion',
@@ -282,6 +289,7 @@ export const STAYS_ON_DEVICE: string[] = [
 export function egressByRecipient(
   tier: ReleaseTier = RELEASE_TIER,
   on?: Platform,
+  payGates: boolean = PAY_GATES_ENABLED,
 ): Array<{ recipient: string; entries: EgressEntry[] }> {
   return RECIPIENT_ORDER.map((recipient) => ({
     recipient,
@@ -289,6 +297,7 @@ export function egressByRecipient(
       (e) =>
         e.recipient === recipient &&
         (!e.feature || featureOn(e.feature, tier)) &&
+        (!e.paid || payGates) &&
         (!on || !e.platforms || e.platforms.includes(on)),
     ),
   })).filter((g) => g.entries.length > 0);

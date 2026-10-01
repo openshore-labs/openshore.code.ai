@@ -316,15 +316,23 @@ describe('every purchase string iOS can reach', () => {
 
   it("leaves the Stripe rail off the iPhone's What leaves this device", async () => {
     const { egressByRecipient } = await import('../src/lib/egressManifest.js');
-    const ios = egressByRecipient(4, 'ios');
+    const ios = egressByRecipient(4, 'ios', true);
     const ids = ios.flatMap((g) => g.entries.map((e) => e.id));
     expect(ids).toContain('purchase');
     expect(ids).not.toContain('purchase-web');
     expect(ids).not.toContain('stripe');
     expect(ios.map((g) => g.recipient)).not.toContain('Payments');
-    const desktop = egressByRecipient(4, 'electron').flatMap((g) => g.entries.map((e) => e.id));
+    const desktop = egressByRecipient(4, 'electron', true).flatMap((g) =>
+      g.entries.map((e) => e.id),
+    );
     expect(desktop).toContain('stripe');
     expect(desktop).not.toContain('purchase');
+    // A build with the pay gates off lists no purchase at all (first
+    // submission, 2026-10-01).
+    for (const platform of ['ios', 'electron'] as const) {
+      const off = egressByRecipient(4, platform, false).flatMap((g) => g.entries.map((e) => e.id));
+      for (const id of ['purchase', 'purchase-web', 'stripe']) expect(off).not.toContain(id);
+    }
   });
 });
 

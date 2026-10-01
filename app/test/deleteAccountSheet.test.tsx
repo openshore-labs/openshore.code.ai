@@ -207,14 +207,16 @@ describe('the confirm sheet', () => {
     expect(done).toBe(1);
   });
 
-  it('says the Apple note as an if when the server did not say (the 2026-09-24 function)', async () => {
+  // With the pay gates off (the first submission, 2026-10-01) nothing can be
+  // bought, so the "if you pay" line is left out until Plus returns.
+  it('leaves the Apple "if" line out while the pay gates are off', async () => {
     const c = await copy();
     await show(true, async () => ({ kind: 'deleted' }));
     await tapRow();
     await dom.click(c.confirm);
     await dom.settle();
     expect(dom.text()).toContain(c.doneTitle);
-    expect(dom.text()).toContain(c.appleNoteIf);
+    expect(dom.text()).not.toContain(c.appleNoteIf);
     expect(dom.text()).not.toContain(c.appleNote);
   });
 

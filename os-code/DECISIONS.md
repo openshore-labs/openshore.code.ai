@@ -4117,10 +4117,8 @@ execution contract. Newest at the bottom.
   sentence case and short enough for the sidebar). A launch tidies chats still
   carrying the old 48-character cut, and never a name the person chose or an
   engine's own title.
-<<<<<<< HEAD
 - **Your writing voice is its own setting, beside Humanize Writing (founder, 2026-10-01):** the founder allowed either a layer or a separate choice; it is separate, so it works with Humanize on or off, and both ride together when both are set. A prompt in the person's words, so `device` in `settingsReach.ts` (it never follows the account), and it reaches every app-side seat, cloud included, the way a project's standing instructions do: it is the person's instruction, not app state.
 - **App actions are proposals the person taps, told only to local seats (founder, 2026-10-01):** "local models should be able to access all of the app components ... excluding the cloud providers". A model never changes the app itself; it puts one exact value in a fence tagged `openshore-set:<key>`, and the chat's card writes it only on Add to Settings. The contract that names the keys rides only to a seat whose requests stay on this network, judged by address (`leaves`), so a cloud provider learns nothing of the app's controls; a cloud seat's answer is copied in by hand. One list, `APP_ACTIONS`, with a value check per key; an unknown key renders as code. The contract rides small local seats too (a few lines; the 2 KB small-seat budget in `stackPromptSize.test.ts` still holds).
-=======
 - **Nightshore is the dark theme (founder, 2026-10-01):** "make dark mode in
   this theme", from openshore.ai. The dark tokens are the site's own
   (openshore.css): the abyss ground #0b1417, deep-teal cards #10202a and
@@ -4142,6 +4140,5 @@ execution contract. Newest at the bottom.
   changes while the app runs; the installed icon on disk does not, and the
   copy says so. The in-app mark wears the picked tile. Device-local.
   `scripts/gen-icon.py` renders all three; the default PNG is byte-identical.
->>>>>>> origin/main
 - 2026-10-01 (founder): the first App Store submission ships with the pay gates off; Plus is built after approval. The gate code stays in the tree dormant (`VITE_PAY_GATES` unset), `codemagic.yaml` drops the `store_release` input, and Settings hides the Plus row while off.
 - 2026-10-01 (founder, overriding CTO 3 for search only): Crew routines follow the one "Let models search the web" switch. `webSearch` stays on a headless run when machine config `routines.webSearch` is true (the app carries its switch there through the daemon's `POST /routines/web-search` and the desktop's `osc:routinesWebSearch`, and re-syncs when Crew loads); `webFetch`, Codemagic, the currents and the model handoffs stay off, and an egress lockdown still drops search. Results are titles, links and snippets. Known risk accepted: an unattended run reads search snippets other people wrote.
