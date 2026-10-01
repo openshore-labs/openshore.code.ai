@@ -184,6 +184,14 @@ export type TrashReport = TrashResult & { partial?: TrashPartial };
 
 /** What a restore did. It never overwrites: a taken name lands beside it as
  *  "{title} (restored)" (R3) and `renamed` says so; parents are made. */
+/** How a restore was asked for. `listed`: from a row the Trash page showed,
+ *  which may be stale on a storage others share, so it comes back only while
+ *  it is still in Trash (round 7 E38); an Undo of this device's own delete
+ *  brings back what that delete took. */
+export interface RestoreOptions {
+  listed?: boolean;
+}
+
 export type RestoreResult =
   { ok: true; file: StoredFileMeta; renamed: boolean } | { ok: false; conflict: 'missing' };
 
@@ -296,7 +304,7 @@ export interface StorageProvider {
   /** What is in Trash. */
   listTrash?(resourceId: string): Promise<TrashEntry[]>;
   /** Put one entry back where it came from, never overwriting. */
-  restore?(resourceId: string, id: string): Promise<RestoreResult>;
+  restore?(resourceId: string, id: string, opts?: RestoreOptions): Promise<RestoreResult>;
   /** Delete entries for good, or all of Trash with no ids. */
   emptyTrash?(resourceId: string, ids?: string[]): Promise<EmptyTrashResult>;
   /** The vault's attachments (K11), from the same walk as the note list. */

@@ -667,6 +667,31 @@ describe('org vault Trash (Restore only, R3)', () => {
     });
   });
 
+  it('a listed row a teammate already restored answers missing and writes nothing (E38)', async () => {
+    const w = await orgVaultProvider.write(ORG, 'Old.md', 'old words', { ifAbsent: true });
+    const t = await orgVaultProvider.trash!(ORG, {
+      kind: 'note',
+      path: 'Old.md',
+      ifMatch: version(w),
+    });
+    const id = t.ok ? t.entry.id : '';
+    server.put('Old.md', 'old words, and theirs');
+    const before = rpcsNamed('org_vault_write').length;
+    expect(await orgVaultProvider.restore!(ORG, id, { listed: true })).toEqual({
+      ok: false,
+      conflict: 'missing',
+    });
+    expect(rpcsNamed('org_vault_write').length).toBe(before);
+    // Still in Trash, the same listed restore brings it back.
+    server.drop('Old.md');
+    const listed = await orgVaultProvider.listTrash!(ORG);
+    expect(await orgVaultProvider.restore!(ORG, listed[0]!.id, { listed: true })).toMatchObject({
+      ok: true,
+      renamed: false,
+    });
+    expect(server.bytes('Old.md')).toBe('old words, and theirs');
+  });
+
   it('lists a tombstone only while its newest revision of any reason is deleted', async () => {
     // Moved away: the old path is a tombstone whose newest revision is renamed.
     const a = await orgVaultProvider.write(ORG, 'moved.md', 'm', { ifAbsent: true });

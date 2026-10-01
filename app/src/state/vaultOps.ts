@@ -25,6 +25,7 @@ import type { VaultIndexHost } from '../lib/vaultIndexHost.js';
 import {
   versionOf,
   type RestoreBeside,
+  type RestoreOptions,
   type RestorePartial,
   type RestoreReport,
   type TrashPartial,
@@ -1141,10 +1142,15 @@ export async function listTrash(
   return { ok: true, entries };
 }
 
-/** Restore one Trash entry where it came from, never overwriting. */
-export async function restoreEntry(deps: VaultOpsDeps, id: string): Promise<VaultRestoreResult> {
+/** Restore one Trash entry where it came from, never overwriting. A row
+ *  from the Trash page says so (`listed`, E38). */
+export async function restoreEntry(
+  deps: VaultOpsDeps,
+  id: string,
+  opts?: RestoreOptions,
+): Promise<VaultRestoreResult> {
   if (!deps.provider.restore) return { ok: false, reason: 'unsupported' };
-  const r = await attempt(() => deps.provider.restore!(deps.target.resourceId, id));
+  const r = await attempt(() => deps.provider.restore!(deps.target.resourceId, id, opts));
   if (!r.ok && r.refusal) return { ok: false, reason: 'storage', ...r.refusal };
   if (!r.ok) return { ok: false, reason: 'storage' };
   if (!r.value.ok) return { ok: false, reason: 'missing' };

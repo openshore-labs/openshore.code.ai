@@ -894,6 +894,26 @@ async function ownsName(
   return rows[0]?.reason === 'deleted' && rows[0].rev === rev;
 }
 
+/** Whether a note is still in Trash by listTrash's own rule: its name holds
+ *  a tombstone, and the newest event that ended a note there is a delete
+ *  (round 7 E38). A teammate who restored it (and wrote on), or moved it on,
+ *  took it out of Trash, though its 'deleted' revision is still there. */
+async function stillInTrash(auth: string, resourceId: string, path: string): Promise<boolean> {
+  const [dead, ending] = await Promise.all([
+    select<{ path: string }>(
+      'org_vault_notes',
+      auth,
+      `select=path&org_id=eq.${eq(resourceId)}&path=eq.${eqPath(path)}&deleted=is.true&limit=1`,
+    ),
+    select<RevisionRow>(
+      'org_vault_revisions',
+      auth,
+      `select=id,rev,reason&org_id=eq.${eq(resourceId)}&path=eq.${eqPath(path)}&reason=in.(deleted,renamed)&order=id.desc&limit=1`,
+    ),
+  ]);
+  return dead.length > 0 && ending[0]?.reason === 'deleted';
+}
+
 /** Bring back one deleted note from the revision its entry names: at its
  *  own name while that is its to take, else beside, never over anything. */
 async function restoreTook(
@@ -1377,10 +1397,20 @@ export const orgVaultProvider: StorageProvider = {
   // fail every later call the same way (offline), stops there. When some came
   // back, the answer says how many and which stayed (`partial`); when none
   // did, the first refusal (or the failure) is thrown as a note's would be.
-  async restore(resourceId, id): Promise<RestoreReport> {
+  async restore(resourceId, id, opts): Promise<RestoreReport> {
     const auth = await token();
     if (id.startsWith(NOTE_ID)) {
       const took = noteEntryOf(id);
+      // A row from the Trash page that a teammate already brought back, or
+      // moved on, is no longer in Trash: nothing is written, never a stale
+      // "(restored)" copy beside their note (E38). An Undo is this device's
+      // own, and brings back what its delete took (E23).
+      if (
+        opts?.listed &&
+        !(await refusingFor(resourceId, () => stillInTrash(auth, resourceId, took.path)))
+      ) {
+        return { ok: false, conflict: 'missing' };
+      }
       const back = await restoreTook(auth, resourceId, took);
       if (!back) return { ok: false, conflict: 'missing' };
       const { file, renamed, inTrash } = back;

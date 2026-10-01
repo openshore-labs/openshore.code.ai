@@ -8830,4 +8830,69 @@ describe('round 7, batch 5: the team vault says what is gone, moved and refused,
       });
     });
   });
+  describe('E38: a Trash row a teammate already brought back writes nothing, and says so', () => {
+    const writes = () => server.rpcs.filter((r) => r.fn === 'org_vault_write').length;
+    async function trashOld() {
+      server.put('Old.md', 'old words', 'u-me');
+      server.drop('Old.md');
+      await st().vaultRefresh();
+      const listed = (await st().vaultLoadTrash()) ?? [];
+      expect(listed.map((e) => e.path)).toEqual(['Old.md']);
+      return listed[0]!.id;
+    }
+
+    it('restored and edited by a teammate: no (restored) copy, it says so, and Trash is read again', async () => {
+      const id = await trashOld();
+      server.put('Old.md', 'old words, and theirs');
+      const before = writes();
+      expect(await st().vaultRestoreTrash(id)).toEqual({
+        ok: false,
+        reason: 'missing',
+        line: vaultTrashGone('Old'),
+        whole: true,
+      });
+      expect(writes()).toBe(before);
+      expect(server.bytes('Old (restored).md')).toBeUndefined();
+      expect(server.bytes('Old.md')).toBe('old words, and theirs');
+      await vi.waitFor(() => expect(st().vaultTrash).toEqual([]));
+    });
+
+    it('an id from before E23 (no rev) does the same', async () => {
+      await trashOld();
+      server.put('Old.md', 'old words, and theirs');
+      await st().vaultRestoreTrash('n:Old.md');
+      expect(server.bytes('Old (restored).md')).toBeUndefined();
+      expect(server.bytes('Old.md')).toBe('old words, and theirs');
+    });
+
+    it('restored, edited and renamed by a teammate: the old body never comes back at Old.md', async () => {
+      const id = await trashOld();
+      server.put('Old.md', 'old words, and theirs');
+      await teammateMove('Old.md', 'New.md');
+      expect(await st().vaultRestoreTrash(id)).toMatchObject({
+        ok: false,
+        reason: 'missing',
+        line: vaultTrashGone('Old'),
+      });
+      expect(server.bytes('Old.md')).toBeUndefined();
+      expect(server.bytes('Old (restored).md')).toBeUndefined();
+      expect(server.bytes('New.md')).toBe('old words, and theirs');
+    });
+
+    it('still in Trash, it comes back at its own name', async () => {
+      const id = await trashOld();
+      expect(await st().vaultRestoreTrash(id)).toMatchObject({ ok: true, renamed: false });
+      expect(server.bytes('Old.md')).toBe('old words');
+    });
+
+    it("an Undo keeps E23's rule: what its delete took comes back beside what holds the name", async () => {
+      server.put('Plan.md', 'my plan', 'u-me');
+      await st().vaultRefresh();
+      const gone = await st().vaultDeleteNote('Plan.md');
+      if (!gone?.ok || !gone.undo) throw new Error('not deleted');
+      server.put('Plan.md', 'their new plan');
+      expect(await st().vaultUndoDelete(gone.undo)).toMatchObject({ ok: true, renamed: true });
+      expect(server.bytes('Plan (restored).md')).toBe('my plan');
+    });
+  });
 });

@@ -12635,7 +12635,8 @@ export const useApp = create<AppState>((set, get, api) => {
       const teamRefused = vaultTeamRefusal(t.providerId, get().vaultTeamPlan, 'restore');
       if (teamRefused) return { ok: false, reason: 'unsupported', line: teamRefused, whole: true };
       const entry = get().vaultTrash?.find((e) => e.id === id);
-      const r = await opsRestoreEntry(opsDeps(t), id);
+      // A row the page showed: it comes back only while still in Trash (E38).
+      const r = await opsRestoreEntry(opsDeps(t), id, { listed: true });
       if (r.ok && entry?.kind === 'folder') await relistActive(t);
       void refreshVaultTrash(t);
       // Nothing of it is left in Trash (restored or cleared elsewhere): it
