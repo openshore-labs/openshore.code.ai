@@ -58,6 +58,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 import {
   NOTE_TEMP_PATTERN,
   NotANoteError,
+  birthtimeSeconds,
   noteFileHooksForTests,
   noteVersion,
   readNote,
@@ -413,9 +414,48 @@ describe('reading a note', () => {
   });
 });
 
+// The seconds the backdate hands utimes, round-tripped the way the system
+// takes them (a float, cut to whole seconds and then whole microseconds on a
+// Mac, whose libuv calls futimes, or nanoseconds where it calls futimens), on
+// every platform, so Linux CI watches the drift the Mac's test gate first
+// caught (2026-10-01): the old whole-millisecond Date landed just below itself
+// and lost about a millisecond a save.
+describe('the creation date survives the round trip, save after save', () => {
+  const units = [
+    ['microseconds (a Mac)', 1e6],
+    ['nanoseconds', 1e9],
+  ] as const;
+  for (const [unit, perSecond] of units) {
+    const toNs = (seconds: number): bigint => {
+      const sec = Math.trunc(seconds);
+      const frac = BigInt(Math.trunc((seconds - sec) * perSecond));
+      return BigInt(sec) * 1_000_000_000n + frac * BigInt(1e9 / perSecond);
+    };
+    const viaDate = (ns: bigint) => toNs(Number(ns / 1_000_000n) / 1000);
+    const viaSeconds = (ns: bigint) => toNs(birthtimeSeconds(ns));
+
+    it(`stays within a microsecond and never moves after the first save, in ${unit}`, () => {
+      for (let i = 0; i < 2000; i++) {
+        const born = 1_759_293_548_000_000_000n + BigInt(i) * 7_919_123_457n;
+        let now = born;
+        for (let save = 0; save < 50; save++) now = viaSeconds(now);
+        const off = now > born ? now - born : born - now;
+        expect(off, `born ${born}`).toBeLessThan(1_000n);
+        const once = viaSeconds(born);
+        expect(viaSeconds(viaSeconds(once))).toBe(once);
+      }
+    });
+
+    it(`the old millisecond Date did drift, in ${unit}, which is why it went`, () => {
+      const born = 1_759_293_548_123_950_000n;
+      expect(born - viaDate(viaDate(born))).toBeGreaterThan(1_000_000n);
+    });
+  }
+});
+
 // F2: Obsidian shows a note's creation date, and macOS keeps it across our
 // rename when mtime is first set back to it. If this fails on the build Mac,
-// drop the backdate and record the finding.
+// look at the round trip above before dropping the backdate.
 describe.skipIf(process.platform !== 'darwin')('the creation date on macOS', () => {
   it('is unchanged within 1 ms after two saves', async () => {
     const note = join(root, 'a.md');

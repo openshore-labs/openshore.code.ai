@@ -4002,3 +4002,15 @@ execution contract. Newest at the bottom.
   `VITE_RELEASE_TIER=4`), the way GitHub's CI runs; a test that needs a value
   stubs it. Both suites pass with the group's values set and TMPDIR behind a
   symlink, the Mac's shape.
+- 2026-10-01: **A save keeps a note's creation date to the microsecond.**
+  The Mac test gate's next failure: after two saves the creation date had
+  moved 1.9 ms earlier (`noteFile.test.ts`, F2, a 1 ms bound). The backdate
+  handed `utimes` the stat's whole-millisecond Date; the call takes float
+  seconds, and libuv truncates them (to whole microseconds on a Mac, through
+  `futimes`), so a whole millisecond landed just below itself and each save
+  lost about a millisecond. `writeTemp` now passes `birthtimeSeconds`, the
+  birth time's whole microseconds plus half of one, which stays above the
+  float's error and reads back to the same microsecond save after save. Kept
+  the backdate rather than dropping it (the F2 fallback): the fault was the
+  conversion, not APFS. A round-trip test models both truncations on every
+  platform, so Linux CI now watches what only the Mac could see.

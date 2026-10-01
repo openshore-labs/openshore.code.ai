@@ -217,7 +217,7 @@ async function writeTemp(
     if (orig && process.platform === 'darwin' && orig.birthtimeNs > 0n) {
       // APFS and HFS+ move the birth time back to an earlier mtime; then the
       // mtime goes forward to now, and the birth time stays.
-      await fh.utimes(orig.atime, orig.birthtime);
+      await fh.utimes(orig.atime, birthtimeSeconds(orig.birthtimeNs));
       await fh.utimes(orig.atime, new Date());
     }
     await fh.sync();
@@ -230,6 +230,19 @@ async function writeTemp(
     await unlinkQuiet(tmp);
     throw err;
   }
+}
+
+/** A birth time as the seconds utimes takes, kept steady across saves: the
+ *  whole microseconds plus half of one. The call takes a float, which at
+ *  today's dates is a quarter of a microsecond coarse, and libuv truncates
+ *  it (to whole microseconds on a Mac, through futimes); a whole millisecond (the Date the stat gives) therefore
+ *  landed just below itself, and the next save's floor took off another
+ *  whole millisecond. Each save moved the creation date about a millisecond
+ *  earlier (the Mac build's test gate saw 1.9 ms after two, 2026-10-01).
+ *  Half a microsecond of headroom stays above the float's error, so the
+ *  date reads back to the same microsecond, save after save. */
+export function birthtimeSeconds(ns: bigint): number {
+  return Number(ns / 1000n) / 1e6 + 5e-7;
 }
 
 async function renameOver(tmp: string, dest: string): Promise<void> {
