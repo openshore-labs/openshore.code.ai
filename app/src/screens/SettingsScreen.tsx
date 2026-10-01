@@ -41,6 +41,7 @@ import { tierById, shownPrice } from '../lib/plans.js';
 import { REPO_CONNECTORS } from '../lib/repos.js';
 import { clearInsights, insightsAsText, insightsCount } from '../lib/insights.js';
 import { hapticCommit } from '../lib/haptics.js';
+import { BrandMark } from '../components/BrandMark.js';
 import { DEFAULT_PERMISSION_MODE, permissionModeLabel } from '../lib/permissionMode.js';
 import { BackBar } from '../components/BackBar.js';
 import { SignInCard } from '../components/SignInCard.js';
@@ -70,6 +71,7 @@ import { VoicePicker } from '../components/VoicePicker.js';
 import { listVoices } from '../lib/voice/tts.js';
 import { curateVoices, resolveVoice } from '../lib/voice/voiceCatalog.js';
 import { webSearchOn, type SearchBackend } from '../lib/webSearch.js';
+import { APP_ICONS, appIconNote } from '../lib/appIcon.js';
 import { PACK_BY_CLASS, TRUST_STATEMENT_LINES, type StackHealthSealFact } from 'os-code/protocol';
 
 const SEARCH_BACKEND_LABEL: Record<SearchBackend, string> = {
@@ -686,6 +688,35 @@ export function SettingsScreen() {
               </div>
             }
           />
+          <SettingsRow
+            label="App icon"
+            subWrap
+            sub={appIconNote(isPhone() ? 'phone' : isDesktop() ? 'desktop' : 'web')}
+          />
+          <div className="icon-picker" role="radiogroup" aria-label="App icon">
+            {APP_ICONS.map((icon) => {
+              const active = (settings.appIcon ?? 'default') === icon.id;
+              return (
+                <button
+                  key={icon.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  className="icon-choice press-fb"
+                  onClick={() => {
+                    if (active) return;
+                    hapticCommit();
+                    void saveSettings({ appIcon: icon.id });
+                  }}
+                >
+                  <span className="icon-choice-tile">
+                    <BrandMark size={56} icon={icon.id} />
+                  </span>
+                  {icon.label}
+                </button>
+              );
+            })}
+          </div>
           <SettingsRow
             label="Help improve the test build"
             sub="A plain activity log, kept here. Off by default."

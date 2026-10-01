@@ -1,5 +1,6 @@
 // The shell: persistent sidebar on wide screens, drawer on the phone, one
 // active room. The chat is home; everything else is a short visit.
+import { applyAppIcon } from './lib/appIconApply.js';
 import { Suspense, lazy, useEffect, useRef, type ComponentType } from 'react';
 import { Keyboard } from '@capacitor/keyboard';
 import { useApp, type ViewName } from './state/store.js';
@@ -129,6 +130,7 @@ export function App() {
   const { ready, view, drawerOpen, toast, init, reconcileEntitlementOnForeground, accountChoice } =
     useApp();
   const theme = useApp((s) => s.settings.theme);
+  const appIcon = useApp((s) => s.settings.appIcon);
   const compact = useCompact();
   // The keyboard inset listener lives here, from boot, so no screen can
   // mount after the keyboard has already started to rise and miss it.
@@ -199,6 +201,18 @@ export function App() {
       meta.content = pinned && bg ? bg : meta.dataset.system;
     });
   }, [theme]);
+
+  // The app icon (Settings, Appearance): the in-app mark follows `data-icon`
+  // at once; the device's own icon (the iPhone's Home Screen, the desktop's
+  // Dock or window) is set only once the saved settings are in, so a launch
+  // never flips it to the default and back. Setting the icon it already has
+  // is a no-op on the iPhone, so iOS says nothing on a launch.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (appIcon && appIcon !== 'default') root.dataset.icon = appIcon;
+    else delete root.dataset.icon;
+    if (ready) void applyAppIcon(appIcon ?? 'default');
+  }, [appIcon, ready]);
 
   // Keep a focused field above the on-screen keyboard. Our scroll lives in a
   // nested container, so Safari does not reliably lift the field itself. On a

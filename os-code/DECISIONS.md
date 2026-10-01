@@ -4117,3 +4117,24 @@ execution contract. Newest at the bottom.
   sentence case and short enough for the sidebar). A launch tidies chats still
   carrying the old 48-character cut, and never a name the person chose or an
   engine's own title.
+- **Nightshore is the dark theme (founder, 2026-10-01):** "make dark mode in
+  this theme", from openshore.ai. The dark tokens are the site's own
+  (openshore.css): the abyss ground #0b1417, deep-teal cards #10202a and
+  #162831, hairlines #24424d, paper text #f6f4ef (never pure white), mist
+  #a9bac0 for secondary text, and the bright wave #5bb6cb for the accent, so
+  a primary button is turquoise with abyss text, as on the site. It replaces
+  the warm brown-black of the first Creative Studio ruling. The ground is
+  also what the native shells paint before the page (index.html, the
+  Electron window, the iPhone's SceneDelegate, the dark launch splash, which
+  now carries the site's turquoise tile so it never vanishes on the abyss).
+- **The app icon is a choice (founder, 2026-10-01):** Settings, Appearance,
+  under System, Light and Dark: Ink (the default), Turquoise (the openshore.ai
+  header tile) and White (an all-white tile, the shore and wave in near-black
+  #0b1417). One list, `app/src/lib/appIcon.ts`. On the iPhone it is a real
+  Home Screen icon (iOS alternate icons, AppIcon-Turquoise and AppIcon-White,
+  compiled in through ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES and set by
+  the app's own plugin's `setAppIcon`); iOS shows its own "icon changed"
+  alert, which no app can hide. On the desktop the Dock (Mac) or window icon
+  changes while the app runs; the installed icon on disk does not, and the
+  copy says so. The in-app mark wears the picked tile. Device-local.
+  `scripts/gen-icon.py` renders all three; the default PNG is byte-identical.

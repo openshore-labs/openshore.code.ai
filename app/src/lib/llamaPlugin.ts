@@ -112,6 +112,10 @@ export interface LlamaPluginContract {
   setNoticePrefs(options: { downloads: boolean }): Promise<void>;
 
   /** Keychain-backed secret storage (iOS). Off iOS, unused (see platform.ts). */
+  /** The Home Screen icon (Settings, Appearance): an alternate icon set
+   *  compiled into the app, or null for the default. Optional: an older
+   *  native build has no such method. */
+  setAppIcon?(options: { name: string | null }): Promise<{ ok: boolean; detail?: string }>;
   secureGet(options: { key: string }): Promise<{ value: string | null }>;
   secureSet(options: { key: string; value: string }): Promise<void>;
   secureDelete(options: { key: string }): Promise<void>;
