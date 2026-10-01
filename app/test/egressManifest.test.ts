@@ -81,8 +81,11 @@ describe('what leaves this device', () => {
 
   it('says what the four privacy calls changed, and still names what leaves', () => {
     const by = (id: string) => EGRESS.find((e) => e.id === id)!;
-    expect(by('search').when).toMatch(/after you allow it once/);
-    expect(by('search').start).toBe('off');
+    // Web search is on by default since 2026-10-01 (founder, DECISIONS), and
+    // the list says so rather than claiming it asks.
+    expect(by('search').when).toMatch(/on by default/);
+    expect(by('search').when).not.toMatch(/allow it once|asks the first time/);
+    expect(by('search').start).toBe('on');
     expect(by('guardrail').what).toMatch(/never the name of a person/);
     expect(by('updates').what).toMatch(/Nothing downloads until you click Update/);
     expect(by('repo-signin').what).toMatch(/passes through our server/);

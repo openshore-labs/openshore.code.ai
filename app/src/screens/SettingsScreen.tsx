@@ -69,7 +69,7 @@ import { SheetHead } from '../components/SheetHead.js';
 import { VoicePicker } from '../components/VoicePicker.js';
 import { listVoices } from '../lib/voice/tts.js';
 import { curateVoices, resolveVoice } from '../lib/voice/voiceCatalog.js';
-import type { SearchBackend } from '../lib/webSearch.js';
+import { webSearchOn, type SearchBackend } from '../lib/webSearch.js';
 import { PACK_BY_CLASS, TRUST_STATEMENT_LINES, type StackHealthSealFact } from 'os-code/protocol';
 
 const SEARCH_BACKEND_LABEL: Record<SearchBackend, string> = {
@@ -882,17 +882,13 @@ export function SettingsScreen() {
             // Crew routines run with nobody there to ask, so they work offline
             // (CTO ruling 3; CX 8 wrote the line).
             sub={`${
-              settings.webSearchConsent === 'allowed'
+              webSearchOn(settings.webSearchConsent)
                 ? 'On. A model sends its search words to the search service below, and nothing else from your chat.'
-                : settings.webSearchConsent === 'declined'
-                  ? 'Off. Models answer from what they know.'
-                  : isDesktop()
-                    ? 'Asks the first time a chat model wants to search. The coding agent searches only once this is on.'
-                    : 'Asks the first time a model wants to search.'
+                : 'Off. Models answer from what they know.'
             } ${ROUTINES_NEVER_SEARCH}`}
             trailing={
               <Switch
-                checked={settings.webSearchConsent === 'allowed'}
+                checked={webSearchOn(settings.webSearchConsent)}
                 label="Let models search the web"
                 onChange={(next) => {
                   if (next) hapticCommit();

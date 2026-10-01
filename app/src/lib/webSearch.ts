@@ -19,6 +19,14 @@ export interface SearchKey {
   apiKey: string;
 }
 
+/** Web search is on unless the person turned it off (founder, 2026-10-01): a
+ *  curated model answers with real, current facts out of the box. Only the
+ *  search words leave, and What leaves this device lists them as on by
+ *  default. Unset, the setting reads as on. */
+export function webSearchOn(consent: 'allowed' | 'declined' | undefined): boolean {
+  return consent !== 'declined';
+}
+
 /** One shared secret slot: a user configures at most one override backend at
  *  a time, same pattern as the single Codemagic token slot. */
 export const SEARCH_SECRET_KEY = 'oscode.secret.search';

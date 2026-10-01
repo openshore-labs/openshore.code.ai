@@ -239,7 +239,7 @@ import {
 } from '../lib/harbor.js';
 import { HARBOR_MASTER_MODEL_NAME, resolveHarborMaster } from '../lib/harborMaster.js';
 import { hardwareFromSummary } from '../lib/firstSeat.js';
-import { SEARCH_SECRET_KEY, type SearchBackend } from '../lib/webSearch.js';
+import { SEARCH_SECRET_KEY, webSearchOn, type SearchBackend } from '../lib/webSearch.js';
 import { loadInsights, logEvent, logOnce, setInsightsEnabled } from '../lib/insights.js';
 import {
   crewControl as computeCrewControl,
@@ -373,7 +373,7 @@ import {
   type VaultBeforeHub,
   type VaultHubOffer,
 } from '../lib/gitos/hub.js';
-import { DEVICE_CONTEXT_TOKENS } from '../drivers/deviceModel.js';
+import { DEVICE_CONTEXT_TOKENS, ensureDeviceModel } from '../drivers/deviceModel.js';
 import { canEdit, projectPermissionFor } from '../lib/projectAccess.js';
 import {
   createOrgProject,
@@ -726,9 +726,9 @@ export interface AppSettings {
    *  is minted once per daemon rather than on every desktop session. Device-local
    *  bookkeeping, not synced. */
   pushRegisteredDaemons?: string[];
-  /** Web search asks once on this device (the search words go to a search
-   *  service, DuckDuckGo unless a key is set): 'allowed' after the person says
-   *  yes, 'declined' after they turn it off in Settings; unset until asked. */
+  /** Web search on this device (the search words go to a search service,
+   *  DuckDuckGo unless a key is set): 'declined' after the person turns it off
+   *  in Settings; unset or 'allowed' is on (founder, 2026-10-01, webSearchOn). */
   webSearchConsent?: 'allowed' | 'declined';
   /** The user's stack: Reasoning LLM anchor, active specialists, bench metadata.
    *  Legacy single stack; kept as the migration seed and fallback. The live
@@ -2460,13 +2460,7 @@ interface AppState {
    *  computer serves that provider's models the larger window from the next
    *  message, in every chat. */
   giveMoreRoom(itemId: string): Promise<void>;
-  /** A model asked to search the web and the person has not answered yet
-   *  (web search asks once; What leaves this device). The sheet shows it. */
-  webSearchAsk?: { query: string };
-  /** The web search question's answer: allow (remembered on this device) or
-   *  not now (asked again after the next launch). */
-  answerWebSearch(allow: boolean): void;
-  /** The Settings switch for web search. */
+  /** The Settings switch for web search (on unless turned off). */
   setWebSearchAllowed(allowed: boolean): Promise<void>;
   /** The first try (v1 Phase 1): write the sample page on this computer,
    *  open a chat in it, and ask for the fix, so the whole loop shows on
@@ -3821,27 +3815,49 @@ export const useApp = create<AppState>((set, get, api) => {
     }
   }
 
-  // Web search asks once (What leaves this device). A yes is remembered on
-  // this device; a "not now" holds until the next launch, so a chat never
-  // asks twice in a row. Concurrent searches share one question.
-  let webSearchDeclinedThisRun = false;
-  let webSearchPending: Promise<boolean> | undefined;
-  let webSearchResolve: ((allow: boolean) => void) | undefined;
-  function askWebSearch(query: string): Promise<boolean> {
-    const consent = get().settings.webSearchConsent;
-    if (consent === 'allowed') return Promise.resolve(true);
-    if (consent === 'declined' || webSearchDeclinedThisRun) return Promise.resolve(false);
-    if (webSearchPending) return webSearchPending;
-    webSearchPending = new Promise<boolean>((resolve) => {
-      webSearchResolve = resolve;
-      set({ webSearchAsk: { query } });
-    });
-    return webSearchPending;
+  // A freshly downloaded guide becomes the Reasoning anchor in every status
+  // where reasoningPromotion says so (none set, a guide not on the device, or
+  // Harbor Lite when Harbor is the preferred pick), so the model the person
+  // just downloaded answers docked, offshore and offline alike. A model the
+  // person placed in Stack is never touched.
+  async function promoteGuide(
+    ref: StackModelRef,
+    opts: { harborReady?: boolean; harborMiniReady?: boolean; preferred: boolean },
+  ): Promise<void> {
+    for (const profile of PROFILE_ORDER) {
+      const st = get().settings;
+      const target = reasoningPromotion(stackForProfile(st.stacks, profile), ref, {
+        harborReady: opts.harborReady ?? Boolean(st.harborReady),
+        harborMiniReady: opts.harborMiniReady ?? Boolean(st.harborMiniReady),
+        preferred: opts.preferred,
+      });
+      if (target) await get().setReasoning(target, profile);
+    }
   }
+
+  // Load Harbor into the phone's one model slot as the last step of its
+  // download. Skipped while any chat is writing a reply, since a load ends a
+  // reply in flight (UI-1); that chat's next send warms Harbor as before. A
+  // load that fails here is not a failed download: the first send reloads and
+  // says plainly what went wrong.
+  async function warmHarbor(): Promise<void> {
+    if (Object.values(get().conversations).some((c) => c.thread.busy)) return;
+    const warm = await ensureDeviceModel({
+      id: HARBOR_MODEL_ID,
+      name: HARBOR_MODEL_NAME,
+      contextSize: DEVICE_CONTEXT_TOKENS,
+    }).catch(() => ({ ok: false }) as const);
+    logEvent(warm.ok ? 'harbor_warm' : 'harbor_warm_failed');
+  }
+
+  // Web search is on unless the person turned it off in Settings (founder,
+  // 2026-10-01; What leaves this device lists it as on by default), so a
+  // curated model answers with current facts from the first chat.
   function webSearchAllowedNow(): SearchAllowed {
-    const consent = get().settings.webSearchConsent;
-    if (consent === 'allowed') return 'allowed';
-    return consent === 'declined' || webSearchDeclinedThisRun ? 'declined' : 'unknown';
+    return webSearchOn(get().settings.webSearchConsent) ? 'allowed' : 'declined';
+  }
+  async function webSearchGate(): Promise<boolean> {
+    return webSearchAllowedNow() === 'allowed';
   }
 
   // Register this device for completion push with the connected daemon, once per
@@ -4218,10 +4234,10 @@ export const useApp = create<AppState>((set, get, api) => {
           // project memory off (false) and is absent otherwise, so a
           // project's own config stays in charge while it is on.
           ...(memoryOverride(settings) === false ? { memory: false } : {}),
-          // Web search asks once on this device (the search words go to a
-          // search service): until the person allows it, the engine session
-          // has no webSearch tool.
-          ...(settings.webSearchConsent === 'allowed' ? {} : { webSearch: false }),
+          // Web search is on unless the person turned it off (the search words
+          // go to a search service): off, the engine session has no
+          // webSearch tool.
+          ...(webSearchOn(settings.webSearchConsent) ? {} : { webSearch: false }),
           codemagicToken,
           codemagicTarget,
           currents,
@@ -8397,10 +8413,11 @@ export const useApp = create<AppState>((set, get, api) => {
       if (get().initStarted) return;
       set({ initStarted: true });
 
-      // Every app-side web search asks the person first, once (lib/localSearch).
-      // The readers let a driver leave a declined or offline search out of
-      // the prompt before the model writes a word.
-      setSearchConsent(askWebSearch, {
+      // Every app-side web search goes through one gate (lib/localSearch): on
+      // unless turned off in Settings. The readers let a driver leave a
+      // declined or offline search out of the prompt before the model writes
+      // a word.
+      setSearchConsent(webSearchGate, {
         allowed: webSearchAllowedNow,
         online: () =>
           get().connectivity.online &&
@@ -11198,20 +11215,10 @@ export const useApp = create<AppState>((set, get, api) => {
         set({ harborMiniDownload: { percent: 100, label: 'Verifying', indeterminate: true } });
         await get().saveSettings({ harborMiniReady: true });
         logEvent('harbor_mini_ready');
-        // Make Harbor Lite the Reasoning anchor when the stack has none or its
-        // anchor is a guide that is not on the device, so My Stack chat works
-        // right away. Never demotes a ready Harbor.
-        const miniProfile = activeProfile(get().connectivity, get().settings.profileOverride);
-        const miniTarget = reasoningPromotion(
-          stackForProfile(get().settings.stacks, miniProfile),
-          harborRef(),
-          {
-            harborReady: Boolean(get().settings.harborReady),
-            harborMiniReady: true,
-            preferred: false,
-          },
-        );
-        if (miniTarget) await get().setReasoning(miniTarget, miniProfile);
+        // Make Harbor Lite the Reasoning anchor, in every status, when the
+        // stack has none or its anchor is a guide that is not on the device,
+        // so My Stack chat works right away. Never demotes a ready Harbor.
+        await promoteGuide(harborRef(), { harborMiniReady: true, preferred: false });
         set({ harborMiniDownload: undefined });
         return true;
       } catch (err) {
@@ -11261,24 +11268,19 @@ export const useApp = create<AppState>((set, get, api) => {
           url: HARBOR_MODEL_URL,
           notice: downloadNoticeCopy('Harbor', HARBOR_MODEL_ID),
         });
-        set({ harborDownload: { percent: 100, label: 'Verifying', indeterminate: true } });
+        // Warming up is the last step of the download (founder, 2026-10-01):
+        // Harbor loads into the phone's model slot before it is called ready,
+        // so the first message answers without a "Warming up" wait.
+        set({ harborDownload: { percent: 100, label: 'Warming up', indeterminate: true } });
+        await warmHarbor();
         await get().saveSettings({ harborReady: true, harborVersion: HARBOR_MODEL_VERSION });
         logEvent('harbor_ready');
-        // Make Harbor the Reasoning anchor when the stack has none, its anchor
-        // is a guide not on the device, or the anchor is Harbor Lite (Harbor is
-        // the preferred pick). So My Stack chat works right away. Never
-        // overrides a cloud, BYOM, or user-chosen device model.
-        const harborProfile = activeProfile(get().connectivity, get().settings.profileOverride);
-        const harborTarget = reasoningPromotion(
-          stackForProfile(get().settings.stacks, harborProfile),
-          harborFullRef(),
-          {
-            harborReady: true,
-            harborMiniReady: Boolean(get().settings.harborMiniReady),
-            preferred: true,
-          },
-        );
-        if (harborTarget) await get().setReasoning(harborTarget, harborProfile);
+        // Harbor becomes the phone's model, in every status, when the stack
+        // has no anchor, its anchor is a guide not on the device, or the
+        // anchor is Harbor Lite (Harbor is the preferred pick). So My Stack
+        // chat works right away. Never overrides a cloud, BYOM, or
+        // user-chosen device model; the person changes it in Stack.
+        await promoteGuide(harborFullRef(), { harborReady: true, preferred: true });
         set({ harborDownload: undefined });
         return true;
       } catch (err) {
@@ -14098,18 +14100,7 @@ export const useApp = create<AppState>((set, get, api) => {
       else setTrustItem({ state: 'trusted', error: undefined });
     },
 
-    answerWebSearch(allow) {
-      const resolve = webSearchResolve;
-      webSearchResolve = undefined;
-      webSearchPending = undefined;
-      set({ webSearchAsk: undefined });
-      if (allow) void get().saveSettings({ webSearchConsent: 'allowed' });
-      else webSearchDeclinedThisRun = true;
-      resolve?.(allow);
-    },
-
     async setWebSearchAllowed(allowed) {
-      webSearchDeclinedThisRun = false;
       await get().saveSettings({ webSearchConsent: allowed ? 'allowed' : 'declined' });
     },
 

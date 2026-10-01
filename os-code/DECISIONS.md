@@ -4058,3 +4058,22 @@ execution contract. Newest at the bottom.
   while searching; Enter opens the top result, Escape clears; and one quiet
   line under the list naming the swipe and the hold. Date grouping was left
   out on purpose, since the earlier Creative Studio call ruled it out.
+- **Web search is on by default (founder, 2026-10-01):** "Make sure the default
+  setting for models go on the internet is turned on so a user can get actual
+  answers from openshore models out of the box." This reverses the 2026-09-27
+  privacy call (web search asks once). Unset now reads as on (`webSearchOn` in
+  `app/src/lib/webSearch.ts`); only a Settings off is 'declined'. The ask
+  sheet is removed rather than left unreachable. A person who once tapped
+  "Not now" had nothing saved, so they now search too; one who turned it off
+  in Settings stays off. What leaves this device says it is on by default, and
+  only the search words leave, as before. Crew routines still never search.
+- **Harbor warms up as part of its download, and is the phone's model in every
+  status (founder, 2026-10-01):** the load into the one model slot happens
+  before Harbor is called ready, so the first message skips "Warming up".
+  Load only: the runner sets the system prompt and history fresh on every
+  reply, and nothing shows LLM.swift keeping a prompt's cache between replies,
+  so a warm-up generation was left out until a device run says it helps.
+  Skipped while a chat is writing (a load ends that reply). Promotion runs over
+  every status with the existing rule, so a model the person placed in Stack
+  is never replaced; a launch does not re-warm Harbor (it would hold 2.5 GB of
+  memory on every open), so a relaunched app warms it on the first send.
