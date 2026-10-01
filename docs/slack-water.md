@@ -29,18 +29,28 @@ current stops pulling either way.
   rather just chat") rises from just above the composer. The rings reach the
   farthest corner, `R = hypot(max(x, vw - x), max(y, vh - y)) + 2px`.
 - **Layers:** one fixed overlay at z-index 78 (over the header, composer and
-  waterline; under the currents' arrival and the toast). A paper disc
-  (`--bg` solid to 86 percent, a soft wet lip of `--current-4`, a gradient,
-  never a blur) sized so its solid core covers the corner at full scale, and
-  two 1.5px hairline rings (`--current-3`, then `--current-4`) drawn at their
-  final size and scaled down from there, so the stroke never grows fat.
-- **Beats:** after the guide's line inks, the reading pause (`READ_PAUSE_MS`,
-  3s). Then ring a, 0.04 to 1 over 1.4s on `--ease-arrive`, peak opacity 0.5;
-  the paper `--dur-1` behind it, 0.02 to 1 over 1.1s on `--ease-glide`; ring b
-  `--dur-4` behind, peak 0.35. On the disc's `animationend` (a 1.3s backstop)
-  the main chat page goes in underneath with one `hapticTick`, the paper holds
-  still `--dur-3`, then clears over `--dur-7` on `--ease-glide`. The greeting
-  waits unseen under the paper and lands as the clear begins: the mark on
+  waterline; under the currents' arrival and the toast). A dimple (a 56px
+  soft pool of the water's light, no edge); a paper disc (`--bg` solid to 85
+  percent, then a meniscus: a bright leading highlight of `--bg-raised` with
+  the wet shadow of `--current-4` behind it, a gradient, never a blur), sized
+  so its solid core covers the corner at full scale; and three 1.5px crests
+  (`--current-3`, then `--current-4` twice) drawn at their final size and
+  scaled up from small, each a lit edge with a soft shadow on both faces,
+  not a line.
+- **Beats** (the second pass, 2026-10-01, judged as an animator would: it
+  needed anticipation, crests that lose energy, a meniscus, no pop, overlap
+  into the ending, and a slower lift): after the guide's line inks, the
+  reading pause (`READ_PAUSE_MS`, 3s). Then the surface dips where the finger
+  was and lets go (`--dur-6`, `--ease-standard`). Crest a leaves at
+  `--dur-2`, 1.4s on `--ease-arrive`, bright early (0.6 at 10 percent) with a
+  long tail. The paper wells up behind it at `--dur-4`, 1.1s on
+  `--ease-glide`, there from its first frame and simply growing. Crest b at
+  `--dur-4` twice, 1.6s, peak 0.38; crest c at `--dur-6` twice, 1.8s, peak
+  0.22, each slower and fainter than the last. On the disc's `animationend`
+  (a 1.5s backstop) the main chat page goes in underneath with one
+  `hapticTick`, the paper holds still `--dur-3`, then lifts like fog over 1s
+  on `--ease-glide` while crest c is still crossing it. The greeting waits
+  unseen under the paper and lands as the lift begins: the mark on
   `greet-in`, the line on its landing swell.
 - **Taps:** the overlay takes taps while it rises, so the chat being covered
   cannot take one, and lets them through while it clears.

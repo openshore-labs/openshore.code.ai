@@ -14093,12 +14093,14 @@ button.settings-row:active {
 
 /* ---- Slack Water (Creative Studio, 2026-10-01; docs/slack-water.md): the
    one-time transition from the setup walk's chat to the main chat page when
-   the person chooses to just chat. A hairline ripple leads from the tap, the
-   paper wells up behind it, a second ripple follows; covered, the room swaps
-   underneath, the paper holds a beat, then clears. Sizes are set once from
-   the origin (components/SlackWater.tsx); only transform and opacity move.
-   Above the header, the composer, and the waterline; under the currents'
-   arrival and the toast. ---- */
+   the person chooses to just chat. The surface takes the touch (a dimple),
+   a lit crest leaves it, the paper wells up behind the crest, two fainter
+   and slower crests follow; covered, the room swaps underneath, the paper
+   holds a beat, then lifts like fog while the last crest is still crossing.
+   Sizes are set once from the origin (components/SlackWater.tsx); only
+   transform and opacity move, and every clock is a token or a second or
+   more. Above the header, the composer, and the waterline; under the
+   currents' arrival and the toast. ---- */
 .slack-water {
   position: fixed;
   inset: 0;
@@ -14109,8 +14111,9 @@ button.settings-row:active {
 }
 .slack-water.clearing {
   pointer-events: none;
-  animation: slack-clear var(--dur-7) var(--ease-glide) var(--dur-3) forwards;
+  animation: slack-clear 1s var(--ease-glide) var(--dur-3) forwards;
 }
+.slack-dip,
 .slack-disc,
 .slack-ring {
   position: absolute;
@@ -14119,76 +14122,134 @@ button.settings-row:active {
   border-radius: 50%;
   opacity: 0;
 }
-/* The paper: solid to its core, with a soft wet lip of the water family, so
-   at full scale the core reaches the farthest corner. A gradient, never a
-   blur (a large blur janks a WebView). */
+/* Anticipation: the surface dips where the finger was, then lets go. A soft
+   pool of the water's light, no edge. */
+.slack-dip {
+  width: 56px;
+  height: 56px;
+  margin: -28px 0 0 -28px;
+  background: radial-gradient(
+    circle closest-side,
+    color-mix(in srgb, var(--current-3) 26%, transparent) 0%,
+    color-mix(in srgb, var(--current-4) 12%, transparent) 50%,
+    transparent 100%
+  );
+  animation: slack-dip var(--dur-6) var(--ease-standard) forwards;
+}
+/* The paper: solid to its core, then a meniscus, a bright leading highlight
+   with the wet shadow behind it, so at full scale the core reaches the
+   farthest corner. It is there from the first frame, tiny under the dimple,
+   and grows; no opacity ramp, so it never pops. A gradient, never a blur. */
 .slack-disc {
   width: var(--slack-disc, 200vmax);
   height: var(--slack-disc, 200vmax);
   margin: calc(var(--slack-disc, 200vmax) / -2) 0 0 calc(var(--slack-disc, 200vmax) / -2);
   background: radial-gradient(
     circle closest-side,
-    var(--bg) 0 86%,
-    color-mix(in srgb, var(--current-4) 30%, var(--bg)) 93%,
+    var(--bg) 0 85%,
+    var(--bg-raised) 89%,
+    color-mix(in srgb, var(--current-4) 26%, var(--bg)) 94%,
+    color-mix(in srgb, var(--current-4) 10%, transparent) 97.5%,
     transparent 100%
   );
+  opacity: 1;
   transform: scale(0.02);
-  animation: slack-flood 1.1s var(--ease-glide) var(--dur-1) forwards;
+  animation: slack-flood 1.1s var(--ease-glide) var(--dur-4) forwards;
 }
-/* The hairlines: drawn at their final size and scaled down from there, so the
-   stroke ends at its true weight rather than growing fat. */
+/* The crests: drawn at their final size and scaled up from small, so each
+   hairline ends at its true weight. A crest is a lit edge, not a line: the
+   stroke carries a soft shadow on both faces. Each later crest is slower,
+   fainter, and longer in its fade, the way energy leaves a ripple. */
 .slack-ring {
   width: var(--slack-ring, 200vmax);
   height: var(--slack-ring, 200vmax);
   margin: calc(var(--slack-ring, 200vmax) / -2) 0 0 calc(var(--slack-ring, 200vmax) / -2);
   border: 1.5px solid var(--current-3);
-  transform: scale(0.04);
-  animation: slack-ripple 1.4s var(--ease-arrive) forwards;
+  box-shadow:
+    inset 0 0 14px color-mix(in srgb, var(--current-4) 38%, transparent),
+    0 0 10px color-mix(in srgb, var(--current-4) 26%, transparent);
+  transform: scale(0.03);
+  animation: slack-crest 1.4s var(--ease-arrive) var(--dur-2) forwards;
 }
 .slack-ring.b {
   border-color: var(--current-4);
-  animation-name: slack-ripple-soft;
-  animation-delay: var(--dur-4);
+  animation: slack-crest-b 1.6s var(--ease-arrive) calc(var(--dur-4) + var(--dur-4)) forwards;
+}
+.slack-ring.c {
+  border-color: var(--current-4);
+  animation: slack-crest-c 1.8s var(--ease-arrive) calc(var(--dur-6) + var(--dur-6)) forwards;
+}
+@keyframes slack-dip {
+  0% {
+    opacity: 0;
+    transform: scale(1);
+  }
+  35% {
+    opacity: 0.6;
+    transform: scale(0.72);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.3);
+  }
 }
 @keyframes slack-flood {
-  0% {
-    opacity: 0;
+  from {
     transform: scale(0.02);
   }
+  to {
+    transform: scale(1);
+  }
+}
+@keyframes slack-crest {
+  0% {
+    opacity: 0;
+    transform: scale(0.03);
+  }
   10% {
-    opacity: 1;
+    opacity: 0.6;
+  }
+  45% {
+    opacity: 0.26;
   }
   100% {
-    opacity: 1;
+    opacity: 0;
     transform: scale(1);
   }
 }
-@keyframes slack-ripple {
+@keyframes slack-crest-b {
   0% {
     opacity: 0;
-    transform: scale(0.04);
+    transform: scale(0.03);
   }
-  12% {
-    opacity: 0.5;
+  10% {
+    opacity: 0.38;
+  }
+  50% {
+    opacity: 0.16;
   }
   100% {
     opacity: 0;
     transform: scale(1);
   }
 }
-@keyframes slack-ripple-soft {
+@keyframes slack-crest-c {
   0% {
     opacity: 0;
-    transform: scale(0.04);
+    transform: scale(0.03);
   }
-  12% {
-    opacity: 0.35;
+  10% {
+    opacity: 0.22;
+  }
+  55% {
+    opacity: 0.09;
   }
   100% {
     opacity: 0;
     transform: scale(1);
   }
 }
+/* The lift: the paper thins like fog while the greeting swells under it. */
 @keyframes slack-clear {
   from {
     opacity: 1;

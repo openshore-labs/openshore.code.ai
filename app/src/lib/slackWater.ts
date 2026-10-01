@@ -13,10 +13,10 @@
 export const DISC_CORE = 0.86;
 
 /** If the disc's animationend never comes (a backgrounded WebView), the room
- *  swaps anyway once the flood has surely covered: 120ms delay plus 1.1s. */
-export const SWAP_BACKSTOP_MS = 1300;
-/** And the cover leaves: 220ms of stillness plus the 520ms clear, with room. */
-export const CLEAR_BACKSTOP_MS = 1200;
+ *  swaps anyway once the flood has surely covered: 280ms delay plus 1.1s. */
+export const SWAP_BACKSTOP_MS = 1500;
+/** And the cover leaves: 220ms of stillness plus the 1s lift, with room. */
+export const CLEAR_BACKSTOP_MS = 1400;
 
 export interface SlackWaterGeometry {
   /** The ripple rings' diameter: the distance to the farthest corner, twice. */

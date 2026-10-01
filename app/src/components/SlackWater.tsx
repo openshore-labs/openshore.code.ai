@@ -1,9 +1,10 @@
 // Slack Water (Creative Studio, 2026-10-01; docs/slack-water.md): the
 // one-time transition from the setup walk's chat to the main chat page when
-// the person chooses to just chat. From the point they tapped, a hairline
-// ripple leads, the paper wells up behind it, and a second ripple follows.
-// Once the paper covers the screen the main chat page goes in underneath
-// (with one soft tick), the paper holds still a beat, then clears, and the
+// the person chooses to just chat. Where they tapped, the surface dips, a
+// lit crest leaves it, the paper wells up behind the crest, and two fainter,
+// slower crests follow. Once the paper covers the screen the main chat page
+// goes in underneath (with one soft tick), the paper holds still a beat,
+// then lifts like fog while the last crest is still crossing, and the
 // greeting lands.
 //
 // Transform and opacity only, on the tokens (theme.css .slack-water). The
@@ -65,6 +66,7 @@ export function SlackWater() {
         if (e.animationName === 'slack-clear') end();
       }}
     >
+      <span className="slack-dip" />
       <span className="slack-ring a" />
       <span
         className="slack-disc"
@@ -74,6 +76,7 @@ export function SlackWater() {
         }}
       />
       <span className="slack-ring b" />
+      <span className="slack-ring c" />
     </div>
   );
 }
