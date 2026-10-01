@@ -8895,4 +8895,55 @@ describe('round 7, batch 5: the team vault says what is gone, moved and refused,
       expect(server.bytes('Plan (restored).md')).toBe('my plan');
     });
   });
+  describe("E40: a draft stashed before this device's rename lands on the new name", () => {
+    async function stashOn(path: string, typed: string) {
+      server.put(path, 'body', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen(path);
+      for (let i = 0; i < 5; i++) await tick();
+      const at = st().vaultTargetRef();
+      server.rpcFailure = new TypeError('Failed to fetch');
+      await st().vaultSave(path, typed, at);
+      server.rpcFailure = undefined;
+      expect(Object.values(pending()).map((e) => e.text)).toEqual([typed]);
+    }
+    const copies = () =>
+      [...server.notes.values()].filter((n) => !n.deleted && /\(conflict /.test(n.path));
+
+    it('the draft lands on the renamed note itself, with no conflict copy and no false line', async () => {
+      await stashOn('Old.md', 'body, and more');
+      const preview = await st().vaultPrepareMove('note', 'Old.md', 'New.md');
+      if (!preview) throw new Error('no preview');
+      expect(await st().vaultApplyMove(preview, false)).toMatchObject({ ok: true });
+      useApp.setState({ toast: undefined });
+      await st().vaultRefresh();
+      expect(server.bytes('New.md')).toBe('body, and more');
+      expect(copies()).toEqual([]);
+      expect(pending()).toEqual({});
+      expect(st().toast ?? '').not.toMatch(/changed elsewhere/);
+    });
+
+    it('a case-only rename lands the draft on the new spelling', async () => {
+      await stashOn('plan.md', 'body, and more');
+      const preview = await st().vaultPrepareMove('note', 'plan.md', 'Plan.md');
+      if (!preview) throw new Error('no preview');
+      expect(await st().vaultApplyMove(preview, false)).toMatchObject({ ok: true });
+      await st().vaultRefresh();
+      expect(server.bytes('Plan.md')).toBe('body, and more');
+      expect(copies()).toEqual([]);
+    });
+
+    it('a draft typed on an older version than the move carried still keeps both', async () => {
+      await stashOn('Work/a.md', 'body, and mine');
+      // A teammate saves before the folder moves: the move carries theirs.
+      server.put('Work/a.md', 'theirs');
+      st().vaultCloseNote();
+      const preview = await st().vaultPrepareMove('folder', 'Work', 'Done');
+      if (!preview) throw new Error('no preview');
+      expect(await st().vaultApplyMove(preview, false)).toMatchObject({ ok: true });
+      await st().vaultRefresh();
+      expect(server.bytes('Done/a.md')).toBe('theirs');
+      expect(copies().map((n) => n.body)).toEqual(['body, and mine']);
+    });
+  });
 });

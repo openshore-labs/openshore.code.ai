@@ -479,6 +479,7 @@ import {
   type VaultRewriteReport,
   type VaultOpsDeps,
   type VaultOpsOpenNote,
+  type VaultRekeyRebase,
   type VaultRestoreResult,
   type VaultUndo,
 } from './vaultOps.js';
@@ -6666,17 +6667,23 @@ export const useApp = create<AppState>((set, get, api) => {
     t: VaultTargetRef,
     from: string,
     to: string,
-    opts: { keepVersion?: boolean } = {},
+    opts: { keepVersion?: boolean; rebase?: VaultRekeyRebase } = {},
   ): Promise<void> {
     if (t.providerId === vaultProviderId(get().settings) && t.resourceId === VAULT_RESOURCE_ID) {
       await rewriteVaultPins(from, to).catch(() => {});
     }
     await editVaultRecent(t, (ring) => renameVaultRecent(ring, from, to)).catch(() => {});
+    // A draft stashed on exactly the version this device's rename carried is
+    // based on that note where it is now, so its replay lands there, never as
+    // a conflict copy over a change nobody made (round 7 E40). One typed on
+    // an older version keeps its base, and still keeps both.
+    const rebase = opts.rebase;
     await editVaultPending((p) => {
       const e = p[vaultKey(t, from)];
       if (!e) return;
       delete p[vaultKey(t, from)];
-      p[vaultKey(t, to)] = { ...e, path: to };
+      const rebased = rebase?.version !== undefined && e.base === rebase.guard;
+      p[vaultKey(t, to)] = { ...e, path: to, ...(rebased ? { base: rebase.version } : {}) };
     }).catch(() => {});
     await rekeyVaultHeld(t, from, to);
     if (!isActiveVault(t)) return;
@@ -6772,7 +6779,7 @@ export const useApp = create<AppState>((set, get, api) => {
         removed: (path) => patchVaultFiles(t, { removed: path }),
         renamed: (from, to) => patchVaultRename(t, from, to),
       },
-      rekey: (from, to) => rekeyVaultPath(t, from, to),
+      rekey: (from, to, rebase) => rekeyVaultPath(t, from, to, rebase ? { rebase } : {}),
       flushOpenSave: () => flushOpenSave(t),
       openNote: () => openNoteOf(t),
     };

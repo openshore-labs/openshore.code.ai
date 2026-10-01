@@ -39,6 +39,13 @@ import {
 } from '../lib/gitos/providers.js';
 import type { VaultTargetRef } from './store.js';
 
+/** A rename this device made: the version it was guarded by, and the
+ *  version the note has at its new path (E40). */
+export interface VaultRekeyRebase {
+  guard: string;
+  version?: string;
+}
+
 /** The note open on screen, as an operation needs to see it: a note with
  *  unsaved edits or an open resolve choice is never rewritten under the
  *  person (R1). */
@@ -83,8 +90,10 @@ export interface VaultOpsDeps {
   };
   /** Re-key everything a path owns on this device after a rename: project
    *  pins (`vaultRenamePins`), stash entries, the recent ring, and the open
-   *  note. */
-  rekey: (from: string, to: string) => Promise<void>;
+   *  note. `rebase`: the version the rename was guarded by and the one the
+   *  note took at `to`, so a stashed draft typed on exactly what moved is
+   *  based on where it is now (round 7 E40). */
+  rekey: (from: string, to: string, rebase?: VaultRekeyRebase) => Promise<void>;
   /** Write the open note's pending save now, before an operation reads it. */
   flushOpenSave: () => Promise<void>;
   /** The note open on screen, or undefined. */
@@ -483,6 +492,9 @@ export async function applyMove(
   }
 
   const moved: StoredFileMeta[] = [];
+  // The version each note's rename was guarded by, where it is known (a
+  // storage's own folder rename says none), by where it landed (E40).
+  const guards = new Map<string, string>();
   let keptBoth = false;
   if (preview.kind === 'note') {
     // The guard is the version as last seen; a note the preview could not
@@ -495,6 +507,7 @@ export async function applyMove(
     if (!r.value.ok) return { ok: false, reason: r.value.conflict, theirs: r.value.theirs };
     keptBoth = Boolean(r.value.keptBoth);
     moved.push(r.value.file);
+    guards.set(foldPath(r.value.file.path), guard);
   } else if (provider.renameFolder) {
     const r = await attempt(() =>
       provider.renameFolder!(target.resourceId, preview.from, preview.to),
@@ -512,7 +525,7 @@ export async function applyMove(
     // note, stopping on the first failure and saying which moved (K5).
     return moveNoteByNote(deps, preview, opts);
   }
-  await settleMoved(deps, preview, moved);
+  await settleMoved(deps, preview, moved, guards);
 
   if (!opts.updateLinks || !preview.plan.edits.length) {
     return { ok: true, preview, moved, ...(keptBoth ? { keptBoth } : {}) };
@@ -536,6 +549,8 @@ async function moveNoteByNote(
 ): Promise<VaultMoveResult> {
   const { provider, target } = deps;
   const moved: StoredFileMeta[] = [];
+  // The version each note's move was guarded by, by where it landed (E40).
+  const guards = new Map<string, string>();
   // Every note this move set out to move, from where it is to where it goes.
   const moves = new Map(preview.moves);
   // What actually moved: where each came from, and where it is now.
@@ -547,7 +562,7 @@ async function moveNoteByNote(
     r: Awaited<ReturnType<typeof moveOne>>,
     to: string,
   ): Promise<VaultMoveResult> => {
-    await settleMoved(deps, { ...preview, moves }, moved);
+    await settleMoved(deps, { ...preview, moves }, moved, guards);
     const counts = tried !== preview.notes ? { notes: tried } : {};
     if (!r.ok && r.refusal) {
       return {
@@ -577,7 +592,10 @@ async function moveNoteByNote(
     attempt(async () => {
       const meta = await provider.stat(target.resourceId, from);
       if (!meta) return { ok: false as const, conflict: 'missing' as const };
-      return renameOne(deps, from, to, versionOf(meta));
+      const guard = versionOf(meta);
+      const r = await renameOne(deps, from, to, guard);
+      if (r.ok && guard) guards.set(foldPath(r.file.path), guard);
+      return r;
     });
   for (let pass = 0; pass < 2; pass++) {
     for (const [from, to] of queue) {
@@ -635,7 +653,7 @@ async function moveNoteByNote(
         : { plan: { edits: [], links: 0, notes: 0, left: [] }, sources: [] }),
     };
   }
-  await settleMoved(deps, { ...preview, moves }, moved);
+  await settleMoved(deps, { ...preview, moves }, moved, guards);
   if (!opts.updateLinks || !run.plan.edits.length) return { ok: true, preview, moved };
   const rewrite = await rewritePass(deps, run, moved, opts.onProgress);
   return { ok: true, preview, moved, rewrite };
@@ -658,6 +676,7 @@ async function settleMoved(
   deps: VaultOpsDeps,
   preview: VaultMovePreview,
   moved: readonly StoredFileMeta[],
+  guards?: ReadonlyMap<string, string>,
 ): Promise<void> {
   const back = new Map<string, string>();
   for (const [from, to] of preview.moves) back.set(foldPath(to), from);
@@ -665,7 +684,11 @@ async function settleMoved(
     const from = back.get(foldPath(file.path));
     if (from === undefined) continue;
     deps.patch.renamed(from, file);
-    await deps.rekey(from, file.path).catch(() => {});
+    const guard = guards?.get(foldPath(file.path));
+    const rebase = guard
+      ? { guard, ...(file.version ? { version: file.version } : {}) }
+      : undefined;
+    await deps.rekey(from, file.path, rebase).catch(() => {});
   }
 }
 

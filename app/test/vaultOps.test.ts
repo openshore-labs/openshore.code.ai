@@ -393,6 +393,39 @@ describe('rename with links following (6.2, R1)', () => {
     ).toBe('Renamed to "Plans". 4 links updated.');
   });
 
+  it('re-keys with the version the rename was guarded by and the one it landed at (E40)', async () => {
+    const seen: Array<[string, string, unknown]> = [];
+    h.deps.rekey = async (from, to, rebase) => {
+      seen.push([from, to, rebase]);
+    };
+    const p = await prepareNoteMove(h.deps, 'Ideas.md', 'Plans.md');
+    if (!p.ok) throw new Error('no plan');
+    const guard = p.preview.guard!;
+    expect(await applyMove(h.deps, p.preview, { updateLinks: false })).toMatchObject({ ok: true });
+    const landed = `v${h.mem.files.get('Plans.md')!.v}`;
+    expect(seen).toEqual([['Ideas.md', 'Plans.md', { guard, version: landed }]]);
+  });
+
+  it('a folder moved note by note re-keys each with its guard; a storage folder rename names none (E40)', async () => {
+    for (const renameFolder of [false, true]) {
+      const g = harness(memStorage({ 'Work/a.md': 'a' }, { renameFolder }));
+      const seen: Array<[string, string, unknown]> = [];
+      g.deps.rekey = async (from, to, rebase) => {
+        seen.push([from, to, rebase]);
+      };
+      const before = `v${g.mem.files.get('Work/a.md')!.v}`;
+      const p = await prepareFolderMove(g.deps, 'Work', 'Done');
+      if (!p.ok) throw new Error('no plan');
+      expect(await applyMove(g.deps, p.preview, { updateLinks: false })).toMatchObject({
+        ok: true,
+      });
+      const landed = `v${g.mem.files.get('Done/a.md')!.v}`;
+      expect(seen).toEqual([
+        ['Work/a.md', 'Done/a.md', renameFolder ? undefined : { guard: before, version: landed }],
+      ]);
+    }
+  });
+
   it('a rename skips a referring note that changed, reports it, and writes the notes after it', async () => {
     const p = await prepareNoteMove(h.deps, 'Ideas.md', 'Plans.md');
     if (!p.ok) throw new Error('no plan');
