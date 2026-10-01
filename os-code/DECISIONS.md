@@ -4014,3 +4014,10 @@ execution contract. Newest at the bottom.
   the backdate rather than dropping it (the F2 fallback): the fault was the
   conversion, not APFS. A round-trip test models both truncations on every
   platform, so Linux CI now watches what only the Mac could see.
+- **Boot splash restored (founder, 2026-10-01):** the founder asked for the
+  previous opening back, "don't make something new, just use what we had", so
+  `app/index.html`'s splash is `0eed51c`'s again, byte for byte: the letters
+  surface through the waterline with the bounce, ripples, droplets and
+  reflection. This reverses the splash part of `60e6ff1` (the Swell Line, the
+  dark splash ground); the rest of that brand sweep stays, as do the head's
+  dark theme-color metas and the Fraunces preload.
