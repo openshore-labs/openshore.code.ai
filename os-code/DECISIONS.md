@@ -3991,3 +3991,14 @@ execution contract. Newest at the bottom.
   closed note's keep-both copy that fails is stashed instead of rejecting
   the save. Each is truer than main's line and none loses text; the
   personal-provider tests that pin them are part of E53.
+- 2026-10-01: **The app's tests ignore the build machine's VITE_ values.**
+  Codemagic's test gate failed 27 app tests on main once the engine's Mac
+  failures were fixed (they had stopped `pnpm -r test` before the app's turn,
+  so these had hidden behind them). The `Harbor-os-code` group sets
+  `VITE_SUPABASE_URL` and friends for the app build, and those were present in
+  the test step too, so every test met an account backend it does not have
+  (coding chats behind a sign-in). `app/vite.config.ts` now blanks every
+  `VITE_` value from the environment for the test run (keeping the suite's
+  `VITE_RELEASE_TIER=4`), the way GitHub's CI runs; a test that needs a value
+  stubs it. Both suites pass with the group's values set and TMPDIR behind a
+  symlink, the Mac's shape.
