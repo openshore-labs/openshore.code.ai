@@ -159,8 +159,17 @@ function joinPath(folder: string, file: string): string {
   return folder ? `${folder}/${file}` : file;
 }
 
-/** Is `path` inside `folder` (at any depth)? */
+/** Is `path` inside `folder` (at any depth)? As the tree groups notes, by
+ *  the folder's own spelling: on a storage that keeps "Work" and "work"
+ *  apart (Local, the team vault), each is its own folder, and a folder's
+ *  count, delete, move and Undo all take the same notes (round 7 E41). */
 function inFolder(path: string, folder: string): boolean {
+  return path.startsWith(`${folder}/`);
+}
+
+/** Whether a folder name is already used, in any letter case: a new folder
+ *  is a name, and names are matched without case (E41). */
+function folderNameUsed(path: string, folder: string): boolean {
   return foldPath(path).startsWith(`${foldPath(folder)}/`);
 }
 
@@ -614,13 +623,13 @@ async function moveNoteByNote(
     // own. Not a note already moved there, when the new name is inside.
     const listing = await attempt(() => provider.list(target.resourceId));
     if (!listing.ok) break;
-    const under = `${foldPath(preview.from)}/`;
-    const into = `${foldPath(preview.to)}/`;
     const depth = preview.from.split('/').length;
     queue.length = 0;
     for (const f of listing.value) {
-      const folded = foldPath(f.path);
-      if (!MD_END.test(f.path) || !folded.startsWith(under) || folded.startsWith(into)) continue;
+      // In the folder by its own spelling, as the plan counted (E41).
+      if (!MD_END.test(f.path) || !inFolder(f.path, preview.from) || inFolder(f.path, preview.to)) {
+        continue;
+      }
       const to = `${preview.to}/${f.path.split('/').slice(depth).join('/')}`;
       queue.push([f.path, to]);
       moves.set(f.path, to);
@@ -986,7 +995,9 @@ export async function createFolder(
 > {
   const clean = path.trim().replace(/^\/+|\/+$/g, '');
   if (!checkFolderName(clean)) return { ok: false, reason: 'bad-name' };
-  if (indexedPaths(deps).some((p) => inFolder(p, clean))) return { ok: false, reason: 'exists' };
+  if (indexedPaths(deps).some((p) => folderNameUsed(p, clean))) {
+    return { ok: false, reason: 'exists' };
+  }
   if (!deps.provider.createFolder) return { ok: true, remembered: true };
   const r = await attempt(() => deps.provider.createFolder!(deps.target.resourceId, clean));
   if (!r.ok) return { ok: false, reason: 'storage' };

@@ -517,6 +517,21 @@ for (const p of enforcing) {
       expect(await listedPaths(p.provider)).toEqual(['Other.md', 'Work/Deep/b.md', 'Work/a.md']);
     });
 
+    // A storage that keeps "Work" and "work" apart (a case-insensitive disk
+    // makes them one folder, so the desktop folder is left to its disk):
+    // a folder's trash takes its own spelling only, as the tree groups it and
+    // as the room counts it before it acts (round 7 E41).
+    it.skipIf(p.name.startsWith('This folder'))(
+      'a folder trash takes the notes under its own spelling, never another case',
+      async () => {
+        await p.provider.write(R, 'Work/a.md', 'a', { ifAbsent: true });
+        await p.provider.write(R, 'work/b.md', 'b', { ifAbsent: true });
+        const t = await p.provider.trash!(R, { kind: 'folder', path: 'Work' });
+        expect(t).toMatchObject({ ok: true, notes: 1 });
+        expect(await listedPaths(p.provider)).toEqual(['work/b.md']);
+      },
+    );
+
     it("a folder's restore brings back only what that trash took", async () => {
       const old = await p.provider.write(R, 'Work/Old.md', 'old', { ifAbsent: true });
       await p.provider.write(R, 'Work/Plan.md', 'plan', { ifAbsent: true });

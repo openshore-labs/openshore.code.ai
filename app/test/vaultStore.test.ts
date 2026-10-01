@@ -8946,4 +8946,51 @@ describe('round 7, batch 5: the team vault says what is gone, moved and refused,
       expect(copies().map((n) => n.body)).toEqual(['body, and mine']);
     });
   });
+  describe('E41: a folder counts, deletes and moves the same notes, letter case and all', () => {
+    const live = () =>
+      [...server.notes.values()]
+        .filter((n) => !n.deleted)
+        .map((n) => n.path)
+        .sort();
+    async function twoSpellings() {
+      server.put('Work/a.md', 'a', 'u-me');
+      server.put('work/b.md', 'b');
+      await st().vaultRefresh();
+      await settledIndex();
+    }
+
+    it('the confirm count is what the delete moves, and the other spelling stays', async () => {
+      await twoSpellings();
+      const counts = await st().vaultFolderCounts('Work');
+      const r = await st().vaultDeleteFolder('Work');
+      expect(r && r.ok ? r.notes : -1).toBe(counts.notes);
+      expect(counts.notes).toBe(1);
+      expect(live()).toEqual(['work/b.md']);
+      await vi.waitFor(() => expect(st().vaultFiles.map((f) => f.path)).toEqual(['work/b.md']));
+    });
+
+    it('a move of the folder moves what it counted, and leaves the other spelling', async () => {
+      await twoSpellings();
+      const counts = await st().vaultFolderCounts('Work');
+      const preview = await st().vaultPrepareMove('folder', 'Work', 'Done');
+      if (!preview) throw new Error('no preview');
+      expect(preview.notes).toBe(counts.notes);
+      expect(await st().vaultApplyMove(preview, false)).toMatchObject({ ok: true });
+      expect(live()).toEqual(['Done/a.md', 'work/b.md']);
+    });
+
+    it("the folder's Undo brings back exactly what the delete counted", async () => {
+      await twoSpellings();
+      const r = await st().vaultDeleteFolder('Work');
+      if (!r?.ok || !r.undo) throw new Error('not deleted');
+      expect(await st().vaultUndoDelete(r.undo)).toMatchObject({ ok: true });
+      expect(live()).toEqual(['Work/a.md', 'work/b.md']);
+      expect((await st().vaultLoadTrash()) ?? []).toEqual([]);
+    });
+
+    it('a new folder named like one there in another case is still that name', async () => {
+      await twoSpellings();
+      expect(await st().vaultCreateFolder('WORK')).toMatchObject({ ok: false, reason: 'exists' });
+    });
+  });
 });
