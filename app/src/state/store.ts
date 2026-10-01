@@ -548,6 +548,7 @@ import {
 } from '../lib/vaultCopy.js';
 import { vaultTeamRefusal } from './vaultTeamGate.js';
 import { ownerBoundProvider } from './teamOwner.js';
+import { dropTeamIndexes, noteTeamIndex } from './teamIndexes.js';
 import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
 import { SAMPLE_PROMPT, SAMPLE_REPO_NAME } from '../lib/sampleProject.js';
 import { setSearchConsent, type SearchAllowed } from '../lib/localSearch.js';
@@ -4754,6 +4755,9 @@ export const useApp = create<AppState>((set, get, api) => {
       // The team index goes with the drafts (M3 3.2): here and where it was kept.
       const orgId = get().settings.account?.org?.serverId;
       if (orgId && uid) await dropVaultIndex({ providerId: 'org', resourceId: orgId, owner: uid });
+      // And every other team's this account built here (round 7 E33): a team
+      // the account left, or one before its org changed.
+      if (uid) await dropTeamIndexes((m) => m.owner !== uid);
     }
     // Whatever index is still warm (the personal one a chat's pack reads)
     // closes with the sign-in (Vault M5, CTO J1), its last write saved first,
@@ -5047,6 +5051,9 @@ export const useApp = create<AppState>((set, get, api) => {
     return owner ? { providerId, resourceId, owner } : { providerId, resourceId };
   }
   function openVaultIndex(t: VaultTarget): VaultIndexHost {
+    // A team index is named on the device's list as it opens, so it leaves
+    // with its account whichever way the sign-in ends (round 7 E33).
+    if (t.providerId === 'org' && t.owner) void noteTeamIndex(t.resourceId, t.owner);
     return vaultIndexFor(indexTargetOf(t), t.provider);
   }
   function vaultIndexOf(t: VaultTargetRef): VaultIndexHost | undefined {
@@ -8221,8 +8228,21 @@ export const useApp = create<AppState>((set, get, api) => {
       keptTeamOwner === session.user.id &&
       get().vaultScope === 'team' &&
       Boolean(get().vaultNote);
+    // Who was signed in before, as this device saved it (an expiry or a
+    // relaunch since leaves nothing else), and their team (round 7 E33).
+    const before = keptTeamOwner ?? get().settings.prefsOwner;
+    const beforeOrg = get().settings.account?.org?.serverId;
     keptTeamOwner = undefined;
     await settleTeamVaultDrafts(session.user.id);
+    // Another account's team indexes go with its drafts: every one on the
+    // device's list, and the last account's team, for an index built before
+    // the list was kept. The same account's wait for it (E33).
+    await dropTeamIndexes((m) => m.owner === session.user.id);
+    if (before && beforeOrg && before !== session.user.id) {
+      await dropVaultIndex({ providerId: 'org', resourceId: beforeOrg, owner: before }).catch(
+        () => {},
+      );
+    }
     await forgetTeamMemory(session.user.id);
     if (resume) {
       set({ authSession: session, vaultTeamExpired: undefined });

@@ -487,6 +487,20 @@ vi.mock('../src/lib/gitos/index.js', async () => {
   };
 });
 
+// Every index the store asks to drop (round 7 E33), passed on to the real
+// dropVaultIndex, so a case can see which team indexes leave with a sign-in.
+const indexDrops = vi.hoisted(() => ({ calls: [] as unknown[] }));
+vi.mock('../src/lib/vaultIndexHost.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/lib/vaultIndexHost.js')>();
+  return {
+    ...actual,
+    dropVaultIndex: async (t: Parameters<typeof actual.dropVaultIndex>[0]) => {
+      indexDrops.calls.push(t);
+      return actual.dropVaultIndex(t);
+    },
+  };
+});
+
 const { useApp } = await import('../src/state/store.js');
 const { closeVaultIndex, currentVaultIndex, vaultIndexStatus } =
   await import('../src/lib/vaultIndexHost.js');
@@ -9276,6 +9290,71 @@ describe('round 7, batch 6: the team vault says what it can do now, truly', () =
       expect(r).toEqual({ kind: 'refused', line: VAULT_TEAM_LAPSED_NOT_SAVED_LINE });
       expect(puts()).toBe(0);
       expect(st().vaultTeamPlan).toMatchObject({ entitled: false });
+    });
+  });
+
+  describe("E33: a team index leaves with its account, whoever signs in next", () => {
+    const u1Index = (org = ORG) => ({ providerId: 'org', resourceId: org, owner: 'u1' });
+    async function indexTeam() {
+      useStoreToken();
+      server.put('Plan.md', 'alpha', 'u9');
+      await st().vaultRefresh();
+      for (let i = 0; i < 20 && !currentVaultIndex(); i++) await tick();
+      expect(currentVaultIndex()?.target).toEqual(u1Index());
+    }
+    async function expire() {
+      useApp.setState({ authSession: session(auth.nextUser, -1000) });
+      auth.refresh = new SupabaseRequestError('invalid grant', 400);
+      await st().refreshOrgRole();
+      auth.refresh = undefined;
+      expect(st().authSession).toBeUndefined();
+    }
+    beforeEach(() => {
+      indexDrops.calls = [];
+    });
+
+    it("another account signing in after an expiry drops the expired account's team index", async () => {
+      await indexTeam();
+      await expire();
+      expect(indexDrops.calls).toEqual([]);
+      auth.nextUser = { id: 'u2', email: 'b@example.com' };
+      await st().signIn('b@example.com', 'pw');
+      expect(indexDrops.calls).toContainEqual(u1Index());
+    });
+
+    it('the record of it outlives a relaunch: another account signing in still drops it', async () => {
+      await indexTeam();
+      // A relaunch with nobody signed in: the store's memory of who expired
+      // is gone; only what this device saved is left.
+      await closeVaultIndex();
+      useApp.setState({ authSession: undefined });
+      auth.nextUser = { id: 'u2', email: 'b@example.com' };
+      await st().signIn('b@example.com', 'pw');
+      expect(indexDrops.calls).toContainEqual(u1Index());
+    });
+
+    it('the same account signing back in after an expiry keeps its index', async () => {
+      await indexTeam();
+      await expire();
+      await st().signIn('me@example.com', 'pw');
+      expect(indexDrops.calls).not.toContainEqual(u1Index());
+    });
+
+    it("a sign-out drops the index of every team the account used here, not only today's", async () => {
+      await indexTeam();
+      await closeVaultIndex();
+      // The account's team changes (a removed member's device adopts another).
+      const now = st();
+      const account = now.settings.account!;
+      useApp.setState({
+        settings: {
+          ...now.settings,
+          account: { ...account, org: { ...account.org!, serverId: 'org-2' } },
+        } as typeof now.settings,
+      });
+      await st().signOutAccount();
+      expect(indexDrops.calls).toContainEqual(u1Index());
+      expect(indexDrops.calls).toContainEqual(u1Index('org-2'));
     });
   });
 });
