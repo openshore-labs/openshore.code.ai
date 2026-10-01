@@ -3810,6 +3810,14 @@ execution contract. Newest at the bottom.
   New tests in `security.test.ts` and `loopVaultContext.test.ts` go through a
   real symlink, so Linux CI watches it too; both full suites also pass with
   TMPDIR pointed at a symlink.
+- 2026-10-01: **Codemagic builds only when started by hand (founder).** "Codemagic
+  should only be triggered for openshore.code.ai if I manually start a new
+  build." `ios-testflight` lost its `triggering:` block, so a push to `main`
+  starts no iOS build; `mac-desktop` never had one. Every build starts from
+  Codemagic's Start new build (or its Builds API), `store_release` off for
+  TestFlight and on for the App Review build. The desktop release in
+  `.github/workflows/release.yml` (GitHub Actions, not Codemagic) still runs
+  on pushes; this call does not touch it.
 
 - 2026-09-30: **Round 7, batch 4: the team vault says what is there and what
   it did, and a personal vault keeps main's resolve sheet (held
