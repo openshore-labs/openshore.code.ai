@@ -27,7 +27,7 @@ import {
   createFakeOrgVaultServer,
   type FakeOrgVaultServer,
 } from './fixtures/fakeOrgVaultServer.js';
-import { backlinksTo, normalizeNotePath, noteTitle } from '../src/lib/vault.js';
+import { backlinksTo, isConflictCopy, normalizeNotePath, noteTitle } from '../src/lib/vault.js';
 import {
   VAULT_TEAM_DELETE_ADMINS_ONLY,
   VAULT_TEAM_DELETE_REFUSED,
@@ -42,6 +42,7 @@ import {
   VAULT_GONE_REASON,
   VAULT_TICK_FAILED,
   VAULT_TEAM_NOT_READY,
+  VAULT_TEAM_PATH_TOO_LONG,
   vaultCreateWaitToast,
   vaultSaveWaitToast,
   vaultFolderMoveGone,
@@ -9059,6 +9060,89 @@ describe('round 7, batch 5: the team vault says what is gone, moved and refused,
       expect(st().toast).toBe(vaultSaveWaitToast('offline'));
       expect(st().toast).toMatch(/connection returns/);
       expect(st().vaultSaveWait).toBe('offline');
+    });
+  });
+  describe("E43: a team path fits 0015's 512 characters, said in the app's own words", () => {
+    const writes = () => server.rpcs.filter((r) => r.fn === 'org_vault_write');
+    const long = `${'a'.repeat(170)}/${'b'.repeat(170)}/${'c'.repeat(165)}.md`;
+    const copies = () =>
+      [...server.notes.values()].filter((n) => !n.deleted && n.path.includes('(conflict'));
+
+    async function changedUnder(path: string) {
+      server.put(path, 'the base', 'u-me');
+      await st().vaultRefresh();
+      await st().vaultOpen(path);
+      for (let i = 0; i < 5; i++) await tick();
+      server.put(path, 'theirs');
+      st().vaultNoteDraft(path, 'mine');
+      await st().vaultSave(path, 'mine');
+      expect(st().vaultConflict).toMatchObject({ kind: 'changed' });
+    }
+
+    it('Keep both on a long path writes one copy of at most 512 characters, beside the note', async () => {
+      await changedUnder(long);
+      expect(await st().vaultResolve('both', 'mine')).toEqual({ ok: true });
+      const made = copies();
+      expect(made.map((n) => n.body)).toEqual(['mine']);
+      const copy = made[0]!.path;
+      expect([...copy].length).toBeLessThanOrEqual(512);
+      expect(copy.startsWith(`${'a'.repeat(170)}/${'b'.repeat(170)}/c`)).toBe(true);
+      expect(isConflictCopy(copy)).toBe(true);
+      expect(st().vaultHeld).toEqual([]);
+    });
+
+    it('leaving the sheet on a long path keeps both the same way', async () => {
+      await changedUnder(long);
+      st().vaultCloseNote();
+      await vi.waitFor(() => expect(copies().map((n) => n.body)).toEqual(['mine']));
+      expect([...copies()[0]!.path].length).toBeLessThanOrEqual(512);
+    });
+
+    it('a new note over 512 characters is refused here, in plain words, and sends nothing', async () => {
+      const before = writes().length;
+      await st().vaultCreate(`${'a'.repeat(200)}/${'b'.repeat(200)}/${'c'.repeat(200)}`);
+      expect(writes().length).toBe(before);
+      expect(st().toast).toBe(`Could not create that note. ${VAULT_TEAM_PATH_TOO_LONG}`);
+    });
+
+    it('a seeded new note over 512 characters is held with that reason', async () => {
+      await st().vaultCreate(
+        `${'x'.repeat(250)}/${'y'.repeat(250)}/${'z'.repeat(100)}`,
+        'seeded words',
+      );
+      expect(teamHeld().map((h) => [h.text, h.reason])).toEqual([
+        ['seeded words', VAULT_TEAM_PATH_TOO_LONG],
+      ]);
+    });
+
+    it('a rename over 512 characters is refused here and sends no move', async () => {
+      server.put('a.md', 'a', 'u-me');
+      await st().vaultRefresh();
+      const preview = await st().vaultPrepareMove(
+        'note',
+        'a.md',
+        `${'d'.repeat(300)}/${'e'.repeat(300)}.md`,
+      );
+      if (!preview) throw new Error('no preview');
+      const r = await st().vaultApplyMove(preview, false);
+      expect(r).toMatchObject({ ok: false, line: `Not renamed. ${VAULT_TEAM_PATH_TOO_LONG}` });
+      expect(server.rpcs.filter((x) => x.fn === 'org_vault_move')).toEqual([]);
+      expect(server.bytes('a.md')).toBe('a');
+    });
+
+    it('Restore beside a note of the same name fits a long "(restored)" name', async () => {
+      const path = `${'a'.repeat(250)}/${'b'.repeat(255)}.md`;
+      server.put(path, 'old words', 'u-me');
+      server.drop(path);
+      await st().vaultRefresh();
+      const listed = (await st().vaultLoadTrash()) ?? [];
+      // A note in another case holds the name now (0021 folds it).
+      server.put(path.toUpperCase(), 'theirs');
+      const r = await st().vaultRestoreTrash(listed[0]!.id);
+      expect(r).toMatchObject({ ok: true, renamed: true });
+      const back = [...server.notes.values()].find((n) => !n.deleted && n.body === 'old words');
+      expect(back && [...back.path].length).toBeLessThanOrEqual(512);
+      expect(back?.path).toMatch(/ \(restored\)\.md$/);
     });
   });
 });

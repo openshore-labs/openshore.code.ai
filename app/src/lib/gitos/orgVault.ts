@@ -66,7 +66,10 @@ import {
   vaultNameInTrash,
   vaultNotFolderLine,
   VAULT_TEAM_NOT_READY,
+  VAULT_TEAM_PATH_NOT_ALLOWED,
+  VAULT_TEAM_PATH_TOO_LONG,
 } from '../vaultCopy.js';
+import { TEAM_PATH_MAX, fitMadeName, teamPathProblem } from '../vault.js';
 import { isVaultFolderPath } from './folderClient.js';
 import { VAULT_SETTINGS_PATH, restoredPath } from './local.js';
 import { isNotePath } from './providers.js';
@@ -803,6 +806,14 @@ function folderEntryTook(id: string): TookNote[] | undefined {
   return out;
 }
 
+/** Refuse, before anything is sent, a note path 0015's org_vault_path_ok
+ *  would refuse (E43). */
+function refuseTeamPath(path: string): void {
+  const problem = teamPathProblem(path);
+  if (problem === 'long') throw new OrgVaultRefusal(VAULT_TEAM_PATH_TOO_LONG);
+  if (problem) throw new OrgVaultRefusal(VAULT_TEAM_PATH_NOT_ALLOWED);
+}
+
 /** Put a trashed body back: its own path while free, else "{title}
  *  (restored)" beside it, never over anything. A name that already holds
  *  exactly this text is the restore already done, so a second tap lands
@@ -821,7 +832,8 @@ async function putBack(
   let inTrash = false;
   const beside = (n: number) => (n > 0 ? { inTrash } : {});
   for (let n = 0; n <= 99; n++) {
-    const at = n === 0 ? path : restoredPath(path, n);
+    // Fitted to the team's 512 characters, as a keep-both copy is (E43).
+    const at = n === 0 ? path : fitMadeName(restoredPath(path, n), TEAM_PATH_MAX);
     // Back at its own name it revives its tombstone, as Restore means to; a
     // "(restored)" name that is itself in Trash is passed over, so no other
     // note leaves Trash on the way (E22).
@@ -1137,6 +1149,9 @@ export const orgVaultProvider: StorageProvider = {
   },
 
   async write(resourceId, path, text, guard?: WriteGuard): Promise<WriteResult> {
+    // 0015's path rule, checked first as the server does, so a name it would
+    // refuse is never sent and is said in plain words (round 7 E43).
+    refuseTeamPath(path);
     // Checked here, before the send, so an oversized paste is refused at once
     // in plain words rather than after a round trip.
     const bytes = new TextEncoder().encode(text).length;
@@ -1203,6 +1218,7 @@ export const orgVaultProvider: StorageProvider = {
     if (!isNotePath(from))
       throw new OrgVaultRefusal(`"${from}" is not a note, so the vault does not move it.`);
     if (!isNotePath(to)) throw new OrgVaultRefusal(`"${to}" is not a note name the vault can use.`);
+    refuseTeamPath(to);
     const auth = await token();
     const rev = revOf(guard.ifMatch);
     if (rev === undefined) {

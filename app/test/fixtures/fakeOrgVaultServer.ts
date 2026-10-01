@@ -3,7 +3,8 @@
 // two guarded RPCs from supabase/migrations/0021_org_vault_v1.sql,
 // org_vault_write and org_vault_remove, 0024's org_vault_move, and 0025's
 // settings pair and gates (OV402 when the plan is not active, OV403 for a
-// member's delete under admins-only), each by its decision table as written
+// member's delete under admins-only, and 0015's path rule ahead of both),
+// each by its decision table as written
 // there, and 0023's free space cap (`freeBytes`: note and revision bytes of a
 // team with no live plan, counted by its triggers in the order each RPC
 // writes, refused with check_violation 23514 on note growth only, the whole
@@ -108,6 +109,20 @@ const utf8 = (text: string) => new TextEncoder().encode(text).length;
 
 const raise = (message: string, extra: Record<string, unknown> = {}) =>
   Object.assign(new Error(message), { status: 400, ...extra });
+
+/** 0015's org_vault_path_ok, which 0021, 0024 and 0025 call first: a path
+ *  of at most 512 characters (char_length counts code points), not blank,
+ *  no leading "/", no backslash, and no empty, "." or ".." segment. */
+export function orgVaultPathOk(p: unknown): boolean {
+  return (
+    typeof p === 'string' &&
+    p.trim() !== '' &&
+    [...p].length <= 512 &&
+    !p.startsWith('/') &&
+    !p.includes('\\') &&
+    !p.split('/').some((x) => x === '' || x === '.' || x === '..')
+  );
+}
 
 /** 0025's org_vault_settings_ok: the L2 keys a team shares, each its type. */
 function settingsOk(v: unknown): boolean {
@@ -362,9 +377,14 @@ export function createFakeOrgVaultServer(org = 'org-123'): FakeOrgVaultServer {
         return { ok: true, rev: server.settingsRow.rev, updated_at: server.settingsRow.updated_at };
       }
       if (fn === 'org_vault_move') {
-        requireEntitled(server);
         const from = args.p_from as string;
         const to = args.p_to as string;
+        // 0025's order: the paths, then the plan.
+        if (typeof from === 'string' && [...from].length > 512) {
+          throw raise('that note path is not allowed');
+        }
+        if (!orgVaultPathOk(to)) throw raise('that note path is not allowed');
+        requireEntitled(server);
         const ifMatch = args.p_if_match as number | null | undefined;
         if (ifMatch === null || ifMatch === undefined) throw raise('a move needs if_match');
         const cur = live(server, from);
@@ -402,6 +422,8 @@ export function createFakeOrgVaultServer(org = 'org-123'): FakeOrgVaultServer {
         });
       }
       if (fn === 'org_vault_write') {
+        // 0025's order: the path, the size, then the plan.
+        if (!orgVaultPathOk(path)) throw raise('that note path is not allowed');
         requireEntitled(server);
         const body = (args.p_body as string | undefined) ?? '';
         const ifMatch = args.p_if_match as number | null | undefined;

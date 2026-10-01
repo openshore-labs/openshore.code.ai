@@ -802,6 +802,15 @@ export const VAULT_TEAM_OTHER_ACCOUNT =
  *  team vault was deleted, so no line says it was. */
 export const VAULT_TEAM_NOT_MEMBER_REASON = 'You are no longer a member of this team.';
 
+/** A team note's path over 0015's 512 characters, refused before it is sent
+ *  (round 7 E43): a new note, a rename, a restore. Never "try again". */
+export const VAULT_TEAM_PATH_TOO_LONG =
+  "A team note's name, its folders included, can be up to 512 characters.";
+
+/** The server's own path refusal (0015's org_vault_path_ok, 'that note path
+ *  is not allowed'), in the app's words (E43). */
+export const VAULT_TEAM_PATH_NOT_ALLOWED = 'The team vault does not take that note name.';
+
 /** Said once, as the room takes the team vault away and shows the personal
  *  one: its notes are still there, only no longer shown to this account. */
 export const VAULT_TEAM_NOT_MEMBER =

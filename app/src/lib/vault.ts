@@ -278,3 +278,43 @@ export function vaultPendingCount(
       e.path !== opts.conflictPath,
   ).length;
 }
+
+/** The longest note path the team vault takes, in characters: 0015's
+ *  org_vault_path_ok counts char_length, which is code points. */
+export const TEAM_PATH_MAX = 512;
+
+// The tail of a name this app makes beside a note: a keep-both copy's
+// " (conflict 2026-09-27 1405).md" (with its counter) or " (restored).md".
+const MADE_NAME_TAIL = / \((?:conflict \d{4}-\d{2}-\d{2} \d{4}(?: \d+)?|restored(?: \d+)?)\)\.md$/i;
+
+/** A name this app makes beside a note, fitted to `max` characters (round 7
+ *  E43): the note's own name is shortened, its folder and the tail kept
+ *  whole, so the copy stays beside the note and still reads as a copy (0021's
+ *  own conflict names fit 512 the same way, but trim the whole path, which
+ *  can cut into a folder). Unchanged when it fits, is not such a name, or
+ *  when the folder and the tail alone leave no room; the storage then says
+ *  why it is refused. */
+export function fitMadeName(path: string, max: number): string {
+  if ([...path].length <= max) return path;
+  const tail = MADE_NAME_TAIL.exec(path)?.[0];
+  if (!tail) return path;
+  const head = path.slice(0, path.length - tail.length);
+  const slash = head.lastIndexOf('/');
+  const folder = head.slice(0, slash + 1);
+  const room = max - [...folder].length - [...tail].length;
+  if (room < 1) return path;
+  const stem = [...head.slice(slash + 1)]
+    .slice(0, room)
+    .join('')
+    .replace(/[\s.]+$/, '');
+  return stem ? `${folder}${stem}${tail}` : path;
+}
+
+/** Why the team vault would refuse a note path, before it is sent: over 512
+ *  characters ('long'), or a shape 0015's org_vault_path_ok refuses (blank,
+ *  a leading "/", a backslash, an empty, "." or ".." folder, 'bad'). */
+export function teamPathProblem(path: string): 'long' | 'bad' | undefined {
+  if (!path.trim() || path.startsWith('/') || path.includes('\\')) return 'bad';
+  if (path.split('/').some((x) => x === '' || x === '.' || x === '..')) return 'bad';
+  return [...path].length > TEAM_PATH_MAX ? 'long' : undefined;
+}

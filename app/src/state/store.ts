@@ -415,7 +415,14 @@ import {
   disconnectRepoOAuth,
   resumeRepoOAuthFromLink,
 } from '../lib/gitos/repoOAuth.js';
-import { normalizeNotePath, noteFolder, noteTitle, restoreEol } from '../lib/vault.js';
+import {
+  TEAM_PATH_MAX,
+  fitMadeName,
+  normalizeNotePath,
+  noteFolder,
+  noteTitle,
+  restoreEol,
+} from '../lib/vault.js';
 import {
   currentVaultIndex,
   dropVaultIndex,
@@ -6934,6 +6941,15 @@ export const useApp = create<AppState>((set, get, api) => {
   // A replay found its note moved or deleted since the text was typed (E9).
   class VaultNoteGone extends Error {}
 
+  // The keep-both name for a copy of `path` in vault `t`: the team vault
+  // takes a path of at most 512 characters (0015), so there the note's own
+  // name is shortened to fit, its folder and the conflict suffix kept
+  // (round 7 E43).
+  function conflictCopyPathIn(t: VaultTargetRef, path: string, when: Date, n = 1): string {
+    const copy = vaultConflictCopyPath(path, when, n);
+    return t.providerId === 'org' ? fitMadeName(copy, TEAM_PATH_MAX) : copy;
+  }
+
   // Put text beside a note as a keep-both copy under the first free conflict
   // name ("Note (conflict 2026-09-27 1405).md", then " 2", " 3"), never over
   // anything: a guarded provider refuses a taken name itself (ifAbsent), the
@@ -6944,10 +6960,10 @@ export const useApp = create<AppState>((set, get, api) => {
     path: string,
     text: string,
     when: Date,
-    first = vaultConflictCopyPath(path, when),
+    first = conflictCopyPathIn(t, path, when),
   ): Promise<string | undefined> {
     for (let n = 1; n <= 20; n++) {
-      const copy = n === 1 ? first : vaultConflictCopyPath(path, when, n);
+      const copy = n === 1 ? first : conflictCopyPathIn(t, path, when, n);
       if (!t.provider.compareAndSwap && (await t.provider.stat(t.resourceId, copy))) continue;
       let r: WriteResult;
       try {
@@ -8015,7 +8031,7 @@ export const useApp = create<AppState>((set, get, api) => {
         base: open?.path === path ? open.text : '',
         ...(baseVersion ? { baseVersion } : {}),
         ...(theirs ? { theirs } : {}),
-        copyPath: vaultConflictCopyPath(path, new Date(now)),
+        copyPath: conflictCopyPathIn(t, path, new Date(now)),
         foundAt: now,
         deferred: false,
       },
@@ -12189,7 +12205,7 @@ export const useApp = create<AppState>((set, get, api) => {
               const moved =
                 at === c.path
                   ? {}
-                  : { path: at, copyPath: vaultConflictCopyPath(at, new Date(c.foundAt)) };
+                  : { path: at, copyPath: conflictCopyPathIn(target, at, new Date(c.foundAt)) };
               set({
                 vaultConflict: theirs
                   ? { ...c, ...moved, kind: 'changed', theirs, again: true }

@@ -108,6 +108,9 @@ import { GUIDE_CARDS } from '../src/lib/guideCards.js';
 import { FREE_SPACE_REFUSAL } from './fixtures/fakeOrgVaultServer.js';
 import { PROVIDER_ROSTER } from '../src/lib/gitos/providers.js';
 import { WAYFINDING } from '../src/lib/currents.js';
+
+// An en or an em dash, built from char codes so this file holds neither.
+const DASHES = new RegExp(`[${String.fromCharCode(0x2013)}${String.fromCharCode(0x2014)}]`);
 import type { Platform } from '../src/lib/platform.js';
 
 // Who holds the device: nobody else's computer and none paired, a computer
@@ -1119,7 +1122,8 @@ describe('the save chip and conflict badges (M2 2.2)', () => {
       expect(chip.label).toMatch(/kept on this device$/);
       expect(chip).toMatchObject({ count: '1 note waiting', retry: 'Try again' });
       for (const line of [vaultSaveWaitToast(kind), vaultCreateWaitToast(kind)]) {
-        expect(line).not.toMatch(/offline|connection|try again|[\u2013\u2014]/i);
+        expect(line).not.toMatch(/offline|connection|try again/i);
+        expect(line).not.toMatch(DASHES);
         expect(line).toMatch(/kept|saves when/);
       }
     }
@@ -1353,6 +1357,35 @@ describe('the team Trash says what the purge does (0021)', () => {
   });
 });
 
+// 0015's path rule (round 7 E43): the words the server raises are the ones
+// the provider maps to the app's own line, the limit is 0015's, and the
+// fake server checks the same rule first, as 0021, 0024 and 0025 do.
+describe("the team's path rule says what 0015 says, in the app's words (E43)", () => {
+  const read = (f: string) => readFileSync(resolve(ROOT, `../supabase/migrations/${f}`), 'utf8');
+  it('reads the limit and the refusal from the migrations', async () => {
+    const { orgVaultPathOk } = await import('./fixtures/fakeOrgVaultServer.js');
+    const { TEAM_PATH_MAX } = await import('../src/lib/vault.js');
+    const { VAULT_TEAM_PATH_TOO_LONG, VAULT_TEAM_PATH_NOT_ALLOWED } =
+      await import('../src/lib/vaultCopy.js');
+    const ok = read('0015_review_2026_09_05.sql');
+    expect(/char_length\(p_path\) <= (\d+)/.exec(ok)?.[1]).toBe(String(TEAM_PATH_MAX));
+    expect(VAULT_TEAM_PATH_TOO_LONG).toContain(`${TEAM_PATH_MAX} characters`);
+    for (const f of [
+      '0021_org_vault_v1.sql',
+      '0024_org_vault_move.sql',
+      '0025_org_vault_settings.sql',
+    ]) {
+      expect(read(f)).toContain("raise exception 'that note path is not allowed'");
+    }
+    for (const line of [VAULT_TEAM_PATH_TOO_LONG, VAULT_TEAM_PATH_NOT_ALLOWED]) {
+      expect(line).not.toMatch(/try again/i);
+      expect(line).not.toMatch(DASHES);
+    }
+    expect(orgVaultPathOk('a'.repeat(512))).toBe(true);
+    expect(orgVaultPathOk('a'.repeat(513))).toBe(false);
+  });
+});
+
 // The team's free space (the 2026-09-30 review, finding 1): the line a
 // refused team write says is 0023's own, read from the migration, so a later
 // file that changes the number or the words fails here until the copy says
@@ -1427,7 +1460,8 @@ describe("the team's free space says what 0023 says (the review, finding 1)", ()
       'Renamed to "Plans". 1 link updated.',
     );
     for (const line of [vaultLinksGoneLine(['a']), vaultLinksGoneLine(['a', 'b'])]) {
-      expect(line).not.toMatch(/try again|[\u2013\u2014]/i);
+      expect(line).not.toMatch(/try again/i);
+      expect(line).not.toMatch(DASHES);
     }
   });
 
@@ -1437,7 +1471,7 @@ describe("the team's free space says what 0023 says (the review, finding 1)", ()
       expect(line).toMatch(/^Not (ticked|marked|linked)\. "Plan" is no longer in your vault\./);
       expect(line).toContain('moved or deleted somewhere else');
       expect(line).not.toMatch(/try again|newer version/i);
-      expect(line).not.toMatch(/[\u2013\u2014]/);
+      expect(line).not.toMatch(DASHES);
     }
   });
 
