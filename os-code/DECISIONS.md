@@ -3838,3 +3838,53 @@ execution contract. Newest at the bottom.
   `planMoves`'s source read and `applyMove`'s note-by-note loop (now
   `moveNoteByNote`); in `VaultScreen.tsx`, the Undo's and Trash's restored
   toasts and `vaultFolderMovePartial`'s count. No main test changes.
+
+- 2026-10-01: **Round 7, batch 5: the team vault says what is gone, moved
+  and refused, truly (held `vault-m2-team`, eight medium).** (E34) A tick,
+  Mark reviewed or Link a mention that reads nothing, or whose guarded
+  write answers `missing`, asks before it says gone (noteGoneHere: the open
+  note rechecked in its save chain, any other stat'd and the membership
+  asked, E26) and then says vaultGoneLine, "Not ticked/marked/linked." and
+  the gone line, never "try again" or "the newer version is open"; a read
+  that throws keeps "try again", a note made offline is never called gone.
+  (E35) recheckOpenNote acts only for the sitting it looked at (path and
+  loadedAt) and never while, or across, this device's own rename or delete
+  (asOwnMove counts them); the save chain is not held for those, since
+  they flush it first and would wait on themselves. vaultDelete, main's
+  path with no Trash, is left as it was. (E36) A rewrite whose linking note
+  answers `missing` looks for it once: another spelling of its name, then
+  up to ten notes this device did not know, by text (the one the plan
+  rewrites exactly as planned is that note, moved); found, it is rewritten
+  there by compare-and-swap; not, its links leave `total` and the toast
+  names it ("moved or deleted while this ran"), with no Update the rest.
+  (E38) A Trash page Restore of a note goes on only while the note is still
+  in Trash by listTrash's own rule (restore takes `{ listed }`); an Undo
+  keeps E23's rule, since the server cannot tell a teammate's restore from
+  a new note at the name. (E40) A stash moved by this device's rename takes
+  the landed version as its base when its base is the rename's guard; a
+  storage's own folder rename names no guard, so it keeps both as before.
+  (E41) Folder membership is the folder's own spelling (inFolder), the rule
+  the tree and every storage's trash use; a new folder's name still folds.
+  (E42) A save or new note that waits says why: the team vault being
+  updated (OrgVaultNotReady, its line now vaultCopy's), a storage that did
+  not answer (5xx, 408, 429), or the connection; the chip says "Offline"
+  only for the last, and a stash from before a relaunch keeps today's chip.
+  (E43) Team paths follow 0015's 512 characters: keep-both and restored
+  names are fitted in the note's own name, and a new note or a rename over
+  it is refused before it is sent with VAULT_TEAM_PATH_TOO_LONG; the
+  server's own refusal still passes through in its words, as main's tests
+  pin it. The shared fake checks path_ok first, in 0025's order. Main lines
+  this changes, each because the fix lives in it: in the store,
+  `vaultToggleTask`'s read and its `missing` branch, `vaultMarkReviewed`'s
+  empty read and `missing` mapping, `vaultRewriteNote`'s empty read and
+  result, `recheckOpenNote`'s after-read check, `rekeyVaultPath`'s stash
+  line and the deps' `rekey`, `writeConflictCopy`'s and
+  `raiseVaultConflict`'s copy names, `rescueVaultDraft`'s stash toast,
+  `vaultCreate`'s stash toast and stat catch, and the calls into
+  `opsApplyMove`, `opsDeleteNote`, `opsDeleteFolder` and `opsRestoreEntry`;
+  in `vaultOps.ts`, `inFolder`, `createFolder`'s exists check,
+  `rewritePass`'s `missing` skips, `updateTheRest`'s read loop,
+  `VaultOpsDeps.rekey`, `settleMoved`, the note-by-note `moveOne`, and
+  `restoreEntry`'s signature; `StorageProvider.restore`'s signature;
+  `vaultSaveChip`'s label; in `VaultScreen.tsx`, `notesLeft`'s comment and
+  `SaveChip`'s call. No main test changes.
