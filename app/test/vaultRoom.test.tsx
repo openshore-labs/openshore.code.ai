@@ -2162,6 +2162,66 @@ describe('the team room offers only what the server takes (Y14, Y15)', () => {
     expect(dom.buttons()).not.toContain(copy.VAULT_TRASH_RESTORE);
   });
 
+  // Round 7 E45: a team note opened on a lapsed plan says why it is
+  // read-only, in the note itself, as an expired sign-in does.
+  async function openLapsedNote(entitled: boolean, expired?: boolean) {
+    app.state.vaultTeamExpired = expired;
+    app.state.vaultTargetRef = () => ({ providerId: 'org', resourceId: 'org-1', owner: 'u1' });
+    app.state.vaultPending = [];
+    app.state.vaultCapsNow = () => (entitled ? TEAM_CAPS : LAPSED_CAPS);
+    app.state.vaultTeamPlan = { entitled, deleteRole: 'member', isAdmin: false };
+    app.state.vaultFiles = [{ path: 'n.md', updatedAt: '1', size: 8 }];
+    app.state.vaultNote = {
+      path: 'n.md',
+      text: 'the base',
+      updatedAt: '1',
+      version: '1',
+    };
+    await dom.render(<VaultRoom />);
+    await dom.settle();
+  }
+
+  it('a note on a lapsed plan says why it is read-only (E45)', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    await openLapsedNote(false);
+    expect(dom.text()).toContain(copy.VAULT_TEAM_LAPSED_NOTE);
+    expect(dom.container.querySelector('[aria-label="Edit"]')).toBeNull();
+    expect(dom.container.querySelector('textarea')).toBeNull();
+    expect(dom.container.querySelector('.vault-save-chip')).toBeNull();
+  });
+
+  it('a note on an active plan says nothing of it (E45)', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    await openLapsedNote(true);
+    expect(dom.text()).not.toContain(copy.VAULT_TEAM_LAPSED_NOTE);
+    expect(dom.container.querySelector('[aria-label="Edit"]')).not.toBeNull();
+  });
+
+  it('an expired sign-in says sign in first, not the plan (E45)', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    await openLapsedNote(false, true);
+    expect(dom.text()).toContain(copy.VAULT_TEAM_SIGN_IN_LINE);
+    expect(dom.text()).not.toContain(copy.VAULT_TEAM_LAPSED_NOTE);
+    app.state.vaultTeamExpired = undefined;
+  });
+
+  it('a plan that lapses while the note is being edited takes the editor and says why (E45)', async () => {
+    const copy = await import('../src/lib/vaultCopy.js');
+    await openLapsedNote(true);
+    const { act } = await import('react');
+    await act(async () => {
+      (dom.container.querySelector('[aria-label="Edit"]') as HTMLElement).click();
+    });
+    await dom.settle();
+    expect(dom.container.querySelector('textarea')).not.toBeNull();
+    app.state.vaultTeamPlan = { entitled: false, deleteRole: 'member', isAdmin: false };
+    app.state.vaultCapsNow = () => LAPSED_CAPS;
+    await dom.render(<VaultRoom />);
+    await dom.settle();
+    expect(dom.container.querySelector('textarea')).toBeNull();
+    expect(dom.text()).toContain(copy.VAULT_TEAM_LAPSED_NOTE);
+  });
+
   it('an active plan keeps the 30-day lead, the team line and Restore (E51)', async () => {
     const copy = await import('../src/lib/vaultCopy.js');
     app.state.vaultTeamPlan = { entitled: true, deleteRole: 'member', isAdmin: false };

@@ -2665,6 +2665,11 @@ export const VAULT_TEAM_SETTINGS_ADMINS_ONLY = 'Only admins can change team vaul
 export const VAULT_TEAM_LAPSED_LEAD =
   "Your organization's plan is not active, so team notes are read-only. Everyone can still read and export all of them.";
 
+/** The same, said on an open team note, which offers no Export of its own
+ *  (round 7 E45): why it is read-only, and nothing it cannot keep. */
+export const VAULT_TEAM_LAPSED_NOTE =
+  "Your organization's plan is not active, so this note is read-only.";
+
 /** The lapsed lead's export line on the web, where Export is not offered. */
 export const VAULT_TEAM_LAPSED_WEB = 'Open OpenShore on your computer or iPhone to export them.';
 

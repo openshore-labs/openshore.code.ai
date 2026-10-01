@@ -1694,6 +1694,15 @@ describe('round 7, batch 6: the team lines say what is true now', () => {
     for (const line of [VAULT_TEAM_EXPORT_UNREACHABLE, refused]) expect(line).not.toMatch(DASHES);
   });
 
+  it("a lapsed plan's open note says why it is read-only, and promises no export (E45)", async () => {
+    const { VAULT_TEAM_LAPSED_NOTE } = await import('../src/lib/vaultCopy.js');
+    expect(VAULT_TEAM_LAPSED_NOTE).toBe(
+      "Your organization's plan is not active, so this note is read-only.",
+    );
+    expect(VAULT_TEAM_LAPSED_NOTE).not.toMatch(/export|try again/i);
+    expect(VAULT_TEAM_LAPSED_NOTE).not.toMatch(DASHES);
+  });
+
   it('a note over the 1 MB cap never reads as the same size as the cap (E44)', async () => {
     const { vaultTeamTooLargeLine } = await import('../src/lib/vaultCopy.js');
     const sql = readFileSync(

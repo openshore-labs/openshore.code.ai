@@ -57,6 +57,7 @@ import {
   VAULT_TEAM_EXPORT_UNREACHABLE,
   VAULT_TEAM_LAPSED_ADMIN,
   VAULT_TEAM_LAPSED_LEAD,
+  VAULT_TEAM_LAPSED_NOTE,
   VAULT_TEAM_FULL_LEAD,
   VAULT_TEAM_FULL_NOT_CREATED,
   VAULT_TEAM_LAPSED_NOT_CREATED,
@@ -2268,6 +2269,13 @@ export function VaultScreen() {
           {teamExpired ? (
             <p className="hint" role="status" style={{ marginTop: 8, color: 'var(--warn)' }}>
               {VAULT_TEAM_SIGN_IN_LINE}
+            </p>
+          ) : null}
+          {/* A lapsed plan's note says why it is read-only, here as the tree
+              does; an expired sign-in says its own line first (E45). */}
+          {teamLapsed && !teamExpired ? (
+            <p className="hint" role="status" style={{ marginTop: 8 }}>
+              {VAULT_TEAM_LAPSED_NOTE}
             </p>
           ) : null}
           {renderDriveCard(true)}
