@@ -5849,6 +5849,50 @@ button.vault-tag {
   background: var(--border-strong);
 }
 
+/* The top of every sheet stays put (founder, 2026-10-01): the grabber and the
+   header row (the round close and the title) are frozen, and only what is
+   under the hairline scrolls, so the way out and the name of the sheet are
+   always in view. The card itself is the scroller, so both are sticky. A
+   sticky child stops at the card's padding edge, so each reaches up over the
+   card's 18px top padding (a negative margin, given back as padding) and pins
+   to the very top; the head's side shadows paint the gutters in the card's
+   own ground, so a row scrolling under never shows beside it while the
+   hairline stays inset. A top sheet (its grabber at the bottom) is short
+   and keeps its own shape. The grabber is 32px tall here (14 + 4 + 14), so a
+   head under it pins 32px down, 14px past the padding edge. */
+.sheet:not(.top) > .sheet-grabber {
+  position: sticky;
+  top: -18px;
+  z-index: 3;
+  margin: -18px -18px 0;
+  padding: 14px 0;
+  background: var(--bg-raised);
+}
+.sheet:not(.top) > .mode-head {
+  position: sticky;
+  top: -18px;
+  z-index: 3;
+  margin-top: -18px;
+  padding-top: 18px;
+  background: var(--bg-raised);
+  box-shadow:
+    -18px 0 0 var(--bg-raised),
+    18px 0 0 var(--bg-raised);
+}
+.sheet:not(.top) > .sheet-grabber + .mode-head {
+  top: 14px;
+  margin-top: 0;
+  padding-top: 0;
+}
+/* No grabber on a fine pointer (it is hidden above), so the head is the top. */
+@media (hover: hover) and (pointer: fine) {
+  .sheet:not(.top) > .sheet-grabber + .mode-head {
+    top: -18px;
+    margin-top: -18px;
+    padding-top: 18px;
+  }
+}
+
 .sheet h2 {
   font-family: var(--font-display);
   font-size: var(--text-7);
