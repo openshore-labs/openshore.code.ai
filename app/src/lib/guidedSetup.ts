@@ -28,6 +28,9 @@ export interface SetupFacts {
   computer: boolean;
   repo: boolean;
   key: boolean;
+  /** This is the desktop app: Harbor and pairing a computer are the phone's
+   *  steps, so the desktop offers only the repository and the API key. */
+  desktop?: boolean;
 }
 
 /** The walk's own memory, kept on the device's settings. */
@@ -54,6 +57,18 @@ export interface GuidedSetupProgress {
    *  never a gate. 'asking' while the two buttons wait for a tap; 'chat' pauses
    *  the walk (it picks up on "Pick up setup"), 'setup' carries on. */
   nextChoice?: 'asking' | NextChoice;
+  /** The break after the walk's opening (founder, 2026-10-01): two buttons,
+   *  chat now or set up now, before step one is introduced. 'asking' while
+   *  they wait for a tap; 'chat' says where setup waits and carries the person
+   *  to the main chat page; 'setup' introduces the first step. */
+  startChoice?: 'asking' | NextChoice;
+  /** "Help me get set up" in any chat (founder, 2026-10-01): the walk moves to
+   *  that chat as a list of what is not set up yet. 'asking' while the list's
+   *  buttons wait under `menuItemId`; 'step' while a step picked from it is
+   *  current. A step that completes or is skipped brings the list back. */
+  menu?: 'asking' | 'step';
+  /** The list message whose buttons are live. */
+  menuItemId?: string;
 }
 
 /** The two ways on from the fork after Harbor. */
@@ -149,16 +164,19 @@ export function editChoiceMessage(
   next: SetupStepId | undefined,
   facts: SetupFacts,
 ): string {
-  const lead =
-    mode === 'default'
-      ? 'Ask first it is. OpenShore will check with you before each edit.'
-      : mode === 'acceptEdits'
-        ? 'Edits will flow, and each diff shows in the chat. Commands still ask.'
-        : 'No problem. Edits flow for now and each diff shows in the chat. Change it any time in Settings, under Approvals.';
   const body = next ? stepIntro(next) : finishMessage(facts);
-  return `${lead}
+  return `${editChoiceLead(mode)}
 
 ${body}`;
+}
+
+/** What was chosen for edits, in a line. */
+export function editChoiceLead(mode: PermissionMode | undefined): string {
+  return mode === 'default'
+    ? 'Ask first it is. OpenShore will check with you before each edit.'
+    : mode === 'acceptEdits'
+      ? 'Edits will flow, and each diff shows in the chat. Commands still ask.'
+      : 'No problem. Edits flow for now and each diff shows in the chat. Change it any time in Settings, under Approvals.';
 }
 
 /** The fork's two buttons, in the order they show: chatting first, since
@@ -182,13 +200,12 @@ export function stepsAhead(
 
 /** "connect your computer, set up a repository, and connect your own API key". */
 function stepList(ids: readonly SetupStepId[]): string {
-  const names = ids.map((id) => {
-    const t = STEP_COPY[id].title;
-    return t.charAt(0).toLowerCase() + t.slice(1);
-  });
-  if (names.length <= 1) return names.join('');
-  if (names.length === 2) return `${names[0]} and ${names[1]}`;
-  return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`;
+  return joinNames(
+    ids.map((id) => {
+      const t = STEP_COPY[id].title;
+      return t.charAt(0).toLowerCase() + t.slice(1);
+    }),
+  );
 }
 
 /** The fork's question, under what just happened with Harbor. */
@@ -237,7 +254,11 @@ export function nextChoiceMessage(
  *  the edit choice waiting on a tap. */
 export function walkActive(p: GuidedSetupProgress): boolean {
   return (
-    Boolean(p.current && !p.finished) || p.editChoice === 'asking' || p.nextChoice === 'asking'
+    Boolean(p.current && !p.finished) ||
+    p.editChoice === 'asking' ||
+    p.nextChoice === 'asking' ||
+    p.startChoice === 'asking' ||
+    p.menu === 'asking'
   );
 }
 
@@ -265,7 +286,14 @@ export function stepHandled(id: SetupStepId, facts: SetupFacts): boolean {
 /** Whether the step can be done yet. On the phone, repositories live on the
  *  person's computer, so that step waits on the computer being connected. */
 export function stepAvailable(id: SetupStepId, facts: SetupFacts): boolean {
-  return id === 'repo' ? facts.computer : true;
+  return id === 'repo' ? facts.computer || Boolean(facts.desktop) : true;
+}
+
+/** The steps this device offers: all four on the phone, the repository and
+ *  the API key on the desktop (it is the computer, and Harbor is the phone's
+ *  model). */
+export function setupSteps(facts: Pick<SetupFacts, 'desktop'>): SetupStepId[] {
+  return facts.desktop ? SETUP_ORDER.filter((id) => id === 'repo' || id === 'key') : SETUP_ORDER;
 }
 
 /** The next step to bring up, or undefined when the walk is over. */
@@ -289,9 +317,30 @@ export function stepNumber(id: SetupStepId): { n: number; of: number } {
 const COUNT_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six'];
 export const SETUP_INTRO = `Let's get you set up. There are ${COUNT_WORDS[SETUP_ORDER.length] ?? SETUP_ORDER.length} short steps. For each one I'll say what it is, why it helps, and how it works. Then you can connect it, skip it, or ask me first. Nothing here is required, and you can come back to any of it. If you'd rather just chat, say so.`;
 
+/** The walk's opening: the intro alone when there is a step to take, and the
+ *  break's two buttons follow it (START_CHOICES); step one waits for "set up". */
 export function openingMessage(first: SetupStepId | undefined, facts: SetupFacts): string {
   if (!first) return finishMessage(facts);
-  return `${SETUP_INTRO}\n\n${stepIntro(first)}`;
+  return SETUP_INTRO;
+}
+
+/** The break's two buttons, in the order they show (Creative Studio): Just
+ *  chat first and full size, so skipping setup is never small or hidden;
+ *  Start setup filled, since it answers the question the intro asked. */
+export const START_CHOICES: readonly { choice: NextChoice; label: string }[] = [
+  { choice: 'chat', label: 'Just chat' },
+  { choice: 'setup', label: 'Start setup' },
+];
+
+/** Said when the person picks chatting at the break, just before the walk's
+ *  chat gives way to the main chat page (founder's words, 2026-10-01). It
+ *  names the phrase that brings the list back from any chat. */
+export const SETUP_LATER_LINE =
+  'Sounds good. Whenever you want to get set up, I can guide you through it. Just say "help me get set up" in any chat.';
+
+/** Said when the person picks setting up at the break: step one. */
+export function startSetupMessage(first: SetupStepId | undefined, facts: SetupFacts): string {
+  return first ? stepIntro(first) : finishMessage(facts);
 }
 
 /** The guide's message when the walk moves on: what just happened, then the
@@ -381,6 +430,116 @@ export function setupIntent(text: string): SetupIntent | undefined {
   return undefined;
 }
 
+/** "Help me get set up" (founder, 2026-10-01): asked in any chat, read before
+ *  the message goes to a model. A plain request only, so "do not help me set
+ *  up" or a question that mentions setup in passing stays ordinary talk. */
+const HELP_SETUP = new RegExp(
+  String.raw`^\s*(?:(?:hey|hi|ok(?:ay)?|so)[,!]?\s+)?(?:please\s+)?(?:(?:can|could|would|will)\s+you\s+)?(?:please\s+)?(?:(?:help|walk|guide)\s+me\s+(?:to\s+)?(?:get\s+|through\s+(?:the\s+|my\s+)?|with\s+(?:the\s+|my\s+)?)?(?:${SETUP_WORD})|get\s+me\s+set[\s-]*up|set\s+me\s+up)(?:\s+(?:please|now))?[\s.!?]*$`,
+  'i',
+);
+
+export function setupHelpIntent(text: string): boolean {
+  return HELP_SETUP.test(text);
+}
+
+/** How a step reads in the list's "already done" sentence. */
+const DONE_NAME: Record<SetupStepId, string> = {
+  harbor: 'Harbor',
+  computer: 'your computer',
+  repo: 'a repository',
+  key: 'your API key',
+};
+
+function joinNames(names: readonly string[]): string {
+  if (names.length <= 1) return names.join('');
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`;
+}
+
+/** What the list offers as buttons: this device's steps that are not set up,
+ *  not skipped since the list was asked for, and can be done now. */
+export function menuSteps(
+  progress: Pick<GuidedSetupProgress, 'skipped'>,
+  facts: SetupFacts,
+): SetupStepId[] {
+  return setupSteps(facts).filter(
+    (id) => !progress.skipped.includes(id) && !stepHandled(id, facts) && stepAvailable(id, facts),
+  );
+}
+
+/** What just happened, when the list comes back after a step. */
+export interface MenuReturn {
+  step: SetupStepId;
+  how: 'done' | 'skipped';
+  /** Said instead of the step's own line (the edit choice's answer). */
+  lead?: string;
+}
+
+/** The list message (Creative Studio, 2026-10-01): what is already set up,
+ *  then what is left as buttons under it. When it comes back after a step,
+ *  what just happened leads and stands alone above the buttons. */
+export function setupMenuMessage(
+  progress: Pick<GuidedSetupProgress, 'skipped'>,
+  facts: SetupFacts,
+  back?: MenuReturn,
+): string {
+  const steps = setupSteps(facts);
+  const done = steps.filter((id) => stepHandled(id, facts));
+  const ahead = menuSteps(progress, facts);
+  const doneNames = joinNames(
+    done.map((id) =>
+      id === 'harbor' && !facts.harborReady ? 'Harbor (still downloading)' : DONE_NAME[id],
+    ),
+  );
+  const lead = back
+    ? back.lead
+      ? back.lead
+      : back.how === 'skipped'
+        ? 'No problem, that one can wait.'
+        : back.step === 'harbor' && facts.harborReady
+          ? HARBOR_READY_MESSAGE
+          : STEP_COPY[back.step].done
+    : undefined;
+  // The repository waits on the computer (phone): said once, under the list.
+  const repoWaits =
+    !facts.desktop &&
+    !facts.repo &&
+    !stepAvailable('repo', facts) &&
+    !progress.skipped.includes('repo');
+  if (ahead.length) {
+    const parts = lead
+      ? [`${lead} Here's what's left.`]
+      : [
+          done.length
+            ? `Happy to. Already set up: ${doneNames}. Pick what's next and I'll walk you through it.`
+            : "Happy to. Nothing is set up yet, and none of it is required. Pick a place to start and I'll walk you through it.",
+        ];
+    if (repoWaits) parts.push(MENU_REPO_LATER);
+    return parts.join('\n\n');
+  }
+  const waiting = steps.filter((id) => !stepHandled(id, facts));
+  const close = !waiting.length
+    ? `You're all set: ${doneNames}. Nothing is left to connect, so ask me anything.`
+    : waiting.length === 1 && repoWaits
+      ? MENU_REPO_LATER
+      : MENU_REST_WAITS;
+  return lead ? `${lead}\n\n${close}` : close;
+}
+
+/** Said under the list when the repository has to wait for the computer. */
+export const MENU_REPO_LATER =
+  "A repository comes after your computer, since that's where OpenShore works on your code.";
+/** Said when everything left was skipped since the list was asked for. */
+export const MENU_REST_WAITS =
+  'The rest can wait. Say "help me get set up" any time and I\'ll show you what\'s left.';
+
+/** How a step picked from the list is introduced: no "Step N of M", since the
+ *  list is not an order. */
+export function menuStepIntro(id: SetupStepId): string {
+  const c = STEP_COPY[id];
+  return `**${c.title}.** ${c.what}\n\n**Why:** ${c.why}\n\n**How:** ${c.how}`;
+}
+
 /** Said when the walk picks back up. */
 export function resumeMessage(current: SetupStepId): string {
   return `Happy to. Here's where we left off.\n\n${stepIntro(current)}`;
@@ -398,6 +557,13 @@ export function guideContextLine(
   audience: 'guide' | 'other' = 'guide',
 ): string | undefined {
   if (!progress) return undefined;
+  if (progress.menu === 'asking' && !progress.paused) {
+    const ahead = menuSteps(progress, facts).map((id) => `"${STEP_COPY[id].title}"`);
+    return `SETUP: the person asked for help getting set up. A list of what is not set up yet sits under the latest setup message as buttons (${joinNames(ahead)}); tapping one walks them through it. Never choose for them, and never invent other steps. Answer anything they ask fully and well.`;
+  }
+  if (progress.startChoice === 'asking' && !progress.paused) {
+    return `${audience === 'guide' ? `${FIRST_CHAT_GOAL} ` : ''}SETUP: the person has just read the setup intro. Two buttons sit under it: "Just chat" (setup waits, and they can say "help me get set up" in any chat later) and "Start setup" (the first step). Never choose for them. If they ask something, answer it fully and well.`;
+  }
   if (audience === 'other') {
     if (progress.paused || !walkActive(progress)) return undefined;
     if (progress.nextChoice === 'asking') {
@@ -423,7 +589,7 @@ export function guideContextLine(
     return `${FIRST_CHAT_GOAL} SETUP: finished.${harbor} Invite questions about the app.`;
   }
   if (progress.paused) {
-    return `${FIRST_CHAT_GOAL} SETUP: paused. The person wants to just chat for now. Do not bring setup up again unless they ask; if they do, tell them to say "let's set up".${harbor}`;
+    return `${FIRST_CHAT_GOAL} SETUP: paused. The person wants to just chat for now. Do not bring setup up again unless they ask; if they do, tell them to say "help me get set up".${harbor}`;
   }
   const step = STEP_COPY[progress.current];
   const { n, of } = stepNumber(progress.current);

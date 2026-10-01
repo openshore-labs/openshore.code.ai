@@ -24,6 +24,8 @@ import {
   guideContextLine,
   nextStep,
   openingMessage,
+  startSetupMessage,
+  SETUP_INTRO,
   setupIntent,
   repoConnectedMessage,
   stepIntro,
@@ -150,8 +152,9 @@ describe('what the guide says', () => {
     expect(guard).toBeLessThan(screen.indexOf('<SetupStepActions step={guided.current} />'));
   });
 
-  it('opens on the first step and closes by inviting questions', () => {
-    expect(openingMessage('harbor', NONE)).toContain(stepIntro('harbor'));
+  it('opens on the intro, holds for the break, then the first step, and closes by inviting questions', () => {
+    expect(openingMessage('harbor', NONE)).toBe(SETUP_INTRO);
+    expect(startSetupMessage('harbor', NONE)).toBe(stepIntro('harbor'));
     expect(finishMessage(NONE)).toMatch(/ask me anything about OpenShore/i);
   });
 
@@ -405,6 +408,9 @@ describe('the guided walk in the store', () => {
   it('walks, skips, sends to a page, and comes back when it connects', async () => {
     await useApp.getState().beginGuidedSetup();
     await wait(760);
+    // The break after the opening: set up now.
+    useApp.getState().chooseStart('setup');
+    await wait(5);
     expect(guided().current).toBe('harbor');
     expect(texts().at(-1)).toContain(stepIntro('harbor'));
 
@@ -450,6 +456,9 @@ describe('the guided walk in the store', () => {
     }));
     await useApp.getState().beginGuidedSetup();
     await wait(760);
+    // The break after the opening: set up now.
+    useApp.getState().chooseStart('setup');
+    await wait(5);
     expect(guided().current).toBe('repo');
     useApp.setState({ connectedRepoPlatforms: { github: true } as never });
     await wait(5);
@@ -483,6 +492,9 @@ describe('the guided walk in the store', () => {
     }));
     await useApp.getState().beginGuidedSetup();
     await wait(760);
+    // The break after the opening: set up now.
+    useApp.getState().chooseStart('setup');
+    await wait(5);
     useApp.setState({ connectedRepoPlatforms: { github: true } as never });
     await wait(5);
     useApp.setState({ activeId: guided().conversationId });
@@ -497,6 +509,9 @@ describe('the guided walk in the store', () => {
   it('says how to switch once Harbor finishes, even after the walk', async () => {
     await useApp.getState().beginGuidedSetup();
     await wait(760);
+    // The break after the opening: set up now.
+    useApp.getState().chooseStart('setup');
+    await wait(5);
     useApp.getState().skipSetupStep();
     await wait(5);
     useApp.getState().chooseNext('setup');
@@ -515,6 +530,9 @@ describe('the guided walk in the store', () => {
   it('starts Harbor in place, moves on while it downloads, then says how to switch', async () => {
     await useApp.getState().beginGuidedSetup();
     await wait(760);
+    // The break after the opening: set up now.
+    useApp.getState().chooseStart('setup');
+    await wait(5);
     useApp.getState().openSetupStep();
     await wait(20);
     expect(useApp.getState().view).toBe('chat');
@@ -529,6 +547,9 @@ describe('the guided walk in the store', () => {
   it('steps back when the person would rather chat, and picks up when asked', async () => {
     await useApp.getState().beginGuidedSetup();
     await wait(760);
+    // The break after the opening: set up now.
+    useApp.getState().chooseStart('setup');
+    await wait(5);
     const id = guided().conversationId;
     useApp.setState({ activeId: id });
     useApp.getState().send('Not now, I just want to chat');
@@ -606,6 +627,9 @@ describe('the fork after Harbor, in the store', () => {
   it('holds after Get Harbor, and Start chatting steps the walk back', async () => {
     await useApp.getState().beginGuidedSetup();
     await wait(760);
+    // The break after the opening: set up now.
+    useApp.getState().chooseStart('setup');
+    await wait(5);
     useApp.getState().openSetupStep();
     await wait(20);
     expect(guided().nextChoice).toBe('asking');
@@ -636,6 +660,9 @@ describe('the fork after Harbor, in the store', () => {
   it('Keep setting up carries on to the next step', async () => {
     await useApp.getState().beginGuidedSetup();
     await wait(760);
+    // The break after the opening: set up now.
+    useApp.getState().chooseStart('setup');
+    await wait(5);
     useApp.getState().skipSetupStep();
     await wait(5);
     // Skipping the step Harbor had does not skip the fork, or the next step.
@@ -655,6 +682,9 @@ describe('the fork after Harbor, in the store', () => {
   it('takes the answer in words too', async () => {
     await useApp.getState().beginGuidedSetup();
     await wait(760);
+    // The break after the opening: set up now.
+    useApp.getState().chooseStart('setup');
+    await wait(5);
     const id = guided().conversationId;
     useApp.setState({ activeId: id });
     useApp.getState().skipSetupStep();
@@ -670,6 +700,9 @@ describe('the fork after Harbor, in the store', () => {
   it('"not now" at the fork is the chat choice, and the guide answers it', async () => {
     await useApp.getState().beginGuidedSetup();
     await wait(760);
+    // The break after the opening: set up now.
+    useApp.getState().chooseStart('setup');
+    await wait(5);
     const id = guided().conversationId;
     useApp.setState({ activeId: id });
     useApp.getState().skipSetupStep();
@@ -692,6 +725,9 @@ describe('the fork after Harbor, in the store', () => {
     }));
     await useApp.getState().beginGuidedSetup();
     await wait(760);
+    // The break after the opening: set up now.
+    useApp.getState().chooseStart('setup');
+    await wait(5);
     expect(guided().current).toBe('harbor');
     useApp.getState().skipSetupStep();
     await wait(5);

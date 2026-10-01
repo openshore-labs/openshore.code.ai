@@ -13,6 +13,7 @@ import { Paywall } from './components/Paywall.js';
 import { AuthConfirmSheet } from './components/AuthConfirmSheet.js';
 import { AccountGateSheet } from './components/AccountGateSheet.js';
 import { featureOn, roomOpen } from './lib/focus.js';
+import { SlackWater } from './components/SlackWater.js';
 import { CurrentArrival, CurrentWaterline } from './components/CurrentArrival.js';
 import { UpdateBanner } from './components/UpdateBanner.js';
 import { ChatScreen } from './screens/ChatScreen.js';
@@ -384,6 +385,9 @@ export function App() {
           current is on. Both render nothing when none is on. */}
         <CurrentArrival />
         <CurrentWaterline />
+        {/* Slack Water: the one-time carry from the setup walk's chat to the
+            main chat page when the person chooses to just chat. */}
+        <SlackWater />
         {toastPresence.mounted ? (
           <div
             className={`toast${toastPresence.closing ? ' closing' : ''}`}

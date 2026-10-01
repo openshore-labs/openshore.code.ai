@@ -14090,3 +14090,134 @@ button.settings-row:active {
 .repo-sheet-note {
   margin: 0 4px 10px;
 }
+
+/* ---- Slack Water (Creative Studio, 2026-10-01; docs/slack-water.md): the
+   one-time transition from the setup walk's chat to the main chat page when
+   the person chooses to just chat. A hairline ripple leads from the tap, the
+   paper wells up behind it, a second ripple follows; covered, the room swaps
+   underneath, the paper holds a beat, then clears. Sizes are set once from
+   the origin (components/SlackWater.tsx); only transform and opacity move.
+   Above the header, the composer, and the waterline; under the currents'
+   arrival and the toast. ---- */
+.slack-water {
+  position: fixed;
+  inset: 0;
+  z-index: 78;
+  overflow: hidden;
+  /* Taps stop here while the old chat is being covered. */
+  pointer-events: auto;
+}
+.slack-water.clearing {
+  pointer-events: none;
+  animation: slack-clear var(--dur-7) var(--ease-glide) var(--dur-3) forwards;
+}
+.slack-disc,
+.slack-ring {
+  position: absolute;
+  left: var(--slack-x, 50%);
+  top: var(--slack-y, 50%);
+  border-radius: 50%;
+  opacity: 0;
+}
+/* The paper: solid to its core, with a soft wet lip of the water family, so
+   at full scale the core reaches the farthest corner. A gradient, never a
+   blur (a large blur janks a WebView). */
+.slack-disc {
+  width: var(--slack-disc, 200vmax);
+  height: var(--slack-disc, 200vmax);
+  margin: calc(var(--slack-disc, 200vmax) / -2) 0 0 calc(var(--slack-disc, 200vmax) / -2);
+  background: radial-gradient(
+    circle closest-side,
+    var(--bg) 0 86%,
+    color-mix(in srgb, var(--current-4) 30%, var(--bg)) 93%,
+    transparent 100%
+  );
+  transform: scale(0.02);
+  animation: slack-flood 1.1s var(--ease-glide) var(--dur-1) forwards;
+}
+/* The hairlines: drawn at their final size and scaled down from there, so the
+   stroke ends at its true weight rather than growing fat. */
+.slack-ring {
+  width: var(--slack-ring, 200vmax);
+  height: var(--slack-ring, 200vmax);
+  margin: calc(var(--slack-ring, 200vmax) / -2) 0 0 calc(var(--slack-ring, 200vmax) / -2);
+  border: 1.5px solid var(--current-3);
+  transform: scale(0.04);
+  animation: slack-ripple 1.4s var(--ease-arrive) forwards;
+}
+.slack-ring.b {
+  border-color: var(--current-4);
+  animation-name: slack-ripple-soft;
+  animation-delay: var(--dur-4);
+}
+@keyframes slack-flood {
+  0% {
+    opacity: 0;
+    transform: scale(0.02);
+  }
+  10% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes slack-ripple {
+  0% {
+    opacity: 0;
+    transform: scale(0.04);
+  }
+  12% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+@keyframes slack-ripple-soft {
+  0% {
+    opacity: 0;
+    transform: scale(0.04);
+  }
+  12% {
+    opacity: 0.35;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+@keyframes slack-clear {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+/* The greeting waits under the water and lands as it clears: held, its mark
+   and line stay unseen with no entrance spent; let go, the entrance plays. */
+.greeting.held > * {
+  opacity: 0;
+  animation: none;
+}
+/* The greeting renders the bare mark; give it the same entrance the lockup has. */
+.greeting .brand-mark {
+  animation: greet-in var(--dur-6) var(--ease-arrive) backwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .slack-water {
+    display: none;
+  }
+  .greeting .brand-mark {
+    animation: none;
+  }
+}
+
+/* The "help me get set up" list (components/SetupMenuActions.tsx): one quiet
+   button per thing not set up, arriving one stagger apart. */
+.setup-menu > .setup-menu-item {
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}

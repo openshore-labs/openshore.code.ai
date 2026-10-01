@@ -4077,3 +4077,18 @@ execution contract. Newest at the bottom.
   every status with the existing rule, so a model the person placed in Stack
   is never replaced; a launch does not re-warm Harbor (it would hold 2.5 GB of
   memory on every open), so a relaunched app warms it on the first send.
+- **The break after the setup intro, Slack Water, and "help me get set up"
+  (founder, 2026-10-01, with the Creative Studio; `docs/slack-water.md`):** the
+  walk's opening is now the intro alone, then two buttons, Just chat (ghost,
+  first) and Start setup (filled); step one waits for Start setup. Just chat
+  says the chat-later line, which teaches the phrase "help me get set up", and
+  after the reading pause Slack Water carries the person to the main chat page,
+  once (the break is asked once per walk). It never moves someone who went
+  elsewhere or sent a message meanwhile. "Help me get set up" is heard in any
+  chat, including a new chat's first words, and never reaches a model: the
+  walk moves to that chat as a list of what is not set up (skips forgotten,
+  since the person asked), a picked step is walked without a step number, and
+  the list comes back when it lands or is skipped. Pick up setup after Just
+  chat opens the same list. The desktop's list is the repository and the API
+  key (Harbor and pairing are the phone's). Not built from the Studio memo: the
+  buttons fading out before the line inks, and a tap starting the water early.

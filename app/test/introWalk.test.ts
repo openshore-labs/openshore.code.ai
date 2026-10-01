@@ -19,7 +19,7 @@ import {
   takeButtonsHaptic,
 } from '../src/lib/introWalk.js';
 import { HARBOR_MINI_SETUP_GREETING } from '../src/lib/harborMini.js';
-import { openingMessage, SETUP_INTRO } from '../src/lib/guidedSetup.js';
+import { openingMessage, SETUP_INTRO, stepIntro } from '../src/lib/guidedSetup.js';
 import { rehypeInk, restampForSkip } from '../src/lib/inkSwell.js';
 
 const facts = {
@@ -55,7 +55,7 @@ describe('the ink plan', () => {
   });
 
   it('gives the step heading its breath instead of a paragraph pause', () => {
-    const text = openingMessage('harbor', facts);
+    const text = `${openingMessage('harbor', facts)}\n\n${stepIntro('harbor')}`;
     const plan = inkPlan(text, WALK_PACE);
     const visible = text.replace(/\*\*/g, '');
     const before = visible.slice(0, visible.indexOf('Step 1')).replace(/\s/g, '').length;
@@ -147,7 +147,7 @@ describe('playing state', () => {
 describe('the copy', () => {
   it('counts the steps it names and keeps web search to when online', () => {
     expect(SETUP_INTRO).toMatch(/There are four short steps/);
-    const text = openingMessage('harbor', facts);
+    const text = stepIntro('harbor');
     expect(text).toMatch(/Qwen3 4B Instruct/);
     expect(text).toMatch(/searches the web when you're online/);
   });

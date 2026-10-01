@@ -194,8 +194,17 @@ import {
   nextChoiceMessage,
   stepsAhead,
   type NextChoice,
+  type MenuReturn,
+  type SetupStepId,
+  editChoiceLead,
   editChoiceMessage,
+  menuStepIntro,
+  menuSteps,
   repoConnectedMessage,
+  setupHelpIntent,
+  setupMenuMessage,
+  startSetupMessage,
+  SETUP_LATER_LINE,
   walkActive,
   EDIT_CHOICE_QUESTION,
   guideContextLine,
@@ -2070,6 +2079,24 @@ interface AppState {
   /** The fork after Harbor (lib/guidedSetup.ts): start chatting (the walk
    *  steps back until "Pick up setup") or keep setting up. */
   chooseNext(choice: NextChoice): void;
+  /** The break after the walk's opening (lib/guidedSetup.ts START_CHOICES):
+   *  set up now, or just chat, which says where setup waits and carries the
+   *  person to the main chat page on Slack Water (components/SlackWater.tsx).
+   *  `origin` is where the tap landed, for the water to rise from. */
+  chooseStart(choice: NextChoice, origin?: { x: number; y: number }): void;
+  /** A step picked from the "help me get set up" list: the guide walks
+   *  through it, and the list comes back when it is done or skipped. */
+  pickSetupStep(step: SetupStepId): void;
+  /** The steps the "help me get set up" list offers right now, read live so
+   *  a connection made elsewhere drops its button. */
+  setupMenuOffer(): SetupStepId[];
+  /** Slack Water, while it plays: rising over the walk's chat, then clearing
+   *  off the main chat page (lib/slackWater.ts). */
+  slackWater?: { seq: number; x: number; y: number; phase: 'rising' | 'clearing' };
+  /** The water has covered the screen: the main chat page goes in under it. */
+  slackWaterCovered(): void;
+  /** The water has cleared. */
+  endSlackWater(): void;
   /** Bring your own Brave or Tavily key for local models' web search. */
   setSearchBackend(backend: 'brave' | 'tavily', apiKey: string): Promise<void>;
 
@@ -3434,10 +3461,14 @@ export const useApp = create<AppState>((set, get, api) => {
       repo:
         Object.values(s.connectedRepoPlatforms).some(Boolean) || Boolean(s.settings.repo?.homeRepo),
       key: s.cloudKeyPresent || Object.values(s.connectedProviders).some(Boolean),
+      desktop: isDesktop(),
     };
   }
 
   let guideSeq = 0;
+  function guideItemId(conversationId: string): string {
+    return `${conversationId}-setup-${Date.now().toString(36)}${(guideSeq++).toString(36)}`;
+  }
   // Add one of the guide's scripted lines to its chat. It mounts as streaming
   // and settles a tick later, so it arrives like a reply (a few words at a
   // time, fading in) rather than landing as a block. Never while the guide is
@@ -3449,8 +3480,7 @@ export const useApp = create<AppState>((set, get, api) => {
   ): boolean {
     const conv = get().conversations[conversationId];
     if (!conv || conv.thread.busy) return false;
-    const id =
-      opts.id ?? `${conversationId}-setup-${Date.now().toString(36)}${(guideSeq++).toString(36)}`;
+    const id = opts.id ?? guideItemId(conversationId);
     // A settled line (reduced motion, a skip) lands whole; otherwise it mounts
     // live and reveals, at its paced beat when it has one.
     const paced = opts.settled ? {} : { paced: opts.paced ?? ('walk' as const) };
@@ -3608,15 +3638,101 @@ export const useApp = create<AppState>((set, get, api) => {
     drivers.get(conversationId)?.recordLine?.({ role: 'user', text });
   }
 
+  // "Help me get set up" (founder, 2026-10-01): the walk moves to the chat it
+  // was asked in, as a list of what is not set up yet. Whatever the walk was
+  // waiting on in its old chat is closed (its buttons leave with it); what
+  // was skipped before is offered again, since the person asked.
+  function setupMenuProgress(conversationId: string): GuidedSetupProgress {
+    const p = get().settings.guidedSetup;
+    return {
+      ...(p ?? {}),
+      conversationId,
+      skipped: [],
+      paused: false,
+      awaiting: undefined,
+      ...(p?.startChoice === 'asking' ? { startChoice: 'setup' as const } : {}),
+      ...(p?.nextChoice === 'asking' ? { nextChoice: 'setup' as const } : {}),
+      ...(p?.editChoice === 'asking' ? { editChoice: 'later' as const } : {}),
+    };
+  }
+
+  // The walk's state once the list is posted: buttons under it while
+  // anything is left, else the walk is finished.
+  function setupMenuAfter(base: GuidedSetupProgress, itemId: string): GuidedSetupProgress {
+    const facts = setupFacts();
+    const left = menuSteps(base, facts).length > 0;
+    return {
+      ...base,
+      current: undefined,
+      awaiting: undefined,
+      paused: false,
+      menu: left ? 'asking' : undefined,
+      menuItemId: left ? itemId : undefined,
+      finished: !left,
+      harborAnnounced: base.harborAnnounced || facts.harborReady,
+    };
+  }
+
+  // Post the list in the walk's chat, led by what just happened when it comes
+  // back after a step.
+  function showSetupMenu(base: GuidedSetupProgress, back?: MenuReturn): boolean {
+    const id = guideItemId(base.conversationId);
+    const text = setupMenuMessage(base, setupFacts(), back);
+    if (!appendGuideMessage(base.conversationId, text, { id })) return false;
+    void get().saveSettings({ guidedSetup: setupMenuAfter(base, id) });
+    return true;
+  }
+
+  // Choosing to just chat at the break: the guide's line inks, the person
+  // gets the reading pause, then Slack Water carries them to the main chat
+  // page (components/SlackWater.tsx). Reduced motion lands there after the
+  // same pause, without the water. Nothing moves if they went somewhere else
+  // or started chatting where they are.
+  let slackSeq = 0;
+  function carryToGreeting(conversationId: string, origin?: { x: number; y: number }): void {
+    const reduced = prefersReducedMotion();
+    const lineId = get().conversations[conversationId]?.thread.items.at(-1)?.id;
+    const wait = (reduced ? 0 : inkDurationMs(SETUP_LATER_LINE, WALK_PACE)) + READ_PAUSE_MS;
+    globalThis.setTimeout(() => {
+      const s = get();
+      const thread = s.conversations[conversationId]?.thread;
+      if (s.view !== 'chat' || s.activeId !== conversationId) return;
+      if (!thread || thread.busy || thread.items.at(-1)?.id !== lineId) return;
+      if (reduced || typeof window === 'undefined') {
+        s.startNewChat();
+        return;
+      }
+      const at = origin ?? { x: window.innerWidth / 2, y: window.innerHeight - 96 };
+      set({ slackWater: { seq: ++slackSeq, x: at.x, y: at.y, phase: 'rising' } });
+    }, wait);
+  }
+
   // A message typed in the walk's chat may be about the walk itself. "I just
   // want to chat" pauses it and still goes to the guide, who answers knowing
   // setup is off the table; a plain "let's set up" or "skip" is answered by
-  // the walk. Returns true when the message was handled here.
+  // the walk. "Help me get set up" is answered in any chat, with the list.
+  // Returns true when the message was handled here.
   function interceptSetupMessage(conversationId: string, text: string): boolean {
+    if (setupHelpIntent(text)) {
+      appendUserLine(conversationId, text);
+      logEvent('setup_menu_asked', { via: 'chat' });
+      showSetupMenu(setupMenuProgress(conversationId));
+      return true;
+    }
     const p = get().settings.guidedSetup;
     if (!p || p.conversationId !== conversationId) return false;
     const intent = setupIntent(text);
     if (!intent) return false;
+    // The break after the opening, answered in words: "I'd rather just chat"
+    // or a bare "skip" is the chat choice; "let's set up" or "next" sets up.
+    if (p.startChoice === 'asking' && !p.paused) {
+      appendUserLine(conversationId, text);
+      get().chooseStart(intent === 'resume' || /^\s*next/i.test(text) ? 'setup' : 'chat');
+      return true;
+    }
+    // The list is up: its buttons are the way on, and anything typed is
+    // ordinary talk, except a "not now", which steps the walk back.
+    if (p.menu === 'asking' && intent !== 'pause') return false;
     // The fork after Harbor, answered in words. "Not now" or "I just want to
     // chat" is the chat choice, and still goes to the guide, who answers it
     // knowing setup waits. "Let's set up", "keep setting up", or "next" carry
@@ -3722,9 +3838,29 @@ export const useApp = create<AppState>((set, get, api) => {
     if (!p) return;
     const conv = s.conversations[p.conversationId];
     if (!conv || conv.thread.busy) return;
-    // The edit choice holds the walk until a button is tapped.
-    if (p.editChoice === 'asking') return;
+    // The edit choice and the break after the opening hold the walk until a
+    // button is tapped.
+    if (p.editChoice === 'asking' || p.startChoice === 'asking') return;
     const facts = setupFacts();
+    // A step picked from the "help me get set up" list: when it lands, say so
+    // and bring the list back with what is left (the repository asks its one
+    // edit question first, and the list follows the answer).
+    if (p.menu === 'step' && !p.paused && p.current && stepHandled(p.current, facts)) {
+      const done = p.current;
+      const editAsk = done === 'repo' && !p.editChoice;
+      const back = p.awaiting === done && (s.view !== 'chat' || s.activeId !== p.conversationId);
+      if (editAsk) {
+        if (!appendGuideMessage(p.conversationId, repoConnectedMessage())) return;
+        void get().saveSettings({
+          guidedSetup: { ...p, current: undefined, awaiting: undefined, editChoice: 'asking' },
+        });
+      } else if (!showSetupMenu(p, { step: done, how: 'done' })) {
+        return;
+      }
+      logEvent('guided_setup_step_done', { step: done, via: 'menu' });
+      if (back) s.openConversation(p.conversationId);
+      return;
+    }
     let next: GuidedSetupProgress = p;
     // The fork after Harbor holds the steps too; only Harbor's ready line
     // still lands while it waits (below).
@@ -9411,6 +9547,10 @@ export const useApp = create<AppState>((set, get, api) => {
       // exists the instant the caller asks for it.
       const first = opts?.firstMessage;
       if (first?.attachments?.length) pendingSends.set(id, first.attachments);
+      // "Help me get set up" as a new chat's first message is answered with
+      // the setup list, never sent to a model; the chat's model answers what
+      // comes after it.
+      const helpFirst = Boolean(first && !first.attachments?.length && setupHelpIntent(first.text));
       const conv: Conversation = {
         id,
         title: opts?.title ?? 'New chat',
@@ -9420,7 +9560,7 @@ export const useApp = create<AppState>((set, get, api) => {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         thread: { ...emptyThread(), items: seedItems },
-        ...(first ? { pendingFirstMessage: first.text } : {}),
+        ...(first && !helpFirst ? { pendingFirstMessage: first.text } : {}),
       };
       set((s) => ({
         conversations: { ...s.conversations, [id]: conv },
@@ -9429,6 +9569,11 @@ export const useApp = create<AppState>((set, get, api) => {
         view: 'chat',
         drawerOpen: false,
       }));
+      if (first && helpFirst) {
+        appendUserLine(id, first.text);
+        logEvent('setup_menu_asked', { via: 'new_chat' });
+        showSetupMenu(setupMenuProgress(id));
+      }
       if (first) void persistConversations(get());
       building.add(id);
       try {
@@ -11540,6 +11685,8 @@ export const useApp = create<AppState>((set, get, api) => {
           skipped: [],
           finished: !first,
           harborAnnounced: facts.harborReady,
+          // The break after the opening: chat now or set up now.
+          ...(first ? { startChoice: 'asking' as const } : {}),
         },
       });
       logEvent('guided_setup_start', { first: first ?? 'none' });
@@ -11564,6 +11711,14 @@ export const useApp = create<AppState>((set, get, api) => {
 
     resumeGuidedSetup() {
       const p = get().settings.guidedSetup;
+      // Chatting was chosen at the break, before any step: picking setup back
+      // up offers the list of what is not set up, the same as "help me get set
+      // up".
+      if (p?.paused && p.startChoice === 'chat' && !p.menu) {
+        logEvent('setup_menu_asked', { via: 'resume' });
+        showSetupMenu(setupMenuProgress(p.conversationId));
+        return;
+      }
       if (p?.paused && p.editChoice === 'asking') {
         if (!appendGuideMessage(p.conversationId, `Happy to. ${EDIT_CHOICE_QUESTION}`)) return;
         void get().saveSettings({ guidedSetup: { ...p, paused: false } });
@@ -11587,6 +11742,18 @@ export const useApp = create<AppState>((set, get, api) => {
     async chooseEditMode(mode) {
       const p = get().settings.guidedSetup;
       if (!p || p.editChoice !== 'asking') return;
+      // Asked from the list: the answer, then the list with what is left.
+      if (p.menu) {
+        const back = { step: 'repo' as const, how: 'done' as const, lead: editChoiceLead(mode) };
+        if (!showSetupMenu({ ...p, editChoice: mode ?? 'later' }, back)) return;
+        if (mode) {
+          logEvent('permission_mode_chosen', { mode, source: 'walk' });
+          await get().setPermissionMode(mode, 'walk');
+        } else {
+          logEvent('permission_mode_deferred', { source: 'walk' });
+        }
+        return;
+      }
       const facts = setupFacts();
       // Anything connected while the choice waited is passed by.
       const after = p.current && !stepHandled(p.current, facts) ? p.current : nextStep(p, facts);
@@ -11641,12 +11808,72 @@ export const useApp = create<AppState>((set, get, api) => {
       });
     },
 
+    chooseStart(choice, origin) {
+      const p = get().settings.guidedSetup;
+      if (!p || p.startChoice !== 'asking') return;
+      const facts = setupFacts();
+      // Anything connected while the break waited is passed by.
+      const first = p.current && !stepHandled(p.current, facts) ? p.current : nextStep(p, facts);
+      const text = choice === 'chat' ? SETUP_LATER_LINE : startSetupMessage(first, facts);
+      if (!appendGuideMessage(p.conversationId, text)) return;
+      logEvent('guided_setup_start_choice', { choice });
+      void get().saveSettings({
+        guidedSetup:
+          choice === 'chat'
+            ? { ...p, startChoice: 'chat', paused: true, awaiting: undefined, current: first }
+            : { ...p, startChoice: 'setup', current: first, finished: !first },
+      });
+      if (choice === 'chat') carryToGreeting(p.conversationId, origin);
+    },
+
+    pickSetupStep(step) {
+      const p = get().settings.guidedSetup;
+      if (!p || p.menu !== 'asking') return;
+      if (!appendGuideMessage(p.conversationId, menuStepIntro(step))) return;
+      logEvent('setup_menu_pick', { step });
+      void get().saveSettings({
+        guidedSetup: {
+          ...p,
+          menu: 'step',
+          menuItemId: undefined,
+          current: step,
+          finished: false,
+          paused: false,
+        },
+      });
+    },
+
+    setupMenuOffer() {
+      const p = get().settings.guidedSetup;
+      return p ? menuSteps(p, setupFacts()) : [];
+    },
+
+    slackWaterCovered() {
+      const w = get().slackWater;
+      if (!w || w.phase !== 'rising') return;
+      get().startNewChat();
+      set({ slackWater: { ...w, phase: 'clearing' } });
+    },
+
+    endSlackWater() {
+      set({ slackWater: undefined });
+    },
+
     skipSetupStep() {
       const p = get().settings.guidedSetup;
       // The fork after Harbor is answered first: the next step has not even
       // been introduced yet, so there is nothing to skip.
       if (!p?.current || p.finished || p.nextChoice === 'asking') return;
       const facts = setupFacts();
+      // A step picked from the list: back to the list, without that one.
+      if (p.menu === 'step') {
+        logEvent('guided_setup_skip', { step: p.current, via: 'menu' });
+        showSetupMenu(
+          { ...p, skipped: [...p.skipped, p.current] },
+          { step: p.current, how: 'skipped' },
+        );
+        return;
+      }
       const skipped = [...p.skipped, p.current];
       const after = nextStep({ skipped }, facts);
       // Skipping Harbor still ends on the fork (chat, or keep setting up)

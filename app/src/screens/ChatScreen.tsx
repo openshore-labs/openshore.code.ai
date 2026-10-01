@@ -4,6 +4,7 @@
 // header that names the chat.
 import { SwellText } from '../components/SwellText.js';
 import { LANDING_PACE, takeLandingSwell } from '../lib/introWalk.js';
+import { durationMs } from '../lib/motion.js';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { INIT_PROMPT } from 'os-code/protocol';
 import { useApp, driverFor } from '../state/store.js';
@@ -33,7 +34,9 @@ import { GuideSetupLink } from '../components/GuideSetupLink.js';
 import { SetupStepActions } from '../components/SetupStepActions.js';
 import { EditChoiceActions } from '../components/EditChoiceActions.js';
 import { NextChoiceActions } from '../components/NextChoiceActions.js';
-import { ASK_ANYTHING, walkActive } from '../lib/guidedSetup.js';
+import { SetupMenuActions } from '../components/SetupMenuActions.js';
+import { StartChoiceActions } from '../components/StartChoiceActions.js';
+import { ASK_ANYTHING, setupHelpIntent, walkActive } from '../lib/guidedSetup.js';
 import { FirstSeat } from '../components/FirstSeat.js';
 import { VoiceMode } from '../components/VoiceMode.js';
 import type { VoiceBreak } from '../lib/voice/voiceBreaks.js';
@@ -375,7 +378,11 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const seq = useRef(0);
   // The session's first landing line rolls in on the swell (SwellText); every
   // later one, and every language tap, keeps the crossfade.
-  const [landingSwellId] = useState(() => (takeLandingSwell() ? 0 : -1));
+  const [landingSwellId, setLandingSwellId] = useState(() => (takeLandingSwell() ? 0 : -1));
+  // Slack Water (components/SlackWater.tsx) lands the person here from the
+  // setup walk: the greeting waits unseen under the paper while it holds
+  // still, then lands on the swell as the paper clears (Creative Studio).
+  const [heldUnderWater, setHeldUnderWater] = useState(false);
   // One-time discovery nudge, played on the first empty-state paint of the
   // session and never again.
   const [hint, setHint] = useState(true);
@@ -423,6 +430,25 @@ export function ChatScreen({ compact }: { compact: boolean }) {
       setRotIdx(0);
       seq.current += 1;
       setLayers([{ id: seq.current, g: rot[0] }]);
+      // Arrived on Slack Water: hold for the paper's still beat, then land
+      // the line on the swell as the clear begins.
+      if (useApp.getState().slackWater?.phase === 'clearing') {
+        setHeldUnderWater(true);
+        const t = window.setTimeout(
+          () => {
+            seq.current += 1;
+            setLayers([{ id: seq.current, g: rot[0] }]);
+            setLandingSwellId(seq.current);
+            setHeldUnderWater(false);
+          },
+          durationMs('--dur-3', 220),
+        );
+        wasEmpty.current = isEmpty;
+        return () => {
+          window.clearTimeout(t);
+          setHeldUnderWater(false);
+        };
+      }
     }
     wasEmpty.current = isEmpty;
   }, [isEmpty]);
@@ -733,6 +759,11 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               // the Stack mid-walk is still in setup, and the model is told the
               // buttons are there.
               if (guided && guided.conversationId === conv.id) {
+                // The "help me get set up" list keeps its buttons under its
+                // own message while it is up, wherever the talk goes after it.
+                if (guided.menu === 'asking' && !guided.paused) {
+                  return itemId === guided.menuItemId ? <SetupMenuActions /> : null;
+                }
                 // Paused ("I'd rather just chat", or Start chatting at the fork):
                 // no step buttons following the talk, just a quiet way back in,
                 // up under the hello. Right after Start chatting, a few openers
@@ -762,6 +793,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                 // up, then jump down to the setup message once it starts.
                 if (thread?.busy || itemId !== lastAssistantId) return null;
                 if (itemId === `${conv.id}-hello`) return null;
+                if (guided.startChoice === 'asking') return <StartChoiceActions />;
                 if (guided.editChoice === 'asking') return <EditChoiceActions />;
                 if (guided.nextChoice === 'asking') return <NextChoiceActions />;
                 if (guided.current && !guided.finished) {
@@ -789,7 +821,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           // guesses. See components/FirstSeat.tsx ("The Seat Fills").
           <FirstSeat
             fallback={
-              <div className="greeting">
+              <div className={`greeting${heldUnderWater ? ' held' : ''}`}>
                 <BrandMark size={40} />
                 {/* A heading that stays a heading for assistive tech, with a real
                     button inside for the tap and the keyboard (Enter and Space
@@ -936,6 +968,16 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           onOpenVoice={() => void openVoice()}
           onSend={(text, attachments) => {
             if (!conv) {
+              // "Help me get set up" needs no model: the setup list answers it
+              // in a new chat, even before any brain on this device can (the
+              // same "stack" home the guides open on when none can).
+              if (!attachments?.length && setupHelpIntent(text)) {
+                void startWith(
+                  sourceReady(selectedSource) ? selectedSource : { kind: 'stack' },
+                  text,
+                );
+                return;
+              }
               // Never start a chat on a brain that cannot answer yet. Hold the
               // message and open the model sheet as a chooser (download a model,
               // connect your computer, or add a cloud key); the pick sends it.
