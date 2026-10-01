@@ -807,6 +807,15 @@ export const VAULT_TEAM_NOT_MEMBER_REASON = 'You are no longer a member of this 
 export const VAULT_TEAM_PATH_TOO_LONG =
   "A team note's name, its folders included, can be up to 512 characters.";
 
+/** A team note over 0021's and 0025's 1 MB (octet_length over 1048576),
+ *  refused before it is sent: its size rounded UP to two places, so a note a
+ *  byte over never reads "this one is 1.0 MB" beside the cap (round 7 E44).
+ *  Never "try again": the same text meets the same cap. */
+export function vaultTeamTooLargeLine(bytes: number): string {
+  const over = Math.max(Math.ceil((bytes / 1_048_576) * 100) / 100, 1.01);
+  return `A team note is limited to 1 MB, and this one is ${Number(over.toFixed(2))} MB.`;
+}
+
 /** The server's own path refusal (0015's org_vault_path_ok, 'that note path
  *  is not allowed'), in the app's words (E43). */
 export const VAULT_TEAM_PATH_NOT_ALLOWED = 'The team vault does not take that note name.';

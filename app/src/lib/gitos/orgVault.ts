@@ -69,6 +69,7 @@ import {
   VAULT_TEAM_PATH_NOT_ALLOWED,
   VAULT_TEAM_PATH_TOO_LONG,
   VAULT_TEAM_SETTINGS_ADMINS_ONLY,
+  vaultTeamTooLargeLine,
 } from '../vaultCopy.js';
 import { TEAM_PATH_MAX, fitMadeName, teamPathProblem } from '../vault.js';
 import { isVaultFolderPath } from './folderClient.js';
@@ -1263,8 +1264,8 @@ export const orgVaultProvider: StorageProvider = {
     // in plain words rather than after a round trip.
     const bytes = new TextEncoder().encode(text).length;
     if (bytes > ORG_VAULT_NOTE_LIMIT_BYTES) {
-      const mb = (bytes / ORG_VAULT_NOTE_LIMIT_BYTES).toFixed(1);
-      throw new OrgVaultRefusal(`A team note is limited to 1 MB, and this one is ${mb} MB.`);
+      // Its size is never shown as the cap's own (round 7 E44): vaultCopy's.
+      throw new OrgVaultRefusal(vaultTeamTooLargeLine(bytes));
     }
     const auth = await token();
     if (guard) return guardedWrite(auth, resourceId, path, text, guard);

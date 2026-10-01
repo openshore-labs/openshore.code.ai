@@ -1694,6 +1694,27 @@ describe('round 7, batch 6: the team lines say what is true now', () => {
     for (const line of [VAULT_TEAM_EXPORT_UNREACHABLE, refused]) expect(line).not.toMatch(DASHES);
   });
 
+  it('a note over the 1 MB cap never reads as the same size as the cap (E44)', async () => {
+    const { vaultTeamTooLargeLine } = await import('../src/lib/vaultCopy.js');
+    const sql = readFileSync(
+      resolve(ROOT, '../supabase/migrations/0025_org_vault_settings.sql'),
+      'utf8',
+    );
+    expect(sql).toContain('octet_length(v_body) > 1048576');
+    const line = (bytes: number) => vaultTeamTooLargeLine(bytes);
+    expect(line(1_048_577)).toBe('A team note is limited to 1 MB, and this one is 1.01 MB.');
+    expect(line(1_101_004)).toBe('A team note is limited to 1 MB, and this one is 1.05 MB.');
+    expect(line(1_101_005)).toBe('A team note is limited to 1 MB, and this one is 1.06 MB.');
+    expect(line(2 * 1_048_576)).toBe('A team note is limited to 1 MB, and this one is 2 MB.');
+    for (const bytes of [1_048_577, 1_050_000, 1_100_000, 1_101_004]) {
+      const shown = Number(/this one is ([\d.]+) MB/.exec(line(bytes))?.[1]);
+      expect(shown).toBeGreaterThan(1);
+      expect(line(bytes)).not.toContain('1.0 MB');
+      expect(line(bytes)).not.toMatch(/try again/i);
+      expect(line(bytes)).not.toMatch(DASHES);
+    }
+  });
+
   it("a settings change by someone not an admin says 0025's reason, verb first (E55)", async () => {
     const { VAULT_TEAM_SETTINGS_ADMINS_ONLY, vaultRefusedLine } =
       await import('../src/lib/vaultCopy.js');

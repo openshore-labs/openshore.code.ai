@@ -319,6 +319,17 @@ describe('org vault provider', () => {
     expect(mockRpc).not.toHaveBeenCalled();
   });
 
+  it('sends exactly 1 MB, and says a byte over is over, never "1.0 MB" (E44)', async () => {
+    const err = await orgVaultProvider
+      .write(ORG, 'edge.md', 'x'.repeat(1_048_577), { ifAbsent: true })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(OrgVaultRefusal);
+    expect((err as Error).message).toBe('A team note is limited to 1 MB, and this one is 1.01 MB.');
+    expect(mockRpc).not.toHaveBeenCalled();
+    await orgVaultProvider.write(ORG, 'edge.md', 'x'.repeat(1_048_576), { ifAbsent: true });
+    expect(mockRpc).toHaveBeenCalled();
+  });
+
   it('counts the cap in bytes, the way the server does', async () => {
     // 600,000 two-byte characters: under a million UTF-16 units, over 1 MB.
     const err = await orgVaultProvider

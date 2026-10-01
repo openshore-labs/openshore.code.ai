@@ -9602,4 +9602,19 @@ describe('round 7, batch 6: the team vault says what it can do now, truly', () =
       expect(await trashPaths()).toEqual([]);
     });
   });
+
+  describe('E44: a team note a byte over 1 MB says how far over', () => {
+    it('is held, sends nothing, and never says "this one is 1.0 MB"', async () => {
+      server.put('big.md', 'small', 'u-me');
+      await st().vaultRefresh();
+      const body = 'x'.repeat(1_048_577);
+      await st().vaultSave('big.md', body);
+      expect(st().toast).not.toContain('this one is 1.0 MB');
+      expect(st().toast).toContain('this one is 1.01 MB');
+      expect(st().vaultError).toBe('held');
+      expect(teamHeld()).toEqual([expect.objectContaining({ path: 'big.md', text: body })]);
+      expect(server.rpcs.filter((r) => r.fn === 'org_vault_write')).toEqual([]);
+      expect(server.bytes('big.md')).toBe('small');
+    });
+  });
 });
