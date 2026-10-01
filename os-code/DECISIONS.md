@@ -3944,3 +3944,30 @@ execution contract. Newest at the bottom.
   `write`'s 1 MB lines. The store's `endSession`, `onSignedIn`,
   `openVaultIndex` and `vaultToday` gain lines without changing main's. No
   main test changes.
+- 2026-10-01: **PR #1 merges with nine low findings open, behind the
+  teams switch (founder).** The edge-case review of the team client (six
+  lenses, each finding reproduced by a test, then confirmed by a second
+  reproduction) found 57: 2 blocker, 16 high, 25 medium, 14 low. The
+  founder ruled the rest overkill once the serious ones were fixed: 48 are
+  fixed, every blocker, high and medium among them, each with a test that
+  fails before its fix; the re-review round was skipped. Open, all low, all
+  must-fix before `featureOn('teams')` ships (PROGRESS, What remains): E47
+  (an OV402 met before the plan is read makes an admin read as a member),
+  E48 (the fake server snapshots every overwrite and models neither
+  `org_vault_path_ok` nor RLS for a non-member), E49 (after a renewal the
+  Trash row waits for a second relist), E50 (a never-paid team's notice
+  can name a passed deadline), E52 (the expired sign-in's kept note is
+  never on screen; Today is still offered then), E53 (below), E54 (after a
+  scope switch the room runs on the other vault's settings until its own
+  read lands; main's `!team` guard was dropped), E56 (DECISIONS lacks a
+  reason line for some changed main lines). E57 (a DECISIONS merge
+  conflict) is resolved by the merge. E53, the one that reaches a shipping
+  build: the branch's refusal and gone handling is provider-agnostic, so
+  the personal vaults (Your computer, the desktop folder, Local) now give
+  the specific line where main said "try again": a refused delete or Today
+  on Your computer names the reason ("Not deleted.", "Not started."), a
+  note or Trash entry already gone says so and relists, a refused link or
+  settings save says "Not linked." or "Not saved." with the reason, and a
+  closed note's keep-both copy that fails is stashed instead of rejecting
+  the save. Each is truer than main's line and none loses text; the
+  personal-provider tests that pin them are part of E53.
