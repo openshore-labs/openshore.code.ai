@@ -107,3 +107,36 @@ current stops pulling either way.
 Not built from the memo: the break's buttons leaving with a fade before the
 line inks (they unmount on the choice, the same as the fork after Harbor's),
 and a tap on the transcript starting the water early. Not yet seen on a phone.
+
+## The third pass (founder, 2026-10-02)
+
+The brief: "Make the timing between the button pushed and the animation
+running much quicker. Everything else is right, placement, size. It just
+doesn't look like a fully animated wave that ripples through the app. Make it
+transparent and like the app itself is the flowing ripples in the pond."
+
+- **Sooner.** The three-second read pause after the line is gone: the water
+  starts `WATER_AFTER_LINE_MS` (300ms) after the line settles, about 1.8s after
+  the tap instead of 4.5s. Reduced motion shows the line whole and keeps the
+  read pause, since nothing moves.
+- **Clear water, not paper.** The paper disc and its fog lift are gone. A
+  full-screen canvas draws the rings on the GPU as light and shade only
+  (`app/src/lib/rippleGl.ts`): a train of crests leaves the tap after the
+  dimple, flows back through itself as it spreads, loses energy with distance
+  and time, and settles. Where the water is still, nothing is drawn. On paper
+  the shade is the brand teal and the light a white sheen; at night the pale
+  water light carries it.
+- **The app is the water.** Each block of the room (the header's slots, every
+  paragraph, the composer) heaves as the train passes under it: out from the
+  tap with the crest, back through the trough, settling, stretched a hair
+  along the line from the tap the way a crest's lens bends what is under it.
+  Transform only, through the Web Animations API on the `--ease-loop` curve.
+- **The swap.** Once the front is halfway to the corner, the old chat and its
+  title thin away under the water (`--dur-7`, `--ease-glide`); the main chat
+  page goes in with one tick and surfaces on the same clock while the last
+  rings cross it, and the greeting lands on its swell.
+- **Same place, same size.** The origin is still the button's centre and the
+  rings still reach the farthest corner.
+- The choreography is pure and tested (`app/src/lib/slackWater.ts`,
+  `app/test/slackWater.test.ts`); a device whose GPU cannot draw the water gets
+  the CSS crests over the same heave and swap.

@@ -232,6 +232,7 @@ import {
   inkDurationMs,
   setIntroPlaying,
 } from '../lib/introWalk.js';
+import { WATER_AFTER_LINE_MS } from '../lib/slackWater.js';
 import {
   HARBOR_MINI_BUNDLED,
   HARBOR_MINI_GREETING,
@@ -2130,12 +2131,12 @@ interface AppState {
   /** The steps the "help me get set up" list offers right now, read live so
    *  a connection made elsewhere drops its button. */
   setupMenuOffer(): SetupStepId[];
-  /** Slack Water, while it plays: rising over the walk's chat, then clearing
-   *  off the main chat page (lib/slackWater.ts). */
+  /** Slack Water, while it plays: rising over the walk's chat as the old chat
+   *  thins under it, then clearing off the main chat page (lib/slackWater.ts). */
   slackWater?: { seq: number; x: number; y: number; phase: 'rising' | 'clearing' };
-  /** The water has covered the screen: the main chat page goes in under it. */
+  /** The old chat has thinned away under the water: the main chat page goes in. */
   slackWaterCovered(): void;
-  /** The water has cleared. */
+  /** The water is still again. */
   endSlackWater(): void;
   /** Bring your own Brave or Tavily key for local models' web search. */
   setSearchBackend(backend: 'brave' | 'tavily', apiKey: string): Promise<void>;
@@ -3759,16 +3760,20 @@ export const useApp = create<AppState>((set, get, api) => {
     return true;
   }
 
-  // Choosing to just chat at the break: the guide's line inks, the person
-  // gets the reading pause, then Slack Water carries them to the main chat
-  // page (components/SlackWater.tsx). Reduced motion lands there after the
-  // same pause, without the water. Nothing moves if they went somewhere else
-  // or started chatting where they are.
+  // Choosing to just chat at the break: the guide's line inks, a short beat
+  // lets it land, then Slack Water carries them to the main chat page
+  // (components/SlackWater.tsx), the line still readable while the first
+  // rings cross it (founder, 2026-10-02: the old three-second read pause felt
+  // like a stall). Reduced motion shows the line whole and keeps the reading
+  // pause, then lands there without the water. Nothing moves if they went
+  // somewhere else or started chatting where they are.
   let slackSeq = 0;
   function carryToGreeting(conversationId: string, origin?: { x: number; y: number }): void {
     const reduced = prefersReducedMotion();
     const lineId = get().conversations[conversationId]?.thread.items.at(-1)?.id;
-    const wait = (reduced ? 0 : inkDurationMs(SETUP_LATER_LINE, WALK_PACE)) + READ_PAUSE_MS;
+    const wait = reduced
+      ? READ_PAUSE_MS
+      : inkDurationMs(SETUP_LATER_LINE, WALK_PACE) + WATER_AFTER_LINE_MS;
     globalThis.setTimeout(() => {
       const s = get();
       const thread = s.conversations[conversationId]?.thread;

@@ -391,8 +391,8 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   // later one, and every language tap, keeps the crossfade.
   const [landingSwellId, setLandingSwellId] = useState(() => (takeLandingSwell() ? 0 : -1));
   // Slack Water (components/SlackWater.tsx) lands the person here from the
-  // setup walk: the greeting waits unseen under the paper while it holds
-  // still, then lands on the swell as the paper clears (Creative Studio).
+  // setup walk: the greeting waits unseen a beat while the page surfaces
+  // under the last rings, then lands on the swell (Creative Studio).
   const [heldUnderWater, setHeldUnderWater] = useState(false);
   // One-time discovery nudge, played on the first empty-state paint of the
   // session and never again.
@@ -441,8 +441,8 @@ export function ChatScreen({ compact }: { compact: boolean }) {
       setRotIdx(0);
       seq.current += 1;
       setLayers([{ id: seq.current, g: rot[0] }]);
-      // Arrived on Slack Water: hold for the paper's still beat, then land
-      // the line on the swell as the clear begins.
+      // Arrived on Slack Water: hold a beat while the page surfaces, then
+      // land the line on the swell under the last rings.
       if (useApp.getState().slackWater?.phase === 'clearing') {
         setHeldUnderWater(true);
         const t = window.setTimeout(

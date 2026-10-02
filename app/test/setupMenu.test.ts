@@ -20,7 +20,7 @@ import {
   setupSteps,
   type SetupFacts,
 } from '../src/lib/guidedSetup.js';
-import { DISC_CORE, slackWaterGeometry } from '../src/lib/slackWater.js';
+import { slackWaterGeometry } from '../src/lib/slackWater.js';
 
 const NONE: SetupFacts = {
   harborReady: false,
@@ -112,10 +112,10 @@ describe('the setup list', () => {
     ).toBe(`No problem, that one can wait.\n\n${MENU_REST_WAITS}`);
   });
 
-  it('sizes the water from the tap to the farthest corner, the paper core included', () => {
+  it('sizes the water from the tap to the farthest corner', () => {
     const g = slackWaterGeometry(0, 0, 300, 400);
     expect(g.ring).toBeCloseTo(2 * (500 + 2));
-    expect(g.disc * DISC_CORE).toBeCloseTo(g.ring);
+    expect(g.reach).toBeCloseTo(500 + 2);
     const mid = slackWaterGeometry(150, 200, 300, 400);
     expect(mid.ring).toBeCloseTo(2 * (250 + 2));
   });
