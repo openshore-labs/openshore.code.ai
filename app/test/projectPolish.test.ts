@@ -45,7 +45,7 @@ describe('project detail polish', () => {
     );
     // Each detail section is numbered so the stagger has an order.
     const detail = src('screens/ProjectDetailScreen.tsx');
-    expect((detail.match(/project-section/g) ?? []).length).toBeGreaterThanOrEqual(4);
+    expect((detail.match(/project-section/g) ?? []).length).toBeGreaterThanOrEqual(3);
   });
 
   it('team-access rows animate in and play a removed one out on tokens', () => {
@@ -66,58 +66,20 @@ describe('project detail polish', () => {
 
   it('the instructions Save earns its emphasis only when the draft differs', () => {
     const detail = src('screens/ProjectDetailScreen.tsx');
-    expect(detail).toContain('detailsDirty');
-    expect(detail).toMatch(/className=\{detailsDirty \? 'btn primary' : 'btn quiet'\}/);
+    expect(detail).toContain('instructionsDirty');
+    expect(detail).toMatch(/className=\{instructionsDirty \? 'btn primary' : 'btn quiet'\}/);
   });
 });
 
-// The 2026-09-15 redesign turned the room from a config-form stack into a
-// workspace (founder: "75% of work happens here"). These pin the shape so it
-// does not silently regress back into a wall of identical cards.
-describe('project room, redesigned as a workspace', () => {
+// The project room's repositories sheet keeps the chips and the way to the
+// project memory from the 2026-09-15 workspace design.
+describe('project room repositories', () => {
   const detail = src('screens/ProjectDetailScreen.tsx');
-
-  it('opens with a premium cover carrying the identity, live counts, and the primary action', () => {
-    expect(detail).toContain('project-cover');
-    expect(detail).toContain('project-stats');
-    expect(detail).toContain('project-cover-actions');
-    // The hero title lives in the cover, so the shared-element move still lands.
-    expect(detail).toMatch(/project-cover[\s\S]*project-hero-title/);
-  });
-
-  it('leads with the work: chats sit first (--i 0) before the context cards', () => {
-    const chatsAt = detail.indexOf("'--i': 0");
-    const instructionsAt = detail.indexOf("'--i': 1");
-    // Repositories steps after the currents groups (2 and 3) and the pinned
-    // notes (4) when they show, so every card arrives on its own beat.
-    const reposAt = detail.indexOf("'--i': reposStep");
-    expect(detail).toMatch(/const reposStep = mayEdit \? 5 : 2;/);
-    expect(chatsAt).toBeGreaterThan(-1);
-    expect(chatsAt).toBeLessThan(instructionsAt);
-    expect(instructionsAt).toBeLessThan(reposAt);
-    // The i=0 section is the chats one, and it precedes standing instructions.
-    expect(detail.indexOf('>Chats<')).toBeLessThan(detail.indexOf('>Standing instructions<'));
-  });
-
-  it('offers a resume affordance for the returning person', () => {
-    expect(detail).toContain('resume-card');
-    expect(detail).toMatch(/const resume = chats\[0\]/);
-    expect(detail).toContain('openConversation(resume.id)');
-  });
 
   it('renders repositories as chips and links out to the project memory', () => {
     expect(detail).toContain('repo-chip');
     expect(detail).toContain('project-memory-link');
     expect(detail).toContain('openProjectMemory(project.id)');
-  });
-
-  it('the cover rides the room-in curve on the tokens, honoring reduced motion via the global reset', () => {
-    expect(THEME).toMatch(
-      /\.project-cover \{[^}]*animation:\s*room-in var\(--dur-6\) var\(--ease-arrive\) backwards/,
-    );
-    // Its wash and stats use tokens only; the layout guard lives in
-    // polish-standards.test.ts and covers theme.css wholesale.
-    expect(THEME).toContain('.resume-card');
     expect(THEME).toContain('.repo-chip');
   });
 });
@@ -144,5 +106,30 @@ describe('projects list', () => {
     );
     expect(THEME).toMatch(/\.project-row-when \{[^}]*flex-shrink: 0/);
     expect(src('screens/ProjectsScreen.tsx')).toContain('<Sheet open={creating}');
+  });
+});
+
+// The project room, in the shape of the Claude app's (founder, 2026-10-02):
+// the pill doors, the room's own components at the top, then the chats as one
+// flat list, and the project's own actions behind the "..." menu.
+describe('project room', () => {
+  const detail = src('screens/ProjectDetailScreen.tsx');
+  it('leads with the pill doors, then the custom components, then the chats', () => {
+    const pills = detail.indexOf('className="project-pills');
+    const pins = detail.indexOf('<ProjectVaultPins');
+    const chats = detail.indexOf('className="project-chats');
+    expect(pills).toBeGreaterThan(-1);
+    expect(pills).toBeLessThan(pins);
+    expect(pins).toBeLessThan(chats);
+  });
+
+  it('keeps make active, rename and delete in the menu, and a long title truncates', () => {
+    const menu = detail.slice(detail.indexOf('<Sheet open={menu}'));
+    expect(menu.slice(0, menu.indexOf('</Sheet>'))).toMatch(
+      /Make active[\s\S]*Rename[\s\S]*Delete project/,
+    );
+    expect(THEME).toMatch(
+      /\.project-chat-title \{[^}]*display: block;[^}]*text-overflow: ellipsis/,
+    );
   });
 });

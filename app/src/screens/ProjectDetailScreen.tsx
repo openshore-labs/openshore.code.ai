@@ -1,12 +1,11 @@
-// A project's own room: everything the coding agent needs, tailored to this
-// project. Redesigned 2026-09-15 (founder: "75% of work happens here") from a
-// stack of identical config cards into a WORKSPACE. The room now leads with the
-// work: a premium cover carries the name, the live counts, and the one action
-// that matters (start or resume a chat), then the chats sit first, and the
-// context that rides into them (standing instructions, repositories) and the
-// team roster follow. Its chats, its standing instructions, the repositories
-// (and so the files) it works in, and, for a company account, who on the team
-// may read, write, or edit it. Reached by tapping a project on the Projects list.
+// A project's own room, in the shape of the Claude app's (founder,
+// 2026-10-02): the name, a pair of pill doors (what the project works in,
+// what rides into every chat), then this room's own components at the top
+// (the pinned notes, and in later tiers the currents and the team roster),
+// then the project's chats as one flat list, and a floating New pill. What
+// the room does to the project itself (make active, rename, share, delete)
+// sits behind the "..." in the bar. Reached by tapping a project on the
+// Projects list.
 //
 // Honest scope: projects are device-local today, so the team-access controls
 // configure who WILL have access once a project is shared with the team (a
@@ -20,6 +19,7 @@ import { BackBar } from '../components/BackBar.js';
 import { ProjectCurrents } from '../components/ProjectCurrents.js';
 import { ProjectVaultPins } from '../components/ProjectVaultPins.js';
 import { Sheet } from '../components/Sheet.js';
+import { SheetHead } from '../components/SheetHead.js';
 import { useConnectedRepos } from '../hooks/useConnectedRepos.js';
 import { PLATFORM_NAME, isGithubRepoId, isRemoteRepoId, repoLabel } from '../lib/chatRepos.js';
 import { openInAppBrowser } from '../lib/platform.js';
@@ -30,7 +30,7 @@ import {
   permissionLabel,
   projectPermissionFor,
 } from '../lib/projectAccess.js';
-import { NewChatGlyph, ReachDot, chatReach, relativeTime, sourceShort } from './ChatsScreen.js';
+import { relativeTime } from './ChatsScreen.js';
 import { useTitleHero } from '../lib/heroTitle.js';
 import { durationMs } from '../lib/motion.js';
 import { Icon } from '../components/Icon.js';
@@ -67,10 +67,6 @@ export function ProjectDetailScreen() {
   // read/write teammate sees it but cannot change its content or roster.
   const myLevel = projectPermissionFor(project ?? {});
   const mayEdit = canEdit(myLevel);
-  // The arrival step for the Repositories card: after the first two cards (0
-  // and 1) and, for editors, the two currents groups (2 and 3) and the
-  // pinned notes (4).
-  const reposStep = mayEdit ? 5 : 2;
   const mayWrite = canWrite(myLevel);
   // Who can change the roster: an editor on a shared project; a company admin on
   // a local draft (which ships when the project is shared).
@@ -78,22 +74,19 @@ export function ProjectDetailScreen() {
   // Only a company admin can lift a local project onto the org server.
   const canShare = Boolean(project && !project.shared && isCommercial && stackAdmin(account));
 
-  // Details editor (name + standing instructions), saved on demand.
-  const [details, setDetails] = useState<{ name: string; instructions: string } | undefined>();
-  const editingDetails = details !== undefined;
+  // The sheets this room opens: the "..." menu, the name, the standing
+  // instructions (drafted, saved on demand), the repositories, and the
+  // delete confirm.
+  const [menu, setMenu] = useState(false);
+  const [renaming, setRenaming] = useState<string | undefined>();
+  const [instructions, setInstructions] = useState<string | undefined>();
+  const [showRepos, setShowRepos] = useState(false);
   const [manageRepos, setManageRepos] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  // The project name flies up from the tapped card into this title.
+  // The project name flies up from the tapped row into this title.
   const titleRef = useRef<HTMLHeadingElement>(null);
   useTitleHero(titleRef);
-
-  // Save earns its emphasis only once the draft actually differs, so an
-  // untouched editor never dangles a live-looking button.
-  const detailsDirty =
-    details !== undefined &&
-    (details.name.trim() !== project?.name ||
-      details.instructions !== (project?.instructions ?? ''));
 
   const chats = useMemo(
     () =>
@@ -117,308 +110,99 @@ export function ProjectDetailScreen() {
     );
   }
 
-  const startDetails = () =>
-    setDetails({ name: project.name, instructions: project.instructions ?? '' });
+  const repoCount = project.repoIds.length;
+  const hasInstructions = Boolean(project.instructions?.trim());
+  // Save earns its emphasis only once the draft actually differs, so an
+  // untouched editor never dangles a live-looking button.
+  const instructionsDirty =
+    instructions !== undefined && instructions !== (project.instructions ?? '');
 
-  const saveDetails = async () => {
-    if (!details) return;
-    await updateProject(project.id, {
-      name: details.name.trim() || 'Untitled project',
-      instructions: details.instructions,
-    });
-    setDetails(undefined);
-    showToast('Project updated.');
+  const saveInstructions = async () => {
+    if (instructions === undefined) return;
+    await updateProject(project.id, { instructions });
+    setInstructions(undefined);
+    showToast('Instructions saved.');
+  };
+  const saveName = async () => {
+    if (renaming === undefined) return;
+    await updateProject(project.id, { name: renaming.trim() || 'Untitled project' });
+    setRenaming(undefined);
+  };
+  // A menu row closes the menu first, so only one sheet is ever up.
+  const fromMenu = (run: () => void) => () => {
+    setMenu(false);
+    run();
   };
 
-  // The single highest-value action for a returning person: pick up the chat
-  // they were last in. Absent on a fresh project, where "New chat" leads.
-  const resume = chats[0];
-  const repoCount = project.repoIds.length;
-
-  const newChat = mayWrite ? (
+  const more = (
     <button
       type="button"
       className="icon-btn press-fb"
-      aria-label="New chat in this project"
-      title="New chat in this project"
-      onClick={() => {
-        startProjectChat(project.id);
-      }}
+      aria-label="Project options"
+      title="Project options"
+      onClick={() => setMenu(true)}
     >
-      <ComposeIcon />
+      <MoreIcon />
     </button>
-  ) : undefined;
+  );
 
   return (
-    <div className="screen">
-      <BackBar title={project.name} action={newChat} />
+    <div className="screen project-room-screen">
+      <BackBar title={project.name} action={more} />
       <div className="screen-inner project-room">
-        {/* The cover: identity, live counts, and the action that matters. */}
-        <header className="project-cover">
-          <div className="project-cover-wash" aria-hidden="true" />
-          <div className="project-cover-body">
-            <div className="project-cover-top">
-              <span className="project-kicker">Project</span>
-              {isActive ? (
-                <span className="pill local">active</span>
-              ) : (
-                <button
-                  className="suggestion project-activate"
-                  onClick={() => {
-                    setActiveProject(project.id);
-                    showToast(`${project.name} is now active.`);
-                  }}
-                >
-                  Make active
-                </button>
-              )}
-              {teams && project.shared ? <span className="pill muted">Shared</span> : null}
-              {project.shared && !mayEdit && myLevel ? (
-                <span className="pill muted">You {permissionLabel(myLevel).toLowerCase()}</span>
-              ) : null}
-            </div>
-
-            <h1 ref={titleRef} className="project-hero-title">
-              {project.name}
-            </h1>
-            <p className="project-cover-lead">
-              Everything for this project in one place. Its instructions and repositories ride into
-              every chat here.
-            </p>
-
-            <div className="project-stats" role="list">
-              <div className="project-stat" role="listitem">
-                <span className="project-stat-num">{chats.length}</span>
-                <span className="project-stat-label">{chats.length === 1 ? 'chat' : 'chats'}</span>
-              </div>
-              <div className="project-stat" role="listitem">
-                <span className="project-stat-num">{repoCount}</span>
-                <span className="project-stat-label">
-                  {repoCount === 1 ? 'repository' : 'repositories'}
-                </span>
-              </div>
-              {isCommercial ? (
-                <div className="project-stat" role="listitem">
-                  <span className="project-stat-num">{project.access?.length ?? 0}</span>
-                  <span className="project-stat-label">on the team</span>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="project-cover-actions">
-              {mayWrite ? (
-                <button className="btn primary" onClick={() => startProjectChat(project.id)}>
-                  New chat
-                </button>
-              ) : null}
-              {resume ? (
-                <button className="btn ghost" onClick={() => openConversation(resume.id)}>
-                  {mayWrite ? 'Resume last chat' : 'Open last chat'}
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </header>
-
-        {/* Work first: the chats in this project. */}
-        <section className="card project-section" style={{ '--i': 0 } as CSSProperties}>
-          <div className="card-row">
-            <h3 className="grow">Chats</h3>
-            {chats.length ? <span className="hint">{chats.length}</span> : null}
-          </div>
-
-          {resume ? (
-            <button
-              type="button"
-              className="resume-card press-fb press-fb--row"
-              onClick={() => openConversation(resume.id)}
-            >
-              <div className="resume-card-body">
-                <span className="resume-eyebrow">
-                  {resume.thread.busy ? (
-                    <span className="chat-row-live" aria-label="working" />
-                  ) : null}
-                  {mayWrite ? 'Pick up where you left off' : 'Most recent'}
-                </span>
-                <span className="resume-title">{resume.title}</span>
-                <span className="resume-sub">
-                  {relativeTime(resume.updatedAt)} · {sourceShort(resume)}
-                </span>
-              </div>
-              <span className="disclosure-chevron" aria-hidden="true" />
-            </button>
-          ) : null}
-
-          <div className="chat-list" style={{ marginTop: resume ? 12 : 4 }}>
-            {mayWrite ? (
-              <button
-                type="button"
-                className="chat-row chat-row-new press-fb press-fb--row"
-                onClick={() => {
-                  startProjectChat(project.id);
-                }}
-              >
-                <span className="chat-row-title">
-                  <NewChatGlyph />
-                  New chat
-                </span>
-              </button>
-            ) : null}
-            {chats.slice(resume ? 1 : 0).map((conv, i) => {
-              const style = { '--stagger': `${Math.min(i, 8) * 22}ms` } as CSSProperties;
-              return (
-                <button
-                  key={conv.id}
-                  type="button"
-                  className={`chat-row press-fb press-fb--row${conv.id === activeId ? ' active' : ''}`}
-                  style={style}
-                  onClick={() => openConversation(conv.id)}
-                >
-                  <span className="chat-row-title">
-                    {conv.thread.busy ? (
-                      <span className="chat-row-live" aria-label="working" />
-                    ) : null}
-                    {conv.title}
-                  </span>
-                  <span className="chat-row-sub">
-                    <ReachDot reach={chatReach(conv)} />
-                    {relativeTime(conv.updatedAt)} · {sourceShort(conv)}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          {chats.length === 0 ? (
-            <p className="hint" style={{ marginTop: 6 }}>
-              {mayWrite
-                ? 'No chats yet. Start one and it stays with this project.'
-                : 'No chats yet. You have read access, so you can see this project but not start chats in it.'}
-            </p>
-          ) : null}
-        </section>
-
-        {/* Context that rides into every chat: standing instructions. */}
-        <section className="card project-section" style={{ '--i': 1 } as CSSProperties}>
-          <div className="card-row">
-            <div className="grow">
-              <span className="project-eyebrow">Rides into every chat</span>
-              <h3>Standing instructions</h3>
-            </div>
-            {!editingDetails && mayEdit ? (
-              <button className="suggestion" onClick={startDetails}>
-                Edit
-              </button>
+        <h1 ref={titleRef} className="project-hero-title project-room-title">
+          {project.name}
+        </h1>
+        {isActive || (teams && project.shared) || (project.shared && !mayEdit && myLevel) ? (
+          <div className="project-room-tags">
+            {isActive ? <span className="pill local">Active</span> : null}
+            {teams && project.shared ? <span className="pill muted">Shared</span> : null}
+            {project.shared && !mayEdit && myLevel ? (
+              <span className="pill muted">You {permissionLabel(myLevel).toLowerCase()}</span>
             ) : null}
           </div>
-          {editingDetails ? (
-            <>
-              <div className="field" style={{ marginTop: 8 }}>
-                <label htmlFor="project-name">Name</label>
-                <input
-                  id="project-name"
-                  value={details.name}
-                  onChange={(e) => setDetails({ ...details, name: e.target.value })}
-                />
-              </div>
-              <div className="field">
-                <label>Standing instructions (optional)</label>
-                <textarea
-                  rows={5}
-                  placeholder="Context and rules every chat in this project should follow."
-                  value={details.instructions}
-                  onChange={(e) => setDetails({ ...details, instructions: e.target.value })}
-                />
-              </div>
-              <div className="sheet-actions">
-                <button
-                  className={detailsDirty ? 'btn primary' : 'btn quiet'}
-                  disabled={!detailsDirty}
-                  onClick={() => void saveDetails()}
-                >
-                  Save
-                </button>
-                <button className="btn quiet" onClick={() => setDetails(undefined)}>
-                  {detailsDirty ? 'Cancel' : 'Done'}
-                </button>
-              </div>
-            </>
-          ) : project.instructions?.trim() ? (
-            <p className="project-instructions">{project.instructions.trim()}</p>
-          ) : (
-            <p className="hint" style={{ marginTop: 6 }}>
-              {mayEdit
-                ? 'None yet. Add context and rules every chat here should follow.'
-                : 'No standing instructions yet.'}
-            </p>
-          )}
-        </section>
+        ) : null}
 
-        {/* Currents chosen for this project: the workflow's cheap decision
-            method (Harness) and its agent modality (Agentic). Per project so
-            different projects run different currents at once. Connecting one is
-            device-local, reached from its row. Editors only. */}
+        {/* The two doors under the title, the Claude app's pair: what the
+            project works in, and what rides into every chat. */}
+        <div className="project-pills project-section" style={{ '--i': 0 } as CSSProperties}>
+          <button
+            type="button"
+            className="project-pill press-fb"
+            onClick={() => (repoCount || !mayEdit ? setShowRepos(true) : setManageRepos(true))}
+          >
+            <FilesGlyph />
+            {repoCount
+              ? `${repoCount} ${repoCount === 1 ? 'repository' : 'repositories'}`
+              : 'Add repositories'}
+          </button>
+          <button
+            type="button"
+            className="project-pill press-fb"
+            disabled={!mayEdit && !hasInstructions}
+            onClick={() => setInstructions(project.instructions ?? '')}
+          >
+            {hasInstructions ? 'Instructions' : 'Add instructions'}
+          </button>
+        </div>
+
+        {/* This room's own components, at the top above the chats. Currents
+            chosen for this project: the workflow's cheap decision method
+            (Harness) and its agent modality (Agentic), per project so
+            different projects run different currents at once. Editors only. */}
         {mayEdit && featureOn('currents') ? (
-          <ProjectCurrents projectId={project.id} index={2} />
+          <ProjectCurrents projectId={project.id} index={1} />
         ) : null}
 
         {/* Vault notes pinned to this project's context (Vault M5): placed by
             the person, so they ride every chat here. Device local. Editors
             only, on the currents' pattern. */}
-        {mayEdit ? <ProjectVaultPins projectId={project.id} index={4} /> : null}
-
-        {/* Context that rides into every chat: repositories and their files.
-            Its step follows the two currents groups when they show, so every
-            card arrives on its own beat. */}
-        <section className="card project-section" style={{ '--i': reposStep } as CSSProperties}>
-          <div className="card-row">
-            <div className="grow">
-              <span className="project-eyebrow">Rides into every chat</span>
-              <h3>Repositories and files</h3>
-            </div>
-            {mayEdit ? (
-              <button className="suggestion" onClick={() => setManageRepos(true)}>
-                Manage
-              </button>
-            ) : null}
-          </div>
-          {repoCount ? (
-            <>
-              <div className="repo-chips">
-                {project.repoIds.map((id) => (
-                  <span key={id} className={`repo-chip${isRemoteRepoId(id) ? '' : ' local'}`}>
-                    {isGithubRepoId(id) ? (
-                      <GithubGlyph />
-                    ) : isRemoteRepoId(id) ? (
-                      <BranchGlyph />
-                    ) : (
-                      <FolderGlyph />
-                    )}
-                    <span className="repo-chip-name">{repoLabel(id)}</span>
-                  </span>
-                ))}
-              </div>
-              <button
-                type="button"
-                className="project-memory-link press-fb press-fb--row"
-                onClick={() => openProjectMemory(project.id)}
-              >
-                <MemoryGlyph />
-                <span className="grow">What the agent has learned here</span>
-                <span className="disclosure-chevron" aria-hidden="true" />
-              </button>
-            </>
-          ) : (
-            <p className="hint" style={{ marginTop: 6 }}>
-              No repositories yet.{' '}
-              {mayEdit ? 'Attach one so the agent has the project’s files in context.' : ''}
-            </p>
-          )}
-        </section>
+        {mayEdit ? <ProjectVaultPins projectId={project.id} index={3} /> : null}
 
         {/* Enterprise: who on the team can read, write, or edit. */}
         {isCommercial ? (
           <TeamAccess
-            index={reposStep + 1}
+            index={4}
             project={project}
             canManage={canManageAccess}
             myLevel={myLevel}
@@ -427,24 +211,233 @@ export function ProjectDetailScreen() {
           />
         ) : null}
 
-        <div className="suggestion-row" style={{ justifyContent: 'flex-start', marginTop: 8 }}>
+        {/* The work: this project's chats, newest first. */}
+        <section className="project-chats project-section" style={{ '--i': 5 } as CSSProperties}>
+          <h2 className="project-chats-head">Chats</h2>
+          {chats.length ? (
+            <div className="project-chat-list">
+              {chats.map((conv, i) => (
+                <button
+                  key={conv.id}
+                  type="button"
+                  className={`project-chat-row press-fb press-fb--row${conv.id === activeId ? ' active' : ''}`}
+                  style={{ '--i': Math.min(i, 8) } as CSSProperties}
+                  onClick={() => openConversation(conv.id)}
+                >
+                  <span className="project-chat-icon" aria-hidden="true">
+                    <ChatGlyph />
+                  </span>
+                  <span className="project-chat-text">
+                    <span className="project-chat-title">
+                      {conv.thread.busy ? (
+                        <span className="chat-row-live" aria-label="working" />
+                      ) : null}
+                      {conv.title}
+                    </span>
+                    <span className="project-chat-sub">{relativeTime(conv.updatedAt)}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="project-chats-empty">
+              {mayWrite
+                ? 'No chats yet. Start one and it stays with this project.'
+                : 'No chats yet. You have read access, so you can see this project but not start chats in it.'}
+            </p>
+          )}
+        </section>
+      </div>
+
+      {mayWrite ? (
+        <div className="project-room-dock">
+          <button
+            type="button"
+            className="projects-dock-new press-fb"
+            onClick={() => startProjectChat(project.id)}
+          >
+            <Icon size={18}>
+              <path d="M12 5v14M5 12h14" />
+            </Icon>
+            New
+          </button>
+        </div>
+      ) : null}
+
+      {/* The "..." menu: what the room does to the project itself. */}
+      <Sheet open={menu} onClose={() => setMenu(false)}>
+        <SheetHead title={project.name} onClose={() => setMenu(false)} />
+        <div className="project-options">
+          {!isActive ? (
+            <button
+              type="button"
+              className="project-options-row press-fb press-fb--row"
+              onClick={fromMenu(() => {
+                setActiveProject(project.id);
+                showToast(`${project.name} is now active.`);
+              })}
+            >
+              Make active
+              <span className="project-options-sub">New chats are saved here.</span>
+            </button>
+          ) : null}
+          {mayEdit ? (
+            <button
+              type="button"
+              className="project-options-row press-fb press-fb--row"
+              onClick={fromMenu(() => setRenaming(project.name))}
+            >
+              Rename
+            </button>
+          ) : null}
+          {repoCount ? (
+            <button
+              type="button"
+              className="project-options-row press-fb press-fb--row"
+              onClick={fromMenu(() => openProjectMemory(project.id))}
+            >
+              What the agent has learned here
+            </button>
+          ) : null}
           {canShare ? (
-            <button className="suggestion" onClick={() => void shareProject(project.id)}>
+            <button
+              type="button"
+              className="project-options-row press-fb press-fb--row"
+              onClick={fromMenu(() => void shareProject(project.id))}
+            >
               Share with team
             </button>
           ) : null}
           {teams && project.shared && mayEdit ? (
-            <button className="suggestion" onClick={() => void unshareProject(project.id)}>
+            <button
+              type="button"
+              className="project-options-row press-fb press-fb--row"
+              onClick={fromMenu(() => void unshareProject(project.id))}
+            >
               Stop sharing
             </button>
           ) : null}
           {mayEdit ? (
-            <button className="suggestion project-delete" onClick={() => setConfirmDelete(true)}>
+            <button
+              type="button"
+              className="project-options-row project-delete press-fb press-fb--row"
+              onClick={fromMenu(() => setConfirmDelete(true))}
+            >
               Delete project
             </button>
           ) : null}
         </div>
-      </div>
+      </Sheet>
+
+      {/* Standing instructions: they ride into every chat here. */}
+      <Sheet open={instructions !== undefined} onClose={() => setInstructions(undefined)}>
+        <SheetHead title="Instructions" onClose={() => setInstructions(undefined)} />
+        {mayEdit ? (
+          <>
+            <div className="field">
+              <label htmlFor="project-instructions">Rides into every chat in this project</label>
+              <textarea
+                id="project-instructions"
+                rows={7}
+                placeholder="Context and rules every chat in this project should follow."
+                value={instructions ?? ''}
+                onChange={(e) => setInstructions(e.target.value)}
+              />
+            </div>
+            <div className="sheet-actions">
+              <button
+                className={instructionsDirty ? 'btn primary' : 'btn quiet'}
+                disabled={!instructionsDirty}
+                onClick={() => void saveInstructions()}
+              >
+                Save
+              </button>
+              <button className="btn quiet" onClick={() => setInstructions(undefined)}>
+                {instructionsDirty ? 'Cancel' : 'Done'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <p className="project-instructions">{project.instructions?.trim()}</p>
+        )}
+      </Sheet>
+
+      <Sheet open={renaming !== undefined} onClose={() => setRenaming(undefined)}>
+        <SheetHead title="Rename project" onClose={() => setRenaming(undefined)} />
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void saveName();
+          }}
+        >
+          <div className="field">
+            <label htmlFor="project-name">Name</label>
+            <input
+              id="project-name"
+              autoFocus
+              maxLength={80}
+              value={renaming ?? ''}
+              onChange={(e) => setRenaming(e.target.value)}
+            />
+          </div>
+          <div className="sheet-actions">
+            <button type="submit" className="btn primary" disabled={!renaming?.trim()}>
+              Save
+            </button>
+          </div>
+        </form>
+      </Sheet>
+
+      {/* What this project works in: its repositories, whose files ride into
+          every chat here. */}
+      <Sheet open={showRepos} onClose={() => setShowRepos(false)}>
+        <SheetHead title="Repositories" onClose={() => setShowRepos(false)} />
+        {repoCount ? (
+          <div className="repo-chips">
+            {project.repoIds.map((id) => (
+              <span key={id} className={`repo-chip${isRemoteRepoId(id) ? '' : ' local'}`}>
+                {isGithubRepoId(id) ? (
+                  <GithubGlyph />
+                ) : isRemoteRepoId(id) ? (
+                  <BranchGlyph />
+                ) : (
+                  <FolderGlyph />
+                )}
+                <span className="repo-chip-name">{repoLabel(id)}</span>
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="hint">No repositories yet.</p>
+        )}
+        {repoCount ? (
+          <button
+            type="button"
+            className="project-memory-link press-fb press-fb--row"
+            onClick={() => {
+              setShowRepos(false);
+              openProjectMemory(project.id);
+            }}
+          >
+            <MemoryGlyph />
+            <span className="grow">What the agent has learned here</span>
+            <span className="disclosure-chevron" aria-hidden="true" />
+          </button>
+        ) : null}
+        {mayEdit ? (
+          <div className="sheet-actions">
+            <button
+              className="btn primary"
+              onClick={() => {
+                setShowRepos(false);
+                setManageRepos(true);
+              }}
+            >
+              Manage
+            </button>
+          </div>
+        ) : null}
+      </Sheet>
 
       {/* Manage repositories: the same combined list the chat header offers. */}
       <ManageReposSheet
@@ -743,11 +736,31 @@ function ManageReposSheet({
   );
 }
 
-function ComposeIcon() {
+function MoreIcon() {
   return (
     <Icon size={22}>
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
+      <circle cx="5.5" cy="12" r="0.9" />
+      <circle cx="12" cy="12" r="0.9" />
+      <circle cx="18.5" cy="12" r="0.9" />
+    </Icon>
+  );
+}
+
+/** A chat, drawn as a speech bubble, the mark before each chat row. */
+function ChatGlyph() {
+  return (
+    <Icon size={18}>
+      <path d="M12 4.5c4.4 0 8 2.9 8 6.6s-3.6 6.6-8 6.6c-.9 0-1.8-.1-2.6-.3L5 19.5l1.2-3.3C4.8 15 4 13.2 4 11.1 4 7.4 7.6 4.5 12 4.5Z" />
+    </Icon>
+  );
+}
+
+/** Two sheets, one over the other: the files a project works in. */
+function FilesGlyph() {
+  return (
+    <Icon size={18}>
+      <path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4H15l4 4v8.5a1.5 1.5 0 0 1-1.5 1.5H16" />
+      <path d="M5 9.5A1.5 1.5 0 0 1 6.5 8H11l4 4v6.5a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 5 18.5Z" />
     </Icon>
   );
 }
