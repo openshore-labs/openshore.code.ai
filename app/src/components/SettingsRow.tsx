@@ -1,8 +1,9 @@
 // The settings ledger: a serif group head over one inset card, rows divided
-// by hairlines. A row is a label, an optional one-line sub, an optional value
-// on the right, and either a chevron (it opens a sheet) or a trailing control
-// (a switch, a segmented control). Type carries the hierarchy; there are no
-// icons on purpose. Groups arrive staggered on the house tokens.
+// by hairlines. A row is a label, an optional sub (it wraps, so a sentence is
+// never cut off), an optional value on the right, and either a chevron (it
+// opens a sheet) or a trailing control (a switch, a segmented control). Type
+// carries the hierarchy; there are no icons on purpose. Groups arrive
+// staggered on the house tokens.
 import type { CSSProperties, ReactNode } from 'react';
 
 export function SettingsGroup({
@@ -40,7 +41,7 @@ export function SettingsGroup({
 export function SettingsRow({
   label,
   sub,
-  subWrap,
+  subTruncate,
   value,
   trailing,
   onClick,
@@ -49,9 +50,9 @@ export function SettingsRow({
 }: {
   label: string;
   sub?: ReactNode;
-  /** Let the sub wrap to two lines instead of truncating on one. For a full
-   *  sentence byline, where the whole line matters. */
-  subWrap?: boolean;
+  /** Hold the sub to one line with an ellipsis. Only for a single value
+   *  (an email address), never a sentence: a sentence always wraps. */
+  subTruncate?: boolean;
   /** A short value on the right (the current choice, a count). */
   value?: ReactNode;
   /** A control on the right instead of a chevron. */
@@ -65,7 +66,9 @@ export function SettingsRow({
     <>
       <span className="settings-row-text">
         <span className="settings-row-label">{label}</span>
-        {sub ? <span className={`settings-row-sub${subWrap ? ' wrap' : ''}`}>{sub}</span> : null}
+        {sub ? (
+          <span className={`settings-row-sub${subTruncate ? ' truncate' : ''}`}>{sub}</span>
+        ) : null}
       </span>
       {value !== undefined ? <span className="settings-row-value">{value}</span> : null}
       {trailing ?? (onClick ? <span className="disclosure-chevron" aria-hidden="true" /> : null)}

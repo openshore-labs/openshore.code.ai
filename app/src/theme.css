@@ -11688,7 +11688,9 @@ button.vault-tag {
   font-size: var(--text-5);
   font-weight: var(--weight-medium);
   color: var(--ink-soft);
-  margin: 0 0 8px 4px;
+  /* On the rows' text line (the row's 14px inset), so a head, its intro and
+     its rows share one left edge. */
+  margin: 0 0 8px 14px;
 }
 .settings-card {
   background: var(--bg-raised);
@@ -11772,17 +11774,16 @@ button.settings-row:active {
 .settings-row-sub {
   font-size: var(--text-2);
   color: var(--muted);
+  line-height: 1.4;
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+/* A single value (an email address) holds one line rather than wrapping.
+   A sentence never truncates. */
+.settings-row-sub.truncate {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-/* A full-sentence byline reads on two lines rather than truncating. */
-.settings-row-sub.wrap {
-  white-space: normal;
-  overflow: visible;
-  text-overflow: clip;
-  line-height: 1.4;
-  text-wrap: pretty;
 }
 
 /* The compact install/uninstall control that sits on the right of a Harbor
@@ -11926,6 +11927,15 @@ button.settings-row:active {
 }
 .settings-row .segmented {
   flex-shrink: 0;
+}
+/* A segmented control sits beside a short label, and drops under a long one
+   on a narrow screen rather than squeezing the words into a column. */
+.settings-row:has(> .segmented) {
+  flex-wrap: wrap;
+  row-gap: 10px;
+}
+.settings-row:has(> .segmented) .settings-row-text {
+  flex: 1 1 auto;
 }
 .settings-progress {
   display: inline-flex;
@@ -14025,7 +14035,7 @@ button.settings-row:active {
   padding: 2px 7px;
 }
 .settings-group-intro {
-  margin: -2px 4px 8px;
+  margin: -2px 14px 8px;
   font-size: var(--text-2);
   color: var(--muted);
   line-height: 1.4;
@@ -14380,8 +14390,10 @@ button.settings-row:active {
    accent. The ring fades in on the tokens; the tile answers the press. */
 .icon-picker {
   display: flex;
-  gap: 14px;
-  padding: 4px 16px 14px;
+  gap: 12px;
+  /* The tile's own 5px ring room, taken off the row's 14px inset, so the
+     tiles start on the rows' text line. */
+  padding: 0 9px 14px;
 }
 .icon-choice {
   display: flex;
@@ -14396,22 +14408,35 @@ button.settings-row:active {
   cursor: pointer;
 }
 .icon-choice .icon-choice-tile {
+  position: relative;
   display: grid;
   place-items: center;
-  padding: 4px;
+  padding: 5px;
 }
 .icon-choice .brand-mark {
-  border-radius: var(--radius);
-  box-shadow:
-    0 0 0 2px var(--bg),
-    0 0 0 4px transparent;
-  transition: box-shadow var(--dur-3) var(--ease-standard);
+  display: block;
+}
+/* Every tile carries the same hairline, drawn on the tile's own corner, so
+   the white one reads on a light card whichever icon the app wears now. */
+.icon-picker .icon-choice .brand-mark .bm-tile {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+/* The ring is its own layer on the tile's wrapper, faded on opacity. A
+   box-shadow animated on the SVG itself left stale arcs on WebKit. */
+.icon-choice .icon-choice-tile::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-lg);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-3) var(--ease-standard);
 }
 .icon-choice[aria-checked='true'] {
   color: var(--ink);
 }
-.icon-choice[aria-checked='true'] .brand-mark {
-  box-shadow:
-    0 0 0 2px var(--bg),
-    0 0 0 4px var(--accent);
+.icon-choice[aria-checked='true'] .icon-choice-tile::after {
+  opacity: 1;
 }

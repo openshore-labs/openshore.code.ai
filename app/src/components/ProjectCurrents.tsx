@@ -70,7 +70,6 @@ function AgenticRow({
     <SettingsRow
       label={info.label}
       sub={currentStateLine(id, view, currentProbes)}
-      subWrap
       value={
         <span className="settings-row-actions">
           {!info.available && state !== 'on' ? (
@@ -124,7 +123,6 @@ function HarnessRow({
     <SettingsRow
       label={info.label}
       sub={harnessCurrentStateLine(id, view, harnessCurrentProbes)}
-      subWrap
       value={
         <span className="settings-row-actions">
           {state === 'ready' ? <span className="pill ok">{currentStateLabel(state)}</span> : null}

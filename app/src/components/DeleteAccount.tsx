@@ -136,7 +136,6 @@ export function DeleteAccount({
           <SettingsRow
             label={DELETE_ACCOUNT_COPY.row}
             sub={DELETE_ACCOUNT_COPY.rowSub}
-            subWrap
             danger
             onClick={ask}
           />

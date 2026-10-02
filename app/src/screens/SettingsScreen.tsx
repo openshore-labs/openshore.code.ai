@@ -489,7 +489,7 @@ export function SettingsScreen() {
         <SettingsGroup title="Account" index={group++}>
           <SettingsRow
             label={accountLabel}
-            subWrap={!signedIn}
+            subTruncate={signedIn}
             sub={
               signedIn
                 ? email
@@ -499,7 +499,7 @@ export function SettingsScreen() {
             onClick={configured ? () => setSheet('account') : undefined}
           />
           {PAY_GATES_ENABLED ? (
-            <SettingsRow label="OpenShore Plus" subWrap sub={personalSub} value={personalValue} />
+            <SettingsRow label="OpenShore Plus" sub={personalSub} value={personalValue} />
           ) : null}
           {PAY_GATES_ENABLED && configured && appleDevice ? (
             <SettingsRow
@@ -592,7 +592,6 @@ export function SettingsScreen() {
           />
           <SettingsRow
             label="App icon"
-            subWrap
             sub={appIconNote(isPhone() ? 'phone' : isDesktop() ? 'desktop' : 'web')}
           />
           <div className="icon-picker" role="radiogroup" aria-label="App icon">
@@ -705,7 +704,6 @@ export function SettingsScreen() {
           {isDesktop() || settings.daemon ? (
             <SettingsRow
               label="Opening web pages"
-              subWrap
               sub={webFetchLine(settings.webFetchMode ?? 'ask')}
               trailing={
                 <div className="segmented" role="tablist" aria-label="Opening web pages">
@@ -775,7 +773,6 @@ export function SettingsScreen() {
           <SettingsGroup title="Launch with Codemagic" index={group++}>
             <SettingsRow
               label="Codemagic Access"
-              subWrap
               sub={
                 codemagicAccessIsOn
                   ? 'On. The model can trigger builds, read the failure, fix, and rebuild until it goes green, then tell you where it landed.'
@@ -804,7 +801,6 @@ export function SettingsScreen() {
           <SettingsGroup title="Stack Health" index={group++}>
             <SettingsRow
               label="Who can see Stack Health"
-              subWrap
               sub={
                 shVisibility === 'admins'
                   ? 'Admins only. Stack Health shows this computer. The numbers are always its total, never broken down by person.'
@@ -846,7 +842,6 @@ export function SettingsScreen() {
         <SettingsGroup title="Harbor" index={group++}>
           <SettingsRow
             label="Let models search the web"
-            subWrap
             // Crew routines follow this switch and only search (founder,
             // 2026-10-01); every other web tool stays off for them.
             sub={`${
@@ -884,13 +879,11 @@ export function SettingsScreen() {
               <SettingsRow
                 label="Harbor Lite"
                 sub={HARBOR_MINI_BYLINE}
-                subWrap
                 trailing={<HarborInstallButton bundled={HARBOR_MINI_BUNDLED} />}
               />
               <SettingsRow
                 label="Harbor"
                 sub={HARBOR_BYLINE}
-                subWrap
                 trailing={
                   <HarborInstallButton
                     ready={settings.harborReady}
@@ -907,7 +900,6 @@ export function SettingsScreen() {
             <SettingsRow
               label="DeepBlue"
               sub={HARBOR_MASTER_BYLINE}
-              subWrap
               trailing={
                 <HarborInstallButton
                   ready={harborMasterPresent}
@@ -1085,7 +1077,6 @@ export function SettingsScreen() {
               <SettingsRow
                 label="Notifications are off for OpenShore"
                 sub="Turn them on in iOS Settings, then OpenShore, then Notifications."
-                subWrap
               />
             ) : null}
             <SettingsRow
@@ -1121,7 +1112,6 @@ export function SettingsScreen() {
                 label={WAYFINDING[id].label}
                 // Memory now says what it gates: the vault in chats too.
                 sub={id === 'memory' ? VAULT_MEMORY_SUB : WAYFINDING[id].sub}
-                subWrap
                 trailing={
                   <Switch
                     checked={wayfindingOn(settings, id)}
@@ -1141,7 +1131,6 @@ export function SettingsScreen() {
                   <SettingsRow
                     label={VAULT_SETTINGS_ROWS.context}
                     sub={memoryOn ? vaultNotesInChatsSub(PACK_BY_CLASS) : VAULT_SWITCH_MEMORY_OFF}
-                    subWrap
                     trailing={
                       <Switch
                         checked={vaultDevice.context.on}
@@ -1157,7 +1146,6 @@ export function SettingsScreen() {
                   <SettingsRow
                     label={VAULT_SETTINGS_ROWS.handoff}
                     sub={memoryOn ? VAULT_HANDOFF_SUB : VAULT_SWITCH_MEMORY_OFF}
-                    subWrap
                     trailing={
                       <Switch
                         checked={vaultDevice.handoff.on}
@@ -1197,7 +1185,6 @@ export function SettingsScreen() {
                 ? 'Web research through Perplexity, on your Perplexity key. Spent with your approval, on every search.'
                 : 'Web research through Perplexity. Connect a Perplexity key in Cloud Connections to turn this on.'
             }
-            subWrap
             trailing={
               <Switch
                 checked={settings.perplexityResearch === true}
