@@ -5573,6 +5573,12 @@ button.vault-tag {
    --kb-inset; a sheet stands on it too: the scrim reserves the keyboard's
    slot at its foot and the sheet fits the room left above it, so a short
    sheet's field (a connect sheet's key, a rename) stays in view. */
+/* A room under an open keyboard gains the keyboard's height at its foot, so a
+   field near the bottom has room to rise above the keyboard (lib/
+   revealField.ts). No transition: the room never animates its layout. */
+:root.kb-open .screen > .screen-inner {
+  padding-bottom: calc(var(--kb-inset, 0px) + 24px);
+}
 :root.kb-open .sheet-scrim {
   padding-bottom: var(--kb-inset, 0px);
 }

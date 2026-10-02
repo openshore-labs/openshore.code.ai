@@ -26,6 +26,7 @@ import { useRoomGhost } from './hooks/useRoomGhost.js';
 import { useScrollMemory } from './hooks/useScrollMemory.js';
 import { useDrawerGesture } from './hooks/useDrawerGesture.js';
 import { useKeyboardInset } from './hooks/useKeyboardInset.js';
+import { revealDelta, scrollParentOf } from './lib/revealField.js';
 import { drawerExitMs, drawerWidth } from './lib/motion.js';
 
 // Every room but the chat is its own chunk (review 9: the whole app used to
@@ -217,9 +218,9 @@ export function App() {
 
   // Keep a focused field above the on-screen keyboard. Our scroll lives in a
   // nested container, so Safari does not reliably lift the field itself. On a
-  // touch device, once the keyboard has settled, center any focused field that
-  // the keyboard is actually covering (fields already in view are left alone,
-  // so a sticky composer is untouched).
+  // touch device, once the keyboard has settled, lift any focused field the
+  // keyboard is actually covering to just above it (fields already in view
+  // are left alone, so a sticky composer is untouched).
   //
   // Coverage used to be measured from visualViewport shrinking for the
   // keyboard, but capacitor.config.ts now sets Keyboard.resize: 'none' (see
@@ -230,40 +231,66 @@ export function App() {
   useEffect(() => {
     if (!window.matchMedia('(pointer: coarse)').matches) return;
     let keyboardHeight = 0;
-    const showHandle = Keyboard.addListener('keyboardWillShow', (info) => {
-      keyboardHeight = info.keyboardHeight;
+    // The plugin is native only; where it is missing (the web) the inset
+    // still comes from useKeyboardInset's kb-open reading, so a failed
+    // registration must never stop the focus listener below.
+    const listen = (event: 'keyboardWillShow' | 'keyboardWillHide', run: (h: number) => void) => {
+      try {
+        return Keyboard.addListener(event as 'keyboardWillShow', (info) =>
+          run(info?.keyboardHeight ?? 0),
+        ).catch(() => undefined);
+      } catch {
+        return Promise.resolve(undefined);
+      }
+    };
+    const showHandle = listen('keyboardWillShow', (h) => {
+      keyboardHeight = h;
     });
-    const hideHandle = Keyboard.addListener('keyboardWillHide', () => {
+    const hideHandle = listen('keyboardWillHide', () => {
       keyboardHeight = 0;
     });
+    const FIELD = 'input, textarea, [contenteditable="true"]';
+    const reveal = (el: Element | null) => {
+      if (!(el instanceof HTMLElement) || !el.matches(FIELD)) return;
+      // The composer is already anchored just above the keyboard, so it never
+      // needs recentering. Scrolling it forces a large page scroll that drags
+      // the pinned empty-state greeting upward, which is exactly the jump we
+      // do not want. Leave it be.
+      if (el.closest('.composer')) return;
+      // The inset the composer lifts by (useKeyboardInset corrects a stray
+      // zero, a bare bar, and a hardware keyboard); the raw reading only when
+      // that hook has not lifted.
+      const root = document.documentElement;
+      const inset = root.classList.contains('kb-open')
+        ? parseFloat(getComputedStyle(root).getPropertyValue('--kb-inset')) || keyboardHeight
+        : keyboardHeight;
+      // Rest the field just above the keyboard (founder, 2026-10-02), not
+      // centred: its own scroller moves, and the kb-open padding gives a field
+      // near the foot of a room the room to rise.
+      const delta = revealDelta(el.getBoundingClientRect().bottom, window.innerHeight, inset);
+      if (delta > 0) scrollParentOf(el).scrollBy({ top: delta, behavior: 'smooth' });
+    };
     const onFocusIn = (e: FocusEvent) => {
       const el = e.target;
-      if (!(el instanceof HTMLElement)) return;
-      if (!el.matches('input, textarea, [contenteditable="true"]')) return;
-      // The composer is already anchored just above the keyboard, so it never
-      // needs recentering. Scrolling it to center forces a large page scroll
-      // that drags the pinned empty-state greeting upward, which is exactly the
-      // jump we do not want. Leave it be.
-      if (el.closest('.composer')) return;
-      window.setTimeout(() => {
-        // The inset the composer lifts by (useKeyboardInset corrects a stray
-        // zero, a bare bar, and a hardware keyboard); the raw reading only
-        // when that hook has not lifted.
-        const root = document.documentElement;
-        const inset = root.classList.contains('kb-open')
-          ? parseFloat(getComputedStyle(root).getPropertyValue('--kb-inset')) || keyboardHeight
-          : keyboardHeight;
-        const visibleBottom = window.innerHeight - inset;
-        if (el.getBoundingClientRect().bottom > visibleBottom - 24) {
-          el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        }
-      }, 300);
+      window.setTimeout(() => reveal(el instanceof Element ? el : null), 300);
     };
     document.addEventListener('focusin', onFocusIn);
+    // A field focused before the keyboard finished rising (a Connect tap that
+    // autofocuses its key field) saw no inset at focus time: reveal it again
+    // the moment the shell marks the keyboard open, on the next frame so the
+    // kb-open padding has landed.
+    let wasOpen = document.documentElement.classList.contains('kb-open');
+    const watcher = new MutationObserver(() => {
+      const open = document.documentElement.classList.contains('kb-open');
+      if (open && !wasOpen) requestAnimationFrame(() => reveal(document.activeElement));
+      wasOpen = open;
+    });
+    watcher.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
     return () => {
       document.removeEventListener('focusin', onFocusIn);
-      void showHandle.then((h) => h.remove());
-      void hideHandle.then((h) => h.remove());
+      watcher.disconnect();
+      void showHandle.then((h) => h?.remove());
+      void hideHandle.then((h) => h?.remove());
     };
   }, []);
 
