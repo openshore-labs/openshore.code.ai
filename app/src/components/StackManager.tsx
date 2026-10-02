@@ -41,7 +41,7 @@ import {
 import { EFFORTS, effortLabel, DEFAULT_EFFORT, type Effort } from '../lib/effort.js';
 import { Sheet } from './Sheet.js';
 import { SheetHead } from './SheetHead.js';
-import { Icon } from './Icon.js';
+import { SettingsGroup, SettingsRow } from './SettingsRow.js';
 
 /** A cloud provider's selectable models for the bench. Claude comes from the
  *  full client lineup (claudeModels.ts, the same list and tiers the chat sheet
@@ -164,7 +164,6 @@ export function StackManager() {
   // Placement sheet: configuring a bench model into the stack, or editing one.
   const [config, setConfig] = useState<{ ref: StackModelRef; placement: Placement } | undefined>();
   const [pickReasoning, setPickReasoning] = useState(false);
-  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [menuKey, setMenuKey] = useState<string | undefined>();
   const [cloudPick, setCloudPick] = useState<Record<string, string>>({});
 
@@ -280,256 +279,170 @@ export function StackManager() {
   return (
     <div className="screen">
       <BackBar title="Stack" />
-      <div className="screen-inner">
-        <div className="stack-head">
-          <h1>Stack</h1>
-          {admin ? (
-            <div className="stack-add">
-              <button
-                className="stack-add-pill press-fb"
-                aria-label="Connect a model"
-                title="Connect a model"
-                onClick={() => setByomOpen(true)}
-              >
-                Connect a model
-                <span className="stack-add-plus" aria-hidden="true">
-                  +
-                </span>
-              </button>
-              <button
-                className="stack-byom-info"
-                aria-label="About connecting your own model"
-                title="About connecting your own model"
-                onClick={() => setByomInfoOpen(true)}
-              >
-                i
-              </button>
-            </div>
-          ) : null}
-        </div>
+      <div className="screen-inner settings stack-manager">
+        <h1>Stack</h1>
         <p className="lead">
           {admin
-            ? 'Your Reasoning LLM plans every task and routes it to the specialist whose category fits. When nothing is placed for a task, the Reasoning LLM does it itself.'
-            : 'Your admin sets the shared stack for the company. It plans every task and routes it to the specialist whose category fits. You can talk with your admin about changing it.'}
+            ? 'One model runs the show and hands each task to the specialist that fits. Anything without a specialist, it does itself.'
+            : 'Your admin sets the shared stack for the company. You can talk with your admin about changing it.'}
         </p>
 
-        {/* The cover: the reach the stack runs under, and the Reasoning LLM
-            anchor that runs the show. The reach button opens the status picker;
-            each status runs its own stack, used automatically when the device
-            is in it. */}
-        <header className="stack-cover">
-          <div className="stack-cover-wash" aria-hidden="true" />
-          <div className="stack-cover-body">
-            <button
-              className="stack-reach press-fb"
-              onClick={() => setProfileMenuOpen(true)}
-              aria-label={`Editing the ${PROFILES[editProfile].label} stack. Tap to switch status.`}
-            >
-              <span
-                className="profile-select-dot"
-                style={{ background: PROFILES[editProfile].dot }}
-              />
-              <span className="stack-reach-label">{PROFILES[editProfile].label}</span>
-              {editProfile === profile ? <span className="profile-now">now</span> : null}
-              <span className="stack-reach-caret" aria-hidden="true">
-                <Icon size={16}>
-                  <path d="M6 9l6 6 6-6" />
-                </Icon>
-              </span>
-            </button>
-
-            <span className="stack-kicker">Runs the show</span>
-            <div className="stack-anchor-row">
-              <h2 className="stack-anchor-name">{refName(reasoning)}</h2>
-              <KindChip refModel={reasoning} />
-            </div>
-            <p className="stack-cover-blurb">{PROFILES[editProfile].blurb}</p>
-
-            {admin ? (
-              <button
-                className="btn ghost stack-anchor-change"
-                onClick={() => setPickReasoning(true)}
-              >
-                Change the Reasoning LLM
-              </button>
-            ) : (
-              <span className="stack-anchor-lock" aria-label="Admin owned">
-                <span className="lock-glyph" aria-hidden="true" />
-                <span>Set by your admin</span>
-              </span>
-            )}
-          </div>
-        </header>
-
-        {/* Image reading (Vision): two slots, a local model and a cloud model,
-            each with its own effort. The cloud slot defaults to the most
-            capable cloud model until changed. This is the position a picture
-            (a screenshot, a photo, a video's frames) routes to, and workflows
-            that run through the stack inherit it. */}
-        {/* Specialists: the models the Reasoning LLM routes work to. Image
-            reading is one of them, with its own two-slot local/cloud fallback;
-            the rest are the placed specialists, each tagged by category. */}
-        <section className="stack-section">
-          <span className="stack-eyebrow">Specialists</span>
-          <p className="stack-section-note">
-            The Reasoning LLM routes each task to the specialist whose category fits. Anything with
-            no specialist placed, it handles itself.
-          </p>
-
-          <div className="card spec-card">
-            <div className="spec-card-head">
-              <span className="spec-tag">Image reading</span>
-            </div>
-            <div className="sub">
-              Where screenshots, photos, and video frames are read. A local model runs on your
-              device or your own server; the cloud model reads anything it cannot.
-            </div>
-            {(['local', 'cloud'] as const).map((slot) => {
-              const line = slotLine(slot);
+        {/* Which status's stack is on screen. Each status runs its own stack,
+            used automatically when the device is in it; the one you are in now
+            is marked. */}
+        <div className="stack-status">
+          <div className="segmented" role="tablist" aria-label="Which status's stack">
+            {PROFILE_ORDER.map((id) => {
+              const active = id === editProfile;
               return (
-                <div className="spec-slot" key={slot}>
-                  <div className="grow">
-                    <h3 className="spec-slot-title">{slot === 'local' ? 'On device' : 'Cloud'}</h3>
-                    <div className="sub">
-                      {line.title}
-                      {' · '}
-                      {line.sub}
-                    </div>
-                  </div>
-                  {admin ? (
-                    <button
-                      className="btn ghost"
-                      style={{ padding: '8px 14px' }}
-                      onClick={() => openVisionEdit(slot)}
-                    >
-                      Change
-                    </button>
-                  ) : (
-                    <span className="lock-hint" aria-label="Admin owned">
-                      <span className="lock-glyph" aria-hidden="true" />
-                    </span>
-                  )}
-                </div>
+                <button
+                  key={id}
+                  role="tab"
+                  aria-selected={active}
+                  className={`seg press-fb${active ? ' active' : ''}`}
+                  onClick={() => setEditProfile(id)}
+                >
+                  <span
+                    className="profile-select-dot"
+                    style={{ background: PROFILES[id].dot }}
+                    aria-hidden="true"
+                  />
+                  {PROFILES[id].label}
+                  {id === profile ? <span className="stack-now">now</span> : null}
+                </button>
               );
             })}
           </div>
+          <p className="stack-status-note">
+            {editProfile === profile ? 'You are here now. ' : 'Used when you are '}
+            {editProfile === profile
+              ? PROFILES[editProfile].blurb
+              : `${PROFILES[editProfile].label.toLowerCase()}. ${PROFILES[editProfile].blurb}`}
+          </p>
+        </div>
 
+        <SettingsGroup title="Runs the show" index={0}>
+          <SettingsRow
+            label={refName(reasoning)}
+            sub={admin ? 'Plans every task and routes it.' : 'Set by your admin.'}
+            value={<KindChip refModel={reasoning} />}
+            onClick={admin ? () => setPickReasoning(true) : undefined}
+          />
+        </SettingsGroup>
+
+        {/* Image reading (Vision): two slots, a local model and a cloud model,
+            each with its own effort. The cloud slot defaults to the most
+            capable cloud model until changed. A picture (a screenshot, a
+            photo, a video's frames) routes here. */}
+        <SettingsGroup
+          title="Image reading"
+          intro="Screenshots, photos, and video frames. The local model goes first; the cloud model reads what it cannot."
+          index={1}
+        >
+          {(['local', 'cloud'] as const).map((slot) => {
+            const line = slotLine(slot);
+            return (
+              <SettingsRow
+                key={slot}
+                label={slot === 'local' ? 'On device' : 'Cloud'}
+                sub={`${line.title} · ${line.sub}`}
+                onClick={admin ? () => openVisionEdit(slot) : undefined}
+              />
+            );
+          })}
+        </SettingsGroup>
+
+        {/* Specialists: the models the Reasoning LLM routes work to, each
+            under its category. */}
+        <SettingsGroup title="Specialists" index={2}>
           {nonVisionActive.length === 0 ? (
-            <p className="hint" style={{ marginBottom: 12 }}>
-              No other specialists yet. The Reasoning LLM handles these until you place one.
-            </p>
+            <SettingsRow
+              label="None placed yet"
+              sub={
+                admin
+                  ? 'The Reasoning LLM handles every task until you add one from the bench.'
+                  : 'The Reasoning LLM handles every task.'
+              }
+            />
           ) : (
             nonVisionActive.map((m) => (
-              <div className="card spec-card" key={refKey(m.ref)}>
-                <div className="card-row">
-                  <div className="grow">
-                    <span className="spec-tag">{categoryLabel(m.placement.category)}</span>
-                    <h3>{refName(m.ref)}</h3>
-                    <div className="sub">
-                      {[
-                        m.placement.whenCalled,
-                        m.placement.effort
-                          ? `${effortLabel(m.placement.effort)} effort`
-                          : undefined,
-                      ]
-                        .filter(Boolean)
-                        .join(' · ') || 'Placed'}
-                    </div>
-                  </div>
-                  <KindChip refModel={m.ref} />
-                  {admin ? (
-                    <button
-                      className="icon-btn"
-                      aria-label="Options"
-                      onClick={() => setMenuKey(refKey(m.ref))}
-                    >
-                      {'⋯'}
-                    </button>
-                  ) : (
-                    <span className="lock-hint" aria-label="Admin owned">
-                      <span className="lock-glyph" aria-hidden="true" />
-                    </span>
-                  )}
-                </div>
-              </div>
+              <SettingsRow
+                key={refKey(m.ref)}
+                label={categoryLabel(m.placement.category)}
+                sub={[
+                  refName(m.ref),
+                  m.placement.whenCalled,
+                  m.placement.effort ? `${effortLabel(m.placement.effort)} effort` : undefined,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+                value={<KindChip refModel={m.ref} />}
+                onClick={admin ? () => setMenuKey(refKey(m.ref)) : undefined}
+              />
             ))
           )}
-        </section>
+        </SettingsGroup>
 
         {!admin ? (
-          <p className="hint" style={{ marginTop: 12 }}>
+          <p className="hint" style={{ marginTop: 16 }}>
             The bench and stack controls are managed by your admin. Everything else in OpenShore,
             your chats, projects, and crew, is yours to set up as you like.
           </p>
         ) : (
-          <section className="stack-section">
-            <span className="stack-eyebrow">Bench</span>
-            <p className="stack-section-note">
-              Models you download or connect wait here, ready to place. Teal runs local and private,
-              amber is a cloud model.
-            </p>
-            {bench.length === 0 && cloudBench.length === 0 ? (
-              <p className="hint">
-                Models you get (Harbor, from Settings) or connect (Cloud Connections, or BYOM above)
-                land here, ready to place.
-              </p>
-            ) : (
-              bench.map((ref) => (
-                <div className="card" key={refKey(ref)}>
-                  <div className="card-row">
-                    <div className="grow">
-                      <h3>
-                        {refName(ref)}
-                        {ref.kind === 'byom' && isCurrentBenchId(ref.id) ? (
-                          <>
-                            {' '}
-                            <span className="pill local">
-                              {current && !slotNone(current.bench)
-                                ? current.bench.pill
-                                : 'via current'}
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            {' '}
-                            <KindChip refModel={ref} />
-                          </>
-                        )}
-                      </h3>
-                      <div className="sub">
-                        {ref.kind === 'byom' && isCurrentBenchId(ref.id)
-                          ? `On the bench. Runs on its own computer at ${byomHost(ref.baseUrl)}; your approvals do not reach it.`
-                          : ref.kind === 'byom'
-                            ? `On the bench. ${ref.model} at ${byomHost(ref.baseUrl)}.`
-                            : 'On the bench. Place it to put it to work.'}
-                      </div>
-                    </div>
-                    <button
-                      className="btn ghost"
-                      style={{ padding: '8px 14px' }}
-                      onClick={() => openPlacement(ref, stack.saved[refKey(ref)])}
-                    >
-                      Add to stack
-                    </button>
-                    {ref.kind === 'byom' && !isCurrentBenchId(ref.id) ? (
+          <SettingsGroup
+            title="Bench"
+            intro="Models ready to place. Teal runs local and private; amber is a cloud model."
+            index={3}
+          >
+            {bench.map((ref) => {
+              const viaCurrent = ref.kind === 'byom' && isCurrentBenchId(ref.id);
+              return (
+                <SettingsRow
+                  key={refKey(ref)}
+                  label={refName(ref)}
+                  sub={
+                    viaCurrent
+                      ? `Runs on its own computer at ${byomHost(ref.baseUrl)}; your approvals do not reach it.`
+                      : ref.kind === 'byom'
+                        ? `${ref.model} at ${byomHost(ref.baseUrl)}`
+                        : 'Ready to place.'
+                  }
+                  trailing={
+                    <span className="settings-row-actions">
+                      {viaCurrent ? (
+                        <span className="pill local">
+                          {current && !slotNone(current.bench) ? current.bench.pill : 'via current'}
+                        </span>
+                      ) : (
+                        <KindChip refModel={ref} />
+                      )}
                       <button
-                        className="icon-btn"
-                        aria-label="Options"
-                        onClick={() => setByomMenuId(ref.id)}
+                        type="button"
+                        className="btn ghost press-fb stack-place"
+                        onClick={() => openPlacement(ref, stack.saved[refKey(ref)])}
                       >
-                        {'⋯'}
+                        Add
                       </button>
-                    ) : null}
-                  </div>
-                </div>
-              ))
-            )}
+                      {ref.kind === 'byom' && !viaCurrent ? (
+                        <button
+                          type="button"
+                          className="icon-btn press-fb"
+                          aria-label={`Options for ${refName(ref)}`}
+                          onClick={() => setByomMenuId(ref.id)}
+                        >
+                          {'⋯'}
+                        </button>
+                      ) : null}
+                    </span>
+                  }
+                />
+              );
+            })}
 
             {/* Connected cloud providers: pick a model, then place it.
                 Favorites you pinned in chat surface first, then the rest (for
                 Claude, split into the current lineup and older models). */}
             {cloudBench.map(({ provider, models }) => {
-              // Favorites you pinned in chat, for any connected cloud provider.
               const isFav = (m: BenchModel) =>
                 isPinned(pins, { kind: 'cloud', provider: provider.id, model: m.id });
               const favs = models.filter(isFav);
@@ -547,62 +460,76 @@ export function StackManager() {
                 label: models.find((m) => m.id === picked)?.label ?? picked,
               };
               return (
-                <div className="card" key={`cloud-${provider.id}`}>
-                  <div className="card-row">
-                    <div className="grow">
-                      <h3>
-                        {provider.name} <KindChip refModel={ref} />
-                      </h3>
-                      <div className="field" style={{ margin: '8px 0 0' }}>
-                        <select
-                          className="stack-select"
-                          value={picked}
-                          onChange={(e) =>
-                            setCloudPick({ ...cloudPick, [provider.id]: e.target.value })
-                          }
-                        >
-                          {favs.length ? (
-                            <optgroup label="Favorites">
-                              {favs.map((m) => (
-                                <option key={m.id} value={m.id}>
-                                  {`★ ${m.label}`}
-                                </option>
-                              ))}
-                            </optgroup>
-                          ) : null}
-                          {restPrimary.length ? (
-                            <optgroup label={provider.id === 'anthropic' ? 'Current' : 'Models'}>
-                              {restPrimary.map((m) => (
-                                <option key={m.id} value={m.id}>
-                                  {m.label}
-                                </option>
-                              ))}
-                            </optgroup>
-                          ) : null}
-                          {restMore.length ? (
-                            <optgroup label="More models">
-                              {restMore.map((m) => (
-                                <option key={m.id} value={m.id}>
-                                  {m.label}
-                                </option>
-                              ))}
-                            </optgroup>
-                          ) : null}
-                        </select>
-                      </div>
-                    </div>
-                    <button
-                      className="btn ghost"
-                      style={{ padding: '8px 14px' }}
-                      onClick={() => openPlacement(ref, stack.saved[refKey(ref)])}
+                <SettingsRow
+                  key={`cloud-${provider.id}`}
+                  label={provider.name}
+                  sub={
+                    <select
+                      className="stack-select"
+                      aria-label={`${provider.name} model`}
+                      value={picked}
+                      onChange={(e) =>
+                        setCloudPick({ ...cloudPick, [provider.id]: e.target.value })
+                      }
                     >
-                      Add to stack
-                    </button>
-                  </div>
-                </div>
+                      {favs.length ? (
+                        <optgroup label="Favorites">
+                          {favs.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {`★ ${m.label}`}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ) : null}
+                      {restPrimary.length ? (
+                        <optgroup label={provider.id === 'anthropic' ? 'Current' : 'Models'}>
+                          {restPrimary.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ) : null}
+                      {restMore.length ? (
+                        <optgroup label="More models">
+                          {restMore.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ) : null}
+                    </select>
+                  }
+                  trailing={
+                    <span className="settings-row-actions">
+                      <KindChip refModel={ref} />
+                      <button
+                        type="button"
+                        className="btn ghost press-fb stack-place"
+                        onClick={() => openPlacement(ref, stack.saved[refKey(ref)])}
+                      >
+                        Add
+                      </button>
+                    </span>
+                  }
+                />
               );
             })}
-          </section>
+
+            {bench.length === 0 && cloudBench.length === 0 ? (
+              <SettingsRow
+                label="Nothing waiting"
+                sub="Models you get (Harbor, in Settings) or connect (Cloud Connections, or below) land here."
+              />
+            ) : null}
+            <SettingsRow
+              label="Connect a model"
+              sub="Your own server, or any OpenAI-compatible endpoint."
+              onClick={() => setByomOpen(true)}
+            />
+            <SettingsRow label="How connecting works" onClick={() => setByomInfoOpen(true)} />
+          </SettingsGroup>
         )}
       </div>
 
@@ -636,41 +563,6 @@ export function StackManager() {
               <button className="btn quiet" onClick={() => setMenuKey(undefined)}>
                 Cancel
               </button>
-            </div>
-          </>
-        ) : null}
-      </Sheet>
-
-      {/* Status picker: choose which status's stack to view and edit. The one
-          matching the current status is marked, and is used automatically. */}
-      <Sheet open={profileMenuOpen} onClose={() => setProfileMenuOpen(false)}>
-        {profileMenuOpen ? (
-          <>
-            <SheetHead title="Which status?" onClose={() => setProfileMenuOpen(false)} />
-            <p className="sheet-sub">
-              Each status runs its own stack, used automatically when you are in it. You are{' '}
-              {PROFILES[profile].label} right now.
-            </p>
-            <div className="sheet-actions">
-              {PROFILE_ORDER.map((id) => (
-                <button
-                  key={id}
-                  className={`btn ghost profile-option${id === editProfile ? ' selected' : ''}`}
-                  onClick={() => {
-                    setEditProfile(id);
-                    setProfileMenuOpen(false);
-                  }}
-                >
-                  <span className="profile-select-dot" style={{ background: PROFILES[id].dot }} />
-                  <span className="profile-option-text">
-                    <span className="profile-option-title">
-                      {PROFILES[id].label}
-                      {id === profile ? <span className="profile-now">now</span> : null}
-                    </span>
-                    <span className="profile-option-blurb">{PROFILES[id].blurb}</span>
-                  </span>
-                </button>
-              ))}
             </div>
           </>
         ) : null}
@@ -711,7 +603,7 @@ export function StackManager() {
       </Sheet>
 
       {/* What connecting your own model means: lowers from the top, off the
-          info glyph beside the Connect a model pill. */}
+          "How connecting works" row on the bench. */}
       <Sheet open={byomInfoOpen} onClose={() => setByomInfoOpen(false)} variant="top">
         <h2>Connect your own model</h2>
         <p className="sheet-sub">

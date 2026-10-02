@@ -1215,76 +1215,6 @@ textarea {
   gap: 12px;
 }
 
-/* The Connect a model control: a labelled pill, with a small info glyph
-   hanging off its top-right corner (outside the pill, its own tap target)
-   that opens the explainer sheet. */
-.stack-add {
-  position: relative;
-  flex-shrink: 0;
-}
-
-.stack-add-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 38px;
-  padding: 0 15px;
-  white-space: nowrap;
-  border-radius: 999px;
-  font-family: var(--font-display);
-  font-size: var(--text-4);
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.01em;
-  background: var(--accent-soft);
-  color: var(--accent);
-  border: 1px solid var(--accent);
-  transition:
-    background var(--dur-1) var(--ease-standard),
-    transform var(--press-out);
-}
-
-.stack-add-pill:hover {
-  background: var(--accent-hover);
-}
-
-.stack-add-pill:active {
-  transform: scale(0.94);
-  transition: transform var(--press-in);
-}
-
-.stack-add-plus {
-  font-size: var(--text-6);
-  font-weight: var(--weight-medium);
-  line-height: 1;
-  margin-top: -1px;
-}
-
-.stack-byom-info {
-  position: absolute;
-  top: -7px;
-  right: -7px;
-  width: 20px;
-  height: 20px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  font-family: var(--font-display);
-  font-size: var(--text-2);
-  font-weight: var(--weight-semibold);
-  font-style: italic;
-  line-height: 1;
-  background: var(--bg-raised);
-  color: var(--accent);
-  border: 1px solid var(--accent);
-  box-shadow: 0 1px 3px rgba(var(--shadow-rgb), 0.16);
-  transition: transform var(--press-out);
-}
-
-.stack-byom-info:active {
-  transform: scale(0.88);
-  transition: transform var(--press-in);
-}
-
 /* Status selector on the Stack page: the whole card is a button. A dot leads,
    the status name is large with its byline on its own line beneath, and a caret
    trails. Each status runs its own stack, used automatically for that status. */
@@ -1347,18 +1277,6 @@ textarea {
 }
 .profile-select:active .profile-select-caret {
   transform: translateY(1px);
-}
-
-/* The small chip marking the status the device is actually in right now. */
-.profile-now {
-  font-size: var(--text-1);
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  padding: 2px 7px;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent);
 }
 
 /* Status options in the picker sheet: a dot, the name, and the byline beneath. */
@@ -12621,94 +12539,6 @@ button.settings-row:active {
   }
 }
 
-/* ---------------------------------------------------------------------------
-   The stack room, redesigned as a legible system (founder, 2026-09-15). The
-   Reasoning LLM anchor gets a premium cover carrying the reach it runs under
-   (the same water wash as the project room, so the ink title lands cleanly);
-   the specialists it routes to read as one group tagged by category; the bench
-   holds the reserves. Teal is local and private, amber is cloud, everywhere.
-   Every move is on the tokens and honors the global reduced-motion reset.
-   --------------------------------------------------------------------------- */
-.stack-cover {
-  position: relative;
-  margin: 6px 0 22px;
-  animation: room-in var(--dur-6) var(--ease-arrive) backwards;
-}
-.stack-cover-wash {
-  position: absolute;
-  inset: -18px -20px auto -20px;
-  height: 200px;
-  background: radial-gradient(120% 82% at 18% 0%, var(--accent-soft), transparent 60%);
-  pointer-events: none;
-  z-index: 0;
-}
-.stack-cover-body {
-  position: relative;
-  z-index: 1;
-}
-.stack-reach {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px 6px 10px;
-  border-radius: 999px;
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
-  font-size: var(--text-3);
-  font-weight: var(--weight-semibold);
-  color: var(--ink);
-}
-.stack-reach .profile-select-dot {
-  flex-shrink: 0;
-}
-.stack-reach-caret {
-  display: inline-flex;
-  color: var(--muted);
-}
-.stack-kicker {
-  display: block;
-  margin-top: 14px;
-  font-size: var(--text-2);
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--accent);
-}
-.stack-anchor-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 3px;
-}
-.stack-anchor-name {
-  font-family: var(--font-display);
-  font-size: var(--text-8);
-  font-weight: var(--weight-medium);
-  letter-spacing: -0.016em;
-  line-height: 1.12;
-  margin: 0;
-}
-.stack-cover-blurb {
-  margin: 8px 0 0;
-  font-size: var(--text-4);
-  line-height: 1.45;
-  color: var(--ink-soft);
-  max-width: 48ch;
-}
-.stack-anchor-change {
-  margin-top: 16px;
-}
-.stack-anchor-lock {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 14px;
-  font-size: var(--text-3);
-  color: var(--muted);
-}
-
 /* Location chip: teal local/private, amber cloud/spend. Reads the whole stack's
    posture at a glance. */
 .kind-chip {
@@ -12730,11 +12560,7 @@ button.settings-row:active {
   color: var(--cloud);
 }
 
-/* A stack section (Specialists, Bench): a teal eyebrow, a one-line note, then
-   its cards. */
-.stack-section {
-  margin-bottom: 22px;
-}
+/* A teal uppercase eyebrow over a group (Crew's advisors). */
 .stack-eyebrow {
   display: block;
   font-size: var(--text-2);
@@ -12744,37 +12570,54 @@ button.settings-row:active {
   color: var(--accent);
   margin-bottom: 4px;
 }
-.stack-section-note {
-  margin: 0 0 12px;
-  font-size: var(--text-3);
-  line-height: 1.45;
-  color: var(--muted);
-  max-width: 52ch;
+/* The phone's Stack, in the Settings ledger's shape: a status switch, then
+   one grouped list per part (who runs the show, image reading, the
+   specialists, the bench). The switch fills the width so its three statuses
+   read as equals; the one on screen carries its dot. */
+.stack-status {
+  margin: 4px 0 18px;
 }
-.spec-card .spec-tag {
-  display: inline-block;
+.stack-status .segmented {
+  display: flex;
+  width: 100%;
+}
+.stack-status .seg {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 10px;
+  font-size: var(--text-4);
+}
+.stack-status .profile-select-dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 0;
+  align-self: center;
+}
+.stack-now {
   font-size: var(--text-1);
   font-weight: var(--weight-semibold);
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--accent);
-  margin-bottom: 3px;
+  color: var(--muted);
 }
-.spec-card-head {
-  margin-bottom: 2px;
+.stack-status-note {
+  margin: 8px 14px 0;
+  font-size: var(--text-2);
+  color: var(--muted);
+  line-height: 1.4;
+  text-wrap: pretty;
 }
-.spec-slot {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding-top: 12px;
-  margin-top: 12px;
-  border-top: 1px solid var(--border);
+.stack-place {
+  padding: 7px 14px;
 }
-.spec-slot-title {
+.settings-row .stack-select {
+  margin-top: 6px;
   font-size: var(--text-4);
+  padding: 8px 10px;
 }
-
 /* The connected-cloud model picker, house-styled (was a raw inline select). */
 .stack-select {
   width: 100%;
