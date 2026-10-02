@@ -89,6 +89,19 @@ describe('a proposal in a chat reply', () => {
     expect(add?.hasAttribute('disabled')).toBe(true);
   });
 
+  it('reads a fence missing its prefix as the card', async () => {
+    const bare = ['```writingVoice', VOICE, '```'].join('\n');
+    await dom.render(createElement(Markdown, { text: bare, actions: true }));
+    expect(dom.buttons()).toEqual(['Add to Settings', 'Copy']);
+  });
+
+  it('shows nothing for a finished, empty proposal (the 2026-10-02 misfire)', async () => {
+    const empty = ['Here.', '', '```writingVoice', '```', '', 'Add it?'].join('\n');
+    await dom.render(createElement(Markdown, { text: empty, actions: true }));
+    expect(dom.buttons()).toEqual([]);
+    expect(dom.text()).not.toContain('writingvoice');
+  });
+
   it('is plain code anywhere but a chat reply', async () => {
     await dom.render(createElement(Markdown, { text: REPLY }));
     expect(dom.buttons()).not.toContain('Add to Settings');

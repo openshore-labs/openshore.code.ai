@@ -26,7 +26,7 @@ vi.mock('../src/lib/llamaPlugin.js', () => ({
 
 const { StackDriver } = await import('../src/drivers/stackDriver.js');
 const { packSeatFor } = await import('../src/lib/vaultSeat.js');
-const { APP_ACTIONS, appActionKeyFromClass, appActionsContract, parseAppActions } =
+const { APP_ACTIONS, appActionKeyFromClass, appActionsAsked, appActionsContract, parseAppActions } =
   await import('../src/lib/appActions.js');
 const { WRITING_VOICE_CHAT_PROMPT, WRITING_VOICE_MAX, cleanWritingVoice, writingVoiceLine } =
   await import('../src/lib/writingVoice.js');
@@ -60,18 +60,40 @@ describe('your writing voice', () => {
   });
 });
 
+const SHAPING = `${WRITING_VOICE_CHAT_PROMPT}a ship's log.`;
+// The founder's screenshot (2026-10-02): an ordinary writing request in a chat
+// that never asked for a setting.
+const BRIEFING = 'Write me a 1-page briefing on the expedition and team. Make it exciting';
+
 describe('the app actions contract', () => {
   it('reaches a local seat and never a seat that leaves this network', () => {
-    const local = appActionsContract(false);
+    const local = appActionsContract(false, [SHAPING]);
     expect(local).toContain('openshore-set:<key>');
     expect(local).toContain('writingVoice');
-    expect(local).toMatch(/add it to their Settings or would rather copy it in themselves/);
-    expect(appActionsContract(true)).toBeUndefined();
+    expect(local).toMatch(/added to their Settings or would rather copy it in themselves/);
+    expect(appActionsContract(true, [SHAPING])).toBeUndefined();
   });
 
-  it('names every key on the list', () => {
-    const local = appActionsContract(false)!;
-    for (const key of Object.keys(APP_ACTIONS)) expect(local).toContain(`${key}:`);
+  it('rides only once the chat asks for a setting, and stays for the rest of it', () => {
+    expect(appActionsContract(false, [])).toBeUndefined();
+    expect(appActionsContract(false, ['When was the first expedition?', BRIEFING])).toBeUndefined();
+    expect(appActionsAsked([BRIEFING])).toEqual([]);
+    expect(appActionsAsked(['Help me with my writing voice'])).toEqual(['writingVoice']);
+    // A follow-up in the shaping chat keeps it.
+    expect(appActionsContract(false, [SHAPING, 'Shorter, please.'])).toContain('writingVoice');
+  });
+
+  it('shows a full example, never an empty fence, and says when not to use it', () => {
+    const local = appActionsContract(false, [SHAPING])!;
+    expect(local).not.toMatch(/```openshore-set:writingVoice[^\n]*\n```/);
+    expect(local).toMatch(/```openshore-set:writingVoice\n<the full value/);
+    expect(local).toMatch(/For any other request, just answer it/);
+  });
+
+  it('names every key asked for', () => {
+    const asked = Object.keys(APP_ACTIONS).map((k) => k);
+    const local = appActionsContract(false, [SHAPING])!;
+    for (const key of asked) expect(local).toContain(`${key}:`);
   });
 });
 
@@ -96,6 +118,10 @@ describe('a proposal', () => {
     expect(appActionKeyFromClass('hljs language-openshore-set:writingVoice')).toBe('writingVoice');
     expect(appActionKeyFromClass('language-openshore-set:apiKey')).toBeUndefined();
     expect(appActionKeyFromClass('language-ts')).toBeUndefined();
+    // A small model that drops the prefix still gets the card.
+    expect(appActionKeyFromClass('language-writingVoice')).toBe('writingVoice');
+    expect(appActionKeyFromClass('language-writingvoice')).toBe('writingVoice');
+    expect(appActionKeyFromClass('language-apiKey')).toBeUndefined();
   });
 
   it('applies only a listed key with a value it takes', () => {
@@ -133,7 +159,11 @@ const smallOnThisComputer: StackModelRef = { ...onThisComputer, id: 'b3', model:
 const gpt: StackModelRef = { kind: 'cloud', provider: 'openai', model: 'gpt-x', label: 'GPT' };
 const anchorOnly = (reasoning: StackModelRef): AppStack => ({ reasoning, active: [], saved: {} });
 
-async function systemFor(ref: StackModelRef, writingVoice?: string): Promise<string> {
+async function systemFor(
+  ref: StackModelRef,
+  writingVoice?: string,
+  ask = SHAPING,
+): Promise<string> {
   h.stream.mockReset();
   h.stream.mockImplementation(async () => oai('Hi.'));
   const driver = new StackDriver(anchorOnly(ref), 'offshore', { writingVoice }, undefined, {
@@ -141,7 +171,7 @@ async function systemFor(ref: StackModelRef, writingVoice?: string): Promise<str
   });
   const events: DriverEvent[] = [];
   driver.subscribe((e) => events.push(e));
-  driver.send('hello');
+  driver.send(ask);
   await vi.waitFor(() => expect(events.some((e) => e.type === 'task-done')).toBe(true));
   driver.dispose();
   const body = JSON.parse((h.stream.mock.calls[0]![1] as RequestInit).body as string) as {
@@ -153,16 +183,22 @@ async function systemFor(ref: StackModelRef, writingVoice?: string): Promise<str
 describe('the Stack', () => {
   beforeEach(() => h.stream.mockReset());
 
-  it('gives a model on this computer the voice and the contract', async () => {
+  it('gives a model on this computer the voice and, in the shaping chat, the contract', async () => {
     const system = await systemFor(onThisComputer, VOICE);
     expect(system).toContain(VOICE);
-    expect(system).toContain(appActionsContract(false)!);
+    expect(system).toContain(appActionsContract(false, [SHAPING])!);
   });
 
-  it('gives a small local seat both too: each is a few lines', async () => {
+  it('gives a small local seat both too in the shaping chat: each is a few lines', async () => {
     const system = await systemFor(smallOnThisComputer, VOICE);
     expect(system).toContain(VOICE);
     expect(system).toContain('openshore-set:<key>');
+  });
+
+  it('gives a small local seat no contract for an ordinary writing request', async () => {
+    const system = await systemFor(smallOnThisComputer, VOICE, BRIEFING);
+    expect(system).toContain(VOICE);
+    expect(system).not.toContain('openshore-set');
   });
 
   it('gives a cloud seat the voice and never the contract', async () => {

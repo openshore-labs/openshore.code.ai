@@ -157,13 +157,17 @@ export class OnDeviceDriver implements ChatDriver {
     // The vault pack is a separate, last part, so fitDeviceHistory counts it
     // against the 4,096-token window with the rest of the prompt.
     // The person's writing voice, and the app actions contract (this phone is
-    // always local, lib/appActions.ts), before the pack.
+    // always local, lib/appActions.ts; only once this chat asks for a
+    // setting), before the pack.
     return [
       base,
       readChatContext(this.extraSystem),
       walk,
       writingVoiceLine(this.writingVoice),
-      appActionsContract(false),
+      appActionsContract(
+        false,
+        this.history.filter((m) => m.role === 'user').map((m) => m.content),
+      ),
       cot,
       this.packText,
     ]

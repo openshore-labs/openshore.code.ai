@@ -62,10 +62,14 @@ export function Markdown({
                 ? appActionKeyFromClass((children.props as { className?: string }).className)
                 : undefined;
             if (key) {
+              const value = extractText(children).replace(/\n$/, '');
+              // A finished proposal with nothing in it is a small model's
+              // misfire, not an offer: show nothing rather than an empty box.
+              if (!streaming && !value.trim()) return null;
               return (
                 <AppActionCard
                   actionKey={key}
-                  value={extractText(children).replace(/\n$/, '')}
+                  value={value}
                   streaming={streaming}
                 />
               );
