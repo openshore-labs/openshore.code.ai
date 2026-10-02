@@ -1,29 +1,33 @@
 // Slack Water (Creative Studio, 2026-10-01; the third pass 2026-10-02;
 // docs/slack-water.md): the one-time transition from the setup walk's chat to
-// the main chat page when the person chooses to just chat. The water is clear:
-// where they tapped the surface dips, then a train of ripples crosses the app
-// itself. Each of the room's blocks heaves as a crest passes under it, the old
-// chat thins away beneath the water, the main chat page goes in underneath
-// (with one soft tick), and the greeting surfaces while the last rings settle.
+// the main chat page when the person chooses to just chat. Where they tapped
+// the surface dips, then a train of ripples crosses the app itself.
 //
-// The rings are drawn by the GPU (lib/rippleGl.ts) as light and shade only, so
-// the app shows through as the floor of the pond; a device that cannot draw
-// them gets the CSS crests instead. The room moves on transform and opacity
-// only, through the Web Animations API on the tokens' clocks and curves. The
-// overlay takes taps while the old chat thins, so it cannot take one, and lets
-// them through once the new page is in. Reduced motion never mounts it (the
-// store lands on the greeting directly).
+// On a phone or the desktop the shell pictures the screen first, and that
+// picture becomes the floor of the pond: the rings bend every word and button
+// in it the way real water does (lib/rippleGl.ts), the main chat page goes in
+// underneath at once (with one soft tick), and the calm water behind the train
+// opens onto it while the greeting lands. Where nothing can picture the screen
+// (the plain web), the room's own blocks heave as each crest passes and the
+// old chat thins away before the swap; a device whose GPU cannot draw the
+// water gets the CSS crests. The room moves on transform and opacity only,
+// through the Web Animations API on the tokens' clocks and curves. Reduced
+// motion never mounts it (the store lands on the greeting directly).
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useApp } from '../state/store.js';
 import { hapticTick } from '../lib/haptics.js';
 import { durationMs, easing } from '../lib/motion.js';
 import { createRippleRenderer, waterInk } from '../lib/rippleGl.js';
+import { captureScreen } from '../lib/screenSnapshot.js';
 import {
+  REFRACT_PX,
+  SNAPSHOT_WAIT_MS,
   HEAVE_KEYS,
   HEAVE_MS,
   SWAP_BACKSTOP_MS,
   WATER_MS,
   heaveFor,
+  revealRadius,
   slackWaterGeometry,
   thinAtMs,
   waterFrame,
@@ -99,6 +103,10 @@ export function SlackWater() {
   const thinning = useRef<Animation[]>([]);
   const heaves = useRef(new Map<Element, Animation>());
   const ticked = useRef(0);
+  // The play whose water bends a picture of the screen: the page under it is
+  // already the new one, so it needs no surfacing, and the overlay holds taps
+  // until the water is still, since the picture is not what is underneath.
+  const floored = useRef<number>();
   const seq = water?.seq;
   const phase = water?.phase;
 
@@ -109,53 +117,84 @@ export function SlackWater() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seq]);
 
-  // The play: the water from the tap, the room's heave, the old chat thinning,
-  // the swap once it is gone, and still water at the end. Every step is on a
-  // clock, so a backgrounded WebView only ever runs late, never strands anyone.
+  // The play. First the shell pictures the screen (a few dozen milliseconds
+  // on a phone); with that picture as the pond's floor, the old chat is swapped
+  // for the new page underneath at once, the rings bend the picture as they
+  // cross it, and the calm water behind them opens onto the page. Without a
+  // picture (the plain web, a slow or failed snapshot) the room's own blocks
+  // heave instead and the old chat thins away before the swap. Every step is
+  // on a clock, so a backgrounded WebView only ever runs late, never strands
+  // anyone.
   useEffect(() => {
     const w = useApp.getState().slackWater;
     if (seq === undefined || !w || !geometry) return;
     const reach = geometry.reach;
-    const start = performance.now();
     const renderer = canvas.current
-      ? createRippleRenderer(canvas.current, { x: w.x, y: w.y, reach, ink: waterInk() })
+      ? createRippleRenderer(canvas.current, {
+          x: w.x,
+          y: w.y,
+          reach,
+          ink: waterInk(),
+          refract: REFRACT_PX,
+        })
       : null;
     if (!renderer) setCrestsFor(seq);
     let raf = 0;
-    const draw = () => {
-      const t = performance.now() - start;
-      renderer?.draw(waterFrame(t, reach));
-      if (t < WATER_MS) raf = requestAnimationFrame(draw);
-    };
-    if (renderer) raf = requestAnimationFrame(draw);
+    let live = true;
+    const timers: number[] = [];
 
-    const room = chatRoom();
-    heaves.current = room ? heaveRoom(room, w.x, w.y, reach) : new Map();
-    const thinAt = thinAtMs(reach);
-    const thinMs = durationMs('--dur-7', 520);
-    const glide = easing('--ease-glide', 'cubic-bezier(0.3, 0.1, 0.15, 1)');
-    thinning.current = [];
-    for (const el of room?.querySelectorAll<HTMLElement>('.chat-body, .topbar-title') ?? []) {
-      if (typeof el.animate !== 'function') continue;
-      thinning.current.push(
-        el.animate([{ opacity: 1 }, { opacity: 0 }], {
-          duration: thinMs,
-          delay: thinAt,
-          easing: glide,
-          fill: 'forwards',
-        }),
+    const play = (floor: HTMLImageElement | undefined) => {
+      if (!live) return;
+      const start = performance.now();
+      const glass = Boolean(renderer && floor);
+      const draw = () => {
+        const t = performance.now() - start;
+        renderer?.draw(waterFrame(t, reach), glass ? revealRadius(t, reach) : 0);
+        if (t < WATER_MS) raf = requestAnimationFrame(draw);
+      };
+      if (glass && renderer && floor) {
+        floored.current = seq;
+        renderer.setFloor(floor);
+        // The picture covers the screen in this very frame, so the new page
+        // can go in under it now.
+        draw();
+        covered();
+      } else {
+        if (renderer) raf = requestAnimationFrame(draw);
+        const room = chatRoom();
+        heaves.current = room ? heaveRoom(room, w.x, w.y, reach) : new Map();
+        const thinAt = thinAtMs(reach);
+        const thinMs = durationMs('--dur-7', 520);
+        const glide = easing('--ease-glide', 'cubic-bezier(0.3, 0.1, 0.15, 1)');
+        thinning.current = [];
+        for (const el of room?.querySelectorAll<HTMLElement>('.chat-body, .topbar-title') ?? []) {
+          if (typeof el.animate !== 'function') continue;
+          thinning.current.push(
+            el.animate([{ opacity: 1 }, { opacity: 0 }], {
+              duration: thinMs,
+              delay: thinAt,
+              easing: glide,
+              fill: 'forwards',
+            }),
+          );
+        }
+        timers.push(window.setTimeout(covered, Math.min(SWAP_BACKSTOP_MS, thinAt + thinMs + 20)));
+      }
+      // Still water: the overlay goes. The swap first, in case its clock was late.
+      timers.push(
+        window.setTimeout(() => {
+          covered();
+          end();
+        }, WATER_MS),
       );
-    }
-    const swap = window.setTimeout(covered, Math.min(SWAP_BACKSTOP_MS, thinAt + thinMs + 20));
-    // Still water: the overlay goes. The swap first, in case its clock was late.
-    const done = window.setTimeout(() => {
-      covered();
-      end();
-    }, WATER_MS);
+    };
+    // The picture is taken before anything is drawn, so it is the app alone.
+    if (renderer) void captureScreen(SNAPSHOT_WAIT_MS).then(play);
+    else play(undefined);
     return () => {
+      live = false;
       cancelAnimationFrame(raf);
-      window.clearTimeout(swap);
-      window.clearTimeout(done);
+      for (const t of timers) window.clearTimeout(t);
       renderer?.dispose();
     };
     // One play per sequence; the store's actions are stable.
@@ -174,6 +213,7 @@ export function SlackWater() {
     }
     for (const a of thinning.current) a.cancel();
     thinning.current = [];
+    if (floored.current === seq) return;
     const room = chatRoom();
     if (!room) return;
     const composer = room.querySelector('.composer');
@@ -216,7 +256,7 @@ export function SlackWater() {
   return (
     <div
       key={water.seq}
-      className={`slack-water${water.phase === 'clearing' ? ' clearing' : ''}`}
+      className={`slack-water${water.phase === 'clearing' && floored.current !== water.seq ? ' clearing' : ''}`}
       style={style}
       aria-hidden="true"
     >

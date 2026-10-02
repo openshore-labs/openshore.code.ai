@@ -11,8 +11,11 @@ import {
   HEAVE_KEYS,
   SWAP_BACKSTOP_MS,
   WATER_AFTER_LINE_MS,
+  SETTLE_MS,
+  SNAPSHOT_WAIT_MS,
   WATER_MS,
   frontRadius,
+  revealRadius,
   heaveFor,
   reachMs,
   thinAtMs,
@@ -89,5 +92,38 @@ describe('Slack Water, the look', () => {
     expect(css).toMatch(
       /@media \(prefers-reduced-motion: reduce\) \{\s*\.slack-water \{\s*display: none;/,
     );
+  });
+});
+
+describe('Slack Water, the floor (the app bent by the water)', () => {
+  const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), 'utf8');
+
+  it('opens the calm water behind the rings, past the far corner before it settles', () => {
+    for (const r of [400, 577, 1000, 1400]) {
+      expect(revealRadius(DIP_MS, r)).toBe(0);
+      expect(revealRadius(WATER_MS - SETTLE_MS - 1, r)).toBeGreaterThan(r);
+      // Always behind the leading crest, so the old chat is bent before it goes.
+      for (const t of [300, 700, 1100, 1500]) {
+        expect(revealRadius(t, r)).toBeLessThan(frontRadius(t, r));
+      }
+    }
+  });
+
+  it('waits only a moment for the picture, then plays without it', () => {
+    expect(SNAPSHOT_WAIT_MS).toBeLessThanOrEqual(500);
+    const comp = read('src', 'components', 'SlackWater.tsx');
+    expect(comp).toMatch(/captureScreen\(SNAPSHOT_WAIT_MS\)/);
+    expect(comp).toMatch(/renderer\.setFloor\(floor\)/);
+  });
+
+  it('pictures the screen natively on iOS and the desktop, through a guarded channel', () => {
+    const swift = read('ios', 'App', 'App', 'SceneDelegate.swift');
+    expect(swift).toMatch(/registerPluginInstance\(OscodeSnapshotPlugin\(\)\)/);
+    expect(swift).toMatch(/jsName = "OscodeSnapshot"/);
+    expect(swift).toMatch(/takeSnapshot\(with:/);
+    expect(read('electron', 'main.ts')).toMatch(/guarded\('osc:snapshot', async \(\) =>/);
+    expect(read('electron', 'preload.cjs')).toContain("snapshot: invoke('osc:snapshot')");
+    // The picture is never stored or sent: no fetch, no storage near it.
+    expect(read('src', 'lib', 'screenSnapshot.ts')).not.toMatch(/fetch\(|storeSet|localStorage/);
   });
 });

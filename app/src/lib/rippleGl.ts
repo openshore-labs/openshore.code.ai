@@ -1,9 +1,11 @@
 // Slack Water's surface (components/SlackWater.tsx, docs/slack-water.md): one
-// full-screen fragment shader draws clear water over the whole app. Where the
-// water is still it draws nothing; where a ring passes it draws only light and
-// shade, the way a pond's surface lights and shades the floor under it, so the
-// app reads as the bottom of the pond. lib/slackWater.ts decides where the water
-// is at each moment (waterFrame); this file only draws it on the GPU.
+// full-screen fragment shader draws the pond over the whole app. Given a
+// picture of the screen (lib/screenSnapshot.ts), that picture is the pond's
+// floor: each ring bends it the way real water shifts what lies under it, and
+// the calm water behind the train opens onto the page live underneath. With
+// no picture it draws only light and shade over the app. lib/slackWater.ts
+// decides where the water is at each moment (waterFrame, revealRadius); this
+// file only draws it on the GPU.
 
 import type { WaterFrame } from './slackWater.js';
 
@@ -17,7 +19,11 @@ export interface WaterInk {
 }
 
 export interface RippleRenderer {
-  draw(frame: WaterFrame): void;
+  /** Lay the screen's picture as the pond's floor (lib/screenSnapshot.ts). */
+  setFloor(image: TexImageSource): void;
+  /** One frame; `reveal` is the radius of calm water that opens onto the page
+   *  underneath, when there is a floor. */
+  draw(frame: WaterFrame, reveal?: number): void;
   dispose(): void;
 }
 
@@ -54,6 +60,11 @@ uniform vec3 u_glint;
 uniform float u_glintA;
 uniform vec3 u_shade;
 uniform float u_shadeA;
+uniform sampler2D u_floor;
+uniform float u_hasFloor;
+uniform vec2 u_view;
+uniform float u_reveal;
+uniform float u_refract;
 
 const float TAU = 6.2831853;
 
@@ -86,9 +97,20 @@ void main() {
   float lit = clamp(max(sheen, 0.0) * 2.2 + glint * 1.4, 0.0, 1.0);
   float dark = clamp(-sheen * 2.6, 0.0, 1.0);
   float body = clamp(envelope(u_front - r) * u_amp * 1.6 + u_dip * exp(-(r * r) / 2400.0), 0.0, 1.0);
-  float a = lit * u_glintA + dark * u_shadeA + body * 0.14;
-  vec3 c = lit * u_glintA * u_glint + (dark * u_shadeA + body * 0.14) * u_shade;
-  gl_FragColor = vec4(c, min(a, 1.0));
+  // The floor: the old chat's picture, shifted under each crest by the
+  // surface's slope, gone inside the calm water that opens behind the train.
+  vec4 floorC = vec4(0.0);
+  if (u_hasFloor > 0.5) {
+    float keep = smoothstep(u_reveal - 28.0, u_reveal + 28.0, r);
+    vec2 bent = p - dir * slope * u_refract;
+    vec3 seen = texture2D(u_floor, clamp(bent / u_view, 0.0, 1.0)).rgb;
+    floorC = vec4(seen * keep, keep);
+  }
+  // Over a floor the bending carries the rings, so the shade steps back.
+  float shadeA = clamp((dark * u_shadeA + body * 0.14) * mix(1.0, 0.5, u_hasFloor), 0.0, 1.0);
+  vec4 c = vec4(u_shade * shadeA, shadeA) + floorC * (1.0 - shadeA);
+  float glintA = clamp(lit * u_glintA, 0.0, 1.0);
+  gl_FragColor = vec4(u_glint * glintA, glintA) + c * (1.0 - glintA);
 }
 `;
 
@@ -109,7 +131,7 @@ function compile(gl: WebGLRenderingContext, type: number, src: string): WebGLSha
  *  the caller falls back to the CSS crests. */
 export function createRippleRenderer(
   canvas: HTMLCanvasElement,
-  opts: { x: number; y: number; reach: number; ink: WaterInk },
+  opts: { x: number; y: number; reach: number; ink: WaterInk; refract: number },
 ): RippleRenderer | null {
   let gl: WebGLRenderingContext | null = null;
   try {
@@ -160,7 +182,14 @@ export function createRippleRenderer(
     phase: u('u_phase'),
     amp: u('u_amp'),
     dip: u('u_dip'),
+    hasFloor: u('u_hasFloor'),
+    reveal: u('u_reveal'),
   };
+  gl.uniform2f(u('u_view'), Math.max(1, window.innerWidth), Math.max(1, window.innerHeight));
+  gl.uniform1f(u('u_refract'), opts.refract);
+  gl.uniform1i(u('u_floor'), 0);
+  gl.uniform1f(at.hasFloor, 0);
+  let floor: WebGLTexture | null = null;
   gl.uniform2f(u('u_size'), w, h);
   gl.uniform1f(u('u_px'), w / Math.max(1, window.innerWidth));
   gl.uniform2f(u('u_origin'), opts.x, opts.y);
@@ -174,7 +203,20 @@ export function createRippleRenderer(
 
   let gone = false;
   return {
-    draw(f) {
+    setFloor(image) {
+      if (gone || !gl || gl.isContextLost()) return;
+      floor = gl.createTexture();
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, floor);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, image);
+      gl.uniform1f(at.hasFloor, 1);
+    },
+    draw(f, reveal = 0) {
       if (gone || !gl || gl.isContextLost()) return;
       gl.uniform1f(at.front, f.front);
       gl.uniform1f(at.lambda, f.lambda);
@@ -182,12 +224,14 @@ export function createRippleRenderer(
       gl.uniform1f(at.phase, f.phase);
       gl.uniform1f(at.amp, f.amp);
       gl.uniform1f(at.dip, f.dip);
+      gl.uniform1f(at.reveal, Math.min(reveal, 1e6));
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     },
     dispose() {
       if (gone || !gl) return;
       gone = true;
+      if (floor) gl.deleteTexture(floor);
       gl.deleteBuffer(buffer);
       gl.deleteProgram(program);
       gl.deleteShader(vs);

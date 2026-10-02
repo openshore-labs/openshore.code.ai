@@ -160,3 +160,25 @@ export const HEAVE_KEYS: ReadonlyArray<{ at: number; push: number; stretch: numb
 export function thinAtMs(R: number): number {
   return reachMs(THIN_AT_REACH * R, R);
 }
+
+// ---- The floor (the third pass, refined 2026-10-02). Where the shell can
+// picture the screen (iOS, the desktop; lib/screenSnapshot.ts), the water
+// bends the app itself: the picture of the old chat is the pond's floor, each
+// ring refracts it the way real water shifts what lies under it, and the calm
+// water behind the train opens onto the main chat page, live underneath.
+
+/** How long the water waits for the picture before it plays without one. */
+export const SNAPSHOT_WAIT_MS = 450;
+/** How far a crest's slope shifts the floor under it, in CSS pixels. */
+export const REFRACT_PX = 11;
+/** The calm water opens this far behind the leading crest, in wavelengths of
+ *  the train, so the new page arrives once the rings have passed over it. */
+export const REVEAL_LAG = 0.35;
+
+/** The radius inside which the old chat's picture is gone and the new page
+ *  shows through, at time t; past the far corner by the end of the play. */
+export function revealRadius(t: number, R: number): number {
+  if (t >= WATER_MS - SETTLE_MS) return Number.POSITIVE_INFINITY;
+  const f = waterFrame(t, R);
+  return Math.max(0, f.front - REVEAL_LAG * f.train);
+}

@@ -1212,6 +1212,14 @@ guarded('osc:routineRun', (id: unknown) => host.routineRun(str(id, 'id')));
 guarded('osc:webFetchMode', (mode: unknown) =>
   host.webFetchMode(mode === 'allow' || mode === 'off' ? mode : 'ask'),
 );
+// Slack Water's floor (src/lib/screenSnapshot.ts): one picture of this
+// window's page, so the onboarding ripple can bend the app's own content.
+// Held in the renderer's memory for that one transition; never written.
+guarded('osc:snapshot', async () => {
+  if (!win || win.isDestroyed()) return null;
+  const image = await win.webContents.capturePage();
+  return image.isEmpty() ? null : `data:image/jpeg;base64,${image.toJPEG(85).toString('base64')}`;
+});
 guarded('osc:routinesWebSearch', (allowed: unknown) => host.routinesWebSearch(allowed === true));
 guarded('osc:routineStop', (id: unknown) => host.routineStop(str(id, 'id')));
 guarded('osc:routineNote', (runId: unknown) => host.routineNote(str(runId, 'runId')));

@@ -1,5 +1,6 @@
 import UIKit
 import Capacitor
+import WebKit
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
@@ -39,5 +40,51 @@ class ShellViewController: CAPBridgeViewController {
         super.capacitorDidLoad()
         webView?.backgroundColor = Self.ground
         webView?.scrollView.backgroundColor = Self.ground
+        bridge?.registerPluginInstance(OscodeSnapshotPlugin())
+    }
+}
+
+/// Slack Water's floor (app/src/lib/screenSnapshot.ts, docs/slack-water.md):
+/// one picture of the web view as it is on screen, so the ripple that carries
+/// a new person from the setup walk to the main chat page can bend the app's
+/// own words and buttons the way a pond bends what lies under it. The picture
+/// is held in memory for that one transition and never saved or sent anywhere.
+@objc(OscodeSnapshotPlugin)
+public class OscodeSnapshotPlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "OscodeSnapshotPlugin"
+    public let jsName = "OscodeSnapshot"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "capture", returnType: CAPPluginReturnPromise),
+    ]
+
+    @objc func capture(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard let web = self.bridge?.webView else {
+                call.reject("No web view to picture.")
+                return
+            }
+            let config = WKSnapshotConfiguration()
+            config.afterScreenUpdates = false
+            web.takeSnapshot(with: config) { image, _ in
+                guard let image = image else {
+                    call.reject("The web view could not be pictured.")
+                    return
+                }
+                // Twice the point size at most: the water blurs the floor's
+                // finest detail anyway, and a smaller picture crosses the
+                // bridge and decodes faster.
+                let format = UIGraphicsImageRendererFormat()
+                format.scale = min(2, image.scale)
+                format.opaque = true
+                let scaled = UIGraphicsImageRenderer(size: image.size, format: format).image { _ in
+                    image.draw(in: CGRect(origin: .zero, size: image.size))
+                }
+                guard let jpeg = scaled.jpegData(compressionQuality: 0.85) else {
+                    call.reject("The picture could not be encoded.")
+                    return
+                }
+                call.resolve(["dataUrl": "data:image/jpeg;base64," + jpeg.base64EncodedString()])
+            }
+        }
     }
 }

@@ -501,6 +501,8 @@ export interface OscodeBridge {
   routineStop(id: string): Promise<{ stopped: boolean }>;
   routinesWebSearch(allowed: boolean): Promise<{ webSearch: boolean }>;
   webFetchMode?(mode: 'ask' | 'allow' | 'off'): Promise<{ webFetch: 'ask' | 'allow' | 'off' }>;
+  /** One picture of this window's page, as a JPEG data URL (Slack Water's floor). */
+  snapshot?(): Promise<string | null>;
   routineNote(runId: string): Promise<{ path: string; markdown: string } | null>;
 
   // Agentic Currents: what this computer can host (a Hermes home present, a

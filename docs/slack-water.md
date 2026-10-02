@@ -140,3 +140,19 @@ transparent and like the app itself is the flowing ripples in the pond."
 - The choreography is pure and tested (`app/src/lib/slackWater.ts`,
   `app/test/slackWater.test.ts`); a device whose GPU cannot draw the water gets
   the CSS crests over the same heave and swap.
+
+### Refined the same day: the app bent by the water
+
+The founder, with a screen recording of real pond ripples: "make all the words
+and content in the app move with the waves like it would look in real life
+with whatever is on the water's floor." A page cannot read its own pixels, so
+the shell pictures the screen first: WebKit's snapshot on iOS
+(`OscodeSnapshotPlugin` in `ios/App/App/SceneDelegate.swift`), `capturePage` on
+the desktop (`osc:snapshot`), read by `app/src/lib/screenSnapshot.ts` within
+`SNAPSHOT_WAIT_MS`. That picture becomes the pond's floor. The main chat page
+goes in underneath at once, and every ring bends the picture by its slope
+(`REFRACT_PX`), so the words and buttons wobble and break the way they would
+under real water. The calm water behind the train (`revealRadius`) opens onto
+the page live underneath, and the greeting lands there. The picture lives in
+memory for that one play and is never saved or sent. The plain web, or a
+snapshot that is slow or fails, plays the block heave instead.
