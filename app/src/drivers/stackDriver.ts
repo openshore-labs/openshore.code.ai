@@ -739,6 +739,11 @@ export class StackDriver implements ChatDriver {
     });
   }
 
+  /** Every turn the person typed in this chat, oldest first. */
+  private userTurns(): string[] {
+    return this.history.filter((m) => m.role === 'user').map((m) => m.content);
+  }
+
   /** The live question, for Harbor Lite's per-turn fact lookup. */
   private lastUserText(): string {
     for (let i = this.history.length - 1; i >= 0; i--) {
@@ -818,8 +823,9 @@ export class StackDriver implements ChatDriver {
     const voice = writingVoiceLine(this.context.writingVoice);
     if (voice) standards.push(voice);
     // App actions: only a seat whose requests stay on this network is told it
-    // may propose a settings change (lib/appActions.ts).
-    const actions = appActionsContract(this.leaves(ref));
+    // may propose a settings change, and only once this chat asks for one
+    // (lib/appActions.ts).
+    const actions = appActionsContract(this.leaves(ref), this.userTurns());
     if (actions) standards.push(actions);
     // Codemagic Access is on: tell the model it can drive App Launch builds. The
     // tool is offered on every network model (Anthropic native tool use, and
