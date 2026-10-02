@@ -121,3 +121,28 @@ describe('project room, redesigned as a workspace', () => {
     expect(THEME).toContain('.repo-chip');
   });
 });
+
+// The Projects list, in the shape of the Claude app's (founder, 2026-10-02):
+// flat rows with a quiet line that keeps "when" whole while "what" truncates,
+// and a floating dock (search, New project) that cross-fades, never snaps.
+describe('projects list', () => {
+  it('the quiet line says what the project is for, else where it lives', async () => {
+    const { projectLine } = await import('../src/screens/ProjectsScreen.js');
+    const base = { id: 'p', name: 'P', repoIds: [], createdAt: new Date().toISOString() };
+    expect(projectLine(base, base.createdAt)).toEqual({ what: 'Private', when: 'just now' });
+    expect(projectLine({ ...base, shared: true }, base.createdAt).what).toBe(
+      'Shared with your team',
+    );
+    expect(projectLine({ ...base, instructions: '  Essays.\nMore.' }, base.createdAt).what).toBe(
+      'Essays.',
+    );
+  });
+
+  it('the dock layers cross-fade on transform and opacity, and the time never truncates', () => {
+    expect(THEME).toMatch(
+      /\.projects-dock-idle,\s*\.projects-dock-search \{[^}]*grid-area: 1 \/ 1/,
+    );
+    expect(THEME).toMatch(/\.project-row-when \{[^}]*flex-shrink: 0/);
+    expect(src('screens/ProjectsScreen.tsx')).toContain('<Sheet open={creating}');
+  });
+});

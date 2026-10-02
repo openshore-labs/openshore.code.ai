@@ -1,122 +1,271 @@
-// Projects: the buckets that hold your work. A project keeps its chats and
-// their context together, carries standing instructions into every chat, and
-// can share repositories with other projects. Create one to start saving
-// chats; tap a project to open its own room (chats, instructions, repos, and,
-// for a company account, who on the team may read, write, or edit it).
-import { useMemo, useState } from 'react';
+// Projects: the buckets that hold your work, in the shape of the Claude app's
+// project list. One flat list sorted by recency, each row a small tile, the
+// name, and a quiet line under it (what the project is for, or whether it
+// stays on this device, then when it last moved). A round search button and
+// a dark "New project" pill float at the foot of the room; search turns the
+// dock into one field, and New project opens a sheet with the name and what
+// the project is for (its standing instructions). Tap a row to open the
+// project's own room (chats, instructions, repos, and, for a company account,
+// who on the team may read, write, or edit it). The active project, where new
+// chats are saved, carries the same inset accent edge as the active chat.
+import { useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useApp } from '../state/store.js';
+import type { Project } from '../state/types.js';
 import { BackBar } from '../components/BackBar.js';
+import { Sheet } from '../components/Sheet.js';
+import { SheetHead } from '../components/SheetHead.js';
+import { Icon } from '../components/Icon.js';
 import { captureTitleHero } from '../lib/heroTitle.js';
+import { relativeTime } from './ChatsScreen.js';
+
+/** The quiet line under a project's name: what it is for when it says, else
+ *  where it lives, then when it last moved. Two halves, so a long "what"
+ *  truncates and the "when" always shows. */
+export function projectLine(p: Project, lastAt: string): { what: string; when: string } {
+  const about = p.instructions?.trim().split('\n')[0]?.trim();
+  return {
+    what: about || (p.shared ? 'Shared with your team' : 'Private'),
+    when: relativeTime(lastAt),
+  };
+}
 
 export function ProjectsScreen() {
-  const { settings, conversations, order, createProject, openProject, showToast } = useApp();
+  const { settings, conversations, order, createProject, updateProject, openProject, showToast } =
+    useApp();
 
-  const projects = settings.projects ?? [];
+  const projects = useMemo(() => settings.projects ?? [], [settings.projects]);
   const activeId = settings.activeProjectId ?? projects[0]?.id;
 
-  // Live chat counts per project, so a list card reads as a workspace (its
-  // work and its context) rather than a name and a note.
-  const chatCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
+  // When each project last moved: its newest chat, else the day it was made.
+  const lastAt = useMemo(() => {
+    const at: Record<string, string> = {};
+    for (const p of projects) at[p.id] = p.createdAt;
     for (const id of order) {
-      const pid = conversations[id]?.projectId;
-      if (pid) counts[pid] = (counts[pid] ?? 0) + 1;
+      const c = conversations[id];
+      const pid = c?.projectId;
+      if (pid && at[pid] !== undefined && c.updatedAt > at[pid]) at[pid] = c.updatedAt;
     }
-    return counts;
-  }, [order, conversations]);
+    return at;
+  }, [projects, order, conversations]);
 
+  const [searching, setSearching] = useState(false);
+  const [query, setQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  const q = query.trim().toLowerCase();
+
+  const rows = useMemo(() => {
+    const sorted = [...projects].sort((a, b) =>
+      (lastAt[b.id] ?? '').localeCompare(lastAt[a.id] ?? ''),
+    );
+    if (!q) return sorted;
+    return sorted.filter(
+      (p) => p.name.toLowerCase().includes(q) || (p.instructions ?? '').toLowerCase().includes(q),
+    );
+  }, [projects, lastAt, q]);
+
+  const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
+  const [newAbout, setNewAbout] = useState('');
 
   const create = async () => {
     const name = newName.trim();
     if (!name) return;
     const id = await createProject(name);
+    const about = newAbout.trim();
+    if (about) await updateProject(id, { instructions: about });
+    setCreating(false);
     setNewName('');
+    setNewAbout('');
     showToast(`${name} is your active project.`);
     openProject(id);
   };
 
-  /** The counts line under a project's name: what work and context it holds. */
-  const counts = (chatCount: number, repoCount: number): string => {
-    const parts = [`${chatCount} ${chatCount === 1 ? 'chat' : 'chats'}`];
-    if (repoCount) parts.push(`${repoCount} ${repoCount === 1 ? 'repository' : 'repositories'}`);
-    return parts.join(' · ');
+  const openSearch = () => {
+    setSearching(true);
+    // Focus inside the tap, so the phone raises the keyboard.
+    searchRef.current?.focus();
+  };
+  const closeSearch = () => {
+    setSearching(false);
+    setQuery('');
+    searchRef.current?.blur();
   };
 
   return (
-    <div className="screen">
+    <div className="screen projects-screen">
       <BackBar title="Projects" />
-      <div className="screen-inner">
-        <h1>Projects</h1>
-        <p className="lead">
-          A project keeps its chats and their context together. Standing instructions ride into
-          every chat in the project, and repositories can be shared across projects.
-        </p>
-
-        <div className="card">
-          <h3>New project</h3>
-          <div className="field" style={{ marginTop: 10 }}>
-            <input
-              aria-label="Project name"
-              placeholder="e.g. Homepage, Thesis, Weekend hacks"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && void create()}
-            />
-          </div>
-          <button
-            className="btn primary"
-            style={{ width: '100%' }}
-            disabled={!newName.trim()}
-            onClick={() => void create()}
-          >
-            Create project
-          </button>
-        </div>
-
+      <div className="screen-inner projects">
         {projects.length === 0 ? (
-          <p className="hint" style={{ marginTop: 14 }}>
-            No projects yet. Create one above, then every new chat is saved inside it.
-          </p>
+          <div className="projects-empty">
+            <p className="projects-empty-title">No projects yet</p>
+            <p className="projects-empty-sub">
+              A project keeps its chats and their context together. What it is for rides into every
+              chat in it.
+            </p>
+          </div>
+        ) : rows.length === 0 ? (
+          <p className="projects-empty-sub projects-no-match">No project matches that.</p>
         ) : (
-          projects.map((p) => (
-            <button
-              type="button"
-              className="card press-fb press-fb--row"
-              key={p.id}
-              style={{ width: '100%', textAlign: 'left', display: 'block' }}
-              onClick={(e) => {
-                // Hand the tapped name to the detail room, so it flies up into
-                // the room's large title (a shared-element move).
-                captureTitleHero(e.currentTarget.querySelector('.project-card-name'));
-                openProject(p.id);
-              }}
-            >
-              <div className="card-row">
-                <div className="grow">
-                  <h3>
-                    <span className="project-card-name">{p.name}</span>
-                    {p.id === activeId ? (
-                      <span className="pill local" style={{ marginLeft: 8 }}>
-                        active
-                      </span>
-                    ) : null}
-                  </h3>
-                  <div className="sub">{counts(chatCounts[p.id] ?? 0, p.repoIds.length)}</div>
-                  {p.instructions?.trim() ? (
-                    <div className="project-card-note">{p.instructions.trim()}</div>
-                  ) : null}
-                </div>
-                <span
-                  className="disclosure-chevron"
-                  aria-hidden="true"
-                  style={{ alignSelf: 'center' }}
-                />
-              </div>
-            </button>
-          ))
+          <div className="project-list">
+            {rows.map((p, i) => (
+              <button
+                type="button"
+                key={p.id}
+                className={`project-row press-fb press-fb--row${p.id === activeId ? ' active' : ''}`}
+                style={{ '--i': Math.min(i, 8) } as CSSProperties}
+                onClick={(e) => {
+                  // Hand the tapped name to the detail room, so it flies up into
+                  // the room's large title (a shared-element move).
+                  captureTitleHero(e.currentTarget.querySelector('.project-row-name'));
+                  openProject(p.id);
+                }}
+              >
+                <span className="project-row-tile" aria-hidden="true">
+                  <ProjectGlyph />
+                </span>
+                <span className="project-row-text">
+                  <span className="project-row-name">{p.name}</span>
+                  <span className="project-row-sub">
+                    {p.id === activeId ? <span className="visually-hidden">Active. </span> : null}
+                    <ProjectLine line={projectLine(p, lastAt[p.id] ?? p.createdAt)} />
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
         )}
       </div>
+
+      <div className={`projects-dock${searching ? ' searching' : ''}`}>
+        <div className="projects-dock-idle" aria-hidden={searching}>
+          {projects.length ? (
+            <button
+              type="button"
+              className="projects-dock-round press-fb"
+              aria-label="Search projects"
+              tabIndex={searching ? -1 : 0}
+              onClick={openSearch}
+            >
+              <SearchIcon />
+            </button>
+          ) : (
+            <span />
+          )}
+          <button
+            type="button"
+            className="projects-dock-new press-fb"
+            tabIndex={searching ? -1 : 0}
+            onClick={() => setCreating(true)}
+          >
+            <Icon size={18}>
+              <path d="M12 5v14M5 12h14" />
+            </Icon>
+            New project
+          </button>
+        </div>
+        <div className="projects-dock-search" aria-hidden={!searching}>
+          <label className="projects-dock-field">
+            <SearchIcon />
+            <input
+              ref={searchRef}
+              type="search"
+              value={query}
+              placeholder="Search projects"
+              aria-label="Search projects"
+              tabIndex={searching ? 0 : -1}
+              enterKeyHint="search"
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  closeSearch();
+                }
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className="projects-dock-round press-fb"
+            aria-label="Close search"
+            tabIndex={searching ? 0 : -1}
+            onClick={closeSearch}
+          >
+            <Icon size={16}>
+              <path d="M6 6l12 12M18 6 6 18" />
+            </Icon>
+          </button>
+        </div>
+      </div>
+
+      <Sheet open={creating} onClose={() => setCreating(false)}>
+        <SheetHead title="New project" onClose={() => setCreating(false)} />
+        <form
+          className="project-new"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void create();
+          }}
+        >
+          <div className="field">
+            <label htmlFor="project-new-name">What are you working on?</label>
+            <input
+              id="project-new-name"
+              autoFocus
+              maxLength={80}
+              placeholder="Name your project"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="project-new-about">What are you trying to achieve?</label>
+            <textarea
+              id="project-new-about"
+              rows={3}
+              placeholder="Describe your project, goals, subject, and so on. It rides into every chat here."
+              value={newAbout}
+              onChange={(e) => setNewAbout(e.target.value)}
+            />
+          </div>
+          <div className="confirm-row">
+            <button type="button" className="btn ghost" onClick={() => setCreating(false)}>
+              Cancel
+            </button>
+            <button type="submit" className="btn primary" disabled={!newName.trim()}>
+              Create project
+            </button>
+          </div>
+        </form>
+      </Sheet>
     </div>
+  );
+}
+
+function ProjectLine({ line }: { line: { what: string; when: string } }) {
+  return (
+    <>
+      <span className="project-row-what">{line.what}</span>
+      {line.when ? <span className="project-row-when">{` · ${line.when}`}</span> : null}
+    </>
+  );
+}
+
+/** A project, drawn as a small lidded box: the place its work is kept. */
+function ProjectGlyph() {
+  return (
+    <Icon size={18}>
+      <path d="M5 9h14l-1 10a1.5 1.5 0 0 1-1.5 1.3h-9A1.5 1.5 0 0 1 6 19Z" />
+      <path d="M4 5.5h16" />
+      <path d="M10 13h4" />
+    </Icon>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <Icon size={18}>
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="m16 16 4 4" />
+    </Icon>
   );
 }
