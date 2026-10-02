@@ -17,7 +17,7 @@ import {
 import { PROVIDERS, type ProviderInfo } from '../lib/providers.js';
 import { CLAUDE_MODELS } from '../lib/claudeModels.js';
 import { isPinned } from '../lib/pins.js';
-import { byomReach, byomRef, normalizeBaseUrl } from '../lib/byom.js';
+import { byomPlainHttpToCloud, byomReach, byomRef, normalizeBaseUrl } from '../lib/byom.js';
 import { hubTailnetSuffix } from '../lib/vaultSeat.js';
 import {
   activeContribution,
@@ -182,6 +182,13 @@ export function StackManager() {
   const saveByom = async () => {
     if (!byomFormValid) {
       showToast('A name, an https address, and a model id are needed.');
+      return;
+    }
+    const hub = hubTailnetSuffix(useApp.getState().settings.daemon?.baseUrl);
+    if (byomPlainHttpToCloud(byomForm.baseUrl, hub)) {
+      showToast(
+        'Use an https address for a server outside your own network, so your key is not sent in plain text.',
+      );
       return;
     }
     const conn = await connectByom({

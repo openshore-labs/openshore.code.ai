@@ -55,8 +55,11 @@ describe('the paywall', () => {
   });
 
   it('carries the terms and the privacy policy (Apple 3.1.2)', () => {
-    expect(paywall).toContain("TERMS_URL = 'https://openshore.ai/terms/'");
-    expect(paywall).toContain("PRIVACY_URL = 'https://openshore.ai/privacy/'");
+    // The two links live in one place, shared with Settings (5.1.1(i)).
+    const links = read('src', 'lib', 'legalLinks.ts');
+    expect(links).toContain("TERMS_URL = 'https://openshore.ai/terms/'");
+    expect(links).toContain("PRIVACY_URL = 'https://openshore.ai/privacy/'");
+    expect(paywall).toContain("from '../lib/legalLinks.js'");
     expect(paywall).toContain('Terms of Use');
     expect(paywall).toContain('Privacy Policy');
   });
@@ -181,5 +184,15 @@ describe('the rest of the Personal paths', () => {
     expect(read('src', 'lib', 'hubStatus.ts')).toContain('Open the Tailscale app and sign in');
     expect(read('src', 'screens', 'SettingsScreen.tsx')).not.toContain('Paste it back to the team');
     expect(read('src', 'screens', 'CrewCommandScreen.tsx')).not.toContain('and pings you.');
+  });
+});
+
+describe('the privacy policy is reachable in every build (Apple 5.1.1(i))', () => {
+  it('Settings links the privacy policy and the terms, outside the paywall', () => {
+    const settings = read('src', 'screens', 'SettingsScreen.tsx');
+    expect(settings).toContain('label="Privacy Policy"');
+    expect(settings).toContain('openExternal(PRIVACY_URL)');
+    expect(settings).toContain('label="Terms of Use"');
+    expect(settings).toContain('openExternal(TERMS_URL)');
   });
 });

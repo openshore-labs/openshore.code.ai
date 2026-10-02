@@ -96,7 +96,9 @@ exception (founder, 2026-10-01): a headless run has no page fetch, network,
 Codemagic, currents, specialist, vision or image tools, and a network-risk
 call is denied rather than asked, and the run note says so; but `webSearch`,
 and only it, stays when the person's "Let models search the web" switch is on
-(carried to the machine as `routines.webSearch`, machine config). Do NOT add a
+(carried to the machine as `routines.webSearch`, machine config), held by the
+routine search guard (`os-code/src/core/security/routineSearch.ts`: result-only
+backends, short plain queries, no search after a private read). Do NOT add a
 per-routine web switch, and do NOT give a routine `webFetch`, without a
 domain-allowlist design. Open follow-ups are in `os-code/PROGRESS.md`.
 
@@ -331,6 +333,17 @@ key from `supabase/scripts/local-vault.sh`, never from a committed
 `sql-replay` jobs, and `.github/workflows/migrations.yml`. The privacy branch
 (`claude/openshore-privacy-mobile-1ij12h`) is harvested in packages, never
 merged whole (DECISIONS, CTO 11).
+
+## Security and privacy: the Proton standard (standing rule, founder 2026-10-01)
+
+"I only want to keep the bare minimum data required to run the application.
+Use Proton as a gold standard North Star." Before a release, and before any
+change that adds a network call, a stored field, a table, a log line, a
+third-party service, or a privacy claim, run the CTO's checklist,
+`.claude/skills/security-privacy-review/SKILL.md`. Claims are code: the site,
+the app, the privacy policy, `PrivacyInfo.xcprivacy` and App Store Connect say
+only what the code does. The first run and its open items are
+`docs/security-privacy-review-2026-10-01.md`.
 
 ## Em dash policy is TOTAL here (standing rule)
 

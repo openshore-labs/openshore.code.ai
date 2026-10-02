@@ -69,6 +69,9 @@ export interface TestSessionOptions {
   /** Build the session offline, as bootstrap builds a headless one (CTO 3):
    *  no network tool registered, each refused by name. */
   offline?: boolean;
+  /** With `offline`, keep webSearch as a routine does when the person's
+   *  switch is on (founder, 2026-10-01). */
+  offlineSearch?: boolean;
   /** The permission mode to start in. */
   permissionMode?: AgentDeps['permissionMode'];
   /** Also hand every event here (a LocalDriver's emit, when a test drives the
@@ -136,6 +139,7 @@ export function makeTestSession(
     // As bootstrap does: the Memory switch off leaves the tool out.
     memory: config.memory.enabled,
     ...(options.offline ? { offline: true } : {}),
+    ...(options.offlineSearch ? { offlineSearch: true } : {}),
     ...(options.processes
       ? { processes: true, processesOffered: () => agentRef.current?.permissionMode !== 'plan' }
       : {}),
@@ -163,7 +167,11 @@ export function makeTestSession(
     router,
     tools,
     toolContext,
-    permissions: new PermissionEngine(config.permissions as PermissionConfig, profile),
+    permissions: new PermissionEngine(
+      config.permissions as PermissionConfig,
+      profile,
+      options.offlineSearch === true,
+    ),
     guardrails,
     usage,
     profile,

@@ -885,7 +885,7 @@ describe('routine scheduler', () => {
     expect(routineInstructions(routine)).toContain('This run is offline');
   });
 
-  it('the run note says it ran offline, and names the search it tried', () => {
+  it('the run note says it ran offline and that a search did not run, never the query', () => {
     const routine = store.createRoutine(input());
     const clock = { now: at(0, 6, 0, 5) };
     const driver = new FakeDriver();
@@ -906,9 +906,9 @@ describe('routine scheduler', () => {
     const text = readFileSync(join(vault, run.notePath!), 'utf8');
     expect(text).toContain('It ran offline, so it could not search the web or open web pages.');
     const ws = basename(workspace);
-    expect(text).toContain(
-      `Note: It tried to search the web for "react 19 release 'notes'", but routines work offline, so it used only the files in ${ws}.`,
-    );
+    expect(text).toContain(`Note: A web search did not run, so it used only the files in ${ws}.`);
+    // The query is never written into the note (CTO review 2026-10-01, F1).
+    expect(text).not.toContain('react 19');
     expect(text).not.toContain('second query');
     // A refused search is not a step the run took.
     expect(run.steps).toBe(0);

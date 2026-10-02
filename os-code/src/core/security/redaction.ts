@@ -11,6 +11,8 @@ interface RedactionRule {
 const RULES: RedactionRule[] = [
   { kind: 'anthropic-key', pattern: /sk-ant-[A-Za-z0-9_-]{10,}/g },
   { kind: 'openai-key', pattern: /sk-[A-Za-z0-9]{20,}/g },
+  { kind: 'stripe-key', pattern: /\b[rs]k_(?:live|test)_[A-Za-z0-9]{16,}/g },
+  { kind: 'openshore-token', pattern: /\b(?:osc|pc)_[A-Za-z0-9_-]{24,}/g },
   { kind: 'github-token', pattern: /gh[pousr]_[A-Za-z0-9]{20,}/g },
   { kind: 'github-pat', pattern: /github_pat_[A-Za-z0-9_]{20,}/g },
   { kind: 'aws-access-key', pattern: /AKIA[0-9A-Z]{16}/g },

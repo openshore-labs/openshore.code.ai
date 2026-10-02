@@ -128,13 +128,12 @@ export function offlineLine(leftOut: readonly string[] | undefined): string {
   return `It ran offline, so it could not ${list}.`;
 }
 
-/** The run note's one Note line when the model tried to search (the
- *  reconciled CX 1 copy): the first query it tried, and where it worked from
- *  instead. */
-export function triedToSearchLine(query: string, workspace: string): string {
-  const flat = query.replace(/\s+/g, ' ').replace(/"/g, "'").trim();
-  const shown = flat.length > 120 ? `${flat.slice(0, 117)}...` : flat;
-  return `It tried to search the web for "${shown}", but routines work offline, so it used only the files in ${workspace}.`;
+/** The run note's one Note line when a search did not run: where it worked
+ *  from instead. The query itself is never copied into the note, since the
+ *  note sits in the vault and the query may be what an injected line wanted
+ *  written down (CTO review 2026-10-01, F1). */
+export function triedToSearchLine(workspace: string): string {
+  return `A web search did not run, so it used only the files in ${workspace}.`;
 }
 
 /** A run refused before it started, for a reason the person can act on. The
@@ -950,10 +949,7 @@ export class RoutineScheduler {
     ];
     if (endNote && active.finalText) lines.push('', `Note: ${endNote}`);
     if (active.searchTried !== undefined) {
-      lines.push(
-        '',
-        `Note: ${triedToSearchLine(active.searchTried, basename(active.routine.cwd))}`,
-      );
+      lines.push('', `Note: ${triedToSearchLine(basename(active.routine.cwd))}`);
     }
     if (active.plan.length) {
       lines.push('', '## Plan', '', ...active.plan.map((s) => `- ${s}`));

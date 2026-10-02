@@ -1,6 +1,6 @@
 # OpenShore Terms of Use
 
-Last updated: 2026-09-05
+Last updated: 2026-10-01
 
 These terms cover OpenShore OS Code: the desktop engine, the iOS and desktop
 apps, and the accounts that connect them. Plain language throughout, because
@@ -65,8 +65,9 @@ carried out by the operator, and where the law requires or permits it the matter
 is reported to the appropriate authority. In the United States, child sexual
 abuse material is reported to the National Center for Missing and Exploited
 Children. Account termination and, where required, a report are the entire
-enforcement scope. We do not collect, log, or act on an IP address for any
-reason.
+enforcement scope. We never store an IP address in our database or use one for
+enforcement. Our hosting providers see it in transit and keep short operational
+logs, as any web service does; the Privacy Policy names them.
 
 We take this seriously and we want to be direct about why. Deepfakes,
 non-consensual intimate imagery, and synthetic child sexual abuse material are
@@ -77,8 +78,9 @@ promise is kept rather than merely stated.
 ## 5. What we record when something is blocked
 
 When the guardrail blocks a request, we record the category, the tier, the time,
-which model path served it (local or cloud), and a one-way SHA-256 hash of the
-request.
+which model path served it (local or cloud), and a keyed one-way hash
+(HMAC-SHA-256) of the request. We keep it for 180 days, longer only under a
+legal hold.
 
 We do not store the prompt, the completion, or any excerpt of either. A hash is
 enough to recognize a repeat and to identify the same content in a lawful
@@ -113,7 +115,7 @@ does not currently hold.
 ## 8. Your content and your models
 
 Your prompts, code, and generated work are yours. Local model work stays on your
-machine. Cloud model work goes to the provider you connected, on your account,
+machine, except the words of a web search a model makes while web search is on. Cloud model work goes to the provider you connected, on your account,
 under that provider's terms. A cloud provider's own policies apply in addition
 to these terms, never instead of them.
 

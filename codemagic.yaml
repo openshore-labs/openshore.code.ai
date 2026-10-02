@@ -129,11 +129,21 @@ workflows:
           mkdir -p "$DEST"
           # The one pinned source, read from HARBOR_MINI_MODEL_URL so it never drifts.
           URL=$(grep -o "https://huggingface.co/[^']*\.gguf" app/src/lib/harborMini.ts | head -1 || true)
-          if [ -n "$URL" ] && curl -fsSL --retry 3 -o "$DEST/harbor-mini.gguf" "$URL"; then
+          # A build without the weights would download ~105 MB from Hugging Face
+          # on first open with no tap, which the privacy list does not allow
+          # (CTO security and privacy review, 2026-10-01). So a failed fetch, or
+          # a file too small to be the model, fails the build instead.
+          if [ -n "$URL" ] && curl -fsSL --retry 5 --retry-all-errors -o "$DEST/harbor-mini.gguf" "$URL"; then
+            SIZE=$(wc -c < "$DEST/harbor-mini.gguf")
+            if [ "$SIZE" -lt 50000000 ]; then
+              echo "Harbor Lite's weights are only $SIZE bytes; refusing to ship a build without them." >&2
+              exit 1
+            fi
             echo "Bundled Harbor Lite: $(du -h "$DEST/harbor-mini.gguf" | cut -f1) from $URL"
           else
             rm -f "$DEST/harbor-mini.gguf"
-            echo "Could not fetch Harbor Lite's weights; the app will download them on first open."
+            echo "Could not fetch Harbor Lite's weights; refusing to ship a build without them." >&2
+            exit 1
           fi
       - name: Stamp the build number
         script: |

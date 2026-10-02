@@ -70,7 +70,7 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
       'Back in OpenShore, open Cloud Connections, tap Connect next to that provider, paste the key, and tap Save. The app checks the key with the provider before it says connected.',
       'Open Stack and place the provider model where you want it: as your Reasoning LLM, or as a specialist for one kind of task.',
     ],
-    done: 'The provider shows connected, and it appears in the model menu. Your API key never leaves this device.',
+    done: 'The provider shows connected, and it appears in the model menu. Your API key is stored only on this device and sent only to that provider.',
   },
   'pair-computer': {
     id: 'pair-computer',

@@ -131,6 +131,11 @@ export async function recordEthicsEvent(record: EthicsRecord): Promise<void> {
 async function postRecord(record: EthicsRecord): Promise<void> {
   try {
     if (!isConfigured() || !ethicsAuth) return;
+    // Only a block the ladder counts reaches the account (CTO review
+    // 2026-10-01, the bare-minimum rule). A failed check is the layer failing
+    // closed, not a person misbehaving, and an allowed-with-assertion row is
+    // not a violation: neither drives enforcement, so both stay on the device.
+    if (record.action !== 'blocked' || record.category === 'check-failed') return;
     const session = await ethicsAuth();
     if (!session) return;
     await insert('guardrail_events', session.accessToken, {
@@ -146,11 +151,6 @@ async function postRecord(record: EthicsRecord): Promise<void> {
       // party who never used OpenShore does not end up on our server.
       subject: null,
     });
-    // A failed check is the layer failing closed, not a person misbehaving, so
-    // it never drives enforcement; an allowed-with-assertion row is not a
-    // violation either. Neither asks the server to re-evaluate.
-    if (record.action !== 'blocked' || record.category === 'check-failed') return;
-
     // The server decides the outcome from its own history. We pass nothing and
     // trust nothing: a client cannot talk its own standing down.
     try {

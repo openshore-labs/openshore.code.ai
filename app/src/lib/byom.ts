@@ -63,6 +63,17 @@ export function byomReach(
   return hostIsLocal(host, { ownTailnetSuffix }) ? 'local' : 'cloud';
 }
 
+/** True when a pasted address would send the chat and the key in plain text
+ *  to a server that is not on this machine, the home network, or this
+ *  device's own tailnet. Refused at connect (CTO review 2026-10-01): plain
+ *  http is for your own hosts only. */
+export function byomPlainHttpToCloud(
+  baseUrl: string,
+  ownTailnetSuffix: string | null = null,
+): boolean {
+  return /^http:\/\//i.test(baseUrl.trim()) && byomReach(baseUrl, ownTailnetSuffix) === 'cloud';
+}
+
 /** The hostname a BYOM base URL points at (a bare `host:port` reads as
  *  http), or undefined when it does not parse. */
 export function byomHost(baseUrl: string): string | undefined {

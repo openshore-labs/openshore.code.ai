@@ -46,3 +46,13 @@ describe('byom helpers', () => {
     expect(BYOM_DEFAULT_CONTEXT_TOKENS).toBe(8192);
   });
 });
+
+describe('plain http only to your own hosts (CTO review 2026-10-01)', () => {
+  it('refuses plain http to a public server and allows it at home', async () => {
+    const { byomPlainHttpToCloud } = await import('../src/lib/byom.js');
+    expect(byomPlainHttpToCloud('http://api.example.com/v1')).toBe(true);
+    expect(byomPlainHttpToCloud('https://api.example.com/v1')).toBe(false);
+    expect(byomPlainHttpToCloud('http://192.168.1.20:11434/v1')).toBe(false);
+    expect(byomPlainHttpToCloud('http://localhost:11434/v1')).toBe(false);
+  });
+});

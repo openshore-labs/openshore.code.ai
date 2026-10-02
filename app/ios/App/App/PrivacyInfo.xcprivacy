@@ -64,12 +64,14 @@
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
 			</array>
 		</dict>
-		<!-- The notification token, only to deliver a completion alert. -->
+		<!-- The notification token, only to deliver a completion alert. Stored with
+		     the account id on our server so a push reaches your phone, so it is
+		     linked (CTO review 2026-10-01). -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeDeviceID</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
-			<false/>
+			<true/>
 			<key>NSPrivacyCollectedDataTypeTracking</key>
 			<false/>
 			<key>NSPrivacyCollectedDataTypePurposes</key>
@@ -102,14 +104,13 @@
 				<string>CA92.1</string>
 			</array>
 		</dict>
-		<!-- File timestamps of files in the app's own container (the iCloud Drive storage plugin, the Vault). -->
+		<!-- File timestamps of files in the app's own container (the Vault, the storage plugins). -->
 		<dict>
 			<key>NSPrivacyAccessedAPIType</key>
 			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
 			<key>NSPrivacyAccessedAPITypeReasons</key>
 			<array>
 				<string>C617.1</string>
-				<string>3B52.1</string>
 			</array>
 		</dict>
 		<!-- Free disk space, checked before a model download is allowed to start. -->

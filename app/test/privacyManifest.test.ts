@@ -42,6 +42,17 @@ describe('the iPhone privacy manifest', () => {
     }
   });
 
+  it('marks the notification token linked, since our server keeps it with the account id', () => {
+    const entry = manifest.slice(manifest.indexOf('NSPrivacyCollectedDataTypeDeviceID'));
+    expect(entry).toMatch(
+      /^NSPrivacyCollectedDataTypeDeviceID<\/string>\s*<key>NSPrivacyCollectedDataTypeLinked<\/key>\s*<true\/>/,
+    );
+    const search = manifest.slice(manifest.indexOf('NSPrivacyCollectedDataTypeSearchHistory'));
+    expect(search).toMatch(
+      /^NSPrivacyCollectedDataTypeSearchHistory<\/string>\s*<key>NSPrivacyCollectedDataTypeLinked<\/key>\s*<false\/>/,
+    );
+  });
+
   it('names no collected data a purchase would add while the pay gates are off', () => {
     expect(manifest).not.toContain('PurchaseHistory');
   });

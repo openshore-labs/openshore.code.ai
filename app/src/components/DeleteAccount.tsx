@@ -35,7 +35,7 @@ export const DELETE_ACCOUNT_COPY = {
   row: 'Delete account',
   rowSub: 'Erases your account from our server. This device keeps what it has.',
   title: 'Delete your OpenShore account?',
-  body: 'This erases your account and the settings that follow you between devices. It cannot be undone. Your chats, projects, and notes on this device stay here, and chatting keeps working without an account. If you pay for OpenShore Plus through Apple, Apple keeps billing until you cancel it there.',
+  body: 'This erases your account and the settings that follow you between devices. It cannot be undone. Your chats, projects, and notes on this device stay here, and chatting keeps working without an account. If an operator ever ended this account for abuse, we keep a one-way hash of its email, and any record under a legal hold until the hold ends, as the privacy policy explains.',
   confirm: 'Delete account',
   keep: 'Keep my account',
   working: 'Deleting...',

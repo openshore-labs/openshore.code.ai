@@ -27,8 +27,8 @@ import { openExternal } from '../lib/platform.js';
 
 /** Apple requires the terms and the privacy policy on a subscription screen
  *  (guideline 3.1.2); both live on the site. */
-export const TERMS_URL = 'https://openshore.ai/terms/';
-export const PRIVACY_URL = 'https://openshore.ai/privacy/';
+export { PRIVACY_URL, TERMS_URL } from '../lib/legalLinks.js';
+import { PRIVACY_URL, TERMS_URL } from '../lib/legalLinks.js';
 
 export const PAYWALL_HEADLINE = 'Let OpenShore build it.';
 /** Pairing's own headline: the person asked for exactly that. */

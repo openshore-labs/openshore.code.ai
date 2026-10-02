@@ -94,7 +94,14 @@ export const icloudProvider: StorageProvider = {
 };
 
 /** Runtime probe: is iCloud usable on this device right now? */
+/** iCloud Drive is held out of the first App Store build (CTO security and
+ *  privacy review, 2026-10-01): its writes are not yet compare-and-swap
+ *  (vault-m2-icloud holds that), and it is not on What leaves this device.
+ *  While held, nothing offers it: no vault provider, no model download target. */
+export const ICLOUD_HELD = true;
+
 export async function isIcloudAvailable(): Promise<boolean> {
+  if (ICLOUD_HELD) return false;
   try {
     return (await Icloud.available()).available;
   } catch {

@@ -8,7 +8,8 @@ import { accountCopy } from '../lib/accountGate.js';
 import { Fragment, useEffect, useState } from 'react';
 import { PAY_GATES_ENABLED, isOrgAdmin, useApp, type HarborDownload } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
-import { platform, isDesktop, isPhone } from '../lib/platform.js';
+import { platform, isDesktop, isPhone, openExternal } from '../lib/platform.js';
+import { PRIVACY_URL, TERMS_URL } from '../lib/legalLinks.js';
 import { iapAvailable } from '../lib/iap.js';
 import { noticeEnabled, noticePermission } from '../lib/notices.js';
 import type { NoticePermission } from '../lib/llamaPlugin.js';
@@ -1191,13 +1192,14 @@ export function SettingsScreen() {
           >
             <h3 className="settings-sheet-head">Privacy, plainly</h3>
             <p>
-              What you send a local model stays on this computer, and so does its answer. Cloud
-              models run on your own keys, and only on a turn you send to one. A few things do leave
-              this device, and every one is listed under What leaves this device, above: the words
-              of a web search a model makes, update checks, the model list, and, while you are
-              signed in, a record of any request the guardrail blocks. That record carries a
-              category, a time, and a one-way hash, and for a request about a real person, that
-              person's name; never your prompt. No telemetry, no analytics, no advertising.
+              What you send a local model stays on this device, and so does its answer; if it
+              searches the web, only the search words go out. Cloud models run on your own keys, and
+              only on a turn you send to one. A few things do leave this device, and every one is
+              listed under What leaves this device, above: the words of a web search, update checks,
+              the model list, a notification token if you allow notifications, and, while you are
+              signed in, your account, a few preferences, and a record of any request the guardrail
+              blocks. That record carries a category, a time, and a one-way hash, never your prompt
+              and never the name of anyone it was about. No telemetry, no analytics, no advertising.
             </p>
             <h3 className="settings-sheet-head">Encrypted on this device</h3>
             <p>
@@ -1225,6 +1227,16 @@ export function SettingsScreen() {
               stays local even though it is screened.
             </p>
           </InfoSheet>
+          <SettingsRow
+            label="Privacy Policy"
+            sub="What we keep, why, for how long, and your rights"
+            onClick={() => openExternal(PRIVACY_URL)}
+          />
+          <SettingsRow
+            label="Terms of Use"
+            sub="The terms, in plain words"
+            onClick={() => openExternal(TERMS_URL)}
+          />
         </SettingsGroup>
 
         {/* The trust statement. One source (os-code/protocol), shown here and on
@@ -1273,9 +1285,9 @@ export function SettingsScreen() {
             <h3 className="settings-sheet-head">What is recorded</h3>
             <p>
               A block records a category, a timestamp, and a one-way hash of the request. Your
-              prompt is never stored and never sent, and no IP address is recorded, ever. When you
-              are signed in, block records reach your account so enforcement holds across a
-              reinstall. Signed out, they stay on this device.
+              prompt is never stored and never sent, and we keep no IP address with it. When you are
+              signed in, block records reach your account so enforcement holds across a reinstall.
+              Signed out, they stay on this device.
             </p>
           </InfoSheet>
         </SettingsGroup>

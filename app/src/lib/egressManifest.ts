@@ -63,7 +63,7 @@ export const EGRESS: EgressEntry[] = [
     id: 'account',
     recipient: 'OpenShore (us)',
     what: 'Your email and password to sign in, then your plan, your organization, and team projects.',
-    when: 'Only when you sign in. Chatting needs no account; building, Projects, Vault, Crew, Terminal, and pairing do.',
+    when: 'When you sign in, and each time the app opens while you are signed in, to renew the sign-in. Chatting needs no account; building, Projects, Vault, Crew, Terminal, and pairing do.',
     start: 'tap',
     hosts: ['env:VITE_SUPABASE_URL'],
   },
@@ -103,7 +103,7 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'repo-signin',
     recipient: 'OpenShore (us)',
-    what: 'Connecting GitHub, GitLab, or Bitbucket: the sign-in exchange passes through our server, so the access token passes through it once on its way to you. Our server keeps no copy and writes none of it to a log.',
+    what: 'Connecting GitHub, GitLab, or Bitbucket: the sign-in exchange passes through our server, so the access token passes through it when you connect and each time it is refreshed. Our server keeps no copy and writes none of it to a log.',
     when: 'Only when you connect one.',
     start: 'tap',
     hosts: ['env:VITE_SUPABASE_URL', 'github.com', 'gitlab.com', 'bitbucket.org'],
@@ -141,7 +141,7 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'account-deletion',
     recipient: 'OpenShore (us)',
-    what: 'Your sign-in, asking our server to delete your account. It erases the account, cancels a plan you pay us for on the web, and keeps only a one-way hash of your email if the guardrail ever warned the account. Apple subscriptions are cancelled with Apple.',
+    what: 'Your sign-in, asking our server to delete your account. It erases the account, cancels a plan you pay us for on the web, and keeps only a one-way hash of your email if an operator had ended the account for abuse, plus any record under a legal hold until the hold ends. Apple subscriptions are cancelled with Apple.',
     when: 'Only when you tap Delete account and confirm.',
     start: 'tap',
     hosts: ['env:VITE_SUPABASE_URL'],
@@ -173,7 +173,7 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'search',
     recipient: 'Web search',
-    what: 'The words of a web search, which a model writes from your chat. DuckDuckGo by default, with no key and no account.',
+    what: 'The words of a web search, and the network address any web request carries. Harbor Lite sends your question itself (up to 200 characters); other models write search words from your chat. DuckDuckGo by default, with no key and no account. Never the rest of your chat, never your files.',
     when: `When a model decides to search the web, on by default so a model can answer with current facts. ${ROUTINES_SEARCH_LINE} You can turn it off in Settings, Harbor.`,
     start: 'on',
     hosts: ['html.duckduckgo.com', 'duckduckgo.com'],
@@ -199,6 +199,31 @@ export const EGRESS: EgressEntry[] = [
       'api.moonshot.ai',
       'api.perplexity.ai',
     ],
+  },
+  {
+    id: 'own-model',
+    recipient: 'Your cloud providers',
+    what: 'Your chat, to a model server you connect yourself (one you run, or one you name with its address and key).',
+    when: 'Only when you connect one and pick it, and only that turn.',
+    start: 'off',
+    hosts: [],
+  },
+  {
+    id: 'your-computer',
+    recipient: 'Services you connect',
+    what: 'Your chats, sessions, and approvals, to your own computer running OpenShore, over your private Tailscale network. Nothing goes through us.',
+    when: 'Only after you pair this device with your computer.',
+    start: 'off',
+    hosts: [],
+  },
+  {
+    id: 'speech',
+    recipient: 'Services you connect',
+    what: "What you say into the mic, to the speech service built into the desktop app or your browser (Google's, in Chrome and Electron). On iPhone and iPad, speech is turned into text on the device and never sent.",
+    when: 'Only when you tap the mic on the desktop or the web.',
+    start: 'tap',
+    hosts: [],
+    platforms: ['electron', 'web'],
   },
   {
     id: 'weights',
@@ -277,9 +302,10 @@ export const LINK_ONLY_HOSTS: Record<string, string> = {
 
 /** What stays on this device, for the list's other half. */
 export const STAYS_ON_DEVICE: string[] = [
-  'Everything you send a local model, and everything it answers.',
+  'Everything you send a local model, and everything it answers (a web search sends only its words, listed above).',
   'Your chats, projects, settings, and session journals, sealed at rest.',
-  "Your API keys, in this device's secure store.",
+  'Your API keys: in the Keychain on iPhone and iPad; on a computer, encrypted under a key in its keychain. Each is sent only to its own provider.',
+  'Your Vault notes and your code, as plain files you own.',
   'Undo snapshots of your files, in a folder on this computer.',
   'Which folders you trust and the commands you allow.',
 ];

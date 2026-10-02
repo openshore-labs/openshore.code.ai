@@ -50,6 +50,7 @@ import { Jail, JailViolation, realRelativePath } from '../security/jail.js';
 import { platformAndShell } from '../exec/shell.js';
 import type { SecurityProfile } from '../security/profiles.js';
 import { redactSecrets } from '../security/redaction.js';
+import { routineSearchRefusal } from '../security/routineSearch.js';
 import {
   compactHistory,
   estimateMessages,
@@ -312,6 +313,9 @@ export class AgentSession {
   private modelProfile?: ModelClassProfile;
   /** So the lean-seat note is said once per session, not every turn. */
   private profileNoteEmitted = false;
+  /** Set once a tool result was local-only or carried a secret: a routine
+   *  stops searching for the rest of the run (CTO review 2026-10-01, F1). */
+  private searchTainted = false;
   /** A lean seat that answers with code but changes no file is nudged to make
    *  the change, once per task; this flag keeps it to once. */
   private noWriteNudged = false;
@@ -1895,6 +1899,22 @@ export class AgentSession {
       return 'refused';
     }
 
+    // A routine's search (a profile with nobody to ask) is held to a short,
+    // plain query on a result-only backend, and stops once the run has read
+    // anything local-only or secret-shaped (CTO review 2026-10-01, F1).
+    if (call.name === 'webSearch' && !profile.allowNetworkAutoApprove) {
+      const refusal = routineSearchRefusal(
+        call.args?.query,
+        toolContext.config.search.backend,
+        this.searchTainted,
+      );
+      if (refusal) {
+        this.emit({ type: 'tool-denied', call, reason: refusal });
+        this.pushObservation(call, `Not run: ${refusal} ${OFFLINE_ADVICE}`, toolMode);
+        return 'refused';
+      }
+    }
+
     // The same exact call again, with nothing changed in the workspace since
     // it last ran, would only return the same result. The deep eval's 3B seat
     // did this on the answer task: readFile on the same file three times, then
@@ -2161,12 +2181,10 @@ export class AgentSession {
       this.emit({ type: 'todos', items: this.todos });
     }
     if (result.citations?.length) this.emit({ type: 'citations', citations: result.citations });
-    this.pushObservation(
-      call,
-      this.fitObservation(redactSecrets(result.content)),
-      toolMode,
-      result.localOnly,
-    );
+    const redacted = redactSecrets(result.content);
+    // Anything private or secret-shaped this run has seen ends its searching.
+    if (result.localOnly || redacted !== result.content) this.searchTainted = true;
+    this.pushObservation(call, this.fitObservation(redacted), toolMode, result.localOnly);
     return result.ok ? 'ok' : 'failed';
   }
 
