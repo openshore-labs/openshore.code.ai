@@ -19,6 +19,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from
 import { roomOpen, visibleRooms } from '../lib/focus.js';
 import { PAY_GATES_ENABLED, roomPaid } from '../lib/payGate.js';
 import { accountCopy } from '../lib/accountGate.js';
+import { accountInitial, planStanding, useProfileSheet } from '../lib/profile.js';
 import { isOrgAdmin, useApp, type ViewName } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
 import type { GestureProps } from '../hooks/useDrawerGesture.js';
@@ -246,10 +247,13 @@ export function Sidebar({
   dragProps?: GestureProps;
 }) {
   const { view, setView, setDrawer, settings, openPaywall, saveSettings } = useApp();
-  const { configured: authConfigured, signedIn } = useAuth();
+  const { configured: authConfigured, signedIn, email } = useAuth();
+  const showProfile = useProfileSheet((st) => st.show);
   // True in every build while the pay gates are off (state/payOps.ts), so
   // only the build with them on ever shows the free layout.
   const plus = useApp((s) => s.personalUnlockedNow());
+  // The account card's second line once signed in: the plan, in plain words.
+  const planShort = planStanding({ gates: PAY_GATES_ENABLED, unlocked: plus }).short;
 
   // An order saved under the old two-group default is set aside once, so
   // every room comes up under the Vault; the person's moves from here on keep.
@@ -396,8 +400,10 @@ export function Sidebar({
         </nav>
       )}
 
-      {/* Pinned to the bottom in both layouts: Settings, then the sign-in
-          card under it (founder, 2026-10-01). */}
+      {/* Pinned to the bottom in both layouts: Settings, then the account
+          card under it (founder, 2026-10-01): Sign in while signed out, and
+          once signed in the same card names the account and opens the
+          profile (founder, 2026-10-02). */}
       <div className="sidebar-foot">
         {item(SETTINGS, afterBottom)}
         {authConfigured && !signedIn ? (
@@ -419,6 +425,25 @@ export function Sidebar({
             <span className="sidebar-signin-label">
               <span className="sidebar-signin-title">Sign in</span>
               <span className="sidebar-signin-sub">{accountCopy(PAY_GATES_ENABLED).signInSub}</span>
+            </span>
+          </button>
+        ) : authConfigured && signedIn ? (
+          <button
+            type="button"
+            className="sidebar-signin sidebar-account"
+            style={stagger(2 + afterBottom)}
+            aria-label={`Profile, signed in as ${email ?? 'you'}`}
+            onClick={() => {
+              setDrawer(false);
+              showProfile();
+            }}
+          >
+            <span className="sidebar-signin-avatar sidebar-account-avatar" aria-hidden="true">
+              {accountInitial(email)}
+            </span>
+            <span className="sidebar-signin-label">
+              <span className="sidebar-signin-title sidebar-account-name">{email}</span>
+              <span className="sidebar-signin-sub">{planShort}</span>
             </span>
           </button>
         ) : null}

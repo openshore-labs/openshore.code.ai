@@ -776,6 +776,70 @@ textarea {
   text-overflow: ellipsis;
 }
 
+/* Signed in, the same card names the account: its initial in the avatar, the
+   email as the title (truncated, never wrapped), the plan beneath. */
+.sidebar-account-avatar {
+  font-size: var(--text-4);
+  font-weight: var(--weight-semibold);
+}
+.sidebar-account-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The profile sheet (components/ProfileSheet.tsx): who you are, then the
+   ledger's groups. */
+.profile-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 2px 0 18px;
+}
+.profile-avatar {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-size: var(--text-7);
+  font-weight: var(--weight-medium);
+}
+.profile-id {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.profile-name {
+  font-size: var(--text-6);
+  font-weight: var(--weight-semibold);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-plan {
+  font-size: var(--text-3);
+  color: var(--muted);
+}
+.profile-body .settings-group:first-of-type {
+  margin-top: 0;
+}
+/* The sign-in card already draws its own card; inside the group's card it
+   sits flat. */
+.profile-signin > .card {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 .sidebar-nav {
   border-top: 1px solid var(--border);
   padding: 8px;

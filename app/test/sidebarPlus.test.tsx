@@ -61,11 +61,13 @@ const session = {
 // the one each test sets.
 let dom: TestDom | undefined;
 
-/** Each button's visible text, in order, and whether it wears the Plus grey. */
+/** Each room row's visible text, in order, and whether it wears the Plus
+ *  grey. The signed-in account card under Settings is not a room; its own
+ *  test is below. */
 async function rows(): Promise<Array<{ text: string; plus: boolean; label: string | null }>> {
   dom ??= await mountDom();
   await dom.render(<Sidebar />);
-  return [...dom.container.querySelectorAll('button')].map((b) => ({
+  return [...dom.container.querySelectorAll('button:not(.sidebar-account)')].map((b) => ({
     text: (b.textContent ?? '').replace(/\s+/g, ' ').trim(),
     plus: b.className.includes('nav-item--plus'),
     label: b.getAttribute('aria-label'),
@@ -131,6 +133,16 @@ describe('the free sidebar', () => {
     expect(signIn).toBe(texts.length - 1);
     expect(texts[signIn - 1]).toBe('Settings');
     expect(signIn).toBeGreaterThan(texts.indexOf(UPGRADE_BANNER));
+  });
+});
+
+describe('the account card', () => {
+  it('signed in, names the account last, under Settings (founder, 2026-10-02)', async () => {
+    await rows();
+    const all = [...dom!.container.querySelectorAll('button')];
+    expect(all.at(-1)?.classList.contains('sidebar-account')).toBe(true);
+    expect(all.at(-1)?.textContent).toContain('a@b.c');
+    expect((all.at(-2)?.textContent ?? '').trim()).toBe('Settings');
   });
 });
 

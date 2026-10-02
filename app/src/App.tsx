@@ -14,6 +14,7 @@ import { Paywall } from './components/Paywall.js';
 import { AuthConfirmSheet } from './components/AuthConfirmSheet.js';
 import { WebSearchAsk } from './components/WebSearchAsk.js';
 import { AccountGateSheet } from './components/AccountGateSheet.js';
+import { ProfileSheet } from './components/ProfileSheet.js';
 import { featureOn, roomOpen } from './lib/focus.js';
 import { SlackWater } from './components/SlackWater.js';
 import { CurrentArrival, CurrentWaterline } from './components/CurrentArrival.js';
@@ -423,6 +424,7 @@ export function App() {
         ) : null}
         <WebSearchAsk />
         <AccountGateSheet />
+        <ProfileSheet />
         {/* Agentic Currents: the arrival that flows from the switch to the
           edges, and the faint water-line that frames every screen while a
           current is on. Both render nothing when none is on. */}
