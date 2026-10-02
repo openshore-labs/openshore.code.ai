@@ -57,11 +57,9 @@ export function planStanding(opts: { gates: boolean; unlocked: boolean; validUnt
   sub: string;
 } {
   if (!opts.gates) {
-    return {
-      short: 'Free in the beta',
-      value: 'Free in the beta',
-      sub: 'Everything is open to everyone during the beta.',
-    };
+    // Nothing is sold, so there is no plan to name (the App Store build,
+    // 2026-10-02): no "Free", and never "beta" (App Review 2.2).
+    return { short: '', value: '', sub: '' };
   }
   if (opts.unlocked) {
     const until = opts.validUntil

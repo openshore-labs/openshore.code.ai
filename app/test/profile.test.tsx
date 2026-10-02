@@ -72,7 +72,7 @@ describe('the profile rules', () => {
   });
 
   it('says the plan plainly with the gates off and on', () => {
-    expect(planStanding({ gates: false, unlocked: true }).short).toBe('Free in the beta');
+    expect(planStanding({ gates: false, unlocked: true }).short).toBe('');
     expect(planStanding({ gates: true, unlocked: true }).short).toBe('OpenShore Plus');
     expect(planStanding({ gates: true, unlocked: false }).short).toBe('Free');
   });
@@ -118,7 +118,8 @@ describe('signed in', () => {
     expect(texts.some((t) => t.startsWith('Sign in'))).toBe(false);
     const card = dom.container.querySelector<HTMLButtonElement>('.sidebar-account');
     expect(card?.textContent).toContain('founder@openshore.ai');
-    expect(card?.textContent).toContain('Free in the beta');
+    // Nothing is sold in this build, so no plan line, and never "beta" (2.2).
+    expect(card?.textContent).not.toMatch(/beta|Free/);
 
     card!.click();
     await dom.settle();
@@ -126,7 +127,6 @@ describe('signed in', () => {
     const sheet = dom.text();
     for (const part of [
       'Profile',
-      'OpenShore Plus',
       'Preferences that follow you',
       'What leaves this device',
       'Contact support',
@@ -140,6 +140,7 @@ describe('signed in', () => {
     expect(sheet).not.toContain(SIGNED_IN_PERKS);
     // Never claims more than the code does (CTO, 2026-10-02).
     expect(sheet).not.toMatch(/stay on the device they were made on/);
+    expect(sheet).not.toMatch(/beta|OpenShore Plus/);
   });
 
   it('signed out, the card still says Sign in and the profile stays shut', async () => {

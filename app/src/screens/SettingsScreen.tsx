@@ -409,9 +409,11 @@ export function SettingsScreen() {
   const accountValue = signedIn
     ? account?.type === 'commercial' && org
       ? tierById(org.tierId).name
-      : PAY_GATES_ENABLED && personalUnlockedNow()
-        ? 'Plus'
-        : 'Free'
+      : PAY_GATES_ENABLED
+        ? personalUnlockedNow()
+          ? 'Plus'
+          : 'Free'
+        : undefined
     : 'Optional';
   // Personal's standing on this device, in plain words: free for everyone
   // while the pay gates are off (the beta), else active (until when) or not.

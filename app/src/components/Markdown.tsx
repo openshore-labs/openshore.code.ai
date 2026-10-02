@@ -66,13 +66,7 @@ export function Markdown({
               // A finished proposal with nothing in it is a small model's
               // misfire, not an offer: show nothing rather than an empty box.
               if (!streaming && !value.trim()) return null;
-              return (
-                <AppActionCard
-                  actionKey={key}
-                  value={value}
-                  streaming={streaming}
-                />
-              );
+              return <AppActionCard actionKey={key} value={value} streaming={streaming} />;
             }
             return <CodeBlock>{children}</CodeBlock>;
           },

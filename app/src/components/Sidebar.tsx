@@ -443,7 +443,7 @@ export function Sidebar({
             </span>
             <span className="sidebar-signin-label">
               <span className="sidebar-signin-title sidebar-account-name">{email}</span>
-              <span className="sidebar-signin-sub">{planShort}</span>
+              {planShort ? <span className="sidebar-signin-sub">{planShort}</span> : null}
             </span>
           </button>
         ) : null}

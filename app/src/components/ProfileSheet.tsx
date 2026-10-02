@@ -62,49 +62,51 @@ export function ProfileSheet() {
         </span>
         <span className="profile-id">
           <span className="profile-name">{email}</span>
-          <span className="profile-plan">{plan.short}</span>
+          {plan.short ? <span className="profile-plan">{plan.short}</span> : null}
         </span>
       </div>
 
       <div className="settings profile-body">
-        <SettingsGroup title="Plan" index={0}>
-          <SettingsRow label="OpenShore Plus" sub={plan.sub} value={plan.value} />
-          {PAY_GATES_ENABLED && !unlocked ? (
-            <SettingsRow
-              label="Get OpenShore Plus"
-              sub="Opens Terminal, Repositories, Vault, Crew and Pairing."
-              onClick={() => {
-                hide();
-                openPaywall('plus');
-              }}
-            />
-          ) : null}
-          {PAY_GATES_ENABLED && appleDevice ? (
-            <SettingsRow
-              label="Restore purchases"
-              sub="Bought Plus already? Unlock it on this device."
-              onClick={() => void restorePurchases()}
-            />
-          ) : null}
-          {PAY_GATES_ENABLED && !appleDevice ? (
-            <SettingsRow
-              label="I already paid"
-              sub="Bought Plus already? Check your account again."
-              onClick={() => void recheckPersonal()}
-            />
-          ) : null}
-          {PAY_GATES_ENABLED && entitlement ? (
-            <SettingsRow
-              label="Manage subscription"
-              sub={
-                appleDevice
-                  ? 'Renewal and cancellation, with Apple.'
-                  : 'Renewal, card, and cancellation.'
-              }
-              onClick={() => void manageSubscription()}
-            />
-          ) : null}
-        </SettingsGroup>
+        {PAY_GATES_ENABLED ? (
+          <SettingsGroup title="Plan" index={0}>
+            <SettingsRow label="OpenShore Plus" sub={plan.sub} value={plan.value} />
+            {PAY_GATES_ENABLED && !unlocked ? (
+              <SettingsRow
+                label="Get OpenShore Plus"
+                sub="Opens Terminal, Repositories, Vault, Crew and Pairing."
+                onClick={() => {
+                  hide();
+                  openPaywall('plus');
+                }}
+              />
+            ) : null}
+            {PAY_GATES_ENABLED && appleDevice ? (
+              <SettingsRow
+                label="Restore purchases"
+                sub="Bought Plus already? Unlock it on this device."
+                onClick={() => void restorePurchases()}
+              />
+            ) : null}
+            {PAY_GATES_ENABLED && !appleDevice ? (
+              <SettingsRow
+                label="I already paid"
+                sub="Bought Plus already? Check your account again."
+                onClick={() => void recheckPersonal()}
+              />
+            ) : null}
+            {PAY_GATES_ENABLED && entitlement ? (
+              <SettingsRow
+                label="Manage subscription"
+                sub={
+                  appleDevice
+                    ? 'Renewal and cancellation, with Apple.'
+                    : 'Renewal, card, and cancellation.'
+                }
+                onClick={() => void manageSubscription()}
+              />
+            ) : null}
+          </SettingsGroup>
+        ) : null}
 
         <SettingsGroup title="On every device" index={1}>
           <SettingsRow
