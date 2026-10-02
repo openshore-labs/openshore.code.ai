@@ -424,18 +424,14 @@ export function SettingsScreen() {
         year: 'numeric',
       })
     : undefined;
-  const personalValue = !PAY_GATES_ENABLED
-    ? 'Free in the beta'
-    : personalUnlockedNow()
-      ? 'Active'
-      : 'Not yet';
-  const personalSub = !PAY_GATES_ENABLED
-    ? 'Everything is open to everyone during the beta.'
-    : personalUnlockedNow()
-      ? personalUntil
-        ? `All of OpenShore is open. Renews or ends ${personalUntil}.`
-        : 'All of OpenShore is open.'
-      : 'Chats, Projects, the Stack and Cloud Connections are free. Plus opens the rest.';
+  // The Plus row shows only while the pay gates are on, so there is no
+  // gates-off wording here (and never "beta", App Review 2.2).
+  const personalValue = personalUnlockedNow() ? 'Active' : 'Not yet';
+  const personalSub = personalUnlockedNow()
+    ? personalUntil
+      ? `All of OpenShore is open. Renews or ends ${personalUntil}.`
+      : 'All of OpenShore is open.'
+    : 'Chats, Projects, the Stack and Cloud Connections are free. Plus opens the rest.';
   // The Personal rows (2026-09-30): an Apple device restores through the App
   // Store and manages its subscription with Apple; the desktop re-reads the
   // account ("I already paid") and manages it in the Stripe portal.
@@ -631,12 +627,12 @@ export function SettingsScreen() {
             })}
           </div>
           <SettingsRow
-            label="Help improve the test build"
-            sub="A plain activity log, kept here. Off by default."
+            label="Keep an activity log"
+            sub="A plain log of what the app did, kept on this device for troubleshooting. Off by default."
             trailing={
               <Switch
                 checked={insightsOn}
-                label="Help improve the test build"
+                label="Keep an activity log"
                 onChange={(next) => {
                   void saveSettings({ insightsOptIn: next });
                   showToast(

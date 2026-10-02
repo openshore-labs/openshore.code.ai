@@ -157,3 +157,22 @@ describe('signed in', () => {
     expect(dom.text()).not.toContain('Preferences that follow you');
   });
 });
+
+describe('no beta or test-build wording a reviewer could see (App Review 2.2)', () => {
+  it('Settings and the profile never call the app a beta or a test build', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    for (const file of [
+      ['src', 'screens', 'SettingsScreen.tsx'],
+      ['src', 'components', 'ProfileSheet.tsx'],
+      ['src', 'components', 'Sidebar.tsx'],
+      ['src', 'lib', 'profile.ts'],
+    ]) {
+      const src = readFileSync(join(process.cwd(), ...file), 'utf8')
+        .split('\n')
+        .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+        .join('\n');
+      expect(src, file.join('/')).not.toMatch(/['"`][^'"`]*\b(beta|test build)\b[^'"`]*['"`]/i);
+    }
+  });
+});
