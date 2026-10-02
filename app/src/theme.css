@@ -6000,6 +6000,11 @@ button.vault-tag {
 .screen {
   flex: 1;
   overflow-y: auto;
+  /* A room scrolls up and down only. A decoration that bleeds past the edge
+     (a cover's water wash) is clipped here, so the room never pans sideways
+     under the finger. */
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
 }
 
 /* The room's top bar never leaves the screen: it pins to the top of the

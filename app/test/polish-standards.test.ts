@@ -465,3 +465,12 @@ describe('polish standards', () => {
     }
   });
 });
+
+// A room scrolls up and down only (founder, 2026-10-02): the Vault's wash
+// bled 4px past the edge and the whole room panned sideways on the phone.
+describe('rooms never scroll sideways', () => {
+  it('clips horizontal overflow on every room', () => {
+    const theme = readFileSync(new URL('../src/theme.css', import.meta.url), 'utf8');
+    expect(theme).toMatch(/\.screen \{[^}]*overflow-y: auto;[^}]*overflow-x: hidden;/);
+  });
+});
