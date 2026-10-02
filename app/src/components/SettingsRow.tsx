@@ -7,12 +7,15 @@
 import type { CSSProperties, ReactNode } from 'react';
 
 export function SettingsGroup({
+  id,
   title,
   badge,
   intro,
   index,
   children,
 }: {
+  /** An anchor another room can land on (the profile's links). */
+  id?: string;
   title?: string;
   /** A short uppercase pill after the title (BETA), in the neutral pill style:
    *  not teal (local) and not amber (spend), the word does the work. */
@@ -25,7 +28,7 @@ export function SettingsGroup({
   children: ReactNode;
 }) {
   return (
-    <section className="settings-group" style={{ '--i': index } as CSSProperties}>
+    <section id={id} className="settings-group" style={{ '--i': index } as CSSProperties}>
       {title ? (
         <h2 className="settings-group-head">
           {title}

@@ -16,6 +16,7 @@ import { presetMemberIds, presetSpecialists, presetTotalGB } from '../lib/preset
 import type { Catalog } from 'os-code/protocol';
 import { Sheet } from '../components/Sheet.js';
 import { SheetHead } from '../components/SheetHead.js';
+import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
 
 const ROLES: Array<{ role: string; plain: string }> = [
   { role: 'coding', plain: 'great at code' },
@@ -161,134 +162,118 @@ export function StackScreen() {
   // desktop keeps its live daemon-driven view below.
   if (!isDesktop()) return <StackManager />;
 
+  // Read failed with no status yet: the rows say so, and Runs the show offers
+  // Try again.
+  const unanswered = readFailed && !status;
+  const prefabs =
+    canEdit && catalog && catalog.presets.length ? (
+      <SettingsGroup
+        title="Start with a prefab stack"
+        intro="One tap fills your whole stack. The list updates when the catalog does."
+        index={orchestrator ? 2 : 0}
+      >
+        {catalog.presets.map((preset) => {
+          const total = presetTotalGB(preset, catalog);
+          const busy = prefabBusy === preset.id;
+          return (
+            <SettingsRow
+              key={preset.id}
+              label={preset.name}
+              sub={
+                busy
+                  ? (prefabLine ?? 'Installing...')
+                  : `${preset.tagline}${preset.minVramGB ? ` Best with ${preset.minVramGB} GB of graphics memory.` : ''}`
+              }
+              value={
+                <span className="pill local">
+                  {total !== undefined ? `${total} GB` : 'size unknown'}
+                </span>
+              }
+              disabled={Boolean(prefabBusy)}
+              onClick={() => void installPrefab(preset.id)}
+            />
+          );
+        })}
+      </SettingsGroup>
+    ) : null;
+
   return (
     <div className="screen">
       <BackBar title="Stack" />
-      <div className="screen-inner">
+      {/* The desktop Stack in the Settings ledger, the phone's shape
+          (Creative Studio, 2026-10-02): who runs the show, the specialists,
+          then the prefab stacks (first while nothing runs the show). */}
+      <div className="screen-inner settings stack-manager">
         <h1>Stack</h1>
         <p className="lead">
           One model is your Reasoning LLM: it plans, reasons, and decides which model gets each
           task. Specialists are optional; anything missing, the Reasoning LLM covers itself.
         </p>
 
-        {canEdit && catalog && catalog.presets.length ? (
-          <div className="card" style={{ marginBottom: 12 }}>
-            <h3>Start with a prefab stack</h3>
-            <p className="hint" style={{ marginTop: 4 }}>
-              One tap fills your whole stack. The list updates when the catalog does.
-            </p>
-            {catalog.presets.map((preset) => {
-              const total = presetTotalGB(preset, catalog);
-              const busy = prefabBusy === preset.id;
-              return (
-                <div key={preset.id} style={{ marginTop: 10 }}>
-                  <div className="card-row">
-                    <div className="grow">
-                      <strong>{preset.name}</strong>
-                      <div className="sub">{preset.tagline}</div>
-                    </div>
-                    <span className="pill local">
-                      {total !== undefined ? `${total} GB` : 'size unknown'}
-                    </span>
-                  </div>
-                  <button
-                    className="btn ghost press-fb"
-                    style={{ width: '100%', marginTop: 6 }}
-                    disabled={Boolean(prefabBusy)}
-                    onClick={() => void installPrefab(preset.id)}
-                  >
-                    {busy
-                      ? (prefabLine ?? 'Installing...')
-                      : `Download ${preset.name}${preset.minVramGB ? ` · best with ${preset.minVramGB} GB of graphics memory` : ''}`}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        ) : null}
+        {!orchestrator ? prefabs : null}
 
-        <div className="card">
-          <div className="card-row">
-            <div className="grow">
-              <h3>Reasoning LLM</h3>
-              <div className="sub" aria-live="polite">
-                {orchestrator
-                  ? `${orchestrator.model} on ${orchestrator.provider}`
-                  : reading
-                    ? readingLine
-                    : readFailed && !status
-                      ? 'Your computer did not answer.'
-                      : 'Not set up yet. Pick a model to run the show.'}
-              </div>
-            </div>
-            {orchestrator ? (
-              <span className={`pill ${orchestrator.kind}`}>{orchestrator.kind}</span>
-            ) : null}
-            {readFailed && !status ? (
-              <button
-                className="btn ghost press-fb"
-                style={{ padding: '8px 14px' }}
-                onClick={() => void refresh()}
-              >
-                Try again
-              </button>
-            ) : canEdit && !reading ? (
-              <button
-                className="btn ghost"
-                style={{ padding: '8px 14px' }}
-                onClick={() => setPickFor('orchestrator')}
-              >
-                Change
-              </button>
-            ) : null}
-          </div>
-        </div>
+        <SettingsGroup title="Runs the show" index={1}>
+          <SettingsRow
+            label={
+              orchestrator
+                ? orchestrator.model
+                : reading
+                  ? readingLine
+                  : unanswered
+                    ? 'Your computer did not answer.'
+                    : 'Not set up yet'
+            }
+            sub={
+              orchestrator
+                ? `Plans every task and routes it. On ${orchestrator.provider}.`
+                : unanswered
+                  ? undefined
+                  : 'Pick a model to run the show.'
+            }
+            value={
+              orchestrator ? (
+                <span className={`pill ${orchestrator.kind}`}>{orchestrator.kind}</span>
+              ) : undefined
+            }
+            trailing={
+              unanswered ? (
+                <button
+                  type="button"
+                  className="btn ghost press-fb stack-place"
+                  onClick={() => void refresh()}
+                >
+                  Try again
+                </button>
+              ) : undefined
+            }
+            onClick={
+              canEdit && !reading && !unanswered ? () => setPickFor('orchestrator') : undefined
+            }
+          />
+        </SettingsGroup>
 
-        {ROLES.map(({ role, plain }) => {
-          const enabled = specialists.find((s) => s.role === role);
-          return (
-            <div className="card" key={role}>
-              <div className="card-row">
-                <div className="grow">
-                  <h3>
-                    {role.charAt(0).toUpperCase() + role.slice(1)}{' '}
-                    <span className="sub">({plain})</span>
-                  </h3>
-                  <div className="sub">
-                    {enabled
-                      ? enabled.model
-                      : reading || (readFailed && !status)
-                        ? '\u00a0'
-                        : 'Off. The Reasoning LLM handles this itself.'}
-                  </div>
-                </div>
-                {canEdit && !reading && !(readFailed && !status) ? (
-                  enabled ? (
-                    <button
-                      className="btn ghost"
-                      style={{ padding: '8px 14px' }}
-                      onClick={async () => {
-                        const result = await bridge()!.disableSpecialist(role);
-                        showToast(result.detail);
-                        await refresh();
-                      }}
-                    >
-                      Turn off
-                    </button>
+        <SettingsGroup title="Specialists" index={2}>
+          {ROLES.map(({ role, plain }) => {
+            const enabled = specialists.find((s) => s.role === role);
+            return (
+              <SettingsRow
+                key={role}
+                label={role.charAt(0).toUpperCase() + role.slice(1)}
+                sub={plain.charAt(0).toUpperCase() + plain.slice(1)}
+                value={
+                  reading || unanswered ? undefined : enabled ? (
+                    enabled.model
                   ) : (
-                    <button
-                      className="btn ghost"
-                      style={{ padding: '8px 14px' }}
-                      onClick={() => setPickFor(role)}
-                    >
-                      Enable
-                    </button>
+                    <span className="stack-off">Off</span>
                   )
-                ) : null}
-              </div>
-            </div>
-          );
-        })}
+                }
+                onClick={canEdit && !reading && !unanswered ? () => setPickFor(role) : undefined}
+              />
+            );
+          })}
+        </SettingsGroup>
+
+        {orchestrator ? prefabs : null}
 
         {!isDesktop() ? (
           <p className="hint">
@@ -363,6 +348,25 @@ export function StackScreen() {
               )}
             </div>
             {status.ollama.up ? <InstallByName /> : null}
+            {/* Turning a specialist off lives here, not as a button in the
+                ledger (Creative Studio, 2026-10-02). */}
+            {pickFor !== 'orchestrator' && specialists.some((s) => s.role === pickFor) ? (
+              <div className="sheet-actions">
+                <button
+                  type="button"
+                  className="btn danger press-fb"
+                  onClick={async () => {
+                    const role = pickFor;
+                    setPickFor(undefined);
+                    const result = await bridge()!.disableSpecialist(role);
+                    showToast(result.detail);
+                    await refresh();
+                  }}
+                >
+                  Turn off {pickFor}
+                </button>
+              </div>
+            ) : null}
           </>
         ) : null}
       </Sheet>

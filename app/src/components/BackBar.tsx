@@ -4,7 +4,7 @@
 // inside another room (a settings path, Manage, the terminal) shows a back
 // chevron to the room it came from, the iOS grammar. On the desktop the
 // sidebar is already beside the room, so a root's left slot stays empty.
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode, type RefObject } from 'react';
 import { useApp, type ViewName } from '../state/store.js';
 import { useCompact } from '../hooks/useCompact.js';
 import { ProfileStatus } from './ProfileStatus.js';
@@ -37,12 +37,18 @@ export function BackBar({
   title,
   action,
   back,
+  titleHiddenUntil,
 }: {
   title: string;
   action?: ReactNode;
   back?: InRoomBack;
+  /** A room's own large title: the bar's title stays tucked away while that
+   *  one is on screen and fades in once it scrolls under the bar, the iOS
+   *  large-title grammar, so a name never shows twice (Creative Studio). */
+  titleHiddenUntil?: RefObject<HTMLElement | null>;
 }) {
   const { setDrawer, goBack, viewTrail, drawerOpen } = useApp();
+  const tucked = useTucked(titleHiddenUntil);
   const compact = useCompact();
   const from = viewTrail[viewTrail.length - 1];
   const way = back ?? (from ? { to: ROOM_NAMES[from], onBack: goBack } : undefined);
@@ -74,11 +80,38 @@ export function BackBar({
       {/* Keyed so a new title (a page opening inside the room) remounts and
           plays its cross-fade; data-depth gives it a direction (a page arrives
           from the right, a return to a root from the left). */}
-      <div className="topbar-title" key={title} data-depth={way ? 'page' : 'root'}>
+      <div
+        className={`topbar-title${tucked ? ' is-tucked' : ''}`}
+        key={title}
+        data-depth={way ? 'page' : 'root'}
+        aria-hidden={tucked || undefined}
+      >
         {title}
       </div>
       {action}
       <ProfileStatus />
     </header>
   );
+}
+
+/** Whether the room's large title is still visible below the bar. */
+function useTucked(target?: RefObject<HTMLElement | null>): boolean {
+  const [tucked, setTucked] = useState(Boolean(target));
+  useEffect(() => {
+    const el = target?.current;
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setTucked(false);
+      return;
+    }
+    const root = el.closest('.screen');
+    const bar = root?.querySelector(':scope > .topbar');
+    const barHeight = bar ? bar.getBoundingClientRect().height : 0;
+    const io = new IntersectionObserver(([entry]) => setTucked(Boolean(entry?.isIntersecting)), {
+      root,
+      rootMargin: `-${Math.round(barHeight)}px 0px 0px 0px`,
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [target]);
+  return tucked;
 }

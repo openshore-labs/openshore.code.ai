@@ -47,6 +47,13 @@ vi.mock('../src/lib/supabase.js', async (importOriginal) => {
 });
 
 describe('the profile rules', () => {
+  it('hands Settings one landing, taken once', async () => {
+    const { useSettingsJump, FOLLOWS_GROUP_ID } = await import('../src/lib/profile.js');
+    useSettingsJump.getState().jump(FOLLOWS_GROUP_ID);
+    expect(useSettingsJump.getState().take()).toBe(FOLLOWS_GROUP_ID);
+    expect(useSettingsJump.getState().take()).toBeUndefined();
+  });
+
   it('names every preference that follows a signed-in person, in plain words', () => {
     const keys = followingKeys();
     expect(keys.length).toBeGreaterThan(0);
@@ -54,7 +61,9 @@ describe('the profile rules', () => {
       expect(FOLLOWS_LABEL[k], String(k)).toBeTruthy();
       expect(followsLine().toLowerCase()).toContain(followsLabel(k).toLowerCase());
     }
-    expect(followsLine()).toMatch(/^Appearance, .+, and .+ follow you to every device/);
+    expect(followsLine()).toBe(
+      'Appearance, effort, Humanize Writing, Chain of Thought, notices, and voice.',
+    );
   });
 
   it('draws the avatar from the email', () => {
@@ -121,10 +130,16 @@ describe('signed in', () => {
       'Preferences that follow you',
       'What leaves this device',
       'Contact support',
+      'Not copied to your account',
       'Sign out',
     ]) {
       expect(sheet, part).toContain(part);
     }
+    // Said once, by the profile's own row (CX, 2026-10-02).
+    const { SIGNED_IN_PERKS } = await import('../src/lib/accountGate.js');
+    expect(sheet).not.toContain(SIGNED_IN_PERKS);
+    // Never claims more than the code does (CTO, 2026-10-02).
+    expect(sheet).not.toMatch(/stay on the device they were made on/);
   });
 
   it('signed out, the card still says Sign in and the profile stays shut', async () => {

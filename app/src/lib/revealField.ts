@@ -29,3 +29,40 @@ export function scrollParentOf(el: Element): Element {
   }
   return document.scrollingElement ?? document.documentElement;
 }
+
+/** A field rests with its primary action where its container asks for it
+ *  (CX, 2026-10-02): a block marked `data-reveal-with` names its commit
+ *  button with `data-reveal-primary`, and the two rise together so Save is
+ *  never under the keyboard. Unmarked fields rise alone, as before. */
+export function revealActionOf(field: Element): Element | undefined {
+  const group = field.closest('[data-reveal-with]');
+  return group?.querySelector('[data-reveal-primary]') ?? undefined;
+}
+
+/** How far to scroll so the field, and its action when it has one, sit the
+ *  gap above the keyboard, capped so the field's top never rises past
+ *  `viewTop` (the bottom of the room's bar). When both cannot fit, the
+ *  field wins. */
+export function revealPlan(opts: {
+  fieldTop: number;
+  fieldBottom: number;
+  actionBottom?: number;
+  viewTop: number;
+  viewportHeight: number;
+  inset: number;
+  gap?: number;
+}): number {
+  const gap = opts.gap ?? REVEAL_GAP;
+  const forField = revealDelta(opts.fieldBottom, opts.viewportHeight, opts.inset, gap);
+  if (opts.actionBottom === undefined) return forField;
+  const forAction = revealDelta(opts.actionBottom, opts.viewportHeight, opts.inset, gap);
+  const cap = opts.fieldTop - (opts.viewTop + gap);
+  return Math.max(forField, Math.min(forAction, cap));
+}
+
+/** The top of a scroller's visible area: under its own sticky bar when it
+ *  has one, else its own top edge. */
+export function viewTopOf(scroller: Element): number {
+  const bar = scroller.querySelector(':scope > .topbar');
+  return (bar ?? scroller).getBoundingClientRect()[bar ? 'bottom' : 'top'];
+}

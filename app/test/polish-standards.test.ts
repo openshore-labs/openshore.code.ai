@@ -474,3 +474,12 @@ describe('rooms never scroll sideways', () => {
     expect(theme).toMatch(/\.screen \{[^}]*overflow-y: auto;[^}]*overflow-x: hidden;/);
   });
 });
+
+describe('the chat never scrolls sideways', () => {
+  it('clips the transcript and wraps a bare link or an unbroken word', () => {
+    const theme = readFileSync(new URL('../src/theme.css', import.meta.url), 'utf8');
+    expect(theme).toMatch(/\.thread \{[^}]*overflow-y: auto;[^}]*overflow-x: hidden;/);
+    expect(theme).toMatch(/\.md a \{[^}]*overflow-wrap: anywhere;/);
+    expect(theme).toMatch(/\.md code \{[^}]*overflow-wrap: anywhere;/);
+  });
+});

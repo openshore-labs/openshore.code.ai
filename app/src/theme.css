@@ -39,7 +39,7 @@
 
   /* Ink: primary, secondary, faint. Straight from openshore.ai. */
   --ink: #1c2a33;
-  --ink-soft: #55636b;
+  --ink-soft: #424f57;
   --muted: #606a6f;
 
   /* Accents. LOCAL work carries the brand water teal; CLOUD/spend carries a
@@ -854,6 +854,12 @@ textarea {
   border-top: 1px solid var(--border);
   padding: 8px;
 }
+/* A group with no rows (every room moved up) takes no space and draws no
+   line; a row dragged below Recents fills it again (Creative Studio). */
+.sidebar-nav:empty {
+  border-top: 0;
+  padding: 0;
+}
 
 /* The day-one group sits directly under the wordmark: no rule above it, and no
    safe-area padding below (that belongs to the bottom group). */
@@ -1164,6 +1170,16 @@ textarea {
 }
 .topbar-title[data-depth='root'] {
   animation-name: title-in-back;
+}
+/* A room with its own large title tucks the bar's title away until that one
+   scrolls under the bar (BackBar's titleHiddenUntil). Opacity only. */
+.topbar-title {
+  transition: opacity var(--dur-3) var(--ease-standard);
+}
+.topbar-title.is-tucked {
+  /* No entrance while tucked, or it would flash in and back out. */
+  animation: none;
+  opacity: 0;
 }
 @keyframes title-in-deeper {
   from {
@@ -3413,6 +3429,12 @@ button.vault-tag {
 .thread {
   flex: 1;
   overflow-y: auto;
+  /* The transcript scrolls up and down only (founder, 2026-10-02): a long
+     link or an unbroken word wraps below, and anything that still bleeds is
+     clipped here rather than panning the chat sideways. A code block keeps
+     its own sideways scroll inside its frame. */
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
   scroll-behavior: smooth;
 }
 
@@ -3701,11 +3723,14 @@ button.vault-tag {
 .md a {
   color: var(--link);
   text-decoration: none;
+  /* A bare URL has no spaces to wrap at; let it break anywhere. */
+  overflow-wrap: anywhere;
 }
 .md a:hover {
   text-decoration: underline;
 }
 .md code {
+  overflow-wrap: anywhere;
   font-family: var(--font-mono);
   font-size: 0.86em;
   background: var(--surface);
@@ -3726,6 +3751,7 @@ button.vault-tag {
   margin: 0.6em 0 1em;
 }
 .md pre code {
+  overflow-wrap: normal;
   background: none;
   border: none;
   padding: 0;
@@ -12698,6 +12724,9 @@ button.settings-row:active {
   line-height: 1.4;
   text-wrap: pretty;
 }
+.stack-off {
+  color: var(--muted);
+}
 .stack-place {
   padding: 7px 14px;
 }
@@ -14540,9 +14569,9 @@ button.settings-row:active {
 .icon-picker {
   display: flex;
   gap: 12px;
-  /* The tile's own 5px ring room, taken off the row's 14px inset, so the
+  /* The tile's own 7px ring room, taken off the row's 14px inset, so the
      tiles start on the rows' text line. */
-  padding: 0 9px 14px;
+  padding: 0 7px 14px;
 }
 .icon-choice {
   display: flex;
@@ -14560,7 +14589,9 @@ button.settings-row:active {
   position: relative;
   display: grid;
   place-items: center;
-  padding: 5px;
+  /* 7px of air: the tile's drawn corner (13.1px) plus the gap is 20px, so
+     the ring on --radius-lg runs concentric with the tile. */
+  padding: 7px;
 }
 .icon-choice .brand-mark {
   display: block;

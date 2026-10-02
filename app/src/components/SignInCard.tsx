@@ -37,7 +37,7 @@ export function unsentTeamTextBody(n: number): string {
   return `${which} text that has not reached your team yet. Signing out deletes it from this device.`;
 }
 
-export function SignInCard() {
+export function SignInCard({ variant }: { variant?: 'profile' } = {}) {
   const { showToast, unsentTeamTextCount } = useApp();
   const {
     configured,
@@ -200,12 +200,21 @@ export function SignInCard() {
         <div className="card">
           <div className="card-row">
             <div className="grow">
-              <h3>Signed in</h3>
-              <div className="sub">
-                {email}
-                {role ? ` · ${role}` : ''}
-              </div>
-              <div className="sub">{SIGNED_IN_PERKS}</div>
+              {/* The profile already names the account and lists what
+                  follows you (CX, 2026-10-02), so there the card is only
+                  the way out. */}
+              {variant === 'profile' ? (
+                <div className="sub">Signing out keeps everything on this device.</div>
+              ) : (
+                <>
+                  <h3>Signed in</h3>
+                  <div className="sub">
+                    {email}
+                    {role ? ` · ${role}` : ''}
+                  </div>
+                  <div className="sub">{SIGNED_IN_PERKS}</div>
+                </>
+              )}
             </div>
             <button
               type="button"

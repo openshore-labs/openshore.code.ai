@@ -75,6 +75,7 @@ import { listVoices } from '../lib/voice/tts.js';
 import { curateVoices, resolveVoice } from '../lib/voice/voiceCatalog.js';
 import { webSearchOn, type SearchBackend } from '../lib/webSearch.js';
 import { APP_ICONS, appIconNote } from '../lib/appIcon.js';
+import { FOLLOWS_GROUP_ID, useSettingsJump } from '../lib/profile.js';
 import { PACK_BY_CLASS, TRUST_STATEMENT_LINES, type StackHealthSealFact } from 'os-code/protocol';
 
 const SEARCH_BACKEND_LABEL: Record<SearchBackend, string> = {
@@ -286,6 +287,15 @@ export function SettingsScreen() {
     setVaultScope,
     vaultRequestSheet,
   } = useApp();
+  // Opened from the profile's "Preferences that follow you": land on the
+  // group they start in, once the room has painted.
+  useEffect(() => {
+    const target = useSettingsJump.getState().take();
+    if (!target) return;
+    requestAnimationFrame(() =>
+      document.getElementById(target)?.scrollIntoView({ block: 'start', behavior: 'smooth' }),
+    );
+  }, []);
   const restorePurchases = useApp((s) => s.restorePurchases);
   const recheckPersonal = useApp((s) => s.recheckPersonal);
   const manageSubscription = useApp((s) => s.manageSubscription);
@@ -536,7 +546,7 @@ export function SettingsScreen() {
           ) : null}
         </SettingsGroup>
 
-        <SettingsGroup title="This device" index={group++}>
+        <SettingsGroup id={FOLLOWS_GROUP_ID} title="This device" index={group++}>
           {platform() === 'ios' && vaultProviderId === 'local' && vaultRoomShut ? (
             <SettingsRow
               label="Export your notes"

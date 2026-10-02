@@ -135,7 +135,9 @@ export function ConnectionsScreen() {
                 )}
               </div>
               {editing === p.id ? (
-                <div style={{ marginTop: 12 }}>
+                // The key, its workspace, and Save rise above the keyboard
+                // together (lib/revealField.ts).
+                <div style={{ marginTop: 12 }} data-reveal-with="">
                   <button
                     type="button"
                     className="linklike"
@@ -151,6 +153,7 @@ export function ConnectionsScreen() {
                       autoFocus
                       type="password"
                       placeholder={p.keyHint}
+                      enterKeyHint="go"
                       value={value}
                       onChange={(e) => setValue(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && void save(p.id, p.name)}
@@ -165,6 +168,7 @@ export function ConnectionsScreen() {
                         <input
                           id="connections-workspace-id"
                           placeholder="wrkspc_..."
+                          enterKeyHint="go"
                           autoCapitalize="none"
                           autoCorrect="off"
                           value={workspace}
@@ -173,16 +177,15 @@ export function ConnectionsScreen() {
                         />
                       </div>
                       <p className="hint" style={{ marginBottom: 10 }}>
-                        Most keys need nothing here. A key tied to your login rather than a
-                        workspace needs its id: in the Console, open Settings, then Workspaces, and
-                        copy it (it starts with wrkspc_). The id saved here is filled in for you
-                        next time.
+                        Only if Claude asks: in the Console, Settings, then Workspaces, copy the id
+                        that starts with wrkspc_.
                       </p>
                     </>
                   ) : null}
                   <button
                     className="btn primary"
                     style={{ width: '100%' }}
+                    data-reveal-primary=""
                     disabled={checking}
                     onClick={() => void save(p.id, p.name)}
                   >

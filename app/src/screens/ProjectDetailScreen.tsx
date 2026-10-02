@@ -30,7 +30,7 @@ import {
   permissionLabel,
   projectPermissionFor,
 } from '../lib/projectAccess.js';
-import { relativeTime } from './ChatsScreen.js';
+import { ReachDot, chatReach, relativeTime } from './ChatsScreen.js';
 import { useTitleHero } from '../lib/heroTitle.js';
 import { durationMs } from '../lib/motion.js';
 import { Icon } from '../components/Icon.js';
@@ -148,7 +148,7 @@ export function ProjectDetailScreen() {
 
   return (
     <div className="screen project-room-screen">
-      <BackBar title={project.name} action={more} />
+      <BackBar title={project.name} action={more} titleHiddenUntil={titleRef} />
       <div className="screen-inner project-room">
         <h1 ref={titleRef} className="project-hero-title project-room-title">
           {project.name}
@@ -234,7 +234,12 @@ export function ProjectDetailScreen() {
                       ) : null}
                       {conv.title}
                     </span>
-                    <span className="project-chat-sub">{relativeTime(conv.updatedAt)}</span>
+                    {/* Teal stayed on the device, amber reached the cloud (tenet
+                        4): a trust signal, so it stays (CX, 2026-10-02). */}
+                    <span className="project-chat-sub">
+                      <ReachDot reach={chatReach(conv)} />
+                      {relativeTime(conv.updatedAt)}
+                    </span>
                   </span>
                 </button>
               ))}

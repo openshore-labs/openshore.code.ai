@@ -13,10 +13,10 @@ export const FOLLOWS_LABEL: Partial<Record<keyof AppSettings, string>> = {
   effort: 'effort',
   humanizeWriting: 'Humanize Writing',
   chainOfThought: 'Chain of Thought',
-  noticeDownloads: 'download notices',
-  noticeReplies: 'reply notices',
-  voiceReplies: 'spoken replies',
-  voiceRate: 'voice speed',
+  noticeDownloads: 'notices',
+  noticeReplies: 'notices',
+  voiceReplies: 'voice',
+  voiceRate: 'voice',
 };
 
 /** Every key settingsReach.ts lets follow the person, in its order. */
@@ -32,13 +32,14 @@ export function followsLabel(key: keyof AppSettings): string {
   return FOLLOWS_LABEL[key] ?? String(key);
 }
 
-/** One sentence naming what follows the person to every device. */
+/** The preferences that follow the person, named once each in plain words
+ *  (the row's label already says they follow you; CX, 2026-10-02). */
 export function followsLine(): string {
-  const names = followingKeys().map(followsLabel);
+  const names = [...new Set(followingKeys().map(followsLabel))];
   const list =
     names.length > 1 ? `${names.slice(0, -1).join(', ')}, and ${names.at(-1)}` : names[0];
   const first = list ? list.charAt(0).toUpperCase() + list.slice(1) : '';
-  return `${first} follow you to every device you sign in on.`;
+  return `${first}.`;
 }
 
 /** The letter in the account's avatar. */
@@ -95,3 +96,22 @@ export const useProfileSheet = create<{ open: boolean; show: () => void; hide: (
     hide: () => set({ open: false }),
   }),
 );
+
+/** Where Settings should land when it opens: the id of a group another room
+ *  linked to (the profile's "Preferences that follow you"). Taken once. */
+export const useSettingsJump = create<{
+  target?: string;
+  jump: (id: string) => void;
+  take: () => string | undefined;
+}>((set, get) => ({
+  target: undefined,
+  jump: (id) => set({ target: id }),
+  take: () => {
+    const t = get().target;
+    if (t) set({ target: undefined });
+    return t;
+  },
+}));
+
+/** The Settings group the preferences that follow you start in. */
+export const FOLLOWS_GROUP_ID = 'settings-this-device';

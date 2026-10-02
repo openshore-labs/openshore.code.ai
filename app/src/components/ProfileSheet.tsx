@@ -16,7 +16,15 @@ import { PAY_GATES_ENABLED } from '../lib/payGate.js';
 import { iapAvailable } from '../lib/iap.js';
 import { openExternal } from '../lib/platform.js';
 import { SUPPORT_EMAIL } from 'os-code/protocol';
-import { accountInitial, followsLine, planStanding, useProfileSheet } from '../lib/profile.js';
+import { WhatLeavesSheet } from './WhatLeavesSheet.js';
+import {
+  FOLLOWS_GROUP_ID,
+  accountInitial,
+  followsLine,
+  planStanding,
+  useProfileSheet,
+  useSettingsJump,
+} from '../lib/profile.js';
 
 export function ProfileSheet() {
   const open = useProfileSheet((s) => s.open);
@@ -37,7 +45,10 @@ export function ProfileSheet() {
     validUntil: entitlement?.validUntil,
   });
   const appleDevice = iapAvailable();
-  const toSettings = () => {
+  const jump = useSettingsJump((s) => s.jump);
+  // Lands Settings on the group the preferences that follow you start in.
+  const toFollows = () => {
+    jump(FOLLOWS_GROUP_ID);
     hide();
     setView('settings', { root: true });
   };
@@ -99,20 +110,19 @@ export function ProfileSheet() {
           <SettingsRow
             label="Preferences that follow you"
             sub={followsLine()}
-            onClick={toSettings}
+            onClick={toFollows}
           />
+          {/* True on every platform (CTO, 2026-10-02): a desktop vault can sit
+              in a synced folder and Repositories push to git hosts, so the
+              claim is only about the account. */}
           <SettingsRow
-            label="Everything else stays here"
-            sub="Chats, projects, keys, and your vault stay on the device they were made on."
+            label="Not copied to your account"
+            sub="OpenShore does not copy your chats, projects, keys, or vault to your account."
           />
         </SettingsGroup>
 
         <SettingsGroup title="Privacy and help" index={2}>
-          <SettingsRow
-            label="What leaves this device"
-            sub="The full list, in Settings, Privacy."
-            onClick={toSettings}
-          />
+          <WhatLeavesSheet />
           <SettingsRow
             label="Contact support"
             sub={SUPPORT_EMAIL}
@@ -122,7 +132,7 @@ export function ProfileSheet() {
 
         <SettingsGroup title="Sign-in" index={3}>
           <div className="profile-signin">
-            <SignInCard />
+            <SignInCard variant="profile" />
           </div>
         </SettingsGroup>
       </div>

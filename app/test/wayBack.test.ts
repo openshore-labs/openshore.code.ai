@@ -68,8 +68,10 @@ describe('the way back', () => {
   it('the top bar cross-fades its title with a direction, and slides the left control in', () => {
     const bar = src('components', 'BackBar.tsx');
     const theme = src('theme.css');
+    // Keyed by its text, with its direction; it may also tuck away under a
+    // room's large title (Creative Studio, 2026-10-02).
     expect(bar).toMatch(
-      /<div className="topbar-title" key=\{title\} data-depth=\{way \? 'page' : 'root'\}>/,
+      /<div\s+className=\{`topbar-title\$\{tucked \? ' is-tucked' : ''\}`\}\s+key=\{title\}\s+data-depth=\{way \? 'page' : 'root'\}/,
     );
     // A page arrives from the right (deeper); a return to a root from the left.
     expect(theme).toMatch(

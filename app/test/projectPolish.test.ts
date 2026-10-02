@@ -133,3 +133,20 @@ describe('project room', () => {
     );
   });
 });
+
+// Advisor rulings, 2026-10-02: the reach dot stays on a project's chat rows
+// (CX), and the bar's title tucks away while the room's large title shows
+// (Creative Studio), so the name never reads twice.
+describe('project room rulings', () => {
+  const detail = src('screens/ProjectDetailScreen.tsx');
+  it('marks each chat row with where it ran', () => {
+    expect(detail).toMatch(
+      /project-chat-sub[\s\S]{0,200}<ReachDot reach=\{chatReach\(conv\)\} \/>/,
+    );
+  });
+  it('tucks the bar title until the large title scrolls under it', () => {
+    expect(detail).toContain('titleHiddenUntil={titleRef}');
+    expect(src('components/BackBar.tsx')).toContain('IntersectionObserver');
+    expect(THEME).toMatch(/\.topbar-title\.is-tucked \{[^}]*animation: none;[^}]*opacity: 0;/);
+  });
+});

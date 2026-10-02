@@ -27,7 +27,7 @@ import { useRoomGhost } from './hooks/useRoomGhost.js';
 import { useScrollMemory } from './hooks/useScrollMemory.js';
 import { useDrawerGesture } from './hooks/useDrawerGesture.js';
 import { useKeyboardInset } from './hooks/useKeyboardInset.js';
-import { revealDelta, scrollParentOf } from './lib/revealField.js';
+import { revealActionOf, revealPlan, scrollParentOf, viewTopOf } from './lib/revealField.js';
 import { drawerExitMs, drawerWidth } from './lib/motion.js';
 
 // Every room but the chat is its own chunk (review 9: the whole app used to
@@ -268,8 +268,18 @@ export function App() {
       // Rest the field just above the keyboard (founder, 2026-10-02), not
       // centred: its own scroller moves, and the kb-open padding gives a field
       // near the foot of a room the room to rise.
-      const delta = revealDelta(el.getBoundingClientRect().bottom, window.innerHeight, inset);
-      if (delta > 0) scrollParentOf(el).scrollBy({ top: delta, behavior: 'smooth' });
+      // A field marked with its commit button rises with it (CX, 2026-10-02).
+      const scroller = scrollParentOf(el);
+      const box = el.getBoundingClientRect();
+      const delta = revealPlan({
+        fieldTop: box.top,
+        fieldBottom: box.bottom,
+        actionBottom: revealActionOf(el)?.getBoundingClientRect().bottom,
+        viewTop: viewTopOf(scroller),
+        viewportHeight: window.innerHeight,
+        inset,
+      });
+      if (delta > 0) scroller.scrollBy({ top: delta, behavior: 'smooth' });
     };
     const onFocusIn = (e: FocusEvent) => {
       const el = e.target;
