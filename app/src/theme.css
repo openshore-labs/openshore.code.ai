@@ -33,18 +33,21 @@
   --surface-hover: #e4e0d4;
   --border: #e5e0d3;
   --border-strong: #d9d4c9;
+  /* A control's own edge (a switch's track at rest, a field's border): 3:1
+     on every ground, the non-text contrast WCAG 1.4.11 asks of a control. */
+  --control-edge: #7a858c;
 
   /* Ink: primary, secondary, faint. Straight from openshore.ai. */
   --ink: #1c2a33;
   --ink-soft: #55636b;
-  --muted: #8a949a;
+  --muted: #606a6f;
 
   /* Accents. LOCAL work carries the brand water teal; CLOUD/spend carries a
      deep amber that stays legible on paper. */
   --local: #2f5a66;
   --local-deep: #24454f;
   --local-soft: rgba(47, 90, 102, 0.12);
-  --cloud: #a35f0a;
+  --cloud: #895008;
   --cloud-soft: rgba(163, 95, 10, 0.13);
 
   /* Meaning split (Creative Studio brand sweep, 2026-09-24). Teal used to be
@@ -70,18 +73,21 @@
      star can never be misread as spend or as the teal benchmark score. */
   --voice: #c98a1f;
   --voice-soft: rgba(201, 138, 31, 0.14);
+  /* Voice as text: the gold darkened to clear 4.5:1 on every light ground;
+     --voice stays the fill. */
+  --voice-ink: #805913;
   /* Plus: the gold of the free build's Upgrade banner (founder, 2026-09-30),
      kept apart from the spend amber and the people-signal honey. */
   --plus: #c9a24a;
   --plus-ink: #2a2111;
 
   /* Status. Deepened so they read as text on a light ground. */
-  --ok: #2f8f4e;
+  --ok: #236b3b;
   /* Soft ok fill (mirrors --cloud-soft), shared by every green status pill. */
   --ok-soft: rgba(47, 143, 78, 0.14);
-  --warn: #8a6d0a;
+  --warn: #806509;
   --danger: #c0392b;
-  --link: #2c6ea3;
+  --link: #2b6ca1;
   /* Tinted fills derived from their status colour, so both themes follow
      from one declaration (color-mix resolves against the active theme). */
   --warn-soft: color-mix(in srgb, var(--warn) 13%, transparent);
@@ -276,6 +282,7 @@
     --surface-hover: #1c3440;
     --border: #24424d;
     --border-strong: #2f5462;
+    --control-edge: #63737c;
     --ink: #f6f4ef;
     --ink-soft: #a9bac0;
     --muted: #81949c;
@@ -291,6 +298,7 @@
     --attention-soft: rgba(199, 155, 216, 0.16);
     --syntax-string: #d4a373;
     --voice: #eab94f;
+    --voice-ink: var(--voice);
     --voice-soft: rgba(234, 185, 79, 0.18);
     --plus: #d8b667;
     --plus-ink: #0b1417;
@@ -325,6 +333,7 @@
   --surface-hover: #1c3440;
   --border: #24424d;
   --border-strong: #2f5462;
+  --control-edge: #63737c;
   --ink: #f6f4ef;
   --ink-soft: #a9bac0;
   --muted: #81949c;
@@ -340,6 +349,7 @@
   --attention-soft: rgba(199, 155, 216, 0.16);
   --syntax-string: #d4a373;
   --voice: #eab94f;
+  --voice-ink: var(--voice);
   --voice-soft: rgba(234, 185, 79, 0.18);
   --plus: #d8b667;
   --plus-ink: #0b1417;
@@ -4419,7 +4429,10 @@ button.vault-tag {
 /* Empty field: the send button sits small and dim, then springs up to full
    size the moment there is something to send. */
 .send-btn:disabled {
-  opacity: 0.35;
+  /* A quiet solid circle, not a faded one: the arrow stays readable (above
+     3:1 on its fill in both themes) while there is nothing to send. */
+  background: var(--surface);
+  color: var(--ink-soft);
   transform: scale(0.82);
   cursor: default;
 }
@@ -6570,7 +6583,7 @@ button.vault-tag {
 .field input {
   width: 100%;
   background: var(--bg-raised);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--control-edge);
   border-radius: var(--radius-md);
   padding: 11px 12px;
   font-size: var(--text-5);
@@ -6585,7 +6598,7 @@ button.vault-tag {
 .field .select {
   width: 100%;
   background: var(--bg-raised);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--control-edge);
   border-radius: var(--radius-md);
   padding: 11px 12px;
   font-size: var(--text-5);
@@ -6727,7 +6740,7 @@ button.vault-tag {
   width: 100%;
   text-align: left;
   background: var(--bg-raised);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--control-edge);
   border-radius: var(--radius-md);
   padding: 11px 12px;
   font-size: var(--text-5);
@@ -7297,7 +7310,7 @@ button.vault-tag {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--voice);
+  color: var(--voice-ink);
 }
 .community-line svg {
   display: block;
@@ -7497,7 +7510,7 @@ button.vault-tag {
 }
 .review-mine {
   font-size: var(--text-1);
-  color: var(--voice);
+  color: var(--voice-ink);
   font-weight: var(--weight-semibold);
 }
 /* Set by the server from its staff list (0020's review_staff), never by the
@@ -8059,7 +8072,7 @@ button.vault-tag {
   flex: 1;
   min-width: 180px;
   background: var(--bg-raised);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--control-edge);
   border-radius: var(--radius-md);
   padding: 10px 12px;
   font-size: var(--text-4);
@@ -11961,7 +11974,7 @@ button.settings-row:active {
   width: 46px;
   height: 28px;
   border-radius: 999px;
-  background: var(--border-strong);
+  background: var(--control-edge);
   transition: background var(--dur-3) var(--ease-standard);
 }
 .switch.on {
@@ -12697,7 +12710,7 @@ button.settings-row:active {
 .stack-select {
   width: 100%;
   background: var(--bg-raised);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--control-edge);
   border-radius: var(--radius-md);
   padding: 10px 12px;
   font-size: var(--text-5);
