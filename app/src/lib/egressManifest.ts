@@ -63,9 +63,9 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'account',
     recipient: 'OpenShore (us)',
-    what: 'Your email and password to sign in, then your plan, your organization, and team projects.',
-    when: 'When you sign in, and each time the app opens while you are signed in, to renew the sign-in. Chatting needs no account; building, Projects, Vault, Crew, Terminal, and pairing do.',
-    start: 'tap',
+    what: 'Your email and password to sign in, then what your account needs to work: its sign-in renewed, and its plan.',
+    when: 'Only once you sign in, and then each time the app opens while you are signed in. Chatting needs no account; building, Projects, Vault, Crew, Terminal, and pairing do.',
+    start: 'off',
     hosts: ['env:VITE_SUPABASE_URL'],
   },
   {
