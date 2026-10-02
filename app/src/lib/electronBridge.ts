@@ -500,6 +500,7 @@ export interface OscodeBridge {
   routineRun(id: string): Promise<{ queued: true; position: number } | { error: string }>;
   routineStop(id: string): Promise<{ stopped: boolean }>;
   routinesWebSearch(allowed: boolean): Promise<{ webSearch: boolean }>;
+  webFetchMode?(mode: 'ask' | 'allow' | 'off'): Promise<{ webFetch: 'ask' | 'allow' | 'off' }>;
   routineNote(runId: string): Promise<{ path: string; markdown: string } | null>;
 
   // Agentic Currents: what this computer can host (a Hermes home present, a

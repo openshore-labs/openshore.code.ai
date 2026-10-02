@@ -548,7 +548,14 @@ function PhonePair() {
     setTesting(true);
     setConnected(false);
     setState(undefined);
-    const claimed = await redeemPairClaim(baseUrl, rawClaim.trim(), phoneDeviceName());
+    const claimed = await redeemPairClaim(baseUrl, rawClaim.trim(), phoneDeviceName(), {
+      onPending: (pairCode) =>
+        setState(
+          pairCode
+            ? `On your computer, allow this device. It shows the code ${pairCode}.`
+            : 'On your computer, allow this device.',
+        ),
+    });
     if (!claimed.ok) {
       setTesting(false);
       setState(claimed.detail);

@@ -95,7 +95,7 @@ export const PROJECT_POLICY: Record<keyof OscConfig, KeyPolicy> = {
   // A process the agent starts keeps running after its step, so turning the
   // tools on over a machine that has them off waits for trust; turning them
   // off applies from any folder.
-  tools: { processes: 'off-only' },
+  tools: { processes: 'off-only', webFetch: 'machine' },
 };
 
 /** A project setting that was not applied, and why. */

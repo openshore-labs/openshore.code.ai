@@ -99,6 +99,7 @@ contextBridge.exposeInMainWorld('oscode', {
   routineStop: invoke('osc:routineStop'),
   routineNote: invoke('osc:routineNote'),
   routinesWebSearch: invoke('osc:routinesWebSearch'),
+  webFetchMode: invoke('osc:webFetchMode'),
 
   currentsProbe: invoke('osc:currentsProbe'),
   hermesNotes: invoke('osc:hermesNotes'),

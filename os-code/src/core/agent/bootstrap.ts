@@ -366,6 +366,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     // registered, and the profile denies a network step outright.
     offline: options.profile === 'headless',
     offlineSearch: options.profile === 'headless' && options.routineSearch === true,
+    ...(config.tools.webFetch === 'off' ? { webFetch: false } : {}),
     ...(processes ? { processes: true, processesOffered: () => modeNow() !== 'plan' } : {}),
   };
   const tools = buildToolRegistry(registryOptions);
@@ -401,6 +402,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     config.permissions as PermissionConfig,
     profile,
     options.profile === 'headless' && options.routineSearch === true && !egressLockdown,
+    config.tools.webFetch === 'allow' ? 'allow' : 'ask',
   );
   const guardrails = new Guardrails(
     options.caps

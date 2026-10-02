@@ -356,6 +356,12 @@ const SyncSchema = z.object({
 // fills 'on'); a project may only turn it off (projectPolicy.ts).
 const ToolsSchema = z.object({
   processes: z.enum(['on', 'off']).default('on'),
+  // Opening a web page (webFetch), the person's own choice on this machine
+  // (founder, 2026-10-02, the CTO review's H3): `ask` before each page (the
+  // default), `allow` without asking (a blanket yes), or `off` (no webFetch
+  // tool). Machine config: a repo never loosens it. A page on this computer's
+  // own network asks every time whatever this says (D3).
+  webFetch: z.enum(['ask', 'allow', 'off']).default('ask'),
 });
 
 // The premium harness (founder + advisor org, 2026-09-14; see

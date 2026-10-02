@@ -1,10 +1,13 @@
 // Credential storage. Preference order:
 //   1. The OS keychain via `secret-tool` (libsecret), when the desktop has it.
-//   2. An encrypted file at ~/.os-code/credentials (AES-256-GCM, key derived
-//      from the machine identity, mode 600).
-// The file path is honest obfuscation, not a vault: it keeps keys out of
-// plain text and out of accidental backups/greps, and the docs say exactly
-// that. Nothing ever leaves the machine.
+//   2. An encrypted file at ~/.os-code/credentials (AES-256-GCM, mode 600)
+//      whose key is a random 32-byte file key held by the OS: the macOS
+//      Keychain (`security`), Windows DPAPI for this user (PowerShell), so a
+//      copy of ~/.os-code alone opens nothing (CTO security review 2026-10-01,
+//      F2). Where neither exists (Linux without libsecret) the key is derived
+//      from the machine identity, the old scheme, and the docs say so.
+// A file written under the old hostname-derived key is read once and
+// rewritten under the OS-held key. Nothing ever leaves the machine.
 import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
@@ -13,6 +16,9 @@ import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:
 import { oscHome } from '../config/load.js';
 
 export type StoreBackend = 'keychain' | 'encrypted-file';
+
+/** Where the encrypted file's key lives. */
+export type FileKeyHolder = 'macos-keychain' | 'windows-dpapi' | 'machine-derived';
 
 let secretToolChecked: boolean | undefined;
 
@@ -87,27 +93,235 @@ function filePath(): string {
   return join(oscHome(), 'credentials');
 }
 
-function readFileStore(): Record<string, string> {
-  try {
-    const raw = readFileSync(filePath());
-    const iv = raw.subarray(0, 12);
-    const tag = raw.subarray(12, 28);
-    const data = raw.subarray(28);
-    const decipher = createDecipheriv('aes-256-gcm', machineKey(), iv);
-    decipher.setAuthTag(tag);
-    const plain = Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8');
-    return JSON.parse(plain);
-  } catch {
-    return {};
+/** A file written under an OS-held key starts with this; the old format has
+ *  no header (a 12-byte IV first). */
+const V2_MAGIC = Buffer.from('OSC2');
+
+// --- The OS-held file key -------------------------------------------------
+// One random 32-byte key per machine user, held by the OS secret store. Read
+// once per process and cached. `unreadable` (a locked keychain, a failing
+// PowerShell) is never treated as `absent`: a fresh key would orphan the file.
+
+type FileKeyOutcome =
+  { status: 'found'; key: Buffer } | { status: 'absent' } | { status: 'unreadable' };
+
+interface FileKeyProvider {
+  holder: Exclude<FileKeyHolder, 'machine-derived'>;
+  load(): FileKeyOutcome;
+  /** Store a new key; false when the OS refused. */
+  save(key: Buffer): boolean;
+}
+
+const MAC_SERVICE = 'os-code';
+const MAC_ACCOUNT = 'credentials-file-key';
+
+const macKeychain: FileKeyProvider = {
+  holder: 'macos-keychain',
+  load() {
+    const res = spawnSync(
+      'security',
+      ['find-generic-password', '-s', MAC_SERVICE, '-a', MAC_ACCOUNT, '-w'],
+      { encoding: 'utf8' },
+    );
+    if (res.status === 0) {
+      const hex = (res.stdout ?? '').trim();
+      return /^[0-9a-f]{64}$/.test(hex)
+        ? { status: 'found', key: Buffer.from(hex, 'hex') }
+        : { status: 'unreadable' };
+    }
+    // 44 is errSecItemNotFound; anything else (a locked keychain, a denied
+    // prompt) is a keychain that could not be read.
+    return res.status === 44 ? { status: 'absent' } : { status: 'unreadable' };
+  },
+  save(key) {
+    // Through `security -i` on stdin, so the key never sits in a process's
+    // argument list where another process could read it.
+    const res = spawnSync('security', ['-i'], {
+      input: `add-generic-password -U -s ${MAC_SERVICE} -a ${MAC_ACCOUNT} -l "OpenShore credentials" -w ${key.toString('hex')}\n`,
+      encoding: 'utf8',
+    });
+    return res.status === 0 && macKeychain.load().status === 'found';
+  },
+};
+
+function dpapiPath(): string {
+  return join(oscHome(), 'credentials.key');
+}
+
+function powershell(script: string, input: string): string | undefined {
+  const res = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+    input,
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  return res.status === 0 ? (res.stdout ?? '').trim() : undefined;
+}
+
+const DPAPI_UNPROTECT =
+  "Add-Type -AssemblyName System.Security; $b=[Convert]::FromBase64String([Console]::In.ReadToEnd().Trim()); [Console]::Out.Write([Convert]::ToBase64String([Security.Cryptography.ProtectedData]::Unprotect($b,$null,'CurrentUser')))";
+const DPAPI_PROTECT =
+  "Add-Type -AssemblyName System.Security; $b=[Convert]::FromBase64String([Console]::In.ReadToEnd().Trim()); [Console]::Out.Write([Convert]::ToBase64String([Security.Cryptography.ProtectedData]::Protect($b,$null,'CurrentUser')))";
+
+const windowsDpapi: FileKeyProvider = {
+  holder: 'windows-dpapi',
+  load() {
+    let wrapped: string;
+    try {
+      wrapped = readFileSync(dpapiPath(), 'utf8').trim();
+    } catch {
+      return { status: 'absent' };
+    }
+    const out = powershell(DPAPI_UNPROTECT, wrapped);
+    if (!out) return { status: 'unreadable' };
+    const key = Buffer.from(out, 'base64');
+    return key.length === 32 ? { status: 'found', key } : { status: 'unreadable' };
+  },
+  save(key) {
+    const out = powershell(DPAPI_PROTECT, key.toString('base64'));
+    if (!out) return false;
+    mkdirSync(oscHome(), { recursive: true });
+    writeFileSync(dpapiPath(), out, { mode: 0o600 });
+    return windowsDpapi.load().status === 'found';
+  },
+};
+
+let providerOverride: FileKeyProvider | null | undefined;
+let cachedFileKey: { key: Buffer; holder: FileKeyHolder } | undefined;
+
+/** Test seam: an in-memory provider, `null` for none (the old scheme), or
+ *  undefined to restore the platform's own. Clears the cached key. */
+export function _setFileKeyProvider(
+  fake:
+    | {
+        holder?: 'macos-keychain' | 'windows-dpapi';
+        key?: Buffer;
+        locked?: boolean;
+        refuseSave?: boolean;
+      }
+    | null
+    | undefined,
+): void {
+  cachedFileKey = undefined;
+  if (fake === undefined || fake === null) {
+    providerOverride = fake;
+    return;
   }
+  const state = { key: fake.key, locked: fake.locked ?? false };
+  providerOverride = {
+    holder: fake.holder ?? 'macos-keychain',
+    load: () =>
+      state.locked
+        ? { status: 'unreadable' }
+        : state.key
+          ? { status: 'found', key: state.key }
+          : { status: 'absent' },
+    save: (key) => {
+      if (state.locked || fake.refuseSave) return false;
+      state.key = key;
+      return true;
+    },
+  };
+}
+
+function platformProvider(): FileKeyProvider | undefined {
+  if (providerOverride !== undefined) return providerOverride ?? undefined;
+  if (process.platform === 'darwin') return macKeychain;
+  if (process.platform === 'win32') return windowsDpapi;
+  return undefined;
+}
+
+/** The key for the encrypted file: the OS-held one, created on first use, or
+ *  the machine-derived one where the OS holds none. `unreadable` when the OS
+ *  store exists but could not be read. */
+function fileKey(): { key: Buffer; holder: FileKeyHolder } | 'unreadable' {
+  if (cachedFileKey) return cachedFileKey;
+  const provider = platformProvider();
+  if (!provider) return (cachedFileKey = { key: machineKey(), holder: 'machine-derived' });
+  const found = provider.load();
+  if (found.status === 'found')
+    return (cachedFileKey = { key: found.key, holder: provider.holder });
+  if (found.status === 'unreadable') return 'unreadable';
+  const fresh = randomBytes(32);
+  if (provider.save(fresh)) return (cachedFileKey = { key: fresh, holder: provider.holder });
+  // The OS would not hold a key: keep working on the old scheme rather than
+  // lose the credentials, and say so in fileKeyHolder().
+  return (cachedFileKey = { key: machineKey(), holder: 'machine-derived' });
+}
+
+/** Where the encrypted file's key lives on this machine, for doctor and the
+ *  privacy copy. */
+export function fileKeyHolder(): FileKeyHolder | 'unreadable' {
+  const k = fileKey();
+  return k === 'unreadable' ? 'unreadable' : k.holder;
+}
+
+function decrypt(key: Buffer, body: Buffer): Record<string, string> {
+  const iv = body.subarray(0, 12);
+  const tag = body.subarray(12, 28);
+  const data = body.subarray(28);
+  const decipher = createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(tag);
+  const plain = Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8');
+  return JSON.parse(plain) as Record<string, string>;
+}
+
+interface FileRead {
+  store: Record<string, string>;
+  /** The file exists but its key could not be read: callers must not treat
+   *  a missing entry as absent (B1). */
+  unreadable: boolean;
+}
+
+function readFileStoreDetailed(): FileRead {
+  let raw: Buffer;
+  try {
+    raw = readFileSync(filePath());
+  } catch {
+    return { store: {}, unreadable: false };
+  }
+  if (raw.subarray(0, 4).equals(V2_MAGIC)) {
+    const k = fileKey();
+    if (k === 'unreadable') return { store: {}, unreadable: true };
+    try {
+      return { store: decrypt(k.key, raw.subarray(4)), unreadable: false };
+    } catch {
+      return { store: {}, unreadable: true };
+    }
+  }
+  // The old format, under the machine-derived key: read it, and move it under
+  // the OS-held key when there is one.
+  let store: Record<string, string>;
+  try {
+    store = decrypt(machineKey(), raw);
+  } catch {
+    return { store: {}, unreadable: false };
+  }
+  const k = fileKey();
+  if (k !== 'unreadable' && k.holder !== 'machine-derived') {
+    try {
+      writeFileStore(store);
+    } catch {
+      // The migration retries on the next read; the values are already read.
+    }
+  }
+  return { store, unreadable: false };
 }
 
 function writeFileStore(store: Record<string, string>): void {
+  const k = fileKey();
+  if (k === 'unreadable') {
+    throw new Error(
+      "This computer's keychain is locked, so OpenShore cannot save the key. Unlock it and try again.",
+    );
+  }
   mkdirSync(oscHome(), { recursive: true });
   const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', machineKey(), iv);
+  const cipher = createCipheriv('aes-256-gcm', k.key, iv);
   const data = Buffer.concat([cipher.update(JSON.stringify(store), 'utf8'), cipher.final()]);
-  const out = Buffer.concat([iv, cipher.getAuthTag(), data]);
+  const body = Buffer.concat([iv, cipher.getAuthTag(), data]);
+  // The machine-derived key keeps the old headerless format, so an older
+  // engine on the same machine still reads it.
+  const out = k.holder === 'machine-derived' ? body : Buffer.concat([V2_MAGIC, body]);
   writeFileSync(filePath(), out, { mode: 0o600 });
   chmodSync(filePath(), 0o600);
 }
@@ -132,8 +346,13 @@ export function readCredential(name: string): CredentialRead {
   const kc = keychainLookup(name);
   if (kc.status === 'found') return { value: kc.value, keychainUnreadable: false };
   // The keychain had nothing (or could not be read); the file store may still
-  // hold a legacy or file-backed key.
-  return { value: readFileStore()[name], keychainUnreadable: kc.status === 'unreadable' };
+  // hold a legacy or file-backed key. A file whose OS-held key could not be
+  // read counts as an unreadable keychain too (B1).
+  const file = readFileStoreDetailed();
+  return {
+    value: file.store[name],
+    keychainUnreadable: kc.status === 'unreadable' || file.unreadable,
+  };
 }
 
 export function getCredential(name: string): string | undefined {
@@ -155,9 +374,16 @@ export function setCredential(name: string, value: string): StoreBackend {
     );
     if (res.status === 0) return 'keychain';
   }
-  const store = readFileStore();
-  store[name] = value;
-  writeFileStore(store);
+  const file = readFileStoreDetailed();
+  // Never rewrite a file this process could not read: that would drop every
+  // key in it but this one.
+  if (file.unreadable) {
+    throw new Error(
+      "This computer's keychain is locked, so OpenShore cannot save the key. Unlock it and try again.",
+    );
+  }
+  file.store[name] = value;
+  writeFileStore(file.store);
   return 'encrypted-file';
 }
 
@@ -167,10 +393,10 @@ export function deleteCredential(name: string): void {
   } else if (hasSecretTool()) {
     spawnSync('secret-tool', ['clear', 'service', 'os-code', 'key', name], { stdio: 'ignore' });
   }
-  const store = readFileStore();
-  if (name in store) {
-    delete store[name];
-    writeFileStore(store);
+  const file = readFileStoreDetailed();
+  if (!file.unreadable && name in file.store) {
+    delete file.store[name];
+    writeFileStore(file.store);
   }
 }
 

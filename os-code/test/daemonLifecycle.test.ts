@@ -82,6 +82,7 @@ async function startOnFreePort(): Promise<RunningDaemon> {
         config: defaultConfig(),
         bind: 'loopback',
         port,
+        approvePairing: async () => true,
         terminals: new TerminalManager({
           spawn: async () => {
             throw new TerminalUnavailable();
@@ -193,9 +194,57 @@ describe('device credentials end (H1)', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ claim, deviceName: 'Test phone' }),
     });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { expiresAt?: string };
+    // The computer's Allow comes first (F3); then the phone collects.
+    expect(res.status).toBe(202);
+    const pending = (await res.json()) as { request: string; secret: string };
+    let collected: Response | undefined;
+    for (let i = 0; i < 100; i++) {
+      collected = await fetch(`${base}/pair/request`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(pending),
+      });
+      if (collected.status !== 202) break;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(collected!.status).toBe(200);
+    const body = (await collected!.json()) as { expiresAt?: string };
     expect(Date.parse(body.expiresAt ?? '')).toBeGreaterThan(Date.now());
+  });
+});
+
+describe('a daemon with nobody to ask (F3)', () => {
+  it('never hands out a credential on a claim alone', async () => {
+    let lone: RunningDaemon | undefined;
+    for (let attempt = 0; attempt < 30 && !lone; attempt++) {
+      const port = 40000 + Math.floor(Math.random() * 20000);
+      lone = await startDaemon({ config: defaultConfig(), bind: 'loopback', port }).catch(
+        (err: unknown) => {
+          if (portUnavailable(err)) return undefined;
+          throw err;
+        },
+      );
+    }
+    if (!lone) throw new Error('no free port');
+    try {
+      const at = `http://127.0.0.1:${lone.port}`;
+      const res = await fetch(`${at}/pair/claim`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ claim: lone.mintPairClaim().claim, deviceName: 'Phone' }),
+      });
+      expect(res.status).toBe(202);
+      const pending = await res.json();
+      await new Promise((r) => setTimeout(r, 20));
+      const answer = await fetch(`${at}/pair/request`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(pending),
+      });
+      expect(answer.status).toBe(403);
+    } finally {
+      lone.close();
+    }
   });
 });
 

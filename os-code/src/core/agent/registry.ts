@@ -102,6 +102,9 @@ export interface ToolRegistryOptions {
   // 2026-10-01). Results are titles, links and snippets; webFetch, Codemagic,
   // the currents and the model handoffs stay out. Ignored under egress lockdown.
   offlineSearch?: boolean;
+  // False leaves webFetch out: the person set opening web pages to Never
+  // (`tools.webFetch: off`). Undefined means on.
+  webFetch?: boolean;
   // On when this session's host can keep a program the agent starts running
   // (bootstrap wires ToolContext.processes to the driver's command lane):
   // registers startProcess, readProcess and stopProcess (P1). Bootstrap
@@ -122,7 +125,7 @@ export interface ToolRegistryOptions {
 function networkTools(options: ToolRegistryOptions): ToolDef[] {
   const out: ToolDef[] = [];
   if (options.webSearch !== false) out.push(webSearchTool);
-  out.push(webFetchTool);
+  if (options.webFetch !== false) out.push(webFetchTool);
   // Codemagic reaches the network too, so it rides with the web tools under
   // the egress gate. Present only when a token was delivered (Access on).
   if (options.hasCodemagic) out.push(codemagicTool);

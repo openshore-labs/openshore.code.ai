@@ -197,19 +197,53 @@ export async function redeemPairClaim(
   baseUrl: string,
   claim: string,
   deviceName?: string,
+  opts: {
+    /** The computer is asking the person to allow this device: show the code. */
+    onPending?: (code: string) => void;
+    /** How often to ask whether the computer answered (tests shorten it). */
+    pollMs?: number;
+    /** How long to wait for an answer before giving up. */
+    waitMs?: number;
+  } = {},
 ): Promise<{ ok: true; token: string; role?: HubRole } | { ok: false; detail: string }> {
   try {
-    const res = await fetch(`${baseUrl}/pair/claim`, {
+    let res = await fetch(`${baseUrl}/pair/claim`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ claim, deviceName }),
       signal: AbortSignal.timeout(6000),
     });
-    const body = (await res.json().catch(() => ({}))) as {
+    let body = (await res.json().catch(() => ({}))) as {
       token?: unknown;
       role?: unknown;
       error?: unknown;
+      request?: unknown;
+      secret?: unknown;
+      code?: unknown;
     };
+    // The computer asks the person first (CTO security review 2026-10-01,
+    // F3): the phone shows the same short code and asks until it answers.
+    if (res.status === 202 && typeof body.request === 'string' && typeof body.secret === 'string') {
+      const pending = { request: body.request, secret: body.secret };
+      opts.onPending?.(typeof body.code === 'string' ? body.code : '');
+      const until = Date.now() + (opts.waitMs ?? 130_000);
+      while (res.status === 202 && Date.now() < until) {
+        await new Promise((r) => setTimeout(r, opts.pollMs ?? 1500));
+        res = await fetch(`${baseUrl}/pair/request`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(pending),
+          signal: AbortSignal.timeout(6000),
+        });
+        body = (await res.json().catch(() => ({}))) as typeof body;
+      }
+      if (res.status === 202) {
+        return {
+          ok: false,
+          detail: 'Nobody allowed this device on your computer in time. Scan the code again.',
+        };
+      }
+    }
     if (res.ok && typeof body.token === 'string') {
       const role = roleOf(body);
       return { ok: true, token: body.token, ...(role ? { role } : {}) };

@@ -180,6 +180,15 @@ export const EGRESS: EgressEntry[] = [
     hosts: ['html.duckduckgo.com', 'duckduckgo.com'],
   },
   {
+    id: 'web-pages',
+    recipient: 'Web search',
+    what: 'A request for a web page the coding agent opens on your computer, to that site, with the network address any web request carries.',
+    when: 'When the coding agent opens a page: it asks first unless you set Opening web pages to Always in Settings, Approvals, and never opens one if you set it to Never. A page on your own network always asks. Crew routines never open pages.',
+    start: 'tap',
+    hosts: [],
+    platforms: ['electron'],
+  },
+  {
     id: 'search-keys',
     recipient: 'Web search',
     what: 'The same search words, to Brave, Tavily, or Perplexity instead.',

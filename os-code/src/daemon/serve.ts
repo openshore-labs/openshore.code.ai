@@ -57,7 +57,12 @@ import { clearHandoffs, deleteHandoff } from '../core/agent/handoffStore.js';
 import { TerminalManager, TerminalUnavailable } from './terminal.js';
 import { HOME_SHELL_ID } from './homeShellId.js';
 import { PushNotifier, pushSendUrlAllowed, savePushConfig } from './push.js';
-import { PairClaimStore, deviceLabelFrom, type PairClaimStatus } from './pairClaims.js';
+import {
+  PairClaimStore,
+  PairRequestStore,
+  deviceLabelFrom,
+  type PairClaimStatus,
+} from './pairClaims.js';
 import { TokenBucket } from './rateLimit.js';
 import {
   deviceCredentialExpired,
@@ -179,6 +184,17 @@ export interface DaemonOptions {
    *  pass one with an injected spawn so "node-pty not installed" and fake
    *  terminals are reproducible on any machine, built natives or not. */
   terminals?: TerminalManager;
+  /** Ask the person on this computer whether a device may pair (CTO security
+   *  review 2026-10-01, F3). Resolves true for Allow. The desktop app shows a
+   *  native dialog with the label and the short code the phone shows; the
+   *  promise may settle after the request expired, which changes nothing.
+   *  Absent, no device can finish pairing: a daemon with nobody to ask never
+   *  hands out a credential on a claim alone. */
+  approvePairing?: (request: {
+    label: string;
+    code: string;
+    stillPending: () => boolean;
+  }) => Promise<boolean>;
 }
 
 export interface RunningDaemon {
@@ -228,6 +244,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
   // QR; the phone redeems it below, before the bearer gate, and walks away
   // with a credential it alone holds.
   const pairClaims = new PairClaimStore();
+  const pairRequests = new PairRequestStore();
   const pairAttempts = new TokenBucket(PAIR_CLAIM_BUCKET);
   // The credentials with a /chat answer streaming right now (H1).
   const chatsInFlight = new Set<string>();
@@ -391,15 +408,82 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         sendJson(res, answer.status, { error: answer.error });
         return;
       }
+      // The claim is spent; the computer still has to say yes (F3). The phone
+      // shows the same short code the computer's dialog shows, and asks at
+      // POST /pair/request until the answer comes.
       const label = deviceLabelFrom(body.deviceName);
-      const minted = mintCredential({ role: 'admin', label });
-      log.info('paired a device', { label });
-      sendJson(res, 200, {
-        token: minted.token,
-        label,
-        role: minted.credential.role,
-        // When this pairing ends (H1), so the phone can say so ahead of time.
-        expiresAt: minted.credential.expiresAt,
+      const request = pairRequests.open(label);
+      const approve = options.approvePairing;
+      void (async () => {
+        let allowed = false;
+        try {
+          allowed = approve
+            ? await approve({
+                label,
+                code: request.code,
+                stillPending: () => pairRequests.pending(request.id),
+              })
+            : false;
+        } catch {
+          allowed = false;
+        }
+        if (!pairRequests.pending(request.id)) return;
+        if (!allowed) {
+          pairRequests.answer(request.id, null);
+          log.info('declined a device', { label });
+          return;
+        }
+        const minted = mintCredential({ role: 'admin', label });
+        pairRequests.answer(request.id, {
+          token: minted.token,
+          label,
+          role: minted.credential.role,
+          // When this pairing ends (H1), so the phone can say so ahead of time.
+          ...(minted.credential.expiresAt ? { expiresAt: minted.credential.expiresAt } : {}),
+        });
+        log.info('paired a device', { label });
+      })();
+      sendJson(res, 202, {
+        pending: true,
+        request: request.id,
+        secret: request.secret,
+        code: request.code,
+        expiresAt: request.expiresAt,
+      });
+      return;
+    }
+
+    // The phone asking whether the computer said yes. The request id and its
+    // 144-bit secret are the proof; an approved credential is handed over once.
+    if (req.method === 'POST' && url.pathname === '/pair/request') {
+      const body = await readJson(req, PAIR_CLAIM_MAX_BYTES);
+      const id = typeof body.request === 'string' ? body.request : '';
+      const secret = typeof body.secret === 'string' ? body.secret : '';
+      const seen = pairRequests.collect(id, secret);
+      if (seen.state === 'approved' && 'grant' in seen && seen.grant) {
+        sendJson(res, 200, { state: 'approved', ...seen.grant });
+        return;
+      }
+      const answers = {
+        pending: { status: 202, error: undefined },
+        denied: { status: 403, error: 'Your computer did not allow this device.' },
+        expired: {
+          status: 410,
+          error: 'Nobody allowed this device on your computer in time. Scan the code again.',
+        },
+        unknown: {
+          status: 404,
+          error: 'That pairing request is not one this computer knows. Scan the code again.',
+        },
+        approved: {
+          status: 410,
+          error: 'That pairing was already collected. Scan the code again.',
+        },
+      } as const;
+      const answer = answers[seen.state];
+      sendJson(res, answer.status, {
+        state: seen.state,
+        ...(answer.error ? { error: answer.error } : {}),
       });
       return;
     }
@@ -879,6 +963,24 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     // see all). Creating, changing, running, or stopping a routine provisions
     // unattended work on this machine, so it is admin-only, and the workspace
     // is gated to the allowed roots for every caller inside the scheduler.
+    // Opening web pages, the person's choice for this computer's coding agent
+    // (founder, 2026-10-02): ask, allow, or off. Machine config; admin only.
+    if (req.method === 'POST' && url.pathname === '/settings/web-fetch') {
+      if (!hasRole(auth, 'admin')) {
+        sendJson(res, 403, { error: "Only the computer's owner can change this." });
+        return;
+      }
+      const body = (await readJson(req)) as { mode?: unknown };
+      const mode = body?.mode;
+      if (mode !== 'ask' && mode !== 'allow' && mode !== 'off') {
+        sendJson(res, 400, { error: 'mode must be ask, allow, or off.' });
+        return;
+      }
+      saveGlobalConfig({ tools: { webFetch: mode } });
+      sendJson(res, 200, { webFetch: mode });
+      return;
+    }
+
     if (parts[0] === 'routines') {
       const admin = hasRole(auth, 'admin');
       const visible = (routineId: string): boolean =>

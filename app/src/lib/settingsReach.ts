@@ -97,6 +97,7 @@ export const SETTINGS_REACH: Record<keyof AppSettings, SettingReach> = {
   wayfinding: 'device',
   // Consents and access: each is made on the device it applies to.
   webSearchConsent: 'device',
+  webFetchMode: 'device',
   insightsOptIn: 'device',
   permissionMode: 'device',
   terminalControl: 'device',

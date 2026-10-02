@@ -18,12 +18,23 @@ import { portUnavailable } from './helpers/portable.js';
 let home: string;
 let daemon: RunningDaemon;
 let base: string;
+// The person's answer on the computer (F3); a test changes it to deny.
+let approver: (r: { label: string; code: string }) => Promise<boolean> = async () => true;
+const asked: Array<{ label: string; code: string }> = [];
 
 async function startOnFreePort(): Promise<RunningDaemon> {
   for (let attempt = 0; attempt < 30; attempt++) {
     const port = 40000 + Math.floor(Math.random() * 20000);
     try {
-      return await startDaemon({ config: defaultConfig(), bind: 'loopback', port });
+      return await startDaemon({
+        config: defaultConfig(),
+        bind: 'loopback',
+        port,
+        approvePairing: (r) => {
+          asked.push({ label: r.label, code: r.code });
+          return approver(r);
+        },
+      });
     } catch (err) {
       if (portUnavailable(err)) continue;
       throw err;
@@ -39,6 +50,8 @@ beforeEach(async () => {
     join(home, 'config.json'),
     JSON.stringify({ stack: { orchestrator: { provider: 'ollama', model: 'qwen' } } }),
   );
+  approver = async () => true;
+  asked.length = 0;
   daemon = await startOnFreePort();
   base = `http://127.0.0.1:${daemon.port}`;
 });
@@ -55,6 +68,23 @@ async function claim(body: unknown): Promise<Response> {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
+}
+
+/** Spend a claim, then ask until the computer answers: the whole phone side. */
+async function pair(body: unknown): Promise<Response> {
+  const first = await claim(body);
+  if (first.status !== 202) return first;
+  const { request, secret } = (await first.json()) as { request: string; secret: string };
+  for (let i = 0; i < 100; i++) {
+    const res = await fetch(`${base}/pair/request`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ request, secret }),
+    });
+    if (res.status !== 202) return res;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  throw new Error('the computer never answered');
 }
 
 describe('PairClaimStore (pure)', () => {
@@ -91,8 +121,12 @@ describe('PairClaimStore (pure)', () => {
 describe('POST /pair/claim (per-device pairing)', () => {
   it('trades a live claim for a per-device admin credential labeled by the phone', async () => {
     const { claim: code } = daemon.mintPairClaim();
-    const res = await claim({ claim: code, deviceName: "Jordan's iPhone" });
+    const res = await pair({ claim: code, deviceName: "Jordan's iPhone" });
     expect(res.status).toBe(200);
+    // The computer was asked, with the phone's name and a four-digit code.
+    expect(asked).toHaveLength(1);
+    expect(asked[0]!.label).toBe("Jordan's iPhone");
+    expect(asked[0]!.code).toMatch(/^[0-9]{4}$/);
     // The phone's WebView must be able to read the answer.
     expect(res.headers.get('access-control-allow-origin')).toBe('*');
     const body = (await res.json()) as { token: string; label: string; role: string };
@@ -115,12 +149,47 @@ describe('POST /pair/claim (per-device pairing)', () => {
 
   it('a claim is single-use: the second phone to present it is refused', async () => {
     const { claim: code } = daemon.mintPairClaim();
-    expect((await claim({ claim: code, deviceName: 'Phone A' })).status).toBe(200);
+    expect((await pair({ claim: code, deviceName: 'Phone A' })).status).toBe(200);
     const again = await claim({ claim: code, deviceName: 'Phone B' });
     expect(again.status).toBe(410);
     expect(((await again.json()) as { error: string }).error).toMatch(/already been used/i);
     expect(loadCredentials()).toHaveLength(1);
     expect(daemon.pairClaimStatus(code)).toBe('used');
+  });
+
+  it('a spent claim waits for the computer: the phone gets a code, never a token', async () => {
+    let release: (v: boolean) => void = () => {};
+    approver = () => new Promise((r) => (release = r));
+    const res = await claim({ claim: daemon.mintPairClaim().claim, deviceName: 'Phone' });
+    expect(res.status).toBe(202);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.token).toBeUndefined();
+    expect(String(body.code)).toMatch(/^[0-9]{4}$/);
+    expect(loadCredentials()).toHaveLength(0);
+    const ask = (secret = body.secret) =>
+      fetch(`${base}/pair/request`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ request: body.request, secret }),
+      });
+    expect((await ask()).status).toBe(202);
+    // A wrong secret learns nothing.
+    expect((await ask('guess')).status).toBe(404);
+    release(true);
+    await new Promise((r) => setTimeout(r, 20));
+    const ok = await ask();
+    expect(ok.status).toBe(200);
+    expect(((await ok.json()) as { token: string }).token.startsWith('osc_')).toBe(true);
+    // Handed over once.
+    expect((await ask()).status).toBe(404);
+  });
+
+  it('a Deny on the computer mints nothing, and the phone is told plainly', async () => {
+    approver = async () => false;
+    const res = await pair({ claim: daemon.mintPairClaim().claim, deviceName: 'Stranger' });
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { error: string }).error).toMatch(/did not allow/);
+    expect(loadCredentials()).toHaveLength(0);
   });
 
   it('a wrong or missing claim is refused and mints nothing', async () => {
@@ -131,12 +200,12 @@ describe('POST /pair/claim (per-device pairing)', () => {
 
   it('a claim is labeled honestly: the name is trimmed, bounded, and never empty', async () => {
     const { claim: code } = daemon.mintPairClaim();
-    const res = await claim({ claim: code, deviceName: `  ${'x'.repeat(80)}  ` });
+    const res = await pair({ claim: code, deviceName: `  ${'x'.repeat(80)}  ` });
     expect(res.status).toBe(200);
     const { label } = (await res.json()) as { label: string };
     expect(label).toBe('x'.repeat(40));
     const { claim: second } = daemon.mintPairClaim();
-    const res2 = await claim({ claim: second, deviceName: '   ' });
+    const res2 = await pair({ claim: second, deviceName: '   ' });
     expect(((await res2.json()) as { label: string }).label).toBe('Phone');
   });
 
@@ -173,10 +242,10 @@ describe('POST /pair/claim (per-device pairing)', () => {
 describe('DELETE /pair/self (a phone forgetting its computer)', () => {
   it('revokes exactly the presented device credential, and it stops working', async () => {
     const a = (await (
-      await claim({ claim: daemon.mintPairClaim().claim, deviceName: 'iPhone' })
+      await pair({ claim: daemon.mintPairClaim().claim, deviceName: 'iPhone' })
     ).json()) as { token: string };
     const b = (await (
-      await claim({ claim: daemon.mintPairClaim().claim, deviceName: 'iPad' })
+      await pair({ claim: daemon.mintPairClaim().claim, deviceName: 'iPad' })
     ).json()) as { token: string };
     const res = await fetch(`${base}/pair/self`, {
       method: 'DELETE',

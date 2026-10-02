@@ -608,6 +608,9 @@ export class PermissionEngine {
     /** A routine may run webSearch, and only webSearch, unattended: the person
      *  allowed web search and the registry kept the tool (founder, 2026-10-01). */
     private readonly offlineWebSearch = false,
+    /** Opening a web page (founder, 2026-10-02): `ask` before each page unless
+     *  this session allowed it, or `allow`. A permission rule still wins. */
+    private readonly webFetchMode: 'ask' | 'allow' = 'allow',
   ) {}
 
   /** Grant "always allow for this session" for one tool. Profile-gated. */
@@ -728,6 +731,12 @@ export class PermissionEngine {
       // headless profile it cannot make shell or cloud spend silent (ENG-4).
       if (rule.decision === 'allow' && this.autoAllowBlocked(q.risk, q.toolName)) continue;
       return { decision: rule.decision, reason: `permission rule for ${rule.tool}` };
+    }
+
+    // Opening a web page asks first unless the person set it to always allow,
+    // or allowed it for this session (above).
+    if (q.toolName === 'webFetch' && this.webFetchMode === 'ask') {
+      return { decision: 'ask', reason: 'opening a web page asks first (Settings)' };
     }
 
     if (q.risk === 'write' && q.cwd && this.config.trustedRepos.includes(q.cwd)) {

@@ -562,6 +562,40 @@ async function confirmInMain(opts: ConfirmWords): Promise<boolean> {
   return response === 0;
 }
 
+// A device asking to pair (CTO security review 2026-10-01, F3): the claim on
+// the QR is spent, and only this dialog's Allow gives the device a credential.
+// Deny is the default button. The dialog shows the same four-digit code the
+// phone shows, and closes itself if the request expires first.
+host.pairingApprover = async ({ label, code, stillPending }) => {
+  const controller = new AbortController();
+  const watch = setInterval(() => {
+    if (!stillPending()) controller.abort();
+  }, 1000);
+  const options = {
+    type: 'question' as const,
+    buttons: ['Allow', 'Deny'],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+    message: 'Allow this device?',
+    detail: `"${label}" wants to reach this computer. Once allowed, it can chat with your models, run your coding sessions, open your terminal, and read your projects. Allow it only if your own device shows the code ${code}.`,
+    signal: controller.signal,
+  };
+  try {
+    if (win && !win.isDestroyed()) {
+      win.show();
+      win.focus();
+    }
+    const parent = win && !win.isDestroyed() ? win : undefined;
+    const { response } = parent
+      ? await dialog.showMessageBox(parent, options)
+      : await dialog.showMessageBox(options);
+    return response === 0 && stillPending();
+  } finally {
+    clearInterval(watch);
+  }
+};
+
 /** Keystrokes and commands reach a shell only while the window has the
  *  person's attention: a page acting on its own in the background cannot. */
 function windowFocused(): boolean {
@@ -1175,6 +1209,9 @@ guarded('osc:routineUpdate', (id: unknown, patch: unknown) =>
 );
 guarded('osc:routineDelete', (id: unknown) => host.routineDelete(str(id, 'id')));
 guarded('osc:routineRun', (id: unknown) => host.routineRun(str(id, 'id')));
+guarded('osc:webFetchMode', (mode: unknown) =>
+  host.webFetchMode(mode === 'allow' || mode === 'off' ? mode : 'ask'),
+);
 guarded('osc:routinesWebSearch', (allowed: unknown) => host.routinesWebSearch(allowed === true));
 guarded('osc:routineStop', (id: unknown) => host.routineStop(str(id, 'id')));
 guarded('osc:routineNote', (runId: unknown) => host.routineNote(str(runId, 'runId')));

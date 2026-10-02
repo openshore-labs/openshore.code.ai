@@ -10,6 +10,7 @@ import { PAY_GATES_ENABLED, isOrgAdmin, useApp, type HarborDownload } from '../s
 import { useAuth } from '../hooks/useAuth.js';
 import { platform, isDesktop, isPhone, openExternal } from '../lib/platform.js';
 import { PRIVACY_URL, TERMS_URL } from '../lib/legalLinks.js';
+import { WEB_FETCH_LABEL, WEB_FETCH_MODES, webFetchLine } from '../lib/webFetchMode.js';
 import { iapAvailable } from '../lib/iap.js';
 import { noticeEnabled, noticePermission } from '../lib/notices.js';
 import type { NoticePermission } from '../lib/llamaPlugin.js';
@@ -289,6 +290,7 @@ export function SettingsScreen() {
   const recheckPersonal = useApp((s) => s.recheckPersonal);
   const manageSubscription = useApp((s) => s.manageSubscription);
   const setWebSearchAllowed = useApp((s) => s.setWebSearchAllowed);
+  const setWebFetchMode = useApp((s) => s.setWebFetchMode);
   const personalUnlockedNow = useApp((s) => s.personalUnlockedNow);
   const userEntitlement = useApp((s) => s.userEntitlement);
   const deleteAccount = useApp((s) => s.deleteAccount);
@@ -700,6 +702,41 @@ export function SettingsScreen() {
               </div>
             }
           />
+          {isDesktop() || settings.daemon ? (
+            <SettingsRow
+              label="Opening web pages"
+              subWrap
+              sub={webFetchLine(settings.webFetchMode ?? 'ask')}
+              trailing={
+                <div className="segmented" role="tablist" aria-label="Opening web pages">
+                  {WEB_FETCH_MODES.map((m) => {
+                    const active = (settings.webFetchMode ?? 'ask') === m;
+                    return (
+                      <button
+                        key={m}
+                        role="tab"
+                        aria-selected={active}
+                        className={`seg press-fb${active ? ' active' : ''}`}
+                        onClick={() => {
+                          if (active) return;
+                          if (m === 'allow') hapticCommit();
+                          void setWebFetchMode(m).then((reached) =>
+                            showToast(
+                              reached
+                                ? webFetchLine(m)
+                                : 'Your computer is not in reach, so nothing changed. Try again when it is.',
+                            ),
+                          );
+                        }}
+                      >
+                        {WEB_FETCH_LABEL[m]}
+                      </button>
+                    );
+                  })}
+                </div>
+              }
+            />
+          ) : null}
         </SettingsGroup>
 
         {termTargetId ? (

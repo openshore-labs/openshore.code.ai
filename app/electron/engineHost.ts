@@ -1000,6 +1000,12 @@ export class EngineHost {
 
   /** The person's web search switch, carried to the scheduler's machine config
    *  so a routine follows it (founder, 2026-10-01). */
+  /** Opening web pages for the coding agent here (founder, 2026-10-02). */
+  webFetchMode(mode: 'ask' | 'allow' | 'off'): { webFetch: 'ask' | 'allow' | 'off' } {
+    saveGlobalConfig({ tools: { webFetch: mode } });
+    return { webFetch: mode };
+  }
+
   routinesWebSearch(allowed: boolean): { webSearch: boolean } {
     saveGlobalConfig({ routines: { webSearch: allowed === true } });
     return { webSearch: allowed === true };
@@ -1053,6 +1059,22 @@ export class EngineHost {
   // rotated only once the daemon reports it spent or expired. The claim is a
   // pointer to a credential the phone has yet to mint, never a credential.
   private claim?: { claim: string; expiresAt: string };
+
+  /** The person's yes or no when a device spends a pairing claim (CTO
+   *  security review 2026-10-01, F3). main.ts sets it to a native dialog;
+   *  unset, no device can finish pairing. */
+  pairingApprover?: (request: {
+    label: string;
+    code: string;
+    stillPending: () => boolean;
+  }) => Promise<boolean>;
+
+  private approvePairing = (request: {
+    label: string;
+    code: string;
+    stillPending: () => boolean;
+  }): Promise<boolean> =>
+    this.pairingApprover ? this.pairingApprover(request) : Promise.resolve(false);
 
   // Why the last bind failed, kept until one succeeds, and whether the hub
   // should be up at all (a start and no stop since). A hub that went dark on
@@ -1110,6 +1132,7 @@ export class EngineHost {
           config,
           bind: 'tailscale',
           port: config.daemon.port,
+          approvePairing: this.approvePairing,
         });
         this.noteBindError(undefined);
         return { host: this.daemon.host };
@@ -1122,6 +1145,7 @@ export class EngineHost {
         config,
         bind: 'loopback',
         port: config.daemon.port,
+        approvePairing: this.approvePairing,
       });
       // Up on loopback; a tailnet that refused is still worth saying why.
       this.noteBindError(tailnetError);

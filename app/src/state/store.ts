@@ -253,6 +253,7 @@ import {
 import { HARBOR_MASTER_MODEL_NAME, resolveHarborMaster } from '../lib/harborMaster.js';
 import { hardwareFromSummary } from '../lib/firstSeat.js';
 import { SEARCH_SECRET_KEY, webSearchOn, type SearchBackend } from '../lib/webSearch.js';
+import { pushWebFetchMode } from '../lib/webFetchMode.js';
 import { loadInsights, logEvent, logOnce, setInsightsEnabled } from '../lib/insights.js';
 import {
   crewControl as computeCrewControl,
@@ -745,6 +746,10 @@ export interface AppSettings {
    *  yes, 'declined' after they turn it off in Settings; unset until asked
    *  (founder, 2026-10-02, webSearchOn). */
   webSearchConsent?: 'allowed' | 'declined';
+  /** Opening web pages for the coding agent on the computer (founder,
+   *  2026-10-02): ask (unset), always allow, or never. The computer holds the
+   *  real value (`tools.webFetch`); this is the app's copy (lib/webFetchMode). */
+  webFetchMode?: 'ask' | 'allow' | 'off';
   /** The user's stack: Reasoning LLM anchor, active specialists, bench metadata.
    *  Legacy single stack; kept as the migration seed and fallback. The live
    *  configuration is `stacks`, one per connectivity status. */
@@ -2529,6 +2534,10 @@ interface AppState {
   answerWebSearch(allow: boolean): void;
   /** The Settings switch for web search. */
   setWebSearchAllowed(allowed: boolean): Promise<void>;
+  /** Opening web pages for the coding agent: ask, always, or never, carried
+   *  to the computer and then saved here (lib/webFetchMode). False, and
+   *  nothing changed, when the computer could not be reached. */
+  setWebFetchMode(mode: 'ask' | 'allow' | 'off'): Promise<boolean>;
   /** The first try (v1 Phase 1): write the sample page on this computer,
    *  open a chat in it, and ask for the fix, so the whole loop shows on
    *  something that cannot hurt the person's own work. */
@@ -14466,6 +14475,14 @@ export const useApp = create<AppState>((set, get, api) => {
       resolve?.(allow);
       // Routines on this computer follow the answer.
       if (allow) void get().refreshRoutines();
+    },
+
+    async setWebFetchMode(mode) {
+      // The computer holds the real value, so the app's copy changes only
+      // once the computer took it: the row never shows a choice not in force.
+      const reached = await pushWebFetchMode(mode, get().settings);
+      if (reached) await get().saveSettings({ webFetchMode: mode });
+      return reached;
     },
 
     async setWebSearchAllowed(allowed) {
