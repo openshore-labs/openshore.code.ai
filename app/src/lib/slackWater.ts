@@ -28,7 +28,7 @@ export const FRONT_MS = 1100;
  *  speed and reaches the corner at (1 - k), the way a ring loses energy. */
 export const FRONT_EASE = 0.5;
 /** How many wavelengths the train carries behind its leading crest. */
-export const TRAIN_WAVES = 4.5;
+export const TRAIN_WAVES = 9;
 /** The crests drift back through the train one wavelength in this long, so
  *  the rings flow instead of sliding out as one rigid stamp. */
 export const FLOW_MS = 650;
@@ -45,9 +45,9 @@ export const THIN_AT_REACH = 0.5;
 
 /** How far a block heaves at the tap, in CSS pixels; it weakens with distance
  *  the way a ring's height does. */
-export const HEAVE_PX = 4;
+export const HEAVE_PX = 6;
 /** One block's heave: the train passing under it, crest to calm. */
-export const HEAVE_MS = 1000;
+export const HEAVE_MS = 1200;
 
 /** The swap never waits longer than this, whatever the thinning's clock says,
  *  so no one is ever left looking at an empty room. */
@@ -103,7 +103,7 @@ export function reachMs(d: number, R: number): number {
 /** The ripples' wavelength for a reach: longer on a bigger window, never so
  *  fine it shimmers or so broad it reads as a swell. */
 export function wavelength(R: number): number {
-  return Math.min(56, Math.max(26, R * 0.07));
+  return Math.min(40, Math.max(20, R * 0.048));
 }
 
 /** The water at one moment, everything the renderer needs. */
@@ -149,10 +149,10 @@ export function heaveFor(d: number, R: number): { delay: number; px: number } {
  *  stretch a crest's lens gives the block under it. */
 export const HEAVE_KEYS: ReadonlyArray<{ at: number; push: number; stretch: number }> = [
   { at: 0, push: 0, stretch: 0 },
-  { at: 0.16, push: 1, stretch: 0.012 },
-  { at: 0.36, push: -0.62, stretch: -0.007 },
-  { at: 0.56, push: 0.34, stretch: 0.004 },
-  { at: 0.78, push: -0.12, stretch: -0.0015 },
+  { at: 0.16, push: 1, stretch: 0.022 },
+  { at: 0.36, push: -0.62, stretch: -0.014 },
+  { at: 0.56, push: 0.34, stretch: 0.008 },
+  { at: 0.78, push: -0.12, stretch: -0.003 },
   { at: 1, push: 0, stretch: 0 },
 ];
 

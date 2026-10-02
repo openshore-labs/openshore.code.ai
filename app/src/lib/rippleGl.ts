@@ -30,9 +30,10 @@ void main() {
 
 // The height of the water at a radius: the train behind its leading crest (a
 // soft rise, a long decay, crests drifting back through it), weakened as the
-// ring spreads, plus the touch's dimple. Light comes from the slope (the side
-// of a ring facing the upper left is lit, as the app's shadows fall) and from
-// the curvature (a crest gathers light, a trough spreads it thin).
+// ring spreads, plus the touch's dimple. Each pixel takes the surface's
+// normal from the slope and lights it the way a pond is lit: a broad sheen
+// where a face tilts toward the light, a sharp glint where it mirrors it, and
+// shade where it tilts away. A faint water tint follows the disturbed ring.
 const FRAG = `
 #ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
@@ -56,39 +57,38 @@ uniform float u_shadeA;
 
 const float TAU = 6.2831853;
 
+float envelope(float s) {
+  if (s <= 0.0) return 0.0;
+  return (1.0 - exp(-s / (0.06 * u_train))) * exp(-s / (0.42 * u_train));
+}
+
 float height(float r) {
   float s = u_front - r;
-  float train = 0.0;
-  if (s > 0.0) {
-    float rise = 1.0 - exp(-s / (0.14 * u_train));
-    float fall = exp(-s / (0.38 * u_train));
-    train = 1.9 * rise * fall * sin(TAU * s / u_lambda - u_phase);
-  }
-  float spread = inversesqrt(1.0 + r / (0.25 * u_reach));
-  float dimple = -u_dip * exp(-(r * r) / 900.0);
-  return u_amp * spread * train + 0.6 * dimple;
+  float spread = inversesqrt(1.0 + r / (0.2 * u_reach));
+  float train = 1.7 * envelope(s) * sin(TAU * s / u_lambda - u_phase);
+  float dimple = -u_dip * exp(-(r * r) / 700.0);
+  return u_amp * spread * train + 0.8 * dimple;
 }
 
 void main() {
   vec2 p = vec2(gl_FragCoord.x, u_size.y - gl_FragCoord.y) / u_px;
   vec2 d = p - u_origin;
   float r = length(d);
-  float e = 1.5;
-  float h0 = height(r);
+  float e = 1.0;
   float hi = height(r + e);
   float lo = height(max(r - e, 0.0));
-  float k = u_lambda / TAU;
-  float slope = (hi - lo) / (2.0 * e) * k;
-  float curve = (hi - 2.0 * h0 + lo) / (e * e) * k * k;
+  float slope = (hi - lo) / (2.0 * e) * (u_lambda / TAU);
   vec2 dir = r > 0.5 ? d / r : vec2(0.0);
-  float facing = dot(dir, vec2(-0.5446, -0.8387));
-  float v = clamp(-0.75 * curve - 0.55 * slope * facing, -1.0, 1.0);
-  float glint = max(v, 0.0);
-  glint = glint * (0.65 + 0.35 * glint);
-  float shade = max(-v, 0.0);
-  float a = glint * u_glintA + shade * u_shadeA;
-  vec3 c = glint * u_glintA * u_glint + shade * u_shadeA * u_shade;
-  gl_FragColor = vec4(c, a);
+  vec3 n = normalize(vec3(-slope * dir * 1.15, 1.0));
+  vec3 L = normalize(vec3(-0.42, -0.68, 0.6));
+  float sheen = dot(n, L) - L.z;
+  float glint = pow(max(dot(reflect(-L, n), vec3(0.0, 0.0, 1.0)), 0.0), 48.0);
+  float lit = clamp(max(sheen, 0.0) * 2.2 + glint * 1.4, 0.0, 1.0);
+  float dark = clamp(-sheen * 2.6, 0.0, 1.0);
+  float body = clamp(envelope(u_front - r) * u_amp * 1.6 + u_dip * exp(-(r * r) / 2400.0), 0.0, 1.0);
+  float a = lit * u_glintA + dark * u_shadeA + body * 0.14;
+  vec3 c = lit * u_glintA * u_glint + (dark * u_shadeA + body * 0.14) * u_shade;
+  gl_FragColor = vec4(c, min(a, 1.0));
 }
 `;
 
@@ -222,15 +222,15 @@ export function waterInk(): WaterInk {
   if (lum < 0.4) {
     return {
       glint: tokenRgb(style, '--current-4') ?? [0.659, 0.867, 0.914],
-      glintAlpha: 0.42,
+      glintAlpha: 0.55,
       shade: [0, 0, 0],
-      shadeAlpha: 0.5,
+      shadeAlpha: 0.55,
     };
   }
   return {
     glint: [1, 1, 1],
     glintAlpha: 0.95,
-    shade: tokenRgb(style, '--current-2') ?? [0.184, 0.353, 0.4],
-    shadeAlpha: 0.24,
+    shade: tokenRgb(style, '--current-3') ?? [0.294, 0.565, 0.639],
+    shadeAlpha: 0.42,
   };
 }
