@@ -16,6 +16,14 @@ import { buildToolRegistry, webLocalExempt } from '../src/core/agent/registry.js
 import { Jail } from '../src/core/security/jail.js';
 import type { ToolContext } from '../src/core/tools/index.js';
 
+// A page fetch connects through the pinned transport (F4); here it rides the
+// mocked global fetch like every other web request, and pinnedRebind.test.ts
+// drives the real one.
+vi.mock('../src/core/security/pinnedFetch.js', async (orig) => ({
+  ...(await orig<typeof import('../src/core/security/pinnedFetch.js')>()),
+  pinnedFetch: (url: string, init: RequestInit) => globalThis.fetch(url, init),
+}));
+
 const config = ConfigSchema.parse({});
 
 function ctx(overrides: Partial<ToolContext> = {}): ToolContext {

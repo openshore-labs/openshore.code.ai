@@ -8,6 +8,7 @@
 import { lookup } from 'node:dns/promises';
 import { ownTailnetSuffix } from '../../connect/tailscale.js';
 import { hostIsLocal, isIPv4Literal, isIPv6Literal } from '../../harness/locality.js';
+import { RebindRefused, pinnedFetch } from './pinnedFetch.js';
 
 export interface EgressConfig {
   /** Master switch for the web tools (search + fetch). Default on, always visible. */
@@ -192,8 +193,26 @@ export class EgressPolicy {
       }
       // A web tool's target (or a redirect's) on this computer's own network
       // asks first, judged by the address the name resolves to (D3).
-      if (WEB_PURPOSES.has(purpose)) await this.gateOwnNetwork(current, purpose);
-      const res = await fetch(current, currentInit);
+      let allowOwnNetwork = false;
+      if (WEB_PURPOSES.has(purpose)) allowOwnNetwork = await this.gateOwnNetwork(current, purpose);
+      // A page the model chose connects through the same lookup that checks
+      // it, so a name cannot answer public to the check and local to the
+      // connection (F4, DNS rebinding).
+      let res: Response;
+      if (purpose === 'web-fetch') {
+        try {
+          res = await pinnedFetch(current, currentInit, {
+            onOwnNetwork: addressOnOwnNetwork,
+            allowOwnNetwork,
+            ...(this.options.lookup ? { lookup: this.options.lookup } : {}),
+          });
+        } catch (err) {
+          if (err instanceof RebindRefused) throw new EgressBlocked(current, err.message);
+          throw err;
+        }
+      } else {
+        res = await fetch(current, currentInit);
+      }
       const location = res.headers.get('location');
       if (res.status >= 300 && res.status < 400 && location) {
         let next: string;
@@ -215,10 +234,10 @@ export class EgressPolicy {
    *  loopback (its own apps, the OpenShore daemon among them), the LAN (a
    *  router's settings page), the tailnet, a cloud machine's metadata
    *  address. A configured model server or search service passes. */
-  private async gateOwnNetwork(url: string, purpose: EgressPurpose): Promise<void> {
+  private async gateOwnNetwork(url: string, purpose: EgressPurpose): Promise<boolean> {
     const parsed = new URL(url);
-    if (this.localExempt.has(parsed.host.toLowerCase())) return;
-    if (!(await this.onOwnNetwork(parsed.hostname))) return;
+    if (this.localExempt.has(parsed.host.toLowerCase())) return true;
+    if (!(await this.onOwnNetwork(parsed.hostname))) return false;
     if (!this.localGate) {
       throw new EgressBlocked(
         url,
@@ -231,6 +250,7 @@ export class EgressPolicy {
         `The person did not allow opening ${parsed.host}, an address on their own network. Use a public address instead, or ask them.`,
       );
     }
+    return true;
   }
 
   /** Is this name on this computer's own network, by the name itself or by
