@@ -815,7 +815,11 @@ export function SettingsScreen() {
             sub={`${
               webSearchOn(settings.webSearchConsent)
                 ? 'On. A model sends its search words to the search service below, and nothing else from your chat.'
-                : 'Off. Models answer from what they know.'
+                : settings.webSearchConsent === 'declined'
+                  ? 'Off. Models answer from what they know.'
+                  : isDesktop()
+                    ? 'Asks the first time a chat model wants to search. The coding agent searches only once this is on.'
+                    : 'Asks the first time a model wants to search.'
             } ${ROUTINES_SEARCH_LINE}`}
             trailing={
               <Switch

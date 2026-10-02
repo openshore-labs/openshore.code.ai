@@ -19,12 +19,12 @@ export interface SearchKey {
   apiKey: string;
 }
 
-/** Web search is on unless the person turned it off (founder, 2026-10-01): a
- *  curated model answers with real, current facts out of the box. Only the
- *  search words leave, and What leaves this device lists them as on by
- *  default. Unset, the setting reads as on. */
+/** Web search asks once (founder, 2026-10-02, the CTO's recommendation under
+ *  the Proton standard, superseding on-by-default of 2026-10-01): nothing
+ *  reaches a search service until the person allows it, in the ask sheet or
+ *  in Settings. Unset reads as off; the first search a model wants asks. */
 export function webSearchOn(consent: 'allowed' | 'declined' | undefined): boolean {
-  return consent !== 'declined';
+  return consent === 'allowed';
 }
 
 /** One shared secret slot: a user configures at most one override backend at

@@ -6,10 +6,11 @@
 // in the source that is not on it, so the list cannot fall behind the code.
 //
 // Every entry is true of the code today. The v1 review's four privacy calls
-// are made (founder, 2026-09-27, DECISIONS), with one since changed: web
-// search asked once, and is on by default since 2026-10-01 (founder,
-// DECISIONS). Desktop updates ask before downloading, the guardrail record
-// never uploads a named person, and the repository sign-in exchange keeps no copy of the token.
+// are made (founder, 2026-09-27, DECISIONS): web search asks once (on by
+// default for a day, 2026-10-01, then asks once again from 2026-10-02 on the
+// CTO's recommendation), desktop updates ask before downloading, the guardrail
+// record never uploads a named person, and the repository sign-in exchange
+// keeps no copy of the token.
 
 import { featureOn, type ReleaseTier, type TieredFeature, RELEASE_TIER } from './focus.js';
 import type { Platform } from './platform.js';
@@ -174,8 +175,8 @@ export const EGRESS: EgressEntry[] = [
     id: 'search',
     recipient: 'Web search',
     what: 'The words of a web search, and the network address any web request carries. Harbor Lite sends your question itself (up to 200 characters); other models write search words from your chat. DuckDuckGo by default, with no key and no account. Never the rest of your chat, never your files.',
-    when: `When a model decides to search the web, on by default so a model can answer with current facts. ${ROUTINES_SEARCH_LINE} You can turn it off in Settings, Harbor.`,
-    start: 'on',
+    when: `When a model decides to search the web, after you allow it once. A chat asks the first time; the coding agent searches only once you allow it. ${ROUTINES_SEARCH_LINE} You can turn it off in Settings, Harbor.`,
+    start: 'off',
     hosts: ['html.duckduckgo.com', 'duckduckgo.com'],
   },
   {

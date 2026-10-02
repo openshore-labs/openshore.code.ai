@@ -740,9 +740,10 @@ export interface AppSettings {
    *  is minted once per daemon rather than on every desktop session. Device-local
    *  bookkeeping, not synced. */
   pushRegisteredDaemons?: string[];
-  /** Web search on this device (the search words go to a search service,
-   *  DuckDuckGo unless a key is set): 'declined' after the person turns it off
-   *  in Settings; unset or 'allowed' is on (founder, 2026-10-01, webSearchOn). */
+  /** Web search asks once on this device (the search words go to a search
+   *  service, DuckDuckGo unless a key is set): 'allowed' after the person says
+   *  yes, 'declined' after they turn it off in Settings; unset until asked
+   *  (founder, 2026-10-02, webSearchOn). */
   webSearchConsent?: 'allowed' | 'declined';
   /** The user's stack: Reasoning LLM anchor, active specialists, bench metadata.
    *  Legacy single stack; kept as the migration seed and fallback. The live
@@ -2520,7 +2521,13 @@ interface AppState {
    *  computer serves that provider's models the larger window from the next
    *  message, in every chat. */
   giveMoreRoom(itemId: string): Promise<void>;
-  /** The Settings switch for web search (on unless turned off). */
+  /** A model asked to search the web and the person has not answered yet
+   *  (web search asks once; What leaves this device). The sheet shows it. */
+  webSearchAsk?: { query: string };
+  /** The web search question's answer: allow (remembered on this device) or
+   *  not now (asked again after the next launch). */
+  answerWebSearch(allow: boolean): void;
+  /** The Settings switch for web search. */
   setWebSearchAllowed(allowed: boolean): Promise<void>;
   /** The first try (v1 Phase 1): write the sample page on this computer,
    *  open a chat in it, and ask for the fix, so the whole loop shows on
@@ -4045,14 +4052,28 @@ export const useApp = create<AppState>((set, get, api) => {
     logEvent(warm.ok ? 'harbor_warm' : 'harbor_warm_failed');
   }
 
-  // Web search is on unless the person turned it off in Settings (founder,
-  // 2026-10-01; What leaves this device lists it as on by default), so a
-  // curated model answers with current facts from the first chat.
-  function webSearchAllowedNow(): SearchAllowed {
-    return webSearchOn(get().settings.webSearchConsent) ? 'allowed' : 'declined';
+  // Web search asks once (founder, 2026-10-02; What leaves this device). A
+  // yes is remembered on this device; a "not now" holds until the next launch,
+  // so a chat never asks twice in a row. Concurrent searches share one
+  // question.
+  let webSearchDeclinedThisRun = false;
+  let webSearchPending: Promise<boolean> | undefined;
+  let webSearchResolve: ((allow: boolean) => void) | undefined;
+  function askWebSearch(query: string): Promise<boolean> {
+    const consent = get().settings.webSearchConsent;
+    if (consent === 'allowed') return Promise.resolve(true);
+    if (consent === 'declined' || webSearchDeclinedThisRun) return Promise.resolve(false);
+    if (webSearchPending) return webSearchPending;
+    webSearchPending = new Promise<boolean>((resolve) => {
+      webSearchResolve = resolve;
+      set({ webSearchAsk: { query } });
+    });
+    return webSearchPending;
   }
-  async function webSearchGate(): Promise<boolean> {
-    return webSearchAllowedNow() === 'allowed';
+  function webSearchAllowedNow(): SearchAllowed {
+    const consent = get().settings.webSearchConsent;
+    if (consent === 'allowed') return 'allowed';
+    return consent === 'declined' || webSearchDeclinedThisRun ? 'declined' : 'unknown';
   }
 
   // Register this device for completion push with the connected daemon, once per
@@ -4429,9 +4450,9 @@ export const useApp = create<AppState>((set, get, api) => {
           // project memory off (false) and is absent otherwise, so a
           // project's own config stays in charge while it is on.
           ...(memoryOverride(settings) === false ? { memory: false } : {}),
-          // Web search is on unless the person turned it off (the search words
-          // go to a search service): off, the engine session has no
-          // webSearch tool.
+          // Web search asks once on this device (the search words go to a
+          // search service): until the person allows it, the engine session
+          // has no webSearch tool.
           ...(webSearchOn(settings.webSearchConsent) ? {} : { webSearch: false }),
           codemagicToken,
           codemagicTarget,
@@ -8617,11 +8638,10 @@ export const useApp = create<AppState>((set, get, api) => {
       if (get().initStarted) return;
       set({ initStarted: true });
 
-      // Every app-side web search goes through one gate (lib/localSearch): on
-      // unless turned off in Settings. The readers let a driver leave a
-      // declined or offline search out of the prompt before the model writes
-      // a word.
-      setSearchConsent(webSearchGate, {
+      // Every app-side web search asks the person first, once (lib/localSearch).
+      // The readers let a driver leave a declined or offline search out of
+      // the prompt before the model writes a word.
+      setSearchConsent(askWebSearch, {
         allowed: webSearchAllowedNow,
         online: () =>
           get().connectivity.online &&
@@ -14436,7 +14456,20 @@ export const useApp = create<AppState>((set, get, api) => {
       else setTrustItem({ state: 'trusted', error: undefined });
     },
 
+    answerWebSearch(allow) {
+      const resolve = webSearchResolve;
+      webSearchResolve = undefined;
+      webSearchPending = undefined;
+      set({ webSearchAsk: undefined });
+      if (allow) void get().saveSettings({ webSearchConsent: 'allowed' });
+      else webSearchDeclinedThisRun = true;
+      resolve?.(allow);
+      // Routines on this computer follow the answer.
+      if (allow) void get().refreshRoutines();
+    },
+
     async setWebSearchAllowed(allowed) {
+      webSearchDeclinedThisRun = false;
       await get().saveSettings({ webSearchConsent: allowed ? 'allowed' : 'declined' });
       // Routines on this computer follow the switch (founder, 2026-10-01).
       void get().refreshRoutines();

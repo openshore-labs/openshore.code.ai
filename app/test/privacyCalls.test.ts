@@ -1,15 +1,15 @@
 // The v1 review's four privacy calls (founder, 2026-09-27, DECISIONS), each
 // held by a test so none of them drifts back:
-//   1. Web search goes through one gate: it asked once, and since 2026-10-01
-//      (founder) it is on by default; off in Settings, nothing reaches a
-//      search service and the model is told plainly it did not search.
+//   1. Web search asks once: nothing reaches a search service until the person
+//      allows it, and a "Not now" is answered honestly to the model (on by
+//      default for one day, 2026-10-01; asks once again from 2026-10-02).
 //   2. Desktop updates ask before downloading on every platform: the check
 //      stays (it is listed), the download waits for the Update click.
 //   3. The guardrail record never uploads the name of a person a request was
 //      about; that stays in the device's copy.
 //   4. The repository sign-in exchange passes the token through once and keeps
 //      nothing: no database, no storage, no token in a log line.
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { IDLE_UPDATER, stepUpdater, type UpdaterEvent } from '../electron/updateState.js';
@@ -50,7 +50,7 @@ setEthicsAuth(async () => ({ accessToken: 't' }));
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), 'utf8');
 
-describe('1. web search goes through one gate (on by default since 2026-10-01)', () => {
+describe('1. web search asks once', () => {
   beforeEach(() => {
     h.searchMock.mockClear();
   });
@@ -81,26 +81,29 @@ describe('1. web search goes through one gate (on by default since 2026-10-01)',
     expect(SEARCH_NOT_ALLOWED).toMatch(/did not search the web/);
   });
 
-  // Founder, 2026-10-01: web search is on by default, so a curated model
-  // answers with current facts out of the box. The gate stays the one seam,
-  // and turning it off in Settings still sends nothing.
-  it('is on by default, off only when turned off in Settings, with no ask sheet', () => {
-    expect(webSearchOn(undefined)).toBe(true);
+  // Founder, 2026-10-02 (the CTO's recommendation, the Proton standard): web
+  // search asks once again. Nothing reaches a search service until the person
+  // allows it in the sheet or in Settings.
+  it('asks once in one sheet, remembers a yes, and is off until then', () => {
+    expect(webSearchOn(undefined)).toBe(false);
     expect(webSearchOn('allowed')).toBe(true);
     expect(webSearchOn('declined')).toBe(false);
     const store = read('src', 'state', 'store.ts');
-    // The launch wires the gate into the search seam, with the readers a
-    // driver checks before it offers the model a search (A4).
-    expect(store).toMatch(/setSearchConsent\(webSearchGate, \{\s*allowed: webSearchAllowedNow,/);
-    expect(store).toMatch(
-      /webSearchOn\(get\(\)\.settings\.webSearchConsent\) \? 'allowed' : 'declined'/,
-    );
-    // Off in Settings, the desktop engine gets no webSearch tool.
+    // The launch wires the real question into the search seam, with the
+    // readers a driver checks before it offers the model a search (A4).
+    expect(store).toMatch(/setSearchConsent\(askWebSearch, \{\s*allowed: webSearchAllowedNow,/);
+    // Allowed is saved; a decline holds for this run only, so it asks again
+    // next launch rather than never.
+    expect(store).toMatch(/webSearchConsent: 'allowed'/);
+    expect(store).toMatch(/webSearchDeclinedThisRun = true/);
+    // The desktop engine gets no webSearch tool until the person allows it.
     expect(store).toMatch(
       /webSearchOn\(settings\.webSearchConsent\) \? \{\} : \{ webSearch: false \}/,
     );
-    expect(store).not.toMatch(/webSearchAsk|answerWebSearch/);
-    expect(existsSync(join(process.cwd(), 'src', 'components', 'WebSearchAsk.tsx'))).toBe(false);
+    const sheet = read('src', 'components', 'WebSearchAsk.tsx');
+    expect(sheet).toMatch(/Allow web search/);
+    expect(sheet).toMatch(/Not now/);
+    expect(read('src', 'App.tsx')).toMatch(/<WebSearchAsk \/>/);
     const settings = read('src', 'screens', 'SettingsScreen.tsx');
     expect(settings).toMatch(/Let models search the web/);
     expect(settings).toMatch(/checked=\{webSearchOn\(settings\.webSearchConsent\)\}/);
