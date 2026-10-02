@@ -44,8 +44,12 @@ export const PACES: Record<PacedKind, InkPace> = {
 
 /** Stillness before the first word, once the chat is on screen. */
 export const INTRO_START_MS = 600;
-/** The reader's pause after the greeting has fully inked. */
+/** The reader's pause after a line that asks the reader something. */
 export const READ_PAUSE_MS = 3000;
+/** Between the greeting and the setup walk: a brief breath, the same as the
+ *  one before a step heading, so the letter reads as one (founder,
+ *  2026-10-02: the old three-second wait felt like a stall). */
+export const GREETING_TO_WALK_PAUSE_MS = 600;
 /** The breath before a step heading, used instead of the paragraph pause. */
 export const HEADING_PAUSE_MS = 600;
 /** After a comma or a colon. */

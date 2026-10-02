@@ -3,12 +3,14 @@
 // a bold heading arrives as one piece, the step heading gets its breath, and
 // the reader gets a few seconds after the greeting. These pin the plan the
 // bubble reveals by and the walk is sequenced by.
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   GREETING_PACE,
   HEADING_PAUSE_MS,
   PARAGRAPH_PAUSE_MS,
-  READ_PAUSE_MS,
+  GREETING_TO_WALK_PAUSE_MS,
   WALK_PACE,
   inkDurationMs,
   inkPlan,
@@ -67,10 +69,16 @@ describe('the ink plan', () => {
   it('keeps the whole letter under about twenty seconds, reading pause included', () => {
     const total =
       inkDurationMs(HARBOR_MINI_SETUP_GREETING, GREETING_PACE) +
-      READ_PAUSE_MS +
+      GREETING_TO_WALK_PAUSE_MS +
       inkDurationMs(openingMessage('harbor', facts), WALK_PACE);
     expect(total).toBeLessThan(20_000);
-    expect(total).toBeGreaterThan(READ_PAUSE_MS + 5000);
+    expect(total).toBeGreaterThan(GREETING_TO_WALK_PAUSE_MS + 5000);
+  });
+
+  it('pauses only briefly between the greeting and the walk (founder, 2026-10-02)', () => {
+    expect(GREETING_TO_WALK_PAUSE_MS).toBeLessThanOrEqual(800);
+    const store = readFileSync(join(process.cwd(), 'src', 'state', 'store.ts'), 'utf8');
+    expect(store).toMatch(/GREETING_PACE\) \+ GREETING_TO_WALK_PAUSE_MS/);
   });
 });
 

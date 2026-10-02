@@ -225,6 +225,7 @@ import {
   GREETING_PACE,
   INTRO_START_MS,
   READ_PAUSE_MS,
+  GREETING_TO_WALK_PAUSE_MS,
   WALK_PACE,
   introFinished,
   introSkipped,
@@ -3611,7 +3612,7 @@ export const useApp = create<AppState>((set, get, api) => {
         });
       }, at),
     );
-    at += inkDurationMs(HARBOR_MINI_SETUP_GREETING, GREETING_PACE) + READ_PAUSE_MS;
+    at += inkDurationMs(HARBOR_MINI_SETUP_GREETING, GREETING_PACE) + GREETING_TO_WALK_PAUSE_MS;
     timers.push(
       window.setTimeout(() => {
         stage = 2;
