@@ -319,11 +319,12 @@ Production's migration history is the authority on numbers. Migrations go to
 production from main only (CTO 4). Every applied file is pinned in
 `supabase/production-history.tsv` and never edited or renumbered (CTO 11). A
 new file takes the next number above both main's newest and production's
-newest, and every push uses `--skip-vault`. Production holds 0001 to 0026; its
+newest, and every push uses `--skip-vault`. Production holds 0001 to 0027; its
 0019 and 0020 are the privacy branch's files (pushed 2026-09-24), held on main
 byte for byte, main's Org Vault v1 file is `0021_org_vault_v1.sql`, and 0021 to
 0026 went in on 2026-09-30 through the SQL editor, the founder's call, each
-file guarded with its history row and checked by md5 afterwards (DECISIONS). Only
+file guarded with its history row and checked by md5 afterwards (DECISIONS), and
+0027 (privacy minimization) went in the same way on 2026-10-02. Only
 `docs/vault-gate1-runbook.md` pushes, after `supabase/scripts/push-preflight.mjs`;
 the session that records a push appends its rows to the history file in the
 same change; a session branch that adds a migration says in its commit and

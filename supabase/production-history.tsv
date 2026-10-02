@@ -42,3 +42,4 @@ version	name	sha256	note
 0024	org_vault_move	5dfba94bf0f31c723336ef99985b26179535a088ba65667f0c1f86beb780a7a2	applied 2026-09-30 in the SQL editor from main at 4ffe370
 0025	org_vault_settings	4b2a08be85e5f3250aeda951a7c9414282d6b4f979e866e968ce9bc2d80c9fb7	applied 2026-09-30 in the SQL editor from main at 4ffe370
 0026	export_and_retention	285399bd6b92cf8fd1a010d0099d77c84e28b0770dfa67549a0b55eab580baa9	applied 2026-09-30 in the SQL editor from main at 4ffe370
+0027	privacy_minimization	b2ff1b67ae79f614f46123b99522d44ae51173b2b97ebf61740539cd222e493b	applied 2026-10-02 in the SQL editor, block by block, from the CTO review (docs/security-privacy-review-2026-10-01.md)
