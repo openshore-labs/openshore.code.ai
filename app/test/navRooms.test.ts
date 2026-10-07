@@ -1,6 +1,8 @@
 // The nav split (review 6, blocker A): Terminal is day-one on a desktop or a
 // phone with a paired hub, second-session on a bare phone. Every room is
 // listed exactly once either way.
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { navRooms, terminalIsDayOne } from '../src/lib/navRooms.js';
 
@@ -42,6 +44,16 @@ describe('navRooms', () => {
       expect(new Set(all).size).toBe(all.length);
       expect(all.length).toBe(13);
     }
+  });
+
+  // The current room is a filled row with aria-current, not a tint alone, and
+  // a page inside a room keeps that room lit (Creative Studio, 2026-10-07).
+  it('marks the current room by more than colour', () => {
+    const sidebar = readFileSync(join(process.cwd(), 'src/components/Sidebar.tsx'), 'utf8');
+    expect(sidebar).toContain("aria-current={lit === v ? 'page' : undefined}");
+    expect(sidebar).toContain("project: 'projects'");
+    const theme = readFileSync(join(process.cwd(), 'src/theme.css'), 'utf8');
+    expect(theme).toMatch(/\.nav-item\.active \{[^}]*background: var\(--surface\)/);
   });
 
   it('names the pair room one way', () => {

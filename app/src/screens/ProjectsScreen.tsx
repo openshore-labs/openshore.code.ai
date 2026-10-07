@@ -1,7 +1,7 @@
 // Projects: the buckets that hold your work, in the shape of the Claude app's
 // project list. One flat list sorted by recency, each row a small tile, the
-// name, and a quiet line under it (what the project is for, or whether it
-// stays on this device, then when it last moved). A round search button and
+// name, and a quiet line under it (what the project is for, else how many
+// chats it holds, then when it last moved). A round search button and
 // a dark "New project" pill float at the foot of the room; search turns the
 // dock into one field, and New project opens a sheet with the name and what
 // the project is for (its standing instructions). Tap a row to open the
@@ -15,16 +15,27 @@ import { BackBar } from '../components/BackBar.js';
 import { Sheet } from '../components/Sheet.js';
 import { SheetHead } from '../components/SheetHead.js';
 import { Icon } from '../components/Icon.js';
+import { RoomGlyph } from '../components/Sidebar.js';
 import { captureTitleHero } from '../lib/heroTitle.js';
 import { relativeTime } from './ChatsScreen.js';
 
 /** The quiet line under a project's name: what it is for when it says, else
- *  where it lives, then when it last moved. Two halves, so a long "what"
- *  truncates and the "when" always shows. */
-export function projectLine(p: Project, lastAt: string): { what: string; when: string } {
+ *  how many chats it holds, then when it last moved. Two halves, so a long
+ *  "what" truncates and the "when" always shows. */
+export function projectLine(
+  p: Project,
+  lastAt: string,
+  chats: number,
+): { what: string; when: string } {
   const about = p.instructions?.trim().split('\n')[0]?.trim();
   return {
-    what: about || (p.shared ? 'Shared with your team' : 'Private'),
+    what:
+      about ||
+      (p.shared
+        ? 'Shared with your team'
+        : chats
+          ? `${chats} ${chats === 1 ? 'chat' : 'chats'}`
+          : 'No chats yet'),
     when: relativeTime(lastAt),
   };
 }
@@ -36,16 +47,20 @@ export function ProjectsScreen() {
   const projects = useMemo(() => settings.projects ?? [], [settings.projects]);
   const activeId = settings.activeProjectId ?? projects[0]?.id;
 
-  // When each project last moved: its newest chat, else the day it was made.
-  const lastAt = useMemo(() => {
+  // When each project last moved (its newest chat, else the day it was made),
+  // and how many chats it holds.
+  const { at: lastAt, count } = useMemo(() => {
     const at: Record<string, string> = {};
+    const count: Record<string, number> = {};
     for (const p of projects) at[p.id] = p.createdAt;
     for (const id of order) {
       const c = conversations[id];
       const pid = c?.projectId;
-      if (pid && at[pid] !== undefined && c.updatedAt > at[pid]) at[pid] = c.updatedAt;
+      if (!pid || at[pid] === undefined) continue;
+      count[pid] = (count[pid] ?? 0) + 1;
+      if (c.updatedAt > at[pid]) at[pid] = c.updatedAt;
     }
-    return at;
+    return { at, count };
   }, [projects, order, conversations]);
 
   const [searching, setSearching] = useState(false);
@@ -99,8 +114,7 @@ export function ProjectsScreen() {
           <div className="projects-empty">
             <p className="projects-empty-title">No projects yet</p>
             <p className="projects-empty-sub">
-              A project keeps its chats and their context together. What it is for rides into every
-              chat in it.
+              A project keeps related chats together. Its instructions go into every chat in it.
             </p>
           </div>
         ) : rows.length === 0 ? (
@@ -121,13 +135,15 @@ export function ProjectsScreen() {
                 }}
               >
                 <span className="project-row-tile" aria-hidden="true">
-                  <ProjectGlyph />
+                  <RoomGlyph name="projects" size={18} />
                 </span>
                 <span className="project-row-text">
                   <span className="project-row-name">{p.name}</span>
                   <span className="project-row-sub">
                     {p.id === activeId ? <span className="visually-hidden">Active. </span> : null}
-                    <ProjectLine line={projectLine(p, lastAt[p.id] ?? p.createdAt)} />
+                    <ProjectLine
+                      line={projectLine(p, lastAt[p.id] ?? p.createdAt, count[p.id] ?? 0)}
+                    />
                   </span>
                 </span>
               </button>
@@ -227,10 +243,7 @@ export function ProjectsScreen() {
               onChange={(e) => setNewAbout(e.target.value)}
             />
           </div>
-          <div className="confirm-row">
-            <button type="button" className="btn ghost" onClick={() => setCreating(false)}>
-              Cancel
-            </button>
+          <div className="sheet-actions">
             <button type="submit" className="btn primary" disabled={!newName.trim()}>
               Create project
             </button>
@@ -247,17 +260,6 @@ function ProjectLine({ line }: { line: { what: string; when: string } }) {
       <span className="project-row-what">{line.what}</span>
       {line.when ? <span className="project-row-when">{` · ${line.when}`}</span> : null}
     </>
-  );
-}
-
-/** A project, drawn as a small lidded box: the place its work is kept. */
-function ProjectGlyph() {
-  return (
-    <Icon size={18}>
-      <path d="M5 9h14l-1 10a1.5 1.5 0 0 1-1.5 1.3h-9A1.5 1.5 0 0 1 6 19Z" />
-      <path d="M4 5.5h16" />
-      <path d="M10 13h4" />
-    </Icon>
   );
 }
 

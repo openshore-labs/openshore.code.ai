@@ -101,7 +101,7 @@ export const STEP_COPY: Record<SetupStepId, SetupStepCopy> = {
   harbor: {
     title: 'Get Harbor',
     what: 'Harbor is a coding model, Qwen3 4B Instruct, that runs right here on your iPhone.',
-    why: "I'm a guide. Harbor does the real work: it reasons, writes real code on this phone, even in airplane mode, and searches the web when you're online.",
+    why: "I'm a guide. Harbor does the real work: it writes and explains code right on this phone, even in airplane mode, and searches the web when you're online.",
     how: "Tap Get Harbor. It downloads straight from its source, about 2.5 GB, a few minutes on wifi. It keeps going in the background while we set up the rest, and I'll tell you when it's ready and how to switch to it.",
     action: 'Get Harbor',
     ask: 'Tell me more about Harbor before I download it.',

@@ -2,7 +2,7 @@
 // them (tenet 4), so they ride the pack in both modes, trimmed to fit a small
 // seat, with privacy applied: a hidden note never goes, a note that stays on
 // this computer never reaches a cloud seat. Pins name the person's own notes,
-// so they stay on this device and never sync with a shared project.
+// so the pin list stays on this device and never syncs with a shared project.
 //
 // Editors only (a local project, or edit on a shared one), on the
 // ProjectCurrents pattern: rendered by ProjectDetailScreen when the person may
@@ -15,7 +15,7 @@ import { noteTitle } from '../lib/vault.js';
 import { hapticCommit } from '../lib/haptics.js';
 import { Sheet } from './Sheet.js';
 import { SheetHead } from './SheetHead.js';
-import { Icon } from './Icon.js';
+import { LockGlyph } from './SheetGlyphs.js';
 
 /** The line a pin the vault no longer holds shows (J14). */
 export const PIN_MISSING_LINE = 'Pinned note not found';
@@ -74,7 +74,7 @@ export function ProjectVaultPins({ projectId, index }: { projectId: string; inde
     <section className="card project-section" style={{ '--i': index } as CSSProperties}>
       <div className="card-row">
         <div className="grow">
-          <span className="project-eyebrow">Rides into every chat</span>
+          <span className="eyebrow">Rides into every chat</span>
           <h3>Pinned notes</h3>
         </div>
         <button type="button" className="suggestion press-fb" onClick={() => setOpen(true)}>
@@ -83,16 +83,10 @@ export function ProjectVaultPins({ projectId, index }: { projectId: string; inde
       </div>
       {pins.length ? (
         <div className="check-list" style={{ marginTop: 8 }}>
-          {pins.map((path, i) => {
+          {pins.map((path) => {
             const missing = status[path] === 'missing';
             return (
-              <div
-                key={path}
-                className="multiselect-row"
-                style={
-                  { cursor: 'default', '--stagger': `${Math.min(i, 8) * 22}ms` } as CSSProperties
-                }
-              >
+              <div key={path} className="multiselect-row" style={{ cursor: 'default' }}>
                 <span className="grow">
                   {noteTitle(path)}
                   <span className="hint"> · {missing ? PIN_MISSING_LINE : path}</span>
@@ -111,15 +105,15 @@ export function ProjectVaultPins({ projectId, index }: { projectId: string; inde
         </div>
       ) : (
         <p className="hint" style={{ marginTop: 6 }}>
-          Pin notes from your Vault and every chat here starts with them, trimmed to fit the model.
-          They stay on this device.
+          Choose notes from your Vault and every chat here starts with them, trimmed to fit the
+          model. Notes marked private stay off cloud models.
         </p>
       )}
 
       <Sheet open={open} onClose={() => setOpen(false)}>
         <SheetHead title="Pin notes" onClose={() => setOpen(false)} />
         <p className="sheet-sub">
-          Up to {PROJECT_VAULT_PINS_MAX} notes. Private notes reach only models on this computer.
+          Up to {PROJECT_VAULT_PINS_MAX} notes. Private notes never reach a cloud model.
         </p>
         {notes === undefined ? (
           <p className="hint">Reading your Vault.</p>
@@ -127,14 +121,10 @@ export function ProjectVaultPins({ projectId, index }: { projectId: string; inde
           <p className="hint">No notes in your Vault yet.</p>
         ) : (
           <div className="check-list">
-            {notes.map((n, i) => {
+            {notes.map((n) => {
               const on = pins.includes(n.path);
               return (
-                <label
-                  key={n.path}
-                  className="multiselect-row press-fb press-fb--row"
-                  style={{ '--stagger': `${Math.min(i, 8) * 22}ms` } as CSSProperties}
-                >
+                <label key={n.path} className="multiselect-row press-fb press-fb--row">
                   <input
                     type="checkbox"
                     checked={on}
@@ -158,21 +148,7 @@ export function ProjectVaultPins({ projectId, index }: { projectId: string; inde
         {full ? (
           <p className="hint">{PROJECT_VAULT_PINS_MAX} pinned. Unpin one to add another.</p>
         ) : null}
-        <div className="sheet-actions">
-          <button type="button" className="btn primary press-fb" onClick={() => setOpen(false)}>
-            Done
-          </button>
-        </div>
       </Sheet>
     </section>
-  );
-}
-
-function LockGlyph() {
-  return (
-    <Icon size={12}>
-      <rect x="5" y="11" width="14" height="10" rx="2" />
-      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
-    </Icon>
   );
 }

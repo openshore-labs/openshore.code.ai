@@ -6,6 +6,8 @@
 // says what it costs, and a note that stays on this computer is refused while
 // the seat leaves the network. The picker never lists a hidden note, and
 // "Recently from your agent" is the crew notes and the agent's own writes.
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { compileVaultPrivacy } from 'os-code/protocol';
 import type { Project } from '../src/state/types.js';
@@ -413,5 +415,16 @@ describe('the store answers the composer', () => {
     expect(Object.keys(s.conversations)).toHaveLength(0);
     s.takeComposerInsert(s.composerInsert!.id);
     expect(useApp.getState().composerInsert).toBeUndefined();
+  });
+});
+
+// The pin list stays on this device; the pinned notes themselves ride the
+// pack to any seat, private ones excepted (D5), so the copy never says the
+// notes stay here (CMO, 2026-10-07).
+describe('pinned notes copy', () => {
+  it('never says the pinned notes stay on this device', () => {
+    const pins = readFileSync(join(process.cwd(), 'src/components/ProjectVaultPins.tsx'), 'utf8');
+    expect(pins).not.toContain('They stay on this device');
+    expect(pins).toContain('Notes marked private stay off cloud models.');
   });
 });

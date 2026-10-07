@@ -22,6 +22,7 @@ import { daemonListSessions } from '../drivers/remoteDriver.js';
 import { hapticTick } from '../lib/haptics.js';
 import { plainError } from '../lib/plainError.js';
 import { Icon } from '../components/Icon.js';
+import { inChatScope } from '../lib/chatScope.js';
 
 /** "just now", "12m ago", "2h ago", "Yesterday", "Mon", "Sep 1". */
 export function relativeTime(iso: string, now = Date.now()): string {
@@ -166,7 +167,7 @@ export function Marked({ text, query }: { text: string; query: string }) {
 
 function SearchIcon() {
   return (
-    <Icon size={17}>
+    <Icon size={18}>
       <circle cx="11" cy="11" r="6.5" />
       <path d="m16 16 4 4" />
     </Icon>
@@ -222,14 +223,14 @@ export function ChatsScreen() {
   const activeProject = projects.find((p) => p.id === settings.activeProjectId) ?? projects[0];
   const projectId = activeProject?.id;
 
-  // The chats in the active project, each with where the search found it.
+  // The chats in scope (lib/chatScope.ts), each with where the search found it.
   const q = query.trim().toLowerCase();
   const chats: Row[] = useMemo(
     () =>
       order.flatMap((id) => {
         const conv = conversations[id];
         if (!conv) return [];
-        if (projectId ? conv.projectId !== projectId : conv.projectId) return [];
+        if (!inChatScope(conv, projectId)) return [];
         const match = matchChat(conv, q);
         if (!match) return [];
         const at = new Date(conv.updatedAt).getTime();
@@ -310,6 +311,8 @@ export function ChatsScreen() {
     }, ROW_OUT_MS);
   };
 
+  const searchLabel = activeProject ? `Search chats in ${activeProject.name}` : 'Search chats';
+
   const compose = (
     <button
       type="button"
@@ -328,48 +331,52 @@ export function ChatsScreen() {
     <div className="screen">
       <BackBar title="Chats" action={compose} />
       <div className="screen-inner chats">
-        <div className={`chat-search${query ? ' has-query' : ''}`}>
-          <span className="chat-search-icon">
-            <SearchIcon />
-          </span>
-          <input
-            ref={searchRef}
-            type="search"
-            value={query}
-            placeholder="Search chats"
-            aria-label="Search chats"
-            enterKeyHint="go"
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape' && query) {
-                e.preventDefault();
+        {/* No search over nothing: the field shows once there is a chat to
+            find, and stays while anything is typed, spaces included. */}
+        {rows.length > 0 || query ? (
+          <div className={`chat-search${query ? ' has-query' : ''}`}>
+            <span className="chat-search-icon">
+              <SearchIcon />
+            </span>
+            <input
+              ref={searchRef}
+              type="search"
+              value={query}
+              placeholder={searchLabel}
+              aria-label={searchLabel}
+              enterKeyHint="go"
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape' && query) {
+                  e.preventDefault();
+                  setQuery('');
+                } else if (e.key === 'Enter' && q && rows[0]) {
+                  e.preventDefault();
+                  openRow(rows[0]);
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="chat-search-clear press-fb"
+              aria-label="Clear search"
+              tabIndex={query ? 0 : -1}
+              aria-hidden={!query}
+              onClick={() => {
                 setQuery('');
-              } else if (e.key === 'Enter' && q && rows[0]) {
-                e.preventDefault();
-                openRow(rows[0]);
-              }
-            }}
-          />
-          <button
-            type="button"
-            className="chat-search-clear press-fb"
-            aria-label="Clear search"
-            tabIndex={query ? 0 : -1}
-            aria-hidden={!query}
-            onClick={() => {
-              setQuery('');
-              searchRef.current?.focus();
-            }}
-          >
-            <Icon size={12}>
-              <path d="M6 6l12 12" />
-              <path d="M18 6 6 18" />
-            </Icon>
-          </button>
-        </div>
+                searchRef.current?.focus();
+              }}
+            >
+              <Icon size={12}>
+                <path d="M6 6l12 12" />
+                <path d="M18 6 6 18" />
+              </Icon>
+            </button>
+          </div>
+        ) : null}
 
         <div className="chat-list">
-          {q ? null : (
+          {q || rows.length === 0 ? null : (
             <button
               type="button"
               className="chat-row chat-row-new press-fb press-fb--row"
@@ -385,7 +392,7 @@ export function ChatsScreen() {
           )}
 
           {rows.map((row, i) => {
-            const style = { '--stagger': `${Math.min(i, 8) * 22}ms` } as CSSProperties;
+            const style = { '--i': Math.min(i, 8) } as CSSProperties;
             if (row.kind === 'desktop') {
               const s = row.session;
               const name =
@@ -424,6 +431,17 @@ export function ChatsScreen() {
               >
                 <div
                   className={`chat-row${row.id === activeId && view === 'chat' ? ' active' : ''}${row.id === leavingId ? ' leaving' : ''}`}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      openConversation(row.id);
+                    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+                      e.preventDefault();
+                      setConfirmId(row.id);
+                    }
+                  }}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     beginRename(row.id);
@@ -444,7 +462,8 @@ export function ChatsScreen() {
                   ) : null}
                   <span className="chat-row-sub">
                     <ReachDot reach={chatReach(conv)} />
-                    {relativeTime(conv.updatedAt)} · {sourceShort(conv)}
+                    {relativeTime(conv.updatedAt)} ·{' '}
+                    {conv.unfiled && !conv.projectId ? 'No project' : sourceShort(conv)}
                   </span>
                 </div>
               </SwipeRow>
@@ -453,18 +472,25 @@ export function ChatsScreen() {
         </div>
 
         {rows.length > 0 && !q ? (
-          <p className="chat-list-hint">Swipe a chat left to delete it. Hold it to rename.</p>
+          <p className="chat-list-hint">
+            <span className="chat-hint-touch">
+              Swipe a chat left to delete it. Hold it to rename.
+            </span>
+            <span className="chat-hint-pointer">
+              Drag a chat left to delete it. Right-click to rename it.
+            </span>
+          </p>
         ) : null}
 
         {rows.length === 0 ? (
           <div className="chat-empty">
-            <h2>{q ? `Nothing matches “${query.trim()}”.` : 'Nothing here yet.'}</h2>
+            <h2>{q ? `Nothing matches “${query.trim()}”` : 'Nothing here yet'}</h2>
             {q ? <p>Search looks through chat names and what was said in them.</p> : null}
             {!q ? (
               <p>
                 {activeProject
                   ? `Start a chat and it stays with ${activeProject.name}.`
-                  : 'Create a project to start saving your chats.'}
+                  : 'Your first chat starts a project called My work.'}
               </p>
             ) : null}
             {!q ? (
@@ -483,7 +509,7 @@ export function ChatsScreen() {
             <p>{confirmConv.title}. This cannot be undone.</p>
             <div className="confirm-row">
               <button className="btn ghost" onClick={() => setConfirmId(undefined)}>
-                Cancel
+                Keep it
               </button>
               <button className="btn danger" onClick={() => removeChat(confirmId!)}>
                 Delete
