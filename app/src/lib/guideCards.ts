@@ -410,7 +410,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'first-seat',
     title: 'First Seat',
-    text: 'On an empty chat when nothing can answer yet, one card sets you up: on your computer, one tap installs DeepBlue sized to it. More ways to start offers Connect your computer, Connect an API key, and Open Stack.',
+    text: 'On an empty chat when nothing can answer yet, one card sets you up: on your computer, one tap installs DeepBlue sized to it. More ways to start offers Connect your computer, Add an API key, and Open Stack.',
     keywords: ['first run', 'no model', 'first seat', 'nothing answers', 'one tap', 'empty chat'],
   },
   ...(marketplaceOn

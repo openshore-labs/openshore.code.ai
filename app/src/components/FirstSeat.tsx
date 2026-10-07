@@ -272,7 +272,7 @@ export function FirstSeat({
             Connect your computer
           </button>
           <button className="first-seat-more-row press-fb" onClick={() => setView('connections')}>
-            Connect an API key
+            Add an API key
           </button>
           <button className="first-seat-more-row press-fb" onClick={() => setView('stack')}>
             Open Stack

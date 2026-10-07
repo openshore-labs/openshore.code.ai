@@ -272,7 +272,7 @@ export function DesktopTerminal({ driver }: { driver: TerminalHost }) {
                 setAttempt((n) => n + 1);
               }}
             >
-              {door === 'pair' ? 'Open Pairing' : 'Try again'}
+              {door === 'pair' ? 'Connect your computer' : 'Try again'}
             </button>
           </div>
         ) : null}
