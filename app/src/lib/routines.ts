@@ -122,7 +122,7 @@ export function controlBlurb(where: ControlWhere, machine: string): string {
     case 'away':
       return `You are away from ${machine}. Routines run there while it is on. Reconnect over Tailscale to take control.`;
     case 'unpaired':
-      return 'Routines run on your own computer, while it is on. Pair this device with your computer to set your crew to work.';
+      return 'Routines run on your own computer, while it is on. Connect this device to it, then set your crew to work.';
     default:
       return `Connected to ${machine}. Set up, run, and stop your crew from here.`;
   }

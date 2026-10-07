@@ -186,7 +186,9 @@ describe('the control distinction: set up and control only while docked', () => 
     expect(controlBlurb('away', 'the Mac mini')).toContain('the Mac mini');
     expect(controlBlurb('away', 'the Mac mini')).toContain('while it is on');
     expect(controlBlurb('away', 'the Mac mini')).not.toContain('keeps working');
-    expect(controlBlurb('unpaired', 'your main machine')).toContain('Pair this device');
+    // It sits over the Connect your computer button, so it uses that verb.
+    expect(controlBlurb('unpaired', 'your main machine')).toContain('Connect this device');
+    expect(controlBlurb('unpaired', 'your main machine')).not.toMatch(/\bPair\b/);
   });
 });
 

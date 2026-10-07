@@ -1962,6 +1962,12 @@ textarea {
   width: 100%;
 }
 
+/* The row is a ghost button on the same surface as the ink pill, so the pill
+   takes a hairline to keep its shape beside the Arriving pills. */
+.vault-provider .pill.ink {
+  border: 1px solid var(--border);
+}
+
 .vault-provider-row {
   display: flex;
   flex-direction: column;
@@ -12056,10 +12062,13 @@ button.settings-row:active {
   color: var(--ink-soft);
   border-color: var(--border);
 }
-/* 'Built in' keeps its status slot (2026-09-04) but reads as a value. */
+/* 'Built in' keeps its status slot (2026-09-04) but reads as a value, in the
+   ledger value's own size, weight and ink, so it never looks like a button. */
 .harbor-action.is-builtin {
   background: transparent;
-  color: var(--muted);
+  color: var(--ink-soft);
+  font-size: var(--text-4);
+  font-weight: var(--weight-regular);
   border-color: transparent;
   padding-inline: 0;
 }

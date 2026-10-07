@@ -1,4 +1,4 @@
-// Settings: the honest page, written as a ledger. Five short groups under
+// Settings: the honest page, written as a ledger. Short groups under
 // serif heads, one row per thing, the current value on the right, and
 // everything deeper in a sheet. What this app keeps, where it lives, and a
 // few careful switches. No telemetry to toggle because there is none. Built
