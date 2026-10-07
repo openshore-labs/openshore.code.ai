@@ -52,7 +52,9 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'overview',
     title: 'What OpenShore is',
-    text: 'OpenShore is a local-first coding assistant for your computer (Mac, Windows, or Linux) and your iPhone. You build a stack of models you own; local models are the default and the cloud is an opt-in choice on your own key. Once set up it works like a coding agent: say the goal, it proposes a plan, you pick, it does the work and asks before anything risky.',
+    // Opens on the App Store's first caption, the line the setup page's
+    // headline says too (founder, D23, 2026-10-07).
+    text: 'Your models. Your keys. OpenShore is a local-first coding assistant for your computer (Mac, Windows, or Linux) and your iPhone. You build a stack of models you own; local models are the default and the cloud is an opt-in choice on your own key. Once set up it works like a coding agent: say the goal, it proposes a plan, you pick, it does the work and asks before anything risky.',
     keywords: [
       'what is openshore',
       'how does openshore work',
@@ -611,7 +613,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'my-crew',
     title: 'Crew',
     where: 'Menu, Crew',
-    text: 'Your own roster of agents, each with a name, a persona, a rule for when it is called, and an activity level (Reviews the work, Joins on its own, or When you ask). Tap New crew member to add one.',
+    text: "Your own roster of agents, each with a name, a persona, a rule for when it is called, and an activity level (Reviews the work, Joins on its own, or When you ask). Tap New crew member to add one. Tap a member's card to edit it; Delete is at the foot of its editor, or swipe the card left.",
     keywords: [
       'crew',
       'my crew',
@@ -699,6 +701,8 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     : []),
 
   // ---------------------------------------------------------- settings
+  // Every group in the screen's order, Privacy under Account (D16, 2026-10-07).
+  // test/settingsOrder.test.ts reads SettingsScreen and holds this list to it.
   {
     id: 'settings',
     title: 'Settings',
@@ -706,12 +710,15 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     text: `Groups: ${listOf([
       'Account',
       'Privacy',
+      'Ethical boundaries',
       'This device',
+      'Approvals',
       'Terminal',
       ...(launchOn ? ['Launch with Codemagic'] : []),
       ...(stackHealthOn ? ['Stack Health'] : []),
       'Web search',
       'Harbor',
+      'Reasoning',
       'Writing',
       'Voice mode',
       'Notifications (iPhone)',
@@ -824,8 +831,8 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     // 2026-09-30).
     text: `${
       gatesOn
-        ? "Chatting needs no account. Signing in is free, opens Projects and Cloud Connections, and carries a few settings to your other devices. The rest of OpenShore (the coding agent, Terminal, Repositories, Vault, Crew, and Pairing) is part of OpenShore Plus, which rides on your account; get it or restore it in Settings. Chats are not synced between devices; with Pairing, your phone reaches your computer's chats."
-        : "Chatting needs no account. Signing in is free and opens building, Projects, Vault, Crew, and pairing, and carries a few settings to your other devices. Chats are not synced between devices; your phone reaches your computer's chats by pairing."
+        ? "Chatting needs no account. Signing in is free, opens Projects and Cloud Connections, and takes your theme and a few preferences to your other devices. The rest of OpenShore (the coding agent, Terminal, Repositories, Vault, Crew, and Pairing) is part of OpenShore Plus, which rides on your account; get it or restore it in Settings. Chats are not synced between devices; with Pairing, your phone reaches your computer's chats."
+        : "Chatting needs no account. Signing in is free and opens building, Projects, Vault, Crew, and pairing, and takes your theme and a few preferences to your other devices. Chats are not synced between devices; your phone reaches your computer's chats by pairing."
     }${teamsOn ? ' After creating one you choose personal or business; a business adds a company, admins, and a shared stack managed from Admin.' : ''}`,
     keywords: [
       'account',

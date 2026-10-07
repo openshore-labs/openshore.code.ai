@@ -8,6 +8,7 @@ import { useApp } from '../state/store.js';
 import { PlusNote } from '../components/PlusNote.js';
 import { CREW_PLUS_LINE } from '../lib/payGate.js';
 import { BackBar } from '../components/BackBar.js';
+import { SwipeRow } from '../components/SwipeRow.js';
 import { ProjectMultiSelect } from '../components/ProjectMultiSelect.js';
 import type { CrewActivityLevel, CrewAgent } from '../state/types.js';
 import { ADVISOR_TEAM } from '../lib/crewPresets.js';
@@ -43,6 +44,10 @@ const LEVELS: Array<{ id: CrewActivityLevel; label: string; hint: string }> = [
   },
 ];
 
+/** The door's one honest line: where routines run, and only while it is on.
+ *  Away from the computer it says the same, then how to take control back. */
+const ROUTINES_RUN_LINE = 'Routines run on your computer while it is on.';
+
 type Draft = Omit<CrewAgent, 'id' | 'createdAt'> & { id?: string };
 
 function emptyDraft(): Draft {
@@ -76,6 +81,10 @@ export function CrewScreen() {
   const routines = routinesState.routines;
   // An empty crew leads with the advisor team, so only one action is filled.
   const firstCrew = crew.length === 0;
+  // No computer paired and no routine: the door to Crew command is a quiet
+  // row (D17). On the desktop, docked or away, or once a routine exists, it
+  // is the hero again.
+  const quietDoor = control.where === 'unpaired' && routines.length === 0;
   const titleRef = useRef<HTMLHeadingElement>(null);
 
   // The roster shows each member's presence, so the room asks the computer
@@ -87,6 +96,7 @@ export function CrewScreen() {
   const [draft, setDraft] = useState<Draft | undefined>();
   const [confirmDelete, setConfirmDelete] = useState<string | undefined>();
   const deleting = crew.find((a) => a.id === confirmDelete);
+  const editing = draft?.id ? crew.find((a) => a.id === draft.id) : undefined;
 
   const scopeLabel = (a: CrewAgent) => {
     if (a.projectIds.length === 0) return 'All projects';
@@ -156,30 +166,47 @@ export function CrewScreen() {
         <PlusNote feature="crew" line={CREW_PLUS_LINE} />
 
         {/* The door to the command center: the crew's unattended work, with
-            a live line so the roster reads as a team, not a list. */}
-        <button
-          type="button"
-          className="crew-command-door press-fb press-fb--row"
-          onClick={openCrewCommand}
-        >
-          <span className="crew-command-door-body">
-            <span className="crew-command-door-kicker">
-              Crew command
-              {control.where === 'away' ? ' · View only' : control.can ? ' · In control' : ''}
+            a live line so the roster reads as a team, not a list. Before a
+            computer is paired and with no routine, the room behind it can only
+            say pair first, so the door is a plain card row and the dark hero
+            waits until there is work to show (founder, D17, 2026-10-07). */}
+        {quietDoor ? (
+          <button
+            type="button"
+            className="card card-disclosure crew-command-row press-fb press-fb--row"
+            onClick={openCrewCommand}
+          >
+            <span className="crew-command-row-body">
+              <h3>Crew command</h3>
+              <span className="sub">{ROUTINES_RUN_LINE}</span>
             </span>
-            <span className="crew-command-door-title">
-              {routines.length ? 'Your crew at work' : 'Put your crew to work'}
+            <span className="disclosure-chevron" aria-hidden="true" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="crew-command-door press-fb press-fb--row"
+            onClick={openCrewCommand}
+          >
+            <span className="crew-command-door-body">
+              <span className="crew-command-door-kicker">
+                Crew command
+                {control.where === 'away' ? ' · View only' : control.can ? ' · In control' : ''}
+              </span>
+              <span className="crew-command-door-title">
+                {routines.length ? 'Your crew at work' : 'Put your crew to work'}
+              </span>
+              <span className="crew-command-door-sub">
+                {control.where === 'unpaired'
+                  ? ROUTINES_RUN_LINE
+                  : control.where === 'away'
+                    ? `${ROUTINES_RUN_LINE} Reconnect to take control.`
+                    : crewHeadline(routines, routinesState.runs)}
+              </span>
             </span>
-            <span className="crew-command-door-sub">
-              {control.where === 'unpaired'
-                ? 'Routines run on your computer while it is on.'
-                : control.where === 'away'
-                  ? 'Away from your computer. Watch here, reconnect to take control.'
-                  : crewHeadline(routines, routinesState.runs)}
-            </span>
-          </span>
-          <span className="cc-row-chevron" aria-hidden="true" />
-        </button>
+            <span className="cc-row-chevron" aria-hidden="true" />
+          </button>
+        )}
 
         <button
           className={`btn ${firstCrew ? 'ghost' : 'primary'} block press-fb`}
@@ -215,41 +242,54 @@ export function CrewScreen() {
           </span>
         ) : null}
 
+        {/* The whole card is the Edit tap, and a swipe left deletes, the way
+            Crew command's routines do (founder, D18, 2026-10-07). The swipe's
+            tap does nothing of its own: the card is a real button, so a tap,
+            a key, or VoiceOver opens the editor, and the editor's foot holds
+            Delete for a pointer or a screen reader. */}
         {crew.map((a) => (
-          <div className="card" key={a.id} style={{ marginTop: 12 }}>
-            <div className="card-row">
-              <span className={`crew-monogram ${a.activityLevel}`} aria-hidden="true">
-                {(a.name.trim()[0] ?? '?').toUpperCase()}
+          <SwipeRow
+            key={a.id}
+            variant="danger"
+            label="Delete"
+            className="crew-card-swipe"
+            onTap={() => {}}
+            onToggle={() => setConfirmDelete(a.id)}
+          >
+            <button
+              type="button"
+              className="card crew-card press-fb press-fb--row"
+              onClick={() => setDraft({ ...a })}
+            >
+              <span className="card-row">
+                <span className={`crew-monogram ${a.activityLevel}`} aria-hidden="true">
+                  {(a.name.trim()[0] ?? '?').toUpperCase()}
+                </span>
+                <span className="grow">
+                  <h3>{a.name}</h3>
+                  <span className="sub crew-card-meta">
+                    {levelLabel(a.activityLevel)} · {scopeLabel(a)}
+                  </span>
+                </span>
               </span>
-              <div className="grow">
-                <h3>{a.name}</h3>
-                <div className="sub">
-                  {levelLabel(a.activityLevel)} · {scopeLabel(a)}
-                </div>
-              </div>
-            </div>
-            <p className="sub crew-card-line">{a.whenCalled?.trim() || a.persona}</p>
-            {(() => {
-              const mine = routinesForAgent(routines, a);
-              const line = agentPresenceLine(mine);
-              if (!line) return null;
-              const busiest = busiestFirst(mine)[0]!;
-              return (
-                <div className="crew-presence">
-                  <span className={`cc-dot ${presenceTone(busiest.presence)}`} aria-hidden="true" />
-                  {line}
-                </div>
-              );
-            })()}
-            <div className="suggestion-row" style={{ justifyContent: 'flex-start', marginTop: 4 }}>
-              <button className="suggestion" onClick={() => setDraft({ ...a })}>
-                Edit
-              </button>
-              <button className="suggestion" onClick={() => setConfirmDelete(a.id)}>
-                Delete
-              </button>
-            </div>
-          </div>
+              <span className="sub crew-card-line">{a.whenCalled?.trim() || a.persona}</span>
+              {(() => {
+                const mine = routinesForAgent(routines, a);
+                const line = agentPresenceLine(mine);
+                if (!line) return null;
+                const busiest = busiestFirst(mine)[0]!;
+                return (
+                  <span className="crew-presence">
+                    <span
+                      className={`cc-dot ${presenceTone(busiest.presence)}`}
+                      aria-hidden="true"
+                    />
+                    {line}
+                  </span>
+                );
+              })()}
+            </button>
+          </SwipeRow>
         ))}
       </div>
 
@@ -341,6 +381,21 @@ export function CrewScreen() {
               >
                 {draft.id ? 'Save' : 'Add to crew'}
               </button>
+              {/* The quiet way to delete, for a pointer or a screen reader
+                  (D18): the same confirm and toast the swipe opens, named
+                  for the member as saved, not as typed. */}
+              {editing ? (
+                <button
+                  type="button"
+                  className="btn block crew-editor-delete press-fb"
+                  onClick={() => {
+                    setDraft(undefined);
+                    setConfirmDelete(editing.id);
+                  }}
+                >
+                  Delete {editing.name}
+                </button>
+              ) : null}
             </div>
           </>
         ) : null}

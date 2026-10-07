@@ -557,6 +557,125 @@ export function SettingsScreen() {
           ) : null}
         </SettingsGroup>
 
+        {/* Privacy comes straight after Account (founder, D16, 2026-10-07), so
+            the first screen keeps the lead's promise: what leaves this device,
+            how the rest is kept, and the three limits. First of all on a build
+            with no account backend, where Account is left out. */}
+        <SettingsGroup title="Privacy" index={group++}>
+          <WhatLeavesSheet />
+          <InfoSheet
+            title="How your data is kept"
+            renderTrigger={(open) => (
+              <SettingsRow
+                label="How your data is kept"
+                sub="What stays here, how it is sealed, and what local models can and cannot do"
+                value={facts && sealed ? 'Sealed' : undefined}
+                onClick={open}
+              />
+            )}
+          >
+            <h3 className="settings-sheet-head">Privacy, plainly</h3>
+            <p>
+              What you send a local model stays on this device, and so does its answer; if it
+              searches the web, only the search words go out. Cloud models run on your own keys, and
+              only on a turn you send to one. A few things do leave this device, and every one is
+              listed under What leaves this device, above: the words of a web search, update checks,
+              the model list, a notification token if you allow notifications, and, while you are
+              signed in, your account, a few preferences, and a record of any request the guardrail
+              blocks. That record carries a category, a time, and a one-way hash, never your prompt
+              and never the name of anyone it was about. No telemetry, no analytics, no advertising.
+            </p>
+            <h3 className="settings-sheet-head">Encrypted on this device</h3>
+            <p>
+              Your chats, projects, crew, settings, and session journals are sealed at rest with
+              AES-256. The key that unlocks them stays on this device, held in its secure store, the{' '}
+              {keyStoreLabel()}, whenever one is available, and it never leaves this device. API
+              keys are held the same way. When you send a turn to a cloud provider, that one
+              provider sees that one request on your own account. We do not, and there is nothing in
+              between.
+            </p>
+            {facts ? <LiveSeal facts={facts} /> : null}
+            <h3 className="settings-sheet-head">Local models, honestly</h3>
+            <p>
+              Harbor and Harbor Lite, and any model you run on this device, are AI. They can be
+              confidently wrong. Harbor Lite (SmolLM2-135M-Instruct) is a guide, not a coder. Harbor
+              (Qwen3 4B Instruct) writes and explains code, but it does not edit files or run
+              commands. For real work, use DeepBlue on your computer or connect a bigger model. What
+              you type to a local model stays on this device. Harbor Lite and Harbor are used under
+              the Apache License 2.0. {HARBOR_MASTER_ATTRIBUTION}
+            </p>
+            <p>
+              OpenShore does not editorialize what a model says. Three narrow limits are enforced on
+              every path, local included, and they are the only ones: see Ethical boundaries below.
+              The screening itself runs on this device and sends nothing anywhere, so a local chat
+              stays local even though it is screened.
+            </p>
+          </InfoSheet>
+          <SettingsRow
+            label="Privacy Policy"
+            sub="What we keep, why, for how long, and your rights"
+            onClick={() => openExternal(PRIVACY_URL)}
+          />
+          <SettingsRow
+            label="Terms of Use"
+            sub="The terms, in plain words"
+            onClick={() => openExternal(TERMS_URL)}
+          />
+        </SettingsGroup>
+
+        {/* The trust statement. One source (os-code/protocol), shown here and on
+            the marketing site, so the two can never say different things. */}
+        <SettingsGroup index={group++}>
+          <InfoSheet
+            title="Ethical boundaries"
+            renderTrigger={(open) => (
+              <SettingsRow
+                label="Ethical boundaries"
+                sub="Three narrow limits, on every model, local included"
+                value="Enforced"
+                onClick={open}
+              />
+            )}
+          >
+            <h3 className="settings-sheet-head">What this app will not do</h3>
+            {TRUST_STATEMENT_LINES.map((line) => (
+              <p key={line}>{line}</p>
+            ))}
+            <h3 className="settings-sheet-head">What is blocked</h3>
+            <p>
+              Child sexual abuse material, and sexual or nude imagery of a real, identifiable
+              person, are refused outright. So is concrete help building or deploying biological,
+              chemical, nuclear, or high-yield explosive weapons. There is no consent option for any
+              of those.
+            </p>
+            <p>
+              Synthesized media only, meaning an image, a video, or a voice. Recreating the face or
+              voice of a real, identifiable person is held back until you state you are authorized
+              for that specific person, and what comes out carries provenance metadata saying it was
+              AI-generated.
+            </p>
+            <h3 className="settings-sheet-head">What is not blocked</h3>
+            <p>
+              Legal adult content, dark and violent fiction, horror, edgy humor, satire and
+              political parody, security research and red teaming, and unpopular opinions. The layer
+              adds no refusal and no lecture to any of it. Over-blocking your legitimate work is
+              treated as a defect, not a safe default.
+            </p>
+            <p>
+              Words are free. The gate is on synthesized media, not on what you write: satire in
+              text never touches it, and "it's satire" does not clear a photorealistic video of a
+              real person's face.
+            </p>
+            <h3 className="settings-sheet-head">What is recorded</h3>
+            <p>
+              A block records a category, a timestamp, and a one-way hash of the request. Your
+              prompt is never stored and never sent, and we keep no IP address with it. When you are
+              signed in, block records reach your account so enforcement holds across a reinstall.
+              Signed out, they stay on this device.
+            </p>
+          </InfoSheet>
+        </SettingsGroup>
+
         <SettingsGroup id={FOLLOWS_GROUP_ID} title="This device" index={group++}>
           {platform() === 'ios' && vaultProviderId === 'local' && vaultRoomShut ? (
             <SettingsRow
@@ -1244,121 +1363,6 @@ export function SettingsScreen() {
             on the project (ProjectDetailScreen), where different projects run
             different currents at once. Connecting one stays device-local, on
             its connect sheet, reached from the project row. */}
-
-        <SettingsGroup title="Privacy" index={group++}>
-          <WhatLeavesSheet />
-          <InfoSheet
-            title="How your data is kept"
-            renderTrigger={(open) => (
-              <SettingsRow
-                label="How your data is kept"
-                sub="What stays here, how it is sealed, and what local models can and cannot do"
-                value={facts && sealed ? 'Sealed' : undefined}
-                onClick={open}
-              />
-            )}
-          >
-            <h3 className="settings-sheet-head">Privacy, plainly</h3>
-            <p>
-              What you send a local model stays on this device, and so does its answer; if it
-              searches the web, only the search words go out. Cloud models run on your own keys, and
-              only on a turn you send to one. A few things do leave this device, and every one is
-              listed under What leaves this device, above: the words of a web search, update checks,
-              the model list, a notification token if you allow notifications, and, while you are
-              signed in, your account, a few preferences, and a record of any request the guardrail
-              blocks. That record carries a category, a time, and a one-way hash, never your prompt
-              and never the name of anyone it was about. No telemetry, no analytics, no advertising.
-            </p>
-            <h3 className="settings-sheet-head">Encrypted on this device</h3>
-            <p>
-              Your chats, projects, crew, settings, and session journals are sealed at rest with
-              AES-256. The key that unlocks them stays on this device, held in its secure store, the{' '}
-              {keyStoreLabel()}, whenever one is available, and it never leaves this device. API
-              keys are held the same way. When you send a turn to a cloud provider, that one
-              provider sees that one request on your own account. We do not, and there is nothing in
-              between.
-            </p>
-            {facts ? <LiveSeal facts={facts} /> : null}
-            <h3 className="settings-sheet-head">Local models, honestly</h3>
-            <p>
-              Harbor and Harbor Lite, and any model you run on this device, are AI. They can be
-              confidently wrong. Harbor Lite (SmolLM2-135M-Instruct) is a guide, not a coder. Harbor
-              (Qwen3 4B Instruct) writes and explains code, but it does not edit files or run
-              commands. For real work, use DeepBlue on your computer or connect a bigger model. What
-              you type to a local model stays on this device. Harbor Lite and Harbor are used under
-              the Apache License 2.0. {HARBOR_MASTER_ATTRIBUTION}
-            </p>
-            <p>
-              OpenShore does not editorialize what a model says. Three narrow limits are enforced on
-              every path, local included, and they are the only ones: see Ethical boundaries below.
-              The screening itself runs on this device and sends nothing anywhere, so a local chat
-              stays local even though it is screened.
-            </p>
-          </InfoSheet>
-          <SettingsRow
-            label="Privacy Policy"
-            sub="What we keep, why, for how long, and your rights"
-            onClick={() => openExternal(PRIVACY_URL)}
-          />
-          <SettingsRow
-            label="Terms of Use"
-            sub="The terms, in plain words"
-            onClick={() => openExternal(TERMS_URL)}
-          />
-        </SettingsGroup>
-
-        {/* The trust statement. One source (os-code/protocol), shown here and on
-            the marketing site, so the two can never say different things. */}
-        <SettingsGroup index={group++}>
-          <InfoSheet
-            title="Ethical boundaries"
-            renderTrigger={(open) => (
-              <SettingsRow
-                label="Ethical boundaries"
-                sub="Three narrow limits, on every model, local included"
-                value="Enforced"
-                onClick={open}
-              />
-            )}
-          >
-            <h3 className="settings-sheet-head">What this app will not do</h3>
-            {TRUST_STATEMENT_LINES.map((line) => (
-              <p key={line}>{line}</p>
-            ))}
-            <h3 className="settings-sheet-head">What is blocked</h3>
-            <p>
-              Child sexual abuse material, and sexual or nude imagery of a real, identifiable
-              person, are refused outright. So is concrete help building or deploying biological,
-              chemical, nuclear, or high-yield explosive weapons. There is no consent option for any
-              of those.
-            </p>
-            <p>
-              Synthesized media only, meaning an image, a video, or a voice. Recreating the face or
-              voice of a real, identifiable person is held back until you state you are authorized
-              for that specific person, and what comes out carries provenance metadata saying it was
-              AI-generated.
-            </p>
-            <h3 className="settings-sheet-head">What is not blocked</h3>
-            <p>
-              Legal adult content, dark and violent fiction, horror, edgy humor, satire and
-              political parody, security research and red teaming, and unpopular opinions. The layer
-              adds no refusal and no lecture to any of it. Over-blocking your legitimate work is
-              treated as a defect, not a safe default.
-            </p>
-            <p>
-              Words are free. The gate is on synthesized media, not on what you write: satire in
-              text never touches it, and "it's satire" does not clear a photorealistic video of a
-              real person's face.
-            </p>
-            <h3 className="settings-sheet-head">What is recorded</h3>
-            <p>
-              A block records a category, a timestamp, and a one-way hash of the request. Your
-              prompt is never stored and never sent, and we keep no IP address with it. When you are
-              signed in, block records reach your account so enforcement holds across a reinstall.
-              Signed out, they stay on this device.
-            </p>
-          </InfoSheet>
-        </SettingsGroup>
 
         <SettingsGroup index={group++}>
           <SettingsRow

@@ -138,6 +138,7 @@ const {
   ACCOUNT_GATE_BODY,
   ACCOUNT_NOTICE,
   ACCOUNT_PITCH,
+  accountCopy,
   needsAccount,
 } = await import('../src/lib/accountGate.js');
 const {
@@ -298,7 +299,20 @@ describe('the gate: chat is free, everything else is a free sign-in', () => {
       expect(title).toMatch(/needs? an account/);
     expect(ACCOUNT_GATE_BODY).toMatch(/Signing in is free/);
     expect(ACCOUNT_GATE_BODY).toMatch(/chatting needs no account/);
-    expect(ACCOUNT_PITCH).toMatch(/take your settings to any device/);
+    // D19 (founder, 2026-10-07): the pitch names the few that follow, never
+    // "your settings", since the writing voice, the app icon, approvals, web
+    // search and the vault stay on the device.
+    expect(ACCOUNT_PITCH).toMatch(/take your theme and a few preferences to every device/);
+    for (const pitch of [ACCOUNT_PITCH, accountCopy(true).pitch, accountCopy(false).pitch]) {
+      expect(pitch, pitch).not.toMatch(/your settings/i);
+      expect(pitch, pitch).toMatch(/Your chats stay on your devices\./);
+    }
+    // The sidebar's one line names what signing in opens, and says nothing
+    // about settings at all: the pitch carries the few that follow.
+    for (const sub of [accountCopy(true).signInSub, accountCopy(false).signInSub])
+      expect(sub, sub).not.toMatch(/settings/i);
+    // The theme it names is one of the keys that follow.
+    expect(SETTINGS_REACH.theme).toBe('follows');
   });
 
   it('never says, anywhere in the app, that building works signed out', () => {
