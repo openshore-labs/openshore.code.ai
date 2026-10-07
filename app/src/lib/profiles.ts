@@ -4,9 +4,11 @@
 // signals: can we reach your home system (the always-on desktop / Mac mini that
 // holds your local LLMs, over Tailscale), and is there any internet at all.
 //
-//   Docked   - home system reachable. Full stack: home models, cloud, on-device.
-//   Offshore - online, but home is not reachable. Cloud and on-device.
-//   Offline  - no connection. On-device models only.
+//   Docked   - connected to your computer. Its models, cloud models, and this
+//              device's models.
+//   Offshore - online, but your computer is out of reach. Cloud models and
+//              this device's models.
+//   Offline  - no connection. Only the models on this device.
 //
 // The active profile is detected from those two signals; the user can manually
 // step DOWN to a more restrictive profile (e.g. force Offline) but never up to
@@ -28,21 +30,32 @@ export const PROFILES: Record<ProfileId, ProfileInfo> = {
     id: 'docked',
     label: 'Docked',
     dot: 'var(--ok)',
-    blurb: 'Connected to your computer. Full stack: its models, cloud, and on-device.',
+    blurb: "Connected to your computer. Its models, cloud models, and this device's models.",
   },
   offshore: {
     id: 'offshore',
     label: 'Offshore',
-    dot: 'var(--cloud)',
-    blurb: 'Online, but your computer is out of reach. Cloud and on-device models.',
+    // Neutral ink, not amber: amber marks cloud spend, and a status is not a charge.
+    dot: 'var(--ink-soft)',
+    blurb: "Online, but your computer is out of reach. Cloud models and this device's models.",
   },
   offline: {
     id: 'offline',
     label: 'Offline',
     dot: 'var(--muted)',
-    blurb: 'No connection. Your on-device models only.',
+    blurb: 'No connection. Only the models on this device.',
   },
 };
+
+/** The blurb a person reads under a status. Before any computer is connected,
+ *  Docked says how to get there and Offshore does not speak of a computer that
+ *  is out of reach. Callers pass paired = isDesktop() || Boolean(settings.daemon),
+ *  because on the desktop the device is the computer. */
+export function profileBlurb(id: ProfileId, paired: boolean): string {
+  if (!paired && id === 'docked') return 'Connect your computer to use its models here.';
+  if (!paired && id === 'offshore') return "Online. Cloud models and this device's models.";
+  return PROFILES[id].blurb;
+}
 
 // Most capable first. A lower index is more capable.
 export const PROFILE_ORDER: ProfileId[] = ['docked', 'offshore', 'offline'];
