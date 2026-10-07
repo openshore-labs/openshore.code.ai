@@ -163,6 +163,23 @@ export type AgentEvent =
       summary: string;
       questions: Array<{ id: string; question: string; options?: string[] }>;
     }
+  // The app's Stack chat (founder, 2026-10-07): a picture came in, or a
+  // plan's image step started, and nothing here can read images. The chat
+  // answers with two doors, a local model to source and a cloud model to
+  // connect, never an error. `from` says whether a picture went unread
+  // ('image') or the step ran on the text alone ('play'); `placed` names a
+  // model set for Image reading that cannot read here, and why; `cloud` says
+  // whether a connected cloud reader is out of reach rather than missing;
+  // `status` names the reach status that holds reading back ("Offline"),
+  // in which nothing that reads images is in reach until it is left. Additive:
+  // an older client ignores it, and it never rides into a model's history.
+  | {
+      type: 'image-reader-offer';
+      from: 'image' | 'play';
+      cloud: 'none' | 'out-of-reach';
+      placed?: { model: string; why: 'device' | 'cannot-see' | 'out-of-reach' };
+      status?: string;
+    }
   // The permission mode in force, so a reattaching client shows the truth.
   | { type: 'mode'; mode: PermissionMode }
   // Where the session works and the branch it is on; refreshed at the

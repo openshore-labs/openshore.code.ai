@@ -489,7 +489,9 @@ ships as Repositories. Build it to these five tenets so no session drifts:
 4. **The person places the seat; the harness may only fill a gap.** Auto-place
    places an installed or benched LOCAL model with a note and one-tap revert, and
    never the anchor, never under a secrets lockdown. Every download and every
-   cloud call is a card the person taps. Teal is local, amber is cloud and spend.
+   cloud call is a card the person taps (founder's exception, 2026-10-07: a
+   play's unplaced image step runs on the chat path's cloud reader with no
+   card, and its note names the model). Teal is local, amber is cloud and spend.
 5. **One loop; hosts differ only by tool slice.** The pure core in
    `os-code/src/harness/` stays free of Node built-ins by test so the phone can
    run it; events are additive; the working path (`core/agent/loop.ts`) stays

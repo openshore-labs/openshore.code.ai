@@ -11851,6 +11851,84 @@ button.vault-tag {
   margin-top: 8px;
 }
 
+/* Nothing in a Stack chat can read images (founder, 2026-10-07): the
+   changed-files card's quiet frame, never an error's, arriving on msg-in
+   like its neighbours. Teal marks only the local door and amber only the
+   cloud door. The doors fold away on the reveal fold once something can
+   read images, and the line that says so fades in beneath them. */
+.image-offer {
+  padding: var(--card-pad);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  animation: msg-in var(--dur-3) var(--ease-standard) backwards;
+}
+.image-offer-title {
+  font-size: var(--text-4);
+  font-weight: var(--weight-semibold);
+  color: var(--ink);
+}
+.image-offer-lead {
+  margin: 4px 0 0;
+  font-size: var(--text-3);
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+.image-offer-doors {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.image-offer-door {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.image-offer-door .kind-chip {
+  min-width: 52px;
+  text-align: center;
+}
+.image-offer-door-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  font-size: var(--text-3);
+  line-height: 1.45;
+}
+.image-offer-door-head {
+  font-weight: var(--weight-semibold);
+  color: var(--ink);
+}
+.image-offer-door-body {
+  color: var(--ink-soft);
+}
+/* Side by side where both fit on one line each; stacked, full width, on a
+   phone, so neither label breaks over two lines. */
+.image-offer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.image-offer-actions .btn {
+  flex: 1 1 auto;
+  white-space: nowrap;
+}
+.image-offer-ready-fold .reveal-inner {
+  opacity: 0;
+  transition: opacity var(--dur-3) var(--ease-standard);
+}
+.image-offer-ready-fold.open .reveal-inner {
+  opacity: 1;
+}
+.image-offer-ready {
+  margin: 8px 0 0;
+  font-size: var(--text-3);
+  color: var(--ink);
+}
+
 /* The top bar's chips. A titled chat stacks its name over the repository
    pill, and the two fit the 40px control slot, so the hairline holds at 61px
    when the first message turns the empty chat into a titled one. */

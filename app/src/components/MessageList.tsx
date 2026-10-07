@@ -34,6 +34,7 @@ import { ThinkingBlock } from './ThinkingBlock.js';
 import { PlanCard } from './PlanCard.js';
 import { TrustCard } from './TrustCard.js';
 import { WindowCutCard } from './WindowCutCard.js';
+import { ImageReaderOffer, type ImageOfferContext } from './ImageReaderOffer.js';
 import { ClarifyCard } from './ClarifyCard.js';
 import { ChangedFilesCard } from './ChangedFilesCard.js';
 import { VerifyPill } from './VerifyPill.js';
@@ -304,6 +305,7 @@ export function MessageList({
   onUnqueue,
   onOpenPackNote,
   onSaveHandoff,
+  imageOffer,
   afterItem,
   parked,
   onRetryParked,
@@ -353,6 +355,10 @@ export function MessageList({
   /** "Save to Vault" under a switch's handoff note (J12): the person's own
    *  one-tap write, resolving to the note's path once saved. */
   onSaveHandoff?: (itemId: string) => Promise<string | undefined>;
+  /** What the image offer card needs (a Stack chat with nothing that reads
+   *  images): whether something reads them now, where the local model runs,
+   *  and the door to each guide. */
+  imageOffer?: ImageOfferContext;
   /** Extra content rendered right under one assistant message, keyed by its
    *  id: Harbor Lite's greeting carries the setup button this way. */
   afterItem?: (id: string) => ReactNode;
@@ -587,6 +593,10 @@ export function MessageList({
                   onOpenStack={onOpenStack}
                 />
               );
+            case 'image-offer':
+              return imageOffer ? (
+                <ImageReaderOffer key={item.id} item={item} {...imageOffer} />
+              ) : null;
             case 'verify':
               return (
                 <VerifyPill

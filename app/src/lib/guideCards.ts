@@ -9,6 +9,8 @@
 // roster (currents.ts, harnessCurrents.ts), never spelled here.
 import type { GuideCard } from './guideHarness.js';
 import { guideStepsCompact } from './setupGuides.js';
+import { LOCAL_IMAGE_READER, SMALL_IMAGE_READER, aboutGB } from './imageReading.js';
+import { thisDeviceNoun } from './deviceNoun.js';
 import { PAY_GATES_ENABLED } from './payGate.js';
 import { AGENTIC_CURRENTS, AGENTIC_CURRENTS_TITLE } from './currents.js';
 import { HARNESS_CURRENTS, HARNESS_CURRENTS_TITLE } from './harnessCurrents.js';
@@ -264,7 +266,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'attachments',
     title: 'Attach',
     where: 'The + at the left of the chat box',
-    text: 'Opens Camera, Photos, and Files (drag and drop on a computer). Videos are read as frames. Images only send if the chosen model can read images; if not, place an image-reading model in Stack or connect a cloud model that can. A model set for Image reading in Stack gets images right away; otherwise the chat asks before an image goes out.',
+    text: 'Opens Camera, Photos, and Files (drag and drop on a computer). Videos are read as frames. A chat with one model sends images only if that model reads them. In a Stack chat, a model set for Image reading gets images right away; otherwise the chat asks before an image goes out, and when nothing can read it, the chat says so and offers two ways to set one up.',
     keywords: [
       'attach',
       'photo',
@@ -364,6 +366,29 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
       'retrieval',
       'category',
       'roles',
+    ],
+  },
+  {
+    // The founder's two doors (2026-10-07), in the words the chat's card and
+    // its guides use; the local pick comes from the catalog.
+    id: 'image-reading',
+    title: 'Reading images',
+    where: 'Menu, Stack, Image reading',
+    text: `A picture in a Stack chat goes to the model set under Image reading, without asking. With none set, another model that can read it (your Reasoning model, or a cloud model you connected) gets it after you approve, and a plan's image step goes to that model with a note naming it. When nothing can read images, the chat says so and offers two ways: Source a local model (${LOCAL_IMAGE_READER.name}, ${aboutGB(LOCAL_IMAGE_READER)}, on your computer through Ollama, or ${SMALL_IMAGE_READER.name}, ${aboutGB(SMALL_IMAGE_READER)}, for a computer with little room; a model on ${thisDeviceNoun()} cannot read images yet), or Connect a cloud model on your own API key (Claude reads images out of the box). Each opens a step-by-step guide.`,
+    keywords: [
+      'read images',
+      'read image',
+      'reads images',
+      'read pictures',
+      'read my screenshots',
+      'image model',
+      'vision model',
+      'image reader',
+      'cannot read images',
+      'source a local model',
+      'connect a cloud model',
+      'llava',
+      'moondream',
     ],
   },
   {

@@ -1795,9 +1795,10 @@ interface AppState {
    *  The empty-state composer checks this before starting a chat, so a first
    *  message is never sent into a brain that cannot answer. */
   sourceReady(source: ConversationSource): boolean;
-  /** Whether a "My Stack" chat can read an image right now: a capable model
-   *  placed in the stack, or a connected cloud provider that reads images. Gates
-   *  the composer's attach button for the stack source. */
+  /** Whether a Stack chat can read an image right now: a capable model
+   *  placed in the stack, or a connected cloud provider that reads images. The
+   *  image offer card folds its doors once this turns true; the Stack chat's
+   *  composer takes a picture either way (founder, 2026-10-07). */
   stackVisionReady(): boolean;
   /** Re-read the desktop engine's status (Electron only; no-op elsewhere). */
   refreshDesktopStatus(): Promise<void>;

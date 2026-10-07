@@ -11,6 +11,7 @@ import type {
   RepoCommandNotLoaded,
 } from 'os-code/protocol';
 import type { BuildStatus } from '../lib/codemagic.js';
+import type { ImageReaderGap } from '../lib/imageReading.js';
 import type { AccountType, PlanTierId } from '../lib/plans.js';
 import { isHarbor } from '../lib/harbor.js';
 import { isHarborMini } from '../lib/harborMini.js';
@@ -172,6 +173,11 @@ export type ThreadItem =
       withheld: number;
       cold: boolean;
     }
+  // Nothing in a Stack chat can read images (founder, 2026-10-07): what is
+  // missing, a local model to source and a cloud model to connect, each door
+  // opening its step-by-step guide. A calm card, never a failed turn, and
+  // never part of a model's history (seedEntries reads spoken turns only).
+  | ({ kind: 'image-offer'; id: string } & ImageReaderGap)
   // The plan-first flow's clarifying questions, as a tappable picker. Tapping an
   // option (or typing) sends the answer, which is folded back into the framing.
   | {

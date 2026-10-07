@@ -13,6 +13,7 @@ import { useApp, driverFor } from '../state/store.js';
 import type { HubRole } from '../drivers/types.js';
 import { sourceSupportsVision, type ConversationSource } from '../state/types.js';
 import { MessageList } from '../components/MessageList.js';
+import type { ImageOfferContext } from '../components/ImageReaderOffer.js';
 import {
   Composer,
   SLASH_COMMANDS,
@@ -661,10 +662,19 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const saveHandoffToVault = useApp((s) => s.saveHandoffToVault);
   const openPackNote = conv ? vaultPackOpener(conv.id) : undefined;
 
-  // A "My Stack" chat can read images when a capable model is placed in it, or
-  // a connected cloud provider reads them; this lights the attach button there,
-  // the same way it lights for a vision-capable cloud model.
+  // A Stack chat can read images when a capable model is placed in it, or a
+  // connected cloud provider reads them. On a phone or an iPad its composer
+  // takes a picture either way (founder, 2026-10-07): the Stack answers one it
+  // cannot read with the two doors below instead of a toast, so the chat
+  // itself says what to set up. The desktop keeps the toast: its Stack is the
+  // engine's, with no Image reading row for the doors to point at. The offer
+  // card reads this to fold its doors once something can.
   const stackVision = useApp((s) => s.stackVisionReady());
+  const startGuideChat = useApp((s) => s.startGuideChat);
+  const imageOffer: ImageOfferContext = {
+    ready: stackVision,
+    onOpenGuide: (id) => void startGuideChat(id),
+  };
 
   const startWith = async (
     source: ConversationSource,
@@ -886,6 +896,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             onOpenStack={() => setView('stack')}
             onOpenPackNote={openPackNote}
             onSaveHandoff={(itemId) => saveHandoffToVault(conv.id, itemId)}
+            imageOffer={imageOffer}
             afterItem={(itemId) => {
               if (!conv) return null;
               // The guided setup's chat: the current step's buttons follow the
@@ -1081,7 +1092,8 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           busy={Boolean(thread?.busy)}
           source={composerSource}
           visionSupported={
-            sourceSupportsVision(composerSource) || (composerSource.kind === 'stack' && stackVision)
+            sourceSupportsVision(composerSource) ||
+            (composerSource.kind === 'stack' && (stackVision || !isDesktop()))
           }
           placeholder={
             conv?.source.kind === 'device' && conv.source.modelId === HARBOR_MINI_MODEL_ID

@@ -3,6 +3,7 @@ import {
   briefTodos,
   extractJson,
   formatBriefTable,
+  handoffNote,
   mergeReplan,
   ownerFor,
   ownerLabel,
@@ -16,6 +17,7 @@ import {
   type PlayStep,
 } from '../src/lib/play.js';
 import { harborRef, type AppStack, type StackModelRef } from '../src/lib/stack.js';
+import { imageStepCoveredNote } from '../src/lib/imageNote.js';
 
 const claude: StackModelRef = {
   kind: 'cloud',
@@ -199,6 +201,92 @@ describe('an unplaced vision step', () => {
     );
     expect(planPrompt('read it', stack)).toMatch(
       /vision \(Image reading\): no specialist, the reasoning model covers it/,
+    );
+  });
+});
+
+// The founder's ruling (2026-10-07): an unplaced image step runs on the chat
+// path's reader with no card, so the working note says nothing is set for
+// Image reading and names the model that reads the step, and its connection.
+describe("an image step's working note", () => {
+  const haiku: StackModelRef = {
+    kind: 'cloud',
+    provider: 'anthropic',
+    model: 'claude-haiku-4-5',
+    label: 'Claude Haiku 4.5',
+  };
+  const gpt: StackModelRef = { kind: 'cloud', provider: 'openai', model: 'gpt-5', label: 'GPT-5' };
+  const sonar: StackModelRef = {
+    kind: 'cloud',
+    provider: 'perplexity',
+    model: 'sonar',
+    label: 'Sonar',
+  };
+  const read: PlayStep = { ...step('s', 'vision'), title: 'Read the chart' };
+  const base: AppStack = { reasoning: sonar, active: [], saved: {} };
+
+  it('names a cloud reader by its display name and its connection', () => {
+    expect(handoffNote(read, { ...base, imageReader: haiku })).toBe(
+      'Read the chart. No image model is set in Stack, so Claude Haiku 4.5 reads it on your Claude connection.',
+    );
+    expect(handoffNote(read, { ...base, imageReader: gpt })).toBe(
+      'Read the chart. No image model is set in Stack, so GPT-5 reads it on your OpenAI connection.',
+    );
+  });
+
+  it('names a Reasoning model that can see by its role', () => {
+    expect(handoffNote(read, { ...base, reasoning: claude, imageReader: claude })).toBe(
+      'Read the chart. No image model is set in Stack, so Claude, your Reasoning model, reads it.',
+    );
+  });
+
+  it('names a model you connected as one', () => {
+    const own: StackModelRef = { ...coder, label: 'LLaVA 7B' };
+    expect(handoffNote(read, { ...base, active: [], imageReader: own })).toBe(
+      'Read the chart. No image model is set in Stack, so LLaVA 7B, a model you connected, reads it.',
+    );
+  });
+
+  it('says the Reasoning model works from the text when nothing reads images', () => {
+    expect(handoffNote(read, base)).toBe(
+      'Read the chart. Nothing here can read images yet, so Sonar, your Reasoning model, works from the text.',
+    );
+  });
+
+  it('keeps the plain handoff for a model placed for Image reading', () => {
+    const placed: AppStack = {
+      ...base,
+      active: [{ ref: haiku, placement: { category: 'vision' } }],
+    };
+    expect(handoffNote(read, { ...placed, imageReader: haiku })).toBe(
+      'Read the chart. Handing to Claude Haiku 4.5.',
+    );
+  });
+
+  it('keeps the plain handoff for a step that names its own model', () => {
+    const named: AppStack = {
+      ...base,
+      active: [{ ref: coder, placement: { category: 'coding' } }],
+      imageReader: haiku,
+    };
+    expect(handoffNote({ ...read, owner: 'byom:c1' }, named)).toBe(
+      'Read the chart. Handing to Coder.',
+    );
+  });
+
+  it('names a model set for Image reading that cannot take the step, and who covers it', () => {
+    expect(imageStepCoveredNote('Read the chart', harborRef(), sonar)).toBe(
+      'Read the chart. Harbor Lite cannot read images yet, so Sonar, your Reasoning model, works from the text.',
+    );
+    const own: StackModelRef = { ...coder, label: 'LLaVA 7B' };
+    expect(imageStepCoveredNote('Read the chart', own, sonar)).toBe(
+      'Read the chart. LLaVA 7B is out of reach, so Sonar, your Reasoning model, works from the text.',
+    );
+  });
+
+  it('leaves every other step as it was', () => {
+    expect(handoffNote(step('w', 'writing'), { ...base, imageReader: haiku })).toBe(
+      'Step w. Handing to Sonar (reasoning).',
     );
   });
 });

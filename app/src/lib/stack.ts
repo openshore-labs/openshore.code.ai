@@ -172,9 +172,10 @@ export function visionSlots(stack: AppStack): {
 
 /** Whether an image turn could be read at all right now: a capable model in the
  *  stack (pickVisionRef), or, failing that, a connected cloud provider that
- *  reads images and is reachable in this profile. This is what the composer's
- *  attach button checks for a "My Stack" chat, so the button lights exactly
- *  when a picture would actually be understood. */
+ *  reads images and is reachable in this profile. A Stack chat takes a picture
+ *  either way and answers one it cannot read with the two-door offer
+ *  (founder, 2026-10-07); the offer card reads this to fold its doors once
+ *  something can. */
 export function stackVisionReady(
   stack: AppStack,
   signals: {

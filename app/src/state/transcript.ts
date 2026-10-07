@@ -478,6 +478,17 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
       return push(settleAll(next), card);
     }
 
+    case 'image-reader-offer':
+      // Nothing here can read images (founder, 2026-10-07): a calm card with
+      // two doors, after whatever answer the turn gave.
+      return push(settleAll(next), {
+        kind: 'image-offer',
+        from: event.from,
+        cloud: event.cloud,
+        ...(event.placed ? { placed: { ...event.placed } } : {}),
+        ...(event.status ? { status: event.status } : {}),
+      });
+
     case 'clarify':
       return push(next, {
         kind: 'clarify',
