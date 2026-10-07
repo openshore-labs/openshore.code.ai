@@ -16,19 +16,20 @@ import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { exitLine, terminalTheme } from './terminalTheme.js';
 import type { TerminalHost } from '../drivers/types.js';
+import { useApp } from '../state/store.js';
 
 // Keys a soft keyboard cannot send. A separate Ctrl toggle arms the next letter
 // as its control code. Each sends the raw bytes a terminal expects.
-const ACCESSORY_KEYS: Array<{ label: string; send: string }> = [
+const ACCESSORY_KEYS: Array<{ label: string; send: string; aria?: string }> = [
   { label: 'Esc', send: '\x1b' },
   { label: 'Tab', send: '\t' },
   { label: '|', send: '|' },
   { label: '~', send: '~' },
   { label: '/', send: '/' },
-  { label: 'up', send: '\x1b[A' },
-  { label: 'down', send: '\x1b[B' },
-  { label: 'left', send: '\x1b[D' },
-  { label: 'right', send: '\x1b[C' },
+  { label: '↑', send: '\x1b[A', aria: 'Up arrow' },
+  { label: '↓', send: '\x1b[B', aria: 'Down arrow' },
+  { label: '←', send: '\x1b[D', aria: 'Left arrow' },
+  { label: '→', send: '\x1b[C', aria: 'Right arrow' },
 ];
 
 type Status = 'connecting' | 'ready' | 'unavailable' | 'exited';
@@ -44,6 +45,11 @@ export function DesktopTerminal({ driver }: { driver: TerminalHost }) {
   // instead of retrying behind a silent screen.
   const [trouble, setTrouble] = useState<string | undefined>();
   const [ctrlArmed, setCtrlArmed] = useState(false);
+  const setView = useApp((s) => s.setView);
+  // The way out of a dead end: Pairing for a refused device, another try for
+  // a computer that did not answer.
+  const [door, setDoor] = useState<'pair' | 'retry' | undefined>();
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     ctrlRef.current = ctrlArmed;
@@ -53,7 +59,7 @@ export function DesktopTerminal({ driver }: { driver: TerminalHost }) {
     const el = containerRef.current;
     if (!el || !driver.openTerminal) {
       setStatus('unavailable');
-      setMessage('This session has no terminal. It is not backed by your computer.');
+      setMessage('This chat has no terminal. It does not run on your computer.');
       return;
     }
 
@@ -154,6 +160,7 @@ export function DesktopTerminal({ driver }: { driver: TerminalHost }) {
           if (/\b(401|403)\b/.test(why)) {
             setMessage('Your computer no longer accepts this device. Pair it again from Pairing.');
             setStatus('unavailable');
+            setDoor('pair');
             break;
           }
           if (failures >= 5) {
@@ -177,6 +184,7 @@ export function DesktopTerminal({ driver }: { driver: TerminalHost }) {
         setMessage(
           "Can't reach your computer. Check that it is on and on Tailscale, then open the terminal again.",
         );
+        setDoor('retry');
         return;
       }
       if (disposed) return;
@@ -230,9 +238,9 @@ export function DesktopTerminal({ driver }: { driver: TerminalHost }) {
       termIdRef.current = '';
     };
     // The room remounts this via key when the session changes, so the effect
-    // captures its driver once.
+    // captures its driver once; Try again runs it once more.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [attempt]);
 
   const sendKeys = (data: string): void => {
     const termId = termIdRef.current;
@@ -241,7 +249,32 @@ export function DesktopTerminal({ driver }: { driver: TerminalHost }) {
   };
 
   if (status === 'unavailable') {
-    return <div className="terminal-message">{message}</div>;
+    return (
+      <div className="terminal-message">
+        {message}
+        {door ? (
+          <div style={{ marginTop: 12 }}>
+            <button
+              type="button"
+              className="btn ghost press-fb"
+              onClick={() => {
+                if (door === 'pair') {
+                  setView('pair');
+                  return;
+                }
+                setDoor(undefined);
+                setMessage('');
+                setTrouble(undefined);
+                setStatus('connecting');
+                setAttempt((n) => n + 1);
+              }}
+            >
+              {door === 'pair' ? 'Open Pairing' : 'Try again'}
+            </button>
+          </div>
+        ) : null}
+      </div>
+    );
   }
 
   return (
@@ -270,6 +303,7 @@ export function DesktopTerminal({ driver }: { driver: TerminalHost }) {
               key={k.label}
               type="button"
               className="accessory-key press-fb"
+              aria-label={k.aria}
               onClick={() => sendKeys(k.send)}
             >
               {k.label}

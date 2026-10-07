@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { hubList, useApp, type HubRole } from '../state/store.js';
 import { bridge, type DaemonInfo } from '../lib/electronBridge.js';
-import { isDesktop } from '../lib/platform.js';
+import { isDesktop, platform } from '../lib/platform.js';
 import { PAIRING_REJECTED, daemonHealth, redeemPairClaim } from '../drivers/remoteDriver.js';
 import { BackBar } from '../components/BackBar.js';
 import { QrScanner } from '../components/QrScanner.js';
@@ -76,9 +76,10 @@ const GLYPHS: Record<string, JSX.Element> = {
   ),
 };
 
-// Tailscale download links, shown on the phone pairing screen so a new user can
-// install it on their desktop without hunting. Desktop platforms use Tailscale's
-// own per-OS download pages; mobile points at the app stores.
+// Tailscale download links. The full list lives in the phone's Get Tailscale
+// sheet, so a new user can install it on their computer without hunting; the
+// desktop shows only its own row. Desktop platforms use Tailscale's own per-OS
+// download pages; mobile points at the app stores.
 const TAILSCALE_LINKS: { label: string; glyph: keyof typeof GLYPHS; href: string }[] = [
   { label: 'macOS', glyph: 'apple', href: 'https://tailscale.com/download/macos' },
   { label: 'Windows', glyph: 'windows', href: 'https://tailscale.com/download/windows' },
@@ -116,6 +117,7 @@ function DesktopPair() {
   const [revoking, setRevoking] = useState<{ id: string; label: string } | undefined>();
   const [more, setMore] = useState(false);
   const [login, setLogin] = useState<{ on: boolean; supported: boolean } | undefined>();
+  const titleRef = useRef<HTMLHeadingElement>(null);
 
   const refresh = async () => {
     const b = bridge();
@@ -167,9 +169,9 @@ function DesktopPair() {
 
   return (
     <div className="screen">
-      <BackBar title={ROOM_LABELS.pair} />
+      <BackBar title={ROOM_LABELS.pair} titleHiddenUntil={titleRef} />
       <div className="screen-inner">
-        <h1>Put this on your phone</h1>
+        <h1 ref={titleRef}>Put this on your phone</h1>
         <p className="lead">
           Your phone reaches your computer over Tailscale, a free app that privately links your own
           devices. Work stays on your computer, so losing signal loses nothing.
@@ -189,8 +191,7 @@ function DesktopPair() {
               <div className="sub">{hubStatusLine(info, { linux: onLinux() })}</div>
             </div>
             <button
-              className={`btn ${info?.running ? 'ghost' : 'primary'} press-fb`}
-              style={{ padding: '8px 14px' }}
+              className={`btn sm ${info?.running ? 'ghost' : 'primary'} press-fb`}
               onClick={async () => {
                 const b = bridge();
                 if (!b) return;
@@ -253,8 +254,8 @@ function DesktopPair() {
           qrFolded ? (
             <button
               type="button"
-              className="btn ghost press-fb"
-              style={{ width: '100%', marginBottom: 12 }}
+              className="btn ghost block press-fb"
+              style={{ marginBottom: 12 }}
               onClick={() => {
                 setQrFolded(false);
                 setJustPaired(undefined);
@@ -306,8 +307,7 @@ function DesktopPair() {
                   </div>
                 </div>
                 <button
-                  className="btn ghost press-fb"
-                  style={{ padding: '8px 14px' }}
+                  className="btn ghost sm press-fb"
                   onClick={() => setRevoking({ id: d.id, label: d.label })}
                 >
                   Revoke
@@ -439,7 +439,7 @@ function RemoteHubPanel() {
           <div className="sub">
             {prefer
               ? 'On. This computer runs sessions on the computer below, not on itself.'
-              : 'Off. This computer is its own engine. Turn on to run on another computer.'}
+              : 'Off. Sessions run on this computer. Turn on to run them on another one.'}
           </div>
         </div>
         <Switch
@@ -474,8 +474,7 @@ function RemoteHubPanel() {
             />
           </div>
           <button
-            className="btn primary press-fb"
-            style={{ width: '100%' }}
+            className="btn primary block press-fb"
             disabled={testing}
             onClick={() => void connect()}
           >
@@ -523,6 +522,9 @@ function PhonePair() {
   // again, so it never lingers as a stale claim of success once someone is
   // clearly pairing a different desktop.
   const [connected, setConnected] = useState(false);
+  const [tailscaleOpen, setTailscaleOpen] = useState(false);
+  const [forgetting, setForgetting] = useState(false);
+  const titleRef = useRef<HTMLHeadingElement>(null);
   const paired = settings.daemon;
 
   const tryPasteJson = (text: string) => {
@@ -617,26 +619,28 @@ function PhonePair() {
 
   return (
     <div className="screen">
-      <BackBar title={ROOM_LABELS.pair} />
+      <BackBar title={ROOM_LABELS.pair} titleHiddenUntil={titleRef} />
       <div className="screen-inner">
-        <h1>Connect your computer</h1>
+        <h1 ref={titleRef}>Connect your computer</h1>
         <p className="lead">
-          One time, two minutes. Then your own model runs on your computer and you reach it from
-          here, over your private network. Your computer does the work, so a long task keeps going
+          Connect once. Then this device reaches your computer, its models and its repositories,
+          over your own private network. Your computer does the work, so a long task keeps going
           even when you close the app.
+          {!paired ? (
+            <>
+              {' '}
+              <button
+                type="button"
+                className="linklike press-fb"
+                onClick={() => void startGuideChat('pair-computer')}
+              >
+                Walk me through it
+              </button>
+            </>
+          ) : null}
         </p>
 
         {paired ? <ConnectedCard onTerminal={() => setView('terminalroom')} /> : null}
-
-        {!paired ? (
-          <button
-            className="btn ghost press-fb"
-            style={{ width: '100%', marginBottom: 12 }}
-            onClick={() => void startGuideChat('pair-computer')}
-          >
-            Walk me through it
-          </button>
-        ) : null}
 
         <PlusNote
           feature="pairing"
@@ -646,43 +650,26 @@ function PhonePair() {
         {!paired ? (
           <div className="card">
             <h3>Before you scan</h3>
-            <div className="sub">
-              1. Install Tailscale on both devices and sign in to the same account.
-              <br />
-              2. On your computer, open OpenShore, then Pairing. The QR is there (if it says Off,
-              tap Turn on).
-            </div>
-            <div className="sub" style={{ marginTop: 12 }}>
-              Get Tailscale (free for personal use):{' '}
-              <button
-                className="linklike press-fb"
-                onClick={() => void startGuideChat('install-tailscale')}
-              >
-                walk me through Tailscale
-              </button>
-            </div>
-            <div className="dl-list">
-              {TAILSCALE_LINKS.map((l) => (
-                <a
-                  key={l.label}
-                  className="dl-item"
-                  href={l.href}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                >
-                  <span className="dl-tile">{GLYPHS[l.glyph]}</span>
-                  <span className="dl-name">{l.label}</span>
-                  <span className="dl-get">GET</span>
-                </a>
-              ))}
-            </div>
+            <ol className="setup-steps">
+              <li>Install Tailscale on both devices and sign in to the same account.</li>
+              <li>
+                On your computer, open OpenShore, then Pairing. The QR is there. If it says Off,
+                choose Turn on.
+              </li>
+            </ol>
+            <button
+              type="button"
+              className="linklike press-fb"
+              onClick={() => setTailscaleOpen(true)}
+            >
+              Get Tailscale
+            </button>
           </div>
         ) : null}
 
         <div className="card">
           <button
-            className="btn primary press-fb"
-            style={{ width: '100%' }}
+            className="btn primary block press-fb"
             disabled={testing}
             aria-busy={testing}
             onClick={() => {
@@ -704,8 +691,8 @@ function PhonePair() {
                 menu to chat or code, or go straight to its shell.
               </p>
               <button
-                className="btn press-fb"
-                style={{ width: '100%', marginTop: 10 }}
+                className="btn block press-fb"
+                style={{ marginTop: 10 }}
                 onClick={() => setView('terminalroom')}
               >
                 Open a terminal on your computer
@@ -751,8 +738,7 @@ function PhonePair() {
                 />
               </div>
               <button
-                className="btn primary press-fb"
-                style={{ width: '100%' }}
+                className="btn primary block press-fb"
                 disabled={testing}
                 onClick={() => void connect()}
               >
@@ -766,18 +752,51 @@ function PhonePair() {
 
         {paired ? (
           <button
-            className="btn quiet press-fb"
-            style={{ width: '100%' }}
-            onClick={async () => {
-              await removeHub(paired.baseUrl);
-              setState(undefined);
-              setConnected(false);
-              showToast('Computer forgotten on this phone. It no longer lists this phone either.');
-            }}
+            type="button"
+            className="btn quiet block press-fb"
+            onClick={() => setForgetting(true)}
           >
             Forget this computer
           </button>
         ) : null}
+
+        <ForgetComputerConfirm
+          name={forgetting && paired ? computerLabel(paired) : undefined}
+          onKeep={() => setForgetting(false)}
+          onForget={async () => {
+            setForgetting(false);
+            if (!paired) return;
+            await removeHub(paired.baseUrl);
+            setState(undefined);
+            setConnected(false);
+            showToast('Computer forgotten on this device.');
+          }}
+        />
+
+        <Sheet open={tailscaleOpen} onClose={() => setTailscaleOpen(false)}>
+          <SheetHead title="Get Tailscale" onClose={() => setTailscaleOpen(false)} />
+          <p className="sheet-sub">
+            Free for personal use. Install it on this device and on your computer, then sign in to
+            the same account on both.
+          </p>
+          <div className="dl-list">
+            {TAILSCALE_LINKS.filter((l) => !(platform() === 'ios' && l.glyph === 'android')).map(
+              (l) => (
+                <a
+                  key={l.label}
+                  className="dl-item"
+                  href={l.href}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  <span className="dl-tile">{GLYPHS[l.glyph]}</span>
+                  <span className="dl-name">{l.label}</span>
+                  <span className="dl-get">GET</span>
+                </a>
+              ),
+            )}
+          </div>
+        </Sheet>
 
         {/* A pairing link opened from outside (the iPhone Camera read the
             computer's QR): ask first, never pair on a link alone. */}
@@ -818,6 +837,42 @@ function hostOf(baseUrl: string): string {
   }
 }
 
+/** What a saved computer is called: its own name, or its host. */
+function computerLabel(hub: { baseUrl: string; name?: string }): string {
+  return hub.name?.trim() || hostOf(hub.baseUrl);
+}
+
+/** Forgetting a computer asks first. The revoke on the computer is best
+ *  effort (a computer that is off keeps its row until it is revoked there), so
+ *  the line says "if the computer is on". Open while a name is set. */
+function ForgetComputerConfirm({
+  name,
+  onKeep,
+  onForget,
+}: {
+  name?: string;
+  onKeep: () => void;
+  onForget: () => void;
+}) {
+  return (
+    <Sheet open={name !== undefined} onClose={onKeep} variant="confirm">
+      <h3>Forget {name}?</h3>
+      <p>
+        This device stops reaching it. If the computer is on, it drops this device from its list
+        too. To use it again, scan a new QR.
+      </p>
+      <div className="confirm-row">
+        <button type="button" className="btn ghost press-fb" onClick={onKeep}>
+          Keep
+        </button>
+        <button type="button" className="btn danger press-fb" onClick={onForget}>
+          Forget
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
 /** The paired computer, live (CX 2026-10-01): who it is and whether it
  *  answers right now, so the screen after pairing never looks like the
  *  screen before it. */
@@ -840,7 +895,7 @@ function ConnectedCard({ onTerminal }: { onTerminal: () => void }) {
     };
   }, [daemon]);
   if (!daemon) return null;
-  const name = daemon.name?.trim() || hostOf(daemon.baseUrl);
+  const name = computerLabel(daemon);
   return (
     <div className="card">
       <div className="card-row" style={{ alignItems: 'center' }}>
@@ -851,7 +906,7 @@ function ConnectedCard({ onTerminal }: { onTerminal: () => void }) {
               ? PAIRING_REJECTED
               : reach === 'no'
                 ? 'Not reachable right now. Check that it is awake with OpenShore open.'
-                : 'Your computer runs the work; this phone reaches it.'}
+                : 'Your computer runs the work; this device reaches it.'}
           </div>
         </div>
         <span className={`pill ${reach === 'yes' ? 'ok' : 'muted'}`}>
@@ -860,16 +915,12 @@ function ConnectedCard({ onTerminal }: { onTerminal: () => void }) {
             : reach === 'checking'
               ? 'Checking'
               : reach === 'refused'
-                ? 'Pair again'
+                ? 'Not accepted'
                 : 'Not reachable'}
         </span>
       </div>
       {reach === 'yes' ? (
-        <button
-          className="btn press-fb"
-          style={{ width: '100%', marginTop: 12 }}
-          onClick={onTerminal}
-        >
+        <button className="btn block press-fb" style={{ marginTop: 12 }} onClick={onTerminal}>
           Open a terminal on your computer
         </button>
       ) : null}
@@ -885,57 +936,72 @@ function HubList() {
   const { settings, selectHub, removeHub, showToast } = useApp();
   // The computer being named, while its sheet is open.
   const [naming, setNaming] = useState<{ baseUrl: string; name?: string; host: string }>();
+  // The computer being forgotten, while its confirm is open.
+  const [forgetting, setForgetting] = useState<{ baseUrl: string; name: string }>();
   const hubs = hubList(settings);
-  if (hubs.length < 2) return null;
   const activeUrl = settings.daemon?.baseUrl;
+  // The confirm sits outside the list: forgetting the second of two computers
+  // hides the list, and the confirm still plays its exit.
   return (
-    <div className="card">
-      <h3 style={{ marginTop: 0 }}>Your computers</h3>
-      <p className="hint" style={{ marginTop: 0, marginBottom: 10 }}>
-        Switch which computer your sessions and terminal run on.
-      </p>
-      {hubs.map((h) => {
-        const active = h.baseUrl === activeUrl;
-        let host = h.baseUrl;
-        try {
-          host = new URL(h.baseUrl).hostname;
-        } catch {}
-        return (
-          <div className="card-row" key={h.baseUrl} style={{ alignItems: 'center' }}>
-            <button
-              className="linklike grow press-fb"
-              style={{ textAlign: 'left' }}
-              disabled={active}
-              onClick={() => void selectHub(h.baseUrl)}
-            >
-              <span style={{ fontWeight: 600 }}>{h.name?.trim() || host}</span>
-              {h.name?.trim() ? <span className="sub"> {host}</span> : null}
-            </button>
-            {active ? <span className="pill ok">active</span> : null}
-            <button
-              className="linklike press-fb"
-              onClick={() => setNaming({ baseUrl: h.baseUrl, name: h.name, host })}
-            >
-              rename
-            </button>
-            <button
-              className="linklike press-fb"
-              onClick={() => {
-                void removeHub(h.baseUrl);
-                showToast('Computer forgotten on this device.');
-              }}
-            >
-              forget
-            </button>
-          </div>
-        );
-      })}
-      <Sheet open={Boolean(naming)} onClose={() => setNaming(undefined)}>
-        {naming ? (
-          <HubNameForm key={naming.baseUrl} hub={naming} onDone={() => setNaming(undefined)} />
-        ) : null}
-      </Sheet>
-    </div>
+    <>
+      {hubs.length >= 2 ? (
+        <div className="card">
+          <h3 style={{ marginTop: 0 }}>Your computers</h3>
+          <p className="hint" style={{ marginTop: 0, marginBottom: 10 }}>
+            Switch which computer your sessions and terminal run on.
+          </p>
+          {hubs.map((h) => {
+            const active = h.baseUrl === activeUrl;
+            let host = h.baseUrl;
+            try {
+              host = new URL(h.baseUrl).hostname;
+            } catch {}
+            return (
+              <div className="card-row" key={h.baseUrl} style={{ alignItems: 'center' }}>
+                <button
+                  className="linklike grow press-fb"
+                  style={{ textAlign: 'left' }}
+                  disabled={active}
+                  onClick={() => void selectHub(h.baseUrl)}
+                >
+                  <span style={{ fontWeight: 600 }}>{h.name?.trim() || host}</span>
+                  {h.name?.trim() ? <span className="sub"> {host}</span> : null}
+                </button>
+                {active ? <span className="pill ink">Active</span> : null}
+                <button
+                  className="linklike press-fb"
+                  onClick={() => setNaming({ baseUrl: h.baseUrl, name: h.name, host })}
+                >
+                  Rename
+                </button>
+                <button
+                  className="linklike press-fb"
+                  onClick={() => setForgetting({ baseUrl: h.baseUrl, name: computerLabel(h) })}
+                >
+                  Forget
+                </button>
+              </div>
+            );
+          })}
+          <Sheet open={Boolean(naming)} onClose={() => setNaming(undefined)}>
+            {naming ? (
+              <HubNameForm key={naming.baseUrl} hub={naming} onDone={() => setNaming(undefined)} />
+            ) : null}
+          </Sheet>
+        </div>
+      ) : null}
+      <ForgetComputerConfirm
+        name={forgetting?.name}
+        onKeep={() => setForgetting(undefined)}
+        onForget={async () => {
+          const target = forgetting;
+          setForgetting(undefined);
+          if (!target) return;
+          await removeHub(target.baseUrl);
+          showToast('Computer forgotten on this device.');
+        }}
+      />
+    </>
   );
 }
 

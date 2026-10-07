@@ -40,6 +40,11 @@ export function categoryLabel(id: StackCategory): string {
   return STACK_CATEGORIES.find((c) => c.id === id)?.plain ?? id;
 }
 
+/** The Stack's lead, the one place it is written, so the phone and the desktop
+ *  name the anchor the same way. If the anchor is renamed, change it here. */
+export const STACK_LEAD =
+  'Your Reasoning LLM runs the show and hands each task to the specialist that fits. Anything without a specialist, it does itself.';
+
 // A model that can sit in the stack: an on-device model, a built-in cloud
 // provider's model, or a user-connected "bring your own model" endpoint.
 export type StackModelRef =

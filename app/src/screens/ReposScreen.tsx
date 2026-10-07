@@ -1,8 +1,8 @@
 // Repositories: connect GitHub and other platforms on your own token, set the
 // home repo the whole system works through, and see anything buffered while you
 // were off-home. Below that, the desktop clone/open flow: point OpenShore at a
-// repo and it reads, edits, tests, and commits there with your approval.
-import { useEffect, useState } from 'react';
+// repo and it reads, edits, tests, and commits there, showing every change.
+import { useEffect, useRef, useState } from 'react';
 import { isOrgAdmin, useApp } from '../state/store.js';
 import { bridge } from '../lib/electronBridge.js';
 import { openInAppBrowser } from '../lib/platform.js';
@@ -18,6 +18,7 @@ import { githubStatus, type GithubStatus } from '../lib/chatRepos.js';
 import { cloneOnComputer, computerFor } from '../lib/repoClone.js';
 import { bufferHealth, unsyncedCount } from '../lib/repoSync.js';
 import { BackBar } from '../components/BackBar.js';
+import { Sheet } from '../components/Sheet.js';
 import { plainError } from '../lib/plainError.js';
 
 // The phone-to-home commit-offload pipeline (home repo + buffered deploys) is
@@ -64,6 +65,9 @@ export function ReposScreen() {
   const [connecting, setConnecting] = useState<string | undefined>();
   const [tokenValue, setTokenValue] = useState('');
   const [editingHome, setEditingHome] = useState(false);
+  // The platform being disconnected, while its confirm is open.
+  const [removing, setRemoving] = useState<{ id: RepoPlatform; name: string } | undefined>();
+  const titleRef = useRef<HTMLHeadingElement>(null);
 
   const where = computerFor(settings);
   const connected = where !== undefined;
@@ -179,33 +183,42 @@ export function ReposScreen() {
 
   return (
     <div className="screen">
-      <BackBar title="Repositories" />
+      <BackBar title="Repositories" titleHiddenUntil={titleRef} />
       <div className="screen-inner">
-        <h1>Repositories</h1>
+        <h1 ref={titleRef}>Repositories</h1>
         <p className="lead">
-          Connect GitHub, GitLab, or Bitbucket. OpenShore reads, edits, and tests your code, records
-          each change in its history, and asks before every change.
+          Connect GitHub, GitLab, or Bitbucket. OpenShore reads, edits, and tests your code, shows
+          you every change, and asks before it runs a command unless you have allowed it.
         </p>
 
-        {/* Connect a platform. */}
-        <h3 style={{ margin: '4px 0 10px' }}>Connect a platform</h3>
         {!connected ? (
-          <p className="hint" style={{ marginTop: 0, marginBottom: 10 }}>
-            You can add an access token now. Repositories open once this phone is connected to your
-            computer, where the code lives.{' '}
-            <button className="linklike" onClick={() => setView('pair')}>
-              Open Pairing
-            </button>
-            {' or '}
+          <div className="card" style={{ marginBottom: 22 }}>
+            <h3>Your repositories live on your computer</h3>
+            <div className="sub">
+              Connect this device to your computer, where the code lives, to clone and open
+              repositories from here. You can connect GitHub, GitLab, or Bitbucket now.
+            </div>
             <button
-              className="linklike"
+              type="button"
+              className="btn primary block press-fb"
+              style={{ marginTop: 12 }}
+              onClick={() => setView('pair')}
+            >
+              Connect your computer
+            </button>
+            <button
+              type="button"
+              className="linklike press-fb"
+              style={{ display: 'block', marginTop: 10 }}
               onClick={() => void useApp.getState().startGuideChat('pair-computer')}
             >
-              walk me through connecting it
+              Walk me through it
             </button>
-            .
-          </p>
+          </div>
         ) : null}
+
+        {/* Connect a platform. */}
+        <h2 className="section-head">Connect a platform</h2>
         {REPO_CONNECTORS.map((c) => {
           const on = Boolean(connectedRepoPlatforms[c.id]);
           const oauth = isRepoOAuthConfigured(c.id);
@@ -216,36 +229,31 @@ export function ReposScreen() {
                 <div className="grow">
                   <h3>{c.name}</h3>
                   <div className="sub">
-                    {oauth ? 'Authorize with one tap' : `Token looks like ${c.keyHint}`}
+                    {oauth ? 'Authorize with one tap' : `With an access token from ${c.name}`}
                   </div>
                 </div>
-                {on ? <span className="pill ok">connected</span> : null}
+                {on ? <span className="pill ok">Connected</span> : null}
                 {on ? (
                   <button
-                    className="btn ghost press-fb"
-                    style={{ padding: '8px 14px' }}
-                    onClick={async () => {
-                      await disconnectRepoPlatform(c.id);
-                      showToast(`${c.name} disconnected.`);
-                    }}
+                    type="button"
+                    className="btn ghost sm press-fb"
+                    onClick={() => setRemoving({ id: c.id, name: c.name })}
                   >
-                    Remove
+                    Disconnect
                   </button>
                 ) : oauth ? (
                   // The GitHub App path (and its GitLab/Bitbucket siblings): the
                   // secret exchange runs on the server, so the person only taps.
                   <button
-                    className="btn primary press-fb"
-                    style={{ padding: '8px 14px' }}
+                    className="btn primary sm press-fb"
                     disabled={busy}
                     onClick={() => void runOAuth(c.id, c.name)}
                   >
-                    {busy ? 'Connecting…' : `Connect ${c.name}`}
+                    {busy ? 'Connecting...' : `Connect ${c.name}`}
                   </button>
                 ) : (
                   <button
-                    className="btn ghost press-fb"
-                    style={{ padding: '8px 14px' }}
+                    className="btn ghost sm press-fb"
                     onClick={() => {
                       setConnecting(c.id);
                       setTokenValue('');
@@ -297,14 +305,25 @@ export function ReposScreen() {
                     />
                   </div>
                   <button
-                    className="btn primary"
-                    style={{ width: '100%' }}
+                    className="btn primary block press-fb"
+                    disabled={!tokenValue.trim()}
                     onClick={() => void saveConnection(c.id, c.name)}
                   >
                     Save access token
                   </button>
+                  <button
+                    type="button"
+                    className="btn quiet block press-fb"
+                    style={{ marginTop: 8 }}
+                    onClick={() => {
+                      setConnecting(undefined);
+                      setTokenValue('');
+                    }}
+                  >
+                    Cancel
+                  </button>
                   <p className="hint" style={{ marginTop: 8 }}>
-                    It stays in this device Keychain, never in a log.
+                    It stays on this device, never in a log.
                   </p>
                 </div>
               ) : null}
@@ -376,7 +395,7 @@ export function ReposScreen() {
         {/* Home repo. Hidden until the offload producer + homePath picker land. */}
         {REPO_OUTBOX_ENABLED ? (
           <>
-            <h3 style={{ margin: '18px 0 10px' }}>Home repository</h3>
+            <h2 className="section-head">Home repository</h2>
             <div className="card">
               <div className="card-row">
                 <div className="grow">
@@ -388,11 +407,7 @@ export function ReposScreen() {
                   </div>
                 </div>
                 {admin ? (
-                  <button
-                    className="btn ghost"
-                    style={{ padding: '8px 14px' }}
-                    onClick={() => setEditingHome((v) => !v)}
-                  >
+                  <button className="btn ghost sm" onClick={() => setEditingHome((v) => !v)}>
                     {homeRepo ? 'Change' : 'Set up'}
                   </button>
                 ) : null}
@@ -419,7 +434,7 @@ export function ReposScreen() {
             {/* Buffered deploys (the outbox). */}
             {homeRepo ? (
               <>
-                <h3 style={{ margin: '18px 0 10px' }}>Waiting to sync home</h3>
+                <h2 className="section-head">Waiting to sync home</h2>
                 <div className="card">
                   {outbox.length === 0 ? (
                     <div className="sub">
@@ -513,11 +528,10 @@ export function ReposScreen() {
           </>
         ) : null}
 
-        <div className="divider" />
-
         {/* Desktop clone / open flow. */}
         {connected ? (
           <>
+            <div className="divider" />
             <div className="card">
               <h3>Clone from a URL</h3>
               <div className="field" style={{ marginTop: 10 }}>
@@ -532,12 +546,7 @@ export function ReposScreen() {
                   autoCorrect="off"
                 />
               </div>
-              <button
-                className="btn primary"
-                style={{ width: '100%' }}
-                disabled={cloning}
-                onClick={() => void clone()}
-              >
+              <button className="btn primary block" disabled={cloning} onClick={() => void clone()}>
                 {cloning ? 'Cloning...' : 'Clone and open a chat'}
               </button>
               <p className="hint" style={{ marginTop: 8 }}>
@@ -556,8 +565,7 @@ export function ReposScreen() {
                     <div className="sub">Any repository already on this computer.</div>
                   </div>
                   <button
-                    className="btn ghost"
-                    style={{ padding: '8px 14px' }}
+                    className="btn ghost sm"
                     onClick={async () => {
                       const cwd = await bridge()!.pickFolder();
                       if (!cwd) return;
@@ -574,7 +582,7 @@ export function ReposScreen() {
             {workspaces.length ? (
               <>
                 <div className="divider" />
-                <h3 style={{ marginBottom: 10 }}>Recent</h3>
+                <h2 className="section-head">Recent</h2>
                 {workspaces.map((ws) => (
                   <div className="card" key={ws.cwd}>
                     <div className="card-row">
@@ -583,8 +591,7 @@ export function ReposScreen() {
                         <div className="sub">{ws.cwd}</div>
                       </div>
                       <button
-                        className="btn ghost"
-                        style={{ padding: '8px 14px' }}
+                        className="btn ghost sm"
                         onClick={() => void openRepo(ws.cwd, ws.name)}
                       >
                         Chat
@@ -595,33 +602,34 @@ export function ReposScreen() {
               </>
             ) : null}
           </>
-        ) : (
-          <div className="card">
-            <div className="card-row">
-              <div className="grow">
-                <h3>Repositories also live on your computer</h3>
-                <div className="sub">
-                  Connect this phone to your computer over Tailscale and every repository there is
-                  one tap away.
-                </div>
-              </div>
-              <button
-                className="btn ghost"
-                style={{ padding: '8px 14px' }}
-                onClick={() => setView('pair')}
-              >
-                Connect
-              </button>
-            </div>
-            <p className="hint" style={{ marginTop: 8, marginBottom: 0 }}>
-              The same screen lives under Menu, then{' '}
-              <button className="linklike" onClick={() => setView('pair')}>
-                Pairing
-              </button>
-              .
-            </p>
+        ) : null}
+
+        <Sheet open={Boolean(removing)} onClose={() => setRemoving(undefined)} variant="confirm">
+          <h3>Disconnect {removing?.name}?</h3>
+          <p>Its access token is removed from this device. You can connect it again any time.</p>
+          <div className="confirm-row">
+            <button
+              type="button"
+              className="btn ghost press-fb"
+              onClick={() => setRemoving(undefined)}
+            >
+              Keep
+            </button>
+            <button
+              type="button"
+              className="btn danger press-fb"
+              onClick={async () => {
+                const target = removing;
+                setRemoving(undefined);
+                if (!target) return;
+                await disconnectRepoPlatform(target.id);
+                showToast(`${target.name} disconnected.`);
+              }}
+            >
+              Disconnect
+            </button>
           </div>
-        )}
+        </Sheet>
       </div>
     </div>
   );

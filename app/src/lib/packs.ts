@@ -67,7 +67,7 @@ export const DEVICE_PACKS: DevicePack[] = [
       'Your computer runs the big models. This phone is the remote, and it still has its own.',
     anchor: [],
     helpers: {},
-    nextStep: { label: 'Pair your computer', view: 'pair' },
+    nextStep: { label: 'Connect your computer', view: 'pair' },
   },
 ];
 

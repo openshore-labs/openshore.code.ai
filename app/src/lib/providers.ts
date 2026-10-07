@@ -8,6 +8,7 @@
 // so the Stack can reference them; the router (stage 3) calls them.
 import type { CapabilityCategory } from 'os-code/protocol';
 import { nativeFetch } from './nativeFetch.js';
+import { CLAUDE_MODELS } from './claudeModels.js';
 
 export interface ProviderModel {
   id: string;
@@ -266,6 +267,17 @@ export const RETIRED_PROVIDER_MODEL_IDS = [
 
 export function providerInfo(id: string): ProviderInfo | undefined {
   return PROVIDERS.find((p) => p.id === id);
+}
+
+/** A cloud provider's selectable models for the bench. Claude comes from the
+ *  full client lineup (claudeModels.ts, the same list and tiers the chat sheet
+ *  uses), so the bench offers every Claude model and its favorites, not the
+ *  short marketplace set; other providers keep their own model list. */
+export type BenchModel = { id: string; label: string; tier?: 'primary' | 'more' };
+export function providerBenchModels(p: ProviderInfo): BenchModel[] {
+  return p.id === 'anthropic'
+    ? CLAUDE_MODELS.map((m) => ({ id: m.id, label: m.label, tier: m.tier }))
+    : p.models.map((m) => ({ id: m.id, label: m.label }));
 }
 
 export function providerModelLabel(providerId: string, modelId: string): string {
