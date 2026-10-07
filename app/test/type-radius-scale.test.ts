@@ -118,6 +118,24 @@ describe('type, radius, and icon scales', () => {
     expect(offenders, offenders.join('\n  ')).toEqual([]);
   });
 
+  it('styles .sub at the root, so a description never outranks its title', () => {
+    // Secondary text under a title steps down wherever it sits, in a card or
+    // not (Creative Studio, 2026-10-07).
+    expect(THEME).toMatch(/^\.sub \{[^}]*color: var\(--muted\);[^}]*font-size: var\(--text-3\);/m);
+    expect(THEME).not.toMatch(/\.card \.sub \{/);
+  });
+
+  it('gives every heading a scale weight', () => {
+    // A heading with no class of its own takes the semibold, never the
+    // browser's 700.
+    expect(THEME).toMatch(/^h1,\s*h2,\s*h3,\s*h4 \{\s*font-weight: var\(--weight-semibold\);/m);
+  });
+
+  it('shares one section head and one eyebrow', () => {
+    expect(THEME).toMatch(/^\.settings-group-head,\s*\.section-head \{/m);
+    expect(THEME).toMatch(/^\.eyebrow \{/m);
+  });
+
   it('draws every 24-unit glyph through the Icon frame', () => {
     const offenders: string[] = [];
     for (const file of sourceFiles()) {

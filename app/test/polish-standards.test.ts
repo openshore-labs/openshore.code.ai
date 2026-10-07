@@ -21,6 +21,44 @@ function sourceFiles(dir = SRC, out: string[] = []): string[] {
 
 const THEME = readFileSync(join(SRC, 'theme.css'), 'utf8');
 
+/** The stylesheet with its comments blanked (line breaks kept). */
+const CSS = THEME.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
+
+/** The body of the first rule whose header matches, braces balanced. */
+function ruleBody(header: RegExp): string {
+  const m = header.exec(CSS);
+  if (!m) throw new Error(`rule not found: ${header}`);
+  const open = CSS.indexOf('{', m.index);
+  let depth = 0;
+  for (let i = open; i < CSS.length; i++) {
+    if (CSS[i] === '{') depth++;
+    else if (CSS[i] === '}' && --depth === 0) return CSS.slice(open + 1, i);
+  }
+  throw new Error(`unbalanced rule: ${header}`);
+}
+
+/** Every block in the stylesheet: its prelude, its own declarations (nested
+ *  blocks left out), and the preludes of the blocks around it. */
+function cssBlocks(): Array<{ prelude: string; body: string; parents: string[] }> {
+  const out: Array<{ prelude: string; body: string; parents: string[] }> = [];
+  const stack: Array<{ prelude: string; body: string }> = [];
+  let buf = '';
+  for (const ch of CSS) {
+    if (ch === '{') {
+      stack.push({ prelude: buf.replace(/\s+/g, ' ').trim(), body: '' });
+      buf = '';
+    } else if (ch === '}') {
+      const block = stack.pop()!;
+      out.push({ ...block, body: block.body + buf, parents: stack.map((b) => b.prelude) });
+      buf = '';
+    } else if (ch === ';') {
+      if (stack.length) stack[stack.length - 1]!.body += buf + ';';
+      buf = '';
+    } else buf += ch;
+  }
+  return out;
+}
+
 describe('polish standards', () => {
   it('never uses `transition: all`', () => {
     const offenders: string[] = [];
@@ -454,6 +492,80 @@ describe('polish standards', () => {
     expect(offenders).toEqual([]);
   });
 
+  it('presses on the scale property with a press token', () => {
+    // A press rides `scale` (press-fb's property) with one of the three press
+    // tokens, so a button that also carries press-fb dips once, not twice.
+    const SKIP: Array<[RegExp, string]> = [
+      [/\.sidebar-plus\b/, 'the pay gate, reviewed with the paywall'],
+      [/\.account-card\b/, 'teams and plans, v4'],
+      [
+        /\.(lib-cta|facet-chip|market-card|cat-chip|hero-card|store-get|store-row)\b/,
+        'the Marketplace, v3',
+      ],
+    ];
+    const offenders: string[] = [];
+    for (const { prelude, body } of cssBlocks()) {
+      if (!prelude.includes(':active')) continue;
+      if (SKIP.some(([re]) => re.test(prelude))) continue;
+      for (const m of body.matchAll(/(?:^|;)\s*(transform|scale)\s*:\s*([^;]+);/g)) {
+        const prop = m[1]!;
+        const value = m[2]!.trim();
+        if (prop === 'transform' && !/scale\(/.test(value)) continue;
+        // A composite (a turn or a nudge with the dip) is its own motion.
+        if (prop === 'transform' && /rotate\(|translate/.test(value)) continue;
+        // A value above 1 is a grow, not a press.
+        const n = value.match(/^(?:scale\()?\s*([\d.]+)/)?.[1];
+        if (n !== undefined && Number(n) > 1) continue;
+        if (prop === 'transform' || !/^var\(--press-scale-(btn|row|tile)\)$/.test(value))
+          offenders.push(`${prelude}  ${prop}: ${value}`);
+      }
+    }
+    expect(offenders, offenders.join('\n  ')).toEqual([]);
+  });
+
+  it('hovers only where a pointer hovers', () => {
+    // A tap on a phone leaves :hover stuck on what it touched, so every hover
+    // rule sits inside a (hover: hover) or (pointer: fine) block.
+    const offenders = cssBlocks()
+      .filter((b) => b.prelude.includes(':hover') && !b.prelude.startsWith('@'))
+      .filter(
+        (b) =>
+          !b.parents.some(
+            (p) => p.startsWith('@media') && /\(hover: hover\)|\(pointer: fine\)/.test(p),
+          ),
+      )
+      .map((b) => b.prelude);
+    expect(offenders, offenders.join('\n  ')).toEqual([]);
+  });
+
+  it('gives a focused field one ring', () => {
+    const focus = ruleBody(
+      /^\.field input:focus,\s*\.field textarea:focus,\s*\.field \.select:focus \{/m,
+    );
+    expect(focus).toMatch(/outline: none;/);
+    expect(focus).toMatch(/box-shadow: 0 0 0 3px var\(--accent-soft\);/);
+    expect(ruleBody(/^\.field textarea,\s*\.field \.select \{/m)).toMatch(/resize: none;/);
+  });
+
+  it('rings focus without reshaping the element', () => {
+    const ring = ruleBody(/^:focus-visible \{/m);
+    expect(ring).toMatch(/outline: 2px solid var\(--accent\);/);
+    expect(ring).not.toMatch(/border-radius/);
+  });
+
+  it('holds one top bar height', () => {
+    expect(ruleBody(/^\.topbar \{/m)).toMatch(/min-height: calc\(61px \+ var\(--safe-top\)\);/);
+  });
+
+  it('centres the toast without a transform, so its entrance composes', () => {
+    const toast = ruleBody(/^\.toast \{/m);
+    expect(toast).toMatch(/margin-inline: auto;/);
+    expect(toast).toMatch(/white-space: normal;/);
+    expect(toast).not.toMatch(/transform:/);
+    expect(toast).not.toMatch(/text-overflow/);
+    expect(ruleBody(/^@keyframes toast-out \{/m)).not.toMatch(/translateX/);
+  });
+
   it('routes haptics through @capacitor/haptics, never navigator.vibrate', () => {
     const src = readFileSync(join(SRC, 'lib', 'haptics.ts'), 'utf8');
     expect(src.includes('@capacitor/haptics')).toBe(true);
@@ -473,6 +585,10 @@ describe('rooms never scroll sideways', () => {
     const theme = readFileSync(new URL('../src/theme.css', import.meta.url), 'utf8');
     expect(theme).toMatch(/\.screen \{[^}]*overflow-y: auto;[^}]*overflow-x: hidden;/);
   });
+
+  it("masks the Vault cover's wash, so it has no edge anywhere", () => {
+    expect(ruleBody(/^\.vault-onboard-wash \{/m)).toMatch(/mask-composite: intersect;/);
+  });
 });
 
 describe('the chat never scrolls sideways', () => {
@@ -481,5 +597,12 @@ describe('the chat never scrolls sideways', () => {
     expect(theme).toMatch(/\.thread \{[^}]*overflow-y: auto;[^}]*overflow-x: hidden;/);
     expect(theme).toMatch(/\.md a \{[^}]*overflow-wrap: anywhere;/);
     expect(theme).toMatch(/\.md code \{[^}]*overflow-wrap: anywhere;/);
+  });
+
+  it('frames a code block once', () => {
+    // .md-code draws the frame and its corners; the pre inside draws neither.
+    const pre = ruleBody(/^\.md-code pre \{/m);
+    expect(pre).toMatch(/border: 0;/);
+    expect(pre).toMatch(/border-radius: 0;/);
   });
 });

@@ -31,6 +31,8 @@
   --term-fg: #e6e6e6;
   --surface: #edeae0;
   --surface-hover: #e4e0d4;
+  /* The selected segment's thumb: it lifts off the track in both themes. */
+  --seg-thumb: var(--bg-raised);
   --border: #e5e0d3;
   --border-strong: #d9d4c9;
   /* A control's own edge (a switch's track at rest, a field's border): 3:1
@@ -97,11 +99,14 @@
   --on-fill: #fff;
   /* The scrim under a centred confirm card. */
   --scrim: rgba(var(--shadow-rgb), 0.42);
+  /* A control that does not answer right now, one dimness everywhere. */
+  --disabled-opacity: 0.4;
 
   /* Hero surfaces: deep, lit cards that stay dark in both themes, so their
      stops are declared once here. Teal heroes are local work (the store's
      on-device heroes, Crew command); amber heroes are cloud-hosted; the ink
      tile is a model with no location yet. */
+  --hero-local-start: #24454f;
   --hero-local-end: #16323a;
   --hero-local-glow: #4b90a3;
   --hero-device-start: #2f5a66;
@@ -250,6 +255,8 @@
   /* The phone drawer's width, the one copy. Registered as a <length> below so
      lib/motion.ts can read it back already resolved to pixels. */
   --drawer-width: min(310px, 84vw);
+  /* The desktop sidebar's width, the one copy (the toast centres beside it). */
+  --sidebar-width: 272px;
   --press-scale-btn: 0.96;
   --press-scale-row: 0.985;
   --press-scale-tile: 0.94;
@@ -280,6 +287,7 @@
     --bg-raised: #10202a;
     --surface: #162831;
     --surface-hover: #1c3440;
+    --seg-thumb: var(--surface-hover);
     --border: #24424d;
     --border-strong: #2f5462;
     --control-edge: #63737c;
@@ -331,6 +339,7 @@
   --bg-raised: #10202a;
   --surface: #162831;
   --surface-hover: #1c3440;
+  --seg-thumb: var(--surface-hover);
   --border: #24424d;
   --border-strong: #2f5462;
   --control-edge: #63737c;
@@ -407,6 +416,15 @@ button {
   cursor: pointer;
 }
 
+/* A heading with no class of its own takes the scale's heaviest weight, never
+   the browser's 700 (Creative Studio, 2026-10-07). */
+h1,
+h2,
+h3,
+h4 {
+  font-weight: var(--weight-semibold);
+}
+
 input,
 textarea {
   font: inherit;
@@ -427,7 +445,20 @@ textarea {
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* Text links keep a soft corner on their ring. */
+.linklike:focus-visible {
   border-radius: var(--radius-xs);
+}
+
+/* Rows that fill a clipped group (overflow: hidden) draw the ring inside, so
+   no edge of it is cut off. */
+.settings-row:focus-visible,
+.ms-row:focus-visible,
+.chat-list .chat-row:focus-visible,
+.project-chat-row:focus-visible {
+  outline-offset: -2px;
 }
 
 /* WebKit is the exception: it treats a TAPPED text field as focus-visible too
@@ -558,7 +589,7 @@ textarea {
 /* --------------------------------------------------------------- sidebar */
 
 .sidebar {
-  width: 272px;
+  width: var(--sidebar-width);
   flex-shrink: 0;
   background: var(--bg-raised);
   border-right: 1px solid var(--border);
@@ -616,15 +647,17 @@ textarea {
   text-align: left;
   transition:
     background var(--dur-2) var(--ease-standard),
-    transform var(--press-out);
+    scale var(--press-out);
 }
 
-.new-chat-btn:hover {
-  background: var(--accent-hover);
+@media (hover: hover) {
+  .new-chat-btn:hover {
+    background: var(--accent-hover);
+  }
 }
 
 .new-chat-btn:active {
-  transform: scale(0.985);
+  scale: var(--press-scale-row);
 }
 
 .conv-item {
@@ -641,8 +674,10 @@ textarea {
   transition: background var(--dur-1) var(--ease-standard);
 }
 
-.conv-item:hover {
-  background: var(--surface);
+@media (hover: hover) {
+  .conv-item:hover {
+    background: var(--surface);
+  }
 }
 
 .conv-item.active {
@@ -698,9 +733,13 @@ textarea {
   transition: background var(--dur-1) var(--ease-standard);
 }
 
-.sidebar-recent:hover,
 .sidebar-recent.active {
   background: var(--surface);
+}
+@media (hover: hover) {
+  .sidebar-recent:hover {
+    background: var(--surface);
+  }
 }
 
 .sidebar-recent.active {
@@ -743,15 +782,17 @@ textarea {
   text-align: left;
   transition:
     background var(--dur-1) var(--ease-standard),
-    transform var(--press-out);
+    scale var(--press-out);
 }
 
-.sidebar-signin:hover {
-  background: var(--accent-soft);
+@media (hover: hover) {
+  .sidebar-signin:hover {
+    background: var(--accent-soft);
+  }
 }
 
 .sidebar-signin:active {
-  transform: scale(0.985);
+  scale: var(--press-scale-row);
 }
 
 .sidebar-signin-avatar {
@@ -881,8 +922,10 @@ textarea {
   transition: background var(--dur-1) var(--ease-standard);
 }
 
-.nav-item:hover {
-  background: var(--surface);
+@media (hover: hover) {
+  .nav-item:hover {
+    background: var(--surface);
+  }
 }
 
 .nav-item.active {
@@ -1142,6 +1185,10 @@ textarea {
   gap: 10px;
   padding: 10px 14px;
   padding-top: calc(10px + var(--safe-top));
+  /* The phone's height everywhere: 10px padding, the 40px menu or back
+     control, 10px, and the 1px hairline, so the hairline never jumps between
+     rooms. */
+  min-height: calc(61px + var(--safe-top));
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg) 82%, transparent);
   backdrop-filter: blur(14px);
@@ -1241,16 +1288,20 @@ textarea {
   font-size: var(--text-6);
   transition:
     background var(--dur-1) var(--ease-standard),
-    transform var(--press-out);
+    scale var(--press-out);
 }
 
-.icon-btn:hover {
-  background: var(--surface);
+@media (hover: hover) {
+  .icon-btn:hover {
+    background: var(--surface);
+  }
 }
 
-.icon-btn:active {
-  transform: scale(0.92);
-  transition: transform var(--press-in);
+/* The compound wins over .press-fb:active, so an icon presses as a tile. */
+.icon-btn:active,
+.icon-btn.press-fb:active {
+  scale: var(--press-scale-tile);
+  transition: scale var(--press-in);
 }
 
 /* The drawer (menu) button reads a touch more substantial than a bare icon
@@ -1315,11 +1366,11 @@ textarea {
   width: 100%;
   text-align: left;
   cursor: pointer;
-  transition: transform var(--press-out);
+  transition: scale var(--press-out);
 }
 .profile-select:active {
-  transform: scale(0.99);
-  transition: transform var(--press-in);
+  scale: var(--press-scale-row);
+  transition: scale var(--press-in);
 }
 
 .profile-select-dot {
@@ -1412,12 +1463,12 @@ textarea {
   border-radius: var(--radius-xs);
   transition:
     background var(--dur-1) var(--ease-standard),
-    transform var(--press-out);
+    scale var(--press-out);
 }
 
 .wikilink:active {
   background: var(--accent-soft);
-  transform: scale(0.98);
+  scale: var(--press-scale-row);
 }
 
 .wikilink.unresolved {
@@ -3497,12 +3548,17 @@ button.vault-tag {
     color var(--dur-2) var(--ease-standard),
     scale var(--press-out);
 }
-.msg-user-turn:hover .msg-rewind,
 .msg-rewind:focus-visible {
   opacity: 1;
 }
-.msg-rewind:hover {
-  color: var(--ink);
+/* A pointer finds rewind on hover; a phone reaches it by a long press. */
+@media (hover: hover) {
+  .msg-user-turn:hover .msg-rewind {
+    opacity: 1;
+  }
+  .msg-rewind:hover {
+    color: var(--ink);
+  }
 }
 /* A held finger eases the bubble down (the phone's way in); it springs back
    when the finger lifts or the sheet takes over. */
@@ -3726,8 +3782,10 @@ button.vault-tag {
   /* A bare URL has no spaces to wrap at; let it break anywhere. */
   overflow-wrap: anywhere;
 }
-.md a:hover {
-  text-decoration: underline;
+@media (hover: hover) {
+  .md a:hover {
+    text-decoration: underline;
+  }
 }
 .md code {
   overflow-wrap: anywhere;
@@ -4084,9 +4142,9 @@ button.vault-tag {
 }
 
 .accessory-key.armed {
-  background: var(--link);
-  color: var(--bg);
-  border-color: var(--link);
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
 }
 
 /* ------------------------------------------------------- Terminal room */
@@ -4212,8 +4270,12 @@ button.vault-tag {
   font-weight: var(--weight-semibold);
 }
 
+/* .md-code draws the one frame and its corners; the pre inside keeps only its
+   fill and padding, so a block never reads as a box inside a box. */
 .md-code pre {
   margin: 0;
+  border: 0;
+  border-radius: 0;
 }
 
 /* ------------------------------------------------------------- citations */
@@ -4407,8 +4469,10 @@ button.vault-tag {
   transition: background var(--dur-1) var(--ease-standard);
 }
 
-.model-chip:hover {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .model-chip:hover {
+    background: var(--surface-hover);
+  }
 }
 
 .model-chip .dot {
@@ -4487,9 +4551,13 @@ button.vault-tag {
   flex-shrink: 0;
   transition: background var(--dur-1) var(--ease-accel);
 }
-.composer-add:hover,
 .composer-add:active {
   background: var(--surface);
+}
+@media (hover: hover) {
+  .composer-add:hover {
+    background: var(--surface);
+  }
 }
 .composer-add.muted {
   opacity: 0.45;
@@ -4542,9 +4610,13 @@ button.vault-tag {
     display: none;
   }
 }
-.composer-pill:hover,
 .composer-pill:active {
   background: var(--surface);
+}
+@media (hover: hover) {
+  .composer-pill:hover {
+    background: var(--surface);
+  }
 }
 .composer-pill-text {
   overflow: hidden;
@@ -4629,9 +4701,13 @@ button.vault-tag {
     background var(--dur-1) var(--ease-accel),
     color var(--dur-2) var(--ease-standard);
 }
-.composer-mic:hover,
 .composer-mic:active {
   background: var(--surface);
+}
+@media (hover: hover) {
+  .composer-mic:hover {
+    background: var(--surface);
+  }
 }
 .composer-mic.listening {
   background: var(--accent-soft);
@@ -4688,8 +4764,10 @@ button.vault-tag {
     color var(--dur-2) var(--ease-standard),
     scale var(--press-out);
 }
-.composer-chip-x:hover {
-  color: var(--ink);
+@media (hover: hover) {
+  .composer-chip-x:hover {
+    color: var(--ink);
+  }
 }
 /* The video framing ring: a determinate arc that fills as frames land. The arc
    travel rides a motion token so reduced motion zeroes it; nothing here
@@ -4796,8 +4874,10 @@ button.vault-tag {
 .ms-row:last-child {
   border-bottom: none;
 }
-.ms-row:hover {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .ms-row:hover {
+    background: var(--surface-hover);
+  }
 }
 .ms-row-default {
   background: var(--accent-soft);
@@ -4829,20 +4909,23 @@ button.vault-tag {
   color: var(--muted);
   transition:
     color var(--dur-1) var(--ease-standard),
-    transform var(--press-out);
+    scale var(--press-out);
 }
 .ms-pin.on {
   color: var(--accent);
 }
-.ms-pin:active {
-  transform: scale(0.86);
-  transition: transform var(--press-in);
+.ms-pin:active,
+.ms-pin.press-fb:active {
+  scale: var(--press-scale-tile);
+  transition: scale var(--press-in);
 }
 .ms-row-disabled {
   cursor: default;
 }
-.ms-row-disabled:hover {
-  background: transparent;
+@media (hover: hover) {
+  .ms-row-disabled:hover {
+    background: transparent;
+  }
 }
 .ms-row-disabled .ms-row-main {
   color: var(--muted);
@@ -4865,8 +4948,10 @@ button.vault-tag {
   font-size: var(--text-4);
   line-height: 1.45;
 }
-.ms-empty:hover {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .ms-empty:hover {
+    background: var(--surface-hover);
+  }
 }
 .ms-row-main {
   font-size: var(--text-5);
@@ -5008,8 +5093,10 @@ button.vault-tag {
 .mode-row:last-child {
   border-bottom: none;
 }
-.mode-row:hover {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .mode-row:hover {
+    background: var(--surface-hover);
+  }
 }
 .mode-row-icon {
   display: grid;
@@ -5640,8 +5727,18 @@ button.vault-tag {
     scale var(--press-out);
 }
 
-.suggestion:hover {
-  background: var(--surface);
+@media (hover: hover) {
+  .suggestion:hover {
+    background: var(--surface);
+  }
+}
+
+/* A chosen chip wears the accent, on touch too (outside the hover gate). No
+   weight change, so a chip never grows when it is chosen. */
+.suggestion[aria-pressed='true'] {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
 /* The preferred guide (Harbor): same pill, teal to mark it as the
@@ -5652,8 +5749,10 @@ button.vault-tag {
   font-weight: var(--weight-semibold);
 }
 
-.suggestion-preferred:hover {
-  background: var(--accent-soft);
+@media (hover: hover) {
+  .suggestion-preferred:hover {
+    background: var(--accent-soft);
+  }
 }
 
 /* ------------------------------------------------------------ sheets/modals */
@@ -5661,7 +5760,7 @@ button.vault-tag {
 .sheet-scrim {
   position: fixed;
   inset: 0;
-  background: rgba(var(--shadow-rgb), 0.4);
+  background: var(--scrim);
   z-index: 50;
   display: flex;
   align-items: flex-end;
@@ -6038,13 +6137,15 @@ button.vault-tag {
   font-size: var(--text-5);
   text-align: center;
   transition:
-    transform var(--press-out),
+    scale var(--press-out),
     filter var(--dur-1) var(--ease-standard);
 }
 
+/* One press, on the scale property and the press token, so a .btn that also
+   carries press-fb dips once, not twice. */
 .btn:active {
-  transform: scale(0.985);
-  transition: transform var(--press-in);
+  scale: var(--press-scale-btn);
+  transition: scale var(--press-in);
 }
 
 .btn.primary {
@@ -6079,8 +6180,22 @@ button.vault-tag {
   color: var(--bg);
 }
 
+/* Two sizes beside the default (Creative Studio, 2026-10-07): a compact action
+   that sits in a row, and a block that fills its column. Rooms pick a size by
+   class, never an inline padding or width. */
+.btn.sm {
+  padding: 7px 14px;
+}
+.btn.block {
+  width: 100%;
+}
+/* A block is as wide as a row, so it dips like one. */
+.btn.block:active {
+  scale: var(--press-scale-row);
+}
+
 .btn:disabled {
-  opacity: 0.4;
+  opacity: var(--disabled-opacity);
 }
 
 .approval-badge {
@@ -6381,7 +6496,10 @@ button.vault-tag {
   margin-bottom: 2px;
 }
 
-.card .sub {
+/* Secondary text under a title, wherever it sits (Creative Studio,
+   2026-10-07). Scoped rules (.cc-preset .sub, .vault-resolve .vault-provider
+   .sub, and chat's .profile-row .sub) still win. */
+.sub {
   color: var(--muted);
   font-size: var(--text-3);
 }
@@ -6396,7 +6514,7 @@ button.vault-tag {
   width: 100%;
   text-align: left;
   cursor: pointer;
-  transition: transform var(--press-out);
+  transition: scale var(--press-out);
 }
 
 .card-disclosure h3 {
@@ -6404,8 +6522,8 @@ button.vault-tag {
 }
 
 .card-disclosure:active {
-  transform: scale(0.985);
-  transition: transform var(--press-in);
+  scale: var(--press-scale-row);
+  transition: scale var(--press-in);
 }
 
 .disclosure-chevron {
@@ -6419,7 +6537,7 @@ button.vault-tag {
 }
 
 /* A text button that reads as an inline link (auth mode toggle, "email me a
-   link instead"). No box, just the link color and a hover underline. It is a
+   link instead"). No box, just the accent and a hover underline. It is a
    tappable like any other, so it shares the press-fb scale (declared with
    press-fb in the polish section above). */
 .linklike {
@@ -6429,16 +6547,18 @@ button.vault-tag {
   margin: 0;
   font: inherit;
   font-weight: var(--weight-semibold);
-  color: var(--link);
+  color: var(--accent);
   cursor: pointer;
 }
 
-.linklike:hover {
-  text-decoration: underline;
+@media (hover: hover) {
+  .linklike:hover {
+    text-decoration: underline;
+  }
 }
 
 .linklike:disabled {
-  opacity: 0.5;
+  opacity: var(--disabled-opacity);
   cursor: default;
   text-decoration: none;
 }
@@ -6466,16 +6586,18 @@ button.vault-tag {
   transition:
     background var(--dur-1) var(--ease-standard),
     border-color var(--dur-1) var(--ease-standard),
-    transform var(--press-out);
+    scale var(--press-out);
 }
 
-.dl-item:hover {
-  background: var(--surface);
-  border-color: var(--border-strong);
+@media (hover: hover) {
+  .dl-item:hover {
+    background: var(--surface);
+    border-color: var(--border-strong);
+  }
 }
 
 .dl-item:active {
-  transform: scale(0.99);
+  scale: var(--press-scale-row);
 }
 
 .dl-tile {
@@ -6567,6 +6689,11 @@ button.vault-tag {
   background: var(--surface);
   color: var(--muted);
 }
+/* A state (Active, Here now, Top sheet) in ink: teal stays for local. */
+.pill.ink {
+  background: var(--surface);
+  color: var(--ink);
+}
 /* A cloud/service is reachable. Status green, never teal: teal is reserved for
    local/private/kept, so a cloud connection must not borrow it. Shares the
    --ok-soft fill with .pill.fits (same green status family). */
@@ -6606,6 +6733,22 @@ button.vault-tag {
   margin-bottom: 6px;
 }
 
+/* A field's label with one quiet action on its line, so a form keeps its
+   link lines few. */
+.field-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.field-label-row label {
+  margin-bottom: 0;
+}
+.field-label-row .linklike {
+  font-size: var(--text-3);
+}
+
 .field input {
   width: 100%;
   background: var(--bg-raised);
@@ -6613,11 +6756,9 @@ button.vault-tag {
   border-radius: var(--radius-md);
   padding: 11px 12px;
   font-size: var(--text-5);
-  transition: border-color var(--dur-2) var(--ease-standard);
-}
-
-.field input:focus {
-  border-color: var(--accent);
+  transition:
+    border-color var(--dur-2) var(--ease-standard),
+    box-shadow var(--dur-2) var(--ease-standard);
 }
 
 .field textarea,
@@ -6630,14 +6771,21 @@ button.vault-tag {
   font-size: var(--text-5);
   font-family: inherit;
   color: var(--ink);
-  transition: border-color var(--dur-2) var(--ease-standard);
-  resize: vertical;
+  transition:
+    border-color var(--dur-2) var(--ease-standard),
+    box-shadow var(--dur-2) var(--ease-standard);
+  /* Fields keep their set rows and scroll inside, with no browser grip. */
+  resize: none;
 }
 
+/* A focused field shows one ring: the accent edge and its soft halo (the
+   .chat-search pattern), never the keyboard outline on top. */
+.field input:focus,
 .field textarea:focus,
 .field .select:focus {
   border-color: var(--accent);
   outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 /* Sidebar project bucket switcher */
@@ -6659,8 +6807,10 @@ button.vault-tag {
   transition: border-color var(--dur-1) var(--ease-standard);
 }
 
-.project-switch-btn:hover {
-  border-color: var(--border-strong);
+@media (hover: hover) {
+  .project-switch-btn:hover {
+    border-color: var(--border-strong);
+  }
 }
 
 .project-switch-label {
@@ -6720,8 +6870,10 @@ button.vault-tag {
   color: var(--ink-soft);
 }
 
-.project-menu-item:hover {
-  background: var(--surface);
+@media (hover: hover) {
+  .project-menu-item:hover {
+    background: var(--surface);
+  }
 }
 
 .project-menu-item.active {
@@ -6745,8 +6897,10 @@ button.vault-tag {
   transition: background var(--dur-1) var(--ease-standard);
 }
 
-.quick-chat-btn:hover {
-  background: var(--surface);
+@media (hover: hover) {
+  .quick-chat-btn:hover {
+    background: var(--surface);
+  }
 }
 
 .quick-chat-note {
@@ -6826,8 +6980,10 @@ button.vault-tag {
   cursor: pointer;
 }
 
-.multiselect-row:hover {
-  background: var(--surface);
+@media (hover: hover) {
+  .multiselect-row:hover {
+    background: var(--surface);
+  }
 }
 
 .multiselect-row input[type='checkbox'] {
@@ -6902,11 +7058,11 @@ button.vault-tag {
 /* Multi-select rows: a gentle pressed state. */
 .multiselect-row {
   transition:
-    transform var(--press-out),
+    scale var(--press-out),
     background var(--dur-1) var(--ease-standard);
 }
 .multiselect-row:active {
-  transform: scale(0.99);
+  scale: var(--press-scale-row);
 }
 
 /* Crew monogram: an identity tile tinted by activity level. */
@@ -7683,25 +7839,29 @@ button.vault-tag {
   margin: 18px 0;
 }
 
-/* Toast */
+/* Toast. Centred by its margins, not a transform, so msg-in's rise composes
+   instead of snapping it sideways. A short toast is a pill; a long one wraps
+   to two balanced lines, never cut off, and it sits clear of the composer. */
 .toast {
   position: fixed;
-  left: 50%;
-  bottom: calc(90px + var(--safe-bottom));
-  transform: translateX(-50%);
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  width: max-content;
+  max-width: min(90vw, 440px);
+  bottom: calc(120px + var(--safe-bottom));
   background: var(--ink);
   border: 1px solid var(--ink);
   color: var(--bg);
-  border-radius: 999px;
+  border-radius: var(--radius-lg);
   padding: 9px 18px;
   font-size: var(--text-4);
+  white-space: normal;
+  text-wrap: balance;
+  text-align: center;
   z-index: 80;
   box-shadow: 0 10px 34px rgba(var(--shadow-rgb), 0.22);
   animation: msg-in var(--dur-3) var(--ease-standard);
-  max-width: 90vw;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* The toast sinks and fades rather than blinking out (App.tsx keeps the pill
@@ -7712,8 +7872,14 @@ button.vault-tag {
 @keyframes toast-out {
   to {
     opacity: 0;
-    transform: translateX(-50%) translateY(8px);
+    transform: translateY(8px);
   }
+}
+
+/* Beside the desktop sidebar the toast centres on the room, not the window;
+   the drawer never matches, so the phone centres on the screen. */
+.shell > .sidebar:not(.drawer) ~ .toast {
+  left: var(--sidebar-width);
 }
 
 /* Update banner: persistent (no auto-dismiss, no snooze) until the person
@@ -7799,8 +7965,10 @@ button.vault-tag {
     scale var(--press-out);
 }
 
-.profile-chip:hover {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .profile-chip:hover {
+    background: var(--surface-hover);
+  }
 }
 
 .profile-dot {
@@ -7828,7 +7996,7 @@ button.vault-tag {
 }
 
 .profile-row:disabled {
-  opacity: 0.45;
+  opacity: var(--disabled-opacity);
 }
 
 .profile-row-title {
@@ -8135,7 +8303,7 @@ button.vault-tag {
     scale var(--press-out);
 }
 .seg.active {
-  background: var(--bg-raised);
+  background: var(--seg-thumb);
   color: var(--accent);
   font-weight: var(--weight-semibold);
   box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.08);
@@ -8480,8 +8648,10 @@ button.vault-tag {
     background var(--dur-1) var(--ease-standard),
     scale var(--press-out);
 }
-.lane:not(:disabled):hover {
-  background: var(--surface);
+@media (hover: hover) {
+  .lane:not(:disabled):hover {
+    background: var(--surface);
+  }
 }
 .lane-label {
   font-size: var(--text-1);
@@ -9215,9 +9385,11 @@ button.vault-tag {
     background var(--dur-2) var(--ease-standard),
     transform var(--dur-5) var(--ease-spring);
 }
-.shelf-head:hover .shelf-more {
-  background: var(--surface-hover);
-  transform: translateX(3px) scale(1.06);
+@media (hover: hover) {
+  .shelf-head:hover .shelf-more {
+    background: var(--surface-hover);
+    transform: translateX(3px) scale(1.06);
+  }
 }
 .shelf-head:active .shelf-more {
   transform: translateX(1px) scale(0.92);
@@ -10699,7 +10871,7 @@ button.vault-tag {
 }
 .changed-undo:disabled,
 .changed-row-undo:disabled {
-  opacity: 0.5;
+  opacity: var(--disabled-opacity);
 }
 .changed-item {
   display: flex;
@@ -11646,7 +11818,7 @@ button.vault-tag {
   flex-wrap: wrap;
 }
 .embed-toolbar .icon-btn:disabled {
-  opacity: 0.35;
+  opacity: var(--disabled-opacity);
 }
 .embed-crumb {
   display: inline-flex;
@@ -11715,14 +11887,27 @@ button.vault-tag {
 .settings-group:first-of-type {
   margin-top: 4px;
 }
-.settings-group-head {
+.settings-group-head,
+.section-head {
   font-family: var(--font-display);
-  font-size: var(--text-5);
-  font-weight: var(--weight-medium);
-  color: var(--ink-soft);
+  font-size: var(--text-3);
+  font-weight: var(--weight-semibold);
+  color: var(--muted);
+  letter-spacing: 0.01em;
   /* On the rows' text line (the row's 14px inset), so a head, its intro and
      its rows share one left edge. */
-  margin: 0 0 8px 14px;
+  margin: 0 0 6px 14px;
+}
+/* A section head standing in a room's flow (no .settings-group around it)
+   carries the group's 22px step itself. */
+.section-head {
+  margin-top: 22px;
+}
+.screen .lead + .section-head {
+  margin-top: 4px;
+}
+.divider + .section-head {
+  margin-top: 0;
 }
 .settings-card {
   background: var(--bg-raised);
@@ -12006,6 +12191,9 @@ button.settings-row:active {
 .switch.on {
   background: var(--accent);
 }
+.switch:disabled {
+  opacity: var(--disabled-opacity);
+}
 .switch-knob {
   position: absolute;
   top: 2px;
@@ -12257,8 +12445,10 @@ button.settings-row:active {
   font-size: var(--text-4);
   transition: background var(--dur-2) var(--ease-standard);
 }
-.project-memory-link:hover {
-  background: var(--surface);
+@media (hover: hover) {
+  .project-memory-link:hover {
+    background: var(--surface);
+  }
 }
 .project-memory-link svg {
   color: var(--accent);
@@ -12684,6 +12874,17 @@ button.settings-row:active {
   color: var(--accent);
   margin-bottom: 4px;
 }
+/* The one eyebrow over a title or a group, for every room (Creative Studio,
+   2026-10-07). The rooms' own eyebrows fold into it. */
+.eyebrow {
+  display: block;
+  font-size: var(--text-2);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
 /* The phone's Stack, in the Settings ledger's shape: a status switch, then
    one grouped list per part (who runs the show, image reading, the
    specialists, the bench). The switch fills the width so its three statuses
@@ -12783,7 +12984,18 @@ button.settings-row:active {
   position: absolute;
   inset: -16px -20px auto -20px;
   height: 200px;
-  background: radial-gradient(120% 80% at 16% 0%, var(--accent-soft), transparent 60%);
+  background: radial-gradient(120% 80% at 16% 30%, var(--accent-soft), transparent 60%);
+  /* The wash rises out of the paper over 56px and fades over the 20px past
+     the column, so it has no edge anywhere. #000 here is a mask stop, not a
+     colour. */
+  -webkit-mask-image:
+    linear-gradient(to bottom, transparent, #000 56px),
+    linear-gradient(to right, transparent, #000 20px, #000 calc(100% - 20px), transparent);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(to bottom, transparent, #000 56px),
+    linear-gradient(to right, transparent, #000 20px, #000 calc(100% - 20px), transparent);
+  mask-composite: intersect;
   pointer-events: none;
   z-index: 0;
 }
@@ -13043,7 +13255,7 @@ button.settings-row:active {
       color-mix(in srgb, var(--hero-local-glow) 55%, transparent),
       transparent 60%
     ),
-    linear-gradient(145deg, var(--local-deep), var(--hero-local-end));
+    linear-gradient(145deg, var(--hero-local-start), var(--hero-local-end));
   box-shadow: 0 12px 34px -18px rgba(var(--shadow-rgb), 0.55);
   margin-bottom: 22px;
   animation: room-in var(--dur-6) var(--ease-arrive) backwards;
@@ -13071,10 +13283,12 @@ button.settings-row:active {
   margin: 12px 0 0;
   text-wrap: pretty;
 }
-.cc-hero .btn.primary {
+.cc-hero > .btn.primary {
   margin-top: 14px;
+}
+.cc-hero .btn.primary {
   background: var(--on-fill);
-  color: var(--local-deep);
+  color: var(--hero-local-start);
 }
 
 .cc-stats {
@@ -13511,7 +13725,7 @@ button.settings-row:active {
       color-mix(in srgb, var(--hero-local-glow) 55%, transparent),
       transparent 60%
     ),
-    linear-gradient(145deg, var(--local-deep), var(--hero-local-end));
+    linear-gradient(145deg, var(--hero-local-start), var(--hero-local-end));
   box-shadow: 0 10px 30px -16px rgba(var(--shadow-rgb), 0.5);
 }
 .crew-command-door-body {
@@ -13686,11 +13900,11 @@ button.settings-row:active {
   gap: 8px;
   margin-top: 14px;
 }
-.cc-hero-actions .btn.primary {
-  background: var(--on-fill);
-  color: var(--local-deep);
+.cc-hero-actions .btn {
+  flex: 1 1 200px;
 }
 .cc-hero-actions .btn.ghost {
+  background: color-mix(in srgb, var(--on-fill) 12%, transparent);
   color: var(--on-fill);
   border-color: color-mix(in srgb, var(--on-fill) 40%, transparent);
 }
@@ -14528,6 +14742,19 @@ button.settings-row:active {
   fill: var(--icon-white);
   stroke: var(--border-strong);
   stroke-width: 0.6;
+}
+/* The default ink tile sits at about 1.3:1 on the abyss, so in Nightshore it
+   takes the White tile's hairline. :where keeps it below the icon picker's own
+   stroke. */
+:where(:root[data-theme='dark']:not([data-icon])) .brand-mark .bm-tile {
+  stroke: var(--border-strong);
+  stroke-width: 0.6;
+}
+@media (prefers-color-scheme: dark) {
+  :where(:root:not([data-theme='light']):not([data-icon])) .brand-mark .bm-tile {
+    stroke: var(--border-strong);
+    stroke-width: 0.6;
+  }
 }
 
 /* The app icon picker: three tiles in a row, the chosen one ringed in the

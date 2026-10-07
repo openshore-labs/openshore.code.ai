@@ -23,7 +23,6 @@ export function Switch({
       aria-label={label}
       aria-disabled={disabled}
       disabled={disabled}
-      style={disabled ? { opacity: 0.4 } : undefined}
       className={`switch press-fb${checked ? ' on' : ''}`}
       onClick={() => {
         if (disabled) return;

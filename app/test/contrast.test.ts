@@ -36,9 +36,10 @@ type RGBA = [number, number, number, number];
 function color(v: string, t: Record<string, string>): RGBA {
   const ref = v.match(/^var\(--([a-z0-9-]+)\)$/);
   if (ref) return color(t[ref[1]!]!, t);
-  const hex = v.match(/^#([0-9a-f]{6})$/i);
+  const hex = v.match(/^#([0-9a-f]{6}|[0-9a-f]{3})$/i);
   if (hex) {
-    const h = hex[1]!;
+    // A three-digit hex (--on-fill: #fff) doubles each digit.
+    const h = hex[1]!.length === 3 ? hex[1]!.replace(/./g, (d) => d + d) : hex[1]!;
     return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)).concat(1) as RGBA;
   }
   const rgba = v.match(/^rgba\(([\d.]+),\s*([\d.]+),\s*([\d.]+),\s*([\d.]+)\)$/);
@@ -108,6 +109,15 @@ describe.each([
     expect(ratio('bg', 'accent', t)).toBeGreaterThanOrEqual(3);
     expect(ratio('ink-soft', 'surface', t)).toBeGreaterThanOrEqual(3);
   });
+  it('the local hero keeps its white text and its white button legible', () => {
+    // The hero's deep water holds in both themes, so white text clears AA
+    // across its whole gradient, and the white button's label is the start.
+    expect(ratio('on-fill', 'hero-local-start', t)).toBeGreaterThanOrEqual(4.5);
+    expect(ratio('on-fill', 'hero-local-end', t)).toBeGreaterThanOrEqual(4.5);
+  });
+  it("the selected segment's label clears 4.5:1 on its thumb", () => {
+    expect(ratio('accent', 'seg-thumb', t)).toBeGreaterThanOrEqual(4.5);
+  });
 });
 
 describe('the controls wear their edge', () => {
@@ -119,5 +129,9 @@ describe('the controls wear their edge', () => {
   it('draws a switch at rest and a field border on the control edge', () => {
     expect(CSS).toMatch(/\.switch \{[^}]*background: var\(--control-edge\)/);
     expect(CSS).toMatch(/\.field input \{[^}]*border: 1px solid var\(--control-edge\)/);
+  });
+  it("gives the hero's ghost a glass to read on, and its primary the hero's own water", () => {
+    expect(CSS).toMatch(/\.cc-hero-actions \.btn\.ghost \{[^}]*background: color-mix\(/);
+    expect(CSS).toMatch(/\.cc-hero \.btn\.primary \{[^}]*color: var\(--hero-local-start\)/);
   });
 });
