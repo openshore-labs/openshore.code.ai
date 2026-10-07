@@ -6,8 +6,10 @@
 // and streams a final synthesis (see lib/play.ts for the pure core). The flow
 // degrades to a single routed turn whenever the anchor is a weak or unreachable
 // model, the plan will not parse, or the play is a single step, so a modest
-// stack still just answers. Image turns route by capability (routeVision), and
-// the Codemagic tool loop keeps its own single-turn path.
+// stack still just answers. Image turns route by capability (routeVision);
+// when nothing can read a picture, the turn answers with two doors, a local
+// model to source and a cloud model to connect (lib/imageReading.ts). The
+// Codemagic tool loop keeps its own single-turn path.
 //
 // Backends: on-device (llama.cpp), Anthropic, or an OpenAI-compatible cloud
 // endpoint. A play step that must edit files or run commands (needsTools) runs
@@ -92,6 +94,8 @@ import {
 import { SearchTurn } from './searchTurn.js';
 import { claudeHistoryCache, claudeSystem, promptCacheOn } from '../lib/claudeCache.js';
 import { cloudImageReaders, providerInfo, providerSecretKey } from '../lib/providers.js';
+import { imageTurnLine } from '../lib/imageNote.js';
+import type { ImageReaderGap } from '../lib/imageReading.js';
 import { imageBlockParts, type Attachment } from '../lib/attachments.js';
 import { buildVisionContent, describeError, opensOnUser } from './cloudClaudeDriver.js';
 import { frameLabel, videoContextHeader, VIDEO_FRAMES_SYSTEM_NOTE } from '../lib/videoAttach.js';
@@ -119,11 +123,13 @@ import { isCurrentBenchId } from '../lib/currents.js';
 import { buildHarborSystemPrompt, isHarbor } from '../lib/harbor.js';
 import { buildHarborMiniSystemPrompt, guidedSetupLine, isHarborMini } from '../lib/harborMini.js';
 import { prepareGuideTurn, searchOffered, webOnlineNow } from '../lib/localSearch.js';
-import { locationAllowed, type ProfileId } from '../lib/profiles.js';
+import { PROFILES, locationAllowed, type ProfileId } from '../lib/profiles.js';
 import {
   harborRef,
   pickVisionRef,
   refName,
+  visionCapable,
+  visionSlots,
   type AppStack,
   type Placement,
   type StackCategory,
@@ -514,6 +520,10 @@ export class StackDriver implements ChatDriver {
   // A framing turn that asked the user to clarify: the original request is held
   // here so the next message can be folded back in and re-framed.
   private pendingClarify?: { text: string };
+  // Nothing here can read images this send (an unread picture, or a plan's
+  // image step on the text alone): the two-door offer, shown once, after the
+  // answer and before the turn closes (finish).
+  private pendingOffer?: ImageReaderGap;
   // The one engine session a play opens (lazily, on its first tool step) to run
   // repo/tool steps on the paired computer. Shared across every tool step in the
   // play so working-tree state and cwd carry forward; torn down with the driver.
@@ -1259,6 +1269,7 @@ export class StackDriver implements ChatDriver {
     this.sendEffort = effortDirective();
     this.sendLocalOnly = false;
     this.proposals = [];
+    this.pendingOffer = undefined;
     this.sendPrivacy = undefined;
     this.turnPack = undefined;
     this.answer = '';
@@ -1329,10 +1340,11 @@ export class StackDriver implements ChatDriver {
     if (images.length) {
       const vision = await this.routeVision();
       if (!vision) {
-        this.finish(
-          'error',
-          `No image-reading model is reachable while ${this.profile}. Put an image-reading model in Stack, or connect a cloud model that reads images (Claude reads them out of the box).`,
-        );
+        // Nothing here can read it (founder, 2026-10-07): not an error, a
+        // reply with two doors, a local model to source and a cloud model to
+        // connect. The picture goes nowhere; the turn ends complete.
+        this.pendingOffer = await this.imageGap('image');
+        this.finish('complete');
         return;
       }
       // Only a model placed for Image reading takes an image without a word
@@ -1372,9 +1384,15 @@ export class StackDriver implements ChatDriver {
     // the seat that actually answers (CTO J5).
     this.turnPack = { ref: target.ref, text: await this.packFor(target.ref) };
     if (images.length) {
+      // With nothing set for Image reading, the line says so and names the
+      // reader and what it runs on, the same words a plan's image step uses.
+      const slots = visionSlots(this.stack);
       this.emit({
         type: 'status',
-        message: `Reading ${images.length === 1 ? 'this image' : `these ${images.length} images`} with ${refName(target.ref)}.`,
+        message:
+          !slots.local && !slots.cloud
+            ? imageTurnLine(target.ref, this.stack.reasoning, images.length)
+            : `Reading ${images.length === 1 ? 'this image' : `these ${images.length} images`} with ${refName(target.ref)}.`,
       });
     } else if (target.category !== 'reasoning' && target.placement) {
       this.emit({
@@ -1394,7 +1412,7 @@ export class StackDriver implements ChatDriver {
       // dead-ending, exactly as the desktop router does. An image turn is the
       // exception: routeVision already chose the best reachable reader (and the
       // reasoning anchor may not read images at all), so it never falls back
-      // here, it fails with the clear message above. A specialist that already
+      // here, it fails with the reader's own error. A specialist that already
       // wrote part of its answer keeps it: the turn ends with the error and the
       // partial, never a second answer on top.
       const isSpecialist = !images.length && target.category !== 'reasoning' && !!target.placement;
@@ -1508,6 +1526,39 @@ export class StackDriver implements ChatDriver {
       };
       this.emit({ type: 'approval-request', request: { id, ...request } });
     });
+  }
+
+  /** Why nothing here can read images, for the offer's lead: a model set for
+   *  Image reading that cannot read here (and why), and whether a connected
+   *  cloud reader is out of reach in this status or missing. */
+  private async imageGap(from: ImageReaderGap['from']): Promise<ImageReaderGap> {
+    const { local, cloud } = visionSlots(this.stack);
+    const member = local ?? cloud;
+    const placed = member
+      ? {
+          model: refName(member.ref),
+          why:
+            member.ref.kind === 'device'
+              ? ('device' as const)
+              : !visionCapable(member.ref)
+                ? ('cannot-see' as const)
+                : ('out-of-reach' as const),
+        }
+      : undefined;
+    let keyed = false;
+    for (const reader of cloudImageReaders()) {
+      if (await secretGet(providerSecretKey(reader.provider)).catch(() => null)) {
+        keyed = true;
+        break;
+      }
+    }
+    const away = placed?.why === 'out-of-reach' || keyed;
+    return {
+      from,
+      cloud: keyed ? 'out-of-reach' : 'none',
+      ...(placed ? { placed } : {}),
+      ...(away ? { status: PROFILES[this.profile].label } : {}),
+    };
   }
 
   /** A connected, reachable cloud model that reads images, when the stack holds
@@ -1648,7 +1699,18 @@ export class StackDriver implements ChatDriver {
         if (this.aborted) break;
         status.set(step.id, 'in_progress');
         showTodos();
+        // Tenet 4 narrowed for one step (founder, 2026-10-07): an image step
+        // with nothing set for Image reading runs on the chat path's reader
+        // (roster.imageReader, routeVision's pick, a connected cloud model
+        // among them) with no card. The note is what keeps that honest: it
+        // names the model that reads the step and the connection it runs on.
         this.emit({ type: 'status', message: handoffNote(step, roster) });
+        // Nothing here reads images: the step still runs, the Reasoning model
+        // working from the text, and the turn closes with the two-door offer,
+        // once however many image steps the play holds.
+        if (step.category === 'vision' && !roster.imageReader && !this.pendingOffer) {
+          this.pendingOffer = await this.imageGap('play');
+        }
 
         const owner = ownerFor(step, roster);
         // A device owner (or an unreachable one) is not run autonomously; the
@@ -2030,6 +2092,11 @@ export class StackDriver implements ChatDriver {
       });
     }
     this.emit(textFinal(text, this.sendLocalOnly));
+    // The offer follows the answer, so it never splits a streaming reply, and
+    // lands inside the turn; a stopped turn drops it.
+    const offer = this.pendingOffer;
+    this.pendingOffer = undefined;
+    if (offer && reason === 'complete') this.emit({ type: 'image-reader-offer', ...offer });
     this.emit({ type: 'task-done', reason, message });
   }
 

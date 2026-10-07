@@ -21,6 +21,7 @@ import {
   type StackCategory,
   type StackModelRef,
 } from './stack.js';
+import { imageStepNote } from './imageNote.js';
 
 /** A step is owned by a specialist category, or by the reasoning anchor. */
 export type StepCategory = StackCategory | 'reasoning';
@@ -521,9 +522,27 @@ export function parseReplan(text: string): PlayStep[] | undefined {
   return sanitizePlay(arr);
 }
 
-/** How the driver labels the plan step in the chat when it hands off. */
+/** How the driver labels the plan step in the chat when it hands off. An image
+ *  step with nothing set for Image reading (and no model named for it) runs
+ *  on the chat path's reader with no card, so its note says that plainly and
+ *  names the reader, or says the Reasoning model works from the text when
+ *  nothing here reads images (founder, 2026-10-07). */
 export function handoffNote(step: PlayStep, stack: PlayStack): string {
+  const slots = visionSlots(stack);
+  if (step.category === 'vision' && !slots.local && !slots.cloud && !namedOwner(step, stack)) {
+    return imageStepNote(step.title, stack.imageReader, stack.reasoning ?? harborRef());
+  }
   return `${step.title}. Handing to ${ownerLabel(step, stack)}.`;
+}
+
+/** Whether a step names a model in the stack to run it (ownerFor's first
+ *  rule), so its own owner decides rather than its category. */
+function namedOwner(step: PlayStep, stack: PlayStack): boolean {
+  if (!step.owner) return false;
+  return (
+    stack.active.some((m) => refKey(m.ref) === step.owner) ||
+    Boolean(stack.reasoning && refKey(stack.reasoning) === step.owner)
+  );
 }
 
 /** The default categories, re-exported so callers do not reach past this module

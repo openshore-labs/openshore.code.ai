@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ApprovalRequest, DriverEvent } from 'os-code/protocol';
 
-const h = vi.hoisted(() => ({ streams: 0, models: [] as string[] }));
+const h = vi.hoisted(() => ({ streams: 0, models: [] as string[], keys: true }));
 
 vi.mock('@anthropic-ai/sdk', () => {
   class APIError extends Error {}
@@ -49,7 +49,7 @@ vi.mock('../src/lib/llamaPlugin.js', () => ({
 
 vi.mock('../src/lib/platform.js', () => ({
   platform: () => 'ios',
-  secretGet: async (key: string) => (key.includes('anthropic') ? 'sk-test' : null),
+  secretGet: async (key: string) => (h.keys && key.includes('anthropic') ? 'sk-test' : null),
   storeGetJson: async () => null,
 }));
 
@@ -87,6 +87,7 @@ const asked = (events: DriverEvent[]) =>
 beforeEach(() => {
   h.streams = 0;
   h.models.length = 0;
+  h.keys = true;
 });
 
 describe('an image when no local model can see', () => {
@@ -120,8 +121,15 @@ describe('an image when no local model can see', () => {
     expect(events.some((e) => e.type === 'approval-resolved' && e.approved)).toBe(true);
     expect(h.streams).toBe(1);
     expect(h.models).toEqual(['claude-haiku-4-5']);
+    // Nothing is set for Image reading, so the line says so and names the
+    // reader and the connection it runs on (founder, 2026-10-07).
     expect(
-      events.some((e) => e.type === 'status' && /Reading this image with Claude/.test(e.message)),
+      events.some(
+        (e) =>
+          e.type === 'status' &&
+          e.message ===
+            'No image model is set in Stack, so Claude Haiku 4.5 reads this image on your Claude connection.',
+      ),
     ).toBe(true);
     const final = events.findLast((e) => e.type === 'text-final') as { text: string };
     expect(final.text).toBe('That is Jimi Hendrix.');
@@ -174,7 +182,63 @@ describe('an image when a model is placed for Image reading', () => {
     await settle();
     expect(asked(events)).toBeUndefined();
     expect(h.streams).toBe(1);
+    // A placed model keeps the plain line.
+    expect(
+      events.some((e) => e.type === 'status' && e.message === 'Reading this image with Claude.'),
+    ).toBe(true);
     expect(events.findLast((e) => e.type === 'task-done')).toMatchObject({ reason: 'complete' });
+    driver.dispose();
+  });
+});
+
+describe('an image when nothing here can read it (founder, 2026-10-07)', () => {
+  it('answers with the two-door offer, never an error, and sends nothing', async () => {
+    h.keys = false;
+    const { driver, events } = chat(localOnly);
+    driver.send('Who is this?', [photo]);
+    await settle();
+    expect(asked(events)).toBeUndefined();
+    expect(h.streams).toBe(0);
+    const offers = events.filter((e) => e.type === 'image-reader-offer');
+    expect(offers).toEqual([{ type: 'image-reader-offer', from: 'image', cloud: 'none' }]);
+    const done = events.findLast((e) => e.type === 'task-done');
+    expect(done).toMatchObject({ reason: 'complete' });
+    expect(events.some((e) => e.type === 'task-done' && e.reason === 'error')).toBe(false);
+    // The offer lands inside the turn, after its (empty) final text.
+    const at = (t: string) => events.findIndex((e) => e.type === t);
+    expect(at('text-final')).toBeLessThan(at('image-reader-offer'));
+    expect(at('image-reader-offer')).toBeLessThan(at('task-done'));
+    driver.dispose();
+  });
+
+  it('says a connected cloud reader is out of reach while Offline, rather than missing', async () => {
+    const driver = new StackDriver(localOnly, 'offline');
+    const events: DriverEvent[] = [];
+    driver.subscribe((e) => events.push(e));
+    driver.send('Who is this?', [photo]);
+    await settle();
+    expect(events.find((e) => e.type === 'image-reader-offer')).toEqual({
+      type: 'image-reader-offer',
+      from: 'image',
+      cloud: 'out-of-reach',
+      status: 'Offline',
+    });
+    driver.dispose();
+  });
+
+  it('names a model set for Image reading that cannot read here', async () => {
+    h.keys = false;
+    const { driver, events } = chat({
+      reasoning: harborRef(),
+      active: [{ ref: harborRef(), placement: { category: 'vision' } }],
+      saved: {},
+    });
+    driver.send('Who is this?', [photo]);
+    await settle();
+    expect(events.find((e) => e.type === 'image-reader-offer')).toMatchObject({
+      placed: { model: 'Harbor Lite', why: 'device' },
+      cloud: 'none',
+    });
     driver.dispose();
   });
 });
@@ -189,6 +253,23 @@ describe('an image when only a model not dedicated to Image reading can see', ()
       summary: 'Read this image with Claude?',
     });
     expect(h.streams).toBe(0);
+    driver.dispose();
+  });
+
+  it('names the Reasoning model by its role once the person approves', async () => {
+    const { driver, events } = chat({ reasoning: claude, active: [], saved: {} });
+    driver.send('Who is this?', [photo]);
+    await settle();
+    driver.answerApproval(asked(events)!.request.id, { approve: true });
+    await settle();
+    expect(
+      events.some(
+        (e) =>
+          e.type === 'status' &&
+          e.message ===
+            'No image model is set in Stack, so Claude, your Reasoning model, reads this image.',
+      ),
+    ).toBe(true);
     driver.dispose();
   });
 

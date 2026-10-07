@@ -6,6 +6,13 @@
 // small model; the model's job is to answer questions and adapt. No em dashes.
 import { ROUTINE_NOTES_PLACE } from './vaultCopy.js';
 import { thisDeviceNoun } from './deviceNoun.js';
+import {
+  LOCAL_IMAGE_READER,
+  SMALL_IMAGE_READER,
+  aboutGB,
+  listWords,
+  otherCloudReaders,
+} from './imageReading.js';
 import { SHIPS_CURRENTS, SHIPS_LAUNCH, featureOn, type TieredFeature } from './focus.js';
 
 export type SetupGuideId =
@@ -14,6 +21,8 @@ export type SetupGuideId =
   | 'connect-cloud-key'
   | 'pair-computer'
   | 'install-ollama'
+  | 'image-reader-local'
+  | 'image-reader-cloud'
   | 'pick-a-model'
   | 'open-a-repo'
   | 'install-tailscale'
@@ -101,6 +110,51 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
       'Back in OpenShore on that computer, open Stack. It now sees Ollama and offers DeepBlue, sized to your computer. Tap Install.',
     ],
     done: 'Stack shows a model with a teal local pill, and the empty chat answers.',
+  },
+  // The two doors a Stack chat offers when nothing can read images (founder,
+  // 2026-10-07). The model names, sizes and pull commands come from the
+  // catalog through imageReading.ts. A model on the phone cannot read images
+  // on this build (stack.ts visionCapable), so the local reader runs on the
+  // computer and the phone reaches it as a model you connect (byom.ts): an
+  // Ollama address on the tailnet is local, so plain http is allowed.
+  'image-reader-local': {
+    id: 'image-reader-local',
+    title: 'Source a local model',
+    goal: 'Read images with a model on my own computer, so pictures stay on my network.',
+    steps: [
+      {
+        text: `A model on ${thisDeviceNoun()} cannot read images yet, so this one runs on your computer through Ollama, and ${thisDeviceNoun()} reaches it over Tailscale. If Ollama is not on your computer yet, install it. On Linux, paste this in a terminal (macOS and Windows use the installer from ollama.com):`,
+        paste: 'curl -fsSL https://ollama.com/install.sh | sh',
+      },
+      {
+        text: `On your computer, pull ${LOCAL_IMAGE_READER.name}, ${aboutGB(LOCAL_IMAGE_READER)}, the image reader we suggest:`,
+        paste: LOCAL_IMAGE_READER.pull,
+      },
+      {
+        text: `Short on room? Pull ${SMALL_IMAGE_READER.name} instead, ${aboutGB(SMALL_IMAGE_READER)}. It is not as sharp, but it fits almost anywhere:`,
+        paste: SMALL_IMAGE_READER.pull,
+      },
+      {
+        text: `Ollama answers only on your computer at first. To let ${thisDeviceNoun()} reach it, quit Ollama (on Linux: sudo systemctl stop ollama), then start it listening on your network with this. On Windows, set OLLAMA_HOST to 0.0.0.0 under Environment Variables and start Ollama again:`,
+        paste: 'OLLAMA_HOST=0.0.0.0 ollama serve',
+      },
+      `Make sure ${thisDeviceNoun()} and your computer are on the same Tailscale network, the one Pairing uses, and find your computer's Tailscale address in the Tailscale app (it starts with 100.). Never forward port 11434 to the internet.`,
+      `In OpenShore on ${thisDeviceNoun()}, open Stack and tap Connect a model under Bench. Name: ${LOCAL_IMAGE_READER.name}. Address: \`http://100.x.y.z:11434/v1\`, with your computer's Tailscale address in place of 100.x.y.z. Model name: ${LOCAL_IMAGE_READER.ref} (or ${SMALL_IMAGE_READER.ref}). Leave the API key blank and tap Connect.`,
+      'Still in Stack, tap Local under Image reading, choose it, and tap Save.',
+    ],
+    done: 'The Local row under Image reading names it. The next picture goes to it without asking, and stays on your own network.',
+  },
+  'image-reader-cloud': {
+    id: 'image-reader-cloud',
+    title: 'Connect a cloud model',
+    goal: 'Read images with a cloud model on my own API key.',
+    steps: [
+      `Pick a provider. Claude reads images out of the box, and ${listWords(otherCloudReaders())} read them too. If you have none yet, Claude is a good start.`,
+      "Open Cloud Connections and tap that provider. In its sheet, Get a key opens the provider's page: sign in, create a new API key, and copy it (Claude keys start with sk-ant-).",
+      'Paste the key and tap Save. The app checks the key with the provider before it says connected. If Claude asks for a Workspace ID, the sheet says where to find it.',
+      'Now a picture in a Stack chat goes to it on your key, and the chat asks before each one. To skip the asking, open Stack, tap Cloud under Image reading, choose a model that reads images, and tap Save.',
+    ],
+    done: 'Send the picture again. The chat names the model and asks first, or, once a model is set under Image reading, Cloud, sends it straight there.',
   },
   'pick-a-model': {
     id: 'pick-a-model',
