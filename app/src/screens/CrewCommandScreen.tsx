@@ -4,11 +4,12 @@
 // a crew member running on the person's own computer and models.
 //
 // The room is a sub-page of Crew. Its parts, top to bottom: the live
-// headline and counts; anything waiting on the person; the roster with each
-// member's presence; the routines themselves (the clock, the access, the
-// switch); and the results inbox, newest first, each opening a result sheet
-// with the transcript one tap away. Copy stays honest: "while your computer
-// is on", never "always on"; "works, then asks", never "unsupervised".
+// headline and counts; anything waiting on the person; the crew in one line,
+// with Manage back to Crew (D17); the routines themselves (the clock, the
+// access, the switch, each naming its member and presence); and the results
+// inbox, newest first, each opening a result sheet with the transcript one
+// tap away. Copy stays honest: "while your computer is on", never "always
+// on"; "works, then asks", never "unsupervised".
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { agenticView, useApp } from '../state/store.js';
 import { PlusNote } from '../components/PlusNote.js';
@@ -27,7 +28,6 @@ import {
   PRESET,
   accessLabel,
   CLOCK_ELSEWHERE_LINE,
-  agentPresenceLine,
   busiestFirst,
   clockKeptElsewhere,
   controlBlurb,
@@ -75,6 +75,18 @@ interface Draft {
   access: 'read-only' | 'edit';
   maxMinutes: number;
   enabled: boolean;
+}
+
+/** The crew in one line (D17): how many members, and how many a routine
+ *  uses. The members themselves live in Crew, behind Manage. */
+function crewCountLine(crew: readonly CrewAgent[], routines: RoutineView[]): string {
+  const n = crew.length;
+  const busy = crew.filter((a) => routinesForAgent(routines, a).length > 0).length;
+  if (n === 1) return busy ? '1 member, with a routine.' : '1 member, no routine yet.';
+  if (busy === 0) return `${n} members, none with a routine yet.`;
+  return busy === n
+    ? `${n} members, each with a routine.`
+    : `${n} members, ${busy} with a routine.`;
 }
 
 function PresenceDot({ tone }: { tone: PresenceTone }) {
@@ -198,25 +210,6 @@ export function CrewCommandScreen() {
   const unlocked = customRoutinesUnlocked(runs);
   const hasPreset = routines.some((r) => r.name === PRESET.name);
   const machine = where === 'desktop' ? 'this computer' : (daemon?.name ?? 'your computer');
-
-  // The roster: every crew member, plus a member a routine names that is not
-  // on the crew any more (a deleted card must not hide a live routine).
-  const roster = useMemo(() => {
-    const rows: Array<{ key: string; agent: { id: string; name: string }; level?: string }> =
-      crew.map((a: CrewAgent) => ({
-        key: a.id,
-        agent: { id: a.id, name: a.name },
-        level: a.activityLevel,
-      }));
-    for (const r of routines) {
-      const known = rows.some((row) =>
-        r.agentId ? row.agent.id === r.agentId : row.agent.name === r.agentName,
-      );
-      if (!known)
-        rows.push({ key: `r:${r.id}`, agent: { id: r.agentId ?? '', name: r.agentName } });
-    }
-    return rows;
-  }, [crew, routines]);
 
   const orderedRoutines = useMemo(() => busiestFirst(routines), [routines]);
 
@@ -544,56 +537,38 @@ export function CrewCommandScreen() {
                 Manage
               </button>
             </div>
-            {roster.length === 0 ? (
+            {/* One line, not a second roster (founder, D17, 2026-10-07): the
+                members live in Crew, behind Manage, and each routine below
+                names its member and its presence. */}
+            {crew.length === 0 ? (
               <p className="hint">
                 No crew yet. The first routine adds a Reviewer to your crew for you.
               </p>
             ) : (
-              <div className="cc-roster">
-                {/* The Agentic Current that is on joins the roster as a member
-                    on its own computer. Rendered only through the
-                    contribution: with none on, the roster is exactly as before. */}
-                {current && !slotNone(current.crew) ? (
-                  <div className="cc-member muted">
-                    <span className="crew-monogram auto" aria-hidden="true">
-                      {(current.crew.name.trim()[0] ?? '?').toUpperCase()}
-                    </span>
-                    <div className="cc-member-body">
-                      <div className="cc-member-name">
-                        {current.crew.name} <span className="pill local">on its own computer</span>
-                      </div>
-                      <div className="cc-member-line">
-                        <PresenceDot tone={currentProbes[current.id] ? 'ok' : 'muted'} />
-                        {currentProbes[current.id] ? current.crew.line : 'Not answering yet.'}
-                      </div>
+              <p className="cc-crew-count">{crewCountLine(crew, routines)}</p>
+            )}
+            {/* The Agentic Current that is on joins the crew as a member on
+                its own computer, the one card left here, since Crew does not
+                list it. Rendered only through the contribution: with none on,
+                the section is the count alone. */}
+            {current && !slotNone(current.crew) ? (
+              <div className="cc-roster cc-roster-current">
+                <div className="cc-member muted">
+                  <span className="crew-monogram auto" aria-hidden="true">
+                    {(current.crew.name.trim()[0] ?? '?').toUpperCase()}
+                  </span>
+                  <div className="cc-member-body">
+                    <div className="cc-member-name">
+                      {current.crew.name} <span className="pill local">on its own computer</span>
+                    </div>
+                    <div className="cc-member-line">
+                      <PresenceDot tone={currentProbes[current.id] ? 'ok' : 'muted'} />
+                      {currentProbes[current.id] ? current.crew.line : 'Not answering yet.'}
                     </div>
                   </div>
-                ) : null}
-                {roster.map((row) => {
-                  const mine = routinesForAgent(routines, row.agent);
-                  const top = busiestFirst(mine)[0];
-                  const tone: PresenceTone = top ? presenceTone(top.presence) : 'muted';
-                  return (
-                    <div key={row.key} className={`cc-member ${tone}`}>
-                      <span
-                        className={`crew-monogram ${row.level ?? 'request'}`}
-                        aria-hidden="true"
-                      >
-                        {(row.agent.name.trim()[0] ?? '?').toUpperCase()}
-                      </span>
-                      <div className="cc-member-body">
-                        <div className="cc-member-name">{row.agent.name}</div>
-                        <div className="cc-member-line">
-                          <PresenceDot tone={tone} />
-                          {agentPresenceLine(mine, now) ??
-                            (mine.length ? 'Idle' : 'No routine yet')}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                </div>
               </div>
-            )}
+            ) : null}
           </section>
         ) : null}
 

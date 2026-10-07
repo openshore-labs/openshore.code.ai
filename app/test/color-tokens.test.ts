@@ -136,7 +136,6 @@ const LOCAL_ALLOW: Record<string, string> = {
   'cc-pulse': "the working dot's pulse",
   'seat-bloom': 'the First Seat: a local model taking its seat on this device',
   'cc-presence.working': 'the same working state, as a pill',
-  'cc-member.working': 'the same working state, on the roster',
   'cc-routine.working': 'the same working state, on a routine card',
   'store-row-meta': 'the on-device capability glyph on a store row',
   'vault-move-card': 'the Vault move card: notes moving into a folder on this computer',

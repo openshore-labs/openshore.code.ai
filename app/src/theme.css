@@ -13801,11 +13801,21 @@ button.settings-row:active {
   margin-right: 4px;
 }
 
-/* The roster: a responsive grid of members, each with its presence line. */
+/* The crew, in one line under its head (founder, D17, 2026-10-07): the
+   members live in Crew, behind Manage. */
+.cc-crew-count {
+  color: var(--ink-soft);
+  font-size: var(--text-4);
+}
+/* A responsive grid of cards, each with its presence line: the scheduled jobs
+   of a current's own box, and the current itself as a member. */
 .cc-roster {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 10px;
+}
+.cc-roster-current {
+  margin-top: 10px;
 }
 .cc-member {
   display: flex;
@@ -13817,12 +13827,6 @@ button.settings-row:active {
   border-radius: var(--radius);
   box-shadow: var(--elev-1);
   transition: border-color var(--dur-4) var(--ease-standard);
-}
-.cc-member.working {
-  border-color: color-mix(in srgb, var(--local) 35%, transparent);
-}
-.cc-member.waiting {
-  border-color: color-mix(in srgb, var(--attention) 40%, transparent);
 }
 .cc-member-body {
   min-width: 0;
@@ -14101,6 +14105,44 @@ button.settings-row:active {
   overflow: hidden;
 }
 
+/* Before a computer is paired, with no routine yet, the door to Crew command
+   is a plain card row (founder, D17, 2026-10-07): the shared disclosure card,
+   its title over one line, and the drawn chevron. */
+.crew-command-row {
+  margin: 4px 0 14px;
+}
+.crew-command-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* A crew card is the Edit tap, hosted by a swipe row that deletes (founder,
+   D18, 2026-10-07). The row clips the card's corners and carries its resting
+   depth, so the shadow is not cut off by the clip; the card keeps the rest. */
+.crew-card-swipe {
+  margin-top: 12px;
+  border-bottom: none;
+  border-radius: var(--radius);
+  box-shadow: var(--elev-1);
+}
+.crew-card {
+  display: block;
+  width: 100%;
+  margin-bottom: 0;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: none;
+}
+.crew-card-meta {
+  display: block;
+}
+/* The editor's quiet way to delete: danger words, no fill. */
+.crew-editor-delete {
+  color: var(--danger);
+}
+
 @media (max-width: 480px) {
   .cc-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -14149,13 +14191,18 @@ button.settings-row:active {
   animation: cc-row-in var(--dur-4) var(--ease-arrive) backwards;
 }
 /* Swipe-to-delete on a routine card: the row hosts the card, the card keeps
-   its own buttons. */
+   its own buttons. Like a crew card (D18), the row carries the resting depth
+   and no hairline of its own, so its clip neither cuts the card's shadow nor
+   draws a second edge under it. */
 .cc-routine-swipe {
   margin-bottom: 12px;
+  border-bottom: none;
   border-radius: var(--radius);
+  box-shadow: var(--elev-1);
 }
 .cc-routine-swipe .cc-routine {
   margin-bottom: 0;
+  box-shadow: none;
 }
 .cc-stat-num.small {
   font-variant-numeric: tabular-nums;
