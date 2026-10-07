@@ -9,6 +9,7 @@
 import { Fragment, useState, type ReactNode } from 'react';
 import { scanInlineLinks, type FmValue, type Frontmatter } from 'os-code/protocol';
 import { vaultHref, wikilinkDestination, wikilinkLabel } from '../lib/remarkWikilinks.js';
+import { ChevronGlyph } from './SheetGlyphs.js';
 
 type Props = {
   fm: Frontmatter;
@@ -129,7 +130,7 @@ export function VaultProperties({ fm, paths, sourcePath, onOpenNote }: Props) {
       >
         <span className="vault-props-label">{label}</span>
         <span className="vault-props-chevron" aria-hidden="true">
-          {open ? '▾' : '▸'}
+          <ChevronGlyph dir="down" size={12} />
         </span>
       </button>
       {everOpen ? (

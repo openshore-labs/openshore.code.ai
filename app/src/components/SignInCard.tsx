@@ -37,7 +37,15 @@ export function unsentTeamTextBody(n: number): string {
   return `${which} text that has not reached your team yet. Signing out deletes it from this device.`;
 }
 
-export function SignInCard({ variant }: { variant?: 'profile' } = {}) {
+export function SignInCard({
+  variant,
+  onModeChange,
+}: {
+  variant?: 'profile' | 'sheet';
+  /** Told when the form switches between Sign in and Create account, so a
+   *  sheet's own head can follow it. */
+  onModeChange?: (mode: Mode) => void;
+} = {}) {
   const { showToast, unsentTeamTextCount } = useApp();
   const {
     configured,
@@ -55,6 +63,10 @@ export function SignInCard({ variant }: { variant?: 'profile' } = {}) {
     signOutEverywhere,
   } = useAuth();
   const [mode, setMode] = useState<Mode>('signin');
+  const switchMode = (m: Mode) => {
+    setMode(m);
+    onModeChange?.(m);
+  };
   const [addr, setAddr] = useState('');
   const [pw, setPw] = useState('');
   const [busy, setBusy] = useState(false);
@@ -182,13 +194,8 @@ export function SignInCard({ variant }: { variant?: 'profile' } = {}) {
             onKeyDown={(e) => e.key === 'Enter' && void saveNewPw()}
           />
         </div>
-        <button
-          className="btn primary"
-          style={{ width: '100%' }}
-          disabled={busy}
-          onClick={() => void saveNewPw()}
-        >
-          {busy ? 'Working...' : 'Save new password'}
+        <button className="btn primary block" disabled={busy} onClick={() => void saveNewPw()}>
+          {busy ? 'Saving...' : 'Save new password'}
         </button>
       </div>
     );
@@ -218,8 +225,7 @@ export function SignInCard({ variant }: { variant?: 'profile' } = {}) {
             </div>
             <button
               type="button"
-              className="btn ghost press-fb"
-              style={{ padding: '8px 14px' }}
+              className="btn ghost sm press-fb"
               disabled={leaving}
               onClick={() => void askSignOut('here')}
             >
@@ -290,19 +296,31 @@ export function SignInCard({ variant }: { variant?: 'profile' } = {}) {
     );
   };
 
+  const pitchLine =
+    mode === 'signin'
+      ? featureOn('teams')
+        ? `Sign in to sync your company account and role. ${pitch}`
+        : pitch
+      : featureOn('teams')
+        ? `Create an account to sync your company role across your devices. ${pitch}`
+        : `Creating an account is free. ${pitch}`;
+  // In a sheet the sheet's own head names the mode, so the form sits on the
+  // sheet itself: no card inside a card, and no second title.
+  const inSheet = variant === 'sheet';
+
   return (
     <>
-      <div className="card">
-        <h3>{mode === 'signin' ? 'Sign in' : 'Create account'}</h3>
-        <div className="sub" style={{ marginBottom: 10 }}>
-          {mode === 'signin'
-            ? featureOn('teams')
-              ? `Sign in to sync your company account and role. ${pitch}`
-              : pitch
-            : featureOn('teams')
-              ? `Create an account to sync your company role across your devices. ${pitch}`
-              : `Creating an account is free. ${pitch}`}
-        </div>
+      <div className={inSheet ? undefined : 'card'}>
+        {inSheet ? (
+          <p className="sheet-sub">{pitchLine}</p>
+        ) : (
+          <>
+            <h3>{mode === 'signin' ? 'Sign in' : 'Create account'}</h3>
+            <div className="sub" style={{ marginBottom: 10 }}>
+              {pitchLine}
+            </div>
+          </>
+        )}
         <div className="field">
           <label htmlFor={`${fieldId}-email`}>Email</label>
           <input
@@ -317,7 +335,25 @@ export function SignInCard({ variant }: { variant?: 'profile' } = {}) {
           />
         </div>
         <div className="field">
-          <label htmlFor={`${fieldId}-password`}>Password</label>
+          <div className="field-label-row">
+            <label htmlFor={`${fieldId}-password`}>Password</label>
+            {mode === 'signin' ? (
+              <button
+                type="button"
+                className="linklike"
+                disabled={busy}
+                onClick={() =>
+                  void run(
+                    false,
+                    () => sendPasswordReset(addr),
+                    'Check your email for a reset link.',
+                  )
+                }
+              >
+                Forgot your password?
+              </button>
+            ) : null}
+          </div>
           <input
             id={`${fieldId}-password`}
             type="password"
@@ -328,26 +364,27 @@ export function SignInCard({ variant }: { variant?: 'profile' } = {}) {
             onKeyDown={(e) => e.key === 'Enter' && void submit()}
           />
         </div>
-        <button
-          className="btn primary"
-          style={{ width: '100%' }}
-          disabled={busy}
-          onClick={() => void submit()}
-        >
-          {busy ? 'Working...' : mode === 'signin' ? 'Sign in' : 'Create account'}
+        <button className="btn primary block" disabled={busy} onClick={() => void submit()}>
+          {busy
+            ? mode === 'signin'
+              ? 'Signing in...'
+              : 'Creating account...'
+            : mode === 'signin'
+              ? 'Sign in'
+              : 'Create account'}
         </button>
         <div className="sub" style={{ marginTop: 10, textAlign: 'center' }}>
           {mode === 'signin' ? (
             <>
               New to OpenShore?{' '}
-              <button className="linklike" disabled={busy} onClick={() => setMode('signup')}>
+              <button className="linklike" disabled={busy} onClick={() => switchMode('signup')}>
                 Create an account
               </button>
             </>
           ) : (
             <>
               Already have an account?{' '}
-              <button className="linklike" disabled={busy} onClick={() => setMode('signin')}>
+              <button className="linklike" disabled={busy} onClick={() => switchMode('signin')}>
                 Sign in
               </button>
             </>
@@ -364,19 +401,7 @@ export function SignInCard({ variant }: { variant?: 'profile' } = {}) {
             Email me a link instead
           </button>
         </div>
-        {mode === 'signin' ? (
-          <div className="sub" style={{ marginTop: 6, textAlign: 'center' }}>
-            <button
-              className="linklike"
-              disabled={busy}
-              onClick={() =>
-                void run(false, () => sendPasswordReset(addr), 'Check your email for a reset link.')
-              }
-            >
-              Forgot your password?
-            </button>
-          </div>
-        ) : (
+        {mode === 'signup' ? (
           <div className="sub" style={{ marginTop: 6, textAlign: 'center' }}>
             <button
               className="linklike"
@@ -392,7 +417,7 @@ export function SignInCard({ variant }: { variant?: 'profile' } = {}) {
               Resend confirmation email
             </button>
           </div>
-        )}
+        ) : null}
       </div>
       {signOutAsk}
       {everywhereAsk}

@@ -3,7 +3,7 @@
 // review every build before it ships, let the Reasoning LLM bring it in on its
 // own, or stay dormant until you ask for it by name. Scope each to specific
 // projects, or let it work across all of them.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../state/store.js';
 import { PlusNote } from '../components/PlusNote.js';
 import { CREW_PLUS_LINE } from '../lib/payGate.js';
@@ -12,6 +12,8 @@ import { ProjectMultiSelect } from '../components/ProjectMultiSelect.js';
 import type { CrewActivityLevel, CrewAgent } from '../state/types.js';
 import { ADVISOR_TEAM } from '../lib/crewPresets.js';
 import { Sheet } from '../components/Sheet.js';
+import { SheetTitle } from '../components/SheetHead.js';
+import { CheckGlyph } from '../components/SheetGlyphs.js';
 import {
   agentPresenceLine,
   busiestFirst,
@@ -72,6 +74,9 @@ export function CrewScreen() {
   const crew = settings.crew ?? [];
   const projects = settings.projects ?? [];
   const routines = routinesState.routines;
+  // An empty crew leads with the advisor team, so only one action is filled.
+  const firstCrew = crew.length === 0;
+  const titleRef = useRef<HTMLHeadingElement>(null);
 
   // The roster shows each member's presence, so the room asks the computer
   // once on arrival (the command center keeps it live).
@@ -81,6 +86,7 @@ export function CrewScreen() {
 
   const [draft, setDraft] = useState<Draft | undefined>();
   const [confirmDelete, setConfirmDelete] = useState<string | undefined>();
+  const deleting = crew.find((a) => a.id === confirmDelete);
 
   const scopeLabel = (a: CrewAgent) => {
     if (a.projectIds.length === 0) return 'All projects';
@@ -129,17 +135,19 @@ export function CrewScreen() {
       if (!id) return;
     }
     showToast(
-      missingAdvisors.length
-        ? `${missingAdvisors.length} advisors joined your crew. Your Technical Advisor reviews the work.`
-        : 'Your advisor team is already here.',
+      missingAdvisors.length === 0
+        ? 'Your advisor team is already here.'
+        : missingAdvisors.length === 1
+          ? `${missingAdvisors[0]!.name} joined your crew.`
+          : `${missingAdvisors.length} advisors joined your crew.`,
     );
   };
 
   return (
     <div className="screen">
-      <BackBar title="Crew" />
+      <BackBar title="Crew" titleHiddenUntil={titleRef} />
       <div className="screen-inner">
-        <h1>Crew</h1>
+        <h1 ref={titleRef}>Crew</h1>
         <p className="lead">
           Build your own agents. Each has a name, a persona, and a rule for how and when it is
           called. Point them at specific projects, or let them work across all of them.
@@ -164,7 +172,7 @@ export function CrewScreen() {
             </span>
             <span className="crew-command-door-sub">
               {control.where === 'unpaired'
-                ? 'Pair your computer, then routines run while you are away.'
+                ? 'Connect your computer. Routines run there while it is on.'
                 : control.where === 'away'
                   ? 'Away from your computer. Watch here, reconnect to take control.'
                   : crewHeadline(routines, routinesState.runs)}
@@ -174,26 +182,23 @@ export function CrewScreen() {
         </button>
 
         <button
-          className="btn primary"
-          style={{ width: '100%' }}
+          className={`btn ${firstCrew ? 'ghost' : 'primary'} block press-fb`}
           onClick={() => setDraft(emptyDraft())}
         >
-          + New crew member
+          New crew member
         </button>
 
         {missingAdvisors.length ? (
           <div className="card crew-advisors">
-            <span className="stack-eyebrow">Advisors</span>
+            <span className="eyebrow">Advisors</span>
             <h3 className="crew-advisors-title">A ready-made team, in one tap</h3>
             <p className="sub">
-              General advisors for whatever you are building: a Technical Advisor who reviews the
-              work, a Marketing Advisor, Finance Advisor, and Creative Studio who step in when a
-              decision needs them, and a Research Advisor, Coordinator, Sounding Board, and Strategy
-              Advisor who answer when asked. All advisory. You decide.
+              Eight general advisors for whatever you are building. One reviews the work, three step
+              in when a decision needs them, and four answer when asked. All advisory. You decide.
             </p>
             <button
-              className="btn ghost press-fb"
-              style={{ width: '100%', marginTop: 12 }}
+              className={`btn ${firstCrew ? 'primary' : 'ghost'} block press-fb`}
+              style={{ marginTop: 12 }}
               onClick={() => void addAdvisorTeam()}
             >
               Add the advisor team ({missingAdvisors.length})
@@ -202,69 +207,54 @@ export function CrewScreen() {
         ) : null}
 
         {crew.length ? (
-          <span className="stack-eyebrow" style={{ marginTop: 18, display: 'block' }}>
+          <span className="eyebrow" style={{ marginTop: 18 }}>
             Your crew
           </span>
         ) : null}
 
-        {crew.length === 0 ? (
-          <p className="hint" style={{ marginTop: 14 }}>
-            No crew yet. Add a reviewer that checks the work, a specialist the Reasoning LLM can
-            call on its own, or an expert that waits until you ask.
-          </p>
-        ) : (
-          crew.map((a) => (
-            <div className="card" key={a.id} style={{ marginTop: 12 }}>
-              <div className="card-row">
-                <span className={`crew-monogram ${a.activityLevel}`} aria-hidden="true">
-                  {(a.name.trim()[0] ?? '?').toUpperCase()}
-                </span>
-                <div className="grow">
-                  <h3>{a.name}</h3>
-                  <div className="sub">
-                    {levelLabel(a.activityLevel)} · {scopeLabel(a)}
-                  </div>
+        {crew.map((a) => (
+          <div className="card" key={a.id} style={{ marginTop: 12 }}>
+            <div className="card-row">
+              <span className={`crew-monogram ${a.activityLevel}`} aria-hidden="true">
+                {(a.name.trim()[0] ?? '?').toUpperCase()}
+              </span>
+              <div className="grow">
+                <h3>{a.name}</h3>
+                <div className="sub">
+                  {levelLabel(a.activityLevel)} · {scopeLabel(a)}
                 </div>
               </div>
-              <p className="sub" style={{ marginTop: 6 }}>
-                {a.persona.length > 120 ? `${a.persona.slice(0, 120)}...` : a.persona}
-              </p>
-              {(() => {
-                const mine = routinesForAgent(routines, a);
-                const line = agentPresenceLine(mine);
-                if (!line) return null;
-                const busiest = busiestFirst(mine)[0]!;
-                return (
-                  <div className="crew-presence">
-                    <span
-                      className={`cc-dot ${presenceTone(busiest.presence)}`}
-                      aria-hidden="true"
-                    />
-                    {line}
-                  </div>
-                );
-              })()}
-              <div
-                className="suggestion-row"
-                style={{ justifyContent: 'flex-start', marginTop: 4 }}
-              >
-                <button className="suggestion" onClick={() => setDraft({ ...a })}>
-                  Edit
-                </button>
-                <button className="suggestion" onClick={() => setConfirmDelete(a.id)}>
-                  Delete
-                </button>
-              </div>
             </div>
-          ))
-        )}
+            <p className="sub crew-card-line">{a.whenCalled?.trim() || a.persona}</p>
+            {(() => {
+              const mine = routinesForAgent(routines, a);
+              const line = agentPresenceLine(mine);
+              if (!line) return null;
+              const busiest = busiestFirst(mine)[0]!;
+              return (
+                <div className="crew-presence">
+                  <span className={`cc-dot ${presenceTone(busiest.presence)}`} aria-hidden="true" />
+                  {line}
+                </div>
+              );
+            })()}
+            <div className="suggestion-row" style={{ justifyContent: 'flex-start', marginTop: 4 }}>
+              <button className="suggestion" onClick={() => setDraft({ ...a })}>
+                Edit
+              </button>
+              <button className="suggestion" onClick={() => setConfirmDelete(a.id)}>
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Editor sheet: identity, persona, call rule, activity level, projects. */}
       <Sheet open={Boolean(draft)} onClose={() => setDraft(undefined)}>
         {draft ? (
           <>
-            <h2>{draft.id ? 'Edit crew member' : 'New crew member'}</h2>
+            <SheetTitle>{draft.id ? 'Edit crew member' : 'New crew member'}</SheetTitle>
 
             <div className="field">
               <label htmlFor="crew-member-name">Name</label>
@@ -277,8 +267,9 @@ export function CrewScreen() {
             </div>
 
             <div className="field">
-              <label>Persona</label>
+              <label htmlFor="crew-member-persona">Persona</label>
               <textarea
+                id="crew-member-persona"
                 rows={4}
                 placeholder="Who this agent is, how it thinks, and how it should speak."
                 value={draft.persona}
@@ -296,24 +287,35 @@ export function CrewScreen() {
               />
             </div>
 
+            {/* All three levels in view, each with its line, so the choice is
+                read before it is made, not after. */}
             <div className="field">
-              <label>Activity level</label>
-              <select
-                className="select"
-                value={draft.activityLevel}
-                onChange={(e) =>
-                  setDraft({ ...draft, activityLevel: e.target.value as CrewActivityLevel })
-                }
-              >
-                {LEVELS.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.label}
-                  </option>
-                ))}
-              </select>
-              <p className="hint" style={{ marginTop: 6 }}>
-                {LEVELS.find((l) => l.id === draft.activityLevel)?.hint}
-              </p>
+              <label id="crew-member-level">Activity level</label>
+              <div className="mode-list" role="radiogroup" aria-labelledby="crew-member-level">
+                {LEVELS.map((l) => {
+                  const on = draft.activityLevel === l.id;
+                  return (
+                    <button
+                      key={l.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      className="mode-row press-fb press-fb--row"
+                      onClick={() => setDraft({ ...draft, activityLevel: l.id })}
+                    >
+                      <span className="mode-row-text">
+                        <span className="mode-row-title">{l.label}</span>
+                        <span className="mode-row-desc">{l.hint}</span>
+                      </span>
+                      {on ? (
+                        <span className="mode-row-check" aria-hidden="true">
+                          <CheckGlyph size={18} />
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             <div className="field">
@@ -348,8 +350,8 @@ export function CrewScreen() {
       >
         {confirmDelete ? (
           <>
-            <h3>Remove this crew member?</h3>
-            <p>This cannot be undone.</p>
+            <h3>Delete {deleting?.name ?? 'this crew member'}?</h3>
+            <p>Routines that use it keep their schedule. This cannot be undone.</p>
             <div className="confirm-row">
               <button className="btn ghost" onClick={() => setConfirmDelete(undefined)}>
                 Keep
@@ -360,10 +362,10 @@ export function CrewScreen() {
                   const id = confirmDelete;
                   setConfirmDelete(undefined);
                   await deleteCrewAgent(id);
-                  showToast('Crew member removed.');
+                  showToast('Crew member deleted.');
                 }}
               >
-                Remove
+                Delete
               </button>
             </div>
           </>

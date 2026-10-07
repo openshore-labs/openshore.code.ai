@@ -225,10 +225,47 @@ export function vaultSheetLine(c: VaultCopy): string {
 
 /** The line under the room's title. `offerShown` drops the pointer to This
  *  folder while the desktop move card says it better (Creative Studio 2). */
-export function vaultLead(c: VaultCopy, opts: { offerShown?: boolean } = {}): string {
+export function vaultLead(
+  c: VaultCopy,
+  opts: { offerShown?: boolean; ramp?: boolean } = {},
+): string {
+  // While the empty ramp shows, it says where the notes live and how the
+  // agent fits, so the lead steps aside and keeps only its Where it lives link.
+  if (opts.ramp) return '';
   return [c.storage, c.agent ?? (opts.offerShown ? undefined : c.agentElsewhere)]
     .filter(Boolean)
     .join(' ');
+}
+
+/** The empty list's card when the vault did not load. Only a storage reached
+ *  over the network is told to check its connection: Local and This folder
+ *  are on this device, and Your computer is on the person's own network. */
+export function vaultLoadFailed(provider: VaultCopyProvider | undefined): {
+  title: string;
+  sub: string;
+} {
+  switch (provider) {
+    case 'local':
+      return {
+        title: 'Your notes did not open.',
+        sub: 'They are safe on this device. Try again.',
+      };
+    case 'files':
+      return {
+        title: 'Your vault folder did not open.',
+        sub: 'Your notes are safe in the folder. Try again.',
+      };
+    case 'hub':
+      return {
+        title: 'Your computer did not answer.',
+        sub: 'Your notes are safe on your computer. Try again once it is on and in reach.',
+      };
+    default:
+      return {
+        title: 'Your vault storage is offline.',
+        sub: 'Your notes are safe where they live. This device could not reach the storage to load them. Check your connection and try again.',
+      };
+  }
 }
 
 export interface VaultOnboard {
@@ -2367,10 +2404,10 @@ export function vaultNotesInChatsSub(byClass: Readonly<Record<string, string>>):
   const all = modes.length > 0 && modes.every((m) => m === 'full');
   const some = modes.some((m) => m === 'full');
   const what = all
-    ? "Each chat starts with this project's Current State, any notes you pinned, and notes that match the task."
+    ? "Each chat starts with its project's Current State, any notes you pinned, and notes that match the task."
     : some
-      ? "Each chat starts with this project's Current State and any notes you pinned, and on some models notes that match the task."
-      : "Each chat starts with this project's Current State and any notes you pinned.";
+      ? "Each chat starts with its project's Current State and any notes you pinned, and on some models notes that match the task."
+      : "Each chat starts with its project's Current State and any notes you pinned.";
   return `${what} A card shows what went. Off applies to new chats.`;
 }
 export const VAULT_HANDOFF_SUB =

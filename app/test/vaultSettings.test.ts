@@ -1223,7 +1223,7 @@ describe('Notes in chats says only what the pack does (CX Y7)', () => {
       large: 'current-state',
     };
     expect(vaultNotesInChatsSub(none)).toBe(
-      "Each chat starts with this project's Current State and any notes you pinned. A card shows what went. Off applies to new chats.",
+      "Each chat starts with its project's Current State and any notes you pinned. A card shows what went. Off applies to new chats.",
     );
     expect(vaultNotesInChatsSub({ ...none, large: 'full' })).toMatch(
       /on some models notes that match the task/,

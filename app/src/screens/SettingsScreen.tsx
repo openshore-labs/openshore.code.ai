@@ -5,7 +5,7 @@
 // with the Creative Studio (2026-09-02, "The Ledger" direction).
 import { SHIPS_ADMIN, SHIPS_LAUNCH, SHIPS_STACKHEALTH, SHIPS_TEAMS } from '../lib/focus.js';
 import { accountCopy } from '../lib/accountGate.js';
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { PAY_GATES_ENABLED, isOrgAdmin, useApp, type HarborDownload } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { platform, isDesktop, isPhone, openExternal } from '../lib/platform.js';
@@ -169,14 +169,15 @@ function keyStoreLabel(): string {
   }
 }
 
+/** The footer's name for this build, capitalised as a label. */
 function platformLabel(): string {
   switch (platform()) {
     case 'ios':
       return 'iPhone';
     case 'electron':
-      return 'desktop';
+      return 'Desktop';
     default:
-      return 'web';
+      return 'Web';
   }
 }
 
@@ -333,6 +334,10 @@ export function SettingsScreen() {
   const account = settings.account;
   const org = account?.org;
   const [sheet, setSheet] = useState<SheetName | undefined>();
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  // The account sheet's title follows the card's mode (Sign in or Create
+  // account), so the sheet carries one title, never two.
+  const [signInMode, setSignInMode] = useState<'signin' | 'signup'>('signin');
   const [searchChoice, setSearchChoice] = useState<'brave' | 'tavily'>('brave');
   const [searchKeyValue, setSearchKeyValue] = useState('');
   const activeSearchBackend: SearchBackend =
@@ -375,7 +380,7 @@ export function SettingsScreen() {
   const installHarborMaster = async () => {
     const ok = await ensureHarborMaster();
     if (ok) {
-      showToast(`${HARBOR_MASTER_MODEL_NAME} is installed and is your Reasoning model.`);
+      showToast(`${HARBOR_MASTER_MODEL_NAME} is installed and is your Reasoning LLM.`);
     } else {
       const why = useApp.getState().harborMasterDownload;
       if (why?.failed) showToast(why.label);
@@ -414,7 +419,7 @@ export function SettingsScreen() {
           ? 'Plus'
           : 'Free'
         : undefined
-    : 'Optional';
+    : undefined;
   // Personal's standing on this device, in plain words: free for everyone
   // while the pay gates are off (the beta), else active (until when) or not.
   const personalUntil = userEntitlement?.validUntil
@@ -489,12 +494,13 @@ export function SettingsScreen() {
 
   return (
     <div className="screen">
-      <BackBar title="Settings" />
+      <BackBar title="Settings" titleHiddenUntil={titleRef} />
       <div className="screen-inner settings">
-        <h1>Settings</h1>
-        <p className="lead">Yours where it matters. Here is what this app keeps, and where.</p>
+        <h1 ref={titleRef}>Settings</h1>
+        <p className="lead">What this app keeps, and where.</p>
 
-        <SettingsGroup title="Account" index={group++}>
+        {/* A build with no account backend has nowhere for these rows to go. */}
+        <SettingsGroup title="Account" index={configured ? group++ : group} hidden={!configured}>
           <SettingsRow
             label={accountLabel}
             subTruncate={signedIn}
@@ -504,7 +510,14 @@ export function SettingsScreen() {
                 : `Chatting needs no account. ${accountCopy(PAY_GATES_ENABLED).pitch}`
             }
             value={accountValue}
-            onClick={configured ? () => setSheet('account') : undefined}
+            onClick={
+              configured
+                ? () => {
+                    setSignInMode('signin');
+                    setSheet('account');
+                  }
+                : undefined
+            }
           />
           {PAY_GATES_ENABLED ? (
             <SettingsRow label="OpenShore Plus" sub={personalSub} value={personalValue} />
@@ -561,8 +574,7 @@ export function SettingsScreen() {
                   trailing={
                     <button
                       type="button"
-                      className="btn ghost press-fb"
-                      style={{ padding: '8px 14px' }}
+                      className="btn ghost sm press-fb"
                       onClick={async () => {
                         await disconnectRepoPlatform(c.id);
                         showToast(`${c.name} disconnected.`);
@@ -576,16 +588,16 @@ export function SettingsScreen() {
             : null}
           <SettingsRow
             label="Appearance"
-            sub="Stays on this device"
+            sub={signedIn ? 'Follows you to every device you sign in on' : 'Stays on this device'}
             trailing={
-              <div className="segmented" role="tablist" aria-label="Appearance">
+              <div className="segmented" role="radiogroup" aria-label="Appearance">
                 {(['system', 'light', 'dark'] as const).map((t) => {
                   const active = (settings.theme ?? 'system') === t;
                   return (
                     <button
                       key={t}
-                      role="tab"
-                      aria-selected={active}
+                      role="radio"
+                      aria-checked={active}
                       className={`seg press-fb${active ? ' active' : ''}`}
                       onClick={() => {
                         void saveSettings({ theme: t });
@@ -679,18 +691,18 @@ export function SettingsScreen() {
             label="When the agent edits"
             sub={
               editMode === 'default' || editMode === 'acceptEdits'
-                ? "Commands always ask. Plan and Bypass are in the chat's mode pill."
-                : `${permissionModeLabel(editMode)} is on, from the chat's mode pill. Commands still ask unless Bypass is on.`
+                ? 'Commands always ask. Plan and Bypass are set from the chat.'
+                : `${permissionModeLabel(editMode)} is on, set from the chat. Commands still ask unless Bypass is on.`
             }
             trailing={
-              <div className="segmented" role="tablist" aria-label="When the agent edits">
+              <div className="segmented" role="radiogroup" aria-label="When the agent edits">
                 {(['default', 'acceptEdits'] as const).map((m) => {
                   const active = editMode === m;
                   return (
                     <button
                       key={m}
-                      role="tab"
-                      aria-selected={active}
+                      role="radio"
+                      aria-checked={active}
                       className={`seg press-fb${active ? ' active' : ''}`}
                       onClick={() => {
                         if (active) return;
@@ -714,14 +726,14 @@ export function SettingsScreen() {
               label="Opening web pages"
               sub={webFetchLine(settings.webFetchMode ?? 'ask')}
               trailing={
-                <div className="segmented" role="tablist" aria-label="Opening web pages">
+                <div className="segmented" role="radiogroup" aria-label="Opening web pages">
                   {WEB_FETCH_MODES.map((m) => {
                     const active = (settings.webFetchMode ?? 'ask') === m;
                     return (
                       <button
                         key={m}
-                        role="tab"
-                        aria-selected={active}
+                        role="radio"
+                        aria-checked={active}
                         className={`seg press-fb${active ? ' active' : ''}`}
                         onClick={() => {
                           if (active) return;
@@ -847,7 +859,7 @@ export function SettingsScreen() {
           </SettingsGroup>
         ) : null}
 
-        <SettingsGroup title="Harbor" index={group++}>
+        <SettingsGroup title="Web search" index={group++}>
           <SettingsRow
             label="Let models search the web"
             // Crew routines follow this switch and only search (founder,
@@ -874,14 +886,17 @@ export function SettingsScreen() {
             }
           />
           <SettingsRow
-            label="Web search"
-            sub="When Harbor needs the web"
+            label="Search service"
+            sub="Where local models send their searches"
             value={SEARCH_BACKEND_LABEL[activeSearchBackend]}
             onClick={() => {
               setSearchKeyValue('');
               setSheet('search');
             }}
           />
+        </SettingsGroup>
+
+        <SettingsGroup title="Harbor" index={group++}>
           {!isDesktop() ? (
             <>
               <SettingsRow
@@ -1011,20 +1026,20 @@ export function SettingsScreen() {
               web while you work.
             </p>
             <p>
-              It is on by default, and most people leave it on. Turn it off and the standard drops
-              out of the prompt, so a model runs on a shorter prompt and answers a little faster.
-              Off reaches your chats here and any session this app starts on your paired computer.
+              It is on by default. Turn it off and the standard drops out of the prompt, so a model
+              reads a shorter prompt. Off reaches your chats here and any session this app starts on
+              your paired computer.
             </p>
             <p>
               Two things it does not touch. A project can keep its own setting in its config, and
-              that always wins. And the small on-device guides (Harbor and Harbor Lite) are left as
+              that always wins. And the small on-device models (Harbor and Harbor Lite) are left as
               they are, to protect their limited context.
             </p>
           </InfoSheet>
           <WritingVoiceField />
         </SettingsGroup>
 
-        <SettingsGroup title="Voice" index={group++}>
+        <SettingsGroup title="Voice mode" index={group++}>
           <SettingsRow
             label="Voice"
             sub="Spoken replies use this device's voices. Premium voices download once, then work offline."
@@ -1034,7 +1049,7 @@ export function SettingsScreen() {
           <SettingsRow
             label="Speaking speed"
             trailing={
-              <div className="segmented" role="tablist" aria-label="Speaking speed">
+              <div className="segmented" role="radiogroup" aria-label="Speaking speed">
                 {(
                   [
                     ['Slow', 0.3],
@@ -1046,8 +1061,8 @@ export function SettingsScreen() {
                   return (
                     <button
                       key={label}
-                      role="tab"
-                      aria-selected={active}
+                      role="radio"
+                      aria-checked={active}
                       className={`seg press-fb${active ? ' active' : ''}`}
                       onClick={() => void saveSettings({ voiceRate: val })}
                     >
@@ -1189,9 +1204,21 @@ export function SettingsScreen() {
           <SettingsRow
             label="Research"
             sub={
-              connectedProviders.perplexity
-                ? 'Web research through Perplexity, on your Perplexity key. Spent with your approval, on every search.'
-                : 'Web research through Perplexity. Connect a Perplexity key in Cloud Connections to turn this on.'
+              connectedProviders.perplexity ? (
+                'Web research through Perplexity, on your Perplexity API key. Spent with your approval, on every search.'
+              ) : (
+                <>
+                  Web research through Perplexity. Connect a Perplexity API key in{' '}
+                  <button
+                    type="button"
+                    className="linklike press-fb"
+                    onClick={() => setView('connections')}
+                  >
+                    Cloud Connections
+                  </button>{' '}
+                  to turn this on.
+                </>
+              )
             }
             trailing={
               <Switch
@@ -1216,12 +1243,12 @@ export function SettingsScreen() {
         <SettingsGroup title="Privacy" index={group++}>
           <WhatLeavesSheet />
           <InfoSheet
-            title="Privacy and Conditions"
+            title="How your data is kept"
             renderTrigger={(open) => (
               <SettingsRow
-                label="Privacy and Conditions"
-                sub="Plainly, encrypted on this device, local models honestly"
-                value={facts ? (sealed ? 'Sealed' : 'On this device') : 'On this device'}
+                label="How your data is kept"
+                sub="What stays here, how it is sealed, and what local models can and cannot do"
+                value={facts && sealed ? 'Sealed' : undefined}
                 onClick={open}
               />
             )}
@@ -1277,13 +1304,13 @@ export function SettingsScreen() {
 
         {/* The trust statement. One source (os-code/protocol), shown here and on
             the marketing site, so the two can never say different things. */}
-        <SettingsGroup title="Ethical boundaries" index={group++}>
+        <SettingsGroup index={group++}>
           <InfoSheet
             title="Ethical boundaries"
             renderTrigger={(open) => (
               <SettingsRow
                 label="Ethical boundaries"
-                sub="Enforced by default, on every model, with no switch"
+                sub="Three narrow limits, on every model, local included"
                 value="Enforced"
                 onClick={open}
               />
@@ -1330,7 +1357,7 @@ export function SettingsScreen() {
 
         <SettingsGroup index={group++}>
           <SettingsRow
-            label="Clear conversations"
+            label="Clear chats"
             sub="Removes every chat from this device"
             danger
             onClick={() => setSheet('clear')}
@@ -1345,7 +1372,10 @@ export function SettingsScreen() {
       </div>
 
       <Sheet open={sheet === 'account'} onClose={close}>
-        <SheetHead title={signedIn ? 'Your account' : 'Sign in'} onClose={close} />
+        <SheetHead
+          title={signedIn ? 'Your account' : signInMode === 'signup' ? 'Create account' : 'Sign in'}
+          onClose={close}
+        />
         {/* A team's plan and price are v4 (founder 2026-09-30: Personal first). */}
         {SHIPS_TEAMS && signedIn && account?.type === 'commercial' && org ? (
           <p className="sheet-sub">
@@ -1356,11 +1386,10 @@ export function SettingsScreen() {
             {org.members.length} {org.members.length === 1 ? 'person' : 'people'}
           </p>
         ) : null}
-        <SignInCard />
+        <SignInCard variant="sheet" onModeChange={setSignInMode} />
         {SHIPS_ADMIN && signedIn && account?.type === 'commercial' && isOrgAdmin(account) ? (
           <button
-            className="btn ghost"
-            style={{ width: '100%' }}
+            className="btn ghost block"
             onClick={() => {
               close();
               setView('admin');
@@ -1404,12 +1433,12 @@ export function SettingsScreen() {
           Your local models search the web when they need to. DuckDuckGo needs no API key. Bring
           your own Brave Search or Tavily API key to search on your own account.
         </p>
-        <div className="segmented" role="tablist" aria-label="Search provider">
+        <div className="segmented" role="radiogroup" aria-label="Search provider">
           {(['brave', 'tavily'] as const).map((c) => (
             <button
               key={c}
-              role="tab"
-              aria-selected={searchChoice === c}
+              role="radio"
+              aria-checked={searchChoice === c}
               className={`seg press-fb${searchChoice === c ? ' active' : ''}`}
               onClick={() => setSearchChoice(c)}
             >
@@ -1452,7 +1481,7 @@ export function SettingsScreen() {
       </Sheet>
 
       <Sheet open={sheet === 'clear'} onClose={close} variant="confirm">
-        <h3>Clear every conversation on this {platformLabel()}?</h3>
+        <h3>Clear every chat on this device?</h3>
         <p>Session journals on your computer stay there. This cannot be undone.</p>
         <div className="confirm-row">
           <button className="btn ghost" onClick={close}>
@@ -1463,7 +1492,7 @@ export function SettingsScreen() {
             onClick={() => {
               void clearConversations();
               close();
-              showToast('Conversations cleared.');
+              showToast('Chats cleared.');
             }}
           >
             Clear

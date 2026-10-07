@@ -1818,6 +1818,12 @@ textarea {
 .vault-props-chevron {
   margin-left: auto;
   font-size: var(--text-1);
+  display: inline-flex;
+  transition: transform var(--dur-3) var(--ease-standard);
+}
+/* One drawn chevron: it points down while open and turns to the side shut. */
+.vault-props-head[aria-expanded='false'] .vault-props-chevron {
+  transform: rotate(-90deg);
 }
 .vault-props-list {
   margin: 4px 0 2px;
@@ -6938,6 +6944,7 @@ button.vault-tag {
 .multiselect-caret {
   color: var(--muted);
   font-size: var(--text-2);
+  display: inline-flex;
 }
 
 .multiselect-panel {
@@ -7085,13 +7092,17 @@ button.vault-tag {
 }
 .crew-monogram.auto {
   background: var(--surface);
-  border: 1px solid var(--attention);
-  color: var(--attention);
+  border: 1px solid var(--accent);
+  color: var(--accent);
 }
 .crew-monogram.request {
   background: var(--surface);
   border: 1px solid var(--border-strong);
   color: var(--muted);
+}
+/* In a card row the row's gap spaces the tile. */
+.card-row > .crew-monogram {
+  margin-right: 0;
 }
 
 /* Launch: a pulsing dot on the building state, a shimmer under an active run. */
@@ -11929,7 +11940,8 @@ button.vault-tag {
   background: transparent;
   transition: background var(--dur-1) var(--ease-accel);
 }
-.settings-row + .settings-row {
+.settings-row + .settings-row,
+.icon-picker + .settings-row {
   border-top: 1px solid var(--border);
   /* The hairline is inset from the left so rows read as one ledger. */
   border-image: linear-gradient(to right, transparent 14px, var(--border) 14px) 1;
@@ -11953,20 +11965,28 @@ button.vault-tag {
 }
 .writing-voice-shape {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 12px;
   width: 100%;
   text-align: left;
   padding: 10px 12px;
-  border: 1px dashed var(--accent);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--accent-soft);
+  background: var(--surface);
   color: var(--ink);
   transition:
     background var(--dur-1) var(--ease-standard),
     scale var(--press-out);
 }
+.writing-voice-shape-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
 .writing-voice-shape-title {
+  font-size: var(--text-4);
   font-weight: var(--weight-semibold);
   color: var(--accent);
 }
@@ -12036,10 +12056,12 @@ button.settings-row:active {
   color: var(--ink-soft);
   border-color: var(--border);
 }
+/* 'Built in' keeps its status slot (2026-09-04) but reads as a value. */
 .harbor-action.is-builtin {
   background: transparent;
   color: var(--muted);
-  border-color: var(--border);
+  border-color: transparent;
+  padding-inline: 0;
 }
 
 /* Harbor Mini "First Moves": tappable openers under the seeded greeting on a
@@ -12864,16 +12886,6 @@ button.settings-row:active {
   color: var(--cloud);
 }
 
-/* A teal uppercase eyebrow over a group (Crew's advisors). */
-.stack-eyebrow {
-  display: block;
-  font-size: var(--text-2);
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--accent);
-  margin-bottom: 4px;
-}
 /* The one eyebrow over a title or a group, for every room (Creative Studio,
    2026-10-07). The rooms' own eyebrows fold into it. */
 .eyebrow {
@@ -13003,14 +13015,6 @@ button.settings-row:active {
   position: relative;
   z-index: 1;
 }
-.vault-kicker {
-  display: block;
-  font-size: var(--text-2);
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--accent);
-}
 .vault-onboard-title {
   font-family: var(--font-display);
   font-size: var(--text-8);
@@ -13034,8 +13038,7 @@ button.settings-row:active {
   margin-top: 18px;
 }
 .vault-onboard-actions .btn {
-  flex: 1 1 auto;
-  min-width: 160px;
+  flex: 1 1 200px;
 }
 .vault-how {
   display: flex;
@@ -13733,7 +13736,8 @@ button.settings-row:active {
   min-width: 0;
   /* The kicker, title, and sub are spans; without a column they flow inline
      and run together (and their margin-top is ignored). A column stacks them
-     and lets the sub ellipsis, so nothing overlaps or overflows the door. */
+     and lets the sub wrap to two lines, so nothing overlaps or overflows the
+     door. */
   display: flex;
   flex-direction: column;
 }
@@ -13766,9 +13770,10 @@ button.settings-row:active {
   font-size: var(--text-3);
   opacity: 0.82;
   margin-top: 3px;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 .crew-command-door .cc-row-chevron {
   border-color: color-mix(in srgb, var(--on-fill) 80%, transparent);
@@ -13780,6 +13785,15 @@ button.settings-row:active {
   margin-top: 6px;
   color: var(--ink-soft);
   font-size: var(--text-2);
+}
+/* A crew card's one line for a person: when it is called, or its persona,
+   held to two lines with a real ellipsis. */
+.crew-card-line {
+  margin-top: 6px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 @media (max-width: 480px) {
@@ -14159,6 +14173,7 @@ button.settings-row:active {
 .voice-row-check {
   color: var(--accent);
   font-weight: var(--weight-semibold);
+  display: inline-flex;
 }
 
 /* ---------------------------------------------------------------------------

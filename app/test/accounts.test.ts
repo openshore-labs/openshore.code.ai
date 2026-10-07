@@ -345,6 +345,15 @@ describe('where settings may go', () => {
     );
   });
 
+  // The theme follows a signed-in person (CMO, 2026-10-07), so Appearance
+  // says so then, and says it stays here only while signed out.
+  it('says Appearance follows a signed-in person, as the theme does', () => {
+    expect(SETTINGS_REACH.theme).toBe('follows');
+    expect(read('src', 'screens', 'SettingsScreen.tsx')).toContain(
+      "sub={signedIn ? 'Follows you to every device you sign in on' : 'Stays on this device'}",
+    );
+  });
+
   it('keeps prompts, work, addresses, keys, and consents on the device', () => {
     for (const k of [
       'heldFirstMessage',

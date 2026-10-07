@@ -258,7 +258,7 @@ describe('where the row lives', () => {
       'utf8',
     );
     const sheet = settings.slice(settings.indexOf("<Sheet open={sheet === 'account'}"));
-    const card = sheet.indexOf('<SignInCard />');
+    const card = sheet.indexOf('<SignInCard variant="sheet" onModeChange={setSignInMode} />');
     const row = sheet.indexOf(
       '<DeleteAccount signedIn={signedIn} onDelete={deleteAccount} onDone={close} />',
     );

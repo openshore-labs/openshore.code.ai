@@ -42,15 +42,19 @@ export function WritingVoiceField() {
         className="writing-voice-shape press-fb"
         onClick={() => startWritingVoiceChat()}
       >
-        <span className="writing-voice-shape-title">Shape it in a chat</span>
-        <span className="writing-voice-shape-sub">
-          Describe the style you want. A model on your own device can add the result here for you.
+        <span className="writing-voice-shape-text">
+          <span className="writing-voice-shape-title">Shape it in a chat</span>
+          <span className="writing-voice-shape-sub">
+            Describe the style you want. A model on your own device can add the result here for you.
+          </span>
         </span>
+        <span className="disclosure-chevron" aria-hidden="true" />
       </button>
+      {/* The row above names the field, so it carries no second label. */}
       <div className="field">
-        <label htmlFor="writing-voice">Voice</label>
         <textarea
           id="writing-voice"
+          aria-label="Your writing voice"
           rows={4}
           maxLength={WRITING_VOICE_MAX}
           placeholder="e.g. Warm and direct. Short sentences, plain words, no jargon. Sound like a friend explaining over coffee."

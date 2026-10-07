@@ -175,7 +175,7 @@ export const EGRESS: EgressEntry[] = [
     id: 'search',
     recipient: 'Web search',
     what: 'The words of a web search, and the network address any web request carries. Harbor Lite sends your question itself (up to 200 characters); other models write search words from your chat. DuckDuckGo by default, with no key and no account. Never the rest of your chat, never your files.',
-    when: `When a model decides to search the web, after you allow it once. A chat asks the first time; the coding agent searches only once you allow it. ${ROUTINES_SEARCH_LINE} You can turn it off in Settings, Harbor.`,
+    when: `When a model decides to search the web, after you allow it once. A chat asks the first time; the coding agent searches only once you allow it. ${ROUTINES_SEARCH_LINE} You can turn it off in Settings, Web search.`,
     start: 'off',
     hosts: ['html.duckduckgo.com', 'duckduckgo.com'],
   },

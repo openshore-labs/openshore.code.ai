@@ -146,7 +146,7 @@ const COPY: VaultSettingsSheetCopy = {
   agentAnywhere: 'Anywhere in this vault',
   notesInChats: 'Notes in chats',
   notesInChatsSub:
-    "Each chat starts with this project's Current State and any notes you pinned. A card shows what went. Off applies to new chats.",
+    "Each chat starts with its project's Current State and any notes you pinned. A card shows what went. Off applies to new chats.",
   handoff: 'Handoff',
   handoffSub:
     'When you switch models in a chat, the next one starts with a short summary of the work so far. Off applies to new chats.',

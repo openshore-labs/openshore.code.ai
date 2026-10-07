@@ -98,6 +98,8 @@ describe('what leaves this device', () => {
     const search = EGRESS.find((e) => e.id === 'search')!;
     expect(ROUTINES_SEARCH_LINE).toMatch(/follow this switch.*only search.*never open pages/);
     expect(search.when).toContain(ROUTINES_SEARCH_LINE);
+    // The switch lives in its own group (CMO, 2026-10-07).
+    expect(search.when).toContain('Settings, Web search');
     expect(search.when).not.toMatch(/turn it on for that routine/i);
     const settings = readFileSync(
       join(process.cwd(), 'src', 'screens', 'SettingsScreen.tsx'),
