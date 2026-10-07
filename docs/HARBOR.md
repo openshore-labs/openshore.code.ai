@@ -23,7 +23,7 @@ the most capable, and the one a home-lab hub runs.
   Qwen3 4B Instruct on a smaller one; all Apache-2.0). The third and most capable: a real coding agent that plans and
   edits repositories on the desktop engine. It is pulled through Ollama on the
   person's own computer, straight from the Ollama library, and seated as the
-  Reasoning LLM in one tap from the First Seat card or the Settings row.
+  Reasoning model in one tap from the First Seat card or the Settings row.
   Docked, the phone reaches it as "My computer". Founder brief 2026-09-21.
 
 In the code each is a reserved model id (`harbor-mini`, `harbor`, and

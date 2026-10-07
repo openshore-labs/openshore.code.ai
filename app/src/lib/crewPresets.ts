@@ -1,5 +1,5 @@
 // The advisor team, as a Crew preset: a ready-made set of named perspectives
-// the Reasoning LLM can bring in, in their own voice, at the right moment.
+// the Reasoning model can bring in, in their own voice, at the right moment.
 // Written to be project-agnostic (founder, 2026-09-15): general advisors any
 // person would want for whatever they are building or deciding, not a startup
 // C-suite. The business abilities stay (marketing, finance, strategy); the

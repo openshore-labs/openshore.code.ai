@@ -380,7 +380,7 @@ export function SettingsScreen() {
   const installHarborMaster = async () => {
     const ok = await ensureHarborMaster();
     if (ok) {
-      showToast(`${HARBOR_MASTER_MODEL_NAME} is installed and is your Reasoning LLM.`);
+      showToast(`${HARBOR_MASTER_MODEL_NAME} is installed and is your Reasoning model.`);
     } else {
       const why = useApp.getState().harborMasterDownload;
       if (why?.failed) showToast(why.label);

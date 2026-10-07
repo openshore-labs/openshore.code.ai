@@ -459,7 +459,7 @@ export interface CrewAgent {
   whenCalled?: string;
   /**
    * review  - runs automatically before a feature deploys (build review).
-   * auto    - the Reasoning LLM may call it on its own when useful.
+   * auto    - the Reasoning model may call it on its own when useful.
    * request - dormant until the user asks for it by name in chat.
    */
   activityLevel: CrewActivityLevel;

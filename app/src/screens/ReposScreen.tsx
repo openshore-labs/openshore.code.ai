@@ -20,6 +20,7 @@ import { bufferHealth, unsyncedCount } from '../lib/repoSync.js';
 import { BackBar } from '../components/BackBar.js';
 import { Sheet } from '../components/Sheet.js';
 import { plainError } from '../lib/plainError.js';
+import { thisDeviceNoun } from '../lib/deviceNoun.js';
 
 // The phone-to-home commit-offload pipeline (home repo + buffered deploys) is
 // built and tested end to end on the desktop engine. The homePath picker now
@@ -727,8 +728,8 @@ function HomeRepoEditor({
         </div>
       ) : (
         <p className="hint">
-          Your computer holds the repository. This phone reaches it over your private Tailscale
-          network, so nothing depends on a third party.
+          Your computer holds the repository. {thisDeviceNoun({ start: true })} reaches it over your
+          private Tailscale network, so nothing depends on a third party.
         </p>
       )}
       <div className="field">

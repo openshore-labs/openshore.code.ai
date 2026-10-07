@@ -5,6 +5,7 @@
 // The steps are written here, not model-generated, so they are right even on a
 // small model; the model's job is to answer questions and adapt. No em dashes.
 import { ROUTINE_NOTES_PLACE } from './vaultCopy.js';
+import { thisDeviceNoun } from './deviceNoun.js';
 import { SHIPS_CURRENTS, SHIPS_LAUNCH, featureOn, type TieredFeature } from './focus.js';
 
 export type SetupGuideId =
@@ -45,7 +46,7 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
     steps: [
       'Open Settings and find the Harbor section. Harbor Lite, the built-in guide, is already there. Harbor is the coder that runs alongside it.',
       'On the Harbor row, tap Install. It downloads straight from the source, about 2.5 GB, roughly a few minutes on wifi. You can keep chatting while it lands.',
-      'When it finishes, the row shows Uninstall and Harbor becomes your Reasoning LLM automatically. Start a new chat to talk to it.',
+      'When it finishes, the row shows Uninstall and Harbor becomes your Reasoning model automatically. Start a new chat to talk to it.',
     ],
     done: 'Harbor writes and explains code, reasons, and can search the web. For heavier repository work, add a cloud key or dock to your computer.',
   },
@@ -56,7 +57,7 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
     steps: [
       'On your computer, open OpenShore. If nothing is set up yet, the chat opens on a card that says Set up DeepBlue: tap it and you are done. Otherwise open Settings and find the Harbor section.',
       'On the DeepBlue row, tap Install. It picks the size that fits your computer and pulls it through Ollama, straight from the Ollama library. Keep using the app while it lands.',
-      'When it finishes, the row reads Installed and DeepBlue is your Reasoning LLM on that computer. To reach it from this phone, pair the two under Pairing; it then appears as Your computer.',
+      `When it finishes, the row reads Installed and DeepBlue is your Reasoning model on that computer. To reach it from ${thisDeviceNoun()}, pair the two under Pairing; it then appears as Your computer.`,
     ],
     done: 'DeepBlue plans and edits your repositories on your computer. For the hardest steps, a cloud key on your own account is one tap away, and it always asks before it spends.',
   },
@@ -68,18 +69,18 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
       'Pick the provider you already pay for. If you have none, Claude is the strongest for coding; the console link on the Cloud Connections screen opens it inside the app.',
       'Sign in on the provider page and create a new API key. Copy it. It usually starts with sk- (Claude keys start with sk-ant-).',
       'Back in OpenShore, open Cloud Connections, tap Connect next to that provider, paste the key, and tap Save. The app checks the key with the provider before it says connected.',
-      'Open Stack and place the provider model where you want it: as your Reasoning LLM, or as a specialist for one kind of task.',
+      'Open Stack and place the provider model where you want it: as your Reasoning model, or as a specialist for one kind of task.',
     ],
     done: 'The provider shows connected, and it appears in the model menu. Your API key is stored only on this device and sent only to that provider.',
   },
   'pair-computer': {
     id: 'pair-computer',
     title: 'Connect your computer',
-    goal: 'Run my model on my own computer and reach it from this phone.',
+    goal: `Run my model on my own computer and reach it from ${thisDeviceNoun()}.`,
     steps: [
-      'On both this phone and your computer, install Tailscale and sign in to the same account. It is free for personal use. Ask me if you want the Tailscale steps.',
+      `On both ${thisDeviceNoun()} and your computer, install Tailscale and sign in to the same account. It is free for personal use. Ask me if you want the Tailscale steps.`,
       'On your computer, open OpenShore, then Pairing. The QR is there (if it says Off, tap Turn on).',
-      'On this phone, open Pairing and tap Scan the QR on your computer. Point the camera at the QR and it connects by itself. Or point the iPhone Camera at it and tap the link.',
+      `On ${thisDeviceNoun()}, open Pairing and tap Scan the QR on your computer. Point the camera at the QR and it connects by itself. Or point the Camera app at it and tap the link.`,
       'If the camera is not available, type the address (it looks like http://100.x.y.z:4816) and the pairing code shown under the QR, then tap Connect.',
     ],
     done: 'The screen says connected. In the model menu, Your computer is now a choice, for chat and for coding on your repositories.',
@@ -106,9 +107,9 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
     title: 'Pick a model',
     goal: 'Get a model running so I can chat and build.',
     steps: [
-      'Decide where it runs. On this phone: Harbor, a coding model that runs fully on the device, offline. On your computer: DeepBlue, through Ollama, the most capable of the built-in models.',
-      'On this phone, open Settings, find the Harbor section, and tap Install on the Harbor row. On your computer, open Stack and install DeepBlue, sized to your computer. Weights download straight from their source, never through OpenShore.',
-      'When it finishes, it becomes your Reasoning LLM. Open Stack to see it, and to add specialists or a cloud model on your own API key.',
+      `Decide where it runs. On ${thisDeviceNoun()}: Harbor, a coding model that runs fully on the device, offline. On your computer: DeepBlue, through Ollama, the most capable of the built-in models.`,
+      `On ${thisDeviceNoun()}, open Settings, find the Harbor section, and tap Install on the Harbor row. On your computer, open Stack and install DeepBlue, sized to your computer. Weights download straight from their source, never through OpenShore.`,
+      'When it finishes, it becomes your Reasoning model. Open Stack to see it, and to add specialists or a cloud model on your own API key.',
     ],
     done: 'The model menu shows Stack, and a first message gets a real answer.',
   },
@@ -118,7 +119,7 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
     goal: 'Point OpenShore at my code so it can read, edit, and run it.',
     steps: [
       'Make sure a model is set up first (Stack). The agent needs a brain before it can open a repository.',
-      'On your computer, open Repositories and tap Open a local folder, or paste a clone URL. On this phone, connect your computer first; the code lives there.',
+      `On your computer, open Repositories and tap Open a local folder, or paste a clone URL. On ${thisDeviceNoun()}, connect your computer first; the code lives there.`,
       'A coding chat opens on that folder. Ask for something small and real, like: explain this project and run its tests.',
       'Every command asks before it runs. Edits go through and show their diff in the chat, or choose Ask first in Settings, under Approvals, to check each one. You stay in control.',
     ],
@@ -130,7 +131,7 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
     goal: 'Give my phone and my computer a private network to talk over.',
     steps: [
       'Install Tailscale on your computer from tailscale.com and sign in (Google, Apple, GitHub, or Microsoft accounts all work).',
-      'Install the Tailscale app on this phone from the App Store and sign in with the same account.',
+      `Install the Tailscale app on ${thisDeviceNoun()} from the App Store and sign in with the same account.`,
       'Turn Tailscale on in the phone app. Both devices now share a private network, no port forwarding, no public exposure.',
     ],
     done: 'The Tailscale app on the phone lists your computer. Now pair them under Pairing.',

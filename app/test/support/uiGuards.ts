@@ -166,6 +166,27 @@ function attr(tag: string, name: string): string {
   return tag.slice(start, i + 1);
 }
 
+/** The classes theme.css reads an index (--i) under: `own` for the classes
+ *  of a rule's subject (the last compound in its selector), `children` for a
+ *  `.list > *` rule that reads the index on any child of the list. Read once. */
+let readers: { own: Set<string>; children: Set<string> } | undefined;
+function indexReaders(): { own: Set<string>; children: Set<string> } {
+  if (readers) return readers;
+  const css = readFileSync(join(SRC, 'theme.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  readers = { own: new Set(), children: new Set() };
+  for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (!/var\(--i\b/.test(m[2]!)) continue;
+    for (const selector of m[1]!.split(',')) {
+      const parts = selector.trim().split(/\s*[\s>+~]\s*/);
+      const subject = parts.at(-1) ?? '';
+      const set = subject === '*' ? readers.children : readers.own;
+      const from = subject === '*' ? (parts.at(-2) ?? '') : subject;
+      for (const c of from.matchAll(/\.([\w-]+)/g)) set.add(c[1]!);
+    }
+  }
+  return readers;
+}
+
 const offence = (path: string, line: number, rule: string, text: string) =>
   `${path}:${line} ${rule}: ${text.replace(/\s+/g, ' ').trim().slice(0, 100)}`;
 
@@ -194,10 +215,13 @@ const LATER_TIER: Record<string, string> = {
 };
 
 /** Retired on 2026-10-07, each with what to use instead. Case sensitive and
- *  word-bounded, so modelFamilies.ts's 'Reasoning models' stays clear. */
+ *  word-bounded. D2 (founder, 2026-10-07) named the model that runs the show
+ *  the Reasoning model, so the acronym retires from copy; Harbor Lite's
+ *  lowercase match keywords ('reasoning llm') stay, since a person may still
+ *  ask that way. */
 export const RETIRED_2026_10_07: Array<{ pattern: RegExp; use: string }> = [
-  { pattern: /\bReasoning model\b/, use: "'Reasoning LLM' (founder, 2026-09-15)" },
-  { pattern: /\blead model\b/, use: "'Reasoning LLM'" },
+  { pattern: /\b[Rr]easoning LLM\b/, use: "'Reasoning model' (D2, founder 2026-10-07)" },
+  { pattern: /\blead model\b/, use: "'Reasoning model'" },
   { pattern: /\bPair your computer\b/, use: "'Connect your computer' (the pairing review)" },
   { pattern: /\bSet up pairing\b/, use: "'Connect your computer'" },
   { pattern: /\bmain computer\b/, use: "'your computer'" },
@@ -384,16 +408,35 @@ export const RULES: Array<{ name: string; check(path: string, src: string): stri
   },
   {
     // Rows step by the --stagger token, through an index (--i) in the
-    // stylesheet, never a step written inline.
+    // stylesheet, never a step written inline. An index is only half of it: a
+    // tag that sets --i inline wears a class some rule reads it under (the
+    // shared .stagger-in, or a list's own), or the rows never step, as the
+    // Vault's recent agent notes did until 2026-10-07.
     name: 'inlineStagger',
     check(path, src) {
       if (!path.endsWith('.tsx')) return [];
-      return lineHits(
+      const code = stripComments(src);
+      const out = lineHits(
         path,
-        stripComments(src),
+        code,
         'inlineStagger',
         /['"]--stagger['"](?:\s+as\s+[\w.]+)?\]?\s*:/,
       );
+      const { own, children } = indexReaders();
+      // A list whose rule reads its children's index (.first-seat > *) covers
+      // every tag in a file that wears the list's class.
+      const viaParent = [...children].some((c) =>
+        new RegExp(`(?<![\\w-])${c}(?![\\w-])`).test(code),
+      );
+      for (const name of ['div', 'section', 'span', 'button', 'p', 'li', 'a', 'label']) {
+        for (const t of openingTags(code, name)) {
+          if (!/['"]--i['"]/.test(attr(t.text, 'style'))) continue;
+          const classes = attr(t.text, 'className').match(/[\w-]+/g) ?? [];
+          if (viaParent || classes.some((c) => own.has(c))) continue;
+          out.push(offence(path, t.line, 'inlineStagger', `no rule reads its --i: ${t.text}`));
+        }
+      }
+      return out;
     },
   },
 ];

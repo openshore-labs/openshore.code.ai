@@ -175,7 +175,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     title: 'DeepBlue',
     where:
       'OpenShore on your computer: Menu, Settings, Harbor, DeepBlue, or the first-run card, or Stack, Get DeepBlue',
-    text: `DeepBlue is the most capable built-in model: a real coding agent that plans and edits your repositories on your own computer, running through Ollama and sized to your computer (Qwen 2.5 Coder 32B, 14B, 7B, or 3B). Once installed it is your Reasoning LLM, and a paired phone reaches it as Your computer. How:\n${guideStepsCompact('get-harbor-master')}`,
+    text: `DeepBlue is the most capable built-in model: a real coding agent that plans and edits your repositories on your own computer, running through Ollama and sized to your computer (Qwen 2.5 Coder 32B, 14B, 7B, or 3B). Once installed it is your Reasoning model, and a paired phone reaches it as Your computer. How:\n${guideStepsCompact('get-harbor-master')}`,
     keywords: [
       'deepblue',
       'deep blue',
@@ -332,10 +332,11 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'stack',
     title: 'Stack',
     where: 'Menu, Stack',
-    text: 'The models that answer for you. One is the Reasoning LLM: it plans each task and sends it to the specialist whose job fits, or does it itself. You can keep a separate stack for each connection status (Docked, Offshore, Offline); the one for your current status is used automatically. It exists so you can mix models you own, each doing what it does best.',
+    text: 'The models that answer for you. One is the Reasoning model: it plans each task and sends it to the specialist whose job fits, or does it itself. You can keep a separate stack for each connection status (Docked, Offshore, Offline); the one for your current status is used automatically. It exists so you can mix models you own, each doing what it does best.',
     keywords: [
       'stack',
       'your stack',
+      'reasoning model',
       'reasoning llm',
       'orchestrator',
       'runs the show',
@@ -348,7 +349,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'specialists',
     title: 'Specialists',
     where: 'Menu, Stack, Specialists',
-    text: 'Models placed by job under the Reasoning LLM: Coding, Writing, Analysis, Image reading, Image creation, Retrieval, Fast, or Custom. Image reading has an on-device slot and a cloud slot. Add one from the Bench with Add to stack and pick its category.',
+    text: 'Models placed by job under the Reasoning model: Coding, Writing, Analysis, Image reading, Image creation, Retrieval, Fast, or Custom. Image reading has an on-device slot and a cloud slot. Add one from the Bench with Add to stack and pick its category.',
     keywords: [
       'specialist',
       'specialists',
@@ -397,7 +398,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'stack-desktop',
     title: 'Stack on your computer',
     where: 'Menu, Stack, in OpenShore on your computer',
-    text: 'Shows the Reasoning LLM with a Change button and the specialist roles, chosen from models installed through Ollama. Start with a prefab stack fills it in one tap and shows the size and any graphics memory it needs; with no models, the picker offers Get DeepBlue.',
+    text: 'Shows the Reasoning model with a Change button and the specialist roles, chosen from models installed through Ollama. Start with a prefab stack fills it in one tap and shows the size and any graphics memory it needs; with no models, the picker offers Get DeepBlue.',
     keywords: [
       'desktop stack',
       'computer stack',

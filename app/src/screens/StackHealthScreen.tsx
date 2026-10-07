@@ -288,7 +288,7 @@ function SealBand({ health }: { health: StackHealth }) {
 }
 
 function roleLabel(role: string): string {
-  if (role === 'orchestrator') return 'Reasoning LLM';
+  if (role === 'orchestrator') return 'Reasoning model';
   return role.charAt(0).toUpperCase() + role.slice(1);
 }
 

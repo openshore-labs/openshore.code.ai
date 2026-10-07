@@ -1,6 +1,6 @@
 // Crew: your own roster of agents. Give each one a name, a persona, and a
 // rule for how and when it is called. An Activity Level decides that: it can
-// review every build before it ships, let the Reasoning LLM bring it in on its
+// review every build before it ships, let the Reasoning model bring it in on its
 // own, or stay dormant until you ask for it by name. Scope each to specific
 // projects, or let it work across all of them.
 import { useEffect, useRef, useState } from 'react';
@@ -34,7 +34,7 @@ const LEVELS: Array<{ id: CrewActivityLevel; label: string; hint: string }> = [
   {
     id: 'auto',
     label: 'Joins on its own',
-    hint: 'The Reasoning LLM can bring this member in on its own when a decision needs its view. More hands-off.',
+    hint: 'The Reasoning model can bring this member in on its own when a decision needs its view. More hands-off.',
   },
   {
     id: 'request',
@@ -119,7 +119,7 @@ export function CrewScreen() {
   };
 
   // The founder's advisory org, as a crew: eight named perspectives the
-  // Reasoning LLM can bring in. Adds only the ones not already here, so the
+  // Reasoning model can bring in. Adds only the ones not already here, so the
   // tap is safe to repeat and never duplicates a member someone customized.
   const missingAdvisors = ADVISOR_TEAM.filter((p) => !crew.some((a) => a.name === p.name));
   const addAdvisorTeam = async () => {

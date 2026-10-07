@@ -758,7 +758,7 @@ export interface AppSettings {
    *  2026-10-02): ask (unset), always allow, or never. The computer holds the
    *  real value (`tools.webFetch`); this is the app's copy (lib/webFetchMode). */
   webFetchMode?: 'ask' | 'allow' | 'off';
-  /** The user's stack: Reasoning LLM anchor, active specialists, bench metadata.
+  /** The user's stack: Reasoning model anchor, active specialists, bench metadata.
    *  Legacy single stack; kept as the migration seed and fallback. The live
    *  configuration is `stacks`, one per connectivity status. */
   stack?: AppStack;
@@ -2091,7 +2091,7 @@ interface AppState {
    *  bundled with the app and has no counterpart here. */
   removeHarbor(): Promise<void>;
   /** Desktop only. Pull the DeepBlue size that fits this computer through
-   *  the engine (Ollama) and seat it as the Reasoning LLM. Returns success. An
+   *  the engine (Ollama) and seat it as the Reasoning model. Returns success. An
    *  install already running returns false without starting another. */
   ensureHarborMaster(): Promise<boolean>;
   /** First-run: start Harbor Lite's download and open the LLM Library intro. */
@@ -2681,7 +2681,7 @@ interface AppState {
   /** Manually step down to a more restrictive profile, or clear (auto). */
   setProfileOverride(profile?: ProfileId): Promise<void>;
 
-  // Stack management (the app-side Reasoning LLM + specialists + bench).
+  // Stack management (the app-side Reasoning model + specialists + bench).
   /** Connect a bring-your-own-model endpoint. Returns the new connection. */
   connectByom(input: {
     label: string;
@@ -2691,7 +2691,7 @@ interface AppState {
   }): Promise<ByomConnection>;
   /** Disconnect a BYOM endpoint: delete its key and pull it from the stack. */
   disconnectByom(id: string): Promise<void>;
-  /** Set the Reasoning LLM anchor (from the bench or a cloud model) for a
+  /** Set the Reasoning model anchor (from the bench or a cloud model) for a
    *  status. Defaults to the current status when `profile` is omitted. */
   setReasoning(ref: StackModelRef, profile?: ProfileId): Promise<void>;
   /** Move a bench model into a status's active stack under a category placement.

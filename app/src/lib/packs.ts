@@ -12,6 +12,7 @@
 import type { CatalogModel } from 'os-code/protocol';
 import type { ProfileId } from './profiles.js';
 import type { StackCategory } from './stack.js';
+import { thisDeviceNoun } from './deviceNoun.js';
 
 export type PackHelperCategory = Extract<StackCategory, 'coding' | 'fast' | 'vision'>;
 
@@ -63,8 +64,7 @@ export const DEVICE_PACKS: DevicePack[] = [
     id: 'docked',
     name: 'Docked',
     headline: 'At home, full stack.',
-    tagline:
-      'Your computer runs the big models. This phone is the remote, and it still has its own.',
+    tagline: `Your computer runs the big models. ${thisDeviceNoun({ start: true })} is the remote, and it still has its own.`,
     anchor: [],
     helpers: {},
     nextStep: { label: 'Connect your computer', view: 'pair' },

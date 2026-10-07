@@ -157,9 +157,13 @@ describe('the bundled seed offers the 3B as a seat', () => {
 });
 
 describe('rename drift: no quarterback in engine strings the app shows', () => {
-  it('roles.ts and router.ts speak of the Reasoning LLM', () => {
+  it('roles.ts and router.ts speak of the Reasoning model', () => {
     for (const rel of ['../src/router/roles.ts', '../src/router/router.ts']) {
-      expect(readFileSync(resolve(here, rel), 'utf8'), rel).not.toMatch(/quarterback/i);
+      const src = readFileSync(resolve(here, rel), 'utf8');
+      expect(src, rel).not.toMatch(/quarterback/i);
+      // D2 (founder, 2026-10-07): the acronym retired from what a person reads.
+      expect(src, rel).not.toMatch(/Reasoning LLM/);
+      expect(src, rel).toMatch(/Reasoning model/);
     }
   });
   it('the engine never puts a command inside a sentence', () => {

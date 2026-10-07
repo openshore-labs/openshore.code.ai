@@ -1,6 +1,6 @@
 // Cloud Connections: add the big cloud LLM providers on your own key. Each
 // provider you connect puts its models on your Bench, ready to place in your
-// stack (as the Reasoning LLM or a specialist). Keys live in this device's
+// stack (as the Reasoning model or a specialist). Keys live in this device's
 // Keychain, scoped to the provider, and are spent only with your approval.
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../state/store.js';
@@ -217,7 +217,7 @@ export function ConnectionsScreen() {
           <button className="linklike" onClick={() => setView('stack')}>
             your stack
           </button>{' '}
-          to make it your Reasoning LLM or a specialist. You choose which model each kind of task
+          to make it your Reasoning model or a specialist. You choose which model each kind of task
           goes to.
         </p>
 

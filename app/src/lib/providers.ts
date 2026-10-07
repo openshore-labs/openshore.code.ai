@@ -1,5 +1,5 @@
 // Cloud providers you can connect by API key. Connecting one puts its models on
-// your Bench, so you can place, say, a big model as your Reasoning LLM and a
+// your Bench, so you can place, say, a big model as your Reasoning model and a
 // cheaper one as a coding specialist. Keys live in the device Keychain, scoped
 // to the provider, and are only ever spent with your approval.
 //

@@ -54,6 +54,7 @@ import { DEFAULT_PERMISSION_MODE } from '../lib/permissionMode.js';
 import { useOnline } from '../hooks/useOnline.js';
 import { useExitPresence } from '../hooks/useExitPresence.js';
 import type { Attachment } from '../lib/attachments.js';
+import { thisDeviceNoun } from '../lib/deviceNoun.js';
 
 /** The transcript's shape while a reopened desktop chat replays its journal:
  *  soft bars in the rhythm of the last known transcript (user turn, answer,
@@ -721,7 +722,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         <div className={`offline-banner${offlineClosing ? ' closing' : ''}`} role="status">
           {isDesktop()
             ? 'Offline. Models on this computer still answer. Cloud models wait for a connection.'
-            : 'Offline. Models on this phone still answer. Your computer and cloud models wait for a connection.'}
+            : `Offline. Models on ${thisDeviceNoun()} still answer. Your computer and cloud models wait for a connection.`}
         </div>
       ) : null}
 

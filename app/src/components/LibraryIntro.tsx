@@ -29,8 +29,8 @@ function beatsFor(guideName: string): Beat[] {
     {
       id: 'stack',
       eyebrow: 'Stack',
-      headline: 'One Reasoning LLM, a few specialists.',
-      body: 'You build a stack. One model plans and routes the work; optional specialists take coding, writing, vision, and more. Anything missing, the Reasoning LLM covers itself.',
+      headline: 'One Reasoning model, a few specialists.',
+      body: 'You build a stack. One model plans and routes the work; optional specialists take coding, writing, vision, and more. Anything missing, the Reasoning model covers itself.',
       art: 'stack',
     },
     {

@@ -8,7 +8,7 @@ import { modelMonogram } from './marketplace.js';
 import { Icon } from './Icon.js';
 
 const CAP_PATHS: Record<CapabilityCategory, JSX.Element> = {
-  // The Reasoning LLM: a four-point spark.
+  // The Reasoning model: a four-point spark.
   reasoning: (
     <path d="M12 3l1.4 7.1L21 12l-7.6 1.9L12 21l-1.4-7.1L3 12l7.6-1.9z" fill="currentColor" />
   ),

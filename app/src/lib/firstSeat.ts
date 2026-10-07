@@ -158,7 +158,7 @@ export interface SeatSignals {
   platform: 'electron' | 'ios' | 'web';
   /** The desktop engine's status has been read at least once. */
   desktopStatusKnown: boolean;
-  /** The engine has a Reasoning LLM configured. */
+  /** The engine has a Reasoning model configured. */
   desktopConfigured: boolean;
   /** The app-side stack can answer (a downloaded on-device anchor). */
   stackReady: boolean;

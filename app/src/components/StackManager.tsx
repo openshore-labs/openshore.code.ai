@@ -1,4 +1,4 @@
-// The phone-side Stack manager. The Reasoning LLM is the anchor (required,
+// The phone-side Stack manager. The Reasoning model is the anchor (required,
 // immovable, replaceable). Models you download or connect land on the Bench;
 // you place them into the active stack by choosing a category, and optionally a
 // trigger and a persona (both required for a Custom category). Active models
@@ -379,7 +379,7 @@ export function StackManager() {
           })}
         </SettingsGroup>
 
-        {/* Specialists: the models the Reasoning LLM routes work to, each
+        {/* Specialists: the models the Reasoning model routes work to, each
             under its category. */}
         <SettingsGroup title="Specialists" index={2}>
           {nonVisionActive.length === 0 ? (
@@ -387,8 +387,8 @@ export function StackManager() {
               label="None placed yet"
               sub={
                 admin
-                  ? 'The Reasoning LLM handles every task until you place one from the bench.'
-                  : 'The Reasoning LLM handles every task.'
+                  ? 'The Reasoning model handles every task until you place one from the bench.'
+                  : 'The Reasoning model handles every task.'
               }
             />
           ) : (
@@ -595,13 +595,13 @@ export function StackManager() {
         ) : null}
       </Sheet>
 
-      {/* Reasoning LLM picker. */}
+      {/* Reasoning model picker. */}
       <Sheet open={Boolean(pickReasoning)} onClose={() => setPickReasoning(false)}>
         {pickReasoning ? (
           <>
             <SheetHead title="Who runs the show?" onClose={() => setPickReasoning(false)} />
             <p className="sheet-sub">
-              The Reasoning LLM plans and routes. It can be any model you have.
+              The Reasoning model plans and routes. It can be any model you have.
             </p>
             <div className="sheet-actions">
               {[reasoning, ...others].map((r) => {
@@ -616,7 +616,7 @@ export function StackManager() {
                       setPickReasoning(false);
                       if (current) return;
                       await setReasoning(r, editProfile);
-                      showToast(`${refName(r)} is your Reasoning LLM.`);
+                      showToast(`${refName(r)} is your Reasoning model.`);
                     }}
                   >
                     <span className="profile-option-text">
@@ -826,7 +826,7 @@ export function StackManager() {
         {config ? (
           <>
             <SheetTitle>Place {refName(config.ref)}</SheetTitle>
-            <p className="sheet-sub">Pick the category the Reasoning LLM calls it for.</p>
+            <p className="sheet-sub">Pick the category the Reasoning model calls it for.</p>
 
             <div className="suggestion-row" style={{ justifyContent: 'flex-start' }}>
               {STACK_CATEGORIES.map((c) => (

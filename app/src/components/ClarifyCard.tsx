@@ -1,4 +1,4 @@
-// The plan-first flow's clarifying-question picker. When the reasoning LLM needs
+// The plan-first flow's clarifying-question picker. When the reasoning model needs
 // the framing settled before it draws the play, it asks here. Each question can
 // carry suggested options as tappable chips; tapping one sends it as the reply,
 // and typing a free answer in the composer works too. The reply is folded back

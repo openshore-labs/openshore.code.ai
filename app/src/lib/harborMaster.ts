@@ -41,7 +41,7 @@ export const HARBOR_MASTER_ATTRIBUTION =
   'On the desktop, DeepBlue is Qwen 2.5 Coder 32B, 14B, or 7B, or Qwen3 4B on a smaller computer, sized to fit it, all under the Apache License 2.0.';
 
 /** One size of DeepBlue. The catalog id is what the engine's installer
- *  takes; the Ollama ref is what seats it as the Reasoning LLM once pulled;
+ *  takes; the Ollama ref is what seats it as the Reasoning model once pulled;
  *  weightsName is the honest name of what is really behind the slot. */
 export interface HarborMasterSize {
   catalogId: string;

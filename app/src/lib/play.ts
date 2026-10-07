@@ -1,9 +1,9 @@
-// The play: how OpenShore turns a prompt into a run. The reasoning LLM from My
+// The play: how OpenShore turns a prompt into a run. The reasoning model from My
 // Stack frames the prompt (asking the user to clarify only when it is genuinely
 // ambiguous), then composes a play, an ordered set of handoffs to the stack's
 // specialist models with dependencies between them, the way a coach draws up a
 // sequence of passes. Any category with no assigned specialist is run by the
-// reasoning LLM itself. This module is the pure core: the shapes, the planner
+// reasoning model itself. This module is the pure core: the shapes, the planner
 // and re-plan prompts and their robust parsing, the dependency scheduling, the
 // owner resolution, and the brief the user sees before it runs. The driver
 // (stackDriver.ts) executes it; keeping the hard logic here keeps it testable
@@ -46,7 +46,7 @@ export interface PlayStep {
    *  computer's engine when docked rather than a chat-only model. */
   needsTools?: boolean;
   /** A level deeper than the category: a specific model to run this step, by its
-   *  stack id (refKey). Set when the reasoning LLM wants a particular model for
+   *  stack id (refKey). Set when the reasoning model wants a particular model for
    *  a particular subject or decision (the founder's parameterized routing).
    *  Falls back to category routing when it names no model in the stack. */
   owner?: string;
@@ -58,7 +58,7 @@ export interface Play {
   steps: PlayStep[];
 }
 
-/** The reasoning LLM's framing of a prompt: clear enough to run, or a short set
+/** The reasoning model's framing of a prompt: clear enough to run, or a short set
  *  of questions to settle first. When clear, the play's steps are present. */
 export interface Framing {
   clear: boolean;
@@ -166,7 +166,7 @@ export function topoOrder(steps: PlayStep[]): PlayStep[] {
 }
 
 /** Merge a mid-run re-plan: keep the steps already done, replace the rest with
- *  the reasoning LLM's revised remaining steps. Revised steps may depend on the
+ *  the reasoning model's revised remaining steps. Revised steps may depend on the
  *  done ones. Ids stay unique across the merge. */
 export function mergeReplan(play: Play, done: Set<string>, rawRemaining: unknown): Play {
   const keptDone = play.steps.filter((s) => done.has(s.id));
@@ -187,7 +187,7 @@ export interface StepOwner {
   ref: StackModelRef;
   placement?: Placement;
   /** True when no specialist is placed for this category, so the reasoning
-   *  anchor owns it (the founder's "the reasoning LLM takes over"). */
+   *  anchor owns it (the founder's "the reasoning model takes over"). */
   fellBack: boolean;
 }
 
@@ -263,7 +263,7 @@ function rosterLines(stack: AppStack): string {
       c.id === 'vision'
         ? Boolean(visionSlots(stack).local || visionSlots(stack).cloud)
         : stack.active.some((m) => m.placement.category === c.id);
-    return `- ${c.id} (${c.plain}): ${placed ? 'has a specialist' : 'no specialist, the reasoning LLM covers it'}`;
+    return `- ${c.id} (${c.plain}): ${placed ? 'has a specialist' : 'no specialist, the reasoning model covers it'}`;
   });
   // A level deeper: the specific models placed in the stack, with the id to
   // target and, when set, the subject that model was placed for. The planner can
@@ -281,7 +281,7 @@ function rosterLines(stack: AppStack): string {
   ].join('\n');
 }
 
-/** The plan call: the reasoning LLM frames the prompt and, when it is clear,
+/** The plan call: the reasoning model frames the prompt and, when it is clear,
  *  lays out the play. It returns ONLY JSON. Kept provider-agnostic so the same
  *  prompt works for Claude, an OpenAI-compatible model, or a capable local one. */
 export function planPrompt(
@@ -307,7 +307,7 @@ export function planPrompt(
         ]
       : []),
     '',
-    'The categories you can hand off to (anything else the reasoning LLM does itself):',
+    'The categories you can hand off to (anything else the reasoning model does itself):',
     rosterLines(stack),
     '',
     contextNote ? `Context: ${contextNote}` : '',

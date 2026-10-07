@@ -18,6 +18,7 @@ import { Sheet } from '../components/Sheet.js';
 import { SheetHead } from '../components/SheetHead.js';
 import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
 import { STACK_CATEGORIES, STACK_LEAD, categoryLabel, type StackCategory } from '../lib/stack.js';
+import { thisDeviceNoun } from '../lib/deviceNoun.js';
 
 // The engine's specialist roles, named in the phone Stack's words.
 const ROLES: StackCategory[] = ['coding', 'writing', 'analysis', 'vision', 'embedding', 'fast'];
@@ -166,7 +167,7 @@ export function StackScreen() {
   const reading = isDesktop() && Boolean(bridge()) && !status && !readFailed;
   const readingLine = 'Reading your computer...';
 
-  // The phone manages its own app-side stack (Reasoning LLM + bench). The
+  // The phone manages its own app-side stack (Reasoning model + bench). The
   // desktop keeps its live daemon-driven view below.
   if (!isDesktop()) return <StackManager />;
 
@@ -285,7 +286,7 @@ export function StackScreen() {
         {!isDesktop() ? (
           <p className="hint">
             {settings.daemon ? (
-              'The stack lives on your computer; edit it there. This phone rides it over Tailscale.'
+              `The stack lives on your computer; edit it there. ${thisDeviceNoun({ start: true })} rides it over Tailscale.`
             ) : (
               <>
                 <button className="linklike" onClick={() => setView('pair')}>

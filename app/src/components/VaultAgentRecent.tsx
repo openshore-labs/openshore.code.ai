@@ -2,8 +2,9 @@
 // `crew` (what routines left) and the notes the agent's approved writes named
 // on this device, so what the agent wrote is one tap away. Hidden notes never
 // show. Rendered at the Vault's root, personal vault only; nothing at all
-// when there is nothing to show.
-import { useEffect, useState } from 'react';
+// when there is nothing to show. The rows step in on the shared stagger
+// (.stagger-in with an index), capped at eight steps.
+import { useEffect, useState, type CSSProperties } from 'react';
 import type { VaultPickerNote } from '../lib/vaultExcerpt.js';
 import { relativeTime } from '../screens/ChatsScreen.js';
 
@@ -39,11 +40,12 @@ export function VaultAgentRecent({
         <h3 style={{ marginBottom: 0 }}>{AGENT_RECENT_TITLE}</h3>
       </div>
       <div className="vault-tree">
-        {notes.map((n) => (
+        {notes.map((n, i) => (
           <button
             key={n.path}
             type="button"
-            className="conv-item vault-row press-fb press-fb--row"
+            className="conv-item vault-row stagger-in press-fb press-fb--row"
+            style={{ '--i': Math.min(i, 8) } as CSSProperties}
             onClick={() => onOpen(n.path)}
           >
             <span className="vault-row-chevron" aria-hidden="true" />

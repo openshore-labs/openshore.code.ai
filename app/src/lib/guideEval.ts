@@ -48,7 +48,7 @@ export const GUIDE_EVAL_CASES: readonly GuideEvalCase[] = [
   },
   {
     id: 'reasoning-llm',
-    message: 'What is the Reasoning LLM?',
+    message: 'What is the Reasoning model?',
     route: 'app',
     cards: ['stack'],
     mustInclude: [['plan', 'route', 'orchestrat']],

@@ -23,6 +23,7 @@
 
 import { NO_SEARCH_NOTE, SEARCH_PROTOCOL_NOTE } from 'os-code/protocol';
 import { APP_KNOWLEDGE } from './guideKnowledge.js';
+import { thisDeviceNoun } from './deviceNoun.js';
 
 export const HARBOR_MODEL_ID = 'harbor';
 export const HARBOR_MODEL_VERSION = '3.0';
@@ -65,7 +66,7 @@ export function harborWeightsStale(recorded: string | undefined): boolean {
  *  model-generated, so it is reliable and appears with zero wait. No em
  *  dashes. */
 export const HARBOR_GREETING = [
-  "Hi, I'm Harbor. I'm a coding model that runs fully on this phone, and I can search the web when a question needs it, so I'm not limited to what I already know.",
+  `Hi, I'm Harbor. I'm a coding model that runs fully on ${thisDeviceNoun()}, and I can search the web when a question needs it, so I'm not limited to what I already know.`,
   '',
   "Ask me to write or explain code, or ask how something in the app works and I'll walk you through it. For multi-file work on a whole repository, point me at a bigger model in your stack or dock to your computer.",
   '',

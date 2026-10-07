@@ -583,6 +583,21 @@ describe('polish standards', () => {
     expect(ruleBody(/^@keyframes toast-out \{/m)).not.toMatch(/translateX/);
   });
 
+  it('steps a row in through one shared stagger, reduced motion honoured', () => {
+    // The UI/UX review's follow-up (2026-10-07): a row carries .stagger-in and
+    // its index, and one rule steps it by the token on the house rise.
+    const rule = ruleBody(/^\.stagger-in \{/m);
+    expect(rule).toMatch(/animation: stagger-in var\(--dur-\d\) var\(--ease-arrive\) backwards;/);
+    expect(rule).toMatch(/animation-delay: calc\(var\(--i, 0\) \* var\(--stagger\)\);/);
+    const stilled = cssBlocks().some(
+      (b) =>
+        b.prelude === '.stagger-in' &&
+        /animation: none/.test(b.body) &&
+        b.parents.some((p) => /prefers-reduced-motion: reduce/.test(p)),
+    );
+    expect(stilled).toBe(true);
+  });
+
   it('routes haptics through @capacitor/haptics, never navigator.vibrate', () => {
     const src = readFileSync(join(SRC, 'lib', 'haptics.ts'), 'utf8');
     expect(src.includes('@capacitor/haptics')).toBe(true);

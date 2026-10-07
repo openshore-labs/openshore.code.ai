@@ -40,6 +40,7 @@ import { engineChatReady } from '../state/firstRunOps.js';
 import { HARBOR_MASTER_MODEL_NAME } from '../lib/harborMaster.js';
 import { BackGlyph, CheckGlyph, ChevronGlyph, CloseGlyph } from './SheetGlyphs.js';
 import { Icon } from './Icon.js';
+import { thisDeviceNoun } from '../lib/deviceNoun.js';
 
 /** The desktop's free chat row, and the Local models sheet's words there. */
 export const DESKTOP_CHAT_ROW = 'Chat with this computer';
@@ -445,7 +446,7 @@ export function ModelSheet({
               {hasStack ? (
                 <Row
                   main="Stack"
-                  sub="Your Reasoning LLM picks which model answers"
+                  sub="Your Reasoning model routes each task"
                   selected={isCurrent({ kind: 'stack' })}
                   onClick={() => pick({ kind: 'stack' })}
                 />
@@ -671,7 +672,7 @@ export function ModelSheet({
               </div>
             ) : (
               <button className="ms-empty press-fb" onClick={() => goto('settings')}>
-                No coding model on this phone yet. Get Harbor in Settings.
+                No coding model on {thisDeviceNoun()} yet. Get Harbor in Settings.
               </button>
             )}
           </>

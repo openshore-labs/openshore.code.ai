@@ -4,6 +4,7 @@
 // in. Keep it tight and accurate to what the app actually does; when it
 // changes, both guides pick it up automatically.
 import { SHIPS_CURRENTS, SHIPS_LAUNCH, SHIPS_MARKETPLACE } from './focus.js';
+import { thisDeviceNoun } from './deviceNoun.js';
 
 // Release tiers (docs/release-tiers.md): facts about a later tier's feature
 // stay out of an earlier build, so a guide never sends a person to a room the
@@ -17,7 +18,7 @@ export const APP_KNOWLEDGE = [
   'FACTS ABOUT OPENSHORE (ground every answer in these; do not invent features):',
   '- What you may share: every front-end capability, feature, screen, and setup step is fair game, in as much depth as the person wants, so they can go deep on setting their system up. What you must never share: backend build internals, infrastructure, server code, or anything about how OpenShore is implemented under the hood. If asked about implementation, say plainly that you keep to what the person can see and do in the app.',
   '- OpenShore is a local-first coding assistant for your computer (Mac, Windows, or Linux) and the iPhone. You build a stack of models you own. Local models are the default; the cloud is a manual, opt-in flip.',
-  '- Stack (the room is named Stack): one model is the Reasoning LLM (the orchestrator) that plans, reasons, and routes each task. Optional specialists plug in under it by job: coding, writing, analysis, vision, retrieval, and fast. Anything with no specialist, the Reasoning LLM handles itself.',
+  '- Stack (the room is named Stack): one model is the Reasoning model (the orchestrator) that plans, reasons, and routes each task. Optional specialists plug in under it by job: coding, writing, analysis, vision, retrieval, and fast. Anything with no specialist, the Reasoning model handles itself.',
   ...(marketplaceOn
     ? [
         '- The Marketplace is where more models will live, downloaded straight from their public source; OpenShore never rehosts weights. It is marked Coming soon in the Menu for now. A downloaded or connected model lands on the Bench until placed in the stack.',
@@ -36,7 +37,7 @@ export const APP_KNOWLEDGE = [
         "- Very large cloud-scale models (Kimi from Moonshot, Claude, GPT-5, Gemini) do not run locally. Connect one by adding that provider's API key under Cloud Connections; it then runs on your own key, and only on a turn you send to it.",
       ]),
   `- Three curated models come out of the box${marketplaceOn ? ', never through the Marketplace' : ''}: Harbor Lite (built into the iPhone app, a guide), Harbor (a coding model that runs on the iPhone), and DeepBlue (the most capable, a real coding agent that runs on your own computer through Ollama, sized to that computer, installed from Settings > Harbor or the first-run card on your computer). Paired, the phone reaches DeepBlue as Your computer.`,
-  '- Three ways to grow the stack: (1) Harbor, the coding model that runs fully on this iPhone, private and offline, from Settings, Harbor. (2) Your computer: run OpenShore there and pair this phone to it over your own private Tailscale network, under Pairing. (3) Claude on your own API key: connect an Anthropic API key (and its Workspace id, if Claude asks for one) under Cloud Connections; spend always asks before it charges.',
+  `- Three ways to grow the stack: (1) Harbor, the coding model that runs fully on ${thisDeviceNoun()}, private and offline, from Settings, Harbor. (2) Your computer: run OpenShore there and pair ${thisDeviceNoun()} to it over your own private Tailscale network, under Pairing. (3) Claude on your own API key: connect an Anthropic API key (and its Workspace id, if Claude asks for one) under Cloud Connections; spend always asks before it charges.`,
   '- API keys and secrets stay on the device, scoped to the provider they belong to. There is no telemetry.',
   '- Once a stack is set up, OpenShore works like a familiar coding agent: talk to it and it does the work.',
   '- Prefab stacks: on your computer, Stack offers Start with a prefab stack, which fills the whole stack in one tap and shows its size and any graphics memory it needs.',

@@ -119,6 +119,10 @@ describe.each([
     expect(ratio('on-fill', 'hero-local-start', t)).toBeGreaterThanOrEqual(4.5);
     expect(ratio('on-fill', 'hero-local-end', t)).toBeGreaterThanOrEqual(4.5);
   });
+  it("a primary's label clears 4.5:1 on the accent, the Projects dock's too", () => {
+    // D8 (founder, 2026-10-07): the dock's New pill wears the primary's fill.
+    expect(ratio('accent-ink', 'accent', t)).toBeGreaterThanOrEqual(4.5);
+  });
   it("the selected segment's label clears 4.5:1 on its thumb", () => {
     expect(ratio('accent', 'seg-thumb', t)).toBeGreaterThanOrEqual(4.5);
   });
@@ -137,8 +141,18 @@ describe('the controls wear their edge', () => {
     expect(rule).toMatch(/background: var\(--surface\)/);
   });
   it('draws a switch at rest and a field border on the control edge', () => {
-    expect(CSS).toMatch(/\.switch \{[^}]*background: var\(--control-edge\)/);
+    // D21 (founder, 2026-10-07): the switch at rest is an outline, its 3:1
+    // edge drawn as an inset ring on a surface track, and on fills with the
+    // accent. The edge moved from the track's fill to its ring.
+    expect(CSS).toMatch(/\.switch \{[^}]*box-shadow: inset 0 0 0 1\.5px var\(--control-edge\)/);
+    expect(CSS).toMatch(/\.switch \{[^}]*background: var\(--surface\)/);
+    expect(CSS).toMatch(/\.switch\.on \{[^}]*background: var\(--accent\)/);
     expect(CSS).toMatch(/\.field input \{[^}]*border: 1px solid var\(--control-edge\)/);
+  });
+  it('puts the Projects dock on the accent, never an ink slab', () => {
+    const rule = CSS.match(/\.projects-dock-new \{[^}]*\}/)?.[0] ?? '';
+    expect(rule).toMatch(/background: var\(--accent\)/);
+    expect(rule).toMatch(/color: var\(--accent-ink\)/);
   });
   it("gives the hero's ghost a glass to read on, and its primary the hero's own water", () => {
     expect(CSS).toMatch(/\.cc-hero-actions \.btn\.ghost \{[^}]*background: color-mix\(/);

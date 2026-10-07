@@ -38,6 +38,9 @@
   /* A control's own edge (a switch's track at rest, a field's border): 3:1
      on every ground, the non-text contrast WCAG 1.4.11 asks of a control. */
   --control-edge: #7a858c;
+  /* The switch's knob: raised paper in light, warm paper in Nightshore, so it
+     holds on the outlined track at rest and on the accent when on. */
+  --switch-knob: var(--bg-raised);
 
   /* Ink: primary, secondary, faint. Straight from openshore.ai. */
   --ink: #1c2a33;
@@ -163,6 +166,27 @@
   --radius-lg: 20px;
   /* The composer only: a tall pill that still reads as a pill at two lines. */
   --radius-xl: 26px;
+
+  /* Spacing and depth (D22, founder 2026-10-07): the structural rhythm only,
+     each value the one the app already used most, so the look barely moves.
+     --gutter       the page's side gutter, and a sheet's padding (a sheet
+                    padded 18px against the page's 16px).
+     --card-pad     a card's inset, and the ledger's text line: a row's inline
+                    padding, its inset hairline and a section head share it.
+     --row-pad      a ledger row's block padding.
+     --section-gap  the step from one group to the next.
+     --elev-1..3    three depths: a resting card, a raised dock or toast, a
+                    sheet. Ink-tinted through --shadow-rgb, so they turn black
+                    in Nightshore, where the borders carry most of the depth.
+     Everything else keeps its own value; spacing-elevation.test.ts holds
+     the structural selectors to these. */
+  --gutter: 16px;
+  --card-pad: 14px;
+  --row-pad: 12px;
+  --section-gap: 22px;
+  --elev-1: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  --elev-2: 0 6px 18px rgba(var(--shadow-rgb), 0.1);
+  --elev-3: 0 1px 2px rgba(var(--shadow-rgb), 0.05), 0 12px 40px rgba(var(--shadow-rgb), 0.14);
 
   /* Type scale (brand sweep 2026-09-24): eight text steps and four display
      steps replace thirty-three ad-hoc sizes, and three weights replace eight.
@@ -291,6 +315,7 @@
     --border: #24424d;
     --border-strong: #2f5462;
     --control-edge: #63737c;
+    --switch-knob: var(--ink);
     --ink: #f6f4ef;
     --ink-soft: #a9bac0;
     --muted: #81949c;
@@ -343,6 +368,7 @@
   --border: #24424d;
   --border-strong: #2f5462;
   --control-edge: #63737c;
+  --switch-knob: var(--ink);
   --ink: #f6f4ef;
   --ink-soft: #a9bac0;
   --muted: #81949c;
@@ -3543,7 +3569,7 @@ button.vault-tag {
   --thread-gap: 18px;
   max-width: 792px;
   margin: 0 auto;
-  padding: 18px 16px 24px;
+  padding: 18px var(--gutter) 24px;
   display: flex;
   flex-direction: column;
   gap: var(--thread-gap);
@@ -3917,7 +3943,7 @@ button.vault-tag {
   background: var(--bg-raised);
   border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  box-shadow: var(--elev-1);
   animation: msg-in var(--dur-3) var(--ease-standard);
   /* On the card, not on .tool-card-flash, so the flash ring fades off as the
      class leaves instead of snapping away. */
@@ -4034,7 +4060,7 @@ button.vault-tag {
   background: var(--bg-raised);
   border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  box-shadow: var(--elev-1);
   animation: msg-in var(--dur-3) var(--ease-standard);
 }
 
@@ -4365,7 +4391,7 @@ button.vault-tag {
 
 .composer-wrap {
   flex-shrink: 0;
-  padding: 10px 16px calc(12px + var(--safe-bottom));
+  padding: 10px var(--gutter) calc(12px + var(--safe-bottom));
   background: linear-gradient(transparent, var(--bg) 30%);
 }
 
@@ -5914,10 +5940,8 @@ button.vault-tag {
   background: var(--bg-raised);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-  padding: 18px 18px calc(18px + var(--safe-bottom));
-  box-shadow:
-    0 -1px 2px rgba(var(--shadow-rgb), 0.05),
-    0 -12px 40px rgba(var(--shadow-rgb), 0.14);
+  padding: var(--gutter) var(--gutter) calc(var(--gutter) + var(--safe-bottom));
+  box-shadow: var(--elev-3);
   /* A sheet is a door from the bottom edge: it slides up solid on the glide
      over the door clock, the drawer's own motion turned ninety degrees
      (founder, 2026-09-03: "smooth and slow"). */
@@ -5948,10 +5972,8 @@ button.vault-tag {
 @media (min-width: 720px) {
   .sheet {
     border-radius: var(--radius-lg);
-    padding-bottom: 18px;
-    box-shadow:
-      0 1px 2px rgba(var(--shadow-rgb), 0.05),
-      0 18px 50px rgba(var(--shadow-rgb), 0.16);
+    padding-bottom: var(--gutter);
+    box-shadow: var(--elev-3);
     animation-name: sheet-rise;
     transition:
       transform var(--dur-7) var(--ease-glide),
@@ -6000,10 +6022,8 @@ button.vault-tag {
 }
 .sheet.top {
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
-  padding: calc(18px + var(--safe-top)) 18px 18px;
-  box-shadow:
-    0 1px 2px rgba(var(--shadow-rgb), 0.05),
-    0 12px 40px rgba(var(--shadow-rgb), 0.14);
+  padding: calc(var(--gutter) + var(--safe-top)) var(--gutter) var(--gutter);
+  box-shadow: var(--elev-3);
   animation-name: sheet-down;
   transition: transform var(--dur-7) var(--ease-glide);
 }
@@ -6087,42 +6107,43 @@ button.vault-tag {
    under the hairline scrolls, so the way out and the name of the sheet are
    always in view. The card itself is the scroller, so both are sticky. A
    sticky child stops at the card's padding edge, so each reaches up over the
-   card's 18px top padding (a negative margin, given back as padding) and pins
-   to the very top; the head's side shadows paint the gutters in the card's
-   own ground, so a row scrolling under never shows beside it while the
-   hairline stays inset. A top sheet (its grabber at the bottom) is short
-   and keeps its own shape. The grabber is 32px tall here (14 + 4 + 14), so a
-   head under it pins 32px down, 14px past the padding edge. */
+   card's top padding, one --gutter (a negative margin, given back as
+   padding), and pins to the very top; the head's side shadows paint the
+   gutters in the card's own ground, so a row scrolling under never shows
+   beside it while the hairline stays inset. A top sheet (its grabber at the
+   bottom) is short and keeps its own shape. The grabber is 32px tall here
+   (14 + 4 + 14), so a head under it pins 32px down, a gutter short of that
+   past the padding edge. */
 .sheet:not(.top) > .sheet-grabber {
   position: sticky;
-  top: -18px;
+  top: calc(-1 * var(--gutter));
   z-index: 3;
-  margin: -18px -18px 0;
+  margin: calc(-1 * var(--gutter)) calc(-1 * var(--gutter)) 0;
   padding: 14px 0;
   background: var(--bg-raised);
 }
 .sheet:not(.top) > .mode-head {
   position: sticky;
-  top: -18px;
+  top: calc(-1 * var(--gutter));
   z-index: 3;
-  margin-top: -18px;
-  padding-top: 18px;
+  margin-top: calc(-1 * var(--gutter));
+  padding-top: var(--gutter);
   background: var(--bg-raised);
   box-shadow:
-    -18px 0 0 var(--bg-raised),
-    18px 0 0 var(--bg-raised);
+    calc(-1 * var(--gutter)) 0 0 var(--bg-raised),
+    var(--gutter) 0 0 var(--bg-raised);
 }
 .sheet:not(.top) > .sheet-grabber + .mode-head {
-  top: 14px;
+  top: calc(32px - var(--gutter));
   margin-top: 0;
   padding-top: 0;
 }
 /* No grabber on a fine pointer (it is hidden above), so the head is the top. */
 @media (hover: hover) and (pointer: fine) {
   .sheet:not(.top) > .sheet-grabber + .mode-head {
-    top: -18px;
-    margin-top: -18px;
-    padding-top: 18px;
+    top: calc(-1 * var(--gutter));
+    margin-top: calc(-1 * var(--gutter));
+    padding-top: var(--gutter);
   }
 }
 
@@ -6344,10 +6365,10 @@ button.vault-tag {
 .screen-inner {
   max-width: 760px;
   margin: 0 auto;
-  padding: 20px 16px calc(28px + var(--safe-bottom));
+  padding: 20px var(--gutter) calc(28px + var(--safe-bottom));
   /* Keep content clear of a landscape notch (left/right safe areas). */
-  padding-left: max(16px, env(safe-area-inset-left));
-  padding-right: max(16px, env(safe-area-inset-right));
+  padding-left: max(var(--gutter), env(safe-area-inset-left));
+  padding-right: max(var(--gutter), env(safe-area-inset-right));
 }
 
 /* Extend small icon buttons to roughly a 44pt tap target without changing
@@ -6586,9 +6607,9 @@ button.vault-tag {
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 14px;
+  padding: var(--card-pad);
   margin-bottom: 12px;
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  box-shadow: var(--elev-1);
 }
 
 .card h3 {
@@ -7980,7 +8001,7 @@ button.vault-tag {
   text-wrap: balance;
   text-align: center;
   z-index: 80;
-  box-shadow: 0 10px 34px rgba(var(--shadow-rgb), 0.22);
+  box-shadow: var(--elev-2);
   animation: msg-in var(--dur-3) var(--ease-standard);
 }
 
@@ -8404,6 +8425,32 @@ button.vault-tag {
   }
 }
 
+/* The shared stagger (UI/UX review follow-up, 2026-10-07): a row that steps in
+   on arrival carries .stagger-in and its index inline (style --i: n, capped by
+   the caller so a long list never holds the eye), and arrives that many steps
+   behind the first on the house rise. A list with an entrance of its own keeps
+   its own rule; a new one takes this. The global reset above zeroes the delay,
+   and the rule below stills it. */
+.stagger-in {
+  animation: stagger-in var(--dur-5) var(--ease-arrive) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+@keyframes stagger-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stagger-in {
+    animation: none;
+  }
+}
+
 /* ---------------------------------------------------------------------------
    Marketplace. Creative Studio delight pass: osCodeFit as the verdict metric
    set apart above the capability lanes, true half-star tracks, one tinted
@@ -8582,7 +8629,7 @@ button.vault-tag {
 /* Card feel: rest shadow, hover lift, pressed scale, shore-edge accent. */
 .market-card {
   position: relative;
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  box-shadow: var(--elev-1);
   transition:
     transform var(--dur-3) var(--ease-standard),
     box-shadow var(--dur-3) var(--ease-standard);
@@ -8618,7 +8665,7 @@ button.vault-tag {
   background: var(--bg-raised);
   border-radius: var(--radius);
   padding: 14px;
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  box-shadow: var(--elev-1);
 }
 .preset-name {
   font-weight: var(--weight-semibold);
@@ -9086,7 +9133,7 @@ button.vault-tag {
   background: var(--bg-raised);
   border-radius: var(--radius-lg);
   padding: 16px;
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  box-shadow: var(--elev-1);
   transition:
     border-color var(--dur-3) var(--ease-standard),
     box-shadow var(--dur-3) var(--ease-standard);
@@ -11234,7 +11281,7 @@ button.vault-tag {
   color: var(--ink-soft);
   font-size: var(--text-3);
   font-weight: var(--weight-semibold);
-  box-shadow: 0 6px 18px rgba(var(--shadow-rgb), 0.12);
+  box-shadow: var(--elev-2);
   animation: jump-in var(--dur-5) var(--ease-arrive) backwards;
 }
 /* News below: the chip opens into a labelled pill in ink, so a reply that
@@ -12077,7 +12124,7 @@ button.vault-tag {
    sheet. Type carries the hierarchy; no icons. Groups arrive staggered.
    --------------------------------------------------------------------------- */
 .settings-group {
-  margin-top: 22px;
+  margin-top: var(--section-gap);
   animation: msg-in var(--dur-4) var(--ease-arrive) backwards;
   animation-delay: calc(var(--i, 0) * var(--dur-1) / 3);
 }
@@ -12091,14 +12138,14 @@ button.vault-tag {
   font-weight: var(--weight-semibold);
   color: var(--muted);
   letter-spacing: 0.01em;
-  /* On the rows' text line (the row's 14px inset), so a head, its intro and
-     its rows share one left edge. */
-  margin: 0 0 6px 14px;
+  /* On the rows' text line (the row's --card-pad inset), so a head, its
+     intro and its rows share one left edge. */
+  margin: 0 0 6px var(--card-pad);
 }
 /* A section head standing in a room's flow (no .settings-group around it)
-   carries the group's 22px step itself. */
+   carries the group's step itself. */
 .section-head {
-  margin-top: 22px;
+  margin-top: var(--section-gap);
 }
 .screen .lead + .section-head {
   margin-top: 4px;
@@ -12110,7 +12157,7 @@ button.vault-tag {
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  box-shadow: var(--elev-1);
   overflow: hidden;
 }
 .settings-row {
@@ -12119,7 +12166,7 @@ button.vault-tag {
   gap: 12px;
   width: 100%;
   min-height: 52px;
-  padding: 12px 14px;
+  padding: var(--row-pad) var(--card-pad);
   text-align: left;
   font: inherit;
   color: var(--ink);
@@ -12130,7 +12177,12 @@ button.vault-tag {
 .icon-picker + .settings-row {
   border-top: 1px solid var(--border);
   /* The hairline is inset from the left so rows read as one ledger. */
-  border-image: linear-gradient(to right, transparent 14px, var(--border) 14px) 1;
+  border-image: linear-gradient(
+      to right,
+      transparent var(--card-pad),
+      var(--border) var(--card-pad)
+    )
+    1;
 }
 
 /* A settings card's free-form block (an open field under its rows): Settings,
@@ -12139,9 +12191,14 @@ button.vault-tag {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 12px 14px 14px;
+  padding: var(--row-pad) var(--card-pad) var(--card-pad);
   border-top: 1px solid var(--border);
-  border-image: linear-gradient(to right, transparent 14px, var(--border) 14px) 1;
+  border-image: linear-gradient(
+      to right,
+      transparent var(--card-pad),
+      var(--border) var(--card-pad)
+    )
+    1;
 }
 .settings-block .field {
   margin-bottom: 0;
@@ -12381,21 +12438,30 @@ button.settings-row:active {
   text-wrap: pretty;
 }
 
-/* The switch: a track that tints, a knob that slides on transform. */
+/* The switch (D21, founder 2026-10-07): off is an outline, a quiet track
+   ringed on the control edge at 3:1, and on fills with the accent, so the
+   two read apart at a glance instead of by the knob's side. The knob carries
+   a hairline and a soft shadow so it holds on either track, and it slides on
+   transform. Disabled fades and flattens, so it never reads as off. */
 .switch {
   position: relative;
   flex-shrink: 0;
   width: 46px;
   height: 28px;
   border-radius: 999px;
-  background: var(--control-edge);
-  transition: background var(--dur-3) var(--ease-standard);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1.5px var(--control-edge);
+  transition:
+    background var(--dur-3) var(--ease-standard),
+    box-shadow var(--dur-3) var(--ease-standard);
 }
 .switch.on {
   background: var(--accent);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
 }
 .switch:disabled {
   opacity: var(--disabled-opacity);
+  cursor: not-allowed;
 }
 .switch-knob {
   position: absolute;
@@ -12404,12 +12470,17 @@ button.settings-row:active {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: var(--bg-raised);
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.18);
+  background: var(--switch-knob);
+  box-shadow:
+    0 0 0 0.5px rgba(var(--shadow-rgb), 0.22),
+    0 1px 3px rgba(var(--shadow-rgb), 0.2);
   transition: transform var(--dur-4) var(--ease-standard);
 }
 .switch.on .switch-knob {
   transform: translateX(18px);
+}
+.switch:disabled .switch-knob {
+  box-shadow: 0 0 0 0.5px rgba(var(--shadow-rgb), 0.22);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -12652,7 +12723,7 @@ button.settings-row:active {
    The Projects room, in the shape of the Claude app's project list: one flat
    list of rows (a small tile, the name, a quiet line), no cards, no hairlines,
    and a dock that floats at the foot of the room with a round search button
-   and a dark New project pill. Search turns the dock into one field: the two
+   and a New project pill on the accent. Search turns the dock into one field: the two
    layers sit on one grid cell and cross-fade on transform and opacity, so
    nothing mounts or snaps. The room is a column so the dock sits at the
    bottom even under a short list, and sticks there while a long one scrolls.
@@ -12760,8 +12831,9 @@ button.settings-row:active {
   width: 100%;
   max-width: 760px;
   margin: 0 auto;
-  padding: 18px max(16px, env(safe-area-inset-right)) calc(14px + var(--safe-bottom))
-    max(16px, env(safe-area-inset-left));
+  padding-block: 18px calc(14px + var(--safe-bottom));
+  padding-inline: max(var(--gutter), env(safe-area-inset-left))
+    max(var(--gutter), env(safe-area-inset-right));
   /* The list fades under the dock rather than meeting it at an edge. */
   background: linear-gradient(transparent, var(--bg) 42%);
   pointer-events: none;
@@ -12802,8 +12874,12 @@ button.settings-row:active {
   color: var(--ink);
   background: var(--bg-raised);
   border: 1px solid var(--border);
-  box-shadow: 0 6px 18px rgba(var(--shadow-rgb), 0.1);
+  box-shadow: var(--elev-2);
 }
+/* The persistent create action (D8, founder 2026-10-07) wears the accent, the
+   primary's colour, in its Claude shape and place: deep water in light,
+   turquoise with abyss text in Nightshore, never a paper slab on a dark
+   screen. Ink means text only. The project room's New chat pill shares it. */
 .projects-dock-new {
   display: inline-flex;
   align-items: center;
@@ -12813,9 +12889,9 @@ button.settings-row:active {
   border-radius: 999px;
   font-size: var(--text-5);
   font-weight: var(--weight-semibold);
-  color: var(--bg);
-  background: var(--ink);
-  box-shadow: 0 6px 18px rgba(var(--shadow-rgb), 0.18);
+  color: var(--accent-ink);
+  background: var(--accent);
+  box-shadow: var(--elev-2);
 }
 .projects-dock-field {
   flex: 1;
@@ -12829,7 +12905,7 @@ button.settings-row:active {
   color: var(--muted);
   background: var(--bg-raised);
   border: 1px solid var(--border);
-  box-shadow: 0 6px 18px rgba(var(--shadow-rgb), 0.1);
+  box-shadow: var(--elev-2);
 }
 .projects-dock-field:focus-within {
   color: var(--accent);
@@ -13007,8 +13083,9 @@ button.settings-row:active {
   width: 100%;
   max-width: 760px;
   margin: 0 auto;
-  padding: 18px max(16px, env(safe-area-inset-right)) calc(14px + var(--safe-bottom))
-    max(16px, env(safe-area-inset-left));
+  padding-block: 18px calc(14px + var(--safe-bottom));
+  padding-inline: max(var(--gutter), env(safe-area-inset-left))
+    max(var(--gutter), env(safe-area-inset-right));
   background: linear-gradient(transparent, var(--bg) 42%);
   pointer-events: none;
 }
@@ -13109,7 +13186,7 @@ button.settings-row:active {
   color: var(--muted);
 }
 .stack-status-note {
-  margin: 8px 14px 0;
+  margin: 8px var(--card-pad) 0;
   font-size: var(--text-2);
   color: var(--muted);
   line-height: 1.4;
@@ -13243,7 +13320,7 @@ button.settings-row:active {
   border-radius: var(--radius);
   background: var(--bg-raised);
   border: 1px solid var(--border);
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  box-shadow: var(--elev-1);
   animation: msg-in var(--dur-4) var(--ease-arrive) backwards;
 }
 .vault-how-item:nth-child(1) {
@@ -13654,7 +13731,7 @@ button.settings-row:active {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  box-shadow: var(--elev-1);
 }
 .cc-row {
   display: flex;
@@ -13675,7 +13752,7 @@ button.settings-row:active {
   border: 1px solid var(--attention-soft);
   border-radius: var(--radius);
   margin-bottom: 8px;
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  box-shadow: var(--elev-1);
 }
 .cc-row-main {
   flex: 1;
@@ -13726,7 +13803,7 @@ button.settings-row:active {
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  box-shadow: var(--elev-1);
   transition: border-color var(--dur-4) var(--ease-standard);
 }
 .cc-member.working {
@@ -14147,7 +14224,7 @@ button.settings-row:active {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  box-shadow: var(--elev-1);
 }
 .cc-dormant-item {
   display: flex;
@@ -14656,7 +14733,7 @@ button.settings-row:active {
   padding: 2px 7px;
 }
 .settings-group-intro {
-  margin: -2px 14px 8px;
+  margin: -2px var(--card-pad) 8px;
   font-size: var(--text-2);
   color: var(--muted);
   line-height: 1.4;

@@ -42,6 +42,7 @@ import { resolveStarter } from '../lib/starterModel.js';
 import { HARBOR_MASTER_MODEL_NAME, harborMasterSizeLine } from '../lib/harborMaster.js';
 import { HARBOR_MINI_MODEL_ID } from '../lib/harborMini.js';
 import { HARBOR_APPROX_LABEL, HARBOR_MODEL_NAME } from '../lib/harbor.js';
+import { thisDeviceNoun } from '../lib/deviceNoun.js';
 
 export function FirstSeat({
   fallback,
@@ -183,7 +184,7 @@ export function FirstSeat({
         <p className="first-seat-line" style={{ '--i': 1 } as React.CSSProperties}>
           {desktop
             ? 'A private coding partner that runs on your own computer. Free, and yours.'
-            : 'A private coding partner that runs on this phone. Free, and yours.'}
+            : `A private coding partner that runs on ${thisDeviceNoun()}. Free, and yours.`}
         </p>
         <div
           className="first-seat-card"

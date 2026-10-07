@@ -155,7 +155,7 @@ export type AgentEvent =
   | { type: 'todos'; items: TodoItem[] }
   // Plan mode: the model's proposed plan, awaiting the person's go-ahead.
   | { type: 'plan-proposed'; text: string }
-  // The plan-first flow (app): the reasoning LLM needs the person to settle the
+  // The plan-first flow (app): the reasoning model needs the person to settle the
   // framing before it draws the play. Rendered as a picker; the reply is folded
   // back in and re-framed. Free text is always allowed alongside the options.
   | {

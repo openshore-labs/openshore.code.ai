@@ -1,11 +1,11 @@
-// The app-side Stack model: the user's Reasoning LLM (the anchor, required and
+// The app-side Stack model: the user's Reasoning model (the anchor, required and
 // immovable) plus categorized specialists, with a Bench of models that are
 // available but not yet placed. This mirrors the engine's capability taxonomy
 // (os-code/src/router/roles.ts) so the app and the router speak the same
 // categories, and adds what the engine does not yet carry: a per-specialist
 // persona, a free-text "when called" trigger, and a Custom category.
 //
-// The Reasoning LLM plans and routes each task to the specialist whose category
+// The Reasoning model plans and routes each task to the specialist whose category
 // fits, and executes the task itself whenever no specialist is placed for it.
 import { HARBOR_MINI_MODEL_ID, HARBOR_MINI_MODEL_NAME } from './harborMini.js';
 import { PROVIDERS, providerModelVision } from './providers.js';
@@ -20,7 +20,7 @@ export interface CategoryInfo {
   id: StackCategory;
   /** Plain label the user picks from the dropdown. */
   plain: string;
-  /** One line describing when the Reasoning LLM calls this specialist. */
+  /** One line describing when the Reasoning model calls this specialist. */
   hint: string;
 }
 
@@ -208,7 +208,7 @@ export function stackForProfile(stacks: ProfileStacks | undefined, profile: Prof
   return stacks?.[profile] ?? emptyStack();
 }
 
-/** A fresh stack: Harbor Lite is the first Reasoning LLM (kept small so
+/** A fresh stack: Harbor Lite is the first Reasoning model (kept small so
  *  first-run download size and time stay low), nothing placed yet. */
 export function emptyStack(): AppStack {
   return { reasoning: harborRef(), active: [], saved: {} };

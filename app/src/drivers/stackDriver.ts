@@ -643,7 +643,7 @@ export class StackDriver implements ChatDriver {
   }
 
   /** Pick the model for this turn: a placed specialist if reachable, else the
-   *  Reasoning LLM, else any reachable model. */
+   *  Reasoning model, else any reachable model. */
   private route(text: string): {
     ref: StackModelRef;
     placement?: Placement;
@@ -1224,7 +1224,7 @@ export class StackDriver implements ChatDriver {
   }
 
   /** Describe the crew this chat can draw on. "auto" members may be consulted
-   *  by the Reasoning LLM on its own; "request" members wait to be named. */
+   *  by the Reasoning model on its own; "request" members wait to be named. */
   private crewGuidance(): string | undefined {
     const crew = this.context.crew ?? [];
     if (!crew.length) return undefined;
@@ -1298,7 +1298,7 @@ export class StackDriver implements ChatDriver {
     }
 
     // Plan-first flow: for a text-only turn (no build-tool loop) on a stack
-    // with someone to hand off to, the reasoning LLM frames the request and
+    // with someone to hand off to, the reasoning model frames the request and
     // composes a play, or answers a simple request itself in the same call
     // (B2). A stack with only its anchor (and no docked workspace) has no one
     // to hand off to, so it skips the framing call and answers in one. It
@@ -1543,7 +1543,7 @@ export class StackDriver implements ChatDriver {
 
   // ---- plan-first orchestration -------------------------------------------
 
-  /** Frame the prompt with the reasoning LLM and, when it is clear and needs
+  /** Frame the prompt with the reasoning model and, when it is clear and needs
    *  more than one model, run the play. A clear request the lead would do
    *  alone in one step is answered in that same call (B2): its prose streams
    *  as the answer, so a simple message costs one model call. Returns true
@@ -1718,7 +1718,7 @@ export class StackDriver implements ChatDriver {
         }
       }
 
-      // Hybrid re-plan: after a wave, let the reasoning LLM revise what remains,
+      // Hybrid re-plan: after a wave, let the reasoning model revise what remains,
       // bounded so a run cannot loop forever.
       if (done.size < play.steps.length && replans < MAX_REPLANS) {
         replans++;

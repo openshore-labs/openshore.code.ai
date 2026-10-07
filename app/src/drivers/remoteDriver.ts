@@ -27,6 +27,7 @@ import type {
 } from './types.js';
 import { HUB_NO_ANSWER, PackLocalOnlyMarker } from './types.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
+import { thisDeviceNoun } from '../lib/deviceNoun.js';
 
 export { HUB_NO_ANSWER };
 export type { HubLinkState };
@@ -586,7 +587,9 @@ export class RemoteDriver implements ChatDriver {
           { headers: headers(this.target), signal: this.abortStream.signal },
         );
         if (res.status === 401 || res.status === 403) {
-          this.emitTerminal('Your computer rejected this phone. Pair again from Menu, Pairing.');
+          this.emitTerminal(
+            `Your computer rejected ${thisDeviceNoun()}. Pair again from Menu, Pairing.`,
+          );
           return;
         }
         if (res.status === 404) {

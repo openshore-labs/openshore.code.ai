@@ -22,6 +22,7 @@ import { SheetHead } from '../components/SheetHead.js';
 import { ReplaceSharedKey } from '../components/ReplaceSharedKey.js';
 import { hubStatusLine, onLinux } from '../lib/hubStatus.js';
 import { PlusNote } from '../components/PlusNote.js';
+import { thisDeviceNoun } from '../lib/deviceNoun.js';
 
 // Each platform's page title, said once for its h1 and the bar it tucks into,
 // so the bar shows the same words that scrolled away. The nav row keeps the
@@ -649,7 +650,7 @@ function PhonePair() {
 
         <PlusNote
           feature="pairing"
-          line="Reaching your computer from this phone is part of OpenShore Plus: chats with its models, coding, and its shell. Chat on this phone stays free."
+          line={`Reaching your computer from ${thisDeviceNoun()} is part of OpenShore Plus: chats with its models, coding, and its shell. Chat on ${thisDeviceNoun()} stays free.`}
         />
 
         {!paired ? (

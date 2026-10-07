@@ -1,7 +1,7 @@
 # How OpenShore runs a prompt: the harness, the game plan, and the play
 
 OpenShore turns a prompt into a run the way a coach runs a play. Stack is the
-anchor. The reasoning LLM frames the request, draws up a play (an ordered set of
+anchor. The reasoning model frames the request, draws up a play (an ordered set of
 handoffs to the specialist models, with dependencies), shows you a brief, and
 runs it. This is the single, explicit workflow the app is built around.
 
@@ -10,7 +10,7 @@ runs it. This is the single, explicit workflow the app is built around.
 ```mermaid
 flowchart TD
   P[User prompt] --> H[Harness: always-on filters<br/>ethics, plus skills / markdowns / vault]
-  H --> F{Reasoning LLM<br/>frames the request}
+  H --> F{Reasoning model<br/>frames the request}
   F -- ambiguous --> Q[Ask clarifying questions<br/>the picker]
   Q --> F
   F -- clear --> PLAY[Compose the play:<br/>ordered handoffs with dependencies]
@@ -20,27 +20,27 @@ flowchart TD
   S1 --> RP{Re-plan?<br/>bounded checkpoint}
   RP -- revise --> RUN
   RP -- continue --> S1
-  RUN --> SYN[Reasoning LLM synthesizes<br/>the final answer, streamed]
+  RUN --> SYN[Reasoning model synthesizes<br/>the final answer, streamed]
 ```
 
 **Stage 0, setup.** A chat or project connects to its repos and inherits its
 markdowns and instructions. Stack for the current status (Offline / Offshore
-/ Docked) is loaded: the reasoning LLM (required; Harbor Light by default, which
+/ Docked) is loaded: the reasoning model (required; Harbor Light by default, which
 nudges you to install a real one) plus its specialist categories.
 
 **Stage 1, the harness.** Every prompt flows through the hybrid harness:
 always-on filters (ethics) plus curatable ones (skills, preset markdowns, the
 vault). Ethics can never be turned off; the rest you curate.
 
-**Stage 2, framing.** The reasoning LLM reads the prompt and frames it. It asks
+**Stage 2, framing.** The reasoning model reads the prompt and frames it. It asks
 clarifying questions only when a wrong assumption would waste real work; most
 prompts are clear and run straight through. Your answers fold back in and it
 re-frames.
 
-**Stage 3, the play.** Once clear, the reasoning LLM composes the play: an
+**Stage 3, the play.** Once clear, the reasoning model composes the play: an
 ordered list of steps, each owned by a category (or a specific model, see
 below), with dependencies so a coding step can feed a writing step that feeds a
-vision step. Any category with no placed specialist is run by the reasoning LLM
+vision step. Any category with no placed specialist is run by the reasoning model
 itself.
 
 **Stage 4, the brief.** Before it runs, you see the play as a short checklist,
@@ -48,14 +48,14 @@ each step with its owner (the model that will run it), updated live. Crisp, no
 more than the play needs.
 
 **Stage 5, run.** Steps run in dependency order. Each hands off to its owner;
-results pass forward. At bounded checkpoints the reasoning LLM can re-plan the
+results pass forward. At bounded checkpoints the reasoning model can re-plan the
 remaining steps if a result changed the picture (the hybrid model). The final
-answer is composed by the reasoning LLM and streamed to you.
+answer is composed by the reasoning model and streamed to you.
 
 **A level deeper.** Beyond the standard categories, a step can name a specific
 model to run it, so a particular subject or decision goes to a particular model.
 Place that model in the stack (a Custom specialist with a "when it is called"
-trigger is the simplest way), and the reasoning LLM can target it by id when it
+trigger is the simplest way), and the reasoning model can target it by id when it
 draws up the play.
 
 ## Where it runs
@@ -74,7 +74,7 @@ still just works.
 
 ## The clarifying-question picker
 
-When the framing is ambiguous the reasoning LLM asks in a card with tappable
+When the framing is ambiguous the reasoning model asks in a card with tappable
 option chips; tapping one sends it as the reply, and typing a free answer works
 too. The reply is folded back into the framing and it re-frames. Rendered from a
 `clarify` driver event through the message list (`ClarifyCard`).

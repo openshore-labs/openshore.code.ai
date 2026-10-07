@@ -13,6 +13,7 @@
 // pages, coming back), and ChatScreen renders the buttons.
 
 import type { PermissionMode } from './permissionMode.js';
+import { thisDeviceNoun } from './deviceNoun.js';
 
 export type SetupStepId = 'harbor' | 'computer' | 'repo' | 'key';
 
@@ -101,7 +102,7 @@ export const STEP_COPY: Record<SetupStepId, SetupStepCopy> = {
   harbor: {
     title: 'Get Harbor',
     what: 'Harbor is a coding model, Qwen3 4B Instruct, that runs right here on your iPhone.',
-    why: "I'm a guide. Harbor does the real work: it writes and explains code right on this phone, even in airplane mode, and searches the web when you're online.",
+    why: `I'm a guide. Harbor does the real work: it writes and explains code right on ${thisDeviceNoun()}, even in airplane mode, and searches the web when you're online.`,
     how: "Tap Get Harbor. It downloads straight from its source, about 2.5 GB, a few minutes on wifi. It keeps going in the background while we set up the rest, and I'll tell you when it's ready and how to switch to it.",
     action: 'Get Harbor',
     ask: 'Tell me more about Harbor before I download it.',
@@ -109,7 +110,7 @@ export const STEP_COPY: Record<SetupStepId, SetupStepCopy> = {
   },
   computer: {
     title: 'Connect your computer',
-    what: 'Pair this phone with OpenShore on your own computer, over your private Tailscale network.',
+    what: `Pair ${thisDeviceNoun()} with OpenShore on your own computer, over your private Tailscale network.`,
     why: 'Your computer runs bigger models and works on your code. It does the heavy lifting, so your battery lasts, and a long answer keeps going even when you close the app.',
     how: 'Install Tailscale on both devices and sign in to the same account (free for personal use). On your computer, open OpenShore, then Pairing. The QR is there (if it says Off, tap Turn on). Tap Connect your computer here and scan it. I will bring you back here once you are connected.',
     action: 'Connect your computer',
