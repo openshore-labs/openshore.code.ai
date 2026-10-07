@@ -19,9 +19,12 @@ import {
   buildToolRegistry,
   lazyVaultPrivacy,
   networkToolsLeftOut,
+  offlineCut,
   vaultPrivacyConfig,
   type ToolRegistryOptions,
 } from './registry.js';
+import { machineOffline, type MachineOffline } from './offline.js';
+import { isLocalUrl } from '../security/egress.js';
 import { createVaultContextSource, currentStateReader } from '../vault/contextSource.js';
 import { AgentSession } from './loop.js';
 import { seedHistoryFromEvents, unresolvedApprovalIds } from './seed.js';
@@ -176,6 +179,13 @@ export interface BootstrapOptions {
    *  applies to new chats. Undefined leaves the config in charge. Folded
    *  into the config by `applyVaultOverrides`. */
   vaultOverrides?: VaultOverrides;
+  /** This computer's offline state, read before every turn (Desktop Offline,
+   *  founder 2026-10-07). Not a per-session choice from a client: it is the
+   *  computer's own state, which the desktop's main process sets, so every
+   *  session this process hosts (the desktop's own, and a paired phone's
+   *  through the daemon) reads the one machine flag. Defaults to it
+   *  (machineOffline); a test hands in its own. */
+  offline?: () => MachineOffline;
 }
 
 /**
@@ -316,7 +326,11 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   const providers = new ProviderRegistry(config, getAnthropicKey, ethics);
   const stack = resolveStack(config, providers);
   warnings.push(...stack.notes);
-  const router = new Router(config, providers, stack);
+  // This computer's offline flag, read live (Desktop Offline): the router
+  // skips a seat off this network while it says offline, and the loop
+  // follows it before every turn.
+  const offline = options.offline ?? machineOffline;
+  const router = new Router(config, providers, stack, { offline: () => offline().offline });
 
   // The project's secrets reach the model ONLY when the orchestrator is a local
   // model (gateProjectSecrets). A cloud orchestrator never receives them (they
@@ -371,6 +385,12 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   };
   const tools = buildToolRegistry(registryOptions);
   const offlineTools = networkToolsLeftOut(registryOptions);
+  // What leaves the menu while this computer is offline: the same network
+  // tools, and making an image when the image server is off this network.
+  const cutWhenOffline = offlineCut({
+    ...registryOptions,
+    imageServerLeaves: Boolean(config.imageGen && !isLocalUrl(config.imageGen.baseUrl)),
+  });
   const toolContext = buildToolContext({
     cwd: options.cwd,
     config,
@@ -379,6 +399,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     projectName,
     egressLockdown,
     vault: vaultRoot !== null,
+    offline: () => offline().offline,
     // The caller's own root replaces the machine's. The privacy rules are the
     // machine's (projectPolicy classes them machine) unioned with that root's
     // own settings file, which only narrows (Vault M7, CTO L4).
@@ -566,6 +587,8 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     harnessCurrents: egressLockdown ? undefined : harnessCurrents,
     permissionMode: options.permissionMode,
     ...(offlineTools.length ? { offlineTools } : {}),
+    offline,
+    ...(cutWhenOffline.length ? { offlineCut: cutWhenOffline } : {}),
     ...(options.canGrantVerify === false ? { canGrantVerify: false } : {}),
     vaultContext,
     ...(handoffOn ? { onHandoff: (record) => void writeHandoff(handoffScope(), record) } : {}),

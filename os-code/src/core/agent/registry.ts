@@ -45,6 +45,7 @@ import { todoWriteTool } from '../tools/todoWrite.js';
 import { loadVaultDir } from '../../config/load.js';
 import type { Router } from '../../router/router.js';
 import type { ProviderRegistry } from '../../providers/registry.js';
+import { leavesThisNetwork } from '../../providers/types.js';
 import { RepoIndex, keywordSearch } from '../../context/index.js';
 
 /** What decides which tools a session registers. */
@@ -156,6 +157,23 @@ export function networkToolsLeftOut(options: ToolRegistryOptions): string[] {
   return [...networkTools({ ...options, webSearch: true }), ...modelHandoffTools(options)]
     .map((t) => t.name)
     .filter((name) => !(keepsSearch && name === webSearchTool.name));
+}
+
+/**
+ * The tools a session takes off its menu while this computer is offline
+ * (Desktop Offline, founder 2026-10-07), by name: the network tools of the
+ * routine's offline slice (web search, opening pages, Codemagic, the
+ * currents), and making an image when the image server is off this network.
+ * webSearch is named even when declined, so a call to it is refused by name.
+ * A handoff to a specialist or a vision seat stays: the router keeps it on a
+ * model on this network, by address, or says nothing can take it.
+ */
+export function offlineCut(
+  options: ToolRegistryOptions & { imageServerLeaves?: boolean },
+): string[] {
+  const names = networkTools({ ...options, webSearch: true }).map((t) => t.name);
+  if (options.stackHasImageGen && options.imageServerLeaves) names.push(generateImageTool.name);
+  return names;
 }
 
 export function buildToolRegistry(options: ToolRegistryOptions): ToolRegistry {
@@ -409,6 +427,10 @@ export function buildToolContext(options: {
   /** This session's own vault root in place of the machine's (a member's on
    *  a shared hub, CTO J8). Ignored when `vault` is off. */
   vaultRoot?: string;
+  /** Whether this computer is offline now (Desktop Offline): repo search
+   *  then keeps to the keyword index when the embedder is off this network,
+   *  rather than failing on a request that cannot leave. */
+  offline?: () => boolean;
 }): ToolContext {
   const { cwd, config, router, providers, projectName, egressLockdown } = options;
   const egress = new EgressPolicy(config.egress, { localExempt: webLocalExempt(config) });
@@ -425,7 +447,9 @@ export function buildToolContext(options: {
       providers.embedder(embeddingRole.ref.provider),
       embeddingRole.ref.model,
     );
+    const embedderLeaves = leavesThisNetwork(embeddingRole.provider);
     searchRepo = async (query, k) => {
+      if (embedderLeaves && options.offline?.()) return keywordSearch(cwd, query, k);
       await index.refresh();
       const hits = await index.search(query, k);
       return hits || keywordSearch(cwd, query, k);

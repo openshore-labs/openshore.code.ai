@@ -2,7 +2,7 @@
 // Editable on the desktop; the phone shows the live picture from the daemon.
 import { InstallByName } from '../components/InstallByName.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { DaemonStackInfo } from 'os-code/protocol';
+import { rankLocalModels, type DaemonStackInfo } from 'os-code/protocol';
 import { stackAdmin, useApp } from '../state/store.js';
 import { bridge, type DesktopStatus } from '../lib/electronBridge.js';
 import { isDesktop } from '../lib/platform.js';
@@ -19,6 +19,13 @@ import { SheetHead } from '../components/SheetHead.js';
 import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
 import { STACK_CATEGORIES, STACK_LEAD, categoryLabel, type StackCategory } from '../lib/stack.js';
 import { thisDeviceNoun } from '../lib/deviceNoun.js';
+import { StatusSheet } from '../components/ProfileStatus.js';
+import {
+  desktopStackNote,
+  offlineChosen,
+  offlineNow,
+  reasoningSlotSub,
+} from '../state/offlineOps.js';
 
 // The engine's specialist roles, named in the phone Stack's words.
 const ROLES: StackCategory[] = ['coding', 'writing', 'analysis', 'vision', 'embedding', 'fast'];
@@ -31,7 +38,16 @@ function pickerModels(models: string[], current: string | undefined): string[] {
 }
 
 export function StackScreen() {
-  const { settings, showToast, setView, ensureHarborMaster, harborMasterDownload } = useApp();
+  const { settings, connectivity, showToast, setView, ensureHarborMaster, harborMasterDownload } =
+    useApp();
+  // Desktop Offline (founder, 2026-10-07): the phone's quiet door under its
+  // status note, here in this computer's words. It offers Offline while
+  // online, and the way back once Offline is chosen; a connection that simply
+  // dropped is already Offline, with the lone pill in the bar.
+  const [statusOpen, setStatusOpen] = useState(false);
+  const offline = offlineNow(connectivity, settings.profileOverride);
+  const chosen = offlineChosen(connectivity, settings.profileOverride);
+  const stepDown = !settings.daemon && (settings.profileOverride === 'offline' || !offline);
   const [status, setStatus] = useState<DesktopStatus | undefined>();
   const [remote, setRemote] = useState<DaemonStackInfo | undefined>();
   const [pickFor, setPickFor] = useState<string | undefined>(); // 'orchestrator' or a role
@@ -216,6 +232,24 @@ export function StackScreen() {
         <h1 ref={titleRef}>Stack</h1>
         <p className="lead">{STACK_LEAD}</p>
 
+        <div className="stack-status">
+          <p className="stack-status-note" role="status">
+            {desktopStackNote(offline, chosen)}
+          </p>
+          {stepDown ? (
+            <button
+              type="button"
+              className="linklike press-fb stack-status-change"
+              onClick={() => setStatusOpen(true)}
+            >
+              {settings.profileOverride === 'offline' ? 'Follow the connection' : 'Choose Offline'}
+            </button>
+          ) : null}
+        </div>
+        {!settings.daemon ? (
+          <StatusSheet open={statusOpen} onClose={() => setStatusOpen(false)} />
+        ) : null}
+
         {!orchestrator ? prefabs : null}
 
         <SettingsGroup title="Runs the show" index={1}>
@@ -231,7 +265,11 @@ export function StackScreen() {
             }
             sub={
               orchestrator
-                ? 'Reasoning model · Plans every task and routes it.'
+                ? reasoningSlotSub(
+                    offline,
+                    orchestrator.kind === 'cloud',
+                    rankLocalModels(status?.ollama.models ?? []).length,
+                  )
                 : unanswered
                   ? undefined
                   : 'Pick a model to run the show.'

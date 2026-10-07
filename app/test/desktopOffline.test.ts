@@ -1,0 +1,271 @@
+// Desktop Offline (founder, 2026-10-07): "Desktop app can use offline when
+// there is no internet and it needs to use just the local models, where the
+// cloud connections are no longer viable options for work." The app's half,
+// pinned without Electron: main's network watch (Electron's own read and the
+// person's choice, one reason for the engine), the bridge and the IPC that
+// carry it, the engine host that sets the engine's one machine flag, the
+// Status sheet's words on the computer itself, and the plain lines every room
+// says while cloud models wait. No em dash in any of them.
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { NetworkWatch, offlineReason } from '../electron/networkWatch.js';
+import {
+  CLOUD_SHEET_OFFLINE,
+  CLOUD_WAITS,
+  LOCAL_MODEL_READY,
+  cloudWaitLine,
+  connectionsOfflineLine,
+  desktopOnline,
+  desktopStackNote,
+  installLocalDoor,
+  keyCheckWaits,
+  networkUp,
+  offlineChosen,
+  offlineNow,
+  reasoningSlotSub,
+  reportDesktopOffline,
+  usablePick,
+} from '../src/state/offlineOps.js';
+import { profileBlurb, profileUnavailable } from '../src/lib/profiles.js';
+
+const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), 'utf8');
+
+// The engine host below runs in a throwaway engine home, never the real one.
+process.env.OSC_HOME = mkdtempSync(join(tmpdir(), 'osc-home-offline-'));
+const EM_DASH = String.fromCharCode(0x2014);
+const NO_EM_DASH = new RegExp([EM_DASH, '&' + 'mdash;', '&#x' + '2014;', '&#' + '8212;'].join('|'));
+
+describe("main's network watch", () => {
+  it('no network wins over a choice; a choice alone is chosen; else online', () => {
+    expect(offlineReason(false, false)).toBe('network');
+    expect(offlineReason(false, true)).toBe('network');
+    expect(offlineReason(true, true)).toBe('chosen');
+    expect(offlineReason(true, false)).toBeUndefined();
+  });
+
+  it('tells the engine only on a change, and the window when the network flips', () => {
+    let online = true;
+    const apply = vi.fn();
+    const notify = vi.fn();
+    const watch = new NetworkWatch({ isOnline: () => online, apply, notify });
+    expect(watch.tick()).toEqual({ online: true, offline: false });
+    expect(apply).toHaveBeenCalledTimes(1);
+    expect(apply).toHaveBeenLastCalledWith(undefined);
+    watch.tick();
+    expect(apply).toHaveBeenCalledTimes(1);
+
+    online = false;
+    expect(watch.tick()).toEqual({ online: false, offline: true, reason: 'network' });
+    expect(apply).toHaveBeenLastCalledWith('network');
+    expect(notify).toHaveBeenLastCalledWith(false);
+
+    online = true;
+    watch.tick();
+    expect(apply).toHaveBeenLastCalledWith(undefined);
+    expect(notify).toHaveBeenLastCalledWith(true);
+  });
+
+  it("the person's choice reaches the engine at once, and back", () => {
+    const apply = vi.fn();
+    const watch = new NetworkWatch({ isOnline: () => true, apply, notify: () => {} });
+    expect(watch.choose(true)).toEqual({ online: true, offline: true, reason: 'chosen' });
+    expect(apply).toHaveBeenLastCalledWith('chosen');
+    expect(watch.choose(false)).toEqual({ online: true, offline: false });
+    expect(apply).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it('a read that throws counts as online, so a quirk never strands the person', () => {
+    const watch = new NetworkWatch({
+      isOnline: () => {
+        throw new Error('not ready');
+      },
+      apply: () => {},
+      notify: () => {},
+    });
+    expect(watch.tick().online).toBe(true);
+  });
+});
+
+describe('the wiring: main, the preload and the bridge', () => {
+  const main = read('electron', 'main.ts');
+  const preload = read('electron', 'preload.cjs');
+  const bridgeTypes = read('src', 'lib', 'electronBridge.ts');
+
+  it('main reads Electron net, polls, rereads on wake, and takes only a boolean', () => {
+    expect(main).toMatch(/isOnline: \(\) => net\.isOnline\(\)/);
+    expect(main).toMatch(/apply: \(reason\) => host\.setOffline\(reason\)/);
+    expect(main).toMatch(/webContents\.send\('osc:network', \{ online \}\)/);
+    expect(main).toMatch(
+      /guarded\('osc:setOffline', \(chosen: unknown\) => network\.choose\(bool\(chosen\)\)\)/,
+    );
+    expect(main).toMatch(/setInterval\(\(\) => network\.tick\(\), 3000\)/);
+    expect(main).toMatch(/powerMonitor\.on\('resume', \(\) => network\.tick\(\)\)/);
+  });
+
+  it('the preload and the typed bridge carry the choice and the network', () => {
+    expect(preload).toContain("setOffline: invoke('osc:setOffline')");
+    expect(preload).toContain("onNetwork: listen('osc:network')");
+    expect(bridgeTypes).toMatch(/setOffline\?\(chosen: boolean\): Promise<DesktopOfflineAnswer>/);
+    expect(bridgeTypes).toMatch(/onNetwork\?\(cb: \(payload: \{ online: boolean \}\) => void\)/);
+  });
+});
+
+describe("the engine host sets the engine's one machine flag", () => {
+  afterEach(async () => {
+    const { setMachineOffline } = await import('os-code/dist/src/core/agent/offline.js');
+    setMachineOffline(undefined);
+  });
+
+  it('every session this process hosts reads what main set', async () => {
+    const { EngineHost } = await import('../electron/engineHost.js');
+    const { machineOffline } = await import('os-code/dist/src/core/agent/offline.js');
+    const host = new EngineHost(
+      () => {},
+      () => {},
+      () => {},
+      { tailscale: () => ({ running: false, ip: undefined }) },
+    );
+    expect(host.setOffline('network')).toEqual({ offline: true, reason: 'network' });
+    expect(machineOffline()).toEqual({ offline: true, reason: 'network' });
+    host.setOffline(undefined);
+    expect(host.offline()).toEqual({ offline: false });
+    host.disposeAll();
+  });
+
+  it("status judges the orchestrator's kind by address, never by a label", () => {
+    const host = read('electron', 'engineHost.ts');
+    expect(host).toMatch(/leavesThisNetwork\(providers\.get\(orchestratorId\)\)/);
+    expect(host).not.toMatch(
+      /kind: \(config\.providers\[stackConfig\.orchestrator\.provider\]\?\.kind === 'anthropic'/,
+    );
+  });
+});
+
+describe('what counts as offline here', () => {
+  const up = { homeReachable: false, online: true };
+  const down = { homeReachable: false, online: false };
+
+  it('the connection or the choice, one rule for every room', () => {
+    expect(offlineNow(up)).toBe(false);
+    expect(offlineNow(down)).toBe(true);
+    expect(offlineNow(up, 'offline')).toBe(true);
+    expect(offlineChosen(up, 'offline')).toBe(true);
+    // A dropped connection is the connection's Offline, chosen or not.
+    expect(offlineChosen(down, 'offline')).toBe(false);
+    // Before the store has read the connection, it is taken as up.
+    expect(offlineNow(undefined)).toBe(false);
+    expect(networkUp(undefined)).toBe(true);
+    expect(networkUp(down)).toBe(false);
+  });
+
+  it("the window's read and main's both count", () => {
+    expect(desktopOnline(true, undefined)).toBe(true);
+    expect(desktopOnline(true, false)).toBe(false);
+    expect(desktopOnline(false, true)).toBe(false);
+  });
+
+  it("reports the choice to main and takes main's read back; no bridge, no read", async () => {
+    const setOffline = vi.fn(async (chosen: boolean) => ({
+      online: false,
+      offline: true,
+      ...(chosen ? {} : { reason: 'network' as const }),
+    }));
+    expect(await reportDesktopOffline({ setOffline }, true)).toBe(false);
+    expect(setOffline).toHaveBeenCalledWith(true);
+    expect(await reportDesktopOffline(undefined, true)).toBeUndefined();
+    expect(await reportDesktopOffline({}, false)).toBeUndefined();
+    const failing = { setOffline: async () => Promise.reject(new Error('gone')) };
+    expect(await reportDesktopOffline(failing, false)).toBeUndefined();
+  });
+
+  it('a new chat never starts on a cloud pick while offline', () => {
+    const cloud = { kind: 'cloud' as const, provider: 'anthropic', model: 'claude-x' };
+    expect(usablePick(cloud, true)).toBeUndefined();
+    expect(usablePick(cloud, false)).toEqual(cloud);
+    expect(usablePick({ kind: 'desktop' }, true)).toEqual({ kind: 'desktop' });
+  });
+});
+
+describe('the Status sheet on the computer itself', () => {
+  it('Docked says it is not used here; Offshore waits for a connection', () => {
+    expect(profileBlurb('docked', true, true)).toBe(
+      'For your phone, when it reaches this computer. Not used here.',
+    );
+    expect(profileUnavailable('docked', false, true, true)).toBe('');
+    expect(profileBlurb('offshore', true, true)).toBe(
+      "Online. Cloud models and this computer's models.",
+    );
+    expect(profileUnavailable('offshore', false, true, true)).toBe(' Waits for a connection.');
+    expect(profileBlurb('offline', true, true)).toBe(
+      "Only this computer's models. Cloud models wait for a connection.",
+    );
+    // A phone keeps its own words.
+    expect(profileUnavailable('docked', false, true)).toBe(' Not reachable right now.');
+    expect(profileBlurb('offline', true)).toBe('No connection. Only the models on this device.');
+  });
+});
+
+describe('the lines each room says', () => {
+  it('true on the desktop and a phone, plain, no em dash, never hub', () => {
+    const lines = [
+      CLOUD_WAITS,
+      CLOUD_SHEET_OFFLINE,
+      LOCAL_MODEL_READY,
+      cloudWaitLine('Opus 5', false, 'this computer'),
+      cloudWaitLine('Opus 5', true, 'this phone'),
+      connectionsOfflineLine(false),
+      connectionsOfflineLine(true),
+      desktopStackNote(false, false),
+      desktopStackNote(true, false),
+      desktopStackNote(true, true),
+      keyCheckWaits('Claude'),
+      profileBlurb('docked', true, true),
+    ];
+    for (const line of lines) {
+      expect(line, line).not.toMatch(NO_EM_DASH);
+      expect(line, line).not.toMatch(/\bhub\b/i);
+    }
+    expect(cloudWaitLine('Opus 5', false, 'this computer')).toBe(
+      'Offline, so Opus 5 waits for a connection. Choose a model on this computer to keep going, or try again once you are online.',
+    );
+    expect(desktopStackNote(true, false)).toMatch(/Cloud models wait for a connection\.$/);
+    expect(connectionsOfflineLine(false)).toMatch(/wait for a connection/);
+    expect(keyCheckWaits('Claude')).toBe(
+      'Saving checks the key with Claude, so it waits for a connection.',
+    );
+  });
+
+  it("the Stack's reasoning slot says a cloud model waits, and who answers meanwhile", () => {
+    expect(reasoningSlotSub(false, true, 0)).toBe(
+      'Reasoning model · Plans every task and routes it.',
+    );
+    expect(reasoningSlotSub(true, false, 0)).toBe(
+      'Reasoning model · Plans every task and routes it.',
+    );
+    expect(reasoningSlotSub(true, true, 1)).toBe(
+      'Reasoning model · Waits for a connection. A model on this computer answers for now.',
+    );
+    expect(reasoningSlotSub(true, true, 0)).toMatch(/No model on this computer can answer yet\.$/);
+  });
+
+  it('the install door: desktop only, only with the network up, its words follow the download', () => {
+    expect(installLocalDoor({ desktop: false, networkUp: true })).toBeUndefined();
+    expect(installLocalDoor({ desktop: true, networkUp: false })).toBeUndefined();
+    expect(installLocalDoor({ desktop: true, networkUp: true })).toEqual({
+      label: 'Install DeepBlue',
+      busy: false,
+    });
+    expect(
+      installLocalDoor({ desktop: true, networkUp: true, download: { label: '42%' } }),
+    ).toEqual({ label: 'Getting DeepBlue, 42%', busy: true });
+    expect(
+      installLocalDoor({
+        desktop: true,
+        networkUp: true,
+        download: { label: 'Could not get it.', failed: true },
+      }),
+    ).toEqual({ label: 'Install DeepBlue', busy: false });
+  });
+});

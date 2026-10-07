@@ -26,7 +26,7 @@ import {
 } from '../lib/harborMini.js';
 import { bridge, type DesktopStatus } from '../lib/electronBridge.js';
 import { daemonStack } from '../drivers/remoteDriver.js';
-import type { DaemonStackInfo } from 'os-code/protocol';
+import { rankLocalModels, type DaemonStackInfo } from 'os-code/protocol';
 import {
   CLAUDE_MODELS_PRIMARY,
   CLAUDE_MODELS_MORE,
@@ -41,6 +41,7 @@ import { HARBOR_MASTER_MODEL_NAME } from '../lib/harborMaster.js';
 import { BackGlyph, CheckGlyph, ChevronGlyph, CloseGlyph } from './SheetGlyphs.js';
 import { Icon } from './Icon.js';
 import { thisDeviceNoun } from '../lib/deviceNoun.js';
+import { CLOUD_SHEET_OFFLINE, CLOUD_WAITS, offlineNow } from '../state/offlineOps.js';
 
 /** The desktop's free chat row, and the Local models sheet's words there. */
 export const DESKTOP_CHAT_ROW = 'Chat with this computer';
@@ -71,6 +72,17 @@ function RowContent({
         </span>
       ) : null}
     </>
+  );
+}
+
+/** A cloud model while offline (Desktop Offline): shown, so the person sees
+ *  what waits, but not a pick, and in the muted ink of a row that cannot be
+ *  tapped, with no spend mark. */
+function WaitingRow({ main }: { main: string }) {
+  return (
+    <div className="ms-row ms-row-disabled" aria-disabled="true">
+      <RowContent main={main} sub={CLOUD_WAITS} />
+    </div>
   );
 }
 
@@ -181,7 +193,11 @@ export function ModelSheet({
     setView,
     sourceReady,
     harborDownload,
+    connectivity,
   } = useApp();
+  // Offline (the connection's or the person's choice), cloud models wait for
+  // a connection: listed, never picked (Desktop Offline, founder 2026-10-07).
+  const offline = offlineNow(connectivity, settings.profileOverride);
   const [stage, setStage] = useState<'root' | 'effort' | 'cloud' | 'local' | 'more'>(initialStage);
   // Play the exit before a pick propagates (UI-4): the parent unmounts this
   // sheet the moment it learns the choice, so the choice is held until the
@@ -249,6 +265,19 @@ export function ModelSheet({
     desktopStatus && desktopStatus !== 'error' && engineChatReady(desktopStatus)
       ? desktopStatus.stack.orchestrator?.model
       : undefined;
+  // Offline with a cloud model running the show, this computer's engine
+  // answers on its own best model (the engine's offline seat), or, with
+  // none installed, cannot answer yet.
+  const engineCloudOffline =
+    offline &&
+    desktopStatus !== undefined &&
+    desktopStatus !== 'error' &&
+    desktopStatus.stack.orchestrator?.kind === 'cloud';
+  const engineOfflineEmpty =
+    engineCloudOffline && rankLocalModels(desktopStatus.ollama.models).length === 0;
+  const engineSub = engineCloudOffline
+    ? 'Offline, so a model on this computer answers for now'
+    : `${engineModel}, running on this computer`;
 
   // The same signal the send path checks, so a stack built after the per-profile
   // stacks landed is pickable. The old read looked at the retired single-stack
@@ -328,11 +357,20 @@ export function ModelSheet({
                       <span className="ms-row-sub">Checking this computer...</span>
                     </span>
                   </div>
+                ) : engineModel && engineOfflineEmpty ? (
+                  <div className="ms-row ms-row-disabled" aria-disabled="true">
+                    <span className="ms-row-text">
+                      <span className="ms-row-main">This computer</span>
+                      <span className="ms-row-sub">
+                        Offline, and no model on this computer can answer yet.
+                      </span>
+                    </span>
+                  </div>
                 ) : engineModel ? (
                   <>
                     <Row
                       main="This computer"
-                      sub={`${engineModel}, running on this computer`}
+                      sub={engineSub}
                       selected={isCurrent({ kind: 'desktop' })}
                       onClick={() => pick({ kind: 'desktop' })}
                     />
@@ -462,7 +500,8 @@ export function ModelSheet({
                 // A favorite whose model is not set up any more (its key was
                 // removed, its download deleted) is shown quiet and honest, not
                 // offered as a pick that would only toast "not ready".
-                const ready = sourceReady(src);
+                const waits = offline && src.kind === 'cloud';
+                const ready = sourceReady(src) && !waits;
                 return (
                   <SwipeRow
                     key={pinKey(src)}
@@ -473,7 +512,13 @@ export function ModelSheet({
                     <div className={`ms-row${ready ? '' : ' ms-row-disabled'}`}>
                       <RowContent
                         main={pinLabel(src)}
-                        sub={ready ? pinSub(src) : 'Not set up on this device right now'}
+                        sub={
+                          ready
+                            ? pinSub(src)
+                            : waits
+                              ? CLOUD_WAITS
+                              : 'Not set up on this device right now'
+                        }
                       />
                       {ready && isCurrent(src) ? <RowCheck /> : null}
                       <PinStar pinned onToggle={() => setPin(src)} />
@@ -484,7 +529,12 @@ export function ModelSheet({
             </div>
 
             <div className="ms-group">
-              <Row main="Cloud models" chevron onClick={() => setStage('cloud')} />
+              <Row
+                main="Cloud models"
+                sub={offline ? CLOUD_WAITS : undefined}
+                chevron
+                onClick={() => setStage('cloud')}
+              />
               <Row main="Local models" chevron onClick={() => setStage('local')} />
             </div>
 
@@ -527,11 +577,13 @@ export function ModelSheet({
               </button>
             ) : (
               <>
+                {offline ? <p className="ms-note">{CLOUD_SHEET_OFFLINE}</p> : null}
                 {claudeReady ? (
                   <>
                     <div className="ms-heading">Claude</div>
                     <div className="ms-group">
                       {CLAUDE_MODELS_PRIMARY.map((m) => {
+                        if (offline) return <WaitingRow key={m.id} main={m.label} />;
                         const src: ConversationSource = {
                           kind: 'cloud',
                           provider: 'anthropic',
@@ -561,6 +613,7 @@ export function ModelSheet({
                     <div className="ms-heading">{p.name}</div>
                     <div className="ms-group">
                       {p.models.map((m) => {
+                        if (offline) return <WaitingRow key={m.id} main={m.label} />;
                         const src: ConversationSource = {
                           kind: 'cloud',
                           provider: p.id,
@@ -592,9 +645,11 @@ export function ModelSheet({
         {stage === 'more' ? (
           <>
             <Header title="More models" />
+            {offline ? <p className="ms-note">{CLOUD_SHEET_OFFLINE}</p> : null}
             <div className="ms-heading">Claude</div>
             <div className="ms-group">
               {CLAUDE_MODELS_MORE.map((m) => {
+                if (offline) return <WaitingRow key={m.id} main={m.label} />;
                 const src: ConversationSource = {
                   kind: 'cloud',
                   provider: 'anthropic',

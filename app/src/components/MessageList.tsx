@@ -26,6 +26,7 @@ import { restampForSkip, type InkStamp } from '../lib/inkSwell.js';
 import { hapticCommit, hapticTick } from '../lib/haptics.js';
 import { offersLocalFallback } from '../lib/usageFallback.js';
 import { isFailedStop, isSetupFailure, pointsAtConnections } from '../lib/chatRescue.js';
+import { offlineNeedsLocalModel } from 'os-code/protocol';
 import { Markdown } from './Markdown.js';
 import { ToolCard } from './ToolCard.js';
 import { CommandCard } from './CommandCard.js';
@@ -301,6 +302,7 @@ export function MessageList({
   onDismissTrust,
   onGiveMoreRoom,
   onOpenStack,
+  onInstallLocal,
   onUnqueue,
   onOpenPackNote,
   onSaveHandoff,
@@ -337,6 +339,10 @@ export function MessageList({
   onGiveMoreRoom?: (itemId: string) => void;
   /** Open the Stack room (the truncation card, with no memory to spare). */
   onOpenStack?: () => void;
+  /** Desktop Offline: offline with no model on this computer, the stop's one
+   *  door gets DeepBlue (absent while it cannot start, such as with no
+   *  network); `label` is its words, the download's progress once it runs. */
+  onInstallLocal?: { label: string; busy: boolean; run: () => void };
   /** Answer a clarifying question (the plan-first picker): sends the reply. */
   onClarifyPick?: (text: string) => void;
   /** Drop a queued message (tap on its bubble). */
@@ -661,9 +667,22 @@ export function MessageList({
                 <div key={item.id} className="msg-stopped">
                   {item.message}
                   <div className="msg-stopped-actions">
-                    {/* Every failed turn leaves a way to keep talking: carry the
-                        chat to a brain that can answer, or pick one. */}
-                    {isFailedStop(item.message) && isLatest && onRescue && rescueLabel ? (
+                    {/* Offline with no model on this computer (Desktop
+                        Offline): the one door is a model that answers here. */}
+                    {offlineNeedsLocalModel(item.message) ? (
+                      isLatest && onInstallLocal ? (
+                        <button
+                          type="button"
+                          className="msg-stopped-action press-fb"
+                          disabled={onInstallLocal.busy}
+                          onClick={onInstallLocal.run}
+                        >
+                          {onInstallLocal.label}
+                        </button>
+                      ) : null
+                    ) : /* Every failed turn leaves a way to keep talking: carry
+                        the chat to a brain that can answer, or pick one. */
+                    isFailedStop(item.message) && isLatest && onRescue && rescueLabel ? (
                       <button
                         type="button"
                         className="msg-stopped-action press-fb"

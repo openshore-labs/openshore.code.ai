@@ -53,10 +53,35 @@ export const PROFILES: Record<ProfileId, ProfileInfo> = {
  *  the Connect your computer door's words) and Offshore does not speak of a
  *  computer that is out of reach. Callers pass paired = isDesktop() || Boolean(settings.daemon),
  *  because on the desktop the device is the computer. */
-export function profileBlurb(id: ProfileId, paired: boolean): string {
+export function profileBlurb(id: ProfileId, paired: boolean, home = false): string {
+  if (home) return HOME_BLURB[id];
   if (!paired && id === 'docked') return "Your computer's models, once you connect it.";
   if (!paired && id === 'offshore') return "Online. Cloud models and this device's models.";
   return PROFILES[id].blurb;
+}
+
+/** The blurbs on the computer itself (Desktop Offline, founder 2026-10-07):
+ *  the desktop app is the computer, so Docked, a device reaching it, does not
+ *  apply here and says so, and the others speak of this computer's models. */
+const HOME_BLURB: Record<ProfileId, string> = {
+  docked: 'For your phone, when it reaches this computer. Not used here.',
+  offshore: "Online. Cloud models and this computer's models.",
+  offline: "Only this computer's models. Cloud models wait for a connection.",
+};
+
+/** Why a status cannot be picked right now, after its blurb, or '' when it
+ *  can. On the computer itself Docked's blurb already says why, and Offshore
+ *  waits for the connection; elsewhere a connected computer is out of reach.
+ *  Before a computer is connected nothing is added (its blurb says enough). */
+export function profileUnavailable(
+  id: ProfileId,
+  canPick: boolean,
+  paired: boolean,
+  home = false,
+): string {
+  if (canPick) return '';
+  if (home) return id === 'offshore' ? ' Waits for a connection.' : '';
+  return paired ? ' Not reachable right now.' : '';
 }
 
 /** Whether the reach pill shows in the top bar (founder, 2026-10-07, D1 built

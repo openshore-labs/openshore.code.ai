@@ -3,6 +3,11 @@
 // anything downloads.
 import { spawn } from 'node:child_process';
 import type { CatalogModel } from './schema.js';
+import { machineOffline } from '../core/agent/offline.js';
+
+/** A pull asked for while this computer has no network (Desktop Offline):
+ *  one plain line instead of the model server's own error about a lookup. */
+export const OFFLINE_DOWNLOAD = 'Offline. Models download once your computer is back online.';
 
 export interface InstallProgress {
   /** The raw status line, e.g. "pulling manifest" or "downloading". */
@@ -64,6 +69,9 @@ export async function installOllamaRef(
 ): Promise<{ ok: boolean; detail: string }> {
   const clean = ref.trim();
   if (!clean) return { ok: false, detail: 'Enter an Ollama model name, for example qwen3:8b.' };
+  // The desktop's main process set the machine flag for no network: the pull
+  // could only fail, so say why plainly (a chosen Offline still downloads).
+  if (machineOffline().reason === 'network') return { ok: false, detail: OFFLINE_DOWNLOAD };
   const baseUrl = (options.baseUrl ?? 'http://localhost:11434').replace(/\/$/, '');
   const viaApi = await pullViaApi(clean, baseUrl, onProgress);
   if (viaApi) return viaApi;

@@ -5015,6 +5015,14 @@ button.vault-tag {
   color: var(--muted);
   margin: 0 0 6px 6px;
 }
+/* Desktop Offline: the cloud sheet's one quiet line above the models that
+   wait for a connection. */
+.ms-note {
+  font-size: var(--text-3);
+  color: var(--muted);
+  line-height: 1.4;
+  margin: 0 6px 12px;
+}
 .ms-row {
   display: flex;
   align-items: center;
@@ -7418,6 +7426,13 @@ button.vault-tag {
    list's footer, a short beat below the card and on the rows' text edge. */
 .connections-foot {
   margin: 8px var(--card-pad) 0;
+}
+/* Desktop Offline: the one quiet line that its models wait for a connection,
+   between the lead and the providers. */
+.connections-offline {
+  margin: 0 var(--card-pad) 14px;
+  line-height: 1.4;
+  text-wrap: pretty;
 }
 
 /* Repositories' connect sheet, when a one-tap sign-in was refused: the

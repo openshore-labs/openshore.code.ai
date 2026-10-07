@@ -9,6 +9,8 @@ import {
   Menu,
   nativeImage,
   nativeTheme,
+  net,
+  powerMonitor,
   powerSaveBlocker,
   safeStorage,
   shell,
@@ -123,6 +125,7 @@ import {
   type UpdaterState,
 } from './updateState.js';
 import { ChatStreams } from './chatStream.js';
+import { NetworkWatch } from './networkWatch.js';
 import { bundleOf, newestMacUpdate, type ReleaseAsset, type ReleaseInfo } from './updateVersion.js';
 import { rolledBackVersion, updateMacInPlace, writeLaunchMarker } from './macUpdate.js';
 import { installIfVerified, type DownloadedUpdate } from './releaseVerify.js';
@@ -539,6 +542,20 @@ const host = new EngineHost(
   (payload) => win?.webContents.send('osc:terminal-data', payload),
 );
 
+// Desktop Offline (founder, 2026-10-07): this computer is offline when it has
+// no network (Electron's net.isOnline(), no request made) or the person chose
+// Offline. Main owns it, so it holds with the window closed and the hub
+// serving a phone: every change reaches the engine's one machine flag, which
+// each session reads before its next turn, and a network change reaches the
+// window so its pill flips as promptly. Polled every few seconds, and read
+// again on wake and on each report from the window.
+const network = new NetworkWatch({
+  isOnline: () => net.isOnline(),
+  apply: (reason) => host.setOffline(reason),
+  notify: (online) => win?.webContents.send('osc:network', { online }),
+});
+guarded('osc:setOffline', (chosen: unknown) => network.choose(bool(chosen)));
+
 // ------------------------------------------------------------ the second key
 // The renderer is untrusted (UI-6), so its approval card is only one key. An
 // action that cannot be taken back, or that runs something on this computer,
@@ -714,6 +731,12 @@ function startLifecyclePolls(): void {
     });
   }, 15_000);
   rebind.unref();
+  // Desktop Offline: the connection, read every few seconds (no request is
+  // made), and again the moment the computer wakes.
+  network.tick();
+  const offline = setInterval(() => network.tick(), 3000);
+  offline.unref();
+  powerMonitor.on('resume', () => network.tick());
 }
 
 // Launch at login, opt-in from the Pairing screen. Electron's login item covers

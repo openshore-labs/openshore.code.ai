@@ -156,6 +156,14 @@ import {
   providerSecretKey,
 } from '../lib/providers.js';
 import { claudeModelLabel } from '../lib/claudeModels.js';
+import {
+  cloudWaitLine,
+  desktopOnline,
+  offlineChosen,
+  offlineNow,
+  reportDesktopOffline,
+} from './offlineOps.js';
+import { thisDeviceNoun } from '../lib/deviceNoun.js';
 import { isSetupFailure, rescueSource } from '../lib/chatRescue.js';
 import { CloudClaudeDriver, DEFAULT_CLAUDE_MODEL } from '../drivers/cloudClaudeDriver.js';
 import { CloudOpenAiDriver } from '../drivers/cloudOpenAiDriver.js';
@@ -1455,6 +1463,10 @@ let outboxSyncing = false;
 // Serialize repo reconcile passes: the boot check and a reconnect can otherwise
 // fire at once and push the same clones twice.
 let reconcilingRepos = false;
+// Desktop Offline (founder, 2026-10-07): main's own read of the network
+// (Electron's net.isOnline()), undefined until main has answered. The window's
+// navigator.onLine and this both count (state/offlineOps.ts desktopOnline).
+let mainNetOnline: boolean | undefined;
 // Chats whose repositories changed while their driver held the old list (an
 // on-device model and the Stack take it at build). The next send, between
 // turns, rebuilds that driver from the transcript so the new list and the
@@ -2092,8 +2104,11 @@ interface AppState {
   removeHarbor(): Promise<void>;
   /** Desktop only. Pull the DeepBlue size that fits this computer through
    *  the engine (Ollama) and seat it as the Reasoning model. Returns success. An
-   *  install already running returns false without starting another. */
-  ensureHarborMaster(): Promise<boolean>;
+   *  install already running returns false without starting another. With
+   *  `seat: false` it is pulled and left unseated: the offline door (Desktop
+   *  Offline) gives this computer a model to answer offline without moving
+   *  the person's own pick off the Reasoning model. */
+  ensureHarborMaster(opts?: { seat?: boolean }): Promise<boolean>;
   /** First-run: start Harbor Lite's download and open the LLM Library intro. */
   beginHarborMiniWithIntro(): void;
   /** First-run: start Harbor's download and open the LLM Library intro. */
@@ -2978,6 +2993,30 @@ export const useApp = create<AppState>((set, get, api) => {
     text: string,
     attachments?: Attachment[],
   ): void {
+    // Desktop Offline: a cloud chat waits while this device is offline (or
+    // Offline is chosen). The send ends here with its plain line, never a
+    // request that cannot leave or should not, and the stop card's doors
+    // carry on from it (Choose another model, Try again).
+    const waiting = offlineCloudWait(conversationId);
+    if (waiting) {
+      set((state) => {
+        const c = state.conversations[conversationId];
+        if (!c || c.thread.busy) return state;
+        const started = reduceEvent(c.thread, { type: 'task-start', input: text });
+        const thread = reduceEvent(started, {
+          type: 'task-done',
+          reason: 'error',
+          message: waiting,
+        });
+        return {
+          conversations: {
+            ...state.conversations,
+            [conversationId]: { ...c, thread, updatedAt: new Date().toISOString() },
+          },
+        };
+      });
+      return;
+    }
     const paint = isRemote(driver) || driver.kind !== 'desktop';
     if (paint) {
       set((state) => {
@@ -2994,6 +3033,24 @@ export const useApp = create<AppState>((set, get, api) => {
       });
     }
     driver.send(text, attachments);
+  }
+
+  /** The line a cloud chat's send ends with while this device is offline,
+   *  or undefined when it may go (Desktop Offline). */
+  function offlineCloudWait(conversationId: string): string | undefined {
+    const s = get();
+    const source = s.conversations[conversationId]?.source;
+    if (source?.kind !== 'cloud') return undefined;
+    if (!offlineNow(s.connectivity, s.settings.profileOverride)) return undefined;
+    const name =
+      source.provider === 'anthropic'
+        ? claudeModelLabel(source.model)
+        : providerModelLabel(source.provider, source.model);
+    return cloudWaitLine(
+      name,
+      offlineChosen(s.connectivity, s.settings.profileOverride),
+      isDesktop() ? 'this computer' : thisDeviceNoun(),
+    );
   }
 
   /** A driver build's failure in plain words: a hub that did not answer in
@@ -9109,6 +9166,12 @@ export const useApp = create<AppState>((set, get, api) => {
         });
         window.addEventListener('offline', () => void get().refreshConnectivity());
         setInterval(() => void get().refreshConnectivity(), 20000);
+        // Desktop Offline: main watches the network too (Electron's own read,
+        // which holds with the window closed), and says when it changes.
+        bridge()?.onNetwork?.((p) => {
+          mainNetOnline = p.online;
+          void get().refreshConnectivity();
+        });
       }
 
       // On every app open, check for local project work that never reached the
@@ -9156,7 +9219,18 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async refreshConnectivity() {
-      const online = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      let online = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      // Desktop Offline: the person's choice reaches this computer's engine
+      // on every refresh (main sets its one machine flag), and main's own
+      // read of the network counts beside the window's.
+      if (isDesktop()) {
+        const main = await reportDesktopOffline(
+          bridge(),
+          get().settings.profileOverride === 'offline',
+        );
+        if (main !== undefined) mainNetOnline = main;
+        online = desktopOnline(online, mainNetOnline);
+      }
       let homeReachable = false;
       const daemon = get().settings.daemon;
       if (daemon && online) {
@@ -9220,6 +9294,9 @@ export const useApp = create<AppState>((set, get, api) => {
     async setProfileOverride(profile) {
       await get().saveSettings({ profileOverride: profile });
       logEvent('profile_override', { profile: profile ?? 'auto' });
+      // On the desktop the choice is this computer's engine's too (Desktop
+      // Offline): the refresh reports it to main, which tells every session.
+      if (isDesktop()) await get().refreshConnectivity();
     },
 
     openConnections(providerId) {
@@ -11614,7 +11691,7 @@ export const useApp = create<AppState>((set, get, api) => {
       }
     },
 
-    async ensureHarborMaster() {
+    async ensureHarborMaster(opts) {
       // The desktop's own model lives in the engine config, not in an app-side
       // stack ref, so this is the Stack screen's one-tap starter as a store
       // action: the size is resolved against this computer with the engine's
@@ -11665,19 +11742,25 @@ export const useApp = create<AppState>((set, get, api) => {
       try {
         const pulled = await b.installModel(size.catalogId);
         if (!pulled.ok) throw new Error(pulled.detail);
-        set({ harborMasterDownload: { percent: 100, label: 'Seating', indeterminate: true } });
-        const seated = await b.setOrchestrator(size.ollamaRef);
-        if (!seated.ok) throw new Error(seated.detail);
+        if (opts?.seat !== false) {
+          set({ harborMasterDownload: { percent: 100, label: 'Seating', indeterminate: true } });
+          const seated = await b.setOrchestrator(size.ollamaRef);
+          if (!seated.ok) throw new Error(seated.detail);
+        }
         await get().refreshDesktopStatus();
         logEvent('harbor_master_ready', { size: size.ollamaRef });
         set({ harborMasterDownload: undefined });
         return true;
       } catch (err) {
+        // With no network the download cannot start: one plain line, never
+        // the model server's own error (Desktop Offline).
+        const noNetwork = typeof navigator !== 'undefined' && navigator.onLine === false;
         set({
           harborMasterDownload: {
             percent: 0,
-            label:
-              err instanceof Error && err.message
+            label: noNetwork
+              ? `Offline. ${HARBOR_MASTER_MODEL_NAME} downloads once you are back online.`
+              : err instanceof Error && err.message
                 ? err.message
                 : `Could not get ${HARBOR_MASTER_MODEL_NAME}.`,
             failed: true,
