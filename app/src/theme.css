@@ -715,6 +715,13 @@ textarea {
   font-weight: var(--weight-medium);
   color: var(--muted);
 }
+/* A long project name in "Recents in ..." truncates on one line. */
+.sidebar-recents-head > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .sidebar-recent {
   height: 34px;
@@ -922,13 +929,24 @@ textarea {
   transition: background var(--dur-1) var(--ease-standard);
 }
 
+/* The drawer's rows reach the 44pt touch minimum; the desktop keeps 38px. */
+.sidebar.drawer .nav-item {
+  padding-block: 12px;
+}
+
 @media (hover: hover) {
   .nav-item:hover {
-    background: var(--surface);
+    background: color-mix(in srgb, var(--surface) 55%, transparent);
   }
 }
 
+/* The current room is a filled row (and aria-current), so it reads by more
+   than colour; its glyph carries the accent. */
 .nav-item.active {
+  background: var(--surface);
+  color: var(--ink);
+}
+.nav-item.active .glyph {
   color: var(--accent);
 }
 
@@ -6326,10 +6344,10 @@ button.vault-tag {
 
 /* The rows settle in on entry, each a beat behind the last, the same
    easeOutQuint the greeting and splash use. Capped so a long list never holds
-   the eye; --stagger is set inline per row. */
+   the eye; --i is set inline per row and steps by --stagger. */
 .chat-group > .swipe-row {
   animation: chat-row-in var(--dur-5) var(--ease-arrive) backwards;
-  animation-delay: var(--stagger, 0ms);
+  animation-delay: calc(var(--i, 0) * var(--stagger));
 }
 
 @keyframes chat-row-in {
@@ -12124,15 +12142,6 @@ button.settings-row:active {
   }
 }
 
-/* Onboarding: the quiet divider that marks the "go further" tier under the
-   Harbor Mini hero card, so four cards read as one front door and a second
-   tier, not five equal choices. */
-.paths-further-head {
-  margin: 16px 2px 2px;
-  font-size: var(--text-3);
-  font-weight: var(--weight-semibold);
-  color: var(--muted);
-}
 .settings-row-value {
   flex-shrink: 0;
   font-size: var(--text-4);
@@ -12330,7 +12339,7 @@ button.settings-row:active {
 .chat-list .chat-swipe {
   border-bottom: none;
   animation: chat-row-in var(--dur-5) var(--ease-arrive) backwards;
-  animation-delay: var(--stagger, 0ms);
+  animation-delay: calc(var(--i, 0) * var(--stagger));
 }
 .chat-list .swipe-fore {
   background: var(--bg);
@@ -12356,7 +12365,7 @@ button.settings-row:active {
 }
 .access-row {
   animation: chat-row-in var(--dur-5) var(--ease-arrive) backwards;
-  animation-delay: var(--stagger, 0ms);
+  animation-delay: calc(var(--i, 0) * var(--stagger));
 }
 .access-row.leaving {
   animation: access-row-out var(--dur-3) var(--ease-accel) forwards;
@@ -12375,18 +12384,6 @@ button.settings-row:active {
   }
 }
 
-/* The two context cards wear a small teal eyebrow so the person reads them as
-   what feeds the chat, not as buried settings. */
-.project-eyebrow {
-  display: block;
-  font-size: var(--text-1);
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--accent);
-  opacity: 0.85;
-  margin-bottom: 3px;
-}
 .project-instructions {
   margin-top: 10px;
   padding: 12px 14px;
@@ -12545,7 +12542,7 @@ button.settings-row:active {
 .projects-empty-title {
   margin: 0 0 6px;
   font-family: var(--font-display);
-  font-size: var(--text-6);
+  font-size: var(--text-7);
   font-weight: var(--weight-medium);
   color: var(--ink);
 }
@@ -12794,7 +12791,7 @@ button.settings-row:active {
   vertical-align: middle;
 }
 .project-chat-sub {
-  font-size: var(--text-4);
+  font-size: var(--text-3);
   color: var(--muted);
 }
 .project-room-dock {
@@ -13106,6 +13103,13 @@ button.settings-row:active {
   height: 1px;
   background: var(--border);
 }
+/* On the desktop the separators stop where the search pill does (900 is
+   COMPACT_BREAKPOINT). */
+@media (min-width: 900px) {
+  .chat-list .chat-row::after {
+    right: 16px;
+  }
+}
 .chat-list .chat-row:active {
   background: var(--surface);
 }
@@ -13191,6 +13195,18 @@ button.settings-row:active {
   animation: chat-row-in var(--dur-6) var(--ease-arrive) backwards;
   animation-delay: var(--dur-5);
 }
+/* A finger swipes and holds; a mouse drags and right-clicks. */
+.chat-hint-pointer {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .chat-hint-touch {
+    display: none;
+  }
+  .chat-hint-pointer {
+    display: inline;
+  }
+}
 .chat-row-remote {
   display: inline-block;
   width: 7px;
@@ -13223,6 +13239,9 @@ button.settings-row:active {
   font-size: var(--text-4);
   color: var(--muted);
   margin: 0;
+}
+.chat-empty .btn {
+  margin-top: 16px;
 }
 @media (prefers-reduced-motion: reduce) {
   .chat-list .swipe-row,

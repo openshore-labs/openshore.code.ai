@@ -6,11 +6,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '../state/store.js';
 import { BackBar } from '../components/BackBar.js';
+import { LockGlyph } from '../components/SheetGlyphs.js';
 import { VaultMarkdown } from '../components/VaultMarkdown.js';
 import { isDesktop } from '../lib/platform.js';
 import { bridge } from '../lib/electronBridge.js';
 import { repoToken } from '../lib/gitos/repoOAuth.js';
 import { noteTitle } from '../lib/vault.js';
+import { FOLLOWS_GROUP_ID, useSettingsJump } from '../lib/profile.js';
 import {
   readProjectSecrets,
   secretsTemplate,
@@ -60,6 +62,11 @@ export function ProjectMemoryScreen() {
   const [secretsOpen, setSecretsOpen] = useState(false);
   const [secretsDraft, setSecretsDraft] = useState('');
   const secretsSaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // One large-title ref per return below: BackBar persists across the
+  // branches and re-observes only when its ref changes.
+  const noteTitleRef = useRef<HTMLHeadingElement>(null);
+  const secretsTitleRef = useRef<HTMLHeadingElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
 
   const saveSecrets = useCallback(
     (text: string) => {
@@ -149,9 +156,12 @@ export function ProjectMemoryScreen() {
         <BackBar
           title={open.title}
           back={{ to: 'What it has learned', onBack: () => setOpen(null) }}
+          titleHiddenUntil={noteTitleRef}
         />
         <div className="screen-inner">
-          <h1 className="vault-title">{open.title}</h1>
+          <h1 ref={noteTitleRef} className="vault-title">
+            {open.title}
+          </h1>
           <p className="hint" style={{ marginTop: 2 }}>
             Read-only. The agent keeps this current in the repository.
           </p>
@@ -168,9 +178,12 @@ export function ProjectMemoryScreen() {
         <BackBar
           title={SECRETS_NOTE_TITLE}
           back={{ to: 'What it has learned', onBack: closeSecrets }}
+          titleHiddenUntil={secretsTitleRef}
         />
         <div className="screen-inner">
-          <h1 className="vault-title">{SECRETS_NOTE_TITLE}</h1>
+          <h1 ref={secretsTitleRef} className="vault-title">
+            {SECRETS_NOTE_TITLE}
+          </h1>
           <p className="hint" style={{ marginTop: 2 }}>
             Private to this device. Encrypted at rest. Never pushed to your repository, never
             synced. A local model can use these; a cloud model never receives them.
@@ -192,18 +205,18 @@ export function ProjectMemoryScreen() {
   // ---- the project's note list -------------------------------------------
   return (
     <div className="screen">
-      <BackBar title="What it has learned" />
+      <BackBar title="What it has learned" titleHiddenUntil={titleRef} />
       <div className="screen-inner">
         <div className="stack-head">
-          <h1>What it has learned</h1>
+          <h1 ref={titleRef}>What it has learned</h1>
         </div>
         <p className="lead">
-          {project?.name ? `About ${project.name}: ` : ''}what the coding agent has learned, kept in
-          the project's repository. Read the Current State top sheet first, then dig deeper.
+          Notes the coding agent keeps in {project?.name ? `${project.name}'s` : "this project's"}{' '}
+          repository as it works. Start with Current State.
         </p>
 
         {state.phase === 'loading' ? (
-          <p className="hint">Loading what it has learned...</p>
+          <p className="hint">Reading the notes.</p>
         ) : state.phase === 'no-repo' ? (
           <div className="card empty-notice">
             <h3>No repository yet.</h3>
@@ -239,13 +252,13 @@ export function ProjectMemoryScreen() {
                 >
                   {n.title}
                   {n.title === 'Current State' ? (
-                    <span className="pill local vault-topsheet">Top sheet</span>
+                    <span className="pill ink vault-topsheet">Top sheet</span>
                   ) : null}
                 </button>
               ) : (
                 <div key={n.path} className="conv-item vault-row vault-row--absent">
                   {n.title}
-                  <span className="hint vault-topsheet">not created yet</span>
+                  <span className="hint vault-topsheet">Not written yet</span>
                 </div>
               ),
             )}
@@ -269,7 +282,7 @@ export function ProjectMemoryScreen() {
                   className="conv-item vault-row press-fb press-fb--row"
                   onClick={() => void openSecrets()}
                 >
-                  <span aria-hidden="true">{'\u{1F512}'} </span>
+                  <LockGlyph size={16} />
                   {SECRETS_NOTE_TITLE}
                 </button>
               </div>
@@ -281,11 +294,14 @@ export function ProjectMemoryScreen() {
               </p>
               <button
                 className="conv-item vault-row vault-row--absent press-fb press-fb--row"
-                onClick={() => setView('settings')}
+                onClick={() => {
+                  useSettingsJump.getState().jump(FOLLOWS_GROUP_ID);
+                  setView('settings');
+                }}
               >
-                <span aria-hidden="true">{'\u{1F512}'} </span>
+                <LockGlyph size={16} />
                 {SECRETS_NOTE_TITLE}
-                <span className="hint vault-topsheet">Toggle on in Settings to enable</span>
+                <span className="hint vault-topsheet">Turn on in Settings</span>
               </button>
             </>
           )}

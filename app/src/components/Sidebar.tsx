@@ -36,6 +36,7 @@ import {
 import { useNavReorder } from '../hooks/useNavReorder.js';
 import { durationMs } from '../lib/motion.js';
 import type { Conversation } from '../state/types.js';
+import { inChatScope } from '../lib/chatScope.js';
 
 // Every view that has a nav glyph: all ViewNames except the ones that never
 // appear as a nav item (chat is home; onboarding and terminal are full-screen
@@ -50,6 +51,14 @@ type NavIconName = Exclude<
   ViewName,
   'chat' | 'onboarding' | 'terminal' | 'project' | 'projectmemory' | 'crewcommand'
 >;
+
+// A page inside a room keeps that room lit: the project room lights Projects,
+// Crew command lights Crew, and the full-screen terminal lights Terminal.
+const ROOM_OF: Partial<Record<ViewName, NavIconName>> = {
+  project: 'projects',
+  crewcommand: 'crew',
+  terminal: 'terminalroom',
+};
 
 // The nav is split so a first-week user is not met with a dozen destinations
 // at once (CMO ruling). PRIMARY is the day-one set, pinned to the top: chat,
@@ -93,7 +102,8 @@ export const PLUS_ROOM_LABEL = (label: string) => `${label}, part of OpenShore P
 
 // Hand-drawn line icons for the nav, in the same language as PairScreen's
 // download tiles: a 24-unit grid, 2px round-cap / round-join strokes, and
-// currentColor so `.nav-item.active` tints them --local with no per-icon color.
+// currentColor so `.nav-item.active` tints the current room's glyph --accent
+// with no per-icon color.
 // Each depicts its room in a calm monochrome studio style. Decorative only; the
 // text label beside each carries the name for assistive tech.
 const ICON_NODES: Record<NavIconName, JSX.Element> = {
@@ -220,6 +230,12 @@ function NavIcon({ name }: { name: NavIconName }) {
   );
 }
 
+/** A room's own glyph, where a screen draws the same thing (the project tile,
+ *  the repositories door). */
+export function RoomGlyph({ name, size }: { name: 'projects' | 'repos'; size: number }) {
+  return <Icon size={size}>{ICON_NODES[name]}</Icon>;
+}
+
 export function Sidebar({
   drawer,
   closing,
@@ -246,7 +262,7 @@ export function Sidebar({
   progress?: number | null;
   dragProps?: GestureProps;
 }) {
-  const { view, setView, setDrawer, settings, openPaywall, saveSettings } = useApp();
+  const { view, viewTrail, setView, setDrawer, settings, openPaywall, saveSettings } = useApp();
   const { configured: authConfigured, signedIn, email } = useAuth();
   const showProfile = useProfileSheet((st) => st.show);
   // True in every build while the pay gates are off (state/payOps.ts), so
@@ -283,6 +299,13 @@ export function Sidebar({
   // drawer-row-in): the wordmark is 0, the top rooms follow, and the rest
   // carry on counting so the whole door fills top to bottom.
   const stagger = (i: number) => ({ '--i': i }) as CSSProperties;
+  // The project notes open from a project or from the Vault; light the one they came from.
+  const lit =
+    view === 'projectmemory'
+      ? viewTrail.includes('vault')
+        ? 'vault'
+        : 'projects'
+      : (ROOM_OF[view] ?? view);
   const item = (
     { view: v, label }: NavEntry,
     i: number,
@@ -293,9 +316,10 @@ export function Sidebar({
     return (
       <button
         key={v}
-        className={`nav-item press-fb press-fb--row${view === v ? ' active' : ''}${opts.locked ? ' nav-item--plus' : ''}${movable ? ' nav-item--movable' : ''}${lifted ? ' lifted' : ''}`}
+        className={`nav-item press-fb press-fb--row${lit === v ? ' active' : ''}${opts.locked ? ' nav-item--plus' : ''}${movable ? ' nav-item--movable' : ''}${lifted ? ' lifted' : ''}`}
         style={stagger(1 + i)}
         aria-label={opts.locked ? PLUS_ROOM_LABEL(label) : undefined}
+        aria-current={lit === v ? 'page' : undefined}
         onClick={() => setView(v, { root: true })}
         {...(movable ? reorder.rowProps(v as MovableRoom) : {})}
       >
@@ -478,8 +502,8 @@ export function Sidebar({
 
 // The recent chats between the two groups: as many as fit cleanly in the space
 // the groups leave, newest first, then View all to the Chats room. Same reach
-// as that room (the active project's chats), so View all shows the same list
-// continued. The fixed row heights live in theme.css (.sidebar-recents).
+// as that room (lib/chatScope.ts), so View all shows the same list continued.
+// The fixed row heights live in theme.css (.sidebar-recents).
 const RECENT_ROW = 34;
 const RECENT_HEAD = 30;
 const RECENT_FOOT = 36;
@@ -498,7 +522,7 @@ export function recentChats(
         Boolean(c) &&
         // A fresh chat with nothing said yet is not a place to dip back into.
         !(c!.title === 'New chat' && c!.thread.items.length === 0) &&
-        (projectId ? c!.projectId === projectId : !c!.projectId),
+        inChatScope(c!, projectId),
     )
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 }
@@ -538,7 +562,9 @@ function RecentChats({ divider, i }: { divider?: (el: HTMLElement | null) => voi
     >
       {shown.length > 0 ? (
         <>
-          <h2 className="sidebar-recents-head">Recents</h2>
+          <h2 className="sidebar-recents-head">
+            <span>{projects.length > 1 && project ? `Recents in ${project.name}` : 'Recents'}</span>
+          </h2>
           {shown.map((c) => (
             <button
               key={c.id}

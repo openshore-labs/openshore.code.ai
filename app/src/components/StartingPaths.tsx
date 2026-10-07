@@ -7,7 +7,7 @@ import { SAMPLE_ROW_LABEL, SAMPLE_ROW_SUB } from '../lib/sampleProject.js';
 import { useApp, type ViewName } from '../state/store.js';
 import { isDesktop } from '../lib/platform.js';
 import { logEvent } from '../lib/insights.js';
-import { HARBOR_APPROX_LABEL, HARBOR_MODEL_ID } from '../lib/harbor.js';
+import { HARBOR_APPROX_LABEL, HARBOR_BYLINE, HARBOR_MODEL_ID } from '../lib/harbor.js';
 import { HARBOR_MINI_APPROX_LABEL, HARBOR_MINI_MODEL_ID } from '../lib/harborMini.js';
 import { SettingsRow } from './SettingsRow.js';
 
@@ -58,27 +58,19 @@ export function StartingPaths({
         <>
           <h3>Chat with Harbor</h3>
           <div className="sub" style={{ marginBottom: 10 }}>
-            The coder is ready. It runs on this iPhone and can search the web.
+            Harbor is ready. It runs on this iPhone and can search the web.
           </div>
-          <button
-            className="btn ghost"
-            style={{ width: '100%' }}
-            onClick={() => void getGuideAndGo(HARBOR_MODEL_ID)}
-          >
+          <button className="btn ghost block" onClick={() => void getGuideAndGo(HARBOR_MODEL_ID)}>
             Open Harbor
           </button>
         </>
       ) : harborDownload?.failed ? (
         <>
-          <h3>Get Harbor</h3>
+          <h3>Harbor</h3>
           <div className="hint" style={{ color: 'var(--danger)', marginBottom: 10 }}>
             {harborDownload.label} Check your connection and try again.
           </div>
-          <button
-            className="btn ghost"
-            style={{ width: '100%' }}
-            onClick={() => void getGuideAndGo(HARBOR_MODEL_ID)}
-          >
+          <button className="btn ghost block" onClick={() => void getGuideAndGo(HARBOR_MODEL_ID)}>
             Try again
           </button>
         </>
@@ -99,25 +91,20 @@ export function StartingPaths({
             {harborDownload.label}. A one-time download, then you chat, and search when it needs to.
           </div>
           <button
-            className="btn quiet"
-            style={{ width: '100%', marginTop: 8 }}
+            className="btn quiet block"
+            style={{ marginTop: 8 }}
             onClick={() => cancelHarbor()}
           >
-            Cancel, I will connect my own stack
+            Cancel download
           </button>
         </>
       ) : (
         <>
-          <h3>Get Harbor</h3>
+          <h3>Harbor</h3>
           <div className="sub" style={{ marginBottom: 10 }}>
-            A coding model that runs on this iPhone. Real reasoning, web search, writes real code.
-            About {HARBOR_APPROX_LABEL}.
+            {HARBOR_BYLINE} Downloads once, {HARBOR_APPROX_LABEL}.
           </div>
-          <button
-            className="btn ghost"
-            style={{ width: '100%' }}
-            onClick={() => beginHarborWithIntro()}
-          >
+          <button className="btn ghost block" onClick={() => beginHarborWithIntro()}>
             Get Harbor
           </button>
         </>
@@ -130,6 +117,7 @@ export function StartingPaths({
       id: string,
       name: string,
       size: string,
+      sub: string,
       ready: boolean | undefined,
       dl: typeof harborDownload,
       begin: () => void,
@@ -177,14 +165,7 @@ export function StartingPaths({
           />
         );
       }
-      return (
-        <SettingsRow
-          label={`Get ${name}`}
-          sub="A guide that runs on this device"
-          value={size}
-          onClick={begin}
-        />
-      );
+      return <SettingsRow label={`Get ${name}`} sub={sub} value={size} onClick={begin} />;
     };
     return (
       <>
@@ -193,6 +174,7 @@ export function StartingPaths({
               HARBOR_MODEL_ID,
               'Harbor',
               HARBOR_APPROX_LABEL,
+              'A coding model on this device',
               settings.harborReady,
               harborDownload,
               beginHarborWithIntro,
@@ -204,6 +186,7 @@ export function StartingPaths({
               HARBOR_MINI_MODEL_ID,
               'Harbor Lite',
               HARBOR_MINI_APPROX_LABEL,
+              'The built-in guide',
               settings.harborMiniReady,
               harborMiniDownload,
               beginHarborMiniWithIntro,
@@ -219,7 +202,7 @@ export function StartingPaths({
             />
             <SettingsRow
               label="Open a repository"
-              sub="Read, edit, and commit with your approval"
+              sub="Reads, edits, and commits, and shows you every change"
               onClick={() => void go('repos')}
             />
             <SettingsRow
@@ -232,7 +215,7 @@ export function StartingPaths({
           <>
             <SettingsRow
               label="Connect your computer"
-              sub="Your model, from anywhere, over Tailscale"
+              sub="Your computer's models, from here, while it is on"
               onClick={() => void go('pair')}
             />
             <SettingsRow
@@ -254,34 +237,29 @@ export function StartingPaths({
   return (
     <>
       {!isDesktop() ? (
-        // The built-in guide is the chat a new person opens into, and its
-        // greeting links here, so this page is only the "go further" tier.
-        // Creative Studio "The Standing Light" (2026-09-04; founder 2026-09-23).
+        // The built-in guide is the chat a new person opens into, and this page
+        // is the optional tier, reached from Harbor Lite's greeting. Creative
+        // Studio "The Standing Light" (2026-09-04; founder 2026-09-23).
         <>
-          <p className="paths-further-head">When you're ready to go further</p>
           {harborCard}
           <div className="card">
-            <h3>Connect your computer</h3>
+            <h3>Your computer</h3>
             <div className="sub" style={{ marginBottom: 10 }}>
               Run your model on your own computer and reach it from your phone over your private
               Tailscale network. Your computer does the work, so it does not drain your battery, and
               a long answer keeps going even when you close the app.
             </div>
-            <button className="btn ghost" style={{ width: '100%' }} onClick={() => void go('pair')}>
+            <button className="btn ghost block" onClick={() => void go('pair')}>
               Connect your computer
             </button>
           </div>
           <div className="card">
-            <h3>Set up a repository</h3>
+            <h3>Your code</h3>
             <div className="sub" style={{ marginBottom: 10 }}>
-              Connect GitHub or another platform on your own access token and pick a home
-              repository. OpenShore reads, edits, and commits there with your approval.
+              Connect GitHub, GitLab, or Bitbucket and pick a home repository. OpenShore reads,
+              edits, and commits there, and shows you every change.
             </div>
-            <button
-              className="btn ghost"
-              style={{ width: '100%' }}
-              onClick={() => void go('repos')}
-            >
+            <button className="btn ghost block" onClick={() => void go('repos')}>
               Set up a repository
             </button>
           </div>
@@ -294,41 +272,30 @@ export function StartingPaths({
               Point OpenShore at a model running on this computer through Ollama. Open Stack to
               install DeepBlue, sized to your computer. It stays on your desk.
             </div>
-            <button
-              className="btn primary"
-              style={{ width: '100%' }}
-              onClick={() => void go('stack')}
-            >
+            <button className="btn primary block" onClick={() => void go('stack')}>
               Build your stack
             </button>
           </div>
           <div className="card">
-            <h3>Open a repository</h3>
+            <h3>Your code</h3>
             <div className="sub" style={{ marginBottom: 10 }}>
-              Point OpenShore at a repository and it reads, edits, and commits with your approval.
+              Point OpenShore at a repository and it reads, edits, and commits there, and shows you
+              every change.
             </div>
-            <button
-              className="btn ghost"
-              style={{ width: '100%' }}
-              onClick={() => void go('repos')}
-            >
-              Pick a repository
+            <button className="btn ghost block" onClick={() => void go('repos')}>
+              Open a repository
             </button>
           </div>
         </>
       )}
 
       <div className="card">
-        <h3>Connect your own API key</h3>
+        <h3>Your own API key</h3>
         <div className="sub" style={{ marginBottom: 10 }}>
           Chat stays free. Add an API key for Claude, OpenAI, or Gemini and go further, at your
           provider's price. Your API key stays on your device.
         </div>
-        <button
-          className="btn ghost"
-          style={{ width: '100%' }}
-          onClick={() => void go('connections')}
-        >
+        <button className="btn ghost block" onClick={() => void go('connections')}>
           Add an API key
         </button>
       </div>

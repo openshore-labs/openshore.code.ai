@@ -229,7 +229,7 @@ describe('the delightful first-run (Creative Studio: The Standing Light)', () =>
 
   // Founder, 2026-09-23: a new person opens straight into Harbor Lite's chat,
   // not a setup wall and not a Personal-or-Business question. The setup page
-  // is the "go further" tier, reached from a button under the greeting.
+  // is the optional tier, reached from a button under the greeting.
   it('opens a new person into the built-in guide chat, with setup one tap away', () => {
     const store = readFileSync(join(process.cwd(), 'src/state/store.ts'), 'utf8');
     expect(store).toContain("view: 'chat',");
@@ -243,7 +243,14 @@ describe('the delightful first-run (Creative Studio: The Standing Light)', () =>
     expect(HARBOR_MINI_GREETING).toContain('Set up OpenShore');
     const paths = readFileSync(join(process.cwd(), 'src/components/StartingPaths.tsx'), 'utf8');
     expect(paths).not.toContain('Say hello');
-    expect(paths).toContain("When you're ready to go further");
+    // One lead, on the page itself: the old "go further" label is gone, and
+    // the Harbor card says what Harbor does in the byline's words.
+    expect(paths).not.toContain('paths-further-head');
+    expect(paths).toContain('HARBOR_BYLINE');
+    expect(paths).not.toContain('Real reasoning');
+    const page = readFileSync(join(process.cwd(), 'src/screens/OnboardingScreen.tsx'), 'utf8');
+    expect(page).toContain('Everything below is optional.');
+    expect(page).toContain('<BackBar');
   });
 
   it('asks Personal or Business only when an account is created', () => {

@@ -23,7 +23,7 @@ export function updateBarCopy(u: PendingUpdate): {
       return {
         text:
           u.percent !== undefined && u.percent < 100
-            ? `Updating OpenShore to ${v}. ${u.percent}%`
+            ? `Updating OpenShore to ${v} (${u.percent}%)`
             : `Updating OpenShore to ${v}. Restarting.`,
         busy: true,
       };
@@ -42,11 +42,7 @@ export function updateBarCopy(u: PendingUpdate): {
       }
       return { text: `The update to ${v} did not finish.`, action: 'Try again', busy: false };
     default:
-      return {
-        text: `A new version of OpenShore is available. ${v}`,
-        action: 'Update',
-        busy: false,
-      };
+      return { text: `OpenShore ${v} is available.`, action: 'Update', busy: false };
   }
 }
 
