@@ -1047,12 +1047,14 @@ export class AgentSession {
     this.profileNoteEmitted = true;
     const total = this.deps.tools.specs().length;
     const shown = Math.min(total, this.menuCap());
+    // The small class's blurb already says the harness carries the checklist,
+    // so the note says it once.
+    const blurb = classBlurb(this.modelProfile.modelClass);
+    const carries = blurb.includes('checklist') ? '' : ' and carries the checklist';
     this.emit({
       type: 'note',
       message: this.classLean
-        ? `${cap(this.modelProfile.modelClass)} model seat: ${classBlurb(
-            this.modelProfile.modelClass,
-          )} The harness shows it ${shown} of ${total} tools and carries the checklist.`
+        ? `${cap(this.modelProfile.modelClass)} model seat: ${blurb} The harness shows it ${shown} of ${total} tools${carries}.`
         : `${cap(this.modelProfile.modelClass)} model seat with a small window on this computer: the harness gives it a shorter prompt and shows it ${shown} of ${total} tools, so the chat has room.`,
     });
   }
