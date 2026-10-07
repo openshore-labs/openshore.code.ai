@@ -19,6 +19,8 @@ import { SheetHead } from '../components/SheetHead.js';
 import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
 import { STACK_CATEGORIES, STACK_LEAD, categoryLabel, type StackCategory } from '../lib/stack.js';
 import { thisDeviceNoun } from '../lib/deviceNoun.js';
+import { claudeModel, claudeModelLabel } from '../lib/claudeModels.js';
+import { providerModelLabel } from '../lib/providers.js';
 import { StatusSheet } from '../components/ProfileStatus.js';
 import {
   desktopStackNote,
@@ -35,6 +37,14 @@ function pickerModels(models: string[], current: string | undefined): string[] {
   return current && models.includes(current)
     ? [current, ...models.filter((m) => m !== current)]
     : models;
+}
+
+/** A model the engine reports, by the name a person reads: a cloud model by
+ *  its display name (Sonnet 5, not claude-sonnet-5), a local one by its tag,
+ *  which is the name Ollama and the person use for it. */
+function engineModelName(model: string, provider?: string): string {
+  if (claudeModel(model)) return claudeModelLabel(model);
+  return provider ? providerModelLabel(provider, model) : model;
 }
 
 export function StackScreen() {
@@ -256,7 +266,7 @@ export function StackScreen() {
           <SettingsRow
             label={
               orchestrator
-                ? orchestrator.model
+                ? engineModelName(orchestrator.model, orchestrator.provider)
                 : reading
                   ? readingLine
                   : unanswered
@@ -308,7 +318,7 @@ export function StackScreen() {
                 sub={STACK_CATEGORIES.find((c) => c.id === role)?.hint}
                 value={
                   reading || unanswered ? undefined : enabled ? (
-                    enabled.model
+                    engineModelName(enabled.model)
                   ) : (
                     <span className="stack-off">Off</span>
                   )

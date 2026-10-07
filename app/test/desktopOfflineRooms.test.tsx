@@ -207,6 +207,15 @@ describe("the desktop Stack's quiet door", () => {
     expect(dom.buttons()).toContain('Follow the connection');
   });
 
+  it('names a cloud model the way a person reads it, never by its id', async () => {
+    machine.status = status('cloud');
+    const { StackScreen } = await import('../src/screens/StackScreen.js');
+    await dom.render(<StackScreen />);
+    await dom.settle();
+    expect(dom.text()).toContain('Sonnet 5');
+    expect(dom.text()).not.toContain('claude-sonnet-5');
+  });
+
   it('the connection dropped: the line, and no door (the lone pill is in the bar)', async () => {
     offlineNet();
     const { StackScreen } = await import('../src/screens/StackScreen.js');
