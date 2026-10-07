@@ -17,6 +17,7 @@ import {
   autoProfile,
   effectiveProfile,
   profileBlurb,
+  profileUnavailable,
   reachPillShown,
   selectable,
 } from '../lib/profiles.js';
@@ -112,8 +113,11 @@ export function StatusSheet({ open, onClose }: { open: boolean; onClose: () => v
   const auto = autoProfile(connectivity);
   const active = effectiveProfile(auto, settings.profileOverride);
   // On the desktop the device is the computer, so its lines count it as
-  // connected.
+  // connected; with no other computer named, its lines speak of this one
+  // (Desktop Offline: Automatic follows the connection, Offline is a choice
+  // that reaches this computer's engine, Docked does not apply here).
   const paired = isDesktop() || Boolean(settings.daemon);
+  const home = isDesktop() && !settings.daemon;
 
   // The top bar sets backdrop-filter, which makes it the containing block for
   // position:fixed descendants. Rendering the scrim there would trap it inside
@@ -122,7 +126,9 @@ export function StatusSheet({ open, onClose }: { open: boolean; onClose: () => v
   return createPortal(
     <Sheet open={open} onClose={onClose} className="info-sheet">
       <SheetHead title="Status" onClose={onClose} />
-      <p className="sheet-sub">Which models can answer depends on what this device can reach.</p>
+      <p className="sheet-sub">
+        Which models can answer depends on what this {home ? 'computer' : 'device'} can reach.
+      </p>
       <div className="sheet-actions">
         <button
           className={`profile-row${!settings.profileOverride ? ' active' : ''}`}
@@ -159,8 +165,8 @@ export function StatusSheet({ open, onClose }: { open: boolean; onClose: () => v
               <span className="grow">
                 <span className="profile-row-title">{p.label}</span>
                 <span className="sub">
-                  {profileBlurb(id, paired)}
-                  {!canPick && paired ? ' Not reachable right now.' : ''}
+                  {profileBlurb(id, paired, home)}
+                  {profileUnavailable(id, canPick, paired, home)}
                 </span>
               </span>
               {isActive ? <RowCheck /> : null}

@@ -17,12 +17,20 @@ export class MockProvider implements Provider {
   private turns: ScriptedTurn[];
   caps: ProviderCapabilities;
 
+  /** What listModels answers: the models this server serves. */
+  models: string[];
+
   constructor(
     readonly id: string,
     turns: ScriptedTurn[],
-    options: { kind?: 'local' | 'cloud'; caps?: Partial<ProviderCapabilities> } = {},
+    options: {
+      kind?: 'local' | 'cloud';
+      caps?: Partial<ProviderCapabilities>;
+      models?: string[];
+    } = {},
   ) {
     this.turns = [...turns];
+    this.models = options.models ?? ['mock-model'];
     this.kind = options.kind ?? 'local';
     this.remote = this.kind === 'cloud';
     this.caps = {
@@ -50,7 +58,7 @@ export class MockProvider implements Provider {
   }
 
   async listModels(): Promise<string[]> {
-    return ['mock-model'];
+    return this.models;
   }
 
   async health(): Promise<{ ok: boolean; detail: string }> {

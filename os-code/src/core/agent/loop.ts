@@ -110,6 +110,14 @@ import {
   handoffBudgetTokens,
 } from '../../harness/handoff.js';
 import { handoffTurnsFromHistory, type HandoffRecord } from './handoffStore.js';
+import {
+  OFFLINE_NOW_DENIED,
+  OFFLINE_PROMPT,
+  ONLINE_AGAIN_NOTE,
+  offlineNoModelLine,
+  offlineNote,
+  type MachineOffline,
+} from './offline.js';
 import type { HarnessCurrentsHandle } from '../../currents/model.js';
 import type { ToolSpec } from '../../providers/types.js';
 import { MERGED_VAULT_TOOL, seatOffersVaultTool, withVaultLookupPriority } from './registry.js';
@@ -154,6 +162,17 @@ export interface AgentDeps {
    *  routine, CTO 3). A call the model makes to one anyway is refused by name,
    *  never asked, and never read as a malformed call. */
   offlineTools?: readonly string[];
+  /** This computer's offline state, read before every turn (Desktop Offline,
+   *  founder 2026-10-07). While it says offline, only a model whose requests
+   *  stay on this network answers (a cloud seat gives way to the router's
+   *  local seat), nothing escalates, the tools in `offlineCut` leave the menu
+   *  and are refused by name, and the model is told. Undefined reads as
+   *  online. Bootstrap wires the machine's flag (core/agent/offline.ts). */
+  offline?: () => MachineOffline;
+  /** The tools this session takes off its menu while this computer is
+   *  offline: the network tools of the routine's offline slice (registry.ts
+   *  offlineCut). */
+  offlineCut?: readonly string[];
   /** Persist an allow rule for this tool in the workspace ("don't ask again
    *  for this in this project"). Returns false when nothing could be written. */
   persistRule?: (rule: ProjectRule) => boolean;
@@ -235,6 +254,9 @@ export const OFFLINE_DENIED = 'This routine works offline, so nothing here reach
 const OFFLINE_ADVICE =
   'Work only from the files in the workspace, and say in your report what you could not check.';
 
+/** No tools off the menu (online). */
+const EMPTY_SET: ReadonlySet<string> = new Set();
+
 /** The local calendar date, YYYY-MM-DD, for a dated Current State line. */
 function localDate(d: Date): string {
   const pad = (n: number): string => String(n).padStart(2, '0');
@@ -272,6 +294,12 @@ const SMALL_MODEL_TOOL_PRIORITY = withVaultLookupPriority([
 const TRANSIENT =
   /\b(429|503|overloaded|rate.?limit|ECONNRESET|ETIMEDOUT|EAI_AGAIN|fetch failed)\b/i;
 const RETRY_DELAYS_MS = [2000, 6000];
+/** A request that never reached its server: the connection went, not the
+ *  server's capacity. Said as such, never as a busy server (Desktop Offline:
+ *  the retry's pause also lets this computer's offline flag catch up, so the
+ *  next turn can follow it to a model on this network). */
+const UNREACHED =
+  /\b(fetch failed|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ENETUNREACH|EHOSTUNREACH)\b|Connection error/i;
 
 interface ActiveModel {
   provider: Provider;
@@ -380,6 +408,12 @@ export class AgentSession {
     return this.offlineSet;
   }
   private offlineSet?: ReadonlySet<string>;
+  /** The machine's offline state as this session last acted on it, so a
+   *  change is said once in the transcript (Desktop Offline). */
+  private offlineSeen: MachineOffline = { offline: false };
+  /** The seat this session worked on before going offline, put back when
+   *  the computer is online again. */
+  private seatBeforeOffline?: ActiveModel;
   /** What the last handoff was built from, so an unchanged chat (a dispose
    *  right after a completed task) is not written again. */
   private handoffSignature?: string;
@@ -721,6 +755,7 @@ export class AgentSession {
     if (verdict !== 'skipped') return; // A real check already spoke.
     if (!this.wroteThisTask) return;
     if (this.active.provider.kind !== 'cloud') return; // Only where spend is steered.
+    if (this.offlineState().offline) return; // A decision call needs the network.
     const advisor = this.jevAdvisor();
     if (!advisor) return;
     const task = firstUserText(this.history);
@@ -1148,6 +1183,7 @@ export class AgentSession {
               : ''
           } When the change is made, or the question is answered, reply in plain text, briefly. When asked for a value, reply with the value only.`,
           'Never use em dashes in your replies. Use a period or a comma instead.',
+          ...(this.offlineState().offline ? [OFFLINE_PROMPT] : []),
         ]
       : [
           "You are OS Code, a careful, capable coding agent running on the user's own machine.",
@@ -1155,9 +1191,13 @@ export class AgentSession {
           'Work step by step: inspect before you change, prefer small precise edits (editFile), and verify with the available tools.',
           // Only the web tools this session has: an offline run (a routine) or
           // a secrets session has none, and must not be told to reach for them.
-          webTools.length
-            ? `Use ${webTools.join(' and ')} for anything after your knowledge cutoff or specific to a library version.`
-            : 'This session has no web access: work from the files and what you already know.',
+          // Offline (Desktop Offline), the model is told plainly, as a
+          // routine's prompt tells it.
+          this.offlineState().offline
+            ? OFFLINE_PROMPT
+            : webTools.length
+              ? `Use ${webTools.join(' and ')} for anything after your knowledge cutoff or specific to a library version.`
+              : 'This session has no web access: work from the files and what you already know.',
           'When the task is complete, answer with plain text: what you did, what you verified, and anything the user should know. Be concise and concrete.',
           // How the person works with a coding agent (docs/interaction-model.md):
           // lead with the answer, one step at a time when they must act, never
@@ -1327,6 +1367,10 @@ export class AgentSession {
     // results of commands the user ran between turns) rides into the model's
     // message so it sees them, but never shows in the transcript as user text.
     this.emit({ type: 'task-start', input });
+    // This computer may be offline (Desktop Offline): a cloud seat gives way
+    // to a model on this network before anything is sent, and with none the
+    // task ends here with one plain line.
+    if (!(await this.followOffline())) return;
     let modelText = contextPreamble ? `${contextPreamble}\n\n${input}` : input;
     // Retrieval before turn one, when switched on: the excerpts head the
     // task, so every attempt at it starts from them (CTO 6).
@@ -1363,6 +1407,10 @@ export class AgentSession {
         this.emit({ type: 'task-done', reason: 'guardrail', message: violation.message });
         return;
       }
+
+      // Read the machine's offline flag every turn, so going offline mid-task
+      // makes the next turn local and coming back restores the stack.
+      if (!(await this.followOffline())) return;
 
       // Cloud confirm-before-spend, once per session (or per profile rules).
       // Anything off this computer's network asks, judged by address: an
@@ -1572,13 +1620,16 @@ export class AgentSession {
           });
           continue;
         }
+        // The connection went while a seat off this network was answering:
+        // the next turn follows the offline flag to a model on this network,
+        // rather than a busy-server retry or a raw error.
+        if (this.offlineState().offline && leavesThisNetwork(this.active.provider)) continue;
         const handled = await this.handleProviderFailure(err, turn);
         if (handled === 'retry') continue;
-        this.emit({
-          type: 'task-done',
-          reason: 'error',
-          message: err instanceof Error ? err.message : String(err),
-        });
+        // The flag may have caught up during the retries' pauses: follow it
+        // to a model on this network rather than end on a lost connection.
+        if (this.offlineState().offline && leavesThisNetwork(this.active.provider)) continue;
+        this.emit({ type: 'task-done', reason: 'error', message: this.failureLine(err) });
         return;
       }
 
@@ -1635,7 +1686,7 @@ export class AgentSession {
 
       if (nativeCalls.length) {
         for (const raw of nativeCalls) {
-          const validated = validateNativeCall(raw, this.deps.tools, this.offlineTools);
+          const validated = validateNativeCall(raw, this.deps.tools, this.leftOutNow());
           if (validated.ok) calls.push(validated.call);
           else {
             problems.push(validated.problem);
@@ -1658,7 +1709,7 @@ export class AgentSession {
         // "1 turn; no tools called; done: complete" on a 3B was exactly that.
         // The extractor is conservative (a known tool with valid args; prose
         // that quotes JSON is left alone), so a real answer still reads as one.
-        const extraction = extractTextCalls(streamedText, this.deps.tools, this.offlineTools);
+        const extraction = extractTextCalls(streamedText, this.deps.tools, this.leftOutNow());
         const found = extraction.calls.length > 0 || extraction.problems.length > 0;
         if (toolMode === 'text' || found) {
           calls = extraction.calls;
@@ -1887,9 +1938,16 @@ export class AgentSession {
     // A tool this run left out because it works offline (a Crew routine, CTO
     // 3). The model reached for it anyway: refused, never asked, with a line
     // it can act on. The scheduler reads the denial for the run's note.
-    if (!tool) {
-      this.emit({ type: 'tool-denied', call, reason: OFFLINE_DENIED });
-      this.pushObservation(call, `Not run: ${OFFLINE_DENIED} ${OFFLINE_ADVICE}`, toolMode);
+    // The same for a tool that reaches the network while this computer is
+    // offline (Desktop Offline): off the menu, and refused by name if asked.
+    const cutNow = this.offlineCutNow();
+    if (!tool || cutNow.has(call.name)) {
+      const reason =
+        cutNow.has(call.name) && !this.offlineTools.has(call.name)
+          ? OFFLINE_NOW_DENIED
+          : OFFLINE_DENIED;
+      this.emit({ type: 'tool-denied', call, reason });
+      this.pushObservation(call, `Not run: ${reason} ${OFFLINE_ADVICE}`, toolMode);
       return 'refused';
     }
 
@@ -2425,6 +2483,8 @@ export class AgentSession {
     // escalation would send the local model's history (which may carry a secret
     // it used) to a cloud provider. Secrets sessions stay local, always.
     if (this.deps.projectSecrets?.trim()) return false;
+    // Offline, nothing escalates: there is no cloud to reach (Desktop Offline).
+    if (this.offlineState().offline) return false;
     if (this.escalated) return false;
     if (!router.escalationEnabled()) return false;
     if (failStreak < config.routing.escalation.afterToolFailures) return false;
@@ -2531,7 +2591,7 @@ export class AgentSession {
    *  is simply not offered; the registry still executes it if a call arrives, so
    *  nothing breaks, the model just sees a shorter, cheaper menu. */
   private toolSpecs(): ToolSpec[] {
-    let specs = this.vaultMenu(this.deps.tools.specs());
+    let specs = this.offlineMenu(this.vaultMenu(this.deps.tools.specs()));
     if (this.mode === 'plan') {
       specs = specs.filter((spec) => {
         const tool = this.deps.tools.get(spec.name);
@@ -2546,7 +2606,109 @@ export class AgentSession {
    *  same menu). Plan mode is left out on purpose: its own block tells the
    *  model the write tools wait for an approved plan. */
   private offeredToolNames(): Set<string> {
-    return new Set(this.limitToolSpecs(this.vaultMenu(this.deps.tools.specs())).map((s) => s.name));
+    return new Set(
+      this.limitToolSpecs(this.offlineMenu(this.vaultMenu(this.deps.tools.specs()))).map(
+        (s) => s.name,
+      ),
+    );
+  }
+
+  /** The menu less the tools that reach the network, while this computer is
+   *  offline (Desktop Offline); unchanged online. */
+  private offlineMenu(specs: ToolSpec[]): ToolSpec[] {
+    const cut = this.offlineCutNow();
+    return cut.size ? specs.filter((s) => !cut.has(s.name)) : specs;
+  }
+
+  // -------------------------------------------------------------------------
+  // Desktop Offline (founder, 2026-10-07)
+  // -------------------------------------------------------------------------
+
+  /** This computer's offline state now. */
+  private offlineState(): MachineOffline {
+    return this.deps.offline?.() ?? { offline: false };
+  }
+
+  /** The tools off the menu right now: this session's offline cut while the
+   *  computer is offline, none online. */
+  private offlineCutNow(): ReadonlySet<string> {
+    if (!this.deps.offlineCut?.length || !this.offlineState().offline) return EMPTY_SET;
+    this.offlineCutSet ??= new Set(this.deps.offlineCut);
+    return this.offlineCutSet;
+  }
+  private offlineCutSet?: ReadonlySet<string>;
+
+  /** The names a call may carry that are left out, so the call is refused by
+   *  name rather than read as malformed: an offline run's, and while the
+   *  computer is offline, the offline cut. */
+  private leftOutNow(): ReadonlySet<string> {
+    const cut = this.offlineCutNow();
+    if (!cut.size) return this.offlineTools;
+    return new Set([...this.offlineTools, ...cut]);
+  }
+
+  /**
+   * Follow the machine's offline flag before a turn. Offline: a seat whose
+   * requests leave this network gives way to the router's best local seat
+   * (kept to put back later), and the change is said once. Online again: the
+   * seat from before comes back, said once. False when offline and no model
+   * on this network can answer: the task ends with one plain line.
+   */
+  private async followOffline(): Promise<boolean> {
+    const now = this.offlineState();
+    if (now.offline) {
+      if (leavesThisNetwork(this.active.provider)) {
+        const seat = await this.deps.router.localSeat();
+        if (!seat) {
+          this.emit({
+            type: 'task-done',
+            reason: 'error',
+            message: offlineNoModelLine(now.reason),
+          });
+          return false;
+        }
+        this.seatBeforeOffline ??= this.active;
+        this.active = {
+          provider: seat.provider,
+          model: seat.ref.model,
+          adapter: adapterFor(seat.ref.model),
+        };
+      }
+      // Said once, and only when a model in this stack waits: a stack that
+      // is all on this network loses nothing to say.
+      if (!this.offlineSeen.offline) {
+        this.offlineSaid = Boolean(this.seatBeforeOffline) || this.deps.router.anySeatLeaves();
+        if (this.offlineSaid) this.emit({ type: 'note', message: offlineNote(now.reason) });
+      }
+      this.offlineSeen = now;
+      return true;
+    }
+    if (this.offlineSeen.offline) {
+      if (this.seatBeforeOffline) this.active = this.seatBeforeOffline;
+      this.seatBeforeOffline = undefined;
+      this.offlineSeen = now;
+      if (this.offlineSaid) this.emit({ type: 'note', message: ONLINE_AGAIN_NOTE });
+      this.offlineSaid = false;
+    }
+    return true;
+  }
+  /** Whether this session said it went offline, so its return is said too. */
+  private offlineSaid = false;
+
+  /**
+   * The seat a one-shot summary runs on (a compaction, a title). Mid-task it
+   * is the active seat, which followOffline already moved; an idle /compact
+   * or a title runs outside a turn, so while this computer is offline a seat
+   * off this network gives way to the router's local seat here too, and with
+   * none the summary fails with the plain offline line, never a request that
+   * cannot leave (Desktop Offline).
+   */
+  private async oneShotSeat(): Promise<ActiveModel> {
+    const now = this.offlineState();
+    if (!now.offline || !leavesThisNetwork(this.active.provider)) return this.active;
+    const seat = await this.deps.router.localSeat();
+    if (!seat) throw new Error(offlineNoModelLine(now.reason));
+    return { provider: seat.provider, model: seat.ref.model, adapter: adapterFor(seat.ref.model) };
   }
 
   /** One way into the vault per seat (CTO I11): a class with
@@ -2597,9 +2759,12 @@ export class AgentSession {
     if (TRANSIENT.test(message) && this.transientRetries < RETRY_DELAYS_MS.length) {
       const delay = RETRY_DELAYS_MS[this.transientRetries]!;
       this.transientRetries += 1;
+      const seconds = Math.round(delay / 1000);
       this.emit({
         type: 'status',
-        message: `The model's server is busy (${message.slice(0, 80)}). Retrying in ${Math.round(delay / 1000)}s.`,
+        message: this.unreached(message)
+          ? `Could not reach ${this.seatName()}. Trying again in ${seconds}s.`
+          : `The model's server is busy (${message.slice(0, 80)}). Retrying in ${seconds}s.`,
       });
       await new Promise<void>((resolve) => {
         const timer = setTimeout(resolve, delay);
@@ -2622,6 +2787,27 @@ export class AgentSession {
       return 'retry';
     }
     return 'fail';
+  }
+
+  /** Whether a failure is a seat off this network that could not be reached
+   *  (judged by address, then by the error's shape). */
+  private unreached(message: string): boolean {
+    return leavesThisNetwork(this.active.provider) && UNREACHED.test(message);
+  }
+
+  /** The line a failed turn ends with: a seat off this network that could not
+   *  be reached says so plainly, never the network library's own words. */
+  private failureLine(err: unknown): string {
+    const message = err instanceof Error ? err.message : String(err);
+    return this.unreached(message)
+      ? `Could not reach ${this.seatName()} from your computer. Check its internet connection, then try again.`
+      : message;
+  }
+
+  /** The seat's provider as a person names it: its label without a trailing
+   *  aside ("Claude (cloud)" reads "Claude"; the line already says where). */
+  private seatName(): string {
+    return this.active.provider.label.replace(/\s*\([^)]*\)\s*$/, '') || this.active.provider.id;
   }
 
   /**
@@ -2684,9 +2870,10 @@ export class AgentSession {
     let out = '';
     let promptTokens = 0;
     let completionTokens = 0;
-    for await (const event of this.active.provider.chat(
+    const seat = await this.oneShotSeat();
+    for await (const event of seat.provider.chat(
       {
-        model: this.active.model,
+        model: seat.model,
         messages: [{ role: 'user', content: text }],
         maxTokens: 600,
         temperature: 0.1,
@@ -2704,9 +2891,11 @@ export class AgentSession {
       const caps = await this.active.provider.capabilities(this.active.model);
       this.contextTokens = caps.contextTokens;
     }
+    // Priced on the seat that answered: an offline summary on a local seat
+    // costs nothing, whatever the session's own seat is.
     this.recordUsage(
-      this.active.model,
-      this.active.provider.kind,
+      seat.model,
+      seat.provider.kind,
       promptTokens || estimateTokens(text),
       completionTokens || estimateTokens(out),
     );

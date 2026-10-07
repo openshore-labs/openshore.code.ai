@@ -14,6 +14,13 @@ import { SheetHead } from '../components/SheetHead.js';
 import { ExternalGlyph } from '../components/SheetGlyphs.js';
 import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
 import { openInAppBrowser } from '../lib/platform.js';
+import {
+  connectionsOfflineLine,
+  keyCheckWaits,
+  networkUp,
+  offlineChosen,
+  offlineNow,
+} from '../state/offlineOps.js';
 
 export function ConnectionsScreen() {
   const {
@@ -26,7 +33,16 @@ export function ConnectionsScreen() {
     settings,
     connectionsFocus,
     clearConnectionsFocus,
+    connectivity,
   } = useApp();
+  // Desktop Offline (founder, 2026-10-07): offline, these models wait for a
+  // connection, said once at the top. Keys stay saved, and disconnecting
+  // stays one tap (it removes a key from this device, no request). A new key
+  // is checked with its provider before it is kept, so with the network down
+  // Save waits, and says why; with Offline only chosen, the check still runs.
+  const offline = offlineNow(connectivity, settings.profileOverride);
+  const chosen = offlineChosen(connectivity, settings.profileOverride);
+  const networkDown = !networkUp(connectivity);
   // The provider whose key sheet is open.
   const [editing, setEditing] = useState<string | undefined>();
   const [value, setValue] = useState('');
@@ -65,8 +81,9 @@ export function ConnectionsScreen() {
 
   const save = async (id: string, name: string) => {
     const key = value.trim();
-    // Enter in a field is a second door to Save, so it waits while a check runs.
-    if (!key || checking) return;
+    // Enter in a field is a second door to Save, so it waits while a check
+    // runs, and while the network is down (the check needs it).
+    if (!key || checking || networkDown) return;
     // Verify the key actually works before claiming "connected", so a typo is
     // caught here, not later mid-chat. A hard rejection keeps the sheet open;
     // an unverifiable result (offline, dev CORS) saves but says so.
@@ -116,6 +133,11 @@ export function ConnectionsScreen() {
             Walk me through it
           </button>
         </p>
+        {offline ? (
+          <p className="hint connections-offline" role="status">
+            {connectionsOfflineLine(chosen)}
+          </p>
+        ) : null}
 
         {/* One row per provider: its model count, and a Connected pill once
             its key is saved. A tap opens the key sheet, or, once connected,
@@ -204,12 +226,17 @@ export function ConnectionsScreen() {
                   </p>
                 </div>
               ) : null}
+              {networkDown ? (
+                <p className="hint" role="status">
+                  {keyCheckWaits(provider.name)}
+                </p>
+              ) : null}
               <div className="sheet-actions">
                 <button
                   type="button"
                   className="btn primary press-fb"
                   data-reveal-primary=""
-                  disabled={checking || !value.trim()}
+                  disabled={checking || networkDown || !value.trim()}
                   onClick={() => void save(provider.id, provider.name)}
                 >
                   {checking ? 'Checking...' : 'Save'}

@@ -63,6 +63,13 @@ import { useOnline } from '../hooks/useOnline.js';
 import { useExitPresence } from '../hooks/useExitPresence.js';
 import type { Attachment } from '../lib/attachments.js';
 import { thisDeviceNoun } from '../lib/deviceNoun.js';
+import {
+  LOCAL_MODEL_READY,
+  installLocalDoor,
+  networkUp,
+  offlineNow,
+  usablePick,
+} from '../state/offlineOps.js';
 
 /** The transcript's shape while a reopened desktop chat replays its journal:
  *  soft bars in the rhythm of the last known transcript (user turn, answer,
@@ -278,6 +285,9 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     composerDefaultSource,
     sendWaitsOnFirstSeat,
     retryPending,
+    connectivity,
+    ensureHarborMaster,
+    harborMasterDownload,
   } = useApp();
   // The repositories a new chat will start with, picked in the header before
   // the first message (the Claude Code way): the active project's, until the
@@ -317,7 +327,24 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   // what "My Stack" selects. It is read every render, so a sign-in, a model
   // set up, or a Stack built moves it along.
   const [pickedSource, setPickedSource] = useState<ConversationSource | undefined>(undefined);
-  const selectedSource = pickedSource ?? composerDefaultSource();
+  // Desktop Offline: with no model on this computer, the stop card's door
+  // pulls DeepBlue (left unseated) while the network is up.
+  const localDoor = installLocalDoor({
+    desktop: isDesktop(),
+    networkUp: networkUp(connectivity),
+    download: harborMasterDownload,
+  });
+  const installLocal = () =>
+    void ensureHarborMaster({ seat: false }).then((ok) => {
+      const why = useApp.getState().harborMasterDownload;
+      if (ok) showToast(LOCAL_MODEL_READY);
+      else if (why?.failed) showToast(why.label);
+    });
+  // Offline, a cloud pick waits, so a new chat never starts on one (Desktop
+  // Offline): the default brain stands in.
+  const selectedSource =
+    usablePick(pickedSource, offlineNow(connectivity, settings.profileOverride)) ??
+    composerDefaultSource();
   // A first message typed before any brain can answer (no model downloaded, no
   // computer paired, no cloud key) is held in the store (settings'
   // heldFirstMessage), never here, so a jump from the chooser to a setup room
@@ -894,6 +921,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             onDismissTrust={dismissProjectTrust}
             onGiveMoreRoom={(itemId) => void giveMoreRoom(itemId)}
             onOpenStack={() => setView('stack')}
+            onInstallLocal={localDoor ? { ...localDoor, run: installLocal } : undefined}
             onOpenPackNote={openPackNote}
             onSaveHandoff={(itemId) => saveHandoffToVault(conv.id, itemId)}
             imageOffer={imageOffer}

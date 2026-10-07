@@ -227,6 +227,14 @@ export interface DesktopStatus {
   connections: { anthropic: boolean; openai: boolean; github: boolean };
 }
 
+/** What main answers a Desktop Offline report: the network as main reads it,
+ *  and whether the engine now works offline, and why. */
+export interface DesktopOfflineAnswer {
+  online: boolean;
+  offline: boolean;
+  reason?: 'network' | 'chosen';
+}
+
 /** One device paired to this desktop, as shown in the revoke list. `id` is the
  *  credential's token hash, the handle revokeDeviceCredential matches on. */
 export interface PairedDevice {
@@ -500,6 +508,15 @@ export interface OscodeBridge {
   routineRun(id: string): Promise<{ queued: true; position: number } | { error: string }>;
   routineStop(id: string): Promise<{ stopped: boolean }>;
   routinesWebSearch(allowed: boolean): Promise<{ webSearch: boolean }>;
+  /** Desktop Offline (founder, 2026-10-07): the person's choice (true for
+   *  Offline) for this computer's engine. Main combines it with its own read
+   *  of the network (net.isOnline(), no request) and tells every session;
+   *  the answer is main's view, so the renderer learns it at once. Optional
+   *  for an older main. */
+  setOffline?(chosen: boolean): Promise<DesktopOfflineAnswer>;
+  /** Main saw the network change, so the window flips as promptly as the
+   *  engine does. */
+  onNetwork?(cb: (payload: { online: boolean }) => void): () => void;
   webFetchMode?(mode: 'ask' | 'allow' | 'off'): Promise<{ webFetch: 'ask' | 'allow' | 'off' }>;
   /** One picture of this window's page, as a JPEG data URL (Slack Water's floor). */
   snapshot?(): Promise<string | null>;

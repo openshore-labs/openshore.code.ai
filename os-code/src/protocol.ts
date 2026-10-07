@@ -88,6 +88,18 @@ export type { FreeChatEvent } from './daemon/freeChat.js';
 // The Memory switch's precedence: the app's switch can only turn project
 // memory off, and a project's config off always wins.
 export { memoryEnabled } from './core/agent/memorySwitch.js';
+// Desktop Offline (founder, 2026-10-07): the engine's words for working with
+// no internet, so the app's door for "no model on your computer can answer
+// yet" matches the line the engine ends that turn with. Pure.
+export {
+  ONLINE_AGAIN_NOTE,
+  OFFLINE_NOW_DENIED,
+  offlineNeedsLocalModel,
+  offlineNoModelLine,
+  offlineNote,
+  rankLocalModels,
+} from './core/agent/offline.js';
+export type { MachineOffline, OfflineReason } from './core/agent/offline.js';
 // The line diff approvals show, shared so the Vault's resolve sheet compares
 // two versions of a note with the exact same lines (Vault M1, 1.1). Pure and
 // import-free.

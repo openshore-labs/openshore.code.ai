@@ -19,6 +19,13 @@ import { freeChat, type FreeChatEvent } from 'os-code/dist/src/daemon/freeChat.j
 import { TerminalManager, TerminalUnavailable } from 'os-code/dist/src/daemon/terminal.js';
 import { HOME_SHELL_ID } from 'os-code/dist/src/daemon/homeShellId.js';
 import { ProviderRegistry } from 'os-code/dist/src/providers/registry.js';
+import { leavesThisNetwork } from 'os-code/dist/src/providers/types.js';
+import {
+  machineOffline,
+  setMachineOffline,
+  type MachineOffline,
+  type OfflineReason,
+} from 'os-code/dist/src/core/agent/offline.js';
 import { getAnthropicKey, loginWithApiKey, logoutClaude } from 'os-code/dist/src/auth/claude.js';
 import {
   getGithubToken,
@@ -616,6 +623,23 @@ export class EngineHost {
     return this.terminals.kill(termId);
   }
 
+  // ----------------------------------------------------------- desktop offline
+
+  /** This computer's offline state, for every session this process hosts
+   *  (Desktop Offline, founder 2026-10-07): main's network watch sets it, from
+   *  the network and the person's choice. The desktop's own sessions and a
+   *  paired phone's (the daemon runs in this process) read the one engine
+   *  flag before each turn, so the change reaches every chat at its next
+   *  turn. Undefined means online. */
+  setOffline(reason: OfflineReason | undefined): MachineOffline {
+    return setMachineOffline(reason);
+  }
+
+  /** What the engine was last told. */
+  offline(): MachineOffline {
+    return machineOffline();
+  }
+
   // ------------------------------------------------------------------ status
 
   async status() {
@@ -643,13 +667,19 @@ export class EngineHost {
     }
 
     const stackConfig = config.stack;
+    // Where the orchestrator runs, judged by address (leavesThisNetwork),
+    // never by a label: an OpenAI-compatible server on the internet is as far
+    // off this computer as a cloud API, and offline it waits like one.
+    const orchestratorId = stackConfig.orchestrator?.provider;
+    const orchestratorLeaves =
+      orchestratorId && providers.has(orchestratorId)
+        ? leavesThisNetwork(providers.get(orchestratorId))
+        : config.providers[orchestratorId ?? '']?.kind === 'anthropic';
     const orchestrator = stackConfig.orchestrator
       ? {
           model: stackConfig.orchestrator.model,
           provider: stackConfig.orchestrator.provider,
-          kind: (config.providers[stackConfig.orchestrator.provider]?.kind === 'anthropic'
-            ? 'cloud'
-            : 'local') as 'local' | 'cloud',
+          kind: (orchestratorLeaves ? 'cloud' : 'local') as 'local' | 'cloud',
         }
       : undefined;
     const specialists = Object.entries(stackConfig.specialists)

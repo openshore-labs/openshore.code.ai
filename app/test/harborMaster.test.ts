@@ -215,11 +215,13 @@ describe('DeepBlue is out of the box on the desktop', () => {
   });
 
   it('the store pulls by catalog id, seats by Ollama ref, and refreshes the gate', () => {
-    const action = store.slice(store.indexOf('async ensureHarborMaster()'));
+    const action = store.slice(store.indexOf('async ensureHarborMaster(opts)'));
     const body = action.slice(0, action.indexOf('beginHarborMiniWithIntro()'));
     expect(body).toContain('resolveHarborMaster(hw)');
     expect(body).toContain('b.installModel(size.catalogId)');
     expect(body).toContain('b.setOrchestrator(size.ollamaRef)');
+    // Desktop Offline's door pulls it and leaves the person's pick seated.
+    expect(body).toMatch(/if \(opts\?\.seat !== false\) \{[\s\S]{0,160}b\.setOrchestrator/);
     expect(body).toContain('refreshDesktopStatus()');
     // Ollama down is a failure line, never a silent no-op.
     expect(body).toContain('status.ollama.detail');
