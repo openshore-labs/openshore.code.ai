@@ -4535,7 +4535,6 @@ button.vault-tag {
 .send-btn.stop {
   background: var(--ink);
   color: var(--bg);
-  font-size: var(--text-2);
 }
 
 /* The composer row, in the Claude app's rhythm: add, the model, the mode,
@@ -4549,9 +4548,6 @@ button.vault-tag {
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: var(--text-7);
-  font-weight: var(--weight-regular);
-  line-height: 1;
   color: var(--ink-soft);
   background: transparent;
   flex-shrink: 0;
@@ -4595,10 +4591,10 @@ button.vault-tag {
   position: absolute;
   inset: -6px 0;
 }
-/* A phone's row: add, model, mode, voice, mic, send is wider than the field.
-   The mode pill folds to its mode's glyph (the sheet it opens names the mode,
-   and its label stays for assistive tech), so the model name reads in full
-   and send keeps its shape. */
+/* A phone's row: add, model, mode, terminal, voice, mic, send is wider than
+   the field. The mode pill folds to its mode's glyph and the terminal pill to
+   its $ (the mode's sheet names the mode, and both labels stay for assistive
+   tech), so the model name keeps room and send keeps its shape. */
 @media (max-width: 430px) {
   .composer-row {
     gap: 4px;
@@ -4606,13 +4602,17 @@ button.vault-tag {
   .composer-pill {
     padding: 0 8px;
   }
-  .composer-pill-mode {
+  .composer-pill-mode,
+  .composer-pill-term {
     width: 32px;
     min-width: 32px;
     padding: 0;
     justify-content: center;
   }
   .composer-pill-mode .composer-pill-text {
+    display: none;
+  }
+  .composer-pill-term .composer-pill-text {
     display: none;
   }
   .composer-pill-mode .composer-pill-dot {
@@ -4981,6 +4981,11 @@ button.vault-tag {
 .ms-row-sub {
   font-size: var(--text-2);
   color: var(--muted);
+}
+/* A sub that wraps on a phone splits into two even lines, never one word
+   alone on the last. */
+.model-sheet .ms-row-sub {
+  text-wrap: balance;
 }
 .ms-row-chev {
   color: var(--muted);

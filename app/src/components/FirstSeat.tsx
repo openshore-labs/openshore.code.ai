@@ -1,7 +1,6 @@
 // The First Seat: the empty chat's center when nothing on this device can
-// answer yet. One hardware-fit pick, one tap to set it up, and the Marketplace
-// one tap behind it. It is not a room and carries no codename: it is just how a
-// fresh OpenShore greets you. Creative Studio direction "The Seat Fills": the
+// answer yet. One pick and one tap to set it up. It is not a room and carries
+// no codename: it is just how a fresh OpenShore greets you. Creative Studio direction "The Seat Fills": the
 // room resolves into readiness, the mark settles, the fit line writes itself,
 // the card seats with a soft teal bloom and a single tick. The whole surface is
 // presence-aware (it animates out, never snaps) and honors reduced motion.
