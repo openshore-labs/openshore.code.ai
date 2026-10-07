@@ -64,7 +64,14 @@ export class NetworkWatch {
     }
     if (online !== this.lastOnline) {
       this.lastOnline = online;
-      this.deps.notify(online);
+      // A window on its way out cannot take the message; the poll runs on a
+      // timer in main, so a failed send is dropped, never thrown (the window
+      // reads main's view again on its next report).
+      try {
+        this.deps.notify(online);
+      } catch {
+        // Nothing to tell.
+      }
     }
     return { online, offline: reason !== undefined, ...(reason ? { reason } : {}) };
   }

@@ -86,6 +86,19 @@ describe("main's network watch", () => {
     });
     expect(watch.tick().online).toBe(true);
   });
+
+  it('a window that cannot take the message never throws out of the poll, and the engine still hears', () => {
+    const apply = vi.fn();
+    const watch = new NetworkWatch({
+      isOnline: () => false,
+      apply,
+      notify: () => {
+        throw new Error('Object has been destroyed');
+      },
+    });
+    expect(() => watch.tick()).not.toThrow();
+    expect(apply).toHaveBeenLastCalledWith('network');
+  });
 });
 
 describe('the wiring: main, the preload and the bridge', () => {
@@ -189,7 +202,7 @@ describe('what counts as offline here', () => {
 });
 
 describe('the Status sheet on the computer itself', () => {
-  it('Docked says it is not used here; Offshore waits for a connection', () => {
+  it('Docked says it is not used here; Offshore says there is no connection right now', () => {
     expect(profileBlurb('docked', true, true)).toBe(
       'For your phone, when it reaches this computer. Not used here.',
     );
@@ -197,7 +210,9 @@ describe('the Status sheet on the computer itself', () => {
     expect(profileBlurb('offshore', true, true)).toBe(
       "Online. Cloud models and this computer's models.",
     );
-    expect(profileUnavailable('offshore', false, true, true)).toBe(' Waits for a connection.');
+    // "Online." then "No connection right now.": the row says what it needs
+    // and that it is missing, never that it is online and waiting at once.
+    expect(profileUnavailable('offshore', false, true, true)).toBe(' No connection right now.');
     expect(profileBlurb('offline', true, true)).toBe(
       "Only this computer's models. Cloud models wait for a connection.",
     );

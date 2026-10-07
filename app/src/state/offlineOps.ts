@@ -62,7 +62,9 @@ export async function reportDesktopOffline(
   }
 }
 
-/** A cloud model's row, while offline: shown, not picked. */
+/** Under a cloud row on the model sheet's first page while offline (the
+ *  Cloud models row, a cloud favorite): shown, not picked. The cloud sheet
+ *  itself says it once at the top (CLOUD_SHEET_OFFLINE) over muted names. */
 export const CLOUD_WAITS = 'Waits for a connection';
 
 /** The cloud sheet's line above its waiting rows. */

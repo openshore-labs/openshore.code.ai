@@ -6,14 +6,14 @@
 // model is told, the transcript says each change once, and with no local
 // model at all the turn ends with one plain line.
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ConfigSchema } from '../src/config/schema.js';
 import { ProviderRegistry } from '../src/providers/registry.js';
 import { resolveStack } from '../src/router/stack.js';
 import { Router } from '../src/router/router.js';
-import { offlineCut } from '../src/core/agent/registry.js';
+import { buildToolContext, offlineCut } from '../src/core/agent/registry.js';
 import { bootstrapSession } from '../src/core/agent/bootstrap.js';
 import { OFFLINE_DOWNLOAD, installOllamaRef } from '../src/market/install.js';
 import {
@@ -66,6 +66,16 @@ function cloudWithLocal(
     },
   });
   return { cloud, local, session };
+}
+
+/** A stream that fails before its first event, as a request that never
+ *  reaches its server does. `before` runs first. */
+function failing(message: string, before: () => void = () => {}): MockProvider['chat'] {
+  return async function* () {
+    before();
+    if (message) throw new Error(message);
+    yield* [];
+  } as MockProvider['chat'];
 }
 
 const notes = (events: AgentEvent[]): string[] =>
@@ -282,6 +292,122 @@ describe('what offline takes away', () => {
   });
 });
 
+describe('sign-off: nothing reaches for the cloud offline, and nothing raw', () => {
+  it('a stack all on this network says nothing of going offline or coming back', async () => {
+    const state = flag(NETWORK_DOWN);
+    const local = new MockProvider('ollama', [textTurn('one'), textTurn('two')]);
+    const session = makeTestSession(local, { offlineState: state.read });
+    await session.agent.run('hello');
+    state.set(ONLINE);
+    await session.agent.run('again');
+    expect(notes(session.events)).not.toContain(offlineNote('network'));
+    expect(notes(session.events)).not.toContain(ONLINE_AGAIN_NOTE);
+    // The web tools still left the menu while offline, and the model was told.
+    expect((local.requests[0]!.tools ?? []).map((t) => t.name)).not.toContain('webFetch');
+    expect(local.requests[0]!.messages[0]!.content as string).toContain(OFFLINE_PROMPT);
+  });
+
+  it('a title written between turns, offline, runs on the local seat, never the cloud one', async () => {
+    const state = flag(ONLINE);
+    const { cloud, local, session } = cloudWithLocal(
+      [textTurn('Cloud answered.')],
+      [textTurn('Offline Title Here')],
+      state,
+    );
+    await session.agent.run('plan the trip');
+    expect(cloud.requests).toHaveLength(1);
+    // The connection goes after the task: the session's seat is still the
+    // cloud one, and the title is written outside a turn.
+    state.set(NETWORK_DOWN);
+    const title = await session.agent.generateTitle();
+    expect(title).toBe('Offline Title Here');
+    expect(cloud.requests).toHaveLength(1);
+    expect(local.requests).toHaveLength(1);
+    expect(local.requests[0]!.model).toBe('qwen2.5-coder:7b');
+  });
+
+  it('a lost connection is said as one, and the next try follows the flag to the local seat', async () => {
+    const state = flag(ONLINE);
+    const { cloud, local, session } = cloudWithLocal([], [textTurn('Done here.')], state);
+    // The request never reached the server, and the flag has not caught up
+    // yet: it does while the loop pauses before its retry.
+    cloud.chat = failing('fetch failed', () => setTimeout(() => state.set(NETWORK_DOWN), 50));
+    await session.agent.run('hello');
+    const status = session.events.find((e) => e.type === 'status');
+    const said = status && status.type === 'status' ? status.message : '';
+    expect(said).toMatch(/^Could not reach .+\. Trying again in 2s\.$/);
+    expect(said).not.toMatch(/busy|fetch failed/);
+    expect(local.requests).toHaveLength(1);
+    expect(notes(session.events)).toContain(offlineNote('network'));
+    const done = session.events.at(-1);
+    expect(done && done.type === 'task-done' && done.reason).toBe('complete');
+  }, 10_000);
+
+  it('a cloud seat that cannot be reached, with the flag still online, ends on a plain line', async () => {
+    const state = flag(ONLINE);
+    const { cloud, session } = cloudWithLocal([], [], state);
+    // The Anthropic endpoint's own label; the line names the provider alone.
+    Object.defineProperty(cloud, 'label', { get: () => 'Claude (cloud)' });
+    cloud.chat = failing('getaddrinfo ENOTFOUND api.anthropic.com');
+    await session.agent.run('hello');
+    const done = session.events.at(-1);
+    const message = done && done.type === 'task-done' ? (done.message ?? '') : '';
+    expect(done && done.type === 'task-done' && done.reason).toBe('error');
+    expect(message).toBe(
+      'Could not reach Claude from your computer. Check its internet connection, then try again.',
+    );
+    expect(message).not.toMatch(/ENOTFOUND|getaddrinfo/);
+  });
+
+  it('a local seat failing keeps its own words (only a seat off this network is "not reached")', async () => {
+    const local = new MockProvider('ollama', []);
+    local.chat = failing('getaddrinfo ENOTFOUND localhost');
+    const session = makeTestSession(local, { offlineState: flag(ONLINE).read });
+    await session.agent.run('hello');
+    const done = session.events.at(-1);
+    expect(done && done.type === 'task-done' && done.message).toBe(
+      'getaddrinfo ENOTFOUND localhost',
+    );
+  });
+});
+
+describe('repo search offline', () => {
+  // An embedding seat off this network, whose embedder is loud the moment it
+  // is used: offline, repo search keeps to the keyword index instead.
+  function contextWith(offline: () => boolean, cwd: string) {
+    const router = {
+      embeddingRole: () => ({
+        ref: { provider: 'cloud-embed', model: 'text-embed' },
+        provider: { kind: 'cloud', remote: true },
+      }),
+      delegate: async () => '',
+    } as unknown as Router;
+    const providers = {
+      embedder: () => ({
+        embed: async () => {
+          throw new Error('embedder used');
+        },
+      }),
+      imageProvider: () => undefined,
+    } as unknown as ProviderRegistry;
+    return buildToolContext({ cwd, config: ConfigSchema.parse({}), router, providers, offline });
+  }
+
+  it('keeps to the keyword index offline, and uses the embedder online', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'osc-offline-search-'));
+    try {
+      writeFileSync(join(cwd, 'notes.md'), 'the harbor chart lives here\n');
+      let offline = true;
+      const ctx = contextWith(() => offline, cwd);
+      await expect(ctx.searchRepo!('harbor', 3)).resolves.toMatch(/notes\.md \(keyword score/);
+      offline = false;
+      await expect(ctx.searchRepo!('harbor', 3)).rejects.toThrow(/embedder used/);
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('the router offline', () => {
   function routerWith(
     specialists: Record<string, { provider: string; model: string }>,
@@ -333,6 +459,49 @@ describe('the router offline', () => {
     expect(await router.delegate('fast', 'quick one')).toBe('from the local server');
     expect(local.requests[0]!.model).toBe('qwen2.5-coder:3b');
     expect(cloud.requests).toHaveLength(0);
+  });
+
+  it('a vision subtask moved off a cloud seat says it waits; one that never had a reader says how to get one', async () => {
+    const orch = new MockProvider('orch', [], { caps: { supportsVision: false } });
+    const cloudEyes = new MockProvider('eyes', [], { kind: 'cloud' });
+    const offline = routerWith(
+      { vision: { provider: 'eyes', model: 'cloud-eyes' } },
+      [orch, cloudEyes],
+      { provider: 'orch', model: 'local-model' },
+      () => true,
+    );
+    await expect(offline.delegate('vision', 'what is this')).rejects.toThrow(
+      'Offline, and local-model on your computer cannot read images, so this waits for a connection.',
+    );
+    expect(cloudEyes.requests).toHaveLength(0);
+
+    // No vision seat placed at all: being offline changed nothing, so the
+    // online words stand.
+    const none = routerWith({}, [orch], { provider: 'orch', model: 'local-model' }, () => true);
+    await expect(none.delegate('vision', 'what is this')).rejects.toThrow(
+      /Enable a vision specialist/,
+    );
+  });
+
+  it('knows whether any seat in the stack leaves this network', () => {
+    const orch = new MockProvider('orch', []);
+    const cloudCoder = new MockProvider('cloudcoder', [], { kind: 'cloud' });
+    const plain = (specialists: Record<string, { provider: string; model: string }>) => {
+      const config = ConfigSchema.parse({
+        stack: { orchestrator: { provider: 'orch', model: 'm' }, specialists },
+      });
+      const registry = new ProviderRegistry(config, () => undefined);
+      registry.register(orch.id, orch);
+      registry.register(cloudCoder.id, cloudCoder);
+      return new Router(config, registry, resolveStack(config, registry), {
+        offline: () => true,
+      });
+    };
+    expect(plain({}).anySeatLeaves()).toBe(false);
+    expect(plain({ coding: { provider: 'cloudcoder', model: 'c' } }).anySeatLeaves()).toBe(true);
+    // A ready escalation is a seat off this network too.
+    const escalating = routerWith({}, [orch], { provider: 'orch', model: 'm' }, () => true);
+    expect(escalating.anySeatLeaves()).toBe(true);
   });
 
   it('never escalates offline, and does online', () => {

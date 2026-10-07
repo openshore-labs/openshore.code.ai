@@ -155,7 +155,9 @@ describe('the Status sheet on the desktop', () => {
     const text = document.body.textContent ?? '';
     expect(text).toContain('Which models can answer depends on what this computer can reach.');
     expect(text).toContain('For your phone, when it reaches this computer. Not used here.');
-    expect(text).toContain('Waits for a connection.');
+    expect(text).toContain(
+      "Online. Cloud models and this computer's models. No connection right now.",
+    );
     expect(text).toContain("Only this computer's models. Cloud models wait for a connection.");
     expect(text).not.toContain('Not reachable right now.');
     expect(text).not.toMatch(/\bhub\b/i);
@@ -233,7 +235,13 @@ describe("the model sheet's waiting cloud models", () => {
     expect(dom.text()).toContain('Offline. Cloud models wait for a connection.');
     const waiting = [...dom.container.querySelectorAll('.ms-row-disabled')];
     expect(waiting.length).toBeGreaterThan(0);
-    for (const row of waiting) expect(row.textContent).toContain('Waits for a connection');
+    // The sheet says why once, at the top; each row is its muted name alone,
+    // not the same line again under every model.
+    for (const row of waiting) {
+      expect(row.querySelector('.ms-row-sub')).toBeNull();
+      expect(row.getAttribute('aria-disabled')).toBe('true');
+    }
+    expect(dom.text().match(/wait for a connection|Waits for a connection/g)).toHaveLength(1);
     expect(dom.container.querySelector('.model-sheet .ms-pin')).toBeNull();
     expect(dom.container.querySelector('.model-sheet .pill.cloud, .model-sheet .amber')).toBeNull();
     const { act } = await import('react');

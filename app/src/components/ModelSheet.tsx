@@ -77,11 +77,12 @@ function RowContent({
 
 /** A cloud model while offline (Desktop Offline): shown, so the person sees
  *  what waits, but not a pick, and in the muted ink of a row that cannot be
- *  tapped, with no spend mark. */
+ *  tapped, with no spend mark. Its sheet says why once, at the top
+ *  (CLOUD_SHEET_OFFLINE), so the row is its name alone. */
 function WaitingRow({ main }: { main: string }) {
   return (
     <div className="ms-row ms-row-disabled" aria-disabled="true">
-      <RowContent main={main} sub={CLOUD_WAITS} />
+      <RowContent main={main} />
     </div>
   );
 }

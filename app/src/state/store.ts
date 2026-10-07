@@ -159,6 +159,7 @@ import { claudeModelLabel } from '../lib/claudeModels.js';
 import {
   cloudWaitLine,
   desktopOnline,
+  networkUp,
   offlineChosen,
   offlineNow,
   reportDesktopOffline,
@@ -11753,8 +11754,9 @@ export const useApp = create<AppState>((set, get, api) => {
         return true;
       } catch (err) {
         // With no network the download cannot start: one plain line, never
-        // the model server's own error (Desktop Offline).
-        const noNetwork = typeof navigator !== 'undefined' && navigator.onLine === false;
+        // the model server's own error (Desktop Offline). The store's read
+        // counts main's view of the network beside the window's.
+        const noNetwork = !networkUp(get().connectivity);
         set({
           harborMasterDownload: {
             percent: 0,

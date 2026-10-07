@@ -71,8 +71,9 @@ const HOME_BLURB: Record<ProfileId, string> = {
 
 /** Why a status cannot be picked right now, after its blurb, or '' when it
  *  can. On the computer itself Docked's blurb already says why, and Offshore
- *  waits for the connection; elsewhere a connected computer is out of reach.
- *  Before a computer is connected nothing is added (its blurb says enough). */
+ *  has no connection to be online with; elsewhere a connected computer is out
+ *  of reach. Before a computer is connected nothing is added (its blurb says
+ *  enough). */
 export function profileUnavailable(
   id: ProfileId,
   canPick: boolean,
@@ -80,7 +81,7 @@ export function profileUnavailable(
   home = false,
 ): string {
   if (canPick) return '';
-  if (home) return id === 'offshore' ? ' Waits for a connection.' : '';
+  if (home) return id === 'offshore' ? ' No connection right now.' : '';
   return paired ? ' Not reachable right now.' : '';
 }
 

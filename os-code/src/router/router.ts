@@ -127,9 +127,27 @@ export class Router {
     return undefined;
   }
 
+  /** Whether any seat this stack places sends its requests off this network
+   *  (the orchestrator, a specialist, or a ready escalation), judged by
+   *  address: what "cloud models wait for a connection" speaks of. A stack
+   *  that is all on this network loses no model offline, so a session says
+   *  nothing of it (Desktop Offline). */
+  anySeatLeaves(): boolean {
+    if (leavesThisNetwork(this.stack.orchestrator.provider)) return true;
+    for (const specialist of Object.values(this.stack.specialists)) {
+      if (specialist && leavesThisNetwork(specialist.provider)) return true;
+    }
+    return this.escalationReady();
+  }
+
   escalationEnabled(): boolean {
     // Offline, nothing escalates: there is no cloud to reach.
     if (this.offline()) return false;
+    return this.escalationReady();
+  }
+
+  /** Whether escalation is configured and could run, online or not. */
+  private escalationReady(): boolean {
     if (!this.config.routing.escalation.enabled) return false;
     const target = this.escalationTarget();
     if (!target) return false;
@@ -159,12 +177,20 @@ export class Router {
     const roled = this.roleFor(role);
     let resolved = roled.resolved;
     const offline = this.offline();
+    // Whether being offline moved this subtask off the seat that would take
+    // it online (a cloud specialist skipped, or a cloud orchestrator).
+    const placed = this.stack.specialists[role];
+    let movedOffline = Boolean(
+      offline &&
+      roled.fellBack &&
+      placed &&
+      leavesThisNetwork(placed.provider) &&
+      this.config.routing.mode !== 'orchestrator-only',
+    );
     if (roled.fellBack) {
-      const placed = this.stack.specialists[role];
-      const note =
-        offline && placed
-          ? `Offline, so the ${role} specialist waits and a model on your computer handled it.`
-          : `No ${role} specialist is enabled, so your Reasoning model handled it itself.`;
+      const note = movedOffline
+        ? `Offline, so the ${role} specialist waits and a model on your computer takes it.`
+        : `No ${role} specialist is enabled, so your Reasoning model handled it itself.`;
       this.notes.push({ role, message: note });
       log.info('delegation fell back to orchestrator', { role, offline });
     }
@@ -174,13 +200,14 @@ export class Router {
       const local = await this.localSeat();
       if (!local) throw new Error('Offline, and no model on your computer can take this on.');
       resolved = local;
+      movedOffline = true;
     }
     if (role === 'vision') {
       const caps = await resolved.provider.capabilities(resolved.ref.model);
       if (!caps.supportsVision) {
         throw new Error(
-          offline
-            ? `Offline, and ${resolved.ref.model} on your computer cannot read images. A model that can read screenshots, on your computer, would.`
+          movedOffline
+            ? `Offline, and ${resolved.ref.model} on your computer cannot read images, so this waits for a connection.`
             : `${resolved.ref.model} cannot read images. Enable a vision specialist (category "can read screenshots") to analyze screenshots.`,
         );
       }
