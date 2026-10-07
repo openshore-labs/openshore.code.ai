@@ -82,8 +82,10 @@ export const PHONE_AGENT_LINE = 'Your agent uses the vault on your computer.';
  *  never gets a note the privacy rules mark local-only (D5). The project
  *  room's pins card says the same. */
 export const VAULT_MODELS_TITLE = 'How your models use it';
-export const VAULT_MODELS_LINE =
-  'Pin a note to a project and every chat there starts with it. Private notes never reach a cloud model.';
+/** The one promise about private notes and cloud models, worded once for the
+ *  ramp and the project room's pins card (D5; CS-10). */
+export const VAULT_PRIVATE_OFF_CLOUD = 'Private notes never reach a cloud model.';
+export const VAULT_MODELS_LINE = `Pin a note to a project and every chat there starts with it. ${VAULT_PRIVATE_OFF_CLOUD}`;
 /** The desktop's line when the vault is not the agent's folder. */
 export const DESKTOP_AGENT_LINE =
   'Your agent uses a folder on this computer, not these notes. Move the vault to This folder to share it.';

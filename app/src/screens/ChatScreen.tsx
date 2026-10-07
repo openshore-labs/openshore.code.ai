@@ -27,7 +27,6 @@ import { ModelSheet } from '../components/ModelSheet.js';
 import { ModeSheet } from '../components/ModeSheet.js';
 import { ProfileStatus } from '../components/ProfileStatus.js';
 import { BrandMark } from '../components/BrandMark.js';
-import { Icon } from '../components/Icon.js';
 import { MenuIcon } from '../components/MenuIcon.js';
 import { ROOM_NAMES } from '../components/BackBar.js';
 import { RepoPicker } from '../components/RepoPicker.js';
@@ -46,7 +45,7 @@ import {
   walkActive,
 } from '../lib/guidedSetup.js';
 import { FirstSeat } from '../components/FirstSeat.js';
-import { TerminalGlyph } from '../components/SheetGlyphs.js';
+import { ComposeGlyph, TerminalGlyph } from '../components/SheetGlyphs.js';
 import { VoiceMode } from '../components/VoiceMode.js';
 import type { VoiceBreak } from '../lib/voice/voiceBreaks.js';
 import { Sheet } from '../components/Sheet.js';
@@ -223,17 +222,6 @@ function useOpeningGlide(bodyRef: RefObject<HTMLDivElement>): void {
     obs.observe(body);
     return () => obs.disconnect();
   }, [bodyRef]);
-}
-
-/** New chat in the chat's own bar (D7): the same drawn pen the Chats room's
- *  compose wears (screens/ChatsScreen.tsx). */
-function ComposeIcon() {
-  return (
-    <Icon size={22}>
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
-    </Icon>
-  );
 }
 
 /** The short name on the stopped card's "Continue with" button. */
@@ -837,7 +825,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             aria-label="New chat"
             title="New chat"
           >
-            <ComposeIcon />
+            <ComposeGlyph />
           </button>
         ) : null}
         <ProfileStatus />
@@ -845,9 +833,13 @@ export function ChatScreen({ compact }: { compact: boolean }) {
 
       {offlineMounted ? (
         <div className={`offline-banner${offlineClosing ? ' closing' : ''}`} role="status">
+          {/* Before a computer is connected, the banner never speaks of
+              one (D1's rule, the same as the pill). */}
           {isDesktop()
             ? 'Offline. Models on this computer still answer. Cloud models wait for a connection.'
-            : `Offline. Models on ${thisDeviceNoun()} still answer. Your computer and cloud models wait for a connection.`}
+            : settings.daemon
+              ? `Offline. Models on ${thisDeviceNoun()} still answer. Your computer and cloud models wait for a connection.`
+              : `Offline. Models on ${thisDeviceNoun()} still answer. Cloud models wait for a connection.`}
         </div>
       ) : null}
 
@@ -902,6 +894,12 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               // the Stack mid-walk is still in setup, and the model is told the
               // buttons are there.
               if (guided && guided.conversationId === conv.id) {
+                // Once the walk is over, the hello carries the door every
+                // other Harbor Lite chat has, so the wrap-up's "from the
+                // button under my first message" is a button that is there.
+                if (guided.finished && itemId === `${conv.id}-hello`) {
+                  return <GuideSetupLink onOpen={() => setView('onboarding')} />;
+                }
                 // The "help me get set up" list keeps its buttons under its
                 // own message while it is up, wherever the talk goes after it.
                 if (guided.menu === 'asking' && !guided.paused) {

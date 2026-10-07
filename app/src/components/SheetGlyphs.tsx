@@ -1,6 +1,7 @@
 import { Icon } from './Icon.js';
 // The small stroked glyphs sheets, rows and the chat share: close, back,
-// chevron, check, plus, send, stop, terminal, file, paste, note, lock and more.
+// chevron, check, plus, send, stop, terminal, file, paste, note, lock, more,
+// compose and the way out to a page outside the app.
 // Typed characters never stand in for them. A text "×" or "‹" carries the
 // font's side bearings and baseline with it, so it lands low and to the left
 // of the circle it sits in (founder screenshot, 2026-09-03). A path in a
@@ -139,6 +140,28 @@ export function MoreGlyph({ size = 22 }: { size?: number }) {
       <circle cx="5.5" cy="12" r="0.9" />
       <circle cx="12" cy="12" r="0.9" />
       <circle cx="18.5" cy="12" r="0.9" />
+    </Icon>
+  );
+}
+
+/** New chat: a pen over a page, the compose mark the Claude and iOS apps
+ *  use, so beside a chat's own name it never reads as rename. One drawing
+ *  for the Chats room's bar and an open chat's bar (D7). */
+export function ComposeGlyph({ size = 22 }: { size?: number }) {
+  return (
+    <Icon size={size}>
+      <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4Z" />
+    </Icon>
+  );
+}
+
+/** A link that leaves the app (Get a key, Get a token): a drawn arrow up and
+ *  out, so a font fallback can never swap a typed one for another shape. */
+export function ExternalGlyph({ size = 12 }: { size?: number }) {
+  return (
+    <Icon size={size} className="external-glyph">
+      <path d="M7 17L17 7M9 7h8v8" />
     </Icon>
   );
 }

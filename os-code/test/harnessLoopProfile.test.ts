@@ -150,7 +150,7 @@ describe('the discipline seam in the loop: a small seat gets a lean prompt', () 
     // D3 (founder, 2026-10-07): words a person reads, OpenShore and actions,
     // never the harness, a seat, tools or subagents.
     expect(seat[0]!.message).toMatch(
-      /^This is a (tiny|small) model, so OpenShore keeps the checklist and offers it \d+ of its \d+ actions\.$/,
+      /^This is a (tiny|small) model, so OpenShore keeps the checklist and gives it \d+ of the \d+ actions\.$/,
     );
     expect(seat[0]!.message).not.toMatch(/harness|seat|tools|subagent/i);
   });

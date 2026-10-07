@@ -231,7 +231,7 @@ export function StackScreen() {
             }
             sub={
               orchestrator
-                ? 'Plans every task and routes it.'
+                ? 'Reasoning model · Plans every task and routes it.'
                 : unanswered
                   ? undefined
                   : 'Pick a model to run the show.'

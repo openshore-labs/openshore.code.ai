@@ -1044,12 +1044,11 @@ function HubNameForm({
           }}
         />
       </div>
+      {/* One way out, the round close above (the 2026-10-07 form-sheet
+          rule), so the foot holds Save alone. */}
       <div className="sheet-actions">
         <button type="button" className="btn primary press-fb" onClick={save}>
           Save
-        </button>
-        <button type="button" className="btn quiet press-fb" onClick={onDone}>
-          Cancel
         </button>
       </div>
     </>

@@ -77,7 +77,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'setup-page',
     title: 'Set up OpenShore',
     where: "The Set up OpenShore button under Harbor Lite's first message",
-    text: 'The page for every optional next step. On the phone: Get Harbor, Connect your computer, Set up a repository, Add an API key. On your computer: Build your stack, Open a repository, Add an API key. In a new person\'s first chat Harbor Lite walks these steps with buttons under each message, and after Harbor it asks whether to start chatting or keep setting up, so setup never stands in the way; tap Pick up setup or say "let\'s set up" to pick it back up. There is no Get started group in Settings.',
+    text: 'The page for every optional next step. On the phone: Get Harbor, Connect your computer, Set up a repository, Add an API key. On your computer: Build your stack, Open a repository, Add an API key. In a new person\'s first chat Harbor Lite walks these steps with buttons under each message, and after Harbor it asks whether to start chatting or keep setting up, so setup never stands in the way; tap Keep setting up or say "let\'s set up" to pick it back up. There is no Get started group in Settings.',
     keywords: [
       'set up',
       'setup',
@@ -87,7 +87,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
       'next steps',
       'skipped',
       'first steps',
-      'pick up setup',
+      'keep setting up',
     ],
   },
   {
@@ -133,7 +133,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
       ...(launchOn ? ['Launch with Codemagic'] : []),
     ].join(
       ', ',
-    )}. Your recent chats sit under them, with View all. Settings stays at the bottom.${adminOn ? ' Company admins also see Admin.' : ''} A Sign in row shows when you are signed out.`,
+    )}. On a phone not yet connected to a computer, Terminal sits after Vault until it is. Your recent chats sit under them, with View all. Settings stays at the bottom.${adminOn ? ' Company admins also see Admin.' : ''} A Sign in row shows when you are signed out.`,
     keywords: ['menu', 'sidebar', 'navigation', 'drawer', 'where is', 'find', 'rooms', 'hamburger'],
   },
 
@@ -195,13 +195,13 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'chat-home',
     title: 'Chat',
-    text: 'The main screen. The header shows the chat title (tap to rename), the repositories pill, spend so far, a context bar, and the connection pill. Type in the chat box and tap send.',
+    text: 'The main screen. The header shows the chat title (tap to rename), the repositories pill, spend so far, a context bar, Terminal on a computer chat, the New chat pen, and the connection pill once your computer is connected. Type in the chat box and tap send.',
     keywords: ['chat', 'home', 'new chat', 'rename chat', 'context bar', 'main screen'],
   },
   {
     id: 'composer',
     title: 'The chat box',
-    text: 'At the bottom of every chat: + to attach, the model pill, the mode pill, a Terminal pill on computer chats, the voice mode button, the dictation mic, and send. While a reply runs you can type to queue the next message, or tap the square to stop. Shift+Tab cycles the mode.',
+    text: 'At the bottom of every chat: + to attach, the model pill, the mode pill and a Terminal pill on computer chats, the dictation mic, and one round button: voice mode while the box is empty, send once you type. While a reply runs you can type to queue the next message, or tap the square to stop. Shift+Tab cycles the mode.',
     keywords: ['chat box', 'composer', 'send', 'stop', 'queue', 'buttons', 'keyboard shortcuts'],
   },
   {
@@ -287,7 +287,8 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'voice-mode',
     title: 'Voice mode',
-    where: 'The wave icon beside the mic; voice choices in Menu, Settings, Voice mode',
+    where:
+      'The round button beside the mic, while the chat box is empty; voice choices in Menu, Settings, Voice mode',
     text: 'A full-screen spoken conversation: it listens, sends what you said, and speaks the reply. Tap to interrupt or send. Approvals, spending, and pick lists come back to the screen, and everything lands in the chat as text. Settings, Voice mode picks the voice, speaking speed, and whether replies are read aloud.',
     keywords: [
       'voice',
@@ -309,8 +310,8 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'reach-pill',
     title: 'The connection pill',
-    where: 'Top right of the chat',
-    text: "Shows your reach. Docked (green): your own computer is reachable, so its models, cloud models, and this device's models all work. Offshore: online, but your computer is out of reach, so cloud models and this device's models work. Offline (gray): only the models on this device. Tap it to follow the connection automatically or step down by hand.",
+    where: 'Top right of a chat, once your computer is connected',
+    text: "Shows your reach once your computer is connected. Docked (a green dot): your own computer is reachable, so its models, cloud models, and this device's models all work. Offshore (a plain dot): online, but your computer is out of reach, so cloud models and this device's models work. Offline (a hollow ring): only the models on this device. Before a computer is connected it shows only when you are offline. Tap it to follow the connection automatically or step down by hand; before a computer is connected, Choose Offline under the status switch in Stack does the same.",
     keywords: ['offshore', 'docked', 'pill', 'top right', 'connection', 'status', 'green', 'reach'],
   },
   {
@@ -334,7 +335,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'stack',
     title: 'Stack',
     where: 'Menu, Stack',
-    text: 'The models that answer for you. One is the Reasoning model: it plans each task and sends it to the specialist whose job fits, or does it itself. You can keep a separate stack for each connection status (Docked, Offshore, Offline); the one for your current status is used automatically. It exists so you can mix models you own, each doing what it does best.',
+    text: 'The models that answer for you. One is the Reasoning model: it plans each task and sends it to the specialist whose job fits, or does it itself. You can keep a separate stack for each connection status (Offshore and Offline, and Docked once your computer is connected); the one for your current status is used automatically. It exists so you can mix models you own, each doing what it does best.',
     keywords: [
       'stack',
       'your stack',

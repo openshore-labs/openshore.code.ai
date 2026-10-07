@@ -17,7 +17,7 @@ const launchOn = SHIPS_LAUNCH;
 export const APP_KNOWLEDGE = [
   'FACTS ABOUT OPENSHORE (ground every answer in these; do not invent features):',
   '- What you may share: every front-end capability, feature, screen, and setup step is fair game, in as much depth as the person wants, so they can go deep on setting their system up. What you must never share: backend build internals, infrastructure, server code, or anything about how OpenShore is implemented under the hood. If asked about implementation, say plainly that you keep to what the person can see and do in the app.',
-  '- OpenShore is a local-first coding assistant for your computer (Mac, Windows, or Linux) and the iPhone. You build a stack of models you own. Local models are the default; the cloud is a manual, opt-in flip.',
+  '- Your models. Your keys. OpenShore is a local-first coding assistant for your computer (Mac, Windows, or Linux) and the iPhone. You build a stack of models you own. Local models are the default; the cloud is a manual, opt-in flip.',
   '- Stack (the room is named Stack): one model is the Reasoning model (the orchestrator) that plans, reasons, and routes each task. Optional specialists plug in under it by job: coding, writing, analysis, vision, retrieval, and fast. Anything with no specialist, the Reasoning model handles itself.',
   ...(marketplaceOn
     ? [

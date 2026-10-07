@@ -241,3 +241,79 @@ describe("the refused device line speaks in the door's words", () => {
     expect(remote).not.toContain('Pair again from Menu, Pairing.');
   });
 });
+
+describe('sign-off: the offline banner and the finished walk say what is there', () => {
+  it(
+    'names no computer in the offline banner before one is connected',
+    {
+      timeout: 20_000,
+    },
+    async () => {
+      await chatScreen({ online: false });
+      const banner = dom.container.querySelector('.offline-banner')?.textContent ?? '';
+      expect(banner).toMatch(/^Offline\. Models on this (phone|iPad) still answer\./);
+      expect(banner).not.toMatch(/computer/);
+    },
+  );
+
+  it('keeps the computer in the banner once one is connected', { timeout: 20_000 }, async () => {
+    await chatScreen({ online: false, daemon: true });
+    expect(dom.container.querySelector('.offline-banner')?.textContent).toContain(
+      'Your computer and cloud models wait for a connection.',
+    );
+  });
+
+  it(
+    'puts the setup door under the hello once the walk is finished',
+    {
+      timeout: 20_000,
+    },
+    async () => {
+      const { HARBOR_MINI_MODEL_ID } = await import('../src/lib/harborMini.js');
+      const store = await import('../src/state/store.js');
+      const { ChatScreen } = await import('../src/screens/ChatScreen.js');
+      const guide = {
+        ...openChat,
+        id: 'c-guide',
+        title: 'Harbor Lite',
+        source: {
+          kind: 'device' as const,
+          modelId: HARBOR_MINI_MODEL_ID,
+          modelName: 'Harbor Lite',
+        },
+        thread: {
+          ...openChat.thread,
+          items: [
+            { kind: 'assistant' as const, id: 'c-guide-hello', streaming: false, text: 'Hello.' },
+            {
+              kind: 'assistant' as const,
+              id: 'c-guide-setup-1',
+              streaming: false,
+              text: "That's every step.",
+            },
+          ],
+        },
+      };
+      store.useApp.setState({
+        ready: true,
+        view: 'chat',
+        viewTrail: [],
+        activeId: guide.id,
+        conversations: { [guide.id]: guide } as never,
+        order: [guide.id],
+        connectivity: { homeReachable: false, online: true },
+        settings: {
+          onboarded: true,
+          claudeModel: 'x',
+          deviceModels: {},
+          guidedSetup: { conversationId: guide.id, skipped: [], finished: true },
+        } as never,
+      });
+      await dom.render(<ChatScreen compact={true} />);
+      // One door, under the hello: the button the wrap-up points at.
+      const doors = dom.container.querySelectorAll('.guide-setup');
+      expect(doors).toHaveLength(1);
+      expect(doors[0]!.textContent).toContain('Set up OpenShore');
+    },
+  );
+});

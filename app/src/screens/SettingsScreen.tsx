@@ -1376,7 +1376,9 @@ export function SettingsScreen() {
         <p className="hint settings-foot">
           OpenShore 0.1.0 · {platformLabel()}
           <br />
-          Familiar where it should be, yours where it matters.
+          {/* The one line for what OpenShore is (D23): the setup page's
+              headline and Harbor Lite's overview say it too. */}
+          Your models. Your keys.
         </p>
       </div>
 

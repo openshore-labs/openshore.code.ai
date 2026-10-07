@@ -367,7 +367,12 @@ export function crewHeadline(
     .map((r) => r.nextRunAt)
     .filter((x): x is string => Boolean(x))
     .sort()[0];
-  return next ? `Quiet. Next run ${clock(next, now)}.` : 'Quiet. Every routine is paused.';
+  if (next) return `Quiet. Next run ${clock(next, now)}.`;
+  // Paused only when every switch reads Off: an enabled routine the engine
+  // has not timed yet is waiting, not paused.
+  return routines.every((r) => !r.enabled)
+    ? 'Quiet. Every routine is paused.'
+    : 'Quiet. Waiting for the next run.';
 }
 
 /** Custom routines unlock after the first routine finishes on its own (CX:

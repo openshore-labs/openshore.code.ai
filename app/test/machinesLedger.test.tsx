@@ -129,7 +129,12 @@ describe('Cloud Connections in the ledger', () => {
     expect(save.disabled).toBe(true);
     await dom.type(field.getAttribute('placeholder')!, 'sk-ant-test');
     expect(save.disabled).toBe(false);
-    expect(dom.buttons()).toContain('Get a key ↗');
+    // The way out is drawn, never a typed arrow (CS-19).
+    expect(dom.buttons()).toContain('Get a key ');
+    const getKey = [...dom.container.querySelectorAll('button')].find(
+      (b) => b.textContent === 'Get a key ',
+    )!;
+    expect(getKey.querySelector('svg.external-glyph')).not.toBeNull();
     expectOneWayOut();
     // The workspace field waits until Claude asks for it.
     expect(dom.container.querySelector('#connections-workspace-id')).toBeNull();
@@ -139,7 +144,12 @@ describe('Cloud Connections in the ledger', () => {
     useApp.setState({ connectedProviders: { anthropic: true } });
     const { ConnectionsScreen } = await import('../src/screens/ConnectionsScreen.js');
     await dom.render(<ConnectionsScreen />);
-    expect(rows().find((r) => r.label === 'Claude')!.value).toBe('Connected');
+    const claude = rows().find((r) => r.label === 'Claude')!;
+    expect(claude.value).toBe('Connected');
+    const n = providerBenchModels(PROVIDERS.find((p) => p.name === 'Claude')!).length;
+    expect(claude.sub).toBe(`Its ${n} models are on your bench.`);
+    // Its tap asks a question, so it draws no chevron (SettingsRow's grammar).
+    expect(claude.el.querySelector('.disclosure-chevron')).toBeNull();
     await tapRow('Claude');
     expect(dom.text()).toContain('Disconnect Claude?');
     const confirm = [...dom.container.querySelectorAll('.confirm-row button')].map(
@@ -191,6 +201,13 @@ describe('Repositories in the ledger', () => {
     const gitlab = rows().find((r) => r.label === 'GitLab')!;
     expect(gitlab.value).toBe('Connected');
     expect(gitlab.sub).toBe('Its repositories are ready to add to a chat.');
+    expect(gitlab.el.querySelector('.disclosure-chevron')).toBeNull();
+    // A platform not yet connected opens a place, its connect sheet.
+    expect(
+      rows()
+        .find((r) => r.label === 'GitHub')!
+        .el.querySelector('.disclosure-chevron'),
+    ).not.toBeNull();
     await tapRow('GitLab');
     expect(dom.text()).toContain('Disconnect GitLab?');
   });
@@ -228,7 +245,7 @@ describe('the Stack names its image reader', () => {
     const { StackManager } = await import('../src/components/StackManager.js');
     await dom.render(<StackManager />);
     expect(reader).toBe('Claude Haiku 4.5');
-    expect(cloudRow()).toBe(`${reader}. Until you choose one. Asks before each image.`);
+    expect(cloudRow()).toBe(`None yet · ${reader} reads images for now, asking before each one.`);
     expect(localRow()).toBe(`None yet · ${reader} reads images for now.`);
   });
 
@@ -259,7 +276,7 @@ describe('the Stack names its image reader', () => {
     });
     const { StackManager } = await import('../src/components/StackManager.js');
     await dom.render(<StackManager />);
-    expect(cloudRow()).toBe('Opus 5. Until you choose one. Asks before each image.');
+    expect(cloudRow()).toBe('None yet · Opus 5 reads images for now, asking before each one.');
   });
 
   it('names the stand-in in the slot sheets only while it is one', async () => {
@@ -307,5 +324,43 @@ describe('the Stack names its image reader', () => {
     expect(dom.container.querySelector('.sheet:not(.closing) .sheet-sub')?.textContent ?? '').toBe(
       'A cloud model that reads images.',
     );
+  });
+});
+
+describe("the Stack's step down before a computer is paired (D1)", () => {
+  // The tabs' names, without the "now" marker on the current one.
+  const tabs = () =>
+    [...dom.container.querySelectorAll('.stack-status [role="tab"]')].map((t) =>
+      (t.textContent ?? '').replace(/now$/, ''),
+    );
+
+  it('holds only the statuses this device can be in, and opens the Status sheet', async () => {
+    useApp.setState({ view: 'stack' });
+    const { StackManager } = await import('../src/components/StackManager.js');
+    await dom.render(<StackManager />);
+    expect(tabs()).toEqual(['Offshore', 'Offline']);
+    await dom.click('Choose Offline');
+    // The sheet portals to the body, past the room's own root.
+    const offline = [...document.body.querySelectorAll<HTMLButtonElement>('.profile-row')].find(
+      (b) => b.querySelector('.profile-row-title')?.textContent === 'Offline',
+    );
+    expect(offline).toBeTruthy();
+    const { act } = await import('react');
+    await act(async () => {
+      offline!.dispatchEvent(new window.Event('click', { bubbles: true }));
+    });
+    expect(useApp.getState().settings.profileOverride).toBe('offline');
+    expect(dom.buttons()).toContain('Follow the connection');
+  });
+
+  it('leaves the step down to the pill once a computer is paired', async () => {
+    useApp.setState({
+      view: 'stack',
+      settings: { ...useApp.getState().settings, daemon: hub, daemons: [hub] },
+    });
+    const { StackManager } = await import('../src/components/StackManager.js');
+    await dom.render(<StackManager />);
+    expect(tabs()).toEqual(['Docked', 'Offshore', 'Offline']);
+    expect(dom.buttons()).not.toContain('Choose Offline');
   });
 });

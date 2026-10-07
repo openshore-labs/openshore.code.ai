@@ -311,6 +311,12 @@ describe('the gate: chat is free, everything else is a free sign-in', () => {
     // about settings at all: the pitch carries the few that follow.
     for (const sub of [accountCopy(true).signInSub, accountCopy(false).signInSub])
       expect(sub, sub).not.toMatch(/settings/i);
+    // Pairing goes by its door's words, never "pair your phone", which on the
+    // phone itself reads as pairing it with itself.
+    for (const line of [ACCOUNT_PITCH, accountCopy(false).signInSub]) {
+      expect(line, line).toMatch(/connect your computer/);
+      expect(line, line).not.toMatch(/pair your phone/i);
+    }
     // The theme it names is one of the keys that follow.
     expect(SETTINGS_REACH.theme).toBe('follows');
   });

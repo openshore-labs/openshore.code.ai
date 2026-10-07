@@ -1,9 +1,12 @@
 // Top bar for the non-chat rooms: the way back, the room's name, and the
-// always-visible connectivity status. The side panel is the app's main
-// navigation, so a room opened from it shows the menu; a room reached from
-// inside another room (a settings path, Manage, the terminal) shows a back
-// chevron to the room it came from, the iOS grammar. On the desktop the
-// sidebar is already beside the room, so a root's left slot stays empty.
+// reach pill once a computer is connected to this device (a lone Offline
+// before that; D1, lib/profiles.ts reachPillShown). The side panel is the
+// app's main navigation, so a room opened from it shows the menu; a room
+// reached from inside another room (a settings path, Manage, the terminal)
+// shows a back chevron to the room it came from, the iOS grammar. On the
+// desktop the sidebar is already beside the room, so a root's left slot stays
+// empty, and a bar with nothing in it drops its hairline and fill until the
+// large title tucks under it (theme.css, .topbar:has).
 import { useEffect, useState, type ReactNode, type RefObject } from 'react';
 import { useApp, type ViewName } from '../state/store.js';
 import { useCompact } from '../hooks/useCompact.js';

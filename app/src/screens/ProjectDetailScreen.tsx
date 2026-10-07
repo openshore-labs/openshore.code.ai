@@ -34,7 +34,8 @@ import { ReachDot, chatReach, relativeTime } from './ChatsScreen.js';
 import { useTitleHero } from '../lib/heroTitle.js';
 import { durationMs } from '../lib/motion.js';
 import { Icon } from '../components/Icon.js';
-import { MoreGlyph } from '../components/SheetGlyphs.js';
+import { MoreGlyph, PlusGlyph } from '../components/SheetGlyphs.js';
+import { useCompact } from '../hooks/useCompact.js';
 import { RoomGlyph } from '../components/Sidebar.js';
 
 export function ProjectDetailScreen() {
@@ -89,6 +90,9 @@ export function ProjectDetailScreen() {
   // The project name flies up from the tapped row into this title.
   const titleRef = useRef<HTMLHeadingElement>(null);
   useTitleHero(titleRef);
+  // On the desktop New chat sits in the bar, where Projects puts New project
+  // (D11 carried one room deeper); the phone keeps its dock.
+  const compact = useCompact();
 
   const chats = useMemo(
     () =>
@@ -148,9 +152,32 @@ export function ProjectDetailScreen() {
     </button>
   );
 
+  // The desktop's New chat: the same bar button as Projects' New project,
+  // beside the options.
+  const barNew =
+    mayWrite && !compact ? (
+      <button
+        type="button"
+        className="btn primary sm projects-bar-new"
+        onClick={() => startProjectChat(project.id)}
+      >
+        <PlusGlyph size={16} />
+        New chat
+      </button>
+    ) : null;
+
   return (
     <div className="screen project-room-screen">
-      <BackBar title={project.name} action={more} titleHiddenUntil={titleRef} />
+      <BackBar
+        title={project.name}
+        action={
+          <>
+            {barNew}
+            {more}
+          </>
+        }
+        titleHiddenUntil={titleRef}
+      />
       <div className="screen-inner project-room">
         <h1 ref={titleRef} className="project-hero-title project-room-title">
           {project.name}
@@ -259,7 +286,7 @@ export function ProjectDetailScreen() {
         </section>
       </div>
 
-      {mayWrite ? (
+      {mayWrite && compact ? (
         <div className="project-room-dock">
           <button
             type="button"

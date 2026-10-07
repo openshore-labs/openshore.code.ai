@@ -16,6 +16,7 @@ import { hapticCommit } from '../lib/haptics.js';
 import { Sheet } from './Sheet.js';
 import { SheetHead } from './SheetHead.js';
 import { LockGlyph } from './SheetGlyphs.js';
+import { VAULT_PRIVATE_OFF_CLOUD } from '../lib/vaultCopy.js';
 
 /** The line a pin the vault no longer holds shows (J14). */
 export const PIN_MISSING_LINE = 'Pinned note not found';
@@ -105,15 +106,15 @@ export function ProjectVaultPins({ projectId, index }: { projectId: string; inde
         </div>
       ) : (
         <p className="hint" style={{ marginTop: 6 }}>
-          Pin notes from your Vault and every chat here starts with them, trimmed to fit the model.
-          Notes marked private stay off cloud models.
+          Pin notes from your Vault and every chat here starts with them, trimmed to fit the model.{' '}
+          {VAULT_PRIVATE_OFF_CLOUD}
         </p>
       )}
 
       <Sheet open={open} onClose={() => setOpen(false)}>
         <SheetHead title="Pin notes" onClose={() => setOpen(false)} />
         <p className="sheet-sub">
-          Up to {PROJECT_VAULT_PINS_MAX} notes. Private notes never reach a cloud model.
+          Up to {PROJECT_VAULT_PINS_MAX} notes. {VAULT_PRIVATE_OFF_CLOUD}
         </p>
         {notes === undefined ? (
           <p className="hint">Reading your Vault.</p>

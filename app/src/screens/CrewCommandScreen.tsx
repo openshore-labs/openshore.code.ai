@@ -84,7 +84,7 @@ function crewCountLine(crew: readonly CrewAgent[], routines: RoutineView[]): str
   const n = crew.length;
   if (n === 0) return 'No crew members. The routines below keep their schedule.';
   const busy = crew.filter((a) => routinesForAgent(routines, a).length > 0).length;
-  if (n === 1) return busy ? '1 member, with a routine.' : '1 member, no routine yet.';
+  if (n === 1) return busy ? '1 member, and it has a routine.' : '1 member, with no routine yet.';
   if (busy === 0) return `${n} members, none with a routine yet.`;
   return busy === n
     ? `${n} members, each with a routine.`

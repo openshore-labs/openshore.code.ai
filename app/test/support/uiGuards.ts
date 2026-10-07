@@ -327,9 +327,10 @@ export const RULES: Array<{ name: string; check(path: string, src: string): stri
     },
   },
   {
-    // Carets, chevrons and checks are drawn (SheetGlyphs.tsx), never typed: a
-    // typed one carries the font's bearings and sits off its line. The
-    // terminal's typed $ and its arrow keys stay typed.
+    // Carets, chevrons, checks and the way-out arrow are drawn
+    // (SheetGlyphs.tsx), never typed: a typed one carries the font's bearings
+    // and sits off its line. The terminal's typed $ and its arrow keys stay
+    // typed.
     name: 'typedGlyph',
     check(path, src) {
       const EXEMPT: Record<string, string> = {
@@ -337,7 +338,7 @@ export const RULES: Array<{ name: string; check(path: string, src: string): stri
         'components/LibraryIntro.tsx': 'the Marketplace library, v3: no door in Personal',
       };
       if (!path.endsWith('.tsx') || EXEMPT[path]) return [];
-      return lineHits(path, stripComments(src), 'typedGlyph', /[▾▸▴›✓]/);
+      return lineHits(path, stripComments(src), 'typedGlyph', /[▾▸▴›✓↗]/);
     },
   },
   {

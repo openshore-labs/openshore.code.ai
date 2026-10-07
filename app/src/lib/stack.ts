@@ -9,7 +9,6 @@
 // fits, and executes the task itself whenever no specialist is placed for it.
 import { HARBOR_MINI_MODEL_ID, HARBOR_MINI_MODEL_NAME } from './harborMini.js';
 import { PROVIDERS, providerModelVision } from './providers.js';
-import { DEFAULT_CLAUDE_MODEL } from './claudeModels.js';
 import type { Effort } from './effort.js';
 import type { ProfileId } from './profiles.js';
 
@@ -42,7 +41,8 @@ export function categoryLabel(id: StackCategory): string {
 
 /** The Stack's lead, the one place it is written, so the phone and the desktop
  *  say it the same way. The review's Keep list holds these words as they are;
- *  the anchor's name stays on the Runs the show row and in the model sheet. */
+ *  the anchor's name, Reasoning model, leads the Runs the show row's sub and
+ *  sits in the model sheet. */
 export const STACK_LEAD =
   'One model runs the show and hands each task to the specialist that fits. Anything without a specialist, it does itself.';
 
@@ -153,18 +153,12 @@ export function pickVisionRef(
   return undefined;
 }
 
-/** The most capable cloud model, the default the Vision cloud slot falls to
- *  until a person assigns their own. Claude's whole lineup reads images, and
- *  Opus is the strongest of it. */
-export function defaultVisionCloudRef(): StackModelRef {
-  return { kind: 'cloud', provider: 'anthropic', model: DEFAULT_CLAUDE_MODEL, label: 'Claude' };
-}
-
 /** The two Vision slots the manager shows: a local model (on-device or your own
  *  server, the ones "you control") and a cloud model. Both are ordinary vision
  *  placements; this just splits them by kind so the UI can present one of each.
  *  A person may fill either, both, or neither; an empty cloud slot falls back to
- *  the most capable cloud model. */
+ *  the chat path's reader, Claude Haiku 4.5 first, until the person chooses one
+ *  (D13; lib/providers.ts cloudImageReaders). */
 export function visionSlots(stack: AppStack): {
   local?: ActiveMember;
   cloud?: ActiveMember;

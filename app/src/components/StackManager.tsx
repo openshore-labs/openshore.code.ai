@@ -53,6 +53,7 @@ import { Sheet } from './Sheet.js';
 import { SheetHead, SheetTitle } from './SheetHead.js';
 import { MoreGlyph } from './SheetGlyphs.js';
 import { SettingsGroup, SettingsRow } from './SettingsRow.js';
+import { StatusSheet } from './ProfileStatus.js';
 
 /** The host of a BYOM base URL, for a compact bench sub-line. Falls back to
  *  the raw string if it does not parse. */
@@ -113,7 +114,15 @@ export function StackManager() {
   // status; a picker below lets you tune the other two without being in them.
   const [editProfile, setEditProfile] = useState<ProfileId>(profile);
   // Before a computer is connected, Docked says what it needs.
-  const blurb = profileBlurb(editProfile, isDesktop() || Boolean(settings.daemon));
+  const paired = isDesktop() || Boolean(settings.daemon);
+  const blurb = profileBlurb(editProfile, paired);
+  // The statuses that can happen on this device (D1: shown once they can
+  // mean something). Docked joins the day a computer is paired; until then
+  // the switch holds Offshore and Offline, the two this device can be in.
+  const statusTabs = PROFILE_ORDER.filter((id) => paired || id !== 'docked');
+  // The step down while the reach pill waits for a computer (D1): the same
+  // Status sheet the pill opens, from here.
+  const [statusOpen, setStatusOpen] = useState(false);
   const stack = stackForProfile(settings.stacks, editProfile);
   const reasoning = stack.reasoning ?? harborRef();
   // The two Vision slots (a local model and a cloud model), split out of the
@@ -293,8 +302,10 @@ export function StackManager() {
       return `${refName(member.ref)} · ${effortLabel(member.placement.effort ?? DEFAULT_EFFORT)} effort`;
     }
     if (slot === 'cloud') {
+      // The same shape as the Local row beside it: the slot is empty, then
+      // who reads images for now (CS-09).
       if (imageReader) {
-        return `${refName(imageReader)}. Until you choose one. Asks before each image.`;
+        return `None yet · ${refName(imageReader)} reads images for now, asking before each one.`;
       }
       return cloudOn
         ? 'None yet · Connect a cloud model in Cloud Connections to read images.'
@@ -322,7 +333,7 @@ export function StackManager() {
             is marked. */}
         <div className="stack-status">
           <div className="segmented" role="tablist" aria-label="Which status's stack">
-            {PROFILE_ORDER.map((id) => {
+            {statusTabs.map((id) => {
               const active = id === editProfile;
               return (
                 <button
@@ -344,12 +355,30 @@ export function StackManager() {
               ? blurb
               : `Used when you are ${PROFILES[editProfile].label.toLowerCase()}. ${blurb}`}
           </p>
+          {/* Before a computer is connected the pill is out of the bar while
+              online, so the step down lives here (D1, as recommended: "stepping
+              down stays possible from the Stack"). */}
+          {!settings.daemon ? (
+            <button
+              type="button"
+              className="linklike press-fb stack-status-change"
+              onClick={() => setStatusOpen(true)}
+            >
+              {settings.profileOverride === 'offline' ? 'Follow the connection' : 'Choose Offline'}
+            </button>
+          ) : null}
         </div>
+        {!settings.daemon ? (
+          <StatusSheet open={statusOpen} onClose={() => setStatusOpen(false)} />
+        ) : null}
 
+        {/* The group keeps "Runs the show" (D2), and its one row names the
+            slot once, so "Reasoning model" below and in the other rooms has
+            a place it was introduced (CS-08). */}
         <SettingsGroup title="Runs the show" index={0}>
           <SettingsRow
             label={refName(reasoning)}
-            sub={
+            sub={`Reasoning model · ${
               !admin
                 ? 'Set by your admin.'
                 : reasoning.kind === 'device'
@@ -357,7 +386,7 @@ export function StackManager() {
                     ? 'The built-in guide. Place a bigger model here for real work.'
                     : 'Answers each task, or hands it to a specialist.'
                   : 'Plans every task and routes it.'
-            }
+            }`}
             value={<KindChip refModel={reasoning} />}
             onClick={admin ? () => setPickReasoning(true) : undefined}
           />

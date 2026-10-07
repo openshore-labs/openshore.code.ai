@@ -270,6 +270,61 @@ describe('Projects on the desktop (D11)', () => {
   it('holds the bar button on one line beside its glyph', () => {
     expect(CSS).toMatch(/\.projects-bar-new \{[^}]*display: inline-flex;[^}]*gap: 6px;/);
   });
+
+  // One room deeper, the same grammar: the project room's New chat sits in
+  // the bar on the desktop, and in the dock on the phone.
+  const barChat = () =>
+    [...dom.container.querySelectorAll('.topbar button')].find(
+      (b) => b.textContent?.trim() === 'New chat',
+    );
+
+  it("puts the project room's New chat in the bar on the desktop, with no dock", async () => {
+    width(1280);
+    useApp.setState({ view: 'project', viewProjectId: 'a' } as never);
+    const { ProjectDetailScreen } = await import('../src/screens/ProjectDetailScreen.js');
+    await dom.render(<ProjectDetailScreen />);
+    expect(barChat()?.className).toContain('btn primary sm');
+    expect(dom.container.querySelector('.project-room-dock')).toBeNull();
+  });
+
+  it('gives desktop Chats the same labelled bar button, and the phone its pen and row', async () => {
+    const { ChatsScreen } = await import('../src/screens/ChatsScreen.js');
+    const now = new Date().toISOString();
+    useApp.setState({
+      view: 'chats',
+      order: ['c1'],
+      conversations: {
+        c1: {
+          id: 'c1',
+          title: 'Tide math',
+          source: { kind: 'stack' },
+          createdAt: now,
+          updatedAt: now,
+          projectId: 'a',
+          thread: { items: [], busy: false, dollars: 0, contextPercent: 0 },
+        },
+      },
+    } as never);
+    width(1280);
+    await dom.render(<ChatsScreen />);
+    expect(barChat()?.className).toContain('btn primary sm');
+    expect(dom.container.querySelector('.chat-row-new')).toBeNull();
+    await dom.render(null);
+    width(390);
+    await dom.render(<ChatsScreen />);
+    expect(barChat()).toBeUndefined();
+    expect(dom.container.querySelector('.topbar [aria-label="New chat"]')).not.toBeNull();
+    expect(dom.container.querySelector('.chat-row-new')).not.toBeNull();
+  });
+
+  it("keeps the project room's dock on the phone, and no New chat in the bar", async () => {
+    width(390);
+    useApp.setState({ view: 'project', viewProjectId: 'a' } as never);
+    const { ProjectDetailScreen } = await import('../src/screens/ProjectDetailScreen.js');
+    await dom.render(<ProjectDetailScreen />);
+    expect(barChat()).toBeUndefined();
+    expect(dom.container.querySelector('.project-room-dock')).not.toBeNull();
+  });
 });
 
 // A chat whose reach is not known yet draws no dot and takes no space, so

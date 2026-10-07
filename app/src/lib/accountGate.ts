@@ -143,7 +143,7 @@ export function accountCopy(gates: boolean): AccountCopy {
       body: ACCOUNT_GATE_BODY,
       pitch: ACCOUNT_PITCH,
       notice: ACCOUNT_NOTICE,
-      signInSub: 'To build and pair your phone',
+      signInSub: 'To build and connect your computer',
     };
   }
   return {
@@ -159,9 +159,11 @@ export function accountCopy(gates: boolean): AccountCopy {
 /** The pitch on the sign-in card and in Settings. It names the few that
  *  follow (founder, D19, 2026-10-07): the theme and the other 'follows' keys
  *  in settingsReach.ts, on every platform, and nothing else. The writing
- *  voice, the app icon, approvals, web search and the vault stay here. */
+ *  voice, the app icon, approvals, web search and the vault stay here.
+ *  Pairing is "connect your computer", every door's words, so the line reads
+ *  true on the phone, an iPad and the computer alike. */
 export const ACCOUNT_PITCH =
-  'Sign in to build, pair your phone, and take your theme and a few preferences to every device. Your chats stay on your devices.';
+  'Sign in to build, connect your computer, and take your theme and a few preferences to every device. Your chats stay on your devices.';
 
 /** Under the signed-in card: what the account is doing for them. */
 export const SIGNED_IN_PERKS =

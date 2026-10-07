@@ -23,6 +23,7 @@ import { bufferHealth, unsyncedCount } from '../lib/repoSync.js';
 import { BackBar } from '../components/BackBar.js';
 import { Sheet } from '../components/Sheet.js';
 import { SheetHead } from '../components/SheetHead.js';
+import { ExternalGlyph } from '../components/SheetGlyphs.js';
 import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
 import { plainError } from '../lib/plainError.js';
 import { thisDeviceNoun } from '../lib/deviceNoun.js';
@@ -260,7 +261,8 @@ export function ReposScreen() {
             gave you; before, how you connect: "Access token" is the form's
             own word, since Bitbucket's is an Atlassian API token, not a
             personal access token. A tap opens the connect sheet, or, once
-            connected, asks before it disconnects. */}
+            connected, asks before it disconnects (no chevron: a question,
+            not a place). */}
         <SettingsGroup title="Connect a platform" index={0}>
           {REPO_CONNECTORS.map((c) => {
             const on = Boolean(connectedRepoPlatforms[c.id]);
@@ -283,6 +285,7 @@ export function ReposScreen() {
                           : 'Paste an access token'
                   }
                   value={on ? <span className="pill ok">Connected</span> : undefined}
+                  asks={on}
                   disabled={busy}
                   onClick={() => (on ? setRemoving({ id: c.id, name: c.name }) : openConnect(c.id))}
                 />
@@ -553,7 +556,7 @@ export function ReposScreen() {
                       className="linklike press-fb"
                       onClick={() => openInAppBrowser(platform.tokenUrl)}
                     >
-                      Get a token ↗
+                      Get a token <ExternalGlyph />
                     </button>
                   </div>
                   <input

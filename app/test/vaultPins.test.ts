@@ -425,6 +425,9 @@ describe('pinned notes copy', () => {
   it('never says the pinned notes stay on this device', () => {
     const pins = readFileSync(join(process.cwd(), 'src/components/ProjectVaultPins.tsx'), 'utf8');
     expect(pins).not.toContain('They stay on this device');
-    expect(pins).toContain('Notes marked private stay off cloud models.');
+    // The private-notes promise is the Vault's one sentence, read in both of
+    // the card's states (CS-10), never a second wording.
+    expect(pins.match(/\{VAULT_PRIVATE_OFF_CLOUD\}/g)).toHaveLength(2);
+    expect(pins).not.toContain('stay off cloud models');
   });
 });

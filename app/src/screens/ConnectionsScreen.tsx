@@ -11,6 +11,7 @@ import { PROVIDERS, providerBenchModels, validateProviderKey } from '../lib/prov
 import { BackBar } from '../components/BackBar.js';
 import { Sheet } from '../components/Sheet.js';
 import { SheetHead } from '../components/SheetHead.js';
+import { ExternalGlyph } from '../components/SheetGlyphs.js';
 import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
 import { openInAppBrowser } from '../lib/platform.js';
 
@@ -118,7 +119,8 @@ export function ConnectionsScreen() {
 
         {/* One row per provider: its model count, and a Connected pill once
             its key is saved. A tap opens the key sheet, or, once connected,
-            asks before it disconnects. */}
+            asks before it disconnects, so a connected row carries no
+            chevron (it opens a question, not a place). */}
         <SettingsGroup index={0}>
           {PROVIDERS.map((p) => {
             const on = Boolean(connectedProviders[p.id]);
@@ -127,8 +129,13 @@ export function ConnectionsScreen() {
               <SettingsRow
                 key={p.id}
                 label={p.name}
-                sub={`${n} ${n === 1 ? 'model' : 'models'}`}
+                sub={
+                  on
+                    ? `Its ${n} ${n === 1 ? 'model is' : 'models are'} on your bench.`
+                    : `${n} ${n === 1 ? 'model' : 'models'}`
+                }
                 value={on ? <span className="pill ok">Connected</span> : undefined}
+                asks={on}
                 onClick={() => (on ? setRemoving({ id: p.id, name: p.name }) : openSheet(p.id))}
               />
             );
@@ -162,7 +169,7 @@ export function ConnectionsScreen() {
                     className="linklike press-fb"
                     onClick={() => openInAppBrowser(provider.apiKeyUrl)}
                   >
-                    Get a key ↗
+                    Get a key <ExternalGlyph />
                   </button>
                 </div>
                 <input

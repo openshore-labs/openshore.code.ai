@@ -1291,6 +1291,21 @@ textarea {
   animation: none;
   opacity: 0;
 }
+/* A bar with nothing in it reads as missing content (D1 took the reach pill
+   out until a computer is paired). While a root room's large title is on
+   screen and the bar holds no control (the desktop, where the sidebar is the
+   way around), the hairline and the fill wait too, and arrive with the bar's
+   title on its own clock, the iOS large-title bar. The height is kept, so
+   nothing moves. */
+.topbar {
+  transition:
+    background-color var(--dur-3) var(--ease-standard),
+    border-bottom-color var(--dur-3) var(--ease-standard);
+}
+.topbar:has(> .topbar-title.is-tucked):not(:has(button, .pill)) {
+  border-bottom-color: transparent;
+  background-color: transparent;
+}
 @keyframes title-in-deeper {
   from {
     opacity: 0;
@@ -6570,8 +6585,10 @@ button.vault-tag {
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 18px;
-  box-shadow: 0 18px 48px rgba(var(--shadow-rgb), 0.28);
+  /* On the sheets' gutter and depth (D22), so a question sits on the same
+     scale as the sheet it often follows. */
+  padding: var(--gutter);
+  box-shadow: var(--elev-3);
   /* Arrives on the same clock it leaves on (--dur-4), with no overshoot: a
      confirmation is a pause, not a pop. */
   animation: confirm-pop var(--dur-4) var(--ease-arrive) backwards;
@@ -6671,6 +6688,15 @@ button.vault-tag {
   font-weight: var(--weight-semibold);
   margin-bottom: 2px;
 }
+/* A card's title when the card is itself a button (Crew's door and its
+   member cards): a span in the h3's type, since a heading inside a button is
+   not valid HTML, the way the setup page's .path-card-title is built. */
+.card-title {
+  display: block;
+  font-size: var(--text-5);
+  font-weight: var(--weight-semibold);
+  margin-bottom: 2px;
+}
 
 /* Secondary text under a title, wherever it sits (Creative Studio,
    2026-10-07). Scoped rules (.cc-preset .sub, .vault-resolve .vault-provider
@@ -6745,6 +6771,11 @@ button.vault-tag {
   .linklike:hover {
     text-decoration: underline;
   }
+}
+/* A link out of the app carries the drawn arrow, one space off its word and
+   seated on the text's line. */
+.external-glyph {
+  vertical-align: -1px;
 }
 
 .linklike:disabled {
@@ -11860,6 +11891,17 @@ button.vault-tag {
   padding: 1px 9px 1px 8px;
   line-height: 1.4;
 }
+/* A narrow phone with the reach pill in the bar (CS-04): the menu, the name,
+   Terminal on a computer chat, New chat and the pill left the repository
+   pill "Add a re...". Below 400px it folds to its glyph and caret, the
+   composer's fold grammar; its label stays for assistive tech, and the sheet
+   it opens names every repository. */
+@media (max-width: 400px) {
+  .topbar:has(.profile-chip) .topbar-sub .repo-picker-summary,
+  .topbar:has(.profile-chip) .topbar-sub .repo-picker-branch {
+    display: none;
+  }
+}
 /* The empty home's bar: the same height as the status chip beside it. */
 .topbar-spacer-repos .repo-picker-btn {
   min-height: 30px;
@@ -12659,19 +12701,39 @@ button.settings-row:active {
   font-weight: var(--weight-semibold);
   color: var(--ink);
 }
+/* Harbor's busy and failed cards keep their controls (D9). Their steps sit
+   on the house rhythm: a 4px line under the title, 6px to the hint, and the
+   card's own inset above the button. */
+.path-card-busy .progress-track {
+  margin-top: 4px;
+}
+.path-card-busy .hint {
+  margin-top: 6px;
+}
+.path-card-busy .btn.block {
+  margin-top: var(--row-pad);
+}
+.path-card-failed {
+  color: var(--danger);
+}
 
 /* ---------------------------------------------------------------------------
    The Chats room in the Claude app's shape (Creative Studio, 2026-09-02): a
    search pill, then one flat list of chats sorted by recency, hairline
-   separators inset to the text edge, no cards, no captions. The compose
-   icon in the nav bar and a plain first row are the two ways to a new chat.
+   separators inset to the text edge, no cards, no captions. On the phone the
+   compose icon in the nav bar and a plain first row are the two ways to a new
+   chat; at 900px and wider the bar's labelled New chat is the one, as New
+   project is on Projects (CS-13).
    --------------------------------------------------------------------------- */
 .screen-inner.chats {
   padding-top: 8px;
 }
 .chat-search {
+  /* Pinned under the room's sticky bar (61px plus the safe area, the bar's
+     one height), so a long list rides under the pill and the pill rides
+     under the bar, never hidden behind it. */
   position: sticky;
-  top: 0;
+  top: calc(61px + var(--safe-top));
   z-index: 2;
   padding: 4px 0 8px;
   background: linear-gradient(var(--bg) 78%, transparent);
@@ -12984,6 +13046,24 @@ button.settings-row:active {
 @media (min-width: 900px) {
   .projects-screen > .screen-inner.projects {
     padding-top: 8px;
+  }
+  /* Under the top pill the list sits on the pill's edge, not one gutter out
+     past it, so the active project's rule lands on the line the pill draws,
+     a breath under it, and the rows step in by a card's inset (CS-14). The
+     phone keeps its edge-to-edge list, where the rule meets the screen. */
+  .projects-screen .project-list {
+    margin: 4px 0 0;
+  }
+  .projects-screen .project-row {
+    padding-inline: var(--card-pad);
+  }
+  /* One room deeper, the same: a project's chats sit on the column's edge,
+     under its caption, so the open chat's rule lines up with the cards. */
+  .project-room-screen .project-chat-list {
+    margin: 0;
+  }
+  .project-room-screen .project-chat-row {
+    padding-inline: var(--card-pad);
   }
 }
 .projects-dock {
@@ -13359,6 +13439,13 @@ button.settings-row:active {
   color: var(--muted);
   line-height: 1.4;
   text-wrap: pretty;
+}
+/* The step down while the reach pill waits for a computer (D1): a quiet link
+   on the note's edge, one step over the note's size. */
+.stack-status-change {
+  display: block;
+  margin: 6px var(--card-pad) 0;
+  font-size: var(--text-3);
 }
 .stack-off {
   color: var(--muted);
@@ -14271,6 +14358,18 @@ button.settings-row:active {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+}
+
+/* In Nightshore the ghost's surface fill is the door card's own, so the two
+   read as twins: there the action is an outline on the page, and the door
+   stays the only card (CMO-11). */
+:root[data-theme='dark'] .crew-new.btn.ghost {
+  background: transparent;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .crew-new.btn.ghost {
+    background: transparent;
+  }
 }
 
 /* A crew card is the Edit tap, hosted by a swipe row that deletes (founder,

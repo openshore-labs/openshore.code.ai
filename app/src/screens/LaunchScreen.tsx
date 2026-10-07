@@ -7,6 +7,7 @@
 import { useState } from 'react';
 import { useApp } from '../state/store.js';
 import { BackBar } from '../components/BackBar.js';
+import { ExternalGlyph } from '../components/SheetGlyphs.js';
 import type { BuildRun, LaunchTarget } from '../state/types.js';
 import { EmbeddedSite, embeddedSitesAvailable } from '../components/EmbeddedSite.js';
 import { CODEMAGIC_TOKEN_URL } from '../lib/codemagic.js';
@@ -205,7 +206,7 @@ export function LaunchScreen() {
                 style={{ marginBottom: 8 }}
                 onClick={() => openInAppBrowser(CODEMAGIC_TOKEN_URL)}
               >
-                Get a Codemagic API key ↗
+                Get a Codemagic API key <ExternalGlyph />
               </button>
               <div className="field">
                 <input

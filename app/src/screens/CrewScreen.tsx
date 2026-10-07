@@ -177,7 +177,7 @@ export function CrewScreen() {
             onClick={openCrewCommand}
           >
             <span className="crew-command-row-body">
-              <h3>Crew command</h3>
+              <span className="card-title">Crew command</span>
               <span className="sub">{ROUTINES_RUN_LINE}</span>
             </span>
             <span className="disclosure-chevron" aria-hidden="true" />
@@ -209,7 +209,7 @@ export function CrewScreen() {
         )}
 
         <button
-          className={`btn ${firstCrew ? 'ghost' : 'primary'} block press-fb`}
+          className={`btn ${firstCrew ? 'ghost' : 'primary'} block press-fb crew-new`}
           onClick={() => setDraft(emptyDraft())}
         >
           New crew member
@@ -266,7 +266,7 @@ export function CrewScreen() {
                   {(a.name.trim()[0] ?? '?').toUpperCase()}
                 </span>
                 <span className="grow">
-                  <h3>{a.name}</h3>
+                  <span className="card-title">{a.name}</span>
                   <span className="sub crew-card-meta">
                     {levelLabel(a.activityLevel)} · {scopeLabel(a)}
                   </span>

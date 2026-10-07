@@ -19,12 +19,12 @@ import { thisDeviceNoun } from '../lib/deviceNoun.js';
 const PATH_COPY = {
   pair: { title: 'Connect your computer', sub: 'Use its models from here while it is on' },
   reposPhone: { title: 'Set up a repository', sub: 'Connect GitHub, GitLab, or Bitbucket' },
-  stack: { title: 'Build your stack', sub: 'A model on this computer, through Ollama' },
+  stack: { title: 'Build your stack', sub: 'A model that runs on this computer' },
   reposDesk: {
     title: 'Open a repository',
-    sub: 'Reads, edits, and commits, and shows you every change',
+    sub: 'OpenShore edits, commits, and shows you every change',
   },
-  keys: { title: 'Add an API key', sub: 'Claude, OpenAI, or Gemini, at their price' },
+  keys: { title: 'Add an API key', sub: 'Claude, OpenAI, or Gemini. You pay them directly.' },
 } as const;
 
 export function StartingPaths({
@@ -90,19 +90,24 @@ export function StartingPaths({
       () => void getGuideAndGo(HARBOR_MODEL_ID),
     )
   ) : harborDownload?.failed ? (
-    <div className="card">
-      <h3>Harbor</h3>
-      <div className="hint" style={{ color: 'var(--danger)', marginBottom: 10 }}>
+    // The verb stays the title through every state: Get Harbor, Getting
+    // Harbor, and Get Harbor again with Try again when it stopped.
+    <div className="card path-card-busy">
+      <h3>Get Harbor</h3>
+      <div className="hint path-card-failed">
         {harborDownload.label} Check your connection and try again.
       </div>
-      <button className="btn ghost block" onClick={() => void getGuideAndGo(HARBOR_MODEL_ID)}>
+      <button
+        className="btn ghost block press-fb"
+        onClick={() => void getGuideAndGo(HARBOR_MODEL_ID)}
+      >
         Try again
       </button>
     </div>
   ) : harborDownload ? (
-    <div className="card">
+    <div className="card path-card-busy">
       <h3>Getting Harbor</h3>
-      <div className="progress-track" style={{ marginTop: 4 }}>
+      <div className="progress-track">
         <div
           className={`progress-fill${harborDownload.indeterminate ? ' indeterminate' : ''}`}
           style={
@@ -112,10 +117,10 @@ export function StartingPaths({
           }
         />
       </div>
-      <div className="hint" style={{ marginTop: 6 }}>
-        {harborDownload.label}. A one-time download, then you chat, and search when it needs to.
+      <div className="hint">
+        {harborDownload.label}. Downloads once. Then it chats, and looks things up when it needs to.
       </div>
-      <button className="btn quiet block" style={{ marginTop: 8 }} onClick={() => cancelHarbor()}>
+      <button className="btn quiet block press-fb" onClick={() => cancelHarbor()}>
         Cancel download
       </button>
     </div>

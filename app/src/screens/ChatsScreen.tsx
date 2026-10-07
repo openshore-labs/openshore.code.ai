@@ -22,6 +22,8 @@ import { daemonListSessions } from '../drivers/remoteDriver.js';
 import { hapticTick } from '../lib/haptics.js';
 import { plainError } from '../lib/plainError.js';
 import { Icon } from '../components/Icon.js';
+import { ComposeGlyph, PlusGlyph } from '../components/SheetGlyphs.js';
+import { useCompact } from '../hooks/useCompact.js';
 import { inChatScope } from '../lib/chatScope.js';
 
 /** "just now", "12m ago", "2h ago", "Yesterday", "Mon", "Sep 1". */
@@ -239,15 +241,6 @@ export function SearchPill({
   );
 }
 
-function ComposeIcon() {
-  return (
-    <Icon size={22}>
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
-    </Icon>
-  );
-}
-
 /** How long a deleted row takes to leave before it unmounts. */
 const ROW_OUT_MS = 300;
 
@@ -282,6 +275,7 @@ export function ChatsScreen() {
     },
     [],
   );
+  const compact = useCompact();
 
   const projects = settings.projects ?? [];
   const activeProject = projects.find((p) => p.id === settings.activeProjectId) ?? projects[0];
@@ -377,7 +371,10 @@ export function ChatsScreen() {
 
   const searchLabel = activeProject ? `Search chats in ${activeProject.name}` : 'Search chats';
 
-  const compose = (
+  // The phone's bar carries the compose mark, and the list leads with a New
+  // chat row. At 900px and wider the bar holds the labelled New chat, the
+  // same button as Projects' New project (D11's grammar), and the row goes.
+  const compose = compact ? (
     <button
       type="button"
       className="icon-btn press-fb"
@@ -387,7 +384,18 @@ export function ChatsScreen() {
         startNewChat();
       }}
     >
-      <ComposeIcon />
+      <ComposeGlyph />
+    </button>
+  ) : (
+    <button
+      type="button"
+      className="btn primary sm projects-bar-new"
+      onClick={() => {
+        startNewChat();
+      }}
+    >
+      <PlusGlyph size={16} />
+      New chat
     </button>
   );
 
@@ -407,7 +415,7 @@ export function ChatsScreen() {
         ) : null}
 
         <div className="chat-list">
-          {q || rows.length === 0 ? null : (
+          {q || rows.length === 0 || !compact ? null : (
             <button
               type="button"
               className="chat-row chat-row-new press-fb press-fb--row"

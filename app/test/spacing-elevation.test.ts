@@ -101,8 +101,20 @@ describe('the page gutter', () => {
     for (const v of values('.chat-list .chat-row::after', 'right'))
       expect(['0', 'var(--gutter)']).toContain(v);
   });
+  it("seats the desktop Projects list on its top pill's edge, its rows a card's inset in", () => {
+    // Under the top pill (D11) a bleeding list hung the active rule a gutter
+    // outside the pill (CS-14), so there the list stops bleeding.
+    expect(values('.projects-screen .project-list', 'margin')).toEqual(['4px 0 0']);
+    expect(values('.projects-screen .project-row', 'padding-inline')).toEqual(['var(--card-pad)']);
+    // One room deeper, a project's chats sit on the same column edge.
+    expect(values('.project-room-screen .project-chat-list', 'margin')).toEqual(['0']);
+    expect(values('.project-room-screen .project-chat-row', 'padding-inline')).toEqual([
+      'var(--card-pad)',
+    ]);
+  });
   it('pads a sheet on --gutter, so it stops padding 18px against the page', () => {
     for (const [sel, prop] of [
+      ['.confirm-card', 'padding'],
       ['.sheet', 'padding'],
       ['.sheet', 'padding-bottom'],
       ['.sheet.top', 'padding'],
@@ -160,8 +172,8 @@ describe('three depths', () => {
     ])
       expect(values(sel, 'box-shadow'), sel).toEqual(['var(--elev-2)']);
   });
-  it('lifts every sheet on --elev-3', () => {
-    for (const sel of ['.sheet', '.sheet.top']) {
+  it('lifts every sheet, and the confirm card, on --elev-3', () => {
+    for (const sel of ['.sheet', '.sheet.top', '.confirm-card']) {
       const vs = values(sel, 'box-shadow');
       expect(vs.length, sel).toBeGreaterThan(0);
       for (const v of vs) expect(v, sel).toBe('var(--elev-3)');

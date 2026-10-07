@@ -1,7 +1,7 @@
 // The fork after Harbor (lib/guidedSetup.ts NEXT_CHOICES, founder 2026-09-25):
 // once the guide has offered Harbor, the person picks what happens next. Start
-// chatting steps the walk back (it waits behind "Pick up setup"); Keep setting
-// up carries on to the next step. Two equal buttons, chatting first since
+// chatting steps the walk back (it waits behind "Keep setting up", D4); Keep
+// setting up carries on to the next step. Two equal buttons, chatting first since
 // nothing in setup is required. A Harbor download in flight keeps showing.
 import { useApp } from '../state/store.js';
 import { hapticCommit } from '../lib/haptics.js';

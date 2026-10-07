@@ -552,7 +552,7 @@ export function githubAccessHint(
   if (access.kind === 'classic') {
     return noRepoScope || opts.publicOnly
       ? {
-          text: 'Your access token can see only public repositories. Give it the repo scope on GitHub, then refresh.',
+          text: 'Your access token can see only public repositories. Give it the repo scope on GitHub, then come back here.',
           action: 'Edit it on GitHub',
           url: 'https://github.com/settings/tokens',
         }

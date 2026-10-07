@@ -107,6 +107,21 @@ describe('presence copy', () => {
     );
   });
 
+  it('calls the crew paused only when every routine is switched off', () => {
+    // An enabled routine with no next run yet is waiting, while its switch
+    // reads On, so the headline never says paused over it.
+    expect(crewHeadline([view()], [])).toBe('Quiet. Waiting for the next run.');
+    expect(
+      crewHeadline([view({ enabled: false, presence: 'paused' }), view({ id: 'r2' })], []),
+    ).toBe('Quiet. Waiting for the next run.');
+    expect(
+      crewHeadline(
+        [view({ enabled: false, presence: 'paused' }), view({ id: 'r2', enabled: false })],
+        [],
+      ),
+    ).toBe('Quiet. Every routine is paused.');
+  });
+
   it('lights a crew card from its busiest routine, matched by id or by name', () => {
     const byId = view({ agentId: 'a1', presence: 'working' });
     const byName = view({ id: 'r2', agentName: 'Reviewer', presence: 'done' });

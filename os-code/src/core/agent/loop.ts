@@ -1046,7 +1046,7 @@ export class AgentSession {
     this.emit({
       type: 'note',
       message: this.classLean
-        ? `This is a ${this.modelProfile.modelClass} model, so OpenShore keeps the checklist and offers it ${shown} of its ${total} actions.`
+        ? `This is a ${this.modelProfile.modelClass} model, so OpenShore keeps the checklist and gives it ${shown} of the ${total} actions.`
         : `This model has little room on this computer, so OpenShore gives it a shorter brief and ${shown} of ${total} actions to leave space for the chat.`,
     });
   }
