@@ -265,7 +265,11 @@ describe('the edit choice at the end of the repository step', () => {
     expect(DEFAULT_PERMISSION_MODE).toBe('acceptEdits');
     const repo = Object.values(STEP_COPY.repo).join(' ');
     expect(repo).not.toMatch(/every edit/i);
-    expect(repo).toMatch(/commands always ask/i);
+    // The repository step says what Settings, Approvals and Repositories say:
+    // commands ask first unless the person allows them (CX line, aligned in
+    // the 2026-10-07 review's chat package).
+    expect(repo).toContain('Every command asks before it runs, unless you allow it.');
+    expect(repo).not.toMatch(/commands always ask/i);
     const guides = readFileSync(join(__dirname, '../src/lib/setupGuides.ts'), 'utf8');
     expect(guides).not.toMatch(/every edit shows you a diff/i);
   });
@@ -333,9 +337,13 @@ describe('the fork after Harbor', () => {
   it('answers each choice: an open invitation, or straight into the next step', () => {
     const chat = nextChoiceMessage('chat', 'computer', NONE);
     expect(chat).toMatch(/^Let's chat\./);
-    expect(chat).toContain('Pick up setup');
+    // D4 (founder, 2026-10-07): the way back in reads the fork's own label,
+    // Keep setting up, so one choice goes by one name, and never "setup" as a
+    // noun on a button.
+    expect(chat).toContain('tap Keep setting up under my first message');
+    expect(chat).not.toMatch(/Pick up setup|Setup is/);
     // Nothing left to pick up: no pointer to a button that is not there.
-    expect(nextChoiceMessage('chat', undefined, NONE)).not.toContain('Pick up setup');
+    expect(nextChoiceMessage('chat', undefined, NONE)).not.toContain('Keep setting up');
     expect(nextChoiceMessage('setup', 'computer', NONE)).toContain(stepIntro('computer'));
     expect(nextChoiceMessage('setup', undefined, NONE)).toBe(finishMessage(NONE));
   });
@@ -649,7 +657,7 @@ describe('the fork after Harbor, in the store', () => {
     await wait(1600);
     expect(texts().at(-1)).toContain(HARBOR_SWITCH_HINT);
 
-    // Pick up setup resumes at the step that was next.
+    // Keep setting up resumes at the step that was next.
     useApp.getState().resumeGuidedSetup();
     await wait(5);
     expect(guided().paused).toBe(false);

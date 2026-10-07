@@ -12,7 +12,8 @@
 //
 // The active profile is detected from those two signals; the user can manually
 // step DOWN to a more restrictive profile (e.g. force Offline) but never up to
-// one the connection cannot support.
+// one the connection cannot support. The pill that names it shows once a
+// computer is connected to this device (reachPillShown).
 
 export type ProfileId = 'docked' | 'offshore' | 'offline';
 export type ModelLocation = 'home' | 'cloud' | 'device';
@@ -56,6 +57,20 @@ export function profileBlurb(id: ProfileId, paired: boolean): string {
   if (!paired && id === 'docked') return "Your computer's models, once you connect it.";
   if (!paired && id === 'offshore') return "Online. Cloud models and this device's models.";
   return PROFILES[id].blurb;
+}
+
+/** Whether the reach pill shows in the top bar (founder, 2026-10-07, D1 built
+ *  as recommended, B: show it once it can mean something). Until a computer
+ *  is connected to this device the pill could only say Offshore, about a
+ *  computer the person never connected, so it waits. Offline still shows on
+ *  its own: it is true without any computer, and it is the one door back
+ *  from an Offline the person chose. Once a computer is connected, Docked,
+ *  Offshore and Offline all show, as before. `connected` is
+ *  Boolean(settings.daemon) alone, never isDesktop(): the desktop app is the
+ *  computer, its own engine is not a reach the pill measures, so a desktop
+ *  follows the same rule until it is pointed at another computer. */
+export function reachPillShown(active: ProfileId, connected: boolean): boolean {
+  return connected || active === 'offline';
 }
 
 // Most capable first. A lower index is more capable.

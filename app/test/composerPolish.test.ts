@@ -97,8 +97,13 @@ describe('menus and the toolbar row', () => {
   it('send keeps its shape and the model name is never a letter and an ellipsis', () => {
     expect(theme).toMatch(/\.send-btn \{[^}]*flex-shrink: 0/);
     expect(theme).toMatch(/\.composer-pill \{[^}]*min-width: 64px/);
+    // The fold reaches a narrow desktop window too (2026-10-07): a desktop
+    // session's row cut the model and Terminal between 431 and about 560px.
     expect(theme).toMatch(
-      /@media \(max-width: 430px\) \{[\s\S]*?\.composer-pill-mode \.composer-pill-text \{\s*display: none;/,
+      /@media \(max-width: 560px\) \{[\s\S]*?\.composer-pill-mode \.composer-pill-text \{\s*display: none;/,
+    );
+    expect(theme).toMatch(
+      /@media \(max-width: 560px\) \{[\s\S]*?\.composer-pill-term \.composer-pill-text \{\s*display: none;/,
     );
   });
 

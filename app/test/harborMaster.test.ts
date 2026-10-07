@@ -132,7 +132,9 @@ describe('DeepBlue is sized to the computer with the engine budget', () => {
       'On Qwen 2.5 Coder 7B. 4.7 GB download.',
     );
     for (const s of HARBOR_MASTER_SIZES) {
-      expect(classLineFor(s.ollamaRef)).toMatch(/^Runs short plans|^Plans and runs|^Full planning/);
+      expect(classLineFor(s.ollamaRef)).toMatch(
+        /^Handles short plans|^Plans and carries out|^Plans and hands off/,
+      );
     }
   });
 });

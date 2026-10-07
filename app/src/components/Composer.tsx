@@ -1,8 +1,11 @@
 // The composer, five controls in the rhythm of the Claude Code chat bar: an
 // add button (attach photos or files), the model pill (opens the model sheet),
 // the mode pill (opens the mode sheet), a mic for voice-to-text, and one round
-// button that is send or stop. Attachments ride along to vision-capable
-// models; the mic uses the platform's speech engine where it exists.
+// button. With nothing to send the round button is voice mode; the first
+// character turns it into send, and a run turns it into queue or stop (D6,
+// founder 2026-10-07, built as recommended, A). Attachments ride along to
+// vision-capable models; the mic uses the platform's speech engine where it
+// exists.
 //
 // The keyboard grammar is Claude Code's: Enter sends, Shift+Enter breaks a
 // line (on a phone, Return breaks a line and the round button sends, the way
@@ -135,7 +138,8 @@ function MicIcon() {
 }
 
 // Voice mode: a soundwave, the sign for a spoken conversation (distinct from the
-// mic, which dictates into the field). Opens the full-screen voice surface.
+// mic, which dictates into the field). It rides the round button while there is
+// nothing to send, and opens the full-screen voice surface.
 function VoiceWaveIcon() {
   return (
     <Icon size={20}>
@@ -1213,6 +1217,23 @@ export function Composer({
   // Stop shows only when a run is live and there is nothing to send or queue,
   // in terminal mode too (a phone has no Esc).
   const showSend = !busy || value.trim().length > 0 || (!terminal && pasted.length > 0);
+  // Something to send or queue: a command in terminal mode, else words, a
+  // file, or a folded paste.
+  const hasPayload = terminal
+    ? value.trim().length > 0
+    : value.trim().length > 0 || attachments.length > 0 || pasted.length > 0;
+  // The round button is voice mode while there is nothing to send, on a
+  // screen with a voice surface, outside terminal mode and between runs. The
+  // first character turns it into send on the glyph's spring.
+  const voiceOffered = Boolean(onOpenVoice) && !terminal;
+  const voiceSlot = voiceOffered && !busy && !hasPayload;
+  const voiceTap = () => {
+    // The tap that sent a moment ago never opens voice on its echo.
+    if (!onOpenVoice || Date.now() - lastSendAt.current < 400) return;
+    stopDictation();
+    if (tray) closeTray();
+    onOpenVoice();
+  };
 
   return (
     <div
@@ -1500,21 +1521,6 @@ export function Composer({
 
           <div className="composer-row-spacer" />
 
-          {onOpenVoice && !terminal ? (
-            <button
-              className="composer-mic press-fb"
-              onClick={() => {
-                stopDictation();
-                if (tray) closeTray();
-                onOpenVoice();
-              }}
-              aria-label="Voice mode: have a spoken conversation"
-              title="Voice mode"
-            >
-              <VoiceWaveIcon />
-            </button>
-          ) : null}
-
           <button
             className={`composer-mic press-fb${dictation.listening ? ' listening' : ''}`}
             onClick={micTap}
@@ -1529,16 +1535,32 @@ export function Composer({
             </button>
           ) : (
             <button
-              className={`send-btn press-fb${terminal ? ' terminal' : ''}${busy && !terminal ? ' queue' : ''}`}
-              onClick={() => submit()}
-              disabled={
-                terminal
-                  ? !value.trim()
-                  : !value.trim() && attachments.length === 0 && pasted.length === 0
+              className={`send-btn press-fb${voiceSlot ? ' voice' : ''}${terminal ? ' terminal' : ''}${busy && !terminal ? ' queue' : ''}`}
+              onClick={voiceSlot ? voiceTap : () => submit()}
+              disabled={!voiceSlot && !hasPayload}
+              aria-label={
+                voiceSlot
+                  ? 'Voice mode: have a spoken conversation'
+                  : terminal
+                    ? 'Run command'
+                    : busy
+                      ? 'Queue message'
+                      : 'Send'
               }
-              aria-label={terminal ? 'Run command' : busy ? 'Queue message' : 'Send'}
+              title={voiceSlot ? 'Voice mode' : undefined}
             >
-              {terminal ? '$' : <ArrowUpGlyph />}
+              {/* Both glyphs share one cell, so voice turns into send as a
+                  crossfade on the spring rather than a swap. */}
+              <span className="send-glyphs" aria-hidden="true">
+                {voiceOffered ? (
+                  <span className={`send-glyph${voiceSlot ? ' on' : ''}`}>
+                    <VoiceWaveIcon />
+                  </span>
+                ) : null}
+                <span className={`send-glyph${voiceSlot ? '' : ' on'}`}>
+                  {terminal ? '$' : <ArrowUpGlyph />}
+                </span>
+              </span>
             </button>
           )}
         </div>

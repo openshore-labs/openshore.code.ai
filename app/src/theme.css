@@ -4618,6 +4618,34 @@ button.vault-tag {
   color: var(--bg);
 }
 
+/* Voice in the round slot (D6): with nothing to send, the button is voice
+   mode, the wave on the accent fill; the first character turns it into send.
+   Both glyphs share one cell and cross on the spring, the leaving one easing
+   down and out, so the change reads as one control turning, not a swap. */
+.send-glyphs {
+  display: grid;
+  place-items: center;
+}
+.send-glyph {
+  grid-area: 1 / 1;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transform: scale(0.6);
+  transition:
+    opacity var(--dur-2) var(--ease-standard),
+    transform var(--dur-4) var(--ease-spring);
+}
+.send-glyph.on {
+  opacity: 1;
+  transform: scale(1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .send-glyph {
+    transition: none;
+  }
+}
+
 /* The composer row, in the Claude app's rhythm: add, the model, the mode,
    spacer, mic, send. Everything but send is quiet type on the field itself,
    no strokes, no fills at rest; a soft fill answers the press. One filled
@@ -4674,11 +4702,14 @@ button.vault-tag {
   position: absolute;
   inset: -6px 0;
 }
-/* A phone's row: add, model, mode, terminal, voice, mic, send is wider than
-   the field. The mode pill folds to its mode's glyph and the terminal pill to
-   its $ (the mode's sheet names the mode, and both labels stay for assistive
-   tech), so the model name keeps room and send keeps its shape. */
-@media (max-width: 430px) {
+/* A narrow row: add, model, mode, terminal, mic, send is wider than the
+   field on a phone and in a narrow desktop window (up to about 560px, where
+   a desktop session cut the model to "You..." and Terminal to "Te..."). The
+   mode pill folds to its mode's glyph and the terminal pill to its $ (the
+   mode's sheet names the mode, and both labels stay for assistive tech), so
+   the model name keeps room and send keeps its shape. At 900px and up the
+   sidebar sits beside the chat, and the column is wide enough again. */
+@media (max-width: 560px) {
   .composer-row {
     gap: 4px;
   }
@@ -5382,6 +5413,25 @@ button.vault-tag {
   /* Airier than the mark-hugs-line default, so the words breathe on the empty
      field the way the Claude opening does. */
   gap: 18px;
+}
+
+/* The desktop opening (D5, founder 2026-10-07, built as recommended, A): on a
+   fine pointer the greeting and the composer sit together as one group, the
+   Claude desktop opening, instead of a greeting floating mid-column with the
+   field docked far below it. A spacer above seats the group a little over
+   the middle, and it gives way first on a short window. The field grows
+   downward as a draft gets longer, so the greeting never moves. When the
+   chat fills, the composer glides to the foot (ChatScreen's
+   useOpeningGlide). Touch screens keep their own opening, set from the
+   founder's device, untouched. */
+@media (pointer: fine) {
+  .chat-body:has(> .greeting)::before {
+    content: '';
+    flex: 0 1 calc(50vh - 210px);
+  }
+  .chat-body:has(> .greeting) > .greeting {
+    flex: none;
+  }
 }
 
 /* Touch devices only: a plain, static height, no JS keyboard detection
@@ -8113,6 +8163,38 @@ button.vault-tag {
 @media (hover: hover) {
   .profile-chip:hover {
     background: var(--surface-hover);
+  }
+}
+
+/* The pill comes and goes once it can mean something (D1): a lone Offline
+   arrives when the connection drops before any computer is connected, and
+   leaves when it comes back. It settles in and fades out, never pops. A room
+   change does not replay it (ProfileStatus adds .arriving only for a pill
+   that comes in after the bar is up). */
+.profile-chip.arriving {
+  animation: profile-chip-in var(--dur-4) var(--ease-arrive) backwards;
+}
+.profile-chip.closing {
+  animation: profile-chip-out var(--dur-3) var(--ease-accel) forwards;
+  pointer-events: none;
+}
+@keyframes profile-chip-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+@keyframes profile-chip-out {
+  to {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+/* Reduced motion: the pill simply appears. Its exit stays on the global reset
+   (near-zero), so it is gone at once and still unmounts on the timer. */
+@media (prefers-reduced-motion: reduce) {
+  .profile-chip.arriving {
+    animation: none;
   }
 }
 
@@ -11701,6 +11783,21 @@ button.vault-tag {
   text-align: left;
   display: block;
 }
+/* New chat in an open chat's bar (D7): it arrives with the chat's name, on
+   the same clock, so the bar never pops a control in. */
+.chat-compose {
+  animation: chat-compose-in var(--dur-4) var(--ease-glide) backwards;
+}
+@keyframes chat-compose-in {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-compose {
+    animation: none;
+  }
+}
 .topbar-sub {
   display: flex;
   align-items: center;
@@ -14820,6 +14917,10 @@ button.settings-row:active {
 }
 .setup-actions-row .btn {
   flex: 1;
+  /* Equal halves keep a verb label on one line on a phone: Set up OpenShore
+     (D4) needs 131px, and a 16px inset left it 119 to 126 at 375 to 390
+     wide. The label sits centred, so the narrower inset never shows. */
+  padding-inline: 8px;
 }
 .setup-actions-progress {
   margin-top: 4px;

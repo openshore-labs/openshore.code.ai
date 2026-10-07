@@ -129,7 +129,12 @@ describe('classBlurb', () => {
     for (const c of MODEL_CLASSES) {
       expect(classBlurb(c).length).toBeGreaterThan(0);
     }
-    expect(classBlurb('tiny').toLowerCase()).toContain('single steps');
+    expect(classBlurb('tiny').toLowerCase()).toContain('one step at a time');
+    // D3 (founder, 2026-10-07): the CMO's plain rewrite, read by a person.
+    for (const c of MODEL_CLASSES) {
+      expect(classBlurb(c)).not.toMatch(/harness|seat|tools|subagent/i);
+    }
+    expect(classBlurb('small')).toBe('Handles short plans. OpenShore keeps the checklist for it.');
   });
 });
 

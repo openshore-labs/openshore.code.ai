@@ -1,11 +1,13 @@
 // The chat screen. Empty state mirrors the Claude app's opening: just the mark
 // and a time-of-day greeting, with the model, effort, and everything else
-// living in the composer. A live conversation swaps in the transcript and a
-// header that names the chat.
+// living in the composer. On the desktop the greeting and the composer sit
+// together as one group, and the composer glides to the foot when the chat
+// fills. A live conversation swaps in the transcript and a header that names
+// the chat, with a compose icon beside the status for a new one.
 import { SwellText } from '../components/SwellText.js';
 import { LANDING_PACE, takeLandingSwell } from '../lib/introWalk.js';
-import { durationMs } from '../lib/motion.js';
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { durationMs, easing, prefersReducedMotion } from '../lib/motion.js';
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { INIT_PROMPT } from 'os-code/protocol';
 import { useApp, driverFor } from '../state/store.js';
 import type { HubRole } from '../drivers/types.js';
@@ -25,6 +27,7 @@ import { ModelSheet } from '../components/ModelSheet.js';
 import { ModeSheet } from '../components/ModeSheet.js';
 import { ProfileStatus } from '../components/ProfileStatus.js';
 import { BrandMark } from '../components/BrandMark.js';
+import { Icon } from '../components/Icon.js';
 import { MenuIcon } from '../components/MenuIcon.js';
 import { ROOM_NAMES } from '../components/BackBar.js';
 import { RepoPicker } from '../components/RepoPicker.js';
@@ -36,7 +39,12 @@ import { EditChoiceActions } from '../components/EditChoiceActions.js';
 import { NextChoiceActions } from '../components/NextChoiceActions.js';
 import { SetupMenuActions } from '../components/SetupMenuActions.js';
 import { StartChoiceActions } from '../components/StartChoiceActions.js';
-import { ASK_ANYTHING, setupHelpIntent, walkActive } from '../lib/guidedSetup.js';
+import {
+  ASK_ANYTHING,
+  SETUP_RESUME_LABEL,
+  setupHelpIntent,
+  walkActive,
+} from '../lib/guidedSetup.js';
 import { FirstSeat } from '../components/FirstSeat.js';
 import { TerminalGlyph } from '../components/SheetGlyphs.js';
 import { VoiceMode } from '../components/VoiceMode.js';
@@ -127,6 +135,92 @@ function useHeaderHeight(headerRef: RefObject<HTMLElement>): void {
     obs.observe(el);
     return () => obs.disconnect();
   }, [headerRef]);
+}
+
+/** The body's own child that wears `cls`, if any. */
+function childWith(body: HTMLElement, cls: string): HTMLElement | undefined {
+  for (const el of Array.from(body.children)) {
+    if (el.classList.contains(cls)) return el as HTMLElement;
+  }
+  return undefined;
+}
+
+/** The desktop opening (D5, founder 2026-10-07, built as recommended, A). On a
+ *  fine pointer the empty chat's greeting and the composer sit together as one
+ *  group (theme.css, `.chat-body:has(> .greeting)`). When the chat fills (a
+ *  first send, a chat opened from the side) the composer glides from the group
+ *  to the foot, and when a new chat opens it glides back up: a FLIP on
+ *  translateY over the door clock (--dur-7 on --ease-glide), transform only.
+ *  Places come from layout (offsetTop), never from a transform in flight, and
+ *  the docked place is the foot of the body. The First Seat handing the room
+ *  to the greeting glides it up the same way, and while the group is up a
+ *  move that is not a resize (a greeting line that wraps, the first try row
+ *  arriving) glides too, so the field never jumps. Reduced motion and Slack
+ *  Water's landing (the water surfaces the page itself) swap at once, and a
+ *  touch screen's opening never moves, so it never glides. */
+function useOpeningGlide(bodyRef: RefObject<HTMLDivElement>): void {
+  const grouped = useRef<boolean | undefined>(undefined);
+  const groupPlace = useRef<{ top: number; height: number } | undefined>(undefined);
+  const glide = useRef<Animation | undefined>(undefined);
+  useLayoutEffect(() => {
+    const body = bodyRef.current;
+    const wrap = body ? childWith(body, 'composer-wrap') : undefined;
+    if (!body || !wrap) return;
+    const now = Boolean(childWith(body, 'greeting'));
+    const was = grouped.current;
+    grouped.current = now;
+    // Docked and staying docked (a transcript streaming): no layout to read.
+    if (!now && was !== true) return;
+    const top = wrap.offsetTop;
+    const height = body.clientHeight;
+    const prior = groupPlace.current;
+    let from: number | undefined;
+    if (was !== undefined && was !== now) {
+      from = was ? prior?.top : height - wrap.offsetHeight;
+    } else if (now && prior && prior.height === height && prior.top !== top) {
+      from = prior.top;
+    }
+    if (now) groupPlace.current = { top, height };
+    if (from === undefined) return;
+    glide.current?.cancel();
+    glide.current = undefined;
+    const dy = from - top;
+    if (Math.abs(dy) < 2 || typeof wrap.animate !== 'function') return;
+    if (!window.matchMedia?.('(pointer: fine)').matches || prefersReducedMotion()) return;
+    if (useApp.getState().slackWater) return;
+    glide.current = wrap.animate(
+      [{ transform: `translateY(${dy}px)` }, { transform: 'translateY(0)' }],
+      {
+        duration: durationMs('--dur-7', 520),
+        easing: easing('--ease-glide', 'cubic-bezier(0.3, 0.1, 0.15, 1)'),
+      },
+    );
+  });
+  // A resize moves the group without a render: its place is read again, and
+  // nothing glides for it.
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!body || typeof ResizeObserver === 'undefined') return;
+    const obs = new ResizeObserver(() => {
+      const wrap = childWith(body, 'composer-wrap');
+      if (wrap && grouped.current) {
+        groupPlace.current = { top: wrap.offsetTop, height: body.clientHeight };
+      }
+    });
+    obs.observe(body);
+    return () => obs.disconnect();
+  }, [bodyRef]);
+}
+
+/** New chat in the chat's own bar (D7): the same drawn pen the Chats room's
+ *  compose wears (screens/ChatsScreen.tsx). */
+function ComposeIcon() {
+  return (
+    <Icon size={22}>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
+    </Icon>
+  );
 }
 
 /** The short name on the stopped card's "Continue with" button. */
@@ -237,6 +331,8 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const booted = useBooted();
   const headerRef = useRef<HTMLElement>(null);
   useHeaderHeight(headerRef);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useOpeningGlide(bodyRef);
 
   const conv = activeId ? conversations[activeId] : undefined;
   const thread = conv?.thread;
@@ -715,6 +811,22 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             <TerminalGlyph />
           </button>
         ) : null}
+        {/* New chat, one tap from any open chat on phone and desktop (D7,
+            founder 2026-10-07, built as recommended, D): the Chats room's
+            compose, beside the status. It starts a chat in the active project
+            the same way. Not on the empty new chat itself, which has nothing
+            to leave. */}
+        {conv && (!isEmpty || resuming) ? (
+          <button
+            type="button"
+            className="icon-btn chat-compose press-fb"
+            onClick={() => startNewChat()}
+            aria-label="New chat"
+            title="New chat"
+          >
+            <ComposeIcon />
+          </button>
+        ) : null}
         <ProfileStatus />
       </header>
 
@@ -726,7 +838,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         </div>
       ) : null}
 
-      <div className="chat-body">
+      <div className="chat-body" ref={bodyRef}>
         {conv && thread && (thread.items.length > 0 || conv.pendingFirstMessage) ? (
           <MessageList
             thread={thread}
@@ -784,9 +896,9 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                 }
                 // Paused ("I'd rather just chat", or Start chatting at the fork):
                 // no step buttons following the talk, just a quiet way back in,
-                // up under the hello. Right after Start chatting, a few openers
-                // sit under the guide's "Let's chat" so the first question is
-                // one tap.
+                // up under the hello, in the fork's own words (D4). Right after
+                // Start chatting, a few openers sit under the guide's "Let's
+                // chat" so the first question is one tap.
                 if (guided.paused && walkActive(guided)) {
                   if (itemId === `${conv.id}-hello`) {
                     return (
@@ -795,7 +907,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                         className="btn quiet press-fb setup-resume"
                         onClick={resumeGuidedSetup}
                       >
-                        Pick up setup
+                        {SETUP_RESUME_LABEL}
                       </button>
                     );
                   }

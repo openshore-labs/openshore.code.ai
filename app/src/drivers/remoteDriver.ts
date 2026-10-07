@@ -587,8 +587,10 @@ export class RemoteDriver implements ChatDriver {
           { headers: headers(this.target), signal: this.abortStream.signal },
         );
         if (res.status === 401 || res.status === 403) {
+          // The door's own words (every door to Pairing says Connect your
+          // computer): the person scans a fresh code there.
           this.emitTerminal(
-            `Your computer rejected ${thisDeviceNoun()}. Pair again from Menu, Pairing.`,
+            `Your computer turned down ${thisDeviceNoun()}. Connect your computer again from Pairing.`,
           );
           return;
         }

@@ -2117,7 +2117,7 @@ interface AppState {
    *  means "decide later" (the starting mode stays). */
   chooseEditMode(mode: PermissionMode | undefined): Promise<void>;
   /** The fork after Harbor (lib/guidedSetup.ts): start chatting (the walk
-   *  steps back until "Pick up setup") or keep setting up. */
+   *  steps back until "Keep setting up" under the hello) or keep setting up. */
   chooseNext(choice: NextChoice): void;
   /** A pairing link opened from outside the app (the iPhone Camera reading
    *  the computer's QR, CX 2026-10-01): Pairing opens and asks before it
@@ -11926,7 +11926,7 @@ export const useApp = create<AppState>((set, get, api) => {
       void get().saveSettings({
         guidedSetup:
           choice === 'chat'
-            ? // The walk steps back where it stands; "Pick up setup" or "let's
+            ? // The walk steps back where it stands; "Keep setting up" or "let's
               // set up" resumes it at the step that is actually next.
               {
                 ...p,
