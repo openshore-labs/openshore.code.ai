@@ -48,8 +48,7 @@ export const HARBOR_WEIGHTS_NAME = 'Qwen3 4B Instruct';
 // The byline shown under the Harbor row in Settings. Harbor is the coder that
 // runs on the phone, a step up from the built-in Harbor Lite guide. It is a
 // coding model, not an agent: the agent is DeepBlue (brand sweep 2026-09-24).
-export const HARBOR_BYLINE =
-  'A coding model that runs fully on your phone. It writes and explains code and searches the web.';
+export const HARBOR_BYLINE = `A coding model that runs fully on ${thisDeviceNoun()}. It writes and explains code and searches the web.`;
 
 export function isHarbor(modelId: string): boolean {
   return modelId === HARBOR_MODEL_ID;

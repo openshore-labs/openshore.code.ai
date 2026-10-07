@@ -8,6 +8,7 @@
 // not a real locking service, so this is best-effort coordination for v1, the
 // honest limit the CTO flagged for cloud-drive backends.
 import { Icloud } from './icloudPlugin.js';
+import { thisDeviceNoun } from '../deviceNoun.js';
 import {
   isNotePath,
   type Lease,
@@ -28,7 +29,7 @@ export const icloudProvider: StorageProvider = {
   // registry probes the device before offering iCloud, so a signed-out phone
   // or an unprovisioned build never shows it as selectable.
   ready: false,
-  pending: 'Sign in to iCloud and turn on iCloud Drive in Settings on this iPhone to use it.',
+  pending: `Sign in to iCloud and turn on iCloud Drive in Settings on ${thisDeviceNoun()} to use it.`,
 
   // Only notes list (0.6): the plugin already skips hidden paths and non-.md
   // files, and this seam filter holds even if it did not, so our own lease,

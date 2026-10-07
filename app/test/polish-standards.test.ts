@@ -412,7 +412,9 @@ describe('polish standards', () => {
     // A press class is one of the shared ones, or any class with its own
     // :active rule in theme.css (the nav rows, the composer pills, the store
     // cards), read from the stylesheet so a new rule counts on its own.
-    const press = new Set(['btn', 'linklike', 'press-fb', 'seg', 'switch']);
+    // A switch is not one: .switch has no :active of its own, so a bare
+    // switch button never dipped (Crew's routine switch, until 2026-10-07).
+    const press = new Set(['btn', 'linklike', 'press-fb', 'seg']);
     for (const m of THEME.matchAll(
       /(?:^|[\s,{}])(?:button)?\.([a-z][\w-]*)(?:\.[\w-]+)*:active\b/gm,
     ))
@@ -520,6 +522,59 @@ describe('polish standards', () => {
           offenders.push(`${prelude}  ${prop}: ${value}`);
       }
     }
+    expect(offenders, offenders.join('\n  ')).toEqual([]);
+  });
+
+  it('keeps the press spring on a class worn beside press-fb', () => {
+    // press-fb springs back on its own transition list (scale on --press-out).
+    // A class worn beside it that sets a transition of its own, later in the
+    // sheet or more specific, replaces that list, and the release snaps
+    // unless the list names scale too (the switch, the Chats rows and Crew's
+    // day chips did until the 2026-10-07 sign-off; .seg.press-fb is the
+    // other way to keep it).
+    const SKIP: Array<[RegExp, string]> = [[/\.family-chip\b/, 'the Marketplace, v3']];
+    const withPress = new Set<string>();
+    for (const file of tsxFiles()) {
+      const src = readFileSync(file, 'utf8');
+      for (const m of src.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\})/g)) {
+        const words = (m[1] ?? m[2] ?? '').replace(/\$\{[^}]*\}/g, ' ').split(/\s+/);
+        if (!words.includes('press-fb')) continue;
+        for (const w of words) if (w && !w.startsWith('press-fb')) withPress.add(w);
+      }
+    }
+    const blocks = cssBlocks().filter(
+      (b) => !b.prelude.startsWith('@') && !b.parents.some((p) => /prefers-reduced-motion/.test(p)),
+    );
+    const pressAt = blocks.findIndex((b) => /(?:^|,\s*)\.press-fb\s*(?:,|$)/.test(b.prelude));
+    expect(pressAt, 'the .press-fb rule').toBeGreaterThanOrEqual(0);
+    /** Whether a body's transition list names scale; undefined with no list. */
+    const keepsScale = (body: string) => {
+      const list = body.match(/(?:^|;)\s*transition\s*:\s*([^;]+)/)?.[1];
+      return list === undefined ? undefined : /\bscale\b/.test(list);
+    };
+    const keptOnPress = (c: string) =>
+      blocks.some(
+        (o) =>
+          o.prelude
+            .split(',')
+            .some((q) => q.includes(`.${c}.press-fb`) || q.includes(`.press-fb.${c}`)) &&
+          keepsScale(o.body) === true,
+      );
+    const offenders: string[] = [];
+    blocks.forEach((b, i) => {
+      if (keepsScale(b.body) !== false || /:(?:active|hover|focus)/.test(b.prelude)) return;
+      if (SKIP.some(([re]) => re.test(b.prelude))) return;
+      for (const part of b.prelude.split(',')) {
+        const compounds = part.trim().split(/\s*[\s>+~]\s*/);
+        const classes = [...(compounds.at(-1) ?? '').matchAll(/\.([\w-]+)/g)].map((m) => m[1]!);
+        const worn = classes.filter((c) => withPress.has(c));
+        if (!worn.length) continue;
+        // One class before press-fb's rule loses to it, so nothing is lost.
+        if (i < pressAt && classes.length < 2 && compounds.length < 2) continue;
+        if (worn.every(keptOnPress)) continue;
+        offenders.push(part.trim());
+      }
+    });
     expect(offenders, offenders.join('\n  ')).toEqual([]);
   });
 

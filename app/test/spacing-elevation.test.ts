@@ -87,6 +87,20 @@ describe('the page gutter', () => {
       expect(rawPx(v!), `${sel}: ${v}`).toBe(false);
     }
   });
+  it('bleeds a full-width list by exactly one gutter, and pads its rows back onto it', () => {
+    // The sign-off (2026-10-07): Chats, Projects and a project's chats ran
+    // edge to edge on a typed -16px, so a new gutter would have torn them.
+    for (const sel of ['.chat-list', '.project-list', '.project-chat-list'])
+      expect(values(sel, 'margin'), sel).toEqual(['0 calc(-1 * var(--gutter))']);
+    expect(values('.project-section .chat-list', 'margin')).toEqual([
+      '0 calc(-1 * var(--card-pad))',
+    ]);
+    for (const sel of ['.chat-list .chat-row', '.project-row', '.project-chat-row'])
+      expect(values(sel, 'padding'), sel).toEqual(['var(--row-pad) var(--gutter)']);
+    for (const v of values('.chat-list .chat-row::after', 'left')) expect(v).toBe('var(--gutter)');
+    for (const v of values('.chat-list .chat-row::after', 'right'))
+      expect(['0', 'var(--gutter)']).toContain(v);
+  });
   it('pads a sheet on --gutter, so it stops padding 18px against the page', () => {
     for (const [sel, prop] of [
       ['.sheet', 'padding'],

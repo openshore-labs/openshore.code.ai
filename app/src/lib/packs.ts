@@ -46,7 +46,7 @@ export const DEVICE_PACKS: DevicePack[] = [
     id: 'offline',
     name: 'Offline',
     headline: 'No signal, no problem.',
-    tagline: 'A reasoning model and a coder, both on this iPhone. Private by construction.',
+    tagline: `A reasoning model and a coder, both on ${thisDeviceNoun()}. Private by construction.`,
     anchor: POCKET_ANCHORS,
     helpers: { coding: POCKET_CODERS },
   },

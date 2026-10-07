@@ -215,7 +215,7 @@ cards, ledger rows, docks, the toast, sheets and their heads) are tokens,
 `--gutter`, `--card-pad`, `--row-pad`, `--section-gap` and `--elev-1` to
 `--elev-3`, held by `spacing-elevation.test.ts` (D22). Copy names the device
 in hand through `thisDeviceNoun` (`lib/deviceNoun.ts`: "this iPad" on an
-iPad, "this phone" elsewhere), never a typed "this phone"
+iPad, "this phone" elsewhere), never a typed "this phone" or "this iPhone"
 (`deviceNoun.test.ts`). A new file is covered the day it lands. Every door to
 Pairing says "Connect your computer". The 23 larger calls the review held for
 the founder (D1 to D23 in the review doc) were ruled on 2026-10-07 ("Do the

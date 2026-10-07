@@ -17,6 +17,7 @@ import { BackBar } from '../components/BackBar.js';
 import { Sheet } from '../components/Sheet.js';
 import { SheetTitle } from '../components/SheetHead.js';
 import { SwipeRow } from '../components/SwipeRow.js';
+import { Switch } from '../components/Switch.js';
 import { Markdown } from '../components/Markdown.js';
 import { bridge } from '../lib/electronBridge.js';
 import { isDesktop } from '../lib/platform.js';
@@ -722,18 +723,13 @@ export function CrewCommandScreen() {
                       </button>
                       <label className="cc-switch-row">
                         <span className="cc-switch-label">{r.enabled ? 'On' : 'Paused'}</span>
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={r.enabled}
-                          aria-label={r.enabled ? `Pause ${r.name}` : `Resume ${r.name}`}
-                          className={`switch${r.enabled ? ' on' : ''}`}
-                          onClick={() => {
-                            void updateRoutine(r.id, { enabled: !r.enabled });
+                        <Switch
+                          checked={r.enabled}
+                          label={r.enabled ? `Pause ${r.name}` : `Resume ${r.name}`}
+                          onChange={(next) => {
+                            void updateRoutine(r.id, { enabled: next });
                           }}
-                        >
-                          <span className="switch-knob" />
-                        </button>
+                        />
                       </label>
                     </div>
                   ) : r.lastRun?.sessionId ? (

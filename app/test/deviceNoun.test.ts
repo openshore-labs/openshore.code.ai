@@ -1,7 +1,7 @@
 // The device in hand is named once (UI/UX review follow-up, 2026-10-07): "this
 // iPad" on an iPad, "this phone" everywhere else, through thisDeviceNoun in
-// lib/deviceNoun.ts. No line a person reads writes "this phone" itself, so an
-// iPad never reads a phone's words.
+// lib/deviceNoun.ts. No line a person reads writes "this phone" or "this
+// iPhone" itself, so an iPad never reads a phone's words.
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -45,14 +45,27 @@ describe('thisDeviceNoun', () => {
 describe('copy names the device through the helper', () => {
   // The later tiers' rooms have no door in a Personal build; they keep their
   // own lines until a tier opens them (the review's follow-up says which).
-  const LATER_TIER = new Set(['screens/MarketplaceScreen.tsx', 'screens/StackHealthScreen.tsx']);
-  it('writes "this phone" in no line a person reads', () => {
+  const LATER_TIER = new Set([
+    'screens/MarketplaceScreen.tsx',
+    'screens/StackHealthScreen.tsx',
+    // The Marketplace's shelves and bundles (v3).
+    'components/marketplace.ts',
+    'lib/bundles.ts',
+  ]);
+  // Lines that say "this iPhone" because nothing else is true there.
+  const NAMED: Record<string, string> = {
+    'lib/gitos/icloudPlugin.ts': 'the error iCloud throws off iOS, never on an iPad',
+  };
+  it('writes "this phone" or "this iPhone" in no line a person reads', () => {
+    // "this iPhone" read wrong on an iPad the same way "this phone" did (the
+    // sign-off, 2026-10-07), so both ask the helper.
     const offences: string[] = [];
     for (const file of srcFiles()) {
-      if (LATER_TIER.has(file) || file === 'lib/deviceNoun.ts') continue;
+      if (LATER_TIER.has(file) || NAMED[file] || file === 'lib/deviceNoun.ts') continue;
       const code = stripComments(readFileSync(join(SRC, file), 'utf8'));
       code.split('\n').forEach((line, i) => {
-        if (/\b[Tt]his phone\b/.test(line)) offences.push(`${file}:${i + 1} ${line.trim()}`);
+        if (/\b[Tt]his (?:phone|iPhone)\b/.test(line))
+          offences.push(`${file}:${i + 1} ${line.trim()}`);
       });
     }
     expect(offences).toEqual([]);

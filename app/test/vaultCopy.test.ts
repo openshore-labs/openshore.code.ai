@@ -329,8 +329,10 @@ describe('the Vault copy map (0.19)', () => {
     const icloud = PROVIDER_ROSTER.find((p) => p.id === 'icloud')!;
     expect(icloud.offPill).toBe('Turned off');
     expect(icloud.offPill ?? 'Arriving').not.toBe('Arriving');
+    // The device in hand is named through thisDeviceNoun (2026-10-07), so an
+    // iPad reads its own name; the suite runs as a phone.
     expect(icloud.pending).toBe(
-      'Sign in to iCloud and turn on iCloud Drive in Settings on this iPhone to use it.',
+      'Sign in to iCloud and turn on iCloud Drive in Settings on this phone to use it.',
     );
     // Google Drive is held back, so it still arrives.
     expect(PROVIDER_ROSTER.find((p) => p.id === 'gdrive')!.offPill).toBeUndefined();

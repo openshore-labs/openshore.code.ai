@@ -10,6 +10,7 @@ import { logEvent } from '../lib/insights.js';
 import { HARBOR_APPROX_LABEL, HARBOR_BYLINE, HARBOR_MODEL_ID } from '../lib/harbor.js';
 import { HARBOR_MINI_APPROX_LABEL, HARBOR_MINI_MODEL_ID } from '../lib/harborMini.js';
 import { SettingsRow } from './SettingsRow.js';
+import { thisDeviceNoun } from '../lib/deviceNoun.js';
 
 export function StartingPaths({
   context,
@@ -58,7 +59,7 @@ export function StartingPaths({
         <>
           <h3>Chat with Harbor</h3>
           <div className="sub" style={{ marginBottom: 10 }}>
-            Harbor is ready. It runs on this iPhone and can search the web.
+            Harbor is ready. It runs on {thisDeviceNoun()} and can search the web.
           </div>
           <button className="btn ghost block" onClick={() => void getGuideAndGo(HARBOR_MODEL_ID)}>
             Open Harbor
@@ -245,9 +246,9 @@ export function StartingPaths({
           <div className="card">
             <h3>Your computer</h3>
             <div className="sub" style={{ marginBottom: 10 }}>
-              Run your model on your own computer and reach it from your phone over your private
-              Tailscale network. Your computer does the work, so it does not drain your battery, and
-              a long answer keeps going even when you close the app.
+              Run your model on your own computer and reach it from {thisDeviceNoun()} over your
+              private Tailscale network. Your computer does the work, so it does not drain your
+              battery, and a long answer keeps going even when you close the app.
             </div>
             <button className="btn ghost block" onClick={() => void go('pair')}>
               Connect your computer

@@ -42,7 +42,7 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
   'get-harbor': {
     id: 'get-harbor',
     title: 'Get Harbor',
-    goal: 'Add Harbor, a coding model that runs on my phone and can help me build for real.',
+    goal: `Add Harbor, a coding model that runs on ${thisDeviceNoun()} and can help me build for real.`,
     steps: [
       'Open Settings and find the Harbor section. Harbor Lite, the built-in guide, is already there. Harbor is the coder that runs alongside it.',
       'On the Harbor row, tap Install. It downloads straight from the source, about 2.5 GB, roughly a few minutes on wifi. You can keep chatting while it lands.',
@@ -128,13 +128,13 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
   'install-tailscale': {
     id: 'install-tailscale',
     title: 'Install Tailscale',
-    goal: 'Give my phone and my computer a private network to talk over.',
+    goal: `Give ${thisDeviceNoun()} and my computer a private network to talk over.`,
     steps: [
       'Install Tailscale on your computer from tailscale.com and sign in (Google, Apple, GitHub, or Microsoft accounts all work).',
       `Install the Tailscale app on ${thisDeviceNoun()} from the App Store and sign in with the same account.`,
-      'Turn Tailscale on in the phone app. Both devices now share a private network, no port forwarding, no public exposure.',
+      'Turn it on in the Tailscale app. Both devices now share a private network, no port forwarding, no public exposure.',
     ],
-    done: 'The Tailscale app on the phone lists your computer. Now pair them under Pairing.',
+    done: `The Tailscale app on ${thisDeviceNoun()} lists your computer. Now pair them under Pairing.`,
   },
   'set-up-crew': {
     id: 'set-up-crew',

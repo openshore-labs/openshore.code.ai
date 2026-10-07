@@ -22,6 +22,7 @@
 import type { StopReason } from 'os-code/protocol';
 import { Llama, type DownloadNoticeCopy, type NoticePermission } from './llamaPlugin.js';
 import { isPhone } from './platform.js';
+import { thisDeviceNoun } from './deviceNoun.js';
 
 export type NoticeKind = 'download' | 'reply' | 'approval';
 
@@ -88,8 +89,8 @@ export function downloadNoticeCopy(name: string, guide?: string): DownloadNotice
   return {
     doneTitle: `${name} is ready`,
     doneBody: guide
-      ? 'Downloaded to this iPhone. Tap to start chatting.'
-      : 'Downloaded to this iPhone. Tap to put it to work.',
+      ? `Downloaded to ${thisDeviceNoun()}. Tap to start chatting.`
+      : `Downloaded to ${thisDeviceNoun()}. Tap to put it to work.`,
     failTitle: `${name} did not finish downloading`,
     failBody: 'Open OpenShore to try again.',
     route: encodeRoute(guide ? { to: 'guide', modelId: guide } : { to: 'view', view: 'stack' }),

@@ -96,13 +96,13 @@ export const HARBOR_SWITCH_HINT =
   'To use Harbor, tap the model name in the chat box below (next to the +) and pick Harbor. Or open the menu, go to Stack, and place Harbor there so every chat starts with it.';
 
 /** Said once, whenever Harbor finishes downloading during or after the walk. */
-export const HARBOR_READY_MESSAGE = `Harbor is ready on your iPhone. ${HARBOR_SWITCH_HINT}`;
+export const HARBOR_READY_MESSAGE = `Harbor is ready on ${thisDeviceNoun()}. ${HARBOR_SWITCH_HINT}`;
 
 export const STEP_COPY: Record<SetupStepId, SetupStepCopy> = {
   harbor: {
     title: 'Get Harbor',
-    what: 'Harbor is a coding model, Qwen3 4B Instruct, that runs right here on your iPhone.',
-    why: `I'm a guide. Harbor does the real work: it writes and explains code right on ${thisDeviceNoun()}, even in airplane mode, and searches the web when you're online.`,
+    what: `Harbor is a coding model, Qwen3 4B Instruct, that runs on ${thisDeviceNoun()}.`,
+    why: "I'm a guide. Harbor does the real work: it writes and explains code right here, even in airplane mode, and searches the web when you're online.",
     how: "Tap Get Harbor. It downloads straight from its source, about 2.5 GB, a few minutes on wifi. It keeps going in the background while we set up the rest, and I'll tell you when it's ready and how to switch to it.",
     action: 'Get Harbor',
     ask: 'Tell me more about Harbor before I download it.',
