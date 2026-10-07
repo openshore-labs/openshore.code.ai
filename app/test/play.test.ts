@@ -8,6 +8,7 @@ import {
   ownerLabel,
   parsePlan,
   parseReplan,
+  planPrompt,
   readySteps,
   sanitizePlay,
   topoOrder,
@@ -154,6 +155,51 @@ describe('ownerFor / ownerLabel', () => {
   it('ignores a step owner that names no model in the stack, falling back to category', () => {
     const s: PlayStep = { ...step('s', 'coding'), owner: 'cloud:ghost:x' };
     expect(ownerFor(s, stack).ref).toEqual(coder); // coding specialist by category
+  });
+});
+
+// D13 (founder, 2026-10-07): an unplaced vision step goes to the model an
+// image in the chat would go to (the driver's routeVision, carried as the
+// stack's imageReader), and the brief names it, never the old Opus default.
+describe('an unplaced vision step', () => {
+  const haiku: StackModelRef = {
+    kind: 'cloud',
+    provider: 'anthropic',
+    model: 'claude-haiku-4-5',
+    label: 'Claude Haiku 4.5',
+  };
+  const stack: AppStack = { reasoning: harborRef(), active: [], saved: {} };
+
+  it('goes to the image reader, named without a reasoning tag', () => {
+    expect(ownerLabel(step('s', 'vision'), { ...stack, imageReader: haiku })).toBe(
+      'Claude Haiku 4.5',
+    );
+  });
+
+  it('reads as the anchor covering it when the reader is the anchor', () => {
+    const own: AppStack = { ...stack, reasoning: claude };
+    expect(ownerLabel(step('s', 'vision'), { ...own, imageReader: claude })).toBe(
+      'Claude (reasoning)',
+    );
+  });
+
+  it('falls to the anchor the driver runs when nothing can read images', () => {
+    expect(ownerFor(step('s', 'vision'), stack)).toMatchObject({
+      ref: harborRef(),
+      fellBack: true,
+    });
+    // With no anchor set, the anchor is Harbor Lite, as in the driver.
+    const bare = { active: [], saved: {} } as AppStack;
+    expect(ownerFor(step('s', 'reasoning'), bare).ref).toEqual(harborRef());
+  });
+
+  it('tells the planner who covers it', () => {
+    expect(planPrompt('read it', { ...stack, imageReader: haiku })).toContain(
+      'vision (Image reading): no specialist, Claude Haiku 4.5 covers it',
+    );
+    expect(planPrompt('read it', stack)).toMatch(
+      /vision \(Image reading\): no specialist, the reasoning model covers it/,
+    );
   });
 });
 

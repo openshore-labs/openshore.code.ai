@@ -91,9 +91,8 @@ import {
 } from './providerClient.js';
 import { SearchTurn } from './searchTurn.js';
 import { claudeHistoryCache, claudeSystem, promptCacheOn } from '../lib/claudeCache.js';
-import { PROVIDERS, providerInfo, providerSecretKey } from '../lib/providers.js';
+import { cloudImageReaders, providerInfo, providerSecretKey } from '../lib/providers.js';
 import { imageBlockParts, type Attachment } from '../lib/attachments.js';
-import { claudeModelLabel, visionFallbackClaudeModel } from '../lib/claudeModels.js';
 import { buildVisionContent, describeError, opensOnUser } from './cloudClaudeDriver.js';
 import { frameLabel, videoContextHeader, VIDEO_FRAMES_SYSTEM_NOTE } from '../lib/videoAttach.js';
 import {
@@ -108,6 +107,7 @@ import {
   readySteps,
   replanPrompt,
   type Play,
+  type PlayStack,
   type PlayStep,
   type StepResult,
 } from '../lib/play.js';
@@ -1511,32 +1511,14 @@ export class StackDriver implements ChatDriver {
   }
 
   /** A connected, reachable cloud model that reads images, when the stack holds
-   *  none. Claude first (its whole lineup reads images, so the one that costs
-   *  the person least), then the first other provider with a stored key and a
-   *  vision-capable model. The label names the model, so the card says
-   *  exactly which one the image would go to. */
+   *  none: the first of cloudImageReaders (Claude's least costly model, then
+   *  each other provider's image reader) with a stored key. The label names
+   *  the model, so the card says exactly which one the image would go to, and
+   *  it is the name the Stack's Image reading rows show (D13, 2026-10-07). */
   private async cloudVisionFallback(): Promise<StackModelRef | undefined> {
-    const claude = visionFallbackClaudeModel();
-    const anthropic: StackModelRef = {
-      kind: 'cloud',
-      provider: 'anthropic',
-      model: claude.id,
-      label: `Claude ${claudeModelLabel(claude.id)}`,
-    };
-    if (this.reachable(anthropic) && (await secretGet(providerSecretKey('anthropic')))) {
-      return anthropic;
-    }
-    for (const p of PROVIDERS) {
-      if (p.id === 'anthropic') continue;
-      const visionModel = p.models.find((m) => m.categories?.includes('vision'));
-      if (!visionModel) continue;
-      const ref: StackModelRef = {
-        kind: 'cloud',
-        provider: p.id,
-        model: visionModel.id,
-        label: `${p.name} ${visionModel.label}`,
-      };
-      if (this.reachable(ref) && (await secretGet(providerSecretKey(p.id)))) return ref;
+    for (const reader of cloudImageReaders()) {
+      const ref: StackModelRef = { kind: 'cloud', ...reader };
+      if (this.reachable(ref) && (await secretGet(providerSecretKey(reader.provider)))) return ref;
     }
     return undefined;
   }
@@ -1558,6 +1540,14 @@ export class StackDriver implements ChatDriver {
     // its own honest device handling) take it.
     if (reasoning.kind === 'device' || !this.reachable(reasoning)) return false;
 
+    // The stack as the play reads it: with the model an image step goes to
+    // while nothing is placed for Image reading, the same one an image in the
+    // chat would go to (routeVision), so the brief and the run name it (D13).
+    const roster: PlayStack = {
+      ...this.stack,
+      imageReader: (await this.routeVision())?.ref,
+    };
+
     this.emit({ type: 'status', message: 'Framing the request.' });
     const reply = new PlanReplyFilter();
     let answering = false;
@@ -1569,7 +1559,7 @@ export class StackDriver implements ChatDriver {
         undefined,
         planPrompt(
           text,
-          this.stack,
+          roster,
           contextNote,
           this.conversationDigest(this.leaves(reasoning)),
           true,
@@ -1620,14 +1610,14 @@ export class StackDriver implements ChatDriver {
     // single-turn path route it, so behavior is unchanged for those prompts.
     if (framing.steps.length <= 1) return false;
 
-    await this.executePlay({ summary: framing.summary, steps: framing.steps }, text);
+    await this.executePlay({ summary: framing.summary, steps: framing.steps }, text, roster);
     return true;
   }
 
   /** Run the play: brief the user (todos with owners), execute steps in
    *  dependency order handing each to its owner, re-plan at bounded checkpoints,
    *  then stream a final synthesis. */
-  private async executePlay(initial: Play, userText: string): Promise<void> {
+  private async executePlay(initial: Play, userText: string, roster: PlayStack): Promise<void> {
     const reasoning = this.stack.reasoning ?? harborRef();
     let play = initial;
     // Each step's output, tainted (`localOnly`) when it was written on a seat
@@ -1637,8 +1627,7 @@ export class StackDriver implements ChatDriver {
     const results: PlayStepResult[] = [];
     const done = new Set<string>();
     const status = new Map<string, 'pending' | 'in_progress' | 'completed'>();
-    const showTodos = () =>
-      this.emit({ type: 'todos', items: briefTodos(play, this.stack, status) });
+    const showTodos = () => this.emit({ type: 'todos', items: briefTodos(play, roster, status) });
 
     this.emit({
       type: 'status',
@@ -1659,9 +1648,9 @@ export class StackDriver implements ChatDriver {
         if (this.aborted) break;
         status.set(step.id, 'in_progress');
         showTodos();
-        this.emit({ type: 'status', message: handoffNote(step, this.stack) });
+        this.emit({ type: 'status', message: handoffNote(step, roster) });
 
-        const owner = ownerFor(step, this.stack);
+        const owner = ownerFor(step, roster);
         // A device owner (or an unreachable one) is not run autonomously; the
         // reasoning anchor covers the step instead.
         let ref = owner.ref;

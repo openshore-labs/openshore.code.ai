@@ -12,10 +12,16 @@ import {
   PROFILE_ORDER,
   autoProfile,
   effectiveProfile,
+  locationAllowed,
   profileBlurb,
   type ProfileId,
 } from '../lib/profiles.js';
-import { PROVIDERS, providerBenchModels, type BenchModel } from '../lib/providers.js';
+import {
+  PROVIDERS,
+  cloudImageReaders,
+  providerBenchModels,
+  type BenchModel,
+} from '../lib/providers.js';
 import { isHarborMini } from '../lib/harborMini.js';
 import { isDesktop } from '../lib/platform.js';
 import { isPinned } from '../lib/pins.js';
@@ -31,8 +37,8 @@ import {
   STACK_CATEGORIES,
   STACK_LEAD,
   categoryLabel,
-  defaultVisionCloudRef,
   harborRef,
+  pickVisionRef,
   placementValid,
   refKey,
   refName,
@@ -220,8 +226,23 @@ export function StackManager() {
   // ---- Vision slots -------------------------------------------------------
   // Two positions in one category: a local model (on-device or your own server)
   // and a cloud model. Each carries its own effort. Until a person assigns the
-  // cloud slot, an image asks first and then goes to a connected cloud model.
+  // cloud slot, an image asks first and then goes to the model named below.
   const localVisionRefs = [...deviceRefs, ...byomRefs];
+  // What reads an image in this status while nothing in its slot does: the
+  // chat path's own choice (stackDriver's routeVision), an anchor or
+  // specialist that can see, then the first connected cloud reader. The rows
+  // name it, so they say the model the approval card will ask about (D13,
+  // founder 2026-10-07: the least costly Claude model, named, until the
+  // person chooses one). A device model cannot read images on this build.
+  const cloudOn = locationAllowed(editProfile, 'cloud');
+  const reach = (r: StackModelRef) =>
+    r.kind !== 'device' &&
+    cloudOn &&
+    (r.kind !== 'cloud' || Boolean(connectedProviders[r.provider]));
+  const connectedReader = cloudImageReaders().find((r) => connectedProviders[r.provider]);
+  const imageReader: StackModelRef | undefined =
+    pickVisionRef({ ...stack, active: stack.active.filter((m) => m !== slots.local) }, reach)
+      ?.ref ?? (cloudOn && connectedReader ? { kind: 'cloud', ...connectedReader } : undefined);
   const [visionEdit, setVisionEdit] = useState<
     { slot: 'local' | 'cloud'; pickKey: string; effort: Effort } | undefined
   >();
@@ -229,15 +250,12 @@ export function StackManager() {
     slot === 'local' ? localVisionRefs : cloudRefs;
   const openVisionEdit = (slot: 'local' | 'cloud') => {
     const member = slot === 'local' ? slots.local : slots.cloud;
-    // The cloud preselect is one this device can reach, so Save never lands on
-    // an unconnected default.
+    // The cloud preselect is the model reading images today (a connected one,
+    // so Save never lands on an unconnected default), so Save alone keeps it.
+    const reading = imageReader && cloudRefs.find((r) => refKey(r) === refKey(imageReader));
     const initial =
       member?.ref ??
-      (slot === 'cloud'
-        ? connectedProviders.anthropic
-          ? defaultVisionCloudRef()
-          : cloudRefs.find(visionCapable)
-        : localVisionRefs[0]);
+      (slot === 'cloud' ? (reading ?? cloudRefs.find(visionCapable)) : localVisionRefs[0]);
     setVisionEdit({
       slot,
       pickKey: initial ? refKey(initial) : '',
@@ -267,37 +285,25 @@ export function StackManager() {
     setVisionEdit(undefined);
   };
 
-  // A connected cloud provider with a model that reads images. The row names
-  // no default model (which one is the founder's call, direction D13), and an
-  // image with no placement asks first.
-  const cloudReader = PROVIDERS.some(
-    (p) =>
-      connectedProviders[p.id] &&
-      (p.id === 'anthropic' || p.models.some((m) => m.categories?.includes('vision'))),
-  );
-  // A Vision slot's display line: the assigned model and its effort, or the
-  // empty state.
-  const slotLine = (slot: 'local' | 'cloud'): { title: string; sub: string } => {
+  // A Vision slot's line: the assigned model and its effort, or who reads
+  // images until one is chosen, or the empty state.
+  const slotLine = (slot: 'local' | 'cloud'): string => {
     const member = slot === 'local' ? slots.local : slots.cloud;
     if (member) {
-      return {
-        title: refName(member.ref),
-        sub: `${effortLabel(member.placement.effort ?? DEFAULT_EFFORT)} effort`,
-      };
+      return `${refName(member.ref)} · ${effortLabel(member.placement.effort ?? DEFAULT_EFFORT)} effort`;
     }
     if (slot === 'cloud') {
-      return cloudReader
-        ? {
-            title: 'Not chosen',
-            sub: 'Each image asks first, then goes to a connected cloud model.',
-          }
-        : { title: 'None yet', sub: 'Connect a cloud model in Cloud Connections to read images.' };
+      if (imageReader) {
+        return `${refName(imageReader)}. Until you choose one. Asks before each image.`;
+      }
+      return cloudOn
+        ? 'None yet · Connect a cloud model in Cloud Connections to read images.'
+        : 'None yet · No cloud model is used while Offline.';
     }
-    return {
-      title: 'None yet',
-      // The title already says yet, so the line does not say it again.
-      sub: cloudReader ? 'The cloud model reads images for now.' : 'Nothing reads images.',
-    };
+    // The title already says yet, so the line does not say it again.
+    return imageReader
+      ? `None yet · ${refName(imageReader)} reads images for now.`
+      : 'None yet · Nothing reads images.';
   };
 
   return (
@@ -358,25 +364,22 @@ export function StackManager() {
         </SettingsGroup>
 
         {/* Image reading (Vision): two slots, a local model and a cloud model,
-            each with its own effort. The cloud slot defaults to the most
-            capable cloud model until changed. A picture (a screenshot, a
-            photo, a video's frames) routes here. */}
+            each with its own effort. Until the cloud slot is chosen, the rows
+            name the model that reads images now, asking first (D13). A
+            picture (a screenshot, a photo, a video's frames) routes here. */}
         <SettingsGroup
           title="Image reading"
           intro="Screenshots, photos, and video frames. The local model goes first; the cloud model reads what it cannot."
           index={1}
         >
-          {(['local', 'cloud'] as const).map((slot) => {
-            const line = slotLine(slot);
-            return (
-              <SettingsRow
-                key={slot}
-                label={slot === 'local' ? 'Local' : 'Cloud'}
-                sub={`${line.title} · ${line.sub}`}
-                onClick={admin ? () => openVisionEdit(slot) : undefined}
-              />
-            );
-          })}
+          {(['local', 'cloud'] as const).map((slot) => (
+            <SettingsRow
+              key={slot}
+              label={slot === 'local' ? 'Local' : 'Cloud'}
+              sub={slotLine(slot)}
+              onClick={admin ? () => openVisionEdit(slot) : undefined}
+            />
+          ))}
         </SettingsGroup>
 
         {/* Specialists: the models the Reasoning model routes work to, each
@@ -653,7 +656,7 @@ export function StackManager() {
           </li>
           <li>
             It lands on your bench like any other model. Place it into a category and the Reasoning
-            LLM starts routing the right tasks to it.
+            model starts routing the right tasks to it.
           </li>
           <li>
             Your address and API key stay yours. The API key stays on this device, scoped to that
@@ -936,7 +939,9 @@ export function StackManager() {
             <p className="sheet-sub">
               {visionEdit.slot === 'local'
                 ? 'A model on this device or your own server. A model on this device cannot read images yet, so images go to the cloud model until one can.'
-                : 'A cloud model that reads images. Until you choose one, each image asks first.'}
+                : imageReader
+                  ? `A cloud model that reads images. Until you choose one, ${refName(imageReader)} reads them, asking before each image.`
+                  : 'A cloud model that reads images.'}
             </p>
 
             {eligibleVisionRefs(visionEdit.slot).length === 0 ? (

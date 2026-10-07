@@ -12,7 +12,7 @@ import type { TodoItem } from 'os-code/protocol';
 import {
   STACK_CATEGORIES,
   categoryLabel,
-  defaultVisionCloudRef,
+  harborRef,
   refKey,
   refName,
   visionSlots,
@@ -183,6 +183,15 @@ export function mergeReplan(play: Play, done: Set<string>, rawRemaining: unknown
 
 // ---- owner resolution ----------------------------------------------------
 
+/** The stack as a play reads it: the person's stack, plus the model an image
+ *  step goes to while nothing is placed for Image reading. The driver fills
+ *  `imageReader` with the chat path's own choice (stackDriver's routeVision:
+ *  an anchor that can see, then the reachable, keyed cloud reader), so a
+ *  play's brief names, and its step runs on, the model an image in the chat
+ *  would go to and the Stack's Image reading row names (D13, founder
+ *  2026-10-07). Left out, the reasoning model covers the step. */
+export type PlayStack = AppStack & { imageReader?: StackModelRef };
+
 export interface StepOwner {
   ref: StackModelRef;
   placement?: Placement;
@@ -192,11 +201,13 @@ export interface StepOwner {
 }
 
 /** Who runs a step: the specialist placed for its category, else the reasoning
- *  anchor. Vision reads from its two slots (local preferred, then cloud, then
- *  the default cloud model). This is the intended owner for the briefing;
- *  execution re-checks reachability and may fall back further. */
-export function ownerFor(step: PlayStep, stack: AppStack): StepOwner {
+ *  anchor (the one the driver runs, Harbor Lite when none is set). Vision
+ *  reads from its two slots (local preferred, then cloud), then the stack's
+ *  image reader. This is the intended owner for the briefing; execution
+ *  re-checks reachability and may fall back further. */
+export function ownerFor(step: PlayStep, stack: PlayStack): StepOwner {
   const reasoning = stack.reasoning;
+  const anchor = reasoning ?? harborRef();
   // A level deeper: a step may name a specific model to run it. Honor it when it
   // names a model actually in the stack (an active specialist or the anchor).
   if (step.owner) {
@@ -207,22 +218,28 @@ export function ownerFor(step: PlayStep, stack: AppStack): StepOwner {
     }
   }
   if (step.category === 'reasoning') {
-    return { ref: reasoning ?? defaultVisionCloudRef(), placement: undefined, fellBack: false };
+    return { ref: anchor, placement: undefined, fellBack: false };
   }
   if (step.category === 'vision') {
     const { local, cloud } = visionSlots(stack);
     const member = local ?? cloud;
     if (member) return { ref: member.ref, placement: member.placement, fellBack: false };
-    return { ref: defaultVisionCloudRef(), placement: undefined, fellBack: true };
+    // Nothing placed for Image reading: the model an image in the chat goes
+    // to. When that is the anchor itself, the brief says the anchor covers it.
+    const reader = stack.imageReader;
+    if (reader) {
+      return { ref: reader, placement: undefined, fellBack: refKey(reader) === refKey(anchor) };
+    }
+    return { ref: anchor, placement: undefined, fellBack: true };
   }
   const specialist = stack.active.find((m) => m.placement.category === step.category);
   if (specialist) return { ref: specialist.ref, placement: specialist.placement, fellBack: false };
-  return { ref: reasoning ?? defaultVisionCloudRef(), placement: undefined, fellBack: true };
+  return { ref: anchor, placement: undefined, fellBack: true };
 }
 
 /** A short owner label for the briefing: the model's name, noting when the
  *  reasoning anchor is covering an unplaced category. */
-export function ownerLabel(step: PlayStep, stack: AppStack): string {
+export function ownerLabel(step: PlayStep, stack: PlayStack): string {
   const owner = ownerFor(step, stack);
   const name = refName(owner.ref);
   return owner.fellBack && step.category !== 'reasoning' ? `${name} (reasoning)` : name;
@@ -234,7 +251,7 @@ export function ownerLabel(step: PlayStep, stack: AppStack): string {
  *  them live as steps run): the step title, its owner, and its status. */
 export function briefTodos(
   play: Play,
-  stack: AppStack,
+  stack: PlayStack,
   statusById: Map<string, TodoItem['status']> = new Map(),
 ): TodoItem[] {
   return topoOrder(play.steps).map((s) => ({
@@ -246,7 +263,7 @@ export function briefTodos(
 
 /** A compact text brief for the chat: one line per play in run order, each with
  *  its owner. Deliberately terse (the founder: "as brief as possible"). */
-export function formatBriefTable(play: Play, stack: AppStack): string {
+export function formatBriefTable(play: Play, stack: PlayStack): string {
   const lines = topoOrder(play.steps).map(
     (s, i) => `${i + 1}. ${s.title}  ->  ${ownerLabel(s, stack)}`,
   );
@@ -255,15 +272,31 @@ export function formatBriefTable(play: Play, stack: AppStack): string {
 
 // ---- prompts and parsing -------------------------------------------------
 
+/** A bare vision step, to ask ownerFor who an unplaced one would go to. */
+const visionProbe: PlayStep = {
+  id: 'vision',
+  title: '',
+  category: 'vision',
+  brief: '',
+  dependsOn: [],
+};
+
 /** The categories this stack can hand off to, and who owns each, so the planner
  *  plans against the real roster and marks a fallback honestly. */
-function rosterLines(stack: AppStack): string {
+function rosterLines(stack: PlayStack): string {
   const byCategory = STACK_CATEGORIES.map((c) => {
     const placed =
       c.id === 'vision'
         ? Boolean(visionSlots(stack).local || visionSlots(stack).cloud)
         : stack.active.some((m) => m.placement.category === c.id);
-    return `- ${c.id} (${c.plain}): ${placed ? 'has a specialist' : 'no specialist, the reasoning model covers it'}`;
+    // An unplaced vision step goes to the stack's image reader (ownerFor), so
+    // the planner hears who that is unless it is the anchor itself.
+    const owner = c.id === 'vision' && !placed ? ownerFor(visionProbe, stack) : undefined;
+    const covers =
+      owner && !owner.fellBack
+        ? `no specialist, ${refName(owner.ref)} covers it`
+        : 'no specialist, the reasoning model covers it';
+    return `- ${c.id} (${c.plain}): ${placed ? 'has a specialist' : covers}`;
   });
   // A level deeper: the specific models placed in the stack, with the id to
   // target and, when set, the subject that model was placed for. The planner can
@@ -286,7 +319,7 @@ function rosterLines(stack: AppStack): string {
  *  prompt works for Claude, an OpenAI-compatible model, or a capable local one. */
 export function planPrompt(
   userText: string,
-  stack: AppStack,
+  stack: PlayStack,
   contextNote?: string,
   /** The chat so far (conversationDigest), so "it" and "that" in the request
    *  resolve against what was already said, a switched-in thread included. */
@@ -489,7 +522,7 @@ export function parseReplan(text: string): PlayStep[] | undefined {
 }
 
 /** How the driver labels the plan step in the chat when it hands off. */
-export function handoffNote(step: PlayStep, stack: AppStack): string {
+export function handoffNote(step: PlayStep, stack: PlayStack): string {
   return `${step.title}. Handing to ${ownerLabel(step, stack)}.`;
 }
 

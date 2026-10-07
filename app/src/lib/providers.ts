@@ -8,7 +8,7 @@
 // so the Stack can reference them; the router (stage 3) calls them.
 import type { CapabilityCategory } from 'os-code/protocol';
 import { nativeFetch } from './nativeFetch.js';
-import { CLAUDE_MODELS } from './claudeModels.js';
+import { CLAUDE_MODELS, claudeModelLabel, visionFallbackClaudeModel } from './claudeModels.js';
 
 export interface ProviderModel {
   id: string;
@@ -293,6 +293,42 @@ export function providerModelVision(providerId: string, modelId: string): boolea
       ?.models.find((m) => m.id === modelId)
       ?.categories?.includes('vision'),
   );
+}
+
+/** A cloud model that can read an image the stack has no reader for. */
+export interface CloudImageReader {
+  provider: string;
+  model: string;
+  /** The name the Stack, the approval card and a play's brief all show. */
+  label: string;
+}
+
+/** The cloud models an image may go to when nothing in the stack reads it, in
+ *  the order they are tried: Claude's image reader first (the least costly
+ *  Claude model, visionFallbackClaudeModel, kept and named by the founder on
+ *  2026-10-07, D13), then each other provider's first model that reads images.
+ *  The chat path takes the first one it can reach with a stored key, and the
+ *  Stack's Image reading rows name the first one connected, so the row and the
+ *  card always name the same model. A label that already carries the
+ *  provider's name is not prefixed again ("Gemini 2.5 Pro", never "Gemini
+ *  Gemini 2.5 Pro"). */
+export function cloudImageReaders(): CloudImageReader[] {
+  const claude = visionFallbackClaudeModel();
+  const out: CloudImageReader[] = [
+    { provider: 'anthropic', model: claude.id, label: `Claude ${claudeModelLabel(claude.id)}` },
+  ];
+  for (const p of PROVIDERS) {
+    if (p.id === 'anthropic') continue;
+    const m = p.models.find((x) => x.categories?.includes('vision'));
+    if (!m) continue;
+    const brand = p.name.split(' ')[0]!;
+    out.push({
+      provider: p.id,
+      model: m.id,
+      label: m.label.startsWith(brand) ? m.label : `${p.name} ${m.label}`,
+    });
+  }
+  return out;
 }
 
 /** The secret-store key for a provider's API key. */

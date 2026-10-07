@@ -7332,6 +7332,29 @@ button.vault-tag {
   font-size: var(--text-4);
 }
 
+/* Cloud Connections' footnote under its ledger card (D14): the grouped
+   list's footer, a short beat below the card and on the rows' text edge. */
+.connections-foot {
+  margin: 8px var(--card-pad) 0;
+}
+
+/* Repositories' connect sheet, when a one-tap sign-in was refused: the
+   Callback URL its OAuth app is missing, set in mono so every character
+   reads, a beat above the sheet's actions. */
+.repos-callback {
+  margin-bottom: 16px;
+}
+.repos-callback-url {
+  font-family: var(--font-mono);
+  font-size: var(--text-2);
+  color: var(--ink-soft);
+  word-break: break-all;
+  margin: 4px 0 8px;
+}
+.repos-callback .linklike {
+  font-size: var(--text-3);
+}
+
 /* Outbox item state, in the connectivity-dot language. */
 .state-dot {
   display: inline-block;

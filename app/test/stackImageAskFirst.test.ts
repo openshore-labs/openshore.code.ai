@@ -96,7 +96,8 @@ describe('an image when no local model can see', () => {
     await settle();
     const ask = asked(events);
     // The card names the model the image would go to: the Claude model that
-    // costs the person least, never the top of the lineup (build 2026-09-29).
+    // costs the person least, never the top of the lineup, the same name the
+    // Stack's Image reading row shows (D13, founder 2026-10-07).
     expect(ask?.request).toMatchObject({
       kind: 'cloud-spend',
       risk: 'cloud-spend',
