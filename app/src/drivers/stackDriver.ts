@@ -94,7 +94,7 @@ import {
 import { SearchTurn } from './searchTurn.js';
 import { claudeHistoryCache, claudeSystem, promptCacheOn } from '../lib/claudeCache.js';
 import { cloudImageReaders, providerInfo, providerSecretKey } from '../lib/providers.js';
-import { imageTurnLine } from '../lib/imageNote.js';
+import { imageStepCoveredNote, imageTurnLine } from '../lib/imageNote.js';
 import type { ImageReaderGap } from '../lib/imageReading.js';
 import { imageBlockParts, type Attachment } from '../lib/attachments.js';
 import { buildVisionContent, describeError, opensOnUser } from './cloudClaudeDriver.js';
@@ -127,6 +127,7 @@ import { PROFILES, locationAllowed, type ProfileId } from '../lib/profiles.js';
 import {
   harborRef,
   pickVisionRef,
+  refKey,
   refName,
   visionCapable,
   visionSlots,
@@ -1552,12 +1553,16 @@ export class StackDriver implements ChatDriver {
         break;
       }
     }
-    const away = placed?.why === 'out-of-reach' || keyed;
+    // The status rides along whenever it is what holds reading back: a
+    // reader set up but out of reach, or a status (Offline) in which nothing
+    // that reads images is in reach, so adding one would not help until the
+    // person leaves it.
+    const held = placed?.why === 'out-of-reach' || keyed || !locationAllowed(this.profile, 'cloud');
     return {
       from,
       cloud: keyed ? 'out-of-reach' : 'none',
       ...(placed ? { placed } : {}),
-      ...(away ? { status: PROFILES[this.profile].label } : {}),
+      ...(held ? { status: PROFILES[this.profile].label } : {}),
     };
   }
 
@@ -1699,27 +1704,36 @@ export class StackDriver implements ChatDriver {
         if (this.aborted) break;
         status.set(step.id, 'in_progress');
         showTodos();
-        // Tenet 4 narrowed for one step (founder, 2026-10-07): an image step
-        // with nothing set for Image reading runs on the chat path's reader
-        // (roster.imageReader, routeVision's pick, a connected cloud model
-        // among them) with no card. The note is what keeps that honest: it
-        // names the model that reads the step and the connection it runs on.
-        this.emit({ type: 'status', message: handoffNote(step, roster) });
-        // Nothing here reads images: the step still runs, the Reasoning model
-        // working from the text, and the turn closes with the two-door offer,
-        // once however many image steps the play holds.
-        if (step.category === 'vision' && !roster.imageReader && !this.pendingOffer) {
-          this.pendingOffer = await this.imageGap('play');
-        }
 
         const owner = ownerFor(step, roster);
         // A device owner (or an unreachable one) is not run autonomously; the
         // reasoning anchor covers the step instead.
         let ref = owner.ref;
         let placement = owner.placement;
-        if (ref.kind === 'device' || !this.reachable(ref)) {
+        const covered = ref.kind === 'device' || !this.reachable(ref);
+        if (covered) {
           ref = reasoning;
           placement = undefined;
+        }
+        // Tenet 4 narrowed for one step (founder, 2026-10-07): an image step
+        // with nothing set for Image reading runs on the chat path's reader
+        // (roster.imageReader, routeVision's pick, a connected cloud model
+        // among them) with no card. The note is what keeps that honest: it
+        // names the model that reads the step and the connection it runs on.
+        // A model set for Image reading that cannot take the step here (one
+        // on this phone) is named as such, with the model that covers it.
+        this.emit({
+          type: 'status',
+          message:
+            covered && step.category === 'vision' && refKey(owner.ref) !== refKey(reasoning)
+              ? imageStepCoveredNote(step.title, owner.ref, reasoning)
+              : handoffNote(step, roster),
+        });
+        // Nothing here reads images: the step still runs, the Reasoning model
+        // working from the text, and the turn closes with the two-door offer,
+        // once however many image steps the play holds.
+        if (step.category === 'vision' && !roster.imageReader && !this.pendingOffer) {
+          this.pendingOffer = await this.imageGap('play');
         }
         let out = '';
         let tainted = false;

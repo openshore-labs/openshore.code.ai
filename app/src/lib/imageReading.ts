@@ -27,13 +27,20 @@ export interface ImageReaderGap {
   cloud: 'none' | 'out-of-reach';
   /** A model set for Image reading that cannot read here, and why. */
   placed?: { model: string; why: 'device' | 'cannot-see' | 'out-of-reach' };
-  /** The reach status something is out of reach in ("Offline"). */
+  /** The reach status that holds image reading back ("Offline"): until the
+   *  person leaves it, nothing that reads images is in reach, set up or not. */
   status?: string;
 }
 
 /** The card's title, and the one it takes once something can read images. */
 export const IMAGE_OFFER_TITLE = 'Nothing here can read images yet';
-export const IMAGE_OFFER_READY_TITLE = 'Something can read images now';
+export const IMAGE_OFFER_READY_TITLE = 'Ready to read images';
+
+/** The title for this gap: while a status holds reading back, it names the
+ *  status rather than "yet", since a reader may already be set up. */
+export function imageOfferTitle(gap: Pick<ImageReaderGap, 'status'>): string {
+  return gap.status ? `Nothing can read images while ${gap.status}` : IMAGE_OFFER_TITLE;
+}
 
 /** The two doors, in the founder's words. */
 export const SOURCE_LOCAL = 'Source a local model';
@@ -58,16 +65,26 @@ export function imageOfferLead(gap: ImageReaderGap): string {
           ? `and your cloud models are out of reach${where}`
           : 'and no connected cloud model reads images',
       ].join(', ');
+  // What to do next. A reader already set up but out of reach needs only
+  // the status left behind, never a second model; and while a status holds
+  // reading back, adding one is not enough on its own, so the line says when
+  // the picture can go. A plan never carries the picture itself (its steps
+  // run on the text), so its line asks for the picture with the question.
+  const away = placed?.why === 'out-of-reach' || gap.cloud === 'out-of-reach';
+  const leave = gap.status ? ` when you leave ${gap.status}` : away ? ' once it is in reach' : '';
+  const send =
+    gap.from === 'image'
+      ? { start: 'Send the picture again', mid: 'send the picture again' }
+      : { start: 'Attach the picture and ask again', mid: 'attach the picture and ask again' };
+  const next = away ? `${send.start}${leave}.` : `Add one of these, then ${send.mid}${leave}.`;
   return gap.from === 'image'
-    ? `${missing}. Add one of these, then send the picture again.`
-    : `${missing}, so the image step ran on the text alone. Add one of these for next time.`;
+    ? `${missing}. ${next}`
+    : `${missing}, so the image step ran on the text alone. ${next}`;
 }
 
 /** The line that takes the doors' place once something can read images. */
 export function imageOfferReady(from: ImageReaderGap['from']): string {
-  return from === 'image'
-    ? 'Send the picture again and it goes there.'
-    : 'Ask again and the image step goes there.';
+  return from === 'image' ? 'Send the picture again.' : 'Attach the picture and ask again.';
 }
 
 // ---- the local pick, from the catalog -------------------------------------
@@ -122,17 +139,14 @@ export interface ImageDoor {
 
 /** The local door: the model, where it runs, its size and where it is set.
  *  A model on the phone itself cannot read images on this build
- *  (stack.ts visionCapable), so the local reader is one on a computer. */
-export function localDoor(
-  pick: ReturnType<typeof localImagePick>,
-  onThisComputer: boolean,
-): ImageDoor {
-  const where = onThisComputer ? 'this computer' : 'your computer';
+ *  (stack.ts visionCapable), so the local reader is one on your computer,
+ *  which the phone reaches as a model you connect. */
+export function localDoor(pick: ReturnType<typeof localImagePick>): ImageDoor {
   // A size keeps its unit on its line in the card.
   const size = (m: LocalImageModel) => aboutGB(m).replace(/ GB$/, '\u00a0GB');
   const small = pick.small ? ` Short on room? ${pick.small.name} is ${size(pick.small)}.` : '';
   return {
-    head: `${pick.first.name} on ${where}`,
+    head: `${pick.first.name} on your computer`,
     body: `Runs through Ollama, ${size(pick.first)}. Set it in Stack under Image reading, Local, and your images stay on your own network.${small}`,
   };
 }

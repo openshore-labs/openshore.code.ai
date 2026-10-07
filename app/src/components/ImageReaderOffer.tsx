@@ -13,11 +13,11 @@ import type { SetupGuideId } from '../lib/setupGuides.js';
 import {
   CONNECT_CLOUD,
   IMAGE_OFFER_READY_TITLE,
-  IMAGE_OFFER_TITLE,
   SOURCE_LOCAL,
   cloudDoor,
   imageOfferLead,
   imageOfferReady,
+  imageOfferTitle,
   localDoor,
   localImagePick,
   type ImageDoor,
@@ -27,11 +27,9 @@ import {
 export interface ImageOfferContext {
   /** Something in this chat's stack can read images now. */
   ready: boolean;
-  /** The app runs on the computer itself (the desktop), so the local model
-   *  is on "this computer" rather than "your computer". */
-  onThisComputer: boolean;
-  /** The engine's fit for a download of this size, when the computer has
-   *  been read (firstSeat.ts fitVerdict); absent on a phone. */
+  /** The engine's fit for a download of this size, once the computer's
+   *  memory has been read (firstSeat.ts fitVerdict). A phone has no read of
+   *  its paired computer today, so the chat leaves it out and LLaVA leads. */
   fit?: (sizeGB: number) => 'fits' | 'tight' | 'too-big';
   /** Open a guide chat (the store's startGuideChat). */
   onOpenGuide: (id: SetupGuideId) => void;
@@ -53,7 +51,6 @@ function Door({ kind, label, door }: { kind: 'local' | 'cloud'; label: string; d
 export function ImageReaderOffer({
   item,
   ready,
-  onThisComputer,
   fit,
   onOpenGuide,
 }: { item: Extract<ThreadItem, { kind: 'image-offer' }> } & ImageOfferContext) {
@@ -62,13 +59,13 @@ export function ImageReaderOffer({
   return (
     <div className="image-offer" role="group" aria-labelledby={titleId}>
       <div className="image-offer-title" id={titleId}>
-        {ready ? IMAGE_OFFER_READY_TITLE : IMAGE_OFFER_TITLE}
+        {ready ? IMAGE_OFFER_READY_TITLE : imageOfferTitle(item)}
       </div>
       <div className={`reveal${ready ? '' : ' open'}`} aria-hidden={ready || undefined}>
         <div className="reveal-inner">
           <p className="image-offer-lead">{imageOfferLead(item)}</p>
           <ul className="image-offer-doors">
-            <Door kind="local" label="Local" door={localDoor(pick, onThisComputer)} />
+            <Door kind="local" label="Local" door={localDoor(pick)} />
             <Door kind="cloud" label="Cloud" door={cloudDoor(item)} />
           </ul>
           <div className="image-offer-actions">

@@ -134,11 +134,18 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
         text: `Short on room? Pull ${SMALL_IMAGE_READER.name} instead, ${aboutGB(SMALL_IMAGE_READER)}. It is not as sharp, but it fits almost anywhere:`,
         paste: SMALL_IMAGE_READER.pull,
       },
+      // Ollama's own way to listen on the network, per system, so the
+      // setting holds and the server keeps the models it pulled (a hand-run
+      // `ollama serve` on Linux reads another folder than the service).
       {
-        text: `Ollama answers only on your computer at first. To let ${thisDeviceNoun()} reach it, quit Ollama (on Linux: sudo systemctl stop ollama), then start it listening on your network with this. On Windows, set OLLAMA_HOST to 0.0.0.0 under Environment Variables and start Ollama again:`,
-        paste: 'OLLAMA_HOST=0.0.0.0 ollama serve',
+        text: `Ollama answers only on your computer at first. To let ${thisDeviceNoun()} reach it, have it listen on your network. On Windows, quit Ollama from the taskbar, search Settings for environment variables, add OLLAMA_HOST with the value 0.0.0.0 to your account, and open Ollama again. On a Mac, paste this in Terminal, then quit Ollama from the menu bar and open it again (after the Mac restarts, paste it once more):`,
+        paste: 'launchctl setenv OLLAMA_HOST "0.0.0.0"',
       },
-      `Make sure ${thisDeviceNoun()} and your computer are on the same Tailscale network, the one Pairing uses, and find your computer's Tailscale address in the Tailscale app (it starts with 100.). Never forward port 11434 to the internet.`,
+      {
+        text: 'On Linux, run sudo systemctl edit ollama, add these two lines in the space at the top, and save. Then run sudo systemctl daemon-reload and sudo systemctl restart ollama:',
+        paste: '[Service]\nEnvironment="OLLAMA_HOST=0.0.0.0"',
+      },
+      `Make sure ${thisDeviceNoun()} and your computer are on the same Tailscale network, the one Pairing uses, and find your computer's Tailscale address in the Tailscale app (it starts with 100.). Ollama now answers on your home network too, so keep to networks you trust, and never forward port 11434 to the internet.`,
       `In OpenShore on ${thisDeviceNoun()}, open Stack and tap Connect a model under Bench. Name: ${LOCAL_IMAGE_READER.name}. Address: \`http://100.x.y.z:11434/v1\`, with your computer's Tailscale address in place of 100.x.y.z. Model name: ${LOCAL_IMAGE_READER.ref} (or ${SMALL_IMAGE_READER.ref}). Leave the API key blank and tap Connect.`,
       'Still in Stack, tap Local under Image reading, choose it, and tap Save.',
     ],

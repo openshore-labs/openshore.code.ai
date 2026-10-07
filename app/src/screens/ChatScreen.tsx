@@ -14,7 +14,6 @@ import type { HubRole } from '../drivers/types.js';
 import { sourceSupportsVision, type ConversationSource } from '../state/types.js';
 import { MessageList } from '../components/MessageList.js';
 import type { ImageOfferContext } from '../components/ImageReaderOffer.js';
-import { fitVerdict, hardwareFromSummary } from '../lib/firstSeat.js';
 import {
   Composer,
   SLASH_COMMANDS,
@@ -664,19 +663,16 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const openPackNote = conv ? vaultPackOpener(conv.id) : undefined;
 
   // A Stack chat can read images when a capable model is placed in it, or a
-  // connected cloud provider reads them. Its composer takes a picture either
-  // way (founder, 2026-10-07): the Stack answers one it cannot read with the
-  // two doors below instead of a toast, so the chat itself says what to set
-  // up. The offer card reads this to fold its doors once something can.
+  // connected cloud provider reads them. On a phone or an iPad its composer
+  // takes a picture either way (founder, 2026-10-07): the Stack answers one it
+  // cannot read with the two doors below instead of a toast, so the chat
+  // itself says what to set up. The desktop keeps the toast: its Stack is the
+  // engine's, with no Image reading row for the doors to point at. The offer
+  // card reads this to fold its doors once something can.
   const stackVision = useApp((s) => s.stackVisionReady());
   const startGuideChat = useApp((s) => s.startGuideChat);
-  const hardware = desktopStatus
-    ? (desktopStatus.hardware ?? hardwareFromSummary(desktopStatus.hardwareSummary))
-    : undefined;
   const imageOffer: ImageOfferContext = {
     ready: stackVision,
-    onThisComputer: isDesktop(),
-    ...(hardware ? { fit: (sizeGB: number) => fitVerdict(sizeGB, hardware) } : {}),
     onOpenGuide: (id) => void startGuideChat(id),
   };
 
@@ -1095,7 +1091,10 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         <Composer
           busy={Boolean(thread?.busy)}
           source={composerSource}
-          visionSupported={sourceSupportsVision(composerSource) || composerSource.kind === 'stack'}
+          visionSupported={
+            sourceSupportsVision(composerSource) ||
+            (composerSource.kind === 'stack' && (stackVision || !isDesktop()))
+          }
           placeholder={
             conv?.source.kind === 'device' && conv.source.modelId === HARBOR_MINI_MODEL_ID
               ? HARBOR_MINI_EMPTY_HINT

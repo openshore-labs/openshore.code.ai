@@ -57,6 +57,7 @@ vi.mock('../src/drivers/providerClient.js', async (importOriginal) => {
 });
 
 const { StackDriver } = await import('../src/drivers/stackDriver.js');
+const { harborRef } = await import('../src/lib/stack.js');
 import type { AppStack, StackModelRef } from '../src/lib/stack.js';
 
 const sonar: StackModelRef = {
@@ -112,6 +113,37 @@ describe('a play whose image step finds no reader', () => {
     const at = (t: string) => events.findIndex((e) => e.type === t);
     expect(at('text-final')).toBeLessThan(at('image-reader-offer'));
     expect(at('image-reader-offer')).toBeLessThan(at('task-done'));
+    driver.dispose();
+  });
+
+  it('names a model set for Image reading that cannot take the step, and who covers it', async () => {
+    // Harbor Lite placed under Image reading, Local: a model on the phone
+    // reads no images yet, so the Reasoning model covers the step, and the
+    // note says so rather than "Handing to Harbor Lite".
+    const placed: AppStack = {
+      ...stack,
+      active: [...stack.active, { ref: harborRef(), placement: { category: 'vision' } }],
+    };
+    const driver = new StackDriver(placed, 'offshore');
+    const events: DriverEvent[] = [];
+    driver.subscribe((e) => events.push(e));
+    driver.send('Explain the chart in my last screenshot');
+    await settle();
+
+    const statuses = events.flatMap((e) => (e.type === 'status' ? [e.message] : []));
+    expect(statuses).toContain(
+      'Read the chart. Harbor Lite cannot read images yet, so Sonar, your Reasoning model, works from the text.',
+    );
+    expect(statuses.some((m) => /Handing to Harbor Lite/.test(m))).toBe(false);
+    expect(events.filter((e) => e.type === 'image-reader-offer')).toEqual([
+      {
+        type: 'image-reader-offer',
+        from: 'play',
+        cloud: 'none',
+        placed: { model: 'Harbor Lite', why: 'device' },
+      },
+    ]);
+    expect(events.findLast((e) => e.type === 'task-done')).toMatchObject({ reason: 'complete' });
     driver.dispose();
   });
 });

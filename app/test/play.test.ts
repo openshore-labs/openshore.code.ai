@@ -17,6 +17,7 @@ import {
   type PlayStep,
 } from '../src/lib/play.js';
 import { harborRef, type AppStack, type StackModelRef } from '../src/lib/stack.js';
+import { imageStepCoveredNote } from '../src/lib/imageNote.js';
 
 const claude: StackModelRef = {
   kind: 'cloud',
@@ -270,6 +271,16 @@ describe("an image step's working note", () => {
     };
     expect(handoffNote({ ...read, owner: 'byom:c1' }, named)).toBe(
       'Read the chart. Handing to Coder.',
+    );
+  });
+
+  it('names a model set for Image reading that cannot take the step, and who covers it', () => {
+    expect(imageStepCoveredNote('Read the chart', harborRef(), sonar)).toBe(
+      'Read the chart. Harbor Lite cannot read images yet, so Sonar, your Reasoning model, works from the text.',
+    );
+    const own: StackModelRef = { ...coder, label: 'LLaVA 7B' };
+    expect(imageStepCoveredNote('Read the chart', own, sonar)).toBe(
+      'Read the chart. LLaVA 7B is out of reach, so Sonar, your Reasoning model, works from the text.',
     );
   });
 

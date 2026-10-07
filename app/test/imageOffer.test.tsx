@@ -19,6 +19,7 @@ import {
   cloudDoor,
   imageOfferLead,
   imageOfferReady,
+  imageOfferTitle,
   localDoor,
   localImagePick,
   otherCloudReaders,
@@ -60,8 +61,20 @@ describe('the words', () => {
     expect(imageOfferLead(offer())).toBe(
       'No image model is set in Stack, and no connected cloud model reads images. Add one of these, then send the picture again.',
     );
+    // A reader set up but out of reach needs only the status left behind.
     expect(imageOfferLead(offer({ cloud: 'out-of-reach', status: 'Offline' }))).toBe(
-      'No image model is set in Stack, and your cloud models are out of reach while Offline. Add one of these, then send the picture again.',
+      'No image model is set in Stack, and your cloud models are out of reach while Offline. Send the picture again when you leave Offline.',
+    );
+    expect(
+      imageOfferLead(
+        offer({ placed: { model: 'LLaVA 7B', why: 'out-of-reach' }, status: 'Offline' }),
+      ),
+    ).toBe(
+      'LLaVA 7B is set for Image reading, but it is out of reach while Offline, and no connected cloud model reads images. Send the picture again when you leave Offline.',
+    );
+    // Offline with nothing set up: adding one is not enough on its own.
+    expect(imageOfferLead(offer({ status: 'Offline' }))).toBe(
+      'No image model is set in Stack, and no connected cloud model reads images. Add one of these, then send the picture again when you leave Offline.',
     );
     expect(imageOfferLead(offer({ placed: { model: 'Harbor Lite', why: 'device' } }))).toBe(
       `Harbor Lite is set for Image reading, but a model on ${thisDeviceNoun()} cannot read images yet, and no connected cloud model reads images. Add one of these, then send the picture again.`,
@@ -75,22 +88,30 @@ describe('the words', () => {
         }),
       ),
     ).toBe(
-      'LLaVA, set for Image reading, and your cloud models are out of reach while Offline. Add one of these, then send the picture again.',
+      'LLaVA, set for Image reading, and your cloud models are out of reach while Offline. Send the picture again when you leave Offline.',
     );
     expect(imageOfferLead(offer({ from: 'play' }))).toBe(
-      'No image model is set in Stack, and no connected cloud model reads images, so the image step ran on the text alone. Add one of these for next time.',
+      'No image model is set in Stack, and no connected cloud model reads images, so the image step ran on the text alone. Add one of these, then attach the picture and ask again.',
+    );
+  });
+
+  it('titles the card with the status that holds reading back, never a "yet" it cannot keep', () => {
+    expect(imageOfferTitle(offer())).toBe(IMAGE_OFFER_TITLE);
+    expect(IMAGE_OFFER_TITLE).toBe('Nothing here can read images yet');
+    expect(imageOfferTitle(offer({ cloud: 'out-of-reach', status: 'Offline' }))).toBe(
+      'Nothing can read images while Offline',
     );
   });
 
   it('suggests LLaVA first with Moondream for little room, or Moondream alone when LLaVA cannot fit', () => {
-    expect(localDoor(localImagePick(), false)).toEqual({
+    expect(localDoor(localImagePick())).toEqual({
       head: 'LLaVA 7B on your computer',
       body: 'Runs through Ollama, about 4.7\u00a0GB. Set it in Stack under Image reading, Local, and your images stay on your own network. Short on room? Moondream 2 is about 1.7\u00a0GB.',
     });
     const small = localImagePick((gb) => (gb > 3 ? 'too-big' : 'fits'));
     expect(small).toEqual({ first: SMALL_IMAGE_READER });
-    expect(localDoor(small, true)).toEqual({
-      head: 'Moondream 2 on this computer',
+    expect(localDoor(small)).toEqual({
+      head: 'Moondream 2 on your computer',
       body: 'Runs through Ollama, about 1.7\u00a0GB. Set it in Stack under Image reading, Local, and your images stay on your own network.',
     });
     expect(localImagePick(() => 'tight').first).toBe(LOCAL_IMAGE_READER);
@@ -152,9 +173,17 @@ describe('the two guides', () => {
       'curl -fsSL https://ollama.com/install.sh | sh',
       'ollama pull llava:7b',
       'ollama pull moondream',
-      'OLLAMA_HOST=0.0.0.0 ollama serve',
+      'launchctl setenv OLLAMA_HOST "0.0.0.0"',
+      '[Service]\nEnvironment="OLLAMA_HOST=0.0.0.0"',
     ]);
     const text = guideOpening(local);
+    // Ollama's own way to listen on the network on each system, so the
+    // setting holds and the service keeps the models it pulled.
+    expect(text).toContain('sudo systemctl edit ollama');
+    expect(text).toContain('sudo systemctl restart ollama');
+    expect(text).toContain('add OLLAMA_HOST with the value 0.0.0.0 to your account');
+    expect(text).not.toContain('ollama serve');
+    expect(text).toContain('never forward port 11434 to the internet');
     expect(text).toContain('Connect a model under Bench');
     expect(text).toContain('Address: `http://100.x.y.z:11434/v1`');
     expect(text).toContain('Model name: llava:7b');
@@ -192,12 +221,7 @@ describe('the card', () => {
     const { ImageReaderOffer } = await import('../src/components/ImageReaderOffer.js');
     const opened: string[] = [];
     await dom.render(
-      <ImageReaderOffer
-        item={item}
-        ready={ready}
-        onThisComputer={false}
-        onOpenGuide={(id) => opened.push(id)}
-      />,
+      <ImageReaderOffer item={item} ready={ready} onOpenGuide={(id) => opened.push(id)} />,
     );
     return opened;
   }
@@ -206,7 +230,7 @@ describe('the card', () => {
     await show(offer());
     expect(dom.text()).toContain(IMAGE_OFFER_TITLE);
     expect(dom.text()).toContain(imageOfferLead(offer()));
-    const local = localDoor(localImagePick(), false);
+    const local = localDoor(localImagePick());
     expect(dom.text()).toContain(local.head);
     expect(dom.text()).toContain(local.body);
     expect(dom.text()).toContain(cloudDoor({ cloud: 'none' }).head);
@@ -231,7 +255,9 @@ describe('the card', () => {
     expect(dom.container.querySelector('.image-offer-title')?.textContent).toBe(
       IMAGE_OFFER_READY_TITLE,
     );
-    expect(imageOfferReady('image')).toBe('Send the picture again and it goes there.');
+    expect(IMAGE_OFFER_READY_TITLE).toBe('Ready to read images');
+    expect(imageOfferReady('image')).toBe('Send the picture again.');
+    expect(imageOfferReady('play')).toBe('Attach the picture and ask again.');
     expect(dom.text()).toContain(imageOfferReady('image'));
     const doors = dom.container.querySelector('.reveal[aria-hidden="true"]');
     expect(doors?.className).not.toContain('open');
@@ -257,19 +283,21 @@ describe('the card', () => {
     await dom.render(
       <MessageList
         thread={thread}
-        imageOffer={{ ready: false, onThisComputer: false, onOpenGuide: (id) => opened.push(id) }}
+        imageOffer={{ ready: false, onOpenGuide: (id) => opened.push(id) }}
       />,
     );
     await dom.click(SOURCE_LOCAL);
     expect(opened).toEqual(['image-reader-local']);
   });
 
-  it('is wired to the guide chats and takes a picture in a Stack chat', () => {
+  it('is wired to the guide chats and takes a picture in a Stack chat off the desktop', () => {
     const chat = readFileSync(join(process.cwd(), 'src/screens/ChatScreen.tsx'), 'utf8');
     expect(chat).toContain('onOpenGuide: (id) => void startGuideChat(id)');
     expect(chat).toContain('imageOffer={imageOffer}');
-    expect(chat).toMatch(
-      /visionSupported=\{sourceSupportsVision\(composerSource\) \|\| composerSource\.kind === 'stack'\}/,
+    // A phone or an iPad takes the picture and answers with the doors; the
+    // desktop, whose Stack has no Image reading row, keeps the toast.
+    expect(chat.replace(/\s+/g, ' ')).toContain(
+      "visionSupported={ sourceSupportsVision(composerSource) || (composerSource.kind === 'stack' && (stackVision || !isDesktop())) }",
     );
   });
 

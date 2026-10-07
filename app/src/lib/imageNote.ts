@@ -45,6 +45,18 @@ export function imageStepNote(
   return `${title}. Nothing here can read images yet, so ${refName(anchor)}, your Reasoning model, works from the text.`;
 }
 
+/** A plan's working note when the model set for Image reading cannot take
+ *  the step here, so the Reasoning model covers it from the text: a model on
+ *  this device (none reads images yet), or one out of reach. */
+export function imageStepCoveredNote(
+  title: string,
+  placed: StackModelRef,
+  anchor: StackModelRef,
+): string {
+  const why = placed.kind === 'device' ? 'cannot read images yet' : 'is out of reach';
+  return `${title}. ${refName(placed)} ${why}, so ${refName(anchor)}, your Reasoning model, works from the text.`;
+}
+
 /** The chat's status line once a picture goes, after the person approved it,
  *  to a model not set for Image reading. */
 export function imageTurnLine(

@@ -226,6 +226,22 @@ describe('an image when nothing here can read it (founder, 2026-10-07)', () => {
     driver.dispose();
   });
 
+  it('names Offline as what holds reading back, even with nothing set up', async () => {
+    h.keys = false;
+    const driver = new StackDriver(localOnly, 'offline');
+    const events: DriverEvent[] = [];
+    driver.subscribe((e) => events.push(e));
+    driver.send('Who is this?', [photo]);
+    await settle();
+    expect(events.find((e) => e.type === 'image-reader-offer')).toEqual({
+      type: 'image-reader-offer',
+      from: 'image',
+      cloud: 'none',
+      status: 'Offline',
+    });
+    driver.dispose();
+  });
+
   it('names a model set for Image reading that cannot read here', async () => {
     h.keys = false;
     const { driver, events } = chat({

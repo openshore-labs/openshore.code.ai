@@ -170,7 +170,8 @@ export type AgentEvent =
   // ('image') or the step ran on the text alone ('play'); `placed` names a
   // model set for Image reading that cannot read here, and why; `cloud` says
   // whether a connected cloud reader is out of reach rather than missing;
-  // `status` is the reach status it is out of reach in ("Offline"). Additive:
+  // `status` names the reach status that holds reading back ("Offline"),
+  // in which nothing that reads images is in reach until it is left. Additive:
   // an older client ignores it, and it never rides into a model's history.
   | {
       type: 'image-reader-offer';
