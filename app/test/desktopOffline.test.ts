@@ -219,7 +219,14 @@ describe('the Status sheet on the computer itself', () => {
     );
     // A phone keeps its own words.
     expect(profileUnavailable('docked', false, true)).toBe(' Not reachable right now.');
-    expect(profileBlurb('offline', true)).toBe('No connection. Only the models on this device.');
+    expect(profileBlurb('offline', true)).toBe(
+      'Only the models on this device. Your computer and cloud models wait.',
+    );
+    // True whether the network is down or Offline was chosen, and before a
+    // computer is connected it never speaks of one.
+    expect(profileBlurb('offline', false)).toBe(
+      'Only the models on this device. Cloud models wait.',
+    );
   });
 });
 

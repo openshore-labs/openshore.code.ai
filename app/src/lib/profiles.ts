@@ -44,7 +44,7 @@ export const PROFILES: Record<ProfileId, ProfileInfo> = {
     id: 'offline',
     label: 'Offline',
     dot: 'var(--muted)',
-    blurb: 'No connection. Only the models on this device.',
+    blurb: 'Only the models on this device. Your computer and cloud models wait.',
   },
 };
 
@@ -57,6 +57,9 @@ export function profileBlurb(id: ProfileId, paired: boolean, home = false): stri
   if (home) return HOME_BLURB[id];
   if (!paired && id === 'docked') return "Your computer's models, once you connect it.";
   if (!paired && id === 'offshore') return "Online. Cloud models and this device's models.";
+  // Offline is an option as much as a state: chosen with the network up it
+  // is not "no connection", so the line says what answers and what waits.
+  if (!paired && id === 'offline') return 'Only the models on this device. Cloud models wait.';
   return PROFILES[id].blurb;
 }
 
