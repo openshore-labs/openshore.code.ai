@@ -295,7 +295,8 @@ export function StackManager() {
     }
     return {
       title: 'None yet',
-      sub: cloudReader ? 'The cloud model reads images for now.' : 'Nothing reads images yet.',
+      // The title already says yet, so the line does not say it again.
+      sub: cloudReader ? 'The cloud model reads images for now.' : 'Nothing reads images.',
     };
   };
 

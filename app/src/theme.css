@@ -5063,6 +5063,10 @@ button.vault-tag {
 .ms-group > .swipe-row:last-child {
   border-bottom: none;
 }
+/* At rest the action is not painted: under a group's rounded clip its colour
+   bled through the antialiased corner as a faint arc. It shows while the row
+   is pulled and stays through the spring back, the --dur-5 the foreground
+   settles on, then hides. */
 .swipe-action {
   position: absolute;
   inset: 0 0 0 auto;
@@ -5075,17 +5079,11 @@ button.vault-tag {
   font-size: var(--text-4);
   font-weight: var(--weight-semibold);
   letter-spacing: 0.01em;
+  visibility: hidden;
+  transition: visibility 0s var(--dur-5);
 }
 .swipe-action-unpin {
   background: var(--danger);
-}
-/* At rest the action is not painted: under a group's rounded clip its colour
-   bled through the antialiased corner as a faint arc. It shows while the row
-   is pulled and stays through the spring back, the --dur-5 the foreground
-   settles on, then hides. */
-.swipe-action {
-  visibility: hidden;
-  transition: visibility 0s var(--dur-5);
 }
 .swipe-row.open .swipe-action {
   visibility: visible;
@@ -8136,6 +8134,12 @@ button.vault-tag {
    drawn check, on a quiet surface fill rather than an accent card. */
 .profile-row.active {
   background: var(--surface);
+}
+/* The text takes the row, so the check sits on the trailing edge as it does
+   in Select model, not beside the end of a short line. */
+.profile-row > .grow {
+  flex: 1;
+  min-width: 0;
 }
 .profile-row-check {
   align-self: center;

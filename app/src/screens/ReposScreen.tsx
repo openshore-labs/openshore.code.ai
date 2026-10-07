@@ -228,7 +228,9 @@ export function ReposScreen() {
                 <div className="grow">
                   <h3>{c.name}</h3>
                   <div className="sub">
-                    {oauth ? 'Authorize with one tap' : 'Personal access token'}
+                    {/* "Access token", the form's own word: Bitbucket's is
+                        an Atlassian API token, not a personal access token. */}
+                    {oauth ? 'Authorize with one tap' : 'Paste an access token'}
                   </div>
                 </div>
                 {on ? <span className="pill ok">Connected</span> : null}

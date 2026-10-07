@@ -694,7 +694,10 @@ export function SettingsScreen() {
             sub={
               editMode === 'default' || editMode === 'acceptEdits'
                 ? 'Commands ask first unless you allow them. Plan and Bypass are set from a coding chat.'
-                : `${permissionModeLabel(editMode)} is on, set from a coding chat. Commands ask first unless you allow them or Bypass is on.`
+                : editMode === 'bypassPermissions'
+                  ? // Bypass says what it does, not "unless Bypass is on" while it is.
+                    'Bypass is on, set from a coding chat. Commands run without asking. Cloud spend still asks.'
+                  : `${permissionModeLabel(editMode)} is on, set from a coding chat. Commands ask first unless you allow them.`
             }
             trailing={
               <div className="segmented" role="radiogroup" aria-label="When the agent edits">
