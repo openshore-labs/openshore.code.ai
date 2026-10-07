@@ -1438,14 +1438,16 @@ textarea {
   transform: translateY(1px);
 }
 
-/* Status options in the picker sheet: a dot, the name, and the byline beneath. */
+/* Options in the Stack's picker sheets: the name and its chip, a byline
+   beneath. The chosen one wears the accent; the .btn qualifier lets it win over
+   .btn.ghost, which comes later in this file. */
 .profile-option {
   display: flex;
   align-items: flex-start;
   gap: 11px;
   text-align: left;
 }
-.profile-option.selected {
+.btn.profile-option.selected {
   border-color: var(--accent);
   background: var(--accent-soft);
 }
@@ -4171,7 +4173,8 @@ button.vault-tag {
 }
 
 /* ------------------------------------------------------- Terminal room */
-.terminal-firstrun {
+/* Setup steps: the Terminal room's first run and Pairing */
+.setup-steps {
   margin: 8px 0 12px;
   padding-left: 20px;
   color: var(--ink);
@@ -4179,7 +4182,7 @@ button.vault-tag {
   line-height: 1.5;
 }
 
-.terminal-firstrun li + li {
+.setup-steps li + li {
   margin-top: 8px;
 }
 
@@ -4209,6 +4212,9 @@ button.vault-tag {
   border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--term-bg);
+}
+.terminal-room-live .terminal-message {
+  color: var(--term-fg);
 }
 
 /* The room's blocks assemble one after another, the same vocabulary the
@@ -13014,9 +13020,6 @@ button.settings-row:active {
 }
 .stack-off {
   color: var(--muted);
-}
-.stack-place {
-  padding: 7px 14px;
 }
 .settings-row .stack-select {
   margin-top: 6px;

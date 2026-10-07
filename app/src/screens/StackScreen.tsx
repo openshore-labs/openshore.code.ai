@@ -1,7 +1,7 @@
 // Stack: the one mandatory orchestrator and the optional specialists.
 // Editable on the desktop; the phone shows the live picture from the daemon.
 import { InstallByName } from '../components/InstallByName.js';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DaemonStackInfo } from 'os-code/protocol';
 import { stackAdmin, useApp } from '../state/store.js';
 import { bridge, type DesktopStatus } from '../lib/electronBridge.js';
@@ -17,15 +17,17 @@ import type { Catalog } from 'os-code/protocol';
 import { Sheet } from '../components/Sheet.js';
 import { SheetHead } from '../components/SheetHead.js';
 import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
+import { STACK_CATEGORIES, STACK_LEAD, categoryLabel, type StackCategory } from '../lib/stack.js';
 
-const ROLES: Array<{ role: string; plain: string }> = [
-  { role: 'coding', plain: 'great at code' },
-  { role: 'writing', plain: 'writes beautifully' },
-  { role: 'analysis', plain: 'good with numbers' },
-  { role: 'vision', plain: 'can read screenshots' },
-  { role: 'embedding', plain: 'finds the right files' },
-  { role: 'fast', plain: 'fast for small edits' },
-];
+// The engine's specialist roles, named in the phone Stack's words.
+const ROLES: StackCategory[] = ['coding', 'writing', 'analysis', 'vision', 'embedding', 'fast'];
+
+/** The installed models for a picker, the current one first. */
+function pickerModels(models: string[], current: string | undefined): string[] {
+  return current && models.includes(current)
+    ? [current, ...models.filter((m) => m !== current)]
+    : models;
+}
 
 export function StackScreen() {
   const { settings, showToast, setView, ensureHarborMaster, harborMasterDownload } = useApp();
@@ -35,6 +37,8 @@ export function StackScreen() {
   // The engine's status has not landed yet (or the read failed). Until it does,
   // the cards read quietly instead of claiming "Not set up yet" or "Off".
   const [readFailed, setReadFailed] = useState(false);
+  // Declared above the phone's early return, so the hooks keep their order.
+  const titleRef = useRef<HTMLHeadingElement>(null);
 
   const refresh = useCallback(async () => {
     if (isDesktop() && bridge()) {
@@ -154,6 +158,10 @@ export function StackScreen() {
   const specialists = stack?.specialists ?? remote?.specialists ?? [];
   const orchestrator = stack?.orchestrator ?? remote?.orchestrator;
   const admin = stackAdmin(settings.account);
+  const currentModel =
+    pickFor === 'orchestrator'
+      ? orchestrator?.model
+      : specialists.find((s) => s.role === pickFor)?.model;
   const canEdit = isDesktop() && admin;
   const reading = isDesktop() && Boolean(bridge()) && !status && !readFailed;
   const readingLine = 'Reading your computer...';
@@ -199,16 +207,13 @@ export function StackScreen() {
 
   return (
     <div className="screen">
-      <BackBar title="Stack" />
+      <BackBar title="Stack" titleHiddenUntil={titleRef} />
       {/* The desktop Stack in the Settings ledger, the phone's shape
           (Creative Studio, 2026-10-02): who runs the show, the specialists,
           then the prefab stacks (first while nothing runs the show). */}
       <div className="screen-inner settings stack-manager">
-        <h1>Stack</h1>
-        <p className="lead">
-          One model is your Reasoning LLM: it plans, reasons, and decides which model gets each
-          task. Specialists are optional; anything missing, the Reasoning LLM covers itself.
-        </p>
+        <h1 ref={titleRef}>Stack</h1>
+        <p className="lead">{STACK_LEAD}</p>
 
         {!orchestrator ? prefabs : null}
 
@@ -225,21 +230,23 @@ export function StackScreen() {
             }
             sub={
               orchestrator
-                ? `Plans every task and routes it. On ${orchestrator.provider}.`
+                ? 'Plans every task and routes it.'
                 : unanswered
                   ? undefined
                   : 'Pick a model to run the show.'
             }
             value={
               orchestrator ? (
-                <span className={`pill ${orchestrator.kind}`}>{orchestrator.kind}</span>
+                <span className={`kind-chip ${orchestrator.kind}`}>
+                  {orchestrator.kind === 'local' ? 'On this computer' : 'Cloud'}
+                </span>
               ) : undefined
             }
             trailing={
               unanswered ? (
                 <button
                   type="button"
-                  className="btn ghost press-fb stack-place"
+                  className="btn ghost sm press-fb"
                   onClick={() => void refresh()}
                 >
                   Try again
@@ -253,13 +260,13 @@ export function StackScreen() {
         </SettingsGroup>
 
         <SettingsGroup title="Specialists" index={2}>
-          {ROLES.map(({ role, plain }) => {
+          {ROLES.map((role) => {
             const enabled = specialists.find((s) => s.role === role);
             return (
               <SettingsRow
                 key={role}
-                label={role.charAt(0).toUpperCase() + role.slice(1)}
-                sub={plain.charAt(0).toUpperCase() + plain.slice(1)}
+                label={categoryLabel(role)}
+                sub={STACK_CATEGORIES.find((c) => c.id === role)?.hint}
                 value={
                   reading || unanswered ? undefined : enabled ? (
                     enabled.model
@@ -284,7 +291,7 @@ export function StackScreen() {
                 <button className="linklike" onClick={() => setView('pair')}>
                   Connect your computer
                 </button>{' '}
-                (Menu, then Pairing) to see and use its stack.
+                to see and use its stack.
               </>
             )}
           </p>
@@ -300,7 +307,11 @@ export function StackScreen() {
         {pickFor && status ? (
           <>
             <SheetHead
-              title={pickFor === 'orchestrator' ? 'Who runs the show?' : `Model for ${pickFor}`}
+              title={
+                pickFor === 'orchestrator'
+                  ? 'Who runs the show?'
+                  : `Model for ${categoryLabel(pickFor as StackCategory).toLowerCase()}`
+              }
               onClose={() => setPickFor(undefined)}
             />
             <p className="sheet-sub">
@@ -308,11 +319,23 @@ export function StackScreen() {
             </p>
             <div className="sheet-actions">
               {status.ollama.models.length ? (
-                status.ollama.models.map((m) => (
-                  <button key={m} className="btn ghost" onClick={() => void choose(m)}>
-                    {m}
-                  </button>
-                ))
+                pickerModels(status.ollama.models, currentModel).map((m) => {
+                  const current = m === currentModel;
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      className={`btn ghost profile-option press-fb${current ? ' selected' : ''}`}
+                      aria-current={current ? 'true' : undefined}
+                      onClick={() => void choose(m)}
+                    >
+                      <span className="profile-option-text">
+                        <span className="profile-option-title">{m}</span>
+                        {current ? <span className="profile-option-blurb">Current</span> : null}
+                      </span>
+                    </button>
+                  );
+                })
               ) : (
                 <>
                   <p className="hint">
@@ -363,7 +386,7 @@ export function StackScreen() {
                     await refresh();
                   }}
                 >
-                  Turn off {pickFor}
+                  Turn off {categoryLabel(pickFor as StackCategory).toLowerCase()}
                 </button>
               </div>
             ) : null}

@@ -145,7 +145,7 @@ describe('the rest of the Personal paths', () => {
     expect(connections).not.toContain(
       'Add the workspace id from the Anthropic Console, then save.',
     );
-    expect(connections).toContain('This Claude key needs its workspace id.');
+    expect(connections).toContain('This Claude key needs its workspace ID.');
     expect(connections).toContain('disabled={checking}');
   });
 

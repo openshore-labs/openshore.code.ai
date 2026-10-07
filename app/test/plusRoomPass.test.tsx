@@ -174,6 +174,7 @@ describe('the rooms, as a person taps them', () => {
     expect(useApp.getState().paywall).toBe('pairing');
     useApp.setState({ paywall: undefined });
     await dom.click('Forget this computer');
+    await dom.click('Forget');
     await dom.settle();
     expect(useApp.getState().paywall).toBeUndefined();
     expect(useApp.getState().settings.daemon).toBeUndefined();

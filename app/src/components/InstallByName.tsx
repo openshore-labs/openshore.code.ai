@@ -64,8 +64,7 @@ export function InstallByName({ onInstalled }: { onInstalled?: (ref: string) => 
         />
       </div>
       <button
-        className="btn ghost press-fb"
-        style={{ width: '100%' }}
+        className="btn ghost block press-fb"
         disabled={refBusy || !refInput.trim()}
         onClick={() => void installByRef()}
       >
