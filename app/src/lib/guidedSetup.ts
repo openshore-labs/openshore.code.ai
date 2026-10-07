@@ -218,7 +218,7 @@ function stepList(ids: readonly SetupStepId[]): string {
 export function nextChoiceQuestion(ahead: readonly SetupStepId[]): string {
   const count = COUNT_WORDS[ahead.length] ?? String(ahead.length);
   const steps = ahead.length === 1 ? 'one more step' : `${count} more steps`;
-  return `Want to start chatting now, or keep setting up? There ${ahead.length === 1 ? 'is' : 'are'} ${steps}: ${stepList(ahead)}. Setup waits for you either way.`;
+  return `Want to start chatting now, or keep setting up? There ${ahead.length === 1 ? 'is' : 'are'} ${steps}: ${stepList(ahead)}. ${ahead.length === 1 ? 'It waits' : 'They wait'} for you either way.`;
 }
 
 /** Said when the Harbor step ends (downloading, ready, or skipped) and there
@@ -250,7 +250,7 @@ export function nextChoiceMessage(
   if (choice === 'chat') {
     const invite = "Let's chat. Ask me anything, about OpenShore or anything else.";
     return next
-      ? `${invite} To pick the steps back up, tap ${SETUP_RESUME_LABEL} under my first message, or say "let's set up".`
+      ? `${invite} When you want the next step, tap ${SETUP_RESUME_LABEL} under my first message, or say "let's set up".`
       : invite;
   }
   return next ? `On we go.\n\n${stepIntro(next)}` : finishMessage(facts);
@@ -374,7 +374,7 @@ export function advanceMessage(
  *  Harbor when it is on the phone. */
 export function finishMessage(facts: SetupFacts): string {
   const parts = [
-    "That's the setup. Anything you skipped waits on the Set up OpenShore page, from the button under my first message.",
+    "That's every step. Anything you skipped waits on the Set up OpenShore page, from the button under my first message.",
     'Now ask me anything about OpenShore, how it works, or the best setup for your equipment. I can look simple questions up on the web too.',
   ];
   if (facts.harborReady) parts.push(`Harbor is ready. ${HARBOR_SWITCH_HINT}`);

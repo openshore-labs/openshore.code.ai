@@ -147,17 +147,19 @@ function childWith(body: HTMLElement, cls: string): HTMLElement | undefined {
 
 /** The desktop opening (D5, founder 2026-10-07, built as recommended, A). On a
  *  fine pointer the empty chat's greeting and the composer sit together as one
- *  group (theme.css, `.chat-body:has(> .greeting)`). When the chat fills (a
- *  first send, a chat opened from the side) the composer glides from the group
- *  to the foot, and when a new chat opens it glides back up: a FLIP on
- *  translateY over the door clock (--dur-7 on --ease-glide), transform only.
- *  Places come from layout (offsetTop), never from a transform in flight, and
- *  the docked place is the foot of the body. The First Seat handing the room
+ *  group (theme.css, `.chat-body:has(> .greeting)`). On a first send the
+ *  composer glides from the group to the foot, and when a new chat opens it
+ *  glides back up: a FLIP on translateY over the door clock (--dur-7 on
+ *  --ease-glide), transform only. Places come from layout (offsetTop), never
+ *  from a transform in flight, and the docked place is the foot of the body.
+ *  A chat opened from the side arrives full, so the field lands at the foot at
+ *  once rather than sliding across its words. The First Seat handing the room
  *  to the greeting glides it up the same way, and while the group is up a
  *  move that is not a resize (a greeting line that wraps, the first try row
  *  arriving) glides too, so the field never jumps. Reduced motion and Slack
  *  Water's landing (the water surfaces the page itself) swap at once, and a
- *  touch screen's opening never moves, so it never glides. */
+ *  touch screen's opening never moves, so it never glides and reads no
+ *  layout. */
 function useOpeningGlide(bodyRef: RefObject<HTMLDivElement>): void {
   const grouped = useRef<boolean | undefined>(undefined);
   const groupPlace = useRef<{ top: number; height: number } | undefined>(undefined);
@@ -169,7 +171,9 @@ function useOpeningGlide(bodyRef: RefObject<HTMLDivElement>): void {
     const now = Boolean(childWith(body, 'greeting'));
     const was = grouped.current;
     grouped.current = now;
-    // Docked and staying docked (a transcript streaming): no layout to read.
+    // A touch screen keeps its own opening, and a transcript that stays
+    // docked (one streaming) has nothing to read.
+    if (!window.matchMedia?.('(pointer: fine)').matches) return;
     if (!now && was !== true) return;
     const top = wrap.offsetTop;
     const height = body.clientHeight;
@@ -186,8 +190,17 @@ function useOpeningGlide(bodyRef: RefObject<HTMLDivElement>): void {
     glide.current = undefined;
     const dy = from - top;
     if (Math.abs(dy) < 2 || typeof wrap.animate !== 'function') return;
-    if (!window.matchMedia?.('(pointer: fine)').matches || prefersReducedMotion()) return;
-    if (useApp.getState().slackWater) return;
+    if (prefersReducedMotion() || useApp.getState().slackWater) return;
+    // Going down, the field glides only over open paper: a first send's one
+    // bubble sits above it, while a chat opened from the side fills the body
+    // and would show through a field sliding across it.
+    if (was && !now) {
+      const words = childWith(body, 'thread')?.firstElementChild;
+      const wordsEnd = words
+        ? words.getBoundingClientRect().bottom - body.getBoundingClientRect().top
+        : 0;
+      if (wordsEnd > from) return;
+    }
     glide.current = wrap.animate(
       [{ transform: `translateY(${dy}px)` }, { transform: 'translateY(0)' }],
       {

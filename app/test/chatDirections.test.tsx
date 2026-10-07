@@ -216,9 +216,21 @@ describe('D5: the desktop opening is one group, and the field glides', () => {
     );
     expect(chat).toMatch(/duration: durationMs\('--dur-7', 520\)/);
     expect(chat).toMatch(/easing: easing\('--ease-glide'/);
-    expect(chat).toMatch(/\(pointer: fine\)'\)\.matches \|\| prefersReducedMotion\(\)\) return;/);
+    // A touch screen keeps its opening and reads no layout for it.
+    expect(chat).toMatch(/if \(!window\.matchMedia\?\.\('\(pointer: fine\)'\)\.matches\) return;/);
     // Slack Water surfaces the page itself, so its landing never glides.
-    expect(chat).toMatch(/if \(useApp\.getState\(\)\.slackWater\) return;/);
+    expect(chat).toMatch(
+      /if \(prefersReducedMotion\(\) \|\| useApp\.getState\(\)\.slackWater\) return;/,
+    );
+  });
+
+  it('lands a chat opened from the side at once, never sliding across its words', () => {
+    // Sign-off (2026-10-07): only a first send's short transcript leaves open
+    // paper under the field's path down.
+    const chat = src('screens', 'ChatScreen.tsx');
+    expect(chat).toMatch(
+      /if \(was && !now\) \{\s*const words = childWith\(body, 'thread'\)\?\.firstElementChild;[\s\S]*?if \(wordsEnd > from\) return;/,
+    );
   });
 });
 

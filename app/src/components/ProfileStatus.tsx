@@ -47,8 +47,11 @@ export function ProfileStatus() {
   // change never replays it.
   const shown = reachPillShown(active, Boolean(settings.daemon));
   const pill = useExitPresence(shown);
-  const shownAtMount = useRef(shown);
-  const arriving = shown && !shownAtMount.current;
+  // Once it has been away while this bar is up, every return settles in, the
+  // second as much as the first.
+  const awayInBar = useRef(!shown);
+  if (!shown) awayInBar.current = true;
+  const arriving = shown && awayInBar.current;
   // A leaving pill keeps the word it showed, so a lone Offline never flashes
   // Offshore on its way out when the connection comes back.
   const lastShown = useRef(active);

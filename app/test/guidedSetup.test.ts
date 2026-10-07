@@ -156,6 +156,7 @@ describe('what the guide says', () => {
     expect(openingMessage('harbor', NONE)).toBe(SETUP_INTRO);
     expect(startSetupMessage('harbor', NONE)).toBe(stepIntro('harbor'));
     expect(finishMessage(NONE)).toMatch(/ask me anything about OpenShore/i);
+    expect(finishMessage(NONE)).toMatch(/^That's every step\./);
   });
 
   it('says how to switch to Harbor once it is downloaded', () => {
@@ -314,6 +315,11 @@ describe('the fork after Harbor', () => {
       'three more steps: connect your computer, set up a repository, and add an API key',
     );
     expect(nextChoiceQuestion(['key'])).toContain('is one more step: add an API key');
+    // The walk is never "setup" as a noun in what the guide says (D4's
+    // sign-off): the steps wait, in the right number.
+    expect(q).toMatch(/\. They wait for you either way\.$/);
+    expect(nextChoiceQuestion(['key'])).toMatch(/\. It waits for you either way\.$/);
+    expect(q).not.toMatch(/Setup waits/);
     expect(stepsAhead({ skipped: [] }, { ...NONE, computer: true, key: true })).toEqual(['repo']);
   });
 
@@ -340,7 +346,9 @@ describe('the fork after Harbor', () => {
     // D4 (founder, 2026-10-07): the way back in reads the fork's own label,
     // Keep setting up, so one choice goes by one name, and never "setup" as a
     // noun on a button.
-    expect(chat).toContain('tap Keep setting up under my first message');
+    expect(chat).toContain(
+      'When you want the next step, tap Keep setting up under my first message',
+    );
     expect(chat).not.toMatch(/Pick up setup|Setup is/);
     // Nothing left to pick up: no pointer to a button that is not there.
     expect(nextChoiceMessage('chat', undefined, NONE)).not.toContain('Keep setting up');
