@@ -1,13 +1,18 @@
 // Projects: the buckets that hold your work, in the shape of the Claude app's
 // project list. One flat list sorted by recency, each row a small tile, the
 // name, and a quiet line under it (what the project is for, else how many
-// chats it holds, then when it last moved). A round search button and
-// a dark "New project" pill float at the foot of the room; search turns the
-// dock into one field, and New project opens a sheet with the name and what
-// the project is for (its standing instructions). Tap a row to open the
-// project's own room (chats, instructions, repos, and, for a company account,
-// who on the team may read, write, or edit it). The active project, where new
-// chats are saved, carries the same inset accent edge as the active chat.
+// chats it holds, then when it last moved). On the phone, a round search
+// button and the accent "New project" pill float at the foot of the room, as
+// in the Claude iPhone app, and search turns the dock into one field. On the
+// desktop (900 and wider), as in the Claude desktop app, New project is the
+// bar's action and search is the Chats room's pill on top of the list, so
+// neither sits a window's height under the list it serves (D11, founder
+// 2026-10-07). New project opens a sheet with the name and what the project
+// is for (its standing instructions). Tap a row to open the project's own
+// room (chats, instructions, repos, and, for a company account, who on the
+// team may read, write, or edit it); its name flies up into the room's title.
+// The active project, where new chats are saved, carries the same inset
+// accent edge as the active chat.
 import { useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useApp } from '../state/store.js';
 import type { Project } from '../state/types.js';
@@ -16,8 +21,10 @@ import { Sheet } from '../components/Sheet.js';
 import { SheetHead } from '../components/SheetHead.js';
 import { Icon } from '../components/Icon.js';
 import { RoomGlyph } from '../components/Sidebar.js';
+import { PlusGlyph } from '../components/SheetGlyphs.js';
 import { captureTitleHero } from '../lib/heroTitle.js';
-import { relativeTime } from './ChatsScreen.js';
+import { useCompact } from '../hooks/useCompact.js';
+import { SearchPill, relativeTime } from './ChatsScreen.js';
 
 /** The quiet line under a project's name: what it is for when it says, else
  *  how many chats it holds, then when it last moved. Two halves, so a long
@@ -63,10 +70,14 @@ export function ProjectsScreen() {
     return { at, count };
   }, [projects, order, conversations]);
 
+  const compact = useCompact();
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
   const q = query.trim().toLowerCase();
+  // A search typed on the desktop stays open in the dock if the window
+  // narrows, so the list never reads as filtered by nothing.
+  const docked = searching || query !== '';
 
   const rows = useMemo(() => {
     const sorted = [...projects].sort((a, b) =>
@@ -95,6 +106,13 @@ export function ProjectsScreen() {
     openProject(id);
   };
 
+  const open = (p: Project, row?: HTMLElement) => {
+    // Hand the tapped name to the detail room, so it flies up into the
+    // room's large title (a shared-element move).
+    captureTitleHero(row?.querySelector('.project-row-name') ?? null);
+    openProject(p.id);
+  };
+
   const openSearch = () => {
     setSearching(true);
     // Focus inside the tap, so the phone raises the keyboard.
@@ -108,8 +126,30 @@ export function ProjectsScreen() {
 
   return (
     <div className="screen projects-screen">
-      <BackBar title="Projects" />
+      <BackBar
+        title="Projects"
+        action={
+          compact ? undefined : (
+            <button
+              type="button"
+              className="btn primary sm projects-bar-new"
+              onClick={() => setCreating(true)}
+            >
+              <PlusGlyph size={16} />
+              New project
+            </button>
+          )
+        }
+      />
       <div className="screen-inner projects">
+        {!compact && projects.length ? (
+          <SearchPill
+            value={query}
+            onChange={setQuery}
+            label="Search projects"
+            onEnter={rows[0] ? () => open(rows[0]!) : undefined}
+          />
+        ) : null}
         {projects.length === 0 ? (
           <div className="projects-empty">
             <p className="projects-empty-title">No projects yet</p>
@@ -127,12 +167,7 @@ export function ProjectsScreen() {
                 key={p.id}
                 className={`project-row press-fb press-fb--row${p.id === activeId ? ' active' : ''}`}
                 style={{ '--i': Math.min(i, 8) } as CSSProperties}
-                onClick={(e) => {
-                  // Hand the tapped name to the detail room, so it flies up into
-                  // the room's large title (a shared-element move).
-                  captureTitleHero(e.currentTarget.querySelector('.project-row-name'));
-                  openProject(p.id);
-                }}
+                onClick={(e) => open(p, e.currentTarget)}
               >
                 <span className="project-row-tile" aria-hidden="true">
                   <RoomGlyph name="projects" size={18} />
@@ -152,66 +187,66 @@ export function ProjectsScreen() {
         )}
       </div>
 
-      <div className={`projects-dock${searching ? ' searching' : ''}`}>
-        <div className="projects-dock-idle" aria-hidden={searching}>
-          {projects.length ? (
+      {compact ? (
+        <div className={`projects-dock${docked ? ' searching' : ''}`}>
+          <div className="projects-dock-idle" aria-hidden={docked}>
+            {projects.length ? (
+              <button
+                type="button"
+                className="projects-dock-round press-fb"
+                aria-label="Search projects"
+                tabIndex={docked ? -1 : 0}
+                onClick={openSearch}
+              >
+                <SearchIcon />
+              </button>
+            ) : (
+              <span />
+            )}
+            <button
+              type="button"
+              className="projects-dock-new press-fb"
+              tabIndex={docked ? -1 : 0}
+              onClick={() => setCreating(true)}
+            >
+              <PlusGlyph size={18} />
+              New project
+            </button>
+          </div>
+          <div className="projects-dock-search" aria-hidden={!docked}>
+            <label className="projects-dock-field">
+              <SearchIcon />
+              <input
+                ref={searchRef}
+                type="search"
+                value={query}
+                placeholder="Search projects"
+                aria-label="Search projects"
+                tabIndex={docked ? 0 : -1}
+                enterKeyHint="search"
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    e.preventDefault();
+                    closeSearch();
+                  }
+                }}
+              />
+            </label>
             <button
               type="button"
               className="projects-dock-round press-fb"
-              aria-label="Search projects"
-              tabIndex={searching ? -1 : 0}
-              onClick={openSearch}
+              aria-label="Close search"
+              tabIndex={docked ? 0 : -1}
+              onClick={closeSearch}
             >
-              <SearchIcon />
+              <Icon size={16}>
+                <path d="M6 6l12 12M18 6 6 18" />
+              </Icon>
             </button>
-          ) : (
-            <span />
-          )}
-          <button
-            type="button"
-            className="projects-dock-new press-fb"
-            tabIndex={searching ? -1 : 0}
-            onClick={() => setCreating(true)}
-          >
-            <Icon size={18}>
-              <path d="M12 5v14M5 12h14" />
-            </Icon>
-            New project
-          </button>
+          </div>
         </div>
-        <div className="projects-dock-search" aria-hidden={!searching}>
-          <label className="projects-dock-field">
-            <SearchIcon />
-            <input
-              ref={searchRef}
-              type="search"
-              value={query}
-              placeholder="Search projects"
-              aria-label="Search projects"
-              tabIndex={searching ? 0 : -1}
-              enterKeyHint="search"
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  e.preventDefault();
-                  closeSearch();
-                }
-              }}
-            />
-          </label>
-          <button
-            type="button"
-            className="projects-dock-round press-fb"
-            aria-label="Close search"
-            tabIndex={searching ? 0 : -1}
-            onClick={closeSearch}
-          >
-            <Icon size={16}>
-              <path d="M6 6l12 12M18 6 6 18" />
-            </Icon>
-          </button>
-        </div>
-      </div>
+      ) : null}
 
       <Sheet open={creating} onClose={() => setCreating(false)}>
         <SheetHead title="New project" onClose={() => setCreating(false)} />

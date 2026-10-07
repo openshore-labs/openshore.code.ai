@@ -3,14 +3,29 @@
 // chat, and its greeting carries the button that brings them here (founder,
 // 2026-09-23). No Personal-or-Business question either: with no account,
 // OpenShore runs as personal, and the choice is asked when an account is made.
-// The path rows are the shared StartingPaths component, also reused in
-// Settings so they never drift.
+// The headline is the App Store's "Your models. Your keys." with a lead that
+// names where it runs from the device in hand (D23), and the paths are the
+// shared StartingPaths cards, one tap each (D9).
 import { useRef } from 'react';
 import { useApp } from '../state/store.js';
 import { logEvent } from '../lib/insights.js';
 import { BackBar, ROOM_NAMES } from '../components/BackBar.js';
 import { BrandMark } from '../components/BrandMark.js';
 import { StartingPaths } from '../components/StartingPaths.js';
+import { isDesktop } from '../lib/platform.js';
+import { thisDeviceNoun } from '../lib/deviceNoun.js';
+
+/** Where OpenShore runs, said from the device in hand (D23, founder
+ *  2026-10-07): this phone or iPad and your own computer, or this computer
+ *  and your phone. One sentence, true on each: the phone runs Harbor and
+ *  reaches your computer once it is connected, and on the computer the same
+ *  pairing lets your phone reach it. The paths follow the same split
+ *  (StartingPaths). */
+export function setupLead(desktop: boolean): string {
+  return desktop
+    ? 'Chat and build on this computer, and from your phone.'
+    : `Chat and build on ${thisDeviceNoun()} and on your own computer.`;
+}
 
 export function OnboardingScreen() {
   const { setView, saveSettings } = useApp();
@@ -38,19 +53,18 @@ export function OnboardingScreen() {
                 Open<span className="accent">Shore</span>
               </span>
             </span>
-            {/* Each phrase holds together, so a narrow screen breaks between
-                them and never inside one. */}
+            {/* The App Store's first line (D23, founder 2026-10-07). Each
+                phrase holds together, so a narrow screen breaks between them
+                and never inside one. */}
             <h1
               ref={titleRef}
               style={{ marginTop: 14, fontFamily: 'var(--font-display)', fontWeight: 500 }}
             >
-              <span style={{ whiteSpace: 'nowrap' }}>Your computer.</span>{' '}
               <span style={{ whiteSpace: 'nowrap' }}>Your models.</span>{' '}
               <span style={{ whiteSpace: 'nowrap' }}>Your keys.</span>
             </h1>
             <p className="lead" style={{ marginTop: 8 }}>
-              Chat and build with local AI you own. Everything below is optional. Add any of it now
-              or later.
+              {setupLead(isDesktop())} Everything below is optional.
             </p>
           </div>
 

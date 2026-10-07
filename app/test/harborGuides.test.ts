@@ -252,10 +252,12 @@ describe('the delightful first-run (Creative Studio: The Standing Light)', () =>
     expect(HARBOR_MINI_GREETING).toContain('Set up OpenShore');
     const paths = readFileSync(join(process.cwd(), 'src/components/StartingPaths.tsx'), 'utf8');
     expect(paths).not.toContain('Say hello');
-    // One lead, on the page itself: the old "go further" label is gone, and
-    // the Harbor card says what Harbor does in the byline's words.
+    // One lead, on the page itself: the old "go further" label is gone. The
+    // Harbor card is one tap with one line (D9, founder 2026-10-07, which
+    // replaces the byline's two sentences there): what it is, on the device
+    // in hand, and its size.
     expect(paths).not.toContain('paths-further-head');
-    expect(paths).toContain('HARBOR_BYLINE');
+    expect(paths).toContain('`A coding model on ${thisDeviceNoun()}, ${HARBOR_APPROX_LABEL}`');
     expect(paths).not.toContain('Real reasoning');
     const page = readFileSync(join(process.cwd(), 'src/screens/OnboardingScreen.tsx'), 'utf8');
     expect(page).toContain('Everything below is optional.');

@@ -1,6 +1,7 @@
 // The nav split (review 6, blocker A): Terminal is day-one on a desktop or a
-// phone with a paired hub, second-session on a bare phone. Every room is
-// listed exactly once either way.
+// phone with a paired computer, second-session on a bare phone. Every room is
+// listed exactly once either way. The Sidebar's default order reads it (D10,
+// founder 2026-10-07; sidebarOrder.test.tsx mounts it).
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -32,6 +33,26 @@ describe('navRooms', () => {
     expect(primary.map((r) => r.view)).toEqual(['chats', 'projects', 'repos', 'stack', 'vault']);
     expect(explore[0]?.view).toBe('terminalroom');
     expect(explore[explore.length - 1]?.view).toBe('settings');
+  });
+
+  // The order the sidebar has always shown (founder, 2026-10-01): Crew, Cloud
+  // Connections and Pairing straight under the day-one rooms, the later
+  // tiers' rooms after them, Settings last.
+  it('keeps Crew, Cloud Connections and Pairing first among the rest', () => {
+    for (const input of [
+      { desktop: true, hubPaired: false },
+      { desktop: false, hubPaired: true },
+    ]) {
+      expect(navRooms(input).explore.map((r) => r.view)).toEqual([
+        'crew',
+        'connections',
+        'pair',
+        'marketplace',
+        'stackhealth',
+        'launch',
+        'settings',
+      ]);
+    }
   });
 
   it('lists every room exactly once in either layout', () => {

@@ -106,8 +106,10 @@ describe('a Personal build', () => {
   });
 
   it('gates every door through the one module', () => {
+    // The Sidebar's rooms come from navRooms (D10), which gates them.
     const sidebar = read('src', 'components', 'Sidebar.tsx');
-    expect(sidebar).toContain('visibleRooms(');
+    expect(sidebar).toContain('navRooms(device)');
+    expect(read('src', 'lib', 'navRooms.ts')).toContain('visibleRooms(');
     expect(sidebar).toContain("roomOpen('admin')");
     const store = read('src', 'state', 'store.ts');
     const setView = store.slice(store.indexOf('    setView(view, opts) {'));
