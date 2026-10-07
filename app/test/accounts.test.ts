@@ -307,6 +307,10 @@ describe('the gate: chat is free, everything else is a free sign-in', () => {
       expect(pitch, pitch).not.toMatch(/your settings/i);
       expect(pitch, pitch).toMatch(/Your chats stay on your devices\./);
     }
+    // The sidebar's one line names what signing in opens, and says nothing
+    // about settings at all: the pitch carries the few that follow.
+    for (const sub of [accountCopy(true).signInSub, accountCopy(false).signInSub])
+      expect(sub, sub).not.toMatch(/settings/i);
     // The theme it names is one of the keys that follow.
     expect(SETTINGS_REACH.theme).toBe('follows');
   });

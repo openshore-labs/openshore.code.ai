@@ -131,7 +131,9 @@ export interface AccountCopy {
   pitch: string;
   /** Said once to someone who used OpenShore before the gate, signed out. */
   notice: string;
-  /** The sidebar's Sign in subline. */
+  /** The sidebar's Sign in subline: one line that fits the sidebar whole,
+   *  so it names what signing in opens and leaves the preferences to the
+   *  pitch (D19, 2026-10-07: never "your settings"). */
   signInSub: string;
 }
 
@@ -141,7 +143,7 @@ export function accountCopy(gates: boolean): AccountCopy {
       body: ACCOUNT_GATE_BODY,
       pitch: ACCOUNT_PITCH,
       notice: ACCOUNT_NOTICE,
-      signInSub: 'To build, pair your phone, and keep your settings',
+      signInSub: 'To build and pair your phone',
     };
   }
   return {
@@ -150,7 +152,7 @@ export function accountCopy(gates: boolean): AccountCopy {
       'Sign in for Projects and Cloud Connections, and take your theme and a few preferences to every device. OpenShore Plus rides on your account. Your chats stay on your devices.',
     notice:
       'Projects and Cloud Connections now need a free account, and the rest of OpenShore is part of OpenShore Plus. Everything you made is still here.',
-    signInSub: 'For Projects, Plus, and your settings',
+    signInSub: 'For Projects and Plus',
   };
 }
 

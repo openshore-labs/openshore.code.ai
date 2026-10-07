@@ -150,6 +150,22 @@ describe('D17: the door to Crew command', () => {
     expect(useApp.getState().view).toBe('crew');
   });
 
+  it('never promises a first routine while routines outlive their members', async () => {
+    useApp.setState({
+      settings: { ...useApp.getState().settings, crew: [], daemon: hub, daemons: [hub] },
+      connectivity: { ...useApp.getState().connectivity, homeReachable: true },
+      routines: { routines: [routine], runs: [], loaded: true, available: true, live: true },
+    } as never);
+    const { CrewCommandScreen } = await import('../src/screens/CrewCommandScreen.js');
+    dom ??= await mountDom();
+    await dom.render(<CrewCommandScreen />);
+    expect(dom.container.querySelector('.cc-crew-count')?.textContent).toBe(
+      'No crew members. The routines below keep their schedule.',
+    );
+    expect(dom.text()).not.toContain('The first routine adds a Reviewer');
+    expect(dom.text()).toContain('Morning review');
+  });
+
   it('keeps Crew command to one line of crew, with Manage back to Crew', () => {
     const room = src('screens/CrewCommandScreen.tsx');
     expect(room).toContain('<p className="cc-crew-count">{crewCountLine(crew, routines)}</p>');

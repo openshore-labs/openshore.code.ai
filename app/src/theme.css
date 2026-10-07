@@ -14127,6 +14127,12 @@ button.settings-row:active {
   border-radius: var(--radius);
   box-shadow: var(--elev-1);
 }
+/* The card is the whole foreground, so the swipe layer paints nothing of its
+   own: a press that scales the card shows the page around it, never a band
+   of the layer's fill. */
+.crew-card-swipe > .swipe-fore {
+  background: none;
+}
 .crew-card {
   display: block;
   width: 100%;
@@ -14134,6 +14140,10 @@ button.settings-row:active {
   text-align: left;
   cursor: pointer;
   box-shadow: none;
+}
+/* The row clips at the card's edge, so the keyboard ring is drawn inside. */
+.crew-card:focus-visible {
+  outline-offset: -2px;
 }
 .crew-card-meta {
   display: block;

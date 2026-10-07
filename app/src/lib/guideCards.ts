@@ -613,7 +613,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'my-crew',
     title: 'Crew',
     where: 'Menu, Crew',
-    text: "Your own roster of agents, each with a name, a persona, a rule for when it is called, and an activity level (Reviews the work, Joins on its own, or When you ask). Tap New crew member to add one; tap a member's card to edit it, or swipe it left to delete.",
+    text: "Your own roster of agents, each with a name, a persona, a rule for when it is called, and an activity level (Reviews the work, Joins on its own, or When you ask). Tap New crew member to add one. Tap a member's card to edit it; Delete is at the foot of its editor, or swipe the card left.",
     keywords: [
       'crew',
       'my crew',

@@ -78,9 +78,11 @@ interface Draft {
 }
 
 /** The crew in one line (D17): how many members, and how many a routine
- *  uses. The members themselves live in Crew, behind Manage. */
+ *  uses. The members themselves live in Crew, behind Manage. With every
+ *  member deleted, the routines below still run, as the delete promised. */
 function crewCountLine(crew: readonly CrewAgent[], routines: RoutineView[]): string {
   const n = crew.length;
+  if (n === 0) return 'No crew members. The routines below keep their schedule.';
   const busy = crew.filter((a) => routinesForAgent(routines, a).length > 0).length;
   if (n === 1) return busy ? '1 member, with a routine.' : '1 member, no routine yet.';
   if (busy === 0) return `${n} members, none with a routine yet.`;
@@ -540,7 +542,7 @@ export function CrewCommandScreen() {
             {/* One line, not a second roster (founder, D17, 2026-10-07): the
                 members live in Crew, behind Manage, and each routine below
                 names its member and its presence. */}
-            {crew.length === 0 ? (
+            {crew.length === 0 && routines.length === 0 ? (
               <p className="hint">
                 No crew yet. The first routine adds a Reviewer to your crew for you.
               </p>
