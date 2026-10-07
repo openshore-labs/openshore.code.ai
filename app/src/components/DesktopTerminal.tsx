@@ -191,6 +191,9 @@ export function DesktopTerminal({ driver }: { driver: TerminalHost }) {
       if ('unavailable' in opened) {
         setStatus('unavailable');
         setMessage(opened.error);
+        // A paired phone's driver answers here rather than throwing, asleep
+        // computer included, so this dead end needs its door too.
+        setDoor(/\b(401|403)\b/.test(opened.error) ? 'pair' : 'retry');
         return;
       }
       termIdRef.current = opened.termId;

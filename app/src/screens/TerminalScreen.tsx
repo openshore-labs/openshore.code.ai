@@ -246,7 +246,7 @@ export function TerminalScreen() {
         {status === 'ready' ? (
           <button
             type="button"
-            className="btn quiet press-fb"
+            className="btn quiet sm press-fb"
             onClick={() => setEnding(true)}
             aria-label="End terminal"
           >
@@ -255,7 +255,7 @@ export function TerminalScreen() {
         ) : status === 'exited' ? (
           <button
             type="button"
-            className="btn quiet press-fb"
+            className="btn quiet sm press-fb"
             onClick={endTerminal}
             aria-label="Close terminal"
           >

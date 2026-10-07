@@ -240,7 +240,7 @@ export function TerminalRoomScreen() {
               This device is not connected to a computer yet. Connect it, and the terminal opens
               here.
             </p>
-            <button className="btn press-fb" onClick={() => setView('pair')}>
+            <button type="button" className="btn primary press-fb" onClick={() => setView('pair')}>
               Connect your computer
             </button>
           </div>
