@@ -158,7 +158,9 @@ describe('RemoteDriver reconnect (G5, B4)', () => {
     driver.dispose();
 
     expect(calls).toBe(1); // no retry loop on a fatal answer
-    expect(messages.some((m) => /pair again/i.test(m))).toBe(true);
+    // In the door's own words (2026-10-07 review): connect again from
+    // Pairing, never "Menu, Pairing".
+    expect(messages.some((m) => /Connect your computer again from Pairing\./.test(m))).toBe(true);
   });
 
   it('ends the run when the session is gone, so the thread is not stuck busy (APP-4)', async () => {

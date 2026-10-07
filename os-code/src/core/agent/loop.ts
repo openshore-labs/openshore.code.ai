@@ -78,7 +78,6 @@ import {
   LEAN_MAX_TOOLS_SHOWN,
   deriveProfile,
   deriveModelClass,
-  classBlurb,
   useConstrainedDecoding,
   type ModelClassProfile,
 } from '../../harness/profile.js';
@@ -201,11 +200,6 @@ function insideVault(abs: string, vaultRoot: string | undefined): boolean {
     if (err instanceof JailViolation) return false;
     throw err;
   }
-}
-
-/** Capitalize a model-class name for a sentence ("small" -> "Small"). */
-function cap(s: string): string {
-  return s.length ? s[0]!.toUpperCase() + s.slice(1) : s;
 }
 
 /** The first user turn's text, for the Jev judge's task side. */
@@ -1041,21 +1035,19 @@ export class AgentSession {
 
   /** Say once, plainly, that a small seat is running with the harness's help
    *  (tenet 3: the harness raises the floor and says so), and the same for a
-   *  larger seat that runs lean because its window is small. */
+   *  larger seat that runs lean because its window is small. The note is read
+   *  by a person, so it speaks of OpenShore and actions, never the harness, a
+   *  seat or tools (D3, founder 2026-10-07, built as recommended, B). */
   private announceLeanSeat(): void {
     if (this.profileNoteEmitted || !this.leanSeat || !this.modelProfile) return;
     this.profileNoteEmitted = true;
     const total = this.deps.tools.specs().length;
     const shown = Math.min(total, this.menuCap());
-    // The small class's blurb already says the harness carries the checklist,
-    // so the note says it once.
-    const blurb = classBlurb(this.modelProfile.modelClass);
-    const carries = blurb.includes('checklist') ? '' : ' and carries the checklist';
     this.emit({
       type: 'note',
       message: this.classLean
-        ? `${cap(this.modelProfile.modelClass)} model seat: ${blurb} The harness shows it ${shown} of ${total} tools${carries}.`
-        : `${cap(this.modelProfile.modelClass)} model seat with a small window on this computer: the harness gives it a shorter prompt and shows it ${shown} of ${total} tools, so the chat has room.`,
+        ? `This is a ${this.modelProfile.modelClass} model, so OpenShore keeps the checklist and offers it ${shown} of its ${total} actions.`
+        : `This model has little room on this computer, so OpenShore gives it a shorter brief and ${shown} of ${total} actions to leave space for the chat.`,
     });
   }
 

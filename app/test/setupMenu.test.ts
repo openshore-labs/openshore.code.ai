@@ -1,6 +1,6 @@
 // The break after the setup walk's opening and "help me get set up" (founder,
 // 2026-10-01). After the intro, two buttons: Just chat says where setup waits
-// and carries the person to the main chat page on the tide; Start setup
+// and carries the person to the main chat page on the tide; Set up OpenShore
 // introduces step one. In any chat, "help me get set up" answers with what is
 // already set up and a button for each thing that is not, walks through the
 // one picked, and brings the list back with what is left.
@@ -134,7 +134,9 @@ describe('the setup list', () => {
       NONE,
     )!;
     expect(start).toMatch(/"Just chat"/);
-    expect(start).toMatch(/"Start setup"/);
+    // D4 (founder, 2026-10-07): a verb on the button, never "setup" as a noun.
+    expect(start).toMatch(/"Set up OpenShore"/);
+    expect(start).not.toMatch(/Start setup/);
     expect(start).toMatch(/Never choose for them/);
   });
 
@@ -252,7 +254,7 @@ async function openWalk(): Promise<string> {
 describe('the break after the opening, in the store', () => {
   beforeEach(reset);
 
-  it('holds on the intro with two buttons, and Start setup brings step one', async () => {
+  it('holds on the intro with two buttons, and Set up OpenShore brings step one', async () => {
     const id = await openWalk();
     expect(guided().startChoice).toBe('asking');
     expect(lastText(id)).toBe(SETUP_INTRO);

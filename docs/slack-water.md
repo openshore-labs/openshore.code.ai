@@ -64,8 +64,11 @@ current stops pulling either way.
 ## The copy
 
 - **The break's buttons:** one row, equal widths. **Just chat** first and full
-  size (ghost), so skipping setup is never small; **Start setup** filled, since
-  it answers the question the intro asked.
+  size (ghost), so skipping setup is never small; **Set up OpenShore** filled,
+  since it answers the question the intro asked. (It read Start setup until
+  the founder's 2026-10-07 ruling on the UI/UX review's D4: "setup" is never a
+  noun on a button, and the way back in under the first message reads Keep
+  setting up, the fork's own label, instead of Pick up setup.)
 - **The chat-later line:** "Sounds good. Whenever you want to get set up, I can
   guide you through it. Just say "help me get set up" in any chat." It teaches
   the phrase that brings the list back.
@@ -86,9 +89,9 @@ current stops pulling either way.
 - The break: `START_CHOICES`, `SETUP_LATER_LINE`, `startSetupMessage` and the
   `startChoice` state in `app/src/lib/guidedSetup.ts`; `chooseStart` in the
   store; `app/src/components/StartChoiceActions.tsx`. The opening is now the
-  intro alone; step one waits for Start setup. Typed answers work too ("I'd
-  rather just chat", "skip", "let's set up", "next"). "Pick up setup" after
-  choosing chat opens the list.
+  intro alone; step one waits for Set up OpenShore. Typed answers work too
+  ("I'd rather just chat", "skip", "let's set up", "next"). Keep setting up
+  after choosing chat opens the list.
 - Slack Water: `app/src/lib/slackWater.ts` (geometry, backstops),
   `app/src/components/SlackWater.tsx`, `.slack-water` in `app/src/theme.css`,
   the held greeting and owed landing swell in `ChatScreen.tsx`, and

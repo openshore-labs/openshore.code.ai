@@ -693,7 +693,9 @@ describe('the lean prompt keyed on the served window', () => {
     expect(tools).toContain('editFile');
     expect(
       ofType(session.events, 'note').some((n) =>
-        /Mid model seat with a small window/.test(n.message),
+        /^This model has little room on this computer, so OpenShore gives it a shorter brief/.test(
+          n.message,
+        ),
       ),
     ).toBe(true);
   });
