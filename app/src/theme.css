@@ -12712,10 +12712,10 @@ button.settings-row:active {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
   height: 48px;
-  padding: 0 14px;
+  padding: 0 10px;
   border-radius: 999px;
   border: 1px solid var(--border-strong);
   background: transparent;
@@ -12723,6 +12723,15 @@ button.settings-row:active {
   font-size: var(--text-5);
   font-weight: var(--weight-semibold);
   white-space: nowrap;
+  overflow: hidden;
+}
+/* The glyph keeps its drawn size; on a phone narrower than 375 the label
+   gives way with an ellipsis instead of crushing the glyph to a dot. */
+.project-pill > svg {
+  flex-shrink: 0;
+}
+.project-pill > span {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }

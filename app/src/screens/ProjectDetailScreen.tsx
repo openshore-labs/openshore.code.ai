@@ -174,9 +174,11 @@ export function ProjectDetailScreen() {
             onClick={() => (repoCount || !mayEdit ? setShowRepos(true) : setManageRepos(true))}
           >
             <RoomGlyph name="repos" size={18} />
-            {repoCount
-              ? `${repoCount} ${repoCount === 1 ? 'repository' : 'repositories'}`
-              : 'Add repositories'}
+            <span>
+              {repoCount
+                ? `${repoCount} ${repoCount === 1 ? 'repository' : 'repositories'}`
+                : 'Add repositories'}
+            </span>
           </button>
           <button
             type="button"
@@ -185,7 +187,7 @@ export function ProjectDetailScreen() {
             onClick={() => setInstructions(project.instructions ?? '')}
           >
             <InstructionsGlyph />
-            {hasInstructions ? 'Instructions' : 'Add instructions'}
+            <span>{hasInstructions ? 'Instructions' : 'Add instructions'}</span>
           </button>
         </div>
 
@@ -446,7 +448,7 @@ export function ProjectDetailScreen() {
         ) : null}
       </Sheet>
 
-      {/* Manage repositories: the same combined list the chat header offers. */}
+      {/* Choose repositories: the same combined list the chat header offers. */}
       <ManageReposSheet
         open={manageRepos}
         project={project}
@@ -648,8 +650,8 @@ function TeamAccess({
   );
 }
 
-/** The manage-repositories sheet: toggle the project's attached repos from the
- *  connected computer workspaces and GitHub repos. */
+/** The Choose repositories sheet: toggle the project's attached repos from the
+ *  connected computer's workspaces and the GitHub, GitLab and Bitbucket repos. */
 function ManageReposSheet({
   open,
   project,
@@ -709,7 +711,8 @@ function ManageReposSheet({
         <p className="hint">
           {repos.loading
             ? 'Loading your repositories.'
-            : (repos.error ?? 'Connect your computer or GitHub to attach repositories.')}
+            : (repos.error ??
+              'Connect your computer, GitHub, GitLab, or Bitbucket to attach repositories.')}
         </p>
       )}
       {repos.access ? (
@@ -729,7 +732,7 @@ function ManageReposSheet({
           .
         </p>
       ) : null}
-      <div className="sheet-actions">
+      <div className="sheet-actions" style={{ marginTop: 16 }}>
         {nothingToChoose ? (
           <button className="btn primary" onClick={onOpenRepos}>
             Open Repositories
