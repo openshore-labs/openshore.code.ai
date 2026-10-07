@@ -8,6 +8,7 @@ import { initCommand } from '../src/commands/init.js';
 import { loginCommand } from '../src/commands/login.js';
 import { authGithubCommand } from '../src/commands/authGithub.js';
 import { pairCommand } from '../src/commands/pair.js';
+import { pairServerCommand } from '../src/commands/pairServer.js';
 import { doctorCommand } from '../src/commands/doctor.js';
 import { trustCommand } from '../src/commands/trust.js';
 import { serveCommand } from '../src/commands/serve.js';
@@ -88,7 +89,11 @@ auth
 program
   .command('pair')
   .description('put OS Code on your phone (Tailscale + Termius walkthrough)')
-  .action(pairCommand);
+  .option('--server', 'dock a phone to this server: print its QR and say yes here')
+  .action(async (options: { server?: boolean }) => {
+    if (options.server) await pairServerCommand();
+    else await pairCommand();
+  });
 program
   .command('doctor')
   .description('check every link in the chain, with one-line fixes')

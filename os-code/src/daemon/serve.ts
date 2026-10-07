@@ -195,6 +195,15 @@ export interface DaemonOptions {
     code: string;
     stillPending: () => boolean;
   }) => Promise<boolean>;
+  /** A server's way to say yes (connect-anywhere, 2026-10-07): with no
+   *  approver, a request waits for an admin's answer at
+   *  POST /pair/requests/<id> (`osc pair --server` in the person's SSH
+   *  terminal, or a device already paired as admin) and is denied when it
+   *  expires unanswered. Off, a daemon with no approver refuses at once. */
+  pairingConsole?: boolean;
+  /** What this daemon runs inside, reported on /health so a paired device
+   *  can say "Your server" or "Your computer" without asking the person. */
+  kind?: 'desktop' | 'server';
 }
 
 export interface RunningDaemon {
@@ -351,6 +360,29 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     }
   }
 
+  // The person's answer to a pairing request, from the desktop's dialog or an
+  // admin's POST /pair/requests/<id>. Only a yes mints a credential; a late
+  // answer to a settled or expired request changes nothing.
+  function settlePairRequest(id: string, allowed: boolean): 'approved' | 'denied' | 'gone' {
+    if (!pairRequests.pending(id)) return 'gone';
+    const label = pairRequests.labelOf(id) ?? 'Phone';
+    if (!allowed) {
+      pairRequests.answer(id, null);
+      log.info('declined a device', { label });
+      return 'denied';
+    }
+    const minted = mintCredential({ role: 'admin', label });
+    pairRequests.answer(id, {
+      token: minted.token,
+      label,
+      role: minted.credential.role,
+      // When this pairing ends (H1), so the phone can say so ahead of time.
+      ...(minted.credential.expiresAt ? { expiresAt: minted.credential.expiresAt } : {}),
+    });
+    log.info('paired a device', { label });
+    return 'approved';
+  }
+
   async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     // CORS preflights carry no Authorization header by design; answer them
     // before the auth gate so the WebView can proceed to the real request.
@@ -414,35 +446,25 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       const label = deviceLabelFrom(body.deviceName);
       const request = pairRequests.open(label);
       const approve = options.approvePairing;
-      void (async () => {
-        let allowed = false;
-        try {
-          allowed = approve
-            ? await approve({
-                label,
-                code: request.code,
-                stillPending: () => pairRequests.pending(request.id),
-              })
-            : false;
-        } catch {
-          allowed = false;
-        }
-        if (!pairRequests.pending(request.id)) return;
-        if (!allowed) {
-          pairRequests.answer(request.id, null);
-          log.info('declined a device', { label });
-          return;
-        }
-        const minted = mintCredential({ role: 'admin', label });
-        pairRequests.answer(request.id, {
-          token: minted.token,
-          label,
-          role: minted.credential.role,
-          // When this pairing ends (H1), so the phone can say so ahead of time.
-          ...(minted.credential.expiresAt ? { expiresAt: minted.credential.expiresAt } : {}),
-        });
-        log.info('paired a device', { label });
-      })();
+      // A server with no dialog leaves the request for an admin's answer at
+      // POST /pair/requests/<id>; it expires unanswered, which is a no.
+      if (approve || !options.pairingConsole) {
+        void (async () => {
+          let allowed = false;
+          try {
+            allowed = approve
+              ? await approve({
+                  label,
+                  code: request.code,
+                  stillPending: () => pairRequests.pending(request.id),
+                })
+              : false;
+          } catch {
+            allowed = false;
+          }
+          settlePairRequest(request.id, allowed);
+        })();
+      }
       sendJson(res, 202, {
         pending: true,
         request: request.id,
@@ -546,7 +568,45 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         version: '0.1.0',
         role: auth.role,
         user: auth.userId,
+        ...(options.kind ? { kind: options.kind } : {}),
       });
+      return;
+    }
+
+    // ---- Pairing a device from a server (connect-anywhere, 2026-10-07). ----
+    // A server has no desktop dialog, so an admin mints the QR's claim and
+    // answers the request: `osc pair --server` over SSH (the shared token on
+    // loopback), or a device already paired as admin adding the next one.
+    if (req.method === 'POST' && url.pathname === '/pair/claims') {
+      if (!requireAdmin()) return;
+      sendJson(res, 200, pairClaims.mint());
+      return;
+    }
+    if (req.method === 'GET' && url.pathname === '/pair/requests') {
+      if (!requireAdmin()) return;
+      sendJson(res, 200, { requests: pairRequests.listPending() });
+      return;
+    }
+    if (
+      req.method === 'POST' &&
+      parts.length === 3 &&
+      parts[0] === 'pair' &&
+      parts[1] === 'requests'
+    ) {
+      if (!requireAdmin()) return;
+      const body = await readJson(req, PAIR_CLAIM_MAX_BYTES);
+      if (typeof body.allow !== 'boolean') {
+        sendJson(res, 400, { error: 'Send {"allow": true} or {"allow": false}.' });
+        return;
+      }
+      const state = settlePairRequest(parts[2]!, body.allow);
+      if (state === 'gone') {
+        sendJson(res, 410, {
+          error: 'That request is no longer waiting. Scan the code on the phone again.',
+        });
+        return;
+      }
+      sendJson(res, 200, { ok: true, state });
       return;
     }
 

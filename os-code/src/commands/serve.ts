@@ -27,10 +27,16 @@ export async function serveCommand(options: ServeOptions): Promise<void> {
     onFault: (kind) => warnLine(`Caught a stray ${kind}; the daemon kept running. See its log.`),
   });
   try {
-    const daemon = await startDaemon({ config, bind, port });
+    // Run on its own, this is a server: a phone docks with `osc pair --server`
+    // in another terminal, where the person says yes to it.
+    const daemon = await startDaemon({ config, bind, port, pairingConsole: true, kind: 'server' });
     okLine(`Daemon up on ${daemon.host}:${daemon.port} (${bind}).`);
     okLine('Auth: the bearer token at ~/.os-code/daemon.token (mode 600).');
-    out(t.muted('  A phone pairs from the desktop app (Pairing), each with its own credential.'));
+    out(
+      t.muted(
+        `  Dock a phone: run ${t.local('osc pair --server')} in another terminal and scan its code.`,
+      ),
+    );
     out(t.muted('  From a phone over the tailnet: ssh in, then osc attach.'));
     out(t.muted('  Ctrl+C stops the daemon; stored sessions survive and reattach later.'));
     const shutdown = () => {

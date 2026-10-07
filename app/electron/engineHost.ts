@@ -1133,6 +1133,7 @@ export class EngineHost {
           bind: 'tailscale',
           port: config.daemon.port,
           approvePairing: this.approvePairing,
+          kind: 'desktop',
         });
         this.noteBindError(undefined);
         return { host: this.daemon.host };
@@ -1146,6 +1147,7 @@ export class EngineHost {
         bind: 'loopback',
         port: config.daemon.port,
         approvePairing: this.approvePairing,
+        kind: 'desktop',
       });
       // Up on loopback; a tailnet that refused is still worth saying why.
       this.noteBindError(tailnetError);
