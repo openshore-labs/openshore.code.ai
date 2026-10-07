@@ -102,7 +102,7 @@ export function ChangedFilesCard({
           {verdict && !allBack ? <VerdictPill verdict={verdict} /> : null}
         </span>
         <span className="changed-head-end">
-          {counted && !allBack ? (
+          {counted && !allBack && files.length > 1 ? (
             <span className="changed-stats">
               <span className="diff-add">+{added}</span>{' '}
               <span className="diff-del">-{removed}</span>
@@ -127,7 +127,7 @@ export function ChangedFilesCard({
             : 'Files are back the way they were.'}
         </p>
       ) : null}
-      {error ? <div className="msg-note changed-error">{error}</div> : null}
+      {error ? <div className="msg-note warn changed-error">{error}</div> : null}
       <ul className="changed-list">
         {files.map((f) => {
           const isBack = back.has(f.path);

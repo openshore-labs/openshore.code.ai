@@ -55,7 +55,11 @@ describe('First Seat in the chat empty state', () => {
 
   it('shows the size in GB and the class line from the engine', () => {
     expect(SEAT).toContain('classLineFor(');
-    expect(SEAT).toMatch(/GB download/);
+    // The desktop's size line is DeepBlue's; the phone's is Harbor's own
+    // download, from the label that already carries its GB.
+    expect(SEAT).toContain('harborMasterSizeLine(');
+    expect(SEAT).toMatch(/HARBOR_APPROX_LABEL\.slice\(1\)\} download\./);
+    expect(read('src/lib/harbor.ts')).toMatch(/HARBOR_APPROX_LABEL = 'about [\d.]+ GB'/);
   });
 });
 

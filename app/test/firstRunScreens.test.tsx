@@ -80,6 +80,15 @@ async function until(check: () => boolean, what: string): Promise<void> {
 
 const FIELD = 'Chat with OpenShore';
 
+/** Click an element found by a selector (a drawn glyph has no text to find). */
+async function clickOn(el: Element | null | undefined, what: string): Promise<void> {
+  if (!el) throw new Error(`no ${what}`);
+  const { act } = await import('react');
+  await act(async () => {
+    el.dispatchEvent(new window.Event('click', { bubbles: true }));
+  });
+}
+
 describe('a held first message and the chat screen', () => {
   // The first mount imports the whole store and chat screen, so these get room.
   it(
@@ -101,12 +110,17 @@ describe('a held first message and the chat screen', () => {
       });
       await dom.render(<ChatScreen compact={false} />);
       await dom.type(FIELD, 'build me a login page');
-      await dom.click('↑');
+      await clickOn(dom.container.querySelector('.send-btn'), 'send button');
       // Nothing can answer yet: the chooser opens, holding the message.
       expect(useApp.getState().settings.heldFirstMessage?.text).toBe('build me a login page');
       expect(dom.text()).toContain('Select model');
       // Every door in the chooser leaves for a setup room.
-      await dom.click('Create your stack to get started');
+      await clickOn(
+        Array.from(dom.container.querySelectorAll('.model-sheet button')).find((b) =>
+          b.textContent?.includes('Build your stack'),
+        ),
+        'Build your stack row',
+      );
       await until(() => useApp.getState().view === 'stack', 'the Stack room');
       expect(useApp.getState().settings.heldFirstMessage?.text).toBe('build me a login page');
       // The Stack room replaces the chat screen, then the way back returns.
@@ -133,7 +147,7 @@ describe('a held first message and the chat screen', () => {
     });
     await dom.render(<ChatScreen compact={false} />);
     await dom.type(FIELD, 'explain this error');
-    await dom.click('↑');
+    await clickOn(dom.container.querySelector('.send-btn'), 'send button');
     const close = dom.container.querySelector('.model-sheet .mode-close') as HTMLElement;
     await (async () => {
       const { act } = await import('react');

@@ -60,7 +60,17 @@ import { isPhone } from '../lib/platform.js';
 import { useDictation } from '../hooks/useDictation.js';
 import { knownKeyboardHeight } from '../lib/keyboardHeight.js';
 import { useExitPresence } from '../hooks/useExitPresence.js';
-import { CloseGlyph } from './SheetGlyphs.js';
+import {
+  ArrowUpGlyph,
+  ChevronGlyph,
+  CloseGlyph,
+  FileGlyph,
+  NoteGlyph,
+  PasteGlyph,
+  PlusGlyph,
+  StopGlyph,
+} from './SheetGlyphs.js';
+import { ModeIcon } from './ModeSheet.js';
 import { AttachTray, type AttachSource } from './AttachTray.js';
 import { Icon } from './Icon.js';
 import {
@@ -352,6 +362,7 @@ export function Composer({
   onRewind,
   hubRole,
   vault,
+  canAnswer = true,
 }: {
   busy: boolean;
   source?: ConversationSource;
@@ -392,6 +403,9 @@ export function Composer({
   hubRole?: HubRole;
   /** The vault behind `[[` (Vault M5, J15). Absent: `[[` is plain text. */
   vault?: ComposerVault;
+  /** False while the chosen brain cannot answer yet: the model pill then reads
+   *  Choose a model. */
+  canAnswer?: boolean;
 }) {
   const { settings, showToast } = useApp();
   const runCommand = useApp((s) => s.runCommand);
@@ -1033,8 +1047,8 @@ export function Composer({
     dictation.toggle();
   };
 
-  const modelLabel = sourceShortLabel(source);
-  const place = sourcePlace(source);
+  const modelLabel = canAnswer ? sourceShortLabel(source) : 'Choose a model';
+  const place = canAnswer ? sourcePlace(source) : undefined;
   const mode = settings.permissionMode ?? DEFAULT_PERMISSION_MODE;
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1245,7 +1259,7 @@ export function Composer({
                     <img src={first.dataUrl} alt="" className="composer-chip-thumb" />
                   ) : (
                     <span className="composer-chip-file" aria-hidden="true">
-                      {'📄'}
+                      <FileGlyph />
                     </span>
                   )}
                   <span className="composer-chip-name">{label}</span>
@@ -1291,7 +1305,7 @@ export function Composer({
               .map((p, i) => (
                 <span key={p.id} className={`composer-chip${leaving.has(p.id) ? ' closing' : ''}`}>
                   <span className="composer-chip-file" aria-hidden="true">
-                    {'📋'}
+                    <PasteGlyph />
                   </span>
                   <span className="composer-chip-name">
                     Pasted text #{i + 1} · {p.lines} lines
@@ -1316,7 +1330,7 @@ export function Composer({
                   data-note-chip=""
                 >
                   <span className="composer-chip-file" aria-hidden="true">
-                    {'📝'}
+                    <NoteGlyph />
                   </span>
                   <span className="composer-chip-name">{p.note.title}</span>
                   <button
@@ -1432,32 +1446,43 @@ export function Composer({
             aria-label="Attach"
             aria-expanded={tray}
           >
-            {'+'}
+            <PlusGlyph />
           </button>
 
           <button
-            className="composer-pill press-fb"
+            className={`composer-pill press-fb${canAnswer ? '' : ' unready'}`}
             onClick={() => {
               if (tray) closeTray();
               onOpenModelSheet();
             }}
-            aria-label={`Model: ${source ? sourceLabel(source) : 'Stack'}`}
+            aria-label={
+              canAnswer ? `Model: ${source ? sourceLabel(source) : 'Stack'}` : 'Choose a model'
+            }
           >
             {place ? <span className={`composer-pill-place ${place}`} aria-hidden="true" /> : null}
             <span className="composer-pill-text">{modelLabel}</span>
-            <span className="composer-pill-chevron" aria-hidden="true" />
+            <span className="composer-pill-chevron" aria-hidden="true">
+              <ChevronGlyph dir="down" size={12} />
+            </span>
           </button>
-          <button
-            className={`composer-pill composer-pill-mode mode-${mode} press-fb`}
-            onClick={() => {
-              if (tray) closeTray();
-              onOpenModeSheet();
-            }}
-            aria-label={`Mode: ${permissionModeLabel(mode)}. Shift and Tab cycles.`}
-          >
-            <span className="composer-pill-dot" aria-hidden="true" />
-            <span className="composer-pill-text">{permissionModeLabel(mode)}</span>
-          </button>
+          {/* The mode sets what the coding agent may do unasked, so the pill
+              shows only where it acts: a session on your computer. */}
+          {source?.kind === 'desktop' ? (
+            <button
+              className={`composer-pill composer-pill-mode mode-${mode} press-fb`}
+              onClick={() => {
+                if (tray) closeTray();
+                onOpenModeSheet();
+              }}
+              aria-label={`Mode: ${permissionModeLabel(mode)}.${isTouch() ? '' : ' Shift and Tab cycles.'}`}
+            >
+              <span className="composer-pill-dot" aria-hidden="true" />
+              <span className="composer-pill-modeicon" aria-hidden="true">
+                <ModeIcon mode={mode} size={16} />
+              </span>
+              <span className="composer-pill-text">{permissionModeLabel(mode)}</span>
+            </button>
+          ) : null}
 
           {canRunCommands ? (
             <button
@@ -1500,7 +1525,7 @@ export function Composer({
 
           {!showSend ? (
             <button className="send-btn stop press-fb" onClick={stopTap} aria-label="Stop">
-              {'■'}
+              <StopGlyph />
             </button>
           ) : (
             <button
@@ -1513,7 +1538,7 @@ export function Composer({
               }
               aria-label={terminal ? 'Run command' : busy ? 'Queue message' : 'Send'}
             >
-              {terminal ? '$' : '↑'}
+              {terminal ? '$' : <ArrowUpGlyph />}
             </button>
           )}
         </div>

@@ -38,6 +38,7 @@ import { SetupMenuActions } from '../components/SetupMenuActions.js';
 import { StartChoiceActions } from '../components/StartChoiceActions.js';
 import { ASK_ANYTHING, setupHelpIntent, walkActive } from '../lib/guidedSetup.js';
 import { FirstSeat } from '../components/FirstSeat.js';
+import { TerminalGlyph } from '../components/SheetGlyphs.js';
 import { VoiceMode } from '../components/VoiceMode.js';
 import type { VoiceBreak } from '../lib/voice/voiceBreaks.js';
 import { Sheet } from '../components/Sheet.js';
@@ -325,7 +326,10 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         const cmds = SLASH_COMMANDS.filter((c) => agent || !c.agentOnly)
           .map((c) => `/${c.name}${c.arg ? ` <${c.arg}>` : ''}: ${c.hint.toLowerCase()}`)
           .join('\n');
-        const text = `${cmds}\n@ mentions a repository file. # saves a line to the project's instructions. Esc stops a run or clears the field. Up recalls an earlier message. Shift+Tab cycles the permission mode. A message typed while the agent works is queued.`;
+        const keys = isPhone()
+          ? ''
+          : ' Esc stops a run or clears the field. Up recalls an earlier message. Shift+Tab cycles the permission mode.';
+        const text = `${cmds}\n@ mentions a repository file. # saves a line to the project's instructions.${keys} A message typed while the agent works is queued.`;
         if (conv) addNote(text);
         else showToast('Open a chat, then /help lists what the composer can do.');
         return;
@@ -593,7 +597,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
       if (!sourceReady(selectedSource)) {
         setSheetStage('root');
         setSheetOpen(true);
-        showToast('Pick where your answers come from, then start voice.');
+        showToast('Choose a model, then start voice.');
         return;
       }
       await startWith(selectedSource);
@@ -677,7 +681,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                   </span>
                 </>
               ) : null}
-              {thread && thread.contextPercent > 0 ? (
+              {thread && thread.contextPercent >= 50 ? (
                 <span
                   className={`ctx-bar${thread.contextPercent >= 75 ? ' warm' : ''}${thread.contextPercent >= 90 ? ' hot' : ''}`}
                   title={`Context ${thread.contextPercent}% full`}
@@ -707,7 +711,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             aria-label="Open terminal"
             title="Terminal"
           >
-            {'>_'}
+            <TerminalGlyph />
           </button>
         ) : null}
         <ProfileStatus />
@@ -715,7 +719,9 @@ export function ChatScreen({ compact }: { compact: boolean }) {
 
       {offlineMounted ? (
         <div className={`offline-banner${offlineClosing ? ' closing' : ''}`} role="status">
-          Offline. Local models still answer; your computer and the cloud wait for a connection.
+          {isDesktop()
+            ? 'Offline. Models on this computer still answer. Cloud models wait for a connection.'
+            : 'Offline. Models on this phone still answer. Your computer and cloud models wait for a connection.'}
         </div>
       ) : null}
 
@@ -1004,7 +1010,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                 chooserHolds.current = true;
                 setSheetStage('root');
                 setSheetOpen(true);
-                showToast('Pick where your first answer comes from, then this sends.');
+                showToast('Choose a model to send your message.');
                 return;
               }
               void startWith(selectedSource, text, attachments);
@@ -1014,6 +1020,11 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           }}
           onStop={abort}
           vault={composerVault}
+          canAnswer={
+            Boolean(conv) ||
+            (isDesktop() && desktopStatus === undefined) ||
+            sourceReady(selectedSource)
+          }
         />
       </div>
 
@@ -1067,6 +1078,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
       {sheetOpen ? (
         <ModelSheet
           initialStage={sheetStage}
+          current={composerSource}
           onPick={(source) => {
             setPickedSource(source);
             setSheetOpen(false);

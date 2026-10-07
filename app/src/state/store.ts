@@ -149,7 +149,13 @@ import {
   type Connectivity,
   type ProfileId,
 } from '../lib/profiles.js';
-import { PROVIDERS, providerInfo, providerSecretKey } from '../lib/providers.js';
+import {
+  PROVIDERS,
+  providerInfo,
+  providerModelLabel,
+  providerSecretKey,
+} from '../lib/providers.js';
+import { claudeModelLabel } from '../lib/claudeModels.js';
 import { isSetupFailure, rescueSource } from '../lib/chatRescue.js';
 import { CloudClaudeDriver, DEFAULT_CLAUDE_MODEL } from '../drivers/cloudClaudeDriver.js';
 import { CloudOpenAiDriver } from '../drivers/cloudOpenAiDriver.js';
@@ -4643,6 +4649,7 @@ export const useApp = create<AppState>((set, get, api) => {
               vaultPack: conversationPack(conv),
               humanize: settings.humanizeWriting !== false,
               writingVoice: settings.writingVoice,
+              modelLabel: claudeModelLabel(source.model),
             },
           );
         }
@@ -4665,6 +4672,7 @@ export const useApp = create<AppState>((set, get, api) => {
             vaultPack: conversationPack(conv),
             humanize: settings.humanizeWriting !== false,
             writingVoice: settings.writingVoice,
+            modelLabel: providerModelLabel(source.provider, source.model),
           },
         );
       }
@@ -8879,7 +8887,8 @@ export const useApp = create<AppState>((set, get, api) => {
       // projects) would vanish from every list once any project exists, so adopt
       // it into the active (or first) project. P2-13: a chat explicitly unfiled
       // by deleteProject carries `unfiled`, so it is left alone here instead of
-      // being silently re-adopted on the next launch.
+      // being silently re-adopted on the next launch. Unfiled chats still show
+      // in Chats and Recents, through lib/chatScope.ts.
       const orphanIds = Object.keys(conversations).filter(
         (id) => !conversations[id]!.projectId && !conversations[id]!.unfiled,
       );
@@ -10224,7 +10233,7 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       const client = routinesClient(get().settings);
       if (!client) {
-        get().showToast('Pair your computer first. Routines run there.');
+        get().showToast('Connect your computer first. Routines run there.');
         return undefined;
       }
       try {

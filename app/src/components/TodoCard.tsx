@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import type { TodoRow } from '../state/types.js';
 import { Icon } from './Icon.js';
+import { ChevronGlyph } from './SheetGlyphs.js';
 
 /** How long the finished list stays open before folding itself. */
 const SELF_FOLD_MS = 600;
@@ -39,7 +40,7 @@ export function TodoCard({ todos }: { todos: TodoRow[] }) {
           <i style={{ transform: `scaleX(${todos.length ? done / todos.length : 0})` }} />
         </span>
         <span className="todo-chevron" aria-hidden="true">
-          {open ? '▾' : '▸'}
+          <ChevronGlyph dir="down" size={12} />
         </span>
       </button>
       <div className={`todo-reveal${open ? ' open' : ''}`}>

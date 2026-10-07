@@ -47,7 +47,7 @@ export function AppActionCard({
         <span className="plan-sub">{sub}</span>
       </div>
       <div className="plan-body app-action-value">{value}</div>
-      {failed ? <div className="msg-note">That did not save. Try again.</div> : null}
+      {failed ? <div className="msg-note warn">That did not save. Try again.</div> : null}
       <div className="plan-actions">
         {proposed && !inSettings ? (
           <button

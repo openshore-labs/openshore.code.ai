@@ -9,8 +9,7 @@
 // On the desktop the seat is DeepBlue, the third and most capable member
 // of the Harbor family, sized to this computer, and the one tap installs it
 // right here (the pull rides the store's ensureHarborMaster, progress on the
-// button). On the phone the seat routes to the Marketplace, where the pocket
-// picks live.
+// button). On the phone the seat is Harbor, set up from Settings.
 //
 // When a brain IS ready this renders its fallback (the greeting, and Harbor
 // Light's First Moves on the phone), so the seat only ever owns an empty room.
@@ -43,6 +42,7 @@ import {
 import { resolveStarter } from '../lib/starterModel.js';
 import { HARBOR_MASTER_MODEL_NAME, harborMasterSizeLine } from '../lib/harborMaster.js';
 import { HARBOR_MINI_MODEL_ID } from '../lib/harborMini.js';
+import { HARBOR_APPROX_LABEL, HARBOR_MODEL_NAME } from '../lib/harbor.js';
 
 export function FirstSeat({
   fallback,
@@ -143,8 +143,8 @@ export function FirstSeat({
   const pick = starter.pick;
   const desktop = isDesktop();
   // The card's name: DeepBlue on the desktop (what is really behind it is
-  // named on the size line), the weights' own name on the phone.
-  const seatName = desktop ? HARBOR_MASTER_MODEL_NAME : pick.name;
+  // named on the size line), Harbor on the phone, the model Set up opens.
+  const seatName = desktop ? HARBOR_MASTER_MODEL_NAME : HARBOR_MODEL_NAME;
   const sizeLine = desktop
     ? harborMasterSizeLine({
         catalogId: pick.catalogId,
@@ -152,7 +152,7 @@ export function FirstSeat({
         weightsName: pick.name,
         sizeGB: pick.sizeGB,
       })
-    : `${pick.sizeGB} GB download.`;
+    : `${HARBOR_APPROX_LABEL.charAt(0).toUpperCase()}${HARBOR_APPROX_LABEL.slice(1)} download.`;
   const pulling = Boolean(harborMasterDownload && !harborMasterDownload.failed);
   const failed = Boolean(harborMasterDownload?.failed);
   // A first message waiting on this seat (CX ruling 2).
@@ -182,7 +182,9 @@ export function FirstSeat({
           <BrandMark size={40} />
         </span>
         <p className="first-seat-line" style={{ '--i': 1 } as React.CSSProperties}>
-          A private coding partner that runs on your own computer. Free, and yours.
+          {desktop
+            ? 'A private coding partner that runs on your own computer. Free, and yours.'
+            : 'A private coding partner that runs on this phone. Free, and yours.'}
         </p>
         <div
           className="first-seat-card"
@@ -194,9 +196,11 @@ export function FirstSeat({
           }}
         >
           <h2 className="first-seat-name">{seatName}</h2>
-          <p className="first-seat-class">{classLineFor(pick.ollamaRef)}</p>
+          <p className="first-seat-class">
+            {desktop ? classLineFor(pick.ollamaRef) : 'Writes and explains code in the chat.'}
+          </p>
           <p className="first-seat-fit">
-            {sizeLine} {fitLine(starter.fit, hardware)}
+            {desktop ? `${sizeLine} ${fitLine(starter.fit, hardware)}` : sizeLine}
           </p>
           {failed ? (
             <p className="first-seat-fit" role="status">

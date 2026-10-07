@@ -4,6 +4,8 @@
 // one tap from the greeting instead of a wall in front of it. It sits under
 // the seeded hello for the life of the chat, and rides press-fb like every
 // tappable.
+import { ChevronGlyph } from './SheetGlyphs.js';
+
 export function GuideSetupLink({ onOpen }: { onOpen: () => void }) {
   return (
     <button type="button" className="guide-setup press-fb" onClick={onOpen}>
@@ -12,7 +14,7 @@ export function GuideSetupLink({ onOpen }: { onOpen: () => void }) {
         <span>Connect your computer, a repository, or your own key.</span>
       </div>
       <span className="chev" aria-hidden="true">
-        ›
+        <ChevronGlyph size={16} />
       </span>
     </button>
   );

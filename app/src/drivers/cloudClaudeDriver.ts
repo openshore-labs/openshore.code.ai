@@ -140,6 +140,7 @@ export class CloudClaudeDriver implements ChatDriver {
   private readonly vaultPack?: AppVaultPack;
   private readonly humanize?: boolean;
   private readonly writingVoice?: string;
+  private readonly modelLabel: string;
 
   constructor(
     apiKey: string,
@@ -157,6 +158,7 @@ export class CloudClaudeDriver implements ChatDriver {
     this.vaultPack = opts.vaultPack;
     this.humanize = opts.humanize;
     this.writingVoice = opts.writingVoice;
+    this.modelLabel = opts.modelLabel ?? this.model;
     const ws = workspaceId?.trim();
     this.client = new Anthropic({
       apiKey,
@@ -192,7 +194,7 @@ export class CloudClaudeDriver implements ChatDriver {
     turn.emit({ type: 'task-start', input: text });
     // The pack gathers once per send, beside the turn's own setup.
     const preparing = this.vaultPack?.prepare(text, turn.signal);
-    turn.emit({ type: 'turn-start', turn: 1, model: this.model, providerKind: 'cloud' });
+    turn.emit({ type: 'turn-start', turn: 1, model: this.modelLabel, providerKind: 'cloud' });
     // Vision: fold image attachments (and video frames) into the user turn. See
     // buildVisionContent for the frame labeling and header.
     const { content, hasFrames } = buildVisionContent(text, attachments);

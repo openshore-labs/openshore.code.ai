@@ -73,6 +73,7 @@ export class CloudOpenAiDriver implements ChatDriver {
   private readonly vaultPack?: AppVaultPack;
   private readonly humanize?: boolean;
   private readonly writingVoice?: string;
+  private readonly modelLabel: string;
   private readonly contextWindow: number;
   /** The window the provider's catalog lists for this model, if any: the
    *  pack sizes itself from it, else 128k (CTO J4). */
@@ -98,6 +99,7 @@ export class CloudOpenAiDriver implements ChatDriver {
     this.vaultPack = opts.vaultPack;
     this.humanize = opts.humanize;
     this.writingVoice = opts.writingVoice;
+    this.modelLabel = opts.modelLabel ?? this.model;
     // A mid-chat switch seeds the prior turns so this model continues the thread.
     // A turn that drew on a local-only note reaches this cloud seat as the
     // stub, never the text (I5).
@@ -133,7 +135,7 @@ export class CloudOpenAiDriver implements ChatDriver {
     turn.emit({ type: 'task-start', input: text });
     // The pack gathers once per send, beside the turn's own setup.
     const preparing = this.vaultPack?.prepare(text, turn.signal);
-    turn.emit({ type: 'turn-start', turn: 1, model: this.model, providerKind: 'cloud' });
+    turn.emit({ type: 'turn-start', turn: 1, model: this.modelLabel, providerKind: 'cloud' });
     this.history.push({ role: 'user', content: this.userContent(text, attachments) });
     // Chain of Thought, read once per turn. The client takes <think> text out
     // of the answer either way; it reaches the thinking block while on, and

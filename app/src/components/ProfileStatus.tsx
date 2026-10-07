@@ -1,10 +1,10 @@
 // The always-visible connectivity status: a colored bubble and the active
 // profile, tappable to see all three and to step down manually. Green Docked
-// (home reachable), amber Offshore (cloud + on-device), gray Offline
-// (on-device only). The sheet portals to the body so its fixed scrim covers
-// the viewport rather than being trapped by the top bar's backdrop-filter
-// containing block; it is the house sheet, so it slides in, drags to
-// dismiss, and always animates out.
+// (your computer reachable), ink Offshore (cloud and this device), a hollow
+// ring for Offline (this device only). The sheet portals to the body so its
+// fixed scrim covers the viewport rather than being trapped by the top bar's
+// backdrop-filter containing block; it is the house sheet, so it slides in,
+// drags to dismiss, and always animates out.
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { agenticView, harnessView, useApp } from '../state/store.js';
@@ -13,8 +13,10 @@ import {
   PROFILE_ORDER,
   autoProfile,
   effectiveProfile,
+  profileBlurb,
   selectable,
 } from '../lib/profiles.js';
+import { isDesktop } from '../lib/platform.js';
 import { activeContribution } from '../lib/currents.js';
 import { activeHarnessContribution } from '../lib/harnessCurrents.js';
 import { Sheet } from './Sheet.js';
@@ -25,6 +27,8 @@ export function ProfileStatus() {
   const auto = autoProfile(connectivity);
   const active = effectiveProfile(auto, settings.profileOverride);
   const info = PROFILES[active];
+  // On the desktop the device is the computer, so it counts as connected.
+  const paired = isDesktop() || Boolean(settings.daemon);
 
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
@@ -58,9 +62,9 @@ export function ProfileStatus() {
       <button
         className="profile-chip"
         onClick={() => setOpen(true)}
-        aria-label={`Connection: ${info.label}`}
+        aria-label={`Status: ${info.label}`}
       >
-        <span className="profile-dot" style={{ background: info.dot }} />
+        <span className={`profile-dot ${active}`} />
         <span>{info.label}</span>
       </button>
 
@@ -70,9 +74,9 @@ export function ProfileStatus() {
           portals to the body to cover the whole screen. */}
       {createPortal(
         <Sheet open={open} onClose={close} className="info-sheet">
-          <SheetHead title="Connection" onClose={close} />
+          <SheetHead title="Status" onClose={close} />
           <p className="sheet-sub">
-            Stack, chats, and connections are the same everywhere. What changes is reach.
+            Which models can answer depends on what this device can reach.
           </p>
           <div className="sheet-actions">
             <button
@@ -82,10 +86,7 @@ export function ProfileStatus() {
                 close();
               }}
             >
-              <span
-                className="profile-dot"
-                style={{ background: PROFILES[auto].dot, marginTop: 5 }}
-              />
+              <span className={`profile-dot ${auto}`} />
               <span className="grow">
                 <span className="profile-row-title">Automatic</span>
                 <span className="sub">
@@ -108,12 +109,12 @@ export function ProfileStatus() {
                     close();
                   }}
                 >
-                  <span className="profile-dot" style={{ background: p.dot, marginTop: 5 }} />
+                  <span className={`profile-dot ${id}`} />
                   <span className="grow">
                     <span className="profile-row-title">{p.label}</span>
                     <span className="sub">
-                      {p.blurb}
-                      {!canPick ? ' Not reachable right now.' : ''}
+                      {profileBlurb(id, paired)}
+                      {!canPick && paired ? ' Not reachable right now.' : ''}
                     </span>
                   </span>
                 </button>

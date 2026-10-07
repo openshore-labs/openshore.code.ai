@@ -61,13 +61,12 @@ export const LANDING_LINES: Record<TimeBucket, readonly string[]> = {
     'What are we shipping today?',
   ],
   midday: [
-    'The afternoon’s open.',
+    'Midday. Where to next?',
     'Halfway there, still flowing?',
     'What’s next on the list?',
     'A clear stretch ahead.',
-    'One more before lunch?',
+    'Plenty of day left.',
     'Still in the zone?',
-    'A good stretch ahead.',
   ],
   afternoon: [
     'Where were we?',

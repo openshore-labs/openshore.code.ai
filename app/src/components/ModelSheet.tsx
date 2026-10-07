@@ -1,17 +1,18 @@
 // The model sheet, in the Claude app's "Select model" shape. The root shows the
-// default (Stack), any models the user has pinned, the effort control, and two
-// category buttons that open dedicated sheets, the way Claude's "more models"
-// expands: Cloud models and Local models. Each category has an honest empty
-// state that routes to setup. When no stack exists yet, Stack is greyed with a
-// link to build one. Models in the category sheets swipe left to pin; a pinned
-// model rides under Stack for one-tap use and swipes there to unpin. On a
-// phone the very top row is the model on this phone: Harbor once it is
-// downloaded, else Harbor Lite (with Harbor's download progress under it while
-// it comes down). Harbor replaces Harbor Lite there, since the better model
-// makes the guide moot (founder, 2026-09-25). On the desktop the top rows are
-// this computer's engine: its agent and, beside it, the free chat with its own
-// model (CTO ruling 8); Local models there lists that free chat, or the way to
-// DeepBlue in the Stack, never the phone's own download.
+// default (Stack), any models the user has pinned, two category buttons that
+// open dedicated sheets, the way Claude's "more models" expands (Cloud models
+// and Local models), and the effort control last. The current pick wears a
+// check. Each category has an honest empty state that routes to setup. When no
+// stack exists yet, the Stack row is the way in to build one. Models in the
+// category sheets swipe left to pin; a pinned model rides under Stack for
+// one-tap use and swipes there to unpin. On a phone the very top row is the
+// model on this phone: Harbor once it is downloaded, else Harbor Lite (with
+// Harbor's download progress under it while it comes down). Harbor replaces
+// Harbor Lite there, since the better model makes the guide moot (founder,
+// 2026-09-25). On the desktop the top rows are this computer's engine: its
+// agent and, beside it, the free chat with its own model (CTO ruling 8); Local
+// models there lists that free chat, or the way to DeepBlue in the Stack,
+// never the phone's own download.
 import { useEffect, useRef, useState } from 'react';
 import type { ConversationSource } from '../state/types.js';
 import { useApp } from '../state/store.js';
@@ -37,7 +38,7 @@ import { isPinned, pinKey, togglePin } from '../lib/pins.js';
 import { SwipeRow } from './SwipeRow.js';
 import { engineChatReady } from '../state/firstRunOps.js';
 import { HARBOR_MASTER_MODEL_NAME } from '../lib/harborMaster.js';
-import { BackGlyph, CloseGlyph } from './SheetGlyphs.js';
+import { BackGlyph, CheckGlyph, ChevronGlyph, CloseGlyph } from './SheetGlyphs.js';
 import { Icon } from './Icon.js';
 
 /** The desktop's free chat row, and the Local models sheet's words there. */
@@ -65,10 +66,19 @@ function RowContent({
       {value ? <span className="ms-row-value">{value}</span> : null}
       {chevron ? (
         <span className="ms-row-chev" aria-hidden="true">
-          {'›'}
+          <ChevronGlyph size={16} />
         </span>
       ) : null}
     </>
+  );
+}
+
+/** The current pick's mark at a row's trailing edge. */
+function RowCheck() {
+  return (
+    <span className="ms-row-check" aria-hidden="true">
+      <CheckGlyph size={18} />
+    </span>
   );
 }
 
@@ -77,19 +87,24 @@ function Row({
   sub,
   value,
   chevron,
-  highlight,
+  selected,
   onClick,
 }: {
   main: string;
   sub?: string;
   value?: string;
   chevron?: boolean;
-  highlight?: boolean;
+  selected?: boolean;
   onClick: () => void;
 }) {
   return (
-    <button className={`ms-row press-fb${highlight ? ' ms-row-default' : ''}`} onClick={onClick}>
+    <button
+      className="ms-row press-fb"
+      aria-current={selected ? 'true' : undefined}
+      onClick={onClick}
+    >
       <RowContent main={main} sub={sub} value={value} chevron={chevron} />
+      {selected ? <RowCheck /> : null}
     </button>
   );
 }
@@ -148,11 +163,14 @@ export function ModelSheet({
   onPick,
   onClose,
   initialStage = 'root',
+  current,
 }: {
   onPick: (source: ConversationSource) => void;
   onClose: () => void;
   /** Which sub-sheet to open on. Defaults to root; the out-of-usage tap opens 'local'. */
   initialStage?: 'root' | 'effort' | 'cloud' | 'local';
+  /** The brain the composer answers with now. Its row wears the check. */
+  current?: ConversationSource;
 }) {
   const {
     settings,
@@ -179,6 +197,8 @@ export function ModelSheet({
     dismiss();
   };
   const effort = settings.effort ?? DEFAULT_EFFORT;
+  const isCurrent = (s: ConversationSource) =>
+    Boolean(current && current.kind === s.kind && pinKey(s) === pinKey(current));
 
   // Your paired computer's stack: the model(s) your machine runs, reachable
   // over your connection. Picking it runs the agent ON the box (the phone is
@@ -304,7 +324,7 @@ export function ModelSheet({
                   <div className="ms-row ms-row-disabled">
                     <span className="ms-row-text">
                       <span className="ms-row-main">This computer</span>
-                      <span className="ms-row-sub">Checking your engine...</span>
+                      <span className="ms-row-sub">Checking this computer...</span>
                     </span>
                   </div>
                 ) : engineModel ? (
@@ -312,7 +332,7 @@ export function ModelSheet({
                     <Row
                       main="This computer"
                       sub={`${engineModel}, running on this computer`}
-                      highlight
+                      selected={isCurrent({ kind: 'desktop' })}
                       onClick={() => pick({ kind: 'desktop' })}
                     />
                     {/* The free companion to the agent above, the same as the
@@ -322,19 +342,18 @@ export function ModelSheet({
                       <Row
                         main={DESKTOP_CHAT_ROW}
                         sub={DESKTOP_CHAT_SUB}
+                        selected={isCurrent({ kind: 'desktop-chat' })}
                         onClick={() => pick({ kind: 'desktop-chat' })}
                       />
                     ) : null}
                   </>
                 ) : (
-                  <div className="ms-row ms-row-disabled">
-                    <span className="ms-row-text">
-                      <span className="ms-row-main">This computer</span>
-                      <button className="ms-sublink press-fb" onClick={() => goto('stack')}>
-                        No model set up yet. Build your stack
-                      </button>
-                    </span>
-                  </div>
+                  <Row
+                    main="This computer"
+                    sub="No model set up yet. Build your stack"
+                    chevron
+                    onClick={() => goto('stack')}
+                  />
                 )}
               </div>
             ) : null}
@@ -344,6 +363,7 @@ export function ModelSheet({
                   <Row
                     main={HARBOR_MODEL_NAME}
                     sub={HARBOR_BYLINE}
+                    selected={isCurrent(harborSource)}
                     onClick={() => pick(harborSource)}
                   />
                 ) : (
@@ -352,6 +372,7 @@ export function ModelSheet({
                       <Row
                         main={HARBOR_MINI_MODEL_NAME}
                         sub={HARBOR_MINI_BYLINE}
+                        selected={isCurrent(harborLiteSource)}
                         onClick={() => pick(harborLiteSource)}
                       />
                     ) : null}
@@ -375,7 +396,7 @@ export function ModelSheet({
                 {!daemon ? (
                   <Row
                     main="Connect your computer"
-                    sub="Run your own model on your computer, from anywhere"
+                    sub="Use your computer's models from here, while it is on."
                     chevron
                     onClick={() => goto('pair')}
                   />
@@ -383,23 +404,21 @@ export function ModelSheet({
                   <div className="ms-row ms-row-disabled">
                     <span className="ms-row-text">
                       <span className="ms-row-main">Your computer</span>
-                      <span className="ms-row-sub">Checking your connection...</span>
+                      <span className="ms-row-sub">Checking your computer...</span>
                     </span>
                   </div>
                 ) : boxStack === 'error' ? (
-                  <div className="ms-row ms-row-disabled">
-                    <span className="ms-row-text">
-                      <span className="ms-row-main">Your computer</span>
-                      <button className="ms-sublink press-fb" onClick={() => goto('pair')}>
-                        Not reachable right now. Reconnect
-                      </button>
-                    </span>
-                  </div>
+                  <Row
+                    main="Your computer"
+                    sub="Not reachable right now. Reconnect"
+                    chevron
+                    onClick={() => goto('pair')}
+                  />
                 ) : boxModel ? (
                   <Row
                     main="Your computer"
                     sub={`${boxModel}, running on your computer`}
-                    highlight
+                    selected={isCurrent({ kind: 'desktop' })}
                     onClick={() => pick({ kind: 'desktop' })}
                   />
                 ) : (
@@ -416,6 +435,7 @@ export function ModelSheet({
                   <Row
                     main="Chat with your computer"
                     sub="Free. Read-only, no repository or edits."
+                    selected={isCurrent({ kind: 'desktop-chat' })}
                     onClick={() => pick({ kind: 'desktop-chat' })}
                   />
                 ) : null}
@@ -425,19 +445,17 @@ export function ModelSheet({
               {hasStack ? (
                 <Row
                   main="Stack"
-                  sub="Your lead model picks who answers"
-                  highlight
+                  sub="Your Reasoning LLM picks which model answers"
+                  selected={isCurrent({ kind: 'stack' })}
                   onClick={() => pick({ kind: 'stack' })}
                 />
               ) : (
-                <div className="ms-row ms-row-disabled">
-                  <span className="ms-row-text">
-                    <span className="ms-row-main">Stack</span>
-                    <button className="ms-sublink press-fb" onClick={() => goto('stack')}>
-                      Create your stack to get started
-                    </button>
-                  </span>
-                </div>
+                <Row
+                  main="Stack"
+                  sub="Not set up yet. Build your stack"
+                  chevron
+                  onClick={() => goto('stack')}
+                />
               )}
               {pins.map((src) => {
                 // A favorite whose model is not set up any more (its key was
@@ -456,11 +474,17 @@ export function ModelSheet({
                         main={pinLabel(src)}
                         sub={ready ? pinSub(src) : 'Not set up on this device right now'}
                       />
+                      {ready && isCurrent(src) ? <RowCheck /> : null}
                       <PinStar pinned onToggle={() => setPin(src)} />
                     </div>
                   </SwipeRow>
                 );
               })}
+            </div>
+
+            <div className="ms-group">
+              <Row main="Cloud models" chevron onClick={() => setStage('cloud')} />
+              <Row main="Local models" chevron onClick={() => setStage('local')} />
             </div>
 
             <div className="ms-group">
@@ -470,11 +494,6 @@ export function ModelSheet({
                 chevron
                 onClick={() => setStage('effort')}
               />
-            </div>
-
-            <div className="ms-group">
-              <Row main="Cloud models" chevron onClick={() => setStage('cloud')} />
-              <Row main="Local models" chevron onClick={() => setStage('local')} />
             </div>
           </>
         ) : null}
@@ -487,7 +506,7 @@ export function ModelSheet({
                 <Row
                   key={e}
                   main={effortLabel(e)}
-                  value={e === effort ? '✓' : undefined}
+                  selected={e === effort}
                   onClick={() => {
                     void saveSettings({ effort: e });
                     setStage('root');
@@ -526,6 +545,7 @@ export function ModelSheet({
                           >
                             <div className="ms-row">
                               <RowContent main={m.label} sub={m.blurb} />
+                              {isCurrent(src) ? <RowCheck /> : null}
                               <PinStar pinned={isPinned(pins, src)} onToggle={() => setPin(src)} />
                             </div>
                           </SwipeRow>
@@ -554,6 +574,7 @@ export function ModelSheet({
                           >
                             <div className="ms-row">
                               <RowContent main={m.label} sub={m.tagline} />
+                              {isCurrent(src) ? <RowCheck /> : null}
                               <PinStar pinned={isPinned(pins, src)} onToggle={() => setPin(src)} />
                             </div>
                           </SwipeRow>
@@ -587,6 +608,7 @@ export function ModelSheet({
                   >
                     <div className="ms-row">
                       <RowContent main={m.label} sub={m.blurb} />
+                      {isCurrent(src) ? <RowCheck /> : null}
                       <PinStar pinned={isPinned(pins, src)} onToggle={() => setPin(src)} />
                     </div>
                   </SwipeRow>
@@ -608,6 +630,7 @@ export function ModelSheet({
                 <Row
                   main={engineChat}
                   sub={DESKTOP_CHAT_SUB}
+                  selected={isCurrent({ kind: 'desktop-chat' })}
                   onClick={() => pick({ kind: 'desktop-chat' })}
                 />
               </div>
@@ -639,6 +662,7 @@ export function ModelSheet({
                     >
                       <div className="ms-row">
                         <RowContent main={name} sub="Runs fully on this device" />
+                        {isCurrent(src) ? <RowCheck /> : null}
                         <PinStar pinned={isPinned(pins, src)} onToggle={() => setPin(src)} />
                       </div>
                     </SwipeRow>
@@ -647,7 +671,7 @@ export function ModelSheet({
               </div>
             ) : (
               <button className="ms-empty press-fb" onClick={() => goto('settings')}>
-                No on-device model yet. Get Harbor from Settings, Harbor, to get started.
+                No coding model on this phone yet. Get Harbor in Settings.
               </button>
             )}
           </>

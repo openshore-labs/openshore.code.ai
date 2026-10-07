@@ -65,7 +65,7 @@ export function WindowCutCard({
           ) : null}
         </p>
       ) : null}
-      {item.error ? <div className="msg-note window-cut-error">{item.error}</div> : null}
+      {item.error ? <div className="msg-note warn window-cut-error">{item.error}</div> : null}
     </div>
   );
 }

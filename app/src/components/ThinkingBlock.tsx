@@ -5,6 +5,7 @@
 // answer stands on its own without it.
 import { useEffect, useRef, useState } from 'react';
 import { Markdown } from './Markdown.js';
+import { ChevronGlyph } from './SheetGlyphs.js';
 
 export function ThinkingBlock({
   text,
@@ -74,7 +75,7 @@ export function ThinkingBlock({
         <span className={`thinking-glyph${streaming ? ' live' : ''}`} aria-hidden="true" />
         <span className="thinking-label">{streaming ? 'Thinking' : `Thought for ${seconds}s`}</span>
         <span className="thinking-chevron" aria-hidden="true">
-          {open ? '▾' : '▸'}
+          <ChevronGlyph dir="down" size={12} />
         </span>
       </button>
       {everOpen ? (
