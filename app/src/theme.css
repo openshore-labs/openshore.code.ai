@@ -12522,6 +12522,25 @@ button.settings-row:active {
 }
 
 /* ---------------------------------------------------------------------------
+   The setup page's paths (D9, founder 2026-10-07): each idle path is one tap
+   target on the house card-as-button (.card-disclosure, press-fb), its title
+   the verb, one muted line under it, and the drawn chevron. Harbor's busy
+   states keep their plain cards and controls.
+   --------------------------------------------------------------------------- */
+.path-card-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.path-card-title {
+  font-size: var(--text-5);
+  font-weight: var(--weight-semibold);
+  color: var(--ink);
+}
+
+/* ---------------------------------------------------------------------------
    The Chats room in the Claude app's shape (Creative Studio, 2026-09-02): a
    search pill, then one flat list of chats sorted by recency, hairline
    separators inset to the text edge, no cards, no captions. The compose
@@ -12831,6 +12850,21 @@ button.settings-row:active {
 .projects-no-match {
   margin-top: 24px;
   text-align: center;
+}
+/* The desktop's New project (D11): the bar's action, the room's one primary,
+   with the drawn plus beside the words. The phone keeps the dock below. */
+.projects-bar-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+/* On the desktop the search pill sits on top of the list, on the line Chats'
+   pill sits on (900 is COMPACT_BREAKPOINT). */
+@media (min-width: 900px) {
+  .projects-screen > .screen-inner.projects {
+    padding-top: 8px;
+  }
 }
 .projects-dock {
   position: sticky;
@@ -13436,8 +13470,8 @@ button.settings-row:active {
 }
 /* Where the chat's model ran, in the house reach colours (teal local, amber
    cloud). Nothing is drawn when the reach is not known yet, never a guess,
-   and never the hollow ring, which means Offline in the Status sheet. The
-   span keeps its width so every second line starts at the same edge. */
+   and never the hollow ring, which means Offline in the Status sheet; the
+   dot takes no space then, so the second line starts on the title's edge. */
 .chat-reach {
   display: inline-block;
   width: 6px;
@@ -13451,9 +13485,6 @@ button.settings-row:active {
 }
 .chat-reach-cloud {
   background: var(--cloud);
-}
-.chat-reach-unknown {
-  background: transparent;
 }
 /* A search hit: marked softly in the accent, never a highlighter yellow. */
 .chat-hit {

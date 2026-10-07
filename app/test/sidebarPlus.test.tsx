@@ -95,10 +95,11 @@ describe('the free sidebar', () => {
     const texts = r.map((x) => x.text);
     const banner = texts.indexOf(UPGRADE_BANNER);
     expect(texts.slice(0, banner)).toEqual(['Chats', 'Projects', 'Stack', 'Cloud Connections']);
+    // A phone with no computer keeps Terminal after the Vault (D10).
     expect(texts.slice(banner + 1, -1)).toEqual([
-      'Terminal',
       'Repositories',
       'Vault',
+      'Terminal',
       'Crew',
       'Pairing',
       'Marketplace',
@@ -150,13 +151,14 @@ describe('the Plus sidebar', () => {
   it('is the familiar layout, with no banner and nothing greyed', async () => {
     useApp.setState({ userEntitlement: { tierId: 'personal', status: 'active' } });
     const r = await rows();
+    // On this phone with no computer, Terminal waits after the Vault (D10).
     expect(r.map((x) => x.text)).toEqual([
       'Chats',
       'Projects',
-      'Terminal',
       'Repositories',
       'Stack',
       'Vault',
+      'Terminal',
       'Crew',
       'Cloud Connections',
       'Pairing',

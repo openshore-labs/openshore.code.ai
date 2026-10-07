@@ -1,13 +1,15 @@
-// The "starting paths" rows: Harbor / desktop / repository / Claude on the
-// phone, or local stack / repository / Claude on the desktop. Shown on
-// first-run onboarding and, as a permanent shortcut, in Settings, from one
-// source so the two never drift. In onboarding, choosing a path also marks
-// onboarding done; in Settings we are already in, so it just navigates.
+// The "starting paths": Harbor / your computer / repository / API key on the
+// phone, or local stack / repository / API key on the desktop. The setup page
+// shows them as cards, each idle one a single tap target with a one-line sub
+// (D9, founder 2026-10-07); the explanations live in the rooms they open. The
+// rows variant is the same paths as ledger rows, from the same source. In
+// onboarding, choosing a path also marks onboarding done; in Settings we are
+// already in, so it just navigates.
 import { SAMPLE_ROW_LABEL, SAMPLE_ROW_SUB } from '../lib/sampleProject.js';
 import { useApp, type ViewName } from '../state/store.js';
 import { isDesktop } from '../lib/platform.js';
 import { logEvent } from '../lib/insights.js';
-import { HARBOR_APPROX_LABEL, HARBOR_BYLINE, HARBOR_MODEL_ID } from '../lib/harbor.js';
+import { HARBOR_APPROX_LABEL, HARBOR_MODEL_ID } from '../lib/harbor.js';
 import { HARBOR_MINI_APPROX_LABEL, HARBOR_MINI_MODEL_ID } from '../lib/harborMini.js';
 import { SettingsRow } from './SettingsRow.js';
 import { thisDeviceNoun } from '../lib/deviceNoun.js';
@@ -17,8 +19,8 @@ export function StartingPaths({
   variant = 'cards',
 }: {
   context: 'onboarding' | 'settings';
-  /** `cards` is the onboarding wall; `rows` is the settings ledger's list,
-   *  the same paths as one-line rows. One source, two renderings. */
+  /** `cards` is the setup page; `rows` is the settings ledger's list, the
+   *  same paths as one-line rows. One source, two renderings. */
   variant?: 'cards' | 'rows';
 }) {
   const {
@@ -53,64 +55,61 @@ export function StartingPaths({
     }
   };
 
-  const harborCard = (
+  // One idle path is one tap target (D9, founder 2026-10-07): the card is the
+  // button, its title the verb, one line under it, and the drawn chevron of
+  // every card or row that opens something. No inner button.
+  const pathCard = (title: string, sub: string, onClick: () => void) => (
+    <button type="button" className="card card-disclosure press-fb press-fb--row" onClick={onClick}>
+      <span className="path-card-text">
+        <span className="path-card-title">{title}</span>
+        <span className="sub">{sub}</span>
+      </span>
+      <span className="disclosure-chevron" aria-hidden="true" />
+    </button>
+  );
+
+  // Harbor's download, retry and cancel states keep their controls, since a
+  // card that is busy has more than one thing to say.
+  const harborCard = settings.harborReady ? (
+    pathCard(
+      'Chat with Harbor',
+      `Ready on ${thisDeviceNoun()}`,
+      () => void getGuideAndGo(HARBOR_MODEL_ID),
+    )
+  ) : harborDownload?.failed ? (
     <div className="card">
-      {settings.harborReady ? (
-        <>
-          <h3>Chat with Harbor</h3>
-          <div className="sub" style={{ marginBottom: 10 }}>
-            Harbor is ready. It runs on {thisDeviceNoun()} and can search the web.
-          </div>
-          <button className="btn ghost block" onClick={() => void getGuideAndGo(HARBOR_MODEL_ID)}>
-            Open Harbor
-          </button>
-        </>
-      ) : harborDownload?.failed ? (
-        <>
-          <h3>Harbor</h3>
-          <div className="hint" style={{ color: 'var(--danger)', marginBottom: 10 }}>
-            {harborDownload.label} Check your connection and try again.
-          </div>
-          <button className="btn ghost block" onClick={() => void getGuideAndGo(HARBOR_MODEL_ID)}>
-            Try again
-          </button>
-        </>
-      ) : harborDownload ? (
-        <>
-          <h3>Getting Harbor</h3>
-          <div className="progress-track" style={{ marginTop: 4 }}>
-            <div
-              className={`progress-fill${harborDownload.indeterminate ? ' indeterminate' : ''}`}
-              style={
-                harborDownload.indeterminate
-                  ? undefined
-                  : { transform: `scaleX(${harborDownload.percent / 100})` }
-              }
-            />
-          </div>
-          <div className="hint" style={{ marginTop: 6 }}>
-            {harborDownload.label}. A one-time download, then you chat, and search when it needs to.
-          </div>
-          <button
-            className="btn quiet block"
-            style={{ marginTop: 8 }}
-            onClick={() => cancelHarbor()}
-          >
-            Cancel download
-          </button>
-        </>
-      ) : (
-        <>
-          <h3>Harbor</h3>
-          <div className="sub" style={{ marginBottom: 10 }}>
-            {HARBOR_BYLINE} Downloads once, {HARBOR_APPROX_LABEL}.
-          </div>
-          <button className="btn ghost block" onClick={() => beginHarborWithIntro()}>
-            Get Harbor
-          </button>
-        </>
-      )}
+      <h3>Harbor</h3>
+      <div className="hint" style={{ color: 'var(--danger)', marginBottom: 10 }}>
+        {harborDownload.label} Check your connection and try again.
+      </div>
+      <button className="btn ghost block" onClick={() => void getGuideAndGo(HARBOR_MODEL_ID)}>
+        Try again
+      </button>
     </div>
+  ) : harborDownload ? (
+    <div className="card">
+      <h3>Getting Harbor</h3>
+      <div className="progress-track" style={{ marginTop: 4 }}>
+        <div
+          className={`progress-fill${harborDownload.indeterminate ? ' indeterminate' : ''}`}
+          style={
+            harborDownload.indeterminate
+              ? undefined
+              : { transform: `scaleX(${harborDownload.percent / 100})` }
+          }
+        />
+      </div>
+      <div className="hint" style={{ marginTop: 6 }}>
+        {harborDownload.label}. A one-time download, then you chat, and search when it needs to.
+      </div>
+      <button className="btn quiet block" style={{ marginTop: 8 }} onClick={() => cancelHarbor()}>
+        Cancel download
+      </button>
+    </div>
+  ) : (
+    pathCard('Get Harbor', `A coding model on ${thisDeviceNoun()}, ${HARBOR_APPROX_LABEL}`, () =>
+      beginHarborWithIntro(),
+    )
   );
 
   if (variant === 'rows') {
@@ -243,63 +242,36 @@ export function StartingPaths({
         // Studio "The Standing Light" (2026-09-04; founder 2026-09-23).
         <>
           {harborCard}
-          <div className="card">
-            <h3>Your computer</h3>
-            <div className="sub" style={{ marginBottom: 10 }}>
-              Run your model on your own computer and reach it from {thisDeviceNoun()} over your
-              private Tailscale network. Your computer does the work, so it does not drain your
-              battery, and a long answer keeps going even when you close the app.
-            </div>
-            <button className="btn ghost block" onClick={() => void go('pair')}>
-              Connect your computer
-            </button>
-          </div>
-          <div className="card">
-            <h3>Your code</h3>
-            <div className="sub" style={{ marginBottom: 10 }}>
-              Connect GitHub, GitLab, or Bitbucket and pick a home repository. OpenShore reads,
-              edits, and commits there, and shows you every change.
-            </div>
-            <button className="btn ghost block" onClick={() => void go('repos')}>
-              Set up a repository
-            </button>
-          </div>
+          {pathCard(
+            'Connect your computer',
+            'Use its models from here while it is on',
+            () => void go('pair'),
+          )}
+          {pathCard(
+            'Set up a repository',
+            'Connect GitHub, GitLab, or Bitbucket',
+            () => void go('repos'),
+          )}
         </>
       ) : (
         <>
-          <div className="card">
-            <h3>Set up your local stack</h3>
-            <div className="sub" style={{ marginBottom: 10 }}>
-              Point OpenShore at a model running on this computer through Ollama. Open Stack to
-              install DeepBlue, sized to your computer. It stays on your desk.
-            </div>
-            <button className="btn primary block" onClick={() => void go('stack')}>
-              Build your stack
-            </button>
-          </div>
-          <div className="card">
-            <h3>Your code</h3>
-            <div className="sub" style={{ marginBottom: 10 }}>
-              Point OpenShore at a repository and it reads, edits, and commits there, and shows you
-              every change.
-            </div>
-            <button className="btn ghost block" onClick={() => void go('repos')}>
-              Open a repository
-            </button>
-          </div>
+          {pathCard(
+            'Build your stack',
+            'A model on this computer, through Ollama',
+            () => void go('stack'),
+          )}
+          {pathCard(
+            'Open a repository',
+            'Reads, edits, and commits, and shows you every change',
+            () => void go('repos'),
+          )}
         </>
       )}
-
-      <div className="card">
-        <h3>Your own API key</h3>
-        <div className="sub" style={{ marginBottom: 10 }}>
-          Chat stays free. Add an API key for Claude, OpenAI, or Gemini and go further, at your
-          provider's price. Your API key stays on your device.
-        </div>
-        <button className="btn ghost block" onClick={() => void go('connections')}>
-          Add an API key
-        </button>
-      </div>
+      {pathCard(
+        'Add an API key',
+        'Claude, OpenAI, or Gemini, at their price',
+        () => void go('connections'),
+      )}
     </>
   );
 }

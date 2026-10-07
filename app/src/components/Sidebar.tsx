@@ -1,8 +1,9 @@
 // The sidebar is the app's main navigation (founder, 2026-09-02): every room
 // in one group at the top (founder, 2026-10-01), the day-one rooms first and
-// Crew, Cloud Connections and Hub pairing under the Vault. New chat and the
-// project switcher live in the Chats and Projects rooms. Persistent on
-// desktop, a slide-over drawer on the phone.
+// Crew, Cloud Connections and Pairing under them, in navRooms' order for this
+// device (D10, founder 2026-10-07), so a phone with no computer keeps Terminal
+// after the Vault. New chat and the project switcher live in the Chats and
+// Projects rooms. Persistent on desktop, a slide-over drawer on the phone.
 //
 // The person's own order (founder, 2026-10-01): every room can be dragged to
 // a new place, in its group or across to the other (hooks/useNavReorder.ts,
@@ -16,7 +17,8 @@
 // rest sit greyed at the bottom under a gold Upgrade banner. A greyed room
 // still answers the tap: it opens the paywall (store.ts setView).
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
-import { roomOpen, visibleRooms } from '../lib/focus.js';
+import { roomOpen } from '../lib/focus.js';
+import { isDesktop } from '../lib/platform.js';
 import { PAY_GATES_ENABLED, roomPaid } from '../lib/payGate.js';
 import { accountCopy } from '../lib/accountGate.js';
 import { accountInitial, planStanding, useProfileSheet } from '../lib/profile.js';
@@ -24,7 +26,7 @@ import { isOrgAdmin, useApp, type ViewName } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
 import type { GestureProps } from '../hooks/useDrawerGesture.js';
 import { BrandMark } from './BrandMark.js';
-import { ROOM_LABELS, type NavRoom } from '../lib/navRooms.js';
+import { ROOM_LABELS, navRooms, type NavRoom } from '../lib/navRooms.js';
 import { Icon } from './Icon.js';
 import {
   NAV_ORDER_VERSION,
@@ -60,39 +62,32 @@ const ROOM_OF: Partial<Record<ViewName, NavIconName>> = {
   terminal: 'terminalroom',
 };
 
-// The nav is split so a first-week user is not met with a dozen destinations
-// at once (CMO ruling). PRIMARY is the day-one set, pinned to the top: chat,
-// its project bucket, the coding surface (Repositories), where a model is
-// attached (Stack), and the Vault. Everything else is real but
-// second-session, grouped quietly at the bottom so it reads as depth, not
-// clutter: Admin leads that group (when the account carries it) and Settings
-// closes it.
 const nav = (view: NavIconName & NavRoom) => ({ view, label: ROOM_LABELS[view] });
 
-// The release tier takes a later tier's rooms out here, at the one door (a
-// Personal build shows the v1 rooms only; see lib/focus.ts).
 type NavEntry = { view: NavIconName; label: string };
-const PRIMARY_NAV: NavEntry[] = visibleRooms(
-  (['chats', 'projects', 'terminalroom', 'repos', 'stack', 'vault'] as const).map(nav),
-);
-
-const EXPLORE_NAV: NavEntry[] = visibleRooms(
-  (['crew', 'connections', 'pair', 'marketplace', 'stackhealth', 'launch'] as const).map(nav),
-);
 
 // Settings is pinned to the bottom, under every room and above the sign-in
 // card, in both layouts (founder, 2026-10-01).
 const SETTINGS: NavEntry = nav('settings');
 
-// The order before the person has moved anything: every room in one group
-// above the recent chats, Crew, Cloud Connections and Hub pairing straight
-// under the Vault (founder, 2026-10-01, "no need for a separate section").
-// The group below the recent chats stays, empty, for a room the person drags
-// there.
-const DEFAULT_ORDER: NavOrder = {
-  top: [...PRIMARY_NAV, ...EXPLORE_NAV].map((e) => e.view as MovableRoom),
-  bottom: [],
-};
+/** The order before the person has moved anything: every room in one group
+ *  above the recent chats (founder, 2026-10-01, "no need for a separate
+ *  section"), in navRooms' order for this device (D10, founder 2026-10-07):
+ *  the day-one rooms first, then Crew, Cloud Connections and Pairing. On a
+ *  phone with no computer, Terminal is only a setup page, so it waits after
+ *  the Vault, and it moves up to third the day the phone pairs. The release
+ *  tier takes a later tier's rooms out inside navRooms, at the one door (a
+ *  Personal build shows the v1 rooms only; see lib/focus.ts). The group below
+ *  the recent chats stays, empty, for a room the person drags there. */
+export function defaultNavOrder(device: { desktop: boolean; hubPaired: boolean }): NavOrder {
+  const { primary, explore } = navRooms(device);
+  return {
+    top: [...primary, ...explore]
+      .map((e) => e.view)
+      .filter((v): v is MovableRoom => v !== 'settings'),
+    bottom: [],
+  };
+}
 
 const entryOf = (view: MovableRoom): NavEntry => nav(view);
 
@@ -273,8 +268,13 @@ export function Sidebar({
 
   // An order saved under the old two-group default is set aside once, so
   // every room comes up under the Vault; the person's moves from here on keep.
+  // A saved order wins over the device's default: only someone who never
+  // moved a row sees Terminal move up when the phone pairs.
   const savedOrder = settings.navOrder?.v === NAV_ORDER_VERSION ? settings.navOrder : undefined;
-  const saved = resolveNavOrder(savedOrder, DEFAULT_ORDER);
+  const saved = resolveNavOrder(
+    savedOrder,
+    defaultNavOrder({ desktop: isDesktop(), hubPaired: Boolean(settings.daemon) }),
+  );
   const reorder = useNavReorder(
     saved,
     (next) => void saveSettings({ navOrder: { ...next, v: NAV_ORDER_VERSION } }),

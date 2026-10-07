@@ -8,7 +8,7 @@
 // Search reads inside the chats too: a title hit is marked in place, a hit in
 // the conversation shows its line under the title. Each row carries a small
 // dot in the house reach colours (teal local, amber cloud) when the reach is
-// known, and only a faint ring when it is not.
+// known, and nothing when it is not.
 // Sessions running on the paired desktop with no chat here yet sit in the
 // same list, marked, so a job started at the desk is picked up from the couch.
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
@@ -82,15 +82,20 @@ export function chatReach(conv: Conversation): 'local' | 'cloud' | undefined {
 const REACH_HINT = {
   local: 'Ran on a local model',
   cloud: 'Ran on a cloud model',
-  unknown: 'No reply yet',
 } as const;
 
-/** The reach dot: filled teal or amber when known, an empty space of the same
- *  width when not, so every row's second line starts at the same edge. */
+/** The reach dot: filled teal or amber when known, and nothing at all when
+ *  not, so the second line starts on the title's edge in every state: at the
+ *  dot when there is one, at the time when there is not. An empty box the
+ *  dot's width once pushed the time 13px right of the title (2026-10-07). */
 export function ReachDot({ reach }: { reach: 'local' | 'cloud' | undefined }) {
-  const kind = reach ?? 'unknown';
+  if (!reach) return null;
   return (
-    <span className={`chat-reach chat-reach-${kind}`} title={REACH_HINT[kind]} aria-hidden="true" />
+    <span
+      className={`chat-reach chat-reach-${reach}`}
+      title={REACH_HINT[reach]}
+      aria-hidden="true"
+    />
   );
 }
 
@@ -174,6 +179,66 @@ function SearchIcon() {
   );
 }
 
+/** The search pill at the top of a list room: Chats everywhere, and Projects
+ *  on the desktop (D11). Escape clears it, Enter opens the top match, and the
+ *  clear button rides in only while there is something to clear. */
+export function SearchPill({
+  value,
+  onChange,
+  label,
+  onEnter,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  /** The placeholder, and the field's spoken name. */
+  label: string;
+  /** Open the top match, when there is one. */
+  onEnter?: () => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  return (
+    <div className={`chat-search${value ? ' has-query' : ''}`}>
+      <span className="chat-search-icon">
+        <SearchIcon />
+      </span>
+      <input
+        ref={ref}
+        type="search"
+        value={value}
+        placeholder={label}
+        aria-label={label}
+        enterKeyHint="go"
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape' && value) {
+            e.preventDefault();
+            onChange('');
+          } else if (e.key === 'Enter' && value.trim() && onEnter) {
+            e.preventDefault();
+            onEnter();
+          }
+        }}
+      />
+      <button
+        type="button"
+        className="chat-search-clear press-fb"
+        aria-label="Clear search"
+        tabIndex={value ? 0 : -1}
+        aria-hidden={!value}
+        onClick={() => {
+          onChange('');
+          ref.current?.focus();
+        }}
+      >
+        <Icon size={12}>
+          <path d="M6 6l12 12" />
+          <path d="M18 6 6 18" />
+        </Icon>
+      </button>
+    </div>
+  );
+}
+
 function ComposeIcon() {
   return (
     <Icon size={22}>
@@ -211,7 +276,6 @@ export function ChatsScreen() {
   const [leavingId, setLeavingId] = useState<string | undefined>();
   const [desktopSessions, setDesktopSessions] = useState<DaemonSessionInfo[]>([]);
   const leaveTimer = useRef<number | null>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
   useEffect(
     () => () => {
       if (leaveTimer.current !== null) window.clearTimeout(leaveTimer.current);
@@ -334,45 +398,12 @@ export function ChatsScreen() {
         {/* No search over nothing: the field shows once there is a chat to
             find, and stays while anything is typed, spaces included. */}
         {rows.length > 0 || query ? (
-          <div className={`chat-search${query ? ' has-query' : ''}`}>
-            <span className="chat-search-icon">
-              <SearchIcon />
-            </span>
-            <input
-              ref={searchRef}
-              type="search"
-              value={query}
-              placeholder={searchLabel}
-              aria-label={searchLabel}
-              enterKeyHint="go"
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape' && query) {
-                  e.preventDefault();
-                  setQuery('');
-                } else if (e.key === 'Enter' && q && rows[0]) {
-                  e.preventDefault();
-                  openRow(rows[0]);
-                }
-              }}
-            />
-            <button
-              type="button"
-              className="chat-search-clear press-fb"
-              aria-label="Clear search"
-              tabIndex={query ? 0 : -1}
-              aria-hidden={!query}
-              onClick={() => {
-                setQuery('');
-                searchRef.current?.focus();
-              }}
-            >
-              <Icon size={12}>
-                <path d="M6 6l12 12" />
-                <path d="M18 6 6 18" />
-              </Icon>
-            </button>
-          </div>
+          <SearchPill
+            value={query}
+            onChange={setQuery}
+            label={searchLabel}
+            onEnter={rows[0] ? () => openRow(rows[0]!) : undefined}
+          />
         ) : null}
 
         <div className="chat-list">
