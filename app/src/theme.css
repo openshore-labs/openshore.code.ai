@@ -6719,7 +6719,8 @@ button.vault-tag {
   transition: scale var(--press-out);
 }
 
-.card-disclosure h3 {
+.card-disclosure h3,
+.card-disclosure .card-title {
   margin-bottom: 0;
 }
 
@@ -8217,6 +8218,33 @@ button.vault-tag {
 @media (hover: hover) {
   .profile-chip:hover {
     background: var(--surface-hover);
+  }
+}
+
+/* A chat's bar on a phone (CS-04): with a computer connected, the menu, the
+   chat's name, Terminal on a computer chat, New chat and the pill left the
+   name a third of the bar (135px on a 402pt iPhone Pro). Up to 560px, where
+   the composer below folds its pills too, the pill there folds to its dot in
+   a round chip: green Docked, plain Offshore and the Offline ring still tell
+   apart, the aria-label keeps the word, and a tap opens the same sheet. The
+   rooms' bars and an empty chat's bar keep the word. */
+@media (max-width: 560px) {
+  .topbar:has(.topbar-sub) .profile-chip {
+    position: relative;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    gap: 0;
+  }
+  /* The house's 44pt reach around a small control (.icon-btn::after). */
+  .topbar:has(.topbar-sub) .profile-chip::after {
+    content: '';
+    position: absolute;
+    inset: -7px;
+  }
+  .topbar:has(.topbar-sub) .profile-chip-label {
+    display: none;
   }
 }
 
@@ -11891,17 +11919,6 @@ button.vault-tag {
   padding: 1px 9px 1px 8px;
   line-height: 1.4;
 }
-/* A narrow phone with the reach pill in the bar (CS-04): the menu, the name,
-   Terminal on a computer chat, New chat and the pill left the repository
-   pill "Add a re...". Below 400px it folds to its glyph and caret, the
-   composer's fold grammar; its label stays for assistive tech, and the sheet
-   it opens names every repository. */
-@media (max-width: 400px) {
-  .topbar:has(.profile-chip) .topbar-sub .repo-picker-summary,
-  .topbar:has(.profile-chip) .topbar-sub .repo-picker-branch {
-    display: none;
-  }
-}
 /* The empty home's bar: the same height as the status chip beside it. */
 .topbar-spacer-repos .repo-picker-btn {
   min-height: 30px;
@@ -12704,13 +12721,13 @@ button.settings-row:active {
 /* Harbor's busy and failed cards keep their controls (D9). Their steps sit
    on the house rhythm: a 4px line under the title, 6px to the hint, and the
    card's own inset above the button. */
-.path-card-busy .progress-track {
+.path-card-state .progress-track {
   margin-top: 4px;
 }
-.path-card-busy .hint {
+.path-card-state .hint {
   margin-top: 6px;
 }
-.path-card-busy .btn.block {
+.path-card-state .btn.block {
   margin-top: var(--row-pad);
 }
 .path-card-failed {
@@ -13034,7 +13051,9 @@ button.settings-row:active {
   text-align: center;
 }
 /* The desktop's New project (D11): the bar's action, the room's one primary,
-   with the drawn plus beside the words. The phone keeps the dock below. */
+   with the drawn plus beside the words. The phone keeps the dock below. The
+   desktop's New chat in Chats and in a project room wears it too (CS-05,
+   CS-13), so the three rooms make a new one in one place. */
 .projects-bar-new {
   display: inline-flex;
   align-items: center;

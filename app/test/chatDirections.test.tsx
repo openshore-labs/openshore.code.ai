@@ -149,6 +149,27 @@ describe('D1: the reach pill shows once it can mean something', () => {
   it('shows the status once a computer is connected', { timeout: 20_000 }, async () => {
     await chatScreen({ daemon: true });
     expect(pill()?.textContent).toBe('Offshore');
+    // The word sits in its own span, so a phone's chat bar can fold it away
+    // while the aria-label keeps it (CS-04).
+    expect(pill()?.querySelector('.profile-chip-label')?.textContent).toBe('Offshore');
+    expect(pill()?.getAttribute('aria-label')).toBe('Status: Offshore');
+  });
+
+  it("folds the pill to its dot in a phone's chat bar, and nowhere else", () => {
+    // Up to 560px (the composer's own fold) a chat's bar, the one with a
+    // title and a repository line, holds the menu, the name, Terminal, New
+    // chat and the pill; the pill gives up its word there so the name and the
+    // repository pill read whole (CS-04). A room's bar keeps the word, and the
+    // reach keeps 44pt.
+    const theme = src('theme.css');
+    const fold = theme.match(
+      /@media \(max-width: 560px\) \{\n {2}\.topbar:has\(\.topbar-sub\) \.profile-chip \{[\s\S]*?\n\}\n/,
+    )?.[0];
+    expect(fold).toBeDefined();
+    expect(fold).toMatch(/\.topbar:has\(\.topbar-sub\) \.profile-chip-label \{\s*display: none;/);
+    expect(fold).toMatch(/\.profile-chip::after \{[^}]*inset: -7px;/);
+    // The repository pill keeps its words (the fold above is the room).
+    expect(theme).not.toMatch(/\.topbar-sub \.repo-picker-summary[^{]*\{\s*display: none;/);
   });
 });
 

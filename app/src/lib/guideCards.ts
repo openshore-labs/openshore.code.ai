@@ -311,7 +311,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'reach-pill',
     title: 'The connection pill',
     where: 'Top right of a chat, once your computer is connected',
-    text: "Shows your reach once your computer is connected. Docked (a green dot): your own computer is reachable, so its models, cloud models, and this device's models all work. Offshore (a plain dot): online, but your computer is out of reach, so cloud models and this device's models work. Offline (a hollow ring): only the models on this device. Before a computer is connected it shows only when you are offline. Tap it to follow the connection automatically or step down by hand; before a computer is connected, Choose Offline under the status switch in Stack does the same.",
+    text: "Shows your reach once your computer is connected. Docked (a green dot): your own computer is reachable, so its models, cloud models, and this device's models all work. Offshore (a plain dot): online, but your computer is out of reach, so cloud models and this device's models work. Offline (a hollow ring): only the models on this device. In an open chat on a phone it shows just its dot. Before a computer is connected it shows only when you are offline. Tap it to follow the connection automatically or step down by hand; before a computer is connected, Choose Offline under the status switch in Stack does the same.",
     keywords: ['offshore', 'docked', 'pill', 'top right', 'connection', 'status', 'green', 'reach'],
   },
   {

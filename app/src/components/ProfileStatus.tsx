@@ -94,7 +94,9 @@ export function ProfileStatus() {
           tabIndex={pill.closing ? -1 : undefined}
         >
           <span className={`profile-dot ${pillProfile}`} />
-          <span>{PROFILES[pillProfile].label}</span>
+          {/* The word; a phone's chat bar folds it away (theme.css,
+              CS-04), and the aria-label above keeps it for assistive tech. */}
+          <span className="profile-chip-label">{PROFILES[pillProfile].label}</span>
         </button>
       ) : null}
       <StatusSheet open={open} onClose={() => setOpen(false)} />

@@ -353,6 +353,16 @@ describe("the Stack's step down before a computer is paired (D1)", () => {
     expect(dom.buttons()).toContain('Follow the connection');
   });
 
+  it('offers no Choose Offline when the connection has already dropped', async () => {
+    // Offline by itself: the tab says so and the lone pill is in the bar, so
+    // a link to choose what already holds would read wrong.
+    useApp.setState({ view: 'stack', connectivity: { homeReachable: false, online: false } });
+    const { StackManager } = await import('../src/components/StackManager.js');
+    await dom.render(<StackManager />);
+    expect(dom.buttons()).not.toContain('Choose Offline');
+    expect(dom.buttons()).not.toContain('Follow the connection');
+  });
+
   it('leaves the step down to the pill once a computer is paired', async () => {
     useApp.setState({
       view: 'stack',

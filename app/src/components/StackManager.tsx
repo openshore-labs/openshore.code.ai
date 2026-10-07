@@ -121,8 +121,12 @@ export function StackManager() {
   // the switch holds Offshore and Offline, the two this device can be in.
   const statusTabs = PROFILE_ORDER.filter((id) => paired || id !== 'docked');
   // The step down while the reach pill waits for a computer (D1): the same
-  // Status sheet the pill opens, from here.
+  // Status sheet the pill opens, from here. It offers Offline while online,
+  // and the way back once Offline is chosen; a connection that simply dropped
+  // is already Offline, with the lone pill in the bar.
   const [statusOpen, setStatusOpen] = useState(false);
+  const stepDown =
+    !settings.daemon && (settings.profileOverride === 'offline' || profile !== 'offline');
   const stack = stackForProfile(settings.stacks, editProfile);
   const reasoning = stack.reasoning ?? harborRef();
   // The two Vision slots (a local model and a cloud model), split out of the
@@ -358,7 +362,7 @@ export function StackManager() {
           {/* Before a computer is connected the pill is out of the bar while
               online, so the step down lives here (D1, as recommended: "stepping
               down stays possible from the Stack"). */}
-          {!settings.daemon ? (
+          {stepDown ? (
             <button
               type="button"
               className="linklike press-fb stack-status-change"

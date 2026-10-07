@@ -92,7 +92,7 @@ export function StartingPaths({
   ) : harborDownload?.failed ? (
     // The verb stays the title through every state: Get Harbor, Getting
     // Harbor, and Get Harbor again with Try again when it stopped.
-    <div className="card path-card-busy">
+    <div className="card path-card-state">
       <h3>Get Harbor</h3>
       <div className="hint path-card-failed">
         {harborDownload.label} Check your connection and try again.
@@ -105,7 +105,7 @@ export function StartingPaths({
       </button>
     </div>
   ) : harborDownload ? (
-    <div className="card path-card-busy">
+    <div className="card path-card-state">
       <h3>Getting Harbor</h3>
       <div className="progress-track">
         <div
