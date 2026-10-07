@@ -97,7 +97,7 @@ export const ACCOUNT_GATE_TITLE: Record<AccountFeature, string> = {
   vault: 'Vault needs an account',
   crew: 'Crew needs an account',
   connections: 'Cloud Connections need an account',
-  pairing: 'Pairing your phone and computer needs an account',
+  pairing: 'Docking to a computer needs an account',
   // Folded at build time like navRooms' label, so a Personal bundle carries
   // no later tier's name (scripts/tier-bundle.mjs).
   // Get Plus, Restore or I already paid, tapped signed out: buying needs an

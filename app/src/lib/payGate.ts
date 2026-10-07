@@ -28,12 +28,13 @@ export const PAY_GATE: Record<AccountFeature, PayLevel> = {
   // Plus: the coding agent (a 'desktop' session, the sample project, a
   // command inside a coding chat), My Crew (Crew's agentic work too: create,
   // edit, Run now; deleting, pausing and stopping stay free, in payOps),
-  // Pairing (Connect, the desktop's pairing code, and the computer
-  // reached from another device; Revoke and Forget stay free), Terminal,
-  // Repositories, and Vault.
+  // Terminal, Repositories, and Vault.
   coding: 'personal',
   crew: 'personal',
-  pairing: 'personal',
+  // Docking (the Computer room: a computer at home or a server you rent) is
+  // free, the founder's call of 2026-10-07 ("Do not gate anything"; the
+  // connect-anywhere build). Everything it opens keeps its own door.
+  pairing: 'free',
   // The purchase itself, when tapped signed out (no room carries it).
   plus: 'personal',
   terminal: 'personal',

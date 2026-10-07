@@ -1,5 +1,6 @@
-// The pairing review (CX-led Creative Studio, 2026-10-01; docs/pairing-review.md):
-// the room is named Pairing, the QR is a link the iPhone Camera opens and is
+// The pairing review (CX-led Creative Studio, 2026-10-01; docs/pairing-review.md),
+// with the room renamed Computer and pairing called docking by the founder
+// (2026-10-07; the dock form moved to components/DockForm.tsx): the QR is a link the iPhone Camera opens and is
 // only ever for the person's own network, a spent code is never thrown away,
 // and the screens say plainly what happened.
 import { readFileSync } from 'node:fs';
@@ -50,8 +51,8 @@ const { ROOM_LABELS } = await import('../src/lib/navRooms.js');
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), 'utf8');
 
 describe('the name', () => {
-  it('is Pairing, one plain word, and "hub" stays out of it', () => {
-    expect(ROOM_LABELS.pair).toBe('Pairing');
+  it('is Computer, one plain word, and "hub" stays out of it', () => {
+    expect(ROOM_LABELS.pair).toBe('Computer');
   });
 });
 
@@ -61,7 +62,7 @@ describe('a pairing link opened from the iPhone Camera', () => {
     useApp.setState({ pairOffer: undefined, view: 'chat', toast: undefined });
   });
 
-  it('opens Pairing and asks first; it never pairs on the link alone', () => {
+  it('opens Computer and asks first; it never docks on the link alone', () => {
     useApp.getState().offerPairing(pairingLink('http://100.64.1.2:4816', 'pc_abc'));
     expect(useApp.getState().pairOffer).toEqual({
       address: 'http://100.64.1.2:4816',
@@ -69,8 +70,12 @@ describe('a pairing link opened from the iPhone Camera', () => {
     });
     expect(useApp.getState().view).toBe('pair');
     expect(useApp.getState().settings.daemon).toBeUndefined();
+    const form = read('src', 'components', 'DockForm.tsx');
+    expect(form).toContain('Dock to this machine?');
+    // Computer's own forms answer the link, on both paths.
     const screen = read('src', 'screens', 'PairScreen.tsx');
-    expect(screen).toContain('Pair with this computer?');
+    expect(screen).toContain('<DockForm expect="desktop" offers />');
+    expect(screen).toContain('<DockForm expect="server" offers />');
   });
 
   it("refuses a link for an address off the person's own network", () => {
@@ -88,20 +93,22 @@ describe('a pairing link opened from the iPhone Camera', () => {
 
 describe('the screens, as CX asked', () => {
   const screen = read('src', 'screens', 'PairScreen.tsx');
+  const form = read('src', 'components', 'DockForm.tsx');
 
   it('saves the new credential before checking it, and retries the check once', () => {
-    const save = screen.indexOf('await saveHub({ baseUrl, token }, { role: claimed.role });');
-    const check = screen.indexOf('let health = await daemonHealth({ baseUrl, token });');
+    const save = form.indexOf('await saveHub({ baseUrl, token }, { role: claimed.role });');
+    const check = form.indexOf('let health = await daemonHealth({ baseUrl, token });');
     expect(save).toBeGreaterThan(0);
     expect(check).toBeGreaterThan(save);
-    expect(screen).toContain('HEALTH_RETRY_MS');
+    expect(form).toContain('HEALTH_RETRY_MS');
   });
 
   it('puts the QR as a link, the scan first, and typing behind a disclosure', () => {
     expect(screen).toContain('pairingLink(`http://${next.host}:${next.port}`, next.claim)');
-    expect(screen).toContain("Can't scan? Type it in");
-    expect(screen).not.toContain('Tip: pasting the whole QR text');
-    expect(screen).toContain('Connecting to your computer...');
+    expect(form).toContain("Can't scan? Type it in");
+    expect(form).not.toContain('Tip: pasting the whole QR text');
+    expect(form.indexOf('setScanning(true)')).toBeLessThan(form.indexOf("Can't scan? Type it in"));
+    expect(form).toContain('Docking to ${noun}...');
   });
 
   it('confirms a revoke, names the device and time, and offers launch at login', () => {

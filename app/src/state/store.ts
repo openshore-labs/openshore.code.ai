@@ -149,7 +149,15 @@ import {
   type Connectivity,
   type ProfileId,
 } from '../lib/profiles.js';
-import { PROVIDERS, providerInfo, providerSecretKey } from '../lib/providers.js';
+import {
+  PROVIDERS,
+  applyLiveModels,
+  fetchLiveModels,
+  pickLiveModels,
+  providerInfo,
+  providerSecretKey,
+  type ProviderModel,
+} from '../lib/providers.js';
 import { isSetupFailure, rescueSource } from '../lib/chatRescue.js';
 import { CloudClaudeDriver, DEFAULT_CLAUDE_MODEL } from '../drivers/cloudClaudeDriver.js';
 import { CloudOpenAiDriver } from '../drivers/cloudOpenAiDriver.js';
@@ -794,6 +802,10 @@ export interface AppSettings {
   /** The workspace an identity-linked Anthropic key acts in, sent as the
    *  anthropic-workspace-id header. Blank for a workspace-scoped key. */
   anthropicWorkspaceId?: string;
+  /** The models the person keeps on the Bench from a provider whose list
+   *  loads live (Venice, OpenRouter; lib/providers.ts liveModels), keyed by
+   *  provider id. Put back on PROVIDERS at launch. */
+  providerModels?: Record<string, ProviderModel[]>;
   /** Models the user pinned (swipe-left) from the Cloud Providers or Local LLMs
    *  sheets. They surface under My Stack on the root model sheet for one-tap
    *  selection, and swipe there to unpin. Only concrete models pin. */
@@ -2117,7 +2129,7 @@ interface AppState {
    *  the computer's QR, CX 2026-10-01): Pairing opens and asks before it
    *  pairs. Never pairs on its own. */
   pairOffer?: { address: string; claim: string };
-  /** Open Pairing with the link's offer, or say why it is not one. */
+  /** Open Computer with the link's offer, or say why it is not one. */
   offerPairing(link: string): void;
   clearPairOffer(): void;
   /** The break after the walk's opening (lib/guidedSetup.ts START_CHOICES):
@@ -2663,6 +2675,8 @@ interface AppState {
   /** Connect a cloud provider by API key (Keychain), surfacing its models. The
    *  workspace id rides along for an identity-linked Anthropic key. */
   connectProvider(id: string, key: string, workspaceId?: string): Promise<void>;
+  /** Keep these models on the Bench for a provider whose list loads live. */
+  setProviderModels(id: string, models: ProviderModel[]): Promise<void>;
   /** Disconnect a cloud provider and forget its key. */
   disconnectProvider(id: string): Promise<void>;
 
@@ -4522,7 +4536,7 @@ export const useApp = create<AppState>((set, get, api) => {
           return new ElectronDriver(sessionId, journal);
         }
         if (!settings.daemon) {
-          throw new Error('Connect to your computer first (Menu, then Pairing).');
+          throw new Error('Connect to your computer first (Menu, then Computer).');
         }
         let sessionId = conv.source.sessionId;
         if (!sessionId) {
@@ -4581,7 +4595,7 @@ export const useApp = create<AppState>((set, get, api) => {
         }
         // On the phone, the paired desktop's daemon and its stateless /chat.
         if (!settings.daemon) {
-          throw new Error('Connect to your computer first (Menu, then Pairing).');
+          throw new Error('Connect to your computer first (Menu, then Computer).');
         }
         // The computer builds this chat's pack itself (J6): the phone names
         // the project and never ships note bodies there and back. Memory off
@@ -8714,6 +8728,11 @@ export const useApp = create<AppState>((set, get, api) => {
         claudeModel: DEFAULT_CLAUDE_MODEL,
         deviceModels: {},
       };
+      // The picks for providers whose models load live, back on the list
+      // every reader uses, before anything renders a Bench.
+      for (const [id, models] of Object.entries(settings.providerModels ?? {})) {
+        applyLiveModels(id, models);
+      }
       const persisted = (await storeGetJson<PersistedConversations>(CONVERSATIONS_KEY)) ?? {
         order: [],
         conversations: {},
@@ -15101,8 +15120,13 @@ export const useApp = create<AppState>((set, get, api) => {
     async saveHub(target, opts) {
       const list = hubList(get().settings);
       const prior = list.find((d) => d.baseUrl === target.baseUrl);
-      // Keep a name already on file if this save did not carry one.
-      const merged: DaemonTarget = { ...target, name: target.name ?? prior?.name };
+      // Keep a name (and what it is, server or computer) already on file if
+      // this save did not carry one.
+      const merged: DaemonTarget = {
+        ...target,
+        name: target.name ?? prior?.name,
+        kind: target.kind ?? prior?.kind,
+      };
       // Pairing the same computer again: the old credential is revoked there
       // (best effort), so one phone is one row on the computer.
       if (prior?.token && prior.token !== target.token) void daemonForgetSelf(prior);
@@ -15254,7 +15278,21 @@ export const useApp = create<AppState>((set, get, api) => {
         // credential store), so a connection here reaches the coding agent too.
         void bridge()?.setAnthropicKey(key.trim(), workspaceId?.trim() || undefined);
       }
+      // A provider whose models load live gets a first set on the Bench now,
+      // unless the person already chose some on this device.
+      if (providerInfo(id)?.liveModels && !get().settings.providerModels?.[id]?.length) {
+        const all = await fetchLiveModels(id, key.trim());
+        if (all) await get().setProviderModels(id, pickLiveModels(id, all));
+      }
       logEvent('provider_connected', { provider: id });
+    },
+
+    async setProviderModels(id, models) {
+      applyLiveModels(id, models);
+      const providerModels = { ...(get().settings.providerModels ?? {}) };
+      if (models.length) providerModels[id] = models;
+      else delete providerModels[id];
+      await get().saveSettings({ providerModels });
     },
 
     async disconnectProvider(id) {
@@ -15268,6 +15306,8 @@ export const useApp = create<AppState>((set, get, api) => {
         await get().saveSettings({ anthropicWorkspaceId: undefined });
         void bridge()?.disconnect('anthropic');
       }
+      // A live provider's picks leave with its key.
+      if (providerInfo(id)?.liveModels) await get().setProviderModels(id, []);
       logEvent('provider_disconnected', { provider: id });
     },
 

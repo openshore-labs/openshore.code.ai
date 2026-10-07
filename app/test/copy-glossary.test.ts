@@ -52,11 +52,14 @@ const RETIRED: Array<{ pattern: RegExp; use: string }> = [
   { pattern: /\bYour [Ss]tack\b/, use: 'Stack (the room); "your stack" only mid-sentence' },
   { pattern: /\bMy Stack\b/, use: 'Stack' },
   { pattern: /\bMy Crew\b/, use: 'Crew' },
-  { pattern: /\bDesktop and phone\b/, use: 'Pairing' },
-  { pattern: /\bDesktop connection\b/, use: 'Pairing' },
-  // Renamed by CX, 2026-10-01: one plain word, and "hub" stays out of copy.
-  { pattern: /\bDesktop \+ phone\b/, use: 'Pairing' },
-  { pattern: /\bHub pairing\b/i, use: 'Pairing' },
+  { pattern: /\bDesktop and phone\b/, use: 'Computer' },
+  { pattern: /\bDesktop connection\b/, use: 'Computer' },
+  // Renamed by CX, 2026-10-01 (one plain word, and "hub" stays out of copy),
+  // then by the founder, 2026-10-07: the room is Computer, and linking a
+  // device to a machine is docking.
+  { pattern: /\bDesktop \+ phone\b/, use: 'Computer' },
+  { pattern: /\bHub pairing\b/i, use: 'Computer' },
+  { pattern: /\b(Menu, |then |under |[Oo]pen )Pairing\b/, use: 'Computer (the room)' },
   { pattern: /\bHub address\b/, use: 'Address' },
   { pattern: /\bDesktop address\b/, use: 'Address' },
   { pattern: /\bEndpoint URL\b/, use: 'Address' },
@@ -154,7 +157,7 @@ describe('room names come from one list', () => {
   it('names the stack Stack, and the renamed rooms by their new names', () => {
     expect(ROOM_LABELS.stack).toBe('Stack');
     expect(ROOM_LABELS.launch).toBe('Launch with Codemagic');
-    expect(ROOM_LABELS.pair).toBe('Pairing');
+    expect(ROOM_LABELS.pair).toBe('Computer');
   });
 
   it('the nav groups read their labels from the list', () => {

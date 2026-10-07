@@ -12,6 +12,7 @@
 // this computer's engine: its agent and, beside it, the free chat with its own
 // model (CTO ruling 8); Local models there lists that free chat, or the way to
 // DeepBlue in the Stack, never the phone's own download.
+import { dockedNoun, dockedNounLower } from '../lib/docking.js';
 import { useEffect, useRef, useState } from 'react';
 import type { ConversationSource } from '../state/types.js';
 import { useApp } from '../state/store.js';
@@ -374,22 +375,22 @@ export function ModelSheet({
               <div className="ms-group">
                 {!daemon ? (
                   <Row
-                    main="Connect your computer"
-                    sub="Run your own model on your computer, from anywhere"
+                    main="Dock a computer or server"
+                    sub="Run your own model on your computer or a server, from anywhere"
                     chevron
                     onClick={() => goto('pair')}
                   />
                 ) : boxStack === undefined ? (
                   <div className="ms-row ms-row-disabled">
                     <span className="ms-row-text">
-                      <span className="ms-row-main">Your computer</span>
+                      <span className="ms-row-main">{dockedNoun(daemon)}</span>
                       <span className="ms-row-sub">Checking your connection...</span>
                     </span>
                   </div>
                 ) : boxStack === 'error' ? (
                   <div className="ms-row ms-row-disabled">
                     <span className="ms-row-text">
-                      <span className="ms-row-main">Your computer</span>
+                      <span className="ms-row-main">{dockedNoun(daemon)}</span>
                       <button className="ms-sublink press-fb" onClick={() => goto('pair')}>
                         Not reachable right now. Reconnect
                       </button>
@@ -397,16 +398,18 @@ export function ModelSheet({
                   </div>
                 ) : boxModel ? (
                   <Row
-                    main="Your computer"
-                    sub={`${boxModel}, running on your computer`}
+                    main={dockedNoun(daemon)}
+                    sub={`${boxModel}, running on ${dockedNounLower(daemon)}`}
                     highlight
                     onClick={() => pick({ kind: 'desktop' })}
                   />
                 ) : (
                   <div className="ms-row ms-row-disabled">
                     <span className="ms-row-text">
-                      <span className="ms-row-main">Your computer</span>
-                      <span className="ms-row-sub">No model set up on your computer yet.</span>
+                      <span className="ms-row-main">{dockedNoun(daemon)}</span>
+                      <span className="ms-row-sub">
+                        No model set up on {dockedNounLower(daemon)} yet.
+                      </span>
                     </span>
                   </div>
                 )}
@@ -414,7 +417,7 @@ export function ModelSheet({
                     with the same local models, no repo, no edits, no charge. */}
                 {daemon && boxStack && boxStack !== 'error' ? (
                   <Row
-                    main="Chat with your computer"
+                    main={`Chat with ${dockedNounLower(daemon)}`}
                     sub="Free. Read-only, no repository or edits."
                     onClick={() => pick({ kind: 'desktop-chat' })}
                   />

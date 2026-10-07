@@ -94,7 +94,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     text: `Screens that set something up carry a Walk me through it (or Guide me) button that opens a chat with a step-by-step guide: the goal, a numbered plan, then one step at a time, with questions welcome between steps. It is on ${listOf(
       [
         'Cloud Connections',
-        'Pairing on the phone',
+        'Computer on the phone',
         'Repositories before you connect',
         'Terminal',
         'Crew command',
@@ -123,7 +123,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
       ...(stackHealthOn ? ['Stack Health'] : []),
       ...(launchOn ? ['Launch with Codemagic'] : []),
       'Cloud Connections',
-      'Pairing',
+      'Computer',
       'Settings',
     ].join(', ')}. A Sign in row shows when you are signed out.`,
     keywords: ['menu', 'sidebar', 'navigation', 'drawer', 'where is', 'find', 'rooms', 'hamburger'],
@@ -466,7 +466,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'cloud-connections',
     title: 'Cloud Connections',
     where: 'Menu, Cloud Connections',
-    text: `Add cloud models on your own API key: Claude (which also needs its Workspace id), OpenAI, Gemini, Kimi (Moonshot), and Perplexity. Each connected provider puts its models on your Bench. API keys stay on your device, and nothing spends without your approval. How:\n${guideStepsCompact('connect-cloud-key')}`,
+    text: `Add cloud models on your own API key: Claude (which also needs its Workspace id), OpenAI, Gemini, Kimi (Moonshot), Perplexity, Venice, and OpenRouter (one key for models from many providers; choose which of its models sit on your Bench). Each connected provider puts its models on your Bench. Your server is set up here too: a Linux server you rent docks like your computer. API keys stay on your device, and nothing spends without your approval. How:\n${guideStepsCompact('connect-cloud-key')}`,
     keywords: [
       'cloud',
       'api key',
@@ -486,12 +486,17 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
   },
   {
     id: 'pair-phone',
-    title: 'Connect your computer',
-    where: 'Phone: Menu, Pairing',
-    text: `Connects the phone to OpenShore on your computer so the computer does the heavy lifting, your battery lasts, and a long answer keeps going when you close the app. It runs over your own private Tailscale network (free for personal use), so nothing is opened to the internet. How:\n${guideStepsCompact('pair-computer')}`,
+    title: 'Dock to your computer or a server',
+    where: 'Phone: Menu, Computer',
+    text: `Docks the phone to OpenShore on your computer, or on a Linux server you rent, so that machine does the heavy lifting, your battery lasts, and a long answer keeps going when you close the app. It runs over your own private Tailscale network (free for personal use), so nothing is opened to the internet. A server is set up with one command, from Computer or Cloud Connections. How, for a computer:\n${guideStepsCompact('pair-computer')}`,
     keywords: [
       'pair',
       'pairing',
+      'dock',
+      'docking',
+      'server',
+      'vps',
+      'rent a server',
       'connect my computer',
       'connect computer',
       'tailscale',
@@ -505,8 +510,8 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
   },
   {
     id: 'pair-desktop',
-    title: 'Pairing, on the computer',
-    where: 'On your computer: Menu, Pairing',
+    title: 'Computer, on the desktop',
+    where: 'On your computer: Menu, Computer',
     text: 'Tap Turn on to open the phone connection over Tailscale; it shows a QR code and a one-time pairing code good for five minutes. Paired devices are listed and each can be revoked on its own.',
     keywords: ['turn on', 'show qr', 'pairing code', 'revoke', 'paired devices', 'desktop + phone'],
   },
@@ -827,7 +832,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     // 2026-09-30).
     text: `${
       gatesOn
-        ? "Chatting needs no account. Signing in is free, opens Projects and Cloud Connections, and carries a few settings to your other devices. The rest of OpenShore (the coding agent, Terminal, Repositories, Vault, Crew, and Pairing) is part of OpenShore Plus, which rides on your account; get it or restore it in Settings. Chats are not synced between devices; with Pairing, your phone reaches your computer's chats."
+        ? 'Chatting needs no account. Signing in is free, opens Projects and Cloud Connections, and carries a few settings to your other devices. The rest of OpenShore (the coding agent, Terminal, Repositories, Vault, Crew, and Computer) is part of OpenShore Plus, which rides on your account; get it or restore it in Settings. Chats are not synced between devices; docked to your computer, your phone reaches its chats.'
         : "Chatting needs no account. Signing in is free and opens building, Projects, Vault, Crew, and pairing, and carries a few settings to your other devices. Chats are not synced between devices; your phone reaches your computer's chats by pairing."
     }${teamsOn ? ' After creating one you choose personal or business; a business adds a company, admins, and a shared stack managed from Admin.' : ''}`,
     keywords: [

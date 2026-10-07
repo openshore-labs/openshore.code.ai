@@ -111,7 +111,7 @@ export const STEP_COPY: Record<SetupStepId, SetupStepCopy> = {
     title: 'Connect your computer',
     what: 'Pair this phone with OpenShore on your own computer, over your private Tailscale network.',
     why: 'Your computer runs bigger models and works on your code. It does the heavy lifting, so your battery lasts, and a long answer keeps going even when you close the app.',
-    how: 'Install Tailscale on both devices and sign in to the same account (free for personal use). On your computer, open OpenShore, then Pairing. The QR is there (if it says Off, tap Turn on). Tap Connect your computer here and scan it. I will bring you back here once you are connected.',
+    how: 'Install Tailscale on both devices and sign in to the same account (free for personal use). On your computer, open OpenShore, then Computer. The QR is there (if it says Off, tap Turn on). Tap Connect your computer here and scan it. I will bring you back here once you are connected.',
     action: 'Connect your computer',
     ask: 'Tell me more about connecting my computer.',
     done: 'Your computer is connected.',

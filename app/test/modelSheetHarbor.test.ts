@@ -11,9 +11,9 @@ import { describe, expect, it } from 'vitest';
 const sheet = readFileSync(join(process.cwd(), 'src', 'components/ModelSheet.tsx'), 'utf8');
 
 describe('Harbor in the model sheet', () => {
-  it('puts the phone model row first, above Connect your computer', () => {
+  it('puts the phone model row first, above Dock a computer or server', () => {
     const phoneRow = sheet.indexOf('isPhone() && (settings.harborReady');
-    const connect = sheet.indexOf('main="Connect your computer"');
+    const connect = sheet.indexOf('main="Dock a computer or server"');
     expect(phoneRow).toBeGreaterThan(-1);
     expect(phoneRow).toBeLessThan(connect);
   });

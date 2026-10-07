@@ -1,6 +1,9 @@
 # Proposal: every way to connect a model, made easy (2026-10-07)
 
-Status: PROPOSAL, founder go to build (2026-10-07). Founder brief: "the main
+Status: BUILT on `claude/connect-anywhere-proposal` (2026-10-07): parts A and B, with the founder's
+additions (the room is Computer, linking is docking, a server is set up in Cloud Connections
+too, nothing gated). Part C, the GPU server's spend line and Stop, and the reference VPS eval
+are not built. What was built and what is left: `os-code/PROGRESS.md`. Founder brief: "the main
 paths for use [are] cloud provider APIs, local models on your device, local
 models on your hub device that pairs via Tailscale, and VPS. I want to lower
 the barrier of entry and streamline all of those options." And on servers:
@@ -41,21 +44,21 @@ coding with Claude." Prompted by a friend who uses Venice.ai's API from VS Code.
 
 Brains (where the model thinks):
 
-| Brain | Examples | Colour | Who pays | State today |
-| --- | --- | --- | --- | --- |
-| Cloud API | Anthropic, OpenAI, Google, Moonshot, Perplexity; **add** Venice, OpenRouter | amber | per token, the person's key | Built (`app/src/lib/providers.ts`) |
-| This device | Harbor Lite on the phone, Ollama on the desktop | teal | nothing | Built |
-| Your computer | Ollama or a model server on the paired desktop, over Tailscale | teal | nothing | Built (BYOM over the tailnet, the hub) |
-| Your server | Ollama or vLLM on a rented box, over Tailscale | teal, with a spend line on a GPU server | the server's rent | **New** (part B) |
-| A subscription you have | Claude Code, Codex, through CLI Pairing | amber | the person's plan | Built as a v2 current (CLI Pairing) |
+| Brain                   | Examples                                                                    | Colour                                  | Who pays                    | State today                            |
+| ----------------------- | --------------------------------------------------------------------------- | --------------------------------------- | --------------------------- | -------------------------------------- |
+| Cloud API               | Anthropic, OpenAI, Google, Moonshot, Perplexity; **add** Venice, OpenRouter | amber                                   | per token, the person's key | Built (`app/src/lib/providers.ts`)     |
+| This device             | Harbor Lite on the phone, Ollama on the desktop                             | teal                                    | nothing                     | Built                                  |
+| Your computer           | Ollama or a model server on the paired desktop, over Tailscale              | teal                                    | nothing                     | Built (BYOM over the tailnet, the hub) |
+| Your server             | Ollama or vLLM on a rented box, over Tailscale                              | teal, with a spend line on a GPU server | the server's rent           | **New** (part B)                       |
+| A subscription you have | Claude Code, Codex, through CLI Pairing                                     | amber                                   | the person's plan           | Built as a v2 current (CLI Pairing)    |
 
 Hands (where the work happens):
 
-| Place | What runs there | State today |
-| --- | --- | --- |
-| This device | chats; on the desktop the whole engine | Built |
+| Place         | What runs there                                                        | State today           |
+| ------------- | ---------------------------------------------------------------------- | --------------------- |
+| This device   | chats; on the desktop the whole engine                                 | Built                 |
 | Your computer | engine, Terminal, Crew, Vault, coding sessions, reached from the phone | Built (pairing, Plus) |
-| Your server | the same, on a box that stays up | **New** (part B) |
+| Your server   | the same, on a box that stays up                                       | **New** (part B)      |
 
 Any brain can drive any hands the rules allow: a phone can code on a server
 with Claude, or chat with a 70B on a GPU server while its files stay on the
@@ -127,15 +130,15 @@ Tier and gate: free, like every connected model (chatting needs no account).
 
 ### What already works
 
-| Piece | Where | On a headless Linux box |
-| --- | --- | --- |
-| Headless daemon | `os-code/src/commands/serve.ts`, `osc serve --bind tailscale` | Works. Port 4816, tailnet plus loopback. |
-| No public bind | `os-code/src/core/security/daemonAuth.ts:148-159` | Enforced, no override. Keep it. |
-| Crew scheduler | `os-code/src/routines/scheduler.ts`, started by `startDaemon` | Runs with no desktop app. One clock per machine. |
-| Per-device credentials | `os-code/src/core/security/credentials.ts` | Hashed, mode 600, 180 days, revocable. |
-| Desktop to another computer | `RemoteHubPanel`, `app/src/screens/PairScreen.tsx:399-475` | Works with an address and an `osc token mint` key. |
-| Locality | `os-code/src/harness/locality.ts` | A 100.x tailnet address reads local. |
-| Vault over the daemon | `app/src/lib/gitos/hub.ts` | Works against any daemon. |
+| Piece                       | Where                                                         | On a headless Linux box                            |
+| --------------------------- | ------------------------------------------------------------- | -------------------------------------------------- |
+| Headless daemon             | `os-code/src/commands/serve.ts`, `osc serve --bind tailscale` | Works. Port 4816, tailnet plus loopback.           |
+| No public bind              | `os-code/src/core/security/daemonAuth.ts:148-159`             | Enforced, no override. Keep it.                    |
+| Crew scheduler              | `os-code/src/routines/scheduler.ts`, started by `startDaemon` | Runs with no desktop app. One clock per machine.   |
+| Per-device credentials      | `os-code/src/core/security/credentials.ts`                    | Hashed, mode 600, 180 days, revocable.             |
+| Desktop to another computer | `RemoteHubPanel`, `app/src/screens/PairScreen.tsx:399-475`    | Works with an address and an `osc token mint` key. |
+| Locality                    | `os-code/src/harness/locality.ts`                             | A 100.x tailnet address reads local.               |
+| Vault over the daemon       | `app/src/lib/gitos/hub.ts`                                    | Works against any daemon.                          |
 
 ### What is missing
 
@@ -163,7 +166,7 @@ phone needs no SSH.
 **2. One install command**, shown in the app with a copy button:
 
 ```sh
-curl -fsSL https://github.com/openshore-labs/openshore.code.ai/releases/latest/download/install-server.sh | sh
+curl -fsSL https://github.com/openshore-labs/openshore-releases/releases/latest/download/install-server.sh | sh
 ```
 
 - Downloads one Linux server asset (x64, arm64) from the GitHub Release with

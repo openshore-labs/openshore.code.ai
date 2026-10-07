@@ -73,7 +73,7 @@ export function ProfileSheet() {
             {PAY_GATES_ENABLED && !unlocked ? (
               <SettingsRow
                 label="Get OpenShore Plus"
-                sub="Opens Terminal, Repositories, Vault, Crew and Pairing."
+                sub="Opens Terminal, Repositories, Vault, Crew and Computer."
                 onClick={() => {
                   hide();
                   openPaywall('plus');

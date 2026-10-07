@@ -139,7 +139,7 @@ describe('RemoteDriver reconnect (G5, B4)', () => {
     expect(events.some((e) => e.type === 'status' && /not be lost/.test(e.message))).toBe(false);
   });
 
-  it('stops retrying on a 401 and tells the user to re-pair (TS-P2-1)', async () => {
+  it('stops retrying on a 401 and tells the user to dock again (TS-P2-1)', async () => {
     vi.useFakeTimers();
     let calls = 0;
     globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
@@ -158,7 +158,7 @@ describe('RemoteDriver reconnect (G5, B4)', () => {
     driver.dispose();
 
     expect(calls).toBe(1); // no retry loop on a fatal answer
-    expect(messages.some((m) => /pair again/i.test(m))).toBe(true);
+    expect(messages.some((m) => /dock again/i.test(m))).toBe(true);
   });
 
   it('ends the run when the session is gone, so the thread is not stuck busy (APP-4)', async () => {

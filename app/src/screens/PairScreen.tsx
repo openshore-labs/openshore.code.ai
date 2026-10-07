@@ -1,20 +1,21 @@
-// Pairing (named by CX, 2026-10-01; once "Desktop + phone"). On the desktop:
-// phone access on or off, and a QR that is a link the iPhone Camera opens. On
-// the phone: scan it (the hero path), or type it in, and the phone trades the
-// one-time code for its own credential. The daemon owns the run, so a dropped
-// connection reattaches with nothing lost. docs/pairing-review.md.
-// Part of Plus (lib/payGate.ts): the pairing code, Scan, and Connect open the
-// paywall while it is shut; Revoke, Forget, and Turn off never do.
+// Computer (founder, 2026-10-07; once Pairing, named by CX 2026-10-01, and
+// before that "Desktop + phone"). Docking is the word for linking a device to
+// a machine that does the work. On the desktop: phone access on or off, a QR
+// that is a link the iPhone Camera opens, and docking this computer to a
+// server. On the phone: every way in (lib/docking.ts), with the computer at
+// home and a server you rent docked right here, by a scan or a typed code the
+// phone trades for its own credential. The daemon owns the run, so a dropped
+// connection reattaches with nothing lost. Free (lib/payGate.ts, 2026-10-07).
+// docs/pairing-review.md, docs/connect-anywhere-proposal.md.
 import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { hubList, useApp, type HubRole } from '../state/store.js';
 import { bridge, type DaemonInfo } from '../lib/electronBridge.js';
 import { isDesktop } from '../lib/platform.js';
-import { PAIRING_REJECTED, daemonHealth, redeemPairClaim } from '../drivers/remoteDriver.js';
+import { PAIRING_REJECTED, daemonHealth } from '../drivers/remoteDriver.js';
 import { BackBar } from '../components/BackBar.js';
-import { QrScanner } from '../components/QrScanner.js';
 import { Switch } from '../components/Switch.js';
-import { pairingLink, parsePairingQr } from '../lib/qrDecode.js';
+import { pairingLink } from '../lib/qrDecode.js';
 import { ROOM_LABELS } from '../lib/navRooms.js';
 import { hapticApproval } from '../lib/haptics.js';
 import { Icon } from '../components/Icon.js';
@@ -22,7 +23,11 @@ import { Sheet } from '../components/Sheet.js';
 import { SheetHead } from '../components/SheetHead.js';
 import { ReplaceSharedKey } from '../components/ReplaceSharedKey.js';
 import { hubStatusLine, onLinux } from '../lib/hubStatus.js';
-import { PlusNote } from '../components/PlusNote.js';
+import { DockForm, hostOf } from '../components/DockForm.js';
+import { ServerSetup } from '../components/ServerSetup.js';
+import { DOCK_PATHS, dockedNoun, unreachableLine, type DockPath } from '../lib/docking.js';
+
+export { phoneDeviceName } from '../components/DockForm.js';
 
 // Clean glyphs for the Tailscale download rows, drawn in the tile's ink on a
 // solid accent tile (iOS-app-icon feel). One per platform.
@@ -101,9 +106,6 @@ export function PairScreen() {
 
 function DesktopPair() {
   const { showToast } = useApp();
-  // The pairing code is the paid moment on this side: it shows only while
-  // Plus is open. Revoking a phone stays free.
-  const pairOpen = useApp((s) => s.personalDoor('pairing') === 'open');
   const [info, setInfo] = useState<DaemonInfo | undefined>();
   const [qr, setQr] = useState<string | undefined>();
   const [showToken, setShowToken] = useState(false);
@@ -169,15 +171,15 @@ function DesktopPair() {
     <div className="screen">
       <BackBar title={ROOM_LABELS.pair} />
       <div className="screen-inner">
-        <h1>Put this on your phone</h1>
+        <h1>Dock your phone</h1>
         <p className="lead">
-          Your phone reaches your computer over Tailscale, a free app that privately links your own
+          Your phone docks to this computer over Tailscale, a free app that privately links your own
           devices. Work stays on your computer, so losing signal loses nothing.
         </p>
 
         {justPaired ? (
           <p className="pair-done" role="status">
-            <span className="pill ok pill-pop">{justPaired} paired</span> It can reach this computer
+            <span className="pill ok pill-pop">{justPaired} docked</span> It can reach this computer
             now.
           </p>
         ) : null}
@@ -244,12 +246,7 @@ function DesktopPair() {
           ) : null}
         </div>
 
-        <PlusNote
-          feature="pairing"
-          line="Reaching this computer from your phone is part of OpenShore Plus. Chat on each device, with its own models or your keys, stays free."
-        />
-
-        {pairOpen && info?.running && qr ? (
+        {info?.running && qr ? (
           qrFolded ? (
             <button
               type="button"
@@ -260,7 +257,7 @@ function DesktopPair() {
                 setJustPaired(undefined);
               }}
             >
-              Pair another phone
+              Dock another phone
             </button>
           ) : (
             <div className="card" style={{ textAlign: 'center' }}>
@@ -268,7 +265,7 @@ function DesktopPair() {
               <div className="sub" style={{ marginBottom: 12 }}>
                 {SCAN_HOW}
               </div>
-              <img src={qr} alt="Pairing QR code" className="pair-qr-img" />
+              <img src={qr} alt="Docking QR code" className="pair-qr-img" />
               <div className="sub" style={{ marginTop: 12, wordBreak: 'break-all' }}>
                 Address: http://{info.host}:{info.port}
               </div>
@@ -277,7 +274,7 @@ function DesktopPair() {
                 onClick={() => setShowToken((s) => !s)}
                 style={{ marginTop: 6 }}
               >
-                {showToken ? `Pairing code: ${info.claim}` : 'Show the pairing code'}
+                {showToken ? `Code: ${info.claim}` : 'Show the code'}
               </button>
               {showToken ? (
                 <div className="sub" style={{ marginTop: 6 }}>
@@ -291,9 +288,9 @@ function DesktopPair() {
 
         {info?.devices && info.devices.length > 0 ? (
           <div className="card">
-            <h3>Paired devices</h3>
+            <h3>Docked devices</h3>
             <div className="sub" style={{ marginBottom: 12 }}>
-              Each paired phone gets its own credential. Lost a phone? Revoke just that one. The
+              Each docked phone gets its own credential. Lost a phone? Revoke just that one. The
               rest stay connected.
             </div>
             {info.devices.map((d) => (
@@ -301,7 +298,7 @@ function DesktopPair() {
                 <div className="grow">
                   <div>{d.label}</div>
                   <div className="sub">
-                    Paired {pairedWhen(d.createdAt)}
+                    Docked {pairedWhen(d.createdAt)}
                     {d.expiresAt ? ` · expires ${new Date(d.expiresAt).toLocaleDateString()}` : ''}
                   </div>
                 </div>
@@ -366,6 +363,13 @@ function DesktopPair() {
               <ReplaceSharedKey rotate={() => bridge()!.rotateSharedToken!()} onToast={showToast} />
             ) : null}
             <RemoteHubPanel />
+            <h2 style={{ marginTop: 24 }}>Dock this computer to a server</h2>
+            <p className="hint">
+              A server you rent keeps working while this computer sleeps. Once docked, this computer
+              runs its sessions there.
+            </p>
+            <ServerSetup />
+            <DockForm expect="server" />
           </>
         ) : null}
       </div>
@@ -379,7 +383,7 @@ export const LAUNCH_AT_LOGIN_LABEL = 'Open OpenShore when this computer starts';
 
 /** How to scan, on the desktop's QR card. */
 export const SCAN_HOW =
-  'On your iPhone, point the Camera at this code, or open OpenShore, then Menu, Pairing, Scan.';
+  'On your iPhone, point the Camera at this code, or open OpenShore, then Menu, Computer, Scan.';
 
 /** When a device paired, to the minute, so two phones are told apart. */
 function pairedWhen(iso: string): string {
@@ -401,7 +405,7 @@ function thisDesktopOs(): 'macOS' | 'Windows' | 'Linux' | undefined {
 // the phone does, instead of on this machine. Off by default, so a desktop stays
 // its own engine unless you say otherwise.
 function RemoteHubPanel() {
-  const { settings, saveHub, setPreferRemoteHub, showToast, requirePersonal } = useApp();
+  const { settings, saveHub, setPreferRemoteHub, showToast } = useApp();
   const [address, setAddress] = useState(settings.daemon?.baseUrl ?? '');
   const [token, setToken] = useState(settings.daemon?.token ?? '');
   const [testing, setTesting] = useState(false);
@@ -414,8 +418,6 @@ function RemoteHubPanel() {
       setState("Enter the other computer's address and its access key.");
       return;
     }
-    // Connecting to another computer is Pairing's paid moment too.
-    if (!requirePersonal('pairing')) return;
     setTesting(true);
     const health = await daemonHealth({ baseUrl, token: token.trim() });
     setTesting(false);
@@ -493,274 +495,90 @@ function RemoteHubPanel() {
   );
 }
 
-/** What this device calls itself on the computer's Paired devices list. */
-export function phoneDeviceName(): string {
-  if (isDesktop()) return 'a computer';
-  if (typeof navigator === 'undefined') return 'iPhone';
-  // An iPad on iPadOS 13 or later reports itself as a Mac with touch.
-  const ua = navigator.userAgent;
-  const iPad = /iPad/.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints ?? 0) > 1);
-  return iPad ? 'iPad' : 'iPhone';
-}
-
-/** A short pause before the one retry of a health check that followed a
- *  good pairing (a first Tailscale link through a relay can be slow). */
-const HEALTH_RETRY_MS = 2000;
-
 function PhonePair() {
-  const { settings, saveHub, removeHub, showToast, startGuideChat, setView, requirePersonal } =
-    useApp();
-  const pairOffer = useApp((s) => s.pairOffer);
-  const clearPairOffer = useApp((s) => s.clearPairOffer);
-  const [address, setAddress] = useState('');
-  const [code, setCode] = useState('');
-  const [testing, setTesting] = useState(false);
-  const [state, setState] = useState<string | undefined>();
-  const [scanning, setScanning] = useState(false);
-  const [typing, setTyping] = useState(false);
-  // The connected moment itself, separate from `state`'s text: a settled pill
-  // pop, not another line of hint copy. Cleared the instant the fields change
-  // again, so it never lingers as a stale claim of success once someone is
-  // clearly pairing a different desktop.
-  const [connected, setConnected] = useState(false);
+  const { settings, removeHub, showToast, startGuideChat, setView } = useApp();
   const paired = settings.daemon;
-
-  const tryPasteJson = (text: string) => {
-    const pair = parsePairingQr(text);
-    if (!pair) return false;
-    setAddress(pair.address);
-    setCode(pair.claim);
-    return true;
-  };
-
-  // Connect with the fields as they stand, or with values handed in directly
-  // (a fresh QR scan, before React has re-rendered the inputs). The code is a
-  // one-time pairing claim: we trade it for this device's own credential and
-  // save it at once (a spent claim is never thrown away), then check it.
-  const connect = async (override?: { address: string; claim: string }) => {
-    const rawAddress = override?.address ?? address;
-    const rawClaim = override?.claim ?? code;
-    const baseUrl = rawAddress.trim().replace(/\/$/, '');
-    if (!/^https?:\/\//.test(baseUrl) || !rawClaim.trim()) {
-      setState("Enter the address and the pairing code shown on your computer's Pairing screen.");
-      return;
-    }
-    // The paid moment, before the one-time code is spent: a claim traded and
-    // then refused would leave a device on the computer this phone never saved.
-    if (!requirePersonal('pairing')) return;
-    setTesting(true);
-    setConnected(false);
-    setState(undefined);
-    const claimed = await redeemPairClaim(baseUrl, rawClaim.trim(), phoneDeviceName(), {
-      onPending: (pairCode) =>
-        setState(
-          pairCode
-            ? `On your computer, allow this device. It shows the code ${pairCode}.`
-            : 'On your computer, allow this device.',
-        ),
-    });
-    if (!claimed.ok) {
-      setTesting(false);
-      setState(claimed.detail);
-      return;
-    }
-    const token = claimed.token;
-    // Saved before any check (pairing review, CX 2026-10-01): the claim is
-    // spent and the computer holds this phone's credential now, so a slow
-    // first check must not throw the token away and leave a row on the
-    // computer nothing uses.
-    await saveHub({ baseUrl, token }, { role: claimed.role });
-    let health = await daemonHealth({ baseUrl, token });
-    if (!health.ok && health.detail !== PAIRING_REJECTED) {
-      await new Promise((r) => setTimeout(r, HEALTH_RETRY_MS));
-      health = await daemonHealth({ baseUrl, token });
-    }
-    setTesting(false);
-    if (health.ok) {
-      setState(undefined);
-      setConnected(true);
-      setTyping(false);
-      hapticApproval();
-      showToast('Connected. Your computer is in the model menu, and its terminal is one tap away.');
-    } else {
-      setState(
-        health.detail === PAIRING_REJECTED
-          ? health.detail
-          : 'Paired. Your computer did not answer the first check, so it may still be waking up. It connects on its own once it answers.',
-      );
-    }
-  };
-
-  // A scanned QR fills both fields and connects in one motion. A QR that is
-  // not a pairing code keeps the camera open and says so in the sheet.
-  const onScanned = (text: string): boolean => {
-    const pair = parsePairingQr(text);
-    if (!pair) return false;
-    setConnected(false);
-    setAddress(pair.address);
-    setCode(pair.claim);
-    void connect(pair);
-    return true;
-  };
-
-  // Any further edit to either field walks away from the settled "Connected"
-  // pill: it answered for the pairing that was on screen a moment ago, not
-  // whatever gets typed next.
-  const editAddress = (value: string) => {
-    setConnected(false);
-    if (!tryPasteJson(value)) setAddress(value);
-  };
-  const editCode = (value: string) => {
-    setConnected(false);
-    if (!tryPasteJson(value)) setCode(value);
-  };
+  // Which way in the person is looking at. A phone already docked to a server
+  // opens on the server path, everyone else on the computer at home.
+  const [path, setPath] = useState<'computer' | 'server'>(
+    paired?.kind === 'server' ? 'server' : 'computer',
+  );
 
   return (
     <div className="screen">
       <BackBar title={ROOM_LABELS.pair} />
       <div className="screen-inner">
-        <h1>Connect your computer</h1>
+        <h1>Dock to a computer</h1>
         <p className="lead">
-          One time, two minutes. Then your own model runs on your computer and you reach it from
-          here, over your private network. Your computer does the work, so a long task keeps going
-          even when you close the app.
+          Docking links this phone to a machine that does the work: your computer at home, or a
+          server you rent. It runs over your own private network, so a long task keeps going even
+          when you close the app.
         </p>
 
         {paired ? <ConnectedCard onTerminal={() => setView('terminalroom')} /> : null}
 
-        {!paired ? (
-          <button
-            className="btn ghost press-fb"
-            style={{ width: '100%', marginBottom: 12 }}
-            onClick={() => void startGuideChat('pair-computer')}
-          >
-            Walk me through it
-          </button>
-        ) : null}
-
-        <PlusNote
-          feature="pairing"
-          line="Reaching your computer from this phone is part of OpenShore Plus: chats with its models, coding, and its shell. Chat on this phone stays free."
+        <DockPaths
+          active={path}
+          onPick={(id) => {
+            if (id === 'computer' || id === 'server') setPath(id);
+            else setView(id === 'cloud' ? 'connections' : 'stack');
+          }}
         />
 
-        {!paired ? (
-          <div className="card">
-            <h3>Before you scan</h3>
-            <div className="sub">
-              1. Install Tailscale on both devices and sign in to the same account.
-              <br />
-              2. On your computer, open OpenShore, then Pairing. The QR is there (if it says Off,
-              tap Turn on).
-            </div>
-            <div className="sub" style={{ marginTop: 12 }}>
-              Get Tailscale (free for personal use):{' '}
+        {path === 'computer' ? (
+          <>
+            {!paired ? (
               <button
-                className="linklike press-fb"
-                onClick={() => void startGuideChat('install-tailscale')}
+                className="btn ghost press-fb"
+                style={{ width: '100%', marginBottom: 12 }}
+                onClick={() => void startGuideChat('pair-computer')}
               >
-                walk me through Tailscale
+                Walk me through it
               </button>
-            </div>
-            <div className="dl-list">
-              {TAILSCALE_LINKS.map((l) => (
-                <a
-                  key={l.label}
-                  className="dl-item"
-                  href={l.href}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                >
-                  <span className="dl-tile">{GLYPHS[l.glyph]}</span>
-                  <span className="dl-name">{l.label}</span>
-                  <span className="dl-get">GET</span>
-                </a>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        <div className="card">
-          <button
-            className="btn primary press-fb"
-            style={{ width: '100%' }}
-            disabled={testing}
-            aria-busy={testing}
-            onClick={() => {
-              // The paywall before the camera, never after a scan.
-              if (requirePersonal('pairing')) setScanning(true);
-            }}
-          >
-            {testing
-              ? 'Connecting to your computer...'
-              : paired
-                ? 'Scan to pair another computer'
-                : 'Scan the QR on your computer'}
-          </button>
-          <QrScanner open={scanning} onDecode={onScanned} onClose={() => setScanning(false)} />
-          {connected ? (
-            <div className="pair-next">
-              <p className="hint" style={{ margin: 0 }}>
-                <span className="pill ok pill-pop">Paired</span> Pick your computer in the model
-                menu to chat or code, or go straight to its shell.
-              </p>
-              <button
-                className="btn press-fb"
-                style={{ width: '100%', marginTop: 10 }}
-                onClick={() => setView('terminalroom')}
-              >
-                Open a terminal on your computer
-              </button>
-            </div>
-          ) : state ? (
-            <p className="hint" role="status" style={{ marginTop: 10 }}>
-              {state}
-            </p>
-          ) : null}
-
-          <button
-            type="button"
-            className="linklike press-fb"
-            style={{ marginTop: 12 }}
-            aria-expanded={typing}
-            onClick={() => setTyping((t) => !t)}
-          >
-            {typing ? 'Hide the typed entry' : "Can't scan? Type it in"}
-          </button>
-          {typing ? (
-            <div style={{ marginTop: 12 }}>
-              <div className="field">
-                <label htmlFor="pair-phone-address">Address</label>
-                <input
-                  id="pair-phone-address"
-                  placeholder="Shown under the QR on your computer"
-                  value={address}
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  onChange={(e) => editAddress(e.target.value)}
-                />
+            ) : null}
+            {!paired ? (
+              <div className="card">
+                <h3>Before you scan</h3>
+                <div className="sub">
+                  1. Install Tailscale on both devices and sign in to the same account.
+                  <br />
+                  2. On your computer, open OpenShore, then Computer. The QR is there (if it says
+                  Off, tap Turn on).
+                </div>
+                <div className="sub" style={{ marginTop: 12 }}>
+                  Get Tailscale (free for personal use):{' '}
+                  <button
+                    className="linklike press-fb"
+                    onClick={() => void startGuideChat('install-tailscale')}
+                  >
+                    walk me through Tailscale
+                  </button>
+                </div>
+                <div className="dl-list">
+                  {TAILSCALE_LINKS.map((l) => (
+                    <a
+                      key={l.label}
+                      className="dl-item"
+                      href={l.href}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                    >
+                      <span className="dl-tile">{GLYPHS[l.glyph]}</span>
+                      <span className="dl-name">{l.label}</span>
+                      <span className="dl-get">GET</span>
+                    </a>
+                  ))}
+                </div>
               </div>
-              <div className="field">
-                <label htmlFor="pair-phone-code">Pairing code</label>
-                <input
-                  id="pair-phone-code"
-                  placeholder="Tap Show the pairing code on your computer"
-                  value={code}
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  onChange={(e) => editCode(e.target.value)}
-                />
-              </div>
-              <button
-                className="btn primary press-fb"
-                style={{ width: '100%' }}
-                disabled={testing}
-                onClick={() => void connect()}
-              >
-                {testing ? 'Connecting to your computer...' : 'Connect'}
-              </button>
-            </div>
-          ) : null}
-        </div>
+            ) : null}
+            <DockForm expect="desktop" offers />
+          </>
+        ) : (
+          <>
+            <ServerSetup />
+            <DockForm expect="server" offers />
+          </>
+        )}
 
         <HubList />
 
@@ -770,56 +588,53 @@ function PhonePair() {
             style={{ width: '100%' }}
             onClick={async () => {
               await removeHub(paired.baseUrl);
-              setState(undefined);
-              setConnected(false);
-              showToast('Computer forgotten on this phone. It no longer lists this phone either.');
+              showToast(
+                `${dockedNoun(paired)} forgotten on this phone. It no longer lists this phone either.`,
+              );
             }}
           >
-            Forget this computer
+            {paired.kind === 'server' ? 'Forget this server' : 'Forget this computer'}
           </button>
         ) : null}
-
-        {/* A pairing link opened from outside (the iPhone Camera read the
-            computer's QR): ask first, never pair on a link alone. */}
-        <Sheet open={Boolean(pairOffer)} onClose={clearPairOffer} variant="confirm">
-          <h3>Pair with this computer?</h3>
-          <p>{pairOffer ? hostOf(pairOffer.address) : ''}</p>
-          <div className="confirm-row">
-            <button type="button" className="btn ghost press-fb" onClick={clearPairOffer}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="btn primary press-fb"
-              onClick={() => {
-                const offer = pairOffer;
-                clearPairOffer();
-                if (!offer) return;
-                setAddress(offer.address);
-                setCode(offer.claim);
-                void connect(offer);
-              }}
-            >
-              Pair
-            </button>
-          </div>
-        </Sheet>
       </div>
     </div>
   );
 }
 
-/** The host of a computer's address, for a name a person can read. */
-function hostOf(baseUrl: string): string {
-  try {
-    return new URL(baseUrl).hostname;
-  } catch {
-    return baseUrl;
-  }
+/** Every way to give OpenShore a brain, in one list (lib/docking.ts). The two
+ *  docking paths open here; a cloud key and a model on this device go to the
+ *  rooms that hold them. */
+function DockPaths({
+  active,
+  onPick,
+}: {
+  active: 'computer' | 'server';
+  onPick: (id: DockPath) => void;
+}) {
+  return (
+    <div className="dock-paths" role="list">
+      {DOCK_PATHS.map((p) => {
+        const here = p.id === active;
+        return (
+          <button
+            key={p.id}
+            type="button"
+            role="listitem"
+            className={`dock-path press-fb${here ? ' dock-path-active' : ''}`}
+            aria-current={here ? 'true' : undefined}
+            onClick={() => onPick(p.id)}
+          >
+            <span className="dock-path-title">{p.title}</span>
+            <span className="sub">{p.detail}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
-/** The paired computer, live (CX 2026-10-01): who it is and whether it
- *  answers right now, so the screen after pairing never looks like the
+/** The docked machine, live (CX 2026-10-01): who it is and whether it
+ *  answers right now, so the screen after docking never looks like the
  *  screen before it. */
 function ConnectedCard({ onTerminal }: { onTerminal: () => void }) {
   const daemon = useApp((s) => s.settings.daemon);
@@ -841,17 +656,20 @@ function ConnectedCard({ onTerminal }: { onTerminal: () => void }) {
   }, [daemon]);
   if (!daemon) return null;
   const name = daemon.name?.trim() || hostOf(daemon.baseUrl);
+  const server = daemon.kind === 'server';
   return (
     <div className="card">
       <div className="card-row" style={{ alignItems: 'center' }}>
         <div className="grow">
-          <h3 style={{ margin: 0 }}>Connected to {name}</h3>
+          <h3 style={{ margin: 0 }}>Docked to {name}</h3>
           <div className="sub">
             {reach === 'refused'
               ? PAIRING_REJECTED
               : reach === 'no'
-                ? 'Not reachable right now. Check that it is awake with OpenShore open.'
-                : 'Your computer runs the work; this phone reaches it.'}
+                ? unreachableLine(daemon)
+                : server
+                  ? 'Your server runs the work; this phone reaches it.'
+                  : 'Your computer runs the work; this phone reaches it.'}
           </div>
         </div>
         <span className={`pill ${reach === 'yes' ? 'ok' : 'muted'}`}>
@@ -860,7 +678,7 @@ function ConnectedCard({ onTerminal }: { onTerminal: () => void }) {
             : reach === 'checking'
               ? 'Checking'
               : reach === 'refused'
-                ? 'Pair again'
+                ? 'Dock again'
                 : 'Not reachable'}
         </span>
       </div>
@@ -870,7 +688,7 @@ function ConnectedCard({ onTerminal }: { onTerminal: () => void }) {
           style={{ width: '100%', marginTop: 12 }}
           onClick={onTerminal}
         >
-          Open a terminal on your computer
+          {server ? 'Open a terminal on your server' : 'Open a terminal on your computer'}
         </button>
       ) : null}
     </div>

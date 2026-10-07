@@ -28,7 +28,7 @@ export function QrScanner({
     <Sheet open={open} onClose={onClose}>
       <SheetTitle>Scan the QR on your computer</SheetTitle>
       <p className="sheet-sub">
-        Point the camera at the QR on your computer's Pairing screen. It connects by itself.
+        Point the camera at the QR on your computer's Computer screen. It connects by itself.
       </p>
       <Camera onDecode={onDecode} onClose={onClose} />
       <div className="sheet-actions">
@@ -42,7 +42,7 @@ export function QrScanner({
 
 /** Said in the sheet when the camera sees a QR that is not a pairing code. */
 export const FOREIGN_QR =
-  "That QR is not an OpenShore pairing code. Point the camera at the one on your computer's Pairing screen.";
+  "That QR is not an OpenShore pairing code. Point the camera at the one on your computer's Computer screen.";
 /** Said when the camera cannot be opened. */
 export const CAMERA_BLOCKED =
   'Could not open the camera. Allow camera access for OpenShore in iPhone Settings, or type the address and pairing code from your computer.';

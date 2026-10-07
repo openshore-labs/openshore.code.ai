@@ -203,7 +203,9 @@ describe('the paid gate, on', () => {
 
   // This build is not a desktop (the platform mock), so a chat with the
   // computer's models reaches it over the network: Desktop + phone.
-  it("holds a phone's chat with its computer at the paid door, and the rest of chat stays free", async () => {
+  // Docking is free since 2026-10-07, so a phone's chat with its computer
+  // meets no door at all.
+  it("lets a phone's chat with its computer through, free", async () => {
     const at = '2026-09-30T10:00:00.000Z';
     useApp.setState({
       conversations: {
@@ -223,12 +225,10 @@ describe('the paid gate, on', () => {
     });
     useApp.getState().openConversation('dc1');
     await new Promise((r) => setTimeout(r, 0));
-    expect(useApp.getState().paywall).toBe('pairing');
-    expect(useApp.getState().conversations.dc1?.pendingFirstMessage).toBe('hi');
-    expect(useApp.getState().conversations.dc1?.pendingFirstError).toBeUndefined();
+    expect(useApp.getState().paywall).toBeUndefined();
   });
 
-  it('asks a signed-out phone to sign in before the paywall', async () => {
+  it('asks a signed-out phone for neither a sign-in nor the paywall to chat with its computer', async () => {
     const at = '2026-09-30T10:00:00.000Z';
     useApp.setState({
       authSession: undefined,
@@ -249,40 +249,40 @@ describe('the paid gate, on', () => {
     });
     useApp.getState().openConversation('dc1');
     await new Promise((r) => setTimeout(r, 0));
-    expect(useApp.getState().accountGate).toBe('pairing');
+    expect(useApp.getState().accountGate).toBeUndefined();
     expect(useApp.getState().paywall).toBeUndefined();
   });
 
-  it("opens the paywall at a screen's pairing moment, and lets it through with Plus", () => {
-    expect(useApp.getState().requirePersonal('pairing')).toBe(false);
-    expect(useApp.getState().paywall).toBe('pairing');
+  it("opens the paywall at a screen's paid moment, and lets it through with Plus", () => {
+    expect(useApp.getState().requirePersonal('crew')).toBe(false);
+    expect(useApp.getState().paywall).toBe('crew');
     useApp.setState({ paywall: undefined, authSession: undefined });
-    expect(useApp.getState().requirePersonal('pairing')).toBe(false);
-    expect(useApp.getState().accountGate).toBe('pairing');
+    expect(useApp.getState().requirePersonal('crew')).toBe(false);
+    expect(useApp.getState().accountGate).toBe('crew');
     useApp.setState({
       accountGate: undefined,
       authSession: session(),
       userEntitlement: { tierId: 'personal', status: 'active' },
     });
-    expect(useApp.getState().requirePersonal('pairing')).toBe(true);
+    expect(useApp.getState().requirePersonal('crew')).toBe(true);
     expect(useApp.getState().paywall).toBeUndefined();
-    // A free feature never meets the paywall.
+    // A free feature never meets the paywall, docking included (2026-10-07).
     useApp.setState({ userEntitlement: undefined });
     expect(useApp.getState().requirePersonal('projects')).toBe(true);
+    expect(useApp.getState().requirePersonal('pairing')).toBe(true);
+    expect(useApp.getState().paywall).toBeUndefined();
   });
 
   // The founder's widening (2026-09-30): every room but the free five.
   it('opens the paywall for a Plus room, and walks into a free one', () => {
-    for (const room of ['vault', 'terminalroom', 'repos', 'crew', 'pair'] as const) {
+    for (const room of ['vault', 'terminalroom', 'repos', 'crew'] as const) {
       useApp.setState({ paywall: undefined, view: 'chat' });
       useApp.getState().setView(room, { root: true });
       expect(useApp.getState().view, room).toBe('chat');
-      expect(useApp.getState().paywall, room).toBe(
-        room === 'crew' ? 'crew' : room === 'pair' ? 'pairing' : 'plus',
-      );
+      expect(useApp.getState().paywall, room).toBe(room === 'crew' ? 'crew' : 'plus');
     }
     useApp.setState({ paywall: undefined });
-    for (const room of ['chats', 'projects', 'stack', 'connections', 'settings'] as const) {
+    for (const room of ['chats', 'projects', 'stack', 'connections', 'pair', 'settings'] as const) {
       useApp.getState().setView(room, { root: true });
       expect(useApp.getState().view, room).toBe(room);
       expect(useApp.getState().paywall, room).toBeUndefined();

@@ -199,8 +199,8 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'cloud-models',
     recipient: 'Your cloud providers',
-    what: 'Your chat, to Anthropic, OpenAI, Google, Moonshot, or Perplexity, on your own key. The amber pill marks every turn that goes.',
-    when: 'Only when you pick a cloud model, and only that turn.',
+    what: "Your chat, to Anthropic, OpenAI, Google, Moonshot, Perplexity, Venice, or OpenRouter (which forwards it to the model's own provider), on your own key. For Venice and OpenRouter, also a request for the list of models they offer. The amber pill marks every turn that goes.",
+    when: 'Only when you pick a cloud model, and only that turn; the model list only when you connect Venice or OpenRouter or choose its models.',
     start: 'off',
     hosts: [
       'api.anthropic.com',
@@ -208,6 +208,8 @@ export const EGRESS: EgressEntry[] = [
       'generativelanguage.googleapis.com',
       'api.moonshot.ai',
       'api.perplexity.ai',
+      'api.venice.ai',
+      'openrouter.ai',
     ],
   },
   {
@@ -296,6 +298,7 @@ export const LINK_ONLY_HOSTS: Record<string, string> = {
   'console.anthropic.com': 'where to get a key',
   'aistudio.google.com': 'where to get a key',
   'platform.kimi.ai': 'where to get a key',
+  'venice.ai': 'where to get a key',
   'id.atlassian.com': 'where to make a Bitbucket app password',
   'hermes-agent.nousresearch.com': 'documentation link',
   'www.perplexity.ai': 'link',

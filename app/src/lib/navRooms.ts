@@ -54,7 +54,7 @@ export const ROOM_LABELS: Record<NavRoom, string> = {
   stackhealth: SHIPS_STACKHEALTH ? 'Stack Health' : '',
   launch: SHIPS_LAUNCH ? 'Launch with Codemagic' : '',
   connections: 'Cloud Connections',
-  pair: 'Pairing',
+  pair: 'Computer',
   settings: 'Settings',
 };
 

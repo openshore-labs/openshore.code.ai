@@ -94,13 +94,19 @@ describe('the free sidebar', () => {
     const r = await rows();
     const texts = r.map((x) => x.text);
     const banner = texts.indexOf(UPGRADE_BANNER);
-    expect(texts.slice(0, banner)).toEqual(['Chats', 'Projects', 'Stack', 'Cloud Connections']);
+    // Computer (docking) is free since 2026-10-07.
+    expect(texts.slice(0, banner)).toEqual([
+      'Chats',
+      'Projects',
+      'Stack',
+      'Cloud Connections',
+      'Computer',
+    ]);
     expect(texts.slice(banner + 1, -1)).toEqual([
       'Terminal',
       'Repositories',
       'Vault',
       'Crew',
-      'Pairing',
       'Marketplace',
       'Stack Health',
       'Launch with Codemagic',
@@ -159,7 +165,7 @@ describe('the Plus sidebar', () => {
       'Vault',
       'Crew',
       'Cloud Connections',
-      'Pairing',
+      'Computer',
       'Marketplace',
       'Stack Health',
       'Launch with Codemagic',

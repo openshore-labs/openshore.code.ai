@@ -73,6 +73,7 @@ export const SETTINGS_REACH: Record<keyof AppSettings, SettingReach> = {
   pinnedModels: 'device',
   profileOverride: 'device',
   anthropicWorkspaceId: 'device',
+  providerModels: 'device',
   currentConnections: 'device',
   harnessCurrentConnections: 'device',
   searchBackend: 'device',

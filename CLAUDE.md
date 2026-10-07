@@ -102,6 +102,23 @@ backends, short plain queries, no search after a private read). Do NOT add a
 per-routine web switch, and do NOT give a routine `webFetch`, without a
 domain-allowlist design. Open follow-ups are in `os-code/PROGRESS.md`.
 
+## Connect anywhere: docking to a computer or a server (founder, 2026-10-07)
+
+The main ways to give OpenShore a brain are a cloud provider on your key, a
+model on this device, a model on your computer at home (docked over
+Tailscale), and a model on a server you rent (a VPS, docked the same way).
+The phone's room for docking is **Computer** (once Pairing); linking a device
+to a machine is **docking** in copy. A server runs `osc serve` (installed by
+`os-code/scripts/install-server.sh`, the signed package from
+`openshore-releases`) and its yes is typed in the SSH terminal by
+`osc pair --server`; it docks over the tailnet only, never a public bind.
+Cloud Connections sets up a server beside the providers; a docked server
+reads "Your server" everywhere (`app/src/lib/docking.ts`). Venice and
+OpenRouter list no typed model ids: their models load live
+(`liveModels` in `app/src/lib/providers.ts`). Docking is free. Copy never says
+a server is "always on" or private; renting is said plainly once. Plan and
+follow-ups: `docs/connect-anywhere-proposal.md`, `os-code/PROGRESS.md`.
+
 ## Premium UX out of the box (standing rule, founder 2026-09-02)
 
 OpenShore is a machine that builds usable software, so everything a coding
@@ -211,7 +228,7 @@ never by a provider's config label.
 
 v1 is **Personal**: one person, their desktop and their own phone. Chats,
 Projects, Terminal, Repositories, Stack, Vault, Crew (routines), Cloud
-Connections, Pairing, Settings, and buying Personal. v2 is Agentic and
+Connections, Computer (docking; once Pairing), Settings, and buying Personal. v2 is Agentic and
 Harness Currents, Stack Health, and Launch with Codemagic; v3 the Marketplace;
 v4 Enterprise (Admin, teams, shared projects, the team vault, project
 permissions, shared-hub members). "Build personal for now and get that working
@@ -263,10 +280,11 @@ The paid gate (sold as OpenShore Plus, never "Personal", in customer copy):
 the advisors (CTO, CFO, CX, 2026-09-30) put coding, building and agentic work
 behind it on actions; the founder widened it the same day to every room but
 five. Free: Chats, Projects, the Stack, Cloud Connections and Settings (and
-what they reach). Plus: Terminal, Repositories, Vault, My Crew, Pairing, and the later tiers' rooms. A Plus room opens the paywall at
+what they reach), and since 2026-10-07 Computer (docking, the founder's
+"Do not gate anything"). Plus: Terminal, Repositories, Vault, My Crew, and the later tiers' rooms. A Plus room opens the paywall at
 `setView` (after the sign-in), and a purchase carries on to it; the actions
 keep their doors (a coding session anywhere, a routine made, edited or run,
-Scan and Connect, a chat or shell on the computer from another device). The
+the docked computer's shell from another device). The
 free sidebar puts the free rooms up top and the Plus rooms greyed under a
 gold "Upgrade to OpenShore Plus" banner; Plus gets the familiar layout
 (`components/Sidebar.tsx`, `app/test/sidebarPlus.test.tsx`). Nothing a

@@ -4,7 +4,7 @@
 // trigger and a persona (both required for a Custom category). Active models
 // can move back to the Bench keeping their metadata, and everything is editable
 // from the ellipses.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { agenticView, stackAdmin, useApp } from '../state/store.js';
 import { BackBar } from './BackBar.js';
 import {
@@ -19,6 +19,8 @@ import { CLAUDE_MODELS } from '../lib/claudeModels.js';
 import { isPinned } from '../lib/pins.js';
 import { byomPlainHttpToCloud, byomReach, byomRef, normalizeBaseUrl } from '../lib/byom.js';
 import { hubTailnetSuffix } from '../lib/vaultSeat.js';
+import { daemonStack } from '../drivers/remoteDriver.js';
+import { dockedNoun, dockedNounLower } from '../lib/docking.js';
 import {
   activeContribution,
   currentBenchRefs,
@@ -286,6 +288,8 @@ export function StackManager() {
             ? 'One model runs the show and hands each task to the specialist that fits. Anything without a specialist, it does itself.'
             : 'Your admin sets the shared stack for the company. You can talk with your admin about changing it.'}
         </p>
+
+        <DockedStackCard />
 
         {/* Which status's stack is on screen. Each status runs its own stack,
             used automatically when the device is in it; the one you are in now
@@ -952,6 +956,46 @@ export function StackManager() {
           </>
         ) : null}
       </Sheet>
+    </div>
+  );
+}
+
+/** The docked machine's own stack, where the phone's Stack can see it
+ *  (connect-anywhere, 2026-10-07): what your computer or server runs, set on
+ *  that machine and picked from the model menu in any chat. Shown only when
+ *  this device is docked. */
+function DockedStackCard() {
+  const daemon = useApp((s) => s.settings.daemon);
+  const setView = useApp((s) => s.setView);
+  const [model, setModel] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (!daemon) return;
+    let live = true;
+    daemonStack(daemon)
+      .then((s) => live && setModel(s.orchestrator?.model ?? null))
+      .catch(() => live && setModel(undefined));
+    return () => {
+      live = false;
+    };
+  }, [daemon]);
+  if (!daemon) return null;
+  return (
+    <div className="card">
+      <div className="card-row" style={{ alignItems: 'center' }}>
+        <div className="grow">
+          <h3 style={{ margin: 0 }}>{dockedNoun(daemon)}</h3>
+          <div className="sub">
+            {model
+              ? `Runs ${model}. Pick it in the model menu in any chat; its stack is set on ${dockedNounLower(daemon)}.`
+              : model === null
+                ? `No model set up on ${dockedNounLower(daemon)} yet.`
+                : `Docked. Its models show here once it answers.`}
+          </div>
+        </div>
+        <button className="btn ghost press-fb" onClick={() => setView('pair')}>
+          Computer
+        </button>
+      </div>
     </div>
   );
 }

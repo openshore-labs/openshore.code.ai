@@ -81,6 +81,12 @@ async function main(): Promise<void> {
   let checked = 0;
 
   for (const provider of PROVIDERS) {
+    // Venice and OpenRouter list nothing here: their models load live from
+    // the same endpoint, so there is no typed id to go dead.
+    if (provider.liveModels) {
+      console.log(`- ${provider.name} (${provider.id}): models load live, nothing typed to check`);
+      continue;
+    }
     const key = keyFor(provider.id);
     if (!key) {
       console.log(`- ${provider.name} (${provider.id}): skipped, no key in env`);

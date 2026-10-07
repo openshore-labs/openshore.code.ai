@@ -126,10 +126,11 @@ describe('the store, with the gates on and no Plus', () => {
     expect(useApp.getState().paywall).toBeUndefined();
   });
 
-  it('opens Desktop + phone to a phone with a paired computer', () => {
+  // Docking is free since 2026-10-07: Computer opens docked or not.
+  it('opens Computer to a phone, docked or not', () => {
     useApp.getState().setView('pair', { root: true });
-    expect(useApp.getState().paywall).toBe('pairing');
-    useApp.setState({ paywall: undefined });
+    expect(useApp.getState().view).toBe('pair');
+    expect(useApp.getState().paywall).toBeUndefined();
     useApp.setState({ settings: { ...useApp.getState().settings, daemon: hub, daemons: [hub] } });
     useApp.getState().setView('pair', { root: true });
     expect(useApp.getState().view).toBe('pair');
@@ -164,15 +165,16 @@ describe('the store, with the gates on and no Plus', () => {
 });
 
 describe('the rooms, as a person taps them', () => {
-  it('Pairing on a paired phone: Scan opens the sheet, Forget does not', async () => {
+  it('Computer on a docked phone: no Plus note, Scan and Forget both free', async () => {
     useApp.setState({ settings: { ...useApp.getState().settings, daemon: hub, daemons: [hub] } });
     const { PairScreen } = await import('../src/screens/PairScreen.js');
     dom ??= await mountDom();
     await dom.render(<PairScreen />);
-    expect(dom.text()).toContain('Part of OpenShore Plus');
-    await dom.click('Scan to pair another computer');
-    expect(useApp.getState().paywall).toBe('pairing');
-    useApp.setState({ paywall: undefined });
+    expect(dom.text()).not.toContain('Part of OpenShore Plus');
+    // Scan opens the camera itself now, with no door in front of it (the
+    // camera loop is not driven in this DOM).
+    expect(dom.text()).toContain('Scan to dock another computer');
+    expect(useApp.getState().paywall).toBeUndefined();
     await dom.click('Forget this computer');
     await dom.settle();
     expect(useApp.getState().paywall).toBeUndefined();

@@ -38,7 +38,7 @@ afterEach(() => {
 });
 
 describe('what is paid', () => {
-  it('classifies every account feature; only Projects and Cloud Connections stay free in v1', () => {
+  it('classifies every account feature; Projects, Cloud Connections and docking stay free in v1', () => {
     const features = new Set(
       Object.values(ROOM_ACCOUNT).filter((f): f is AccountFeature => f !== null),
     );
@@ -49,15 +49,16 @@ describe('what is paid', () => {
     const paidV1 = (Object.keys(PAY_GATE) as AccountFeature[]).filter(
       (f) => featurePaid(f) && !['marketplace', 'launch', 'health', 'plus'].includes(f),
     );
-    // The founder's widening (2026-09-30), over the advisors' actions-only.
-    expect(paidV1.sort()).toEqual(['coding', 'crew', 'pairing', 'repos', 'terminal', 'vault']);
-    for (const free of ['projects', 'connections', 'admin']) {
+    // The founder's widening (2026-09-30), over the advisors' actions-only,
+    // less docking (the Computer room), made free on 2026-10-07.
+    expect(paidV1.sort()).toEqual(['coding', 'crew', 'repos', 'terminal', 'vault']);
+    for (const free of ['projects', 'connections', 'admin', 'pairing']) {
       expect(PAY_GATE[free as AccountFeature], free).toBe('free');
     }
     expect(PAY_GATE.health).toBe('personal');
   });
 
-  it('opens Chats, Projects, the Stack, Cloud Connections and Settings, and no other nav room', () => {
+  it('opens Chats, Projects, the Stack, Cloud Connections, Computer and Settings, and no other nav room', () => {
     const nav = [
       'chats',
       'projects',
@@ -78,6 +79,7 @@ describe('what is paid', () => {
       'projects',
       'stack',
       'connections',
+      'pair',
       'settings',
     ]);
     // The rooms those reach stay free with them.
@@ -141,7 +143,8 @@ describe('the paid door', () => {
     expect(paidDoor('crew', { needsAccount: false, unlocked: true })).toBe('open');
     expect(paidDoor('projects', { needsAccount: false, unlocked: false })).toBe('open');
     expect(paidDoor('vault', { needsAccount: false, unlocked: false })).toBe('paywall');
-    expect(paidDoor('pairing', { needsAccount: false, unlocked: false })).toBe('paywall');
+    // Docking is free (founder, 2026-10-07).
+    expect(paidDoor('pairing', { needsAccount: false, unlocked: false })).toBe('open');
     expect(paywallReasonFor('crew')).toBe('crew');
     expect(paywallReasonFor('coding')).toBe('coding');
     expect(paywallReasonFor('pairing')).toBe('pairing');
@@ -157,9 +160,10 @@ describe('the paid door', () => {
     expect(chatPaywall(desktop, false, true)).toBe('coding');
     expect(chatPaywall(desktop, true, true)).toBeNull();
     // The computer's own chat on the desktop is free (CTO ruling 8); from the
-    // phone, or a desktop running on another computer, it is Desktop + phone.
+    // phone, or a desktop running on another computer, it rides docking, which
+    // is free since 2026-10-07.
     expect(chatPaywall(computerChat, false, false)).toBeNull();
-    expect(chatPaywall(computerChat, false, true)).toBe('pairing');
+    expect(chatPaywall(computerChat, false, true)).toBeNull();
     expect(chatPaywall(computerChat, true, true)).toBeNull();
     expect(chatPaidFeature(computerChat, true)).toBe('pairing');
     for (const kind of ['device', 'stack', 'mock', 'cloud'] as const) {
@@ -363,40 +367,28 @@ describe("the paywall's App Store branch", () => {
   });
 });
 
-// Desktop + phone is part of Plus (founder, 2026-09-30): each screen's paid
-// moment passes the one door, and the free ones (Revoke, Forget, Turn off,
-// the desktop's own shell) never do.
-describe('Pairing, at its screens', () => {
+// Docking (the Computer room) was part of Plus (founder, 2026-09-30) and is
+// free since 2026-10-07 ("Do not gate anything", the connect-anywhere build):
+// no screen of it asks the paid door, and the QR shows whenever the hub is up.
+describe('Computer, at its screens', () => {
   const pair = read('src', 'screens', 'PairScreen.tsx');
+  const dock = read('src', 'components', 'DockForm.tsx');
   const terminal = read('src', 'screens', 'TerminalRoomScreen.tsx');
   const paywall = read('src', 'components', 'Paywall.tsx');
 
-  it('asks the door before Scan, before a claim is spent, and before another computer', () => {
-    expect(pair).toContain("if (requirePersonal('pairing')) setScanning(true);");
-    const phone = pair.slice(pair.indexOf('function PhonePair'));
-    const door = phone.indexOf("if (!requirePersonal('pairing')) return;");
-    expect(door).toBeGreaterThan(-1);
-    expect(door).toBeLessThan(phone.indexOf('redeemPairClaim('));
-    const remote = pair.slice(
-      pair.indexOf('function RemoteHubPanel'),
-      pair.indexOf('function PhonePair'),
-    );
-    expect(remote.indexOf("requirePersonal('pairing')")).toBeLessThan(
-      remote.indexOf('daemonHealth('),
-    );
+  it('never asks the paid door to scan, dock, or reach another computer', () => {
+    expect(pair).not.toContain('requirePersonal');
+    expect(dock).not.toContain('requirePersonal');
+    expect(dock.indexOf('redeemPairClaim(')).toBeGreaterThan(-1);
   });
 
-  it('shows the pairing code only while Plus is open, and keeps Revoke free', () => {
-    expect(pair).toContain('{pairOpen && info?.running && qr ? (');
+  it('shows the code whenever the hub is up, and keeps Revoke free', () => {
+    expect(pair).toContain('{info?.running && qr ? (');
+    expect(pair).not.toContain('pairOpen');
     const start = pair.indexOf('revokeDeviceCredential');
     const revoke = pair.slice(start, pair.indexOf('Revoke\n', start));
     expect(revoke).toContain('revoked. It can no longer connect');
-    expect(revoke).not.toMatch(/requirePersonal|pairOpen/);
-    // The note lives in its own component now, shared with Crew.
-    expect(pair).toContain("import { PlusNote } from '../components/PlusNote.js';");
-    expect(read('src', 'components', 'PlusNote.tsx')).toContain(
-      "if (door !== 'paywall') return null;",
-    );
+    expect(pair).not.toContain('PlusNote');
   });
 
   // The Terminal room itself became Plus with the room gate (2026-09-30), so

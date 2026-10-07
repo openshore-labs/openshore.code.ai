@@ -13,6 +13,7 @@ import type {
   VaultOverrides,
 } from 'os-code/protocol';
 import { HANDOFF_MAX_BYTES } from 'os-code/protocol';
+import { dockKindOf, type DockKind } from '../lib/docking.js';
 import { isNotePath } from '../lib/gitos/providers.js';
 import { PROJECT_VAULT_PINS_MAX } from '../state/types.js';
 import type {
@@ -60,6 +61,9 @@ export interface DaemonTarget {
   /** A friendly name for the hub, shown when more than one is saved. Optional;
    *  the tailnet host stands in when it is absent. */
   name?: string;
+  /** What it is, as its /health said when it docked (lib/docking.ts): a
+   *  server or the desktop app. Absent on an older daemon. */
+  kind?: DockKind;
 }
 
 function headers(target: DaemonTarget): Record<string, string> {
@@ -113,7 +117,7 @@ function roleOf(body: unknown): HubRole | undefined {
 
 export async function daemonHealth(
   target: DaemonTarget,
-): Promise<{ ok: boolean; detail: string; role?: HubRole }> {
+): Promise<{ ok: boolean; detail: string; role?: HubRole; kind?: DockKind }> {
   try {
     const res = await fetch(`${target.baseUrl}/health`, {
       headers: headers(target),
@@ -133,8 +137,15 @@ export async function daemonHealth(
       };
     }
     if (!res.ok) return { ok: false, detail: `Your computer answered ${res.status}.` };
-    const role = roleOf(await res.json().catch(() => ({})));
-    return { ok: true, detail: 'Connected to your computer.', ...(role ? { role } : {}) };
+    const body = await res.json().catch(() => ({}));
+    const role = roleOf(body);
+    const kind = dockKindOf(body);
+    return {
+      ok: true,
+      detail: kind === 'server' ? 'Docked to your server.' : 'Connected to your computer.',
+      ...(role ? { role } : {}),
+      ...(kind ? { kind } : {}),
+    };
   } catch {
     // A rejected credential answers 401 with no CORS headers (DAE-15), which a
     // WebView reports as a failed fetch, the same as an unreachable hub. Tell
@@ -150,7 +161,7 @@ export async function daemonHealth(
 
 /** The computer answered, but not to this device's credential. */
 export const PAIRING_REJECTED =
-  'Your computer answered, but it no longer accepts this device. The pairing was revoked or has expired. Pair again from Pairing on the computer.';
+  'Your computer answered, but it no longer accepts this device. The pairing was revoked or has expired. Dock again from Computer.';
 
 /** Nothing answered at the computer's address. */
 export const HUB_UNREACHABLE =
@@ -586,7 +597,7 @@ export class RemoteDriver implements ChatDriver {
           { headers: headers(this.target), signal: this.abortStream.signal },
         );
         if (res.status === 401 || res.status === 403) {
-          this.emitTerminal('Your computer rejected this phone. Pair again from Menu, Pairing.');
+          this.emitTerminal('Your computer rejected this phone. Dock again from Menu, Computer.');
           return;
         }
         if (res.status === 404) {

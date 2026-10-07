@@ -40,6 +40,12 @@ export interface ProviderInfo {
    *  the app. */
   apiKeyUrl: string;
   models: ProviderModel[];
+  /** The models come from the provider's own GET {base}/models once a key is
+   *  connected, never a list typed here: a router carries hundreds and they
+   *  change weekly, so a typed list would be dead buttons by the next week
+   *  (connect-anywhere, 2026-10-07). The person's picks are kept on this
+   *  device (settings.providerModels) and put back at launch. */
+  liveModels?: boolean;
 }
 
 export const PROVIDERS: ProviderInfo[] = [
@@ -251,7 +257,183 @@ export const PROVIDERS: ProviderInfo[] = [
       },
     ],
   },
+  {
+    // Venice: open models behind one OpenAI-compatible key (founder,
+    // 2026-10-07, "my buddy uses Venice"). Its policy says it keeps no prompts
+    // or outputs, and that some models are served through other providers it
+    // binds not to train on them. We cannot check either, so copy only ever
+    // says "Venice says". Models load live (liveModels).
+    id: 'venice',
+    name: 'Venice',
+    keyHint: 'a Venice API key',
+    openaiBaseUrl: 'https://api.venice.ai/api/v1',
+    apiKeyUrl: 'https://venice.ai/settings/api',
+    models: [],
+    liveModels: true,
+  },
+  {
+    // OpenRouter: one key and one bill for models from many providers. It
+    // forwards each request to that model's own provider, whose policy then
+    // applies. Models load live; a first set is picked for you and you
+    // choose the rest (pickLiveModels).
+    id: 'openrouter',
+    name: 'OpenRouter',
+    keyHint: 'sk-or-...',
+    openaiBaseUrl: 'https://openrouter.ai/api/v1',
+    apiKeyUrl: 'https://openrouter.ai/settings/keys',
+    models: [],
+    liveModels: true,
+  },
 ];
+
+/** A model as a provider's live list describes it, before the person picks. */
+export interface LiveModel extends ProviderModel {
+  /** It takes tool calls, so it can drive the coding agent. */
+  tools: boolean;
+  /** When the provider added it (seconds since 1970), for "newest first". */
+  created?: number;
+}
+
+const num = (v: unknown): number | undefined =>
+  typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined;
+const str = (v: unknown): string | undefined =>
+  typeof v === 'string' && v.trim() ? v.trim() : undefined;
+
+/** A provider's GET /models answer, read the way both live providers write
+ *  it: OpenAI's `data` array, with Venice's `model_spec` or OpenRouter's
+ *  `architecture` and `supported_parameters` beside it. Only models that
+ *  answer in text and are not marked offline; anything unreadable is left
+ *  out rather than guessed at. */
+export function parseLiveModels(providerId: string, body: unknown): LiveModel[] {
+  const rows = (body as { data?: unknown } | null)?.data;
+  if (!Array.isArray(rows)) return [];
+  const seen = new Set<string>();
+  const out: LiveModel[] = [];
+  for (const raw of rows) {
+    const r = (raw ?? {}) as Record<string, unknown>;
+    const id = str(r.id);
+    if (!id || seen.has(id)) continue;
+    if (r.type !== undefined && r.type !== 'text') continue;
+    const spec = (r.model_spec ?? {}) as Record<string, unknown>;
+    if (spec.offline === true) continue;
+    const arch = (r.architecture ?? {}) as Record<string, unknown>;
+    const outputs = arch.output_modalities;
+    if (Array.isArray(outputs) && !outputs.includes('text')) continue;
+    const inputs = Array.isArray(arch.input_modalities) ? arch.input_modalities : [];
+    const caps = (spec.capabilities ?? {}) as Record<string, unknown>;
+    const params = Array.isArray(r.supported_parameters) ? r.supported_parameters : [];
+    const vision = caps.supportsVision === true || inputs.includes('image');
+    const tools = caps.supportsFunctionCalling === true || params.includes('tools');
+    const contextTokens = num(spec.availableContextTokens) ?? num(r.context_length);
+    const created = num(r.created);
+    seen.add(id);
+    out.push({
+      id,
+      label: str(spec.name) ?? str(r.name) ?? id,
+      tagline: liveTagline(providerId, spec.privacy),
+      categories: [
+        ...(tools ? (['coding', 'reasoning'] as const) : (['writing'] as const)),
+        ...(vision ? (['vision'] as const) : []),
+      ],
+      ...(contextTokens ? { contextTokens } : {}),
+      ...(created
+        ? { created, released: new Date(created * 1000).toISOString().slice(0, 10) }
+        : {}),
+      tools,
+    });
+  }
+  return out;
+}
+
+/** One honest line per live model: whose words a privacy claim is, never ours. */
+function liveTagline(providerId: string, privacy: unknown): string {
+  if (providerId === 'venice') {
+    if (privacy === 'private') return 'On Venice, on your key. Venice says it keeps no prompts.';
+    if (privacy === 'anonymized')
+      return 'On Venice, on your key. Venice passes it to another provider without your name.';
+    return 'On Venice, on your key.';
+  }
+  if (providerId === 'openrouter') {
+    return "Through OpenRouter, on your key. It goes on to the model's own provider.";
+  }
+  return 'On your key.';
+}
+
+/** The makers whose newest model a first OpenRouter connection picks, so the
+ *  Bench opens with a sensible set instead of hundreds. By maker, never by a
+ *  model id typed here: the newest one each maker lists is taken. */
+const OPENROUTER_FIRST_MAKERS = [
+  'anthropic',
+  'openai',
+  'google',
+  'moonshotai',
+  'qwen',
+  'deepseek',
+  'x-ai',
+  'mistralai',
+  'meta-llama',
+  'z-ai',
+];
+
+/** How many models a first connection puts on the Bench at most. */
+export const LIVE_FIRST_PICKS_MAX = 24;
+
+/** The models a first connection puts on the Bench: every one Venice lists
+ *  (it lists few), and for OpenRouter the newest model each well-known maker
+ *  offers that can take tool calls. The person changes the set any time. */
+export function pickLiveModels(providerId: string, all: LiveModel[]): LiveModel[] {
+  if (providerId !== 'openrouter') return all.slice(0, LIVE_FIRST_PICKS_MAX);
+  const picks: LiveModel[] = [];
+  for (const maker of OPENROUTER_FIRST_MAKERS) {
+    const newest = all
+      .filter((m) => m.tools && m.id.startsWith(`${maker}/`) && !m.id.endsWith(':free'))
+      .sort((a, b) => (b.created ?? 0) - (a.created ?? 0))[0];
+    if (newest) picks.push(newest);
+  }
+  return picks;
+}
+
+/** Put the person's picks for a live provider on the list every reader uses
+ *  (the Bench, the model menu, the Marketplace shelf, context windows), in
+ *  place, so nothing that reads PROVIDERS needs to know a list came live. */
+export function applyLiveModels(providerId: string, models: ProviderModel[]): void {
+  const info = providerInfo(providerId);
+  if (!info?.liveModels) return;
+  info.models.splice(
+    0,
+    info.models.length,
+    ...models.map((m) => ({
+      id: m.id,
+      label: m.label,
+      ...(m.tagline ? { tagline: m.tagline } : {}),
+      ...(m.categories ? { categories: m.categories } : {}),
+      ...(m.contextTokens ? { contextTokens: m.contextTokens } : {}),
+      ...(m.released ? { released: m.released } : {}),
+    })),
+  );
+}
+
+/** A live provider's whole list, on the person's key. Undefined when it could
+ *  not be read (offline, a rejected key), so the caller keeps what it had. */
+export async function fetchLiveModels(
+  providerId: string,
+  key: string,
+): Promise<LiveModel[] | undefined> {
+  const info = providerInfo(providerId);
+  if (!info?.openaiBaseUrl || !info.liveModels) return undefined;
+  try {
+    const res = await nativeFetch(`${info.openaiBaseUrl}/models`, {
+      method: 'GET',
+      headers: { authorization: `Bearer ${key}` },
+      responseType: 'json',
+    });
+    if (!res.ok) return undefined;
+    const models = parseLiveModels(providerId, await res.json());
+    return models.length ? models : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /** Provider model ids their provider has retired. Listing one would be a dead
  *  button in the stack, so a test pins that none of these appear. */
