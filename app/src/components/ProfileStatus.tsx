@@ -21,6 +21,17 @@ import { activeContribution } from '../lib/currents.js';
 import { activeHarnessContribution } from '../lib/harnessCurrents.js';
 import { Sheet } from './Sheet.js';
 import { SheetHead } from './SheetHead.js';
+import { CheckGlyph } from './SheetGlyphs.js';
+
+/** The current choice's mark, the drawn check every chooser uses (Select
+ *  model, the crew editor's Activity level). */
+function RowCheck() {
+  return (
+    <span className="profile-row-check" aria-hidden="true">
+      <CheckGlyph size={18} />
+    </span>
+  );
+}
 
 export function ProfileStatus() {
   const { connectivity, settings, setProfileOverride } = useApp();
@@ -81,6 +92,7 @@ export function ProfileStatus() {
           <div className="sheet-actions">
             <button
               className={`profile-row${!settings.profileOverride ? ' active' : ''}`}
+              aria-current={!settings.profileOverride ? 'true' : undefined}
               onClick={() => {
                 void setProfileOverride(undefined);
                 close();
@@ -93,6 +105,7 @@ export function ProfileStatus() {
                   Follow the connection. Right now: {PROFILES[auto].label}.
                 </span>
               </span>
+              {!settings.profileOverride ? <RowCheck /> : null}
             </button>
 
             {PROFILE_ORDER.map((id) => {
@@ -103,6 +116,7 @@ export function ProfileStatus() {
                 <button
                   key={id}
                   className={`profile-row${isActive ? ' active' : ''}`}
+                  aria-current={isActive ? 'true' : undefined}
                   disabled={!canPick}
                   onClick={() => {
                     void setProfileOverride(id);
@@ -117,6 +131,7 @@ export function ProfileStatus() {
                       {!canPick && paired ? ' Not reachable right now.' : ''}
                     </span>
                   </span>
+                  {isActive ? <RowCheck /> : null}
                 </button>
               );
             })}

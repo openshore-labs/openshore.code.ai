@@ -230,7 +230,8 @@ export function vaultLead(
   opts: { offerShown?: boolean; ramp?: boolean } = {},
 ): string {
   // While the empty ramp shows, it says where the notes live and how the
-  // agent fits, so the lead steps aside and keeps only its Where it lives link.
+  // agent fits, so the lead steps aside: the room draws none, and its Where it
+  // lives link ends the ramp's own sentence.
   if (opts.ramp) return '';
   return [c.storage, c.agent ?? (opts.offerShown ? undefined : c.agentElsewhere)]
     .filter(Boolean)

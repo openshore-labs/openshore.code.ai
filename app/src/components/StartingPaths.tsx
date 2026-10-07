@@ -226,7 +226,7 @@ export function StartingPaths({
           </>
         )}
         <SettingsRow
-          label="Connect your own API key"
+          label="Add an API key"
           sub="Claude, OpenAI, or Gemini, at your provider's price"
           onClick={() => void go('connections')}
         />

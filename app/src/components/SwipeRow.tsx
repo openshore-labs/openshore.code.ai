@@ -152,7 +152,12 @@ export function SwipeRow({
   };
 
   return (
-    <div className={`swipe-row${className ? ` ${className}` : ''}`} style={style}>
+    // `open` while the row is pulled: the action behind it is painted only
+    // then (theme.css), so at rest it never bleeds through a rounded corner.
+    <div
+      className={`swipe-row${dx ? ' open' : ''}${className ? ` ${className}` : ''}`}
+      style={style}
+    >
       <div className={`swipe-action${actionClass}`} aria-hidden="true">
         {actionLabel}
       </div>

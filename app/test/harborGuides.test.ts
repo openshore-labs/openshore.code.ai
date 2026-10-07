@@ -18,6 +18,7 @@ import {
   HARBOR_MINI_MODEL_ID,
   HARBOR_MINI_MODEL_NAME,
   HARBOR_MINI_MODEL_URL,
+  HARBOR_MINI_ROW_SUB,
   buildHarborMiniSystemPrompt,
 } from '../src/lib/harborMini.js';
 import { APP_KNOWLEDGE } from '../src/lib/guideKnowledge.js';
@@ -99,6 +100,14 @@ describe('the guide bylines', () => {
     expect(b).toContain('offline');
     expect(b).toContain('first launch');
     expect(b).not.toContain('always on');
+  });
+
+  it("says Built in once on Settings' Harbor Lite row, where Built in is the value", () => {
+    expect(HARBOR_MINI_ROW_SUB.toLowerCase()).not.toContain('built in');
+    expect(HARBOR_MINI_BYLINE).toBe(`Built in. ${HARBOR_MINI_ROW_SUB}`);
+    const screen = readFileSync(join(process.cwd(), 'src/screens/SettingsScreen.tsx'), 'utf8');
+    expect(screen).toContain('sub={HARBOR_MINI_ROW_SUB}');
+    expect(screen).not.toContain('HARBOR_MINI_BYLINE');
   });
 });
 

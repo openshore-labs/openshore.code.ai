@@ -351,6 +351,20 @@ export const RULES: Array<{ name: string; check(path: string, src: string): stri
     },
   },
   {
+    // A status dot takes its colour from its class (.profile-dot with docked,
+    // offshore or offline), so Offshore stays ink and Offline stays a ring
+    // wherever it is drawn. An inline background from PROFILES' dot field
+    // paints Offline as a filled grey dot, and a colour guard cannot see it.
+    name: 'reachDot',
+    check(path, src) {
+      const EXEMPT: Record<string, string> = {
+        'screens/MarketplaceScreen.tsx': LATER_TIER['screens/MarketplaceScreen.tsx']!,
+      };
+      if (!path.endsWith('.tsx') || EXEMPT[path]) return [];
+      return lineHits(path, stripComments(src), 'reachDot', /background:\s*[\w.[\]]+\.dot\b/);
+    },
+  },
+  {
     // Icons sit on an even size scale; an odd size rounds up one step.
     name: 'iconScale',
     check(path, src) {

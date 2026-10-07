@@ -85,8 +85,8 @@ const REACH_HINT = {
   unknown: 'No reply yet',
 } as const;
 
-/** The reach dot: filled teal or amber when known, a faint ring when not, so
- *  every row's second line starts at the same edge. */
+/** The reach dot: filled teal or amber when known, an empty space of the same
+ *  width when not, so every row's second line starts at the same edge. */
 export function ReachDot({ reach }: { reach: 'local' | 'cloud' | undefined }) {
   const kind = reach ?? 'unknown';
   return (

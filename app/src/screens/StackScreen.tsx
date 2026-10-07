@@ -306,11 +306,13 @@ export function StackScreen() {
       <Sheet open={Boolean(pickFor && status)} onClose={() => setPickFor(undefined)}>
         {pickFor && status ? (
           <>
+            {/* Each role names its model, Coding model to Fast model, so every
+                category reads right here and on Turn off below. */}
             <SheetHead
               title={
                 pickFor === 'orchestrator'
                   ? 'Who runs the show?'
-                  : `Model for ${categoryLabel(pickFor as StackCategory).toLowerCase()}`
+                  : `${categoryLabel(pickFor as StackCategory)} model`
               }
               onClose={() => setPickFor(undefined)}
             />
@@ -386,7 +388,7 @@ export function StackScreen() {
                     await refresh();
                   }}
                 >
-                  Turn off {categoryLabel(pickFor as StackCategory).toLowerCase()}
+                  Turn off the {categoryLabel(pickFor as StackCategory).toLowerCase()} model
                 </button>
               </div>
             ) : null}

@@ -62,7 +62,7 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
   },
   'connect-cloud-key': {
     id: 'connect-cloud-key',
-    title: 'Connect your own API key',
+    title: 'Add an API key',
     goal: 'Use Claude, OpenAI, or Gemini on my own key.',
     steps: [
       'Pick the provider you already pay for. If you have none, Claude is the strongest for coding; the console link on the Cloud Connections screen opens it inside the app.',

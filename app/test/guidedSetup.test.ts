@@ -307,9 +307,9 @@ describe('the fork after Harbor', () => {
     const q = nextChoiceQuestion(stepsAhead({ skipped: ['harbor'] }, NONE));
     expect(q).toContain('start chatting now, or keep setting up');
     expect(q).toContain(
-      'three more steps: connect your computer, set up a repository, and connect your own API key',
+      'three more steps: connect your computer, set up a repository, and add an API key',
     );
-    expect(nextChoiceQuestion(['key'])).toContain('is one more step: connect your own API key');
+    expect(nextChoiceQuestion(['key'])).toContain('is one more step: add an API key');
     expect(stepsAhead({ skipped: [] }, { ...NONE, computer: true, key: true })).toEqual(['repo']);
   });
 

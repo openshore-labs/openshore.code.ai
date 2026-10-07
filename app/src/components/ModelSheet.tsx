@@ -350,7 +350,7 @@ export function ModelSheet({
                 ) : (
                   <Row
                     main="This computer"
-                    sub="No model set up yet. Build your stack"
+                    sub="No model set up yet. Build your stack."
                     chevron
                     onClick={() => goto('stack')}
                   />
@@ -410,7 +410,7 @@ export function ModelSheet({
                 ) : boxStack === 'error' ? (
                   <Row
                     main="Your computer"
-                    sub="Not reachable right now. Reconnect"
+                    sub="Not reachable right now. Reconnect."
                     chevron
                     onClick={() => goto('pair')}
                   />
@@ -452,7 +452,7 @@ export function ModelSheet({
               ) : (
                 <Row
                   main="Stack"
-                  sub="Not set up yet. Build your stack"
+                  sub="Not set up yet. Build your stack."
                   chevron
                   onClick={() => goto('stack')}
                 />

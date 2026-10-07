@@ -12,7 +12,7 @@ import { ProjectMultiSelect } from '../components/ProjectMultiSelect.js';
 import type { CrewActivityLevel, CrewAgent } from '../state/types.js';
 import { ADVISOR_TEAM } from '../lib/crewPresets.js';
 import { Sheet } from '../components/Sheet.js';
-import { SheetTitle } from '../components/SheetHead.js';
+import { SheetHead } from '../components/SheetHead.js';
 import { CheckGlyph } from '../components/SheetGlyphs.js';
 import {
   agentPresenceLine,
@@ -172,7 +172,7 @@ export function CrewScreen() {
             </span>
             <span className="crew-command-door-sub">
               {control.where === 'unpaired'
-                ? 'Connect your computer. Routines run there while it is on.'
+                ? 'Routines run on your computer while it is on.'
                 : control.where === 'away'
                   ? 'Away from your computer. Watch here, reconnect to take control.'
                   : crewHeadline(routines, routinesState.runs)}
@@ -201,7 +201,10 @@ export function CrewScreen() {
               style={{ marginTop: 12 }}
               onClick={() => void addAdvisorTeam()}
             >
-              Add the advisor team ({missingAdvisors.length})
+              {/* The line above already says eight; the count shows only
+                  once part of the team is here. */}
+              Add the advisor team
+              {missingAdvisors.length < ADVISOR_TEAM.length ? ` (${missingAdvisors.length})` : ''}
             </button>
           </div>
         ) : null}
@@ -254,7 +257,10 @@ export function CrewScreen() {
       <Sheet open={Boolean(draft)} onClose={() => setDraft(undefined)}>
         {draft ? (
           <>
-            <SheetTitle>{draft.id ? 'Edit crew member' : 'New crew member'}</SheetTitle>
+            <SheetHead
+              title={draft.id ? 'Edit crew member' : 'New crew member'}
+              onClose={() => setDraft(undefined)}
+            />
 
             <div className="field">
               <label htmlFor="crew-member-name">Name</label>
@@ -334,9 +340,6 @@ export function CrewScreen() {
                 onClick={() => void save()}
               >
                 {draft.id ? 'Save' : 'Add to crew'}
-              </button>
-              <button className="btn quiet" onClick={() => setDraft(undefined)}>
-                Cancel
               </button>
             </div>
           </>

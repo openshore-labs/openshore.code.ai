@@ -557,6 +557,23 @@ describe('polish standards', () => {
     expect(ruleBody(/^\.topbar \{/m)).toMatch(/min-height: calc\(61px \+ var\(--safe-top\)\);/);
   });
 
+  it("holds it in a titled chat, whose name and pill fit the bar's 40px slot", () => {
+    // The empty chat turns into a titled one on the first send, so a name
+    // stacked over the repository pill must not grow the bar under the eye.
+    const px = (token: string) => Number(CSS.match(new RegExp(`--${token}: (\\d+)px;`))![1]);
+    const lh = (body: string) => Number(body.match(/line-height: ([\d.]+);/)![1]);
+    const name = ruleBody(/^\.topbar-name \{/m);
+    expect(ruleBody(/^\.topbar-title \{/m)).toMatch(/font-size: var\(--text-5\);/);
+    expect(ruleBody(/^\.repo-picker-btn \{/m)).toMatch(/font-size: var\(--text-2\);/);
+    const pill = ruleBody(/^\.topbar-sub \.repo-picker-btn \{/m);
+    const [top, , bottom] = pill
+      .match(/padding: (\d+)px (\d+)px (\d+)px/)!
+      .slice(1)
+      .map(Number);
+    const stack = px('text-5') * lh(name) + px('text-2') * lh(pill) + top! + bottom!;
+    expect(stack).toBeLessThanOrEqual(40);
+  });
+
   it('centres the toast without a transform, so its entrance composes', () => {
     const toast = ruleBody(/^\.toast \{/m);
     expect(toast).toMatch(/margin-inline: auto;/);

@@ -17,9 +17,9 @@ import type { NoticePermission } from '../lib/llamaPlugin.js';
 import { bridge } from '../lib/electronBridge.js';
 import { HARBOR_BYLINE } from '../lib/harbor.js';
 import {
-  HARBOR_MINI_BYLINE,
   HARBOR_MINI_BUNDLED,
   HARBOR_MINI_HANDOFF_LINE,
+  HARBOR_MINI_ROW_SUB,
 } from '../lib/harborMini.js';
 import {
   HARBOR_MASTER_ATTRIBUTION,
@@ -684,15 +684,17 @@ export function SettingsScreen() {
         {/* Approvals (CX, 2026-09-24, after Zed's "trust all projects" row):
             not a blanket trust switch, one comfort level for edits, the same
             choice the setup walk asks once a repository connects. Kept on this
-            device; commands always ask, and Plan and Bypass stay in the chat's
-            mode pill. */}
+            device. Commands ask first unless the person allows them (Terminal
+            Control, a project's always allow), the same words as the
+            Repositories lead, and Plan and Bypass stay in a coding chat's mode
+            pill. */}
         <SettingsGroup title="Approvals" index={group++}>
           <SettingsRow
             label="When the agent edits"
             sub={
               editMode === 'default' || editMode === 'acceptEdits'
-                ? 'Commands always ask. Plan and Bypass are set from the chat.'
-                : `${permissionModeLabel(editMode)} is on, set from the chat. Commands still ask unless Bypass is on.`
+                ? 'Commands ask first unless you allow them. Plan and Bypass are set from a coding chat.'
+                : `${permissionModeLabel(editMode)} is on, set from a coding chat. Commands ask first unless you allow them or Bypass is on.`
             }
             trailing={
               <div className="segmented" role="radiogroup" aria-label="When the agent edits">
@@ -901,7 +903,7 @@ export function SettingsScreen() {
             <>
               <SettingsRow
                 label="Harbor Lite"
-                sub={HARBOR_MINI_BYLINE}
+                sub={HARBOR_MINI_ROW_SUB}
                 trailing={<HarborInstallButton bundled={HARBOR_MINI_BUNDLED} />}
               />
               <SettingsRow

@@ -1020,11 +1020,10 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           }}
           onStop={abort}
           vault={composerVault}
-          canAnswer={
-            Boolean(conv) ||
-            (isDesktop() && desktopStatus === undefined) ||
-            sourceReady(selectedSource)
-          }
+          // An open chat counts only if its own model can answer, so a chat
+          // opened on a stack that does not exist yet reads Choose a model too.
+          // A pending desktop status counts as ready, so a launch never flashes.
+          canAnswer={(isDesktop() && desktopStatus === undefined) || sourceReady(composerSource)}
         />
       </div>
 

@@ -56,11 +56,13 @@ export const HARBOR_MINI_APPROX_LABEL = 'about 105 MB';
 // step and what it does to the App Store download size.
 export const HARBOR_MINI_BUNDLED = true;
 
-// The byline under the Harbor Lite row in Settings, and its promise in three
-// beats. Creative Studio "The Standing Light": a harbor light is built in,
-// works in any weather, and is there from the start. "Always on" is retired in
-// copy (brand sweep 2026-09-24). No em dashes.
-export const HARBOR_MINI_BYLINE = 'Built in. Works offline. Here from first launch.';
+// Harbor Lite's promise in three beats. Creative Studio "The Standing Light":
+// a harbor light is built in, works in any weather, and is there from the
+// start. "Always on" is retired in copy (brand sweep 2026-09-24). No em dashes.
+// The model sheet reads all three. Settings, Harbor shows Built in as the
+// row's value, so its sub says the other two and the row says it once.
+export const HARBOR_MINI_ROW_SUB = 'Works offline. Here from first launch.';
+export const HARBOR_MINI_BYLINE = `Built in. ${HARBOR_MINI_ROW_SUB}`;
 
 // The composer's resting prompt in a Harbor Lite chat, so an empty box still
 // speaks in its voice. Creative Studio microcopy: the guide is always present.

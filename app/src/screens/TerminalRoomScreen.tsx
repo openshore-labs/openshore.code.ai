@@ -86,8 +86,10 @@ export function TerminalRoomScreen() {
           <h1 ref={firstRunTitleRef}>Terminal</h1>
           <p className="lead">
             A real terminal on your computer, here in OpenShore. Run builds and tests yourself, or
-            turn on Terminal Control to let the model run them.
+            let the model run them when you allow it.
           </p>
+          {/* The same shape as Repositories' card: what it needs, one
+              primary, then the guide link under it. Not now sits outside. */}
           <div className="card">
             <h3 style={{ marginTop: 0 }}>Two steps, once</h3>
             <ol className="setup-steps">
@@ -102,16 +104,7 @@ export function TerminalRoomScreen() {
             </ol>
             <button
               type="button"
-              className="linklike press-fb"
-              onClick={() => void useApp.getState().startGuideChat('pair-computer')}
-            >
-              Walk me through it
-            </button>
-          </div>
-          <div className="tc-actions" style={{ marginTop: 14 }}>
-            <button
-              type="button"
-              className="btn primary press-fb"
+              className="btn primary block press-fb"
               onClick={() => {
                 // The view switches first, so the room never flashes its
                 // second state on the way out.
@@ -123,12 +116,19 @@ export function TerminalRoomScreen() {
             </button>
             <button
               type="button"
-              className="btn quiet press-fb"
-              onClick={() => void saveSettings({ terminalRoomSeen: true })}
+              className="linklike door press-fb"
+              onClick={() => void useApp.getState().startGuideChat('pair-computer')}
             >
-              Not now
+              Walk me through it
             </button>
           </div>
+          <button
+            type="button"
+            className="btn quiet block press-fb"
+            onClick={() => void saveSettings({ terminalRoomSeen: true })}
+          >
+            Not now
+          </button>
         </div>
       </div>
     );
@@ -228,7 +228,12 @@ export function TerminalRoomScreen() {
                   Open a shell
                 </button>
               ) : null}
-              <button className="btn press-fb" onClick={() => setView('repos')}>
+              {/* The secondary beside Open a shell, and the primary when it is
+                  the card's only way forward. */}
+              <button
+                className={`btn ${shellOffered ? 'ghost' : 'primary'} press-fb`}
+                onClick={() => setView('repos')}
+              >
                 Open a repository
               </button>
             </div>

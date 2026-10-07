@@ -109,6 +109,10 @@ describe.each([
     expect(ratio('bg', 'accent', t)).toBeGreaterThanOrEqual(3);
     expect(ratio('ink-soft', 'surface', t)).toBeGreaterThanOrEqual(3);
   });
+  it("the empty terminal send's $ clears 4.5:1 on the surface it waits on", () => {
+    // The $ is a character, so it is held to the text bar, not the glyph's.
+    expect(ratio('ink-soft', 'surface', t)).toBeGreaterThanOrEqual(4.5);
+  });
   it('the local hero keeps its white text and its white button legible', () => {
     // The hero's deep water holds in both themes, so white text clears AA
     // across its whole gradient, and the white button's label is the start.
@@ -125,6 +129,12 @@ describe('the controls wear their edge', () => {
     const rule = CSS.match(/\.send-btn:disabled \{[^}]*\}/)?.[0] ?? '';
     expect(rule).not.toMatch(/opacity/);
     expect(rule).toMatch(/color: var\(--ink-soft\)/);
+  });
+  it('waits on the surface in terminal mode too, never the accent', () => {
+    // .send-btn.terminal sets the accent and comes later, so its empty state
+    // names the surface itself, or the ink-soft $ sits on teal.
+    const rule = CSS.match(/\.send-btn\.terminal:disabled \{[^}]*\}/)?.[0] ?? '';
+    expect(rule).toMatch(/background: var\(--surface\)/);
   });
   it('draws a switch at rest and a field border on the control edge', () => {
     expect(CSS).toMatch(/\.switch \{[^}]*background: var\(--control-edge\)/);

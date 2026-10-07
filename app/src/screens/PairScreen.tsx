@@ -15,7 +15,6 @@ import { BackBar } from '../components/BackBar.js';
 import { QrScanner } from '../components/QrScanner.js';
 import { Switch } from '../components/Switch.js';
 import { pairingLink, parsePairingQr } from '../lib/qrDecode.js';
-import { ROOM_LABELS } from '../lib/navRooms.js';
 import { hapticApproval } from '../lib/haptics.js';
 import { Icon } from '../components/Icon.js';
 import { Sheet } from '../components/Sheet.js';
@@ -23,6 +22,12 @@ import { SheetHead } from '../components/SheetHead.js';
 import { ReplaceSharedKey } from '../components/ReplaceSharedKey.js';
 import { hubStatusLine, onLinux } from '../lib/hubStatus.js';
 import { PlusNote } from '../components/PlusNote.js';
+
+// Each platform's page title, said once for its h1 and the bar it tucks into,
+// so the bar shows the same words that scrolled away. The nav row keeps the
+// room's name, Pairing.
+const DESKTOP_TITLE = 'Put this on your phone';
+const PHONE_TITLE = 'Connect your computer';
 
 // Clean glyphs for the Tailscale download rows, drawn in the tile's ink on a
 // solid accent tile (iOS-app-icon feel). One per platform.
@@ -169,9 +174,9 @@ function DesktopPair() {
 
   return (
     <div className="screen">
-      <BackBar title={ROOM_LABELS.pair} titleHiddenUntil={titleRef} />
+      <BackBar title={DESKTOP_TITLE} titleHiddenUntil={titleRef} />
       <div className="screen-inner">
-        <h1 ref={titleRef}>Put this on your phone</h1>
+        <h1 ref={titleRef}>{DESKTOP_TITLE}</h1>
         <p className="lead">
           Your phone reaches your computer over Tailscale, a free app that privately links your own
           devices. Work stays on your computer, so losing signal loses nothing.
@@ -396,9 +401,9 @@ function thisDesktopOs(): 'macOS' | 'Windows' | 'Linux' | undefined {
   return undefined;
 }
 
-// On a desktop that is not your central computer (a laptop away from the hub):
-// point it at a remote hub and it runs sessions there over the tailnet, the way
-// the phone does, instead of on this machine. Off by default, so a desktop stays
+// On a desktop that is not your computer, the one the work runs on (a laptop
+// away from the hub): point it at a remote hub and it runs sessions there over
+// the tailnet, the way the phone does, instead of on this machine. Off by default, so a desktop stays
 // its own engine unless you say otherwise.
 function RemoteHubPanel() {
   const { settings, saveHub, setPreferRemoteHub, showToast, requirePersonal } = useApp();
@@ -619,9 +624,9 @@ function PhonePair() {
 
   return (
     <div className="screen">
-      <BackBar title={ROOM_LABELS.pair} titleHiddenUntil={titleRef} />
+      <BackBar title={PHONE_TITLE} titleHiddenUntil={titleRef} />
       <div className="screen-inner">
-        <h1 ref={titleRef}>Connect your computer</h1>
+        <h1 ref={titleRef}>{PHONE_TITLE}</h1>
         <p className="lead">
           Connect once. Then this device reaches your computer, its models and its repositories,
           over your own private network. Your computer does the work, so a long task keeps going
@@ -659,7 +664,7 @@ function PhonePair() {
             </ol>
             <button
               type="button"
-              className="linklike press-fb"
+              className="linklike door press-fb"
               onClick={() => setTailscaleOpen(true)}
             >
               Get Tailscale
@@ -706,8 +711,7 @@ function PhonePair() {
 
           <button
             type="button"
-            className="linklike press-fb"
-            style={{ marginTop: 12 }}
+            className="linklike door press-fb"
             aria-expanded={typing}
             onClick={() => setTyping((t) => !t)}
           >
@@ -928,7 +932,7 @@ function ConnectedCard({ onTerminal }: { onTerminal: () => void }) {
   );
 }
 
-// The saved hubs, for switching between more than one central computer. Shown
+// The saved hubs, for switching between more than one of your computers. Shown
 // only once a second hub exists, so a single-computer setup never sees it. The
 // active one is marked; tapping another switches sessions to it, and each can
 // be named or forgotten.

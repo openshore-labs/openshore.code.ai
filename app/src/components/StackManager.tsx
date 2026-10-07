@@ -106,7 +106,7 @@ export function StackManager() {
   // Which status's stack is being viewed and edited here. Opens on the current
   // status; a picker below lets you tune the other two without being in them.
   const [editProfile, setEditProfile] = useState<ProfileId>(profile);
-  // Before a computer is connected, Docked says how to get there.
+  // Before a computer is connected, Docked says what it needs.
   const blurb = profileBlurb(editProfile, isDesktop() || Boolean(settings.daemon));
   const stack = stackForProfile(settings.stacks, editProfile);
   const reasoning = stack.reasoning ?? harborRef();
@@ -294,8 +294,8 @@ export function StackManager() {
         : { title: 'None yet', sub: 'Connect a cloud model in Cloud Connections to read images.' };
     }
     return {
-      title: 'None',
-      sub: cloudReader ? 'The cloud row reads images for now.' : 'Nothing reads images yet.',
+      title: 'None yet',
+      sub: cloudReader ? 'The cloud model reads images for now.' : 'Nothing reads images yet.',
     };
   };
 
@@ -325,11 +325,7 @@ export function StackManager() {
                   className={`seg press-fb${active ? ' active' : ''}`}
                   onClick={() => setEditProfile(id)}
                 >
-                  <span
-                    className="profile-select-dot"
-                    style={{ background: PROFILES[id].dot }}
-                    aria-hidden="true"
-                  />
+                  <span className={`profile-select-dot profile-dot ${id}`} aria-hidden="true" />
                   {PROFILES[id].label}
                   {id === profile ? <span className="stack-now">now</span> : null}
                 </button>

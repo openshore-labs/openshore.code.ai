@@ -14,7 +14,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
-import { exitLine, terminalTheme } from './terminalTheme.js';
+import { NO_TERMINAL_LINE, exitLine, terminalTheme } from './terminalTheme.js';
 import type { TerminalHost } from '../drivers/types.js';
 import { useApp } from '../state/store.js';
 
@@ -59,7 +59,7 @@ export function DesktopTerminal({ driver }: { driver: TerminalHost }) {
     const el = containerRef.current;
     if (!el || !driver.openTerminal) {
       setStatus('unavailable');
-      setMessage('This chat has no terminal. It does not run on your computer.');
+      setMessage(NO_TERMINAL_LINE);
       return;
     }
 

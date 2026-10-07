@@ -126,8 +126,8 @@ export const STEP_COPY: Record<SetupStepId, SetupStepCopy> = {
     done: 'Your repository is connected.',
   },
   key: {
-    title: 'Connect your own API key',
-    what: 'Add an API key for Claude, OpenAI, or Gemini.',
+    title: 'Add an API key',
+    what: 'Use Claude, OpenAI, or Gemini on your own account.',
     why: "For the hardest work, a frontier model on your own account goes further than anything on a phone, at your provider's price. Chat stays free either way.",
     how: "Create an API key on your provider's site, then tap Add an API key, paste it, and save. OpenShore checks it with the provider before it says connected, and the API key is stored only on this device and sent only to that provider. I will bring you back here once it is saved.",
     action: 'Add an API key',
@@ -198,7 +198,7 @@ export function stepsAhead(
   );
 }
 
-/** "connect your computer, set up a repository, and connect your own API key". */
+/** "connect your computer, set up a repository, and add an API key". */
 function stepList(ids: readonly SetupStepId[]): string {
   return joinNames(
     ids.map((id) => {

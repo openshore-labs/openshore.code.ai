@@ -2646,48 +2646,53 @@ export function VaultScreen() {
             </button>
           </div>
         ) : null}
-        <p className="lead">
-          {team
-            ? teamLapsed
-              ? VAULT_TEAM_LAPSED_LEAD
-              : teamFull
-                ? VAULT_TEAM_FULL_LEAD
-                : vaultCopy(on, 'org').storage
-            : vaultLead(personalCopy, { offerShown, ramp: rampShown })}
-          {team && vaultTeamExportable(on) && vaultFiles.length > 0 ? (
-            <>
-              {' '}
-              <button
-                type="button"
-                className="linklike press-fb"
-                disabled={exportingTeam}
-                onClick={() => void exportTeam()}
-              >
-                {exportingTeam ? 'Exporting…' : 'Export as plain files'}
-              </button>
-            </>
-          ) : null}
-          {team && vaultTeamPlan?.isAdmin && !teamLapsed ? (
-            <>
-              {' '}
-              <button
-                type="button"
-                className="linklike press-fb"
-                onClick={() => setSettingsOpen(true)}
-              >
-                {VAULT_TEAM_SETTINGS_LINK}
-              </button>
-            </>
-          ) : null}
-          {!team ? (
-            <>
-              {' '}
-              <button className="linklike" onClick={() => setStorageOpen(true)}>
-                Where it lives
-              </button>
-            </>
-          ) : null}
-        </p>
+        {/* While the empty ramp shows, the room has no lead: the ramp says
+            where the notes live, and its Where it lives link sits beside that
+            sentence. */}
+        {!team && rampShown ? null : (
+          <p className="lead">
+            {team
+              ? teamLapsed
+                ? VAULT_TEAM_LAPSED_LEAD
+                : teamFull
+                  ? VAULT_TEAM_FULL_LEAD
+                  : vaultCopy(on, 'org').storage
+              : vaultLead(personalCopy, { offerShown, ramp: rampShown })}
+            {team && vaultTeamExportable(on) && vaultFiles.length > 0 ? (
+              <>
+                {' '}
+                <button
+                  type="button"
+                  className="linklike press-fb"
+                  disabled={exportingTeam}
+                  onClick={() => void exportTeam()}
+                >
+                  {exportingTeam ? 'Exporting…' : 'Export as plain files'}
+                </button>
+              </>
+            ) : null}
+            {team && vaultTeamPlan?.isAdmin && !teamLapsed ? (
+              <>
+                {' '}
+                <button
+                  type="button"
+                  className="linklike press-fb"
+                  onClick={() => setSettingsOpen(true)}
+                >
+                  {VAULT_TEAM_SETTINGS_LINK}
+                </button>
+              </>
+            ) : null}
+            {!team ? (
+              <>
+                {' '}
+                <button className="linklike" onClick={() => setStorageOpen(true)}>
+                  Where it lives
+                </button>
+              </>
+            ) : null}
+          </p>
+        )}
         {teamLapsed && !vaultTeamExportable(on) ? (
           <p className="hint">{VAULT_TEAM_LAPSED_WEB}</p>
         ) : null}
@@ -2927,6 +2932,7 @@ export function VaultScreen() {
             readOnly={Boolean(driveReadOnly)}
             onWrite={() => setNewOpen(true)}
             onWelcome={() => void addStarterNote()}
+            onWhere={() => setStorageOpen(true)}
             // An empty personal vault with folders and no Obsidian config
             // offers the simple layout instead (Vault M7, CX Y13).
             {...(starterOffered ? { onStarter: () => setStarterOpen(true) } : {})}
@@ -3397,6 +3403,7 @@ function VaultRamp({
   onWrite,
   onWelcome,
   onStarter,
+  onWhere,
 }: {
   onboard: VaultOnboard;
   /** A read-only vault: the ways in that write are left out, not dimmed. */
@@ -3406,6 +3413,9 @@ function VaultRamp({
   /** The starter layout is offered (CTO L12): the second way in opens its
    *  preview instead of adding the welcome note. */
   onStarter?: () => void;
+  /** Opens the storage sheet, from a link at the end of the lead, beside the
+   *  sentence it backs up. */
+  onWhere: () => void;
 }) {
   const glyphs = { doc: DocGlyph, agent: AgentGlyph, link: LinkGlyph };
   return (
@@ -3415,7 +3425,12 @@ function VaultRamp({
         <div className="vault-onboard-body">
           <span className="eyebrow">Your vault</span>
           <h2 className="vault-onboard-title">{onboard.title}</h2>
-          <p className="vault-onboard-lead">{onboard.lead}</p>
+          <p className="vault-onboard-lead">
+            {onboard.lead}{' '}
+            <button className="linklike press-fb" onClick={onWhere}>
+              Where it lives
+            </button>
+          </p>
           {!readOnly ? (
             <div className="vault-onboard-actions">
               <button className="btn primary" onClick={onWrite}>

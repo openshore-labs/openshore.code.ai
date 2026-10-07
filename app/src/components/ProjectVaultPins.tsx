@@ -74,7 +74,7 @@ export function ProjectVaultPins({ projectId, index }: { projectId: string; inde
     <section className="card project-section" style={{ '--i': index } as CSSProperties}>
       <div className="card-row">
         <div className="grow">
-          <span className="eyebrow">Rides into every chat</span>
+          <span className="eyebrow">In every chat here</span>
           <h3>Pinned notes</h3>
         </div>
         <button type="button" className="suggestion press-fb" onClick={() => setOpen(true)}>
@@ -105,8 +105,8 @@ export function ProjectVaultPins({ projectId, index }: { projectId: string; inde
         </div>
       ) : (
         <p className="hint" style={{ marginTop: 6 }}>
-          Choose notes from your Vault and every chat here starts with them, trimmed to fit the
-          model. Notes marked private stay off cloud models.
+          Pin notes from your Vault and every chat here starts with them, trimmed to fit the model.
+          Notes marked private stay off cloud models.
         </p>
       )}
 

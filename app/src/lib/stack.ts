@@ -41,9 +41,10 @@ export function categoryLabel(id: StackCategory): string {
 }
 
 /** The Stack's lead, the one place it is written, so the phone and the desktop
- *  name the anchor the same way. If the anchor is renamed, change it here. */
+ *  say it the same way. The review's Keep list holds these words as they are;
+ *  the anchor's name stays on the Runs the show row and in the model sheet. */
 export const STACK_LEAD =
-  'Your Reasoning LLM runs the show and hands each task to the specialist that fits. Anything without a specialist, it does itself.';
+  'One model runs the show and hands each task to the specialist that fits. Anything without a specialist, it does itself.';
 
 // A model that can sit in the stack: an on-device model, a built-in cloud
 // provider's model, or a user-connected "bring your own model" endpoint.

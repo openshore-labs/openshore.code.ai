@@ -115,7 +115,7 @@ export function ConnectionsScreen() {
                 <div className="grow">
                   <h3>{p.name}</h3>
                   <div className="sub">
-                    {on ? 'Its models are on your bench.' : `${n} models, on your own API key`}
+                    {on ? 'Its models are on your bench.' : `${n} ${n === 1 ? 'model' : 'models'}`}
                   </div>
                 </div>
                 {on ? <span className="pill ok">Connected</span> : null}

@@ -196,7 +196,7 @@ export function ReposScreen() {
             <h3>Your repositories live on your computer</h3>
             <div className="sub">
               Connect this device to your computer, where the code lives, to clone and open
-              repositories from here. You can connect GitHub, GitLab, or Bitbucket now.
+              repositories from here.
             </div>
             <button
               type="button"
@@ -208,8 +208,7 @@ export function ReposScreen() {
             </button>
             <button
               type="button"
-              className="linklike press-fb"
-              style={{ display: 'block', marginTop: 10 }}
+              className="linklike door press-fb"
               onClick={() => void useApp.getState().startGuideChat('pair-computer')}
             >
               Walk me through it
@@ -229,7 +228,7 @@ export function ReposScreen() {
                 <div className="grow">
                   <h3>{c.name}</h3>
                   <div className="sub">
-                    {oauth ? 'Authorize with one tap' : `With an access token from ${c.name}`}
+                    {oauth ? 'Authorize with one tap' : 'Personal access token'}
                   </div>
                 </div>
                 {on ? <span className="pill ok">Connected</span> : null}

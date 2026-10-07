@@ -732,7 +732,7 @@ function ManageReposSheet({
           .
         </p>
       ) : null}
-      <div className="sheet-actions" style={{ marginTop: 16 }}>
+      <div className="sheet-actions">
         {nothingToChoose ? (
           <button className="btn primary" onClick={onOpenRepos}>
             Open Repositories

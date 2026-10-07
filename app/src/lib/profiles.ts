@@ -48,11 +48,12 @@ export const PROFILES: Record<ProfileId, ProfileInfo> = {
 };
 
 /** The blurb a person reads under a status. Before any computer is connected,
- *  Docked says how to get there and Offshore does not speak of a computer that
- *  is out of reach. Callers pass paired = isDesktop() || Boolean(settings.daemon),
+ *  Docked names the condition (its row cannot be tapped, so it never borrows
+ *  the Connect your computer door's words) and Offshore does not speak of a
+ *  computer that is out of reach. Callers pass paired = isDesktop() || Boolean(settings.daemon),
  *  because on the desktop the device is the computer. */
 export function profileBlurb(id: ProfileId, paired: boolean): string {
-  if (!paired && id === 'docked') return 'Connect your computer to use its models here.';
+  if (!paired && id === 'docked') return "Your computer's models, once you connect it.";
   if (!paired && id === 'offshore') return "Online. Cloud models and this device's models.";
   return PROFILES[id].blurb;
 }

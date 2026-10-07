@@ -16,7 +16,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
-import { exitLine, terminalTheme } from '../components/terminalTheme.js';
+import { NO_TERMINAL_LINE, exitLine, terminalTheme } from '../components/terminalTheme.js';
 import { useApp, driverFor } from '../state/store.js';
 import { computerName, sourceLabel } from '../state/types.js';
 import { useCompact } from '../hooks/useCompact.js';
@@ -61,9 +61,7 @@ export function TerminalScreen() {
     const driver = activeId ? driverFor(activeId) : undefined;
     if (!el || !driver?.openTerminal) {
       setStatus('unavailable');
-      setMessage(
-        'This conversation has no terminal. Open a repository on your computer to use one.',
-      );
+      setMessage(NO_TERMINAL_LINE);
       return;
     }
 

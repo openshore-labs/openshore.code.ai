@@ -461,6 +461,23 @@ textarea {
   outline-offset: -2px;
 }
 
+/* On the desktop the Chats rows run 16px past the search pill and their own
+   separators (900 is COMPACT_BREAKPOINT), so the ring is drawn on a layer
+   inset to that column, its inner edge on the pill's edge. */
+@media (min-width: 900px) {
+  .chat-list .chat-row:focus-visible {
+    outline: none;
+  }
+  .chat-list .chat-row:focus-visible::before {
+    content: '';
+    position: absolute;
+    inset: 0 14px;
+    border: 2px solid var(--accent);
+    border-radius: var(--radius-xs);
+    pointer-events: none;
+  }
+}
+
 /* WebKit is the exception: it treats a TAPPED text field as focus-visible too
    (unlike a tapped button), so the rule above would ring the composer on every
    touch. Founder preference: no ring there. Scoped to the composer only, so a
@@ -1921,7 +1938,7 @@ textarea {
   gap: 8px;
 }
 
-/* The Current State "Top sheet" badge, and the "not created yet" marker on a
+/* The Current State "Top sheet" badge, and the "Not written yet" marker on a
    note the agent has not written, sit at the trailing edge of their row so the
    eye reads the note name first. */
 .vault-topsheet {
@@ -4580,7 +4597,9 @@ button.vault-tag {
 .composer-add {
   width: 32px;
   height: 32px;
-  margin-left: -8px;
+  /* The drawn plus sits within 4px of the field text's edge, and its press
+     disc keeps clear of the field's curve, near the send side's inset. */
+  margin-left: -4px;
   border-radius: 50%;
   display: grid;
   place-items: center;
@@ -4737,6 +4756,11 @@ button.vault-tag {
 .send-btn.terminal {
   background: var(--accent);
   font-family: var(--font-mono);
+}
+/* An empty terminal send waits like every other send: its $ in ink-soft on
+   the surface. On the accent it fell below AA in both themes. */
+.send-btn.terminal:disabled {
+  background: var(--surface);
 }
 
 .composer-row-spacer {
@@ -5054,6 +5078,18 @@ button.vault-tag {
 }
 .swipe-action-unpin {
   background: var(--danger);
+}
+/* At rest the action is not painted: under a group's rounded clip its colour
+   bled through the antialiased corner as a faint arc. It shows while the row
+   is pulled and stays through the spring back, the --dur-5 the foreground
+   settles on, then hides. */
+.swipe-action {
+  visibility: hidden;
+  transition: visibility 0s var(--dur-5);
+}
+.swipe-row.open .swipe-action {
+  visibility: visible;
+  transition-delay: 0s;
 }
 .swipe-fore {
   position: relative;
@@ -6190,6 +6226,12 @@ button.vault-tag {
   flex-direction: column;
   gap: 8px;
 }
+/* A sheet that runs a hint or a list straight into its actions keeps a beat
+   above them, one rule for every sheet instead of a margin per room. */
+.sheet .hint + .sheet-actions,
+.sheet .check-list + .sheet-actions {
+  margin-top: 16px;
+}
 
 .btn {
   padding: 12px 16px;
@@ -6610,6 +6652,20 @@ button.vault-tag {
   font-weight: var(--weight-semibold);
   color: var(--accent);
   cursor: pointer;
+}
+
+/* A guide door on its own line in a card (Walk me through it, Get Tailscale,
+   Can't scan? Type it in). Inherited, it took the 17px body size and spoke
+   louder than the card's own title, so it sits a step under that title.
+   Under a full-width primary it centres on the button's label. A link inside
+   a .lead keeps the lead's size. */
+.linklike.door {
+  display: block;
+  font-size: var(--text-4);
+  margin-top: 12px;
+}
+.btn.block ~ .linklike.door {
+  margin-inline: auto;
 }
 
 @media (hover: hover) {
@@ -8076,9 +8132,16 @@ button.vault-tag {
   background: var(--bg-raised);
 }
 
+/* The current choice is marked the way every chooser marks it, with the
+   drawn check, on a quiet surface fill rather than an accent card. */
 .profile-row.active {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+  background: var(--surface);
+}
+.profile-row-check {
+  align-self: center;
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--accent);
 }
 
 .profile-row:disabled {
@@ -8092,8 +8155,8 @@ button.vault-tag {
   margin-bottom: 2px;
 }
 
-/* The description under each status. Ink-soft, not muted: the active row
-   sits on the accent wash, where muted does not hold its contrast. */
+/* The description under each status. Ink-soft, not muted, so it holds its
+   contrast on the active row's surface fill as on the raised card. */
 .profile-row .sub {
   display: block;
   line-height: 1.4;
@@ -11569,9 +11632,12 @@ button.vault-tag {
   margin-top: 8px;
 }
 
-/* The top bar's chips. */
+/* The top bar's chips. A titled chat stacks its name over the repository
+   pill, and the two fit the 40px control slot, so the hairline holds at 61px
+   when the first message turns the empty chat into a titled one. */
 .topbar-name {
   font: inherit;
+  line-height: 1.25;
   color: inherit;
   max-width: 100%;
   overflow: hidden;
@@ -11612,6 +11678,12 @@ button.vault-tag {
   border-radius: 999px;
   padding: 2px 9px 2px 8px;
   line-height: 1.5;
+}
+/* Under a chat's name the pill sits a step tighter, so name and pill share
+   the bar's 40px slot. */
+.topbar-sub .repo-picker-btn {
+  padding: 1px 9px 1px 8px;
+  line-height: 1.4;
 }
 /* The empty home's bar: the same height as the status chip beside it. */
 .topbar-spacer-repos .repo-picker-btn {
@@ -13095,7 +13167,14 @@ button.settings-row:active {
   position: absolute;
   inset: -16px -20px auto -20px;
   height: 200px;
-  background: radial-gradient(120% 80% at 16% 30%, var(--accent-soft), transparent 60%);
+  /* The densest tone sits up by the kicker, not behind the heading. In light
+     the tint is softened, since a full --accent-soft read as a grey smear on
+     paper; Nightshore keeps its full water below. */
+  background: radial-gradient(
+    120% 80% at 16% 0%,
+    color-mix(in srgb, var(--accent-soft) 60%, transparent),
+    transparent 60%
+  );
   /* The wash rises out of the paper over 56px and fades over the 20px past
      the column, so it has no edge anywhere. #000 here is a mask stop, not a
      colour. */
@@ -13109,6 +13188,14 @@ button.settings-row:active {
   mask-composite: intersect;
   pointer-events: none;
   z-index: 0;
+}
+:root[data-theme='dark'] .vault-onboard-wash {
+  background: radial-gradient(120% 80% at 16% 0%, var(--accent-soft), transparent 60%);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .vault-onboard-wash {
+    background: radial-gradient(120% 80% at 16% 0%, var(--accent-soft), transparent 60%);
+  }
 }
 .vault-onboard-body {
   position: relative;
@@ -13255,7 +13342,9 @@ button.settings-row:active {
   transform: rotate(90deg) scale(0.92);
 }
 /* Where the chat's model ran, in the house reach colours (teal local, amber
-   cloud). A faint ring when the reach is not known yet, never a guess. */
+   cloud). Nothing is drawn when the reach is not known yet, never a guess,
+   and never the hollow ring, which means Offline in the Status sheet. The
+   span keeps its width so every second line starts at the same edge. */
 .chat-reach {
   display: inline-block;
   width: 6px;
@@ -13271,7 +13360,7 @@ button.settings-row:active {
   background: var(--cloud);
 }
 .chat-reach-unknown {
-  box-shadow: inset 0 0 0 1px var(--border-strong);
+  background: transparent;
 }
 /* A search hit: marked softly in the accent, never a highlighter yellow. */
 .chat-hit {

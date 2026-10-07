@@ -219,7 +219,7 @@ export function RepoPicker({
                 onOpenRepos();
               }}
             >
-              Connect a repository
+              Add a repository
             </button>
           </div>
         ) : (

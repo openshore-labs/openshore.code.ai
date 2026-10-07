@@ -11,6 +11,11 @@ export function terminalTheme(): { background: string; foreground: string } {
   return { background: read('--term-bg', '#0b0d12'), foreground: read('--term-fg', '#e6e6e6') };
 }
 
+/** What a terminal says for a chat that has none (it does not run on your
+ *  computer), one line for the full-screen terminal and the embedded one. */
+export const NO_TERMINAL_LINE =
+  'This chat has no terminal. Open a repository on your computer to use one.';
+
 /** The line xterm shows when the shell ends, and the status message beside it. */
 export function exitLine(code: number): string {
   return code === 0 ? 'The shell exited.' : `The shell exited with code ${code}.`;
