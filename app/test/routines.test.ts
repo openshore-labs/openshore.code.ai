@@ -90,6 +90,8 @@ describe('presence copy', () => {
 
   it('writes the headline from what matters most: needs you, then working, then results', () => {
     expect(crewHeadline([], [])).toContain('ready to work');
+    // Routines run while the computer is on, never "while you are away".
+    expect(crewHeadline([], [])).toBe('Your crew is ready to work while your computer is on.');
     expect(
       crewHeadline([view({ presence: 'waiting' }), view({ id: 'r2', presence: 'working' })], []),
     ).toBe('1 routine needs you.');
@@ -182,7 +184,11 @@ describe('the control distinction: set up and control only while docked', () => 
     expect(controlLabel('unpaired')).toBe('Not set up');
     expect(controlBlurb('away', 'the Mac mini')).toContain('Reconnect over Tailscale');
     expect(controlBlurb('away', 'the Mac mini')).toContain('the Mac mini');
-    expect(controlBlurb('unpaired', 'your main machine')).toContain('Pair this device');
+    expect(controlBlurb('away', 'the Mac mini')).toContain('while it is on');
+    expect(controlBlurb('away', 'the Mac mini')).not.toContain('keeps working');
+    // It sits over the Connect your computer button, so it uses that verb.
+    expect(controlBlurb('unpaired', 'your main machine')).toContain('Connect this device');
+    expect(controlBlurb('unpaired', 'your main machine')).not.toMatch(/\bPair\b/);
   });
 });
 

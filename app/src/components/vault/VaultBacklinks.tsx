@@ -176,7 +176,7 @@ function Section({ title, count }: { title: string; count?: number }) {
   return (
     <div className="card-row vault-context-head">
       <h3 style={{ marginBottom: 0 }}>{title}</h3>
-      {count ? <span className="pill local">{count}</span> : null}
+      {count ? <span className="pill muted">{count}</span> : null}
     </div>
   );
 }

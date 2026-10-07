@@ -3,7 +3,7 @@
 // on this device, so what the agent wrote is one tap away. Hidden notes never
 // show. Rendered at the Vault's root, personal vault only; nothing at all
 // when there is nothing to show.
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useState } from 'react';
 import type { VaultPickerNote } from '../lib/vaultExcerpt.js';
 import { relativeTime } from '../screens/ChatsScreen.js';
 
@@ -39,12 +39,11 @@ export function VaultAgentRecent({
         <h3 style={{ marginBottom: 0 }}>{AGENT_RECENT_TITLE}</h3>
       </div>
       <div className="vault-tree">
-        {notes.map((n, i) => (
+        {notes.map((n) => (
           <button
             key={n.path}
             type="button"
             className="conv-item vault-row press-fb press-fb--row"
-            style={{ '--stagger': `${Math.min(i, 8) * 22}ms` } as CSSProperties}
             onClick={() => onOpen(n.path)}
           >
             <span className="vault-row-chevron" aria-hidden="true" />

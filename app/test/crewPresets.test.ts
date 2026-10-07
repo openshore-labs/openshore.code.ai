@@ -2,6 +2,7 @@
 // with a real persona and a when-called line, on a level the Crew screen
 // understands, and the org's shape preserved (one standing build reviewer,
 // the auto-engaging trio, the rest by request).
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { ADVISOR_TEAM } from '../src/lib/crewPresets.js';
 
@@ -37,6 +38,23 @@ describe('advisor team crew preset', () => {
     expect(names).toContain('Technical Advisor');
     expect(names).toContain('Marketing Advisor');
     expect(names).toContain('Finance Advisor');
+  });
+
+  // The Crew room counts the team in words (CMO, 2026-10-07), so the words
+  // follow the preset: eight in all, one reviewer, three that step in, and
+  // four that wait to be asked.
+  it("matches the Crew room's offer, member for member", () => {
+    expect(ADVISOR_TEAM).toHaveLength(8);
+    const count = (level: string) => ADVISOR_TEAM.filter((a) => a.activityLevel === level).length;
+    expect([count('review'), count('auto'), count('request')]).toEqual([1, 3, 4]);
+    const room = readFileSync(
+      new URL('../src/screens/CrewScreen.tsx', import.meta.url),
+      'utf8',
+    ).replace(/\s+/g, ' ');
+    expect(room).toContain('Eight general advisors for whatever you are building.');
+    expect(room).toContain(
+      'One reviews the work, three step in when a decision needs them, and four answer when asked.',
+    );
   });
 
   it('every persona says it is advisory and the person decides', () => {

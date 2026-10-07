@@ -73,6 +73,7 @@ import {
   vaultHeldKeep,
   vaultHeldLine,
   vaultLead,
+  vaultLoadFailed,
   vaultMoveLine,
   vaultOffersProvider,
   vaultOnboard,
@@ -359,6 +360,40 @@ describe('the Vault copy map (0.19)', () => {
     const card = GUIDE_CARDS.find((c) => c.id === 'wayfinding');
     expect(card?.text).toMatch(/repository/);
     expect(card?.text).not.toMatch(/Memory keeps what it has learned in your Vault/);
+  });
+
+  // The empty ramp says where the notes live and how the agent fits, so the
+  // lead above it steps aside rather than say a sentence twice (Creative
+  // Studio and CMO, 2026-10-07). Nothing it drops goes unsaid.
+  it('steps the lead aside while the ramp says it, and loses no sentence', () => {
+    for (const p of PAIRS.filter((x) => x.id !== 'org')) {
+      const c = vaultCopy(p.on, p.id, optsOf(p));
+      const where = nameOf(p);
+      expect(vaultLead(c, { ramp: true }), where).toBe('');
+      const ramp = vaultOnboard(p.on, p.id, optsOf(p));
+      const said = [ramp.lead, ...ramp.points.map((pt) => pt.sub)];
+      for (const s of sentences(vaultLead(c))) {
+        expect(
+          said.some((text) => text.includes(s)),
+          `${where}: ${s}`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  // A vault on this device, or on the person's own computer, did not fail
+  // for want of a connection, so only a network storage is told to check one
+  // (CMO, 2026-10-07).
+  it('tells only a network storage to check its connection when the vault does not load', () => {
+    for (const id of ['local', 'files', 'hub'] as const) {
+      const { title, sub } = vaultLoadFailed(id);
+      expect(title.length, id).toBeGreaterThan(10);
+      expect(sub, id).not.toMatch(/connection/i);
+      expect(sub, id).toMatch(/Try again/);
+    }
+    for (const id of ['icloud', 'gdrive', 'org', undefined] as const) {
+      expect(vaultLoadFailed(id).sub, String(id)).toMatch(/Check your connection/);
+    }
   });
 });
 

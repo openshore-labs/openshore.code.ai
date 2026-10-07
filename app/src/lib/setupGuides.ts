@@ -45,7 +45,7 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
     steps: [
       'Open Settings and find the Harbor section. Harbor Lite, the built-in guide, is already there. Harbor is the coder that runs alongside it.',
       'On the Harbor row, tap Install. It downloads straight from the source, about 2.5 GB, roughly a few minutes on wifi. You can keep chatting while it lands.',
-      'When it finishes, the row shows Uninstall and Harbor becomes your Reasoning model automatically. Start a new chat to talk to it.',
+      'When it finishes, the row shows Uninstall and Harbor becomes your Reasoning LLM automatically. Start a new chat to talk to it.',
     ],
     done: 'Harbor writes and explains code, reasons, and can search the web. For heavier repository work, add a cloud key or dock to your computer.',
   },
@@ -56,7 +56,7 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
     steps: [
       'On your computer, open OpenShore. If nothing is set up yet, the chat opens on a card that says Set up DeepBlue: tap it and you are done. Otherwise open Settings and find the Harbor section.',
       'On the DeepBlue row, tap Install. It picks the size that fits your computer and pulls it through Ollama, straight from the Ollama library. Keep using the app while it lands.',
-      'When it finishes, the row reads Installed and DeepBlue is your Reasoning model on that computer. To reach it from this phone, pair the two under Pairing; it then appears as Your computer.',
+      'When it finishes, the row reads Installed and DeepBlue is your Reasoning LLM on that computer. To reach it from this phone, pair the two under Pairing; it then appears as Your computer.',
     ],
     done: 'DeepBlue plans and edits your repositories on your computer. For the hardest steps, a cloud key on your own account is one tap away, and it always asks before it spends.',
   },
@@ -140,7 +140,7 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
     title: 'Set up your crew',
     goal: 'Have a crew member work on a schedule on my own computer, so results are waiting when I come back.',
     steps: [
-      'Routines run on your main computer, on your own models, while it is on. You set one up while connected to that computer, then watch and steer it from anywhere.',
+      'Routines run on your computer, on your own models, while it is on. You set one up while connected to that computer.',
       'If you have not paired yet, open Pairing and pair this device. Tailscale must be on for both, the same connection the big models use.',
       'Make sure the work lives on your computer: open Repositories and clone the repository you want the crew to work in, if it is not there already.',
       'Open Crew, then Crew command, and set up the Morning review routine. It reads what changed overnight and leaves a checklist, read-only, so it never needs an approval.',

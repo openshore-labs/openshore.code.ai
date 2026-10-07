@@ -36,7 +36,7 @@ export function WebSearchAsk() {
               Not now
             </button>
           </div>
-          <p className="hint">You can change this any time in Settings, Harbor, Web search.</p>
+          <p className="hint">You can change this any time in Settings, Web search.</p>
         </>
       ) : null}
     </Sheet>

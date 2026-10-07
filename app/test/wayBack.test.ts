@@ -43,9 +43,9 @@ describe('the way back', () => {
     const vault = src('screens', 'VaultScreen.tsx');
     expect(vault).toMatch(/const backToNotes = \(\) => \{\s*flushSave\(\);/);
     // The bar carries the note's own name, the way Notes does; the chevron
-    // says where it returns to.
+    // says where it returns to. The bar's title tucks under the note's own h1.
     expect(vault).toMatch(
-      /<BackBar title=\{title\} back=\{\{ to: 'Vault', onBack: backToNotes \}\} \/>/,
+      /<BackBar\s+title=\{title\}\s+back=\{\{ to: 'Vault', onBack: backToNotes \}\}\s+titleHiddenUntil=\{noteTitleRef\}\s+\/>/,
     );
   });
 

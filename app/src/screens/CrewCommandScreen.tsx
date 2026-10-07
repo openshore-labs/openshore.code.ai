@@ -15,6 +15,7 @@ import { PlusNote } from '../components/PlusNote.js';
 import { CREW_PLUS_LINE } from '../lib/payGate.js';
 import { BackBar } from '../components/BackBar.js';
 import { Sheet } from '../components/Sheet.js';
+import { SheetTitle } from '../components/SheetHead.js';
 import { SwipeRow } from '../components/SwipeRow.js';
 import { Markdown } from '../components/Markdown.js';
 import { bridge } from '../lib/electronBridge.js';
@@ -195,7 +196,7 @@ export function CrewCommandScreen() {
     .sort()[0];
   const unlocked = customRoutinesUnlocked(runs);
   const hasPreset = routines.some((r) => r.name === PRESET.name);
-  const machine = where === 'desktop' ? 'this computer' : (daemon?.name ?? 'your main computer');
+  const machine = where === 'desktop' ? 'this computer' : (daemon?.name ?? 'your computer');
 
   // The roster: every crew member, plus a member a routine names that is not
   // on the crew any more (a deleted card must not hide a live routine).
@@ -383,7 +384,7 @@ export function CrewCommandScreen() {
         <PlusNote feature="crew" line={CREW_PLUS_LINE} />
         <section className={`cc-hero ${where}`} aria-label="Crew status">
           <div className="cc-hero-top">
-            <div className="cc-kicker">Crew command · {machine}</div>
+            <div className="cc-kicker">{machine}</div>
             <span className={`cc-control-badge ${where}`}>
               <span className="cc-control-dot" aria-hidden="true" />
               {controlLabel(where)}
@@ -449,7 +450,7 @@ export function CrewCommandScreen() {
           {unpaired ? (
             <div className="cc-hero-actions">
               <button className="btn primary press-fb" onClick={() => setView('pair')}>
-                Pair your computer
+                Connect your computer
               </button>
               <button
                 className="btn ghost press-fb"
@@ -465,9 +466,8 @@ export function CrewCommandScreen() {
           <section className="cc-section" aria-label="What your crew can do">
             <h2>What your crew can do</h2>
             <p className="lead" style={{ marginBottom: 14 }}>
-              These run on your own computer, on the models you hold. You set them up while
-              connected to your computer. After that you can watch and steer them from here,
-              anywhere, and take control whenever you are back in reach over Tailscale.
+              Set routines up while you are connected to your computer. Away from it, you see the
+              last picture here. Back in reach, you take control again.
             </p>
             <div className="cc-dormant">
               <div className="cc-dormant-item">
@@ -645,7 +645,7 @@ export function CrewCommandScreen() {
               {canControl ? (
                 unlocked ? (
                   <button className="cc-link press-fb" onClick={beginNew}>
-                    + New routine
+                    New routine
                   </button>
                 ) : (
                   <span className="pill muted" title="Unlocks after the first routine finishes">
@@ -817,9 +817,15 @@ export function CrewCommandScreen() {
       <Sheet open={Boolean(draft)} onClose={() => setDraft(undefined)}>
         {draft ? (
           <>
-            <h2 className="cc-sheet-title" key={draft.id ?? 'new'}>
-              {draft.id ? 'Edit routine' : draft.name === PRESET.name ? PRESET.name : 'New routine'}
-            </h2>
+            <div className="cc-sheet-title" key={draft.id ?? 'new'}>
+              <SheetTitle>
+                {draft.id
+                  ? 'Edit routine'
+                  : draft.name === PRESET.name
+                    ? PRESET.name
+                    : 'New routine'}
+              </SheetTitle>
+            </div>
             <p className="sheet-sub">
               Runs on {machine} while it is on, on your own models. It works, then asks.
             </p>
@@ -836,8 +842,9 @@ export function CrewCommandScreen() {
             </div>
 
             <div className="field">
-              <label>Crew member</label>
+              <label htmlFor="routine-member">Crew member</label>
               <select
+                id="routine-member"
                 className="select"
                 value={draft.agentKey}
                 onChange={(e) => setDraft({ ...draft, agentKey: e.target.value })}
@@ -860,8 +867,9 @@ export function CrewCommandScreen() {
             </div>
 
             <div className="field">
-              <label>Task</label>
+              <label htmlFor="routine-task">Task</label>
               <textarea
+                id="routine-task"
                 rows={4}
                 placeholder="What should they do each time, in your words."
                 value={draft.task}
@@ -871,9 +879,10 @@ export function CrewCommandScreen() {
             </div>
 
             <div className="field">
-              <label>Workspace</label>
+              <label htmlFor="routine-workspace">Workspace</label>
               {workspaces.length || draft.cwd ? (
                 <select
+                  id="routine-workspace"
                   className="select"
                   value={draft.cwd}
                   onChange={(e) => setDraft({ ...draft, cwd: e.target.value })}
@@ -967,8 +976,9 @@ export function CrewCommandScreen() {
                 </div>
               </div>
               <div className="field">
-                <label>Time cap</label>
+                <label htmlFor="routine-cap">Time cap</label>
                 <select
+                  id="routine-cap"
                   className="select"
                   value={draft.maxMinutes}
                   onChange={(e) => setDraft({ ...draft, maxMinutes: Number(e.target.value) })}
@@ -1031,9 +1041,9 @@ export function CrewCommandScreen() {
       <Sheet open={Boolean(detail)} onClose={() => setDetail(undefined)}>
         {detail ? (
           <>
-            <h2 className="cc-sheet-title" key={detail.id}>
-              {routineById(detail.routineId)?.name ?? 'Routine'}
-            </h2>
+            <div className="cc-sheet-title" key={detail.id}>
+              <SheetTitle>{routineById(detail.routineId)?.name ?? 'Routine'}</SheetTitle>
+            </div>
             <p className="sheet-sub">
               {runStateLabel(detail.state)} · {runWhen(detail, now)}
               {detail.steps ? ` · ${detail.steps} ${detail.steps === 1 ? 'step' : 'steps'}` : ''}
