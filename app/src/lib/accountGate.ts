@@ -147,16 +147,19 @@ export function accountCopy(gates: boolean): AccountCopy {
   return {
     body: 'Signing in is free. It opens Projects and Cloud Connections, takes your theme, reasoning, voice, and notice settings to every device you sign in on, and is how you get OpenShore Plus. Your chats stay on your devices, and chatting needs no account.',
     pitch:
-      'Sign in for Projects and Cloud Connections, and take your settings to any device. OpenShore Plus rides on your account. Your chats stay on your devices.',
+      'Sign in for Projects and Cloud Connections, and take your theme and a few preferences to every device. OpenShore Plus rides on your account. Your chats stay on your devices.',
     notice:
       'Projects and Cloud Connections now need a free account, and the rest of OpenShore is part of OpenShore Plus. Everything you made is still here.',
     signInSub: 'For Projects, Plus, and your settings',
   };
 }
 
-/** The pitch on the sign-in card and in the sidebar. */
+/** The pitch on the sign-in card and in Settings. It names the few that
+ *  follow (founder, D19, 2026-10-07): the theme and the other 'follows' keys
+ *  in settingsReach.ts, on every platform, and nothing else. The writing
+ *  voice, the app icon, approvals, web search and the vault stay here. */
 export const ACCOUNT_PITCH =
-  'Sign in to build, pair your phone, and take your settings to any device. Your chats stay on your devices.';
+  'Sign in to build, pair your phone, and take your theme and a few preferences to every device. Your chats stay on your devices.';
 
 /** Under the signed-in card: what the account is doing for them. */
 export const SIGNED_IN_PERKS =

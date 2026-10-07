@@ -6,9 +6,11 @@
 // claim:
 // - the agent reads and writes these notes only in This folder on the
 //   desktop, the one folder the agent's vault is; everywhere else the only
-//   agent line is the platform's own pointer to where its vault really is
-//   (on an unpaired phone, one pointer in the empty-vault ramp only), and a
-//   member on someone else's computer is promised nothing;
+//   agent line is the platform's own pointer to where its vault really is,
+//   said on a phone only once a computer is paired (an unpaired phone or the
+//   web says instead, in the empty-vault ramp only, how its own chats use
+//   the notes; founder, D20, 2026-10-07), and a member on someone else's
+//   computer is promised nothing;
 // - Obsidian is named only in the exact sentences each storage may say:
 //   only This folder says Obsidian opens it; the team vault says it is not
 //   an Obsidian folder; Local, iCloud, and Google Drive say nothing about
@@ -43,8 +45,9 @@ import {
   DRIVE_RECONNECT_FAILED_LINE,
   DRIVE_WEB_URL,
   PHONE_AGENT_LINE,
-  PHONE_PAIR_LINE,
   ROUTINE_NOTES_PLACE,
+  VAULT_MODELS_LINE,
+  VAULT_MODELS_TITLE,
   VAULT_COPY_PLATFORMS,
   VAULT_COPY_PROVIDERS,
   vaultCopy,
@@ -196,13 +199,12 @@ describe('the Vault copy map (0.19)', () => {
       expect(c.agent, where).toBeUndefined();
       expect(c.routines, where).toBeUndefined();
       // The one pointer this platform may carry: the desktop's own, or the
-      // phone's (paired, or the ramp's pairing pointer), never the other's.
+      // phone's once a computer is paired, never the other's.
       const pointer = p.on === 'electron' ? DESKTOP_AGENT_LINE : PHONE_AGENT_LINE;
-      const pointers = p.on === 'electron' ? [pointer] : [pointer, PHONE_PAIR_LINE];
       if (c.agentElsewhere) expect(c.agentElsewhere, where).toBe(pointer);
       for (const text of rendered(p)) {
         let rest = text.replace(/\s+/g, ' ');
-        for (const allowed of [...pointers, ...NEUTRAL_AGENT_TITLES]) {
+        for (const allowed of [pointer, ...NEUTRAL_AGENT_TITLES]) {
           rest = rest.split(allowed.replace(/\s+/g, ' ')).join(' ');
         }
         expect(rest, `${where}: ${text}`).not.toMatch(/\bagents?\b/i);
@@ -218,25 +220,30 @@ describe('the Vault copy map (0.19)', () => {
       // Your computer, paired, says the agent line itself, not a pointer.
       const says = p.device === 'paired' && p.id !== 'org' && p.id !== 'hub';
       expect(c.agentElsewhere, where).toBe(says ? PHONE_AGENT_LINE : undefined);
-      // An unpaired phone or the web gets one pointer, in the empty-vault ramp
-      // only: never in the lead or the storage sheet.
-      const pairs = p.device === 'unpaired' && p.id !== 'org';
+      // An unpaired phone or the web points at no computer (D20, 2026-10-07,
+      // which moved the pointer to the paired state only). It says how its
+      // own chats use the notes instead, in the empty-vault ramp only: never
+      // in the lead or the storage sheet, and never with the agent's name.
+      // Your computer unpaired cannot be read, so it says neither.
+      const unpaired = p.device === 'unpaired' && p.id !== 'org' && p.id !== 'hub';
       if (agentsFolder(p)) continue;
-      expect(c.agentPair, where).toBe(pairs ? PHONE_PAIR_LINE : undefined);
-      if (pairs) {
-        expect(vaultLead(c), where).not.toMatch(/agent/i);
-        expect(vaultSheetLine(c), where).not.toMatch(/agent/i);
-        const ramp = vaultOnboard(p.on, p.id, optsOf(p));
+      expect(c.models, where).toBe(unpaired ? VAULT_MODELS_LINE : undefined);
+      const ramp = vaultOnboard(p.on, p.id, optsOf(p));
+      if (unpaired) {
+        expect(vaultLead(c), where).not.toMatch(/agent|pin/i);
+        expect(vaultSheetLine(c), where).not.toMatch(/agent|pin/i);
         expect(
           ramp.points.find((pt) => pt.glyph === 'agent'),
           where,
-        ).toEqual({
-          glyph: 'agent',
-          title: 'Where your agent keeps notes',
-          sub: PHONE_PAIR_LINE,
-        });
+        ).toEqual({ glyph: 'agent', title: VAULT_MODELS_TITLE, sub: VAULT_MODELS_LINE });
+        for (const text of rendered(p)) expect(text, where).not.toMatch(/\bagents?\b|\bpair/i);
         continue;
       }
+      // Paired or a member: the models point is the unpaired ramp's alone.
+      expect(
+        ramp.points.some((pt) => pt.title === VAULT_MODELS_TITLE),
+        where,
+      ).toBe(false);
       // A member, or the team vault: no agent word anywhere.
       if (!says) for (const text of rendered(p)) expect(text).not.toMatch(/\bagents?\b/i);
     }

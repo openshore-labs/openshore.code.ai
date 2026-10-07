@@ -13,8 +13,10 @@
 //   only there do routines leave their notes.
 // - Everywhere else the notes on screen are not the agent's. A phone paired
 //   to its own computer says where the agent's vault is instead; an unpaired
-//   phone gets one pointer in the empty-vault ramp only (where the agent
-//   would be, never a claim about these notes); and a member on someone
+//   phone or the web says, in the empty-vault ramp only, how its own chats
+//   use these notes (a project's pins ride every chat there, and private
+//   notes stay off cloud models; founder, D20, 2026-10-07), so the pointer
+//   to a computer is said only once one is paired; and a member on someone
 //   else's computer gets no vault in their sessions (0.13), so nothing is
 //   promised there.
 // - Obsidian opens a plain folder. Only This folder claims it today. The
@@ -52,9 +54,9 @@ export interface VaultCopy {
   /** Where the agent's vault is when it is not these notes. A pointer, never
    *  a claim about the notes on screen. */
   agentElsewhere?: string;
-  /** The ramp's pointer on a device with no computer paired: where the agent
-   *  would be, never a claim about these notes. */
-  agentPair?: string;
+  /** The ramp's point on a device with no computer paired: how this device's
+   *  own chats use these notes (`VAULT_MODELS_LINE`). Never an agent line. */
+  models?: string;
 }
 
 /** Who holds the device, as far as the agent lines are concerned. */
@@ -72,9 +74,16 @@ export interface VaultCopyOpts {
 
 /** A paired phone's line about the agent: its vault is the computer's folder. */
 export const PHONE_AGENT_LINE = 'Your agent uses the vault on your computer.';
-/** An unpaired phone's (or the web's) one pointer, in the empty-vault ramp
- *  only: where the agent works, and that its vault is its own. */
-export const PHONE_PAIR_LINE = 'Your agent works on a computer you pair, with its own vault there.';
+/** An unpaired phone's (or the web's) point in the empty-vault ramp only:
+ *  how the chats on this device use these notes (founder, D20, 2026-10-07).
+ *  Both halves are the code's: a project's pins ride the pack of every chat
+ *  in it, on the device, cloud and Stack drivers alike (store.ts
+ *  `conversationPack`, `projectPins`), and a seat that leaves this network
+ *  never gets a note the privacy rules mark local-only (D5). The project
+ *  room's pins card says the same. */
+export const VAULT_MODELS_TITLE = 'How your models use it';
+export const VAULT_MODELS_LINE =
+  'Pin a note to a project and every chat there starts with it. Private notes never reach a cloud model.';
 /** The desktop's line when the vault is not the agent's folder. */
 export const DESKTOP_AGENT_LINE =
   'Your agent uses a folder on this computer, not these notes. Move the vault to This folder to share it.';
@@ -122,8 +131,9 @@ export function vaultCopy(
     copy.agentElsewhere = PHONE_AGENT_LINE;
   } else if (!opts.hubMember) {
     // Off the desktop with no computer paired (the team vault returned
-    // above): the ramp's one pointer. The lead and the sheet never read it.
-    copy.agentPair = PHONE_PAIR_LINE;
+    // above): how this device's chats use the notes, in the ramp only. The
+    // lead and the sheet never read it.
+    copy.models = VAULT_MODELS_LINE;
   }
   return copy;
 }
@@ -140,11 +150,11 @@ function hubCopy(copy: VaultCopy, desktop: boolean, opts: VaultCopyOpts): VaultC
     return { storage: `Your notes on ${opts.hubName?.trim() || 'the computer you paired'}.` };
   }
   if (desktop) return copy;
+  // Unpaired, Your computer cannot be read at all, so no chat starts with
+  // its notes and the ramp says nothing about who uses them.
   if (opts.paired) {
     copy.agent = HUB_AGENT_LINE;
     copy.routines = 'Routines leave their notes here.';
-  } else {
-    copy.agentPair = PHONE_PAIR_LINE;
   }
   return copy;
 }
@@ -294,15 +304,15 @@ export function vaultOnboard(
   const points: VaultOnboard['points'] = [
     { glyph: 'doc', title: 'Plain markdown, yours', sub: `${wayOut} Nothing is locked in.` },
   ];
-  const agentLine = c.agent
-    ? [c.agent, c.routines].filter(Boolean).join(' ')
-    : (c.agentElsewhere ?? c.agentPair);
+  const agentLine = c.agent ? [c.agent, c.routines].filter(Boolean).join(' ') : c.agentElsewhere;
   if (agentLine) {
     points.push({
       glyph: 'agent',
       title: c.agent ? 'You and your agent both write here' : 'Where your agent keeps notes',
       sub: agentLine,
     });
+  } else if (c.models) {
+    points.push({ glyph: 'agent', title: VAULT_MODELS_TITLE, sub: c.models });
   }
   points.push({
     glyph: 'link',
