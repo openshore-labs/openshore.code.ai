@@ -38,6 +38,22 @@ vi.mock('../src/lib/gitos/repoOAuth.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/lib/gitos/repoOAuth.js')>()),
   isRepoOAuthConfigured: (id: string) => id === 'github',
   repoOAuthCallbackUrl: () => 'https://example.supabase.co/functions/v1/repo-oauth',
+  repoToken: async () => 'ghu_test',
+}));
+
+// A GitHub sign-in that sees only public repositories, so its one fix is
+// reconnecting.
+vi.mock('../src/lib/chatRepos.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/lib/chatRepos.js')>()),
+  githubStatus: async () => ({
+    repos: [],
+    line: 'Signed in to GitHub as @sam, through an OAuth app.',
+    hint: {
+      text: 'OpenShore sees only public repositories on this sign-in.',
+      action: 'Reconnect GitHub',
+      reconnect: true,
+    },
+  }),
 }));
 
 // The DOM comes first: React DOM decides whether it has one when it loads.
@@ -99,6 +115,32 @@ describe('a one-tap platform', () => {
     expect(connectRepoOAuth).toHaveBeenCalledWith('github');
     expect(dom.text()).toContain('https://example.supabase.co/functions/v1/repo-oauth');
     expect(dom.buttons()).toContain('Copy Callback URL');
+  });
+
+  it('reconnects in its sheet, so a refused sign-in still shows the Callback URL', async () => {
+    const disconnectRepoPlatform = vi.fn(async () => {
+      useApp.setState({ connectedRepoPlatforms: {} });
+    });
+    const connectRepoOAuth = vi.fn(async () => ({ ok: false as const, error: 'Refused.' }));
+    useApp.setState({
+      connectedRepoPlatforms: { github: true },
+      disconnectRepoPlatform,
+      connectRepoOAuth,
+    } as never);
+    await dom.render(<ReposScreen />);
+    await dom.settle();
+    // The row says who is signed in and what it sees, in words.
+    expect(dom.text()).toContain(
+      'Signed in to GitHub as @sam, through an OAuth app. It sees no repositories.',
+    );
+    await tapRow('Reconnect GitHub');
+    await dom.settle();
+    expect(disconnectRepoPlatform).toHaveBeenCalledWith('github');
+    expect(connectRepoOAuth).toHaveBeenCalledWith('github');
+    expect(dom.container.querySelector('.sheet:not(.closing) .mode-head h2')?.textContent).toBe(
+      'Connect GitHub',
+    );
+    expect(dom.text()).toContain('https://example.supabase.co/functions/v1/repo-oauth');
   });
 
   it('closes its sheet once the sign-in connects', async () => {

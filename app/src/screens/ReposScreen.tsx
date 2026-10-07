@@ -126,16 +126,27 @@ export function ReposScreen() {
     };
   }, [githubOn, hintTick]);
   const githubHint = github?.hint;
-  const privateCount = github?.repos.filter((r) => r.private).length ?? 0;
+  // The sign-in line, then what it sees, in words: "none private", never "0".
+  const githubLine = (status: GithubStatus): string => {
+    const n = status.repos.length;
+    const priv = status.repos.filter((r) => r.private).length;
+    const sees =
+      n === 0
+        ? 'It sees no repositories.'
+        : `It sees ${n} ${n === 1 ? 'repository' : 'repositories'}, ${priv || 'none'} private.`;
+    return status.line ? `${status.line} ${sees}` : sees;
+  };
 
   // Remove GitHub and connect it again: the one-tap sign-in asks GitHub for
   // private access now, so an older sign-in that only saw public repositories
-  // is fixed by this. Without one-tap, the token field opens instead.
+  // is fixed by this. Without one-tap, the token field opens instead. Its
+  // sheet opens either way, so a refused sign-in still has a place to show
+  // the Callback URL it is missing.
   const reconnectGithub = async () => {
     await disconnectRepoPlatform('github');
     setGithub(undefined);
+    openConnect('github');
     if (isRepoOAuthConfigured('github')) await runOAuth('github', 'GitHub');
-    else openConnect('github');
     setHintTick((n) => n + 1);
   };
 
@@ -152,7 +163,8 @@ export function ReposScreen() {
 
   const clone = async () => {
     const cleaned = url.trim();
-    if (!cleaned) return;
+    // Enter in the field is a second door to Clone, so it waits as Clone does.
+    if (!cleaned || cloning) return;
     setCloning(true);
     try {
       // The connected platform's token rides along for a private repository
@@ -262,7 +274,7 @@ export function ReposScreen() {
                   sub={
                     on
                       ? c.id === 'github' && github
-                        ? `${github.line ? `${github.line} ` : ''}It sees ${github.repos.length} ${github.repos.length === 1 ? 'repository' : 'repositories'}, ${privateCount} private.`
+                        ? githubLine(github)
                         : 'Its repositories are ready to add to a chat.'
                       : busy
                         ? 'Connecting...'
@@ -472,10 +484,11 @@ export function ReposScreen() {
       {/* A platform's connect sheet. A one-tap platform leads with its
           sign-in and still offers the token path, for a fine-grained token or
           a self-hosted host its OAuth app does not cover. The token, its
-          link and Save rise above the keyboard together (lib/revealField.ts). */}
+          link and Save rise above the keyboard together (lib/revealField.ts).
+          Like every form sheet, its one way out is the round close. */}
       <Sheet open={Boolean(platform)} onClose={closeConnect}>
         {platform ? (
-          <div data-reveal-with="">
+          <>
             <SheetHead title={`Connect ${platform.name}`} onClose={closeConnect} />
             {platformOAuth && !tokenMode ? (
               <>
@@ -527,7 +540,7 @@ export function ReposScreen() {
                 </div>
               </>
             ) : (
-              <>
+              <div data-reveal-with="">
                 <div className="field">
                   {/* Same errand as a cloud key: an in-app browser sheet on
                       the phone, so creating the token and pasting it never
@@ -571,13 +584,10 @@ export function ReposScreen() {
                   >
                     Save access token
                   </button>
-                  <button type="button" className="btn quiet press-fb" onClick={closeConnect}>
-                    Cancel
-                  </button>
                 </div>
-              </>
+              </div>
             )}
-          </div>
+          </>
         ) : null}
       </Sheet>
 
@@ -586,47 +596,42 @@ export function ReposScreen() {
           repository on its own host (lib/repoClone.ts), so the hint is true. */}
       <Sheet open={cloneOpen} onClose={() => setCloneOpen(false)}>
         {cloneOpen ? (
-          <div data-reveal-with="">
+          <>
             <SheetHead title="Clone from a URL" onClose={() => setCloneOpen(false)} />
-            <div className="field">
-              <label htmlFor="repos-clone-url">Repository address</label>
-              <input
-                id="repos-clone-url"
-                autoFocus
-                type="url"
-                inputMode="url"
-                placeholder="https://github.com/owner/repo"
-                enterKeyHint="go"
-                autoCapitalize="none"
-                autoCorrect="off"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && void clone()}
-              />
-              <p className="hint" style={{ marginTop: 4 }}>
-                Private repositories open with a platform you connected, or with Git already set up
-                on your computer.
-              </p>
+            <div data-reveal-with="">
+              <div className="field">
+                <label htmlFor="repos-clone-url">Repository address</label>
+                <input
+                  id="repos-clone-url"
+                  autoFocus
+                  type="url"
+                  inputMode="url"
+                  placeholder="https://github.com/owner/repo"
+                  enterKeyHint="go"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && void clone()}
+                />
+                <p className="hint" style={{ marginTop: 4 }}>
+                  Private repositories open with a platform you connected, or with Git already set
+                  up on your computer.
+                </p>
+              </div>
+              <div className="sheet-actions">
+                <button
+                  type="button"
+                  className="btn primary press-fb"
+                  data-reveal-primary=""
+                  disabled={cloning || !url.trim()}
+                  onClick={() => void clone()}
+                >
+                  {cloning ? 'Cloning...' : 'Clone and open a chat'}
+                </button>
+              </div>
             </div>
-            <div className="sheet-actions">
-              <button
-                type="button"
-                className="btn primary press-fb"
-                data-reveal-primary=""
-                disabled={cloning || !url.trim()}
-                onClick={() => void clone()}
-              >
-                {cloning ? 'Cloning...' : 'Clone and open a chat'}
-              </button>
-              <button
-                type="button"
-                className="btn quiet press-fb"
-                onClick={() => setCloneOpen(false)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
+          </>
         ) : null}
       </Sheet>
 

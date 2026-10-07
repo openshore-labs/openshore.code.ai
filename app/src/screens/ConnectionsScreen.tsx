@@ -64,7 +64,8 @@ export function ConnectionsScreen() {
 
   const save = async (id: string, name: string) => {
     const key = value.trim();
-    if (!key) return;
+    // Enter in a field is a second door to Save, so it waits while a check runs.
+    if (!key || checking) return;
     // Verify the key actually works before claiming "connected", so a typo is
     // caught here, not later mid-chat. A hard rejection keeps the sheet open;
     // an unverifiable result (offline, dev CORS) saves but says so.
@@ -145,69 +146,70 @@ export function ConnectionsScreen() {
       </div>
 
       {/* A provider's key: where to get one, the field, and Save, which rise
-          above the keyboard together (lib/revealField.ts). */}
+          above the keyboard together (lib/revealField.ts). A form sheet has
+          one way out, the round close, which stays in view above the
+          keyboard (2026-10-07, the same exit as New project). */}
       <Sheet open={Boolean(provider)} onClose={closeSheet}>
         {provider ? (
-          <div data-reveal-with="">
+          <>
             <SheetHead title={`Connect ${provider.name}`} onClose={closeSheet} />
-            <div className="field">
-              <div className="field-label-row">
-                <label htmlFor="connections-api-key">{provider.name} API key</label>
-                <button
-                  type="button"
-                  className="linklike press-fb"
-                  onClick={() => openInAppBrowser(provider.apiKeyUrl)}
-                >
-                  Get a key ↗
-                </button>
-              </div>
-              <input
-                id="connections-api-key"
-                autoFocus
-                type="password"
-                placeholder={provider.keyHint}
-                enterKeyHint="go"
-                autoCapitalize="none"
-                autoCorrect="off"
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && void save(provider.id, provider.name)}
-              />
-            </div>
-            {provider.id === 'anthropic' && (askWorkspace || workspace.trim()) ? (
+            <div data-reveal-with="">
               <div className="field">
-                <label htmlFor="connections-workspace-id">Workspace ID</label>
+                <div className="field-label-row">
+                  <label htmlFor="connections-api-key">{provider.name} API key</label>
+                  <button
+                    type="button"
+                    className="linklike press-fb"
+                    onClick={() => openInAppBrowser(provider.apiKeyUrl)}
+                  >
+                    Get a key ↗
+                  </button>
+                </div>
                 <input
-                  id="connections-workspace-id"
-                  placeholder="wrkspc_..."
+                  id="connections-api-key"
+                  autoFocus
+                  type="password"
+                  placeholder={provider.keyHint}
                   enterKeyHint="go"
                   autoCapitalize="none"
                   autoCorrect="off"
-                  value={workspace}
-                  onChange={(e) => setWorkspace(e.target.value)}
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && void save(provider.id, provider.name)}
                 />
-                <p className="hint" style={{ marginTop: 4 }}>
-                  In the Console, open Settings, then Workspaces, and copy the ID that starts with
-                  wrkspc_.
-                </p>
               </div>
-            ) : null}
-            <div className="sheet-actions">
-              <button
-                type="button"
-                className="btn primary press-fb"
-                data-reveal-primary=""
-                disabled={checking}
-                onClick={() => void save(provider.id, provider.name)}
-              >
-                {checking ? 'Checking...' : 'Save'}
-              </button>
-              <button type="button" className="btn quiet press-fb" onClick={closeSheet}>
-                Cancel
-              </button>
+              {provider.id === 'anthropic' && (askWorkspace || workspace.trim()) ? (
+                <div className="field">
+                  <label htmlFor="connections-workspace-id">Workspace ID</label>
+                  <input
+                    id="connections-workspace-id"
+                    placeholder="wrkspc_..."
+                    enterKeyHint="go"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    value={workspace}
+                    onChange={(e) => setWorkspace(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && void save(provider.id, provider.name)}
+                  />
+                  <p className="hint" style={{ marginTop: 4 }}>
+                    In the Console, open Settings, then Workspaces, and copy the ID that starts with
+                    wrkspc_.
+                  </p>
+                </div>
+              ) : null}
+              <div className="sheet-actions">
+                <button
+                  type="button"
+                  className="btn primary press-fb"
+                  data-reveal-primary=""
+                  disabled={checking || !value.trim()}
+                  onClick={() => void save(provider.id, provider.name)}
+                >
+                  {checking ? 'Checking...' : 'Save'}
+                </button>
+              </div>
             </div>
-          </div>
+          </>
         ) : null}
       </Sheet>
 

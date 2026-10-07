@@ -88,6 +88,16 @@ const keyHint = (el: HTMLInputElement) =>
 const sheetTitle = () =>
   dom.container.querySelector('.sheet:not(.closing) .mode-head h2')?.textContent ?? '';
 
+/** A form sheet has one way out, the round close (2026-10-07, the same exit
+ *  as New project): its head sits straight in the sheet, where it stays in
+ *  view while the sheet scrolls, and the body ends in no Cancel. */
+function expectOneWayOut(): void {
+  const sheet = dom.container.querySelector('.sheet:not(.closing)')!;
+  const head = [...sheet.children].find((el) => el.classList.contains('mode-head'));
+  expect(head?.querySelector('.mode-close')).toBeTruthy();
+  expect(dom.buttons()).not.toContain('Cancel');
+}
+
 describe('Cloud Connections in the ledger', () => {
   it('lists one row per provider with its model count, and no Connect buttons', async () => {
     const { ConnectionsScreen } = await import('../src/screens/ConnectionsScreen.js');
@@ -104,7 +114,7 @@ describe('Cloud Connections in the ledger', () => {
     expect(dom.buttons()).not.toContain('Connect');
   });
 
-  it('opens the key sheet on a tap: the key link, the field, Save and Cancel', async () => {
+  it('opens the key sheet on a tap: the key link, the field and Save', async () => {
     const { ConnectionsScreen } = await import('../src/screens/ConnectionsScreen.js');
     await dom.render(<ConnectionsScreen />);
     await tapRow('Claude');
@@ -113,9 +123,14 @@ describe('Cloud Connections in the ledger', () => {
     expect(group).not.toBeNull();
     const field = group.querySelector('#connections-api-key') as HTMLInputElement;
     expect(keyHint(field)).toBe('go');
-    expect(group.querySelector('[data-reveal-primary]')?.textContent).toBe('Save');
+    const save = group.querySelector('[data-reveal-primary]') as HTMLButtonElement;
+    expect(save.textContent).toBe('Save');
+    // Save waits for a key to check.
+    expect(save.disabled).toBe(true);
+    await dom.type(field.getAttribute('placeholder')!, 'sk-ant-test');
+    expect(save.disabled).toBe(false);
     expect(dom.buttons()).toContain('Get a key ↗');
-    expect(dom.buttons()).toContain('Cancel');
+    expectOneWayOut();
     // The workspace field waits until Claude asks for it.
     expect(dom.container.querySelector('#connections-workspace-id')).toBeNull();
   });
@@ -165,7 +180,7 @@ describe('Repositories in the ledger', () => {
     expect(save.disabled).toBe(true);
     await dom.type(field.getAttribute('placeholder')!, 'ghp_test');
     expect(save.disabled).toBe(false);
-    expect(dom.buttons()).toContain('Cancel');
+    expectOneWayOut();
     expect(dom.text()).toContain('It stays on this device, never in a log.');
   });
 
@@ -193,9 +208,13 @@ describe('Repositories in the ledger', () => {
     expect(sheetTitle()).toBe('Clone from a URL');
     const field = dom.container.querySelector('#repos-clone-url') as HTMLInputElement;
     expect(keyHint(field)).toBe('go');
-    expect(dom.container.querySelector('.sheet [data-reveal-primary]')?.textContent).toBe(
-      'Clone and open a chat',
-    );
+    const clone = dom.container.querySelector('.sheet [data-reveal-primary]') as HTMLButtonElement;
+    expect(clone.textContent).toBe('Clone and open a chat');
+    // Clone waits for an address.
+    expect(clone.disabled).toBe(true);
+    await dom.type(field.getAttribute('placeholder')!, 'https://github.com/sam/harbor');
+    expect(clone.disabled).toBe(false);
+    expectOneWayOut();
   });
 });
 
@@ -241,5 +260,52 @@ describe('the Stack names its image reader', () => {
     const { StackManager } = await import('../src/components/StackManager.js');
     await dom.render(<StackManager />);
     expect(cloudRow()).toBe('Opus 5. Until you choose one. Asks before each image.');
+  });
+
+  it('names the stand-in in the slot sheets only while it is one', async () => {
+    useApp.setState({ view: 'stack', connectedProviders: { anthropic: true } });
+    const { StackManager } = await import('../src/components/StackManager.js');
+    await dom.render(<StackManager />);
+    const sheetSub = () =>
+      dom.container.querySelector('.sheet:not(.closing) .sheet-sub')?.textContent ?? '';
+    await tapRow('Cloud');
+    expect(sheetSub()).toBe(
+      `A cloud model that reads images. Until you choose one, ${reader} reads them, asking before each image.`,
+    );
+    await dom.render(null);
+    await dom.render(<StackManager />);
+    await tapRow('Local');
+    expect(sheetSub()).toBe(
+      `A model on this device or your own server. A model on this device cannot read images yet, so ${reader} reads them until one can.`,
+    );
+  });
+
+  it('says nothing of a stand-in once a cloud model is chosen, since it never asks', async () => {
+    const sonnet = {
+      kind: 'cloud' as const,
+      provider: 'anthropic',
+      model: 'claude-sonnet-5',
+      label: 'Sonnet 5',
+    };
+    useApp.setState({
+      view: 'stack',
+      connectedProviders: { anthropic: true },
+      settings: {
+        ...useApp.getState().settings,
+        stacks: {
+          offshore: {
+            active: [{ ref: sonnet, placement: { category: 'vision' } }],
+            saved: {},
+          },
+        },
+      },
+    });
+    const { StackManager } = await import('../src/components/StackManager.js');
+    await dom.render(<StackManager />);
+    expect(cloudRow()).toMatch(/^Sonnet 5 · .+ effort$/);
+    await tapRow('Cloud');
+    expect(dom.container.querySelector('.sheet:not(.closing) .sheet-sub')?.textContent ?? '').toBe(
+      'A cloud model that reads images.',
+    );
   });
 });

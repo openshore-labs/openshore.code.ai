@@ -146,7 +146,8 @@ describe('the rest of the Personal paths', () => {
       'Add the workspace id from the Anthropic Console, then save.',
     );
     expect(connections).toContain('This Claude key needs its workspace ID.');
-    expect(connections).toContain('disabled={checking}');
+    // Save waits while the key is checked, and for a key to check (D14).
+    expect(connections).toContain('disabled={checking || !value.trim()}');
   });
 
   it('the terminal says when it lost the computer, or was refused', () => {

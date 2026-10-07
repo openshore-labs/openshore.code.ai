@@ -937,9 +937,11 @@ export function StackManager() {
               {visionEdit.slot === 'local' ? 'Local image reading' : 'Cloud image reading'}
             </SheetTitle>
             <p className="sheet-sub">
+              {/* Each names the model reading images today, and only while
+                  that is the stand-in: a chosen cloud model never asks. */}
               {visionEdit.slot === 'local'
-                ? 'A model on this device or your own server. A model on this device cannot read images yet, so images go to the cloud model until one can.'
-                : imageReader
+                ? `A model on this device or your own server. A model on this device cannot read images yet${imageReader ? `, so ${refName(imageReader)} reads them until one can.` : '.'}`
+                : imageReader && !slots.cloud
                   ? `A cloud model that reads images. Until you choose one, ${refName(imageReader)} reads them, asking before each image.`
                   : 'A cloud model that reads images.'}
             </p>
