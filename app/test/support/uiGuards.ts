@@ -110,10 +110,17 @@ export function restFiles(): string[] {
 /** Comments out, code and copy in, the way copy-glossary.test.ts strips them,
  *  but a block comment keeps its line breaks so an offence carries its true
  *  line. A line comment goes from its slashes to the end of the line, unless
- *  the slashes follow a colon (a URL inside a string, like https://). */
+ *  the slashes follow a colon (a URL inside a string, like https://). Whole
+ *  line comments go first, and a block opens only at a line's start, after a
+ *  space or a brace, so a glob like 'Private/**' or 'lib/voice/*' in a string
+ *  or a comment never blanks the code below it until some later star-slash. */
 export function stripComments(src: string): string {
   return src
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+    .replace(/^([ \t]*)\/\/.*$/gm, '$1')
+    .replace(
+      /(^|[\s{(])\/\*[\s\S]*?\*\//gm,
+      (m, lead: string) => lead + m.slice(lead.length).replace(/[^\n]/g, ' '),
+    )
     .replace(/(^|[^:\\])\/\/.*$/gm, '$1');
 }
 
