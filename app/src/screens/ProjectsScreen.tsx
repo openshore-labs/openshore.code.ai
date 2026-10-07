@@ -209,9 +209,7 @@ export function ProjectsScreen() {
               tabIndex={docked ? -1 : 0}
               onClick={() => setCreating(true)}
             >
-              <Icon size={18}>
-                <path d="M12 5v14M5 12h14" />
-              </Icon>
+              <PlusGlyph size={18} />
               New project
             </button>
           </div>

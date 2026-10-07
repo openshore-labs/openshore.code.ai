@@ -14,6 +14,19 @@ import { HARBOR_MINI_APPROX_LABEL, HARBOR_MINI_MODEL_ID } from '../lib/harborMin
 import { SettingsRow } from './SettingsRow.js';
 import { thisDeviceNoun } from '../lib/deviceNoun.js';
 
+/** Each idle path's name and its one line, read by both renderings so the
+ *  cards and the rows can never say two things about one path. */
+const PATH_COPY = {
+  pair: { title: 'Connect your computer', sub: 'Use its models from here while it is on' },
+  reposPhone: { title: 'Set up a repository', sub: 'Connect GitHub, GitLab, or Bitbucket' },
+  stack: { title: 'Build your stack', sub: 'A model on this computer, through Ollama' },
+  reposDesk: {
+    title: 'Open a repository',
+    sub: 'Reads, edits, and commits, and shows you every change',
+  },
+  keys: { title: 'Add an API key', sub: 'Claude, OpenAI, or Gemini, at their price' },
+} as const;
+
 export function StartingPaths({
   context,
   variant = 'cards',
@@ -127,7 +140,7 @@ export function StartingPaths({
         return (
           <SettingsRow
             label={`Chat with ${name}`}
-            sub="Ready on this device"
+            sub={`Ready on ${thisDeviceNoun()}`}
             value="Open"
             onClick={() => void getGuideAndGo(id)}
           />
@@ -174,7 +187,7 @@ export function StartingPaths({
               HARBOR_MODEL_ID,
               'Harbor',
               HARBOR_APPROX_LABEL,
-              'A coding model on this device',
+              `A coding model on ${thisDeviceNoun()}`,
               settings.harborReady,
               harborDownload,
               beginHarborWithIntro,
@@ -196,13 +209,13 @@ export function StartingPaths({
         {isDesktop() ? (
           <>
             <SettingsRow
-              label="Build your stack"
-              sub="A model on this computer, through Ollama"
+              label={PATH_COPY.stack.title}
+              sub={PATH_COPY.stack.sub}
               onClick={() => void go('stack')}
             />
             <SettingsRow
-              label="Open a repository"
-              sub="Reads, edits, and commits, and shows you every change"
+              label={PATH_COPY.reposDesk.title}
+              sub={PATH_COPY.reposDesk.sub}
               onClick={() => void go('repos')}
             />
             <SettingsRow
@@ -214,20 +227,20 @@ export function StartingPaths({
         ) : (
           <>
             <SettingsRow
-              label="Connect your computer"
-              sub="Your computer's models, from here, while it is on"
+              label={PATH_COPY.pair.title}
+              sub={PATH_COPY.pair.sub}
               onClick={() => void go('pair')}
             />
             <SettingsRow
-              label="Set up a repository"
-              sub="Connect GitHub and pick a home repository"
+              label={PATH_COPY.reposPhone.title}
+              sub={PATH_COPY.reposPhone.sub}
               onClick={() => void go('repos')}
             />
           </>
         )}
         <SettingsRow
-          label="Add an API key"
-          sub="Claude, OpenAI, or Gemini, at your provider's price"
+          label={PATH_COPY.keys.title}
+          sub={PATH_COPY.keys.sub}
           onClick={() => void go('connections')}
         />
       </>
@@ -242,36 +255,16 @@ export function StartingPaths({
         // Studio "The Standing Light" (2026-09-04; founder 2026-09-23).
         <>
           {harborCard}
-          {pathCard(
-            'Connect your computer',
-            'Use its models from here while it is on',
-            () => void go('pair'),
-          )}
-          {pathCard(
-            'Set up a repository',
-            'Connect GitHub, GitLab, or Bitbucket',
-            () => void go('repos'),
-          )}
+          {pathCard(PATH_COPY.pair.title, PATH_COPY.pair.sub, () => void go('pair'))}
+          {pathCard(PATH_COPY.reposPhone.title, PATH_COPY.reposPhone.sub, () => void go('repos'))}
         </>
       ) : (
         <>
-          {pathCard(
-            'Build your stack',
-            'A model on this computer, through Ollama',
-            () => void go('stack'),
-          )}
-          {pathCard(
-            'Open a repository',
-            'Reads, edits, and commits, and shows you every change',
-            () => void go('repos'),
-          )}
+          {pathCard(PATH_COPY.stack.title, PATH_COPY.stack.sub, () => void go('stack'))}
+          {pathCard(PATH_COPY.reposDesk.title, PATH_COPY.reposDesk.sub, () => void go('repos'))}
         </>
       )}
-      {pathCard(
-        'Add an API key',
-        'Claude, OpenAI, or Gemini, at their price',
-        () => void go('connections'),
-      )}
+      {pathCard(PATH_COPY.keys.title, PATH_COPY.keys.sub, () => void go('connections'))}
     </>
   );
 }

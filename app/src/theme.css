@@ -12872,6 +12872,10 @@ button.settings-row:active {
   z-index: 3;
   flex-shrink: 0;
   display: grid;
+  /* One track the width of the padded box: left to size itself, the search
+     field's own width pushed it 8px past the right gutter, so New project sat
+     off the edge the round button keeps. */
+  grid-template-columns: minmax(0, 1fr);
   width: 100%;
   max-width: 760px;
   margin: 0 auto;

@@ -161,6 +161,35 @@ describe('the setup page (D9, D23)', () => {
     );
   });
 
+  // One source, two renderings: the rows variant names each path and says its
+  // line the way the card does, on either device.
+  it('says the same thing about each path as a card and as a row', async () => {
+    const { StartingPaths } = await import('../src/components/StartingPaths.js');
+    for (const desktop of [false, true]) {
+      device.desktop = desktop;
+      await dom.render(<StartingPaths context="onboarding" />);
+      const cards = new Map(
+        pathCards().map((c) => [title(c), c.querySelector('.sub')?.textContent] as const),
+      );
+      await dom.render(<StartingPaths context="settings" variant="rows" />);
+      const rows = new Map(
+        [...dom.container.querySelectorAll('.settings-row-text')].map(
+          (r) =>
+            [
+              r.querySelector('.settings-row-label')?.textContent,
+              r.querySelector('.settings-row-sub')?.textContent,
+            ] as const,
+        ),
+      );
+      expect(cards.size).toBe(desktop ? 3 : 4);
+      for (const [name, sub] of cards) {
+        if (name === 'Get Harbor') continue; // The row carries the size as its value.
+        expect(sub).toBeTruthy();
+        expect(rows.get(name)).toBe(sub);
+      }
+    }
+  });
+
   it('draws the card from the house card and press grammar', () => {
     expect(CSS).toMatch(/\.path-card-text \{[^}]*flex: 1;[^}]*min-width: 0;/);
     expect(CSS).toMatch(/\.path-card-title \{[^}]*font-weight: var\(--weight-semibold\)/);
@@ -229,6 +258,13 @@ describe('Projects on the desktop (D11)', () => {
     expect(dom.container.querySelector('.projects-dock')).not.toBeNull();
     expect(barNew()).toBeUndefined();
     expect(dom.container.querySelector('.chat-search')).toBeNull();
+  });
+
+  // The phone's dock keeps one gutter on both sides: its one grid track is the
+  // padded box, so the search field's own width cannot push New project past
+  // the right edge.
+  it('keeps the phone dock inside its gutters', () => {
+    expect(CSS).toMatch(/\.projects-dock \{[^}]*grid-template-columns: minmax\(0, 1fr\);/);
   });
 
   it('holds the bar button on one line beside its glyph', () => {
