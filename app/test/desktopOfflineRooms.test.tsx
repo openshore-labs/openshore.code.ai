@@ -349,6 +349,33 @@ describe("the stop card's door when nothing here can answer", () => {
     expect(picks).toBe(0);
   });
 
+  it('a chosen Offline also offers the way back: Follow the connection', async () => {
+    windowEvents();
+    const { offlineNoModelLine } = await import('os-code/protocol');
+    const { emptyThread } = await import('../src/state/types.js');
+    const { MessageList } = await import('../src/components/MessageList.js');
+    let follows = 0;
+    await dom.render(
+      <MessageList
+        thread={{
+          ...emptyThread(),
+          items: [
+            { kind: 'user', id: 'u1', text: 'hello' },
+            { kind: 'stopped', id: 's1', message: offlineNoModelLine('chosen') },
+          ],
+        }}
+        onPickModel={() => {}}
+        onInstallLocal={{ label: 'Install DeepBlue', busy: false, run: () => {} }}
+        onFollowConnection={() => follows++}
+      />,
+    );
+    expect(dom.buttons()).toEqual(
+      expect.arrayContaining(['Install DeepBlue', 'Follow the connection']),
+    );
+    await dom.click('Follow the connection');
+    expect(follows).toBe(1);
+  });
+
   it('with no network the line says when, and there is no door that would fail', async () => {
     windowEvents();
     const { offlineNoModelLine } = await import('os-code/protocol');

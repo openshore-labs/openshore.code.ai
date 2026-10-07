@@ -67,6 +67,8 @@ import {
   LOCAL_MODEL_READY,
   installLocalDoor,
   networkUp,
+  offlineBannerLine,
+  offlineChosen,
   offlineNow,
   usablePick,
 } from '../state/offlineOps.js';
@@ -288,6 +290,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     connectivity,
     ensureHarborMaster,
     harborMasterDownload,
+    setProfileOverride,
   } = useApp();
   // The repositories a new chat will start with, picked in the header before
   // the first message (the Claude Code way): the active project's, until the
@@ -318,7 +321,11 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const [voiceOpen, setVoiceOpen] = useState(false);
   const resumeVoice = useRef(false);
   const online = useOnline();
-  const { mounted: offlineMounted, closing: offlineClosing } = useExitPresence(!online);
+  // The banner shows while this device works offline: the network is down,
+  // or the person chose Offline (then it says so, and names no fault).
+  const offlineInForce = !online || offlineNow(connectivity, settings.profileOverride);
+  const offlineByChoice = online && offlineChosen(connectivity, settings.profileOverride);
+  const { mounted: offlineMounted, closing: offlineClosing } = useExitPresence(offlineInForce);
   // The brain a new chat will use, chosen from the composer. Until the person
   // picks one it follows the store's default (state/firstRunOps.ts): on the
   // desktop app the engine on this machine, so a first message just works,
@@ -872,11 +879,12 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         <div className={`offline-banner${offlineClosing ? ' closing' : ''}`} role="status">
           {/* Before a computer is connected, the banner never speaks of
               one (D1's rule, the same as the pill). */}
-          {isDesktop()
-            ? 'Offline. Models on this computer still answer. Cloud models wait for a connection.'
-            : settings.daemon
-              ? `Offline. Models on ${thisDeviceNoun()} still answer. Your computer and cloud models wait for a connection.`
-              : `Offline. Models on ${thisDeviceNoun()} still answer. Cloud models wait for a connection.`}
+          {offlineBannerLine({
+            desktop: isDesktop(),
+            paired: Boolean(settings.daemon),
+            chosen: offlineByChoice,
+            here: thisDeviceNoun(),
+          })}
         </div>
       ) : null}
 
@@ -922,6 +930,9 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             onGiveMoreRoom={(itemId) => void giveMoreRoom(itemId)}
             onOpenStack={() => setView('stack')}
             onInstallLocal={localDoor ? { ...localDoor, run: installLocal } : undefined}
+            onFollowConnection={
+              offlineByChoice ? () => void setProfileOverride(undefined) : undefined
+            }
             onOpenPackNote={openPackNote}
             onSaveHandoff={(itemId) => saveHandoffToVault(conv.id, itemId)}
             imageOffer={imageOffer}

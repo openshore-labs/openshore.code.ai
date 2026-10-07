@@ -277,6 +277,26 @@ describe('sign-off: the offline banner and the finished walk say what is there',
     },
   );
 
+  it('shows the banner for a chosen Offline, as a choice', { timeout: 20_000 }, async () => {
+    // The window reports a working network, so only the choice can say Offline.
+    const was = Object.getOwnPropertyDescriptor(globalThis.navigator, 'onLine');
+    Object.defineProperty(globalThis.navigator, 'onLine', { value: true, configurable: true });
+    try {
+      const store = await chatScreen({ online: true });
+      expect(dom.container.querySelector('.offline-banner')).toBeNull();
+      store.useApp.setState((s) => ({
+        settings: { ...s.settings, profileOverride: 'offline' } as never,
+      }));
+      await dom.settle();
+      const banner = dom.container.querySelector('.offline-banner')?.textContent ?? '';
+      expect(banner).toMatch(/^Offline, by your choice\./);
+      expect(banner).toContain('until you follow the connection again');
+    } finally {
+      if (was) Object.defineProperty(globalThis.navigator, 'onLine', was);
+      else delete (globalThis.navigator as { onLine?: boolean }).onLine;
+    }
+  });
+
   it('keeps the computer in the banner once one is connected', { timeout: 20_000 }, async () => {
     await chatScreen({ online: false, daemon: true });
     expect(dom.container.querySelector('.offline-banner')?.textContent).toContain(

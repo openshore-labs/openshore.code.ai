@@ -22,6 +22,7 @@ import {
   installLocalDoor,
   keyCheckWaits,
   networkUp,
+  offlineBannerLine,
   offlineChosen,
   offlineNow,
   reasoningSlotSub,
@@ -282,5 +283,36 @@ describe('the lines each room says', () => {
         download: { label: 'Could not get it.', failed: true },
       }),
     ).toEqual({ label: 'Install DeepBlue', busy: false });
+  });
+});
+
+describe('the chat banner while offline', () => {
+  const line = (desktop: boolean, paired: boolean, chosen: boolean) =>
+    offlineBannerLine({ desktop, paired, chosen, here: 'this phone' });
+
+  it('keeps the network-down words', () => {
+    expect(line(true, false, false)).toBe(
+      'Offline. Models on this computer still answer. Cloud models wait for a connection.',
+    );
+    expect(line(false, true, false)).toBe(
+      'Offline. Models on this phone still answer. Your computer and cloud models wait for a connection.',
+    );
+    expect(line(false, false, false)).toBe(
+      'Offline. Models on this phone still answer. Cloud models wait for a connection.',
+    );
+  });
+
+  it('says a chosen Offline is a choice, not a fault, and how to undo it', () => {
+    for (const desktop of [true, false]) {
+      for (const paired of [true, false]) {
+        const chosen = line(desktop, paired, true);
+        expect(chosen).toMatch(/^Offline, by your choice\./);
+        expect(chosen).toContain('until you follow the connection again');
+        expect(chosen).not.toContain(EM_DASH);
+      }
+    }
+    // Before a computer is connected, a phone's banner never speaks of one.
+    expect(line(false, false, true)).not.toMatch(/computer/);
+    expect(line(true, false, true)).toContain('Models on this computer answer.');
   });
 });

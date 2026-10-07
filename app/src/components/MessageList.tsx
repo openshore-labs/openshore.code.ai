@@ -304,6 +304,7 @@ export function MessageList({
   onGiveMoreRoom,
   onOpenStack,
   onInstallLocal,
+  onFollowConnection,
   onUnqueue,
   onOpenPackNote,
   onSaveHandoff,
@@ -345,6 +346,9 @@ export function MessageList({
    *  door gets DeepBlue (absent while it cannot start, such as with no
    *  network); `label` is its words, the download's progress once it runs. */
   onInstallLocal?: { label: string; busy: boolean; run: () => void };
+  /** With Offline chosen, the stop card's way back: follow the connection
+   *  again, so the cloud models answer (Desktop Offline). */
+  onFollowConnection?: () => void;
   /** Answer a clarifying question (the plan-first picker): sends the reply. */
   onClarifyPick?: (text: string) => void;
   /** Drop a queued message (tap on its bubble). */
@@ -680,15 +684,30 @@ export function MessageList({
                     {/* Offline with no model on this computer (Desktop
                         Offline): the one door is a model that answers here. */}
                     {offlineNeedsLocalModel(item.message) ? (
-                      isLatest && onInstallLocal ? (
-                        <button
-                          type="button"
-                          className="msg-stopped-action press-fb"
-                          disabled={onInstallLocal.busy}
-                          onClick={onInstallLocal.run}
-                        >
-                          {onInstallLocal.label}
-                        </button>
+                      isLatest && (onInstallLocal || onFollowConnection) ? (
+                        <>
+                          {onInstallLocal ? (
+                            <button
+                              type="button"
+                              className="msg-stopped-action press-fb"
+                              disabled={onInstallLocal.busy}
+                              onClick={onInstallLocal.run}
+                            >
+                              {onInstallLocal.label}
+                            </button>
+                          ) : null}
+                          {/* Offline was the person's choice: the other way
+                              forward is to let the cloud models answer. */}
+                          {onFollowConnection ? (
+                            <button
+                              type="button"
+                              className="msg-stopped-action press-fb"
+                              onClick={onFollowConnection}
+                            >
+                              Follow the connection
+                            </button>
+                          ) : null}
+                        </>
                       ) : null
                     ) : /* Every failed turn leaves a way to keep talking: carry
                         the chat to a brain that can answer, or pick one. */

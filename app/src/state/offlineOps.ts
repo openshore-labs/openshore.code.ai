@@ -99,6 +99,23 @@ export function desktopStackNote(offline: boolean, chosen: boolean): string {
     : "Offline. This computer's models answer. Cloud models wait for a connection.";
 }
 
+/** The chat's offline banner. The network down keeps its words; Offline
+ *  chosen says it was the person's choice, so a working network with cloud
+ *  models standing aside never reads as a fault. `here` names the device in
+ *  hand; before a computer is connected the line never speaks of one (D1). */
+export function offlineBannerLine(s: {
+  desktop: boolean;
+  paired: boolean;
+  chosen: boolean;
+  here: string;
+}): string {
+  const where = s.desktop ? 'this computer' : s.here;
+  const waits = !s.desktop && s.paired ? 'Your computer and cloud models' : 'Cloud models';
+  return s.chosen
+    ? `Offline, by your choice. Models on ${where} answer. ${waits} wait until you follow the connection again.`
+    : `Offline. Models on ${where} still answer. ${waits} wait for a connection.`;
+}
+
 /** Cloud Connections' line at the top while offline. */
 export function connectionsOfflineLine(chosen: boolean): string {
   return chosen
