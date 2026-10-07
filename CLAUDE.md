@@ -192,6 +192,27 @@ Emergency door is a targeted `.skip` with a reason, never a loosened guard.
 The coding agent's UX standard (`os-code/src/core/agent/uxStandard.ts`)
 carries the same bar for everything built through OpenShore.
 
+## Premium, simple, sharp: the UI guards (standing rule, 2026-10-07)
+
+The Creative Studio and CMO review of 2026-10-07 (`docs/ux-review-2026-10-07.md`)
+turned the seams it found into rules, so they cannot come back. One helper,
+`app/test/support/uiGuards.ts`, runs eight rules over every UI source file
+(`app/test/uiGuards.test.ts` for shared files, `uiGuards.<room>.test.ts` for
+each room's own): a room with a large title tucks its bar title (BackBar
+`titleHiddenUntil`); retired words stay out of copy; buttons size through
+`.btn.sm` and `.btn.block`, never inline padding or width; carets, chevrons,
+checks and emoji are drawn glyphs from `components/SheetGlyphs.tsx`, never
+typed characters; `pill local` (teal) only for something local or private,
+and state pills such as Active wear `pill ink`; the reach dot draws by class,
+never an inline colour; icon sizes sit on one even scale; rows step through
+the shared stagger, never an inline one. Beside them, `polish-standards`
+holds every `:hover` inside a `(hover: hover)` or `(pointer: fine)` block, so
+nothing stays tinted after a tap, and every press on the `scale` property with
+a press token, and `contrast` holds every new pair at AA. A new file is covered the
+day it lands. Every door to Pairing says "Connect your computer". The 23
+larger calls the review held for the founder (D1 to D23 in the review doc) are
+not polish: do not build one without the founder's word.
+
 ## Project trust is a rule, not a feature (standing rule, 2026-09-27)
 
 A repository's own `os-code.config.json` is a proposal, never the person's
