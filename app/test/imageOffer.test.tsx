@@ -198,6 +198,15 @@ describe('the two guides', () => {
     );
     expect(text).toContain('delete OLLAMA_HOST from your account');
     expect(text).toContain('delete the two lines you added');
+    // The plan is walked one step at a time, so each way back says it is for
+    // later, on every system, and nobody takes the setting away by mistake
+    // on their way to the next picture (sign-off, 2026-10-08).
+    const ways = local.steps.slice(-2).map((s) => (typeof s === 'string' ? s : s.text));
+    expect(ways).toHaveLength(2);
+    for (const way of ways) {
+      expect(way).toMatch(/\blater\b/i);
+      expect(way).toMatch(/\bremove\b/);
+    }
     expect(text).toContain('Connect a model under Bench');
     expect(text).toContain('Address: `http://100.x.y.z:11434/v1`');
     expect(text).toContain('Model name: llava:7b');

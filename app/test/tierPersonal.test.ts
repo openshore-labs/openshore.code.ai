@@ -111,6 +111,9 @@ describe('a Personal build, loaded as one', () => {
     );
     expect(notCopiedLine(true)).toMatch(/^OpenShore does not copy your own chats/);
     expect(notCopiedLine(true)).toMatch(/addresses it invites are kept on our server/);
+    // One name per thing: what the team keeps is its project settings, the
+    // words the team entry in What leaves this device uses.
+    expect(notCopiedLine(true)).toContain("A team's name, project settings, vault notes");
   });
 });
 

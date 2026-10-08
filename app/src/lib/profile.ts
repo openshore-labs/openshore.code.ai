@@ -45,13 +45,13 @@ export function followsLine(): string {
 
 /** What the profile says is never copied to the account, true in every
  *  tier (privacy review, 2026-10-08). A Personal build sends none of these to
- *  our server; a build with teams keeps a team's projects and vault notes,
- *  and the addresses its members are invited at, there for the team (the
- *  team entry in egressManifest.ts), so the line claims only the person's
- *  own. */
+ *  our server; a build with teams keeps a team's name, its project settings
+ *  and vault notes, and the addresses its members are invited at, there for
+ *  the team (the team entry in egressManifest.ts, in the same words), so the
+ *  line claims only the person's own. */
 export function notCopiedLine(teams: boolean = featureOn('teams')): string {
   return teams
-    ? "OpenShore does not copy your own chats, projects, keys, or vault to your account. A team's name, projects, vault notes, and the addresses it invites are kept on our server, for the team."
+    ? "OpenShore does not copy your own chats, projects, keys, or vault to your account. A team's name, project settings, vault notes, and the addresses it invites are kept on our server, for the team."
     : 'OpenShore does not copy your chats, projects, keys, or vault to your account.';
 }
 

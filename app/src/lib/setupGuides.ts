@@ -155,7 +155,7 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
         text: `Later, whenever you want Ollama off your networks again, remove the setting (${thisDeviceNoun()} then cannot reach it). On Windows, quit Ollama from the taskbar, search Settings for environment variables, delete OLLAMA_HOST from your account, and open Ollama again. On a Mac, paste this in Terminal, then quit Ollama from the menu bar and open it again:`,
         paste: 'launchctl unsetenv OLLAMA_HOST',
       },
-      'On Linux, run sudo systemctl edit ollama, delete the two lines you added, and save. Then run sudo systemctl daemon-reload and sudo systemctl restart ollama.',
+      'On Linux, to remove it later, run sudo systemctl edit ollama, delete the two lines you added, and save. Then run sudo systemctl daemon-reload and sudo systemctl restart ollama.',
     ],
     done: 'The Local row under Image reading names it. The next picture goes to it without asking, and stays on your own network.',
   },

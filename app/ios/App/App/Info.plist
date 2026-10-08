@@ -56,9 +56,9 @@
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>OpenShore connects to your own computer, and to any model server you connect, over your local network or Tailscale.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>OpenShore uses the camera when you scan the pairing QR code shown on your computer, or take a photo to attach to a chat.</string>
+	<string>OpenShore uses the camera when you scan the pairing QR code shown on your computer, or take a photo or video to attach to a chat.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>OpenShore uses the microphone to turn your speech into text when you dictate a message or talk in voice mode.</string>
+	<string>OpenShore uses the microphone to turn your speech into text when you dictate a message or talk in voice mode. When you record a video for a chat, its sound is never sent.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>OpenShore reads photos, screenshots, and screen recordings you attach so a model can review them. A video is turned into still frames on your device first, and the video itself is never sent.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

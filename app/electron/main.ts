@@ -552,8 +552,11 @@ const host = new EngineHost(
 // again on wake and on each report from the window. The choice is the
 // window's to make, and main keeps it in userData (lifecycle.ts
 // OFFLINE_CHOSEN_FILE) and restores it here, as main starts and before the
-// hub serves or a routine's clock gets a turn (privacy review, 2026-10-08):
-// so a chosen Offline holds with the window closed, from a login launch that
+// hub serves or any session reads the flag (privacy review, 2026-10-08). The
+// routine clock's first tick runs inside new EngineHost above and may open a
+// due run there, but a run reads the flag only at its first turn, which waits
+// on an await and so comes after this line. So a chosen Offline holds with
+// the window closed, from a login launch that
 // starts in the tray with no window at all, and with the hub serving a phone.
 // The window still reports the choice on every refresh, and a change it
 // reports is kept for the next launch.
