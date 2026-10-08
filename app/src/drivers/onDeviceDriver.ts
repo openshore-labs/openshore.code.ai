@@ -28,7 +28,7 @@ import type {
   DriverEventSink,
   DriverVaultOptions,
 } from './types.js';
-import { DriverEmitter, readChatContext, textFinal } from './types.js';
+import { DriverEmitter, PrivateHold, readChatContext, textFinal } from './types.js';
 import { packSeatFor } from '../lib/vaultSeat.js';
 import { chainOfThoughtLine, chainOfThoughtOn } from '../lib/chainOfThought.js';
 import { writingVoiceLine } from '../lib/writingVoice.js';
@@ -113,6 +113,10 @@ export class OnDeviceDriver implements ChatDriver {
   private historyLocalOnly = false;
   /** The send in flight, so Stop also reaches a pack still preparing. */
   private sendController?: AbortController;
+  /** Whether this chat holds a private note's text, and why (H): a search
+   *  this model writes then asks every time on a card with its words, and
+   *  one bound for Perplexity does not run. */
+  private readonly hold = new PrivateHold();
 
   constructor(
     private readonly modelId: string,
@@ -142,6 +146,7 @@ export class OnDeviceDriver implements ChatDriver {
     if (seed) {
       this.history = seed.map((t) => ({ role: t.role, content: t.text }));
       this.historyLocalOnly = seed.some((t) => t.localOnly === true);
+      this.hold.keep(this.historyLocalOnly);
     }
     this.listenersReady = this.attachListeners();
   }
@@ -279,6 +284,7 @@ export class OnDeviceDriver implements ChatDriver {
     this.aborted = false;
     this.packText = undefined;
     this.packLocalOnly = this.historyLocalOnly;
+    this.hold.begin();
     const send = new AbortController();
     this.sendController = send;
     this.emit({ type: 'task-start', input: text });
@@ -388,6 +394,7 @@ export class OnDeviceDriver implements ChatDriver {
     const pack = seat ? this.vaultPack.render(seat) : {};
     this.packText = pack.text;
     if (pack.localOnly) this.packLocalOnly = true;
+    this.hold.pack(pack.localOnly, pack.pinOnly === true);
     if (pack.event) this.emit(pack.event);
   }
 
@@ -405,6 +412,7 @@ export class OnDeviceDriver implements ChatDriver {
       this.search.settle(this.history);
       if (text) this.history.push({ role: 'assistant', content: text });
       if (text && this.packLocalOnly) this.historyLocalOnly = true;
+      this.hold.settle(Boolean(text) && this.packLocalOnly);
       this.emit(textFinal(text, this.packLocalOnly));
       this.emit({
         type: 'task-done',
@@ -421,11 +429,15 @@ export class OnDeviceDriver implements ChatDriver {
       // it out of the visible transcript and out of history, so the model
       // does not later "remember" having already announced it.
       try {
+        // This model stays on this device, so once the chat holds a private
+        // note's text its search asks every time (H).
+        const cause = this.hold.cause();
         const resultText = await this.search.run(
           decision.query,
           this.researchOn,
           (e) => this.emit(e),
           this.sendController?.signal,
+          cause ? { afterPrivate: true, cause } : undefined,
         );
         // Stopped during the search: the turn is already closed.
         if (this.aborted) return;
@@ -456,6 +468,7 @@ export class OnDeviceDriver implements ChatDriver {
     this.search.settle(this.history);
     if (text) this.history.push({ role: 'assistant', content: text });
     if (text && this.packLocalOnly) this.historyLocalOnly = true;
+    this.hold.settle(Boolean(text) && this.packLocalOnly);
     this.emit(textFinal(text, this.packLocalOnly));
     const after = this.afterNote;
     this.afterNote = undefined;
@@ -524,6 +537,7 @@ export class OnDeviceDriver implements ChatDriver {
   recordLine(turn: SeedTurn): void {
     this.history.push({ role: turn.role, content: turn.text });
     if (turn.localOnly) this.historyLocalOnly = true;
+    this.hold.keep(turn.localOnly);
   }
 
   answerApproval(_approvalId: string, _answer: ApprovalAnswer): void {

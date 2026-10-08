@@ -38,7 +38,7 @@ import type {
   DriverEvent,
 } from 'os-code/protocol';
 import type { ChatContext, ChatDriver, DriverEventSink } from './types.js';
-import { DriverEmitter, readChatContext, textFinal } from './types.js';
+import { DriverEmitter, PrivateHold, packPinOnly, readChatContext, textFinal } from './types.js';
 import type { DaemonTarget } from './remoteDriver.js';
 import type { OscodeBridge } from '../lib/electronBridge.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
@@ -195,6 +195,11 @@ export class DesktopChatDriver implements ChatDriver {
   private warmed = false;
   private slowStart?: { word(): void; stop(): void };
   private readonly transport: FreeChatTransport;
+  /** Whether this chat holds a private note's text, and why (H): the
+   *  computer's model stays on its network, so once it has read one, a
+   *  search it writes asks every time and one bound for Perplexity does not
+   *  run. */
+  private readonly hold = new PrivateHold();
 
   constructor(
     /** The paired computer (the phone), or a transport of its own (the
@@ -216,6 +221,7 @@ export class DesktopChatDriver implements ChatDriver {
     if (seed) {
       this.history = seed.map((t) => ({ role: t.role, content: t.text }));
       this.historyLocalOnly = seed.some((t) => t.localOnly === true);
+      this.hold.keep(this.historyLocalOnly);
     }
   }
 
@@ -239,6 +245,7 @@ export class DesktopChatDriver implements ChatDriver {
     this.abortController = new AbortController();
     this.packCardShown = undefined;
     this.sendLocalOnly = this.historyLocalOnly;
+    this.hold.begin();
     this.answer = '';
     this.search.begin();
     this.emit({ type: 'task-start', input: text });
@@ -255,6 +262,7 @@ export class DesktopChatDriver implements ChatDriver {
     const kept = this.answer.trim();
     if (kept) this.history.push({ role: 'assistant', content: kept });
     if (kept && this.sendLocalOnly) this.historyLocalOnly = true;
+    this.hold.settle(Boolean(kept) && this.sendLocalOnly);
     this.emit(textFinal(kept, this.sendLocalOnly && Boolean(kept)));
     this.emit({ type: 'task-done', reason, message });
     this.closed = true;
@@ -321,6 +329,7 @@ export class DesktopChatDriver implements ChatDriver {
         } else if (ev.type === 'context-pack') {
           const card = readPackCard(ev);
           if (card?.localOnly) this.sendLocalOnly = true;
+          this.hold.pack(card?.localOnly, packPinOnly(card?.sources));
           const key = card && JSON.stringify([card.seat, card.sources, card.withheld]);
           if (card && key !== this.packCardShown) {
             this.packCardShown = key;
@@ -335,11 +344,13 @@ export class DesktopChatDriver implements ChatDriver {
       if (this.aborted) return;
       const decision = this.search.decide(offered);
       if (decision.kind === 'search') {
+        const cause = this.hold.cause();
         const results = await this.search.run(
           decision.query,
           this.researchOn,
           (e) => this.emit(e),
           this.abortController?.signal,
+          cause ? { afterPrivate: true, cause } : undefined,
         );
         if (this.aborted) return;
         this.history.push({ role: 'user', content: results });
@@ -373,6 +384,7 @@ export class DesktopChatDriver implements ChatDriver {
   recordLine(turn: SeedTurn): void {
     this.history.push({ role: turn.role, content: turn.text });
     if (turn.localOnly) this.historyLocalOnly = true;
+    this.hold.keep(turn.localOnly);
   }
 
   answerApproval(_approvalId: string, _answer: ApprovalAnswer): void {

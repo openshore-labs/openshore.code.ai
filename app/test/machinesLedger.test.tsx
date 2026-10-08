@@ -456,6 +456,13 @@ describe('the Stack names its image reader', () => {
       model: visionFallbackClaudeModel().id,
     };
     expect(imageStepRunner({ ...stack, imageReader: haiku, reachable: () => true })).toEqual(sonar);
+    // With nothing set for Image reading, a plan carries no picture, so its
+    // image step is the Reasoning model's whatever reads one in the chat (CX
+    // and CMO, 2026-10-08, E): never the connected cloud reader.
+    const unplaced = { ...stack, active: stack.active.slice(1) };
+    expect(imageStepRunner({ ...unplaced, imageReader: haiku, reachable: () => true })).toEqual(
+      sonar,
+    );
     useApp.setState({
       view: 'stack',
       connectedProviders: { anthropic: true, perplexity: true },

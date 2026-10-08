@@ -14,7 +14,13 @@
 import type { ApprovalAnswer, DriverEvent } from 'os-code/protocol';
 import type { AppVaultPack, ChatContext, ChatDriver, DriverEventSink } from './types.js';
 import { packSeatFor } from '../lib/vaultSeat.js';
-import { DriverEmitter, readChatContext, seedText } from './types.js';
+import {
+  DriverEmitter,
+  PlaceholderNotice,
+  readChatContext,
+  seedText,
+  stubsReply,
+} from './types.js';
 import { effortDirective } from '../lib/effort.js';
 import { chainOfThoughtLine, chainOfThoughtOn } from '../lib/chainOfThought.js';
 import { imageBlockParts, type Attachment } from '../lib/attachments.js';
@@ -74,6 +80,10 @@ export class CloudOpenAiDriver implements ChatDriver {
   private readonly humanize?: boolean;
   private readonly writingVoice?: string;
   private readonly modelLabel: string;
+  /** The history holds the placeholder for a marked reply, and the line
+   *  that says so, once per chat for this model (F). */
+  private stubbedReply = false;
+  private readonly placeholder = new PlaceholderNotice();
   private readonly contextWindow: number;
   /** The window the provider's catalog lists for this model, if any: the
    *  pack sizes itself from it, else 128k (CTO J4). */
@@ -104,6 +114,7 @@ export class CloudOpenAiDriver implements ChatDriver {
     // A turn that drew on a local-only note reaches this cloud seat as the
     // stub, never the text (I5).
     if (seed) this.history = seed.map((t) => ({ role: t.role, content: seedText(t, true) }));
+    this.stubbedReply = Boolean(seed?.some((t) => stubsReply(t, true)));
   }
 
   subscribe(sink: DriverEventSink): () => void {
@@ -147,6 +158,9 @@ export class CloudOpenAiDriver implements ChatDriver {
       if (!turn.open) return;
       const pack = this.vaultPackFor();
       if (pack.event) turn.emit(pack.event);
+      // The first request that carries the placeholder says so, once (F).
+      const notice = this.placeholder.take(this.model, this.modelLabel, this.stubbedReply);
+      if (notice) turn.emit(notice);
       const messages: OaiMessage[] = [
         {
           role: 'system',
@@ -273,6 +287,7 @@ export class CloudOpenAiDriver implements ChatDriver {
   recordLine(turn: SeedTurn): void {
     // A marked line is the stub here, as a marked seed is (I5, D5).
     this.history.push({ role: turn.role, content: seedText(turn, true) });
+    if (stubsReply(turn, true)) this.stubbedReply = true;
   }
 
   answerApproval(_approvalId: string, _answer: ApprovalAnswer): void {

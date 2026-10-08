@@ -106,6 +106,11 @@ export type ThreadItem =
       // block. Shell output run through the diff renderer mis-colors every line
       // that happens to start with + or -, so the kind is tracked explicitly.
       detailKind?: 'diff' | 'output';
+      /** A handoff to another model (delegate, analyzeImage, generateImage):
+       *  the model the step went to, and whether it leaves this network, so
+       *  the row names it and wears the Cloud chip (CX and CMO, 2026-10-08,
+       *  D). Absent from an older engine. */
+      handoff?: { model: string; leaves: boolean };
     }
   | { kind: 'status'; id: string; text: string }
   | {

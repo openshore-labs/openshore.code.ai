@@ -589,6 +589,13 @@ import { dropTeamIndexes, noteTeamIndex } from './teamIndexes.js';
 import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
 import { SAMPLE_PROMPT, SAMPLE_REPO_NAME } from '../lib/sampleProject.js';
 import { setSearchConsent, type SearchAllowed } from '../lib/localSearch.js';
+import {
+  WebSearchSheets,
+  answersSheet,
+  remembersAnswer,
+  searchAskShortcut,
+  type WebSearchSheet,
+} from './webSearchAskOps.js';
 import { RELEASE_TIER, featureOn, roomOpen, type ReleaseTier } from '../lib/focus.js';
 import {
   accountCopy,
@@ -2560,11 +2567,16 @@ interface AppState {
    *  message, in every chat. */
   giveMoreRoom(itemId: string): Promise<void>;
   /** A model asked to search the web and the person has not answered yet
-   *  (web search asks once; What leaves this device). The sheet shows it. */
-  webSearchAsk?: { query: string };
+   *  (web search asks once; What leaves this device). The sheet shows it.
+   *  `private` is the card for a search a local model wrote after its chat
+   *  read a private note (CX and CMO, 2026-10-08, H): it asks every time,
+   *  shows the exact words and why, and its answer is never remembered. */
+  webSearchAsk?: WebSearchSheet;
   /** The web search question's answer: allow (remembered on this device) or
-   *  not now (asked again after the next launch). */
-  answerWebSearch(allow: boolean): void;
+   *  not now (asked again after the next launch). `sheet` is the card the
+   *  tap was on: an answer for a card no longer on screen (a second tap, or
+   *  the scrim, while the sheet slides away) does nothing. */
+  answerWebSearch(allow: boolean, sheet?: WebSearchSheet): void;
   /** The Settings switch for web search. */
   setWebSearchAllowed(allowed: boolean): Promise<void>;
   /** Opening web pages for the coding agent: ask, always, or never, carried
@@ -4149,16 +4161,23 @@ export const useApp = create<AppState>((set, get, api) => {
   // question.
   let webSearchDeclinedThisRun = false;
   let webSearchPending: Promise<boolean> | undefined;
-  let webSearchResolve: ((allow: boolean) => void) | undefined;
-  function askWebSearch(query: string): Promise<boolean> {
-    const consent = get().settings.webSearchConsent;
-    if (consent === 'allowed') return Promise.resolve(true);
-    if (consent === 'declined' || webSearchDeclinedThisRun) return Promise.resolve(false);
+  // One sheet on screen at a time (state/webSearchAskOps.ts).
+  const webSearchSheets = new WebSearchSheets((sheet) => set({ webSearchAsk: sheet }));
+  function askWebSearch(
+    query: string,
+    ask?: { afterPrivate: true; card: { summary: string; detail: string } },
+  ): Promise<boolean> {
+    // After a private read (H): every search asks, whatever was allowed
+    // before, on a card with the exact words; nothing is remembered.
+    const shortcut = searchAskShortcut(
+      get().settings.webSearchConsent,
+      webSearchDeclinedThisRun,
+      ask?.afterPrivate === true,
+    );
+    if (shortcut !== undefined) return Promise.resolve(shortcut);
+    if (ask?.afterPrivate) return webSearchSheets.open({ query, private: ask.card });
     if (webSearchPending) return webSearchPending;
-    webSearchPending = new Promise<boolean>((resolve) => {
-      webSearchResolve = resolve;
-      set({ webSearchAsk: { query } });
-    });
+    webSearchPending = webSearchSheets.open({ query });
     return webSearchPending;
   }
   function webSearchAllowedNow(): SearchAllowed {
@@ -14611,14 +14630,23 @@ export const useApp = create<AppState>((set, get, api) => {
       else setTrustItem({ state: 'trusted', error: undefined });
     },
 
-    answerWebSearch(allow) {
-      const resolve = webSearchResolve;
-      webSearchResolve = undefined;
-      webSearchPending = undefined;
+    answerWebSearch(allow, sheet) {
+      // Only the card on screen takes an answer, so a second tap on a
+      // private card as it slides away never saves a standing allow.
+      const current = get().webSearchAsk;
+      if (!answersSheet(current, sheet)) return;
+      // A card after a private read (H) answers that one search only: a yes
+      // is no standing allow, and a no keeps web search as it was.
+      const remembered = remembersAnswer(current);
       set({ webSearchAsk: undefined });
+      if (!remembered) {
+        webSearchSheets.answer(allow);
+        return;
+      }
+      webSearchPending = undefined;
       if (allow) void get().saveSettings({ webSearchConsent: 'allowed' });
       else webSearchDeclinedThisRun = true;
-      resolve?.(allow);
+      webSearchSheets.answer(allow);
       // Routines on this computer follow the answer.
       if (allow) void get().refreshRoutines();
     },

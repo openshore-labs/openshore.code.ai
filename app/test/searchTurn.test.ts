@@ -15,6 +15,8 @@ const h = vi.hoisted(() => ({
   generates: [] as Array<{ requestId: string; system: string; messages: unknown[] }>,
   search: vi.fn(),
   stream: vi.fn(),
+  // The search service a search resolves to; undefined is DuckDuckGo.
+  key: undefined as undefined | { backend: string; apiKey: string },
 }));
 
 vi.mock('../src/lib/llamaPlugin.js', () => ({
@@ -33,7 +35,7 @@ vi.mock('../src/lib/llamaPlugin.js', () => ({
   },
 }));
 vi.mock('../src/lib/webSearch.js', () => ({
-  resolveSearchKey: async () => undefined,
+  resolveSearchKey: async () => h.key,
   webSearch: h.search,
   formatSearchResults: (query: string) => `RESULTS for ${query}: page one, page two.`,
 }));
@@ -126,6 +128,7 @@ beforeEach(() => {
   h.stream.mockReset();
   forgetDeviceModel();
   setSearchConsent(async () => true);
+  h.key = undefined;
 });
 afterEach(() => {
   setSearchConsent(async () => true);
@@ -343,5 +346,145 @@ describe('SearchTurn', () => {
     ];
     turn.settle(history);
     expect(history.map((m) => m.content)).toEqual([results, 'q', searchedLine('q')]);
+  });
+});
+
+// Once a chat on a seat that stays on this network holds a private note's
+// text (CX and CMO, 2026-10-08, H), a search the model writes asks every time,
+// with the exact words; one bound for Perplexity does not run; a seat that
+// leaves, never sent the note, keeps today's ask.
+describe('a search after a private read, on every driver that searches', () => {
+  type Ask = { query: string; ask?: { afterPrivate?: true; cause?: string; service?: string } };
+  let asks: Ask[];
+  beforeEach(() => {
+    asks = [];
+    setSearchConsent(async (query, ask) => {
+      asks.push({ query, ...(ask ? { ask } : {}) });
+      return true;
+    });
+  });
+  const marked = [
+    { role: 'user' as const, text: 'what does my diary say?' },
+    { role: 'assistant' as const, text: 'The secret is teal.', localOnly: true as const },
+  ];
+
+  it('a pocket model in a Stack chat that read a private turn', async () => {
+    const driver = new StackDriver(pocket, 'offshore', {}, marked);
+    collect(driver);
+    driver.send('what is the tide?');
+    await settle();
+    reply(0, 'SEARCH: tide');
+    await settle();
+    expect(asks).toEqual([
+      { query: 'tide', ask: expect.objectContaining({ afterPrivate: true, cause: 'read' }) },
+    ]);
+    expect(asks[0]!.ask!.service).toBe('DuckDuckGo');
+    expect(h.search).toHaveBeenCalledTimes(1);
+    reply(1, 'High tide is at noon.');
+    await settle();
+    driver.send('and tomorrow?');
+    await settle();
+    reply(2, 'SEARCH: tide tomorrow');
+    await settle();
+    expect(asks.map((a) => a.ask?.afterPrivate)).toEqual([true, true]);
+    driver.dispose();
+  });
+
+  it('your own model in a Stack chat that stays here, and not one that leaves', async () => {
+    h.stream.mockResolvedValueOnce(oai('SEARCH: node 24')).mockResolvedValueOnce(oai('Soon.'));
+    const stays = new StackDriver(box, 'offshore', {}, marked, {
+      packSeat: () => ({ modelClass: 'small', servedTokens: 8192, leavesNetwork: false }),
+    });
+    const events = collect(stays);
+    stays.send('when did node 24 ship?');
+    await vi.waitFor(() => expect(lastDone(events)).toBeDefined());
+    expect(asks).toEqual([
+      { query: 'node 24', ask: expect.objectContaining({ afterPrivate: true, cause: 'read' }) },
+    ]);
+    stays.dispose();
+
+    asks = [];
+    h.stream.mockResolvedValueOnce(oai('SEARCH: node 24')).mockResolvedValueOnce(oai('Soon.'));
+    const leaves = new StackDriver(box, 'offshore', {}, marked, {
+      packSeat: () => ({ modelClass: 'small', servedTokens: 8192, leavesNetwork: true }),
+    });
+    const left = collect(leaves);
+    leaves.send('when did node 24 ship?');
+    await vi.waitFor(() => expect(lastDone(left)).toBeDefined());
+    expect(asks).toEqual([{ query: 'node 24' }]);
+    leaves.dispose();
+  });
+
+  it('a Stack seat refuses a search bound for Perplexity, before any ask', async () => {
+    h.key = { backend: 'perplexity', apiKey: 'pplx' };
+    const driver = new StackDriver(pocket, 'offshore', { researchOn: true }, marked);
+    const events = collect(driver);
+    driver.send('what is the tide?');
+    await settle();
+    reply(0, 'SEARCH: tide');
+    await settle();
+    expect(asks).toEqual([]);
+    expect(h.search).not.toHaveBeenCalled();
+    const line = 'This chat has read a private note, so this step is not handed to a cloud model.';
+    expect(events.some((e) => e.type === 'status' && e.message === line)).toBe(true);
+    expect(JSON.stringify(h.generates[1]!.messages)).toContain(
+      `Not run: ${line} Answer from what you have.`,
+    );
+    driver.dispose();
+  });
+
+  it("the desktop's free chat, by the card its computer sent", async () => {
+    const card = (pinOnly: boolean) =>
+      `data: ${JSON.stringify({
+        type: 'context-pack',
+        seat: 'local',
+        mode: 'full',
+        tokens: 10,
+        budgetTokens: 100,
+        sources: [
+          { layer: 'pin', path: 'Private/Plan.md', title: 'Plan', project: true, localOnly: true },
+          ...(pinOnly
+            ? []
+            : [{ layer: 'search', path: 'Journal/Day.md', title: 'Day', localOnly: true }]),
+        ],
+        withheld: 0,
+        cold: false,
+        localOnly: true,
+      })}\n\n`;
+    const search = `data: ${JSON.stringify({ type: 'text', delta: 'SEARCH: jimi hendrix' })}\n\n`;
+    h.stream
+      .mockResolvedValueOnce(sseBody([card(true), search]))
+      .mockResolvedValueOnce(desk('A guitarist.'));
+    const pinned = new DesktopChatDriver({ baseUrl: 'http://desk', token: 't' });
+    const events = collect(pinned);
+    pinned.send('who was jimi hendrix?');
+    await vi.waitFor(() => expect(lastDone(events)).toBeDefined());
+    expect(asks).toEqual([
+      { query: 'jimi hendrix', ask: expect.objectContaining({ afterPrivate: true, cause: 'pin' }) },
+    ]);
+    pinned.dispose();
+
+    asks = [];
+    h.stream
+      .mockResolvedValueOnce(sseBody([card(false), search]))
+      .mockResolvedValueOnce(desk('A guitarist.'));
+    const read = new DesktopChatDriver({ baseUrl: 'http://desk', token: 't' });
+    const readEvents = collect(read);
+    read.send('who was jimi hendrix?');
+    await vi.waitFor(() => expect(lastDone(readEvents)).toBeDefined());
+    expect(asks[0]!.ask).toMatchObject({ afterPrivate: true, cause: 'read' });
+    read.dispose();
+  });
+
+  it("the desktop's free chat keeps today's ask in a clean chat", async () => {
+    h.stream
+      .mockResolvedValueOnce(desk('SEARCH: jimi hendrix'))
+      .mockResolvedValueOnce(desk('A guitarist.'));
+    const driver = new DesktopChatDriver({ baseUrl: 'http://desk', token: 't' });
+    const events = collect(driver);
+    driver.send('who was jimi hendrix?');
+    await vi.waitFor(() => expect(lastDone(events)).toBeDefined());
+    expect(asks).toEqual([{ query: 'jimi hendrix' }]);
+    driver.dispose();
   });
 });
