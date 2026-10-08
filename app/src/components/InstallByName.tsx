@@ -1,8 +1,9 @@
 // Install any Ollama model by name, so a person is never limited to the models
 // we listed: whatever is on the Ollama library (the newest releases the day
 // they land) can be pulled on this computer and placed. Desktop only; the pull
-// runs on this machine's engine. A wrong name comes back as Ollama's own
-// error, never a fabricated success. Lives in Stack for every build (the
+// runs on this machine's engine. A wrong name, or any pull that fails, comes
+// back as one plain line with the way on (the engine's pullFailedLine), never
+// a fabricated success or Ollama's raw error. Lives in Stack for every build (the
 // Marketplace, which also shows it, is a later tier; docs/release-tiers.md).
 import { useState } from 'react';
 import { useApp } from '../state/store.js';

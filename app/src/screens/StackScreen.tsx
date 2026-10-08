@@ -2,7 +2,7 @@
 // Editable on the desktop; the phone shows the live picture from the daemon.
 import { InstallByName } from '../components/InstallByName.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { rankLocalModels, type DaemonStackInfo } from 'os-code/protocol';
+import type { DaemonStackInfo } from 'os-code/protocol';
 import { stackAdmin, useApp } from '../state/store.js';
 import { bridge, type DesktopStatus } from '../lib/electronBridge.js';
 import { isDesktop } from '../lib/platform.js';
@@ -84,9 +84,11 @@ export function StackScreen() {
     }
   }, [settings.daemon]);
 
+  // A paired computer that goes offline, or comes back, is read again, so
+  // the phone's Stack says which of its models answer meanwhile.
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+  }, [refresh, connectivity.homeOffline]);
 
   // Prefab stacks: the catalog's presets, which arrive on the live feed and are
   // rebuilt on a schedule, so they refresh and reassess themselves as models
@@ -195,7 +197,7 @@ export function StackScreen() {
 
   // The phone manages its own app-side stack (Reasoning model + bench). The
   // desktop keeps its live daemon-driven view below.
-  if (!isDesktop()) return <StackManager />;
+  if (!isDesktop()) return <StackManager computer={remote} />;
 
   // Read failed with no status yet: the rows say so, and Runs the show offers
   // Try again.
@@ -275,10 +277,12 @@ export function StackScreen() {
             }
             sub={
               orchestrator
-                ? reasoningSlotSub(
+                ? // Offline, the model that answers meanwhile is the engine's
+                  // own seat, read across every provider by address.
+                  reasoningSlotSub(
                     offline,
                     orchestrator.kind === 'cloud',
-                    rankLocalModels(status?.ollama.models ?? []).length,
+                    status?.offlineSeat?.model,
                   )
                 : unanswered
                   ? undefined

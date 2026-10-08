@@ -85,6 +85,12 @@ import type { StackHealthRange } from '../insights/stackHealthTypes.js';
 import { EgressPolicy } from '../core/security/egress.js';
 import { trustSessionFolder } from '../core/agent/projectTrust.js';
 import { giveMoreRoomHere } from '../providers/servedWindow.js';
+import { ProviderRegistry } from '../providers/registry.js';
+import { leavesThisNetwork } from '../providers/types.js';
+import { getAnthropicKey } from '../auth/claude.js';
+import { machineOffline } from '../core/agent/offline.js';
+import { offlineSeatFor } from '../router/router.js';
+import type { DaemonStackInfo } from '../protocol.js';
 import {
   machineVaultWire,
   vaultPrivacyConfig,
@@ -546,6 +552,10 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         version: '0.1.0',
         role: auth.role,
         user: auth.userId,
+        // Desktop Offline: why this computer works offline ('network' or
+        // 'chosen'), so a paired phone says what still answers here. Absent
+        // while online; an older daemon never sends it, which reads as online.
+        offline: machineOffline().reason,
       });
       return;
     }
@@ -796,26 +806,41 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     }
 
     if (req.method === 'GET' && url.pathname === '/stack') {
-      const stack = options.config.stack;
+      // Read fresh, as every session and the free chat read it, so a stack
+      // changed on the desktop since this daemon started is the one reported.
+      const config = loadConfig().config;
+      const stack = config.stack;
+      const registry = new ProviderRegistry(config, getAnthropicKey);
+      // Where the orchestrator runs, judged by address (leavesThisNetwork),
+      // never by a label, as the desktop's own status judges it.
+      const orchestratorId = stack.orchestrator?.provider ?? '';
+      const orchestratorLeaves = registry.has(orchestratorId)
+        ? leavesThisNetwork(registry.get(orchestratorId))
+        : config.providers[orchestratorId]?.kind === 'anthropic';
       const orchestrator = stack.orchestrator
         ? {
             model: stack.orchestrator.model,
             provider: stack.orchestrator.provider,
-            kind: (options.config.providers[stack.orchestrator.provider]?.kind === 'anthropic'
-              ? 'cloud'
-              : 'local') as 'local' | 'cloud',
+            kind: (orchestratorLeaves ? 'cloud' : 'local') as 'local' | 'cloud',
           }
         : undefined;
       const specialists = Object.entries(stack.specialists)
         .filter(([role]) => role !== 'imageGen')
         .map(([role, ref]) => ({ role, model: (ref as { model?: string }).model ?? '' }));
+      // Desktop Offline: while this computer works offline, the phone is told
+      // why and which model answers here in place of one that waits (the
+      // engine's own offline seat). Online it costs no model list.
+      const offline = machineOffline().reason;
+      const offlineSeat = offline ? await offlineSeatFor(config, registry) : undefined;
       sendJson(res, 200, {
         description: orchestrator
           ? `${orchestrator.model}${specialists.length ? ` + ${specialists.map((s) => s.role).join(', ')}` : ', solo'}`
           : 'not set up yet',
         orchestrator,
         specialists,
-      });
+        ...(offline ? { offline } : {}),
+        ...(offlineSeat ? { offlineSeat } : {}),
+      } satisfies DaemonStackInfo);
       return;
     }
     // Stack Health, folded on this machine from the sessions already on disk and

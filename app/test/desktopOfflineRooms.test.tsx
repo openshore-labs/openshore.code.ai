@@ -8,9 +8,11 @@
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { mountDom, type TestDom } from './support/dom.js';
 import type { ConversationSource } from '../src/state/types.js';
+import { rankLocalModels } from 'os-code/protocol';
 
 type Status = {
   ollama: { up: boolean; detail: string; models: string[] };
+  offlineSeat?: { model: string; provider: string };
   hardwareSummary: string;
   stack: {
     configured: boolean;
@@ -83,8 +85,12 @@ vi.mock('../src/lib/catalog.js', async (importOriginal) => ({
 
 function status(kind: 'local' | 'cloud', models: string[] = ['qwen2.5-coder:7b']): Status {
   const model = kind === 'cloud' ? 'claude-sonnet-5' : 'qwen2.5-coder:7b';
+  // The engine's offline seat, as status() reports it: the orchestrator when
+  // it stays here, else the best model a server here lists.
+  const seat = kind === 'local' ? model : rankLocalModels(models)[0];
   return {
     ollama: { up: true, detail: 'running', models },
+    ...(seat ? { offlineSeat: { model: seat, provider: 'ollama' } } : {}),
     hardwareSummary: 'no dedicated GPU detected, 16 GB system RAM',
     stack: {
       configured: true,
@@ -216,6 +222,28 @@ describe("the desktop Stack's quiet door", () => {
     expect(dom.text()).not.toContain('claude-sonnet-5');
   });
 
+  it("Runs the show names the engine's offline seat, not the first server's count", async () => {
+    offlineNet();
+    // The first server lists nothing that can chat, but the engine seats a
+    // model all the same (a local specialist, or a second server here).
+    machine.status = {
+      ...status('cloud', ['nomic-embed-text']),
+      offlineSeat: { model: 'qwen3:4b', provider: 'lan' },
+    };
+    const { StackScreen } = await import('../src/screens/StackScreen.js');
+    await dom.render(<StackScreen />);
+    await dom.settle();
+    expect(dom.text()).toContain(
+      'Reasoning model · Waits for a connection. qwen3:4b on this computer answers for now.',
+    );
+
+    machine.status = status('cloud', ['nomic-embed-text']);
+    await dom.render(null);
+    await dom.render(<StackScreen />);
+    await dom.settle();
+    expect(dom.text()).toContain('No model on this computer can answer yet.');
+  });
+
   it('the connection dropped: the line, and no door (the lone pill is in the bar)', async () => {
     offlineNet();
     const { StackScreen } = await import('../src/screens/StackScreen.js');
@@ -266,13 +294,13 @@ describe("the model sheet's waiting cloud models", () => {
     expect(dom.container.querySelector('.model-sheet .ms-pin')).not.toBeNull();
   });
 
-  it('This computer stays, and with a cloud model in charge it says a model here answers', async () => {
+  it('This computer stays, and with a cloud model in charge it names the model here that answers', async () => {
     offlineNet();
-    machine.status = status('cloud');
+    machine.status = status('cloud', ['nomic-embed-text', 'qwen3:4b', 'qwen2.5-coder:7b']);
     const { ModelSheet } = await import('../src/components/ModelSheet.js');
     await dom.render(<ModelSheet onPick={() => {}} onClose={() => {}} />);
     await dom.settle();
-    expect(dom.text()).toContain('Offline, so a model on this computer answers for now');
+    expect(dom.text()).toContain('Offline, so qwen2.5-coder:7b on this computer answers for now');
     // The root row for the cloud sheet says why it waits.
     expect(dom.text()).toContain('Waits for a connection');
   });

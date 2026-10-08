@@ -7,7 +7,9 @@
 // Status sheet's words on the computer itself, and the plain lines every room
 // says while cloud models wait. No em dash in any of them.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NetworkWatch, offlineReason } from '../electron/networkWatch.js';
@@ -16,15 +18,20 @@ import {
   CLOUD_WAITS,
   LOCAL_MODEL_READY,
   cloudWaitLine,
+  computerOfflineNote,
+  computerOfflineOf,
   connectionsOfflineLine,
   desktopOnline,
   desktopStackNote,
   installLocalDoor,
   keyCheckWaits,
+  localModelFailedLine,
   networkUp,
   offlineBannerLine,
   offlineChosen,
+  offlineNoSeatSub,
   offlineNow,
+  offlineSeatSub,
   reasoningSlotSub,
   reportDesktopOffline,
   usablePick,
@@ -260,17 +267,17 @@ describe('the lines each room says', () => {
     );
   });
 
-  it("the Stack's reasoning slot says a cloud model waits, and who answers meanwhile", () => {
-    expect(reasoningSlotSub(false, true, 0)).toBe(
+  it("the Stack's reasoning slot says a cloud model waits, and names who answers meanwhile", () => {
+    expect(reasoningSlotSub(false, true, 'qwen2.5-coder:7b')).toBe(
       'Reasoning model · Plans every task and routes it.',
     );
-    expect(reasoningSlotSub(true, false, 0)).toBe(
+    expect(reasoningSlotSub(true, false, 'qwen2.5-coder:7b')).toBe(
       'Reasoning model · Plans every task and routes it.',
     );
-    expect(reasoningSlotSub(true, true, 1)).toBe(
-      'Reasoning model · Waits for a connection. A model on this computer answers for now.',
+    expect(reasoningSlotSub(true, true, 'qwen2.5-coder:7b')).toBe(
+      'Reasoning model · Waits for a connection. qwen2.5-coder:7b on this computer answers for now.',
     );
-    expect(reasoningSlotSub(true, true, 0)).toMatch(/No model on this computer can answer yet\.$/);
+    expect(reasoningSlotSub(true, true)).toMatch(/No model on this computer can answer yet\.$/);
   });
 
   it('the install door: desktop only, only with the network up, its words follow the download', () => {
@@ -283,13 +290,14 @@ describe('the lines each room says', () => {
     expect(
       installLocalDoor({ desktop: true, networkUp: true, download: { label: '42%' } }),
     ).toEqual({ label: 'Getting DeepBlue, 42%', busy: true });
+    // After a failed download the door is the way on its line names.
     expect(
       installLocalDoor({
         desktop: true,
         networkUp: true,
-        download: { label: 'Could not get it.', failed: true },
+        download: { label: 'Could not download DeepBlue. Try again.', failed: true },
       }),
-    ).toEqual({ label: 'Install DeepBlue', busy: false });
+    ).toEqual({ label: 'Try DeepBlue again', busy: false });
   });
 });
 
@@ -321,5 +329,142 @@ describe('the chat banner while offline', () => {
     // Before a computer is connected, a phone's banner never speaks of one.
     expect(line(false, false, true)).not.toMatch(/computer/);
     expect(line(true, false, true)).toContain('Models on this computer answer.');
+  });
+});
+
+describe('a paired computer that works offline (Desktop Offline follow-up)', () => {
+  it('reads why from what its daemon answers; an older daemon reads as online', () => {
+    expect(computerOfflineOf({ ok: true, offline: 'network' })).toBe('network');
+    expect(computerOfflineOf({ ok: true, offline: 'chosen' })).toBe('chosen');
+    expect(computerOfflineOf({ ok: true })).toBeUndefined();
+    expect(computerOfflineOf({ offline: true })).toBeUndefined();
+    expect(computerOfflineOf(null)).toBeUndefined();
+    expect(computerOfflineOf(undefined)).toBeUndefined();
+  });
+
+  it("the phone's Stack: its cloud models wait, and whether its own models answer", () => {
+    expect(computerOfflineNote('network', true)).toBe(
+      'Connected to your computer, which is offline. Models on your computer still answer. Its cloud models wait for its connection.',
+    );
+    expect(computerOfflineNote('network', false)).toBe(
+      'Connected to your computer, which is offline. No model on your computer can answer yet. Its cloud models wait for its connection.',
+    );
+    // Before the computer has said, the line claims nothing about its models.
+    expect(computerOfflineNote('network', undefined)).toBe(
+      'Connected to your computer, which is offline. Its cloud models wait for its connection.',
+    );
+    expect(computerOfflineNote('chosen', true)).toBe(
+      'Connected to your computer, which is offline by your choice. Models on your computer answer. Its cloud models wait until you follow the connection there.',
+    );
+    for (const reason of ['network', 'chosen'] as const) {
+      for (const seat of [true, false, undefined]) {
+        const line = computerOfflineNote(reason, seat);
+        expect(line, line).not.toMatch(NO_EM_DASH);
+        expect(line, line).not.toMatch(/\bhub\b|this phone|this device/i);
+      }
+    }
+  });
+
+  it('the model sheet names the model that answers there, or says none can yet', () => {
+    expect(offlineSeatSub('qwen2.5-coder:7b', 'your computer')).toBe(
+      'Offline, so qwen2.5-coder:7b on your computer answers for now',
+    );
+    expect(offlineSeatSub('qwen3:4b', 'this computer')).toBe(
+      'Offline, so qwen3:4b on this computer answers for now',
+    );
+    expect(offlineNoSeatSub('your computer')).toBe(
+      'Offline, and no model on your computer can answer yet.',
+    );
+  });
+});
+
+describe('a DeepBlue download that fails (Desktop Offline follow-up)', () => {
+  it('with no network, its words stay as they were', () => {
+    expect(localModelFailedLine(false)).toBe(
+      'Offline. DeepBlue downloads once you are back online.',
+    );
+    expect(
+      localModelFailedLine(true, { detail: 'Offline. Models download...', reason: 'offline' }),
+    ).toBe('Offline. DeepBlue downloads once you are back online.');
+  });
+
+  it('with the network up: what failed, by name, and the way on; never the raw error', () => {
+    const raw = 'The download of qwen2.5-coder:7b stopped partway. Try again.';
+    expect(localModelFailedLine(true, { detail: raw, reason: 'stopped' })).toBe(
+      'The download of DeepBlue stopped partway. Try again.',
+    );
+    expect(localModelFailedLine(true, { detail: raw, reason: 'disk' })).toBe(
+      'Not enough disk space on your computer for DeepBlue. Free some space, then try again.',
+    );
+    expect(localModelFailedLine(true, { detail: raw, reason: 'unreachable' })).toMatch(
+      /^Could not reach the Ollama library/,
+    );
+    // A name the Ollama library lacks is the catalog's, never the person's to check.
+    expect(localModelFailedLine(true, { detail: raw, reason: 'not-found' })).toBe(
+      'Could not download DeepBlue. Try again.',
+    );
+    // A bridge that failed outright still reads plainly.
+    expect(localModelFailedLine(true)).toBe('Could not download DeepBlue. Try again.');
+  });
+});
+
+describe("the engine host's status judges local by address (Desktop Offline follow-up)", () => {
+  let server: Server | undefined;
+  afterEach(() => {
+    server?.close();
+    server = undefined;
+    rmSync(join(process.env.OSC_HOME!, 'config.json'), { force: true });
+  });
+
+  /** A model server on this computer that answers as Ollama does. */
+  async function fakeOllama(models: string[]): Promise<string> {
+    server = createServer((req, res) => {
+      res.setHeader('content-type', 'application/json');
+      if (req.url === '/api/version') return void res.end(JSON.stringify({ version: '0.6.0' }));
+      if (req.url === '/api/tags') {
+        return void res.end(JSON.stringify({ models: models.map((name) => ({ name })) }));
+      }
+      res.statusCode = 404;
+      res.end('{}');
+    });
+    await new Promise<void>((resolve) => server!.listen(0, '127.0.0.1', resolve));
+    return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  }
+
+  it("lists the server on this network, never a hosted one first in line, and names the engine's offline seat", async () => {
+    const local = await fakeOllama(['nomic-embed-text', 'qwen3:4b', 'qwen2.5-coder:7b']);
+    writeFileSync(
+      join(process.env.OSC_HOME!, 'config.json'),
+      JSON.stringify({
+        providers: {
+          // Its kind label says local; its address leaves this network.
+          hosted: { kind: 'openai-compatible', baseUrl: 'https://models.example.invalid/v1' },
+          anthropic: { kind: 'anthropic', model: 'claude-sonnet-5' },
+          ollama: { kind: 'openai-compatible', baseUrl: local },
+        },
+        stack: { orchestrator: { provider: 'anthropic', model: 'claude-sonnet-5' } },
+      }),
+    );
+    const { EngineHost } = await import('../electron/engineHost.js');
+    const host = new EngineHost(
+      () => {},
+      () => {},
+      () => {},
+      { tailscale: () => ({ running: false, ip: undefined }) },
+    );
+    const status = await host.status();
+    expect(status.ollama.models).toEqual(['nomic-embed-text', 'qwen3:4b', 'qwen2.5-coder:7b']);
+    expect(status.stack.orchestrator?.kind).toBe('cloud');
+    expect(status.offlineSeat).toEqual({ model: 'qwen2.5-coder:7b', provider: 'ollama' });
+    host.disposeAll();
+  });
+
+  it('pulls and Stack picks land on that same server, judged by address', () => {
+    const host = read('electron', 'engineHost.ts');
+    expect(host).toMatch(/if \(leavesThisNetwork\(provider\)\) continue;/);
+    expect(host).not.toMatch(/if \(provider\.kind !== 'local'\) continue;/);
+    expect(host).toMatch(
+      /endpoint\.kind === 'openai-compatible' && isLocalUrl\(endpoint\.baseUrl\)/,
+    );
   });
 });

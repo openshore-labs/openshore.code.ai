@@ -531,7 +531,7 @@ describe('the machine flag', () => {
     setMachineOffline('network');
     const lines: string[] = [];
     const result = await installOllamaRef('qwen3:4b', (p) => lines.push(p.line));
-    expect(result).toEqual({ ok: false, detail: OFFLINE_DOWNLOAD });
+    expect(result).toEqual({ ok: false, detail: OFFLINE_DOWNLOAD, reason: 'offline' });
     expect(lines).toHaveLength(0);
     expect(OFFLINE_DOWNLOAD).not.toMatch(/lookup|dial|ENOTFOUND/i);
   });
