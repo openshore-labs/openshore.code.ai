@@ -135,9 +135,9 @@ const COPY: VaultSettingsSheetCopy = {
   deleteForGoodSub: 'Deletes skip Trash and ask twice.',
   excluded: 'Notes models never see',
   excludedSub: 'Models never see these, in any chat, unless a command you run or allow reads them.',
-  localOnly: 'Notes that stay on this computer',
+  localOnly: 'Private notes',
   localOnlySub:
-    'A local model may read these. A cloud model never does, unless you run or allow a command or change that carries them.',
+    'A local model may read these, and OpenShore never sends them to a cloud model. A command you run or allow, or a change you allow, can still carry their words to one.',
   addFolder: 'Add a folder',
   addTag: 'Add a tag',
   tagPlaceholder: 'Tag',

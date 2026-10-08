@@ -7,8 +7,15 @@
 // Editors only (a local project, or edit on a shared one), on the
 // ProjectCurrents pattern: rendered by ProjectDetailScreen when the person may
 // edit. The picker is a Sheet; every row answers the finger (press-fb).
+//
+// A private pin holds every cloud handoff in its project (CX and CMO,
+// 2026-10-08, G), so its row and the picker wear the lock and "Private", and
+// a line under the list says what it does while Memory carries the pins to
+// the coding agent.
 import { useEffect, useState, type CSSProperties } from 'react';
+import type { VaultVisibility } from 'os-code/protocol';
 import { useApp } from '../state/store.js';
+import { memoryOverride } from '../lib/currents.js';
 import { PROJECT_VAULT_PINS_MAX } from '../state/types.js';
 import type { VaultPickerNote } from '../lib/vaultExcerpt.js';
 import { noteTitle } from '../lib/vault.js';
@@ -16,7 +23,11 @@ import { hapticCommit } from '../lib/haptics.js';
 import { Sheet } from './Sheet.js';
 import { SheetHead } from './SheetHead.js';
 import { LockGlyph } from './SheetGlyphs.js';
-import { VAULT_PRIVATE_OFF_CLOUD } from '../lib/vaultCopy.js';
+import {
+  VAULT_PIN_PRIVATE_LINE,
+  VAULT_PRIVATE_OFF_CLOUD,
+  VAULT_PRIVATE_TAG,
+} from '../lib/vaultCopy.js';
 
 /** The line a pin the vault no longer holds shows (J14). */
 export const PIN_MISSING_LINE = 'Pinned note not found';
@@ -26,27 +37,38 @@ export function ProjectVaultPins({ projectId, index }: { projectId: string; inde
   const setProjectVaultPins = useApp((s) => s.setProjectVaultPins);
   const unpinVaultNote = useApp((s) => s.unpinVaultNote);
   const vaultPinStatus = useApp((s) => s.vaultPinStatus);
+  const vaultPinPrivacy = useApp((s) => s.vaultPinPrivacy);
+  const memoryOn = useApp((s) => memoryOverride(s.settings) !== false);
   const vaultPickerNotes = useApp((s) => s.vaultPickerNotes);
   const pins = project?.vaultPins ?? [];
   const pinsKey = pins.join('\n');
 
   // Which pins the vault still holds, read when the list changes.
+  // Which pins the vault still holds, and which are private, read when the
+  // list changes.
   const [status, setStatus] = useState<Record<string, 'ok' | 'missing' | 'unknown'>>({});
+  const [privacy, setPrivacy] = useState<Record<string, VaultVisibility>>({});
   useEffect(() => {
     let live = true;
     if (!pins.length) {
       setStatus({});
+      setPrivacy({});
       return;
     }
     void vaultPinStatus(pins).then((s) => {
       if (live) setStatus(s);
     });
+    void vaultPinPrivacy(pins)
+      .then((v) => {
+        if (live) setPrivacy(v);
+      })
+      .catch(() => {});
     return () => {
       live = false;
     };
     // pinsKey stands for the list.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pinsKey, vaultPinStatus]);
+  }, [pinsKey, vaultPinStatus, vaultPinPrivacy]);
 
   const [open, setOpen] = useState(false);
   const [notes, setNotes] = useState<VaultPickerNote[] | undefined>();
@@ -64,6 +86,8 @@ export function ProjectVaultPins({ projectId, index }: { projectId: string; inde
 
   if (!project) return null;
   const full = pins.length >= PROJECT_VAULT_PINS_MAX;
+  const isPrivate = (path: string) => status[path] !== 'missing' && privacy[path] === 'local-only';
+  const holdsPrivate = pins.some(isPrivate);
   const toggle = (path: string) => {
     const on = pins.includes(path);
     if (!on && full) return;
@@ -83,27 +107,41 @@ export function ProjectVaultPins({ projectId, index }: { projectId: string; inde
         </button>
       </div>
       {pins.length ? (
-        <div className="check-list" style={{ marginTop: 8 }}>
-          {pins.map((path) => {
-            const missing = status[path] === 'missing';
-            return (
-              <div key={path} className="multiselect-row" style={{ cursor: 'default' }}>
-                <span className="grow">
-                  {noteTitle(path)}
-                  <span className="hint"> · {missing ? PIN_MISSING_LINE : path}</span>
-                </span>
-                <button
-                  type="button"
-                  className="suggestion press-fb"
-                  aria-label={`Unpin ${noteTitle(path)}`}
-                  onClick={() => void unpinVaultNote(projectId, path)}
-                >
-                  Unpin
-                </button>
-              </div>
-            );
-          })}
-        </div>
+        <>
+          <div className="check-list" style={{ marginTop: 8 }}>
+            {pins.map((path) => {
+              const missing = status[path] === 'missing';
+              return (
+                <div key={path} className="multiselect-row" style={{ cursor: 'default' }}>
+                  <span className="grow">
+                    {noteTitle(path)}
+                    {isPrivate(path) ? (
+                      <span className="hint">
+                        {' · '}
+                        <LockGlyph /> {VAULT_PRIVATE_TAG} · {path}
+                      </span>
+                    ) : (
+                      <span className="hint"> · {missing ? PIN_MISSING_LINE : path}</span>
+                    )}
+                  </span>
+                  <button
+                    type="button"
+                    className="suggestion press-fb"
+                    aria-label={`Unpin ${noteTitle(path)}`}
+                    onClick={() => void unpinVaultNote(projectId, path)}
+                  >
+                    Unpin
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          {holdsPrivate && memoryOn ? (
+            <p className="hint" style={{ marginTop: 6 }}>
+              {VAULT_PIN_PRIVATE_LINE}
+            </p>
+          ) : null}
+        </>
       ) : (
         <p className="hint" style={{ marginTop: 6 }}>
           Pin notes from your Vault and every chat here starts with them, trimmed to fit the model.{' '}
@@ -136,8 +174,8 @@ export function ProjectVaultPins({ projectId, index }: { projectId: string; inde
                     {n.title}
                     {n.localOnly ? (
                       <span className="hint">
-                        {' '}
-                        <LockGlyph /> stays on this computer
+                        {' · '}
+                        <LockGlyph /> {VAULT_PRIVATE_TAG}
                       </span>
                     ) : null}
                   </span>

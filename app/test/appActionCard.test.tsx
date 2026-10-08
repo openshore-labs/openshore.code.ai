@@ -83,6 +83,28 @@ describe('a proposal in a chat reply', () => {
     expect(dom.text()).toContain('In Settings, Writing.');
   });
 
+  // CX and CMO, 2026-10-08 (I): the tap replaces a voice already set, so the
+  // card says so and where; with none set, it says only that nothing changes.
+  it('says the tap replaces a different voice already in Settings, and where', async () => {
+    await dom.render(createElement(Markdown, { text: REPLY, actions: ['writingVoice'] }));
+    expect(dom.text()).toContain('Nothing changes until you tap Add to Settings.');
+    expect(dom.text()).not.toContain('replaces');
+    await dom.render(null);
+    useApp.setState((s) => ({ settings: { ...s.settings, writingVoice: 'Warm and long.' } }));
+    await dom.render(createElement(Markdown, { text: REPLY, actions: ['writingVoice'] }));
+    expect(dom.text()).toContain(
+      'Nothing changes until you tap Add to Settings, which replaces the one in Settings, Writing.',
+    );
+    expect(dom.buttons()).toEqual(['Add to Settings', 'Copy']);
+    // Behaviour is unchanged: only the tap writes, and then the card says so.
+    expect(useApp.getState().settings.writingVoice).toBe('Warm and long.');
+    await dom.click('Add to Settings');
+    await dom.settle();
+    expect(useApp.getState().settings.writingVoice).toBe(VOICE);
+    expect(dom.text()).toContain('In Settings, Writing.');
+    expect(dom.text()).not.toContain('replaces');
+  });
+
   it('waits while the reply is still arriving', async () => {
     await dom.render(
       createElement(Markdown, { text: REPLY, actions: ['writingVoice'], streaming: true }),

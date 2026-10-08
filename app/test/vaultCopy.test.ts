@@ -53,6 +53,8 @@ import {
   VAULT_COMMAND_CAVEAT,
   VAULT_EXCLUDE_SUB,
   VAULT_LOCAL_ONLY_SUB,
+  VAULT_SETTINGS_FIELD_LABELS,
+  VAULT_SETTINGS_ROWS,
   VAULT_COPY_PLATFORMS,
   VAULT_COPY_PROVIDERS,
   vaultCopy,
@@ -712,16 +714,25 @@ describe('retired Vault claims', () => {
 describe('the private-notes promise', () => {
   it('names the one way a private note can reach a cloud model', () => {
     expect(VAULT_COMMAND_CAVEAT).toBe('unless a command you run or allow reads them');
+    // OpenShore is the subject, and the person's own reach is a plain second
+    // sentence, never an "unless" inside the promise (CX and CMO, 2026-10-08,
+    // A). "Allow", not "approve": Accept edits lets a change land unasked.
     expect(VAULT_CARRY_CAVEAT).toBe(
-      'unless you run or allow a command or change that carries them',
+      'A command you run or allow, or a change you allow, can still carry their words to a cloud model.',
     );
     expect(VAULT_PRIVATE_OFF_CLOUD).toBe(
-      'Private notes never reach a cloud model unless you run or allow a command or change that carries them.',
+      'OpenShore never sends private notes to a cloud model. A command you run or allow, or a change you allow, can still carry their words to one.',
     );
-    expect(VAULT_MODELS_LINE).toContain(VAULT_PRIVATE_OFF_CLOUD);
+    expect(VAULT_MODELS_LINE).toBe(
+      'Pin a note to a project and every chat there starts with it. OpenShore never sends private notes to a cloud model. A command you run or allow, or a change you allow, can still carry their words to one.',
+    );
     expect(VAULT_LOCAL_ONLY_SUB).toBe(
-      'A local model may read these. A cloud model never does, unless you run or allow a command or change that carries them.',
+      'A local model may read these, and OpenShore never sends them to a cloud model. A command you run or allow, or a change you allow, can still carry their words to one.',
     );
+    // One noun for the setting and its conflict line: "Private notes".
+    expect(VAULT_SETTINGS_ROWS.localOnly).toBe('Private notes');
+    expect(VAULT_SETTINGS_FIELD_LABELS['localOnly.paths']).toBe('Private notes');
+    expect(VAULT_SETTINGS_FIELD_LABELS['localOnly.tags']).toBe('Private notes');
     expect(VAULT_EXCLUDE_SUB).toBe(
       'Models never see these, in any chat, unless a command you run or allow reads them.',
     );
@@ -739,6 +750,11 @@ describe('the private-notes promise', () => {
       /Models never see these, in any chat\./i,
       /\(never a private note\)/i,
       /A private note goes only to one on your own network\./i,
+      // The "unless" promise and the setting's old name (CX and CMO,
+      // 2026-10-08, A).
+      /run or allow a command or change that carries them/i,
+      /A cloud model never does/i,
+      /Notes that stay on this computer/,
     ];
     const hits: string[] = [];
     for (const file of walk(SRC)) {
