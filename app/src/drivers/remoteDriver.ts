@@ -8,6 +8,7 @@ import type {
   DaemonSessionInfo,
   DriverEvent,
   HarnessCurrentsHandle,
+  OfflineReason,
   PermissionMode,
   SessionCreateVaultFields,
   VaultOverrides,
@@ -28,6 +29,7 @@ import type {
 import { HUB_NO_ANSWER, PackLocalOnlyMarker } from './types.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
 import { thisDeviceNoun } from '../lib/deviceNoun.js';
+import { computerOfflineOf } from '../state/offlineOps.js';
 
 export { HUB_NO_ANSWER };
 export type { HubLinkState };
@@ -114,7 +116,7 @@ function roleOf(body: unknown): HubRole | undefined {
 
 export async function daemonHealth(
   target: DaemonTarget,
-): Promise<{ ok: boolean; detail: string; role?: HubRole }> {
+): Promise<{ ok: boolean; detail: string; role?: HubRole; offline?: OfflineReason }> {
   try {
     const res = await fetch(`${target.baseUrl}/health`, {
       headers: headers(target),
@@ -134,8 +136,16 @@ export async function daemonHealth(
       };
     }
     if (!res.ok) return { ok: false, detail: `Your computer answered ${res.status}.` };
-    const role = roleOf(await res.json().catch(() => ({})));
-    return { ok: true, detail: 'Connected to your computer.', ...(role ? { role } : {}) };
+    const body: unknown = await res.json().catch(() => ({}));
+    const role = roleOf(body);
+    // Desktop Offline: the computer says when it works offline, and why.
+    const offline = computerOfflineOf(body);
+    return {
+      ok: true,
+      detail: 'Connected to your computer.',
+      ...(role ? { role } : {}),
+      ...(offline ? { offline } : {}),
+    };
   } catch {
     // A rejected credential answers 401 with no CORS headers (DAE-15), which a
     // WebView reports as a failed fetch, the same as an unreachable hub. Tell

@@ -4,6 +4,7 @@
 import { spawn } from 'node:child_process';
 import type { CatalogModel } from './schema.js';
 import { machineOffline } from '../core/agent/offline.js';
+import { pullFailedLine, pullFailure, type PullResult } from './pullLine.js';
 
 /** A pull asked for while this computer has no network (Desktop Offline):
  *  one plain line instead of the model server's own error about a lookup. */
@@ -46,7 +47,7 @@ export async function installModel(
   model: CatalogModel,
   onProgress: (progress: InstallProgress) => void,
   options: InstallOptions = {},
-): Promise<{ ok: boolean; detail: string }> {
+): Promise<PullResult> {
   if (model.source.kind !== 'ollama') {
     return {
       ok: false,
@@ -59,19 +60,21 @@ export async function installModel(
 /** Pull ANY Ollama model by its raw ref (e.g. "qwen3-coder:30b", "gemma3:12b"),
  *  not just a catalog entry, so the marketplace is never limited to the models
  *  we happened to enumerate: whatever is on the Ollama library, the user can
- *  install and place. Same structured pull, same honest failure text as a
+ *  install and place. Same structured pull, same plain failure line as a
  *  catalog install. The ref is trusted as an Ollama model name; a bad name
- *  comes back as Ollama's own "model not found" error, never a fabricated ok. */
+ *  says Ollama has no model by that name, never a fabricated ok. */
 export async function installOllamaRef(
   ref: string,
   onProgress: (progress: InstallProgress) => void,
   options: InstallOptions = {},
-): Promise<{ ok: boolean; detail: string }> {
+): Promise<PullResult> {
   const clean = ref.trim();
   if (!clean) return { ok: false, detail: 'Enter an Ollama model name, for example qwen3:8b.' };
   // The desktop's main process set the machine flag for no network: the pull
   // could only fail, so say why plainly (a chosen Offline still downloads).
-  if (machineOffline().reason === 'network') return { ok: false, detail: OFFLINE_DOWNLOAD };
+  if (machineOffline().reason === 'network') {
+    return { ok: false, detail: OFFLINE_DOWNLOAD, reason: 'offline' };
+  }
   const baseUrl = (options.baseUrl ?? 'http://localhost:11434').replace(/\/$/, '');
   const viaApi = await pullViaApi(clean, baseUrl, onProgress);
   if (viaApi) return viaApi;
@@ -83,7 +86,7 @@ async function pullViaApi(
   ref: string,
   baseUrl: string,
   onProgress: (progress: InstallProgress) => void,
-): Promise<{ ok: boolean; detail: string } | null> {
+): Promise<PullResult | null> {
   let res: Response;
   try {
     res = await fetch(`${baseUrl}/api/pull`, {
@@ -120,7 +123,9 @@ async function pullViaApi(
           continue;
         }
         if (typeof obj.error === 'string') {
-          return { ok: false, detail: `Ollama could not pull ${ref}: ${obj.error}` };
+          // Ollama's own words name the cause; the person reads what failed
+          // and the way on (pullLine.ts), never the server's error.
+          return failed(ref, pullFailure(obj.error));
         }
         const status = String(obj.status ?? '');
         if (status === 'success') sawSuccess = true;
@@ -130,34 +135,38 @@ async function pullViaApi(
         onProgress({ line: status, percent, total, completed });
       }
     }
-  } catch (err) {
+  } catch {
     // A connection dropped mid-pull must surface as a clean failure, not throw
     // out of the CLI flow.
-    return {
-      ok: false,
-      detail: `The pull of ${ref} was interrupted: ${(err as Error).message}. Check your connection and disk space, then try again.`,
-    };
+    return failed(ref, 'stopped');
   }
-  if (!sawSuccess) {
-    return {
-      ok: false,
-      detail: `The pull of ${ref} ended before Ollama reported success. Check your connection and disk space, then try again.`,
-    };
-  }
+  // A stream that ended before Ollama said success stopped partway.
+  if (!sawSuccess) return failed(ref, 'stopped');
   return { ok: true, detail: `${ref} is pulled and ready.` };
+}
+
+/** A failed pull: the plain line and why. */
+function failed(
+  ref: string,
+  reason: Exclude<PullResult['reason'], 'offline' | undefined>,
+): PullResult {
+  return { ok: false, detail: pullFailedLine(ref, reason), reason };
 }
 
 /** CLI fallback: spawn `ollama pull` and forward its lines (no byte totals). */
 function pullViaCli(
   ref: string,
   onProgress: (progress: InstallProgress) => void,
-): Promise<{ ok: boolean; detail: string }> {
+): Promise<PullResult> {
   return new Promise((resolve) => {
     const child = spawn('ollama', ['pull', ref], { stdio: ['ignore', 'pipe', 'pipe'] });
+    // The last line the command printed, which names the cause when it fails.
+    let last = '';
     const forward = (chunk: Buffer) => {
       for (const line of chunk.toString().split(/\r?\n/)) {
         const trimmed = line.trim();
         if (!trimmed) continue;
+        last = trimmed;
         const m = /(\d+)%/.exec(trimmed);
         onProgress({ line: trimmed, percent: m ? Number(m[1]) : undefined });
       }
@@ -178,10 +187,7 @@ function pullViaCli(
       resolve(
         code === 0
           ? { ok: true, detail: `${ref} is pulled and ready.` }
-          : {
-              ok: false,
-              detail: `ollama pull exited with code ${code}. Check connectivity and disk space, then try again.`,
-            },
+          : failed(ref, pullFailure(last)),
       );
     });
   });

@@ -15,6 +15,10 @@ const desk = vi.hoisted(() => ({
   mainOnline: true,
   reports: [] as boolean[],
   sent: [] as string[],
+  // What a model pull answers (Desktop Offline follow-up, 2026-10-08).
+  pull: { ok: true, detail: 'pulled' } as { ok: boolean; detail: string; reason?: string },
+  // Whether saving the seat fails after the pull (the config cannot be written).
+  seatFails: false,
 }));
 
 vi.mock('../src/lib/platform.js', () => ({
@@ -59,6 +63,18 @@ vi.mock('../src/lib/electronBridge.js', async (importOriginal) => ({
               offline: !desk.mainOnline || chosen,
             };
           },
+          status: async () => ({
+            ollama: { up: true, detail: 'running', models: [] },
+            hardwareSummary: 'no dedicated GPU detected, 16 GB system RAM',
+            stack: { configured: false, description: 'not set up yet', specialists: [] },
+            connections: { anthropic: false, openai: false, github: false },
+          }),
+          onInstallProgress: () => () => {},
+          installModel: async () => desk.pull,
+          setOrchestrator: async () => {
+            if (desk.seatFails) throw new Error('EACCES: permission denied, open config.json');
+            return { ok: true, detail: 'seated' };
+          },
         }
       : undefined,
 }));
@@ -94,7 +110,7 @@ vi.mock('../src/lib/insights.js', () => ({
 }));
 
 const { useApp } = await import('../src/state/store.js');
-const { cloudWaitLine } = await import('../src/state/offlineOps.js');
+const { cloudWaitLine, LOCAL_MODEL_SEAT_FAILED } = await import('../src/state/offlineOps.js');
 const { claudeModelLabel } = await import('../src/lib/claudeModels.js');
 const settle = () => new Promise((r) => setTimeout(r, 30));
 
@@ -103,6 +119,8 @@ beforeEach(() => {
   secrets.clear();
   desk.on = true;
   desk.mainOnline = true;
+  desk.pull = { ok: true, detail: 'pulled' };
+  desk.seatFails = false;
   desk.reports.length = 0;
   desk.sent.length = 0;
   Object.defineProperty(globalThis, 'navigator', {
@@ -116,6 +134,7 @@ beforeEach(() => {
     toast: undefined,
     connectivity: { homeReachable: false, online: true },
     settings: { onboarded: true, claudeModel: 'x', deviceModels: {} },
+    harborMasterDownload: undefined,
   });
 });
 
@@ -187,5 +206,53 @@ describe('a cloud chat waits while offline', () => {
     useApp.getState().send('two');
     await settle();
     expect(desk.sent).toEqual(['two']);
+  });
+});
+
+describe('a DeepBlue download that fails with the network up (Desktop Offline follow-up)', () => {
+  it('says what failed and the way on, by name, never the model server error', async () => {
+    desk.pull = {
+      ok: false,
+      detail: 'The download of qwen2.5-coder:7b stopped partway. Try again.',
+      reason: 'stopped',
+    };
+    expect(await useApp.getState().ensureHarborMaster({ seat: false })).toBe(false);
+    expect(useApp.getState().harborMasterDownload).toMatchObject({
+      label: 'The download of DeepBlue stopped partway. Try again.',
+      failed: true,
+    });
+
+    desk.pull = {
+      ok: false,
+      detail:
+        'Not enough disk space on your computer for qwen2.5-coder:7b. Free some space, then try again.',
+      reason: 'disk',
+    };
+    await useApp.getState().ensureHarborMaster({ seat: false });
+    expect(useApp.getState().harborMasterDownload?.label).toBe(
+      'Not enough disk space on this computer for DeepBlue. Free some space, then try again.',
+    );
+  });
+
+  it('a download that landed but could not be seated never says the download failed', async () => {
+    desk.pull = { ok: true, detail: 'qwen2.5-coder:7b is pulled and ready.' };
+    desk.seatFails = true;
+    expect(await useApp.getState().ensureHarborMaster()).toBe(false);
+    expect(useApp.getState().harborMasterDownload).toMatchObject({
+      label: LOCAL_MODEL_SEAT_FAILED,
+      failed: true,
+    });
+    expect(LOCAL_MODEL_SEAT_FAILED).toBe(
+      'DeepBlue is on this computer, but could not be set up to answer. Try again.',
+    );
+  });
+
+  it('with no network the line keeps its own words', async () => {
+    desk.pull = { ok: false, detail: 'Offline. Models download...', reason: 'offline' };
+    useApp.setState({ connectivity: { homeReachable: false, online: false } });
+    await useApp.getState().ensureHarborMaster({ seat: false });
+    expect(useApp.getState().harborMasterDownload?.label).toBe(
+      'Offline. DeepBlue downloads once you are back online.',
+    );
   });
 });

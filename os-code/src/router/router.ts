@@ -15,7 +15,7 @@ import { adapterFor } from '../providers/adapters/index.js';
 import { splitThinkTags } from '../core/agent/chainOfThought.js';
 import { AnthropicProvider } from '../providers/anthropic.js';
 import type { DelegableRole } from './roles.js';
-import type { ResolvedRole, ResolvedStack } from './stack.js';
+import { resolveStack, type ResolvedRole, type ResolvedStack } from './stack.js';
 import { logger } from '../util/log.js';
 
 const log = logger('router');
@@ -274,6 +274,33 @@ export class Router {
     // Any <think> text a specialist wrote on its own stays out of its answer.
     return splitThinkTags(answer).text.trim() || '(the specialist returned nothing)';
   }
+}
+
+/** A model a room names, as the wire carries it. */
+export interface SeatRef {
+  model: string;
+  provider: string;
+}
+
+/**
+ * The model this computer's engine seats while offline (Router.localSeat,
+ * the same rule, never a second copy of it), so a room names what will
+ * actually answer: the desktop's status and the daemon's GET /stack read it.
+ * Every configured provider is judged by address, never by its label.
+ * Undefined when no stack is set up or nothing on this network can answer.
+ */
+export async function offlineSeatFor(
+  config: OscConfig,
+  registry: ProviderRegistry,
+): Promise<SeatRef | undefined> {
+  let stack: ResolvedStack;
+  try {
+    stack = resolveStack(config, registry);
+  } catch {
+    return undefined;
+  }
+  const seat = await new Router(config, registry, stack).localSeat();
+  return seat ? { model: seat.ref.model, provider: seat.ref.provider } : undefined;
 }
 
 /** A provider's model list, or none when it cannot say in time (a server

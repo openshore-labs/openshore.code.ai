@@ -15,6 +15,7 @@ import type {
   HermesNote,
   HermesNoteMeta,
   PermissionMode,
+  PullResult,
   ReconcileResult,
   RoutineClockStatus,
   RoutineInput,
@@ -214,7 +215,13 @@ export interface PendingUpdate {
 export type FreeChatFrame = Exclude<FreeChatEvent, { type: 'refused' | 'open' }>;
 
 export interface DesktopStatus {
+  /** The first model server on this computer's network, judged by address:
+   *  the one the Stack's picker lists and writes to. */
   ollama: { up: boolean; detail: string; models: string[] };
+  /** The model the engine seats while offline (its local seat, read across
+   *  every configured provider by address), so a room names what will
+   *  actually answer. Absent when nothing on this network can. */
+  offlineSeat?: { model: string; provider: string };
   hardwareSummary: string;
   /** Structured numbers behind hardwareSummary; absent on an older engine. */
   hardware?: DesktopHardware;
@@ -414,11 +421,12 @@ export interface OscodeBridge {
   /** Fully local read of how the stack is being used, folded from the session
    *  journals on this machine. Read-only; nothing leaves the device. */
   stackHealth(range?: StackHealthRange): Promise<StackHealth>;
-  installModel(modelId: string): Promise<{ ok: boolean; detail: string }>;
+  /** A failed pull carries why (`reason`), so a room words it plainly. */
+  installModel(modelId: string): Promise<PullResult>;
   onInstallProgress(cb: (payload: InstallProgressPayload) => void): () => void;
   /** Pull any Ollama model by its raw ref (progress arrives keyed by the ref on
    *  onInstallProgress), so the marketplace is not limited to catalog entries. */
-  installOllamaRef(ref: string): Promise<{ ok: boolean; detail: string }>;
+  installOllamaRef(ref: string): Promise<PullResult>;
   setOrchestrator(model: string): Promise<{ ok: boolean; detail: string }>;
   enableSpecialist(role: string, model: string): Promise<{ ok: boolean; detail: string }>;
   disableSpecialist(role: string): Promise<{ ok: boolean; detail: string }>;

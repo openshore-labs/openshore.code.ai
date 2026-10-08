@@ -54,6 +54,8 @@ import { SheetHead, SheetTitle } from './SheetHead.js';
 import { MoreGlyph } from './SheetGlyphs.js';
 import { SettingsGroup, SettingsRow } from './SettingsRow.js';
 import { StatusSheet } from './ProfileStatus.js';
+import { computerOfflineNote, computerOfflineOf } from '../state/offlineOps.js';
+import type { DaemonStackInfo } from 'os-code/protocol';
 
 /** The host of a BYOM base URL, for a compact bench sub-line. Falls back to
  *  the raw string if it does not parse. */
@@ -92,7 +94,13 @@ function KindChip({ refModel }: { refModel: StackModelRef }) {
   return <span className={`kind-chip ${cls}`}>{label}</span>;
 }
 
-export function StackManager() {
+export function StackManager({
+  computer,
+}: {
+  /** The paired computer's stack as its daemon last answered (GET /stack),
+   *  for what its own models do while it works offline. */
+  computer?: DaemonStackInfo;
+} = {}) {
   const {
     settings,
     connectivity,
@@ -127,6 +135,12 @@ export function StackManager() {
   const [statusOpen, setStatusOpen] = useState(false);
   const stepDown =
     !settings.daemon && (settings.profileOverride === 'offline' || profile !== 'offline');
+  // Desktop Offline: docked to a computer that works offline, the note says
+  // its cloud models wait for its connection and whether its own models
+  // answer meanwhile (known once it has answered /stack while offline).
+  const computerOffline =
+    profile === 'docked' && editProfile === 'docked' ? connectivity.homeOffline : undefined;
+  const computerSeat = computerOfflineOf(computer) ? Boolean(computer?.offlineSeat) : undefined;
   const stack = stackForProfile(settings.stacks, editProfile);
   const reasoning = stack.reasoning ?? harborRef();
   // The two Vision slots (a local model and a cloud model), split out of the
@@ -355,9 +369,11 @@ export function StackManager() {
             })}
           </div>
           <p className="stack-status-note">
-            {editProfile === profile
-              ? blurb
-              : `Used when you are ${PROFILES[editProfile].label.toLowerCase()}. ${blurb}`}
+            {computerOffline
+              ? computerOfflineNote(computerOffline, computerSeat)
+              : editProfile === profile
+                ? blurb
+                : `Used when you are ${PROFILES[editProfile].label.toLowerCase()}. ${blurb}`}
           </p>
           {/* Before a computer is connected the pill is out of the bar while
               online, so the step down lives here (D1, as recommended: "stepping

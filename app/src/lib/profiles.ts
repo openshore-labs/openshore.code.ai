@@ -15,6 +15,8 @@
 // one the connection cannot support. The pill that names it shows once a
 // computer is connected to this device (reachPillShown).
 
+import type { OfflineReason } from 'os-code/protocol';
+
 export type ProfileId = 'docked' | 'offshore' | 'offline';
 export type ModelLocation = 'home' | 'cloud' | 'device';
 
@@ -108,6 +110,11 @@ export const PROFILE_ORDER: ProfileId[] = ['docked', 'offshore', 'offline'];
 export interface Connectivity {
   homeReachable: boolean;
   online: boolean;
+  /** Why the paired computer works offline right now, as its daemon says
+   *  (Desktop Offline): no network there, or the person chose Offline there.
+   *  Absent while it is online, out of reach, or an older daemon. It changes
+   *  no status here: the phone still reaches it, and its own models answer. */
+  homeOffline?: OfflineReason;
 }
 
 /** The best profile the current connection can support. */

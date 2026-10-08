@@ -26,7 +26,7 @@ import {
 } from '../lib/harborMini.js';
 import { bridge, type DesktopStatus } from '../lib/electronBridge.js';
 import { daemonStack } from '../drivers/remoteDriver.js';
-import { rankLocalModels, type DaemonStackInfo } from 'os-code/protocol';
+import type { DaemonStackInfo } from 'os-code/protocol';
 import {
   CLAUDE_MODELS_PRIMARY,
   CLAUDE_MODELS_MORE,
@@ -41,7 +41,14 @@ import { HARBOR_MASTER_MODEL_NAME } from '../lib/harborMaster.js';
 import { BackGlyph, CheckGlyph, ChevronGlyph, CloseGlyph } from './SheetGlyphs.js';
 import { Icon } from './Icon.js';
 import { thisDeviceNoun } from '../lib/deviceNoun.js';
-import { CLOUD_SHEET_OFFLINE, CLOUD_WAITS, offlineNow } from '../state/offlineOps.js';
+import {
+  CLOUD_SHEET_OFFLINE,
+  CLOUD_WAITS,
+  computerOfflineOf,
+  offlineNoSeatSub,
+  offlineNow,
+  offlineSeatSub,
+} from '../state/offlineOps.js';
 
 /** The desktop's free chat row, and the Local models sheet's words there. */
 export const DESKTOP_CHAT_ROW = 'Chat with this computer';
@@ -236,6 +243,25 @@ export function ModelSheet({
   }, [daemon]);
   const boxModel =
     boxStack && boxStack !== 'error' ? (boxStack.orchestrator?.model ?? undefined) : undefined;
+  // Desktop Offline: your computer works offline (its network is down, or
+  // Offline is chosen there) with a cloud model running its show. That model
+  // waits for the computer's connection, and the one its engine seats there
+  // answers meanwhile, named, or none can yet. The phone's own reach is
+  // untouched, so nothing else in this sheet changes.
+  const boxCloudOffline =
+    boxStack !== undefined &&
+    boxStack !== 'error' &&
+    computerOfflineOf(boxStack) !== undefined &&
+    boxStack.orchestrator?.kind === 'cloud';
+  const boxSeat = boxCloudOffline ? boxStack.offlineSeat?.model : undefined;
+  // The free chat runs only a model that stays on the computer's network
+  // (the daemon refuses any other by address), so its row shows only then,
+  // as the desktop's does (engineChatReady).
+  const boxChat =
+    boxStack !== undefined &&
+    boxStack !== 'error' &&
+    boxStack.orchestrator !== undefined &&
+    boxStack.orchestrator.kind !== 'cloud';
 
   // The desktop app's own engine: the model this machine runs (Ollama or a
   // cloud key set up in the Stack). This is the default brain on desktop, so
@@ -274,10 +300,12 @@ export function ModelSheet({
     desktopStatus !== undefined &&
     desktopStatus !== 'error' &&
     desktopStatus.stack.orchestrator?.kind === 'cloud';
-  const engineOfflineEmpty =
-    engineCloudOffline && rankLocalModels(desktopStatus.ollama.models).length === 0;
-  const engineSub = engineCloudOffline
-    ? 'Offline, so a model on this computer answers for now'
+  // The seat is the engine's own, read across every provider on this
+  // network by address, so the row names the model that will answer.
+  const engineSeat = engineCloudOffline ? desktopStatus.offlineSeat?.model : undefined;
+  const engineOfflineEmpty = engineCloudOffline && !engineSeat;
+  const engineSub = engineSeat
+    ? offlineSeatSub(engineSeat, 'this computer')
     : `${engineModel}, running on this computer`;
 
   // The same signal the send path checks, so a stack built after the per-profile
@@ -362,9 +390,7 @@ export function ModelSheet({
                   <div className="ms-row ms-row-disabled" aria-disabled="true">
                     <span className="ms-row-text">
                       <span className="ms-row-main">This computer</span>
-                      <span className="ms-row-sub">
-                        Offline, and no model on this computer can answer yet.
-                      </span>
+                      <span className="ms-row-sub">{offlineNoSeatSub('this computer')}</span>
                     </span>
                   </div>
                 ) : engineModel ? (
@@ -454,10 +480,21 @@ export function ModelSheet({
                     chevron
                     onClick={() => goto('pair')}
                   />
+                ) : boxModel && boxCloudOffline && !boxSeat ? (
+                  <div className="ms-row ms-row-disabled" aria-disabled="true">
+                    <span className="ms-row-text">
+                      <span className="ms-row-main">Your computer</span>
+                      <span className="ms-row-sub">{offlineNoSeatSub('your computer')}</span>
+                    </span>
+                  </div>
                 ) : boxModel ? (
                   <Row
                     main="Your computer"
-                    sub={`${boxModel}, running on your computer`}
+                    sub={
+                      boxSeat
+                        ? offlineSeatSub(boxSeat, 'your computer')
+                        : `${boxModel}, running on your computer`
+                    }
                     selected={isCurrent({ kind: 'desktop' })}
                     onClick={() => pick({ kind: 'desktop' })}
                   />
@@ -471,7 +508,7 @@ export function ModelSheet({
                 )}
                 {/* The free companion to the paid agent above: read-only chat
                     with the same local models, no repo, no edits, no charge. */}
-                {daemon && boxStack && boxStack !== 'error' ? (
+                {daemon && boxChat ? (
                   <Row
                     main="Chat with your computer"
                     sub="Free. Read-only, no repository or edits."

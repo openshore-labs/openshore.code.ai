@@ -4,7 +4,7 @@
 // their transcript by replaying the engine's journal, so the phone and the
 // desktop can both close and reopen with nothing lost.
 import { create } from 'zustand';
-import type { DriverEvent, ReconcileResult } from 'os-code/protocol';
+import type { DriverEvent, PullFailure, ReconcileResult } from 'os-code/protocol';
 import {
   emptyThread,
   seedFromTranscript,
@@ -159,6 +159,8 @@ import { claudeModelLabel } from '../lib/claudeModels.js';
 import {
   cloudWaitLine,
   desktopOnline,
+  LOCAL_MODEL_SEAT_FAILED,
+  localModelFailedLine,
   networkUp,
   offlineChosen,
   offlineNow,
@@ -267,7 +269,7 @@ import {
   harborWeightsStale,
   isHarbor,
 } from '../lib/harbor.js';
-import { HARBOR_MASTER_MODEL_NAME, resolveHarborMaster } from '../lib/harborMaster.js';
+import { resolveHarborMaster } from '../lib/harborMaster.js';
 import { hardwareFromSummary } from '../lib/firstSeat.js';
 import { SEARCH_SECRET_KEY, webSearchOn, type SearchBackend } from '../lib/webSearch.js';
 import { pushWebFetchMode } from '../lib/webFetchMode.js';
@@ -9234,6 +9236,9 @@ export const useApp = create<AppState>((set, get, api) => {
         online = desktopOnline(online, mainNetOnline);
       }
       let homeReachable = false;
+      // Desktop Offline: whether the paired computer itself works offline,
+      // and why, as its daemon says (absent from an older one).
+      let homeOffline: Connectivity['homeOffline'];
       const daemon = get().settings.daemon;
       if (daemon && online) {
         try {
@@ -9242,13 +9247,18 @@ export const useApp = create<AppState>((set, get, api) => {
             new Promise<{ ok: boolean }>((r) => setTimeout(() => r({ ok: false }), 3000)),
           ]);
           homeReachable = Boolean(res.ok);
+          if (res.ok && 'offline' in res) homeOffline = res.offline;
         } catch {
           homeReachable = false;
         }
       }
       const prev = get().connectivity;
-      if (prev.online !== online || prev.homeReachable !== homeReachable) {
-        set({ connectivity: { online, homeReachable } });
+      if (
+        prev.online !== online ||
+        prev.homeReachable !== homeReachable ||
+        prev.homeOffline !== homeOffline
+      ) {
+        set({ connectivity: { online, homeReachable, ...(homeOffline ? { homeOffline } : {}) } });
       }
     },
 
@@ -11741,9 +11751,17 @@ export const useApp = create<AppState>((set, get, api) => {
               : { percent: 0, label: p.line || 'Downloading', indeterminate: true },
         });
       });
+      // The pull's own answer, kept so a failure is worded by why it failed;
+      // a failure after it landed is the seat's, never the download's.
+      let failedPull: { detail: string; reason?: PullFailure } | undefined;
+      let pulledOk = false;
       try {
         const pulled = await b.installModel(size.catalogId);
-        if (!pulled.ok) throw new Error(pulled.detail);
+        if (!pulled.ok) {
+          failedPull = pulled;
+          throw new Error(pulled.detail);
+        }
+        pulledOk = true;
         if (opts?.seat !== false) {
           set({ harborMasterDownload: { percent: 100, label: 'Seating', indeterminate: true } });
           const seated = await b.setOrchestrator(size.ollamaRef);
@@ -11753,19 +11771,17 @@ export const useApp = create<AppState>((set, get, api) => {
         logEvent('harbor_master_ready', { size: size.ollamaRef });
         set({ harborMasterDownload: undefined });
         return true;
-      } catch (err) {
-        // With no network the download cannot start: one plain line, never
-        // the model server's own error (Desktop Offline). The store's read
-        // counts main's view of the network beside the window's.
-        const noNetwork = !networkUp(get().connectivity);
+      } catch {
+        // One plain line, never the model server's own error: with no
+        // network, when it downloads; with the network up, what failed and
+        // the way on (Desktop Offline). The store's read counts main's view
+        // of the network beside the window's.
         set({
           harborMasterDownload: {
             percent: 0,
-            label: noNetwork
-              ? `Offline. ${HARBOR_MASTER_MODEL_NAME} downloads once you are back online.`
-              : err instanceof Error && err.message
-                ? err.message
-                : `Could not get ${HARBOR_MASTER_MODEL_NAME}.`,
+            label: pulledOk
+              ? LOCAL_MODEL_SEAT_FAILED
+              : localModelFailedLine(networkUp(get().connectivity), failedPull),
             failed: true,
           },
         });

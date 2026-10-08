@@ -38,7 +38,9 @@ import { detectHardware, budgetFor } from 'os-code/dist/src/router/resourceBudge
 import { loadCatalog, findModel } from 'os-code/dist/src/market/catalog.js';
 import { installModel, installOllamaRef } from 'os-code/dist/src/market/install.js';
 import { computeStackHealth } from 'os-code/dist/src/insights/stackHealth.js';
-import { EgressPolicy } from 'os-code/dist/src/core/security/egress.js';
+import { EgressPolicy, isLocalUrl } from 'os-code/dist/src/core/security/egress.js';
+import { offlineSeatFor } from 'os-code/dist/src/router/router.js';
+import type { PullResult } from 'os-code/dist/src/market/pullLine.js';
 import { redactToken, type PlatformTokens } from 'os-code/dist/src/git/index.js';
 import {
   cloneFolderName,
@@ -651,9 +653,13 @@ export class EngineHost {
       config.resourceBudget.vramProfile === 'auto' ? undefined : config.resourceBudget.vramProfile,
     );
 
+    // The model server the Stack's picker lists and writes to: the first one
+    // on this network, judged by address (leavesThisNetwork), never by its
+    // kind label, so an OpenAI-compatible server on the internet is never
+    // "installed on this computer" (localEndpoint below picks the same one).
     let ollama = { up: false, detail: 'No local provider configured.', models: [] as string[] };
-    for (const [id, provider] of providers.all()) {
-      if (provider.kind !== 'local') continue;
+    for (const [, provider] of providers.all()) {
+      if (leavesThisNetwork(provider)) continue;
       const health = await provider.health();
       let models: string[] = [];
       if (health.ok) {
@@ -662,7 +668,6 @@ export class EngineHost {
         } catch {}
       }
       ollama = { up: health.ok, detail: health.detail, models };
-      void id;
       break;
     }
 
@@ -685,9 +690,15 @@ export class EngineHost {
     const specialists = Object.entries(stackConfig.specialists)
       .filter(([role]) => role !== 'imageGen')
       .map(([role, ref]) => ({ role, model: (ref as { model?: string }).model ?? '' }));
+    // The model this computer's engine seats while offline (Router.localSeat,
+    // read across every configured provider by address), so the model sheet
+    // and Runs the show name what will actually answer. Absent when nothing
+    // on this network can.
+    const offlineSeat = await offlineSeatFor(config, providers);
 
     return {
       ollama,
+      ...(offlineSeat ? { offlineSeat } : {}),
       hardwareSummary: budget.summary,
       hardware: this.hardware(),
       stack: {
@@ -783,7 +794,7 @@ export class EngineHost {
     return computeStackHealth(range ?? 'week');
   }
 
-  async installModel(modelId: string): Promise<{ ok: boolean; detail: string }> {
+  async installModel(modelId: string): Promise<PullResult> {
     const { config } = loadConfig();
     const loaded = await loadCatalog(config, new EgressPolicy(config.egress));
     const model = findModel(loaded.catalog, modelId);
@@ -806,7 +817,7 @@ export class EngineHost {
   // Pull any Ollama model by name, not just a catalog entry, so every model on
   // the Ollama library is installable without a catalog update. Progress is
   // forwarded keyed by the ref itself.
-  async installOllamaRef(ref: string): Promise<{ ok: boolean; detail: string }> {
+  async installOllamaRef(ref: string): Promise<PullResult> {
     const baseUrl = firstLocalBaseUrl();
     return installOllamaRef(
       ref,
@@ -1303,20 +1314,26 @@ export class EngineHost {
   }
 }
 
-function firstLocalProviderId(): string {
+/** The model server on this computer's network that pulls land on and the
+ *  Stack's picks are written to: the first OpenAI-compatible endpoint whose
+ *  address stays here (isLocalUrl, the judge a provider's own `remote` uses),
+ *  so it is the server status() lists. Ollama's default when none is. */
+function localEndpoint(): { id: string; baseUrl: string } {
   const { config } = loadConfig();
   for (const [id, endpoint] of Object.entries(config.providers)) {
-    if (endpoint.kind === 'openai-compatible') return id;
+    if (endpoint.kind === 'openai-compatible' && isLocalUrl(endpoint.baseUrl)) {
+      return { id, baseUrl: endpoint.baseUrl };
+    }
   }
-  return 'ollama';
+  return { id: 'ollama', baseUrl: 'http://localhost:11434' };
+}
+
+function firstLocalProviderId(): string {
+  return localEndpoint().id;
 }
 
 function firstLocalBaseUrl(): string {
-  const { config } = loadConfig();
-  for (const endpoint of Object.values(config.providers)) {
-    if (endpoint.kind === 'openai-compatible') return endpoint.baseUrl;
-  }
-  return 'http://localhost:11434';
+  return localEndpoint().baseUrl;
 }
 
 function defaultWorkspace(): string {

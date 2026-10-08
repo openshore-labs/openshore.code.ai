@@ -18,6 +18,7 @@ export type {
 } from './core/agent/types.js';
 export { PERMISSION_MODES } from './core/agent/types.js';
 import type { PermissionMode } from './core/agent/types.js';
+import type { OfflineReason } from './core/agent/offline.js';
 export { INIT_PROMPT } from './core/agent/initPrompt.js';
 // The person's own slash commands (P3): OpenShore's built-in names, the
 // label a menu shows beside one, and the sentence for a file left out. The
@@ -100,6 +101,10 @@ export {
   rankLocalModels,
 } from './core/agent/offline.js';
 export type { MachineOffline, OfflineReason } from './core/agent/offline.js';
+// A model download that fails with the network up says what failed and the
+// way on, in the same words on the desktop and in the engine. Pure.
+export { pullFailedLine, pullFailure } from './market/pullLine.js';
+export type { PullFailure, PullResult } from './market/pullLine.js';
 // The line diff approvals show, shared so the Vault's resolve sheet compares
 // two versions of a note with the exact same lines (Vault M1, 1.1). Pure and
 // import-free.
@@ -639,8 +644,17 @@ export interface DaemonWorkspace {
 
 export interface DaemonStackInfo {
   description: string;
+  /** `kind` is judged by address: cloud when its requests leave the
+   *  computer's network. */
   orchestrator?: { model: string; provider: string; kind: 'local' | 'cloud' };
   specialists: Array<{ role: string; model: string }>;
+  /** Why the computer works offline right now (Desktop Offline): no network,
+   *  or the person chose Offline there. Absent while it is online, and from
+   *  an older daemon, which reads as online. GET /health carries it too. */
+  offline?: OfflineReason;
+  /** While offline, the model that answers on the computer (the engine's
+   *  offline seat). Absent when no model there can answer. */
+  offlineSeat?: { model: string; provider: string };
 }
 
 // The Vault index (Vault M3, CTO H3) and the readConfig folder rule (H5).

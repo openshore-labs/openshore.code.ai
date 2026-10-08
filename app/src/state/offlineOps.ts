@@ -15,6 +15,7 @@ import {
 import type { DesktopOfflineAnswer } from '../lib/electronBridge.js';
 import type { ConversationSource } from './types.js';
 import { HARBOR_MASTER_MODEL_NAME } from '../lib/harborMaster.js';
+import { pullFailedLine, type OfflineReason, type PullResult } from 'os-code/protocol';
 
 /** Before the store has read the connection, it is taken as up. */
 const UNREAD: Connectivity = { homeReachable: false, online: true };
@@ -91,12 +92,16 @@ export function cloudWaitLine(modelName: string, chosen: boolean, here: string):
 }
 
 /** The desktop Stack's status line under its lead (the phone's note, in this
- *  computer's words). */
-export function desktopStackNote(offline: boolean, chosen: boolean): string {
+ *  computer's words). `seat` is false once the engine's status names no
+ *  model that answers offline, so the line agrees with Runs the show below
+ *  it; until the status has answered it keeps its words. */
+export function desktopStackNote(offline: boolean, chosen: boolean, seat?: boolean): string {
   if (!offline) return "Online. Cloud models and this computer's models can answer.";
+  const answers =
+    seat === false ? 'No model on this computer can answer yet.' : "This computer's models answer.";
   return chosen
-    ? "Offline, by your choice. This computer's models answer. Cloud models wait until you follow the connection again."
-    : "Offline. This computer's models answer. Cloud models wait for a connection.";
+    ? `Offline, by your choice. ${answers} Cloud models wait until you follow the connection again.`
+    : `Offline. ${answers} Cloud models wait for a connection.`;
 }
 
 /** The chat's offline banner. The network down keeps its words; Offline
@@ -144,19 +149,96 @@ export function installLocalDoor(s: {
   if (s.download && !s.download.failed) {
     return { label: `Getting ${HARBOR_MASTER_MODEL_NAME}, ${s.download.label}`, busy: true };
   }
+  // After a failed download the door is the way on its line names, in the
+  // First Seat's words.
+  if (s.download?.failed) return { label: `Try ${HARBOR_MASTER_MODEL_NAME} again`, busy: false };
   return { label: `Install ${HARBOR_MASTER_MODEL_NAME}`, busy: false };
 }
+
+/** The line a DeepBlue download leaves when it fails (Desktop Offline
+ *  follow-up, 2026-10-08). With no network it keeps its own words. With the
+ *  network up it says what failed and the way on, in the engine's words
+ *  (pullFailedLine) with DeepBlue's name, never the model server's error. A
+ *  name Ollama lacks is the catalog's, not the person's, so it reads as a
+ *  plain failure. A result with no reason is one of the engine's own plain
+ *  lines (no Ollama to run it); anything else, a bridge that failed, gets the
+ *  plain failure too. */
+export function localModelFailedLine(
+  networkIsUp: boolean,
+  pulled?: Pick<PullResult, 'detail' | 'reason'>,
+): string {
+  if (!networkIsUp || pulled?.reason === 'offline') {
+    return `Offline. ${HARBOR_MASTER_MODEL_NAME} downloads once you are back online.`;
+  }
+  if (pulled?.reason) {
+    return pullFailedLine(
+      HARBOR_MASTER_MODEL_NAME,
+      pulled.reason === 'not-found' ? 'failed' : pulled.reason,
+      'this computer',
+    );
+  }
+  return pulled?.detail || pullFailedLine(HARBOR_MASTER_MODEL_NAME, 'failed');
+}
+
+/** Said when DeepBlue downloaded but could not be made the model that runs
+ *  the show: the download is done, so the line never says it failed. */
+export const LOCAL_MODEL_SEAT_FAILED = `${HARBOR_MASTER_MODEL_NAME} is on this computer, but could not be set up to answer. Try again.`;
 
 /** Said once DeepBlue is on this computer from that door. */
 export const LOCAL_MODEL_READY = `${HARBOR_MASTER_MODEL_NAME} is on this computer. Try your message again.`;
 
 /** The desktop Stack's "Runs the show" line: online, what the slot does;
  *  offline with a model that leaves this network in it, that it waits and
- *  who answers meanwhile (the engine's offline seat, a model here), or that
- *  nothing here can yet. */
-export function reasoningSlotSub(offline: boolean, leaves: boolean, localModels: number): string {
+ *  who answers meanwhile, named (the engine's offline seat, which status()
+ *  reads across every provider by address), or that nothing here can yet. */
+export function reasoningSlotSub(offline: boolean, leaves: boolean, seat?: string): string {
   if (!offline || !leaves) return 'Reasoning model · Plans every task and routes it.';
-  return localModels > 0
-    ? 'Reasoning model · Waits for a connection. A model on this computer answers for now.'
+  return seat
+    ? `Reasoning model · Waits for a connection. ${seat} on this computer answers for now.`
     : 'Reasoning model · Waits for a connection. No model on this computer can answer yet.';
+}
+
+/** The model sheet's computer row while that computer works offline and a
+ *  cloud model runs its show: the model there that answers meanwhile, named.
+ *  `computer` is "this computer" on the desktop, "your computer" on a phone. */
+export function offlineSeatSub(seat: string, computer: string): string {
+  return `Offline, so ${seat} on ${computer} answers for now`;
+}
+
+/** The same row when no model on that computer can answer. */
+export function offlineNoSeatSub(computer: string): string {
+  return `Offline, and no model on ${computer} can answer yet.`;
+}
+
+/** Why the paired computer works offline, from what its daemon answered
+ *  (GET /health or GET /stack). Undefined while it is online, and for an
+ *  older daemon that does not say, which reads as online. */
+export function computerOfflineOf(body: unknown): OfflineReason | undefined {
+  const offline = (body as { offline?: unknown } | null)?.offline;
+  return offline === 'network' || offline === 'chosen' ? offline : undefined;
+}
+
+/** The phone's Stack, Docked, while the paired computer works offline: the
+ *  computer's cloud models wait for its connection, and whether its own
+ *  models answer meanwhile (`seat`, undefined until the computer has said;
+ *  that sentence is left out until then, so the line is true either way).
+ *  The phone's own cloud models are untouched, so nothing here speaks of
+ *  them. A chosen Offline is undone on the computer, so the line says where. */
+export function computerOfflineNote(reason: OfflineReason, seat: boolean | undefined): string {
+  const chosen = reason === 'chosen';
+  const head = chosen
+    ? 'Connected to your computer, which is offline by your choice.'
+    : 'Connected to your computer, which is offline.';
+  const answers =
+    seat === undefined
+      ? ''
+      : seat
+        ? chosen
+          ? ' Models on your computer answer.'
+          : ' Models on your computer still answer.'
+        : ' No model on your computer can answer yet.';
+  const waits = chosen
+    ? ' Its cloud models wait until you follow the connection there.'
+    : ' Its cloud models wait for its connection.';
+  return `${head}${answers}${waits}`;
 }
