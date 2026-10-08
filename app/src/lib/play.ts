@@ -202,8 +202,9 @@ export type PlayStack = AppStack & {
 export interface StepOwner {
   ref: StackModelRef;
   placement?: Placement;
-  /** True when no specialist is placed for this category, so the reasoning
-   *  anchor owns it (the founder's "the reasoning model takes over"). */
+  /** True when no specialist is placed for this category, or the one placed
+   *  cannot run the step here (stepRunner), so the reasoning anchor owns it
+   *  (the founder's "the reasoning model takes over"). */
   fellBack: boolean;
 }
 

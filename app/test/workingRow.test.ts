@@ -129,6 +129,18 @@ describe('the seam', () => {
     expect(theme).toMatch(/\.thread-inner \{[^}]*gap: var\(--thread-gap\)/);
   });
 
+  // Sign-off, 2026-10-08: a note that wrapped (the image note runs three
+  // lines on a phone) keeps only its first line while the row dissolves into
+  // the reply, so its other lines neither ride up over the model's name nor
+  // hang past the thread's foot, where they nudged the scroll as the row went.
+  it('keeps a wrapped note to its first line in the seam', () => {
+    expect(theme).toMatch(/\n\.working-slot\.seam \.working-row \{[^}]*bottom: 0;/);
+    const clip = theme.match(/\n\.working-slot\.seam \.working-note\.whole \{[^}]*\}/)?.[0] ?? '';
+    expect(clip).toMatch(/max-height: calc\(var\(--text-2\) \* 1\.55\);/);
+    expect(clip).toMatch(/overflow: hidden;/);
+    expect(clip).not.toMatch(/transition/);
+  });
+
   // Founder, 2026-09-23: the reply arrives like Claude's, a few words at a
   // time, each group fading up from light to full ink, with no caret.
   it('fades words in while live and holds the split through the last fade', () => {

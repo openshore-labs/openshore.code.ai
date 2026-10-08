@@ -10672,6 +10672,8 @@ button.vault-tag {
    --------------------------------------------------------------------------- */
 
 .working-row {
+  /* The row's first line is the counter's: text-4 at the body's 1.55. */
+  --working-line: calc(var(--text-4) * 1.55);
   display: flex;
   align-items: flex-start;
   gap: 10px;
@@ -10679,12 +10681,11 @@ button.vault-tag {
   font-size: var(--text-4);
   animation: msg-in var(--dur-3) var(--ease-standard);
 }
-/* The row's first line is the counter's (text-4 at the body's 1.55). The mark
-   and the note's first line centre on it, so a one-line row sits as it did
-   centred, and a note that wraps keeps the mark beside its first line rather
-   than floating at the middle of the block. */
+/* The mark and the note's first line centre on the row's first line, so a
+   one-line row sits as it did centred, and a note that wraps keeps the mark
+   beside its first line rather than floating at the middle of the block. */
 .working-row > .wave-mark {
-  margin-top: calc((var(--text-4) * 1.55 - 24px * 10 / 18) / 2);
+  margin-top: calc((var(--working-line) - 24px * 10 / 18) / 2);
 }
 /* Everything that animates in animates out: the row fades and rises 3px when
    the reply starts (or the turn ends). */
@@ -10713,6 +10714,15 @@ button.vault-tag {
   position: absolute;
   left: 0;
   bottom: 0;
+}
+/* A note that wrapped keeps only its first line in the seam, the line the
+   wave sits on, so it dissolves into the reply's first line the way a
+   one-line note does: no line rides up over the model's name, none hangs
+   past the thread's foot to nudge the scroll when the row goes. The row is
+   out of flow by then, so nothing else moves. */
+.working-slot.seam .working-note.whole {
+  max-height: calc(var(--text-2) * 1.55);
+  overflow: hidden;
 }
 
 /* The OpenShore mark as surf (components/WaveMark.tsx): the horizon holds
@@ -10747,7 +10757,7 @@ button.vault-tag {
 .working-note {
   font-family: var(--font-mono);
   font-size: var(--text-2);
-  margin-top: calc((var(--text-4) - var(--text-2)) * 1.55 / 2);
+  margin-top: calc((var(--working-line) - var(--text-2) * 1.55) / 2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

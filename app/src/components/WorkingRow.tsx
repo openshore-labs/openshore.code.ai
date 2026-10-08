@@ -4,10 +4,10 @@
 // model) before the first token, so the screen never reads as dead. While the
 // note is plain "Thinking" the word turns over slowly through the house
 // lexicon (lib/thinkingWords.ts); any other note (a tool summary, "Writing",
-// "Waiting for your approval") shows verbatim, whole, wrapping when it is
-// long, and holds. Sits at the tail of
-// the transcript while the thread is busy and nothing is streaming, and eases
-// out over the arriving reply when the first token lands (`closing`).
+// "Waiting for your approval") shows verbatim and whole, wrapping when it is
+// long, and holds. Sits at the tail of the transcript while the thread is
+// busy and nothing is streaming, and eases out over the arriving reply when
+// the first token lands (`closing`), a wrapped note on its first line only.
 import { useEffect, useRef, useState } from 'react';
 import { FIRST_WORD, WORD_SWAP_MS, nextThinkingWord } from '../lib/thinkingWords.js';
 import { WaveMark } from './WaveMark.js';
