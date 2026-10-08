@@ -612,8 +612,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   useEffect(() => {
     const driver = convId ? driverFor(convId) : undefined;
     const remote = driver as
-      | { hubRole?: HubRole; hubRoleReady?: Promise<HubRole | undefined> }
-      | undefined;
+      { hubRole?: HubRole; hubRoleReady?: Promise<HubRole | undefined> } | undefined;
     if (!remote?.hubRoleReady) {
       setHubRole(undefined);
       return;

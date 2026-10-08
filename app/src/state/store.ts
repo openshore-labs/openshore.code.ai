@@ -4505,8 +4505,7 @@ export const useApp = create<AppState>((set, get, api) => {
         // this device and only ever runs on this device.
         let codemagicToken: string | undefined;
         let codemagicTarget:
-          | { appId: string; workflowId: string; branch: string; platform?: string }
-          | undefined;
+          { appId: string; workflowId: string; branch: string; platform?: string } | undefined;
         // Launch is v2 (docs/release-tiers.md): an earlier build never hands
         // the token to a session, whatever a setting left from before says.
         if (settings.codemagicAccess && featureOn('launch')) {
