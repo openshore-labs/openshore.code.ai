@@ -23,7 +23,6 @@ import { createVaultContextSource } from '../src/core/vault/contextSource.js';
 import { closeEngineVaultIndexes, engineVaultIndex } from '../src/core/vault/engineIndex.js';
 import { lazyVaultPrivacy, vaultPrivacyConfig } from '../src/core/agent/registry.js';
 import { VAULT_NOTES_FRAMING } from '../src/harness/vaultContext.js';
-import { LOCAL_ONLY_STUB } from '../src/harness/vault/privacy.js';
 import { ConfigSchema } from '../src/config/schema.js';
 import type { AgentEvent } from '../src/core/agent/types.js';
 import type { ChatRequest } from '../src/providers/types.js';
@@ -156,7 +155,10 @@ describe('the vault context layer end to end (Vault M4)', () => {
     expect(card!.sources.map((x) => x.path)).not.toContain(PRIVATE);
   });
 
-  it('an escalation after a local private read sends the cloud seat the stub', async () => {
+  // A chat that holds a private note's text never escalates to a seat that
+  // leaves this network (CX and CMO, 2026-10-08, J): nothing goes to the
+  // cloud seat, not even the stub, and no card asks for it.
+  it('a local private read holds the escalation: nothing reaches the cloud seat', async () => {
     const local = new MockProvider('mock', [
       toolTurn('vaultRead', { path: PRIVATE }, 'c1'),
       toolTurn('readFile', { path: 'missing-1.txt' }, 'c2'),
@@ -171,16 +173,13 @@ describe('the vault context layer end to end (Vault M4)', () => {
       },
     });
     await s.agent.run(TASK);
-    expect(s.events.some((e) => e.type === 'model-switch')).toBe(true);
+    expect(s.events.some((e) => e.type === 'model-switch')).toBe(false);
     expect(JSON.stringify(local.requests[1]!.messages)).toContain('PRIVATE-MARK');
-    const sent = JSON.stringify(cloud.requests);
-    expect(sent).not.toContain('PRIVATE-MARK');
-    expect(sent).not.toContain('EXCLUDED-MARK');
-    expect(sent).toContain(LOCAL_ONLY_STUB);
-    expect(packEvents(s.events).map((c) => c.seat)).toEqual(['local', 'cloud']);
+    expect(cloud.requests).toHaveLength(0);
+    expect(packEvents(s.events).map((c) => c.seat)).toEqual(['local']);
   });
 
-  it('a local reply that quotes a private note reaches a later cloud seat as the stub', async () => {
+  it('a local reply that quotes a private note holds a later escalation too', async () => {
     const local = new MockProvider('mock', [
       toolTurn('vaultRead', { path: PRIVATE }, 'q1'),
       textTurn('Your diary says PRIVATE-MARK, the budget is tight.'),
@@ -197,11 +196,10 @@ describe('the vault context layer end to end (Vault M4)', () => {
     });
     await s.agent.run(TASK);
     await s.agent.run('Now check the two files.');
-    expect(s.events.some((e) => e.type === 'model-switch')).toBe(true);
-    expect(cloud.requests.length).toBeGreaterThan(0);
-    const sent = JSON.stringify(cloud.requests);
-    expect(sent).not.toContain('PRIVATE-MARK');
-    expect(sent).toContain(LOCAL_ONLY_STUB);
+    expect(s.events.some((e) => e.type === 'model-switch')).toBe(false);
+    expect(cloud.requests).toHaveLength(0);
+    // The marked reply is still in the kept history for the local seat.
+    expect(s.agent.history.some((m) => m.role === 'assistant' && m.localOnly)).toBe(true);
   });
 
   it('with Memory off there is no pack', async () => {

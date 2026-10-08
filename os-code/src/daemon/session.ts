@@ -63,13 +63,26 @@ export type { DriverEvent } from '../core/agent/types.js';
 export interface SessionDriver {
   readonly id: string;
   readonly cwd: string;
-  /** Queue a user message; tasks run one at a time in arrival order. */
-  send(text: string, images?: Array<{ base64: string; mediaType: string }>): void;
+  /** Queue a user message; tasks run one at a time in arrival order.
+   *  `options.localOnly` marks the message as carrying a private note's text
+   *  (a private plan's step, CX and CMO 2026-10-08, J). */
+  send(
+    text: string,
+    images?: Array<{ base64: string; mediaType: string }>,
+    options?: SendOptions,
+  ): void;
   abort(): void;
   subscribe(sink: (event: DriverEvent, seq: number) => void, sinceSeq?: number): () => void;
   answerApproval(id: string, answer: ApprovalAnswer): void;
   describeModel(): { model: string; kind: 'local' | 'cloud' };
   readonly busy: boolean;
+}
+
+/** How one queued message runs (SessionDriver.send). */
+export interface SendOptions {
+  /** The message carries a private note's text: the task runs marked
+   *  local-only (AgentSession.run), and its reply comes back marked. */
+  localOnly?: true;
 }
 
 /** A rewind's answer (P2): the files put back, or why it did not happen. */
@@ -690,8 +703,11 @@ export class LocalDriver implements SessionDriver {
   /** Last moment a client touched this driver, for idle eviction. */
   lastActivityAt = Date.now();
   private pendingApprovals = new Map<string, (answer: ApprovalAnswer) => void>();
-  private queue: Array<{ text: string; images?: Array<{ base64: string; mediaType: string }> }> =
-    [];
+  private queue: Array<{
+    text: string;
+    images?: Array<{ base64: string; mediaType: string }>;
+    localOnly?: true;
+  }> = [];
   private running = false;
   private agent?: AgentSession;
   private persist: boolean;
@@ -1005,10 +1021,20 @@ export class LocalDriver implements SessionDriver {
     }
   }
 
-  send(text: string, images?: Array<{ base64: string; mediaType: string }>): void {
+  send(
+    text: string,
+    images?: Array<{ base64: string; mediaType: string }>,
+    options: SendOptions = {},
+  ): void {
     this.lastActivityAt = Date.now();
-    this.queue.push({ text, images });
+    this.queue.push({ text, images, ...(options.localOnly ? { localOnly: true as const } : {}) });
     void this.pump();
+  }
+
+  /** Whether this session has held a private note's text at any point (a
+   *  Crew run's note is then judged private, CX and CMO 2026-10-08, A). */
+  heldLocalOnly(): boolean {
+    return this.agent?.heldLocalOnly() ?? false;
   }
 
   private async pump(): Promise<void> {
@@ -1036,7 +1062,12 @@ export class LocalDriver implements SessionDriver {
     try {
       await this.emitRepoInfo();
       before = await this.checkpoints?.snapshot(`before task in session ${this.id}`);
-      await this.agent.run(next.text, next.images, preamble);
+      await this.agent.run(
+        next.text,
+        next.images,
+        preamble,
+        next.localOnly ? { localOnly: true } : {},
+      );
       completed = this.lastTaskCompleted();
     } catch (err) {
       this.emit({

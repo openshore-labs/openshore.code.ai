@@ -128,6 +128,9 @@ export async function runPlain(options: PlainOptions): Promise<void> {
     pendingApproval = undefined;
     const label = request.kind === 'cloud-spend' ? 'CLOUD SPEND' : `approve ${request.toolName}`;
     out(t.warn(`\n${label}: ${request.summary}`));
+    // Why this card asks, when the engine says (a project note change after a
+    // private read), above the detail or diff (CX and CMO, 2026-10-08, A).
+    if (request.why) out(t.warn(request.why));
     if (request.detail) out(t.muted(request.detail.split('\n').slice(0, 12).join('\n')));
     rl.question(t.warn('yes once [y], yes for session [a], no [n]: '), (answer) => {
       const ch = answer.trim().toLowerCase();

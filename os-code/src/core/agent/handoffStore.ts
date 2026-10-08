@@ -19,12 +19,13 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { oscHome } from '../../config/home.js';
 import type { ChatMessage } from '../../providers/types.js';
 import { HANDOFF_MAX_AGE_DAYS, type HandoffTurn } from '../../harness/handoff.js';
@@ -41,6 +42,55 @@ export interface HandoffRecord {
   model: string;
   /** How many earlier turns it covers. */
   turns: number;
+  /** The record's format: 2 for one written by this engine (0.1.64 on),
+   *  whose adapter leaves every local-only message out. A record without it
+   *  was written before that fix and may carry a private note's words, so
+   *  `sweepPreFixHandoffs` removes it (CX and CMO, 2026-10-08, A). Stamped on
+   *  write; a caller need not set it. */
+  v?: 2;
+}
+
+/** The marker `sweepPreFixHandoffs` leaves once it ran, beside the folder. */
+export function handoffSweepMarker(): string {
+  return join(oscHome(), 'handoffs-swept');
+}
+
+/**
+ * Remove every stored handoff written before the local-only fix (a record
+ * without `v: 2`, or one that cannot be opened to tell), then leave a marker
+ * so it runs once per machine. Bootstrap calls it; a no-op once the marker
+ * exists. Best effort: a sweep that fails leaves no marker and runs again.
+ */
+export function sweepPreFixHandoffs(): void {
+  const marker = handoffSweepMarker();
+  try {
+    if (existsSync(marker)) return;
+    const dir = handoffsDir();
+    if (existsSync(dir)) {
+      let dk: ReturnType<typeof loadOrCreateDataKey> | undefined;
+      for (const name of readdirSync(dir)) {
+        if (!name.endsWith('.json')) continue;
+        const path = join(dir, name);
+        let current = false;
+        try {
+          const raw = readFileSync(path, 'utf8');
+          let clear: string | null = raw;
+          if (isSealed(raw)) {
+            dk ??= loadOrCreateDataKey();
+            clear = dk ? openString(dk.key, raw) : null;
+          }
+          current = clear !== null && (JSON.parse(clear) as { v?: unknown }).v === 2;
+        } catch {
+          current = false;
+        }
+        if (!current) rmSync(path, { force: true });
+      }
+    }
+    mkdirSync(dirname(marker), { recursive: true, mode: 0o700 });
+    writeFileSync(marker, '', { mode: 0o600 });
+  } catch {
+    // The next bootstrap tries again.
+  }
 }
 
 /** Who and where a handoff belongs to. */
@@ -81,7 +131,7 @@ export function writeHandoff(scope: HandoffScope, record: HandoffRecord): boolea
   try {
     const dir = handoffsDir();
     mkdirSync(dir, { recursive: true, mode: 0o700 });
-    const clean: HandoffRecord = { ...record, text: redactSecrets(record.text) };
+    const clean: HandoffRecord = { ...record, text: redactSecrets(record.text), v: 2 };
     const json = JSON.stringify(clean);
     const dk = loadOrCreateDataKey();
     const path = fileFor(scope);
@@ -98,7 +148,8 @@ export function writeHandoff(scope: HandoffScope, record: HandoffRecord): boolea
 const FUTURE_SLACK_MS = 60 * 60 * 1000;
 
 /** The latest handoff for a scope when it is at most `maxAgeDays` old;
- *  undefined when there is none, it is too old, or it cannot be opened. */
+ *  undefined when there is none, it is too old, it was written before the
+ *  local-only fix (no `v: 2`), or it cannot be opened. */
 export function readHandoff(
   scope: HandoffScope,
   options: { now?: Date; maxAgeDays?: number } = {},
@@ -114,6 +165,10 @@ export function readHandoff(
     }
     if (clear === null) return undefined;
     const parsed = JSON.parse(clear) as Partial<HandoffRecord>;
+    // A record without v: 2 was written before the local-only fix, by this
+    // machine before the sweep or by an older engine beside this one (a CLI
+    // the person has not updated), so it is never read (A).
+    if (parsed.v !== 2) return undefined;
     if (typeof parsed.text !== 'string' || !parsed.text.trim()) return undefined;
     if (typeof parsed.at !== 'string') return undefined;
     const at = Date.parse(parsed.at);

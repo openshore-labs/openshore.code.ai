@@ -65,6 +65,7 @@ export function ApprovalPrompt({ request, onAnswer }: ApprovalProps): React.Reac
         {title}
       </Text>
       <Text color={TOKENS.text}>{request.summary}</Text>
+      {request.why ? <Text color={TOKENS.muted}>{request.why}</Text> : null}
       {request.detail ? <DetailBlock detail={request.detail} /> : null}
       <Text>
         {key('y', '[y] yes once', TOKENS.muted)}

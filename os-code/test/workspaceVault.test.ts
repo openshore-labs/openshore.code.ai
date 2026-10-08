@@ -738,6 +738,39 @@ describe('sign-off: the paths the first pass left open', () => {
     expect(listed).not.toContain('gone.md');
   });
 
+  // CX and CMO, 2026-10-08 (A): a file in any of the vault's dot folders
+  // (an Obsidian plugin's cache of notes, .oscode, .git) stays on this
+  // computer at the least, whatever its name says.
+  it("a file in the vault's dot folders is private at the least: readFile and grep withhold it", async () => {
+    // The walk reads dot folders; ripgrep skips them unless asked.
+    _setRipgrep(false);
+    const ws = workspace();
+    const CACHED = 'CACHED-SECRET-8123';
+    put(ws.vault, '.obsidian/plugins/search/cache.json', `{"note":"${CACHED}"}\n`);
+    put(ws.vault, '.git/COMMIT_EDITMSG', `notes: ${CACHED} too\n`);
+    const cloud = new MockProvider(
+      'anthropic',
+      [
+        toolTurn('readFile', { path: 'notes/.obsidian/plugins/search/cache.json' }, 'r1'),
+        toolTurn('grep', { pattern: 'CACHED-SECRET' }, 'g1'),
+        textTurn('Done.'),
+      ],
+      { kind: 'cloud' },
+    );
+    const session = sessionIn(ws, cloud, { configOverrides: { stack: CLOUD_SEAT } });
+    await session.agent.run('What is in the plugin cache?');
+    expect(sentTo(cloud)).not.toContain(CACHED);
+    const [read] = ends(session.events, 'readFile');
+    expect(read!.content).toContain('stays on this computer');
+    expect(ends(session.events, 'grep')[0]!.content).not.toContain(CACHED);
+    // The judge itself, for the folder and a dot file at the root.
+    const notes = workspaceNotes(session.toolContext)!;
+    expect(await notes.showing(join(ws.vault, '.obsidian/plugins/search/cache.json'))).toBe(
+      'withheld',
+    );
+    expect(await notes.showing(join(ws.vault, 'Ideas/open.md'))).toBe('open');
+  });
+
   it('a file in a private folder that is not a note is withheld without pointing at vaultRead', async () => {
     const ws = workspace();
     put(ws.vault, 'Private/keys.txt', `door code ${CLIENT}\n`);

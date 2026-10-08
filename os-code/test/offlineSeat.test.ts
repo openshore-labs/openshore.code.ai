@@ -258,10 +258,13 @@ describe('the daemon tells a paired phone', () => {
       join(home, 'config.json'),
       JSON.stringify({ stack: { orchestrator: { provider: 'ollama', model: 'qwen' } } }),
     );
+    // Ollama's default address is this computer itself, so the chip may say
+    // so (hostIsLoopback, CX and CMO 2026-10-08, B).
     expect((await get<DaemonStackInfo>('/stack')).orchestrator).toEqual({
       model: 'qwen',
       provider: 'ollama',
       kind: 'local',
+      onThisComputer: true,
     });
     // A config that no longer reads keeps the one the daemon started with,
     // rather than failing the room.

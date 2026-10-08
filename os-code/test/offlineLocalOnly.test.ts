@@ -21,7 +21,12 @@ import { LOCAL_ONLY_STUB, compileVaultPrivacy } from '../src/harness/vault/priva
 import type { PreparedVaultContext, VaultContextSource } from '../src/harness/vaultContext.js';
 import type { MachineOffline } from '../src/core/agent/offline.js';
 import type { HandoffRecord } from '../src/core/agent/handoffStore.js';
-import { HANDOFF_LOCAL_ONLY_DENIED } from '../src/core/agent/loop.js';
+import {
+  HANDOFF_LOCAL_ONLY_DENIED,
+  HANDOFF_PIN_DENIED,
+  placeholderLine,
+} from '../src/core/agent/loop.js';
+import { adapterFor } from '../src/providers/adapters/index.js';
 import type { AgentEvent } from '../src/core/agent/types.js';
 import type { FetchLike } from '../src/harness/jev.js';
 import type { ChatEvent, ChatRequest } from '../src/providers/types.js';
@@ -259,7 +264,7 @@ describe('a handoff never carries a local-only note to a cloud seat (D5)', () =>
     expect(session.events.at(-1)).toMatchObject({ type: 'task-done', reason: 'complete' });
   });
 
-  it('a private pin in the pack is enough to hold it', async () => {
+  it('a private pin in the pack is enough to hold it, and the refusal names the pin', async () => {
     const { cloud, session } = stackWith(
       WRITER,
       [
@@ -270,7 +275,43 @@ describe('a handoff never carries a local-only note to a cloud seat (D5)', () =>
     );
     await session.agent.run('polish the plan');
     expect(cloud.requests).toHaveLength(0);
-    expect(deniedReasons(session.events)).toEqual([HANDOFF_LOCAL_ONLY_DENIED]);
+    expect(deniedReasons(session.events)).toEqual([HANDOFF_PIN_DENIED]);
+    expect(HANDOFF_PIN_DENIED).toBe(
+      'A private note is pinned to this project, so this step is not handed to a cloud model.',
+    );
+  });
+
+  // CX and CMO, 2026-10-08 (G): the refusal names its real cause. A pin alone
+  // says the pin, through a reply marked only for it; once the chat also
+  // reads a private note, it says the read.
+  it('a pin alone, then a read: each refusal names its cause', async () => {
+    const { cloud, session } = stackWith(
+      WRITER,
+      [
+        toolTurn('delegate', { role: 'writing', task: `Polish: ${PIN}` }, 'c1'),
+        textTurn('Did it here.'),
+        // The next task: still only the pin, after a marked reply.
+        toolTurn('delegate', { role: 'writing', task: 'Polish it again.' }, 'c2'),
+        textTurn('Again here.'),
+        // Then a read of a private note.
+        toolTurn('vaultRead', { path: 'Journal/today.md' }, 'c3'),
+        toolTurn('delegate', { role: 'writing', task: `Write up: ${NOTE}` }, 'c4'),
+        textTurn('Wrote it here.'),
+      ],
+      { pinned: true },
+    );
+    await session.agent.run('polish the plan');
+    await session.agent.run('once more');
+    await session.agent.run('now my journal');
+    expect(cloud.requests).toHaveLength(0);
+    expect(deniedReasons(session.events)).toEqual([
+      HANDOFF_PIN_DENIED,
+      HANDOFF_PIN_DENIED,
+      HANDOFF_LOCAL_ONLY_DENIED,
+    ]);
+    expect(HANDOFF_LOCAL_ONLY_DENIED).toBe(
+      'This chat has read a private note, so this step is not handed to a cloud model.',
+    );
   });
 
   it('an Ollama cloud tag on this computer counts as a cloud writer (seatLeaves)', async () => {
@@ -426,5 +467,78 @@ describe('a handoff never carries a local-only note to a cloud seat (D5)', () =>
     ]);
     await away.session.agent.run('a lighthouse');
     expect(away.prompts).toEqual(['A lighthouse at dusk']);
+  });
+});
+
+// CX and CMO, 2026-10-08 (F): the sticky mark stays, and the person is told
+// once, where the context is lost: one status line per chat for each model
+// off this network, on the first turn it is sent the placeholder.
+describe('the placeholder line (F)', () => {
+  const statusLines = (events: AgentEvent[]): string[] =>
+    events.flatMap((e) => (e.type === 'status' ? [e.message] : []));
+
+  /** A chat whose kept history holds a reply a local model wrote after a
+   *  private read, as a revived session's seed gives it. */
+  const MARKED = [
+    { role: 'user' as const, content: 'What did I write today?' },
+    {
+      role: 'assistant' as const,
+      content: `From your journal: ${NOTE}.`,
+      localOnly: true as const,
+    },
+  ];
+
+  it('says it once per cloud model in a marked chat, and again for a second one', async () => {
+    const cloud = new MockProvider(
+      'anthropic',
+      [textTurn('One.'), textTurn('Two.'), textTurn('Three.')],
+      { kind: 'cloud' },
+    );
+    const other = new MockProvider('openai', [textTurn('Four.')], { kind: 'cloud' });
+    const session = makeTestSession(cloud, {
+      providers: [other],
+      configOverrides: {
+        stack: { orchestrator: { provider: 'anthropic', model: 'claude-sonnet-5' } },
+      },
+    });
+    session.agent.history = MARKED.map((m) => ({ ...m }));
+    await session.agent.run('Now a haiku.');
+    await session.agent.run('And another.');
+    expect(
+      statusLines(session.events).filter((l) => l === placeholderLine('claude-sonnet-5')),
+    ).toHaveLength(1);
+    expect(placeholderLine('claude-sonnet-5')).toBe(
+      "This chat drew on a private note, so claude-sonnet-5 sees your local models' replies since then only as a placeholder.",
+    );
+    // The seat moves to a second cloud model (as a Stack change would): it is
+    // told too, once.
+    (session.agent as unknown as { active: unknown }).active = {
+      provider: other,
+      model: 'gpt-5',
+      adapter: adapterFor('gpt-5'),
+    };
+    await session.agent.run('And a third.');
+    expect(statusLines(session.events).filter((l) => l === placeholderLine('gpt-5'))).toHaveLength(
+      1,
+    );
+    expect(JSON.stringify(cloud.requests)).not.toContain(NOTE);
+    expect(JSON.stringify(other.requests)).not.toContain(NOTE);
+  });
+
+  it('never on a seat that stays, and never in a clean chat', async () => {
+    const local = new MockProvider('ollama', [textTurn('Here.')]);
+    const here = makeTestSession(local);
+    here.agent.history = MARKED.map((m) => ({ ...m }));
+    await here.agent.run('Once more.');
+    expect(statusLines(here.events).some((l) => l.includes('placeholder'))).toBe(false);
+
+    const cloud = new MockProvider('anthropic', [textTurn('Clean.')], { kind: 'cloud' });
+    const clean = makeTestSession(cloud, {
+      configOverrides: {
+        stack: { orchestrator: { provider: 'anthropic', model: 'claude-sonnet-5' } },
+      },
+    });
+    await clean.agent.run('A haiku.');
+    expect(statusLines(clean.events).some((l) => l.includes('placeholder'))).toBe(false);
   });
 });

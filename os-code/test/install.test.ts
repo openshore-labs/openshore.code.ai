@@ -4,7 +4,25 @@
 // fails with the network up says what failed and the way on, in plain words,
 // never the model server's own error (Desktop Offline follow-up, 2026-10-08).
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { installModel, installOllamaRef } from '../src/market/install.js';
+import { installModel, installOllamaRef, pulledLine } from '../src/market/install.js';
+
+// The CLI fallback (`ollama pull`) is stood in by a child that closes with
+// code 0, so a test can reach its success return without Ollama installed.
+vi.mock('node:child_process', async (importOriginal) => {
+  const real = await importOriginal<typeof import('node:child_process')>();
+  const { EventEmitter } = await import('node:events');
+  return {
+    ...real,
+    spawn: vi.fn(() => {
+      const child = Object.assign(new EventEmitter(), {
+        stdout: new EventEmitter(),
+        stderr: new EventEmitter(),
+      });
+      setTimeout(() => child.emit('close', 0), 0);
+      return child;
+    }),
+  };
+});
 import { pullFailedLine, pullFailure } from '../src/market/pullLine.js';
 import type { CatalogModel } from '../src/market/schema.js';
 
@@ -188,5 +206,51 @@ describe('a pull that fails with the network up says so plainly', () => {
     expect(pullFailure('getaddrinfo ENOTFOUND registry.ollama.ai')).toBe('unreachable');
     expect(pullFailure('max retries exceeded: unexpected EOF')).toBe('failed');
     expect(pullFailure('')).toBe('failed');
+  });
+});
+
+// CX and CMO, 2026-10-08 (B): a cloud tag's pull says where it runs, on both
+// success returns; a local ref keeps its plain line.
+describe('a pull says where the model runs', () => {
+  const CLOUD_LINE =
+    "kimi-k3:cloud is ready. It runs on Ollama's cloud, under your Ollama account, not on this computer, so the Stack lists it apart as a cloud model.";
+
+  it('over the API: the cloud line for a cloud tag, the plain line for a local ref', async () => {
+    stubFetch(fakeResponse(['{"status":"success"}\n']));
+    expect(await installOllamaRef('kimi-k3:cloud', () => {})).toEqual({
+      ok: true,
+      detail: CLOUD_LINE,
+    });
+    stubFetch(fakeResponse(['{"status":"success"}\n']));
+    expect(await installOllamaRef('qwen3-coder:30b', () => {})).toEqual({
+      ok: true,
+      detail: 'qwen3-coder:30b is pulled and ready.',
+    });
+  });
+
+  it('through the ollama command: the same lines', async () => {
+    // The API does not answer, so the command runs (stood in above).
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('ECONNREFUSED');
+      }),
+    );
+    expect(await installOllamaRef('kimi-k3:cloud', () => {})).toEqual({
+      ok: true,
+      detail: CLOUD_LINE,
+    });
+    expect(await installOllamaRef('gpt-oss:120b-cloud', () => {})).toMatchObject({
+      ok: true,
+      detail: expect.stringMatching(/^gpt-oss:120b-cloud is ready\. It runs on Ollama's cloud/),
+    });
+    expect((await installOllamaRef('qwen3:8b', () => {})).detail).toBe(
+      'qwen3:8b is pulled and ready.',
+    );
+  });
+
+  it("a tag that only looks cloudy is local, by isOllamaCloudTag's own rule", () => {
+    expect(pulledLine('mycloud:latest')).toBe('mycloud:latest is pulled and ready.');
+    expect(pulledLine('qwen3:mycloud')).toBe('qwen3:mycloud is pulled and ready.');
   });
 });

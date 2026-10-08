@@ -13,7 +13,9 @@
 // comes back marked `localOnly` and a later turn on a seat that leaves this
 // network gets the stub in its place, the same as the tool result would. So
 // does a reply grounded in a pack that carried such a note, and one a seat on
-// this network wrote while the chat already held a marked reply (D5).
+// this network wrote while the chat already held a marked reply (D5). A task
+// that came in marked local-only (its task-start says so, J) is seeded marked,
+// and so is its reply.
 //
 // A rewind (P2) takes turns back: its `rewound` marker names the task-start it
 // went back to, and everything journaled from there up to the marker is left
@@ -54,6 +56,12 @@ function asEntries(events: DriverEvent[] | JournalEntry[]): JournalEntry[] {
 export function seedHistoryFromEvents(journal: DriverEvent[] | JournalEntry[]): ChatMessage[] {
   const history: ChatMessage[] = [];
   let pendingUser: string | undefined;
+  // The pending user turn came in marked local-only (a private plan's step,
+  // J): it is seeded marked, and the chat holds a private note's text.
+  let pendingLocal = false;
+  const pushUser = (content: string): void => {
+    history.push({ role: 'user', content, ...(pendingLocal ? { localOnly: true as const } : {}) });
+  };
   // This task has read a local-only note (a tool, or a pack that carried
   // one), so what it says next may quote one.
   let readLocalOnly = false;
@@ -68,9 +76,11 @@ export function seedHistoryFromEvents(journal: DriverEvent[] | JournalEntry[]): 
     if (event.type === 'task-start') {
       // A new user turn. If a prior user turn never got a final answer (an
       // aborted or errored run), keep it: the user still said it.
-      if (pendingUser !== undefined) history.push({ role: 'user', content: pendingUser });
+      if (pendingUser !== undefined) pushUser(pendingUser);
       pendingUser = event.input;
-      readLocalOnly = false;
+      pendingLocal = event.localOnly === true;
+      readLocalOnly = pendingLocal;
+      if (pendingLocal) holdsLocalOnly = true;
     } else if (event.type === 'turn-start') {
       turnStays = event.providerKind === 'local';
     } else if (event.type === 'context-pack') {
@@ -82,7 +92,7 @@ export function seedHistoryFromEvents(journal: DriverEvent[] | JournalEntry[]): 
       if (event.localOnly) readLocalOnly = holdsLocalOnly = true;
     } else if (event.type === 'text-final') {
       if (pendingUser !== undefined) {
-        history.push({ role: 'user', content: pendingUser });
+        pushUser(pendingUser);
         pendingUser = undefined;
       }
       if (event.text.trim()) {
@@ -95,7 +105,7 @@ export function seedHistoryFromEvents(journal: DriverEvent[] | JournalEntry[]): 
       }
     }
   }
-  if (pendingUser !== undefined) history.push({ role: 'user', content: pendingUser });
+  if (pendingUser !== undefined) pushUser(pendingUser);
   return history;
 }
 

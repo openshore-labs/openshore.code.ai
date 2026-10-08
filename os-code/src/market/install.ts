@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import type { CatalogModel } from './schema.js';
 import { machineOffline } from '../core/agent/offline.js';
 import { pullFailedLine, pullFailure, type PullResult } from './pullLine.js';
+import { isOllamaCloudTag } from '../harness/locality.js';
 
 /** A pull asked for while this computer has no network (Desktop Offline):
  *  one plain line instead of the model server's own error about a lookup. */
@@ -22,6 +23,15 @@ export interface InstallProgress {
 export interface InstallOptions {
   /** Ollama base URL for the structured pull. Defaults to localhost. */
   baseUrl?: string;
+}
+
+/** What a finished pull says: where the model runs. A cloud tag's "pull"
+ *  only registers it with the local Ollama, which passes every request on to
+ *  ollama.com, so it says so (CX and CMO, 2026-10-08, B). */
+export function pulledLine(ref: string): string {
+  return isOllamaCloudTag(ref)
+    ? `${ref} is ready. It runs on Ollama's cloud, under your Ollama account, not on this computer, so the Stack lists it apart as a cloud model.`
+    : `${ref} is pulled and ready.`;
 }
 
 /** The license block a user sees before the pull starts. */
@@ -142,7 +152,7 @@ async function pullViaApi(
   }
   // A stream that ended before Ollama said success stopped partway.
   if (!sawSuccess) return failed(ref, 'stopped');
-  return { ok: true, detail: `${ref} is pulled and ready.` };
+  return { ok: true, detail: pulledLine(ref) };
 }
 
 /** A failed pull: the plain line and why. */
@@ -184,11 +194,7 @@ function pullViaCli(
       });
     });
     child.on('close', (code) => {
-      resolve(
-        code === 0
-          ? { ok: true, detail: `${ref} is pulled and ready.` }
-          : failed(ref, pullFailure(last)),
-      );
+      resolve(code === 0 ? { ok: true, detail: pulledLine(ref) } : failed(ref, pullFailure(last)));
     });
   });
 }

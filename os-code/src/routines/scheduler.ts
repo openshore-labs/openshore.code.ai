@@ -31,6 +31,8 @@ import type { DriverEvent, PermissionMode } from '../core/agent/types.js';
 import { loadDaemonConfig, saveGlobalConfig } from '../config/load.js';
 import { ensureVaultRootAt, vaultRootForOwner } from '../core/vault/memberRoots.js';
 import { openSessionDrivers, type LocalDriver } from '../daemon/session.js';
+import { MEMORY_ROUTINE_DENIED } from '../core/agent/loop.js';
+import { PROJECT_MEMORY_WRITE_TOOL } from '../core/agent/projectMemory.js';
 import { profileFor } from '../core/security/profiles.js';
 import { isOutboxAllowedPath, realOrResolve } from '../core/security/workspaces.js';
 import { logger } from '../util/log.js';
@@ -85,6 +87,10 @@ export interface RoutineDriver {
   onEvent(listener: (event: DriverEvent, seq: number) => void): () => void;
   answerApproval(id: string, answer: { approve: boolean; reason?: string }): void;
   setOwner?(userId: string): void;
+  /** Whether the run's session held a private note's text at any point, so
+   *  its note is marked private (CX and CMO, 2026-10-08, A). A LocalDriver
+   *  answers from its session; absent reads as no. */
+  heldLocalOnly?(): boolean;
 }
 
 export interface OpenedSession {
@@ -244,6 +250,13 @@ interface ActiveRun {
   offline?: string[];
   /** The first web search the model tried anyway, for the note's Note line. */
   searchTried?: string;
+  /** The run's session carried a private note's text, as its events showed
+   *  it (a marked tool result or pack, a marked check), beside what the
+   *  driver itself says (heldLocalOnly). */
+  sawLocalOnly?: boolean;
+  /** A change to the project's memory notes was left undone because the run
+   *  drew on a private note and nobody could approve it (A). */
+  memoryKept?: boolean;
   off: () => void;
   finalText: string;
   steps: string[];
@@ -774,9 +787,26 @@ export class RoutineScheduler {
       case 'tool-end': {
         const i = active.steps.length - 1;
         if (i >= 0) active.steps[i] = `${event.call.name} (${event.result.ok ? 'ok' : 'failed'})`;
+        if (event.result.localOnly) active.sawLocalOnly = true;
+        break;
+      }
+      case 'context-pack':
+      case 'verify':
+      case 'task-start': {
+        if (event.localOnly) active.sawLocalOnly = true;
         break;
       }
       case 'tool-denied': {
+        // A change to the memory notes a routine could not ask about (A):
+        // named in the note, and the run did not take that step.
+        if (
+          event.call.name === PROJECT_MEMORY_WRITE_TOOL &&
+          event.reason === MEMORY_ROUTINE_DENIED
+        ) {
+          active.memoryKept = true;
+          active.sawLocalOnly = true;
+          break;
+        }
         // A search the model reached for although the run works offline: the
         // first one is named in the note (CTO 3). The refused call never ran,
         // so it adds no step of its own.
@@ -902,6 +932,18 @@ export class RoutineScheduler {
     };
   }
 
+  /** Whether the run held a private note's text: as the driver's session
+   *  says, or as its events showed. A driver that cannot say is read by its
+   *  events alone. */
+  private heldLocalOnly(active: ActiveRun): boolean {
+    if (active.sawLocalOnly) return true;
+    try {
+      return active.driver.heldLocalOnly?.() === true;
+    } catch {
+      return false;
+    }
+  }
+
   private writeNote(
     active: ActiveRun,
     state: RoutineRun['state'],
@@ -934,6 +976,8 @@ export class RoutineScheduler {
         previousPath,
         ...(active.dayPath ? { dayPath: active.dayPath } : {}),
         provenance: this.provenanceFor(active),
+        // A run that drew on a private note leaves a private note (A).
+        ...(this.heldLocalOnly(active) ? { localOnly: true as const } : {}),
       }),
       `# ${active.routine.name}: ${date} at ${hh}:${mm}`,
       '',
@@ -951,6 +995,7 @@ export class RoutineScheduler {
     if (active.searchTried !== undefined) {
       lines.push('', `Note: ${triedToSearchLine(basename(active.routine.cwd))}`);
     }
+    if (active.memoryKept) lines.push('', `Note: ${MEMORY_ROUTINE_DENIED}`);
     if (active.plan.length) {
       lines.push('', '## Plan', '', ...active.plan.map((s) => `- ${s}`));
     }
