@@ -88,6 +88,27 @@ describe('the wave', () => {
     expect(row).toMatch(/className="working-word" aria-hidden="true"/);
     expect(row).toContain('className="visually-hidden"');
   });
+
+  // Image reading follow-up (2026-10-08): the note that names the model
+  // reading a picture runs past one line on a phone, and the row cut it with
+  // an ellipsis. A verbatim note now reads whole, wrapping onto the lines it
+  // needs (three at 360pt), with the mark and the counter on its first line;
+  // the turning word keeps its one line and its clip. Nothing animates the
+  // row's height.
+  it('lets a verbatim note read whole, wrapping, while the turning word keeps one line', () => {
+    const row = read('components/WorkingRow.tsx');
+    expect(row).toContain("className={rotating ? 'working-note' : 'working-note whole'}");
+    const base = theme.match(/\n\.working-note \{[^}]*\}/)?.[0] ?? '';
+    expect(base).toMatch(/white-space: nowrap;[^}]*overflow: hidden;[^}]*text-overflow: ellipsis;/);
+    const whole = theme.match(/\n\.working-note\.whole \{[^}]*\}/)?.[0] ?? '';
+    expect(whole).toMatch(/white-space: normal;/);
+    expect(whole).toMatch(/overflow: visible;/);
+    expect(whole).toMatch(/overflow-wrap: anywhere;/);
+    // The mark and the counter sit on the first line, not the block's middle.
+    expect(theme).toMatch(/\n\.working-row \{[^}]*align-items: flex-start;/);
+    const rowRules = theme.match(/\n\.working-(?:row|note)[^{]*\{[^}]*\}/g) ?? [];
+    for (const rule of rowRules) expect(rule).not.toMatch(/transition/);
+  });
 });
 
 describe('the seam', () => {
@@ -106,6 +127,18 @@ describe('the seam', () => {
       /\.working-slot\.seam \{[^}]*height: 0;[^}]*margin-top: calc\(-1 \* var\(--thread-gap\)\)/,
     );
     expect(theme).toMatch(/\.thread-inner \{[^}]*gap: var\(--thread-gap\)/);
+  });
+
+  // Sign-off, 2026-10-08: a note that wrapped (the image note runs three
+  // lines on a phone) keeps only its first line while the row dissolves into
+  // the reply, so its other lines neither ride up over the model's name nor
+  // hang past the thread's foot, where they nudged the scroll as the row went.
+  it('keeps a wrapped note to its first line in the seam', () => {
+    expect(theme).toMatch(/\n\.working-slot\.seam \.working-row \{[^}]*bottom: 0;/);
+    const clip = theme.match(/\n\.working-slot\.seam \.working-note\.whole \{[^}]*\}/)?.[0] ?? '';
+    expect(clip).toMatch(/max-height: calc\(var\(--text-2\) \* 1\.55\);/);
+    expect(clip).toMatch(/overflow: hidden;/);
+    expect(clip).not.toMatch(/transition/);
   });
 
   // Founder, 2026-09-23: the reply arrives like Claude's, a few words at a

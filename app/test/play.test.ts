@@ -12,6 +12,7 @@ import {
   planPrompt,
   readySteps,
   sanitizePlay,
+  stepRunner,
   topoOrder,
   type Play,
   type PlayStep,
@@ -288,6 +289,85 @@ describe("an image step's working note", () => {
     expect(handoffNote(step('w', 'writing'), { ...base, imageReader: haiku })).toBe(
       'Step w. Handing to Sonar (reasoning).',
     );
+  });
+});
+
+// The task list names the model a step really runs on (follow-up,
+// 2026-10-08). ownerFor reads the Stack slots before capability, so a model
+// on this device set for Image reading owns an image step there, while the
+// runner hands that step to the Reasoning model: stepRunner is the one rule
+// both read, so the list, the note and the run cannot drift apart.
+describe('stepRunner: who a step really runs on', () => {
+  const sonar: StackModelRef = {
+    kind: 'cloud',
+    provider: 'perplexity',
+    model: 'sonar',
+    label: 'Sonar',
+  };
+  const phoneReader: AppStack = {
+    reasoning: sonar,
+    active: [{ ref: harborRef(), placement: { category: 'vision' } }],
+    saved: {},
+  };
+  const read: PlayStep = { ...step('s', 'vision'), title: 'Read the chart' };
+
+  it('hands an image step set on this device to the Reasoning model, and the list says so', () => {
+    expect(ownerFor(read, phoneReader).ref).toEqual(harborRef());
+    expect(stepRunner(read, phoneReader)).toEqual({
+      ref: sonar,
+      placement: undefined,
+      fellBack: true,
+      covered: harborRef(),
+    });
+    expect(ownerLabel(read, phoneReader)).toBe('Sonar (reasoning)');
+    const play: Play = { summary: 'Explain the chart', steps: [read] };
+    expect(briefTodos(play, phoneReader)[0]!.owner).toBe('Sonar (reasoning)');
+    expect(formatBriefTable(play, phoneReader)).toContain('Read the chart  ->  Sonar (reasoning)');
+    // The note names the model set there and the one that covers it.
+    expect(handoffNote(read, phoneReader)).toBe(
+      'Read the chart. Harbor Lite cannot read images yet, so Sonar, your Reasoning model, works from the text.',
+    );
+  });
+
+  it('hands a step whose owner is out of reach to the Reasoning model', () => {
+    const own: AppStack = {
+      reasoning: sonar,
+      active: [
+        { ref: { ...coder, label: 'LLaVA 7B' }, placement: { category: 'vision' } },
+        { ref: coder, placement: { category: 'coding' } },
+      ],
+      saved: {},
+    };
+    const away = { ...own, reachable: (r: StackModelRef) => r.kind !== 'byom' };
+    expect(ownerLabel(read, away)).toBe('Sonar (reasoning)');
+    expect(handoffNote(read, away)).toBe(
+      'Read the chart. LLaVA 7B is out of reach, so Sonar, your Reasoning model, works from the text.',
+    );
+    expect(ownerLabel(step('c', 'coding'), away)).toBe('Sonar (reasoning)');
+    expect(handoffNote(step('c', 'coding'), away)).toBe('Step c. Handing to Sonar (reasoning).');
+    // In reach, each runs on its own model, as before.
+    expect(ownerLabel(read, own)).toBe('LLaVA 7B');
+    expect(ownerLabel(step('c', 'coding'), own)).toBe('Coder');
+  });
+
+  it('hands any step owned on this device to the Reasoning model, the way the runner does', () => {
+    const fast: AppStack = {
+      reasoning: claude,
+      active: [{ ref: harborRef(), placement: { category: 'fast' } }],
+      saved: {},
+    };
+    expect(stepRunner(step('f', 'fast'), fast).ref).toEqual(claude);
+    expect(ownerLabel(step('f', 'fast'), fast)).toBe('Claude (reasoning)');
+    expect(handoffNote(step('f', 'fast'), fast)).toBe('Step f. Handing to Claude (reasoning).');
+  });
+
+  it('leaves the anchor as its own runner, never covering itself', () => {
+    const bare: AppStack = { reasoning: harborRef(), active: [], saved: {} };
+    expect(stepRunner(step('r', 'reasoning'), bare)).toEqual({
+      ref: harborRef(),
+      placement: undefined,
+      fellBack: false,
+    });
   });
 });
 

@@ -56,7 +56,9 @@ vi.mock('../src/lib/platform.js', () => ({
 const { StackDriver, IMAGE_NOT_SENT, ASK_STOP_LINE } =
   await import('../src/drivers/stackDriver.js');
 const { harborRef } = await import('../src/lib/stack.js');
-import type { AppStack } from '../src/lib/stack.js';
+const { heldImageModel, imageAskDetail } = await import('../src/lib/imageNote.js');
+const { thisDeviceNoun } = await import('../src/lib/deviceNoun.js');
+import type { AppStack, StackModelRef } from '../src/lib/stack.js';
 import type { Attachment } from '../src/lib/attachments.js';
 
 const photo: Attachment = {
@@ -105,8 +107,11 @@ describe('an image when no local model can see', () => {
       summary: 'Read this image with Claude Haiku 4.5?',
     });
     expect(ask?.request.detail).toContain('Nothing in Stack is set for Image reading');
-    // The turn waits on the tap with no timer, so the card says Stop skips it.
+    // The turn waits on the tap with no timer, so the card says Stop skips it,
+    // in the same paragraph: a line break would set the card's words as a
+    // code block, cut at the sheet's edge on a phone.
     expect(ask?.request.detail).toContain(ASK_STOP_LINE);
+    expect(ask?.request.detail).not.toContain('\n');
     expect(h.streams).toBe(0);
     expect(events.some((e) => e.type === 'task-done')).toBe(false);
     driver.dispose();
@@ -310,5 +315,97 @@ describe('an image when only a model not dedicated to Image reading can see', ()
     });
     expect(asked(events)?.request.detail).not.toContain('API key');
     driver.dispose();
+  });
+});
+
+// A model set for Image reading that is not reading this picture (follow-up,
+// 2026-10-08). The card shows with a model set there only when that model
+// cannot take the picture: a model on this device (none reads images on this
+// build), or one that does not read images. Out of reach cannot ask here,
+// since every reader leaves the device and reach is the status's alone, so
+// nothing can read and the offer answers instead. The card names the model
+// and why, never "Nothing in Stack is set for Image reading".
+describe('an image when a model set for Image reading cannot read it', () => {
+  const sonar: StackModelRef = {
+    kind: 'cloud',
+    provider: 'perplexity',
+    model: 'sonar',
+    label: 'Sonar',
+  };
+
+  it('names a model on this device and why it is not reading', async () => {
+    const { driver, events } = chat({
+      reasoning: harborRef(),
+      active: [{ ref: harborRef(), placement: { category: 'vision' } }],
+      saved: {},
+    });
+    driver.send('Who is this?', [photo]);
+    await settle();
+    const detail = asked(events)?.request.detail ?? '';
+    expect(detail).toBe(
+      `Harbor Lite is set for Image reading, but a model on ${thisDeviceNoun()} cannot read images yet, so this image would go to Claude Haiku 4.5 on your own API key. Nothing is sent until you approve. Set a model that reads images for Image reading in Stack and images go to it without asking. ${ASK_STOP_LINE}`,
+    );
+    expect(detail).not.toContain('Nothing in Stack is set');
+    expect(h.streams).toBe(0);
+    driver.dispose();
+  });
+
+  it('names a cloud model that does not read images', async () => {
+    const { driver, events } = chat({
+      reasoning: harborRef(),
+      active: [{ ref: sonar, placement: { category: 'vision' } }],
+      saved: {},
+    });
+    driver.send('Who is this?', [photo]);
+    await settle();
+    expect(asked(events)?.request.detail).toMatch(
+      /^Sonar is set for Image reading, but it does not read images, so this image would go to Claude Haiku 4\.5 on your own API key\./,
+    );
+    driver.dispose();
+  });
+
+  it('reads the slots in order and skips one that can read', () => {
+    const all = () => true;
+    expect(heldImageModel({ reasoning: harborRef(), active: [], saved: {} }, all)).toBeUndefined();
+    const both: AppStack = {
+      reasoning: harborRef(),
+      active: [
+        { ref: sonar, placement: { category: 'vision' } },
+        { ref: harborRef(), placement: { category: 'vision' } },
+      ],
+      saved: {},
+    };
+    // Local leads: the model on this device is named first.
+    expect(heldImageModel(both, all)).toEqual({ model: 'Harbor Lite', why: 'device' });
+    const llava: StackModelRef = {
+      kind: 'byom',
+      id: 'byom-llava',
+      label: 'LLaVA 7B',
+      baseUrl: 'http://box:11434/v1',
+      model: 'llava:7b',
+    };
+    const own: AppStack = {
+      reasoning: harborRef(),
+      active: [{ ref: llava, placement: { category: 'vision' } }],
+      saved: {},
+    };
+    expect(heldImageModel(own, all)).toBeUndefined();
+    expect(heldImageModel(own, () => false)).toEqual({ model: 'LLaVA 7B', why: 'out-of-reach' });
+  });
+
+  it('says when a model out of reach takes pictures again, never to set another', () => {
+    const haiku: StackModelRef = {
+      kind: 'cloud',
+      provider: 'anthropic',
+      model: 'claude-haiku-4-5',
+      label: 'Claude Haiku 4.5',
+    };
+    expect(imageAskDetail(haiku, 2, { model: 'LLaVA 7B', why: 'out-of-reach' }, 'Offline')).toBe(
+      'LLaVA 7B is set for Image reading, but it is out of reach while Offline, so these 2 images would go to Claude Haiku 4.5 on your own API key. Nothing is sent until you approve. Once LLaVA 7B is in reach, images go to it without asking.',
+    );
+    // Nothing set keeps its words.
+    expect(imageAskDetail(haiku, 1)).toBe(
+      'Nothing in Stack is set for Image reading, so this image would go to Claude Haiku 4.5 on your own API key. Nothing is sent until you approve. Set a model for Image reading in Stack and images go to it without asking.',
+    );
   });
 });

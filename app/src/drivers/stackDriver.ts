@@ -94,7 +94,7 @@ import {
 import { SearchTurn } from './searchTurn.js';
 import { claudeHistoryCache, claudeSystem, promptCacheOn } from '../lib/claudeCache.js';
 import { cloudImageReaders, providerInfo, providerSecretKey } from '../lib/providers.js';
-import { imageStepCoveredNote, imageTurnLine } from '../lib/imageNote.js';
+import { heldImageModel, imageAskDetail, imageTurnLine } from '../lib/imageNote.js';
 import type { ImageReaderGap } from '../lib/imageReading.js';
 import { imageBlockParts, type Attachment } from '../lib/attachments.js';
 import { buildVisionContent, describeError, opensOnUser } from './cloudClaudeDriver.js';
@@ -104,12 +104,12 @@ import {
   briefTodos,
   handoffNote,
   mergeReplan,
-  ownerFor,
   parsePlan,
   parseReplan,
   planPrompt,
   readySteps,
   replanPrompt,
+  stepRunner,
   type Play,
   type PlayStack,
   type PlayStep,
@@ -127,9 +127,7 @@ import { PROFILES, locationAllowed, type ProfileId } from '../lib/profiles.js';
 import {
   harborRef,
   pickVisionRef,
-  refKey,
   refName,
-  visionCapable,
   visionSlots,
   type AppStack,
   type Placement,
@@ -1493,28 +1491,39 @@ export class StackDriver implements ChatDriver {
   }
 
   /** Ask before an image goes to a model not placed for Image reading. Amber
-   *  (Cloud spend) when the reader is a cloud model, plain when it is your own. */
+   *  (Cloud spend) when the reader is a cloud model, plain when it is your own.
+   *  A model set for Image reading that cannot take this picture (a model on
+   *  this device, one that does not read images) is named with its reason,
+   *  never called missing. */
   private askToReadImage(ref: StackModelRef, count: number): Promise<boolean> {
     const what = count === 1 ? 'this image' : `these ${count} images`;
-    const reader = refName(ref);
     const cloud = ref.kind === 'cloud';
+    const held = heldImageModel(this.stack, (r) => this.reachable(r));
     return this.askFirst({
       kind: cloud ? 'cloud-spend' : 'tool',
       toolName: 'analyzeImage',
       risk: cloud ? 'cloud-spend' : 'network',
-      summary: `Read ${what} with ${reader}?`,
-      detail: `Nothing in Stack is set for Image reading, so ${what} would go to ${reader}${cloud ? ' on your own API key' : ''}. Nothing is sent until you approve. Set a model for Image reading in Stack and images go to it without asking.`,
+      summary: `Read ${what} with ${refName(ref)}?`,
+      detail: imageAskDetail(ref, count, held, PROFILES[this.profile].label),
     });
   }
 
   /** Put a card in front of the person and wait for their tap. A stop counts
    *  as a no, and the card says so: the turn waits on the tap with no timer,
-   *  so Stop is the way past it without answering. */
+   *  so Stop is the way past it without answering. A detail written as one
+   *  paragraph (the image card's) takes the stop line in the same paragraph,
+   *  so the card shows it as wrapping prose; a line break would set it as a
+   *  code block, cut at the sheet's edge on a phone. */
   private askFirst(request: Omit<ApprovalRequest, 'id'>): Promise<boolean> {
     const id = `ask_${Date.now().toString(36)}_${(stackRequestSeq++).toString(36)}`;
+    const detail = request.detail;
     request = {
       ...request,
-      detail: request.detail ? `${request.detail}\n\n${ASK_STOP_LINE}` : ASK_STOP_LINE,
+      detail: !detail
+        ? ASK_STOP_LINE
+        : detail.includes('\n')
+          ? `${detail}\n\n${ASK_STOP_LINE}`
+          : `${detail} ${ASK_STOP_LINE}`,
     };
     return new Promise<boolean>((resolve) => {
       this.pendingAsk = {
@@ -1533,19 +1542,7 @@ export class StackDriver implements ChatDriver {
    *  Image reading that cannot read here (and why), and whether a connected
    *  cloud reader is out of reach in this status or missing. */
   private async imageGap(from: ImageReaderGap['from']): Promise<ImageReaderGap> {
-    const { local, cloud } = visionSlots(this.stack);
-    const member = local ?? cloud;
-    const placed = member
-      ? {
-          model: refName(member.ref),
-          why:
-            member.ref.kind === 'device'
-              ? ('device' as const)
-              : !visionCapable(member.ref)
-                ? ('cannot-see' as const)
-                : ('out-of-reach' as const),
-        }
-      : undefined;
+    const placed = heldImageModel(this.stack, (r) => this.reachable(r));
     let keyed = false;
     for (const reader of cloudImageReaders()) {
       if (await secretGet(providerSecretKey(reader.provider)).catch(() => null)) {
@@ -1602,6 +1599,7 @@ export class StackDriver implements ChatDriver {
     const roster: PlayStack = {
       ...this.stack,
       imageReader: (await this.routeVision())?.ref,
+      reachable: (r) => this.reachable(r),
     };
 
     this.emit({ type: 'status', message: 'Framing the request.' });
@@ -1705,16 +1703,10 @@ export class StackDriver implements ChatDriver {
         status.set(step.id, 'in_progress');
         showTodos();
 
-        const owner = ownerFor(step, roster);
         // A device owner (or an unreachable one) is not run autonomously; the
-        // reasoning anchor covers the step instead.
-        let ref = owner.ref;
-        let placement = owner.placement;
-        const covered = ref.kind === 'device' || !this.reachable(ref);
-        if (covered) {
-          ref = reasoning;
-          placement = undefined;
-        }
+        // reasoning anchor covers the step instead. stepRunner is the one
+        // rule, the same one the task list names its owner by.
+        const { ref, placement } = stepRunner(step, roster);
         // Tenet 4 narrowed for one step (founder, 2026-10-07): an image step
         // with nothing set for Image reading runs on the chat path's reader
         // (roster.imageReader, routeVision's pick, a connected cloud model
@@ -1722,13 +1714,7 @@ export class StackDriver implements ChatDriver {
         // names the model that reads the step and the connection it runs on.
         // A model set for Image reading that cannot take the step here (one
         // on this phone) is named as such, with the model that covers it.
-        this.emit({
-          type: 'status',
-          message:
-            covered && step.category === 'vision' && refKey(owner.ref) !== refKey(reasoning)
-              ? imageStepCoveredNote(step.title, owner.ref, reasoning)
-              : handoffNote(step, roster),
-        });
+        this.emit({ type: 'status', message: handoffNote(step, roster) });
         // Nothing here reads images: the step still runs, the Reasoning model
         // working from the text, and the turn closes with the two-door offer,
         // once however many image steps the play holds.

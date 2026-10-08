@@ -188,6 +188,7 @@ import {
   decideCodemagicApproval,
 } from '../lib/codemagicControl.js';
 import { hapticSuccess } from '../lib/haptics.js';
+import { NOTHING_SHOWN, celebratesTurn, turnShown } from './turnEndOps.js';
 import type { Attachment } from '../lib/attachments.js';
 import { OnDeviceDriver } from '../drivers/onDeviceDriver.js';
 import { MockDriver } from '../drivers/mockDriver.js';
@@ -3331,6 +3332,8 @@ export const useApp = create<AppState>((set, get, api) => {
     // costs it nothing. The side effects below run after the fold, in order.
     const pending: Array<{ event: DriverEvent; seq: number }> = [];
     let scheduled = false;
+    // What the turn in flight has shown, for the success tap at its end.
+    let shown = NOTHING_SHOWN;
     const flush = () => {
       scheduled = false;
       const batch = pending.splice(0);
@@ -3368,7 +3371,8 @@ export const useApp = create<AppState>((set, get, api) => {
       });
       let celebrated = false;
       for (const { event } of batch) {
-        if (event.type === 'task-done' && event.reason === 'complete' && !celebrated) {
+        shown = turnShown(shown, event);
+        if (celebratesTurn(shown, event) && !celebrated) {
           celebrated = true;
           hapticSuccess();
         }
