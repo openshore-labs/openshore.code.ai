@@ -2,7 +2,7 @@
 // Locality is judged by address with the one shared judge (`hostIsLocal` from
 // os-code/protocol), never by a label, so the BYOM reach pill and what a seat
 // may read never disagree.
-import { deriveModelClass, hostIsLocal, tailnetSuffixOf } from 'os-code/protocol';
+import { deriveModelClass, hostIsLocal, isOllamaCloudTag, tailnetSuffixOf } from 'os-code/protocol';
 import { DEVICE_CONTEXT_TOKENS } from '../drivers/deviceModel.js';
 import type { PackSeat } from '../drivers/types.js';
 import { BYOM_DEFAULT_CONTEXT_TOKENS, byomHost } from './byom.js';
@@ -54,7 +54,8 @@ export function hubTailnetSuffix(baseUrl: string | undefined): string | null {
  * device seats are local, served `DEVICE_CONTEXT_TOKENS`; cloud seats leave,
  * class `large`, Claude served `contextWindowFor(model)`, OpenAI-compatible
  * providers their listed window else 128000; BYOM leaves unless
- * `hostIsLocal(host, { ownTailnetSuffix })`, class by name and size with kind
+ * `hostIsLocal(host, { ownTailnetSuffix })` and its model is no Ollama cloud
+ * tag (`isOllamaCloudTag`), class by name and size with kind
  * local, served its `contextTokens` else 8192. An Agentic Current bench ref
  * (`isCurrentBenchId`) gets null.
  */
@@ -81,9 +82,13 @@ export function packSeatFor(ref: StackModelRef, ctx: PackSeatContext): PackSeat 
       // An Agentic Current rides a BYOM-shaped bench entry; no pack rides a
       // current in v1 (plan "Out of v1").
       if (isCurrentBenchId(ref.id)) return null;
+      // By address, and never an Ollama cloud tag: its Ollama passes every
+      // request on to ollama.com, so it leaves wherever that Ollama runs.
       const host = byomHost(ref.baseUrl);
       const local =
-        host !== undefined && hostIsLocal(host, { ownTailnetSuffix: ctx.ownTailnetSuffix });
+        host !== undefined &&
+        hostIsLocal(host, { ownTailnetSuffix: ctx.ownTailnetSuffix }) &&
+        !isOllamaCloudTag(ref.model);
       return {
         modelClass: deriveModelClass({ model: ref.model, kind: 'local' }),
         servedTokens: positive(ctx.byomContextTokens?.(ref.id)) ?? BYOM_DEFAULT_CONTEXT_TOKENS,

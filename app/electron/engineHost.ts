@@ -19,7 +19,8 @@ import { freeChat, type FreeChatEvent } from 'os-code/dist/src/daemon/freeChat.j
 import { TerminalManager, TerminalUnavailable } from 'os-code/dist/src/daemon/terminal.js';
 import { HOME_SHELL_ID } from 'os-code/dist/src/daemon/homeShellId.js';
 import { ProviderRegistry } from 'os-code/dist/src/providers/registry.js';
-import { leavesThisNetwork } from 'os-code/dist/src/providers/types.js';
+import { leavesThisNetwork, seatLeaves } from 'os-code/dist/src/providers/types.js';
+import { isOllamaCloudTag } from 'os-code/dist/src/harness/locality.js';
 import {
   machineOffline,
   setMachineOffline,
@@ -672,14 +673,16 @@ export class EngineHost {
     }
 
     const stackConfig = config.stack;
-    // Where the orchestrator runs, judged by address (leavesThisNetwork),
-    // never by a label: an OpenAI-compatible server on the internet is as far
-    // off this computer as a cloud API, and offline it waits like one.
+    // Where the orchestrator runs, judged by address and by an Ollama cloud
+    // tag (seatLeaves), never by a label: an OpenAI-compatible server on the
+    // internet is as far off this computer as a cloud API, a cloud tag on this
+    // computer's Ollama answers on ollama.com, and offline each waits.
     const orchestratorId = stackConfig.orchestrator?.provider;
     const orchestratorLeaves =
       orchestratorId && providers.has(orchestratorId)
-        ? leavesThisNetwork(providers.get(orchestratorId))
-        : config.providers[orchestratorId ?? '']?.kind === 'anthropic';
+        ? seatLeaves(providers.get(orchestratorId), stackConfig.orchestrator?.model ?? '')
+        : config.providers[orchestratorId ?? '']?.kind === 'anthropic' ||
+          isOllamaCloudTag(stackConfig.orchestrator?.model ?? '');
     const orchestrator = stackConfig.orchestrator
       ? {
           model: stackConfig.orchestrator.model,

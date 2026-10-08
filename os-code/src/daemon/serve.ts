@@ -86,7 +86,8 @@ import { EgressPolicy } from '../core/security/egress.js';
 import { trustSessionFolder } from '../core/agent/projectTrust.js';
 import { giveMoreRoomHere } from '../providers/servedWindow.js';
 import { ProviderRegistry } from '../providers/registry.js';
-import { leavesThisNetwork } from '../providers/types.js';
+import { seatLeaves } from '../providers/types.js';
+import { isOllamaCloudTag } from '../harness/locality.js';
 import { getAnthropicKey } from '../auth/claude.js';
 import { machineOffline } from '../core/agent/offline.js';
 import { offlineSeatFor } from '../router/router.js';
@@ -818,12 +819,15 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       }
       const stack = config.stack;
       const registry = new ProviderRegistry(config, getAnthropicKey);
-      // Where the orchestrator runs, judged by address (leavesThisNetwork),
-      // never by a label, as the desktop's own status judges it.
+      // Where the orchestrator runs, judged by address and by an Ollama cloud
+      // tag (seatLeaves), never by a label, as the desktop's own status
+      // judges it.
       const orchestratorId = stack.orchestrator?.provider ?? '';
+      const orchestratorModel = stack.orchestrator?.model ?? '';
       const orchestratorLeaves = registry.has(orchestratorId)
-        ? leavesThisNetwork(registry.get(orchestratorId))
-        : config.providers[orchestratorId]?.kind === 'anthropic';
+        ? seatLeaves(registry.get(orchestratorId), orchestratorModel)
+        : config.providers[orchestratorId]?.kind === 'anthropic' ||
+          isOllamaCloudTag(orchestratorModel);
       const orchestrator = stack.orchestrator
         ? {
             model: stack.orchestrator.model,

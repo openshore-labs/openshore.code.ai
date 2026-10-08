@@ -9,6 +9,7 @@
 // fits, and executes the task itself whenever no specialist is placed for it.
 import { HARBOR_MINI_MODEL_ID, HARBOR_MINI_MODEL_NAME } from './harborMini.js';
 import { PROVIDERS, providerModelVision } from './providers.js';
+import { byomReach } from './byom.js';
 import type { Effort } from './effort.js';
 import type { ProfileId } from './profiles.js';
 
@@ -139,12 +140,13 @@ export function visionCapable(ref: StackModelRef): boolean {
 export function pickVisionRef(
   stack: AppStack,
   reachable: (ref: StackModelRef) => boolean,
+  staysLocal: (ref: StackModelRef) => boolean = (r) => refStaysLocal(r),
 ): { ref: StackModelRef; placement?: Placement } | undefined {
   const ok = (r: StackModelRef) => visionCapable(r) && reachable(r);
   // The local vision slot is preferred over the cloud slot when it can actually
   // read images (a capable BYOM vision model today; an on-device one when that
   // runtime lands), so "put a local LLM in it" wins over the cloud fallback.
-  const { local, cloud } = visionSlots(stack);
+  const { local, cloud } = visionSlots(stack, staysLocal);
   if (local && ok(local.ref)) return { ref: local.ref, placement: local.placement };
   if (cloud && ok(cloud.ref)) return { ref: cloud.ref, placement: cloud.placement };
   if (stack.reasoning && ok(stack.reasoning)) return { ref: stack.reasoning };
@@ -153,20 +155,42 @@ export function pickVisionRef(
   return undefined;
 }
 
+/** Whether a model in the stack answers on this person's own network, judged
+ *  by address, never by its kind: a model on this device is; a cloud
+ *  provider's is not; a model you connect is when its server is on this
+ *  machine, the home network, or this device's own tailnet (`byomReach`, the
+ *  judge the Stack's chip reads), and it is not an Ollama cloud tag. A
+ *  `*.ts.net` server reads cloud unless `ownTailnetSuffix` says it is ours. */
+export function refStaysLocal(ref: StackModelRef, ownTailnetSuffix: string | null = null): boolean {
+  switch (ref.kind) {
+    case 'device':
+      return true;
+    case 'cloud':
+      return false;
+    case 'byom':
+      return byomReach(ref.baseUrl, ownTailnetSuffix, ref.model) === 'local';
+  }
+}
+
 /** The two Vision slots the manager shows: a local model (on-device or your own
  *  server, the ones "you control") and a cloud model. Both are ordinary vision
- *  placements; this just splits them by kind so the UI can present one of each.
- *  A person may fill either, both, or neither; an empty cloud slot falls back to
- *  the chat path's reader, Claude Haiku 4.5 first, until the person chooses one
- *  (D13; lib/providers.ts cloudImageReaders). */
-export function visionSlots(stack: AppStack): {
+ *  placements; this just splits them by where they answer, judged by address
+ *  (`staysLocal`, `refStaysLocal` unless the caller knows this device's own
+ *  tailnet), so a model you connect at a public address is never the Local
+ *  one. A person may fill either, both, or neither; an empty cloud slot falls
+ *  back to the chat path's reader, Claude Haiku 4.5 first, until the person
+ *  chooses one (D13; lib/providers.ts cloudImageReaders). */
+export function visionSlots(
+  stack: AppStack,
+  staysLocal: (ref: StackModelRef) => boolean = (r) => refStaysLocal(r),
+): {
   local?: ActiveMember;
   cloud?: ActiveMember;
 } {
   const vision = stack.active.filter((m) => m.placement.category === 'vision');
   return {
-    local: vision.find((m) => m.ref.kind === 'device' || m.ref.kind === 'byom'),
-    cloud: vision.find((m) => m.ref.kind === 'cloud'),
+    local: vision.find((m) => staysLocal(m.ref)),
+    cloud: vision.find((m) => !staysLocal(m.ref)),
   };
 }
 

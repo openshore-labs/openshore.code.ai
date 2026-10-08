@@ -23,7 +23,7 @@ import { ProviderRegistry } from '../providers/registry.js';
 import { resolveStack } from '../router/stack.js';
 import { getAnthropicKey } from '../auth/claude.js';
 import { engineEthicsContext } from '../core/ethics/host.js';
-import { leavesThisNetwork, type ChatMessage, type Provider } from '../providers/types.js';
+import { seatLeaves, type ChatMessage, type Provider } from '../providers/types.js';
 import {
   ThinkTagSplitter,
   chainOfThoughtPrompt,
@@ -151,8 +151,9 @@ export async function* freeChat(
       return;
     }
     // Pin to local: a free surface never spends the person's cloud budget,
-    // and "local" means on this computer's own network, by address.
-    if (leavesThisNetwork(orchestrator.provider)) {
+    // and "local" means on this computer's own network, by address, and not
+    // an Ollama cloud tag, which answers on ollama.com (seatLeaves).
+    if (seatLeaves(orchestrator.provider, orchestrator.ref.model)) {
       yield refused(
         400,
         'Free desktop chat runs your local models. Set a local orchestrator in your stack.',
@@ -161,6 +162,11 @@ export async function* freeChat(
     }
     const model =
       typeof body.model === 'string' && body.model ? body.model : orchestrator.ref.model;
+    // A model the app names is a seat too: a cloud tag never answers here.
+    if (seatLeaves(orchestrator.provider, model)) {
+      yield refused(400, `That model runs on Ollama's cloud, not your computer: ${model}.`);
+      return;
+    }
     // A model the app names is checked against what this computer serves,
     // when the server can say; an unknown list lets it pass.
     if (model !== orchestrator.ref.model && !(await modelServed(orchestrator.provider, model))) {

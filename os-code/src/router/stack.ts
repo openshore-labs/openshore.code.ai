@@ -2,7 +2,7 @@
 // The design center: ONE mandatory reasoning orchestrator (local or cloud)
 // that does everything itself unless an optional specialist is enabled.
 import type { ModelRef, OscConfig } from '../config/schema.js';
-import type { Provider } from '../providers/types.js';
+import { seatLeaves, type Provider } from '../providers/types.js';
 import type { ProviderRegistry } from '../providers/registry.js';
 import { SPECIALIST_ROLES, type SpecialistRole } from './roles.js';
 
@@ -70,9 +70,14 @@ export function resolveStack(config: OscConfig, registry: ProviderRegistry): Res
   return { orchestrator, specialists, imageGen, notes };
 }
 
-/** One-line stack description for the status line and osc stack. */
+/** One-line stack description for the status line and osc stack. Where the
+ *  orchestrator runs is judged as a seat (seatLeaves): by its server's
+ *  address and its model's name, so a cloud tag never reads local. */
 export function describeStack(stack: ResolvedStack): string {
-  const orch = `${stack.orchestrator.ref.model} (${stack.orchestrator.provider.kind})`;
+  const where = seatLeaves(stack.orchestrator.provider, stack.orchestrator.ref.model)
+    ? 'cloud'
+    : 'local';
+  const orch = `${stack.orchestrator.ref.model} (${where})`;
   const specialists = Object.entries(stack.specialists).map(
     ([role, r]) => `${role}: ${r!.ref.model}`,
   );

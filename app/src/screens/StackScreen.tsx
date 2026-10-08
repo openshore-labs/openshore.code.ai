@@ -2,7 +2,7 @@
 // Editable on the desktop; the phone shows the live picture from the daemon.
 import { InstallByName } from '../components/InstallByName.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { DaemonStackInfo } from 'os-code/protocol';
+import { isOllamaCloudTag, type DaemonStackInfo } from 'os-code/protocol';
 import { stackAdmin, useApp } from '../state/store.js';
 import { bridge, type DesktopStatus } from '../lib/electronBridge.js';
 import { isDesktop } from '../lib/platform.js';
@@ -37,6 +37,17 @@ function pickerModels(models: string[], current: string | undefined): string[] {
   return current && models.includes(current)
     ? [current, ...models.filter((m) => m !== current)]
     : models;
+}
+
+/** The models this computer's Ollama lists, split by where each answers: an
+ *  Ollama cloud tag ("kimi-k3:cloud") is listed like a pulled model but runs
+ *  on ollama.com, so it is a cloud model, never one on this computer (the
+ *  engine's own judge, `isOllamaCloudTag`). */
+function computerModels(models: readonly string[]): { here: string[]; cloud: string[] } {
+  return {
+    here: models.filter((m) => !isOllamaCloudTag(m)),
+    cloud: models.filter((m) => isOllamaCloudTag(m)),
+  };
 }
 
 /** A model the engine reports, by the name a person reads: a cloud model by
@@ -192,6 +203,8 @@ export function StackScreen() {
       ? orchestrator?.model
       : specialists.find((s) => s.role === pickFor)?.model;
   const canEdit = isDesktop() && admin;
+  // The picker's two lists: models on this computer, and Ollama cloud tags.
+  const listed = computerModels(status?.ollama.models ?? []);
   const reading = isDesktop() && Boolean(bridge()) && !status && !readFailed;
   const readingLine = 'Reading your computer...';
 
@@ -373,8 +386,8 @@ export function StackScreen() {
               Models installed on this computer. Ollama, a free app, runs them.
             </p>
             <div className="sheet-actions">
-              {status.ollama.models.length ? (
-                pickerModels(status.ollama.models, currentModel).map((m) => {
+              {listed.here.length ? (
+                pickerModels(listed.here, currentModel).map((m) => {
                   const current = m === currentModel;
                   return (
                     <button
@@ -425,6 +438,38 @@ export function StackScreen() {
                 </>
               )}
             </div>
+            {/* An Ollama cloud tag answers on ollama.com, not here: it is
+                listed apart, with the cloud chip, and says where its words go. */}
+            {listed.cloud.length ? (
+              <>
+                <p className="sheet-sub">
+                  Cloud models your Ollama lists. They run on Ollama&apos;s cloud under your Ollama
+                  account, so your words and the files the agent reads go there.
+                </p>
+                <div className="sheet-actions">
+                  {pickerModels(listed.cloud, currentModel).map((m) => {
+                    const current = m === currentModel;
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        className={`btn ghost profile-option press-fb${current ? ' selected' : ''}`}
+                        aria-current={current ? 'true' : undefined}
+                        onClick={() => void choose(m)}
+                      >
+                        <span className="profile-option-text">
+                          <span className="profile-option-title">
+                            {m}
+                            <span className="kind-chip cloud">Cloud</span>
+                          </span>
+                          {current ? <span className="profile-option-blurb">Current</span> : null}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : null}
             {status.ollama.up ? <InstallByName /> : null}
             {/* Turning a specialist off lives here, not as a button in the
                 ledger (Creative Studio, 2026-10-02). */}

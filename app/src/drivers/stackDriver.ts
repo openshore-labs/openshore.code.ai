@@ -128,6 +128,7 @@ import {
   harborRef,
   pickVisionRef,
   refName,
+  refStaysLocal,
   visionSlots,
   type AppStack,
   type Placement,
@@ -907,6 +908,15 @@ export class StackDriver implements ChatDriver {
     }
   }
 
+  /** Whether `ref` answers on this person's own network, for the Image
+   *  reading slots: the seat's own judgement when the store gives one (it
+   *  knows this device's tailnet), else by address alone (`refStaysLocal`),
+   *  so a model at a public address is never the Local slot. */
+  private staysLocal(ref: StackModelRef): boolean {
+    const seat = ref.kind === 'device' ? null : this.seatFor(ref);
+    return seat ? !seat.leavesNetwork : refStaysLocal(ref);
+  }
+
   /** Whether `ref`'s requests leave this network. A device seat is this
    *  phone; any other seat that cannot be judged reads as leaving, the safe
    *  reading. */
@@ -1476,7 +1486,11 @@ export class StackDriver implements ChatDriver {
     | { ref: StackModelRef; placement?: Placement; category: 'vision'; dedicated: boolean }
     | undefined
   > {
-    const pick = pickVisionRef(this.stack, (r) => this.reachable(r));
+    const pick = pickVisionRef(
+      this.stack,
+      (r) => this.reachable(r),
+      (r) => this.staysLocal(r),
+    );
     if (pick) {
       return {
         ref: pick.ref,
@@ -1498,7 +1512,11 @@ export class StackDriver implements ChatDriver {
   private askToReadImage(ref: StackModelRef, count: number): Promise<boolean> {
     const what = count === 1 ? 'this image' : `these ${count} images`;
     const cloud = ref.kind === 'cloud';
-    const held = heldImageModel(this.stack, (r) => this.reachable(r));
+    const held = heldImageModel(
+      this.stack,
+      (r) => this.reachable(r),
+      (r) => this.staysLocal(r),
+    );
     return this.askFirst({
       kind: cloud ? 'cloud-spend' : 'tool',
       toolName: 'analyzeImage',
@@ -1542,7 +1560,11 @@ export class StackDriver implements ChatDriver {
    *  Image reading that cannot read here (and why), and whether a connected
    *  cloud reader is out of reach in this status or missing. */
   private async imageGap(from: ImageReaderGap['from']): Promise<ImageReaderGap> {
-    const placed = heldImageModel(this.stack, (r) => this.reachable(r));
+    const placed = heldImageModel(
+      this.stack,
+      (r) => this.reachable(r),
+      (r) => this.staysLocal(r),
+    );
     let keyed = false;
     for (const reader of cloudImageReaders()) {
       if (await secretGet(providerSecretKey(reader.provider)).catch(() => null)) {
@@ -1600,6 +1622,7 @@ export class StackDriver implements ChatDriver {
       ...this.stack,
       imageReader: (await this.routeVision())?.ref,
       reachable: (r) => this.reachable(r),
+      staysLocal: (r) => this.staysLocal(r),
     };
 
     this.emit({ type: 'status', message: 'Framing the request.' });

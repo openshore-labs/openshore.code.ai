@@ -25,7 +25,7 @@ import {
 import { isHarborMini } from '../lib/harborMini.js';
 import { isDesktop } from '../lib/platform.js';
 import { isPinned } from '../lib/pins.js';
-import { byomPlainHttpToCloud, byomReach, byomRef, normalizeBaseUrl } from '../lib/byom.js';
+import { byomPlainHttpToCloud, byomRef, normalizeBaseUrl } from '../lib/byom.js';
 import { hubTailnetSuffix } from '../lib/vaultSeat.js';
 import {
   activeContribution,
@@ -42,6 +42,7 @@ import {
   placementValid,
   refKey,
   refName,
+  refStaysLocal,
   stackForProfile,
   visionCapable,
   visionSlots,
@@ -70,19 +71,17 @@ function byomHost(baseUrl: string): string {
 /** One consistent read on where a model runs, so the whole stack is legible at
  *  a glance: teal for local and private (on device, or your own server on this
  *  machine, the home network, or a tailnet), amber for cloud (spend and
- *  off-device, including a BYOM pointed at a hosted API). The same language
- *  the rest of the app uses. */
+ *  off-device, including a BYOM pointed at a hosted API or an Ollama cloud
+ *  tag). The same language the rest of the app uses, and the same judge the
+ *  Image reading slots split by (`refStaysLocal`). */
 function kindMeta(
   ref: StackModelRef,
   ownTailnetSuffix: string | null,
 ): { cls: 'local' | 'cloud'; label: string } {
-  if (ref.kind === 'cloud') return { cls: 'cloud', label: 'Cloud' };
-  if (ref.kind === 'byom') {
-    return byomReach(ref.baseUrl, ownTailnetSuffix) === 'local'
-      ? { cls: 'local', label: 'Your server' }
-      : { cls: 'cloud', label: 'Cloud' };
-  }
-  return { cls: 'local', label: 'On device' };
+  if (!refStaysLocal(ref, ownTailnetSuffix)) return { cls: 'cloud', label: 'Cloud' };
+  return ref.kind === 'byom'
+    ? { cls: 'local', label: 'Your server' }
+    : { cls: 'local', label: 'On device' };
 }
 
 /** The teal/amber chip for a model's location. */
@@ -143,10 +142,21 @@ export function StackManager({
   const computerSeat = computerOfflineOf(computer) ? Boolean(computer?.offlineSeat) : undefined;
   const stack = stackForProfile(settings.stacks, editProfile);
   const reasoning = stack.reasoning ?? harborRef();
+  // Where a model answers, judged by address with this device's own tailnet
+  // (the paired hub's), the judgement the chip draws: the Image reading
+  // slots split by it, so a model at a public address is never Local.
+  const ownTailnetSuffix = hubTailnetSuffix(settings.daemon?.baseUrl);
+  const staysLocal = (r: StackModelRef) => refStaysLocal(r, ownTailnetSuffix);
   // The two Vision slots (a local model and a cloud model), split out of the
   // active list so the manager shows a dedicated Image reading card.
-  const slots = visionSlots(stack);
-  const nonVisionActive = stack.active.filter((m) => m.placement.category !== 'vision');
+  const slots = visionSlots(stack, staysLocal);
+  // The Specialists rows: every placement but the two Image reading slots. A
+  // second vision placement judged to the same side as its slot (one placed
+  // before the slots split by address) is listed here too, so no placed model
+  // is out of sight or out of reach of Move to the bench.
+  const nonVisionActive = stack.active.filter(
+    (m) => m.placement.category !== 'vision' || (m !== slots.local && m !== slots.cloud),
+  );
 
   const deviceRefs: StackModelRef[] = [
     ...(settings.harborReady ? [harborRef()] : []),
@@ -254,7 +264,10 @@ export function StackManager({
   // Two positions in one category: a local model (on-device or your own server)
   // and a cloud model. Each carries its own effort. Until a person assigns the
   // cloud slot, an image asks first and then goes to the model named below.
-  const localVisionRefs = [...deviceRefs, ...byomRefs];
+  // A model you connect sits under Local only when it answers on your own
+  // network; one at a public address, or an Ollama cloud tag, is a cloud model.
+  const localVisionRefs = [...deviceRefs, ...byomRefs.filter(staysLocal)];
+  const cloudVisionRefs = [...cloudRefs, ...byomRefs.filter((r) => !staysLocal(r))];
   // What reads an image in this status while nothing in its slot does: the
   // chat path's own choice (stackDriver's routeVision), an anchor or
   // specialist that can see, then the first connected cloud reader. The rows
@@ -268,21 +281,24 @@ export function StackManager({
     (r.kind !== 'cloud' || Boolean(connectedProviders[r.provider]));
   const connectedReader = cloudImageReaders().find((r) => connectedProviders[r.provider]);
   const imageReader: StackModelRef | undefined =
-    pickVisionRef({ ...stack, active: stack.active.filter((m) => m !== slots.local) }, reach)
-      ?.ref ?? (cloudOn && connectedReader ? { kind: 'cloud', ...connectedReader } : undefined);
+    pickVisionRef(
+      { ...stack, active: stack.active.filter((m) => m !== slots.local) },
+      reach,
+      staysLocal,
+    )?.ref ?? (cloudOn && connectedReader ? { kind: 'cloud', ...connectedReader } : undefined);
   const [visionEdit, setVisionEdit] = useState<
     { slot: 'local' | 'cloud'; pickKey: string; effort: Effort } | undefined
   >();
   const eligibleVisionRefs = (slot: 'local' | 'cloud') =>
-    slot === 'local' ? localVisionRefs : cloudRefs;
+    slot === 'local' ? localVisionRefs : cloudVisionRefs;
   const openVisionEdit = (slot: 'local' | 'cloud') => {
     const member = slot === 'local' ? slots.local : slots.cloud;
     // The cloud preselect is the model reading images today (a connected one,
     // so Save never lands on an unconnected default), so Save alone keeps it.
-    const reading = imageReader && cloudRefs.find((r) => refKey(r) === refKey(imageReader));
+    const reading = imageReader && cloudVisionRefs.find((r) => refKey(r) === refKey(imageReader));
     const initial =
       member?.ref ??
-      (slot === 'cloud' ? (reading ?? cloudRefs.find(visionCapable)) : localVisionRefs[0]);
+      (slot === 'cloud' ? (reading ?? cloudVisionRefs.find(visionCapable)) : localVisionRefs[0]);
     setVisionEdit({
       slot,
       pickKey: initial ? refKey(initial) : '',

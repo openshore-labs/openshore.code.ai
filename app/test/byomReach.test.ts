@@ -88,8 +88,20 @@ describe('byomReach', () => {
       new URL('../src/components/StackManager.tsx', import.meta.url),
       'utf8',
     );
-    expect(src).toMatch(/byomReach\(ref\.baseUrl, ownTailnetSuffix\)/);
+    // The chip and the Image reading slots read one judge (privacy review,
+    // 2026-10-08), which reads the reach with the model it serves.
+    expect(src).toMatch(/refStaysLocal\(ref, ownTailnetSuffix\)/);
     expect(src).toMatch(/hubTailnetSuffix\(/);
     expect(src).not.toMatch(/kind === 'byom'\) return \{ cls: 'local'/);
+    const stack = readFileSync(new URL('../src/lib/stack.ts', import.meta.url), 'utf8');
+    expect(stack).toMatch(/byomReach\(ref\.baseUrl, ownTailnetSuffix, ref\.model\)/);
+  });
+
+  it("an Ollama cloud tag is cloud, even on this computer's own Ollama", () => {
+    expect(byomReach('http://localhost:11434/v1', null, 'kimi-k3:cloud')).toBe('cloud');
+    expect(byomReach('http://192.168.1.20:11434/v1', null, 'gpt-oss:120b-cloud')).toBe('cloud');
+    expect(byomReach('http://localhost:11434/v1', null, 'qwen2.5-coder:7b')).toBe('local');
+    // Without the model, the address alone, as before.
+    expect(byomReach('http://localhost:11434/v1')).toBe('local');
   });
 });

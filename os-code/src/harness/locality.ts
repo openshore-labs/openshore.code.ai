@@ -124,3 +124,19 @@ export function tailnetSuffixOf(hostname: string): string | null {
   const suffix = host.slice(dot + 1);
   return dot > 0 && suffix !== 'ts.net' ? suffix : null;
 }
+
+/**
+ * True when a model's own name says it runs on Ollama's cloud: its tag is
+ * `cloud` or ends in `-cloud` ("kimi-k3:cloud", "gpt-oss:120b-cloud"). A
+ * local Ollama lists such a model like any it has pulled, then passes every
+ * request for it on to ollama.com under the person's Ollama account, so its
+ * words leave this network whatever the server's address. The tag is what
+ * follows the last colon, read without regard to case.
+ */
+export function isOllamaCloudTag(model: string): boolean {
+  const name = model.trim().toLowerCase();
+  const colon = name.lastIndexOf(':');
+  if (colon === -1) return false;
+  const tag = name.slice(colon + 1);
+  return tag === 'cloud' || tag.endsWith('-cloud');
+}

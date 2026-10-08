@@ -293,3 +293,32 @@ describe('EngineHost free chat (the desktop window, over IPC)', () => {
     host.disposeAll();
   });
 });
+
+// Privacy review, 2026-10-08 (electron-daemon-1): an Ollama cloud tag on this
+// computer's own Ollama answers on ollama.com, so the status the Stack's chip
+// and the model sheet read calls it cloud, judged by the seat (seatLeaves),
+// never by the server's address alone.
+describe("EngineHost status: a cloud tag on this computer's Ollama is cloud", () => {
+  function homeWith(model: string): string {
+    const home = mkdtempSync(join(tmpdir(), 'osc-home-tag-'));
+    writeFileSync(
+      join(home, 'config.json'),
+      JSON.stringify({
+        providers: { ollama: { kind: 'openai-compatible', baseUrl: 'http://127.0.0.1:1' } },
+        stack: { orchestrator: { provider: 'ollama', model } },
+      }),
+    );
+    return home;
+  }
+
+  it('kind cloud for kimi-k3:cloud, kind local for a model that runs here', async () => {
+    process.env.OSC_HOME = homeWith('kimi-k3:cloud');
+    const host = makeHost([]);
+    expect((await host.status()).stack.orchestrator?.kind).toBe('cloud');
+    host.disposeAll();
+    process.env.OSC_HOME = homeWith('qwen2.5-coder:7b');
+    const local = makeHost([]);
+    expect((await local.status()).stack.orchestrator?.kind).toBe('local');
+    local.disposeAll();
+  });
+});

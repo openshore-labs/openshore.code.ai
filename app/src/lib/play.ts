@@ -195,6 +195,10 @@ export function mergeReplan(play: Play, done: Set<string>, rawRemaining: unknown
  *  on who a step really runs on (stepRunner); left out, every model is in
  *  reach. */
 export type PlayStack = AppStack & {
+  /** Whether a model answers on this person's own network (the driver's
+   *  seat judge, which knows this device's tailnet), so an image step goes
+   *  to the Local slot first; left out, `refStaysLocal` by address. */
+  staysLocal?: (ref: StackModelRef) => boolean;
   imageReader?: StackModelRef;
   reachable?: (ref: StackModelRef) => boolean;
 };
@@ -229,7 +233,7 @@ export function ownerFor(step: PlayStep, stack: PlayStack): StepOwner {
     return { ref: anchor, placement: undefined, fellBack: false };
   }
   if (step.category === 'vision') {
-    const { local, cloud } = visionSlots(stack);
+    const { local, cloud } = visionSlots(stack, stack.staysLocal);
     const member = local ?? cloud;
     if (member) return { ref: member.ref, placement: member.placement, fellBack: false };
     // Nothing placed for Image reading: the model an image in the chat goes

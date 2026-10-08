@@ -1,6 +1,7 @@
 // The Provider contract. One interface covers Ollama, LM Studio, llama.cpp,
 // vLLM, and cloud Claude; the router only ever sees this shape.
 import type { CapabilityCategory } from '../router/roles.js';
+import { isOllamaCloudTag } from '../harness/locality.js';
 
 export interface ContentPart {
   type: 'text' | 'image';
@@ -185,7 +186,17 @@ export class ProviderError extends Error {
   }
 }
 
-/** True when a provider's requests leave this computer's own network. */
+/** True when a provider's requests leave this computer's own network. This
+ *  judges a server; a seat (a server answering as one model) is judged by
+ *  seatLeaves. */
 export function leavesThisNetwork(provider: Pick<Provider, 'kind' | 'remote'>): boolean {
   return provider.kind === 'cloud' || provider.remote;
+}
+
+/** True when a seat's requests leave this computer's own network: its
+ *  server's address leaves (leavesThisNetwork), or its model is an Ollama
+ *  cloud tag (isOllamaCloudTag), which a local Ollama passes on to
+ *  ollama.com. Every check on where a model answers judges with this. */
+export function seatLeaves(provider: Pick<Provider, 'kind' | 'remote'>, model: string): boolean {
+  return leavesThisNetwork(provider) || isOllamaCloudTag(model);
 }

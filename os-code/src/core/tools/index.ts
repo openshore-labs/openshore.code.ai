@@ -198,10 +198,10 @@ export interface ToolContext {
    *  turn; unset writes the lines it can without them. */
   vaultSeat?: () => { model?: string; size?: ProvSize; provider?: string };
   /** Whether the seat answering right now sends its requests off this network
-   *  (`leavesThisNetwork`, judged by address). Set by the loop each turn, so a
-   *  read of a local-only note says it stays on this computer, and search and
-   *  backlinks leave such notes out. Unset reads as a seat that leaves (the
-   *  safe reading); the loop always sets it. */
+   *  (`seatLeaves`, judged by address and by an Ollama cloud tag). Set by the
+   *  loop each turn, so a read of a local-only note says it stays on this
+   *  computer, and search and backlinks leave such notes out. Unset reads as a
+   *  seat that leaves (the safe reading); the loop always sets it. */
   seatLeavesNetwork?: () => boolean;
   /** The most characters one vault read returns for the seat answering now
    *  (the class policy's `vaultReadCapChars`, CTO I11). Set by the loop each

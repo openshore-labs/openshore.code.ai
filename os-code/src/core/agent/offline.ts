@@ -9,11 +9,13 @@
 // network, and one that comes back gets its configured stack again.
 //
 // While it is set, only a model whose requests stay on this network runs
-// (judged by address, leavesThisNetwork, never by a label): a cloud
+// (judged by address and a cloud tag, seatLeaves, never by a label): a cloud
 // orchestrator gives way to the best local model, a cloud specialist is
 // skipped, nothing escalates, and the tools that reach the network leave the
 // menu, the routine's offline slice. Pure on purpose: the copy and the ranking
 // ride os-code/protocol, so the app's doors match the engine's words.
+
+import { isOllamaCloudTag } from '../../harness/locality.js';
 
 /** Why this computer works offline: no network, or the person chose it. */
 export type OfflineReason = 'network' | 'chosen';
@@ -92,12 +94,14 @@ function paramsB(name: string): number {
  * only, a coding model before any other (DeepBlue and the curated coders are
  * coders), then the larger before the smaller, then the server's own order.
  * Installed means it fits: the person, or DeepBlue's fit table, put it there.
+ * An Ollama cloud tag is never ranked: Ollama lists it like a pulled model,
+ * but it answers on ollama.com, so it can never be the seat that stays here.
  */
 export function rankLocalModels(names: readonly string[]): string[] {
   const coder = (n: string): number => (/coder|code/i.test(n) ? 1 : 0);
   return names
     .map((name, i) => ({ name, i }))
-    .filter(({ name }) => name.trim() && !NOT_CHAT.test(name))
+    .filter(({ name }) => name.trim() && !NOT_CHAT.test(name) && !isOllamaCloudTag(name))
     .sort((a, b) => coder(b.name) - coder(a.name) || paramsB(b.name) - paramsB(a.name) || a.i - b.i)
     .map(({ name }) => name);
 }

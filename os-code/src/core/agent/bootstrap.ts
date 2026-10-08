@@ -10,7 +10,7 @@ import {
 } from '../../config/load.js';
 import { hasAgentCliSettings } from '../../config/trust.js';
 import { ProviderRegistry } from '../../providers/registry.js';
-import { leavesThisNetwork } from '../../providers/types.js';
+import { seatLeaves } from '../../providers/types.js';
 import { getAnthropicKey } from '../../auth/claude.js';
 import { resolveStack } from '../../router/stack.js';
 import { Router } from '../../router/router.js';
@@ -340,8 +340,12 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   //
   // "Local" is judged by where the orchestrator's requests go (loopback, the
   // LAN, the person's own tailnet), never by a config label: an OpenAI-
-  // compatible server on the internet is as far off the device as a cloud API.
-  const orchestratorKind = leavesThisNetwork(stack.orchestrator.provider) ? 'cloud' : 'local';
+  // compatible server on the internet is as far off the device as a cloud API,
+  // and an Ollama cloud tag on this computer's Ollama answers on ollama.com
+  // (seatLeaves).
+  const orchestratorKind = seatLeaves(stack.orchestrator.provider, stack.orchestrator.ref.model)
+    ? 'cloud'
+    : 'local';
   const { projectSecrets, egressLockdown } = gateProjectSecrets(
     orchestratorKind,
     options.projectSecrets,

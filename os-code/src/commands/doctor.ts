@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs';
 import { banner, t } from '../brand/theme.js';
 import { loadConfig, loadVaultDir } from '../config/load.js';
 import { ProviderRegistry } from '../providers/registry.js';
+import { seatLeaves } from '../providers/types.js';
 import { getAnthropicKey } from '../auth/claude.js';
 import { isGithubConnected } from '../auth/github.js';
 import { resolveStack, StackError } from '../router/stack.js';
@@ -53,8 +54,13 @@ export async function doctorCommand(): Promise<void> {
   const providers = new ProviderRegistry(config, getAnthropicKey);
   try {
     const stack = resolveStack(config, providers);
+    // Where it runs, judged as a seat (seatLeaves), so a cloud tag on this
+    // computer's Ollama reads cloud.
+    const where = seatLeaves(stack.orchestrator.provider, stack.orchestrator.ref.model)
+      ? 'cloud'
+      : 'local';
     okLine(
-      `Orchestrator: ${stack.orchestrator.ref.model} on ${stack.orchestrator.ref.provider} (${stack.orchestrator.provider.kind}).`,
+      `Orchestrator: ${stack.orchestrator.ref.model} on ${stack.orchestrator.ref.provider} (${where}).`,
     );
     for (const [role, resolved] of Object.entries(stack.specialists)) {
       const health = await resolved!.provider.health();

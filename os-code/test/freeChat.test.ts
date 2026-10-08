@@ -114,6 +114,27 @@ describe('the free chat', () => {
     expect(sent).toHaveLength(0);
   });
 
+  it("refuses an Ollama cloud tag on this computer's own Ollama: it answers on ollama.com", async () => {
+    writeConfig(`http://127.0.0.1:${port}`, 'kimi-k3:cloud');
+    const events = await all(freeChat(hello, { signal: new AbortController().signal }));
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: 'refused', status: 400 });
+    expect((events[0] as { error: string }).error).toMatch(/local models/);
+    // A cloud tag the app names is refused the same way.
+    writeConfig(`http://127.0.0.1:${port}`);
+    const named = await all(
+      freeChat({ ...hello, model: 'gpt-oss:120b-cloud' }, { signal: new AbortController().signal }),
+    );
+    expect(named).toEqual([
+      expect.objectContaining({
+        type: 'refused',
+        status: 400,
+        error: expect.stringContaining("Ollama's cloud"),
+      }),
+    ]);
+    expect(sent).toHaveLength(0);
+  });
+
   it('with no model at all, refuses with a plain reason', async () => {
     writeFileSync(join(home, 'config.json'), JSON.stringify({}));
     const events = await all(freeChat(hello, { signal: new AbortController().signal }));
