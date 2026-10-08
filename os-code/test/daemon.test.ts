@@ -1615,7 +1615,10 @@ describe('close drops live streams (DAE-11)', () => {
 
 describe('session lifecycle: eviction and delete (DAE-12)', () => {
   it('an idle driver with no listeners is evicted and rehydrates on the next touch', async () => {
-    const own = await startOnFreePort({ idleEviction: { afterMs: 50, everyMs: 20 } });
+    // A window wide enough that a session's own bootstrap (slower on a first
+    // run on Windows, where the one-time handoff sweep runs) never counts as
+    // idle time, so the test measures eviction, not how fast a session starts.
+    const own = await startOnFreePort({ idleEviction: { afterMs: 1000, everyMs: 50 } });
     const ownBase = `http://127.0.0.1:${own.port}`;
     try {
       const created = await fetch(`${ownBase}/sessions`, {
@@ -1631,7 +1634,7 @@ describe('session lifecycle: eviction and delete (DAE-12)', () => {
           }
         ).sessions;
       expect(await live()).toBe(1);
-      const deadline = Date.now() + 3000;
+      const deadline = Date.now() + 6000;
       while ((await live()) !== 0 && Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 25));
       }
