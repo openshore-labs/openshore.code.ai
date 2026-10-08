@@ -228,8 +228,26 @@ export interface DesktopStatus {
   stack: {
     configured: boolean;
     description: string;
-    orchestrator?: { model: string; provider: string; kind: 'local' | 'cloud' };
-    specialists: Array<{ role: string; model: string }>;
+    /** `kind` is judged by seatLeaves (by address, and by an Ollama cloud
+     *  tag). `onThisComputer` is set on a seat that stays when its server is
+     *  this computer itself (hostIsLoopback, never the LAN or the tailnet),
+     *  so the Stack's chip can say On this computer or On your network (CX
+     *  and CMO, 2026-10-08, B); GET /stack reports the same shape. */
+    orchestrator?: {
+      model: string;
+      provider: string;
+      kind: 'local' | 'cloud';
+      onThisComputer?: true;
+    };
+    /** Each placed specialist, judged as the orchestrator is. Both fields are
+     *  additive: a specialist whose server is no longer configured, or one
+     *  from an older engine, has neither, and wears no chip. */
+    specialists: Array<{
+      role: string;
+      model: string;
+      kind?: 'local' | 'cloud';
+      onThisComputer?: true;
+    }>;
   };
   connections: { anthropic: boolean; openai: boolean; github: boolean };
 }

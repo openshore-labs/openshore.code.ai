@@ -20,7 +20,7 @@ import { TerminalManager, TerminalUnavailable } from 'os-code/dist/src/daemon/te
 import { HOME_SHELL_ID } from 'os-code/dist/src/daemon/homeShellId.js';
 import { ProviderRegistry } from 'os-code/dist/src/providers/registry.js';
 import { leavesThisNetwork, seatLeaves } from 'os-code/dist/src/providers/types.js';
-import { isOllamaCloudTag } from 'os-code/dist/src/harness/locality.js';
+import { hostIsLoopback, isOllamaCloudTag } from 'os-code/dist/src/harness/locality.js';
 import {
   machineOffline,
   setMachineOffline,
@@ -683,16 +683,48 @@ export class EngineHost {
         ? seatLeaves(providers.get(orchestratorId), stackConfig.orchestrator?.model ?? '')
         : config.providers[orchestratorId ?? '']?.kind === 'anthropic' ||
           isOllamaCloudTag(stackConfig.orchestrator?.model ?? '');
+    // A seat that stays wears "On this computer" only when its server is this
+    // computer itself (hostIsLoopback, never the LAN or the tailnet), so the
+    // Stack's chip says where it answers; GET /stack reports the same (CX and
+    // CMO, 2026-10-08, B).
+    const onThisComputer = (providerId: string): { onThisComputer?: true } => {
+      const endpoint = config.providers[providerId];
+      if (!endpoint || !('baseUrl' in endpoint) || typeof endpoint.baseUrl !== 'string') return {};
+      try {
+        return hostIsLoopback(new URL(endpoint.baseUrl).hostname)
+          ? { onThisComputer: true as const }
+          : {};
+      } catch {
+        return {};
+      }
+    };
     const orchestrator = stackConfig.orchestrator
       ? {
           model: stackConfig.orchestrator.model,
           provider: stackConfig.orchestrator.provider,
           kind: (orchestratorLeaves ? 'cloud' : 'local') as 'local' | 'cloud',
+          ...(orchestratorLeaves ? {} : onThisComputer(stackConfig.orchestrator.provider)),
         }
       : undefined;
+    // Each specialist judged as the orchestrator is (seatLeaves). One whose
+    // server is no longer configured answers nowhere, so it says nothing of
+    // where (no kind, and the Stack shows no chip).
     const specialists = Object.entries(stackConfig.specialists)
       .filter(([role]) => role !== 'imageGen')
-      .map(([role, ref]) => ({ role, model: (ref as { model?: string }).model ?? '' }));
+      .map(([role, ref]) => {
+        const model = (ref as { model?: string }).model ?? '';
+        const providerId = (ref as { provider?: string }).provider ?? '';
+        if (!providers.has(providerId) && !config.providers[providerId]) return { role, model };
+        const leaves = providers.has(providerId)
+          ? seatLeaves(providers.get(providerId), model)
+          : config.providers[providerId]?.kind === 'anthropic' || isOllamaCloudTag(model);
+        return {
+          role,
+          model,
+          kind: (leaves ? 'cloud' : 'local') as 'local' | 'cloud',
+          ...(leaves ? {} : onThisComputer(providerId)),
+        };
+      });
     // The model this computer's engine seats while offline (Router.localSeat,
     // read across every configured provider by address), so the model sheet
     // and Runs the show name what will actually answer. Absent when nothing

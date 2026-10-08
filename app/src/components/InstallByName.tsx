@@ -48,10 +48,14 @@ export function InstallByName({ onInstalled }: { onInstalled?: (ref: string) => 
   return (
     <div className="card install-by-name">
       <h3>Have a model in mind?</h3>
+      {/* A local door: the examples name only models that run here, and the
+          last sentence warns off a cloud tag in the words of the engine's own
+          judge (isOllamaCloudTag: a tag that is cloud or ends in -cloud), never
+          offering one to copy (CX and CMO, 2026-10-08, B). */}
       <p className="hint" style={{ marginTop: 4 }}>
         Type any name from the Ollama library and install it on this computer, even brand new
-        models. For example qwen3-coder:30b, deepseek-r1:14b, gemma3:12b. A :cloud tag
-        (kimi-k3:cloud) runs on Ollama&apos;s cloud under your Ollama account.
+        models. For example qwen3-coder:30b, deepseek-r1:14b, gemma3:12b. A name whose tag (after
+        the colon) is cloud or ends in -cloud runs on Ollama&apos;s cloud, not on this computer.
       </p>
       <div className="field" style={{ marginTop: 8 }}>
         <input
