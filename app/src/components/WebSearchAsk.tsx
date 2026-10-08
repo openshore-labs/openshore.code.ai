@@ -3,6 +3,12 @@
 // leave (the search words, to the search service) and nothing else, then
 // remembers a yes on this device. "Not now" lets the model answer from what
 // it knows, and the question comes back after the next launch.
+//
+// Once a chat on a model that stays on this network has read a private note
+// (CX and CMO, 2026-10-08, H), every search that model writes asks here, every
+// time, on a card with the exact words and why: the approval sheet's always-ask
+// words, Approve once and No, skip it, and nothing remembered, so no Settings
+// hint either.
 import { Sheet } from './Sheet.js';
 import { SheetHead } from './SheetHead.js';
 import { useApp } from '../state/store.js';
@@ -11,9 +17,30 @@ import { hapticCommit } from '../lib/haptics.js';
 export function WebSearchAsk() {
   const ask = useApp((s) => s.webSearchAsk);
   const answer = useApp((s) => s.answerWebSearch);
+  const once = ask?.private;
   return (
     <Sheet open={Boolean(ask)} onClose={() => answer(false)}>
-      {ask ? (
+      {ask && once ? (
+        <>
+          <SheetHead title={once.summary} onClose={() => answer(false)} />
+          <p className="sheet-sub">{once.detail}</p>
+          <div className="sheet-actions">
+            <button
+              type="button"
+              className="btn primary press-fb"
+              onClick={() => {
+                hapticCommit();
+                answer(true);
+              }}
+            >
+              Approve once
+            </button>
+            <button type="button" className="btn ghost press-fb" onClick={() => answer(false)}>
+              No, skip it
+            </button>
+          </div>
+        </>
+      ) : ask ? (
         <>
           <SheetHead title="Search the web?" onClose={() => answer(false)} />
           <p className="sheet-sub">

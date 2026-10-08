@@ -36,6 +36,9 @@ const h = vi.hoisted(() => ({
   // send replays these events to the subscriber.
   engineEvents: [] as unknown[],
   enginePrompts: [] as string[],
+  // What the paired computer says of its stack (GET /stack); undefined is
+  // no answer, an older daemon's or one out of reach.
+  engineStack: undefined as unknown,
 }));
 
 vi.mock('../src/drivers/remoteDriver.js', async (importOriginal) => {
@@ -59,6 +62,10 @@ vi.mock('../src/drivers/remoteDriver.js', async (importOriginal) => {
     ...actual,
     RemoteDriver: FakeRemoteDriver,
     daemonCreateSession: async () => 'engine-session',
+    daemonStack: async () => {
+      if (!h.engineStack) throw new Error('Your computer did not answer.');
+      return h.engineStack;
+    },
   };
 });
 
@@ -246,6 +253,7 @@ beforeEach(() => {
   h.claudeScript.length = 0;
   h.claudeParams.length = 0;
   h.jev = undefined;
+  h.engineStack = undefined;
 });
 
 describe('the pack on a Stack turn', () => {
@@ -658,7 +666,7 @@ describe('a reply after a local-only read (I5 in the app)', () => {
       ['Look', 'Claude'],
     ]) {
       expect(notes).toContain(
-        `${title}. This plan draws on a private note, so Box Mid, your Reasoning model, takes it instead of ${owner}. Private notes never reach a cloud model unless you run or allow a command or change that carries them.`,
+        `${title}. This plan draws on a private note, so Box Mid, your Reasoning model, takes it instead of ${owner}.`,
       );
     }
     // The task list names the model that runs each step.
@@ -856,12 +864,15 @@ describe('a reply after a local-only read (I5 in the app)', () => {
     expect(JSON.stringify(h.nativeBodies[3])).toContain(`Build it from: ${note}`);
     const notes = events.flatMap((e) => (e.type === 'status' ? [e.message] : []));
     expect(notes).toContain(
-      'Build. This plan draws on a private note, so Box Mid, your Reasoning model, takes it instead of GPT. Private notes never reach a cloud model unless you run or allow a command or change that carries them.',
+      'Build. This plan draws on a private note, so Box Mid, your Reasoning model, takes it instead of GPT.',
     );
     driver.dispose();
   });
 
-  it('a private plan never hands a step that edits files to your computer', async () => {
+  // J (CX and CMO, 2026-10-08): with no word from the computer on what its
+  // agent runs (here, no answer to GET /stack), a private plan's file step is
+  // described here; test/stackPrivatePlan.test.ts holds the marked run.
+  it('a private plan describes a step that edits files when the computer cannot say', async () => {
     h.engineEvents.length = 0;
     h.enginePrompts.length = 0;
     const note = 'The secret is teal.';
@@ -1080,5 +1091,169 @@ describe('a reply after a local-only read (I5 in the app)', () => {
     expect(h.nativeBodies).toHaveLength(1);
     expect(JSON.stringify(h.nativeBodies[0]!.messages)).not.toContain('teal secret');
     driver.dispose();
+  });
+});
+
+// The sticky reply mark stays, and the person is told once where the context
+// is lost (CX and CMO, 2026-10-08, F): one status line per chat for each
+// model that leaves this network, on the first turn it is sent the
+// placeholder for a reply a local model wrote after a private read.
+describe('the placeholder line (F)', () => {
+  const marked = [
+    { role: 'user' as const, text: 'what does my diary say?' },
+    {
+      role: 'assistant' as const,
+      text: 'The diary says the secret is teal.',
+      localOnly: true as const,
+    },
+  ];
+  const line = (model: string) =>
+    `This chat drew on a private note, so ${model} sees your local models' replies since then only as a placeholder.`;
+  const lines = (events: DriverEvent[]) =>
+    events.flatMap((e) =>
+      e.type === 'status' && e.message.startsWith('This chat drew on a private note')
+        ? [e.message]
+        : [],
+    );
+
+  it('shows once for a cloud model sent the placeholder, and not again on the next turn', async () => {
+    const driver = new StackDriver(
+      { reasoning: gpt, active: [], saved: {} },
+      'offshore',
+      {},
+      marked,
+      {
+        packSeat: seatOf,
+      },
+    );
+    const events: DriverEvent[] = [];
+    driver.subscribe((e) => events.push(e));
+    h.nativeReplies.push('ok');
+    driver.send('and now?');
+    await settle();
+    expect(JSON.stringify(h.nativeBodies[0]!.messages)).toContain(LOCAL_ONLY_STUB.slice(0, 40));
+    expect(lines(events)).toEqual([line('GPT')]);
+    // Said before the request that carried the placeholder: ahead of the
+    // reply, after the turn's start.
+    const at = (pred: (e: DriverEvent) => boolean) => events.findIndex(pred);
+    expect(at((e) => e.type === 'turn-start')).toBeLessThan(
+      at((e) => e.type === 'status' && e.message === line('GPT')),
+    );
+    expect(at((e) => e.type === 'status' && e.message === line('GPT'))).toBeLessThan(
+      at((e) => e.type === 'text-final'),
+    );
+    h.nativeReplies.push('still ok');
+    driver.send('and after that?');
+    await settle();
+    expect(lines(events)).toEqual([line('GPT')]);
+    driver.dispose();
+  });
+
+  it('shows again for a second cloud model in the same chat', async () => {
+    const driver = new StackDriver(
+      { reasoning: gpt, active: [{ ref: claude, placement: { category: 'coding' } }], saved: {} },
+      'offshore',
+      {},
+      marked,
+      { packSeat: seatOf },
+    );
+    const events: DriverEvent[] = [];
+    driver.subscribe((e) => events.push(e));
+    // GPT frames the request (its digest carries the placeholder), then the
+    // coding question goes to Claude on the single-turn path.
+    h.nativeReplies.push(ONE_STEP);
+    h.claudeScript.push('Fixed.');
+    driver.send('please debug this typescript function');
+    await settle(20);
+    expect(lines(events)).toEqual([line('GPT'), line('Claude')]);
+    h.nativeReplies.push(ONE_STEP);
+    h.claudeScript.push('Fixed again.');
+    driver.send('please debug this other typescript function');
+    await settle(20);
+    expect(lines(events)).toEqual([line('GPT'), line('Claude')]);
+    driver.dispose();
+  });
+
+  it('never shows on a seat that stays on this network', async () => {
+    const driver = new StackDriver(
+      { reasoning: boxMid, active: [], saved: {} },
+      'offshore',
+      {},
+      marked,
+      {
+        packSeat: seatOf,
+      },
+    );
+    const events: DriverEvent[] = [];
+    driver.subscribe((e) => events.push(e));
+    h.nativeReplies.push('ok');
+    driver.send('and now?');
+    await settle();
+    expect(JSON.stringify(h.nativeBodies[0]!.messages)).toContain('the secret is teal');
+    expect(lines(events)).toEqual([]);
+    driver.dispose();
+  });
+
+  it('never shows in a clean chat', async () => {
+    const clean = marked.map(({ role, text }) => ({ role, text }));
+    const driver = new StackDriver(
+      { reasoning: gpt, active: [], saved: {} },
+      'offshore',
+      {},
+      clean,
+      {
+        packSeat: seatOf,
+      },
+    );
+    const events: DriverEvent[] = [];
+    driver.subscribe((e) => events.push(e));
+    h.nativeReplies.push('ok');
+    driver.send('and now?');
+    await settle();
+    expect(lines(events)).toEqual([]);
+    driver.dispose();
+  });
+
+  it('a cloud chat seeded with a marked reply says it once, for its own model', async () => {
+    const { CloudOpenAiDriver } = await import('../src/drivers/cloudOpenAiDriver.js');
+    const { CloudClaudeDriver } = await import('../src/drivers/cloudClaudeDriver.js');
+    const oai = new CloudOpenAiDriver('https://api.openai.com/v1', 'sk', 'gpt-5', 'OpenAI', marked);
+    const oEvents: DriverEvent[] = [];
+    oai.subscribe((e) => oEvents.push(e));
+    h.nativeReplies.push('ok');
+    oai.send('and now?');
+    await settle();
+    h.nativeReplies.push('ok');
+    oai.send('and then?');
+    await settle();
+    expect(lines(oEvents)).toEqual([line('gpt-5')]);
+    oai.dispose();
+
+    const cl = new CloudClaudeDriver('k', 'claude-opus-5', marked, undefined, undefined, {
+      modelLabel: 'Claude Opus 5',
+    });
+    const cEvents: DriverEvent[] = [];
+    cl.subscribe((e) => cEvents.push(e));
+    cl.send('and now?');
+    await settle();
+    expect(lines(cEvents)).toEqual([line('Claude Opus 5')]);
+    cl.dispose();
+
+    // A clean seed, or a marked line only recorded later, as the chat goes.
+    const later = new CloudOpenAiDriver('https://api.openai.com/v1', 'sk', 'gpt-5', 'OpenAI', [
+      { role: 'user', text: 'hello' },
+    ]);
+    const lEvents: DriverEvent[] = [];
+    later.subscribe((e) => lEvents.push(e));
+    h.nativeReplies.push('ok');
+    later.send('first');
+    await settle();
+    expect(lines(lEvents)).toEqual([]);
+    later.recordLine({ role: 'assistant', text: 'teal', localOnly: true });
+    h.nativeReplies.push('ok');
+    later.send('second');
+    await settle();
+    expect(lines(lEvents)).toEqual([line('gpt-5')]);
+    later.dispose();
   });
 });

@@ -186,15 +186,15 @@ export function mergeReplan(play: Play, done: Set<string>, rawRemaining: unknown
 // ---- owner resolution ----------------------------------------------------
 
 /** The stack as a play reads it: the person's stack, plus the model an image
- *  step goes to while nothing is placed for Image reading. The driver fills
- *  `imageReader` with the chat path's own choice (stackDriver's routeVision:
- *  an anchor that can see, then the reachable, keyed cloud reader), so a
- *  play's brief names, and its step runs on, the model an image in the chat
- *  would go to and the Stack's Image reading row names (D13, founder
- *  2026-10-07). Left out, the reasoning model covers the step. `reachable`
- *  is the driver's reach in this status, so the brief and the runner agree
- *  on who a step really runs on (stepRunner); left out, every model is in
- *  reach. */
+ *  in the chat would go to while nothing is placed for Image reading. The
+ *  driver fills `imageReader` with the chat path's own choice (stackDriver's
+ *  routeVision); a plan never carries a picture, so an unplaced image step
+ *  runs on the Reasoning model from the text whatever it holds (CX and CMO,
+ *  2026-10-08, E), and `imageReader` says only whether something here reads
+ *  images (the working note, and the two-door offer when nothing does).
+ *  `reachable` is the driver's reach in this status, so the brief and the
+ *  runner agree on who a step really runs on (stepRunner); left out, every
+ *  model is in reach. */
 export type PlayStack = AppStack & {
   /** Whether a model answers on this person's own network (the driver's
    *  seat judge, which knows this device's tailnet), so an image step goes
@@ -243,12 +243,10 @@ export function ownerFor(step: PlayStep, stack: PlayStack): StepOwner {
     const { local, cloud } = visionSlots(stack, stack.staysLocal);
     const member = local ?? cloud;
     if (member) return { ref: member.ref, placement: member.placement, fellBack: false };
-    // Nothing placed for Image reading: the model an image in the chat goes
-    // to. When that is the anchor itself, the brief says the anchor covers it.
-    const reader = stack.imageReader;
-    if (reader) {
-      return { ref: reader, placement: undefined, fellBack: refKey(reader) === refKey(anchor) };
-    }
+    // Nothing placed for Image reading: a plan never carries a picture, so
+    // the step goes to no other model; the Reasoning model works from the
+    // text (CX and CMO, 2026-10-08, E, taking off the founder's 2026-10-07
+    // exception), whatever `imageReader` holds.
     return { ref: anchor, placement: undefined, fellBack: true };
   }
   const specialist = stack.active.find((m) => m.placement.category === step.category);
@@ -357,14 +355,9 @@ function rosterLines(stack: PlayStack): string {
       c.id === 'vision'
         ? Boolean(visionSlots(stack).local || visionSlots(stack).cloud)
         : stack.active.some((m) => m.placement.category === c.id);
-    // An unplaced vision step goes to the stack's image reader (ownerFor), so
-    // the planner hears who that is unless it is the anchor itself.
-    const owner = c.id === 'vision' && !placed ? ownerFor(visionProbe, stack) : undefined;
-    const covers =
-      owner && !owner.fellBack
-        ? `no specialist, ${refName(owner.ref)} covers it`
-        : 'no specialist, the reasoning model covers it';
-    return `- ${c.id} (${c.plain}): ${placed ? 'has a specialist' : covers}`;
+    // An unplaced step, an image step included (a plan carries no picture,
+    // E), is the Reasoning model's.
+    return `- ${c.id} (${c.plain}): ${placed ? 'has a specialist' : 'no specialist, the reasoning model covers it'}`;
   });
   // A level deeper: the specific models placed in the stack, with the id to
   // target and, when set, the subject that model was placed for. The planner can
@@ -591,9 +584,8 @@ export function parseReplan(text: string): PlayStep[] | undefined {
 
 /** How the driver labels the plan step in the chat when it hands off. An image
  *  step with nothing set for Image reading (and no model named for it) runs
- *  on the chat path's reader with no card, so its note says that plainly and
- *  names the reader, or says the Reasoning model works from the text when
- *  nothing here reads images (founder, 2026-10-07). An image step whose model
+ *  on the Reasoning model from the text, since a plan carries no picture, and
+ *  its note says so (CX and CMO, 2026-10-08, E). An image step whose model
  *  set for Image reading cannot take it here names that model and the one
  *  that covers it, never "Handing to" a model that does not run it. A step
  *  kept off a model that leaves this network, because the plan draws on a

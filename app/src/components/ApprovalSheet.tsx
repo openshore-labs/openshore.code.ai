@@ -135,6 +135,11 @@ export function ApprovalSheet({
           </div>
           <h2>{request.summary}</h2>
           {request.lockdown ? <p className="approval-lockdown">{LOCKDOWN_LINE}</p> : null}
+          {/* Why this card asks when it otherwise would not (a project note
+              change after the chat read a private note, CX and CMO
+              2026-10-08, A), above the detail or diff. An older engine sends
+              none. */}
+          {request.why ? <p className="sheet-sub">{request.why}</p> : null}
           {commit && ticked ? (
             <>
               <p className="sheet-sub">Message: {commit.message}</p>

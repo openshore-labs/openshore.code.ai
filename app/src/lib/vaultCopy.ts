@@ -106,14 +106,24 @@ export const VAULT_PRIVATE_OFF_CLOUD = `Private notes never reach a cloud model 
 export const VAULT_MODELS_LINE = `Pin a note to a project and every chat there starts with it. ${VAULT_PRIVATE_OFF_CLOUD}`;
 /** A plan's working note for a step kept off a model that leaves this
  *  network, because the plan draws on a private note: the Reasoning model
- *  that wrote the plan stays here and takes the step (D5, stepRunner). */
+ *  that wrote the plan stays here and takes the step (D5, stepRunner). The
+ *  note says what happened and why; the promise lives where it is made (CX
+ *  and CMO, 2026-10-08, A). */
 export function privatePlanStepNote(title: string, owner: string, anchor: string): string {
-  return `${title}. This plan draws on a private note, so ${anchor}, your Reasoning model, takes it instead of ${owner}. ${VAULT_PRIVATE_OFF_CLOUD}`;
+  return `${title}. This plan draws on a private note, so ${anchor}, your Reasoning model, takes it instead of ${owner}.`;
 }
-/** The same plan's note for a step that edits files: it is described here,
- *  not handed to your computer, whose agent may run a cloud model (D5). */
+/** The same plan's note for a step that edits files when nothing says what
+ *  your computer's agent runs on (an older daemon, or out of reach): it is
+ *  described here, not handed to your computer, whose agent may run a cloud
+ *  model (D5). */
 export function privatePlanEngineNote(title: string, writer: string): string {
   return `${title}. This plan draws on a private note, so ${writer} describes the change here instead of running it on your computer, whose agent may use a cloud model.`;
+}
+/** The same plan's note when your computer says its agent runs on a cloud
+ *  model (its GET /stack report, CX and CMO, 2026-10-08, J): the change is
+ *  described here instead. */
+export function privatePlanCloudEngineNote(title: string, writer: string): string {
+  return `${title}. This plan draws on a private note, and your computer's agent can hand work to a cloud model, so ${writer} describes the change here instead.`;
 }
 /** The desktop's line when the vault is not the agent's folder. */
 export const DESKTOP_AGENT_LINE =

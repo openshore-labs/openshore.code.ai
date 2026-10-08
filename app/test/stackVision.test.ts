@@ -153,7 +153,10 @@ describe('visionSlots and the default cloud position', () => {
     }
   });
 
-  it('a play hands an unplaced vision step to the same reader the chat would use', () => {
+  // A plan never carries a picture (CX and CMO, 2026-10-08, E): an unplaced
+  // vision step goes to the Reasoning model, never to the reader a picture
+  // in the chat would go to.
+  it('a play keeps an unplaced vision step on the Reasoning model, whatever the chat would use', () => {
     const step: PlayStep = {
       id: 's',
       title: 'Read it',
@@ -164,9 +167,9 @@ describe('visionSlots and the default cloud position', () => {
     const reader: StackModelRef = { kind: 'cloud', ...cloudImageReaders()[0]! };
     const stack: AppStack = { reasoning: harborRef(), active: [], saved: {} };
     expect(ownerFor(step, { ...stack, imageReader: reader })).toEqual({
-      ref: reader,
+      ref: harborRef(),
       placement: undefined,
-      fellBack: false,
+      fellBack: true,
     });
     // With no reader in reach, the anchor covers the step, and says so.
     expect(ownerFor(step, stack)).toMatchObject({ ref: harborRef(), fellBack: true });

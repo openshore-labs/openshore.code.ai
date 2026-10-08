@@ -1,10 +1,10 @@
 // The honest note for image reading (founder, 2026-10-07). A plan's image
-// step with nothing set for Image reading runs on the chat path's reader with
-// no card (the founder kept that default, narrowing tenet 4 for this one
-// step), so the line the working row shows as the step starts names the model
-// that reads it and what it runs on. The chat's own status line, after its
-// ask-first card, says the same plain fact, and the card itself names a
-// model set for Image reading that is not reading this picture. Pure, and
+// step with nothing set for Image reading runs on the Reasoning model from
+// the text, since a plan carries no picture (CX and CMO, 2026-10-08, E), and
+// the line the working row shows as the step starts says so. The chat's own
+// status line, after its ask-first card, names the model that reads a
+// picture and what it runs on, and the card itself names a model set for
+// Image reading that is not reading this picture. Pure, and
 // apart from imageReading.ts so the guides can read the catalog picks
 // without pulling in the stack (stack.ts reaches the guide cards through
 // harborMini.ts).
@@ -43,14 +43,18 @@ function readerClause(
 }
 
 /** A plan's working note as an image step starts while nothing is set for
- *  Image reading: it names the model that reads the step. With no reader at
- *  all, the Reasoning model works from the text, and the note says so. */
+ *  Image reading: the Reasoning model takes the step from the text either
+ *  way (E). With something here that reads images (`reader`, the model a
+ *  picture in the chat would go to), the note says a plan carries no
+ *  picture; with nothing that reads images, it says so. */
 export function imageStepNote(
   title: string,
   reader: StackModelRef | undefined,
   anchor: StackModelRef,
 ): string {
-  if (reader) return `${title}. ${NO_IMAGE_MODEL}, so ${readerClause(reader, anchor, 'it')}.`;
+  if (reader) {
+    return `${title}. ${NO_IMAGE_MODEL}, and a plan carries no picture, so ${refName(anchor)}, your Reasoning model, works from the text.`;
+  }
   return `${title}. Nothing here can read images yet, so ${refName(anchor)}, your Reasoning model, works from the text.`;
 }
 
@@ -124,4 +128,21 @@ export function imageAskDetail(
       ? `Once ${held.model} is in reach, images go to it without asking.`
       : 'Set a model that reads images for Image reading in Stack and images go to it without asking.';
   return `${why}, so ${what} would go to ${refName(reader)}${spend}. Nothing is sent until you approve. ${after}`;
+}
+
+/** The card's detail when the Local model failed on a picture before
+ *  writing anything and the Cloud slot holds a model that reads images (CX
+ *  and CMO, 2026-10-08, K), before its stop line: what failed, who would
+ *  read it instead and on what. Nothing is sent until the person approves. */
+export function imageFallbackDetail(
+  local: StackModelRef,
+  cloud: StackModelRef,
+  count: number,
+): string {
+  const it = count === 1 ? 'it' : 'them';
+  const reads =
+    cloud.kind === 'cloud'
+      ? `${refName(cloud)}, your Cloud model for Image reading, reads ${it} on your ${connectionName(cloud.provider)} connection`
+      : `${refName(cloud)}, the model you connected for Image reading, reads ${it}`;
+  return `${refName(local)} could not read ${it}. ${reads}. Nothing is sent without this approval.`;
 }

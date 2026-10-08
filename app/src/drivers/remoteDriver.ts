@@ -681,11 +681,16 @@ export class RemoteDriver implements ChatDriver {
     return () => this.sinks.delete(sink);
   }
 
-  send(text: string): void {
+  /** Images do not ride this route. A message marked local-only (a private
+   *  plan's step, CX and CMO 2026-10-08, J) keeps its mark on the wire, so
+   *  the daemon holds the task to the engine's D5 rules; an older daemon
+   *  ignores the field, which is why a step goes marked only to a daemon
+   *  that says it takes one (GET /stack `acceptsLocalOnly`). */
+  send(text: string, _attachments?: unknown, opts: { localOnly?: true } = {}): void {
     void fetch(`${this.target.baseUrl}/sessions/${this.sessionId}/input`, {
       method: 'POST',
       headers: { ...headers(this.target), 'content-type': 'application/json' },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, ...(opts.localOnly ? { localOnly: true } : {}) }),
       // A blackholed tailnet (Tailscale toggled off on the phone) otherwise
       // hangs this for the OS default minute with no feedback.
       signal: AbortSignal.timeout(10_000),

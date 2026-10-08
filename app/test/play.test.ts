@@ -161,9 +161,10 @@ describe('ownerFor / ownerLabel', () => {
   });
 });
 
-// D13 (founder, 2026-10-07): an unplaced vision step goes to the model an
-// image in the chat would go to (the driver's routeVision, carried as the
-// stack's imageReader), and the brief names it, never the old Opus default.
+// A plan never carries a picture (CX and CMO, 2026-10-08, E, taking off the
+// founder's 2026-10-07 exception): an unplaced vision step runs on the
+// Reasoning model from the text, whatever model an image in the chat would go
+// to (the driver's routeVision, carried as the stack's imageReader).
 describe('an unplaced vision step', () => {
   const haiku: StackModelRef = {
     kind: 'cloud',
@@ -173,10 +174,14 @@ describe('an unplaced vision step', () => {
   };
   const stack: AppStack = { reasoning: harborRef(), active: [], saved: {} };
 
-  it('goes to the image reader, named without a reasoning tag', () => {
+  it('goes to the Reasoning model, never the image reader', () => {
     expect(ownerLabel(step('s', 'vision'), { ...stack, imageReader: haiku })).toBe(
-      'Claude Haiku 4.5',
+      'Harbor Lite (reasoning)',
     );
+    expect(ownerFor(step('s', 'vision'), { ...stack, imageReader: haiku })).toMatchObject({
+      ref: harborRef(),
+      fellBack: true,
+    });
   });
 
   it('reads as the anchor covering it when the reader is the anchor', () => {
@@ -197,8 +202,11 @@ describe('an unplaced vision step', () => {
   });
 
   it('tells the planner who covers it', () => {
-    expect(planPrompt('read it', { ...stack, imageReader: haiku })).toContain(
-      'vision (Image reading): no specialist, Claude Haiku 4.5 covers it',
+    expect(planPrompt('read it', { ...stack, imageReader: haiku })).toMatch(
+      /vision \(Image reading\): no specialist, the reasoning model covers it/,
+    );
+    expect(planPrompt('read it', { ...stack, imageReader: haiku })).not.toContain(
+      'Claude Haiku 4.5 covers it',
     );
     expect(planPrompt('read it', stack)).toMatch(
       /vision \(Image reading\): no specialist, the reasoning model covers it/,
@@ -206,9 +214,10 @@ describe('an unplaced vision step', () => {
   });
 });
 
-// The founder's ruling (2026-10-07): an unplaced image step runs on the chat
-// path's reader with no card, so the working note says nothing is set for
-// Image reading and names the model that reads the step, and its connection.
+// An unplaced image step runs on the Reasoning model from the text (CX and
+// CMO, 2026-10-08, E): with something here that reads images, the working
+// note says nothing is set for Image reading and a plan carries no picture;
+// with nothing that reads images, it says so. No note names a second model.
 describe("an image step's working note", () => {
   const haiku: StackModelRef = {
     kind: 'cloud',
@@ -226,25 +235,18 @@ describe("an image step's working note", () => {
   const read: PlayStep = { ...step('s', 'vision'), title: 'Read the chart' };
   const base: AppStack = { reasoning: sonar, active: [], saved: {} };
 
-  it('names a cloud reader by its display name and its connection', () => {
-    expect(handoffNote(read, { ...base, imageReader: haiku })).toBe(
-      'Read the chart. No image model is set in Stack, so Claude Haiku 4.5 reads it on your Claude connection.',
-    );
-    expect(handoffNote(read, { ...base, imageReader: gpt })).toBe(
-      'Read the chart. No image model is set in Stack, so GPT-5 reads it on your OpenAI connection.',
-    );
-  });
-
-  it('names a Reasoning model that can see by its role', () => {
-    expect(handoffNote(read, { ...base, reasoning: claude, imageReader: claude })).toBe(
-      'Read the chart. No image model is set in Stack, so Claude, your Reasoning model, reads it.',
-    );
-  });
-
-  it('names a model you connected as one', () => {
+  it('says a plan carries no picture, whatever model would read one in the chat', () => {
+    const note =
+      'Read the chart. No image model is set in Stack, and a plan carries no picture, so Sonar, your Reasoning model, works from the text.';
+    expect(handoffNote(read, { ...base, imageReader: haiku })).toBe(note);
+    expect(handoffNote(read, { ...base, imageReader: gpt })).toBe(note);
     const own: StackModelRef = { ...coder, label: 'LLaVA 7B' };
-    expect(handoffNote(read, { ...base, active: [], imageReader: own })).toBe(
-      'Read the chart. No image model is set in Stack, so LLaVA 7B, a model you connected, reads it.',
+    expect(handoffNote(read, { ...base, active: [], imageReader: own })).toBe(note);
+  });
+
+  it('says the same of a Reasoning model that can see', () => {
+    expect(handoffNote(read, { ...base, reasoning: claude, imageReader: claude })).toBe(
+      'Read the chart. No image model is set in Stack, and a plan carries no picture, so Claude, your Reasoning model, works from the text.',
     );
   });
 
@@ -385,16 +387,17 @@ describe('stepRunner: who a step really runs on', () => {
     expect(ownerLabel(draft, kept)).toBe('Coder (reasoning)');
     expect(ownerLabel(read, kept)).toBe('Coder (reasoning)');
     expect(handoffNote(draft, kept)).toBe(
-      'Draft. This plan draws on a private note, so Coder, your Reasoning model, takes it instead of Claude. Private notes never reach a cloud model unless you run or allow a command or change that carries them.',
+      'Draft. This plan draws on a private note, so Coder, your Reasoning model, takes it instead of Claude.',
     );
     expect(handoffNote(read, kept)).toBe(
-      'Read the chart. This plan draws on a private note, so Coder, your Reasoning model, takes it instead of Claude. Private notes never reach a cloud model unless you run or allow a command or change that carries them.',
+      'Read the chart. This plan draws on a private note, so Coder, your Reasoning model, takes it instead of Claude.',
     );
     // Without the mark, each runs on its own model, as before.
     expect(stepRunner(draft, own).ref).toEqual(claude);
     expect(ownerLabel(draft, own)).toBe('Claude');
-    // Nothing set for Image reading, the chat path's cloud reader filling the
-    // gap (founder, 2026-10-07): the mark keeps that step here as well.
+    // Nothing set for Image reading, a cloud reader connected: the step was
+    // never the reader's (E), so the Reasoning model takes it as its own,
+    // with nothing to keep off a cloud model and nothing covered.
     const unplaced = {
       reasoning: coder,
       active: [],
@@ -402,13 +405,13 @@ describe('stepRunner: who a step really runs on', () => {
       imageReader: claude,
       keepPrivate: (r: StackModelRef) => r.kind === 'cloud',
     };
-    expect(stepRunner(read, unplaced)).toMatchObject({
+    expect(stepRunner(read, unplaced)).toEqual({
       ref: coder,
-      covered: claude,
-      private: true,
+      placement: undefined,
+      fellBack: true,
     });
     expect(handoffNote(read, unplaced)).toBe(
-      'Read the chart. This plan draws on a private note, so Coder, your Reasoning model, takes it instead of Claude. Private notes never reach a cloud model unless you run or allow a command or change that carries them.',
+      'Read the chart. No image model is set in Stack, and a plan carries no picture, so Coder, your Reasoning model, works from the text.',
     );
   });
 
