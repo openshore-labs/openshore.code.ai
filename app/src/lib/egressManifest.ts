@@ -16,7 +16,7 @@ import { featureOn, type ReleaseTier, type TieredFeature, RELEASE_TIER } from '.
 import type { Platform } from './platform.js';
 import { PAY_GATES_ENABLED } from './payGate.js';
 import { followsList } from './profile.js';
-import { VAULT_COMMAND_CAVEAT, VAULT_PRIVATE_OFF_CLOUD } from './vaultCopy.js';
+import { VAULT_CARRY_CAVEAT, VAULT_PRIVATE_OFF_CLOUD } from './vaultCopy.js';
 
 export interface EgressEntry {
   id: string;
@@ -228,7 +228,7 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'own-model',
     recipient: 'Your cloud providers',
-    what: `Your chat, and the notes and files it draws on, to a model server you connect yourself (one you run, or one you name with its address and key). Private notes go only to one on your own network, ${VAULT_COMMAND_CAVEAT}.`,
+    what: `Your chat, and the notes and files it draws on, to a model server you connect yourself (one you run, or one you name with its address and key). Private notes go only to one on your own network, ${VAULT_CARRY_CAVEAT}.`,
     when: 'Only when you connect one and pick it, and only that turn.',
     start: 'off',
     hosts: [],

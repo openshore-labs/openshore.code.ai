@@ -90,12 +90,19 @@ export const VAULT_MODELS_TITLE = 'How your models use it';
  *  A command can read any file: one the agent runs once the person allows it
  *  (near the vault, on a cloud model, it asks every time and its card says
  *  so), and one the person runs in the terminal or the chat's command lane,
- *  whose output the model may read. */
+ *  whose output the model may read. That is the caveat for an excluded note,
+ *  which no model reads at all. */
 export const VAULT_COMMAND_CAVEAT = 'unless a command you run or allow reads them';
+/** The caveat for a note a local model may read: besides a command, a change
+ *  that model writes after reading it (a file, a commit message, an open
+ *  note) can carry its words to where a cloud model reads them later, and
+ *  writes ask unless the person allowed them (Accept edits included). So the
+ *  promise names both. */
+export const VAULT_CARRY_CAVEAT = 'unless you run or allow a command or change that carries them';
 /** The one promise about private notes and cloud models, worded once for the
  *  ramp and the project room's pins card (D5; CS-10). It says exactly as
  *  much as the code does. */
-export const VAULT_PRIVATE_OFF_CLOUD = `Private notes never reach a cloud model ${VAULT_COMMAND_CAVEAT}.`;
+export const VAULT_PRIVATE_OFF_CLOUD = `Private notes never reach a cloud model ${VAULT_CARRY_CAVEAT}.`;
 export const VAULT_MODELS_LINE = `Pin a note to a project and every chat there starts with it. ${VAULT_PRIVATE_OFF_CLOUD}`;
 /** A plan's working note for a step kept off a model that leaves this
  *  network, because the plan draws on a private note: the Reasoning model
@@ -2477,7 +2484,7 @@ export const VAULT_PACK_SIZE_MACHINE_ABOVE =
 
 // Y9: excluded and local-only folders.
 export const VAULT_EXCLUDE_SUB = `Models never see these, in any chat, ${VAULT_COMMAND_CAVEAT}.`;
-export const VAULT_LOCAL_ONLY_SUB = `A local model may read these. A cloud model never does, ${VAULT_COMMAND_CAVEAT}.`;
+export const VAULT_LOCAL_ONLY_SUB = `A local model may read these. A cloud model never does, ${VAULT_CARRY_CAVEAT}.`;
 export const VAULT_ADD_FOLDER = 'Add a folder';
 export const VAULT_ADD_TAG = 'Add a tag';
 export function vaultRemoveEntry(entry: string): string {

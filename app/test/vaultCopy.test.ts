@@ -49,6 +49,7 @@ import {
   VAULT_MODELS_LINE,
   VAULT_MODELS_TITLE,
   VAULT_PRIVATE_OFF_CLOUD,
+  VAULT_CARRY_CAVEAT,
   VAULT_COMMAND_CAVEAT,
   VAULT_EXCLUDE_SUB,
   VAULT_LOCAL_ONLY_SUB,
@@ -711,12 +712,15 @@ describe('retired Vault claims', () => {
 describe('the private-notes promise', () => {
   it('names the one way a private note can reach a cloud model', () => {
     expect(VAULT_COMMAND_CAVEAT).toBe('unless a command you run or allow reads them');
+    expect(VAULT_CARRY_CAVEAT).toBe(
+      'unless you run or allow a command or change that carries them',
+    );
     expect(VAULT_PRIVATE_OFF_CLOUD).toBe(
-      'Private notes never reach a cloud model unless a command you run or allow reads them.',
+      'Private notes never reach a cloud model unless you run or allow a command or change that carries them.',
     );
     expect(VAULT_MODELS_LINE).toContain(VAULT_PRIVATE_OFF_CLOUD);
     expect(VAULT_LOCAL_ONLY_SUB).toBe(
-      'A local model may read these. A cloud model never does, unless a command you run or allow reads them.',
+      'A local model may read these. A cloud model never does, unless you run or allow a command or change that carries them.',
     );
     expect(VAULT_EXCLUDE_SUB).toBe(
       'Models never see these, in any chat, unless a command you run or allow reads them.',
