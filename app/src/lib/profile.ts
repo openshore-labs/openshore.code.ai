@@ -33,11 +33,18 @@ export function followsLabel(key: keyof AppSettings): string {
 }
 
 /** The preferences that follow the person, named once each in plain words
- *  (the row's label already says they follow you; CX, 2026-10-02). */
-export function followsLine(): string {
+ *  and joined for a sentence: "appearance, effort, ..., and voice". */
+export function followsList(): string {
   const names = [...new Set(followingKeys().map(followsLabel))];
-  const list =
-    names.length > 1 ? `${names.slice(0, -1).join(', ')}, and ${names.at(-1)}` : names[0];
+  return names.length > 1
+    ? `${names.slice(0, -1).join(', ')}, and ${names.at(-1)}`
+    : (names[0] ?? '');
+}
+
+/** The same list as its own line (the row's label already says they follow
+ *  you; CX, 2026-10-02). */
+export function followsLine(): string {
+  const list = followsList();
   const first = list ? list.charAt(0).toUpperCase() + list.slice(1) : '';
   return `${first}.`;
 }

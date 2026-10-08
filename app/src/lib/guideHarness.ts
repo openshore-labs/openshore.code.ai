@@ -263,7 +263,7 @@ export function setupAdvice(eq: GuideEquipment): string[] {
     `The best setup: install DeepBlue on the computer (Settings, Harbor, in OpenShore on that computer), pair ${thisDeviceNoun()} to it under Pairing over Tailscale, and it shows here as Your computer, so the computer does the heavy work while ${thisDeviceNoun()} stays light.`,
   );
   lines.push(
-    'Add a cloud API key under Cloud Connections only if you want the strongest model for hard tasks; it asks before it spends.',
+    "Add a cloud API key under Cloud Connections only if you want the strongest model for hard tasks; it spends on your key only when you choose it, or for a plan's image step while nothing in your Stack reads images.",
   );
   return lines;
 }

@@ -15,6 +15,7 @@
 // until it is: a room is free only by being written down as free here.
 
 import { SHIPS_STACKHEALTH } from './focus.js';
+import { followsList } from './profile.js';
 import type { ViewName } from '../state/store.js';
 import type { ConversationSource } from '../state/types.js';
 
@@ -110,7 +111,7 @@ export const ACCOUNT_GATE_TITLE: Record<AccountFeature, string> = {
 };
 
 export const ACCOUNT_GATE_BODY =
-  'Signing in is free. It opens building, Projects, Vault, Crew, and pairing, and takes your theme, reasoning, voice, and notice settings to every device you sign in on. Your chats stay on your devices, and chatting needs no account.';
+  'Signing in is free. It opens building, Projects, Vault, Crew, and pairing, and takes your theme and a few preferences to every device you sign in on. Your chats stay on your devices, and chatting needs no account.';
 
 /** The sheet's line for a Plus feature while the pay gates are on: the
  *  sign-in comes first, then the paywall (store.ts setView), so it says so. */
@@ -147,7 +148,7 @@ export function accountCopy(gates: boolean): AccountCopy {
     };
   }
   return {
-    body: 'Signing in is free. It opens Projects and Cloud Connections, takes your theme, reasoning, voice, and notice settings to every device you sign in on, and is how you get OpenShore Plus. Your chats stay on your devices, and chatting needs no account.',
+    body: 'Signing in is free. It opens Projects and Cloud Connections, takes your theme and a few preferences to every device you sign in on, and is how you get OpenShore Plus. Your chats stay on your devices, and chatting needs no account.',
     pitch:
       'Sign in for Projects and Cloud Connections, and take your theme and a few preferences to every device. OpenShore Plus rides on your account. Your chats stay on your devices.',
     notice:
@@ -165,9 +166,10 @@ export function accountCopy(gates: boolean): AccountCopy {
 export const ACCOUNT_PITCH =
   'Sign in to build, connect your computer, and take your theme and a few preferences to every device. Your chats stay on your devices.';
 
-/** Under the signed-in card: what the account is doing for them. */
-export const SIGNED_IN_PERKS =
-  'Your theme, reasoning, voice, and notice settings follow you to every device you sign in on. Signing out keeps everything on this device.';
+/** Under the signed-in card: what the account is doing for them. It names
+ *  every preference that follows, from the one list (settingsReach.ts
+ *  through profile.ts followsList), so it cannot leave one out. */
+export const SIGNED_IN_PERKS = `These follow you to every device you sign in on: ${followsList()}. Signing out keeps everything on this device.`;
 
 /** Said once to someone who used OpenShore before the gate, signed out. */
 export const ACCOUNT_NOTICE =

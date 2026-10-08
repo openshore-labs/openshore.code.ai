@@ -245,7 +245,9 @@ describe('the Stack names its image reader', () => {
     const { StackManager } = await import('../src/components/StackManager.js');
     await dom.render(<StackManager />);
     expect(reader).toBe('Claude Haiku 4.5');
-    expect(cloudRow()).toBe(`None yet · ${reader} reads images for now, asking before each one.`);
+    expect(cloudRow()).toBe(
+      `None yet · ${reader} reads images for now. It asks before a picture, not before a plan's image step.`,
+    );
     expect(localRow()).toBe(`None yet · ${reader} reads images for now.`);
   });
 
@@ -276,7 +278,9 @@ describe('the Stack names its image reader', () => {
     });
     const { StackManager } = await import('../src/components/StackManager.js');
     await dom.render(<StackManager />);
-    expect(cloudRow()).toBe('None yet · Opus 5 reads images for now, asking before each one.');
+    expect(cloudRow()).toBe(
+      "None yet · Opus 5 reads images for now. It asks before a picture, not before a plan's image step.",
+    );
   });
 
   it('names the stand-in in the slot sheets only while it is one', async () => {
@@ -287,7 +291,7 @@ describe('the Stack names its image reader', () => {
       dom.container.querySelector('.sheet:not(.closing) .sheet-sub')?.textContent ?? '';
     await tapRow('Cloud');
     expect(sheetSub()).toBe(
-      `A cloud model that reads images. Until you choose one, ${reader} reads them, asking before each image.`,
+      `A cloud model that reads images. Until you choose one, ${reader} reads them. It asks before a picture, not before a plan's image step.`,
     );
     await dom.render(null);
     await dom.render(<StackManager />);

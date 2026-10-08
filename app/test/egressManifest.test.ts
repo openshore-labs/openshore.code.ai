@@ -10,6 +10,7 @@ import { join, relative } from 'node:path';
 import {
   EGRESS,
   LINK_ONLY_HOSTS,
+  PLAN_IMAGE_STEP_LINE,
   RECIPIENT_ORDER,
   ROUTINES_SEARCH_LINE,
   STAYS_ON_DEVICE,
@@ -109,6 +110,26 @@ describe('what leaves this device', () => {
     expect(row.slice(0, row.indexOf('trailing='))).toContain('${ROUTINES_SEARCH_LINE}');
   });
 
+  // Founder, 2026-10-07 (tenet 4's one exception): with nothing in the Stack
+  // reading images, a plan's image step goes to a connected cloud reader
+  // with no card. The cloud-models entry says so, and that no picture goes
+  // (sp-plan, egress-claims-1 and M1).
+  it("names the plan's image step that goes to a cloud model without asking", () => {
+    const cloud = EGRESS.find((e) => e.id === 'cloud-models')!;
+    expect(PLAN_IMAGE_STEP_LINE).toMatch(/nothing in your Stack reads images/);
+    expect(PLAN_IMAGE_STEP_LINE).toMatch(/an image step in a plan goes to .* without asking/);
+    expect(PLAN_IMAGE_STEP_LINE).toMatch(/never a picture/);
+    expect(PLAN_IMAGE_STEP_LINE).toMatch(/working note names it/);
+    expect(cloud.when).toContain(PLAN_IMAGE_STEP_LINE);
+    // The marking it promises is the one the chat and Chats read.
+    expect(cloud.what).not.toMatch(/marks every turn/);
+    expect(cloud.what).toMatch(/amber pill or dot marks a chat whose latest turn went to one/);
+    // A local model's answer can reach a cloud model through a plan.
+    expect(STAYS_ON_DEVICE[0]).toMatch(
+      /except what a plan in your Stack hands on to a cloud model/,
+    );
+  });
+
   it('is the list Settings shows, first under Privacy', () => {
     const settings = readFileSync(
       join(process.cwd(), 'src', 'screens', 'SettingsScreen.tsx'),
@@ -135,12 +156,25 @@ describe('the guides claim no more than the list', () => {
     /nothing routes through us/i,
     /building (?:need|needs|works?)[^.]*(?:no account|signed out)/i,
     /chatting and building/i,
+    // A plan's image step spends on a cloud key without a card (founder,
+    // 2026-10-07), so no copy promises every cloud call waits on a choice.
+    /nothing spends without your approval/i,
+    /spend always asks/i,
+    /marks every turn/i,
+    /runs only when you choose it\./i,
+    /only on a turn you send to (?:one|it)\./i,
+    /asking before each (?:one|image)/i,
   ];
   const sources: Array<[string, string]> = [
     ...GUIDE_CARDS.map((c): [string, string] => [`guide card ${c.id}`, c.text]),
     ['Harbor Lite persona', HARBOR_MINI_PERSONA],
     ['app knowledge', APP_KNOWLEDGE],
     ['Paywall', readFileSync(join(process.cwd(), 'src', 'components', 'Paywall.tsx'), 'utf8')],
+    ...[
+      'screens/ConnectionsScreen.tsx',
+      'screens/SettingsScreen.tsx',
+      'components/StackManager.tsx',
+    ].map((f): [string, string] => [f, readFileSync(join(process.cwd(), 'src', f), 'utf8')]),
   ];
 
   it('says nothing about leaving the device that the list does not back', () => {

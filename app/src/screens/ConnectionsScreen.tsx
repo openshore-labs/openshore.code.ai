@@ -124,7 +124,9 @@ export function ConnectionsScreen() {
         <h1 ref={titleRef}>Cloud Connections</h1>
         <p className="lead">
           Connect a provider with your own API key. Its models wait on your bench until you place
-          them. Keys stay on this device, and a cloud model runs only when you choose it.{' '}
+          them, and a cloud model runs only when you choose it, with one exception: while nothing in
+          your Stack reads images, a plan&apos;s image step goes to one without asking. Keys are
+          stored only on this device and sent only to their provider.{' '}
           <button
             type="button"
             className="linklike press-fb"
