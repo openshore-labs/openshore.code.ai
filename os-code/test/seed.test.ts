@@ -150,6 +150,23 @@ describe('seedHistoryFromEvents rebuilds the loop marks after a restart', () => 
     expect(JSON.stringify(withholdLocalOnly(seeded))).not.toContain(NOTE);
   });
 
+  it('a read in a task that wrote no reply still marks a later local reply', () => {
+    // The loop keeps the read's result in its history after a stopped task,
+    // so its next local reply is marked; the restart must agree.
+    const events: DriverEvent[] = [
+      { type: 'task-start', input: 'read my journal' },
+      turn('local'),
+      read,
+      { type: 'task-done', reason: 'aborted', message: 'Stopped at your request.' },
+      { type: 'task-start', input: 'what did it say?' },
+      turn('local'),
+      { type: 'text-final', text: `It said ${NOTE}.` },
+    ];
+    const seeded = seedHistoryFromEvents(events);
+    expect(seeded.at(-1)).toMatchObject({ content: `It said ${NOTE}.`, localOnly: true });
+    expect(JSON.stringify(withholdLocalOnly(seeded))).not.toContain(NOTE);
+  });
+
   it('a reply grounded in a pack that carried a local-only note is marked', () => {
     const events: DriverEvent[] = [
       { type: 'task-start', input: 'what is the plan?' },

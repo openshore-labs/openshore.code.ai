@@ -52,6 +52,7 @@ import { platformAndShell } from '../exec/shell.js';
 import type { SecurityProfile } from '../security/profiles.js';
 import { redactSecrets } from '../security/redaction.js';
 import { routineSearchRefusal } from '../security/routineSearch.js';
+import { isLocalUrl } from '../security/egress.js';
 import {
   compactHistory,
   estimateMessages,
@@ -2489,13 +2490,22 @@ export class AgentSession {
     return this.currentPack?.localOnly === true || this.history.some(carriesLocalOnly);
   }
 
-  /** Why a handoff (delegate, analyzeImage) does not run now, or undefined
-   *  when it may: this chat holds a local-only note's text and the seat the
-   *  router would hand the subtask to leaves this network (D5). Offline the
+  /** Why a handoff (delegate, analyzeImage, generateImage) does not run now,
+   *  or undefined when it may: the seat that wrote the call was sent a
+   *  local-only note's text (it stays on this network and the chat holds
+   *  such text), and the model the subtask goes to leaves this network (D5):
+   *  the seat the router names for the role, or the image server, judged by
+   *  its address as offlineCut judges it. A seat off this network was sent
+   *  only the stub, so what it hands on cannot quote the note. Offline the
    *  router keeps every subtask on this network (Router.delegate's rule). */
   private handoffRefusal(call: ParsedToolCall): string | undefined {
+    if (leavesThisNetwork(this.active.provider) || !this.holdsLocalOnly()) return undefined;
+    if (call.name === 'generateImage') {
+      const server = this.deps.config.imageGen;
+      return server && !isLocalUrl(server.baseUrl) ? HANDOFF_LOCAL_ONLY_DENIED : undefined;
+    }
     const role = handoffRole(call);
-    if (!role || !this.holdsLocalOnly()) return undefined;
+    if (!role) return undefined;
     const { router } = this.deps;
     if (router.offline()) return undefined;
     return leavesThisNetwork(router.roleFor(role).resolved.provider)

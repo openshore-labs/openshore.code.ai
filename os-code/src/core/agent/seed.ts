@@ -57,8 +57,10 @@ export function seedHistoryFromEvents(journal: DriverEvent[] | JournalEntry[]): 
   // This task has read a local-only note (a tool, or a pack that carried
   // one), so what it says next may quote one.
   let readLocalOnly = false;
-  // The seeded chat holds a reply marked local-only, and the turn that wrote
-  // this reply ran on a seat that stays on this network, which was sent it:
+  // The chat holds a local-only note's text as the loop keeps it: a tool
+  // result that read one, a turn on a pack that carried one (both stay in its
+  // history even when that task wrote no reply), or a marked reply. A seat on
+  // this network that replies after that was sent it, so its reply is marked:
   // the loop's own rule (loop.ts localOnlyMark).
   let holdsLocalOnly = false;
   let turnStays = false;
@@ -72,9 +74,9 @@ export function seedHistoryFromEvents(journal: DriverEvent[] | JournalEntry[]): 
     } else if (event.type === 'turn-start') {
       turnStays = event.providerKind === 'local';
     } else if (event.type === 'context-pack') {
-      if (event.localOnly) readLocalOnly = true;
+      if (event.localOnly) readLocalOnly = holdsLocalOnly = true;
     } else if (event.type === 'tool-end') {
-      if (event.result.localOnly) readLocalOnly = true;
+      if (event.result.localOnly) readLocalOnly = holdsLocalOnly = true;
     } else if (event.type === 'text-final') {
       if (pendingUser !== undefined) {
         history.push({ role: 'user', content: pendingUser });
@@ -82,7 +84,6 @@ export function seedHistoryFromEvents(journal: DriverEvent[] | JournalEntry[]): 
       }
       if (event.text.trim()) {
         const marked = readLocalOnly || (turnStays && holdsLocalOnly);
-        if (marked) holdsLocalOnly = true;
         history.push({
           role: 'assistant',
           content: event.text,

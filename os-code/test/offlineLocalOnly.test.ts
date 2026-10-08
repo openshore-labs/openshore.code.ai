@@ -7,8 +7,9 @@
 // seat answers again, writes a title, and runs /compact. The mark must not
 // fall off on the way: the fold's summary, a later reply, the title, the
 // summary /compact sends, the Jev judge and the handoff all keep the note
-// off the cloud. And a handoff to another model (delegate, analyzeImage)
-// bound for a cloud seat is refused while the chat holds such a note.
+// off the cloud. And a handoff to another model (delegate, analyzeImage,
+// generateImage) bound for a seat off this network is refused while the chat
+// holds such a note.
 import { describe, expect, it } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -300,6 +301,49 @@ describe('a handoff never carries a local-only note to a cloud seat (D5)', () =>
     expect(JSON.stringify(local.requests)).toContain(`Write this up: ${NOTE}`);
   });
 
+  it('back online, the cloud seat was sent only the stub, so its handoff to a cloud writer runs', async () => {
+    // The chat still holds the note a local seat read while offline, but the
+    // cloud Reasoning model that writes the delegate call never saw it.
+    const state = flag(NETWORK_DOWN);
+    const cloud = new MockProvider(
+      'anthropic',
+      [
+        toolTurn('delegate', { role: 'writing', task: 'Write a haiku about tides.' }, 'd1'),
+        textTurn('Tides come and go.'),
+        textTurn('Here is the haiku.'),
+      ],
+      { kind: 'cloud' },
+    );
+    const local = new MockProvider(
+      'ollama',
+      [
+        toolTurn('vaultRead', { path: 'Journal/today.md' }, 'c1'),
+        textTurn(`From your journal: ${NOTE}.`),
+      ],
+      { models: ['qwen2.5-coder:7b'] },
+    );
+    const session = makeTestSession(cloud, {
+      providers: [local],
+      offlineState: state.read,
+      specialists: true,
+      configOverrides: {
+        stack: {
+          orchestrator: { provider: 'anthropic', model: 'claude-sonnet-5' },
+          specialists: WRITER,
+        },
+      },
+    });
+    session.tools.register(journalRead);
+    await session.agent.run('What did I write today?');
+    state.set(ONLINE);
+    await session.agent.run('Now a haiku about tides.');
+    expect(deniedReasons(session.events)).toEqual([]);
+    // The orchestrator's turn, the writer's subtask, the orchestrator's answer.
+    expect(cloud.requests).toHaveLength(3);
+    expect(cloud.requests[1]!.messages.at(-1)!.content).toBe('Write a haiku about tides.');
+    expect(JSON.stringify(cloud.requests)).not.toContain(NOTE);
+  });
+
   it('analyzeImage to a cloud vision seat after a private read is refused', async () => {
     const { cloud, session } = stackWith(EYES, [
       toolTurn('vaultRead', { path: 'Journal/today.md' }, 'c1'),
@@ -318,5 +362,55 @@ describe('a handoff never carries a local-only note to a cloud seat (D5)', () =>
     ]);
     await session.agent.run('what is in the screenshot?');
     expect(cloud.requests).toHaveLength(1);
+  });
+
+  /** A local Reasoning model with the stack's image maker at `baseUrl`; the
+   *  prompts that reach it are recorded. */
+  function imageMakerAt(baseUrl: string, turns: ReturnType<typeof textTurn>[]) {
+    const local = new MockProvider('mock', turns);
+    const session = makeTestSession(local, {
+      specialists: true,
+      configOverrides: { imageGen: { kind: 'openai-images', baseUrl } },
+    });
+    session.tools.register(journalRead);
+    const prompts: string[] = [];
+    session.toolContext.imageProvider = {
+      id: 'imageGen',
+      label: 'Image server',
+      async generate(prompt) {
+        prompts.push(prompt);
+        return { imageBase64: 'aGk=', mediaType: 'image/png' };
+      },
+      async health() {
+        return { ok: true, detail: 'ready' };
+      },
+    };
+    return { session, prompts };
+  }
+
+  const DRAW_THE_NOTE = [
+    toolTurn('vaultRead', { path: 'Journal/today.md' }, 'c1'),
+    toolTurn('generateImage', { prompt: `A poster that reads ${NOTE}` }, 'c2'),
+    textTurn('Described it here instead.'),
+  ];
+
+  it('generateImage to an image server off this network after a private read is refused', async () => {
+    const { session, prompts } = imageMakerAt('https://images.example/v1', DRAW_THE_NOTE);
+    await session.agent.run('make a poster of my journal');
+    expect(prompts).toHaveLength(0);
+    expect(deniedReasons(session.events)).toEqual([HANDOFF_LOCAL_ONLY_DENIED]);
+  });
+
+  it('an image server on this computer still draws it, and a cloud one with nothing private', async () => {
+    const here = imageMakerAt('http://127.0.0.1:7860', DRAW_THE_NOTE);
+    await here.session.agent.run('make a poster of my journal');
+    expect(here.prompts).toEqual([`A poster that reads ${NOTE}`]);
+    expect(deniedReasons(here.session.events)).toEqual([]);
+    const away = imageMakerAt('https://images.example/v1', [
+      toolTurn('generateImage', { prompt: 'A lighthouse at dusk' }, 'c1'),
+      textTurn('Here it is.'),
+    ]);
+    await away.session.agent.run('a lighthouse');
+    expect(away.prompts).toEqual(['A lighthouse at dusk']);
   });
 });
