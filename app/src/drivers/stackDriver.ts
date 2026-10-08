@@ -116,7 +116,7 @@ import {
   type StepResult,
 } from '../lib/play.js';
 import { effortDirective } from '../lib/effort.js';
-import { vaultProposalRecords } from '../lib/vaultCopy.js';
+import { privatePlanEngineNote, vaultProposalRecords } from '../lib/vaultCopy.js';
 import type { SeedTurn } from '../state/types.js';
 import { byomSecretKey } from '../lib/byom.js';
 import { isCurrentBenchId } from '../lib/currents.js';
@@ -1447,6 +1447,12 @@ export class StackDriver implements ChatDriver {
     if (this.stack.active.some((m) => m.ref.kind !== 'device' && this.reachable(m.ref))) {
       return true;
     }
+    return this.engineInReach();
+  }
+
+  /** Whether a play's tool step can run on the paired computer's engine:
+   *  docked, with a workspace bound (runToolStepOnEngine's own checks). */
+  private engineInReach(): boolean {
     return (
       locationAllowed(this.profile, 'home') &&
       Boolean(this.context.daemon) &&
@@ -1606,8 +1612,11 @@ export class StackDriver implements ChatDriver {
     const reply = new PlanReplyFilter();
     let answering = false;
     this.answer = '';
+    let framedLocalOnly = false;
     try {
-      const pack = await this.packFor(reasoning);
+      const framed = await this.packRender(reasoning);
+      const pack = framed.text;
+      framedLocalOnly = framed.localOnly;
       await this.completeOnce(
         reasoning,
         undefined,
@@ -1664,24 +1673,69 @@ export class StackDriver implements ChatDriver {
     // single-turn path route it, so behavior is unchanged for those prompts.
     if (framing.steps.length <= 1) return false;
 
-    await this.executePlay({ summary: framing.summary, steps: framing.steps }, text, roster);
+    // D5 on a plan: an anchor that stays on this network read its pack and
+    // the whole chat, so when either carried a private note, the goal and
+    // the briefs it wrote may quote it. No step of this plan then goes to a
+    // model that leaves this network (executePlay).
+    const planLocalOnly =
+      !this.leaves(reasoning) &&
+      (framedLocalOnly || this.history.some((m) => m.localOnly === true));
+    await this.executePlay(
+      { summary: framing.summary, steps: framing.steps },
+      text,
+      roster,
+      planLocalOnly,
+    );
     return true;
   }
 
   /** Run the play: brief the user (todos with owners), execute steps in
    *  dependency order handing each to its owner, re-plan at bounded checkpoints,
-   *  then stream a final synthesis. */
-  private async executePlay(initial: Play, userText: string, roster: PlayStack): Promise<void> {
+   *  then stream a final synthesis. `localOnly` says the plan draws on a
+   *  private note (tryRunPlay): every step whose model leaves this network
+   *  then runs on the anchor instead, which stays (D5). */
+  private async executePlay(
+    initial: Play,
+    userText: string,
+    base: PlayStack,
+    localOnly = false,
+  ): Promise<void> {
     const reasoning = this.stack.reasoning ?? harborRef();
     let play = initial;
+    // The stack as this plan reads it. While the plan draws on a private
+    // note, stepRunner covers each step bound for a model that leaves, so
+    // the task list, the working note and the runner all name the anchor.
+    let privatePlan = localOnly;
+    const keepPrivate = (r: StackModelRef) => this.leaves(r);
+    let roster: PlayStack = privatePlan ? { ...base, keepPrivate } : base;
+    // The answer is written from that plan, so it is marked as well (I5).
+    if (privatePlan) this.sendLocalOnly = true;
     // Each step's output, tainted (`localOnly`) when it was written on a seat
     // that read a local-only note: its pack carried one, or a tainted earlier
-    // output reached it whole. A prompt for a seat that leaves this network
-    // gets `LOCAL_ONLY_STUB` in a tainted output's place (I5, as history).
+    // output reached it whole, or the plan itself draws on one. A prompt for
+    // a seat that leaves this network gets `LOCAL_ONLY_STUB` in a tainted
+    // output's place (I5, as history).
     const results: PlayStepResult[] = [];
     const done = new Set<string>();
     const status = new Map<string, 'pending' | 'in_progress' | 'completed'>();
     const showTodos = () => this.emit({ type: 'todos', items: briefTodos(play, roster, status) });
+    // The chat's reach for this send (what Chats and the top bar read): the
+    // framing call went to the anchor, and once any step goes to a model
+    // that leaves this network, or to your computer's agent (whose model may
+    // be a cloud one), the send is marked cloud, as a cloud turn is.
+    let reach: 'local' | 'cloud' | undefined;
+    const markReach = (leaves: boolean) => {
+      const next = leaves ? 'cloud' : 'local';
+      if (reach === 'cloud' || reach === next) return;
+      reach = next;
+      this.emit({
+        type: 'turn-start',
+        turn: this.history.length,
+        model: refName(reasoning),
+        providerKind: next,
+      });
+    };
+    markReach(this.leaves(reasoning));
 
     this.emit({
       type: 'status',
@@ -1727,11 +1781,18 @@ export class StackDriver implements ChatDriver {
           // A repo/tool step runs on the paired computer's engine when docked
           // (real tools, real approvals). When that is not available it returns
           // null and we fall through to a chat model that describes the change.
-          const onEngine = step.needsTools
-            ? await this.runToolStepOnEngine(step, play, results)
-            : null;
+          // A plan that draws on a private note never goes there: the engine's
+          // model may be a cloud one (D5), so the step is described here.
+          if (step.needsTools && privatePlan && this.engineInReach()) {
+            this.emit({ type: 'status', message: privatePlanEngineNote(step.title, refName(ref)) });
+          }
+          const onEngine =
+            step.needsTools && !privatePlan
+              ? await this.runToolStepOnEngine(step, play, results)
+              : null;
           if (onEngine !== null) {
             out = onEngine;
+            markReach(true);
             // The engine is on the person's own computer: it read tainted
             // earlier outputs whole, and it may have read a local-only note
             // itself (its tool-end or pack card said so), so its text is
@@ -1739,11 +1800,14 @@ export class StackDriver implements ChatDriver {
             tainted = this.engineTurnLocalOnly || results.some((r) => r.localOnly === true);
             if (this.engineTurnLocalOnly) this.sendLocalOnly = true;
           } else {
+            markReach(this.leaves(ref));
             const pack = await this.packRender(ref);
-            // A seat that stays here reads tainted earlier outputs whole, so
-            // what it writes is tainted too.
+            // A seat that stays here reads tainted earlier outputs whole, and
+            // a plan that draws on a private note, so what it writes is
+            // tainted too.
             tainted =
-              pack.localOnly || (!this.leaves(ref) && results.some((r) => r.localOnly === true));
+              pack.localOnly ||
+              (!this.leaves(ref) && (privatePlan || results.some((r) => r.localOnly === true)));
             out = await this.completeOnce(
               ref,
               placement,
@@ -1774,15 +1838,22 @@ export class StackDriver implements ChatDriver {
       if (done.size < play.steps.length && replans < MAX_REPLANS) {
         replans++;
         try {
+          const anchorLeaves = this.leaves(reasoning);
           const revised = parseReplan(
             await this.completeOnce(
               reasoning,
               undefined,
-              replanPrompt(play, resultsForSeat(results, this.leaves(reasoning))),
+              replanPrompt(play, resultsForSeat(results, anchorLeaves)),
             ),
           );
           if (revised && revised.length) {
             play = mergeReplan(play, done, revised);
+            // An anchor that stays read a tainted output whole, so the
+            // briefs it revised may quote a private note (D5).
+            if (!anchorLeaves && !privatePlan && results.some((r) => r.localOnly === true)) {
+              privatePlan = true;
+              roster = { ...base, keepPrivate };
+            }
             showTodos();
           }
         } catch {

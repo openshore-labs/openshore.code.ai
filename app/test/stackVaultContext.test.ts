@@ -603,6 +603,233 @@ describe('a reply after a local-only read (I5 in the app)', () => {
     driver.dispose();
   });
 
+  // The mirror (sp-plan, egress-claims-2): an anchor that stays read the
+  // private note whole, so the goal and the briefs it wrote may quote it.
+  // A placed cloud specialist and a cloud image reader then never get the
+  // step: the anchor takes each one, and the note says why (D5).
+  it('a plan from a local anchor that read a private note keeps every step off the cloud', async () => {
+    const note = 'The secret is teal.';
+    const pack: AppVaultPack = {
+      prepare: async () => {},
+      render: (seat) =>
+        seat.leavesNetwork
+          ? { text: 'VAULT PACK cloud' }
+          : { text: `VAULT PACK ${note}`, localOnly: true },
+    };
+    const { driver, events } = chat(
+      {
+        reasoning: boxMid,
+        active: [
+          { ref: gpt, placement: { category: 'writing' } },
+          { ref: claude, placement: { category: 'vision' } },
+        ],
+        saved: {},
+      },
+      {},
+      { vaultPack: pack, packSeat: seatOf },
+    );
+    const plan = JSON.stringify({
+      clear: true,
+      summary: `Answer from the diary: ${note}`,
+      steps: [
+        { id: 'a', title: 'Draft', category: 'writing', brief: `Quote it: ${note}` },
+        {
+          id: 'b',
+          title: 'Look',
+          category: 'vision',
+          brief: `Check the picture against: ${note}`,
+          dependsOn: ['a'],
+        },
+      ],
+    });
+    h.nativeReplies.push(plan, 'drafted', 'no replan', 'looked', 'Final.');
+    driver.send('draft from my diary and check the picture');
+    await settle(30);
+    // Every call ran on your own box; neither cloud model was asked anything.
+    expect(h.nativeBodies).toHaveLength(5);
+    for (const body of h.nativeBodies) {
+      expect((body as { model?: string }).model).toBe('qwen2.5:14b');
+    }
+    expect(h.claudeParams).toHaveLength(0);
+    // Each step's note names the model it would have gone to, and why not.
+    const notes = events.flatMap((e) => (e.type === 'status' ? [e.message] : []));
+    for (const [title, owner] of [
+      ['Draft', 'GPT'],
+      ['Look', 'Claude'],
+    ]) {
+      expect(notes).toContain(
+        `${title}. This plan draws on a private note, so Box Mid, your Reasoning model, takes it instead of ${owner}. Private notes never reach a cloud model.`,
+      );
+    }
+    // The task list names the model that runs each step.
+    const todos = events.filter((e) => e.type === 'todos').at(-1);
+    expect(todos && 'items' in todos ? todos.items.map((t) => t.owner) : []).toEqual([
+      'Box Mid (reasoning)',
+      'Box Mid (reasoning)',
+    ]);
+    // Nothing left this network, so the chat reads local, and the reply is marked.
+    const starts = events.filter((e) => e.type === 'turn-start');
+    expect(starts.map((e) => (e as { providerKind: string }).providerKind)).toEqual(['local']);
+    expect(isLocalOnlyFinal(events.filter((e) => e.type === 'text-final').at(-1)!)).toBe(true);
+    driver.dispose();
+  });
+
+  it('a plan from a local anchor that read a private turn whole keeps its steps off the cloud', async () => {
+    const driver = new StackDriver(
+      { reasoning: boxMid, active: [{ ref: gpt, placement: { category: 'writing' } }], saved: {} },
+      'offshore',
+      {},
+      [
+        { role: 'user', text: 'diary?' },
+        { role: 'assistant', text: 'teal secret', localOnly: true },
+      ],
+      { packSeat: seatOf },
+    );
+    const events: DriverEvent[] = [];
+    driver.subscribe((e) => events.push(e));
+    const plan = JSON.stringify({
+      clear: true,
+      summary: 'Write up the teal secret',
+      steps: [
+        { id: 'a', title: 'Draft', category: 'writing', brief: 'Use the teal secret.' },
+        { id: 'b', title: 'Check', category: 'reasoning', brief: 'Check it.', dependsOn: ['a'] },
+      ],
+    });
+    h.nativeReplies.push(plan, 'drafted', 'no replan', 'checked', 'Final.');
+    driver.send('write it up');
+    await settle(30);
+    // The anchor read the private turn whole when it planned.
+    expect(JSON.stringify(h.nativeBodies[0])).toContain('teal secret');
+    for (const body of h.nativeBodies) {
+      expect((body as { model?: string }).model).toBe('qwen2.5:14b');
+    }
+    expect(isLocalOnlyFinal(events.filter((e) => e.type === 'text-final').at(-1)!)).toBe(true);
+    driver.dispose();
+  });
+
+  it('a replan by a local anchor that read a private step keeps the rest off the cloud', async () => {
+    const note = 'The secret is teal.';
+    // Only the small box's pack carries the note; the anchor's carries none.
+    const pack: AppVaultPack = {
+      prepare: async () => {},
+      render: (seat) =>
+        seat.servedTokens === 8192
+          ? { text: `VAULT PACK ${note}`, localOnly: true }
+          : { text: 'VAULT PACK plain' },
+    };
+    const { driver, events } = chat(
+      {
+        reasoning: boxMid,
+        active: [
+          { ref: boxSmall, placement: { category: 'writing' } },
+          { ref: gpt, placement: { category: 'coding' } },
+        ],
+        saved: {},
+      },
+      {},
+      { vaultPack: pack, packSeat: seatOf },
+    );
+    const plan = JSON.stringify({
+      clear: true,
+      summary: 'Draft and build',
+      steps: [
+        { id: 'a', title: 'Draft', category: 'writing', brief: 'Write it.' },
+        { id: 'b', title: 'Build', category: 'coding', brief: 'Build it.', dependsOn: ['a'] },
+      ],
+    });
+    const revised = JSON.stringify([
+      { id: 'b', title: 'Build', category: 'coding', brief: `Build it from: ${note}` },
+    ]);
+    h.nativeReplies.push(plan, `Draft quoting: ${note}`, revised, 'built', 'Final.');
+    driver.send('draft from my diary and build it');
+    await settle(30);
+    const models = h.nativeBodies.map((b) => (b as { model?: string }).model);
+    // Plan, the small box's draft, the replan, then the build on the anchor.
+    expect(models).toEqual([
+      'qwen2.5:14b',
+      'qwen2.5:7b',
+      'qwen2.5:14b',
+      'qwen2.5:14b',
+      'qwen2.5:14b',
+    ]);
+    expect(JSON.stringify(h.nativeBodies[3])).toContain(`Build it from: ${note}`);
+    const notes = events.flatMap((e) => (e.type === 'status' ? [e.message] : []));
+    expect(notes).toContain(
+      'Build. This plan draws on a private note, so Box Mid, your Reasoning model, takes it instead of GPT. Private notes never reach a cloud model.',
+    );
+    driver.dispose();
+  });
+
+  it('a private plan never hands a step that edits files to your computer', async () => {
+    h.engineEvents.length = 0;
+    h.enginePrompts.length = 0;
+    const note = 'The secret is teal.';
+    const pack: AppVaultPack = {
+      prepare: async () => {},
+      render: (seat) =>
+        seat.leavesNetwork
+          ? { text: 'VAULT PACK cloud' }
+          : { text: `VAULT PACK ${note}`, localOnly: true },
+    };
+    const driver = new StackDriver(
+      { reasoning: boxMid, active: [], saved: {} },
+      'docked',
+      { daemon: { baseUrl: 'http://127.0.0.1:7777', token: 't' }, repoCwd: '/work/repo' },
+      undefined,
+      { vaultPack: pack, packSeat: seatOf },
+    );
+    const events: DriverEvent[] = [];
+    driver.subscribe((e) => events.push(e));
+    const plan = JSON.stringify({
+      clear: true,
+      summary: `Edit per the diary: ${note}`,
+      steps: [
+        { id: 'a', title: 'Edit', category: 'coding', brief: note, needsTools: true },
+        { id: 'b', title: 'Check', category: 'reasoning', brief: 'Check it.', dependsOn: ['a'] },
+      ],
+    });
+    h.nativeReplies.push(plan, 'the diff', 'no replan', 'checked', 'Final.');
+    driver.send('edit the file from my diary and check it');
+    await settle(40);
+    expect(h.enginePrompts).toHaveLength(0);
+    const notes = events.flatMap((e) => (e.type === 'status' ? [e.message] : []));
+    expect(notes).toContain(
+      'Edit. This plan draws on a private note, so Box Mid describes the change here instead of running it on your computer, whose agent may use a cloud model.',
+    );
+    for (const body of h.nativeBodies) {
+      expect((body as { model?: string }).model).toBe('qwen2.5:14b');
+    }
+    driver.dispose();
+  });
+
+  it('a play that hands a step to a cloud model marks the chat cloud', async () => {
+    const { driver, events } = chat(
+      { reasoning: boxMid, active: [{ ref: gpt, placement: { category: 'writing' } }], saved: {} },
+      {},
+      { packSeat: seatOf },
+    );
+    const plan = JSON.stringify({
+      clear: true,
+      summary: 'Draft and check',
+      steps: [
+        { id: 'a', title: 'Check', category: 'reasoning', brief: 'Check it.' },
+        { id: 'b', title: 'Draft', category: 'writing', brief: 'Write it.', dependsOn: ['a'] },
+      ],
+    });
+    h.nativeReplies.push(plan, 'checked', 'no replan', 'drafted', 'Final.');
+    driver.send('check and draft it');
+    await settle(30);
+    expect((h.nativeBodies[3] as { model?: string }).model).toBe('gpt-big');
+    // Local while only your box ran, then cloud from the step that left.
+    const starts = events.filter((e) => e.type === 'turn-start');
+    expect(starts.map((e) => (e as { providerKind: string }).providerKind)).toEqual([
+      'local',
+      'cloud',
+    ]);
+    expect(starts.every((e) => (e as { model: string }).model === 'Box Mid')).toBe(true);
+    driver.dispose();
+  });
+
   it('an engine step that read a local-only note reaches a leaving seat as the stub', async () => {
     const note = 'The secret is teal.';
     h.engineEvents.length = 0;
