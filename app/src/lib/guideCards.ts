@@ -876,7 +876,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'privacy',
     title: 'Privacy',
     where: 'Menu, Settings, Privacy and Ethical boundaries',
-    text: "Local models keep your words on your device, unless a plan in your Stack hands their work on to a cloud model. Cloud models run on your own API keys, and an amber pill or dot marks a chat whose latest turn went to one. Chats, projects, and API keys are encrypted on the device. What does leave is short and listed under Settings, Privacy, What leaves this device: a cloud model you chose (and, while nothing in your Stack reads images, the one that takes a plan's image step), a web search you allowed, update checks, the model list, and your account while signed in.",
+    text: "Local models keep your words on your device, unless a cloud model in the same chat reads them later, on its own turn or as a step in a plan. Cloud models run on your own API keys, and an amber pill or dot marks a chat whose latest turn went to one. Chats, projects, and API keys are encrypted on the device. What does leave is short and listed under Settings, Privacy, What leaves this device: a cloud model you chose (and, while nothing in your Stack reads images, the one that takes a plan's image step), a web search you allowed, update checks, the model list, and your account while signed in.",
     keywords: [
       'privacy',
       'private',

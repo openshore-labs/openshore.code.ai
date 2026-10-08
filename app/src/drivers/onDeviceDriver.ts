@@ -103,9 +103,14 @@ export class OnDeviceDriver implements ChatDriver {
   private readonly vaultPack?: AppVaultPack;
   private readonly writingVoice?: string;
   private packText?: string;
-  /** This send's pack carried a note that stays on this computer, so the
-   *  reply is marked local-only (I5). */
+  /** This send's pack carried a note that stays on this computer, or the
+   *  chat this seat reads holds a marked turn, so the reply is marked
+   *  local-only (I5). */
   private packLocalOnly = false;
+  /** The history holds a marked turn (a seed, or a marked reply here): this
+   *  seat reads it whole, so every reply after it may quote it and is marked
+   *  too, the rule the Stack and the engine follow (D5). */
+  private historyLocalOnly = false;
   /** The send in flight, so Stop also reaches a pack still preparing. */
   private sendController?: AbortController;
 
@@ -134,7 +139,10 @@ export class OnDeviceDriver implements ChatDriver {
     this.guide = isHarborMini(modelId) || isHarbor(modelId);
     this.guideTurn = isHarborMini(modelId);
     // A mid-chat switch seeds the prior turns so this model continues the thread.
-    if (seed) this.history = seed.map((t) => ({ role: t.role, content: t.text }));
+    if (seed) {
+      this.history = seed.map((t) => ({ role: t.role, content: t.text }));
+      this.historyLocalOnly = seed.some((t) => t.localOnly === true);
+    }
     this.listenersReady = this.attachListeners();
   }
 
@@ -270,7 +278,7 @@ export class OnDeviceDriver implements ChatDriver {
     this.search.begin();
     this.aborted = false;
     this.packText = undefined;
-    this.packLocalOnly = false;
+    this.packLocalOnly = this.historyLocalOnly;
     const send = new AbortController();
     this.sendController = send;
     this.emit({ type: 'task-start', input: text });
@@ -396,6 +404,7 @@ export class OnDeviceDriver implements ChatDriver {
       forgetDeviceModel();
       this.search.settle(this.history);
       if (text) this.history.push({ role: 'assistant', content: text });
+      if (text && this.packLocalOnly) this.historyLocalOnly = true;
       this.emit(textFinal(text, this.packLocalOnly));
       this.emit({
         type: 'task-done',
@@ -446,6 +455,7 @@ export class OnDeviceDriver implements ChatDriver {
     // The raw results (if this message searched) give way to one line.
     this.search.settle(this.history);
     if (text) this.history.push({ role: 'assistant', content: text });
+    if (text && this.packLocalOnly) this.historyLocalOnly = true;
     this.emit(textFinal(text, this.packLocalOnly));
     const after = this.afterNote;
     this.afterNote = undefined;
@@ -513,6 +523,7 @@ export class OnDeviceDriver implements ChatDriver {
 
   recordLine(turn: SeedTurn): void {
     this.history.push({ role: turn.role, content: turn.text });
+    if (turn.localOnly) this.historyLocalOnly = true;
   }
 
   answerApproval(_approvalId: string, _answer: ApprovalAnswer): void {

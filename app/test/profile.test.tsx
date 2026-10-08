@@ -80,6 +80,12 @@ describe('the profile rules', () => {
     for (const body of [ACCOUNT_GATE_BODY, accountCopy(true).body]) {
       expect(body).toMatch(/takes your theme and a few preferences to every device/);
     }
+    // What leaves this device names them in the same words (one name per
+    // thing, sign-off): it said theme, reasoning and humanized writing.
+    const { EGRESS } = await import('../src/lib/egressManifest.js');
+    expect(EGRESS.find((e) => e.id === 'preferences')!.what).toBe(
+      'Your app preferences, so they follow you to your other devices: appearance, effort, Humanize Writing, Chain of Thought, notices, and voice. Never your chats, prompts, projects, keys, or addresses.',
+    );
   });
 
   it('draws the avatar from the email', () => {

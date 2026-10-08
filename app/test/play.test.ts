@@ -393,6 +393,23 @@ describe('stepRunner: who a step really runs on', () => {
     // Without the mark, each runs on its own model, as before.
     expect(stepRunner(draft, own).ref).toEqual(claude);
     expect(ownerLabel(draft, own)).toBe('Claude');
+    // Nothing set for Image reading, the chat path's cloud reader filling the
+    // gap (founder, 2026-10-07): the mark keeps that step here as well.
+    const unplaced = {
+      reasoning: coder,
+      active: [],
+      saved: {},
+      imageReader: claude,
+      keepPrivate: (r: StackModelRef) => r.kind === 'cloud',
+    };
+    expect(stepRunner(read, unplaced)).toMatchObject({
+      ref: coder,
+      covered: claude,
+      private: true,
+    });
+    expect(handoffNote(read, unplaced)).toBe(
+      'Read the chart. This plan draws on a private note, so Coder, your Reasoning model, takes it instead of Claude. Private notes never reach a cloud model.',
+    );
   });
 
   it('leaves the anchor as its own runner, never covering itself', () => {

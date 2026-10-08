@@ -121,12 +121,22 @@ describe('what leaves this device', () => {
     expect(PLAN_IMAGE_STEP_LINE).toMatch(/never a picture/);
     expect(PLAN_IMAGE_STEP_LINE).toMatch(/working note names it/);
     expect(cloud.when).toContain(PLAN_IMAGE_STEP_LINE);
+    // Every cloud seat's prompt carries the vault pack rendered for it, so
+    // the list says the notes go too, never a private one (sign-off).
+    expect(PLAN_IMAGE_STEP_LINE).toMatch(/your chat, the notes it draws on, and the plan/);
+    expect(cloud.what).toMatch(
+      /^Your chat, and the notes and files it draws on \(never a private note\)/,
+    );
+    expect(EGRESS.find((e) => e.id === 'own-model')!.what).toMatch(
+      /notes and files it draws on.*A private note goes only to one on your own network\./,
+    );
     // The marking it promises is the one the chat and Chats read.
     expect(cloud.what).not.toMatch(/marks every turn/);
     expect(cloud.what).toMatch(/amber pill or dot marks a chat whose latest turn went to one/);
-    // A local model's answer can reach a cloud model through a plan.
+    // A local model's answer reaches a cloud model that reads the same chat
+    // later: on a turn routed to it, or as a plan's step (sign-off).
     expect(STAYS_ON_DEVICE[0]).toMatch(
-      /except what a plan in your Stack hands on to a cloud model/,
+      /unless a cloud model in the same chat reads it later, on its own turn or as a step in a plan/,
     );
   });
 

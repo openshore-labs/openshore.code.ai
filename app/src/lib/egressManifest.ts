@@ -15,6 +15,7 @@
 import { featureOn, type ReleaseTier, type TieredFeature, RELEASE_TIER } from './focus.js';
 import type { Platform } from './platform.js';
 import { PAY_GATES_ENABLED } from './payGate.js';
+import { followsList } from './profile.js';
 
 export interface EgressEntry {
   id: string;
@@ -53,11 +54,12 @@ export const ROUTINES_SEARCH_LINE =
  *  2026-10-07; CLAUDE.md tenet 4): it runs on the chat path's cloud reader,
  *  the one the Stack's Image reading row names, with no card (stackDriver
  *  executePlay, play.ts stepRunner). It is sent what any cloud step is, the
- *  chat's earlier turns (private ones as a stub), the plan, and the work so
- *  far, as text: plans run only on turns with no picture, and no step is
- *  sent one. The one sentence the cloud-models entry carries. */
+ *  chat's earlier turns (private ones as a stub), the vault pack rendered
+ *  for that seat (never a private note), the plan, and the work so far, as
+ *  text: plans run only on turns with no picture, and no step is sent one.
+ *  The one sentence the cloud-models entry carries. */
 export const PLAN_IMAGE_STEP_LINE =
-  "One exception: while nothing in your Stack reads images, an image step in a plan goes to the cloud model your Stack's Image reading row names, without asking. It gets your chat's text and the plan, never a picture, and its working note names it.";
+  "One exception: while nothing in your Stack reads images, an image step in a plan goes to the cloud model your Stack's Image reading row names, without asking. It gets what any cloud step does, as text: your chat, the notes it draws on, and the plan, never a picture. Its working note names it.";
 
 export const RECIPIENT_ORDER = [
   'OpenShore (us)',
@@ -81,7 +83,9 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'preferences',
     recipient: 'OpenShore (us)',
-    what: 'Your app preferences, so they follow you to your other devices: theme, effort, reasoning, humanized writing, notices, and voice. Never your chats, prompts, projects, keys, or addresses.',
+    // Named from the one list the signed-in card and the profile read
+    // (settingsReach.ts through profile.ts), so the three cannot drift.
+    what: `Your app preferences, so they follow you to your other devices: ${followsList()}. Never your chats, prompts, projects, keys, or addresses.`,
     when: 'Only while you are signed in: when you change one, and when the app opens.',
     start: 'on',
     hosts: ['env:VITE_SUPABASE_URL'],
@@ -209,7 +213,7 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'cloud-models',
     recipient: 'Your cloud providers',
-    what: 'Your chat, to Anthropic, OpenAI, Google, Moonshot, or Perplexity, on your own key. An amber pill or dot marks a chat whose latest turn went to one.',
+    what: 'Your chat, and the notes and files it draws on (never a private note), to Anthropic, OpenAI, Google, Moonshot, or Perplexity, on your own key. An amber pill or dot marks a chat whose latest turn went to one.',
     when: `Only when you pick a cloud model, and only that turn. ${PLAN_IMAGE_STEP_LINE}`,
     start: 'off',
     hosts: [
@@ -223,7 +227,7 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'own-model',
     recipient: 'Your cloud providers',
-    what: 'Your chat, to a model server you connect yourself (one you run, or one you name with its address and key).',
+    what: 'Your chat, and the notes and files it draws on, to a model server you connect yourself (one you run, or one you name with its address and key). A private note goes only to one on your own network.',
     when: 'Only when you connect one and pick it, and only that turn.',
     start: 'off',
     hosts: [],
@@ -332,7 +336,7 @@ export const LINK_ONLY_HOSTS: Record<string, string> = {
 
 /** What stays on this device, for the list's other half. */
 export const STAYS_ON_DEVICE: string[] = [
-  'Everything you send a local model, and everything it answers, except what a plan in your Stack hands on to a cloud model (a web search sends only its words, listed above).',
+  'Everything you send a local model, and everything it answers, unless a cloud model in the same chat reads it later, on its own turn or as a step in a plan (a web search sends only its words, listed above).',
   'Your chats, projects, settings, and session journals, sealed at rest.',
   'Your API keys: in the Keychain on iPhone and iPad; on a computer, encrypted under a key in its keychain. Each is sent only to its own provider.',
   'Your Vault notes and your code, as plain files you own.',

@@ -707,6 +707,107 @@ describe('a reply after a local-only read (I5 in the app)', () => {
     driver.dispose();
   });
 
+  // Sign-off (D5 off the plan path): a seat here that read a private turn
+  // whole may quote it, the framing call's own answer and a single turn
+  // alike, so its reply is marked, and a cloud model a later turn routes to
+  // reads the stub in its place, never the quote.
+  it('a reply from a seat here that read a private turn whole reaches a cloud turn as the stub', async () => {
+    const seed = [
+      { role: 'user' as const, text: 'diary?' },
+      { role: 'assistant' as const, text: 'teal secret', localOnly: true as const },
+    ];
+    const finals = (events: DriverEvent[]) =>
+      events.filter((e) => e.type === 'text-final').map((e) => isLocalOnlyFinal(e));
+
+    // The framing call answers itself, then a later turn goes to GPT.
+    const driver = new StackDriver(
+      { reasoning: boxMid, active: [{ ref: gpt, placement: { category: 'writing' } }], saved: {} },
+      'offshore',
+      {},
+      seed,
+      { packSeat: seatOf },
+    );
+    const events: DriverEvent[] = [];
+    driver.subscribe((e) => events.push(e));
+    h.nativeReplies.push('It was the teal one.');
+    driver.send('which was it again?');
+    await settle(30);
+    expect(finals(events)).toEqual([true]);
+    h.nativeReplies.push(ONE_STEP, 'Dear landlord.');
+    driver.send('draft an email about it');
+    await settle(30);
+    const toGpt = h.nativeBodies.filter((b) => (b as { model?: string }).model === 'gpt-big');
+    expect(toGpt).toHaveLength(1);
+    expect(JSON.stringify(toGpt[0])).not.toMatch(/teal/);
+    expect(JSON.stringify(toGpt[0])).toContain(LOCAL_ONLY_STUB);
+    driver.dispose();
+
+    // One seat and no one to hand to: the single turn's reply is marked too.
+    const alone = new StackDriver(
+      { reasoning: boxMid, active: [], saved: {} },
+      'offshore',
+      {},
+      seed,
+      { packSeat: seatOf },
+    );
+    const aloneEvents: DriverEvent[] = [];
+    alone.subscribe((e) => aloneEvents.push(e));
+    h.nativeReplies.push('It was the teal one.');
+    alone.send('which was it again?');
+    await settle(30);
+    expect(finals(aloneEvents)).toEqual([true]);
+    alone.dispose();
+
+    // A line handed over after the seed keeps its mark, so GPT reads the stub.
+    const handed = chat({ reasoning: gpt, active: [], saved: {} }, {}, { packSeat: seatOf });
+    handed.driver.recordLine({ role: 'assistant', text: 'teal secret', localOnly: true });
+    h.nativeReplies.push('Noted.');
+    handed.driver.send('and then?');
+    await settle(30);
+    const last = JSON.stringify(h.nativeBodies.at(-1));
+    expect(last).not.toMatch(/teal/);
+    expect(last).toContain(LOCAL_ONLY_STUB);
+    handed.driver.dispose();
+  });
+
+  // Sign-off: the plan is kept here only when its Reasoning model read the
+  // private turn. One older than the chat it reads (the newest 6,000
+  // characters) never reached it, so the plan runs as placed and says
+  // nothing about a private note.
+  it('a plan whose Reasoning model never read the private turn runs as placed', async () => {
+    const driver = new StackDriver(
+      { reasoning: boxMid, active: [{ ref: gpt, placement: { category: 'writing' } }], saved: {} },
+      'offshore',
+      {},
+      [
+        { role: 'user', text: 'diary?' },
+        { role: 'assistant', text: 'teal secret', localOnly: true },
+        { role: 'user', text: 'x'.repeat(7000) },
+        { role: 'assistant', text: 'noted' },
+      ],
+      { packSeat: seatOf },
+    );
+    const events: DriverEvent[] = [];
+    driver.subscribe((e) => events.push(e));
+    const plan = JSON.stringify({
+      clear: true,
+      summary: 'Write it up',
+      steps: [
+        { id: 'a', title: 'Draft', category: 'writing', brief: 'Write it.' },
+        { id: 'b', title: 'Check', category: 'reasoning', brief: 'Check it.', dependsOn: ['a'] },
+      ],
+    });
+    h.nativeReplies.push(plan, 'drafted', 'no replan', 'checked', 'Final.');
+    driver.send('write it up');
+    await settle(30);
+    expect(JSON.stringify(h.nativeBodies[0])).not.toContain('teal secret');
+    expect((h.nativeBodies[1] as { model?: string }).model).toBe('gpt-big');
+    const notes = events.flatMap((e) => (e.type === 'status' ? [e.message] : []));
+    expect(notes.some((n) => n.includes('private note'))).toBe(false);
+    expect(isLocalOnlyFinal(events.filter((e) => e.type === 'text-final').at(-1)!)).toBe(false);
+    driver.dispose();
+  });
+
   it('a replan by a local anchor that read a private step keeps the rest off the cloud', async () => {
     const note = 'The secret is teal.';
     // Only the small box's pack carries the note; the anchor's carries none.
@@ -828,6 +929,61 @@ describe('a reply after a local-only read (I5 in the app)', () => {
     ]);
     expect(starts.every((e) => (e as { model: string }).model === 'Box Mid')).toBe(true);
     driver.dispose();
+  });
+
+  // Sign-off (sp-plan, M1): the framing call on a Reasoning model that leaves
+  // carries the message, so the send reads cloud on every route: the
+  // questions it asks back, and a model on this phone that answers after it.
+  it('a send framed by a cloud model marks the chat cloud, whoever answers it', async () => {
+    const asks = chat(
+      {
+        reasoning: gpt,
+        active: [{ ref: boxSmall, placement: { category: 'writing' } }],
+        saved: {},
+      },
+      {},
+      { packSeat: seatOf },
+    );
+    h.nativeReplies.push(
+      JSON.stringify({
+        clear: false,
+        summary: 'Which draft?',
+        questions: [{ id: 'q1', question: 'Which one?', options: ['A', 'B'] }],
+      }),
+    );
+    asks.driver.send('draft it');
+    await settle(20);
+    expect(asks.events.some((e) => e.type === 'clarify')).toBe(true);
+    const kinds = (events: DriverEvent[]) =>
+      events.flatMap((e) => (e.type === 'turn-start' ? [e.providerKind] : []));
+    expect(kinds(asks.events)).toEqual(['cloud']);
+    asks.driver.dispose();
+
+    const here = chat(
+      {
+        reasoning: gpt,
+        active: [
+          { ref: boxSmall, placement: { category: 'coding' } },
+          { ref: device, placement: { category: 'writing' } },
+        ],
+        saved: {},
+      },
+      {},
+      { packSeat: seatOf },
+    );
+    h.nativeReplies.push(ONE_STEP);
+    here.driver.send('draft an email to my landlord');
+    await settle(20);
+    expect(h.generateCalls).toHaveLength(1);
+    finishDevice(0, 'Dear landlord.');
+    await settle(20);
+    // GPT framed it and the phone's model answered: the send went to a cloud
+    // model, so the chat reads cloud, never local.
+    expect(kinds(here.events)).toEqual(['cloud', 'cloud']);
+    expect(here.events.filter((e) => e.type === 'turn-start').at(-1)).toMatchObject({
+      model: 'Pocket',
+    });
+    here.driver.dispose();
   });
 
   it('an engine step that read a local-only note reaches a leaving seat as the stub', async () => {

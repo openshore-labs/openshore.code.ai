@@ -271,7 +271,8 @@ export class CloudOpenAiDriver implements ChatDriver {
   }
 
   recordLine(turn: SeedTurn): void {
-    this.history.push({ role: turn.role, content: turn.text });
+    // A marked line is the stub here, as a marked seed is (I5, D5).
+    this.history.push({ role: turn.role, content: seedText(turn, true) });
   }
 
   answerApproval(_approvalId: string, _answer: ApprovalAnswer): void {

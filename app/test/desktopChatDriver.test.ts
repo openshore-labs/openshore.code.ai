@@ -137,6 +137,37 @@ describe('DesktopChatDriver', () => {
     await vi.waitFor(() => expect(events.some((e) => e.type === 'task-done')).toBe(true));
     expect(isLocalOnlyFinal(events.find((e) => e.type === 'text-final')!)).toBe(false);
   });
+
+  // Sign-off (sp-plan, D5): the computer's model reads the chat whole, so a
+  // reply after a marked turn may quote it. It is marked too, the next send
+  // as well as one after a seeded mark, so a later switch to a cloud model
+  // gets the stub for the quote.
+  it('marks every reply after a marked turn, seeded or written here', async () => {
+    const reply = (frames: string[]) =>
+      (globalThis.fetch = vi.fn(async () => sseResponse(frames)) as unknown as typeof fetch);
+    const finals = (events: DriverEvent[]) =>
+      events.filter((e) => e.type === 'text-final').map((e) => isLocalOnlyFinal(e));
+
+    const driver = new DesktopChatDriver({ baseUrl: 'http://desk', token: 't' });
+    const events = collect(driver);
+    reply([packLine(true), JSON.stringify({ type: 'text', delta: 'Marmot.' }), '{"type":"done"}']);
+    driver.send('the launch word?');
+    await vi.waitFor(() => expect(events.filter((e) => e.type === 'task-done')).toHaveLength(1));
+    reply([JSON.stringify({ type: 'text', delta: 'It was marmot.' }), '{"type":"done"}']);
+    driver.send('say it again');
+    await vi.waitFor(() => expect(events.filter((e) => e.type === 'task-done')).toHaveLength(2));
+    expect(finals(events)).toEqual([true, true]);
+
+    const seeded = new DesktopChatDriver({ baseUrl: 'http://desk', token: 't' }, undefined, [
+      { role: 'user', text: 'the launch word?' },
+      { role: 'assistant', text: 'Marmot.', localOnly: true },
+    ]);
+    const seededEvents = collect(seeded);
+    reply([JSON.stringify({ type: 'text', delta: 'It was marmot.' }), '{"type":"done"}']);
+    seeded.send('say it again');
+    await vi.waitFor(() => expect(seededEvents.some((e) => e.type === 'task-done')).toBe(true));
+    expect(finals(seededEvents)).toEqual([true]);
+  });
 });
 
 // On the desktop itself the same driver reaches this computer's own engine
