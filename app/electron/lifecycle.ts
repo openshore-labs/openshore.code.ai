@@ -93,9 +93,28 @@ export function readHubPaused(userData: string): boolean {
 }
 
 export function writeHubPaused(userData: string, paused: boolean): void {
-  const path = join(userData, HUB_PAUSED_FILE);
+  writeMarker(join(userData, HUB_PAUSED_FILE), paused, 'paused\n');
+}
+
+/** The person's chosen Offline (Desktop Offline, privacy review 2026-10-08),
+ *  kept in main across launches the way the pause is: a login launch starts
+ *  in the tray with no window, so no renderer is there to report the choice,
+ *  and main reads it from here before the hub serves a phone. A marker file in
+ *  userData; present means Offline was chosen. The window still reports the
+ *  choice on every refresh, and main keeps the two in step. */
+export const OFFLINE_CHOSEN_FILE = 'offline-chosen';
+
+export function readOfflineChosen(userData: string): boolean {
+  return existsSync(join(userData, OFFLINE_CHOSEN_FILE));
+}
+
+export function writeOfflineChosen(userData: string, chosen: boolean): void {
+  writeMarker(join(userData, OFFLINE_CHOSEN_FILE), chosen, 'offline\n');
+}
+
+function writeMarker(path: string, present: boolean, body: string): void {
   try {
-    if (paused) writeFileSync(path, 'paused\n');
+    if (present) writeFileSync(path, body);
     else rmSync(path, { force: true });
   } catch {
     // Best effort: a write that fails leaves this launch's state as it is.

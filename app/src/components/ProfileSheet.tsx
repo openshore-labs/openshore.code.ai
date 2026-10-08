@@ -21,6 +21,7 @@ import {
   FOLLOWS_GROUP_ID,
   accountInitial,
   followsLine,
+  notCopiedLine,
   planStanding,
   useProfileSheet,
   useSettingsJump,
@@ -116,11 +117,10 @@ export function ProfileSheet() {
           />
           {/* True on every platform (CTO, 2026-10-02): a desktop vault can sit
               in a synced folder and Repositories push to git hosts, so the
-              claim is only about the account. */}
-          <SettingsRow
-            label="Not copied to your account"
-            sub="OpenShore does not copy your chats, projects, keys, or vault to your account."
-          />
+              claim is only about the account. And in every tier (privacy
+              review, 2026-10-08): with teams on, it claims only the
+              person's own, and names what a team keeps (lib/profile.ts). */}
+          <SettingsRow label="Not copied to your account" sub={notCopiedLine()} />
         </SettingsGroup>
 
         <SettingsGroup title="Privacy and help" index={2}>

@@ -140,7 +140,9 @@ import {
   isHiddenLaunch,
   launchAtLoginSupport,
   readHubPaused,
+  readOfflineChosen,
   writeHubPaused,
+  writeOfflineChosen,
   powerBlockerNext,
   trayMenuTemplate,
 } from './lifecycle.js';
@@ -544,17 +546,38 @@ const host = new EngineHost(
 
 // Desktop Offline (founder, 2026-10-07): this computer is offline when it has
 // no network (Electron's net.isOnline(), no request made) or the person chose
-// Offline. Main owns it, so it holds with the window closed and the hub
-// serving a phone: every change reaches the engine's one machine flag, which
-// each session reads before its next turn, and a network change reaches the
-// window so its pill flips as promptly. Polled every few seconds, and read
-// again on wake and on each report from the window.
+// Offline. Main owns it: every change reaches the engine's one machine flag,
+// which each session reads before its next turn, and a network change reaches
+// the window so its pill flips as promptly. Polled every few seconds, and read
+// again on wake and on each report from the window. The choice is the
+// window's to make, and main keeps it in userData (lifecycle.ts
+// OFFLINE_CHOSEN_FILE) and restores it here, as main starts and before the
+// hub serves or any session reads the flag (privacy review, 2026-10-08). The
+// routine clock's first tick runs inside new EngineHost above and may open a
+// due run there, but a run reads the flag only at its first turn, which waits
+// on an await and so comes after this line. So a chosen Offline holds with
+// the window closed, from a login launch that
+// starts in the tray with no window at all, and with the hub serving a phone.
+// The window still reports the choice on every refresh, and a change it
+// reports is kept for the next launch.
 const network = new NetworkWatch({
   isOnline: () => net.isOnline(),
   apply: (reason) => host.setOffline(reason),
   notify: (online) => win?.webContents.send('osc:network', { online }),
+  remember: (chosen) => writeOfflineChosen(app.getPath('userData'), chosen),
 });
+network.restore(savedOfflineChoice());
 guarded('osc:setOffline', (chosen: unknown) => network.choose(bool(chosen)));
+
+/** The Offline the person chose last time, or false when none was kept or
+ *  userData cannot be read; the window's own report corrects it either way. */
+function savedOfflineChoice(): boolean {
+  try {
+    return readOfflineChosen(app.getPath('userData'));
+  } catch {
+    return false;
+  }
+}
 
 // ------------------------------------------------------------ the second key
 // The renderer is untrusted (UI-6), so its approval card is only one key. An
@@ -1928,7 +1951,9 @@ if (!app.requestSingleInstanceLock()) {
 
     // The hub starts with the app: the tailnet when it is up, else loopback
     // (and it moves to the tailnet on its own once Tailscale appears). Unless
-    // the person turned phone access off: that holds across launches.
+    // the person turned phone access off: that holds across launches. A
+    // chosen Offline is already the engine's flag by now (restored where the
+    // network watch is made), so the hub never serves a phone online first.
     hubPaused = readHubPaused(app.getPath('userData'));
     if (!hubPaused) {
       const started = await host.daemonStart();

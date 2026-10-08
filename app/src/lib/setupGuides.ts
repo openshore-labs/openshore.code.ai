@@ -137,17 +137,25 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
       // Ollama's own way to listen on the network, per system, so the
       // setting holds and the server keeps the models it pulled (a hand-run
       // `ollama serve` on Linux reads another folder than the service).
+      // 0.0.0.0 is every network the computer joins, and Ollama has no
+      // password (privacy review, 2026-10-08), so the step says so before the
+      // person sets it, and the last two steps take it away again.
       {
-        text: `Ollama answers only on your computer at first. To let ${thisDeviceNoun()} reach it, have it listen on your network. On Windows, quit Ollama from the taskbar, search Settings for environment variables, add OLLAMA_HOST with the value 0.0.0.0 to your account, and open Ollama again. On a Mac, paste this in Terminal, then quit Ollama from the menu bar and open it again (after the Mac restarts, paste it once more):`,
+        text: `Ollama answers only on your computer at first. To let ${thisDeviceNoun()} reach it, have it listen on your network. Ollama has no password, so once this is set it answers anyone on every network this computer joins, not only your home one, until you remove the setting (the last two steps say how). On a laptop, keep to networks you trust, or remove the setting before you join one you do not. On Windows, quit Ollama from the taskbar, search Settings for environment variables, add OLLAMA_HOST with the value 0.0.0.0 to your account, and open Ollama again. On a Mac, paste this in Terminal, then quit Ollama from the menu bar and open it again (after the Mac restarts, paste it once more):`,
         paste: 'launchctl setenv OLLAMA_HOST "0.0.0.0"',
       },
       {
         text: 'On Linux, run sudo systemctl edit ollama, add these two lines in the space at the top, and save. Then run sudo systemctl daemon-reload and sudo systemctl restart ollama:',
         paste: '[Service]\nEnvironment="OLLAMA_HOST=0.0.0.0"',
       },
-      `Make sure ${thisDeviceNoun()} and your computer are on the same Tailscale network, the one Pairing uses, and find your computer's Tailscale address in the Tailscale app (it starts with 100.). Ollama now answers on your home network too, so keep to networks you trust, and never forward port 11434 to the internet.`,
+      `Make sure ${thisDeviceNoun()} and your computer are on the same Tailscale network, the one Pairing uses, and find your computer's Tailscale address in the Tailscale app (it starts with 100.). Ollama now answers on every network this computer joins, with no password, so never forward port 11434 to the internet.`,
       `In OpenShore on ${thisDeviceNoun()}, open Stack and tap Connect a model under Bench. Name: ${LOCAL_IMAGE_READER.name}. Address: \`http://100.x.y.z:11434/v1\`, with your computer's Tailscale address in place of 100.x.y.z. Model name: ${LOCAL_IMAGE_READER.ref} (or ${SMALL_IMAGE_READER.ref}). Leave the API key blank and tap Connect.`,
       'Still in Stack, tap Local under Image reading, choose it, and tap Save.',
+      {
+        text: `Later, whenever you want Ollama off your networks again, remove the setting (${thisDeviceNoun()} then cannot reach it). On Windows, quit Ollama from the taskbar, search Settings for environment variables, delete OLLAMA_HOST from your account, and open Ollama again. On a Mac, paste this in Terminal, then quit Ollama from the menu bar and open it again:`,
+        paste: 'launchctl unsetenv OLLAMA_HOST',
+      },
+      'On Linux, to remove it later, run sudo systemctl edit ollama, delete the two lines you added, and save. Then run sudo systemctl daemon-reload and sudo systemctl restart ollama.',
     ],
     done: 'The Local row under Image reading names it. The next picture goes to it without asking, and stays on your own network.',
   },

@@ -5,6 +5,7 @@
 // app already holds.
 import type { AppSettings } from '../state/store.js';
 import { SETTINGS_REACH } from './settingsReach.js';
+import { featureOn } from './focus.js';
 import { create } from 'zustand';
 
 /** The plain name of each preference that follows a signed-in person. */
@@ -40,6 +41,18 @@ export function followsLine(): string {
     names.length > 1 ? `${names.slice(0, -1).join(', ')}, and ${names.at(-1)}` : names[0];
   const first = list ? list.charAt(0).toUpperCase() + list.slice(1) : '';
   return `${first}.`;
+}
+
+/** What the profile says is never copied to the account, true in every
+ *  tier (privacy review, 2026-10-08). A Personal build sends none of these to
+ *  our server; a build with teams keeps a team's name, its project settings
+ *  and vault notes, and the addresses its members are invited at, there for
+ *  the team (the team entry in egressManifest.ts, in the same words), so the
+ *  line claims only the person's own. */
+export function notCopiedLine(teams: boolean = featureOn('teams')): string {
+  return teams
+    ? "OpenShore does not copy your own chats, projects, keys, or vault to your account. A team's name, project settings, vault notes, and the addresses it invites are kept on our server, for the team."
+    : 'OpenShore does not copy your chats, projects, keys, or vault to your account.';
 }
 
 /** The letter in the account's avatar. */

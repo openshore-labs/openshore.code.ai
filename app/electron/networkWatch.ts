@@ -2,13 +2,16 @@
 // connection. Two things make the desktop offline: no network (Electron's own
 // net.isOnline(), read here, which makes no request and asks no server; a LAN
 // with no internet beyond it can still read as online), or the person
-// choosing Offline in the Status sheet (the renderer passes the choice on).
-// Main owns the answer, so it holds with the window closed and the hub serving
-// a paired phone from the tray: every change goes to the engine's one machine
+// choosing Offline in the Status sheet (the renderer passes the choice on, on
+// every refresh). Main owns the answer, and it keeps the choice across
+// launches (lifecycle.ts OFFLINE_CHOSEN_FILE, read back through restore()
+// before the hub serves), so a chosen Offline holds with the window closed,
+// from a login launch that starts in the tray with no window, and with the
+// hub serving a paired phone: every change goes to the engine's one machine
 // flag (EngineHost.setOffline), which each session reads before its next turn,
 // and a change in the network goes to the window too, so its pill and rooms
-// flip as promptly as the engine. Plain logic around two injected reads, so it
-// is pinned by tests without Electron.
+// flip as promptly as the engine. Plain logic around injected reads and
+// writes, so it is pinned by tests without Electron.
 
 export type OfflineReason = 'network' | 'chosen';
 
@@ -34,6 +37,10 @@ export interface NetworkWatchDeps {
   apply: (reason: OfflineReason | undefined) => void;
   /** Tell the window the network changed. */
   notify: (online: boolean) => void;
+  /** Keep the person's choice across launches (lifecycle.ts
+   *  writeOfflineChosen). Called only when the choice changes, never on the
+   *  window's repeat reports. */
+  remember?: (chosen: boolean) => void;
 }
 
 export class NetworkWatch {
@@ -77,9 +84,30 @@ export class NetworkWatch {
   }
 
   /** The person's choice from the Status sheet (true for Offline), then a
-   *  fresh read, answered so the renderer learns main's view at once. */
+   *  fresh read, answered so the renderer learns main's view at once. A
+   *  change is kept for the next launch; a write that fails never stops the
+   *  choice taking effect now. */
   choose(chosen: boolean): OfflineAnswer {
-    this.chosen = chosen;
+    if (chosen !== this.chosen) {
+      this.chosen = chosen;
+      try {
+        this.deps.remember?.(chosen);
+      } catch {
+        // Best effort: this launch holds the choice either way.
+      }
+    }
     return this.tick();
+  }
+
+  /** The choice kept from the last launch, set the moment main starts and
+   *  before anything reads the network (Electron's net waits for the app to
+   *  be ready): a chosen Offline reaches the engine's flag at once, so no
+   *  session, routine, or paired phone sees this computer online first. The
+   *  next tick reads the network as usual; nothing is written back. */
+  restore(chosen: boolean): void {
+    this.chosen = chosen;
+    if (!chosen) return;
+    this.lastReason = 'chosen';
+    this.deps.apply('chosen');
   }
 }

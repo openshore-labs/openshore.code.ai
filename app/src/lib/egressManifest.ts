@@ -95,8 +95,8 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'team',
     recipient: 'OpenShore (us)',
-    what: 'Notes you put in a team vault, and team project settings, so your team can read them.',
-    when: 'Only in a team vault or a team project.',
+    what: 'Your organization (its name, seats, and plan), the email addresses you invite and their roles, notes you put in a team vault, and team project settings, so your team can read them.',
+    when: 'Only when you set up an organization or invite someone, and in a team vault or a team project.',
     start: 'off',
     hosts: ['env:VITE_SUPABASE_URL'],
     feature: 'teams',

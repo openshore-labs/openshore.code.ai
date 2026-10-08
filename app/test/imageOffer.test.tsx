@@ -175,6 +175,7 @@ describe('the two guides', () => {
       'ollama pull moondream',
       'launchctl setenv OLLAMA_HOST "0.0.0.0"',
       '[Service]\nEnvironment="OLLAMA_HOST=0.0.0.0"',
+      'launchctl unsetenv OLLAMA_HOST',
     ]);
     const text = guideOpening(local);
     // Ollama's own way to listen on the network on each system, so the
@@ -184,6 +185,28 @@ describe('the two guides', () => {
     expect(text).toContain('add OLLAMA_HOST with the value 0.0.0.0 to your account');
     expect(text).not.toContain('ollama serve');
     expect(text).toContain('never forward port 11434 to the internet');
+    // 0.0.0.0 is every network a laptop joins, and Ollama has no password
+    // (privacy review, 2026-10-08): said before the setting, never "your
+    // home network", and each system's way to take it away again.
+    expect(text).not.toMatch(/home network too/);
+    expect(text).toContain(
+      'Ollama has no password, so once this is set it answers anyone on every network this computer joins, not only your home one, until you remove the setting',
+    );
+    expect(text).toContain('On a laptop, keep to networks you trust, or remove the setting');
+    expect(text.indexOf('Ollama has no password')).toBeLessThan(
+      text.indexOf('add OLLAMA_HOST with the value 0.0.0.0'),
+    );
+    expect(text).toContain('delete OLLAMA_HOST from your account');
+    expect(text).toContain('delete the two lines you added');
+    // The plan is walked one step at a time, so each way back says it is for
+    // later, on every system, and nobody takes the setting away by mistake
+    // on their way to the next picture (sign-off, 2026-10-08).
+    const ways = local.steps.slice(-2).map((s) => (typeof s === 'string' ? s : s.text));
+    expect(ways).toHaveLength(2);
+    for (const way of ways) {
+      expect(way).toMatch(/\blater\b/i);
+      expect(way).toMatch(/\bremove\b/);
+    }
     expect(text).toContain('Connect a model under Bench');
     expect(text).toContain('Address: `http://100.x.y.z:11434/v1`');
     expect(text).toContain('Model name: llava:7b');

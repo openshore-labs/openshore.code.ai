@@ -192,4 +192,17 @@ describe('what leaves, by release tier', () => {
     const all = egressByRecipient(4).flatMap((g) => g.entries.map((e) => e.id));
     expect(all).toEqual(expect.arrayContaining(['team', 'decisions', 'codemagic', 'agents']));
   });
+
+  it("a teams build's entry names the organization and the addresses you invite (privacy review, 2026-10-08)", () => {
+    // pushOrgToServer writes the org's name, seats and plan, and an
+    // org_members row (email and role) for each person invited.
+    const team = EGRESS.find((e) => e.id === 'team')!;
+    expect(team.feature).toBe('teams');
+    expect(team.what).toMatch(/^Your organization \(its name, seats, and plan\)/);
+    expect(team.what).toContain('the email addresses you invite and their roles');
+    expect(team.when).toMatch(/set up an organization or invite someone/);
+    const store = readFileSync(join(process.cwd(), 'src', 'state', 'store.ts'), 'utf8');
+    expect(store).toMatch(/supabaseInsert<ServerOrg>\('orgs'/);
+    expect(store).toMatch(/supabaseInsert<ServerMember>\('org_members'/);
+  });
 });

@@ -7,7 +7,9 @@
 --   0022: the ladder's warning carries the ruled appeal address;
 --   0026: Download my data version 2 (with the caller's push_sends and
 --     likeness_consents), and the retention job's tombstone line, counted from
---     the termination a tombstone carries.
+--     the termination a tombstone carries;
+--   0027: the two retention jobs it schedules, the push data's and the login
+--     service's logs, at their times and with their intervals.
 -- Run with `supabase test db` against a database that has every migration
 -- applied, whether built from empty or by replaying production (the CI jobs
 -- `sql` and `sql-replay`). Its own transaction and its own plan(); every
@@ -25,7 +27,7 @@
 -- Error codes: 42501 is a missing privilege; P0001 a plpgsql `raise exception`.
 
 begin;
-select plan(57);
+select plan(61);
 
 -- ------------------------------------------------------------ fixtures
 --   p1 = one: owns the team, blocks, reviews, exports
@@ -490,6 +492,32 @@ select is(
   (select count(*) from public.deletion_holds where user_id_sha256 = repeat('d', 64)),
   0::bigint,
   'a deletion hold whose hold has ended goes');
+
+-- ------------------------------------------------------------ 0027: retention
+-- What the privacy policy and the review's Data-we-keep table state: the push
+-- send log 2 days, stale tokens and grants 180 days (a revoked grant 30), a
+-- week of the login service's audit log, and no IP address or user agent kept
+-- on its sessions.
+select is(
+  (select schedule from cron.job where jobname = 'oscode_privacy_retention'),
+  '17 4 * * *',
+  'the push data retention job runs daily at 04:17 UTC');
+select ok(
+  (select command like '%delete from public.push_sends where created_at < now() - interval ''2 days'';%'
+      and command like '%revoked_at < now() - interval ''30 days''%'
+      and command like '%coalesce(last_sent_at, created_at) < now() - interval ''180 days''%'
+      and command like '%delete from public.push_devices where updated_at < now() - interval ''180 days'';%'
+     from cron.job where jobname = 'oscode_privacy_retention'),
+  'it keeps the send log 2 days, and stale tokens and grants 180 days');
+select is(
+  (select schedule from cron.job where jobname = 'oscode_auth_log_retention'),
+  '23 4 * * *',
+  'the login log retention job runs daily at 04:23 UTC');
+select ok(
+  (select command like '%delete from auth.audit_log_entries where created_at < now() - interval ''7 days'';%'
+      and command like '%update auth.sessions set ip = null, user_agent = null%'
+     from cron.job where jobname = 'oscode_auth_log_retention'),
+  'it keeps a week of the audit log, and no IP address or user agent on a session');
 
 select * from finish();
 rollback;

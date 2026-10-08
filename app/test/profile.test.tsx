@@ -138,8 +138,15 @@ describe('signed in', () => {
     // Said once, by the profile's own row (CX, 2026-10-02).
     const { SIGNED_IN_PERKS } = await import('../src/lib/accountGate.js');
     expect(sheet).not.toContain(SIGNED_IN_PERKS);
-    // Never claims more than the code does (CTO, 2026-10-02).
+    // Never claims more than the code does (CTO, 2026-10-02). The suite runs
+    // at tier 4, where teams keep rows on our server, so the line claims only
+    // the person's own and names what a team keeps (privacy review,
+    // 2026-10-08); a Personal build's line is in tierPersonal.test.ts.
     expect(sheet).not.toMatch(/stay on the device they were made on/);
+    expect(sheet).toContain(
+      'OpenShore does not copy your own chats, projects, keys, or vault to your account.',
+    );
+    expect(sheet).toContain('the addresses it invites are kept on our server');
     expect(sheet).not.toMatch(/beta|OpenShore Plus/);
   });
 
