@@ -97,6 +97,9 @@ describe('the page gutter', () => {
     ]);
     for (const sel of ['.chat-list .chat-row', '.project-row', '.project-chat-row'])
       expect(values(sel, 'padding'), sel).toEqual(['var(--row-pad) var(--gutter)']);
+    // A chat row outside the list sits inside the gutter already, so it
+    // insets by a card's pad, as a ledger row does, never a typed 13px 14px.
+    expect(values('.chat-row', 'padding')).toEqual(['var(--row-pad) var(--card-pad)']);
     for (const v of values('.chat-list .chat-row::after', 'left')) expect(v).toBe('var(--gutter)');
     for (const v of values('.chat-list .chat-row::after', 'right'))
       expect(['0', 'var(--gutter)']).toContain(v);

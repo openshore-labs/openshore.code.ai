@@ -260,7 +260,8 @@ describe('the delightful first-run (Creative Studio: The Standing Light)', () =>
     expect(paths).toContain('`A coding model on ${thisDeviceNoun()}, ${HARBOR_APPROX_LABEL}`');
     expect(paths).not.toContain('Real reasoning');
     const page = readFileSync(join(process.cwd(), 'src/screens/OnboardingScreen.tsx'), 'utf8');
-    expect(page).toContain('Everything below is optional.');
+    // Its last two words hold together on a narrow window (Slide Over).
+    expect(page).toContain("SETUP_LEAD_TAIL = 'Everything below is\\u00a0optional.'");
     expect(page).toContain('<BackBar');
   });
 

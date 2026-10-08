@@ -27,6 +27,11 @@ export function setupLead(desktop: boolean): string {
     : `Chat and build on ${thisDeviceNoun()} and on your own computer.`;
 }
 
+/** The lead's second sentence. A no-break space holds its last two words
+ *  together, so a narrow window (Slide Over, 320pt) never leaves "optional."
+ *  alone on the last line, in a web view too old for text-wrap: pretty. */
+export const SETUP_LEAD_TAIL = 'Everything below is\u00a0optional.';
+
 export function OnboardingScreen() {
   const { setView, saveSettings } = useApp();
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -64,7 +69,7 @@ export function OnboardingScreen() {
               <span style={{ whiteSpace: 'nowrap' }}>Your keys.</span>
             </h1>
             <p className="lead" style={{ marginTop: 8 }}>
-              {setupLead(isDesktop())} Everything below is optional.
+              {setupLead(isDesktop())} {SETUP_LEAD_TAIL}
             </p>
           </div>
 

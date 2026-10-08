@@ -260,9 +260,11 @@ export function ReposScreen() {
         {/* One row per platform. Once connected, the row says what connecting
             gave you; before, how you connect: "Access token" is the form's
             own word, since Bitbucket's is an Atlassian API token, not a
-            personal access token. A tap opens the connect sheet, or, once
-            connected, asks before it disconnects (no chevron: a question,
-            not a place). */}
+            personal access token. A platform with its sign-in on this build
+            names both of its sheet's doors (the sign-in behind Connect, and
+            the access token), never "one tap", since the row's tap opens the
+            sheet first. A tap opens the connect sheet, or, once connected, asks
+            before it disconnects (no chevron: a question, not a place). */}
         <SettingsGroup title="Connect a platform" index={0}>
           {REPO_CONNECTORS.map((c) => {
             const on = Boolean(connectedRepoPlatforms[c.id]);
@@ -281,7 +283,7 @@ export function ReposScreen() {
                       : busy
                         ? 'Connecting...'
                         : oauth
-                          ? 'Authorize with one tap'
+                          ? 'Sign in, or paste an access token'
                           : 'Paste an access token'
                   }
                   value={on ? <span className="pill ok">Connected</span> : undefined}

@@ -41,7 +41,10 @@ export const HARBOR_MODEL_NAME = 'Harbor';
 // before a build; this sandbox cannot reach huggingface.co to check it.
 export const HARBOR_MODEL_URL =
   'https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf';
-export const HARBOR_APPROX_LABEL = 'about 2.5 GB';
+/** Harbor's download, said as one unit: no-break spaces hold "about 2.5 GB"
+ *  on one line, so a narrow window (Slide Over, 320pt) never leaves "2.5 GB"
+ *  alone on the next. */
+export const HARBOR_APPROX_LABEL = 'about\u00a02.5\u00a0GB';
 /** The honest name of the weights behind the slot, for attribution copy. */
 export const HARBOR_WEIGHTS_NAME = 'Qwen3 4B Instruct';
 

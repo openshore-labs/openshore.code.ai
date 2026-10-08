@@ -24,8 +24,8 @@ The shipped advisor team was CTO, CMO, CFO, CX, Creative Studio, Chief of Staff,
 Board, Corporate Strategist, with personas full of company framing ("you earned
 the seat through product", "burn", "unit economics", "the org"). For a person
 building anything other than a venture-backed startup, that is the wrong costume:
-the *abilities* (technical review, marketing, finance, strategy) are exactly what
-they want, the *titles and framing* are not.
+the _abilities_ (technical review, marketing, finance, strategy) are exactly what
+they want, the _titles and framing_ are not.
 
 ### Creative Studio: the invite was a floating paragraph under two buttons
 
@@ -40,16 +40,16 @@ a newcomer, had the least structure.
 2. **The advisor team is reframed as project-agnostic advisors**, keeping every
    business ability, in `crewPresets.ts`:
 
-   | Was | Now |
-   | --- | --- |
-   | CTO | Technical Advisor |
-   | CMO | Marketing Advisor |
-   | CFO | Finance Advisor |
-   | CX | Research Advisor |
-   | Creative Studio | Creative Studio (kept; already agnostic) |
-   | Chief of Staff | Coordinator |
-   | Board | Sounding Board |
-   | Corporate Strategist | Strategy Advisor |
+   | Was                  | Now                                      |
+   | -------------------- | ---------------------------------------- |
+   | CTO                  | Technical Advisor                        |
+   | CMO                  | Marketing Advisor                        |
+   | CFO                  | Finance Advisor                          |
+   | CX                   | Research Advisor                         |
+   | Creative Studio      | Creative Studio (kept; already agnostic) |
+   | Chief of Staff       | Coordinator                              |
+   | Board                | Sounding Board                           |
+   | Corporate Strategist | Strategy Advisor                         |
 
    The personas were rewritten to advise on "whatever you are building or
    deciding" rather than a company, while keeping the capability and each one's
@@ -58,6 +58,7 @@ a newcomer, had the least structure.
    advisory and the person decides. The activity labels lost their dev framing
    too: "Reviews builds" is now "Reviews the work", "Auto-reasoning" is "Joins on
    its own", "Request only" is "When you ask".
+
 3. **The invite became a card.** An "Advisors" section with a title, the plain
    description, and the one-tap add, so the ready-made team reads as one clear
    offer. The roster sits under a "Your crew" label.
@@ -82,7 +83,7 @@ shipped as a C-suite until today).
 ## Open, for the founder
 
 - **The internal dev-process references still say "CTO".** `CLAUDE.md` and this
-  session's own review voices use the C-suite titles for how the *repo* is built
+  session's own review voices use the C-suite titles for how the _repo_ is built
   (a separate thing from the shipped app preset). Left as-is; say the word to
   align those too.
 - **Taste on the names.** "Sounding Board" (was Board) and "Coordinator" (was
@@ -90,3 +91,7 @@ shipped as a C-suite until today).
 - **Card actions.** Edit and Delete as two pills per card is the one bit of the
   roster that still feels heavy; a swipe-to-delete (as the routines list uses)
   is a natural follow-up.
+  - Settled 2026-10-07 (founder, D18 of `docs/ux-review-2026-10-07.md`): the
+    card opens the editor, a swipe deletes, and "Delete {name}" sits at the
+    editor's foot. The ruling is the 2026-10-07 D18 line in
+    `os-code/DECISIONS.md`.
