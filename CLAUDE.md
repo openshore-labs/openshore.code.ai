@@ -234,7 +234,9 @@ fails on an unclassified key and holds one test per attack vector. A new
 config key is not done until it is classified there. Trust and "always allow
 in this project" grants live on the machine (`~/.os-code/trust.json`), never
 in the repo. "Local" is judged by address (`isLocalHost`, `leavesThisNetwork`),
-never by a provider's config label.
+never by a provider's config label, and a seat by `seatLeaves`, which adds the
+model's name: an Ollama cloud tag (`:cloud`, `-cloud`) leaves this network
+though its server is localhost (privacy review, 2026-10-08).
 
 ## This build is Personal: release tiers (standing rule, founder 2026-09-27)
 
