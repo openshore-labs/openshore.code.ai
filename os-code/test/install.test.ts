@@ -134,6 +134,30 @@ describe('a pull that fails with the network up says so plainly', () => {
     expect(away.detail).not.toMatch(/registry|dial|lookup|https?:/);
   });
 
+  it('a model newer than the Ollama here: update Ollama, since trying again cannot help', async () => {
+    ollamaSays(
+      'pull model manifest: 412: The model you are attempting to pull requires a newer version of Ollama. Please download the latest version at: https://ollama.com/download',
+    );
+    const res = await installOllamaRef('qwen9:1b', () => {});
+    expect(res).toEqual({
+      ok: false,
+      detail: 'qwen9:1b needs a newer Ollama on your computer. Update Ollama, then try again.',
+      reason: 'update',
+    });
+  });
+
+  it('a room on the computer itself names it so; the engine says your computer', () => {
+    expect(pullFailedLine('DeepBlue', 'disk', 'this computer')).toBe(
+      'Not enough disk space on this computer for DeepBlue. Free some space, then try again.',
+    );
+    expect(pullFailedLine('DeepBlue', 'update', 'this computer')).toBe(
+      'DeepBlue needs a newer Ollama on this computer. Update Ollama, then try again.',
+    );
+    expect(pullFailedLine('DeepBlue', 'unreachable')).toBe(
+      'Could not reach the Ollama library from your computer. Check its internet connection, then try again.',
+    );
+  });
+
   it('anything else is one plain line with Try again, never the raw error', async () => {
     ollamaSays('unexpected EOF in layer sha256:abc123');
     const res = await installModel(model, () => {});
@@ -145,7 +169,7 @@ describe('a pull that fails with the network up says so plainly', () => {
   });
 
   it('every line names the model, ends on the way on, and carries no dash or raw text', () => {
-    const reasons = ['not-found', 'disk', 'unreachable', 'stopped', 'failed'] as const;
+    const reasons = ['not-found', 'update', 'disk', 'unreachable', 'stopped', 'failed'] as const;
     for (const reason of reasons) {
       const line = pullFailedLine('DeepBlue', reason);
       expect(line, line).toMatch(/try again\.$/i);
@@ -159,6 +183,7 @@ describe('a pull that fails with the network up says so plainly', () => {
     expect(pullFailure('pull model manifest: file does not exist')).toBe('not-found');
     expect(pullFailure("model 'nope' not found")).toBe('not-found');
     expect(pullFailure('no space left on device')).toBe('disk');
+    expect(pullFailure('412: requires a newer version of Ollama')).toBe('update');
     expect(pullFailure('dial tcp 104.21.0.1:443: i/o timeout')).toBe('unreachable');
     expect(pullFailure('getaddrinfo ENOTFOUND registry.ollama.ai')).toBe('unreachable');
     expect(pullFailure('max retries exceeded: unexpected EOF')).toBe('failed');

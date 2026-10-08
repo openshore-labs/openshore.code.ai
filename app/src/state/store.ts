@@ -159,6 +159,7 @@ import { claudeModelLabel } from '../lib/claudeModels.js';
 import {
   cloudWaitLine,
   desktopOnline,
+  LOCAL_MODEL_SEAT_FAILED,
   localModelFailedLine,
   networkUp,
   offlineChosen,
@@ -11750,14 +11751,17 @@ export const useApp = create<AppState>((set, get, api) => {
               : { percent: 0, label: p.line || 'Downloading', indeterminate: true },
         });
       });
-      // The pull's own answer, kept so a failure is worded by why it failed.
+      // The pull's own answer, kept so a failure is worded by why it failed;
+      // a failure after it landed is the seat's, never the download's.
       let failedPull: { detail: string; reason?: PullFailure } | undefined;
+      let pulledOk = false;
       try {
         const pulled = await b.installModel(size.catalogId);
         if (!pulled.ok) {
           failedPull = pulled;
           throw new Error(pulled.detail);
         }
+        pulledOk = true;
         if (opts?.seat !== false) {
           set({ harborMasterDownload: { percent: 100, label: 'Seating', indeterminate: true } });
           const seated = await b.setOrchestrator(size.ollamaRef);
@@ -11775,7 +11779,9 @@ export const useApp = create<AppState>((set, get, api) => {
         set({
           harborMasterDownload: {
             percent: 0,
-            label: localModelFailedLine(networkUp(get().connectivity), failedPull),
+            label: pulledOk
+              ? LOCAL_MODEL_SEAT_FAILED
+              : localModelFailedLine(networkUp(get().connectivity), failedPull),
             failed: true,
           },
         });

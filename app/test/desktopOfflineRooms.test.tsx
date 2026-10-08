@@ -236,12 +236,20 @@ describe("the desktop Stack's quiet door", () => {
     expect(dom.text()).toContain(
       'Reasoning model · Waits for a connection. qwen3:4b on this computer answers for now.',
     );
+    const note = () => dom.container.querySelector('.stack-status-note')?.textContent;
+    expect(note()).toBe(
+      "Offline. This computer's models answer. Cloud models wait for a connection.",
+    );
 
     machine.status = status('cloud', ['nomic-embed-text']);
     await dom.render(null);
     await dom.render(<StackScreen />);
     await dom.settle();
     expect(dom.text()).toContain('No model on this computer can answer yet.');
+    // The status line above agrees with the row: nothing here answers yet.
+    expect(note()).toBe(
+      'Offline. No model on this computer can answer yet. Cloud models wait for a connection.',
+    );
   });
 
   it('the connection dropped: the line, and no door (the lone pill is in the bar)', async () => {

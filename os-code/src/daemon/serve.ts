@@ -808,7 +808,14 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     if (req.method === 'GET' && url.pathname === '/stack') {
       // Read fresh, as every session and the free chat read it, so a stack
       // changed on the desktop since this daemon started is the one reported.
-      const config = loadConfig().config;
+      // A config that no longer reads keeps the one this daemon started with,
+      // as this route always answered.
+      let config: OscConfig;
+      try {
+        config = loadConfig().config;
+      } catch {
+        config = options.config;
+      }
       const stack = config.stack;
       const registry = new ProviderRegistry(config, getAnthropicKey);
       // Where the orchestrator runs, judged by address (leavesThisNetwork),

@@ -7,7 +7,8 @@
 
 /** Why a pull did not finish. `offline` is this computer with no network;
  *  the rest happen with the network up. */
-export type PullFailure = 'offline' | 'not-found' | 'disk' | 'unreachable' | 'stopped' | 'failed';
+export type PullFailure =
+  'offline' | 'not-found' | 'update' | 'disk' | 'unreachable' | 'stopped' | 'failed';
 
 /** What a pull answers: a plain line, and why when it failed. */
 export interface PullResult {
@@ -20,6 +21,9 @@ export interface PullResult {
  *  does not recognise is a plain failure, and Try again is the way on. */
 export function pullFailure(cause: string): Exclude<PullFailure, 'offline' | 'stopped'> {
   if (/no space left|not enough (disk )?space|disk (is )?full|ENOSPC/i.test(cause)) return 'disk';
+  // A model newer than the Ollama that would run it: trying again cannot
+  // help until Ollama is updated, so it gets its own way on.
+  if (/newer version of ollama/i.test(cause)) return 'update';
   if (
     /no such host|dial tcp|i\/o timeout|network is unreachable|connection refused|tls handshake|context deadline exceeded|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ENETUNREACH|EHOSTUNREACH/i.test(
       cause,
@@ -34,15 +38,22 @@ export function pullFailure(cause: string): Exclude<PullFailure, 'offline' | 'st
 }
 
 /** The line a failed pull leaves, naming the model and the way on. Engine
- *  words say "your computer", because a paired phone shows them too. */
-export function pullFailedLine(name: string, reason: Exclude<PullFailure, 'offline'>): string {
+ *  words say "your computer", because a paired phone shows them too; a room
+ *  on the computer itself may name it "this computer". */
+export function pullFailedLine(
+  name: string,
+  reason: Exclude<PullFailure, 'offline'>,
+  computer = 'your computer',
+): string {
   switch (reason) {
     case 'not-found':
       return `Ollama has no model called ${name}. Check the name, then try again.`;
+    case 'update':
+      return `${name} needs a newer Ollama on ${computer}. Update Ollama, then try again.`;
     case 'disk':
-      return `Not enough disk space on your computer for ${name}. Free some space, then try again.`;
+      return `Not enough disk space on ${computer} for ${name}. Free some space, then try again.`;
     case 'unreachable':
-      return 'Could not reach the Ollama library from your computer. Check its internet connection, then try again.';
+      return `Could not reach the Ollama library from ${computer}. Check its internet connection, then try again.`;
     case 'stopped':
       return `The download of ${name} stopped partway. Try again.`;
     case 'failed':

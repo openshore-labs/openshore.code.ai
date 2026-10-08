@@ -221,5 +221,11 @@ describe('the daemon tells a paired phone', () => {
       provider: 'ollama',
       kind: 'local',
     });
+    // A config that no longer reads keeps the one the daemon started with,
+    // rather than failing the room.
+    writeFileSync(join(home, 'config.json'), JSON.stringify({ stack: 42 }));
+    const res = await fetch(`${base}/stack`, { headers: { authorization: `Bearer ${token}` } });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as DaemonStackInfo).description).toBe('not set up yet');
   });
 });

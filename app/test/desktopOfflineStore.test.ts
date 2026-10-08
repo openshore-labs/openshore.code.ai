@@ -17,6 +17,8 @@ const desk = vi.hoisted(() => ({
   sent: [] as string[],
   // What a model pull answers (Desktop Offline follow-up, 2026-10-08).
   pull: { ok: true, detail: 'pulled' } as { ok: boolean; detail: string; reason?: string },
+  // Whether saving the seat fails after the pull (the config cannot be written).
+  seatFails: false,
 }));
 
 vi.mock('../src/lib/platform.js', () => ({
@@ -69,7 +71,10 @@ vi.mock('../src/lib/electronBridge.js', async (importOriginal) => ({
           }),
           onInstallProgress: () => () => {},
           installModel: async () => desk.pull,
-          setOrchestrator: async () => ({ ok: true, detail: 'seated' }),
+          setOrchestrator: async () => {
+            if (desk.seatFails) throw new Error('EACCES: permission denied, open config.json');
+            return { ok: true, detail: 'seated' };
+          },
         }
       : undefined,
 }));
@@ -105,7 +110,7 @@ vi.mock('../src/lib/insights.js', () => ({
 }));
 
 const { useApp } = await import('../src/state/store.js');
-const { cloudWaitLine } = await import('../src/state/offlineOps.js');
+const { cloudWaitLine, LOCAL_MODEL_SEAT_FAILED } = await import('../src/state/offlineOps.js');
 const { claudeModelLabel } = await import('../src/lib/claudeModels.js');
 const settle = () => new Promise((r) => setTimeout(r, 30));
 
@@ -115,6 +120,7 @@ beforeEach(() => {
   desk.on = true;
   desk.mainOnline = true;
   desk.pull = { ok: true, detail: 'pulled' };
+  desk.seatFails = false;
   desk.reports.length = 0;
   desk.sent.length = 0;
   Object.defineProperty(globalThis, 'navigator', {
@@ -224,7 +230,20 @@ describe('a DeepBlue download that fails with the network up (Desktop Offline fo
     };
     await useApp.getState().ensureHarborMaster({ seat: false });
     expect(useApp.getState().harborMasterDownload?.label).toBe(
-      'Not enough disk space on your computer for DeepBlue. Free some space, then try again.',
+      'Not enough disk space on this computer for DeepBlue. Free some space, then try again.',
+    );
+  });
+
+  it('a download that landed but could not be seated never says the download failed', async () => {
+    desk.pull = { ok: true, detail: 'qwen2.5-coder:7b is pulled and ready.' };
+    desk.seatFails = true;
+    expect(await useApp.getState().ensureHarborMaster()).toBe(false);
+    expect(useApp.getState().harborMasterDownload).toMatchObject({
+      label: LOCAL_MODEL_SEAT_FAILED,
+      failed: true,
+    });
+    expect(LOCAL_MODEL_SEAT_FAILED).toBe(
+      'DeepBlue is on this computer, but could not be set up to answer. Try again.',
     );
   });
 

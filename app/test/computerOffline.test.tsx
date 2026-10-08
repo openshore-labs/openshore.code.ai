@@ -161,6 +161,21 @@ describe("the phone's model sheet, while its computer is offline", () => {
     expect(picked).toEqual([]);
   });
 
+  it('Chat with your computer shows only while a model there runs the show, as the free chat needs', async () => {
+    // A cloud model in charge: the free chat would refuse it, so no row.
+    box.stack = computerStack({ offline: 'chosen' });
+    await openSheet();
+    expect(dom.text()).not.toContain('Chat with your computer');
+    await dom.render(null);
+    box.stack = computerStack({
+      offline: 'network',
+      orchestrator: { model: 'qwen2.5-coder:7b', provider: 'ollama', kind: 'local' },
+      offlineSeat: { model: 'qwen2.5-coder:7b', provider: 'ollama' },
+    });
+    await openSheet();
+    expect(dom.text()).toContain('Chat with your computer');
+  });
+
   it("this phone's own cloud models are untouched: the phone is online", async () => {
     box.stack = computerStack({ offline: 'network' });
     await openSheet();

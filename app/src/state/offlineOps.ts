@@ -92,12 +92,16 @@ export function cloudWaitLine(modelName: string, chosen: boolean, here: string):
 }
 
 /** The desktop Stack's status line under its lead (the phone's note, in this
- *  computer's words). */
-export function desktopStackNote(offline: boolean, chosen: boolean): string {
+ *  computer's words). `seat` is false once the engine's status names no
+ *  model that answers offline, so the line agrees with Runs the show below
+ *  it; until the status has answered it keeps its words. */
+export function desktopStackNote(offline: boolean, chosen: boolean, seat?: boolean): string {
   if (!offline) return "Online. Cloud models and this computer's models can answer.";
+  const answers =
+    seat === false ? 'No model on this computer can answer yet.' : "This computer's models answer.";
   return chosen
-    ? "Offline, by your choice. This computer's models answer. Cloud models wait until you follow the connection again."
-    : "Offline. This computer's models answer. Cloud models wait for a connection.";
+    ? `Offline, by your choice. ${answers} Cloud models wait until you follow the connection again.`
+    : `Offline. ${answers} Cloud models wait for a connection.`;
 }
 
 /** The chat's offline banner. The network down keeps its words; Offline
@@ -170,10 +174,15 @@ export function localModelFailedLine(
     return pullFailedLine(
       HARBOR_MASTER_MODEL_NAME,
       pulled.reason === 'not-found' ? 'failed' : pulled.reason,
+      'this computer',
     );
   }
   return pulled?.detail || pullFailedLine(HARBOR_MASTER_MODEL_NAME, 'failed');
 }
+
+/** Said when DeepBlue downloaded but could not be made the model that runs
+ *  the show: the download is done, so the line never says it failed. */
+export const LOCAL_MODEL_SEAT_FAILED = `${HARBOR_MASTER_MODEL_NAME} is on this computer, but could not be set up to answer. Try again.`;
 
 /** Said once DeepBlue is on this computer from that door. */
 export const LOCAL_MODEL_READY = `${HARBOR_MASTER_MODEL_NAME} is on this computer. Try your message again.`;

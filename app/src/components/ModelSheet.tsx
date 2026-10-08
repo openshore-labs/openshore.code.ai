@@ -254,6 +254,14 @@ export function ModelSheet({
     computerOfflineOf(boxStack) !== undefined &&
     boxStack.orchestrator?.kind === 'cloud';
   const boxSeat = boxCloudOffline ? boxStack.offlineSeat?.model : undefined;
+  // The free chat runs only a model that stays on the computer's network
+  // (the daemon refuses any other by address), so its row shows only then,
+  // as the desktop's does (engineChatReady).
+  const boxChat =
+    boxStack !== undefined &&
+    boxStack !== 'error' &&
+    boxStack.orchestrator !== undefined &&
+    boxStack.orchestrator.kind !== 'cloud';
 
   // The desktop app's own engine: the model this machine runs (Ollama or a
   // cloud key set up in the Stack). This is the default brain on desktop, so
@@ -500,7 +508,7 @@ export function ModelSheet({
                 )}
                 {/* The free companion to the paid agent above: read-only chat
                     with the same local models, no repo, no edits, no charge. */}
-                {daemon && boxStack && boxStack !== 'error' ? (
+                {daemon && boxChat ? (
                   <Row
                     main="Chat with your computer"
                     sub="Free. Read-only, no repository or edits."

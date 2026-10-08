@@ -250,6 +250,7 @@ describe('the lines each room says', () => {
       desktopStackNote(false, false),
       desktopStackNote(true, false),
       desktopStackNote(true, true),
+      desktopStackNote(true, true, false),
       keyCheckWaits('Claude'),
       profileBlurb('docked', true, true),
     ];
@@ -261,6 +262,15 @@ describe('the lines each room says', () => {
       'Offline, so Opus 5 waits for a connection. Choose a model on this computer to keep going, or try again once you are online.',
     );
     expect(desktopStackNote(true, false)).toMatch(/Cloud models wait for a connection\.$/);
+    // Once the engine names no model that answers offline, the line says so.
+    expect(desktopStackNote(true, false, true)).toBe(desktopStackNote(true, false));
+    expect(desktopStackNote(true, false, false)).toBe(
+      'Offline. No model on this computer can answer yet. Cloud models wait for a connection.',
+    );
+    expect(desktopStackNote(true, true, false)).toBe(
+      'Offline, by your choice. No model on this computer can answer yet. Cloud models wait until you follow the connection again.',
+    );
+    expect(desktopStackNote(false, false, false)).toBe(desktopStackNote(false, false));
     expect(connectionsOfflineLine(false)).toMatch(/wait for a connection/);
     expect(keyCheckWaits('Claude')).toBe(
       'Saving checks the key with Claude, so it waits for a connection.',
@@ -393,11 +403,16 @@ describe('a DeepBlue download that fails (Desktop Offline follow-up)', () => {
     expect(localModelFailedLine(true, { detail: raw, reason: 'stopped' })).toBe(
       'The download of DeepBlue stopped partway. Try again.',
     );
+    // DeepBlue's lines show on the computer itself, so they name it as the
+    // desktop's rooms do.
     expect(localModelFailedLine(true, { detail: raw, reason: 'disk' })).toBe(
-      'Not enough disk space on your computer for DeepBlue. Free some space, then try again.',
+      'Not enough disk space on this computer for DeepBlue. Free some space, then try again.',
     );
-    expect(localModelFailedLine(true, { detail: raw, reason: 'unreachable' })).toMatch(
-      /^Could not reach the Ollama library/,
+    expect(localModelFailedLine(true, { detail: raw, reason: 'unreachable' })).toBe(
+      'Could not reach the Ollama library from this computer. Check its internet connection, then try again.',
+    );
+    expect(localModelFailedLine(true, { detail: raw, reason: 'update' })).toBe(
+      'DeepBlue needs a newer Ollama on this computer. Update Ollama, then try again.',
     );
     // A name the Ollama library lacks is the catalog's, never the person's to check.
     expect(localModelFailedLine(true, { detail: raw, reason: 'not-found' })).toBe(

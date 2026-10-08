@@ -246,7 +246,7 @@ export function StackScreen() {
 
         <div className="stack-status">
           <p className="stack-status-note" role="status">
-            {desktopStackNote(offline, chosen)}
+            {desktopStackNote(offline, chosen, status ? Boolean(status.offlineSeat) : undefined)}
           </p>
           {stepDown ? (
             <button
