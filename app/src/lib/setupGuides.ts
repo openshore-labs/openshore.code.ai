@@ -68,7 +68,7 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
       'On the DeepBlue row, tap Install. It picks the size that fits your computer and pulls it through Ollama, straight from the Ollama library. Keep using the app while it lands.',
       `When it finishes, the row reads Installed and DeepBlue is your Reasoning model on that computer. To reach it from ${thisDeviceNoun()}, pair the two under Pairing; it then appears as Your computer.`,
     ],
-    done: 'DeepBlue plans and edits your repositories on your computer. For the hardest steps, a cloud key on your own account is one tap away, and it always asks before it spends.',
+    done: "DeepBlue plans and edits your repositories on your computer. For the hardest steps, a cloud key on your own account is one tap away, and on your computer it asks before a cloud model's first step in each task.",
   },
   'connect-cloud-key': {
     id: 'connect-cloud-key',

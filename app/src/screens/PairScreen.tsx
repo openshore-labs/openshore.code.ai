@@ -354,7 +354,8 @@ function DesktopPair() {
 
         <p className="hint">
           Both devices sign in to the same Tailscale account, free for personal use. Work started
-          from the phone always asks before commands and cloud spend.
+          from the phone asks before every command, and before a cloud model's first step in each
+          task.
         </p>
 
         {/* The expert tools, folded away from a first pairing (CX 2026-10-01). */}

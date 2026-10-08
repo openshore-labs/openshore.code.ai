@@ -579,9 +579,10 @@ export function SettingsScreen() {
               What you send a local model stays on this device, and so does its answer, unless a
               cloud model in the same chat reads it later, on its own turn or as a step in a plan;
               if it searches the web, only the search words go out. Cloud models run on your own
-              keys, and only when you pick one or place it in your Stack. A few things do leave this
-              device, and every one is listed under What leaves this device, above: the words of a
-              web search, update checks, the model list, a notification token if you allow
+              keys or accounts (an Ollama cloud model on your Ollama account), and only when you
+              pick one or place it in your Stack. A few things do leave this device, and every one
+              is listed under What leaves this device, above: the words of a web search, a web page
+              the agent opens, update checks, the model list, a notification token if you allow
               notifications, and, while you are signed in, your account, a few preferences, and a
               record of any request the guardrail blocks. That record carries a category, a time,
               and a one-way hash, never your prompt and never the name of anyone it was about. No

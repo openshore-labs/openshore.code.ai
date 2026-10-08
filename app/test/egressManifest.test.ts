@@ -298,7 +298,7 @@ describe('the guides claim no more than the list', () => {
       'Connect a provider with your own API key. Its models wait on your bench until you place them, and a cloud model runs only when you pick it or place it. Keys are stored only on this device and sent only to their provider.',
     );
     expect(src('screens/SettingsScreen.tsx')).toContain(
-      'Cloud models run on your own keys, and only when you pick one or place it in your Stack. A few things do leave this device',
+      'Cloud models run on your own keys or accounts (an Ollama cloud model on your Ollama account), and only when you pick one or place it in your Stack. A few things do leave this device',
     );
   });
 
