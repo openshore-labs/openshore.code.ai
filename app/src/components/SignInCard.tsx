@@ -283,12 +283,15 @@ export function SignInCard({
     return true;
   };
 
+  // `done` is the toast for a finished errand. A sign-up says its own (whether
+  // a link was sent), so it passes none, and an empty one would replace that
+  // line with a blank pill.
   const run = async (needPassword: boolean, fn: () => Promise<unknown>, done: string) => {
     if (!guard(needPassword)) return;
     setBusy(true);
     try {
       await fn();
-      showToast(done);
+      if (done) showToast(done);
     } catch (err) {
       showToast(plainError(err));
     } finally {

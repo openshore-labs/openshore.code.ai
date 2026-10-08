@@ -9,6 +9,7 @@ const auth = vi.hoisted(() => ({
   needsConfirmation: true,
   signInError: undefined as Error | undefined,
   resent: [] as string[],
+  toasts: [] as string[],
 }));
 
 vi.mock('../src/hooks/useAuth.js', () => ({
@@ -34,7 +35,10 @@ vi.mock('../src/hooks/useAuth.js', () => ({
 }));
 
 vi.mock('../src/state/store.js', () => ({
-  useApp: () => ({ showToast: () => {}, unsentTeamTextCount: async () => 0 }),
+  useApp: () => ({
+    showToast: (text: string) => auth.toasts.push(text),
+    unsentTeamTextCount: async () => 0,
+  }),
 }));
 
 let dom: TestDom;
@@ -43,6 +47,7 @@ beforeEach(async () => {
   auth.needsConfirmation = true;
   auth.signInError = undefined;
   auth.resent = [];
+  auth.toasts = [];
 });
 afterEach(async () => {
   await dom.unmount();
@@ -84,6 +89,8 @@ describe('the sign-in sheet offers two doors under its button', () => {
     await dom.click('Create account');
     await dom.settle();
     expect(doors()).toEqual(['Already have an account? Sign in', 'Resend confirmation email']);
+    // The sign-up's own line is the last word, never a blank pill after it.
+    expect(auth.toasts).toEqual(['Account created. Check your email to confirm.']);
 
     await dom.click('Resend confirmation email');
     await dom.settle();
@@ -103,6 +110,7 @@ describe('the sign-in sheet offers two doors under its button', () => {
     await dom.click('Create account');
     await dom.settle();
     expect(doors()).toEqual(['Already have an account? Sign in', 'Email me a link instead']);
+    expect(auth.toasts).toEqual(['Account created. You are signed in.']);
   });
 
   it('a sign-in refused until the address is confirmed offers Resend', async () => {
