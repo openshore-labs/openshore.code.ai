@@ -265,7 +265,7 @@ describe('Image reading says who reads first, and when the Cloud model reads (K)
     expect(row('Cloud')).toMatch(/^Hosted reader · \w+ effort · Reads what Home reader cannot$/);
   });
 
-  it('a Cloud model that cannot read images, or a Cloud slot alone, claims no fallback', async () => {
+  it('a Cloud model that cannot read images or is out of reach, or a Cloud slot alone, claims no fallback', async () => {
     // Sonar Pro reads no pictures, so it takes none the Local model failed on.
     const sonarPro: StackModelRef = {
       kind: 'cloud',
@@ -278,6 +278,28 @@ describe('Image reading says who reads first, and when the Cloud model reads (K)
     const { StackManager } = await import('../src/components/StackManager.js');
     await dom.render(<StackManager />);
     expect(row('Cloud')).toMatch(/^Sonar Pro · \w+ effort$/);
+    await dom.render(null);
+    // A Cloud model that reads images but is out of reach (its provider is
+    // not connected on this device) takes no picture either, so it claims
+    // no fallback the chat path will not make.
+    const haiku: StackModelRef = {
+      kind: 'cloud',
+      provider: 'anthropic',
+      model: 'claude-haiku-4-5',
+      label: 'Claude Haiku 4.5',
+    };
+    useApp.setState({ connectedProviders: {} });
+    place(ref(HOME), haiku);
+    await dom.render(<StackManager />);
+    expect(row('Local')).toMatch(/^Home reader · \w+ effort$/);
+    expect(row('Cloud')).toMatch(/^Claude Haiku 4\.5 · \w+ effort$/);
+    await dom.render(null);
+    // Connected, the same model takes what the Local model failed on.
+    useApp.setState({ connectedProviders: { anthropic: true } });
+    await dom.render(<StackManager />);
+    expect(row('Cloud')).toMatch(
+      /^Claude Haiku 4\.5 · \w+ effort · Reads what Home reader cannot$/,
+    );
     await dom.render(null);
     // With no Local model, the Cloud model is the one that reads.
     place(ref(PUBLIC));

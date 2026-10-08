@@ -303,12 +303,16 @@ describe('the Stack names its image reader', () => {
     const harbor = { active: [writer], saved: {} };
     const alone = { reasoning: opus, active: [], saved: {} };
     const withWriter = { reasoning: opus, active: [writer], saved: {} };
-    // The stacks below that plan, and the one that does not.
+    // Which stacks plan (planCanRun is unchanged by E): the ones below that
+    // do, and the ones that do not.
     const { planCanRun } = await import('../src/lib/play.js');
     const online = () => true;
     expect(planCanRun(harbor, online, true)).toBe(false);
+    expect(planCanRun(alone, online, false)).toBe(false);
     expect(planCanRun(alone, online, true)).toBe(true);
     expect(planCanRun(withWriter, online, false)).toBe(true);
+    // Offline: the cloud anchor is out of reach, so no plan.
+    expect(planCanRun(withWriter, (r) => r.kind === 'device', true)).toBe(false);
     const line = 'None yet · Opus 5 reads images for now. It asks before a picture.';
     const { StackManager } = await import('../src/components/StackManager.js');
 
