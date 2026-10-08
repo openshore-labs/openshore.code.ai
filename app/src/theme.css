@@ -15596,7 +15596,17 @@ button.settings-row:active {
   opacity: 1;
 }
 
-/* Docking (connect-anywhere, 2026-10-07): the four ways in, the server's
+/* Docking (connect-anywhere, 2026-10-07): the two ways to dock as one
+   choice above Scan, and the other ways in below. */
+.dock-choice {
+  margin-bottom: var(--section-gap);
+}
+
+.dock-other-head {
+  margin-top: var(--section-gap);
+}
+
+/* Docking (connect-anywhere, 2026-10-07): the other ways in, the server's
    steps, and its one command. Press and hover ride the tokens; nothing
    transitions layout. */
 .dock-paths {
@@ -15634,10 +15644,6 @@ button.settings-row:active {
 
 .dock-path:active {
   scale: var(--press-scale-row);
-}
-
-.dock-path-active {
-  border-color: var(--accent);
 }
 
 .dock-path-title {

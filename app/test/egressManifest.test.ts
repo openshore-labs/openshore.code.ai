@@ -121,7 +121,7 @@ describe('what leaves this device', () => {
     expect('PLAN_IMAGE_STEP_LINE' in manifest).toBe(false);
     const cloud = EGRESS.find((e) => e.id === 'cloud-models')!;
     expect(cloud.when).toBe(
-      'Only when you pick a cloud model or place one in your Stack, and only on the turns it answers. On your computer, the coding agent asks first in each task.',
+      'Only when you pick a cloud model or place one in your Stack, and only on the turns it answers. On your computer, the coding agent asks first in each task. For Venice or OpenRouter, also when you connect its key or open Choose models.',
     );
     // Every way the exception was worded on a surface (the list's own line,
     // the Connections lead, Privacy plainly, the guides and Harbor Lite's

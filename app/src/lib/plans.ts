@@ -21,10 +21,10 @@ export interface PlanTier {
   blurb: string;
 }
 
-// The free default account: Chats, Projects, the Stack, Cloud Connections
-// and Settings. Every other room (the coding agent, Terminal, Repositories,
-// Vault, My Crew, Pairing) is the paid Personal unlock below, sold as
-// OpenShore Plus (lib/payGate.ts).
+// The free default account: Chats, Projects, the Stack, Cloud Connections,
+// Computer (docking, free since 2026-10-07) and Settings. Every other room
+// (the coding agent, Terminal, Repositories, Vault, My Crew) is the paid
+// Personal unlock below, sold as OpenShore Plus (lib/payGate.ts).
 export const PERSONAL_TIER: PlanTier = {
   id: 'personal',
   name: 'OpenShore Plus',

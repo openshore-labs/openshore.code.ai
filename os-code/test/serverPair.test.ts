@@ -16,6 +16,7 @@ import {
   isYes,
   serverPairingLink,
   tailnetAddress,
+  terminalSafe,
 } from '../src/connect/serverPair.js';
 import { _resetRoutineScheduler } from '../src/routines/scheduler.js';
 import {
@@ -151,6 +152,16 @@ describe('docking a phone to a server', () => {
     await expect(member.pending()).rejects.toThrow(/admin/);
   });
 
+  it('the desktop keeps its yes on the computer: no admin route answers there', async () => {
+    daemon = await start({ approvePairing: async () => false, kind: 'desktop' });
+    const base = `http://127.0.0.1:${daemon.port}`;
+    const shared = readFileSync(join(home, 'daemon.token'), 'utf8').trim();
+    const admin = new ServerPairClient(base, shared);
+    await expect(admin.mintClaim()).rejects.toThrow(/Not found/);
+    await expect(admin.pending()).rejects.toThrow(/Not found/);
+    await expect(admin.answer('pr_x', true)).rejects.toThrow(/Not found/);
+  });
+
   it('a daemon with neither a dialog nor the console still refuses at once (F3)', async () => {
     daemon = await start({});
     const base = `http://127.0.0.1:${daemon.port}`;
@@ -179,6 +190,11 @@ describe('the server pairing helpers', () => {
     expect(serverPairingLink(address, 'pc_abc')).toBe(
       'oscode://pair?u=http%3A%2F%2F100.64.1.2%3A4816&c=pc_abc',
     );
+  });
+
+  it('prints a label with no control or direction characters', () => {
+    expect(terminalSafe('iPhone\u009b[2J\u202eevil')).toBe('iPhone[2Jevil');
+    expect(terminalSafe('\u202e')).toBe('A device');
   });
 
   it('only a plain yes allows', () => {

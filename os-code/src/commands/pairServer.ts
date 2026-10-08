@@ -12,6 +12,7 @@ import {
   ServerPairClient,
   isYes,
   serverPairingLink,
+  terminalSafe,
   tailnetAddress,
 } from '../connect/serverPair.js';
 import { header, okLine, out, warnLine } from './util.js';
@@ -74,7 +75,8 @@ export async function pairServerCommand(): Promise<void> {
         for (const request of await client.pending()) {
           if (asked.has(request.id)) continue;
           asked.add(request.id);
-          header(`${request.label} wants to dock`);
+          const label = terminalSafe(request.label);
+          header(`${label} wants to dock`);
           out(`  ${t.text('Check that the phone shows the code')} ${t.local(request.code)}.`);
           const allow = isYes(await rl.question('  Allow this device? [y/N] '));
           const result = await client.answer(request.id, allow).catch((err: Error) => {
@@ -82,7 +84,7 @@ export async function pairServerCommand(): Promise<void> {
             return undefined;
           });
           if (result?.state === 'approved') {
-            okLine(`${request.label} is docked. It reaches this server over your tailnet.`);
+            okLine(`${label} is docked. It reaches this server over your tailnet.`);
             out(
               t.muted('  Revoke it any time from the phone, or: osc token list, osc token revoke'),
             );

@@ -225,6 +225,7 @@ import { VAULT_SETTINGS_TITLE, VAULT_STARTER_OFFER } from '../lib/vaultCopy.js';
 import { VaultUndoToast, type VaultUndoToastItem } from '../components/vault/VaultUndoToast.js';
 import { hubReach, subscribeHubReach } from '../lib/gitos/hub.js';
 import { PROJECT_VAULT_PINS_MAX } from '../state/types.js';
+import { dockedNoun } from '../lib/docking.js';
 
 const VAULT_RESOURCE_ID = 'vault.personal';
 
@@ -363,6 +364,7 @@ export function VaultScreen() {
     hubMember,
     hubName: settings.daemon?.name,
     paired: Boolean(settings.daemon),
+    hubServer: settings.daemon?.kind === 'server',
   };
   // The held text this account may see: every personal entry, and team text
   // only under the account that typed it (R-19). Raw vaultHeld also holds
@@ -2828,7 +2830,8 @@ export function VaultScreen() {
             ) : currentNotes === 'silent' ? (
               <>
                 <p className="hint" style={{ marginTop: 0 }}>
-                  Your computer did not answer, so its home folder could not be read.
+                  {dockedNoun(settings.daemon)} did not answer, so its home folder could not be
+                  read.
                 </p>
                 <button className="btn ghost press-fb" onClick={() => setNotesAsk((n) => n + 1)}>
                   Try again

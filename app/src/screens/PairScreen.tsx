@@ -22,7 +22,7 @@ import { Sheet } from '../components/Sheet.js';
 import { SheetHead } from '../components/SheetHead.js';
 import { ReplaceSharedKey } from '../components/ReplaceSharedKey.js';
 import { hubStatusLine, onLinux } from '../lib/hubStatus.js';
-import { DockForm } from '../components/DockForm.js';
+import { DockForm, hostOf } from '../components/DockForm.js';
 import { ServerSetup } from '../components/ServerSetup.js';
 import { DOCK_PATHS, dockedNoun, unreachableLine, type DockPath } from '../lib/docking.js';
 
@@ -372,8 +372,7 @@ function DesktopPair() {
               <ReplaceSharedKey rotate={() => bridge()!.rotateSharedToken!()} onToast={showToast} />
             ) : null}
             <RemoteHubPanel />
-            <h2 style={{ marginTop: 24 }}>Dock this computer to a server</h2>
-            <p className="hint">
+            <p className="hint" style={{ marginTop: 24 }}>
               A server you rent keeps working while this computer sleeps. Once docked, this computer
               runs its sessions there.
             </p>
@@ -540,13 +539,23 @@ function PhonePair() {
 
         {paired ? <ConnectedCard onTerminal={() => setView('terminalroom')} /> : null}
 
-        <DockPaths
-          active={path}
-          onPick={(id) => {
-            if (id === 'computer' || id === 'server') setPath(id);
-            else setView(id === 'cloud' ? 'connections' : 'stack');
-          }}
-        />
+        {/* Scan sits in the first screen (2026-10-07 review): the two ways to
+            dock are one small choice above it, and the other ways to give
+            OpenShore a brain wait below. */}
+        <div className="segmented dock-choice" role="tablist" aria-label="Dock to">
+          {(['computer', 'server'] as const).map((id) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={path === id}
+              className={`seg press-fb${path === id ? ' active' : ''}`}
+              onClick={() => setPath(id)}
+            >
+              {id === 'computer' ? 'Your computer' : 'A server you rent'}
+            </button>
+          ))}
+        </div>
 
         {path === 'computer' ? (
           <>
@@ -579,6 +588,8 @@ function PhonePair() {
         )}
 
         <HubList />
+
+        <OtherWaysIn onPick={(id) => setView(id === 'cloud' ? 'connections' : 'stack')} />
 
         {paired ? (
           <button
@@ -630,45 +641,28 @@ function PhonePair() {
   );
 }
 
-/** Every way to give OpenShore a brain, in one list (lib/docking.ts). The two
- *  docking paths open here; a cloud key and a model on this device go to the
- *  rooms that hold them. */
-function DockPaths({
-  active,
-  onPick,
-}: {
-  active: 'computer' | 'server';
-  onPick: (id: DockPath) => void;
-}) {
+/** The other ways to give OpenShore a brain (lib/docking.ts): a cloud key
+ *  and a model on this device, each in the room that holds it. */
+function OtherWaysIn({ onPick }: { onPick: (id: DockPath) => void }) {
   return (
-    <div className="dock-paths" role="list">
-      {DOCK_PATHS.map((p) => {
-        const here = p.id === active;
-        return (
+    <>
+      <h2 className="dock-other-head">Other ways in</h2>
+      <div className="dock-paths" role="list">
+        {DOCK_PATHS.filter((p) => p.id === 'cloud' || p.id === 'device').map((p) => (
           <button
             key={p.id}
             type="button"
             role="listitem"
-            className={`dock-path press-fb${here ? ' dock-path-active' : ''}`}
-            aria-current={here ? 'true' : undefined}
+            className="dock-path press-fb"
             onClick={() => onPick(p.id)}
           >
             <span className="dock-path-title">{p.title}</span>
             <span className="sub">{p.detail}</span>
           </button>
-        );
-      })}
-    </div>
+        ))}
+      </div>
+    </>
   );
-}
-
-/** The host of a computer's address, for a name a person can read. */
-function hostOf(baseUrl: string): string {
-  try {
-    return new URL(baseUrl).hostname;
-  } catch {
-    return baseUrl;
-  }
 }
 
 /** What a saved computer is called: its own name, or its host. */

@@ -234,7 +234,8 @@ cards, ledger rows, docks, the toast, sheets and their heads) are tokens,
 in hand through `thisDeviceNoun` (`lib/deviceNoun.ts`: "this iPad" on an
 iPad, "this phone" elsewhere), never a typed "this phone" or "this iPhone"
 (`deviceNoun.test.ts`). A new file is covered the day it lands. Every door to
-Pairing says "Connect your computer". The 23 larger calls the review held for
+Computer (once Pairing) says "Connect your computer"; a docked device's
+Manage row there is not a door. The 23 larger calls the review held for
 the founder (D1 to D23 in the review doc) were ruled on 2026-10-07 ("Do the
 remaining recommendations"): each is built as its recommendation says.
 
@@ -320,7 +321,7 @@ free sidebar puts the free rooms up top and the Plus rooms greyed under a
 gold "Upgrade to OpenShore Plus" banner; Plus gets the familiar layout
 (`components/Sidebar.tsx`, `app/test/sidebarPlus.test.tsx`). Nothing a
 person made is locked away, and stopping, revoking, forgetting and exporting
-are always free (CTO, 2026-09-30): Crew opens while routines exist, Pairing while there is a pairing to let go of (`roomPass`), and Settings holds
+are always free (CTO, 2026-09-30): Crew opens while routines exist (Computer is free, so it always opens), and Settings holds
 the iPhone's vault export and each git host's Remove while those rooms are
 shut (`app/test/plusRoomPass.test.tsx`). The switch for the review build is
 the Codemagic `store_release` input, never the `Harbor-os-code` group

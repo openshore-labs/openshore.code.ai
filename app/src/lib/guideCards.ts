@@ -540,7 +540,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'pair-desktop',
     title: 'Computer, on the desktop',
     where: 'On your computer: Menu, Computer',
-    text: 'Tap Turn on to open the phone connection over Tailscale; it shows a QR code and a one-time pairing code good for five minutes. Paired devices are listed and each can be revoked on its own.',
+    text: 'Tap Turn on to open the phone connection over Tailscale; it shows a QR code and a one-time code good for five minutes. Docked devices are listed and each can be revoked on its own.',
     keywords: ['turn on', 'show qr', 'pairing code', 'revoke', 'paired devices', 'desktop + phone'],
   },
   {

@@ -122,7 +122,7 @@ export function DockForm({
       showToast(
         desktop
           ? `Docked. This computer now runs its sessions on ${dockedNounLower({ kind: health.kind })}.`
-          : `Docked. ${dockedNoun({ kind: health.kind })} is in the model menu, and its terminal is one tap away.`,
+          : `Docked. ${dockedNoun({ kind: health.kind })} is in the model menu.`,
       );
       onDocked?.(health.kind);
     } else {
@@ -175,7 +175,7 @@ export function DockForm({
           <span className="pill ok pill-pop">Docked</span>{' '}
           {desktop
             ? 'Sessions on this computer now run there.'
-            : 'Pick it in the model menu to chat or code, or open its terminal.'}
+            : 'Pick it in the model menu to chat or code.'}
         </p>
       ) : state ? (
         <p className="hint" role="status" style={{ marginTop: 10 }}>

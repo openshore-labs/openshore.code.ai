@@ -54,11 +54,11 @@ Brains (where the model thinks):
 
 Hands (where the work happens):
 
-| Place         | What runs there                                                        | State today           |
-| ------------- | ---------------------------------------------------------------------- | --------------------- |
-| This device   | chats; on the desktop the whole engine                                 | Built                 |
-| Your computer | engine, Terminal, Crew, Vault, coding sessions, reached from the phone | Built (pairing, Plus) |
-| Your server   | the same, on a box that stays up                                       | **New** (part B)      |
+| Place         | What runs there                                                        | State today                            |
+| ------------- | ---------------------------------------------------------------------- | -------------------------------------- |
+| This device   | chats; on the desktop the whole engine                                 | Built                                  |
+| Your computer | engine, Terminal, Crew, Vault, coding sessions, reached from the phone | Built (docking, free since 2026-10-07) |
+| Your server   | the same, on a box that stays up                                       | **New** (part B)                       |
 
 Any brain can drive any hands the rules allow: a phone can code on a server
 with Claude, or chat with a 70B on a GPU server while its files stay on the
@@ -247,8 +247,7 @@ it only once part B shows people renting servers for OpenShore.
   (Personal): `FEATURE_TIER` gains `servers: 1`, recorded in DECISIONS as the
   founder's go of 2026-10-07. The subscription door stays tier 2 with CLI
   Pairing. Part C is its own call.
-- **Gate.** New providers and Add a model are free. Pairing a server is Plus
-  (`PAY_GATE.pairing`); revoking and forgetting stay free.
+- **Gate.** Everything here is free: new providers, Add a model, and docking a computer or a server (founder, 2026-10-07).
 - **Order.** Each step ships alone and leaves the app working:
   1. Venice and OpenRouter as named providers (part A, providers).
   2. `osc pair --server`, the terminal yes, `/health` kind, the admin-approve

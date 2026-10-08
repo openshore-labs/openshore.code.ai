@@ -159,7 +159,12 @@ jobs:
       # Unlike CI, this workflow launches Electron, so let the binary download
       # and let the native rebuild run. The install script and postinstall honor
       # the absence of the skip flags.
+      # SKIP_NATIVE_REBUILD keeps the install's node-pty on Node's ABI, so the
+      # server package below carries a terminal that loads on its bundled
+      # Node; the Electron rebuild runs as its own step after the pack.
       - name: Install workspace dependencies
+        env:
+          SKIP_NATIVE_REBUILD: "1"
         run: pnpm install --frozen-lockfile
 
       - name: Build the engine
@@ -171,7 +176,10 @@ jobs:
       # Electron below, because a server runs Node's ABI. The publish job signs
       # it with the desktop key, and the installer refuses it unsigned. Then
       # prove the packed engine starts on its own Node.
+      # Until the first server release has gone out, a failure here never
+      # holds the desktop release back (CTO review 2026-10-08).
       - name: Pack the server package
+        continue-on-error: true
         env:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
@@ -180,6 +188,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/server"
           tar -xzf server-release/openshore-server-*-linux-x64.tar.gz -C "$RUNNER_TEMP/server" --strip-components=1
           "$RUNNER_TEMP/server/bin/osc" pair --help | grep -q -- '--server'
+          (cd "$RUNNER_TEMP/server/engine" && ../node/bin/node -e "require('node-pty')")
 
       # VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are Vite build-time values
       # (baked into the bundle by `import.meta.env`, never read at runtime), so
@@ -240,11 +249,12 @@ jobs:
 
       # Its own artifact, so the Linux packages above keep their flat layout.
       - name: Upload the server package as a build artifact
+        continue-on-error: true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: openshore-server
           path: server-release/*
-          if-no-files-found: error
+          if-no-files-found: warn
 
   package-windows:
     needs: version
@@ -389,6 +399,7 @@ jobs:
           path: release
 
       - name: Download the server package
+        continue-on-error: true
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: openshore-server

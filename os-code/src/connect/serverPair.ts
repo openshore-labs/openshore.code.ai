@@ -76,6 +76,14 @@ export class ServerPairClient {
   }
 }
 
+/** A device's label as the terminal prints it: control and format
+ *  characters (C1 controls, bidi overrides) removed, so a label cannot move
+ *  the cursor or reorder the line it sits in. The four-digit code stays the
+ *  real check. */
+export function terminalSafe(label: string): string {
+  return label.replace(/[\p{Cc}\p{Cf}]/gu, '').slice(0, 40) || 'A device';
+}
+
 /** Only a plain "y" or "yes" allows. Anything else, an empty line included,
  *  is a no: the safe answer is the default. */
 export function isYes(answer: string): boolean {

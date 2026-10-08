@@ -137,6 +137,9 @@ export interface HubProviderOptions {
   hubUserId: string;
   /** Test seam; defaults to the global fetch (native HTTP on the iPhone). */
   fetch?: typeof fetch;
+  /** Whether the docked machine is a server, read when it is named, since
+   *  its /health can say so after the link is made (connect-anywhere). */
+  isServer?: () => boolean;
 }
 
 /** The index target for a hub vault: one per hub and per person on it. */
@@ -564,10 +567,17 @@ export function createHubProvider(opts: HubProviderOptions): HubProvider {
     return new HubRefusal(`"${path}" is not a note, so the vault does not write it.`);
   }
 
+  const server = (): boolean => opts.isServer?.() === true;
   const provider: HubProvider = {
     id: 'hub',
-    label: 'Your computer',
-    blurb: 'Your computer, while it is on. Plain .md files in the vault folder there.',
+    get label() {
+      return server() ? 'Your server' : 'Your computer';
+    },
+    get blurb() {
+      return server()
+        ? 'Your server, while it is running. Plain .md files in the vault folder there.'
+        : 'Your computer, while it is on. Plain .md files in the vault folder there.';
+    },
     ready: true,
     compareAndSwap: true,
     target,

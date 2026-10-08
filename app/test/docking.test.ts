@@ -55,7 +55,12 @@ describe('docking, the words', () => {
   it('lists every way in, in order, and two of them dock right here', () => {
     expect(DOCK_PATHS.map((p) => p.id)).toEqual(['computer', 'server', 'cloud', 'device']);
     const screen = read('src', 'screens', 'PairScreen.tsx');
-    expect(screen).toContain("else setView(id === 'cloud' ? 'connections' : 'stack');");
+    // The two docking paths are one choice above Scan (Scan stays in the
+    // first screen); the other ways in sit below and open their rooms.
+    const phone = screen.slice(screen.indexOf('function PhonePair'));
+    expect(phone.indexOf('dock-choice')).toBeLessThan(phone.indexOf('<DockForm'));
+    expect(phone.indexOf('<OtherWaysIn')).toBeGreaterThan(phone.indexOf('<DockForm'));
+    expect(screen).toContain("setView(id === 'cloud' ? 'connections' : 'stack')");
   });
 });
 
@@ -174,8 +179,8 @@ describe('providers whose models load live', () => {
       released: '2025-10-09',
     });
     expect(coder!.categories).toContain('coding');
-    expect(coder!.tagline).toBe('On Venice, on your key. Venice says it keeps no prompts.');
-    expect(big!.tagline).toMatch(/Venice passes it to another provider/);
+    expect(coder!.tagline).toBe('On Venice, on your key.');
+    expect(big!.tagline).toBe('On Venice, on your key.');
     expect(big!.tools).toBe(false);
     for (const m of models) expect(m.tagline).not.toMatch(/private|never|secure/i);
   });

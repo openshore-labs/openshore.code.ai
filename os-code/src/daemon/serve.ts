@@ -588,6 +588,20 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     // A server has no desktop dialog, so an admin mints the QR's claim and
     // answers the request: `osc pair --server` over SSH (the shared token on
     // loopback), or a device already paired as admin adding the next one.
+    // Only on a server: the desktop's yes stays in its own dialog, on the
+    // computer, so a docked phone cannot let another device in there (CTO
+    // review 2026-10-08).
+    const consoleRoute =
+      (req.method === 'POST' && url.pathname === '/pair/claims') ||
+      (req.method === 'GET' && url.pathname === '/pair/requests') ||
+      (req.method === 'POST' &&
+        parts.length === 3 &&
+        parts[0] === 'pair' &&
+        parts[1] === 'requests');
+    if (consoleRoute && !options.pairingConsole) {
+      sendJson(res, 404, { error: 'Not found.' });
+      return;
+    }
     if (req.method === 'POST' && url.pathname === '/pair/claims') {
       if (!requireAdmin()) return;
       sendJson(res, 200, pairClaims.mint());
@@ -2031,6 +2045,16 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           // startup): the primary bind is what the phone uses. Log, resolve with
           // the tailnet-only daemon, and carry on. resolve() is idempotent, so
           // the success path below is harmless if it also fires.
+          // A server is the exception (CTO review 2026-10-08): `osc pair
+          // --server` sends the shared token to this port on loopback, so a
+          // port someone else holds there must stop the daemon, never be
+          // left to them.
+          if (options.pairingConsole) {
+            log.error('loopback listener failed on a server', { err: String(err) });
+            closeAll();
+            reject(new Error(`Something else holds 127.0.0.1:${options.port}; not starting.`));
+            return;
+          }
           log.warn('loopback listener failed', { err: String(err) });
           resolve(running);
         });

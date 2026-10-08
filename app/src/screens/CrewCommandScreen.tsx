@@ -52,6 +52,7 @@ import { activeContribution, currentSecretKey, slotNone } from '../lib/currents.
 import { hermesJobsRead, type HermesJob } from '../lib/currentsProbe.js';
 import { secretGet } from '../lib/platform.js';
 import { ROUTINE_NOTES_PLACE } from '../lib/vaultCopy.js';
+import { dockedNoun } from '../lib/docking.js';
 
 /** How often the room re-asks the computer while it is open. */
 const REFRESH_MS = 5000;
@@ -586,7 +587,7 @@ export function CrewCommandScreen() {
             ) : currentJobs === null ? (
               <div>
                 <p className="hint">
-                  Your computer did not answer, so its schedule could not be read.
+                  {dockedNoun(settings.daemon)} did not answer, so its schedule could not be read.
                 </p>
                 <button className="btn ghost press-fb" onClick={() => setJobsAsk((n) => n + 1)}>
                   Try again

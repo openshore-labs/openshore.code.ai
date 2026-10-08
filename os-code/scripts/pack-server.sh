@@ -51,6 +51,8 @@ WRAP
 chmod 755 "$ROOT/bin/osc"
 printf '%s\n' "$VERSION" >"$ROOT/VERSION"
 
-tar -czf "$OUT/$NAME.tar.gz" -C "$STAGE" "$NAME"
+# Owned by root in the archive, whoever packs it (CTO review 2026-10-08):
+# the runner's own user id must never own the engine on a server.
+tar --owner=0 --group=0 --numeric-owner -czf "$OUT/$NAME.tar.gz" -C "$STAGE" "$NAME"
 cp os-code/scripts/install-server.sh "$OUT/install-server.sh"
 echo "Packed $OUT/$NAME.tar.gz"

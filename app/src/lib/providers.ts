@@ -331,7 +331,7 @@ export function parseLiveModels(providerId: string, body: unknown): LiveModel[] 
     out.push({
       id,
       label: str(spec.name) ?? str(r.name) ?? id,
-      tagline: liveTagline(providerId, spec.privacy),
+      tagline: liveTagline(providerId),
       categories: [
         ...(tools ? (['coding', 'reasoning'] as const) : (['writing'] as const)),
         ...(vision ? (['vision'] as const) : []),
@@ -347,13 +347,11 @@ export function parseLiveModels(providerId: string, body: unknown): LiveModel[] 
 }
 
 /** One honest line per live model: whose words a privacy claim is, never ours. */
-function liveTagline(providerId: string, privacy: unknown): string {
-  if (providerId === 'venice') {
-    if (privacy === 'private') return 'On Venice, on your key. Venice says it keeps no prompts.';
-    if (privacy === 'anonymized')
-      return 'On Venice, on your key. Venice passes it to another provider without your name.';
-    return 'On Venice, on your key.';
-  }
+function liveTagline(providerId: string): string {
+  // No privacy words for Venice yet (CTO review 2026-10-08): the field they
+  // would read is unconfirmed until a real /models answer is pinned as a
+  // fixture, and a saved tagline would go stale when Venice changes a model.
+  if (providerId === 'venice') return 'On Venice, on your key.';
   if (providerId === 'openrouter') {
     return "Through OpenRouter, on your key. It goes on to the model's own provider.";
   }

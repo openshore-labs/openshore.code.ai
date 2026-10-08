@@ -44,6 +44,11 @@ fi
 for tool in curl tar openssl sha256sum base64 systemctl; do
   command -v "$tool" >/dev/null 2>&1 || fail "it needs $tool, which this server does not have."
 done
+# The signature check needs OpenSSL 3 (pkeyutl -rawin for Ed25519).
+case "$(openssl version 2>/dev/null)" in
+  "OpenSSL 3"* | "OpenSSL 4"*) ;;
+  *) fail "it needs OpenSSL 3 or later to check the download's signature ($(openssl version 2>/dev/null))." ;;
+esac
 
 if ! command -v tailscale >/dev/null 2>&1 || ! tailscale ip -4 >/dev/null 2>&1; then
   say "Tailscale is how your phone reaches this server, and it is not up here yet."
@@ -95,7 +100,9 @@ say "Signature checked."
 $SUDO mkdir -p "$PREFIX"
 $SUDO rm -rf "$PREFIX/current.new"
 $SUDO mkdir -p "$PREFIX/current.new"
-$SUDO tar -xzf "$WORK/$ASSET" -C "$PREFIX/current.new" --strip-components=1
+$SUDO tar --no-same-owner -xzf "$WORK/$ASSET" -C "$PREFIX/current.new" --strip-components=1
+# Root owns the engine, so no other account on this server can change it.
+$SUDO chown -R root:root "$PREFIX/current.new"
 $SUDO rm -rf "$PREFIX/current.old"
 [ -d "$PREFIX/current" ] && $SUDO mv "$PREFIX/current" "$PREFIX/current.old"
 $SUDO mv "$PREFIX/current.new" "$PREFIX/current"
@@ -116,11 +123,19 @@ After=network-online.target tailscaled.service
 [Service]
 User=openshore
 Environment=HOME=/var/lib/openshore
+# The terminal a docked device opens; the account itself has no login shell.
+Environment=SHELL=/bin/bash
 ExecStart=/usr/local/bin/osc serve --bind tailscale
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
 PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
 
 [Install]
 WantedBy=multi-user.target

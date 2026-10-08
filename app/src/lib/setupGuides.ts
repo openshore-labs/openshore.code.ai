@@ -90,7 +90,7 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
       `On both ${thisDeviceNoun()} and your computer, install Tailscale and sign in to the same account. It is free for personal use. Ask me if you want the Tailscale steps.`,
       'On your computer, open OpenShore, then Computer. The QR is there (if it says Off, tap Turn on).',
       `On ${thisDeviceNoun()}, open Computer and tap Scan the QR on your computer. Point the camera at the QR and it connects by itself. Or point the Camera app at it and tap the link.`,
-      'If the camera is not available, type the address (it looks like http://100.x.y.z:4816) and the pairing code shown under the QR, then tap Connect.',
+      'If the camera is not available, type the address (it looks like http://100.x.y.z:4816) and the code shown under the QR (Show the code), then tap Dock.',
     ],
     done: 'The screen says connected. In the model menu, Your computer is now a choice, for chat and for coding on your repositories.',
   },

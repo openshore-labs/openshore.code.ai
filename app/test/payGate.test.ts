@@ -402,7 +402,8 @@ describe('Computer, at its screens', () => {
     expect(paywall).toContain("'Reach your computer from your phone.'");
     expect(paywall).toContain("'All of OpenShore, with Plus.'");
     expect(paywall).toContain("'Terminal, Repositories, and Vault'");
-    expect(paywall).toContain("'Your computer from your phone, while it is on'");
+    // Docking is free since 2026-10-07, so the sheet no longer sells it.
+    expect(paywall).not.toContain("'Your computer from your phone, while it is on'");
     expect(paywall).not.toMatch(/always on/i);
   });
 });

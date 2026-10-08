@@ -1157,7 +1157,7 @@ function DockedStackCard() {
           </div>
         </div>
         <button className="btn ghost press-fb" onClick={() => setView('pair')}>
-          Computer
+          Manage
         </button>
       </div>
     </div>

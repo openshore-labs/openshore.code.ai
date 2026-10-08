@@ -216,7 +216,7 @@ export const EGRESS: EgressEntry[] = [
     id: 'cloud-models',
     recipient: 'Your cloud providers',
     what: `Your chat, and the notes and files it draws on, to Anthropic, OpenAI, Google, Moonshot, Perplexity, Venice, or OpenRouter (which forwards it to the model's own provider), on your own key. ${VAULT_PRIVATE_OFF_CLOUD} An amber pill or dot marks a chat whose latest turn went to one. Connecting Venice or OpenRouter, or choosing its models, also asks it for the list of models it offers.`,
-    when: 'Only when you pick a cloud model or place one in your Stack, and only on the turns it answers. On your computer, the coding agent asks first in each task.',
+    when: 'Only when you pick a cloud model or place one in your Stack, and only on the turns it answers. On your computer, the coding agent asks first in each task. For Venice or OpenRouter, also when you connect its key or open Choose models.',
     start: 'off',
     hosts: [
       'api.anthropic.com',

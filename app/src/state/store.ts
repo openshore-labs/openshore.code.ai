@@ -1816,8 +1816,8 @@ interface AppState {
   /** Where a paid action on this feature goes right now: on, to the sign-in
    *  sheet, or to the paywall (lib/payGate.ts, state/payOps.ts). */
   personalDoor(feature: AccountFeature): 'open' | 'account' | 'paywall';
-  /** One door for a paid action a screen takes (Connect on Pairing,
-   *  the computer's home shell): the sign-in sheet first, then the paywall.
+  /** One door for a paid action a screen takes (the coding agent, a
+   *  routine, the computer's home shell): the sign-in sheet first, then the paywall.
    *  True when the action may go ahead. */
   requirePersonal(feature: AccountFeature): boolean;
   /** Re-read the account's entitlement after a purchase made elsewhere (the
@@ -6858,6 +6858,7 @@ export const useApp = create<AppState>((set, get, api) => {
     setHubVaultLink({
       baseUrl,
       hubUserId,
+      isServer: () => get().settings.daemon?.kind === 'server',
       token: async () => {
         const now = get().settings.daemon;
         return now?.baseUrl === baseUrl ? now.token : undefined;

@@ -24,6 +24,7 @@
 //   device (8.1) and iCloud writes are safe for a second writer (2.1, 2.9).
 //   Local is a sealed store, Google Drive is held back, and the team vault is
 //   a server, so none of them claims Obsidian.
+import { SERVER_RENTED_LINE } from './docking.js';
 import type { Platform } from './platform.js';
 import { noteTitle } from './vault.js';
 
@@ -70,10 +71,19 @@ export interface VaultCopyOpts {
   /** The paired computer's friendly name (`DaemonTarget.name`), for a
    *  member's one line about a hub vault (Vault M5, CTO J8). */
   hubName?: string;
+  /** The docked machine is a server (connect-anywhere; `DaemonTarget.kind`),
+   *  so the notes there sit on a disk its host can reach, and the copy says
+   *  so where it says where they live (CTO review 2026-10-08). */
+  hubServer?: boolean;
 }
 
 /** A paired phone's line about the agent: its vault is the computer's folder. */
 export const PHONE_AGENT_LINE = 'Your agent uses the vault on your computer.';
+/** The same, docked to a server. */
+export const PHONE_AGENT_LINE_SERVER = 'Your agent uses the vault on your server.';
+/** Where a docked server's notes live, with what renting means said once
+ *  here too, since this is where the notes are (lib/docking.ts). */
+export const HUB_SERVER_STORAGE = `Your server, while it is running. Plain .md files in the vault folder there. ${SERVER_RENTED_LINE}`;
 /** An unpaired phone's (or the web's) point in the empty-vault ramp only:
  *  how the chats on this device use these notes (founder, D20, 2026-10-07).
  *  Both halves are the code's: a project's pins ride the pack of every chat
@@ -187,7 +197,7 @@ export function vaultCopy(
   } else if (desktop) {
     copy.agentElsewhere = DESKTOP_AGENT_LINE;
   } else if (opts.paired && !opts.hubMember) {
-    copy.agentElsewhere = PHONE_AGENT_LINE;
+    copy.agentElsewhere = opts.hubServer ? PHONE_AGENT_LINE_SERVER : PHONE_AGENT_LINE;
   } else if (!opts.hubMember) {
     // Off the desktop with no computer paired (the team vault returned
     // above): how this device's chats use the notes, in the ramp only. The
@@ -208,6 +218,7 @@ function hubCopy(copy: VaultCopy, desktop: boolean, opts: VaultCopyOpts): VaultC
   if (opts.hubMember) {
     return { storage: `Your notes on ${opts.hubName?.trim() || 'the computer you paired'}.` };
   }
+  if (opts.hubServer) copy.storage = HUB_SERVER_STORAGE;
   if (desktop) return copy;
   // Unpaired, Your computer cannot be read at all, so no chat starts with
   // its notes and the ramp says nothing about who uses them.

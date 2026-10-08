@@ -33,6 +33,25 @@ describe('install-server.sh', () => {
     expect(installer).not.toMatch(/^\s*curl -fsSL https:\/\/tailscale\.com/m);
   });
 
+  it('leaves root owning the engine, whoever packed it (CTO review 2026-10-08)', () => {
+    const pack = readFileSync(join(root, 'os-code', 'scripts', 'pack-server.sh'), 'utf8');
+    expect(pack).toContain('tar --owner=0 --group=0 --numeric-owner -czf');
+    expect(installer).toContain('tar --no-same-owner -xzf');
+    expect(installer).toContain('chown -R root:root "$PREFIX/current.new"');
+  });
+
+  it('runs the daemon fenced in, with a shell for the docked terminal', () => {
+    for (const line of [
+      'NoNewPrivileges=true',
+      'ProtectSystem=full',
+      'ProtectHome=true',
+      'PrivateDevices=true',
+      'Environment=SHELL=/bin/bash',
+    ])
+      expect(installer).toContain(line);
+    expect(installer).toMatch(/needs OpenSSL 3 or later/);
+  });
+
   it('reads from the public releases repository the desktop updates from', () => {
     expect(installer).toContain(
       'RELEASES="https://github.com/openshore-labs/openshore-releases/releases"',

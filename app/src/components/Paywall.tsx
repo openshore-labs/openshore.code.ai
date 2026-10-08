@@ -41,13 +41,12 @@ export const PAYWALL_BODY =
 
 // CX's second bullet names where a routine's note really lands (the Vault
 // copy rule, lib/vaultCopy.ts): the vault folder on the computer. The rooms
-// and Pairing follow (founder, 2026-09-30), honest about the
-// computer being on.
+// follow (founder, 2026-09-30). Docking a phone to a computer is free since
+// 2026-10-07, so it is not sold here.
 export const BULLETS = [
   'Build and fix in your projects',
   `Routines that leave a note in ${ROUTINE_NOTES_PLACE}`,
   'Terminal, Repositories, and Vault',
-  'Your computer from your phone, while it is on',
   'Your models, your keys. Your prompts never pass through us.',
 ];
 
