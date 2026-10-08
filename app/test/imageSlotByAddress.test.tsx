@@ -211,3 +211,132 @@ describe("the Stack's Image reading rows", () => {
     expect(sheetOptions()).toEqual(['Hosted readerCloud', 'Kimi tagCloud']);
   });
 });
+
+// CX and CMO, 2026-10-08 (K): the Local model reads every picture it can,
+// and when it fails on one, a card asks before the picture goes to the Cloud
+// model. The intro, the Cloud row and the Cloud sheet say exactly that.
+describe('Image reading says who reads first, and when the Cloud model reads (K)', () => {
+  beforeEach(() => {
+    useApp.setState({
+      view: 'stack',
+      viewTrail: [],
+      connectedProviders: {},
+      connectivity: { homeReachable: false, online: true },
+      settings: {
+        onboarded: true,
+        claudeModel: 'x',
+        deviceModels: {},
+        byomModels: [PUBLIC, HOME, CLOUD_TAG],
+      },
+    });
+  });
+  afterEach(async () => {
+    await dom.render(null);
+  });
+
+  const place = (...members: StackModelRef[]) =>
+    useApp.setState({
+      settings: {
+        ...useApp.getState().settings,
+        stacks: { offshore: { active: members.map(vision), saved: {} } },
+      },
+    });
+  const row = (label: string) => rows().find((r) => r.label === label)!.sub;
+  const intro = () =>
+    [...dom.container.querySelectorAll('.settings-group')]
+      .find((g) => g.querySelector('.settings-group-head')?.textContent === 'Image reading')
+      ?.querySelector('.settings-group-intro')?.textContent ?? '';
+  const sheetSub = () =>
+    dom.container.querySelector('.sheet:not(.closing) .sheet-sub')?.textContent ?? '';
+
+  it('the intro says the Local model reads first and the Cloud model asks after a failure', async () => {
+    const { StackManager } = await import('../src/components/StackManager.js');
+    await dom.render(<StackManager />);
+    expect(intro()).toBe(
+      'Screenshots, photos, and video frames. The Local model reads them first. The Cloud model reads what it cannot, and asks before it takes a picture the Local model failed on.',
+    );
+  });
+
+  it('with both slots set and the Local model reading, the Cloud row says it reads what Local cannot', async () => {
+    place(ref(HOME), ref(PUBLIC));
+    const { StackManager } = await import('../src/components/StackManager.js');
+    await dom.render(<StackManager />);
+    expect(row('Local')).toMatch(/^Home reader · \w+ effort$/);
+    expect(row('Cloud')).toMatch(/^Hosted reader · \w+ effort · Reads what Home reader cannot$/);
+  });
+
+  it('a Cloud model that cannot read images or is out of reach, or a Cloud slot alone, claims no fallback', async () => {
+    // Sonar Pro reads no pictures, so it takes none the Local model failed on.
+    const sonarPro: StackModelRef = {
+      kind: 'cloud',
+      provider: 'perplexity',
+      model: 'sonar-pro',
+      label: 'Sonar Pro',
+    };
+    useApp.setState({ connectedProviders: { perplexity: true } });
+    place(ref(HOME), sonarPro);
+    const { StackManager } = await import('../src/components/StackManager.js');
+    await dom.render(<StackManager />);
+    expect(row('Cloud')).toMatch(/^Sonar Pro · \w+ effort$/);
+    await dom.render(null);
+    // A Cloud model that reads images but is out of reach (its provider is
+    // not connected on this device) takes no picture either, so it claims
+    // no fallback the chat path will not make.
+    const haiku: StackModelRef = {
+      kind: 'cloud',
+      provider: 'anthropic',
+      model: 'claude-haiku-4-5',
+      label: 'Claude Haiku 4.5',
+    };
+    useApp.setState({ connectedProviders: {} });
+    place(ref(HOME), haiku);
+    await dom.render(<StackManager />);
+    expect(row('Local')).toMatch(/^Home reader · \w+ effort$/);
+    expect(row('Cloud')).toMatch(/^Claude Haiku 4\.5 · \w+ effort$/);
+    await dom.render(null);
+    // Connected, the same model takes what the Local model failed on.
+    useApp.setState({ connectedProviders: { anthropic: true } });
+    await dom.render(<StackManager />);
+    expect(row('Cloud')).toMatch(
+      /^Claude Haiku 4\.5 · \w+ effort · Reads what Home reader cannot$/,
+    );
+    await dom.render(null);
+    // With no Local model, the Cloud model is the one that reads.
+    place(ref(PUBLIC));
+    await dom.render(<StackManager />);
+    expect(row('Cloud')).toMatch(/^Hosted reader · \w+ effort$/);
+  });
+
+  it('the Cloud sheet, while a Local model is set, says when its model reads', async () => {
+    place(ref(HOME));
+    const { StackManager } = await import('../src/components/StackManager.js');
+    await dom.render(<StackManager />);
+    await tapRow('Cloud');
+    expect(sheetSub()).toBe(
+      'Reads a picture only when your Local model cannot read here, or after you approve when it fails on one.',
+    );
+    await dom.render(null);
+    // No Local model: the sheet keeps its plain first sentence.
+    place();
+    await dom.render(<StackManager />);
+    await tapRow('Cloud');
+    expect(sheetSub()).toBe('A cloud model that reads images.');
+  });
+
+  it('a Local model that cannot read here keeps the stand-in sentence after the new one', async () => {
+    // A model on this device reads no pictures on this build, so Claude's
+    // reader stands in, asking first.
+    const pocket: StackModelRef = { kind: 'device', modelId: 'pocket-3b', modelName: 'Pocket 3B' };
+    useApp.setState({
+      connectedProviders: { anthropic: true },
+      settings: { ...useApp.getState().settings, deviceModels: { 'pocket-3b': 'Pocket 3B' } },
+    });
+    place(pocket);
+    const { StackManager } = await import('../src/components/StackManager.js');
+    await dom.render(<StackManager />);
+    await tapRow('Cloud');
+    expect(sheetSub()).toBe(
+      'Reads a picture only when your Local model cannot read here, or after you approve when it fails on one. Until you choose one, Claude Haiku 4.5 reads them. It asks before a picture.',
+    );
+  });
+});

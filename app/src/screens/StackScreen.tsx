@@ -58,6 +58,22 @@ function engineModelName(model: string, provider?: string): string {
   return provider ? providerModelLabel(provider, model) : model;
 }
 
+/** The chip for where a seat the engine reports answers, in words that hold
+ *  for a server on the LAN (CX and CMO, 2026-10-08, B): Cloud when it leaves
+ *  this network (the engine's seatLeaves, a cloud tag included), On this
+ *  computer when its server is this computer itself (hostIsLoopback), and On
+ *  your network for any other server that stays. A seat with no kind (a
+ *  specialist from an older engine) wears no chip. */
+function SeatChip({ seat }: { seat: { kind?: 'local' | 'cloud'; onThisComputer?: true } }) {
+  if (seat.kind === 'cloud') return <span className="kind-chip cloud">Cloud</span>;
+  if (seat.kind !== 'local') return null;
+  return (
+    <span className="kind-chip local">
+      {seat.onThisComputer ? 'On this computer' : 'On your network'}
+    </span>
+  );
+}
+
 export function StackScreen() {
   const { settings, connectivity, showToast, setView, ensureHarborMaster, harborMasterDownload } =
     useApp();
@@ -301,13 +317,7 @@ export function StackScreen() {
                   ? undefined
                   : 'Pick a model to run the show.'
             }
-            value={
-              orchestrator ? (
-                <span className={`kind-chip ${orchestrator.kind}`}>
-                  {orchestrator.kind === 'local' ? 'On this computer' : 'Cloud'}
-                </span>
-              ) : undefined
-            }
+            value={orchestrator ? <SeatChip seat={orchestrator} /> : undefined}
             trailing={
               unanswered ? (
                 <button
@@ -335,7 +345,12 @@ export function StackScreen() {
                 sub={STACK_CATEGORIES.find((c) => c.id === role)?.hint}
                 value={
                   reading || unanswered ? undefined : enabled ? (
-                    engineModelName(enabled.model)
+                    // The model, and beside it where it answers, so a cloud
+                    // tag placed for coding never looks local once placed.
+                    <span className="settings-row-actions">
+                      {engineModelName(enabled.model)}
+                      <SeatChip seat={enabled} />
+                    </span>
                   ) : (
                     <span className="stack-off">Off</span>
                   )
@@ -439,12 +454,13 @@ export function StackScreen() {
               )}
             </div>
             {/* An Ollama cloud tag answers on ollama.com, not here: it is
-                listed apart, with the cloud chip, and says where its words go. */}
+                listed apart, with the cloud chip, and says where its words go,
+                in the cloud card's own nouns (CX and CMO, 2026-10-08, C). */}
             {listed.cloud.length ? (
               <>
                 <p className="sheet-sub">
-                  Cloud models your Ollama lists. They run on Ollama&apos;s cloud under your Ollama
-                  account, so your words and the files the agent reads go there.
+                  Cloud models your Ollama lists. They run on Ollama&apos;s cloud, under your Ollama
+                  account, so your messages and the files the agent reads go to ollama.com.
                 </p>
                 <div className="sheet-actions">
                   {pickerModels(listed.cloud, currentModel).map((m) => {

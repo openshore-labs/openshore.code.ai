@@ -33,7 +33,6 @@ import {
   isCurrentBenchId,
   slotNone,
 } from '../lib/currents.js';
-import { imageStepRunner, planCanRun } from '../lib/play.js';
 import {
   STACK_CATEGORIES,
   STACK_LEAD,
@@ -298,29 +297,20 @@ export function StackManager({
   );
   const standIn = localReads ? undefined : imageReader;
   // The stand-in asks before a picture unless it was placed for Image reading
-  // (routeVision's `dedicated`), and takes a plan's image step only on a
-  // stack that can plan at all (play.ts planCanRun, with the driver's reach
-  // in this status: not while the Reasoning model is on this device, Harbor
-  // Lite by default, nor with no one to hand a step to) and only when the
-  // plan's own rule gives it the step (play.ts stepRunner, with the reader the
-  // driver hands a play): a model on this device in the Local slot hands the
-  // step to the Reasoning model instead.
-  const standInAsks = !chatPick || chatPick.placement?.category !== 'vision';
-  const planRuns = planCanRun(
-    stack,
-    (r) => r.kind === 'device' || cloudOn,
-    locationAllowed(editProfile, 'home') && Boolean(settings.daemon),
+  // (routeVision's `dedicated`). It never takes a plan's image step: a plan
+  // carries no picture, so with nothing set for Image reading its image step
+  // goes to the Reasoning model, which works from the text (CX and CMO,
+  // 2026-10-08, E), and no line names an exception.
+  const standInAsk =
+    chatPick && chatPick.placement?.category === 'vision' ? '' : ' It asks before a picture.';
+  // With both slots set and the Local model reading here, the Cloud model
+  // reads a picture the Local one failed on, after a card asks (the chat
+  // path's fallback, CX and CMO, 2026-10-08, K): only one that reads images
+  // and is in reach in this status, the driver's own test, so the row never
+  // claims a fallback that cannot happen.
+  const cloudFallback = Boolean(
+    localReads && slots.cloud && visionCapable(slots.cloud.ref) && reach(slots.cloud.ref),
   );
-  const standInTakesPlanStep =
-    planRuns &&
-    standIn !== undefined &&
-    refKey(imageStepRunner({ ...stack, imageReader: standIn, reachable: reach, staysLocal })) ===
-      refKey(standIn);
-  const standInAsk = !standInAsks
-    ? ''
-    : standInTakesPlanStep
-      ? " It asks before a picture, not before a plan's image step."
-      : ' It asks before a picture.';
   const [visionEdit, setVisionEdit] = useState<
     { slot: 'local' | 'cloud'; pickKey: string; effort: Effort } | undefined
   >();
@@ -368,7 +358,12 @@ export function StackManager({
   const slotLine = (slot: 'local' | 'cloud'): string => {
     const member = slot === 'local' ? slots.local : slots.cloud;
     if (member) {
-      return `${refName(member.ref)} · ${effortLabel(member.placement.effort ?? DEFAULT_EFFORT)} effort`;
+      const line = `${refName(member.ref)} · ${effortLabel(member.placement.effort ?? DEFAULT_EFFORT)} effort`;
+      // A filled Cloud slot beside a Local model that reads here says what
+      // it does: it reads what the Local model cannot (K).
+      return slot === 'cloud' && cloudFallback && slots.local
+        ? `${line} · Reads what ${refName(slots.local.ref)} cannot`
+        : line;
     }
     if (slot === 'cloud') {
       // The same shape as the Local row beside it: the slot is empty, then
@@ -470,10 +465,13 @@ export function StackManager({
         {/* Image reading (Vision): two slots, a local model and a cloud model,
             each with its own effort. Until the cloud slot is chosen, the rows
             name the model that reads images now, asking first (D13). A
-            picture (a screenshot, a photo, a video's frames) routes here. */}
+            picture (a screenshot, a photo, a video's frames) routes here. The
+            intro says what the chat path does: the Local model first, and the
+            Cloud model only for what it cannot read, after a card when the
+            Local model failed on one (CX and CMO, 2026-10-08, K). */}
         <SettingsGroup
           title="Image reading"
-          intro="Screenshots, photos, and video frames. The local model goes first; the cloud model reads what it cannot."
+          intro="Screenshots, photos, and video frames. The Local model reads them first. The Cloud model reads what it cannot, and asks before it takes a picture the Local model failed on."
           index={1}
         >
           {(['local', 'cloud'] as const).map((slot) => (
@@ -1042,13 +1040,18 @@ export function StackManager({
             </SheetTitle>
             <p className="sheet-sub">
               {/* Each names the model reading images today, and only while
-                  that is the stand-in: a chosen cloud model never asks, and
-                  a Local model that reads them leaves no stand-in. */}
+                  that is the stand-in: a Local model that reads them leaves
+                  no stand-in. While a Local model is set, the Cloud sheet
+                  opens on when its model reads at all: only when the Local
+                  model cannot read here, or after a card when it fails on a
+                  picture (K). */}
               {visionEdit.slot === 'local'
                 ? `A model on this device or your own server. A model on this device cannot read images yet${standIn ? `, so ${refName(standIn)} reads them until one can.` : '.'}`
-                : standIn && !slots.cloud
-                  ? `A cloud model that reads images. Until you choose one, ${refName(standIn)} reads them.${standInAsk}`
-                  : 'A cloud model that reads images.'}
+                : `${
+                    slots.local
+                      ? 'Reads a picture only when your Local model cannot read here, or after you approve when it fails on one.'
+                      : 'A cloud model that reads images.'
+                  }${standIn && !slots.cloud ? ` Until you choose one, ${refName(standIn)} reads them.${standInAsk}` : ''}`}
             </p>
 
             {eligibleVisionRefs(visionEdit.slot).length === 0 ? (
