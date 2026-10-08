@@ -46,6 +46,7 @@ import { Icon } from './Icon.js';
 import { Keyboard } from '@capacitor/keyboard';
 import { isPhone } from '../lib/platform.js';
 import { REWIND_ACTION } from '../state/rewindOps.js';
+import { appActionsAsked, type AppActionKey } from '../lib/appActions.js';
 
 /** The quiet line under a parked message while it waits to go. */
 export const PARKED_WAITING = 'Waiting to send';
@@ -142,11 +143,15 @@ function AssistantBubble({
   onReveal,
   after,
   paced,
+  actions,
 }: {
   text: string;
   streaming: boolean;
   model?: string;
   showModel: boolean;
+  /** The settings this chat's own turns asked for: only a proposal for one
+   *  of them shows the Add to Settings card (lib/appActions.ts). */
+  actions: readonly AppActionKey[];
   /** Called as revealed text grows, so a pinned thread follows the typing. */
   onReveal?: () => void;
   /** What follows the message (a guided step's buttons, a way back in). It
@@ -188,7 +193,7 @@ function AssistantBubble({
           <Markdown text={text} ink={ink && paced ? { stamp: ink, kind: paced } : undefined} />
         </div>
       ) : (
-        <Markdown text={shown} streaming={live} fade={fading} actions />
+        <Markdown text={shown} streaming={live} fade={fading} actions={actions} />
       )}
     </div>
   );
@@ -375,6 +380,12 @@ export function MessageList({
 }) {
   const threadRef = useRef<HTMLDivElement>(null);
   const rewindable = new Set(rewindIds ?? []);
+  // The contract's own gate (lib/appActions.ts): a reply's proposal is a card
+  // only for a setting this chat's own turns asked for, so text in a chat
+  // that never asked (a page the agent quoted, a cloud reply) stays code.
+  const actionsAsked = appActionsAsked(
+    thread.items.flatMap((i) => (i.kind === 'user' && !i.withheld ? [i.text] : [])),
+  );
   const pinnedRef = useRef(true);
   const prevCount = useRef(0);
   const [unseen, setUnseen] = useState(0);
@@ -551,6 +562,7 @@ export function MessageList({
                   onReveal={followReveal}
                   after={afterItem?.(item.id)}
                   paced={item.paced}
+                  actions={actionsAsked}
                 />
               );
             }
