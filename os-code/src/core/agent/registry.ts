@@ -47,6 +47,7 @@ import type { Router } from '../../router/router.js';
 import type { ProviderRegistry } from '../../providers/registry.js';
 import { seatLeaves } from '../../providers/types.js';
 import { RepoIndex, keywordSearch } from '../../context/index.js';
+import { vaultFileTest } from '../tools/workspaceNotes.js';
 
 /** What decides which tools a session registers. */
 export interface ToolRegistryOptions {
@@ -440,22 +441,28 @@ export function buildToolContext(options: {
   // Under egress lockdown the embedder is never used, even when configured: it
   // can point at a cloud endpoint, and repo search must stay on the device.
   const embeddingRole = egressLockdown ? undefined : router.embeddingRole();
+  // A vault inside the workspace is its own tools' to search (D5), the way
+  // retrieval before turn one leaves it out: its notes are never embedded
+  // (an embedder may be a cloud one) nor ranked. Read live, since a caller
+  // may repoint the context's root.
+  const inVault = (): ((rel: string) => boolean) | undefined => vaultFileTest(ctx.vaultRoot, cwd);
   let searchRepo: ToolContext['searchRepo'];
   if (embeddingRole) {
     const index = new RepoIndex(
       cwd,
       providers.embedder(embeddingRole.ref.provider),
       embeddingRole.ref.model,
+      inVault,
     );
     const embedderLeaves = seatLeaves(embeddingRole.provider, embeddingRole.ref.model);
     searchRepo = async (query, k) => {
-      if (embedderLeaves && options.offline?.()) return keywordSearch(cwd, query, k);
+      if (embedderLeaves && options.offline?.()) return keywordSearch(cwd, query, k, inVault());
       await index.refresh();
       const hits = await index.search(query, k);
-      return hits || keywordSearch(cwd, query, k);
+      return hits || keywordSearch(cwd, query, k, inVault());
     };
   } else {
-    searchRepo = async (query, k) => keywordSearch(cwd, query, k);
+    searchRepo = async (query, k) => keywordSearch(cwd, query, k, inVault());
   }
 
   // The on-device vault lives outside the repo, so it is addressed by its own

@@ -1,7 +1,9 @@
+import { join } from 'node:path';
 import { z } from 'zod';
 import { capContent, type ToolDef } from './index.js';
 import { walkFiles } from './walk.js';
 import { minimatch } from '../util/minimatch.js';
+import { workspaceNotes } from './workspaceNotes.js';
 
 const schema = z.object({
   pattern: z.string().describe('Glob pattern, e.g. src/**/*.ts or *.json'),
@@ -15,9 +17,14 @@ export const globTool: ToolDef<typeof schema> = {
   risk: 'read',
   async execute(args, ctx) {
     const max = args.maxResults ?? 200;
+    // Names follow vaultList (D5): a vault note in the workspace is listed,
+    // one that stays on this computer included, but never one the vault's
+    // settings exclude. The walk follows links, so it is known by real path.
+    const notes = workspaceNotes(ctx);
     const matches: string[] = [];
     for (const rel of walkFiles(ctx.cwd)) {
       if (minimatch(rel, args.pattern)) {
+        if (notes && (await notes.unlisted(join(ctx.cwd, rel)))) continue;
         matches.push(rel);
         if (matches.length >= max) break;
       }

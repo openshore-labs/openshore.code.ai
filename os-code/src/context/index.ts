@@ -31,16 +31,24 @@ const MAX_FILE_BYTES = 250_000;
 const TEXT_EXT =
   /\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|rb|java|kt|swift|scala|c|h|cpp|hpp|cs|php|sh|bash|zsh|sql|html|css|scss|json|yaml|yml|toml|md|txt|vue|svelte)$/;
 
+/** A test for files the index leaves out, made fresh for each pass (the
+ *  vault folder, workspaceNotes.ts vaultFileTest); undefined skips none. */
+export type SkipTest = () => ((rel: string) => boolean) | undefined;
+
 export class RepoIndex {
   private readonly dir: string;
   private chunks: Chunk[] = [];
   private meta: IndexMeta = { model: '', files: {} };
   private loaded = false;
 
+  /** `skip` leaves files out of the index: never embedded, and any chunk an
+   *  earlier build kept of one is dropped (D5: the vault's notes are its own
+   *  tools' to search, and an embedder may be a cloud one). */
   constructor(
     private readonly root: string,
     private readonly embedder: EmbeddingProvider,
     private readonly model: string,
+    private readonly skip?: SkipTest,
   ) {
     const hash = createHash('sha1').update(root).digest('hex').slice(0, 16);
     this.dir = join(oscHome(), 'index', hash);
@@ -76,12 +84,28 @@ export class RepoIndex {
     );
   }
 
+  /** Drop what the skip test now leaves out, from the chunks and the file
+   *  record; true when anything went. */
+  private purge(skip: ((rel: string) => boolean) | undefined): boolean {
+    if (!skip) return false;
+    const before = this.chunks.length;
+    this.chunks = this.chunks.filter((c) => !skip(c.file));
+    let dropped = this.chunks.length !== before;
+    for (const rel of Object.keys(this.meta.files)) {
+      if (!skip(rel)) continue;
+      delete this.meta.files[rel];
+      dropped = true;
+    }
+    return dropped;
+  }
+
   /** How stale the index is: files changed since last refresh. */
-  staleFiles(): string[] {
+  staleFiles(skip = this.skip?.()): string[] {
     this.load();
     const stale: string[] = [];
     for (const rel of walkFiles(this.root)) {
       if (!TEXT_EXT.test(rel)) continue;
+      if (skip?.(rel)) continue;
       try {
         const mtime = statSync(join(this.root, rel)).mtimeMs;
         if (this.meta.files[rel] !== mtime) stale.push(rel);
@@ -93,7 +117,9 @@ export class RepoIndex {
   /** Incrementally (re)embed changed files. Returns how many were refreshed. */
   async refresh(onProgress?: (done: number, total: number) => void): Promise<number> {
     this.load();
-    const stale = this.staleFiles();
+    const skip = this.skip?.();
+    const purged = this.purge(skip);
+    const stale = this.staleFiles(skip);
     let done = 0;
     for (const rel of stale) {
       const full = join(this.root, rel);
@@ -132,19 +158,21 @@ export class RepoIndex {
       done++;
       onProgress?.(done, stale.length);
     }
-    if (stale.length) this.save();
+    if (stale.length || purged) this.save();
     return stale.length;
   }
 
   /** Cosine top-k retrieval, formatted for a model observation. */
   async search(query: string, k: number): Promise<string> {
     this.load();
-    if (!this.chunks.length) {
+    const skip = this.skip?.();
+    const chunks = skip ? this.chunks.filter((c) => !skip(c.file)) : this.chunks;
+    if (!chunks.length) {
       return '';
     }
     const [queryVector] = await this.embedder.embed(this.model, [query]);
     if (!queryVector) return '';
-    const scored = this.chunks
+    const scored = chunks
       .map((c) => ({ c, score: cosine(queryVector, c.vector) }))
       .sort((a, b) => b.score - a.score)
       .slice(0, k);
@@ -272,8 +300,15 @@ export function keywordHits(
   });
 }
 
-/** Keyword fallback when no embedder is enabled: grep-ranked snippets. */
-export function keywordSearch(root: string, query: string, k: number): string {
+/** Keyword fallback when no embedder is enabled: grep-ranked snippets.
+ *  `skip` keeps files out of the ranking (the vault folder, whose notes are
+ *  its own tools' to search, D5). */
+export function keywordSearch(
+  root: string,
+  query: string,
+  k: number,
+  skip?: (rel: string) => boolean,
+): string {
   const terms = query
     .toLowerCase()
     .split(/\W+/)
@@ -282,6 +317,7 @@ export function keywordSearch(root: string, query: string, k: number): string {
   const scores = new Map<string, number>();
   for (const rel of walkFiles(root)) {
     if (!TEXT_EXT.test(rel)) continue;
+    if (skip?.(rel)) continue;
     let text: string;
     try {
       if (statSync(join(root, rel)).size > MAX_FILE_BYTES) continue;

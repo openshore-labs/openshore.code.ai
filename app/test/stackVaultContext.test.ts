@@ -658,7 +658,7 @@ describe('a reply after a local-only read (I5 in the app)', () => {
       ['Look', 'Claude'],
     ]) {
       expect(notes).toContain(
-        `${title}. This plan draws on a private note, so Box Mid, your Reasoning model, takes it instead of ${owner}. Private notes never reach a cloud model.`,
+        `${title}. This plan draws on a private note, so Box Mid, your Reasoning model, takes it instead of ${owner}. Private notes never reach a cloud model unless a command you allow reads them.`,
       );
     }
     // The task list names the model that runs each step.
@@ -856,7 +856,7 @@ describe('a reply after a local-only read (I5 in the app)', () => {
     expect(JSON.stringify(h.nativeBodies[3])).toContain(`Build it from: ${note}`);
     const notes = events.flatMap((e) => (e.type === 'status' ? [e.message] : []));
     expect(notes).toContain(
-      'Build. This plan draws on a private note, so Box Mid, your Reasoning model, takes it instead of GPT. Private notes never reach a cloud model.',
+      'Build. This plan draws on a private note, so Box Mid, your Reasoning model, takes it instead of GPT. Private notes never reach a cloud model unless a command you allow reads them.',
     );
     driver.dispose();
   });

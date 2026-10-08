@@ -76,6 +76,10 @@ export function extractSymbols(content: string, ext: string, cap = 24): string[]
 export interface CodeMapOptions {
   maxChars?: number;
   maxFiles?: number;
+  /** Files listed by name only, never outlined: the vault folder's, whose
+   *  text the vault's privacy rules judge (D5), and a map goes to every seat.
+   *  Names follow vaultList, so a note is still named. */
+  nameOnly?: (rel: string) => boolean;
 }
 
 /** Build the code map: a compact file list with symbol outlines. */
@@ -88,7 +92,7 @@ export function buildCodeMap(root: string, opts: CodeMapOptions = {}): string {
     if (count >= maxFiles) break;
     const ext = extname(rel);
     let entry = rel;
-    if (rulesFor(ext)) {
+    if (rulesFor(ext) && !opts.nameOnly?.(rel)) {
       try {
         const full = join(root, rel);
         if (statSync(full).size <= 300_000) {

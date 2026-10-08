@@ -34,6 +34,7 @@ import { profileFor, type SecurityProfileName } from '../security/profiles.js';
 import { UsageTracker } from '../../auth/usage.js';
 import { LocalDriver, storedSessionProject } from '../../daemon/session.js';
 import { buildCodeMap } from '../../context/codeMap.js';
+import { vaultFileTest } from '../tools/workspaceNotes.js';
 import { readRepoInstructions } from './instructions.js';
 import { gateProjectSecrets } from './secretsGate.js';
 import { humanizerEnabled } from './humanizerStandard.js';
@@ -445,7 +446,9 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
 
   let codeMap: string | undefined;
   try {
-    codeMap = buildCodeMap(options.cwd);
+    // Files in the vault folder are named, never outlined (D5).
+    const nameOnly = vaultFileTest(toolContext.vaultRoot, options.cwd);
+    codeMap = buildCodeMap(options.cwd, nameOnly ? { nameOnly } : {});
   } catch (err) {
     log.warn('code map failed', { err: String(err) });
   }

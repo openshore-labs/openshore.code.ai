@@ -25,6 +25,7 @@ import { structuralCheck, verifyWritten } from '../edit/verify.js';
 import { unifiedDiff } from '../edit/diff.js';
 import { parseJsonLoose } from './parser.js';
 import { VAULT_SETTINGS_DENY, workspaceWriteHitsVaultSettings } from '../vault/settingsFile.js';
+import { markedLocal, noteClosed, noteStaysHere, workspaceNotes } from './workspaceNotes.js';
 
 const pairSchema = z.looseObject({});
 
@@ -252,7 +253,23 @@ export const editFileTool: ToolDef<typeof schema> = {
     }
     const before = readFileSync(abs, 'utf8');
     const planned = plan(args, before);
-    if (planned.error !== undefined) return { ok: false, content: planned.error };
+    if (planned.error !== undefined) {
+      // A failed edit shows the model the file's lines to copy from. A vault
+      // note's are judged as readFile judges them (D5): never an excluded
+      // note's, a local-only note's only to a seat that stays, marked.
+      const notes = workspaceNotes(ctx);
+      const showing = notes ? await notes.showing(abs, before) : 'open';
+      if (showing === 'closed') {
+        return { ok: false, content: `The edit did not apply. ${noteClosed(args.path)}` };
+      }
+      if (showing === 'withheld') {
+        return {
+          ok: false,
+          content: `The edit did not apply. ${noteStaysHere(args.path, notes!.notePath(abs) ?? args.path)}`,
+        };
+      }
+      return markedLocal({ ok: false, content: planned.error }, showing === 'shown-local');
+    }
 
     const after = planned.result.content;
     const structural = structuralCheck(abs, after);

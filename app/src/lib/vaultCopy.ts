@@ -83,8 +83,15 @@ export const PHONE_AGENT_LINE = 'Your agent uses the vault on your computer.';
  *  room's pins card says the same. */
 export const VAULT_MODELS_TITLE = 'How your models use it';
 /** The one promise about private notes and cloud models, worded once for the
- *  ramp and the project room's pins card (D5; CS-10). */
-export const VAULT_PRIVATE_OFF_CLOUD = 'Private notes never reach a cloud model.';
+ *  ramp and the project room's pins card (D5; CS-10). Every way OpenShore
+ *  itself reads a note keeps a private one off a cloud model: the pack, the
+ *  vault tools, and the workspace's own file, search and git tools when the
+ *  vault sits in a project (the privacy review, sp-vaultws, 2026-10-08). A
+ *  shell command can read any file, so a command the person allows can print
+ *  one to a cloud model; near the vault such a command asks every time and
+ *  its card says so. The promise says exactly that much. */
+export const VAULT_PRIVATE_OFF_CLOUD =
+  'Private notes never reach a cloud model unless a command you allow reads them.';
 export const VAULT_MODELS_LINE = `Pin a note to a project and every chat there starts with it. ${VAULT_PRIVATE_OFF_CLOUD}`;
 /** A plan's working note for a step kept off a model that leaves this
  *  network, because the plan draws on a private note: the Reasoning model

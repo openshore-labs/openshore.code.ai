@@ -10,6 +10,15 @@ import { containsSecret } from '../security/redaction.js';
 import { defaultBranchOf } from '../../git/reconcile.js';
 import type { StageFile, StageSecret } from '../agent/types.js';
 import { capContent, type ToolContext, type ToolDef } from './index.js';
+import {
+  markedLocal,
+  noteVisibility,
+  realVaultRoot,
+  showingFor,
+  vaultMeets,
+  vaultPathOf,
+} from './workspaceNotes.js';
+import { refreshVault } from './vaultFind.js';
 
 const statusSchema = z.object({});
 
@@ -37,6 +46,82 @@ export const gitStatusTool: ToolDef<typeof statusSchema> = {
   },
 };
 
+/** The vault notes a patch would show, judged as readFile judges them (D5):
+ *  `hidden` are the ones this seat may not see (an excluded note on every
+ *  seat, a local-only one on a seat that leaves this network), `named` those
+ *  of them a listing still names (the local-only ones), and `local` whether
+ *  one it may see stays on this computer. */
+interface PatchNotes {
+  hidden: string[];
+  named: string[];
+  local: boolean;
+  /** The repository's root and the files the patch touches, repo-relative. */
+  root: string;
+  names: string[];
+}
+
+/**
+ * Judge the files a patch would touch (repo-relative, from `--name-only`)
+ * when the vault and the repository overlap; undefined when they do not, so
+ * the patch goes out as it always has. A note's text is read from the
+ * working tree, else the index, else HEAD; a markdown note none of those
+ * holds (one deleted long ago) is judged as staying on this computer, since
+ * its tags and marks can no longer be read.
+ */
+async function patchNotes(
+  ctx: ToolContext,
+  git: SimpleGit,
+  names: () => Promise<string[]>,
+): Promise<PatchNotes | undefined> {
+  const vault = realVaultRoot(ctx.vaultRoot);
+  if (!vault) return undefined;
+  const root = (await git.revparse(['--show-toplevel'])).trim();
+  if (!vaultMeets(ctx.vaultRoot, root)) return undefined;
+  await refreshVault(ctx);
+  const out: PatchNotes = { hidden: [], named: [], local: false, root, names: [] };
+  out.names = [...new Set(await names())];
+  for (const name of out.names) {
+    const notePath = vaultPathOf(vault, join(root, name));
+    if (notePath === undefined) continue;
+    const markdown = /\.md$/i.test(notePath);
+    const text = markdown ? await textOf(git, root, name) : undefined;
+    let visibility = noteVisibility(ctx, notePath, text);
+    if (markdown && text === undefined && visibility === 'open') visibility = 'local-only';
+    const showing = showingFor(ctx, visibility);
+    if (showing === 'shown-local') out.local = true;
+    else if (showing === 'withheld' || showing === 'closed') {
+      out.hidden.push(name);
+      if (showing === 'withheld') out.named.push(name);
+    }
+  }
+  return out;
+}
+
+/** A file's text in the working tree, else the index, else HEAD. */
+async function textOf(git: SimpleGit, root: string, name: string): Promise<string | undefined> {
+  try {
+    return readFileSync(join(root, name), 'utf8');
+  } catch {
+    // Gone from the working tree: its last recorded version.
+  }
+  for (const rev of [':', 'HEAD:']) {
+    try {
+      return await git.show([`${rev}${name}`]);
+    } catch {
+      // Not recorded there.
+    }
+  }
+  return undefined;
+}
+
+/** The line a patch ends with when it left a note out: the local-only ones
+ *  by name (a listing names them), an excluded one never. */
+function leftOutLine(notes: PatchNotes): string {
+  return notes.named.length
+    ? `Left out: changes to ${notes.named.length === 1 ? 'a vault note' : 'vault notes'} that stay on this computer (${notes.named.join(', ')}). This model's requests leave this network, so their text is not sent here.`
+    : '';
+}
+
 const diffSchema = z.object({
   path: z.string().optional().describe('Limit the diff to one path'),
   staged: z.boolean().optional().describe('Show the staged diff instead of the working tree'),
@@ -53,8 +138,43 @@ export const gitDiffTool: ToolDef<typeof diffSchema> = {
       const params: string[] = [];
       if (args.staged) params.push('--staged');
       if (args.path) params.push('--', args.path);
+      // A changed vault note in the repository is shown as readFile shows
+      // it (D5): one this seat may not see is left out of the diff.
+      const staged = args.staged ? ['--staged'] : [];
+      const notes = await patchNotes(ctx, git, async () =>
+        nulList(
+          await git.raw([
+            'diff',
+            '--name-only',
+            '-z',
+            '--no-renames',
+            ...staged,
+            ...(args.path ? ['--', args.path] : []),
+          ]),
+        ),
+      );
+      if (notes?.hidden.length) {
+        const shown = notes.names.filter((n) => !notes.hidden.includes(n));
+        const diff = shown.length
+          ? await git.diff([
+              ...staged,
+              '--no-renames',
+              '--',
+              ...shown.map((n) => join(notes.root, n)),
+            ])
+          : '';
+        const tail = leftOutLine(notes);
+        const body = diff.trim() ? capContent(diff) : tail ? '' : 'No changes.';
+        return markedLocal(
+          { ok: true, content: [body, tail].filter(Boolean).join('\n') },
+          notes.local,
+        );
+      }
       const diff = await git.diff(params);
-      return { ok: true, content: diff.trim() ? capContent(diff) : 'No changes.' };
+      return markedLocal(
+        { ok: true, content: diff.trim() ? capContent(diff) : 'No changes.' },
+        notes?.local === true,
+      );
     } catch (err) {
       return { ok: false, content: gitHint(err) };
     }
@@ -98,10 +218,39 @@ export const gitLogTool: ToolDef<typeof logSchema> = {
         '--stat',
       ];
       if (args.since) params.push(`--since=${args.since}`);
-      if (args.patch) params.push('-p');
-      if (args.path) params.push('--', args.path);
-      const out = await git.raw(params);
-      return { ok: true, content: out.trim() ? capContent(out) : 'No commits match.' };
+      const scope = args.path ? ['--', args.path] : [];
+      // The patches of a vault note in the repository are shown as readFile
+      // shows it (D5): when these commits change one this seat may not see,
+      // the log comes without patches and says so.
+      const notes = args.patch
+        ? await patchNotes(ctx, git, async () =>
+            nulList(
+              await git.raw([
+                'log',
+                `-n${args.count ?? 10}`,
+                ...(args.since ? [`--since=${args.since}`] : []),
+                '--format=',
+                '--name-only',
+                '-z',
+                '--no-renames',
+                ...scope,
+              ]),
+            ),
+          )
+        : undefined;
+      const withheld = Boolean(notes?.hidden.length);
+      if (args.patch && !withheld) params.push('-p');
+      const out = await git.raw([...params, ...scope]);
+      const tail = withheld
+        ? notes!.named.length
+          ? "Patches are left out: these commits change vault notes that stay on this computer. This model's requests leave this network, so their text is not sent here. Ask with path for another file's changes."
+          : "Patches are left out: these commits change notes the person's vault settings close to the agent. Ask with path for another file's changes."
+        : '';
+      const body = out.trim() ? capContent(out) : 'No commits match.';
+      return markedLocal(
+        { ok: true, content: tail ? `${body}\n${tail}` : body },
+        notes?.local === true && !withheld,
+      );
     } catch (err) {
       return { ok: false, content: gitHint(err) };
     }

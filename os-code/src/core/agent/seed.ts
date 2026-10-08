@@ -77,6 +77,9 @@ export function seedHistoryFromEvents(journal: DriverEvent[] | JournalEntry[]): 
       if (event.localOnly) readLocalOnly = holdsLocalOnly = true;
     } else if (event.type === 'tool-end') {
       if (event.result.localOnly) readLocalOnly = holdsLocalOnly = true;
+    } else if (event.type === 'verify') {
+      // A check's failure handed back near the vault (D5).
+      if (event.localOnly) readLocalOnly = holdsLocalOnly = true;
     } else if (event.type === 'text-final') {
       if (pendingUser !== undefined) {
         history.push({ role: 'user', content: pendingUser });

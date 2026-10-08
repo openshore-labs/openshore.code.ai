@@ -48,6 +48,7 @@ import {
   ROUTINE_NOTES_PLACE,
   VAULT_MODELS_LINE,
   VAULT_MODELS_TITLE,
+  VAULT_PRIVATE_OFF_CLOUD,
   VAULT_COPY_PLATFORMS,
   VAULT_COPY_PROVIDERS,
   vaultCopy,
@@ -694,6 +695,33 @@ describe('retired Vault claims', () => {
     expect(ROUTINE_NOTES_PLACE).toBe('the vault folder on your computer');
     const crew = readFileSync(join(SRC, 'screens/CrewCommandScreen.tsx'), 'utf8');
     expect(crew).toContain('ROUTINE_NOTES_PLACE');
+  });
+});
+
+// The one private-notes promise (D5) says what the code does (the privacy
+// review, sp-vaultws, 2026-10-08). The pack, the vault tools and the
+// workspace's own tools keep a private note off a cloud model; a shell
+// command can read any file, so the promise names the command the person
+// allows, and the engine's card for a command near the vault says so.
+describe('the private-notes promise', () => {
+  it('names the one way a private note can reach a cloud model', () => {
+    expect(VAULT_PRIVATE_OFF_CLOUD).toBe(
+      'Private notes never reach a cloud model unless a command you allow reads them.',
+    );
+    expect(VAULT_MODELS_LINE).toContain(VAULT_PRIVATE_OFF_CLOUD);
+    const loop = readFileSync(resolve(ROOT, '../os-code/src/core/agent/loop.ts'), 'utf8');
+    expect(loop).toContain(
+      'This command can read notes in your vault that stay on this computer, and what it prints goes to a cloud model.',
+    );
+  });
+
+  it('the unscoped wording survives nowhere in the app', () => {
+    const hits: string[] = [];
+    for (const file of walk(SRC)) {
+      const text = stripComments(readFileSync(file, 'utf8'));
+      if (/never reach a cloud model\./i.test(text)) hits.push(relative(ROOT, file));
+    }
+    expect(hits).toEqual([]);
   });
 });
 

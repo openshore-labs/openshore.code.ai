@@ -65,6 +65,9 @@ export interface TestSessionOptions {
   now?: () => Date;
   /** A repository code map for the system prompt, as bootstrap builds one. */
   codeMap?: string;
+  /** The repository's standing instructions (CLAUDE.md), as bootstrap reads
+   *  them. */
+  repoInstructions?: AgentDeps['repoInstructions'];
   /** Where the loop's handoffs go (Vault M5, J13), and a builder standing in
    *  for the pure core's. */
   onHandoff?: AgentDeps['onHandoff'];
@@ -210,6 +213,7 @@ export function makeTestSession(
     vaultContext: options.vaultContext,
     now: options.now,
     codeMap: options.codeMap,
+    ...(options.repoInstructions ? { repoInstructions: options.repoInstructions } : {}),
     onHandoff: options.onHandoff,
     buildHandoff: options.buildHandoff,
     ...(options.canGrantVerify === false ? { canGrantVerify: false } : {}),
