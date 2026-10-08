@@ -144,7 +144,9 @@ export type AgentEvent =
        *  generateImage): the model the step goes to and whether it leaves
        *  this network, so a client names it and wears the Cloud chip (CX and
        *  CMO, 2026-10-08, D). Absent offline, where the router picks the
-       *  model as it runs, and from an older engine. Additive. */
+       *  model as it runs; absent when no specialist is placed for the role,
+       *  so the Reasoning model takes the step itself; and from an older
+       *  engine. Additive. */
       handoff?: ToolHandoff;
     }
   | {

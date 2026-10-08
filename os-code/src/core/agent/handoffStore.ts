@@ -148,7 +148,8 @@ export function writeHandoff(scope: HandoffScope, record: HandoffRecord): boolea
 const FUTURE_SLACK_MS = 60 * 60 * 1000;
 
 /** The latest handoff for a scope when it is at most `maxAgeDays` old;
- *  undefined when there is none, it is too old, or it cannot be opened. */
+ *  undefined when there is none, it is too old, it was written before the
+ *  local-only fix (no `v: 2`), or it cannot be opened. */
 export function readHandoff(
   scope: HandoffScope,
   options: { now?: Date; maxAgeDays?: number } = {},
@@ -164,6 +165,10 @@ export function readHandoff(
     }
     if (clear === null) return undefined;
     const parsed = JSON.parse(clear) as Partial<HandoffRecord>;
+    // A record without v: 2 was written before the local-only fix, by this
+    // machine before the sweep or by an older engine beside this one (a CLI
+    // the person has not updated), so it is never read (A).
+    if (parsed.v !== 2) return undefined;
     if (typeof parsed.text !== 'string' || !parsed.text.trim()) return undefined;
     if (typeof parsed.at !== 'string') return undefined;
     const at = Date.parse(parsed.at);

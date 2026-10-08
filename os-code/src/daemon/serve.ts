@@ -852,12 +852,15 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
             ...(orchestratorLeaves ? {} : onThisComputer(orchestratorId)),
           }
         : undefined;
-      // Each specialist judged as the orchestrator is (seatLeaves).
+      // Each specialist judged as the orchestrator is (seatLeaves). One whose
+      // server is no longer configured cannot answer anywhere, so it says
+      // nothing of where (no kind, so a client shows no chip).
       const specialists = Object.entries(stack.specialists)
         .filter(([role]) => role !== 'imageGen')
         .map(([role, ref]) => {
           const model = (ref as { model?: string }).model ?? '';
           const providerId = (ref as { provider?: string }).provider ?? '';
+          if (!registry.has(providerId) && !config.providers[providerId]) return { role, model };
           const leaves = registry.has(providerId)
             ? seatLeaves(registry.get(providerId), model)
             : config.providers[providerId]?.kind === 'anthropic' || isOllamaCloudTag(model);

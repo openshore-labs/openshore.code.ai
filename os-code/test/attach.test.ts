@@ -81,3 +81,27 @@ describe('RemoteDriver stops instead of retrying forever (DAE-13)', () => {
     driver.close();
   });
 });
+
+// CX and CMO, 2026-10-08 (J): a message marked local-only keeps its mark on
+// the wire, as LocalDriver keeps it in process, so the daemon holds the task
+// to the engine's D5 rules whichever driver sent it.
+describe('RemoteDriver carries the local-only mark (J)', () => {
+  it('sends localOnly only on a marked message', async () => {
+    const bodies: unknown[] = [];
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/input')) bodies.push(JSON.parse(String(init?.body ?? '{}')));
+      return new Response(JSON.stringify({}), { status: 404 });
+    }) as unknown as typeof fetch;
+    const driver = new RemoteDriver('s5', target, '/w', { initialBackoffMs: 5 });
+    driver.send('the private step', undefined, { localOnly: true });
+    driver.send('an ordinary step');
+    await waitUntil(() => bodies.length === 2);
+    expect(bodies).toEqual(
+      expect.arrayContaining([
+        { text: 'the private step', localOnly: true },
+        { text: 'an ordinary step' },
+      ]),
+    );
+    driver.close();
+  });
+});

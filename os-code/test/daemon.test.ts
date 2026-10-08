@@ -207,6 +207,8 @@ describe('the stack report and a local-only turn (B, J)', () => {
             writing: { provider: 'anthropic', model: 'claude-sonnet-5' },
             fast: { provider: 'ollama', model: 'gpt-oss:120b-cloud' },
             analysis: { provider: 'lan', model: 'qwen3:14b' },
+            // Its server was removed: it answers nowhere, so no chip.
+            vision: { provider: 'gone', model: 'llava:13b' },
           },
         },
       }),
@@ -227,6 +229,7 @@ describe('the stack report and a local-only turn (B, J)', () => {
     // A cloud tag on this computer's Ollama leaves, and says no more.
     expect(byRole.fast).toEqual({ role: 'fast', model: 'gpt-oss:120b-cloud', kind: 'cloud' });
     expect(byRole.analysis).toEqual({ role: 'analysis', model: 'qwen3:14b', kind: 'local' });
+    expect(byRole.vision).toEqual({ role: 'vision', model: 'llava:13b' });
   });
 
   it('POST /input with localOnly marks the turn; without it, the turn is plain', async () => {

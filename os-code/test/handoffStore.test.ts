@@ -159,6 +159,25 @@ describe('the sweep of records from before the fix', () => {
     expect(existsSync(old)).toBe(true);
   });
 
+  it('the reader never opens a record without v: 2, as an older engine beside this one writes', () => {
+    const scope = { cwd, projectName: 'Atlas' };
+    const now = new Date();
+    sweepPreFixHandoffs();
+    expect(existsSync(handoffSweepMarker())).toBe(true);
+    // Written after the sweep by an engine from before the fix (a CLI the
+    // person has not updated): the marker stops a second sweep, so the
+    // reader holds the line.
+    mkdirSync(handoffsDir(), { recursive: true });
+    writeFileSync(
+      join(handoffsDir(), `${handoffKey(scope)}.json`),
+      JSON.stringify(record(now, 'OLD-ENGINE-PRIVATE')),
+    );
+    expect(readHandoff(scope, { now })).toBeUndefined();
+    // The same record as this engine writes it is read.
+    writeHandoff(scope, record(now));
+    expect(readHandoff(scope, { now })).toEqual(record(now));
+  });
+
   it('bootstrap runs it', () => {
     mkdirSync(handoffsDir(), { recursive: true });
     const old = join(handoffsDir(), `${'c'.repeat(64)}.json`);

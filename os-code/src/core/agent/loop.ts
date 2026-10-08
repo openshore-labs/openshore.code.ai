@@ -342,6 +342,10 @@ interface HandoffTarget {
   /** The card's detail; undefined for a priced provider, whose detail is the
    *  spend estimate. */
   detail?: string;
+  /** No specialist is placed for the role, so the Reasoning model takes the
+   *  step itself (Router.roleFor's fallback): no other model is handed it,
+   *  so the tool-start names none. */
+  fellBack?: true;
 }
 
 /** What a command's card says while the vault's folder overlaps this
@@ -2547,11 +2551,14 @@ export class AgentSession {
         this.pushObservation(call, `Not run: ${reason} Do this part yourself.`, toolMode);
         return 'refused';
       }
+      // A handoff sends the step the agent wrote, never the chat, so its
+      // estimate is priced on that step.
       const yes = await this.confirmCloudSpend(
         handoffCardSummary(handoff.model, handoff.category),
         handoff.detail,
         handoff.key,
         handoff.model,
+        estimateTokens(JSON.stringify(call.args ?? {})),
       );
       if (this.abortController?.signal.aborted) return 'aborted';
       if (!yes) {
@@ -2567,12 +2574,16 @@ export class AgentSession {
       if (rawPath !== undefined && tool.pathJail !== 'own') this.recordOriginal(rawPath);
     }
     // The turn's reach turns cloud for a handoff that leaves, and the row
-    // names the model the step goes to (D).
+    // names the model the step goes to (D). A role that fell back to the
+    // Reasoning model names none, so a row never calls it "your writing
+    // model" when no writing model is placed.
     if (handoff?.leaves) this.emit({ type: 'reach', model: handoff.model, providerKind: 'cloud' });
     this.emit({
       type: 'tool-start',
       call,
-      ...(handoff ? { handoff: { model: handoff.model, leaves: handoff.leaves } } : {}),
+      ...(handoff && !handoff.fellBack
+        ? { handoff: { model: handoff.model, leaves: handoff.leaves } }
+        : {}),
     });
     const startedAt = Date.now();
     let result;
@@ -2914,7 +2925,7 @@ export class AgentSession {
     }
     const role = handoffRole(call);
     if (!role) return undefined;
-    const target = router.roleFor(role).resolved;
+    const { resolved: target, fellBack } = router.roleFor(role);
     const model = target.ref.model;
     const leaves = seatLeaves(target.provider, model);
     const server = this.serverOf(target.provider);
@@ -2928,8 +2939,11 @@ export class AgentSession {
       model,
       leaves,
       key: seatKey(target.provider.id, model),
-      category: HANDOFF_CATEGORY[role] ?? role,
+      // A role with no specialist placed falls to the Reasoning model, so a
+      // card for it names the slot the person did place it in.
+      category: fellBack ? 'reasoning' : (HANDOFF_CATEGORY[role] ?? role),
       ...(detail ? { detail } : {}),
+      ...(fellBack ? { fellBack: true as const } : {}),
     };
   }
 
@@ -3200,18 +3214,20 @@ export class AgentSession {
    * orchestrator's yes covers the orchestrator, an escalation's its target,
    * and a placed cloud specialist's its own first handoff. A yes for the
    * session (where the profile allows it) covers every cloud step. The
-   * estimate is priced on `estimateModel`. A Stop while it waits reads as
-   * no; the caller checks the signal.
+   * estimate is priced on `estimateModel`, for what the step sends: the chat
+   * by default, or `sentTokens` (a handoff's own step). A Stop while it
+   * waits reads as no; the caller checks the signal.
    */
   private async confirmCloudSpend(
     reason: string,
     detailOverride: string | undefined,
     key: string,
     estimateModel: string,
+    sentTokens?: number,
   ): Promise<boolean> {
     if (this.cloudApprovedForSession || this.cloudApprovedThisTask.has(key)) return true;
     const { usage, permissions, profile } = this.deps;
-    const promptGuess = estimateMessages(this.history) + 2000;
+    const promptGuess = (sentTokens ?? estimateMessages(this.history)) + 2000;
     const estimate = usage.estimate(estimateModel, promptGuess);
     const spent = usage.session.dollars;
     const answer = await this.awaitApprovalOrAbort({

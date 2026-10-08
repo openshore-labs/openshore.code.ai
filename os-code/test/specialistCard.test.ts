@@ -12,6 +12,9 @@ import { join } from 'node:path';
 import { MockProvider, textTurn, toolTurn } from './helpers/mockProvider.js';
 import { makeTestSession } from './helpers/session.js';
 import { deniedReasons } from './helpers/privateNotes.js';
+import { UsageTracker } from '../src/auth/usage.js';
+import { estimateTokens } from '../src/context/compaction.js';
+import { adapterFor } from '../src/providers/adapters/index.js';
 import type { AgentEvent, ApprovalRequest } from '../src/core/agent/types.js';
 import type { MachineOffline } from '../src/core/agent/offline.js';
 
@@ -313,6 +316,82 @@ describe('a placed cloud specialist asks before its first handoff in each task (
     expect(deniedReasons(session.events)).toEqual([
       'This step goes to claude-sonnet-5, a cloud model, and a routine cannot ask you first, so it did not run.',
     ]);
+  });
+
+  it('the estimate is priced on the step the agent wrote, not the whole chat', async () => {
+    const cloud = claude();
+    const args = { role: 'writing', task: 'A haiku about tides.' };
+    const { session } = localStack([toolTurn('delegate', args, 'd1'), textTurn('Done.')], WRITER, {
+      providers: [cloud],
+    });
+    // A long chat before it: a delegate sends none of it.
+    session.agent.history = [
+      { role: 'user', content: 'x'.repeat(400_000) },
+      { role: 'assistant', content: 'Read it.' },
+    ];
+    await session.agent.run('a haiku');
+    const [card] = cloudCards(session.approvals);
+    const step = new UsageTracker().estimate(
+      'claude-sonnet-5',
+      estimateTokens(JSON.stringify(args)) + 2000,
+    );
+    expect(card!.detail).toBe(
+      `Estimated cost: about $${step.toFixed(3)} per call on claude-sonnet-5. Spent this session: $0.00. Nothing is sent without this approval.`,
+    );
+  });
+
+  it('a role with no specialist placed names no model: the Reasoning model takes the step', async () => {
+    const { session } = localStack(
+      [toolTurn('delegate', { role: 'writing', task: 'A haiku.' }, 'd1'), textTurn('Done.')],
+      {},
+    );
+    await session.agent.run('a haiku');
+    expect(cloudCards(session.approvals)).toEqual([]);
+    expect(reaches(session.events)).toEqual([]);
+    const start = session.events.find((e) => e.type === 'tool-start' && e.call.name === 'delegate');
+    expect(start).toBeDefined();
+    expect(start).not.toHaveProperty('handoff');
+  });
+
+  it('a fallen-back step to a Reasoning model off this network names the slot it was placed in', async () => {
+    // The Reasoning model is a model server on the internet; the seat that
+    // answers now is Claude (an escalation earlier in the chat), so the
+    // server was not approved this task.
+    const claudeSeat = new MockProvider(
+      'anthropic',
+      [toolTurn('delegate', { role: 'writing', task: 'A haiku.' }, 'd1'), textTurn('Done.')],
+      { kind: 'cloud' },
+    );
+    const remote = new MockProvider('remote', [textTurn('From the server.')]);
+    // Its address is on the internet, as the registry judges one.
+    (remote as { remote: boolean }).remote = true;
+    const session = makeTestSession(remote, {
+      providers: [claudeSeat],
+      specialists: true,
+      configOverrides: {
+        providers: {
+          remote: { kind: 'openai-compatible', baseUrl: 'https://models.example.com/v1' },
+          anthropic: { kind: 'anthropic' },
+        },
+        stack: { orchestrator: { provider: 'remote', model: 'big-model' } },
+      },
+    });
+    (session.agent as unknown as { active: unknown }).active = {
+      provider: claudeSeat,
+      model: 'claude-sonnet-5',
+      adapter: adapterFor('claude-sonnet-5'),
+    };
+    await session.agent.run('a haiku');
+    expect(cloudCards(session.approvals).map((c) => [c.summary, c.detail])).toEqual([
+      ['This step runs on cloud Claude.', expect.stringMatching(/^Estimated cost/)],
+      [
+        'This step goes to big-model, the cloud model you placed for reasoning.',
+        'The step the agent wrote goes to models.example.com. Nothing is sent without this approval.',
+      ],
+    ]);
+    expect(remote.requests).toHaveLength(1);
+    expect(handoffStarts(session.events)).toEqual([]);
+    expect(reaches(session.events)).toHaveLength(1);
   });
 
   it('offline never asks: the router keeps the step on this network', async () => {

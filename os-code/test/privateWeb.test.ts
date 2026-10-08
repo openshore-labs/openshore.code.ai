@@ -51,6 +51,7 @@ function session(
     cloud?: boolean;
     backend?: string;
     approve?: TestSessionOptions['approve'];
+    permissions?: Record<string, unknown>;
   } = {},
 ) {
   const provider = opts.cloud
@@ -67,6 +68,7 @@ function session(
         ? { stack: { orchestrator: { provider: 'anthropic', model: 'claude-sonnet-5' } } }
         : {}),
       ...(opts.backend ? { search: { backend: opts.backend } } : {}),
+      ...(opts.permissions ? { permissions: opts.permissions } : {}),
     },
   });
   s.tools.register(journalRead);
@@ -160,5 +162,35 @@ describe('a model-written search or page after a private note asks every time (H
     expect(webCards(s.approvals)).toEqual([]);
     expect(ran).toEqual([]);
     expect(deniedReasons(s.events)).toEqual([HANDOFF_LOCAL_ONLY_DENIED]);
+  });
+
+  it('Perplexity asks nobody even where web steps ask first, and the model reads why', async () => {
+    // Searching the web set to ask: the old order asked, then refused.
+    ran.length = 0;
+    const { provider, s } = session([READ, SEARCH, textTurn('Answered from what I have.')], {
+      backend: 'perplexity',
+      permissions: { defaults: { write: 'allow', shell: 'ask', network: 'ask' } },
+    });
+    await s.agent.run('look it up');
+    expect(webCards(s.approvals)).toEqual([]);
+    expect(ran).toEqual([]);
+    expect(JSON.stringify(provider.requests.at(-1)!.messages)).toContain(
+      `Not run: ${HANDOFF_LOCAL_ONLY_DENIED} Answer from what you have.`,
+    );
+  });
+
+  it('a deny still wins: Opening web pages on Never refuses without a card', async () => {
+    ran.length = 0;
+    const { s } = session([READ, FETCH, textTurn('Answered from what I have.')], {
+      permissions: {
+        defaults: { write: 'allow', shell: 'ask' },
+        rules: [{ tool: 'webFetch', decision: 'deny' }],
+      },
+    });
+    await s.agent.run('open it');
+    expect(webCards(s.approvals)).toEqual([]);
+    expect(ran).toEqual([]);
+    expect(deniedReasons(s.events)).toHaveLength(1);
+    expect(deniedReasons(s.events)[0]).toMatch(/denied by your permission policy/);
   });
 });
