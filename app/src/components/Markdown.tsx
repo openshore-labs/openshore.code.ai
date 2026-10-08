@@ -11,7 +11,7 @@ import remarkGfm from 'remark-gfm';
 import { isValidElement } from 'react';
 import { CodeBlock, extractText } from './CodeBlock.js';
 import { AppActionCard } from './AppActionCard.js';
-import { appActionKeyFromClass } from '../lib/appActions.js';
+import { appActionKeyFromClass, type AppActionKey } from '../lib/appActions.js';
 import { hasCodeFence, useHighlighter } from '../lib/lazyHighlight.js';
 import { rehypeFadeWords } from '../lib/fadeWords.js';
 import { rehypeInk, type InkStamp } from '../lib/inkSwell.js';
@@ -29,13 +29,16 @@ export function Markdown({
   streaming = false,
   fade = false,
   ink,
-  actions = false,
+  actions = [],
 }: {
   text: string;
-  /** A chat reply: a fence tagged `openshore-set:<key>` renders as the app
-   *  action card (lib/appActions.ts) instead of code. Off everywhere else, so
-   *  a note in the vault or a plan never offers to change a setting. */
-  actions?: boolean;
+  /** A chat reply: a fence tagged `openshore-set:<key>`, for a key listed
+   *  here, renders as the app action card (lib/appActions.ts) instead of
+   *  code. The chat lists only the keys its own turns asked for (the
+   *  contract's gate, appActionsAsked), and nothing anywhere else, so a note
+   *  in the vault, a plan, or a reply in a chat that never asked never
+   *  offers to change a setting. */
+  actions?: readonly AppActionKey[];
   streaming?: boolean;
   /** A live reply: split prose into word spans so each new word fades in
    *  (lib/fadeWords.ts, `.md-live .w`). Off renders plain text. */
@@ -58,10 +61,10 @@ export function Markdown({
         components={{
           pre: ({ children }) => {
             const key =
-              actions && isValidElement(children)
+              actions.length && isValidElement(children)
                 ? appActionKeyFromClass((children.props as { className?: string }).className)
                 : undefined;
-            if (key) {
+            if (key && actions.includes(key)) {
               const value = extractText(children).replace(/\n$/, '');
               // A finished proposal with nothing in it is a small model's
               // misfire, not an offer: show nothing rather than an empty box.

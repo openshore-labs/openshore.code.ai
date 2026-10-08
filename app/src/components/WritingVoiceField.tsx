@@ -33,8 +33,9 @@ export function WritingVoiceField() {
       <div className="settings-row-text">
         <span className="settings-row-label">Your writing voice</span>
         <span className="settings-row-sub">
-          Your own words for how models write for you. Works alone or with Humanize Writing, and
-          stays on this device.
+          Your own words for how models write for you. Works alone or with Humanize Writing. Kept
+          only on this device and never synced; it goes with each message to the model that writes
+          for you.
         </span>
       </div>
       <button

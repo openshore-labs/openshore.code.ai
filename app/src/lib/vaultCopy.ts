@@ -86,6 +86,17 @@ export const VAULT_MODELS_TITLE = 'How your models use it';
  *  ramp and the project room's pins card (D5; CS-10). */
 export const VAULT_PRIVATE_OFF_CLOUD = 'Private notes never reach a cloud model.';
 export const VAULT_MODELS_LINE = `Pin a note to a project and every chat there starts with it. ${VAULT_PRIVATE_OFF_CLOUD}`;
+/** A plan's working note for a step kept off a model that leaves this
+ *  network, because the plan draws on a private note: the Reasoning model
+ *  that wrote the plan stays here and takes the step (D5, stepRunner). */
+export function privatePlanStepNote(title: string, owner: string, anchor: string): string {
+  return `${title}. This plan draws on a private note, so ${anchor}, your Reasoning model, takes it instead of ${owner}. ${VAULT_PRIVATE_OFF_CLOUD}`;
+}
+/** The same plan's note for a step that edits files: it is described here,
+ *  not handed to your computer, whose agent may run a cloud model (D5). */
+export function privatePlanEngineNote(title: string, writer: string): string {
+  return `${title}. This plan draws on a private note, so ${writer} describes the change here instead of running it on your computer, whose agent may use a cloud model.`;
+}
 /** The desktop's line when the vault is not the agent's folder. */
 export const DESKTOP_AGENT_LINE =
   'Your agent uses a folder on this computer, not these notes. Move the vault to This folder to share it.';

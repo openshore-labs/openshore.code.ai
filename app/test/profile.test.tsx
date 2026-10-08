@@ -66,6 +66,22 @@ describe('the profile rules', () => {
     );
   });
 
+  // egress-claims-4 (sp-plan): the signed-in card named four of the six.
+  // It now reads the same list, and the sign-in sheets list none of them.
+  it('names every preference that follows on the signed-in card, from the one list', async () => {
+    const { SIGNED_IN_PERKS, ACCOUNT_GATE_BODY, accountCopy } =
+      await import('../src/lib/accountGate.js');
+    for (const k of followingKeys()) {
+      expect(SIGNED_IN_PERKS.toLowerCase(), String(k)).toContain(followsLabel(k).toLowerCase());
+    }
+    expect(SIGNED_IN_PERKS).toBe(
+      'These follow you to every device you sign in on: appearance, effort, Humanize Writing, Chain of Thought, notices, and voice. Signing out keeps everything on this device.',
+    );
+    for (const body of [ACCOUNT_GATE_BODY, accountCopy(true).body]) {
+      expect(body).toMatch(/takes your theme and a few preferences to every device/);
+    }
+  });
+
   it('draws the avatar from the email', () => {
     expect(accountInitial('founder@openshore.ai')).toBe('F');
     expect(accountInitial(undefined)).toBe('?');

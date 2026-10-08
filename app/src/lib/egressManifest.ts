@@ -49,6 +49,16 @@ export interface EgressEntry {
 export const ROUTINES_SEARCH_LINE =
   'Crew routines follow this switch while your computer is on, and only search; they never open pages.';
 
+/** A plan's image step while nothing in the Stack reads images (founder,
+ *  2026-10-07; CLAUDE.md tenet 4): it runs on the chat path's cloud reader,
+ *  the one the Stack's Image reading row names, with no card (stackDriver
+ *  executePlay, play.ts stepRunner). It is sent what any cloud step is, the
+ *  chat's earlier turns (private ones as a stub), the plan, and the work so
+ *  far, as text: plans run only on turns with no picture, and no step is
+ *  sent one. The one sentence the cloud-models entry carries. */
+export const PLAN_IMAGE_STEP_LINE =
+  "One exception: while nothing in your Stack reads images, an image step in a plan goes to the cloud model your Stack's Image reading row names, without asking. It gets your chat's text and the plan, never a picture, and its working note names it.";
+
 export const RECIPIENT_ORDER = [
   'OpenShore (us)',
   'Payments',
@@ -199,8 +209,8 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'cloud-models',
     recipient: 'Your cloud providers',
-    what: 'Your chat, to Anthropic, OpenAI, Google, Moonshot, or Perplexity, on your own key. The amber pill marks every turn that goes.',
-    when: 'Only when you pick a cloud model, and only that turn.',
+    what: 'Your chat, to Anthropic, OpenAI, Google, Moonshot, or Perplexity, on your own key. An amber pill or dot marks a chat whose latest turn went to one.',
+    when: `Only when you pick a cloud model, and only that turn. ${PLAN_IMAGE_STEP_LINE}`,
     start: 'off',
     hosts: [
       'api.anthropic.com',
@@ -322,7 +332,7 @@ export const LINK_ONLY_HOSTS: Record<string, string> = {
 
 /** What stays on this device, for the list's other half. */
 export const STAYS_ON_DEVICE: string[] = [
-  'Everything you send a local model, and everything it answers (a web search sends only its words, listed above).',
+  'Everything you send a local model, and everything it answers, except what a plan in your Stack hands on to a cloud model (a web search sends only its words, listed above).',
   'Your chats, projects, settings, and session journals, sealed at rest.',
   'Your API keys: in the Keychain on iPhone and iPad; on a computer, encrypted under a key in its keychain. Each is sent only to its own provider.',
   'Your Vault notes and your code, as plain files you own.',

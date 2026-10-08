@@ -22,6 +22,7 @@ import {
   type StackModelRef,
 } from './stack.js';
 import { imageStepCoveredNote, imageStepNote } from './imageNote.js';
+import { privatePlanStepNote } from './vaultCopy.js';
 
 /** A step is owned by a specialist category, or by the reasoning anchor. */
 export type StepCategory = StackCategory | 'reasoning';
@@ -201,6 +202,12 @@ export type PlayStack = AppStack & {
   staysLocal?: (ref: StackModelRef) => boolean;
   imageReader?: StackModelRef;
   reachable?: (ref: StackModelRef) => boolean;
+  /** Set while the plan draws on a private note (D5): the driver's judge of
+   *  whether a model's requests leave this network, by address. The plan's
+   *  goal and briefs were written by a Reasoning model that read the note
+   *  whole, so a step whose model leaves runs on the Reasoning model instead
+   *  (stepRunner), and neither the plan nor the note reaches that model. */
+  keepPrivate?: (ref: StackModelRef) => boolean;
 };
 
 export interface StepOwner {
@@ -253,17 +260,22 @@ export function ownerFor(step: PlayStep, stack: PlayStack): StepOwner {
  *  cannot run it here on its own, a model on this device (a play never runs
  *  one unattended) or one out of reach in this status, when the reasoning
  *  anchor covers the step and `covered` names the owner it stands in for.
- *  The one rule the task list, the working note and the runner all read, so
- *  the list never names a model the step does not run on. */
+ *  While the plan draws on a private note (`keepPrivate`), an owner whose
+ *  requests leave this network is covered the same way, and `private` says
+ *  why. The one rule the task list, the working note and the runner all
+ *  read, so the list never names a model the step does not run on. */
 export function stepRunner(
   step: PlayStep,
   stack: PlayStack,
-): StepOwner & { covered?: StackModelRef } {
+): StepOwner & { covered?: StackModelRef; private?: true } {
   const owner = ownerFor(step, stack);
   const anchor = stack.reasoning ?? harborRef();
+  if (refKey(owner.ref) === refKey(anchor)) return owner;
+  if (owner.ref.kind !== 'device' && stack.keepPrivate?.(owner.ref) === true) {
+    return { ref: anchor, placement: undefined, fellBack: true, covered: owner.ref, private: true };
+  }
   const inReach = stack.reachable ?? (() => true);
-  const runsHere = owner.ref.kind !== 'device' && inReach(owner.ref);
-  if (runsHere || refKey(owner.ref) === refKey(anchor)) return owner;
+  if (owner.ref.kind !== 'device' && inReach(owner.ref)) return owner;
   return { ref: anchor, placement: undefined, fellBack: true, covered: owner.ref };
 }
 
@@ -557,9 +569,14 @@ export function parseReplan(text: string): PlayStep[] | undefined {
  *  names the reader, or says the Reasoning model works from the text when
  *  nothing here reads images (founder, 2026-10-07). An image step whose model
  *  set for Image reading cannot take it here names that model and the one
- *  that covers it, never "Handing to" a model that does not run it. */
+ *  that covers it, never "Handing to" a model that does not run it. A step
+ *  kept off a model that leaves this network, because the plan draws on a
+ *  private note, names both models and says why (D5). */
 export function handoffNote(step: PlayStep, stack: PlayStack): string {
   const runner = stepRunner(step, stack);
+  if (runner.private && runner.covered) {
+    return privatePlanStepNote(step.title, refName(runner.covered), refName(runner.ref));
+  }
   if (step.category === 'vision' && runner.covered) {
     return imageStepCoveredNote(step.title, runner.covered, runner.ref);
   }

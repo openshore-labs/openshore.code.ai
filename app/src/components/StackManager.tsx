@@ -339,7 +339,7 @@ export function StackManager({
       // The same shape as the Local row beside it: the slot is empty, then
       // who reads images for now (CS-09).
       if (imageReader) {
-        return `None yet · ${refName(imageReader)} reads images for now, asking before each one.`;
+        return `None yet · ${refName(imageReader)} reads images for now. It asks before a picture, not before a plan's image step.`;
       }
       return cloudOn
         ? 'None yet · Connect a cloud model in Cloud Connections to read images.'
@@ -724,8 +724,8 @@ export function StackManager({
             model starts routing the right tasks to it.
           </li>
           <li>
-            Your address and API key stay yours. The API key stays on this device, scoped to that
-            one connection, and is never synced.
+            Your address and API key stay yours. The API key is stored only on this device and sent
+            only to that address, scoped to that one connection, and never synced.
           </li>
           <li>
             Nothing you send it passes through us. The call goes straight from your device to the
@@ -1007,7 +1007,7 @@ export function StackManager({
               {visionEdit.slot === 'local'
                 ? `A model on this device or your own server. A model on this device cannot read images yet${imageReader ? `, so ${refName(imageReader)} reads them until one can.` : '.'}`
                 : imageReader && !slots.cloud
-                  ? `A cloud model that reads images. Until you choose one, ${refName(imageReader)} reads them, asking before each image.`
+                  ? `A cloud model that reads images. Until you choose one, ${refName(imageReader)} reads them. It asks before a picture, not before a plan's image step.`
                   : 'A cloud model that reads images.'}
             </p>
 

@@ -361,6 +361,40 @@ describe('stepRunner: who a step really runs on', () => {
     expect(handoffNote(step('f', 'fast'), fast)).toBe('Step f. Handing to Claude (reasoning).');
   });
 
+  // D5 on a plan (sp-plan, egress-claims-2): while the plan draws on a
+  // private note, a step bound for a model that leaves this network runs on
+  // the Reasoning model, and the list and the note say so and why.
+  it('keeps a private plan off every model that leaves, and says why', () => {
+    const own: AppStack = {
+      reasoning: coder,
+      active: [
+        { ref: claude, placement: { category: 'writing' } },
+        { ref: claude, placement: { category: 'vision' } },
+      ],
+      saved: {},
+    };
+    const kept = { ...own, keepPrivate: (r: StackModelRef) => r.kind === 'cloud' };
+    const draft = { ...step('w', 'writing'), title: 'Draft' };
+    expect(stepRunner(draft, kept)).toEqual({
+      ref: coder,
+      placement: undefined,
+      fellBack: true,
+      covered: claude,
+      private: true,
+    });
+    expect(ownerLabel(draft, kept)).toBe('Coder (reasoning)');
+    expect(ownerLabel(read, kept)).toBe('Coder (reasoning)');
+    expect(handoffNote(draft, kept)).toBe(
+      'Draft. This plan draws on a private note, so Coder, your Reasoning model, takes it instead of Claude. Private notes never reach a cloud model.',
+    );
+    expect(handoffNote(read, kept)).toBe(
+      'Read the chart. This plan draws on a private note, so Coder, your Reasoning model, takes it instead of Claude. Private notes never reach a cloud model.',
+    );
+    // Without the mark, each runs on its own model, as before.
+    expect(stepRunner(draft, own).ref).toEqual(claude);
+    expect(ownerLabel(draft, own)).toBe('Claude');
+  });
+
   it('leaves the anchor as its own runner, never covering itself', () => {
     const bare: AppStack = { reasoning: harborRef(), active: [], saved: {} };
     expect(stepRunner(step('r', 'reasoning'), bare)).toEqual({

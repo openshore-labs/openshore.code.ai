@@ -395,7 +395,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'bench',
     title: 'The Bench',
     where: 'Menu, Stack, Bench',
-    text: 'Models you download or connect wait on the Bench until you place them. Teal is local and private, amber is cloud. Tap Add to stack, choose a category, and optionally a trigger, a persona, and effort.',
+    text: "Models you download or connect wait on the Bench until you place them, with one exception: while nothing in your Stack reads images, a plan's image step goes to a connected cloud model without asking. Teal is local and private, amber is cloud. Tap Add to stack, choose a category, and optionally a trigger, a persona, and effort.",
     keywords: [
       'bench',
       'place',
@@ -491,7 +491,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'cloud-connections',
     title: 'Cloud Connections',
     where: 'Menu, Cloud Connections',
-    text: `Add cloud models on your own API key: Claude (which also needs its Workspace id), OpenAI, Gemini, Kimi (Moonshot), and Perplexity. Each connected provider puts its models on your Bench. API keys stay on your device, and nothing spends without your approval. How:\n${guideStepsCompact('connect-cloud-key')}`,
+    text: `Add cloud models on your own API key: Claude (which also needs its Workspace id), OpenAI, Gemini, Kimi (Moonshot), and Perplexity. Each connected provider puts its models on your Bench. API keys are stored only on your device and sent only to their provider. A cloud model runs, and spends, only when you choose it, with one exception: while nothing in your Stack reads images, a plan's image step goes to one without asking, and its working note names it. How:\n${guideStepsCompact('connect-cloud-key')}`,
     keywords: [
       'cloud',
       'api key',
@@ -876,7 +876,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'privacy',
     title: 'Privacy',
     where: 'Menu, Settings, Privacy and Ethical boundaries',
-    text: 'Local models keep your words on your device. Cloud models run on your own API keys, and the amber pill marks every turn that goes to one. Chats, projects, and API keys are encrypted on the device. What does leave is short and listed under Settings, Privacy, What leaves this device: a cloud model you chose, a web search you allowed, update checks, the model list, and your account while signed in.',
+    text: "Local models keep your words on your device, unless a plan in your Stack hands their work on to a cloud model. Cloud models run on your own API keys, and an amber pill or dot marks a chat whose latest turn went to one. Chats, projects, and API keys are encrypted on the device. What does leave is short and listed under Settings, Privacy, What leaves this device: a cloud model you chose (and, while nothing in your Stack reads images, the one that takes a plan's image step), a web search you allowed, update checks, the model list, and your account while signed in.",
     keywords: [
       'privacy',
       'private',

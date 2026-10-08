@@ -576,14 +576,17 @@ export function SettingsScreen() {
           >
             <h3 className="settings-sheet-head">Privacy, plainly</h3>
             <p>
-              What you send a local model stays on this device, and so does its answer; if it
-              searches the web, only the search words go out. Cloud models run on your own keys, and
-              only on a turn you send to one. A few things do leave this device, and every one is
-              listed under What leaves this device, above: the words of a web search, update checks,
-              the model list, a notification token if you allow notifications, and, while you are
-              signed in, your account, a few preferences, and a record of any request the guardrail
-              blocks. That record carries a category, a time, and a one-way hash, never your prompt
-              and never the name of anyone it was about. No telemetry, no analytics, no advertising.
+              What you send a local model stays on this device, and so does its answer, unless a
+              plan in your Stack passes it to a cloud model; if it searches the web, only the search
+              words go out. Cloud models run on your own keys, and only on a turn you send to one,
+              with one exception: while nothing in your Stack reads images, a plan&apos;s image step
+              goes to a connected cloud model without asking, and its note names it. A few things do
+              leave this device, and every one is listed under What leaves this device, above: the
+              words of a web search, update checks, the model list, a notification token if you
+              allow notifications, and, while you are signed in, your account, a few preferences,
+              and a record of any request the guardrail blocks. That record carries a category, a
+              time, and a one-way hash, never your prompt and never the name of anyone it was about.
+              No telemetry, no analytics, no advertising.
             </p>
             <h3 className="settings-sheet-head">Encrypted on this device</h3>
             <p>

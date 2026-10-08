@@ -181,7 +181,7 @@ describe('visionSlots and the default cloud position', () => {
   it("the driver gives a play the chat path's own reader, and asks the shared list", () => {
     const src = readFileSync(new URL('../src/drivers/stackDriver.ts', import.meta.url), 'utf8');
     expect(src).toMatch(/imageReader: \(await this\.routeVision\(\)\)\?\.ref/);
-    expect(src).toMatch(/executePlay\([^;]*roster\)/);
+    expect(src).toMatch(/executePlay\([^;]*roster,\s*planLocalOnly,?\s*\)/);
     expect(src).toMatch(/for \(const reader of cloudImageReaders\(\)\)/);
     // No vision path names Opus as its default any more.
     expect(readFileSync(new URL('../src/lib/play.ts', import.meta.url), 'utf8')).not.toMatch(
