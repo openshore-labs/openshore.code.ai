@@ -42,10 +42,13 @@ export function machineOffline(): MachineOffline {
   return state;
 }
 
-/** The transcript's note when a session first works offline. */
+/** The transcript's note when a session first works offline. A chosen
+ *  Offline keeps the network up, so the seat may be a model server elsewhere
+ *  on the person's own network (a LAN or tailnet address stays on this
+ *  network, locality.ts), never only this computer's. */
 export function offlineNote(reason: OfflineReason | undefined): string {
   return reason === 'chosen'
-    ? "Offline is chosen, so your computer's own models do the work. Cloud models wait until you follow the connection again."
+    ? 'Offline is chosen, so models on your own network do the work. Cloud models wait until you follow the connection again.'
     : "Offline, so your computer's own models do the work. Cloud models wait for a connection.";
 }
 
@@ -68,8 +71,14 @@ export function offlineNeedsLocalModel(message: string): boolean {
 }
 
 /** Why a call to a tool that reaches the network did not run while this
- *  computer is offline. */
-export const OFFLINE_NOW_DENIED = 'Your computer is offline, so nothing here reaches the web.';
+ *  computer is offline. A chosen Offline keeps the network up (a shell
+ *  command or a model download still reaches it), so it says only that the
+ *  web tools wait. */
+export function offlineNowDenied(reason: OfflineReason | undefined): string {
+  return reason === 'chosen'
+    ? 'Offline is chosen, so the web tools wait until you follow the connection again.'
+    : 'Your computer is offline, so nothing here reaches the web.';
+}
 
 /** What the model is told while this computer is offline, as a routine's
  *  prompt tells it. */

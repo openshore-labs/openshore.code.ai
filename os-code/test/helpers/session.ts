@@ -96,6 +96,10 @@ export interface TestSessionOptions {
   /** More model servers in the registry (a local one beside a cloud
    *  orchestrator). */
   providers?: MockProvider[];
+  /** A Harness Current's handle and the fetch its advisor posts through, for
+   *  tests of the Jev judge. */
+  harnessCurrents?: AgentDeps['harnessCurrents'];
+  jevFetch?: AgentDeps['jevFetch'];
 }
 
 export function makeTestSession(
@@ -177,6 +181,13 @@ export function makeTestSession(
     config,
     projectName: options.projectName,
     vaultRoot: options.vaultRoot,
+    // The handoff tools reach the stack's specialists through the router, as
+    // bootstrap wires them (registry.ts buildToolContext).
+    ...(options.specialists
+      ? {
+          delegate: (...args: Parameters<Router['delegate']>) => router.delegate(...args),
+        }
+      : {}),
   };
   const guardrails = new Guardrails(config.guardrails);
   const usage = new UsageTracker();
@@ -205,6 +216,8 @@ export function makeTestSession(
     ...(offlineTools.length ? { offlineTools } : {}),
     ...(offlineState ? { offline: offlineState, offlineCut: cutWhenOffline } : {}),
     ...(options.permissionMode ? { permissionMode: options.permissionMode } : {}),
+    ...(options.harnessCurrents ? { harnessCurrents: options.harnessCurrents } : {}),
+    ...(options.jevFetch ? { jevFetch: options.jevFetch } : {}),
     approver: async (request) => {
       approvals.push(request);
       return options.approve ? options.approve(request) : { approve: true };

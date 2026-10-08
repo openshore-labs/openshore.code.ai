@@ -11,7 +11,9 @@
 // seeded, but a reply written after a tool read a local-only vault note (its
 // journaled tool-end carries `localOnly`) may quote that note, so the reply
 // comes back marked `localOnly` and a later turn on a seat that leaves this
-// network gets the stub in its place, the same as the tool result would.
+// network gets the stub in its place, the same as the tool result would. So
+// does a reply grounded in a pack that carried such a note, and one a seat on
+// this network wrote while the chat already held a marked reply (D5).
 //
 // A rewind (P2) takes turns back: its `rewound` marker names the task-start it
 // went back to, and everything journaled from there up to the marker is left
@@ -52,8 +54,14 @@ function asEntries(events: DriverEvent[] | JournalEntry[]): JournalEntry[] {
 export function seedHistoryFromEvents(journal: DriverEvent[] | JournalEntry[]): ChatMessage[] {
   const history: ChatMessage[] = [];
   let pendingUser: string | undefined;
-  // This task has read a local-only note, so what it says next may quote one.
+  // This task has read a local-only note (a tool, or a pack that carried
+  // one), so what it says next may quote one.
   let readLocalOnly = false;
+  // The seeded chat holds a reply marked local-only, and the turn that wrote
+  // this reply ran on a seat that stays on this network, which was sent it:
+  // the loop's own rule (loop.ts localOnlyMark).
+  let holdsLocalOnly = false;
+  let turnStays = false;
   for (const { event } of liveJournal(asEntries(journal))) {
     if (event.type === 'task-start') {
       // A new user turn. If a prior user turn never got a final answer (an
@@ -61,6 +69,10 @@ export function seedHistoryFromEvents(journal: DriverEvent[] | JournalEntry[]): 
       if (pendingUser !== undefined) history.push({ role: 'user', content: pendingUser });
       pendingUser = event.input;
       readLocalOnly = false;
+    } else if (event.type === 'turn-start') {
+      turnStays = event.providerKind === 'local';
+    } else if (event.type === 'context-pack') {
+      if (event.localOnly) readLocalOnly = true;
     } else if (event.type === 'tool-end') {
       if (event.result.localOnly) readLocalOnly = true;
     } else if (event.type === 'text-final') {
@@ -69,10 +81,12 @@ export function seedHistoryFromEvents(journal: DriverEvent[] | JournalEntry[]): 
         pendingUser = undefined;
       }
       if (event.text.trim()) {
+        const marked = readLocalOnly || (turnStays && holdsLocalOnly);
+        if (marked) holdsLocalOnly = true;
         history.push({
           role: 'assistant',
           content: event.text,
-          ...(readLocalOnly ? { localOnly: true as const } : {}),
+          ...(marked ? { localOnly: true as const } : {}),
         });
       }
     }

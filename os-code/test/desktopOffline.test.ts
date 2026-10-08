@@ -18,12 +18,12 @@ import { bootstrapSession } from '../src/core/agent/bootstrap.js';
 import { OFFLINE_DOWNLOAD, installOllamaRef } from '../src/market/install.js';
 import {
   ONLINE_AGAIN_NOTE,
-  OFFLINE_NOW_DENIED,
   OFFLINE_PROMPT,
   machineOffline,
   offlineNeedsLocalModel,
   offlineNoModelLine,
   offlineNote,
+  offlineNowDenied,
   rankLocalModels,
   setMachineOffline,
   type MachineOffline,
@@ -196,6 +196,11 @@ describe('the offline seat', () => {
     await session.agent.run('hello');
     expect(notes(session.events)).toContain(offlineNote('chosen'));
     expect(offlineNote('chosen')).toMatch(/follow the connection again/);
+    // The network is up, so the seat may be a server on the person's own
+    // network (a LAN or tailnet address stays here), not only this computer.
+    expect(offlineNote('chosen')).toMatch(/^Offline is chosen, so models on your own network do/);
+    expect(offlineNote('chosen')).not.toMatch(/your computer's own models/);
+    expect(offlineNote('network')).toMatch(/your computer's own models/);
   });
 
   it('with no model on this network, the turn ends with one plain line', async () => {
@@ -237,7 +242,31 @@ describe('what offline takes away', () => {
     const system = local.requests[0]!.messages[0]!.content as string;
     expect(system).toContain(OFFLINE_PROMPT);
     const denied = session.events.find((e) => e.type === 'tool-denied');
-    expect(denied && denied.type === 'tool-denied' && denied.reason).toBe(OFFLINE_NOW_DENIED);
+    expect(denied && denied.type === 'tool-denied' && denied.reason).toBe(
+      offlineNowDenied('network'),
+    );
+  });
+
+  it('a chosen Offline says the web tools wait, never that nothing reaches the web', async () => {
+    // The network is up under a chosen Offline: a shell command or a model
+    // download still reaches it, so the line claims only what is cut.
+    const state = flag({ offline: true, reason: 'chosen' });
+    const local = new MockProvider('ollama', [
+      toolTurn('webSearch', { query: 'harbor tides' }),
+      textTurn('Worked from the files.'),
+    ]);
+    const session = makeTestSession(local, { offlineState: state.read });
+    await session.agent.run('look it up');
+    const denied = session.events.find((e) => e.type === 'tool-denied');
+    const reason = denied && denied.type === 'tool-denied' ? denied.reason : '';
+    expect(reason).toBe(offlineNowDenied('chosen'));
+    expect(reason).toBe(
+      'Offline is chosen, so the web tools wait until you follow the connection again.',
+    );
+    expect(reason).not.toMatch(/nothing here reaches the web|is offline/);
+    expect(offlineNowDenied('network')).toBe(
+      'Your computer is offline, so nothing here reaches the web.',
+    );
   });
 
   it('online, the same session offers them again and the prompt says nothing of offline', async () => {
