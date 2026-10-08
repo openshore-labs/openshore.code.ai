@@ -326,7 +326,8 @@ export function MessageList({
   /** Open the model picker, the way on when nothing else here can answer. */
   onPickModel?: () => void;
   /** Open Cloud Connections, offered when the stop's fix lives there. */
-  onOpenConnections?: () => void;
+  /** Gets the stop's message, so a workspace stop can open its field. */
+  onOpenConnections?: (message: string) => void;
   /** Open the Local LLMs sheet, offered when a turn stopped for no account usage. */
   onSwitchToLocal?: () => void;
   /** Resend the last message after an error. */
@@ -747,7 +748,7 @@ export function MessageList({
                       <button
                         type="button"
                         className="msg-stopped-action ghost press-fb"
-                        onClick={onOpenConnections}
+                        onClick={() => onOpenConnections(item.message)}
                       >
                         Open Cloud Connections
                       </button>
