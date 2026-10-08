@@ -124,11 +124,14 @@ describe('what leaves this device', () => {
     // Every cloud seat's prompt carries the vault pack rendered for it, so
     // the list says the notes go too, never a private one (sign-off).
     expect(PLAN_IMAGE_STEP_LINE).toMatch(/your chat, the notes it draws on, and the plan/);
-    expect(cloud.what).toMatch(
-      /^Your chat, and the notes and files it draws on \(never a private note\)/,
+    // The private-notes promise is the one vaultCopy words, with the one way
+    // around it a command can take (sp-vaultws sign-off, 2026-10-08).
+    expect(cloud.what).toMatch(/^Your chat, and the notes and files it draws on, to Anthropic/);
+    expect(cloud.what).toContain(
+      'Private notes never reach a cloud model unless a command you run or allow reads them.',
     );
     expect(EGRESS.find((e) => e.id === 'own-model')!.what).toMatch(
-      /notes and files it draws on.*A private note goes only to one on your own network\./,
+      /notes and files it draws on.*Private notes go only to one on your own network, unless a command you run or allow reads them\./,
     );
     // The marking it promises is the one the chat and Chats read.
     expect(cloud.what).not.toMatch(/marks every turn/);

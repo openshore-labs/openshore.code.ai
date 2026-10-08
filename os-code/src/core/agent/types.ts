@@ -217,6 +217,11 @@ export type AgentEvent =
        *  command) or the page check that runs nothing (v1 Phase 1). Absent
        *  reads as tests. */
       check?: 'tests' | 'page';
+      /** The failure went back to a seat on this network from a check run
+       *  in a workspace that holds the vault, so it may quote a note that
+       *  stays on this computer (D5): what the model says next is marked.
+       *  Additive. */
+      localOnly?: true;
     }
   // Best-of-N judged by the project's own check: the previous attempt spent
   // its verify retries without passing, the files it touched are restored to

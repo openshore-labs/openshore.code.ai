@@ -6,7 +6,7 @@
 // as a last resort that always asks before spending.
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, relative } from 'node:path';
+import { dirname, relative, resolve } from 'node:path';
 import type { OscConfig } from '../../config/schema.js';
 import type { ChatMessage, ContentPart, Provider, ToolCallRequest } from '../../providers/types.js';
 import { ProviderError, seatLeaves } from '../../providers/types.js';
@@ -125,6 +125,16 @@ import type { HarnessCurrentsHandle } from '../../currents/model.js';
 import type { ToolSpec } from '../../providers/types.js';
 import { MERGED_VAULT_TOOL, seatOffersVaultTool, withVaultLookupPriority } from './registry.js';
 import { DEFAULT_VAULT_READ_CAP_CHARS } from '../tools/vaultFind.js';
+import {
+  fileVisibility,
+  noteClosed,
+  realVaultRoot,
+  showingFor,
+  vaultMeets,
+  vaultPathOf,
+  type NoteShowing,
+} from '../tools/workspaceNotes.js';
+import type { VaultVisibility } from '../../harness/vault/types.js';
 import {
   OBSERVATION_SLACK_CHARS,
   WINDOW_LEAN_FRACTION,
@@ -265,6 +275,24 @@ function handoffRole(call: ParsedToolCall): DelegableRole | undefined {
  *  computer, and the subtask was bound for a seat off this network (D5). */
 export const HANDOFF_LOCAL_ONLY_DENIED =
   'This chat has read a note that stays on this computer, so it is not handed to a cloud model.';
+
+/** What a command's card says while the vault's folder overlaps this
+ *  workspace and the model answering leaves this network (D5); the command
+ *  asks every time then. A program's output, read later, says the same. */
+export const COMMAND_READS_VAULT =
+  'This command can read notes in your vault that stay on this computer, and what it prints goes to a cloud model.';
+export const OUTPUT_SHOWS_VAULT =
+  "This program's output can show notes in your vault that stay on this computer, and it goes to a cloud model.";
+
+/** The card line for a step near the vault on a seat that leaves. */
+function vaultCardLine(toolName: string): string {
+  return toolName === 'readProcess' ? OUTPUT_SHOWS_VAULT : COMMAND_READS_VAULT;
+}
+
+/** Why analyzeImage did not run on an image in a vault folder that stays on
+ *  this computer: the vision seat is off this network (D5). */
+export const IMAGE_LOCAL_ONLY_DENIED =
+  'This image is in your vault and stays on this computer, so it is not handed to a cloud model.';
 
 /** The shape of a rule the loop asks to persist for a project. */
 export interface ProjectRule {
@@ -474,6 +502,10 @@ export class AgentSession {
     // a local-only note is read only by a seat that stays (CTO I5). Judged by
     // address, live, since an escalation switches the seat mid-task.
     deps.toolContext.seatLeavesNetwork = () => this.activeLeaves();
+    // Repo search sends its query to the embedder, which may be off this
+    // network: while a seat that stays holds a local-only note's text, the
+    // query may quote it, so search keeps to the keyword index (D5).
+    deps.toolContext.chatHoldsLocalOnly = () => !this.activeLeaves() && this.holdsLocalOnly();
     // The seat answering now, for the provenance lines on a note the agent
     // writes (Vault M7, CTO L9): its model, its class, and a cloud seat's
     // provider. Where it ran is `seatLeavesNetwork`, judged by address.
@@ -682,6 +714,11 @@ export class AgentSession {
     );
     const round = verifyRounds + 1;
     const willRetry = !result.passed && verifyRounds < maxRetries;
+    // A check run in a workspace that holds the vault can print its notes
+    // (D5): handed back to a seat that stays, the failure is marked as a
+    // local-only note's text, and the event says so for a seeded history.
+    const marked =
+      willRetry && plan.kind === 'command' && !this.activeLeaves() && this.vaultInWorkspace();
     this.emit({
       type: 'verify',
       passed: result.passed,
@@ -690,15 +727,18 @@ export class AgentSession {
       round,
       willRetry,
       check: plan.kind === 'command' ? 'tests' : 'page',
+      ...(marked ? { localOnly: true as const } : {}),
     });
     if (!willRetry) return result.passed ? 'passed' : 'failed';
     this.emit({
       type: 'status',
       message: `The check did not pass; handing the failure back to the model (retry ${round} of ${maxRetries}).`,
     });
+    if (marked) this.readLocalOnlyThisTask = true;
     this.history.push({
       role: 'user',
       content: verifyRetryPrompt(result, round, maxRetries),
+      ...(marked ? { localOnly: true as const } : {}),
     });
     // The model is asked to fix the cause, which takes tools: an answer-only
     // turn left over from repeats before the check would withhold them for
@@ -716,7 +756,10 @@ export class AgentSession {
     const { cwd } = this.deps.toolContext;
     const configured = verifyConfig?.command?.trim();
     if (configured) {
-      if (this.deps.profile.allowShellAutoApprove) return { kind: 'command', command: configured };
+      // Near the vault on a seat that leaves, the check asks too (D5).
+      if (this.deps.profile.allowShellAutoApprove && !this.checkAsksForVault()) {
+        return { kind: 'command', command: configured };
+      }
       const ok = await this.mayRunCheck(configured, commandDigest(configured), 'configured');
       if (ok) return { kind: 'command', command: configured };
     } else if (verifyConfig?.detect === 'on') {
@@ -747,8 +790,12 @@ export class AgentSession {
     // Under the secrets lockdown every command asks, the check included: the
     // card promises "asks before every command and commit" (CX 7), so a saved
     // grant, an earlier yes, and bypass mode all wait for this one answer.
+    // So does a check that can read the vault's notes for a seat that leaves
+    // this network (D5), with the line every such command's card carries.
     const lockdown = this.lockdown;
-    if (!lockdown) {
+    const vaultAsks = this.checkAsksForVault();
+    const asksEach = lockdown || vaultAsks;
+    if (!asksEach) {
       try {
         if (hasVerifyGrant(cwd, command, digest)) return true;
       } catch {
@@ -758,18 +805,20 @@ export class AgentSession {
     }
     if (this.verifyDeclined.has(key)) return false;
     if (this.deps.canGrantVerify === false || this.deps.profile.name === 'headless') return false;
-    if (this.mode === 'bypassPermissions' && !lockdown) return true;
+    if (this.mode === 'bypassPermissions' && !asksEach) return true;
+    const about =
+      source === 'configured'
+        ? `This project's own check command. It runs on this computer, in ${cwd}, after each change, and any failure goes back to the model to fix.`
+        : `Found ${source}. It runs on this computer, in ${cwd}, after each change, and any failure goes back to the model to fix.${vaultAsks ? '' : ' Allow it always for this project to stop this question.'}`;
     const answer = await this.awaitApprovalOrAbort({
       id: `verify_${Date.now().toString(36)}`,
       kind: 'tool',
       toolName: 'verify',
       risk: 'shell',
       summary: `Check the work: run \`${command}\``,
-      detail:
-        source === 'configured'
-          ? `This project's own check command. It runs on this computer, in ${cwd}, after each change, and any failure goes back to the model to fix.`
-          : `Found ${source}. It runs on this computer, in ${cwd}, after each change, and any failure goes back to the model to fix. Allow it always for this project to stop this question.`,
-      ...(lockdown ? { alwaysAsk: true, lockdown: true } : {}),
+      detail: vaultAsks ? `${COMMAND_READS_VAULT} ${about}` : about,
+      ...(asksEach ? { alwaysAsk: true } : {}),
+      ...(lockdown ? { lockdown: true } : {}),
     });
     if (answer === 'aborted') return false;
     if (!answer.approve) {
@@ -785,6 +834,13 @@ export class AgentSession {
     }
     if (!lockdown) this.verifyAllowed.add(key);
     return true;
+  }
+
+  /** The check asks before every run (D5): the vault's folder overlaps this
+   *  workspace, so a check can print its notes, and the seat it reports to
+   *  leaves this network. */
+  private checkAsksForVault(): boolean {
+    return this.activeLeaves() && this.vaultInWorkspace();
   }
 
   /** On when this session holds the project's secrets, which only a local
@@ -912,7 +968,16 @@ export class AgentSession {
       vaultCfg?.packMaxTokens,
     );
     const secrets = Boolean(this.deps.projectSecrets?.trim());
-    const key = JSON.stringify([mode, budgetTokens, profile.modelClass, leaves]);
+    // This project's Current State is read from the workspace, which can lie
+    // in the vault folder: then it is judged as readFile judges a note (D5).
+    const stateVisibility = prepared.currentState
+      ? this.workspaceFileVisibility(prepared.currentState.path, prepared.currentState.text)
+      : 'open';
+    const currentState =
+      stateVisibility === 'hidden' || (stateVisibility === 'local-only' && leaves)
+        ? undefined
+        : prepared.currentState;
+    const key = JSON.stringify([mode, budgetTokens, profile.modelClass, leaves, stateVisibility]);
     if (this.packCache?.key !== key) {
       let pack: ContextPack | undefined;
       try {
@@ -920,7 +985,7 @@ export class AgentSession {
           mode,
           index: hasVault ? prepared.index : null,
           query: this.taskQuery,
-          currentState: prepared.currentState,
+          currentState,
           pins: prepared.pins,
           ...(hasVault && prepared.projectPins?.length
             ? { projectPins: prepared.projectPins }
@@ -936,6 +1001,13 @@ export class AgentSession {
         });
       } catch (err) {
         log.warn('vault context pack failed to render', { err: String(err) });
+      }
+      if (
+        pack &&
+        stateVisibility === 'local-only' &&
+        pack.used.some((source) => source.layer === 'current-state')
+      ) {
+        pack = { ...pack, localOnly: true };
       }
       this.packCache = { key, pack };
     }
@@ -1292,7 +1364,15 @@ export class AgentSession {
         ].join(' '),
       );
     }
-    const standing = instructionsPrompt(this.deps.repoInstructions, this.instructions);
+    // The repository's instructions, when they are a vault note, reach only
+    // a seat that may read that note (D5).
+    const repoShowing = this.instructionsShowing();
+    const standing = instructionsPrompt(
+      repoShowing === 'open' || repoShowing === 'shown-local'
+        ? this.deps.repoInstructions
+        : undefined,
+      this.instructions,
+    );
     if (standing) parts.push(standing);
     // Project memory: read the Current State top sheet first, dig page by page
     // only as needed, and keep the five notes current as work lands
@@ -2125,7 +2205,16 @@ export class AgentSession {
     // no rule, bypass, or default can make them quiet while the chat can see
     // the project's secrets.
     const lockdownAsks = this.lockdown && (tool.risk === 'shell' || call.name === 'gitCommit');
-    const alwaysAsk = tool.alwaysAsk === true || writesInsideVault || lockdownAsks;
+    // A command run in a workspace that holds the vault can read its notes,
+    // and a program's output can show them (D5). On a seat that leaves this
+    // network it asks every time, whatever was allowed before, and its card
+    // says so; on a seat that stays, what it printed is marked as a local-only
+    // note's text (below), so it never travels on.
+    const leavesNow = this.activeLeaves();
+    const nearVault =
+      (tool.risk === 'shell' || call.name === 'readProcess') && this.vaultInWorkspace();
+    const vaultAsks = nearVault && leavesNow;
+    const alwaysAsk = tool.alwaysAsk === true || writesInsideVault || lockdownAsks || vaultAsks;
     // A write to a note (vaultWrite, or a file tool aimed inside the vault) is
     // not a code change: it never counts toward verify or the Jev judge (4.5).
     const writesVault = tool.risk === 'write' && (tool.pathJail === 'own' || writesInsideVault);
@@ -2206,6 +2295,7 @@ export class AgentSession {
       } catch (err) {
         detail = `Preview failed: ${(err as Error).message}`;
       }
+      if (vaultAsks) detail = [vaultCardLine(call.name), detail].filter(Boolean).join(' ');
       const answer = await this.awaitApprovalOrAbort({
         id: call.id,
         kind: 'tool',
@@ -2267,6 +2357,13 @@ export class AgentSession {
       this.pushObservation(call, `Not run: ${handoffRefused} Do this part yourself.`, toolMode);
       return 'refused';
     }
+    // An image in the vault folder is judged as a note is (D5).
+    const image = this.vaultImage(call);
+    if (image.refusal) {
+      this.emit({ type: 'tool-denied', call, reason: image.refusal });
+      this.pushObservation(call, `Not run: ${image.refusal} Do this part yourself.`, toolMode);
+      return 'refused';
+    }
 
     if (tool.risk === 'write' && !writesVault) {
       if (!writesMemory) this.attemptedWriteThisTask = true;
@@ -2286,6 +2383,12 @@ export class AgentSession {
       };
     }
     const durationMs = Date.now() - startedAt;
+    // What a command printed near the vault, or a vision seat said of a vault
+    // image, to a seat that stays on this network may hold a note that stays
+    // on this computer: marked before anything records it (D5).
+    if (((nearVault && !leavesNow) || image.marked) && !result.localOnly) {
+      result = { ...result, localOnly: true as const };
+    }
     this.emit({ type: 'tool-end', call, result, durationMs });
     // A volatile call takes its place in the cycle watch by what it showed:
     // two reads of a program's output are the same call only when the output
@@ -2489,21 +2592,33 @@ export class AgentSession {
   }
 
   /** Whether this chat holds a local-only note's text: in this turn's pack
-   *  (only ever rendered so for a seat that stays) or in a kept message. */
+   *  (only ever rendered so for a seat that stays), in a kept message, or in
+   *  the standing instructions a seat that stays is sent (D5). */
   private holdsLocalOnly(): boolean {
-    return this.currentPack?.localOnly === true || this.history.some(carriesLocalOnly);
+    return (
+      this.currentPack?.localOnly === true ||
+      this.history.some(carriesLocalOnly) ||
+      this.instructionsShowing() === 'shown-local'
+    );
   }
 
-  /** Why a handoff (delegate, analyzeImage, generateImage) does not run now,
-   *  or undefined when it may: the seat that wrote the call was sent a
+  /** Why a handoff (delegate, analyzeImage, generateImage, or a search on
+   *  Perplexity, whose answer is a cloud model's) does not run now, or
+   *  undefined when it may: the seat that wrote the call was sent a
    *  local-only note's text (it stays on this network and the chat holds
    *  such text), and the model the subtask goes to leaves this network (D5):
-   *  the seat the router names for the role, or the image server, judged by
-   *  its address as offlineCut judges it. A seat off this network was sent
-   *  only the stub, so what it hands on cannot quote the note. Offline the
-   *  router keeps every subtask on this network (Router.delegate's rule). */
+   *  the seat the router names for the role, the image server judged by its
+   *  address as offlineCut judges it, or Perplexity's. A seat off this
+   *  network was sent only the stub, so what it hands on cannot quote the
+   *  note. Offline the router keeps every subtask on this network
+   *  (Router.delegate's rule), and the offline cut takes the web tools. */
   private handoffRefusal(call: ParsedToolCall): string | undefined {
     if (this.activeLeaves() || !this.holdsLocalOnly()) return undefined;
+    if (call.name === 'webSearch') {
+      return this.deps.toolContext.config.search.backend === 'perplexity'
+        ? HANDOFF_LOCAL_ONLY_DENIED
+        : undefined;
+    }
     if (call.name === 'generateImage') {
       const server = this.deps.config.imageGen;
       return server && !isLocalUrl(server.baseUrl) ? HANDOFF_LOCAL_ONLY_DENIED : undefined;
@@ -2514,6 +2629,62 @@ export class AgentSession {
     if (router.offline()) return undefined;
     const target = router.roleFor(role).resolved;
     return seatLeaves(target.provider, target.ref.model) ? HANDOFF_LOCAL_ONLY_DENIED : undefined;
+  }
+
+  /** Whether the vault folder and this workspace overlap (D5): a command run
+   *  here, or a program it started, can read the vault's notes. */
+  private vaultInWorkspace(): boolean {
+    const { toolContext } = this.deps;
+    return vaultMeets(toolContext.vaultRoot, toolContext.cwd);
+  }
+
+  /** A workspace file's visibility as a vault note (D5): open outside the
+   *  vault folder, else judged by the vault's rules, as readFile judges it. */
+  private workspaceFileVisibility(path: string, text?: string): VaultVisibility {
+    const { toolContext } = this.deps;
+    const vault = realVaultRoot(toolContext.vaultRoot);
+    if (!vault) return 'open';
+    const abs = resolve(toolContext.cwd, path);
+    const notePath = vaultPathOf(vault, abs);
+    return notePath === undefined ? 'open' : fileVisibility(toolContext, notePath, abs, text);
+  }
+
+  /** How the repository's standing instructions (OSCODE.md, CLAUDE.md,
+   *  AGENTS.md) show to the seat answering now: a file in the vault folder is
+   *  judged as readFile judges it (D5), by its whole text, since a cut to fit
+   *  may have left its tag behind. */
+  private instructionsShowing(): NoteShowing {
+    const repo = this.deps.repoInstructions;
+    if (!repo) return 'open';
+    const visibility = this.workspaceFileVisibility(
+      repo.file,
+      repo.truncated ? undefined : repo.text,
+    );
+    return showingFor(this.deps.toolContext, visibility);
+  }
+
+  /** analyzeImage on an image in the vault folder (D5): one the vault's
+   *  settings exclude is never handed on; one that stays on this computer
+   *  goes only to a vision seat on this network (offline the router keeps it
+   *  there), and the answer is marked. */
+  private vaultImage(call: ParsedToolCall): { refusal?: string; marked?: boolean } {
+    const path = call.args?.path;
+    if (call.name !== 'analyzeImage' || typeof path !== 'string') return {};
+    let visibility: VaultVisibility;
+    try {
+      visibility = this.workspaceFileVisibility(this.deps.toolContext.jail.resolve(path));
+    } catch {
+      return {};
+    }
+    if (visibility === 'hidden') return { refusal: noteClosed(path) };
+    if (visibility !== 'local-only') return {};
+    const { router } = this.deps;
+    if (!router.offline()) {
+      const target = router.roleFor('vision').resolved;
+      if (seatLeaves(target.provider, target.ref.model))
+        return { refusal: IMAGE_LOCAL_ONLY_DENIED };
+    }
+    return { marked: true };
   }
 
   /** Record a tool's observation. `localOnly` (a local-only vault note's

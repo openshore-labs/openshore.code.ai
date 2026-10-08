@@ -1,6 +1,7 @@
 import { readFileSync, statSync } from 'node:fs';
 import { z } from 'zod';
 import { capContent, type ToolDef } from './index.js';
+import { markedLocal, noteClosed, noteStaysHere, workspaceNotes } from './workspaceNotes.js';
 
 const schema = z.object({
   path: z.string().describe('File path, relative to the workspace root'),
@@ -42,6 +43,16 @@ export const readFileTool: ToolDef<typeof schema> = {
     if (raw.includes('\u0000')) {
       return { ok: false, content: `${args.path} looks binary; not printing it.` };
     }
+    // A vault note inside the workspace is read as the vault tools read it
+    // (D5): an excluded one never, a local-only one only by a seat that stays
+    // on this network, and then marked so it never travels on.
+    const notes = workspaceNotes(ctx);
+    const showing = notes ? await notes.showing(abs, raw) : 'open';
+    if (showing === 'closed') return { ok: false, content: noteClosed(args.path) };
+    if (showing === 'withheld') {
+      return { ok: true, content: noteStaysHere(args.path, notes!.notePath(abs) ?? args.path) };
+    }
+    const local = showing === 'shown-local';
     const lines = raw.split('\n');
     const start = Math.max(1, args.startLine ?? 1);
     const end = Math.min(lines.length, args.endLine ?? lines.length);
@@ -53,11 +64,15 @@ export const readFileTool: ToolDef<typeof schema> = {
     // The seat's share of its window (set by the loop per class), else the
     // fixed cap every tool had before the window was known.
     const cap = ctx.observationCapChars?.() ?? DEFAULT_READ_CAP_CHARS;
-    if (whole.length <= cap) return { ok: true, content: whole };
-    return {
-      ok: true,
-      content: cutAtLine(args.path, rows, start, end, lines.length, cap) || capContent(whole, cap),
-    };
+    if (whole.length <= cap) return markedLocal({ ok: true, content: whole }, local);
+    return markedLocal(
+      {
+        ok: true,
+        content:
+          cutAtLine(args.path, rows, start, end, lines.length, cap) || capContent(whole, cap),
+      },
+      local,
+    );
   },
 };
 
