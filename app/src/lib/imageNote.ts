@@ -86,8 +86,9 @@ export function imageTurnLine(
 export function heldImageModel(
   stack: AppStack,
   reachable: (ref: StackModelRef) => boolean,
+  staysLocal?: (ref: StackModelRef) => boolean,
 ): ImageReaderGap['placed'] {
-  const { local, cloud } = visionSlots(stack);
+  const { local, cloud } = visionSlots(stack, staysLocal);
   const held = [local, cloud].find((m) => m && !(visionCapable(m.ref) && reachable(m.ref)));
   if (!held) return undefined;
   return {

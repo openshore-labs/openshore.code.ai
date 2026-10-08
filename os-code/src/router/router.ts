@@ -5,6 +5,7 @@
 import type { OscConfig } from '../config/schema.js';
 import {
   leavesThisNetwork,
+  seatLeaves,
   type ChatMessage,
   type ContentPart,
   type Provider,
@@ -81,7 +82,7 @@ export class Router {
   roleFor(role: DelegableRole): { resolved: ResolvedRole; fellBack: boolean } {
     if (this.config.routing.mode !== 'orchestrator-only') {
       const specialist = this.stack.specialists[role];
-      if (specialist && !(this.offline() && leavesThisNetwork(specialist.provider))) {
+      if (specialist && !(this.offline() && leaves(specialist))) {
         return { resolved: specialist, fellBack: false };
       }
     }
@@ -93,14 +94,15 @@ export class Router {
    * the orchestrator when its requests stay here; else a specialist the stack
    * places that stays (coding first); else the best chat model a server on
    * this network already serves (DeepBlue, or any installed Ollama model),
-   * by rankLocalModels. Judged by address, never by a label. Undefined when
-   * nothing on this network can answer.
+   * by rankLocalModels. Judged by address and by an Ollama cloud tag
+   * (seatLeaves), never by a label. Undefined when nothing on this network
+   * can answer.
    */
   async localSeat(): Promise<ResolvedRole | undefined> {
-    if (!leavesThisNetwork(this.stack.orchestrator.provider)) return this.stack.orchestrator;
+    if (!leaves(this.stack.orchestrator)) return this.stack.orchestrator;
     for (const role of OFFLINE_STAND_INS) {
       const specialist = this.stack.specialists[role];
-      if (specialist && !leavesThisNetwork(specialist.provider)) return specialist;
+      if (specialist && !leaves(specialist)) return specialist;
     }
     for (const [id, provider] of this.registry.all()) {
       if (leavesThisNetwork(provider)) continue;
@@ -133,9 +135,9 @@ export class Router {
    *  that is all on this network loses no model offline, so a session says
    *  nothing of it (Desktop Offline). */
   anySeatLeaves(): boolean {
-    if (leavesThisNetwork(this.stack.orchestrator.provider)) return true;
+    if (leaves(this.stack.orchestrator)) return true;
     for (const specialist of Object.values(this.stack.specialists)) {
-      if (specialist && leavesThisNetwork(specialist.provider)) return true;
+      if (specialist && leaves(specialist)) return true;
     }
     return this.escalationReady();
   }
@@ -184,7 +186,7 @@ export class Router {
       offline &&
       roled.fellBack &&
       placed &&
-      leavesThisNetwork(placed.provider) &&
+      leaves(placed) &&
       this.config.routing.mode !== 'orchestrator-only',
     );
     if (roled.fellBack) {
@@ -196,7 +198,7 @@ export class Router {
     }
     // Offline, a cloud orchestrator cannot take the subtask either: the best
     // model on this network does, or nothing can.
-    if (offline && leavesThisNetwork(resolved.provider)) {
+    if (offline && leaves(resolved)) {
       const local = await this.localSeat();
       if (!local) throw new Error('Offline, and no model on your computer can take this on.');
       resolved = local;
@@ -274,6 +276,12 @@ export class Router {
     // Any <think> text a specialist wrote on its own stays out of its answer.
     return splitThinkTags(answer).text.trim() || '(the specialist returned nothing)';
   }
+}
+
+/** Whether a seat's requests leave this network: its server's address, or
+ *  an Ollama cloud tag a local Ollama passes on (seatLeaves). */
+function leaves(seat: ResolvedRole): boolean {
+  return seatLeaves(seat.provider, seat.ref.model);
 }
 
 /** A model a room names, as the wire carries it. */

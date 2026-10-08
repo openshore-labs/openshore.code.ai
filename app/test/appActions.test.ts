@@ -201,6 +201,13 @@ describe('the Stack', () => {
     expect(system).not.toContain('openshore-set');
   });
 
+  it("gives an Ollama cloud tag on this computer's Ollama no contract: it answers on ollama.com", async () => {
+    const tag: StackModelRef = { ...onThisComputer, id: 'tag', model: 'kimi-k3:cloud' };
+    const system = await systemFor(tag, VOICE);
+    expect(system).toContain(VOICE);
+    expect(system).not.toContain('openshore-set');
+  });
+
   it('gives a cloud seat the voice and never the contract', async () => {
     const system = await systemFor(gpt, VOICE);
     expect(system).toContain(VOICE);

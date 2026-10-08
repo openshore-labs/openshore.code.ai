@@ -104,6 +104,29 @@ describe('the seat a room names offline', () => {
     });
   });
 
+  it('an Ollama cloud tag is never the seat: it answers on ollama.com (privacy review, 2026-10-08)', async () => {
+    // Coders first, then size: by name alone a 480b cloud coder would win.
+    const local = await fakeOllama(['qwen3-coder:480b-cloud', 'kimi-k3:cloud', 'qwen2.5-coder:7b']);
+    servers.push(local.server);
+    const providers = { ollama: { kind: 'openai-compatible', baseUrl: local.url } };
+    const tagged = ConfigSchema.parse({
+      providers,
+      stack: { orchestrator: { provider: 'ollama', model: 'kimi-k3:cloud' } },
+    });
+    expect(await offlineSeatFor(tagged, new ProviderRegistry(tagged, () => undefined))).toEqual({
+      model: 'qwen2.5-coder:7b',
+      provider: 'ollama',
+    });
+
+    const onlyCloud = await fakeOllama(['kimi-k3:cloud', 'gpt-oss:120b-cloud']);
+    servers.push(onlyCloud.server);
+    const none = ConfigSchema.parse({
+      providers: { ollama: { kind: 'openai-compatible', baseUrl: onlyCloud.url } },
+      stack: { orchestrator: { provider: 'ollama', model: 'gpt-oss:120b-cloud' } },
+    });
+    expect(await offlineSeatFor(none, new ProviderRegistry(none, () => undefined))).toBeUndefined();
+  });
+
   it('none when nothing here can answer, and none before a stack is set up', async () => {
     const cloudOnly = ConfigSchema.parse({
       providers: { hosted: HOSTED, anthropic: { kind: 'anthropic', model: 'claude-sonnet-5' } },
@@ -202,6 +225,25 @@ describe('the daemon tells a paired phone', () => {
     const stack = await get<DaemonStackInfo>('/stack');
     expect(stack.offline).toBe('chosen');
     expect(stack.offlineSeat).toBeUndefined();
+  });
+
+  it("stack: a cloud tag on this computer's Ollama is cloud, and offline names a seat here", async () => {
+    const local = await fakeOllama(['kimi-k3:cloud', 'qwen2.5-coder:7b']);
+    servers.push(local.server);
+    await start({
+      providers: { ollama: { kind: 'openai-compatible', baseUrl: local.url } },
+      stack: { orchestrator: { provider: 'ollama', model: 'kimi-k3:cloud' } },
+    });
+    expect((await get<DaemonStackInfo>('/stack')).orchestrator).toEqual({
+      model: 'kimi-k3:cloud',
+      provider: 'ollama',
+      kind: 'cloud',
+    });
+    setMachineOffline('chosen');
+    expect((await get<DaemonStackInfo>('/stack')).offlineSeat).toEqual({
+      model: 'qwen2.5-coder:7b',
+      provider: 'ollama',
+    });
   });
 
   it("stack: the orchestrator's kind is judged by address, and read fresh", async () => {

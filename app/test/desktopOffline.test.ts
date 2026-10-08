@@ -157,7 +157,11 @@ describe("the engine host sets the engine's one machine flag", () => {
 
   it("status judges the orchestrator's kind by address, never by a label", () => {
     const host = read('electron', 'engineHost.ts');
-    expect(host).toMatch(/leavesThisNetwork\(providers\.get\(orchestratorId\)\)/);
+    // As a seat (privacy review, 2026-10-08): its server's address, and its
+    // model's name, since an Ollama cloud tag answers on ollama.com.
+    expect(host).toMatch(
+      /seatLeaves\(providers\.get\(orchestratorId\), stackConfig\.orchestrator\?\.model/,
+    );
     expect(host).not.toMatch(
       /kind: \(config\.providers\[stackConfig\.orchestrator\.provider\]\?\.kind === 'anthropic'/,
     );

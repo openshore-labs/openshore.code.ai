@@ -368,8 +368,17 @@ export type { ModelClass } from './harness/profile.js';
 export { MODEL_CLASSES, deriveModelClass, deriveProfile } from './harness/profile.js';
 export type { DeriveInput, ModelClassPolicy, ModelClassProfile } from './harness/profile.js';
 // What counts as this computer's own network (Vault M5, CTO J2): one pure
-// judge, by address, shared with the engine's isLocalHost.
-export { hostIsLocal, isIPv4Literal, isIPv6Literal, tailnetSuffixOf } from './harness/locality.js';
+// judge, by address, shared with the engine's isLocalHost. A seat is judged by
+// its model's name too: an Ollama cloud tag leaves through a local Ollama, so
+// the app reads the engine's own seat judge (privacy review, 2026-10-08).
+export {
+  hostIsLocal,
+  isIPv4Literal,
+  isIPv6Literal,
+  isOllamaCloudTag,
+  tailnetSuffixOf,
+} from './harness/locality.js';
+export { leavesThisNetwork, seatLeaves } from './providers/types.js';
 export type { HostIsLocalOptions } from './harness/locality.js';
 // The handoff (Vault M5, CTO J11 to J13): extractive, offline, no thinking.
 export {

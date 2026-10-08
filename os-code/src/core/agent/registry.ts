@@ -45,7 +45,7 @@ import { todoWriteTool } from '../tools/todoWrite.js';
 import { loadVaultDir } from '../../config/load.js';
 import type { Router } from '../../router/router.js';
 import type { ProviderRegistry } from '../../providers/registry.js';
-import { leavesThisNetwork } from '../../providers/types.js';
+import { seatLeaves } from '../../providers/types.js';
 import { RepoIndex, keywordSearch } from '../../context/index.js';
 
 /** What decides which tools a session registers. */
@@ -447,7 +447,7 @@ export function buildToolContext(options: {
       providers.embedder(embeddingRole.ref.provider),
       embeddingRole.ref.model,
     );
-    const embedderLeaves = leavesThisNetwork(embeddingRole.provider);
+    const embedderLeaves = seatLeaves(embeddingRole.provider, embeddingRole.ref.model);
     searchRepo = async (query, k) => {
       if (embedderLeaves && options.offline?.()) return keywordSearch(cwd, query, k);
       await index.refresh();

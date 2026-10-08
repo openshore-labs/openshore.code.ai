@@ -219,6 +219,16 @@ export const EGRESS: EgressEntry[] = [
     hosts: [],
   },
   {
+    // Privacy review, 2026-10-08: a cloud tag is served by the Ollama on your
+    // computer, but every request for it goes on to ollama.com (seatLeaves).
+    id: 'ollama-cloud',
+    recipient: 'Your cloud providers',
+    what: "Your chat, and the files the coding agent reads for it, to ollama.com through your own Ollama account, when a model you place is one of Ollama's cloud models (its tag says cloud, like kimi-k3:cloud). The Ollama on your computer passes each turn on, and the amber pill marks every turn that goes.",
+    when: 'Only when you place one, and then on every turn it answers.',
+    start: 'off',
+    hosts: [],
+  },
+  {
     id: 'your-computer',
     recipient: 'Services you connect',
     what: 'Your chats, sessions, and approvals, to your own computer running OpenShore, over your private Tailscale network. Nothing goes through us.',
@@ -238,7 +248,7 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'weights',
     recipient: 'Model downloads',
-    what: 'A request for the model you picked (and the Ollama installer, on first run). Nothing about you rides along.',
+    what: 'A request for the model you picked (and the Ollama installer, on first run). Nothing about you rides along with a model that runs on your computer; an Ollama cloud model (a :cloud tag) works only under your Ollama account, which Ollama itself signs in with.',
     when: 'Only when you tap to download a model or set up Ollama.',
     start: 'tap',
     hosts: ['ollama.com', 'huggingface.co'],

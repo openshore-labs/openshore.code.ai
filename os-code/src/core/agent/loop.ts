@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, relative } from 'node:path';
 import type { OscConfig } from '../../config/schema.js';
 import type { ChatMessage, ContentPart, Provider, ToolCallRequest } from '../../providers/types.js';
-import { leavesThisNetwork, ProviderError } from '../../providers/types.js';
+import { ProviderError, seatLeaves } from '../../providers/types.js';
 import { adapterFor, type ModelAdapter } from '../../providers/adapters/index.js';
 import type { DelegatedUsage, Router } from '../../router/router.js';
 import {
@@ -445,7 +445,7 @@ export class AgentSession {
     // A vault tool asks whether the seat answering now leaves this network, so
     // a local-only note is read only by a seat that stays (CTO I5). Judged by
     // address, live, since an escalation switches the seat mid-task.
-    deps.toolContext.seatLeavesNetwork = () => leavesThisNetwork(this.active.provider);
+    deps.toolContext.seatLeavesNetwork = () => this.activeLeaves();
     // The seat answering now, for the provenance lines on a note the agent
     // writes (Vault M7, CTO L9): its model, its class, and a cloud seat's
     // provider. Where it ran is `seatLeavesNetwork`, judged by address.
@@ -454,7 +454,7 @@ export class AgentSession {
       size:
         this.modelProfile?.modelClass ??
         deriveModelClass({ model: this.active.model, kind: this.active.provider.kind }),
-      ...(leavesThisNetwork(this.active.provider) ? { provider: this.active.provider.label } : {}),
+      ...(this.activeLeaves() ? { provider: this.active.provider.label } : {}),
     });
     // A vault read is capped per class (the seat answering now), past which it
     // returns the outline and asks for a section (CTO I11), and never past
@@ -1127,7 +1127,7 @@ export class AgentSession {
    */
   private async retrievalLead(task: string): Promise<string | undefined> {
     if (this.deps.config.harness?.retrieval?.firstTurn !== 'on') return undefined;
-    if (leavesThisNetwork(this.active.provider)) return undefined;
+    if (this.activeLeaves()) return undefined;
     const { toolContext } = this.deps;
     try {
       const caps = await this.active.provider.capabilities(this.active.model);
@@ -1415,7 +1415,7 @@ export class AgentSession {
       // Cloud confirm-before-spend, once per session (or per profile rules).
       // Anything off this computer's network asks, judged by address: an
       // OpenAI-compatible server on the internet gets the same card as Claude.
-      if (leavesThisNetwork(this.active.provider) && !this.cloudApprovedForSession) {
+      if (this.activeLeaves() && !this.cloudApprovedForSession) {
         const approved = await this.confirmCloudSpend(...this.offNetworkReason());
         if (!approved) {
           this.emit({
@@ -1432,7 +1432,7 @@ export class AgentSession {
       // Whether this turn's seat sends its requests off this network (judged
       // by address). A leaving turn never sees a local-only note's text: the
       // pack withholds it and the history it is sent carries a stub (CTO I5).
-      const leaves = leavesThisNetwork(this.active.provider);
+      const leaves = this.activeLeaves();
       const caps = await this.active.provider.capabilities(this.active.model);
       this.contextTokens = caps.contextTokens;
       const toolMode: 'native' | 'text' =
@@ -1506,7 +1506,7 @@ export class AgentSession {
         turn,
         model: this.active.model,
         // The pill's color: amber for anything off this computer's network.
-        providerKind: leavesThisNetwork(this.active.provider) ? 'cloud' : 'local',
+        providerKind: this.activeLeaves() ? 'cloud' : 'local',
         ...(union ? { decoding: 'union' as const } : {}),
       });
 
@@ -1623,12 +1623,12 @@ export class AgentSession {
         // The connection went while a seat off this network was answering:
         // the next turn follows the offline flag to a model on this network,
         // rather than a busy-server retry or a raw error.
-        if (this.offlineState().offline && leavesThisNetwork(this.active.provider)) continue;
+        if (this.offlineState().offline && this.activeLeaves()) continue;
         const handled = await this.handleProviderFailure(err, turn);
         if (handled === 'retry') continue;
         // The flag may have caught up during the retries' pauses: follow it
         // to a model on this network rather than end on a lost connection.
-        if (this.offlineState().offline && leavesThisNetwork(this.active.provider)) continue;
+        if (this.offlineState().offline && this.activeLeaves()) continue;
         this.emit({ type: 'task-done', reason: 'error', message: this.failureLine(err) });
         return;
       }
@@ -2657,7 +2657,7 @@ export class AgentSession {
   private async followOffline(): Promise<boolean> {
     const now = this.offlineState();
     if (now.offline) {
-      if (leavesThisNetwork(this.active.provider)) {
+      if (this.activeLeaves()) {
         const seat = await this.deps.router.localSeat();
         if (!seat) {
           this.emit({
@@ -2705,7 +2705,7 @@ export class AgentSession {
    */
   private async oneShotSeat(): Promise<ActiveModel> {
     const now = this.offlineState();
-    if (!now.offline || !leavesThisNetwork(this.active.provider)) return this.active;
+    if (!now.offline || !this.activeLeaves()) return this.active;
     const seat = await this.deps.router.localSeat();
     if (!seat) throw new Error(offlineNoModelLine(now.reason));
     return { provider: seat.provider, model: seat.ref.model, adapter: adapterFor(seat.ref.model) };
@@ -2789,10 +2789,19 @@ export class AgentSession {
     return 'fail';
   }
 
+  /** Whether the seat answering now sends its requests off this network:
+   *  its server's address, or an Ollama cloud tag that a local Ollama passes
+   *  on to ollama.com (seatLeaves). Every check on the active seat reads
+   *  this, so the cloud card, the offline seat, the pill and what a vault
+   *  note may reach agree. */
+  private activeLeaves(): boolean {
+    return seatLeaves(this.active.provider, this.active.model);
+  }
+
   /** Whether a failure is a seat off this network that could not be reached
    *  (judged by address, then by the error's shape). */
   private unreached(message: string): boolean {
-    return leavesThisNetwork(this.active.provider) && UNREACHED.test(message);
+    return this.activeLeaves() && UNREACHED.test(message);
   }
 
   /** The line a failed turn ends with: a seat off this network that could not
