@@ -1,4 +1,4 @@
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { z } from 'zod';
 import { capContent, type ToolDef } from './index.js';
 import { walkFiles } from './walk.js';
@@ -23,7 +23,9 @@ export const globTool: ToolDef<typeof schema> = {
     const notes = workspaceNotes(ctx);
     const matches: string[] = [];
     for (const rel of walkFiles(ctx.cwd)) {
-      if (minimatch(rel, args.pattern)) {
+      // The walk spells a path with this system's separator; a pattern is
+      // written with forward slashes, so on Windows it is matched as one.
+      if (minimatch(rel.split(sep).join('/'), args.pattern)) {
         if (notes && (await notes.unlisted(join(ctx.cwd, rel)))) continue;
         matches.push(rel);
         if (matches.length >= max) break;

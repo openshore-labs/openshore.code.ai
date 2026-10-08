@@ -125,8 +125,17 @@ function flag(start: MachineOffline) {
   };
 }
 
+/** A tool output or a search's text with its paths in forward slashes, so
+ *  each assertion reads the same on Windows, where the walk spells a path
+ *  with backslashes (and a not.toContain on a slashed path is never vacuous
+ *  there). */
+const posix = (text: string): string => text.replaceAll('\\', '/');
 const ends = (events: AgentEvent[], name: string): ToolOutput[] =>
-  events.flatMap((e) => (e.type === 'tool-end' && e.call.name === name ? [e.result] : []));
+  events.flatMap((e) =>
+    e.type === 'tool-end' && e.call.name === name
+      ? [{ ...e.result, content: posix(e.result.content) }]
+      : [],
+  );
 const deniedReasons = (events: AgentEvent[]): string[] =>
   events.flatMap((e) => (e.type === 'tool-denied' ? [e.reason] : []));
 const sentTo = (provider: MockProvider): string => JSON.stringify(provider.requests);
@@ -415,7 +424,15 @@ describe('a command near the vault', () => {
     expect(ends(session.events, 'runShell')[0]!.content).toContain('plain');
   });
 
-  const CHECK = { harness: { verify: { command: `cat ${JOURNAL_NOTE}; exit 1`, maxRetries: 1 } } };
+  // node runs under cmd.exe (exec's shell on Windows) and sh alike; cat does not.
+  const CHECK = {
+    harness: {
+      verify: {
+        command: `node -e "process.stdout.write(require('fs').readFileSync('${JOURNAL_NOTE}', 'utf8')); process.exit(1)"`,
+        maxRetries: 1,
+      },
+    },
+  };
 
   it('the check asks on a cloud seat, and nothing it prints is sent unasked', async () => {
     const ws = workspace();
@@ -615,7 +632,7 @@ describe('repo search, the code map and their indexes', () => {
 
     const embedded: string[] = [];
     const ctx = contextFor(ws.cwd, ws.vault, embedded);
-    const found = await ctx.searchRepo!('diary journal secret', 20);
+    const found = posix(await ctx.searchRepo!('diary journal secret', 20));
     expect(found).toContain('src/app.ts');
     expectNoPrivateText(found);
     expectNoPrivateText(embedded.join('\n'));
@@ -629,7 +646,7 @@ describe('repo search, the code map and their indexes', () => {
 
     const keyword = contextFor(ws.cwd, ws.vault, [], false);
     // The keyword ranking names files: every private note is left out of it.
-    const ranked = await keyword.searchRepo!('diary secret greeting idea client tagged', 10);
+    const ranked = posix(await keyword.searchRepo!('diary secret greeting idea client tagged', 10));
     expect(ranked).toContain('notes/Ideas/open.md');
     for (const note of ['Journal/', 'Clients/', 'tagged.md', 'Archive/']) {
       expect(ranked).not.toContain(note);
@@ -642,20 +659,20 @@ describe('repo search, the code map and their indexes', () => {
     put(cwd, 'src/greet.ts', 'export function greetPerson() { return "hello there"; }\n');
     put(cwd, 'Private/plan.md', `# Plan\n\nThe hello plan is ${JOURNAL}.\n`);
     const keyword = contextFor(cwd, vault, [], false);
-    const ranked = await keyword.searchRepo!('hello greet plan', 10);
+    const ranked = posix(await keyword.searchRepo!('hello greet plan', 10));
     expect(ranked).toContain('src/greet.ts');
     // Private/ here is Projects/app/Private/ in the vault, not the vault's
     // own Private/, so it is judged where it lies: open, and found.
     expect(ranked).toContain('Private/plan.md');
     put(vault, 'Private/thesis/notes.md', `# Notes\n\nhello ${LATER}\n`);
     const inPrivate = contextFor(join(vault, 'Private', 'thesis'), vault, [], false);
-    expect(await inPrivate.searchRepo!('hello', 10)).not.toContain('notes.md');
+    expect(posix(await inPrivate.searchRepo!('hello', 10))).not.toContain('notes.md');
   });
 
   it('the code map names a file in the vault and never outlines it', () => {
     const ws = workspace();
     put(ws.vault, 'Private/helper.ts', 'export function privateHelperName() {}\n');
-    const map = buildCodeMap(ws.cwd, { nameOnly: vaultFileTest(ws.vault, ws.cwd)! });
+    const map = posix(buildCodeMap(ws.cwd, { nameOnly: vaultFileTest(ws.vault, ws.cwd)! }));
     expect(map).toContain('notes/Private/helper.ts');
     expect(map).not.toContain('privateHelperName');
     expect(map).toContain('src/app.ts');
@@ -668,7 +685,7 @@ describe('repo search, the code map and their indexes', () => {
     const embedded: string[] = [];
     const ctx = contextFor(ws.cwd, ws.vault, embedded, true, { kind: 'cloud', remote: true });
     ctx.chatHoldsLocalOnly = () => true;
-    const found = await ctx.searchRepo!(`where is ${JOURNAL} handled`, 5);
+    const found = posix(await ctx.searchRepo!(`where is ${JOURNAL} handled`, 5));
     expect(embedded.join('\n')).not.toContain(JOURNAL);
     expect(found).not.toContain(JOURNAL);
     // With nothing private held, the embedder answers as before.

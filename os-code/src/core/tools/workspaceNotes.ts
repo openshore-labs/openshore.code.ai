@@ -18,22 +18,35 @@
 // large or unreadable to judge by its tags and marks stays on this computer;
 // and the person's deny rules on the vault tools close a note here too.
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { VaultIndex } from '../../harness/vault/index.js';
 import { isNotePath } from '../../harness/vault/paths.js';
 import type { OscodeMark, VaultVisibility } from '../../harness/vault/types.js';
-import { deepestRealpath } from '../security/jail.js';
 import { openEngineVaultIndex } from '../vault/engineIndex.js';
 import type { ToolContext, ToolOutput } from './index.js';
 import { closed, knownFromText, refreshVault, seatLeaves, visibilityOf } from './vaultFind.js';
 
-/** A path's real location: the system's realpath in one call, else the
- *  deepest existing ancestor's (a file not made yet). */
+/** A path's real location by the system's own realpath, for the file or,
+ *  for one not made yet (a deleted note in git, a Current State not on disk),
+ *  its deepest existing ancestor, with the rest of the path kept. Both sides
+ *  of every comparison here go through this one call: on Windows the native
+ *  realpath spells a folder by its long name where Node's other realpath
+ *  keeps an 8.3 short one (RUNNER~1), so mixing the two judged a note in the
+ *  vault as outside it, and open. */
 function realOf(abs: string): string {
-  try {
-    return realpathSync.native(abs);
-  } catch {
-    return deepestRealpath(abs);
+  let existing = abs;
+  let tail = '';
+  for (;;) {
+    try {
+      const real = realpathSync.native(existing);
+      return tail ? join(real, tail) : real;
+    } catch {
+      const parent = dirname(existing);
+      if (parent === existing) return abs;
+      const name = existing.slice(parent.length).replace(/^[\\/]+/, '');
+      tail = tail ? join(name, tail) : name;
+      existing = parent;
+    }
   }
 }
 
