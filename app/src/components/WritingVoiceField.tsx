@@ -5,7 +5,7 @@
 // result back with an Add to Settings button (lib/appActions.ts).
 import { useEffect, useState } from 'react';
 import { useApp } from '../state/store.js';
-import { WRITING_VOICE_MAX, cleanWritingVoice } from '../lib/writingVoice.js';
+import { WRITING_VOICE_MAX, WRITING_VOICE_SUB, cleanWritingVoice } from '../lib/writingVoice.js';
 
 export function WritingVoiceField() {
   const saved = useApp((s) => s.settings.writingVoice) ?? '';
@@ -32,11 +32,7 @@ export function WritingVoiceField() {
     <div className="settings-block writing-voice">
       <div className="settings-row-text">
         <span className="settings-row-label">Your writing voice</span>
-        <span className="settings-row-sub">
-          Your own words for how models write for you. Works alone or with Humanize Writing. Kept
-          only on this device and never synced; it goes with each message to the model that writes
-          for you.
-        </span>
+        <span className="settings-row-sub">{WRITING_VOICE_SUB}</span>
       </div>
       <button
         type="button"

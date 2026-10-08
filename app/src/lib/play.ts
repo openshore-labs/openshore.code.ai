@@ -323,6 +323,15 @@ const visionProbe: PlayStep = {
   dependsOn: [],
 };
 
+/** Who a plan's image step runs on in this stack: stepRunner's answer for a
+ *  bare vision step, the rule the run itself follows. The Stack's Image
+ *  reading rows read it, so they say a model takes a plan's image step only
+ *  when it does (a model on this device in the Local slot hands the step to
+ *  the reasoning model instead). */
+export function imageStepRunner(stack: PlayStack): StackModelRef {
+  return stepRunner(visionProbe, stack).ref;
+}
+
 /** The categories this stack can hand off to, and who owns each, so the planner
  *  plans against the real roster and marks a fallback honestly. */
 function rosterLines(stack: PlayStack): string {

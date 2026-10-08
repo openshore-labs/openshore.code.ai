@@ -33,6 +33,7 @@ import {
   isCurrentBenchId,
   slotNone,
 } from '../lib/currents.js';
+import { imageStepRunner } from '../lib/play.js';
 import {
   STACK_CATEGORIES,
   STACK_LEAD,
@@ -262,8 +263,9 @@ export function StackManager({
 
   // ---- Vision slots -------------------------------------------------------
   // Two positions in one category: a local model (on-device or your own server)
-  // and a cloud model. Each carries its own effort. Until a person assigns the
-  // cloud slot, an image asks first and then goes to the model named below.
+  // and a cloud model. Each carries its own effort. Until a person assigns a
+  // slot that can read here (the Local one first), an image asks first and
+  // then goes to the model named below.
   // A model you connect sits under Local only when it answers on your own
   // network; one at a public address, or an Ollama cloud tag, is a cloud model.
   const localVisionRefs = [...deviceRefs, ...byomRefs.filter(staysLocal)];
@@ -286,6 +288,30 @@ export function StackManager({
       reach,
       staysLocal,
     )?.ref ?? (cloudOn && connectedReader ? { kind: 'cloud', ...connectedReader } : undefined);
+  // The reader the chat path really picks, over the whole stack: the Local
+  // slot first when it can read here. Then it reads images itself, no other
+  // model stands in for it, and no line names one (sp-claims2). Otherwise it
+  // is the stand-in above.
+  const chatPick = pickVisionRef(stack, reach, staysLocal);
+  const localReads = Boolean(
+    slots.local && chatPick && refKey(chatPick.ref) === refKey(slots.local.ref),
+  );
+  const standIn = localReads ? undefined : imageReader;
+  // The stand-in asks before a picture unless it was placed for Image reading
+  // (routeVision's `dedicated`), and takes a plan's image step only when the
+  // plan's own rule gives it the step (play.ts stepRunner, with the reader the
+  // driver hands a play): a model on this device in the Local slot hands the
+  // step to the Reasoning model instead.
+  const standInAsks = !chatPick || chatPick.placement?.category !== 'vision';
+  const standInTakesPlanStep =
+    standIn !== undefined &&
+    refKey(imageStepRunner({ ...stack, imageReader: standIn, reachable: reach, staysLocal })) ===
+      refKey(standIn);
+  const standInAsk = !standInAsks
+    ? ''
+    : standInTakesPlanStep
+      ? " It asks before a picture, not before a plan's image step."
+      : ' It asks before a picture.';
   const [visionEdit, setVisionEdit] = useState<
     { slot: 'local' | 'cloud'; pickKey: string; effort: Effort } | undefined
   >();
@@ -337,17 +363,21 @@ export function StackManager({
     }
     if (slot === 'cloud') {
       // The same shape as the Local row beside it: the slot is empty, then
-      // who reads images for now (CS-09).
-      if (imageReader) {
-        return `None yet · ${refName(imageReader)} reads images for now. It asks before a picture, not before a plan's image step.`;
+      // who reads images (CS-09): the Local model when it reads them itself,
+      // else the stand-in, for now.
+      if (localReads && slots.local) {
+        return `None yet · ${refName(slots.local.ref)} reads images.`;
+      }
+      if (standIn) {
+        return `None yet · ${refName(standIn)} reads images for now.${standInAsk}`;
       }
       return cloudOn
         ? 'None yet · Connect a cloud model in Cloud Connections to read images.'
         : 'None yet · No cloud model is used while Offline.';
     }
     // The title already says yet, so the line does not say it again.
-    return imageReader
-      ? `None yet · ${refName(imageReader)} reads images for now.`
+    return standIn
+      ? `None yet · ${refName(standIn)} reads images for now.`
       : 'None yet · Nothing reads images.';
   };
 
@@ -1003,11 +1033,12 @@ export function StackManager({
             </SheetTitle>
             <p className="sheet-sub">
               {/* Each names the model reading images today, and only while
-                  that is the stand-in: a chosen cloud model never asks. */}
+                  that is the stand-in: a chosen cloud model never asks, and
+                  a Local model that reads them leaves no stand-in. */}
               {visionEdit.slot === 'local'
-                ? `A model on this device or your own server. A model on this device cannot read images yet${imageReader ? `, so ${refName(imageReader)} reads them until one can.` : '.'}`
-                : imageReader && !slots.cloud
-                  ? `A cloud model that reads images. Until you choose one, ${refName(imageReader)} reads them. It asks before a picture, not before a plan's image step.`
+                ? `A model on this device or your own server. A model on this device cannot read images yet${standIn ? `, so ${refName(standIn)} reads them until one can.` : '.'}`
+                : standIn && !slots.cloud
+                  ? `A cloud model that reads images. Until you choose one, ${refName(standIn)} reads them.${standInAsk}`
                   : 'A cloud model that reads images.'}
             </p>
 
