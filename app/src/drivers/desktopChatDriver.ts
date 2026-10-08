@@ -178,8 +178,13 @@ export class DesktopChatDriver implements ChatDriver {
   /** What the last context-pack card said this send, so a search's second
    *  pass does not show the same card twice. */
   private packCardShown?: string;
-  /** This send's pack carried a local-only note (the card said so). */
+  /** This send's pack carried a local-only note (the card said so), or the
+   *  chat the computer's model reads holds a marked turn. */
   private sendLocalOnly = false;
+  /** The history holds a marked turn (a seed, or a marked reply here): the
+   *  computer's model reads it whole, so every reply after it may quote it
+   *  and is marked too, the rule the Stack and the engine follow (D5). */
+  private historyLocalOnly = false;
   /** The reply so far this send: only what reached the screen. */
   private answer = '';
   /** The turn is over (answered, stopped, failed); its ending was said once. */
@@ -208,7 +213,10 @@ export class DesktopChatDriver implements ChatDriver {
     private readonly vault: ChatVaultFields = {},
   ) {
     this.transport = 'stream' in target ? target : daemonFreeChat(target);
-    if (seed) this.history = seed.map((t) => ({ role: t.role, content: t.text }));
+    if (seed) {
+      this.history = seed.map((t) => ({ role: t.role, content: t.text }));
+      this.historyLocalOnly = seed.some((t) => t.localOnly === true);
+    }
   }
 
   subscribe(sink: DriverEventSink): () => void {
@@ -230,7 +238,7 @@ export class DesktopChatDriver implements ChatDriver {
     this.aborted = false;
     this.abortController = new AbortController();
     this.packCardShown = undefined;
-    this.sendLocalOnly = false;
+    this.sendLocalOnly = this.historyLocalOnly;
     this.answer = '';
     this.search.begin();
     this.emit({ type: 'task-start', input: text });
@@ -246,6 +254,7 @@ export class DesktopChatDriver implements ChatDriver {
     this.search.settle(this.history);
     const kept = this.answer.trim();
     if (kept) this.history.push({ role: 'assistant', content: kept });
+    if (kept && this.sendLocalOnly) this.historyLocalOnly = true;
     this.emit(textFinal(kept, this.sendLocalOnly && Boolean(kept)));
     this.emit({ type: 'task-done', reason, message });
     this.closed = true;
@@ -363,6 +372,7 @@ export class DesktopChatDriver implements ChatDriver {
 
   recordLine(turn: SeedTurn): void {
     this.history.push({ role: turn.role, content: turn.text });
+    if (turn.localOnly) this.historyLocalOnly = true;
   }
 
   answerApproval(_approvalId: string, _answer: ApprovalAnswer): void {

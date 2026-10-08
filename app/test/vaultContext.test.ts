@@ -846,6 +846,47 @@ describe('a reply after a local-only read, then a switch (I5, J10)', () => {
     expect(body).not.toContain(SECRET);
   });
 
+  // Sign-off (sp-plan, D5): the pocket model reads the chat whole, so a
+  // reply after a marked turn may quote it and is marked too; and a line
+  // handed to a cloud seat after its seed is the stub when marked.
+  it('the device marks a reply after a marked turn, and a cloud seat gets a marked line as the stub', async () => {
+    const seed = [
+      { role: 'user' as const, text: 'what does my diary say' },
+      { role: 'assistant' as const, text: SECRET, localOnly: true as const },
+    ];
+    const device = new OnDeviceDriver(
+      'qwen2.5-1.5b-instruct',
+      'Qwen',
+      seed,
+      false,
+      undefined,
+      'c-lo2',
+    );
+    const events = collect(device);
+    device.send('say it in one line');
+    await done(events);
+    expect(isLocalOnlyFinal(events.find((e) => e.type === 'text-final')!)).toBe(true);
+    device.dispose();
+
+    const claude = new CloudClaudeDriver('k', 'claude-opus-5', []);
+    claude.recordLine({ role: 'assistant', text: SECRET, localOnly: true });
+    const cEvents = collect(claude);
+    claude.send('and then?');
+    await done(cEvents);
+    const sent = JSON.stringify(h.claudeCalls.at(-1)!.messages);
+    expect(sent).toContain(LOCAL_ONLY_STUB);
+    expect(sent).not.toContain(SECRET);
+
+    const gpt = new CloudOpenAiDriver('https://x/v1', 'sk', 'm', 'X', []);
+    gpt.recordLine({ role: 'assistant', text: SECRET, localOnly: true });
+    const gEvents = collect(gpt);
+    gpt.send('and then?');
+    await done(gEvents);
+    const body = JSON.stringify(h.oaiCalls.at(-1)!.body.messages);
+    expect(body).toContain(LOCAL_ONLY_STUB);
+    expect(body).not.toContain(SECRET);
+  });
+
   it('a reply with no local-only read carries no mark', async () => {
     let thread = emptyThread();
     thread = reduceEvent(thread, { type: 'task-start', input: 'hi' });

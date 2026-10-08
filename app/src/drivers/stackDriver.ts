@@ -371,6 +371,11 @@ export function historyForSeat<M extends { content: string; localOnly?: true }>(
     : history.slice();
 }
 
+/** One earlier turn as a play's prompts carry it (conversationDigest). */
+function digestLine(m: Msg): string {
+  return `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`;
+}
+
 /** One play step's output, marked when it was written after a local-only
  *  read (I5): its seat's pack carried a local-only note, or a marked earlier
  *  output reached that seat whole. */
@@ -579,6 +584,10 @@ export class StackDriver implements ChatDriver {
   private sendEffort = effortDirective();
   // CTO I5: this send read a local-only note, so its reply is marked.
   private sendLocalOnly = false;
+  // This send's text already went to a model that leaves this network (the
+  // framing call on such a Reasoning model), so the chat's reach for the
+  // send reads cloud on every route, a model here answering it included.
+  private sendLeft = false;
   // The vault writes this send proposed, shown on one card at its end (D4),
   // and the privacy rules, loaded once per send.
   private proposals: VaultProposal[] = [];
@@ -1267,6 +1276,7 @@ export class StackDriver implements ChatDriver {
     this.guidePrompt = undefined;
     this.sendEffort = effortDirective();
     this.sendLocalOnly = false;
+    this.sendLeft = false;
     this.proposals = [];
     this.pendingOffer = undefined;
     this.sendPrivacy = undefined;
@@ -1373,15 +1383,11 @@ export class StackDriver implements ChatDriver {
     // Stopped while routing (a card, Jev, a key lookup): nothing is sent.
     if (this.aborted) throw abortError();
 
-    this.emit({
-      type: 'turn-start',
-      turn: this.history.length,
-      model: refName(target.ref),
-      providerKind: target.ref.kind === 'device' ? 'local' : 'cloud',
-    });
+    this.turnStart(refName(target.ref), target.ref.kind === 'device' ? 'local' : 'cloud');
     // Rendered only now, after routing and any Jev steer, so the pack fits
     // the seat that actually answers (CTO J5).
     this.turnPack = { ref: target.ref, text: await this.packFor(target.ref) };
+    this.markIfReadsPrivateTurn(target.ref);
     if (images.length) {
       // With nothing set for Image reading, the line says so and names the
       // reader and what it runs on, the same words a plan's image step uses.
@@ -1426,17 +1432,35 @@ export class StackDriver implements ChatDriver {
         type: 'status',
         message: `${refName(target.ref)} is not available right now. Falling back to ${refName(reasoning)}.`,
       });
-      this.emit({
-        type: 'turn-start',
-        turn: this.history.length,
-        model: refName(reasoning),
-        providerKind: reasoning.kind === 'device' ? 'local' : 'cloud',
-      });
+      this.turnStart(refName(reasoning), reasoning.kind === 'device' ? 'local' : 'cloud');
       // The anchor is a different seat: its own pack, sized for it.
       this.turnPack = { ref: reasoning, text: await this.packFor(reasoning) };
+      this.markIfReadsPrivateTurn(reasoning);
       this.answer = '';
       await this.runRef(reasoning, undefined, []);
     }
+  }
+
+  /** A seat that stays on this network reads the chat whole, a local-only
+   *  turn included, so what it writes may quote that turn: the reply is
+   *  marked too, or a later turn on a seat that leaves would read the quote
+   *  whole (I5 and D5, the same rule a play's steps follow). */
+  private markIfReadsPrivateTurn(ref: StackModelRef): void {
+    if (!this.leaves(ref) && this.history.some((m) => m.localOnly === true)) {
+      this.sendLocalOnly = true;
+    }
+  }
+
+  /** The chat's reach for this send (what Chats and the top bar read): cloud
+   *  once anything in the send went to a model that leaves this network,
+   *  even when a model here answers it (M1). */
+  private turnStart(model: string, kind: 'local' | 'cloud'): void {
+    this.emit({
+      type: 'turn-start',
+      turn: this.history.length,
+      model,
+      providerKind: this.sendLeft ? 'cloud' : kind,
+    });
   }
 
   /** Someone a play could hand a step to, the only case a multi-step play
@@ -1613,10 +1637,22 @@ export class StackDriver implements ChatDriver {
     let answering = false;
     this.answer = '';
     let framedLocalOnly = false;
+    // A Reasoning model that stays on this network reads the chat whole (the
+    // turns its digest carries): a private turn among them taints what it
+    // writes, its own answer or the plan (D5, I5).
+    const readPrivateTurn =
+      !this.leaves(reasoning) && this.digestTurns(false).some((m) => m.localOnly === true);
     try {
       const framed = await this.packRender(reasoning);
       const pack = framed.text;
       framedLocalOnly = framed.localOnly;
+      // The framing call carries the message and the chat: on a Reasoning
+      // model that leaves, the send is a cloud one from here, whoever
+      // answers it, and however it ends (M1).
+      if (this.leaves(reasoning)) {
+        this.sendLeft = true;
+        this.turnStart(refName(reasoning), 'cloud');
+      }
       await this.completeOnce(
         reasoning,
         undefined,
@@ -1634,12 +1670,8 @@ export class StackDriver implements ChatDriver {
             if (!shown) return;
             if (!answering) {
               answering = true;
-              this.emit({
-                type: 'turn-start',
-                turn: this.history.length,
-                model: refName(reasoning),
-                providerKind: 'cloud',
-              });
+              if (readPrivateTurn) this.sendLocalOnly = true;
+              this.turnStart(refName(reasoning), 'cloud');
             }
             this.showAnswer(shown);
           },
@@ -1663,6 +1695,9 @@ export class StackDriver implements ChatDriver {
     // The reply (a tapped option or free text) is folded back into the framing.
     if (!framing.clear && framing.questions.length) {
       this.pendingClarify = { text };
+      // The questions are this send's turn: one from a model here reads local
+      // (one that leaves marked the send cloud when the framing call went).
+      if (!this.sendLeft) this.turnStart(refName(reasoning), 'local');
       this.emit({ type: 'clarify', summary: framing.summary, questions: framing.questions });
       this.answer = '';
       this.finish('complete');
@@ -1674,12 +1709,10 @@ export class StackDriver implements ChatDriver {
     if (framing.steps.length <= 1) return false;
 
     // D5 on a plan: an anchor that stays on this network read its pack and
-    // the whole chat, so when either carried a private note, the goal and
-    // the briefs it wrote may quote it. No step of this plan then goes to a
+    // the chat whole, so when either held a private note, the goal and the
+    // briefs it wrote may quote it. No step of this plan then goes to a
     // model that leaves this network (executePlay).
-    const planLocalOnly =
-      !this.leaves(reasoning) &&
-      (framedLocalOnly || this.history.some((m) => m.localOnly === true));
+    const planLocalOnly = (!this.leaves(reasoning) && framedLocalOnly) || readPrivateTurn;
     await this.executePlay(
       { summary: framing.summary, steps: framing.steps },
       text,
@@ -1728,12 +1761,7 @@ export class StackDriver implements ChatDriver {
       const next = leaves ? 'cloud' : 'local';
       if (reach === 'cloud' || reach === next) return;
       reach = next;
-      this.emit({
-        type: 'turn-start',
-        turn: this.history.length,
-        model: refName(reasoning),
-        providerKind: next,
-      });
+      this.turnStart(refName(reasoning), next);
     };
     markReach(this.leaves(reasoning));
 
@@ -1888,18 +1916,25 @@ export class StackDriver implements ChatDriver {
    *  out the step itself. The live message (the last entry) is left out; each
    *  prompt carries it on its own. */
   private conversationDigest(leaves: boolean, maxChars = 6000): string | undefined {
+    const lines = this.digestTurns(leaves, maxChars).map(digestLine);
+    return lines.length ? lines.join('\n') : undefined;
+  }
+
+  /** The turns `conversationDigest` carries, marks kept, so a plan can tell
+   *  whether the chat its Reasoning model read held a private turn (D5). */
+  private digestTurns(leaves: boolean, maxChars = 6000): Msg[] {
     // A seat that leaves this network reads the stub for a local-only reply.
     const earlier = historyForSeat(this.history.slice(0, -1), leaves);
-    const lines: string[] = [];
+    const kept: Msg[] = [];
     let used = 0;
     for (let i = earlier.length - 1; i >= 0; i--) {
       const m = earlier[i]!;
-      const line = `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`;
+      const line = digestLine(m);
       if (used + line.length > maxChars) break;
-      lines.unshift(line);
+      kept.unshift(m);
       used += line.length;
     }
-    return lines.length ? lines.join('\n') : undefined;
+    return kept;
   }
 
   /** The prompt for one step: the goal, this step's brief, and the prior steps'
@@ -2386,7 +2421,7 @@ export class StackDriver implements ChatDriver {
     this.answer = '';
     if (this.aborted) throw abortError();
     this.history.push({ role: 'user', content: resultText });
-    this.emit({ type: 'turn-start', turn: this.history.length, model, providerKind });
+    this.turnStart(model, providerKind);
     await again();
   }
 
@@ -2738,7 +2773,12 @@ export class StackDriver implements ChatDriver {
   }
 
   recordLine(turn: SeedTurn): void {
-    this.history.push({ role: turn.role, content: turn.text });
+    // The mark rides along, as a seed's does (I5).
+    this.history.push({
+      role: turn.role,
+      content: turn.text,
+      ...(turn.localOnly ? { localOnly: true as const } : {}),
+    });
   }
 
   answerApproval(id: string, answer: ApprovalAnswer): void {
