@@ -370,11 +370,14 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
   },
   {
     // The founder's two doors (2026-10-07), in the words the chat's card and
-    // its guides use; the local pick comes from the catalog.
+    // its guides use; the local pick comes from the catalog. The Local slot
+    // reads first and the Cloud slot takes a failed picture only after a
+    // card (K), and a plan's image step runs on the Reasoning model from the
+    // text, since a plan never carries a picture (E; CX and CMO, 2026-10-08).
     id: 'image-reading',
     title: 'Reading images',
     where: 'Menu, Stack, Image reading',
-    text: `A picture in a Stack chat goes to the model set under Image reading, without asking. With none set, another model that can read it (your Reasoning model, or a cloud model you connected) gets it after you approve, and a plan's image step goes to that model with a note naming it. When nothing can read images, the chat says so and offers two ways: Source a local model (${LOCAL_IMAGE_READER.name}, ${aboutGB(LOCAL_IMAGE_READER)}, on your computer through Ollama, or ${SMALL_IMAGE_READER.name}, ${aboutGB(SMALL_IMAGE_READER)}, for a computer with little room; a model on ${thisDeviceNoun()} cannot read images yet), or Connect a cloud model on your own API key (Claude reads images out of the box). Each opens a step-by-step guide.`,
+    text: `A picture in a Stack chat goes to the model set under Image reading, without asking. With both set, the Local model reads first, and the Cloud model takes a picture the Local one failed on only after you approve. With none set, another model that can read it (your Reasoning model, or a cloud model you connected) gets it after you approve. A plan never carries a picture, so with none set its image step goes to your Reasoning model, which works from the text. When nothing can read images, the chat says so and offers two ways: Source a local model (${LOCAL_IMAGE_READER.name}, ${aboutGB(LOCAL_IMAGE_READER)}, on your computer through Ollama, or ${SMALL_IMAGE_READER.name}, ${aboutGB(SMALL_IMAGE_READER)}, for a computer with little room; a model on ${thisDeviceNoun()} cannot read images yet), or Connect a cloud model on your own API key (Claude reads images out of the box). Each opens a step-by-step guide.`,
     keywords: [
       'read images',
       'read image',
@@ -395,7 +398,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'bench',
     title: 'The Bench',
     where: 'Menu, Stack, Bench',
-    text: "Models you download or connect wait on the Bench until you place them, with one exception: while nothing in your Stack reads images, a plan's image step goes to a connected cloud model without asking. Teal is local and private, amber is cloud. Tap Add to stack, choose a category, and optionally a trigger, a persona, and effort.",
+    text: 'Models you download or connect wait on the Bench until you place them. Teal is local and private, amber is cloud. Tap Add to stack, choose a category, and optionally a trigger, a persona, and effort.',
     keywords: [
       'bench',
       'place',
@@ -491,7 +494,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'cloud-connections',
     title: 'Cloud Connections',
     where: 'Menu, Cloud Connections',
-    text: `Add cloud models on your own API key: Claude (which also needs its Workspace id), OpenAI, Gemini, Kimi (Moonshot), and Perplexity. Each connected provider puts its models on your Bench. API keys are stored only on your device and sent only to their provider. A cloud model runs, and spends, only when you choose it, with one exception: while nothing in your Stack reads images, a plan's image step goes to one without asking, and its working note names it. How:\n${guideStepsCompact('connect-cloud-key')}`,
+    text: `Add cloud models on your own API key: Claude (which also needs its Workspace id), OpenAI, Gemini, Kimi (Moonshot), and Perplexity. Each connected provider puts its models on your Bench. API keys are stored only on your device and sent only to their provider. A cloud model runs, and spends, only when you pick it or place it. How:\n${guideStepsCompact('connect-cloud-key')}`,
     keywords: [
       'cloud',
       'api key',
@@ -876,7 +879,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'privacy',
     title: 'Privacy',
     where: 'Menu, Settings, Privacy and Ethical boundaries',
-    text: "Local models keep your words on your device, unless a cloud model in the same chat reads them later, on its own turn or as a step in a plan. Cloud models run on your own API keys, and an amber pill or dot marks a chat whose latest turn went to one. Chats, projects, and API keys are encrypted on the device. What does leave is short and listed under Settings, Privacy, What leaves this device: a cloud model you chose (and, while nothing in your Stack reads images, the one that takes a plan's image step), a web search you allowed, update checks, the model list, and your account while signed in.",
+    text: 'Local models keep your words on your device, unless a cloud model in the same chat reads them later, on its own turn or as a step in a plan. Cloud models run on your own API keys, and an amber pill or dot marks a chat whose latest turn went to one. Chats, projects, and API keys are encrypted on the device. What does leave is short and listed under Settings, Privacy, What leaves this device: a cloud model you chose, a web search you allowed, update checks, the model list, and your account while signed in.',
     keywords: [
       'privacy',
       'private',

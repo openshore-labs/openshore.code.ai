@@ -93,22 +93,40 @@ export const VAULT_MODELS_TITLE = 'How your models use it';
  *  whose output the model may read. That is the caveat for an excluded note,
  *  which no model reads at all. */
 export const VAULT_COMMAND_CAVEAT = 'unless a command you run or allow reads them';
-/** The caveat for a note a local model may read: besides a command, a change
- *  that model writes after reading it (a file, a commit message, an open
- *  note) can carry its words to where a cloud model reads them later, and
- *  writes ask unless the person allowed them (Accept edits included). So the
- *  promise names both. */
-export const VAULT_CARRY_CAVEAT = 'unless you run or allow a command or change that carries them';
+/** The person's own reach, said as a plain sentence after the promise, never
+ *  an "unless" inside it (CX and CMO, 2026-10-08, A): besides a command, a
+ *  change a local model writes after reading a private note (a file, a
+ *  commit message, an open note) can carry its words to where a cloud model
+ *  reads them later. Writes ask unless the person allowed them (Accept edits
+ *  included), so the words say "allow", not "approve"; a change to the
+ *  project's memory notes asks every time once a chat holds a private note. */
+const VAULT_CARRY_WORDS =
+  'A command you run or allow, or a change you allow, can still carry their words to';
+/** The caveat for a note a local model may read, as a whole sentence. */
+export const VAULT_CARRY_CAVEAT = `${VAULT_CARRY_WORDS} a cloud model.`;
 /** The one promise about private notes and cloud models, worded once for the
- *  ramp and the project room's pins card (D5; CS-10). It says exactly as
- *  much as the code does. */
-export const VAULT_PRIVATE_OFF_CLOUD = `Private notes never reach a cloud model ${VAULT_CARRY_CAVEAT}.`;
+ *  pins card's empty state, the pin sheet, the empty Vault ramp, the models
+ *  line and the cloud-models entry (D5; CS-10; CX and CMO, 2026-10-08, A).
+ *  OpenShore is the subject, because what it does is what the code holds:
+ *  every way it reads a note keeps a private one off a cloud model. */
+export const VAULT_PRIVATE_OFF_CLOUD = `OpenShore never sends private notes to a cloud model. ${VAULT_CARRY_WORDS} one.`;
+/** The word beside the lock on a private note's row, in the pinned list and
+ *  the pin picker: the one noun the promise uses (CX and CMO, 2026-10-08,
+ *  G). */
+export const VAULT_PRIVATE_TAG = 'Private';
+/** Under a project's pinned list, while a private pin rides the coding
+ *  agent's pack (G). Held to the code: the refusal is the coding agent's, it
+ *  holds while the agent's own seat stays on this network (the engine's
+ *  handoffRefusal), and a pin reaches the agent only while Memory and Notes
+ *  in chats are on and it is among the first PACK_PINS_MAX the pack takes. */
+export const VAULT_PIN_PRIVATE_LINE =
+  'A private note is pinned here, so while the coding agent runs on a local model, it hands no step in this project to a cloud model.';
 export const VAULT_MODELS_LINE = `Pin a note to a project and every chat there starts with it. ${VAULT_PRIVATE_OFF_CLOUD}`;
 /** A plan's working note for a step kept off a model that leaves this
  *  network, because the plan draws on a private note: the Reasoning model
  *  that wrote the plan stays here and takes the step (D5, stepRunner). */
 export function privatePlanStepNote(title: string, owner: string, anchor: string): string {
-  return `${title}. This plan draws on a private note, so ${anchor}, your Reasoning model, takes it instead of ${owner}. ${VAULT_PRIVATE_OFF_CLOUD}`;
+  return `${title}. This plan draws on a private note, so ${anchor}, your Reasoning model, takes it instead of ${owner}.`;
 }
 /** The same plan's note for a step that edits files: it is described here,
  *  not handed to your computer, whose agent may run a cloud model (D5). */
@@ -2309,7 +2327,7 @@ export const VAULT_SETTINGS_ROWS = Object.freeze({
   sort: 'Sort notes by',
   delete: 'Delete',
   exclude: 'Notes models never see',
-  localOnly: 'Notes that stay on this computer',
+  localOnly: 'Private notes',
   agentFolder: 'Your agent writes in',
   context: 'Notes in chats',
   packSize: 'Room for notes',
@@ -2349,8 +2367,8 @@ export const VAULT_SETTINGS_FIELD_LABELS = Object.freeze({
   'tree.sort': 'Sort notes by',
   delete: 'Delete',
   exclude: 'Notes models never see',
-  'localOnly.paths': 'Notes that stay on this computer',
-  'localOnly.tags': 'Notes that stay on this computer',
+  'localOnly.paths': 'Private notes',
+  'localOnly.tags': 'Private notes',
   'agent.folder': 'Your agent writes in',
   'daily.folder': "Today's note folder",
   'daily.format': 'Date format',
@@ -2484,7 +2502,7 @@ export const VAULT_PACK_SIZE_MACHINE_ABOVE =
 
 // Y9: excluded and local-only folders.
 export const VAULT_EXCLUDE_SUB = `Models never see these, in any chat, ${VAULT_COMMAND_CAVEAT}.`;
-export const VAULT_LOCAL_ONLY_SUB = `A local model may read these. A cloud model never does, ${VAULT_CARRY_CAVEAT}.`;
+export const VAULT_LOCAL_ONLY_SUB = `A local model may read these, and OpenShore never sends them to a cloud model. ${VAULT_CARRY_WORDS} one.`;
 export const VAULT_ADD_FOLDER = 'Add a folder';
 export const VAULT_ADD_TAG = 'Add a tag';
 export function vaultRemoveEntry(entry: string): string {

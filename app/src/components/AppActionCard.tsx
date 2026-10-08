@@ -23,6 +23,9 @@ export function AppActionCard({
   const spec = APP_ACTIONS[actionKey];
   const proposed = spec.apply(value);
   const inSettings = proposed !== undefined && proposed[actionKey] === current;
+  // A different value already set is replaced by the tap, so the card says so
+  // and where (CX and CMO, 2026-10-08, I).
+  const replaces = typeof current === 'string' && current.trim() !== '';
   const [copied, setCopied] = useState<'idle' | 'done' | 'failed'>('idle');
   const [failed, setFailed] = useState(false);
 
@@ -31,7 +34,9 @@ export function AppActionCard({
     : inSettings
       ? `In ${spec.where}.`
       : proposed
-        ? 'Nothing changes until you tap Add to Settings.'
+        ? replaces
+          ? `Nothing changes until you tap Add to Settings, which replaces the one in ${spec.where}.`
+          : 'Nothing changes until you tap Add to Settings.'
         : 'This one cannot go into Settings as it is. You can copy it.';
 
   const copy = async (): Promise<void> => {

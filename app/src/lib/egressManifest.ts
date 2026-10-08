@@ -44,24 +44,25 @@ export interface EgressEntry {
   paid?: true;
 }
 
-/** Recipients in the order the list shows them: OpenShore first. */
 /** Crew routines follow the web search switch, and only search (founder,
  *  2026-10-01, replacing CTO 3's "never"): the one sentence the search entry
  *  and the Settings row both carry. Nothing else a routine does reaches the web. */
 export const ROUTINES_SEARCH_LINE =
   'Crew routines follow this switch while your computer is on, and only search; they never open pages.';
 
-/** A plan's image step while nothing in the Stack reads images (founder,
- *  2026-10-07; CLAUDE.md tenet 4): it runs on the chat path's cloud reader,
- *  the one the Stack's Image reading row names, with no card (stackDriver
- *  executePlay, play.ts stepRunner). It is sent what any cloud step is, the
- *  chat's earlier turns (private ones as a stub), the vault pack rendered
- *  for that seat (never a private note), the plan, and the work so far, as
- *  text: plans run only on turns with no picture, and no step is sent one.
- *  The one sentence the cloud-models entry carries. */
-export const PLAN_IMAGE_STEP_LINE =
-  "One exception: while nothing in your Stack reads images, an image step in a plan goes to the cloud model your Stack's Image reading row names, without asking. It gets what any cloud step does, as text: your chat, the notes it draws on, and the plan, never a picture. Its working note names it.";
+/** Once a chat on a seat that stays holds a private note's text (a read, a
+ *  marked turn, or a private pin), every search a model writes shows its
+ *  words and asks first, every time, past a standing allow (CX and CMO,
+ *  2026-10-08, H). The search entry carries it. */
+export const PRIVATE_SEARCH_LINE =
+  'Once a local model in a chat has read a private note, or its project pins one, each search it writes shows its words and asks first.';
 
+/** The same rule for a page the coding agent opens: it asks every time, past
+ *  Opening web pages: Always and Bypass (H). The web pages entry carries it. */
+export const PRIVATE_PAGE_LINE =
+  'Once a local model in a chat has read a private note, or its project pins one, every page it opens asks first, even on Always.';
+
+/** Recipients in the order the list shows them: OpenShore first. */
 export const RECIPIENT_ORDER = [
   'OpenShore (us)',
   'Payments',
@@ -190,7 +191,7 @@ export const EGRESS: EgressEntry[] = [
     id: 'search',
     recipient: 'Web search',
     what: 'The words of a web search, and the network address any web request carries. Harbor Lite sends your question itself (up to 200 characters); other models write search words from your chat. DuckDuckGo by default, with no key and no account. Never the rest of your chat, never your files.',
-    when: `When a model decides to search the web, after you allow it once. A chat asks the first time; the coding agent searches only once you allow it. ${ROUTINES_SEARCH_LINE} You can turn it off in Settings, Web search.`,
+    when: `When a model decides to search the web, after you allow it once. A chat asks the first time; the coding agent searches only once you allow it. ${PRIVATE_SEARCH_LINE} ${ROUTINES_SEARCH_LINE} You can turn it off in Settings, Web search.`,
     start: 'off',
     hosts: ['html.duckduckgo.com', 'duckduckgo.com'],
   },
@@ -198,7 +199,7 @@ export const EGRESS: EgressEntry[] = [
     id: 'web-pages',
     recipient: 'Web search',
     what: 'A request for a web page the coding agent opens on your computer, to that site, with the network address any web request carries.',
-    when: 'When the coding agent opens a page: it asks first unless you set Opening web pages to Always in Settings, Approvals, and never opens one if you set it to Never. A page on your own network always asks. Crew routines never open pages.',
+    when: `When the coding agent opens a page: it asks first unless you set Opening web pages to Always in Settings, Approvals, and never opens one if you set it to Never. A page on your own network always asks. ${PRIVATE_PAGE_LINE} Crew routines never open pages.`,
     start: 'tap',
     hosts: [],
     platforms: ['electron'],
@@ -215,7 +216,7 @@ export const EGRESS: EgressEntry[] = [
     id: 'cloud-models',
     recipient: 'Your cloud providers',
     what: `Your chat, and the notes and files it draws on, to Anthropic, OpenAI, Google, Moonshot, or Perplexity, on your own key. ${VAULT_PRIVATE_OFF_CLOUD} An amber pill or dot marks a chat whose latest turn went to one.`,
-    when: `Only when you pick a cloud model, and only that turn. ${PLAN_IMAGE_STEP_LINE}`,
+    when: 'Only when you pick a cloud model or place one in your Stack, and only on the turns it answers. On your computer, the coding agent asks first in each task.',
     start: 'off',
     hosts: [
       'api.anthropic.com',
@@ -228,8 +229,10 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'own-model',
     recipient: 'Your cloud providers',
-    what: `Your chat, and the notes and files it draws on, to a model server you connect yourself (one you run, or one you name with its address and key). Private notes go only to one on your own network, ${VAULT_CARRY_CAVEAT}.`,
-    when: 'Only when you connect one and pick it, and only that turn.',
+    what: `Your chat, and the notes and files it draws on, to a model server you connect yourself (one you run, or one you name with its address and key). Private notes go only to one on your own network. ${VAULT_CARRY_CAVEAT}`,
+    // A model you connect can be placed in a Stack slot too, and then it
+    // answers on every turn routed to it, as a placed cloud model does (D).
+    when: 'Only when you connect one and pick it or place it in your Stack, and only on the turns it answers.',
     start: 'off',
     hosts: [],
   },
@@ -238,8 +241,8 @@ export const EGRESS: EgressEntry[] = [
     // computer, but every request for it goes on to ollama.com (seatLeaves).
     id: 'ollama-cloud',
     recipient: 'Your cloud providers',
-    what: "Your chat, and the files the coding agent reads for it, to ollama.com through your own Ollama account, when a model you place is one of Ollama's cloud models (its tag says cloud, like kimi-k3:cloud). The Ollama on your computer passes each turn on.",
-    when: 'Only when you place one, and then on every turn it answers.',
+    what: "Your chat, and the files the coding agent reads for it, to ollama.com through your own Ollama account, when a model you pick or place is one of Ollama's cloud models (its tag says cloud, like kimi-k3:cloud). Your Ollama server passes each turn on.",
+    when: 'Only when you pick or place one, and then on every turn it answers. On your computer, the coding agent asks first in each task.',
     start: 'off',
     hosts: [],
   },

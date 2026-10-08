@@ -2345,6 +2345,11 @@ interface AppState {
   /** Which of these pinned paths the personal vault still holds: 'missing'
    *  shows "Pinned note not found"; 'unknown' when the vault cannot be read. */
   vaultPinStatus(paths: string[]): Promise<Record<string, 'ok' | 'missing' | 'unknown'>>;
+  /** Each pinned note's visibility, judged by this device's vault privacy
+   *  rules (J3, the judge the pack uses) on the note's own text, or on its
+   *  path alone when the text cannot be read, so the pins card can mark a
+   *  private pin and say what it holds (CX and CMO, 2026-10-08, G). */
+  vaultPinPrivacy(paths: string[]): Promise<Record<string, VaultVisibility>>;
   /** The personal vault's notes as the picker may show them (J15): hidden
    *  notes never, local-only ones with the lock. Never the team vault. */
   vaultPickerNotes(): Promise<VaultPickerNote[]>;
@@ -14112,6 +14117,26 @@ export const useApp = create<AppState>((set, get, api) => {
           } catch {
             out[p] = 'unknown';
           }
+        }),
+      );
+      return out;
+    },
+
+    async vaultPinPrivacy(paths) {
+      const out: Record<string, VaultVisibility> = {};
+      if (!paths.length) return out;
+      const privacy = await vaultPrivacyNow();
+      await Promise.all(
+        paths.map(async (p) => {
+          let file: StoredFile | undefined;
+          try {
+            file = await personalRead(p);
+          } catch {
+            file = undefined;
+          }
+          out[p] = privacy.visibility(
+            file ? noteFactsFromText(p, file.text, file.updatedAt) : { path: p },
+          );
         }),
       );
       return out;
