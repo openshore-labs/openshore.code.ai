@@ -33,7 +33,7 @@ import {
   isCurrentBenchId,
   slotNone,
 } from '../lib/currents.js';
-import { imageStepRunner } from '../lib/play.js';
+import { imageStepRunner, planCanRun } from '../lib/play.js';
 import {
   STACK_CATEGORIES,
   STACK_LEAD,
@@ -298,12 +298,21 @@ export function StackManager({
   );
   const standIn = localReads ? undefined : imageReader;
   // The stand-in asks before a picture unless it was placed for Image reading
-  // (routeVision's `dedicated`), and takes a plan's image step only when the
+  // (routeVision's `dedicated`), and takes a plan's image step only on a
+  // stack that can plan at all (play.ts planCanRun, with the driver's reach
+  // in this status: not while the Reasoning model is on this device, Harbor
+  // Lite by default, nor with no one to hand a step to) and only when the
   // plan's own rule gives it the step (play.ts stepRunner, with the reader the
   // driver hands a play): a model on this device in the Local slot hands the
   // step to the Reasoning model instead.
   const standInAsks = !chatPick || chatPick.placement?.category !== 'vision';
+  const planRuns = planCanRun(
+    stack,
+    (r) => r.kind === 'device' || cloudOn,
+    locationAllowed(editProfile, 'home') && Boolean(settings.daemon),
+  );
   const standInTakesPlanStep =
+    planRuns &&
     standIn !== undefined &&
     refKey(imageStepRunner({ ...stack, imageReader: standIn, reachable: reach, staysLocal })) ===
       refKey(standIn);

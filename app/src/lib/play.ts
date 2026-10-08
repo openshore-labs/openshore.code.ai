@@ -332,6 +332,23 @@ export function imageStepRunner(stack: PlayStack): StackModelRef {
   return stepRunner(visionProbe, stack).ref;
 }
 
+/** Whether a plan can run on this stack at all, the driver's own gate
+ *  (stackDriver's runTurn): the Reasoning model frames every plan, so it is
+ *  off this device and in reach, and a plan has someone to hand a step to, a
+ *  placed model off this device in reach (a pocket model's step the anchor
+ *  would cover itself), or the paired computer's engine for a step that
+ *  edits files (`engineInReach`). The Stack's Image reading rows read it, so
+ *  they speak of a plan's image step only on a stack that can plan. */
+export function planCanRun(
+  stack: AppStack,
+  reachable: (ref: StackModelRef) => boolean,
+  engineInReach: boolean,
+): boolean {
+  const lead = stack.reasoning ?? harborRef();
+  if (lead.kind === 'device' || !reachable(lead)) return false;
+  return engineInReach || stack.active.some((m) => m.ref.kind !== 'device' && reachable(m.ref));
+}
+
 /** The categories this stack can hand off to, and who owns each, so the planner
  *  plans against the real roster and marks a fallback honestly. */
 function rosterLines(stack: PlayStack): string {
