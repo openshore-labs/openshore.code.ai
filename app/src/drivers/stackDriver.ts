@@ -106,6 +106,7 @@ import {
   mergeReplan,
   parsePlan,
   parseReplan,
+  planCanRun,
   planPrompt,
   readySteps,
   replanPrompt,
@@ -1331,14 +1332,15 @@ export class StackDriver implements ChatDriver {
     // with someone to hand off to, the reasoning model frames the request and
     // composes a play, or answers a simple request itself in the same call
     // (B2). A stack with only its anchor (and no docked workspace) has no one
-    // to hand off to, so it skips the framing call and answers in one. It
-    // hands back to the single-turn path below when the anchor is a weak or
-    // unreachable model, the plan will not parse, or the play is a single
-    // specialist step.
+    // to hand off to, and an anchor on this device or out of reach cannot
+    // frame, so it skips the framing call and answers in one (planCanRun,
+    // the rule the Stack's Image reading rows read too). It hands back to
+    // the single-turn path below when the plan will not parse, or the play
+    // is a single specialist step.
     if (
       !(attachments ?? []).some((a) => a.isImage) &&
       !this.context.codemagicAccess &&
-      this.hasHandoff()
+      planCanRun(this.stack, (r) => this.reachable(r), this.engineInReach())
     ) {
       const handled = await this.tryRunPlay(text);
       if (handled) return;
@@ -1471,17 +1473,6 @@ export class StackDriver implements ChatDriver {
       model,
       providerKind: this.sendLeft ? 'cloud' : kind,
     });
-  }
-
-  /** Someone a play could hand a step to, the only case a multi-step play
-   *  can use: a placed specialist (reachable, and not a pocket model, whose
-   *  step the anchor would cover itself), or the paired computer's engine
-   *  for a step that edits files (docked, with a workspace bound). */
-  private hasHandoff(): boolean {
-    if (this.stack.active.some((m) => m.ref.kind !== 'device' && this.reachable(m.ref))) {
-      return true;
-    }
-    return this.engineInReach();
   }
 
   /** Whether a play's tool step can run on the paired computer's engine:

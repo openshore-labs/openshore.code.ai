@@ -4,6 +4,8 @@
 // the setting; the same fence in a note renders as plain code. Settings'
 // "Shape it in a chat" opens a fresh chat with the prompt in the composer.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { createElement } from 'react';
 import { mountDom, type TestDom } from './support/dom.js';
 
@@ -39,7 +41,7 @@ const dom: TestDom = await mountDom();
 const { useApp } = await import('../src/state/store.js');
 const { Markdown } = await import('../src/components/Markdown.js');
 const { WritingVoiceField } = await import('../src/components/WritingVoiceField.js');
-const { WRITING_VOICE_CHAT_PROMPT } = await import('../src/lib/writingVoice.js');
+const { WRITING_VOICE_CHAT_PROMPT, WRITING_VOICE_SUB } = await import('../src/lib/writingVoice.js');
 
 const VOICE = 'Dry and brief. British spelling.';
 const REPLY = [
@@ -139,13 +141,45 @@ describe('a proposal in a chat reply', () => {
 describe('Settings, Writing', () => {
   // data-at-rest-m1 (sp-plan): the voice is kept here, but it rides in every
   // app-side seat's system prompt, a cloud one included, so the line says so.
-  it('says the voice is kept here and goes with each message to the model', async () => {
+  // sp-claims2: nothing the computer's engine runs reads it (its coding agent,
+  // its free chat, Crew routines), so the line names those, on the desktop
+  // as on a phone.
+  it('says the voice is kept here, and which models it goes to', async () => {
     await dom.render(createElement(WritingVoiceField));
     const sub = dom.container.querySelector('.writing-voice .settings-row-sub')?.textContent;
+    expect(sub).toBe(WRITING_VOICE_SUB);
     expect(sub).toBe(
-      'Your own words for how models write for you. Works alone or with Humanize Writing. Kept only on this device and never synced; it goes with each message to the model that writes for you.',
+      "Your own words for how models write for you. Works alone or with Humanize Writing. Kept only on this device and never synced. It goes with each message to the model that writes for you, except your computer's coding agent, its free chat, and Crew routines.",
     );
     expect(sub).not.toMatch(/stays on this device/);
+  });
+
+  // The line's list, held to the store: the chats whose driver is handed the
+  // voice are the app's own (the Stack, a cloud model, a model on this
+  // phone), and a chat with the computer's coding agent or its free chat is
+  // handed none. A new kind of chat, or a voice carried to the computer,
+  // fails here until the line says so.
+  it("hands the voice to the app's own drivers, never to the computer's", () => {
+    const store = readFileSync(join(process.cwd(), 'src', 'state', 'store.ts'), 'utf8');
+    const from = store.indexOf('async function buildUnguardedDriver(');
+    expect(from).toBeGreaterThan(-1);
+    const rest = store.slice(from);
+    const factory = rest.slice(0, rest.slice(1).search(/\n {2}(?:async )?function /) + 1);
+    const cases = [...factory.matchAll(/\n {6}case '([a-z-]+)':/g)];
+    const handed = Object.fromEntries(
+      cases.map((c, i) => [
+        c[1],
+        /writingVoice/.test(factory.slice(c.index, cases[i + 1]?.index ?? factory.length)),
+      ]),
+    );
+    expect(handed).toEqual({
+      desktop: false,
+      'desktop-chat': false,
+      device: true,
+      cloud: true,
+      stack: true,
+      mock: false,
+    });
   });
 
   it('opens a fresh chat with the shaping prompt in the composer', async () => {

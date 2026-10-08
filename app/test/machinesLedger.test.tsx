@@ -245,9 +245,10 @@ describe('the Stack names its image reader', () => {
     const { StackManager } = await import('../src/components/StackManager.js');
     await dom.render(<StackManager />);
     expect(reader).toBe('Claude Haiku 4.5');
-    expect(cloudRow()).toBe(
-      `None yet · ${reader} reads images for now. It asks before a picture, not before a plan's image step.`,
-    );
+    // sp-claims2 sign-off: the default Reasoning model, Harbor Lite, is on
+    // this device and never plans (planCanRun), so the row says nothing of
+    // a plan's image step.
+    expect(cloudRow()).toBe(`None yet · ${reader} reads images for now. It asks before a picture.`);
     expect(localRow()).toBe(`None yet · ${reader} reads images for now.`);
   });
 
@@ -278,9 +279,74 @@ describe('the Stack names its image reader', () => {
     });
     const { StackManager } = await import('../src/components/StackManager.js');
     await dom.render(<StackManager />);
-    expect(cloudRow()).toBe(
-      "None yet · Opus 5 reads images for now. It asks before a picture, not before a plan's image step.",
-    );
+    // Alone, with no one to hand a step to and no computer paired, it never
+    // plans, so the row says nothing of a plan's image step.
+    expect(cloudRow()).toBe('None yet · Opus 5 reads images for now. It asks before a picture.');
+  });
+
+  // sp-claims2 sign-off: the plan clause shows exactly where the driver
+  // plans (play.ts planCanRun, the gate runTurn reads): a Reasoning model off
+  // this device and in reach, with a placed model to hand a step to, or the
+  // paired computer's engine while Docked.
+  it("names a plan's image step only on a stack that can plan", async () => {
+    const opus = {
+      kind: 'cloud' as const,
+      provider: 'anthropic',
+      model: 'claude-opus-5',
+      label: 'Opus 5',
+    };
+    const sonarPro = {
+      kind: 'cloud' as const,
+      provider: 'perplexity',
+      model: 'sonar-pro',
+      label: 'Sonar Pro',
+    };
+    const writer = { ref: sonarPro, placement: { category: 'writing' as const } };
+    const harbor = { active: [writer], saved: {} };
+    const alone = { reasoning: opus, active: [], saved: {} };
+    const withWriter = { reasoning: opus, active: [writer], saved: {} };
+    const { planCanRun } = await import('../src/lib/play.js');
+    const online = () => true;
+    expect(planCanRun(harbor, online, true)).toBe(false);
+    expect(planCanRun(alone, online, false)).toBe(false);
+    expect(planCanRun(alone, online, true)).toBe(true);
+    expect(planCanRun(withWriter, online, false)).toBe(true);
+    // Offline: the cloud anchor is out of reach, so no plan.
+    expect(planCanRun(withWriter, (r) => r.kind === 'device', true)).toBe(false);
+    const clause =
+      "None yet · Opus 5 reads images for now. It asks before a picture, not before a plan's image step.";
+    const { StackManager } = await import('../src/components/StackManager.js');
+
+    // A writing specialist to hand a step to.
+    useApp.setState({
+      view: 'stack',
+      connectedProviders: { anthropic: true, perplexity: true },
+      settings: { ...useApp.getState().settings, stacks: { offshore: withWriter } },
+    });
+    await dom.render(<StackManager />);
+    expect(cloudRow()).toBe(clause);
+    await dom.render(null);
+
+    // Harbor Lite with that same specialist: Harbor Lite never plans.
+    useApp.setState({
+      settings: { ...useApp.getState().settings, stacks: { offshore: harbor } },
+    });
+    await dom.render(<StackManager />);
+    expect(cloudRow()).toBe(`None yet · ${reader} reads images for now. It asks before a picture.`);
+    await dom.render(null);
+
+    // Docked to a paired computer: its engine takes a step that edits files.
+    useApp.setState({
+      connectivity: { homeReachable: true, online: true },
+      settings: {
+        ...useApp.getState().settings,
+        daemon: hub,
+        daemons: [hub],
+        stacks: { docked: alone },
+      },
+    });
+    await dom.render(<StackManager />);
+    expect(cloudRow()).toBe(clause);
   });
 
   it('names the stand-in in the slot sheets only while it is one', async () => {
@@ -291,7 +357,7 @@ describe('the Stack names its image reader', () => {
       dom.container.querySelector('.sheet:not(.closing) .sheet-sub')?.textContent ?? '';
     await tapRow('Cloud');
     expect(sheetSub()).toBe(
-      `A cloud model that reads images. Until you choose one, ${reader} reads them. It asks before a picture, not before a plan's image step.`,
+      `A cloud model that reads images. Until you choose one, ${reader} reads them. It asks before a picture.`,
     );
     await dom.render(null);
     await dom.render(<StackManager />);
@@ -299,6 +365,102 @@ describe('the Stack names its image reader', () => {
     expect(sheetSub()).toBe(
       `A model on this device or your own server. A model on this device cannot read images yet, so ${reader} reads them until one can.`,
     );
+  });
+
+  // sp-claims2: a Local slot that reads images takes every picture and every
+  // plan's image step itself (routeVision and stepRunner both go to it
+  // first), so no line names a cloud model reading them "for now".
+  it('names the Local model, and no stand-in, once the Local slot reads images itself', async () => {
+    const HOME = {
+      id: 'home',
+      label: 'Home reader',
+      baseUrl: 'http://192.168.1.20:11434/v1',
+      model: 'llava:13b',
+    };
+    const home = { kind: 'byom' as const, ...HOME };
+    const stack = {
+      active: [{ ref: home, placement: { category: 'vision' as const } }],
+      saved: {},
+    };
+    // The rule the chat and a plan follow, with Claude connected too.
+    const { pickVisionRef } = await import('../src/lib/stack.js');
+    const { imageStepRunner } = await import('../src/lib/play.js');
+    expect(pickVisionRef(stack, () => true)?.ref).toEqual(home);
+    expect(imageStepRunner({ ...stack, imageReader: home })).toEqual(home);
+    useApp.setState({
+      view: 'stack',
+      connectedProviders: { anthropic: true },
+      settings: {
+        ...useApp.getState().settings,
+        byomModels: [HOME],
+        stacks: { offshore: stack },
+      },
+    });
+    const { StackManager } = await import('../src/components/StackManager.js');
+    await dom.render(<StackManager />);
+    expect(localRow()).toMatch(/^Home reader · .+ effort$/);
+    expect(cloudRow()).toBe('None yet · Home reader reads images.');
+    expect(cloudRow()).not.toContain(reader);
+    const sheetSub = () =>
+      dom.container.querySelector('.sheet:not(.closing) .sheet-sub')?.textContent ?? '';
+    await tapRow('Cloud');
+    expect(sheetSub()).toBe('A cloud model that reads images.');
+    await dom.render(null);
+    await dom.render(<StackManager />);
+    await tapRow('Local');
+    expect(sheetSub()).toBe(
+      'A model on this device or your own server. A model on this device cannot read images yet.',
+    );
+  });
+
+  it("names the stand-in's plan step only when the plan gives it the step", async () => {
+    // A model on this device in the Local slot cannot read a picture, so the
+    // chat's reader is the cloud stand-in; a plan's image step goes to that
+    // slot's model, which a play never runs, so the Reasoning model covers it.
+    const pocket = { kind: 'device' as const, modelId: 'pocket-3b', modelName: 'Pocket 3B' };
+    const sonar = {
+      kind: 'cloud' as const,
+      provider: 'perplexity',
+      model: 'sonar-reasoning-pro',
+      label: 'Sonar Reasoning Pro',
+    };
+    // A writing specialist too, so a plan can run here (planCanRun) and the
+    // plan's own rule is what keeps the clause off.
+    const sonarPro = {
+      kind: 'cloud' as const,
+      provider: 'perplexity',
+      model: 'sonar-pro',
+      label: 'Sonar Pro',
+    };
+    const stack = {
+      reasoning: sonar,
+      active: [
+        { ref: pocket, placement: { category: 'vision' as const } },
+        { ref: sonarPro, placement: { category: 'writing' as const } },
+      ],
+      saved: {},
+    };
+    const { imageStepRunner, planCanRun } = await import('../src/lib/play.js');
+    expect(planCanRun(stack, () => true, false)).toBe(true);
+    const haiku = {
+      kind: 'cloud' as const,
+      provider: 'anthropic',
+      model: visionFallbackClaudeModel().id,
+    };
+    expect(imageStepRunner({ ...stack, imageReader: haiku, reachable: () => true })).toEqual(sonar);
+    useApp.setState({
+      view: 'stack',
+      connectedProviders: { anthropic: true, perplexity: true },
+      settings: {
+        ...useApp.getState().settings,
+        deviceModels: { [pocket.modelId]: pocket.modelName },
+        stacks: { offshore: stack },
+      },
+    });
+    const { StackManager } = await import('../src/components/StackManager.js');
+    await dom.render(<StackManager />);
+    expect(localRow()).toMatch(/^Pocket 3B · .+ effort$/);
+    expect(cloudRow()).toBe(`None yet · ${reader} reads images for now. It asks before a picture.`);
   });
 
   it('says nothing of a stand-in once a cloud model is chosen, since it never asks', async () => {

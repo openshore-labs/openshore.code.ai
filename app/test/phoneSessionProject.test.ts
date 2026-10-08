@@ -178,4 +178,34 @@ describe('a phone-driven session carries the project', () => {
       instructions: 'Keep every screen calm.',
     });
   });
+
+  // sp-claims2: Settings says the writing voice goes to the model that writes
+  // for you, except the computer's coding agent. No session the app opens
+  // there carries it: from a phone, from the desktop, or for a plan's step.
+  it('a session on the computer carries no writing voice', async () => {
+    const VOICE = 'Dry and brief. British spelling.';
+    useApp.setState({
+      conversations: {},
+      order: [],
+      activeId: undefined,
+      settings: { onboarded: true, claudeModel: 'x', deviceModels: {}, writingVoice: VOICE },
+    });
+    await useApp.getState().saveHub(HUB);
+    const before = { phone: h.phoneCreates.length, desktop: h.desktopCreates.length };
+    h.desktop = false;
+    await useApp.getState().newConversation({ kind: 'desktop', cwd: CWD });
+    h.desktop = true;
+    await useApp.getState().newConversation({ kind: 'desktop', cwd: CWD });
+    expect(h.phoneCreates.length).toBe(before.phone + 1);
+    expect(h.desktopCreates.length).toBe(before.desktop + 1);
+    const opened = [
+      h.phoneCreates.at(-1)!.opts,
+      h.desktopCreates.at(-1)!.opts,
+      engineStepSessionOpts({ humanize: true, writingVoice: VOICE }),
+    ];
+    for (const opts of opened) {
+      expect(opts).not.toHaveProperty('writingVoice');
+      expect(JSON.stringify(opts)).not.toContain(VOICE);
+    }
+  });
 });
