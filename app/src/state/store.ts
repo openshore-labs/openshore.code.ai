@@ -591,6 +591,7 @@ import { SAMPLE_PROMPT, SAMPLE_REPO_NAME } from '../lib/sampleProject.js';
 import { setSearchConsent, type SearchAllowed } from '../lib/localSearch.js';
 import {
   WebSearchSheets,
+  answersSheet,
   remembersAnswer,
   searchAskShortcut,
   type WebSearchSheet,
@@ -2567,8 +2568,10 @@ interface AppState {
    *  shows the exact words and why, and its answer is never remembered. */
   webSearchAsk?: WebSearchSheet;
   /** The web search question's answer: allow (remembered on this device) or
-   *  not now (asked again after the next launch). */
-  answerWebSearch(allow: boolean): void;
+   *  not now (asked again after the next launch). `sheet` is the card the
+   *  tap was on: an answer for a card no longer on screen (a second tap, or
+   *  the scrim, while the sheet slides away) does nothing. */
+  answerWebSearch(allow: boolean, sheet?: WebSearchSheet): void;
   /** The Settings switch for web search. */
   setWebSearchAllowed(allowed: boolean): Promise<void>;
   /** Opening web pages for the coding agent: ask, always, or never, carried
@@ -14602,10 +14605,14 @@ export const useApp = create<AppState>((set, get, api) => {
       else setTrustItem({ state: 'trusted', error: undefined });
     },
 
-    answerWebSearch(allow) {
+    answerWebSearch(allow, sheet) {
+      // Only the card on screen takes an answer, so a second tap on a
+      // private card as it slides away never saves a standing allow.
+      const current = get().webSearchAsk;
+      if (!answersSheet(current, sheet)) return;
       // A card after a private read (H) answers that one search only: a yes
       // is no standing allow, and a no keeps web search as it was.
-      const remembered = remembersAnswer(get().webSearchAsk);
+      const remembered = remembersAnswer(current);
       set({ webSearchAsk: undefined });
       if (!remembered) {
         webSearchSheets.answer(allow);

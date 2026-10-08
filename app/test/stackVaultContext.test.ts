@@ -1256,4 +1256,48 @@ describe('the placeholder line (F)', () => {
     expect(lines(lEvents)).toEqual([line('gpt-5')]);
     later.dispose();
   });
+
+  it("shows for a cloud model sent the placeholder for a local model's step in a plan", async () => {
+    // A clean chat: the private note reaches only your own box's step, whose
+    // output is then the placeholder for every model off this network.
+    const note = 'The secret is teal.';
+    const pack: AppVaultPack = {
+      prepare: async () => {},
+      render: (seat) =>
+        seat.leavesNetwork
+          ? { text: 'VAULT PACK cloud' }
+          : { text: `VAULT PACK ${note}`, localOnly: true },
+    };
+    const { driver, events } = chat(
+      {
+        reasoning: gpt,
+        active: [
+          { ref: boxMid, placement: { category: 'analysis' } },
+          { ref: claude, placement: { category: 'writing' } },
+        ],
+        saved: {},
+      },
+      {},
+      { vaultPack: pack, packSeat: seatOf },
+    );
+    const plan = JSON.stringify({
+      clear: true,
+      summary: 'Sum it up, then write it',
+      steps: [
+        { id: 'a', title: 'Sum', category: 'analysis', brief: 'Add it up.' },
+        { id: 'b', title: 'Write', category: 'writing', brief: 'Write it.', dependsOn: ['a'] },
+      ],
+    });
+    h.nativeReplies.push(plan, 'summed', 'no replan', 'Final.');
+    h.claudeScript.push('written');
+    driver.send('sum my diary up and write it out');
+    await settle(40);
+    // The box's step read the note; neither cloud model got its output.
+    expect(JSON.stringify(h.claudeParams)).not.toContain('summed');
+    expect(JSON.stringify(h.claudeParams)).toContain(LOCAL_ONLY_STUB.slice(0, 40));
+    // GPT is sent the placeholder first (its replan), then Claude (its
+    // step); each hears it once, and the synthesis on GPT says nothing new.
+    expect(lines(events)).toEqual([line('GPT'), line('Claude')]);
+    driver.dispose();
+  });
 });

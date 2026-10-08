@@ -37,6 +37,19 @@ export function remembersAnswer(sheet: WebSearchSheet | undefined): boolean {
   return !sheet?.private;
 }
 
+/** Whether an answer lands: a card is on screen, and the tap was on that
+ *  card (`sheet`, when the caller names it). The sheet keeps its last card
+ *  drawn while it slides away, so a second tap there, or on its scrim, would
+ *  otherwise answer nothing on screen as a clean card, and a second tap on
+ *  a private card's Approve once would save a standing allow. */
+export function answersSheet(
+  current: WebSearchSheet | undefined,
+  sheet: WebSearchSheet | undefined,
+): boolean {
+  if (!current) return false;
+  return sheet === undefined || sheet === current;
+}
+
 /** The sheets in order: each one shows once the card ahead of it is
  *  answered, so two searches at once never overwrite each other's card. */
 export class WebSearchSheets {

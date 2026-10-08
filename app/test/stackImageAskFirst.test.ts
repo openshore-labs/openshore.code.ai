@@ -94,8 +94,13 @@ vi.mock('../src/lib/platform.js', () => ({
   storeGetJson: async () => null,
 }));
 
-const { StackDriver, IMAGE_NOT_SENT, IMAGE_NOT_SENT_FALLBACK, ASK_STOP_LINE } =
-  await import('../src/drivers/stackDriver.js');
+const {
+  StackDriver,
+  IMAGE_NOT_SENT,
+  IMAGE_NOT_SENT_FALLBACK,
+  IMAGES_NOT_SENT_FALLBACK,
+  ASK_STOP_LINE,
+} = await import('../src/drivers/stackDriver.js');
 const { harborRef } = await import('../src/lib/stack.js');
 const { heldImageModel, imageAskDetail } = await import('../src/lib/imageNote.js');
 const { thisDeviceNoun } = await import('../src/lib/deviceNoun.js');
@@ -557,6 +562,19 @@ describe('an image the Local model fails on', () => {
     // Both slots are set, so the line never tells the person to set one.
     expect(IMAGE_NOT_SENT_FALLBACK).toBe('You declined, so the image was not sent.');
     expect(IMAGE_NOT_SENT.startsWith(IMAGE_NOT_SENT_FALLBACK)).toBe(true);
+    driver.dispose();
+  });
+
+  it('says the images were not sent, for several, on a no', async () => {
+    h.local = { 'llava:13b': 'fail' };
+    const { driver, events } = chat(both);
+    driver.send('Who are these?', [photo, { ...photo, id: 'a2' }]);
+    await settle();
+    driver.answerApproval(asked(events)!.request.id, { approve: false });
+    await settle();
+    expect(h.streams).toBe(0);
+    expect(done(events)).toMatchObject({ reason: 'declined', message: IMAGES_NOT_SENT_FALLBACK });
+    expect(IMAGES_NOT_SENT_FALLBACK).toBe('You declined, so the images were not sent.');
     driver.dispose();
   });
 

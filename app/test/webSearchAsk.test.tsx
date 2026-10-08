@@ -43,7 +43,7 @@ vi.mock('../src/lib/insights.js', () => ({
 const dom: TestDom = await mountDom();
 const { useApp } = await import('../src/state/store.js');
 const { WebSearchAsk } = await import('../src/components/WebSearchAsk.js');
-const { WebSearchSheets, remembersAnswer, searchAskShortcut } =
+const { WebSearchSheets, answersSheet, remembersAnswer, searchAskShortcut } =
   await import('../src/state/webSearchAskOps.js');
 const { privateSearchCard } = await import('os-code/protocol');
 
@@ -122,6 +122,30 @@ describe('the sheet after a private read', () => {
     expect(useApp.getState().settings.webSearchConsent).toBeUndefined();
   });
 
+  it('a second tap, or the scrim, as the private card slides away answers nothing', async () => {
+    useApp.setState({
+      settings: { ...useApp.getState().settings, webSearchConsent: undefined },
+      webSearchAsk: { query: 'tide times', private: card },
+    });
+    await dom.render(<WebSearchAsk />);
+    await dom.click('Approve once');
+    expect(useApp.getState().webSearchAsk).toBeUndefined();
+    // The sheet still draws the card it is sliding away with.
+    expect(dom.buttons()).toContain('Approve once');
+    await dom.click('Approve once');
+    const scrim = dom.container.querySelector('.sheet-scrim');
+    expect(scrim).not.toBeNull();
+    scrim!.dispatchEvent(new window.Event('click', { bubbles: true }));
+    await dom.settle();
+    // Neither a standing allow nor a standing no came of it.
+    expect(useApp.getState().settings.webSearchConsent).toBeUndefined();
+    // A clean card shown next still asks, and a no on it is still its own.
+    useApp.setState({ webSearchAsk: { query: 'moon phase' } });
+    expect(answersSheet(useApp.getState().webSearchAsk, { query: 'moon phase' })).toBe(false);
+    expect(answersSheet(useApp.getState().webSearchAsk, undefined)).toBe(true);
+    expect(answersSheet(undefined, undefined)).toBe(false);
+  });
+
   it('keeps the clean sheet as it was', async () => {
     useApp.setState({ webSearchAsk: { query: 'tide times' } });
     await dom.render(<WebSearchAsk />);
@@ -135,6 +159,7 @@ describe('the sheet after a private read', () => {
     const store = readFileSync(join(process.cwd(), 'src', 'state', 'store.ts'), 'utf8');
     expect(store).toMatch(/searchAskShortcut\(\s*get\(\)\.settings\.webSearchConsent,/);
     expect(store).toMatch(/webSearchSheets\.open\(\{ query, private: ask\.card \}\)/);
-    expect(store).toMatch(/const remembered = remembersAnswer\(get\(\)\.webSearchAsk\)/);
+    expect(store).toMatch(/if \(!answersSheet\(current, sheet\)\) return;/);
+    expect(store).toMatch(/const remembered = remembersAnswer\(current\)/);
   });
 });

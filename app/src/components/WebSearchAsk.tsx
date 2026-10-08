@@ -18,11 +18,13 @@ export function WebSearchAsk() {
   const ask = useApp((s) => s.webSearchAsk);
   const answer = useApp((s) => s.answerWebSearch);
   const once = ask?.private;
+  // Each answer names the card it was given on: the sheet keeps its last
+  // card drawn while it slides away, and a tap there answers nothing.
   return (
-    <Sheet open={Boolean(ask)} onClose={() => answer(false)}>
+    <Sheet open={Boolean(ask)} onClose={() => answer(false, ask)}>
       {ask && once ? (
         <>
-          <SheetHead title={once.summary} onClose={() => answer(false)} />
+          <SheetHead title={once.summary} onClose={() => answer(false, ask)} />
           <p className="sheet-sub">{once.detail}</p>
           <div className="sheet-actions">
             <button
@@ -30,19 +32,19 @@ export function WebSearchAsk() {
               className="btn primary press-fb"
               onClick={() => {
                 hapticCommit();
-                answer(true);
+                answer(true, ask);
               }}
             >
               Approve once
             </button>
-            <button type="button" className="btn ghost press-fb" onClick={() => answer(false)}>
+            <button type="button" className="btn ghost press-fb" onClick={() => answer(false, ask)}>
               No, skip it
             </button>
           </div>
         </>
       ) : ask ? (
         <>
-          <SheetHead title="Search the web?" onClose={() => answer(false)} />
+          <SheetHead title="Search the web?" onClose={() => answer(false, ask)} />
           <p className="sheet-sub">
             To answer, the model wants to search for &ldquo;{ask.query}&rdquo;. Those words go to
             the search service, DuckDuckGo unless you set your own in Settings. Nothing else from
@@ -54,12 +56,12 @@ export function WebSearchAsk() {
               className="btn primary press-fb"
               onClick={() => {
                 hapticCommit();
-                answer(true);
+                answer(true, ask);
               }}
             >
               Allow web search
             </button>
-            <button type="button" className="btn ghost press-fb" onClick={() => answer(false)}>
+            <button type="button" className="btn ghost press-fb" onClick={() => answer(false, ask)}>
               Not now
             </button>
           </div>

@@ -524,8 +524,9 @@ export const IMAGE_NOT_SENT =
 
 /** The turn's end when the person keeps a picture the Local model failed on
  *  off the Cloud model (K): both slots are set, so only the first sentence
- *  of IMAGE_NOT_SENT is true here. */
+ *  of IMAGE_NOT_SENT is true here. Several pictures read as several. */
 export const IMAGE_NOT_SENT_FALLBACK = 'You declined, so the image was not sent.';
+export const IMAGES_NOT_SENT_FALLBACK = 'You declined, so the images were not sent.';
 
 // A routed specialist could not run this turn (no key, load failure, HTTP
 // error) throws RouteUnavailable (the provider client's ProviderUnavailable).
@@ -1556,7 +1557,12 @@ export class StackDriver implements ChatDriver {
     });
     if (!approved) {
       if (this.aborted) this.finish('aborted');
-      else this.finish('declined', IMAGE_NOT_SENT_FALLBACK);
+      else {
+        this.finish(
+          'declined',
+          images.length === 1 ? IMAGE_NOT_SENT_FALLBACK : IMAGES_NOT_SENT_FALLBACK,
+        );
+      }
       return;
     }
     if (this.aborted) throw abortError();
@@ -2031,7 +2037,7 @@ export class StackDriver implements ChatDriver {
             await this.completeOnce(
               reasoning,
               undefined,
-              replanPrompt(play, resultsForSeat(results, anchorLeaves)),
+              replanPrompt(play, this.resultsFor(results, anchorLeaves, reasoning)),
             ),
           );
           if (revised && revised.length) {
@@ -2083,7 +2089,8 @@ export class StackDriver implements ChatDriver {
     const turns = this.digestTurns(leaves, maxChars);
     // A model off this network that is sent the placeholder hears it said
     // once in this chat (F). The paired computer's engine (no seat here)
-    // says it there, by the model it runs.
+    // gets the placeholder inside its step's text, and nothing here names
+    // the model it runs, so no line is said for it.
     if (seat) {
       this.notePlaceholder(
         seat,
@@ -2111,6 +2118,22 @@ export class StackDriver implements ChatDriver {
     return kept;
   }
 
+  /** The play's step outputs as `seat` receives them (resultsForSeat),
+   *  saying the placeholder line the first time a model off this network is
+   *  sent the placeholder in place of a step a local model wrote after a
+   *  private read, as for a marked reply in the chat (F). No seat is the
+   *  paired computer's engine, as in conversationDigest. */
+  private resultsFor(
+    results: PlayStepResult[],
+    leaves: boolean,
+    seat?: StackModelRef,
+  ): PlayStepResult[] {
+    if (seat) {
+      this.notePlaceholder(seat, leaves && results.some((r) => r.localOnly === true));
+    }
+    return resultsForSeat(results, leaves);
+  }
+
   /** The prompt for one step: the goal, this step's brief, and the prior steps'
    *  results as context so a handoff carries the work forward. */
   private stepPrompt(
@@ -2125,7 +2148,7 @@ export class StackDriver implements ChatDriver {
     // marked local-only to an engine whose Reasoning model stays on its
     // network (J), which holds it to the engine's own D5 rules.
     const leaves = ref ? this.leaves(ref) : !engineKeepsPrivate;
-    const prior = resultsForSeat(results, leaves);
+    const prior = this.resultsFor(results, leaves, ref);
     const priorLines = prior.length
       ? ['Work done so far by the team:', ...prior.map((r) => `- ${r.title}: ${r.text}`), '']
       : [];
@@ -2150,7 +2173,7 @@ export class StackDriver implements ChatDriver {
     const reasoning = this.stack.reasoning ?? harborRef();
     const leaves = this.leaves(reasoning);
     const conversation = this.conversationDigest(leaves, reasoning);
-    const work = resultsForSeat(results, leaves);
+    const work = this.resultsFor(results, leaves, reasoning);
     return [
       "Compose the final answer to the user, using the team's work below. Do not mention the internal steps or handoffs; just give the finished result.",
       ...(conversation ? [`The conversation so far, for context:\n${conversation}`] : []),
