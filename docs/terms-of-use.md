@@ -1,9 +1,9 @@
 # OpenShore Terms of Use
 
-Last updated: 2026-10-01
+Last updated: 2026-10-08
 
-These terms cover OpenShore OS Code: the desktop engine, the iOS and desktop
-apps, and the accounts that connect them. Plain language throughout, because
+These terms cover OpenShore: the desktop engine, the iOS and desktop apps,
+and the accounts that connect them. Plain language throughout, because
 terms nobody reads protect nobody.
 
 ## 1. What OpenShore is
@@ -33,7 +33,7 @@ the likeness or voice of a real, identifiable person, as an image, a video, or
 an audio clip, is permitted only when you are authorized for that specific
 person: they are you, they gave you permission, or they licensed the likeness to
 you. You assert that authorization in the product, and the assertion is recorded
-against your account. This is about synthesized media, not about words: writing
+on your device; it is never sent to us. This is about synthesized media, not about words: writing
 about, satirizing, or criticizing a person in text is not covered here.
 
 The first three have no exception and no consent option. The fourth is gated
@@ -115,8 +115,10 @@ does not currently hold.
 ## 8. Your content and your models
 
 Your prompts, code, and generated work are yours. Local model work stays on your
-machine, except the words of a web search a model makes while web search is on. Cloud model work goes to the provider you connected, on your account,
-under that provider's terms. A cloud provider's own policies apply in addition
+machine, except the words of a web search a model makes while web search is on,
+a web page the coding agent opens with your say so, and what a cloud model in
+the same chat reads on a turn it answers. Cloud model work goes to the provider
+you connected, on your account, under that provider's terms. A cloud provider's own policies apply in addition
 to these terms, never instead of them.
 
 ## 9. Changes
