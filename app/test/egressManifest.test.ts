@@ -164,6 +164,9 @@ describe('the guides claim no more than the list', () => {
     /runs only when you choose it\./i,
     /only on a turn you send to (?:one|it)\./i,
     /asking before each (?:one|image)/i,
+    // A key is sent with every request to its provider, so it is stored
+    // only here, never "stays" here (2026-10-01 #9; egress-claims-3).
+    /\b(?:API key|keys?) stays? on (?:this|your|the) device/i,
   ];
   const sources: Array<[string, string]> = [
     ...GUIDE_CARDS.map((c): [string, string] => [`guide card ${c.id}`, c.text]),
@@ -176,6 +179,16 @@ describe('the guides claim no more than the list', () => {
       'components/StackManager.tsx',
     ].map((f): [string, string] => [f, readFileSync(join(process.cwd(), 'src', f), 'utf8')]),
   ];
+
+  it('says a key is stored only here and sent only to its provider or address', () => {
+    const src = (f: string) => readFileSync(join(process.cwd(), 'src', f), 'utf8');
+    expect(src('screens/ConnectionsScreen.tsx').replace(/\s+/g, ' ')).toContain(
+      'Keys are stored only on this device and sent only to their provider.',
+    );
+    expect(src('components/StackManager.tsx').replace(/\s+/g, ' ')).toContain(
+      'The API key is stored only on this device and sent only to that address',
+    );
+  });
 
   it('says nothing about leaving the device that the list does not back', () => {
     const found: string[] = [];
