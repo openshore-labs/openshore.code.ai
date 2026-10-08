@@ -6500,6 +6500,9 @@ button.vault-tag {
   color: var(--muted);
   font-size: var(--text-4);
   margin-bottom: 18px;
+  /* A room's lead never ends on one word standing alone, at 320pt (Slide
+     Over) or anywhere, where the engine wraps pretty. */
+  text-wrap: pretty;
 }
 
 /* The Chats room: a new-chat row, then the saved chats as one grouped, flat
@@ -6548,11 +6551,14 @@ button.vault-tag {
   }
 }
 
+/* A chat row on the D22 scale. Outside the full-bleed list it already sits
+   inside the page gutter, so it insets by a card's pad, as a ledger row does;
+   .chat-list pads its rows back out to the gutter. */
 .chat-row {
   display: block;
   width: 100%;
   text-align: left;
-  padding: 13px 14px;
+  padding: var(--row-pad) var(--card-pad);
 }
 
 .chat-row.active {

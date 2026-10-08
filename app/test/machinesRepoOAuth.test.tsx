@@ -86,11 +86,13 @@ async function tapRow(label: string): Promise<void> {
 }
 
 describe('a one-tap platform', () => {
-  it('reads Authorize with one tap, and its sheet leads with the sign-in', async () => {
+  // The row's tap opens the sheet, and the sheet holds both doors, so the
+  // row names both (CMO), never "one tap".
+  it('reads Sign in, or paste an access token, and its sheet leads with the sign-in', async () => {
     await dom.render(<ReposScreen />);
     const subs = [...dom.container.querySelectorAll('.settings-row-sub')].map((s) => s.textContent);
     expect(subs).toEqual([
-      'Authorize with one tap',
+      'Sign in, or paste an access token',
       'Paste an access token',
       'Paste an access token',
     ]);

@@ -31,7 +31,7 @@ thing to fix, and it is why the empty state must not borrow `.greeting`.
 
 Beyond the bug, the empty state said "Plain markdown files. Yours, on this
 device." and stopped. It never answered the two questions a newcomer actually
-has: *what is this for*, and *how does my agent use it*. The Vault is one of the
+has: _what is this for_, and _how does my agent use it_. The Vault is one of the
 most differentiated ideas in the app (a knowledge base your models read and
 write), and the front door said almost nothing about it. Obsidian's own onramp
 is the reference the founder named: a fresh vault opens on a real welcome note
@@ -62,6 +62,13 @@ so nothing floats and every button is tappable):
 4. **Discovery in place.** When the person already has coding projects, the
    "Coding projects" card (the memory the agent already keeps) sits right above
    the ramp, so a new user sees their agent already has knowledge here.
+
+Settled 2026-10-07 (founder, D20 of `docs/ux-review-2026-10-07.md`): the
+Coding projects card keeps its place above the ramp. On an unpaired phone or
+the web the ramp's agent point says how your models use the vault, and the
+pointer to your computer waits until one is paired, which reverses the
+unpaired pointer of the Vault v1 copy map (`docs/vault-v1-plan.md`, 0.19). The
+ruling is the 2026-10-07 D20 line in `os-code/DECISIONS.md`.
 
 The offline and empty-team states became plain in-flow notice cards too, so they
 are never fixed overlays either.

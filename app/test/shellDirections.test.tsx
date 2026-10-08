@@ -41,6 +41,14 @@ vi.mock('../src/lib/insights.js', () => ({
   clearInsights: async () => {},
 }));
 
+// The title flight's hand-off, seen by name: which row's title each open
+// captured (null when nothing was there to fly from).
+const hero = vi.hoisted(() => ({ from: [] as Array<string | null> }));
+vi.mock('../src/lib/heroTitle.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/lib/heroTitle.js')>()),
+  captureTitleHero: (el: Element | null) => hero.from.push(el?.textContent ?? null),
+}));
+
 // Before anything imports react-dom/client (support/dom.ts).
 const dom: TestDom = await mountDom();
 
@@ -93,12 +101,23 @@ describe('the setup page (D9, D23)', () => {
   it('says where OpenShore runs from the device in hand, in one sentence', async () => {
     await dom.render(<OnboardingScreen />);
     expect(dom.container.querySelector('.lead')?.textContent).toBe(
-      'Chat and build on this phone and on your own computer. Everything below is optional.',
+      'Chat and build on this phone and on your own computer. Everything below is\u00a0optional.',
     );
     expect(setupLead(true)).toBe('Chat and build on this computer, and from your phone.');
     for (const lead of [setupLead(true), setupLead(false)]) {
       expect(lead.match(/\./g)).toHaveLength(1);
     }
+  });
+
+  // Slide Over (320pt): the lead's last word and Harbor's size never stand
+  // alone on a line. A no-break space holds each in every web view, and a
+  // room's lead wraps pretty where the engine can.
+  it('holds the last word of the lead and "about 2.5 GB" together at 320pt', async () => {
+    const { SETUP_LEAD_TAIL } = await import('../src/screens/OnboardingScreen.js');
+    const { HARBOR_APPROX_LABEL } = await import('../src/lib/harbor.js');
+    expect(SETUP_LEAD_TAIL.endsWith('is\u00a0optional.')).toBe(true);
+    expect(HARBOR_APPROX_LABEL).toMatch(/^about\u00a0[\d.]+\u00a0GB$/);
+    expect(CSS).toMatch(/\.screen \.lead \{[^}]*text-wrap: pretty;/);
   });
 
   it('makes every idle path one tap target: a title, one line and a drawn chevron', async () => {
@@ -117,7 +136,7 @@ describe('the setup page (D9, D23)', () => {
       expect(card.className).toContain('press-fb');
     }
     expect(cards[0]!.querySelector('.sub')?.textContent).toBe(
-      'A coding model on this phone, about 2.5 GB',
+      'A coding model on this phone, about\u00a02.5\u00a0GB',
     );
   });
 
@@ -159,35 +178,6 @@ describe('the setup page (D9, D23)', () => {
     expect(dom.container.querySelector('.lead')?.textContent).toContain(
       'on this computer, and from your phone.',
     );
-  });
-
-  // One source, two renderings: the rows variant names each path and says its
-  // line the way the card does, on either device.
-  it('says the same thing about each path as a card and as a row', async () => {
-    const { StartingPaths } = await import('../src/components/StartingPaths.js');
-    for (const desktop of [false, true]) {
-      device.desktop = desktop;
-      await dom.render(<StartingPaths context="onboarding" />);
-      const cards = new Map(
-        pathCards().map((c) => [title(c), c.querySelector('.sub')?.textContent] as const),
-      );
-      await dom.render(<StartingPaths context="settings" variant="rows" />);
-      const rows = new Map(
-        [...dom.container.querySelectorAll('.settings-row-text')].map(
-          (r) =>
-            [
-              r.querySelector('.settings-row-label')?.textContent,
-              r.querySelector('.settings-row-sub')?.textContent,
-            ] as const,
-        ),
-      );
-      expect(cards.size).toBe(desktop ? 3 : 4);
-      for (const [name, sub] of cards) {
-        if (name === 'Get Harbor') continue; // The row carries the size as its value.
-        expect(sub).toBeTruthy();
-        expect(rows.get(name)).toBe(sub);
-      }
-    }
   });
 
   it('draws the card from the house card and press grammar', () => {
@@ -240,6 +230,34 @@ describe('Projects on the desktop (D11)', () => {
       (n) => n.textContent,
     );
     expect(names).toEqual(['Tide tables']);
+  });
+
+  // Enter in the top pill opens the top match the way a tap does, so its
+  // name flies up into the room's title from the first row.
+  it('flies the top match from its row on Enter, the same as a tap', async () => {
+    width(1280);
+    hero.from = [];
+    await dom.render(<ProjectsScreen />);
+    await dom.type('Search projects', 'tide');
+    const pill = dom.container.querySelector('.chat-search input')!;
+    const { act } = await import('react');
+    await act(async () => {
+      const enter = new window.Event('keydown', { bubbles: true });
+      Object.assign(enter, { key: 'Enter' });
+      pill.dispatchEvent(enter);
+    });
+    expect(hero.from).toEqual(['Tide tables']);
+    expect(useApp.getState().view).toBe('project');
+    expect(useApp.getState().viewProjectId).toBe('b');
+
+    // A tap captures the same title.
+    hero.from = [];
+    useApp.setState({ view: 'projects' } as never);
+    await dom.render(<ProjectsScreen />);
+    await act(async () => {
+      (dom.container.querySelector('.project-row') as HTMLElement).click();
+    });
+    expect(hero.from).toEqual(['Tide tables']);
   });
 
   it('opens the New project sheet from the bar', async () => {

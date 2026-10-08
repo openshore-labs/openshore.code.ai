@@ -1,21 +1,18 @@
 // The "starting paths": Harbor / your computer / repository / API key on the
 // phone, or local stack / repository / API key on the desktop. The setup page
 // shows them as cards, each idle one a single tap target with a one-line sub
-// (D9, founder 2026-10-07); the explanations live in the rooms they open. The
-// rows variant is the same paths as ledger rows, from the same source. In
-// onboarding, choosing a path also marks onboarding done; in Settings we are
-// already in, so it just navigates.
-import { SAMPLE_ROW_LABEL, SAMPLE_ROW_SUB } from '../lib/sampleProject.js';
+// (D9, founder 2026-10-07); the explanations live in the rooms they open.
+// Cards are the one rendering: the Settings rows variant rendered nowhere
+// after D9 and is gone. In onboarding, choosing a path also marks onboarding
+// done; anywhere else it just navigates.
 import { useApp, type ViewName } from '../state/store.js';
 import { isDesktop } from '../lib/platform.js';
 import { logEvent } from '../lib/insights.js';
 import { HARBOR_APPROX_LABEL, HARBOR_MODEL_ID } from '../lib/harbor.js';
-import { HARBOR_MINI_APPROX_LABEL, HARBOR_MINI_MODEL_ID } from '../lib/harborMini.js';
-import { SettingsRow } from './SettingsRow.js';
 import { thisDeviceNoun } from '../lib/deviceNoun.js';
 
-/** Each idle path's name and its one line, read by both renderings so the
- *  cards and the rows can never say two things about one path. */
+/** Each idle path's name and its one line, in one table, so a card's words
+ *  are said in one place. */
 const PATH_COPY = {
   pair: { title: 'Connect your computer', sub: 'Use its models from here while it is on' },
   reposPhone: { title: 'Set up a repository', sub: 'Connect GitHub, GitLab, or Bitbucket' },
@@ -27,27 +24,15 @@ const PATH_COPY = {
   keys: { title: 'Add an API key', sub: 'Claude, OpenAI, or Gemini. You pay them directly.' },
 } as const;
 
-export function StartingPaths({
-  context,
-  variant = 'cards',
-}: {
-  context: 'onboarding' | 'settings';
-  /** `cards` is the setup page; `rows` is the settings ledger's list, the
-   *  same paths as one-line rows. One source, two renderings. */
-  variant?: 'cards' | 'rows';
-}) {
+export function StartingPaths({ context }: { context: 'onboarding' | 'settings' }) {
   const {
     setView,
     saveSettings,
     startGuide,
-    cancelHarborMini,
     cancelHarbor,
-    beginHarborMiniWithIntro,
     beginHarborWithIntro,
     settings,
-    harborMiniDownload,
     harborDownload,
-    trySampleProject,
   } = useApp();
 
   const go = async (view: ViewName) => {
@@ -129,128 +114,6 @@ export function StartingPaths({
       beginHarborWithIntro(),
     )
   );
-
-  if (variant === 'rows') {
-    const guideRow = (
-      id: string,
-      name: string,
-      size: string,
-      sub: string,
-      ready: boolean | undefined,
-      dl: typeof harborDownload,
-      begin: () => void,
-      cancel: () => void,
-    ) => {
-      if (ready) {
-        return (
-          <SettingsRow
-            label={`Chat with ${name}`}
-            sub={`Ready on ${thisDeviceNoun()}`}
-            value="Open"
-            onClick={() => void getGuideAndGo(id)}
-          />
-        );
-      }
-      if (dl?.failed) {
-        return (
-          <SettingsRow
-            label={`Get ${name}`}
-            sub={`${dl.label} Check your connection.`}
-            value="Try again"
-            onClick={() => void getGuideAndGo(id)}
-          />
-        );
-      }
-      if (dl) {
-        return (
-          <SettingsRow
-            label={`Getting ${name}`}
-            sub={
-              <span className="settings-progress">
-                <span className="progress-track">
-                  <span
-                    className={`progress-fill${dl.indeterminate ? ' indeterminate' : ''}`}
-                    style={
-                      dl.indeterminate ? undefined : { transform: `scaleX(${dl.percent / 100})` }
-                    }
-                  />
-                </span>
-                {dl.label}
-              </span>
-            }
-            value="Cancel"
-            onClick={cancel}
-          />
-        );
-      }
-      return <SettingsRow label={`Get ${name}`} sub={sub} value={size} onClick={begin} />;
-    };
-    return (
-      <>
-        {!isDesktop()
-          ? guideRow(
-              HARBOR_MODEL_ID,
-              'Harbor',
-              HARBOR_APPROX_LABEL,
-              `A coding model on ${thisDeviceNoun()}`,
-              settings.harborReady,
-              harborDownload,
-              beginHarborWithIntro,
-              cancelHarbor,
-            )
-          : null}
-        {!isDesktop()
-          ? guideRow(
-              HARBOR_MINI_MODEL_ID,
-              'Harbor Lite',
-              HARBOR_MINI_APPROX_LABEL,
-              'The built-in guide',
-              settings.harborMiniReady,
-              harborMiniDownload,
-              beginHarborMiniWithIntro,
-              cancelHarborMini,
-            )
-          : null}
-        {isDesktop() ? (
-          <>
-            <SettingsRow
-              label={PATH_COPY.stack.title}
-              sub={PATH_COPY.stack.sub}
-              onClick={() => void go('stack')}
-            />
-            <SettingsRow
-              label={PATH_COPY.reposDesk.title}
-              sub={PATH_COPY.reposDesk.sub}
-              onClick={() => void go('repos')}
-            />
-            <SettingsRow
-              label={SAMPLE_ROW_LABEL}
-              sub={SAMPLE_ROW_SUB}
-              onClick={() => void trySampleProject()}
-            />
-          </>
-        ) : (
-          <>
-            <SettingsRow
-              label={PATH_COPY.pair.title}
-              sub={PATH_COPY.pair.sub}
-              onClick={() => void go('pair')}
-            />
-            <SettingsRow
-              label={PATH_COPY.reposPhone.title}
-              sub={PATH_COPY.reposPhone.sub}
-              onClick={() => void go('repos')}
-            />
-          </>
-        )}
-        <SettingsRow
-          label={PATH_COPY.keys.title}
-          sub={PATH_COPY.keys.sub}
-          onClick={() => void go('connections')}
-        />
-      </>
-    );
-  }
 
   return (
     <>

@@ -93,7 +93,7 @@ describe('projects list', () => {
     const base = { id: 'p', name: 'P', repoIds: [], createdAt: new Date().toISOString() };
     expect(projectLine(base, base.createdAt, 0)).toEqual({
       what: 'No chats yet',
-      when: 'just now',
+      when: 'Just now',
     });
     expect(projectLine(base, base.createdAt, 1).what).toBe('1 chat');
     expect(projectLine(base, base.createdAt, 3).what).toBe('3 chats');

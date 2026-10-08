@@ -31,6 +31,18 @@ import {
 
 type Mode = 'signin' | 'signup';
 
+/** An address as the account knows it, so "Me@x.com " and "me@x.com" are
+ *  the one address waiting on its link. */
+function addressKey(addr: string): string {
+  return addr.trim().toLowerCase();
+}
+
+/** Whether a refused sign-in was refused because the address is not
+ *  confirmed yet, the one case where resending the link is the way in. */
+export function awaitsConfirmation(err: unknown): boolean {
+  return /email not confirmed/i.test(err instanceof Error ? err.message : String(err));
+}
+
 /** The sign-out ask's body, for this many unsent team vault notes. */
 export function unsentTeamTextBody(n: number): string {
   const which = n === 1 ? 'One team vault note has' : `${n} team vault notes have`;
@@ -81,6 +93,12 @@ export function SignInCard({
   // both controls hold and a status line takes the link's place, so a second
   // tap cannot fire and the wait is visible. The toasts say how it ended.
   const [leaving, setLeaving] = useState(false);
+  // The address that waits on its confirmation link: a sign-up sent one, or a
+  // sign-in was refused until it is confirmed. While the field still holds
+  // it, Resend confirmation takes the magic link's line, so the sheet offers
+  // two doors under its button, never three.
+  const [awaiting, setAwaiting] = useState<string | undefined>();
+  const awaitingHere = awaiting !== undefined && awaiting === addressKey(addr);
   // Each field's label names it (useId: the card can sit in more than one
   // sheet, so a fixed id could repeat).
   const fieldId = useId();
@@ -265,12 +283,15 @@ export function SignInCard({
     return true;
   };
 
+  // `done` is the toast for a finished errand. A sign-up says its own (whether
+  // a link was sent), so it passes none, and an empty one would replace that
+  // line with a blank pill.
   const run = async (needPassword: boolean, fn: () => Promise<unknown>, done: string) => {
     if (!guard(needPassword)) return;
     setBusy(true);
     try {
       await fn();
-      showToast(done);
+      if (done) showToast(done);
     } catch (err) {
       showToast(plainError(err));
     } finally {
@@ -280,12 +301,24 @@ export function SignInCard({
 
   const submit = () => {
     if (mode === 'signin') {
-      return run(true, () => signIn(addr, pw), 'Signed in.');
+      return run(
+        true,
+        async () => {
+          try {
+            await signIn(addr, pw);
+          } catch (err) {
+            if (awaitsConfirmation(err)) setAwaiting(addressKey(addr));
+            throw err;
+          }
+        },
+        'Signed in.',
+      );
     }
     return run(
       true,
       async () => {
         const { needsConfirmation } = await signUp(addr, pw);
+        if (needsConfirmation) setAwaiting(addressKey(addr));
         showToast(
           needsConfirmation
             ? 'Account created. Check your email to confirm.'
@@ -391,18 +424,7 @@ export function SignInCard({
           )}
         </div>
         <div className="sub" style={{ marginTop: 6, textAlign: 'center' }}>
-          <button
-            className="linklike"
-            disabled={busy}
-            onClick={() =>
-              void run(false, () => sendMagicLink(addr), 'Check your email for a sign-in link.')
-            }
-          >
-            Email me a link instead
-          </button>
-        </div>
-        {mode === 'signup' ? (
-          <div className="sub" style={{ marginTop: 6, textAlign: 'center' }}>
+          {awaitingHere ? (
             <button
               className="linklike"
               disabled={busy}
@@ -416,8 +438,18 @@ export function SignInCard({
             >
               Resend confirmation email
             </button>
-          </div>
-        ) : null}
+          ) : (
+            <button
+              className="linklike"
+              disabled={busy}
+              onClick={() =>
+                void run(false, () => sendMagicLink(addr), 'Check your email for a sign-in link.')
+              }
+            >
+              Email me a link instead
+            </button>
+          )}
+        </div>
       </div>
       {signOutAsk}
       {everywhereAsk}

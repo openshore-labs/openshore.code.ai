@@ -74,6 +74,7 @@ export function ProjectsScreen() {
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const q = query.trim().toLowerCase();
   // A search typed on the desktop stays open in the dock if the window
   // narrows, so the list never reads as filtered by nothing.
@@ -106,11 +107,18 @@ export function ProjectsScreen() {
     openProject(id);
   };
 
-  const open = (p: Project, row?: HTMLElement) => {
+  const open = (p: Project, row?: HTMLElement | null) => {
     // Hand the tapped name to the detail room, so it flies up into the
     // room's large title (a shared-element move).
     captureTitleHero(row?.querySelector('.project-row-name') ?? null);
     openProject(p.id);
+  };
+
+  // Enter in the top pill opens the top match the way a tap on its row does,
+  // so its name flies from the first row too.
+  const openTopMatch = () => {
+    const top = rows[0];
+    if (top) open(top, listRef.current?.querySelector<HTMLElement>('.project-row'));
   };
 
   const openSearch = () => {
@@ -147,7 +155,7 @@ export function ProjectsScreen() {
             value={query}
             onChange={setQuery}
             label="Search projects"
-            onEnter={rows[0] ? () => open(rows[0]!) : undefined}
+            onEnter={rows[0] ? openTopMatch : undefined}
           />
         ) : null}
         {projects.length === 0 ? (
@@ -160,7 +168,7 @@ export function ProjectsScreen() {
         ) : rows.length === 0 ? (
           <p className="projects-empty-sub projects-no-match">No project matches that.</p>
         ) : (
-          <div className="project-list">
+          <div className="project-list" ref={listRef}>
             {rows.map((p, i) => (
               <button
                 type="button"
