@@ -45,7 +45,7 @@ export const FOREIGN_QR =
   "That QR is not an OpenShore pairing code. Point the camera at the one on your computer's Computer screen.";
 /** Said when the camera cannot be opened. */
 export const CAMERA_BLOCKED =
-  'Could not open the camera. Allow camera access for OpenShore in iPhone Settings, or type the address and pairing code from your computer.';
+  'Could not open the camera. Allow camera access for OpenShore in Settings, or type the address and pairing code from your computer.';
 
 function Camera({
   onDecode,

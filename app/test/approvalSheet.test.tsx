@@ -109,3 +109,41 @@ describe('the approval sheet for any other tool', () => {
     expect(answers).toEqual([{ approve: true, always: true, inProject: undefined }]);
   });
 });
+
+// A project note change after the chat read a private note asks every time
+// (CX and CMO, 2026-10-08, A), and its card says why in one line above the
+// diff. An older engine sends no `why`, and the card reads as before.
+describe('the approval sheet says why a card asks', () => {
+  const why =
+    'This chat has read a private note, and a cloud model may later read what this change writes.';
+
+  it('shows the why line above the diff', async () => {
+    await show({
+      ...base,
+      toolName: 'projectMemoryWrite',
+      alwaysAsk: true,
+      why,
+      detail: '--- a/NOTES.md\n+++ b/NOTES.md\n@@ -1 +1 @@\n-old\n+new',
+    });
+    const sub = [...dom.container.querySelectorAll('p.sheet-sub')].map((p) => p.textContent);
+    expect(sub).toEqual([why]);
+    // The line comes before the diff in the card.
+    const kids = [...dom.container.querySelector('.approval-body')!.children];
+    const line = kids.findIndex((k) => k.matches('p.sheet-sub'));
+    const diff = kids.findIndex((k) => k.matches('.tool-card-detail.diff'));
+    expect(line).toBeGreaterThan(-1);
+    expect(diff).toBeGreaterThan(line);
+  });
+
+  it('shows it above a one-line detail too', async () => {
+    await show({ ...base, toolName: 'projectMemoryWrite', why, detail: 'Add a line to NOTES.md' });
+    const sub = [...dom.container.querySelectorAll('p.sheet-sub')].map((p) => p.textContent);
+    expect(sub).toEqual([why, 'Add a line to NOTES.md']);
+  });
+
+  it('shows no line when the engine sends none', async () => {
+    await show({ ...base, toolName: 'projectMemoryWrite', detail: 'Add a line to NOTES.md' });
+    const sub = [...dom.container.querySelectorAll('p.sheet-sub')].map((p) => p.textContent);
+    expect(sub).toEqual(['Add a line to NOTES.md']);
+  });
+});

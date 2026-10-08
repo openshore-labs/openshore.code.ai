@@ -191,10 +191,25 @@ export const LOCAL_ONLY_STUB =
 
 /**
  * The messages to send on a turn whose seat leaves this network: every
- * message marked `localOnly` has its content swapped for `LOCAL_ONLY_STUB`.
+ * message marked `localOnly` has its content swapped for `LOCAL_ONLY_STUB`,
+ * and the calls a marked reply made keep their names and ids (their results
+ * answer them) but not their arguments, which may quote the note (D5).
  * Returns new objects for the swapped messages and leaves the input (the kept
  * history) untouched, so a later local turn still has the note.
  */
 export function withholdLocalOnly(messages: readonly ChatMessage[]): ChatMessage[] {
-  return messages.map((m) => (m.localOnly ? { ...m, content: LOCAL_ONLY_STUB } : m));
+  return messages.map((m) => {
+    if (!m.localOnly) return m;
+    const out: ChatMessage = { ...m, content: LOCAL_ONLY_STUB };
+    if (m.toolCalls?.length) {
+      out.toolCalls = m.toolCalls.map((c) => ({ ...c, args: {}, argsText: '{}' }));
+    }
+    return out;
+  });
+}
+
+/** Whether a message holds a local-only note's text: marked, and not already
+ *  the stub `withholdLocalOnly` put in its place. */
+export function carriesLocalOnly(m: ChatMessage): boolean {
+  return m.localOnly === true && m.content !== LOCAL_ONLY_STUB;
 }

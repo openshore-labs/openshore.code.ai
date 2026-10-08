@@ -6,8 +6,10 @@
 // and streams a final synthesis (see lib/play.ts for the pure core). The flow
 // degrades to a single routed turn whenever the anchor is a weak or unreachable
 // model, the plan will not parse, or the play is a single step, so a modest
-// stack still just answers. Image turns route by capability (routeVision), and
-// the Codemagic tool loop keeps its own single-turn path.
+// stack still just answers. Image turns route by capability (routeVision);
+// when nothing can read a picture, the turn answers with two doors, a local
+// model to source and a cloud model to connect (lib/imageReading.ts). The
+// Codemagic tool loop keeps its own single-turn path.
 //
 // Backends: on-device (llama.cpp), Anthropic, or an OpenAI-compatible cloud
 // endpoint. A play step that must edit files or run commands (needsTools) runs
@@ -91,9 +93,15 @@ import {
 } from './providerClient.js';
 import { SearchTurn } from './searchTurn.js';
 import { claudeHistoryCache, claudeSystem, promptCacheOn } from '../lib/claudeCache.js';
-import { PROVIDERS, providerInfo, providerSecretKey } from '../lib/providers.js';
+import { cloudImageReaders, providerInfo, providerSecretKey } from '../lib/providers.js';
+import {
+  heldImageModel,
+  imageAskDetail,
+  imageFallbackDetail,
+  imageTurnLine,
+} from '../lib/imageNote.js';
+import type { ImageReaderGap } from '../lib/imageReading.js';
 import { imageBlockParts, type Attachment } from '../lib/attachments.js';
-import { claudeModelLabel, visionFallbackClaudeModel } from '../lib/claudeModels.js';
 import { buildVisionContent, describeError, opensOnUser } from './cloudClaudeDriver.js';
 import { frameLabel, videoContextHeader, VIDEO_FRAMES_SYSTEM_NOTE } from '../lib/videoAttach.js';
 import {
@@ -101,29 +109,45 @@ import {
   briefTodos,
   handoffNote,
   mergeReplan,
-  ownerFor,
   parsePlan,
   parseReplan,
+  planCanRun,
   planPrompt,
   readySteps,
   replanPrompt,
+  stepRunner,
   type Play,
+  type PlayStack,
   type PlayStep,
   type StepResult,
 } from '../lib/play.js';
 import { effortDirective } from '../lib/effort.js';
-import { vaultProposalRecords } from '../lib/vaultCopy.js';
+import {
+  privatePlanCloudEngineNote,
+  privatePlanEngineNote,
+  vaultProposalRecords,
+} from '../lib/vaultCopy.js';
 import type { SeedTurn } from '../state/types.js';
 import { byomSecretKey } from '../lib/byom.js';
 import { isCurrentBenchId } from '../lib/currents.js';
 import { buildHarborSystemPrompt, isHarbor } from '../lib/harbor.js';
 import { buildHarborMiniSystemPrompt, guidedSetupLine, isHarborMini } from '../lib/harborMini.js';
-import { prepareGuideTurn, searchOffered, webOnlineNow } from '../lib/localSearch.js';
-import { locationAllowed, type ProfileId } from '../lib/profiles.js';
+import {
+  prepareGuideTurn,
+  searchOffered,
+  webOnlineNow,
+  type AfterPrivate,
+} from '../lib/localSearch.js';
+import { PROFILES, locationAllowed, type ProfileId } from '../lib/profiles.js';
 import {
   harborRef,
   pickVisionRef,
+  refKey,
   refName,
+  refStaysLocal,
+  visionCapable,
+  visionSlots,
+  type ActiveMember,
   type AppStack,
   type Placement,
   type StackCategory,
@@ -149,9 +173,21 @@ import {
   type VaultToolInput,
 } from '../lib/vaultTool.js';
 import type { ChatDriver, DriverEventSink, DriverVaultOptions, PackSeat } from './types.js';
-import { DriverEmitter, isLocalOnlyFinal, textFinal } from './types.js';
-import { RemoteDriver, daemonCreateSession, type DaemonTarget } from './remoteDriver.js';
-import type { DriverEvent, VaultOverrides } from 'os-code/protocol';
+import {
+  DriverEmitter,
+  PlaceholderNotice,
+  PrivateHold,
+  isLocalOnlyFinal,
+  stubsReply,
+  textFinal,
+} from './types.js';
+import {
+  RemoteDriver,
+  daemonCreateSession,
+  daemonStack,
+  type DaemonTarget,
+} from './remoteDriver.js';
+import type { DaemonStackInfo, DriverEvent, VaultOverrides } from 'os-code/protocol';
 import { writingVoiceLine } from '../lib/writingVoice.js';
 import { appActionsContract } from '../lib/appActions.js';
 
@@ -366,6 +402,11 @@ export function historyForSeat<M extends { content: string; localOnly?: true }>(
     : history.slice();
 }
 
+/** One earlier turn as a play's prompts carry it (conversationDigest). */
+function digestLine(m: Msg): string {
+  return `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`;
+}
+
 /** One play step's output, marked when it was written after a local-only
  *  read (I5): its seat's pack carried a local-only note, or a marked earlier
  *  output reached that seat whole. */
@@ -481,6 +522,12 @@ export const ASK_STOP_LINE = 'Or press Stop to skip it.';
 export const IMAGE_NOT_SENT =
   'You declined, so the image was not sent. Set a model for Image reading in Stack and images go to it without asking.';
 
+/** The turn's end when the person keeps a picture the Local model failed on
+ *  off the Cloud model (K): both slots are set, so only the first sentence
+ *  of IMAGE_NOT_SENT is true here. Several pictures read as several. */
+export const IMAGE_NOT_SENT_FALLBACK = 'You declined, so the image was not sent.';
+export const IMAGES_NOT_SENT_FALLBACK = 'You declined, so the images were not sent.';
+
 // A routed specialist could not run this turn (no key, load failure, HTTP
 // error) throws RouteUnavailable (the provider client's ProviderUnavailable).
 // Distinct from a generic failure so run() can degrade to the Reasoning anchor
@@ -514,6 +561,10 @@ export class StackDriver implements ChatDriver {
   // A framing turn that asked the user to clarify: the original request is held
   // here so the next message can be folded back in and re-framed.
   private pendingClarify?: { text: string };
+  // Nothing here can read images this send (an unread picture, or a plan's
+  // image step on the text alone): the two-door offer, shown once, after the
+  // answer and before the turn closes (finish).
+  private pendingOffer?: ImageReaderGap;
   // The one engine session a play opens (lazily, on its first tool step) to run
   // repo/tool steps on the paired computer. Shared across every tool step in the
   // play so working-tree state and cwd carry forward; torn down with the driver.
@@ -570,6 +621,10 @@ export class StackDriver implements ChatDriver {
   private sendEffort = effortDirective();
   // CTO I5: this send read a local-only note, so its reply is marked.
   private sendLocalOnly = false;
+  // This send's text already went to a model that leaves this network (the
+  // framing call on such a Reasoning model), so the chat's reach for the
+  // send reads cloud on every route, a model here answering it included.
+  private sendLeft = false;
   // The vault writes this send proposed, shown on one card at its end (D4),
   // and the privacy rules, loaded once per send.
   private proposals: VaultProposal[] = [];
@@ -577,6 +632,12 @@ export class StackDriver implements ChatDriver {
   // Seats whose server refused a request with tools on it (an Ollama model
   // with no tool template answers 400): they get the plain path afterwards.
   private noToolSeats = new Set<string>();
+  // The placeholder line (F): once in this chat for each model off this
+  // network, the first time it is sent the placeholder for a marked reply.
+  private readonly placeholder = new PlaceholderNotice();
+  // Whether this chat holds a private note's text, and why (H): a search a
+  // model here writes then asks every time.
+  private readonly hold = new PrivateHold();
 
   constructor(
     private readonly stack: AppStack,
@@ -592,6 +653,7 @@ export class StackDriver implements ChatDriver {
         content: t.text,
         ...(t.localOnly ? { localOnly: true as const } : {}),
       }));
+      for (const t of seed) this.hold.keep(t.localOnly);
     }
     const jevFetch: FetchLike = (url, init) =>
       nativeFetch(url, {
@@ -643,7 +705,7 @@ export class StackDriver implements ChatDriver {
   }
 
   /** Pick the model for this turn: a placed specialist if reachable, else the
-   *  Reasoning LLM, else any reachable model. */
+   *  Reasoning model, else any reachable model. */
   private route(text: string): {
     ref: StackModelRef;
     placement?: Placement;
@@ -898,6 +960,15 @@ export class StackDriver implements ChatDriver {
     }
   }
 
+  /** Whether `ref` answers on this person's own network, for the Image
+   *  reading slots: the seat's own judgement when the store gives one (it
+   *  knows this device's tailnet), else by address alone (`refStaysLocal`),
+   *  so a model at a public address is never the Local slot. */
+  private staysLocal(ref: StackModelRef): boolean {
+    const seat = ref.kind === 'device' ? null : this.seatFor(ref);
+    return seat ? !seat.leavesNetwork : refStaysLocal(ref);
+  }
+
   /** Whether `ref`'s requests leave this network. A device seat is this
    *  phone; any other seat that cannot be judged reads as leaving, the safe
    *  reading. */
@@ -906,9 +977,22 @@ export class StackDriver implements ChatDriver {
     return this.seatFor(ref)?.leavesNetwork ?? true;
   }
 
-  /** The history as `ref` receives it (CTO I5). */
+  /** The history as `ref` receives it (CTO I5), saying so the first time a
+   *  model off this network is sent the placeholder for a marked reply (F). */
   private historyFor(ref: StackModelRef): Msg[] {
-    return historyForSeat(this.history, this.leaves(ref));
+    const leaves = this.leaves(ref);
+    this.notePlaceholder(
+      ref,
+      this.history.some((m) => stubsReply(m, leaves)),
+    );
+    return historyForSeat(this.history, leaves);
+  }
+
+  /** Say the placeholder line for `ref` once in this chat, when what it is
+   *  about to be sent carries the placeholder for a marked reply (F). */
+  private notePlaceholder(ref: StackModelRef, stubbed: boolean): void {
+    const notice = this.placeholder.take(seatKey(ref), refName(ref), stubbed);
+    if (notice) this.emit(notice);
   }
 
   /** Render this send's pack for the seat that answers, emitting its card.
@@ -938,6 +1022,7 @@ export class StackDriver implements ChatDriver {
     // the same as a local-only tool read (I5).
     const localOnly = Boolean(text && rendered.localOnly);
     if (localOnly) this.sendLocalOnly = true;
+    this.hold.pack(localOnly, rendered.pinOnly === true);
     return { text, localOnly };
   }
 
@@ -1111,7 +1196,10 @@ export class StackDriver implements ChatDriver {
     const ctx = await this.vaultContextFor(ref);
     if (!ctx) return 'The vault is not available in this chat right now.';
     const result = await runVaultTool(call, ctx);
-    if (result.localOnly) this.sendLocalOnly = true;
+    if (result.localOnly) {
+      this.sendLocalOnly = true;
+      this.hold.read();
+    }
     return result.content;
   }
 
@@ -1224,7 +1312,7 @@ export class StackDriver implements ChatDriver {
   }
 
   /** Describe the crew this chat can draw on. "auto" members may be consulted
-   *  by the Reasoning LLM on its own; "request" members wait to be named. */
+   *  by the Reasoning model on its own; "request" members wait to be named. */
   private crewGuidance(): string | undefined {
     const crew = this.context.crew ?? [];
     if (!crew.length) return undefined;
@@ -1258,7 +1346,10 @@ export class StackDriver implements ChatDriver {
     this.guidePrompt = undefined;
     this.sendEffort = effortDirective();
     this.sendLocalOnly = false;
+    this.hold.begin();
+    this.sendLeft = false;
     this.proposals = [];
+    this.pendingOffer = undefined;
     this.sendPrivacy = undefined;
     this.turnPack = undefined;
     this.answer = '';
@@ -1298,17 +1389,18 @@ export class StackDriver implements ChatDriver {
     }
 
     // Plan-first flow: for a text-only turn (no build-tool loop) on a stack
-    // with someone to hand off to, the reasoning LLM frames the request and
+    // with someone to hand off to, the reasoning model frames the request and
     // composes a play, or answers a simple request itself in the same call
     // (B2). A stack with only its anchor (and no docked workspace) has no one
-    // to hand off to, so it skips the framing call and answers in one. It
-    // hands back to the single-turn path below when the anchor is a weak or
-    // unreachable model, the plan will not parse, or the play is a single
-    // specialist step.
+    // to hand off to, and an anchor on this device or out of reach cannot
+    // frame, so it skips the framing call and answers in one (planCanRun,
+    // the rule the Stack's Image reading rows read too). It hands back to
+    // the single-turn path below when the plan will not parse, or the play
+    // is a single specialist step.
     if (
       !(attachments ?? []).some((a) => a.isImage) &&
       !this.context.codemagicAccess &&
-      this.hasHandoff()
+      planCanRun(this.stack, (r) => this.reachable(r), this.engineInReach())
     ) {
       const handled = await this.tryRunPlay(text);
       if (handled) return;
@@ -1329,10 +1421,11 @@ export class StackDriver implements ChatDriver {
     if (images.length) {
       const vision = await this.routeVision();
       if (!vision) {
-        this.finish(
-          'error',
-          `No image-reading model is reachable while ${this.profile}. Put an image-reading model in Stack, or connect a cloud model that reads images (Claude reads them out of the box).`,
-        );
+        // Nothing here can read it (founder, 2026-10-07): not an error, a
+        // reply with two doors, a local model to source and a cloud model to
+        // connect. The picture goes nowhere; the turn ends complete.
+        this.pendingOffer = await this.imageGap('image');
+        this.finish('complete');
         return;
       }
       // Only a model placed for Image reading takes an image without a word
@@ -1362,19 +1455,21 @@ export class StackDriver implements ChatDriver {
     // Stopped while routing (a card, Jev, a key lookup): nothing is sent.
     if (this.aborted) throw abortError();
 
-    this.emit({
-      type: 'turn-start',
-      turn: this.history.length,
-      model: refName(target.ref),
-      providerKind: target.ref.kind === 'device' ? 'local' : 'cloud',
-    });
+    this.turnStart(refName(target.ref), target.ref.kind === 'device' ? 'local' : 'cloud');
     // Rendered only now, after routing and any Jev steer, so the pack fits
     // the seat that actually answers (CTO J5).
     this.turnPack = { ref: target.ref, text: await this.packFor(target.ref) };
+    this.markIfReadsPrivateTurn(target.ref);
     if (images.length) {
+      // With nothing set for Image reading, the line says so and names the
+      // reader and what it runs on, the same words a plan's image step uses.
+      const slots = visionSlots(this.stack);
       this.emit({
         type: 'status',
-        message: `Reading ${images.length === 1 ? 'this image' : `these ${images.length} images`} with ${refName(target.ref)}.`,
+        message:
+          !slots.local && !slots.cloud
+            ? imageTurnLine(target.ref, this.stack.reasoning, images.length)
+            : `Reading ${images.length === 1 ? 'this image' : `these ${images.length} images`} with ${refName(target.ref)}.`,
       });
     } else if (target.category !== 'reasoning' && target.placement) {
       this.emit({
@@ -1389,12 +1484,23 @@ export class StackDriver implements ChatDriver {
       await this.runRef(target.ref, target.placement, images);
     } catch (err) {
       if (this.aborted || isAbortError(err)) throw err;
+      // The Local model failed on a picture before writing a word, and the
+      // Cloud slot holds a model that reads images and is in reach: a card
+      // asks before the picture goes to it, once, with no second fallback
+      // (CX and CMO, 2026-10-08, K).
+      if (images.length) {
+        const cloud = this.cloudAfterLocal(target.ref);
+        if (cloud) {
+          await this.readAfterLocalFailed(target.ref, cloud, images);
+          return;
+        }
+      }
       // Graceful degradation is the contract: if a placed specialist could not
       // run, fall back to the Reasoning anchor for this turn rather than
       // dead-ending, exactly as the desktop router does. An image turn is the
       // exception: routeVision already chose the best reachable reader (and the
       // reasoning anchor may not read images at all), so it never falls back
-      // here, it fails with the clear message above. A specialist that already
+      // here, it fails with the reader's own error. A specialist that already
       // wrote part of its answer keeps it: the turn ends with the error and the
       // partial, never a second answer on top.
       const isSpecialist = !images.length && target.category !== 'reasoning' && !!target.placement;
@@ -1409,27 +1515,91 @@ export class StackDriver implements ChatDriver {
         type: 'status',
         message: `${refName(target.ref)} is not available right now. Falling back to ${refName(reasoning)}.`,
       });
-      this.emit({
-        type: 'turn-start',
-        turn: this.history.length,
-        model: refName(reasoning),
-        providerKind: reasoning.kind === 'device' ? 'local' : 'cloud',
-      });
+      this.turnStart(refName(reasoning), reasoning.kind === 'device' ? 'local' : 'cloud');
       // The anchor is a different seat: its own pack, sized for it.
       this.turnPack = { ref: reasoning, text: await this.packFor(reasoning) };
+      this.markIfReadsPrivateTurn(reasoning);
       this.answer = '';
       await this.runRef(reasoning, undefined, []);
     }
   }
 
-  /** Someone a play could hand a step to, the only case a multi-step play
-   *  can use: a placed specialist (reachable, and not a pocket model, whose
-   *  step the anchor would cover itself), or the paired computer's engine
-   *  for a step that edits files (docked, with a workspace bound). */
-  private hasHandoff(): boolean {
-    if (this.stack.active.some((m) => m.ref.kind !== 'device' && this.reachable(m.ref))) {
-      return true;
+  /** The Cloud slot's model, when a picture the Local slot's model just
+   *  failed on may go to it (K): `ref` is the Local slot's model, nothing of
+   *  its answer was written, and the Cloud slot holds a model that reads
+   *  images and is in reach in this status. Otherwise undefined, and the
+   *  turn ends with the Local model's own error, as before. */
+  private cloudAfterLocal(ref: StackModelRef): ActiveMember | undefined {
+    if (this.answer.trim()) return undefined;
+    const { local, cloud } = visionSlots(this.stack, (r) => this.staysLocal(r));
+    if (!local || !cloud || refKey(local.ref) !== refKey(ref)) return undefined;
+    if (!visionCapable(cloud.ref) || !this.reachable(cloud.ref)) return undefined;
+    return cloud;
+  }
+
+  /** Ask before a picture the Local model failed on goes to the Cloud
+   *  model, amber for a cloud model (askToReadImage's kinds), then read it
+   *  there once. A no sends nothing; a stop ends the turn; a failure on the
+   *  Cloud model ends the turn with its own error (K). */
+  private async readAfterLocalFailed(
+    local: StackModelRef,
+    cloud: ActiveMember,
+    images: Attachment[],
+  ): Promise<void> {
+    const what = images.length === 1 ? 'this image' : `these ${images.length} images`;
+    const spend = cloud.ref.kind === 'cloud';
+    const approved = await this.askFirst({
+      kind: spend ? 'cloud-spend' : 'tool',
+      toolName: 'analyzeImage',
+      risk: spend ? 'cloud-spend' : 'network',
+      summary: `Read ${what} with ${refName(cloud.ref)}?`,
+      detail: imageFallbackDetail(local, cloud.ref, images.length),
+    });
+    if (!approved) {
+      if (this.aborted) this.finish('aborted');
+      else {
+        this.finish(
+          'declined',
+          images.length === 1 ? IMAGE_NOT_SENT_FALLBACK : IMAGES_NOT_SENT_FALLBACK,
+        );
+      }
+      return;
     }
+    if (this.aborted) throw abortError();
+    this.emit({ type: 'status', message: `Reading ${what} with ${refName(cloud.ref)}.` });
+    this.turnStart(refName(cloud.ref), 'cloud');
+    // A different seat: its own pack, sized for it.
+    this.turnPack = { ref: cloud.ref, text: await this.packFor(cloud.ref) };
+    this.markIfReadsPrivateTurn(cloud.ref);
+    this.answer = '';
+    await this.runRef(cloud.ref, cloud.placement, images);
+  }
+
+  /** A seat that stays on this network reads the chat whole, a local-only
+   *  turn included, so what it writes may quote that turn: the reply is
+   *  marked too, or a later turn on a seat that leaves would read the quote
+   *  whole (I5 and D5, the same rule a play's steps follow). */
+  private markIfReadsPrivateTurn(ref: StackModelRef): void {
+    if (!this.leaves(ref) && this.history.some((m) => m.localOnly === true)) {
+      this.sendLocalOnly = true;
+    }
+  }
+
+  /** The chat's reach for this send (what Chats and the top bar read): cloud
+   *  once anything in the send went to a model that leaves this network,
+   *  even when a model here answers it (M1). */
+  private turnStart(model: string, kind: 'local' | 'cloud'): void {
+    this.emit({
+      type: 'turn-start',
+      turn: this.history.length,
+      model,
+      providerKind: this.sendLeft ? 'cloud' : kind,
+    });
+  }
+
+  /** Whether a play's tool step can run on the paired computer's engine:
+   *  docked, with a workspace bound (runToolStepOnEngine's own checks). */
+  private engineInReach(): boolean {
     return (
       locationAllowed(this.profile, 'home') &&
       Boolean(this.context.daemon) &&
@@ -1459,7 +1629,11 @@ export class StackDriver implements ChatDriver {
     | { ref: StackModelRef; placement?: Placement; category: 'vision'; dedicated: boolean }
     | undefined
   > {
-    const pick = pickVisionRef(this.stack, (r) => this.reachable(r));
+    const pick = pickVisionRef(
+      this.stack,
+      (r) => this.reachable(r),
+      (r) => this.staysLocal(r),
+    );
     if (pick) {
       return {
         ref: pick.ref,
@@ -1474,28 +1648,43 @@ export class StackDriver implements ChatDriver {
   }
 
   /** Ask before an image goes to a model not placed for Image reading. Amber
-   *  (Cloud spend) when the reader is a cloud model, plain when it is your own. */
+   *  (Cloud spend) when the reader is a cloud model, plain when it is your own.
+   *  A model set for Image reading that cannot take this picture (a model on
+   *  this device, one that does not read images) is named with its reason,
+   *  never called missing. */
   private askToReadImage(ref: StackModelRef, count: number): Promise<boolean> {
     const what = count === 1 ? 'this image' : `these ${count} images`;
-    const reader = refName(ref);
     const cloud = ref.kind === 'cloud';
+    const held = heldImageModel(
+      this.stack,
+      (r) => this.reachable(r),
+      (r) => this.staysLocal(r),
+    );
     return this.askFirst({
       kind: cloud ? 'cloud-spend' : 'tool',
       toolName: 'analyzeImage',
       risk: cloud ? 'cloud-spend' : 'network',
-      summary: `Read ${what} with ${reader}?`,
-      detail: `Nothing in Stack is set for Image reading, so ${what} would go to ${reader}${cloud ? ' on your own API key' : ''}. Nothing is sent until you approve. Set a model for Image reading in Stack and images go to it without asking.`,
+      summary: `Read ${what} with ${refName(ref)}?`,
+      detail: imageAskDetail(ref, count, held, PROFILES[this.profile].label),
     });
   }
 
   /** Put a card in front of the person and wait for their tap. A stop counts
    *  as a no, and the card says so: the turn waits on the tap with no timer,
-   *  so Stop is the way past it without answering. */
+   *  so Stop is the way past it without answering. A detail written as one
+   *  paragraph (the image card's) takes the stop line in the same paragraph,
+   *  so the card shows it as wrapping prose; a line break would set it as a
+   *  code block, cut at the sheet's edge on a phone. */
   private askFirst(request: Omit<ApprovalRequest, 'id'>): Promise<boolean> {
     const id = `ask_${Date.now().toString(36)}_${(stackRequestSeq++).toString(36)}`;
+    const detail = request.detail;
     request = {
       ...request,
-      detail: request.detail ? `${request.detail}\n\n${ASK_STOP_LINE}` : ASK_STOP_LINE,
+      detail: !detail
+        ? ASK_STOP_LINE
+        : detail.includes('\n')
+          ? `${detail}\n\n${ASK_STOP_LINE}`
+          : `${detail} ${ASK_STOP_LINE}`,
     };
     return new Promise<boolean>((resolve) => {
       this.pendingAsk = {
@@ -1510,40 +1699,51 @@ export class StackDriver implements ChatDriver {
     });
   }
 
-  /** A connected, reachable cloud model that reads images, when the stack holds
-   *  none. Claude first (its whole lineup reads images, so the one that costs
-   *  the person least), then the first other provider with a stored key and a
-   *  vision-capable model. The label names the model, so the card says
-   *  exactly which one the image would go to. */
-  private async cloudVisionFallback(): Promise<StackModelRef | undefined> {
-    const claude = visionFallbackClaudeModel();
-    const anthropic: StackModelRef = {
-      kind: 'cloud',
-      provider: 'anthropic',
-      model: claude.id,
-      label: `Claude ${claudeModelLabel(claude.id)}`,
-    };
-    if (this.reachable(anthropic) && (await secretGet(providerSecretKey('anthropic')))) {
-      return anthropic;
+  /** Why nothing here can read images, for the offer's lead: a model set for
+   *  Image reading that cannot read here (and why), and whether a connected
+   *  cloud reader is out of reach in this status or missing. */
+  private async imageGap(from: ImageReaderGap['from']): Promise<ImageReaderGap> {
+    const placed = heldImageModel(
+      this.stack,
+      (r) => this.reachable(r),
+      (r) => this.staysLocal(r),
+    );
+    let keyed = false;
+    for (const reader of cloudImageReaders()) {
+      if (await secretGet(providerSecretKey(reader.provider)).catch(() => null)) {
+        keyed = true;
+        break;
+      }
     }
-    for (const p of PROVIDERS) {
-      if (p.id === 'anthropic') continue;
-      const visionModel = p.models.find((m) => m.categories?.includes('vision'));
-      if (!visionModel) continue;
-      const ref: StackModelRef = {
-        kind: 'cloud',
-        provider: p.id,
-        model: visionModel.id,
-        label: `${p.name} ${visionModel.label}`,
-      };
-      if (this.reachable(ref) && (await secretGet(providerSecretKey(p.id)))) return ref;
+    // The status rides along whenever it is what holds reading back: a
+    // reader set up but out of reach, or a status (Offline) in which nothing
+    // that reads images is in reach, so adding one would not help until the
+    // person leaves it.
+    const held = placed?.why === 'out-of-reach' || keyed || !locationAllowed(this.profile, 'cloud');
+    return {
+      from,
+      cloud: keyed ? 'out-of-reach' : 'none',
+      ...(placed ? { placed } : {}),
+      ...(held ? { status: PROFILES[this.profile].label } : {}),
+    };
+  }
+
+  /** A connected, reachable cloud model that reads images, when the stack holds
+   *  none: the first of cloudImageReaders (Claude's least costly model, then
+   *  each other provider's image reader) with a stored key. The label names
+   *  the model, so the card says exactly which one the image would go to, and
+   *  it is the name the Stack's Image reading rows show (D13, 2026-10-07). */
+  private async cloudVisionFallback(): Promise<StackModelRef | undefined> {
+    for (const reader of cloudImageReaders()) {
+      const ref: StackModelRef = { kind: 'cloud', ...reader };
+      if (this.reachable(ref) && (await secretGet(providerSecretKey(reader.provider)))) return ref;
     }
     return undefined;
   }
 
   // ---- plan-first orchestration -------------------------------------------
 
-  /** Frame the prompt with the reasoning LLM and, when it is clear and needs
+  /** Frame the prompt with the reasoning model and, when it is clear and needs
    *  more than one model, run the play. A clear request the lead would do
    *  alone in one step is answered in that same call (B2): its prose streams
    *  as the answer, so a simple message costs one model call. Returns true
@@ -1558,20 +1758,47 @@ export class StackDriver implements ChatDriver {
     // its own honest device handling) take it.
     if (reasoning.kind === 'device' || !this.reachable(reasoning)) return false;
 
+    // The stack as the play reads it, with the model an image in the chat
+    // would go to while nothing is placed for Image reading (routeVision).
+    // A plan carries no picture, so its image step runs on the Reasoning
+    // model whatever this holds (E); it says only whether anything here
+    // reads images, for the step's note and the two-door offer.
+    const roster: PlayStack = {
+      ...this.stack,
+      imageReader: (await this.routeVision())?.ref,
+      reachable: (r) => this.reachable(r),
+      staysLocal: (r) => this.staysLocal(r),
+    };
+
     this.emit({ type: 'status', message: 'Framing the request.' });
     const reply = new PlanReplyFilter();
     let answering = false;
     this.answer = '';
+    let framedLocalOnly = false;
+    // A Reasoning model that stays on this network reads the chat whole (the
+    // turns its digest carries): a private turn among them taints what it
+    // writes, its own answer or the plan (D5, I5).
+    const readPrivateTurn =
+      !this.leaves(reasoning) && this.digestTurns(false).some((m) => m.localOnly === true);
     try {
-      const pack = await this.packFor(reasoning);
+      const framed = await this.packRender(reasoning);
+      const pack = framed.text;
+      framedLocalOnly = framed.localOnly;
+      // The framing call carries the message and the chat: on a Reasoning
+      // model that leaves, the send is a cloud one from here, whoever
+      // answers it, and however it ends (M1).
+      if (this.leaves(reasoning)) {
+        this.sendLeft = true;
+        this.turnStart(refName(reasoning), 'cloud');
+      }
       await this.completeOnce(
         reasoning,
         undefined,
         planPrompt(
           text,
-          this.stack,
+          roster,
           contextNote,
-          this.conversationDigest(this.leaves(reasoning)),
+          this.conversationDigest(this.leaves(reasoning), reasoning),
           true,
         ),
         {
@@ -1581,12 +1808,8 @@ export class StackDriver implements ChatDriver {
             if (!shown) return;
             if (!answering) {
               answering = true;
-              this.emit({
-                type: 'turn-start',
-                turn: this.history.length,
-                model: refName(reasoning),
-                providerKind: 'cloud',
-              });
+              if (readPrivateTurn) this.sendLocalOnly = true;
+              this.turnStart(refName(reasoning), 'cloud');
             }
             this.showAnswer(shown);
           },
@@ -1610,6 +1833,9 @@ export class StackDriver implements ChatDriver {
     // The reply (a tapped option or free text) is folded back into the framing.
     if (!framing.clear && framing.questions.length) {
       this.pendingClarify = { text };
+      // The questions are this send's turn: one from a model here reads local
+      // (one that leaves marked the send cloud when the framing call went).
+      if (!this.sendLeft) this.turnStart(refName(reasoning), 'local');
       this.emit({ type: 'clarify', summary: framing.summary, questions: framing.questions });
       this.answer = '';
       this.finish('complete');
@@ -1620,25 +1846,62 @@ export class StackDriver implements ChatDriver {
     // single-turn path route it, so behavior is unchanged for those prompts.
     if (framing.steps.length <= 1) return false;
 
-    await this.executePlay({ summary: framing.summary, steps: framing.steps }, text);
+    // D5 on a plan: an anchor that stays on this network read its pack and
+    // the chat whole, so when either held a private note, the goal and the
+    // briefs it wrote may quote it. No step of this plan then goes to a
+    // model that leaves this network (executePlay).
+    const planLocalOnly = (!this.leaves(reasoning) && framedLocalOnly) || readPrivateTurn;
+    await this.executePlay(
+      { summary: framing.summary, steps: framing.steps },
+      text,
+      roster,
+      planLocalOnly,
+    );
     return true;
   }
 
   /** Run the play: brief the user (todos with owners), execute steps in
    *  dependency order handing each to its owner, re-plan at bounded checkpoints,
-   *  then stream a final synthesis. */
-  private async executePlay(initial: Play, userText: string): Promise<void> {
+   *  then stream a final synthesis. `localOnly` says the plan draws on a
+   *  private note (tryRunPlay): every step whose model leaves this network
+   *  then runs on the anchor instead, which stays (D5). */
+  private async executePlay(
+    initial: Play,
+    userText: string,
+    base: PlayStack,
+    localOnly = false,
+  ): Promise<void> {
     const reasoning = this.stack.reasoning ?? harborRef();
     let play = initial;
+    // The stack as this plan reads it. While the plan draws on a private
+    // note, stepRunner covers each step bound for a model that leaves, so
+    // the task list, the working note and the runner all name the anchor.
+    let privatePlan = localOnly;
+    const keepPrivate = (r: StackModelRef) => this.leaves(r);
+    let roster: PlayStack = privatePlan ? { ...base, keepPrivate } : base;
+    // The answer is written from that plan, so it is marked as well (I5).
+    if (privatePlan) this.sendLocalOnly = true;
     // Each step's output, tainted (`localOnly`) when it was written on a seat
     // that read a local-only note: its pack carried one, or a tainted earlier
-    // output reached it whole. A prompt for a seat that leaves this network
-    // gets `LOCAL_ONLY_STUB` in a tainted output's place (I5, as history).
+    // output reached it whole, or the plan itself draws on one. A prompt for
+    // a seat that leaves this network gets `LOCAL_ONLY_STUB` in a tainted
+    // output's place (I5, as history).
     const results: PlayStepResult[] = [];
     const done = new Set<string>();
     const status = new Map<string, 'pending' | 'in_progress' | 'completed'>();
-    const showTodos = () =>
-      this.emit({ type: 'todos', items: briefTodos(play, this.stack, status) });
+    const showTodos = () => this.emit({ type: 'todos', items: briefTodos(play, roster, status) });
+    // The chat's reach for this send (what Chats and the top bar read): the
+    // framing call went to the anchor, and once any step goes to a model
+    // that leaves this network, or to your computer's agent (whose model may
+    // be a cloud one), the send is marked cloud, as a cloud turn is.
+    let reach: 'local' | 'cloud' | undefined;
+    const markReach = (leaves: boolean) => {
+      const next = leaves ? 'cloud' : 'local';
+      if (reach === 'cloud' || reach === next) return;
+      reach = next;
+      this.turnStart(refName(reasoning), next);
+    };
+    markReach(this.leaves(reasoning));
 
     this.emit({
       type: 'status',
@@ -1659,16 +1922,23 @@ export class StackDriver implements ChatDriver {
         if (this.aborted) break;
         status.set(step.id, 'in_progress');
         showTodos();
-        this.emit({ type: 'status', message: handoffNote(step, this.stack) });
 
-        const owner = ownerFor(step, this.stack);
         // A device owner (or an unreachable one) is not run autonomously; the
-        // reasoning anchor covers the step instead.
-        let ref = owner.ref;
-        let placement = owner.placement;
-        if (ref.kind === 'device' || !this.reachable(ref)) {
-          ref = reasoning;
-          placement = undefined;
+        // reasoning anchor covers the step instead. stepRunner is the one
+        // rule, the same one the task list names its owner by.
+        const { ref, placement } = stepRunner(step, roster);
+        // Tenet 4 holds whole (CX and CMO, 2026-10-08, E): a plan never
+        // carries a picture, so an image step with nothing set for Image
+        // reading runs on the Reasoning model from the text, never on a
+        // second model the person did not pick for it, and the note says so.
+        // A model set for Image reading that cannot take the step here (one
+        // on this phone) is named as such, with the model that covers it.
+        this.emit({ type: 'status', message: handoffNote(step, roster) });
+        // Nothing here reads images: the step still runs, the Reasoning model
+        // working from the text, and the turn closes with the two-door offer,
+        // once however many image steps the play holds.
+        if (step.category === 'vision' && !roster.imageReader && !this.pendingOffer) {
+          this.pendingOffer = await this.imageGap('play');
         }
         let out = '';
         let tainted = false;
@@ -1676,23 +1946,62 @@ export class StackDriver implements ChatDriver {
           // A repo/tool step runs on the paired computer's engine when docked
           // (real tools, real approvals). When that is not available it returns
           // null and we fall through to a chat model that describes the change.
-          const onEngine = step.needsTools
-            ? await this.runToolStepOnEngine(step, play, results)
-            : null;
+          // A plan that draws on a private note goes there only when the
+          // computer, asked now, says its Reasoning model stays on its network
+          // and it takes a local-only turn: the step then goes marked, so the
+          // engine's own D5 rules hold for it (CX and CMO, 2026-10-08, J).
+          // Otherwise the step is described here, and the note says why.
+          let onEngine: string | null = null;
+          let privateEngine = false;
+          if (step.needsTools && !privatePlan) {
+            onEngine = await this.runToolStepOnEngine(step, play, results);
+          } else if (step.needsTools && privatePlan && this.engineInReach()) {
+            const report = await this.engineStackReport();
+            if (this.aborted) {
+              this.finish('aborted');
+              return;
+            }
+            if (report?.orchestrator?.kind === 'local' && report.acceptsLocalOnly === true) {
+              privateEngine = true;
+              onEngine = await this.runToolStepOnEngine(step, play, results, true);
+            } else {
+              this.emit({
+                type: 'status',
+                message:
+                  report?.orchestrator?.kind === 'cloud'
+                    ? privatePlanCloudEngineNote(step.title, refName(ref))
+                    : privatePlanEngineNote(step.title, refName(ref)),
+              });
+            }
+          }
           if (onEngine !== null) {
             out = onEngine;
+            // A marked step on a computer whose Reasoning model stays there
+            // reaches no model off its network (the engine refuses a handoff
+            // and never escalates while it holds the step), so the send keeps
+            // its reach; any other engine step may reach a cloud model.
+            markReach(!privateEngine);
             // The engine is on the person's own computer: it read tainted
             // earlier outputs whole, and it may have read a local-only note
             // itself (its tool-end or pack card said so), so its text is
-            // tainted in either case (I5).
-            tainted = this.engineTurnLocalOnly || results.some((r) => r.localOnly === true);
-            if (this.engineTurnLocalOnly) this.sendLocalOnly = true;
-          } else {
-            const pack = await this.packRender(ref);
-            // A seat that stays here reads tainted earlier outputs whole, so
-            // what it writes is tainted too.
+            // tainted in either case (I5). A marked step's always is.
             tainted =
-              pack.localOnly || (!this.leaves(ref) && results.some((r) => r.localOnly === true));
+              privateEngine ||
+              this.engineTurnLocalOnly ||
+              results.some((r) => r.localOnly === true);
+            if (this.engineTurnLocalOnly) {
+              this.sendLocalOnly = true;
+              this.hold.read();
+            }
+          } else {
+            markReach(this.leaves(ref));
+            const pack = await this.packRender(ref);
+            // A seat that stays here reads tainted earlier outputs whole, and
+            // a plan that draws on a private note, so what it writes is
+            // tainted too.
+            tainted =
+              pack.localOnly ||
+              (!this.leaves(ref) && (privatePlan || results.some((r) => r.localOnly === true)));
             out = await this.completeOnce(
               ref,
               placement,
@@ -1718,20 +2027,27 @@ export class StackDriver implements ChatDriver {
         }
       }
 
-      // Hybrid re-plan: after a wave, let the reasoning LLM revise what remains,
+      // Hybrid re-plan: after a wave, let the reasoning model revise what remains,
       // bounded so a run cannot loop forever.
       if (done.size < play.steps.length && replans < MAX_REPLANS) {
         replans++;
         try {
+          const anchorLeaves = this.leaves(reasoning);
           const revised = parseReplan(
             await this.completeOnce(
               reasoning,
               undefined,
-              replanPrompt(play, resultsForSeat(results, this.leaves(reasoning))),
+              replanPrompt(play, this.resultsFor(results, anchorLeaves, reasoning)),
             ),
           );
           if (revised && revised.length) {
             play = mergeReplan(play, done, revised);
+            // An anchor that stays read a tainted output whole, so the
+            // briefs it revised may quote a private note (D5).
+            if (!anchorLeaves && !privatePlan && results.some((r) => r.localOnly === true)) {
+              privatePlan = true;
+              roster = { ...base, keepPrivate };
+            }
             showTodos();
           }
         } catch {
@@ -1765,19 +2081,57 @@ export class StackDriver implements ChatDriver {
    *  from another model lives only here. Bounded, so a long chat never crowds
    *  out the step itself. The live message (the last entry) is left out; each
    *  prompt carries it on its own. */
-  private conversationDigest(leaves: boolean, maxChars = 6000): string | undefined {
+  private conversationDigest(
+    leaves: boolean,
+    seat?: StackModelRef,
+    maxChars = 6000,
+  ): string | undefined {
+    const turns = this.digestTurns(leaves, maxChars);
+    // A model off this network that is sent the placeholder hears it said
+    // once in this chat (F). The paired computer's engine (no seat here)
+    // gets the placeholder inside its step's text, and nothing here names
+    // the model it runs, so no line is said for it.
+    if (seat) {
+      this.notePlaceholder(
+        seat,
+        turns.some((m) => stubsReply(m, leaves)),
+      );
+    }
+    const lines = turns.map(digestLine);
+    return lines.length ? lines.join('\n') : undefined;
+  }
+
+  /** The turns `conversationDigest` carries, marks kept, so a plan can tell
+   *  whether the chat its Reasoning model read held a private turn (D5). */
+  private digestTurns(leaves: boolean, maxChars = 6000): Msg[] {
     // A seat that leaves this network reads the stub for a local-only reply.
     const earlier = historyForSeat(this.history.slice(0, -1), leaves);
-    const lines: string[] = [];
+    const kept: Msg[] = [];
     let used = 0;
     for (let i = earlier.length - 1; i >= 0; i--) {
       const m = earlier[i]!;
-      const line = `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`;
+      const line = digestLine(m);
       if (used + line.length > maxChars) break;
-      lines.unshift(line);
+      kept.unshift(m);
       used += line.length;
     }
-    return lines.length ? lines.join('\n') : undefined;
+    return kept;
+  }
+
+  /** The play's step outputs as `seat` receives them (resultsForSeat),
+   *  saying the placeholder line the first time a model off this network is
+   *  sent the placeholder in place of a step a local model wrote after a
+   *  private read, as for a marked reply in the chat (F). No seat is the
+   *  paired computer's engine, as in conversationDigest. */
+  private resultsFor(
+    results: PlayStepResult[],
+    leaves: boolean,
+    seat?: StackModelRef,
+  ): PlayStepResult[] {
+    if (seat) {
+      this.notePlaceholder(seat, leaves && results.some((r) => r.localOnly === true));
+    }
+    return resultsForSeat(results, leaves);
   }
 
   /** The prompt for one step: the goal, this step's brief, and the prior steps'
@@ -1787,14 +2141,18 @@ export class StackDriver implements ChatDriver {
     play: Play,
     results: PlayStepResult[],
     ref?: StackModelRef,
+    engineKeepsPrivate = false,
   ): string {
-    // No ref is the paired computer's engine, whose model may be a cloud one.
-    const leaves = ref ? this.leaves(ref) : true;
-    const prior = resultsForSeat(results, leaves);
+    // No ref is the paired computer's engine, whose model may be a cloud one,
+    // so it reads the placeholder for a marked turn; unless the step goes
+    // marked local-only to an engine whose Reasoning model stays on its
+    // network (J), which holds it to the engine's own D5 rules.
+    const leaves = ref ? this.leaves(ref) : !engineKeepsPrivate;
+    const prior = this.resultsFor(results, leaves, ref);
     const priorLines = prior.length
       ? ['Work done so far by the team:', ...prior.map((r) => `- ${r.title}: ${r.text}`), '']
       : [];
-    const conversation = this.conversationDigest(leaves);
+    const conversation = this.conversationDigest(leaves, ref);
     return [
       conversation ? `The conversation so far, for context:\n${conversation}\n` : '',
       `Overall goal: ${play.summary}`,
@@ -1812,9 +2170,10 @@ export class StackDriver implements ChatDriver {
 
   /** The final synthesis: compose the answer to the user from the team's work. */
   private synthesisPrompt(userText: string, play: Play, results: PlayStepResult[]): string {
-    const leaves = this.leaves(this.stack.reasoning ?? harborRef());
-    const conversation = this.conversationDigest(leaves);
-    const work = resultsForSeat(results, leaves);
+    const reasoning = this.stack.reasoning ?? harborRef();
+    const leaves = this.leaves(reasoning);
+    const conversation = this.conversationDigest(leaves, reasoning);
+    const work = this.resultsFor(results, leaves, reasoning);
     return [
       "Compose the final answer to the user, using the team's work below. Do not mention the internal steps or handoffs; just give the finished result.",
       ...(conversation ? [`The conversation so far, for context:\n${conversation}`] : []),
@@ -1838,6 +2197,7 @@ export class StackDriver implements ChatDriver {
     step: PlayStep,
     play: Play,
     results: PlayStepResult[],
+    localOnly = false,
   ): Promise<string | null> {
     // The engine lives on your home system (the hub), which is reachable only
     // in the docked profile. Offshore and offline never reach for it, so a tool
@@ -1860,7 +2220,11 @@ export class StackDriver implements ChatDriver {
         type: 'status',
         message: `Running "${step.title}" on your computer.`,
       });
-      return await this.runEngineTurn(this.engineDriver, this.stepPrompt(step, play, results));
+      return await this.runEngineTurn(
+        this.engineDriver,
+        this.stepPrompt(step, play, results, undefined, localOnly),
+        localOnly,
+      );
     } catch (err) {
       // A refused session (403 for a member, an unreachable hub) degrades to
       // describe-only rather than dead-ending the play.
@@ -1908,8 +2272,9 @@ export class StackDriver implements ChatDriver {
   }
 
   /** Send one turn to the engine session and resolve with its final text. The
-   *  turn also settles on abort (see abort()), so a stopped play never hangs. */
-  private runEngineTurn(driver: RemoteDriver, prompt: string): Promise<string> {
+   *  turn also settles on abort (see abort()), so a stopped play never hangs.
+   *  `localOnly` sends it marked (J). */
+  private runEngineTurn(driver: RemoteDriver, prompt: string, localOnly = false): Promise<string> {
     this.engineTurnText = '';
     this.engineTurnLocalOnly = false;
     return new Promise<string>((resolve) => {
@@ -1917,8 +2282,22 @@ export class StackDriver implements ChatDriver {
         this.engineTurnSettle = undefined;
         resolve(this.engineTurnText.trim());
       };
-      driver.send(prompt);
+      driver.send(prompt, undefined, localOnly ? { localOnly: true } : {});
     });
+  }
+
+  /** The paired computer's stack, asked fresh for a private plan's step
+   *  (J): what its Reasoning model is judged by (`orchestrator.kind`) and
+   *  whether it takes a local-only turn. Undefined when it cannot say (out
+   *  of reach, an error, a stop), which reads as an older daemon's silence. */
+  private async engineStackReport(): Promise<DaemonStackInfo | undefined> {
+    const target = this.context.daemon;
+    if (!target) return undefined;
+    try {
+      return await raceAbort(daemonStack(target), this.abortController?.signal);
+    } catch {
+      return undefined;
+    }
   }
 
   /** One reusable completion on a cloud or BYOM model, returning its text.
@@ -2040,7 +2419,13 @@ export class StackDriver implements ChatDriver {
         ...(this.sendLocalOnly ? { localOnly: true as const } : {}),
       });
     }
+    this.hold.settle(Boolean(text) && this.sendLocalOnly);
     this.emit(textFinal(text, this.sendLocalOnly));
+    // The offer follows the answer, so it never splits a streaming reply, and
+    // lands inside the turn; a stopped turn drops it.
+    const offer = this.pendingOffer;
+    this.pendingOffer = undefined;
+    if (offer && reason === 'complete') this.emit({ type: 'image-reader-offer', ...offer });
     this.emit({ type: 'task-done', reason, message });
   }
 
@@ -2107,7 +2492,7 @@ export class StackDriver implements ChatDriver {
             this.finish('error', emptyReplyMessage(turn.ref.modelName));
             return;
           }
-          void this.answerWithSearch(decision.query, turn.ref.modelName, 'local', () =>
+          void this.answerWithSearch(decision.query, turn.ref, 'local', () =>
             this.runDevice(turn.ref, turn.placement),
           ).catch((err) =>
             this.aborted || isAbortError(err)
@@ -2246,7 +2631,7 @@ export class StackDriver implements ChatDriver {
    *  the answer is in, the results give way to one line in history. */
   private async answerWithSearch(
     query: string,
-    model: string,
+    ref: StackModelRef,
     providerKind: 'local' | 'cloud',
     again: () => Promise<void>,
   ): Promise<void> {
@@ -2255,12 +2640,24 @@ export class StackDriver implements ChatDriver {
       this.context.researchOn === true,
       this.emit,
       this.abortController?.signal,
+      this.searchAfterPrivate(ref),
     );
     this.answer = '';
     if (this.aborted) throw abortError();
     this.history.push({ role: 'user', content: resultText });
-    this.emit({ type: 'turn-start', turn: this.history.length, model, providerKind });
+    this.turnStart(refName(ref), providerKind);
     await again();
+  }
+
+  /** A search the seat `ref` wrote, once this chat holds a private note's
+   *  text on a seat that stays on this network (a read, a marked turn, or a
+   *  private pin): it asks every time, and one bound for Perplexity does not
+   *  run (CX and CMO, 2026-10-08, H). Undefined for a clean chat, and for a
+   *  seat that leaves, which was never sent a private note's text. */
+  private searchAfterPrivate(ref: StackModelRef): AfterPrivate | undefined {
+    if (this.leaves(ref)) return undefined;
+    const cause = this.hold.cause();
+    return cause ? { afterPrivate: true, cause } : undefined;
   }
 
   // ---- cloud backends -----------------------------------------------------
@@ -2541,7 +2938,7 @@ export class StackDriver implements ChatDriver {
         if (o.searchable) {
           const decision = this.search.decide(this.webReachable() && searchOffered());
           if (decision.kind === 'search' && o.again) {
-            await this.answerWithSearch(decision.query, seat.label, 'cloud', o.again);
+            await this.answerWithSearch(decision.query, ref, 'cloud', o.again);
             return;
           }
           if (decision.kind !== 'answer') {
@@ -2611,7 +3008,13 @@ export class StackDriver implements ChatDriver {
   }
 
   recordLine(turn: SeedTurn): void {
-    this.history.push({ role: turn.role, content: turn.text });
+    // The mark rides along, as a seed's does (I5).
+    this.history.push({
+      role: turn.role,
+      content: turn.text,
+      ...(turn.localOnly ? { localOnly: true as const } : {}),
+    });
+    this.hold.keep(turn.localOnly);
   }
 
   answerApproval(id: string, answer: ApprovalAnswer): void {

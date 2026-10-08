@@ -10,7 +10,7 @@ import {
 } from '../../config/load.js';
 import { hasAgentCliSettings } from '../../config/trust.js';
 import { ProviderRegistry } from '../../providers/registry.js';
-import { leavesThisNetwork } from '../../providers/types.js';
+import { seatLeaves } from '../../providers/types.js';
 import { getAnthropicKey } from '../../auth/claude.js';
 import { resolveStack } from '../../router/stack.js';
 import { Router } from '../../router/router.js';
@@ -19,9 +19,12 @@ import {
   buildToolRegistry,
   lazyVaultPrivacy,
   networkToolsLeftOut,
+  offlineCut,
   vaultPrivacyConfig,
   type ToolRegistryOptions,
 } from './registry.js';
+import { machineOffline, type MachineOffline } from './offline.js';
+import { isLocalUrl } from '../security/egress.js';
 import { createVaultContextSource, currentStateReader } from '../vault/contextSource.js';
 import { AgentSession } from './loop.js';
 import { seedHistoryFromEvents, unresolvedApprovalIds } from './seed.js';
@@ -31,6 +34,7 @@ import { profileFor, type SecurityProfileName } from '../security/profiles.js';
 import { UsageTracker } from '../../auth/usage.js';
 import { LocalDriver, storedSessionProject } from '../../daemon/session.js';
 import { buildCodeMap } from '../../context/codeMap.js';
+import { vaultFileTest } from '../tools/workspaceNotes.js';
 import { readRepoInstructions } from './instructions.js';
 import { gateProjectSecrets } from './secretsGate.js';
 import { humanizerEnabled } from './humanizerStandard.js';
@@ -47,7 +51,12 @@ import type { VaultContextSource } from '../../harness/vaultContext.js';
 import type { VaultOverrides } from '../../harness/vault/types.js';
 import { vaultContextOn, vaultHandoffOn, vaultPackSize } from '../../harness/vault/settings.js';
 import { HANDOFF_MAX_BYTES } from '../../harness/handoff.js';
-import { readHandoff, writeHandoff, type HandoffScope } from './handoffStore.js';
+import {
+  readHandoff,
+  sweepPreFixHandoffs,
+  writeHandoff,
+  type HandoffScope,
+} from './handoffStore.js';
 import { logger } from '../../util/log.js';
 
 const log = logger('bootstrap');
@@ -176,6 +185,13 @@ export interface BootstrapOptions {
    *  applies to new chats. Undefined leaves the config in charge. Folded
    *  into the config by `applyVaultOverrides`. */
   vaultOverrides?: VaultOverrides;
+  /** This computer's offline state, read before every turn (Desktop Offline,
+   *  founder 2026-10-07). Not a per-session choice from a client: it is the
+   *  computer's own state, which the desktop's main process sets, so every
+   *  session this process hosts (the desktop's own, and a paired phone's
+   *  through the daemon) reads the one machine flag. Defaults to it
+   *  (machineOffline); a test hands in its own. */
+  offline?: () => MachineOffline;
 }
 
 /**
@@ -316,7 +332,11 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   const providers = new ProviderRegistry(config, getAnthropicKey, ethics);
   const stack = resolveStack(config, providers);
   warnings.push(...stack.notes);
-  const router = new Router(config, providers, stack);
+  // This computer's offline flag, read live (Desktop Offline): the router
+  // skips a seat off this network while it says offline, and the loop
+  // follows it before every turn.
+  const offline = options.offline ?? machineOffline;
+  const router = new Router(config, providers, stack, { offline: () => offline().offline });
 
   // The project's secrets reach the model ONLY when the orchestrator is a local
   // model (gateProjectSecrets). A cloud orchestrator never receives them (they
@@ -326,8 +346,12 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   //
   // "Local" is judged by where the orchestrator's requests go (loopback, the
   // LAN, the person's own tailnet), never by a config label: an OpenAI-
-  // compatible server on the internet is as far off the device as a cloud API.
-  const orchestratorKind = leavesThisNetwork(stack.orchestrator.provider) ? 'cloud' : 'local';
+  // compatible server on the internet is as far off the device as a cloud API,
+  // and an Ollama cloud tag on this computer's Ollama answers on ollama.com
+  // (seatLeaves).
+  const orchestratorKind = seatLeaves(stack.orchestrator.provider, stack.orchestrator.ref.model)
+    ? 'cloud'
+    : 'local';
   const { projectSecrets, egressLockdown } = gateProjectSecrets(
     orchestratorKind,
     options.projectSecrets,
@@ -371,6 +395,12 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   };
   const tools = buildToolRegistry(registryOptions);
   const offlineTools = networkToolsLeftOut(registryOptions);
+  // What leaves the menu while this computer is offline: the same network
+  // tools, and making an image when the image server is off this network.
+  const cutWhenOffline = offlineCut({
+    ...registryOptions,
+    imageServerLeaves: Boolean(config.imageGen && !isLocalUrl(config.imageGen.baseUrl)),
+  });
   const toolContext = buildToolContext({
     cwd: options.cwd,
     config,
@@ -379,6 +409,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     projectName,
     egressLockdown,
     vault: vaultRoot !== null,
+    offline: () => offline().offline,
     // The caller's own root replaces the machine's. The privacy rules are the
     // machine's (projectPolicy classes them machine) unioned with that root's
     // own settings file, which only narrows (Vault M7, CTO L4).
@@ -420,7 +451,9 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
 
   let codeMap: string | undefined;
   try {
-    codeMap = buildCodeMap(options.cwd);
+    // Files in the vault folder are named, never outlined (D5).
+    const nameOnly = vaultFileTest(toolContext.vaultRoot, options.cwd);
+    codeMap = buildCodeMap(options.cwd, nameOnly ? { nameOnly } : {});
   } catch (err) {
     log.warn('code map failed', { err: String(err) });
   }
@@ -516,6 +549,10 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   // routine) neither writes nor reads one: its own vault note records the
   // run, and a scripted run's summary must never become the person's "where
   // you left off" on the same project, whatever owner key it would carry.
+  // A handoff written before the local-only fix (0.1.64) may carry a private
+  // note's words: every such record is removed once per machine, before any
+  // session reads one (CX and CMO, 2026-10-08, A). A no-op after the first.
+  sweepPreFixHandoffs();
   const handoffOn =
     options.profile !== 'headless' &&
     config.vault?.handoff !== 'off' &&
@@ -566,6 +603,8 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     harnessCurrents: egressLockdown ? undefined : harnessCurrents,
     permissionMode: options.permissionMode,
     ...(offlineTools.length ? { offlineTools } : {}),
+    offline,
+    ...(cutWhenOffline.length ? { offlineCut: cutWhenOffline } : {}),
     ...(options.canGrantVerify === false ? { canGrantVerify: false } : {}),
     vaultContext,
     ...(handoffOn ? { onHandoff: (record) => void writeHandoff(handoffScope(), record) } : {}),

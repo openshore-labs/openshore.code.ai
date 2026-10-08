@@ -17,6 +17,9 @@
 // goes through: `oscode-source: "crew"`, the model, when it started, and,
 // when the scheduler judged them, where the seat ran (by address), its class,
 // and a cloud seat's provider. Machine `vault.provenance: off` passes 'off'.
+//
+// A run that drew on a private note writes `oscode: "local-only"` in the
+// block (CX and CMO, 2026-10-08, A), so its note stays on this computer too.
 import { VAULT_DAILY_DEFAULTS, dailyNotePath, datePartsOf } from '../harness/vault/dates.js';
 import { mergeProvenance } from '../harness/vault/provenance.js';
 import type {
@@ -72,6 +75,11 @@ export interface RunNoteFields {
    *  (machine `vault.provenance: off`) writes none. Absent still writes the
    *  source, the model, and the start. */
   provenance?: RunNoteProvenance | 'off';
+  /** The run drew on a private note (its session held local-only text at
+   *  some point), so its note may quote one: the block carries
+   *  `oscode: "local-only"` and the vault judges the note private (CX and
+   *  CMO, 2026-10-08, A). */
+  localOnly?: true;
 }
 
 /** The seat a run used, as the scheduler judged it at open. */
@@ -152,6 +160,7 @@ export function runNoteFrontmatter(f: RunNoteFields): string {
     `started: ${yamlString(f.started)}`,
     `state: ${yamlString(f.state)}`,
     `tags: [${tags}]`,
+    ...(f.localOnly ? [`oscode: ${yamlString('local-only')}`] : []),
     ...(previous ? [`previous: ${yamlString(previous)}`] : []),
     ...(day ? [`day: ${yamlString(day)}`] : []),
     '---',

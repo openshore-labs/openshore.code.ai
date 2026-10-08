@@ -4,18 +4,21 @@
 // a crew member running on the person's own computer and models.
 //
 // The room is a sub-page of Crew. Its parts, top to bottom: the live
-// headline and counts; anything waiting on the person; the roster with each
-// member's presence; the routines themselves (the clock, the access, the
-// switch); and the results inbox, newest first, each opening a result sheet
-// with the transcript one tap away. Copy stays honest: "while your computer
-// is on", never "always on"; "works, then asks", never "unsupervised".
+// headline and counts; anything waiting on the person; the crew in one line,
+// with Manage back to Crew (D17); the routines themselves (the clock, the
+// access, the switch, each naming its member and presence); and the results
+// inbox, newest first, each opening a result sheet with the transcript one
+// tap away. Copy stays honest: "while your computer is on", never "always
+// on"; "works, then asks", never "unsupervised".
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { agenticView, useApp } from '../state/store.js';
 import { PlusNote } from '../components/PlusNote.js';
 import { CREW_PLUS_LINE } from '../lib/payGate.js';
 import { BackBar } from '../components/BackBar.js';
 import { Sheet } from '../components/Sheet.js';
+import { SheetTitle } from '../components/SheetHead.js';
 import { SwipeRow } from '../components/SwipeRow.js';
+import { Switch } from '../components/Switch.js';
 import { Markdown } from '../components/Markdown.js';
 import { bridge } from '../lib/electronBridge.js';
 import { isDesktop } from '../lib/platform.js';
@@ -25,7 +28,6 @@ import {
   PRESET,
   accessLabel,
   CLOCK_ELSEWHERE_LINE,
-  agentPresenceLine,
   busiestFirst,
   clockKeptElsewhere,
   controlBlurb,
@@ -73,6 +75,20 @@ interface Draft {
   access: 'read-only' | 'edit';
   maxMinutes: number;
   enabled: boolean;
+}
+
+/** The crew in one line (D17): how many members, and how many a routine
+ *  uses. The members themselves live in Crew, behind Manage. With every
+ *  member deleted, the routines below still run, as the delete promised. */
+function crewCountLine(crew: readonly CrewAgent[], routines: RoutineView[]): string {
+  const n = crew.length;
+  if (n === 0) return 'No crew members. The routines below keep their schedule.';
+  const busy = crew.filter((a) => routinesForAgent(routines, a).length > 0).length;
+  if (n === 1) return busy ? '1 member, and it has a routine.' : '1 member, with no routine yet.';
+  if (busy === 0) return `${n} members, none with a routine yet.`;
+  return busy === n
+    ? `${n} members, each with a routine.`
+    : `${n} members, ${busy} with a routine.`;
 }
 
 function PresenceDot({ tone }: { tone: PresenceTone }) {
@@ -195,26 +211,7 @@ export function CrewCommandScreen() {
     .sort()[0];
   const unlocked = customRoutinesUnlocked(runs);
   const hasPreset = routines.some((r) => r.name === PRESET.name);
-  const machine = where === 'desktop' ? 'this computer' : (daemon?.name ?? 'your main computer');
-
-  // The roster: every crew member, plus a member a routine names that is not
-  // on the crew any more (a deleted card must not hide a live routine).
-  const roster = useMemo(() => {
-    const rows: Array<{ key: string; agent: { id: string; name: string }; level?: string }> =
-      crew.map((a: CrewAgent) => ({
-        key: a.id,
-        agent: { id: a.id, name: a.name },
-        level: a.activityLevel,
-      }));
-    for (const r of routines) {
-      const known = rows.some((row) =>
-        r.agentId ? row.agent.id === r.agentId : row.agent.name === r.agentName,
-      );
-      if (!known)
-        rows.push({ key: `r:${r.id}`, agent: { id: r.agentId ?? '', name: r.agentName } });
-    }
-    return rows;
-  }, [crew, routines]);
+  const machine = where === 'desktop' ? 'this computer' : (daemon?.name ?? 'your computer');
 
   const orderedRoutines = useMemo(() => busiestFirst(routines), [routines]);
 
@@ -383,7 +380,7 @@ export function CrewCommandScreen() {
         <PlusNote feature="crew" line={CREW_PLUS_LINE} />
         <section className={`cc-hero ${where}`} aria-label="Crew status">
           <div className="cc-hero-top">
-            <div className="cc-kicker">Crew command · {machine}</div>
+            <div className="cc-kicker">{machine}</div>
             <span className={`cc-control-badge ${where}`}>
               <span className="cc-control-dot" aria-hidden="true" />
               {controlLabel(where)}
@@ -449,7 +446,7 @@ export function CrewCommandScreen() {
           {unpaired ? (
             <div className="cc-hero-actions">
               <button className="btn primary press-fb" onClick={() => setView('pair')}>
-                Pair your computer
+                Connect your computer
               </button>
               <button
                 className="btn ghost press-fb"
@@ -465,9 +462,8 @@ export function CrewCommandScreen() {
           <section className="cc-section" aria-label="What your crew can do">
             <h2>What your crew can do</h2>
             <p className="lead" style={{ marginBottom: 14 }}>
-              These run on your own computer, on the models you hold. You set them up while
-              connected to your computer. After that you can watch and steer them from here,
-              anywhere, and take control whenever you are back in reach over Tailscale.
+              Set routines up while you are connected to your computer. Away from it, you see the
+              last picture here. Back in reach, you take control again.
             </p>
             <div className="cc-dormant">
               <div className="cc-dormant-item">
@@ -543,56 +539,38 @@ export function CrewCommandScreen() {
                 Manage
               </button>
             </div>
-            {roster.length === 0 ? (
+            {/* One line, not a second roster (founder, D17, 2026-10-07): the
+                members live in Crew, behind Manage, and each routine below
+                names its member and its presence. */}
+            {crew.length === 0 && routines.length === 0 ? (
               <p className="hint">
                 No crew yet. The first routine adds a Reviewer to your crew for you.
               </p>
             ) : (
-              <div className="cc-roster">
-                {/* The Agentic Current that is on joins the roster as a member
-                    on its own computer. Rendered only through the
-                    contribution: with none on, the roster is exactly as before. */}
-                {current && !slotNone(current.crew) ? (
-                  <div className="cc-member muted">
-                    <span className="crew-monogram auto" aria-hidden="true">
-                      {(current.crew.name.trim()[0] ?? '?').toUpperCase()}
-                    </span>
-                    <div className="cc-member-body">
-                      <div className="cc-member-name">
-                        {current.crew.name} <span className="pill local">on its own computer</span>
-                      </div>
-                      <div className="cc-member-line">
-                        <PresenceDot tone={currentProbes[current.id] ? 'ok' : 'muted'} />
-                        {currentProbes[current.id] ? current.crew.line : 'Not answering yet.'}
-                      </div>
+              <p className="cc-crew-count">{crewCountLine(crew, routines)}</p>
+            )}
+            {/* The Agentic Current that is on joins the crew as a member on
+                its own computer, the one card left here, since Crew does not
+                list it. Rendered only through the contribution: with none on,
+                the section is the count alone. */}
+            {current && !slotNone(current.crew) ? (
+              <div className="cc-roster cc-roster-current">
+                <div className="cc-member muted">
+                  <span className="crew-monogram auto" aria-hidden="true">
+                    {(current.crew.name.trim()[0] ?? '?').toUpperCase()}
+                  </span>
+                  <div className="cc-member-body">
+                    <div className="cc-member-name">
+                      {current.crew.name} <span className="pill local">on its own computer</span>
+                    </div>
+                    <div className="cc-member-line">
+                      <PresenceDot tone={currentProbes[current.id] ? 'ok' : 'muted'} />
+                      {currentProbes[current.id] ? current.crew.line : 'Not answering yet.'}
                     </div>
                   </div>
-                ) : null}
-                {roster.map((row) => {
-                  const mine = routinesForAgent(routines, row.agent);
-                  const top = busiestFirst(mine)[0];
-                  const tone: PresenceTone = top ? presenceTone(top.presence) : 'muted';
-                  return (
-                    <div key={row.key} className={`cc-member ${tone}`}>
-                      <span
-                        className={`crew-monogram ${row.level ?? 'request'}`}
-                        aria-hidden="true"
-                      >
-                        {(row.agent.name.trim()[0] ?? '?').toUpperCase()}
-                      </span>
-                      <div className="cc-member-body">
-                        <div className="cc-member-name">{row.agent.name}</div>
-                        <div className="cc-member-line">
-                          <PresenceDot tone={tone} />
-                          {agentPresenceLine(mine, now) ??
-                            (mine.length ? 'Idle' : 'No routine yet')}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                </div>
               </div>
-            )}
+            ) : null}
           </section>
         ) : null}
 
@@ -645,7 +623,7 @@ export function CrewCommandScreen() {
               {canControl ? (
                 unlocked ? (
                   <button className="cc-link press-fb" onClick={beginNew}>
-                    + New routine
+                    New routine
                   </button>
                 ) : (
                   <span className="pill muted" title="Unlocks after the first routine finishes">
@@ -722,18 +700,13 @@ export function CrewCommandScreen() {
                       </button>
                       <label className="cc-switch-row">
                         <span className="cc-switch-label">{r.enabled ? 'On' : 'Paused'}</span>
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={r.enabled}
-                          aria-label={r.enabled ? `Pause ${r.name}` : `Resume ${r.name}`}
-                          className={`switch${r.enabled ? ' on' : ''}`}
-                          onClick={() => {
-                            void updateRoutine(r.id, { enabled: !r.enabled });
+                        <Switch
+                          checked={r.enabled}
+                          label={r.enabled ? `Pause ${r.name}` : `Resume ${r.name}`}
+                          onChange={(next) => {
+                            void updateRoutine(r.id, { enabled: next });
                           }}
-                        >
-                          <span className="switch-knob" />
-                        </button>
+                        />
                       </label>
                     </div>
                   ) : r.lastRun?.sessionId ? (
@@ -817,9 +790,15 @@ export function CrewCommandScreen() {
       <Sheet open={Boolean(draft)} onClose={() => setDraft(undefined)}>
         {draft ? (
           <>
-            <h2 className="cc-sheet-title" key={draft.id ?? 'new'}>
-              {draft.id ? 'Edit routine' : draft.name === PRESET.name ? PRESET.name : 'New routine'}
-            </h2>
+            <div className="cc-sheet-title" key={draft.id ?? 'new'}>
+              <SheetTitle>
+                {draft.id
+                  ? 'Edit routine'
+                  : draft.name === PRESET.name
+                    ? PRESET.name
+                    : 'New routine'}
+              </SheetTitle>
+            </div>
             <p className="sheet-sub">
               Runs on {machine} while it is on, on your own models. It works, then asks.
             </p>
@@ -836,8 +815,9 @@ export function CrewCommandScreen() {
             </div>
 
             <div className="field">
-              <label>Crew member</label>
+              <label htmlFor="routine-member">Crew member</label>
               <select
+                id="routine-member"
                 className="select"
                 value={draft.agentKey}
                 onChange={(e) => setDraft({ ...draft, agentKey: e.target.value })}
@@ -860,8 +840,9 @@ export function CrewCommandScreen() {
             </div>
 
             <div className="field">
-              <label>Task</label>
+              <label htmlFor="routine-task">Task</label>
               <textarea
+                id="routine-task"
                 rows={4}
                 placeholder="What should they do each time, in your words."
                 value={draft.task}
@@ -871,9 +852,10 @@ export function CrewCommandScreen() {
             </div>
 
             <div className="field">
-              <label>Workspace</label>
+              <label htmlFor="routine-workspace">Workspace</label>
               {workspaces.length || draft.cwd ? (
                 <select
+                  id="routine-workspace"
                   className="select"
                   value={draft.cwd}
                   onChange={(e) => setDraft({ ...draft, cwd: e.target.value })}
@@ -967,8 +949,9 @@ export function CrewCommandScreen() {
                 </div>
               </div>
               <div className="field">
-                <label>Time cap</label>
+                <label htmlFor="routine-cap">Time cap</label>
                 <select
+                  id="routine-cap"
                   className="select"
                   value={draft.maxMinutes}
                   onChange={(e) => setDraft({ ...draft, maxMinutes: Number(e.target.value) })}
@@ -1031,9 +1014,9 @@ export function CrewCommandScreen() {
       <Sheet open={Boolean(detail)} onClose={() => setDetail(undefined)}>
         {detail ? (
           <>
-            <h2 className="cc-sheet-title" key={detail.id}>
-              {routineById(detail.routineId)?.name ?? 'Routine'}
-            </h2>
+            <div className="cc-sheet-title" key={detail.id}>
+              <SheetTitle>{routineById(detail.routineId)?.name ?? 'Routine'}</SheetTitle>
+            </div>
             <p className="sheet-sub">
               {runStateLabel(detail.state)} · {runWhen(detail, now)}
               {detail.steps ? ` · ${detail.steps} ${detail.steps === 1 ? 'step' : 'steps'}` : ''}

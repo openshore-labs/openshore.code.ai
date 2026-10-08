@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { oscHome } from '../config/load.js';
 import { loadOrCreateToken } from '../core/security/daemonAuth.js';
 import type { ApprovalAnswer } from '../core/agent/types.js';
-import type { DriverEvent, SessionDriver } from './session.js';
+import type { DriverEvent, SendOptions, SessionDriver } from './session.js';
 import { logger } from '../util/log.js';
 
 const log = logger('attach');
@@ -159,11 +159,18 @@ export class RemoteDriver implements SessionDriver {
     for (const sink of this.sinks) sink(event, seq);
   }
 
-  send(text: string): void {
+  /** Images do not ride this route. A message marked local-only keeps its
+   *  mark on the wire (CX and CMO, 2026-10-08, J), so the daemon holds the
+   *  task to the engine's D5 rules, as LocalDriver does in process. */
+  send(
+    text: string,
+    _images?: Array<{ base64: string; mediaType: string }>,
+    options: SendOptions = {},
+  ): void {
     void fetch(`${this.target.baseUrl}/sessions/${this.id}/input`, {
       method: 'POST',
       headers: { authorization: `Bearer ${this.target.token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, ...(options.localOnly ? { localOnly: true } : {}) }),
     }).catch((err) => {
       for (const sink of this.sinks) {
         sink(

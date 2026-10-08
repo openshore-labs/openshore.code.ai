@@ -5,7 +5,7 @@
 // or scope change cannot quietly regress the promise.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HARBOR_BYLINE, buildHarborSystemPrompt } from '../src/lib/harbor.js';
 import {
   HARBOR_MINI_APPROX_LABEL,
@@ -18,9 +18,12 @@ import {
   HARBOR_MINI_MODEL_ID,
   HARBOR_MINI_MODEL_NAME,
   HARBOR_MINI_MODEL_URL,
+  HARBOR_MINI_ROW_SUB,
   buildHarborMiniSystemPrompt,
 } from '../src/lib/harborMini.js';
 import { APP_KNOWLEDGE } from '../src/lib/guideKnowledge.js';
+import { GUIDE_CARDS } from '../src/lib/guideCards.js';
+import { setupAdvice } from '../src/lib/guideHarness.js';
 import { SETUP_GUIDES, guideStepsCompact } from '../src/lib/setupGuides.js';
 
 // The em dash and its encoded spellings, assembled from pieces so the
@@ -99,6 +102,14 @@ describe('the guide bylines', () => {
     expect(b).toContain('offline');
     expect(b).toContain('first launch');
     expect(b).not.toContain('always on');
+  });
+
+  it("says Built in once on Settings' Harbor Lite row, where Built in is the value", () => {
+    expect(HARBOR_MINI_ROW_SUB.toLowerCase()).not.toContain('built in');
+    expect(HARBOR_MINI_BYLINE).toBe(`Built in. ${HARBOR_MINI_ROW_SUB}`);
+    const screen = readFileSync(join(process.cwd(), 'src/screens/SettingsScreen.tsx'), 'utf8');
+    expect(screen).toContain('sub={HARBOR_MINI_ROW_SUB}');
+    expect(screen).not.toContain('HARBOR_MINI_BYLINE');
   });
 });
 
@@ -229,7 +240,7 @@ describe('the delightful first-run (Creative Studio: The Standing Light)', () =>
 
   // Founder, 2026-09-23: a new person opens straight into Harbor Lite's chat,
   // not a setup wall and not a Personal-or-Business question. The setup page
-  // is the "go further" tier, reached from a button under the greeting.
+  // is the optional tier, reached from a button under the greeting.
   it('opens a new person into the built-in guide chat, with setup one tap away', () => {
     const store = readFileSync(join(process.cwd(), 'src/state/store.ts'), 'utf8');
     expect(store).toContain("view: 'chat',");
@@ -243,7 +254,17 @@ describe('the delightful first-run (Creative Studio: The Standing Light)', () =>
     expect(HARBOR_MINI_GREETING).toContain('Set up OpenShore');
     const paths = readFileSync(join(process.cwd(), 'src/components/StartingPaths.tsx'), 'utf8');
     expect(paths).not.toContain('Say hello');
-    expect(paths).toContain("When you're ready to go further");
+    // One lead, on the page itself: the old "go further" label is gone. The
+    // Harbor card is one tap with one line (D9, founder 2026-10-07, which
+    // replaces the byline's two sentences there): what it is, on the device
+    // in hand, and its size.
+    expect(paths).not.toContain('paths-further-head');
+    expect(paths).toContain('`A coding model on ${thisDeviceNoun()}, ${HARBOR_APPROX_LABEL}`');
+    expect(paths).not.toContain('Real reasoning');
+    const page = readFileSync(join(process.cwd(), 'src/screens/OnboardingScreen.tsx'), 'utf8');
+    // Its last two words hold together on a narrow window (Slide Over).
+    expect(page).toContain("SETUP_LEAD_TAIL = 'Everything below is\\u00a0optional.'");
+    expect(page).toContain('<BackBar');
   });
 
   it('asks Personal or Business only when an account is created', () => {
@@ -257,5 +278,59 @@ describe('the delightful first-run (Creative Studio: The Standing Light)', () =>
     expect(signUp.slice(0, 800)).toContain('accountChoice: true');
     const setup = readFileSync(join(process.cwd(), 'src/components/AccountSetup.tsx'), 'utf8');
     expect(setup).toContain('<h3>Business</h3>');
+  });
+});
+
+// CX and CMO, 2026-10-08 (D, E, K): a plan never carries a picture, so the
+// founder's 2026-10-07 exception is gone from every guide; a cloud model runs
+// only when the person picks or places it; and with both Image reading slots
+// set, the Cloud model takes a picture the Local one failed on only after a
+// card. The guides say it in the words What leaves this device backs.
+describe('the guides say when a cloud model runs, with no exception', () => {
+  const card = (id: string) => GUIDE_CARDS.find((c) => c.id === id)!.text;
+  const EXCEPTION =
+    /one exception|except that|image step goes to (?:a connected|one|Claude|that model)/i;
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it('reading images: the Local model first, a card before the Cloud one, a plan on the text', () => {
+    expect(card('image-reading')).toMatch(
+      /^A picture in a Stack chat goes to the model set under Image reading, without asking\. With both set, the Local model reads first, and the Cloud model takes a picture the Local one failed on only after you approve\. With none set, another model that can read it \(your Reasoning model, or a cloud model you connected\) gets it after you approve\. A plan never carries a picture, so with none set its image step goes to your Reasoning model, which works from the text\. When nothing can read images, the chat says so and offers two ways: Source a local model/,
+    );
+  });
+
+  it('the Bench, Cloud Connections and Privacy cards', () => {
+    expect(card('bench')).toBe(
+      'Models you download or connect wait on the Bench until you place them. Teal is local and private, amber is cloud. Tap Add to stack, choose a category, and optionally a trigger, a persona, and effort.',
+    );
+    expect(card('cloud-connections')).toContain(
+      'API keys are stored only on your device and sent only to their provider. A cloud model runs, and spends, only when you pick it or place it. How:',
+    );
+    expect(card('privacy')).toMatch(
+      /What leaves this device: a cloud model you chose, a web search you allowed, update checks, the model list, and your account while signed in\.$/,
+    );
+    for (const c of GUIDE_CARDS) expect(c.text, c.id).not.toMatch(EXCEPTION);
+  });
+
+  it("Harbor Lite's setup advice and knowledge", async () => {
+    expect(setupAdvice({ ramGB: 16 })).toContain(
+      'Add a cloud API key under Cloud Connections only if you want the strongest model for hard tasks; it spends on your key only when you pick it or place it.',
+    );
+    expect(APP_KNOWLEDGE).toContain(
+      'under Cloud Connections; it spends on your key only when you pick it or place it.',
+    );
+    expect(APP_KNOWLEDGE).not.toMatch(EXCEPTION);
+    // A Personal build has no Marketplace, so its knowledge carries the
+    // other way to name a cloud model.
+    vi.stubEnv('VITE_RELEASE_TIER', '');
+    vi.resetModules();
+    const personal = (await import('../src/lib/guideKnowledge.js')).APP_KNOWLEDGE;
+    expect(personal).toContain(
+      "Connect one by adding that provider's API key under Cloud Connections; it then runs on your own key, and only once you pick it or place it in your Stack.",
+    );
+    expect(personal).not.toMatch(EXCEPTION);
   });
 });

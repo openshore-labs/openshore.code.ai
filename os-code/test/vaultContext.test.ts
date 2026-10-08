@@ -193,6 +193,14 @@ describe('buildContextPack', () => {
     const plain = build({ mode: 'current-state', projectPins: ['Work/Runbook.md'] });
     expect(plain.used.some((u) => u.path === 'Work/Runbook.md')).toBe(true);
     expect(plain.localOnly).toBeUndefined();
+    // Each private source says so, so a host can tell a project pin from any
+    // other cause (CX and CMO, 2026-10-08, A, G, H).
+    expect(cold.used.find((u) => u.path === 'Work/Marked.md')).toMatchObject({
+      layer: 'pin',
+      project: true,
+      localOnly: true,
+    });
+    expect(plain.used.find((u) => u.path === 'Work/Runbook.md')?.localOnly).toBeUndefined();
     const cloud = build({
       pins: ['Private/Deploy secrets.md'],
       seat: { modelClass: 'large', leavesNetwork: true },

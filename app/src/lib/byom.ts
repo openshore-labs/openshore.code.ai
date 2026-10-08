@@ -7,7 +7,7 @@
 // The endpoint URL and model id are plain metadata, persisted in settings. The
 // API key (optional: a local server may need none) lives in the device secret
 // store, keyed by the connection id, never in settings.
-import { hostIsLocal } from 'os-code/protocol';
+import { hostIsLocal, isOllamaCloudTag } from 'os-code/protocol';
 import type { StackModelRef } from './stack.js';
 
 /** A user-connected model endpoint. Metadata only; the key is in the secret
@@ -45,7 +45,9 @@ export function byomRef(conn: ByomConnection): StackModelRef {
  *  on this machine, the home network, or this device's own tailnet is `local`
  *  (teal, "your server"); anything else is someone's cloud (amber), even when
  *  the person holds the key, because the words leave for a host they do not
- *  run.
+ *  run. Given the model it serves, an Ollama cloud tag ("kimi-k3:cloud") is
+ *  cloud wherever its Ollama runs, since that Ollama passes every request on
+ *  to ollama.com (the engine's own seat judge, `seatLeaves`).
  *
  *  Judged by address with the one shared judge, `hostIsLocal` from
  *  os-code/protocol (Vault M5, CTO J2), the same call that decides whether a
@@ -57,7 +59,9 @@ export function byomRef(conn: ByomConnection): StackModelRef {
 export function byomReach(
   baseUrl: string,
   ownTailnetSuffix: string | null = null,
+  model?: string,
 ): 'local' | 'cloud' {
+  if (model !== undefined && isOllamaCloudTag(model)) return 'cloud';
   const host = byomHost(baseUrl);
   if (!host) return 'cloud';
   return hostIsLocal(host, { ownTailnetSuffix }) ? 'local' : 'cloud';

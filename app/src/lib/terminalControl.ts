@@ -121,7 +121,7 @@ export type ApprovalDecision =
   { action: 'auto-approve' } | { action: 'auto-deny'; reason: string } | { action: 'sheet' };
 
 export function decideApproval(
-  req: Pick<ApprovalRequest, 'kind' | 'toolName' | 'lockdown'>,
+  req: Pick<ApprovalRequest, 'kind' | 'toolName' | 'lockdown' | 'alwaysAsk'>,
   ctx: {
     driverKind: string;
     desktopLocal: boolean;
@@ -146,6 +146,13 @@ export function decideApproval(
       reason: terminalControlDenyReason({ label, canControl: ctx.canControl }),
     };
   }
+  // A card that asks every time (vaultWrite, and a project note change or a
+  // web search or page after the chat read a private note, CX and CMO
+  // 2026-10-08, A and H) is never answered by a mode. It reaches a client
+  // brain when a Stack plan's step runs on the computer's engine and the
+  // Stack forwards the engine's card, a private plan's marked step above all
+  // (J), so Accept edits and Bypass in the app must not approve it there.
+  if (req.alwaysAsk === true) return { action: 'sheet' };
   // A client-brain tool runs in the app, so the permission mode auto-answers the
   // class it covers, exactly as before Terminal Control existed.
   if (ctx.driverKind !== 'desktop') {

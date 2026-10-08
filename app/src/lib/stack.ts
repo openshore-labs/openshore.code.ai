@@ -1,15 +1,15 @@
-// The app-side Stack model: the user's Reasoning LLM (the anchor, required and
+// The app-side Stack model: the user's Reasoning model (the anchor, required and
 // immovable) plus categorized specialists, with a Bench of models that are
 // available but not yet placed. This mirrors the engine's capability taxonomy
 // (os-code/src/router/roles.ts) so the app and the router speak the same
 // categories, and adds what the engine does not yet carry: a per-specialist
 // persona, a free-text "when called" trigger, and a Custom category.
 //
-// The Reasoning LLM plans and routes each task to the specialist whose category
+// The Reasoning model plans and routes each task to the specialist whose category
 // fits, and executes the task itself whenever no specialist is placed for it.
 import { HARBOR_MINI_MODEL_ID, HARBOR_MINI_MODEL_NAME } from './harborMini.js';
 import { PROVIDERS, providerModelVision } from './providers.js';
-import { DEFAULT_CLAUDE_MODEL } from './claudeModels.js';
+import { byomReach } from './byom.js';
 import type { Effort } from './effort.js';
 import type { ProfileId } from './profiles.js';
 
@@ -20,7 +20,7 @@ export interface CategoryInfo {
   id: StackCategory;
   /** Plain label the user picks from the dropdown. */
   plain: string;
-  /** One line describing when the Reasoning LLM calls this specialist. */
+  /** One line describing when the Reasoning model calls this specialist. */
   hint: string;
 }
 
@@ -39,6 +39,13 @@ export const STACK_CATEGORIES: CategoryInfo[] = [
 export function categoryLabel(id: StackCategory): string {
   return STACK_CATEGORIES.find((c) => c.id === id)?.plain ?? id;
 }
+
+/** The Stack's lead, the one place it is written, so the phone and the desktop
+ *  say it the same way. The review's Keep list holds these words as they are;
+ *  the anchor's name, Reasoning model, leads the Runs the show row's sub and
+ *  sits in the model sheet. */
+export const STACK_LEAD =
+  'One model runs the show and hands each task to the specialist that fits. Anything without a specialist, it does itself.';
 
 // A model that can sit in the stack: an on-device model, a built-in cloud
 // provider's model, or a user-connected "bring your own model" endpoint.
@@ -133,12 +140,13 @@ export function visionCapable(ref: StackModelRef): boolean {
 export function pickVisionRef(
   stack: AppStack,
   reachable: (ref: StackModelRef) => boolean,
+  staysLocal: (ref: StackModelRef) => boolean = (r) => refStaysLocal(r),
 ): { ref: StackModelRef; placement?: Placement } | undefined {
   const ok = (r: StackModelRef) => visionCapable(r) && reachable(r);
   // The local vision slot is preferred over the cloud slot when it can actually
   // read images (a capable BYOM vision model today; an on-device one when that
   // runtime lands), so "put a local LLM in it" wins over the cloud fallback.
-  const { local, cloud } = visionSlots(stack);
+  const { local, cloud } = visionSlots(stack, staysLocal);
   if (local && ok(local.ref)) return { ref: local.ref, placement: local.placement };
   if (cloud && ok(cloud.ref)) return { ref: cloud.ref, placement: cloud.placement };
   if (stack.reasoning && ok(stack.reasoning)) return { ref: stack.reasoning };
@@ -147,34 +155,51 @@ export function pickVisionRef(
   return undefined;
 }
 
-/** The most capable cloud model, the default the Vision cloud slot falls to
- *  until a person assigns their own. Claude's whole lineup reads images, and
- *  Opus is the strongest of it. */
-export function defaultVisionCloudRef(): StackModelRef {
-  return { kind: 'cloud', provider: 'anthropic', model: DEFAULT_CLAUDE_MODEL, label: 'Claude' };
+/** Whether a model in the stack answers on this person's own network, judged
+ *  by address, never by its kind: a model on this device is; a cloud
+ *  provider's is not; a model you connect is when its server is on this
+ *  machine, the home network, or this device's own tailnet (`byomReach`, the
+ *  judge the Stack's chip reads), and it is not an Ollama cloud tag. A
+ *  `*.ts.net` server reads cloud unless `ownTailnetSuffix` says it is ours. */
+export function refStaysLocal(ref: StackModelRef, ownTailnetSuffix: string | null = null): boolean {
+  switch (ref.kind) {
+    case 'device':
+      return true;
+    case 'cloud':
+      return false;
+    case 'byom':
+      return byomReach(ref.baseUrl, ownTailnetSuffix, ref.model) === 'local';
+  }
 }
 
 /** The two Vision slots the manager shows: a local model (on-device or your own
  *  server, the ones "you control") and a cloud model. Both are ordinary vision
- *  placements; this just splits them by kind so the UI can present one of each.
- *  A person may fill either, both, or neither; an empty cloud slot falls back to
- *  the most capable cloud model. */
-export function visionSlots(stack: AppStack): {
+ *  placements; this just splits them by where they answer, judged by address
+ *  (`staysLocal`, `refStaysLocal` unless the caller knows this device's own
+ *  tailnet), so a model you connect at a public address is never the Local
+ *  one. A person may fill either, both, or neither; an empty cloud slot falls
+ *  back to the chat path's reader, Claude Haiku 4.5 first, until the person
+ *  chooses one (D13; lib/providers.ts cloudImageReaders). */
+export function visionSlots(
+  stack: AppStack,
+  staysLocal: (ref: StackModelRef) => boolean = (r) => refStaysLocal(r),
+): {
   local?: ActiveMember;
   cloud?: ActiveMember;
 } {
   const vision = stack.active.filter((m) => m.placement.category === 'vision');
   return {
-    local: vision.find((m) => m.ref.kind === 'device' || m.ref.kind === 'byom'),
-    cloud: vision.find((m) => m.ref.kind === 'cloud'),
+    local: vision.find((m) => staysLocal(m.ref)),
+    cloud: vision.find((m) => !staysLocal(m.ref)),
   };
 }
 
 /** Whether an image turn could be read at all right now: a capable model in the
  *  stack (pickVisionRef), or, failing that, a connected cloud provider that
- *  reads images and is reachable in this profile. This is what the composer's
- *  attach button checks for a "My Stack" chat, so the button lights exactly
- *  when a picture would actually be understood. */
+ *  reads images and is reachable in this profile. A Stack chat takes a picture
+ *  either way and answers one it cannot read with the two-door offer
+ *  (founder, 2026-10-07); the offer card reads this to fold its doors once
+ *  something can. */
 export function stackVisionReady(
   stack: AppStack,
   signals: {
@@ -202,7 +227,7 @@ export function stackForProfile(stacks: ProfileStacks | undefined, profile: Prof
   return stacks?.[profile] ?? emptyStack();
 }
 
-/** A fresh stack: Harbor Lite is the first Reasoning LLM (kept small so
+/** A fresh stack: Harbor Lite is the first Reasoning model (kept small so
  *  first-run download size and time stay low), nothing placed yet. */
 export function emptyStack(): AppStack {
   return { reasoning: harborRef(), active: [], saved: {} };

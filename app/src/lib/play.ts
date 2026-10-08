@@ -1,9 +1,9 @@
-// The play: how OpenShore turns a prompt into a run. The reasoning LLM from My
+// The play: how OpenShore turns a prompt into a run. The reasoning model from My
 // Stack frames the prompt (asking the user to clarify only when it is genuinely
 // ambiguous), then composes a play, an ordered set of handoffs to the stack's
 // specialist models with dependencies between them, the way a coach draws up a
 // sequence of passes. Any category with no assigned specialist is run by the
-// reasoning LLM itself. This module is the pure core: the shapes, the planner
+// reasoning model itself. This module is the pure core: the shapes, the planner
 // and re-plan prompts and their robust parsing, the dependency scheduling, the
 // owner resolution, and the brief the user sees before it runs. The driver
 // (stackDriver.ts) executes it; keeping the hard logic here keeps it testable
@@ -12,7 +12,7 @@ import type { TodoItem } from 'os-code/protocol';
 import {
   STACK_CATEGORIES,
   categoryLabel,
-  defaultVisionCloudRef,
+  harborRef,
   refKey,
   refName,
   visionSlots,
@@ -21,6 +21,8 @@ import {
   type StackCategory,
   type StackModelRef,
 } from './stack.js';
+import { imageStepCoveredNote, imageStepNote } from './imageNote.js';
+import { privatePlanStepNote } from './vaultCopy.js';
 
 /** A step is owned by a specialist category, or by the reasoning anchor. */
 export type StepCategory = StackCategory | 'reasoning';
@@ -46,7 +48,7 @@ export interface PlayStep {
    *  computer's engine when docked rather than a chat-only model. */
   needsTools?: boolean;
   /** A level deeper than the category: a specific model to run this step, by its
-   *  stack id (refKey). Set when the reasoning LLM wants a particular model for
+   *  stack id (refKey). Set when the reasoning model wants a particular model for
    *  a particular subject or decision (the founder's parameterized routing).
    *  Falls back to category routing when it names no model in the stack. */
   owner?: string;
@@ -58,7 +60,7 @@ export interface Play {
   steps: PlayStep[];
 }
 
-/** The reasoning LLM's framing of a prompt: clear enough to run, or a short set
+/** The reasoning model's framing of a prompt: clear enough to run, or a short set
  *  of questions to settle first. When clear, the play's steps are present. */
 export interface Framing {
   clear: boolean;
@@ -166,7 +168,7 @@ export function topoOrder(steps: PlayStep[]): PlayStep[] {
 }
 
 /** Merge a mid-run re-plan: keep the steps already done, replace the rest with
- *  the reasoning LLM's revised remaining steps. Revised steps may depend on the
+ *  the reasoning model's revised remaining steps. Revised steps may depend on the
  *  done ones. Ids stay unique across the merge. */
 export function mergeReplan(play: Play, done: Set<string>, rawRemaining: unknown): Play {
   const keptDone = play.steps.filter((s) => done.has(s.id));
@@ -183,20 +185,48 @@ export function mergeReplan(play: Play, done: Set<string>, rawRemaining: unknown
 
 // ---- owner resolution ----------------------------------------------------
 
+/** The stack as a play reads it: the person's stack, plus the model an image
+ *  in the chat would go to while nothing is placed for Image reading. The
+ *  driver fills `imageReader` with the chat path's own choice (stackDriver's
+ *  routeVision); a plan never carries a picture, so an unplaced image step
+ *  runs on the Reasoning model from the text whatever it holds (CX and CMO,
+ *  2026-10-08, E), and `imageReader` says only whether something here reads
+ *  images (the working note, and the two-door offer when nothing does).
+ *  `reachable` is the driver's reach in this status, so the brief and the
+ *  runner agree on who a step really runs on (stepRunner); left out, every
+ *  model is in reach. */
+export type PlayStack = AppStack & {
+  /** Whether a model answers on this person's own network (the driver's
+   *  seat judge, which knows this device's tailnet), so an image step goes
+   *  to the Local slot first; left out, `refStaysLocal` by address. */
+  staysLocal?: (ref: StackModelRef) => boolean;
+  imageReader?: StackModelRef;
+  reachable?: (ref: StackModelRef) => boolean;
+  /** Set while the plan draws on a private note (D5): the driver's judge of
+   *  whether a model's requests leave this network, by address. The plan's
+   *  goal and briefs were written by a Reasoning model that read the note
+   *  whole, so a step whose model leaves runs on the Reasoning model instead
+   *  (stepRunner), and neither the plan nor the note reaches that model. */
+  keepPrivate?: (ref: StackModelRef) => boolean;
+};
+
 export interface StepOwner {
   ref: StackModelRef;
   placement?: Placement;
-  /** True when no specialist is placed for this category, so the reasoning
-   *  anchor owns it (the founder's "the reasoning LLM takes over"). */
+  /** True when no specialist is placed for this category, or the one placed
+   *  cannot run the step here (stepRunner), so the reasoning anchor owns it
+   *  (the founder's "the reasoning model takes over"). */
   fellBack: boolean;
 }
 
 /** Who runs a step: the specialist placed for its category, else the reasoning
- *  anchor. Vision reads from its two slots (local preferred, then cloud, then
- *  the default cloud model). This is the intended owner for the briefing;
- *  execution re-checks reachability and may fall back further. */
-export function ownerFor(step: PlayStep, stack: AppStack): StepOwner {
+ *  anchor (the one the driver runs, Harbor Lite when none is set). Vision
+ *  reads from its two slots (local preferred, then cloud), then the stack's
+ *  image reader. This is the intended owner for the briefing; execution
+ *  re-checks reachability and may fall back further. */
+export function ownerFor(step: PlayStep, stack: PlayStack): StepOwner {
   const reasoning = stack.reasoning;
+  const anchor = reasoning ?? harborRef();
   // A level deeper: a step may name a specific model to run it. Honor it when it
   // names a model actually in the stack (an active specialist or the anchor).
   if (step.owner) {
@@ -207,25 +237,52 @@ export function ownerFor(step: PlayStep, stack: AppStack): StepOwner {
     }
   }
   if (step.category === 'reasoning') {
-    return { ref: reasoning ?? defaultVisionCloudRef(), placement: undefined, fellBack: false };
+    return { ref: anchor, placement: undefined, fellBack: false };
   }
   if (step.category === 'vision') {
-    const { local, cloud } = visionSlots(stack);
+    const { local, cloud } = visionSlots(stack, stack.staysLocal);
     const member = local ?? cloud;
     if (member) return { ref: member.ref, placement: member.placement, fellBack: false };
-    return { ref: defaultVisionCloudRef(), placement: undefined, fellBack: true };
+    // Nothing placed for Image reading: a plan never carries a picture, so
+    // the step goes to no other model; the Reasoning model works from the
+    // text (CX and CMO, 2026-10-08, E, taking off the founder's 2026-10-07
+    // exception), whatever `imageReader` holds.
+    return { ref: anchor, placement: undefined, fellBack: true };
   }
   const specialist = stack.active.find((m) => m.placement.category === step.category);
   if (specialist) return { ref: specialist.ref, placement: specialist.placement, fellBack: false };
-  return { ref: reasoning ?? defaultVisionCloudRef(), placement: undefined, fellBack: true };
+  return { ref: anchor, placement: undefined, fellBack: true };
 }
 
-/** A short owner label for the briefing: the model's name, noting when the
- *  reasoning anchor is covering an unplaced category. */
-export function ownerLabel(step: PlayStep, stack: AppStack): string {
+/** Who a step really runs on: its owner (ownerFor), unless that owner
+ *  cannot run it here on its own, a model on this device (a play never runs
+ *  one unattended) or one out of reach in this status, when the reasoning
+ *  anchor covers the step and `covered` names the owner it stands in for.
+ *  While the plan draws on a private note (`keepPrivate`), an owner whose
+ *  requests leave this network is covered the same way, and `private` says
+ *  why. The one rule the task list, the working note and the runner all
+ *  read, so the list never names a model the step does not run on. */
+export function stepRunner(
+  step: PlayStep,
+  stack: PlayStack,
+): StepOwner & { covered?: StackModelRef; private?: true } {
   const owner = ownerFor(step, stack);
-  const name = refName(owner.ref);
-  return owner.fellBack && step.category !== 'reasoning' ? `${name} (reasoning)` : name;
+  const anchor = stack.reasoning ?? harborRef();
+  if (refKey(owner.ref) === refKey(anchor)) return owner;
+  if (owner.ref.kind !== 'device' && stack.keepPrivate?.(owner.ref) === true) {
+    return { ref: anchor, placement: undefined, fellBack: true, covered: owner.ref, private: true };
+  }
+  const inReach = stack.reachable ?? (() => true);
+  if (owner.ref.kind !== 'device' && inReach(owner.ref)) return owner;
+  return { ref: anchor, placement: undefined, fellBack: true, covered: owner.ref };
+}
+
+/** A short owner label for the briefing: the name of the model the step runs
+ *  on (stepRunner), noting when the reasoning anchor is covering it. */
+export function ownerLabel(step: PlayStep, stack: PlayStack): string {
+  const runner = stepRunner(step, stack);
+  const name = refName(runner.ref);
+  return runner.fellBack && step.category !== 'reasoning' ? `${name} (reasoning)` : name;
 }
 
 // ---- the user-facing brief -----------------------------------------------
@@ -234,7 +291,7 @@ export function ownerLabel(step: PlayStep, stack: AppStack): string {
  *  them live as steps run): the step title, its owner, and its status. */
 export function briefTodos(
   play: Play,
-  stack: AppStack,
+  stack: PlayStack,
   statusById: Map<string, TodoItem['status']> = new Map(),
 ): TodoItem[] {
   return topoOrder(play.steps).map((s) => ({
@@ -246,7 +303,7 @@ export function briefTodos(
 
 /** A compact text brief for the chat: one line per play in run order, each with
  *  its owner. Deliberately terse (the founder: "as brief as possible"). */
-export function formatBriefTable(play: Play, stack: AppStack): string {
+export function formatBriefTable(play: Play, stack: PlayStack): string {
   const lines = topoOrder(play.steps).map(
     (s, i) => `${i + 1}. ${s.title}  ->  ${ownerLabel(s, stack)}`,
   );
@@ -255,15 +312,52 @@ export function formatBriefTable(play: Play, stack: AppStack): string {
 
 // ---- prompts and parsing -------------------------------------------------
 
+/** A bare vision step, to ask ownerFor who an unplaced one would go to. */
+const visionProbe: PlayStep = {
+  id: 'vision',
+  title: '',
+  category: 'vision',
+  brief: '',
+  dependsOn: [],
+};
+
+/** Who a plan's image step runs on in this stack: stepRunner's answer for a
+ *  bare vision step, the rule the run itself follows. The Stack's Image
+ *  reading rows read it, so they say a model takes a plan's image step only
+ *  when it does (a model on this device in the Local slot hands the step to
+ *  the reasoning model instead). */
+export function imageStepRunner(stack: PlayStack): StackModelRef {
+  return stepRunner(visionProbe, stack).ref;
+}
+
+/** Whether a plan can run on this stack at all, the driver's own gate
+ *  (stackDriver's runTurn): the Reasoning model frames every plan, so it is
+ *  off this device and in reach, and a plan has someone to hand a step to, a
+ *  placed model off this device in reach (a pocket model's step the anchor
+ *  would cover itself), or the paired computer's engine for a step that
+ *  edits files (`engineInReach`). The Stack's Image reading rows read it, so
+ *  they speak of a plan's image step only on a stack that can plan. */
+export function planCanRun(
+  stack: AppStack,
+  reachable: (ref: StackModelRef) => boolean,
+  engineInReach: boolean,
+): boolean {
+  const lead = stack.reasoning ?? harborRef();
+  if (lead.kind === 'device' || !reachable(lead)) return false;
+  return engineInReach || stack.active.some((m) => m.ref.kind !== 'device' && reachable(m.ref));
+}
+
 /** The categories this stack can hand off to, and who owns each, so the planner
  *  plans against the real roster and marks a fallback honestly. */
-function rosterLines(stack: AppStack): string {
+function rosterLines(stack: PlayStack): string {
   const byCategory = STACK_CATEGORIES.map((c) => {
     const placed =
       c.id === 'vision'
         ? Boolean(visionSlots(stack).local || visionSlots(stack).cloud)
         : stack.active.some((m) => m.placement.category === c.id);
-    return `- ${c.id} (${c.plain}): ${placed ? 'has a specialist' : 'no specialist, the reasoning LLM covers it'}`;
+    // An unplaced step, an image step included (a plan carries no picture,
+    // E), is the Reasoning model's.
+    return `- ${c.id} (${c.plain}): ${placed ? 'has a specialist' : 'no specialist, the reasoning model covers it'}`;
   });
   // A level deeper: the specific models placed in the stack, with the id to
   // target and, when set, the subject that model was placed for. The planner can
@@ -281,12 +375,12 @@ function rosterLines(stack: AppStack): string {
   ].join('\n');
 }
 
-/** The plan call: the reasoning LLM frames the prompt and, when it is clear,
+/** The plan call: the reasoning model frames the prompt and, when it is clear,
  *  lays out the play. It returns ONLY JSON. Kept provider-agnostic so the same
  *  prompt works for Claude, an OpenAI-compatible model, or a capable local one. */
 export function planPrompt(
   userText: string,
-  stack: AppStack,
+  stack: PlayStack,
   contextNote?: string,
   /** The chat so far (conversationDigest), so "it" and "that" in the request
    *  resolve against what was already said, a switched-in thread included. */
@@ -307,7 +401,7 @@ export function planPrompt(
         ]
       : []),
     '',
-    'The categories you can hand off to (anything else the reasoning LLM does itself):',
+    'The categories you can hand off to (anything else the reasoning model does itself):',
     rosterLines(stack),
     '',
     contextNote ? `Context: ${contextNote}` : '',
@@ -488,9 +582,37 @@ export function parseReplan(text: string): PlayStep[] | undefined {
   return sanitizePlay(arr);
 }
 
-/** How the driver labels the plan step in the chat when it hands off. */
-export function handoffNote(step: PlayStep, stack: AppStack): string {
+/** How the driver labels the plan step in the chat when it hands off. An image
+ *  step with nothing set for Image reading (and no model named for it) runs
+ *  on the Reasoning model from the text, since a plan carries no picture, and
+ *  its note says so (CX and CMO, 2026-10-08, E). An image step whose model
+ *  set for Image reading cannot take it here names that model and the one
+ *  that covers it, never "Handing to" a model that does not run it. A step
+ *  kept off a model that leaves this network, because the plan draws on a
+ *  private note, names both models and says why (D5). */
+export function handoffNote(step: PlayStep, stack: PlayStack): string {
+  const runner = stepRunner(step, stack);
+  if (runner.private && runner.covered) {
+    return privatePlanStepNote(step.title, refName(runner.covered), refName(runner.ref));
+  }
+  if (step.category === 'vision' && runner.covered) {
+    return imageStepCoveredNote(step.title, runner.covered, runner.ref);
+  }
+  const slots = visionSlots(stack);
+  if (step.category === 'vision' && !slots.local && !slots.cloud && !namedOwner(step, stack)) {
+    return imageStepNote(step.title, stack.imageReader, stack.reasoning ?? harborRef());
+  }
   return `${step.title}. Handing to ${ownerLabel(step, stack)}.`;
+}
+
+/** Whether a step names a model in the stack to run it (ownerFor's first
+ *  rule), so its own owner decides rather than its category. */
+function namedOwner(step: PlayStep, stack: PlayStack): boolean {
+  if (!step.owner) return false;
+  return (
+    stack.active.some((m) => refKey(m.ref) === step.owner) ||
+    Boolean(stack.reasoning && refKey(stack.reasoning) === step.owner)
+  );
 }
 
 /** The default categories, re-exported so callers do not reach past this module

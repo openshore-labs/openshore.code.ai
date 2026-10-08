@@ -1,8 +1,9 @@
 // The sidebar is the app's main navigation (founder, 2026-09-02): every room
 // in one group at the top (founder, 2026-10-01), the day-one rooms first and
-// Crew, Cloud Connections and Hub pairing under the Vault. New chat and the
-// project switcher live in the Chats and Projects rooms. Persistent on
-// desktop, a slide-over drawer on the phone.
+// Crew, Cloud Connections and Pairing under them, in navRooms' order for this
+// device (D10, founder 2026-10-07), so a phone with no computer keeps Terminal
+// after the Vault. New chat and the project switcher live in the Chats and
+// Projects rooms. Persistent on desktop, a slide-over drawer on the phone.
 //
 // The person's own order (founder, 2026-10-01): every room can be dragged to
 // a new place, in its group or across to the other (hooks/useNavReorder.ts,
@@ -16,7 +17,8 @@
 // rest sit greyed at the bottom under a gold Upgrade banner. A greyed room
 // still answers the tap: it opens the paywall (store.ts setView).
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
-import { roomOpen, visibleRooms } from '../lib/focus.js';
+import { roomOpen } from '../lib/focus.js';
+import { isDesktop } from '../lib/platform.js';
 import { PAY_GATES_ENABLED, roomPaid } from '../lib/payGate.js';
 import { accountCopy } from '../lib/accountGate.js';
 import { accountInitial, planStanding, useProfileSheet } from '../lib/profile.js';
@@ -24,7 +26,7 @@ import { isOrgAdmin, useApp, type ViewName } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
 import type { GestureProps } from '../hooks/useDrawerGesture.js';
 import { BrandMark } from './BrandMark.js';
-import { ROOM_LABELS, type NavRoom } from '../lib/navRooms.js';
+import { ROOM_LABELS, navRooms, type NavRoom } from '../lib/navRooms.js';
 import { Icon } from './Icon.js';
 import {
   NAV_ORDER_VERSION,
@@ -36,6 +38,7 @@ import {
 import { useNavReorder } from '../hooks/useNavReorder.js';
 import { durationMs } from '../lib/motion.js';
 import type { Conversation } from '../state/types.js';
+import { inChatScope } from '../lib/chatScope.js';
 
 // Every view that has a nav glyph: all ViewNames except the ones that never
 // appear as a nav item (chat is home; onboarding and terminal are full-screen
@@ -51,39 +54,40 @@ type NavIconName = Exclude<
   'chat' | 'onboarding' | 'terminal' | 'project' | 'projectmemory' | 'crewcommand'
 >;
 
-// The nav is split so a first-week user is not met with a dozen destinations
-// at once (CMO ruling). PRIMARY is the day-one set, pinned to the top: chat,
-// its project bucket, the coding surface (Repositories), where a model is
-// attached (Stack), and the Vault. Everything else is real but
-// second-session, grouped quietly at the bottom so it reads as depth, not
-// clutter: Admin leads that group (when the account carries it) and Settings
-// closes it.
+// A page inside a room keeps that room lit: the project room lights Projects,
+// Crew command lights Crew, and the full-screen terminal lights Terminal.
+const ROOM_OF: Partial<Record<ViewName, NavIconName>> = {
+  project: 'projects',
+  crewcommand: 'crew',
+  terminal: 'terminalroom',
+};
+
 const nav = (view: NavIconName & NavRoom) => ({ view, label: ROOM_LABELS[view] });
 
-// The release tier takes a later tier's rooms out here, at the one door (a
-// Personal build shows the v1 rooms only; see lib/focus.ts).
 type NavEntry = { view: NavIconName; label: string };
-const PRIMARY_NAV: NavEntry[] = visibleRooms(
-  (['chats', 'projects', 'terminalroom', 'repos', 'stack', 'vault'] as const).map(nav),
-);
-
-const EXPLORE_NAV: NavEntry[] = visibleRooms(
-  (['crew', 'connections', 'pair', 'marketplace', 'stackhealth', 'launch'] as const).map(nav),
-);
 
 // Settings is pinned to the bottom, under every room and above the sign-in
 // card, in both layouts (founder, 2026-10-01).
 const SETTINGS: NavEntry = nav('settings');
 
-// The order before the person has moved anything: every room in one group
-// above the recent chats, Crew, Cloud Connections and Hub pairing straight
-// under the Vault (founder, 2026-10-01, "no need for a separate section").
-// The group below the recent chats stays, empty, for a room the person drags
-// there.
-const DEFAULT_ORDER: NavOrder = {
-  top: [...PRIMARY_NAV, ...EXPLORE_NAV].map((e) => e.view as MovableRoom),
-  bottom: [],
-};
+/** The order before the person has moved anything: every room in one group
+ *  above the recent chats (founder, 2026-10-01, "no need for a separate
+ *  section"), in navRooms' order for this device (D10, founder 2026-10-07):
+ *  the day-one rooms first, then Crew, Cloud Connections and Pairing. On a
+ *  phone with no computer, Terminal is only a setup page, so it waits after
+ *  the Vault, and it moves up to third the day the phone pairs. The release
+ *  tier takes a later tier's rooms out inside navRooms, at the one door (a
+ *  Personal build shows the v1 rooms only; see lib/focus.ts). The group below
+ *  the recent chats stays, empty, for a room the person drags there. */
+export function defaultNavOrder(device: { desktop: boolean; hubPaired: boolean }): NavOrder {
+  const { primary, explore } = navRooms(device);
+  return {
+    top: [...primary, ...explore]
+      .map((e) => e.view)
+      .filter((v): v is MovableRoom => v !== 'settings'),
+    bottom: [],
+  };
+}
 
 const entryOf = (view: MovableRoom): NavEntry => nav(view);
 
@@ -93,7 +97,8 @@ export const PLUS_ROOM_LABEL = (label: string) => `${label}, part of OpenShore P
 
 // Hand-drawn line icons for the nav, in the same language as PairScreen's
 // download tiles: a 24-unit grid, 2px round-cap / round-join strokes, and
-// currentColor so `.nav-item.active` tints them --local with no per-icon color.
+// currentColor so `.nav-item.active` tints the current room's glyph --accent
+// with no per-icon color.
 // Each depicts its room in a calm monochrome studio style. Decorative only; the
 // text label beside each carries the name for assistive tech.
 const ICON_NODES: Record<NavIconName, JSX.Element> = {
@@ -220,6 +225,12 @@ function NavIcon({ name }: { name: NavIconName }) {
   );
 }
 
+/** A room's own glyph, where a screen draws the same thing (the project tile,
+ *  the repositories door). */
+export function RoomGlyph({ name, size }: { name: 'projects' | 'repos'; size: number }) {
+  return <Icon size={size}>{ICON_NODES[name]}</Icon>;
+}
+
 export function Sidebar({
   drawer,
   closing,
@@ -246,7 +257,7 @@ export function Sidebar({
   progress?: number | null;
   dragProps?: GestureProps;
 }) {
-  const { view, setView, setDrawer, settings, openPaywall, saveSettings } = useApp();
+  const { view, viewTrail, setView, setDrawer, settings, openPaywall, saveSettings } = useApp();
   const { configured: authConfigured, signedIn, email } = useAuth();
   const showProfile = useProfileSheet((st) => st.show);
   // True in every build while the pay gates are off (state/payOps.ts), so
@@ -257,8 +268,13 @@ export function Sidebar({
 
   // An order saved under the old two-group default is set aside once, so
   // every room comes up under the Vault; the person's moves from here on keep.
+  // A saved order wins over the device's default: only someone who never
+  // moved a row sees Terminal move up when the phone pairs.
   const savedOrder = settings.navOrder?.v === NAV_ORDER_VERSION ? settings.navOrder : undefined;
-  const saved = resolveNavOrder(savedOrder, DEFAULT_ORDER);
+  const saved = resolveNavOrder(
+    savedOrder,
+    defaultNavOrder({ desktop: isDesktop(), hubPaired: Boolean(settings.daemon) }),
+  );
   const reorder = useNavReorder(
     saved,
     (next) => void saveSettings({ navOrder: { ...next, v: NAV_ORDER_VERSION } }),
@@ -283,6 +299,13 @@ export function Sidebar({
   // drawer-row-in): the wordmark is 0, the top rooms follow, and the rest
   // carry on counting so the whole door fills top to bottom.
   const stagger = (i: number) => ({ '--i': i }) as CSSProperties;
+  // The project notes open from a project or from the Vault; light the one they came from.
+  const lit =
+    view === 'projectmemory'
+      ? viewTrail.includes('vault')
+        ? 'vault'
+        : 'projects'
+      : (ROOM_OF[view] ?? view);
   const item = (
     { view: v, label }: NavEntry,
     i: number,
@@ -293,9 +316,10 @@ export function Sidebar({
     return (
       <button
         key={v}
-        className={`nav-item press-fb press-fb--row${view === v ? ' active' : ''}${opts.locked ? ' nav-item--plus' : ''}${movable ? ' nav-item--movable' : ''}${lifted ? ' lifted' : ''}`}
+        className={`nav-item press-fb press-fb--row${lit === v ? ' active' : ''}${opts.locked ? ' nav-item--plus' : ''}${movable ? ' nav-item--movable' : ''}${lifted ? ' lifted' : ''}`}
         style={stagger(1 + i)}
         aria-label={opts.locked ? PLUS_ROOM_LABEL(label) : undefined}
+        aria-current={lit === v ? 'page' : undefined}
         onClick={() => setView(v, { root: true })}
         {...(movable ? reorder.rowProps(v as MovableRoom) : {})}
       >
@@ -478,8 +502,8 @@ export function Sidebar({
 
 // The recent chats between the two groups: as many as fit cleanly in the space
 // the groups leave, newest first, then View all to the Chats room. Same reach
-// as that room (the active project's chats), so View all shows the same list
-// continued. The fixed row heights live in theme.css (.sidebar-recents).
+// as that room (lib/chatScope.ts), so View all shows the same list continued.
+// The fixed row heights live in theme.css (.sidebar-recents).
 const RECENT_ROW = 34;
 const RECENT_HEAD = 30;
 const RECENT_FOOT = 36;
@@ -498,7 +522,7 @@ export function recentChats(
         Boolean(c) &&
         // A fresh chat with nothing said yet is not a place to dip back into.
         !(c!.title === 'New chat' && c!.thread.items.length === 0) &&
-        (projectId ? c!.projectId === projectId : !c!.projectId),
+        inChatScope(c!, projectId),
     )
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 }
@@ -538,7 +562,9 @@ function RecentChats({ divider, i }: { divider?: (el: HTMLElement | null) => voi
     >
       {shown.length > 0 ? (
         <>
-          <h2 className="sidebar-recents-head">Recents</h2>
+          <h2 className="sidebar-recents-head">
+            <span>{projects.length > 1 && project ? `Recents in ${project.name}` : 'Recents'}</span>
+          </h2>
           {shown.map((c) => (
             <button
               key={c.id}

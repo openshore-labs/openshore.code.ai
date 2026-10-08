@@ -42,9 +42,9 @@ export const LANDING_LINES: Record<TimeBucket, readonly string[]> = {
   earlyMorning: [
     'Up before the sun?',
     'Early start today.',
-    'Coffee’s brewing?',
+    "Coffee's brewing?",
     'First light, first commit.',
-    'The world’s still asleep.',
+    "The world's still asleep.",
     'Quiet hours, clear head.',
     'Fresh morning, fresh branch.',
     'A calm start today.',
@@ -52,28 +52,27 @@ export const LANDING_LINES: Record<TimeBucket, readonly string[]> = {
   morning: [
     'Coffee and coding?',
     'Good morning. Where do we start?',
-    'Morning. What’s first?',
+    "Morning. What's first?",
     'A clean slate today.',
     'Ready when you are.',
-    'What’s on the workbench?',
-    'Let’s make something good.',
+    "What's on the workbench?",
+    "Let's make something good.",
     'Morning. Pick a thread.',
     'What are we shipping today?',
   ],
   midday: [
-    'The afternoon’s open.',
+    'Midday. Where to next?',
     'Halfway there, still flowing?',
-    'What’s next on the list?',
+    "What's next on the list?",
     'A clear stretch ahead.',
-    'One more before lunch?',
+    'Plenty of day left.',
     'Still in the zone?',
-    'A good stretch ahead.',
   ],
   afternoon: [
     'Where were we?',
-    'Afternoon stretch. What’s next?',
+    "Afternoon stretch. What's next?",
     'Second wind?',
-    'Let’s close a few loops.',
+    "Let's close a few loops.",
     'What can we finish today?',
     'Chipping away today?',
     'A quiet afternoon build.',
@@ -84,16 +83,16 @@ export const LANDING_LINES: Record<TimeBucket, readonly string[]> = {
     'Winding down, or just starting?',
     'What are we building tonight?',
     'Evening. No rush.',
-    'Evening. Let’s tinker.',
+    "Evening. Let's tinker.",
     'A little something before bed?',
-    'What’s on your mind tonight?',
+    "What's on your mind tonight?",
   ],
   lateNight: [
     'Late night flow?',
     'The quiet hours are yours.',
     'Just you and the cursor.',
     'One more commit before bed?',
-    'The world’s asleep. Let’s build.',
+    "The world's asleep. Let's build.",
     'Deep in it tonight?',
     'Still up, still building?',
     'The house is quiet.',
@@ -104,7 +103,7 @@ export const LANDING_LINES: Record<TimeBucket, readonly string[]> = {
 // are time-agnostic; Monday and Friday carry the start/close of the week.
 export const WEEKEND_LINES: readonly string[] = [
   'Weekend project?',
-  'Saturday’s for side projects.',
+  "Saturday's for side projects.",
   'Sunday tinkering?',
   'A slow weekend build?',
   'Weekend hours, the best kind.',
@@ -116,8 +115,8 @@ export const WEEKEND_LINES: readonly string[] = [
 export const MONDAY_LINES: readonly string[] = [
   'Fresh week. Fresh start.',
   'New week, clean branch.',
-  'Monday. Let’s set the tone.',
-  'The week’s first move?',
+  "Monday. Let's set the tone.",
+  "The week's first move?",
   'Ease into it. Where do we start?',
   'Monday. One thing at a time.',
 ];
@@ -128,7 +127,7 @@ export const FRIDAY_LINES: readonly string[] = [
   'Close the week out strong?',
   'One good push left?',
   'Friday flow.',
-  'Almost the weekend. What’s left?',
+  "Almost the weekend. What's left?",
 ];
 
 // The languages the tap rotates through, after English. Warm and a touch
@@ -144,7 +143,7 @@ export const GREETINGS: readonly Greeting[] = [
   {
     lang: 'French',
     code: 'fr',
-    native: 'Bonjour. On construit quoi aujourd’hui ?',
+    native: "Bonjour. On construit quoi aujourd'hui ?",
     english: 'Hello. So what are we building today?',
   },
   {
@@ -330,7 +329,7 @@ export const GREETINGS: readonly Greeting[] = [
   {
     lang: 'Welsh',
     code: 'cy',
-    native: 'Helô. Beth ydyn ni’n ei adeiladu heddiw?',
+    native: "Helô. Beth ydyn ni'n ei adeiladu heddiw?",
     english: 'Hi. What are we building today?',
   },
   {

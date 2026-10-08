@@ -150,8 +150,7 @@ export function DockForm({
       {!desktop ? (
         <>
           <button
-            className="btn primary press-fb"
-            style={{ width: '100%' }}
+            className="btn primary block press-fb"
             disabled={testing}
             aria-busy={testing}
             onClick={() => setScanning(true)}
@@ -228,8 +227,7 @@ export function DockForm({
             />
           </div>
           <button
-            className="btn primary press-fb"
-            style={{ width: '100%' }}
+            className="btn primary block press-fb"
             disabled={testing}
             onClick={() => void connect()}
           >

@@ -48,7 +48,7 @@ export const GUIDE_EVAL_CASES: readonly GuideEvalCase[] = [
   },
   {
     id: 'reasoning-llm',
-    message: 'What is the Reasoning LLM?',
+    message: 'What is the Reasoning model?',
     route: 'app',
     cards: ['stack'],
     mustInclude: [['plan', 'route', 'orchestrat']],
@@ -171,6 +171,13 @@ export const GUIDE_EVAL_CASES: readonly GuideEvalCase[] = [
     cards: ['model-picker'],
   },
   { id: 'attach', message: 'Can I send it a screenshot?', route: 'app', cards: ['attachments'] },
+  {
+    id: 'read-images',
+    message: 'How do I get it to read images?',
+    route: 'app',
+    cards: ['image-reading'],
+    mustInclude: [['llava', 'cloud']],
+  },
   { id: 'voice', message: 'Can I talk to it hands free?', route: 'app', cards: ['voice-mode'] },
   {
     id: 'byom',

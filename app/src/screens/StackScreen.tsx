@@ -1,8 +1,8 @@
 // Stack: the one mandatory orchestrator and the optional specialists.
 // Editable on the desktop; the phone shows the live picture from the daemon.
 import { InstallByName } from '../components/InstallByName.js';
-import { useCallback, useEffect, useState } from 'react';
-import type { DaemonStackInfo } from 'os-code/protocol';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { isOllamaCloudTag, type DaemonStackInfo } from 'os-code/protocol';
 import { stackAdmin, useApp } from '../state/store.js';
 import { bridge, type DesktopStatus } from '../lib/electronBridge.js';
 import { isDesktop } from '../lib/platform.js';
@@ -17,24 +17,82 @@ import type { Catalog } from 'os-code/protocol';
 import { Sheet } from '../components/Sheet.js';
 import { SheetHead } from '../components/SheetHead.js';
 import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
+import { STACK_CATEGORIES, STACK_LEAD, categoryLabel, type StackCategory } from '../lib/stack.js';
+import { thisDeviceNoun } from '../lib/deviceNoun.js';
+import { claudeModel, claudeModelLabel } from '../lib/claudeModels.js';
+import { providerModelLabel } from '../lib/providers.js';
+import { StatusSheet } from '../components/ProfileStatus.js';
+import {
+  desktopStackNote,
+  offlineChosen,
+  offlineNow,
+  reasoningSlotSub,
+} from '../state/offlineOps.js';
 
-const ROLES: Array<{ role: string; plain: string }> = [
-  { role: 'coding', plain: 'great at code' },
-  { role: 'writing', plain: 'writes beautifully' },
-  { role: 'analysis', plain: 'good with numbers' },
-  { role: 'vision', plain: 'can read screenshots' },
-  { role: 'embedding', plain: 'finds the right files' },
-  { role: 'fast', plain: 'fast for small edits' },
-];
+// The engine's specialist roles, named in the phone Stack's words.
+const ROLES: StackCategory[] = ['coding', 'writing', 'analysis', 'vision', 'embedding', 'fast'];
+
+/** The installed models for a picker, the current one first. */
+function pickerModels(models: string[], current: string | undefined): string[] {
+  return current && models.includes(current)
+    ? [current, ...models.filter((m) => m !== current)]
+    : models;
+}
+
+/** The models this computer's Ollama lists, split by where each answers: an
+ *  Ollama cloud tag ("kimi-k3:cloud") is listed like a pulled model but runs
+ *  on ollama.com, so it is a cloud model, never one on this computer (the
+ *  engine's own judge, `isOllamaCloudTag`). */
+function computerModels(models: readonly string[]): { here: string[]; cloud: string[] } {
+  return {
+    here: models.filter((m) => !isOllamaCloudTag(m)),
+    cloud: models.filter((m) => isOllamaCloudTag(m)),
+  };
+}
+
+/** A model the engine reports, by the name a person reads: a cloud model by
+ *  its display name (Sonnet 5, not claude-sonnet-5), a local one by its tag,
+ *  which is the name Ollama and the person use for it. */
+function engineModelName(model: string, provider?: string): string {
+  if (claudeModel(model)) return claudeModelLabel(model);
+  return provider ? providerModelLabel(provider, model) : model;
+}
+
+/** The chip for where a seat the engine reports answers, in words that hold
+ *  for a server on the LAN (CX and CMO, 2026-10-08, B): Cloud when it leaves
+ *  this network (the engine's seatLeaves, a cloud tag included), On this
+ *  computer when its server is this computer itself (hostIsLoopback), and On
+ *  your network for any other server that stays. A seat with no kind (a
+ *  specialist from an older engine) wears no chip. */
+function SeatChip({ seat }: { seat: { kind?: 'local' | 'cloud'; onThisComputer?: true } }) {
+  if (seat.kind === 'cloud') return <span className="kind-chip cloud">Cloud</span>;
+  if (seat.kind !== 'local') return null;
+  return (
+    <span className="kind-chip local">
+      {seat.onThisComputer ? 'On this computer' : 'On your network'}
+    </span>
+  );
+}
 
 export function StackScreen() {
-  const { settings, showToast, setView, ensureHarborMaster, harborMasterDownload } = useApp();
+  const { settings, connectivity, showToast, setView, ensureHarborMaster, harborMasterDownload } =
+    useApp();
+  // Desktop Offline (founder, 2026-10-07): the phone's quiet door under its
+  // status note, here in this computer's words. It offers Offline while
+  // online, and the way back once Offline is chosen; a connection that simply
+  // dropped is already Offline, with the lone pill in the bar.
+  const [statusOpen, setStatusOpen] = useState(false);
+  const offline = offlineNow(connectivity, settings.profileOverride);
+  const chosen = offlineChosen(connectivity, settings.profileOverride);
+  const stepDown = !settings.daemon && (settings.profileOverride === 'offline' || !offline);
   const [status, setStatus] = useState<DesktopStatus | undefined>();
   const [remote, setRemote] = useState<DaemonStackInfo | undefined>();
   const [pickFor, setPickFor] = useState<string | undefined>(); // 'orchestrator' or a role
   // The engine's status has not landed yet (or the read failed). Until it does,
   // the cards read quietly instead of claiming "Not set up yet" or "Off".
   const [readFailed, setReadFailed] = useState(false);
+  // Declared above the phone's early return, so the hooks keep their order.
+  const titleRef = useRef<HTMLHeadingElement>(null);
 
   const refresh = useCallback(async () => {
     if (isDesktop() && bridge()) {
@@ -53,9 +111,11 @@ export function StackScreen() {
     }
   }, [settings.daemon]);
 
+  // A paired computer that goes offline, or comes back, is read again, so
+  // the phone's Stack says which of its models answer meanwhile.
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+  }, [refresh, connectivity.homeOffline]);
 
   // Prefab stacks: the catalog's presets, which arrive on the live feed and are
   // rebuilt on a schedule, so they refresh and reassess themselves as models
@@ -154,13 +214,19 @@ export function StackScreen() {
   const specialists = stack?.specialists ?? remote?.specialists ?? [];
   const orchestrator = stack?.orchestrator ?? remote?.orchestrator;
   const admin = stackAdmin(settings.account);
+  const currentModel =
+    pickFor === 'orchestrator'
+      ? orchestrator?.model
+      : specialists.find((s) => s.role === pickFor)?.model;
   const canEdit = isDesktop() && admin;
+  // The picker's two lists: models on this computer, and Ollama cloud tags.
+  const listed = computerModels(status?.ollama.models ?? []);
   const reading = isDesktop() && Boolean(bridge()) && !status && !readFailed;
   const readingLine = 'Reading your computer...';
 
-  // The phone manages its own app-side stack (Reasoning LLM + bench). The
+  // The phone manages its own app-side stack (Reasoning model + bench). The
   // desktop keeps its live daemon-driven view below.
-  if (!isDesktop()) return <StackManager />;
+  if (!isDesktop()) return <StackManager computer={remote} />;
 
   // Read failed with no status yet: the rows say so, and Runs the show offers
   // Try again.
@@ -199,16 +265,31 @@ export function StackScreen() {
 
   return (
     <div className="screen">
-      <BackBar title="Stack" />
+      <BackBar title="Stack" titleHiddenUntil={titleRef} />
       {/* The desktop Stack in the Settings ledger, the phone's shape
           (Creative Studio, 2026-10-02): who runs the show, the specialists,
           then the prefab stacks (first while nothing runs the show). */}
       <div className="screen-inner settings stack-manager">
-        <h1>Stack</h1>
-        <p className="lead">
-          One model is your Reasoning LLM: it plans, reasons, and decides which model gets each
-          task. Specialists are optional; anything missing, the Reasoning LLM covers itself.
-        </p>
+        <h1 ref={titleRef}>Stack</h1>
+        <p className="lead">{STACK_LEAD}</p>
+
+        <div className="stack-status">
+          <p className="stack-status-note" role="status">
+            {desktopStackNote(offline, chosen, status ? Boolean(status.offlineSeat) : undefined)}
+          </p>
+          {stepDown ? (
+            <button
+              type="button"
+              className="linklike press-fb stack-status-change"
+              onClick={() => setStatusOpen(true)}
+            >
+              {settings.profileOverride === 'offline' ? 'Follow the connection' : 'Choose Offline'}
+            </button>
+          ) : null}
+        </div>
+        {!settings.daemon ? (
+          <StatusSheet open={statusOpen} onClose={() => setStatusOpen(false)} />
+        ) : null}
 
         {!orchestrator ? prefabs : null}
 
@@ -216,7 +297,7 @@ export function StackScreen() {
           <SettingsRow
             label={
               orchestrator
-                ? orchestrator.model
+                ? engineModelName(orchestrator.model, orchestrator.provider)
                 : reading
                   ? readingLine
                   : unanswered
@@ -225,21 +306,23 @@ export function StackScreen() {
             }
             sub={
               orchestrator
-                ? `Plans every task and routes it. On ${orchestrator.provider}.`
+                ? // Offline, the model that answers meanwhile is the engine's
+                  // own seat, read across every provider by address.
+                  reasoningSlotSub(
+                    offline,
+                    orchestrator.kind === 'cloud',
+                    status?.offlineSeat?.model,
+                  )
                 : unanswered
                   ? undefined
                   : 'Pick a model to run the show.'
             }
-            value={
-              orchestrator ? (
-                <span className={`pill ${orchestrator.kind}`}>{orchestrator.kind}</span>
-              ) : undefined
-            }
+            value={orchestrator ? <SeatChip seat={orchestrator} /> : undefined}
             trailing={
               unanswered ? (
                 <button
                   type="button"
-                  className="btn ghost press-fb stack-place"
+                  className="btn ghost sm press-fb"
                   onClick={() => void refresh()}
                 >
                   Try again
@@ -253,16 +336,21 @@ export function StackScreen() {
         </SettingsGroup>
 
         <SettingsGroup title="Specialists" index={2}>
-          {ROLES.map(({ role, plain }) => {
+          {ROLES.map((role) => {
             const enabled = specialists.find((s) => s.role === role);
             return (
               <SettingsRow
                 key={role}
-                label={role.charAt(0).toUpperCase() + role.slice(1)}
-                sub={plain.charAt(0).toUpperCase() + plain.slice(1)}
+                label={categoryLabel(role)}
+                sub={STACK_CATEGORIES.find((c) => c.id === role)?.hint}
                 value={
                   reading || unanswered ? undefined : enabled ? (
-                    enabled.model
+                    // The model, and beside it where it answers, so a cloud
+                    // tag placed for coding never looks local once placed.
+                    <span className="settings-row-actions">
+                      {engineModelName(enabled.model)}
+                      <SeatChip seat={enabled} />
+                    </span>
                   ) : (
                     <span className="stack-off">Off</span>
                   )
@@ -278,13 +366,13 @@ export function StackScreen() {
         {!isDesktop() ? (
           <p className="hint">
             {settings.daemon ? (
-              'The stack lives on your computer; edit it there. This phone rides it over Tailscale.'
+              `The stack lives on your computer; edit it there. ${thisDeviceNoun({ start: true })} rides it over Tailscale.`
             ) : (
               <>
                 <button className="linklike" onClick={() => setView('pair')}>
                   Connect your computer
                 </button>{' '}
-                (Menu, then Computer) to see and use its stack.
+                to see and use its stack.
               </>
             )}
           </p>
@@ -299,20 +387,38 @@ export function StackScreen() {
       <Sheet open={Boolean(pickFor && status)} onClose={() => setPickFor(undefined)}>
         {pickFor && status ? (
           <>
+            {/* Each role names its model, Coding model to Fast model, so every
+                category reads right here and on Turn off below. */}
             <SheetHead
-              title={pickFor === 'orchestrator' ? 'Who runs the show?' : `Model for ${pickFor}`}
+              title={
+                pickFor === 'orchestrator'
+                  ? 'Who runs the show?'
+                  : `${categoryLabel(pickFor as StackCategory)} model`
+              }
               onClose={() => setPickFor(undefined)}
             />
             <p className="sheet-sub">
               Models installed on this computer. Ollama, a free app, runs them.
             </p>
             <div className="sheet-actions">
-              {status.ollama.models.length ? (
-                status.ollama.models.map((m) => (
-                  <button key={m} className="btn ghost" onClick={() => void choose(m)}>
-                    {m}
-                  </button>
-                ))
+              {listed.here.length ? (
+                pickerModels(listed.here, currentModel).map((m) => {
+                  const current = m === currentModel;
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      className={`btn ghost profile-option press-fb${current ? ' selected' : ''}`}
+                      aria-current={current ? 'true' : undefined}
+                      onClick={() => void choose(m)}
+                    >
+                      <span className="profile-option-text">
+                        <span className="profile-option-title">{m}</span>
+                        {current ? <span className="profile-option-blurb">Current</span> : null}
+                      </span>
+                    </button>
+                  );
+                })
               ) : (
                 <>
                   <p className="hint">
@@ -347,6 +453,39 @@ export function StackScreen() {
                 </>
               )}
             </div>
+            {/* An Ollama cloud tag answers on ollama.com, not here: it is
+                listed apart, with the cloud chip, and says where its words go,
+                in the cloud card's own nouns (CX and CMO, 2026-10-08, C). */}
+            {listed.cloud.length ? (
+              <>
+                <p className="sheet-sub">
+                  Cloud models your Ollama lists. They run on Ollama&apos;s cloud, under your Ollama
+                  account, so your messages and the files the agent reads go to ollama.com.
+                </p>
+                <div className="sheet-actions">
+                  {pickerModels(listed.cloud, currentModel).map((m) => {
+                    const current = m === currentModel;
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        className={`btn ghost profile-option press-fb${current ? ' selected' : ''}`}
+                        aria-current={current ? 'true' : undefined}
+                        onClick={() => void choose(m)}
+                      >
+                        <span className="profile-option-text">
+                          <span className="profile-option-title">
+                            {m}
+                            <span className="kind-chip cloud">Cloud</span>
+                          </span>
+                          {current ? <span className="profile-option-blurb">Current</span> : null}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : null}
             {status.ollama.up ? <InstallByName /> : null}
             {/* Turning a specialist off lives here, not as a button in the
                 ledger (Creative Studio, 2026-10-02). */}
@@ -363,7 +502,7 @@ export function StackScreen() {
                     await refresh();
                   }}
                 >
-                  Turn off {pickFor}
+                  Turn off the {categoryLabel(pickFor as StackCategory).toLowerCase()} model
                 </button>
               </div>
             ) : null}

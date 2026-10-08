@@ -6,6 +6,7 @@ import { chatTitle } from '../lib/chatTitle.js';
 import type { DriverEvent } from 'os-code/protocol';
 import type { ChangedFile, ConversationSource, ThreadItem, ThreadState } from './types.js';
 import { providerInfo } from '../lib/providers.js';
+import { categoryLabel, type StackCategory } from '../lib/stack.js';
 import { isLocalOnlyFinal } from '../drivers/types.js';
 import { windowCutItem } from './securityOps.js';
 import { rewindThread } from './rewindOps.js';
@@ -136,6 +137,15 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
     case 'turn-start':
       return { ...next, model: { name: event.model, kind: event.providerKind } };
 
+    case 'reach':
+      // A handoff is about to go to a model off this network (CX and CMO,
+      // 2026-10-08, D): the turn reads cloud from here, under the turn's own
+      // model name, the way a cloud turn-start would set it.
+      return {
+        ...next,
+        model: { name: next.model?.name ?? event.model, kind: event.providerKind },
+      };
+
     case 'text-delta': {
       const idx = currentStreaming(next);
       if (idx === -1) {
@@ -195,7 +205,10 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
 
     case 'tool-start': {
       const settled = settleAll(next);
-      const summary = describeCall(event.call.name, event.call.args);
+      // A handoff names the model it goes to, and one off this network wears
+      // the Cloud chip (D); an older engine sends no handoff field.
+      const handoff = event.handoff;
+      const summary = describeCall(event.call.name, event.call.args, handoff);
       return push(
         { ...settled, stepNote: summary },
         {
@@ -206,6 +219,7 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
           path: pathOf(event.call.args),
           state: 'running',
           startedAt: Date.now(),
+          ...(handoff ? { handoff: { model: handoff.model, leaves: handoff.leaves } } : {}),
         },
       );
     }
@@ -219,7 +233,7 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
               ...item,
               state: (event.result.ok ? 'ok' : 'fail') as 'ok' | 'fail',
               durationMs: event.durationMs,
-              summary: describeResult(event.call.name, event.call.args, event.result),
+              summary: describeResult(event.call.name, event.call.args, event.result, item.handoff),
               ...(stats ? { stats } : {}),
               // An edit tool carries a unified diff; every other tool (shell
               // above all) carries plain content. Keep the full content as the
@@ -478,6 +492,17 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
       return push(settleAll(next), card);
     }
 
+    case 'image-reader-offer':
+      // Nothing here can read images (founder, 2026-10-07): a calm card with
+      // two doors, after whatever answer the turn gave.
+      return push(settleAll(next), {
+        kind: 'image-offer',
+        from: event.from,
+        cloud: event.cloud,
+        ...(event.placed ? { placed: { ...event.placed } } : {}),
+        ...(event.status ? { status: event.status } : {}),
+      });
+
     case 'clarify':
       return push(next, {
         kind: 'clarify',
@@ -718,8 +743,38 @@ function pathOf(args: Record<string, unknown>): string | undefined {
   return str(args.path);
 }
 
-export function describeCall(name: string, args: Record<string, unknown>): string {
+/** A delegate role as the Stack names it, lowercased ("coding", "fast"). */
+function roleWord(role: string): string {
+  return categoryLabel(role as StackCategory).toLowerCase();
+}
+
+/** Where a handoff goes (the engine's tool-start `handoff`, D): the model the
+ *  step goes to and whether it leaves this network. */
+export interface CallHandoff {
+  model: string;
+  leaves: boolean;
+}
+
+export function describeCall(
+  name: string,
+  args: Record<string, unknown>,
+  handoff?: CallHandoff,
+): string {
   const path = str(args.path);
+  // A handoff names the model it goes to (CX and CMO, 2026-10-08, D); an
+  // older engine, and a role the Reasoning model took itself, keep the words
+  // below.
+  if (handoff) {
+    if (name === 'delegate') {
+      return `Ask ${handoff.model}, your ${roleWord(str(args.role) ?? 'specialist')} model`;
+    }
+    if (name === 'analyzeImage') {
+      return `Look at the image with ${handoff.model}: ${(str(args.question) ?? '').slice(0, 60)}`;
+    }
+    if (name === 'generateImage') {
+      return `Generate an image with ${handoff.model}: ${(str(args.prompt) ?? '').slice(0, 60)}`;
+    }
+  }
   switch (name) {
     case 'readFile': {
       const a = num(args.startLine);
@@ -786,8 +841,9 @@ export function describeResult(
   name: string,
   args: Record<string, unknown>,
   result: { ok: boolean; content: string; diffText?: string },
+  handoff?: CallHandoff,
 ): string {
-  const base = describeCall(name, args);
+  const base = describeCall(name, args, handoff);
   if (!result.ok) return `${base}: ${firstLine(result.content)}`;
   const stats = statsFrom(result.content, result.diffText);
   switch (name) {

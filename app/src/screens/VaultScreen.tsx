@@ -104,6 +104,7 @@ import {
   vaultHeldKeep,
   vaultHeldLine,
   vaultLead,
+  vaultLoadFailed,
   vaultMissingFolderCard,
   vaultBringLine,
   vaultMoveLine,
@@ -168,7 +169,7 @@ import type { StoredFile } from '../lib/gitos/providers.js';
 import { Sheet } from '../components/Sheet.js';
 import { VaultResolveSheet } from '../components/VaultResolveSheet.js';
 import { hapticApproval, hapticCommit } from '../lib/haptics.js';
-import { SheetHead } from '../components/SheetHead.js';
+import { SheetHead, SheetTitle } from '../components/SheetHead.js';
 import { activeContribution, slotNone } from '../lib/currents.js';
 import { hermesNoteRead, hermesNotesList } from '../lib/currentsProbe.js';
 import { isDesktop, isPhone, openExternal, platform } from '../lib/platform.js';
@@ -526,6 +527,11 @@ export function VaultScreen() {
   const [newOpen, setNewOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [storageOpen, setStorageOpen] = useState(false);
+  // Each view's large title tucks the bar's own until it scrolls under it.
+  // One ref per view: the bar persists across the two returns, and it
+  // re-observes only when the ref changes.
+  const noteTitleRef = useRef<HTMLHeadingElement>(null);
+  const treeTitleRef = useRef<HTMLHeadingElement>(null);
   // Vault M7: the settings sheet, "About this note", and the starter layout.
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -2190,7 +2196,11 @@ export function VaultScreen() {
             : 'saved';
     return (
       <div className="screen vault-screen">
-        <BackBar title={title} back={{ to: 'Vault', onBack: backToNotes }} />
+        <BackBar
+          title={title}
+          back={{ to: 'Vault', onBack: backToNotes }}
+          titleHiddenUntil={noteTitleRef}
+        />
         <div key="note" ref={pageGhost('note')} className="screen-inner vault-note">
           <div className="vault-note-bar">
             <button className="linklike" onClick={backToNotes}>
@@ -2216,12 +2226,12 @@ export function VaultScreen() {
                 onClick={() => setEditing((e) => !e)}
               >
                 {editing ? (
-                  <Icon size={19}>
+                  <Icon size={20}>
                     <path d="M3 5a2 2 0 0 1 2-2h4a3 3 0 0 1 3 3v14a2.5 2.5 0 0 0-2.5-2.5H3V5Z" />
                     <path d="M21 5a2 2 0 0 0-2-2h-4a3 3 0 0 0-3 3v14a2.5 2.5 0 0 1 2.5-2.5H21V5Z" />
                   </Icon>
                 ) : (
-                  <Icon size={19}>
+                  <Icon size={20}>
                     <path d="M17 3.5 20.5 7 8.5 19l-4.5 1 1-4.5L17 3.5Z" />
                   </Icon>
                 )}
@@ -2241,7 +2251,9 @@ export function VaultScreen() {
             ) : null}
           </div>
 
-          <h1 className="vault-title">{title}</h1>
+          <h1 ref={noteTitleRef} className="vault-title">
+            {title}
+          </h1>
           <p className="hint" style={{ marginTop: 2 }}>
             {(parent || 'Vault') + ' · ' + words + (words === 1 ? ' word' : ' words')}
             {updatedShown ? <span className="vault-updated">{VAULT_UPDATED_SUFFIX}</span> : null}
@@ -2575,12 +2587,21 @@ export function VaultScreen() {
     setStorageOpen(false);
     closePick();
   };
+  // The terms the list below walks before it shows the empty ramp, so the
+  // lead knows when the ramp is saying it.
+  const rampShown =
+    !team &&
+    vaultFiles.length === 0 &&
+    vaultListed &&
+    !driveExplains &&
+    !folderGone &&
+    vaultError !== 'load';
   return (
     <div className="screen vault-screen">
-      <BackBar title="Vault" />
+      <BackBar title="Vault" titleHiddenUntil={treeTitleRef} />
       <div key="tree" ref={pageGhost('tree')} className="screen-inner vault-tree-view">
         <div className="stack-head">
-          <h1>Vault</h1>
+          <h1 ref={treeTitleRef}>Vault</h1>
           <div className="vault-head-actions">
             {todayOffered ? todayButton : null}
             {/* A read-only Drive vault leaves New note out; its card says why.
@@ -2625,48 +2646,53 @@ export function VaultScreen() {
             </button>
           </div>
         ) : null}
-        <p className="lead">
-          {team
-            ? teamLapsed
-              ? VAULT_TEAM_LAPSED_LEAD
-              : teamFull
-                ? VAULT_TEAM_FULL_LEAD
-                : vaultCopy(on, 'org').storage
-            : vaultLead(personalCopy, { offerShown })}
-          {team && vaultTeamExportable(on) && vaultFiles.length > 0 ? (
-            <>
-              {' '}
-              <button
-                type="button"
-                className="linklike press-fb"
-                disabled={exportingTeam}
-                onClick={() => void exportTeam()}
-              >
-                {exportingTeam ? 'Exporting…' : 'Export as plain files'}
-              </button>
-            </>
-          ) : null}
-          {team && vaultTeamPlan?.isAdmin && !teamLapsed ? (
-            <>
-              {' '}
-              <button
-                type="button"
-                className="linklike press-fb"
-                onClick={() => setSettingsOpen(true)}
-              >
-                {VAULT_TEAM_SETTINGS_LINK}
-              </button>
-            </>
-          ) : null}
-          {!team ? (
-            <>
-              {' '}
-              <button className="linklike" onClick={() => setStorageOpen(true)}>
-                Where it lives
-              </button>
-            </>
-          ) : null}
-        </p>
+        {/* While the empty ramp shows, the room has no lead: the ramp says
+            where the notes live, and its Where it lives link sits beside that
+            sentence. */}
+        {!team && rampShown ? null : (
+          <p className="lead">
+            {team
+              ? teamLapsed
+                ? VAULT_TEAM_LAPSED_LEAD
+                : teamFull
+                  ? VAULT_TEAM_FULL_LEAD
+                  : vaultCopy(on, 'org').storage
+              : vaultLead(personalCopy, { offerShown, ramp: rampShown })}
+            {team && vaultTeamExportable(on) && vaultFiles.length > 0 ? (
+              <>
+                {' '}
+                <button
+                  type="button"
+                  className="linklike press-fb"
+                  disabled={exportingTeam}
+                  onClick={() => void exportTeam()}
+                >
+                  {exportingTeam ? 'Exporting…' : 'Export as plain files'}
+                </button>
+              </>
+            ) : null}
+            {team && vaultTeamPlan?.isAdmin && !teamLapsed ? (
+              <>
+                {' '}
+                <button
+                  type="button"
+                  className="linklike press-fb"
+                  onClick={() => setSettingsOpen(true)}
+                >
+                  {VAULT_TEAM_SETTINGS_LINK}
+                </button>
+              </>
+            ) : null}
+            {!team ? (
+              <>
+                {' '}
+                <button className="linklike" onClick={() => setStorageOpen(true)}>
+                  Where it lives
+                </button>
+              </>
+            ) : null}
+          </p>
+        )}
         {teamLapsed && !vaultTeamExportable(on) ? (
           <p className="hint">{VAULT_TEAM_LAPSED_WEB}</p>
         ) : null}
@@ -2874,11 +2900,8 @@ export function VaultScreen() {
           </p>
         ) : vaultFiles.length === 0 && vaultError === 'load' ? (
           <div className="card empty-notice">
-            <h3>Your vault storage is offline.</h3>
-            <p className="sub">
-              Your notes are safe where they live. This device could not reach the storage to load
-              them. Check your connection and try again.
-            </p>
+            <h3>{vaultLoadFailed(capKey).title}</h3>
+            <p className="sub">{vaultLoadFailed(capKey).sub}</p>
             <button className="btn primary" onClick={() => void vaultRefresh()}>
               Try again
             </button>
@@ -2909,6 +2932,7 @@ export function VaultScreen() {
             readOnly={Boolean(driveReadOnly)}
             onWrite={() => setNewOpen(true)}
             onWelcome={() => void addStarterNote()}
+            onWhere={() => setStorageOpen(true)}
             // An empty personal vault with folders and no Obsidian config
             // offers the simple layout instead (Vault M7, CX Y13).
             {...(starterOffered ? { onStarter: () => setStarterOpen(true) } : {})}
@@ -3014,7 +3038,7 @@ export function VaultScreen() {
       <Sheet open={Boolean(newOpen)} onClose={() => setNewOpen(false)}>
         {newOpen ? (
           <>
-            <h2>New note</h2>
+            <SheetTitle>New note</SheetTitle>
             <p className="sheet-sub">
               {folder ? `In ${folder}. ` : ''}A slash makes folders: ideas/first note.
             </p>
@@ -3109,9 +3133,9 @@ export function VaultScreen() {
                         {notFound ? (
                           <span className="nav-lock-pill">{VAULT_NOT_FOUND_PILL}</span>
                         ) : isCurrent ? (
-                          <span className="pill local">Here now</span>
+                          <span className="pill ink">Here now</span>
                         ) : isReady ? (
-                          <span className="pill local">Move here</span>
+                          <span className="pill ink">Move here</span>
                         ) : (
                           <span className="nav-lock-pill">{p.offPill ?? 'Arriving'}</span>
                         )}
@@ -3379,6 +3403,7 @@ function VaultRamp({
   onWrite,
   onWelcome,
   onStarter,
+  onWhere,
 }: {
   onboard: VaultOnboard;
   /** A read-only vault: the ways in that write are left out, not dimmed. */
@@ -3388,6 +3413,9 @@ function VaultRamp({
   /** The starter layout is offered (CTO L12): the second way in opens its
    *  preview instead of adding the welcome note. */
   onStarter?: () => void;
+  /** Opens the storage sheet, from a link at the end of the lead, beside the
+   *  sentence it backs up. */
+  onWhere: () => void;
 }) {
   const glyphs = { doc: DocGlyph, agent: AgentGlyph, link: LinkGlyph };
   return (
@@ -3395,9 +3423,14 @@ function VaultRamp({
       <div className="vault-onboard-cover">
         <div className="vault-onboard-wash" aria-hidden="true" />
         <div className="vault-onboard-body">
-          <span className="vault-kicker">Your vault</span>
+          <span className="eyebrow">Your vault</span>
           <h2 className="vault-onboard-title">{onboard.title}</h2>
-          <p className="vault-onboard-lead">{onboard.lead}</p>
+          <p className="vault-onboard-lead">
+            {onboard.lead}{' '}
+            <button className="linklike press-fb" onClick={onWhere}>
+              Where it lives
+            </button>
+          </p>
           {!readOnly ? (
             <div className="vault-onboard-actions">
               <button className="btn primary" onClick={onWrite}>

@@ -4,6 +4,7 @@
 // in. Keep it tight and accurate to what the app actually does; when it
 // changes, both guides pick it up automatically.
 import { SHIPS_CURRENTS, SHIPS_LAUNCH, SHIPS_MARKETPLACE } from './focus.js';
+import { thisDeviceNoun } from './deviceNoun.js';
 
 // Release tiers (docs/release-tiers.md): facts about a later tier's feature
 // stay out of an earlier build, so a guide never sends a person to a room the
@@ -16,8 +17,8 @@ const launchOn = SHIPS_LAUNCH;
 export const APP_KNOWLEDGE = [
   'FACTS ABOUT OPENSHORE (ground every answer in these; do not invent features):',
   '- What you may share: every front-end capability, feature, screen, and setup step is fair game, in as much depth as the person wants, so they can go deep on setting their system up. What you must never share: backend build internals, infrastructure, server code, or anything about how OpenShore is implemented under the hood. If asked about implementation, say plainly that you keep to what the person can see and do in the app.',
-  '- OpenShore is a local-first coding assistant for your computer (Mac, Windows, or Linux) and the iPhone. You build a stack of models you own. Local models are the default; the cloud is a manual, opt-in flip.',
-  '- Stack (the room is named Stack): one model is the Reasoning LLM (the orchestrator) that plans, reasons, and routes each task. Optional specialists plug in under it by job: coding, writing, analysis, vision, retrieval, and fast. Anything with no specialist, the Reasoning LLM handles itself.',
+  '- Your models. Your keys. OpenShore is a local-first coding assistant for your computer (Mac, Windows, or Linux) and the iPhone. You build a stack of models you own. Local models are the default; the cloud is a manual, opt-in flip.',
+  '- Stack (the room is named Stack): one model is the Reasoning model (the orchestrator) that plans, reasons, and routes each task. Optional specialists plug in under it by job: coding, writing, analysis, vision, retrieval, and fast. Anything with no specialist, the Reasoning model handles itself.',
   ...(marketplaceOn
     ? [
         '- The Marketplace is where more models will live, downloaded straight from their public source; OpenShore never rehosts weights. It is marked Coming soon in the Menu for now. A downloaded or connected model lands on the Bench until placed in the stack.',
@@ -33,11 +34,11 @@ export const APP_KNOWLEDGE = [
         '- Very large cloud-scale models (Kimi K3, Kimi K2.7 Code, and Kimi K2.6 from Moonshot; Claude; GPT-5; Gemini) do not run locally. The Marketplace lists them under "Frontier, on your key": tap Connect to add the provider API key under Cloud Connections, and the model lands on your Bench to place in the stack. They run on the provider, on your own API key, never as a local download. On a computer with an Ollama account, the Kimi models can also be pulled through Ollama by name (kimi-k3:cloud, kimi-k2.7-code:cloud, kimi-k2.6:cloud).',
       ]
     : [
-        "- Very large cloud-scale models (Kimi from Moonshot, Claude, GPT-5, Gemini, and the models on Venice or OpenRouter) do not run locally on a phone. Connect one by adding that provider's API key under Cloud Connections, or run a big open model on a GPU server you rent and dock to it under Computer (billed by the hour by the server's provider while it runs); it then runs on your own key, and only on a turn you send to it.",
+        "- Very large cloud-scale models (Kimi from Moonshot, Claude, GPT-5, Gemini, and the models on Venice or OpenRouter) do not run locally. Connect one by adding that provider's API key under Cloud Connections; it then runs on your own key, and only once you pick it or place it in your Stack. A big open model can also run on a GPU server you rent, docked under Computer; the server's provider bills it by the hour while it runs.",
       ]),
   `- Three curated models come out of the box${marketplaceOn ? ', never through the Marketplace' : ''}: Harbor Lite (built into the iPhone app, a guide), Harbor (a coding model that runs on the iPhone), and DeepBlue (the most capable, a real coding agent that runs on your own computer through Ollama, sized to that computer, installed from Settings > Harbor or the first-run card on your computer). Paired, the phone reaches DeepBlue as Your computer.`,
-  '- Three ways to grow the stack: (1) Harbor, the coding model that runs fully on this iPhone, private and offline, from Settings, Harbor. (2) Your computer: run OpenShore there and pair this phone to it over your own private Tailscale network, under Computer. A rented server docks the same way. (3) Claude on your own API key: connect an Anthropic API key (and its Workspace id, if Claude asks for one) under Cloud Connections; spend always asks before it charges.',
-  '- API keys and secrets stay on the device, scoped to the provider they belong to. There is no telemetry.',
+  `- Three ways to grow the stack: (1) Harbor, the coding model that runs fully on ${thisDeviceNoun()}, private and offline, from Settings, Harbor. (2) Your computer: run OpenShore there and dock ${thisDeviceNoun()} to it over your own private Tailscale network, under Computer. A rented server docks the same way. (3) Claude on your own API key: connect an Anthropic API key (and its Workspace id, if Claude asks for one) under Cloud Connections; it spends on your key only when you pick it or place it.`,
+  '- API keys and secrets are stored only on the device and sent only to the provider they belong to. There is no telemetry.',
   '- Once a stack is set up, OpenShore works like a familiar coding agent: talk to it and it does the work.',
   '- Prefab stacks: on your computer, Stack offers Start with a prefab stack, which fills the whole stack in one tap and shows its size and any graphics memory it needs.',
   '- Install by name: on your computer, picking a model in Stack also offers Install by name, which pulls any model from the Ollama library by its name (for example qwen3:8b or gemma3:12b), even ones released today.',
@@ -45,7 +46,7 @@ export const APP_KNOWLEDGE = [
   '- The advisor team: under Crew, one tap adds eight named, project-agnostic advisors (Technical Advisor, Marketing Advisor, Finance Advisor, Research Advisor, Creative Studio, Coordinator, Sounding Board, Strategy Advisor). The Technical Advisor reviews the work; the Marketing, Finance, and Creative Studio advisors step in on their own when a decision needs them; the rest answer when asked by name. All advisory: the person decides.',
   '- Premium UX out of the box: whatever the coding agent builds is held to the twenty laws of UX (Hick, Fitts, Jakob, proximity, Miller, Doherty, Von Restorff, and the rest) plus calm motion, designed empty and error states, honest copy, and accessibility, without being asked. A project can turn it off in os-code.config.json, or the person can say "skip the UX standard".',
   '- Copy blocks: whenever the person has to paste something (a terminal command, a query, a config line), give it as its own fenced code block, one per step, nothing else in the block. The chat shows a Copy button on every block.',
-  "- Edits and commands: commands always ask before they run. How edits are handled is the person's choice, made once in setup and changeable in Settings > Approvals or the chat's mode pill: Ask first (check before each edit) or Accept edits (edits go through and each diff shows in the chat; this is the starting mode). Plan (read-only, proposes a plan first) and Bypass also live in the mode pill.",
+  "- Edits and commands: commands ask before they run unless the person allows them (Always allow this in the project, or Terminal Control on their computer). How edits are handled is the person's choice, made once in setup and changeable in Settings > Approvals or the chat's mode pill: Ask first (check before each edit) or Accept edits (edits go through and each diff shows in the chat; this is the starting mode). Plan (read-only, proposes a plan first) and Bypass also live in the mode pill.",
   '- Standing instructions: if a repository has an OSCODE.md, CLAUDE.md, or AGENTS.md at its root, OpenShore follows it, the way Claude Code reads CLAUDE.md. There is nothing to import.',
   ...(currentsOn
     ? [

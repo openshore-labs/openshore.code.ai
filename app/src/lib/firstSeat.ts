@@ -95,10 +95,10 @@ export type ModelClass = 'tiny' | 'small' | 'mid' | 'large';
  *  classBlurb). The test pins them against the engine file so the card can
  *  never drift from what the transcript and the Bench say. */
 export const CLASS_LINES: Record<ModelClass, string> = {
-  tiny: 'Runs single steps. Best for quick edits and questions.',
-  small: 'Runs short plans. The harness carries the checklist.',
-  mid: 'Plans and runs multi-step work with subagents.',
-  large: 'Full planning and delegation.',
+  tiny: 'Takes one step at a time. Best for quick edits and questions.',
+  small: 'Handles short plans. OpenShore keeps the checklist for it.',
+  mid: 'Plans and carries out multi-step work.',
+  large: 'Plans and hands off whole tasks.',
 };
 
 /** The engine's thresholds, by parameter count in billions. */
@@ -158,7 +158,7 @@ export interface SeatSignals {
   platform: 'electron' | 'ios' | 'web';
   /** The desktop engine's status has been read at least once. */
   desktopStatusKnown: boolean;
-  /** The engine has a Reasoning LLM configured. */
+  /** The engine has a Reasoning model configured. */
   desktopConfigured: boolean;
   /** The app-side stack can answer (a downloaded on-device anchor). */
   stackReady: boolean;

@@ -1,5 +1,6 @@
-// A real switch, the iOS shape: a track that tints and a knob that slides on
-// transform. Answers the finger with a tick. Never a pill that says "On".
+// A real switch, the iOS shape: off is an outlined track, on fills with the
+// accent (D21, 2026-10-07), and the knob slides on transform. Answers the
+// finger with a tick. Never a pill that says "On".
 
 export function Switch({
   checked,
@@ -23,7 +24,6 @@ export function Switch({
       aria-label={label}
       aria-disabled={disabled}
       disabled={disabled}
-      style={disabled ? { opacity: 0.4 } : undefined}
       className={`switch press-fb${checked ? ' on' : ''}`}
       onClick={() => {
         if (disabled) return;

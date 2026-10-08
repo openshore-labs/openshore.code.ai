@@ -11,7 +11,11 @@
 // seeded, but a reply written after a tool read a local-only vault note (its
 // journaled tool-end carries `localOnly`) may quote that note, so the reply
 // comes back marked `localOnly` and a later turn on a seat that leaves this
-// network gets the stub in its place, the same as the tool result would.
+// network gets the stub in its place, the same as the tool result would. So
+// does a reply grounded in a pack that carried such a note, and one a seat on
+// this network wrote while the chat already held a marked reply (D5). A task
+// that came in marked local-only (its task-start says so, J) is seeded marked,
+// and so is its reply.
 //
 // A rewind (P2) takes turns back: its `rewound` marker names the task-start it
 // went back to, and everything journaled from there up to the marker is left
@@ -52,32 +56,56 @@ function asEntries(events: DriverEvent[] | JournalEntry[]): JournalEntry[] {
 export function seedHistoryFromEvents(journal: DriverEvent[] | JournalEntry[]): ChatMessage[] {
   const history: ChatMessage[] = [];
   let pendingUser: string | undefined;
-  // This task has read a local-only note, so what it says next may quote one.
+  // The pending user turn came in marked local-only (a private plan's step,
+  // J): it is seeded marked, and the chat holds a private note's text.
+  let pendingLocal = false;
+  const pushUser = (content: string): void => {
+    history.push({ role: 'user', content, ...(pendingLocal ? { localOnly: true as const } : {}) });
+  };
+  // This task has read a local-only note (a tool, or a pack that carried
+  // one), so what it says next may quote one.
   let readLocalOnly = false;
+  // The chat holds a local-only note's text as the loop keeps it: a tool
+  // result that read one, a turn on a pack that carried one (both stay in its
+  // history even when that task wrote no reply), or a marked reply. A seat on
+  // this network that replies after that was sent it, so its reply is marked:
+  // the loop's own rule (loop.ts localOnlyMark).
+  let holdsLocalOnly = false;
+  let turnStays = false;
   for (const { event } of liveJournal(asEntries(journal))) {
     if (event.type === 'task-start') {
       // A new user turn. If a prior user turn never got a final answer (an
       // aborted or errored run), keep it: the user still said it.
-      if (pendingUser !== undefined) history.push({ role: 'user', content: pendingUser });
+      if (pendingUser !== undefined) pushUser(pendingUser);
       pendingUser = event.input;
-      readLocalOnly = false;
+      pendingLocal = event.localOnly === true;
+      readLocalOnly = pendingLocal;
+      if (pendingLocal) holdsLocalOnly = true;
+    } else if (event.type === 'turn-start') {
+      turnStays = event.providerKind === 'local';
+    } else if (event.type === 'context-pack') {
+      if (event.localOnly) readLocalOnly = holdsLocalOnly = true;
     } else if (event.type === 'tool-end') {
-      if (event.result.localOnly) readLocalOnly = true;
+      if (event.result.localOnly) readLocalOnly = holdsLocalOnly = true;
+    } else if (event.type === 'verify') {
+      // A check's failure handed back near the vault (D5).
+      if (event.localOnly) readLocalOnly = holdsLocalOnly = true;
     } else if (event.type === 'text-final') {
       if (pendingUser !== undefined) {
-        history.push({ role: 'user', content: pendingUser });
+        pushUser(pendingUser);
         pendingUser = undefined;
       }
       if (event.text.trim()) {
+        const marked = readLocalOnly || (turnStays && holdsLocalOnly);
         history.push({
           role: 'assistant',
           content: event.text,
-          ...(readLocalOnly ? { localOnly: true as const } : {}),
+          ...(marked ? { localOnly: true as const } : {}),
         });
       }
     }
   }
-  if (pendingUser !== undefined) history.push({ role: 'user', content: pendingUser });
+  if (pendingUser !== undefined) pushUser(pendingUser);
   return history;
 }
 

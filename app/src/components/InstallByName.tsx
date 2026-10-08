@@ -1,8 +1,9 @@
 // Install any Ollama model by name, so a person is never limited to the models
 // we listed: whatever is on the Ollama library (the newest releases the day
 // they land) can be pulled on this computer and placed. Desktop only; the pull
-// runs on this machine's engine. A wrong name comes back as Ollama's own
-// error, never a fabricated success. Lives in Stack for every build (the
+// runs on this machine's engine. A wrong name, or any pull that fails, comes
+// back as one plain line with the way on (the engine's pullFailedLine), never
+// a fabricated success or Ollama's raw error. Lives in Stack for every build (the
 // Marketplace, which also shows it, is a later tier; docs/release-tiers.md).
 import { useState } from 'react';
 import { useApp } from '../state/store.js';
@@ -47,10 +48,14 @@ export function InstallByName({ onInstalled }: { onInstalled?: (ref: string) => 
   return (
     <div className="card install-by-name">
       <h3>Have a model in mind?</h3>
+      {/* A local door: the examples name only models that run here, and the
+          last sentence warns off a cloud tag in the words of the engine's own
+          judge (isOllamaCloudTag: a tag that is cloud or ends in -cloud), never
+          offering one to copy (CX and CMO, 2026-10-08, B). */}
       <p className="hint" style={{ marginTop: 4 }}>
         Type any name from the Ollama library and install it on this computer, even brand new
-        models. For example qwen3-coder:30b, deepseek-r1:14b, gemma3:12b. A :cloud tag
-        (kimi-k3:cloud) runs on Ollama&apos;s cloud under your Ollama account.
+        models. For example qwen3-coder:30b, deepseek-r1:14b, gemma3:12b. A name whose tag (after
+        the colon) is cloud or ends in -cloud runs on Ollama&apos;s cloud, not on this computer.
       </p>
       <div className="field" style={{ marginTop: 8 }}>
         <input
@@ -64,8 +69,7 @@ export function InstallByName({ onInstalled }: { onInstalled?: (ref: string) => 
         />
       </div>
       <button
-        className="btn ghost press-fb"
-        style={{ width: '100%' }}
+        className="btn ghost block press-fb"
         disabled={refBusy || !refInput.trim()}
         onClick={() => void installByRef()}
       >

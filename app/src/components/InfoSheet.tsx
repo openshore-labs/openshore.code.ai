@@ -37,7 +37,7 @@ export function InfoSheet({
       )}
       <Sheet open={open} onClose={close}>
         <SheetHead title={title} onClose={close} />
-        <div className="sub">{children}</div>
+        <div>{children}</div>
       </Sheet>
     </>
   );

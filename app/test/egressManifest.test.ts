@@ -7,9 +7,12 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import * as manifest from '../src/lib/egressManifest.js';
 import {
   EGRESS,
   LINK_ONLY_HOSTS,
+  PRIVATE_PAGE_LINE,
+  PRIVATE_SEARCH_LINE,
   RECIPIENT_ORDER,
   ROUTINES_SEARCH_LINE,
   STAYS_ON_DEVICE,
@@ -18,6 +21,7 @@ import {
 import { GUIDE_CARDS } from '../src/lib/guideCards.js';
 import { HARBOR_MINI_PERSONA } from '../src/lib/harborMini.js';
 import { APP_KNOWLEDGE } from '../src/lib/guideKnowledge.js';
+import { VAULT_CARRY_CAVEAT, VAULT_PRIVATE_OFF_CLOUD } from '../src/lib/vaultCopy.js';
 
 const ROOTS = [
   join(process.cwd(), 'src'),
@@ -98,6 +102,8 @@ describe('what leaves this device', () => {
     const search = EGRESS.find((e) => e.id === 'search')!;
     expect(ROUTINES_SEARCH_LINE).toMatch(/follow this switch.*only search.*never open pages/);
     expect(search.when).toContain(ROUTINES_SEARCH_LINE);
+    // The switch lives in its own group (CMO, 2026-10-07).
+    expect(search.when).toContain('Settings, Web search');
     expect(search.when).not.toMatch(/turn it on for that routine/i);
     const settings = readFileSync(
       join(process.cwd(), 'src', 'screens', 'SettingsScreen.tsx'),
@@ -105,6 +111,96 @@ describe('what leaves this device', () => {
     );
     const row = settings.slice(settings.indexOf('label="Let models search the web"'));
     expect(row.slice(0, row.indexOf('trailing='))).toContain('${ROUTINES_SEARCH_LINE}');
+  });
+
+  // CX and CMO, 2026-10-08 (E): a plan never carries a picture, so with
+  // nothing set for Image reading its image step runs on the Reasoning model
+  // from the text, and the founder's 2026-10-07 exception is gone. No line
+  // names it, and the cloud-models entry says when a cloud model answers (D).
+  it("names no plan's image step that goes to a cloud model without asking", () => {
+    expect('PLAN_IMAGE_STEP_LINE' in manifest).toBe(false);
+    const cloud = EGRESS.find((e) => e.id === 'cloud-models')!;
+    expect(cloud.when).toBe(
+      'Only when you pick a cloud model or place one in your Stack, and only on the turns it answers. On your computer, the coding agent asks first in each task.',
+    );
+    // Every way the exception was worded on a surface (the list's own line,
+    // the Connections lead, Privacy plainly, the guides and Harbor Lite's
+    // knowledge), any case.
+    const retired = [
+      /\bone exception\b/i,
+      /a plan's image step goes to/i,
+      /image step in a plan goes to/i,
+      /a plan's image step while nothing/i,
+      /takes a plan's image step/i,
+    ];
+    const hits: string[] = [];
+    for (const root of [join(process.cwd(), 'src'), join(process.cwd(), 'electron')]) {
+      for (const file of walk(root)) {
+        // Copy, not comments; JSX text wraps, and an apostrophe is an entity.
+        const text = readFileSync(file, 'utf8')
+          .replace(/\/\*[\s\S]*?\*\//g, '')
+          .replace(/(^|[^:\\])\/\/.*$/gm, '$1')
+          .replace(/&apos;/g, "'")
+          .replace(/\s+/g, ' ');
+        for (const line of retired)
+          if (line.test(text)) hits.push(`${relative(process.cwd(), file)} ${line}`);
+      }
+    }
+    for (const e of EGRESS)
+      for (const line of retired)
+        if (line.test(e.what) || line.test(e.when)) hits.push(`${e.id} ${line}`);
+    expect(hits).toEqual([]);
+  });
+
+  // The private-notes promise is the one vaultCopy words, OpenShore as the
+  // subject and the person's own reach a plain second sentence (CX and CMO,
+  // 2026-10-08, A).
+  it('makes the private-notes promise in the vaultCopy words', () => {
+    const cloud = EGRESS.find((e) => e.id === 'cloud-models')!;
+    expect(cloud.what).toMatch(/^Your chat, and the notes and files it draws on, to Anthropic/);
+    expect(cloud.what).toContain(
+      'on your own key. OpenShore never sends private notes to a cloud model. A command you run or allow, or a change you allow, can still carry their words to one. An amber pill',
+    );
+    expect(cloud.what).toContain(VAULT_PRIVATE_OFF_CLOUD);
+    // Whole sentences, never a trailing clause.
+    expect(EGRESS.find((e) => e.id === 'own-model')!.what).toBe(
+      'Your chat, and the notes and files it draws on, to a model server you connect yourself (one you run, or one you name with its address and key). Private notes go only to one on your own network. A command you run or allow, or a change you allow, can still carry their words to a cloud model.',
+    );
+    expect(EGRESS.find((e) => e.id === 'own-model')!.what.endsWith(VAULT_CARRY_CAVEAT)).toBe(true);
+    // A model you connect can sit in a Stack slot too, so its entry says when
+    // the way the cloud-models one does (D, sign-off), never "only that turn".
+    expect(EGRESS.find((e) => e.id === 'own-model')!.when).toBe(
+      'Only when you connect one and pick it or place it in your Stack, and only on the turns it answers.',
+    );
+    for (const e of EGRESS)
+      expect(`${e.what} ${e.when}`, e.id).not.toMatch(/, unless you run or allow/);
+    // The marking it promises is the one the chat and Chats read.
+    expect(cloud.what).not.toMatch(/marks every turn/);
+    expect(cloud.what).toMatch(/amber pill or dot marks a chat whose latest turn went to one/);
+    // A local model's answer reaches a cloud model that reads the same chat
+    // later: on a turn routed to it, or as a plan's step (sign-off).
+    expect(STAYS_ON_DEVICE[0]).toMatch(
+      /unless a cloud model in the same chat reads it later, on its own turn or as a step in a plan/,
+    );
+  });
+
+  // CX and CMO, 2026-10-08 (H): once a chat on a seat that stays holds a
+  // private note's text, a search a model writes and a page the agent opens
+  // ask every time, so the two entries say so where they say when.
+  it('says a search and a page ask every time once a chat holds a private note', () => {
+    const by = (id: string) => EGRESS.find((e) => e.id === id)!;
+    expect(PRIVATE_SEARCH_LINE).toBe(
+      'Once a local model in a chat has read a private note, or its project pins one, each search it writes shows its words and asks first.',
+    );
+    expect(PRIVATE_PAGE_LINE).toBe(
+      'Once a local model in a chat has read a private note, or its project pins one, every page it opens asks first, even on Always.',
+    );
+    expect(by('search').when).toContain(
+      `the coding agent searches only once you allow it. ${PRIVATE_SEARCH_LINE} ${ROUTINES_SEARCH_LINE}`,
+    );
+    expect(by('web-pages').when).toContain(
+      `A page on your own network always asks. ${PRIVATE_PAGE_LINE} Crew routines never open pages.`,
+    );
   });
 
   it('is the list Settings shows, first under Privacy', () => {
@@ -118,6 +214,29 @@ describe('what leaves this device', () => {
     // The old claim was false (search words, update checks and the catalog
     // all leave); it is gone.
     expect(settings).not.toMatch(/nothing leaves it|no IP address, ever\. There is one/);
+  });
+
+  // Privacy review, 2026-10-08: an Ollama cloud tag is served by the Ollama on
+  // the computer but answers on ollama.com, on every turn, with no download.
+  it('lists an Ollama cloud model you place, and the downloads entry claims no more', () => {
+    const by = (id: string) => EGRESS.find((e) => e.id === id)!;
+    const tag = by('ollama-cloud');
+    expect(tag.recipient).toBe('Your cloud providers');
+    expect(tag.what).toMatch(/ollama\.com/);
+    expect(tag.what).toMatch(/files the coding agent reads/);
+    expect(tag.when).toBe(
+      'Only when you pick or place one, and then on every turn it answers. On your computer, the coding agent asks first in each task.',
+    );
+    // The what says the same "pick or place" as the when, and names the
+    // Ollama server, which may sit elsewhere on the network (C, sign-off).
+    expect(tag.what).toContain("when a model you pick or place is one of Ollama's cloud models");
+    expect(tag.what).toMatch(/Your Ollama server passes each turn on\.$/);
+    expect(tag.what).not.toMatch(/Ollama on your computer/);
+    // A cloud tag placed as a specialist answers a delegated step with no pill
+    // of its own, so the entry claims none.
+    expect(tag.what).not.toMatch(/pill/);
+    expect(by('weights').what).not.toMatch(/Nothing about you rides along\.$/);
+    expect(by('weights').what).toMatch(/Ollama account/);
   });
 });
 
@@ -133,13 +252,55 @@ describe('the guides claim no more than the list', () => {
     /nothing routes through us/i,
     /building (?:need|needs|works?)[^.]*(?:no account|signed out)/i,
     /chatting and building/i,
+    // A model placed in a Stack chat's slot answers there with no card of
+    // its own (founder, 2026-09-25), so no copy promises every cloud call
+    // waits on a card.
+    /nothing spends without your approval/i,
+    /spend always asks/i,
+    /marks every turn/i,
+    /runs only when you choose it\./i,
+    /only on a turn you send to (?:one|it)\./i,
+    /asking before each (?:one|image)/i,
+    // A key is sent with every request to its provider, so it is stored
+    // only here, never "stays" here (2026-10-01 #9; egress-claims-3).
+    /\b(?:API key|keys?) stays? on (?:this|your|the) device/i,
   ];
   const sources: Array<[string, string]> = [
     ...GUIDE_CARDS.map((c): [string, string] => [`guide card ${c.id}`, c.text]),
     ['Harbor Lite persona', HARBOR_MINI_PERSONA],
     ['app knowledge', APP_KNOWLEDGE],
     ['Paywall', readFileSync(join(process.cwd(), 'src', 'components', 'Paywall.tsx'), 'utf8')],
+    ...[
+      'screens/ConnectionsScreen.tsx',
+      'screens/SettingsScreen.tsx',
+      'components/StackManager.tsx',
+    ].map((f): [string, string] => [f, readFileSync(join(process.cwd(), 'src', f), 'utf8')]),
   ];
+
+  it('says a key is stored only here and sent only to its provider or address', () => {
+    const src = (f: string) => readFileSync(join(process.cwd(), 'src', f), 'utf8');
+    expect(src('screens/ConnectionsScreen.tsx').replace(/\s+/g, ' ')).toContain(
+      'Keys are stored only on this device and sent only to their provider.',
+    );
+    expect(src('components/StackManager.tsx').replace(/\s+/g, ' ')).toContain(
+      'The API key is stored only on this device and sent only to that address',
+    );
+  });
+
+  // CX and CMO, 2026-10-08 (E): the sentence that held the founder's
+  // 2026-10-07 exception now says only when a cloud model runs.
+  it('says a cloud model runs only when you pick it or place it', () => {
+    const src = (f: string) =>
+      readFileSync(join(process.cwd(), 'src', f), 'utf8')
+        .replace(/&apos;/g, "'")
+        .replace(/\s+/g, ' ');
+    expect(src('screens/ConnectionsScreen.tsx')).toContain(
+      'Connect a provider with your own API key. Its models wait on your bench until you place them, and a cloud model runs only when you pick it or place it. Keys are stored only on this device and sent only to their provider.',
+    );
+    expect(src('screens/SettingsScreen.tsx')).toContain(
+      'Cloud models run on your own keys or accounts (an Ollama cloud model on your Ollama account), and only when you pick one or place it in your Stack. A few things do leave this device',
+    );
+  });
 
   it('says nothing about leaving the device that the list does not back', () => {
     const found: string[] = [];
@@ -173,5 +334,18 @@ describe('what leaves, by release tier', () => {
     }
     const all = egressByRecipient(4).flatMap((g) => g.entries.map((e) => e.id));
     expect(all).toEqual(expect.arrayContaining(['team', 'decisions', 'codemagic', 'agents']));
+  });
+
+  it("a teams build's entry names the organization and the addresses you invite (privacy review, 2026-10-08)", () => {
+    // pushOrgToServer writes the org's name, seats and plan, and an
+    // org_members row (email and role) for each person invited.
+    const team = EGRESS.find((e) => e.id === 'team')!;
+    expect(team.feature).toBe('teams');
+    expect(team.what).toMatch(/^Your organization \(its name, seats, and plan\)/);
+    expect(team.what).toContain('the email addresses you invite and their roles');
+    expect(team.when).toMatch(/set up an organization or invite someone/);
+    const store = readFileSync(join(process.cwd(), 'src', 'state', 'store.ts'), 'utf8');
+    expect(store).toMatch(/supabaseInsert<ServerOrg>\('orgs'/);
+    expect(store).toMatch(/supabaseInsert<ServerMember>\('org_members'/);
   });
 });

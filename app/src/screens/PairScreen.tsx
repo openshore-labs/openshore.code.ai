@@ -4,30 +4,36 @@
 // that is a link the iPhone Camera opens, and docking this computer to a
 // server. On the phone: every way in (lib/docking.ts), with the computer at
 // home and a server you rent docked right here, by a scan or a typed code the
-// phone trades for its own credential. The daemon owns the run, so a dropped
+// device trades for its own credential. The daemon owns the run, so a dropped
 // connection reattaches with nothing lost. Free (lib/payGate.ts, 2026-10-07).
 // docs/pairing-review.md, docs/connect-anywhere-proposal.md.
 import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { hubList, useApp, type HubRole } from '../state/store.js';
 import { bridge, type DaemonInfo } from '../lib/electronBridge.js';
-import { isDesktop } from '../lib/platform.js';
+import { isDesktop, platform } from '../lib/platform.js';
 import { PAIRING_REJECTED, daemonHealth } from '../drivers/remoteDriver.js';
 import { BackBar } from '../components/BackBar.js';
 import { Switch } from '../components/Switch.js';
 import { pairingLink } from '../lib/qrDecode.js';
-import { ROOM_LABELS } from '../lib/navRooms.js';
 import { hapticApproval } from '../lib/haptics.js';
 import { Icon } from '../components/Icon.js';
 import { Sheet } from '../components/Sheet.js';
 import { SheetHead } from '../components/SheetHead.js';
 import { ReplaceSharedKey } from '../components/ReplaceSharedKey.js';
 import { hubStatusLine, onLinux } from '../lib/hubStatus.js';
-import { DockForm, hostOf } from '../components/DockForm.js';
+import { DockForm } from '../components/DockForm.js';
 import { ServerSetup } from '../components/ServerSetup.js';
 import { DOCK_PATHS, dockedNoun, unreachableLine, type DockPath } from '../lib/docking.js';
 
 export { phoneDeviceName } from '../components/DockForm.js';
+import { thisDeviceNoun } from '../lib/deviceNoun.js';
+
+// Each platform's page title, said once for its h1 and the bar it tucks into,
+// so the bar shows the same words that scrolled away. The nav row keeps the
+// room's name, Computer.
+const DESKTOP_TITLE = 'Dock your phone';
+const PHONE_TITLE = 'Dock to a computer';
 
 // Clean glyphs for the Tailscale download rows, drawn in the tile's ink on a
 // solid accent tile (iOS-app-icon feel). One per platform.
@@ -81,9 +87,10 @@ const GLYPHS: Record<string, JSX.Element> = {
   ),
 };
 
-// Tailscale download links, shown on the phone pairing screen so a new user can
-// install it on their desktop without hunting. Desktop platforms use Tailscale's
-// own per-OS download pages; mobile points at the app stores.
+// Tailscale download links. The full list lives in the phone's Get Tailscale
+// sheet, so a new user can install it on their computer without hunting; the
+// desktop shows only its own row. Desktop platforms use Tailscale's own per-OS
+// download pages; mobile points at the app stores.
 const TAILSCALE_LINKS: { label: string; glyph: keyof typeof GLYPHS; href: string }[] = [
   { label: 'macOS', glyph: 'apple', href: 'https://tailscale.com/download/macos' },
   { label: 'Windows', glyph: 'windows', href: 'https://tailscale.com/download/windows' },
@@ -106,6 +113,8 @@ export function PairScreen() {
 
 function DesktopPair() {
   const { showToast } = useApp();
+  // The pairing code is the paid moment on this side: it shows only while
+  // Plus is open. Revoking a phone stays free.
   const [info, setInfo] = useState<DaemonInfo | undefined>();
   const [qr, setQr] = useState<string | undefined>();
   const [showToken, setShowToken] = useState(false);
@@ -118,6 +127,7 @@ function DesktopPair() {
   const [revoking, setRevoking] = useState<{ id: string; label: string } | undefined>();
   const [more, setMore] = useState(false);
   const [login, setLogin] = useState<{ on: boolean; supported: boolean } | undefined>();
+  const titleRef = useRef<HTMLHeadingElement>(null);
 
   const refresh = async () => {
     const b = bridge();
@@ -169,11 +179,11 @@ function DesktopPair() {
 
   return (
     <div className="screen">
-      <BackBar title={ROOM_LABELS.pair} />
+      <BackBar title={DESKTOP_TITLE} titleHiddenUntil={titleRef} />
       <div className="screen-inner">
-        <h1>Dock your phone</h1>
+        <h1 ref={titleRef}>{DESKTOP_TITLE}</h1>
         <p className="lead">
-          Your phone docks to this computer over Tailscale, a free app that privately links your own
+          Your phone reaches your computer over Tailscale, a free app that privately links your own
           devices. Work stays on your computer, so losing signal loses nothing.
         </p>
 
@@ -191,8 +201,7 @@ function DesktopPair() {
               <div className="sub">{hubStatusLine(info, { linux: onLinux() })}</div>
             </div>
             <button
-              className={`btn ${info?.running ? 'ghost' : 'primary'} press-fb`}
-              style={{ padding: '8px 14px' }}
+              className={`btn sm ${info?.running ? 'ghost' : 'primary'} press-fb`}
               onClick={async () => {
                 const b = bridge();
                 if (!b) return;
@@ -250,8 +259,8 @@ function DesktopPair() {
           qrFolded ? (
             <button
               type="button"
-              className="btn ghost press-fb"
-              style={{ width: '100%', marginBottom: 12 }}
+              className="btn ghost block press-fb"
+              style={{ marginBottom: 12 }}
               onClick={() => {
                 setQrFolded(false);
                 setJustPaired(undefined);
@@ -303,8 +312,7 @@ function DesktopPair() {
                   </div>
                 </div>
                 <button
-                  className="btn ghost press-fb"
-                  style={{ padding: '8px 14px' }}
+                  className="btn ghost sm press-fb"
                   onClick={() => setRevoking({ id: d.id, label: d.label })}
                 >
                   Revoke
@@ -345,7 +353,8 @@ function DesktopPair() {
 
         <p className="hint">
           Both devices sign in to the same Tailscale account, free for personal use. Work started
-          from the phone always asks before commands and cloud spend.
+          from the phone asks before every command, and before a cloud model's first step in each
+          task.
         </p>
 
         {/* The expert tools, folded away from a first pairing (CX 2026-10-01). */}
@@ -400,9 +409,9 @@ function thisDesktopOs(): 'macOS' | 'Windows' | 'Linux' | undefined {
   return undefined;
 }
 
-// On a desktop that is not your central computer (a laptop away from the hub):
-// point it at a remote hub and it runs sessions there over the tailnet, the way
-// the phone does, instead of on this machine. Off by default, so a desktop stays
+// On a desktop that is not your computer, the one the work runs on (a laptop
+// away from the hub): point it at a remote hub and it runs sessions there over
+// the tailnet, the way the phone does, instead of on this machine. Off by default, so a desktop stays
 // its own engine unless you say otherwise.
 function RemoteHubPanel() {
   const { settings, saveHub, setPreferRemoteHub, showToast } = useApp();
@@ -441,7 +450,7 @@ function RemoteHubPanel() {
           <div className="sub">
             {prefer
               ? 'On. This computer runs sessions on the computer below, not on itself.'
-              : 'Off. This computer is its own engine. Turn on to run on another computer.'}
+              : 'Off. Sessions run on this computer. Turn on to run them on another one.'}
           </div>
         </div>
         <Switch
@@ -476,8 +485,7 @@ function RemoteHubPanel() {
             />
           </div>
           <button
-            className="btn primary press-fb"
-            style={{ width: '100%' }}
+            className="btn primary block press-fb"
             disabled={testing}
             onClick={() => void connect()}
           >
@@ -497,22 +505,37 @@ function RemoteHubPanel() {
 
 function PhonePair() {
   const { settings, removeHub, showToast, startGuideChat, setView } = useApp();
+  const [tailscaleOpen, setTailscaleOpen] = useState(false);
+  const [forgetting, setForgetting] = useState(false);
+  const titleRef = useRef<HTMLHeadingElement>(null);
   const paired = settings.daemon;
-  // Which way in the person is looking at. A phone already docked to a server
-  // opens on the server path, everyone else on the computer at home.
+  // Which way in the person is looking at. A device already docked to a
+  // server opens on the server path, everyone else on the computer at home.
   const [path, setPath] = useState<'computer' | 'server'>(
     paired?.kind === 'server' ? 'server' : 'computer',
   );
 
   return (
     <div className="screen">
-      <BackBar title={ROOM_LABELS.pair} />
+      <BackBar title={PHONE_TITLE} titleHiddenUntil={titleRef} />
       <div className="screen-inner">
-        <h1>Dock to a computer</h1>
+        <h1 ref={titleRef}>{PHONE_TITLE}</h1>
         <p className="lead">
-          Docking links this phone to a machine that does the work: your computer at home, or a
-          server you rent. It runs over your own private network, so a long task keeps going even
-          when you close the app.
+          Docking links {thisDeviceNoun()} to a machine that does the work: your computer at home,
+          or a server you rent. It runs over your own private network, so a long task keeps going
+          even when you close the app.
+          {!paired ? (
+            <>
+              {' '}
+              <button
+                type="button"
+                className="linklike press-fb"
+                onClick={() => void startGuideChat('pair-computer')}
+              >
+                Walk me through it
+              </button>
+            </>
+          ) : null}
         </p>
 
         {paired ? <ConnectedCard onTerminal={() => setView('terminalroom')} /> : null}
@@ -528,47 +551,22 @@ function PhonePair() {
         {path === 'computer' ? (
           <>
             {!paired ? (
-              <button
-                className="btn ghost press-fb"
-                style={{ width: '100%', marginBottom: 12 }}
-                onClick={() => void startGuideChat('pair-computer')}
-              >
-                Walk me through it
-              </button>
-            ) : null}
-            {!paired ? (
               <div className="card">
                 <h3>Before you scan</h3>
-                <div className="sub">
-                  1. Install Tailscale on both devices and sign in to the same account.
-                  <br />
-                  2. On your computer, open OpenShore, then Computer. The QR is there (if it says
-                  Off, tap Turn on).
-                </div>
-                <div className="sub" style={{ marginTop: 12 }}>
-                  Get Tailscale (free for personal use):{' '}
-                  <button
-                    className="linklike press-fb"
-                    onClick={() => void startGuideChat('install-tailscale')}
-                  >
-                    walk me through Tailscale
-                  </button>
-                </div>
-                <div className="dl-list">
-                  {TAILSCALE_LINKS.map((l) => (
-                    <a
-                      key={l.label}
-                      className="dl-item"
-                      href={l.href}
-                      target="_blank"
-                      rel="noreferrer noopener"
-                    >
-                      <span className="dl-tile">{GLYPHS[l.glyph]}</span>
-                      <span className="dl-name">{l.label}</span>
-                      <span className="dl-get">GET</span>
-                    </a>
-                  ))}
-                </div>
+                <ol className="setup-steps">
+                  <li>Install Tailscale on both devices and sign in to the same account.</li>
+                  <li>
+                    On your computer, open OpenShore, then Computer. The QR is there. If it says
+                    Off, choose Turn on.
+                  </li>
+                </ol>
+                <button
+                  type="button"
+                  className="linklike door press-fb"
+                  onClick={() => setTailscaleOpen(true)}
+                >
+                  Get Tailscale
+                </button>
               </div>
             ) : null}
             <DockForm expect="desktop" offers />
@@ -584,18 +582,49 @@ function PhonePair() {
 
         {paired ? (
           <button
-            className="btn quiet press-fb"
-            style={{ width: '100%' }}
-            onClick={async () => {
-              await removeHub(paired.baseUrl);
-              showToast(
-                `${dockedNoun(paired)} forgotten on this phone. It no longer lists this phone either.`,
-              );
-            }}
+            type="button"
+            className="btn quiet block press-fb"
+            onClick={() => setForgetting(true)}
           >
             {paired.kind === 'server' ? 'Forget this server' : 'Forget this computer'}
           </button>
         ) : null}
+
+        <ForgetComputerConfirm
+          name={forgetting && paired ? computerLabel(paired) : undefined}
+          onKeep={() => setForgetting(false)}
+          onForget={async () => {
+            setForgetting(false);
+            if (!paired) return;
+            await removeHub(paired.baseUrl);
+            showToast(`${dockedNoun(paired)} forgotten on this device.`);
+          }}
+        />
+
+        <Sheet open={tailscaleOpen} onClose={() => setTailscaleOpen(false)}>
+          <SheetHead title="Get Tailscale" onClose={() => setTailscaleOpen(false)} />
+          <p className="sheet-sub">
+            Free for personal use. Install it on this device and on your computer, then sign in to
+            the same account on both.
+          </p>
+          <div className="dl-list">
+            {TAILSCALE_LINKS.filter((l) => !(platform() === 'ios' && l.glyph === 'android')).map(
+              (l) => (
+                <a
+                  key={l.label}
+                  className="dl-item"
+                  href={l.href}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  <span className="dl-tile">{GLYPHS[l.glyph]}</span>
+                  <span className="dl-name">{l.label}</span>
+                  <span className="dl-get">GET</span>
+                </a>
+              ),
+            )}
+          </div>
+        </Sheet>
       </div>
     </div>
   );
@@ -633,8 +662,53 @@ function DockPaths({
   );
 }
 
-/** The docked machine, live (CX 2026-10-01): who it is and whether it
- *  answers right now, so the screen after docking never looks like the
+/** The host of a computer's address, for a name a person can read. */
+function hostOf(baseUrl: string): string {
+  try {
+    return new URL(baseUrl).hostname;
+  } catch {
+    return baseUrl;
+  }
+}
+
+/** What a saved computer is called: its own name, or its host. */
+function computerLabel(hub: { baseUrl: string; name?: string }): string {
+  return hub.name?.trim() || hostOf(hub.baseUrl);
+}
+
+/** Forgetting a computer asks first. The revoke on the computer is best
+ *  effort (a computer that is off keeps its row until it is revoked there), so
+ *  the line says "if the computer is on". Open while a name is set. */
+function ForgetComputerConfirm({
+  name,
+  onKeep,
+  onForget,
+}: {
+  name?: string;
+  onKeep: () => void;
+  onForget: () => void;
+}) {
+  return (
+    <Sheet open={name !== undefined} onClose={onKeep} variant="confirm">
+      <h3>Forget {name}?</h3>
+      <p>
+        This device stops reaching it. If the computer is on, it drops this device from its list
+        too. To use it again, scan a new QR.
+      </p>
+      <div className="confirm-row">
+        <button type="button" className="btn ghost press-fb" onClick={onKeep}>
+          Keep
+        </button>
+        <button type="button" className="btn danger press-fb" onClick={onForget}>
+          Forget
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+/** The paired computer, live (CX 2026-10-01): who it is and whether it
+ *  answers right now, so the screen after pairing never looks like the
  *  screen before it. */
 function ConnectedCard({ onTerminal }: { onTerminal: () => void }) {
   const daemon = useApp((s) => s.settings.daemon);
@@ -655,8 +729,7 @@ function ConnectedCard({ onTerminal }: { onTerminal: () => void }) {
     };
   }, [daemon]);
   if (!daemon) return null;
-  const name = daemon.name?.trim() || hostOf(daemon.baseUrl);
-  const server = daemon.kind === 'server';
+  const name = computerLabel(daemon);
   return (
     <div className="card">
       <div className="card-row" style={{ alignItems: 'center' }}>
@@ -667,9 +740,7 @@ function ConnectedCard({ onTerminal }: { onTerminal: () => void }) {
               ? PAIRING_REJECTED
               : reach === 'no'
                 ? unreachableLine(daemon)
-                : server
-                  ? 'Your server runs the work; this phone reaches it.'
-                  : 'Your computer runs the work; this phone reaches it.'}
+                : `${dockedNoun(daemon)} runs the work; this device reaches it.`}
           </div>
         </div>
         <span className={`pill ${reach === 'yes' ? 'ok' : 'muted'}`}>
@@ -678,24 +749,22 @@ function ConnectedCard({ onTerminal }: { onTerminal: () => void }) {
             : reach === 'checking'
               ? 'Checking'
               : reach === 'refused'
-                ? 'Dock again'
+                ? 'Not accepted'
                 : 'Not reachable'}
         </span>
       </div>
       {reach === 'yes' ? (
-        <button
-          className="btn press-fb"
-          style={{ width: '100%', marginTop: 12 }}
-          onClick={onTerminal}
-        >
-          {server ? 'Open a terminal on your server' : 'Open a terminal on your computer'}
+        <button className="btn block press-fb" style={{ marginTop: 12 }} onClick={onTerminal}>
+          {daemon.kind === 'server'
+            ? 'Open a terminal on your server'
+            : 'Open a terminal on your computer'}
         </button>
       ) : null}
     </div>
   );
 }
 
-// The saved hubs, for switching between more than one central computer. Shown
+// The saved hubs, for switching between more than one of your computers. Shown
 // only once a second hub exists, so a single-computer setup never sees it. The
 // active one is marked; tapping another switches sessions to it, and each can
 // be named or forgotten.
@@ -703,57 +772,72 @@ function HubList() {
   const { settings, selectHub, removeHub, showToast } = useApp();
   // The computer being named, while its sheet is open.
   const [naming, setNaming] = useState<{ baseUrl: string; name?: string; host: string }>();
+  // The computer being forgotten, while its confirm is open.
+  const [forgetting, setForgetting] = useState<{ baseUrl: string; name: string }>();
   const hubs = hubList(settings);
-  if (hubs.length < 2) return null;
   const activeUrl = settings.daemon?.baseUrl;
+  // The confirm sits outside the list: forgetting the second of two computers
+  // hides the list, and the confirm still plays its exit.
   return (
-    <div className="card">
-      <h3 style={{ marginTop: 0 }}>Your computers</h3>
-      <p className="hint" style={{ marginTop: 0, marginBottom: 10 }}>
-        Switch which computer your sessions and terminal run on.
-      </p>
-      {hubs.map((h) => {
-        const active = h.baseUrl === activeUrl;
-        let host = h.baseUrl;
-        try {
-          host = new URL(h.baseUrl).hostname;
-        } catch {}
-        return (
-          <div className="card-row" key={h.baseUrl} style={{ alignItems: 'center' }}>
-            <button
-              className="linklike grow press-fb"
-              style={{ textAlign: 'left' }}
-              disabled={active}
-              onClick={() => void selectHub(h.baseUrl)}
-            >
-              <span style={{ fontWeight: 600 }}>{h.name?.trim() || host}</span>
-              {h.name?.trim() ? <span className="sub"> {host}</span> : null}
-            </button>
-            {active ? <span className="pill ok">active</span> : null}
-            <button
-              className="linklike press-fb"
-              onClick={() => setNaming({ baseUrl: h.baseUrl, name: h.name, host })}
-            >
-              rename
-            </button>
-            <button
-              className="linklike press-fb"
-              onClick={() => {
-                void removeHub(h.baseUrl);
-                showToast('Computer forgotten on this device.');
-              }}
-            >
-              forget
-            </button>
-          </div>
-        );
-      })}
-      <Sheet open={Boolean(naming)} onClose={() => setNaming(undefined)}>
-        {naming ? (
-          <HubNameForm key={naming.baseUrl} hub={naming} onDone={() => setNaming(undefined)} />
-        ) : null}
-      </Sheet>
-    </div>
+    <>
+      {hubs.length >= 2 ? (
+        <div className="card">
+          <h3 style={{ marginTop: 0 }}>Your computers</h3>
+          <p className="hint" style={{ marginTop: 0, marginBottom: 10 }}>
+            Switch which computer your sessions and terminal run on.
+          </p>
+          {hubs.map((h) => {
+            const active = h.baseUrl === activeUrl;
+            let host = h.baseUrl;
+            try {
+              host = new URL(h.baseUrl).hostname;
+            } catch {}
+            return (
+              <div className="card-row" key={h.baseUrl} style={{ alignItems: 'center' }}>
+                <button
+                  className="linklike grow press-fb"
+                  style={{ textAlign: 'left' }}
+                  disabled={active}
+                  onClick={() => void selectHub(h.baseUrl)}
+                >
+                  <span style={{ fontWeight: 600 }}>{h.name?.trim() || host}</span>
+                  {h.name?.trim() ? <span className="sub"> {host}</span> : null}
+                </button>
+                {active ? <span className="pill ink">Active</span> : null}
+                <button
+                  className="linklike press-fb"
+                  onClick={() => setNaming({ baseUrl: h.baseUrl, name: h.name, host })}
+                >
+                  Rename
+                </button>
+                <button
+                  className="linklike press-fb"
+                  onClick={() => setForgetting({ baseUrl: h.baseUrl, name: computerLabel(h) })}
+                >
+                  Forget
+                </button>
+              </div>
+            );
+          })}
+          <Sheet open={Boolean(naming)} onClose={() => setNaming(undefined)}>
+            {naming ? (
+              <HubNameForm key={naming.baseUrl} hub={naming} onDone={() => setNaming(undefined)} />
+            ) : null}
+          </Sheet>
+        </div>
+      ) : null}
+      <ForgetComputerConfirm
+        name={forgetting?.name}
+        onKeep={() => setForgetting(undefined)}
+        onForget={async () => {
+          const target = forgetting;
+          setForgetting(undefined);
+          if (!target) return;
+          await removeHub(target.baseUrl);
+          showToast('Computer forgotten on this device.');
+        }}
+      />
+    </>
   );
 }
 
@@ -791,12 +875,11 @@ function HubNameForm({
           }}
         />
       </div>
+      {/* One way out, the round close above (the 2026-10-07 form-sheet
+          rule), so the foot holds Save alone. */}
       <div className="sheet-actions">
         <button type="button" className="btn primary press-fb" onClick={save}>
           Save
-        </button>
-        <button type="button" className="btn quiet press-fb" onClick={onDone}>
-          Cancel
         </button>
       </div>
     </>

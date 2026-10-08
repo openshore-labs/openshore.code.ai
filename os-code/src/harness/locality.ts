@@ -114,6 +114,36 @@ export function hostIsLocal(hostname: string, options: HostIsLocalOptions = {}):
   return false;
 }
 
+/**
+ * True when a host is this computer itself: `localhost`, a `*.localhost`
+ * name, an address in 127.0.0.0/8, or `::1` (bracketed as a URL keeps it, or
+ * not). Narrower than `hostIsLocal`, which also passes the LAN and the
+ * tailnet: this is the test for words that say "on this computer" (CX and
+ * CMO, 2026-10-08), so a server on another machine in the house is never
+ * called this computer.
+ */
+export function hostIsLoopback(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/\.$/, '');
+  if (host === 'localhost' || host.endsWith('.localhost')) return true;
+  if (isIPv4Literal(host)) return host.startsWith('127.');
+  const v6 = normalizeIpLiteral(host);
+  if (!isIPv6Literal(v6)) return false;
+  // `::1` in any spelling that `isIP` reads as it (`0:0:0:0:0:0:0:1`).
+  const groups = v6.split('::');
+  if (groups.length === 2) {
+    const head = groups[0] ? groups[0].split(':') : [];
+    const tail = groups[1] ? groups[1].split(':') : [];
+    return (
+      head.every((g) => /^0+$/.test(g)) &&
+      tail.length > 0 &&
+      tail.slice(0, -1).every((g) => /^0+$/.test(g)) &&
+      /^0*1$/.test(tail[tail.length - 1]!)
+    );
+  }
+  const all = v6.split(':');
+  return all.slice(0, -1).every((g) => /^0+$/.test(g)) && /^0*1$/.test(all[all.length - 1]!);
+}
+
 /** The tailnet suffix of a `*.ts.net` host ("mac.tail1234.ts.net" gives
  *  "tail1234.ts.net"), or null for any other host. The app takes its own
  *  tailnet from the paired hub's address this way (CTO J2). */
@@ -123,4 +153,20 @@ export function tailnetSuffixOf(hostname: string): string | null {
   const dot = host.indexOf('.');
   const suffix = host.slice(dot + 1);
   return dot > 0 && suffix !== 'ts.net' ? suffix : null;
+}
+
+/**
+ * True when a model's own name says it runs on Ollama's cloud: its tag is
+ * `cloud` or ends in `-cloud` ("kimi-k3:cloud", "gpt-oss:120b-cloud"). A
+ * local Ollama lists such a model like any it has pulled, then passes every
+ * request for it on to ollama.com under the person's Ollama account, so its
+ * words leave this network whatever the server's address. The tag is what
+ * follows the last colon, read without regard to case.
+ */
+export function isOllamaCloudTag(model: string): boolean {
+  const name = model.trim().toLowerCase();
+  const colon = name.lastIndexOf(':');
+  if (colon === -1) return false;
+  const tag = name.slice(colon + 1);
+  return tag === 'cloud' || tag.endsWith('-cloud');
 }

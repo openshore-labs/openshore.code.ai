@@ -190,13 +190,25 @@ describe('the class line comes from the engine, never invented on the card', () 
       (c) => c.catalogId === 'qwen2.5-coder-7b' || c.catalogId === 'qwen3-4b',
     )) {
       expect(classLineFor(c.ollamaRef)).toBe(
-        'Runs short plans. The harness carries the checklist.',
+        'Handles short plans. OpenShore keeps the checklist for it.',
       );
     }
-    expect(classLineFor('qwen2.5-coder:14b')).toBe(
-      'Plans and runs multi-step work with subagents.',
+    expect(classLineFor('qwen2.5-coder:14b')).toBe('Plans and carries out multi-step work.');
+    expect(classLineFor('qwen2.5-coder:32b')).toBe('Plans and hands off whole tasks.');
+  });
+
+  it('speaks in words a person reads (D3, founder 2026-10-07)', () => {
+    // The CMO's plain rewrite, mirrored from the engine: OpenShore, never "the
+    // harness", and no seat, tools or subagents on the card.
+    const engine = readFileSync(
+      join(process.cwd(), '..', 'os-code', 'src', 'harness', 'profile.ts'),
+      'utf8',
     );
-    expect(classLineFor('qwen2.5-coder:32b')).toBe('Full planning and delegation.');
+    for (const line of Object.values(CLASS_LINES)) {
+      expect(engine).toContain(`'${line}'`);
+      expect(line).not.toMatch(/harness|seat|tools|subagent/i);
+    }
+    expect(CLASS_LINES.tiny).toBe('Takes one step at a time. Best for quick edits and questions.');
   });
 });
 

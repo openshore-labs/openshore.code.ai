@@ -221,6 +221,39 @@ describe('the store assembly (decideApproval)', () => {
       }),
     ).toEqual({ action: 'sheet' });
   });
+
+  it("never lets a mode answer a card that asks every time, a Stack plan's engine step included", () => {
+    // A Stack plan's step on the computer forwards the engine's cards through
+    // the Stack driver (a client brain here). Once the chat holds a private
+    // note's text, the engine asks every time before a project note change
+    // or a web search (CX and CMO, 2026-10-08, A and H); Accept edits and
+    // Bypass in the app must not approve those, nor an always-ask vaultWrite.
+    const stack = {
+      driverKind: 'stack',
+      desktopLocal: false,
+      daemon: { baseUrl: 'http://192.168.1.20:4816' },
+      canControl: true,
+      control: {},
+    };
+    const memory = { kind: 'tool', toolName: 'projectMemoryWrite', alwaysAsk: true } as const;
+    const search = { kind: 'tool', toolName: 'webSearch', alwaysAsk: true } as const;
+    const vault = { kind: 'tool', toolName: 'vaultWrite', alwaysAsk: true } as const;
+    for (const mode of ['acceptEdits', 'bypassPermissions'] as const) {
+      for (const req of [memory, search, vault]) {
+        expect(decideApproval(req, { ...stack, mode })).toEqual({ action: 'sheet' });
+      }
+    }
+    // A card that does not ask every time still follows the mode.
+    expect(
+      decideApproval(
+        { kind: 'tool', toolName: 'projectMemoryWrite' },
+        {
+          ...stack,
+          mode: 'acceptEdits',
+        },
+      ),
+    ).toEqual({ action: 'auto-approve' });
+  });
 });
 
 describe('the deny reason', () => {

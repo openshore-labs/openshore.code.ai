@@ -34,7 +34,7 @@ import {
   type VaultPackSize,
   type VaultPrivacy,
 } from 'os-code/protocol';
-import type { AppVaultPack, PackSeat } from '../drivers/types.js';
+import { packPinOnly, type AppVaultPack, type PackSeat } from '../drivers/types.js';
 import { PROJECT_VAULT_PINS_MAX, type AppVaultContextSetting } from '../state/types.js';
 import type { VaultIndexHost } from './vaultIndexHost.js';
 
@@ -362,7 +362,7 @@ export function createAppVaultPack(deps: AppVaultPackDeps): AppVaultPack {
       }
     },
 
-    render(seat: PackSeat): { text?: string; event?: DriverEvent } {
+    render(seat: PackSeat): { text?: string; event?: DriverEvent; pinOnly?: true } {
       const p = prepared;
       if (!p) return {};
       let mode = packModeFor(deps.setting, seat.modelClass);
@@ -406,7 +406,15 @@ export function createAppVaultPack(deps: AppVaultPackDeps): AppVaultPack {
       if (!pack.text && !pack.withheld) return {};
       // A local seat's pack may carry a note that stays on this computer; the
       // reply it grounds is marked, so a later leaving seat gets the stub.
-      const mark = text && renderCache.localOnly ? { localOnly: true as const } : {};
+      // The mark names the project's own pin when that is all it carries
+      // (CX and CMO, 2026-10-08, G, H).
+      const mark =
+        text && renderCache.localOnly
+          ? {
+              localOnly: true as const,
+              ...(packPinOnly(pack.used) ? { pinOnly: true as const } : {}),
+            }
+          : {};
       const where = leaves ? 'cloud' : 'local';
       const card = JSON.stringify([where, pack.used, pack.withheld]);
       if (card === cardShown) return text ? { text, ...mark } : {};

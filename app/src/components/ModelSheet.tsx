@@ -1,21 +1,22 @@
 // The model sheet, in the Claude app's "Select model" shape. The root shows the
-// default (Stack), any models the user has pinned, the effort control, and two
-// category buttons that open dedicated sheets, the way Claude's "more models"
-// expands: Cloud models and Local models. Each category has an honest empty
-// state that routes to setup. When no stack exists yet, Stack is greyed with a
-// link to build one. Models in the category sheets swipe left to pin; a pinned
-// model rides under Stack for one-tap use and swipes there to unpin. On a
-// phone the very top row is the model on this phone: Harbor once it is
-// downloaded, else Harbor Lite (with Harbor's download progress under it while
-// it comes down). Harbor replaces Harbor Lite there, since the better model
-// makes the guide moot (founder, 2026-09-25). On the desktop the top rows are
-// this computer's engine: its agent and, beside it, the free chat with its own
-// model (CTO ruling 8); Local models there lists that free chat, or the way to
-// DeepBlue in the Stack, never the phone's own download.
-import { dockedNoun, dockedNounLower } from '../lib/docking.js';
+// default (Stack), any models the user has pinned, two category buttons that
+// open dedicated sheets, the way Claude's "more models" expands (Cloud models
+// and Local models), and the effort control last. The current pick wears a
+// check. Each category has an honest empty state that routes to setup. When no
+// stack exists yet, the Stack row is the way in to build one. Models in the
+// category sheets swipe left to pin; a pinned model rides under Stack for
+// one-tap use and swipes there to unpin. On a phone the very top row is the
+// model on this phone: Harbor once it is downloaded, else Harbor Lite (with
+// Harbor's download progress under it while it comes down). Harbor replaces
+// Harbor Lite there, since the better model makes the guide moot (founder,
+// 2026-09-25). On the desktop the top rows are this computer's engine: its
+// agent and, beside it, the free chat with its own model (CTO ruling 8); Local
+// models there lists that free chat, or the way to DeepBlue in the Stack,
+// never the phone's own download.
 import { useEffect, useRef, useState } from 'react';
 import type { ConversationSource } from '../state/types.js';
 import { useApp } from '../state/store.js';
+import { dockedNoun, dockedNounLower } from '../lib/docking.js';
 import { useSheetExit } from '../hooks/useSheetExit.js';
 import { isDesktop, isPhone } from '../lib/platform.js';
 import { HARBOR_BYLINE, HARBOR_MODEL_ID, HARBOR_MODEL_NAME } from '../lib/harbor.js';
@@ -38,8 +39,17 @@ import { isPinned, pinKey, togglePin } from '../lib/pins.js';
 import { SwipeRow } from './SwipeRow.js';
 import { engineChatReady } from '../state/firstRunOps.js';
 import { HARBOR_MASTER_MODEL_NAME } from '../lib/harborMaster.js';
-import { BackGlyph, CloseGlyph } from './SheetGlyphs.js';
+import { BackGlyph, CheckGlyph, ChevronGlyph, CloseGlyph } from './SheetGlyphs.js';
 import { Icon } from './Icon.js';
+import { thisDeviceNoun } from '../lib/deviceNoun.js';
+import {
+  CLOUD_SHEET_OFFLINE,
+  CLOUD_WAITS,
+  computerOfflineOf,
+  offlineNoSeatSub,
+  offlineNow,
+  offlineSeatSub,
+} from '../state/offlineOps.js';
 
 /** The desktop's free chat row, and the Local models sheet's words there. */
 export const DESKTOP_CHAT_ROW = 'Chat with this computer';
@@ -66,10 +76,31 @@ function RowContent({
       {value ? <span className="ms-row-value">{value}</span> : null}
       {chevron ? (
         <span className="ms-row-chev" aria-hidden="true">
-          {'›'}
+          <ChevronGlyph size={16} />
         </span>
       ) : null}
     </>
+  );
+}
+
+/** A cloud model while offline (Desktop Offline): shown, so the person sees
+ *  what waits, but not a pick, and in the muted ink of a row that cannot be
+ *  tapped, with no spend mark. Its sheet says why once, at the top
+ *  (CLOUD_SHEET_OFFLINE), so the row is its name alone. */
+function WaitingRow({ main }: { main: string }) {
+  return (
+    <div className="ms-row ms-row-disabled" aria-disabled="true">
+      <RowContent main={main} />
+    </div>
+  );
+}
+
+/** The current pick's mark at a row's trailing edge. */
+function RowCheck() {
+  return (
+    <span className="ms-row-check" aria-hidden="true">
+      <CheckGlyph size={18} />
+    </span>
   );
 }
 
@@ -78,19 +109,24 @@ function Row({
   sub,
   value,
   chevron,
-  highlight,
+  selected,
   onClick,
 }: {
   main: string;
   sub?: string;
   value?: string;
   chevron?: boolean;
-  highlight?: boolean;
+  selected?: boolean;
   onClick: () => void;
 }) {
   return (
-    <button className={`ms-row press-fb${highlight ? ' ms-row-default' : ''}`} onClick={onClick}>
+    <button
+      className="ms-row press-fb"
+      aria-current={selected ? 'true' : undefined}
+      onClick={onClick}
+    >
       <RowContent main={main} sub={sub} value={value} chevron={chevron} />
+      {selected ? <RowCheck /> : null}
     </button>
   );
 }
@@ -149,11 +185,14 @@ export function ModelSheet({
   onPick,
   onClose,
   initialStage = 'root',
+  current,
 }: {
   onPick: (source: ConversationSource) => void;
   onClose: () => void;
   /** Which sub-sheet to open on. Defaults to root; the out-of-usage tap opens 'local'. */
   initialStage?: 'root' | 'effort' | 'cloud' | 'local';
+  /** The brain the composer answers with now. Its row wears the check. */
+  current?: ConversationSource;
 }) {
   const {
     settings,
@@ -163,7 +202,11 @@ export function ModelSheet({
     setView,
     sourceReady,
     harborDownload,
+    connectivity,
   } = useApp();
+  // Offline (the connection's or the person's choice), cloud models wait for
+  // a connection: listed, never picked (Desktop Offline, founder 2026-10-07).
+  const offline = offlineNow(connectivity, settings.profileOverride);
   const [stage, setStage] = useState<'root' | 'effort' | 'cloud' | 'local' | 'more'>(initialStage);
   // Play the exit before a pick propagates (UI-4): the parent unmounts this
   // sheet the moment it learns the choice, so the choice is held until the
@@ -180,6 +223,8 @@ export function ModelSheet({
     dismiss();
   };
   const effort = settings.effort ?? DEFAULT_EFFORT;
+  const isCurrent = (s: ConversationSource) =>
+    Boolean(current && current.kind === s.kind && pinKey(s) === pinKey(current));
 
   // Your paired computer's stack: the model(s) your machine runs, reachable
   // over your connection. Picking it runs the agent ON the box (the phone is
@@ -199,6 +244,25 @@ export function ModelSheet({
   }, [daemon]);
   const boxModel =
     boxStack && boxStack !== 'error' ? (boxStack.orchestrator?.model ?? undefined) : undefined;
+  // Desktop Offline: your computer works offline (its network is down, or
+  // Offline is chosen there) with a cloud model running its show. That model
+  // waits for the computer's connection, and the one its engine seats there
+  // answers meanwhile, named, or none can yet. The phone's own reach is
+  // untouched, so nothing else in this sheet changes.
+  const boxCloudOffline =
+    boxStack !== undefined &&
+    boxStack !== 'error' &&
+    computerOfflineOf(boxStack) !== undefined &&
+    boxStack.orchestrator?.kind === 'cloud';
+  const boxSeat = boxCloudOffline ? boxStack.offlineSeat?.model : undefined;
+  // The free chat runs only a model that stays on the computer's network
+  // (the daemon refuses any other by address), so its row shows only then,
+  // as the desktop's does (engineChatReady).
+  const boxChat =
+    boxStack !== undefined &&
+    boxStack !== 'error' &&
+    boxStack.orchestrator !== undefined &&
+    boxStack.orchestrator.kind !== 'cloud';
 
   // The desktop app's own engine: the model this machine runs (Ollama or a
   // cloud key set up in the Stack). This is the default brain on desktop, so
@@ -229,6 +293,21 @@ export function ModelSheet({
     desktopStatus && desktopStatus !== 'error' && engineChatReady(desktopStatus)
       ? desktopStatus.stack.orchestrator?.model
       : undefined;
+  // Offline with a cloud model running the show, this computer's engine
+  // answers on its own best model (the engine's offline seat), or, with
+  // none installed, cannot answer yet.
+  const engineCloudOffline =
+    offline &&
+    desktopStatus !== undefined &&
+    desktopStatus !== 'error' &&
+    desktopStatus.stack.orchestrator?.kind === 'cloud';
+  // The seat is the engine's own, read across every provider on this
+  // network by address, so the row names the model that will answer.
+  const engineSeat = engineCloudOffline ? desktopStatus.offlineSeat?.model : undefined;
+  const engineOfflineEmpty = engineCloudOffline && !engineSeat;
+  const engineSub = engineSeat
+    ? offlineSeatSub(engineSeat, 'this computer')
+    : `${engineModel}, running on this computer`;
 
   // The same signal the send path checks, so a stack built after the per-profile
   // stacks landed is pickable. The old read looked at the retired single-stack
@@ -305,15 +384,22 @@ export function ModelSheet({
                   <div className="ms-row ms-row-disabled">
                     <span className="ms-row-text">
                       <span className="ms-row-main">This computer</span>
-                      <span className="ms-row-sub">Checking your engine...</span>
+                      <span className="ms-row-sub">Checking this computer...</span>
+                    </span>
+                  </div>
+                ) : engineModel && engineOfflineEmpty ? (
+                  <div className="ms-row ms-row-disabled" aria-disabled="true">
+                    <span className="ms-row-text">
+                      <span className="ms-row-main">This computer</span>
+                      <span className="ms-row-sub">{offlineNoSeatSub('this computer')}</span>
                     </span>
                   </div>
                 ) : engineModel ? (
                   <>
                     <Row
                       main="This computer"
-                      sub={`${engineModel}, running on this computer`}
-                      highlight
+                      sub={engineSub}
+                      selected={isCurrent({ kind: 'desktop' })}
                       onClick={() => pick({ kind: 'desktop' })}
                     />
                     {/* The free companion to the agent above, the same as the
@@ -323,19 +409,18 @@ export function ModelSheet({
                       <Row
                         main={DESKTOP_CHAT_ROW}
                         sub={DESKTOP_CHAT_SUB}
+                        selected={isCurrent({ kind: 'desktop-chat' })}
                         onClick={() => pick({ kind: 'desktop-chat' })}
                       />
                     ) : null}
                   </>
                 ) : (
-                  <div className="ms-row ms-row-disabled">
-                    <span className="ms-row-text">
-                      <span className="ms-row-main">This computer</span>
-                      <button className="ms-sublink press-fb" onClick={() => goto('stack')}>
-                        No model set up yet. Build your stack
-                      </button>
-                    </span>
-                  </div>
+                  <Row
+                    main="This computer"
+                    sub="No model set up yet. Build your stack."
+                    chevron
+                    onClick={() => goto('stack')}
+                  />
                 )}
               </div>
             ) : null}
@@ -345,6 +430,7 @@ export function ModelSheet({
                   <Row
                     main={HARBOR_MODEL_NAME}
                     sub={HARBOR_BYLINE}
+                    selected={isCurrent(harborSource)}
                     onClick={() => pick(harborSource)}
                   />
                 ) : (
@@ -353,6 +439,7 @@ export function ModelSheet({
                       <Row
                         main={HARBOR_MINI_MODEL_NAME}
                         sub={HARBOR_MINI_BYLINE}
+                        selected={isCurrent(harborLiteSource)}
                         onClick={() => pick(harborLiteSource)}
                       />
                     ) : null}
@@ -375,8 +462,8 @@ export function ModelSheet({
               <div className="ms-group">
                 {!daemon ? (
                   <Row
-                    main="Dock a computer or server"
-                    sub="Run your own model on your computer or a server, from anywhere"
+                    main="Connect your computer"
+                    sub="Use your computer's models from here, while it is on."
                     chevron
                     onClick={() => goto('pair')}
                   />
@@ -384,23 +471,34 @@ export function ModelSheet({
                   <div className="ms-row ms-row-disabled">
                     <span className="ms-row-text">
                       <span className="ms-row-main">{dockedNoun(daemon)}</span>
-                      <span className="ms-row-sub">Checking your connection...</span>
+                      <span className="ms-row-sub">Checking {dockedNounLower(daemon)}...</span>
                     </span>
                   </div>
                 ) : boxStack === 'error' ? (
-                  <div className="ms-row ms-row-disabled">
+                  <Row
+                    main={dockedNoun(daemon)}
+                    sub="Not reachable right now. Reconnect."
+                    chevron
+                    onClick={() => goto('pair')}
+                  />
+                ) : boxModel && boxCloudOffline && !boxSeat ? (
+                  <div className="ms-row ms-row-disabled" aria-disabled="true">
                     <span className="ms-row-text">
                       <span className="ms-row-main">{dockedNoun(daemon)}</span>
-                      <button className="ms-sublink press-fb" onClick={() => goto('pair')}>
-                        Not reachable right now. Reconnect
-                      </button>
+                      <span className="ms-row-sub">
+                        {offlineNoSeatSub(dockedNounLower(daemon))}
+                      </span>
                     </span>
                   </div>
                 ) : boxModel ? (
                   <Row
                     main={dockedNoun(daemon)}
-                    sub={`${boxModel}, running on ${dockedNounLower(daemon)}`}
-                    highlight
+                    sub={
+                      boxSeat
+                        ? offlineSeatSub(boxSeat, dockedNounLower(daemon))
+                        : `${boxModel}, running on ${dockedNounLower(daemon)}`
+                    }
+                    selected={isCurrent({ kind: 'desktop' })}
                     onClick={() => pick({ kind: 'desktop' })}
                   />
                 ) : (
@@ -415,10 +513,11 @@ export function ModelSheet({
                 )}
                 {/* The free companion to the paid agent above: read-only chat
                     with the same local models, no repo, no edits, no charge. */}
-                {daemon && boxStack && boxStack !== 'error' ? (
+                {daemon && boxChat ? (
                   <Row
                     main={`Chat with ${dockedNounLower(daemon)}`}
                     sub="Free. Read-only, no repository or edits."
+                    selected={isCurrent({ kind: 'desktop-chat' })}
                     onClick={() => pick({ kind: 'desktop-chat' })}
                   />
                 ) : null}
@@ -428,25 +527,24 @@ export function ModelSheet({
               {hasStack ? (
                 <Row
                   main="Stack"
-                  sub="Your lead model picks who answers"
-                  highlight
+                  sub="Your Reasoning model routes each task"
+                  selected={isCurrent({ kind: 'stack' })}
                   onClick={() => pick({ kind: 'stack' })}
                 />
               ) : (
-                <div className="ms-row ms-row-disabled">
-                  <span className="ms-row-text">
-                    <span className="ms-row-main">Stack</span>
-                    <button className="ms-sublink press-fb" onClick={() => goto('stack')}>
-                      Create your stack to get started
-                    </button>
-                  </span>
-                </div>
+                <Row
+                  main="Stack"
+                  sub="Not set up yet. Build your stack."
+                  chevron
+                  onClick={() => goto('stack')}
+                />
               )}
               {pins.map((src) => {
                 // A favorite whose model is not set up any more (its key was
                 // removed, its download deleted) is shown quiet and honest, not
                 // offered as a pick that would only toast "not ready".
-                const ready = sourceReady(src);
+                const waits = offline && src.kind === 'cloud';
+                const ready = sourceReady(src) && !waits;
                 return (
                   <SwipeRow
                     key={pinKey(src)}
@@ -457,8 +555,15 @@ export function ModelSheet({
                     <div className={`ms-row${ready ? '' : ' ms-row-disabled'}`}>
                       <RowContent
                         main={pinLabel(src)}
-                        sub={ready ? pinSub(src) : 'Not set up on this device right now'}
+                        sub={
+                          ready
+                            ? pinSub(src)
+                            : waits
+                              ? CLOUD_WAITS
+                              : 'Not set up on this device right now'
+                        }
                       />
+                      {ready && isCurrent(src) ? <RowCheck /> : null}
                       <PinStar pinned onToggle={() => setPin(src)} />
                     </div>
                   </SwipeRow>
@@ -468,16 +573,21 @@ export function ModelSheet({
 
             <div className="ms-group">
               <Row
+                main="Cloud models"
+                sub={offline ? CLOUD_WAITS : undefined}
+                chevron
+                onClick={() => setStage('cloud')}
+              />
+              <Row main="Local models" chevron onClick={() => setStage('local')} />
+            </div>
+
+            <div className="ms-group">
+              <Row
                 main="Effort"
                 value={effortLabel(effort)}
                 chevron
                 onClick={() => setStage('effort')}
               />
-            </div>
-
-            <div className="ms-group">
-              <Row main="Cloud models" chevron onClick={() => setStage('cloud')} />
-              <Row main="Local models" chevron onClick={() => setStage('local')} />
             </div>
           </>
         ) : null}
@@ -490,7 +600,7 @@ export function ModelSheet({
                 <Row
                   key={e}
                   main={effortLabel(e)}
-                  value={e === effort ? '✓' : undefined}
+                  selected={e === effort}
                   onClick={() => {
                     void saveSettings({ effort: e });
                     setStage('root');
@@ -510,11 +620,13 @@ export function ModelSheet({
               </button>
             ) : (
               <>
+                {offline ? <p className="ms-note">{CLOUD_SHEET_OFFLINE}</p> : null}
                 {claudeReady ? (
                   <>
                     <div className="ms-heading">Claude</div>
                     <div className="ms-group">
                       {CLAUDE_MODELS_PRIMARY.map((m) => {
+                        if (offline) return <WaitingRow key={m.id} main={m.label} />;
                         const src: ConversationSource = {
                           kind: 'cloud',
                           provider: 'anthropic',
@@ -529,6 +641,7 @@ export function ModelSheet({
                           >
                             <div className="ms-row">
                               <RowContent main={m.label} sub={m.blurb} />
+                              {isCurrent(src) ? <RowCheck /> : null}
                               <PinStar pinned={isPinned(pins, src)} onToggle={() => setPin(src)} />
                             </div>
                           </SwipeRow>
@@ -543,6 +656,7 @@ export function ModelSheet({
                     <div className="ms-heading">{p.name}</div>
                     <div className="ms-group">
                       {p.models.map((m) => {
+                        if (offline) return <WaitingRow key={m.id} main={m.label} />;
                         const src: ConversationSource = {
                           kind: 'cloud',
                           provider: p.id,
@@ -557,6 +671,7 @@ export function ModelSheet({
                           >
                             <div className="ms-row">
                               <RowContent main={m.label} sub={m.tagline} />
+                              {isCurrent(src) ? <RowCheck /> : null}
                               <PinStar pinned={isPinned(pins, src)} onToggle={() => setPin(src)} />
                             </div>
                           </SwipeRow>
@@ -573,9 +688,11 @@ export function ModelSheet({
         {stage === 'more' ? (
           <>
             <Header title="More models" />
+            {offline ? <p className="ms-note">{CLOUD_SHEET_OFFLINE}</p> : null}
             <div className="ms-heading">Claude</div>
             <div className="ms-group">
               {CLAUDE_MODELS_MORE.map((m) => {
+                if (offline) return <WaitingRow key={m.id} main={m.label} />;
                 const src: ConversationSource = {
                   kind: 'cloud',
                   provider: 'anthropic',
@@ -590,6 +707,7 @@ export function ModelSheet({
                   >
                     <div className="ms-row">
                       <RowContent main={m.label} sub={m.blurb} />
+                      {isCurrent(src) ? <RowCheck /> : null}
                       <PinStar pinned={isPinned(pins, src)} onToggle={() => setPin(src)} />
                     </div>
                   </SwipeRow>
@@ -611,6 +729,7 @@ export function ModelSheet({
                 <Row
                   main={engineChat}
                   sub={DESKTOP_CHAT_SUB}
+                  selected={isCurrent({ kind: 'desktop-chat' })}
                   onClick={() => pick({ kind: 'desktop-chat' })}
                 />
               </div>
@@ -642,6 +761,7 @@ export function ModelSheet({
                     >
                       <div className="ms-row">
                         <RowContent main={name} sub="Runs fully on this device" />
+                        {isCurrent(src) ? <RowCheck /> : null}
                         <PinStar pinned={isPinned(pins, src)} onToggle={() => setPin(src)} />
                       </div>
                     </SwipeRow>
@@ -650,7 +770,7 @@ export function ModelSheet({
               </div>
             ) : (
               <button className="ms-empty press-fb" onClick={() => goto('settings')}>
-                No on-device model yet. Get Harbor from Settings, Harbor, to get started.
+                No coding model on {thisDeviceNoun()} yet. Get Harbor in Settings.
               </button>
             )}
           </>

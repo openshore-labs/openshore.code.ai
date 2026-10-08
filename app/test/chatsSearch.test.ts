@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { chatReach, matchChat } from '../src/screens/ChatsScreen.js';
+import { inChatScope } from '../src/lib/chatScope.js';
 import type { Conversation, ThreadItem } from '../src/state/types.js';
 
 function conv(
@@ -90,5 +91,22 @@ describe('chatReach', () => {
   it('leaves a Stack or engine chat with no turn yet unknown (a ring, not a guess)', () => {
     expect(chatReach(conv('x', [], { kind: 'stack' }))).toBeUndefined();
     expect(chatReach(conv('x', [], { kind: 'desktop' }))).toBeUndefined();
+  });
+});
+
+// The Chats room and Recents share one reach: the active project's chats,
+// plus the chats a deleted project left behind, which belong to no project.
+describe('inChatScope', () => {
+  it('keeps an unfiled chat in scope while a project is active', () => {
+    expect(inChatScope({ ...conv('x'), unfiled: true }, 'p1')).toBe(true);
+  });
+
+  it("leaves another project's chat out", () => {
+    expect(inChatScope({ ...conv('x'), projectId: 'p2' }, 'p1')).toBe(false);
+  });
+
+  it('leaves a legacy chat with no project out while one is active, and in when none is', () => {
+    expect(inChatScope(conv('x'), 'p1')).toBe(false);
+    expect(inChatScope(conv('x'), undefined)).toBe(true);
   });
 });

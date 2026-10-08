@@ -8,7 +8,7 @@
 // Search reads inside the chats too: a title hit is marked in place, a hit in
 // the conversation shows its line under the title. Each row carries a small
 // dot in the house reach colours (teal local, amber cloud) when the reach is
-// known, and only a faint ring when it is not.
+// known, and nothing when it is not.
 // Sessions running on the paired desktop with no chat here yet sit in the
 // same list, marked, so a job started at the desk is picked up from the couch.
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
@@ -22,13 +22,19 @@ import { daemonListSessions } from '../drivers/remoteDriver.js';
 import { hapticTick } from '../lib/haptics.js';
 import { plainError } from '../lib/plainError.js';
 import { Icon } from '../components/Icon.js';
+import { ComposeGlyph, PlusGlyph } from '../components/SheetGlyphs.js';
+import { useCompact } from '../hooks/useCompact.js';
+import { inChatScope } from '../lib/chatScope.js';
 
-/** "just now", "12m ago", "2h ago", "Yesterday", "Mon", "Sep 1". */
+/** "Just now", "12m ago", "2h ago", "Yesterday", "Mon", "Sep 1". Every
+ *  caller sets it at the head of a line or a " · " part, so a word starts
+ *  with a capital, the way "Yesterday" does beside it: a locale's lowercase
+ *  weekday or month ("lun.", "sept.") too. A number leads as it is. */
 export function relativeTime(iso: string, now = Date.now()): string {
   const t = new Date(iso).getTime();
   if (Number.isNaN(t)) return '';
   const s = Math.max(0, Math.round((now - t) / 1000));
-  if (s < 60) return 'just now';
+  if (s < 60) return 'Just now';
   const m = Math.round(s / 60);
   if (m < 60) return `${m}m ago`;
   const h = Math.round(m / 60);
@@ -38,8 +44,13 @@ export function relativeTime(iso: string, now = Date.now()): string {
   const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
   if (t >= startOfToday - 86_400_000) return 'Yesterday';
   if (t >= startOfToday - 6 * 86_400_000)
-    return d.toLocaleDateString(undefined, { weekday: 'short' });
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    return lineStart(d.toLocaleDateString(undefined, { weekday: 'short' }));
+  return lineStart(d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
+}
+
+/** A value at the head of a line, its first letter a capital. */
+export function lineStart(text: string): string {
+  return text.charAt(0).toLocaleUpperCase() + text.slice(1);
 }
 
 /** The quiet source half of the secondary line. */
@@ -81,15 +92,20 @@ export function chatReach(conv: Conversation): 'local' | 'cloud' | undefined {
 const REACH_HINT = {
   local: 'Ran on a local model',
   cloud: 'Ran on a cloud model',
-  unknown: 'No reply yet',
 } as const;
 
-/** The reach dot: filled teal or amber when known, a faint ring when not, so
- *  every row's second line starts at the same edge. */
+/** The reach dot: filled teal or amber when known, and nothing at all when
+ *  not, so the second line starts on the title's edge in every state: at the
+ *  dot when there is one, at the time when there is not. An empty box the
+ *  dot's width once pushed the time 13px right of the title (2026-10-07). */
 export function ReachDot({ reach }: { reach: 'local' | 'cloud' | undefined }) {
-  const kind = reach ?? 'unknown';
+  if (!reach) return null;
   return (
-    <span className={`chat-reach chat-reach-${kind}`} title={REACH_HINT[kind]} aria-hidden="true" />
+    <span
+      className={`chat-reach chat-reach-${reach}`}
+      title={REACH_HINT[reach]}
+      aria-hidden="true"
+    />
   );
 }
 
@@ -166,19 +182,70 @@ export function Marked({ text, query }: { text: string; query: string }) {
 
 function SearchIcon() {
   return (
-    <Icon size={17}>
+    <Icon size={18}>
       <circle cx="11" cy="11" r="6.5" />
       <path d="m16 16 4 4" />
     </Icon>
   );
 }
 
-function ComposeIcon() {
+/** The search pill at the top of a list room: Chats everywhere, and Projects
+ *  on the desktop (D11). Escape clears it, Enter opens the top match, and the
+ *  clear button rides in only while there is something to clear. */
+export function SearchPill({
+  value,
+  onChange,
+  label,
+  onEnter,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  /** The placeholder, and the field's spoken name. */
+  label: string;
+  /** Open the top match, when there is one. */
+  onEnter?: () => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
   return (
-    <Icon size={22}>
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
-    </Icon>
+    <div className={`chat-search${value ? ' has-query' : ''}`}>
+      <span className="chat-search-icon">
+        <SearchIcon />
+      </span>
+      <input
+        ref={ref}
+        type="search"
+        value={value}
+        placeholder={label}
+        aria-label={label}
+        enterKeyHint="go"
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape' && value) {
+            e.preventDefault();
+            onChange('');
+          } else if (e.key === 'Enter' && value.trim() && onEnter) {
+            e.preventDefault();
+            onEnter();
+          }
+        }}
+      />
+      <button
+        type="button"
+        className="chat-search-clear press-fb"
+        aria-label="Clear search"
+        tabIndex={value ? 0 : -1}
+        aria-hidden={!value}
+        onClick={() => {
+          onChange('');
+          ref.current?.focus();
+        }}
+      >
+        <Icon size={12}>
+          <path d="M6 6l12 12" />
+          <path d="M18 6 6 18" />
+        </Icon>
+      </button>
+    </div>
   );
 }
 
@@ -210,26 +277,26 @@ export function ChatsScreen() {
   const [leavingId, setLeavingId] = useState<string | undefined>();
   const [desktopSessions, setDesktopSessions] = useState<DaemonSessionInfo[]>([]);
   const leaveTimer = useRef<number | null>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
   useEffect(
     () => () => {
       if (leaveTimer.current !== null) window.clearTimeout(leaveTimer.current);
     },
     [],
   );
+  const compact = useCompact();
 
   const projects = settings.projects ?? [];
   const activeProject = projects.find((p) => p.id === settings.activeProjectId) ?? projects[0];
   const projectId = activeProject?.id;
 
-  // The chats in the active project, each with where the search found it.
+  // The chats in scope (lib/chatScope.ts), each with where the search found it.
   const q = query.trim().toLowerCase();
   const chats: Row[] = useMemo(
     () =>
       order.flatMap((id) => {
         const conv = conversations[id];
         if (!conv) return [];
-        if (projectId ? conv.projectId !== projectId : conv.projectId) return [];
+        if (!inChatScope(conv, projectId)) return [];
         const match = matchChat(conv, q);
         if (!match) return [];
         const at = new Date(conv.updatedAt).getTime();
@@ -310,7 +377,12 @@ export function ChatsScreen() {
     }, ROW_OUT_MS);
   };
 
-  const compose = (
+  const searchLabel = activeProject ? `Search chats in ${activeProject.name}` : 'Search chats';
+
+  // The phone's bar carries the compose mark, and the list leads with a New
+  // chat row. At 900px and wider the bar holds the labelled New chat, the
+  // same button as Projects' New project (D11's grammar), and the row goes.
+  const compose = compact ? (
     <button
       type="button"
       className="icon-btn press-fb"
@@ -320,7 +392,18 @@ export function ChatsScreen() {
         startNewChat();
       }}
     >
-      <ComposeIcon />
+      <ComposeGlyph />
+    </button>
+  ) : (
+    <button
+      type="button"
+      className="btn primary sm projects-bar-new"
+      onClick={() => {
+        startNewChat();
+      }}
+    >
+      <PlusGlyph size={16} />
+      New chat
     </button>
   );
 
@@ -328,48 +411,19 @@ export function ChatsScreen() {
     <div className="screen">
       <BackBar title="Chats" action={compose} />
       <div className="screen-inner chats">
-        <div className={`chat-search${query ? ' has-query' : ''}`}>
-          <span className="chat-search-icon">
-            <SearchIcon />
-          </span>
-          <input
-            ref={searchRef}
-            type="search"
+        {/* No search over nothing: the field shows once there is a chat to
+            find, and stays while anything is typed, spaces included. */}
+        {rows.length > 0 || query ? (
+          <SearchPill
             value={query}
-            placeholder="Search chats"
-            aria-label="Search chats"
-            enterKeyHint="go"
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape' && query) {
-                e.preventDefault();
-                setQuery('');
-              } else if (e.key === 'Enter' && q && rows[0]) {
-                e.preventDefault();
-                openRow(rows[0]);
-              }
-            }}
+            onChange={setQuery}
+            label={searchLabel}
+            onEnter={rows[0] ? () => openRow(rows[0]!) : undefined}
           />
-          <button
-            type="button"
-            className="chat-search-clear press-fb"
-            aria-label="Clear search"
-            tabIndex={query ? 0 : -1}
-            aria-hidden={!query}
-            onClick={() => {
-              setQuery('');
-              searchRef.current?.focus();
-            }}
-          >
-            <Icon size={12}>
-              <path d="M6 6l12 12" />
-              <path d="M18 6 6 18" />
-            </Icon>
-          </button>
-        </div>
+        ) : null}
 
         <div className="chat-list">
-          {q ? null : (
+          {q || rows.length === 0 || !compact ? null : (
             <button
               type="button"
               className="chat-row chat-row-new press-fb press-fb--row"
@@ -385,7 +439,7 @@ export function ChatsScreen() {
           )}
 
           {rows.map((row, i) => {
-            const style = { '--stagger': `${Math.min(i, 8) * 22}ms` } as CSSProperties;
+            const style = { '--i': Math.min(i, 8) } as CSSProperties;
             if (row.kind === 'desktop') {
               const s = row.session;
               const name =
@@ -424,6 +478,17 @@ export function ChatsScreen() {
               >
                 <div
                   className={`chat-row${row.id === activeId && view === 'chat' ? ' active' : ''}${row.id === leavingId ? ' leaving' : ''}`}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      openConversation(row.id);
+                    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+                      e.preventDefault();
+                      setConfirmId(row.id);
+                    }
+                  }}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     beginRename(row.id);
@@ -444,7 +509,8 @@ export function ChatsScreen() {
                   ) : null}
                   <span className="chat-row-sub">
                     <ReachDot reach={chatReach(conv)} />
-                    {relativeTime(conv.updatedAt)} · {sourceShort(conv)}
+                    {relativeTime(conv.updatedAt)} ·{' '}
+                    {conv.unfiled && !conv.projectId ? 'No project' : sourceShort(conv)}
                   </span>
                 </div>
               </SwipeRow>
@@ -453,18 +519,25 @@ export function ChatsScreen() {
         </div>
 
         {rows.length > 0 && !q ? (
-          <p className="chat-list-hint">Swipe a chat left to delete it. Hold it to rename.</p>
+          <p className="chat-list-hint">
+            <span className="chat-hint-touch">
+              Swipe a chat left to delete it. Hold it to rename.
+            </span>
+            <span className="chat-hint-pointer">
+              Drag a chat left to delete it. Right-click to rename it.
+            </span>
+          </p>
         ) : null}
 
         {rows.length === 0 ? (
           <div className="chat-empty">
-            <h2>{q ? `Nothing matches “${query.trim()}”.` : 'Nothing here yet.'}</h2>
+            <h2>{q ? `Nothing matches “${query.trim()}”` : 'Nothing here yet'}</h2>
             {q ? <p>Search looks through chat names and what was said in them.</p> : null}
             {!q ? (
               <p>
                 {activeProject
                   ? `Start a chat and it stays with ${activeProject.name}.`
-                  : 'Create a project to start saving your chats.'}
+                  : 'Your first chat starts a project called My work.'}
               </p>
             ) : null}
             {!q ? (
@@ -483,7 +556,7 @@ export function ChatsScreen() {
             <p>{confirmConv.title}. This cannot be undone.</p>
             <div className="confirm-row">
               <button className="btn ghost" onClick={() => setConfirmId(undefined)}>
-                Cancel
+                Keep it
               </button>
               <button className="btn danger" onClick={() => removeChat(confirmId!)}>
                 Delete

@@ -827,7 +827,7 @@ export function MarketplaceScreen() {
   // One tap fills the whole stack for a profile. Desktop: pull each model
   // through the engine (the same install channel and progress UI as a single
   // model), then set the orchestrator and specialists. Phone: the Pocket bundle
-  // downloads its on-device model and makes it the Reasoning LLM. Sizes are
+  // downloads its on-device model and makes it the Reasoning model. Sizes are
   // summed from the live catalog, never hardcoded.
   const sizeOf = (id: string) => catalog?.models.find((m) => m.id === id)?.sizeGB;
   const installBundle = async (bundle: StackBundle) => {
@@ -892,7 +892,7 @@ export function MarketplaceScreen() {
         <div className="shelf-head">
           <h2>Fill your stack in one tap</h2>
           <p className="hint">
-            A bundle sets your Reasoning LLM and specialists for a profile. Each shows its total
+            A bundle sets your Reasoning model and specialists for a profile. Each shows its total
             download. Weights come straight from their source.
           </p>
         </div>

@@ -1,11 +1,14 @@
 // Which rooms are day-one and which are second-session, per device. Pure, so
 // the split is a tested rule rather than a constant someone has to remember.
+// The Sidebar's default order reads it (D10, founder 2026-10-07): the day-one
+// rooms, then the rest, in one group.
 //
 // Terminal is day-one on a desktop (the shell is right there) and on a phone
-// that has paired a hub (the terminal reaches it). On a bare phone it is a
-// dead room until a hub exists (review 6, blocker A), so it moves to the
-// second-session group where the room's own "Connect your hub" card still
-// explains the way in. Nothing else moves.
+// that has paired a computer (the terminal reaches it). On a bare phone it is
+// only a setup page until a computer is paired (review 6, blocker A), so it
+// leads the second-session rooms, straight after the Vault, where the room's
+// own card still says Connect your computer. It moves up the day the phone
+// pairs, for anyone who never moved a row. Nothing else moves.
 import {
   RELEASE_TIER,
   SHIPS_LAUNCH,
@@ -66,8 +69,10 @@ const PRIMARY_BASE: NavEntry[] = (['chats', 'projects', 'repos', 'stack', 'vault
   entry,
 );
 
+// Crew, Cloud Connections and Pairing straight under the day-one rooms
+// (founder, 2026-10-01), then the later tiers' rooms, then Settings.
 const EXPLORE_BASE: NavEntry[] = (
-  ['crew', 'marketplace', 'stackhealth', 'launch', 'connections', 'pair', 'settings'] as const
+  ['crew', 'connections', 'pair', 'marketplace', 'stackhealth', 'launch', 'settings'] as const
 ).map(entry);
 
 /** Whether Terminal belongs in the day-one set on this device. */

@@ -6,12 +6,13 @@
 // as a last resort that always asks before spending.
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, relative } from 'node:path';
+import { dirname, relative, resolve } from 'node:path';
 import type { OscConfig } from '../../config/schema.js';
 import type { ChatMessage, ContentPart, Provider, ToolCallRequest } from '../../providers/types.js';
-import { leavesThisNetwork, ProviderError } from '../../providers/types.js';
+import { ProviderError, seatLeaves } from '../../providers/types.js';
 import { adapterFor, type ModelAdapter } from '../../providers/adapters/index.js';
 import type { DelegatedUsage, Router } from '../../router/router.js';
+import type { DelegableRole } from '../../router/roles.js';
 import {
   capContent,
   type ApprovedPreview,
@@ -51,6 +52,7 @@ import { platformAndShell } from '../exec/shell.js';
 import type { SecurityProfile } from '../security/profiles.js';
 import { redactSecrets } from '../security/redaction.js';
 import { routineSearchRefusal } from '../security/routineSearch.js';
+import { isLocalUrl } from '../security/egress.js';
 import {
   compactHistory,
   estimateMessages,
@@ -70,6 +72,22 @@ import type {
 } from './types.js';
 import { instructionsPrompt, type RepoInstructions } from './instructions.js';
 import { verifyRetryPrompt } from '../../harness/verify.js';
+import { hostIsLoopback, isOllamaCloudTag } from '../../harness/locality.js';
+import {
+  MEMORY_DECLINED,
+  MEMORY_ROUTINE_DENIED,
+  MEMORY_ROUTINE_REFUSED,
+  WEB_DECLINED,
+  handoffCardSummary,
+  handoffDeclined,
+  handoffRefusalLine,
+  memoryWhyLine,
+  placeholderLine,
+  privatePageCard,
+  privateSearchCard,
+  searchServiceName,
+  type PrivateCause,
+} from '../../harness/privacyLines.js';
 import { runVerifyAsync } from './verifyRun.js';
 import { pageCheck } from './pageCheck.js';
 import { commandDigest, detectCheckCommand } from './checkDetect.js';
@@ -78,7 +96,6 @@ import {
   LEAN_MAX_TOOLS_SHOWN,
   deriveProfile,
   deriveModelClass,
-  classBlurb,
   useConstrainedDecoding,
   type ModelClassProfile,
 } from '../../harness/profile.js';
@@ -95,7 +112,7 @@ import {
 } from '../../harness/repeatCycle.js';
 import { firstTurnRetrieval } from './lifts.js';
 import { vaultPackSize } from '../../harness/vault/settings.js';
-import { withholdLocalOnly } from '../../harness/vault/privacy.js';
+import { carriesLocalOnly, withholdLocalOnly } from '../../harness/vault/privacy.js';
 import {
   buildContextPack,
   packBudgetTokens,
@@ -111,10 +128,28 @@ import {
   handoffBudgetTokens,
 } from '../../harness/handoff.js';
 import { handoffTurnsFromHistory, type HandoffRecord } from './handoffStore.js';
+import {
+  OFFLINE_PROMPT,
+  ONLINE_AGAIN_NOTE,
+  offlineNoModelLine,
+  offlineNote,
+  offlineNowDenied,
+  type MachineOffline,
+} from './offline.js';
 import type { HarnessCurrentsHandle } from '../../currents/model.js';
 import type { ToolSpec } from '../../providers/types.js';
 import { MERGED_VAULT_TOOL, seatOffersVaultTool, withVaultLookupPriority } from './registry.js';
 import { DEFAULT_VAULT_READ_CAP_CHARS } from '../tools/vaultFind.js';
+import {
+  fileVisibility,
+  noteClosed,
+  realVaultRoot,
+  showingFor,
+  vaultMeets,
+  vaultPathOf,
+  type NoteShowing,
+} from '../tools/workspaceNotes.js';
+import type { VaultVisibility } from '../../harness/vault/types.js';
 import {
   OBSERVATION_SLACK_CHARS,
   WINDOW_LEAN_FRACTION,
@@ -155,6 +190,17 @@ export interface AgentDeps {
    *  routine, CTO 3). A call the model makes to one anyway is refused by name,
    *  never asked, and never read as a malformed call. */
   offlineTools?: readonly string[];
+  /** This computer's offline state, read before every turn (Desktop Offline,
+   *  founder 2026-10-07). While it says offline, only a model whose requests
+   *  stay on this network answers (a cloud seat gives way to the router's
+   *  local seat), nothing escalates, the tools in `offlineCut` leave the menu
+   *  and are refused by name, and the model is told. Undefined reads as
+   *  online. Bootstrap wires the machine's flag (core/agent/offline.ts). */
+  offline?: () => MachineOffline;
+  /** The tools this session takes off its menu while this computer is
+   *  offline: the network tools of the routine's offline slice (registry.ts
+   *  offlineCut). */
+  offlineCut?: readonly string[];
   /** Persist an allow rule for this tool in the workspace ("don't ask again
    *  for this in this project"). Returns false when nothing could be written. */
   persistRule?: (rule: ProjectRule) => boolean;
@@ -203,26 +249,130 @@ function insideVault(abs: string, vaultRoot: string | undefined): boolean {
   }
 }
 
-/** Capitalize a model-class name for a sentence ("small" -> "Small"). */
-function cap(s: string): string {
-  return s.length ? s[0]!.toUpperCase() + s.slice(1) : s;
-}
-
-/** The first user turn's text, for the Jev judge's task side. */
+/** The first user turn's text, for the Jev judge's task side. None when it
+ *  is marked local-only (a fold's summary can be): the judge is a request off
+ *  this network (D5). */
 function firstUserText(history: ChatMessage[]): string | undefined {
   const m = history.find((x) => x.role === 'user');
+  if (m?.localOnly) return undefined;
   return typeof m?.content === 'string' && m.content.trim() ? m.content : undefined;
 }
 
-/** The last assistant turn's text, for the Jev judge's result side. */
+/** The last assistant turn's text, for the Jev judge's result side. None
+ *  when it is marked local-only, for the same reason. */
 function lastAssistantText(history: ChatMessage[]): string | undefined {
   for (let i = history.length - 1; i >= 0; i--) {
     const m = history[i]!;
     if (m.role === 'assistant' && typeof m.content === 'string' && m.content.trim()) {
-      return m.content;
+      return m.localOnly ? undefined : m.content;
     }
   }
   return undefined;
+}
+
+const HANDOFF_ROLES: ReadonlySet<string> = new Set<DelegableRole>([
+  'coding',
+  'writing',
+  'analysis',
+  'fast',
+  'vision',
+]);
+
+/** The role a handoff hands its subtask to: delegate's own, vision for
+ *  analyzeImage; undefined for any other tool. */
+function handoffRole(call: ParsedToolCall): DelegableRole | undefined {
+  const role =
+    call.name === 'analyzeImage' ? 'vision' : call.name === 'delegate' ? call.args.role : undefined;
+  return typeof role === 'string' && HANDOFF_ROLES.has(role) ? (role as DelegableRole) : undefined;
+}
+
+// The words said once a chat holds a private note's text live in one pure
+// module the app reads too (harness/privacyLines.ts, CX and CMO 2026-10-08);
+// re-exported here for the engine's own callers.
+export {
+  HANDOFF_LOCAL_ONLY_DENIED,
+  HANDOFF_PIN_DENIED,
+  MEMORY_DECLINED,
+  MEMORY_ROUTINE_DENIED,
+  MEMORY_ROUTINE_REFUSED,
+  MEMORY_WHY_PIN,
+  MEMORY_WHY_READ,
+  PRIVATE_WEB_LEAD_PIN,
+  PRIVATE_WEB_LEAD_READ,
+  WEB_DECLINED,
+  handoffCardSummary,
+  handoffDeclined,
+  placeholderLine,
+  type PrivateCause,
+} from '../../harness/privacyLines.js';
+
+/** The Stack's category for a handoff, as the card names it (D): the label
+ *  lowercased, Fast as "fast answers". */
+const HANDOFF_CATEGORY: Readonly<Record<string, string>> = {
+  coding: 'coding',
+  writing: 'writing',
+  analysis: 'analysis',
+  fast: 'fast answers',
+  vision: 'image reading',
+  imageGen: 'image creation',
+};
+
+/** A profile with nobody to ask (a routine) never sends a step to a cloud
+ *  model: no headless run registers the handoff tools today, so this is the
+ *  belt behind that. */
+export function handoffUnasked(model: string): string {
+  return `This step goes to ${model}, a cloud model, and a routine cannot ask you first, so it did not run.`;
+}
+
+/** Who passes a cloud tag's requests on to ollama.com, as a card names it:
+ *  "Ollama on this computer" only for a loopback server (hostIsLoopback),
+ *  never for one on the LAN or the tailnet (CX and CMO, 2026-10-08, C). */
+function ollamaPasser(server: { host: string; loopback: boolean }): string {
+  return server.loopback ? 'Ollama on this computer' : `The Ollama server at ${server.host}`;
+}
+
+/** A handoff's destination, resolved before it runs (D). */
+interface HandoffTarget {
+  model: string;
+  leaves: boolean;
+  /** Provider id and model: the per-task approval's key. */
+  key: string;
+  /** The Stack's category, for the card. */
+  category: string;
+  /** The card's detail; undefined for a priced provider, whose detail is the
+   *  spend estimate. */
+  detail?: string;
+  /** No specialist is placed for the role, so the Reasoning model takes the
+   *  step itself (Router.roleFor's fallback): no other model is handed it,
+   *  so the tool-start names none. */
+  fellBack?: true;
+}
+
+/** What a command's card says while the vault's folder overlaps this
+ *  workspace and the model answering leaves this network (D5); the command
+ *  asks every time then. A program's output, read later, says the same. */
+export const COMMAND_READS_VAULT =
+  'This command can read notes in your vault that stay on this computer, and what it prints goes to a cloud model.';
+export const OUTPUT_SHOWS_VAULT =
+  "This program's output can show notes in your vault that stay on this computer, and it goes to a cloud model.";
+
+/** The card line for a step near the vault on a seat that leaves. */
+function vaultCardLine(toolName: string): string {
+  return toolName === 'readProcess' ? OUTPUT_SHOWS_VAULT : COMMAND_READS_VAULT;
+}
+
+/** Why analyzeImage did not run on an image in a vault folder that stays on
+ *  this computer: the vision seat is off this network (D5). */
+export const IMAGE_LOCAL_ONLY_DENIED =
+  'This image is in your vault and stays on this computer, so it is not handed to a cloud model.';
+
+/** How one task runs (AgentSession.run). */
+export interface RunOptions {
+  /** The task's message carries a private note's text (a private plan's
+   *  step sent from the app, CX and CMO 2026-10-08, J): it is marked
+   *  local-only, so the engine's D5 rules hold for the whole task and the
+   *  reply comes back marked. */
+  localOnly?: true;
 }
 
 /** The shape of a rule the loop asks to persist for a project. */
@@ -240,6 +390,9 @@ const PLAN_SAFE_RISKS = new Set(['read', 'network']);
 export const OFFLINE_DENIED = 'This routine works offline, so nothing here reaches the web.';
 const OFFLINE_ADVICE =
   'Work only from the files in the workspace, and say in your report what you could not check.';
+
+/** No tools off the menu (online). */
+const EMPTY_SET: ReadonlySet<string> = new Set();
 
 /** The local calendar date, YYYY-MM-DD, for a dated Current State line. */
 function localDate(d: Date): string {
@@ -278,6 +431,12 @@ const SMALL_MODEL_TOOL_PRIORITY = withVaultLookupPriority([
 const TRANSIENT =
   /\b(429|503|overloaded|rate.?limit|ECONNRESET|ETIMEDOUT|EAI_AGAIN|fetch failed)\b/i;
 const RETRY_DELAYS_MS = [2000, 6000];
+/** A request that never reached its server: the connection went, not the
+ *  server's capacity. Said as such, never as a busy server (Desktop Offline:
+ *  the retry's pause also lets this computer's offline flag catch up, so the
+ *  next turn can follow it to a model on this network). */
+const UNREACHED =
+  /\b(fetch failed|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ENETUNREACH|EHOSTUNREACH)\b|Connection error/i;
 
 interface ActiveModel {
   provider: Provider;
@@ -291,7 +450,11 @@ export class AgentSession {
   private active: ActiveModel;
   private escalated = false;
   private cloudApprovedForSession = false;
-  private cloudApprovedForTask = false;
+  /** The cloud models the person approved for this task, keyed by provider
+   *  id and model (CX and CMO, 2026-10-08, D): the orchestrator's yes covers
+   *  only the orchestrator, and a placed cloud specialist asks for itself
+   *  before its first handoff. Cleared at each task's start. */
+  private cloudApprovedThisTask = new Set<string>();
   private abortController?: AbortController;
   private mode: PermissionMode;
   private instructions?: string;
@@ -371,6 +534,19 @@ export class AgentSession {
   /** What the last context-pack card said, so it is shown again only when
    *  the pack changed (an escalation re-renders for the cloud seat). */
   private packCardShown?: string;
+  /** Replies marked local-only only because this turn's pack carried a
+   *  private project pin (privateCause 'pin'), so a later refusal can still
+   *  name the pin as its cause rather than a read (CX and CMO, 2026-10-08,
+   *  G). Session-only. */
+  private pinMarked = new WeakSet<ChatMessage>();
+  /** This session has held a private note's text at some point (a marked
+   *  observation, or holdsLocalOnly at any turn): sticky, for a Crew run's
+   *  note (heldLocalOnly). */
+  private heldEver = false;
+  /** The models off this network already told, in this chat, that they see
+   *  marked replies only as a placeholder (F). Session-only: never stored,
+   *  never journaled. */
+  private placeholderShown = new Set<string>();
   /** A write this task landed in a note: the vault (vaultWrite, or a file
    *  tool inside the vault) or the project's memory notes. A note is not
    *  code: it never triggers verify or the judge. */
@@ -386,6 +562,12 @@ export class AgentSession {
     return this.offlineSet;
   }
   private offlineSet?: ReadonlySet<string>;
+  /** The machine's offline state as this session last acted on it, so a
+   *  change is said once in the transcript (Desktop Offline). */
+  private offlineSeen: MachineOffline = { offline: false };
+  /** The seat this session worked on before going offline, put back when
+   *  the computer is online again. */
+  private seatBeforeOffline?: ActiveModel;
   /** What the last handoff was built from, so an unchanged chat (a dispose
    *  right after a completed task) is not written again. */
   private handoffSignature?: string;
@@ -417,7 +599,11 @@ export class AgentSession {
     // A vault tool asks whether the seat answering now leaves this network, so
     // a local-only note is read only by a seat that stays (CTO I5). Judged by
     // address, live, since an escalation switches the seat mid-task.
-    deps.toolContext.seatLeavesNetwork = () => leavesThisNetwork(this.active.provider);
+    deps.toolContext.seatLeavesNetwork = () => this.activeLeaves();
+    // Repo search sends its query to the embedder, which may be off this
+    // network: while a seat that stays holds a local-only note's text, the
+    // query may quote it, so search keeps to the keyword index (D5).
+    deps.toolContext.chatHoldsLocalOnly = () => !this.activeLeaves() && this.holdsLocalOnly();
     // The seat answering now, for the provenance lines on a note the agent
     // writes (Vault M7, CTO L9): its model, its class, and a cloud seat's
     // provider. Where it ran is `seatLeavesNetwork`, judged by address.
@@ -426,7 +612,7 @@ export class AgentSession {
       size:
         this.modelProfile?.modelClass ??
         deriveModelClass({ model: this.active.model, kind: this.active.provider.kind }),
-      ...(leavesThisNetwork(this.active.provider) ? { provider: this.active.provider.label } : {}),
+      ...(this.activeLeaves() ? { provider: this.active.provider.label } : {}),
     });
     // A vault read is capped per class (the seat answering now), past which it
     // returns the outline and asks for a section (CTO I11), and never past
@@ -463,8 +649,11 @@ export class AgentSession {
     };
   }
 
+  /** The seat answering now and where it runs, judged as the pill judges it
+   *  (activeLeaves), so a session list or a status line never calls a cloud
+   *  tag or a server off this network local. */
   get activeModel(): { model: string; kind: 'local' | 'cloud' } {
-    return { model: this.active.model, kind: this.active.provider.kind };
+    return { model: this.active.model, kind: this.activeLeaves() ? 'cloud' : 'local' };
   }
 
   get permissionMode(): PermissionMode {
@@ -504,8 +693,28 @@ export class AgentSession {
     const before = this.history.length;
     const budget = Math.max(1, Math.floor(estimateMessages(this.history) * 0.5));
     const full = this.history;
-    const result = await compactHistory(this.history, budget, (text) =>
-      this.summarize(focus ? `${text}\n\nWhen summarizing, keep everything about: ${focus}` : text),
+    // The seat the summary runs on is resolved first: one off this network
+    // folds the stubbed history, never a local-only note's text (D5). With
+    // no seat at all nothing is sent, and the fold drops the oldest turns.
+    let seat: ActiveModel | undefined;
+    let unseated: unknown;
+    try {
+      seat = await this.oneShotSeat();
+    } catch (err) {
+      unseated = err;
+    }
+    const leaves = seat !== undefined && seatLeaves(seat.provider, seat.model);
+    const result = await compactHistory(
+      leaves ? withholdLocalOnly(this.history) : this.history,
+      budget,
+      (text) =>
+        seat
+          ? this.summarize(
+              focus ? `${text}\n\nWhen summarizing, keep everything about: ${focus}` : text,
+              undefined,
+              seat,
+            )
+          : Promise.reject(unseated instanceof Error ? unseated : new Error(String(unseated))),
     );
     if (result.compacted) {
       this.history = result.messages;
@@ -523,14 +732,27 @@ export class AgentSession {
 
   /** A short title for the conversation, from its first exchange. */
   async generateTitle(): Promise<string | undefined> {
-    const user = this.history.find((m) => m.role === 'user');
-    const assistant = this.history.find((m) => m.role === 'assistant');
+    let seat: ActiveModel;
+    try {
+      seat = await this.oneShotSeat();
+    } catch {
+      return undefined;
+    }
+    // A seat off this network is never sent a local-only note's text (D5):
+    // the title is drawn from the turns that carry none.
+    const turns = seatLeaves(seat.provider, seat.model)
+      ? this.history.filter((m) => !m.localOnly)
+      : this.history;
+    const user = turns.find((m) => m.role === 'user');
+    const assistant = turns.find((m) => m.role === 'assistant');
     const userText = typeof user?.content === 'string' ? user.content : '';
     const reply = typeof assistant?.content === 'string' ? assistant.content : '';
     if (!userText.trim()) return undefined;
     try {
       const raw = await this.summarize(
         `Write a title for this conversation: three to six words, plain, specific, no quotes, no trailing period, no em dashes. Answer with the title only.\n\nPerson: ${userText.slice(0, 600)}\n\nAssistant: ${reply.slice(0, 600)}`,
+        undefined,
+        seat,
       );
       const title = raw
         .split('\n')[0]!
@@ -590,6 +812,11 @@ export class AgentSession {
     );
     const round = verifyRounds + 1;
     const willRetry = !result.passed && verifyRounds < maxRetries;
+    // A check run in a workspace that holds the vault can print its notes
+    // (D5): handed back to a seat that stays, the failure is marked as a
+    // local-only note's text, and the event says so for a seeded history.
+    const marked =
+      willRetry && plan.kind === 'command' && !this.activeLeaves() && this.vaultInWorkspace();
     this.emit({
       type: 'verify',
       passed: result.passed,
@@ -598,15 +825,18 @@ export class AgentSession {
       round,
       willRetry,
       check: plan.kind === 'command' ? 'tests' : 'page',
+      ...(marked ? { localOnly: true as const } : {}),
     });
     if (!willRetry) return result.passed ? 'passed' : 'failed';
     this.emit({
       type: 'status',
       message: `The check did not pass; handing the failure back to the model (retry ${round} of ${maxRetries}).`,
     });
+    if (marked) this.readLocalOnlyThisTask = true;
     this.history.push({
       role: 'user',
       content: verifyRetryPrompt(result, round, maxRetries),
+      ...(marked ? { localOnly: true as const } : {}),
     });
     // The model is asked to fix the cause, which takes tools: an answer-only
     // turn left over from repeats before the check would withhold them for
@@ -624,7 +854,10 @@ export class AgentSession {
     const { cwd } = this.deps.toolContext;
     const configured = verifyConfig?.command?.trim();
     if (configured) {
-      if (this.deps.profile.allowShellAutoApprove) return { kind: 'command', command: configured };
+      // Near the vault on a seat that leaves, the check asks too (D5).
+      if (this.deps.profile.allowShellAutoApprove && !this.checkAsksForVault()) {
+        return { kind: 'command', command: configured };
+      }
       const ok = await this.mayRunCheck(configured, commandDigest(configured), 'configured');
       if (ok) return { kind: 'command', command: configured };
     } else if (verifyConfig?.detect === 'on') {
@@ -655,8 +888,12 @@ export class AgentSession {
     // Under the secrets lockdown every command asks, the check included: the
     // card promises "asks before every command and commit" (CX 7), so a saved
     // grant, an earlier yes, and bypass mode all wait for this one answer.
+    // So does a check that can read the vault's notes for a seat that leaves
+    // this network (D5), with the line every such command's card carries.
     const lockdown = this.lockdown;
-    if (!lockdown) {
+    const vaultAsks = this.checkAsksForVault();
+    const asksEach = lockdown || vaultAsks;
+    if (!asksEach) {
       try {
         if (hasVerifyGrant(cwd, command, digest)) return true;
       } catch {
@@ -666,18 +903,20 @@ export class AgentSession {
     }
     if (this.verifyDeclined.has(key)) return false;
     if (this.deps.canGrantVerify === false || this.deps.profile.name === 'headless') return false;
-    if (this.mode === 'bypassPermissions' && !lockdown) return true;
+    if (this.mode === 'bypassPermissions' && !asksEach) return true;
+    const about =
+      source === 'configured'
+        ? `This project's own check command. It runs on this computer, in ${cwd}, after each change, and any failure goes back to the model to fix.`
+        : `Found ${source}. It runs on this computer, in ${cwd}, after each change, and any failure goes back to the model to fix.${vaultAsks ? '' : ' Allow it always for this project to stop this question.'}`;
     const answer = await this.awaitApprovalOrAbort({
       id: `verify_${Date.now().toString(36)}`,
       kind: 'tool',
       toolName: 'verify',
       risk: 'shell',
       summary: `Check the work: run \`${command}\``,
-      detail:
-        source === 'configured'
-          ? `This project's own check command. It runs on this computer, in ${cwd}, after each change, and any failure goes back to the model to fix.`
-          : `Found ${source}. It runs on this computer, in ${cwd}, after each change, and any failure goes back to the model to fix. Allow it always for this project to stop this question.`,
-      ...(lockdown ? { alwaysAsk: true, lockdown: true } : {}),
+      detail: vaultAsks ? `${COMMAND_READS_VAULT} ${about}` : about,
+      ...(asksEach ? { alwaysAsk: true } : {}),
+      ...(lockdown ? { lockdown: true } : {}),
     });
     if (answer === 'aborted') return false;
     if (!answer.approve) {
@@ -693,6 +932,13 @@ export class AgentSession {
     }
     if (!lockdown) this.verifyAllowed.add(key);
     return true;
+  }
+
+  /** The check asks before every run (D5): the vault's folder overlaps this
+   *  workspace, so a check can print its notes, and the seat it reports to
+   *  leaves this network. */
+  private checkAsksForVault(): boolean {
+    return this.activeLeaves() && this.vaultInWorkspace();
   }
 
   /** On when this session holds the project's secrets, which only a local
@@ -727,6 +973,7 @@ export class AgentSession {
     if (verdict !== 'skipped') return; // A real check already spoke.
     if (!this.wroteThisTask) return;
     if (this.active.provider.kind !== 'cloud') return; // Only where spend is steered.
+    if (this.offlineState().offline) return; // A decision call needs the network.
     const advisor = this.jevAdvisor();
     if (!advisor) return;
     const task = firstUserText(this.history);
@@ -819,7 +1066,16 @@ export class AgentSession {
       vaultCfg?.packMaxTokens,
     );
     const secrets = Boolean(this.deps.projectSecrets?.trim());
-    const key = JSON.stringify([mode, budgetTokens, profile.modelClass, leaves]);
+    // This project's Current State is read from the workspace, which can lie
+    // in the vault folder: then it is judged as readFile judges a note (D5).
+    const stateVisibility = prepared.currentState
+      ? this.workspaceFileVisibility(prepared.currentState.path, prepared.currentState.text)
+      : 'open';
+    const currentState =
+      stateVisibility === 'hidden' || (stateVisibility === 'local-only' && leaves)
+        ? undefined
+        : prepared.currentState;
+    const key = JSON.stringify([mode, budgetTokens, profile.modelClass, leaves, stateVisibility]);
     if (this.packCache?.key !== key) {
       let pack: ContextPack | undefined;
       try {
@@ -827,7 +1083,7 @@ export class AgentSession {
           mode,
           index: hasVault ? prepared.index : null,
           query: this.taskQuery,
-          currentState: prepared.currentState,
+          currentState,
           pins: prepared.pins,
           ...(hasVault && prepared.projectPins?.length
             ? { projectPins: prepared.projectPins }
@@ -843,6 +1099,21 @@ export class AgentSession {
         });
       } catch (err) {
         log.warn('vault context pack failed to render', { err: String(err) });
+      }
+      if (
+        pack &&
+        stateVisibility === 'local-only' &&
+        pack.used.some((source) => source.layer === 'current-state')
+      ) {
+        // The source is marked too, so what made the pack private reads
+        // true (privateCause): a private Current State is not a pin.
+        pack = {
+          ...pack,
+          used: pack.used.map((source) =>
+            source.layer === 'current-state' ? { ...source, localOnly: true as const } : source,
+          ),
+          localOnly: true,
+        };
       }
       this.packCache = { key, pack };
     }
@@ -1041,7 +1312,9 @@ export class AgentSession {
 
   /** Say once, plainly, that a small seat is running with the harness's help
    *  (tenet 3: the harness raises the floor and says so), and the same for a
-   *  larger seat that runs lean because its window is small. */
+   *  larger seat that runs lean because its window is small. The note is read
+   *  by a person, so it speaks of OpenShore and actions, never the harness, a
+   *  seat or tools (D3, founder 2026-10-07, built as recommended, B). */
   private announceLeanSeat(): void {
     if (this.profileNoteEmitted || !this.leanSeat || !this.modelProfile) return;
     this.profileNoteEmitted = true;
@@ -1050,10 +1323,8 @@ export class AgentSession {
     this.emit({
       type: 'note',
       message: this.classLean
-        ? `${cap(this.modelProfile.modelClass)} model seat: ${classBlurb(
-            this.modelProfile.modelClass,
-          )} The harness shows it ${shown} of ${total} tools and carries the checklist.`
-        : `${cap(this.modelProfile.modelClass)} model seat with a small window on this computer: the harness gives it a shorter prompt and shows it ${shown} of ${total} tools, so the chat has room.`,
+        ? `This is a ${this.modelProfile.modelClass} model, so OpenShore keeps the checklist and gives it ${shown} of the ${total} actions.`
+        : `This model has little room on this computer, so OpenShore gives it a shorter brief and ${shown} of ${total} actions to leave space for the chat.`,
     });
   }
 
@@ -1098,7 +1369,7 @@ export class AgentSession {
    */
   private async retrievalLead(task: string): Promise<string | undefined> {
     if (this.deps.config.harness?.retrieval?.firstTurn !== 'on') return undefined;
-    if (leavesThisNetwork(this.active.provider)) return undefined;
+    if (this.activeLeaves()) return undefined;
     const { toolContext } = this.deps;
     try {
       const caps = await this.active.provider.capabilities(this.active.model);
@@ -1154,6 +1425,7 @@ export class AgentSession {
               : ''
           } When the change is made, or the question is answered, reply in plain text, briefly. When asked for a value, reply with the value only.`,
           'Never use em dashes in your replies. Use a period or a comma instead.',
+          ...(this.offlineState().offline ? [OFFLINE_PROMPT] : []),
         ]
       : [
           "You are OS Code, a careful, capable coding agent running on the user's own machine.",
@@ -1161,9 +1433,13 @@ export class AgentSession {
           'Work step by step: inspect before you change, prefer small precise edits (editFile), and verify with the available tools.',
           // Only the web tools this session has: an offline run (a routine) or
           // a secrets session has none, and must not be told to reach for them.
-          webTools.length
-            ? `Use ${webTools.join(' and ')} for anything after your knowledge cutoff or specific to a library version.`
-            : 'This session has no web access: work from the files and what you already know.',
+          // Offline (Desktop Offline), the model is told plainly, as a
+          // routine's prompt tells it.
+          this.offlineState().offline
+            ? OFFLINE_PROMPT
+            : webTools.length
+              ? `Use ${webTools.join(' and ')} for anything after your knowledge cutoff or specific to a library version.`
+              : 'This session has no web access: work from the files and what you already know.',
           'When the task is complete, answer with plain text: what you did, what you verified, and anything the user should know. Be concise and concrete.',
           // How the person works with a coding agent (docs/interaction-model.md):
           // lead with the answer, one step at a time when they must act, never
@@ -1194,7 +1470,15 @@ export class AgentSession {
         ].join(' '),
       );
     }
-    const standing = instructionsPrompt(this.deps.repoInstructions, this.instructions);
+    // The repository's instructions, when they are a vault note, reach only
+    // a seat that may read that note (D5).
+    const repoShowing = this.instructionsShowing();
+    const standing = instructionsPrompt(
+      repoShowing === 'open' || repoShowing === 'shown-local'
+        ? this.deps.repoInstructions
+        : undefined,
+      this.instructions,
+    );
     if (standing) parts.push(standing);
     // Project memory: read the Current State top sheet first, dig page by page
     // only as needed, and keep the five notes current as work lands
@@ -1303,10 +1587,11 @@ export class AgentSession {
     input: string,
     images?: Array<{ base64: string; mediaType: string }>,
     contextPreamble?: string,
+    options: RunOptions = {},
   ): Promise<void> {
     const { config, guardrails } = this.deps;
     guardrails.startTask();
-    this.cloudApprovedForTask = false;
+    this.cloudApprovedThisTask.clear();
     this.wroteThisTask = false;
     this.readLocalOnlyThisTask = false;
     this.noWriteNudged = false;
@@ -1332,7 +1617,18 @@ export class AgentSession {
     // The visible task-start is the user's own words. A context preamble (the
     // results of commands the user ran between turns) rides into the model's
     // message so it sees them, but never shows in the transcript as user text.
-    this.emit({ type: 'task-start', input });
+    // A task marked local-only (a private plan's step, J) says so in its
+    // task-start, so a replay of the journal marks it again (seed.ts).
+    const localOnlyTask = options.localOnly === true;
+    this.emit({
+      type: 'task-start',
+      input,
+      ...(localOnlyTask ? { localOnly: true as const } : {}),
+    });
+    // This computer may be offline (Desktop Offline): a cloud seat gives way
+    // to a model on this network before anything is sent, and with none the
+    // task ends here with one plain line.
+    if (!(await this.followOffline())) return;
     let modelText = contextPreamble ? `${contextPreamble}\n\n${input}` : input;
     // Retrieval before turn one, when switched on: the excerpts head the
     // task, so every attempt at it starts from them (CTO 6).
@@ -1349,7 +1645,14 @@ export class AgentSession {
           })),
         ]
       : modelText;
-    this.taskMessage = { role: 'user', content };
+    // A task marked local-only carries a private note's text from its first
+    // word (J): the chat holds it, so the engine's D5 rules hold for it (the
+    // stub off this network, the handoff refusal, the memory and web asks).
+    this.taskMessage = {
+      role: 'user',
+      content,
+      ...(localOnlyTask ? { localOnly: true as const } : {}),
+    };
     this.history.push(this.taskMessage);
     await this.prepareVaultContext(input, this.abortController.signal);
 
@@ -1370,11 +1673,25 @@ export class AgentSession {
         return;
       }
 
+      // Read the machine's offline flag every turn, so going offline mid-task
+      // makes the next turn local and coming back restores the stack.
+      if (!(await this.followOffline())) return;
+
       // Cloud confirm-before-spend, once per session (or per profile rules).
       // Anything off this computer's network asks, judged by address: an
       // OpenAI-compatible server on the internet gets the same card as Claude.
-      if (leavesThisNetwork(this.active.provider) && !this.cloudApprovedForSession) {
-        const approved = await this.confirmCloudSpend(...this.offNetworkReason());
+      if (this.activeLeaves() && !this.cloudApprovedForSession) {
+        const [reason, detail] = this.offNetworkReason();
+        const approved = await this.confirmCloudSpend(
+          reason,
+          detail,
+          seatKey(this.active.provider.id, this.active.model),
+          this.active.model,
+        );
+        if (this.abortController.signal.aborted) {
+          this.emit({ type: 'task-done', reason: 'aborted', message: 'Stopped at your request.' });
+          return;
+        }
         if (!approved) {
           this.emit({
             type: 'task-done',
@@ -1390,7 +1707,7 @@ export class AgentSession {
       // Whether this turn's seat sends its requests off this network (judged
       // by address). A leaving turn never sees a local-only note's text: the
       // pack withholds it and the history it is sent carries a stub (CTO I5).
-      const leaves = leavesThisNetwork(this.active.provider);
+      const leaves = this.activeLeaves();
       const caps = await this.active.provider.capabilities(this.active.model);
       this.contextTokens = caps.contextTokens;
       const toolMode: 'native' | 'text' =
@@ -1405,6 +1722,7 @@ export class AgentSession {
       this.unionTurn = false;
       this.announceLeanSeat();
       this.renderPack(caps, leaves);
+      if (this.holdsLocalOnly()) this.heldEver = true;
       // A seat whose served window cannot hold the full prompt runs lean,
       // whatever its class (the lean prompt keyed on the window as well).
       this.windowLean = this.fullPromptCrowds(toolMode, caps.contextTokens);
@@ -1464,7 +1782,7 @@ export class AgentSession {
         turn,
         model: this.active.model,
         // The pill's color: amber for anything off this computer's network.
-        providerKind: leavesThisNetwork(this.active.provider) ? 'cloud' : 'local',
+        providerKind: this.activeLeaves() ? 'cloud' : 'local',
         ...(union ? { decoding: 'union' as const } : {}),
       });
 
@@ -1511,6 +1829,7 @@ export class AgentSession {
       // What this turn sends, and the loop's estimate of it (messages, tool
       // specs, template), to hold against what the server says it read.
       const sent = leaves ? withholdLocalOnly(this.history) : this.history;
+      if (leaves) this.notePlaceholder();
       const estimatedPromptTokens = estimateMessages(sent) + toolTokens;
 
       try {
@@ -1578,13 +1897,16 @@ export class AgentSession {
           });
           continue;
         }
+        // The connection went while a seat off this network was answering:
+        // the next turn follows the offline flag to a model on this network,
+        // rather than a busy-server retry or a raw error.
+        if (this.offlineState().offline && this.activeLeaves()) continue;
         const handled = await this.handleProviderFailure(err, turn);
         if (handled === 'retry') continue;
-        this.emit({
-          type: 'task-done',
-          reason: 'error',
-          message: err instanceof Error ? err.message : String(err),
-        });
+        // The flag may have caught up during the retries' pauses: follow it
+        // to a model on this network rather than end on a lost connection.
+        if (this.offlineState().offline && this.activeLeaves()) continue;
+        this.emit({ type: 'task-done', reason: 'error', message: this.failureLine(err) });
         return;
       }
 
@@ -1641,7 +1963,7 @@ export class AgentSession {
 
       if (nativeCalls.length) {
         for (const raw of nativeCalls) {
-          const validated = validateNativeCall(raw, this.deps.tools, this.offlineTools);
+          const validated = validateNativeCall(raw, this.deps.tools, this.leftOutNow());
           if (validated.ok) calls.push(validated.call);
           else {
             problems.push(validated.problem);
@@ -1664,7 +1986,7 @@ export class AgentSession {
         // "1 turn; no tools called; done: complete" on a 3B was exactly that.
         // The extractor is conservative (a known tool with valid args; prose
         // that quotes JSON is left alone), so a real answer still reads as one.
-        const extraction = extractTextCalls(streamedText, this.deps.tools, this.offlineTools);
+        const extraction = extractTextCalls(streamedText, this.deps.tools, this.leftOutNow());
         const found = extraction.calls.length > 0 || extraction.problems.length > 0;
         if (toolMode === 'text' || found) {
           calls = extraction.calls;
@@ -1690,7 +2012,7 @@ export class AgentSession {
         // Malformed call: bounded repair, then escalation, then stop.
         parseFailStreak += 1;
         repairAttempts += 1;
-        this.history.push({ role: 'assistant', content: streamedText, ...this.localOnlyMark() });
+        this.pushReply({ role: 'assistant', content: streamedText }, leaves);
         this.history.push({ role: 'user', content: repairPrompt(problems) });
         if (repairAttempts <= 2) {
           this.emit({
@@ -1722,11 +2044,7 @@ export class AgentSession {
         // A plain text answer: the task is done. In plan mode the answer IS the
         // plan, so it is also raised as a proposal the person can approve.
         const finalText = displayText.trim();
-        this.history.push({
-          role: 'assistant',
-          content: said ?? streamedText,
-          ...this.localOnlyMark(),
-        });
+        this.pushReply({ role: 'assistant', content: said ?? streamedText }, leaves);
         this.emit({ type: 'text-final', text: finalText });
         if (this.mode === 'plan' && finalText)
           this.emit({ type: 'plan-proposed', text: finalText });
@@ -1795,21 +2113,23 @@ export class AgentSession {
       // rejected call is recorded as the model made it, so the observation
       // that refuses it has a tool_use to answer.
       if (recordMode === 'native') {
-        this.history.push({
-          role: 'assistant',
-          content: streamedText,
-          ...(thinkingBlocks?.length ? { thinkingBlocks } : {}),
-          ...this.localOnlyMark(),
-          toolCalls: [
-            ...calls.map((c) => ({
-              id: c.id,
-              name: c.name,
-              argsText: JSON.stringify(c.args),
-              args: c.args,
-            })),
-            ...rejected.map((r) => r.raw),
-          ],
-        });
+        this.pushReply(
+          {
+            role: 'assistant',
+            content: streamedText,
+            ...(thinkingBlocks?.length ? { thinkingBlocks } : {}),
+            toolCalls: [
+              ...calls.map((c) => ({
+                id: c.id,
+                name: c.name,
+                argsText: JSON.stringify(c.args),
+                args: c.args,
+              })),
+              ...rejected.map((r) => r.raw),
+            ],
+          },
+          leaves,
+        );
         if (displayText.trim()) this.emit({ type: 'text-final', text: displayText.trim() });
         for (const { raw, problem } of rejected) {
           this.pushObservation(
@@ -1819,7 +2139,7 @@ export class AgentSession {
           );
         }
       } else {
-        this.history.push({ role: 'assistant', content: streamedText, ...this.localOnlyMark() });
+        this.pushReply({ role: 'assistant', content: streamedText }, leaves);
         if (displayText.trim()) this.emit({ type: 'text-final', text: displayText.trim() });
         if (problems.length) {
           this.history.push({
@@ -1893,9 +2213,16 @@ export class AgentSession {
     // A tool this run left out because it works offline (a Crew routine, CTO
     // 3). The model reached for it anyway: refused, never asked, with a line
     // it can act on. The scheduler reads the denial for the run's note.
-    if (!tool) {
-      this.emit({ type: 'tool-denied', call, reason: OFFLINE_DENIED });
-      this.pushObservation(call, `Not run: ${OFFLINE_DENIED} ${OFFLINE_ADVICE}`, toolMode);
+    // The same for a tool that reaches the network while this computer is
+    // offline (Desktop Offline): off the menu, and refused by name if asked.
+    const cutNow = this.offlineCutNow();
+    if (!tool || cutNow.has(call.name)) {
+      const reason =
+        cutNow.has(call.name) && !this.offlineTools.has(call.name)
+          ? offlineNowDenied(this.offlineState().reason)
+          : OFFLINE_DENIED;
+      this.emit({ type: 'tool-denied', call, reason });
+      this.pushObservation(call, `Not run: ${reason} ${OFFLINE_ADVICE}`, toolMode);
       return 'refused';
     }
 
@@ -1903,14 +2230,28 @@ export class AgentSession {
     // plain query on a result-only backend, and stops once the run has read
     // anything local-only or secret-shaped (CTO review 2026-10-01, F1).
     if (call.name === 'webSearch' && !profile.allowNetworkAutoApprove) {
+      // A private note carried in the pack counts as one read (H).
       const refusal = routineSearchRefusal(
         call.args?.query,
         toolContext.config.search.backend,
-        this.searchTainted,
+        this.searchTainted || this.holdsLocalOnly(),
       );
       if (refusal) {
         this.emit({ type: 'tool-denied', call, reason: refusal });
         this.pushObservation(call, `Not run: ${refusal} ${OFFLINE_ADVICE}`, toolMode);
+        return 'refused';
+      }
+    }
+
+    // A search on Perplexity hands the words to a cloud model: from a seat
+    // that stays, while the chat holds a private note's text, it is refused
+    // before anything asks, so nobody is asked for a search that is then
+    // refused (H).
+    if (call.name === 'webSearch' && toolContext.config.search.backend === 'perplexity') {
+      const refused = this.handoffRefusal(call);
+      if (refused) {
+        this.emit({ type: 'tool-denied', call, reason: refused });
+        this.pushObservation(call, `Not run: ${refused} Answer from what you have.`, toolMode);
         return 'refused';
       }
     }
@@ -2001,7 +2342,44 @@ export class AgentSession {
     // no rule, bypass, or default can make them quiet while the chat can see
     // the project's secrets.
     const lockdownAsks = this.lockdown && (tool.risk === 'shell' || call.name === 'gitCommit');
-    const alwaysAsk = tool.alwaysAsk === true || writesInsideVault || lockdownAsks;
+    // A command run in a workspace that holds the vault can read its notes,
+    // and a program's output can show them (D5). On a seat that leaves this
+    // network it asks every time, whatever was allowed before, and its card
+    // says so; on a seat that stays, what it printed is marked as a local-only
+    // note's text (below), so it never travels on.
+    const leavesNow = this.activeLeaves();
+    const nearVault =
+      (tool.risk === 'shell' || call.name === 'readProcess') && this.vaultInWorkspace();
+    const vaultAsks = nearVault && leavesNow;
+    // Once a chat on a seat that stays holds a private note's text (a read, a
+    // marked turn, a private pin), two kinds of step ask every time, in every
+    // mode and past every grant (CX and CMO, 2026-10-08): a change to the
+    // project's memory notes, which a cloud model may read later (A), and a
+    // model-written search on a result-only backend or a page fetch, whose
+    // words or address leave as written (H). A deny still wins.
+    const privateTool =
+      call.name === PROJECT_MEMORY_WRITE_TOOL ||
+      call.name === 'webFetch' ||
+      call.name === 'webSearch';
+    const holdsPrivate = privateTool && !leavesNow && this.holdsLocalOnly();
+    const memoryAsks = holdsPrivate && call.name === PROJECT_MEMORY_WRITE_TOOL;
+    const privateWebAsks =
+      holdsPrivate &&
+      (call.name === 'webFetch' ||
+        (call.name === 'webSearch' && toolContext.config.search.backend !== 'perplexity'));
+    // A routine has nobody to ask: it leaves the memory notes as they were.
+    if (memoryAsks && !profile.allowNetworkAutoApprove) {
+      this.emit({ type: 'tool-denied', call, reason: MEMORY_ROUTINE_DENIED });
+      this.pushObservation(call, MEMORY_ROUTINE_REFUSED, toolMode);
+      return 'refused';
+    }
+    const alwaysAsk =
+      tool.alwaysAsk === true ||
+      writesInsideVault ||
+      lockdownAsks ||
+      vaultAsks ||
+      memoryAsks ||
+      privateWebAsks;
     // A write to a note (vaultWrite, or a file tool aimed inside the vault) is
     // not a code change: it never counts toward verify or the Jev judge (4.5).
     const writesVault = tool.risk === 'write' && (tool.pathJail === 'own' || writesInsideVault);
@@ -2082,6 +2460,8 @@ export class AgentSession {
       } catch (err) {
         detail = `Preview failed: ${(err as Error).message}`;
       }
+      if (vaultAsks) detail = [vaultCardLine(call.name), detail].filter(Boolean).join(' ');
+      if (privateWebAsks) ({ summary, detail } = this.privateWebCard(call));
       const answer = await this.awaitApprovalOrAbort({
         id: call.id,
         kind: 'tool',
@@ -2089,6 +2469,9 @@ export class AgentSession {
         risk: tool.risk,
         summary,
         detail,
+        // The card's own preview stays (the note's diff); the line above it
+        // says why a change that never asked before asks now (A).
+        ...(memoryAsks ? { why: memoryWhyLine(this.privateCause()) } : {}),
         // An always-ask tool can never be allowed for the session or the
         // project, so the sheet shows only the choices that take effect.
         ...(alwaysAsk ? { alwaysAsk: true } : {}),
@@ -2127,9 +2510,61 @@ export class AgentSession {
         this.pushObservation(
           call,
           denied ||
+            (privateWebAsks ? WEB_DECLINED : memoryAsks ? MEMORY_DECLINED : undefined) ||
             'The user declined this action. Do not retry it as-is; adjust the approach or ask what they would prefer.',
           toolMode,
         );
+        return 'refused';
+      }
+    }
+
+    // A handoff to another model never carries a local-only note's text off
+    // this network (D5): judged last, right before it runs, so nothing can
+    // move the seat between the check and the router's own read of it.
+    const handoffRefused = this.handoffRefusal(call);
+    if (handoffRefused) {
+      this.emit({ type: 'tool-denied', call, reason: handoffRefused });
+      this.pushObservation(call, `Not run: ${handoffRefused} Do this part yourself.`, toolMode);
+      return 'refused';
+    }
+    // An image in the vault folder is judged as a note is (D5).
+    const image = this.vaultImage(call);
+    if (image.refusal) {
+      this.emit({ type: 'tool-denied', call, reason: image.refusal });
+      this.pushObservation(call, `Not run: ${image.refusal} Do this part yourself.`, toolMode);
+      return 'refused';
+    }
+
+    // A handoff to a model off this network asks first, before the first one
+    // to that model in each task, on the amber card (CX and CMO, 2026-10-08,
+    // D): a placed cloud specialist, an Ollama cloud tag, a cloud image
+    // server. Keyed by provider and model, so the orchestrator's yes does not
+    // cover it. Judged last, with the refusals above, right before it runs.
+    const handoff =
+      call.name === 'delegate' || call.name === 'analyzeImage' || call.name === 'generateImage'
+        ? this.handoffTarget(call)
+        : undefined;
+    if (handoff?.leaves) {
+      if (!profile.allowNetworkAutoApprove) {
+        const reason = handoffUnasked(handoff.model);
+        this.emit({ type: 'tool-denied', call, reason });
+        this.pushObservation(call, `Not run: ${reason} Do this part yourself.`, toolMode);
+        return 'refused';
+      }
+      // A handoff sends the step the agent wrote, never the chat, so its
+      // estimate is priced on that step.
+      const yes = await this.confirmCloudSpend(
+        handoffCardSummary(handoff.model, handoff.category),
+        handoff.detail,
+        handoff.key,
+        handoff.model,
+        estimateTokens(JSON.stringify(call.args ?? {})),
+      );
+      if (this.abortController?.signal.aborted) return 'aborted';
+      if (!yes) {
+        const reason = handoffDeclined(handoff.model);
+        this.emit({ type: 'tool-denied', call, reason });
+        this.pushObservation(call, `Not run: ${reason} Do this part yourself.`, toolMode);
         return 'refused';
       }
     }
@@ -2138,7 +2573,18 @@ export class AgentSession {
       if (!writesMemory) this.attemptedWriteThisTask = true;
       if (rawPath !== undefined && tool.pathJail !== 'own') this.recordOriginal(rawPath);
     }
-    this.emit({ type: 'tool-start', call });
+    // The turn's reach turns cloud for a handoff that leaves, and the row
+    // names the model the step goes to (D). A role that fell back to the
+    // Reasoning model names none, so a row never calls it "your writing
+    // model" when no writing model is placed.
+    if (handoff?.leaves) this.emit({ type: 'reach', model: handoff.model, providerKind: 'cloud' });
+    this.emit({
+      type: 'tool-start',
+      call,
+      ...(handoff && !handoff.fellBack
+        ? { handoff: { model: handoff.model, leaves: handoff.leaves } }
+        : {}),
+    });
     const startedAt = Date.now();
     let result;
     try {
@@ -2152,6 +2598,12 @@ export class AgentSession {
       };
     }
     const durationMs = Date.now() - startedAt;
+    // What a command printed near the vault, or a vision seat said of a vault
+    // image, to a seat that stays on this network may hold a note that stays
+    // on this computer: marked before anything records it (D5).
+    if (((nearVault && !leavesNow) || image.marked) && !result.localOnly) {
+      result = { ...result, localOnly: true as const };
+    }
     this.emit({ type: 'tool-end', call, result, durationMs });
     // A volatile call takes its place in the cycle watch by what it showed:
     // two reads of a program's output are the same call only when the output
@@ -2343,10 +2795,249 @@ export class AgentSession {
     return false;
   }
 
-  /** The mark an assistant turn carries once this task has read a
-   *  local-only note (CTO I5). */
-  private localOnlyMark(): { localOnly?: true } {
-    return this.readLocalOnlyThisTask ? { localOnly: true } : {};
+  /** Record an assistant turn with the mark it carries (CTO I5): once this
+   *  task has read a local-only note, or when its seat stays on this network
+   *  and the pack or the history it was sent holds a local-only note's text,
+   *  since the reply may quote it (the app's sendLocalOnly rule). A seat
+   *  that leaves was sent neither. A reply marked only because the pack
+   *  carried a private project pin is remembered as such (privateCause). */
+  private pushReply(message: ChatMessage, leaves: boolean): void {
+    let cause: PrivateCause | undefined;
+    if (this.readLocalOnlyThisTask) cause = 'read';
+    else if (!leaves && this.holdsLocalOnly()) cause = this.privateCause();
+    if (!cause) {
+      this.history.push(message);
+      return;
+    }
+    const marked: ChatMessage = { ...message, localOnly: true };
+    if (cause === 'pin') this.pinMarked.add(marked);
+    this.heldEver = true;
+    this.history.push(marked);
+  }
+
+  /** What makes this chat hold a private note's text now (CX and CMO,
+   *  2026-10-08, A, G, H): 'pin' when it is only this turn's pack carrying
+   *  the project's own private pins (no kept message carries such text but a
+   *  reply marked for the same pin, the repository's instructions are not a
+   *  private note, and every private note the pack used is a project pin),
+   *  else 'read'. Call only while holdsLocalOnly() is true. */
+  private privateCause(): PrivateCause {
+    if (this.instructionsShowing() === 'shown-local') return 'read';
+    const pack = this.currentPack;
+    const local = pack?.localOnly ? pack.used.filter((source) => source.localOnly) : [];
+    if (!local.length || !local.every((source) => source.layer === 'pin' && source.project)) {
+      return 'read';
+    }
+    for (const m of this.history) {
+      if (carriesLocalOnly(m) && !this.pinMarked.has(m)) return 'read';
+    }
+    return 'pin';
+  }
+
+  /** Whether this session has held a private note's text at any point (a
+   *  marked observation, a marked reply, or holdsLocalOnly at any turn), so
+   *  a Crew run's note is judged private (CX and CMO, 2026-10-08, A). Sticky
+   *  for the session's life. */
+  heldLocalOnly(): boolean {
+    return this.heldEver || this.holdsLocalOnly();
+  }
+
+  /** On a turn whose seat leaves this network, say once per chat for that
+   *  model that it sees the local models' marked replies only as the stub
+   *  (F): when at least one reply was swapped for it. */
+  private notePlaceholder(): void {
+    const key = seatKey(this.active.provider.id, this.active.model);
+    if (this.placeholderShown.has(key)) return;
+    if (!this.history.some((m) => m.role === 'assistant' && carriesLocalOnly(m))) return;
+    this.placeholderShown.add(key);
+    this.emit({ type: 'status', message: placeholderLine(this.active.model) });
+  }
+
+  /** Whether this chat holds a local-only note's text: in this turn's pack
+   *  (only ever rendered so for a seat that stays), in a kept message, or in
+   *  the standing instructions a seat that stays is sent (D5). */
+  private holdsLocalOnly(): boolean {
+    return (
+      this.currentPack?.localOnly === true ||
+      this.history.some(carriesLocalOnly) ||
+      this.instructionsShowing() === 'shown-local'
+    );
+  }
+
+  /** Why a handoff (delegate, analyzeImage, generateImage, or a search on
+   *  Perplexity, whose answer is a cloud model's) does not run now, or
+   *  undefined when it may: the seat that wrote the call was sent a
+   *  local-only note's text (it stays on this network and the chat holds
+   *  such text), and the model the subtask goes to leaves this network (D5):
+   *  the seat the router names for the role, the image server judged by its
+   *  address as offlineCut judges it, or Perplexity's. A seat off this
+   *  network was sent only the stub, so what it hands on cannot quote the
+   *  note. Offline the router keeps every subtask on this network
+   *  (Router.delegate's rule), and the offline cut takes the web tools. */
+  private handoffRefusal(call: ParsedToolCall): string | undefined {
+    if (this.activeLeaves() || !this.holdsLocalOnly()) return undefined;
+    // The refusal names its real cause (G): a project pin alone, or a read.
+    const denied = (): string => handoffRefusalLine(this.privateCause());
+    if (call.name === 'webSearch') {
+      return this.deps.toolContext.config.search.backend === 'perplexity' ? denied() : undefined;
+    }
+    if (call.name === 'generateImage') {
+      const server = this.deps.config.imageGen;
+      return server && !isLocalUrl(server.baseUrl) ? denied() : undefined;
+    }
+    const role = handoffRole(call);
+    if (!role) return undefined;
+    const { router } = this.deps;
+    if (router.offline()) return undefined;
+    const target = router.roleFor(role).resolved;
+    return seatLeaves(target.provider, target.ref.model) ? denied() : undefined;
+  }
+
+  /**
+   * Where a handoff (delegate, analyzeImage, generateImage) goes, resolved
+   * before it runs (CX and CMO, 2026-10-08, D): the seat the router names for
+   * the role, judged by seatLeaves, or the image server, judged by address
+   * and named by its model or else its host. None offline, where the router
+   * picks a seat on this network as the step runs, and none for any other
+   * tool.
+   */
+  private handoffTarget(call: ParsedToolCall): HandoffTarget | undefined {
+    const { router, config } = this.deps;
+    if (router.offline()) return undefined;
+    if (call.name === 'generateImage') {
+      const server = config.imageGen;
+      if (!server) return undefined;
+      let host = server.baseUrl;
+      try {
+        host = new URL(server.baseUrl).host;
+      } catch {
+        // Keep the address as written.
+      }
+      const model =
+        server.model?.trim() || config.stack.specialists.imageGen?.model?.trim() || host;
+      return {
+        model,
+        leaves: !isLocalUrl(server.baseUrl),
+        key: seatKey('imageGen', model),
+        category: HANDOFF_CATEGORY.imageGen!,
+        detail: `The step the agent wrote goes to ${host}. Nothing is sent without this approval.`,
+      };
+    }
+    const role = handoffRole(call);
+    if (!role) return undefined;
+    const { resolved: target, fellBack } = router.roleFor(role);
+    const model = target.ref.model;
+    const leaves = seatLeaves(target.provider, model);
+    const server = this.serverOf(target.provider);
+    const detail =
+      target.provider.kind === 'cloud'
+        ? undefined
+        : isOllamaCloudTag(model)
+          ? `${ollamaPasser(server)} passes the step the agent wrote on to ollama.com, under your Ollama account. Nothing is sent without this approval.`
+          : `The step the agent wrote goes to ${server.host}. Nothing is sent without this approval.`;
+    return {
+      model,
+      leaves,
+      key: seatKey(target.provider.id, model),
+      // A role with no specialist placed falls to the Reasoning model, so a
+      // card for it names the slot the person did place it in.
+      category: fellBack ? 'reasoning' : (HANDOFF_CATEGORY[role] ?? role),
+      ...(detail ? { detail } : {}),
+      ...(fellBack ? { fellBack: true as const } : {}),
+    };
+  }
+
+  /** A provider's server as a card names it: its address's host, or its
+   *  label when it has no address, and whether that host is this computer
+   *  itself (hostIsLoopback, never isLocalHost, which passes the LAN and the
+   *  tailnet). */
+  private serverOf(provider: Provider): { host: string; loopback: boolean } {
+    const endpoint = this.deps.config.providers[provider.id];
+    if (endpoint && 'baseUrl' in endpoint && typeof endpoint.baseUrl === 'string') {
+      try {
+        const url = new URL(endpoint.baseUrl);
+        return { host: url.host, loopback: hostIsLoopback(url.hostname) };
+      } catch {
+        // Fall back to the label.
+      }
+    }
+    return { host: provider.label, loopback: false };
+  }
+
+  /** The card a model-written search or page fetch shows once the chat holds
+   *  a private note's text on a seat that stays (H): the exact words or
+   *  address, and why it asks. */
+  private privateWebCard(call: ParsedToolCall): { summary: string; detail: string } {
+    const cause = this.privateCause();
+    if (call.name === 'webSearch') {
+      const service = searchServiceName(this.deps.toolContext.config.search.backend);
+      const query = typeof call.args?.query === 'string' ? call.args.query : '';
+      return privateSearchCard(service, query, cause);
+    }
+    const url = typeof call.args?.url === 'string' ? call.args.url : '';
+    let host = url;
+    try {
+      host = new URL(url).host || url;
+    } catch {
+      // Keep the address as written.
+    }
+    return privatePageCard(host, url, cause);
+  }
+
+  /** Whether the vault folder and this workspace overlap (D5): a command run
+   *  here, or a program it started, can read the vault's notes. */
+  private vaultInWorkspace(): boolean {
+    const { toolContext } = this.deps;
+    return vaultMeets(toolContext.vaultRoot, toolContext.cwd);
+  }
+
+  /** A workspace file's visibility as a vault note (D5): open outside the
+   *  vault folder, else judged by the vault's rules, as readFile judges it. */
+  private workspaceFileVisibility(path: string, text?: string): VaultVisibility {
+    const { toolContext } = this.deps;
+    const vault = realVaultRoot(toolContext.vaultRoot);
+    if (!vault) return 'open';
+    const abs = resolve(toolContext.cwd, path);
+    const notePath = vaultPathOf(vault, abs);
+    return notePath === undefined ? 'open' : fileVisibility(toolContext, notePath, abs, text);
+  }
+
+  /** How the repository's standing instructions (OSCODE.md, CLAUDE.md,
+   *  AGENTS.md) show to the seat answering now: a file in the vault folder is
+   *  judged as readFile judges it (D5), by its whole text, since a cut to fit
+   *  may have left its tag behind. */
+  private instructionsShowing(): NoteShowing {
+    const repo = this.deps.repoInstructions;
+    if (!repo) return 'open';
+    const visibility = this.workspaceFileVisibility(
+      repo.file,
+      repo.truncated ? undefined : repo.text,
+    );
+    return showingFor(this.deps.toolContext, visibility);
+  }
+
+  /** analyzeImage on an image in the vault folder (D5): one the vault's
+   *  settings exclude is never handed on; one that stays on this computer
+   *  goes only to a vision seat on this network (offline the router keeps it
+   *  there), and the answer is marked. */
+  private vaultImage(call: ParsedToolCall): { refusal?: string; marked?: boolean } {
+    const path = call.args?.path;
+    if (call.name !== 'analyzeImage' || typeof path !== 'string') return {};
+    let visibility: VaultVisibility;
+    try {
+      visibility = this.workspaceFileVisibility(this.deps.toolContext.jail.resolve(path));
+    } catch {
+      return {};
+    }
+    if (visibility === 'hidden') return { refusal: noteClosed(path) };
+    if (visibility !== 'local-only') return {};
+    const { router } = this.deps;
+    if (!router.offline()) {
+      const target = router.roleFor('vision').resolved;
+      if (seatLeaves(target.provider, target.ref.model))
+        return { refusal: IMAGE_LOCAL_ONLY_DENIED };
+    }
+    return { marked: true };
   }
 
   /** Record a tool's observation. `localOnly` (a local-only vault note's
@@ -2358,7 +3049,7 @@ export class AgentSession {
     toolMode: 'native' | 'text',
     localOnly?: boolean,
   ): void {
-    if (localOnly) this.readLocalOnlyThisTask = true;
+    if (localOnly) this.readLocalOnlyThisTask = this.heldEver = true;
     const mark = localOnly ? { localOnly: true as const } : {};
     if (toolMode === 'native') {
       this.history.push({ role: 'tool', content, toolCallId: call.id, name: call.name, ...mark });
@@ -2431,14 +3122,22 @@ export class AgentSession {
     // escalation would send the local model's history (which may carry a secret
     // it used) to a cloud provider. Secrets sessions stay local, always.
     if (this.deps.projectSecrets?.trim()) return false;
+    // Offline, nothing escalates: there is no cloud to reach (Desktop Offline).
+    if (this.offlineState().offline) return false;
     if (this.escalated) return false;
     if (!router.escalationEnabled()) return false;
     if (failStreak < config.routing.escalation.afterToolFailures) return false;
     const target = router.escalationTarget();
     if (!target) return false;
+    // A chat that holds a private note's text never escalates to a seat off
+    // this network (J): the escalation would send it the whole history.
+    if (this.holdsLocalOnly() && seatLeaves(target.provider, target.model)) return false;
 
     const approved = await this.confirmCloudSpend(
       `The local model is struggling (${failStreak} failed attempts). Escalate this task to ${target.model}?`,
+      undefined,
+      seatKey(target.provider.id, target.model),
+      target.model,
     );
     if (!approved) return false;
 
@@ -2458,22 +3157,25 @@ export class AgentSession {
   }
 
   /** The card's words for the active seat when it is off this network: cloud
-   *  Claude is priced; a remote OpenAI-compatible server is named by host. */
+   *  Claude is priced; a remote OpenAI-compatible server is named by host; an
+   *  Ollama cloud tag names ollama.com, where its server passes each turn on
+   *  (the server may well be this computer's own Ollama). */
   private offNetworkReason(): [string, string?] {
     const provider = this.active.provider;
     if (provider.kind === 'cloud') return ['This step runs on cloud Claude.'];
-    const endpoint = this.deps.config.providers[provider.id];
-    let host = provider.label;
-    if (endpoint && 'baseUrl' in endpoint) {
-      try {
-        host = new URL(endpoint.baseUrl).host;
-      } catch {
-        // Keep the label.
-      }
+    const server = this.serverOf(provider);
+    // One noun pair on every such card, "your messages and the files the
+    // agent reads", and a loopback server is "Ollama on this computer"
+    // (hostIsLoopback, never isLocalHost) (CX and CMO, 2026-10-08, C).
+    if (isOllamaCloudTag(this.active.model)) {
+      return [
+        `This step runs on ${this.active.model}, one of Ollama's cloud models, so it leaves this computer.`,
+        `${ollamaPasser(server)} passes your messages and the files the agent reads on to ollama.com, under your Ollama account. Nothing is sent without this approval.`,
+      ];
     }
     return [
       `This step runs on ${provider.label}, a model server off this computer's network.`,
-      `Your messages and the code the agent reads go to ${host}. Nothing is sent without this approval.`,
+      `Your messages and the files the agent reads go to ${server.host}. Nothing is sent without this approval.`,
     ];
   }
 
@@ -2506,14 +3208,29 @@ export class AgentSession {
     return true;
   }
 
-  private async confirmCloudSpend(reason: string, detailOverride?: string): Promise<boolean> {
-    if (this.cloudApprovedForSession || this.cloudApprovedForTask) return true;
-    const { usage, approver, permissions, profile } = this.deps;
-    const model = this.deps.router.escalationTarget()?.model ?? this.active.model;
-    const promptGuess = estimateMessages(this.history) + 2000;
-    const estimate = usage.estimate(model, promptGuess);
+  /**
+   * The amber card before a cloud model's step. Asked once per task for each
+   * model, keyed by provider and model (`key`, CX and CMO 2026-10-08, D): the
+   * orchestrator's yes covers the orchestrator, an escalation's its target,
+   * and a placed cloud specialist's its own first handoff. A yes for the
+   * session (where the profile allows it) covers every cloud step. The
+   * estimate is priced on `estimateModel`, for what the step sends: the chat
+   * by default, or `sentTokens` (a handoff's own step). A Stop while it
+   * waits reads as no; the caller checks the signal.
+   */
+  private async confirmCloudSpend(
+    reason: string,
+    detailOverride: string | undefined,
+    key: string,
+    estimateModel: string,
+    sentTokens?: number,
+  ): Promise<boolean> {
+    if (this.cloudApprovedForSession || this.cloudApprovedThisTask.has(key)) return true;
+    const { usage, permissions, profile } = this.deps;
+    const promptGuess = (sentTokens ?? estimateMessages(this.history)) + 2000;
+    const estimate = usage.estimate(estimateModel, promptGuess);
     const spent = usage.session.dollars;
-    const answer: ApprovalAnswer = await approver({
+    const answer = await this.awaitApprovalOrAbort({
       id: randomUUID(),
       kind: 'cloud-spend',
       toolName: 'cloud',
@@ -2521,9 +3238,10 @@ export class AgentSession {
       summary: reason,
       detail:
         detailOverride ??
-        `Estimated cost: about $${estimate.toFixed(3)} per call on ${model}. Spent this session: $${spent.toFixed(2)}. Nothing is sent without this approval.`,
+        `Estimated cost: about $${estimate.toFixed(3)} per call on ${estimateModel}. Spent this session: $${spent.toFixed(2)}. Nothing is sent without this approval.`,
     });
-    if (answer.approve) this.cloudApprovedForTask = true;
+    if (answer === 'aborted') return false;
+    if (answer.approve) this.cloudApprovedThisTask.add(key);
     if (answer.approve && answer.alwaysThisSession && profile.allowCloudAutoApprove) {
       this.cloudApprovedForSession = true;
       permissions.allowForSession('cloud');
@@ -2537,7 +3255,7 @@ export class AgentSession {
    *  is simply not offered; the registry still executes it if a call arrives, so
    *  nothing breaks, the model just sees a shorter, cheaper menu. */
   private toolSpecs(): ToolSpec[] {
-    let specs = this.vaultMenu(this.deps.tools.specs());
+    let specs = this.offlineMenu(this.vaultMenu(this.deps.tools.specs()));
     if (this.mode === 'plan') {
       specs = specs.filter((spec) => {
         const tool = this.deps.tools.get(spec.name);
@@ -2552,7 +3270,109 @@ export class AgentSession {
    *  same menu). Plan mode is left out on purpose: its own block tells the
    *  model the write tools wait for an approved plan. */
   private offeredToolNames(): Set<string> {
-    return new Set(this.limitToolSpecs(this.vaultMenu(this.deps.tools.specs())).map((s) => s.name));
+    return new Set(
+      this.limitToolSpecs(this.offlineMenu(this.vaultMenu(this.deps.tools.specs()))).map(
+        (s) => s.name,
+      ),
+    );
+  }
+
+  /** The menu less the tools that reach the network, while this computer is
+   *  offline (Desktop Offline); unchanged online. */
+  private offlineMenu(specs: ToolSpec[]): ToolSpec[] {
+    const cut = this.offlineCutNow();
+    return cut.size ? specs.filter((s) => !cut.has(s.name)) : specs;
+  }
+
+  // -------------------------------------------------------------------------
+  // Desktop Offline (founder, 2026-10-07)
+  // -------------------------------------------------------------------------
+
+  /** This computer's offline state now. */
+  private offlineState(): MachineOffline {
+    return this.deps.offline?.() ?? { offline: false };
+  }
+
+  /** The tools off the menu right now: this session's offline cut while the
+   *  computer is offline, none online. */
+  private offlineCutNow(): ReadonlySet<string> {
+    if (!this.deps.offlineCut?.length || !this.offlineState().offline) return EMPTY_SET;
+    this.offlineCutSet ??= new Set(this.deps.offlineCut);
+    return this.offlineCutSet;
+  }
+  private offlineCutSet?: ReadonlySet<string>;
+
+  /** The names a call may carry that are left out, so the call is refused by
+   *  name rather than read as malformed: an offline run's, and while the
+   *  computer is offline, the offline cut. */
+  private leftOutNow(): ReadonlySet<string> {
+    const cut = this.offlineCutNow();
+    if (!cut.size) return this.offlineTools;
+    return new Set([...this.offlineTools, ...cut]);
+  }
+
+  /**
+   * Follow the machine's offline flag before a turn. Offline: a seat whose
+   * requests leave this network gives way to the router's best local seat
+   * (kept to put back later), and the change is said once. Online again: the
+   * seat from before comes back, said once. False when offline and no model
+   * on this network can answer: the task ends with one plain line.
+   */
+  private async followOffline(): Promise<boolean> {
+    const now = this.offlineState();
+    if (now.offline) {
+      if (this.activeLeaves()) {
+        const seat = await this.deps.router.localSeat();
+        if (!seat) {
+          this.emit({
+            type: 'task-done',
+            reason: 'error',
+            message: offlineNoModelLine(now.reason),
+          });
+          return false;
+        }
+        this.seatBeforeOffline ??= this.active;
+        this.active = {
+          provider: seat.provider,
+          model: seat.ref.model,
+          adapter: adapterFor(seat.ref.model),
+        };
+      }
+      // Said once, and only when a model in this stack waits: a stack that
+      // is all on this network loses nothing to say.
+      if (!this.offlineSeen.offline) {
+        this.offlineSaid = Boolean(this.seatBeforeOffline) || this.deps.router.anySeatLeaves();
+        if (this.offlineSaid) this.emit({ type: 'note', message: offlineNote(now.reason) });
+      }
+      this.offlineSeen = now;
+      return true;
+    }
+    if (this.offlineSeen.offline) {
+      if (this.seatBeforeOffline) this.active = this.seatBeforeOffline;
+      this.seatBeforeOffline = undefined;
+      this.offlineSeen = now;
+      if (this.offlineSaid) this.emit({ type: 'note', message: ONLINE_AGAIN_NOTE });
+      this.offlineSaid = false;
+    }
+    return true;
+  }
+  /** Whether this session said it went offline, so its return is said too. */
+  private offlineSaid = false;
+
+  /**
+   * The seat a one-shot summary runs on (a compaction, a title). Mid-task it
+   * is the active seat, which followOffline already moved; an idle /compact
+   * or a title runs outside a turn, so while this computer is offline a seat
+   * off this network gives way to the router's local seat here too, and with
+   * none the summary fails with the plain offline line, never a request that
+   * cannot leave (Desktop Offline).
+   */
+  private async oneShotSeat(): Promise<ActiveModel> {
+    const now = this.offlineState();
+    if (!now.offline || !this.activeLeaves()) return this.active;
+    const seat = await this.deps.router.localSeat();
+    if (!seat) throw new Error(offlineNoModelLine(now.reason));
+    return { provider: seat.provider, model: seat.ref.model, adapter: adapterFor(seat.ref.model) };
   }
 
   /** One way into the vault per seat (CTO I11): a class with
@@ -2603,9 +3423,12 @@ export class AgentSession {
     if (TRANSIENT.test(message) && this.transientRetries < RETRY_DELAYS_MS.length) {
       const delay = RETRY_DELAYS_MS[this.transientRetries]!;
       this.transientRetries += 1;
+      const seconds = Math.round(delay / 1000);
       this.emit({
         type: 'status',
-        message: `The model's server is busy (${message.slice(0, 80)}). Retrying in ${Math.round(delay / 1000)}s.`,
+        message: this.unreached(message)
+          ? `Could not reach ${this.seatName()}. Trying again in ${seconds}s.`
+          : `The model's server is busy (${message.slice(0, 80)}). Retrying in ${seconds}s.`,
       });
       await new Promise<void>((resolve) => {
         const timer = setTimeout(resolve, delay);
@@ -2628,6 +3451,36 @@ export class AgentSession {
       return 'retry';
     }
     return 'fail';
+  }
+
+  /** Whether the seat answering now sends its requests off this network:
+   *  its server's address, or an Ollama cloud tag that a local Ollama passes
+   *  on to ollama.com (seatLeaves). Every check on the active seat reads
+   *  this, so the cloud card, the offline seat, the pill and what a vault
+   *  note may reach agree. */
+  private activeLeaves(): boolean {
+    return seatLeaves(this.active.provider, this.active.model);
+  }
+
+  /** Whether a failure is a seat off this network that could not be reached
+   *  (judged by address, then by the error's shape). */
+  private unreached(message: string): boolean {
+    return this.activeLeaves() && UNREACHED.test(message);
+  }
+
+  /** The line a failed turn ends with: a seat off this network that could not
+   *  be reached says so plainly, never the network library's own words. */
+  private failureLine(err: unknown): string {
+    const message = err instanceof Error ? err.message : String(err);
+    return this.unreached(message)
+      ? `Could not reach ${this.seatName()} from your computer. Check its internet connection, then try again.`
+      : message;
+  }
+
+  /** The seat's provider as a person names it: its label without a trailing
+   *  aside ("Claude (cloud)" reads "Claude"; the line already says where). */
+  private seatName(): string {
+    return this.active.provider.label.replace(/\s*\([^)]*\)\s*$/, '') || this.active.provider.id;
   }
 
   /**
@@ -2686,13 +3539,19 @@ export class AgentSession {
    * a 4-chars-per-token estimate only when the backend reports nothing, so
    * the spend reaches the dollar rail and the transcript (ENG-14).
    */
-  private async summarize(text: string, signal?: AbortSignal): Promise<string> {
+  private async summarize(
+    text: string,
+    signal?: AbortSignal,
+    resolved?: ActiveModel,
+  ): Promise<string> {
     let out = '';
     let promptTokens = 0;
     let completionTokens = 0;
-    for await (const event of this.active.provider.chat(
+    // The caller's seat when it judged what to send by it (D5), else now's.
+    const seat = resolved ?? (await this.oneShotSeat());
+    for await (const event of seat.provider.chat(
       {
-        model: this.active.model,
+        model: seat.model,
         messages: [{ role: 'user', content: text }],
         maxTokens: 600,
         temperature: 0.1,
@@ -2710,9 +3569,11 @@ export class AgentSession {
       const caps = await this.active.provider.capabilities(this.active.model);
       this.contextTokens = caps.contextTokens;
     }
+    // Priced on the seat that answered: an offline summary on a local seat
+    // costs nothing, whatever the session's own seat is.
     this.recordUsage(
-      this.active.model,
-      this.active.provider.kind,
+      seat.model,
+      seat.provider.kind,
       promptTokens || estimateTokens(text),
       completionTokens || estimateTokens(out),
     );
@@ -2725,6 +3586,11 @@ export class AgentSession {
  *  the sign a server cannot hold a reply to the union schema. */
 function schemaRefused(err: unknown): boolean {
   return err instanceof ProviderError && /answered 4(?!29)\d\d\b/.test(err.message);
+}
+
+/** A cloud approval's key: the provider and the model (D). */
+function seatKey(providerId: string, model: string): string {
+  return `${providerId}\u0000${model}`;
 }
 
 /** The directory part of a workspace-relative path, '' at the root. */

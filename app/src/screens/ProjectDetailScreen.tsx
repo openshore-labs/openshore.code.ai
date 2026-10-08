@@ -2,7 +2,7 @@
 // 2026-10-02): the name, a pair of pill doors (what the project works in,
 // what rides into every chat), then this room's own components at the top
 // (the pinned notes, and in later tiers the currents and the team roster),
-// then the project's chats as one flat list, and a floating New pill. What
+// then the project's chats as one flat list, and a floating New chat pill. What
 // the room does to the project itself (make active, rename, share, delete)
 // sits behind the "..." in the bar. Reached by tapping a project on the
 // Projects list.
@@ -34,6 +34,9 @@ import { ReachDot, chatReach, relativeTime } from './ChatsScreen.js';
 import { useTitleHero } from '../lib/heroTitle.js';
 import { durationMs } from '../lib/motion.js';
 import { Icon } from '../components/Icon.js';
+import { MoreGlyph, PlusGlyph } from '../components/SheetGlyphs.js';
+import { useCompact } from '../hooks/useCompact.js';
+import { RoomGlyph } from '../components/Sidebar.js';
 
 export function ProjectDetailScreen() {
   const {
@@ -87,6 +90,9 @@ export function ProjectDetailScreen() {
   // The project name flies up from the tapped row into this title.
   const titleRef = useRef<HTMLHeadingElement>(null);
   useTitleHero(titleRef);
+  // On the desktop New chat sits in the bar, where Projects puts New project
+  // (D11 carried one room deeper); the phone keeps its dock.
+  const compact = useCompact();
 
   const chats = useMemo(
     () =>
@@ -142,20 +148,43 @@ export function ProjectDetailScreen() {
       title="Project options"
       onClick={() => setMenu(true)}
     >
-      <MoreIcon />
+      <MoreGlyph />
     </button>
   );
 
+  // The desktop's New chat: the same bar button as Projects' New project,
+  // beside the options.
+  const barNew =
+    mayWrite && !compact ? (
+      <button
+        type="button"
+        className="btn primary sm projects-bar-new"
+        onClick={() => startProjectChat(project.id)}
+      >
+        <PlusGlyph size={16} />
+        New chat
+      </button>
+    ) : null;
+
   return (
     <div className="screen project-room-screen">
-      <BackBar title={project.name} action={more} titleHiddenUntil={titleRef} />
+      <BackBar
+        title={project.name}
+        action={
+          <>
+            {barNew}
+            {more}
+          </>
+        }
+        titleHiddenUntil={titleRef}
+      />
       <div className="screen-inner project-room">
         <h1 ref={titleRef} className="project-hero-title project-room-title">
           {project.name}
         </h1>
         {isActive || (teams && project.shared) || (project.shared && !mayEdit && myLevel) ? (
           <div className="project-room-tags">
-            {isActive ? <span className="pill local">Active</span> : null}
+            {isActive ? <span className="pill ink">Active</span> : null}
             {teams && project.shared ? <span className="pill muted">Shared</span> : null}
             {project.shared && !mayEdit && myLevel ? (
               <span className="pill muted">You {permissionLabel(myLevel).toLowerCase()}</span>
@@ -171,10 +200,12 @@ export function ProjectDetailScreen() {
             className="project-pill press-fb"
             onClick={() => (repoCount || !mayEdit ? setShowRepos(true) : setManageRepos(true))}
           >
-            <FilesGlyph />
-            {repoCount
-              ? `${repoCount} ${repoCount === 1 ? 'repository' : 'repositories'}`
-              : 'Add repositories'}
+            <RoomGlyph name="repos" size={18} />
+            <span>
+              {repoCount
+                ? `${repoCount} ${repoCount === 1 ? 'repository' : 'repositories'}`
+                : 'Add repositories'}
+            </span>
           </button>
           <button
             type="button"
@@ -182,7 +213,8 @@ export function ProjectDetailScreen() {
             disabled={!mayEdit && !hasInstructions}
             onClick={() => setInstructions(project.instructions ?? '')}
           >
-            {hasInstructions ? 'Instructions' : 'Add instructions'}
+            <InstructionsGlyph />
+            <span>{hasInstructions ? 'Instructions' : 'Add instructions'}</span>
           </button>
         </div>
 
@@ -254,7 +286,7 @@ export function ProjectDetailScreen() {
         </section>
       </div>
 
-      {mayWrite ? (
+      {mayWrite && compact ? (
         <div className="project-room-dock">
           <button
             type="button"
@@ -264,7 +296,7 @@ export function ProjectDetailScreen() {
             <Icon size={18}>
               <path d="M12 5v14M5 12h14" />
             </Icon>
-            New
+            New chat
           </button>
         </div>
       ) : null}
@@ -279,7 +311,7 @@ export function ProjectDetailScreen() {
               className="project-options-row press-fb press-fb--row"
               onClick={fromMenu(() => {
                 setActiveProject(project.id);
-                showToast(`${project.name} is now active.`);
+                showToast(`${project.name} is your active project.`);
               })}
             >
               Make active
@@ -301,7 +333,7 @@ export function ProjectDetailScreen() {
               className="project-options-row press-fb press-fb--row"
               onClick={fromMenu(() => openProjectMemory(project.id))}
             >
-              What the agent has learned here
+              What it has learned
             </button>
           ) : null}
           {canShare ? (
@@ -340,7 +372,9 @@ export function ProjectDetailScreen() {
         {mayEdit ? (
           <>
             <div className="field">
-              <label htmlFor="project-instructions">Rides into every chat in this project</label>
+              <label htmlFor="project-instructions">
+                Every chat in this project starts with these
+              </label>
               <textarea
                 id="project-instructions"
                 rows={7}
@@ -356,9 +390,6 @@ export function ProjectDetailScreen() {
                 onClick={() => void saveInstructions()}
               >
                 Save
-              </button>
-              <button className="btn quiet" onClick={() => setInstructions(undefined)}>
-                {instructionsDirty ? 'Cancel' : 'Done'}
               </button>
             </div>
           </>
@@ -393,8 +424,8 @@ export function ProjectDetailScreen() {
         </form>
       </Sheet>
 
-      {/* What this project works in: its repositories, whose files ride into
-          every chat here. */}
+      {/* What this project works in: its repositories, which every new chat
+          here starts with. */}
       <Sheet open={showRepos} onClose={() => setShowRepos(false)}>
         <SheetHead title="Repositories" onClose={() => setShowRepos(false)} />
         {repoCount ? (
@@ -425,7 +456,7 @@ export function ProjectDetailScreen() {
             }}
           >
             <MemoryGlyph />
-            <span className="grow">What the agent has learned here</span>
+            <span className="grow">What it has learned</span>
             <span className="disclosure-chevron" aria-hidden="true" />
           </button>
         ) : null}
@@ -438,13 +469,13 @@ export function ProjectDetailScreen() {
                 setManageRepos(true);
               }}
             >
-              Manage
+              Choose repositories
             </button>
           </div>
         ) : null}
       </Sheet>
 
-      {/* Manage repositories: the same combined list the chat header offers. */}
+      {/* Choose repositories: the same combined list the chat header offers. */}
       <ManageReposSheet
         open={manageRepos}
         project={project}
@@ -464,7 +495,7 @@ export function ProjectDetailScreen() {
         <p>
           {project.shared
             ? 'This removes the project for your whole team. Each person keeps their own chats; they just stop belonging to a project. This cannot be undone.'
-            : 'Its chats are kept. They just stop belonging to a project. This cannot be undone.'}
+            : 'Its chats stay in Chats, outside any project. This cannot be undone.'}
         </p>
         <div className="confirm-row">
           <button className="btn ghost" onClick={() => setConfirmDelete(false)}>
@@ -584,8 +615,8 @@ function TeamAccess({
             ))}
           </div>
           <button
-            className="btn primary"
-            style={{ width: '100%', marginTop: 10 }}
+            className="btn primary block"
+            style={{ marginTop: 10 }}
             disabled={!email.trim().includes('@')}
             onClick={add}
           >
@@ -600,9 +631,7 @@ function TeamAccess({
             <div
               key={a.email}
               className={`multiselect-row access-row${leaving.has(a.email) ? ' leaving' : ''}`}
-              style={
-                { cursor: 'default', '--stagger': `${Math.min(i, 8) * 22}ms` } as CSSProperties
-              }
+              style={{ cursor: 'default', '--i': Math.min(i, 8) } as CSSProperties}
             >
               <span className="grow">
                 {a.email}
@@ -648,8 +677,8 @@ function TeamAccess({
   );
 }
 
-/** The manage-repositories sheet: toggle the project's attached repos from the
- *  connected computer workspaces and GitHub repos. */
+/** The Choose repositories sheet: toggle the project's attached repos from the
+ *  connected computer's workspaces and the GitHub, GitLab and Bitbucket repos. */
 function ManageReposSheet({
   open,
   project,
@@ -673,13 +702,13 @@ function ManageReposSheet({
     setDraft(project.repoIds);
   }
   if (!open && seededFor !== undefined) setSeededFor(undefined);
+  const nothingToChoose = !repos.loading && repoOptions.length === 0;
 
   return (
     <Sheet open={open} onClose={onClose}>
-      <h2>Repositories</h2>
+      <SheetHead title="Choose repositories" onClose={onClose} />
       <p className="sheet-sub">
-        The codebases this project works in, shareable across projects. Their files ride into every
-        chat here as context.
+        The repositories this project works in. Every new chat here starts with them attached.
       </p>
       {repoOptions.length ? (
         <div className="check-list">
@@ -709,7 +738,8 @@ function ManageReposSheet({
         <p className="hint">
           {repos.loading
             ? 'Loading your repositories.'
-            : (repos.error ?? 'Connect your computer or GitHub to attach repositories.')}
+            : (repos.error ??
+              'Connect your computer, GitHub, GitLab, or Bitbucket to attach repositories.')}
         </p>
       )}
       {repos.access ? (
@@ -730,24 +760,22 @@ function ManageReposSheet({
         </p>
       ) : null}
       <div className="sheet-actions">
-        <button className="btn primary" onClick={() => void onSave(draft)}>
-          Save
-        </button>
-        <button className="btn quiet" onClick={onOpenRepos}>
-          Manage repositories
-        </button>
+        {nothingToChoose ? (
+          <button className="btn primary" onClick={onOpenRepos}>
+            Open Repositories
+          </button>
+        ) : (
+          <>
+            <button className="btn primary" onClick={() => void onSave(draft)}>
+              Save
+            </button>
+            <button className="btn quiet" onClick={onOpenRepos}>
+              Open Repositories
+            </button>
+          </>
+        )}
       </div>
     </Sheet>
-  );
-}
-
-function MoreIcon() {
-  return (
-    <Icon size={22}>
-      <circle cx="5.5" cy="12" r="0.9" />
-      <circle cx="12" cy="12" r="0.9" />
-      <circle cx="18.5" cy="12" r="0.9" />
-    </Icon>
   );
 }
 
@@ -760,12 +788,11 @@ function ChatGlyph() {
   );
 }
 
-/** Two sheets, one over the other: the files a project works in. */
-function FilesGlyph() {
+/** Three lines of text: the instructions every chat here starts with. */
+function InstructionsGlyph() {
   return (
     <Icon size={18}>
-      <path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4H15l4 4v8.5a1.5 1.5 0 0 1-1.5 1.5H16" />
-      <path d="M5 9.5A1.5 1.5 0 0 1 6.5 8H11l4 4v6.5a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 5 18.5Z" />
+      <path d="M5 7h14M5 12h14M5 17h9" />
     </Icon>
   );
 }

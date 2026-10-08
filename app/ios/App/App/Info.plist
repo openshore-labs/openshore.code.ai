@@ -54,15 +54,15 @@
 		<true/>
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>OpenShore connects to the OpenShore daemon running on your own desktop over your local network or Tailscale.</string>
+	<string>OpenShore connects to your own computer, and to any model server you connect, over your local network or Tailscale.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>OpenShore uses the camera only to scan the pairing QR code shown on your computer, so you never have to type the address and token by hand.</string>
+	<string>OpenShore uses the camera when you scan the pairing QR code shown on your computer, or take a photo or video to attach to a chat.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>OpenShore uses the microphone to turn your speech into text when you tap the mic in the composer.</string>
+	<string>OpenShore uses the microphone to turn your speech into text when you dictate a message or talk in voice mode. When you record a video for a chat, its sound is never sent.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>OpenShore reads photos, screenshots, and screen recordings you attach so a model can review them. A video is turned into still frames on your device first, and the video itself is never sent.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>OpenShore transcribes your speech on this device so you can dictate messages. The audio stays on your phone.</string>
+	<string>OpenShore turns your speech into text on this device, so you can dictate a message or talk in voice mode. The audio never leaves this device.</string>
 	<!-- Only standard TLS; skips the export-compliance question on each TestFlight build. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>

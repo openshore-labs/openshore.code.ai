@@ -1,6 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  defaultVisionCloudRef,
   harborRef,
   pickVisionRef,
   stackVisionReady,
@@ -9,7 +9,13 @@ import {
   type AppStack,
   type StackModelRef,
 } from '../src/lib/stack.js';
-import { DEFAULT_CLAUDE_MODEL } from '../src/lib/claudeModels.js';
+import {
+  DEFAULT_CLAUDE_MODEL,
+  claudeModelLabel,
+  visionFallbackClaudeModel,
+} from '../src/lib/claudeModels.js';
+import { PROVIDERS, cloudImageReaders } from '../src/lib/providers.js';
+import { ownerFor, type PlayStep } from '../src/lib/play.js';
 
 const claude: StackModelRef = {
   kind: 'cloud',
@@ -118,10 +124,72 @@ describe('stackVisionReady', () => {
 });
 
 describe('visionSlots and the default cloud position', () => {
-  it('the default cloud vision model is the most capable cloud model', () => {
-    const ref = defaultVisionCloudRef();
-    expect(ref.kind).toBe('cloud');
-    expect(ref).toMatchObject({ provider: 'anthropic', model: DEFAULT_CLAUDE_MODEL });
+  // D13 (founder, 2026-10-07, B): until the person chooses one, an image goes
+  // to the least costly Claude model, and every surface names it. This
+  // reverses the 2026-09-25 "most capable cloud model" default the old pin
+  // held (Opus 5).
+  it('reads images on the least costly Claude model until one is chosen, named', () => {
+    const [first] = cloudImageReaders();
+    const claude = visionFallbackClaudeModel();
+    expect(first).toEqual({
+      provider: 'anthropic',
+      model: claude.id,
+      label: `Claude ${claudeModelLabel(claude.id)}`,
+    });
+    expect(first!.label).toBe('Claude Haiku 4.5');
+    expect(first!.model).not.toBe(DEFAULT_CLAUDE_MODEL);
+  });
+
+  it('tries each other provider with an image model after Claude, named once', () => {
+    const readers = cloudImageReaders();
+    const withVision = PROVIDERS.filter(
+      (p) => p.id !== 'anthropic' && p.models.some((m) => m.categories?.includes('vision')),
+    );
+    expect(readers.slice(1).map((r) => r.provider)).toEqual(withVision.map((p) => p.id));
+    for (const r of readers) {
+      // "Gemini 2.5 Pro", never "Gemini Gemini 2.5 Pro".
+      const brand = PROVIDERS.find((p) => p.id === r.provider)!.name.split(' ')[0]!;
+      expect(r.label.split(brand).length - 1, r.label).toBe(1);
+    }
+  });
+
+  // A plan never carries a picture (CX and CMO, 2026-10-08, E): an unplaced
+  // vision step goes to the Reasoning model, never to the reader a picture
+  // in the chat would go to.
+  it('a play keeps an unplaced vision step on the Reasoning model, whatever the chat would use', () => {
+    const step: PlayStep = {
+      id: 's',
+      title: 'Read it',
+      category: 'vision',
+      brief: '',
+      dependsOn: [],
+    };
+    const reader: StackModelRef = { kind: 'cloud', ...cloudImageReaders()[0]! };
+    const stack: AppStack = { reasoning: harborRef(), active: [], saved: {} };
+    expect(ownerFor(step, { ...stack, imageReader: reader })).toEqual({
+      ref: harborRef(),
+      placement: undefined,
+      fellBack: true,
+    });
+    // With no reader in reach, the anchor covers the step, and says so.
+    expect(ownerFor(step, stack)).toMatchObject({ ref: harborRef(), fellBack: true });
+    // A filled slot still wins over the reader.
+    const placed: AppStack = {
+      ...stack,
+      active: [{ ref: claude, placement: { category: 'vision' } }],
+    };
+    expect(ownerFor(step, { ...placed, imageReader: reader }).ref).toEqual(claude);
+  });
+
+  it("the driver gives a play the chat path's own reader, and asks the shared list", () => {
+    const src = readFileSync(new URL('../src/drivers/stackDriver.ts', import.meta.url), 'utf8');
+    expect(src).toMatch(/imageReader: \(await this\.routeVision\(\)\)\?\.ref/);
+    expect(src).toMatch(/executePlay\([^;]*roster,\s*planLocalOnly,?\s*\)/);
+    expect(src).toMatch(/for \(const reader of cloudImageReaders\(\)\)/);
+    // No vision path names Opus as its default any more.
+    expect(readFileSync(new URL('../src/lib/play.ts', import.meta.url), 'utf8')).not.toMatch(
+      /defaultVisionCloudRef/,
+    );
   });
 
   it('splits vision placements into a local slot and a cloud slot', () => {

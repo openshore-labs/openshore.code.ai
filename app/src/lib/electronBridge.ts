@@ -15,6 +15,7 @@ import type {
   HermesNote,
   HermesNoteMeta,
   PermissionMode,
+  PullResult,
   ReconcileResult,
   RoutineClockStatus,
   RoutineInput,
@@ -214,17 +215,49 @@ export interface PendingUpdate {
 export type FreeChatFrame = Exclude<FreeChatEvent, { type: 'refused' | 'open' }>;
 
 export interface DesktopStatus {
+  /** The first model server on this computer's network, judged by address:
+   *  the one the Stack's picker lists and writes to. */
   ollama: { up: boolean; detail: string; models: string[] };
+  /** The model the engine seats while offline (its local seat, read across
+   *  every configured provider by address), so a room names what will
+   *  actually answer. Absent when nothing on this network can. */
+  offlineSeat?: { model: string; provider: string };
   hardwareSummary: string;
   /** Structured numbers behind hardwareSummary; absent on an older engine. */
   hardware?: DesktopHardware;
   stack: {
     configured: boolean;
     description: string;
-    orchestrator?: { model: string; provider: string; kind: 'local' | 'cloud' };
-    specialists: Array<{ role: string; model: string }>;
+    /** `kind` is judged by seatLeaves (by address, and by an Ollama cloud
+     *  tag). `onThisComputer` is set on a seat that stays when its server is
+     *  this computer itself (hostIsLoopback, never the LAN or the tailnet),
+     *  so the Stack's chip can say On this computer or On your network (CX
+     *  and CMO, 2026-10-08, B); GET /stack reports the same shape. */
+    orchestrator?: {
+      model: string;
+      provider: string;
+      kind: 'local' | 'cloud';
+      onThisComputer?: true;
+    };
+    /** Each placed specialist, judged as the orchestrator is. Both fields are
+     *  additive: a specialist whose server is no longer configured, or one
+     *  from an older engine, has neither, and wears no chip. */
+    specialists: Array<{
+      role: string;
+      model: string;
+      kind?: 'local' | 'cloud';
+      onThisComputer?: true;
+    }>;
   };
   connections: { anthropic: boolean; openai: boolean; github: boolean };
+}
+
+/** What main answers a Desktop Offline report: the network as main reads it,
+ *  and whether the engine now works offline, and why. */
+export interface DesktopOfflineAnswer {
+  online: boolean;
+  offline: boolean;
+  reason?: 'network' | 'chosen';
 }
 
 /** One device paired to this desktop, as shown in the revoke list. `id` is the
@@ -406,11 +439,12 @@ export interface OscodeBridge {
   /** Fully local read of how the stack is being used, folded from the session
    *  journals on this machine. Read-only; nothing leaves the device. */
   stackHealth(range?: StackHealthRange): Promise<StackHealth>;
-  installModel(modelId: string): Promise<{ ok: boolean; detail: string }>;
+  /** A failed pull carries why (`reason`), so a room words it plainly. */
+  installModel(modelId: string): Promise<PullResult>;
   onInstallProgress(cb: (payload: InstallProgressPayload) => void): () => void;
   /** Pull any Ollama model by its raw ref (progress arrives keyed by the ref on
    *  onInstallProgress), so the marketplace is not limited to catalog entries. */
-  installOllamaRef(ref: string): Promise<{ ok: boolean; detail: string }>;
+  installOllamaRef(ref: string): Promise<PullResult>;
   setOrchestrator(model: string): Promise<{ ok: boolean; detail: string }>;
   enableSpecialist(role: string, model: string): Promise<{ ok: boolean; detail: string }>;
   disableSpecialist(role: string): Promise<{ ok: boolean; detail: string }>;
@@ -500,6 +534,15 @@ export interface OscodeBridge {
   routineRun(id: string): Promise<{ queued: true; position: number } | { error: string }>;
   routineStop(id: string): Promise<{ stopped: boolean }>;
   routinesWebSearch(allowed: boolean): Promise<{ webSearch: boolean }>;
+  /** Desktop Offline (founder, 2026-10-07): the person's choice (true for
+   *  Offline) for this computer's engine. Main combines it with its own read
+   *  of the network (net.isOnline(), no request) and tells every session;
+   *  the answer is main's view, so the renderer learns it at once. Optional
+   *  for an older main. */
+  setOffline?(chosen: boolean): Promise<DesktopOfflineAnswer>;
+  /** Main saw the network change, so the window flips as promptly as the
+   *  engine does. */
+  onNetwork?(cb: (payload: { online: boolean }) => void): () => void;
   webFetchMode?(mode: 'ask' | 'allow' | 'off'): Promise<{ webFetch: 'ask' | 'allow' | 'off' }>;
   /** One picture of this window's page, as a JPEG data URL (Slack Water's floor). */
   snapshot?(): Promise<string | null>;

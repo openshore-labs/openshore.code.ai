@@ -7,7 +7,12 @@ import { ConfigSchema, type OscConfig } from '../../src/config/schema.js';
 import { ProviderRegistry } from '../../src/providers/registry.js';
 import { resolveStack } from '../../src/router/stack.js';
 import { Router } from '../../src/router/router.js';
-import { buildToolRegistry, networkToolsLeftOut } from '../../src/core/agent/registry.js';
+import {
+  buildToolRegistry,
+  networkToolsLeftOut,
+  offlineCut,
+} from '../../src/core/agent/registry.js';
+import type { MachineOffline } from '../../src/core/agent/offline.js';
 import { AgentSession, type AgentDeps } from '../../src/core/agent/loop.js';
 import { PermissionEngine, type PermissionConfig } from '../../src/core/permissions/index.js';
 import { Guardrails } from '../../src/core/guardrails/index.js';
@@ -60,6 +65,9 @@ export interface TestSessionOptions {
   now?: () => Date;
   /** A repository code map for the system prompt, as bootstrap builds one. */
   codeMap?: string;
+  /** The repository's standing instructions (CLAUDE.md), as bootstrap reads
+   *  them. */
+  repoInstructions?: AgentDeps['repoInstructions'];
   /** Where the loop's handoffs go (Vault M5, J13), and a builder standing in
    *  for the pure core's. */
   onHandoff?: AgentDeps['onHandoff'];
@@ -84,6 +92,17 @@ export interface TestSessionOptions {
   /** Register the tools a stack with a specialist, a vision seat and an image
    *  maker gets (delegate, analyzeImage, generateImage), as bootstrap does. */
   specialists?: boolean;
+  /** This computer's offline state, read before every turn, wired to the
+   *  router and the loop as bootstrap wires the machine flag (Desktop
+   *  Offline). Unset reads as online. */
+  offlineState?: () => MachineOffline;
+  /** More model servers in the registry (a local one beside a cloud
+   *  orchestrator). */
+  providers?: MockProvider[];
+  /** A Harness Current's handle and the fetch its advisor posts through, for
+   *  tests of the Jev judge. */
+  harnessCurrents?: AgentDeps['harnessCurrents'];
+  jevFetch?: AgentDeps['jevFetch'];
 }
 
 export function makeTestSession(
@@ -128,9 +147,16 @@ export function makeTestSession(
   });
   registry.register(provider.id, provider);
   if (options.escalation) registry.register(options.escalation.id, options.escalation);
+  for (const extra of options.providers ?? []) registry.register(extra.id, extra);
 
   const stack = resolveStack(config, registry);
-  const router = new Router(config, registry, stack);
+  const offlineState = options.offlineState;
+  const router = new Router(
+    config,
+    registry,
+    stack,
+    offlineState ? { offline: () => offlineState().offline } : {},
+  );
   const agentRef: { current?: AgentSession } = {};
   const registryOptions = {
     stackHasVision: options.specialists === true,
@@ -146,6 +172,7 @@ export function makeTestSession(
   };
   const tools = buildToolRegistry(registryOptions);
   const offlineTools = networkToolsLeftOut(registryOptions);
+  const cutWhenOffline = offlineCut(registryOptions);
 
   // events and approvals are declared above, because the ethics onBlock closure
   // handed to the provider registry pushes into events before this point.
@@ -157,6 +184,13 @@ export function makeTestSession(
     config,
     projectName: options.projectName,
     vaultRoot: options.vaultRoot,
+    // The handoff tools reach the stack's specialists through the router, as
+    // bootstrap wires them (registry.ts buildToolContext).
+    ...(options.specialists
+      ? {
+          delegate: (...args: Parameters<Router['delegate']>) => router.delegate(...args),
+        }
+      : {}),
   };
   const guardrails = new Guardrails(config.guardrails);
   const usage = new UsageTracker();
@@ -179,11 +213,15 @@ export function makeTestSession(
     vaultContext: options.vaultContext,
     now: options.now,
     codeMap: options.codeMap,
+    ...(options.repoInstructions ? { repoInstructions: options.repoInstructions } : {}),
     onHandoff: options.onHandoff,
     buildHandoff: options.buildHandoff,
     ...(options.canGrantVerify === false ? { canGrantVerify: false } : {}),
     ...(offlineTools.length ? { offlineTools } : {}),
+    ...(offlineState ? { offline: offlineState, offlineCut: cutWhenOffline } : {}),
     ...(options.permissionMode ? { permissionMode: options.permissionMode } : {}),
+    ...(options.harnessCurrents ? { harnessCurrents: options.harnessCurrents } : {}),
+    ...(options.jevFetch ? { jevFetch: options.jevFetch } : {}),
     approver: async (request) => {
       approvals.push(request);
       return options.approve ? options.approve(request) : { approve: true };

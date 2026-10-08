@@ -88,14 +88,19 @@ describe('project room repositories', () => {
 // flat rows with a quiet line that keeps "when" whole while "what" truncates,
 // and a floating dock (search, New project) that cross-fades, never snaps.
 describe('projects list', () => {
-  it('the quiet line says what the project is for, else where it lives', async () => {
+  it('the quiet line says what the project is for, else how many chats it holds', async () => {
     const { projectLine } = await import('../src/screens/ProjectsScreen.js');
     const base = { id: 'p', name: 'P', repoIds: [], createdAt: new Date().toISOString() };
-    expect(projectLine(base, base.createdAt)).toEqual({ what: 'Private', when: 'just now' });
-    expect(projectLine({ ...base, shared: true }, base.createdAt).what).toBe(
+    expect(projectLine(base, base.createdAt, 0)).toEqual({
+      what: 'No chats yet',
+      when: 'Just now',
+    });
+    expect(projectLine(base, base.createdAt, 1).what).toBe('1 chat');
+    expect(projectLine(base, base.createdAt, 3).what).toBe('3 chats');
+    expect(projectLine({ ...base, shared: true }, base.createdAt, 2).what).toBe(
       'Shared with your team',
     );
-    expect(projectLine({ ...base, instructions: '  Essays.\nMore.' }, base.createdAt).what).toBe(
+    expect(projectLine({ ...base, instructions: '  Essays.\nMore.' }, base.createdAt, 3).what).toBe(
       'Essays.',
     );
   });
@@ -139,6 +144,9 @@ describe('project room', () => {
 // (Creative Studio), so the name never reads twice.
 describe('project room rulings', () => {
   const detail = src('screens/ProjectDetailScreen.tsx');
+  it('wears the ink pill for Active: teal stays for local', () => {
+    expect(detail).toContain('<span className="pill ink">Active</span>');
+  });
   it('marks each chat row with where it ran', () => {
     expect(detail).toMatch(
       /project-chat-sub[\s\S]{0,200}<ReachDot reach=\{chatReach\(conv\)\} \/>/,

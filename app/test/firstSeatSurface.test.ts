@@ -42,7 +42,7 @@ describe('First Seat in the chat empty state', () => {
   it('one primary teal install control, More ways to start beneath', () => {
     expect(SEAT).toContain('btn primary press-fb');
     expect(SEAT).toContain('More ways to start');
-    for (const row of ['Connect your computer', 'Connect an API key', 'Open Stack']) {
+    for (const row of ['Connect your computer', 'Add an API key', 'Open Stack']) {
       expect(SEAT).toContain(row);
     }
   });
@@ -55,7 +55,14 @@ describe('First Seat in the chat empty state', () => {
 
   it('shows the size in GB and the class line from the engine', () => {
     expect(SEAT).toContain('classLineFor(');
-    expect(SEAT).toMatch(/GB download/);
+    // The desktop's size line is DeepBlue's; the phone's is Harbor's own
+    // download, from the label that already carries its GB.
+    expect(SEAT).toContain('harborMasterSizeLine(');
+    expect(SEAT).toMatch(/HARBOR_APPROX_LABEL\.slice\(1\)\} download\./);
+    // One unit: no-break spaces keep "about 2.5 GB" on one line.
+    expect(read('src/lib/harbor.ts')).toMatch(
+      /HARBOR_APPROX_LABEL = 'about\\u00a0[\d.]+\\u00a0GB'/,
+    );
   });
 });
 
@@ -83,22 +90,23 @@ describe('the arrival rides the tokens (The Seat Fills)', () => {
   });
 });
 
-describe('the Harbor Lite hero is honest about its states', () => {
-  // The hero card left the setup page (founder, 2026-09-23: a new person opens
-  // into Harbor Lite's chat instead). Its honest states live on in the
-  // Settings rows, which still show progress, failure, and a real "Get".
-  it('keeps download, progress, and failure states in the Settings rows', () => {
+describe('the setup paths are honest about their states', () => {
+  // The Harbor Lite hero card left the setup page (founder, 2026-09-23: a new
+  // person opens into Harbor Lite's chat instead), and the Settings rows that
+  // kept its states rendered nowhere after D9 (2026-10-07), so they are gone.
+  // Harbor's own card keeps its download, progress and failure states.
+  it('keeps Harbor download, progress, and failure states on the setup card', () => {
     expect(PATHS).not.toContain('Harbor Lite is already here');
-    expect(PATHS).toContain('harborMiniDownload');
-    expect(PATHS).toMatch(/dl\?\.failed/);
-    expect(PATHS).toContain("'Harbor Lite'");
-    expect(PATHS).toContain('label={`Get ${name}`}');
+    expect(PATHS).toContain('harborDownload?.failed');
+    expect(PATHS).toContain('Getting Harbor');
+    expect(PATHS).toContain('Cancel download');
   });
   it('drops the "part of Personal" claim while gates are off', () => {
     expect(PATHS).not.toContain('part of Personal');
   });
-  it('exports StartingPaths for the Settings "Get started" group', () => {
+  it('renders the paths one way, as the setup page cards', () => {
     expect(PATHS).toMatch(/export function StartingPaths\(/);
-    expect(PATHS).toContain("variant === 'rows'");
+    expect(PATHS).not.toContain("variant === 'rows'");
+    expect(PATHS).not.toContain('<SettingsRow');
   });
 });

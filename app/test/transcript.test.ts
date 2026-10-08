@@ -411,3 +411,138 @@ describe('the Vault context pack', () => {
     expect(state.items.map((i) => i.kind)).toEqual(['user', 'context-pack']);
   });
 });
+
+// A placed cloud specialist on the computer (CX and CMO, 2026-10-08, D): the
+// handoff's row names the model it goes to and wears the Cloud chip when it
+// leaves this network, and an additive reach event turns the turn cloud. An
+// older engine sends neither, and its rows keep their words.
+describe('a handoff on the computer', () => {
+  const delegate = { id: 'd1', name: 'delegate', args: { role: 'coding', task: 'Write it' } };
+
+  it('names the model a delegate goes to, by its Stack category, lowercased', () => {
+    const state = feed([
+      { type: 'task-start', input: 'do it' },
+      { type: 'turn-start', turn: 1, model: 'qwen', providerKind: 'local' },
+      { type: 'tool-start', call: delegate, handoff: { model: 'Claude Sonnet', leaves: true } },
+    ]);
+    const tool = state.items.find((i) => i.kind === 'tool');
+    expect(tool?.kind === 'tool' && tool.summary).toBe('Ask Claude Sonnet, your coding model');
+    expect(tool?.kind === 'tool' && tool.handoff).toEqual({ model: 'Claude Sonnet', leaves: true });
+    expect(state.stepNote).toBe('Ask Claude Sonnet, your coding model');
+  });
+
+  it('calls the Fast role "your fast model"', () => {
+    const state = feed([
+      { type: 'task-start', input: 'do it' },
+      {
+        type: 'tool-start',
+        call: { ...delegate, args: { role: 'fast', task: 'Quick' } },
+        handoff: { model: 'gpt-oss:20b-cloud', leaves: true },
+      },
+    ]);
+    const tool = state.items.find((i) => i.kind === 'tool');
+    expect(tool?.kind === 'tool' && tool.summary).toBe('Ask gpt-oss:20b-cloud, your fast model');
+  });
+
+  it('names the model an image is read or made with', () => {
+    const state = feed([
+      { type: 'task-start', input: 'look' },
+      {
+        type: 'tool-start',
+        call: { id: 'v1', name: 'analyzeImage', args: { question: 'What is in it?' } },
+        handoff: { model: 'Claude Haiku 4.5', leaves: true },
+      },
+      {
+        type: 'tool-start',
+        call: { id: 'g1', name: 'generateImage', args: { prompt: 'A lighthouse' } },
+        handoff: { model: 'flux-dev', leaves: false },
+      },
+    ]);
+    const tools = state.items.filter((i) => i.kind === 'tool');
+    expect(tools.map((t) => t.kind === 'tool' && t.summary)).toEqual([
+      'Look at the image with Claude Haiku 4.5: What is in it?',
+      'Generate an image with flux-dev: A lighthouse',
+    ]);
+  });
+
+  it('keeps the model in the row once the step ends', () => {
+    const state = feed([
+      { type: 'task-start', input: 'do it' },
+      { type: 'tool-start', call: delegate, handoff: { model: 'Claude Sonnet', leaves: true } },
+      {
+        type: 'tool-end',
+        call: delegate,
+        result: { ok: true, content: 'Done.' },
+        durationMs: 900,
+      },
+    ]);
+    const tool = state.items.find((i) => i.kind === 'tool');
+    expect(tool?.kind === 'tool' && tool.summary).toBe('Ask Claude Sonnet, your coding model');
+    expect(tool?.kind === 'tool' && tool.handoff?.leaves).toBe(true);
+  });
+
+  it("keeps an older engine's words when the handoff is not named", () => {
+    const state = feed([
+      { type: 'task-start', input: 'do it' },
+      { type: 'tool-start', call: delegate },
+      {
+        type: 'tool-start',
+        call: { id: 'v1', name: 'analyzeImage', args: { question: 'What is in it?' } },
+      },
+    ]);
+    const tools = state.items.filter((i) => i.kind === 'tool');
+    expect(tools.map((t) => t.kind === 'tool' && t.summary)).toEqual([
+      'Ask the coding specialist',
+      'Look at the image: What is in it?',
+    ]);
+    expect(tools.every((t) => t.kind === 'tool' && t.handoff === undefined)).toBe(true);
+  });
+
+  it('wears the Cloud chip only on a handoff that leaves this network', async () => {
+    const { createElement } = await import('react');
+    const { renderToStaticMarkup } = await import('react-dom/server');
+    const { ToolCard } = await import('../src/components/ToolCard.js');
+    const state = feed([
+      { type: 'task-start', input: 'do it' },
+      { type: 'tool-start', call: delegate, handoff: { model: 'Claude Sonnet', leaves: true } },
+      {
+        type: 'tool-start',
+        call: { ...delegate, id: 'd2' },
+        handoff: { model: 'qwen3-coder', leaves: false },
+      },
+      { type: 'tool-start', call: { ...delegate, id: 'd3' } },
+    ]);
+    const html = state.items
+      .filter((i) => i.kind === 'tool')
+      .map((item) => renderToStaticMarkup(createElement(ToolCard, { item: item as never })));
+    expect(html[0]).toContain('<span class="kind-chip cloud">Cloud</span>');
+    expect(html[1]).not.toContain('kind-chip');
+    expect(html[2]).not.toContain('kind-chip');
+  });
+
+  it('turns the turn cloud on a reach event, keeping the turn model name', () => {
+    const state = feed([
+      { type: 'task-start', input: 'do it' },
+      { type: 'turn-start', turn: 1, model: 'qwen', providerKind: 'local' },
+      { type: 'reach', model: 'Claude Sonnet', providerKind: 'cloud' },
+      { type: 'tool-start', call: delegate, handoff: { model: 'Claude Sonnet', leaves: true } },
+    ]);
+    expect(state.model).toEqual({ name: 'qwen', kind: 'cloud' });
+    // The next turn's start sets it again, as every turn does.
+    const after = reduceEvent(state, {
+      type: 'turn-start',
+      turn: 2,
+      model: 'qwen',
+      providerKind: 'local',
+    });
+    expect(after.model).toEqual({ name: 'qwen', kind: 'local' });
+  });
+
+  it('names the handoff model when the reach comes before any turn', () => {
+    const state = feed([
+      { type: 'task-start', input: 'do it' },
+      { type: 'reach', model: 'Claude Sonnet', providerKind: 'cloud' },
+    ]);
+    expect(state.model).toEqual({ name: 'Claude Sonnet', kind: 'cloud' });
+  });
+});

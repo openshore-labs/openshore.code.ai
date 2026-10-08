@@ -209,6 +209,35 @@ Emergency door is a targeted `.skip` with a reason, never a loosened guard.
 The coding agent's UX standard (`os-code/src/core/agent/uxStandard.ts`)
 carries the same bar for everything built through OpenShore.
 
+## Premium, simple, sharp: the UI guards (standing rule, 2026-10-07)
+
+The Creative Studio and CMO review of 2026-10-07 (`docs/ux-review-2026-10-07.md`)
+turned the seams it found into rules, so they cannot come back. One helper,
+`app/test/support/uiGuards.ts`, runs eight rules over every UI source file
+(`app/test/uiGuards.test.ts` for shared files, `uiGuards.<room>.test.ts` for
+each room's own): a room with a large title tucks its bar title (BackBar
+`titleHiddenUntil`); retired words stay out of copy; buttons size through
+`.btn.sm` and `.btn.block`, never inline padding or width; carets, chevrons,
+checks and emoji are drawn glyphs from `components/SheetGlyphs.tsx`, never
+typed characters; `pill local` (teal) only for something local or private,
+and state pills such as Active wear `pill ink`; the reach dot draws by class,
+never an inline colour; icon sizes sit on one even scale; rows step through
+the shared stagger (`.stagger-in` and an inline `--i`), never an inline step,
+and an index always wears a class some rule reads it under. Beside them,
+`polish-standards` holds every `:hover` inside a `(hover: hover)` or
+`(pointer: fine)` block, so nothing stays tinted after a tap, and every press
+on the `scale` property with a press token, and `contrast` holds every new
+pair at AA. Spacing and depth on the structural selectors (room gutters,
+cards, ledger rows, docks, the toast, sheets and their heads) are tokens,
+`--gutter`, `--card-pad`, `--row-pad`, `--section-gap` and `--elev-1` to
+`--elev-3`, held by `spacing-elevation.test.ts` (D22). Copy names the device
+in hand through `thisDeviceNoun` (`lib/deviceNoun.ts`: "this iPad" on an
+iPad, "this phone" elsewhere), never a typed "this phone" or "this iPhone"
+(`deviceNoun.test.ts`). A new file is covered the day it lands. Every door to
+Pairing says "Connect your computer". The 23 larger calls the review held for
+the founder (D1 to D23 in the review doc) were ruled on 2026-10-07 ("Do the
+remaining recommendations"): each is built as its recommendation says.
+
 ## Project trust is a rule, not a feature (standing rule, 2026-09-27)
 
 A repository's own `os-code.config.json` is a proposal, never the person's
@@ -222,7 +251,9 @@ fails on an unclassified key and holds one test per attack vector. A new
 config key is not done until it is classified there. Trust and "always allow
 in this project" grants live on the machine (`~/.os-code/trust.json`), never
 in the repo. "Local" is judged by address (`isLocalHost`, `leavesThisNetwork`),
-never by a provider's config label.
+never by a provider's config label, and a seat by `seatLeaves`, which adds the
+model's name: an Ollama cloud tag (`:cloud`, `-cloud`) leaves this network
+though its server is localhost (privacy review, 2026-10-08).
 
 ## This build is Personal: release tiers (standing rule, founder 2026-09-27)
 
@@ -478,7 +509,11 @@ ships as Repositories. Build it to these five tenets so no session drifts:
 4. **The person places the seat; the harness may only fill a gap.** Auto-place
    places an installed or benched LOCAL model with a note and one-tap revert, and
    never the anchor, never under a secrets lockdown. Every download and every
-   cloud call is a card the person taps. Teal is local, amber is cloud and spend.
+   cloud call is a card the person taps, except a model the person placed in
+   a Stack chat's slot, which answers there with no card of its own (founder,
+   2026-09-25); on the computer, the coding agent asks before a cloud model's
+   first step in each task, a placed specialist's included (CX and CMO,
+   2026-10-08). Teal is local, amber is cloud and spend.
 5. **One loop; hosts differ only by tool slice.** The pure core in
    `os-code/src/harness/` stays free of Node built-ins by test so the phone can
    run it; events are additive; the working path (`core/agent/loop.ts`) stays

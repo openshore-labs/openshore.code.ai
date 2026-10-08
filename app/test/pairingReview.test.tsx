@@ -123,6 +123,13 @@ describe('the screens, as CX asked', () => {
     expect(screen.indexOf('<RemoteHubPanel />')).toBeGreaterThan(more);
   });
 
+  it('lists no Android download on the iPhone; the web still links it', () => {
+    expect(screen).toContain(
+      "TAILSCALE_LINKS.filter((l) => !(platform() === 'ios' && l.glyph === 'android'))",
+    );
+    expect(screen).toMatch(/label: 'Android',\s*glyph: 'android'/);
+  });
+
   it('tells an iPad from an iPhone on the computer', async () => {
     const { phoneDeviceName } = await import('../src/screens/PairScreen.js');
     const nav = globalThis.navigator;

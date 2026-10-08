@@ -9,6 +9,8 @@
 // roster (currents.ts, harnessCurrents.ts), never spelled here.
 import type { GuideCard } from './guideHarness.js';
 import { guideStepsCompact } from './setupGuides.js';
+import { LOCAL_IMAGE_READER, SMALL_IMAGE_READER, aboutGB } from './imageReading.js';
+import { thisDeviceNoun } from './deviceNoun.js';
 import { PAY_GATES_ENABLED } from './payGate.js';
 import { AGENTIC_CURRENTS, AGENTIC_CURRENTS_TITLE } from './currents.js';
 import { HARNESS_CURRENTS, HARNESS_CURRENTS_TITLE } from './harnessCurrents.js';
@@ -52,7 +54,9 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'overview',
     title: 'What OpenShore is',
-    text: 'OpenShore is a local-first coding assistant for your computer (Mac, Windows, or Linux) and your iPhone. You build a stack of models you own; local models are the default and the cloud is an opt-in choice on your own key. Once set up it works like a coding agent: say the goal, it proposes a plan, you pick, it does the work and asks before anything risky.',
+    // Opens on the App Store's first caption, the line the setup page's
+    // headline says too (founder, D23, 2026-10-07).
+    text: 'Your models. Your keys. OpenShore is a local-first coding assistant for your computer (Mac, Windows, or Linux) and your iPhone. You build a stack of models you own; local models are the default and the cloud is an opt-in choice on your own key. Once set up it works like a coding agent: say the goal, it proposes a plan, you pick, it does the work and asks before anything risky.',
     keywords: [
       'what is openshore',
       'how does openshore work',
@@ -75,7 +79,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'setup-page',
     title: 'Set up OpenShore',
     where: "The Set up OpenShore button under Harbor Lite's first message",
-    text: 'The page for every optional next step. On the phone: Get Harbor, Connect your computer, Set up a repository, Connect your own API key. On your computer: Set up your local stack, Open a repository, Connect your own API key. In a new person\'s first chat Harbor Lite walks these steps with buttons under each message, and after Harbor it asks whether to start chatting or keep setting up, so setup never stands in the way; tap Pick up setup or say "let\'s set up" to pick it back up. There is no Get started group in Settings.',
+    text: 'The page for every optional next step. On the phone: Get Harbor, Connect your computer, Set up a repository, Add an API key. On your computer: Build your stack, Open a repository, Add an API key. In a new person\'s first chat Harbor Lite walks these steps with buttons under each message, and after Harbor it asks whether to start chatting or keep setting up, so setup never stands in the way; tap Keep setting up or say "let\'s set up" to pick it back up. There is no Get started group in Settings.',
     keywords: [
       'set up',
       'setup',
@@ -85,7 +89,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
       'next steps',
       'skipped',
       'first steps',
-      'pick up setup',
+      'keep setting up',
     ],
   },
   {
@@ -116,16 +120,22 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'menu',
     title: 'The Menu',
     where: 'Phone: the Menu button at top left, or swipe from the edge. Computer: the sidebar',
-    text: `Top: Chats, Projects, Terminal, Repositories, Stack, Vault. Bottom: ${[
-      ...(adminOn ? ['Admin (company admins)'] : []),
+    text: `Every room sits in one list: ${[
+      'Chats',
+      'Projects',
+      'Terminal',
+      'Repositories',
+      'Stack',
+      'Vault',
       'Crew',
+      'Cloud Connections',
+      'Computer',
       ...(marketplaceOn ? ['Marketplace (Coming soon)'] : []),
       ...(stackHealthOn ? ['Stack Health'] : []),
       ...(launchOn ? ['Launch with Codemagic'] : []),
-      'Cloud Connections',
-      'Computer',
-      'Settings',
-    ].join(', ')}. A Sign in row shows when you are signed out.`,
+    ].join(
+      ', ',
+    )}. On a phone not yet connected to a computer, Terminal sits after Vault until it is. Your recent chats sit under them, with View all. Settings stays at the bottom.${adminOn ? ' Company admins also see Admin.' : ''} A Sign in row shows when you are signed out.`,
     keywords: ['menu', 'sidebar', 'navigation', 'drawer', 'where is', 'find', 'rooms', 'hamburger'],
   },
 
@@ -169,7 +179,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     title: 'DeepBlue',
     where:
       'OpenShore on your computer: Menu, Settings, Harbor, DeepBlue, or the first-run card, or Stack, Get DeepBlue',
-    text: `DeepBlue is the most capable built-in model: a real coding agent that plans and edits your repositories on your own computer, running through Ollama and sized to your computer (Qwen 2.5 Coder 32B, 14B, 7B, or 3B). Once installed it is your Reasoning LLM, and a paired phone reaches it as Your computer. How:\n${guideStepsCompact('get-harbor-master')}`,
+    text: `DeepBlue is the most capable built-in model: a real coding agent that plans and edits your repositories on your own computer, running through Ollama and sized to your computer (Qwen 2.5 Coder 32B, 14B, 7B, or 3B). Once installed it is your Reasoning model, and a paired phone reaches it as Your computer. How:\n${guideStepsCompact('get-harbor-master')}`,
     keywords: [
       'deepblue',
       'deep blue',
@@ -187,13 +197,13 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'chat-home',
     title: 'Chat',
-    text: 'The main screen. The header shows the chat title (tap to rename), the repositories pill, spend so far, a context bar, and the connection pill. Type in the chat box and tap send.',
+    text: 'The main screen. The header shows the chat title (tap to rename), the repositories pill, spend so far, a context bar, Terminal on a computer chat, the New chat pen, and the connection pill once your computer is connected. Type in the chat box and tap send.',
     keywords: ['chat', 'home', 'new chat', 'rename chat', 'context bar', 'main screen'],
   },
   {
     id: 'composer',
     title: 'The chat box',
-    text: 'At the bottom of every chat: + to attach, the model pill, the mode pill, a Terminal pill on computer chats, the voice mode button, the dictation mic, and send. While a reply runs you can type to queue the next message, or tap the square to stop. Shift+Tab cycles the mode.',
+    text: 'At the bottom of every chat: + to attach, the model pill, the mode pill and a Terminal pill on computer chats, the dictation mic, and one round button: voice mode while the box is empty, send once you type. While a reply runs you can type to queue the next message, or tap the square to stop. Shift+Tab cycles the mode.',
     keywords: ['chat box', 'composer', 'send', 'stop', 'queue', 'buttons', 'keyboard shortcuts'],
   },
   {
@@ -256,7 +266,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'attachments',
     title: 'Attach',
     where: 'The + at the left of the chat box',
-    text: 'Opens Camera, Photos, and Files (drag and drop on a computer). Videos are read as frames. Images only send if the chosen model can read images; if not, place an image-reading model in Stack or connect a cloud model that can. A model set for Image reading in Stack gets images right away; otherwise the chat asks before an image goes out.',
+    text: 'Opens Camera, Photos, and Files (drag and drop on a computer). Videos are read as frames. A chat with one model sends images only if that model reads them. In a Stack chat, a model set for Image reading gets images right away; otherwise the chat asks before an image goes out, and when nothing can read it, the chat says so and offers two ways to set one up.',
     keywords: [
       'attach',
       'photo',
@@ -279,8 +289,9 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'voice-mode',
     title: 'Voice mode',
-    where: 'The wave icon beside the mic; voice choices in Menu, Settings, Voice',
-    text: 'A full-screen spoken conversation: it listens, sends what you said, and speaks the reply. Tap to interrupt or send. Approvals, spending, and pick lists come back to the screen, and everything lands in the chat as text. Settings, Voice picks the voice, speaking speed, and whether replies are read aloud.',
+    where:
+      'The round button beside the mic, while the chat box is empty; voice choices in Menu, Settings, Voice mode',
+    text: 'A full-screen spoken conversation: it listens, sends what you said, and speaks the reply. Tap to interrupt or send. Approvals, spending, and pick lists come back to the screen, and everything lands in the chat as text. Settings, Voice mode picks the voice, speaking speed, and whether replies are read aloud.',
     keywords: [
       'voice',
       'voice mode',
@@ -301,25 +312,15 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'reach-pill',
     title: 'The connection pill',
-    where: 'Top right of the chat',
-    text: 'Shows your reach. Docked (green): your own computer is reachable, so everything works. Offshore (amber): online, but your computer is out of reach, so cloud and on-device models work. Offline (gray): on-device models only. Tap it to follow the connection automatically or step down by hand.',
-    keywords: [
-      'offshore',
-      'docked',
-      'pill',
-      'top right',
-      'connection',
-      'status',
-      'amber',
-      'green',
-      'reach',
-    ],
+    where: 'Top right of a chat, once your computer is connected',
+    text: "Shows your reach once your computer is connected. Docked (a green dot): your own computer is reachable, so its models, cloud models, and this device's models all work. Offshore (a plain dot): online, but your computer is out of reach, so cloud models and this device's models work. Offline (a hollow ring): only the models on this device. In an open chat on a phone it shows just its dot. Before a computer is connected it shows only when you are offline. Tap it to follow the connection automatically or step down by hand; before a computer is connected, Choose Offline under the status switch in Stack does the same.",
+    keywords: ['offshore', 'docked', 'pill', 'top right', 'connection', 'status', 'green', 'reach'],
   },
   {
     id: 'chats',
     title: 'Chats',
     where: 'Menu, Chats',
-    text: 'Every chat, newest first, with search. Tap to open, swipe to delete, hold to rename. Sessions running on your paired computer show here too, so you can pick them up from the phone.',
+    text: "The active project's chats, and any chat whose project was deleted, newest first, with search. Tap to open, swipe left to delete, hold to rename. Sessions running on your paired computer show here too, so you can pick them up from the phone.",
     keywords: [
       'chats',
       'history',
@@ -336,10 +337,11 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'stack',
     title: 'Stack',
     where: 'Menu, Stack',
-    text: 'The models that answer for you. One is the Reasoning LLM: it plans each task and sends it to the specialist whose job fits, or does it itself. You can keep a separate stack for each connection status (Docked, Offshore, Offline); the one for your current status is used automatically. It exists so you can mix models you own, each doing what it does best.',
+    text: 'The models that answer for you. One is the Reasoning model: it plans each task and sends it to the specialist whose job fits, or does it itself. You can keep a separate stack for each connection status (Offshore and Offline, and Docked once your computer is connected); the one for your current status is used automatically. It exists so you can mix models you own, each doing what it does best.',
     keywords: [
       'stack',
       'your stack',
+      'reasoning model',
       'reasoning llm',
       'orchestrator',
       'runs the show',
@@ -352,7 +354,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'specialists',
     title: 'Specialists',
     where: 'Menu, Stack, Specialists',
-    text: 'Models placed by job under the Reasoning LLM: Coding, Writing, Analysis, Image reading, Image creation, Retrieval, Fast, or Custom. Image reading has an on-device slot and a cloud slot. Add one from the Bench with Add to stack and pick its category.',
+    text: 'Models placed by job under the Reasoning model: Coding, Writing, Analysis, Image reading, Image creation, Retrieval, Fast, or Custom. Image reading has an on-device slot and a cloud slot. Add one from the Bench with Add to stack and pick its category.',
     keywords: [
       'specialist',
       'specialists',
@@ -364,6 +366,32 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
       'retrieval',
       'category',
       'roles',
+    ],
+  },
+  {
+    // The founder's two doors (2026-10-07), in the words the chat's card and
+    // its guides use; the local pick comes from the catalog. The Local slot
+    // reads first and the Cloud slot takes a failed picture only after a
+    // card (K), and a plan's image step runs on the Reasoning model from the
+    // text, since a plan never carries a picture (E; CX and CMO, 2026-10-08).
+    id: 'image-reading',
+    title: 'Reading images',
+    where: 'Menu, Stack, Image reading',
+    text: `A picture in a Stack chat goes to the model set under Image reading, without asking. With both set, the Local model reads first, and the Cloud model takes a picture the Local one failed on only after you approve. With none set, another model that can read it (your Reasoning model, or a cloud model you connected) gets it after you approve. A plan never carries a picture, so with none set its image step goes to your Reasoning model, which works from the text. When nothing can read images, the chat says so and offers two ways: Source a local model (${LOCAL_IMAGE_READER.name}, ${aboutGB(LOCAL_IMAGE_READER)}, on your computer through Ollama, or ${SMALL_IMAGE_READER.name}, ${aboutGB(SMALL_IMAGE_READER)}, for a computer with little room; a model on ${thisDeviceNoun()} cannot read images yet), or Connect a cloud model on your own API key (Claude reads images out of the box). Each opens a step-by-step guide.`,
+    keywords: [
+      'read images',
+      'read image',
+      'reads images',
+      'read pictures',
+      'read my screenshots',
+      'image model',
+      'vision model',
+      'image reader',
+      'cannot read images',
+      'source a local model',
+      'connect a cloud model',
+      'llava',
+      'moondream',
     ],
   },
   {
@@ -401,7 +429,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'stack-desktop',
     title: 'Stack on your computer',
     where: 'Menu, Stack, in OpenShore on your computer',
-    text: 'Shows the Reasoning LLM with a Change button and the specialist roles, chosen from models installed through Ollama. Start with a prefab stack fills it in one tap and shows the size and any graphics memory it needs; with no models, the picker offers Get DeepBlue.',
+    text: 'Shows the Reasoning model with a Change button and the specialist roles, chosen from models installed through Ollama. Start with a prefab stack fills it in one tap and shows the size and any graphics memory it needs; with no models, the picker offers Get DeepBlue.',
     keywords: [
       'desktop stack',
       'computer stack',
@@ -414,7 +442,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'first-seat',
     title: 'First Seat',
-    text: 'On an empty chat when nothing can answer yet, one card sets you up: on your computer, one tap installs DeepBlue sized to it. More ways to start offers Connect your computer, Connect an API key, and Open Stack.',
+    text: 'On an empty chat when nothing can answer yet, one card sets you up: on your computer, one tap installs DeepBlue sized to it. More ways to start offers Connect your computer, Add an API key, and Open Stack.',
     keywords: ['first run', 'no model', 'first seat', 'nothing answers', 'one tap', 'empty chat'],
   },
   ...(marketplaceOn
@@ -466,7 +494,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'cloud-connections',
     title: 'Cloud Connections',
     where: 'Menu, Cloud Connections',
-    text: `Add cloud models on your own API key: Claude (which also needs its Workspace id), OpenAI, Gemini, Kimi (Moonshot), Perplexity, Venice, and OpenRouter (one key for models from many providers; choose which of its models sit on your Bench). Each connected provider puts its models on your Bench. Your server is set up here too: a Linux server you rent docks like your computer. API keys stay on your device, and nothing spends without your approval. How:\n${guideStepsCompact('connect-cloud-key')}`,
+    text: `Add cloud models on your own API key: Claude (which also needs its Workspace id), OpenAI, Gemini, Kimi (Moonshot), Perplexity, Venice, and OpenRouter (one key for models from many providers; choose which of its models sit on your Bench). Each connected provider puts its models on your Bench. Your server is set up here too: a Linux server you rent docks like your computer. API keys are stored only on your device and sent only to their provider. A cloud model runs, and spends, only when you pick it or place it. How:\n${guideStepsCompact('connect-cloud-key')}`,
     keywords: [
       'cloud',
       'api key',
@@ -519,7 +547,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'repositories',
     title: 'Repositories',
     where: 'Menu, Repositories, and the repositories pill at the top of a chat',
-    text: `Connect GitHub, GitLab, or Bitbucket (one tap, or an access token). With your computer connected you can clone from a URL or open a local folder. In a chat, the repositories pill picks which code that chat works on, with its branch. OpenShore reads, edits, tests, and commits with your approval on every change. How:\n${guideStepsCompact('open-a-repo')}`,
+    text: `Connect GitHub, GitLab, or Bitbucket (one tap, or an access token). With your computer connected you can clone from a URL or open a local folder. In a chat, the repositories pill picks which code that chat works on, with its branch. OpenShore reads, edits, tests, and commits, shows you every change, and asks before it runs a command unless you have allowed it. How:\n${guideStepsCompact('open-a-repo')}`,
     keywords: [
       'repository',
       'repositories',
@@ -578,12 +606,12 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'projects',
     title: 'Projects',
     where: 'Menu, Projects',
-    text: `A project keeps its chats, repositories, and standing instructions together, so the agent has the same context in every chat for it. Its room has New chat, Resume last chat, Standing instructions, Repositories and files, ${currentsOn ? 'what the agent has learned there, and its currents' : 'and what the agent has learned there'}.`,
+    text: `A project keeps its chats, repositories, and instructions together, so every chat in it starts with the same context. Its room shows the repositories and instructions, ${currentsOn ? 'its currents, ' : ''}the pinned notes, the chats, and New chat. The options button at the top right makes it active, renames it, opens What it has learned once it has a repository, or deletes it.`,
     keywords: ['project', 'projects', 'standing instructions', 'organize', 'folder', 'new project'],
   },
   {
     id: 'project-notes',
-    title: 'What the agent has learned here',
+    title: 'What it has learned',
     where: 'A project room, or Vault, Coding projects',
     text: 'Read-only notes the agent keeps in the project: Current State, Progress, Decisions, Action Items, and Skills, so the next session picks up where the last one left off.',
     keywords: [
@@ -619,7 +647,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'my-crew',
     title: 'Crew',
     where: 'Menu, Crew',
-    text: 'Your own roster of agents, each with a name, a persona, a rule for when it is called, and an activity level (Reviews the work, Joins on its own, or When you ask). Tap + New crew member to add one.',
+    text: "Your own roster of agents, each with a name, a persona, a rule for when it is called, and an activity level (Reviews the work, Joins on its own, or When you ask). Tap New crew member to add one. Tap a member's card to edit it; Delete is at the foot of its editor, or swipe the card left.",
     keywords: [
       'crew',
       'my crew',
@@ -707,6 +735,8 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     : []),
 
   // ---------------------------------------------------------- settings
+  // Every group in the screen's order, Privacy under Account (D16, 2026-10-07).
+  // test/settingsOrder.test.ts reads SettingsScreen and holds this list to it.
   {
     id: 'settings',
     title: 'Settings',
@@ -716,23 +746,26 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
       'Privacy',
       'Ethical boundaries',
       'This device',
+      'Approvals',
       'Terminal',
       ...(launchOn ? ['Launch with Codemagic'] : []),
       ...(stackHealthOn ? ['Stack Health'] : []),
+      'Web search',
       'Harbor',
+      'Reasoning',
       'Writing',
-      'Voice',
+      'Voice mode',
       'Notifications (iPhone)',
       'Wayfinding',
-      'Clear conversations',
+      'Clear chats',
     ])}. Set up steps are not here; they are on the Set up OpenShore page.`,
     keywords: ['settings', 'preferences', 'options', 'configure', 'toggles'],
   },
   {
     id: 'settings-harbor',
     title: 'Harbor settings and web search',
-    where: 'Menu, Settings, Harbor',
-    text: 'Installs or removes the built-in models (Harbor on the phone, DeepBlue on your computer; Harbor Lite is Built in) and picks the web search provider every local model uses: DuckDuckGo needs no API key, or add your own Brave Search or Tavily API key.',
+    where: 'Menu, Settings, Web search and Harbor',
+    text: 'Web search holds the switch that lets models search and the search service every local model uses: DuckDuckGo needs no API key, or add your own Brave Search or Tavily API key. Harbor installs or removes the built-in models (Harbor on the phone, DeepBlue on your computer; Harbor Lite is Built in).',
     keywords: [
       'web search',
       'duckduckgo',
@@ -832,8 +865,8 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     // 2026-09-30).
     text: `${
       gatesOn
-        ? 'Chatting needs no account. Signing in is free, opens Projects and Cloud Connections, and carries a few settings to your other devices. The rest of OpenShore (the coding agent, Terminal, Repositories, Vault, Crew, and Computer) is part of OpenShore Plus, which rides on your account; get it or restore it in Settings. Chats are not synced between devices; docked to your computer, your phone reaches its chats.'
-        : "Chatting needs no account. Signing in is free and opens building, Projects, Vault, Crew, and pairing, and carries a few settings to your other devices. Chats are not synced between devices; your phone reaches your computer's chats by pairing."
+        ? "Chatting needs no account. Signing in is free, opens Projects and Cloud Connections, and takes your theme and a few preferences to your other devices. The rest of OpenShore (the coding agent, Terminal, Repositories, Vault, and Crew) is part of OpenShore Plus, which rides on your account; get it or restore it in Settings. Computer, docking to your computer or a server, is free. Chats are not synced between devices; docked to your computer, your phone reaches your computer's chats."
+        : "Chatting needs no account. Signing in is free and opens building, Projects, Vault, Crew, and docking, and takes your theme and a few preferences to your other devices. Chats are not synced between devices; your phone reaches your computer's chats once docked."
     }${teamsOn ? ' After creating one you choose personal or business; a business adds a company, admins, and a shared stack managed from Admin.' : ''}`,
     keywords: [
       'account',
@@ -851,7 +884,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'privacy',
     title: 'Privacy',
     where: 'Menu, Settings, Privacy and Ethical boundaries',
-    text: 'Local models keep your words on your device. Cloud models run on your own API keys, and the amber pill marks every turn that goes to one. Chats, projects, and API keys are encrypted on the device. What does leave is short and listed under Settings, Privacy, What leaves this device: a cloud model you chose, a web search you allowed, update checks, the model list, and your account while signed in.',
+    text: 'Local models keep your words on your device, unless a cloud model in the same chat reads them later, on its own turn or as a step in a plan. Cloud models run on your own API keys, and an amber pill or dot marks a chat whose latest turn went to one. Chats, projects, and API keys are encrypted on the device. What does leave is short and listed under Settings, Privacy, What leaves this device: a cloud model you chose, a web search you allowed, update checks, the model list, and your account while signed in.',
     keywords: [
       'privacy',
       'private',
@@ -881,8 +914,8 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
   },
   {
     id: 'clear-conversations',
-    title: 'Clear conversations',
-    where: 'Menu, Settings, Clear conversations',
+    title: 'Clear chats',
+    where: 'Menu, Settings, Clear chats',
     text: 'Removes every chat from this device after you confirm. It cannot be undone; sessions on your computer stay there.',
     keywords: ['clear', 'delete all', 'wipe', 'reset', 'erase history'],
   },

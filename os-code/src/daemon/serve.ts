@@ -85,6 +85,13 @@ import type { StackHealthRange } from '../insights/stackHealthTypes.js';
 import { EgressPolicy } from '../core/security/egress.js';
 import { trustSessionFolder } from '../core/agent/projectTrust.js';
 import { giveMoreRoomHere } from '../providers/servedWindow.js';
+import { ProviderRegistry } from '../providers/registry.js';
+import { seatLeaves } from '../providers/types.js';
+import { hostIsLoopback, isOllamaCloudTag } from '../harness/locality.js';
+import { getAnthropicKey } from '../auth/claude.js';
+import { machineOffline } from '../core/agent/offline.js';
+import { offlineSeatFor } from '../router/router.js';
+import type { DaemonStackInfo } from '../protocol.js';
 import {
   machineVaultWire,
   vaultPrivacyConfig,
@@ -568,6 +575,10 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         version: '0.1.0',
         role: auth.role,
         user: auth.userId,
+        // Desktop Offline: why this computer works offline ('network' or
+        // 'chosen'), so a paired phone says what still answers here. Absent
+        // while online; an older daemon never sends it, which reads as online.
+        offline: machineOffline().reason,
         ...(options.kind ? { kind: options.kind } : {}),
       });
       return;
@@ -856,26 +867,86 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     }
 
     if (req.method === 'GET' && url.pathname === '/stack') {
-      const stack = options.config.stack;
+      // Read fresh, as every session and the free chat read it, so a stack
+      // changed on the desktop since this daemon started is the one reported.
+      // A config that no longer reads keeps the one this daemon started with,
+      // as this route always answered.
+      let config: OscConfig;
+      try {
+        config = loadConfig().config;
+      } catch {
+        config = options.config;
+      }
+      const stack = config.stack;
+      const registry = new ProviderRegistry(config, getAnthropicKey);
+      // Where the orchestrator runs, judged by address and by an Ollama cloud
+      // tag (seatLeaves), never by a label, as the desktop's own status
+      // judges it.
+      const orchestratorId = stack.orchestrator?.provider ?? '';
+      const orchestratorModel = stack.orchestrator?.model ?? '';
+      const orchestratorLeaves = registry.has(orchestratorId)
+        ? seatLeaves(registry.get(orchestratorId), orchestratorModel)
+        : config.providers[orchestratorId]?.kind === 'anthropic' ||
+          isOllamaCloudTag(orchestratorModel);
+      // A seat that stays wears "On this computer" only when its server is
+      // this computer itself (hostIsLoopback, never the LAN or the tailnet),
+      // so a chip can say where it answers (CX and CMO, 2026-10-08, B).
+      const onThisComputer = (providerId: string): { onThisComputer?: true } => {
+        const endpoint = config.providers[providerId];
+        if (!endpoint || !('baseUrl' in endpoint) || typeof endpoint.baseUrl !== 'string') {
+          return {};
+        }
+        try {
+          return hostIsLoopback(new URL(endpoint.baseUrl).hostname)
+            ? { onThisComputer: true as const }
+            : {};
+        } catch {
+          return {};
+        }
+      };
       const orchestrator = stack.orchestrator
         ? {
             model: stack.orchestrator.model,
             provider: stack.orchestrator.provider,
-            kind: (options.config.providers[stack.orchestrator.provider]?.kind === 'anthropic'
-              ? 'cloud'
-              : 'local') as 'local' | 'cloud',
+            kind: (orchestratorLeaves ? 'cloud' : 'local') as 'local' | 'cloud',
+            ...(orchestratorLeaves ? {} : onThisComputer(orchestratorId)),
           }
         : undefined;
+      // Each specialist judged as the orchestrator is (seatLeaves). One whose
+      // server is no longer configured cannot answer anywhere, so it says
+      // nothing of where (no kind, so a client shows no chip).
       const specialists = Object.entries(stack.specialists)
         .filter(([role]) => role !== 'imageGen')
-        .map(([role, ref]) => ({ role, model: (ref as { model?: string }).model ?? '' }));
+        .map(([role, ref]) => {
+          const model = (ref as { model?: string }).model ?? '';
+          const providerId = (ref as { provider?: string }).provider ?? '';
+          if (!registry.has(providerId) && !config.providers[providerId]) return { role, model };
+          const leaves = registry.has(providerId)
+            ? seatLeaves(registry.get(providerId), model)
+            : config.providers[providerId]?.kind === 'anthropic' || isOllamaCloudTag(model);
+          return {
+            role,
+            model,
+            kind: (leaves ? 'cloud' : 'local') as 'local' | 'cloud',
+            ...(leaves ? {} : onThisComputer(providerId)),
+          };
+        });
+      // Desktop Offline: while this computer works offline, the phone is told
+      // why and which model answers here in place of one that waits (the
+      // engine's own offline seat). Online it costs no model list.
+      const offline = machineOffline().reason;
+      const offlineSeat = offline ? await offlineSeatFor(config, registry) : undefined;
       sendJson(res, 200, {
         description: orchestrator
           ? `${orchestrator.model}${specialists.length ? ` + ${specialists.map((s) => s.role).join(', ')}` : ', solo'}`
           : 'not set up yet',
         orchestrator,
         specialists,
-      });
+        ...(offline ? { offline } : {}),
+        ...(offlineSeat ? { offlineSeat } : {}),
+        // This daemon holds a local-only turn to the engine's D5 rules (J).
+        acceptsLocalOnly: true,
+      } satisfies DaemonStackInfo);
       return;
     }
     // Stack Health, folded on this machine from the sessions already on disk and
@@ -1642,7 +1713,11 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           sendJson(res, 400, { error: 'Send {"text": "..."}.' });
           return;
         }
-        driver.send(body.text);
+        // `localOnly: true` marks the message as carrying a private note's
+        // text (a private plan's step, CX and CMO 2026-10-08, J): the task
+        // runs under the engine's D5 rules and its reply comes back marked.
+        // Any other value reads as unmarked, as an older client sends.
+        driver.send(body.text, undefined, body.localOnly === true ? { localOnly: true } : {});
         sendJson(res, 202, { queued: true, busy: driver.busy });
         return;
       }

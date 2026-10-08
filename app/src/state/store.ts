@@ -4,7 +4,7 @@
 // their transcript by replaying the engine's journal, so the phone and the
 // desktop can both close and reopen with nothing lost.
 import { create } from 'zustand';
-import type { DriverEvent, ReconcileResult } from 'os-code/protocol';
+import type { DriverEvent, PullFailure, ReconcileResult } from 'os-code/protocol';
 import {
   emptyThread,
   seedFromTranscript,
@@ -155,9 +155,24 @@ import {
   fetchLiveModels,
   pickLiveModels,
   providerInfo,
+  providerModelLabel,
   providerSecretKey,
+  validateProviderKey,
+  type KeyCheck,
   type ProviderModel,
 } from '../lib/providers.js';
+import { claudeModelLabel } from '../lib/claudeModels.js';
+import {
+  cloudWaitLine,
+  desktopOnline,
+  LOCAL_MODEL_SEAT_FAILED,
+  localModelFailedLine,
+  networkUp,
+  offlineChosen,
+  offlineNow,
+  reportDesktopOffline,
+} from './offlineOps.js';
+import { thisDeviceNoun } from '../lib/deviceNoun.js';
 import { isSetupFailure, rescueSource } from '../lib/chatRescue.js';
 import { CloudClaudeDriver, DEFAULT_CLAUDE_MODEL } from '../drivers/cloudClaudeDriver.js';
 import { CloudOpenAiDriver } from '../drivers/cloudOpenAiDriver.js';
@@ -179,6 +194,7 @@ import {
   decideCodemagicApproval,
 } from '../lib/codemagicControl.js';
 import { hapticSuccess } from '../lib/haptics.js';
+import { NOTHING_SHOWN, celebratesTurn, turnShown } from './turnEndOps.js';
 import type { Attachment } from '../lib/attachments.js';
 import { OnDeviceDriver } from '../drivers/onDeviceDriver.js';
 import { MockDriver } from '../drivers/mockDriver.js';
@@ -260,7 +276,7 @@ import {
   harborWeightsStale,
   isHarbor,
 } from '../lib/harbor.js';
-import { HARBOR_MASTER_MODEL_NAME, resolveHarborMaster } from '../lib/harborMaster.js';
+import { resolveHarborMaster } from '../lib/harborMaster.js';
 import { hardwareFromSummary } from '../lib/firstSeat.js';
 import { SEARCH_SECRET_KEY, webSearchOn, type SearchBackend } from '../lib/webSearch.js';
 import { pushWebFetchMode } from '../lib/webFetchMode.js';
@@ -579,6 +595,13 @@ import { dropTeamIndexes, noteTeamIndex } from './teamIndexes.js';
 import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
 import { SAMPLE_PROMPT, SAMPLE_REPO_NAME } from '../lib/sampleProject.js';
 import { setSearchConsent, type SearchAllowed } from '../lib/localSearch.js';
+import {
+  WebSearchSheets,
+  answersSheet,
+  remembersAnswer,
+  searchAskShortcut,
+  type WebSearchSheet,
+} from './webSearchAskOps.js';
 import { RELEASE_TIER, featureOn, roomOpen, type ReleaseTier } from '../lib/focus.js';
 import {
   accountCopy,
@@ -760,7 +783,7 @@ export interface AppSettings {
    *  2026-10-02): ask (unset), always allow, or never. The computer holds the
    *  real value (`tools.webFetch`); this is the app's copy (lib/webFetchMode). */
   webFetchMode?: 'ask' | 'allow' | 'off';
-  /** The user's stack: Reasoning LLM anchor, active specialists, bench metadata.
+  /** The user's stack: Reasoning model anchor, active specialists, bench metadata.
    *  Legacy single stack; kept as the migration seed and fallback. The live
    *  configuration is `stacks`, one per connectivity status. */
   stack?: AppStack;
@@ -1461,6 +1484,10 @@ let outboxSyncing = false;
 // Serialize repo reconcile passes: the boot check and a reconnect can otherwise
 // fire at once and push the same clones twice.
 let reconcilingRepos = false;
+// Desktop Offline (founder, 2026-10-07): main's own read of the network
+// (Electron's net.isOnline()), undefined until main has answered. The window's
+// navigator.onLine and this both count (state/offlineOps.ts desktopOnline).
+let mainNetOnline: boolean | undefined;
 // Chats whose repositories changed while their driver held the old list (an
 // on-device model and the Stack take it at build). The next send, between
 // turns, rebuilds that driver from the transcript so the new list and the
@@ -1801,9 +1828,10 @@ interface AppState {
    *  The empty-state composer checks this before starting a chat, so a first
    *  message is never sent into a brain that cannot answer. */
   sourceReady(source: ConversationSource): boolean;
-  /** Whether a "My Stack" chat can read an image right now: a capable model
-   *  placed in the stack, or a connected cloud provider that reads images. Gates
-   *  the composer's attach button for the stack source. */
+  /** Whether a Stack chat can read an image right now: a capable model
+   *  placed in the stack, or a connected cloud provider that reads images. The
+   *  image offer card folds its doors once this turns true; the Stack chat's
+   *  composer takes a picture either way (founder, 2026-10-07). */
   stackVisionReady(): boolean;
   /** Re-read the desktop engine's status (Electron only; no-op elsewhere). */
   refreshDesktopStatus(): Promise<void>;
@@ -2097,9 +2125,12 @@ interface AppState {
    *  bundled with the app and has no counterpart here. */
   removeHarbor(): Promise<void>;
   /** Desktop only. Pull the DeepBlue size that fits this computer through
-   *  the engine (Ollama) and seat it as the Reasoning LLM. Returns success. An
-   *  install already running returns false without starting another. */
-  ensureHarborMaster(): Promise<boolean>;
+   *  the engine (Ollama) and seat it as the Reasoning model. Returns success. An
+   *  install already running returns false without starting another. With
+   *  `seat: false` it is pulled and left unseated: the offline door (Desktop
+   *  Offline) gives this computer a model to answer offline without moving
+   *  the person's own pick off the Reasoning model. */
+  ensureHarborMaster(opts?: { seat?: boolean }): Promise<boolean>;
   /** First-run: start Harbor Lite's download and open the LLM Library intro. */
   beginHarborMiniWithIntro(): void;
   /** First-run: start Harbor's download and open the LLM Library intro. */
@@ -2123,7 +2154,7 @@ interface AppState {
    *  means "decide later" (the starting mode stays). */
   chooseEditMode(mode: PermissionMode | undefined): Promise<void>;
   /** The fork after Harbor (lib/guidedSetup.ts): start chatting (the walk
-   *  steps back until "Pick up setup") or keep setting up. */
+   *  steps back until "Keep setting up" under the hello) or keep setting up. */
   chooseNext(choice: NextChoice): void;
   /** A pairing link opened from outside the app (the iPhone Camera reading
    *  the computer's QR, CX 2026-10-01): Pairing opens and asks before it
@@ -2331,6 +2362,11 @@ interface AppState {
   /** Which of these pinned paths the personal vault still holds: 'missing'
    *  shows "Pinned note not found"; 'unknown' when the vault cannot be read. */
   vaultPinStatus(paths: string[]): Promise<Record<string, 'ok' | 'missing' | 'unknown'>>;
+  /** Each pinned note's visibility, judged by this device's vault privacy
+   *  rules (J3, the judge the pack uses) on the note's own text, or on its
+   *  path alone when the text cannot be read, so the pins card can mark a
+   *  private pin and say what it holds (CX and CMO, 2026-10-08, G). */
+  vaultPinPrivacy(paths: string[]): Promise<Record<string, VaultVisibility>>;
   /** The personal vault's notes as the picker may show them (J15): hidden
    *  notes never, local-only ones with the lock. Never the team vault. */
   vaultPickerNotes(): Promise<VaultPickerNote[]>;
@@ -2541,11 +2577,16 @@ interface AppState {
    *  message, in every chat. */
   giveMoreRoom(itemId: string): Promise<void>;
   /** A model asked to search the web and the person has not answered yet
-   *  (web search asks once; What leaves this device). The sheet shows it. */
-  webSearchAsk?: { query: string };
+   *  (web search asks once; What leaves this device). The sheet shows it.
+   *  `private` is the card for a search a local model wrote after its chat
+   *  read a private note (CX and CMO, 2026-10-08, H): it asks every time,
+   *  shows the exact words and why, and its answer is never remembered. */
+  webSearchAsk?: WebSearchSheet;
   /** The web search question's answer: allow (remembered on this device) or
-   *  not now (asked again after the next launch). */
-  answerWebSearch(allow: boolean): void;
+   *  not now (asked again after the next launch). `sheet` is the card the
+   *  tap was on: an answer for a card no longer on screen (a second tap, or
+   *  the scrim, while the sheet slides away) does nothing. */
+  answerWebSearch(allow: boolean, sheet?: WebSearchSheet): void;
   /** The Settings switch for web search. */
   setWebSearchAllowed(allowed: boolean): Promise<void>;
   /** Opening web pages for the coding agent: ask, always, or never, carried
@@ -2677,6 +2718,9 @@ interface AppState {
   connectProvider(id: string, key: string, workspaceId?: string): Promise<void>;
   /** Keep these models on the Bench for a provider whose list loads live. */
   setProviderModels(id: string, models: ProviderModel[]): Promise<void>;
+  /** Set or change the workspace a connected Claude key acts in, without
+   *  pasting the key again. Checked with Claude first; kept unless refused. */
+  setAnthropicWorkspace(workspaceId: string): Promise<KeyCheck>;
   /** Disconnect a cloud provider and forget its key. */
   disconnectProvider(id: string): Promise<void>;
 
@@ -2689,7 +2733,7 @@ interface AppState {
   /** Manually step down to a more restrictive profile, or clear (auto). */
   setProfileOverride(profile?: ProfileId): Promise<void>;
 
-  // Stack management (the app-side Reasoning LLM + specialists + bench).
+  // Stack management (the app-side Reasoning model + specialists + bench).
   /** Connect a bring-your-own-model endpoint. Returns the new connection. */
   connectByom(input: {
     label: string;
@@ -2699,7 +2743,7 @@ interface AppState {
   }): Promise<ByomConnection>;
   /** Disconnect a BYOM endpoint: delete its key and pull it from the stack. */
   disconnectByom(id: string): Promise<void>;
-  /** Set the Reasoning LLM anchor (from the bench or a cloud model) for a
+  /** Set the Reasoning model anchor (from the bench or a cloud model) for a
    *  status. Defaults to the current status when `profile` is omitted. */
   setReasoning(ref: StackModelRef, profile?: ProfileId): Promise<void>;
   /** Move a bench model into a status's active stack under a category placement.
@@ -2986,6 +3030,30 @@ export const useApp = create<AppState>((set, get, api) => {
     text: string,
     attachments?: Attachment[],
   ): void {
+    // Desktop Offline: a cloud chat waits while this device is offline (or
+    // Offline is chosen). The send ends here with its plain line, never a
+    // request that cannot leave or should not, and the stop card's doors
+    // carry on from it (Choose another model, Try again).
+    const waiting = offlineCloudWait(conversationId);
+    if (waiting) {
+      set((state) => {
+        const c = state.conversations[conversationId];
+        if (!c || c.thread.busy) return state;
+        const started = reduceEvent(c.thread, { type: 'task-start', input: text });
+        const thread = reduceEvent(started, {
+          type: 'task-done',
+          reason: 'error',
+          message: waiting,
+        });
+        return {
+          conversations: {
+            ...state.conversations,
+            [conversationId]: { ...c, thread, updatedAt: new Date().toISOString() },
+          },
+        };
+      });
+      return;
+    }
     const paint = isRemote(driver) || driver.kind !== 'desktop';
     if (paint) {
       set((state) => {
@@ -3002,6 +3070,24 @@ export const useApp = create<AppState>((set, get, api) => {
       });
     }
     driver.send(text, attachments);
+  }
+
+  /** The line a cloud chat's send ends with while this device is offline,
+   *  or undefined when it may go (Desktop Offline). */
+  function offlineCloudWait(conversationId: string): string | undefined {
+    const s = get();
+    const source = s.conversations[conversationId]?.source;
+    if (source?.kind !== 'cloud') return undefined;
+    if (!offlineNow(s.connectivity, s.settings.profileOverride)) return undefined;
+    const name =
+      source.provider === 'anthropic'
+        ? claudeModelLabel(source.model)
+        : providerModelLabel(source.provider, source.model);
+    return cloudWaitLine(
+      name,
+      offlineChosen(s.connectivity, s.settings.profileOverride),
+      isDesktop() ? 'this computer' : thisDeviceNoun(),
+    );
   }
 
   /** A driver build's failure in plain words: a hub that did not answer in
@@ -3278,6 +3364,8 @@ export const useApp = create<AppState>((set, get, api) => {
     // costs it nothing. The side effects below run after the fold, in order.
     const pending: Array<{ event: DriverEvent; seq: number }> = [];
     let scheduled = false;
+    // What the turn in flight has shown, for the success tap at its end.
+    let shown = NOTHING_SHOWN;
     const flush = () => {
       scheduled = false;
       const batch = pending.splice(0);
@@ -3315,7 +3403,8 @@ export const useApp = create<AppState>((set, get, api) => {
       });
       let celebrated = false;
       for (const { event } of batch) {
-        if (event.type === 'task-done' && event.reason === 'complete' && !celebrated) {
+        shown = turnShown(shown, event);
+        if (celebratesTurn(shown, event) && !celebrated) {
           celebrated = true;
           hapticSuccess();
         }
@@ -4087,16 +4176,23 @@ export const useApp = create<AppState>((set, get, api) => {
   // question.
   let webSearchDeclinedThisRun = false;
   let webSearchPending: Promise<boolean> | undefined;
-  let webSearchResolve: ((allow: boolean) => void) | undefined;
-  function askWebSearch(query: string): Promise<boolean> {
-    const consent = get().settings.webSearchConsent;
-    if (consent === 'allowed') return Promise.resolve(true);
-    if (consent === 'declined' || webSearchDeclinedThisRun) return Promise.resolve(false);
+  // One sheet on screen at a time (state/webSearchAskOps.ts).
+  const webSearchSheets = new WebSearchSheets((sheet) => set({ webSearchAsk: sheet }));
+  function askWebSearch(
+    query: string,
+    ask?: { afterPrivate: true; card: { summary: string; detail: string } },
+  ): Promise<boolean> {
+    // After a private read (H): every search asks, whatever was allowed
+    // before, on a card with the exact words; nothing is remembered.
+    const shortcut = searchAskShortcut(
+      get().settings.webSearchConsent,
+      webSearchDeclinedThisRun,
+      ask?.afterPrivate === true,
+    );
+    if (shortcut !== undefined) return Promise.resolve(shortcut);
+    if (ask?.afterPrivate) return webSearchSheets.open({ query, private: ask.card });
     if (webSearchPending) return webSearchPending;
-    webSearchPending = new Promise<boolean>((resolve) => {
-      webSearchResolve = resolve;
-      set({ webSearchAsk: { query } });
-    });
+    webSearchPending = webSearchSheets.open({ query });
     return webSearchPending;
   }
   function webSearchAllowedNow(): SearchAllowed {
@@ -4657,6 +4753,7 @@ export const useApp = create<AppState>((set, get, api) => {
               vaultPack: conversationPack(conv),
               humanize: settings.humanizeWriting !== false,
               writingVoice: settings.writingVoice,
+              modelLabel: claudeModelLabel(source.model),
             },
           );
         }
@@ -4679,6 +4776,7 @@ export const useApp = create<AppState>((set, get, api) => {
             vaultPack: conversationPack(conv),
             humanize: settings.humanizeWriting !== false,
             writingVoice: settings.writingVoice,
+            modelLabel: providerModelLabel(source.provider, source.model),
           },
         );
       }
@@ -8898,7 +8996,8 @@ export const useApp = create<AppState>((set, get, api) => {
       // projects) would vanish from every list once any project exists, so adopt
       // it into the active (or first) project. P2-13: a chat explicitly unfiled
       // by deleteProject carries `unfiled`, so it is left alone here instead of
-      // being silently re-adopted on the next launch.
+      // being silently re-adopted on the next launch. Unfiled chats still show
+      // in Chats and Recents, through lib/chatScope.ts.
       const orphanIds = Object.keys(conversations).filter(
         (id) => !conversations[id]!.projectId && !conversations[id]!.unfiled,
       );
@@ -9119,6 +9218,12 @@ export const useApp = create<AppState>((set, get, api) => {
         });
         window.addEventListener('offline', () => void get().refreshConnectivity());
         setInterval(() => void get().refreshConnectivity(), 20000);
+        // Desktop Offline: main watches the network too (Electron's own read,
+        // which holds with the window closed), and says when it changes.
+        bridge()?.onNetwork?.((p) => {
+          mainNetOnline = p.online;
+          void get().refreshConnectivity();
+        });
       }
 
       // On every app open, check for local project work that never reached the
@@ -9166,8 +9271,22 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async refreshConnectivity() {
-      const online = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      let online = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      // Desktop Offline: the person's choice reaches this computer's engine
+      // on every refresh (main sets its one machine flag), and main's own
+      // read of the network counts beside the window's.
+      if (isDesktop()) {
+        const main = await reportDesktopOffline(
+          bridge(),
+          get().settings.profileOverride === 'offline',
+        );
+        if (main !== undefined) mainNetOnline = main;
+        online = desktopOnline(online, mainNetOnline);
+      }
       let homeReachable = false;
+      // Desktop Offline: whether the paired computer itself works offline,
+      // and why, as its daemon says (absent from an older one).
+      let homeOffline: Connectivity['homeOffline'];
       const daemon = get().settings.daemon;
       if (daemon && online) {
         try {
@@ -9176,13 +9295,18 @@ export const useApp = create<AppState>((set, get, api) => {
             new Promise<{ ok: boolean }>((r) => setTimeout(() => r({ ok: false }), 3000)),
           ]);
           homeReachable = Boolean(res.ok);
+          if (res.ok && 'offline' in res) homeOffline = res.offline;
         } catch {
           homeReachable = false;
         }
       }
       const prev = get().connectivity;
-      if (prev.online !== online || prev.homeReachable !== homeReachable) {
-        set({ connectivity: { online, homeReachable } });
+      if (
+        prev.online !== online ||
+        prev.homeReachable !== homeReachable ||
+        prev.homeOffline !== homeOffline
+      ) {
+        set({ connectivity: { online, homeReachable, ...(homeOffline ? { homeOffline } : {}) } });
       }
     },
 
@@ -9230,6 +9354,9 @@ export const useApp = create<AppState>((set, get, api) => {
     async setProfileOverride(profile) {
       await get().saveSettings({ profileOverride: profile });
       logEvent('profile_override', { profile: profile ?? 'auto' });
+      // On the desktop the choice is this computer's engine's too (Desktop
+      // Offline): the refresh reports it to main, which tells every session.
+      if (isDesktop()) await get().refreshConnectivity();
     },
 
     openConnections(providerId) {
@@ -10243,7 +10370,7 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       const client = routinesClient(get().settings);
       if (!client) {
-        get().showToast('Pair your computer first. Routines run there.');
+        get().showToast('Connect your computer first. Routines run there.');
         return undefined;
       }
       try {
@@ -11624,7 +11751,7 @@ export const useApp = create<AppState>((set, get, api) => {
       }
     },
 
-    async ensureHarborMaster() {
+    async ensureHarborMaster(opts) {
       // The desktop's own model lives in the engine config, not in an app-side
       // stack ref, so this is the Stack screen's one-tap starter as a store
       // action: the size is resolved against this computer with the engine's
@@ -11672,24 +11799,37 @@ export const useApp = create<AppState>((set, get, api) => {
               : { percent: 0, label: p.line || 'Downloading', indeterminate: true },
         });
       });
+      // The pull's own answer, kept so a failure is worded by why it failed;
+      // a failure after it landed is the seat's, never the download's.
+      let failedPull: { detail: string; reason?: PullFailure } | undefined;
+      let pulledOk = false;
       try {
         const pulled = await b.installModel(size.catalogId);
-        if (!pulled.ok) throw new Error(pulled.detail);
-        set({ harborMasterDownload: { percent: 100, label: 'Seating', indeterminate: true } });
-        const seated = await b.setOrchestrator(size.ollamaRef);
-        if (!seated.ok) throw new Error(seated.detail);
+        if (!pulled.ok) {
+          failedPull = pulled;
+          throw new Error(pulled.detail);
+        }
+        pulledOk = true;
+        if (opts?.seat !== false) {
+          set({ harborMasterDownload: { percent: 100, label: 'Seating', indeterminate: true } });
+          const seated = await b.setOrchestrator(size.ollamaRef);
+          if (!seated.ok) throw new Error(seated.detail);
+        }
         await get().refreshDesktopStatus();
         logEvent('harbor_master_ready', { size: size.ollamaRef });
         set({ harborMasterDownload: undefined });
         return true;
-      } catch (err) {
+      } catch {
+        // One plain line, never the model server's own error: with no
+        // network, when it downloads; with the network up, what failed and
+        // the way on (Desktop Offline). The store's read counts main's view
+        // of the network beside the window's.
         set({
           harborMasterDownload: {
             percent: 0,
-            label:
-              err instanceof Error && err.message
-                ? err.message
-                : `Could not get ${HARBOR_MASTER_MODEL_NAME}.`,
+            label: pulledOk
+              ? LOCAL_MODEL_SEAT_FAILED
+              : localModelFailedLine(networkUp(get().connectivity), failedPull),
             failed: true,
           },
         });
@@ -11936,7 +12076,7 @@ export const useApp = create<AppState>((set, get, api) => {
       void get().saveSettings({
         guidedSetup:
           choice === 'chat'
-            ? // The walk steps back where it stands; "Pick up setup" or "let's
+            ? // The walk steps back where it stands; "Keep setting up" or "let's
               // set up" resumes it at the step that is actually next.
               {
                 ...p,
@@ -14021,6 +14161,26 @@ export const useApp = create<AppState>((set, get, api) => {
       return out;
     },
 
+    async vaultPinPrivacy(paths) {
+      const out: Record<string, VaultVisibility> = {};
+      if (!paths.length) return out;
+      const privacy = await vaultPrivacyNow();
+      await Promise.all(
+        paths.map(async (p) => {
+          let file: StoredFile | undefined;
+          try {
+            file = await personalRead(p);
+          } catch {
+            file = undefined;
+          }
+          out[p] = privacy.visibility(
+            file ? noteFactsFromText(p, file.text, file.updatedAt) : { path: p },
+          );
+        }),
+      );
+      return out;
+    },
+
     async vaultPickerNotes() {
       const facts = await personalNoteFacts();
       if (!facts) return [];
@@ -14490,14 +14650,23 @@ export const useApp = create<AppState>((set, get, api) => {
       else setTrustItem({ state: 'trusted', error: undefined });
     },
 
-    answerWebSearch(allow) {
-      const resolve = webSearchResolve;
-      webSearchResolve = undefined;
-      webSearchPending = undefined;
+    answerWebSearch(allow, sheet) {
+      // Only the card on screen takes an answer, so a second tap on a
+      // private card as it slides away never saves a standing allow.
+      const current = get().webSearchAsk;
+      if (!answersSheet(current, sheet)) return;
+      // A card after a private read (H) answers that one search only: a yes
+      // is no standing allow, and a no keeps web search as it was.
+      const remembered = remembersAnswer(current);
       set({ webSearchAsk: undefined });
+      if (!remembered) {
+        webSearchSheets.answer(allow);
+        return;
+      }
+      webSearchPending = undefined;
       if (allow) void get().saveSettings({ webSearchConsent: 'allowed' });
       else webSearchDeclinedThisRun = true;
-      resolve?.(allow);
+      webSearchSheets.answer(allow);
       // Routines on this computer follow the answer.
       if (allow) void get().refreshRoutines();
     },
@@ -15293,6 +15462,17 @@ export const useApp = create<AppState>((set, get, api) => {
       if (models.length) providerModels[id] = models;
       else delete providerModels[id];
       await get().saveSettings({ providerModels });
+    },
+
+    async setAnthropicWorkspace(workspaceId) {
+      const key = await secretGet(ANTHROPIC_KEY_KEY);
+      if (!key) return 'invalid';
+      const ws = workspaceId.trim() || undefined;
+      const check = await validateProviderKey('anthropic', key, ws);
+      if (check === 'invalid' || check === 'needs-workspace') return check;
+      await get().saveSettings({ anthropicWorkspaceId: ws });
+      void bridge()?.setAnthropicKey(key, ws);
+      return check;
     },
 
     async disconnectProvider(id) {

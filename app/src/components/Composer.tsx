@@ -1,8 +1,11 @@
 // The composer, five controls in the rhythm of the Claude Code chat bar: an
 // add button (attach photos or files), the model pill (opens the model sheet),
 // the mode pill (opens the mode sheet), a mic for voice-to-text, and one round
-// button that is send or stop. Attachments ride along to vision-capable
-// models; the mic uses the platform's speech engine where it exists.
+// button. With nothing to send the round button is voice mode; the first
+// character turns it into send, and a run turns it into queue or stop (D6,
+// founder 2026-10-07, built as recommended, A). Attachments ride along to
+// vision-capable models; the mic uses the platform's speech engine where it
+// exists.
 //
 // The keyboard grammar is Claude Code's: Enter sends, Shift+Enter breaks a
 // line (on a phone, Return breaks a line and the round button sends, the way
@@ -60,7 +63,17 @@ import { isPhone } from '../lib/platform.js';
 import { useDictation } from '../hooks/useDictation.js';
 import { knownKeyboardHeight } from '../lib/keyboardHeight.js';
 import { useExitPresence } from '../hooks/useExitPresence.js';
-import { CloseGlyph } from './SheetGlyphs.js';
+import {
+  ArrowUpGlyph,
+  ChevronGlyph,
+  CloseGlyph,
+  FileGlyph,
+  NoteGlyph,
+  PasteGlyph,
+  PlusGlyph,
+  StopGlyph,
+} from './SheetGlyphs.js';
+import { ModeIcon } from './ModeSheet.js';
 import { AttachTray, type AttachSource } from './AttachTray.js';
 import { Icon } from './Icon.js';
 import {
@@ -125,7 +138,8 @@ function MicIcon() {
 }
 
 // Voice mode: a soundwave, the sign for a spoken conversation (distinct from the
-// mic, which dictates into the field). Opens the full-screen voice surface.
+// mic, which dictates into the field). It rides the round button while there is
+// nothing to send, and opens the full-screen voice surface.
 function VoiceWaveIcon() {
   return (
     <Icon size={20}>
@@ -352,6 +366,7 @@ export function Composer({
   onRewind,
   hubRole,
   vault,
+  canAnswer = true,
 }: {
   busy: boolean;
   source?: ConversationSource;
@@ -392,6 +407,9 @@ export function Composer({
   hubRole?: HubRole;
   /** The vault behind `[[` (Vault M5, J15). Absent: `[[` is plain text. */
   vault?: ComposerVault;
+  /** False while the chosen brain cannot answer yet: the model pill then reads
+   *  Choose a model. */
+  canAnswer?: boolean;
 }) {
   const { settings, showToast } = useApp();
   const runCommand = useApp((s) => s.runCommand);
@@ -1033,8 +1051,8 @@ export function Composer({
     dictation.toggle();
   };
 
-  const modelLabel = sourceShortLabel(source);
-  const place = sourcePlace(source);
+  const modelLabel = canAnswer ? sourceShortLabel(source) : 'Choose a model';
+  const place = canAnswer ? sourcePlace(source) : undefined;
   const mode = settings.permissionMode ?? DEFAULT_PERMISSION_MODE;
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1199,6 +1217,23 @@ export function Composer({
   // Stop shows only when a run is live and there is nothing to send or queue,
   // in terminal mode too (a phone has no Esc).
   const showSend = !busy || value.trim().length > 0 || (!terminal && pasted.length > 0);
+  // Something to send or queue: a command in terminal mode, else words, a
+  // file, or a folded paste.
+  const hasPayload = terminal
+    ? value.trim().length > 0
+    : value.trim().length > 0 || attachments.length > 0 || pasted.length > 0;
+  // The round button is voice mode while there is nothing to send, on a
+  // screen with a voice surface, outside terminal mode and between runs. The
+  // first character turns it into send on the glyph's spring.
+  const voiceOffered = Boolean(onOpenVoice) && !terminal;
+  const voiceSlot = voiceOffered && !busy && !hasPayload;
+  const voiceTap = () => {
+    // The tap that sent a moment ago never opens voice on its echo.
+    if (!onOpenVoice || Date.now() - lastSendAt.current < 400) return;
+    stopDictation();
+    if (tray) closeTray();
+    onOpenVoice();
+  };
 
   return (
     <div
@@ -1245,7 +1280,7 @@ export function Composer({
                     <img src={first.dataUrl} alt="" className="composer-chip-thumb" />
                   ) : (
                     <span className="composer-chip-file" aria-hidden="true">
-                      {'📄'}
+                      <FileGlyph />
                     </span>
                   )}
                   <span className="composer-chip-name">{label}</span>
@@ -1291,7 +1326,7 @@ export function Composer({
               .map((p, i) => (
                 <span key={p.id} className={`composer-chip${leaving.has(p.id) ? ' closing' : ''}`}>
                   <span className="composer-chip-file" aria-hidden="true">
-                    {'📋'}
+                    <PasteGlyph />
                   </span>
                   <span className="composer-chip-name">
                     Pasted text #{i + 1} · {p.lines} lines
@@ -1316,7 +1351,7 @@ export function Composer({
                   data-note-chip=""
                 >
                   <span className="composer-chip-file" aria-hidden="true">
-                    {'📝'}
+                    <NoteGlyph />
                   </span>
                   <span className="composer-chip-name">{p.note.title}</span>
                   <button
@@ -1432,32 +1467,43 @@ export function Composer({
             aria-label="Attach"
             aria-expanded={tray}
           >
-            {'+'}
+            <PlusGlyph />
           </button>
 
           <button
-            className="composer-pill press-fb"
+            className={`composer-pill press-fb${canAnswer ? '' : ' unready'}`}
             onClick={() => {
               if (tray) closeTray();
               onOpenModelSheet();
             }}
-            aria-label={`Model: ${source ? sourceLabel(source) : 'Stack'}`}
+            aria-label={
+              canAnswer ? `Model: ${source ? sourceLabel(source) : 'Stack'}` : 'Choose a model'
+            }
           >
             {place ? <span className={`composer-pill-place ${place}`} aria-hidden="true" /> : null}
             <span className="composer-pill-text">{modelLabel}</span>
-            <span className="composer-pill-chevron" aria-hidden="true" />
+            <span className="composer-pill-chevron" aria-hidden="true">
+              <ChevronGlyph dir="down" size={12} />
+            </span>
           </button>
-          <button
-            className={`composer-pill composer-pill-mode mode-${mode} press-fb`}
-            onClick={() => {
-              if (tray) closeTray();
-              onOpenModeSheet();
-            }}
-            aria-label={`Mode: ${permissionModeLabel(mode)}. Shift and Tab cycles.`}
-          >
-            <span className="composer-pill-dot" aria-hidden="true" />
-            <span className="composer-pill-text">{permissionModeLabel(mode)}</span>
-          </button>
+          {/* The mode sets what the coding agent may do unasked, so the pill
+              shows only where it acts: a session on your computer. */}
+          {source?.kind === 'desktop' ? (
+            <button
+              className={`composer-pill composer-pill-mode mode-${mode} press-fb`}
+              onClick={() => {
+                if (tray) closeTray();
+                onOpenModeSheet();
+              }}
+              aria-label={`Mode: ${permissionModeLabel(mode)}.${isTouch() ? '' : ' Shift and Tab cycles.'}`}
+            >
+              <span className="composer-pill-dot" aria-hidden="true" />
+              <span className="composer-pill-modeicon" aria-hidden="true">
+                <ModeIcon mode={mode} size={16} />
+              </span>
+              <span className="composer-pill-text">{permissionModeLabel(mode)}</span>
+            </button>
+          ) : null}
 
           {canRunCommands ? (
             <button
@@ -1475,21 +1521,6 @@ export function Composer({
 
           <div className="composer-row-spacer" />
 
-          {onOpenVoice && !terminal ? (
-            <button
-              className="composer-mic press-fb"
-              onClick={() => {
-                stopDictation();
-                if (tray) closeTray();
-                onOpenVoice();
-              }}
-              aria-label="Voice mode: have a spoken conversation"
-              title="Voice mode"
-            >
-              <VoiceWaveIcon />
-            </button>
-          ) : null}
-
           <button
             className={`composer-mic press-fb${dictation.listening ? ' listening' : ''}`}
             onClick={micTap}
@@ -1500,20 +1531,36 @@ export function Composer({
 
           {!showSend ? (
             <button className="send-btn stop press-fb" onClick={stopTap} aria-label="Stop">
-              {'■'}
+              <StopGlyph />
             </button>
           ) : (
             <button
-              className={`send-btn press-fb${terminal ? ' terminal' : ''}${busy && !terminal ? ' queue' : ''}`}
-              onClick={() => submit()}
-              disabled={
-                terminal
-                  ? !value.trim()
-                  : !value.trim() && attachments.length === 0 && pasted.length === 0
+              className={`send-btn press-fb${voiceSlot ? ' voice' : ''}${terminal ? ' terminal' : ''}${busy && !terminal ? ' queue' : ''}`}
+              onClick={voiceSlot ? voiceTap : () => submit()}
+              disabled={!voiceSlot && !hasPayload}
+              aria-label={
+                voiceSlot
+                  ? 'Voice mode: have a spoken conversation'
+                  : terminal
+                    ? 'Run command'
+                    : busy
+                      ? 'Queue message'
+                      : 'Send'
               }
-              aria-label={terminal ? 'Run command' : busy ? 'Queue message' : 'Send'}
+              title={voiceSlot ? 'Voice mode' : undefined}
             >
-              {terminal ? '$' : '↑'}
+              {/* Both glyphs share one cell, so voice turns into send as a
+                  crossfade on the spring rather than a swap. */}
+              <span className="send-glyphs" aria-hidden="true">
+                {voiceOffered ? (
+                  <span className={`send-glyph${voiceSlot ? ' on' : ''}`}>
+                    <VoiceWaveIcon />
+                  </span>
+                ) : null}
+                <span className={`send-glyph${voiceSlot ? '' : ' on'}`}>
+                  {terminal ? '$' : <ArrowUpGlyph />}
+                </span>
+              </span>
             </button>
           )}
         </div>

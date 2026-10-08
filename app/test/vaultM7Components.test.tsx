@@ -134,9 +134,10 @@ const COPY: VaultSettingsSheetCopy = {
   deleteForGood: 'For good',
   deleteForGoodSub: 'Deletes skip Trash and ask twice.',
   excluded: 'Notes models never see',
-  excludedSub: 'Models never see these, in any chat.',
-  localOnly: 'Notes that stay on this computer',
-  localOnlySub: 'A local model may read these. Nothing here goes to a cloud model.',
+  excludedSub: 'Models never see these, in any chat, unless a command you run or allow reads them.',
+  localOnly: 'Private notes',
+  localOnlySub:
+    'A local model may read these, and OpenShore never sends them to a cloud model. A command you run or allow, or a change you allow, can still carry their words to one.',
   addFolder: 'Add a folder',
   addTag: 'Add a tag',
   tagPlaceholder: 'Tag',
@@ -146,7 +147,7 @@ const COPY: VaultSettingsSheetCopy = {
   agentAnywhere: 'Anywhere in this vault',
   notesInChats: 'Notes in chats',
   notesInChatsSub:
-    "Each chat starts with this project's Current State and any notes you pinned. A card shows what went. Off applies to new chats.",
+    "Each chat starts with its project's Current State and any notes you pinned. A card shows what went. Off applies to new chats.",
   handoff: 'Handoff',
   handoffSub:
     'When you switch models in a chat, the next one starts with a short summary of the work so far. Off applies to new chats.',

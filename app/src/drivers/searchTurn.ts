@@ -21,7 +21,7 @@ import {
   SEARCH_PROTOCOL_NOTE,
   SearchLineFilter,
 } from 'os-code/protocol';
-import { searchForModel, searchOffered } from '../lib/localSearch.js';
+import { searchForModel, searchOffered, type AfterPrivate } from '../lib/localSearch.js';
 import { raceAbort } from './providerClient.js';
 
 /** The line history keeps for a search once the answer is in. */
@@ -83,14 +83,18 @@ export class SearchTurn {
 
   /** Run the one search this message may make and return the results turn
    *  for the answer pass. A stop while it runs (or while the consent sheet is
-   *  up) unwinds at once. */
+   *  up) unwinds at once. `priv` is set by the driver once the chat on the
+   *  seat that wrote the query holds a private note's text (CX and CMO,
+   *  2026-10-08, H): the search then asks every time, and one bound for
+   *  Perplexity does not run. */
   async run(
     query: string,
     researchOn: boolean,
     emit: (event: DriverEvent) => void,
     signal?: AbortSignal,
+    priv?: AfterPrivate,
   ): Promise<string> {
-    const results = await raceAbort(searchForModel(query, researchOn, emit), signal);
+    const results = await raceAbort(searchForModel(query, researchOn, emit, priv), signal);
     this.spent = { query, results };
     return results;
   }

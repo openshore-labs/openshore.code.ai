@@ -11,6 +11,7 @@ import type {
   RepoCommandNotLoaded,
 } from 'os-code/protocol';
 import type { BuildStatus } from '../lib/codemagic.js';
+import type { ImageReaderGap } from '../lib/imageReading.js';
 import type { AccountType, PlanTierId } from '../lib/plans.js';
 import { isHarbor } from '../lib/harbor.js';
 import { isHarborMini } from '../lib/harborMini.js';
@@ -105,6 +106,11 @@ export type ThreadItem =
       // block. Shell output run through the diff renderer mis-colors every line
       // that happens to start with + or -, so the kind is tracked explicitly.
       detailKind?: 'diff' | 'output';
+      /** A handoff to another model (delegate, analyzeImage, generateImage):
+       *  the model the step went to, and whether it leaves this network, so
+       *  the row names it and wears the Cloud chip (CX and CMO, 2026-10-08,
+       *  D). Absent from an older engine. */
+      handoff?: { model: string; leaves: boolean };
     }
   | { kind: 'status'; id: string; text: string }
   | {
@@ -172,6 +178,11 @@ export type ThreadItem =
       withheld: number;
       cold: boolean;
     }
+  // Nothing in a Stack chat can read images (founder, 2026-10-07): what is
+  // missing, a local model to source and a cloud model to connect, each door
+  // opening its step-by-step guide. A calm card, never a failed turn, and
+  // never part of a model's history (seedEntries reads spoken turns only).
+  | ({ kind: 'image-offer'; id: string } & ImageReaderGap)
   // The plan-first flow's clarifying questions, as a tappable picker. Tapping an
   // option (or typing) sends the answer, which is folded back into the framing.
   | {
@@ -459,7 +470,7 @@ export interface CrewAgent {
   whenCalled?: string;
   /**
    * review  - runs automatically before a feature deploys (build review).
-   * auto    - the Reasoning LLM may call it on its own when useful.
+   * auto    - the Reasoning model may call it on its own when useful.
    * request - dormant until the user asks for it by name in chat.
    */
   activityLevel: CrewActivityLevel;

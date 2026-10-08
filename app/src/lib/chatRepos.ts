@@ -159,9 +159,9 @@ export function firstWorkspace(ids: readonly string[]): string | undefined {
   return ids.find((id) => !isRemoteRepoId(id));
 }
 
-/** The header summary: "No repos", one name, or "name +2". */
+/** The header summary: "Add a repository", one name, or "name +2". */
 export function summarizeRepos(ids: readonly string[]): string {
-  if (ids.length === 0) return 'No repositories';
+  if (ids.length === 0) return 'Add a repository';
   const first = repoLabel(ids[0]!);
   return ids.length === 1 ? first : `${first} +${ids.length - 1}`;
 }
@@ -552,7 +552,7 @@ export function githubAccessHint(
   if (access.kind === 'classic') {
     return noRepoScope || opts.publicOnly
       ? {
-          text: 'Your access token can see only public repositories. Give it the repo scope on GitHub, then refresh.',
+          text: 'Your access token can see only public repositories. Give it the repo scope on GitHub, then come back here.',
           action: 'Edit it on GitHub',
           url: 'https://github.com/settings/tokens',
         }

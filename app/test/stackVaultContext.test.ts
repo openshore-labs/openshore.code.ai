@@ -36,6 +36,9 @@ const h = vi.hoisted(() => ({
   // send replays these events to the subscriber.
   engineEvents: [] as unknown[],
   enginePrompts: [] as string[],
+  // What the paired computer says of its stack (GET /stack); undefined is
+  // no answer, an older daemon's or one out of reach.
+  engineStack: undefined as unknown,
 }));
 
 vi.mock('../src/drivers/remoteDriver.js', async (importOriginal) => {
@@ -59,6 +62,10 @@ vi.mock('../src/drivers/remoteDriver.js', async (importOriginal) => {
     ...actual,
     RemoteDriver: FakeRemoteDriver,
     daemonCreateSession: async () => 'engine-session',
+    daemonStack: async () => {
+      if (!h.engineStack) throw new Error('Your computer did not answer.');
+      return h.engineStack;
+    },
   };
 });
 
@@ -246,6 +253,7 @@ beforeEach(() => {
   h.claudeScript.length = 0;
   h.claudeParams.length = 0;
   h.jev = undefined;
+  h.engineStack = undefined;
 });
 
 describe('the pack on a Stack turn', () => {
@@ -603,6 +611,392 @@ describe('a reply after a local-only read (I5 in the app)', () => {
     driver.dispose();
   });
 
+  // The mirror (sp-plan, egress-claims-2): an anchor that stays read the
+  // private note whole, so the goal and the briefs it wrote may quote it.
+  // A placed cloud specialist and a cloud image reader then never get the
+  // step: the anchor takes each one, and the note says why (D5).
+  it('a plan from a local anchor that read a private note keeps every step off the cloud', async () => {
+    const note = 'The secret is teal.';
+    const pack: AppVaultPack = {
+      prepare: async () => {},
+      render: (seat) =>
+        seat.leavesNetwork
+          ? { text: 'VAULT PACK cloud' }
+          : { text: `VAULT PACK ${note}`, localOnly: true },
+    };
+    const { driver, events } = chat(
+      {
+        reasoning: boxMid,
+        active: [
+          { ref: gpt, placement: { category: 'writing' } },
+          { ref: claude, placement: { category: 'vision' } },
+        ],
+        saved: {},
+      },
+      {},
+      { vaultPack: pack, packSeat: seatOf },
+    );
+    const plan = JSON.stringify({
+      clear: true,
+      summary: `Answer from the diary: ${note}`,
+      steps: [
+        { id: 'a', title: 'Draft', category: 'writing', brief: `Quote it: ${note}` },
+        {
+          id: 'b',
+          title: 'Look',
+          category: 'vision',
+          brief: `Check the picture against: ${note}`,
+          dependsOn: ['a'],
+        },
+      ],
+    });
+    h.nativeReplies.push(plan, 'drafted', 'no replan', 'looked', 'Final.');
+    driver.send('draft from my diary and check the picture');
+    await settle(30);
+    // Every call ran on your own box; neither cloud model was asked anything.
+    expect(h.nativeBodies).toHaveLength(5);
+    for (const body of h.nativeBodies) {
+      expect((body as { model?: string }).model).toBe('qwen2.5:14b');
+    }
+    expect(h.claudeParams).toHaveLength(0);
+    // Each step's note names the model it would have gone to, and why not.
+    const notes = events.flatMap((e) => (e.type === 'status' ? [e.message] : []));
+    for (const [title, owner] of [
+      ['Draft', 'GPT'],
+      ['Look', 'Claude'],
+    ]) {
+      expect(notes).toContain(
+        `${title}. This plan draws on a private note, so Box Mid, your Reasoning model, takes it instead of ${owner}.`,
+      );
+    }
+    // The task list names the model that runs each step.
+    const todos = events.filter((e) => e.type === 'todos').at(-1);
+    expect(todos && 'items' in todos ? todos.items.map((t) => t.owner) : []).toEqual([
+      'Box Mid (reasoning)',
+      'Box Mid (reasoning)',
+    ]);
+    // Nothing left this network, so the chat reads local, and the reply is marked.
+    const starts = events.filter((e) => e.type === 'turn-start');
+    expect(starts.map((e) => (e as { providerKind: string }).providerKind)).toEqual(['local']);
+    expect(isLocalOnlyFinal(events.filter((e) => e.type === 'text-final').at(-1)!)).toBe(true);
+    driver.dispose();
+  });
+
+  it('a plan from a local anchor that read a private turn whole keeps its steps off the cloud', async () => {
+    const driver = new StackDriver(
+      { reasoning: boxMid, active: [{ ref: gpt, placement: { category: 'writing' } }], saved: {} },
+      'offshore',
+      {},
+      [
+        { role: 'user', text: 'diary?' },
+        { role: 'assistant', text: 'teal secret', localOnly: true },
+      ],
+      { packSeat: seatOf },
+    );
+    const events: DriverEvent[] = [];
+    driver.subscribe((e) => events.push(e));
+    const plan = JSON.stringify({
+      clear: true,
+      summary: 'Write up the teal secret',
+      steps: [
+        { id: 'a', title: 'Draft', category: 'writing', brief: 'Use the teal secret.' },
+        { id: 'b', title: 'Check', category: 'reasoning', brief: 'Check it.', dependsOn: ['a'] },
+      ],
+    });
+    h.nativeReplies.push(plan, 'drafted', 'no replan', 'checked', 'Final.');
+    driver.send('write it up');
+    await settle(30);
+    // The anchor read the private turn whole when it planned.
+    expect(JSON.stringify(h.nativeBodies[0])).toContain('teal secret');
+    for (const body of h.nativeBodies) {
+      expect((body as { model?: string }).model).toBe('qwen2.5:14b');
+    }
+    expect(isLocalOnlyFinal(events.filter((e) => e.type === 'text-final').at(-1)!)).toBe(true);
+    driver.dispose();
+  });
+
+  // Sign-off (D5 off the plan path): a seat here that read a private turn
+  // whole may quote it, the framing call's own answer and a single turn
+  // alike, so its reply is marked, and a cloud model a later turn routes to
+  // reads the stub in its place, never the quote.
+  it('a reply from a seat here that read a private turn whole reaches a cloud turn as the stub', async () => {
+    const seed = [
+      { role: 'user' as const, text: 'diary?' },
+      { role: 'assistant' as const, text: 'teal secret', localOnly: true as const },
+    ];
+    const finals = (events: DriverEvent[]) =>
+      events.filter((e) => e.type === 'text-final').map((e) => isLocalOnlyFinal(e));
+
+    // The framing call answers itself, then a later turn goes to GPT.
+    const driver = new StackDriver(
+      { reasoning: boxMid, active: [{ ref: gpt, placement: { category: 'writing' } }], saved: {} },
+      'offshore',
+      {},
+      seed,
+      { packSeat: seatOf },
+    );
+    const events: DriverEvent[] = [];
+    driver.subscribe((e) => events.push(e));
+    h.nativeReplies.push('It was the teal one.');
+    driver.send('which was it again?');
+    await settle(30);
+    expect(finals(events)).toEqual([true]);
+    h.nativeReplies.push(ONE_STEP, 'Dear landlord.');
+    driver.send('draft an email about it');
+    await settle(30);
+    const toGpt = h.nativeBodies.filter((b) => (b as { model?: string }).model === 'gpt-big');
+    expect(toGpt).toHaveLength(1);
+    expect(JSON.stringify(toGpt[0])).not.toMatch(/teal/);
+    expect(JSON.stringify(toGpt[0])).toContain(LOCAL_ONLY_STUB);
+    driver.dispose();
+
+    // One seat and no one to hand to: the single turn's reply is marked too.
+    const alone = new StackDriver(
+      { reasoning: boxMid, active: [], saved: {} },
+      'offshore',
+      {},
+      seed,
+      { packSeat: seatOf },
+    );
+    const aloneEvents: DriverEvent[] = [];
+    alone.subscribe((e) => aloneEvents.push(e));
+    h.nativeReplies.push('It was the teal one.');
+    alone.send('which was it again?');
+    await settle(30);
+    expect(finals(aloneEvents)).toEqual([true]);
+    alone.dispose();
+
+    // A line handed over after the seed keeps its mark, so GPT reads the stub.
+    const handed = chat({ reasoning: gpt, active: [], saved: {} }, {}, { packSeat: seatOf });
+    handed.driver.recordLine({ role: 'assistant', text: 'teal secret', localOnly: true });
+    h.nativeReplies.push('Noted.');
+    handed.driver.send('and then?');
+    await settle(30);
+    const last = JSON.stringify(h.nativeBodies.at(-1));
+    expect(last).not.toMatch(/teal/);
+    expect(last).toContain(LOCAL_ONLY_STUB);
+    handed.driver.dispose();
+  });
+
+  // Sign-off: the plan is kept here only when its Reasoning model read the
+  // private turn. One older than the chat it reads (the newest 6,000
+  // characters) never reached it, so the plan runs as placed and says
+  // nothing about a private note.
+  it('a plan whose Reasoning model never read the private turn runs as placed', async () => {
+    const driver = new StackDriver(
+      { reasoning: boxMid, active: [{ ref: gpt, placement: { category: 'writing' } }], saved: {} },
+      'offshore',
+      {},
+      [
+        { role: 'user', text: 'diary?' },
+        { role: 'assistant', text: 'teal secret', localOnly: true },
+        { role: 'user', text: 'x'.repeat(7000) },
+        { role: 'assistant', text: 'noted' },
+      ],
+      { packSeat: seatOf },
+    );
+    const events: DriverEvent[] = [];
+    driver.subscribe((e) => events.push(e));
+    const plan = JSON.stringify({
+      clear: true,
+      summary: 'Write it up',
+      steps: [
+        { id: 'a', title: 'Draft', category: 'writing', brief: 'Write it.' },
+        { id: 'b', title: 'Check', category: 'reasoning', brief: 'Check it.', dependsOn: ['a'] },
+      ],
+    });
+    h.nativeReplies.push(plan, 'drafted', 'no replan', 'checked', 'Final.');
+    driver.send('write it up');
+    await settle(30);
+    expect(JSON.stringify(h.nativeBodies[0])).not.toContain('teal secret');
+    expect((h.nativeBodies[1] as { model?: string }).model).toBe('gpt-big');
+    const notes = events.flatMap((e) => (e.type === 'status' ? [e.message] : []));
+    expect(notes.some((n) => n.includes('private note'))).toBe(false);
+    expect(isLocalOnlyFinal(events.filter((e) => e.type === 'text-final').at(-1)!)).toBe(false);
+    driver.dispose();
+  });
+
+  it('a replan by a local anchor that read a private step keeps the rest off the cloud', async () => {
+    const note = 'The secret is teal.';
+    // Only the small box's pack carries the note; the anchor's carries none.
+    const pack: AppVaultPack = {
+      prepare: async () => {},
+      render: (seat) =>
+        seat.servedTokens === 8192
+          ? { text: `VAULT PACK ${note}`, localOnly: true }
+          : { text: 'VAULT PACK plain' },
+    };
+    const { driver, events } = chat(
+      {
+        reasoning: boxMid,
+        active: [
+          { ref: boxSmall, placement: { category: 'writing' } },
+          { ref: gpt, placement: { category: 'coding' } },
+        ],
+        saved: {},
+      },
+      {},
+      { vaultPack: pack, packSeat: seatOf },
+    );
+    const plan = JSON.stringify({
+      clear: true,
+      summary: 'Draft and build',
+      steps: [
+        { id: 'a', title: 'Draft', category: 'writing', brief: 'Write it.' },
+        { id: 'b', title: 'Build', category: 'coding', brief: 'Build it.', dependsOn: ['a'] },
+      ],
+    });
+    const revised = JSON.stringify([
+      { id: 'b', title: 'Build', category: 'coding', brief: `Build it from: ${note}` },
+    ]);
+    h.nativeReplies.push(plan, `Draft quoting: ${note}`, revised, 'built', 'Final.');
+    driver.send('draft from my diary and build it');
+    await settle(30);
+    const models = h.nativeBodies.map((b) => (b as { model?: string }).model);
+    // Plan, the small box's draft, the replan, then the build on the anchor.
+    expect(models).toEqual([
+      'qwen2.5:14b',
+      'qwen2.5:7b',
+      'qwen2.5:14b',
+      'qwen2.5:14b',
+      'qwen2.5:14b',
+    ]);
+    expect(JSON.stringify(h.nativeBodies[3])).toContain(`Build it from: ${note}`);
+    const notes = events.flatMap((e) => (e.type === 'status' ? [e.message] : []));
+    expect(notes).toContain(
+      'Build. This plan draws on a private note, so Box Mid, your Reasoning model, takes it instead of GPT.',
+    );
+    driver.dispose();
+  });
+
+  // J (CX and CMO, 2026-10-08): with no word from the computer on what its
+  // agent runs (here, no answer to GET /stack), a private plan's file step is
+  // described here; test/stackPrivatePlan.test.ts holds the marked run.
+  it('a private plan describes a step that edits files when the computer cannot say', async () => {
+    h.engineEvents.length = 0;
+    h.enginePrompts.length = 0;
+    const note = 'The secret is teal.';
+    const pack: AppVaultPack = {
+      prepare: async () => {},
+      render: (seat) =>
+        seat.leavesNetwork
+          ? { text: 'VAULT PACK cloud' }
+          : { text: `VAULT PACK ${note}`, localOnly: true },
+    };
+    const driver = new StackDriver(
+      { reasoning: boxMid, active: [], saved: {} },
+      'docked',
+      { daemon: { baseUrl: 'http://127.0.0.1:7777', token: 't' }, repoCwd: '/work/repo' },
+      undefined,
+      { vaultPack: pack, packSeat: seatOf },
+    );
+    const events: DriverEvent[] = [];
+    driver.subscribe((e) => events.push(e));
+    const plan = JSON.stringify({
+      clear: true,
+      summary: `Edit per the diary: ${note}`,
+      steps: [
+        { id: 'a', title: 'Edit', category: 'coding', brief: note, needsTools: true },
+        { id: 'b', title: 'Check', category: 'reasoning', brief: 'Check it.', dependsOn: ['a'] },
+      ],
+    });
+    h.nativeReplies.push(plan, 'the diff', 'no replan', 'checked', 'Final.');
+    driver.send('edit the file from my diary and check it');
+    await settle(40);
+    expect(h.enginePrompts).toHaveLength(0);
+    const notes = events.flatMap((e) => (e.type === 'status' ? [e.message] : []));
+    expect(notes).toContain(
+      'Edit. This plan draws on a private note, so Box Mid describes the change here instead of running it on your computer, whose agent may use a cloud model.',
+    );
+    for (const body of h.nativeBodies) {
+      expect((body as { model?: string }).model).toBe('qwen2.5:14b');
+    }
+    driver.dispose();
+  });
+
+  it('a play that hands a step to a cloud model marks the chat cloud', async () => {
+    const { driver, events } = chat(
+      { reasoning: boxMid, active: [{ ref: gpt, placement: { category: 'writing' } }], saved: {} },
+      {},
+      { packSeat: seatOf },
+    );
+    const plan = JSON.stringify({
+      clear: true,
+      summary: 'Draft and check',
+      steps: [
+        { id: 'a', title: 'Check', category: 'reasoning', brief: 'Check it.' },
+        { id: 'b', title: 'Draft', category: 'writing', brief: 'Write it.', dependsOn: ['a'] },
+      ],
+    });
+    h.nativeReplies.push(plan, 'checked', 'no replan', 'drafted', 'Final.');
+    driver.send('check and draft it');
+    await settle(30);
+    expect((h.nativeBodies[3] as { model?: string }).model).toBe('gpt-big');
+    // Local while only your box ran, then cloud from the step that left.
+    const starts = events.filter((e) => e.type === 'turn-start');
+    expect(starts.map((e) => (e as { providerKind: string }).providerKind)).toEqual([
+      'local',
+      'cloud',
+    ]);
+    expect(starts.every((e) => (e as { model: string }).model === 'Box Mid')).toBe(true);
+    driver.dispose();
+  });
+
+  // Sign-off (sp-plan, M1): the framing call on a Reasoning model that leaves
+  // carries the message, so the send reads cloud on every route: the
+  // questions it asks back, and a model on this phone that answers after it.
+  it('a send framed by a cloud model marks the chat cloud, whoever answers it', async () => {
+    const asks = chat(
+      {
+        reasoning: gpt,
+        active: [{ ref: boxSmall, placement: { category: 'writing' } }],
+        saved: {},
+      },
+      {},
+      { packSeat: seatOf },
+    );
+    h.nativeReplies.push(
+      JSON.stringify({
+        clear: false,
+        summary: 'Which draft?',
+        questions: [{ id: 'q1', question: 'Which one?', options: ['A', 'B'] }],
+      }),
+    );
+    asks.driver.send('draft it');
+    await settle(20);
+    expect(asks.events.some((e) => e.type === 'clarify')).toBe(true);
+    const kinds = (events: DriverEvent[]) =>
+      events.flatMap((e) => (e.type === 'turn-start' ? [e.providerKind] : []));
+    expect(kinds(asks.events)).toEqual(['cloud']);
+    asks.driver.dispose();
+
+    const here = chat(
+      {
+        reasoning: gpt,
+        active: [
+          { ref: boxSmall, placement: { category: 'coding' } },
+          { ref: device, placement: { category: 'writing' } },
+        ],
+        saved: {},
+      },
+      {},
+      { packSeat: seatOf },
+    );
+    h.nativeReplies.push(ONE_STEP);
+    here.driver.send('draft an email to my landlord');
+    await settle(20);
+    expect(h.generateCalls).toHaveLength(1);
+    finishDevice(0, 'Dear landlord.');
+    await settle(20);
+    // GPT framed it and the phone's model answered: the send went to a cloud
+    // model, so the chat reads cloud, never local.
+    expect(kinds(here.events)).toEqual(['cloud', 'cloud']);
+    expect(here.events.filter((e) => e.type === 'turn-start').at(-1)).toMatchObject({
+      model: 'Pocket',
+    });
+    here.driver.dispose();
+  });
+
   it('an engine step that read a local-only note reaches a leaving seat as the stub', async () => {
     const note = 'The secret is teal.';
     h.engineEvents.length = 0;
@@ -696,6 +1090,214 @@ describe('a reply after a local-only read (I5 in the app)', () => {
     await settle();
     expect(h.nativeBodies).toHaveLength(1);
     expect(JSON.stringify(h.nativeBodies[0]!.messages)).not.toContain('teal secret');
+    driver.dispose();
+  });
+});
+
+// The sticky reply mark stays, and the person is told once where the context
+// is lost (CX and CMO, 2026-10-08, F): one status line per chat for each
+// model that leaves this network, on the first turn it is sent the
+// placeholder for a reply a local model wrote after a private read.
+describe('the placeholder line (F)', () => {
+  const marked = [
+    { role: 'user' as const, text: 'what does my diary say?' },
+    {
+      role: 'assistant' as const,
+      text: 'The diary says the secret is teal.',
+      localOnly: true as const,
+    },
+  ];
+  const line = (model: string) =>
+    `This chat drew on a private note, so ${model} sees your local models' replies since then only as a placeholder.`;
+  const lines = (events: DriverEvent[]) =>
+    events.flatMap((e) =>
+      e.type === 'status' && e.message.startsWith('This chat drew on a private note')
+        ? [e.message]
+        : [],
+    );
+
+  it('shows once for a cloud model sent the placeholder, and not again on the next turn', async () => {
+    const driver = new StackDriver(
+      { reasoning: gpt, active: [], saved: {} },
+      'offshore',
+      {},
+      marked,
+      {
+        packSeat: seatOf,
+      },
+    );
+    const events: DriverEvent[] = [];
+    driver.subscribe((e) => events.push(e));
+    h.nativeReplies.push('ok');
+    driver.send('and now?');
+    await settle();
+    expect(JSON.stringify(h.nativeBodies[0]!.messages)).toContain(LOCAL_ONLY_STUB.slice(0, 40));
+    expect(lines(events)).toEqual([line('GPT')]);
+    // Said before the request that carried the placeholder: ahead of the
+    // reply, after the turn's start.
+    const at = (pred: (e: DriverEvent) => boolean) => events.findIndex(pred);
+    expect(at((e) => e.type === 'turn-start')).toBeLessThan(
+      at((e) => e.type === 'status' && e.message === line('GPT')),
+    );
+    expect(at((e) => e.type === 'status' && e.message === line('GPT'))).toBeLessThan(
+      at((e) => e.type === 'text-final'),
+    );
+    h.nativeReplies.push('still ok');
+    driver.send('and after that?');
+    await settle();
+    expect(lines(events)).toEqual([line('GPT')]);
+    driver.dispose();
+  });
+
+  it('shows again for a second cloud model in the same chat', async () => {
+    const driver = new StackDriver(
+      { reasoning: gpt, active: [{ ref: claude, placement: { category: 'coding' } }], saved: {} },
+      'offshore',
+      {},
+      marked,
+      { packSeat: seatOf },
+    );
+    const events: DriverEvent[] = [];
+    driver.subscribe((e) => events.push(e));
+    // GPT frames the request (its digest carries the placeholder), then the
+    // coding question goes to Claude on the single-turn path.
+    h.nativeReplies.push(ONE_STEP);
+    h.claudeScript.push('Fixed.');
+    driver.send('please debug this typescript function');
+    await settle(20);
+    expect(lines(events)).toEqual([line('GPT'), line('Claude')]);
+    h.nativeReplies.push(ONE_STEP);
+    h.claudeScript.push('Fixed again.');
+    driver.send('please debug this other typescript function');
+    await settle(20);
+    expect(lines(events)).toEqual([line('GPT'), line('Claude')]);
+    driver.dispose();
+  });
+
+  it('never shows on a seat that stays on this network', async () => {
+    const driver = new StackDriver(
+      { reasoning: boxMid, active: [], saved: {} },
+      'offshore',
+      {},
+      marked,
+      {
+        packSeat: seatOf,
+      },
+    );
+    const events: DriverEvent[] = [];
+    driver.subscribe((e) => events.push(e));
+    h.nativeReplies.push('ok');
+    driver.send('and now?');
+    await settle();
+    expect(JSON.stringify(h.nativeBodies[0]!.messages)).toContain('the secret is teal');
+    expect(lines(events)).toEqual([]);
+    driver.dispose();
+  });
+
+  it('never shows in a clean chat', async () => {
+    const clean = marked.map(({ role, text }) => ({ role, text }));
+    const driver = new StackDriver(
+      { reasoning: gpt, active: [], saved: {} },
+      'offshore',
+      {},
+      clean,
+      {
+        packSeat: seatOf,
+      },
+    );
+    const events: DriverEvent[] = [];
+    driver.subscribe((e) => events.push(e));
+    h.nativeReplies.push('ok');
+    driver.send('and now?');
+    await settle();
+    expect(lines(events)).toEqual([]);
+    driver.dispose();
+  });
+
+  it('a cloud chat seeded with a marked reply says it once, for its own model', async () => {
+    const { CloudOpenAiDriver } = await import('../src/drivers/cloudOpenAiDriver.js');
+    const { CloudClaudeDriver } = await import('../src/drivers/cloudClaudeDriver.js');
+    const oai = new CloudOpenAiDriver('https://api.openai.com/v1', 'sk', 'gpt-5', 'OpenAI', marked);
+    const oEvents: DriverEvent[] = [];
+    oai.subscribe((e) => oEvents.push(e));
+    h.nativeReplies.push('ok');
+    oai.send('and now?');
+    await settle();
+    h.nativeReplies.push('ok');
+    oai.send('and then?');
+    await settle();
+    expect(lines(oEvents)).toEqual([line('gpt-5')]);
+    oai.dispose();
+
+    const cl = new CloudClaudeDriver('k', 'claude-opus-5', marked, undefined, undefined, {
+      modelLabel: 'Claude Opus 5',
+    });
+    const cEvents: DriverEvent[] = [];
+    cl.subscribe((e) => cEvents.push(e));
+    cl.send('and now?');
+    await settle();
+    expect(lines(cEvents)).toEqual([line('Claude Opus 5')]);
+    cl.dispose();
+
+    // A clean seed, or a marked line only recorded later, as the chat goes.
+    const later = new CloudOpenAiDriver('https://api.openai.com/v1', 'sk', 'gpt-5', 'OpenAI', [
+      { role: 'user', text: 'hello' },
+    ]);
+    const lEvents: DriverEvent[] = [];
+    later.subscribe((e) => lEvents.push(e));
+    h.nativeReplies.push('ok');
+    later.send('first');
+    await settle();
+    expect(lines(lEvents)).toEqual([]);
+    later.recordLine({ role: 'assistant', text: 'teal', localOnly: true });
+    h.nativeReplies.push('ok');
+    later.send('second');
+    await settle();
+    expect(lines(lEvents)).toEqual([line('gpt-5')]);
+    later.dispose();
+  });
+
+  it("shows for a cloud model sent the placeholder for a local model's step in a plan", async () => {
+    // A clean chat: the private note reaches only your own box's step, whose
+    // output is then the placeholder for every model off this network.
+    const note = 'The secret is teal.';
+    const pack: AppVaultPack = {
+      prepare: async () => {},
+      render: (seat) =>
+        seat.leavesNetwork
+          ? { text: 'VAULT PACK cloud' }
+          : { text: `VAULT PACK ${note}`, localOnly: true },
+    };
+    const { driver, events } = chat(
+      {
+        reasoning: gpt,
+        active: [
+          { ref: boxMid, placement: { category: 'analysis' } },
+          { ref: claude, placement: { category: 'writing' } },
+        ],
+        saved: {},
+      },
+      {},
+      { vaultPack: pack, packSeat: seatOf },
+    );
+    const plan = JSON.stringify({
+      clear: true,
+      summary: 'Sum it up, then write it',
+      steps: [
+        { id: 'a', title: 'Sum', category: 'analysis', brief: 'Add it up.' },
+        { id: 'b', title: 'Write', category: 'writing', brief: 'Write it.', dependsOn: ['a'] },
+      ],
+    });
+    h.nativeReplies.push(plan, 'summed', 'no replan', 'Final.');
+    h.claudeScript.push('written');
+    driver.send('sum my diary up and write it out');
+    await settle(40);
+    // The box's step read the note; neither cloud model got its output.
+    expect(JSON.stringify(h.claudeParams)).not.toContain('summed');
+    expect(JSON.stringify(h.claudeParams)).toContain(LOCAL_ONLY_STUB.slice(0, 40));
+    // GPT is sent the placeholder first (its replan), then Claude (its
+    // step); each hears it once, and the synthesis on GPT says nothing new.
+    expect(lines(events)).toEqual([line('GPT'), line('Claude')]);
     driver.dispose();
   });
 });

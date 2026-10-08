@@ -19,7 +19,7 @@ function CommandRow({ command, label }: { command: string; label: string }) {
       <code className="dock-command-text">{command}</code>
       <button
         type="button"
-        className="btn ghost press-fb"
+        className="btn ghost sm press-fb"
         aria-label={label}
         onClick={async () => {
           const ok = await copyText(command);

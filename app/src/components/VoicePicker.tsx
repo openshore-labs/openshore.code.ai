@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Sheet } from './Sheet.js';
 import { SheetHead } from './SheetHead.js';
+import { CheckGlyph } from './SheetGlyphs.js';
 import { Speaker, listVoices } from '../lib/voice/tts.js';
 import {
   byGender,
@@ -109,7 +110,7 @@ export function VoicePicker({
                       <span className="voice-row-name">{voice.display}</span>
                       {active ? (
                         <span className="voice-row-check" aria-hidden="true">
-                          {'✓'}
+                          <CheckGlyph size={16} />
                         </span>
                       ) : null}
                     </button>

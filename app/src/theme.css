@@ -31,11 +31,16 @@
   --term-fg: #e6e6e6;
   --surface: #edeae0;
   --surface-hover: #e4e0d4;
+  /* The selected segment's thumb: it lifts off the track in both themes. */
+  --seg-thumb: var(--bg-raised);
   --border: #e5e0d3;
   --border-strong: #d9d4c9;
   /* A control's own edge (a switch's track at rest, a field's border): 3:1
      on every ground, the non-text contrast WCAG 1.4.11 asks of a control. */
   --control-edge: #7a858c;
+  /* The switch's knob: raised paper in light, warm paper in Nightshore, so it
+     holds on the outlined track at rest and on the accent when on. */
+  --switch-knob: var(--bg-raised);
 
   /* Ink: primary, secondary, faint. Straight from openshore.ai. */
   --ink: #1c2a33;
@@ -97,11 +102,14 @@
   --on-fill: #fff;
   /* The scrim under a centred confirm card. */
   --scrim: rgba(var(--shadow-rgb), 0.42);
+  /* A control that does not answer right now, one dimness everywhere. */
+  --disabled-opacity: 0.4;
 
   /* Hero surfaces: deep, lit cards that stay dark in both themes, so their
      stops are declared once here. Teal heroes are local work (the store's
      on-device heroes, Crew command); amber heroes are cloud-hosted; the ink
      tile is a model with no location yet. */
+  --hero-local-start: #24454f;
   --hero-local-end: #16323a;
   --hero-local-glow: #4b90a3;
   --hero-device-start: #2f5a66;
@@ -158,6 +166,29 @@
   --radius-lg: 20px;
   /* The composer only: a tall pill that still reads as a pill at two lines. */
   --radius-xl: 26px;
+
+  /* Spacing and depth (D22, founder 2026-10-07): the structural rhythm only,
+     each value the one the app already used most, so the look barely moves.
+     --gutter       the page's side gutter, and a sheet's padding (a sheet
+                    padded 18px against the page's 16px). A full-bleed list
+                    (Chats, Projects, a project's chats) cancels exactly one
+                    and its rows pad back onto it.
+     --card-pad     a card's inset, and the ledger's text line: a row's inline
+                    padding, its inset hairline and a section head share it.
+     --row-pad      a ledger row's block padding.
+     --section-gap  the step from one group to the next.
+     --elev-1..3    three depths: a resting card, a raised dock or toast, a
+                    sheet. Ink-tinted through --shadow-rgb, so they turn black
+                    in Nightshore, where the borders carry most of the depth.
+     Everything else keeps its own value; spacing-elevation.test.ts holds
+     the structural selectors to these. */
+  --gutter: 16px;
+  --card-pad: 14px;
+  --row-pad: 12px;
+  --section-gap: 22px;
+  --elev-1: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  --elev-2: 0 6px 18px rgba(var(--shadow-rgb), 0.1);
+  --elev-3: 0 1px 2px rgba(var(--shadow-rgb), 0.05), 0 12px 40px rgba(var(--shadow-rgb), 0.14);
 
   /* Type scale (brand sweep 2026-09-24): eight text steps and four display
      steps replace thirty-three ad-hoc sizes, and three weights replace eight.
@@ -250,6 +281,8 @@
   /* The phone drawer's width, the one copy. Registered as a <length> below so
      lib/motion.ts can read it back already resolved to pixels. */
   --drawer-width: min(310px, 84vw);
+  /* The desktop sidebar's width, the one copy (the toast centres beside it). */
+  --sidebar-width: 272px;
   --press-scale-btn: 0.96;
   --press-scale-row: 0.985;
   --press-scale-tile: 0.94;
@@ -280,9 +313,11 @@
     --bg-raised: #10202a;
     --surface: #162831;
     --surface-hover: #1c3440;
+    --seg-thumb: var(--surface-hover);
     --border: #24424d;
     --border-strong: #2f5462;
     --control-edge: #63737c;
+    --switch-knob: var(--ink);
     --ink: #f6f4ef;
     --ink-soft: #a9bac0;
     --muted: #81949c;
@@ -331,9 +366,11 @@
   --bg-raised: #10202a;
   --surface: #162831;
   --surface-hover: #1c3440;
+  --seg-thumb: var(--surface-hover);
   --border: #24424d;
   --border-strong: #2f5462;
   --control-edge: #63737c;
+  --switch-knob: var(--ink);
   --ink: #f6f4ef;
   --ink-soft: #a9bac0;
   --muted: #81949c;
@@ -407,6 +444,15 @@ button {
   cursor: pointer;
 }
 
+/* A heading with no class of its own takes the scale's heaviest weight, never
+   the browser's 700 (Creative Studio, 2026-10-07). */
+h1,
+h2,
+h3,
+h4 {
+  font-weight: var(--weight-semibold);
+}
+
 input,
 textarea {
   font: inherit;
@@ -427,7 +473,37 @@ textarea {
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* Text links keep a soft corner on their ring. */
+.linklike:focus-visible {
   border-radius: var(--radius-xs);
+}
+
+/* Rows that fill a clipped group (overflow: hidden) draw the ring inside, so
+   no edge of it is cut off. */
+.settings-row:focus-visible,
+.ms-row:focus-visible,
+.chat-list .chat-row:focus-visible,
+.project-chat-row:focus-visible {
+  outline-offset: -2px;
+}
+
+/* On the desktop the Chats rows run 16px past the search pill and their own
+   separators (900 is COMPACT_BREAKPOINT), so the ring is drawn on a layer
+   inset to that column, its inner edge on the pill's edge. */
+@media (min-width: 900px) {
+  .chat-list .chat-row:focus-visible {
+    outline: none;
+  }
+  .chat-list .chat-row:focus-visible::before {
+    content: '';
+    position: absolute;
+    inset: 0 14px;
+    border: 2px solid var(--accent);
+    border-radius: var(--radius-xs);
+    pointer-events: none;
+  }
 }
 
 /* WebKit is the exception: it treats a TAPPED text field as focus-visible too
@@ -558,7 +634,7 @@ textarea {
 /* --------------------------------------------------------------- sidebar */
 
 .sidebar {
-  width: 272px;
+  width: var(--sidebar-width);
   flex-shrink: 0;
   background: var(--bg-raised);
   border-right: 1px solid var(--border);
@@ -616,15 +692,17 @@ textarea {
   text-align: left;
   transition:
     background var(--dur-2) var(--ease-standard),
-    transform var(--press-out);
+    scale var(--press-out);
 }
 
-.new-chat-btn:hover {
-  background: var(--accent-hover);
+@media (hover: hover) {
+  .new-chat-btn:hover {
+    background: var(--accent-hover);
+  }
 }
 
 .new-chat-btn:active {
-  transform: scale(0.985);
+  scale: var(--press-scale-row);
 }
 
 .conv-item {
@@ -641,8 +719,10 @@ textarea {
   transition: background var(--dur-1) var(--ease-standard);
 }
 
-.conv-item:hover {
-  background: var(--surface);
+@media (hover: hover) {
+  .conv-item:hover {
+    background: var(--surface);
+  }
 }
 
 .conv-item.active {
@@ -680,6 +760,13 @@ textarea {
   font-weight: var(--weight-medium);
   color: var(--muted);
 }
+/* A long project name in "Recents in ..." truncates on one line. */
+.sidebar-recents-head > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .sidebar-recent {
   height: 34px;
@@ -698,9 +785,13 @@ textarea {
   transition: background var(--dur-1) var(--ease-standard);
 }
 
-.sidebar-recent:hover,
 .sidebar-recent.active {
   background: var(--surface);
+}
+@media (hover: hover) {
+  .sidebar-recent:hover {
+    background: var(--surface);
+  }
 }
 
 .sidebar-recent.active {
@@ -743,15 +834,17 @@ textarea {
   text-align: left;
   transition:
     background var(--dur-1) var(--ease-standard),
-    transform var(--press-out);
+    scale var(--press-out);
 }
 
-.sidebar-signin:hover {
-  background: var(--accent-soft);
+@media (hover: hover) {
+  .sidebar-signin:hover {
+    background: var(--accent-soft);
+  }
 }
 
 .sidebar-signin:active {
-  transform: scale(0.985);
+  scale: var(--press-scale-row);
 }
 
 .sidebar-signin-avatar {
@@ -881,11 +974,24 @@ textarea {
   transition: background var(--dur-1) var(--ease-standard);
 }
 
-.nav-item:hover {
-  background: var(--surface);
+/* The drawer's rows reach the 44pt touch minimum; the desktop keeps 38px. */
+.sidebar.drawer .nav-item {
+  padding-block: 12px;
 }
 
+@media (hover: hover) {
+  .nav-item:hover {
+    background: color-mix(in srgb, var(--surface) 55%, transparent);
+  }
+}
+
+/* The current room is a filled row (and aria-current), so it reads by more
+   than colour; its glyph carries the accent. */
 .nav-item.active {
+  background: var(--surface);
+  color: var(--ink);
+}
+.nav-item.active .glyph {
   color: var(--accent);
 }
 
@@ -1142,6 +1248,10 @@ textarea {
   gap: 10px;
   padding: 10px 14px;
   padding-top: calc(10px + var(--safe-top));
+  /* The phone's height everywhere: 10px padding, the 40px menu or back
+     control, 10px, and the 1px hairline, so the hairline never jumps between
+     rooms. */
+  min-height: calc(61px + var(--safe-top));
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg) 82%, transparent);
   backdrop-filter: blur(14px);
@@ -1180,6 +1290,21 @@ textarea {
   /* No entrance while tucked, or it would flash in and back out. */
   animation: none;
   opacity: 0;
+}
+/* A bar with nothing in it reads as missing content (D1 took the reach pill
+   out until a computer is paired). While a root room's large title is on
+   screen and the bar holds no control (the desktop, where the sidebar is the
+   way around), the hairline and the fill wait too, and arrive with the bar's
+   title on its own clock, the iOS large-title bar. The height is kept, so
+   nothing moves. */
+.topbar {
+  transition:
+    background-color var(--dur-3) var(--ease-standard),
+    border-bottom-color var(--dur-3) var(--ease-standard);
+}
+.topbar:has(> .topbar-title.is-tucked):not(:has(button, .pill)) {
+  border-bottom-color: transparent;
+  background-color: transparent;
 }
 @keyframes title-in-deeper {
   from {
@@ -1241,16 +1366,20 @@ textarea {
   font-size: var(--text-6);
   transition:
     background var(--dur-1) var(--ease-standard),
-    transform var(--press-out);
+    scale var(--press-out);
 }
 
-.icon-btn:hover {
-  background: var(--surface);
+@media (hover: hover) {
+  .icon-btn:hover {
+    background: var(--surface);
+  }
 }
 
-.icon-btn:active {
-  transform: scale(0.92);
-  transition: transform var(--press-in);
+/* The compound wins over .press-fb:active, so an icon presses as a tile. */
+.icon-btn:active,
+.icon-btn.press-fb:active {
+  scale: var(--press-scale-tile);
+  transition: scale var(--press-in);
 }
 
 /* The drawer (menu) button reads a touch more substantial than a bare icon
@@ -1315,11 +1444,11 @@ textarea {
   width: 100%;
   text-align: left;
   cursor: pointer;
-  transition: transform var(--press-out);
+  transition: scale var(--press-out);
 }
 .profile-select:active {
-  transform: scale(0.99);
-  transition: transform var(--press-in);
+  scale: var(--press-scale-row);
+  transition: scale var(--press-in);
 }
 
 .profile-select-dot {
@@ -1369,14 +1498,16 @@ textarea {
   transform: translateY(1px);
 }
 
-/* Status options in the picker sheet: a dot, the name, and the byline beneath. */
+/* Options in the Stack's picker sheets: the name and its chip, a byline
+   beneath. The chosen one wears the accent; the .btn qualifier lets it win over
+   .btn.ghost, which comes later in this file. */
 .profile-option {
   display: flex;
   align-items: flex-start;
   gap: 11px;
   text-align: left;
 }
-.profile-option.selected {
+.btn.profile-option.selected {
   border-color: var(--accent);
   background: var(--accent-soft);
 }
@@ -1412,12 +1543,12 @@ textarea {
   border-radius: var(--radius-xs);
   transition:
     background var(--dur-1) var(--ease-standard),
-    transform var(--press-out);
+    scale var(--press-out);
 }
 
 .wikilink:active {
   background: var(--accent-soft);
-  transform: scale(0.98);
+  scale: var(--press-scale-row);
 }
 
 .wikilink.unresolved {
@@ -1767,6 +1898,12 @@ textarea {
 .vault-props-chevron {
   margin-left: auto;
   font-size: var(--text-1);
+  display: inline-flex;
+  transition: transform var(--dur-3) var(--ease-standard);
+}
+/* One drawn chevron: it points down while open and turns to the side shut. */
+.vault-props-head[aria-expanded='false'] .vault-props-chevron {
+  transform: rotate(-90deg);
 }
 .vault-props-list {
   margin: 4px 0 2px;
@@ -1844,7 +1981,7 @@ textarea {
   gap: 8px;
 }
 
-/* The Current State "Top sheet" badge, and the "not created yet" marker on a
+/* The Current State "Top sheet" badge, and the "Not written yet" marker on a
    note the agent has not written, sit at the trailing edge of their row so the
    eye reads the note name first. */
 .vault-topsheet {
@@ -1903,6 +2040,12 @@ textarea {
   gap: 10px;
   text-align: left;
   width: 100%;
+}
+
+/* The row is a ghost button on the same surface as the ink pill, so the pill
+   takes a hairline to keep its shape beside the Arriving pills. */
+.vault-provider .pill.ink {
+  border: 1px solid var(--border);
 }
 
 .vault-provider-row {
@@ -3441,9 +3584,9 @@ button.vault-tag {
 .thread-inner {
   /* The one copy of the gap; the working row's seam exit cancels it. */
   --thread-gap: 18px;
-  max-width: 760px;
+  max-width: 792px;
   margin: 0 auto;
-  padding: 18px 16px 24px;
+  padding: 18px var(--gutter) 24px;
   display: flex;
   flex-direction: column;
   gap: var(--thread-gap);
@@ -3497,12 +3640,17 @@ button.vault-tag {
     color var(--dur-2) var(--ease-standard),
     scale var(--press-out);
 }
-.msg-user-turn:hover .msg-rewind,
 .msg-rewind:focus-visible {
   opacity: 1;
 }
-.msg-rewind:hover {
-  color: var(--ink);
+/* A pointer finds rewind on hover; a phone reaches it by a long press. */
+@media (hover: hover) {
+  .msg-user-turn:hover .msg-rewind {
+    opacity: 1;
+  }
+  .msg-rewind:hover {
+    color: var(--ink);
+  }
 }
 /* A held finger eases the bubble down (the phone's way in); it springs back
    when the finger lifts or the sheet takes over. */
@@ -3559,10 +3707,15 @@ button.vault-tag {
 
 .msg-note {
   font-size: var(--text-3);
-  color: var(--warn);
-  background: color-mix(in srgb, var(--warn) 9%, transparent);
+  color: var(--ink-soft);
+  background: var(--surface);
   border-radius: var(--radius-md);
   padding: 8px 12px;
+}
+/* A note that reports a failure keeps the warning ink. */
+.msg-note.warn {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 9%, transparent);
 }
 
 .msg-stopped {
@@ -3726,8 +3879,10 @@ button.vault-tag {
   /* A bare URL has no spaces to wrap at; let it break anywhere. */
   overflow-wrap: anywhere;
 }
-.md a:hover {
-  text-decoration: underline;
+@media (hover: hover) {
+  .md a:hover {
+    text-decoration: underline;
+  }
 }
 .md code {
   overflow-wrap: anywhere;
@@ -3805,7 +3960,7 @@ button.vault-tag {
   background: var(--bg-raised);
   border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  box-shadow: var(--elev-1);
   animation: msg-in var(--dur-3) var(--ease-standard);
   /* On the card, not on .tool-card-flash, so the flash ring fades off as the
      class leaves instead of snapping away. */
@@ -3922,7 +4077,7 @@ button.vault-tag {
   background: var(--bg-raised);
   border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  box-shadow: var(--elev-1);
   animation: msg-in var(--dur-3) var(--ease-standard);
 }
 
@@ -4084,13 +4239,14 @@ button.vault-tag {
 }
 
 .accessory-key.armed {
-  background: var(--link);
-  color: var(--bg);
-  border-color: var(--link);
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
 }
 
 /* ------------------------------------------------------- Terminal room */
-.terminal-firstrun {
+/* Setup steps: the Terminal room's first run and Pairing */
+.setup-steps {
   margin: 8px 0 12px;
   padding-left: 20px;
   color: var(--ink);
@@ -4098,7 +4254,7 @@ button.vault-tag {
   line-height: 1.5;
 }
 
-.terminal-firstrun li + li {
+.setup-steps li + li {
   margin-top: 8px;
 }
 
@@ -4128,6 +4284,9 @@ button.vault-tag {
   border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--term-bg);
+}
+.terminal-room-live .terminal-message {
+  color: var(--term-fg);
 }
 
 /* The room's blocks assemble one after another, the same vocabulary the
@@ -4212,8 +4371,12 @@ button.vault-tag {
   font-weight: var(--weight-semibold);
 }
 
+/* .md-code draws the one frame and its corners; the pre inside keeps only its
+   fill and padding, so a block never reads as a box inside a box. */
 .md-code pre {
   margin: 0;
+  border: 0;
+  border-radius: 0;
 }
 
 /* ------------------------------------------------------------- citations */
@@ -4245,7 +4408,7 @@ button.vault-tag {
 
 .composer-wrap {
   flex-shrink: 0;
-  padding: 10px 14px calc(12px + var(--safe-bottom));
+  padding: 10px var(--gutter) calc(12px + var(--safe-bottom));
   background: linear-gradient(transparent, var(--bg) 30%);
 }
 
@@ -4407,8 +4570,10 @@ button.vault-tag {
   transition: background var(--dur-1) var(--ease-standard);
 }
 
-.model-chip:hover {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .model-chip:hover {
+    background: var(--surface-hover);
+  }
 }
 
 .model-chip .dot {
@@ -4466,7 +4631,34 @@ button.vault-tag {
 .send-btn.stop {
   background: var(--ink);
   color: var(--bg);
-  font-size: var(--text-2);
+}
+
+/* Voice in the round slot (D6): with nothing to send, the button is voice
+   mode, the wave on the accent fill; the first character turns it into send.
+   Both glyphs share one cell and cross on the spring, the leaving one easing
+   down and out, so the change reads as one control turning, not a swap. */
+.send-glyphs {
+  display: grid;
+  place-items: center;
+}
+.send-glyph {
+  grid-area: 1 / 1;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transform: scale(0.6);
+  transition:
+    opacity var(--dur-2) var(--ease-standard),
+    transform var(--dur-4) var(--ease-spring);
+}
+.send-glyph.on {
+  opacity: 1;
+  transform: scale(1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .send-glyph {
+    transition: none;
+  }
 }
 
 /* The composer row, in the Claude app's rhythm: add, the model, the mode,
@@ -4476,20 +4668,24 @@ button.vault-tag {
 .composer-add {
   width: 32px;
   height: 32px;
+  /* The drawn plus sits within 4px of the field text's edge, and its press
+     disc keeps clear of the field's curve, near the send side's inset. */
+  margin-left: -4px;
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: var(--text-7);
-  font-weight: var(--weight-regular);
-  line-height: 1;
   color: var(--ink-soft);
   background: transparent;
   flex-shrink: 0;
   transition: background var(--dur-1) var(--ease-accel);
 }
-.composer-add:hover,
 .composer-add:active {
   background: var(--surface);
+}
+@media (hover: hover) {
+  .composer-add:hover {
+    background: var(--surface);
+  }
 }
 .composer-add.muted {
   opacity: 0.45;
@@ -4521,18 +4717,22 @@ button.vault-tag {
   position: absolute;
   inset: -6px 0;
 }
-/* A phone's row: add, model, mode, voice, mic, send is wider than the field.
-   The mode pill folds to its dot (the sheet it opens names the mode, and its
-   label stays for assistive tech), so the model name reads in full and send
-   keeps its shape. */
-@media (max-width: 430px) {
+/* A narrow row: add, model, mode, terminal, mic, send is wider than the
+   field on a phone and in a narrow desktop window (up to about 560px, where
+   a desktop session cut the model to "You..." and Terminal to "Te..."). The
+   mode pill folds to its mode's glyph and the terminal pill to its $ (the
+   mode's sheet names the mode, and both labels stay for assistive tech), so
+   the model name keeps room and send keeps its shape. At 900px and up the
+   sidebar sits beside the chat, and the column is wide enough again. */
+@media (max-width: 560px) {
   .composer-row {
     gap: 4px;
   }
   .composer-pill {
     padding: 0 8px;
   }
-  .composer-pill-mode {
+  .composer-pill-mode,
+  .composer-pill-term {
     width: 32px;
     min-width: 32px;
     padding: 0;
@@ -4541,23 +4741,35 @@ button.vault-tag {
   .composer-pill-mode .composer-pill-text {
     display: none;
   }
+  .composer-pill-term .composer-pill-text {
+    display: none;
+  }
+  .composer-pill-mode .composer-pill-dot {
+    display: none;
+  }
+  .composer-pill-mode .composer-pill-modeicon {
+    display: grid;
+  }
 }
-.composer-pill:hover,
 .composer-pill:active {
   background: var(--surface);
+}
+@media (hover: hover) {
+  .composer-pill:hover {
+    background: var(--surface);
+  }
 }
 .composer-pill-text {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Nothing can answer yet: the pill asks for a model in the quiet ink. */
+.composer-pill.unready .composer-pill-text {
+  color: var(--muted);
+}
 .composer-pill-chevron {
   flex-shrink: 0;
-  width: 6px;
-  height: 6px;
-  margin-top: -3px;
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-  transform: rotate(45deg);
+  display: grid;
   opacity: 0.6;
 }
 /* The mode dot speaks in ink, never in the place colours (teal is local,
@@ -4569,6 +4781,14 @@ button.vault-tag {
   height: 7px;
   border-radius: 50%;
   background: var(--ink);
+}
+/* The mode's glyph, shown in place of the dot when the pill folds. */
+.composer-pill-modeicon {
+  display: none;
+  color: var(--ink-soft);
+}
+.composer-pill-mode.mode-bypassPermissions .composer-pill-modeicon {
+  color: var(--danger);
 }
 /* The model pill's place: where the answer comes from. */
 .composer-pill-place {
@@ -4611,6 +4831,11 @@ button.vault-tag {
   background: var(--accent);
   font-family: var(--font-mono);
 }
+/* An empty terminal send waits like every other send: its $ in ink-soft on
+   the surface. On the accent it fell below AA in both themes. */
+.send-btn.terminal:disabled {
+  background: var(--surface);
+}
 
 .composer-row-spacer {
   flex: 1;
@@ -4629,9 +4854,13 @@ button.vault-tag {
     background var(--dur-1) var(--ease-accel),
     color var(--dur-2) var(--ease-standard);
 }
-.composer-mic:hover,
 .composer-mic:active {
   background: var(--surface);
+}
+@media (hover: hover) {
+  .composer-mic:hover {
+    background: var(--surface);
+  }
 }
 .composer-mic.listening {
   background: var(--accent-soft);
@@ -4664,7 +4893,9 @@ button.vault-tag {
   object-fit: cover;
 }
 .composer-chip-file {
-  font-size: var(--text-5);
+  display: grid;
+  place-items: center;
+  color: var(--muted);
 }
 .composer-chip-name {
   white-space: nowrap;
@@ -4688,8 +4919,10 @@ button.vault-tag {
     color var(--dur-2) var(--ease-standard),
     scale var(--press-out);
 }
-.composer-chip-x:hover {
-  color: var(--ink);
+@media (hover: hover) {
+  .composer-chip-x:hover {
+    color: var(--ink);
+  }
 }
 /* The video framing ring: a determinate arc that fills as frames land. The arc
    travel rides a motion token so reduced motion zeroes it; nothing here
@@ -4782,6 +5015,14 @@ button.vault-tag {
   color: var(--muted);
   margin: 0 0 6px 6px;
 }
+/* Desktop Offline: the cloud sheet's one quiet line above the models that
+   wait for a connection. */
+.ms-note {
+  font-size: var(--text-3);
+  color: var(--muted);
+  line-height: 1.4;
+  margin: 0 6px 12px;
+}
 .ms-row {
   display: flex;
   align-items: center;
@@ -4796,8 +5037,10 @@ button.vault-tag {
 .ms-row:last-child {
   border-bottom: none;
 }
-.ms-row:hover {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .ms-row:hover {
+    background: var(--surface-hover);
+  }
 }
 .ms-row-default {
   background: var(--accent-soft);
@@ -4815,6 +5058,12 @@ button.vault-tag {
   font-size: var(--text-4);
   flex-shrink: 0;
 }
+.ms-row-check {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+}
 /* The favorite toggle at a model row's trailing edge: an outline star that
    fills teal when pinned. Negative margins keep a finger-sized tap target
    without adding row height. */
@@ -4829,30 +5078,26 @@ button.vault-tag {
   color: var(--muted);
   transition:
     color var(--dur-1) var(--ease-standard),
-    transform var(--press-out);
+    scale var(--press-out);
 }
 .ms-pin.on {
   color: var(--accent);
 }
-.ms-pin:active {
-  transform: scale(0.86);
-  transition: transform var(--press-in);
+.ms-pin:active,
+.ms-pin.press-fb:active {
+  scale: var(--press-scale-tile);
+  transition: scale var(--press-in);
 }
 .ms-row-disabled {
   cursor: default;
 }
-.ms-row-disabled:hover {
-  background: transparent;
+@media (hover: hover) {
+  .ms-row-disabled:hover {
+    background: transparent;
+  }
 }
 .ms-row-disabled .ms-row-main {
   color: var(--muted);
-}
-.ms-sublink {
-  font-size: var(--text-3);
-  color: var(--accent);
-  text-align: left;
-  padding: 0;
-  margin-top: 3px;
 }
 .ms-empty {
   width: 100%;
@@ -4865,8 +5110,10 @@ button.vault-tag {
   font-size: var(--text-4);
   line-height: 1.45;
 }
-.ms-empty:hover {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .ms-empty:hover {
+    background: var(--surface-hover);
+  }
 }
 .ms-row-main {
   font-size: var(--text-5);
@@ -4877,9 +5124,14 @@ button.vault-tag {
   font-size: var(--text-2);
   color: var(--muted);
 }
+/* A sub that wraps on a phone splits into two even lines, never one word
+   alone on the last. */
+.model-sheet .ms-row-sub {
+  text-wrap: balance;
+}
 .ms-row-chev {
   color: var(--muted);
-  font-size: var(--text-6);
+  display: inline-flex;
   flex-shrink: 0;
 }
 
@@ -4893,6 +5145,10 @@ button.vault-tag {
 .ms-group > .swipe-row:last-child {
   border-bottom: none;
 }
+/* At rest the action is not painted: under a group's rounded clip its colour
+   bled through the antialiased corner as a faint arc. It shows while the row
+   is pulled and stays through the spring back, the --dur-5 the foreground
+   settles on, then hides. */
 .swipe-action {
   position: absolute;
   inset: 0 0 0 auto;
@@ -4905,9 +5161,15 @@ button.vault-tag {
   font-size: var(--text-4);
   font-weight: var(--weight-semibold);
   letter-spacing: 0.01em;
+  visibility: hidden;
+  transition: visibility 0s var(--dur-5);
 }
 .swipe-action-unpin {
   background: var(--danger);
+}
+.swipe-row.open .swipe-action {
+  visibility: visible;
+  transition-delay: 0s;
 }
 .swipe-fore {
   position: relative;
@@ -5008,8 +5270,10 @@ button.vault-tag {
 .mode-row:last-child {
   border-bottom: none;
 }
-.mode-row:hover {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .mode-row:hover {
+    background: var(--surface-hover);
+  }
 }
 .mode-row-icon {
   display: grid;
@@ -5038,7 +5302,7 @@ button.vault-tag {
 }
 .mode-row-check {
   color: var(--accent);
-  font-size: var(--text-6);
+  display: inline-flex;
   flex-shrink: 0;
 }
 
@@ -5172,6 +5436,25 @@ button.vault-tag {
   /* Airier than the mark-hugs-line default, so the words breathe on the empty
      field the way the Claude opening does. */
   gap: 18px;
+}
+
+/* The desktop opening (D5, founder 2026-10-07, built as recommended, A): on a
+   fine pointer the greeting and the composer sit together as one group, the
+   Claude desktop opening, instead of a greeting floating mid-column with the
+   field docked far below it. A spacer above seats the group a little over
+   the middle, and it gives way first on a short window. The field grows
+   downward as a draft gets longer, so the greeting never moves. When the
+   chat fills, the composer glides to the foot (ChatScreen's
+   useOpeningGlide). Touch screens keep their own opening, set from the
+   founder's device, untouched. */
+@media (pointer: fine) {
+  .chat-body:has(> .greeting)::before {
+    content: '';
+    flex: 0 1 calc(50vh - 210px);
+  }
+  .chat-body:has(> .greeting) > .greeting {
+    flex: none;
+  }
 }
 
 /* Touch devices only: a plain, static height, no JS keyboard detection
@@ -5583,7 +5866,9 @@ button.vault-tag {
   padding: 8px 10px;
   border-radius: var(--radius);
   text-align: center;
-  transition: background var(--dur-1) var(--ease-standard);
+  transition:
+    background var(--dur-1) var(--ease-standard),
+    scale var(--press-out);
 }
 
 .first-seat-more-row:active {
@@ -5640,8 +5925,18 @@ button.vault-tag {
     scale var(--press-out);
 }
 
-.suggestion:hover {
-  background: var(--surface);
+@media (hover: hover) {
+  .suggestion:hover {
+    background: var(--surface);
+  }
+}
+
+/* A chosen chip wears the accent, on touch too (outside the hover gate). No
+   weight change, so a chip never grows when it is chosen. */
+.suggestion[aria-pressed='true'] {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
 /* The preferred guide (Harbor): same pill, teal to mark it as the
@@ -5652,8 +5947,10 @@ button.vault-tag {
   font-weight: var(--weight-semibold);
 }
 
-.suggestion-preferred:hover {
-  background: var(--accent-soft);
+@media (hover: hover) {
+  .suggestion-preferred:hover {
+    background: var(--accent-soft);
+  }
 }
 
 /* ------------------------------------------------------------ sheets/modals */
@@ -5661,7 +5958,7 @@ button.vault-tag {
 .sheet-scrim {
   position: fixed;
   inset: 0;
-  background: rgba(var(--shadow-rgb), 0.4);
+  background: var(--scrim);
   z-index: 50;
   display: flex;
   align-items: flex-end;
@@ -5720,10 +6017,8 @@ button.vault-tag {
   background: var(--bg-raised);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-  padding: 18px 18px calc(18px + var(--safe-bottom));
-  box-shadow:
-    0 -1px 2px rgba(var(--shadow-rgb), 0.05),
-    0 -12px 40px rgba(var(--shadow-rgb), 0.14);
+  padding: var(--gutter) var(--gutter) calc(var(--gutter) + var(--safe-bottom));
+  box-shadow: var(--elev-3);
   /* A sheet is a door from the bottom edge: it slides up solid on the glide
      over the door clock, the drawer's own motion turned ninety degrees
      (founder, 2026-09-03: "smooth and slow"). */
@@ -5754,10 +6049,8 @@ button.vault-tag {
 @media (min-width: 720px) {
   .sheet {
     border-radius: var(--radius-lg);
-    padding-bottom: 18px;
-    box-shadow:
-      0 1px 2px rgba(var(--shadow-rgb), 0.05),
-      0 18px 50px rgba(var(--shadow-rgb), 0.16);
+    padding-bottom: var(--gutter);
+    box-shadow: var(--elev-3);
     animation-name: sheet-rise;
     transition:
       transform var(--dur-7) var(--ease-glide),
@@ -5806,10 +6099,8 @@ button.vault-tag {
 }
 .sheet.top {
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
-  padding: calc(18px + var(--safe-top)) 18px 18px;
-  box-shadow:
-    0 1px 2px rgba(var(--shadow-rgb), 0.05),
-    0 12px 40px rgba(var(--shadow-rgb), 0.14);
+  padding: calc(var(--gutter) + var(--safe-top)) var(--gutter) var(--gutter);
+  box-shadow: var(--elev-3);
   animation-name: sheet-down;
   transition: transform var(--dur-7) var(--ease-glide);
 }
@@ -5893,42 +6184,43 @@ button.vault-tag {
    under the hairline scrolls, so the way out and the name of the sheet are
    always in view. The card itself is the scroller, so both are sticky. A
    sticky child stops at the card's padding edge, so each reaches up over the
-   card's 18px top padding (a negative margin, given back as padding) and pins
-   to the very top; the head's side shadows paint the gutters in the card's
-   own ground, so a row scrolling under never shows beside it while the
-   hairline stays inset. A top sheet (its grabber at the bottom) is short
-   and keeps its own shape. The grabber is 32px tall here (14 + 4 + 14), so a
-   head under it pins 32px down, 14px past the padding edge. */
+   card's top padding, one --gutter (a negative margin, given back as
+   padding), and pins to the very top; the head's side shadows paint the
+   gutters in the card's own ground, so a row scrolling under never shows
+   beside it while the hairline stays inset. A top sheet (its grabber at the
+   bottom) is short and keeps its own shape. The grabber is 32px tall here
+   (14 + 4 + 14), so a head under it pins 32px down, a gutter short of that
+   past the padding edge. */
 .sheet:not(.top) > .sheet-grabber {
   position: sticky;
-  top: -18px;
+  top: calc(-1 * var(--gutter));
   z-index: 3;
-  margin: -18px -18px 0;
+  margin: calc(-1 * var(--gutter)) calc(-1 * var(--gutter)) 0;
   padding: 14px 0;
   background: var(--bg-raised);
 }
 .sheet:not(.top) > .mode-head {
   position: sticky;
-  top: -18px;
+  top: calc(-1 * var(--gutter));
   z-index: 3;
-  margin-top: -18px;
-  padding-top: 18px;
+  margin-top: calc(-1 * var(--gutter));
+  padding-top: var(--gutter);
   background: var(--bg-raised);
   box-shadow:
-    -18px 0 0 var(--bg-raised),
-    18px 0 0 var(--bg-raised);
+    calc(-1 * var(--gutter)) 0 0 var(--bg-raised),
+    var(--gutter) 0 0 var(--bg-raised);
 }
 .sheet:not(.top) > .sheet-grabber + .mode-head {
-  top: 14px;
+  top: calc(32px - var(--gutter));
   margin-top: 0;
   padding-top: 0;
 }
 /* No grabber on a fine pointer (it is hidden above), so the head is the top. */
 @media (hover: hover) and (pointer: fine) {
   .sheet:not(.top) > .sheet-grabber + .mode-head {
-    top: -18px;
-    margin-top: -18px;
-    padding-top: 18px;
+    top: calc(-1 * var(--gutter));
+    margin-top: calc(-1 * var(--gutter));
+    padding-top: var(--gutter);
   }
 }
 
@@ -6030,6 +6322,12 @@ button.vault-tag {
   flex-direction: column;
   gap: 8px;
 }
+/* A sheet that runs a hint or a list straight into its actions keeps a beat
+   above them, one rule for every sheet instead of a margin per room. */
+.sheet .hint + .sheet-actions,
+.sheet .check-list + .sheet-actions {
+  margin-top: 16px;
+}
 
 .btn {
   padding: 12px 16px;
@@ -6038,13 +6336,15 @@ button.vault-tag {
   font-size: var(--text-5);
   text-align: center;
   transition:
-    transform var(--press-out),
+    scale var(--press-out),
     filter var(--dur-1) var(--ease-standard);
 }
 
+/* One press, on the scale property and the press token, so a .btn that also
+   carries press-fb dips once, not twice. */
 .btn:active {
-  transform: scale(0.985);
-  transition: transform var(--press-in);
+  scale: var(--press-scale-btn);
+  transition: scale var(--press-in);
 }
 
 .btn.primary {
@@ -6079,8 +6379,22 @@ button.vault-tag {
   color: var(--bg);
 }
 
+/* Two sizes beside the default (Creative Studio, 2026-10-07): a compact action
+   that sits in a row, and a block that fills its column. Rooms pick a size by
+   class, never an inline padding or width. */
+.btn.sm {
+  padding: 7px 14px;
+}
+.btn.block {
+  width: 100%;
+}
+/* A block is as wide as a row, so it dips like one. */
+.btn.block:active {
+  scale: var(--press-scale-row);
+}
+
 .btn:disabled {
-  opacity: 0.4;
+  opacity: var(--disabled-opacity);
 }
 
 .approval-badge {
@@ -6128,10 +6442,10 @@ button.vault-tag {
 .screen-inner {
   max-width: 760px;
   margin: 0 auto;
-  padding: 20px 16px calc(28px + var(--safe-bottom));
+  padding: 20px var(--gutter) calc(28px + var(--safe-bottom));
   /* Keep content clear of a landscape notch (left/right safe areas). */
-  padding-left: max(16px, env(safe-area-inset-left));
-  padding-right: max(16px, env(safe-area-inset-right));
+  padding-left: max(var(--gutter), env(safe-area-inset-left));
+  padding-right: max(var(--gutter), env(safe-area-inset-right));
 }
 
 /* Extend small icon buttons to roughly a 44pt tap target without changing
@@ -6186,6 +6500,9 @@ button.vault-tag {
   color: var(--muted);
   font-size: var(--text-4);
   margin-bottom: 18px;
+  /* A room's lead never ends on one word standing alone, at 320pt (Slide
+     Over) or anywhere, where the engine wraps pretty. */
+  text-wrap: pretty;
 }
 
 /* The Chats room: a new-chat row, then the saved chats as one grouped, flat
@@ -6211,10 +6528,10 @@ button.vault-tag {
 
 /* The rows settle in on entry, each a beat behind the last, the same
    easeOutQuint the greeting and splash use. Capped so a long list never holds
-   the eye; --stagger is set inline per row. */
+   the eye; --i is set inline per row and steps by --stagger. */
 .chat-group > .swipe-row {
   animation: chat-row-in var(--dur-5) var(--ease-arrive) backwards;
-  animation-delay: var(--stagger, 0ms);
+  animation-delay: calc(var(--i, 0) * var(--stagger));
 }
 
 @keyframes chat-row-in {
@@ -6234,11 +6551,14 @@ button.vault-tag {
   }
 }
 
+/* A chat row on the D22 scale. Outside the full-bleed list it already sits
+   inside the page gutter, so it insets by a card's pad, as a ledger row does;
+   .chat-list pads its rows back out to the gutter. */
 .chat-row {
   display: block;
   width: 100%;
   text-align: left;
-  padding: 13px 14px;
+  padding: var(--row-pad) var(--card-pad);
 }
 
 .chat-row.active {
@@ -6279,8 +6599,10 @@ button.vault-tag {
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 18px;
-  box-shadow: 0 18px 48px rgba(var(--shadow-rgb), 0.28);
+  /* On the sheets' gutter and depth (D22), so a question sits on the same
+     scale as the sheet it often follows. */
+  padding: var(--gutter);
+  box-shadow: var(--elev-3);
   /* Arrives on the same clock it leaves on (--dur-4), with no overshoot: a
      confirmation is a pause, not a pop. */
   animation: confirm-pop var(--dur-4) var(--ease-arrive) backwards;
@@ -6370,9 +6692,9 @@ button.vault-tag {
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 14px;
+  padding: var(--card-pad);
   margin-bottom: 12px;
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  box-shadow: var(--elev-1);
 }
 
 .card h3 {
@@ -6380,8 +6702,20 @@ button.vault-tag {
   font-weight: var(--weight-semibold);
   margin-bottom: 2px;
 }
+/* A card's title when the card is itself a button (Crew's door and its
+   member cards): a span in the h3's type, since a heading inside a button is
+   not valid HTML, the way the setup page's .path-card-title is built. */
+.card-title {
+  display: block;
+  font-size: var(--text-5);
+  font-weight: var(--weight-semibold);
+  margin-bottom: 2px;
+}
 
-.card .sub {
+/* Secondary text under a title, wherever it sits (Creative Studio,
+   2026-10-07). Scoped rules (.cc-preset .sub, .vault-resolve .vault-provider
+   .sub, and chat's .profile-row .sub) still win. */
+.sub {
   color: var(--muted);
   font-size: var(--text-3);
 }
@@ -6396,16 +6730,17 @@ button.vault-tag {
   width: 100%;
   text-align: left;
   cursor: pointer;
-  transition: transform var(--press-out);
+  transition: scale var(--press-out);
 }
 
-.card-disclosure h3 {
+.card-disclosure h3,
+.card-disclosure .card-title {
   margin-bottom: 0;
 }
 
 .card-disclosure:active {
-  transform: scale(0.985);
-  transition: transform var(--press-in);
+  scale: var(--press-scale-row);
+  transition: scale var(--press-in);
 }
 
 .disclosure-chevron {
@@ -6419,7 +6754,7 @@ button.vault-tag {
 }
 
 /* A text button that reads as an inline link (auth mode toggle, "email me a
-   link instead"). No box, just the link color and a hover underline. It is a
+   link instead"). No box, just the accent and a hover underline. It is a
    tappable like any other, so it shares the press-fb scale (declared with
    press-fb in the polish section above). */
 .linklike {
@@ -6429,16 +6764,37 @@ button.vault-tag {
   margin: 0;
   font: inherit;
   font-weight: var(--weight-semibold);
-  color: var(--link);
+  color: var(--accent);
   cursor: pointer;
 }
 
-.linklike:hover {
-  text-decoration: underline;
+/* A guide door on its own line in a card (Walk me through it, Get Tailscale,
+   Can't scan? Type it in). Inherited, it took the 17px body size and spoke
+   louder than the card's own title, so it sits a step under that title.
+   Under a full-width primary it centres on the button's label. A link inside
+   a .lead keeps the lead's size. */
+.linklike.door {
+  display: block;
+  font-size: var(--text-4);
+  margin-top: 12px;
+}
+.btn.block ~ .linklike.door {
+  margin-inline: auto;
+}
+
+@media (hover: hover) {
+  .linklike:hover {
+    text-decoration: underline;
+  }
+}
+/* A link out of the app carries the drawn arrow, one space off its word and
+   seated on the text's line. */
+.external-glyph {
+  vertical-align: -1px;
 }
 
 .linklike:disabled {
-  opacity: 0.5;
+  opacity: var(--disabled-opacity);
   cursor: default;
   text-decoration: none;
 }
@@ -6466,16 +6822,18 @@ button.vault-tag {
   transition:
     background var(--dur-1) var(--ease-standard),
     border-color var(--dur-1) var(--ease-standard),
-    transform var(--press-out);
+    scale var(--press-out);
 }
 
-.dl-item:hover {
-  background: var(--surface);
-  border-color: var(--border-strong);
+@media (hover: hover) {
+  .dl-item:hover {
+    background: var(--surface);
+    border-color: var(--border-strong);
+  }
 }
 
 .dl-item:active {
-  transform: scale(0.99);
+  scale: var(--press-scale-row);
 }
 
 .dl-tile {
@@ -6567,6 +6925,11 @@ button.vault-tag {
   background: var(--surface);
   color: var(--muted);
 }
+/* A state (Active, Here now, Top sheet) in ink: teal stays for local. */
+.pill.ink {
+  background: var(--surface);
+  color: var(--ink);
+}
 /* A cloud/service is reachable. Status green, never teal: teal is reserved for
    local/private/kept, so a cloud connection must not borrow it. Shares the
    --ok-soft fill with .pill.fits (same green status family). */
@@ -6606,6 +6969,22 @@ button.vault-tag {
   margin-bottom: 6px;
 }
 
+/* A field's label with one quiet action on its line, so a form keeps its
+   link lines few. */
+.field-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.field-label-row label {
+  margin-bottom: 0;
+}
+.field-label-row .linklike {
+  font-size: var(--text-3);
+}
+
 .field input {
   width: 100%;
   background: var(--bg-raised);
@@ -6613,11 +6992,9 @@ button.vault-tag {
   border-radius: var(--radius-md);
   padding: 11px 12px;
   font-size: var(--text-5);
-  transition: border-color var(--dur-2) var(--ease-standard);
-}
-
-.field input:focus {
-  border-color: var(--accent);
+  transition:
+    border-color var(--dur-2) var(--ease-standard),
+    box-shadow var(--dur-2) var(--ease-standard);
 }
 
 .field textarea,
@@ -6630,14 +7007,21 @@ button.vault-tag {
   font-size: var(--text-5);
   font-family: inherit;
   color: var(--ink);
-  transition: border-color var(--dur-2) var(--ease-standard);
-  resize: vertical;
+  transition:
+    border-color var(--dur-2) var(--ease-standard),
+    box-shadow var(--dur-2) var(--ease-standard);
+  /* Fields keep their set rows and scroll inside, with no browser grip. */
+  resize: none;
 }
 
+/* A focused field shows one ring: the accent edge and its soft halo (the
+   .chat-search pattern), never the keyboard outline on top. */
+.field input:focus,
 .field textarea:focus,
 .field .select:focus {
   border-color: var(--accent);
   outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 /* Sidebar project bucket switcher */
@@ -6659,8 +7043,10 @@ button.vault-tag {
   transition: border-color var(--dur-1) var(--ease-standard);
 }
 
-.project-switch-btn:hover {
-  border-color: var(--border-strong);
+@media (hover: hover) {
+  .project-switch-btn:hover {
+    border-color: var(--border-strong);
+  }
 }
 
 .project-switch-label {
@@ -6720,8 +7106,10 @@ button.vault-tag {
   color: var(--ink-soft);
 }
 
-.project-menu-item:hover {
-  background: var(--surface);
+@media (hover: hover) {
+  .project-menu-item:hover {
+    background: var(--surface);
+  }
 }
 
 .project-menu-item.active {
@@ -6745,8 +7133,10 @@ button.vault-tag {
   transition: background var(--dur-1) var(--ease-standard);
 }
 
-.quick-chat-btn:hover {
-  background: var(--surface);
+@media (hover: hover) {
+  .quick-chat-btn:hover {
+    background: var(--surface);
+  }
 }
 
 .quick-chat-note {
@@ -6784,6 +7174,7 @@ button.vault-tag {
 .multiselect-caret {
   color: var(--muted);
   font-size: var(--text-2);
+  display: inline-flex;
 }
 
 .multiselect-panel {
@@ -6826,8 +7217,10 @@ button.vault-tag {
   cursor: pointer;
 }
 
-.multiselect-row:hover {
-  background: var(--surface);
+@media (hover: hover) {
+  .multiselect-row:hover {
+    background: var(--surface);
+  }
 }
 
 .multiselect-row input[type='checkbox'] {
@@ -6902,11 +7295,11 @@ button.vault-tag {
 /* Multi-select rows: a gentle pressed state. */
 .multiselect-row {
   transition:
-    transform var(--press-out),
+    scale var(--press-out),
     background var(--dur-1) var(--ease-standard);
 }
 .multiselect-row:active {
-  transform: scale(0.99);
+  scale: var(--press-scale-row);
 }
 
 /* Crew monogram: an identity tile tinted by activity level. */
@@ -6929,13 +7322,17 @@ button.vault-tag {
 }
 .crew-monogram.auto {
   background: var(--surface);
-  border: 1px solid var(--attention);
-  color: var(--attention);
+  border: 1px solid var(--accent);
+  color: var(--accent);
 }
 .crew-monogram.request {
   background: var(--surface);
   border: 1px solid var(--border-strong);
   color: var(--muted);
+}
+/* In a card row the row's gap spaces the tile. */
+.card-row > .crew-monogram {
+  margin-right: 0;
 }
 
 /* Launch: a pulsing dot on the building state, a shimmer under an active run. */
@@ -7029,6 +7426,36 @@ button.vault-tag {
 /* An outbox item's commit message, one step above its sub line. */
 .repo-outbox-message {
   font-size: var(--text-4);
+}
+
+/* Cloud Connections' footnote under its ledger card (D14): the grouped
+   list's footer, a short beat below the card and on the rows' text edge. */
+.connections-foot {
+  margin: 8px var(--card-pad) 0;
+}
+/* Desktop Offline: the one quiet line that its models wait for a connection,
+   between the lead and the providers. */
+.connections-offline {
+  margin: 0 var(--card-pad) 14px;
+  line-height: 1.4;
+  text-wrap: pretty;
+}
+
+/* Repositories' connect sheet, when a one-tap sign-in was refused: the
+   Callback URL its OAuth app is missing, set in mono so every character
+   reads, a beat above the sheet's actions. */
+.repos-callback {
+  margin-bottom: 16px;
+}
+.repos-callback-url {
+  font-family: var(--font-mono);
+  font-size: var(--text-2);
+  color: var(--ink-soft);
+  word-break: break-all;
+  margin: 4px 0 8px;
+}
+.repos-callback .linklike {
+  font-size: var(--text-3);
 }
 
 /* Outbox item state, in the connectivity-dot language. */
@@ -7683,25 +8110,29 @@ button.vault-tag {
   margin: 18px 0;
 }
 
-/* Toast */
+/* Toast. Centred by its margins, not a transform, so msg-in's rise composes
+   instead of snapping it sideways. A short toast is a pill; a long one wraps
+   to two balanced lines, never cut off, and it sits clear of the composer. */
 .toast {
   position: fixed;
-  left: 50%;
-  bottom: calc(90px + var(--safe-bottom));
-  transform: translateX(-50%);
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  width: max-content;
+  max-width: min(90vw, 440px);
+  bottom: calc(120px + var(--safe-bottom));
   background: var(--ink);
   border: 1px solid var(--ink);
   color: var(--bg);
-  border-radius: 999px;
+  border-radius: var(--radius-lg);
   padding: 9px 18px;
   font-size: var(--text-4);
+  white-space: normal;
+  text-wrap: balance;
+  text-align: center;
   z-index: 80;
-  box-shadow: 0 10px 34px rgba(var(--shadow-rgb), 0.22);
+  box-shadow: var(--elev-2);
   animation: msg-in var(--dur-3) var(--ease-standard);
-  max-width: 90vw;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* The toast sinks and fades rather than blinking out (App.tsx keeps the pill
@@ -7712,8 +8143,14 @@ button.vault-tag {
 @keyframes toast-out {
   to {
     opacity: 0;
-    transform: translateX(-50%) translateY(8px);
+    transform: translateY(8px);
   }
+}
+
+/* Beside the desktop sidebar the toast centres on the room, not the window;
+   the drawer never matches, so the phone centres on the screen. */
+.shell > .sidebar:not(.drawer) ~ .toast {
+  left: var(--sidebar-width);
 }
 
 /* Update banner: persistent (no auto-dismiss, no snooze) until the person
@@ -7789,7 +8226,7 @@ button.vault-tag {
   flex-shrink: 0;
   padding: 5px 11px;
   border-radius: 999px;
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   background: var(--surface);
   font-size: var(--text-2);
   color: var(--ink-soft);
@@ -7799,8 +8236,69 @@ button.vault-tag {
     scale var(--press-out);
 }
 
-.profile-chip:hover {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .profile-chip:hover {
+    background: var(--surface-hover);
+  }
+}
+
+/* A chat's bar on a phone (CS-04): with a computer connected, the menu, the
+   chat's name, Terminal on a computer chat, New chat and the pill left the
+   name a third of the bar (135px on a 402pt iPhone Pro). Up to 560px, where
+   the composer below folds its pills too, the pill there folds to its dot in
+   a round chip: green Docked, plain Offshore and the Offline ring still tell
+   apart, the aria-label keeps the word, and a tap opens the same sheet. The
+   rooms' bars and an empty chat's bar keep the word. */
+@media (max-width: 560px) {
+  .topbar:has(.topbar-sub) .profile-chip {
+    position: relative;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    gap: 0;
+  }
+  /* The house's 44pt reach around a small control (.icon-btn::after). */
+  .topbar:has(.topbar-sub) .profile-chip::after {
+    content: '';
+    position: absolute;
+    inset: -7px;
+  }
+  .topbar:has(.topbar-sub) .profile-chip-label {
+    display: none;
+  }
+}
+
+/* The pill comes and goes once it can mean something (D1): a lone Offline
+   arrives when the connection drops before any computer is connected, and
+   leaves when it comes back. It settles in and fades out, never pops. A room
+   change does not replay it (ProfileStatus adds .arriving only for a pill
+   that comes in after the bar is up). */
+.profile-chip.arriving {
+  animation: profile-chip-in var(--dur-4) var(--ease-arrive) backwards;
+}
+.profile-chip.closing {
+  animation: profile-chip-out var(--dur-3) var(--ease-accel) forwards;
+  pointer-events: none;
+}
+@keyframes profile-chip-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+@keyframes profile-chip-out {
+  to {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+/* Reduced motion: the pill simply appears. Its exit stays on the global reset
+   (near-zero), so it is gone at once and still unmounts on the timer. */
+@media (prefers-reduced-motion: reduce) {
+  .profile-chip.arriving {
+    animation: none;
+  }
 }
 
 .profile-dot {
@@ -7808,6 +8306,26 @@ button.vault-tag {
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+}
+
+/* The three states in classes the colour guard can read. Offshore is ink,
+   not amber (a status is not a charge), and Offline is a hollow ring so the
+   three tell apart at a glance. */
+.profile-dot.docked {
+  background: var(--ok);
+}
+
+.profile-dot.offshore {
+  background: var(--ink-soft);
+}
+
+.profile-dot.offline {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--muted);
+}
+
+.profile-row .profile-dot {
+  margin-top: 6px;
 }
 
 .profile-row {
@@ -7822,13 +8340,26 @@ button.vault-tag {
   background: var(--bg-raised);
 }
 
+/* The current choice is marked the way every chooser marks it, with the
+   drawn check, on a quiet surface fill rather than an accent card. */
 .profile-row.active {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+  background: var(--surface);
+}
+/* The text takes the row, so the check sits on the trailing edge as it does
+   in Select model, not beside the end of a short line. */
+.profile-row > .grow {
+  flex: 1;
+  min-width: 0;
+}
+.profile-row-check {
+  align-self: center;
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--accent);
 }
 
 .profile-row:disabled {
-  opacity: 0.45;
+  opacity: var(--disabled-opacity);
 }
 
 .profile-row-title {
@@ -7836,6 +8367,14 @@ button.vault-tag {
   font-weight: var(--weight-semibold);
   font-size: var(--text-5);
   margin-bottom: 2px;
+}
+
+/* The description under each status. Ink-soft, not muted, so it holds its
+   contrast on the active row's surface fill as on the raised card. */
+.profile-row .sub {
+  display: block;
+  line-height: 1.4;
+  color: var(--ink-soft);
 }
 
 /* ---------------------------------------------------- library intro (enablement)
@@ -8075,6 +8614,32 @@ button.vault-tag {
   }
 }
 
+/* The shared stagger (UI/UX review follow-up, 2026-10-07): a row that steps in
+   on arrival carries .stagger-in and its index inline (style --i: n, capped by
+   the caller so a long list never holds the eye), and arrives that many steps
+   behind the first on the house rise. A list with an entrance of its own keeps
+   its own rule; a new one takes this. The global reset above zeroes the delay,
+   and the rule below stills it. */
+.stagger-in {
+  animation: stagger-in var(--dur-5) var(--ease-arrive) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+@keyframes stagger-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stagger-in {
+    animation: none;
+  }
+}
+
 /* ---------------------------------------------------------------------------
    Marketplace. Creative Studio delight pass: osCodeFit as the verdict metric
    set apart above the capability lanes, true half-star tracks, one tinted
@@ -8135,7 +8700,7 @@ button.vault-tag {
     scale var(--press-out);
 }
 .seg.active {
-  background: var(--bg-raised);
+  background: var(--seg-thumb);
   color: var(--accent);
   font-weight: var(--weight-semibold);
   box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.08);
@@ -8253,7 +8818,7 @@ button.vault-tag {
 /* Card feel: rest shadow, hover lift, pressed scale, shore-edge accent. */
 .market-card {
   position: relative;
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  box-shadow: var(--elev-1);
   transition:
     transform var(--dur-3) var(--ease-standard),
     box-shadow var(--dur-3) var(--ease-standard);
@@ -8289,7 +8854,7 @@ button.vault-tag {
   background: var(--bg-raised);
   border-radius: var(--radius);
   padding: 14px;
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  box-shadow: var(--elev-1);
 }
 .preset-name {
   font-weight: var(--weight-semibold);
@@ -8480,8 +9045,10 @@ button.vault-tag {
     background var(--dur-1) var(--ease-standard),
     scale var(--press-out);
 }
-.lane:not(:disabled):hover {
-  background: var(--surface);
+@media (hover: hover) {
+  .lane:not(:disabled):hover {
+    background: var(--surface);
+  }
 }
 .lane-label {
   font-size: var(--text-1);
@@ -8755,7 +9322,7 @@ button.vault-tag {
   background: var(--bg-raised);
   border-radius: var(--radius-lg);
   padding: 16px;
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  box-shadow: var(--elev-1);
   transition:
     border-color var(--dur-3) var(--ease-standard),
     box-shadow var(--dur-3) var(--ease-standard);
@@ -9215,9 +9782,11 @@ button.vault-tag {
     background var(--dur-2) var(--ease-standard),
     transform var(--dur-5) var(--ease-spring);
 }
-.shelf-head:hover .shelf-more {
-  background: var(--surface-hover);
-  transform: translateX(3px) scale(1.06);
+@media (hover: hover) {
+  .shelf-head:hover .shelf-more {
+    background: var(--surface-hover);
+    transform: translateX(3px) scale(1.06);
+  }
 }
 .shelf-head:active .shelf-more {
   transform: translateX(1px) scale(0.92);
@@ -10109,12 +10678,20 @@ button.vault-tag {
    --------------------------------------------------------------------------- */
 
 .working-row {
+  /* The row's first line is the counter's: text-4 at the body's 1.55. */
+  --working-line: calc(var(--text-4) * 1.55);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   color: var(--muted);
   font-size: var(--text-4);
   animation: msg-in var(--dur-3) var(--ease-standard);
+}
+/* The mark and the note's first line centre on the row's first line, so a
+   one-line row sits as it did centred, and a note that wraps keeps the mark
+   beside its first line rather than floating at the middle of the block. */
+.working-row > .wave-mark {
+  margin-top: calc((var(--working-line) - 24px * 10 / 18) / 2);
 }
 /* Everything that animates in animates out: the row fades and rises 3px when
    the reply starts (or the turn ends). */
@@ -10143,6 +10720,15 @@ button.vault-tag {
   position: absolute;
   left: 0;
   bottom: 0;
+}
+/* A note that wrapped keeps only its first line in the seam, the line the
+   wave sits on, so it dissolves into the reply's first line the way a
+   one-line note does: no line rides up over the model's name, none hangs
+   past the thread's foot to nudge the scroll when the row goes. The row is
+   out of flow by then, so nothing else moves. */
+.working-slot.seam .working-note.whole {
+  max-height: calc(var(--text-2) * 1.55);
+  overflow: hidden;
 }
 
 /* The OpenShore mark as surf (components/WaveMark.tsx): the horizon holds
@@ -10177,9 +10763,21 @@ button.vault-tag {
 .working-note {
   font-family: var(--font-mono);
   font-size: var(--text-2);
+  margin-top: calc((var(--working-line) - var(--text-2) * 1.55) / 2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* A note that is not the turning word reads whole (image reading follow-up,
+   2026-10-08): it wraps onto as many lines as it needs, never cut with an
+   ellipsis, so the note that names the model reading a picture is read to
+   its end at 360pt. The row takes its lines when the note arrives; nothing
+   animates its height. */
+.working-note.whole {
+  min-width: 0;
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
 }
 /* The word turns over: the outgoing word rises out as the incoming one rises
    in beneath it, both on the same grid cell. The block padding (cancelled by
@@ -10226,8 +10824,8 @@ button.vault-tag {
 
 .msg-model {
   font-size: var(--text-2);
+  font-weight: var(--weight-medium);
   color: var(--muted);
-  font-family: var(--font-mono);
   margin-bottom: 4px;
 }
 
@@ -10256,7 +10854,8 @@ button.vault-tag {
 }
 .thinking-chevron {
   margin-left: auto;
-  font-size: var(--text-1);
+  display: inline-flex;
+  transition: transform var(--dur-3) var(--ease-standard);
 }
 .thinking-body {
   font-style: italic;
@@ -10318,7 +10917,13 @@ button.vault-tag {
 }
 .todo-chevron {
   color: var(--muted);
-  font-size: var(--text-1);
+  display: inline-flex;
+  transition: transform var(--dur-3) var(--ease-standard);
+}
+/* Closed, the chevron turns to point along the line; open, it points down. */
+.thinking-head[aria-expanded='false'] .thinking-chevron,
+.todo-head[aria-expanded='false'] .todo-chevron {
+  transform: rotate(-90deg);
 }
 .todo-reveal {
   display: grid;
@@ -10699,7 +11304,7 @@ button.vault-tag {
 }
 .changed-undo:disabled,
 .changed-row-undo:disabled {
-  opacity: 0.5;
+  opacity: var(--disabled-opacity);
 }
 .changed-item {
   display: flex;
@@ -10894,7 +11499,7 @@ button.vault-tag {
   color: var(--ink-soft);
   font-size: var(--text-3);
   font-weight: var(--weight-semibold);
-  box-shadow: 0 6px 18px rgba(var(--shadow-rgb), 0.12);
+  box-shadow: var(--elev-2);
   animation: jump-in var(--dur-5) var(--ease-arrive) backwards;
 }
 /* News below: the chip opens into a labelled pill in ink, so a reply that
@@ -11122,7 +11727,7 @@ button.vault-tag {
   color: var(--ink);
 }
 .mode-row-icon.mode-bypassPermissions {
-  color: var(--warn);
+  color: var(--danger);
 }
 .mode-row-icon.mode-plan {
   color: var(--ink-soft);
@@ -11160,6 +11765,12 @@ button.vault-tag {
 .approval-sheet .btn {
   display: flex;
   align-items: center;
+}
+/* No key hint on a touch screen, so the label centres in its button. */
+@media (pointer: coarse) {
+  .approval-sheet .btn {
+    justify-content: center;
+  }
 }
 .approval-skip {
   opacity: 0.7;
@@ -11290,9 +11901,90 @@ button.vault-tag {
   margin-top: 8px;
 }
 
-/* The top bar's chips. */
+/* Nothing in a Stack chat can read images (founder, 2026-10-07): the
+   changed-files card's quiet frame, never an error's, arriving on msg-in
+   like its neighbours. Teal marks only the local door and amber only the
+   cloud door. The doors fold away on the reveal fold once something can
+   read images, and the line that says so fades in beneath them. */
+.image-offer {
+  padding: var(--card-pad);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  animation: msg-in var(--dur-3) var(--ease-standard) backwards;
+}
+.image-offer-title {
+  font-size: var(--text-4);
+  font-weight: var(--weight-semibold);
+  color: var(--ink);
+}
+.image-offer-lead {
+  margin: 4px 0 0;
+  font-size: var(--text-3);
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+.image-offer-doors {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.image-offer-door {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.image-offer-door .kind-chip {
+  min-width: 52px;
+  text-align: center;
+}
+.image-offer-door-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  font-size: var(--text-3);
+  line-height: 1.45;
+}
+.image-offer-door-head {
+  font-weight: var(--weight-semibold);
+  color: var(--ink);
+}
+.image-offer-door-body {
+  color: var(--ink-soft);
+}
+/* Side by side where both fit on one line each; stacked, full width, on a
+   phone, so neither label breaks over two lines. */
+.image-offer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.image-offer-actions .btn {
+  flex: 1 1 auto;
+  white-space: nowrap;
+}
+.image-offer-ready-fold .reveal-inner {
+  opacity: 0;
+  transition: opacity var(--dur-3) var(--ease-standard);
+}
+.image-offer-ready-fold.open .reveal-inner {
+  opacity: 1;
+}
+.image-offer-ready {
+  margin: 8px 0 0;
+  font-size: var(--text-3);
+  color: var(--ink);
+}
+
+/* The top bar's chips. A titled chat stacks its name over the repository
+   pill, and the two fit the 40px control slot, so the hairline holds at 61px
+   when the first message turns the empty chat into a titled one. */
 .topbar-name {
   font: inherit;
+  line-height: 1.25;
   color: inherit;
   max-width: 100%;
   overflow: hidden;
@@ -11300,6 +11992,21 @@ button.vault-tag {
   white-space: nowrap;
   text-align: left;
   display: block;
+}
+/* New chat in an open chat's bar (D7): it arrives with the chat's name, on
+   the same clock, so the bar never pops a control in. */
+.chat-compose {
+  animation: chat-compose-in var(--dur-4) var(--ease-glide) backwards;
+}
+@keyframes chat-compose-in {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-compose {
+    animation: none;
+  }
 }
 .topbar-sub {
   display: flex;
@@ -11334,6 +12041,17 @@ button.vault-tag {
   padding: 2px 9px 2px 8px;
   line-height: 1.5;
 }
+/* Under a chat's name the pill sits a step tighter, so name and pill share
+   the bar's 40px slot. */
+.topbar-sub .repo-picker-btn {
+  padding: 1px 9px 1px 8px;
+  line-height: 1.4;
+}
+/* The empty home's bar: the same height as the status chip beside it. */
+.topbar-spacer-repos .repo-picker-btn {
+  min-height: 30px;
+  padding: 0 12px 0 10px;
+}
 .repo-picker-summary {
   min-width: 0;
   overflow: hidden;
@@ -11348,7 +12066,7 @@ button.vault-tag {
   opacity: 0.85;
 }
 .repo-picker-caret {
-  font-size: var(--text-1);
+  display: inline-flex;
   opacity: 0.7;
 }
 /* The repositories sheet (the Claude app's shape): a title with the count,
@@ -11367,6 +12085,11 @@ button.vault-tag {
   min-height: 0;
   overflow-y: auto;
   padding-bottom: 8px;
+}
+/* With nothing to search the search foot is gone, so the body clears the
+   home indicator itself. */
+.repo-sheet-body:last-child {
+  padding-bottom: calc(16px + var(--safe-bottom));
 }
 .repo-sheet-row .ms-row-sub {
   order: -1;
@@ -11449,8 +12172,12 @@ button.vault-tag {
   text-overflow: ellipsis;
 }
 .repo-dirty {
-  color: var(--warn);
-  font-size: var(--text-1);
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+  flex-shrink: 0;
 }
 .ctx-bar {
   display: inline-block;
@@ -11646,7 +12373,7 @@ button.vault-tag {
   flex-wrap: wrap;
 }
 .embed-toolbar .icon-btn:disabled {
-  opacity: 0.35;
+  opacity: var(--disabled-opacity);
 }
 .embed-crumb {
   display: inline-flex;
@@ -11708,27 +12435,40 @@ button.vault-tag {
    sheet. Type carries the hierarchy; no icons. Groups arrive staggered.
    --------------------------------------------------------------------------- */
 .settings-group {
-  margin-top: 22px;
+  margin-top: var(--section-gap);
   animation: msg-in var(--dur-4) var(--ease-arrive) backwards;
   animation-delay: calc(var(--i, 0) * var(--dur-1) / 3);
 }
 .settings-group:first-of-type {
   margin-top: 4px;
 }
-.settings-group-head {
+.settings-group-head,
+.section-head {
   font-family: var(--font-display);
-  font-size: var(--text-5);
-  font-weight: var(--weight-medium);
-  color: var(--ink-soft);
-  /* On the rows' text line (the row's 14px inset), so a head, its intro and
-     its rows share one left edge. */
-  margin: 0 0 8px 14px;
+  font-size: var(--text-3);
+  font-weight: var(--weight-semibold);
+  color: var(--muted);
+  letter-spacing: 0.01em;
+  /* On the rows' text line (the row's --card-pad inset), so a head, its
+     intro and its rows share one left edge. */
+  margin: 0 0 6px var(--card-pad);
+}
+/* A section head standing in a room's flow (no .settings-group around it)
+   carries the group's step itself. */
+.section-head {
+  margin-top: var(--section-gap);
+}
+.screen .lead + .section-head {
+  margin-top: 4px;
+}
+.divider + .section-head {
+  margin-top: 0;
 }
 .settings-card {
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  box-shadow: var(--elev-1);
   overflow: hidden;
 }
 .settings-row {
@@ -11737,17 +12477,23 @@ button.vault-tag {
   gap: 12px;
   width: 100%;
   min-height: 52px;
-  padding: 12px 14px;
+  padding: var(--row-pad) var(--card-pad);
   text-align: left;
   font: inherit;
   color: var(--ink);
   background: transparent;
   transition: background var(--dur-1) var(--ease-accel);
 }
-.settings-row + .settings-row {
+.settings-row + .settings-row,
+.icon-picker + .settings-row {
   border-top: 1px solid var(--border);
   /* The hairline is inset from the left so rows read as one ledger. */
-  border-image: linear-gradient(to right, transparent 14px, var(--border) 14px) 1;
+  border-image: linear-gradient(
+      to right,
+      transparent var(--card-pad),
+      var(--border) var(--card-pad)
+    )
+    1;
 }
 
 /* A settings card's free-form block (an open field under its rows): Settings,
@@ -11756,9 +12502,14 @@ button.vault-tag {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 12px 14px 14px;
+  padding: var(--row-pad) var(--card-pad) var(--card-pad);
   border-top: 1px solid var(--border);
-  border-image: linear-gradient(to right, transparent 14px, var(--border) 14px) 1;
+  border-image: linear-gradient(
+      to right,
+      transparent var(--card-pad),
+      var(--border) var(--card-pad)
+    )
+    1;
 }
 .settings-block .field {
   margin-bottom: 0;
@@ -11768,20 +12519,28 @@ button.vault-tag {
 }
 .writing-voice-shape {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 12px;
   width: 100%;
   text-align: left;
   padding: 10px 12px;
-  border: 1px dashed var(--accent);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--accent-soft);
+  background: var(--surface);
   color: var(--ink);
   transition:
     background var(--dur-1) var(--ease-standard),
     scale var(--press-out);
 }
+.writing-voice-shape-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
 .writing-voice-shape-title {
+  font-size: var(--text-4);
   font-weight: var(--weight-semibold);
   color: var(--accent);
 }
@@ -11851,10 +12610,15 @@ button.settings-row:active {
   color: var(--ink-soft);
   border-color: var(--border);
 }
+/* 'Built in' keeps its status slot (2026-09-04) but reads as a value, in the
+   ledger value's own size, weight and ink, so it never looks like a button. */
 .harbor-action.is-builtin {
   background: transparent;
-  color: var(--muted);
-  border-color: var(--border);
+  color: var(--ink-soft);
+  font-size: var(--text-4);
+  font-weight: var(--weight-regular);
+  border-color: transparent;
+  padding-inline: 0;
 }
 
 /* Harbor Mini "First Moves": tappable openers under the seeded greeting on a
@@ -11931,7 +12695,8 @@ button.settings-row:active {
 }
 .guide-setup .chev {
   color: var(--muted);
-  font-size: var(--text-6);
+  display: inline-flex;
+  margin-top: 0;
 }
 @media (prefers-reduced-motion: reduce) {
   .guide-setup {
@@ -11939,15 +12704,6 @@ button.settings-row:active {
   }
 }
 
-/* Onboarding: the quiet divider that marks the "go further" tier under the
-   Harbor Mini hero card, so four cards read as one front door and a second
-   tier, not five equal choices. */
-.paths-further-head {
-  margin: 16px 2px 2px;
-  font-size: var(--text-3);
-  font-weight: var(--weight-semibold);
-  color: var(--muted);
-}
 .settings-row-value {
   flex-shrink: 0;
   font-size: var(--text-4);
@@ -11993,18 +12749,33 @@ button.settings-row:active {
   text-wrap: pretty;
 }
 
-/* The switch: a track that tints, a knob that slides on transform. */
+/* The switch (D21, founder 2026-10-07): off is an outline, a quiet track
+   ringed on the control edge at 3:1, and on fills with the accent, so the
+   two read apart at a glance instead of by the knob's side. The knob carries
+   a hairline and a soft shadow so it holds on either track, and it slides on
+   transform. Disabled fades and flattens, so it never reads as off. Its own
+   transition list names the press's scale too, or it would shadow press-fb's
+   and the release would snap instead of springing back. */
 .switch {
   position: relative;
   flex-shrink: 0;
   width: 46px;
   height: 28px;
   border-radius: 999px;
-  background: var(--control-edge);
-  transition: background var(--dur-3) var(--ease-standard);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1.5px var(--control-edge);
+  transition:
+    background var(--dur-3) var(--ease-standard),
+    box-shadow var(--dur-3) var(--ease-standard),
+    scale var(--press-out);
 }
 .switch.on {
   background: var(--accent);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+.switch:disabled {
+  opacity: var(--disabled-opacity);
+  cursor: not-allowed;
 }
 .switch-knob {
   position: absolute;
@@ -12013,12 +12784,17 @@ button.settings-row:active {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: var(--bg-raised);
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.18);
+  background: var(--switch-knob);
+  box-shadow:
+    0 0 0 0.5px rgba(var(--shadow-rgb), 0.22),
+    0 1px 3px rgba(var(--shadow-rgb), 0.2);
   transition: transform var(--dur-4) var(--ease-standard);
 }
 .switch.on .switch-knob {
   transform: translateX(18px);
+}
+.switch:disabled .switch-knob {
+  box-shadow: 0 0 0 0.5px rgba(var(--shadow-rgb), 0.22);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -12053,17 +12829,56 @@ button.settings-row:active {
 }
 
 /* ---------------------------------------------------------------------------
+   The setup page's paths (D9, founder 2026-10-07): each idle path is one tap
+   target on the house card-as-button (.card-disclosure, press-fb), its title
+   the verb, one muted line under it, and the drawn chevron. Harbor's busy
+   states keep their plain cards and controls.
+   --------------------------------------------------------------------------- */
+.path-card-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.path-card-title {
+  font-size: var(--text-5);
+  font-weight: var(--weight-semibold);
+  color: var(--ink);
+}
+/* Harbor's busy and failed cards keep their controls (D9). Their steps sit
+   on the house rhythm: a 4px line under the title, 6px to the hint, and the
+   card's own inset above the button. */
+.path-card-state .progress-track {
+  margin-top: 4px;
+}
+.path-card-state .hint {
+  margin-top: 6px;
+}
+.path-card-state .btn.block {
+  margin-top: var(--row-pad);
+}
+.path-card-failed {
+  color: var(--danger);
+}
+
+/* ---------------------------------------------------------------------------
    The Chats room in the Claude app's shape (Creative Studio, 2026-09-02): a
    search pill, then one flat list of chats sorted by recency, hairline
-   separators inset to the text edge, no cards, no captions. The compose
-   icon in the nav bar and a plain first row are the two ways to a new chat.
+   separators inset to the text edge, no cards, no captions. On the phone the
+   compose icon in the nav bar and a plain first row are the two ways to a new
+   chat; at 900px and wider the bar's labelled New chat is the one, as New
+   project is on Projects (CS-13).
    --------------------------------------------------------------------------- */
 .screen-inner.chats {
   padding-top: 8px;
 }
 .chat-search {
+  /* Pinned under the room's sticky bar (61px plus the safe area, the bar's
+     one height), so a long list rides under the pill and the pill rides
+     under the bar, never hidden behind it. */
   position: sticky;
-  top: 0;
+  top: calc(61px + var(--safe-top));
   z-index: 2;
   padding: 4px 0 8px;
   background: linear-gradient(var(--bg) 78%, transparent);
@@ -12128,7 +12943,8 @@ button.settings-row:active {
   pointer-events: none;
   transition:
     opacity var(--dur-2) var(--ease-standard),
-    transform var(--dur-3) var(--ease-spring);
+    transform var(--dur-3) var(--ease-spring),
+    scale var(--press-out);
 }
 .chat-search.has-query .chat-search-clear {
   opacity: 1;
@@ -12136,13 +12952,13 @@ button.settings-row:active {
   pointer-events: auto;
 }
 .chat-list {
-  margin: 0 -16px;
+  margin: 0 calc(-1 * var(--gutter));
 }
 .chat-list .swipe-row,
 .chat-list .chat-swipe {
   border-bottom: none;
   animation: chat-row-in var(--dur-5) var(--ease-arrive) backwards;
-  animation-delay: var(--stagger, 0ms);
+  animation-delay: calc(var(--i, 0) * var(--stagger));
 }
 .chat-list .swipe-fore {
   background: var(--bg);
@@ -12164,11 +12980,11 @@ button.settings-row:active {
   will-change: transform;
 }
 .project-section .chat-list {
-  margin: 0 -14px;
+  margin: 0 calc(-1 * var(--card-pad));
 }
 .access-row {
   animation: chat-row-in var(--dur-5) var(--ease-arrive) backwards;
-  animation-delay: var(--stagger, 0ms);
+  animation-delay: calc(var(--i, 0) * var(--stagger));
 }
 .access-row.leaving {
   animation: access-row-out var(--dur-3) var(--ease-accel) forwards;
@@ -12187,18 +13003,6 @@ button.settings-row:active {
   }
 }
 
-/* The two context cards wear a small teal eyebrow so the person reads them as
-   what feeds the chat, not as buried settings. */
-.project-eyebrow {
-  display: block;
-  font-size: var(--text-1);
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--accent);
-  opacity: 0.85;
-  margin-bottom: 3px;
-}
 .project-instructions {
   margin-top: 10px;
   padding: 12px 14px;
@@ -12255,10 +13059,14 @@ button.settings-row:active {
   border: 1px solid var(--border);
   color: var(--ink);
   font-size: var(--text-4);
-  transition: background var(--dur-2) var(--ease-standard);
+  transition:
+    background var(--dur-2) var(--ease-standard),
+    scale var(--press-out);
 }
-.project-memory-link:hover {
-  background: var(--surface);
+@media (hover: hover) {
+  .project-memory-link:hover {
+    background: var(--surface);
+  }
 }
 .project-memory-link svg {
   color: var(--accent);
@@ -12271,7 +13079,7 @@ button.settings-row:active {
    The Projects room, in the shape of the Claude app's project list: one flat
    list of rows (a small tile, the name, a quiet line), no cards, no hairlines,
    and a dock that floats at the foot of the room with a round search button
-   and a dark New project pill. Search turns the dock into one field: the two
+   and a New project pill on the accent. Search turns the dock into one field: the two
    layers sit on one grid cell and cross-fade on transform and opacity, so
    nothing mounts or snaps. The room is a column so the dock sits at the
    bottom even under a short list, and sticks there while a long one scrolls.
@@ -12287,14 +13095,14 @@ button.settings-row:active {
   padding-bottom: 12px;
 }
 .project-list {
-  margin: 0 -16px;
+  margin: 0 calc(-1 * var(--gutter));
 }
 .project-row {
   display: flex;
   align-items: flex-start;
   gap: 14px;
   width: 100%;
-  padding: 12px 16px;
+  padding: var(--row-pad) var(--gutter);
   text-align: left;
   color: var(--ink);
   background: transparent;
@@ -12355,7 +13163,7 @@ button.settings-row:active {
 .projects-empty-title {
   margin: 0 0 6px;
   font-family: var(--font-display);
-  font-size: var(--text-6);
+  font-size: var(--text-7);
   font-weight: var(--weight-medium);
   color: var(--ink);
 }
@@ -12370,17 +13178,57 @@ button.settings-row:active {
   margin-top: 24px;
   text-align: center;
 }
+/* The desktop's New project (D11): the bar's action, the room's one primary,
+   with the drawn plus beside the words. The phone keeps the dock below. The
+   desktop's New chat in Chats and in a project room wears it too (CS-05,
+   CS-13), so the three rooms make a new one in one place. */
+.projects-bar-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+/* On the desktop the search pill sits on top of the list, on the line Chats'
+   pill sits on (900 is COMPACT_BREAKPOINT). */
+@media (min-width: 900px) {
+  .projects-screen > .screen-inner.projects {
+    padding-top: 8px;
+  }
+  /* Under the top pill the list sits on the pill's edge, not one gutter out
+     past it, so the active project's rule lands on the line the pill draws,
+     a breath under it, and the rows step in by a card's inset (CS-14). The
+     phone keeps its edge-to-edge list, where the rule meets the screen. */
+  .projects-screen .project-list {
+    margin: 4px 0 0;
+  }
+  .projects-screen .project-row {
+    padding-inline: var(--card-pad);
+  }
+  /* One room deeper, the same: a project's chats sit on the column's edge,
+     under its caption, so the open chat's rule lines up with the cards. */
+  .project-room-screen .project-chat-list {
+    margin: 0;
+  }
+  .project-room-screen .project-chat-row {
+    padding-inline: var(--card-pad);
+  }
+}
 .projects-dock {
   position: sticky;
   bottom: 0;
   z-index: 3;
   flex-shrink: 0;
   display: grid;
+  /* One track the width of the padded box: left to size itself, the search
+     field's own width pushed it 8px past the right gutter, so New project sat
+     off the edge the round button keeps. */
+  grid-template-columns: minmax(0, 1fr);
   width: 100%;
   max-width: 760px;
   margin: 0 auto;
-  padding: 18px max(16px, env(safe-area-inset-right)) calc(14px + var(--safe-bottom))
-    max(16px, env(safe-area-inset-left));
+  padding-block: 18px calc(14px + var(--safe-bottom));
+  padding-inline: max(var(--gutter), env(safe-area-inset-left))
+    max(var(--gutter), env(safe-area-inset-right));
   /* The list fades under the dock rather than meeting it at an edge. */
   background: linear-gradient(transparent, var(--bg) 42%);
   pointer-events: none;
@@ -12421,8 +13269,12 @@ button.settings-row:active {
   color: var(--ink);
   background: var(--bg-raised);
   border: 1px solid var(--border);
-  box-shadow: 0 6px 18px rgba(var(--shadow-rgb), 0.1);
+  box-shadow: var(--elev-2);
 }
+/* The persistent create action (D8, founder 2026-10-07) wears the accent, the
+   primary's colour, in its Claude shape and place: deep water in light,
+   turquoise with abyss text in Nightshore, never a paper slab on a dark
+   screen. Ink means text only. The project room's New chat pill shares it. */
 .projects-dock-new {
   display: inline-flex;
   align-items: center;
@@ -12432,9 +13284,9 @@ button.settings-row:active {
   border-radius: 999px;
   font-size: var(--text-5);
   font-weight: var(--weight-semibold);
-  color: var(--bg);
-  background: var(--ink);
-  box-shadow: 0 6px 18px rgba(var(--shadow-rgb), 0.18);
+  color: var(--accent-ink);
+  background: var(--accent);
+  box-shadow: var(--elev-2);
 }
 .projects-dock-field {
   flex: 1;
@@ -12448,7 +13300,7 @@ button.settings-row:active {
   color: var(--muted);
   background: var(--bg-raised);
   border: 1px solid var(--border);
-  box-shadow: 0 6px 18px rgba(var(--shadow-rgb), 0.1);
+  box-shadow: var(--elev-2);
 }
 .projects-dock-field:focus-within {
   color: var(--accent);
@@ -12525,10 +13377,10 @@ button.settings-row:active {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
   height: 48px;
-  padding: 0 14px;
+  padding: 0 10px;
   border-radius: 999px;
   border: 1px solid var(--border-strong);
   background: transparent;
@@ -12536,6 +13388,15 @@ button.settings-row:active {
   font-size: var(--text-5);
   font-weight: var(--weight-semibold);
   white-space: nowrap;
+  overflow: hidden;
+}
+/* The glyph keeps its drawn size; on a phone narrower than 375 the label
+   gives way with an ellipsis instead of crushing the glyph to a dot. */
+.project-pill > svg {
+  flex-shrink: 0;
+}
+.project-pill > span {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -12560,14 +13421,14 @@ button.settings-row:active {
   line-height: 1.45;
 }
 .project-chat-list {
-  margin: 0 -16px;
+  margin: 0 calc(-1 * var(--gutter));
 }
 .project-chat-row {
   display: flex;
   align-items: flex-start;
   gap: 14px;
   width: 100%;
-  padding: 12px 16px;
+  padding: var(--row-pad) var(--gutter);
   text-align: left;
   color: var(--ink);
   background: transparent;
@@ -12604,7 +13465,7 @@ button.settings-row:active {
   vertical-align: middle;
 }
 .project-chat-sub {
-  font-size: var(--text-4);
+  font-size: var(--text-3);
   color: var(--muted);
 }
 .project-room-dock {
@@ -12617,8 +13478,9 @@ button.settings-row:active {
   width: 100%;
   max-width: 760px;
   margin: 0 auto;
-  padding: 18px max(16px, env(safe-area-inset-right)) calc(14px + var(--safe-bottom))
-    max(16px, env(safe-area-inset-left));
+  padding-block: 18px calc(14px + var(--safe-bottom));
+  padding-inline: max(var(--gutter), env(safe-area-inset-left))
+    max(var(--gutter), env(safe-area-inset-right));
   background: linear-gradient(transparent, var(--bg) 42%);
   pointer-events: none;
 }
@@ -12674,8 +13536,9 @@ button.settings-row:active {
   color: var(--cloud);
 }
 
-/* A teal uppercase eyebrow over a group (Crew's advisors). */
-.stack-eyebrow {
+/* The one eyebrow over a title or a group, for every room (Creative Studio,
+   2026-10-07). The rooms' own eyebrows fold into it. */
+.eyebrow {
   display: block;
   font-size: var(--text-2);
   font-weight: var(--weight-semibold);
@@ -12718,17 +13581,21 @@ button.settings-row:active {
   color: var(--muted);
 }
 .stack-status-note {
-  margin: 8px 14px 0;
+  margin: 8px var(--card-pad) 0;
   font-size: var(--text-2);
   color: var(--muted);
   line-height: 1.4;
   text-wrap: pretty;
 }
+/* The step down while the reach pill waits for a computer (D1): a quiet link
+   on the note's edge, one step over the note's size. */
+.stack-status-change {
+  display: block;
+  margin: 6px var(--card-pad) 0;
+  font-size: var(--text-3);
+}
 .stack-off {
   color: var(--muted);
-}
-.stack-place {
-  padding: 7px 14px;
 }
 .settings-row .stack-select {
   margin-top: 6px;
@@ -12783,21 +13650,39 @@ button.settings-row:active {
   position: absolute;
   inset: -16px -20px auto -20px;
   height: 200px;
-  background: radial-gradient(120% 80% at 16% 0%, var(--accent-soft), transparent 60%);
+  /* The densest tone sits up by the kicker, not behind the heading. In light
+     the tint is softened, since a full --accent-soft read as a grey smear on
+     paper; Nightshore keeps its full water below. */
+  background: radial-gradient(
+    120% 80% at 16% 0%,
+    color-mix(in srgb, var(--accent-soft) 60%, transparent),
+    transparent 60%
+  );
+  /* The wash rises out of the paper over 56px and fades over the 20px past
+     the column, so it has no edge anywhere. #000 here is a mask stop, not a
+     colour. */
+  -webkit-mask-image:
+    linear-gradient(to bottom, transparent, #000 56px),
+    linear-gradient(to right, transparent, #000 20px, #000 calc(100% - 20px), transparent);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(to bottom, transparent, #000 56px),
+    linear-gradient(to right, transparent, #000 20px, #000 calc(100% - 20px), transparent);
+  mask-composite: intersect;
   pointer-events: none;
   z-index: 0;
+}
+:root[data-theme='dark'] .vault-onboard-wash {
+  background: radial-gradient(120% 80% at 16% 0%, var(--accent-soft), transparent 60%);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .vault-onboard-wash {
+    background: radial-gradient(120% 80% at 16% 0%, var(--accent-soft), transparent 60%);
+  }
 }
 .vault-onboard-body {
   position: relative;
   z-index: 1;
-}
-.vault-kicker {
-  display: block;
-  font-size: var(--text-2);
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--accent);
 }
 .vault-onboard-title {
   font-family: var(--font-display);
@@ -12822,8 +13707,7 @@ button.settings-row:active {
   margin-top: 18px;
 }
 .vault-onboard-actions .btn {
-  flex: 1 1 auto;
-  min-width: 160px;
+  flex: 1 1 200px;
 }
 .vault-how {
   display: flex;
@@ -12838,7 +13722,7 @@ button.settings-row:active {
   border-radius: var(--radius);
   background: var(--bg-raised);
   border: 1px solid var(--border);
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  box-shadow: var(--elev-1);
   animation: msg-in var(--dur-4) var(--ease-arrive) backwards;
 }
 .vault-how-item:nth-child(1) {
@@ -12879,20 +13763,29 @@ button.settings-row:active {
   display: block;
   width: 100%;
   min-height: 56px;
-  padding: 12px 16px;
+  padding: var(--row-pad) var(--gutter);
   text-align: left;
   font: inherit;
   position: relative;
-  transition: background var(--dur-1) var(--ease-accel);
+  transition:
+    background var(--dur-1) var(--ease-accel),
+    scale var(--press-out);
 }
 .chat-list .chat-row::after {
   content: '';
   position: absolute;
-  left: 16px;
+  left: var(--gutter);
   right: 0;
   bottom: 0;
   height: 1px;
   background: var(--border);
+}
+/* On the desktop the separators stop where the search pill does (900 is
+   COMPACT_BREAKPOINT). */
+@media (min-width: 900px) {
+  .chat-list .chat-row::after {
+    right: var(--gutter);
+  }
 }
 .chat-list .chat-row:active {
   background: var(--surface);
@@ -12934,7 +13827,9 @@ button.settings-row:active {
   transform: rotate(90deg) scale(0.92);
 }
 /* Where the chat's model ran, in the house reach colours (teal local, amber
-   cloud). A faint ring when the reach is not known yet, never a guess. */
+   cloud). Nothing is drawn when the reach is not known yet, never a guess,
+   and never the hollow ring, which means Offline in the Status sheet; the
+   dot takes no space then, so the second line starts on the title's edge. */
 .chat-reach {
   display: inline-block;
   width: 6px;
@@ -12948,9 +13843,6 @@ button.settings-row:active {
 }
 .chat-reach-cloud {
   background: var(--cloud);
-}
-.chat-reach-unknown {
-  box-shadow: inset 0 0 0 1px var(--border-strong);
 }
 /* A search hit: marked softly in the accent, never a highlighter yellow. */
 .chat-hit {
@@ -12978,6 +13870,18 @@ button.settings-row:active {
   color: var(--muted);
   animation: chat-row-in var(--dur-6) var(--ease-arrive) backwards;
   animation-delay: var(--dur-5);
+}
+/* A finger swipes and holds; a mouse drags and right-clicks. */
+.chat-hint-pointer {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .chat-hint-touch {
+    display: none;
+  }
+  .chat-hint-pointer {
+    display: inline;
+  }
 }
 .chat-row-remote {
   display: inline-block;
@@ -13012,6 +13916,9 @@ button.settings-row:active {
   color: var(--muted);
   margin: 0;
 }
+.chat-empty .btn {
+  margin-top: 16px;
+}
 @media (prefers-reduced-motion: reduce) {
   .chat-list .swipe-row,
   .chat-list .chat-swipe,
@@ -13043,7 +13950,7 @@ button.settings-row:active {
       color-mix(in srgb, var(--hero-local-glow) 55%, transparent),
       transparent 60%
     ),
-    linear-gradient(145deg, var(--local-deep), var(--hero-local-end));
+    linear-gradient(145deg, var(--hero-local-start), var(--hero-local-end));
   box-shadow: 0 12px 34px -18px rgba(var(--shadow-rgb), 0.55);
   margin-bottom: 22px;
   animation: room-in var(--dur-6) var(--ease-arrive) backwards;
@@ -13071,10 +13978,12 @@ button.settings-row:active {
   margin: 12px 0 0;
   text-wrap: pretty;
 }
-.cc-hero .btn.primary {
+.cc-hero > .btn.primary {
   margin-top: 14px;
+}
+.cc-hero .btn.primary {
   background: var(--on-fill);
-  color: var(--local-deep);
+  color: var(--hero-local-start);
 }
 
 .cc-stats {
@@ -13223,7 +14132,7 @@ button.settings-row:active {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  box-shadow: var(--elev-1);
 }
 .cc-row {
   display: flex;
@@ -13244,7 +14153,7 @@ button.settings-row:active {
   border: 1px solid var(--attention-soft);
   border-radius: var(--radius);
   margin-bottom: 8px;
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  box-shadow: var(--elev-1);
 }
 .cc-row-main {
   flex: 1;
@@ -13281,11 +14190,21 @@ button.settings-row:active {
   margin-right: 4px;
 }
 
-/* The roster: a responsive grid of members, each with its presence line. */
+/* The crew, in one line under its head (founder, D17, 2026-10-07): the
+   members live in Crew, behind Manage. */
+.cc-crew-count {
+  color: var(--ink-soft);
+  font-size: var(--text-4);
+}
+/* A responsive grid of cards, each with its presence line: the scheduled jobs
+   of a current's own box, and the current itself as a member. */
 .cc-roster {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 10px;
+}
+.cc-roster-current {
+  margin-top: 10px;
 }
 .cc-member {
   display: flex;
@@ -13295,14 +14214,8 @@ button.settings-row:active {
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  box-shadow: var(--elev-1);
   transition: border-color var(--dur-4) var(--ease-standard);
-}
-.cc-member.working {
-  border-color: color-mix(in srgb, var(--local) 35%, transparent);
-}
-.cc-member.waiting {
-  border-color: color-mix(in srgb, var(--attention) 40%, transparent);
 }
 .cc-member-body {
   min-width: 0;
@@ -13432,7 +14345,8 @@ button.settings-row:active {
   transition:
     background var(--dur-3) var(--ease-standard),
     color var(--dur-3) var(--ease-standard),
-    border-color var(--dur-3) var(--ease-standard);
+    border-color var(--dur-3) var(--ease-standard),
+    scale var(--press-out);
 }
 .cc-day.on {
   background: var(--accent-soft);
@@ -13474,7 +14388,8 @@ button.settings-row:active {
   transition:
     background var(--dur-3) var(--ease-standard),
     color var(--dur-3) var(--ease-standard),
-    box-shadow var(--dur-3) var(--ease-standard);
+    box-shadow var(--dur-3) var(--ease-standard),
+    scale var(--press-out);
 }
 .cc-segment-btn.on {
   background: var(--bg-raised);
@@ -13511,7 +14426,7 @@ button.settings-row:active {
       color-mix(in srgb, var(--hero-local-glow) 55%, transparent),
       transparent 60%
     ),
-    linear-gradient(145deg, var(--local-deep), var(--hero-local-end));
+    linear-gradient(145deg, var(--hero-local-start), var(--hero-local-end));
   box-shadow: 0 10px 30px -16px rgba(var(--shadow-rgb), 0.5);
 }
 .crew-command-door-body {
@@ -13519,7 +14434,8 @@ button.settings-row:active {
   min-width: 0;
   /* The kicker, title, and sub are spans; without a column they flow inline
      and run together (and their margin-top is ignored). A column stacks them
-     and lets the sub ellipsis, so nothing overlaps or overflows the door. */
+     and lets the sub wrap to two lines, so nothing overlaps or overflows the
+     door. */
   display: flex;
   flex-direction: column;
 }
@@ -13552,9 +14468,10 @@ button.settings-row:active {
   font-size: var(--text-3);
   opacity: 0.82;
   margin-top: 3px;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 .crew-command-door .cc-row-chevron {
   border-color: color-mix(in srgb, var(--on-fill) 80%, transparent);
@@ -13566,6 +14483,75 @@ button.settings-row:active {
   margin-top: 6px;
   color: var(--ink-soft);
   font-size: var(--text-2);
+}
+/* A crew card's one line for a person: when it is called, or its persona,
+   held to two lines with a real ellipsis. */
+.crew-card-line {
+  margin-top: 6px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+/* Before a computer is paired, with no routine yet, the door to Crew command
+   is a plain card row (founder, D17, 2026-10-07): the shared disclosure card,
+   its title over one line, and the drawn chevron. */
+.crew-command-row {
+  margin: 4px 0 14px;
+}
+.crew-command-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* In Nightshore the ghost's surface fill is the door card's own, so the two
+   read as twins: there the action is an outline on the page, and the door
+   stays the only card (CMO-11). */
+:root[data-theme='dark'] .crew-new.btn.ghost {
+  background: transparent;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .crew-new.btn.ghost {
+    background: transparent;
+  }
+}
+
+/* A crew card is the Edit tap, hosted by a swipe row that deletes (founder,
+   D18, 2026-10-07). The row clips the card's corners and carries its resting
+   depth, so the shadow is not cut off by the clip; the card keeps the rest. */
+.crew-card-swipe {
+  margin-top: 12px;
+  border-bottom: none;
+  border-radius: var(--radius);
+  box-shadow: var(--elev-1);
+}
+/* The card is the whole foreground, so the swipe layer paints nothing of its
+   own: a press that scales the card shows the page around it, never a band
+   of the layer's fill. */
+.crew-card-swipe > .swipe-fore {
+  background: none;
+}
+.crew-card {
+  display: block;
+  width: 100%;
+  margin-bottom: 0;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: none;
+}
+/* The row clips at the card's edge, so the keyboard ring is drawn inside. */
+.crew-card:focus-visible {
+  outline-offset: -2px;
+}
+.crew-card-meta {
+  display: block;
+}
+/* The editor's quiet way to delete: danger words, no fill. */
+.crew-editor-delete {
+  color: var(--danger);
 }
 
 @media (max-width: 480px) {
@@ -13616,13 +14602,18 @@ button.settings-row:active {
   animation: cc-row-in var(--dur-4) var(--ease-arrive) backwards;
 }
 /* Swipe-to-delete on a routine card: the row hosts the card, the card keeps
-   its own buttons. */
+   its own buttons. Like a crew card (D18), the row carries the resting depth
+   and no hairline of its own, so its clip neither cuts the card's shadow nor
+   draws a second edge under it. */
 .cc-routine-swipe {
   margin-bottom: 12px;
+  border-bottom: none;
   border-radius: var(--radius);
+  box-shadow: var(--elev-1);
 }
 .cc-routine-swipe .cc-routine {
   margin-bottom: 0;
+  box-shadow: none;
 }
 .cc-stat-num.small {
   font-variant-numeric: tabular-nums;
@@ -13686,11 +14677,11 @@ button.settings-row:active {
   gap: 8px;
   margin-top: 14px;
 }
-.cc-hero-actions .btn.primary {
-  background: var(--on-fill);
-  color: var(--local-deep);
+.cc-hero-actions .btn {
+  flex: 1 1 200px;
 }
 .cc-hero-actions .btn.ghost {
+  background: color-mix(in srgb, var(--on-fill) 12%, transparent);
   color: var(--on-fill);
   border-color: color-mix(in srgb, var(--on-fill) 40%, transparent);
 }
@@ -13705,7 +14696,7 @@ button.settings-row:active {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04);
+  box-shadow: var(--elev-1);
 }
 .cc-dormant-item {
   display: flex;
@@ -13945,6 +14936,7 @@ button.settings-row:active {
 .voice-row-check {
   color: var(--accent);
   font-weight: var(--weight-semibold);
+  display: inline-flex;
 }
 
 /* ---------------------------------------------------------------------------
@@ -14213,7 +15205,7 @@ button.settings-row:active {
   padding: 2px 7px;
 }
 .settings-group-intro {
-  margin: -2px 14px 8px;
+  margin: -2px var(--card-pad) 8px;
   font-size: var(--text-2);
   color: var(--muted);
   line-height: 1.4;
@@ -14286,6 +15278,10 @@ button.settings-row:active {
 }
 .setup-actions-row .btn {
   flex: 1;
+  /* Equal halves keep a verb label on one line on a phone: Set up OpenShore
+     (D4) needs 131px, and a 16px inset left it 119 to 126 at 375 to 390
+     wide. The label sits centred, so the narrower inset never shows. */
+  padding-inline: 8px;
 }
 .setup-actions-progress {
   margin-top: 4px;
@@ -14529,6 +15525,19 @@ button.settings-row:active {
   stroke: var(--border-strong);
   stroke-width: 0.6;
 }
+/* The default ink tile sits at about 1.3:1 on the abyss, so in Nightshore it
+   takes the White tile's hairline. :where keeps it below the icon picker's own
+   stroke. */
+:where(:root[data-theme='dark']:not([data-icon])) .brand-mark .bm-tile {
+  stroke: var(--border-strong);
+  stroke-width: 0.6;
+}
+@media (prefers-color-scheme: dark) {
+  :where(:root:not([data-theme='light']):not([data-icon])) .brand-mark .bm-tile {
+    stroke: var(--border-strong);
+    stroke-width: 0.6;
+  }
+}
 
 /* The app icon picker: three tiles in a row, the chosen one ringed in the
    accent. The ring fades in on the tokens; the tile answers the press. */
@@ -14613,16 +15622,18 @@ button.settings-row:active {
   transition:
     background var(--dur-1) var(--ease-standard),
     border-color var(--dur-1) var(--ease-standard),
-    transform var(--press-out);
+    scale var(--press-out);
 }
 
-.dock-path:hover {
-  background: var(--surface);
-  border-color: var(--border-strong);
+@media (hover: hover) {
+  .dock-path:hover {
+    background: var(--surface);
+    border-color: var(--border-strong);
+  }
 }
 
 .dock-path:active {
-  transform: scale(0.98);
+  scale: var(--press-scale-row);
 }
 
 .dock-path-active {
@@ -14666,7 +15677,6 @@ button.settings-row:active {
 
 .dock-command .btn {
   flex: none;
-  padding: 6px 12px;
 }
 
 /* Choosing a live provider's models (Cloud Connections). */

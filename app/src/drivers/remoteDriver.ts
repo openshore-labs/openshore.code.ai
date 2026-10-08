@@ -8,6 +8,7 @@ import type {
   DaemonSessionInfo,
   DriverEvent,
   HarnessCurrentsHandle,
+  OfflineReason,
   PermissionMode,
   SessionCreateVaultFields,
   VaultOverrides,
@@ -28,6 +29,8 @@ import type {
 } from './types.js';
 import { HUB_NO_ANSWER, PackLocalOnlyMarker } from './types.js';
 import { streamingFetch } from '../lib/streamingFetch.js';
+import { thisDeviceNoun } from '../lib/deviceNoun.js';
+import { computerOfflineOf } from '../state/offlineOps.js';
 
 export { HUB_NO_ANSWER };
 export type { HubLinkState };
@@ -115,9 +118,13 @@ function roleOf(body: unknown): HubRole | undefined {
   return role === 'admin' || role === 'member' ? role : undefined;
 }
 
-export async function daemonHealth(
-  target: DaemonTarget,
-): Promise<{ ok: boolean; detail: string; role?: HubRole; kind?: DockKind }> {
+export async function daemonHealth(target: DaemonTarget): Promise<{
+  ok: boolean;
+  detail: string;
+  role?: HubRole;
+  offline?: OfflineReason;
+  kind?: DockKind;
+}> {
   try {
     const res = await fetch(`${target.baseUrl}/health`, {
       headers: headers(target),
@@ -137,13 +144,17 @@ export async function daemonHealth(
       };
     }
     if (!res.ok) return { ok: false, detail: `Your computer answered ${res.status}.` };
-    const body = await res.json().catch(() => ({}));
+    const body: unknown = await res.json().catch(() => ({}));
     const role = roleOf(body);
+    // Desktop Offline: the computer says when it works offline, and why.
+    const offline = computerOfflineOf(body);
+    // What it is, a server or the desktop app (connect-anywhere, 2026-10-07).
     const kind = dockKindOf(body);
     return {
       ok: true,
       detail: kind === 'server' ? 'Docked to your server.' : 'Connected to your computer.',
       ...(role ? { role } : {}),
+      ...(offline ? { offline } : {}),
       ...(kind ? { kind } : {}),
     };
   } catch {
@@ -597,7 +608,10 @@ export class RemoteDriver implements ChatDriver {
           { headers: headers(this.target), signal: this.abortStream.signal },
         );
         if (res.status === 401 || res.status === 403) {
-          this.emitTerminal('Your computer rejected this phone. Dock again from Menu, Computer.');
+          // The door's own words: the person scans a fresh code in Computer.
+          this.emitTerminal(
+            `Your computer turned down ${thisDeviceNoun()}. Connect your computer again from Computer.`,
+          );
           return;
         }
         if (res.status === 404) {
@@ -677,11 +691,16 @@ export class RemoteDriver implements ChatDriver {
     return () => this.sinks.delete(sink);
   }
 
-  send(text: string): void {
+  /** Images do not ride this route. A message marked local-only (a private
+   *  plan's step, CX and CMO 2026-10-08, J) keeps its mark on the wire, so
+   *  the daemon holds the task to the engine's D5 rules; an older daemon
+   *  ignores the field, which is why a step goes marked only to a daemon
+   *  that says it takes one (GET /stack `acceptsLocalOnly`). */
+  send(text: string, _attachments?: unknown, opts: { localOnly?: true } = {}): void {
     void fetch(`${this.target.baseUrl}/sessions/${this.sessionId}/input`, {
       method: 'POST',
       headers: { ...headers(this.target), 'content-type': 'application/json' },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, ...(opts.localOnly ? { localOnly: true } : {}) }),
       // A blackholed tailnet (Tailscale toggled off on the phone) otherwise
       // hangs this for the OS default minute with no feedback.
       signal: AbortSignal.timeout(10_000),

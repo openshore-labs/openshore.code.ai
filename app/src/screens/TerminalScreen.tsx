@@ -16,22 +16,24 @@ import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
-import { exitLine, terminalTheme } from '../components/terminalTheme.js';
+import { NO_TERMINAL_LINE, exitLine, terminalTheme } from '../components/terminalTheme.js';
 import { useApp, driverFor } from '../state/store.js';
 import { computerName, sourceLabel } from '../state/types.js';
+import { useCompact } from '../hooks/useCompact.js';
+import { Sheet } from '../components/Sheet.js';
 
 // Keys a soft keyboard cannot send. A separate Ctrl toggle arms the next letter
 // as its control code. Each sends the raw bytes a terminal expects.
-const ACCESSORY_KEYS: Array<{ label: string; send: string }> = [
+const ACCESSORY_KEYS: Array<{ label: string; send: string; aria?: string }> = [
   { label: 'Esc', send: '\x1b' },
   { label: 'Tab', send: '\t' },
   { label: '|', send: '|' },
   { label: '~', send: '~' },
   { label: '/', send: '/' },
-  { label: 'up', send: '\x1b[A' },
-  { label: 'down', send: '\x1b[B' },
-  { label: 'left', send: '\x1b[D' },
-  { label: 'right', send: '\x1b[C' },
+  { label: '↑', send: '\x1b[A', aria: 'Up arrow' },
+  { label: '↓', send: '\x1b[B', aria: 'Down arrow' },
+  { label: '←', send: '\x1b[D', aria: 'Left arrow' },
+  { label: '→', send: '\x1b[C', aria: 'Right arrow' },
 ];
 
 type Status = 'connecting' | 'ready' | 'unavailable' | 'exited';
@@ -47,6 +49,8 @@ export function TerminalScreen() {
   const [status, setStatus] = useState<Status>('connecting');
   const [message, setMessage] = useState('');
   const [ctrlArmed, setCtrlArmed] = useState(false);
+  const compact = useCompact();
+  const [ending, setEnding] = useState(false);
 
   useEffect(() => {
     ctrlRef.current = ctrlArmed;
@@ -57,9 +61,7 @@ export function TerminalScreen() {
     const driver = activeId ? driverFor(activeId) : undefined;
     if (!el || !driver?.openTerminal) {
       setStatus('unavailable');
-      setMessage(
-        'This conversation has no terminal. Open a repository on your computer to use one.',
-      );
+      setMessage(NO_TERMINAL_LINE);
       return;
     }
 
@@ -225,19 +227,36 @@ export function TerminalScreen() {
   return (
     <div className="shell-main terminal-screen">
       <header className="topbar">
-        <button className="icon-btn" onClick={() => setView('chat')} aria-label="Back to chat">
-          Back
+        <button
+          type="button"
+          className="icon-btn back-btn press-fb"
+          onClick={() => setView('chat')}
+          aria-label="Back to Chat"
+          title="Back to Chat"
+        >
+          <span className="back-chevron" aria-hidden="true" />
+          {!compact ? <span className="back-label">Chat</span> : null}
         </button>
         <div className="topbar-title">
           Terminal
           <div className="topbar-sub">{conv ? sourceLabel(conv.source) : computerName()}</div>
         </div>
         {status === 'ready' ? (
-          <button className="icon-btn" onClick={endTerminal} aria-label="End terminal">
+          <button
+            type="button"
+            className="btn quiet sm press-fb"
+            onClick={() => setEnding(true)}
+            aria-label="End terminal"
+          >
             End
           </button>
         ) : status === 'exited' ? (
-          <button className="icon-btn" onClick={endTerminal} aria-label="Close terminal">
+          <button
+            type="button"
+            className="btn quiet sm press-fb"
+            onClick={endTerminal}
+            aria-label="Close terminal"
+          >
             Close
           </button>
         ) : (
@@ -269,6 +288,7 @@ export function TerminalScreen() {
                   key={k.label}
                   type="button"
                   className="accessory-key press-fb"
+                  aria-label={k.aria}
                   onClick={() => sendKeys(k.send)}
                 >
                   {k.label}
@@ -278,6 +298,26 @@ export function TerminalScreen() {
           ) : null}
         </>
       )}
+
+      <Sheet open={ending} onClose={() => setEnding(false)} variant="confirm">
+        <h3>End this terminal?</h3>
+        <p>Anything running in it stops.</p>
+        <div className="confirm-row">
+          <button type="button" className="btn ghost press-fb" onClick={() => setEnding(false)}>
+            Keep
+          </button>
+          <button
+            type="button"
+            className="btn danger press-fb"
+            onClick={() => {
+              setEnding(false);
+              endTerminal();
+            }}
+          >
+            End
+          </button>
+        </div>
+      </Sheet>
     </div>
   );
 }

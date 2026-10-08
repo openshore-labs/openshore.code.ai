@@ -26,6 +26,7 @@ import { restampForSkip, type InkStamp } from '../lib/inkSwell.js';
 import { hapticCommit, hapticTick } from '../lib/haptics.js';
 import { offersLocalFallback } from '../lib/usageFallback.js';
 import { isFailedStop, isSetupFailure, pointsAtConnections } from '../lib/chatRescue.js';
+import { offlineNeedsLocalModel } from 'os-code/protocol';
 import { Markdown } from './Markdown.js';
 import { ToolCard } from './ToolCard.js';
 import { CommandCard } from './CommandCard.js';
@@ -34,6 +35,7 @@ import { ThinkingBlock } from './ThinkingBlock.js';
 import { PlanCard } from './PlanCard.js';
 import { TrustCard } from './TrustCard.js';
 import { WindowCutCard } from './WindowCutCard.js';
+import { ImageReaderOffer, type ImageOfferContext } from './ImageReaderOffer.js';
 import { ClarifyCard } from './ClarifyCard.js';
 import { ChangedFilesCard } from './ChangedFilesCard.js';
 import { VerifyPill } from './VerifyPill.js';
@@ -44,6 +46,7 @@ import { Icon } from './Icon.js';
 import { Keyboard } from '@capacitor/keyboard';
 import { isPhone } from '../lib/platform.js';
 import { REWIND_ACTION } from '../state/rewindOps.js';
+import { appActionsAsked, type AppActionKey } from '../lib/appActions.js';
 
 /** The quiet line under a parked message while it waits to go. */
 export const PARKED_WAITING = 'Waiting to send';
@@ -140,11 +143,15 @@ function AssistantBubble({
   onReveal,
   after,
   paced,
+  actions,
 }: {
   text: string;
   streaming: boolean;
   model?: string;
   showModel: boolean;
+  /** The settings this chat's own turns asked for: only a proposal for one
+   *  of them shows the Add to Settings card (lib/appActions.ts). */
+  actions: readonly AppActionKey[];
   /** Called as revealed text grows, so a pinned thread follows the typing. */
   onReveal?: () => void;
   /** What follows the message (a guided step's buttons, a way back in). It
@@ -186,7 +193,7 @@ function AssistantBubble({
           <Markdown text={text} ink={ink && paced ? { stamp: ink, kind: paced } : undefined} />
         </div>
       ) : (
-        <Markdown text={shown} streaming={live} fade={fading} actions />
+        <Markdown text={shown} streaming={live} fade={fading} actions={actions} />
       )}
     </div>
   );
@@ -301,9 +308,12 @@ export function MessageList({
   onDismissTrust,
   onGiveMoreRoom,
   onOpenStack,
+  onInstallLocal,
+  onFollowConnection,
   onUnqueue,
   onOpenPackNote,
   onSaveHandoff,
+  imageOffer,
   afterItem,
   parked,
   onRetryParked,
@@ -316,7 +326,8 @@ export function MessageList({
   /** Open the model picker, the way on when nothing else here can answer. */
   onPickModel?: () => void;
   /** Open Cloud Connections, offered when the stop's fix lives there. */
-  onOpenConnections?: () => void;
+  /** Gets the stop's message, so a workspace stop can open its field. */
+  onOpenConnections?: (message: string) => void;
   /** Open the Local LLMs sheet, offered when a turn stopped for no account usage. */
   onSwitchToLocal?: () => void;
   /** Resend the last message after an error. */
@@ -337,6 +348,13 @@ export function MessageList({
   onGiveMoreRoom?: (itemId: string) => void;
   /** Open the Stack room (the truncation card, with no memory to spare). */
   onOpenStack?: () => void;
+  /** Desktop Offline: offline with no model on this computer, the stop's one
+   *  door gets DeepBlue (absent while it cannot start, such as with no
+   *  network); `label` is its words, the download's progress once it runs. */
+  onInstallLocal?: { label: string; busy: boolean; run: () => void };
+  /** With Offline chosen, the stop card's way back: follow the connection
+   *  again, so the cloud models answer (Desktop Offline). */
+  onFollowConnection?: () => void;
   /** Answer a clarifying question (the plan-first picker): sends the reply. */
   onClarifyPick?: (text: string) => void;
   /** Drop a queued message (tap on its bubble). */
@@ -353,12 +371,22 @@ export function MessageList({
   /** "Save to Vault" under a switch's handoff note (J12): the person's own
    *  one-tap write, resolving to the note's path once saved. */
   onSaveHandoff?: (itemId: string) => Promise<string | undefined>;
+  /** What the image offer card needs (a Stack chat with nothing that reads
+   *  images): whether something reads them now, where the local model runs,
+   *  and the door to each guide. */
+  imageOffer?: ImageOfferContext;
   /** Extra content rendered right under one assistant message, keyed by its
    *  id: Harbor Lite's greeting carries the setup button this way. */
   afterItem?: (id: string) => ReactNode;
 }) {
   const threadRef = useRef<HTMLDivElement>(null);
   const rewindable = new Set(rewindIds ?? []);
+  // The contract's own gate (lib/appActions.ts): a reply's proposal is a card
+  // only for a setting this chat's own turns asked for, so text in a chat
+  // that never asked (a page the agent quoted, a cloud reply) stays code.
+  const actionsAsked = appActionsAsked(
+    thread.items.flatMap((i) => (i.kind === 'user' && !i.withheld ? [i.text] : [])),
+  );
   const pinnedRef = useRef(true);
   const prevCount = useRef(0);
   const [unseen, setUnseen] = useState(0);
@@ -535,6 +563,7 @@ export function MessageList({
                   onReveal={followReveal}
                   after={afterItem?.(item.id)}
                   paced={item.paced}
+                  actions={actionsAsked}
                 />
               );
             }
@@ -587,6 +616,10 @@ export function MessageList({
                   onOpenStack={onOpenStack}
                 />
               );
+            case 'image-offer':
+              return imageOffer ? (
+                <ImageReaderOffer key={item.id} item={item} {...imageOffer} />
+              ) : null;
             case 'verify':
               return (
                 <VerifyPill
@@ -661,9 +694,37 @@ export function MessageList({
                 <div key={item.id} className="msg-stopped">
                   {item.message}
                   <div className="msg-stopped-actions">
-                    {/* Every failed turn leaves a way to keep talking: carry the
-                        chat to a brain that can answer, or pick one. */}
-                    {isFailedStop(item.message) && isLatest && onRescue && rescueLabel ? (
+                    {/* Offline with no model on this computer (Desktop
+                        Offline): the one door is a model that answers here. */}
+                    {offlineNeedsLocalModel(item.message) ? (
+                      isLatest && (onInstallLocal || onFollowConnection) ? (
+                        <>
+                          {onInstallLocal ? (
+                            <button
+                              type="button"
+                              className="msg-stopped-action press-fb"
+                              disabled={onInstallLocal.busy}
+                              onClick={onInstallLocal.run}
+                            >
+                              {onInstallLocal.label}
+                            </button>
+                          ) : null}
+                          {/* Offline was the person's choice: the other way
+                              forward is to let the cloud models answer. */}
+                          {onFollowConnection ? (
+                            <button
+                              type="button"
+                              className="msg-stopped-action press-fb"
+                              onClick={onFollowConnection}
+                            >
+                              Follow the connection
+                            </button>
+                          ) : null}
+                        </>
+                      ) : null
+                    ) : /* Every failed turn leaves a way to keep talking: carry
+                        the chat to a brain that can answer, or pick one. */
+                    isFailedStop(item.message) && isLatest && onRescue && rescueLabel ? (
                       <button
                         type="button"
                         className="msg-stopped-action press-fb"
@@ -687,7 +748,7 @@ export function MessageList({
                       <button
                         type="button"
                         className="msg-stopped-action ghost press-fb"
-                        onClick={onOpenConnections}
+                        onClick={() => onOpenConnections(item.message)}
                       >
                         Open Cloud Connections
                       </button>

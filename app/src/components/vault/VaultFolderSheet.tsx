@@ -7,7 +7,9 @@
 //
 // Rename and Move hand up to the parent, which opens VaultRenameSheet on the
 // folder; New folder takes its name here and hands it up to be made. The
-// parent owns the toasts and closes the sheet.
+// parent owns the toasts and closes the sheet. Its one way out is the round
+// close in its head, as VaultRenameSheet's is (the 2026-10-07 rule), so the
+// rows end without a Cancel.
 import { useEffect, useState } from 'react';
 import { Sheet } from '../Sheet.js';
 import { SheetHead } from '../SheetHead.js';
@@ -81,6 +83,9 @@ export function VaultFolderSheet({
   }, [open, folder]);
 
   const atRoot = !folder;
+  // With Cancel gone, a sheet that offers nothing here (an admins-only
+  // member's folder) shows its notes and the round close, and no empty row.
+  const hasActions = (!atRoot && (canRename || canTrash)) || canCreate;
   const create = async () => {
     setBusy(true);
     const why = await onCreate(name.trim());
@@ -139,7 +144,7 @@ export function VaultFolderSheet({
                 </button>
               </div>
             </div>
-          ) : (
+          ) : hasActions ? (
             <div className="sheet-actions">
               {!atRoot && canRename ? (
                 <>
@@ -179,11 +184,8 @@ export function VaultFolderSheet({
                     : VAULT_FOLDER_DELETE}
                 </button>
               ) : null}
-              <button type="button" className="btn quiet press-fb" onClick={onClose}>
-                Cancel
-              </button>
             </div>
-          )}
+          ) : null}
         </>
       ) : null}
     </Sheet>

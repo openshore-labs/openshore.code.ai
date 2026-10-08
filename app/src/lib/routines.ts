@@ -120,9 +120,9 @@ export function controlLabel(where: ControlWhere): string {
 export function controlBlurb(where: ControlWhere, machine: string): string {
   switch (where) {
     case 'away':
-      return `You are away from ${machine}. Your crew keeps working there. Reconnect over Tailscale to take control.`;
+      return `You are away from ${machine}. Routines run there while it is on. Reconnect over Tailscale to take control.`;
     case 'unpaired':
-      return 'Routines run on your own computer, while it is on. Pair this device with your computer to set your crew to work.';
+      return 'Routines run on your own computer, while it is on. Connect this device to it, then set your crew to work.';
     default:
       return `Connected to ${machine}. Set up, run, and stop your crew from here.`;
   }
@@ -130,7 +130,7 @@ export function controlBlurb(where: ControlWhere, machine: string): string {
 
 /** The reason a control action is refused when a device is not docked. */
 export const CONTROL_REQUIRES_DOCK =
-  'Reconnect to your main computer over Tailscale to control your crew.';
+  'Reconnect to your computer over Tailscale to control your crew.';
 
 export interface RoutinesClient {
   /** Where the scheduler lives, for the copy ("this computer" or the hub). */
@@ -351,7 +351,7 @@ export function crewHeadline(
   runs: RoutineRun[],
   now = Date.now(),
 ): string {
-  if (!routines.length) return 'Your crew is ready to work while you are away.';
+  if (!routines.length) return 'Your crew is ready to work while your computer is on.';
   const working = routines.filter((r) => r.presence === 'working').length;
   const waiting = routines.filter((r) => r.presence === 'waiting').length;
   if (waiting) return `${waiting} ${waiting === 1 ? 'routine needs' : 'routines need'} you.`;
@@ -367,7 +367,12 @@ export function crewHeadline(
     .map((r) => r.nextRunAt)
     .filter((x): x is string => Boolean(x))
     .sort()[0];
-  return next ? `Quiet. Next run ${clock(next, now)}.` : 'Quiet. Every routine is paused.';
+  if (next) return `Quiet. Next run ${clock(next, now)}.`;
+  // Paused only when every switch reads Off: an enabled routine the engine
+  // has not timed yet is waiting, not paused.
+  return routines.every((r) => !r.enabled)
+    ? 'Quiet. Every routine is paused.'
+    : 'Quiet. Waiting for the next run.';
 }
 
 /** Custom routines unlock after the first routine finishes on its own (CX:

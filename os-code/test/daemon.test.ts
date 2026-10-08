@@ -33,6 +33,8 @@ import {
   type TerminalPty,
 } from '../src/daemon/terminal.js';
 import { HOME_SHELL_ID } from '../src/daemon/homeShellId.js';
+import { LocalDriver } from '../src/daemon/session.js';
+import type { DaemonStackInfo } from '../src/protocol.js';
 
 // The test daemon runs with node-pty simulated ABSENT, whether or not the
 // native module is built on this machine, so the 503 path is reproducible
@@ -181,6 +183,83 @@ describe('box-run model, reached from the phone', () => {
     expect(res.status).toBe(201);
     const body = (await res.json()) as { id?: string };
     expect(body.id).toBeTruthy();
+  });
+});
+
+// CX and CMO, 2026-10-08 (B, J): GET /stack says where each seat answers
+// (kind judged by seatLeaves, onThisComputer by a loopback address, never
+// the LAN) and that this daemon takes a local-only turn; POST /input carries
+// that mark to the session.
+describe('the stack report and a local-only turn (B, J)', () => {
+  it('GET /stack: each specialist has a kind, a loopback seat is on this computer, and local-only turns are taken', async () => {
+    writeFileSync(
+      join(home, 'config.json'),
+      JSON.stringify({
+        providers: {
+          ollama: { kind: 'openai-compatible', baseUrl: 'http://127.0.0.1:11434' },
+          lan: { kind: 'openai-compatible', baseUrl: 'http://192.168.1.20:11434' },
+          anthropic: { kind: 'anthropic' },
+        },
+        stack: {
+          orchestrator: { provider: 'lan', model: 'qwen3:32b' },
+          specialists: {
+            coding: { provider: 'ollama', model: 'qwen3-coder:30b' },
+            writing: { provider: 'anthropic', model: 'claude-sonnet-5' },
+            fast: { provider: 'ollama', model: 'gpt-oss:120b-cloud' },
+            analysis: { provider: 'lan', model: 'qwen3:14b' },
+            // Its server was removed: it answers nowhere, so no chip.
+            vision: { provider: 'gone', model: 'llava:13b' },
+          },
+        },
+      }),
+    );
+    const res = await fetch(`${base}/stack`, { headers: auth(adminToken) });
+    const stack = (await res.json()) as DaemonStackInfo;
+    expect(stack.acceptsLocalOnly).toBe(true);
+    // A LAN orchestrator stays, but is not this computer.
+    expect(stack.orchestrator).toEqual({ model: 'qwen3:32b', provider: 'lan', kind: 'local' });
+    const byRole = Object.fromEntries(stack.specialists.map((s) => [s.role, s]));
+    expect(byRole.coding).toEqual({
+      role: 'coding',
+      model: 'qwen3-coder:30b',
+      kind: 'local',
+      onThisComputer: true,
+    });
+    expect(byRole.writing).toEqual({ role: 'writing', model: 'claude-sonnet-5', kind: 'cloud' });
+    // A cloud tag on this computer's Ollama leaves, and says no more.
+    expect(byRole.fast).toEqual({ role: 'fast', model: 'gpt-oss:120b-cloud', kind: 'cloud' });
+    expect(byRole.analysis).toEqual({ role: 'analysis', model: 'qwen3:14b', kind: 'local' });
+    expect(byRole.vision).toEqual({ role: 'vision', model: 'llava:13b' });
+  });
+
+  it('POST /input with localOnly marks the turn; without it, the turn is plain', async () => {
+    const sent: unknown[][] = [];
+    const spy = vi.spyOn(LocalDriver.prototype, 'send').mockImplementation(function (
+      this: LocalDriver,
+      ...args: unknown[]
+    ) {
+      sent.push(args);
+    });
+    try {
+      const created = await createSessionAs(adminToken, home);
+      const { id } = (await created.json()) as { id: string };
+      const post = (body: object) =>
+        fetch(`${base}/sessions/${id}/input`, {
+          method: 'POST',
+          headers: auth(adminToken),
+          body: JSON.stringify(body),
+        });
+      expect((await post({ text: 'the private step', localOnly: true })).status).toBe(202);
+      expect((await post({ text: 'an ordinary step' })).status).toBe(202);
+      expect((await post({ text: 'a stray value', localOnly: 'yes' })).status).toBe(202);
+      expect(sent).toEqual([
+        ['the private step', undefined, { localOnly: true }],
+        ['an ordinary step', undefined, {}],
+        ['a stray value', undefined, {}],
+      ]);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 
@@ -1536,7 +1615,10 @@ describe('close drops live streams (DAE-11)', () => {
 
 describe('session lifecycle: eviction and delete (DAE-12)', () => {
   it('an idle driver with no listeners is evicted and rehydrates on the next touch', async () => {
-    const own = await startOnFreePort({ idleEviction: { afterMs: 50, everyMs: 20 } });
+    // A window wide enough that a session's own bootstrap (slower on a first
+    // run on Windows, where the one-time handoff sweep runs) never counts as
+    // idle time, so the test measures eviction, not how fast a session starts.
+    const own = await startOnFreePort({ idleEviction: { afterMs: 1000, everyMs: 50 } });
     const ownBase = `http://127.0.0.1:${own.port}`;
     try {
       const created = await fetch(`${ownBase}/sessions`, {
@@ -1552,7 +1634,7 @@ describe('session lifecycle: eviction and delete (DAE-12)', () => {
           }
         ).sessions;
       expect(await live()).toBe(1);
-      const deadline = Date.now() + 3000;
+      const deadline = Date.now() + 6000;
       while ((await live()) !== 0 && Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 25));
       }

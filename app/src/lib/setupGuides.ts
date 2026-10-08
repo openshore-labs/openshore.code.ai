@@ -5,6 +5,14 @@
 // The steps are written here, not model-generated, so they are right even on a
 // small model; the model's job is to answer questions and adapt. No em dashes.
 import { ROUTINE_NOTES_PLACE } from './vaultCopy.js';
+import { thisDeviceNoun } from './deviceNoun.js';
+import {
+  LOCAL_IMAGE_READER,
+  SMALL_IMAGE_READER,
+  aboutGB,
+  listWords,
+  otherCloudReaders,
+} from './imageReading.js';
 import { SHIPS_CURRENTS, SHIPS_LAUNCH, featureOn, type TieredFeature } from './focus.js';
 
 export type SetupGuideId =
@@ -13,6 +21,8 @@ export type SetupGuideId =
   | 'connect-cloud-key'
   | 'pair-computer'
   | 'install-ollama'
+  | 'image-reader-local'
+  | 'image-reader-cloud'
   | 'pick-a-model'
   | 'open-a-repo'
   | 'install-tailscale'
@@ -41,7 +51,7 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
   'get-harbor': {
     id: 'get-harbor',
     title: 'Get Harbor',
-    goal: 'Add Harbor, a coding model that runs on my phone and can help me build for real.',
+    goal: `Add Harbor, a coding model that runs on ${thisDeviceNoun()} and can help me build for real.`,
     steps: [
       'Open Settings and find the Harbor section. Harbor Lite, the built-in guide, is already there. Harbor is the coder that runs alongside it.',
       'On the Harbor row, tap Install. It downloads straight from the source, about 2.5 GB, roughly a few minutes on wifi. You can keep chatting while it lands.',
@@ -56,30 +66,30 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
     steps: [
       'On your computer, open OpenShore. If nothing is set up yet, the chat opens on a card that says Set up DeepBlue: tap it and you are done. Otherwise open Settings and find the Harbor section.',
       'On the DeepBlue row, tap Install. It picks the size that fits your computer and pulls it through Ollama, straight from the Ollama library. Keep using the app while it lands.',
-      'When it finishes, the row reads Installed and DeepBlue is your Reasoning model on that computer. To reach it from this phone, dock the two under Computer; it then appears as Your computer.',
+      `When it finishes, the row reads Installed and DeepBlue is your Reasoning model on that computer. To reach it from ${thisDeviceNoun()}, dock the two under Computer; it then appears as Your computer.`,
     ],
-    done: 'DeepBlue plans and edits your repositories on your computer. For the hardest steps, a cloud key on your own account is one tap away, and it always asks before it spends.',
+    done: "DeepBlue plans and edits your repositories on your computer. For the hardest steps, a cloud key on your own account is one tap away, and on your computer it asks before a cloud model's first step in each task.",
   },
   'connect-cloud-key': {
     id: 'connect-cloud-key',
-    title: 'Connect your own API key',
+    title: 'Add an API key',
     goal: 'Use Claude, OpenAI, or Gemini on my own key.',
     steps: [
       'Pick the provider you already pay for. If you have none, Claude is the strongest for coding; the console link on the Cloud Connections screen opens it inside the app.',
       'Sign in on the provider page and create a new API key. Copy it. It usually starts with sk- (Claude keys start with sk-ant-).',
       'Back in OpenShore, open Cloud Connections, tap Connect next to that provider, paste the key, and tap Save. The app checks the key with the provider before it says connected.',
-      'Open Stack and place the provider model where you want it: as your Reasoning LLM, or as a specialist for one kind of task.',
+      'Open Stack and place the provider model where you want it: as your Reasoning model, or as a specialist for one kind of task.',
     ],
     done: 'The provider shows connected, and it appears in the model menu. Your API key is stored only on this device and sent only to that provider.',
   },
   'pair-computer': {
     id: 'pair-computer',
     title: 'Connect your computer',
-    goal: 'Run my model on my own computer and reach it from this phone.',
+    goal: `Run my model on my own computer and reach it from ${thisDeviceNoun()}.`,
     steps: [
-      'On both this phone and your computer, install Tailscale and sign in to the same account. It is free for personal use. Ask me if you want the Tailscale steps.',
+      `On both ${thisDeviceNoun()} and your computer, install Tailscale and sign in to the same account. It is free for personal use. Ask me if you want the Tailscale steps.`,
       'On your computer, open OpenShore, then Computer. The QR is there (if it says Off, tap Turn on).',
-      'On this phone, open Computer and tap Scan the QR on your computer. Point the camera at the QR and it connects by itself. Or point the iPhone Camera at it and tap the link.',
+      `On ${thisDeviceNoun()}, open Computer and tap Scan the QR on your computer. Point the camera at the QR and it connects by itself. Or point the Camera app at it and tap the link.`,
       'If the camera is not available, type the address (it looks like http://100.x.y.z:4816) and the pairing code shown under the QR, then tap Connect.',
     ],
     done: 'The screen says connected. In the model menu, Your computer is now a choice, for chat and for coding on your repositories.',
@@ -101,14 +111,74 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
     ],
     done: 'Stack shows a model with a teal local pill, and the empty chat answers.',
   },
+  // The two doors a Stack chat offers when nothing can read images (founder,
+  // 2026-10-07). The model names, sizes and pull commands come from the
+  // catalog through imageReading.ts. A model on the phone cannot read images
+  // on this build (stack.ts visionCapable), so the local reader runs on the
+  // computer and the phone reaches it as a model you connect (byom.ts): an
+  // Ollama address on the tailnet is local, so plain http is allowed.
+  'image-reader-local': {
+    id: 'image-reader-local',
+    title: 'Source a local model',
+    goal: 'Read images with a model on my own computer, so pictures stay on my network.',
+    steps: [
+      {
+        text: `A model on ${thisDeviceNoun()} cannot read images yet, so this one runs on your computer through Ollama, and ${thisDeviceNoun()} reaches it over Tailscale. If Ollama is not on your computer yet, install it. On Linux, paste this in a terminal (macOS and Windows use the installer from ollama.com):`,
+        paste: 'curl -fsSL https://ollama.com/install.sh | sh',
+      },
+      {
+        text: `On your computer, pull ${LOCAL_IMAGE_READER.name}, ${aboutGB(LOCAL_IMAGE_READER)}, the image reader we suggest:`,
+        paste: LOCAL_IMAGE_READER.pull,
+      },
+      {
+        text: `Short on room? Pull ${SMALL_IMAGE_READER.name} instead, ${aboutGB(SMALL_IMAGE_READER)}. It is not as sharp, but it fits almost anywhere:`,
+        paste: SMALL_IMAGE_READER.pull,
+      },
+      // Ollama's own way to listen on the network, per system, so the
+      // setting holds and the server keeps the models it pulled (a hand-run
+      // `ollama serve` on Linux reads another folder than the service).
+      // 0.0.0.0 is every network the computer joins, and Ollama has no
+      // password (privacy review, 2026-10-08), so the step says so before the
+      // person sets it, and the last two steps take it away again.
+      {
+        text: `Ollama answers only on your computer at first. To let ${thisDeviceNoun()} reach it, have it listen on your network. Ollama has no password, so once this is set it answers anyone on every network this computer joins, not only your home one, until you remove the setting (the last two steps say how). On a laptop, keep to networks you trust, or remove the setting before you join one you do not. On Windows, quit Ollama from the taskbar, search Settings for environment variables, add OLLAMA_HOST with the value 0.0.0.0 to your account, and open Ollama again. On a Mac, paste this in Terminal, then quit Ollama from the menu bar and open it again (after the Mac restarts, paste it once more):`,
+        paste: 'launchctl setenv OLLAMA_HOST "0.0.0.0"',
+      },
+      {
+        text: 'On Linux, run sudo systemctl edit ollama, add these two lines in the space at the top, and save. Then run sudo systemctl daemon-reload and sudo systemctl restart ollama:',
+        paste: '[Service]\nEnvironment="OLLAMA_HOST=0.0.0.0"',
+      },
+      `Make sure ${thisDeviceNoun()} and your computer are on the same Tailscale network, the one docking uses, and find your computer's Tailscale address in the Tailscale app (it starts with 100.). Ollama now answers on every network this computer joins, with no password, so never forward port 11434 to the internet.`,
+      `In OpenShore on ${thisDeviceNoun()}, open Stack and tap Connect a model under Bench. Name: ${LOCAL_IMAGE_READER.name}. Address: \`http://100.x.y.z:11434/v1\`, with your computer's Tailscale address in place of 100.x.y.z. Model name: ${LOCAL_IMAGE_READER.ref} (or ${SMALL_IMAGE_READER.ref}). Leave the API key blank and tap Connect.`,
+      'Still in Stack, tap Local under Image reading, choose it, and tap Save.',
+      {
+        text: `Later, whenever you want Ollama off your networks again, remove the setting (${thisDeviceNoun()} then cannot reach it). On Windows, quit Ollama from the taskbar, search Settings for environment variables, delete OLLAMA_HOST from your account, and open Ollama again. On a Mac, paste this in Terminal, then quit Ollama from the menu bar and open it again:`,
+        paste: 'launchctl unsetenv OLLAMA_HOST',
+      },
+      'On Linux, to remove it later, run sudo systemctl edit ollama, delete the two lines you added, and save. Then run sudo systemctl daemon-reload and sudo systemctl restart ollama.',
+    ],
+    done: 'The Local row under Image reading names it. The next picture goes to it without asking, and stays on your own network.',
+  },
+  'image-reader-cloud': {
+    id: 'image-reader-cloud',
+    title: 'Connect a cloud model',
+    goal: 'Read images with a cloud model on my own API key.',
+    steps: [
+      `Pick a provider. Claude reads images out of the box, and ${listWords(otherCloudReaders())} read them too. If you have none yet, Claude is a good start.`,
+      "Open Cloud Connections and tap that provider. In its sheet, Get a key opens the provider's page: sign in, create a new API key, and copy it (Claude keys start with sk-ant-).",
+      'Paste the key and tap Save. The app checks the key with the provider before it says connected. If Claude asks for a Workspace ID, the sheet says where to find it.',
+      'Now a picture in a Stack chat goes to it on your key, and the chat asks before each one. To skip the asking, open Stack, tap Cloud under Image reading, choose a model that reads images, and tap Save.',
+    ],
+    done: 'Send the picture again. The chat names the model and asks first, or, once a model is set under Image reading, Cloud, sends it straight there.',
+  },
   'pick-a-model': {
     id: 'pick-a-model',
     title: 'Pick a model',
     goal: 'Get a model running so I can chat and build.',
     steps: [
-      'Decide where it runs. On this phone: Harbor, a coding model that runs fully on the device, offline. On your computer: DeepBlue, through Ollama, the most capable of the built-in models.',
-      'On this phone, open Settings, find the Harbor section, and tap Install on the Harbor row. On your computer, open Stack and install DeepBlue, sized to your computer. Weights download straight from their source, never through OpenShore.',
-      'When it finishes, it becomes your Reasoning LLM. Open Stack to see it, and to add specialists or a cloud model on your own API key.',
+      `Decide where it runs. On ${thisDeviceNoun()}: Harbor, a coding model that runs fully on the device, offline. On your computer: DeepBlue, through Ollama, the most capable of the built-in models.`,
+      `On ${thisDeviceNoun()}, open Settings, find the Harbor section, and tap Install on the Harbor row. On your computer, open Stack and install DeepBlue, sized to your computer. Weights download straight from their source, never through OpenShore.`,
+      'When it finishes, it becomes your Reasoning model. Open Stack to see it, and to add specialists or a cloud model on your own API key.',
     ],
     done: 'The model menu shows Stack, and a first message gets a real answer.',
   },
@@ -118,7 +188,7 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
     goal: 'Point OpenShore at my code so it can read, edit, and run it.',
     steps: [
       'Make sure a model is set up first (Stack). The agent needs a brain before it can open a repository.',
-      'On your computer, open Repositories and tap Open a local folder, or paste a clone URL. On this phone, connect your computer first; the code lives there.',
+      `On your computer, open Repositories and tap Open a local folder, or paste a clone URL. On ${thisDeviceNoun()}, connect your computer first; the code lives there.`,
       'A coding chat opens on that folder. Ask for something small and real, like: explain this project and run its tests.',
       'Every command asks before it runs. Edits go through and show their diff in the chat, or choose Ask first in Settings, under Approvals, to check each one. You stay in control.',
     ],
@@ -127,21 +197,21 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
   'install-tailscale': {
     id: 'install-tailscale',
     title: 'Install Tailscale',
-    goal: 'Give my phone and my computer a private network to talk over.',
+    goal: `Give ${thisDeviceNoun()} and my computer a private network to talk over.`,
     steps: [
       'Install Tailscale on your computer from tailscale.com and sign in (Google, Apple, GitHub, or Microsoft accounts all work).',
-      'Install the Tailscale app on this phone from the App Store and sign in with the same account.',
-      'Turn Tailscale on in the phone app. Both devices now share a private network, no port forwarding, no public exposure.',
+      `Install the Tailscale app on ${thisDeviceNoun()} from the App Store and sign in with the same account.`,
+      'Turn it on in the Tailscale app. Both devices now share a private network, no port forwarding, no public exposure.',
     ],
-    done: 'The Tailscale app on the phone lists your computer. Now dock them under Computer.',
+    done: `The Tailscale app on ${thisDeviceNoun()} lists your computer. Now dock them under Computer.`,
   },
   'set-up-crew': {
     id: 'set-up-crew',
     title: 'Set up your crew',
     goal: 'Have a crew member work on a schedule on my own computer, so results are waiting when I come back.',
     steps: [
-      'Routines run on your main computer, on your own models, while it is on. You set one up while connected to that computer, then watch and steer it from anywhere.',
-      'If you have not paired yet, open Computer and dock this device. Tailscale must be on for both, the same connection the big models use.',
+      'Routines run on your computer, on your own models, while it is on. You set one up while connected to that computer.',
+      'If you have not docked yet, open Computer and dock this device. Tailscale must be on for both, the same connection the big models use.',
       'Make sure the work lives on your computer: open Repositories and clone the repository you want the crew to work in, if it is not there already.',
       'Open Crew, then Crew command, and set up the Morning review routine. It reads what changed overnight and leaves a checklist, read-only, so it never needs an approval.',
       'Away from home you can always watch your crew and read its results here. To change or run a routine, reconnect to your computer over Tailscale first.',

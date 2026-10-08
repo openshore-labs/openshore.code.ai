@@ -12,7 +12,7 @@
 // With no coding session open, the room offers the plain home shell: a shell in
 // the target computer's home folder, no repository needed. The model stays out
 // of it (it only reads a session's own terminal).
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { driverFor, isOrgAdmin, useApp } from '../state/store.js';
 import { bridge } from '../lib/electronBridge.js';
 import { isDesktop } from '../lib/platform.js';
@@ -48,6 +48,9 @@ export function TerminalRoomScreen() {
   );
   const controlOn = terminalControlOn(settings.terminalControl, targetId);
   const seen = settings.terminalRoomSeen === true;
+  // One ref per return, so the bar's title tucks under each one's own h1.
+  const firstRunTitleRef = useRef<HTMLHeadingElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
 
   // The plain home shell, opened on a tap when no session is. A member device
   // is never offered it: the hub keeps a raw shell admin-only. The host is
@@ -72,23 +75,24 @@ export function TerminalRoomScreen() {
 
   // First run: name the one requirement (a hub reachable over Tailscale) and
   // point at the flow that actually installs it, rather than a second copy of
-  // those steps. "Got it" retires the intro on this device. A device that
-  // already reaches a computer (this desktop, or a paired phone) has done both
-  // steps, so it skips straight to the terminal.
+  // those steps. Connect your computer or Not now retires the intro on this
+  // device. A device that already reaches a computer (this desktop, or a
+  // paired phone) has done both steps, so it skips straight to the terminal.
   if (!seen && !targetId) {
     return (
       <div className="screen">
-        <BackBar title="Terminal" />
+        <BackBar title="Terminal" titleHiddenUntil={firstRunTitleRef} />
         <div className="screen-inner">
-          <h1>Terminal</h1>
+          <h1 ref={firstRunTitleRef}>Terminal</h1>
           <p className="lead">
-            A real terminal on your central computer, wrapped into OpenShore. The active model can
-            run commands and read the output right here, so builds and tests do not go through copy
-            and paste.
+            A real terminal on your computer, here in OpenShore. Run builds and tests yourself, or
+            let the model run them when you allow it.
           </p>
+          {/* The same shape as Repositories' card: what it needs, one
+              primary, then the guide link under it. Not now sits outside. */}
           <div className="card">
-            <h3 style={{ marginTop: 0 }}>Two things, once</h3>
-            <ol className="terminal-firstrun">
+            <h3 style={{ marginTop: 0 }}>Two steps, once</h3>
+            <ol className="setup-steps">
               <li>
                 Install OpenShore on the computer that holds your code. It works on macOS, Windows,
                 or Linux.
@@ -98,27 +102,32 @@ export function TerminalRoomScreen() {
                 this app can reach it with no ports opened to the world.
               </li>
             </ol>
-            <p className="hint" style={{ marginBottom: 0 }}>
-              Computer has the download links and the docking steps.{' '}
-              <button className="linklike" onClick={() => setView('pair')}>
-                Open Computer
-              </button>
-              {' or '}
-              <button
-                className="linklike"
-                onClick={() => void useApp.getState().startGuideChat('install-tailscale')}
-              >
-                walk me through Tailscale
-              </button>
-              .
-            </p>
+            <button
+              type="button"
+              className="btn primary block press-fb"
+              onClick={() => {
+                // The view switches first, so the room never flashes its
+                // second state on the way out.
+                setView('pair');
+                void saveSettings({ terminalRoomSeen: true });
+              }}
+            >
+              Connect your computer
+            </button>
+            <button
+              type="button"
+              className="linklike door press-fb"
+              onClick={() => void useApp.getState().startGuideChat('pair-computer')}
+            >
+              Walk me through it
+            </button>
           </div>
           <button
-            className="btn primary press-fb"
-            style={{ marginTop: 14 }}
+            type="button"
+            className="btn quiet block press-fb"
             onClick={() => void saveSettings({ terminalRoomSeen: true })}
           >
-            Got it
+            Not now
           </button>
         </div>
       </div>
@@ -127,9 +136,9 @@ export function TerminalRoomScreen() {
 
   return (
     <div className="screen">
-      <BackBar title="Terminal" />
+      <BackBar title="Terminal" titleHiddenUntil={titleRef} />
       <div className="screen-inner">
-        <h1>Terminal</h1>
+        <h1 ref={titleRef}>Terminal</h1>
         <p className="lead">
           The terminal runs wherever your active coding session runs. With Terminal Control off, the
           model stays out of it and you drive the terminal yourself. Turn it on to let the model run
@@ -159,7 +168,7 @@ export function TerminalRoomScreen() {
                   }}
                 />
               ) : (
-                <span className="pill">admin only</span>
+                <span className="pill">Admin only</span>
               )}
             </div>
             {!canControl ? (
@@ -219,20 +228,25 @@ export function TerminalRoomScreen() {
                   Open a shell
                 </button>
               ) : null}
-              <button className="btn press-fb" onClick={() => setView('repos')}>
+              {/* The secondary beside Open a shell, and the primary when it is
+                  the card's only way forward. */}
+              <button
+                className={`btn ${shellOffered ? 'ghost' : 'primary'} press-fb`}
+                onClick={() => setView('repos')}
+              >
                 Open a repository
               </button>
             </div>
           </div>
         ) : (
           <div className="card tc-section" style={{ '--i': 0 } as CSSProperties}>
-            <h3 style={{ marginTop: 0 }}>Connect your computer</h3>
+            <h3 style={{ marginTop: 0 }}>The terminal lives on your computer</h3>
             <p className="hint" style={{ marginBottom: 10 }}>
-              This device is not paired with a computer yet. Set it up under Computer, then the
-              terminal lives here.
+              This device is not connected to a computer yet. Connect it, and the terminal opens
+              here.
             </p>
-            <button className="btn press-fb" onClick={() => setView('pair')}>
-              Set up pairing
+            <button type="button" className="btn primary press-fb" onClick={() => setView('pair')}>
+              Connect your computer
             </button>
           </div>
         )}

@@ -15,6 +15,8 @@
 import { featureOn, type ReleaseTier, type TieredFeature, RELEASE_TIER } from './focus.js';
 import type { Platform } from './platform.js';
 import { PAY_GATES_ENABLED } from './payGate.js';
+import { followsList } from './profile.js';
+import { VAULT_CARRY_CAVEAT, VAULT_PRIVATE_OFF_CLOUD } from './vaultCopy.js';
 
 export interface EgressEntry {
   id: string;
@@ -42,13 +44,25 @@ export interface EgressEntry {
   paid?: true;
 }
 
-/** Recipients in the order the list shows them: OpenShore first. */
 /** Crew routines follow the web search switch, and only search (founder,
  *  2026-10-01, replacing CTO 3's "never"): the one sentence the search entry
  *  and the Settings row both carry. Nothing else a routine does reaches the web. */
 export const ROUTINES_SEARCH_LINE =
   'Crew routines follow this switch while your computer is on, and only search; they never open pages.';
 
+/** Once a chat on a seat that stays holds a private note's text (a read, a
+ *  marked turn, or a private pin), every search a model writes shows its
+ *  words and asks first, every time, past a standing allow (CX and CMO,
+ *  2026-10-08, H). The search entry carries it. */
+export const PRIVATE_SEARCH_LINE =
+  'Once a local model in a chat has read a private note, or its project pins one, each search it writes shows its words and asks first.';
+
+/** The same rule for a page the coding agent opens: it asks every time, past
+ *  Opening web pages: Always and Bypass (H). The web pages entry carries it. */
+export const PRIVATE_PAGE_LINE =
+  'Once a local model in a chat has read a private note, or its project pins one, every page it opens asks first, even on Always.';
+
+/** Recipients in the order the list shows them: OpenShore first. */
 export const RECIPIENT_ORDER = [
   'OpenShore (us)',
   'Payments',
@@ -71,7 +85,9 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'preferences',
     recipient: 'OpenShore (us)',
-    what: 'Your app preferences, so they follow you to your other devices: theme, effort, reasoning, humanized writing, notices, and voice. Never your chats, prompts, projects, keys, or addresses.',
+    // Named from the one list the signed-in card and the profile read
+    // (settingsReach.ts through profile.ts), so the three cannot drift.
+    what: `Your app preferences, so they follow you to your other devices: ${followsList()}. Never your chats, prompts, projects, keys, or addresses.`,
     when: 'Only while you are signed in: when you change one, and when the app opens.',
     start: 'on',
     hosts: ['env:VITE_SUPABASE_URL'],
@@ -95,8 +111,8 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'team',
     recipient: 'OpenShore (us)',
-    what: 'Notes you put in a team vault, and team project settings, so your team can read them.',
-    when: 'Only in a team vault or a team project.',
+    what: 'Your organization (its name, seats, and plan), the email addresses you invite and their roles, notes you put in a team vault, and team project settings, so your team can read them.',
+    when: 'Only when you set up an organization or invite someone, and in a team vault or a team project.',
     start: 'off',
     hosts: ['env:VITE_SUPABASE_URL'],
     feature: 'teams',
@@ -175,7 +191,7 @@ export const EGRESS: EgressEntry[] = [
     id: 'search',
     recipient: 'Web search',
     what: 'The words of a web search, and the network address any web request carries. Harbor Lite sends your question itself (up to 200 characters); other models write search words from your chat. DuckDuckGo by default, with no key and no account. Never the rest of your chat, never your files.',
-    when: `When a model decides to search the web, after you allow it once. A chat asks the first time; the coding agent searches only once you allow it. ${ROUTINES_SEARCH_LINE} You can turn it off in Settings, Harbor.`,
+    when: `When a model decides to search the web, after you allow it once. A chat asks the first time; the coding agent searches only once you allow it. ${PRIVATE_SEARCH_LINE} ${ROUTINES_SEARCH_LINE} You can turn it off in Settings, Web search.`,
     start: 'off',
     hosts: ['html.duckduckgo.com', 'duckduckgo.com'],
   },
@@ -183,7 +199,7 @@ export const EGRESS: EgressEntry[] = [
     id: 'web-pages',
     recipient: 'Web search',
     what: 'A request for a web page the coding agent opens on your computer, to that site, with the network address any web request carries.',
-    when: 'When the coding agent opens a page: it asks first unless you set Opening web pages to Always in Settings, Approvals, and never opens one if you set it to Never. A page on your own network always asks. Crew routines never open pages.',
+    when: `When the coding agent opens a page: it asks first unless you set Opening web pages to Always in Settings, Approvals, and never opens one if you set it to Never. A page on your own network always asks. ${PRIVATE_PAGE_LINE} Crew routines never open pages.`,
     start: 'tap',
     hosts: [],
     platforms: ['electron'],
@@ -199,8 +215,8 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'cloud-models',
     recipient: 'Your cloud providers',
-    what: "Your chat, to Anthropic, OpenAI, Google, Moonshot, Perplexity, Venice, or OpenRouter (which forwards it to the model's own provider), on your own key. For Venice and OpenRouter, also a request for the list of models they offer. The amber pill marks every turn that goes.",
-    when: 'Only when you pick a cloud model, and only that turn; the model list only when you connect Venice or OpenRouter or choose its models.',
+    what: `Your chat, and the notes and files it draws on, to Anthropic, OpenAI, Google, Moonshot, Perplexity, Venice, or OpenRouter (which forwards it to the model's own provider), on your own key. ${VAULT_PRIVATE_OFF_CLOUD} An amber pill or dot marks a chat whose latest turn went to one. Connecting Venice or OpenRouter, or choosing its models, also asks it for the list of models it offers.`,
+    when: 'Only when you pick a cloud model or place one in your Stack, and only on the turns it answers. On your computer, the coding agent asks first in each task.',
     start: 'off',
     hosts: [
       'api.anthropic.com',
@@ -215,8 +231,20 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'own-model',
     recipient: 'Your cloud providers',
-    what: 'Your chat, to a model server you connect yourself (one you run, or one you name with its address and key).',
-    when: 'Only when you connect one and pick it, and only that turn.',
+    what: `Your chat, and the notes and files it draws on, to a model server you connect yourself (one you run, or one you name with its address and key). Private notes go only to one on your own network. ${VAULT_CARRY_CAVEAT}`,
+    // A model you connect can be placed in a Stack slot too, and then it
+    // answers on every turn routed to it, as a placed cloud model does (D).
+    when: 'Only when you connect one and pick it or place it in your Stack, and only on the turns it answers.',
+    start: 'off',
+    hosts: [],
+  },
+  {
+    // Privacy review, 2026-10-08: a cloud tag is served by the Ollama on your
+    // computer, but every request for it goes on to ollama.com (seatLeaves).
+    id: 'ollama-cloud',
+    recipient: 'Your cloud providers',
+    what: "Your chat, and the files the coding agent reads for it, to ollama.com through your own Ollama account, when a model you pick or place is one of Ollama's cloud models (its tag says cloud, like kimi-k3:cloud). Your Ollama server passes each turn on.",
+    when: 'Only when you pick or place one, and then on every turn it answers. On your computer, the coding agent asks first in each task.',
     start: 'off',
     hosts: [],
   },
@@ -240,7 +268,7 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'weights',
     recipient: 'Model downloads',
-    what: 'A request for the model you picked (and the Ollama installer, on first run). Nothing about you rides along.',
+    what: 'A request for the model you picked (and the Ollama installer, on first run). For a model that runs on your computer, nothing about you rides along. An Ollama cloud model (a :cloud tag) works only under your Ollama account, which Ollama itself signs in with.',
     when: 'Only when you tap to download a model or set up Ollama.',
     start: 'tap',
     hosts: ['ollama.com', 'huggingface.co'],
@@ -315,7 +343,7 @@ export const LINK_ONLY_HOSTS: Record<string, string> = {
 
 /** What stays on this device, for the list's other half. */
 export const STAYS_ON_DEVICE: string[] = [
-  'Everything you send a local model, and everything it answers (a web search sends only its words, listed above).',
+  'Everything you send a local model, and everything it answers, unless a cloud model in the same chat reads it later, on its own turn or as a step in a plan (a web search sends only its words, listed above).',
   'Your chats, projects, settings, and session journals, sealed at rest.',
   'Your API keys: in the Keychain on iPhone and iPad; on a computer, encrypted under a key in its keychain. Each is sent only to its own provider.',
   'Your Vault notes and your code, as plain files you own.',

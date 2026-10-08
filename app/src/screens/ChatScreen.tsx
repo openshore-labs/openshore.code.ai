@@ -1,16 +1,19 @@
 // The chat screen. Empty state mirrors the Claude app's opening: just the mark
 // and a time-of-day greeting, with the model, effort, and everything else
-// living in the composer. A live conversation swaps in the transcript and a
-// header that names the chat.
+// living in the composer. On the desktop the greeting and the composer sit
+// together as one group, and the composer glides to the foot when the chat
+// fills. A live conversation swaps in the transcript and a header that names
+// the chat, with a compose icon beside the status for a new one.
 import { SwellText } from '../components/SwellText.js';
 import { LANDING_PACE, takeLandingSwell } from '../lib/introWalk.js';
-import { durationMs } from '../lib/motion.js';
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { durationMs, easing, prefersReducedMotion } from '../lib/motion.js';
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { INIT_PROMPT } from 'os-code/protocol';
 import { useApp, driverFor } from '../state/store.js';
 import type { HubRole } from '../drivers/types.js';
 import { sourceSupportsVision, type ConversationSource } from '../state/types.js';
 import { MessageList } from '../components/MessageList.js';
+import type { ImageOfferContext } from '../components/ImageReaderOffer.js';
 import {
   Composer,
   SLASH_COMMANDS,
@@ -36,8 +39,14 @@ import { EditChoiceActions } from '../components/EditChoiceActions.js';
 import { NextChoiceActions } from '../components/NextChoiceActions.js';
 import { SetupMenuActions } from '../components/SetupMenuActions.js';
 import { StartChoiceActions } from '../components/StartChoiceActions.js';
-import { ASK_ANYTHING, setupHelpIntent, walkActive } from '../lib/guidedSetup.js';
+import {
+  ASK_ANYTHING,
+  SETUP_RESUME_LABEL,
+  setupHelpIntent,
+  walkActive,
+} from '../lib/guidedSetup.js';
 import { FirstSeat } from '../components/FirstSeat.js';
+import { ComposeGlyph, TerminalGlyph } from '../components/SheetGlyphs.js';
 import { VoiceMode } from '../components/VoiceMode.js';
 import type { VoiceBreak } from '../lib/voice/voiceBreaks.js';
 import { Sheet } from '../components/Sheet.js';
@@ -45,6 +54,7 @@ import { HARBOR_MINI_MODEL_ID, HARBOR_MINI_EMPTY_HINT } from '../lib/harborMini.
 import { buildRotation, type Greeting } from '../lib/greeting.js';
 import { SAMPLE_ROW_LABEL, SAMPLE_ROW_SUB } from '../lib/sampleProject.js';
 import { hapticTick } from '../lib/haptics.js';
+import { pointsAtWorkspace } from '../lib/chatRescue.js';
 import { isDesktop, isPhone } from '../lib/platform.js';
 import { copyText } from '../lib/clipboard.js';
 import { RewindSheet } from '../components/RewindSheet.js';
@@ -53,6 +63,16 @@ import { DEFAULT_PERMISSION_MODE } from '../lib/permissionMode.js';
 import { useOnline } from '../hooks/useOnline.js';
 import { useExitPresence } from '../hooks/useExitPresence.js';
 import type { Attachment } from '../lib/attachments.js';
+import { thisDeviceNoun } from '../lib/deviceNoun.js';
+import {
+  LOCAL_MODEL_READY,
+  installLocalDoor,
+  networkUp,
+  offlineBannerLine,
+  offlineChosen,
+  offlineNow,
+  usablePick,
+} from '../state/offlineOps.js';
 
 /** The transcript's shape while a reopened desktop chat replays its journal:
  *  soft bars in the rhythm of the last known transcript (user turn, answer,
@@ -127,6 +147,94 @@ function useHeaderHeight(headerRef: RefObject<HTMLElement>): void {
   }, [headerRef]);
 }
 
+/** The body's own child that wears `cls`, if any. */
+function childWith(body: HTMLElement, cls: string): HTMLElement | undefined {
+  for (const el of Array.from(body.children)) {
+    if (el.classList.contains(cls)) return el as HTMLElement;
+  }
+  return undefined;
+}
+
+/** The desktop opening (D5, founder 2026-10-07, built as recommended, A). On a
+ *  fine pointer the empty chat's greeting and the composer sit together as one
+ *  group (theme.css, `.chat-body:has(> .greeting)`). On a first send the
+ *  composer glides from the group to the foot, and when a new chat opens it
+ *  glides back up: a FLIP on translateY over the door clock (--dur-7 on
+ *  --ease-glide), transform only. Places come from layout (offsetTop), never
+ *  from a transform in flight, and the docked place is the foot of the body.
+ *  A chat opened from the side arrives full, so the field lands at the foot at
+ *  once rather than sliding across its words. The First Seat handing the room
+ *  to the greeting glides it up the same way, and while the group is up a
+ *  move that is not a resize (a greeting line that wraps, the first try row
+ *  arriving) glides too, so the field never jumps. Reduced motion and Slack
+ *  Water's landing (the water surfaces the page itself) swap at once, and a
+ *  touch screen's opening never moves, so it never glides and reads no
+ *  layout. */
+function useOpeningGlide(bodyRef: RefObject<HTMLDivElement>): void {
+  const grouped = useRef<boolean | undefined>(undefined);
+  const groupPlace = useRef<{ top: number; height: number } | undefined>(undefined);
+  const glide = useRef<Animation | undefined>(undefined);
+  useLayoutEffect(() => {
+    const body = bodyRef.current;
+    const wrap = body ? childWith(body, 'composer-wrap') : undefined;
+    if (!body || !wrap) return;
+    const now = Boolean(childWith(body, 'greeting'));
+    const was = grouped.current;
+    grouped.current = now;
+    // A touch screen keeps its own opening, and a transcript that stays
+    // docked (one streaming) has nothing to read.
+    if (!window.matchMedia?.('(pointer: fine)').matches) return;
+    if (!now && was !== true) return;
+    const top = wrap.offsetTop;
+    const height = body.clientHeight;
+    const prior = groupPlace.current;
+    let from: number | undefined;
+    if (was !== undefined && was !== now) {
+      from = was ? prior?.top : height - wrap.offsetHeight;
+    } else if (now && prior && prior.height === height && prior.top !== top) {
+      from = prior.top;
+    }
+    if (now) groupPlace.current = { top, height };
+    if (from === undefined) return;
+    glide.current?.cancel();
+    glide.current = undefined;
+    const dy = from - top;
+    if (Math.abs(dy) < 2 || typeof wrap.animate !== 'function') return;
+    if (prefersReducedMotion() || useApp.getState().slackWater) return;
+    // Going down, the field glides only over open paper: a first send's one
+    // bubble sits above it, while a chat opened from the side fills the body
+    // and would show through a field sliding across it.
+    if (was && !now) {
+      const words = childWith(body, 'thread')?.firstElementChild;
+      const wordsEnd = words
+        ? words.getBoundingClientRect().bottom - body.getBoundingClientRect().top
+        : 0;
+      if (wordsEnd > from) return;
+    }
+    glide.current = wrap.animate(
+      [{ transform: `translateY(${dy}px)` }, { transform: 'translateY(0)' }],
+      {
+        duration: durationMs('--dur-7', 520),
+        easing: easing('--ease-glide', 'cubic-bezier(0.3, 0.1, 0.15, 1)'),
+      },
+    );
+  });
+  // A resize moves the group without a render: its place is read again, and
+  // nothing glides for it.
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!body || typeof ResizeObserver === 'undefined') return;
+    const obs = new ResizeObserver(() => {
+      const wrap = childWith(body, 'composer-wrap');
+      if (wrap && grouped.current) {
+        groupPlace.current = { top: wrap.offsetTop, height: body.clientHeight };
+      }
+    });
+    obs.observe(body);
+    return () => obs.disconnect();
+  }, [bodyRef]);
+}
+
 /** The short name on the stopped card's "Continue with" button. */
 function rescueLabel(source?: ConversationSource): string | undefined {
   if (!source) return undefined;
@@ -147,6 +255,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     switchModel,
     setDrawer,
     setView,
+    openConnections,
     goBack,
     viewTrail,
     viewProjectId,
@@ -180,6 +289,10 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     composerDefaultSource,
     sendWaitsOnFirstSeat,
     retryPending,
+    connectivity,
+    ensureHarborMaster,
+    harborMasterDownload,
+    setProfileOverride,
   } = useApp();
   // The repositories a new chat will start with, picked in the header before
   // the first message (the Claude Code way): the active project's, until the
@@ -210,7 +323,11 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const [voiceOpen, setVoiceOpen] = useState(false);
   const resumeVoice = useRef(false);
   const online = useOnline();
-  const { mounted: offlineMounted, closing: offlineClosing } = useExitPresence(!online);
+  // The banner shows while this device works offline: the network is down,
+  // or the person chose Offline (then it says so, and names no fault).
+  const offlineInForce = !online || offlineNow(connectivity, settings.profileOverride);
+  const offlineByChoice = online && offlineChosen(connectivity, settings.profileOverride);
+  const { mounted: offlineMounted, closing: offlineClosing } = useExitPresence(offlineInForce);
   // The brain a new chat will use, chosen from the composer. Until the person
   // picks one it follows the store's default (state/firstRunOps.ts): on the
   // desktop app the engine on this machine, so a first message just works,
@@ -219,7 +336,24 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   // what "My Stack" selects. It is read every render, so a sign-in, a model
   // set up, or a Stack built moves it along.
   const [pickedSource, setPickedSource] = useState<ConversationSource | undefined>(undefined);
-  const selectedSource = pickedSource ?? composerDefaultSource();
+  // Desktop Offline: with no model on this computer, the stop card's door
+  // pulls DeepBlue (left unseated) while the network is up.
+  const localDoor = installLocalDoor({
+    desktop: isDesktop(),
+    networkUp: networkUp(connectivity),
+    download: harborMasterDownload,
+  });
+  const installLocal = () =>
+    void ensureHarborMaster({ seat: false }).then((ok) => {
+      const why = useApp.getState().harborMasterDownload;
+      if (ok) showToast(LOCAL_MODEL_READY);
+      else if (why?.failed) showToast(why.label);
+    });
+  // Offline, a cloud pick waits, so a new chat never starts on one (Desktop
+  // Offline): the default brain stands in.
+  const selectedSource =
+    usablePick(pickedSource, offlineNow(connectivity, settings.profileOverride)) ??
+    composerDefaultSource();
   // A first message typed before any brain can answer (no model downloaded, no
   // computer paired, no cloud key) is held in the store (settings'
   // heldFirstMessage), never here, so a jump from the chooser to a setup room
@@ -235,6 +369,8 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const booted = useBooted();
   const headerRef = useRef<HTMLElement>(null);
   useHeaderHeight(headerRef);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useOpeningGlide(bodyRef);
 
   const conv = activeId ? conversations[activeId] : undefined;
   const thread = conv?.thread;
@@ -325,7 +461,10 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         const cmds = SLASH_COMMANDS.filter((c) => agent || !c.agentOnly)
           .map((c) => `/${c.name}${c.arg ? ` <${c.arg}>` : ''}: ${c.hint.toLowerCase()}`)
           .join('\n');
-        const text = `${cmds}\n@ mentions a repository file. # saves a line to the project's instructions. Esc stops a run or clears the field. Up recalls an earlier message. Shift+Tab cycles the permission mode. A message typed while the agent works is queued.`;
+        const keys = isPhone()
+          ? ''
+          : ' Esc stops a run or clears the field. Up recalls an earlier message. Shift+Tab cycles the permission mode.';
+        const text = `${cmds}\n@ mentions a repository file. # saves a line to the project's instructions.${keys} A message typed while the agent works is queued.`;
         if (conv) addNote(text);
         else showToast('Open a chat, then /help lists what the composer can do.');
         return;
@@ -559,10 +698,19 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const saveHandoffToVault = useApp((s) => s.saveHandoffToVault);
   const openPackNote = conv ? vaultPackOpener(conv.id) : undefined;
 
-  // A "My Stack" chat can read images when a capable model is placed in it, or
-  // a connected cloud provider reads them; this lights the attach button there,
-  // the same way it lights for a vision-capable cloud model.
+  // A Stack chat can read images when a capable model is placed in it, or a
+  // connected cloud provider reads them. On a phone or an iPad its composer
+  // takes a picture either way (founder, 2026-10-07): the Stack answers one it
+  // cannot read with the two doors below instead of a toast, so the chat
+  // itself says what to set up. The desktop keeps the toast: its Stack is the
+  // engine's, with no Image reading row for the doors to point at. The offer
+  // card reads this to fold its doors once something can.
   const stackVision = useApp((s) => s.stackVisionReady());
+  const startGuideChat = useApp((s) => s.startGuideChat);
+  const imageOffer: ImageOfferContext = {
+    ready: stackVision,
+    onOpenGuide: (id) => void startGuideChat(id),
+  };
 
   const startWith = async (
     source: ConversationSource,
@@ -593,7 +741,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
       if (!sourceReady(selectedSource)) {
         setSheetStage('root');
         setSheetOpen(true);
-        showToast('Pick where your answers come from, then start voice.');
+        showToast('Choose a model, then start voice.');
         return;
       }
       await startWith(selectedSource);
@@ -677,7 +825,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                   </span>
                 </>
               ) : null}
-              {thread && thread.contextPercent > 0 ? (
+              {thread && thread.contextPercent >= 50 ? (
                 <span
                   className={`ctx-bar${thread.contextPercent >= 75 ? ' warm' : ''}${thread.contextPercent >= 90 ? ' hot' : ''}`}
                   title={`Context ${thread.contextPercent}% full`}
@@ -707,7 +855,23 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             aria-label="Open terminal"
             title="Terminal"
           >
-            {'>_'}
+            <TerminalGlyph />
+          </button>
+        ) : null}
+        {/* New chat, one tap from any open chat on phone and desktop (D7,
+            founder 2026-10-07, built as recommended, D): the Chats room's
+            compose, beside the status. It starts a chat in the active project
+            the same way. Not on the empty new chat itself, which has nothing
+            to leave. */}
+        {conv && (!isEmpty || resuming) ? (
+          <button
+            type="button"
+            className="icon-btn chat-compose press-fb"
+            onClick={() => startNewChat()}
+            aria-label="New chat"
+            title="New chat"
+          >
+            <ComposeGlyph />
           </button>
         ) : null}
         <ProfileStatus />
@@ -715,11 +879,18 @@ export function ChatScreen({ compact }: { compact: boolean }) {
 
       {offlineMounted ? (
         <div className={`offline-banner${offlineClosing ? ' closing' : ''}`} role="status">
-          Offline. Local models still answer; your computer and the cloud wait for a connection.
+          {/* Before a computer is connected, the banner never speaks of
+              one (D1's rule, the same as the pill). */}
+          {offlineBannerLine({
+            desktop: isDesktop(),
+            paired: Boolean(settings.daemon),
+            chosen: offlineByChoice,
+            here: thisDeviceNoun(),
+          })}
         </div>
       ) : null}
 
-      <div className="chat-body">
+      <div className="chat-body" ref={bodyRef}>
         {conv && thread && (thread.items.length > 0 || conv.pendingFirstMessage) ? (
           <MessageList
             thread={thread}
@@ -738,7 +909,9 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               setSheetStage('root');
               setSheetOpen(true);
             }}
-            onOpenConnections={() => setView('connections')}
+            onOpenConnections={(message) =>
+              pointsAtWorkspace(message) ? openConnections('anthropic') : setView('connections')
+            }
             onSwitchToLocal={() => {
               setSheetStage('local');
               setSheetOpen(true);
@@ -760,8 +933,13 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             onDismissTrust={dismissProjectTrust}
             onGiveMoreRoom={(itemId) => void giveMoreRoom(itemId)}
             onOpenStack={() => setView('stack')}
+            onInstallLocal={localDoor ? { ...localDoor, run: installLocal } : undefined}
+            onFollowConnection={
+              offlineByChoice ? () => void setProfileOverride(undefined) : undefined
+            }
             onOpenPackNote={openPackNote}
             onSaveHandoff={(itemId) => saveHandoffToVault(conv.id, itemId)}
+            imageOffer={imageOffer}
             afterItem={(itemId) => {
               if (!conv) return null;
               // The guided setup's chat: the current step's buttons follow the
@@ -770,6 +948,12 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               // the Stack mid-walk is still in setup, and the model is told the
               // buttons are there.
               if (guided && guided.conversationId === conv.id) {
+                // Once the walk is over, the hello carries the door every
+                // other Harbor Lite chat has, so the wrap-up's "from the
+                // button under my first message" is a button that is there.
+                if (guided.finished && itemId === `${conv.id}-hello`) {
+                  return <GuideSetupLink onOpen={() => setView('onboarding')} />;
+                }
                 // The "help me get set up" list keeps its buttons under its
                 // own message while it is up, wherever the talk goes after it.
                 if (guided.menu === 'asking' && !guided.paused) {
@@ -777,9 +961,9 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                 }
                 // Paused ("I'd rather just chat", or Start chatting at the fork):
                 // no step buttons following the talk, just a quiet way back in,
-                // up under the hello. Right after Start chatting, a few openers
-                // sit under the guide's "Let's chat" so the first question is
-                // one tap.
+                // up under the hello, in the fork's own words (D4). Right after
+                // Start chatting, a few openers sit under the guide's "Let's
+                // chat" so the first question is one tap.
                 if (guided.paused && walkActive(guided)) {
                   if (itemId === `${conv.id}-hello`) {
                     return (
@@ -788,7 +972,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                         className="btn quiet press-fb setup-resume"
                         onClick={resumeGuidedSetup}
                       >
-                        Pick up setup
+                        {SETUP_RESUME_LABEL}
                       </button>
                     );
                   }
@@ -951,7 +1135,8 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           busy={Boolean(thread?.busy)}
           source={composerSource}
           visionSupported={
-            sourceSupportsVision(composerSource) || (composerSource.kind === 'stack' && stackVision)
+            sourceSupportsVision(composerSource) ||
+            (composerSource.kind === 'stack' && (stackVision || !isDesktop()))
           }
           placeholder={
             conv?.source.kind === 'device' && conv.source.modelId === HARBOR_MINI_MODEL_ID
@@ -1004,7 +1189,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                 chooserHolds.current = true;
                 setSheetStage('root');
                 setSheetOpen(true);
-                showToast('Pick where your first answer comes from, then this sends.');
+                showToast('Choose a model to send your message.');
                 return;
               }
               void startWith(selectedSource, text, attachments);
@@ -1014,6 +1199,10 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           }}
           onStop={abort}
           vault={composerVault}
+          // An open chat counts only if its own model can answer, so a chat
+          // opened on a stack that does not exist yet reads Choose a model too.
+          // A pending desktop status counts as ready, so a launch never flashes.
+          canAnswer={(isDesktop() && desktopStatus === undefined) || sourceReady(composerSource)}
         />
       </div>
 
@@ -1067,6 +1256,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
       {sheetOpen ? (
         <ModelSheet
           initialStage={sheetStage}
+          current={composerSource}
           onPick={(source) => {
             setPickedSource(source);
             setSheetOpen(false);

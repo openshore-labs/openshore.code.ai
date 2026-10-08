@@ -88,7 +88,7 @@ person using the app:
 - **Advisory, and the founder decides; disagree and commit**: every advisor
   presses its case with evidence, then gets behind the call. This is why the
   advisor team ships as a Crew preset (`app/src/lib/crewPresets.ts`): named,
-  project-agnostic perspectives the Reasoning LLM brings in, in their voice, and
+  project-agnostic perspectives the Reasoning model brings in, in their voice, and
   the person decides. The Technical Advisor reviews the work; the Marketing,
   Finance, and Creative Studio advisors step in on their own when a decision
   needs them; the rest speak when asked. (The names shipped as a startup C-suite

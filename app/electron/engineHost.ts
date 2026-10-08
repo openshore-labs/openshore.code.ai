@@ -19,6 +19,14 @@ import { freeChat, type FreeChatEvent } from 'os-code/dist/src/daemon/freeChat.j
 import { TerminalManager, TerminalUnavailable } from 'os-code/dist/src/daemon/terminal.js';
 import { HOME_SHELL_ID } from 'os-code/dist/src/daemon/homeShellId.js';
 import { ProviderRegistry } from 'os-code/dist/src/providers/registry.js';
+import { leavesThisNetwork, seatLeaves } from 'os-code/dist/src/providers/types.js';
+import { hostIsLoopback, isOllamaCloudTag } from 'os-code/dist/src/harness/locality.js';
+import {
+  machineOffline,
+  setMachineOffline,
+  type MachineOffline,
+  type OfflineReason,
+} from 'os-code/dist/src/core/agent/offline.js';
 import { getAnthropicKey, loginWithApiKey, logoutClaude } from 'os-code/dist/src/auth/claude.js';
 import {
   getGithubToken,
@@ -31,7 +39,9 @@ import { detectHardware, budgetFor } from 'os-code/dist/src/router/resourceBudge
 import { loadCatalog, findModel } from 'os-code/dist/src/market/catalog.js';
 import { installModel, installOllamaRef } from 'os-code/dist/src/market/install.js';
 import { computeStackHealth } from 'os-code/dist/src/insights/stackHealth.js';
-import { EgressPolicy } from 'os-code/dist/src/core/security/egress.js';
+import { EgressPolicy, isLocalUrl } from 'os-code/dist/src/core/security/egress.js';
+import { offlineSeatFor } from 'os-code/dist/src/router/router.js';
+import type { PullResult } from 'os-code/dist/src/market/pullLine.js';
 import { redactToken, type PlatformTokens } from 'os-code/dist/src/git/index.js';
 import {
   cloneFolderName,
@@ -616,6 +626,23 @@ export class EngineHost {
     return this.terminals.kill(termId);
   }
 
+  // ----------------------------------------------------------- desktop offline
+
+  /** This computer's offline state, for every session this process hosts
+   *  (Desktop Offline, founder 2026-10-07): main's network watch sets it, from
+   *  the network and the person's choice. The desktop's own sessions and a
+   *  paired phone's (the daemon runs in this process) read the one engine
+   *  flag before each turn, so the change reaches every chat at its next
+   *  turn. Undefined means online. */
+  setOffline(reason: OfflineReason | undefined): MachineOffline {
+    return setMachineOffline(reason);
+  }
+
+  /** What the engine was last told. */
+  offline(): MachineOffline {
+    return machineOffline();
+  }
+
   // ------------------------------------------------------------------ status
 
   async status() {
@@ -627,9 +654,13 @@ export class EngineHost {
       config.resourceBudget.vramProfile === 'auto' ? undefined : config.resourceBudget.vramProfile,
     );
 
+    // The model server the Stack's picker lists and writes to: the first one
+    // on this network, judged by address (leavesThisNetwork), never by its
+    // kind label, so an OpenAI-compatible server on the internet is never
+    // "installed on this computer" (localEndpoint below picks the same one).
     let ollama = { up: false, detail: 'No local provider configured.', models: [] as string[] };
-    for (const [id, provider] of providers.all()) {
-      if (provider.kind !== 'local') continue;
+    for (const [, provider] of providers.all()) {
+      if (leavesThisNetwork(provider)) continue;
       const health = await provider.health();
       let models: string[] = [];
       if (health.ok) {
@@ -638,26 +669,71 @@ export class EngineHost {
         } catch {}
       }
       ollama = { up: health.ok, detail: health.detail, models };
-      void id;
       break;
     }
 
     const stackConfig = config.stack;
+    // Where the orchestrator runs, judged by address and by an Ollama cloud
+    // tag (seatLeaves), never by a label: an OpenAI-compatible server on the
+    // internet is as far off this computer as a cloud API, a cloud tag on this
+    // computer's Ollama answers on ollama.com, and offline each waits.
+    const orchestratorId = stackConfig.orchestrator?.provider;
+    const orchestratorLeaves =
+      orchestratorId && providers.has(orchestratorId)
+        ? seatLeaves(providers.get(orchestratorId), stackConfig.orchestrator?.model ?? '')
+        : config.providers[orchestratorId ?? '']?.kind === 'anthropic' ||
+          isOllamaCloudTag(stackConfig.orchestrator?.model ?? '');
+    // A seat that stays wears "On this computer" only when its server is this
+    // computer itself (hostIsLoopback, never the LAN or the tailnet), so the
+    // Stack's chip says where it answers; GET /stack reports the same (CX and
+    // CMO, 2026-10-08, B).
+    const onThisComputer = (providerId: string): { onThisComputer?: true } => {
+      const endpoint = config.providers[providerId];
+      if (!endpoint || !('baseUrl' in endpoint) || typeof endpoint.baseUrl !== 'string') return {};
+      try {
+        return hostIsLoopback(new URL(endpoint.baseUrl).hostname)
+          ? { onThisComputer: true as const }
+          : {};
+      } catch {
+        return {};
+      }
+    };
     const orchestrator = stackConfig.orchestrator
       ? {
           model: stackConfig.orchestrator.model,
           provider: stackConfig.orchestrator.provider,
-          kind: (config.providers[stackConfig.orchestrator.provider]?.kind === 'anthropic'
-            ? 'cloud'
-            : 'local') as 'local' | 'cloud',
+          kind: (orchestratorLeaves ? 'cloud' : 'local') as 'local' | 'cloud',
+          ...(orchestratorLeaves ? {} : onThisComputer(stackConfig.orchestrator.provider)),
         }
       : undefined;
+    // Each specialist judged as the orchestrator is (seatLeaves). One whose
+    // server is no longer configured answers nowhere, so it says nothing of
+    // where (no kind, and the Stack shows no chip).
     const specialists = Object.entries(stackConfig.specialists)
       .filter(([role]) => role !== 'imageGen')
-      .map(([role, ref]) => ({ role, model: (ref as { model?: string }).model ?? '' }));
+      .map(([role, ref]) => {
+        const model = (ref as { model?: string }).model ?? '';
+        const providerId = (ref as { provider?: string }).provider ?? '';
+        if (!providers.has(providerId) && !config.providers[providerId]) return { role, model };
+        const leaves = providers.has(providerId)
+          ? seatLeaves(providers.get(providerId), model)
+          : config.providers[providerId]?.kind === 'anthropic' || isOllamaCloudTag(model);
+        return {
+          role,
+          model,
+          kind: (leaves ? 'cloud' : 'local') as 'local' | 'cloud',
+          ...(leaves ? {} : onThisComputer(providerId)),
+        };
+      });
+    // The model this computer's engine seats while offline (Router.localSeat,
+    // read across every configured provider by address), so the model sheet
+    // and Runs the show name what will actually answer. Absent when nothing
+    // on this network can.
+    const offlineSeat = await offlineSeatFor(config, providers);
 
     return {
       ollama,
+      ...(offlineSeat ? { offlineSeat } : {}),
       hardwareSummary: budget.summary,
       hardware: this.hardware(),
       stack: {
@@ -753,7 +829,7 @@ export class EngineHost {
     return computeStackHealth(range ?? 'week');
   }
 
-  async installModel(modelId: string): Promise<{ ok: boolean; detail: string }> {
+  async installModel(modelId: string): Promise<PullResult> {
     const { config } = loadConfig();
     const loaded = await loadCatalog(config, new EgressPolicy(config.egress));
     const model = findModel(loaded.catalog, modelId);
@@ -776,7 +852,7 @@ export class EngineHost {
   // Pull any Ollama model by name, not just a catalog entry, so every model on
   // the Ollama library is installable without a catalog update. Progress is
   // forwarded keyed by the ref itself.
-  async installOllamaRef(ref: string): Promise<{ ok: boolean; detail: string }> {
+  async installOllamaRef(ref: string): Promise<PullResult> {
     const baseUrl = firstLocalBaseUrl();
     return installOllamaRef(
       ref,
@@ -1275,20 +1351,26 @@ export class EngineHost {
   }
 }
 
-function firstLocalProviderId(): string {
+/** The model server on this computer's network that pulls land on and the
+ *  Stack's picks are written to: the first OpenAI-compatible endpoint whose
+ *  address stays here (isLocalUrl, the judge a provider's own `remote` uses),
+ *  so it is the server status() lists. Ollama's default when none is. */
+function localEndpoint(): { id: string; baseUrl: string } {
   const { config } = loadConfig();
   for (const [id, endpoint] of Object.entries(config.providers)) {
-    if (endpoint.kind === 'openai-compatible') return id;
+    if (endpoint.kind === 'openai-compatible' && isLocalUrl(endpoint.baseUrl)) {
+      return { id, baseUrl: endpoint.baseUrl };
+    }
   }
-  return 'ollama';
+  return { id: 'ollama', baseUrl: 'http://localhost:11434' };
+}
+
+function firstLocalProviderId(): string {
+  return localEndpoint().id;
 }
 
 function firstLocalBaseUrl(): string {
-  const { config } = loadConfig();
-  for (const endpoint of Object.values(config.providers)) {
-    if (endpoint.kind === 'openai-compatible') return endpoint.baseUrl;
-  }
-  return 'http://localhost:11434';
+  return localEndpoint().baseUrl;
 }
 
 function defaultWorkspace(): string {

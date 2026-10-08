@@ -1,6 +1,8 @@
 -- pgTAP coverage for the row-level and column-level rules the 2026-09-05
--- review tightened (P0-4, BE-1, BE-2, BE-5, BE-6, BE-8, BE-10). Run with
--- `supabase test db` against a database that has every migration applied.
+-- review tightened (P0-4, BE-1, BE-2, BE-5, BE-6, BE-8, BE-10), and the
+-- writes 0027 takes away (reviews, review reports, likeness consents). Run
+-- with `supabase test db` against a database that has every migration
+-- applied.
 --
 -- Shape: everything happens inside one transaction that is rolled back at the
 -- end, so nothing persists. Counts are scoped to this file's own ids, since
@@ -16,7 +18,7 @@
 -- `raise exception`; 23514 is a check_violation (the seat triggers).
 
 begin;
-select plan(32);
+select plan(35);
 
 -- ------------------------------------------------------------ fixtures
 -- Fixed uuids so the JSON claims below can be written by hand.
@@ -236,6 +238,10 @@ select throws_ok(
 reset role;
 
 -- ------------------------------------------------------------ BE-6 reviews
+-- 0027 revokes the app's insert while the Marketplace (v3) is shut, which
+-- takes the column grants with it, so every insert below is refused; the
+-- migration that opens the Marketplace grants the columns back, and these
+-- three lines return to BE-6's own rule then.
 select set_config('request.jwt.claims',
   '{"sub":"c3000000-0000-0000-0000-000000000003","email":"stranger@example.com","role":"authenticated"}', true);
 set local role authenticated;
@@ -252,12 +258,38 @@ select throws_ok(
   '42501', null::text,
   'BE-6: an author cannot write status, even to its default');
 
-select lives_ok(
+select throws_ok(
   $$ insert into public.model_reviews (user_id, model_id, rating, body)
      values ('c3000000-0000-0000-0000-000000000003', 'qwen', 5, 'fast') $$,
-  'BE-6: a plain review still inserts');
+  '42501', null::text,
+  '0027: no new review while the Marketplace is shut');
+
+-- 0027 also takes away the report insert, and every write to likeness
+-- consents ("no names on our server, by schema"), from a signed-in caller and
+-- from anon alike. The review to report is seeded as the table's owner, so
+-- the only thing that refuses the report is the missing grant.
+reset role;
+insert into public.model_reviews (id, user_id, model_id, rating, body)
+values ('0b000000-0000-0000-0000-00000000000b', 'a1000000-0000-0000-0000-000000000001', 'qwen', 4, 'seeded');
+set local role authenticated;
+
+select throws_ok(
+  $$ insert into public.review_reports (review_id, reporter_id, reason)
+     values ('0b000000-0000-0000-0000-00000000000b', 'c3000000-0000-0000-0000-000000000003', 'spam') $$,
+  '42501', null::text,
+  '0027: no new review report while the Marketplace is shut');
+
+select throws_ok(
+  $$ insert into public.likeness_consents (user_id, subject)
+     values ('c3000000-0000-0000-0000-000000000003', 'a named person') $$,
+  '42501', null::text,
+  '0027: a signed-in caller cannot write a likeness consent');
 
 reset role;
+
+select ok(
+  not has_table_privilege('anon', 'public.likeness_consents', 'insert'),
+  '0027: anon holds no insert on likeness_consents either');
 
 -- ------------------------------------------------------------ BE-8 ordering
 -- The apply RPC writes only when the event is newer than the row's last event.

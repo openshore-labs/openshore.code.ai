@@ -2,8 +2,14 @@
 // engine over IPC, the desktop daemon over SSE from the phone, a model running
 // on the phone itself, cloud Claude, and the demo. They all emit the engine's
 // DriverEvent protocol, so the chat UI has exactly one rendering path.
-import { LOCAL_ONLY_STUB } from 'os-code/protocol';
-import type { ApprovalAnswer, DriverEvent, ModelClass, PermissionMode } from 'os-code/protocol';
+import { LOCAL_ONLY_STUB, placeholderLine } from 'os-code/protocol';
+import type {
+  ApprovalAnswer,
+  DriverEvent,
+  ModelClass,
+  PermissionMode,
+  PrivateCause,
+} from 'os-code/protocol';
 import type { Attachment } from '../lib/attachments.js';
 import type { SeedTurn } from '../state/types.js';
 
@@ -195,7 +201,15 @@ export interface AppVaultPack {
    *  `localOnly` is set when the text carries a note that stays on this
    *  computer (only ever on a seat that does not leave the network), so the
    *  reply it grounds is marked like one after a local-only read (I5). */
-  render(seat: PackSeat): { text?: string; event?: DriverEvent; localOnly?: true };
+  render(seat: PackSeat): {
+    text?: string;
+    event?: DriverEvent;
+    localOnly?: true;
+    /** Set with `localOnly` when every note that stays on this computer in
+     *  the text is one of the project's own pins (CX and CMO, 2026-10-08,
+     *  G, H), so a card can name the pin rather than a read. */
+    pinOnly?: true;
+  };
 }
 
 /**
@@ -255,6 +269,103 @@ export class PackLocalOnlyMarker {
  *  seat that leaves the network, whole on one that does not (I5). */
 export function seedText(turn: SeedTurn, leavesNetwork: boolean): string {
   return turn.localOnly && leavesNetwork ? LOCAL_ONLY_STUB : turn.text;
+}
+
+/** Whether a pack's private notes are only the project's own pins (G, H):
+ *  it used at least one note that stays on this computer, and every such
+ *  note is a project pin (PackSource.localOnly, the engine's own test). */
+export function packPinOnly(
+  sources: ReadonlyArray<{ layer: string; project?: true; localOnly?: true }> | undefined,
+): boolean {
+  const local = (sources ?? []).filter((source) => source.localOnly === true);
+  return local.length > 0 && local.every((s) => s.layer === 'pin' && s.project === true);
+}
+
+/** The stronger of two causes: a read outweighs a pin, either outweighs
+ *  none. */
+function strongerCause(
+  a: PrivateCause | undefined,
+  b: PrivateCause | undefined,
+): PrivateCause | undefined {
+  if (a === 'read' || b === 'read') return 'read';
+  return a ?? b;
+}
+
+/**
+ * Whether a chat on a seat that stays on this network holds a private note's
+ * text, and why (CX and CMO, 2026-10-08, H): the cause names the project's
+ * own pin when that is all it holds, the way the engine's `privateCause`
+ * does, else a read. A search a model writes then asks every time, and one
+ * bound for Perplexity does not run. One per driver instance, in memory.
+ */
+export class PrivateHold {
+  /** What the kept turns hold: a marked turn from a pin alone, or any other. */
+  private kept: PrivateCause | undefined;
+  /** What this send holds so far. */
+  private sent: PrivateCause | undefined;
+
+  /** A new send: nothing of it is held yet. */
+  begin(): void {
+    this.sent = undefined;
+  }
+
+  /** A turn the chat keeps (a seed, a recorded line) that carries the mark:
+   *  nothing says it came from a pin alone, so it reads as a read. */
+  keep(marked: boolean | undefined): void {
+    if (marked) this.kept = 'read';
+  }
+
+  /** This send's pack carried a note that stays on this computer. */
+  pack(localOnly: boolean | undefined, pinOnly: boolean): void {
+    if (localOnly) this.sent = strongerCause(this.sent, pinOnly ? 'pin' : 'read');
+  }
+
+  /** This send read a note that stays on this computer (a tool, a plan). */
+  read(): void {
+    this.sent = 'read';
+  }
+
+  /** The send ended; `marked` says its reply was kept with the mark: for
+   *  this send's cause, or, when the send itself read nothing new, for what
+   *  the kept turns it read already held. */
+  settle(marked: boolean): void {
+    if (marked) this.kept = strongerCause(this.kept, this.sent ?? this.kept ?? 'read');
+  }
+
+  /** What the chat holds now, or undefined for a clean chat. */
+  cause(): PrivateCause | undefined {
+    return strongerCause(this.kept, this.sent);
+  }
+}
+
+/** Whether a turn reaches a seat as the placeholder in place of a reply a
+ *  local model wrote after a private read: a marked reply, to a seat that
+ *  leaves this network (F). */
+export function stubsReply(
+  turn: { role: string; localOnly?: true },
+  leavesNetwork: boolean,
+): boolean {
+  return leavesNetwork && turn.localOnly === true && turn.role === 'assistant';
+}
+
+/**
+ * The placeholder line (CX and CMO, 2026-10-08, F): said once per chat for
+ * each model off this network, on the first turn it is sent the placeholder
+ * in place of a marked reply, so a cloud model that seems to forget the chat
+ * has a reason on screen. One per driver instance, keyed by seat; it lives in
+ * memory only, never stored or sent anywhere.
+ */
+export class PlaceholderNotice {
+  private shown = new Set<string>();
+
+  /** The status to emit before this request, or undefined: `seat` keys the
+   *  model (its refKey), `model` names it, `stubbed` says whether the request
+   *  carries the placeholder for a marked reply. */
+  take(seat: string, model: string, stubbed: boolean): DriverEvent | undefined {
+    if (!stubbed || this.shown.has(seat)) return undefined;
+    this.shown.add(seat);
+    return { type: 'status', message: placeholderLine(model) };
+  }
 }
 
 /** The trailing options every chat driver constructor takes (CTO J1). The

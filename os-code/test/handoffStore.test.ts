@@ -5,16 +5,26 @@
 // local-only message; a session created with a handoff opens its first task
 // with it, and only its first.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, symlinkSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   clearHandoffs,
   deleteHandoff,
   handoffKey,
+  handoffSweepMarker,
   handoffTurnsFromHistory,
   handoffsDir,
   readHandoff,
+  sweepPreFixHandoffs,
   writeHandoff,
   type HandoffRecord,
 } from '../src/core/agent/handoffStore.js';
@@ -22,6 +32,7 @@ import { _resetDataKeyCache } from '../src/core/security/atRest.js';
 import { LocalDriver } from '../src/daemon/session.js';
 import { bootstrapSession } from '../src/core/agent/bootstrap.js';
 import { HANDOFF_MAX_BYTES } from '../src/harness/handoff.js';
+import { ConfigSchema as Schema } from '../src/config/schema.js';
 import type { AgentSession } from '../src/core/agent/loop.js';
 import type { ChatMessage } from '../src/providers/types.js';
 import { removeTempDir } from './helpers/portable.js';
@@ -113,6 +124,73 @@ describe('the handoff store', () => {
     clearHandoffs();
     expect(existsSync(handoffsDir())).toBe(false);
     expect(readHandoff(b, { now })).toBeUndefined();
+  });
+});
+
+// CX and CMO, 2026-10-08 (A): a handoff written before the local-only fix
+// (0.1.64) may carry a private note's words. New records carry v: 2, and
+// every record without it is swept once per machine, from bootstrap.
+describe('the sweep of records from before the fix', () => {
+  it('new records carry v: 2, so the sweep keeps them though they are sealed', () => {
+    const scope = { cwd, projectName: 'Atlas' };
+    writeHandoff(scope, record(new Date()));
+    _resetDataKeyCache();
+    sweepPreFixHandoffs();
+    expect(readdirSync(handoffsDir())).toEqual([`${handoffKey(scope)}.json`]);
+  });
+
+  it('removes every record without v: 2 once, keeps v: 2 ones, and leaves a marker', () => {
+    const kept = { cwd, projectName: 'Kept' };
+    writeHandoff(kept, record(new Date()));
+    mkdirSync(handoffsDir(), { recursive: true });
+    const old = join(handoffsDir(), `${'a'.repeat(64)}.json`);
+    writeFileSync(old, JSON.stringify({ ...record(new Date()), text: 'OLD-PRIVATE' }));
+    const unreadable = join(handoffsDir(), `${'b'.repeat(64)}.json`);
+    writeFileSync(unreadable, 'not json');
+    expect(existsSync(handoffSweepMarker())).toBe(false);
+    sweepPreFixHandoffs();
+    expect(existsSync(old)).toBe(false);
+    expect(existsSync(unreadable)).toBe(false);
+    expect(readHandoff(kept, { now: new Date() })).toBeDefined();
+    expect(existsSync(handoffSweepMarker())).toBe(true);
+    // Once only: a v-less record found later is left to the reader.
+    writeFileSync(old, JSON.stringify(record(new Date())));
+    sweepPreFixHandoffs();
+    expect(existsSync(old)).toBe(true);
+  });
+
+  it('the reader never opens a record without v: 2, as an older engine beside this one writes', () => {
+    const scope = { cwd, projectName: 'Atlas' };
+    const now = new Date();
+    sweepPreFixHandoffs();
+    expect(existsSync(handoffSweepMarker())).toBe(true);
+    // Written after the sweep by an engine from before the fix (a CLI the
+    // person has not updated): the marker stops a second sweep, so the
+    // reader holds the line.
+    mkdirSync(handoffsDir(), { recursive: true });
+    writeFileSync(
+      join(handoffsDir(), `${handoffKey(scope)}.json`),
+      JSON.stringify(record(now, 'OLD-ENGINE-PRIVATE')),
+    );
+    expect(readHandoff(scope, { now })).toBeUndefined();
+    // The same record as this engine writes it is read.
+    writeHandoff(scope, record(now));
+    expect(readHandoff(scope, { now })).toEqual(record(now));
+  });
+
+  it('bootstrap runs it', () => {
+    mkdirSync(handoffsDir(), { recursive: true });
+    const old = join(handoffsDir(), `${'c'.repeat(64)}.json`);
+    writeFileSync(old, JSON.stringify(record(new Date())));
+    const result = bootstrapSession({
+      cwd,
+      profile: 'local-interactive',
+      persist: false,
+      config: Schema.parse({ stack: { orchestrator: { provider: 'ollama', model: 'qwen' } } }),
+    });
+    result.driver.dispose();
+    expect(existsSync(old)).toBe(false);
+    expect(existsSync(handoffSweepMarker())).toBe(true);
   });
 });
 

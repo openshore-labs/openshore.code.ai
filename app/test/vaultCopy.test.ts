@@ -6,9 +6,11 @@
 // claim:
 // - the agent reads and writes these notes only in This folder on the
 //   desktop, the one folder the agent's vault is; everywhere else the only
-//   agent line is the platform's own pointer to where its vault really is
-//   (on an unpaired phone, one pointer in the empty-vault ramp only), and a
-//   member on someone else's computer is promised nothing;
+//   agent line is the platform's own pointer to where its vault really is,
+//   said on a phone only once a computer is paired (an unpaired phone or the
+//   web says instead, in the empty-vault ramp only, how its own chats use
+//   the notes; founder, D20, 2026-10-07), and a member on someone else's
+//   computer is promised nothing;
 // - Obsidian is named only in the exact sentences each storage may say:
 //   only This folder says Obsidian opens it; the team vault says it is not
 //   an Obsidian folder; Local, iCloud, and Google Drive say nothing about
@@ -43,8 +45,16 @@ import {
   DRIVE_RECONNECT_FAILED_LINE,
   DRIVE_WEB_URL,
   PHONE_AGENT_LINE,
-  PHONE_PAIR_LINE,
   ROUTINE_NOTES_PLACE,
+  VAULT_MODELS_LINE,
+  VAULT_MODELS_TITLE,
+  VAULT_PRIVATE_OFF_CLOUD,
+  VAULT_CARRY_CAVEAT,
+  VAULT_COMMAND_CAVEAT,
+  VAULT_EXCLUDE_SUB,
+  VAULT_LOCAL_ONLY_SUB,
+  VAULT_SETTINGS_FIELD_LABELS,
+  VAULT_SETTINGS_ROWS,
   VAULT_COPY_PLATFORMS,
   VAULT_COPY_PROVIDERS,
   vaultCopy,
@@ -73,6 +83,7 @@ import {
   vaultHeldKeep,
   vaultHeldLine,
   vaultLead,
+  vaultLoadFailed,
   vaultMoveLine,
   vaultOffersProvider,
   vaultOnboard,
@@ -195,13 +206,12 @@ describe('the Vault copy map (0.19)', () => {
       expect(c.agent, where).toBeUndefined();
       expect(c.routines, where).toBeUndefined();
       // The one pointer this platform may carry: the desktop's own, or the
-      // phone's (paired, or the ramp's pairing pointer), never the other's.
+      // phone's once a computer is paired, never the other's.
       const pointer = p.on === 'electron' ? DESKTOP_AGENT_LINE : PHONE_AGENT_LINE;
-      const pointers = p.on === 'electron' ? [pointer] : [pointer, PHONE_PAIR_LINE];
       if (c.agentElsewhere) expect(c.agentElsewhere, where).toBe(pointer);
       for (const text of rendered(p)) {
         let rest = text.replace(/\s+/g, ' ');
-        for (const allowed of [...pointers, ...NEUTRAL_AGENT_TITLES]) {
+        for (const allowed of [pointer, ...NEUTRAL_AGENT_TITLES]) {
           rest = rest.split(allowed.replace(/\s+/g, ' ')).join(' ');
         }
         expect(rest, `${where}: ${text}`).not.toMatch(/\bagents?\b/i);
@@ -217,25 +227,30 @@ describe('the Vault copy map (0.19)', () => {
       // Your computer, paired, says the agent line itself, not a pointer.
       const says = p.device === 'paired' && p.id !== 'org' && p.id !== 'hub';
       expect(c.agentElsewhere, where).toBe(says ? PHONE_AGENT_LINE : undefined);
-      // An unpaired phone or the web gets one pointer, in the empty-vault ramp
-      // only: never in the lead or the storage sheet.
-      const pairs = p.device === 'unpaired' && p.id !== 'org';
+      // An unpaired phone or the web points at no computer (D20, 2026-10-07,
+      // which moved the pointer to the paired state only). It says how its
+      // own chats use the notes instead, in the empty-vault ramp only: never
+      // in the lead or the storage sheet, and never with the agent's name.
+      // Your computer unpaired cannot be read, so it says neither.
+      const unpaired = p.device === 'unpaired' && p.id !== 'org' && p.id !== 'hub';
       if (agentsFolder(p)) continue;
-      expect(c.agentPair, where).toBe(pairs ? PHONE_PAIR_LINE : undefined);
-      if (pairs) {
-        expect(vaultLead(c), where).not.toMatch(/agent/i);
-        expect(vaultSheetLine(c), where).not.toMatch(/agent/i);
-        const ramp = vaultOnboard(p.on, p.id, optsOf(p));
+      expect(c.models, where).toBe(unpaired ? VAULT_MODELS_LINE : undefined);
+      const ramp = vaultOnboard(p.on, p.id, optsOf(p));
+      if (unpaired) {
+        expect(vaultLead(c), where).not.toMatch(/agent|pin/i);
+        expect(vaultSheetLine(c), where).not.toMatch(/agent|pin/i);
         expect(
           ramp.points.find((pt) => pt.glyph === 'agent'),
           where,
-        ).toEqual({
-          glyph: 'agent',
-          title: 'Where your agent keeps notes',
-          sub: PHONE_PAIR_LINE,
-        });
+        ).toEqual({ glyph: 'agent', title: VAULT_MODELS_TITLE, sub: VAULT_MODELS_LINE });
+        for (const text of rendered(p)) expect(text, where).not.toMatch(/\bagents?\b|\bpair/i);
         continue;
       }
+      // Paired or a member: the models point is the unpaired ramp's alone.
+      expect(
+        ramp.points.some((pt) => pt.title === VAULT_MODELS_TITLE),
+        where,
+      ).toBe(false);
       // A member, or the team vault: no agent word anywhere.
       if (!says) for (const text of rendered(p)) expect(text).not.toMatch(/\bagents?\b/i);
     }
@@ -328,8 +343,10 @@ describe('the Vault copy map (0.19)', () => {
     const icloud = PROVIDER_ROSTER.find((p) => p.id === 'icloud')!;
     expect(icloud.offPill).toBe('Turned off');
     expect(icloud.offPill ?? 'Arriving').not.toBe('Arriving');
+    // The device in hand is named through thisDeviceNoun (2026-10-07), so an
+    // iPad reads its own name; the suite runs as a phone.
     expect(icloud.pending).toBe(
-      'Sign in to iCloud and turn on iCloud Drive in Settings on this iPhone to use it.',
+      'Sign in to iCloud and turn on iCloud Drive in Settings on this phone to use it.',
     );
     // Google Drive is held back, so it still arrives.
     expect(PROVIDER_ROSTER.find((p) => p.id === 'gdrive')!.offPill).toBeUndefined();
@@ -359,6 +376,40 @@ describe('the Vault copy map (0.19)', () => {
     const card = GUIDE_CARDS.find((c) => c.id === 'wayfinding');
     expect(card?.text).toMatch(/repository/);
     expect(card?.text).not.toMatch(/Memory keeps what it has learned in your Vault/);
+  });
+
+  // The empty ramp says where the notes live and how the agent fits, so the
+  // lead above it steps aside rather than say a sentence twice (Creative
+  // Studio and CMO, 2026-10-07). Nothing it drops goes unsaid.
+  it('steps the lead aside while the ramp says it, and loses no sentence', () => {
+    for (const p of PAIRS.filter((x) => x.id !== 'org')) {
+      const c = vaultCopy(p.on, p.id, optsOf(p));
+      const where = nameOf(p);
+      expect(vaultLead(c, { ramp: true }), where).toBe('');
+      const ramp = vaultOnboard(p.on, p.id, optsOf(p));
+      const said = [ramp.lead, ...ramp.points.map((pt) => pt.sub)];
+      for (const s of sentences(vaultLead(c))) {
+        expect(
+          said.some((text) => text.includes(s)),
+          `${where}: ${s}`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  // A vault on this device, or on the person's own computer, did not fail
+  // for want of a connection, so only a network storage is told to check one
+  // (CMO, 2026-10-07).
+  it('tells only a network storage to check its connection when the vault does not load', () => {
+    for (const id of ['local', 'files', 'hub'] as const) {
+      const { title, sub } = vaultLoadFailed(id);
+      expect(title.length, id).toBeGreaterThan(10);
+      expect(sub, id).not.toMatch(/connection/i);
+      expect(sub, id).toMatch(/Try again/);
+    }
+    for (const id of ['icloud', 'gdrive', 'org', undefined] as const) {
+      expect(vaultLoadFailed(id).sub, String(id)).toMatch(/Check your connection/);
+    }
   });
 });
 
@@ -650,6 +701,67 @@ describe('retired Vault claims', () => {
     expect(ROUTINE_NOTES_PLACE).toBe('the vault folder on your computer');
     const crew = readFileSync(join(SRC, 'screens/CrewCommandScreen.tsx'), 'utf8');
     expect(crew).toContain('ROUTINE_NOTES_PLACE');
+  });
+});
+
+// The one private-notes promise (D5) says what the code does (the privacy
+// review, sp-vaultws, 2026-10-08). The pack, the vault tools and the
+// workspace's own tools keep a private note off a cloud model; a command can
+// read any file, so every line that makes the promise names the one way
+// around it: a command the person runs (the terminal, the chat's command
+// lane, whose output a model may read) or allows the agent to run. The
+// engine's card for a command near the vault says so too.
+describe('the private-notes promise', () => {
+  it('names the one way a private note can reach a cloud model', () => {
+    expect(VAULT_COMMAND_CAVEAT).toBe('unless a command you run or allow reads them');
+    // OpenShore is the subject, and the person's own reach is a plain second
+    // sentence, never an "unless" inside the promise (CX and CMO, 2026-10-08,
+    // A). "Allow", not "approve": Accept edits lets a change land unasked.
+    expect(VAULT_CARRY_CAVEAT).toBe(
+      'A command you run or allow, or a change you allow, can still carry their words to a cloud model.',
+    );
+    expect(VAULT_PRIVATE_OFF_CLOUD).toBe(
+      'OpenShore never sends private notes to a cloud model. A command you run or allow, or a change you allow, can still carry their words to one.',
+    );
+    expect(VAULT_MODELS_LINE).toBe(
+      'Pin a note to a project and every chat there starts with it. OpenShore never sends private notes to a cloud model. A command you run or allow, or a change you allow, can still carry their words to one.',
+    );
+    expect(VAULT_LOCAL_ONLY_SUB).toBe(
+      'A local model may read these, and OpenShore never sends them to a cloud model. A command you run or allow, or a change you allow, can still carry their words to one.',
+    );
+    // One noun for the setting and its conflict line: "Private notes".
+    expect(VAULT_SETTINGS_ROWS.localOnly).toBe('Private notes');
+    expect(VAULT_SETTINGS_FIELD_LABELS['localOnly.paths']).toBe('Private notes');
+    expect(VAULT_SETTINGS_FIELD_LABELS['localOnly.tags']).toBe('Private notes');
+    expect(VAULT_EXCLUDE_SUB).toBe(
+      'Models never see these, in any chat, unless a command you run or allow reads them.',
+    );
+    const loop = readFileSync(resolve(ROOT, '../os-code/src/core/agent/loop.ts'), 'utf8');
+    expect(loop).toContain(
+      'This command can read notes in your vault that stay on this computer, and what it prints goes to a cloud model.',
+    );
+  });
+
+  it('the unscoped wording survives nowhere in the app', () => {
+    const retired = [
+      /never reach a cloud model\./i,
+      /unless a command you allow reads/i,
+      /Nothing here goes to a cloud model\./i,
+      /Models never see these, in any chat\./i,
+      /\(never a private note\)/i,
+      /A private note goes only to one on your own network\./i,
+      // The "unless" promise and the setting's old name (CX and CMO,
+      // 2026-10-08, A).
+      /run or allow a command or change that carries them/i,
+      /A cloud model never does/i,
+      /Notes that stay on this computer/,
+    ];
+    const hits: string[] = [];
+    for (const file of walk(SRC)) {
+      const text = stripComments(readFileSync(file, 'utf8'));
+      for (const line of retired) if (line.test(text)) hits.push(`${relative(ROOT, file)} ${line}`);
+    }
+    expect(hits).toEqual([]);
   });
 });
 

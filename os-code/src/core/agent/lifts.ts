@@ -4,16 +4,18 @@
 // the keyword search and decides what is never read: a file that may hold a
 // secret (the commit card's own test, by name and by content), a path the
 // vault's privacy rules keep on this computer or hide, anything inside the
-// vault folder (the vault pack speaks for notes), and a path the person's
-// permission policy denies to readFile. The loop calls it only for a seat
-// that stays on this network, and only with the switch on.
-import { relative, sep } from 'node:path';
+// vault folder (the vault pack speaks for notes), judged by real path so a
+// workspace that is the vault, lies inside it or links into it counts too,
+// and a path the person's permission policy denies to readFile. The loop
+// calls it only for a seat that stays on this network, and only with the
+// switch on.
 import type { OscConfig } from '../../config/schema.js';
 import { keywordHits } from '../../context/index.js';
 import { compileVaultPrivacy } from '../../harness/vault/privacy.js';
 import { bodyVisibility } from '../../harness/vaultContext.js';
 import { formatRetrieval, retrievalBudgetTokens, taskTerms } from '../../harness/retrieval.js';
 import { stageSecretOf } from '../tools/git.js';
+import { vaultFileTest } from '../tools/workspaceNotes.js';
 import { vaultPrivacyConfig } from './registry.js';
 import type { AgentEvent } from './types.js';
 
@@ -49,14 +51,9 @@ export function firstTurnRetrieval(input: FirstTurnRetrievalInput): FirstTurnRet
   const terms = taskTerms(input.task);
   if (!terms.length) return undefined;
   const privacy = compileVaultPrivacy(vaultPrivacyConfig(input.config));
-  const vaultRel = vaultInside(input.cwd, input.vaultRoot);
+  const inVault = vaultFileTest(input.vaultRoot, input.cwd);
   const skip = (rel: string, text: string): boolean => {
-    if (
-      vaultRel !== undefined &&
-      (vaultRel === '' || rel === vaultRel || rel.startsWith(`${vaultRel}/`))
-    ) {
-      return true;
-    }
+    if (inVault?.(rel)) return true;
     if (stageSecretOf(rel, () => text)) return true;
     const visibility = /\.md$/i.test(rel)
       ? bodyVisibility(privacy, rel, text)
@@ -71,13 +68,4 @@ export function firstTurnRetrieval(input: FirstTurnRetrievalInput): FirstTurnRet
     text: block.text,
     event: { type: 'retrieval', sources: block.sources, tokens: block.tokens, budgetTokens },
   };
-}
-
-/** The vault folder relative to the workspace, forward slashes, when the
- *  vault sits inside it ('' when it is the workspace itself). */
-function vaultInside(cwd: string, vaultRoot: string | undefined): string | undefined {
-  if (!vaultRoot) return undefined;
-  const rel = relative(cwd, vaultRoot);
-  if (rel.startsWith('..') || rel.startsWith(sep) || /^[A-Za-z]:/.test(rel)) return undefined;
-  return rel.split(sep).join('/');
 }

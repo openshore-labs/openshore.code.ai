@@ -13,8 +13,10 @@
 //   only there do routines leave their notes.
 // - Everywhere else the notes on screen are not the agent's. A phone paired
 //   to its own computer says where the agent's vault is instead; an unpaired
-//   phone gets one pointer in the empty-vault ramp only (where the agent
-//   would be, never a claim about these notes); and a member on someone
+//   phone or the web says, in the empty-vault ramp only, how its own chats
+//   use these notes (a project's pins ride every chat there, and private
+//   notes stay off cloud models; founder, D20, 2026-10-07), so the pointer
+//   to a computer is said only once one is paired; and a member on someone
 //   else's computer gets no vault in their sessions (0.13), so nothing is
 //   promised there.
 // - Obsidian opens a plain folder. Only This folder claims it today. The
@@ -52,9 +54,9 @@ export interface VaultCopy {
   /** Where the agent's vault is when it is not these notes. A pointer, never
    *  a claim about the notes on screen. */
   agentElsewhere?: string;
-  /** The ramp's pointer on a device with no computer paired: where the agent
-   *  would be, never a claim about these notes. */
-  agentPair?: string;
+  /** The ramp's point on a device with no computer paired: how this device's
+   *  own chats use these notes (`VAULT_MODELS_LINE`). Never an agent line. */
+  models?: string;
 }
 
 /** Who holds the device, as far as the agent lines are concerned. */
@@ -72,9 +74,75 @@ export interface VaultCopyOpts {
 
 /** A paired phone's line about the agent: its vault is the computer's folder. */
 export const PHONE_AGENT_LINE = 'Your agent uses the vault on your computer.';
-/** An unpaired phone's (or the web's) one pointer, in the empty-vault ramp
- *  only: where the agent works, and that its vault is its own. */
-export const PHONE_PAIR_LINE = 'Your agent works on a computer you pair, with its own vault there.';
+/** An unpaired phone's (or the web's) point in the empty-vault ramp only:
+ *  how the chats on this device use these notes (founder, D20, 2026-10-07).
+ *  Both halves are the code's: a project's pins ride the pack of every chat
+ *  in it, on the device, cloud and Stack drivers alike (store.ts
+ *  `conversationPack`, `projectPins`), and a seat that leaves this network
+ *  never gets a note the privacy rules mark local-only (D5). The project
+ *  room's pins card says the same. */
+export const VAULT_MODELS_TITLE = 'How your models use it';
+/** The one way a private note can still reach a cloud model, worded once
+ *  for every line that makes the promise (the privacy review, sp-vaultws,
+ *  2026-10-08). Every way OpenShore itself reads a note keeps a private one
+ *  off a cloud model: the pack, the vault tools, and the workspace's own
+ *  file, search and git tools when the vault sits in a project or holds it.
+ *  A command can read any file: one the agent runs once the person allows it
+ *  (near the vault, on a cloud model, it asks every time and its card says
+ *  so), and one the person runs in the terminal or the chat's command lane,
+ *  whose output the model may read. That is the caveat for an excluded note,
+ *  which no model reads at all. */
+export const VAULT_COMMAND_CAVEAT = 'unless a command you run or allow reads them';
+/** The person's own reach, said as a plain sentence after the promise, never
+ *  an "unless" inside it (CX and CMO, 2026-10-08, A): besides a command, a
+ *  change a local model writes after reading a private note (a file, a
+ *  commit message, an open note) can carry its words to where a cloud model
+ *  reads them later. Writes ask unless the person allowed them (Accept edits
+ *  included), so the words say "allow", not "approve"; a change to the
+ *  project's memory notes asks every time once a chat holds a private note. */
+const VAULT_CARRY_WORDS =
+  'A command you run or allow, or a change you allow, can still carry their words to';
+/** The caveat for a note a local model may read, as a whole sentence. */
+export const VAULT_CARRY_CAVEAT = `${VAULT_CARRY_WORDS} a cloud model.`;
+/** The one promise about private notes and cloud models, worded once for the
+ *  pins card's empty state, the pin sheet, the empty Vault ramp, the models
+ *  line and the cloud-models entry (D5; CS-10; CX and CMO, 2026-10-08, A).
+ *  OpenShore is the subject, because what it does is what the code holds:
+ *  every way it reads a note keeps a private one off a cloud model. */
+export const VAULT_PRIVATE_OFF_CLOUD = `OpenShore never sends private notes to a cloud model. ${VAULT_CARRY_WORDS} one.`;
+/** The word beside the lock on a private note's row, in the pinned list and
+ *  the pin picker: the one noun the promise uses (CX and CMO, 2026-10-08,
+ *  G). */
+export const VAULT_PRIVATE_TAG = 'Private';
+/** Under a project's pinned list, while a private pin rides the coding
+ *  agent's pack (G). Held to the code: the refusal is the coding agent's, it
+ *  holds while the agent's own seat stays on this network (the engine's
+ *  handoffRefusal), and a pin reaches the agent only while Memory and Notes
+ *  in chats are on and it is among the first PACK_PINS_MAX the pack takes. */
+export const VAULT_PIN_PRIVATE_LINE =
+  'A private note is pinned here, so while the coding agent runs on a local model, it hands no step in this project to a cloud model.';
+export const VAULT_MODELS_LINE = `Pin a note to a project and every chat there starts with it. ${VAULT_PRIVATE_OFF_CLOUD}`;
+/** A plan's working note for a step kept off a model that leaves this
+ *  network, because the plan draws on a private note: the Reasoning model
+ *  that wrote the plan stays here and takes the step (D5, stepRunner). The
+ *  note says what happened and why; the promise lives where it is made (CX
+ *  and CMO, 2026-10-08, A). */
+export function privatePlanStepNote(title: string, owner: string, anchor: string): string {
+  return `${title}. This plan draws on a private note, so ${anchor}, your Reasoning model, takes it instead of ${owner}.`;
+}
+/** The same plan's note for a step that edits files when nothing says what
+ *  your computer's agent runs on (an older daemon, or out of reach): it is
+ *  described here, not handed to your computer, whose agent may run a cloud
+ *  model (D5). */
+export function privatePlanEngineNote(title: string, writer: string): string {
+  return `${title}. This plan draws on a private note, so ${writer} describes the change here instead of running it on your computer, whose agent may use a cloud model.`;
+}
+/** The same plan's note when your computer says its agent runs on a cloud
+ *  model (its GET /stack report, CX and CMO, 2026-10-08, J): the change is
+ *  described here instead. */
+export function privatePlanCloudEngineNote(title: string, writer: string): string {
+  return `${title}. This plan draws on a private note, and your computer's agent can hand work to a cloud model, so ${writer} describes the change here instead.`;
+}
 /** The desktop's line when the vault is not the agent's folder. */
 export const DESKTOP_AGENT_LINE =
   'Your agent uses a folder on this computer, not these notes. Move the vault to This folder to share it.';
@@ -122,8 +190,9 @@ export function vaultCopy(
     copy.agentElsewhere = PHONE_AGENT_LINE;
   } else if (!opts.hubMember) {
     // Off the desktop with no computer paired (the team vault returned
-    // above): the ramp's one pointer. The lead and the sheet never read it.
-    copy.agentPair = PHONE_PAIR_LINE;
+    // above): how this device's chats use the notes, in the ramp only. The
+    // lead and the sheet never read it.
+    copy.models = VAULT_MODELS_LINE;
   }
   return copy;
 }
@@ -140,11 +209,11 @@ function hubCopy(copy: VaultCopy, desktop: boolean, opts: VaultCopyOpts): VaultC
     return { storage: `Your notes on ${opts.hubName?.trim() || 'the computer you paired'}.` };
   }
   if (desktop) return copy;
+  // Unpaired, Your computer cannot be read at all, so no chat starts with
+  // its notes and the ramp says nothing about who uses them.
   if (opts.paired) {
     copy.agent = HUB_AGENT_LINE;
     copy.routines = 'Routines leave their notes here.';
-  } else {
-    copy.agentPair = PHONE_PAIR_LINE;
   }
   return copy;
 }
@@ -225,10 +294,48 @@ export function vaultSheetLine(c: VaultCopy): string {
 
 /** The line under the room's title. `offerShown` drops the pointer to This
  *  folder while the desktop move card says it better (Creative Studio 2). */
-export function vaultLead(c: VaultCopy, opts: { offerShown?: boolean } = {}): string {
+export function vaultLead(
+  c: VaultCopy,
+  opts: { offerShown?: boolean; ramp?: boolean } = {},
+): string {
+  // While the empty ramp shows, it says where the notes live and how the
+  // agent fits, so the lead steps aside: the room draws none, and its Where it
+  // lives link ends the ramp's own sentence.
+  if (opts.ramp) return '';
   return [c.storage, c.agent ?? (opts.offerShown ? undefined : c.agentElsewhere)]
     .filter(Boolean)
     .join(' ');
+}
+
+/** The empty list's card when the vault did not load. Only a storage reached
+ *  over the network is told to check its connection: Local and This folder
+ *  are on this device, and Your computer is on the person's own network. */
+export function vaultLoadFailed(provider: VaultCopyProvider | undefined): {
+  title: string;
+  sub: string;
+} {
+  switch (provider) {
+    case 'local':
+      return {
+        title: 'Your notes did not open.',
+        sub: 'They are safe on this device. Try again.',
+      };
+    case 'files':
+      return {
+        title: 'Your vault folder did not open.',
+        sub: 'Your notes are safe in the folder. Try again.',
+      };
+    case 'hub':
+      return {
+        title: 'Your computer did not answer.',
+        sub: 'Your notes are safe on your computer. Try again once it is on and in reach.',
+      };
+    default:
+      return {
+        title: 'Your vault storage is offline.',
+        sub: 'Your notes are safe where they live. This device could not reach the storage to load them. Check your connection and try again.',
+      };
+  }
 }
 
 export interface VaultOnboard {
@@ -256,15 +363,15 @@ export function vaultOnboard(
   const points: VaultOnboard['points'] = [
     { glyph: 'doc', title: 'Plain markdown, yours', sub: `${wayOut} Nothing is locked in.` },
   ];
-  const agentLine = c.agent
-    ? [c.agent, c.routines].filter(Boolean).join(' ')
-    : (c.agentElsewhere ?? c.agentPair);
+  const agentLine = c.agent ? [c.agent, c.routines].filter(Boolean).join(' ') : c.agentElsewhere;
   if (agentLine) {
     points.push({
       glyph: 'agent',
       title: c.agent ? 'You and your agent both write here' : 'Where your agent keeps notes',
       sub: agentLine,
     });
+  } else if (c.models) {
+    points.push({ glyph: 'agent', title: VAULT_MODELS_TITLE, sub: c.models });
   }
   points.push({
     glyph: 'link',
@@ -2230,7 +2337,7 @@ export const VAULT_SETTINGS_ROWS = Object.freeze({
   sort: 'Sort notes by',
   delete: 'Delete',
   exclude: 'Notes models never see',
-  localOnly: 'Notes that stay on this computer',
+  localOnly: 'Private notes',
   agentFolder: 'Your agent writes in',
   context: 'Notes in chats',
   packSize: 'Room for notes',
@@ -2270,8 +2377,8 @@ export const VAULT_SETTINGS_FIELD_LABELS = Object.freeze({
   'tree.sort': 'Sort notes by',
   delete: 'Delete',
   exclude: 'Notes models never see',
-  'localOnly.paths': 'Notes that stay on this computer',
-  'localOnly.tags': 'Notes that stay on this computer',
+  'localOnly.paths': 'Private notes',
+  'localOnly.tags': 'Private notes',
   'agent.folder': 'Your agent writes in',
   'daily.folder': "Today's note folder",
   'daily.format': 'Date format',
@@ -2367,10 +2474,10 @@ export function vaultNotesInChatsSub(byClass: Readonly<Record<string, string>>):
   const all = modes.length > 0 && modes.every((m) => m === 'full');
   const some = modes.some((m) => m === 'full');
   const what = all
-    ? "Each chat starts with this project's Current State, any notes you pinned, and notes that match the task."
+    ? "Each chat starts with its project's Current State, any notes you pinned, and notes that match the task."
     : some
-      ? "Each chat starts with this project's Current State and any notes you pinned, and on some models notes that match the task."
-      : "Each chat starts with this project's Current State and any notes you pinned.";
+      ? "Each chat starts with its project's Current State and any notes you pinned, and on some models notes that match the task."
+      : "Each chat starts with its project's Current State and any notes you pinned.";
   return `${what} A card shows what went. Off applies to new chats.`;
 }
 export const VAULT_HANDOFF_SUB =
@@ -2404,9 +2511,8 @@ export const VAULT_PACK_SIZE_MACHINE_ABOVE =
   "Your computer's config gives notes more room than Large.";
 
 // Y9: excluded and local-only folders.
-export const VAULT_EXCLUDE_SUB = 'Models never see these, in any chat.';
-export const VAULT_LOCAL_ONLY_SUB =
-  'A local model may read these. Nothing here goes to a cloud model.';
+export const VAULT_EXCLUDE_SUB = `Models never see these, in any chat, ${VAULT_COMMAND_CAVEAT}.`;
+export const VAULT_LOCAL_ONLY_SUB = `A local model may read these, and OpenShore never sends them to a cloud model. ${VAULT_CARRY_WORDS} one.`;
 export const VAULT_ADD_FOLDER = 'Add a folder';
 export const VAULT_ADD_TAG = 'Add a tag';
 export function vaultRemoveEntry(entry: string): string {

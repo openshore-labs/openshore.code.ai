@@ -17,7 +17,7 @@ export interface StackBundle {
   tagline: string;
   /** Where these models run. */
   platform: 'phone' | 'desktop';
-  /** Catalog id of the Reasoning LLM (orchestrator). */
+  /** Catalog id of the Reasoning model (orchestrator). */
   orchestrator: string;
   /** A preference list for the orchestrator, best first, resolved against the
    *  machine's memory by resolveBundle. `orchestrator` is the pick before the

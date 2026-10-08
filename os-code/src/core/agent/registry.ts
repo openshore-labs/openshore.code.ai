@@ -25,6 +25,7 @@ import { analyzeImageTool, delegateTool, searchRepoTool } from '../tools/special
 import { vaultWriteTool, vaultReadTool, vaultListTool } from '../tools/vault.js';
 import {
   SEPARATE_VAULT_READ_TOOLS,
+  refreshVault,
   vaultBacklinksTool,
   vaultLookupTool,
   vaultSearchTool,
@@ -45,7 +46,9 @@ import { todoWriteTool } from '../tools/todoWrite.js';
 import { loadVaultDir } from '../../config/load.js';
 import type { Router } from '../../router/router.js';
 import type { ProviderRegistry } from '../../providers/registry.js';
+import { seatLeaves } from '../../providers/types.js';
 import { RepoIndex, keywordSearch } from '../../context/index.js';
+import { privateNoteTest } from '../tools/workspaceNotes.js';
 
 /** What decides which tools a session registers. */
 export interface ToolRegistryOptions {
@@ -156,6 +159,23 @@ export function networkToolsLeftOut(options: ToolRegistryOptions): string[] {
   return [...networkTools({ ...options, webSearch: true }), ...modelHandoffTools(options)]
     .map((t) => t.name)
     .filter((name) => !(keepsSearch && name === webSearchTool.name));
+}
+
+/**
+ * The tools a session takes off its menu while this computer is offline
+ * (Desktop Offline, founder 2026-10-07), by name: the network tools of the
+ * routine's offline slice (web search, opening pages, Codemagic, the
+ * currents), and making an image when the image server is off this network.
+ * webSearch is named even when declined, so a call to it is refused by name.
+ * A handoff to a specialist or a vision seat stays: the router keeps it on a
+ * model on this network, by address, or says nothing can take it.
+ */
+export function offlineCut(
+  options: ToolRegistryOptions & { imageServerLeaves?: boolean },
+): string[] {
+  const names = networkTools({ ...options, webSearch: true }).map((t) => t.name);
+  if (options.stackHasImageGen && options.imageServerLeaves) names.push(generateImageTool.name);
+  return names;
 }
 
 export function buildToolRegistry(options: ToolRegistryOptions): ToolRegistry {
@@ -409,6 +429,10 @@ export function buildToolContext(options: {
   /** This session's own vault root in place of the machine's (a member's on
    *  a shared hub, CTO J8). Ignored when `vault` is off. */
   vaultRoot?: string;
+  /** Whether this computer is offline now (Desktop Offline): repo search
+   *  then keeps to the keyword index when the embedder is off this network,
+   *  rather than failing on a request that cannot leave. */
+  offline?: () => boolean;
 }): ToolContext {
   const { cwd, config, router, providers, projectName, egressLockdown } = options;
   const egress = new EgressPolicy(config.egress, { localExempt: webLocalExempt(config) });
@@ -418,20 +442,39 @@ export function buildToolContext(options: {
   // Under egress lockdown the embedder is never used, even when configured: it
   // can point at a cloud endpoint, and repo search must stay on the device.
   const embeddingRole = egressLockdown ? undefined : router.embeddingRole();
+  // A vault note the vault's rules exclude or keep on this computer is its
+  // own tools' to search (D5): never embedded (an embedder may be a cloud
+  // one) nor ranked, judged by real path, so a vault inside the workspace
+  // and a workspace inside the vault both count. Every other file, a vault's
+  // open notes included, is searched as before. Read live, after the vault's
+  // own settings, since a caller may repoint the context's root.
+  const privateNotes = (): ((rel: string) => boolean) | undefined => privateNoteTest(ctx, cwd);
   let searchRepo: ToolContext['searchRepo'];
   if (embeddingRole) {
     const index = new RepoIndex(
       cwd,
       providers.embedder(embeddingRole.ref.provider),
       embeddingRole.ref.model,
+      privateNotes,
     );
+    const embedderLeaves = seatLeaves(embeddingRole.provider, embeddingRole.ref.model);
     searchRepo = async (query, k) => {
+      await refreshVault(ctx);
+      // Offline, an embedder off this network cannot answer; and while a
+      // seat that stays holds a private note's text, the query it wrote may
+      // quote one, so it never goes to that embedder (D5).
+      if (embedderLeaves && (options.offline?.() || ctx.chatHoldsLocalOnly?.())) {
+        return keywordSearch(cwd, query, k, privateNotes());
+      }
       await index.refresh();
       const hits = await index.search(query, k);
-      return hits || keywordSearch(cwd, query, k);
+      return hits || keywordSearch(cwd, query, k, privateNotes());
     };
   } else {
-    searchRepo = async (query, k) => keywordSearch(cwd, query, k);
+    searchRepo = async (query, k) => {
+      await refreshVault(ctx);
+      return keywordSearch(cwd, query, k, privateNotes());
+    };
   }
 
   // The on-device vault lives outside the repo, so it is addressed by its own

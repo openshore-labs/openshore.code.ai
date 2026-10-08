@@ -293,3 +293,89 @@ describe('EngineHost free chat (the desktop window, over IPC)', () => {
     host.disposeAll();
   });
 });
+
+// Privacy review, 2026-10-08 (electron-daemon-1): an Ollama cloud tag on this
+// computer's own Ollama answers on ollama.com, so the status the Stack's chip
+// and the model sheet read calls it cloud, judged by the seat (seatLeaves),
+// never by the server's address alone.
+describe("EngineHost status: a cloud tag on this computer's Ollama is cloud", () => {
+  function homeWith(model: string): string {
+    const home = mkdtempSync(join(tmpdir(), 'osc-home-tag-'));
+    writeFileSync(
+      join(home, 'config.json'),
+      JSON.stringify({
+        providers: { ollama: { kind: 'openai-compatible', baseUrl: 'http://127.0.0.1:1' } },
+        stack: { orchestrator: { provider: 'ollama', model } },
+      }),
+    );
+    return home;
+  }
+
+  it('kind cloud for kimi-k3:cloud, kind local for a model that runs here', async () => {
+    process.env.OSC_HOME = homeWith('kimi-k3:cloud');
+    const host = makeHost([]);
+    expect((await host.status()).stack.orchestrator?.kind).toBe('cloud');
+    host.disposeAll();
+    process.env.OSC_HOME = homeWith('qwen2.5-coder:7b');
+    const local = makeHost([]);
+    expect((await local.status()).stack.orchestrator).toEqual({
+      model: 'qwen2.5-coder:7b',
+      provider: 'ollama',
+      kind: 'local',
+      // Its server is this computer itself.
+      onThisComputer: true,
+    });
+    local.disposeAll();
+  });
+});
+
+// CX and CMO, 2026-10-08 (B): the status the desktop Stack reads says where
+// every seat answers, as GET /stack does: each specialist's kind by
+// seatLeaves, and On this computer only for a server on this computer itself
+// (hostIsLoopback), never one elsewhere on the LAN, which stays but is not
+// this computer.
+describe('EngineHost status: where each seat answers (B)', () => {
+  it('kinds every specialist, and marks only a loopback seat on this computer', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'osc-home-where-'));
+    writeFileSync(
+      join(home, 'config.json'),
+      JSON.stringify({
+        providers: {
+          // First, so the status's one health check fails at once.
+          ollama: { kind: 'openai-compatible', baseUrl: 'http://127.0.0.1:1' },
+          lan: { kind: 'openai-compatible', baseUrl: 'http://192.168.1.20:11434' },
+          anthropic: { kind: 'anthropic' },
+        },
+        stack: {
+          orchestrator: { provider: 'lan', model: 'qwen3:32b' },
+          specialists: {
+            coding: { provider: 'ollama', model: 'qwen3-coder:30b' },
+            writing: { provider: 'anthropic', model: 'claude-sonnet-5' },
+            fast: { provider: 'ollama', model: 'gpt-oss:120b-cloud' },
+            analysis: { provider: 'lan', model: 'qwen3:14b' },
+            // Its server was removed: it answers nowhere, so no chip.
+            vision: { provider: 'gone', model: 'llava:13b' },
+          },
+        },
+      }),
+    );
+    process.env.OSC_HOME = home;
+    const host = makeHost([]);
+    const { stack } = await host.status();
+    // A LAN orchestrator stays, but is not this computer.
+    expect(stack.orchestrator).toEqual({ model: 'qwen3:32b', provider: 'lan', kind: 'local' });
+    const byRole = Object.fromEntries(stack.specialists.map((s) => [s.role, s]));
+    expect(byRole.coding).toEqual({
+      role: 'coding',
+      model: 'qwen3-coder:30b',
+      kind: 'local',
+      onThisComputer: true,
+    });
+    expect(byRole.writing).toEqual({ role: 'writing', model: 'claude-sonnet-5', kind: 'cloud' });
+    // A cloud tag on this computer's own Ollama leaves, and says no more.
+    expect(byRole.fast).toEqual({ role: 'fast', model: 'gpt-oss:120b-cloud', kind: 'cloud' });
+    expect(byRole.analysis).toEqual({ role: 'analysis', model: 'qwen3:14b', kind: 'local' });
+    expect(byRole.vision).toEqual({ role: 'vision', model: 'llava:13b' });
+    host.disposeAll();
+  });
+});

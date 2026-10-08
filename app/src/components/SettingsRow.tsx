@@ -1,9 +1,11 @@
 // The settings ledger: a serif group head over one inset card, rows divided
 // by hairlines. A row is a label, an optional sub (it wraps, so a sentence is
 // never cut off), an optional value on the right, and either a chevron (it
-// opens a sheet) or a trailing control (a switch, a segmented control). Type
-// carries the hierarchy; there are no icons on purpose. Groups arrive
-// staggered on the house tokens.
+// opens a sheet) or a trailing control (a switch, a segmented control). A
+// danger row asks first, so it carries no chevron: it opens a question, not a
+// place, and so does a row marked `asks` (a connected provider's row, whose
+// tap asks before it disconnects). Type carries the hierarchy; there are no
+// icons on purpose. Groups arrive staggered on the house tokens.
 import type { CSSProperties, ReactNode } from 'react';
 
 export function SettingsGroup({
@@ -12,6 +14,7 @@ export function SettingsGroup({
   badge,
   intro,
   index,
+  hidden,
   children,
 }: {
   /** An anchor another room can land on (the profile's links). */
@@ -25,8 +28,11 @@ export function SettingsGroup({
   intro?: string;
   /** Position on the screen, for the entrance stagger. */
   index: number;
+  /** Left out of this build (a group whose rows have nowhere to go). */
+  hidden?: boolean;
   children: ReactNode;
 }) {
+  if (hidden) return null;
   return (
     <section id={id} className="settings-group" style={{ '--i': index } as CSSProperties}>
       {title ? (
@@ -49,6 +55,7 @@ export function SettingsRow({
   trailing,
   onClick,
   danger,
+  asks,
   disabled,
 }: {
   label: string;
@@ -63,6 +70,8 @@ export function SettingsRow({
   /** Present when the row opens something; the row becomes a button. */
   onClick?: () => void;
   danger?: boolean;
+  /** The tap opens a question (a confirm), not a place, so no chevron. */
+  asks?: boolean;
   disabled?: boolean;
 }) {
   const body = (
@@ -74,7 +83,10 @@ export function SettingsRow({
         ) : null}
       </span>
       {value !== undefined ? <span className="settings-row-value">{value}</span> : null}
-      {trailing ?? (onClick ? <span className="disclosure-chevron" aria-hidden="true" /> : null)}
+      {trailing ??
+        (onClick && !danger && !asks ? (
+          <span className="disclosure-chevron" aria-hidden="true" />
+        ) : null)}
     </>
   );
   const cls = `settings-row${danger ? ' danger' : ''}`;

@@ -4,6 +4,7 @@
 import { useMemo, useRef, useState } from 'react';
 import type { Project } from '../state/types.js';
 import { useDismissable } from '../lib/useDismissable.js';
+import { ChevronGlyph } from './SheetGlyphs.js';
 
 export function ProjectMultiSelect({
   projects,
@@ -51,7 +52,9 @@ export function ProjectMultiSelect({
         aria-expanded={open}
       >
         <span className="multiselect-summary">{summary}</span>
-        <span className="multiselect-caret">{open ? '▴' : '▾'}</span>
+        <span className="multiselect-caret" aria-hidden="true">
+          <ChevronGlyph dir={open ? 'up' : 'down'} size={12} />
+        </span>
       </button>
       {open ? (
         <div className="multiselect-panel">

@@ -132,7 +132,9 @@ describe('DeepBlue is sized to the computer with the engine budget', () => {
       'On Qwen 2.5 Coder 7B. 4.7 GB download.',
     );
     for (const s of HARBOR_MASTER_SIZES) {
-      expect(classLineFor(s.ollamaRef)).toMatch(/^Runs short plans|^Plans and runs|^Full planning/);
+      expect(classLineFor(s.ollamaRef)).toMatch(
+        /^Handles short plans|^Plans and carries out|^Plans and hands off/,
+      );
     }
   });
 });
@@ -213,11 +215,13 @@ describe('DeepBlue is out of the box on the desktop', () => {
   });
 
   it('the store pulls by catalog id, seats by Ollama ref, and refreshes the gate', () => {
-    const action = store.slice(store.indexOf('async ensureHarborMaster()'));
+    const action = store.slice(store.indexOf('async ensureHarborMaster(opts)'));
     const body = action.slice(0, action.indexOf('beginHarborMiniWithIntro()'));
     expect(body).toContain('resolveHarborMaster(hw)');
     expect(body).toContain('b.installModel(size.catalogId)');
     expect(body).toContain('b.setOrchestrator(size.ollamaRef)');
+    // Desktop Offline's door pulls it and leaves the person's pick seated.
+    expect(body).toMatch(/if \(opts\?\.seat !== false\) \{[\s\S]{0,160}b\.setOrchestrator/);
     expect(body).toContain('refreshDesktopStatus()');
     // Ollama down is a failure line, never a silent no-op.
     expect(body).toContain('status.ollama.detail');

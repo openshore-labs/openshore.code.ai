@@ -14,6 +14,9 @@ export interface CloudChatOptions extends DriverVaultOptions {
   /** Your writing voice (Settings, Writing; lib/writingVoice.ts). A cloud
    *  seat gets the voice, never the app actions contract (lib/appActions.ts). */
   writingVoice?: string;
+  /** The model's display name for the reply label, such as Opus 5. The raw id
+   *  when absent. */
+  modelLabel?: string;
 }
 
 /** The Humanize Writing standard for a direct cloud chat, by the rule the

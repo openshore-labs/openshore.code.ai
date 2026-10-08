@@ -1,5 +1,5 @@
 // Cloud providers you can connect by API key. Connecting one puts its models on
-// your Bench, so you can place, say, a big model as your Reasoning LLM and a
+// your Bench, so you can place, say, a big model as your Reasoning model and a
 // cheaper one as a coding specialist. Keys live in the device Keychain, scoped
 // to the provider, and are only ever spent with your approval.
 //
@@ -8,6 +8,7 @@
 // so the Stack can reference them; the router (stage 3) calls them.
 import type { CapabilityCategory } from 'os-code/protocol';
 import { nativeFetch } from './nativeFetch.js';
+import { CLAUDE_MODELS, claudeModelLabel, visionFallbackClaudeModel } from './claudeModels.js';
 
 export interface ProviderModel {
   id: string;
@@ -450,6 +451,17 @@ export function providerInfo(id: string): ProviderInfo | undefined {
   return PROVIDERS.find((p) => p.id === id);
 }
 
+/** A cloud provider's selectable models for the bench. Claude comes from the
+ *  full client lineup (claudeModels.ts, the same list and tiers the chat sheet
+ *  uses), so the bench offers every Claude model and its favorites, not the
+ *  short marketplace set; other providers keep their own model list. */
+export type BenchModel = { id: string; label: string; tier?: 'primary' | 'more' };
+export function providerBenchModels(p: ProviderInfo): BenchModel[] {
+  return p.id === 'anthropic'
+    ? CLAUDE_MODELS.map((m) => ({ id: m.id, label: m.label, tier: m.tier }))
+    : p.models.map((m) => ({ id: m.id, label: m.label }));
+}
+
 export function providerModelLabel(providerId: string, modelId: string): string {
   const p = providerInfo(providerId);
   return p?.models.find((m) => m.id === modelId)?.label ?? modelId;
@@ -463,6 +475,42 @@ export function providerModelVision(providerId: string, modelId: string): boolea
       ?.models.find((m) => m.id === modelId)
       ?.categories?.includes('vision'),
   );
+}
+
+/** A cloud model that can read an image the stack has no reader for. */
+export interface CloudImageReader {
+  provider: string;
+  model: string;
+  /** The name the Stack, the approval card and a play's brief all show. */
+  label: string;
+}
+
+/** The cloud models an image may go to when nothing in the stack reads it, in
+ *  the order they are tried: Claude's image reader first (the least costly
+ *  Claude model, visionFallbackClaudeModel, kept and named by the founder on
+ *  2026-10-07, D13), then each other provider's first model that reads images.
+ *  The chat path takes the first one it can reach with a stored key, and the
+ *  Stack's Image reading rows name the first one connected, so the row and the
+ *  card always name the same model. A label that already carries the
+ *  provider's name is not prefixed again ("Gemini 2.5 Pro", never "Gemini
+ *  Gemini 2.5 Pro"). */
+export function cloudImageReaders(): CloudImageReader[] {
+  const claude = visionFallbackClaudeModel();
+  const out: CloudImageReader[] = [
+    { provider: 'anthropic', model: claude.id, label: `Claude ${claudeModelLabel(claude.id)}` },
+  ];
+  for (const p of PROVIDERS) {
+    if (p.id === 'anthropic') continue;
+    const m = p.models.find((x) => x.categories?.includes('vision'));
+    if (!m) continue;
+    const brand = p.name.split(' ')[0]!;
+    out.push({
+      provider: p.id,
+      model: m.id,
+      label: m.label.startsWith(brand) ? m.label : `${p.name} ${m.label}`,
+    });
+  }
+  return out;
 }
 
 /** The secret-store key for a provider's API key. */
@@ -496,6 +544,11 @@ export function needsWorkspaceId(text: string): boolean {
 export const WORKSPACE_HINT =
   'This API key is linked to your identity, so Claude needs the id of the workspace it acts in. Find it in the Anthropic Console under Settings, Workspaces (it starts with wrkspc_), and add it under Cloud Connections.';
 
+/** The model the key check counts tokens against: the cheapest Claude here,
+ *  read from the list so a lineup change cannot leave the probe stale. */
+const ANTHROPIC_PROBE_MODEL =
+  PROVIDERS.find((p) => p.id === 'anthropic')?.models.at(-1)?.id ?? 'claude-haiku-4-5';
+
 export async function validateProviderKey(
   id: string,
   key: string,
@@ -512,7 +565,25 @@ export async function validateProviderKey(
       if (res.status === 400 && needsWorkspaceId(await res.text().catch(() => ''))) {
         return 'needs-workspace';
       }
-      return res.ok ? 'valid' : 'unverifiable';
+      if (!res.ok) return 'unverifiable';
+      // Listing models can pass where a chat is refused: an identity-linked
+      // key reads /v1/models without a workspace, then every message asks for
+      // one (founder's phone, 2026-10-08). Counting tokens takes the message
+      // path's auth and costs nothing, so the check asks it too.
+      const probe = await nativeFetch('https://api.anthropic.com/v1/messages/count_tokens', {
+        method: 'POST',
+        headers: { ...anthropicHeaders(key, workspaceId), 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: ANTHROPIC_PROBE_MODEL,
+          messages: [{ role: 'user', content: 'hi' }],
+        }),
+        responseType: 'json',
+      });
+      if (probe.status === 401 || probe.status === 403) return 'invalid';
+      if (probe.status === 400 && needsWorkspaceId(await probe.text().catch(() => ''))) {
+        return 'needs-workspace';
+      }
+      return 'valid';
     }
     const info = providerInfo(id);
     if (info?.openaiBaseUrl) {

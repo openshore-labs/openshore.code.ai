@@ -32,6 +32,9 @@ const systemOf = (req: ChatRequest): string => {
   return typeof s?.content === 'string' ? s.content : JSON.stringify(s?.content);
 };
 
+/** The once-only note that a seat runs lean, for its class or its window. */
+const LEAN_NOTE = /^This (is a \w+ model|model has little room)/;
+
 describe('the discipline seam in the loop: a small seat gets a lean prompt', () => {
   it('shows a small model only its profile allowance of tools, core-first', async () => {
     const { requests } = await runWith([textTurn('done')], {
@@ -142,9 +145,14 @@ describe('the discipline seam in the loop: a small seat gets a lean prompt', () 
       harness: { profiles: { enabled: true } },
     });
     const notes = events.filter((e) => e.type === 'note') as Array<{ message: string }>;
-    const seat = notes.filter((n) => /model seat/i.test(n.message));
+    const seat = notes.filter((n) => LEAN_NOTE.test(n.message));
     expect(seat).toHaveLength(1);
-    expect(seat[0]!.message).toMatch(/tools/i);
+    // D3 (founder, 2026-10-07): words a person reads, OpenShore and actions,
+    // never the harness, a seat, tools or subagents.
+    expect(seat[0]!.message).toMatch(
+      /^This is a (tiny|small) model, so OpenShore keeps the checklist and gives it \d+ of the \d+ actions\.$/,
+    );
+    expect(seat[0]!.message).not.toMatch(/harness|seat|tools|subagent/i);
   });
 
   it('a mid seat (big window) keeps every tool and the full standards', async () => {
@@ -165,7 +173,7 @@ describe('the discipline seam in the loop: a small seat gets a lean prompt', () 
     expect(requests[0]!.tools!.length).toBeGreaterThan(10);
     expect(systemOf(requests[0]!)).toContain('UX STANDARD');
     const seat = (events.filter((e) => e.type === 'note') as Array<{ message: string }>).filter(
-      (n) => /model seat/i.test(n.message),
+      (n) => LEAN_NOTE.test(n.message),
     );
     expect(seat).toHaveLength(0);
   });

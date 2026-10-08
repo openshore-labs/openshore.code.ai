@@ -41,7 +41,7 @@ export function TrustCard({
           <div className="plan-body">
             <Markdown text={list} />
           </div>
-          {error ? <div className="msg-note">{error}</div> : null}
+          {error ? <div className="msg-note warn">{error}</div> : null}
           <div className="plan-actions">
             <button
               type="button"

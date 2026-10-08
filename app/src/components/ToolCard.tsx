@@ -135,7 +135,7 @@ export function ToolCard({ item }: { item: ToolItem }) {
       <span className={`tool-state ok`}>
         {/* CR1: the checkmark SVG is aria-hidden, so name the outcome for SR. */}
         <span className="visually-hidden">done</span>
-        <Icon size={13} className="icon-inline">
+        <Icon size={14} className="icon-inline">
           <path d="M4 12.5 9.5 18 20 6.5" />
         </Icon>
         {item.durationMs !== undefined ? ` ${(item.durationMs / 1000).toFixed(1)}s` : ''}
@@ -146,7 +146,7 @@ export function ToolCard({ item }: { item: ToolItem }) {
       <span className="tool-state fail">
         {/* CR1: the cross SVG is aria-hidden, so name the outcome for SR. */}
         <span className="visually-hidden">failed</span>
-        <Icon size={13} className="icon-inline">
+        <Icon size={14} className="icon-inline">
           <path d="M6 6l12 12M18 6 6 18" />
         </Icon>
       </span>
@@ -160,6 +160,9 @@ export function ToolCard({ item }: { item: ToolItem }) {
         aria-expanded={open}
       >
         <span className="tool-summary">{item.summary}</span>
+        {/* A handoff to a model off this network wears the Cloud chip (CX
+            and CMO, 2026-10-08, D). */}
+        {item.handoff?.leaves ? <span className="kind-chip cloud">Cloud</span> : null}
         {item.stats ? (
           <span
             className="tool-stats"

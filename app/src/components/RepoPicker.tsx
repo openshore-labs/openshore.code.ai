@@ -16,7 +16,7 @@
 import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Sheet } from './Sheet.js';
-import { CloseGlyph } from './SheetGlyphs.js';
+import { CheckGlyph, ChevronGlyph, CloseGlyph } from './SheetGlyphs.js';
 import { useConnectedRepos } from '../hooks/useConnectedRepos.js';
 import { useApp } from '../state/store.js';
 import { openInAppBrowser } from '../lib/platform.js';
@@ -39,7 +39,7 @@ import { Icon } from './Icon.js';
 
 function RepoGlyph() {
   return (
-    <Icon size={13}>
+    <Icon size={14}>
       <circle cx="7" cy="6" r="2.2" />
       <circle cx="7" cy="18" r="2.2" />
       <circle cx="17" cy="9" r="2.2" />
@@ -53,14 +53,6 @@ function SearchGlyph() {
     <Icon size={18}>
       <circle cx="10.5" cy="10.5" r="6.5" />
       <path d="M15.5 15.5L20 20" />
-    </Icon>
-  );
-}
-
-function CheckGlyph() {
-  return (
-    <Icon size={22}>
-      <path d="M5 12.5l4.5 4.5L19 7.5" />
     </Icon>
   );
 }
@@ -198,7 +190,7 @@ export function RepoPicker({
       </span>
       {checked ? (
         <span className="repo-check">
-          <CheckGlyph />
+          <CheckGlyph size={22} />
         </span>
       ) : null}
     </button>
@@ -227,7 +219,7 @@ export function RepoPicker({
                 onOpenRepos();
               }}
             >
-              Connect a repository
+              Add a repository
             </button>
           </div>
         ) : (
@@ -341,16 +333,18 @@ export function RepoPicker({
           </>
         )}
       </div>
-      <label className="repo-sheet-search">
-        <SearchGlyph />
-        <input
-          type="search"
-          placeholder="Search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          aria-label="Search repositories"
-        />
-      </label>
+      {nothingConnected && selected.length === 0 ? null : (
+        <label className="repo-sheet-search">
+          <SearchGlyph />
+          <input
+            type="search"
+            placeholder="Search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search repositories"
+          />
+        </label>
+      )}
     </Sheet>
   );
 
@@ -369,13 +363,9 @@ export function RepoPicker({
         <RepoGlyph />
         <span className="repo-picker-summary">{summarizeRepos(selected)}</span>
         {branch ? <span className="repo-picker-branch">{branch}</span> : null}
-        {dirty ? (
-          <span className="repo-dirty" aria-label="uncommitted changes">
-            {'●'}
-          </span>
-        ) : null}
+        {dirty ? <span className="repo-dirty" role="img" aria-label="uncommitted changes" /> : null}
         <span className="repo-picker-caret" aria-hidden="true">
-          {'▾'}
+          <ChevronGlyph dir="down" size={12} />
         </span>
       </button>
       {createPortal(sheet, document.body)}

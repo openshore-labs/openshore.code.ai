@@ -23,8 +23,6 @@ export const CALM_WORDS: readonly string[] = [
   'Turning it over',
   'Sitting with it',
   'Letting it settle',
-  'Gathering',
-  'Listening',
   'Watching the horizon',
   'Reading the water',
   'Reading the tide',

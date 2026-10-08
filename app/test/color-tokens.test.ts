@@ -136,7 +136,6 @@ const LOCAL_ALLOW: Record<string, string> = {
   'cc-pulse': "the working dot's pulse",
   'seat-bloom': 'the First Seat: a local model taking its seat on this device',
   'cc-presence.working': 'the same working state, as a pill',
-  'cc-member.working': 'the same working state, on the roster',
   'cc-routine.working': 'the same working state, on a routine card',
   'store-row-meta': 'the on-device capability glyph on a store row',
   'vault-move-card': 'the Vault move card: notes moving into a folder on this computer',
@@ -236,6 +235,13 @@ describe('color tokens', () => {
       .filter((d) => !Object.keys(LOCAL_ALLOW).some((k) => d.context.includes(k)))
       .map((d) => `theme.css:${d.line}  ${d.context}  ${d.decl.slice(0, 60)}`);
     expect(offenders, offenders.join('\n  ')).toEqual([]);
+  });
+
+  it('paints in-app links in the accent', () => {
+    // Blue (--link) means a link that leaves the app. A link that stays in it,
+    // and the armed terminal key, wear the accent (Creative Studio, 2026-10-07).
+    expect(blockBody(/^\.linklike \{/m).body).toMatch(/color: var\(--accent\);/);
+    expect(blockBody(/^\.accessory-key\.armed \{/m).body).not.toMatch(/--link/);
   });
 
   it('dresses plan mode in ink, not amber, and waiting in attention', () => {

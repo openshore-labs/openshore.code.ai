@@ -12,6 +12,7 @@
 import type { CatalogModel } from 'os-code/protocol';
 import type { ProfileId } from './profiles.js';
 import type { StackCategory } from './stack.js';
+import { thisDeviceNoun } from './deviceNoun.js';
 
 export type PackHelperCategory = Extract<StackCategory, 'coding' | 'fast' | 'vision'>;
 
@@ -45,7 +46,7 @@ export const DEVICE_PACKS: DevicePack[] = [
     id: 'offline',
     name: 'Offline',
     headline: 'No signal, no problem.',
-    tagline: 'A reasoning model and a coder, both on this iPhone. Private by construction.',
+    tagline: `A reasoning model and a coder, both on ${thisDeviceNoun()}. Private by construction.`,
     anchor: POCKET_ANCHORS,
     helpers: { coding: POCKET_CODERS },
   },
@@ -57,17 +58,16 @@ export const DEVICE_PACKS: DevicePack[] = [
       'The same pocket models answer anywhere, and a frontier model on your key takes the heavy lifting.',
     anchor: POCKET_ANCHORS,
     helpers: { coding: POCKET_CODERS },
-    nextStep: { label: 'Connect an API key', view: 'connections' },
+    nextStep: { label: 'Add an API key', view: 'connections' },
   },
   {
     id: 'docked',
     name: 'Docked',
     headline: 'At home, full stack.',
-    tagline:
-      'Your computer runs the big models. This phone is the remote, and it still has its own.',
+    tagline: `Your computer runs the big models. ${thisDeviceNoun({ start: true })} is the remote, and it still has its own.`,
     anchor: [],
     helpers: {},
-    nextStep: { label: 'Pair your computer', view: 'pair' },
+    nextStep: { label: 'Connect your computer', view: 'pair' },
   },
 ];
 

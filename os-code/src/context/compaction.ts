@@ -5,6 +5,7 @@
 // The estimator is deliberately rough (4 chars per token): prose runs a little
 // high and code a little low, each within about a quarter of the real count.
 import type { ChatMessage, ToolSpec } from '../providers/types.js';
+import { carriesLocalOnly } from '../harness/vault/privacy.js';
 
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
@@ -154,20 +155,28 @@ export async function compactHistory(
     .join('\n');
 
   let summary: string;
+  let summarized = false;
   try {
     summary = await summarize(
       `Summarize this coding-session history in under 300 words. Keep: the user's goal, decisions made, files touched and how, and anything still unresolved.\n\n${transcript}`,
     );
+    summarized = true;
   } catch {
     summary =
       '(earlier turns were dropped to fit the context window; ask the user to restate anything missing)';
   }
+  // A summary written from a local-only note's text may quote it, so it keeps
+  // the mark: a seat off this network gets the stub in its place and a
+  // handoff leaves it out (D5). A stub carries no text, so a fold of the
+  // stubbed history is not marked.
+  const localOnly = summarized && toSummarize.some(carriesLocalOnly);
 
   out = [
     ...system,
     {
       role: 'user',
       content: `[Conversation so far, summarized to fit the context window]\n${summary}`,
+      ...(localOnly ? { localOnly: true as const } : {}),
     },
     ...tail,
   ];

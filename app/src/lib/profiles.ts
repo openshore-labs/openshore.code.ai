@@ -4,13 +4,18 @@
 // signals: can we reach your home system (the always-on desktop / Mac mini that
 // holds your local LLMs, over Tailscale), and is there any internet at all.
 //
-//   Docked   - home system reachable. Full stack: home models, cloud, on-device.
-//   Offshore - online, but home is not reachable. Cloud and on-device.
-//   Offline  - no connection. On-device models only.
+//   Docked   - connected to your computer. Its models, cloud models, and this
+//              device's models.
+//   Offshore - online, but your computer is out of reach. Cloud models and
+//              this device's models.
+//   Offline  - no connection. Only the models on this device.
 //
 // The active profile is detected from those two signals; the user can manually
 // step DOWN to a more restrictive profile (e.g. force Offline) but never up to
-// one the connection cannot support.
+// one the connection cannot support. The pill that names it shows once a
+// computer is connected to this device (reachPillShown).
+
+import type { OfflineReason } from 'os-code/protocol';
 
 export type ProfileId = 'docked' | 'offshore' | 'offline';
 export type ModelLocation = 'home' | 'cloud' | 'device';
@@ -28,21 +33,76 @@ export const PROFILES: Record<ProfileId, ProfileInfo> = {
     id: 'docked',
     label: 'Docked',
     dot: 'var(--ok)',
-    blurb: 'Connected to your computer. Full stack: its models, cloud, and on-device.',
+    blurb: "Connected to your computer. Its models, cloud models, and this device's models.",
   },
   offshore: {
     id: 'offshore',
     label: 'Offshore',
-    dot: 'var(--cloud)',
-    blurb: 'Online, but your computer is out of reach. Cloud and on-device models.',
+    // Neutral ink, not amber: amber marks cloud spend, and a status is not a charge.
+    dot: 'var(--ink-soft)',
+    blurb: "Online, but your computer is out of reach. Cloud models and this device's models.",
   },
   offline: {
     id: 'offline',
     label: 'Offline',
     dot: 'var(--muted)',
-    blurb: 'No connection. Your on-device models only.',
+    blurb: 'Only the models on this device. Your computer and cloud models wait.',
   },
 };
+
+/** The blurb a person reads under a status. Before any computer is connected,
+ *  Docked names the condition (its row cannot be tapped, so it never borrows
+ *  the Connect your computer door's words) and Offshore does not speak of a
+ *  computer that is out of reach. Callers pass paired = isDesktop() || Boolean(settings.daemon),
+ *  because on the desktop the device is the computer. */
+export function profileBlurb(id: ProfileId, paired: boolean, home = false): string {
+  if (home) return HOME_BLURB[id];
+  if (!paired && id === 'docked') return "Your computer's models, once you connect it.";
+  if (!paired && id === 'offshore') return "Online. Cloud models and this device's models.";
+  // Offline is an option as much as a state: chosen with the network up it
+  // is not "no connection", so the line says what answers and what waits.
+  if (!paired && id === 'offline') return 'Only the models on this device. Cloud models wait.';
+  return PROFILES[id].blurb;
+}
+
+/** The blurbs on the computer itself (Desktop Offline, founder 2026-10-07):
+ *  the desktop app is the computer, so Docked, a device reaching it, does not
+ *  apply here and says so, and the others speak of this computer's models. */
+const HOME_BLURB: Record<ProfileId, string> = {
+  docked: 'For your phone, when it reaches this computer. Not used here.',
+  offshore: "Online. Cloud models and this computer's models.",
+  offline: "Only this computer's models. Cloud models wait for a connection.",
+};
+
+/** Why a status cannot be picked right now, after its blurb, or '' when it
+ *  can. On the computer itself Docked's blurb already says why, and Offshore
+ *  has no connection to be online with; elsewhere a connected computer is out
+ *  of reach. Before a computer is connected nothing is added (its blurb says
+ *  enough). */
+export function profileUnavailable(
+  id: ProfileId,
+  canPick: boolean,
+  paired: boolean,
+  home = false,
+): string {
+  if (canPick) return '';
+  if (home) return id === 'offshore' ? ' No connection right now.' : '';
+  return paired ? ' Not reachable right now.' : '';
+}
+
+/** Whether the reach pill shows in the top bar (founder, 2026-10-07, D1 built
+ *  as recommended, B: show it once it can mean something). Until a computer
+ *  is connected to this device the pill could only say Offshore, about a
+ *  computer the person never connected, so it waits. Offline still shows on
+ *  its own: it is true without any computer, and it is the one door back
+ *  from an Offline the person chose. Once a computer is connected, Docked,
+ *  Offshore and Offline all show, as before. `connected` is
+ *  Boolean(settings.daemon) alone, never isDesktop(): the desktop app is the
+ *  computer, its own engine is not a reach the pill measures, so a desktop
+ *  follows the same rule until it is pointed at another computer. */
+export function reachPillShown(active: ProfileId, connected: boolean): boolean {
+  return connected || active === 'offline';
+}
 
 // Most capable first. A lower index is more capable.
 export const PROFILE_ORDER: ProfileId[] = ['docked', 'offshore', 'offline'];
@@ -50,6 +110,11 @@ export const PROFILE_ORDER: ProfileId[] = ['docked', 'offshore', 'offline'];
 export interface Connectivity {
   homeReachable: boolean;
   online: boolean;
+  /** Why the paired computer works offline right now, as its daemon says
+   *  (Desktop Offline): no network there, or the person chose Offline there.
+   *  Absent while it is online, out of reach, or an older daemon. It changes
+   *  no status here: the phone still reaches it, and its own models answer. */
+  homeOffline?: OfflineReason;
 }
 
 /** The best profile the current connection can support. */

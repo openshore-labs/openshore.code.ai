@@ -23,7 +23,6 @@ import type {
   PreparedVaultContext,
   VaultContextSource,
 } from '../src/harness/vaultContext.js';
-import { LOCAL_ONLY_STUB } from '../src/harness/vault/privacy.js';
 import { HARNESS_LINE_MARK, withLandedLine } from '../src/core/tools/projectMemory.js';
 import { MEMORY_FILES } from '../src/core/agent/projectMemory.js';
 import { VAULT_NOTES_FRAMING } from '../src/harness/vaultContext.js';
@@ -222,33 +221,59 @@ function escalatingSession(source?: VaultContextSource) {
   return { local, cloud, session };
 }
 
-describe('local-only text never leaves on an escalation (I5)', () => {
-  it('sends the cloud seat a stub, keeps the note in history, and a local seat sees it', async () => {
+// A chat that holds a private note's text never escalates to a seat that
+// leaves this network (CX and CMO, 2026-10-08, J): the escalation would send
+// the cloud seat the whole history, so it is held, and no card asks for it.
+// (Before the ruling the cloud seat got the stub in the note's place; now it
+// gets nothing at all.)
+describe('local-only text never leaves on an escalation (I5, J)', () => {
+  it('a struggling local seat that read a private note does not escalate', async () => {
     const { local, cloud, session } = escalatingSession();
     await session.agent.run('what did I write today?');
-    expect(session.events.some((e) => e.type === 'model-switch')).toBe(true);
+    expect(session.events.some((e) => e.type === 'model-switch')).toBe(false);
+    expect(session.approvals.filter((a) => a.kind === 'cloud-spend')).toEqual([]);
+    expect(cloud.requests).toHaveLength(0);
     // The local seat, which may read it, saw the note on the next turn.
     expect(JSON.stringify(local.requests[1]!.messages)).toContain('PRIVATE-TEXT');
-    const sent = JSON.stringify(cloud.requests[0]!.messages);
-    expect(sent).not.toContain('PRIVATE-TEXT');
-    expect(sent).toContain(LOCAL_ONLY_STUB);
     // Kept history is untouched, so a later local turn still has it.
     expect(JSON.stringify(session.agent.history)).toContain('PRIVATE-TEXT');
-    expect(session.toolContext.seatLeavesNetwork?.()).toBe(true);
+    expect(session.toolContext.seatLeavesNetwork?.()).toBe(false);
   });
 
-  it('re-renders the pack for the cloud seat and shows a second card', async () => {
+  it('a pack that carried a private note holds the escalation too', async () => {
     builds.length = 0;
     const { cloud, session } = escalatingSession(fakeSource({ localOnly: true }));
     await session.agent.run('go');
     const cards = packEvents(session.events);
-    expect(cards.map((c) => c.seat)).toEqual(['local', 'cloud']);
-    expect(cards[1]!.withheld).toBe(1);
-    // The local card says its pack carried a local-only note; the cloud one
-    // never does (the note was withheld).
+    expect(cards.map((c) => c.seat)).toEqual(['local']);
+    // The local card says its pack carried a local-only note.
     expect(cards[0]!.localOnly).toBe(true);
-    expect(cards[1]!.localOnly).toBeUndefined();
-    expect(systemOf(cloud.requests[0]!)).not.toContain('MARKER-CS');
+    expect(session.events.some((e) => e.type === 'model-switch')).toBe(false);
+    expect(cloud.requests).toHaveLength(0);
+    expect(builds.some((b) => b.seat.leavesNetwork)).toBe(false);
+  });
+
+  it('a clean chat still escalates, with the card, and re-renders the pack for the cloud seat', async () => {
+    builds.length = 0;
+    const local = new MockProvider('mock', [
+      toolTurn('readFile', { path: 'missing-1.txt' }, 'c1'),
+      toolTurn('readFile', { path: 'missing-2.txt' }, 'c2'),
+    ]);
+    const cloud = new MockProvider('anthropic', [textTurn('Cloud finished.')], { kind: 'cloud' });
+    const session = makeTestSession(local, {
+      projectName: 'Demo',
+      escalation: cloud,
+      vaultContext: fakeSource(),
+      configOverrides: {
+        providers: { anthropic: { kind: 'anthropic' } },
+        routing: { escalation: { enabled: true, afterToolFailures: 2 } },
+      },
+    });
+    await session.agent.run('go');
+    expect(session.events.some((e) => e.type === 'model-switch')).toBe(true);
+    expect(session.approvals.filter((a) => a.kind === 'cloud-spend')).toHaveLength(1);
+    expect(cloud.requests).toHaveLength(1);
+    expect(packEvents(session.events).map((c) => c.seat)).toEqual(['local', 'cloud']);
     expect(builds.some((b) => b.seat.leavesNetwork)).toBe(true);
   });
 });
@@ -535,17 +560,22 @@ describe('the handoff (M5, J13)', () => {
     await session.agent.run('and the tests');
     expect(written).toHaveLength(1);
     expect(written[0]).toEqual({
-      text: 'HANDOFF 4',
+      text: 'HANDOFF 3',
       at: new Date(2026, 8, 27, 12).toISOString(),
       model: 'mock-model',
-      turns: 4,
+      turns: 3,
     });
     expect(built[0]!.meta).toEqual({ from: 'mock-model', date: '2026-09-27' });
     // Sized for the seat: 10% of the 32k window, under the 1,500 cap.
     expect(built[0]!.budget).toBe(1500);
     const all = JSON.stringify(built[0]!.turns);
     expect(all).toContain('FIRST-ASK');
-    expect(all).toContain('All done.');
+    expect(all).toContain('and the tests');
+    // The new reply was written on a seat that stays, in a chat that holds a
+    // private note it was sent, so it may quote it: it is marked and left out
+    // like the note (D5, privacy review 2026-10-08).
+    expect(session.agent.history.at(-1)).toMatchObject({ content: 'All done.', localOnly: true });
+    expect(all).not.toContain('All done.');
     expect(all).not.toContain('THOUGHT');
     expect(all).not.toContain('PRIVATE');
     // A dispose right after writes nothing new.

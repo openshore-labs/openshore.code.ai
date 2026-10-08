@@ -3,6 +3,7 @@
 // the setting off, and skips on-device pocket models to protect their small
 // context. This pins the wiring decision; the standard's content is proven in
 // os-code (test/humanizer.test.ts).
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { MODEL_CLASSES } from 'os-code/protocol';
 import { humanizerApplies } from '../src/drivers/stackDriver.js';
@@ -43,5 +44,19 @@ describe('Humanize Writing in the direct cloud chats', () => {
         );
       }
     }
+  });
+});
+
+// Its explainer claims nothing the reference box has not measured (tenet 2):
+// no "most people", and no speed it has not shown (CMO, 2026-10-07).
+describe('Humanize Writing in Settings', () => {
+  it('makes no unmeasured claim about who keeps it on or how fast it answers', () => {
+    const settings = readFileSync(
+      new URL('../src/screens/SettingsScreen.tsx', import.meta.url),
+      'utf8',
+    ).replace(/\s+/g, ' ');
+    expect(settings).not.toMatch(/most people leave it on/i);
+    expect(settings).not.toMatch(/answers a little faster/i);
+    expect(settings).toContain('so a model reads a shorter prompt');
   });
 });

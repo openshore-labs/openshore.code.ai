@@ -21,6 +21,7 @@ import type {
   VaultSettingsField,
   VaultTrashEntry,
 } from 'os-code/protocol';
+import { thisDeviceNoun } from '../deviceNoun.js';
 
 // 'files' is the on-disk folder provider (desktop only): plain .md files under
 // the agent's vault directory (~/OSCode/Vault), so the app and the agent share
@@ -401,7 +402,7 @@ export const PROVIDER_ROSTER: Array<{
     // device, so ready stays false here and probeReady('icloud') is the truth.
     label: 'iCloud Drive',
     ready: false,
-    pending: 'Sign in to iCloud and turn on iCloud Drive in Settings on this iPhone to use it.',
+    pending: `Sign in to iCloud and turn on iCloud Drive in Settings on ${thisDeviceNoun()} to use it.`,
     offPill: 'Turned off',
   },
   {

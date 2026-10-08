@@ -408,6 +408,12 @@ project's repo. Closes [engine-14] [custom-2] [ui-4] [ui-22] [obs-3] [obs-10]
 a new `app/test/vaultCopy.test.ts` renders every platform and provider pair
 and fails on a false agent or Obsidian claim.
 
+Reversed in part 2026-10-07 (founder, D20 of `docs/ux-review-2026-10-07.md`):
+an unpaired phone or the web no longer points at the vault on your computer.
+Its empty ramp says how your models use the vault, and the pointer to your
+computer waits until one is paired. The ruling is the 2026-10-07 D20 line in
+`os-code/DECISIONS.md`.
+
 **0.20 Write the truth down.** The known gaps go into PROGRESS "What
 remains", including that the team vault's "never lost" does not hold today;
 the four stale "Projects/&lt;project>/ in the vault" comments are corrected; the

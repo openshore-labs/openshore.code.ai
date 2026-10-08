@@ -5,7 +5,7 @@
 // result back with an Add to Settings button (lib/appActions.ts).
 import { useEffect, useState } from 'react';
 import { useApp } from '../state/store.js';
-import { WRITING_VOICE_MAX, cleanWritingVoice } from '../lib/writingVoice.js';
+import { WRITING_VOICE_MAX, WRITING_VOICE_SUB, cleanWritingVoice } from '../lib/writingVoice.js';
 
 export function WritingVoiceField() {
   const saved = useApp((s) => s.settings.writingVoice) ?? '';
@@ -32,25 +32,26 @@ export function WritingVoiceField() {
     <div className="settings-block writing-voice">
       <div className="settings-row-text">
         <span className="settings-row-label">Your writing voice</span>
-        <span className="settings-row-sub">
-          Your own words for how models write for you. Works alone or with Humanize Writing, and
-          stays on this device.
-        </span>
+        <span className="settings-row-sub">{WRITING_VOICE_SUB}</span>
       </div>
       <button
         type="button"
         className="writing-voice-shape press-fb"
         onClick={() => startWritingVoiceChat()}
       >
-        <span className="writing-voice-shape-title">Shape it in a chat</span>
-        <span className="writing-voice-shape-sub">
-          Describe the style you want. A model on your own device can add the result here for you.
+        <span className="writing-voice-shape-text">
+          <span className="writing-voice-shape-title">Shape it in a chat</span>
+          <span className="writing-voice-shape-sub">
+            Describe the style you want. A model on your own device can add the result here for you.
+          </span>
         </span>
+        <span className="disclosure-chevron" aria-hidden="true" />
       </button>
+      {/* The row above names the field, so it carries no second label. */}
       <div className="field">
-        <label htmlFor="writing-voice">Voice</label>
         <textarea
           id="writing-voice"
+          aria-label="Your writing voice"
           rows={4}
           maxLength={WRITING_VOICE_MAX}
           placeholder="e.g. Warm and direct. Short sentences, plain words, no jargon. Sound like a friend explaining over coffee."

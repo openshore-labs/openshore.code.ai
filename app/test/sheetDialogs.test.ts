@@ -20,7 +20,7 @@ describe('the model sheet reads the live stack (B1)', () => {
   });
 
   it('a Checking row is not a button', () => {
-    const checking = sheet.split('\n').filter((l) => /Checking your/.test(l));
+    const checking = sheet.split('\n').filter((l) => /Checking (this|your) computer/.test(l));
     expect(checking.length).toBeGreaterThan(0);
     for (const line of checking) expect(line).not.toMatch(/<Row\b/);
     expect(sheet).not.toMatch(/onClick=\{\(\) => \{\}\}/);

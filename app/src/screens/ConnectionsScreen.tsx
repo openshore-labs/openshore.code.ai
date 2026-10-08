@@ -1,31 +1,44 @@
-// Cloud Connections: your server and the big cloud LLM providers on your own
-// key. A server you rent docks here the same way it does in Computer
-// (connect-anywhere, 2026-10-07): it then shows in Computer and in the model
-// menu as Your server. Each provider you connect puts its models on your
-// Bench, ready to place in your stack (as the Reasoning LLM or a specialist).
-// Keys live in this device's Keychain, scoped to the provider, and are spent
-// only with your approval.
-import { useEffect, useState } from 'react';
-import { hubList, useApp } from '../state/store.js';
+// Cloud Connections: your server, and the big cloud model providers on your
+// own key. A server you rent docks here the same way it does in Computer
+// (connect-anywhere, 2026-10-07), and then reads Your server in Computer and
+// the model menu. Each provider you connect puts its models on your Bench,
+// ready to place in your stack (as the Reasoning model or a specialist). Keys live in this device's
+// Keychain, scoped to the provider, and are spent only with your approval.
+// The room is the Settings ledger (D14, founder 2026-10-07): one row per
+// provider, a tap opens its key sheet, and a connected row asks before it
+// disconnects.
+import { useEffect, useRef, useState } from 'react';
+import { useApp } from '../state/store.js';
 import {
   PROVIDERS,
   fetchLiveModels,
   pickLiveModels,
+  providerBenchModels,
   providerSecretKey,
   validateProviderKey,
   type LiveModel,
 } from '../lib/providers.js';
 import { BackBar } from '../components/BackBar.js';
-import { openInAppBrowser, secretGet } from '../lib/platform.js';
 import { Sheet } from '../components/Sheet.js';
 import { SheetHead } from '../components/SheetHead.js';
+import { ExternalGlyph } from '../components/SheetGlyphs.js';
+import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
+import { openInAppBrowser, secretGet } from '../lib/platform.js';
 import { ServerSetup } from '../components/ServerSetup.js';
 import { DockForm, hostOf } from '../components/DockForm.js';
+import {
+  connectionsOfflineLine,
+  keyCheckWaits,
+  networkUp,
+  offlineChosen,
+  offlineNow,
+} from '../state/offlineOps.js';
 
 export function ConnectionsScreen() {
   const {
     connectedProviders,
     connectProvider,
+    setAnthropicWorkspace,
     disconnectProvider,
     showToast,
     setView,
@@ -33,38 +46,106 @@ export function ConnectionsScreen() {
     settings,
     connectionsFocus,
     clearConnectionsFocus,
+    connectivity,
   } = useApp();
+  // Desktop Offline (founder, 2026-10-07): offline, these models wait for a
+  // connection, said once at the top. Keys stay saved, and disconnecting
+  // stays one tap (it removes a key from this device, no request). A new key
+  // is checked with its provider before it is kept, so with the network down
+  // Save waits, and says why; with Offline only chosen, the check still runs.
+  const offline = offlineNow(connectivity, settings.profileOverride);
+  const chosen = offlineChosen(connectivity, settings.profileOverride);
+  const networkDown = !networkUp(connectivity);
+  // The provider whose key sheet is open.
   const [editing, setEditing] = useState<string | undefined>();
   const [value, setValue] = useState('');
   // Anthropic: the workspace the key acts in. Required, and preset to the id
   // last saved on this device so a reconnect is one paste, not two.
   const [workspace, setWorkspace] = useState('');
+  // The workspace field shows only once Claude has asked for it (or one is
+  // already saved), so most keys are one paste.
+  const [askWorkspace, setAskWorkspace] = useState(false);
   const [checking, setChecking] = useState(false);
+  // Claude is connected and only its workspace is being set: the sheet asks
+  // for the ID alone and keeps the saved key (2026-10-08: a connected row
+  // used to offer only Disconnect, so a chat asking for the workspace sent
+  // the person to a room with nowhere to put it).
+  const [workspaceOnly, setWorkspaceOnly] = useState(false);
+  // The provider being disconnected, while its confirm is open.
+  const [removing, setRemoving] = useState<{ id: string; name: string } | undefined>();
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const provider = PROVIDERS.find((p) => p.id === editing);
   // The provider whose live model list is open for choosing, if any.
   const [choosing, setChoosing] = useState<{ id: string; name: string } | undefined>();
+  // Setting up a server, while its sheet is open.
+  const [settingUpServer, setSettingUpServer] = useState(false);
+  // The docked servers (the saved hubs, read the way the store's hubList
+  // reads them, kept here so this room reads settings alone).
+  const servers = (settings.daemons ?? (settings.daemon ? [settings.daemon] : [])).filter(
+    (h) => h.kind === 'server',
+  );
+
+  const openSheet = (id: string) => {
+    setEditing(id);
+    setValue('');
+    setWorkspace(settings.anthropicWorkspaceId ?? '');
+    setAskWorkspace(false);
+    setWorkspaceOnly(false);
+  };
+  const openWorkspace = () => {
+    setEditing('anthropic');
+    setValue('');
+    setWorkspace(settings.anthropicWorkspaceId ?? '');
+    setAskWorkspace(true);
+    setWorkspaceOnly(true);
+  };
+  const closeSheet = () => {
+    setEditing(undefined);
+    setValue('');
+    setWorkspaceOnly(false);
+  };
 
   useEffect(() => {
     // Arrived from a Connect tap elsewhere (the Marketplace's frontier shelf):
-    // open that provider's form and bring its card into view, so the person
-    // lands on the paste field, not at the top of a list to hunt through.
+    // open that provider's key sheet, so the person lands on the paste field,
+    // not at the top of a list to hunt through.
+    // A chat that stopped for Claude's workspace lands on the workspace field.
     if (!connectionsFocus) return;
-    if (!connectedProviders[connectionsFocus]) {
-      setEditing(connectionsFocus);
-      setValue('');
-      setWorkspace(settings.anthropicWorkspaceId ?? '');
-    }
-    document
-      .getElementById(`provider-${connectionsFocus}`)
-      ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    if (!connectedProviders[connectionsFocus]) openSheet(connectionsFocus);
+    else if (connectionsFocus === 'anthropic') openWorkspace();
     clearConnectionsFocus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connectionsFocus]);
 
+  const saveWorkspace = async () => {
+    if (checking || networkDown || !workspace.trim()) return;
+    setChecking(true);
+    let check: Awaited<ReturnType<typeof setAnthropicWorkspace>> = 'unverifiable';
+    try {
+      check = await setAnthropicWorkspace(workspace);
+    } finally {
+      setChecking(false);
+    }
+    if (check === 'invalid' || check === 'needs-workspace') {
+      showToast('Claude did not accept that workspace ID. Check it in the Console.');
+      return;
+    }
+    closeSheet();
+    showToast(
+      check === 'valid'
+        ? 'Claude workspace saved. Claude can answer now.'
+        : 'Claude workspace saved. We could not check it right now.',
+    );
+  };
+
   const save = async (id: string, name: string) => {
+    if (workspaceOnly) return saveWorkspace();
     const key = value.trim();
-    if (!key) return;
+    // Enter in a field is a second door to Save, so it waits while a check
+    // runs, and while the network is down (the check needs it).
+    if (!key || checking || networkDown) return;
     // Verify the key actually works before claiming "connected", so a typo is
-    // caught here, not later mid-chat. A hard rejection keeps the field open;
+    // caught here, not later mid-chat. A hard rejection keeps the sheet open;
     // an unverifiable result (offline, dev CORS) saves but says so.
     setChecking(true);
     let check: Awaited<ReturnType<typeof validateProviderKey>> = 'unverifiable';
@@ -79,15 +160,15 @@ export function ConnectionsScreen() {
     }
     if (check === 'needs-workspace') {
       // Most keys carry their workspace; an identity-linked key needs its id.
+      setAskWorkspace(true);
       showToast(
         workspace.trim()
-          ? 'Claude did not accept that workspace id. Check it in the Console.'
-          : 'This Claude key needs its workspace id. Paste it from the Console, then save.',
+          ? 'Claude did not accept that workspace ID. Check it in the Console.'
+          : 'This Claude key needs its workspace ID. Paste it below, then save.',
       );
       return;
     }
-    setEditing(undefined);
-    setValue('');
+    closeSheet();
     await connectProvider(id, key, id === 'anthropic' ? workspace : undefined);
     showToast(
       check === 'valid'
@@ -98,210 +179,230 @@ export function ConnectionsScreen() {
 
   return (
     <div className="screen">
-      <BackBar title="Cloud Connections" />
-      <div className="screen-inner">
-        <h1>Cloud Connections</h1>
+      <BackBar title="Cloud Connections" titleHiddenUntil={titleRef} />
+      <div className="screen-inner settings">
+        <h1 ref={titleRef}>Cloud Connections</h1>
         <p className="lead">
-          Set up your own server, or add a provider on your own key. A server docks like your
-          computer; a provider's models land on your Bench, ready to place. Keys stay on this
-          device, and nothing cloud runs without your say.
+          Set up your own server; it docks like your computer. Connect a provider with your own API
+          key. Its models wait on your bench until you place them, and a cloud model runs only when
+          you pick it or place it. Keys are stored only on this device and sent only to their
+          provider.{' '}
+          <button
+            type="button"
+            className="linklike press-fb"
+            onClick={() => void startGuideChat('connect-cloud-key')}
+          >
+            Walk me through it
+          </button>
         </p>
-        <button
-          className="btn ghost press-fb"
-          style={{ width: '100%', marginBottom: 12 }}
-          onClick={() => void startGuideChat('connect-cloud-key')}
-        >
-          Walk me through it
-        </button>
+        {offline ? (
+          <p className="hint connections-offline" role="status">
+            {connectionsOfflineLine(chosen)}
+          </p>
+        ) : null}
 
-        <YourServer />
-
-        <h2 style={{ marginTop: 24 }}>Cloud providers</h2>
-        {PROVIDERS.map((p) => {
-          const on = Boolean(connectedProviders[p.id]);
-          return (
-            <div className="card" key={p.id} id={`provider-${p.id}`}>
-              <div className="card-row">
-                <div className="grow">
-                  <h3>{p.name}</h3>
-                  <div className="sub">
-                    {p.liveModels
-                      ? on
-                        ? `${p.models.length} models on your Bench. Key looks like ${p.keyHint}`
-                        : `Its models load from ${p.name} once your key is in.`
-                      : `${p.models.length} models. Key looks like ${p.keyHint}`}
-                  </div>
-                  {p.liveModels && on ? (
-                    <button
-                      type="button"
-                      className="linklike press-fb"
-                      style={{ marginTop: 4 }}
-                      onClick={() => setChoosing({ id: p.id, name: p.name })}
-                    >
-                      Choose models
-                    </button>
-                  ) : null}
-                </div>
-                {on ? <span className="pill ok">connected</span> : null}
-                {on ? (
-                  <button
-                    className="btn ghost"
-                    style={{ padding: '8px 14px' }}
-                    onClick={async () => {
-                      await disconnectProvider(p.id);
-                      showToast(`${p.name} disconnected.`);
-                    }}
-                  >
-                    Remove
-                  </button>
-                ) : (
-                  <button
-                    className="btn ghost"
-                    style={{ padding: '8px 14px' }}
-                    onClick={() => {
-                      setEditing(p.id);
-                      setValue('');
-                      setWorkspace(settings.anthropicWorkspaceId ?? '');
-                    }}
-                  >
-                    Connect
-                  </button>
-                )}
-              </div>
-              {editing === p.id ? (
-                // The key, its workspace, and Save rise above the keyboard
-                // together (lib/revealField.ts).
-                <div style={{ marginTop: 12 }} data-reveal-with="">
-                  <button
-                    type="button"
-                    className="linklike"
-                    style={{ marginBottom: 8 }}
-                    onClick={() => openInAppBrowser(p.apiKeyUrl)}
-                  >
-                    Get a {p.name} API key ↗
-                  </button>
-                  <div className="field">
-                    <label htmlFor="connections-api-key">{p.name} API key</label>
-                    <input
-                      id="connections-api-key"
-                      autoFocus
-                      type="password"
-                      placeholder={p.keyHint}
-                      enterKeyHint="go"
-                      value={value}
-                      onChange={(e) => setValue(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && void save(p.id, p.name)}
-                    />
-                  </div>
-                  {p.id === 'anthropic' ? (
-                    <>
-                      <div className="field">
-                        <label htmlFor="connections-workspace-id">
-                          Workspace id (only if Claude asks)
-                        </label>
-                        <input
-                          id="connections-workspace-id"
-                          placeholder="wrkspc_..."
-                          enterKeyHint="go"
-                          autoCapitalize="none"
-                          autoCorrect="off"
-                          value={workspace}
-                          onChange={(e) => setWorkspace(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && void save(p.id, p.name)}
-                        />
-                      </div>
-                      <p className="hint" style={{ marginBottom: 10 }}>
-                        Only if Claude asks: in the Console, Settings, then Workspaces, copy the id
-                        that starts with wrkspc_.
-                      </p>
-                    </>
-                  ) : null}
-                  <button
-                    className="btn primary"
-                    style={{ width: '100%' }}
-                    data-reveal-primary=""
-                    disabled={checking}
-                    onClick={() => void save(p.id, p.name)}
-                  >
-                    {checking ? 'Checking...' : 'Save'}
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
-
-        <Sheet open={Boolean(choosing)} onClose={() => setChoosing(undefined)}>
-          {choosing ? (
-            <LiveModelPicker
-              key={choosing.id}
-              providerId={choosing.id}
-              name={choosing.name}
-              onDone={() => setChoosing(undefined)}
+        {/* One row per provider: its model count, and a Connected pill once
+            its key is saved. A tap opens the key sheet, or, once connected,
+            asks before it disconnects, so a connected row carries no
+            chevron (it opens a question, not a place). */}
+        {/* A Linux server you rent (or keep at home), docked over Tailscale
+            the way a computer is (connect-anywhere, 2026-10-07). A docked one
+            opens Computer, where it is managed. */}
+        <SettingsGroup title="Your server" index={0}>
+          {servers.map((h) => (
+            <SettingsRow
+              key={h.baseUrl}
+              label={h.name?.trim() || hostOf(h.baseUrl)}
+              sub="Docked. It is in Computer and in the model menu."
+              value={<span className="pill ok">Docked</span>}
+              onClick={() => setView('pair')}
             />
-          ) : null}
-        </Sheet>
+          ))}
+          <SettingsRow
+            label={servers.length ? 'Dock another server' : 'Set up a server'}
+            sub="A Linux server runs OpenShore and its models while this device sleeps."
+            onClick={() => setSettingUpServer(true)}
+          />
+        </SettingsGroup>
 
-        <p className="hint">
+        <SettingsGroup title="Cloud providers" index={1}>
+          {PROVIDERS.map((p) => {
+            const on = Boolean(connectedProviders[p.id]);
+            const n = providerBenchModels(p).length;
+            const ws = settings.anthropicWorkspaceId;
+            return [
+              <SettingsRow
+                key={p.id}
+                label={p.name}
+                sub={
+                  on
+                    ? `Its ${n} ${n === 1 ? 'model is' : 'models are'} on your bench.`
+                    : p.liveModels
+                      ? `Its models load from ${p.name} once your key is in.`
+                      : `${n} ${n === 1 ? 'model' : 'models'}`
+                }
+                value={on ? <span className="pill ok">Connected</span> : undefined}
+                asks={on}
+                onClick={() => (on ? setRemoving({ id: p.id, name: p.name }) : openSheet(p.id))}
+              />,
+              p.id === 'anthropic' && on ? (
+                <SettingsRow
+                  key="anthropic-workspace"
+                  label="Claude workspace"
+                  sub={ws ? ws : 'Needed when your key is linked to you, not a workspace.'}
+                  subTruncate={Boolean(ws)}
+                  onClick={openWorkspace}
+                />
+              ) : null,
+              p.liveModels && on ? (
+                <SettingsRow
+                  key={`${p.id}-models`}
+                  label={`Choose ${p.name} models`}
+                  sub="Pick which of its models sit on your bench."
+                  onClick={() => setChoosing({ id: p.id, name: p.name })}
+                />
+              ) : null,
+            ];
+          })}
+        </SettingsGroup>
+
+        <p className="hint connections-foot">
           Place a connected model in{' '}
-          <button className="linklike" onClick={() => setView('stack')}>
+          <button className="linklike press-fb" onClick={() => setView('stack')}>
             your stack
           </button>{' '}
-          to make it your Reasoning LLM or a specialist. You choose which model each kind of task
+          to make it your Reasoning model or a specialist. You choose which model each kind of task
           goes to.
         </p>
       </div>
-    </div>
-  );
-}
 
-/** A server you rent (or keep at home), set up and docked from here. Once
- *  one is docked it is listed with a way to Computer, where it is managed. */
-function YourServer() {
-  const settings = useApp((s) => s.settings);
-  const setView = useApp((s) => s.setView);
-  const [adding, setAdding] = useState(false);
-  const servers = hubList(settings).filter((h) => h.kind === 'server');
-  return (
-    <>
-      <h2 style={{ marginTop: 8 }}>Your server</h2>
-      <p className="hint" style={{ marginTop: 0 }}>
-        A Linux server runs OpenShore and its models while this device sleeps. It docks over your
-        own Tailscale network, never the open internet.
-      </p>
-      {servers.map((h) => (
-        <div className="card" key={h.baseUrl}>
-          <div className="card-row" style={{ alignItems: 'center' }}>
-            <div className="grow">
-              <h3 style={{ margin: 0 }}>{h.name?.trim() || hostOf(h.baseUrl)}</h3>
-              <div className="sub">Docked. It is in Computer and in the model menu.</div>
+      {/* A provider's key: where to get one, the field, and Save, which rise
+          above the keyboard together (lib/revealField.ts). A form sheet has
+          one way out, the round close, which stays in view above the
+          keyboard (2026-10-07, the same exit as New project). */}
+      <Sheet open={Boolean(provider)} onClose={closeSheet}>
+        {provider ? (
+          <>
+            <SheetHead
+              title={workspaceOnly ? 'Claude workspace' : `Connect ${provider.name}`}
+              onClose={closeSheet}
+            />
+            <div data-reveal-with="">
+              {workspaceOnly ? null : (
+                <div className="field">
+                  <div className="field-label-row">
+                    <label htmlFor="connections-api-key">{provider.name} API key</label>
+                    <button
+                      type="button"
+                      className="linklike press-fb"
+                      onClick={() => openInAppBrowser(provider.apiKeyUrl)}
+                    >
+                      Get a key <ExternalGlyph />
+                    </button>
+                  </div>
+                  <input
+                    id="connections-api-key"
+                    autoFocus
+                    type="password"
+                    placeholder={provider.keyHint}
+                    enterKeyHint="go"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    value={value}
+                    onChange={(e) => setValue(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && void save(provider.id, provider.name)}
+                  />
+                </div>
+              )}
+              {provider.id === 'anthropic' && (askWorkspace || workspace.trim()) ? (
+                <div className="field">
+                  <label htmlFor="connections-workspace-id">Workspace ID</label>
+                  <input
+                    id="connections-workspace-id"
+                    autoFocus={workspaceOnly}
+                    placeholder="wrkspc_..."
+                    enterKeyHint="go"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    value={workspace}
+                    onChange={(e) => setWorkspace(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && void save(provider.id, provider.name)}
+                  />
+                  <p className="hint" style={{ marginTop: 4 }}>
+                    In the Console, open Settings, then Workspaces, and copy the ID that starts with
+                    wrkspc_.
+                  </p>
+                </div>
+              ) : null}
+              {networkDown ? (
+                <p className="hint" role="status">
+                  {keyCheckWaits(provider.name)}
+                </p>
+              ) : null}
+              <div className="sheet-actions">
+                <button
+                  type="button"
+                  className="btn primary press-fb"
+                  data-reveal-primary=""
+                  disabled={checking || networkDown || !(workspaceOnly ? workspace : value).trim()}
+                  onClick={() => void save(provider.id, provider.name)}
+                >
+                  {checking ? 'Checking...' : 'Save'}
+                </button>
+              </div>
             </div>
-            <span className="pill ok">docked</span>
-          </div>
+          </>
+        ) : null}
+      </Sheet>
+
+      <Sheet open={settingUpServer} onClose={() => setSettingUpServer(false)}>
+        {settingUpServer ? (
+          <>
+            <SheetHead title="Set up a server" onClose={() => setSettingUpServer(false)} />
+            <ServerSetup />
+            <DockForm expect="server" onDocked={() => setSettingUpServer(false)} />
+          </>
+        ) : null}
+      </Sheet>
+
+      <Sheet open={Boolean(choosing)} onClose={() => setChoosing(undefined)}>
+        {choosing ? (
+          <LiveModelPicker
+            key={choosing.id}
+            providerId={choosing.id}
+            name={choosing.name}
+            onDone={() => setChoosing(undefined)}
+          />
+        ) : null}
+      </Sheet>
+
+      <Sheet open={Boolean(removing)} onClose={() => setRemoving(undefined)} variant="confirm">
+        <h3>Disconnect {removing?.name}?</h3>
+        <p>Its API key is removed from this device. You can connect it again any time.</p>
+        <div className="confirm-row">
           <button
+            type="button"
             className="btn ghost press-fb"
-            style={{ width: '100%', marginTop: 12 }}
-            onClick={() => setView('pair')}
+            onClick={() => setRemoving(undefined)}
           >
-            Open Computer
+            Keep
+          </button>
+          <button
+            type="button"
+            className="btn danger press-fb"
+            onClick={async () => {
+              const target = removing;
+              setRemoving(undefined);
+              if (!target) return;
+              await disconnectProvider(target.id);
+              showToast(`${target.name} disconnected.`);
+            }}
+          >
+            Disconnect
           </button>
         </div>
-      ))}
-      {servers.length === 0 || adding ? (
-        <>
-          <ServerSetup />
-          <DockForm expect="server" onDocked={() => setAdding(false)} />
-        </>
-      ) : (
-        <button
-          className="btn ghost press-fb"
-          style={{ width: '100%', marginBottom: 12 }}
-          onClick={() => setAdding(true)}
-        >
-          Dock another server
-        </button>
-      )}
-    </>
+      </Sheet>
+    </div>
   );
 }
 

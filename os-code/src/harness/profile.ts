@@ -302,17 +302,20 @@ export function useConstrainedDecoding(
   return profile.constrainedDecoding && caps.supportsGrammar;
 }
 
-/** One honest line for a seat badge and the transcript, per tenet 3. */
+/** One honest line for a seat badge and the transcript, per tenet 3, in
+ *  words a person reads (D3, founder 2026-10-07, built as recommended, B, the
+ *  CMO's plain rewrite): OpenShore, never "the harness", and no seat, tools
+ *  or subagents. */
 export function classBlurb(modelClass: ModelClass): string {
   switch (modelClass) {
     case 'tiny':
-      return 'Runs single steps. Best for quick edits and questions.';
+      return 'Takes one step at a time. Best for quick edits and questions.';
     case 'small':
-      return 'Runs short plans. The harness carries the checklist.';
+      return 'Handles short plans. OpenShore keeps the checklist for it.';
     case 'mid':
-      return 'Plans and runs multi-step work with subagents.';
+      return 'Plans and carries out multi-step work.';
     case 'large':
-      return 'Full planning and delegation.';
+      return 'Plans and hands off whole tasks.';
   }
 }
 

@@ -13,6 +13,7 @@
 // pages, coming back), and ChatScreen renders the buttons.
 
 import type { PermissionMode } from './permissionMode.js';
+import { thisDeviceNoun } from './deviceNoun.js';
 
 export type SetupStepId = 'harbor' | 'computer' | 'repo' | 'key';
 
@@ -55,7 +56,7 @@ export interface GuidedSetupProgress {
   /** The fork after Harbor (founder, 2026-09-25): once Harbor is offered, the
    *  guide asks whether to start chatting or keep setting up, so setup is
    *  never a gate. 'asking' while the two buttons wait for a tap; 'chat' pauses
-   *  the walk (it picks up on "Pick up setup"), 'setup' carries on. */
+   *  the walk (it picks up on "Keep setting up"), 'setup' carries on. */
   nextChoice?: 'asking' | NextChoice;
   /** The break after the walk's opening (founder, 2026-10-01): two buttons,
    *  chat now or set up now, before step one is introduced. 'asking' while
@@ -95,13 +96,13 @@ export const HARBOR_SWITCH_HINT =
   'To use Harbor, tap the model name in the chat box below (next to the +) and pick Harbor. Or open the menu, go to Stack, and place Harbor there so every chat starts with it.';
 
 /** Said once, whenever Harbor finishes downloading during or after the walk. */
-export const HARBOR_READY_MESSAGE = `Harbor is ready on your iPhone. ${HARBOR_SWITCH_HINT}`;
+export const HARBOR_READY_MESSAGE = `Harbor is ready on ${thisDeviceNoun()}. ${HARBOR_SWITCH_HINT}`;
 
 export const STEP_COPY: Record<SetupStepId, SetupStepCopy> = {
   harbor: {
     title: 'Get Harbor',
-    what: 'Harbor is a coding model, Qwen3 4B Instruct, that runs right here on your iPhone.',
-    why: "I'm a guide. Harbor does the real work: it reasons, writes real code on this phone, even in airplane mode, and searches the web when you're online.",
+    what: `Harbor is a coding model, Qwen3 4B Instruct, that runs on ${thisDeviceNoun()}.`,
+    why: "I'm a guide. Harbor does the real work: it writes and explains code right here, even in airplane mode, and searches the web when you're online.",
     how: "Tap Get Harbor. It downloads straight from its source, about 2.5 GB, a few minutes on wifi. It keeps going in the background while we set up the rest, and I'll tell you when it's ready and how to switch to it.",
     action: 'Get Harbor',
     ask: 'Tell me more about Harbor before I download it.',
@@ -109,7 +110,7 @@ export const STEP_COPY: Record<SetupStepId, SetupStepCopy> = {
   },
   computer: {
     title: 'Connect your computer',
-    what: 'Pair this phone with OpenShore on your own computer, over your private Tailscale network.',
+    what: `Pair ${thisDeviceNoun()} with OpenShore on your own computer, over your private Tailscale network.`,
     why: 'Your computer runs bigger models and works on your code. It does the heavy lifting, so your battery lasts, and a long answer keeps going even when you close the app.',
     how: 'Install Tailscale on both devices and sign in to the same account (free for personal use). On your computer, open OpenShore, then Computer. The QR is there (if it says Off, tap Turn on). Tap Connect your computer here and scan it. I will bring you back here once you are connected.',
     action: 'Connect your computer',
@@ -120,14 +121,14 @@ export const STEP_COPY: Record<SetupStepId, SetupStepCopy> = {
     title: 'Set up a repository',
     what: 'Connect GitHub or another platform, and pick a home repository for OpenShore to work in.',
     why: 'This is where building happens: OpenShore reads your code, edits it, runs its tests, and commits.',
-    how: "Tap Set up a repository, choose your platform, and connect it with your own access token. Then set your home repository. Commands always ask before they run. Once you're connected, you'll choose how edits are handled, and you can change that any time. I will bring you back here once it is connected.",
+    how: "Tap Set up a repository, choose your platform, and connect it with your own access token. Then set your home repository. Every command asks before it runs, unless you allow it. Once you're connected, you'll choose how edits are handled, and you can change that any time. I will bring you back here once it is connected.",
     action: 'Set up a repository',
     ask: 'Tell me more about setting up a repository.',
     done: 'Your repository is connected.',
   },
   key: {
-    title: 'Connect your own API key',
-    what: 'Add an API key for Claude, OpenAI, or Gemini.',
+    title: 'Add an API key',
+    what: 'Use Claude, OpenAI, or Gemini on your own account.',
     why: "For the hardest work, a frontier model on your own account goes further than anything on a phone, at your provider's price. Chat stays free either way.",
     how: "Create an API key on your provider's site, then tap Add an API key, paste it, and save. OpenShore checks it with the provider before it says connected, and the API key is stored only on this device and sent only to that provider. I will bring you back here once it is saved.",
     action: 'Add an API key',
@@ -179,11 +180,16 @@ export function editChoiceLead(mode: PermissionMode | undefined): string {
       : 'No problem. Edits flow for now and each diff shows in the chat. Change it any time in Settings, under Approvals.';
 }
 
+/** The way back into the walk once it is paused: the fork's own "carry on"
+ *  label, so the same choice goes by one name (D4, founder 2026-10-07, built
+ *  as recommended, C). It sits under the guide's first message. */
+export const SETUP_RESUME_LABEL = 'Keep setting up';
+
 /** The fork's two buttons, in the order they show: chatting first, since
  *  nothing in setup is required (founder, 2026-09-25). */
 export const NEXT_CHOICES: readonly { choice: NextChoice; label: string }[] = [
   { choice: 'chat', label: 'Start chatting' },
-  { choice: 'setup', label: 'Keep setting up' },
+  { choice: 'setup', label: SETUP_RESUME_LABEL },
 ];
 
 /** Steps still ahead after Harbor, for the fork's question: not done, not
@@ -198,7 +204,7 @@ export function stepsAhead(
   );
 }
 
-/** "connect your computer, set up a repository, and connect your own API key". */
+/** "connect your computer, set up a repository, and add an API key". */
 function stepList(ids: readonly SetupStepId[]): string {
   return joinNames(
     ids.map((id) => {
@@ -212,7 +218,7 @@ function stepList(ids: readonly SetupStepId[]): string {
 export function nextChoiceQuestion(ahead: readonly SetupStepId[]): string {
   const count = COUNT_WORDS[ahead.length] ?? String(ahead.length);
   const steps = ahead.length === 1 ? 'one more step' : `${count} more steps`;
-  return `Want to start chatting now, or keep setting up? There ${ahead.length === 1 ? 'is' : 'are'} ${steps}: ${stepList(ahead)}. Setup waits for you either way.`;
+  return `Want to start chatting now, or keep setting up? There ${ahead.length === 1 ? 'is' : 'are'} ${steps}: ${stepList(ahead)}. ${ahead.length === 1 ? 'It waits' : 'They wait'} for you either way.`;
 }
 
 /** Said when the Harbor step ends (downloading, ready, or skipped) and there
@@ -244,7 +250,7 @@ export function nextChoiceMessage(
   if (choice === 'chat') {
     const invite = "Let's chat. Ask me anything, about OpenShore or anything else.";
     return next
-      ? `${invite} Setup is here whenever you want it: tap Pick up setup under my first message, or say "let's set up".`
+      ? `${invite} When you want the next step, tap ${SETUP_RESUME_LABEL} under my first message, or say "let's set up".`
       : invite;
   }
   return next ? `On we go.\n\n${stepIntro(next)}` : finishMessage(facts);
@@ -326,10 +332,12 @@ export function openingMessage(first: SetupStepId | undefined, facts: SetupFacts
 
 /** The break's two buttons, in the order they show (Creative Studio): Just
  *  chat first and full size, so skipping setup is never small or hidden;
- *  Start setup filled, since it answers the question the intro asked. */
+ *  Set up OpenShore filled, since it answers the question the intro asked.
+ *  A verb, never "setup" as a noun (D4, founder 2026-10-07, built as
+ *  recommended, C). */
 export const START_CHOICES: readonly { choice: NextChoice; label: string }[] = [
   { choice: 'chat', label: 'Just chat' },
-  { choice: 'setup', label: 'Start setup' },
+  { choice: 'setup', label: 'Set up OpenShore' },
 ];
 
 /** Said when the person picks chatting at the break, just before the walk's
@@ -366,7 +374,7 @@ export function advanceMessage(
  *  Harbor when it is on the phone. */
 export function finishMessage(facts: SetupFacts): string {
   const parts = [
-    "That's the setup. Anything you skipped waits on the Set up OpenShore page, from the button under my first message.",
+    "That's every step. Anything you skipped waits on the Set up OpenShore page, from the button under my first message.",
     'Now ask me anything about OpenShore, how it works, or the best setup for your equipment. I can look simple questions up on the web too.',
   ];
   if (facts.harborReady) parts.push(`Harbor is ready. ${HARBOR_SWITCH_HINT}`);
@@ -562,7 +570,7 @@ export function guideContextLine(
     return `SETUP: the person asked for help getting set up. A list of what is not set up yet sits under the latest setup message as buttons (${joinNames(ahead)}); tapping one walks them through it. Never choose for them, and never invent other steps. Answer anything they ask fully and well.`;
   }
   if (progress.startChoice === 'asking' && !progress.paused) {
-    return `${audience === 'guide' ? `${FIRST_CHAT_GOAL} ` : ''}SETUP: the person has just read the setup intro. Two buttons sit under it: "Just chat" (setup waits, and they can say "help me get set up" in any chat later) and "Start setup" (the first step). Never choose for them. If they ask something, answer it fully and well.`;
+    return `${audience === 'guide' ? `${FIRST_CHAT_GOAL} ` : ''}SETUP: the person has just read the setup intro. Two buttons sit under it: "${START_CHOICES[0]!.label}" (setup waits, and they can say "help me get set up" in any chat later) and "${START_CHOICES[1]!.label}" (the first step). Never choose for them. If they ask something, answer it fully and well.`;
   }
   if (audience === 'other') {
     if (progress.paused || !walkActive(progress)) return undefined;

@@ -16,6 +16,11 @@ export interface ApprovalRequest {
   summary: string;
   /** Diff or detail block. */
   detail?: string;
+  /** Why this card asks when it otherwise would not, in one plain line a
+   *  client shows above the detail or diff: a project note change after the
+   *  chat read a private note (CX and CMO, 2026-10-08, A). Additive: an older
+   *  engine sends none, and a client then shows the card as before. */
+  why?: string;
   /** True for a tool that asks every time (vaultWrite): an allow for the
    *  session or the project never takes effect on it, so a client offers
    *  only approve and decline. Absent for every other tool. */
@@ -101,8 +106,24 @@ export interface TodoItem {
   owner?: string;
 }
 
+/** Where a handoff (delegate, analyzeImage, generateImage) goes: the model
+ *  that takes the step, and whether its requests leave this network
+ *  (seatLeaves, or the image server by address). */
+export interface ToolHandoff {
+  model: string;
+  leaves: boolean;
+}
+
 export type AgentEvent =
-  | { type: 'task-start'; input: string }
+  | {
+      type: 'task-start';
+      input: string;
+      /** The task came in marked local-only (a private plan's step, sent
+       *  with POST /sessions/:id/input `localOnly`, CX and CMO 2026-10-08,
+       *  J): the chat holds a private note's text from its first word, so a
+       *  replay marks it again. Additive. */
+      localOnly?: true;
+    }
   | {
       type: 'turn-start';
       turn: number;
@@ -116,7 +137,18 @@ export type AgentEvent =
   | { type: 'text-delta'; text: string }
   | { type: 'text-final'; text: string }
   | { type: 'thinking-delta'; text: string }
-  | { type: 'tool-start'; call: ParsedToolCall }
+  | {
+      type: 'tool-start';
+      call: ParsedToolCall;
+      /** For a handoff to another model (delegate, analyzeImage,
+       *  generateImage): the model the step goes to and whether it leaves
+       *  this network, so a client names it and wears the Cloud chip (CX and
+       *  CMO, 2026-10-08, D). Absent offline, where the router picks the
+       *  model as it runs; absent when no specialist is placed for the role,
+       *  so the Reasoning model takes the step itself; and from an older
+       *  engine. Additive. */
+      handoff?: ToolHandoff;
+    }
   | {
       type: 'tool-end';
       call: ParsedToolCall;
@@ -150,18 +182,41 @@ export type AgentEvent =
       estimatedPromptTokens?: number;
     }
   | { type: 'model-switch'; model: string; providerKind: 'local' | 'cloud'; reason: string }
+  // A handoff is about to go to a model off this network (a placed cloud
+  // specialist, a cloud image server): the turn's reach is cloud from here,
+  // whatever the model that wrote the call, so a client turns its pill amber
+  // for this turn and keeps the turn's model name (CX and CMO, 2026-10-08,
+  // D). Emitted just before that handoff's tool-start. Additive.
+  | { type: 'reach'; model: string; providerKind: 'cloud' }
   | { type: 'task-done'; reason: StopReason; message?: string }
   // The agent's task list, replaced whole each time it calls todoWrite.
   | { type: 'todos'; items: TodoItem[] }
   // Plan mode: the model's proposed plan, awaiting the person's go-ahead.
   | { type: 'plan-proposed'; text: string }
-  // The plan-first flow (app): the reasoning LLM needs the person to settle the
+  // The plan-first flow (app): the reasoning model needs the person to settle the
   // framing before it draws the play. Rendered as a picker; the reply is folded
   // back in and re-framed. Free text is always allowed alongside the options.
   | {
       type: 'clarify';
       summary: string;
       questions: Array<{ id: string; question: string; options?: string[] }>;
+    }
+  // The app's Stack chat (founder, 2026-10-07): a picture came in, or a
+  // plan's image step started, and nothing here can read images. The chat
+  // answers with two doors, a local model to source and a cloud model to
+  // connect, never an error. `from` says whether a picture went unread
+  // ('image') or the step ran on the text alone ('play'); `placed` names a
+  // model set for Image reading that cannot read here, and why; `cloud` says
+  // whether a connected cloud reader is out of reach rather than missing;
+  // `status` names the reach status that holds reading back ("Offline"),
+  // in which nothing that reads images is in reach until it is left. Additive:
+  // an older client ignores it, and it never rides into a model's history.
+  | {
+      type: 'image-reader-offer';
+      from: 'image' | 'play';
+      cloud: 'none' | 'out-of-reach';
+      placed?: { model: string; why: 'device' | 'cannot-see' | 'out-of-reach' };
+      status?: string;
     }
   // The permission mode in force, so a reattaching client shows the truth.
   | { type: 'mode'; mode: PermissionMode }
@@ -200,6 +255,11 @@ export type AgentEvent =
        *  command) or the page check that runs nothing (v1 Phase 1). Absent
        *  reads as tests. */
       check?: 'tests' | 'page';
+      /** The failure went back to a seat on this network from a check run
+       *  in a workspace that holds the vault, so it may quote a note that
+       *  stays on this computer (D5): what the model says next is marked.
+       *  Additive. */
+      localOnly?: true;
     }
   // Best-of-N judged by the project's own check: the previous attempt spent
   // its verify retries without passing, the files it touched are restored to

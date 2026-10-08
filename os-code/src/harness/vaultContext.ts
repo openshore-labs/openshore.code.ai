@@ -42,6 +42,11 @@ export interface PackSource {
   /** The note was cut to fit this seat's budget (its block ends with a
    *  "continues in" line), so the card can say so. Set only when cut. */
   trimmed?: true;
+  /** The note stays on this computer (a private note, only ever in a pack
+   *  for a seat that stays), so a host can tell what made the pack private:
+   *  a project pin alone, or something else (CX and CMO, 2026-10-08, A, G,
+   *  H). Set only on those. Additive. */
+  localOnly?: true;
 }
 
 /** Everything a pack is built from, apart from the bodies. */
@@ -393,8 +398,9 @@ export function buildContextPack(input: PackBuildInput): ContextPack {
   ): boolean => {
     if (block === null || !out.fits(block)) return false;
     out.push(block);
-    used.push({ layer, path, title, ...extra });
-    if (sel.localOnly.has(path)) carriesLocalOnly = true;
+    const local = sel.localOnly.has(path);
+    used.push({ layer, path, title, ...extra, ...(local ? { localOnly: true as const } : {}) });
+    if (local) carriesLocalOnly = true;
     return true;
   };
   const bodyOf = (path: string): string | null => {

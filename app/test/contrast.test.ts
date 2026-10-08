@@ -36,9 +36,10 @@ type RGBA = [number, number, number, number];
 function color(v: string, t: Record<string, string>): RGBA {
   const ref = v.match(/^var\(--([a-z0-9-]+)\)$/);
   if (ref) return color(t[ref[1]!]!, t);
-  const hex = v.match(/^#([0-9a-f]{6})$/i);
+  const hex = v.match(/^#([0-9a-f]{6}|[0-9a-f]{3})$/i);
   if (hex) {
-    const h = hex[1]!;
+    // A three-digit hex (--on-fill: #fff) doubles each digit.
+    const h = hex[1]!.length === 3 ? hex[1]!.replace(/./g, (d) => d + d) : hex[1]!;
     return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)).concat(1) as RGBA;
   }
   const rgba = v.match(/^rgba\(([\d.]+),\s*([\d.]+),\s*([\d.]+),\s*([\d.]+)\)$/);
@@ -108,6 +109,23 @@ describe.each([
     expect(ratio('bg', 'accent', t)).toBeGreaterThanOrEqual(3);
     expect(ratio('ink-soft', 'surface', t)).toBeGreaterThanOrEqual(3);
   });
+  it("the empty terminal send's $ clears 4.5:1 on the surface it waits on", () => {
+    // The $ is a character, so it is held to the text bar, not the glyph's.
+    expect(ratio('ink-soft', 'surface', t)).toBeGreaterThanOrEqual(4.5);
+  });
+  it('the local hero keeps its white text and its white button legible', () => {
+    // The hero's deep water holds in both themes, so white text clears AA
+    // across its whole gradient, and the white button's label is the start.
+    expect(ratio('on-fill', 'hero-local-start', t)).toBeGreaterThanOrEqual(4.5);
+    expect(ratio('on-fill', 'hero-local-end', t)).toBeGreaterThanOrEqual(4.5);
+  });
+  it("a primary's label clears 4.5:1 on the accent, the Projects dock's too", () => {
+    // D8 (founder, 2026-10-07): the dock's New pill wears the primary's fill.
+    expect(ratio('accent-ink', 'accent', t)).toBeGreaterThanOrEqual(4.5);
+  });
+  it("the selected segment's label clears 4.5:1 on its thumb", () => {
+    expect(ratio('accent', 'seg-thumb', t)).toBeGreaterThanOrEqual(4.5);
+  });
 });
 
 describe('the controls wear their edge', () => {
@@ -116,8 +134,28 @@ describe('the controls wear their edge', () => {
     expect(rule).not.toMatch(/opacity/);
     expect(rule).toMatch(/color: var\(--ink-soft\)/);
   });
+  it('waits on the surface in terminal mode too, never the accent', () => {
+    // .send-btn.terminal sets the accent and comes later, so its empty state
+    // names the surface itself, or the ink-soft $ sits on teal.
+    const rule = CSS.match(/\.send-btn\.terminal:disabled \{[^}]*\}/)?.[0] ?? '';
+    expect(rule).toMatch(/background: var\(--surface\)/);
+  });
   it('draws a switch at rest and a field border on the control edge', () => {
-    expect(CSS).toMatch(/\.switch \{[^}]*background: var\(--control-edge\)/);
+    // D21 (founder, 2026-10-07): the switch at rest is an outline, its 3:1
+    // edge drawn as an inset ring on a surface track, and on fills with the
+    // accent. The edge moved from the track's fill to its ring.
+    expect(CSS).toMatch(/\.switch \{[^}]*box-shadow: inset 0 0 0 1\.5px var\(--control-edge\)/);
+    expect(CSS).toMatch(/\.switch \{[^}]*background: var\(--surface\)/);
+    expect(CSS).toMatch(/\.switch\.on \{[^}]*background: var\(--accent\)/);
     expect(CSS).toMatch(/\.field input \{[^}]*border: 1px solid var\(--control-edge\)/);
+  });
+  it('puts the Projects dock on the accent, never an ink slab', () => {
+    const rule = CSS.match(/\.projects-dock-new \{[^}]*\}/)?.[0] ?? '';
+    expect(rule).toMatch(/background: var\(--accent\)/);
+    expect(rule).toMatch(/color: var\(--accent-ink\)/);
+  });
+  it("gives the hero's ghost a glass to read on, and its primary the hero's own water", () => {
+    expect(CSS).toMatch(/\.cc-hero-actions \.btn\.ghost \{[^}]*background: color-mix\(/);
+    expect(CSS).toMatch(/\.cc-hero \.btn\.primary \{[^}]*color: var\(--hero-local-start\)/);
   });
 });

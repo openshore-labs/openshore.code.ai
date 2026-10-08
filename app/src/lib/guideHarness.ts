@@ -23,6 +23,7 @@ import { resolveHarborMaster, harborMasterSizeLine } from './harborMaster.js';
 import type { HardwareRead } from './firstSeat.js';
 import type { FitLabel } from '../components/marketplace.js';
 import type { WebSearchResult } from './webSearch.js';
+import { thisDeviceNoun } from './deviceNoun.js';
 
 /** One small, true fact about the app, retrievable by what a person would ask. */
 export interface GuideCard {
@@ -259,10 +260,10 @@ export function setupAdvice(eq: GuideEquipment): string[] {
       'Even the smallest DeepBlue is a stretch here, so a cloud API key under Cloud Connections will feel much better on this computer.',
     );
   lines.push(
-    'The best setup: install DeepBlue on the computer (Settings, Harbor, in OpenShore on that computer), dock this phone to it under Computer over Tailscale, and the phone reaches it as Your computer, so the computer does the heavy work while the phone stays light.',
+    `The best setup: install DeepBlue on the computer (Settings, Harbor, in OpenShore on that computer), dock ${thisDeviceNoun()} to it under Computer over Tailscale, and it shows here as Your computer, so the computer does the heavy work while ${thisDeviceNoun()} stays light.`,
   );
   lines.push(
-    'Add a cloud API key under Cloud Connections only if you want the strongest model for hard tasks; it asks before it spends.',
+    'Add a cloud API key under Cloud Connections only if you want the strongest model for hard tasks; it spends on your key only when you pick it or place it.',
   );
   return lines;
 }
@@ -308,7 +309,7 @@ const QUESTION =
   /\?\s*$|^(who|what|when|where|why|how|which|is|are|was|were|can|could|does|do|did|will|should|would|has|have|tell me|explain|define)\b/;
 // Words that mean the question is about this app, even when no card matches.
 const APP_TERMS =
-  /\b(openshore|harbor|deepblue|stack|bench|marketplace|vault|crew|currents?|wayfinding|repositor(y|ies)|tailscale|pair(ing)?|settings|reasoning llm|specialist|composer|offshore|onshore|jev|hermes|byom|codemagic|routine)\b/;
+  /\b(openshore|harbor|deepblue|stack|bench|marketplace|vault|crew|currents?|wayfinding|repositor(y|ies)|tailscale|pair(ing)?|settings|reasoning (llm|model)|specialist|composer|offshore|onshore|jev|hermes|byom|codemagic|routine)\b/;
 
 /** The strongest card score that still counts as "the app facts answer this". */
 const APP_SCORE = 2;
@@ -318,8 +319,7 @@ export interface GuideTurnInput {
   cards: readonly GuideCard[];
 }
 
-export const STRETCH_NOTE =
-  "That is past Harbor Lite's size, so treat the answer above as a starting point. Harbor (on this phone) or DeepBlue (on your computer) can take it all the way.";
+export const STRETCH_NOTE = `That is past Harbor Lite's size, so treat the answer above as a starting point. Harbor (on ${thisDeviceNoun()}) or DeepBlue (on your computer) can take it all the way.`;
 
 /** Decide how this turn is answered. Deterministic, so the eval can pin it. */
 export function planGuideTurn({ message, cards }: GuideTurnInput): GuidePlan {

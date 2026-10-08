@@ -66,6 +66,28 @@ describe('the profile rules', () => {
     );
   });
 
+  // egress-claims-4 (sp-plan): the signed-in card named four of the six.
+  // It now reads the same list, and the sign-in sheets list none of them.
+  it('names every preference that follows on the signed-in card, from the one list', async () => {
+    const { SIGNED_IN_PERKS, ACCOUNT_GATE_BODY, accountCopy } =
+      await import('../src/lib/accountGate.js');
+    for (const k of followingKeys()) {
+      expect(SIGNED_IN_PERKS.toLowerCase(), String(k)).toContain(followsLabel(k).toLowerCase());
+    }
+    expect(SIGNED_IN_PERKS).toBe(
+      'These follow you to every device you sign in on: appearance, effort, Humanize Writing, Chain of Thought, notices, and voice. Signing out keeps everything on this device.',
+    );
+    for (const body of [ACCOUNT_GATE_BODY, accountCopy(true).body]) {
+      expect(body).toMatch(/takes your theme and a few preferences to every device/);
+    }
+    // What leaves this device names them in the same words (one name per
+    // thing, sign-off): it said theme, reasoning and humanized writing.
+    const { EGRESS } = await import('../src/lib/egressManifest.js');
+    expect(EGRESS.find((e) => e.id === 'preferences')!.what).toBe(
+      'Your app preferences, so they follow you to your other devices: appearance, effort, Humanize Writing, Chain of Thought, notices, and voice. Never your chats, prompts, projects, keys, or addresses.',
+    );
+  });
+
   it('draws the avatar from the email', () => {
     expect(accountInitial('founder@openshore.ai')).toBe('F');
     expect(accountInitial(undefined)).toBe('?');
@@ -138,8 +160,15 @@ describe('signed in', () => {
     // Said once, by the profile's own row (CX, 2026-10-02).
     const { SIGNED_IN_PERKS } = await import('../src/lib/accountGate.js');
     expect(sheet).not.toContain(SIGNED_IN_PERKS);
-    // Never claims more than the code does (CTO, 2026-10-02).
+    // Never claims more than the code does (CTO, 2026-10-02). The suite runs
+    // at tier 4, where teams keep rows on our server, so the line claims only
+    // the person's own and names what a team keeps (privacy review,
+    // 2026-10-08); a Personal build's line is in tierPersonal.test.ts.
     expect(sheet).not.toMatch(/stay on the device they were made on/);
+    expect(sheet).toContain(
+      'OpenShore does not copy your own chats, projects, keys, or vault to your account.',
+    );
+    expect(sheet).toContain('the addresses it invites are kept on our server');
     expect(sheet).not.toMatch(/beta|OpenShore Plus/);
   });
 

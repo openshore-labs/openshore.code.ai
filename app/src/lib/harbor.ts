@@ -23,6 +23,7 @@
 
 import { NO_SEARCH_NOTE, SEARCH_PROTOCOL_NOTE } from 'os-code/protocol';
 import { APP_KNOWLEDGE } from './guideKnowledge.js';
+import { thisDeviceNoun } from './deviceNoun.js';
 
 export const HARBOR_MODEL_ID = 'harbor';
 export const HARBOR_MODEL_VERSION = '3.0';
@@ -40,15 +41,17 @@ export const HARBOR_MODEL_NAME = 'Harbor';
 // before a build; this sandbox cannot reach huggingface.co to check it.
 export const HARBOR_MODEL_URL =
   'https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf';
-export const HARBOR_APPROX_LABEL = 'about 2.5 GB';
+/** Harbor's download, said as one unit: no-break spaces hold "about 2.5 GB"
+ *  on one line, so a narrow window (Slide Over, 320pt) never leaves "2.5 GB"
+ *  alone on the next. */
+export const HARBOR_APPROX_LABEL = 'about\u00a02.5\u00a0GB';
 /** The honest name of the weights behind the slot, for attribution copy. */
 export const HARBOR_WEIGHTS_NAME = 'Qwen3 4B Instruct';
 
 // The byline shown under the Harbor row in Settings. Harbor is the coder that
 // runs on the phone, a step up from the built-in Harbor Lite guide. It is a
 // coding model, not an agent: the agent is DeepBlue (brand sweep 2026-09-24).
-export const HARBOR_BYLINE =
-  'A coding model that runs fully on your phone. It writes and explains code and searches the web.';
+export const HARBOR_BYLINE = `A coding model that runs fully on ${thisDeviceNoun()}. It writes and explains code and searches the web.`;
 
 export function isHarbor(modelId: string): boolean {
   return modelId === HARBOR_MODEL_ID;
@@ -65,7 +68,7 @@ export function harborWeightsStale(recorded: string | undefined): boolean {
  *  model-generated, so it is reliable and appears with zero wait. No em
  *  dashes. */
 export const HARBOR_GREETING = [
-  "Hi, I'm Harbor. I'm a coding model that runs fully on this phone, and I can search the web when a question needs it, so I'm not limited to what I already know.",
+  `Hi, I'm Harbor. I'm a coding model that runs fully on ${thisDeviceNoun()}, and I can search the web when a question needs it, so I'm not limited to what I already know.`,
   '',
   "Ask me to write or explain code, or ask how something in the app works and I'll walk you through it. For multi-file work on a whole repository, point me at a bigger model in your stack or dock to your computer.",
   '',

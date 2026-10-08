@@ -85,10 +85,11 @@ describe('setting up a server', () => {
 
   it('is offered in Cloud Connections, above the providers', () => {
     const screen = read('src', 'screens', 'ConnectionsScreen.tsx');
-    const server = screen.indexOf('<YourServer />');
+    const server = screen.indexOf('<SettingsGroup title="Your server"');
     expect(server).toBeGreaterThan(0);
-    expect(server).toBeLessThan(screen.indexOf('{PROVIDERS.map((p) => {'));
+    expect(server).toBeLessThan(screen.indexOf('<SettingsGroup title="Cloud providers"'));
     expect(screen).toContain('<DockForm expect="server"');
+    expect(screen).toContain('<ServerSetup />');
   });
 });
 

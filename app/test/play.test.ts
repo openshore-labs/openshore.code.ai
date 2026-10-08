@@ -3,18 +3,22 @@ import {
   briefTodos,
   extractJson,
   formatBriefTable,
+  handoffNote,
   mergeReplan,
   ownerFor,
   ownerLabel,
   parsePlan,
   parseReplan,
+  planPrompt,
   readySteps,
   sanitizePlay,
+  stepRunner,
   topoOrder,
   type Play,
   type PlayStep,
 } from '../src/lib/play.js';
 import { harborRef, type AppStack, type StackModelRef } from '../src/lib/stack.js';
+import { imageStepCoveredNote } from '../src/lib/imageNote.js';
 
 const claude: StackModelRef = {
   kind: 'cloud',
@@ -154,6 +158,270 @@ describe('ownerFor / ownerLabel', () => {
   it('ignores a step owner that names no model in the stack, falling back to category', () => {
     const s: PlayStep = { ...step('s', 'coding'), owner: 'cloud:ghost:x' };
     expect(ownerFor(s, stack).ref).toEqual(coder); // coding specialist by category
+  });
+});
+
+// A plan never carries a picture (CX and CMO, 2026-10-08, E, taking off the
+// founder's 2026-10-07 exception): an unplaced vision step runs on the
+// Reasoning model from the text, whatever model an image in the chat would go
+// to (the driver's routeVision, carried as the stack's imageReader).
+describe('an unplaced vision step', () => {
+  const haiku: StackModelRef = {
+    kind: 'cloud',
+    provider: 'anthropic',
+    model: 'claude-haiku-4-5',
+    label: 'Claude Haiku 4.5',
+  };
+  const stack: AppStack = { reasoning: harborRef(), active: [], saved: {} };
+
+  it('goes to the Reasoning model, never the image reader', () => {
+    expect(ownerLabel(step('s', 'vision'), { ...stack, imageReader: haiku })).toBe(
+      'Harbor Lite (reasoning)',
+    );
+    expect(ownerFor(step('s', 'vision'), { ...stack, imageReader: haiku })).toMatchObject({
+      ref: harborRef(),
+      fellBack: true,
+    });
+  });
+
+  it('reads as the anchor covering it when the reader is the anchor', () => {
+    const own: AppStack = { ...stack, reasoning: claude };
+    expect(ownerLabel(step('s', 'vision'), { ...own, imageReader: claude })).toBe(
+      'Claude (reasoning)',
+    );
+  });
+
+  it('falls to the anchor the driver runs when nothing can read images', () => {
+    expect(ownerFor(step('s', 'vision'), stack)).toMatchObject({
+      ref: harborRef(),
+      fellBack: true,
+    });
+    // With no anchor set, the anchor is Harbor Lite, as in the driver.
+    const bare = { active: [], saved: {} } as AppStack;
+    expect(ownerFor(step('s', 'reasoning'), bare).ref).toEqual(harborRef());
+  });
+
+  it('tells the planner who covers it', () => {
+    expect(planPrompt('read it', { ...stack, imageReader: haiku })).toMatch(
+      /vision \(Image reading\): no specialist, the reasoning model covers it/,
+    );
+    expect(planPrompt('read it', { ...stack, imageReader: haiku })).not.toContain(
+      'Claude Haiku 4.5 covers it',
+    );
+    expect(planPrompt('read it', stack)).toMatch(
+      /vision \(Image reading\): no specialist, the reasoning model covers it/,
+    );
+  });
+});
+
+// An unplaced image step runs on the Reasoning model from the text (CX and
+// CMO, 2026-10-08, E): with something here that reads images, the working
+// note says nothing is set for Image reading and a plan carries no picture;
+// with nothing that reads images, it says so. No note names a second model.
+describe("an image step's working note", () => {
+  const haiku: StackModelRef = {
+    kind: 'cloud',
+    provider: 'anthropic',
+    model: 'claude-haiku-4-5',
+    label: 'Claude Haiku 4.5',
+  };
+  const gpt: StackModelRef = { kind: 'cloud', provider: 'openai', model: 'gpt-5', label: 'GPT-5' };
+  const sonar: StackModelRef = {
+    kind: 'cloud',
+    provider: 'perplexity',
+    model: 'sonar',
+    label: 'Sonar',
+  };
+  const read: PlayStep = { ...step('s', 'vision'), title: 'Read the chart' };
+  const base: AppStack = { reasoning: sonar, active: [], saved: {} };
+
+  it('says a plan carries no picture, whatever model would read one in the chat', () => {
+    const note =
+      'Read the chart. No image model is set in Stack, and a plan carries no picture, so Sonar, your Reasoning model, works from the text.';
+    expect(handoffNote(read, { ...base, imageReader: haiku })).toBe(note);
+    expect(handoffNote(read, { ...base, imageReader: gpt })).toBe(note);
+    const own: StackModelRef = { ...coder, label: 'LLaVA 7B' };
+    expect(handoffNote(read, { ...base, active: [], imageReader: own })).toBe(note);
+  });
+
+  it('says the same of a Reasoning model that can see', () => {
+    expect(handoffNote(read, { ...base, reasoning: claude, imageReader: claude })).toBe(
+      'Read the chart. No image model is set in Stack, and a plan carries no picture, so Claude, your Reasoning model, works from the text.',
+    );
+  });
+
+  it('says the Reasoning model works from the text when nothing reads images', () => {
+    expect(handoffNote(read, base)).toBe(
+      'Read the chart. Nothing here can read images yet, so Sonar, your Reasoning model, works from the text.',
+    );
+  });
+
+  it('keeps the plain handoff for a model placed for Image reading', () => {
+    const placed: AppStack = {
+      ...base,
+      active: [{ ref: haiku, placement: { category: 'vision' } }],
+    };
+    expect(handoffNote(read, { ...placed, imageReader: haiku })).toBe(
+      'Read the chart. Handing to Claude Haiku 4.5.',
+    );
+  });
+
+  it('keeps the plain handoff for a step that names its own model', () => {
+    const named: AppStack = {
+      ...base,
+      active: [{ ref: coder, placement: { category: 'coding' } }],
+      imageReader: haiku,
+    };
+    expect(handoffNote({ ...read, owner: 'byom:c1' }, named)).toBe(
+      'Read the chart. Handing to Coder.',
+    );
+  });
+
+  it('names a model set for Image reading that cannot take the step, and who covers it', () => {
+    expect(imageStepCoveredNote('Read the chart', harborRef(), sonar)).toBe(
+      'Read the chart. Harbor Lite cannot read images yet, so Sonar, your Reasoning model, works from the text.',
+    );
+    const own: StackModelRef = { ...coder, label: 'LLaVA 7B' };
+    expect(imageStepCoveredNote('Read the chart', own, sonar)).toBe(
+      'Read the chart. LLaVA 7B is out of reach, so Sonar, your Reasoning model, works from the text.',
+    );
+  });
+
+  it('leaves every other step as it was', () => {
+    expect(handoffNote(step('w', 'writing'), { ...base, imageReader: haiku })).toBe(
+      'Step w. Handing to Sonar (reasoning).',
+    );
+  });
+});
+
+// The task list names the model a step really runs on (follow-up,
+// 2026-10-08). ownerFor reads the Stack slots before capability, so a model
+// on this device set for Image reading owns an image step there, while the
+// runner hands that step to the Reasoning model: stepRunner is the one rule
+// both read, so the list, the note and the run cannot drift apart.
+describe('stepRunner: who a step really runs on', () => {
+  const sonar: StackModelRef = {
+    kind: 'cloud',
+    provider: 'perplexity',
+    model: 'sonar',
+    label: 'Sonar',
+  };
+  const phoneReader: AppStack = {
+    reasoning: sonar,
+    active: [{ ref: harborRef(), placement: { category: 'vision' } }],
+    saved: {},
+  };
+  const read: PlayStep = { ...step('s', 'vision'), title: 'Read the chart' };
+
+  it('hands an image step set on this device to the Reasoning model, and the list says so', () => {
+    expect(ownerFor(read, phoneReader).ref).toEqual(harborRef());
+    expect(stepRunner(read, phoneReader)).toEqual({
+      ref: sonar,
+      placement: undefined,
+      fellBack: true,
+      covered: harborRef(),
+    });
+    expect(ownerLabel(read, phoneReader)).toBe('Sonar (reasoning)');
+    const play: Play = { summary: 'Explain the chart', steps: [read] };
+    expect(briefTodos(play, phoneReader)[0]!.owner).toBe('Sonar (reasoning)');
+    expect(formatBriefTable(play, phoneReader)).toContain('Read the chart  ->  Sonar (reasoning)');
+    // The note names the model set there and the one that covers it.
+    expect(handoffNote(read, phoneReader)).toBe(
+      'Read the chart. Harbor Lite cannot read images yet, so Sonar, your Reasoning model, works from the text.',
+    );
+  });
+
+  it('hands a step whose owner is out of reach to the Reasoning model', () => {
+    const own: AppStack = {
+      reasoning: sonar,
+      active: [
+        { ref: { ...coder, label: 'LLaVA 7B' }, placement: { category: 'vision' } },
+        { ref: coder, placement: { category: 'coding' } },
+      ],
+      saved: {},
+    };
+    const away = { ...own, reachable: (r: StackModelRef) => r.kind !== 'byom' };
+    expect(ownerLabel(read, away)).toBe('Sonar (reasoning)');
+    expect(handoffNote(read, away)).toBe(
+      'Read the chart. LLaVA 7B is out of reach, so Sonar, your Reasoning model, works from the text.',
+    );
+    expect(ownerLabel(step('c', 'coding'), away)).toBe('Sonar (reasoning)');
+    expect(handoffNote(step('c', 'coding'), away)).toBe('Step c. Handing to Sonar (reasoning).');
+    // In reach, each runs on its own model, as before.
+    expect(ownerLabel(read, own)).toBe('LLaVA 7B');
+    expect(ownerLabel(step('c', 'coding'), own)).toBe('Coder');
+  });
+
+  it('hands any step owned on this device to the Reasoning model, the way the runner does', () => {
+    const fast: AppStack = {
+      reasoning: claude,
+      active: [{ ref: harborRef(), placement: { category: 'fast' } }],
+      saved: {},
+    };
+    expect(stepRunner(step('f', 'fast'), fast).ref).toEqual(claude);
+    expect(ownerLabel(step('f', 'fast'), fast)).toBe('Claude (reasoning)');
+    expect(handoffNote(step('f', 'fast'), fast)).toBe('Step f. Handing to Claude (reasoning).');
+  });
+
+  // D5 on a plan (sp-plan, egress-claims-2): while the plan draws on a
+  // private note, a step bound for a model that leaves this network runs on
+  // the Reasoning model, and the list and the note say so and why.
+  it('keeps a private plan off every model that leaves, and says why', () => {
+    const own: AppStack = {
+      reasoning: coder,
+      active: [
+        { ref: claude, placement: { category: 'writing' } },
+        { ref: claude, placement: { category: 'vision' } },
+      ],
+      saved: {},
+    };
+    const kept = { ...own, keepPrivate: (r: StackModelRef) => r.kind === 'cloud' };
+    const draft = { ...step('w', 'writing'), title: 'Draft' };
+    expect(stepRunner(draft, kept)).toEqual({
+      ref: coder,
+      placement: undefined,
+      fellBack: true,
+      covered: claude,
+      private: true,
+    });
+    expect(ownerLabel(draft, kept)).toBe('Coder (reasoning)');
+    expect(ownerLabel(read, kept)).toBe('Coder (reasoning)');
+    expect(handoffNote(draft, kept)).toBe(
+      'Draft. This plan draws on a private note, so Coder, your Reasoning model, takes it instead of Claude.',
+    );
+    expect(handoffNote(read, kept)).toBe(
+      'Read the chart. This plan draws on a private note, so Coder, your Reasoning model, takes it instead of Claude.',
+    );
+    // Without the mark, each runs on its own model, as before.
+    expect(stepRunner(draft, own).ref).toEqual(claude);
+    expect(ownerLabel(draft, own)).toBe('Claude');
+    // Nothing set for Image reading, a cloud reader connected: the step was
+    // never the reader's (E), so the Reasoning model takes it as its own,
+    // with nothing to keep off a cloud model and nothing covered.
+    const unplaced = {
+      reasoning: coder,
+      active: [],
+      saved: {},
+      imageReader: claude,
+      keepPrivate: (r: StackModelRef) => r.kind === 'cloud',
+    };
+    expect(stepRunner(read, unplaced)).toEqual({
+      ref: coder,
+      placement: undefined,
+      fellBack: true,
+    });
+    expect(handoffNote(read, unplaced)).toBe(
+      'Read the chart. No image model is set in Stack, and a plan carries no picture, so Coder, your Reasoning model, works from the text.',
+    );
+  });
+
+  it('leaves the anchor as its own runner, never covering itself', () => {
+    const bare: AppStack = { reasoning: harborRef(), active: [], saved: {} };
+    expect(stepRunner(step('r', 'reasoning'), bare)).toEqual({
+      ref: harborRef(),
+      placement: undefined,
+      fellBack: false,
+    });
   });
 });
 

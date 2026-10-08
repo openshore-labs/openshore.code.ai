@@ -9,14 +9,17 @@
 // rides only into a seat whose requests stay on this network (judged by
 // address, `leavesNetwork`, never by a provider's label), so a cloud provider
 // is never told about the app's controls (the founder's privacy line). A cloud
-// seat still answers; the person copies its answer in by hand.
+// seat still answers, and is never asked for a fence; one it writes anyway in
+// a chat that asked shows the same card, the value whole, and only the tap
+// writes (the card cannot tell which seat wrote a reply).
 //
 // And only when the chat asks for one (2026-10-02). Riding on every turn, the
 // contract read to a 4B seat as the task itself: asked for a briefing, Harbor
 // wrote an empty `writingVoice` fence and the closing question instead. Now a
 // key is offered only once a person's turn in this chat asks for it (`asks`),
 // so the shaping chat carries it from its first line on and any other chat
-// never does.
+// never does. The card reads the same gate (components/MessageList.tsx): a
+// fence for a key this chat never asked for stays plain code (2026-10-08).
 //
 // Every key a model may set is listed in APP_ACTIONS, with its own check of
 // the value. A new piece of the app joins by adding an entry here: the

@@ -118,6 +118,22 @@ describe('RemoteDriver reconnect (G5, B4)', () => {
     expect(links.slice(0, 2)).toEqual(['reconnecting', 'live']);
   });
 
+  it("carries a private plan step's local-only mark on the wire, and only when asked (J)", async () => {
+    vi.useFakeTimers();
+    const inputs: unknown[] = [];
+    globalThis.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url).endsWith('/input')) inputs.push(JSON.parse(String(init?.body)));
+      if (String(url).includes('/events')) throw new Error('daemon down');
+      return { ok: true, status: 200, json: async () => ({}) } as unknown as Response;
+    }) as unknown as typeof fetch;
+    const driver = new RemoteDriver('s1', { baseUrl: 'http://desktop', token: 't' }, 0);
+    driver.send('edit it', undefined, { localOnly: true });
+    driver.send('and the next one');
+    await vi.advanceTimersByTimeAsync(10);
+    driver.dispose();
+    expect(inputs).toEqual([{ text: 'edit it', localOnly: true }, { text: 'and the next one' }]);
+  });
+
   it('a send the hub never answers ends the turn with a plain sentence and a Retry', async () => {
     vi.useFakeTimers();
     globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
@@ -158,7 +174,8 @@ describe('RemoteDriver reconnect (G5, B4)', () => {
     driver.dispose();
 
     expect(calls).toBe(1); // no retry loop on a fatal answer
-    expect(messages.some((m) => /dock again/i.test(m))).toBe(true);
+    // In the door's own words: dock again from Computer (2026-10-07).
+    expect(messages.some((m) => /Connect your computer again from Computer\./.test(m))).toBe(true);
   });
 
   it('ends the run when the session is gone, so the thread is not stuck busy (APP-4)', async () => {
