@@ -6,6 +6,10 @@ import { routineSearchRefusal } from '../src/core/security/routineSearch.js';
 import { redactSecrets } from '../src/core/security/redaction.js';
 import { MockProvider, textTurn, toolTurn } from './helpers/mockProvider.js';
 import { makeTestSession } from './helpers/session.js';
+import { pinnedSource } from './helpers/privateNotes.js';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 describe('the routine search guard', () => {
   it('lets a short, plain query through on a result-only backend', () => {
@@ -69,6 +73,29 @@ describe('the routine search guard', () => {
     await session.agent.run('check');
     const denied = session.events.filter((e) => e.type === 'tool-denied');
     expect(denied).toHaveLength(1);
+    expect(session.approvals).toEqual([]);
+  });
+
+  // CX and CMO, 2026-10-08 (H): a private note carried in the pack counts as
+  // one read, so the run does not search at all.
+  it('a headless run whose pack carried a private note does not search', async () => {
+    const provider = new MockProvider('mock', [
+      toolTurn('webSearch', { query: 'release notes' }, 'c1'),
+      textTurn('done'),
+    ]);
+    const session = makeTestSession(provider, {
+      profile: 'headless',
+      offline: true,
+      offlineSearch: true,
+      vaultRoot: mkdtempSync(join(tmpdir(), 'osc-vault-')),
+      vaultContext: pinnedSource(),
+    });
+    await session.agent.run('check');
+    const denied = session.events.filter(
+      (e): e is Extract<typeof e, { type: 'tool-denied' }> => e.type === 'tool-denied',
+    );
+    expect(denied.map((e) => e.call.name)).toEqual(['webSearch']);
+    expect(denied[0]!.reason).toMatch(/private note or something that looked like a secret/);
     expect(session.approvals).toEqual([]);
   });
 });

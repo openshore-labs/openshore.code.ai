@@ -51,7 +51,12 @@ import type { VaultContextSource } from '../../harness/vaultContext.js';
 import type { VaultOverrides } from '../../harness/vault/types.js';
 import { vaultContextOn, vaultHandoffOn, vaultPackSize } from '../../harness/vault/settings.js';
 import { HANDOFF_MAX_BYTES } from '../../harness/handoff.js';
-import { readHandoff, writeHandoff, type HandoffScope } from './handoffStore.js';
+import {
+  readHandoff,
+  sweepPreFixHandoffs,
+  writeHandoff,
+  type HandoffScope,
+} from './handoffStore.js';
 import { logger } from '../../util/log.js';
 
 const log = logger('bootstrap');
@@ -544,6 +549,10 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   // routine) neither writes nor reads one: its own vault note records the
   // run, and a scripted run's summary must never become the person's "where
   // you left off" on the same project, whatever owner key it would carry.
+  // A handoff written before the local-only fix (0.1.64) may carry a private
+  // note's words: every such record is removed once per machine, before any
+  // session reads one (CX and CMO, 2026-10-08, A). A no-op after the first.
+  sweepPreFixHandoffs();
   const handoffOn =
     options.profile !== 'headless' &&
     config.vault?.handoff !== 'off' &&

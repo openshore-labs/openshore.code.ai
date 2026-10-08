@@ -62,6 +62,11 @@ import { bootstrapSession } from '../src/core/agent/bootstrap.js';
 import { readFrontmatter } from '../src/harness/vault/frontmatter.js';
 import { resolveWikilink } from '../src/harness/vault/resolve.js';
 import { crewTag, yamlString } from '../src/routines/runNote.js';
+import { MEMORY_ROUTINE_DENIED } from '../src/core/agent/loop.js';
+import { compileVaultPrivacy } from '../src/harness/vault/privacy.js';
+import { vaultReadTool } from '../src/core/tools/vault.js';
+import { MockProvider } from './helpers/mockProvider.js';
+import { makeTestSession } from './helpers/session.js';
 
 // The date core is stream A2's (Vault M6); until it lands in this tree its
 // stub throws "not built", so a small stand-in (YYYY, MM, DD and separators
@@ -912,6 +917,81 @@ describe('routine scheduler', () => {
     expect(text).not.toContain('second query');
     // A refused search is not a step the run took.
     expect(run.steps).toBe(0);
+  });
+
+  // CX and CMO, 2026-10-08 (A): a run that drew on a private note leaves a
+  // private note, so its words reach no cloud seat later; and a change to
+  // the memory notes it could not ask about is named in the note.
+  it('a run note written after a private read carries oscode: local-only, and a cloud seat cannot read it', async () => {
+    const routine = store.createRoutine(input());
+    const clock = { now: at(0, 6, 0, 5) };
+    const driver = new FakeDriver();
+    const { scheduler } = makeScheduler(clock, {
+      openSession: () => ({ driver, warnings: [] }),
+    });
+    scheduler.runNow(routine.id);
+    // The private read, as the session's events show it.
+    driver.emit({
+      type: 'tool-end',
+      call: { id: 'r1', name: 'vaultRead', args: { path: 'Journal/today.md' } },
+      result: { ok: true, content: 'Dear diary, RUN-SECRET-5150.', localOnly: true },
+      durationMs: 1,
+    });
+    driver.emit({
+      type: 'tool-denied',
+      call: { id: 'm1', name: 'projectMemoryWrite', args: { file: 'Progress' } },
+      reason: MEMORY_ROUTINE_DENIED,
+    });
+    driver.emit({ type: 'text-final', text: 'Your journal says RUN-SECRET-5150.' });
+    driver.emit({ type: 'task-done', reason: 'complete' });
+    const run = scheduler.get(routine.id)!.lastRun!;
+    const text = readFileSync(join(vault, run.notePath!), 'utf8');
+    expect(text).toContain('oscode: "local-only"');
+    expect(readFrontmatter(text).props.find((p) => p.key === 'oscode')?.value).toBe('local-only');
+    expect(text).toContain(`Note: ${MEMORY_ROUTINE_DENIED}`);
+    expect(MEMORY_ROUTINE_DENIED).toBe(
+      "This run drew on a private note, so it left the project's memory notes as they were, since a routine cannot ask you to approve a change to them.",
+    );
+    // A seat off this network asks for it and gets the stays-here line.
+    const cloud = new MockProvider('anthropic', [], { kind: 'cloud' });
+    const session = makeTestSession(cloud, {
+      vaultRoot: vault,
+      configOverrides: { stack: { orchestrator: { provider: 'anthropic', model: 'claude' } } },
+    });
+    session.toolContext.vaultPrivacy = compileVaultPrivacy({
+      exclude: [],
+      localOnly: { paths: [], tags: [] },
+    });
+    expect(session.toolContext.seatLeavesNetwork?.()).toBe(true);
+    const read = await vaultReadTool.execute({ path: run.notePath! }, session.toolContext);
+    expect(read.content).not.toContain('RUN-SECRET-5150');
+    expect(read.content).toMatch(/stays on this computer/);
+  });
+
+  it('a driver that says its session held a private note marks the note too', () => {
+    const routine = store.createRoutine(input());
+    const clock = { now: at(0, 6, 0, 5) };
+    const driver = Object.assign(new FakeDriver(), { heldLocalOnly: () => true });
+    const { scheduler } = makeScheduler(clock, {
+      openSession: () => ({ driver, warnings: [] }),
+    });
+    scheduler.runNow(routine.id);
+    driver.emit({ type: 'text-final', text: 'Done.' });
+    driver.emit({ type: 'task-done', reason: 'complete' });
+    const text = readFileSync(join(vault, scheduler.get(routine.id)!.lastRun!.notePath!), 'utf8');
+    expect(text).toContain('oscode: "local-only"');
+    expect(text).not.toContain('Note: This run drew on a private note');
+  });
+
+  it('a run that held nothing private leaves an unmarked note', () => {
+    const routine = store.createRoutine(input());
+    const clock = { now: at(0, 6, 0, 5) };
+    const { scheduler, opened } = makeScheduler(clock);
+    scheduler.runNow(routine.id);
+    opened[0]!.emit({ type: 'text-final', text: 'All green.' });
+    opened[0]!.emit({ type: 'task-done', reason: 'complete' });
+    const text = readFileSync(join(vault, scheduler.get(routine.id)!.lastRun!.notePath!), 'utf8');
+    expect(text).not.toContain('oscode:');
   });
 
   it('a run that never reached for the web has no Note line about it', () => {

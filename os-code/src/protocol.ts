@@ -15,6 +15,7 @@ export type {
   StageSecret,
   StopReason,
   TodoItem,
+  ToolHandoff,
 } from './core/agent/types.js';
 export { PERMISSION_MODES } from './core/agent/types.js';
 import type { PermissionMode } from './core/agent/types.js';
@@ -371,8 +372,11 @@ export type { DeriveInput, ModelClassPolicy, ModelClassProfile } from './harness
 // judge, by address, shared with the engine's isLocalHost. A seat is judged by
 // its model's name too: an Ollama cloud tag leaves through a local Ollama, so
 // the app reads the engine's own seat judge (privacy review, 2026-10-08).
+// `hostIsLoopback` is the narrower test for words that say "on this computer"
+// (CX and CMO, 2026-10-08): never the LAN or the tailnet.
 export {
   hostIsLocal,
+  hostIsLoopback,
   isIPv4Literal,
   isIPv6Literal,
   isOllamaCloudTag,
@@ -380,6 +384,30 @@ export {
 } from './harness/locality.js';
 export { leavesThisNetwork, seatLeaves } from './providers/types.js';
 export type { HostIsLocalOptions } from './harness/locality.js';
+// The words said once a chat holds a private note's text (CX and CMO,
+// 2026-10-08, A, D, F, G, H): one source for the engine and the app.
+export {
+  HANDOFF_LOCAL_ONLY_DENIED,
+  HANDOFF_PIN_DENIED,
+  MEMORY_DECLINED,
+  MEMORY_ROUTINE_DENIED,
+  MEMORY_ROUTINE_REFUSED,
+  MEMORY_WHY_PIN,
+  MEMORY_WHY_READ,
+  PRIVATE_WEB_LEAD_PIN,
+  PRIVATE_WEB_LEAD_READ,
+  WEB_DECLINED,
+  handoffCardSummary,
+  handoffDeclined,
+  handoffRefusalLine,
+  memoryWhyLine,
+  placeholderLine,
+  privatePageCard,
+  privateSearchCard,
+  privateWebLead,
+  searchServiceName,
+} from './harness/privacyLines.js';
+export type { PrivateCause } from './harness/privacyLines.js';
 // The handoff (Vault M5, CTO J11 to J13): extractive, offline, no thinking.
 export {
   HANDOFF_MAX_AGE_DAYS,
@@ -655,8 +683,31 @@ export interface DaemonStackInfo {
   description: string;
   /** `kind` is judged by address: cloud when its requests leave the
    *  computer's network. */
-  orchestrator?: { model: string; provider: string; kind: 'local' | 'cloud' };
-  specialists: Array<{ role: string; model: string }>;
+  orchestrator?: {
+    model: string;
+    provider: string;
+    kind: 'local' | 'cloud';
+    /** Set when it stays on this network and its server is this computer
+     *  itself (`hostIsLoopback`, never the LAN or the tailnet), so a chip can
+     *  say "On this computer" rather than "On your network" (CX and CMO,
+     *  2026-10-08). Additive: absent from an older daemon. */
+    onThisComputer?: true;
+  };
+  /** Each placed specialist. `kind` is judged as the orchestrator's is
+   *  (seatLeaves: by address and by an Ollama cloud tag), and
+   *  `onThisComputer` as above, on a specialist that stays. Both additive:
+   *  an older daemon sends neither, and a client then shows no chip. */
+  specialists: Array<{
+    role: string;
+    model: string;
+    kind?: 'local' | 'cloud';
+    onThisComputer?: true;
+  }>;
+  /** This daemon takes a local-only turn (POST /sessions/:id/input with
+   *  `localOnly: true`) and holds it to the engine's D5 rules, so a private
+   *  plan's step may run here (CX and CMO, 2026-10-08, J). Absent from an
+   *  older daemon, which would run such a step unmarked. */
+  acceptsLocalOnly?: true;
   /** Why the computer works offline right now (Desktop Offline): no network,
    *  or the person chose Offline there. Absent while it is online, and from
    *  an older daemon, which reads as online. GET /health carries it too. */

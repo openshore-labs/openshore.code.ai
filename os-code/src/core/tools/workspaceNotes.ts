@@ -111,7 +111,11 @@ function stricter(a: VaultVisibility, b: VaultVisibility): VaultVisibility {
  *  vault's rules, and the person's deny rules on the vault tools. A file in
  *  the vault's Trash is judged by the place it left, and as staying on this
  *  computer at the least, since Obsidian's Trash keeps no folder to judge
- *  it by. */
+ *  it by. A file in any other of the vault's dot folders (`.obsidian`, whose
+ *  plugins keep caches of notes, `.oscode`, `.git`, any other) or dot file
+ *  at its root stays on this computer at the least (CX and CMO, 2026-10-08,
+ *  A): the vault tools never reach them, and what they hold can be a note's
+ *  words. */
 function judged(
   ctx: ToolContext,
   notePath: string,
@@ -121,7 +125,8 @@ function judged(
   const place = trashed ? notePath.slice(TRASH_PREFIX.length) : notePath;
   if (closed(ctx, place)) return 'hidden';
   const visibility = visibilityOf(ctx, place, known);
-  return trashed ? stricter(visibility, 'local-only') : visibility;
+  const dotted = !trashed && (notePath.split('/')[0] ?? '').startsWith('.');
+  return trashed || dotted ? stricter(visibility, 'local-only') : visibility;
 }
 
 /** A note's visibility from its vault path and, for markdown, its text. */

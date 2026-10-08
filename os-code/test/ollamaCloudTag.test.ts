@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { ConfigSchema } from '../src/config/schema.js';
 import { ProviderRegistry } from '../src/providers/registry.js';
 import { leavesThisNetwork, seatLeaves } from '../src/providers/types.js';
-import { isOllamaCloudTag } from '../src/harness/locality.js';
+import { hostIsLoopback, isOllamaCloudTag } from '../src/harness/locality.js';
 import { describeStack, resolveStack } from '../src/router/stack.js';
 import { Router } from '../src/router/router.js';
 import { bootstrapSession } from '../src/core/agent/bootstrap.js';
@@ -209,6 +209,86 @@ describe('the loop: a cloud tag gets the cloud card and the amber pill', () => {
     expect(session.approvals.filter((a) => a.kind === 'cloud-spend')).toHaveLength(0);
     const notes = session.events.flatMap((e) => (e.type === 'note' ? [e.message] : []));
     expect(notes.some((n) => /Cloud models wait/.test(n))).toBe(true);
+  });
+});
+
+// CX and CMO, 2026-10-08 (C): one noun pair, "your messages and the files
+// the agent reads", both end at ollama.com, and a loopback server is "Ollama
+// on this computer", chosen by hostIsLoopback, never isLocalHost (which
+// passes the LAN and the tailnet).
+describe('the cloud card words (C)', () => {
+  function cardFor(baseUrl: string | undefined, model = 'kimi-k3:cloud', remote = false) {
+    const ollama = new MockProvider('ollama', [textTurn('Hello.')]);
+    if (remote) (ollama as unknown as { remote: boolean }).remote = true;
+    const session = makeTestSession(ollama, {
+      configOverrides: {
+        ...(baseUrl ? { providers: { ollama: { kind: 'openai-compatible', baseUrl } } } : {}),
+        stack: { orchestrator: { provider: 'ollama', model } },
+      },
+    });
+    return session;
+  }
+
+  it('a cloud tag on Ollama on this computer', async () => {
+    const session = cardFor('http://localhost:11434');
+    await session.agent.run('hello');
+    const card = session.approvals.find((a) => a.kind === 'cloud-spend')!;
+    expect(card.summary).toBe(
+      "This step runs on kimi-k3:cloud, one of Ollama's cloud models, so it leaves this computer.",
+    );
+    expect(card.detail).toBe(
+      'Ollama on this computer passes your messages and the files the agent reads on to ollama.com, under your Ollama account. Nothing is sent without this approval.',
+    );
+  });
+
+  it('a cloud tag on an Ollama elsewhere on the network names the server', async () => {
+    const session = cardFor('http://192.168.1.20:11434');
+    await session.agent.run('hello');
+    const card = session.approvals.find((a) => a.kind === 'cloud-spend')!;
+    expect(card.detail).toBe(
+      'The Ollama server at 192.168.1.20:11434 passes your messages and the files the agent reads on to ollama.com, under your Ollama account. Nothing is sent without this approval.',
+    );
+  });
+
+  it('a remote model server takes the same noun', async () => {
+    const session = cardFor('https://models.example.com/v1', 'big-model', true);
+    await session.agent.run('hello');
+    const card = session.approvals.find((a) => a.kind === 'cloud-spend')!;
+    expect(card.summary).toBe(
+      "This step runs on ollama, a model server off this computer's network.",
+    );
+    expect(card.detail).toBe(
+      'Your messages and the files the agent reads go to models.example.com. Nothing is sent without this approval.',
+    );
+  });
+
+  it('hostIsLoopback passes only this computer itself', () => {
+    for (const host of [
+      'localhost',
+      'LOCALHOST',
+      'app.localhost',
+      '127.0.0.1',
+      '127.8.9.10',
+      '::1',
+      '[::1]',
+      '0:0:0:0:0:0:0:1',
+    ]) {
+      expect(hostIsLoopback(host), host).toBe(true);
+    }
+    for (const host of [
+      '192.168.1.20',
+      '10.0.0.2',
+      '100.64.1.2',
+      'mac.local',
+      'box.tail1234.ts.net',
+      'fd00::1',
+      '::',
+      'example.com',
+      '128.0.0.1',
+      'localhost.example.com',
+    ]) {
+      expect(hostIsLoopback(host), host).toBe(false);
+    }
   });
 });
 
