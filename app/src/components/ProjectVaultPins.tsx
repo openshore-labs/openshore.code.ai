@@ -10,10 +10,10 @@
 //
 // A private pin holds every cloud handoff in its project (CX and CMO,
 // 2026-10-08, G), so its row and the picker wear the lock and "Private", and
-// a line under the list says what it does while Memory carries the pins to
-// the coding agent.
+// a line under the list says what it does while the coding agent's pack
+// carries it (Memory and Notes in chats on, within the pack's pin count).
 import { useEffect, useState, type CSSProperties } from 'react';
-import type { VaultVisibility } from 'os-code/protocol';
+import { PACK_PINS_MAX, type VaultVisibility } from 'os-code/protocol';
 import { useApp } from '../state/store.js';
 import { memoryOverride } from '../lib/currents.js';
 import { PROJECT_VAULT_PINS_MAX } from '../state/types.js';
@@ -39,11 +39,11 @@ export function ProjectVaultPins({ projectId, index }: { projectId: string; inde
   const vaultPinStatus = useApp((s) => s.vaultPinStatus);
   const vaultPinPrivacy = useApp((s) => s.vaultPinPrivacy);
   const memoryOn = useApp((s) => memoryOverride(s.settings) !== false);
+  const notesInChats = useApp((s) => s.settings.vaultContext !== 'off');
   const vaultPickerNotes = useApp((s) => s.vaultPickerNotes);
   const pins = project?.vaultPins ?? [];
   const pinsKey = pins.join('\n');
 
-  // Which pins the vault still holds, read when the list changes.
   // Which pins the vault still holds, and which are private, read when the
   // list changes.
   const [status, setStatus] = useState<Record<string, 'ok' | 'missing' | 'unknown'>>({});
@@ -87,7 +87,15 @@ export function ProjectVaultPins({ projectId, index }: { projectId: string; inde
   if (!project) return null;
   const full = pins.length >= PROJECT_VAULT_PINS_MAX;
   const isPrivate = (path: string) => status[path] !== 'missing' && privacy[path] === 'local-only';
-  const holdsPrivate = pins.some(isPrivate);
+  // The line says what a private pin does, so it shows only while one rides
+  // the coding agent's pack: Memory and Notes in chats both on, and the pin
+  // among the first PACK_PINS_MAX the vault still holds and shows a model, in
+  // the person's order (the engine's pack takes no more). A private pin past
+  // them never reaches the agent, so it holds nothing.
+  const carried = pins
+    .filter((p) => status[p] !== 'missing' && privacy[p] !== 'hidden')
+    .slice(0, PACK_PINS_MAX);
+  const holdsPrivate = memoryOn && notesInChats && carried.some(isPrivate);
   const toggle = (path: string) => {
     const on = pins.includes(path);
     if (!on && full) return;
@@ -136,7 +144,7 @@ export function ProjectVaultPins({ projectId, index }: { projectId: string; inde
               );
             })}
           </div>
-          {holdsPrivate && memoryOn ? (
+          {holdsPrivate ? (
             <p className="hint" style={{ marginTop: 6 }}>
               {VAULT_PIN_PRIVATE_LINE}
             </p>

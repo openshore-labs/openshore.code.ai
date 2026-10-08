@@ -230,7 +230,9 @@ export const EGRESS: EgressEntry[] = [
     id: 'own-model',
     recipient: 'Your cloud providers',
     what: `Your chat, and the notes and files it draws on, to a model server you connect yourself (one you run, or one you name with its address and key). Private notes go only to one on your own network. ${VAULT_CARRY_CAVEAT}`,
-    when: 'Only when you connect one and pick it, and only that turn.',
+    // A model you connect can be placed in a Stack slot too, and then it
+    // answers on every turn routed to it, as a placed cloud model does (D).
+    when: 'Only when you connect one and pick it or place it in your Stack, and only on the turns it answers.',
     start: 'off',
     hosts: [],
   },
@@ -239,7 +241,7 @@ export const EGRESS: EgressEntry[] = [
     // computer, but every request for it goes on to ollama.com (seatLeaves).
     id: 'ollama-cloud',
     recipient: 'Your cloud providers',
-    what: "Your chat, and the files the coding agent reads for it, to ollama.com through your own Ollama account, when a model you place is one of Ollama's cloud models (its tag says cloud, like kimi-k3:cloud). The Ollama on your computer passes each turn on.",
+    what: "Your chat, and the files the coding agent reads for it, to ollama.com through your own Ollama account, when a model you pick or place is one of Ollama's cloud models (its tag says cloud, like kimi-k3:cloud). Your Ollama server passes each turn on.",
     when: 'Only when you pick or place one, and then on every turn it answers. On your computer, the coding agent asks first in each task.',
     start: 'off',
     hosts: [],

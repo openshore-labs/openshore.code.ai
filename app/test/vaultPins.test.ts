@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createElement } from 'react';
-import { compileVaultPrivacy } from 'os-code/protocol';
+import { PACK_PINS_MAX, compileVaultPrivacy } from 'os-code/protocol';
 import type { Project } from '../src/state/types.js';
 import { mountDom, type TestDom } from './support/dom.js';
 
@@ -499,6 +499,58 @@ describe('a private pin says so', () => {
     await mount();
     expect(words(dom.container)).toContain('Diary · Private · Private/Diary.md');
     expect(dom.text()).not.toContain(VAULT_PIN_PRIVATE_LINE);
+  });
+
+  // Sign-off: the line is held to the pack the coding agent is sent. With
+  // Notes in chats off no pin rides it, so a private pin holds nothing.
+  it('no line while Notes in chats is off', async () => {
+    useApp.setState((s) => ({ settings: { ...s.settings, vaultContext: 'off' } }));
+    await mount();
+    expect(words(dom.container)).toContain('Diary · Private · Private/Diary.md');
+    expect(dom.text()).not.toContain(VAULT_PIN_PRIVATE_LINE);
+  });
+
+  // The pack takes the first PACK_PINS_MAX pins the vault holds and shows a
+  // model, in the person's order (the engine's prepare and takePin), so a
+  // private pin past them never reaches the agent and holds nothing; a pin
+  // that is gone, or hidden from every model, takes no place.
+  it('no line for a private pin past the ones the pack carries', async () => {
+    expect(PACK_PINS_MAX).toBe(3);
+    notes.set('A.md', 'a');
+    notes.set('B.md', 'b');
+    notes.set('Hidden/Secret.md', 'secret');
+    try {
+      reset([project({ vaultPins: ['Ideas.md', 'A.md', 'B.md', 'Private/Diary.md'] })]);
+      await mount();
+      expect(words(dom.container)).toContain('Diary · Private · Private/Diary.md');
+      expect(dom.text()).not.toContain(VAULT_PIN_PRIVATE_LINE);
+      await dom.render(null);
+
+      reset([project({ vaultPins: ['Gone.md', 'Ideas.md', 'A.md', 'Private/Diary.md'] })]);
+      await mount();
+      expect(dom.text()).toContain(PIN_MISSING_LINE);
+      expect(dom.text()).toContain(VAULT_PIN_PRIVATE_LINE);
+      await dom.render(null);
+
+      await useApp.getState().saveSettings({
+        vaultPrivacy: { exclude: ['Hidden/**'], localOnly: { paths: [], tags: [] } },
+      });
+      useApp.setState((s) => ({
+        settings: {
+          ...s.settings,
+          projects: [
+            project({ vaultPins: ['Hidden/Secret.md', 'Ideas.md', 'A.md', 'Private/Diary.md'] }),
+          ],
+        },
+      }));
+      await mount();
+      expect(dom.text()).toContain(VAULT_PIN_PRIVATE_LINE);
+    } finally {
+      notes.delete('A.md');
+      notes.delete('B.md');
+      notes.delete('Hidden/Secret.md');
+      await useApp.getState().saveSettings({ vaultPrivacy: undefined });
+    }
   });
 
   it('the picker wears the lock and Private on a private note', async () => {

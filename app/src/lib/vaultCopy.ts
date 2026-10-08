@@ -114,11 +114,11 @@ export const VAULT_PRIVATE_OFF_CLOUD = `OpenShore never sends private notes to a
  *  the pin picker: the one noun the promise uses (CX and CMO, 2026-10-08,
  *  G). */
 export const VAULT_PRIVATE_TAG = 'Private';
-/** Under a project's pinned list, while a pinned note is private and Memory
- *  carries pins to the coding agent (G). Held to the code: the refusal is the
- *  coding agent's, it holds while the agent's own seat stays on this network
- *  (the engine's handoffRefusal), and the pins reach the agent only while
- *  Memory is on. */
+/** Under a project's pinned list, while a private pin rides the coding
+ *  agent's pack (G). Held to the code: the refusal is the coding agent's, it
+ *  holds while the agent's own seat stays on this network (the engine's
+ *  handoffRefusal), and a pin reaches the agent only while Memory and Notes
+ *  in chats are on and it is among the first PACK_PINS_MAX the pack takes. */
 export const VAULT_PIN_PRIVATE_LINE =
   'A private note is pinned here, so while the coding agent runs on a local model, it hands no step in this project to a cloud model.';
 export const VAULT_MODELS_LINE = `Pin a note to a project and every chat there starts with it. ${VAULT_PRIVATE_OFF_CLOUD}`;

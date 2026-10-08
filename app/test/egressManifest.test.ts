@@ -123,10 +123,15 @@ describe('what leaves this device', () => {
     expect(cloud.when).toBe(
       'Only when you pick a cloud model or place one in your Stack, and only on the turns it answers. On your computer, the coding agent asks first in each task.',
     );
+    // Every way the exception was worded on a surface (the list's own line,
+    // the Connections lead, Privacy plainly, the guides and Harbor Lite's
+    // knowledge), any case.
     const retired = [
-      /\bOne exception\b/,
+      /\bone exception\b/i,
       /a plan's image step goes to/i,
       /image step in a plan goes to/i,
+      /a plan's image step while nothing/i,
+      /takes a plan's image step/i,
     ];
     const hits: string[] = [];
     for (const root of [join(process.cwd(), 'src'), join(process.cwd(), 'electron')]) {
@@ -162,6 +167,11 @@ describe('what leaves this device', () => {
       'Your chat, and the notes and files it draws on, to a model server you connect yourself (one you run, or one you name with its address and key). Private notes go only to one on your own network. A command you run or allow, or a change you allow, can still carry their words to a cloud model.',
     );
     expect(EGRESS.find((e) => e.id === 'own-model')!.what.endsWith(VAULT_CARRY_CAVEAT)).toBe(true);
+    // A model you connect can sit in a Stack slot too, so its entry says when
+    // the way the cloud-models one does (D, sign-off), never "only that turn".
+    expect(EGRESS.find((e) => e.id === 'own-model')!.when).toBe(
+      'Only when you connect one and pick it or place it in your Stack, and only on the turns it answers.',
+    );
     for (const e of EGRESS)
       expect(`${e.what} ${e.when}`, e.id).not.toMatch(/, unless you run or allow/);
     // The marking it promises is the one the chat and Chats read.
@@ -217,6 +227,11 @@ describe('what leaves this device', () => {
     expect(tag.when).toBe(
       'Only when you pick or place one, and then on every turn it answers. On your computer, the coding agent asks first in each task.',
     );
+    // The what says the same "pick or place" as the when, and names the
+    // Ollama server, which may sit elsewhere on the network (C, sign-off).
+    expect(tag.what).toContain("when a model you pick or place is one of Ollama's cloud models");
+    expect(tag.what).toMatch(/Your Ollama server passes each turn on\.$/);
+    expect(tag.what).not.toMatch(/Ollama on your computer/);
     // A cloud tag placed as a specialist answers a delegated step with no pill
     // of its own, so the entry claims none.
     expect(tag.what).not.toMatch(/pill/);
