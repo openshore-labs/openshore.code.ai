@@ -236,6 +236,10 @@ select throws_ok(
 reset role;
 
 -- ------------------------------------------------------------ BE-6 reviews
+-- 0027 revokes the app's insert while the Marketplace (v3) is shut, which
+-- takes the column grants with it, so every insert below is refused; the
+-- migration that opens the Marketplace grants the columns back, and these
+-- three lines return to BE-6's own rule then.
 select set_config('request.jwt.claims',
   '{"sub":"c3000000-0000-0000-0000-000000000003","email":"stranger@example.com","role":"authenticated"}', true);
 set local role authenticated;
@@ -252,10 +256,11 @@ select throws_ok(
   '42501', null::text,
   'BE-6: an author cannot write status, even to its default');
 
-select lives_ok(
+select throws_ok(
   $$ insert into public.model_reviews (user_id, model_id, rating, body)
      values ('c3000000-0000-0000-0000-000000000003', 'qwen', 5, 'fast') $$,
-  'BE-6: a plain review still inserts');
+  '42501', null::text,
+  '0027: no new review while the Marketplace is shut');
 
 reset role;
 

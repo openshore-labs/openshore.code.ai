@@ -166,18 +166,13 @@ select matches(
   'the warning names the published appeal address (founder decision F1)');
 
 -- ------------------------------------------------------------ 0020: reviews
-select set_config('request.jwt.claims',
-  '{"sub":"9a000000-0000-0000-0000-000000000001","email":"priv-one@example.com","role":"authenticated"}', true);
-set local role authenticated;
+-- 0027 takes the app's insert away while the Marketplace (v3) is shut, so
+-- the two reviews are seeded as the table's owner; what 0020 holds is how
+-- they are read, which stays the same.
 insert into public.model_reviews (user_id, model_id, rating, body)
-values ('9a000000-0000-0000-0000-000000000001', 'privacy-model', 4, 'mine');
-reset role;
-select set_config('request.jwt.claims',
-  '{"sub":"9a000000-0000-0000-0000-000000000002","email":"priv-two@example.com","role":"authenticated"}', true);
-set local role authenticated;
-insert into public.model_reviews (user_id, model_id, rating, body)
-values ('9a000000-0000-0000-0000-000000000002', 'privacy-model', 2, 'theirs');
-reset role;
+values
+  ('9a000000-0000-0000-0000-000000000001', 'privacy-model', 4, 'mine'),
+  ('9a000000-0000-0000-0000-000000000002', 'privacy-model', 2, 'theirs');
 
 insert into saved
   select 'two_review', id::text from public.model_reviews
