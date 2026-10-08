@@ -126,8 +126,8 @@ import type { ToolSpec } from '../../providers/types.js';
 import { MERGED_VAULT_TOOL, seatOffersVaultTool, withVaultLookupPriority } from './registry.js';
 import { DEFAULT_VAULT_READ_CAP_CHARS } from '../tools/vaultFind.js';
 import {
+  fileVisibility,
   noteClosed,
-  noteVisibility,
   realVaultRoot,
   showingFor,
   vaultMeets,
@@ -502,6 +502,10 @@ export class AgentSession {
     // a local-only note is read only by a seat that stays (CTO I5). Judged by
     // address, live, since an escalation switches the seat mid-task.
     deps.toolContext.seatLeavesNetwork = () => this.activeLeaves();
+    // Repo search sends its query to the embedder, which may be off this
+    // network: while a seat that stays holds a local-only note's text, the
+    // query may quote it, so search keeps to the keyword index (D5).
+    deps.toolContext.chatHoldsLocalOnly = () => !this.activeLeaves() && this.holdsLocalOnly();
     // The seat answering now, for the provenance lines on a note the agent
     // writes (Vault M7, CTO L9): its model, its class, and a cloud seat's
     // provider. Where it ran is `seatLeavesNetwork`, judged by address.
@@ -2598,16 +2602,23 @@ export class AgentSession {
     );
   }
 
-  /** Why a handoff (delegate, analyzeImage, generateImage) does not run now,
-   *  or undefined when it may: the seat that wrote the call was sent a
+  /** Why a handoff (delegate, analyzeImage, generateImage, or a search on
+   *  Perplexity, whose answer is a cloud model's) does not run now, or
+   *  undefined when it may: the seat that wrote the call was sent a
    *  local-only note's text (it stays on this network and the chat holds
    *  such text), and the model the subtask goes to leaves this network (D5):
-   *  the seat the router names for the role, or the image server, judged by
-   *  its address as offlineCut judges it. A seat off this network was sent
-   *  only the stub, so what it hands on cannot quote the note. Offline the
-   *  router keeps every subtask on this network (Router.delegate's rule). */
+   *  the seat the router names for the role, the image server judged by its
+   *  address as offlineCut judges it, or Perplexity's. A seat off this
+   *  network was sent only the stub, so what it hands on cannot quote the
+   *  note. Offline the router keeps every subtask on this network
+   *  (Router.delegate's rule), and the offline cut takes the web tools. */
   private handoffRefusal(call: ParsedToolCall): string | undefined {
     if (this.activeLeaves() || !this.holdsLocalOnly()) return undefined;
+    if (call.name === 'webSearch') {
+      return this.deps.toolContext.config.search.backend === 'perplexity'
+        ? HANDOFF_LOCAL_ONLY_DENIED
+        : undefined;
+    }
     if (call.name === 'generateImage') {
       const server = this.deps.config.imageGen;
       return server && !isLocalUrl(server.baseUrl) ? HANDOFF_LOCAL_ONLY_DENIED : undefined;
@@ -2633,17 +2644,23 @@ export class AgentSession {
     const { toolContext } = this.deps;
     const vault = realVaultRoot(toolContext.vaultRoot);
     if (!vault) return 'open';
-    const notePath = vaultPathOf(vault, resolve(toolContext.cwd, path));
-    return notePath === undefined ? 'open' : noteVisibility(toolContext, notePath, text);
+    const abs = resolve(toolContext.cwd, path);
+    const notePath = vaultPathOf(vault, abs);
+    return notePath === undefined ? 'open' : fileVisibility(toolContext, notePath, abs, text);
   }
 
   /** How the repository's standing instructions (OSCODE.md, CLAUDE.md,
    *  AGENTS.md) show to the seat answering now: a file in the vault folder is
-   *  judged as readFile judges it (D5). */
+   *  judged as readFile judges it (D5), by its whole text, since a cut to fit
+   *  may have left its tag behind. */
   private instructionsShowing(): NoteShowing {
     const repo = this.deps.repoInstructions;
     if (!repo) return 'open';
-    return showingFor(this.deps.toolContext, this.workspaceFileVisibility(repo.file, repo.text));
+    const visibility = this.workspaceFileVisibility(
+      repo.file,
+      repo.truncated ? undefined : repo.text,
+    );
+    return showingFor(this.deps.toolContext, visibility);
   }
 
   /** analyzeImage on an image in the vault folder (D5): one the vault's

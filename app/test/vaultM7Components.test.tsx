@@ -134,9 +134,10 @@ const COPY: VaultSettingsSheetCopy = {
   deleteForGood: 'For good',
   deleteForGoodSub: 'Deletes skip Trash and ask twice.',
   excluded: 'Notes models never see',
-  excludedSub: 'Models never see these, in any chat.',
+  excludedSub: 'Models never see these, in any chat, unless a command you run or allow reads them.',
   localOnly: 'Notes that stay on this computer',
-  localOnlySub: 'A local model may read these. Nothing here goes to a cloud model.',
+  localOnlySub:
+    'A local model may read these. A cloud model never does, unless a command you run or allow reads them.',
   addFolder: 'Add a folder',
   addTag: 'Add a tag',
   tagPlaceholder: 'Tag',

@@ -32,7 +32,8 @@ const TEXT_EXT =
   /\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|rb|java|kt|swift|scala|c|h|cpp|hpp|cs|php|sh|bash|zsh|sql|html|css|scss|json|yaml|yml|toml|md|txt|vue|svelte)$/;
 
 /** A test for files the index leaves out, made fresh for each pass (the
- *  vault folder, workspaceNotes.ts vaultFileTest); undefined skips none. */
+ *  vault's private notes, workspaceNotes.ts privateNoteTest); undefined
+ *  skips none. */
 export type SkipTest = () => ((rel: string) => boolean) | undefined;
 
 export class RepoIndex {
@@ -42,8 +43,8 @@ export class RepoIndex {
   private loaded = false;
 
   /** `skip` leaves files out of the index: never embedded, and any chunk an
-   *  earlier build kept of one is dropped (D5: the vault's notes are its own
-   *  tools' to search, and an embedder may be a cloud one). */
+   *  earlier build kept of one is dropped (D5: the vault's private notes are
+   *  its own tools' to search, and an embedder may be a cloud one). */
   constructor(
     private readonly root: string,
     private readonly embedder: EmbeddingProvider,
@@ -301,8 +302,8 @@ export function keywordHits(
 }
 
 /** Keyword fallback when no embedder is enabled: grep-ranked snippets.
- *  `skip` keeps files out of the ranking (the vault folder, whose notes are
- *  its own tools' to search, D5). */
+ *  `skip` keeps files out of the ranking (the vault's private notes, which
+ *  are its own tools' to search, D5). */
 export function keywordSearch(
   root: string,
   query: string,

@@ -49,6 +49,9 @@ import {
   VAULT_MODELS_LINE,
   VAULT_MODELS_TITLE,
   VAULT_PRIVATE_OFF_CLOUD,
+  VAULT_COMMAND_CAVEAT,
+  VAULT_EXCLUDE_SUB,
+  VAULT_LOCAL_ONLY_SUB,
   VAULT_COPY_PLATFORMS,
   VAULT_COPY_PROVIDERS,
   vaultCopy,
@@ -700,15 +703,24 @@ describe('retired Vault claims', () => {
 
 // The one private-notes promise (D5) says what the code does (the privacy
 // review, sp-vaultws, 2026-10-08). The pack, the vault tools and the
-// workspace's own tools keep a private note off a cloud model; a shell
-// command can read any file, so the promise names the command the person
-// allows, and the engine's card for a command near the vault says so.
+// workspace's own tools keep a private note off a cloud model; a command can
+// read any file, so every line that makes the promise names the one way
+// around it: a command the person runs (the terminal, the chat's command
+// lane, whose output a model may read) or allows the agent to run. The
+// engine's card for a command near the vault says so too.
 describe('the private-notes promise', () => {
   it('names the one way a private note can reach a cloud model', () => {
+    expect(VAULT_COMMAND_CAVEAT).toBe('unless a command you run or allow reads them');
     expect(VAULT_PRIVATE_OFF_CLOUD).toBe(
-      'Private notes never reach a cloud model unless a command you allow reads them.',
+      'Private notes never reach a cloud model unless a command you run or allow reads them.',
     );
     expect(VAULT_MODELS_LINE).toContain(VAULT_PRIVATE_OFF_CLOUD);
+    expect(VAULT_LOCAL_ONLY_SUB).toBe(
+      'A local model may read these. A cloud model never does, unless a command you run or allow reads them.',
+    );
+    expect(VAULT_EXCLUDE_SUB).toBe(
+      'Models never see these, in any chat, unless a command you run or allow reads them.',
+    );
     const loop = readFileSync(resolve(ROOT, '../os-code/src/core/agent/loop.ts'), 'utf8');
     expect(loop).toContain(
       'This command can read notes in your vault that stay on this computer, and what it prints goes to a cloud model.',
@@ -716,10 +728,18 @@ describe('the private-notes promise', () => {
   });
 
   it('the unscoped wording survives nowhere in the app', () => {
+    const retired = [
+      /never reach a cloud model\./i,
+      /unless a command you allow reads/i,
+      /Nothing here goes to a cloud model\./i,
+      /Models never see these, in any chat\./i,
+      /\(never a private note\)/i,
+      /A private note goes only to one on your own network\./i,
+    ];
     const hits: string[] = [];
     for (const file of walk(SRC)) {
       const text = stripComments(readFileSync(file, 'utf8'));
-      if (/never reach a cloud model\./i.test(text)) hits.push(relative(ROOT, file));
+      for (const line of retired) if (line.test(text)) hits.push(`${relative(ROOT, file)} ${line}`);
     }
     expect(hits).toEqual([]);
   });

@@ -11,14 +11,21 @@
 // the output that carries it is marked `localOnly`, so a later turn on a seat
 // that leaves gets the stub in its place. Names follow vaultList: a listing
 // names a local-only note and leaves an excluded one out.
+//
+// The sign-off added three readings the vault tools never needed, since they
+// never reach these files: a file in the vault's Trash is judged by the place
+// it left and as staying on this computer at the least; a markdown note too
+// large or unreadable to judge by its tags and marks stays on this computer;
+// and the person's deny rules on the vault tools close a note here too.
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { VaultIndex } from '../../harness/vault/index.js';
-import type { VaultVisibility } from '../../harness/vault/types.js';
+import { isNotePath } from '../../harness/vault/paths.js';
+import type { OscodeMark, VaultVisibility } from '../../harness/vault/types.js';
 import { deepestRealpath } from '../security/jail.js';
 import { openEngineVaultIndex } from '../vault/engineIndex.js';
 import type { ToolContext, ToolOutput } from './index.js';
-import { knownFromText, refreshVault, seatLeaves, visibilityOf } from './vaultFind.js';
+import { closed, knownFromText, refreshVault, seatLeaves, visibilityOf } from './vaultFind.js';
 
 /** A path's real location: the system's realpath in one call, else the
  *  deepest existing ancestor's (a file not made yet). */
@@ -76,10 +83,54 @@ export function vaultFileTest(
  *  (a note the vault's settings exclude, on every seat). */
 export type NoteShowing = 'open' | 'shown-local' | 'withheld' | 'closed';
 
+/** The vault's Trash folder, at its root, as a vault path's prefix.
+ *  OpenShore's Trash keeps a note's place under it (`.trash/Journal/day.md`,
+ *  folderFs.ts); Obsidian's own keeps only its name (`.trash/day.md`). */
+const TRASH_PREFIX = '.trash/';
+
+const RANK: Record<VaultVisibility, number> = { open: 0, 'local-only': 1, hidden: 2 };
+function stricter(a: VaultVisibility, b: VaultVisibility): VaultVisibility {
+  return RANK[a] >= RANK[b] ? a : b;
+}
+
+/** A note's visibility from its vault path and what is known of it (its own
+ *  tags and marks, or the index's), the way the vault tools judge one: the
+ *  vault's rules, and the person's deny rules on the vault tools. A file in
+ *  the vault's Trash is judged by the place it left, and as staying on this
+ *  computer at the least, since Obsidian's Trash keeps no folder to judge
+ *  it by. */
+function judged(
+  ctx: ToolContext,
+  notePath: string,
+  known?: { tags?: readonly string[]; oscode?: readonly OscodeMark[] },
+): VaultVisibility {
+  const trashed = notePath.toLowerCase().startsWith(TRASH_PREFIX);
+  const place = trashed ? notePath.slice(TRASH_PREFIX.length) : notePath;
+  if (closed(ctx, place)) return 'hidden';
+  const visibility = visibilityOf(ctx, place, known);
+  return trashed ? stricter(visibility, 'local-only') : visibility;
+}
+
 /** A note's visibility from its vault path and, for markdown, its text. */
 export function noteVisibility(ctx: ToolContext, notePath: string, text?: string): VaultVisibility {
   const known = text !== undefined && /\.md$/i.test(notePath) ? knownFromText(text) : undefined;
-  return visibilityOf(ctx, notePath, known);
+  return judged(ctx, notePath, known);
+}
+
+/** A workspace file's visibility as a note, from its vault path and, for
+ *  markdown, its text (read here when the caller has not). A markdown note
+ *  too large or unreadable to judge by its tags and marks is judged as
+ *  staying on this computer. */
+export function fileVisibility(
+  ctx: ToolContext,
+  notePath: string,
+  abs: string,
+  text?: string,
+): VaultVisibility {
+  if (!/\.md$/i.test(notePath)) return noteVisibility(ctx, notePath);
+  const body = text ?? noteText(abs);
+  const visibility = noteVisibility(ctx, notePath, body);
+  return body === undefined ? stricter(visibility, 'local-only') : visibility;
 }
 
 /** How a visibility shows to the seat answering now. */
@@ -134,8 +185,7 @@ export function workspaceNotes(ctx: ToolContext): WorkspaceNotes | undefined {
       const notePath = vaultPathOf(vault, abs);
       if (notePath === undefined) return 'open';
       await (refreshed ??= refreshVault(ctx));
-      const body = text ?? (/\.md$/i.test(notePath) ? noteText(abs) : undefined);
-      return showingFor(ctx, noteVisibility(ctx, notePath, body));
+      return showingFor(ctx, fileVisibility(ctx, notePath, abs, text));
     },
     async unlisted(abs) {
       const notePath = vaultPathOf(vault, abs);
@@ -145,20 +195,53 @@ export function workspaceNotes(ctx: ToolContext): WorkspaceNotes | undefined {
         (handle) => (handle?.isLoaded ? handle.index : undefined),
         () => undefined,
       );
-      return visibilityOf(ctx, notePath, (await index)?.entry(notePath)) === 'hidden';
+      return judged(ctx, notePath, (await index)?.entry(notePath)) === 'hidden';
     },
   };
 }
 
-/** What a file tool says of a local-only note to a seat that leaves this
- *  network: the vault tools' line, naming the note for vaultRead. */
-export function noteStaysHere(path: string, notePath: string): string {
-  return `${path} is a vault note that stays on this computer. This model's requests leave this network, so its text is not sent here. A local model can read it with vaultRead ("${notePath}").`;
+/**
+ * A test, made once per pass, for whether a workspace-relative path is a
+ * vault note this seat must not be handed unmarked: one the vault's rules
+ * exclude or keep on this computer, judged by its path and, for markdown, its
+ * own text. Repo search leaves such files out (never sent to an embedder,
+ * which may be a cloud one, nor ranked); every other file is searched as
+ * before, a vault's open notes and the code in a project inside a vault
+ * included. Read the vault's own settings first (refreshVault). Undefined
+ * with no vault folder.
+ */
+export function privateNoteTest(
+  ctx: ToolContext,
+  cwd: string,
+): ((rel: string) => boolean) | undefined {
+  const vault = realVaultRoot(ctx.vaultRoot);
+  if (!vault) return undefined;
+  const verdicts = new Map<string, boolean>();
+  return (rel) => {
+    let hit = verdicts.get(rel);
+    if (hit === undefined) {
+      const abs = join(cwd, rel);
+      const notePath = vaultPathOf(vault, abs);
+      hit = notePath !== undefined && fileVisibility(ctx, notePath, abs) !== 'open';
+      verdicts.set(rel, hit);
+    }
+    return hit;
+  };
 }
 
-/** What a file tool says of a note the person's vault settings exclude. */
+/** What a file tool says of a local-only file to a seat that leaves this
+ *  network: the vault tools' line, naming a note for vaultRead. A file
+ *  vaultRead cannot open (one that is not a note, or one in Trash) is named
+ *  for a local model alone. */
+export function noteStaysHere(path: string, notePath: string): string {
+  const reader = isNotePath(notePath) ? ` with vaultRead ("${notePath}")` : '';
+  return `${path} is in the vault and stays on this computer. This model's requests leave this network, so its text is not sent here. A local model can read it${reader}.`;
+}
+
+/** What a file tool says of a note the person's vault settings or
+ *  permission rules close to the agent. */
 export function noteClosed(path: string): string {
-  return `${path} is closed to the agent by the person's vault settings.`;
+  return `${path} is closed to the agent by the person's vault settings or permission rules.`;
 }
 
 /** Mark an output that carries a local-only note's text. */

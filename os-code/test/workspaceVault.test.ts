@@ -32,7 +32,13 @@ import { firstTurnRetrieval } from '../src/core/agent/lifts.js';
 import { buildCodeMap } from '../src/context/codeMap.js';
 import { RepoIndex } from '../src/context/index.js';
 import { _setRipgrep } from '../src/core/tools/grep.js';
-import { noteClosed, noteStaysHere, vaultFileTest } from '../src/core/tools/workspaceNotes.js';
+import {
+  noteClosed,
+  noteStaysHere,
+  vaultFileTest,
+  workspaceNotes,
+} from '../src/core/tools/workspaceNotes.js';
+import { readRepoInstructions } from '../src/core/agent/instructions.js';
 import { clearVaultSettingsCache } from '../src/core/vault/settingsFile.js';
 import { ConfigSchema } from '../src/config/schema.js';
 import type { MachineOffline } from '../src/core/agent/offline.js';
@@ -563,13 +569,19 @@ describe('git, an edit and an image near the vault', () => {
 
 describe('repo search, the code map and their indexes', () => {
   /** A tool context whose embedder records every text it is sent. */
-  function contextFor(cwd: string, vaultRoot: string, embedded: string[], embedder = true) {
+  function contextFor(
+    cwd: string,
+    vaultRoot: string,
+    embedded: string[],
+    embedder = true,
+    where: { kind: 'local' | 'cloud'; remote: boolean } = { kind: 'local', remote: false },
+  ) {
     const router = {
       embeddingRole: () =>
         embedder
           ? {
               ref: { provider: 'embed', model: 'nomic' },
-              provider: { kind: 'local', remote: false },
+              provider: where,
             }
           : undefined,
       delegate: async () => '',
@@ -583,7 +595,9 @@ describe('repo search, the code map and their indexes', () => {
       }),
       imageProvider: () => undefined,
     } as unknown as ProviderRegistry;
-    return buildToolContext({ cwd, config: ConfigSchema.parse({}), router, providers, vaultRoot });
+    // The machine's rules sessionIn gives: the D5 defaults, Archive/ excluded.
+    const config = ConfigSchema.parse({ vault: { exclude: ['Archive/'] } });
+    return buildToolContext({ cwd, config, router, providers, vaultRoot });
   }
 
   it('never embeds or ranks a note, and drops one an earlier index kept', async () => {
@@ -605,14 +619,37 @@ describe('repo search, the code map and their indexes', () => {
     expect(found).toContain('src/app.ts');
     expectNoPrivateText(found);
     expectNoPrivateText(embedded.join('\n'));
+    // Only what is private is left out: an open note is searched as any
+    // file is (sign-off: a search must not hide what is not private).
+    expect(found).toContain(OPEN);
     const indexDir = join(process.env.OSC_HOME!, 'index');
     for (const dir of readdirSync(indexDir)) {
       expectNoPrivateText(readFileSync(join(indexDir, dir, 'chunks.jsonl'), 'utf8'));
     }
 
     const keyword = contextFor(ws.cwd, ws.vault, [], false);
-    const ranked = await keyword.searchRepo!('diary secret greeting', 10);
-    expect(ranked).not.toContain('notes/');
+    // The keyword ranking names files: every private note is left out of it.
+    const ranked = await keyword.searchRepo!('diary secret greeting idea client tagged', 10);
+    expect(ranked).toContain('notes/Ideas/open.md');
+    for (const note of ['Journal/', 'Clients/', 'tagged.md', 'Archive/']) {
+      expect(ranked).not.toContain(note);
+    }
+  });
+
+  it('a project inside a vault keeps its code searchable, and its private folder out', async () => {
+    const vault = tempDir('osc-vault-');
+    const cwd = join(vault, 'Projects', 'app');
+    put(cwd, 'src/greet.ts', 'export function greetPerson() { return "hello there"; }\n');
+    put(cwd, 'Private/plan.md', `# Plan\n\nThe hello plan is ${JOURNAL}.\n`);
+    const keyword = contextFor(cwd, vault, [], false);
+    const ranked = await keyword.searchRepo!('hello greet plan', 10);
+    expect(ranked).toContain('src/greet.ts');
+    // Private/ here is Projects/app/Private/ in the vault, not the vault's
+    // own Private/, so it is judged where it lies: open, and found.
+    expect(ranked).toContain('Private/plan.md');
+    put(vault, 'Private/thesis/notes.md', `# Notes\n\nhello ${LATER}\n`);
+    const inPrivate = contextFor(join(vault, 'Private', 'thesis'), vault, [], false);
+    expect(await inPrivate.searchRepo!('hello', 10)).not.toContain('notes.md');
   });
 
   it('the code map names a file in the vault and never outlines it', () => {
@@ -622,5 +659,256 @@ describe('repo search, the code map and their indexes', () => {
     expect(map).toContain('notes/Private/helper.ts');
     expect(map).not.toContain('privateHelperName');
     expect(map).toContain('src/app.ts');
+  });
+
+  // Sign-off: a search after a private read sends its words to the embedder,
+  // which may be off this network (D5).
+  it('a search while the chat holds a private note keeps its words off a cloud embedder', async () => {
+    const ws = workspace();
+    const embedded: string[] = [];
+    const ctx = contextFor(ws.cwd, ws.vault, embedded, true, { kind: 'cloud', remote: true });
+    ctx.chatHoldsLocalOnly = () => true;
+    const found = await ctx.searchRepo!(`where is ${JOURNAL} handled`, 5);
+    expect(embedded.join('\n')).not.toContain(JOURNAL);
+    expect(found).not.toContain(JOURNAL);
+    // With nothing private held, the embedder answers as before.
+    ctx.chatHoldsLocalOnly = () => false;
+    await ctx.searchRepo!('greeting', 5);
+    expect(embedded).toContain('greeting');
+  });
+});
+
+// The sign-off's own probes (privacy review, sp-vaultws, 2026-10-08): each
+// path below reached a private note's text, or hid what was not private, on
+// the first pass.
+describe('sign-off: the paths the first pass left open', () => {
+  const TRASHED = 'TRASHED-SECRET-4410';
+  const FLAT = 'FLAT-SECRET-2207';
+  const GONE = 'GONE-SECRET-6061';
+
+  it("a note in the vault's Trash keeps its privacy: by the folder it left, and as staying here at the least", async () => {
+    // The walk reads dot folders; ripgrep skips them unless asked.
+    _setRipgrep(false);
+    const ws = workspace();
+    // OpenShore's Trash keeps a note's place; Obsidian's own keeps no folder.
+    put(ws.vault, '.trash/Journal/2026-10-01.md', `# Earlier\n\nTrashed ${TRASHED}.\n`);
+    put(ws.vault, '.trash/2026-09-30.md', `# Flat\n\nFlat ${FLAT}.\n`);
+    put(ws.vault, '.trash/Archive/gone.md', `# Gone\n\nGone ${GONE}.\n`);
+    const cloud = new MockProvider(
+      'anthropic',
+      [
+        toolTurn('readFile', { path: 'notes/.trash/Journal/2026-10-01.md' }, 'r1'),
+        toolTurn('readFile', { path: 'notes/.trash/2026-09-30.md' }, 'r2'),
+        toolTurn('readFile', { path: 'notes/.trash/Archive/gone.md' }, 'r3'),
+        toolTurn('grep', { pattern: 'Trashed|Flat|Gone' }, 'g1'),
+        toolTurn('glob', { pattern: 'notes/.trash/**' }, 'l1'),
+        textTurn('Done.'),
+      ],
+      { kind: 'cloud' },
+    );
+    const session = sessionIn(ws, cloud, { configOverrides: { stack: CLOUD_SEAT } });
+    await session.agent.run('What did I delete?');
+    const sent = sentTo(cloud);
+    for (const secret of [TRASHED, FLAT, GONE]) expect(sent).not.toContain(secret);
+    expect(sent).toContain(JSON.stringify(noteClosed('notes/.trash/Archive/gone.md')));
+    const [, flat] = ends(session.events, 'readFile');
+    expect(flat!.content).toContain('stays on this computer');
+    // vaultRead never reads under a dot folder, so the line does not send
+    // the model there.
+    expect(flat!.content).not.toContain('vaultRead');
+    const listed = ends(session.events, 'glob')[0]!.content;
+    expect(listed).toContain('notes/.trash/2026-09-30.md');
+    expect(listed).not.toContain('gone.md');
+  });
+
+  it('a file in a private folder that is not a note is withheld without pointing at vaultRead', async () => {
+    const ws = workspace();
+    put(ws.vault, 'Private/keys.txt', `door code ${CLIENT}\n`);
+    const cloud = new MockProvider(
+      'anthropic',
+      [toolTurn('readFile', { path: 'notes/Private/keys.txt' }, 'r1'), textTurn('Done.')],
+      { kind: 'cloud' },
+    );
+    const session = sessionIn(ws, cloud, { configOverrides: { stack: CLOUD_SEAT } });
+    await session.agent.run('Read it.');
+    const [read] = ends(session.events, 'readFile');
+    expect(sentTo(cloud)).not.toContain(CLIENT);
+    expect(read!.content).toContain('stays on this computer');
+    expect(read!.content).not.toContain('vaultRead');
+  });
+
+  it('a note too large to judge by its tags and marks is judged as staying here', async () => {
+    const ws = workspace();
+    const HUGE = 'HUGE-SECRET-1313';
+    // Past the 2 MB a note is judged by, with its #private tag at the end.
+    put(ws.vault, 'Ideas/big.md', `# Big\n\n${HUGE}\n${'filler line\n'.repeat(200_000)}#private\n`);
+    const cloud = new MockProvider(
+      'anthropic',
+      [toolTurn('grep', { pattern: 'HUGE' }, 'g1'), textTurn('Done.')],
+      { kind: 'cloud' },
+    );
+    const session = sessionIn(ws, cloud, { configOverrides: { stack: CLOUD_SEAT } });
+    // Judged without its text (ripgrep hands over only the file's name).
+    const notes = workspaceNotes(session.toolContext)!;
+    expect(await notes.showing(join(ws.vault, 'Ideas/big.md'))).toBe('withheld');
+    // The open note beside it is open as before.
+    expect(await notes.showing(join(ws.vault, 'Ideas/open.md'))).toBe('open');
+    // And a search the way this machine runs one sends none of it.
+    await session.agent.run('Find HUGE.');
+    expect(sentTo(cloud)).not.toContain(HUGE);
+  });
+
+  it("the person's deny rule on a vault folder closes it to the workspace tools too", async () => {
+    const ws = workspace();
+    const FENCED = 'FENCED-SECRET-8123';
+    put(ws.vault, 'Finance/budget.md', `# Budget\n\nBudget ${FENCED}.\n`);
+    const local = new MockProvider('mock', [
+      toolTurn('readFile', { path: 'notes/Finance/budget.md' }, 'r1'),
+      toolTurn('grep', { pattern: 'Budget' }, 'g1'),
+      toolTurn('glob', { pattern: 'notes/Finance/**' }, 'l1'),
+      textTurn('Done.'),
+    ]);
+    const session = sessionIn(ws, local, {
+      configOverrides: {
+        permissions: {
+          defaults: { write: 'allow', shell: 'ask' },
+          rules: [{ tool: 'vaultRead', decision: 'deny', pathGlob: 'Finance/**' }],
+        },
+      },
+    });
+    await session.agent.run('Read my budget.');
+    expect(sentTo(local)).not.toContain(FENCED);
+    expect(ends(session.events, 'readFile')[0]).toMatchObject({ ok: false });
+    expect(ends(session.events, 'glob')[0]!.content).not.toContain('budget.md');
+  });
+
+  it('a long CLAUDE.md in the vault is judged by its whole text, not the part that fits', async () => {
+    const vault = tempDir('osc-vault-');
+    const INSTR = 'LONG-INSTR-SECRET-5150';
+    put(vault, 'CLAUDE.md', `Open with ${INSTR}.\n${'Keep notes short.\n'.repeat(2000)}#private\n`);
+    const repoInstructions = readRepoInstructions(vault)!;
+    expect(repoInstructions.truncated).toBe(true);
+    const cloud = new MockProvider('anthropic', [textTurn('Hello.')], { kind: 'cloud' });
+    const session = sessionIn({ cwd: vault, vault }, cloud, {
+      repoInstructions,
+      configOverrides: { stack: CLOUD_SEAT },
+    });
+    await session.agent.run('Hi');
+    expect(sentTo(cloud)).not.toContain(INSTR);
+  });
+
+  it('an Ollama cloud tag is a seat that leaves: the Journal note is withheld', async () => {
+    const ws = workspace();
+    const tag = new MockProvider(
+      'ollama',
+      [
+        toolTurn('readFile', { path: JOURNAL_NOTE }, 'r1'),
+        toolTurn('grep', { pattern: 'SECRET' }, 'g1'),
+        textTurn('Done.'),
+      ],
+      { models: ['kimi-k3:cloud'] },
+    );
+    const session = sessionIn(ws, tag, {
+      configOverrides: { stack: { orchestrator: { provider: 'ollama', model: 'kimi-k3:cloud' } } },
+    });
+    await session.agent.run('What did I write today?');
+    expectNoPrivateText(sentTo(tag));
+    expect(sentTo(tag)).toContain(
+      JSON.stringify(noteStaysHere(JOURNAL_NOTE, 'Journal/2026-10-08.md')),
+    );
+  });
+
+  it("an edit whose syntax check fails never echoes a private file's source on a cloud seat", async () => {
+    const ws = workspace();
+    const PIN = 'PIN-SECRET-7731';
+    put(ws.vault, 'Private/door.js', `const pin = "${PIN}";\nmodule.exports = pin;\n`);
+    put(ws.vault, 'Private/door.json', `{"pin": "${PIN}"}\n`);
+    const cloud = new MockProvider(
+      'anthropic',
+      [
+        // Both edits match and would break the file; each check's own error
+        // quotes the file (node --check prints the line, JSON.parse a piece).
+        toolTurn(
+          'editFile',
+          { path: 'notes/Private/door.js', search: 'pin = "', replace: 'pin = = "' },
+          'e1',
+        ),
+        toolTurn(
+          'editFile',
+          { path: 'notes/Private/door.json', search: '"pin": "', replace: '"pin": ' },
+          'e2',
+        ),
+        textTurn('Could not edit them.'),
+      ],
+      { kind: 'cloud' },
+    );
+    const session = sessionIn(ws, cloud, { configOverrides: { stack: CLOUD_SEAT } });
+    await session.agent.run('Fix my door code.');
+    const edits = ends(session.events, 'editFile');
+    expect(edits).toHaveLength(2);
+    for (const edit of edits) {
+      expect(edit.ok).toBe(false);
+      expect(edit.content).toContain('NOT applied');
+    }
+    // Not even the piece of it an error message quotes.
+    expect(sentTo(cloud)).not.toContain('PIN-SECRET');
+    // Nothing was written.
+    expect(readFileSync(join(ws.vault, 'Private/door.js'), 'utf8')).toContain(PIN);
+  });
+
+  it('a search on Perplexity, whose answer is a cloud model, never follows a private read', async () => {
+    const ws = workspace();
+    const run = async (first: ReturnType<typeof toolTurn>) => {
+      const local = new MockProvider('mock', [
+        first,
+        toolTurn('webSearch', { query: 'what does my journal say' }, 'w1'),
+        textTurn('Done.'),
+      ]);
+      const session = sessionIn(ws, local, {
+        configOverrides: { search: { backend: 'perplexity' } },
+      });
+      await session.agent.run('Look it up.');
+      return session;
+    };
+    const afterNote = await run(toolTurn('readFile', { path: JOURNAL_NOTE }, 'r1'));
+    expect(deniedReasons(afterNote.events)).toEqual([HANDOFF_LOCAL_ONLY_DENIED]);
+    expect(ends(afterNote.events, 'webSearch')).toHaveLength(0);
+    // After an open file, the search runs as before.
+    const afterCode = await run(toolTurn('readFile', { path: 'src/app.ts' }, 'r1'));
+    expect(deniedReasons(afterCode.events)).toEqual([]);
+    expect(ends(afterCode.events, 'webSearch')).toHaveLength(1);
+  });
+
+  it('the loop tells repo search whether the chat holds a private note', async () => {
+    const ws = workspace();
+    const local = new MockProvider('mock', [
+      toolTurn('readFile', { path: JOURNAL_NOTE }, 'r1'),
+      textTurn('Read it.'),
+    ]);
+    const session = sessionIn(ws, local);
+    expect(session.toolContext.chatHoldsLocalOnly!()).toBe(false);
+    await session.agent.run('Read my journal.');
+    expect(session.toolContext.chatHoldsLocalOnly!()).toBe(true);
+  });
+
+  it('with the vault outside the workspace, the file tools answer as before', async () => {
+    const ws = workspace();
+    const cloud = new MockProvider(
+      'anthropic',
+      [
+        toolTurn('readFile', { path: JOURNAL_NOTE }, 'r1'),
+        toolTurn('grep', { pattern: 'Dear diary' }, 'g1'),
+        textTurn('Done.'),
+      ],
+      { kind: 'cloud' },
+    );
+    const session = sessionIn({ cwd: ws.cwd, vault: tempDir('osc-vault-') }, cloud, {
+      configOverrides: { stack: CLOUD_SEAT },
+    });
+    await session.agent.run('Read it.');
+    const [read] = ends(session.events, 'readFile');
+    expect(read!.content).toContain(JOURNAL);
+    expect(read!.localOnly).toBeUndefined();
+    expect(ends(session.events, 'grep')[0]!.content).toContain(`${JOURNAL_NOTE}:3:`);
   });
 });

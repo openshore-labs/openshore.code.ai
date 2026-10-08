@@ -203,6 +203,11 @@ export interface ToolContext {
    *  computer, and search and backlinks leave such notes out. Unset reads as a
    *  seat that leaves (the safe reading); the loop always sets it. */
   seatLeavesNetwork?: () => boolean;
+  /** Whether a seat that stays on this network holds a local-only note's
+   *  text in this chat (D5), so what it writes for a tool may quote one. Set
+   *  by the loop; repo search then keeps its query off an embedder that
+   *  leaves this network. Unset reads as no. */
+  chatHoldsLocalOnly?: () => boolean;
   /** The most characters one vault read returns for the seat answering now
    *  (the class policy's `vaultReadCapChars`, CTO I11). Set by the loop each
    *  turn, like `seatLeavesNetwork`; past it a read returns the note's outline

@@ -244,7 +244,7 @@ export const gitLogTool: ToolDef<typeof logSchema> = {
       const tail = withheld
         ? notes!.named.length
           ? "Patches are left out: these commits change vault notes that stay on this computer. This model's requests leave this network, so their text is not sent here. Ask with path for another file's changes."
-          : "Patches are left out: these commits change notes the person's vault settings close to the agent. Ask with path for another file's changes."
+          : "Patches are left out: these commits change notes the person's vault settings or permission rules close to the agent. Ask with path for another file's changes."
         : '';
       const body = out.trim() ? capContent(out) : 'No commits match.';
       return markedLocal(

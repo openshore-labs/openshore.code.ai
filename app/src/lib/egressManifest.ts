@@ -16,6 +16,7 @@ import { featureOn, type ReleaseTier, type TieredFeature, RELEASE_TIER } from '.
 import type { Platform } from './platform.js';
 import { PAY_GATES_ENABLED } from './payGate.js';
 import { followsList } from './profile.js';
+import { VAULT_COMMAND_CAVEAT, VAULT_PRIVATE_OFF_CLOUD } from './vaultCopy.js';
 
 export interface EgressEntry {
   id: string;
@@ -213,7 +214,7 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'cloud-models',
     recipient: 'Your cloud providers',
-    what: 'Your chat, and the notes and files it draws on (never a private note), to Anthropic, OpenAI, Google, Moonshot, or Perplexity, on your own key. An amber pill or dot marks a chat whose latest turn went to one.',
+    what: `Your chat, and the notes and files it draws on, to Anthropic, OpenAI, Google, Moonshot, or Perplexity, on your own key. ${VAULT_PRIVATE_OFF_CLOUD} An amber pill or dot marks a chat whose latest turn went to one.`,
     when: `Only when you pick a cloud model, and only that turn. ${PLAN_IMAGE_STEP_LINE}`,
     start: 'off',
     hosts: [
@@ -227,7 +228,7 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'own-model',
     recipient: 'Your cloud providers',
-    what: 'Your chat, and the notes and files it draws on, to a model server you connect yourself (one you run, or one you name with its address and key). A private note goes only to one on your own network.',
+    what: `Your chat, and the notes and files it draws on, to a model server you connect yourself (one you run, or one you name with its address and key). Private notes go only to one on your own network, ${VAULT_COMMAND_CAVEAT}.`,
     when: 'Only when you connect one and pick it, and only that turn.',
     start: 'off',
     hosts: [],

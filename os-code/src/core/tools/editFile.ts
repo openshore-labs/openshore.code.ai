@@ -18,7 +18,7 @@
 // WHERE an edit lands, only about how the model is allowed to ask for it.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { z } from 'zod';
-import type { ToolDef } from './index.js';
+import type { ToolDef, ToolOutput } from './index.js';
 import { EDIT_FORMAT_DOC, parseEditBlocks, type EditBlock } from '../edit/searchReplace.js';
 import { applyEditBlocks } from '../edit/apply.js';
 import { structuralCheck, verifyWritten } from '../edit/verify.js';
@@ -252,32 +252,32 @@ export const editFileTool: ToolDef<typeof schema> = {
       };
     }
     const before = readFileSync(abs, 'utf8');
-    const planned = plan(args, before);
-    if (planned.error !== undefined) {
-      // A failed edit shows the model the file's lines to copy from. A vault
-      // note's are judged as readFile judges them (D5): never an excluded
-      // note's, a local-only note's only to a seat that stays, marked.
+    // A failed edit shows the model the file's own text: the lines to copy
+    // from, or a syntax check's error, which quotes the line it stopped on. A
+    // vault note's are judged as readFile judges them (D5): never an excluded
+    // note's, a local-only note's only to a seat that stays, marked.
+    const failed = async (lead: string, detail: string): Promise<ToolOutput> => {
       const notes = workspaceNotes(ctx);
       const showing = notes ? await notes.showing(abs, before) : 'open';
-      if (showing === 'closed') {
-        return { ok: false, content: `The edit did not apply. ${noteClosed(args.path)}` };
-      }
+      if (showing === 'closed') return { ok: false, content: `${lead} ${noteClosed(args.path)}` };
       if (showing === 'withheld') {
         return {
           ok: false,
-          content: `The edit did not apply. ${noteStaysHere(args.path, notes!.notePath(abs) ?? args.path)}`,
+          content: `${lead} ${noteStaysHere(args.path, notes!.notePath(abs) ?? args.path)}`,
         };
       }
-      return markedLocal({ ok: false, content: planned.error }, showing === 'shown-local');
-    }
+      return markedLocal({ ok: false, content: detail }, showing === 'shown-local');
+    };
+    const planned = plan(args, before);
+    if (planned.error !== undefined) return failed('The edit did not apply.', planned.error);
 
     const after = planned.result.content;
     const structural = structuralCheck(abs, after);
     if (!structural.ok) {
-      return {
-        ok: false,
-        content: `The edit was NOT applied because verification failed: ${structural.detail}\nThe file is unchanged. Your replace must be complete, runnable code standing in for the whole search region, including any text that shared a line with it (such as "export function" at the start of a line).`,
-      };
+      return failed(
+        'The edit was NOT applied: the file would no longer parse, so it is unchanged.',
+        `The edit was NOT applied because verification failed: ${structural.detail}\nThe file is unchanged. Your replace must be complete, runnable code standing in for the whole search region, including any text that shared a line with it (such as "export function" at the start of a line).`,
+      );
     }
     writeFileSync(abs, after);
     const verify = verifyWritten(abs, after);
