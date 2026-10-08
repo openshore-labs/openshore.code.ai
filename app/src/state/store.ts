@@ -154,6 +154,8 @@ import {
   providerInfo,
   providerModelLabel,
   providerSecretKey,
+  validateProviderKey,
+  type KeyCheck,
 } from '../lib/providers.js';
 import { claudeModelLabel } from '../lib/claudeModels.js';
 import {
@@ -2689,6 +2691,9 @@ interface AppState {
   /** Connect a cloud provider by API key (Keychain), surfacing its models. The
    *  workspace id rides along for an identity-linked Anthropic key. */
   connectProvider(id: string, key: string, workspaceId?: string): Promise<void>;
+  /** Set or change the workspace a connected Claude key acts in, without
+   *  pasting the key again. Checked with Claude first; kept unless refused. */
+  setAnthropicWorkspace(workspaceId: string): Promise<KeyCheck>;
   /** Disconnect a cloud provider and forget its key. */
   disconnectProvider(id: string): Promise<void>;
 
@@ -4476,7 +4481,8 @@ export const useApp = create<AppState>((set, get, api) => {
         // this device and only ever runs on this device.
         let codemagicToken: string | undefined;
         let codemagicTarget:
-          { appId: string; workflowId: string; branch: string; platform?: string } | undefined;
+          | { appId: string; workflowId: string; branch: string; platform?: string }
+          | undefined;
         // Launch is v2 (docs/release-tiers.md): an earlier build never hands
         // the token to a session, whatever a setting left from before says.
         if (settings.codemagicAccess && featureOn('launch')) {
@@ -15370,6 +15376,17 @@ export const useApp = create<AppState>((set, get, api) => {
         void bridge()?.setAnthropicKey(key.trim(), workspaceId?.trim() || undefined);
       }
       logEvent('provider_connected', { provider: id });
+    },
+
+    async setAnthropicWorkspace(workspaceId) {
+      const key = await secretGet(ANTHROPIC_KEY_KEY);
+      if (!key) return 'invalid';
+      const ws = workspaceId.trim() || undefined;
+      const check = await validateProviderKey('anthropic', key, ws);
+      if (check === 'invalid' || check === 'needs-workspace') return check;
+      await get().saveSettings({ anthropicWorkspaceId: ws });
+      void bridge()?.setAnthropicKey(key, ws);
+      return check;
     },
 
     async disconnectProvider(id) {

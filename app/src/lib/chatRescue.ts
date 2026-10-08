@@ -20,6 +20,12 @@ export function pointsAtConnections(message: string): boolean {
   return /(cloud )?connections/i.test(message);
 }
 
+/** True when the stop is Claude asking for the workspace its key acts in, so
+ *  Cloud Connections opens on the workspace field, not the list. */
+export function pointsAtWorkspace(message: string): boolean {
+  return /workspace it acts in/i.test(message);
+}
+
 /** A stop that says the brain's own setup is wrong (the key needs a workspace
  *  id, or was rejected). Trying the same brain again cannot answer. */
 export function isSetupFailure(message: string): boolean {

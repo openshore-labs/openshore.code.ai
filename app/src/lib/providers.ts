@@ -362,6 +362,11 @@ export function needsWorkspaceId(text: string): boolean {
 export const WORKSPACE_HINT =
   'This API key is linked to your identity, so Claude needs the id of the workspace it acts in. Find it in the Anthropic Console under Settings, Workspaces (it starts with wrkspc_), and add it under Cloud Connections.';
 
+/** The model the key check counts tokens against: the cheapest Claude here,
+ *  read from the list so a lineup change cannot leave the probe stale. */
+const ANTHROPIC_PROBE_MODEL =
+  PROVIDERS.find((p) => p.id === 'anthropic')?.models.at(-1)?.id ?? 'claude-haiku-4-5';
+
 export async function validateProviderKey(
   id: string,
   key: string,
@@ -378,7 +383,25 @@ export async function validateProviderKey(
       if (res.status === 400 && needsWorkspaceId(await res.text().catch(() => ''))) {
         return 'needs-workspace';
       }
-      return res.ok ? 'valid' : 'unverifiable';
+      if (!res.ok) return 'unverifiable';
+      // Listing models can pass where a chat is refused: an identity-linked
+      // key reads /v1/models without a workspace, then every message asks for
+      // one (founder's phone, 2026-10-08). Counting tokens takes the message
+      // path's auth and costs nothing, so the check asks it too.
+      const probe = await nativeFetch('https://api.anthropic.com/v1/messages/count_tokens', {
+        method: 'POST',
+        headers: { ...anthropicHeaders(key, workspaceId), 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: ANTHROPIC_PROBE_MODEL,
+          messages: [{ role: 'user', content: 'hi' }],
+        }),
+        responseType: 'json',
+      });
+      if (probe.status === 401 || probe.status === 403) return 'invalid';
+      if (probe.status === 400 && needsWorkspaceId(await probe.text().catch(() => ''))) {
+        return 'needs-workspace';
+      }
+      return 'valid';
     }
     const info = providerInfo(id);
     if (info?.openaiBaseUrl) {

@@ -148,7 +148,10 @@ describe('the rest of the Personal paths', () => {
     expect(connections).toContain('This Claude key needs its workspace ID.');
     // Save waits while the key is checked, for a key to check (D14), and
     // while the network is down, since the check needs it (Desktop Offline).
-    expect(connections).toContain('disabled={checking || networkDown || !value.trim()}');
+    // The workspace sheet of a connected Claude waits for its ID instead.
+    expect(connections).toContain(
+      'disabled={checking || networkDown || !(workspaceOnly ? workspace : value).trim()}',
+    );
   });
 
   it('the terminal says when it lost the computer, or was refused', () => {

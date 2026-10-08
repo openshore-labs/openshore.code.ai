@@ -26,6 +26,7 @@ export function ConnectionsScreen() {
   const {
     connectedProviders,
     connectProvider,
+    setAnthropicWorkspace,
     disconnectProvider,
     showToast,
     setView,
@@ -53,6 +54,11 @@ export function ConnectionsScreen() {
   // already saved), so most keys are one paste.
   const [askWorkspace, setAskWorkspace] = useState(false);
   const [checking, setChecking] = useState(false);
+  // Claude is connected and only its workspace is being set: the sheet asks
+  // for the ID alone and keeps the saved key (2026-10-08: a connected row
+  // used to offer only Disconnect, so a chat asking for the workspace sent
+  // the person to a room with nowhere to put it).
+  const [workspaceOnly, setWorkspaceOnly] = useState(false);
   // The provider being disconnected, while its confirm is open.
   const [removing, setRemoving] = useState<{ id: string; name: string } | undefined>();
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -63,23 +69,56 @@ export function ConnectionsScreen() {
     setValue('');
     setWorkspace(settings.anthropicWorkspaceId ?? '');
     setAskWorkspace(false);
+    setWorkspaceOnly(false);
+  };
+  const openWorkspace = () => {
+    setEditing('anthropic');
+    setValue('');
+    setWorkspace(settings.anthropicWorkspaceId ?? '');
+    setAskWorkspace(true);
+    setWorkspaceOnly(true);
   };
   const closeSheet = () => {
     setEditing(undefined);
     setValue('');
+    setWorkspaceOnly(false);
   };
 
   useEffect(() => {
     // Arrived from a Connect tap elsewhere (the Marketplace's frontier shelf):
     // open that provider's key sheet, so the person lands on the paste field,
     // not at the top of a list to hunt through.
+    // A chat that stopped for Claude's workspace lands on the workspace field.
     if (!connectionsFocus) return;
     if (!connectedProviders[connectionsFocus]) openSheet(connectionsFocus);
+    else if (connectionsFocus === 'anthropic') openWorkspace();
     clearConnectionsFocus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connectionsFocus]);
 
+  const saveWorkspace = async () => {
+    if (checking || networkDown || !workspace.trim()) return;
+    setChecking(true);
+    let check: Awaited<ReturnType<typeof setAnthropicWorkspace>> = 'unverifiable';
+    try {
+      check = await setAnthropicWorkspace(workspace);
+    } finally {
+      setChecking(false);
+    }
+    if (check === 'invalid' || check === 'needs-workspace') {
+      showToast('Claude did not accept that workspace ID. Check it in the Console.');
+      return;
+    }
+    closeSheet();
+    showToast(
+      check === 'valid'
+        ? 'Claude workspace saved. Claude can answer now.'
+        : 'Claude workspace saved. We could not check it right now.',
+    );
+  };
+
   const save = async (id: string, name: string) => {
+    if (workspaceOnly) return saveWorkspace();
     const key = value.trim();
     // Enter in a field is a second door to Save, so it waits while a check
     // runs, and while the network is down (the check needs it).
@@ -149,7 +188,8 @@ export function ConnectionsScreen() {
           {PROVIDERS.map((p) => {
             const on = Boolean(connectedProviders[p.id]);
             const n = providerBenchModels(p).length;
-            return (
+            const ws = settings.anthropicWorkspaceId;
+            return [
               <SettingsRow
                 key={p.id}
                 label={p.name}
@@ -161,8 +201,17 @@ export function ConnectionsScreen() {
                 value={on ? <span className="pill ok">Connected</span> : undefined}
                 asks={on}
                 onClick={() => (on ? setRemoving({ id: p.id, name: p.name }) : openSheet(p.id))}
-              />
-            );
+              />,
+              p.id === 'anthropic' && on ? (
+                <SettingsRow
+                  key="anthropic-workspace"
+                  label="Claude workspace"
+                  sub={ws ? ws : 'Needed when your key is linked to you, not a workspace.'}
+                  subTruncate={Boolean(ws)}
+                  onClick={openWorkspace}
+                />
+              ) : null,
+            ];
           })}
         </SettingsGroup>
 
@@ -183,37 +232,43 @@ export function ConnectionsScreen() {
       <Sheet open={Boolean(provider)} onClose={closeSheet}>
         {provider ? (
           <>
-            <SheetHead title={`Connect ${provider.name}`} onClose={closeSheet} />
+            <SheetHead
+              title={workspaceOnly ? 'Claude workspace' : `Connect ${provider.name}`}
+              onClose={closeSheet}
+            />
             <div data-reveal-with="">
-              <div className="field">
-                <div className="field-label-row">
-                  <label htmlFor="connections-api-key">{provider.name} API key</label>
-                  <button
-                    type="button"
-                    className="linklike press-fb"
-                    onClick={() => openInAppBrowser(provider.apiKeyUrl)}
-                  >
-                    Get a key <ExternalGlyph />
-                  </button>
+              {workspaceOnly ? null : (
+                <div className="field">
+                  <div className="field-label-row">
+                    <label htmlFor="connections-api-key">{provider.name} API key</label>
+                    <button
+                      type="button"
+                      className="linklike press-fb"
+                      onClick={() => openInAppBrowser(provider.apiKeyUrl)}
+                    >
+                      Get a key <ExternalGlyph />
+                    </button>
+                  </div>
+                  <input
+                    id="connections-api-key"
+                    autoFocus
+                    type="password"
+                    placeholder={provider.keyHint}
+                    enterKeyHint="go"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    value={value}
+                    onChange={(e) => setValue(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && void save(provider.id, provider.name)}
+                  />
                 </div>
-                <input
-                  id="connections-api-key"
-                  autoFocus
-                  type="password"
-                  placeholder={provider.keyHint}
-                  enterKeyHint="go"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  value={value}
-                  onChange={(e) => setValue(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && void save(provider.id, provider.name)}
-                />
-              </div>
+              )}
               {provider.id === 'anthropic' && (askWorkspace || workspace.trim()) ? (
                 <div className="field">
                   <label htmlFor="connections-workspace-id">Workspace ID</label>
                   <input
                     id="connections-workspace-id"
+                    autoFocus={workspaceOnly}
                     placeholder="wrkspc_..."
                     enterKeyHint="go"
                     autoCapitalize="none"
@@ -238,7 +293,7 @@ export function ConnectionsScreen() {
                   type="button"
                   className="btn primary press-fb"
                   data-reveal-primary=""
-                  disabled={checking || networkDown || !value.trim()}
+                  disabled={checking || networkDown || !(workspaceOnly ? workspace : value).trim()}
                   onClick={() => void save(provider.id, provider.name)}
                 >
                   {checking ? 'Checking...' : 'Save'}

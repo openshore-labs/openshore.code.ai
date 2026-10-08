@@ -54,6 +54,7 @@ import { HARBOR_MINI_MODEL_ID, HARBOR_MINI_EMPTY_HINT } from '../lib/harborMini.
 import { buildRotation, type Greeting } from '../lib/greeting.js';
 import { SAMPLE_ROW_LABEL, SAMPLE_ROW_SUB } from '../lib/sampleProject.js';
 import { hapticTick } from '../lib/haptics.js';
+import { pointsAtWorkspace } from '../lib/chatRescue.js';
 import { isDesktop, isPhone } from '../lib/platform.js';
 import { copyText } from '../lib/clipboard.js';
 import { RewindSheet } from '../components/RewindSheet.js';
@@ -254,6 +255,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     switchModel,
     setDrawer,
     setView,
+    openConnections,
     goBack,
     viewTrail,
     viewProjectId,
@@ -610,7 +612,8 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   useEffect(() => {
     const driver = convId ? driverFor(convId) : undefined;
     const remote = driver as
-      { hubRole?: HubRole; hubRoleReady?: Promise<HubRole | undefined> } | undefined;
+      | { hubRole?: HubRole; hubRoleReady?: Promise<HubRole | undefined> }
+      | undefined;
     if (!remote?.hubRoleReady) {
       setHubRole(undefined);
       return;
@@ -907,7 +910,9 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               setSheetStage('root');
               setSheetOpen(true);
             }}
-            onOpenConnections={() => setView('connections')}
+            onOpenConnections={(message) =>
+              pointsAtWorkspace(message) ? openConnections('anthropic') : setView('connections')
+            }
             onSwitchToLocal={() => {
               setSheetStage('local');
               setSheetOpen(true);
