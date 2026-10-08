@@ -273,6 +273,20 @@ describe('a handoff never carries a local-only note to a cloud seat (D5)', () =>
     expect(deniedReasons(session.events)).toEqual([HANDOFF_LOCAL_ONLY_DENIED]);
   });
 
+  it('an Ollama cloud tag on this computer counts as a cloud writer (seatLeaves)', async () => {
+    const { local, session } = stackWith(
+      { writing: { provider: 'mock', model: 'kimi-k3:cloud' } },
+      [
+        toolTurn('vaultRead', { path: 'Journal/today.md' }, 'c1'),
+        toolTurn('delegate', { role: 'writing', task: `Write this up: ${NOTE}` }, 'c2'),
+        textTurn('Wrote it up here.'),
+      ],
+    );
+    await session.agent.run('write up my journal');
+    expect(deniedReasons(session.events)).toEqual([HANDOFF_LOCAL_ONLY_DENIED]);
+    expect(local.requests.map((r) => r.model)).not.toContain('kimi-k3:cloud');
+  });
+
   it('with nothing private in the chat, the same delegate runs on the cloud writer', async () => {
     const { cloud, session } = stackWith(WRITER, [
       toolTurn('delegate', { role: 'writing', task: 'Write a haiku about tides.' }, 'c1'),

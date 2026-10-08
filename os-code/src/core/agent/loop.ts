@@ -573,7 +573,7 @@ export class AgentSession {
     } catch (err) {
       unseated = err;
     }
-    const leaves = seat !== undefined && leavesThisNetwork(seat.provider);
+    const leaves = seat !== undefined && seatLeaves(seat.provider, seat.model);
     const result = await compactHistory(
       leaves ? withholdLocalOnly(this.history) : this.history,
       budget,
@@ -610,7 +610,7 @@ export class AgentSession {
     }
     // A seat off this network is never sent a local-only note's text (D5):
     // the title is drawn from the turns that carry none.
-    const turns = leavesThisNetwork(seat.provider)
+    const turns = seatLeaves(seat.provider, seat.model)
       ? this.history.filter((m) => !m.localOnly)
       : this.history;
     const user = turns.find((m) => m.role === 'user');
@@ -2503,7 +2503,7 @@ export class AgentSession {
    *  only the stub, so what it hands on cannot quote the note. Offline the
    *  router keeps every subtask on this network (Router.delegate's rule). */
   private handoffRefusal(call: ParsedToolCall): string | undefined {
-    if (leavesThisNetwork(this.active.provider) || !this.holdsLocalOnly()) return undefined;
+    if (this.activeLeaves() || !this.holdsLocalOnly()) return undefined;
     if (call.name === 'generateImage') {
       const server = this.deps.config.imageGen;
       return server && !isLocalUrl(server.baseUrl) ? HANDOFF_LOCAL_ONLY_DENIED : undefined;
@@ -2512,9 +2512,8 @@ export class AgentSession {
     if (!role) return undefined;
     const { router } = this.deps;
     if (router.offline()) return undefined;
-    return leavesThisNetwork(router.roleFor(role).resolved.provider)
-      ? HANDOFF_LOCAL_ONLY_DENIED
-      : undefined;
+    const target = router.roleFor(role).resolved;
+    return seatLeaves(target.provider, target.ref.model) ? HANDOFF_LOCAL_ONLY_DENIED : undefined;
   }
 
   /** Record a tool's observation. `localOnly` (a local-only vault note's
