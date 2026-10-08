@@ -150,7 +150,13 @@ export function StackManager({
   // The two Vision slots (a local model and a cloud model), split out of the
   // active list so the manager shows a dedicated Image reading card.
   const slots = visionSlots(stack, staysLocal);
-  const nonVisionActive = stack.active.filter((m) => m.placement.category !== 'vision');
+  // The Specialists rows: every placement but the two Image reading slots. A
+  // second vision placement judged to the same side as its slot (one placed
+  // before the slots split by address) is listed here too, so no placed model
+  // is out of sight or out of reach of Move to the bench.
+  const nonVisionActive = stack.active.filter(
+    (m) => m.placement.category !== 'vision' || (m !== slots.local && m !== slots.cloud),
+  );
 
   const deviceRefs: StackModelRef[] = [
     ...(settings.harborReady ? [harborRef()] : []),

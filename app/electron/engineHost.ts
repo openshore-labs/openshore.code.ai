@@ -20,6 +20,7 @@ import { TerminalManager, TerminalUnavailable } from 'os-code/dist/src/daemon/te
 import { HOME_SHELL_ID } from 'os-code/dist/src/daemon/homeShellId.js';
 import { ProviderRegistry } from 'os-code/dist/src/providers/registry.js';
 import { leavesThisNetwork, seatLeaves } from 'os-code/dist/src/providers/types.js';
+import { isOllamaCloudTag } from 'os-code/dist/src/harness/locality.js';
 import {
   machineOffline,
   setMachineOffline,
@@ -680,7 +681,8 @@ export class EngineHost {
     const orchestratorLeaves =
       orchestratorId && providers.has(orchestratorId)
         ? seatLeaves(providers.get(orchestratorId), stackConfig.orchestrator?.model ?? '')
-        : config.providers[orchestratorId ?? '']?.kind === 'anthropic';
+        : config.providers[orchestratorId ?? '']?.kind === 'anthropic' ||
+          isOllamaCloudTag(stackConfig.orchestrator?.model ?? '');
     const orchestrator = stackConfig.orchestrator
       ? {
           model: stackConfig.orchestrator.model,

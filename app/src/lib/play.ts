@@ -195,12 +195,12 @@ export function mergeReplan(play: Play, done: Set<string>, rawRemaining: unknown
  *  on who a step really runs on (stepRunner); left out, every model is in
  *  reach. */
 export type PlayStack = AppStack & {
-  imageReader?: StackModelRef;
-  reachable?: (ref: StackModelRef) => boolean;
   /** Whether a model answers on this person's own network (the driver's
    *  seat judge, which knows this device's tailnet), so an image step goes
    *  to the Local slot first; left out, `refStaysLocal` by address. */
   staysLocal?: (ref: StackModelRef) => boolean;
+  imageReader?: StackModelRef;
+  reachable?: (ref: StackModelRef) => boolean;
 };
 
 export interface StepOwner {

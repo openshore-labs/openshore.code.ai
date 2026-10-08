@@ -443,8 +443,8 @@ export function StackScreen() {
             {listed.cloud.length ? (
               <>
                 <p className="sheet-sub">
-                  Cloud models your Ollama lists. They run on ollama.com under your Ollama account,
-                  so your words and the files the agent reads go there.
+                  Cloud models your Ollama lists. They run on Ollama&apos;s cloud under your Ollama
+                  account, so your words and the files the agent reads go there.
                 </p>
                 <div className="sheet-actions">
                   {pickerModels(listed.cloud, currentModel).map((m) => {

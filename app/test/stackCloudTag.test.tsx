@@ -128,7 +128,8 @@ describe("the desktop Stack's picker", () => {
     const [here, cloud] = groups(sheet);
     expect(here!.sub).toBe('Models installed on this computer. Ollama, a free app, runs them.');
     expect(here!.options).toEqual(['qwen2.5-coder:7b']);
-    expect(cloud!.sub).toMatch(/run on ollama\.com under your Ollama account/);
+    // One name for the place, the one the install card uses: Ollama's cloud.
+    expect(cloud!.sub).toMatch(/run on Ollama's cloud under your Ollama account/);
     // The current one first, as the local list orders it.
     expect(cloud!.options).toEqual(['kimi-k3:cloud [Cloud]', 'gpt-oss:120b-cloud [Cloud]']);
   });

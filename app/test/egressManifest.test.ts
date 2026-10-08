@@ -109,19 +109,6 @@ describe('what leaves this device', () => {
     expect(row.slice(0, row.indexOf('trailing='))).toContain('${ROUTINES_SEARCH_LINE}');
   });
 
-  // Privacy review, 2026-10-08: an Ollama cloud tag is served by the Ollama on
-  // the computer but answers on ollama.com, on every turn, with no download.
-  it('lists an Ollama cloud model you place, and the downloads entry claims no more', () => {
-    const by = (id: string) => EGRESS.find((e) => e.id === id)!;
-    const tag = by('ollama-cloud');
-    expect(tag.recipient).toBe('Your cloud providers');
-    expect(tag.what).toMatch(/ollama\.com/);
-    expect(tag.what).toMatch(/files the coding agent reads/);
-    expect(tag.when).toMatch(/every turn it answers/);
-    expect(by('weights').what).not.toMatch(/Nothing about you rides along\.$/);
-    expect(by('weights').what).toMatch(/Ollama account/);
-  });
-
   it('is the list Settings shows, first under Privacy', () => {
     const settings = readFileSync(
       join(process.cwd(), 'src', 'screens', 'SettingsScreen.tsx'),
@@ -133,6 +120,22 @@ describe('what leaves this device', () => {
     // The old claim was false (search words, update checks and the catalog
     // all leave); it is gone.
     expect(settings).not.toMatch(/nothing leaves it|no IP address, ever\. There is one/);
+  });
+
+  // Privacy review, 2026-10-08: an Ollama cloud tag is served by the Ollama on
+  // the computer but answers on ollama.com, on every turn, with no download.
+  it('lists an Ollama cloud model you place, and the downloads entry claims no more', () => {
+    const by = (id: string) => EGRESS.find((e) => e.id === id)!;
+    const tag = by('ollama-cloud');
+    expect(tag.recipient).toBe('Your cloud providers');
+    expect(tag.what).toMatch(/ollama\.com/);
+    expect(tag.what).toMatch(/files the coding agent reads/);
+    expect(tag.when).toMatch(/every turn it answers/);
+    // A cloud tag placed as a specialist answers a delegated step with no pill
+    // of its own, so the entry claims none.
+    expect(tag.what).not.toMatch(/pill/);
+    expect(by('weights').what).not.toMatch(/Nothing about you rides along\.$/);
+    expect(by('weights').what).toMatch(/Ollama account/);
   });
 });
 

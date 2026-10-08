@@ -175,6 +175,24 @@ describe("the Stack's Image reading rows", () => {
     expect(row('Local')).toMatch(/^None yet/);
   });
 
+  it('a second placement judged to the same side stays in sight, under Specialists', async () => {
+    // Placed before the slots split by address: a public reader in Local and
+    // Claude in Cloud. Both are cloud now; the Cloud row shows the first, and
+    // the other is a Specialists row that can be moved to the bench.
+    const haiku: StackModelRef = {
+      kind: 'cloud',
+      provider: 'anthropic',
+      model: 'claude-haiku-4-5',
+      label: 'Claude Haiku 4.5',
+    };
+    place(ref(PUBLIC), haiku);
+    const { StackManager } = await import('../src/components/StackManager.js');
+    await dom.render(<StackManager />);
+    expect(row('Cloud')).toMatch(/^Hosted reader · /);
+    expect(row('Local')).toMatch(/^None yet/);
+    expect(row('Image reading')).toMatch(/^Claude Haiku 4\.5/);
+  });
+
   it('your own server is the Local one', async () => {
     place(ref(HOME));
     const { StackManager } = await import('../src/components/StackManager.js');

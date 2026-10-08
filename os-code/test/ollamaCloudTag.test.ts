@@ -14,7 +14,7 @@ import { ConfigSchema } from '../src/config/schema.js';
 import { ProviderRegistry } from '../src/providers/registry.js';
 import { leavesThisNetwork, seatLeaves } from '../src/providers/types.js';
 import { isOllamaCloudTag } from '../src/harness/locality.js';
-import { resolveStack } from '../src/router/stack.js';
+import { describeStack, resolveStack } from '../src/router/stack.js';
 import { Router } from '../src/router/router.js';
 import { bootstrapSession } from '../src/core/agent/bootstrap.js';
 import { rankLocalModels } from '../src/core/agent/offline.js';
@@ -146,6 +146,42 @@ describe('the loop: a cloud tag gets the cloud card and the amber pill', () => {
     expect(session.approvals.filter((a) => a.kind === 'cloud-spend')).toHaveLength(1);
     const turn = session.events.find((e) => e.type === 'turn-start');
     expect(turn && turn.type === 'turn-start' && turn.providerKind).toBe('cloud');
+  });
+
+  it("the card names the cloud model and ollama.com, never this computer's server as off it", async () => {
+    const ollama = new MockProvider('ollama', [textTurn('Hello from the cloud.')]);
+    const session = makeTestSession(ollama, { configOverrides: CLOUD_TAG_STACK });
+    await session.agent.run('hello');
+    const card = session.approvals.find((a) => a.kind === 'cloud-spend')!;
+    expect(card.summary).toContain('kimi-k3:cloud');
+    expect(card.summary).toContain("Ollama's cloud models");
+    expect(card.summary).not.toMatch(/a model server off/);
+    expect(card.detail).toMatch(/on to ollama\.com, under your Ollama account/);
+    expect(card.detail).not.toMatch(/go to localhost/);
+  });
+
+  it('the session names where its seat runs as the pill does', () => {
+    const tag = makeTestSession(new MockProvider('ollama', []), {
+      configOverrides: CLOUD_TAG_STACK,
+    });
+    expect(tag.agent.activeModel).toEqual({ model: 'kimi-k3:cloud', kind: 'cloud' });
+    const here = makeTestSession(new MockProvider('ollama', []), {
+      configOverrides: {
+        stack: { orchestrator: { provider: 'ollama', model: 'qwen2.5-coder:7b' } },
+      },
+    });
+    expect(here.agent.activeModel.kind).toBe('local');
+  });
+
+  it('the stack line calls a cloud-tag orchestrator cloud', () => {
+    const { router } = routerOver(['kimi-k3:cloud'], {
+      orchestrator: { provider: 'ollama', model: 'kimi-k3:cloud' },
+    });
+    expect(describeStack(router.stack)).toBe('kimi-k3:cloud (cloud), solo');
+    const here = routerOver(['qwen2.5-coder:7b'], {
+      orchestrator: { provider: 'ollama', model: 'qwen2.5-coder:7b' },
+    });
+    expect(describeStack(here.router.stack)).toBe('qwen2.5-coder:7b (local), solo');
   });
 
   it('declined, nothing is sent to it', async () => {

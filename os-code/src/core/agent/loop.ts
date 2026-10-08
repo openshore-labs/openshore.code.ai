@@ -70,6 +70,7 @@ import type {
 } from './types.js';
 import { instructionsPrompt, type RepoInstructions } from './instructions.js';
 import { verifyRetryPrompt } from '../../harness/verify.js';
+import { isOllamaCloudTag } from '../../harness/locality.js';
 import { runVerifyAsync } from './verifyRun.js';
 import { pageCheck } from './pageCheck.js';
 import { commandDigest, detectCheckCommand } from './checkDetect.js';
@@ -491,8 +492,11 @@ export class AgentSession {
     };
   }
 
+  /** The seat answering now and where it runs, judged as the pill judges it
+   *  (activeLeaves), so a session list or a status line never calls a cloud
+   *  tag or a server off this network local. */
   get activeModel(): { model: string; kind: 'local' | 'cloud' } {
-    return { model: this.active.model, kind: this.active.provider.kind };
+    return { model: this.active.model, kind: this.activeLeaves() ? 'cloud' : 'local' };
   }
 
   get permissionMode(): PermissionMode {
@@ -2512,7 +2516,9 @@ export class AgentSession {
   }
 
   /** The card's words for the active seat when it is off this network: cloud
-   *  Claude is priced; a remote OpenAI-compatible server is named by host. */
+   *  Claude is priced; a remote OpenAI-compatible server is named by host; an
+   *  Ollama cloud tag names ollama.com, where its server passes each turn on
+   *  (the server may well be this computer's own Ollama). */
   private offNetworkReason(): [string, string?] {
     const provider = this.active.provider;
     if (provider.kind === 'cloud') return ['This step runs on cloud Claude.'];
@@ -2524,6 +2530,12 @@ export class AgentSession {
       } catch {
         // Keep the label.
       }
+    }
+    if (isOllamaCloudTag(this.active.model)) {
+      return [
+        `This step runs on ${this.active.model}, one of Ollama's cloud models, off this computer's network.`,
+        `The server at ${host} passes your messages and the code the agent reads on to ollama.com, under your Ollama account. Nothing is sent without this approval.`,
+      ];
     }
     return [
       `This step runs on ${provider.label}, a model server off this computer's network.`,
