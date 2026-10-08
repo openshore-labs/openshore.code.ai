@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatMessage } from '../src/providers/types.js';
 import { compactHistory, trimOldObservations } from '../src/context/compaction.js';
+import { withholdLocalOnly } from '../src/harness/vault/privacy.js';
 
 const big = 'x'.repeat(4000);
 
@@ -130,5 +131,56 @@ describe('the class sets when compaction runs (Vault M4, CTO I2)', () => {
     expect(result.compacted).toBe(false);
     expect(result.messages).toEqual(messages);
     expect(asked).toBe(0);
+  });
+});
+
+// D5 (privacy review 2026-10-08, engine-routing-1): a summary written from a
+// local-only note's text may quote it, so it keeps the mark; a fold of the
+// stubbed history carries none, so it is not marked.
+describe('the summary keeps the local-only mark', () => {
+  const note = 'Dear diary, the secret is 4410.';
+  function history(first: ChatMessage): ChatMessage[] {
+    return [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: `read my journal ${big}` },
+      first,
+      ...Array.from({ length: 9 }, (_, i): ChatMessage => ({ role: 'user', content: `turn ${i}` })),
+    ];
+  }
+  const summaryOf = async (messages: ChatMessage[]): Promise<ChatMessage> => {
+    const result = await compactHistory(messages, 100, async (text) => `summary of: ${text}`);
+    expect(result.compacted).toBe(true);
+    return result.messages[1]!;
+  };
+
+  it('is marked when it folded a message that carries the note', async () => {
+    const summary = await summaryOf(
+      history({ role: 'assistant', content: `It says ${note}`, localOnly: true }),
+    );
+    expect(summary.content).toContain(note);
+    expect(summary.localOnly).toBe(true);
+  });
+
+  it('is not marked when it folded only the stub, or nothing local-only', async () => {
+    const stubbed = withholdLocalOnly(
+      history({ role: 'assistant', content: `It says ${note}`, localOnly: true }),
+    );
+    const fromStub = await summaryOf(stubbed);
+    expect(fromStub.content).not.toContain(note);
+    expect(fromStub.localOnly).toBeUndefined();
+    const plain = await summaryOf(history({ role: 'assistant', content: 'nothing private' }));
+    expect(plain.localOnly).toBeUndefined();
+  });
+
+  it('a failed summary is the plain dropped-turns line, unmarked', async () => {
+    const result = await compactHistory(
+      history({ role: 'assistant', content: `It says ${note}`, localOnly: true }),
+      100,
+      async () => {
+        throw new Error('offline');
+      },
+    );
+    expect(result.messages[1]!.content).not.toContain(note);
+    expect(result.messages[1]!.localOnly).toBeUndefined();
   });
 });

@@ -12,6 +12,7 @@ import type { ChatMessage, ContentPart, Provider, ToolCallRequest } from '../../
 import { ProviderError, seatLeaves } from '../../providers/types.js';
 import { adapterFor, type ModelAdapter } from '../../providers/adapters/index.js';
 import type { DelegatedUsage, Router } from '../../router/router.js';
+import type { DelegableRole } from '../../router/roles.js';
 import {
   capContent,
   type ApprovedPreview,
@@ -51,6 +52,7 @@ import { platformAndShell } from '../exec/shell.js';
 import type { SecurityProfile } from '../security/profiles.js';
 import { redactSecrets } from '../security/redaction.js';
 import { routineSearchRefusal } from '../security/routineSearch.js';
+import { isLocalUrl } from '../security/egress.js';
 import {
   compactHistory,
   estimateMessages,
@@ -95,7 +97,7 @@ import {
 } from '../../harness/repeatCycle.js';
 import { firstTurnRetrieval } from './lifts.js';
 import { vaultPackSize } from '../../harness/vault/settings.js';
-import { withholdLocalOnly } from '../../harness/vault/privacy.js';
+import { carriesLocalOnly, withholdLocalOnly } from '../../harness/vault/privacy.js';
 import {
   buildContextPack,
   packBudgetTokens,
@@ -112,11 +114,11 @@ import {
 } from '../../harness/handoff.js';
 import { handoffTurnsFromHistory, type HandoffRecord } from './handoffStore.js';
 import {
-  OFFLINE_NOW_DENIED,
   OFFLINE_PROMPT,
   ONLINE_AGAIN_NOTE,
   offlineNoModelLine,
   offlineNote,
+  offlineNowDenied,
   type MachineOffline,
 } from './offline.js';
 import type { HarnessCurrentsHandle } from '../../currents/model.js';
@@ -222,22 +224,47 @@ function insideVault(abs: string, vaultRoot: string | undefined): boolean {
   }
 }
 
-/** The first user turn's text, for the Jev judge's task side. */
+/** The first user turn's text, for the Jev judge's task side. None when it
+ *  is marked local-only (a fold's summary can be): the judge is a request off
+ *  this network (D5). */
 function firstUserText(history: ChatMessage[]): string | undefined {
   const m = history.find((x) => x.role === 'user');
+  if (m?.localOnly) return undefined;
   return typeof m?.content === 'string' && m.content.trim() ? m.content : undefined;
 }
 
-/** The last assistant turn's text, for the Jev judge's result side. */
+/** The last assistant turn's text, for the Jev judge's result side. None
+ *  when it is marked local-only, for the same reason. */
 function lastAssistantText(history: ChatMessage[]): string | undefined {
   for (let i = history.length - 1; i >= 0; i--) {
     const m = history[i]!;
     if (m.role === 'assistant' && typeof m.content === 'string' && m.content.trim()) {
-      return m.content;
+      return m.localOnly ? undefined : m.content;
     }
   }
   return undefined;
 }
+
+const HANDOFF_ROLES: ReadonlySet<string> = new Set<DelegableRole>([
+  'coding',
+  'writing',
+  'analysis',
+  'fast',
+  'vision',
+]);
+
+/** The role a handoff hands its subtask to: delegate's own, vision for
+ *  analyzeImage; undefined for any other tool. */
+function handoffRole(call: ParsedToolCall): DelegableRole | undefined {
+  const role =
+    call.name === 'analyzeImage' ? 'vision' : call.name === 'delegate' ? call.args.role : undefined;
+  return typeof role === 'string' && HANDOFF_ROLES.has(role) ? (role as DelegableRole) : undefined;
+}
+
+/** Why a handoff did not run: this chat holds a note that stays on this
+ *  computer, and the subtask was bound for a seat off this network (D5). */
+export const HANDOFF_LOCAL_ONLY_DENIED =
+  'This chat has read a note that stays on this computer, so it is not handed to a cloud model.';
 
 /** The shape of a rule the loop asks to persist for a project. */
 export interface ProjectRule {
@@ -536,8 +563,28 @@ export class AgentSession {
     const before = this.history.length;
     const budget = Math.max(1, Math.floor(estimateMessages(this.history) * 0.5));
     const full = this.history;
-    const result = await compactHistory(this.history, budget, (text) =>
-      this.summarize(focus ? `${text}\n\nWhen summarizing, keep everything about: ${focus}` : text),
+    // The seat the summary runs on is resolved first: one off this network
+    // folds the stubbed history, never a local-only note's text (D5). With
+    // no seat at all nothing is sent, and the fold drops the oldest turns.
+    let seat: ActiveModel | undefined;
+    let unseated: unknown;
+    try {
+      seat = await this.oneShotSeat();
+    } catch (err) {
+      unseated = err;
+    }
+    const leaves = seat !== undefined && leavesThisNetwork(seat.provider);
+    const result = await compactHistory(
+      leaves ? withholdLocalOnly(this.history) : this.history,
+      budget,
+      (text) =>
+        seat
+          ? this.summarize(
+              focus ? `${text}\n\nWhen summarizing, keep everything about: ${focus}` : text,
+              undefined,
+              seat,
+            )
+          : Promise.reject(unseated instanceof Error ? unseated : new Error(String(unseated))),
     );
     if (result.compacted) {
       this.history = result.messages;
@@ -555,14 +602,27 @@ export class AgentSession {
 
   /** A short title for the conversation, from its first exchange. */
   async generateTitle(): Promise<string | undefined> {
-    const user = this.history.find((m) => m.role === 'user');
-    const assistant = this.history.find((m) => m.role === 'assistant');
+    let seat: ActiveModel;
+    try {
+      seat = await this.oneShotSeat();
+    } catch {
+      return undefined;
+    }
+    // A seat off this network is never sent a local-only note's text (D5):
+    // the title is drawn from the turns that carry none.
+    const turns = leavesThisNetwork(seat.provider)
+      ? this.history.filter((m) => !m.localOnly)
+      : this.history;
+    const user = turns.find((m) => m.role === 'user');
+    const assistant = turns.find((m) => m.role === 'assistant');
     const userText = typeof user?.content === 'string' ? user.content : '';
     const reply = typeof assistant?.content === 'string' ? assistant.content : '';
     if (!userText.trim()) return undefined;
     try {
       const raw = await this.summarize(
         `Write a title for this conversation: three to six words, plain, specific, no quotes, no trailing period, no em dashes. Answer with the title only.\n\nPerson: ${userText.slice(0, 600)}\n\nAssistant: ${reply.slice(0, 600)}`,
+        undefined,
+        seat,
       );
       const title = raw
         .split('\n')[0]!
@@ -1739,7 +1799,11 @@ export class AgentSession {
         // Malformed call: bounded repair, then escalation, then stop.
         parseFailStreak += 1;
         repairAttempts += 1;
-        this.history.push({ role: 'assistant', content: streamedText, ...this.localOnlyMark() });
+        this.history.push({
+          role: 'assistant',
+          content: streamedText,
+          ...this.localOnlyMark(leaves),
+        });
         this.history.push({ role: 'user', content: repairPrompt(problems) });
         if (repairAttempts <= 2) {
           this.emit({
@@ -1774,7 +1838,7 @@ export class AgentSession {
         this.history.push({
           role: 'assistant',
           content: said ?? streamedText,
-          ...this.localOnlyMark(),
+          ...this.localOnlyMark(leaves),
         });
         this.emit({ type: 'text-final', text: finalText });
         if (this.mode === 'plan' && finalText)
@@ -1848,7 +1912,7 @@ export class AgentSession {
           role: 'assistant',
           content: streamedText,
           ...(thinkingBlocks?.length ? { thinkingBlocks } : {}),
-          ...this.localOnlyMark(),
+          ...this.localOnlyMark(leaves),
           toolCalls: [
             ...calls.map((c) => ({
               id: c.id,
@@ -1868,7 +1932,11 @@ export class AgentSession {
           );
         }
       } else {
-        this.history.push({ role: 'assistant', content: streamedText, ...this.localOnlyMark() });
+        this.history.push({
+          role: 'assistant',
+          content: streamedText,
+          ...this.localOnlyMark(leaves),
+        });
         if (displayText.trim()) this.emit({ type: 'text-final', text: displayText.trim() });
         if (problems.length) {
           this.history.push({
@@ -1948,7 +2016,7 @@ export class AgentSession {
     if (!tool || cutNow.has(call.name)) {
       const reason =
         cutNow.has(call.name) && !this.offlineTools.has(call.name)
-          ? OFFLINE_NOW_DENIED
+          ? offlineNowDenied(this.offlineState().reason)
           : OFFLINE_DENIED;
       this.emit({ type: 'tool-denied', call, reason });
       this.pushObservation(call, `Not run: ${reason} ${OFFLINE_ADVICE}`, toolMode);
@@ -2190,6 +2258,16 @@ export class AgentSession {
       }
     }
 
+    // A handoff to another model never carries a local-only note's text off
+    // this network (D5): judged last, right before it runs, so nothing can
+    // move the seat between the check and the router's own read of it.
+    const handoffRefused = this.handoffRefusal(call);
+    if (handoffRefused) {
+      this.emit({ type: 'tool-denied', call, reason: handoffRefused });
+      this.pushObservation(call, `Not run: ${handoffRefused} Do this part yourself.`, toolMode);
+      return 'refused';
+    }
+
     if (tool.risk === 'write' && !writesVault) {
       if (!writesMemory) this.attemptedWriteThisTask = true;
       if (rawPath !== undefined && tool.pathJail !== 'own') this.recordOriginal(rawPath);
@@ -2399,10 +2477,44 @@ export class AgentSession {
     return false;
   }
 
-  /** The mark an assistant turn carries once this task has read a
-   *  local-only note (CTO I5). */
-  private localOnlyMark(): { localOnly?: true } {
-    return this.readLocalOnlyThisTask ? { localOnly: true } : {};
+  /** The mark an assistant turn carries (CTO I5): once this task has read a
+   *  local-only note, or when its seat stays on this network and the pack or
+   *  the history it was sent holds a local-only note's text, since the reply
+   *  may quote it (the app's sendLocalOnly rule). A seat that leaves was sent
+   *  neither. */
+  private localOnlyMark(leaves: boolean): { localOnly?: true } {
+    return this.readLocalOnlyThisTask || (!leaves && this.holdsLocalOnly())
+      ? { localOnly: true }
+      : {};
+  }
+
+  /** Whether this chat holds a local-only note's text: in this turn's pack
+   *  (only ever rendered so for a seat that stays) or in a kept message. */
+  private holdsLocalOnly(): boolean {
+    return this.currentPack?.localOnly === true || this.history.some(carriesLocalOnly);
+  }
+
+  /** Why a handoff (delegate, analyzeImage, generateImage) does not run now,
+   *  or undefined when it may: the seat that wrote the call was sent a
+   *  local-only note's text (it stays on this network and the chat holds
+   *  such text), and the model the subtask goes to leaves this network (D5):
+   *  the seat the router names for the role, or the image server, judged by
+   *  its address as offlineCut judges it. A seat off this network was sent
+   *  only the stub, so what it hands on cannot quote the note. Offline the
+   *  router keeps every subtask on this network (Router.delegate's rule). */
+  private handoffRefusal(call: ParsedToolCall): string | undefined {
+    if (leavesThisNetwork(this.active.provider) || !this.holdsLocalOnly()) return undefined;
+    if (call.name === 'generateImage') {
+      const server = this.deps.config.imageGen;
+      return server && !isLocalUrl(server.baseUrl) ? HANDOFF_LOCAL_ONLY_DENIED : undefined;
+    }
+    const role = handoffRole(call);
+    if (!role) return undefined;
+    const { router } = this.deps;
+    if (router.offline()) return undefined;
+    return leavesThisNetwork(router.roleFor(role).resolved.provider)
+      ? HANDOFF_LOCAL_ONLY_DENIED
+      : undefined;
   }
 
   /** Record a tool's observation. `localOnly` (a local-only vault note's
@@ -2887,11 +2999,16 @@ export class AgentSession {
    * a 4-chars-per-token estimate only when the backend reports nothing, so
    * the spend reaches the dollar rail and the transcript (ENG-14).
    */
-  private async summarize(text: string, signal?: AbortSignal): Promise<string> {
+  private async summarize(
+    text: string,
+    signal?: AbortSignal,
+    resolved?: ActiveModel,
+  ): Promise<string> {
     let out = '';
     let promptTokens = 0;
     let completionTokens = 0;
-    const seat = await this.oneShotSeat();
+    // The caller's seat when it judged what to send by it (D5), else now's.
+    const seat = resolved ?? (await this.oneShotSeat());
     for await (const event of seat.provider.chat(
       {
         model: seat.model,

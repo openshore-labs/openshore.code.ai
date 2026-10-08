@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   LOCAL_ONLY_STUB,
+  carriesLocalOnly,
   compileVaultGlob,
   compileVaultPrivacy,
   matchesVaultGlob,
@@ -122,5 +123,35 @@ describe('seat and history', () => {
     expect(sent[1]!.content).toBe(LOCAL_ONLY_STUB);
     expect(history[1]!.content).toBe('Dear diary');
     expect(sent[0]).toBe(history[0]);
+  });
+
+  it('a marked reply keeps its calls for their results, never their arguments (D5)', () => {
+    const history: ChatMessage[] = [
+      {
+        role: 'assistant',
+        content: 'Saving it.',
+        localOnly: true,
+        toolCalls: [
+          {
+            id: 'w1',
+            name: 'writeFile',
+            argsText: '{"path":"a.md","content":"Dear diary"}',
+            args: { path: 'a.md', content: 'Dear diary' },
+          },
+        ],
+      },
+      { role: 'tool', content: 'Wrote a.md.', toolCallId: 'w1', name: 'writeFile' },
+    ];
+    const sent = withholdLocalOnly(history);
+    expect(JSON.stringify(sent)).not.toContain('Dear diary');
+    expect(sent[0]!.toolCalls).toEqual([{ id: 'w1', name: 'writeFile', argsText: '{}', args: {} }]);
+    expect(history[0]!.toolCalls![0]!.args).toEqual({ path: 'a.md', content: 'Dear diary' });
+  });
+
+  it('carriesLocalOnly: marked text does, the stub in its place does not', () => {
+    const marked: ChatMessage = { role: 'tool', content: 'Dear diary', localOnly: true };
+    expect(carriesLocalOnly(marked)).toBe(true);
+    expect(carriesLocalOnly(withholdLocalOnly([marked])[0]!)).toBe(false);
+    expect(carriesLocalOnly({ role: 'user', content: 'hello' })).toBe(false);
   });
 });

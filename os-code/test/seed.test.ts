@@ -108,3 +108,82 @@ describe('seedHistoryFromEvents keeps the local-only mark (Vault M4)', () => {
     expect(sent[4]!.content).toBe('Sunny.');
   });
 });
+
+// D5 (privacy review 2026-10-08, engine-routing-1): the loop marks a reply a
+// seat on this network wrote while the chat held a local-only note, or that a
+// pack carrying one grounded; a restart rebuilds the same marks.
+describe('seedHistoryFromEvents rebuilds the loop marks after a restart', () => {
+  const NOTE = 'the journal says 4410';
+  const turn = (providerKind: 'local' | 'cloud'): DriverEvent => ({
+    type: 'turn-start',
+    turn: 1,
+    model: providerKind === 'local' ? 'qwen3:4b' : 'claude-sonnet-5',
+    providerKind,
+  });
+  const read: DriverEvent = {
+    type: 'tool-end',
+    call: { id: 'c1', name: 'vaultRead', args: { path: 'Journal/today.md' } },
+    result: { ok: true, content: NOTE, localOnly: true },
+    durationMs: 3,
+  };
+
+  it('a later local reply in a chat that holds a marked one stays marked; a cloud one does not', () => {
+    const events: DriverEvent[] = [
+      { type: 'task-start', input: 'read my journal' },
+      turn('local'),
+      read,
+      turn('local'),
+      { type: 'text-final', text: `It says ${NOTE}.` },
+      { type: 'task-start', input: 'say it again' },
+      turn('local'),
+      { type: 'text-final', text: `Again, ${NOTE}.` },
+      { type: 'task-start', input: 'now online' },
+      turn('cloud'),
+      { type: 'text-final', text: 'A cloud answer.' },
+    ];
+    const seeded = seedHistoryFromEvents(events);
+    expect(seeded.filter((m) => m.role === 'assistant').map((m) => m.localOnly)).toEqual([
+      true,
+      true,
+      undefined,
+    ]);
+    expect(JSON.stringify(withholdLocalOnly(seeded))).not.toContain(NOTE);
+  });
+
+  it('a read in a task that wrote no reply still marks a later local reply', () => {
+    // The loop keeps the read's result in its history after a stopped task,
+    // so its next local reply is marked; the restart must agree.
+    const events: DriverEvent[] = [
+      { type: 'task-start', input: 'read my journal' },
+      turn('local'),
+      read,
+      { type: 'task-done', reason: 'aborted', message: 'Stopped at your request.' },
+      { type: 'task-start', input: 'what did it say?' },
+      turn('local'),
+      { type: 'text-final', text: `It said ${NOTE}.` },
+    ];
+    const seeded = seedHistoryFromEvents(events);
+    expect(seeded.at(-1)).toMatchObject({ content: `It said ${NOTE}.`, localOnly: true });
+    expect(JSON.stringify(withholdLocalOnly(seeded))).not.toContain(NOTE);
+  });
+
+  it('a reply grounded in a pack that carried a local-only note is marked', () => {
+    const events: DriverEvent[] = [
+      { type: 'task-start', input: 'what is the plan?' },
+      turn('local'),
+      {
+        type: 'context-pack',
+        seat: 'local',
+        mode: 'current-state',
+        tokens: 40,
+        budgetTokens: 800,
+        sources: [{ layer: 'pin', path: 'Private/plan.md', title: 'plan', project: true }],
+        withheld: 0,
+        cold: false,
+        localOnly: true,
+      },
+      { type: 'text-final', text: 'The plan says 7731.' },
+    ];
+    expect(seedHistoryFromEvents(events).at(-1)).toMatchObject({ localOnly: true });
+  });
+});

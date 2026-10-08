@@ -535,17 +535,22 @@ describe('the handoff (M5, J13)', () => {
     await session.agent.run('and the tests');
     expect(written).toHaveLength(1);
     expect(written[0]).toEqual({
-      text: 'HANDOFF 4',
+      text: 'HANDOFF 3',
       at: new Date(2026, 8, 27, 12).toISOString(),
       model: 'mock-model',
-      turns: 4,
+      turns: 3,
     });
     expect(built[0]!.meta).toEqual({ from: 'mock-model', date: '2026-09-27' });
     // Sized for the seat: 10% of the 32k window, under the 1,500 cap.
     expect(built[0]!.budget).toBe(1500);
     const all = JSON.stringify(built[0]!.turns);
     expect(all).toContain('FIRST-ASK');
-    expect(all).toContain('All done.');
+    expect(all).toContain('and the tests');
+    // The new reply was written on a seat that stays, in a chat that holds a
+    // private note it was sent, so it may quote it: it is marked and left out
+    // like the note (D5, privacy review 2026-10-08).
+    expect(session.agent.history.at(-1)).toMatchObject({ content: 'All done.', localOnly: true });
+    expect(all).not.toContain('All done.');
     expect(all).not.toContain('THOUGHT');
     expect(all).not.toContain('PRIVATE');
     // A dispose right after writes nothing new.

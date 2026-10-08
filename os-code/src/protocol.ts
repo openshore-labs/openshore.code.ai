@@ -94,7 +94,7 @@ export { memoryEnabled } from './core/agent/memorySwitch.js';
 // yet" matches the line the engine ends that turn with. Pure.
 export {
   ONLINE_AGAIN_NOTE,
-  OFFLINE_NOW_DENIED,
+  offlineNowDenied,
   offlineNeedsLocalModel,
   offlineNoModelLine,
   offlineNote,
