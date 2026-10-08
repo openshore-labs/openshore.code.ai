@@ -21,7 +21,7 @@ import {
   type StackCategory,
   type StackModelRef,
 } from './stack.js';
-import { imageStepNote } from './imageNote.js';
+import { imageStepCoveredNote, imageStepNote } from './imageNote.js';
 
 /** A step is owned by a specialist category, or by the reasoning anchor. */
 export type StepCategory = StackCategory | 'reasoning';
@@ -190,8 +190,14 @@ export function mergeReplan(play: Play, done: Set<string>, rawRemaining: unknown
  *  an anchor that can see, then the reachable, keyed cloud reader), so a
  *  play's brief names, and its step runs on, the model an image in the chat
  *  would go to and the Stack's Image reading row names (D13, founder
- *  2026-10-07). Left out, the reasoning model covers the step. */
-export type PlayStack = AppStack & { imageReader?: StackModelRef };
+ *  2026-10-07). Left out, the reasoning model covers the step. `reachable`
+ *  is the driver's reach in this status, so the brief and the runner agree
+ *  on who a step really runs on (stepRunner); left out, every model is in
+ *  reach. */
+export type PlayStack = AppStack & {
+  imageReader?: StackModelRef;
+  reachable?: (ref: StackModelRef) => boolean;
+};
 
 export interface StepOwner {
   ref: StackModelRef;
@@ -238,12 +244,30 @@ export function ownerFor(step: PlayStep, stack: PlayStack): StepOwner {
   return { ref: anchor, placement: undefined, fellBack: true };
 }
 
-/** A short owner label for the briefing: the model's name, noting when the
- *  reasoning anchor is covering an unplaced category. */
-export function ownerLabel(step: PlayStep, stack: PlayStack): string {
+/** Who a step really runs on: its owner (ownerFor), unless that owner
+ *  cannot run it here on its own, a model on this device (a play never runs
+ *  one unattended) or one out of reach in this status, when the reasoning
+ *  anchor covers the step and `covered` names the owner it stands in for.
+ *  The one rule the task list, the working note and the runner all read, so
+ *  the list never names a model the step does not run on. */
+export function stepRunner(
+  step: PlayStep,
+  stack: PlayStack,
+): StepOwner & { covered?: StackModelRef } {
   const owner = ownerFor(step, stack);
-  const name = refName(owner.ref);
-  return owner.fellBack && step.category !== 'reasoning' ? `${name} (reasoning)` : name;
+  const anchor = stack.reasoning ?? harborRef();
+  const inReach = stack.reachable ?? (() => true);
+  const runsHere = owner.ref.kind !== 'device' && inReach(owner.ref);
+  if (runsHere || refKey(owner.ref) === refKey(anchor)) return owner;
+  return { ref: anchor, placement: undefined, fellBack: true, covered: owner.ref };
+}
+
+/** A short owner label for the briefing: the name of the model the step runs
+ *  on (stepRunner), noting when the reasoning anchor is covering it. */
+export function ownerLabel(step: PlayStep, stack: PlayStack): string {
+  const runner = stepRunner(step, stack);
+  const name = refName(runner.ref);
+  return runner.fellBack && step.category !== 'reasoning' ? `${name} (reasoning)` : name;
 }
 
 // ---- the user-facing brief -----------------------------------------------
@@ -526,8 +550,14 @@ export function parseReplan(text: string): PlayStep[] | undefined {
  *  step with nothing set for Image reading (and no model named for it) runs
  *  on the chat path's reader with no card, so its note says that plainly and
  *  names the reader, or says the Reasoning model works from the text when
- *  nothing here reads images (founder, 2026-10-07). */
+ *  nothing here reads images (founder, 2026-10-07). An image step whose model
+ *  set for Image reading cannot take it here names that model and the one
+ *  that covers it, never "Handing to" a model that does not run it. */
 export function handoffNote(step: PlayStep, stack: PlayStack): string {
+  const runner = stepRunner(step, stack);
+  if (step.category === 'vision' && runner.covered) {
+    return imageStepCoveredNote(step.title, runner.covered, runner.ref);
+  }
   const slots = visionSlots(stack);
   if (step.category === 'vision' && !slots.local && !slots.cloud && !namedOwner(step, stack)) {
     return imageStepNote(step.title, stack.imageReader, stack.reasoning ?? harborRef());

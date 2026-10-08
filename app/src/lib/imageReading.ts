@@ -46,6 +46,21 @@ export function imageOfferTitle(gap: Pick<ImageReaderGap, 'status'>): string {
 export const SOURCE_LOCAL = 'Source a local model';
 export const CONNECT_CLOUD = 'Connect a cloud model';
 
+/** A model set for Image reading that is not reading, and why, as the start
+ *  of a sentence. The offer's lead and the ask-first card share these words,
+ *  so a set model is never called missing. `where` names the status that
+ *  holds it out of reach (" while Offline"), when there is one. */
+export function placedHeldLine(
+  placed: NonNullable<ImageReaderGap['placed']>,
+  where: string = '',
+): string {
+  return placed.why === 'device'
+    ? `${placed.model} is set for Image reading, but a model on ${thisDeviceNoun()} cannot read images yet`
+    : placed.why === 'cannot-see'
+      ? `${placed.model} is set for Image reading, but it does not read images`
+      : `${placed.model} is set for Image reading, but it is out of reach${where}`;
+}
+
 /** The card's first line: what is missing, true to the state. */
 export function imageOfferLead(gap: ImageReaderGap): string {
   const where = gap.status ? ` while ${gap.status}` : '';
@@ -54,13 +69,7 @@ export function imageOfferLead(gap: ImageReaderGap): string {
   const missing = bothAway
     ? `${placed.model}, set for Image reading, and your cloud models are out of reach${where}`
     : [
-        !placed
-          ? NO_IMAGE_MODEL
-          : placed.why === 'device'
-            ? `${placed.model} is set for Image reading, but a model on ${thisDeviceNoun()} cannot read images yet`
-            : placed.why === 'cannot-see'
-              ? `${placed.model} is set for Image reading, but it does not read images`
-              : `${placed.model} is set for Image reading, but it is out of reach${where}`,
+        placed ? placedHeldLine(placed, where) : NO_IMAGE_MODEL,
         gap.cloud === 'out-of-reach'
           ? `and your cloud models are out of reach${where}`
           : 'and no connected cloud model reads images',

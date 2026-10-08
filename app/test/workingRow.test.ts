@@ -88,6 +88,27 @@ describe('the wave', () => {
     expect(row).toMatch(/className="working-word" aria-hidden="true"/);
     expect(row).toContain('className="visually-hidden"');
   });
+
+  // Image reading follow-up (2026-10-08): the note that names the model
+  // reading a picture runs past one line on a phone, and the row cut it with
+  // an ellipsis. A verbatim note now reads whole, wrapping onto the lines it
+  // needs (three at 360pt), with the mark and the counter on its first line;
+  // the turning word keeps its one line and its clip. Nothing animates the
+  // row's height.
+  it('lets a verbatim note read whole, wrapping, while the turning word keeps one line', () => {
+    const row = read('components/WorkingRow.tsx');
+    expect(row).toContain("className={rotating ? 'working-note' : 'working-note whole'}");
+    const base = theme.match(/\n\.working-note \{[^}]*\}/)?.[0] ?? '';
+    expect(base).toMatch(/white-space: nowrap;[^}]*overflow: hidden;[^}]*text-overflow: ellipsis;/);
+    const whole = theme.match(/\n\.working-note\.whole \{[^}]*\}/)?.[0] ?? '';
+    expect(whole).toMatch(/white-space: normal;/);
+    expect(whole).toMatch(/overflow: visible;/);
+    expect(whole).toMatch(/overflow-wrap: anywhere;/);
+    // The mark and the counter sit on the first line, not the block's middle.
+    expect(theme).toMatch(/\n\.working-row \{[^}]*align-items: flex-start;/);
+    const rowRules = theme.match(/\n\.working-(?:row|note)[^{]*\{[^}]*\}/g) ?? [];
+    for (const rule of rowRules) expect(rule).not.toMatch(/transition/);
+  });
 });
 
 describe('the seam', () => {

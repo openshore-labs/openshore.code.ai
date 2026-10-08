@@ -10673,11 +10673,18 @@ button.vault-tag {
 
 .working-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   color: var(--muted);
   font-size: var(--text-4);
   animation: msg-in var(--dur-3) var(--ease-standard);
+}
+/* The row's first line is the counter's (text-4 at the body's 1.55). The mark
+   and the note's first line centre on it, so a one-line row sits as it did
+   centred, and a note that wraps keeps the mark beside its first line rather
+   than floating at the middle of the block. */
+.working-row > .wave-mark {
+  margin-top: calc((var(--text-4) * 1.55 - 24px * 10 / 18) / 2);
 }
 /* Everything that animates in animates out: the row fades and rises 3px when
    the reply starts (or the turn ends). */
@@ -10740,9 +10747,21 @@ button.vault-tag {
 .working-note {
   font-family: var(--font-mono);
   font-size: var(--text-2);
+  margin-top: calc((var(--text-4) - var(--text-2)) * 1.55 / 2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* A note that is not the turning word reads whole (image reading follow-up,
+   2026-10-08): it wraps onto as many lines as it needs, never cut with an
+   ellipsis, so the note that names the model reading a picture is read to
+   its end at 360pt. The row takes its lines when the note arrives; nothing
+   animates its height. */
+.working-note.whole {
+  min-width: 0;
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
 }
 /* The word turns over: the outgoing word rises out as the incoming one rises
    in beneath it, both on the same grid cell. The block padding (cancelled by

@@ -135,6 +135,14 @@ describe('a play whose image step finds no reader', () => {
       'Read the chart. Harbor Lite cannot read images yet, so Sonar, your Reasoning model, works from the text.',
     );
     expect(statuses.some((m) => /Handing to Harbor Lite/.test(m))).toBe(false);
+    // The task list names the model that runs each image step, the one the
+    // note names, never Harbor Lite (stepRunner, one rule for both).
+    const lists = events.flatMap((e) => (e.type === 'todos' ? [e.items] : []));
+    expect(lists.length).toBeGreaterThan(0);
+    for (const items of lists) {
+      const owners = items.filter((t) => t.content.startsWith('Read the')).map((t) => t.owner);
+      expect(owners).toEqual(['Sonar (reasoning)', 'Sonar (reasoning)']);
+    }
     expect(events.filter((e) => e.type === 'image-reader-offer')).toEqual([
       {
         type: 'image-reader-offer',

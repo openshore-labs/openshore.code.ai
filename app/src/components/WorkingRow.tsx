@@ -4,7 +4,8 @@
 // model) before the first token, so the screen never reads as dead. While the
 // note is plain "Thinking" the word turns over slowly through the house
 // lexicon (lib/thinkingWords.ts); any other note (a tool summary, "Writing",
-// "Waiting for your approval") shows verbatim and holds. Sits at the tail of
+// "Waiting for your approval") shows verbatim, whole, wrapping when it is
+// long, and holds. Sits at the tail of
 // the transcript while the thread is busy and nothing is streaming, and eases
 // out over the arriving reply when the first token lands (`closing`).
 import { useEffect, useRef, useState } from 'react';
@@ -65,7 +66,7 @@ export function WorkingRow({
   return (
     <div className={`working-row${closing ? ' closing' : ''}`} role="status" aria-live="polite">
       <WaveMark />
-      <span className="working-note">
+      <span className={rotating ? 'working-note' : 'working-note whole'}>
         {rotating ? (
           <>
             <span className="working-word" aria-hidden="true">
