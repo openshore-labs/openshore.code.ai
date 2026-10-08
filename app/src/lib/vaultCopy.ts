@@ -126,7 +126,7 @@ export const VAULT_MODELS_LINE = `Pin a note to a project and every chat there s
  *  network, because the plan draws on a private note: the Reasoning model
  *  that wrote the plan stays here and takes the step (D5, stepRunner). */
 export function privatePlanStepNote(title: string, owner: string, anchor: string): string {
-  return `${title}. This plan draws on a private note, so ${anchor}, your Reasoning model, takes it instead of ${owner}. ${VAULT_PRIVATE_OFF_CLOUD}`;
+  return `${title}. This plan draws on a private note, so ${anchor}, your Reasoning model, takes it instead of ${owner}.`;
 }
 /** The same plan's note for a step that edits files: it is described here,
  *  not handed to your computer, whose agent may run a cloud model (D5). */

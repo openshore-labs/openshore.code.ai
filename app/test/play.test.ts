@@ -385,10 +385,10 @@ describe('stepRunner: who a step really runs on', () => {
     expect(ownerLabel(draft, kept)).toBe('Coder (reasoning)');
     expect(ownerLabel(read, kept)).toBe('Coder (reasoning)');
     expect(handoffNote(draft, kept)).toBe(
-      'Draft. This plan draws on a private note, so Coder, your Reasoning model, takes it instead of Claude. Private notes never reach a cloud model unless you run or allow a command or change that carries them.',
+      'Draft. This plan draws on a private note, so Coder, your Reasoning model, takes it instead of Claude.',
     );
     expect(handoffNote(read, kept)).toBe(
-      'Read the chart. This plan draws on a private note, so Coder, your Reasoning model, takes it instead of Claude. Private notes never reach a cloud model unless you run or allow a command or change that carries them.',
+      'Read the chart. This plan draws on a private note, so Coder, your Reasoning model, takes it instead of Claude.',
     );
     // Without the mark, each runs on its own model, as before.
     expect(stepRunner(draft, own).ref).toEqual(claude);
@@ -408,7 +408,7 @@ describe('stepRunner: who a step really runs on', () => {
       private: true,
     });
     expect(handoffNote(read, unplaced)).toBe(
-      'Read the chart. This plan draws on a private note, so Coder, your Reasoning model, takes it instead of Claude. Private notes never reach a cloud model unless you run or allow a command or change that carries them.',
+      'Read the chart. This plan draws on a private note, so Coder, your Reasoning model, takes it instead of Claude.',
     );
   });
 
